@@ -421,6 +421,13 @@ describe('listChains', () => {
     expect(uni?.name).toBe('Unichain')
   })
 
+  it('exposes Robinhood Chain with the deployed settlement and public orderbook', () => {
+    const robinhood = listChains().tradeable.find((c) => c.chainId === 4663)
+    expect(robinhood?.name).toBe('Robinhood Chain')
+    expect(robinhood?.settlement).toBe('0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD')
+    expect(robinhood?.orderbookUrl).toBe('https://robinhood-mainnet.ophis.fi')
+  })
+
   it('puts Ethereum mainnet in tradeable with the canonical settlement', () => {
     const eth = listChains().tradeable.find((c) => c.chainId === 1)
     expect(eth?.ophisOperated).toBe(false)

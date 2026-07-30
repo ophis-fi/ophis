@@ -406,6 +406,130 @@
     "hasFallback": false
   },
   {
+    "name": "OphisFeeLiquidator",
+    "sourcePath": "src/contracts/OphisFeeLiquidator.sol",
+    "artifactPath": "out/OphisFeeLiquidator.sol/OphisFeeLiquidator.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "settlement_",
+          "type": "contract",
+          "internalType": "GPv2Settlement"
+        },
+        {
+          "name": "feeSafe_",
+          "type": "address",
+          "internalType": "address payable"
+        },
+        {
+          "name": "owner_",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "initialLiquidator",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "consolidate",
+        "inputs": [
+          {
+            "name": "inputs",
+            "type": "array",
+            "internalType": "OphisFeeLiquidator.ConsolidateInput[]"
+          },
+          {
+            "name": "tokenOut",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "amountOutMin",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "venue",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "venueCallData",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "setLiquidator",
+        "inputs": [
+          {
+            "name": "newLiquidator",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "setOutputToken",
+        "inputs": [
+          {
+            "name": "token",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "setVenue",
+        "inputs": [
+          {
+            "name": "venue",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "allowed",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "sweep",
+        "inputs": [
+          {
+            "name": "tokens",
+            "type": "array",
+            "internalType": "address[]"
+          },
+          {
+            "name": "amounts",
+            "type": "array",
+            "internalType": "uint256[]"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
     "name": "GPv2Signing",
     "sourcePath": "src/contracts/mixins/GPv2Signing.sol",
     "artifactPath": "out/GPv2Signing.sol/GPv2Signing.json",
@@ -471,6 +595,76 @@
             "name": "calldataPayload",
             "type": "bytes",
             "internalType": "bytes"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
+    "name": "OphisVaultPolicyModule",
+    "sourcePath": "src/contracts/vault/OphisVaultPolicyModule.sol",
+    "artifactPath": "out/OphisVaultPolicyModule.sol/OphisVaultPolicyModule.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "cfg",
+          "type": "tuple",
+          "internalType": "OphisVaultPolicyModule.ModuleConfig"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "cancel",
+        "inputs": [
+          {
+            "name": "orderUid",
+            "type": "bytes",
+            "internalType": "bytes"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      {
+        "name": "rebalance",
+        "inputs": [
+          {
+            "name": "order",
+            "type": "tuple",
+            "internalType": "GPv2Order.Data"
+          },
+          {
+            "name": "minBuyOverride",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  },
+  {
+    "name": "OphisVaultPolicyModuleFactory",
+    "sourcePath": "src/contracts/vault/OphisVaultPolicyModuleFactory.sol",
+    "artifactPath": "out/OphisVaultPolicyModuleFactory.sol/OphisVaultPolicyModuleFactory.json",
+    "constructor": {
+      "inputs": [],
+      "stateMutability": "nonpayable"
+    },
+    "functions": [
+      {
+        "name": "deploy",
+        "inputs": [
+          {
+            "name": "cfg",
+            "type": "tuple",
+            "internalType": "OphisVaultPolicyModule.ModuleConfig"
           }
         ],
         "stateMutability": "nonpayable"

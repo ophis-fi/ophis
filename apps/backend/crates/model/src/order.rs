@@ -509,7 +509,7 @@ pub struct OrderCancellations {
 
 impl OrderCancellations {
     /// The EIP-712 type hash for order cancellations. Computed with:
-    /// `keccak256("OrderCancellations(bytes[] orderUid)")`.
+    /// `keccak256("OrderCancellations(bytes[] orderUids)")` (plural field).
     const TYPE_HASH: [u8; 32] =
         hex!("4c89efb91ae246f78d2fe68b47db2fa1444a121a4f2dc3fda7a5a408c2e3588e");
 

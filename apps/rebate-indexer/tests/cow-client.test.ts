@@ -8,20 +8,23 @@ import {
   orderbookBase,
   SUPPORTED_CHAIN_IDS,
   OPTIMISM_CHAIN_ID,
+  ROBINHOOD_CHAIN_ID,
   UNICHAIN_CHAIN_ID,
 } from '../src/cow/client.js';
 
 const fixturesDir = fileURLToPath(new URL('./fixtures', import.meta.url));
 
 describe('SUPPORTED_CHAIN_IDS / orderbookBase — sovereign + hosted routing', () => {
-  it('includes the sovereign Ophis chains Optimism (10) and Unichain (130)', () => {
+  it('includes every sovereign Ophis chain', () => {
     expect(SUPPORTED_CHAIN_IDS).toContain(OPTIMISM_CHAIN_ID);
     expect(SUPPORTED_CHAIN_IDS).toContain(UNICHAIN_CHAIN_ID); // else 130 trades never index
+    expect(SUPPORTED_CHAIN_IDS).toContain(ROBINHOOD_CHAIN_ID);
   });
 
   it('routes each sovereign chain to its own self-hosted orderbook host root (NOT api.cow.fi)', () => {
     expect(orderbookBase(OPTIMISM_CHAIN_ID)).toBe('https://optimism-mainnet.ophis.fi');
     expect(orderbookBase(UNICHAIN_CHAIN_ID)).toBe('https://unichain-mainnet.ophis.fi');
+    expect(orderbookBase(ROBINHOOD_CHAIN_ID)).toBe('https://robinhood-mainnet.ophis.fi');
   });
 
   it('routes hosted chains to api.cow.fi/{network} and throws on an unsupported chain', () => {

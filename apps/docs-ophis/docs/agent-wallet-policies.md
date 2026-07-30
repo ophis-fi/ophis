@@ -56,8 +56,9 @@ including key export and arbitrary contract calls.
 On the 10 non-sovereign chains, Ophis uses CoW Protocol's canonical GPv2
 contracts, so the EIP-712 order domain is byte-identical to CoW Swap's. A policy
 that allowlists that domain therefore authorizes CoW-native order flow on that
-chain too, not Ophis exclusively. Only **Optimism (10)** and **Unichain (130)**
-run an Ophis-deployed settlement, so only those two carry an Ophis-exclusive
+chain too, not Ophis exclusively. **Optimism (10)**, **Unichain (130)**, and
+**Robinhood Chain (4663)** run Ophis-deployed settlements, so those three carry
+an Ophis-exclusive
 domain. If you need Ophis-exclusive routing on a shared-domain chain, also
 enforce the orderbook host and appData in your in-code policy gate.
 
@@ -78,6 +79,7 @@ is added. Addresses are EIP-55 checksummed.
 | Gnosis | 100 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Unichain *(sovereign)* | 130 | `0x108A678716e5E1776036eF044CAB7064226F714E` | `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb` |
 | Polygon | 137 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
+| Robinhood Chain *(sovereign)* | 4663 | `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | `0xB52C38097c19cd38238c62DD36027a7918eFa890` |
 | Base | 8453 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Plasma | 9745 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Arbitrum | 42161 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |

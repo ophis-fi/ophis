@@ -32,7 +32,7 @@ npx serve .
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | The Ophis host. (React wrapper sets this for you.) |
 | `appCode` | `"MyDapp-via-Ophis"` | Tags your volume in order appData. Use your own. |
-| `partnerFee.bps` | `10` (0.10%) | Stable–stable pairs are reduced server-side. |
+| `partnerFee.bps` | `5` (0.05%) | The SDK partner rate. Stable–stable pairs are reduced server-side. |
 | `partnerFee.recipient` | `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` | The Ophis Safe. Pinned by the React wrapper; on Optimism it is allowlist-enforced on-chain. |
 | `tradeType`, `sell`, `buy`, `theme`, `chainId` | your choice | Full [CoW widget params](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
 

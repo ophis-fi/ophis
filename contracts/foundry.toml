@@ -9,6 +9,17 @@ optimizer = true
 optimizer_runs = 1000000
 evm_version = "cancun"
 
+# forge compiles the whole project (src + test), but two legacy CoW test
+# fixtures import OpenZeppelin v3/v4 paths (drafts/presets/math) that the
+# installed OZ v5 no longer ships. They are used ONLY by the Hardhat/TS e2e
+# tests (which resolve a different OZ), never by the Foundry build, the Ophis
+# contracts, or the fuzz suite — no .sol imports them. Skip them under forge so
+# `forge build` / coverage / the Medusa+Echidna harness compile out of the box.
+skip = [
+  "*ERC20PresetPermit.sol",
+  "*ChiToken.sol",
+]
+
 deny_warnings = true
 # deny_warnings scope: recent solc (0.8.30+) added deprecation warnings
 # (payable.transfer, virtual modifiers, memory-safe natspec, selfdestruct)
@@ -41,3 +52,11 @@ ignore = [
 
 [profile.ci]
 fuzz.seed = '0'
+
+[lint]
+# forge 1.5's build-time linter aborts the build on style lints (mixed-case,
+# unaliased imports, unwrapped-modifier-logic, etc.) that originate almost
+# entirely in the VENDORED CoW sources — blocking `forge build`/coverage/fuzz.
+# Keep it off the build; run `forge lint` explicitly (e.g. in CI) to review
+# Ophis-authored code. deny_warnings above still gates solc warnings.
+lint_on_build = false

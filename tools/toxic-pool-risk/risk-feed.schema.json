@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ophis.fi/schemas/liquidity-risk-feed-v1.json",
+  "title": "Ophis liquidity risk feed",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "chainId", "generatedAt", "headBlock", "headTimestamp",
+    "expiresAt", "coverage", "scanner", "status", "errors", "counts", "pools",
+    "contentHash"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "chainId": { "type": "integer", "minimum": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "headBlock": { "type": "integer", "minimum": 0 },
+    "headTimestamp": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "coverage": { "const": "curve-provider-context-v1" },
+    "scanner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "revision"],
+      "properties": {
+        "repository": { "type": "string", "format": "uri" },
+        "revision": { "type": "string", "minLength": 1 }
+      }
+    },
+    "status": { "enum": ["complete", "scan_error"] },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["critical", "high", "clear", "scan_error"],
+      "properties": {
+        "critical": { "type": "integer", "minimum": 0 },
+        "high": { "type": "integer", "minimum": 0 },
+        "clear": { "type": "integer", "minimum": 0 },
+        "scan_error": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "pools": {
+      "type": "object",
+      "propertyNames": { "pattern": "^0x[0-9a-f]{40}$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "severity", "reasons", "evidenceHash"],
+        "properties": {
+          "status": { "enum": ["clear", "flagged", "scan_error"] },
+          "severity": { "enum": ["critical", "high", "none", "unknown"] },
+          "reasons": { "type": "array", "items": { "type": "string" } },
+          "evidenceHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "contentHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

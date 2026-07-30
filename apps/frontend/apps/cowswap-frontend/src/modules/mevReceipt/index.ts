@@ -1,5 +1,7 @@
 export { buildReceipt } from './services/buildReceipt'
 export { exportJson } from './services/exportJson'
 export { exportPdf } from './services/exportPdf'
+export { fetchPathViz, PATH_VIZ_CHAIN_ID } from './services/fetchPathViz'
+export { svgToPng } from './services/svgToPng'
 export { DownloadReceiptButton } from './containers/DownloadReceiptButton'
 export type { MevProofReceipt, PartnerFeeInfo, BuildReceiptInput } from './types'

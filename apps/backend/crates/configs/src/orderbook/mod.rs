@@ -6,6 +6,7 @@ use {
         http_client::HttpClient,
         order_quoting::OrderQuoting,
         orderbook::{
+            api::ApiConfig,
             ipfs::IpfsConfig,
             native_price::NativePriceConfig,
             order_validation::OrderValidationConfig,
@@ -19,10 +20,11 @@ use {
     serde::{Deserialize, Serialize},
     std::{
         net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-        path::Path,
+        path::{Path, PathBuf},
     },
 };
 
+pub mod api;
 pub mod ipfs;
 pub mod native_price;
 pub mod order_validation;
@@ -47,6 +49,25 @@ pub struct VolumeFeeConfig {
     pub factor: Option<FeeFactor>,
     /// Timestamp from which this fee configuration becomes effective.
     pub effective_from_timestamp: Option<DateTime<Utc>>,
+}
+
+/// Server-rendered route/surplus visualization (pathviz, Wave 2).
+///
+/// SHIPS DISABLED: `enabled` defaults to `false` (the `--enable-pathviz`
+/// kill switch). When off, the quote-response viz fields stay absent and the
+/// `/pathviz` endpoints answer 404, exactly as before the feature existed.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct PathVizConfig {
+    /// Master switch for the whole feature (quote fields + endpoints).
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Path to the venue registry TOML (`--pathviz-venues-file`). Absent
+    /// means every venue degrades to its bare address in the diagram
+    /// (owner decision 27: unowned labels degrade, never fabricate).
+    #[serde(default)]
+    pub venues_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -74,6 +95,10 @@ pub struct Configuration {
     /// Bind address for the Orderbook.
     #[serde(default = "default_bind_address")]
     pub bind_address: SocketAddr,
+
+    /// Settings for the public HTTP API server itself (rate limiting).
+    #[serde(default)]
+    pub api: ApiConfig,
 
     /// Configuration for the order validation system.
     #[serde(default)]
@@ -133,6 +158,17 @@ pub struct Configuration {
     /// auction's submission deadline block has been reached.
     #[serde(default)]
     pub hide_competition_before_deadline: bool,
+
+    /// Server-rendered route/surplus visualization (pathviz). Ships
+    /// disabled.
+    #[serde(default)]
+    pub pathviz: PathVizConfig,
+
+    /// Self-serve partner-fee recipient registry (partner-fees Phase A). Ships
+    /// with `registration-enabled` off (the master switch); while off the
+    /// registry is neither loaded nor consulted and only the Ophis Safe passes.
+    #[serde(default)]
+    pub partner_fee_registry: crate::partner_fee_registry::PartnerFeeRegistryConfig,
 }
 
 impl Configuration {
@@ -203,6 +239,7 @@ pub mod test_util {
             Self {
                 shared: Default::default(),
                 bind_address: default_bind_address(),
+                api: Default::default(),
                 order_validation: Default::default(),
                 banned_users: Default::default(),
                 ipfs: Default::default(),
@@ -230,6 +267,8 @@ pub mod test_util {
                     tenderly: None,
                 }),
                 hide_competition_before_deadline: false,
+                pathviz: Default::default(),
+                partner_fee_registry: Default::default(),
             }
         }
     }
@@ -255,6 +294,12 @@ mod tests {
         unsupported-tokens = ["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"]
         eip1271-skip-creation-validation = true
         hide-competition-before-deadline = true
+
+        [api.rate-limit]
+        enabled = false
+        requests-per-second = 5
+        burst = 20
+        trust-cf-connecting-ip = true
 
         [banned-users]
         addresses = ["0xdead000000000000000000000000000000000000"]
@@ -293,6 +338,10 @@ mod tests {
         assert_eq!(config.banned_users.addresses.len(), 1);
         assert!(config.eip1271_skip_creation_validation);
         assert!(config.hide_competition_before_deadline);
+        assert!(!config.api.rate_limit.enabled);
+        assert_eq!(config.api.rate_limit.requests_per_second.get(), 5);
+        assert_eq!(config.api.rate_limit.burst.get(), 20);
+        assert!(config.api.rate_limit.trust_cf_connecting_ip);
         assert_eq!(
             config.order_simulation.map(|config| config.gas_limit),
             Some(U256::from(123456789u64))
@@ -366,6 +415,7 @@ mod tests {
         let config = Configuration {
             shared: Default::default(),
             bind_address: default_bind_address(),
+            api: Default::default(),
             order_validation: OrderValidationConfig {
                 min_order_validity_period: Duration::from_secs(120),
                 max_order_validity_period: Duration::from_secs(7200),
@@ -402,6 +452,8 @@ mod tests {
             http_client: Default::default(),
             price_estimation: Default::default(),
             order_simulation: Default::default(),
+            pathviz: Default::default(),
+            partner_fee_registry: Default::default(),
         };
 
         let serialized = toml::to_string_pretty(&config).unwrap();

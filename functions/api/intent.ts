@@ -141,7 +141,9 @@ function checkRateLimitIsolate(ip: string): { ok: true } | { ok: false; retryAft
   const recent: number[] = []
   for (const t of bucket) if (t >= cutoff) recent.push(t)
   if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
-    const retryAfterSec = Math.max(1, Math.ceil((recent[0] + RATE_LIMIT_WINDOW_MS - now) / 1000))
+    // recent[0] is always present here (length >= MAX_REQUESTS > 0); the ?? keeps
+    // a slipped invariant from turning Retry-After into NaN.
+    const retryAfterSec = Math.max(1, Math.ceil(((recent[0] ?? now) + RATE_LIMIT_WINDOW_MS - now) / 1000))
     ipBuckets.set(ip, recent)
     return { ok: false, retryAfterSec }
   }
@@ -217,8 +219,8 @@ Rules:
   "shiba inu" -> SHIB.
 - "stables"/"stablecoin" alone (no specific symbol) -> OMIT.
 - Chain canonical values: lowercase slugs. Allowed (mirrors SORTED_CHAIN_IDS in the FE — chains the NetworkSelector actually surfaces):
-    ethereum, arbitrum, avalanche, base, bnb, gnosis, ink, linea, optimism, plasma, polygon, unichain
-- Chain aliases: "eth mainnet"/"l1"/"mainnet" (in chain context) -> ethereum. "op" -> optimism. "polygon pos" -> polygon. "bsc"/"binance smart chain" -> bnb. "arbitrum one"/"arb" -> arbitrum.
+    ethereum, arbitrum, avalanche, base, bnb, gnosis, ink, linea, optimism, plasma, polygon, robinhood, unichain
+- Chain aliases: "eth mainnet"/"l1"/"mainnet" (in chain context) -> ethereum. "op" -> optimism. "polygon pos" -> polygon. "bsc"/"binance smart chain" -> bnb. "arbitrum one"/"arb" -> arbitrum. "robinhood chain" -> robinhood.
 - Amount: numeric string only ("100", "1.5"). "a hundred" -> "100". "a thousand" -> "1000". No units. No suffix multipliers like "k" / "m".
 - ETH disambiguation: chain only when preceded by "on"/"via"/"using"; otherwise it is a token.
 - Unknown tokens/chains: OMIT, do not invent. Do not output anything outside the allowed lists.
@@ -261,6 +263,7 @@ const CHAIN_VALUES = new Set([
   'optimism',
   'plasma',
   'polygon',
+  'robinhood',
   'unichain',
 ])
 
@@ -338,6 +341,8 @@ const CHAIN_ALIASES: Record<string, string> = {
   op: 'optimism',
   'op mainnet': 'optimism',
   'optimism mainnet': 'optimism',
+  // robinhood
+  'robinhood chain': 'robinhood',
   // polygon
   matic: 'polygon',
   'polygon pos': 'polygon',
@@ -658,7 +663,7 @@ function stripFences(s: string): string {
   const trimmed = s.trim()
   const fence = /^```(?:json)?\n?([\s\S]*?)\n?```$/i
   const m = trimmed.match(fence)
-  return m ? m[1].trim() : trimmed
+  return m?.[1]?.trim() ?? trimmed
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {

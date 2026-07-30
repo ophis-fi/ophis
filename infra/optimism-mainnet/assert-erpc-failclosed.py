@@ -37,14 +37,38 @@ import yaml
 
 CHAIN_ID = 10
 EXPECTED_UPSTREAMS = 3
-# The 3 intended INDEPENDENT failure domains (operator / DNS / network). Pinned by
-# hostname so a sibling host, IP-literal, or extra provider cannot pose as a 3rd
-# domain. A deliberate provider change (or the self node's IP rotating — see the
-# template's "UPDATE THIS ENDPOINT" note) MUST update this set.
+# The 3 intended INDEPENDENT failure domains, pinned by hostname so a sibling host,
+# IP-literal, or extra provider cannot pose as a 3rd domain. A deliberate provider
+# change MUST update this set (that is the point — see module docstring).
+# 2026-07-23: replaced the free publicnode+self-node pair with two KEYED providers
+# after a free-tier-429 outage. Distinct failure domains AND ≤1 Cloudflare-fronted
+# host in the quorum: validationcloud=istio(non-CF), blockdaemon=Cloudflare,
+# tenderly=Google DNS. The key lives in the URL path/query via ${...KEY} envsubst;
+# the host is literal here and in the template so urlsplit can pin it.
+#
+# 2026-07-30 INCIDENT UPDATE — keyed backbone withdrawn under duress. Both keyed
+# lanes went unusable on the same day (validationcloud HTTP 401 "api client is
+# disabled"; blockdaemon 429) and every other keyed provider we hold is
+# monthly-quota-exhausted (alchemy, drpc): a billing problem, not a config one.
+# The quorum was rebuilt from keyless endpoints to restore a hard-down orderbook.
+#
+# The "≤1 Cloudflare-fronted upstream per quorum" property is PRESERVED:
+# publicnode is the one CF lane, while tenderly (envoy/Google) and zan (no CF
+# headers) are two non-CF failure domains, so a single CDN compromise still cannot
+# forge a 2-of-3 quorum.
+#
+# What IS degraded: all three lanes are free tiers, so the per-method margin is
+# thinner than the keyed backbone. zan's unregistered tier hard-blocks eth_call /
+# eth_getLogs / eth_estimateGas (those run 2-of-3 on publicnode+tenderly), and
+# publicnode is archive-gated so it cannot serve eth_getTransactionReceipt (that
+# runs 2-of-3 on zan+tenderly). Both still satisfy agreementThreshold:2, and this
+# guard's consensus-parameter assertions are unchanged.
+# TEMPORARY. Restore >=2 keyed lanes as soon as a keyed provider is available
+# (Alchemy free quota resets 2026-08-01), then revert to the 07-23 backbone.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
     "optimism-rpc.publicnode.com",
+    "api.zan.top",
     "optimism.gateway.tenderly.co",
-    "100.77.53.81",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus

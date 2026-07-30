@@ -10,7 +10,7 @@ use {
         quoter::QuoteHandler,
     },
     account_balances::{self, BalanceSimulator},
-    alloy::providers::Provider,
+    alloy::{primitives::Address, providers::Provider},
     anyhow::{Context, Result, anyhow},
     app_data::Validator,
     bad_tokens::list_based::DenyListedTokens,
@@ -42,6 +42,7 @@ use {
     shared::{
         order_quoting::{self, OrderQuoter},
         order_validation::{OrderValidPeriodConfiguration, OrderValidator},
+        partner_fee_registry::PartnerFeeRegistry,
     },
     simulator::swap_simulator::SwapSimulator,
     std::{future::Future, net::SocketAddr, sync::Arc, time::Duration},
@@ -183,6 +184,32 @@ pub async fn run(config: Configuration) {
         .await
         .expect("Deployed contract constants don't match the ones in this binary");
     let domain_separator = DomainSeparator::new(chain_id, *settlement_contract.address());
+
+    // Bootstrap RPC call: retry with backoff (same rationale as the
+    // vault_relayer site at run.rs:126, added in PR #86). Hoisted out of the
+    // price-estimator factory wiring so `GET /api/v1/info/contracts` serves
+    // the same boot-time value.
+    let authenticator = retry_helper::with_backoff(
+        "settlement.authenticator",
+        retry_helper::BackoffConfig::default(),
+        || async { settlement_contract.authenticator().call().await },
+    )
+    .await
+    .expect("failed to query solver authenticator address after retries");
+
+    // The contract facts served by `GET /api/v1/info/contracts` and stamped
+    // into `/api/v1/quote/draft` signing envelopes: the same boot-time
+    // on-chain values every other subsystem uses, so the endpoint cannot
+    // drift from what this orderbook actually settles against.
+    let contracts_info = api::get_contract_info::ContractsInfo {
+        chain_id,
+        settlement: *settlement_contract.address(),
+        vault_relayer,
+        authenticator,
+        hooks_trampoline: *hooks_contract.address(),
+        wrapped_native_token: *native_token.address(),
+        domain_separator,
+    };
     let db_config = crate::database::Config {
         max_pool_size: config.database.max_connections.get(),
         statement_timeout: config.database.statement_timeout,
@@ -250,6 +277,37 @@ pub async fn run(config: Configuration) {
         web3: web3.clone(),
     })));
 
+    // pathviz (Wave 2). Ships disabled via the `--enable-pathviz` kill
+    // switch; when off, the service is absent and both the quote fields and
+    // the `/pathviz` endpoints behave as if the feature did not exist. The
+    // provider is captured here (a clone) before `web3` is moved into the
+    // order simulator further down.
+    let pathviz_service = if config.pathviz.enabled {
+        let registry = match &config.pathviz.venues_file {
+            Some(path) => match crate::pathviz::VenueRegistry::load(path) {
+                Ok(registry) => {
+                    tracing::info!(venues = registry.len(), "pathviz venue registry loaded");
+                    registry
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        ?err,
+                        "pathviz: venue registry load failed; venues degrade to bare addresses"
+                    );
+                    crate::pathviz::VenueRegistry::default()
+                }
+            },
+            None => crate::pathviz::VenueRegistry::default(),
+        };
+        Some(Arc::new(crate::pathviz::PathVizService::new(
+            token_info_fetcher.clone(),
+            Some(web3.provider.clone()),
+            Arc::new(registry),
+        )))
+    } else {
+        None
+    };
+
     let code_fetcher = Arc::new(CachedCodeFetcher::new(Arc::new(web3.clone())));
 
     let mut price_estimator_factory = PriceEstimatorFactory::new(
@@ -261,15 +319,7 @@ pub async fn run(config: Configuration) {
             chain,
             settlement: *settlement_contract.address(),
             native_token: *native_token.address(),
-            // Bootstrap RPC call: retry with backoff (same rationale as the
-            // vault_relayer site at run.rs:127, added in PR #86).
-            authenticator: retry_helper::with_backoff(
-                "settlement.authenticator",
-                retry_helper::BackoffConfig::default(),
-                || async { settlement_contract.authenticator().call().await },
-            )
-            .await
-            .expect("failed to query solver authenticator address after retries"),
+            authenticator,
             block_stream: current_block_stream.clone(),
         },
         factory::Components {
@@ -394,7 +444,45 @@ pub async fn run(config: Configuration) {
     // them.
     let fast_quoter = create_quoter(fast_price_estimator, QuoteVerificationMode::Unverified);
 
-    let app_data_validator = Validator::new(config.app_data_size_limit);
+    // Partner-fee recipient enforcement policy (partner-fees Phase A). The
+    // `registration-enabled` flag is the MASTER SWITCH for the whole feature: OFF
+    // (default, every checked-in config) means the registry is neither loaded nor
+    // consulted, and the app-data validator uses the compile-time Ophis-only
+    // policy, so ONLY the always-allowed Ophis partner-fee Safe passes and an
+    // active partner_fee_recipients row is NOT honored. That reproduces the
+    // pre-registry behavior byte for byte. ON wires the live 30s registry
+    // snapshot as the ingress source of truth for third-party recipients (the
+    // per-row `status` suspend is then the granular control).
+    let recipient_policy: Arc<dyn app_data::RecipientPolicy> = if config
+        .partner_fee_registry
+        .registration_enabled
+    {
+        let partner_fee_registry = Arc::new(PartnerFeeRegistry::empty());
+        let pool = postgres_write.pool.clone();
+        let loader = move || {
+            let pool = pool.clone();
+            async move {
+                let mut ex = pool.acquire().await?;
+                let rows = database::partner_fee_recipients::active_recipients(&mut ex).await?;
+                anyhow::Ok(
+                    rows.into_iter()
+                        .map(|(recipient, cap)| (Address::from(recipient.0), cap.max(0) as u64))
+                        .collect::<Vec<_>>(),
+                )
+            }
+        };
+        if let Err(err) = partner_fee_registry.refresh(&loader).await {
+            tracing::warn!(?err, "initial partner-fee registry load failed; starting empty");
+        }
+        partner_fee_registry
+            .clone()
+            .spawn(config.partner_fee_registry.refresh_interval, loader);
+        partner_fee_registry
+    } else {
+        Arc::new(app_data::AllowlistRecipientPolicy)
+    };
+
+    let app_data_validator = Validator::new(config.app_data_size_limit, recipient_policy);
     let chainalysis_oracle = ChainalysisOracle::Instance::deployed(&web3.provider)
         .await
         .ok();
@@ -482,7 +570,7 @@ pub async fn run(config: Configuration) {
         .iter()
         .map(Into::into)
         .collect();
-    let quotes = QuoteHandler::new(
+    let mut quotes = QuoteHandler::new(
         order_validator,
         optimal_quoter,
         app_data.clone(),
@@ -491,6 +579,9 @@ pub async fn run(config: Configuration) {
         config.shared.enable_sell_equals_buy_volume_fee,
     )
     .with_fast_quoter(fast_quoter);
+    if let Some(service) = &pathviz_service {
+        quotes = quotes.with_pathviz(service.clone());
+    }
 
     let (shutdown_sender, shutdown_receiver) = tokio::sync::oneshot::channel();
     let serve_api = serve_api(
@@ -507,6 +598,10 @@ pub async fn run(config: Configuration) {
         config.price_estimation.quote_timeout,
         current_block_stream,
         config.hide_competition_before_deadline,
+        config.api,
+        contracts_info,
+        pathviz_service,
+        config.partner_fee_registry.registration_enabled,
     );
 
     let mut metrics_address = config.bind_address;
@@ -581,6 +676,10 @@ fn serve_api(
     quote_timeout: Duration,
     current_block_stream: ethrpc::block_stream::CurrentBlockWatcher,
     hide_competition_before_deadline: bool,
+    api_config: configs::orderbook::api::ApiConfig,
+    contracts_info: api::get_contract_info::ContractsInfo,
+    pathviz: Option<Arc<crate::pathviz::PathVizService>>,
+    partner_fee_registration_enabled: bool,
 ) -> JoinHandle<()> {
     let app = api::handle_all_routes(
         database,
@@ -592,6 +691,10 @@ fn serve_api(
         quote_timeout,
         current_block_stream,
         hide_competition_before_deadline,
+        api_config,
+        contracts_info,
+        pathviz,
+        partner_fee_registration_enabled,
     );
     tracing::info!(%address, "serving order book");
 
@@ -603,9 +706,15 @@ fn serve_api(
                 return;
             }
         };
-        if let Err(err) = axum::serve(listener, app)
-            .with_graceful_shutdown(shutdown_receiver)
-            .await
+        // ConnectInfo exposes the socket peer address to the rate limiter's
+        // client-key fallback (used when `CF-Connecting-IP` is absent or
+        // untrusted).
+        if let Err(err) = axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown_receiver)
+        .await
         {
             tracing::error!(?err, "server error");
         }

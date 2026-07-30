@@ -1,0 +1,9 @@
+# Build artifacts staged by scripts/package-agent-skills.mjs from the
+# canonical family under
+# apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/ophis/.
+# Never commit copies here: the served family is the single source of truth
+# and the staging script digest-verifies it at every build.
+/ophis/
+/LICENSE
+/index.json
+*.tgz

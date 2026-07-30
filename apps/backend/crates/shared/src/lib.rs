@@ -11,6 +11,7 @@ pub mod http_solver;
 pub mod interaction;
 pub mod order_quoting;
 pub mod order_validation;
+pub mod partner_fee_registry;
 pub mod remaining_amounts;
 pub mod token_list;
 pub mod url;

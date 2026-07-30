@@ -1,7 +1,13 @@
 name: 'Ophis CodeQL config'
 
 paths-ignore:
-  # Vendored upstream code — has its own CI in the upstream repo.
+  # Vendored upstream subtrees — each has its own CI in the upstream repo.
+  # NOTE: contracts/ is not purely vendored. Ophis-authored, mainnet-live
+  # Solidity lives at contracts/src/contracts/vault/ (OphisVaultPolicyModule,
+  # OphisVaultPolicyModuleFactory, OphisChainlinkFloor — deployed on 6 chains).
+  # CodeQL ships no Solidity extractor, so that code is covered by Slither
+  # (scripts/slither-baseline.py) and Echidna (.github/workflows/echidna.yml),
+  # not by this config.
   - 'apps/backend/'
   - 'contracts/'
   # Generated / build artifacts.

@@ -1,0 +1,16 @@
+-- Basket (multi-order) passthrough marker from the order's appData
+-- (metadata.ophisBasket.id), added for Ophis basket-intents Phase A
+-- ("ophis-multi-order"). A basket decomposes into up to 6 single-pair GPv2 legs
+-- that share one basket id; stamping every leg row with that id lets basket
+-- volume be grouped and measured after the fact. Pure analytics passthrough:
+--   * nullable, no FK (the id is client-minted, not a registry key),
+--   * NOT fee-gated (it earns nobody a rebate, unlike appdata_ref_code),
+--   * grammar-validated to the 32-hex basket-id shape by the fetcher; a
+--     malformed value is dropped to NULL rather than stored.
+-- Written on INSERT only (immutable on the upsert conflict), mirroring the
+-- appdata_ref_code first-index-wins rule.
+--
+-- Migration number: this basket column takes 0020, leaving 0019 for the
+-- concurrently-developed partner_fees migration on the same indexer. Renumber
+-- on rebase if 0019/0020 shift.
+ALTER TABLE trades ADD COLUMN IF NOT EXISTS basket_id TEXT;

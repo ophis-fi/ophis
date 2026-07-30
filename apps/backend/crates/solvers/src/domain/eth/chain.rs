@@ -24,6 +24,11 @@ pub enum ChainId {
     // solver's chain_id TOML deserializer panics with "unsupported chain"
     // at startup.
     HyperEvm = 999,
+    // Ophis: Robinhood Chain (Arbitrum Orbit L2, chain 4663). Same upstream quirk
+    // as Unichain/HyperEVM above — the solvers crate keeps its own duplicate of the
+    // `chain` crate enum, so without this variant the lifi solver's chain_id TOML
+    // deserializer rejects 4663 at startup.
+    Robinhood = 4663,
 }
 
 impl ChainId {
@@ -43,6 +48,7 @@ impl ChainId {
             57073 => Ok(Self::Ink),
             130 => Ok(Self::Unichain),
             999 => Ok(Self::HyperEvm),
+            4663 => Ok(Self::Robinhood),
             _ => Err(UnsupportedChain),
         }
     }
@@ -64,6 +70,7 @@ impl ChainId {
             ChainId::Ink => "57073",
             ChainId::Unichain => "130",
             ChainId::HyperEvm => "999",
+            ChainId::Robinhood => "4663",
         }
     }
 }

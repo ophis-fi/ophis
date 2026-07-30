@@ -280,12 +280,29 @@ impl Ethereum {
         // default value we estimate the current gas price upfront. But because it's
         // extremely rare that tokens behave that way we are fine with falling back to
         // the node specific fallback value instead of failing the whole call.
-        Some(self.inner.gas.estimate().await.ok()?.effective(base_fee))
+        Some(replay_safe_simulation_gas_price(
+            self.inner.gas.estimate().await.ok()?.effective(base_fee),
+        ))
     }
 
     pub fn web3(&self) -> &Web3 {
         &self.web3
     }
+}
+
+/// Robinhood can advance several blocks during a quorum RPC round trip.
+///
+/// EIP-1559 permits the base fee to grow 12.5% per full block, so a one-block
+/// margin is insufficient on fast chains: by the time a protected simulation
+/// reaches both upstreams, its gas price can already be below the served block's
+/// base fee. Compound six maximum-growth blocks, rounding each increase up. This
+/// affects only `eth_call`/`eth_estimateGas`; transaction submission obtains a
+/// fresh EIP-1559 estimate.
+fn replay_safe_simulation_gas_price(current: u128) -> u128 {
+    (0..6).fold(current, |fee, _| {
+        let increase = fee / 8 + u128::from(fee % 8 != 0);
+        fee.saturating_add(increase)
+    })
 }
 
 impl fmt::Debug for Ethereum {
@@ -296,6 +313,23 @@ impl fmt::Debug for Ethereum {
             .field("contracts", &self.inner.contracts)
             .field("gas", &"Arc<NativeGasEstimator>")
             .finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::replay_safe_simulation_gas_price;
+
+    #[test]
+    fn simulation_gas_price_covers_multiple_fast_blocks() {
+        assert_eq!(replay_safe_simulation_gas_price(8), 20);
+        assert_eq!(replay_safe_simulation_gas_price(9), 23);
+        assert_eq!(replay_safe_simulation_gas_price(22_252_001), 45_111_186);
+    }
+
+    #[test]
+    fn simulation_gas_price_saturates() {
+        assert_eq!(replay_safe_simulation_gas_price(u128::MAX), u128::MAX);
     }
 }
 

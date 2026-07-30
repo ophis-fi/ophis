@@ -121,6 +121,43 @@ contract MockFeed {
     }
 }
 
+/// @dev Chainlink L2 sequencer uptime feed stand-in. For these feeds
+/// `answer == 0` means up, non-zero means down, and `startedAt` is when the
+/// current status began.
+contract MockSequencerUptimeFeed {
+    uint8 public decimals = 0;
+    int256 public answer;
+    uint256 public startedAt;
+    uint256 public updatedAt;
+    uint80 public roundId = 1;
+    uint80 public answeredInRound = 1;
+
+    constructor(int256 answer_, uint256 startedAt_, uint256 updatedAt_) {
+        answer = answer_;
+        startedAt = startedAt_;
+        updatedAt = updatedAt_;
+    }
+
+    function setStatus(int256 answer_, uint256 startedAt_) external {
+        answer = answer_;
+        startedAt = startedAt_;
+        updatedAt = block.timestamp;
+    }
+
+    function setRounds(uint80 roundId_, uint80 answeredInRound_) external {
+        roundId = roundId_;
+        answeredInRound = answeredInRound_;
+    }
+
+    function latestRoundData()
+        external
+        view
+        returns (uint80, int256, uint256, uint256, uint80)
+    {
+        return (roundId, answer, startedAt, updatedAt, answeredInRound);
+    }
+}
+
 /// @dev Settlement stand-in with REAL GPv2 presign semantics: it enforces
 /// `uid.owner == msg.sender` via the vendored `extractOrderUidParams` and
 /// stores the real PRE_SIGNED marker, so a passing happy-path test

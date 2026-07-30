@@ -14,17 +14,24 @@ state directly.
 
 ## Services
 
-| Surface | URL | Health check |
-| --- | --- | --- |
-| Swap app | [swap.ophis.fi](https://swap.ophis.fi) | Loads the intent UI. |
-| Landing | [ophis.fi](https://ophis.fi) | Loads. |
-| Docs | [docs.ophis.fi](https://docs.ophis.fi) | This site. |
-| Explorer | [explorer.ophis.fi](https://explorer.ophis.fi) | Order/trade search. |
-| Intent API | `POST https://ophis.fi/api/intent` | See [Intent API](/intent-api). |
-| MCP server | `https://mcp.ophis.fi/mcp` | Streamable-HTTP; a request without an `Accept: text/event-stream` header returns HTTP 406: that is expected, not an outage. See [AI agents](/ai-agents). |
-| Rebate indexer | [rebates.ophis.fi/health](https://rebates.ophis.fi/health) | JSON. `last_pipeline_run_at` is the nightly-pipeline liveness signal (it advances at 02:00 UTC daily); `last_fetch` is insert-only and only moves on a new tagged trade, so a stale `last_fetch` during a quiet period is normal. |
-| Optimism orderbook | [optimism-mainnet.ophis.fi](https://optimism-mainnet.ophis.fi) | Ophis-operated CoW orderbook for chain 10 (see below). |
-| Unichain orderbook | [unichain-mainnet.ophis.fi](https://unichain-mainnet.ophis.fi) | Ophis-operated CoW orderbook for chain 130 (see below). |
+| Surface             | URL                                                              | Health check                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Swap app            | [swap.ophis.fi](https://swap.ophis.fi)                           | Loads the intent UI.                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Landing             | [ophis.fi](https://ophis.fi)                                     | Loads.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Docs                | [docs.ophis.fi](https://docs.ophis.fi)                           | This site.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Explorer            | [explorer.ophis.fi](https://explorer.ophis.fi)                   | Order/trade search.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Intent API          | `POST https://ophis.fi/api/intent`                               | See [Intent API](/intent-api).                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| MCP server          | `https://mcp.ophis.fi/mcp`                                       | Streamable-HTTP; a request without an `Accept: text/event-stream` header returns HTTP 406: that is expected, not an outage. See [AI agents](/ai-agents).                                                                                                                                                                                                                                                                                              |
+| Rebate indexer      | [rebates.ophis.fi/health](https://rebates.ophis.fi/health)       | JSON. The indexer and its recovered ledger run on Cadia behind the persistent `ophis-rebates` Cloudflare Tunnel. `last_pipeline_run_at` is the nightly-pipeline liveness signal (it advances at 02:00 UTC daily); `last_fetch` is insert-only and only moves on a new tagged trade, so a stale `last_fetch` during a quiet period is normal. Cloudflare `530` / error `1033` means the tunnel replica is disconnected, not that the hostname changed. |
+| Optimism orderbook  | [optimism-mainnet.ophis.fi](https://optimism-mainnet.ophis.fi)   | Ophis-operated CoW orderbook for chain 10 (see below).                                                                                                                                                                                                                                                                                                                                                                                                |
+| Unichain orderbook  | [unichain-mainnet.ophis.fi](https://unichain-mainnet.ophis.fi)   | Ophis-operated CoW orderbook for chain 130 (see below).                                                                                                                                                                                                                                                                                                                                                                                               |
+| Robinhood orderbook | [robinhood-mainnet.ophis.fi](https://robinhood-mainnet.ophis.fi) | Ophis-operated CoW orderbook for chain 4663 (see below).                                                                                                                                                                                                                                                                                                                                                                                              |
+
+The Robinhood deployment is also covered by a daily read-only production
+canary. It verifies chain identity, Ophis settlement/relayer/EthFlow bytecode,
+WETH and USDG metadata, the official Stock Token registry and ERC-8056
+multiplier, the default token list, and orderbook version. Its workflow is
+[`robinhood-mainnet-canary.yml`](https://github.com/ophis-fi/ophis/actions/workflows/robinhood-mainnet-canary.yml).
 
 ## Settlement model per chain
 
@@ -34,9 +41,10 @@ Ophis settles across two kinds of chains:
   Avalanche, Linea, Ink, and Plasma. Orders settle through CoW Protocol's
   production orderbooks (`api.cow.fi`) using the canonical CoW contracts. Their
   status mirrors [CoW Protocol's status](https://status.cow.fi).
-- **Ophis-operated chains**: Optimism (chain 10) and Unichain (chain 130). Orders
-  settle through Ophis's self-hosted orderbooks at `optimism-mainnet.ophis.fi` and
-  `unichain-mainnet.ophis.fi` using Ophis-deployed (non-canonical) `GPv2Settlement`
+- **Ophis-operated chains**: Optimism (chain 10), Unichain (chain 130), and
+  Robinhood Chain (chain 4663). Orders settle through Ophis's self-hosted
+  orderbooks at `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`, and
+  `robinhood-mainnet.ophis.fi` using Ophis-deployed (non-canonical) `GPv2Settlement`
   contracts. Always resolve per-chain settlement and orderbook hosts via the
   `@ophis/sdk` helpers or the MCP `list_chains` tool rather than hardcoding addresses.
 

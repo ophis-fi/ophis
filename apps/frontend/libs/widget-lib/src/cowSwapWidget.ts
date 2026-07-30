@@ -1,5 +1,5 @@
 import { CowWidgetEventListeners } from '@cowprotocol/events'
-import { IframeRpcProviderBridge } from '@cowprotocol/iframe-transport'
+import { getParentOrigin, IframeRpcProviderBridge } from '@cowprotocol/iframe-transport'
 
 import { WIDGET_IFRAME_ALLOW, WIDGET_IFRAME_REFERRER_POLICY, WIDGET_IFRAME_SANDBOX } from './cowSwapWidget.constants'
 import { IframeCowEventEmitter } from './IframeCowEventEmitter'
@@ -133,7 +133,7 @@ export function createCowSwapWidget(container: HTMLElement, props: CowSwapWidget
   })
 
   // 10. Listen for messages from the iframe
-  const iframeSafeSdkBridge = new IframeSafeSdkBridge(window, iframeWindow)
+  const iframeSafeSdkBridge = new IframeSafeSdkBridge(window, iframeWindow, iframeOrigin, getParentOrigin())
 
   // 11. Return the handler, so the widget, listeners, and provider can be updated
   return {

@@ -90,6 +90,20 @@ async fn sell() {
         .await;
 
     assert_eq!(solution, json!({ "solutions": [] }),);
+
+    // DEFLAKE. The solver issues /swap and /approve-transaction concurrently.
+    // /swap reports no liquidity, so the order is skipped and `solve()` returns
+    // while /approve-transaction may still be in flight — and the ServerHandle's
+    // Drop assert ("did not receive enough requests") then fires or not
+    // depending on scheduler timing. Measured at ~1 failure in 5 whole-crate
+    // runs before this wait; it passed in isolation every time, which is what
+    // made it easy to write off as noise. CI now runs -p solvers, so a ~20%
+    // flake would red roughly one in five backend PRs.
+    //
+    // This does NOT weaken the test: a genuinely missing request still fails,
+    // just deterministically and with a clearer message than the Drop assert.
+    api.wait_for_expectations(std::time::Duration::from_secs(5))
+        .await;
 }
 
 #[tokio::test]
@@ -284,4 +298,18 @@ async fn sell_no_approve_transaction() {
         .await;
 
     assert_eq!(solution, json!({ "solutions": [] }),);
+
+    // DEFLAKE. The solver issues /swap and /approve-transaction concurrently.
+    // /swap reports no liquidity, so the order is skipped and `solve()` returns
+    // while /approve-transaction may still be in flight — and the ServerHandle's
+    // Drop assert ("did not receive enough requests") then fires or not
+    // depending on scheduler timing. Measured at ~1 failure in 5 whole-crate
+    // runs before this wait; it passed in isolation every time, which is what
+    // made it easy to write off as noise. CI now runs -p solvers, so a ~20%
+    // flake would red roughly one in five backend PRs.
+    //
+    // This does NOT weaken the test: a genuinely missing request still fails,
+    // just deterministically and with a clearer message than the Drop assert.
+    api.wait_for_expectations(std::time::Duration::from_secs(5))
+        .await;
 }

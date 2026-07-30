@@ -1,0 +1,65 @@
+diff --git a/lib/rules/forbid-component-props.js b/lib/rules/forbid-component-props.js
+index 2dd4412b87e7d57d0d46415cd2816e73f6b34e7e..aea52d0498940740c96242328e080786872181be 100644
+--- a/lib/rules/forbid-component-props.js
++++ b/lib/rules/forbid-component-props.js
+@@ -5,7 +5,7 @@
+ 
+ 'use strict';
+ 
+-const minimatch = require('minimatch');
++const minimatch = require('minimatch').minimatch;
+ const docsUrl = require('../util/docsUrl');
+ const report = require('../util/report');
+ 
+diff --git a/lib/rules/jsx-handler-names.js b/lib/rules/jsx-handler-names.js
+index f89f24413e8bd0ae35167c52381b907ef687a2bc..0a25008d3a88527569bb7e6c5fcd2fa286f6b92d 100644
+--- a/lib/rules/jsx-handler-names.js
++++ b/lib/rules/jsx-handler-names.js
+@@ -5,7 +5,7 @@
+ 
+ 'use strict';
+ 
+-const minimatch = require('minimatch');
++const minimatch = require('minimatch').minimatch;
+ const docsUrl = require('../util/docsUrl');
+ const getText = require('../util/eslint').getText;
+ const report = require('../util/report');
+diff --git a/lib/rules/jsx-pascal-case.js b/lib/rules/jsx-pascal-case.js
+index efeef4032a97a6918e275d68600d644a242c2b83..e839041dc1f86d63f894b41edf1ad5a4ecf8f322 100644
+--- a/lib/rules/jsx-pascal-case.js
++++ b/lib/rules/jsx-pascal-case.js
+@@ -6,7 +6,7 @@
+ 'use strict';
+ 
+ const elementType = require('jsx-ast-utils/elementType');
+-const minimatch = require('minimatch');
++const minimatch = require('minimatch').minimatch;
+ const docsUrl = require('../util/docsUrl');
+ const jsxUtil = require('../util/jsx');
+ const report = require('../util/report');
+diff --git a/lib/rules/no-danger.js b/lib/rules/no-danger.js
+index 54dbed49cffd1912e2f99a141ff37515b8f1f7c2..bd85cfe15328e9bec0c76a3eb3d09f8a3ea9db78 100644
+--- a/lib/rules/no-danger.js
++++ b/lib/rules/no-danger.js
+@@ -7,7 +7,7 @@
+ 
+ const has = require('hasown');
+ const fromEntries = require('object.fromentries/polyfill')();
+-const minimatch = require('minimatch');
++const minimatch = require('minimatch').minimatch;
+ 
+ const docsUrl = require('../util/docsUrl');
+ const jsxUtil = require('../util/jsx');
+diff --git a/lib/rules/no-unstable-nested-components.js b/lib/rules/no-unstable-nested-components.js
+index c330795ff0f75802ad2360b9f729d7db21459630..77baf3b5b279c16294c1ef2142c97ab04e93f60f 100644
+--- a/lib/rules/no-unstable-nested-components.js
++++ b/lib/rules/no-unstable-nested-components.js
+@@ -5,7 +5,7 @@
+ 
+ 'use strict';
+ 
+-const minimatch = require('minimatch');
++const minimatch = require('minimatch').minimatch;
+ const Components = require('../util/Components');
+ const docsUrl = require('../util/docsUrl');
+ const astUtil = require('../util/ast');

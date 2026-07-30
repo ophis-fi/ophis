@@ -98,6 +98,7 @@ opentelemetry_sdk = "0.32"
 order-validation = { path = "crates/order-validation" }
 orderbook = { path = "crates/orderbook" }
 paste = "1.0"
+pathviz = { path = "crates/pathviz" }
 pin-project-lite = "0.2.14"
 poison-recovery = { path = "crates/poison-recovery" }
 prettyplease = "0.2.37"
@@ -114,7 +115,11 @@ request-sharing = { path = "crates/request-sharing" }
 reqwest = "0.13"
 retry-helper = { path = "crates/retry-helper" }
 rstest = "0.26"
-ruint = { version = "1.17.2", default-features = false }
+# 1.20.0 is the RUSTSEC-2026-0220 patch floor: Uint::{overflowing,checked,
+# saturating,wrapping}_{shl,shr} returned false-negative overflow flags, which
+# made checked_* return Some instead of None and could hang to_base_be in a
+# formatting loop. Do not lower this below 1.20.0.
+ruint = { version = "1.20.0", default-features = false }
 rust_decimal = { version = "1.35.0", default-features = false }
 s3 = { path = "crates/s3" }
 scopeguard = "1.2.0"
@@ -157,6 +162,7 @@ tracing-opentelemetry = "0.33"
 tracing-serde = "0.2"
 tracing-subscriber = { version = "0.3.22", features = ["json"] }
 url = "2.5.0"
+uuid = { version = "1", features = ["v4"] }
 vergen = "8"
 winner-selection = { path = "crates/winner-selection" }
 
