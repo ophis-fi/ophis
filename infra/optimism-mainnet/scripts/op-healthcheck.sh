@@ -51,17 +51,38 @@ DEPLOY_DIR="${OPHIS_OP_DEPLOY_DIR:-/Users/scep/greg-wt/op-deploy-0730/infra/opti
 STATE_DIR="$HOME/.local/state/ophis"
 STATE_FILE="$STATE_DIR/op-health.state"   # up | down  (orderbook liveness)
 QFAIL_FILE="$STATE_DIR/op-health.qfail"   # consecutive PRICING-failed runs
+QSENT_FILE="$STATE_DIR/op-health.qalerted" # exists => DEGRADED page was DELIVERED
 DEGRADED_AFTER=3                          # ~15 min (5-min interval) before a DEGRADED alert
 mkdir -p "$STATE_DIR"
 
+# Returns 0 ONLY if Telegram accepted the message (HTTP 200). Callers MUST gate the
+# persisted transition state on this — see "delivery-gated state" below.
+#
+# It previously ended in `|| true` with output discarded, so a timeout, a 401 on a
+# rotated token, or a 400 all looked identical to success. The caller then wrote the
+# new state anyway, so the next 5-minute run saw "already alerted" and stayed quiet:
+# ONE failed send silently suppressed the only page for the whole outage. A monitor
+# that can lose its page without saying so is worse than one that pages twice.
 notify() {
-  [[ -f "$TG_ENV" ]] || return 0
-  local tok
+  local tok code
+  if [[ ! -f "$TG_ENV" ]]; then
+    echo "ALERT UNDELIVERED: token file $TG_ENV missing" >&2; return 1
+  fi
   tok="$(grep -E '^TELEGRAM_BOT_TOKEN=' "$TG_ENV" | head -1 | cut -d= -f2-)"
-  [[ -n "$tok" ]] || return 0
-  curl -sS -m 12 "https://api.telegram.org/bot${tok}/sendMessage" \
+  if [[ -z "$tok" ]]; then
+    echo "ALERT UNDELIVERED: no TELEGRAM_BOT_TOKEN in $TG_ENV" >&2; return 1
+  fi
+  # Capture the HTTP status instead of discarding it. Telegram returns 200 on
+  # accept; 401 = bad/rotated token, 400 = malformed, 000 = timeout/DNS.
+  code="$(curl -sS -m 12 -o /dev/null -w '%{http_code}' \
+    "https://api.telegram.org/bot${tok}/sendMessage" \
     --data-urlencode "chat_id=${CHAT_ID}" --data-urlencode "text=$1" \
-    --data-urlencode "disable_web_page_preview=true" >/dev/null 2>&1 || true
+    --data-urlencode "disable_web_page_preview=true" 2>/dev/null)"
+  if [[ "$code" != "200" ]]; then
+    echo "ALERT UNDELIVERED: telegram HTTP ${code:-000} — state NOT advanced, will retry next run" >&2
+    return 1
+  fi
+  return 0
 }
 
 # --- Tier 1: liveness (orderbook reachable?), retried for transient blips ---
@@ -76,7 +97,36 @@ for _ in 1 2 3; do
 done
 prev="$(cat "$STATE_FILE" 2>/dev/null || echo init)"
 
+# --- Boot grace: never page for a cold boot that is still recovering ---
+# This LaunchAgent is RunAtLoad, so on a reboot it fires immediately — but
+# op-boot-start.sh allows colima's docker daemon up to ~120s, and the containers
+# still have to start after that. The retry loop above only covers ~12s, so the
+# probe would see a 502, compare against the pre-reboot state ("up"), and page a
+# DOWN that resolves itself minutes later. Every reboot would cry wolf.
+#
+# So during the grace window we stay SILENT and, crucially, do not persist any
+# state — the next 5-minute run pages normally if the stack is genuinely broken.
+# Cost of a real post-boot outage is therefore at most one extra interval.
+# (A tighter alternative is a completion marker written by op-boot-start.sh; uptime
+# needs no cross-script coupling, which is why it is used here.)
+BOOT_GRACE="${OPHIS_BOOT_GRACE_SECONDS:-600}"
+# kern.boottime prints: { sec = 1784657227, usec = 380592 } Tue Jul 21 20:07:07 2026
+# Take the FIRST number. Matching on "sec" is a trap: a greedy .*sec matches the
+# "sec" inside "usec" and yields the microseconds field (caught in testing — it
+# parsed 380592 and silently disabled this whole guard).
+boot_epoch="$(sysctl -n kern.boottime 2>/dev/null | sed -E 's/^[^0-9]*([0-9]+).*/\1/')"
+if [[ "$vcode" != "200" && "$boot_epoch" =~ ^[0-9]+$ ]]; then
+  uptime_s=$(( $(date +%s) - boot_epoch ))
+  if (( uptime_s >= 0 && uptime_s < BOOT_GRACE )); then
+    echo "boot grace: up ${uptime_s}s (< ${BOOT_GRACE}s) and probe returned ${vcode} — suppressing page, state untouched, will re-probe next run" >&2
+    exit 0
+  fi
+fi
+
 if [[ "$vcode" != "200" ]]; then
+  alerted=no
+  # Already paged for this outage? Keep the state and stay quiet.
+  [[ "$prev" == "down" ]] && alerted=yes
   if [[ "$prev" != "down" ]]; then
     # NOTE (2026-07-30): the old text here said "Usual cause: colima stopped. Fix:
     # cd ~/greg/... && ./compose-up.sh". Both halves were wrong and cost real time:
@@ -86,23 +136,38 @@ if [[ "$vcode" != "200" ]]; then
     #     compose-up.sh there is what caused the 07-22 outage (it now refuses).
     #   - a compose-up.sh --build takes ~13min with the orderbook down, so it FIRES
     #     THIS ALERT. A page that arrives right after a deploy is probably the deploy.
-    notify "🔴 Ophis OP backend DOWN — orderbook unreachable (HTTP ${vcode} on /version @ optimism-mainnet.ophis.fi).
+    if notify "🔴 Ophis OP backend DOWN — orderbook unreachable (HTTP ${vcode} on /version @ optimism-mainnet.ophis.fi).
 Triage in order, do NOT redeploy first:
 1. Deploying right now? A --build takes ~13min with the orderbook down and trips this alert. Wait it out.
 2. colima status  (VM down? colima start)
 3. docker compose ps  (containers up?)
 4. RPC quorum: curl -s -X POST http://127.0.0.1:4001/main/evm/10 -H 'content-type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_call\",\"params\":[{\"to\":\"0x4200000000000000000000000000000000000006\",\"data\":\"0x313ce567\"},\"latest\"]}'
    ErrConsensusLowParticipants/Dispute = upstreams rate-limited or a lane is dead.
-Only if the stack must be rebuilt: cd ${DEPLOY_DIR} && ./compose-up.sh (needs sudo; must be a clean origin/main worktree)"
+Only if the stack must be rebuilt: cd ${DEPLOY_DIR} && ./compose-up.sh (needs sudo; must be a clean origin/main worktree)"; then
+      alerted=yes
+    fi
   fi
-  echo down >"$STATE_FILE"
+  # DELIVERY-GATED STATE: "down" means "we have SUCCESSFULLY paged for this outage",
+  # not merely "we noticed it". If the send failed we leave the previous state alone,
+  # so the next 5-minute run re-enters this branch and retries the page until it
+  # lands. Consequence worth knowing: if we never managed to page, we also never send
+  # a RECOVERED ping — which is correct, since there was no page to close out.
+  if [[ "$alerted" == "yes" ]]; then
+    echo down >"$STATE_FILE"
+  fi
   echo 0 >"$QFAIL_FILE"
   exit 0
 fi
 
-# Orderbook is up.
-[[ "$prev" == "down" ]] && notify "✅ Ophis OP backend RECOVERED — orderbook reachable again."
-echo up >"$STATE_FILE"
+# Orderbook is up. Only clear the "down" state once the RECOVERED ping is delivered,
+# for the same reason: otherwise a failed recovery send is lost silently.
+if [[ "$prev" == "down" ]]; then
+  if notify "✅ Ophis OP backend RECOVERED — orderbook reachable again."; then
+    echo up >"$STATE_FILE"
+  fi
+else
+  echo up >"$STATE_FILE"
+fi
 
 # --- Tier 2: pricing (can it quote a realistic swap?), cross-run debounced ---
 qcode=000
@@ -116,17 +181,26 @@ done
 qfail="$(cat "$QFAIL_FILE" 2>/dev/null || echo 0)"
 
 if [[ "$qcode" == "200" ]]; then
-  [[ "${qfail:-0}" -ge "$DEGRADED_AFTER" ]] && notify "✅ Ophis OP swap pricing RECOVERED."
+  # Only clear the "we paged" marker once the RECOVERED ping actually lands.
+  if [[ -f "$QSENT_FILE" ]]; then
+    if notify "✅ Ophis OP swap pricing RECOVERED."; then rm -f "$QSENT_FILE"; fi
+  fi
   echo 0 >"$QFAIL_FILE"
 else
   qfail=$(( ${qfail:-0} + 1 ))
   echo "$qfail" >"$QFAIL_FILE"
-  if [[ "$qfail" -eq "$DEGRADED_AFTER" ]]; then
-    notify "🟠 Ophis OP swap pricing DEGRADED — orderbook is UP but /quote keeps failing (HTTP ${qcode}) for ~15 min on a realistic amount.
+  # `-ge` + a delivery marker, not `-eq`. With `-eq` a failed send at exactly the
+  # threshold was unrecoverable: qfail kept climbing past it, so the equality never
+  # held again and the DEGRADED page was lost for the rest of the outage. Now we
+  # retry every run until delivery succeeds, then the marker stops the repeats.
+  if [[ "$qfail" -ge "$DEGRADED_AFTER" && ! -f "$QSENT_FILE" ]]; then
+    if notify "🟠 Ophis OP swap pricing DEGRADED — orderbook is UP but /quote keeps failing (HTTP ${qcode}) for ~15 min on a realistic amount.
 This is the tier that catches an RPC-quorum failure while liveness looks green (2026-07-30: /quote 500 'all gas estimators failed' while /version was 200).
 1. Check the eRPC quorum first (see the DOWN-alert command) — a lane rate-limited or dead is the likeliest cause.
 2. eth_getTransactionReceipt through the proxy too: with agreementThreshold:2 a dead 3rd lane hides behind the other two.
 3. docker logs optimism-mainnet-orderbook-1 | grep -i 'estimator\\|price'
-Only if the stack must be rebuilt: cd ${DEPLOY_DIR} && ./compose-up.sh"
+Only if the stack must be rebuilt: cd ${DEPLOY_DIR} && ./compose-up.sh"; then
+      : > "$QSENT_FILE"
+    fi
   fi
 fi
