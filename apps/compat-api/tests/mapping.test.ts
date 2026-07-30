@@ -67,6 +67,40 @@ describe('parseQuoteRequest', () => {
     expect(errCode(() => parseQuoteRequest(partial))).toBe('MULTI_TOKEN_UNSUPPORTED');
   });
 
+  it('accepts a single output whose proportion is 1 within floating-point noise', () => {
+    // A client that normalises proportions in floating point can hand us a
+    // value a few ULPs off 1. That is an ordinary single-pair request and must
+    // not be rejected as multi-token.
+    for (const proportion of [1, 0.9999999999999999, 1.0000000000000002, 1 - 1e-12, 1 + 1e-12]) {
+      const body = golden();
+      body.outputTokens = [{ tokenAddress: WETH_OP, proportion }];
+      const parsed = parseQuoteRequest(body);
+      expect(parsed.buyToken.toLowerCase()).toBe(WETH_OP.toLowerCase());
+    }
+  });
+
+  it('rejects an out-of-range proportion as malformed, not as multi-token', () => {
+    // The percent convention (100) and non-positive values are bad requests.
+    // Answering MULTI_TOKEN_UNSUPPORTED here pointed integrators at the wrong
+    // fix: they would go looking for basket support that they do not need.
+    for (const proportion of [100, 0, -1, 2]) {
+      const body = golden();
+      body.outputTokens = [{ tokenAddress: WETH_OP, proportion }];
+      expect(errCode(() => parseQuoteRequest(body))).toBe('INVALID_REQUEST');
+    }
+  });
+
+  it('rejects a non-finite or non-numeric proportion', () => {
+    // `golden()` types proportion as number, but the parser's whole job is to
+    // police untrusted JSON, so the string case has to reach it as `unknown`.
+    const bad: unknown[] = [Number.NaN, Number.POSITIVE_INFINITY, '1', null];
+    for (const proportion of bad) {
+      const body = golden() as unknown as Record<string, unknown>;
+      body.outputTokens = [{ tokenAddress: WETH_OP, proportion }];
+      expect(errCode(() => parseQuoteRequest(body))).toBe('INVALID_REQUEST');
+    }
+  });
+
   it('rejects a non-zero referralFee with PARTNER_FEE_UNAVAILABLE while the program is off', () => {
     const body = { ...golden(), referralFee: 0.1, referralFeeRecipient: OTHER };
     // Default (no opts) = program disabled: a loud reject, not a silent drop.

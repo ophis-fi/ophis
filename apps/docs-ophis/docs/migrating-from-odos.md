@@ -8,33 +8,77 @@ sidebar_position: 9
 
 # Migrating from Odos
 
-Ophis runs a compatibility surface for integrators who built against the Odos
-v3 API. It accepts the request shape you already send (PathRequestV3 field
-names, single token in and single token out) and answers with the
-QuoteResponse field surface you already parse, plus a namespaced `ophis` block.
+## What this surface is, and what it is not
+
+This is a **quote-shape compatibility layer**, not a general migration path off
+Odos. Read that sentence before you plan any work.
+
+It accepts the Odos v3 request shape you already send (PathRequestV3 field
+names, single token in and single token out) and answers with the QuoteResponse
+field surface you already parse, plus a namespaced `ophis` block. Within a
+narrow envelope it will also carry you through signing and submission.
+
+The envelope is genuinely narrow, and the boundaries are structural rather than
+a backlog:
+
+| You need | Supported |
+|---|---|
+| Server-side price discovery, ERC-20 to ERC-20 | Yes |
+| Execution from an EOA, ERC-20 to ERC-20, on an enabled chain | Yes |
+| Executable calldata to compose inside your own contract call | **No, and not planned.** Ophis returns an intent, not a transaction |
+| Signing from a Safe, smart account, MPC or DAO treasury | **No.** EOA signing schemes only |
+| Native ETH in or out | **No** |
+| Multi-token in or out | **No.** Tracked with basket intents |
+| Zaps, limit orders, protected swaps, Solana | **No** |
+| The other 14 Odos endpoints (`/info/*`, `/pricing/*`, `/zap/*`) | **No.** 3 of 17 Odos paths are implemented |
+
+If you are composing swap calldata inside your own contract, this surface
+cannot serve you and no amount of future work will change that: the difference
+is the settlement model, not the API. Use the
+[SDK-first integration](./partners.md) or the [intent API](./intent-api.md)
+instead, or stay with a router-based aggregator.
 
 "Odos" is used on this page in its plain factual sense, to describe the wire
-shape this surface accepts. Ophis is an independent protocol.
+shape this surface accepts. Ophis is an independent protocol, not a successor
+to or affiliate of Odos.
 
 ## Production status
 
 As verified against `https://compat.ophis.fi` on 30 July 2026:
 
-- The health endpoint reports chains 10, 130, and 4663 as enabled.
+- `/healthz` reports chains 10, 130 and 4663 as enabled.
 - A `POST /sor/quote/v3` request with `userAddr` was verified on chain 10. It
   returned HTTP 200, a signed `pathId`, `ophis.assemblable: true`, the unsigned
   order, and its EIP-712 signing envelope.
 - Quote-only requests without `userAddr` remain supported and return
   `ophis.assemblable: false`.
+- **Chain 130 (Unichain) is not answering.** Its orderbook host is down, so
+  quotes for 130 return `UPSTREAM_UNAVAILABLE` (503). This is an outage, not a
+  removal: re-check rather than dropping 130 from your config. Chains 10 and
+  4663 are unaffected.
 - Integrator-priced `referralFee` is disabled in production and returns
   `PARTNER_FEE_UNAVAILABLE`.
+
+## Pricing, for comparison
+
+The compat surface charges a flat **5 bps** (`partnerFeePercent: 0.05`) on
+every pair. There is no API key, no paid tier and no daily request cap; the only
+limit is a best-effort 60 requests per 60 seconds per IP and Cloudflare colo.
+
+**Stable pairs are not discounted on this surface.** The Ophis 1 bp same-chain
+stable rate needs token-pair context to establish, and the compat app-data
+builder is chain-only, so it always embeds 5 bps. If you trade mostly stables,
+the [SDK](./partners.md) reaches the reduced rate and this surface does not.
 
 ## Quote-only use
 
 1. Change your base URL to `https://compat.ophis.fi`.
 2. Send `POST /sor/quote/v3` without `userAddr`.
-3. Read live quote fields from the response. Quote-only responses intentionally
-   omit the `pathId`, order, and signing envelope.
+3. Read live quote fields from the response. On a quote-only response the keys
+   are all still present and explicitly `null`: top-level `pathId`, plus
+   `ophis.order`, `ophis.signing` and `ophis.fullAppData`. Nothing is omitted,
+   so a parser that distinguishes a missing key from a null value sees a null.
+   `ophis.assemblable` is `false`.
 
 ## What is the same
 
@@ -68,6 +112,37 @@ surface does not paper over them:
    0 because you broadcast nothing. The winning solver pays settlement gas and
    that cost is already priced into the quoted amounts. The embedded estimate
    is visible in `ophis.executionCost`.
+
+Four more that will bite you in production if you do not plan for them:
+
+4. **Contract-wallet signing schemes are not exposed.** `signingScheme` accepts
+   `eip712` or `ethsign` and rejects anything else with `INVALID_REQUEST`. CoW's
+   `presign` and `eip1271` are not available, so **anything whose signature is
+   validated by a contract has no path here**: a Safe, a smart account, or a
+   DAO treasury module. This is a regression versus Odos, whose limit-order
+   router shipped a signature validator and tested contract wallets. Use the
+   [SDK](./partners.md), which reaches those schemes directly.
+
+   This is about *who validates the signature*, not about key custody. A
+   threshold-ECDSA MPC signer that controls an ordinary EOA produces a standard
+   EIP-712 or `ethsign` signature and works here unchanged.
+5. **Native ETH is not supported, in or out.** There is no ethflow wrapping on
+   this surface. Both the `0xEeee…EEeE` sentinel and the zero address are
+   forwarded to the orderbook as if they were ERC-20s and currently surface as
+   `UPSTREAM_UNAVAILABLE` (503, numeric 3000). **Do not build a retry loop on
+   that response for a native-token pair.** 503 is documented below as the
+   retryable class, and for this input it is not: retrying cannot succeed. Use
+   the wrapped token (WETH and its per-chain equivalent) explicitly.
+6. **`slippageLimitPercent` is not a revert bound.** On Odos it meant "revert
+   the transaction if the price moves past this". Here it sets the limit price
+   you sign into an order that then **rests for 20 minutes**
+   (`order.validTo = now + 1200s`). Nothing reverts. The order either fills at
+   or better than your limit within that window, or it expires. A value you
+   chose for revert semantics is usually the wrong value for a resting limit.
+7. **There is no cancel endpoint.** Once submitted, an order rests until it
+   fills or `validTo` passes. If you need to cancel, use the orderbook API for
+   the chain directly, or size `slippageLimitPercent` knowing you are committed
+   for the full 20 minutes.
 
 One smaller deviation:
 
@@ -252,7 +327,7 @@ soon as the order settles or the wait elapses (see Settlement timing above).
 | `percentDiff` | `0` |
 | `permit2Message`, `permit2Hash` | `null` |
 | `partnerFeePercent` | Total CIP-75 Volume bps embedded in the order, as a percent. With the current production fee switch off, this is the Ophis fee (`0.05` = 5 bps). Already priced into `outAmounts` |
-| `pathId` | Currently `null` on successful production quotes. When path-ID signing is configured: a stateless token valid up to 60 s and consumed by `/sor/assemble` |
+| `pathId` | A stateless signed token, valid up to 60 s and consumed by `/sor/assemble`. Populated when the request carried `userAddr`; explicitly `null` (not omitted) on a quote-only request |
 | `pathViz`, `pathVizImage` | The route-visualization graph and rendered base64 SVG when requested and the feature is enabled, else `null` |
 | `blockNumber` | 0 + warning (quotes are auction-based, not block-pinned; use `ophis.expiration`) |
 | `ophis.expectedSettlementSeconds` | Static deployment baseline, currently `24`; not measured latency or an SLA. See Settlement timing |
@@ -270,18 +345,68 @@ to wire into your client:
 
 - `NO_ROUTE` (404) is an answer, not a failure. Retrying it cannot change it.
 - 503 responses carry `Retry-After` and are the only in-call retryable class.
-  429 means slow down globally; do not retry the same call.
+  429 means slow down globally; do not retry the same call. The one exception
+  is a native-token pair, which returns 503 but can never succeed (see point 5
+  above).
 
 Quote the `traceId` when reporting a problem.
 
+### Numeric code translation
+
+**The numeric bands do not mean the same thing on both sides.** If you switched
+the base URL and kept your error handling, translate before you ship. The
+dangerous one is 3000.
+
+| Odos | Meaning on Odos | Ophis | Meaning here | Client action must change? |
+|---|---|---|---|---|
+| 1000 `API_ERROR` | generic failure | varies | no single equivalent | Map per case |
+| **2000** `NO_VIABLE_PATH` | no path found | **2000** `NO_ROUTE` (404) | no solver quoted it | No. The only aligned code |
+| 2997/2998/2999 `ALGO_*` | quoting engine down or timed out | 3000 `UPSTREAM_UNAVAILABLE` | orderbook unreachable | Retry class changes |
+| **3000** `INTERNAL_SERVICE_ERROR` | **internal failure, give up** | **3000** `UPSTREAM_UNAVAILABLE` | **transient, retry with `Retry-After`** | **Yes. Same number, opposite instruction** |
+| 3100 `CONFIG_INTERNAL` | config service failed | 3100 `UPSTREAM_RATE_LIMITED` | upstream is rate limiting us | **Yes. Same number, unrelated meaning** |
+| 3110-3112 `TXN_ASSEMBLY_*` | assembly failed | n/a | nothing is assembled here | Delete the branch |
+| 3140-3143 `GAS_*` | gas estimation failed | n/a | you pay no gas | Delete the branch |
+| 4000 `INVALID_REQUEST` | malformed body | **4900** `INVALID_REQUEST` | same condition | Number changes |
+| 4001 `INVALID_CHAIN_ID` | unknown chain | **4903** `UNSUPPORTED_CHAIN` | chain not enabled here | Number changes |
+| 4004 / 4010 `INVALID_*_ADDR` | bad address | 4905 `INVALID_ADDRESS` | same condition | Number changes |
+| 4006 `TOO_SLIPPERY` | slippage unrealistic | 4904 `INVALID_SLIPPAGE` | above `MAX_SLIPPAGE_BIPS` | Number changes, and see point 6 |
+| 4007 `SAME_INPUT_OUTPUT` | tokens identical | 4900 `INVALID_REQUEST` | same condition | Number changes |
+| 4011/4012/4018/4019 `*_TOKEN_AMOUNT` | bad amount | 4906 `INVALID_AMOUNT` | same condition | Number changes |
+| 4015 `INVALID_TOKEN_PROPORTIONS` (`0 < p < 1`) | proportions do not sum to 1 | **4901** `MULTI_TOKEN_UNSUPPORTED` | a partial share is a split intent | **Different code and class** |
+| 4015 `INVALID_TOKEN_PROPORTIONS` (`p <= 0`, `p > 1`, non-numeric) | same on Odos | 4900 `INVALID_REQUEST` | malformed, not unsupported | Number changes |
+| 4016 `TOKEN_ROUTING_UNAVAILABLE` | no route for the pair | 2000 `NO_ROUTE` | same meaning, different band | Band changes |
+| 4201 `USER_ADDR_REQ` on `/sor/quote/v3` | `userAddr` missing | **200 OK** | quote-only is a supported mode, not an error | **Delete the branch** |
+| 4201 `USER_ADDR_REQ` on `/sor/swap/v3` | `userAddr` missing | **4911** `NOT_ASSEMBLABLE` | needs an owner to draft an order for | Different code |
+| 4201 `USER_ADDR_REQ` on `/sor/assemble` | `userAddr` missing | **4905** `INVALID_ADDRESS` | fails address validation | Different code |
+| 5001 `SWAP_UNAVAILABLE` | route unavailable | 2000 `NO_ROUTE` | same meaning, different band | Band changes |
+| n/a | none | **4901** `MULTI_TOKEN_UNSUPPORTED` | multi-token, or a single output whose proportion is neither 1 nor a whole share | New branch |
+| n/a | none | **4902** `PARTNER_FEE_UNAVAILABLE` | integrator fees are off on this deployment | New branch |
+| n/a | none | **4908** `PATH_ID_EXPIRED` (410) | re-quote, do not retry | New branch |
+| n/a | none | **5901** `CONFIG_MISSING` | server misconfigured, not your fault | New branch. Report it with the `traceId` |
+
+Compat-specific codes sit at 49xx and 59xx precisely so they can never collide
+with an orderbook-issued code. That also means **almost none of them match the
+Odos number for the same condition**.
+
+**Match on the string `code`, not `numericCode`.** The strings are stable and
+mean one thing each. The numbers collide across the two systems, and 3000 is a
+"give up" on Odos and a "retry" here.
+
 ## Chains
 
-| chainId | Network | Orderbook |
-|---|---|---|
-| 10 | Optimism | `https://optimism-mainnet.ophis.fi` (Ophis-operated) |
-| 130 | Unichain | `https://unichain-mainnet.ophis.fi` (Ophis-operated) |
+| chainId | Network | Orderbook | Status |
+|---|---|---|---|
+| 10 | Optimism | `https://optimism-mainnet.ophis.fi` (Ophis-operated) | Answering |
+| 130 | Unichain | `https://unichain-mainnet.ophis.fi` (Ophis-operated) | **Host down, returns 503** |
+| 4663 | Robinhood Chain | `https://robinhood-mainnet.ophis.fi` (Ophis-operated) | Answering |
 
-Other chains return `UNSUPPORTED_CHAIN`.
+Other chains return `UNSUPPORTED_CHAIN` (4903), including chains Ophis serves
+through CoW-hosted orderbooks. Only the Ophis-operated sovereign chains are
+exposed here.
+
+Odos served 14 chains. If your volume was on Ethereum, Base, Arbitrum,
+Avalanche, BSC, Polygon, Linea, Sonic, Fraxtal, zkSync Era, Mantle or Mode,
+this surface does not cover it.
 
 ## Limits and lifetime
 

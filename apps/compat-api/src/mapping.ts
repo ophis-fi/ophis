@@ -92,6 +92,14 @@ const assertCompatAtoms = (value: unknown, label: string): string => {
   return value;
 };
 
+/**
+ * Tolerance for `outputTokens[0].proportion`. Odos proportions are IEEE-754
+ * doubles that clients normalise to sum to 1, so a single-output request can
+ * arrive as 1 +/- a few ULPs. 1e-9 is far above that noise floor and far below
+ * any share a caller would mean on purpose.
+ */
+const PROPORTION_EPSILON = 1e-9;
+
 const BASKET_ROADMAP_MESSAGE =
   'This surface is single token in, single token out for now. Multi-token requests return when ' +
   'Ophis basket intents ship (multi-asset orders are on the public roadmap); until then, decompose ' +
@@ -134,10 +142,33 @@ export function parseQuoteRequest(
     throw new CompatError('INVALID_REQUEST', 'inputTokens and outputTokens must differ.');
   }
   const sellAmount = assertCompatAtoms(input.amount, 'inputTokens[0].amount');
-  if (output.proportion !== undefined && output.proportion !== 1) {
-    // A single output with a partial proportion only makes sense in a
-    // multi-output split, which is basket territory.
-    throw new CompatError('MULTI_TOKEN_UNSUPPORTED', BASKET_ROADMAP_MESSAGE);
+  if (output.proportion !== undefined) {
+    // Odos clients build `proportion` so the output side sums to 1. With a
+    // single output that is definitionally 1, but a client that normalises in
+    // floating point can hand us 0.9999999999999999 or 1.0000000000000002.
+    // Those are exactly-1 requests and must not be turned away.
+    const proportion = output.proportion;
+    if (typeof proportion !== 'number' || !Number.isFinite(proportion)) {
+      throw new CompatError(
+        'INVALID_REQUEST',
+        'outputTokens[0].proportion: must be a finite number.',
+      );
+    }
+    if (Math.abs(proportion - 1) > PROPORTION_EPSILON) {
+      if (proportion > 0 && proportion < 1) {
+        // A genuinely partial share is a split intent, which is basket
+        // territory. This is the only case that keeps the roadmap error.
+        throw new CompatError('MULTI_TOKEN_UNSUPPORTED', BASKET_ROADMAP_MESSAGE);
+      }
+      // Anything else (<= 0, or > 1 such as the percent convention `100`) is a
+      // malformed request, not an unsupported feature. Saying "multi-token
+      // unsupported" here sent integrators to the wrong fix.
+      throw new CompatError(
+        'INVALID_REQUEST',
+        'outputTokens[0].proportion: must be 1 for a single output token ' +
+          '(proportions are fractions of the output side, not percentages).',
+      );
+    }
   }
 
   // userAddr: optional. Absent = quote-only, not assemblable.
