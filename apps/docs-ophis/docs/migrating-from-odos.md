@@ -24,7 +24,7 @@ a backlog:
 | You need | Supported |
 |---|---|
 | Server-side price discovery, ERC-20 to ERC-20 | Yes |
-| Execution from an EOA, ERC-20 to ERC-20, on an enabled chain | Yes, once the deployment note below is cleared |
+| Execution from an EOA, ERC-20 to ERC-20, on an enabled chain | Yes |
 | Executable calldata to compose inside your own contract call | **No, and not planned.** Ophis returns an intent, not a transaction |
 | Signing from a Safe, smart account, MPC or DAO treasury | **No.** EOA signing schemes only |
 | Native ETH in or out | **No** |
@@ -74,8 +74,11 @@ the [SDK](./partners.md) reaches the reduced rate and this surface does not.
 
 1. Change your base URL to `https://compat.ophis.fi`.
 2. Send `POST /sor/quote/v3` without `userAddr`.
-3. Read live quote fields from the response. Quote-only responses intentionally
-   omit the `pathId`, order, and signing envelope.
+3. Read live quote fields from the response. On a quote-only response the keys
+   are all still present and explicitly `null`: top-level `pathId`, plus
+   `ophis.order`, `ophis.signing` and `ophis.fullAppData`. Nothing is omitted,
+   so a parser that distinguishes a missing key from a null value sees a null.
+   `ophis.assemblable` is `false`.
 
 ## What is the same
 
@@ -324,7 +327,7 @@ soon as the order settles or the wait elapses (see Settlement timing above).
 | `percentDiff` | `0` |
 | `permit2Message`, `permit2Hash` | `null` |
 | `partnerFeePercent` | Total CIP-75 Volume bps embedded in the order, as a percent. With the current production fee switch off, this is the Ophis fee (`0.05` = 5 bps). Already priced into `outAmounts` |
-| `pathId` | Currently `null` on successful production quotes. When path-ID signing is configured: a stateless token valid up to 60 s and consumed by `/sor/assemble` |
+| `pathId` | A stateless signed token, valid up to 60 s and consumed by `/sor/assemble`. Populated when the request carried `userAddr`; explicitly `null` (not omitted) on a quote-only request |
 | `pathViz`, `pathVizImage` | The route-visualization graph and rendered base64 SVG when requested and the feature is enabled, else `null` |
 | `blockNumber` | 0 + warning (quotes are auction-based, not block-pinned; use `ophis.expiration`) |
 | `ophis.expectedSettlementSeconds` | Static deployment baseline, currently `24`; not measured latency or an SLA. See Settlement timing |
