@@ -2,15 +2,22 @@ import { useCallback } from 'react'
 
 import { useAtomValue } from 'jotai'
 
+import { useWalletInfo } from '@cowprotocol/wallet'
+
 import { OphisBasketTag } from 'ophis/basketMetadata'
 
 import { affiliateTraderSavedCodeAtom } from 'modules/affiliate'
 import { AppDataInfo, buildAppData } from 'modules/appData'
 import { useAppCode, useAppDataHooks } from 'modules/appData/hooks'
 import { useRwaConsentForAppData } from 'modules/appData/hooks/useRwaConsentForAppData'
+import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
+import { useUtm } from 'modules/utm'
+import { useVolumeFee } from 'modules/volumeFee'
 
 import { BuildBasketLegAppDataFn } from './useBasketPlacement'
+
+import { resolveBasketLegPartnerFee } from '../pure/legPartnerFee'
 
 /**
  * The concrete per-leg appData builder: gathers the same appData params the
@@ -24,18 +31,26 @@ import { BuildBasketLegAppDataFn } from './useBasketPlacement'
  * `orderClass` is fixed to 'market' (basket legs are market orders). Returns a
  * function keyed to the current wallet's appData context.
  *
- * NOTE: the exact Ophis partner-fee gating (injectedWidgetAppDataPartnerFeeAtom
- * / shouldEmitOphisPartnerFee / ophisAppDataPartnerFeeForChain, as the swap
- * AppDataUpdater applies) and utm are intentionally left for the production route
- * wiring (owner decision) rather than approximated here; omitting them still
- * yields a valid Ophis order appData carrying the basket marker.
+ * PARTNER FEE: resolved by `resolveBasketLegPartnerFee`, which is the swap
+ * AppDataUpdater's fee decision extracted into a pure, tested function so a
+ * basket leg and an equivalent single swap on the same chain cannot drift apart.
+ * See `../pure/legPartnerFee.ts` for why each step drops the fee.
+ *
+ * Before this was wired, every basket leg went out with no `partnerFee` at all,
+ * so a 6-leg basket earned Ophis nothing.
  */
 export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAppDataFn {
+  const { chainId } = useWalletInfo()
   const appCode = useAppCode()
   const appCodeWithWidgetMetadata = useAppCodeWidgetAware(appCode)
   const typedHooks = useAppDataHooks()
   const userConsent = useRwaConsentForAppData()
+  const utm = useUtm()
+  const volumeFee = useVolumeFee()
   const { savedCode: refCode } = useAtomValue(affiliateTraderSavedCodeAtom)
+
+  const widgetPartnerFee = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
+  const partnerFee = resolveBasketLegPartnerFee(widgetPartnerFee, volumeFee, chainId)
 
   return useCallback(
     async (_leg, marker: OphisBasketTag): Promise<AppDataInfo> => {
@@ -52,17 +67,15 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
         widget,
         userConsent,
         refCode,
-        // Explicitly undefined, not omitted. `utm` is REQUIRED-but-nullable on
-        // BuildAppDataParams (`utm: UtmParams | undefined`), so leaving it out
-        // does not compile — it broke the Cloudflare Pages deploy on main with
-        // TS2345. This preserves the intent stated in the doc comment above
-        // (utm is deferred to the production route wiring, owner decision) while
-        // satisfying the type: no UTM data is attached to a basket leg.
-        utm: undefined,
+        utm,
+        // Mirrors AppDataInfoUpdater, which passes its `volumeFee` prop through
+        // to buildAppData's `partnerFee`. Without this every basket leg settles
+        // at zero Ophis fee, so a 6-leg basket would earn nothing.
+        partnerFee,
         // The leg's basket marker; buildAppData spreads this into metadata.ophisBasket.
         ophisBasket: marker,
       })
     },
-    [appCodeWithWidgetMetadata, slippageBips, typedHooks, userConsent, refCode],
+    [appCodeWithWidgetMetadata, slippageBips, typedHooks, userConsent, refCode, utm, partnerFee],
   )
 }
