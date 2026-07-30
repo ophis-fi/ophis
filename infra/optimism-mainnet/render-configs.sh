@@ -136,6 +136,37 @@ set -a
 source .env
 set +a
 
+# ── ZAN key: migrate the legacy name, and NEVER render an empty one ──────────
+# ZAN_OP_KEY was renamed to ZAN_API_KEY on 2026-07-30 (the credential is
+# account-wide, not OP-specific). A .env that predates the rename — a DR host, or
+# the documented "restore your backed-up .env" path — still carries only the old
+# name. envsubst does not care: it would substitute the unset ZAN_API_KEY with an
+# EMPTY STRING and this script would then happily install the result.
+#
+# That failure is silent and security-relevant, not cosmetic. The endpoint becomes
+#     https://api.zan.top/node/v1/opt/mainnet/
+# i.e. zan's UNREGISTERED tier, which hard-rejects eth_call / eth_getLogs /
+# eth_estimateGas (-32012). Those methods would drop to a TWO-lane quorum, and
+# under disputeBehavior:preferBlockHeadLeader a two-lane quorum lets a single
+# hostile upstream win the tie-break by advertising the freshest head — the exact
+# hole the keyed lane was introduced to close. Fail closed instead.
+if [[ -z "${ZAN_API_KEY:-}" && -n "${ZAN_OP_KEY:-}" ]]; then
+  echo "==> WARNING: .env uses the legacy ZAN_OP_KEY. Migrating to ZAN_API_KEY for" >&2
+  echo "    this render. RENAME IT IN .env — the credential is account-wide (it also" >&2
+  echo "    serves eth/mainnet, base/mainnet and arb/one), so the OP-specific name is" >&2
+  echo "    misleading and this shim will be removed." >&2
+  ZAN_API_KEY="$ZAN_OP_KEY"
+  export ZAN_API_KEY
+fi
+if [[ -z "${ZAN_API_KEY:-}" ]]; then
+  echo "ERROR: ZAN_API_KEY is unset/empty (and no legacy ZAN_OP_KEY to migrate)." >&2
+  echo "       Refusing to render: the zan upstream would silently fall back to the" >&2
+  echo "       UNREGISTERED endpoint, which rejects eth_call/eth_getLogs/eth_estimateGas" >&2
+  echo "       and leaves those methods on a 2-lane quorum with no single-provider-" >&2
+  echo "       compromise protection. Set ZAN_API_KEY in .env (see .env.example)." >&2
+  exit 15
+fi
+
 # Resolve PK file path.
 #
 # G1 portability (2026-05-20 DR drill findings): on macOS the canonical
@@ -437,6 +468,25 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.
   chmod 600 "$out_tmp"
+
+  # Generic empty-substitution guard, checked BEFORE the file is installed.
+  # envsubst turns any unset variable into an empty string, so a renamed or
+  # forgotten key silently yields a credential-less URL that still parses and
+  # still starts. For erpc.yaml that means quietly demoting a keyed upstream to
+  # its anonymous tier (see the ZAN_API_KEY note above). Catch the shape rather
+  # than enumerating every key, so the next renamed variable is caught too.
+  if [[ "$name" == "erpc.yaml" ]]; then
+    if grep -nE '^[[:space:]]*endpoint:[[:space:]]*\S+/$' "$out_tmp" >&2; then
+      echo "ERROR: an upstream endpoint above ends in '/' — a key substituted EMPTY." >&2
+      echo "       Refusing to install $out. Check the *_KEY vars in .env." >&2
+      rm -f "$out_tmp"; exit 16
+    fi
+    if grep -nE '^[[:space:]]*endpoint:[[:space:]]*https?://[^[:space:]]*//' "$out_tmp" >&2; then
+      echo "ERROR: an upstream endpoint above contains '//' mid-path — empty substitution." >&2
+      rm -f "$out_tmp"; exit 16
+    fi
+  fi
+
   mv -f "$out_tmp" "$out"
 
   if is_pk_bearing "$name"; then

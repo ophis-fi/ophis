@@ -34,14 +34,20 @@ done
 [[ -n "$PYBIN" ]] || { echo "FATAL: no working python3 (tried: python3, uv run python) — cannot run the fixture, refusing to report success"; exit 1; }
 
 # --- fixture: replies with whatever status code $WORK/mode contains --------------
+# The two tiers must be controllable INDEPENDENTLY. With a single shared status
+# code, any test that wanted "liveness up, pricing failing" could not express it —
+# and worse, a test that set 502 exited at the liveness branch before the pricing
+# code ran at all, so it passed whether or not the pricing logic was correct. Two
+# separate mode files, dispatched on path.
 cat > "$WORK/fixture.py" <<'PY'
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
-MODE = sys.argv[2]
+MODE_V, MODE_Q = sys.argv[2], sys.argv[3]
 class H(BaseHTTPRequestHandler):
     def _code(self):
+        path = MODE_Q if 'quote' in self.path else MODE_V
         try:
-            return int(open(MODE).read().strip())
+            return int(open(path).read().strip())
         except Exception:
             return 500
     def _reply(self):
@@ -53,8 +59,8 @@ HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
 PY
 PORT="$($PYBIN -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()' 2>/dev/null)"
 [[ "$PORT" =~ ^[0-9]+$ ]] || { echo "FATAL: could not allocate a fixture port via '$PYBIN'"; exit 1; }
-printf '200' > "$WORK/mode"
-$PYBIN "$WORK/fixture.py" "$PORT" "$WORK/mode" & FIXPID=$!
+printf '200' > "$WORK/mode"; printf '200' > "$WORK/qmode"
+$PYBIN "$WORK/fixture.py" "$PORT" "$WORK/mode" "$WORK/qmode" & FIXPID=$!
 fixture_up=no
 for _ in $(seq 1 40); do
   if curl -s -m 1 -o /dev/null "http://127.0.0.1:$PORT/"; then fixture_up=yes; break; fi
@@ -72,7 +78,7 @@ printf '200' > "$WORK/mode"
 BASE_URL="http://127.0.0.1:$PORT/api/v1"
 printf 'TELEGRAM_BOT_TOKEN=000000:INVALID-TOKEN-FOR-TESTING\n' > "$WORK/bad-tg.env"
 
-mode(){ printf '%s' "$1" > "$WORK/mode"; }
+mode(){ printf '%s' "$1" > "$WORK/mode"; printf '%s' "${2:-$1}" > "$WORK/qmode"; }  # mode <liveness> [quote]
 run(){ # statedir [extra env assignments...]
   local sd="$1"; shift
   sed -e "s|^STATE_DIR=.*|STATE_DIR=\"$sd\"|" -e "s|^BASE=.*|BASE=\"$BASE_URL\"|" "$SRC" > "$WORK/hc.sh"
@@ -158,21 +164,38 @@ echo "         belief, and a still-failing quote must not report RECOVERED"
 SD="$WORK/s10"; mkdir -p "$SD"; echo down > "$SD/op-health.state"
 : > "$SD/op-health.qalerted"        # pricing degradation was already delivered
 echo 0 > "$SD/op-health.qfail"      # debounce reset by the outage path
-mode 502                            # liveness still down
+mode 502 502                        # liveness still down
 run "$SD"
 ck "pricing belief survives the outage" "$([ -f "$SD/op-health.qalerted" ] && echo kept || echo erased)" "kept"
-mode 500                            # liveness ok? no - fixture returns 500 for both; use 200 next
-mode 200
-# quote endpoint shares the fixture, so a 200 here means pricing genuinely recovered
+
+# THE case the previous version never reached: liveness back UP but the quote STILL
+# failing, with the debounce reset to 0. Before the fix, qfail(1) < threshold(3) made
+# this look "ok" and emitted a false pricing RECOVERED. Needs split liveness/quote
+# codes to express at all — with one shared code it is inexpressible.
+echo 0 > "$SD/op-health.qfail"
+echo up > "$SD/op-health.state"     # liveness belief already up: no tier-1 message owed
+mode 200 503                        # liveness OK, pricing STILL BROKEN
 run "$SD"
-ck "delivered degradation cleared only after a real 200 (send failed -> kept)" \
+# The observable is whether a message was ATTEMPTED, not its text: the alert body
+# only ever goes to Telegram, so grepping the log for "pricing RECOVERED" matches
+# nothing either way and asserts precisely zero. With the fix, belief(degraded) ==
+# observation(degraded) so NOTHING is owed and no send happens. Without it, the
+# still-failing quote reads as "ok", a false RECOVERED is attempted, and the failed
+# send shows up here. Verified by mutation: disabling the branch makes this fail.
+ck "no message attempted — still-degraded matches belief" \
+   "$(grep -c 'ALERT UNDELIVERED' "$WORK/out.log")" "0"
+ck "delivered degradation stays until a real 200" \
    "$([ -f "$SD/op-health.qalerted" ] && echo kept || echo erased)" "kept"
 
 echo
 echo "TEST 11 (REGRESSION): corrupt counter '08' must not abort the arithmetic"
-SD="$WORK/s11"; mkdir -p "$SD"; echo up > "$SD/op-health.state"; printf '08\n' > "$SD/op-health.qfail"; mode 502
+# Liveness must be UP or the script exits before the pricing arithmetic ever runs —
+# the previous version used 502 and so passed even with the 10# fix reverted.
+SD="$WORK/s11"; mkdir -p "$SD"; echo up > "$SD/op-health.state"; printf '08\n' > "$SD/op-health.qfail"
+mode 200 503                        # liveness UP, quote FAILING -> arithmetic runs
 run "$SD" OPHIS_BOOT_GRACE_SECONDS=0
-ck "survived octal-looking counter" "$(grep -c 'value too great for base\|invalid arithmetic' "$WORK/out.log")" "0"
+ck "no octal arithmetic error" "$(grep -ci 'value too great for base\|invalid arithmetic\|syntax error' "$WORK/out.log")" "0"
+ck "counter actually incremented past 08 (proves the path ran)" "$(cat "$SD/op-health.qfail")" "9"
 
 echo
 echo "TEST 12 (REGRESSION): an uncreatable lock dir must FAIL LOUD, not skip silently"
@@ -181,6 +204,25 @@ sed -e "s|^STATE_DIR=.*|STATE_DIR=\"/proc/nonexistent-readonly/ophis\"|" -e "s|^
 ( export TELEGRAM_BOT_TOKEN_ENV_FILE="$WORK/bad-tg.env" OPHIS_BOOT_GRACE_SECONDS=0; bash "$WORK/hc_ro.sh" ) >"$WORK/ro.log" 2>&1
 rc=$?
 ck "exits non-zero rather than pretending success" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" "nonzero"
+
+echo
+echo "TEST 13 (REGRESSION): a CORRUPT state file must not be treated like an absent"
+echo "         one — silently seeding 'up' would discard a pending RECOVERED"
+SD="$WORK/s13"; mkdir -p "$SD"; printf 'garbage\n' > "$SD/op-health.state"; mode 200 200
+run "$SD"
+ck "corruption reported, not silently seeded" "$(grep -c 'present but malformed' "$WORK/out.log")" "1"
+ck "assumed 'down' so the RECOVERED is still attempted" "$(grep -c 'ALERT UNDELIVERED' "$WORK/out.log")" "1"
+
+echo
+echo "TEST 14 (REGRESSION): renderer must refuse an empty key substitution"
+R="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ -f "$R/render-configs.sh" ]]; then
+  ck "renderer migrates the legacy ZAN_OP_KEY name" "$(grep -c 'Migrating to ZAN_API_KEY' "$R/render-configs.sh")" "1"
+  ck "renderer fails closed when no zan key at all" "$(grep -c 'exit 15' "$R/render-configs.sh")" "1"
+  ck "renderer rejects an endpoint ending in '/'" "$(grep -c 'substituted EMPTY' "$R/render-configs.sh")" "1"
+else
+  echo "  SKIP  render-configs.sh not found next to this suite"
+fi
 
 echo
 echo "RESULT: $pass passed, $fail failed"

@@ -76,24 +76,36 @@ mkdir -p "$STATE_DIR"
 # happened during the 2026-07-30 incident while the agent was scheduled.
 # mkdir is atomic on every filesystem we care about, so it needs no flock.
 LOCK_DIR="$STATE_DIR/op-health.lock"
+# mkdir failing has three possible meanings and conflating any two of them breaks
+# the monitor in a different way:
+#   contention        -> the lock exists; skip this tick (correct, quiet)
+#   uncreatable dir   -> STATE_DIR unwritable / full / read-only; MUST be loud,
+#                        otherwise the monitor exits 0 forever and dies silently
+#   lost race         -> lock vanished between our mkdir and the check; retry, do
+#                        NOT report a storage failure for an ordinary race
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  # mkdir can fail for two very different reasons and they must not be conflated:
-  # contention (the lock exists) vs. the directory being uncreatable at all
-  # (STATE_DIR unwritable, read-only or full filesystem). Treating the second as
-  # contention would exit 0 on every tick and SILENTLY DISABLE the monitor — the
-  # same class of quiet death this whole file keeps trying to design out.
+  acquired=no
   if [[ ! -d "$LOCK_DIR" ]]; then
-    echo "FATAL: cannot create $LOCK_DIR (STATE_DIR unwritable / disk full?) — monitor cannot run" >&2
-    exit 1   # non-zero so launchd records a failure instead of a clean skip
+    # Absent yet mkdir failed -> either a lost race or a genuine storage problem.
+    # One atomic retry distinguishes them.
+    if mkdir "$LOCK_DIR" 2>/dev/null; then
+      acquired=yes
+    elif [[ ! -d "$LOCK_DIR" ]]; then
+      echo "FATAL: cannot create $LOCK_DIR (STATE_DIR unwritable / disk full?) — monitor cannot run" >&2
+      exit 1   # non-zero so launchd records a failure instead of a clean skip
+    fi
   fi
-  # Reap a lock orphaned by a kill -9 / power loss rather than wedging forever.
-  if [[ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +15 2>/dev/null)" ]]; then
-    echo "stale lock older than 15min — reclaiming" >&2
-    rm -rf "$LOCK_DIR"
-    mkdir "$LOCK_DIR" 2>/dev/null || { echo "FATAL: could not reclaim stale lock" >&2; exit 1; }
-  else
-    echo "another op-healthcheck run is in progress — skipping this tick" >&2
-    exit 0
+  if [[ "$acquired" == "no" ]]; then
+    # The lock genuinely exists. Reap one orphaned by kill -9 / power loss rather
+    # than wedging forever; otherwise yield this tick.
+    if [[ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +15 2>/dev/null)" ]]; then
+      echo "stale lock older than 15min — reclaiming" >&2
+      rm -rf "$LOCK_DIR"
+      mkdir "$LOCK_DIR" 2>/dev/null || { echo "FATAL: could not reclaim stale lock" >&2; exit 1; }
+    else
+      echo "another op-healthcheck run is in progress — skipping this tick" >&2
+      exit 0
+    fi
   fi
 fi
 # EXIT does the cleanup. The signal traps must EXIT, not just clean up: bash runs a
@@ -187,11 +199,26 @@ observed=up
 # retry it forever and never establish the state. Seed the belief instead:
 #   healthy first observation -> record "up" silently, nothing is owed
 #   unhealthy first observation -> pretend belief was "up" so the DOWN still pages
+# ABSENT and CORRUPT are different situations and must not share a branch.
+# Absent  -> genuinely uninitialized; seed silently.
+# Corrupt -> the file exists but is blank/garbage (partial write, disk full). The
+#            prior belief may well have been "down", and silently rewriting it to
+#            "up" would DISCARD an open page: no RECOVERED would ever be sent and
+#            the operator would keep believing the service is down. So assume the
+#            worst ("down") and let the normal rule re-announce recovery. A
+#            duplicate RECOVERED is noisy; a swallowed one is an outage nobody
+#            hears the end of.
 case "$prev" in
   up|down) ;;
   *)
-    if [[ "$observed" == "up" ]]; then echo up >"$STATE_FILE"; fi
-    prev=up
+    if [[ ! -f "$STATE_FILE" ]]; then
+      # first run
+      if [[ "$observed" == "up" ]]; then echo up >"$STATE_FILE"; fi
+      prev=up
+    else
+      echo "state file $STATE_FILE is present but malformed ('${prev}') — assuming 'down' so a pending RECOVERED is not lost" >&2
+      prev=down
+    fi
     ;;
 esac
 
