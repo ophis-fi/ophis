@@ -369,8 +369,8 @@ dangerous one is 3000.
 | 4006 `TOO_SLIPPERY` | slippage unrealistic | 4904 `INVALID_SLIPPAGE` | above `MAX_SLIPPAGE_BIPS` | Number changes, and see point 6 |
 | 4007 `SAME_INPUT_OUTPUT` | tokens identical | 4900 `INVALID_REQUEST` | same condition | Number changes |
 | 4011/4012/4018/4019 `*_TOKEN_AMOUNT` | bad amount | 4906 `INVALID_AMOUNT` | same condition | Number changes |
-| 4015 `INVALID_TOKEN_PROPORTIONS` (0 < p < 1) | proportions do not sum to 1 | **4901** `MULTI_TOKEN_UNSUPPORTED` | a partial share is a split intent | **Different code and class** |
-| 4015 `INVALID_TOKEN_PROPORTIONS` (p <= 0, p > 1, non-numeric) | same on Odos | 4900 `INVALID_REQUEST` | malformed, not unsupported | Number changes |
+| 4015 `INVALID_TOKEN_PROPORTIONS` (`0 < p < 1`) | proportions do not sum to 1 | **4901** `MULTI_TOKEN_UNSUPPORTED` | a partial share is a split intent | **Different code and class** |
+| 4015 `INVALID_TOKEN_PROPORTIONS` (`p <= 0`, `p > 1`, non-numeric) | same on Odos | 4900 `INVALID_REQUEST` | malformed, not unsupported | Number changes |
 | 4016 `TOKEN_ROUTING_UNAVAILABLE` | no route for the pair | 2000 `NO_ROUTE` | same meaning, different band | Band changes |
 | 4201 `USER_ADDR_REQ` on `/sor/quote/v3` | `userAddr` missing | **200 OK** | quote-only is a supported mode, not an error | **Delete the branch** |
 | 4201 `USER_ADDR_REQ` on `/sor/swap/v3` | `userAddr` missing | **4911** `NOT_ASSEMBLABLE` | needs an owner to draft an order for | Different code |
