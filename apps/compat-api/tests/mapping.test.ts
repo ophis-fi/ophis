@@ -90,9 +90,12 @@ describe('parseQuoteRequest', () => {
     }
   });
 
-  it('rejects a non-finite proportion', () => {
-    for (const proportion of [Number.NaN, Number.POSITIVE_INFINITY, '1']) {
-      const body = golden();
+  it('rejects a non-finite or non-numeric proportion', () => {
+    // `golden()` types proportion as number, but the parser's whole job is to
+    // police untrusted JSON, so the string case has to reach it as `unknown`.
+    const bad: unknown[] = [Number.NaN, Number.POSITIVE_INFINITY, '1', null];
+    for (const proportion of bad) {
+      const body = golden() as unknown as Record<string, unknown>;
       body.outputTokens = [{ tokenAddress: WETH_OP, proportion }];
       expect(errCode(() => parseQuoteRequest(body))).toBe('INVALID_REQUEST');
     }
