@@ -8,14 +8,17 @@
   const FACTORY = '0x4e1dcf7ad4e460cfd30791ccc4f9c8a4f820ec67'
   const SINGLETON = '0x41675c099f32341bf84bfc5382af534df5c7461a'
   const MIGRATION = '0xbd89a1ce4dde368ffab0ec35506eece0b1ffdc54'
+  const FINAL_SINGLETON = '0x29fcb43b46531bca003ddc8fcb67ffe91900c762'
   const FALLBACK_HANDLER = '0xfd0732dc9e303f09fcef3a7388ad10a83459ec99'
   const EXPECTED_SAFE = '0x858f0f5ee954846d47155f5203c04af1819ecef8'
   const SECOND_OWNER = '0xbec5b03ffdcac50071693e87bfdb88baa6710199'
   const THIRD_OWNER = '0x746ad9c63cca6d3a8588731d60fb87deab4da46a'
+  const PENDING_TRANSACTION_KEY = 'ophisFeeSafePendingTransaction:v0'
   const EXPECTED_CODE_HASHES = new Map([
     [FACTORY, '0x50c3cdc4074750a7a974204a716c999edd37482f907608d960b2b025ee0b3317'],
     [SINGLETON, '0x1fe2df852ba3299d6534ef416eefa406e56ced995bca886ab7a553e6d0c5e1c4'],
     [MIGRATION, '0x2f25df28caf984366ee584e13241707e85dcd5a6ea0c14267928dafc1fd6274b'],
+    [FINAL_SINGLETON, '0xb1f926978a0f44a2c0ec8fe822418ae969bd8c3f18d61e5103100339894f81ff'],
     [FALLBACK_HANDLER, '0x7c6007a5d711cea8dfd5d91f5940ec29c7f200fe511eb1fc1397b367af3c42f9'],
   ])
   const DEPLOY_DATA =
@@ -38,6 +41,41 @@
   const normalizeAddresses = (addresses) => addresses.map((address) => address.toLowerCase()).sort()
   const sameAddresses = (actual, expected) =>
     JSON.stringify(normalizeAddresses(actual)) === JSON.stringify(normalizeAddresses(expected))
+  let pendingTransactionHash = null
+
+  function readPendingTransactionHash() {
+    try {
+      const storedHash = window.localStorage.getItem(PENDING_TRANSACTION_KEY)
+      if (storedHash && /^0x[0-9a-f]{64}$/i.test(storedHash)) pendingTransactionHash = storedHash
+      else if (storedHash) window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
+    } catch {
+      // Some wallet browsers disable storage; the in-memory lock still prevents same-page retries.
+    }
+    return pendingTransactionHash
+  }
+
+  function rememberPendingTransaction(transactionHash) {
+    pendingTransactionHash = transactionHash
+    try {
+      window.localStorage.setItem(PENDING_TRANSACTION_KEY, transactionHash)
+    } catch {
+      // Some wallet browsers disable storage; retain the in-memory lock for this page.
+    }
+  }
+
+  function forgetPendingTransaction() {
+    pendingTransactionHash = null
+    try {
+      window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
+    } catch {
+      // Storage may be unavailable even though the in-memory transaction was reconciled.
+    }
+  }
+
+  async function assertRobinhoodChain(provider) {
+    const chainId = String(await provider.request({ method: 'eth_chainId' })).toLowerCase()
+    if (chainId !== CHAIN_ID_HEX) throw new Error('Wallet left Robinhood Chain (4663); broadcast refused')
+  }
 
   async function switchToRobinhood(provider) {
     if ((await provider.request({ method: 'eth_chainId' })).toLowerCase() === CHAIN_ID_HEX) return
@@ -64,13 +102,35 @@
   async function waitForReceipt(provider, transactionHash) {
     for (let attempt = 0; attempt < 120; attempt += 1) {
       const receipt = await provider.request({ method: 'eth_getTransactionReceipt', params: [transactionHash] })
-      if (receipt) {
-        if (receipt.status !== '0x1') throw new Error(`Transaction reverted: ${transactionHash}`)
-        return receipt
-      }
+      if (receipt) return receipt
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
     throw new Error(`Receipt timeout; verify transaction manually: ${transactionHash}`)
+  }
+
+  async function reconcilePendingTransaction(provider) {
+    const transactionHash = readPendingTransactionHash()
+    if (!transactionHash) return
+    setStatus(`Previous transaction still requires reconciliation: ${transactionHash}\nWaiting for its receipt…`)
+    const receipt = await waitForReceipt(provider, transactionHash)
+    forgetPendingTransaction()
+    if (receipt.status !== '0x1') throw new Error(`Previous transaction reverted: ${transactionHash}`)
+  }
+
+  async function broadcastAndConfirm(provider, transaction, label) {
+    // The initial network switch is not sufficient: wallets may change chains
+    // while the user reviews a confirmation prompt.
+    await assertRobinhoodChain(provider)
+    const transactionHash = await provider.request({
+      method: 'eth_sendTransaction',
+      params: [transaction],
+    })
+    rememberPendingTransaction(transactionHash)
+    setStatus(`${label} broadcast: ${transactionHash}\nWaiting for confirmation…`)
+    const receipt = await waitForReceipt(provider, transactionHash)
+    forgetPendingTransaction()
+    if (receipt.status !== '0x1') throw new Error(`Transaction reverted: ${transactionHash}`)
+    return transactionHash
   }
 
   async function verifyDependencies(provider) {
@@ -79,6 +139,17 @@
       if (code === '0x') throw new Error(`Required Safe dependency is absent: ${address}`)
       const hash = await provider.request({ method: 'web3_sha3', params: [code] })
       if (hash.toLowerCase() !== expectedHash) throw new Error(`Safe dependency code mismatch: ${address}`)
+    }
+  }
+
+  async function verifySafeSingleton(provider) {
+    const storage = await provider.request({
+      method: 'eth_getStorageAt',
+      params: [EXPECTED_SAFE, '0x0', 'latest'],
+    })
+    const installedSingleton = `0x${stripHex(storage).slice(-40)}`.toLowerCase()
+    if (installedSingleton !== FINAL_SINGLETON) {
+      throw new Error(`Safe singleton mismatch: ${installedSingleton}`)
     }
   }
 
@@ -186,19 +257,13 @@
       method: 'eth_estimateGas',
       params: [{ from: sender, to: EXPECTED_SAFE, data: execData, value: '0x0' }],
     }))
-    const transactionHash = await provider.request({
-      method: 'eth_sendTransaction',
-      params: [{
-        from: sender,
-        to: EXPECTED_SAFE,
-        data: execData,
-        value: '0x0',
-        gas: `0x${((gasEstimate * 120n) / 100n).toString(16)}`,
-      }],
-    })
-    setStatus(`${label} broadcast: ${transactionHash}\nWaiting for confirmation…`)
-    await waitForReceipt(provider, transactionHash)
-    return transactionHash
+    return broadcastAndConfirm(provider, {
+      from: sender,
+      to: EXPECTED_SAFE,
+      data: execData,
+      value: '0x0',
+      gas: `0x${((gasEstimate * 120n) / 100n).toString(16)}`,
+    }, label)
   }
 
   async function deployAndConfigure() {
@@ -210,6 +275,7 @@
       const accounts = await provider.request({ method: 'eth_requestAccounts' })
       const sender = String(accounts[0] || '').toLowerCase()
       if (sender !== EXPECTED_SENDER) throw new Error(`Wrong wallet: ${sender || 'none'}`)
+      await reconcilePendingTransaction(provider)
 
       setStatus('Verifying Safe dependency bytecode and deterministic deployment…')
       await verifyDependencies(provider)
@@ -229,21 +295,17 @@
         }))
         if (gasEstimate < 100_000n || gasEstimate > 2_000_000n) throw new Error('Unexpected deployment gas estimate')
         setStatus(`Verified canonical address ${EXPECTED_SAFE}.\nConfirm the 0 ETH Safe deployment transaction.`)
-        deploymentHash = await provider.request({
-          method: 'eth_sendTransaction',
-          params: [{
-            from: sender,
-            to: FACTORY,
-            data: DEPLOY_DATA,
-            value: '0x0',
-            gas: `0x${((gasEstimate * 120n) / 100n).toString(16)}`,
-          }],
-        })
-        setStatus(`Deployment broadcast: ${deploymentHash}\nWaiting for confirmation…`)
-        await waitForReceipt(provider, deploymentHash)
+        deploymentHash = await broadcastAndConfirm(provider, {
+          from: sender,
+          to: FACTORY,
+          data: DEPLOY_DATA,
+          value: '0x0',
+          gas: `0x${((gasEstimate * 120n) / 100n).toString(16)}`,
+        }, 'Deployment')
         safeCode = await provider.request({ method: 'eth_getCode', params: [EXPECTED_SAFE, 'latest'] })
         if (safeCode === '0x') throw new Error('Deployment receipt succeeded but Safe code is absent')
       }
+      await verifySafeSingleton(provider)
 
       let state = await safeState(provider)
       let secondOwnerHash = null
@@ -286,8 +348,18 @@
       ].join('\n'))
       button.textContent = 'Safe configured'
     } catch (error) {
-      setStatus(`REFUSED / STOPPED\n${error?.message || String(error)}`)
-      button.disabled = false
+      const unresolvedHash = readPendingTransactionHash()
+      if (unresolvedHash) {
+        setStatus([
+          'TRANSACTION STILL PENDING — RETRY LOCKED',
+          unresolvedHash,
+          error?.message || String(error),
+          'Keep this page open or press the button after reloading to resume receipt reconciliation.',
+        ].join('\n'))
+      } else {
+        setStatus(`REFUSED / STOPPED\n${error?.message || String(error)}`)
+        button.disabled = false
+      }
     }
   }
 

@@ -74,7 +74,7 @@ createCowSwapWidget(el, {
     baseUrl: 'https://swap.ophis.fi',
     appCode: 'MyDapp-via-Ophis',
     partnerFee: {
-      bps: 10, // 0.10%
+      bps: 5, // 0.05%
       recipient:
         '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
     },
@@ -120,7 +120,7 @@ createCowSwapWidget(el, {
           params: {
             baseUrl: 'https://swap.ophis.fi',
             appCode: 'Ophis-Widget-Demo',
-            partnerFee: { bps: 10, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+            partnerFee: { bps: 5, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
             tradeType: 'swap',
             sell: { asset: 'ETH' },
             buy: { asset: 'USDC' },
