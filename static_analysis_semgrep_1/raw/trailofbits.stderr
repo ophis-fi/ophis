@@ -1,0 +1,39 @@
+/Users/scep/.local/pipx/venvs/semgrep/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+               
+               
+┌─────────────┐
+│ Scan Status │
+└─────────────┘
+  Scanning 10 files tracked by git with 120 Code rules:
+                                                                                                                        
+  Language      Rules   Files          Origin      Rules                                                                
+ ─────────────────────────────        ───────────────────                                                               
+  <multilang>      17      10          Community     120                                                                
+  yaml             24       6                                                                                           
+  python           24       4                                                                                           
+  go               18       4                                                                                           
+  ruby             15       4                                                                                           
+  terraform         9       4                                                                                           
+  js                9       4                                                                                           
+  ts                9       4                                                                                           
+  java              2       4                                                                                           
+  kotlin            2       4                                                                                           
+  swift             1       4                                                                                           
+  rust              1       4                                                                                           
+                                                                                                                        
+                
+                
+┌──────────────┐
+│ Scan Summary │
+└──────────────┘
+✅ Scan completed successfully.
+ • Findings: 8 (8 blocking)
+ • Rules run: 120
+ • Targets scanned: 10
+ • Parsed lines: ~87.4%
+ • No ignore information available
+ • For a detailed list of skipped files and lines, run semgrep with the --verbose flag
+Ran 120 rules on 10 files: 8 findings.
+
+A new version of Semgrep is available. See https://semgrep.dev/docs/upgrading

@@ -96,7 +96,7 @@ settlement pauses. CI locks this topology through `assert-erpc-failclosed.py`.
 | lifi       | Confirmed (li.quest lists 4663; live same-chain quotes) | **Active** |
 | kyberswap  | Confirmed (`robinhood` API; live Ekubo/Uniswap routes) | **Active** |
 | baseline   | n/a - ships empty (unsupported pool types) | Inactive |
-| okx / velora / odos / openocean / dodo / enso | NOT on 4663 today | Disabled - revisit as each adds the chain |
+| okx / velora / openocean / dodo / enso | NOT on 4663 today | Disabled - revisit as each adds the chain |
 
 LI.FI and KyberSwap compete independently. Kyber's route builder reaches the
 deployed Robinhood DEX liquidity while the solver and driver enforce a static

@@ -1,0 +1,107 @@
+{
+  "version": "1.136.0",
+  "results": [],
+  "errors": [],
+  "paths": {
+    "scanned": [
+      "/Users/scep/greg-wt/odos-cleanup/apps/compat-api/src/mapping.ts",
+      "/Users/scep/greg-wt/odos-cleanup/apps/compat-api/tests/mapping.test.ts",
+      "/Users/scep/greg-wt/odos-cleanup/apps/frontend/apps/cowswap-frontend/src/common/hooks/useSolversInfo.test.ts",
+      "/Users/scep/greg-wt/odos-cleanup/apps/frontend/apps/cowswap-frontend/src/modules/appData/index.ts",
+      "/Users/scep/greg-wt/odos-cleanup/apps/frontend/apps/cowswap-frontend/src/modules/appData/updater/AppDataUpdater.tsx",
+      "/Users/scep/greg-wt/odos-cleanup/apps/frontend/apps/cowswap-frontend/src/modules/multiOrder/hooks/useBasketQuotes.ts",
+      "/Users/scep/greg-wt/odos-cleanup/apps/frontend/apps/cowswap-frontend/src/modules/multiOrder/hooks/useBuildBasketLegAppData.ts",
+      "/Users/scep/greg-wt/odos-cleanup/apps/frontend/apps/cowswap-frontend/src/modules/volumeFee/index.ts",
+      "/Users/scep/greg-wt/odos-cleanup/apps/frontend/apps/cowswap-frontend/src/ophis/solvers.ts"
+    ]
+  },
+  "time": {
+    "rules": [],
+    "rules_parse_time": 0.05199599266052246,
+    "profiling_times": {
+      "config_time": 1.3532752990722656,
+      "core_time": 1.2731499671936035,
+      "ignores_time": 0.00010132789611816406,
+      "total_time": 2.6270883083343506
+    },
+    "parsing_time": {
+      "total_time": 0.0,
+      "per_file_time": {
+        "mean": 0.0,
+        "std_dev": 0.0
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_files": []
+    },
+    "scanning_time": {
+      "total_time": 0.015872955322265625,
+      "per_file_time": {
+        "mean": 0.0005878872341579862,
+        "std_dev": 2.9017656395157205e-07
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_files": []
+    },
+    "matching_time": {
+      "total_time": 0.0,
+      "per_file_and_rule_time": {
+        "mean": 0.0,
+        "std_dev": 0.0
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_rules_on_files": []
+    },
+    "tainting_time": {
+      "total_time": 0.0,
+      "per_def_and_rule_time": {
+        "mean": 0.0,
+        "std_dev": 0.0
+      },
+      "very_slow_stats": {
+        "time_ratio": 0.0,
+        "count_ratio": 0.0
+      },
+      "very_slow_rules_on_defs": []
+    },
+    "fixpoint_timeouts": [],
+    "prefiltering": {
+      "project_level_time": 0.0,
+      "file_level_time": 0.0,
+      "rules_with_project_prefilters_ratio": 0.0,
+      "rules_with_file_prefilters_ratio": 1.0,
+      "rules_selected_ratio": 0.004273504273504274,
+      "rules_matched_ratio": 0.004273504273504274
+    },
+    "targets": [],
+    "total_bytes": 0,
+    "max_memory_bytes": 168640704
+  },
+  "engine_requested": "OSS",
+  "skipped_rules": [],
+  "_filter": {
+    "category": "security",
+    "confidence": [
+      "HIGH",
+      "MEDIUM"
+    ],
+    "impact": [
+      "HIGH",
+      "MEDIUM"
+    ],
+    "cli_severity_prefilter": [
+      "WARNING",
+      "ERROR"
+    ],
+    "kept": 0,
+    "from": 0
+  }
+}

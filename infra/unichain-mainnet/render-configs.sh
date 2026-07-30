@@ -488,6 +488,39 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   fi
 done
 
+# Prune ORPHANED renders: a rendered/<name> whose configs/<name>.tmpl no longer
+# exists. The render loop above only ever visits names derived from a template
+# that IS present, so deleting a template silently strands its last render.
+#
+# This is not cosmetic. A PK-bearing orphan (odos.toml, when the Odos lane was
+# retired) is a SYMLINK into the RAM-disk still holding that lane's live API key,
+# referenced by nothing. The leak assertion below cannot see it either: it scans
+# `find rendered -type f`, and both `-type f` and its `! -L` guard skip symlinks.
+# So without this pass the credential survives until the RAM-disk is unmounted.
+#
+# Deliberately unlinks the RAM-disk target BEFORE the symlink, because once the
+# symlink is gone the target's path is no longer discoverable from here.
+for rendered_path in rendered/*.toml rendered/*.yaml; do
+  [[ -e "$rendered_path" || -L "$rendered_path" ]] || continue
+  rendered_name="$(basename "$rendered_path")"
+  [[ -f "configs/${rendered_name}.tmpl" ]] && continue
+
+  if [[ -L "$rendered_path" ]]; then
+    orphan_target="$(readlink "$rendered_path")"
+    # Only follow the link into the RAM-disk we manage; never delete an
+    # arbitrary path a hand-edited symlink happens to point at.
+    if [[ "$orphan_target" == "${RAM_PK_MOUNT}/"* && -f "$orphan_target" ]]; then
+      rm -f "$orphan_target"
+      echo "  pruned    ${rendered_name} (orphaned; also removed its RAM-disk render)"
+    else
+      echo "  pruned    ${rendered_name} (orphaned symlink; target left untouched)"
+    fi
+  else
+    echo "  pruned    ${rendered_name} (orphaned)"
+  fi
+  rm -f "$rendered_path"
+done
+
 # Sanity: if Tier 1.5 left a stale on-disk driver.toml from a prior
 # Tier-1-only render, scrub it now. We already removed it BEFORE envsubst
 # above, but the rendered/.../driver.toml.BAK pattern from older operator
