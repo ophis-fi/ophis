@@ -49,6 +49,15 @@
 #    compromise can never satisfy quorum alone. (This property survived the
 #    2026-07-30 keyed withdrawal: it is why zan was chosen over the faster but
 #    Cloudflare-fronted drpc/1rpc.)
+#  - ⚠️ CAVEAT to the line above, and the reason "Block T" exists below: that
+#    "can never satisfy quorum alone" claim holds ONLY where all three lanes can
+#    actually answer. For eth_call / eth_getLogs / eth_estimateGas, zan's
+#    unregistered tier hard-rejects the call, so only two lanes respond — and a
+#    disagreement there is a DISPUTE, not low-participants. Under
+#    preferBlockHeadLeader a hostile lane wins that tie-break by advertising the
+#    freshest head, with nothing agreeing with it. Block T forces those three
+#    methods to returnError so the claim holds again. Restoring a third capable
+#    lane is the real fix; see Block T's note.
 #  - Two independent failure domains compromised at once: nation-state class,
 #    out of scope.
 #  - All three returning the same answer IS the canonical chain state
@@ -244,6 +253,53 @@ projects:
           # - OphisOpErpcUpstreamCordoned (per-upstream sat-out detection)
           # - OphisOpErpcUpstreamBlockHeadLagging (chronic-lag root cause)
           # - OphisOpErpcCordonMetricAbsent (silent-monitoring-gap guard)
+
+          # === Block T: THIN-QUORUM methods — dispute must FAIL CLOSED ===
+          # Placed BEFORE Blocks A/B so it first-matches. Covers exactly the
+          # methods that only TWO upstreams in the current set can serve, because
+          # zan's unregistered tier hard-rejects them (-32012).
+          #
+          # WHY THIS RULE EXISTS (review finding, 2026-07-30 P1): with only two
+          # responders, agreementThreshold:2 can still be *satisfied*, so a hostile
+          # upstream does not produce a low-participants error — it produces a
+          # DISPUTE (one honest value, one forged). Under Blocks A/B's
+          # disputeBehavior:preferBlockHeadLeader, eRPC then resolves that dispute
+          # by picking whichever upstream advertises the freshest head — which the
+          # hostile provider controls. Its forged value would be SELECTED with no
+          # second upstream agreeing, defeating the single-provider-compromise
+          # protection this whole config exists to provide.
+          #
+          # returnError removes that path entirely: a 2-lane disagreement can never
+          # select a value, it fails closed. Consistent with this file's stated
+          # posture, "rather not settle than settle against forged state".
+          #
+          # COST: genuine 1-block tip-drift between the two lanes now errors instead
+          # of being tie-broken. Measured 2026-07-30: ~12.6 disputes/hour across ALL
+          # methods (receipts already returnError), against thousands of calls/hour —
+          # a low rate, and the orderbook runs multiple estimators with retries.
+          #
+          # ⚠️ THIS RULE IS A SYMPTOM, NOT THE CURE. The real fix is a THIRD lane
+          # capable of these methods, which restores honest-majority agreement and
+          # removes BOTH the security hole and the tip-drift error cost:
+          #   1. Register a free zan.top account — unlocks eth_call / eth_getLogs /
+          #      eth_estimateGas on the existing zan lane. Cheapest path.
+          #   2. Or restore a keyed lane (re-enable the Validation Cloud client;
+          #      Alchemy's free quota resets 2026-08-01).
+          # Once a third capable lane exists, DELETE this rule so these methods fall
+          # back to Blocks A/B and regain preferBlockHeadLeader tip-drift tolerance.
+          - matchMethod: "eth_call|eth_getLogs|eth_estimateGas"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 3
+              agreementThreshold: 2
+              # THE FIX: no leader tie-break on a 2-lane quorum.
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
+              punishMisbehavior:
+                disputeThreshold: 60
+                disputeWindow: 10m
+                sitOutPenalty: 5m
 
           # === Block A: Deterministic-state methods (LOW threshold) ===
           - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt"
