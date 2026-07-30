@@ -44,26 +44,37 @@
     JSON.stringify(normalizeAddresses(actual)) === JSON.stringify(normalizeAddresses(expected))
   let pendingTransaction = null
 
+  function parsePendingTransaction(value, requireVersionMarker) {
+    if (!value) return null
+    try {
+      const transaction = JSON.parse(value)
+      if (
+        /^0x[0-9a-f]{64}$/i.test(transaction?.hash) &&
+        /^0x[0-9a-f]{40}$/i.test(transaction?.sender) &&
+        /^0x[0-9a-f]+$/i.test(transaction?.nonce) &&
+        (!requireVersionMarker || typeof transaction?.nonceProvisional === 'boolean')
+      ) {
+        return {
+          ...transaction,
+          nonceProvisional: requireVersionMarker ? transaction.nonceProvisional : true,
+        }
+      }
+    } catch {
+      // Invalid JSON is not a usable transaction lock.
+    }
+    return null
+  }
+
   function readPendingTransaction() {
     try {
       const storedValue = window.localStorage.getItem(PENDING_TRANSACTION_KEY)
-      if (storedValue) {
-        const storedTransaction = JSON.parse(storedValue)
-        if (
-          /^0x[0-9a-f]{64}$/i.test(storedTransaction?.hash) &&
-          /^0x[0-9a-f]{40}$/i.test(storedTransaction?.sender) &&
-          /^0x[0-9a-f]+$/i.test(storedTransaction?.nonce) &&
-          typeof storedTransaction?.nonceProvisional === 'boolean'
-        ) {
-          pendingTransaction = storedTransaction
-          return pendingTransaction
-        }
-        window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
-      }
-      // Migrate the raw hash written and understood by already-open v0 tabs.
+      const storedTransaction = parsePendingTransaction(storedValue, true)
+      if (storedValue && !storedTransaction) window.localStorage.removeItem(PENDING_TRANSACTION_KEY)
+
       const legacyValue = window.localStorage.getItem(LEGACY_PENDING_TRANSACTION_KEY)
+      let legacyTransaction = null
       if (/^0x[0-9a-f]{64}$/i.test(legacyValue || '')) {
-        pendingTransaction = {
+        legacyTransaction = {
           hash: legacyValue,
           sender: EXPECTED_SENDER,
           nonce: null,
@@ -72,21 +83,19 @@
       } else if (legacyValue) {
         // Migrate the short-lived version that accidentally stored v1-shaped
         // JSON under the v0 key.
-        const legacyTransaction = JSON.parse(legacyValue)
-        if (
-          /^0x[0-9a-f]{64}$/i.test(legacyTransaction?.hash) &&
-          /^0x[0-9a-f]{40}$/i.test(legacyTransaction?.sender) &&
-          /^0x[0-9a-f]+$/i.test(legacyTransaction?.nonce)
-        ) {
-          pendingTransaction = { ...legacyTransaction, nonceProvisional: true }
-          rememberPendingTransaction(
-            pendingTransaction.hash,
-            pendingTransaction.sender,
-            pendingTransaction.nonce,
-            true,
-          )
-        }
+        legacyTransaction = parsePendingTransaction(legacyValue, false)
       }
+
+      // An older open tab can advance the ceremony and update only v0. Its
+      // differing hash is newer than stale v1 metadata and must win.
+      if (
+        legacyTransaction &&
+        (!storedTransaction || legacyTransaction.hash.toLowerCase() !== storedTransaction.hash.toLowerCase())
+      ) {
+        pendingTransaction = legacyTransaction
+        return pendingTransaction
+      }
+      pendingTransaction = storedTransaction || legacyTransaction || pendingTransaction
     } catch {
       // Some wallet browsers disable storage; the in-memory lock still prevents same-page retries.
     }
@@ -175,7 +184,7 @@
       }
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
-    if (consecutiveMissingChecks === 120 && nonce) {
+    if (consecutiveMissingChecks === 120) {
       const [confirmedNonce, nextPendingNonce] = await Promise.all([
         provider.request({
           method: 'eth_getTransactionCount',
@@ -186,15 +195,19 @@
           params: [transaction.sender, 'pending'],
         }),
       ])
-      if (BigInt(confirmedNonce) > BigInt(nonce)) return { receipt: null, replaced: true }
-      if (BigInt(nextPendingNonce) > BigInt(nonce)) {
-        throw new Error(`A same-nonce replacement is still pending; retry remains locked: ${transaction.hash}`)
+      if (nonce) {
+        if (BigInt(confirmedNonce) > BigInt(nonce)) return { receipt: null, replaced: true }
+        if (BigInt(nextPendingNonce) > BigInt(nonce)) {
+          throw new Error(`A same-nonce replacement is still pending; retry remains locked: ${transaction.hash}`)
+        }
+      } else if (BigInt(nextPendingNonce) !== BigInt(confirmedNonce)) {
+        throw new Error(`The sender still has a pending transaction; legacy retry remains locked: ${transaction.hash}`)
       }
       if (
         window.confirm(
-          `The wallet RPC no longer knows transaction ${transaction.hash}, its nonce was not consumed, and no ` +
-          'same-nonce replacement is pending. Only continue if your wallet also marks it as dropped. Retire this ' +
-          'stale hash and recheck Safe state?',
+          `The wallet RPC no longer knows transaction ${transaction.hash}, and the sender has no pending ` +
+          'transactions. Only continue if your wallet also marks it as dropped. Retire this stale hash and ' +
+          'recheck Safe state?',
         )
       ) {
         return { receipt: null, replaced: false, dropped: true }
