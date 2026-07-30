@@ -77,16 +77,32 @@ mkdir -p "$STATE_DIR"
 # mkdir is atomic on every filesystem we care about, so it needs no flock.
 LOCK_DIR="$STATE_DIR/op-health.lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  # mkdir can fail for two very different reasons and they must not be conflated:
+  # contention (the lock exists) vs. the directory being uncreatable at all
+  # (STATE_DIR unwritable, read-only or full filesystem). Treating the second as
+  # contention would exit 0 on every tick and SILENTLY DISABLE the monitor — the
+  # same class of quiet death this whole file keeps trying to design out.
+  if [[ ! -d "$LOCK_DIR" ]]; then
+    echo "FATAL: cannot create $LOCK_DIR (STATE_DIR unwritable / disk full?) — monitor cannot run" >&2
+    exit 1   # non-zero so launchd records a failure instead of a clean skip
+  fi
   # Reap a lock orphaned by a kill -9 / power loss rather than wedging forever.
   if [[ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +15 2>/dev/null)" ]]; then
     echo "stale lock older than 15min — reclaiming" >&2
-    rm -rf "$LOCK_DIR"; mkdir "$LOCK_DIR" 2>/dev/null || exit 0
+    rm -rf "$LOCK_DIR"
+    mkdir "$LOCK_DIR" 2>/dev/null || { echo "FATAL: could not reclaim stale lock" >&2; exit 1; }
   else
     echo "another op-healthcheck run is in progress — skipping this tick" >&2
     exit 0
   fi
 fi
-trap 'rm -rf "$LOCK_DIR"' EXIT INT TERM
+# EXIT does the cleanup. The signal traps must EXIT, not just clean up: bash runs a
+# signal handler and then CONTINUES the script, so releasing the lock inline would
+# let this run keep probing/notifying without holding it — a replacement process
+# could take the lock and then have it deleted by this process's later EXIT trap.
+trap 'rm -rf "$LOCK_DIR"' EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
 
 # Returns 0 ONLY if Telegram accepted the message (HTTP 200). Callers MUST gate the
 # persisted transition state on this — see "delivery-gated state" below.
@@ -165,6 +181,20 @@ fi
 observed=up
 [[ "$vcode" == "200" ]] || observed=down
 
+# FIRST RUN / corrupt state: prev is "init", which is neither up nor down, so the
+# belief rule below would read it as a transition and fire a RECOVERED for a DOWN
+# that was never sent — and if that misleading send failed, every healthy tick would
+# retry it forever and never establish the state. Seed the belief instead:
+#   healthy first observation -> record "up" silently, nothing is owed
+#   unhealthy first observation -> pretend belief was "up" so the DOWN still pages
+case "$prev" in
+  up|down) ;;
+  *)
+    if [[ "$observed" == "up" ]]; then echo up >"$STATE_FILE"; fi
+    prev=up
+    ;;
+esac
+
 # One rule for both directions: if belief != observation we owe a message. Sending
 # it is what updates the belief, so a failed send simply leaves the debt in place
 # and the next run retries. No branch can "consume" a transition without delivering.
@@ -196,10 +226,13 @@ Only if the stack must be rebuilt: cd ${DEPLOY_DIR} && ./compose-up.sh (needs su
 fi
 
 if [[ "$observed" == "down" ]]; then
-  # Pricing is meaningless while the orderbook is unreachable; reset the debounce so
-  # a recovery does not immediately inherit a stale DEGRADED count.
+  # Pricing is meaningless while the orderbook is unreachable, so reset the DEBOUNCE
+  # COUNTER. But do NOT delete QSENT_FILE: that file is the recipient's pricing
+  # BELIEF, and only a delivered message may change a belief. Dropping it here meant
+  # that if DEGRADED had been delivered and then liveness failed, we silently forgot
+  # they had been told — so a later real recovery sent no pricing RECOVERED, and a
+  # continuing degradation re-paged from scratch after the debounce.
   echo 0 >"$QFAIL_FILE"
-  rm -f "$QSENT_FILE"
   exit 0
 fi
 
@@ -219,13 +252,28 @@ qfail="$(cat "$QFAIL_FILE" 2>/dev/null || echo 0)"
 [[ "$qfail" =~ ^[0-9]+$ ]] || qfail=0
 
 if [[ "$qcode" == "200" ]]; then
+  # Only an actual HTTP 200 quote proves pricing works, so this is the ONLY place
+  # that may observe "ok".
   qobserved=ok
   echo 0 >"$QFAIL_FILE"
 else
-  qfail=$(( qfail + 1 ))
+  # `10#` forces base 10. A digits-only guard is not sufficient: a corrupt counter
+  # like "08" passes the regex but is an invalid OCTAL literal, and the arithmetic
+  # would abort the run — suppressing DEGRADED alerts for as long as it persisted.
+  qfail=$(( 10#$qfail + 1 ))
   echo "$qfail" >"$QFAIL_FILE"
-  qobserved=ok
-  [[ "$qfail" -ge "$DEGRADED_AFTER" ]] && qobserved=degraded
+  if [[ -f "$QSENT_FILE" ]]; then
+    # Degradation was already DELIVERED. It stays observed-degraded until a real 200
+    # above proves recovery. Without this, the reset debounce counter made a still
+    # failing quote look "ok" for the first couple of ticks after a liveness outage,
+    # so we told the recipient pricing had RECOVERED and then re-paged DEGRADED a
+    # few ticks later.
+    qobserved=degraded
+  elif [[ "$qfail" -ge "$DEGRADED_AFTER" ]]; then
+    qobserved=degraded
+  else
+    qobserved=ok
+  fi
 fi
 
 # Same belief model as tier 1: QSENT_FILE's presence IS the belief ("recipient has
