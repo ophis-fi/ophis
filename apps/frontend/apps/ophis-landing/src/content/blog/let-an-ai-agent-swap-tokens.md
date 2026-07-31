@@ -206,6 +206,57 @@ spells out the full kit. The rule of thumb: an autonomous integrator is one
 unpinned `receiver` away from draining itself, so do not ship one until the
 policy is in code, not prose.
 
+## FAQ
+
+### Can an AI agent swap tokens on its own?
+
+Yes. An agent can quote, build, sign, and submit a swap without a human in the
+loop, and Ophis exposes three surfaces for it: the hosted MCP server at
+`https://mcp.ophis.fi/mcp`, the Intent API, and `@ophis/sdk`. What the agent
+signs is a bounded order with a hard limit price rather than an arbitrary
+transaction, so the worst execution it can receive is the one it committed to.
+Removing the human is the point at which the policy rails in this article stop
+being optional, because a prompt-injected agent will sign whatever it is told.
+
+### Does Ophis hold an agent's private key?
+
+No. The MCP server is keyless and unauthenticated: it never holds keys and never
+signs anything. `build_order` returns a ready-to-sign order, the agent signs it
+locally with its own key, and `submit_order` relays that signature. The
+signature is the trust boundary, which is why the order it covers has to be
+bounded before it is produced.
+
+### How do I stop an agent from signing a bad swap?
+
+Four checks catch the failures that a human would otherwise catch in a wallet
+prompt. Pin the receiver to the owner before signing (`build_order` does this by
+default, and `assertReceiverIsOwner` enforces it in the SDK). Resolve token
+addresses through `resolve_token`, which fails closed rather than accepting an
+address the model produced. Keep a hard limit price so the order cannot fill
+below what the agent reasoned about. Then run `validate_order` as a preflight.
+For unattended signing, move those checks into code behind a Safe and an
+EIP-1271 policy gate rather than trusting the agent to honour them.
+
+### What does it cost an agent to swap?
+
+Integrations through the SDK and MCP pay a flat 0.05% (5 bps) of trade volume,
+reduced to 0.01% (1 bp) for stablecoin-to-stablecoin pairs, which is half the
+0.10% retail rate on the swap app. The fee comes out of the traded amount rather
+than being billed separately, so an agent wallet funded only in the tokens it
+trades can still swap: for an ERC-20 order the only transaction it ever
+broadcasts is a one-time approval per token per chain. The fee takes no share of
+any price improvement the solver competition finds.
+
+### Which chains can an agent trade on?
+
+All 13 EVM chains Ophis supports, with Solana and Bitcoin available as
+destinations via NEAR Intents. Do not hardcode endpoints: three of those chains
+(Optimism, Unichain, and Robinhood Chain) are Ophis-operated and settle through
+Ophis's own GPv2Settlement at a non-canonical address, so an order signed
+against CoW's canonical domain will be rejected there. Resolve the settlement
+domain and orderbook host per chain through `list_chains` or the SDK helpers and
+that class of bug disappears.
+
 ## Start here
 
 Ophis is the swap layer for the agent era: MEV-protected, self-custody, and
