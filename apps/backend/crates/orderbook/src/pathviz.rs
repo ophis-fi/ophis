@@ -18,7 +18,10 @@
 //! fabricated labels (27).
 
 use {
-    alloy::primitives::{Address, B256, U256, address, b256},
+    alloy::{
+        primitives::{Address, B256, U256, address, b256},
+        sol_types::SolEvent as _,
+    },
     model::pathviz::{
         Fee, PathVizGraph, PathVizImageConfig, PathVizLink, PathVizLinkKind, PathVizNode,
         PathVizNodeKind, PathVizSolverBid, Surplus, MAX_SOLVERS, MAX_VENUES,
@@ -35,6 +38,13 @@ use {
 /// `keccak256("Transfer(address,address,uint256)")`.
 const TRANSFER_TOPIC: B256 =
     b256!("ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef");
+
+/// GPv2 `Trade` event topic, taken from the contract binding rather than
+/// hardcoded so it cannot drift from the deployed ABI. The settlement emits one
+/// `Trade` per order in the batch, so the count of these logs is how we tell a
+/// single-order settlement (venues are attributable to the requested order)
+/// from a multi-order batch (they are not: see `classify_settlement`).
+const TRADE_TOPIC: B256 = contracts::GPv2Settlement::GPv2Settlement::Trade::SIGNATURE_HASH;
 
 /// The GPv2 settlement contract on the Ophis-operated chains. Transfers to
 /// or from this address are the batch hub, not a venue (spec value).
@@ -70,6 +80,14 @@ pub struct TransferLog {
     pub to: Address,
     pub value: U256,
 }
+
+/// What a settlement receipt yields for the venue column: the ERC-20 transfers
+/// and the count of GPv2 `Trade` events (one per order in the batch).
+struct ReceiptData {
+    transfers: Vec<TransferLog>,
+    trade_count: usize,
+}
+
 
 /// Address -> human label registry, loaded from TOML. Missing entries
 /// degrade to the bare `0x...` address (owner decision 27), never a
@@ -261,27 +279,50 @@ pub fn compute_surplus(
     executed_buy_atoms: &str,
 ) -> Option<Surplus> {
     let parse = |s: &str| s.parse::<U256>().ok();
+
+    // The signed amounts are the FULL order's limit. A partially-filled order
+    // must be measured against the limit SCALED to the filled fraction, or the
+    // surplus is nonsense: a partial sell would show none (executed_buy is only
+    // a fraction of the full signed_buy), and a partial buy would report the
+    // unfilled sell remainder as if it were surplus. For a full fill the scale
+    // is the identity, so this matches the previous behaviour exactly.
+    let signed_sell = parse(signed_sell_atoms)?;
+    let signed_buy = parse(signed_buy_atoms)?;
+    let executed_sell = parse(executed_sell_atoms)?;
+    let executed_buy = parse(executed_buy_atoms)?;
+
+    // scaled = whole * num / den, computed as mul-before-div to keep precision.
+    // Returns None on a zero denominator or a mul overflow rather than a wrong
+    // number: surplus is a display field, degrade it, never fabricate it.
+    let scale = |whole: U256, num: U256, den: U256| -> Option<U256> {
+        if den.is_zero() {
+            return None;
+        }
+        whole.checked_mul(num).map(|p| p / den)
+    };
+
     if is_sell_order {
-        // Surplus in the buy token: executed_buy - signed_min_buy.
-        let executed = parse(executed_buy_atoms)?;
-        let signed = parse(signed_buy_atoms)?;
-        let diff = executed.checked_sub(signed).filter(|d| !d.is_zero())?;
+        // Filled fraction = executed_sell / signed_sell. The pro-rated minimum
+        // buy is signed_buy * that fraction; surplus is executed_buy above it.
+        let scaled_min_buy = scale(signed_buy, executed_sell, signed_sell)?;
+        let diff = executed_buy.checked_sub(scaled_min_buy).filter(|d| !d.is_zero())?;
         Some(Surplus {
             amount_atoms: diff.to_string(),
             token_symbol: buy.symbol.clone(),
             amount_display: Some(format_atoms(&diff.to_string(), buy.decimals, &buy.symbol)),
-            percent: surplus_fraction(&executed, &signed),
+            percent: surplus_fraction(&executed_buy, &scaled_min_buy),
         })
     } else {
-        // Buy order: surplus in the sell token = signed_max_sell - executed_sell.
-        let executed = parse(executed_sell_atoms)?;
-        let signed = parse(signed_sell_atoms)?;
-        let diff = signed.checked_sub(executed).filter(|d| !d.is_zero())?;
+        // Buy order: filled fraction = executed_buy / signed_buy. The pro-rated
+        // maximum sell is signed_sell * that fraction; surplus is how far
+        // executed_sell came in under it.
+        let scaled_max_sell = scale(signed_sell, executed_buy, signed_buy)?;
+        let diff = scaled_max_sell.checked_sub(executed_sell).filter(|d| !d.is_zero())?;
         Some(Surplus {
             amount_atoms: diff.to_string(),
             token_symbol: sell.symbol.clone(),
             amount_display: Some(format_atoms(&diff.to_string(), sell.decimals, &sell.symbol)),
-            percent: surplus_fraction(&signed, &executed),
+            percent: surplus_fraction(&scaled_max_sell, &executed_sell),
         })
     }
 }
@@ -566,42 +607,62 @@ impl PathVizService {
     /// Best-effort settlement transfer fetch. Returns an empty vec (the
     /// venue column degrades away) when there is no provider, the receipt is
     /// missing, or any decode fails. Never fails the request.
-    async fn fetch_transfers(&self, tx_hash: B256) -> Vec<TransferLog> {
-        let Some(provider) = &self.provider else {
-            return Vec::new();
-        };
+    /// Fetch a settlement receipt and extract what the venue column needs: the
+    /// ERC-20 transfers and the number of GPv2 `Trade` events (= orders settled
+    /// in the batch).
+    ///
+    /// Returns `None` when the receipt could NOT be read (provider absent, not
+    /// yet mined, or an RPC error). That is deliberately distinct from
+    /// `Some(empty)`: the caller must not cache a `None`, so a transient RPC
+    /// failure retries on the next request instead of pinning a venue-less
+    /// diagram forever.
+    async fn fetch_receipt(&self, tx_hash: B256) -> Option<ReceiptData> {
+        let provider = self.provider.as_ref()?;
         use alloy::providers::Provider as _;
         let receipt = match provider.get_transaction_receipt(tx_hash).await {
             Ok(Some(r)) => r,
-            Ok(None) => return Vec::new(),
+            // No receipt yet is transient (indexer/RPC lag), not a settled fact.
+            Ok(None) => return None,
             Err(err) => {
-                tracing::warn!(?err, "pathviz: settlement receipt fetch failed; venues degrade");
-                return Vec::new();
+                tracing::warn!(?err, "pathviz: settlement receipt fetch failed; will retry");
+                return None;
             }
         };
-        let mut out = Vec::new();
+        let mut transfers = Vec::new();
+        let mut trade_count = 0usize;
         for log in receipt.inner.logs() {
             let topics = log.topics();
-            if topics.first() != Some(&TRANSFER_TOPIC) || topics.len() < 3 {
-                continue;
+            match topics.first() {
+                // One Trade per order settled by the hub. Match the emitter too
+                // so an unrelated contract's same-topic log cannot inflate the
+                // count.
+                Some(t) if *t == TRADE_TOPIC && log.address() == SETTLEMENT_CONTRACT => {
+                    trade_count += 1;
+                }
+                Some(t) if *t == TRANSFER_TOPIC && topics.len() >= 3 => {
+                    // Standard Transfer data is a single 32-byte word; guard
+                    // against non-standard payloads so `from_be_slice` cannot
+                    // panic.
+                    let data = log.data().data.as_ref();
+                    let word = if data.len() >= 32 {
+                        &data[data.len() - 32..]
+                    } else {
+                        data
+                    };
+                    transfers.push(TransferLog {
+                        token: log.address(),
+                        from: Address::from_word(topics[1]),
+                        to: Address::from_word(topics[2]),
+                        value: U256::from_be_slice(word),
+                    });
+                }
+                _ => {}
             }
-            // Standard Transfer data is a single 32-byte word; guard against
-            // non-standard payloads so `from_be_slice` cannot panic.
-            let data = log.data().data.as_ref();
-            let word = if data.len() >= 32 {
-                &data[data.len() - 32..]
-            } else {
-                data
-            };
-            let value = U256::from_be_slice(word);
-            out.push(TransferLog {
-                token: log.address(),
-                from: Address::from_word(topics[1]),
-                to: Address::from_word(topics[2]),
-                value,
-            });
         }
-        out
+        Some(ReceiptData {
+            transfers,
+            trade_count,
+        })
     }
 
     /// Assemble (and optionally render) the QUOTE-TIME view for a quote
@@ -643,17 +704,35 @@ impl PathVizService {
 
     /// Resolve the venue address set from a settlement tx into
     /// registry-labelled (address, label) pairs.
-    pub async fn venues_for_settlement(
-        &self,
-        tx_hash: B256,
-        trader: Address,
-    ) -> Vec<(Address, String)> {
-        let transfers = self.fetch_transfers(tx_hash).await;
-        let (venues, _matched) = classify_settlement(&transfers, trader);
-        venues
-            .into_iter()
-            .map(|addr| (addr, self.registry.label_for(addr)))
-            .collect()
+    /// Resolve the venue column for a settled order, or `None` when the receipt
+    /// could not be read (so the caller does not cache a transient failure).
+    ///
+    /// A multi-order batch returns `Some` with EMPTY venues and
+    /// `multi_order: true`: `classify_settlement` treats every non-trader,
+    /// non-hub counterparty in the receipt as a venue, but in a batch those
+    /// counterparties belong to the OTHER orders too, so attributing them here
+    /// would draw someone else's pool as this order's route and could push the
+    /// real venue past `MAX_VENUES`. Degrading to solver -> out is the honest
+    /// answer until per-order transfer attribution exists.
+    /// Resolves to the venue column, or `None` when the receipt could not be
+    /// read (so the caller does not cache a transient failure). A multi-order
+    /// batch resolves to `Some(empty)`: the same degradation as a genuinely
+    /// venue-less settlement, and cacheable, but never someone else's venues.
+    async fn venues_for_settlement(&self, tx_hash: B256, trader: Address) -> Option<Vec<(Address, String)>> {
+        let receipt = self.fetch_receipt(tx_hash).await?;
+        // A shared receipt cannot attribute its counterparties to one order, so
+        // a batch of more than one order degrades to no venue column rather than
+        // drawing the other orders' pools as this order's route.
+        if receipt.trade_count > 1 {
+            return Some(Vec::new());
+        }
+        let (venues, _matched) = classify_settlement(&receipt.transfers, trader);
+        Some(
+            venues
+                .into_iter()
+                .map(|addr| (addr, self.registry.label_for(addr)))
+                .collect(),
+        )
     }
 
     /// Assemble the graph for an existing order (quote-time or settled).
@@ -665,16 +744,21 @@ impl PathVizService {
         let buy = self.token_view(p.buy_token).await;
 
         if p.context == VizContext::Traded {
-            // Settled graphs are immutable: serve from the settlement cache
-            // when present. Errors are never cached (assembly always yields a
-            // graph, and we only insert on the success path).
+            // Settled graphs are immutable ONCE we have the receipt, so serve a
+            // cached one when present.
             if let Some(cached) = self.settlement_cache.get(&p.uid).await {
                 return (*cached).clone();
             }
-            let venues = match p.settlement_tx {
+            // `None` means the receipt could not be read (RPC failure, not yet
+            // mined, or no settlement tx recorded): build a degraded graph but
+            // do NOT cache it, so the next request retries. Only a successfully
+            // read receipt (even a multi-order one with no venues) is cacheable.
+            let venue_result = match p.settlement_tx {
                 Some(tx) => self.venues_for_settlement(tx, p.owner).await,
-                None => Vec::new(),
+                None => None,
             };
+            let cacheable = venue_result.is_some();
+            let venues = venue_result.unwrap_or_default();
             let exec_sell = p
                 .executed_sell_atoms
                 .clone()
@@ -695,9 +779,13 @@ impl PathVizService {
             let graph = build_settled_graph(
                 &sell, &buy, &exec_sell, &exec_buy, p.solvers, &venues, surplus, p.fee,
             );
-            self.settlement_cache
-                .insert(p.uid.clone(), Arc::new(graph.clone()))
-                .await;
+            // Cache only when the receipt was actually read; a graph built from
+            // a failed/absent receipt must be re-derived next time.
+            if cacheable {
+                self.settlement_cache
+                    .insert(p.uid.clone(), Arc::new(graph.clone()))
+                    .await;
+            }
             graph
         } else {
             // Not settled: the quote-time 3-column view (solver name only).
@@ -878,5 +966,45 @@ mod tests {
         // No venue nodes: solver links straight to output.
         assert!(!g.nodes.iter().any(|n| n.kind == PathVizNodeKind::Venue));
         assert!(g.links.iter().any(|l| l.from == "solver:s" && l.to == "out"));
+    }
+
+    #[test]
+    fn surplus_full_fill_sell_unchanged() {
+        // A fully-filled sell order: executed_sell == signed_sell, so the scaled
+        // minimum equals the signed minimum and behaviour matches pre-fix.
+        let s = compute_surplus(&tv("USDC", 6), &tv("WETH", 18), true, "1000", "500", "1000", "530").unwrap();
+        assert_eq!(s.amount_atoms, "30"); // 530 executed_buy - 500 signed_buy
+        assert_eq!(s.token_symbol, "WETH");
+    }
+
+    #[test]
+    fn surplus_partial_sell_scales_the_minimum() {
+        // Half-filled sell: executed_sell=500 of signed_sell=1000, signed_buy=500.
+        // Scaled min buy = 500 * 500/1000 = 250. executed_buy=270 -> surplus 20.
+        // The pre-fix code compared 270 against the FULL 500 and showed NONE.
+        let s = compute_surplus(&tv("USDC", 6), &tv("WETH", 18), true, "1000", "500", "500", "270").unwrap();
+        assert_eq!(s.amount_atoms, "20");
+    }
+
+    #[test]
+    fn surplus_partial_sell_exact_shows_none() {
+        // Half-filled at exactly the pro-rated minimum: no surplus, not a spurious one.
+        assert!(compute_surplus(&tv("USDC", 6), &tv("WETH", 18), true, "1000", "500", "500", "250").is_none());
+    }
+
+    #[test]
+    fn surplus_partial_buy_does_not_report_unfilled_remainder() {
+        // Buy order: signed_sell=1000 max, signed_buy=500. Half filled:
+        // executed_buy=250 -> scaled max sell = 1000*250/500 = 500.
+        // executed_sell=480 -> surplus 20 (came in under the pro-rated max).
+        // The pre-fix code did 1000 - 480 = 520, reporting the unfilled half as surplus.
+        let s = compute_surplus(&tv("WETH", 18), &tv("USDC", 6), false, "1000", "500", "480", "250").unwrap();
+        assert_eq!(s.amount_atoms, "20");
+        assert_eq!(s.token_symbol, "WETH");
+    }
+
+    #[test]
+    fn surplus_none_on_zero_signed_denominator() {
+        assert!(compute_surplus(&tv("USDC", 6), &tv("WETH", 18), true, "0", "500", "0", "10").is_none());
     }
 }

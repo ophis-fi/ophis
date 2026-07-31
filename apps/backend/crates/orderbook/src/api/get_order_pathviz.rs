@@ -48,27 +48,55 @@ struct PathVizResponse {
     generated_at: String,
 }
 
-/// Map an order status into the viz lifecycle context plus the solver
-/// column. The competition list is sorted ascending by score, so the last
-/// element is the winner (per the `CompetitionOrderStatus` contract).
-fn context_and_solvers(status: &Status) -> (VizContext, Vec<PathVizSolverBid>) {
-    let bids = |solutions: &[SolutionInclusion]| -> Vec<PathVizSolverBid> {
-        let last = solutions.len().saturating_sub(1);
-        solutions
-            .iter()
-            .enumerate()
-            .map(|(i, s)| PathVizSolverBid {
+/// Turn the competition's solution list into one solver bid per DISTINCT
+/// solver, with the winner correctly identified.
+///
+/// WINNER (F3): the winner is the solution that actually executed THIS ORDER,
+/// not the highest-scoring solution overall. `executed_amounts` is present only
+/// on a solution that included the requested order; the list is sorted
+/// ascending by score, so the winner is the LAST such solution. The fallback to
+/// the final entry keeps a sane default when none carries executed_amounts
+/// (non-traded statuses), though a Traded order always has at least one.
+///
+/// DEDUP (F5): a solver may appear in several ranked solutions (autopilot allows
+/// up to max-solutions-per-solver = 3). Emitting a bid per solution produces
+/// duplicate `solver:{name}` node ids downstream, which PathVizGraph::validate
+/// rejects, 500ing the .svg endpoint. De-duplicate by name, first-seen order,
+/// promoting the kept entry to winner (with the winning solution's executed
+/// amounts) when the winning solution is a later occurrence of that name.
+fn solver_bids(solutions: &[SolutionInclusion]) -> Vec<PathVizSolverBid> {
+    let winner_idx = solutions
+        .iter()
+        .rposition(|s| s.executed_amounts.is_some())
+        .unwrap_or_else(|| solutions.len().saturating_sub(1));
+
+    let mut seen = std::collections::HashSet::new();
+    let mut out: Vec<PathVizSolverBid> = Vec::new();
+    for (i, s) in solutions.iter().enumerate() {
+        let is_winner = i == winner_idx;
+        if seen.insert(s.solver.clone()) {
+            out.push(PathVizSolverBid {
                 name: s.solver.clone(),
-                winner: i == last,
+                winner: is_winner,
                 executed_sell_atoms: s.executed_amounts.as_ref().map(|a| a.sell.to_string()),
                 executed_buy_atoms: s.executed_amounts.as_ref().map(|a| a.buy.to_string()),
-            })
-            .collect()
-    };
+            });
+        } else if is_winner {
+            if let Some(existing) = out.iter_mut().find(|b| b.name == s.solver) {
+                existing.winner = true;
+                existing.executed_sell_atoms = s.executed_amounts.as_ref().map(|a| a.sell.to_string());
+                existing.executed_buy_atoms = s.executed_amounts.as_ref().map(|a| a.buy.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn context_and_solvers(status: &Status) -> (VizContext, Vec<PathVizSolverBid>) {
     match status {
-        Status::Traded(s) => (VizContext::Traded, bids(s)),
-        Status::Executing(s) => (VizContext::Executing, bids(s)),
-        Status::Solved(s) => (VizContext::QuotedOnly, bids(s)),
+        Status::Traded(s) => (VizContext::Traded, solver_bids(s)),
+        Status::Executing(s) => (VizContext::Executing, solver_bids(s)),
+        Status::Solved(s) => (VizContext::QuotedOnly, solver_bids(s)),
         _ => (VizContext::QuotedOnly, Vec::new()),
     }
 }
@@ -232,4 +260,79 @@ pub async fn get_order_pathviz_svg_handler(
 
 fn not_found() -> Response {
     (StatusCode::NOT_FOUND, super::error("NotFound", "pathviz is not available")).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::solver_bids,
+        crate::dto::order::{ExecutedAmounts, SolutionInclusion},
+        alloy::primitives::U256,
+    };
+
+    fn sol(solver: &str, executed: Option<(u64, u64)>) -> SolutionInclusion {
+        SolutionInclusion {
+            solver: solver.into(),
+            executed_amounts: executed.map(|(s, b)| ExecutedAmounts {
+                sell: U256::from(s),
+                buy: U256::from(b),
+            }),
+        }
+    }
+
+    #[test]
+    fn winner_is_the_solution_that_executed_this_order_not_the_last() {
+        // Highest-scoring solution (last) did NOT include this order; an earlier
+        // one did. The winner must be the includer, not the last entry.
+        let bids = solver_bids(&[
+            sol("alpha", Some((100, 200))),
+            sol("beta", None),
+        ]);
+        let winner = bids.iter().find(|b| b.winner).expect("a winner");
+        assert_eq!(winner.name, "alpha");
+        assert_eq!(bids.iter().filter(|b| b.winner).count(), 1);
+    }
+
+    #[test]
+    fn winner_falls_back_to_last_when_none_executed() {
+        let bids = solver_bids(&[sol("a", None), sol("b", None)]);
+        assert_eq!(bids.iter().find(|b| b.winner).unwrap().name, "b");
+    }
+
+    #[test]
+    fn one_bid_per_distinct_solver_even_with_multiple_solutions() {
+        // Autopilot allows up to 3 solutions per solver; duplicate solver names
+        // would produce duplicate solver:{name} node ids and 500 the .svg
+        // endpoint via PathVizGraph::validate. Must collapse to one per name.
+        let bids = solver_bids(&[
+            sol("dup", None),
+            sol("dup", None),
+            sol("dup", Some((1, 2))),
+            sol("other", None),
+        ]);
+        assert_eq!(bids.len(), 2, "two distinct solvers");
+        let names: Vec<_> = bids.iter().map(|b| b.name.as_str()).collect();
+        assert_eq!(names, vec!["dup", "other"]);
+    }
+
+    #[test]
+    fn winner_flag_promotes_to_the_kept_entry_when_a_later_duplicate_wins() {
+        // "dup" first appears as a non-executing solution, then as the executing
+        // (winning) one. The single kept "dup" entry must carry the winner flag
+        // and the winning solution's executed amounts.
+        let bids = solver_bids(&[
+            sol("dup", None),
+            sol("dup", Some((100, 200))),
+        ]);
+        assert_eq!(bids.len(), 1);
+        let dup = &bids[0];
+        assert!(dup.winner);
+        assert_eq!(dup.executed_sell_atoms.as_deref(), Some("100"));
+        assert_eq!(dup.executed_buy_atoms.as_deref(), Some("200"));
+    }
+
+    #[test]
+    fn empty_solutions_yield_no_bids() {
+        assert!(solver_bids(&[]).is_empty());
+    }
 }
