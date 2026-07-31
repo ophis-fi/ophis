@@ -1,19 +1,36 @@
 # pathviz venue registry -- Optimism mainnet (chain 10).
 #
-# Maps on-chain settlement counterparties to human labels for the pathviz
-# venue column. Seeded from the driver custom allowlist
-# (`custom_allowlist::OPTIMISM_MAINNET`), which is the set of aggregator
-# routers Ophis settles through. Any counterparty NOT listed here degrades
-# to its bare 0x address in the diagram -- the renderer never fabricates a
-# label (owner decision 27).
+# Classifies on-chain settlement counterparties for the pathviz route column.
 #
-# OWNERSHIP: infra ops. When a new aggregator router or a directly-integrated
-# AMM/PMM is added to the driver allowlist, add the matching label here in
-# the same change so user-facing images stay legible. Addresses are
+#   [venues]  real liquidity venues (AMM/PMM pools) Ophis settles into. Drawn
+#             as route hops and labelled. A [venues] address with no label
+#             degrades to its bare 0x address -- the renderer never fabricates
+#             one (owner decision 27).
+#
+#   [routers] aggregator routers Ophis solvers call. Ophis routes THROUGH them,
+#             but they are competitors, and the standing copy rule is that Ophis
+#             public copy never names a competitor (the frontend enforces the
+#             same rule for solver names via the display-alias layer). Recorded
+#             here so the backend drops them from the route column: a router
+#             counterparty is a settlement pass-through, not a drawn hop.
+#
+# On Optimism, Ophis settles EXCLUSIVELY through aggregator routers (the driver
+# custom allowlist `custom_allowlist::OPTIMISM_MAINNET`), so every counterparty
+# below is a router and [venues] is empty: the route column stays empty and each
+# graph degrades to solver -> out (surplus and the winning Ophis solver still
+# render). Add direct-pool venues under [venues] as they are integrated.
+#
+# OWNERSHIP: infra ops. When a new counterparty is added to the driver allowlist,
+# add it here in the same change (as a [venues] pool or a [routers] aggregator)
+# so user-facing images stay legible and rule-compliant. Addresses are
 # EIP-55-checksummed and matched case-insensitively at load.
 
 [venues]
-# Aggregator routers (router == ERC-20 spender unless noted).
+# (No direct-pool venues on Optimism yet: all settlement flows through the
+# aggregator routers listed under [routers].)
+
+[routers]
+# Aggregator routers (router == ERC-20 spender unless noted). Never rendered.
 "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5" = "KyberSwap"
 "0x6A000F20005980200259B80c5102003040001068" = "Velora"
 "0xDd5E9B947c99Aa60bab00ca4631Dce63b49983E7" = "OKX (router)"
