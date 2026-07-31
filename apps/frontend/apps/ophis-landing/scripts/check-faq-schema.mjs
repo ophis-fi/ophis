@@ -19,7 +19,7 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { resolve, dirname, join, relative } from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 
 // DELIBERATELY does not import the generator's htmlToText from scripts/lib/.
 // A verifier that shares the implementation it verifies cannot detect a bug in
@@ -29,16 +29,58 @@ import { fileURLToPath } from 'url'
 // gate passing while pages showed `build_order` and schema said "buildorder".
 // So visible text is recovered here by an independent walk, and the duplication
 // is the point.
+// DELIBERATELY does not import the generator's htmlToText from scripts/lib/.
+// A verifier that shares the implementation it verifies cannot detect a bug in
+// that implementation: both sides transform identically, the two strings still
+// match, and the gate stays green while the real page disagrees with the
+// schema. Proved by mutation - making a shared extractor strip underscores left
+// this gate passing while pages showed `build_order` and schema said
+// "buildorder". So the duplication is the point.
+//
+// The two implementations are held to ONE behavioural spec by
+// scripts/test-html-text.mjs, which runs this function and htmlToText over the
+// same case table and also asserts they agree. Independent code, shared
+// contract: drift is a test failure, not a silent divergence.
+//
+// Scans the ORIGINAL string. An earlier version split on '<' first, which broke
+// on a '<' inside a quoted attribute (the tag arrived as two fragments, neither
+// with balanced quotes) and on comments containing an apostrophe.
+const NAMED_REFS = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  copy: '©', reg: '®', trade: '™', deg: '°',
+  hellip: '…', mdash: '—', ndash: '–', shy: '­',
+  lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+  laquo: '«', raquo: '»', times: '×', divide: '÷',
+  plusmn: '±', micro: 'µ', middot: '·', bull: '•',
+  dagger: '†', permil: '‰', prime: '′', Prime: '″',
+  euro: '€', pound: '£', yen: '¥', cent: '¢',
+  frac12: '½', frac14: '¼', frac34: '¾', sup2: '²', sup3: '³',
+}
+const REFS = new RegExp(`&(?:#(\\d+)|#[xX]([0-9a-fA-F]+)|(${Object.keys(NAMED_REFS).join('|')}));`, 'g')
+const BLOCKISH =
+  /^\/?(?:p|br|div|li|ul|ol|tr|td|th|table|thead|tbody|blockquote|pre|section|article|header|footer|h[1-6]|hr|figure|figcaption|dl|dt|dd)$/
+
 const visibleTextOf = (html) => {
-  const parts = html.split('<')
-  let out = parts[0] ?? ''
-  let skipUntil = null
-  for (const part of parts.slice(1)) {
-    // The tag ends at the first '>' that is NOT inside a quoted attribute, so
-    // <abbr title="1 > 0">true</abbr> yields "true" rather than `0">true`.
+  let out = ''
+  let i = 0
+  while (i < html.length) {
+    const lt = html.indexOf('<', i)
+    if (lt === -1) {
+      out += html.slice(i)
+      break
+    }
+    out += html.slice(i, lt)
+
+    // Comments first: their contents may hold quotes and '>' that are not markup.
+    if (html.startsWith('<!--', lt)) {
+      const close = html.indexOf('-->', lt + 4)
+      i = close === -1 ? html.length : close + 3
+      continue
+    }
+
     let gt = -1
-    for (let j = 0, quote = null; j < part.length; j++) {
-      const c = part[j]
+    for (let j = lt + 1, quote = null; j < html.length; j++) {
+      const c = html[j]
       if (quote) {
         if (c === quote) quote = null
       } else if (c === '"' || c === "'") {
@@ -48,136 +90,134 @@ const visibleTextOf = (html) => {
         break
       }
     }
-    const tag = gt === -1 ? part : part.slice(0, gt)
-    const text = gt === -1 ? '' : part.slice(gt + 1)
+    if (gt === -1) break
+
+    const tag = html.slice(lt + 1, gt)
+    const closing = tag.startsWith('/')
     const name = (/^\/?\s*([a-zA-Z][a-zA-Z0-9]*)/.exec(tag)?.[1] ?? '').toLowerCase()
-    if (skipUntil) {
-      if (tag.startsWith('/') && name === skipUntil) skipUntil = null
+
+    if (!closing && (name === 'script' || name === 'style')) {
+      const close = new RegExp(`</\\s*${name}\\s*>`, 'i').exec(html.slice(gt + 1))
+      i = close ? gt + 1 + close.index + close[0].length : html.length
       continue
     }
-    if (!tag.startsWith('/') && (name === 'script' || name === 'style')) {
-      skipUntil = name
-      continue
-    }
-    // A block boundary is a word boundary in the rendered text.
-    out += /^\/?(?:p|br|div|li|ul|ol|tr|td|th|table|thead|tbody|blockquote|pre|section|article|header|footer|h[1-6]|hr|figure|figcaption|dl|dt|dd)$/.test(name)
-      ? ' ' + text
-      : text
+    if (BLOCKISH.test(name)) out += ' '
+    i = gt + 1
   }
+
   return out
-    .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d)))
-    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
+    .replace(REFS, (_m, dec, hex, nm) =>
+      dec !== undefined
+        ? String.fromCodePoint(Number(dec))
+        : hex !== undefined
+          ? String.fromCodePoint(parseInt(hex, 16))
+          : NAMED_REFS[nm],
+    )
     .replace(/\s+/g, ' ')
     .trim()
 }
+
+export { visibleTextOf }
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
 const distBlog = resolve(root, 'dist/blog')
 
-if (!existsSync(distBlog)) {
-  console.error('check-faq-schema: dist/blog missing - run the build first.')
-  process.exit(1)
-}
+// Importing this module must not run the gate: the conformance suite in
+// scripts/test-html-text.mjs imports visibleTextOf to hold both extractors to
+// one spec, and test:unit runs BEFORE astro build, when dist/ does not exist.
+function main() {
+  if (!existsSync(distBlog)) {
+    console.error('check-faq-schema: dist/blog missing - run the build first.')
+    process.exit(1)
+  }
 
-// Every index.html under dist/blog, at any depth, so nested posts are covered.
-const pagesUnder = (dir) =>
-  readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-    const p = join(dir, e.name)
-    if (e.isDirectory()) return pagesUnder(p)
-    return e.name === 'index.html' ? [p] : []
-  })
+  // Every index.html under dist/blog, at any depth, so nested posts are covered.
+  const pagesUnder = (dir) =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) return pagesUnder(p)
+      return e.name === 'index.html' ? [p] : []
+    })
 
-const failures = []
-let pagesWithFaq = 0
-let answersChecked = 0
+  const failures = []
+  let pagesWithFaq = 0
+  let answersChecked = 0
 
-for (const page of pagesUnder(distBlog)) {
-  const slug = relative(distBlog, dirname(page)) || '(index)'
-  const html = readFileSync(page, 'utf8')
+  for (const page of pagesUnder(distBlog)) {
+    const slug = relative(distBlog, dirname(page)) || '(index)'
+    const html = readFileSync(page, 'utf8')
 
-  let faq = null
-  for (const m of html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)) {
-    let parsed
-    try {
-      parsed = JSON.parse(m[1])
-    } catch {
-      failures.push(`${slug}: a JSON-LD block does not parse as JSON`)
+    let faq = null
+    for (const m of html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)) {
+      let parsed
+      try {
+        parsed = JSON.parse(m[1])
+      } catch {
+        failures.push(`${slug}: a JSON-LD block does not parse as JSON`)
+        continue
+      }
+      if (parsed?.['@type'] === 'FAQPage') faq = parsed
+    }
+
+    // The rendered article carries <h2 id="faq">; if it does, schema is expected.
+    const hasFaqHeading = /<h2\b[^>]*\bid="faq"/i.test(html)
+    if (hasFaqHeading && !faq) {
+      failures.push(`${slug}: renders an FAQ heading but emits no FAQPage schema`)
       continue
     }
-    if (parsed?.['@type'] === 'FAQPage') faq = parsed
-  }
-
-  // The rendered article carries <h2 id="faq">; if it does, schema is expected.
-  const hasFaqHeading = /<h2\b[^>]*\bid="faq"/i.test(html)
-  if (hasFaqHeading && !faq) {
-    failures.push(`${slug}: renders an FAQ heading but emits no FAQPage schema`)
-    continue
-  }
-  if (!faq) continue
-  if (!hasFaqHeading) {
-    failures.push(`${slug}: emits FAQPage schema but renders no FAQ heading`)
-    continue
-  }
-  pagesWithFaq++
-
-  // Strip the JSON-LD itself before extracting visible text, or the schema
-  // would trivially "appear" inside its own serialized copy.
-  const visible = visibleTextOf(
-    html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, ''),
-  )
-
-  for (const q of faq.mainEntity ?? []) {
-    const question = (q.name ?? '').trim()
-    const answer = (q.acceptedAnswer?.text ?? '').trim()
-    if (!question || !answer) {
-      failures.push(`${slug}: an FAQ entry has an empty question or answer`)
+    if (!faq) continue
+    if (!hasFaqHeading) {
+      failures.push(`${slug}: emits FAQPage schema but renders no FAQ heading`)
       continue
     }
-    answersChecked++
-    // An undecoded named entity means the extractors disagree with the browser.
-    // Both sides would carry it identically, so the verbatim comparison below
-    // cannot see it: check explicitly.
-    const stray = [...`${question} ${answer}`.matchAll(/&([a-zA-Z][a-zA-Z0-9]{1,31});/g)].map((m) => m[0])
-    if (stray.length) {
-      failures.push(
-        `${slug}: FAQ schema contains undecoded HTML entities ${[...new Set(stray)].join(', ')} ` +
-          `(add them to NAMED in scripts/lib/html-text.mjs)`,
-      )
-    }
-    if (!visible.includes(question)) {
-      failures.push(`${slug}: question not found in visible text: ${JSON.stringify(question.slice(0, 70))}`)
-    }
-    if (!visible.includes(answer)) {
-      // Report the first point of divergence so the cause is obvious.
-      let i = 0
-      while (i < answer.length && visible.includes(answer.slice(0, i + 1))) i++
-      failures.push(
-        `${slug}: answer text diverges from the page at char ${i}: ` +
-          `schema has ${JSON.stringify(answer.slice(Math.max(0, i - 30), i + 30))}`,
-      )
+    pagesWithFaq++
+
+    // Strip the JSON-LD itself before extracting visible text, or the schema
+    // would trivially "appear" inside its own serialized copy.
+    const visible = visibleTextOf(
+      html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, ''),
+    )
+
+    for (const q of faq.mainEntity ?? []) {
+      const question = (q.name ?? '').trim()
+      const answer = (q.acceptedAnswer?.text ?? '').trim()
+      if (!question || !answer) {
+        failures.push(`${slug}: an FAQ entry has an empty question or answer`)
+        continue
+      }
+      answersChecked++
+      if (!visible.includes(question)) {
+        failures.push(`${slug}: question not found in visible text: ${JSON.stringify(question.slice(0, 70))}`)
+      }
+      if (!visible.includes(answer)) {
+        // Report the first point of divergence so the cause is obvious.
+        let i = 0
+        while (i < answer.length && visible.includes(answer.slice(0, i + 1))) i++
+        failures.push(
+          `${slug}: answer text diverges from the page at char ${i}: ` +
+            `schema has ${JSON.stringify(answer.slice(Math.max(0, i - 30), i + 30))}`,
+        )
+      }
     }
   }
-}
 
-if (failures.length) {
-  console.error('check-faq-schema FAILED:\n')
-  for (const f of failures) console.error(`  - ${f}`)
-  console.error(
-    '\nFAQPage text must reproduce the rendered answer (Google requirement). The\n' +
-      'schema is built by faqPageSchema() in src/pages/blog/[...slug].astro from the\n' +
-      "post's rendered HTML; fix that transform (or the post), not this gate.\n",
+  if (failures.length) {
+    console.error('check-faq-schema FAILED:\n')
+    for (const f of failures) console.error(`  - ${f}`)
+    console.error(
+      '\nFAQPage text must reproduce the rendered answer (Google requirement). The\n' +
+        'schema is built by faqPageSchema() in src/pages/blog/[...slug].astro from the\n' +
+        "post's rendered HTML; fix that transform (or the post), not this gate.\n",
+    )
+    process.exit(1)
+  }
+
+  console.log(
+    `check-faq-schema: OK - ${pagesWithFaq} page(s) with FAQPage, ` +
+      `${answersChecked} answer(s) verbatim in the rendered page`,
   )
-  process.exit(1)
+
 }
 
-console.log(
-  `check-faq-schema: OK - ${pagesWithFaq} page(s) with FAQPage, ` +
-    `${answersChecked} answer(s) verbatim in the rendered page`,
-)
+if (import.meta.url === pathToFileURL(process.argv[1]).href) main()
