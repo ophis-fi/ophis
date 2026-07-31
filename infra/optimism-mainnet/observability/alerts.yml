@@ -389,6 +389,79 @@ groups:
             For publicnode-op / tenderly-op: provider-side regression.
             Consider hot-swap if sustained > 1h.
 
+      # ── Provider credential / quota death (2026-07-30 incident) ─────────────
+      # WHY THESE EXIST: on 2026-07-30 every keyed RPC provider we held died of
+      # quota or billing exhaustion — blockdaemon 429, Validation Cloud 401 "api
+      # client is disabled", Alchemy "Monthly capacity limit exceeded", drpc 403
+      # "monthly free request limit reached". They died ONE AT A TIME over days
+      # and NOTHING paged, because every existing eRPC alert here keys off
+      # CONSENSUS failure — which only trips once enough lanes are dead to break
+      # quorum. By then the orderbook was already returning HTTP 500 on /quote.
+      #
+      # These two fire on the UPSTREAM, not the quorum, so they warn while the
+      # quorum is still healthy and there is time to act.
+      - alert: OphisOpErpcUpstreamCredentialFailing
+        expr: |
+          sum by (upstream) (
+            increase(erpc_upstream_request_errors_total{network="evm:10",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
+          ) > 3
+        for: 10m
+        labels:
+          severity: critical
+          chain: optimism
+        annotations:
+          summary: "OP eRPC upstream {{ $labels.upstream }} is failing on CREDENTIALS or BILLING"
+          description: |
+            `{{ $labels.upstream }}` is returning auth/billing errors
+            (ErrEndpointUnauthorized / ErrEndpointBillingIssue). Unlike a rate
+            limit, these are NEVER normal — the lane is disabled, unpaid or
+            out of plan quota, and is contributing nothing to the quorum.
+
+            This is the alert that was missing on 2026-07-30. The quorum may
+            still look healthy right now; it is one lane thinner than it appears
+            and the remaining lanes are absorbing the load.
+
+            Diagnose (the error body says which):
+              docker logs optimism-mainnet-rpc-proxy-1 --tail 200 | grep -i "{{ $labels.upstream }}"
+            Look for: "api client is disabled" (account disabled), "Monthly
+            capacity limit exceeded" (plan quota), "usage limit for your current
+            plan", 401/403.
+
+            Act BEFORE the quorum breaks: renew/re-enable the provider, or swap
+            the lane. Keep >=1 non-Cloudflare lane so the CDN-diversity invariant
+            in configs/erpc.yaml.tmpl still holds. Verify a replacement with
+            eth_getTransactionReceipt THROUGH the proxy, not just /quote — with
+            agreementThreshold:2 a dead third lane hides behind the other two.
+
+      - alert: OphisOpErpcUpstreamRateLimitedDead
+        expr: |
+          (
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",error="ErrEndpointCapacityExceeded"}[15m]))
+            /
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[15m])), 0.001)
+          ) > 0.9
+        for: 30m
+        labels:
+          severity: warning
+          chain: optimism
+        annotations:
+          summary: "OP eRPC upstream {{ $labels.upstream }} is >90% rate-limited for 30m (effectively dead)"
+          description: |
+            Over 90% of requests to `{{ $labels.upstream }}` have been rejected
+            with ErrEndpointCapacityExceeded for 30 minutes. The lane is
+            technically reachable but contributes nothing to consensus.
+
+            Some capacity errors are NORMAL on free tiers (tenderly advertises
+            x-tdly-limit: 20), which is why this is a RATIO over a long window
+            rather than a raw count — a lane that is merely busy will not trip it.
+
+            Measured precedent 2026-07-30: official-op and nodies-op both returned
+            429 on 12/12 probes from this host, i.e. hard per-IP blocks, while the
+            config still counted them as two of three lanes.
+
+            Check whether the provider needs a key, a paid tier, or replacing.
+            A self-hosted OP node removes this failure mode entirely.
+
   - name: ophis-op-latency
     interval: 30s
     rules:
