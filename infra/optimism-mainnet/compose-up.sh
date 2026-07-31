@@ -273,6 +273,45 @@ if [[ -f observability-rendered/alertmanager.yml ]] && \
   docker compose --profile observability up -d --no-deps --force-recreate alertmanager
 fi
 
+# Prometheus loads alerts.yml and prometheus.yml ONLY at process start. It runs
+# with `--no-web.enable-lifecycle` (see docker-compose.yml), so there is no
+# POST /-/reload to fall back on, and it is deliberately absent from
+# CONFIG_BOUND_SERVICES above. Without this block a plain `up -d` leaves it
+# running with whatever rules it started with: a new alert could be committed,
+# reviewed, deployed and STILL never evaluated — an incident-detection feature
+# that silently does nothing, which is the exact failure class these rules exist
+# to catch. Recreating is safe: the TSDB lives in the named volume
+# optimism-mainnet_prometheus-data, so no history is lost.
+#
+# Verify after deploying a rule change:
+#   curl -s localhost:9091/api/v1/rules | grep -c '"name":"Ophis'
+# and compare against `grep -c '^\s*- alert:' observability/alerts.yml`.
+if [[ -f observability/alerts.yml ]] && \
+   docker compose ps --services 2>/dev/null | grep -qF prometheus; then
+  echo "==> force-recreating prometheus to load alerts.yml / prometheus.yml"
+  docker compose --profile observability up -d --no-deps --force-recreate prometheus
+
+  # Assert the rules actually LOADED rather than trusting that the restart did it.
+  # Warn-only: a monitoring hiccup must not fail an otherwise good deploy, but it
+  # must not pass silently either — silence is how a dead alert survives.
+  _want="$(grep -c '^[[:space:]]*- alert:' observability/alerts.yml 2>/dev/null || echo 0)"
+  _got=0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    _got="$(curl -s -m 3 http://127.0.0.1:9091/api/v1/rules 2>/dev/null \
+            | grep -oE '"name":"[A-Za-z0-9]+"' | sort -u | wc -l | tr -d ' ')"
+    [[ "${_got:-0}" -ge "${_want:-0}" && "${_want:-0}" -gt 0 ]] && break
+    sleep 2
+  done
+  if [[ "${_got:-0}" -ge "${_want:-0}" && "${_want:-0}" -gt 0 ]]; then
+    echo "    prometheus loaded ${_got}/${_want} alert rules"
+  else
+    echo "    WARNING: prometheus loaded ${_got} rules but observability/alerts.yml defines ${_want}." >&2
+    echo "             Alerts you believe are active may NOT be evaluating. Check:" >&2
+    echo "               docker logs optimism-mainnet-prometheus-1 --tail 50" >&2
+    echo "               curl -s localhost:9091/api/v1/rules" >&2
+  fi
+fi
+
 # Retire the odos-solver container on hosts that ran it before it was removed
 # from docker-compose.yml (Odos shut down 2026-07-30; its API returns 410).
 #
