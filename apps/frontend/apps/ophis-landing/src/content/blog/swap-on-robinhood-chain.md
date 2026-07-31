@@ -23,7 +23,7 @@ Two sentences of context. Robinhood Chain is chain id 4663, an Arbitrum Orbit L2
 
 4. **Read the asset panel.** On Robinhood Chain the swap form shows a panel specific to this network. If either side of your pair is an official Robinhood Stock Token, it names the asset, reports its corporate-action multiplier, and flags any trading restriction currently in force. More on what that check actually does below.
 
-5. **Review the quote and sign.** The quote carries a hard limit price, and that limit is what you sign: the worst execution you can receive. Your wallet shows typed data, not a transaction. Orders are gasless, and the fee comes out of the token you sell.
+5. **Review the quote and sign.** The quote carries a hard limit price, and that limit is what you sign: the worst execution you can receive. Your wallet shows typed data, not a transaction. Orders are gasless, and the fee comes out of the traded amount rather than being billed separately.
 
 6. **Wait for settlement.** Solvers race to fill the order and the winner settles it on-chain in a batch. Order status updates on the page until the trade lands.
 
@@ -47,11 +47,13 @@ Two details from that table shaped the deployment more than anything else.
 
 The first is the RPC surface. Robinhood's public endpoint serves `net`, `web3`, and `eth` only. It has no `debug`, no `arb`, and no `arbtrace`. The Ophis autopilot requires `debug_traceTransaction` to decode settlement calldata, so a hosted-RPC-only deployment was never an option: Ophis runs its own Nitro node with the trace namespaces enabled, and that node is the only trace source in the stack.
 
-The second is that a Nitro node reconstructs L2 state by replaying the chain's data availability from Ethereum L1, which for this chain means EIP-4844 blobs. Blobs are not retained forever. Measured against a public beacon endpoint, blob retention ran roughly 45 to 50 days, while the rollup was deployed at L1 block `24994238` on 2026-04-30. Syncing from genesis therefore needs a blob source that reaches past standard beacon retention, which the stack solves with a narrow, fail-closed archive adapter rather than by trusting a checkpoint.
+The second is how that node gets its state. A Nitro node reconstructs L2 state by replaying the chain's data availability from Ethereum L1, which for this chain means EIP-4844 blobs, and blobs are not retained forever. Measured against a public beacon endpoint, retention ran roughly 45 to 50 days, while the rollup was deployed at L1 block `24994238` on 2026-04-30. Verifying from genesis therefore needs a blob source reaching past standard beacon retention, which the stack has in a narrow, fail-closed archive adapter.
+
+The node in production did not take that route. Robinhood publishes no official snapshot, so the Cadia node was restored from a third-party one to reach the tip in reasonable time. That is worth stating plainly, because it is the reason for a design decision further down: a restored snapshot's flat state layer cannot be validated by checking a few block hashes, so its state reads are not self-verifying. Protected reads are 2-of-2 against Robinhood's public RPC precisely to compensate for that, rather than because two voters are inherently better than one.
 
 ## The sovereign deployment
 
-On most of its chains Ophis settles through CoW Protocol's canonical audited GPv2 contracts via `api.cow.fi`. On Optimism, Unichain, and Robinhood Chain it does not: it runs its own orderbook and a bytecode-identical deployment of CoW Protocol's audited GPv2 suite at non-canonical addresses. The Robinhood contracts were deployed on 2026-07-25.
+On most of its chains Ophis settles through CoW Protocol's canonical audited GPv2 contracts via `api.cow.fi`. On Optimism, Unichain, and Robinhood Chain it does not: it runs its own orderbook and a bytecode-identical deployment of CoW Protocol's audited GPv2 suite at non-canonical addresses. The core suite was deployed on 2026-07-25; the EthFlow contract followed on 2026-07-28.
 
 | Contract | Address |
 | --- | --- |
@@ -65,15 +67,15 @@ Protocol authority over the authenticator, which is the contract that decides wh
 
 If you swap through the app, none of this is visible and none of it needs to be. It matters if you integrate programmatically, in exactly one way that bites hard: an order built for CoW's canonical settlement domain will not verify against this deployment. The EIP-712 domain separator is derived from the chain id and the settlement address, so a canonical address produces a domain the deployed contract rejects. Resolve the settlement domain and orderbook host per chain through `@ophis/sdk` (0.3.0 on npm) or the MCP `list_chains` tool. Do not hardcode either.
 
-## Three solver lanes compete on every order
+## Three active solver lanes
 
 A sovereign deployment is only as good as the liquidity its solvers can reach. Robinhood Chain liquidity is Uniswap V4, which the CoW baseline solver cannot read, so on this chain baseline ships empty and three other lanes do the work.
 
 - **LI.FI.** A same-chain aggregator lane. One chain-specific catch: on 4663 the LI.FI router is `0xB477751B76CF82d00a686A1232f5fCD772414Af3`, not the LiFiDiamond address used elsewhere. It has to be allowlisted in both the solver and the driver, or every quote fails the same-chain safety check.
 - **KyberSwap.** A second independent aggregator lane whose route builder reaches the deployed Robinhood DEX liquidity. The solver and driver pin its router through a static allowlist.
-- **Direct Uniswap V4.** The newest lane, and the only one that depends on no external route API at all. It reads quotes from Uniswap's canonical V4Quoter through the sovereign eRPC proxy, and it executes through `OphisUniswapV4Adapter` at `0x8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae`.
+- **Direct Uniswap V4.** The newest lane, and the only one that depends on no external route API at all. It reads quotes from Uniswap's canonical V4Quoter through the sovereign eRPC proxy, and it executes through `OphisUniswapV4Adapter` at `0x8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae`. It is deliberately narrow: it bids only on the pair it serves, so the two aggregator lanes are what compete on everything else, stock tokens included.
 
-That adapter is worth a paragraph, because it is where the security posture of the lane lives. It is immutable and pair-specific: it serves the canonical native ETH/USDG V4 pool and nothing else. It cannot route arbitrary tokens, cannot call arbitrary hooks, cannot be repointed at a different pool, and cannot send output anywhere except the Ophis settlement contract. Ophis orders trade wrapped tokens while the V4 pool is native, so the adapter performs the wrap and unwrap atomically around the swap.
+That narrowness is the point, because the adapter is where the security posture of the lane lives. It is immutable and pair-specific: it serves the canonical native ETH/USDG V4 pool and nothing else. It cannot route arbitrary tokens, cannot call arbitrary hooks, cannot be repointed at a different pool, and cannot send output anywhere except the Ophis settlement contract. Ophis orders trade wrapped tokens while the V4 pool is native, so the adapter performs the wrap and unwrap atomically around the swap.
 
 One Arbitrum-specific quirk surfaced while making that lane safe to simulate. Robinhood's canonical wrapper is upgradeable aeWETH, not WETH9, and its `balanceOf` mapping sits at storage slot 51 rather than WETH9's slot 3. Simulating a settlement against the WETH9 default reads the wrong slot and produces balances that do not exist. The solver now overrides the verified slot.
 
@@ -81,32 +83,32 @@ All three lanes run under the same bounds: 1% relative slippage and an absolute 
 
 ## Stock tokens: what Ophis checks before you sign
 
-Most chains list tokens. Robinhood Chain mostly lists tokenized equities, and at the time of writing the official registry carries **96 stock tokens** deployed on 4663. Those instruments behave in ways an ERC-20 router has no concept of, so Ophis added a Robinhood-specific verification path in front of the quote.
+Most chains list tokens. Robinhood Chain mostly lists tokenized equities: reading Robinhood's public registry on 2026-07-31 returned **96 stock tokens** deployed on 4663. That registry is live and changes, so treat the figures in this section as a dated snapshot rather than a constant; you can pull the current set yourself from `swap.ophis.fi/api/robinhood/assets`. Those instruments behave in ways an ERC-20 router has no concept of, so Ophis added a Robinhood-specific verification path in front of the quote.
 
 **It confirms the token is the canonical deployment.** The panel matches the selected token address against Robinhood's own published registry, scoped to chain id 4663. A token that merely calls itself AAPL does not match. This is the same anti-spoofing principle the `resolve_token` MCP tool applies, which matters more here than usual: a fake tokenized Apple share is a far more convincing lure than a fake memecoin.
 
-**It reads the corporate-action multiplier.** A stock token's on-chain balance is not necessarily one-for-one with underlying shares. Each asset carries a multiplier, and the panel uses it to show what your balance represents. At the time of writing, 92 of the 96 assets sit at exactly 1, CRWD sits at 4, and SGOV, MU, and ORCL carry small fractional multipliers. So a balance of 10 CRWD tokens is shown as representing about 40 underlying shares. When Robinhood publishes a multiplier change ahead of its effective time, the panel says a change is pending instead of quietly repricing after the fact.
+**It reads the corporate-action multiplier.** A stock token's on-chain balance is not necessarily one-for-one with underlying shares. Each asset carries a multiplier, and the panel uses it to show what your balance represents. In that same 2026-07-31 snapshot, 92 of the 96 assets sat at exactly 1, CRWD sat at 4, and SGOV, MU, and ORCL carried small fractional multipliers. At a multiplier of 4, a balance of 10 CRWD tokens is shown as representing about 40 underlying shares. When Robinhood publishes a multiplier change ahead of its effective time, the panel says a change is pending instead of quietly repricing after the fact.
 
 **It surfaces trading restrictions.** Each asset publishes a trading status per session, across market, extended, and overnight hours, and separately for whole and fractional quantities. If any of them is anything other than tradable, or if the asset itself is not active, the panel switches to an attention state naming the affected symbol.
 
 **It fails visibly, not silently.** If the registry cannot be reached, Ophis does not pretend everything is verified. The panel says metadata is temporarily unavailable, notes that restrictions and multipliers could not be checked, and leaves quoting available so you can decide. Whatever the panel reports, the executable price is always the solver quote.
 
-The registry itself needed a small piece of infrastructure. Robinhood's first-party endpoint intentionally serves no browser CORS headers, so the swap app cannot read it directly. Ophis fronts it with a same-origin edge function that fetches upstream with a 5-second timeout, streams the body under a 1MB cap, rejects payloads over 500 assets, and then runs every asset through a strict allowlist validator: addresses must match `^0x[0-9a-fA-F]{40}$`, multipliers must match a bounded decimal pattern and be positive, and every string field has a length cap. If a single asset fails validation the whole response is rejected as a 502 rather than partially trusted. Valid responses are cached for 60 seconds in the browser and 300 at the edge.
+The registry itself needed a small piece of infrastructure. Robinhood's first-party endpoint intentionally serves no browser CORS headers, so the swap app cannot read it directly. Ophis fronts it with a same-origin edge function that fetches upstream with a 5-second timeout, streams the body under a 1MB cap, rejects payloads over 500 assets, and then re-shapes every asset through a validator rather than passing the upstream JSON through. Addresses must match `^0x[0-9a-fA-F]{40}$`, the current multiplier must match a bounded decimal pattern and be strictly positive, deployment and capability collections are count-capped, and every string field has a length cap. If a single asset fails validation the whole response is rejected as a 502 rather than partially trusted. Valid responses are cached for 60 seconds in the browser and 300 at the edge.
 
 ## Why the stack pauses instead of guessing
 
-Robinhood Chain has one property Ophis cannot engineer around: there is exactly one trace source, the self-hosted Nitro node, because the public RPC does not serve `debug_traceTransaction` at all. The stack is built to stop rather than to improvise.
+As deployed today, the stack has exactly one trace source, the self-hosted Nitro node, because the public RPC does not serve `debug_traceTransaction` at all. That is a choice rather than a law: managed providers do offer trace access for 4663, and adding one would buy availability at the cost of trusting someone else's trace output. Until that trade is made, the stack is built to stop rather than to improvise.
 
-- **Reads are 2-of-2.** Protected reads require agreement between the Ophis Nitro node and Robinhood's official public RPC. If the two disagree, or either is unreachable, the read fails rather than falling back to a single voter.
+- **Reads are 2-of-2.** Protected reads require agreement between the Ophis Nitro node and Robinhood's official public RPC. If the two disagree, or either is unreachable, the read fails rather than falling back to a single voter. As above, this is what makes the snapshot-restored node's state trustworthy enough to act on.
 - **Traces are single-source and gated.** Without a trace, the autopilot pauses settlement. It does not settle a batch it cannot decode.
 - **The topology is locked in CI.** A check named `assert-erpc-failclosed.py` fails the build if the proxy configuration drifts toward failing open. A guard that cannot fail is worse than no guard, so this one is asserted in CI rather than assumed.
-- **Production is re-verified daily.** A read-only canary re-checks chain identity, that the settlement, relayer, and EthFlow addresses still carry code, that `settlement.vaultRelayer()` still returns the pinned relayer, that WETH still reports 18 decimals and USDG 6, that the stock-token registry still resolves and AAPL's on-chain `uiMultiplier()` is non-zero, that the default token list still exposes the canonical AAPL address, and that all three sovereign orderbooks still answer with a live auction id and block.
+- **Production is re-verified daily.** A read-only canary re-checks chain identity, that the settlement, relayer, and EthFlow addresses it pins still carry code, that `settlement.vaultRelayer()` still returns the pinned relayer, that WETH still reports 18 decimals and USDG 6, that the stock-token registry still resolves and AAPL's on-chain `uiMultiplier()` is non-zero, that the default token list still exposes the canonical AAPL address, and that all three sovereign orderbooks still answer with a live auction id and block.
 
-That last check is the one that catches the failure mode nobody notices: a contract address that quietly stops matching what the frontend has pinned.
+The canary carries its own copy of the addresses, so what it catches is the deployment drifting away from that pinned set: a relayer rewired, a token's decimals changing under an upgradeable proxy, a registry that stops resolving, an orderbook that stops producing auctions. It is a daily assertion that the chain still looks the way the stack assumes it does.
 
 ## Fees and rebates
 
-Every trade pays a flat 0.10% (10 bps) of volume. Same-chain stablecoin-to-stablecoin trades pay 0.01% (1 bp). The fee is charged in the sell token and takes no share of surplus, so 100% of any execution better than your signed limit is yours. Because Robinhood Chain is Ophis-operated rather than CoW-hosted, that flat fee is the entire protocol cost: there is no second fee layer on top.
+Every trade pays a flat 0.10% (10 bps) of volume. Same-chain stablecoin-to-stablecoin trades pay 0.01% (1 bp). It is deducted from the traded amount rather than invoiced separately, so no native token is needed to pay it, and it takes no share of surplus: 100% of any execution better than your signed limit is yours. Because Robinhood Chain is Ophis-operated rather than CoW-hosted, that flat fee is the entire protocol cost: there is no second fee layer on top.
 
 Volume then earns part of it back, on rolling 30-day volume:
 
@@ -139,7 +141,7 @@ Yes. Ophis deployed its sovereign contracts on Robinhood Chain (chain 4663) on 2
 
 ### Do I need ETH on Robinhood Chain to pay gas?
 
-No. Orders are gasless: you sign an EIP-712 typed-data message rather than broadcasting a transaction, the winning solver pays the settlement gas, and the Ophis fee is taken in the token you sell. You do need a small amount of ETH for a one-time on-chain approval the first time you sell a given token, and for wrapping if you choose to wrap manually.
+No. Orders are gasless: you sign an EIP-712 typed-data message rather than broadcasting a transaction, the winning solver pays the settlement gas, and the Ophis fee is deducted from the traded amount rather than charged separately. You do need a small amount of ETH for a one-time on-chain approval the first time you sell a given token, and for wrapping if you choose to wrap manually.
 
 ### Can I swap tokenized stocks on Robinhood Chain?
 
@@ -151,7 +153,7 @@ Technically it is an Arbitrum Orbit L2 running Offchain Labs Nitro, posting data
 
 ### Does a higher gas price get my order filled first?
 
-No, and that is true twice over on this chain. An Ophis order is not a transaction competing in a public mempool, so there is nothing to outbid: orders settle in batch auctions at a uniform clearing price, which is what removes the sandwich. Separately, paying a higher priority fee on Robinhood Chain does not buy earlier ordering from the sequencer. Approvals and wrapping still cost gas like any other transaction.
+No. An Ophis order is not a transaction competing in a public mempool, so there is nothing to outbid: orders settle in batch auctions at a uniform clearing price, and every trade in a batch clears at that same price regardless of what any individual paid in gas. That is what removes the sandwich, and it holds on every chain Ophis settles on. Approvals and wrapping are ordinary transactions and still cost gas.
 
 ### What happens if my order cannot be filled?
 
