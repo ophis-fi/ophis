@@ -1,34 +1,39 @@
 # pathviz venue registry -- Optimism mainnet (chain 10).
 #
 # The route column is an ALLOWLIST: a settlement counterparty is drawn ONLY if
-# it is a [venues] entry below. Everything else -- known aggregator routers,
-# downstream pools an aggregator internally hops through, unknown addresses --
-# is never drawn. This fails closed: a missing, stale, or malformed registry
-# draws nothing rather than leaking a competitor.
+# it is a [venues] entry below, and the backend additionally suppresses the whole
+# column when a known [routers] competitor took part in the settlement. Unknown
+# addresses are never drawn. This fails closed for what the file can decide on its
+# own: a missing, malformed, or empty file draws nothing, and an unknown address
+# is never drawn. It does NOT fail closed against operator error -- an address
+# wrongly listed under [venues] WILL be drawn even if it is a competitor. Keeping
+# these two tables correct is the operator's responsibility (below).
 #
-#   [venues]  real liquidity venues (AMM/PMM pools) Ophis settles into. Drawn
-#             as route hops and labelled. If it is not listed here, it is not
-#             drawn.
+#   [venues]  DIRECT liquidity venues Ophis settles into: integrated AMM/PMM pools
+#             AND Ophis' own settlement adapters (e.g. OphisUniswapV4Adapter,
+#             which only Settlement can call and which returns output only to
+#             Settlement). Drawn as route hops and labelled. Not listed -> not drawn.
 #
-#   [routers] aggregator routers Ophis solvers call. Ophis routes THROUGH them,
-#             but they are competitors, and the standing copy rule is that Ophis
-#             public copy never names one (the frontend enforces the same rule
-#             for solver names via the display-alias layer). They are excluded by
-#             the allowlist anyway (they are not [venues]); listing them here is
-#             documentation AND a guardrail -- an address may not appear in both
-#             tables, so the loader REJECTS a config that promotes a known
-#             competitor to a drawn venue.
+#   [routers] COMPETITOR aggregator routers Ophis solvers call (KyberSwap, LI.FI,
+#             Odos, ...). Ophis routes THROUGH them, but they are competitors, and
+#             the standing copy rule is that Ophis public copy never names one (the
+#             frontend enforces the same rule for solver names via the display-alias
+#             layer). They are never drawn AND their presence suppresses the column.
+#             Listing them here is documentation AND a guardrail -- an address may
+#             not appear in both tables, so the loader REJECTS a config that
+#             promotes a known competitor to a drawn venue.
 #
-# On Optimism, Ophis settles EXCLUSIVELY through aggregator routers (the driver
-# custom allowlist `custom_allowlist::OPTIMISM_MAINNET`), so [venues] is empty:
-# the route column stays empty and each graph degrades to solver -> out (surplus
-# and the winning Ophis solver still render). Add direct-pool venues under
-# [venues] as they are integrated.
+# On Optimism, Ophis settles EXCLUSIVELY through competitor aggregator routers, so
+# [venues] is empty: the route column stays empty and each graph degrades to
+# solver -> out (surplus and the winning Ophis solver still render). Add direct
+# venues under [venues] as they are integrated.
 #
-# OWNERSHIP: infra ops. When a new counterparty is added to the driver allowlist,
-# add it here in the same change (as a [venues] pool or a [routers] aggregator)
-# so user-facing images stay legible and rule-compliant. Addresses are
-# EIP-55-checksummed and matched case-insensitively at load.
+# OWNERSHIP: infra ops. When a new counterparty appears in the driver custom
+# allowlist (`custom_allowlist.rs`), CLASSIFY it by hand and add it here in the
+# same change: a competitor aggregator router -> [routers]; a direct pool or an
+# Ophis own adapter -> [venues]. The driver allowlist is a MIXED set (both kinds),
+# NOT a router list, so do not blindly mirror it. Addresses are EIP-55-checksummed
+# and matched case-insensitively at load.
 
 [venues]
 # (No direct-pool venues on Optimism yet: all settlement flows through the
