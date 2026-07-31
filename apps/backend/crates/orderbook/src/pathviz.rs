@@ -275,6 +275,23 @@ pub struct TokenView {
     pub decimals: u8,
 }
 
+/// Brand-neutral PUBLIC label for a solver, mirroring the frontend's
+/// `ophisSolverPublicLabel` (ophis/solvers.ts). The pathviz SVG is rendered by
+/// the backend and embedded as an opaque `<img>`, so the frontend cannot
+/// neutralize it after the fact: the backend is the only place that can keep a
+/// competitor solver brand (velora, kyberswap, okx, lifi, enso, openocean,
+/// dodo, ...) out of the rendered route diagram (standing copy rule). Safe by
+/// default: anything not an explicitly Ophis-run lane collapses to the neutral
+/// "External solver", so a newly added third-party lane can never leak its
+/// brand without an explicit opt-in here. Keep this in sync with the frontend.
+fn solver_public_label(name: &str) -> &'static str {
+    match name.to_ascii_lowercase().as_str() {
+        "baseline" => "Baseline",
+        "uniswap-v4" => "Ophis direct solver",
+        _ => "External solver",
+    }
+}
+
 /// Build the QUOTE-TIME graph: input token -> winning solver -> output
 /// token. Solver NAME only, no venue column (owner decision 22). No surplus
 /// (not settled yet).
@@ -295,7 +312,7 @@ pub fn build_quote_graph(
     });
     g.nodes.push(PathVizNode {
         id: "solver".into(),
-        label: solver_name.to_string(),
+        label: solver_public_label(solver_name).to_string(),
         kind: PathVizNodeKind::Solver,
         column: 1,
         address: None,
@@ -559,8 +576,11 @@ pub fn build_settled_graph(
     let mut solver_nodes = 0usize;
     for bid in solvers.iter().take(MAX_SOLVERS) {
         g.nodes.push(PathVizNode {
+            // id keeps the raw name (machine key for edge wiring + uniqueness,
+            // never rendered); the LABEL is the brand-neutral public string that
+            // the SVG draws.
             id: format!("solver:{}", bid.name),
-            label: bid.name.clone(),
+            label: solver_public_label(&bid.name).to_string(),
             kind: PathVizNodeKind::Solver,
             column: 1,
             address: None,
@@ -570,7 +590,7 @@ pub fn build_settled_graph(
     if solver_nodes == 0 {
         g.nodes.push(PathVizNode {
             id: format!("solver:{winner}"),
-            label: winner.clone(),
+            label: solver_public_label(&winner).to_string(),
             kind: PathVizNodeKind::Solver,
             column: 1,
             address: None,
@@ -1076,8 +1096,51 @@ mod tests {
         // No venue column at quote time (decision 22).
         assert!(!g.nodes.iter().any(|n| n.kind == PathVizNodeKind::Venue));
         assert_eq!(g.solvers.len(), 1);
-        assert_eq!(g.solvers[0].name, "odos-solver");
+        assert_eq!(g.solvers[0].name, "odos-solver"); // raw metadata kept
+        // The RENDERED solver node label is brand-neutral, never the raw name.
+        let solver_node = g.nodes.iter().find(|n| n.kind == PathVizNodeKind::Solver).unwrap();
+        assert_eq!(solver_node.label, "External solver");
         assert!(g.surplus.is_none());
+    }
+
+    #[test]
+    fn solver_public_label_neutralizes_competitor_brands() {
+        assert_eq!(solver_public_label("baseline"), "Baseline");
+        assert_eq!(solver_public_label("uniswap-v4"), "Ophis direct solver");
+        // Every external / competitor lane collapses to the neutral label.
+        for c in ["velora", "kyberswap", "okx", "lifi", "enso", "openocean", "dodo", "odos", "1inch"] {
+            assert_eq!(solver_public_label(c), "External solver", "{c} must be neutralized");
+        }
+        // Case-insensitive, and safe-by-default for an unknown lane.
+        assert_eq!(solver_public_label("KyberSwap"), "External solver");
+        assert_eq!(solver_public_label("some-new-aggregator"), "External solver");
+    }
+
+    #[test]
+    fn settled_graph_never_renders_a_competitor_solver_name() {
+        // Two competitor solver lanes competed; the winner is velora. No node
+        // LABEL may contain a competitor brand (the SVG draws labels), yet the
+        // winning solver must still be identifiable by its id for highlighting.
+        let solvers = vec![
+            PathVizSolverBid { name: "velora".into(), winner: true, executed_sell_atoms: Some("1".into()), executed_buy_atoms: Some("1".into()) },
+            PathVizSolverBid { name: "kyberswap".into(), winner: false, executed_sell_atoms: None, executed_buy_atoms: None },
+        ];
+        let g = build_settled_graph(&tv("USDC", 6), &tv("WETH", 18), "1", "1", solvers, &[], None, None);
+        g.validate().unwrap();
+        let solver_labels: Vec<&str> = g
+            .nodes
+            .iter()
+            .filter(|n| n.kind == PathVizNodeKind::Solver)
+            .map(|n| n.label.as_str())
+            .collect();
+        assert_eq!(solver_labels, vec!["External solver", "External solver"]);
+        for n in &g.nodes {
+            for brand in ["velora", "kyberswap"] {
+                assert!(!n.label.to_lowercase().contains(brand), "brand {brand} leaked in a node label");
+            }
+        }
+        // The winner is still resolvable via the id the SVG matches on.
+        assert!(g.nodes.iter().any(|n| n.kind == PathVizNodeKind::Solver && n.id == "solver:velora"));
     }
 
     #[test]
