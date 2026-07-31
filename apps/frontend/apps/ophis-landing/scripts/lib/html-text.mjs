@@ -42,24 +42,18 @@ const NAMED = {
   frac12: '½', frac14: '¼', frac34: '¾', sup2: '²', sup3: '³',
 }
 
-const NAMED_RE = new RegExp(`&(${Object.keys(NAMED).join('|')});`, 'g')
-
-/** Named entities left over after decoding, i.e. ones NAMED does not cover. */
-export function undecodedEntitiesIn(s) {
-  return [...s.matchAll(/&([a-zA-Z][a-zA-Z0-9]{1,31});/g)]
-    .map((m) => m[0])
-    .filter((e) => !(e.slice(1, -1) in NAMED))
-}
+// ONE pass over every reference form. Two passes were wrong: `&#38;copy;` is
+// the text "&copy;" (the browser does not re-parse characters a reference
+// produced), but decoding numeric first and named second turned it into "©",
+// so the page and the schema disagreed.
+const REF_RE = new RegExp(`&(?:#(\\d+)|#[xX]([0-9a-fA-F]+)|(${Object.keys(NAMED).join('|')}));`, 'g')
 
 export function decodeEntities(s) {
-  return (
-    s
-      .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d)))
-      .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
-      // Single pass over the named set so a decoded value cannot be re-decoded:
-      // `&amp;copy;` must yield the text "&copy;", not "©".
-      .replace(NAMED_RE, (_m, name) => NAMED[name])
-  )
+  return s.replace(REF_RE, (_m, dec, hex, name) => {
+    if (dec !== undefined) return String.fromCodePoint(Number(dec))
+    if (hex !== undefined) return String.fromCodePoint(parseInt(hex, 16))
+    return NAMED[name]
+  })
 }
 
 export function htmlToText(html) {
