@@ -13,7 +13,7 @@
       "type": "skill-md",
       "description": "Umbrella skill for the Ophis family: when to use each sub-skill, the eight safety rules, and a machine-readable per-chain policy block (pinned settlement and vault-relayer contracts, EIP-712 domains, orderbook hosts, slippage latches) for shell-capable agents with curl, jq and cast.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md",
-      "digest": "sha256:152dedae045451c0ada351156d9ae41c81e7b21ed124f05fddf8cd910f0aa73b"
+      "digest": "sha256:e37e3d1935eb0babdf5b470b371342650206d7f8531a25a70fc41e0578addd88"
     },
     {
       "name": "ophis-quote",
