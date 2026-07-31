@@ -174,6 +174,10 @@ services:
       OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
     volumes:
       - ./configs/orderbook.toml:/orderbook.toml:ro
+      # pathviz venue registry ([pathviz].venues-file). Read-only; a missing or
+      # unparseable file degrades venue labels to bare addresses, never fails
+      # startup (run.rs loads it warn-on-error).
+      - ./configs/pathviz-venues.toml:/configs/pathviz-venues.toml:ro
     command: ["--config", "/orderbook.toml"]
     ports:
       - "127.0.0.1:8102:80"

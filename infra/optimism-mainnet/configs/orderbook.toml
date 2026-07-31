@@ -94,15 +94,20 @@ burst = 20
 # through the Cloudflare tunnel; set to false if that ever changes.
 trust-cf-connecting-ip = true
 
-# Server-rendered route/surplus visualization (pathviz, Wave 2). SHIPS
-# DISABLED (the --enable-pathviz kill switch). While off, the quote
-# pathViz/pathVizImage fields stay absent and the /pathviz endpoints answer
-# 404. To enable: flip `enabled` and uncomment `venues-file` once the
-# registry (pathviz-venues.toml, owned by infra ops) is mounted at that path;
-# unknown venues degrade to bare 0x addresses.
+# Server-rendered route/surplus visualization (pathviz, Wave 2). ENABLED
+# 2026-07-31 to feed the swap app's post-settlement SettlementRoute panel
+# (Odos-shutdown follow-up): GET /api/v1/orders/{uid}/pathviz answers with the
+# settled route graph + SVG instead of 404.
+#
+# Safety shape, verified in run.rs before flipping this: a missing or
+# unreadable venues file DEGRADES (warn + bare 0x address labels), it never
+# fails startup. The registry file is bind-mounted read-only by
+# docker-compose.yml (orderbook service) and pinned by a backend unit test
+# (pathviz.rs `committed_op_venue_registry_loads`), so a drifted or
+# unparseable edit fails CI, not the running orderbook.
 [pathviz]
-enabled = false
-# venues-file = "/configs/pathviz-venues.toml"
+enabled = true
+venues-file = "/configs/pathviz-venues.toml"
 
 # Self-serve partner-fee recipient registry (partner-fees Phase A). SHIPS
 # DISABLED: `registration-enabled` is the master switch for the whole feature.
