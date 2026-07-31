@@ -408,7 +408,21 @@ projects:
     # OP block time is ~2s post-Bedrock; align tip-block tracking.
     upstreamDefaults:
       evm:
-        statePollerInterval: 5s
+        # 2026-07-31: 5s -> 10s. eRPC's own block-head poller accounted for
+        # ~0.5 polls/s per upstream (about 21% of all traffic to the keyed lane)
+        # and is pure infrastructure — unlike the autopilot's poll-interval it
+        # has no product-latency cost, so it is the cheapest saving available.
+        #
+        # Deliberately conservative rather than 15s+: `enforceHighestBlock: true`
+        # relies on the poller's view of the tip, and a staler view means more
+        # 1-block tip drift between upstreams, which is what disputeBehavior:
+        # preferBlockHeadLeader has to resolve. Doubling is a measurable step;
+        # check erpc_consensus_errors_total{error="dispute"} before going further.
+        #
+        # NOTE: measured polling ran at ~2s despite the 5s setting, so this poller
+        # is substantially request-driven and the interval is an upper bound, not
+        # a guarantee. Treat any saving here as a bonus and verify it empirically.
+        statePollerInterval: 10s
         statePollerDebounce: 1s
 
     upstreams:
