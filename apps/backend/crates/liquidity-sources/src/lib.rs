@@ -72,9 +72,13 @@ pub fn defaults_for_network(chain: &Chain) -> Vec<BaselineSource> {
         Chain::Sepolia => vec![BaselineSource::TestnetUniswapV2],
         Chain::Hardhat => panic!("unsupported baseline sources for Hardhat"),
         // Ophis-deployed chains (MegaETH, HyperEVM, OP Sepolia, Katana, Mantle,
-        // Unichain): ship empty so the driver disables built-in baseline DEX
-        // presets and we wire the manual `[[liquidity.*]]` config per chain.
+        // Unichain, Robinhood): ship empty so the driver disables built-in baseline
+        // DEX presets and we wire the manual `[[liquidity.*]]` config per chain.
         // (Unichain Phase 0 routes v4 via the aggregator connectors, not baseline.)
+        // Robinhood is the same shape as Unichain: its marquee stock/stable
+        // liquidity is on Uniswap v4, which the baseline solver cannot read (it
+        // does not understand the v4 singleton/hooks), so day-1 routing is
+        // aggregator-only via LI.FI.
         Chain::MegaethTestnet
         | Chain::MegaethMainnet
         | Chain::HyperEvmTestnet
@@ -84,6 +88,7 @@ pub fn defaults_for_network(chain: &Chain) -> Vec<BaselineSource> {
         | Chain::KatanaMainnet
         | Chain::MantleTestnet
         | Chain::MantleMainnet
+        | Chain::Robinhood
         | Chain::Unichain => vec![],
     }
 }

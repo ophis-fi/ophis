@@ -110,6 +110,8 @@ export const CHAIN_SPECIFIC_BENEFITS: Record<SupportedChainId, MessageDescriptor
   [10 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
   // Ophis fork: Unichain mainnet (chain 130)
   [130 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
+  // Ophis fork: Robinhood Chain mainnet (chain 4663)
+  [4663 as unknown as SupportedChainId]: COW_SWAP_BENEFITS,
 }
 
 /**
@@ -142,6 +144,15 @@ export const CHAIN_AGGREGATION_INFO: Partial<Record<SupportedChainId, ChainAggre
     headline: 'Ophis aggregates liquidity across Unichain.',
     sources: [
       { solver: 'KyberSwap', covers: 'aggregator covering Uniswap V3/V4 and Unichain-native pools' },
+    ],
+  },
+  // Ophis fork: Robinhood Chain mainnet (chain 4663)
+  [4663 as unknown as SupportedChainId]: {
+    headline: 'Ophis aggregates liquidity across Robinhood Chain.',
+    sources: [
+      { solver: 'LI.FI', covers: 'aggregator covering available Robinhood Chain liquidity venues' },
+      { solver: 'KyberSwap', covers: 'independent route builder covering Ekubo and Uniswap liquidity' },
+      { solver: 'Uniswap V4', covers: 'direct adapter to canonical Robinhood Chain liquidity' },
     ],
   },
 }

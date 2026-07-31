@@ -32,6 +32,9 @@ export const DEFILLAMA_PLATFORMS: Record<SupportedChainId, string | null> = {
   [10 as unknown as SupportedChainId]: 'optimism',
   // Ophis fork: Unichain mainnet (chain 130) — DefiLlama 'unichain' slug
   [130 as unknown as SupportedChainId]: 'unichain',
+  // Robinhood Chain is not listed by DefiLlama yet; disable this source
+  // explicitly instead of guessing a platform slug.
+  [4663 as unknown as SupportedChainId]: null,
   // Ophis fork: MegaETH mainnet (chain 4326) — DefiLlama may not have a
   // platform slug for MegaETH yet; null disables price lookups gracefully.
   // Re-evaluate post-launch.
@@ -48,7 +51,13 @@ const BASE_URL = 'https://coins.llama.fi/prices/current'
  */
 const FAILED_FETCH_ERROR = 'Failed to fetch'
 
-const fetchRateLimited = fetchWithRateLimit({
+/**
+ * Shared DefiLlama budget. Exported so every caller of coins.llama.fi goes
+ * through ONE limiter: a second instance would mean two independent 2 req/s
+ * budgets against the same host, which is how you earn the 1-minute 429
+ * cool-off that DEFILLAMA_RATE_LIMIT_TIMEOUT exists to absorb.
+ */
+export const defillamaFetchRateLimited = fetchWithRateLimit({
   // Allow 2 requests per second
   rateLimit: {
     tokensPerInterval: 2,
@@ -71,7 +80,7 @@ export async function getDefillamaUsdPrice(currency: Token): Promise<Fraction | 
   const key = `${platform}:${getAddressKey(currency.address)}`
   const url = `${BASE_URL}/${key}`
 
-  return fetchRateLimited(url)
+  return defillamaFetchRateLimited(url)
     .then((res) => res.json())
     .catch((error) => {
       if (error.message.includes(FAILED_FETCH_ERROR)) {

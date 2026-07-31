@@ -11,12 +11,12 @@ coverAlt: "Ophis emblem with Optimism and supported chain logos"
 
 To swap on Optimism, open the Ophis swap page with chain id 10 pre-selected, pick your pair, and sign the order your wallet shows. That order is an EIP-712 intent with a hard limit price, not a transaction: a competing solver network fills it and settles it in an MEV-protected batch. The fee is a flat 0.10% of trade volume, and active traders earn a share of a monthly WETH rebate pool, weighted by 30-day volume tier.
 
-Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's frontend with a natural-language intent layer and an agent stack (MCP server, SDK, plugins) on top. It runs on twelve EVM chains, and Optimism is one of two where the deployment is sovereign: Ophis operates its own orderbook and its own settlement contract there. This post covers the flow, what batch settlement changes versus a router, what it costs, and how integrators earn on referred flow.
+Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's frontend with a natural-language intent layer and an agent stack (MCP server, SDK, plugins) on top. It runs on 13 EVM chains, and Optimism is one of three where the deployment is sovereign, alongside [Unichain](/blog/how-to-swap-on-unichain/) and [Robinhood Chain](/blog/swap-on-robinhood-chain/): Ophis operates its own orderbook and settlement contracts there. This post covers the flow, what batch settlement changes versus a router, what it costs, and how integrators earn on referred flow.
 
 ## Swap on Optimism in four steps
 
 1. **Open the app.** [swap.ophis.fi/#/10/swap](https://swap.ophis.fi/#/10/swap) loads with Optimism (chain id 10) pre-selected. Connect a wallet. Ophis is self-custodial: it never holds your funds, and nothing moves without your EIP-712 or ERC-1271 signature.
-2. **Sign an intent, not a transaction.** Enter the pair and amount, review the quote, and sign the order. The signature carries a hard limit price, the worst execution you can receive. Orders are gasless: no native token needed, the fee is taken in the sell token.
+2. **Sign an intent, not a transaction.** Enter the pair and amount, review the quote, and sign the order. The signature carries a hard limit price, the worst execution you can receive. Orders are gasless: no native token needed, the fee comes out of the traded amount.
 3. **Let solvers compete.** Your order goes to the Ophis orderbook off chain, where solvers race to fill it. The batch settles at a uniform clearing price, and 100% of any price improvement beyond your signed quote comes back to you as surplus. The fee takes no share of it.
 4. **Watch the rebate meter.** The swap page shows your rolling 30-day volume tier and your progress toward the next one. From $20,000 of 30-day volume you enter the tier ladder, and a higher tier means a larger share of the monthly rebate pool.
 
@@ -24,7 +24,7 @@ Step for step, this is the same flow as on any other Ophis chain. What is differ
 
 ## A sovereign deployment: own orderbook, own settlement
 
-On most of its chains, Ophis settles through CoW Protocol's canonical audited GPv2 contracts via api.cow.fi. On Optimism and Unichain, Ophis is sovereign: it runs its own orderbook and a bytecode-identical deployment of CoW Protocol's audited GPv2Settlement at a non-canonical address:
+On most of its chains, Ophis settles through CoW Protocol's canonical audited GPv2 contracts via api.cow.fi. On Optimism, Unichain, and Robinhood Chain, Ophis is sovereign: it runs its own orderbook and a bytecode-identical deployment of CoW Protocol's audited GPv2Settlement at a non-canonical address:
 
 ```
 0x310784c7FCE12d578dA6f53460777bAc9718B859
@@ -66,7 +66,7 @@ Rebates are paid monthly in WETH from the fee Safe. The pool is 21.25% of collec
 
 Optimism flow does not have to come from a human clicking a UI. Three integration surfaces exist, and integrators earn on routed flow through the affiliate program: mint a referral code, and trades from your referred wallets are attributed to you.
 
-- **MCP server.** A hosted, keyless endpoint at `https://mcp.ophis.fi/mcp` exposes twelve tools, from `parse_intent` and `get_quote` through `build_order` and `submit_order`. `list_chains` resolves the Optimism orderbook and settlement domain, `build_order` pins the receiver to the owner, and the server never holds keys or signs anything. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the full safety model.
+- **MCP server.** A hosted, keyless endpoint at `https://mcp.ophis.fi/mcp` exposes fourteen tools, from `parse_intent` and `get_quote` through `build_order`, `validate_order`, and `submit_order`. `list_chains` resolves the Optimism orderbook and settlement domain, `build_order` pins the receiver to the owner, and the server never holds keys or signs anything. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the full safety model.
 - **SDK.** `@ophis/sdk` (0.2.3 on npm) resolves the orderbook URL and the EIP-712 signing domain per chain. That is exactly the part integrations get wrong when they hardcode canonical endpoints on a sovereign chain. Details in the [AI agent docs](https://docs.ophis.fi/ai-agents).
 - **Affiliate rebate.** Anyone can mint a referral code and earn 8% of the net fee Ophis keeps on every trade their referred wallets route, paid monthly in WETH. The regular tier is capped at $1M of referred volume per month; an invitation-only Partner tier pays 12%, uncapped. Mechanics in the [affiliate docs](https://docs.ophis.fi/affiliate).
 
@@ -80,7 +80,7 @@ A router aggregator executes your swap as an on-chain transaction through a rout
 
 ### Do failed swaps cost gas?
 
-No. An Ophis order is a signed message, not a broadcast transaction, so there is no failed transaction to pay for. If no solver can fill your order at your limit price before it expires, it expires and nothing lands on chain. Fills are gasless for you as well, and the fee is taken in the sell token; the only native-token cost is a one-time approval the first time you sell a given token.
+No. An Ophis order is a signed message, not a broadcast transaction, so there is no failed transaction to pay for. If no solver can fill your order at your limit price before it expires, it expires and nothing lands on chain. Fills are gasless for you as well, and the fee comes out of the traded amount; the only native-token cost is a one-time approval the first time you sell a given token.
 
 ### How do rebates pay out?
 

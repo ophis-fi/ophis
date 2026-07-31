@@ -6,7 +6,49 @@
       "type": "skill-md",
       "description": "Swap or bridge tokens through Ophis, a non-custodial intent-based DEX aggregator: parse a natural-language request, get a best-execution quote, build an EIP-712 order, sign it in the user's own wallet, and submit it. Covers the public Intent API and the hosted MCP server.",
       "url": "https://ophis.fi/.well-known/agent-skills/swap-via-ophis/SKILL.md",
-      "digest": "sha256:208c7030c990719690fae74b2e10e219294c09f4e34401d685ebfa6fcf8536f9"
+      "digest": "sha256:4c78577c82f6fa1ba00e92a8636105c864167cd4ade8b0f75e13ccc04ccbd258"
+    },
+    {
+      "name": "ophis",
+      "type": "skill-md",
+      "description": "Umbrella skill for the Ophis family: when to use each sub-skill, the eight safety rules, and a machine-readable per-chain policy block (pinned settlement and vault-relayer contracts, EIP-712 domains, orderbook hosts, slippage latches) for shell-capable agents with curl, jq and cast.",
+      "url": "https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md",
+      "digest": "sha256:e37e3d1935eb0babdf5b470b371342650206d7f8531a25a70fc41e0578addd88"
+    },
+    {
+      "name": "ophis-quote",
+      "type": "skill-md",
+      "description": "Get an Ophis best-execution quote for one sell token into one buy token. Read-only: never signs, never broadcasts.",
+      "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-quote.md",
+      "digest": "sha256:cecd73b99bf54a0e89f6c59a3adc4fc8eec75870c48aef694bad84a0808267c4"
+    },
+    {
+      "name": "ophis-swap",
+      "type": "skill-md",
+      "description": "Execute a token swap on Ophis end to end: quote, build, confirm with the user, exact approval to the pinned vault relayer, EIP-712 sign, submit. The signed order is a bounded intent with a hard minimum, settled MEV-protected in a batch auction.",
+      "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-swap.md",
+      "digest": "sha256:874d86a679ce32a24024ea050baf279ae75525f48a560b1655176fee9340ee6a"
+    },
+    {
+      "name": "ophis-order-status",
+      "type": "skill-md",
+      "description": "Check an Ophis order by UID: lifecycle status, executed amounts, surplus versus the signed minimum, and the settlement transaction. Read-only.",
+      "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-order-status.md",
+      "digest": "sha256:2730f834cfb2b2729809c72f0dd382a9fa7779eae7c5e182ac12fe3157f05d20"
+    },
+    {
+      "name": "ophis-cancel",
+      "type": "skill-md",
+      "description": "Cancel one or many open Ophis orders, gasless, via a signed EIP-712 cancellation, including the batch type-string trap and the on-chain hard cancel fallback.",
+      "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-cancel.md",
+      "digest": "sha256:72dedfe88a528ee67cb4883b3e9c437ad0470dbf789f8553d464a6c5fab38a27"
+    },
+    {
+      "name": "ophis-surplus-report",
+      "type": "skill-md",
+      "description": "Report the surplus (price improvement beyond the signed minimum) a wallet earned from Ophis trades, in total and per order. Read-only.",
+      "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-surplus-report.md",
+      "digest": "sha256:5ce54c65f158ef3093cf6313a97b419c46ea207f3e9b832e60a23b4b6c87aa51"
     }
   ]
 }

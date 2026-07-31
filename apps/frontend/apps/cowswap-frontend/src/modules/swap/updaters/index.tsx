@@ -9,6 +9,8 @@ import { useIsHooksTradeType } from 'modules/trade'
 import { useSetTradeQuoteParams } from 'modules/tradeQuote'
 import { useIsSmartSlippageApplied } from 'modules/tradeSlippage'
 
+import { IntentRestoreUpdater } from 'ophis/components/intent'
+
 import { InvalidBridgeOutputUpdater } from './InvalidBridgeOutputUpdater'
 import { QuoteObserverUpdater } from './QuoteObserverUpdater'
 import { SetupSwapAmountsFromUrlUpdater } from './SetupSwapAmountsFromUrlUpdater'
@@ -35,6 +37,12 @@ export function SwapUpdaters(): ReactNode {
       <UnfillableSwapOrdersUpdater />
       <EthFlowDeadlineUpdater deadlineState={swapDeadlineState} />
       <SetupSwapAmountsFromUrlUpdater />
+      {/* Ophis: restore a stashed swap intent across the wallet-connect handoff
+          (see IntentRestoreUpdater). SwapUpdaters is shared with the hooks builder,
+          so this also mounts there, but it never restores on the /swap/hooks route,
+          and is inert without a stash, so non-intent flows and the injected widget
+          are unaffected. */}
+      <IntentRestoreUpdater />
       <InvalidBridgeOutputUpdater />
       <QuoteObserverUpdater />
       <Erc20ApproveWidget isPartialApprovalEnabled={enablePartialApprovalBySettings} />

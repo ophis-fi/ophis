@@ -1,6 +1,6 @@
 {
   "name": "@ophis/sdk",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Integration helpers for Ophis (a CoW Protocol fork): correct orderbook hosts, the CIP-75 partner-fee appData fragment, the per-chain EIP-712 signing domain, and order receiver-safety guards.",
   "license": "GPL-3.0-or-later",
   "type": "module",
@@ -56,8 +56,12 @@
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
+  "peerDependencies": {
+    "viem": "^2.0.0"
+  },
   "devDependencies": {
     "typescript": "^5.5.0",
+    "viem": "2.48.8",
     "vite": "^7.0.0",
     "vitest": "^4.1.8"
   }

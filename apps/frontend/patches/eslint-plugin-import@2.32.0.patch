@@ -1,0 +1,97 @@
+diff --git a/lib/rules/extensions.js b/lib/rules/extensions.js
+index 54e60e1094fd3e6dcae5d789f502984b76248e79..1f2af7b9352309b4e30d735c58ec564515cd12eb 100644
+--- a/lib/rules/extensions.js
++++ b/lib/rules/extensions.js
+@@ -171,7 +171,7 @@ module.exports = {
+       function computeOverrideAction(pathGroupOverrides, path) {
+         for (var i = 0, l = pathGroupOverrides.length; i < l; i++) {var _pathGroupOverrides$i =
+           pathGroupOverrides[i],pattern = _pathGroupOverrides$i.pattern,patternOptions = _pathGroupOverrides$i.patternOptions,action = _pathGroupOverrides$i.action;
+-          if ((0, _minimatch2['default'])(path, pattern, patternOptions || { nocomment: true })) {
++          if ((0, _minimatch.minimatch)(path, pattern, patternOptions || { nocomment: true })) {
+             return action;
+           }
+         }
+diff --git a/lib/rules/no-extraneous-dependencies.js b/lib/rules/no-extraneous-dependencies.js
+index 0dcf9d0544610dcdfa04409d438e2f82b3b4b718..b7687d23f884ea68ac99dc99b0e0ac51ef7f4481 100644
+--- a/lib/rules/no-extraneous-dependencies.js
++++ b/lib/rules/no-extraneous-dependencies.js
+@@ -252,8 +252,8 @@ function testConfig(config, filename) {
+     return config;
+   }
+   // Array of globs.
+-  return config.some(function (c) {return (0, _minimatch2['default'])(filename, c) ||
+-    (0, _minimatch2['default'])(filename, _path2['default'].join(process.cwd(), c));});
++  return config.some(function (c) {return (0, _minimatch.minimatch)(filename, c) ||
++    (0, _minimatch.minimatch)(filename, _path2['default'].join(process.cwd(), c));});
+ 
+ }
+ 
+diff --git a/lib/rules/no-import-module-exports.js b/lib/rules/no-import-module-exports.js
+index c54dddeb5421c164b480883f3227760c4a33291d..06e2e904e397b5bf462a00b2ef3bbba6bf263384 100644
+--- a/lib/rules/no-import-module-exports.js
++++ b/lib/rules/no-import-module-exports.js
+@@ -59,7 +59,7 @@ module.exports = {
+         var variableDefinition = objectScope && findDefinition(objectScope, node.object.name);
+         var isImportBinding = variableDefinition && variableDefinition.type === 'ImportBinding';
+         var hasCJSExportReference = hasKeywords && (!objectScope || objectScope.type === 'module');
+-        var isException = !!options.exceptions && options.exceptions.some(function (glob) {return (0, _minimatch2['default'])(fileName, glob);});
++        var isException = !!options.exceptions && options.exceptions.some(function (glob) {return (0, _minimatch.minimatch)(fileName, glob);});
+ 
+         if (isIdentifier && hasCJSExportReference && !isEntryPoint && !isException && !isImportBinding) {
+           importDeclarations.forEach(function (importDeclaration) {
+diff --git a/lib/rules/no-internal-modules.js b/lib/rules/no-internal-modules.js
+index 3b20616a24314b815c11561faeaa6a32ea629e4e..b74c3ff59c724b070d128e818d94c7e032ffac74 100644
+--- a/lib/rules/no-internal-modules.js
++++ b/lib/rules/no-internal-modules.js
+@@ -48,8 +48,8 @@ module.exports = {
+ 
+   create: function () {function noReachingInside(context) {
+       var options = context.options[0] || {};
+-      var allowRegexps = (options.allow || []).map(function (p) {return _minimatch2['default'].makeRe(p);});
+-      var forbidRegexps = (options.forbid || []).map(function (p) {return _minimatch2['default'].makeRe(p);});
++      var allowRegexps = (options.allow || []).map(function (p) {return _minimatch.minimatch.makeRe(p);});
++      var forbidRegexps = (options.forbid || []).map(function (p) {return _minimatch.minimatch.makeRe(p);});
+ 
+       // minimatch patterns are expected to use / path separators, like import
+       // statements, so normalize paths to use the same
+diff --git a/lib/rules/no-namespace.js b/lib/rules/no-namespace.js
+index c858db0c0c3a84d1712b8f61cc69998e4c6275c2..96985152a2ac6aa80c858a6a9280625f13b7b5ab 100644
+--- a/lib/rules/no-namespace.js
++++ b/lib/rules/no-namespace.js
+@@ -106,7 +106,7 @@ module.exports = {
+ 
+       return {
+         ImportNamespaceSpecifier: function () {function ImportNamespaceSpecifier(node) {
+-            if (ignoreGlobs && ignoreGlobs.find(function (glob) {return (0, _minimatch2['default'])(node.parent.source.value, glob, { matchBase: true });})) {
++            if (ignoreGlobs && ignoreGlobs.find(function (glob) {return (0, _minimatch.minimatch)(node.parent.source.value, glob, { matchBase: true });})) {
+               return;
+             }
+ 
+diff --git a/lib/rules/no-unassigned-import.js b/lib/rules/no-unassigned-import.js
+index 121d5110923ca474a7eed915051146ff92f8879b..ad305c264edd0aa832260d722d3c6c69fb001ae4 100644
+--- a/lib/rules/no-unassigned-import.js
++++ b/lib/rules/no-unassigned-import.js
+@@ -25,8 +25,8 @@ function testIsAllow(globs, filename, source) {
+     filePath = _path2['default'].resolve(_path2['default'].dirname(filename), source); // get source absolute path
+   }
+ 
+-  return globs.find(function (glob) {return (0, _minimatch2['default'])(filePath, glob) ||
+-    (0, _minimatch2['default'])(filePath, _path2['default'].join(process.cwd(), glob));}) !==
++  return globs.find(function (glob) {return (0, _minimatch.minimatch)(filePath, glob) ||
++    (0, _minimatch.minimatch)(filePath, _path2['default'].join(process.cwd(), glob));}) !==
+   undefined;
+ }
+ 
+diff --git a/lib/rules/order.js b/lib/rules/order.js
+index 578709bf0b90c1c794ed7f8c046d9b3edaf0ff0a..ee1ea875ce62ede549288fbfad22d7cb02fef372 100644
+--- a/lib/rules/order.js
++++ b/lib/rules/order.js
+@@ -507,7 +507,7 @@ function mutateRanksToAlphabetize(imported, alphabetizeOptions) {
+ function computePathRank(ranks, pathGroups, path, maxPosition) {
+   for (var i = 0, l = pathGroups.length; i < l; i++) {var _pathGroups$i =
+     pathGroups[i],pattern = _pathGroups$i.pattern,patternOptions = _pathGroups$i.patternOptions,group = _pathGroups$i.group,_pathGroups$i$positio = _pathGroups$i.position,position = _pathGroups$i$positio === undefined ? 1 : _pathGroups$i$positio;
+-    if ((0, _minimatch2['default'])(path, pattern, patternOptions || { nocomment: true })) {
++    if ((0, _minimatch.minimatch)(path, pattern, patternOptions || { nocomment: true })) {
+       return ranks[group] + position / maxPosition;
+     }
+   }

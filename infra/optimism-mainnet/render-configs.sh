@@ -71,6 +71,32 @@ if [[ "${-}" == *x* ]]; then
   exit 2
 fi
 
+# Rendered-eRPC validation, factored out so it can be invoked directly:
+#     ./render-configs.sh --check-rendered <file>
+# exit 0 = clean, exit 16 = an upstream endpoint lost its credential.
+# A guard that can only be reached by a full sudo-requiring render is a guard
+# nobody tests; the review that prompted this seam rightly refused assertions
+# that merely grepped this file for its own error strings.
+validate_rendered_erpc() {
+  local f="$1" bad=0
+  if grep -nE '^[[:space:]]*endpoint:[[:space:]]*\S+/$' "$f" >&2; then
+    echo "ERROR: the upstream endpoint above ends in '/' — a key substituted EMPTY." >&2
+    bad=1
+  fi
+  if grep -nE '^[[:space:]]*endpoint:[[:space:]]*https?://[^[:space:]]*//' "$f" >&2; then
+    echo "ERROR: the upstream endpoint above contains '//' mid-path — empty substitution." >&2
+    bad=1
+  fi
+  return $(( bad * 16 ))
+}
+
+if [[ "${1:-}" == "--check-rendered" ]]; then
+  [[ -n "${2:-}" && -f "${2:-}" ]] || { echo "usage: $0 --check-rendered <rendered-erpc.yaml>" >&2; exit 2; }
+  validate_rendered_erpc "$2" || exit 16
+  echo "OK: no empty key substitutions in $2"
+  exit 0
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
@@ -135,6 +161,37 @@ set -a
 # shellcheck disable=SC1091
 source .env
 set +a
+
+# ── ZAN key: migrate the legacy name, and NEVER render an empty one ──────────
+# ZAN_OP_KEY was renamed to ZAN_API_KEY on 2026-07-30 (the credential is
+# account-wide, not OP-specific). A .env that predates the rename — a DR host, or
+# the documented "restore your backed-up .env" path — still carries only the old
+# name. envsubst does not care: it would substitute the unset ZAN_API_KEY with an
+# EMPTY STRING and this script would then happily install the result.
+#
+# That failure is silent and security-relevant, not cosmetic. The endpoint becomes
+#     https://api.zan.top/node/v1/opt/mainnet/
+# i.e. zan's UNREGISTERED tier, which hard-rejects eth_call / eth_getLogs /
+# eth_estimateGas (-32012). Those methods would drop to a TWO-lane quorum, and
+# under disputeBehavior:preferBlockHeadLeader a two-lane quorum lets a single
+# hostile upstream win the tie-break by advertising the freshest head — the exact
+# hole the keyed lane was introduced to close. Fail closed instead.
+if [[ -z "${ZAN_API_KEY:-}" && -n "${ZAN_OP_KEY:-}" ]]; then
+  echo "==> WARNING: .env uses the legacy ZAN_OP_KEY. Migrating to ZAN_API_KEY for" >&2
+  echo "    this render. RENAME IT IN .env — the credential is account-wide (it also" >&2
+  echo "    serves eth/mainnet, base/mainnet and arb/one), so the OP-specific name is" >&2
+  echo "    misleading and this shim will be removed." >&2
+  ZAN_API_KEY="$ZAN_OP_KEY"
+  export ZAN_API_KEY
+fi
+if [[ -z "${ZAN_API_KEY:-}" ]]; then
+  echo "ERROR: ZAN_API_KEY is unset/empty (and no legacy ZAN_OP_KEY to migrate)." >&2
+  echo "       Refusing to render: the zan upstream would silently fall back to the" >&2
+  echo "       UNREGISTERED endpoint, which rejects eth_call/eth_getLogs/eth_estimateGas" >&2
+  echo "       and leaves those methods on a 2-lane quorum with no single-provider-" >&2
+  echo "       compromise protection. Set ZAN_API_KEY in .env (see .env.example)." >&2
+  exit 15
+fi
 
 # Resolve PK file path.
 #
@@ -383,7 +440,7 @@ fi
 # Templates that contain substituted SECRETS (after envsubst) MUST land
 # on the RAM-disk; everything else stays in ./rendered/ on disk. The
 # canonical list covers the submitter PK, the OKX credentials (api-key +
-# secret-key + passphrase), and the Odos + Enso API keys. The post-render
+# secret-key + passphrase), and the Enso API key. The post-render
 # assertion below scans all non-PK_BEARING files for both PK and
 # OKX-shaped secret literals, so a future template-edit that adds a
 # secret-substitution to a non-listed file will fail-closed before the
@@ -392,9 +449,9 @@ fi
 # (free upstreams), but the keyed validationcloud/blockdaemon migration puts two
 # live provider keys in it. Route it to the RAM-disk like every other secret-
 # bearing render (Time-Machine / APFS-snapshot / Spotlight protection) rather than
-# leaving it on the FileVault SSD — matches how odos/enso/okx keys are handled, and
+# leaving it on the FileVault SSD — matches how enso/okx keys are handled, and
 # the post-render leak assertion below cannot pattern-match these key shapes anyway.
-PK_BEARING_NAMES=(driver.toml okx.toml odos.toml enso.toml erpc.yaml)
+PK_BEARING_NAMES=(driver.toml okx.toml enso.toml erpc.yaml)
 
 is_pk_bearing() {
   local n="$1"
@@ -432,11 +489,25 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax (none today, but defensive against
   # future eRPC config additions like ${ALCHEMY_API_KEY}).
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ODOS_API_KEY} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${ZAN_API_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.
   chmod 600 "$out_tmp"
+
+  # Generic empty-substitution guard, checked BEFORE the file is installed.
+  # envsubst turns any unset variable into an empty string, so a renamed or
+  # forgotten key silently yields a credential-less URL that still parses and
+  # still starts. For erpc.yaml that means quietly demoting a keyed upstream to
+  # its anonymous tier (see the ZAN_API_KEY note above). Catch the shape rather
+  # than enumerating every key, so the next renamed variable is caught too.
+  if [[ "$name" == "erpc.yaml" ]]; then
+    if ! validate_rendered_erpc "$out_tmp"; then
+      echo "       Refusing to install $out. Check the *_KEY vars in .env." >&2
+      rm -f "$out_tmp"; exit 16
+    fi
+  fi
+
   mv -f "$out_tmp" "$out"
 
   if is_pk_bearing "$name"; then
@@ -444,6 +515,39 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   else
     echo "  rendered  $name"
   fi
+done
+
+# Prune ORPHANED renders: a rendered/<name> whose configs/<name>.tmpl no longer
+# exists. The render loop above only ever visits names derived from a template
+# that IS present, so deleting a template silently strands its last render.
+#
+# This is not cosmetic. A PK-bearing orphan (odos.toml, when the Odos lane was
+# retired) is a SYMLINK into the RAM-disk still holding that lane's live API key,
+# referenced by nothing. The leak assertion below cannot see it either: it scans
+# `find rendered -type f`, and both `-type f` and its `! -L` guard skip symlinks.
+# So without this pass the credential survives until the RAM-disk is unmounted.
+#
+# Deliberately unlinks the RAM-disk target BEFORE the symlink, because once the
+# symlink is gone the target's path is no longer discoverable from here.
+for rendered_path in rendered/*.toml rendered/*.yaml; do
+  [[ -e "$rendered_path" || -L "$rendered_path" ]] || continue
+  rendered_name="$(basename "$rendered_path")"
+  [[ -f "configs/${rendered_name}.tmpl" ]] && continue
+
+  if [[ -L "$rendered_path" ]]; then
+    orphan_target="$(readlink "$rendered_path")"
+    # Only follow the link into the RAM-disk we manage; never delete an
+    # arbitrary path a hand-edited symlink happens to point at.
+    if [[ "$orphan_target" == "${RAM_PK_MOUNT}/"* && -f "$orphan_target" ]]; then
+      rm -f "$orphan_target"
+      echo "  pruned    ${rendered_name} (orphaned; also removed its RAM-disk render)"
+    else
+      echo "  pruned    ${rendered_name} (orphaned symlink; target left untouched)"
+    fi
+  else
+    echo "  pruned    ${rendered_name} (orphaned)"
+  fi
+  rm -f "$rendered_path"
 done
 
 # Sanity: if Tier 1.5 left a stale on-disk driver.toml from a prior

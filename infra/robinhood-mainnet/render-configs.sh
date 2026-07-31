@@ -390,9 +390,7 @@ if [[ -n "${ROBINHOOD_RPC_INTERNAL:-}" ]]; then
     echo "" >&2
     echo "*** REFUSING: ROBINHOOD_RPC_INTERNAL is set in .env ***" >&2
     echo "    Value: ${ROBINHOOD_RPC_INTERNAL}" >&2
-    echo "    This BYPASSES the eRPC 3-of-4 consensus path and downgrades" >&2
-    echo "    the stack to single-provider posture. A single hostile" >&2
-    echo "    upstream can poison reads under this configuration." >&2
+    echo "    This BYPASSES the supervised sovereign eRPC path." >&2
     echo "" >&2
     echo "    If this is intentional (failure-domain test / emergency):" >&2
     echo "      ALLOW_RPC_BYPASS=1 ./render-configs.sh" >&2
@@ -416,14 +414,12 @@ fi
 # secret-substitution to a non-listed file will fail-closed before the
 # stack starts.
 # baseline, orderbook, autopilot, kyberswap, velora now all use .tmpl
-# (ROBINHOOD_RPC_INTERNAL must thread through). driver.toml (PK), okx.toml (OKX
-# secrets) and odos.toml (Odos x-api-key) bear secrets and must land on the
-# RAM-disk.
+# (ROBINHOOD_RPC_INTERNAL must thread through). driver.toml (PK) and okx.toml
+# (OKX secrets) bear secrets and must land on the RAM-disk.
 # Day-1 is LiFi-only: only driver.toml bears the submitter PK. LiFi is keyless.
-# erpc.yaml carries the low-sensitivity Alchemy read-key (a rate-limited read key
-# in a URL, not a PK) and renders to ./rendered/ 0644 so the nonroot erpc
-# container can read it - so it is deliberately NOT PK-bearing. When aggregator
-# lanes with real credentials (OKX/Odos/Enso) are added later, add their toml here.
+# erpc.yaml contains no credentials and renders to ./rendered/ 0644 so the
+# nonroot erpc container can read it. When aggregator
+# lanes with real credentials (OKX/Enso) are added later, add their toml here.
 PK_BEARING_NAMES=(driver.toml)
 
 is_pk_bearing() {
@@ -486,8 +482,8 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   #
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax (none today, but defensive against
-  # future eRPC config additions like ${ALCHEMY_API_KEY}).
-  envsubst '${ROBINHOOD_MAINNET_RPC} ${ROBINHOOD_RPC_INTERNAL} ${ALCHEMY_API_KEY} ${CHAINSTACK_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
+  # future eRPC config additions).
+  envsubst '${ROBINHOOD_MAINNET_RPC} ${ROBINHOOD_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
     < "$tmpl" > "$out_tmp"
   # PK/secret-bearing configs stay 0600. Non-secret configs (RPC URLs,
   # contract addresses, %VAR runtime-substituted placeholders — NO secret
@@ -503,6 +499,11 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   fi
   mv -f "$out_tmp" "$out"
 
+  # Native Linux bind mounts preserve numeric ownership; the driver image runs as 10001.
+  if is_pk_bearing "$name" && [[ "$(uname -s)" == "Linux" ]]; then
+    sudo chown 10001:10001 "$out"
+  fi
+
   if is_pk_bearing "$name"; then
     echo "  rendered  $name  → RAM-disk ($RAM_PK_MOUNT)"
   else
@@ -517,8 +518,8 @@ done
 find rendered -maxdepth 1 -name "driver.toml.BAK*" -print -exec rm -f {} \;
 find rendered -maxdepth 1 -name "driver.toml.OLD*" -print -exec rm -f {} \;
 
-# NOTE: the eRPC 3-of-4 fail-closed consensus guard (#447) is enforced at CI/PR
-# time (infra/optimism-mainnet/assert-erpc-failclosed.py, run by the
+# NOTE: the eRPC sovereign-upstream guard is enforced at CI/PR time
+# (infra/robinhood-mainnet/assert-erpc-failclosed.py, run by the
 # "erpc-consensus-guard" job in .github/workflows/ci.yml) — deliberately NOT
 # here. Wiring PyYAML into the render path would make a stack restart fail on an
 # operator/DR host without PyYAML, which is worse than the weakening it guards
@@ -552,12 +553,12 @@ while IFS= read -r f; do
       continue
     fi
     # uuid-shaped api-key (8-4-4-4-12 hex w/ dashes) — covers BOTH the OKX
-    # api-key AND the Odos x-api-key (same format). Both their templates set
-    # `api-key = "${...}"`, and both okx.toml + odos.toml are in
+    # api-key (same format as other uuid keys). Its template sets
+    # `api-key = "${...}"`, and okx.toml is in
     # PK_BEARING_NAMES (RAM-disk symlinks, skipped by `! -L`); this guard
     # fail-closes if either ever leaks into a non-RAM-disk rendered file.
     if grep -qE 'api-key = "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"' "$f" 2>/dev/null; then
-      violating_files+=("$f (uuid api-key: OKX / Odos / Enso)")
+      violating_files+=("$f (uuid api-key: OKX / Enso)")
       continue
     fi
     # OKX secret-key: 32-char hex.

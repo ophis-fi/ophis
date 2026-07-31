@@ -1,8 +1,9 @@
 import { useCallback } from 'react'
 
+import styles from './TierChip.module.css'
+
 import { setRebatesOptIn } from '../hooks/useRebatesOptIn'
 import { useTier } from '../hooks/useTier'
-import styles from './TierChip.module.css'
 
 interface Props {
   wallet?: `0x${string}`
@@ -61,7 +62,9 @@ export function TierChip({ wallet }: Props) {
       {next && remaining && (
         <>
           <span className={styles.divider}>•</span>
-          <span className={styles.nextTier}>${remaining} to {next.name}</span>
+          <span className={styles.nextTier}>
+            ${remaining} to {next.name}
+          </span>
         </>
       )}
     </a>

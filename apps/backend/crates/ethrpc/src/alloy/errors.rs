@@ -1,4 +1,17 @@
-use {alloy_contract::Error as ContractError, alloy_transport::RpcError};
+use {
+    alloy_contract::Error as ContractError,
+    alloy_json_rpc::ErrorPayload,
+    alloy_transport::RpcError,
+};
+
+/// Returns whether a JSON-RPC error proves that EVM execution reverted.
+pub fn is_revert_error_payload(err: &ErrorPayload) -> bool {
+    let message = err.message.to_lowercase();
+    err.as_revert_data().is_some()
+        || err.code == 3
+        || message.contains("revert")
+        || message.contains("invalidfeopcode")
+}
 
 /// Bubbles up node errors, ignoring all other errors.
 pub fn ignore_non_node_error<T>(result: Result<T, ContractError>) -> anyhow::Result<Option<T>> {
@@ -67,18 +80,7 @@ impl ContractErrorExt for ContractError {
             // lump them in here. Other ErrorResps (rate limits, bad params)
             // are transport and must retry.
             ContractError::TransportError(RpcError::ErrorResp(err)) => {
-                let message = err.message.to_lowercase();
-                err.as_revert_data().is_some()
-                    // https://github.com/ethereum/go-ethereum/blob/8e2107dc39dc9dab132150ec915e7ac299f9eb48/internal/ethapi/errors.go#L42-L46
-                    // https://github.com/alloy-rs/alloy/blob/b6753088241a50730c092bdba7036f52887c4c57/crates/rpc-types-eth/src/error.rs#L32
-                    || err.code == 3
-                    || message.contains("revert")
-                    // anvil/revm surfaces halt reasons as
-                    // `EVM error <HaltReason>`. Match only the `INVALID`
-                    // (0xFE) opcode here — older Solidity (e.g. Bancor BNT)
-                    // emits it on a missing selector, which is a contract-
-                    // level rejection. Other halts are intentionally excluded.
-                    || message.contains("invalidfeopcode")
+                is_revert_error_payload(err)
             }
             ContractError::ZeroData(..)
             | ContractError::UnknownFunction(..)

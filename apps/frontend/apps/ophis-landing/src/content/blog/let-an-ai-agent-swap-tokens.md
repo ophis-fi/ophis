@@ -53,7 +53,7 @@ server:
 https://mcp.ophis.fi/mcp
 ```
 
-It exposes twelve tools:
+It exposes fourteen tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -63,12 +63,14 @@ It exposes twelve tools:
 | `build_order` | Build a bounded, ready-to-sign order (receiver pinned to the owner by default). |
 | `submit_order` | Submit a signed order to the correct per-chain orderbook. |
 | `lookup_tier` | Look up a wallet's 30-day volume tier and rebate status. |
+| `get_integrator_earnings` | Read routed volume, own-fee accrual, referral rebates, and paid-to-date figures for an appCode. |
 | `list_chains` | Resolve supported chains and their settlement / orderbook hosts. |
 | `get_balances` | Read a wallet's native and ERC-20 balances on one chain. |
 | `get_portfolio` | Read a wallet's token balances across multiple chains. |
 | `get_gas` | Fetch the current gas price for a chain. |
 | `get_token_chart` | Fetch a token's OHLCV price chart. |
 | `expected_surplus` | Estimate how much better an Ophis sell-quote beats the open market. |
+| `validate_order` | Validate a proposed order against Ophis safety and routing invariants before signing. |
 
 Point any MCP client (Claude, Cursor, or your own agent loop) at the URL:
 
@@ -102,7 +104,7 @@ import requests
 CHAIN_IDS = {
     "ethereum": 1, "optimism": 10, "unichain": 130, "bnb": 56, "gnosis": 100,
     "polygon": 137, "base": 8453, "ink": 57073, "linea": 59144,
-    "arbitrum": 42161, "avalanche": 43114, "plasma": 9745,
+    "arbitrum": 42161, "avalanche": 43114, "plasma": 9745, "robinhood": 4663,
 }
 
 @tool
@@ -120,7 +122,7 @@ def ophis_swap_intent(text: str) -> dict:
         raise ValueError(f"unmapped chain {chain!r}; never silently misroute")
     chain_id = CHAIN_IDS.get(chain, 1)  # no chain named: default to Ethereum
     sell, buy = by_type.get("sellToken", "_"), by_type.get("buyToken", "_")
-    return {"intent": parsed, "deeplink": f"https://ophis.fi/#/{chain_id}/swap/{sell}/{buy}"}
+    return {"intent": parsed, "deeplink": f"https://swap.ophis.fi/#/{chain_id}/swap/{sell}/{buy}"}
 ```
 
 The tool returns both the structured intent (so the agent can reason about the
@@ -170,9 +172,12 @@ one-line summary: let the SDK resolve anything that is chain-specific.
 
 Here is the part that flips swaps from a cost center to a revenue line. Every
 swap routed through your integration carries the Ophis partner fee: a flat
-**0.05%** (just **0.01%** for stablecoin-to-stablecoin pairs) written into the
-order's `appData`. Integrators earn a **rebate** on the volume they route, and
-the `lookup_tier` tool surfaces a wallet's 30-day volume tier.
+**0.05%** written into the order's `appData`. A reduced **0.01%** is available on
+same-chain stablecoin pairs, but only to callers that build `appData` themselves
+and classify the pair; orders built by the hosted MCP always carry the flat
+0.05%. The FAQ below has the per-chain arithmetic. Integrators earn a **rebate**
+on the volume they route, and the `lookup_tier` tool surfaces a wallet's 30-day
+volume tier.
 
 An agent that swaps frequently is not an expense to its builder; it is recurring,
 attributable volume. The more your agent trades, the more you earn back.
@@ -203,6 +208,75 @@ The [autonomous-trading section of the docs](https://docs.ophis.fi/ai-agents#aut
 spells out the full kit. The rule of thumb: an autonomous integrator is one
 unpinned `receiver` away from draining itself, so do not ship one until the
 policy is in code, not prose.
+
+## FAQ
+
+### Can an AI agent swap tokens on its own?
+
+Yes. An agent can quote, build, sign, and submit a swap without a human in the
+loop, and Ophis exposes three surfaces for it: the hosted MCP server at
+`https://mcp.ophis.fi/mcp`, the Intent API, and `@ophis/sdk`. What the agent
+signs is a bounded order with a hard limit price rather than an arbitrary
+transaction, so the worst execution it can receive is the one it committed to.
+Removing the human is the point at which the policy rails in this article stop
+being optional, because a prompt-injected agent will sign whatever it is told.
+
+### Does Ophis hold an agent's private key?
+
+No. The MCP server is keyless and unauthenticated: it never holds keys and never
+signs anything. `build_order` returns a ready-to-sign order, the agent signs it
+locally with its own key, and `submit_order` relays that signature. The
+signature is the trust boundary, which is why the order it covers has to be
+bounded before it is produced.
+
+### How do I stop an agent from signing a bad swap?
+
+Four checks catch the failures that a human would otherwise catch in a wallet
+prompt. Pin the receiver to the owner before signing (`build_order` does this by
+default, and `assertReceiverIsOwner` enforces it in the SDK). Resolve token
+addresses through `resolve_token`, which fails closed rather than accepting an
+address the model produced. Keep a hard limit price so the order cannot fill
+below what the agent reasoned about. Then run `validate_order` as a preflight.
+For unattended signing, move those checks into code behind a Safe and an
+EIP-1271 policy gate rather than trusting the agent to honour them.
+
+### What does it cost an agent to swap?
+
+Two things set the number, so it is worth being exact. The partner rate is a
+flat 0.05% (5 bps) of trade volume, half the 0.10% retail rate the swap app
+charges. A caller building `appData` itself can drop that to 0.01% (1 bp) on a
+same-chain stablecoin pair, using `ophisVolumeBpsForPair` to pick the rate, but
+the hosted MCP `build_order` has no pair input and always embeds the flat 5 bps,
+stablecoin pairs included. Do not budget 1 bp for an agent trading over MCP.
+
+Then the chain decides whether anything sits on top. On the three
+Ophis-operated chains, Optimism, Unichain, and Robinhood Chain, that partner
+rate is the entire cost and 100% of any price improvement goes back to the
+wallet. On the other ten, CoW Protocol adds its own volume fee: 0.02%, or
+0.003% on correlated pairs such as stablecoins. At the flat 5 bps an MCP agent
+pays, that puts the fixed charge around 0.07% on an ordinary pair and 0.053% on
+a correlated one; a manual caller that qualified for 1 bp would pay about 0.013%
+on a correlated pair.
+
+Note that fixed is not the same as total on those ten chains. CoW Protocol also
+keeps half of any improvement over your signed quote, which is variable and can
+push the real cost above the fixed number. Only on the three Ophis-operated
+chains is the partner rate genuinely the whole bill.
+
+Either way the fee comes out of the traded amount rather than being billed
+separately, so an agent wallet funded only in the tokens it trades can still
+swap: for an ERC-20 order the only transaction it ever broadcasts is a one-time
+approval per token per chain.
+
+### Which chains can an agent trade on?
+
+All 13 EVM chains Ophis supports, with Solana and Bitcoin available as
+destinations via NEAR Intents. Do not hardcode endpoints: three of those chains
+(Optimism, Unichain, and Robinhood Chain) are Ophis-operated and settle through
+Ophis's own GPv2Settlement at a non-canonical address, so an order signed
+against CoW's canonical domain will be rejected there. Resolve the settlement
+domain and orderbook host per chain through `list_chains` or the SDK helpers and
+that class of bug disappears.
 
 ## Start here
 

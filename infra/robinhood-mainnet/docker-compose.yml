@@ -10,6 +10,7 @@
 #   driver:            8411
 #   baseline:          9310
 #   lifi-solver:       9311
+#   uniswap-v4-solver: 9313
 #   rpc-proxy (eRPC):  4003   (OP=4001, HL=4000, Uni=4002)
 #   prometheus:        9096
 #   alertmanager:      9097
@@ -42,7 +43,7 @@ services:
       retries: 5
       start_period: 15s
 
-  # eRPC 3-of-4 proxy for Robinhood (chain 4663). The self-hosted Nitro node runs in
+  # Sovereign eRPC proxy for Robinhood (chain 4663). The self-hosted Nitro node runs in
   # the SEPARATE ./nitro compose project. erpc.yaml's debug/trace leg targets
   # ophis-rbh-node:8547; both projects join the shared external network `ophis-rbh-net`
   # (the nitro service is aliased `ophis-rbh-node` there) so this proxy reaches the node
@@ -128,7 +129,7 @@ services:
       ETH_RPC_URL: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/robinhood-mainnet/.env}
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
       - ./rendered/orderbook.toml:/orderbook.toml:ro
     command: ["--config", "/orderbook.toml"]
@@ -161,7 +162,7 @@ services:
       ETH_RPC_URL: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/robinhood-mainnet/.env}
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
       - ./rendered/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
@@ -178,12 +179,14 @@ services:
     depends_on:
       baseline: { condition: service_healthy }
       lifi-solver: { condition: service_healthy }
+      kyberswap-solver: { condition: service_healthy }
+      uniswap-v4-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
       ETHRPC: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
       ADDR: 0.0.0.0:80
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
     volumes:
       - ./rendered/driver.toml:/driver.toml:ro
@@ -227,7 +230,7 @@ services:
       retries: 6
       start_period: 30s
 
-  # LI.FI same-chain aggregator - day-1's only supported lane on 4663. Keyless.
+  # LI.FI same-chain aggregator lane. Keyless.
   lifi-solver:
     image: local-baseline:latest
     build:
@@ -244,6 +247,58 @@ services:
     command: ["lifi", "--config", "/lifi.toml"]
     ports:
       - "127.0.0.1:9311:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Independent keyless Robinhood lane. Kyber builds routes over deployed
+  # on-chain DEXs while the solver and driver both enforce the router allowlist.
+  kyberswap-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/kyberswap.toml:/kyberswap.toml:ro
+    command: ["kyberswap", "--config", "/kyberswap.toml"]
+    ports:
+      - "127.0.0.1:9312:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # Ophis-owned direct lane for the canonical Robinhood ETH/USDG Uniswap V4
+  # pool. Uses only the sovereign RPC and immutable on-chain contracts.
+  uniswap-v4-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/uniswap-v4.toml:/uniswap-v4.toml:ro
+    command: ["uniswapv4", "--config", "/uniswap-v4.toml"]
+    ports:
+      - "127.0.0.1:9313:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s
@@ -323,6 +378,32 @@ services:
       # overlay root is non-ext4 and is filtered out by the alert rules. Adjust
       # this path if the Docker data disk is mounted elsewhere on the host.
       - "/var/lib/docker:/host/var/lib/docker:ro"
+
+  # Refunds every expired, unfilled EthFlow order so user ETH cannot remain
+  # stranded in the ownerless contract. Use a dedicated low-value EOA to avoid
+  # nonce contention with the settlement submitter.
+  refunder:
+    image: local-refunder:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: refunder
+      args: *backend-build-args
+    restart: always
+    mem_limit: 512m
+    depends_on:
+      db: { condition: service_healthy }
+      orderbook: { condition: service_healthy }
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      DB_URL: ${DB_READ_URL}
+      NODE_URL: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
+      CHAIN_ID: "4663"
+      ETHFLOW_CONTRACTS: "0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29"
+      REFUNDER_PK: ${OPHIS_REFUNDER_PK:?dedicated Robinhood refunder key must be set}
+      MIN_PRICE_DEVIATION_BPS: "-1000000"
+      MIN_VALIDITY_DURATION: "2m"
+      LOOKBACK_TIME: "30d"
 
 volumes:
   postgres:

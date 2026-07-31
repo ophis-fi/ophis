@@ -27,6 +27,7 @@ unparseable lockfile / osv.dev egress failure) must fail the step. Never `|| tru
 """
 import argparse
 import collections
+import datetime
 import json
 import sys
 
@@ -116,20 +117,65 @@ def load_osv(path):
     return doc
 
 
+def parse_ignores(raw):
+    """Parse --ignore values into {ghsa: expiry-date-or-None}.
+
+    Accepts `GHSA-xxxx` (permanent -- for advisories with no patched release at
+    all) and `GHSA-xxxx:YYYY-MM-DD` (expires). An expired entry stops
+    suppressing and blocks again, so a suppression cannot silently outlive the
+    condition that justified it. Prefer the dated form whenever the ignore is
+    conditional ("until upstream drops minimatch@3", "until the soak ends").
+    """
+    parsed = {}
+    for item in raw:
+        ghsa, sep, expiry = item.partition(":")
+        ghsa = ghsa.strip()
+        if not sep:
+            parsed[ghsa] = None
+            continue
+        try:
+            parsed[ghsa] = datetime.date.fromisoformat(expiry.strip())
+        except ValueError:
+            print(
+                f"ERROR: --ignore {item!r} has a malformed expiry; "
+                "expected GHSA-ID or GHSA-ID:YYYY-MM-DD -- failing closed.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+    return parsed
+
+
 def mode_advisories(findings, ignore):
+    today = datetime.date.today()
+    expired = {g: d for g, d in ignore.items() if d is not None and d < today}
     blocking, ignored = [], []
     for name, version, ghsa, sev, title in findings:
         if sev not in ("high", "critical"):
             continue
         rec = f"{name}@{version} (sev={sev}, {ghsa}): {title}"
-        (ignored if ghsa in ignore else blocking).append(rec)
-    for entry in ignored:
-        print(f"IGNORED (documented non-reachable): {entry}")
+        if ghsa in ignore and ghsa not in expired:
+            ignored.append((rec, ignore[ghsa]))
+        else:
+            blocking.append((rec, expired.get(ghsa)))
+    for entry, expiry in ignored:
+        suffix = f" [ignore expires {expiry}]" if expiry else ""
+        print(f"IGNORED (documented non-reachable): {entry}{suffix}")
     if blocking:
         print(f"BLOCKING: {len(blocking)} HIGH/CRITICAL advisories")
-        for entry in blocking:
-            print(f"  - {entry}")
+        for entry, expiry in blocking:
+            if expiry:
+                print(f"  - {entry}")
+                print(
+                    f"    ^ its --ignore EXPIRED on {expiry}. Re-verify the advisory is "
+                    "still unreachable, then either patch it or renew the expiry date."
+                )
+            else:
+                print(f"  - {entry}")
         sys.exit(1)
+    # An expiry that outlives the finding itself is also stale -- surface it so
+    # the flag gets removed rather than lingering as dead configuration.
+    for ghsa, expiry in expired.items():
+        print(f"NOTE: --ignore {ghsa} expired on {expiry} and matched nothing; drop the flag.")
     print(f"OK -- none blocking ({len(ignored)} ignored)")
 
 
@@ -161,8 +207,9 @@ def main():
     ap = argparse.ArgumentParser(description="osv-scanner CI audit gate")
     ap.add_argument("osv_json", help="path to osv-scanner --format json output")
     ap.add_argument("--mode", choices=("advisories", "baseline"), required=True)
-    ap.add_argument("--ignore", action="append", default=[], metavar="GHSA-ID",
-                    help="advisories mode: GHSA id to allow-list (repeatable)")
+    ap.add_argument("--ignore", action="append", default=[], metavar="GHSA-ID[:YYYY-MM-DD]",
+                    help="advisories mode: GHSA id to allow-list, optionally with an "
+                         "expiry date after which it blocks again (repeatable)")
     ap.add_argument("--baseline", help="baseline mode: path to per-severity baseline JSON")
     ap.add_argument("--osv-rc", type=int, default=None,
                     help="osv-scanner's exit code, for a fail-closed schema-drift check")
@@ -190,7 +237,7 @@ def main():
         sys.exit(2)
 
     if args.mode == "advisories":
-        mode_advisories(findings, set(args.ignore))
+        mode_advisories(findings, parse_ignores(args.ignore))
     else:
         if not args.baseline:
             print("ERROR: baseline mode requires --baseline -- failing closed.", file=sys.stderr)

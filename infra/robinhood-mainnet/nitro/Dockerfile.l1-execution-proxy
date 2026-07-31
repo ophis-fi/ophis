@@ -1,0 +1,10 @@
+FROM python:3.13.5-alpine3.22@sha256:37b14db89f587f9eaa890e4a442a3fe55db452b69cca1403cc730bd0fbdc8aaf
+
+RUN addgroup -S -g 10002 deriver \
+ && adduser -S -D -H -u 10002 -G deriver deriver
+
+COPY --chown=deriver:deriver l1-execution-proxy.py /app/l1-execution-proxy.py
+
+USER deriver
+EXPOSE 8545
+ENTRYPOINT ["python3", "/app/l1-execution-proxy.py"]

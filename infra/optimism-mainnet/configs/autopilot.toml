@@ -32,7 +32,26 @@ indexing-start = 152628084
 filter = "warn,autopilot=debug,shared=info,price_estimation=info"
 
 [current-block]
-poll-interval = "2s"  # OP block time
+# 2026-07-31: 2s -> 4s to halve upstream RPC burn. This interval drives the
+# per-block maintenance loop, so it governs BOTH eth_getBlockByNumber and the
+# eth_getLogs event indexing behind it — measured at 1.5 getLogs/s and 0.7
+# getBlockByNumber/s per upstream, i.e. ~94% of all traffic to the keyed lane,
+# against ~0.07/s of actual eth_call pricing traffic. Background indexing, not
+# users, was the entire cost.
+#
+# Why it mattered: at 2s the projected monthly credit burn was ~166M against a
+# 150M allowance — exhaustion around day 28 of a 31-day cycle. Quota death is
+# exactly what took the OP stack down on 2026-07-30 (every keyed provider
+# exhausted at once), so this is the same failure mode, seen coming.
+#
+# Why 4s and not more: this is a latency/cost trade, not free. Raising it delays
+# new-order pickup and settlement observation by up to one extra interval. 4s
+# stays far inside `[run-loop] solve-deadline = 20s` and leaves the
+# OphisOpAuctionLatencyHigh guard (p95 auction_preprocessing > 5s) untouched.
+# Blocks are still fully processed — polls are just batched ~2 blocks at a time,
+# so no log range is skipped. Verify with that alert and with
+# `autopilot::maintenance` errors before raising it further.
+poll-interval = "4s"  # was 2s (OP block time); batches ~2 blocks per poll
 
 [run-loop]
 solve-deadline = "20s"
@@ -72,7 +91,40 @@ name = "velora"
 url = "http://driver/velora"
 address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
 
+[[drivers]]
+name = "enso"
+url = "http://driver/enso"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
+name = "lifi"
+url = "http://driver/lifi"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
+name = "openocean"
+url = "http://driver/openocean"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
+name = "dodo"
+url = "http://driver/dodo"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
 [fee-policies]
+
+# Partner-fee recipient registry (partner-fees Phase A). `registration-enabled`
+# is the MASTER ENABLE for the whole feature and the autopilot honors it exactly
+# as the orderbook does: while off it uses the Ophis-only policy and drops ALL
+# third-party partner fees at settlement. It MUST be set identically here and in
+# the orderbook config: enabling it only in orderbook.toml means partner fees
+# pass ingress but are silently dropped at settlement (registered partners earn
+# nothing). Flip both on together, only after the internal test partner order
+# settles; `refresh-interval` sets how quickly a registration or suspension
+# takes effect here.
+[partner-fee-registry]
+registration-enabled = false
+refresh-interval = "30s"
 
 [database]
 write-url = "%DB_WRITE_URL"
@@ -84,6 +136,10 @@ price-estimation-drivers = [
   { name = "okx", url = "http://driver/okx" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
   { name = "velora", url = "http://driver/velora" },
+  { name = "enso", url = "http://driver/enso" },
+  { name = "lifi", url = "http://driver/lifi" },
+  { name = "openocean", url = "http://driver/openocean" },
+  { name = "dodo", url = "http://driver/dodo" },
 ]
 
 [price-estimation]

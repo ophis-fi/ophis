@@ -19,6 +19,7 @@ import { DividerHorizontal } from '../../pure/Row/styled'
 import { ReceiveAmountInfo } from '../../types'
 import { getLimitPriceFromReceiveAmount } from '../../utils/getLimitPriceFromReceiveAmount'
 import { getOrderTypeReceiveAmounts } from '../../utils/getOrderTypeReceiveAmounts'
+import { NetReceivedRow } from '../NetReceivedRow'
 import { TradeFeesAndCosts } from '../TradeFeesAndCosts'
 
 type LabelsAndTooltips = {
@@ -91,6 +92,8 @@ export function TradeBasicConfirmDetails(props: Props): ReactNode {
         networkCostsSuffix={networkCostsSuffix}
         networkCostsTooltipSuffix={networkCostsTooltipSuffix}
       />
+      {/* Ophis ux-quoting decision 59: net-of-costs headline with the cost-breakdown tooltip. */}
+      <NetReceivedRow receiveAmountInfo={receiveAmountInfo} hideUsdValues={hideUsdValues} />
       <ReviewOrderModalAmountRow
         highlighted
         amount={amountAfterFees}

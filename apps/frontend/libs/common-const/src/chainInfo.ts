@@ -22,6 +22,12 @@ import {
 } from '@cowprotocol/cow-sdk'
 
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
+import {
+  ROBINHOOD_CHAIN_BRIDGE,
+  ROBINHOOD_CHAIN_DOCS,
+  ROBINHOOD_CHAIN_EXPLORER,
+  ROBINHOOD_CHAIN_LOGO,
+} from './robinhood.const'
 import { TokenWithLogo } from './types'
 
 // Official Unichain brand mark (pink #F50DB4 web3icons glyph, MIT) inlined as a
@@ -200,6 +206,24 @@ export const CHAIN_INFO: ChainInfoMap = {
     urlAlias: 'unichain',
     nativeCurrency: NATIVE_CURRENCIES[130 as unknown as SupportedChainId],
   },
+  [4663 as unknown as SupportedChainId]: {
+    docs: ROBINHOOD_CHAIN_DOCS,
+    bridge: ROBINHOOD_CHAIN_BRIDGE,
+    explorer: ROBINHOOD_CHAIN_EXPLORER,
+    infoLink: ROBINHOOD_CHAIN_DOCS,
+    logo: {
+      light: ROBINHOOD_CHAIN_LOGO,
+      dark: ROBINHOOD_CHAIN_LOGO,
+    },
+    addressPrefix: 'rbh',
+    label: 'Robinhood Chain',
+    eip155Label: 'Robinhood Chain',
+    explorerTitle: 'Robinhood Chain Blockscout',
+    color: '#00C805',
+    name: 'robinhood',
+    urlAlias: 'robinhood',
+    nativeCurrency: NATIVE_CURRENCIES[4663 as unknown as SupportedChainId],
+  },
   // MegaETH (4326) + HyperEVM (999) intentionally not in CHAIN_INFO —
   // see top-of-file comment for context (removed 2026-05-20).
 }
@@ -221,6 +245,7 @@ export const SORTED_CHAIN_IDS: SupportedChainId[] = [
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM as unknown as SupportedChainId,
   130 as unknown as SupportedChainId, // Ophis fork: Unichain
+  4663 as unknown as SupportedChainId, // Ophis fork: Robinhood Chain
 ]
 
 /**
@@ -240,6 +265,7 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   SupportedChainId.GNOSIS_CHAIN,
   AdditionalTargetChainId.OPTIMISM,
   130 as unknown as TargetChainId, // Ophis fork: Unichain
+  4663 as unknown as TargetChainId, // Ophis fork: Robinhood Chain
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
 ]

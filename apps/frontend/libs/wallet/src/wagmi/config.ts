@@ -2,7 +2,7 @@ import { RPC_URLS } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { safe, injected } from '@wagmi/connectors'
-import { Chain, http } from 'viem'
+import { Chain, defineChain, http } from 'viem'
 import {
   arbitrum,
   avalanche,
@@ -80,7 +80,22 @@ const SUPPORTED_CHAIN_IDS = Object.values(SupportedChainId).filter((v) => typeof
 const OPTIMISM_CHAIN_ID = 10 as unknown as SupportedChainId
 // Ophis fork: Unichain (chain 130) added at frontend layer, same pattern as OP.
 const UNICHAIN_CHAIN_ID = 130 as unknown as SupportedChainId
-const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [...SUPPORTED_CHAIN_IDS, OPTIMISM_CHAIN_ID, UNICHAIN_CHAIN_ID]
+const ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
+const robinhood = defineChain({
+  id: 4663,
+  name: 'Robinhood Chain',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: { default: { http: ['https://rpc.mainnet.chain.robinhood.com'] } },
+  blockExplorers: {
+    default: { name: 'Robinhood Chain Blockscout', url: 'https://robinhoodchain.blockscout.com' },
+  },
+})
+const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [
+  ...SUPPORTED_CHAIN_IDS,
+  OPTIMISM_CHAIN_ID,
+  UNICHAIN_CHAIN_ID,
+  ROBINHOOD_CHAIN_ID,
+]
 
 const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.MAINNET]: mainnet,
@@ -96,6 +111,7 @@ const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.SEPOLIA]: sepolia,
   [OPTIMISM_CHAIN_ID]: optimism,
   [UNICHAIN_CHAIN_ID]: unichain,
+  [ROBINHOOD_CHAIN_ID]: robinhood,
 }
 
 // Defensive guard: `SUPPORTED_CHAINS[chainId]` returns undefined if the

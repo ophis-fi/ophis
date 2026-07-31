@@ -35,6 +35,8 @@ const UNISWAP_TOKEN_LIST_URL: Record<SupportedChainId, string> = {
   // Ophis fork: Unichain mainnet (chain 130). Uniswap's official multichain
   // token list is the working source (entries for chain 130 are included upstream).
   [130 as unknown as SupportedChainId]: UNISWAP_TOKENS_LIST,
+  // Ophis fork: use the multichain list plus pinned WETH/USDG favorites.
+  [4663 as unknown as SupportedChainId]: UNISWAP_TOKENS_LIST,
   // Ophis fork: MegaETH mainnet (chain 4326). No upstream curated list exists
   // yet; the multichain Uniswap list is the safest fallback (entries for chain
   // 4326 will simply be empty until a published list lands).

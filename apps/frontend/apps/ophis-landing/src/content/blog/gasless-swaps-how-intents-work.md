@@ -1,6 +1,6 @@
 ---
 title: "Gasless token swaps: how intent-based trading removes gas"
-description: "Sign an off-chain EIP-712 order and a solver executes it on-chain, paying the gas. The fee comes out of the token you sell, so you can swap with zero ETH."
+description: "Sign an off-chain EIP-712 order and a solver executes it on-chain, paying the gas. The fee comes out of the trade itself, so you can swap with zero ETH."
 pubDate: 2026-07-10
 author: Ophis
 tags: [gasless, swaps, intents, defi]
@@ -14,7 +14,7 @@ yourself: you sign an off-chain order, and someone else executes it. On Ophis
 (the intent-based DEX aggregator at ophis.fi), that order is
 [EIP-712](https://eips.ethereum.org/EIPS/eip-712) typed data signed by your
 wallet; a competing solver network executes it on-chain and pays the gas, and
-the fee is taken from the token you sell. So you can trade with no native gas
+the fee comes out of the traded amount. So you can trade with no native gas
 token in your wallet at all, and an order that never fills costs you nothing.
 
 The rest of this article is the mechanism: where the gas cost actually goes,
@@ -51,19 +51,19 @@ off-chain and clear at a uniform price inside a batch auction, so there is no
 public mempool swap to front-run or sandwich. The protection is structural, not
 best-effort.
 
-## The fee comes out of the token you sell
+## The fee comes out of the trade, not your gas balance
 
 Ophis charges a flat 0.10% of trade volume on every trade, 0.01% for
-same-chain stablecoin-to-stablecoin pairs, and takes it in the sell token (the
+same-chain stablecoin-to-stablecoin pairs, and takes it in the surplus token (the
 full [fee schedule](https://docs.ophis.fi/fees) is public; on the chains that
 settle through CoW Protocol, CoW Protocol's protocol fee applies on top of the
-Ophis fee). Sell USDC for ETH and the fee is a slice of the USDC. At no point does anything denominated in
+Ophis fee). On a standard sell order that is the token you receive: sell USDC for ETH and the fee is a slice of the ETH. On a buy order, where you name the amount you want to receive, it comes off the token you spend instead. At no point does anything denominated in
 the native gas token leave your wallet, because you never send the transaction
 that would need it.
 
 The limit you signed still bounds the outcome. Solvers compete to beat your
 quote, and when one does, the Ophis fee takes no share of the price improvement
-beyond the signed quote. On Optimism and Unichain, where Ophis runs its own
+beyond the signed quote. On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own
 settlement, 100% of that improvement is paid to you as surplus; on the chains
 that settle through CoW Protocol, CoW Protocol keeps half.
 
@@ -95,8 +95,8 @@ constraint this article is about does not bind there.
 **New wallets.** The classic deadlock: a fresh wallet receives USDC from an
 exchange withdrawal or an airdrop, and then cannot do anything with it, because
 doing anything takes gas and the wallet holds none. A signed order breaks the
-deadlock: a solver executes the trade, and the fee comes out of the USDC
-itself.
+deadlock: a solver executes the trade, and the fee comes out of the trade
+itself rather than out of a gas balance the wallet does not have.
 
 **AI agents.** An agent's wallet is funded in the tokens it trades, not in gas.
 Keeping native balances topped up on every chain it touches is an operational
@@ -105,8 +105,9 @@ added attack surface. An agent that signs orders instead of broadcasting
 transactions needs neither; the full integration pattern is in
 [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/).
 
-**Multichain traders.** Ophis settles on 12 chains: Ethereum, Optimism, BNB,
-Gnosis, Unichain, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, and Linea.
+**Multichain traders.** Ophis settles on 13 chains: Ethereum, Optimism, BNB,
+Gnosis, Unichain, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche,
+Ink, and Linea.
 They do not all share one gas token. Pre-funding a native balance on every
 chain you might trade on is dead capital and real friction; signed orders
 remove the prerequisite entirely.
@@ -116,7 +117,7 @@ remove the prerequisite entirely.
 ### Do I need ETH to swap?
 
 No. You sign an off-chain order, a solver executes it and pays the gas, and the
-flat 0.10% fee is taken from the token you sell. The one exception is a
+flat 0.10% fee comes out of the traded amount. The one exception is a
 first-time token approval, a single on-chain transaction, paid once per token
 per chain. After that, trading that token needs no native balance at all.
 
@@ -126,14 +127,14 @@ Your order carries a hard limit price that you signed, and it cannot settle
 below that price. If the market never reaches your limit before expiry, the
 order expires at zero cost to you. If the market moves in your favor, solvers
 still compete for the fill, and the improvement beyond your signed quote comes
-back to you as surplus (100% of it on Optimism and Unichain; on chains that
+back to you as surplus (100% of it on Optimism, Unichain, and Robinhood Chain; on chains that
 settle through CoW Protocol, CoW Protocol keeps half).
 
 ### Who pays the solver?
 
 The winning solver pays the gas for the settlement transaction. Your only cost
-is the flat 0.10% fee (0.01% for same-chain stablecoin pairs), taken in the
-sell token, and the limit price you signed bounds the outcome either way.
+is the flat 0.10% fee (0.01% for same-chain stablecoin pairs), taken out of
+the trade itself, and the limit price you signed bounds the outcome either way.
 Solver compensation is never billed to you in the native token.
 
 ### Is it custodial?

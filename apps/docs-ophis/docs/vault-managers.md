@@ -88,6 +88,24 @@ Two requirements for a token to be allowlistable:
   excluded. A vault can still HOLD such assets; it just cannot rebalance them
   through this module.
 
+## Operational chains
+
+The `@ophis/safe-swap` vault-order builder works on every chain with a live
+Ophis or CoW orderbook:
+
+- **Ophis self-hosted:** Optimism, Unichain, and Robinhood Chain (4663).
+- **CoW-hosted:** Ethereum, Base, Arbitrum One, Polygon, Gnosis Chain, BNB
+  Smart Chain, Avalanche, Linea, Ink, and **Plasma (9745)**.
+
+Plasma orders use CoW's production Plasma orderbook and canonical settlement.
+Because Plasma does not have native USDC, the repository's real-contract fork
+check uses WETH9 to USDT0 and verifies the relayer allowance, presignature, and
+exact token pull.
+
+This operational list describes where vault managers can build and submit Safe
+orders. The stronger on-chain policy-module rollout is tracked separately
+below.
+
 ## Live deployments
 
 The module is live on six chains (and has settled real rebalances on five). The

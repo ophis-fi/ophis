@@ -174,6 +174,10 @@ services:
       OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
     volumes:
       - ./configs/orderbook.toml:/orderbook.toml:ro
+      # pathviz venue registry ([pathviz].venues-file). Read-only; a missing or
+      # unparseable file degrades venue labels to bare addresses, never fails
+      # startup (run.rs loads it warn-on-error).
+      - ./configs/pathviz-venues.toml:/configs/pathviz-venues.toml:ro
     command: ["--config", "/orderbook.toml"]
     ports:
       - "127.0.0.1:8102:80"
@@ -402,29 +406,6 @@ services:
     command: ["velora", "--config", "/velora.toml"]
     ports:
       - "127.0.0.1:9025:80"
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 30s
-
-  odos-solver:
-    image: local-baseline:latest
-    build:
-      context: ../../apps/backend
-      dockerfile: Dockerfile
-      target: solvers
-      args: *backend-build-args
-    restart: always
-    mem_limit: 1g
-    environment:
-      ADDR: 0.0.0.0:80
-    volumes:
-      - ./rendered/odos.toml:/odos.toml:ro
-    command: ["odos", "--config", "/odos.toml"]
-    ports:
-      - "127.0.0.1:9026:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s

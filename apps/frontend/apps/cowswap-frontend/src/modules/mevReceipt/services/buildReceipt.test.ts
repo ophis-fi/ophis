@@ -28,7 +28,11 @@ const FIXTURE_ORDER_PI = {
     version: '1.4.0',
     appCode: 'greg',
     metadata: {
-      partnerFee: { priceImprovementBps: 2500, maxVolumeBps: 50, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' },
+      partnerFee: {
+        priceImprovementBps: 2500,
+        maxVolumeBps: 50,
+        recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
+      },
     },
   }),
 }
@@ -54,12 +58,18 @@ describe('buildReceipt', () => {
       recipient: '0xBA6Da6bB0fc6A3fABd69A3FCEb25Af4A35a8C76E',
     })
     expect(receipt.surplusVsQuote).toBeCloseTo(0.19, 2)
-    expect(receipt.receiptVersion).toBe('2')
+    expect(receipt.receiptVersion).toBe('3')
+    // v3 carries the optional pathViz field; null unless one was supplied.
+    expect(receipt.pathVizSvgBase64).toBeNull()
     expect(typeof receipt.generatedAt).toBe('string')
   })
 
   it('handles missing trade (open or expired order)', () => {
-    const receipt = buildReceipt({ order: { ...FIXTURE_ORDER, status: 'open', executedBuyAmount: '0' }, trade: null, chainId: 11155111 })
+    const receipt = buildReceipt({
+      order: { ...FIXTURE_ORDER, status: 'open', executedBuyAmount: '0' },
+      trade: null,
+      chainId: 11155111,
+    })
     expect(receipt.settlementTxHash).toBeNull()
     expect(receipt.settlementBlock).toBeNull()
     expect(receipt.executedBuyAmount).toBe('0')
@@ -87,13 +97,66 @@ describe('buildReceipt', () => {
     })
   })
 
+  it('selects the Ophis-recipient entry from an array partnerFee (compat referral order)', () => {
+    // A compat order that mapped an Odos referralFee serializes partnerFee as an
+    // ARRAY: the Ophis default fee plus the integrator fee. The receipt reports
+    // the Ophis protocol fee, not the third party's.
+    const OPHIS_SAFE = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
+    const order = {
+      ...FIXTURE_ORDER,
+      fullAppData: JSON.stringify({
+        metadata: {
+          partnerFee: [
+            { volumeBps: 5, recipient: OPHIS_SAFE },
+            { volumeBps: 10, recipient: '0x000000000000000000000000000000000000dEaD' },
+          ],
+        },
+      }),
+    }
+    expect(buildReceipt({ order, trade: FIXTURE_TRADE, chainId: 10 }).partnerFee).toEqual({
+      type: 'volume',
+      volumeBps: 5,
+      recipient: OPHIS_SAFE,
+    })
+  })
+
+  it('finds the Ophis entry regardless of its position in the array', () => {
+    const OPHIS_SAFE = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
+    const order = {
+      ...FIXTURE_ORDER,
+      fullAppData: JSON.stringify({
+        metadata: {
+          partnerFee: [
+            { volumeBps: 10, recipient: '0x000000000000000000000000000000000000dEaD' },
+            { volumeBps: 5, recipient: OPHIS_SAFE },
+          ],
+        },
+      }),
+    }
+    expect(buildReceipt({ order, trade: FIXTURE_TRADE, chainId: 10 }).partnerFee?.recipient).toBe(OPHIS_SAFE)
+  })
+
+  it('returns null for an array partnerFee with no Ophis-recipient entry', () => {
+    const order = {
+      ...FIXTURE_ORDER,
+      fullAppData: JSON.stringify({
+        metadata: {
+          partnerFee: [{ volumeBps: 10, recipient: '0x000000000000000000000000000000000000dEaD' }],
+        },
+      }),
+    }
+    expect(buildReceipt({ order, trade: FIXTURE_TRADE, chainId: 10 }).partnerFee).toBeNull()
+  })
+
   it('decodes a price-improvement fee missing its required maxVolumeBps cap to null', () => {
     // maxVolumeBps is the CIP-75-mandated ceiling; a PI fee without it is
     // malformed/foreign appData, so we report no fee rather than an uncapped one.
     const order = {
       ...FIXTURE_ORDER,
       fullAppData: JSON.stringify({
-        metadata: { partnerFee: { priceImprovementBps: 2500, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' } },
+        metadata: {
+          partnerFee: { priceImprovementBps: 2500, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' },
+        },
       }),
     }
     expect(buildReceipt({ order, trade: FIXTURE_TRADE, chainId: 10 }).partnerFee).toBeNull()
@@ -115,7 +178,7 @@ describe('exportJson', () => {
     const parsed = JSON.parse(json)
     expect(parsed.orderUid).toBe(receipt.orderUid)
     expect(parsed.partnerFee).toEqual(receipt.partnerFee)
-    expect(parsed.receiptVersion).toBe('2')
+    expect(parsed.receiptVersion).toBe('3')
     expect(parsed.executedBuyAmount).toBe(receipt.executedBuyAmount)
   })
 
@@ -138,7 +201,11 @@ describe('exportPdf', () => {
   })
 
   it('does not throw on a not-yet-settled order (no trade)', () => {
-    const receipt = buildReceipt({ order: { ...FIXTURE_ORDER, status: 'open', executedBuyAmount: '0' }, trade: null, chainId: 11155111 })
+    const receipt = buildReceipt({
+      order: { ...FIXTURE_ORDER, status: 'open', executedBuyAmount: '0' },
+      trade: null,
+      chainId: 11155111,
+    })
     expect(() => exportPdf(receipt)).not.toThrow()
   })
 
@@ -147,5 +214,35 @@ describe('exportPdf', () => {
     const blob = exportPdf(receipt)
     expect(blob.type).toBe('application/pdf')
     expect(blob.size).toBeGreaterThan(500)
+  })
+
+  it('embeds a pathviz image when a rasterized diagram is supplied', () => {
+    const receipt = buildReceipt({ order: FIXTURE_ORDER, trade: FIXTURE_TRADE, chainId: 10 })
+    // 1x1 transparent PNG data URL.
+    const dataUrl =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+    const withImage = exportPdf(receipt, { dataUrl, width: 1920, height: 1080 })
+    const without = exportPdf(receipt)
+    expect(withImage.type).toBe('application/pdf')
+    // The embedded PNG makes the document strictly larger.
+    expect(withImage.size).toBeGreaterThan(without.size)
+  })
+})
+
+describe('buildReceipt pathViz field (v3)', () => {
+  it('threads a supplied pathVizSvgBase64 through to the receipt', () => {
+    const receipt = buildReceipt({
+      order: FIXTURE_ORDER,
+      trade: FIXTURE_TRADE,
+      chainId: 10,
+      pathVizSvgBase64: 'PHN2Zz48L3N2Zz4=',
+    })
+    expect(receipt.pathVizSvgBase64).toBe('PHN2Zz48L3N2Zz4=')
+    expect(receipt.receiptVersion).toBe('3')
+  })
+
+  it('defaults pathVizSvgBase64 to null when absent', () => {
+    const receipt = buildReceipt({ order: FIXTURE_ORDER, trade: FIXTURE_TRADE, chainId: 10 })
+    expect(receipt.pathVizSvgBase64).toBeNull()
   })
 })

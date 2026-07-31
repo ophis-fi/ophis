@@ -16,6 +16,14 @@
       "function": "",
       "impact": "Informational"
     },
+    "1e05c9034335e973": {
+      "check": "reentrancy-balance",
+      "contract": "",
+      "description": "Reentrancy in OphisFeeLiquidator.consolidate(OphisFeeLiquidator.ConsolidateInput[],address,uint256,address,bytes) (OphisFeeLiquidator.sol#223-284):",
+      "file": "OphisFeeLiquidator.sol",
+      "function": "consolidate",
+      "impact": "High"
+    },
     "1f428c942c2e0394": {
       "check": "constable-states",
       "contract": "",
@@ -112,6 +120,14 @@
       "function": "recoverEip1271Signer",
       "impact": "Low"
     },
+    "4d88e9eeb03d4819": {
+      "check": "missing-zero-check",
+      "contract": "",
+      "description": "OphisFeeLiquidator.constructor(GPv2Settlement,address,address,address).initialLiquidator (OphisFeeLiquidator.sol#105) lacks a zero-check on :",
+      "file": "OphisFeeLiquidator.sol",
+      "function": "",
+      "impact": "Low"
+    },
     "53fdbcc178e7d02a": {
       "check": "solc-version",
       "contract": "",
@@ -159,6 +175,14 @@
       "file": "SettlementStorageReader.sol",
       "function": "filledAmountsForOrders",
       "impact": "High"
+    },
+    "6afcb50a15004bda": {
+      "check": "incorrect-equality",
+      "contract": "",
+      "description": "OphisFeeLiquidator.sweep(address[],uint256[]) (OphisFeeLiquidator.sol#148-208) uses a dangerous strict equality:",
+      "file": "OphisFeeLiquidator.sol",
+      "function": "sweep",
+      "impact": "Medium"
     },
     "6f85d598541ac46c": {
       "check": "assembly",
@@ -376,6 +400,14 @@
       "function": "",
       "impact": "Informational"
     },
+    "dc722ec114b228bf": {
+      "check": "reentrancy-balance",
+      "contract": "",
+      "description": "Reentrancy in OphisFeeLiquidator.sweep(address[],uint256[]) (OphisFeeLiquidator.sol#148-208):",
+      "file": "OphisFeeLiquidator.sol",
+      "function": "sweep",
+      "impact": "High"
+    },
     "e29ec462cc1fc86b": {
       "check": "arbitrary-send-erc20",
       "contract": "",
@@ -407,17 +439,41 @@
       "file": "GPv2Order.sol",
       "function": "extractOrderUidParams",
       "impact": "Informational"
+    },
+    "f06e74088b53c0dd": {
+      "check": "calls-loop",
+      "contract": "",
+      "description": "OphisFeeLiquidator._settlementBalance(address) (OphisFeeLiquidator.sol#298-303) has external calls inside a loop: IERC20(token).balanceOf(address(settlement)) (OphisFeeLiquidator.sol#302)",
+      "file": "OphisFeeLiquidator.sol",
+      "function": "_settlementBalance",
+      "impact": "Low"
+    },
+    "f08428328ebdf2bb": {
+      "check": "reentrancy-benign",
+      "contract": "",
+      "description": "Reentrancy in OphisFeeLiquidator.sweep(address[],uint256[]) (OphisFeeLiquidator.sol#148-208):",
+      "file": "OphisFeeLiquidator.sol",
+      "function": "sweep",
+      "impact": "Low"
+    },
+    "fbd0875354263d67": {
+      "check": "calls-loop",
+      "contract": "",
+      "description": "OphisFeeLiquidator.consolidate(OphisFeeLiquidator.ConsolidateInput[],address,uint256,address,bytes) (OphisFeeLiquidator.sol#223-284) has external calls inside a loop: amount = IERC20(token).balanceOf(",
+      "file": "OphisFeeLiquidator.sol",
+      "function": "consolidate",
+      "impact": "Low"
     }
   },
   "schema_version": 1,
   "summary": {
     "by_impact": {
-      "High": 6,
+      "High": 8,
       "Informational": 32,
-      "Low": 6,
-      "Medium": 5,
+      "Low": 10,
+      "Medium": 6,
       "Optimization": 2
     },
-    "total": 51
+    "total": 58
   }
 }

@@ -10,12 +10,21 @@ const formatPartnerFee = (fee: PartnerFeeInfo | null): string => {
   return `${fee.volumeBps} bps of volume -> ${fee.recipient}`
 }
 
+/** An already-rasterized pathviz diagram (jsPDF cannot embed SVG directly). */
+export interface PathVizImage {
+  /** `data:image/png;base64,...` from `svgToPng`. */
+  readonly dataUrl: string
+  readonly width: number
+  readonly height: number
+}
+
 /**
- * Generates a single-page PDF of a CoW Protocol order receipt.
- * Plain monospace layout — the goal is auditable evidence, not visual flair.
- * Compatible with treasury-team accounting workflows.
+ * Generates a PDF of a CoW Protocol order receipt.
+ * Plain monospace layout: the goal is auditable evidence, not visual flair.
+ * Compatible with treasury-team accounting workflows. When a rasterized
+ * pathviz diagram is supplied it is appended as an image below the fields.
  */
-export const exportPdf = (receipt: MevProofReceipt): Blob => {
+export const exportPdf = (receipt: MevProofReceipt, pathViz?: PathVizImage | null): Blob => {
   const doc = new jsPDF({ unit: 'pt', format: 'letter' })
 
   doc.setFontSize(14)
@@ -51,6 +60,26 @@ export const exportPdf = (receipt: MevProofReceipt): Blob => {
   for (const line of lines) {
     doc.text(line, 40, y)
     y += 14
+  }
+
+  // Append the pathviz route/surplus diagram when one was rasterized. Scaled
+  // to the page width, preserving aspect ratio.
+  if (pathViz && pathViz.dataUrl) {
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const margin = 40
+    const maxWidth = pageWidth - margin * 2
+    const aspect = pathViz.height > 0 ? pathViz.height / pathViz.width : 0.5625
+    const drawWidth = maxWidth
+    const drawHeight = drawWidth * aspect
+    y += 16
+    doc.setFont('helvetica', 'bold')
+    doc.text('Route visualization', margin, y)
+    y += 12
+    try {
+      doc.addImage(pathViz.dataUrl, 'PNG', margin, y, drawWidth, drawHeight)
+    } catch {
+      // A malformed image must not corrupt an otherwise valid receipt PDF.
+    }
   }
 
   return doc.output('blob')

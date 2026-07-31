@@ -146,6 +146,19 @@ pub struct OrderQuoteRequest {
         serialize_with = "serialize_timeout"
     )]
     pub timeout: Option<Duration>,
+    /// Request a `PathVizGraph` in the response (pathviz; Odos wire-name
+    /// parity). Off by default so existing clients pay nothing. At quote
+    /// time the graph discloses solver names only, not the venue column
+    /// (owner decision 22).
+    #[serde(default)]
+    pub path_viz: bool,
+    /// Request a rendered base64 SVG (`pathVizImage`) in the response.
+    #[serde(default)]
+    pub path_viz_image: bool,
+    /// Render options for `pathVizImage` (theme + colors + dimensions).
+    /// Ignored unless `path_viz_image` is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_viz_image_config: Option<crate::pathviz::PathVizImageConfig>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -346,6 +359,15 @@ pub struct OrderQuoteResponse {
     /// Protocol fee in basis points (e.g., "2" for 0.02%)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protocol_fee_bps: Option<String>,
+    /// The route visualization graph, present only when the request set
+    /// `pathViz` and assembly succeeded (pathviz warns-and-degrades: a viz
+    /// failure never fails the quote, so this stays absent on error).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_viz: Option<crate::pathviz::PathVizGraph>,
+    /// The rendered base64 SVG, present only when the request set
+    /// `pathVizImage` and rendering succeeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_viz_image: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -374,6 +396,8 @@ mod tests {
                 "signingScheme": "eip712",
                 "timeout": null,
                 "priceQuality": "optimal",
+                "pathViz": false,
+                "pathVizImage": false,
             })
         );
     }

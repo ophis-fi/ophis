@@ -124,7 +124,7 @@ If you'd rather make a single REST call than wire up the full toolset, use the
 2. **Read.** Receive a `ParsedIntent` with normalized `sellToken`,
    `buyToken`, `amount`, and `chain` entities.
 3. **Build a deep link.** Map the chain slug to its chain ID and
-   construct `https://ophis.fi/#/<chainId>/swap/<sellToken>/<buyToken>`.
+   construct `https://swap.ophis.fi/#/<chainId>/swap/<sellToken>/<buyToken>`.
 4. **Hand off.** Open the link for the user to review and sign. Ophis
    never auto-signs, every order requires explicit wallet approval.
 
@@ -170,7 +170,7 @@ import requests
 
 OPHIS = "https://ophis.fi"
 
-# The 12 EVM chains the Intent API can return, mapped to their chain IDs.
+# The 13 EVM chains the Intent API can return, mapped to their chain IDs.
 # Keep in sync with the API's supported-network list; build_deeplink()
 # raises on any future slug not listed here rather than misrouting it.
 CHAIN_SLUG_TO_ID = {
@@ -186,6 +186,7 @@ CHAIN_SLUG_TO_ID = {
     "avalanche": 43114,
     "plasma": 9745,
     "unichain": 130,
+    "robinhood": 4663,
 }
 
 
@@ -218,7 +219,7 @@ def build_deeplink(parsed: dict) -> str:
 
 
 intent = parse_intent("swap 100 USDC for ETH on Base")
-print(build_deeplink(intent))  # https://ophis.fi/#/8453/swap/USDC/ETH
+print(build_deeplink(intent))  # https://swap.ophis.fi/#/8453/swap/USDC/ETH
 ```
 
 ## LangChain tool
@@ -354,6 +355,29 @@ Ophis repo; each is being submitted to its platform's own registry, so availabil
 follows that platform's review. The MCP server and Intent API above already work
 with any of these agents today.
 
+## Markdown skill family (shell-capable agents)
+
+Agents that can run shell commands (Claude Code and similar local runtimes with
+`curl`, `jq`, and Foundry's `cast`) do not need the MCP transport at all: Ophis
+publishes a self-describing **agent-skill family** the agent reads and executes
+directly.
+
+- Index (with a sha256 digest per file, verify after download):
+  [`https://ophis.fi/.well-known/agent-skills/index.json`](https://ophis.fi/.well-known/agent-skills/index.json)
+- Umbrella skill:
+  [`https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md`](https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md)
+- Sub-skills: `ophis-quote`, `ophis-swap`, `ophis-order-status`,
+  `ophis-cancel`, `ophis-surplus-report`.
+
+The umbrella's frontmatter carries a **machine-readable policy block**: the
+pinned per-chain settlement and vault-relayer contracts (the only allowed
+`approve` spenders), the EIP-712 signing domains, the orderbook hosts, and
+slippage latches. Policy-enforcing runtimes can apply it mechanically; CI in
+the Ophis repo pins the block against the deployed addresses so the published
+skills cannot drift. The skills cover the Ophis-operated chains (Optimism and
+Unichain); for other chains use the MCP server above, which resolves per-chain
+contracts via `list_chains`.
+
 ## Get a referral code
 
 Every order these adapters (or the SDK below) build already carries the Ophis
@@ -389,10 +413,11 @@ if you prefer to vendor them.
 
 ### 1. Resolve the orderbook host from the chain ID
 
-:::danger[Optimism and Unichain do not live on api.cow.fi]
+:::danger[Optimism, Unichain, and Robinhood Chain do not live on api.cow.fi]
 
-Optimism and Unichain break the `api.cow.fi/<slug>` pattern. Ophis self-hosts
-their orderbooks at `optimism-mainnet.ophis.fi` and `unichain-mainnet.ophis.fi`.
+Optimism, Unichain, and Robinhood Chain break the `api.cow.fi/<slug>` pattern. Ophis self-hosts
+their orderbooks at `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`,
+and `robinhood-mainnet.ophis.fi`.
 Posting one of their orders to `api.cow.fi/<slug>` (a host that does not serve
 Ophis) **silently bypasses the Ophis solver and zeroes the partner fee**. Resolve
 hosts via `@ophis/sdk` `getOphisOrderbookUrl` per chain rather than hardcoding.
@@ -441,7 +466,7 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 // OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
 // fork serves), or `undefined` on any other chain.
 //
-// On the Ophis-operated chains (Optimism, Unichain) the partner rate you charge
+// On the Ophis-operated chains (Optimism, Unichain, Robinhood Chain) the partner rate you charge
 // is 5 bps (1 bp stable pairs). The backend also enforces an anti-abuse MINIMUM:
 // it rejects (HTTP 400) any order to the Ophis fee recipient whose fee is below
 // 4 bps non-stable (or 1 bp for a same-chain stablecoin pair), or that uses a
@@ -470,10 +495,11 @@ CoW orders are signed with **EIP-712 typed data** (`signTypedData`), never
 `signMessage`. The `verifyingContract` is chain-specific, and the Ophis-operated
 chains do **not** use CoW's canonical settlement.
 
-:::danger[The Optimism and Unichain settlements are not the canonical CoW one]
+:::danger[The Optimism, Unichain, and Robinhood Chain settlements are not the canonical CoW one]
 
-On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, and on Unichain it is
-`0x108A678716e5E1776036eF044CAB7064226F714E`, **not** the canonical
+On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, on Unichain it is
+`0x108A678716e5E1776036eF044CAB7064226F714E`, and on Robinhood Chain it is
+`0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, **not** the canonical
 `0x9008D19f…ab41`. cow-sdk defaults to the canonical address, so signing an OP
 order with the SDK default yields a domain separator the deployed contract
 rejects, every order fails. Build the domain from the chain ID instead.

@@ -37,6 +37,22 @@ impl ChainRead for AlloyChain {
     }
 
     async fn can_receive_eth(&self, address: Address) -> bool {
+        // An EOA has no receive/fallback code to execute, so a plain ETH
+        // transfer is always receivable. Avoid estimating gas for this case:
+        // quorum RPCs can legitimately return different gas estimates for the
+        // same transfer, and a strict consensus proxy would turn that harmless
+        // disagreement into a false "cannot receive ETH" result.
+        match self.provider.get_code_at(address).await {
+            Ok(code) if code.is_empty() => return true,
+            Ok(_) => {}
+            Err(err) => {
+                tracing::warn!(?address, ?err, "failed to determine refund owner account type");
+                return false;
+            }
+        }
+
+        // Contracts still need a simulation because their receive/fallback
+        // logic may reject ETH and would otherwise revert an entire batch.
         let tx = TransactionRequest::default()
             .to(address)
             .value(alloy::primitives::U256::from(1));

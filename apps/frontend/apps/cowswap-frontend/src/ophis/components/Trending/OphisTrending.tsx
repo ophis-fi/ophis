@@ -10,7 +10,9 @@
  */
 import { ReactNode, useMemo, useState } from 'react'
 
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { getChainInfo } from '@cowprotocol/common-const'
+import { areAddressesEqual, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useParams } from 'react-router'
 import styled from 'styled-components/macro'
@@ -18,11 +20,6 @@ import styled from 'styled-components/macro'
 import { useTradeNavigate } from 'modules/trade'
 
 import { useTrending, type TrendingToken } from '../../hooks/useTrending'
-
-const CHAIN_LABEL: Record<number, string> = {
-  1: 'Ethereum', 10: 'Optimism', 56: 'BNB', 100: 'Gnosis', 137: 'Polygon',
-  8453: 'Base', 42161: 'Arbitrum', 43114: 'Avalanche', 57073: 'Ink', 59144: 'Linea',
-}
 
 const Panel = styled.aside`
   width: 300px;
@@ -35,7 +32,9 @@ const Panel = styled.aside`
   background: rgba(255, 255, 255, 0.028);
   border: 1px solid rgba(255, 255, 255, 0.07);
   backdrop-filter: blur(16px);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
   color: ${({ theme }) => theme.text1};
 `
 const Head = styled.div`
@@ -192,7 +191,13 @@ const LiveDot = styled.span`
 
 const TrendGlyph = (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-    <path d="M1.5 10 L5 6.5 L7.5 8.5 L12.5 3" stroke="#b9a8ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path
+      d="M1.5 10 L5 6.5 L7.5 8.5 L12.5 3"
+      stroke="#b9a8ff"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
     <path d="M9.5 3 L12.5 3 L12.5 6" stroke="#b9a8ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 )
@@ -205,7 +210,10 @@ function formatPrice(p: number): string {
 
 export function OphisTrending(): ReactNode {
   const params = useParams()
-  const chainId = Number(params.chainId)
+  const routeChainId = Number(params.chainId)
+  const { chainId: walletChainId } = useWalletInfo()
+  const chainId = walletChainId ?? routeChainId
+  const chainLabel = getChainInfo(chainId as SupportedChainId)?.label
   const inputCurrencyId = params.inputCurrencyId
   const tradeNavigate = useTradeNavigate()
   const [dismissed, setDismissed] = useState(false)
@@ -215,8 +223,10 @@ export function OphisTrending(): ReactNode {
   const { tokens } = useTrending(!dismissed && Number.isInteger(chainId) && chainId > 0 ? chainId : undefined)
 
   const visible = useMemo(
-    // Don't show a row for the token already on the sell side.
-    () => tokens.filter((t) => t.address.toLowerCase() !== (inputCurrencyId ?? '').toLowerCase()).slice(0, 6),
+    // Don't show a row for the token already on the sell side. Capped at 5 so the
+    // rail (chart + trending) matches the swap card's height and does not spill
+    // below it.
+    () => tokens.filter((token) => !areAddressesEqual(token.address, inputCurrencyId)).slice(0, 5),
     [tokens, inputCurrencyId],
   )
 
@@ -224,7 +234,10 @@ export function OphisTrending(): ReactNode {
 
   const onPick = (t: TrendingToken): void => {
     // Keep the current sell token; set the buy token to the trending one.
-    tradeNavigate(chainId as SupportedChainId, { inputCurrencyId: inputCurrencyId ?? null, outputCurrencyId: t.address })
+    tradeNavigate(chainId as SupportedChainId, {
+      inputCurrencyId: routeChainId === chainId ? (inputCurrencyId ?? null) : null,
+      outputCurrencyId: t.address,
+    })
   }
 
   return (
@@ -235,7 +248,7 @@ export function OphisTrending(): ReactNode {
       <Head>
         {TrendGlyph}
         <Title>Trending</Title>
-        {CHAIN_LABEL[chainId] && <Chip>{CHAIN_LABEL[chainId]}</Chip>}
+        {chainLabel && <Chip>{chainLabel}</Chip>}
       </Head>
       <Sub>Biggest movers · last 1h</Sub>
 

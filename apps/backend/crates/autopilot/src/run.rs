@@ -45,6 +45,7 @@ use {
     },
     shared::{
         order_quoting::{self, OrderQuoter},
+        partner_fee_registry::PartnerFeeRegistry,
         token_list::{AutoUpdatingTokenList, TokenListConfiguration},
     },
     std::{
@@ -518,6 +519,43 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         config.price_estimation.quote_timeout,
     ));
 
+    // Partner-fee recipient enforcement policy (partner-fees Phase A). The
+    // `registration-enabled` flag is the MASTER SWITCH (kept in lockstep with the
+    // orderbook): OFF (default) means the autopilot neither loads nor consults the
+    // registry and uses the compile-time Ophis-only policy, so an active
+    // partner_fee_recipients row is NOT honored and behavior matches pre-registry
+    // main exactly. ON wires the same 30s registry snapshot the orderbook uses, as
+    // the defense-in-depth filter over partner-fee policies (drops fees to
+    // unregistered/suspended recipients on the next refresh).
+    let recipient_policy: Arc<dyn app_data::RecipientPolicy> = if config
+        .partner_fee_registry
+        .registration_enabled
+    {
+        let partner_fee_registry = Arc::new(PartnerFeeRegistry::empty());
+        let pool = db_write.pool.clone();
+        let loader = move || {
+            let pool = pool.clone();
+            async move {
+                let mut ex = pool.acquire().await?;
+                let rows = ::database::partner_fee_recipients::active_recipients(&mut ex).await?;
+                anyhow::Ok(
+                    rows.into_iter()
+                        .map(|(recipient, cap)| (Address::from(recipient.0), cap.max(0) as u64))
+                        .collect::<Vec<_>>(),
+                )
+            }
+        };
+        if let Err(err) = partner_fee_registry.refresh(&loader).await {
+            tracing::warn!(?err, "initial partner-fee registry load failed; starting empty");
+        }
+        partner_fee_registry
+            .clone()
+            .spawn(config.partner_fee_registry.refresh_interval, loader);
+        partner_fee_registry
+    } else {
+        Arc::new(app_data::AllowlistRecipientPolicy)
+    };
+
     let solvable_orders_cache = SolvableOrdersCache::new(
         config.min_order_validity_period,
         persistence.clone(),
@@ -539,6 +577,7 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
                 .map(Into::into)
                 .collect(),
             config.shared.enable_sell_equals_buy_volume_fee,
+            recipient_policy,
         ),
         cow_amm_registry.clone(),
         config.native_price_timeout,

@@ -6,8 +6,8 @@ bind-address = "0.0.0.0:80"
 
 [shared]
 # node-url is a plain Url field (no %ENV deserializer) => must be a literal URL;
-# an empty ${ROBINHOOD_RPC_INTERNAL} fails TOML parse. Point at the eRPC 3-of-4
-# proxy. The single-provider bypass (ROBINHOOD_RPC_INTERNAL) still applies to the
+# an empty ${ROBINHOOD_RPC_INTERNAL} fails TOML parse. Point at the sovereign
+# proxy. The emergency bypass (ROBINHOOD_RPC_INTERNAL) still applies to the
 # driver via its ETHRPC env.
 node-url = "http://rpc-proxy:4000/main/evm/4663"
 simulation-node-url = "http://rpc-proxy:4000/main/evm/4663"
@@ -16,12 +16,12 @@ simulation-node-url = "http://rpc-proxy:4000/main/evm/4663"
 # Phase-1 Ledger ceremony (see FILL-IN-AFTER-DEPLOY.md). render-configs.sh
 # refuses to render while any __FILL_AFTER_DEPLOY_*__ placeholder remains.
 [shared.contracts]
-settlement = "__FILL_AFTER_DEPLOY_SETTLEMENT__"
-balances = "__FILL_AFTER_DEPLOY_BALANCES__"
-signatures = "__FILL_AFTER_DEPLOY_SIGNATURES__"
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+balances = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
+signatures = "0x2fbb1e41ff4f9b707e4428eec7f5afaac5d60810"
 # ORBIT: WETH is chain-specific, NOT the OP-Stack 0x4200..0006 predeploy.
 native-token = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"  # WETH9 on Robinhood 4663 (verified)
-hooks = "__FILL_AFTER_DEPLOY_HOOKS__"
+hooks = "0x68593257dfd7f392abfbb410b212be0b6242ac0e"
 # Balancer V2 Vault canonical address. NOTE: likely NOT deployed on 4663; harmless
 # while the baseline ships empty (never called). Verify + wire only if a native
 # Balancer source is ever added.
@@ -52,11 +52,13 @@ estimators = [
 ]
 
 [order-quoting]
-# Day-1 LiFi-only (the sole aggregator that supports 4663). Keep this in sync
+# Keep the independent Robinhood lanes in sync
 # with autopilot.toml.tmpl [order-quoting].price-estimation-drivers.
 price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
   { name = "lifi", url = "http://driver/lifi" },
+  { name = "kyberswap", url = "http://driver/kyberswap" },
+  { name = "uniswap-v4", url = "http://driver/uniswap-v4" },
 ]
 
 [price-estimation]
@@ -65,3 +67,17 @@ amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
 [price-estimation.coin-gecko]
 api-key = "%COINGECKO_API_KEY"
 url = "https://api.coingecko.com/api/v3/simple/token_price"
+
+# Orderbook-native rate limiter (api-dx decision 10). SHIPS DISABLED: the
+# limiter and the published limits table flip on together in a later window,
+# with one consistent set of numbers derived from Cloudflare traffic data.
+# Flipping `enabled` here without publishing that table recreates the Odos
+# docs/limiter mismatch; do not flip it unilaterally. The numbers below are
+# the placeholder defaults, not published commitments.
+[api.rate-limit]
+enabled = false
+requests-per-second = 5
+burst = 20
+# CF-Connecting-IP is trustworthy here because the host is only reachable
+# through the Cloudflare tunnel; set to false if that ever changes.
+trust-cf-connecting-ip = true

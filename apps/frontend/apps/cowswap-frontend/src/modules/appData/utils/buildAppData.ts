@@ -4,6 +4,7 @@ import { stringifyDeterministic } from '@cowprotocol/cow-sdk'
 import { metadataApiSDK } from 'cowSdk'
 
 import { toKeccak256 } from 'common/utils/toKeccak256'
+import type { OphisBasketTag } from 'ophis/basketMetadata'
 
 import { filterHooks, HooksFilter } from './appDataFilter'
 import { removePermitHookFromHooks, typedAppDataHooksToAppDataHooks } from './typedHooks'
@@ -32,6 +33,14 @@ export type BuildAppDataParams = {
   partnerFee?: AppDataPartnerFee
   replacedOrderUid?: string
   userConsent?: UserConsentsMetadata
+  /**
+   * Ophis basket (multi-order) marker. Present on each leg of an "ophis-multi-order"
+   * basket; spread into metadata.ophisBasket so the leg's appData carries { id, leg,
+   * legs }. Absent for ordinary single orders. The rebate indexer reads it as a
+   * passthrough (basket_id); the orders table groups legs by it. It is NOT a
+   * settlement primitive (Phase A legs are independent, non-atomic CoW orders).
+   */
+  ophisBasket?: OphisBasketTag
 }
 
 async function generateAppDataFromDoc(
@@ -55,6 +64,7 @@ export async function buildAppData({
   partnerFee,
   replacedOrderUid,
   userConsent,
+  ophisBasket,
 }: BuildAppDataParams): Promise<AppDataInfo> {
   const referrerParams: AppDataRootSchema['metadata']['referrer'] = refCode ? { code: refCode } : undefined
 
@@ -78,6 +88,10 @@ export async function buildAppData({
       partnerFee,
       ...{ replacedOrder },
       ...(userConsent ? userConsent : {}),
+      // Ophis basket leg marker (metadata.ophisBasket = { id, leg, legs }). Spread
+      // like userConsent because it is an Ophis extension key not declared in CoW's
+      // AppData schema; the orderbook accepts unknown metadata keys.
+      ...(ophisBasket ? { ophisBasket } : {}),
     },
   })
 

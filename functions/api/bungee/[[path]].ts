@@ -108,14 +108,22 @@ function isAllowedOrigin(origin: string): boolean {
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 120
 const RATE_LIMIT_MAX_KEYS = 1024
-// Prefix used only by the local in-isolate fallback Map. Production admission
-// uses OPHIS_BUNGEE_RATE_LIMITER instead.
-const RATE_LIMIT_KEY_PREFIX = 'bungee:rl:'
+// Per-isolate fallback store, used when OPHIS_BUNGEE_RATE_LIMITER is unbound or
+// throws. Module scope = one Map per isolate, private to this file, so entries
+// are keyed by the bare IP and need no prefix (/api/intent and /api/beat-market
+// each own a separate `ipBuckets`).
+const isolateHits = new Map<string, number[]>()
 
 function checkRateLimitIsolate(ip: string): boolean {
   const now = Date.now()
   const cutoff = now - RATE_LIMIT_WINDOW_MS
-  if (isolateHits.size > RATE_LIMIT_MAX_KEYS) isolateHits.clear()
+  // Evict the oldest keys only (insertion order — Map.set on an existing key
+  // does not reorder). A full clear() let an attacker rotating source addresses
+  // reset EVERY tracked IP's window on demand; this bounds each overflow to the
+  // oldest ~64+overflow entries. Mirrors intent.ts / beat-market.ts.
+  if (isolateHits.size > RATE_LIMIT_MAX_KEYS) {
+    for (const k of Array.from(isolateHits.keys()).slice(0, isolateHits.size - RATE_LIMIT_MAX_KEYS + 64)) isolateHits.delete(k)
+  }
   const timestamps = (isolateHits.get(ip) ?? []).filter((t) => t > cutoff)
   if (timestamps.length >= RATE_LIMIT_MAX_REQUESTS) {
     isolateHits.set(ip, timestamps)

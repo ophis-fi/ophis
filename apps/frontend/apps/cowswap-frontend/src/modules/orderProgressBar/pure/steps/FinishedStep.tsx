@@ -1,3 +1,4 @@
+import { useAtomValue } from 'jotai'
 import React, { ReactNode, useMemo, useState, Suspense, lazy } from 'react'
 
 import ICON_SOCIAL_X from '@cowprotocol/assets/images/icon-social-x.svg'
@@ -12,7 +13,6 @@ import { Confetti, ExternalLink, InfoTooltip, TokenAmount } from '@cowprotocol/u
 
 import { i18n } from '@lingui/core'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { useAtomValue } from 'jotai'
 import { PiCaretDown, PiCaretUp, PiTrophyFill } from 'react-icons/pi'
 import SVG from 'react-inlinesvg'
 
@@ -316,7 +316,7 @@ function SolverRow({
           <styledEl.SolverLogo>
             <img
               src={solver.image || AMM_LOGOS[solver.solver]?.src || AMM_LOGOS.default.src}
-              alt={`${solver.solver} logo`}
+              alt={`${solver.displayName || solver.solver} logo`}
               width="24"
               height="24"
             />

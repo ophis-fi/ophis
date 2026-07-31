@@ -155,7 +155,8 @@ where
             SimulatorError::Tenderly(tenderly::Error::Http(_)) => None,
             SimulatorError::Tenderly(tenderly::Error::Revert(_)) => Some(tx.clone()),
             SimulatorError::Tenderly(tenderly::Error::Other(_)) => None,
-            SimulatorError::Ethereum(_) => Some(tx.clone()),
+            SimulatorError::Ethereum(err) if err.is_revert() => Some(tx.clone()),
+            SimulatorError::Ethereum(_) => None,
             SimulatorError::GasExceeded(..) => Some(tx.clone()),
         };
         match tx {

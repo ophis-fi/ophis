@@ -14,7 +14,7 @@
       "policyName": "Ophis {{CHAIN_NAME}}: allow signing an Ophis order only (domain + receiver + token set pinned)",
       "effect": "EFFECT_ALLOW",
       "condition": "activity.type == 'ACTIVITY_TYPE_SIGN_RAW_PAYLOAD_V2' && activity.params.encoding == 'PAYLOAD_ENCODING_EIP712' && eth.eip_712.primary_type == 'Order' && eth.eip_712.domain.name == 'Gnosis Protocol' && eth.eip_712.domain.version == 'v2' && eth.eip_712.domain.chain_id == {{CHAIN_ID}} && eth.eip_712.domain.verifying_contract == '{{VERIFYING_CONTRACT_LOWERCASE}}' && eth.eip_712.message['receiver'] == '{{AGENT_WALLET_ADDRESS_LOWERCASE}}' && eth.eip_712.message['sellToken'] in ['{{TOKEN_ALLOWLIST_LOWERCASE}}'] && eth.eip_712.message['buyToken'] in ['{{TOKEN_ALLOWLIST_LOWERCASE}}']",
-      "notes": "verifying_contract is the Ophis settlement for this chain. On the 10 non-sovereign chains it equals the canonical GPv2 address (shared with CoW Swap); only Optimism and Unichain carry an Ophis-exclusive settlement. Addresses here MUST be lowercase per Turnkey's EIP-712 casing rule."
+      "notes": "verifying_contract is the Ophis settlement for this chain. On the 10 non-sovereign chains it equals the canonical GPv2 address (shared with CoW Swap); Optimism, Unichain, and Robinhood Chain carry Ophis-exclusive settlements. Addresses here MUST be lowercase per Turnkey's EIP-712 casing rule."
     },
     {
       "policyName": "Ophis {{CHAIN_NAME}}: deny the pre-hashed NO_OP bypass of the order field checks",

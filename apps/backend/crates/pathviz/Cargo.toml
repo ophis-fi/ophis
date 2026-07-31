@@ -1,0 +1,24 @@
+[package]
+name = "pathviz"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+# Pure, I/O-free render crate (owner decision 24): no tokio, no network, no
+# filesystem, no clock. Callers assemble a `model::pathviz::PathVizGraph`
+# and this crate lays it out and renders a themeable SVG. Keeping the
+# dependency set this small is what keeps a later wasm32 build for
+# CoW-hosted chains possible; do NOT add I/O or async dependencies here.
+#
+# Renderer is clean-room: the 4-column Sankey layout and Bezier links are
+# hand-rolled. No d3 / d3-sankey source was ported or consulted. Do not
+# introduce a port when modifying this crate (see README).
+
+[dependencies]
+base64 = { workspace = true }
+model = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

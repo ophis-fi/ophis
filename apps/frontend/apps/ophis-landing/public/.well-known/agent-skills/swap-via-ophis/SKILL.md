@@ -7,7 +7,8 @@ license: MIT
 # Swap via Ophis
 
 Ophis is a non-custodial, intent-based DEX aggregator (a CoW Protocol fork) live
-on Optimism, Unichain, and 10 other EVM chains, with Solana and Bitcoin as cross-chain
+on Optimism, Unichain, Robinhood Chain, and 10 other EVM chains, with Solana and
+Bitcoin as cross-chain
 destinations via NEAR Intents. Orders settle inside batch auctions at a uniform
 clearing price, so they are MEV-protected by construction. The user (or an agent
 acting on their behalf) always signs the final order locally, in their own
@@ -50,7 +51,8 @@ All endpoints are public and require no API key or authentication.
 A flat 0.10% (10 bps) fee on trade volume on the swap app, with a reduced
 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps; orders built through
 the SDK/MCP integration path carry a reduced 0.05% (5 bps) partner rate. On the
-Ophis-operated chains (Optimism, Unichain) the Ophis fee is the all-in cost and
+Ophis-operated chains (Optimism, Unichain, Robinhood Chain) the Ophis fee is the
+all-in cost and
 100% of price improvement is returned to the trader; on CoW-hosted chains CoW
 Protocol's own fees apply on top (a 0.02% volume fee, 0.003% on correlated
 pairs, plus 50% of quote improvement, capped at 0.98% of volume). Details:
@@ -69,3 +71,12 @@ monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package e
   Always resolve the per-chain settlement domain via `list_chains` or the SDK.
 - Ophis intentionally does not implement HTTP-native payment automation; the
   user's wallet signature is the trust boundary.
+
+## The full skill family
+
+For shell-capable agents (curl, jq, Foundry's cast) there is a complete
+Ophis skill family, quote / swap / order status / cancel / surplus report,
+with a machine-readable contract-pinning policy, at
+https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md (per-file sha256
+digests in https://ophis.fi/.well-known/agent-skills/index.json). This page
+stays as the compact MCP-first overview.

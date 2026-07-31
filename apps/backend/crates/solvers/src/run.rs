@@ -130,6 +130,16 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
+        cli::Command::UniswapV4 { config: path } => {
+            let config = config::dex::uniswap_v4::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::UniswapV4(Box::new(
+                    dex::uniswap_v4::UniswapV4::try_new(config.uniswap_v4)
+                        .expect("invalid Uniswap V4 configuration"),
+                )),
+                config.base,
+            )))
+        }
     };
 
     crate::api::Api {

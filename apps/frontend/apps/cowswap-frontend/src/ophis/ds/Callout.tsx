@@ -95,12 +95,7 @@ interface CalloutPropsWithRole extends CalloutProps {
   role?: 'alert' | 'status' | 'note'
 }
 
-export function Callout({
-  tone = 'info',
-  title,
-  children,
-  role,
-}: CalloutPropsWithRole): ReactNode {
+export function Callout({ tone = 'info', title, children, role }: CalloutPropsWithRole): ReactNode {
   return (
     <Outer $tone={tone} role={role}>
       {title && <Title>{title}</Title>}

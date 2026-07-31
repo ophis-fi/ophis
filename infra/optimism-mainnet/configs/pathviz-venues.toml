@@ -1,0 +1,53 @@
+# pathviz venue registry -- Optimism mainnet (chain 10).
+#
+# The route column is an ALLOWLIST: a settlement counterparty is drawn ONLY if
+# it is a [venues] entry below, and the backend additionally suppresses the whole
+# column when a known [routers] competitor took part in the settlement. Unknown
+# addresses are never drawn. This fails closed for what the file can decide on its
+# own: a missing, malformed, or empty file draws nothing, and an unknown address
+# is never drawn. It does NOT fail closed against operator error -- an address
+# wrongly listed under [venues] WILL be drawn even if it is a competitor. Keeping
+# these two tables correct is the operator's responsibility (below).
+#
+#   [venues]  DIRECT liquidity venues Ophis settles into: integrated AMM/PMM pools
+#             AND Ophis' own settlement adapters (e.g. OphisUniswapV4Adapter,
+#             which only Settlement can call and which returns output only to
+#             Settlement). Drawn as route hops and labelled. Not listed -> not drawn.
+#
+#   [routers] COMPETITOR aggregator routers Ophis solvers call (KyberSwap, LI.FI,
+#             Odos, ...). Ophis routes THROUGH them, but they are competitors, and
+#             the standing copy rule is that Ophis public copy never names one (the
+#             frontend enforces the same rule for solver names via the display-alias
+#             layer). They are never drawn AND their presence suppresses the column.
+#             Listing them here is documentation AND a guardrail -- an address may
+#             not appear in both tables, so the loader REJECTS a config that
+#             promotes a known competitor to a drawn venue.
+#
+# On Optimism, Ophis settles EXCLUSIVELY through competitor aggregator routers, so
+# [venues] is empty: the route column stays empty and each graph degrades to
+# solver -> out (surplus and the winning Ophis solver still render). Add direct
+# venues under [venues] as they are integrated.
+#
+# OWNERSHIP: infra ops. When a new counterparty appears in the driver custom
+# allowlist (`custom_allowlist.rs`), CLASSIFY it by hand and add it here in the
+# same change: a competitor aggregator router -> [routers]; a direct pool or an
+# Ophis own adapter -> [venues]. The driver allowlist is a MIXED set (both kinds),
+# NOT a router list, so do not blindly mirror it. Addresses are EIP-55-checksummed
+# and matched case-insensitively at load.
+
+[venues]
+# (No direct-pool venues on Optimism yet: all settlement flows through the
+# aggregator routers listed under [routers].)
+
+[routers]
+# Aggregator routers (router == ERC-20 spender unless noted). Never rendered.
+"0x6131B5fae19EA4f9D964eAc0408E4408b66337b5" = "KyberSwap"
+"0x6A000F20005980200259B80c5102003040001068" = "Velora"
+"0xDd5E9B947c99Aa60bab00ca4631Dce63b49983E7" = "OKX (router)"
+"0x68D6B739D2020067D1e2F713b999dA97E4d54812" = "OKX (spender)"
+"0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680" = "Odos"
+"0xF75584eF6673aD213a685a1B58Cc0330B8eA22Cf" = "Enso"
+"0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE" = "LI.FI"
+"0x6352a56caadC4F1E25CD6c75970Fa768A3304e64" = "OpenOcean"
+"0x8b09DB11ea380d6454D2592D334FFC319ce6EF3E" = "DODO (router)"
+"0xa492d6eABcdc3E204676f15B950bBdD448080364" = "DODO (spender)"

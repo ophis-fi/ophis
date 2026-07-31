@@ -7,6 +7,7 @@ import { reconcileBatches } from './batch/reconcile.js';
 import { deliverMonthlyReport } from './affiliate/deliverReport.js';
 import { runAffiliatePayout, reconcileAffiliateBatches } from './affiliate/payout.js';
 import { resolveAffiliatePayoutEnabled } from './affiliate/payoutPlan.js';
+import { OWN_FEE_GUARANTEED_CHAIN_IDS } from './affiliate/rates.js';
 import { accrueOwnFee, proposeOwnFeeBatches, reconcileOwnFeeBatches } from './ownFee/payout.js';
 import { resolveOwnFeePayoutEnabled } from './ownFee/payoutPlan.js';
 import { alerts } from './telegram/alerter.js';
@@ -20,7 +21,7 @@ function gnosisRpc(): string {
 }
 
 // Sovereign chains that pay per-recipient own-fee (each from its OWN chain's Ophis Safe).
-const SOVEREIGN_OWN_FEE_CHAINS = [10, 130] as const;
+const SOVEREIGN_OWN_FEE_CHAINS = [...OWN_FEE_GUARANTEED_CHAIN_IDS];
 // Keyless public defaults; override per chain via OWN_FEE_RPC_URL_<id> (or the existing
 // SETTLE_RPC_URL_<id> the settle decoder already uses).
 const SOVEREIGN_RPC_DEFAULT: Record<number, string> = {

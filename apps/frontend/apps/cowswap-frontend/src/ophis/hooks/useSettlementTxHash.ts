@@ -1,9 +1,8 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import * as Sentry from '@sentry/react'
-import useSWR from 'swr'
-
 import { orderBookApi } from 'cowSdk'
+import useSWR from 'swr'
 
 // Ophis fork: on OP mainnet (chain 10) there's no Ophis-branded explorer yet
 // (task #99), so until then we resolve the settlement-tx URL for a *fulfilled*
@@ -11,7 +10,9 @@ import { orderBookApi } from 'cowSdk'
 // kept as the fallback when no trade is available (pending / failed / fetch
 // error). See `apps/frontend/libs/common-utils/src/explorer.ts`.
 
-const OPHIS_SUPPORTED_CHAINS: ReadonlyArray<number> = [10 /* Optimism mainnet */, 130 /* Unichain mainnet */]
+const OPHIS_SUPPORTED_CHAINS: ReadonlyArray<number> = [
+  10 /* Optimism mainnet */, 130 /* Unichain mainnet */, 4663 /* Robinhood Chain mainnet */,
+]
 const COW_ORDER_UID_LENGTH = 114 // "0x" + 56 bytes hex
 
 /**
@@ -25,10 +26,7 @@ const COW_ORDER_UID_LENGTH = 114 // "0x" + 56 bytes hex
  */
 export function useSettlementTxHash(chainId: number | undefined, orderUid: string | undefined): string | null {
   const enabled =
-    !!chainId &&
-    OPHIS_SUPPORTED_CHAINS.includes(chainId) &&
-    !!orderUid &&
-    orderUid.length === COW_ORDER_UID_LENGTH
+    !!chainId && OPHIS_SUPPORTED_CHAINS.includes(chainId) && !!orderUid && orderUid.length === COW_ORDER_UID_LENGTH
 
   const { data } = useSWR(
     enabled ? ['ophis-settlement-tx', chainId, orderUid] : null,
@@ -60,7 +58,7 @@ export function useSettlementTxHash(chainId: number | undefined, orderUid: strin
         // expected fallback — capturing every miss would blow our error
         // budget. Breadcrumbs attach to the next real captured error so
         // we still get the context if something else trips.
-        // eslint-disable-next-line no-console
+
         console.warn('[useSettlementTxHash] orderbook getTrades failed', {
           chainId: _chainId,
           orderUid: _orderUid,

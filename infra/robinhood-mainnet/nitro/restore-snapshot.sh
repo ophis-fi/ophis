@@ -3,7 +3,7 @@
 #
 # Restore the Robinhood Chain (4663) Nitro database from a third-party snapshot,
 # then let the node follow the tip. This is the sanctioned way around the fatal
-# blob-DA gap (see README "From-genesis sync is NOT possible").
+# historical blob-DA gap when the archive adapter is not being used.
 #
 # RUNS INSIDE THE WSL2 DISTRO (Linux), after BRINGUP.md steps 1-4. It does NOT
 # start the node - it only stages a verified data dir. verify-snapshot.sh then

@@ -2,7 +2,7 @@
 #
 # TEMPLATE FILE. Render with envsubst at deploy time: ./render-configs.sh
 #
-# LI.FI SAME-CHAIN DEX swaps on chain 4663. Day-1's only supported aggregator
+# LI.FI SAME-CHAIN DEX swaps on chain 4663. One of two active aggregator lanes
 # (verified 2026-07-02: li.quest/v1/chains returns id:4663; a live same-chain
 # quote 0.2 WETH -> 325.72 USDG routed via Fly.trade + Rialto). Keyless: LI.FI's
 # public tier needs only the `integrator` param. SELL output reports
@@ -18,7 +18,11 @@
 node-url = "${ROBINHOOD_MAINNET_RPC}"
 
 # Ophis-fork settlement on Robinhood. Filled AFTER the ceremony.
-settlement = "__FILL_AFTER_DEPLOY_SETTLEMENT__"
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+wrapped-native = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+# Robinhood's canonical wrapper is upgradeable aeWETH, whose balanceOf
+# mapping is at slot 0x33 (51), not the WETH9 default slot 3.
+wrapped-native-balance-slot = 51
 
 [dex]
 chain-id = "4663"

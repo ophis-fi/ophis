@@ -1,6 +1,6 @@
-import { JSX, ReactNode } from 'react'
+import { JSX, ReactNode, useCallback } from 'react'
 
-import { getWrappedToken } from '@cowprotocol/common-utils'
+import { getWrappedToken, percentToBps } from '@cowprotocol/common-utils'
 import { SettingsInput, Loader, SettingsFeedback } from '@cowprotocol/ui'
 
 import { t } from '@lingui/core/macro'
@@ -8,13 +8,14 @@ import { Trans } from '@lingui/react/macro'
 
 import { useIsEoaEthFlow } from 'modules/trade'
 import { useTradeQuote } from 'modules/tradeQuote'
-import { useIsSlippageModified, useIsSmartSlippageApplied } from 'modules/tradeSlippage'
+import { useIsSlippageModified, useIsSmartSlippageApplied, useSlippageConfig, useTradeSlippage } from 'modules/tradeSlippage'
 
 import { getNativeSlippageTooltip, getNonNativeSlippageTooltip } from 'common/utils/tradeSettingsTooltips'
 import useNativeCurrency from 'lib/hooks/useNativeCurrency'
 
 import { useSlippageInput } from './hooks/useSlippageInput'
 import { useSlippageWarningParams } from './hooks/useSlippageWarningParams'
+import { SlippagePresets } from './SlippagePresets'
 import * as styledEl from './TransactionSlippageInput.styled'
 
 export function TransactionSlippageInput(): JSX.Element {
@@ -24,6 +25,8 @@ export function TransactionSlippageInput(): JSX.Element {
   const isSmartSlippageApplied = useIsSmartSlippageApplied()
   const isSlippageModified = useIsSlippageModified()
   const slippageWarningParams = useSlippageWarningParams(isSlippageModified)
+  const { min: minBps, max: maxBps } = useSlippageConfig()
+  const currentSlippage = useTradeSlippage()
 
   const {
     slippageError,
@@ -34,11 +37,28 @@ export function TransactionSlippageInput(): JSX.Element {
     setAutoSlippage,
   } = useSlippageInput()
 
+  // Ophis ux-quoting decision 61: preset selection goes through the exact
+  // typed-value path, so validation, warnings and persistence are identical.
+  const onPresetSelect = useCallback(
+    (bps: number) => {
+      parseSlippageInput((bps / 100).toString())
+    },
+    [parseSlippageInput],
+  )
+
   const autoButton = (
-    <styledEl.AutoButton onClick={setAutoSlippage} active={!isSlippageModified}>
-      <Trans>Auto</Trans>
-      {!isSlippageModified && isQuoteLoading ? <Loader size="16px" /> : null}
-    </styledEl.AutoButton>
+    <>
+      <styledEl.AutoButton onClick={setAutoSlippage} active={!isSlippageModified}>
+        <Trans>Auto</Trans>
+        {!isSlippageModified && isQuoteLoading ? <Loader size="16px" /> : null}
+      </styledEl.AutoButton>
+      <SlippagePresets
+        activeBps={isSlippageModified ? percentToBps(currentSlippage) : null}
+        minBps={minBps}
+        maxBps={maxBps}
+        onSelect={onPresetSelect}
+      />
+    </>
   )
 
   // Note that we set the value of footerSlot regardless of isQuoteLoading state to prevent so many quick changes/flashes

@@ -21,9 +21,7 @@ const ENDPOINT = '/api/intent'
  *
  * Never throws — defensive against arbitrary CF/upstream HTML payloads.
  */
-async function mapHttpStatus(
-  res: Response,
-): Promise<{ code: IntentErrorCode; message: string }> {
+async function mapHttpStatus(res: Response): Promise<{ code: IntentErrorCode; message: string }> {
   // Try to extract a structured error first.
   let bodyErr: { code?: IntentErrorCode; message?: string } | undefined
   try {
@@ -130,7 +128,12 @@ export function useIntentParse(text: string): IntentParseState {
       try {
         body = (await res.json()) as IntentResponse
       } catch {
-        setState({ status: 'error', parsed: null, errorCode: 'INVALID_JSON', errorMessage: 'response was not valid JSON' })
+        setState({
+          status: 'error',
+          parsed: null,
+          errorCode: 'INVALID_JSON',
+          errorMessage: 'response was not valid JSON',
+        })
         return
       }
       if (!body.ok) {

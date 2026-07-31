@@ -66,3 +66,7 @@ _nitrosrc/
 # re-derived third-party-transitive Dependabot alerts (@heyanon/sdk deps we
 # cannot remediate). Resolve fresh on install instead of tracking the lockfile.
 integrations/**/package-lock.json
+
+# Static-analysis scan output (semgrep skill default dir). Scan artifacts are
+# per-run and machine-local; 65 of them were committed by accident once.
+static_analysis_semgrep*/

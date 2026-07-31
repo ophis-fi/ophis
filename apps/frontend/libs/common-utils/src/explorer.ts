@@ -40,6 +40,8 @@ function _getExplorerUrlByEnvironment(): Record<ChainId, string> {
     // at /unichain (SDK points at the sovereign unichain-mainnet.ophis.fi
     // orderbook), so order/tx/address links resolve there.
     [130 as unknown as ChainId]: `${baseUrl}/unichain`,
+    // Ophis fork: Robinhood Chain mainnet (chain 4663).
+    [4663 as unknown as ChainId]: `${baseUrl}/robinhood`,
     // Ophis fork: MegaETH mainnet (chain 4326). Same rationale — Blockscout
     // has no /orders/ route, so order-level URLs fall back to the address
     // page (see getExplorerOrderLink below).

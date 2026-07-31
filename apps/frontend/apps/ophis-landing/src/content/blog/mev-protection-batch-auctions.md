@@ -81,7 +81,7 @@ and a network of competing solvers proposes settlements: which orders to fill,
 against which liquidity, at what prices. The solver offering the best execution
 wins the right to settle the batch on-chain, in a single transaction that the
 solver, not you, submits. On most chains that settlement goes through CoW
-Protocol's audited GPv2 contracts; on Optimism and Unichain, Ophis operates its
+Protocol's audited GPv2 contracts; on Optimism, Unichain, and Robinhood Chain, Ophis operates its
 own orderbook and a bytecode-identical deployment of CoW Protocol's audited
 GPv2Settlement.
 
@@ -100,13 +100,13 @@ your order below it. The worst case is not a bad fill; it is no fill.
 The same competition that protects you also pays you. Your signed order carries
 the minimum you will accept. When the winning solver finds better execution
 than that, the price improvement beyond the quote you signed is called
-**surplus**, and the Ophis fee takes no share of it. On Optimism and Unichain,
+**surplus**, and the Ophis fee takes no share of it. On Optimism, Unichain, and Robinhood Chain,
 where Ophis runs its own settlement, 100% of that surplus is yours; on the ten
 chains that settle through CoW Protocol's canonical contracts, CoW Protocol
 keeps half. The Ophis fee is a flat 0.10% of trade volume (0.01% for same-chain
-stablecoin-to-stablecoin swaps), taken in the token you sell, and on those
-CoW-settled chains CoW Protocol's protocol fee applies on top for an all-in cost
-of about 0.12%. The Ophis numbers live on the
+stablecoin-to-stablecoin swaps), taken out of the trade itself, and on those
+CoW-settled chains CoW Protocol's protocol fee applies on top for a fixed cost
+of about 0.12%, before the half of any quote improvement CoW also keeps. The Ophis numbers live on the
 [fees page](https://docs.ophis.fi/fees).
 
 So the auction cuts both ways. Attackers cannot extract value from your trade's
@@ -118,7 +118,7 @@ Precisely this: when Ophis calls a swap MEV protected, it means the protection
 is structural, built from a batch auction, a uniform clearing price, and
 off-chain order flow. It is not a best-effort service scanning for attacks, and
 it does not depend on you configuring the right RPC. Orders are also gasless
-(no native token needed; the fee is taken in the sell token) and
+(no native token needed; the fee comes out of the traded amount) and
 self-custodial (Ophis never holds funds; every order requires your EIP-712 or
 ERC-1271 signature).
 
@@ -153,15 +153,15 @@ wallet. You can sign a new order with a fresh quote whenever you like.
 No. The winning solver submits the settlement transaction and pays its gas; you
 only sign a message. Beyond a one-time approval the first time you sell a given
 token, you do not need the chain's native token, because the flat 0.10% fee is
-taken in the token you sell. More edge cases are covered
+comes out of the traded amount. More edge cases are covered
 in the [docs FAQ](https://docs.ophis.fi/faq).
 
-### Does this work on all 12 chains?
+### Does this work on all 13 chains?
 
 Yes. Ophis runs the same intent flow on Ethereum, Optimism, BNB, Gnosis,
-Unichain, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, and Linea, plus
+Unichain, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche, Ink, and Linea, plus
 Sepolia for testing. On most of these chains settlement goes through CoW
-Protocol's canonical audited GPv2 contracts; on Optimism and Unichain, Ophis
+Protocol's canonical audited GPv2 contracts; on Optimism, Unichain, and Robinhood Chain, Ophis
 operates its own orderbook and a bytecode-identical deployment of
 GPv2Settlement. The underlying protocol is documented at
 [docs.cow.fi](https://docs.cow.fi).
@@ -172,4 +172,4 @@ Your next swap does not have to be a public mempool transaction. Open
 [swap.ophis.fi](https://swap.ophis.fi/), pick a pair, and the order you sign
 settles through a batch auction with everything above built in: no mempool
 exposure, one clearing price, a hard limit, and your surplus back (100% of it on
-Optimism and Unichain).
+Optimism, Unichain, and Robinhood Chain).

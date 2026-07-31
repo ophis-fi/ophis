@@ -59,7 +59,8 @@ export function OphisFooter({ borderless = false, compact = false }: Props): Rea
             </styledEl.Wordmark>
           </styledEl.BrandMark>
           <styledEl.BrandTagline>
-            Best-execution, MEV-protected, intent-based trading. Across 12 EVM chains, plus Solana and Bitcoin destinations.
+            Best-execution, MEV-protected, intent-based trading. Across 13 EVM chains, including Robinhood Chain, plus
+            Solana and Bitcoin destinations.
           </styledEl.BrandTagline>
         </styledEl.Brand>
 

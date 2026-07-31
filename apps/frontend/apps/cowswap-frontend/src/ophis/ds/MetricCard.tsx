@@ -37,7 +37,9 @@ const Outer = styled.div<{ $compact: boolean }>`
   display: flex;
   flex-direction: column;
   gap: ${({ $compact }) => ($compact ? '4px' : '6px')};
-  transition: border-color 180ms ease-out, transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    border-color 180ms ease-out,
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
   &:hover {
     border-color: rgba(242, 166, 62, 0.28);
     transform: translateY(-1px);
@@ -102,13 +104,7 @@ const Trend = styled.div<{ $direction: TrendDirection }>`
   ${({ $direction }) => TREND_COLOR[$direction]}
 `
 
-export function MetricCard({
-  label,
-  value,
-  sublabel,
-  trend,
-  compact = false,
-}: MetricCardProps): ReactNode {
+export function MetricCard({ label, value, sublabel, trend, compact = false }: MetricCardProps): ReactNode {
   return (
     <Outer $compact={compact}>
       <Label>{label}</Label>

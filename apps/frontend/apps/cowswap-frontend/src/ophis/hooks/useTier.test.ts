@@ -13,20 +13,21 @@ import { useTier } from './useTier'
 describe('useTier privacy gate', () => {
   beforeEach(() => {
     window.localStorage.removeItem(REBATES_OPT_IN_KEY)
-    ;(globalThis.fetch as unknown) = jest.fn(() =>
-      Promise.resolve({
-        ok: true,
-        status: 200,
-        json: () =>
-          Promise.resolve({
-            wallet: '0x0000000000000000000000000000000000000001',
-            volume_30d_usd: 1234,
-            trade_count_30d: 5,
-            tier: { name: 'none', min_usd: 0, rebate_pct: 0 },
-            next_tier: { name: 'bronze', min_usd: 20_000, rebate_pct: 0.1 },
-            usd_to_next_tier: 18_766,
-          }),
-      }) as unknown as Promise<Response>,
+    ;(globalThis.fetch as unknown) = jest.fn(
+      () =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              wallet: '0x0000000000000000000000000000000000000001',
+              volume_30d_usd: 1234,
+              trade_count_30d: 5,
+              tier: { name: 'none', min_usd: 0, rebate_pct: 0 },
+              next_tier: { name: 'bronze', min_usd: 20_000, rebate_pct: 0.1 },
+              usd_to_next_tier: 18_766,
+            }),
+        }) as unknown as Promise<Response>,
     )
   })
 
@@ -55,9 +56,7 @@ describe('useTier privacy gate', () => {
     rerender()
     expect(result.current.optedIn).toBe(true)
     expect(globalThis.fetch).toHaveBeenCalledTimes(1)
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      expect.stringContaining(`/tier/${wallet.toLowerCase()}`),
-    )
+    expect(globalThis.fetch).toHaveBeenCalledWith(expect.stringContaining(`/tier/${wallet.toLowerCase()}`))
   })
 
   it('clears data when opt-in is revoked mid-session', async () => {
