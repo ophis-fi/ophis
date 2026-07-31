@@ -30,7 +30,7 @@ const RAW_TEXT = new Set(['script', 'style'])
 // and `undecodedEntitiesIn` below makes anything outside it a LOUD failure
 // instead of a silent page/schema mismatch (a bare `&copy;` in the schema where
 // the browser shows ©).
-const NAMED = {
+export const NAMED = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
   copy: '©', reg: '®', trade: '™', deg: '°',
   hellip: '…', mdash: '—', ndash: '–', shy: '­',

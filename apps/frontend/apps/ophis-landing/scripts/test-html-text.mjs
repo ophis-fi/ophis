@@ -20,8 +20,8 @@
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { htmlToText, decodeEntities } from './lib/html-text.mjs'
-import { visibleTextOf } from './check-faq-schema.mjs'
+import { htmlToText, decodeEntities, NAMED } from './lib/html-text.mjs'
+import { visibleTextOf, NAMED_REFS } from './check-faq-schema.mjs'
 
 /** [name, html, expected visible text] - asserted against BOTH extractors. */
 const CASES = [
@@ -86,4 +86,15 @@ test('the two extractors agree on every case', () => {
 test('decodeEntities is exposed and single-pass', () => {
   assert.equal(decodeEntities('&#38;copy;'), '&copy;')
   assert.equal(decodeEntities('&copy;'), '©')
+})
+
+test('the two entity tables are mirrors', () => {
+  // The extractors are independent implementations, but they must decode the
+  // SAME set or one will reject a page the other produced correctly. The gate
+  // also uses its copy to flag references neither side handles.
+  assert.deepEqual(
+    Object.entries(NAMED).sort(),
+    Object.entries(NAMED_REFS).sort(),
+    'NAMED (scripts/lib/html-text.mjs) and NAMED_REFS (scripts/check-faq-schema.mjs) drifted',
+  )
 })
