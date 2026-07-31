@@ -113,9 +113,14 @@ export function useBasketQuotes(
     }
 
     return () => controller.abort()
-    // legsSig captures the leg set; the rest are stable scalars.
+    // legsSig captures the leg set (used instead of `legs` to avoid rerunning on
+    // reference-only changes); owner/chainId/validTo/quoteFn are stable scalars.
+    // resolveLegPartnerFee IS a real dependency: it changes when correlated-token
+    // data finishes loading or the injected-widget fee updates, and a stale
+    // resolver would quote a leg with a fee it is then signed WITHOUT (or vice
+    // versa), diverging from useBuildBasketLegAppData.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legsSig, owner, chainId, validTo, quoteFn])
+  }, [legsSig, owner, chainId, validTo, quoteFn, resolveLegPartnerFee])
 
   const values = Object.values(quotes)
   const isLoading = values.some((q) => q.isLoading)
