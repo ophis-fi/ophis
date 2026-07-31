@@ -83,7 +83,7 @@ All three lanes run under the same bounds: 1% relative slippage and an absolute 
 
 ## Stock tokens: what Ophis checks before you sign
 
-Most chains list tokens. Robinhood Chain mostly lists tokenized equities. The exact set is a live, changing registry, so rather than quote a number that will be stale by the time you read this: Ophis's daily canary fails if that registry returns fewer than 80 assets on chain 4663, which is the floor the stack is built to expect. For the current list, read `swap.ophis.fi/api/robinhood/assets` directly. These instruments behave in ways an ERC-20 router has no concept of, so Ophis added a Robinhood-specific verification path in front of the quote.
+Most chains list tokens. Robinhood Chain mostly lists tokenized equities. The exact set is a live, changing registry, so rather than quote a number that will be stale by the time you read this, here is the floor the stack is built to expect: Ophis's daily canary fails if the registry returns fewer than 80 assets, or if the default token list exposes fewer than 80 of them on chain 4663. For the current list, read `swap.ophis.fi/api/robinhood/assets` directly. These instruments behave in ways an ERC-20 router has no concept of, so Ophis added a Robinhood-specific verification path in front of the quote.
 
 **It confirms the token is the canonical deployment.** The panel matches the selected token address against Robinhood's own published registry, scoped to chain id 4663. A token that merely calls itself AAPL does not match. This is the same anti-spoofing principle the `resolve_token` MCP tool applies, which matters more here than usual: a fake tokenized Apple share is a far more convincing lure than a fake memecoin.
 
