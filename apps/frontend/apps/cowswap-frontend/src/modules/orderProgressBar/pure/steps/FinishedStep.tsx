@@ -13,7 +13,6 @@ import { Confetti, ExternalLink, InfoTooltip, TokenAmount } from '@cowprotocol/u
 
 import { i18n } from '@lingui/core'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { SettlementRoute } from 'ophis/components/SettlementRoute'
 import { PiCaretDown, PiCaretUp, PiTrophyFill } from 'react-icons/pi'
 import SVG from 'react-inlinesvg'
 
@@ -149,10 +148,6 @@ export function FinishedStep({
             isSell={isSell}
           />
         ) : null}
-
-        {/* Post-settlement Sankey (chain 10, once backend pathviz is live).
-            Fails soft to nothing on 404, wrong chain, or a non-traded order. */}
-        <SettlementRoute chainId={chainId} orderUid={order?.id} />
 
         <AggregationAndRouteInfo chainId={chainId} order={order} />
 
