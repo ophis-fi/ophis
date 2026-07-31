@@ -239,13 +239,24 @@ EIP-1271 policy gate rather than trusting the agent to honour them.
 
 ### What does it cost an agent to swap?
 
-Integrations through the SDK and MCP pay a flat 0.05% (5 bps) of trade volume,
-reduced to 0.01% (1 bp) for stablecoin-to-stablecoin pairs, which is half the
-0.10% retail rate on the swap app. The fee comes out of the traded amount rather
-than being billed separately, so an agent wallet funded only in the tokens it
-trades can still swap: for an ERC-20 order the only transaction it ever
-broadcasts is a one-time approval per token per chain. The fee takes no share of
-any price improvement the solver competition finds.
+Two things set the number, so it is worth being exact. The partner rate is a
+flat 0.05% (5 bps) of trade volume, half the 0.10% retail rate the swap app
+charges. A caller building `appData` itself can drop that to 0.01% (1 bp) on a
+same-chain stablecoin pair, using `ophisVolumeBpsForPair` to pick the rate, but
+the hosted MCP `build_order` has no pair input and always embeds the flat 5 bps,
+stablecoin pairs included. Do not budget 1 bp for an agent trading over MCP.
+
+Then the chain decides whether anything sits on top. On the three
+Ophis-operated chains, Optimism, Unichain, and Robinhood Chain, that partner
+rate is the entire cost and 100% of any price improvement goes back to the
+wallet. On the other ten, CoW Protocol adds its own 0.02% volume fee (0.003% on
+correlated pairs such as stablecoins) and keeps half of any quote improvement,
+so the same swap runs about 0.07% all-in at the 5 bps rate.
+
+Either way the fee comes out of the traded amount rather than being billed
+separately, so an agent wallet funded only in the tokens it trades can still
+swap: for an ERC-20 order the only transaction it ever broadcasts is a one-time
+approval per token per chain.
 
 ### Which chains can an agent trade on?
 
