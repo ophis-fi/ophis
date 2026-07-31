@@ -66,7 +66,7 @@ const MODEL_ORDER_RS = 'apps/backend/crates/model/src/order.rs';
 // (sovereign) chains whose orderbooks Ophis self-hosts. Deliberately narrower
 // than the 12-chain policy-pack table: the skills' pinned execution lane is
 // the Ophis-run stack only.
-const POLICY_CHAIN_IDS = [10, 130];
+const POLICY_CHAIN_IDS = [10, 130, 4663];
 
 // CoW canonical GPv2 addresses. They must NEVER appear in the family: on the
 // policy chains they are the wrong contracts (the deployed Ophis stack

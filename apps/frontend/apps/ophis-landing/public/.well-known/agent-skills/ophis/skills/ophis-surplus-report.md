@@ -15,7 +15,7 @@ chains 100% of it goes to the trader.
 
 ## Inputs you need
 
-- **chainId**: 10 or 130.
+- **chainId**: 10, 130, or 4663.
 - **address**: the wallet to report on.
 
 ## Total surplus

@@ -65,7 +65,14 @@ const jsonLd = {
 const stripMd = (s: string): string =>
   s
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url) -> text
-    .replace(/[*_`]/g, '') // bold / italic / inline-code markers
+    // Underscore emphasis ONLY when the underscores are not intraword. Blindly
+    // stripping `_` mangled every snake_case identifier we name in an FAQ
+    // answer (`build_order` -> "buildorder"), which both misnames the tool to
+    // anyone quoting the schema and breaks Google's requirement that FAQ schema
+    // match the visible text. Per CommonMark, intraword `_` is not emphasis, so
+    // matching the emphasis form is the correct narrowing.
+    .replace(/(?<!\w)_(?=\S)([^_]*[^_\s])_(?!\w)/g, '$1')
+    .replace(/[*`]/g, '') // bold / italic / inline-code markers
     .replace(/\s+/g, ' ')
     .trim()
 

@@ -14,7 +14,7 @@ it settled.
 
 ## Inputs you need
 
-- **chainId**: 10 or 130 (an order lives on exactly one chain's orderbook).
+- **chainId**: 10, 130, or 4663 (an order lives on exactly one chain's orderbook).
 - **orderUid**: `0x` + 112 hex chars (56 bytes: order digest ++ owner ++
   validTo). If it looks shorter, it is not a UID.
 
