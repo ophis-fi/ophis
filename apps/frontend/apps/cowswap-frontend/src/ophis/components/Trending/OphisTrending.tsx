@@ -223,8 +223,10 @@ export function OphisTrending(): ReactNode {
   const { tokens } = useTrending(!dismissed && Number.isInteger(chainId) && chainId > 0 ? chainId : undefined)
 
   const visible = useMemo(
-    // Don't show a row for the token already on the sell side.
-    () => tokens.filter((token) => !areAddressesEqual(token.address, inputCurrencyId)).slice(0, 6),
+    // Don't show a row for the token already on the sell side. Capped at 5 so the
+    // rail (chart + trending) matches the swap card's height and does not spill
+    // below it.
+    () => tokens.filter((token) => !areAddressesEqual(token.address, inputCurrencyId)).slice(0, 5),
     [tokens, inputCurrencyId],
   )
 
