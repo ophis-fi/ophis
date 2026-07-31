@@ -91,18 +91,26 @@ struct ReceiptData {
 
 /// Settlement-counterparty registry, loaded from TOML.
 ///
-/// `[venues]` are real liquidity venues (AMM/PMM pools) that ARE drawn as route
-/// hops, each with a human label; a `[venues]` address with no label degrades to
-/// the bare `0x...` address (owner decision 27), never a fabricated name.
+/// The route column is an ALLOWLIST: a settlement counterparty is drawn only if
+/// it is an approved `[venues]` entry. Everything else -- known aggregator
+/// routers, downstream pools an aggregator internally hopped through, unknown
+/// addresses, and every counterparty seen when the registry could not be loaded
+/// -- is NOT drawn. This fails closed: the route column can only ever name an
+/// address an operator explicitly approved, so it never leaks a competitor even
+/// on a missing, stale, or malformed registry (the frontend enforces the same
+/// rule for solver names via the display-alias layer).
 ///
-/// `[routers]` are aggregator routers that Ophis solvers call. Ophis routes
-/// THROUGH them, but they are competitors, and the standing copy rule is that
-/// Ophis public copy never names one (the frontend enforces the same rule for
-/// solver names via the display-alias layer). They are recorded here so
-/// `venues_for_settlement` can drop them from the route column: a counterparty
-/// in this set becomes a settlement pass-through, not a drawn hop. On chains
-/// that settle exclusively through aggregator routers (Optimism today), this
-/// leaves an empty venue column and the graph degrades to solver -> out.
+/// `[venues]` are real liquidity venues (AMM/PMM pools) that ARE drawn, each
+/// with a human label.
+///
+/// `[routers]` are aggregator routers Ophis solvers call. Ophis routes THROUGH
+/// them but they are competitors and are never drawn. Under the allowlist they
+/// would be excluded anyway (they are not `[venues]`); the section is kept as
+/// documentation AND as a load-time guardrail: an address may not appear in both
+/// tables, so a known competitor can never be accidentally promoted to a drawn
+/// venue. On chains that settle exclusively through aggregator routers (Optimism
+/// today) `[venues]` is empty, so the column is empty and the graph degrades to
+/// solver -> out.
 #[derive(Clone, Debug, Default)]
 pub struct VenueRegistry {
     labels: HashMap<Address, String>,
@@ -110,10 +118,10 @@ pub struct VenueRegistry {
 }
 
 impl VenueRegistry {
-    /// Parse `[venues]` (address = "label", shown) and `[routers]`
-    /// (address = "note", excluded from the venue column). Ownership of this
-    /// file is assigned to infra ops (decision 27). The router note is human
-    /// documentation only; the code uses the keys as an exclusion set.
+    /// Parse `[venues]` (address = "label", the drawn allowlist) and `[routers]`
+    /// (address = "note", known aggregators kept out of the allowlist).
+    /// Ownership of this file is assigned to infra ops (decision 27). Errors if
+    /// an address is listed in both tables: a router must never be drawable.
     pub fn from_toml(src: &str) -> anyhow::Result<Self> {
         #[derive(serde::Deserialize)]
         struct Doc {
@@ -133,7 +141,12 @@ impl VenueRegistry {
         }
         let mut routers = HashSet::new();
         for addr in doc.routers.keys() {
-            routers.insert(parse_addr(addr)?);
+            let addr = parse_addr(addr)?;
+            // A known aggregator router must never also be a drawable venue.
+            if labels.contains_key(&addr) {
+                anyhow::bail!("address {addr} is listed as both a [venues] entry and a [routers]; a router must never be drawable");
+            }
+            routers.insert(addr);
         }
         Ok(Self { labels, routers })
     }
@@ -142,6 +155,14 @@ impl VenueRegistry {
         let src = std::fs::read_to_string(path)
             .map_err(|e| anyhow::anyhow!("reading venue registry {}: {e}", path.display()))?;
         Self::from_toml(&src)
+    }
+
+    /// The approved label for a drawable venue, or `None` when the address is
+    /// not an allowlisted `[venues]` entry. This is the ONLY draw predicate: an
+    /// address absent from `[venues]` (a router, a downstream pool, an unknown,
+    /// or anything at all when the registry failed to load) is never drawn.
+    pub fn labeled_venue(&self, address: Address) -> Option<String> {
+        self.labels.get(&address).cloned()
     }
 
     /// The registry label, or the checksummed bare address as a fallback.
@@ -158,7 +179,7 @@ impl VenueRegistry {
         self.routers.contains(&address)
     }
 
-    /// Count of excluded aggregator routers (for the startup log).
+    /// Count of known aggregator routers (documented, for the startup log).
     pub fn router_count(&self) -> usize {
         self.routers.len()
     }
@@ -400,9 +421,12 @@ pub struct OrderVizParams {
 }
 
 /// Classify settlement transfers relative to the trader and the settlement
-/// hub: any counterparty that is neither the trader nor the settlement
-/// contract is a venue. Returns the ordered, de-duplicated venue address
-/// set (capped) plus the matched-in-batch evidence flag.
+/// hub: every counterparty that is neither the trader, the receiver, nor the
+/// settlement contract is a candidate. Returns the ordered, de-duplicated
+/// candidate set (UNCAPPED) plus the matched-in-batch evidence flag. The caller
+/// applies the `[venues]` allowlist and only then caps to MAX_VENUES, so an
+/// eligible pool late in a large receipt is not lost to excluded counterparties
+/// ahead of it.
 pub fn classify_settlement(
     transfers: &[TransferLog],
     trader: Address,
@@ -436,7 +460,8 @@ pub fn classify_settlement(
             }
         }
     }
-    venues.truncate(MAX_VENUES);
+    // NOT capped here: the caller applies the allowlist first, then caps, so a
+    // drawable pool is never dropped in favour of an excluded counterparty.
     // "Matched in batch" evidence: the trader both sent and received directly
     // against the settlement hub without a venue leg is a weak signal; a
     // safe, evidence-only heuristic is that any transfer both endpoints of
@@ -788,12 +813,18 @@ impl PathVizService {
         Some(
             venues
                 .into_iter()
-                // Aggregator routers are competitors Ophis routes through; drop
-                // them so the route column never names one (standing copy rule).
-                // On chains that settle only through routers this empties the
-                // column and the graph degrades to solver -> out.
-                .filter(|addr| !self.registry.is_router(*addr))
-                .map(|addr| (addr, self.registry.label_for(addr)))
+                // ALLOWLIST: draw a counterparty only if it is an approved
+                // `[venues]` pool. Known aggregator routers, downstream pools an
+                // aggregator internally hopped through, unknown addresses, and
+                // everything at all when the registry failed to load are dropped,
+                // so the column never names or draws a competitor and fails
+                // closed on a missing/stale registry. Filtering BEFORE the cap
+                // means an eligible pool late in a large receipt is not lost to
+                // excluded counterparties ahead of it. On chains that settle only
+                // through routers (Optimism) `[venues]` is empty, so the column is
+                // empty and the graph degrades to solver -> out.
+                .filter_map(|addr| self.registry.labeled_venue(addr).map(|label| (addr, label)))
+                .take(MAX_VENUES)
                 .collect(),
         )
     }
@@ -901,22 +932,25 @@ mod tests {
         // Guards the checked-in registry: every key must be a valid EIP-55
         // address and the file must parse. Mirrors the invariant scripts that
         // pin other user-facing literals. On OP every counterparty is an
-        // aggregator router, so [venues] is empty and all 10 are excluded.
+        // aggregator router, so [venues] is empty and nothing is drawable.
         let src = include_str!(
             "../../../../../infra/optimism-mainnet/configs/pathviz-venues.toml"
         );
         let reg = VenueRegistry::from_toml(src).expect("committed venue registry must parse");
-        assert_eq!(reg.len(), 0, "OP settles only through routers: no drawn venues");
-        assert_eq!(reg.router_count(), 10, "expected the 10 excluded OP routers");
-        // The competitor aggregators are routers (never drawn), not venues.
+        assert_eq!(reg.len(), 0, "OP settles only through routers: no drawable venues");
+        assert_eq!(reg.router_count(), 10, "expected the 10 documented OP routers");
+        // The competitor aggregators are NOT drawable (absent from the allowlist)
+        // and are recorded as routers.
         let odos: Address = "0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680".parse().unwrap();
+        assert!(reg.labeled_venue(odos).is_none(), "a router is never drawn");
         assert!(reg.is_router(odos));
         let kyber: Address = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5".parse().unwrap();
+        assert!(reg.labeled_venue(kyber).is_none());
         assert!(reg.is_router(kyber));
     }
 
     #[test]
-    fn venue_registry_parses_and_degrades() {
+    fn venue_registry_allowlist_draws_only_listed_venues() {
         let toml = r#"
 [venues]
 "0x9c12939390052919aF3155f41Bf4160Fd3666A6f" = "Velodrome"
@@ -926,18 +960,41 @@ mod tests {
 "#;
         let reg = VenueRegistry::from_toml(toml).unwrap();
         assert_eq!(reg.len(), 1);
+        // An allowlisted pool is drawn with its label.
         let known: Address = "0x9c12939390052919aF3155f41Bf4160Fd3666A6f".parse().unwrap();
-        assert_eq!(reg.label_for(known), "Velodrome");
-        assert!(!reg.is_router(known), "a real pool is drawn, not excluded");
-        // The router is excluded from the venue column.
+        assert_eq!(reg.labeled_venue(known).as_deref(), Some("Velodrome"));
+        // A router is documented but NOT drawable.
         let odos: Address = "0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680".parse().unwrap();
+        assert!(reg.labeled_venue(odos).is_none());
         assert!(reg.is_router(odos));
         assert_eq!(reg.router_count(), 1);
-        // Unknown address degrades to its bare hex (never fabricated) and is not
-        // treated as a router.
+        // An unknown address is NOT drawable either (allowlist fails closed).
         let unknown = Address::with_last_byte(0xAB);
-        assert_eq!(reg.label_for(unknown), unknown.to_string());
+        assert!(reg.labeled_venue(unknown).is_none());
         assert!(!reg.is_router(unknown));
+    }
+
+    #[test]
+    fn default_registry_draws_nothing() {
+        // The fail-closed state used when the registry cannot be loaded: an empty
+        // allowlist, so no counterparty is ever drawable.
+        let reg = VenueRegistry::default();
+        assert!(reg.labeled_venue(Address::with_last_byte(0xAA)).is_none());
+        assert!(reg.labeled_venue(Address::with_last_byte(0xCA)).is_none());
+    }
+
+    #[test]
+    fn registry_rejects_router_also_listed_as_venue() {
+        // The load-time guardrail: a known competitor may not be promoted to a
+        // drawable venue, even by an operator editing the file.
+        let toml = r#"
+[venues]
+"0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680" = "Totally A Pool"
+
+[routers]
+"0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680" = "Odos"
+"#;
+        assert!(VenueRegistry::from_toml(toml).is_err());
     }
 
     #[test]
@@ -1022,18 +1079,31 @@ mod tests {
         assert!(!venues.contains(&receiver));
     }
 
+    // Mirrors venues_for_settlement's draw rule: allowlist, then cap.
+    fn drawn_venues(reg: &VenueRegistry, venues: Vec<Address>) -> Vec<(Address, String)> {
+        venues
+            .into_iter()
+            .filter_map(|a| reg.labeled_venue(a).map(|l| (a, l)))
+            .take(MAX_VENUES)
+            .collect()
+    }
+
     #[test]
-    fn router_counterparties_are_dropped_from_the_venue_column() {
-        // Mirrors venues_for_settlement's filter: a settlement whose only
-        // counterparty is an aggregator router (the OP topology) yields an empty
-        // venue column, so build_settled_graph degrades to solver -> out and no
-        // competitor is ever drawn or named.
+    fn only_allowlisted_venues_are_drawn_routers_and_pools_dropped() {
+        // The OP topology plus a downstream pool the aggregator internally hopped
+        // through. Neither the router nor the downstream pool is allowlisted, so
+        // nothing is drawn: build_settled_graph degrades to solver -> out and no
+        // competitor (named or bare-hex) appears. (finding 3)
         let trader = Address::with_last_byte(0x11);
-        let router = Address::with_last_byte(0xCA); // an aggregator router
+        let router = Address::with_last_byte(0xCA); // outer aggregator router
+        let downstream_pool = Address::with_last_byte(0xDD); // internal hop, unlisted
         let token = Address::with_last_byte(0x01);
         let transfers = vec![
             TransferLog { token, from: trader, to: SETTLEMENT_CONTRACT, value: U256::from(100u64) },
             TransferLog { token, from: SETTLEMENT_CONTRACT, to: router, value: U256::from(100u64) },
+            // aggregator-internal hop: router <-> pool, settlement not involved
+            TransferLog { token, from: router, to: downstream_pool, value: U256::from(100u64) },
+            TransferLog { token, from: downstream_pool, to: router, value: U256::from(98u64) },
             TransferLog { token, from: router, to: SETTLEMENT_CONTRACT, value: U256::from(98u64) },
             TransferLog { token, from: SETTLEMENT_CONTRACT, to: trader, value: U256::from(98u64) },
         ];
@@ -1042,9 +1112,48 @@ mod tests {
             VenueRegistry::from_toml(&toml).unwrap()
         };
         let (venues, _matched) = classify_settlement(&transfers, trader, trader);
-        assert_eq!(venues, vec![router], "classify sees the router as a counterparty");
-        let drawn: Vec<Address> = venues.into_iter().filter(|a| !reg.is_router(*a)).collect();
-        assert!(drawn.is_empty(), "the router is dropped, leaving no drawn venue");
+        assert!(
+            venues.contains(&router) && venues.contains(&downstream_pool),
+            "classify captures both the router and the downstream pool"
+        );
+        assert!(
+            drawn_venues(&reg, venues).is_empty(),
+            "neither is allowlisted, so nothing is drawn"
+        );
+    }
+
+    #[test]
+    fn allowlist_is_applied_before_the_cap() {
+        // A large receipt whose only allowlisted pool is the LAST counterparty,
+        // after MAX_VENUES non-drawable ones. Filtering before the cap keeps it;
+        // the pre-fix order (cap in classify, then filter) would have truncated
+        // it away. (finding 1)
+        let trader = Address::with_last_byte(0x11);
+        let token = Address::with_last_byte(0x01);
+        let pool = Address::with_last_byte(0xEE);
+        let mut transfers = vec![TransferLog {
+            token,
+            from: trader,
+            to: SETTLEMENT_CONTRACT,
+            value: U256::from(1u64),
+        }];
+        // MAX_VENUES + 5 unlisted counterparties ahead of the pool. Offset 0x20
+        // keeps them distinct from trader (0x11), token (0x01), and pool (0xEE).
+        for i in 0..(MAX_VENUES as u8 + 5) {
+            let filler = Address::with_last_byte(0x20 + i);
+            transfers.push(TransferLog { token, from: SETTLEMENT_CONTRACT, to: filler, value: U256::from(1u64) });
+        }
+        transfers.push(TransferLog { token, from: SETTLEMENT_CONTRACT, to: pool, value: U256::from(1u64) });
+        transfers.push(TransferLog { token, from: SETTLEMENT_CONTRACT, to: trader, value: U256::from(1u64) });
+
+        let reg = {
+            let toml = format!("[venues]\n\"{pool}\" = \"RealPool\"\n");
+            VenueRegistry::from_toml(&toml).unwrap()
+        };
+        let (venues, _matched) = classify_settlement(&transfers, trader, trader);
+        assert!(venues.len() > MAX_VENUES, "more candidates than the cap");
+        let drawn = drawn_venues(&reg, venues);
+        assert_eq!(drawn, vec![(pool, "RealPool".to_string())], "the late pool survives the cap");
     }
 
     #[test]

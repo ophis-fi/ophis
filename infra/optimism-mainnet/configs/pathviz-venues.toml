@@ -1,24 +1,29 @@
 # pathviz venue registry -- Optimism mainnet (chain 10).
 #
-# Classifies on-chain settlement counterparties for the pathviz route column.
+# The route column is an ALLOWLIST: a settlement counterparty is drawn ONLY if
+# it is a [venues] entry below. Everything else -- known aggregator routers,
+# downstream pools an aggregator internally hops through, unknown addresses --
+# is never drawn. This fails closed: a missing, stale, or malformed registry
+# draws nothing rather than leaking a competitor.
 #
 #   [venues]  real liquidity venues (AMM/PMM pools) Ophis settles into. Drawn
-#             as route hops and labelled. A [venues] address with no label
-#             degrades to its bare 0x address -- the renderer never fabricates
-#             one (owner decision 27).
+#             as route hops and labelled. If it is not listed here, it is not
+#             drawn.
 #
 #   [routers] aggregator routers Ophis solvers call. Ophis routes THROUGH them,
 #             but they are competitors, and the standing copy rule is that Ophis
-#             public copy never names a competitor (the frontend enforces the
-#             same rule for solver names via the display-alias layer). Recorded
-#             here so the backend drops them from the route column: a router
-#             counterparty is a settlement pass-through, not a drawn hop.
+#             public copy never names one (the frontend enforces the same rule
+#             for solver names via the display-alias layer). They are excluded by
+#             the allowlist anyway (they are not [venues]); listing them here is
+#             documentation AND a guardrail -- an address may not appear in both
+#             tables, so the loader REJECTS a config that promotes a known
+#             competitor to a drawn venue.
 #
 # On Optimism, Ophis settles EXCLUSIVELY through aggregator routers (the driver
-# custom allowlist `custom_allowlist::OPTIMISM_MAINNET`), so every counterparty
-# below is a router and [venues] is empty: the route column stays empty and each
-# graph degrades to solver -> out (surplus and the winning Ophis solver still
-# render). Add direct-pool venues under [venues] as they are integrated.
+# custom allowlist `custom_allowlist::OPTIMISM_MAINNET`), so [venues] is empty:
+# the route column stays empty and each graph degrades to solver -> out (surplus
+# and the winning Ophis solver still render). Add direct-pool venues under
+# [venues] as they are integrated.
 #
 # OWNERSHIP: infra ops. When a new counterparty is added to the driver allowlist,
 # add it here in the same change (as a [venues] pool or a [routers] aggregator)

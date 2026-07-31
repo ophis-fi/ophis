@@ -296,8 +296,11 @@ pub async fn run(config: Configuration) {
                 Err(err) => {
                     tracing::warn!(
                         ?err,
-                        "pathviz: venue registry load failed; venues degrade to bare addresses"
+                        "pathviz: venue registry load failed; venue column suppressed (fail closed) until it loads"
                     );
+                    // Empty allowlist: no counterparty is drawable, so the route
+                    // column stays empty and can never leak a competitor while
+                    // the registry is broken.
                     crate::pathviz::VenueRegistry::default()
                 }
             },
