@@ -95,8 +95,8 @@ constraint this article is about does not bind there.
 **New wallets.** The classic deadlock: a fresh wallet receives USDC from an
 exchange withdrawal or an airdrop, and then cannot do anything with it, because
 doing anything takes gas and the wallet holds none. A signed order breaks the
-deadlock: a solver executes the trade, and the fee comes out of the USDC
-itself.
+deadlock: a solver executes the trade, and the fee comes out of the trade
+itself rather than out of a gas balance the wallet does not have.
 
 **AI agents.** An agent's wallet is funded in the tokens it trades, not in gas.
 Keeping native balances topped up on every chain it touches is an operational
@@ -133,8 +133,8 @@ settle through CoW Protocol, CoW Protocol keeps half).
 ### Who pays the solver?
 
 The winning solver pays the gas for the settlement transaction. Your only cost
-is the flat 0.10% fee (0.01% for same-chain stablecoin pairs), taken in the
-sell token, and the limit price you signed bounds the outcome either way.
+is the flat 0.10% fee (0.01% for same-chain stablecoin pairs), taken out of
+the trade itself, and the limit price you signed bounds the outcome either way.
 Solver compensation is never billed to you in the native token.
 
 ### Is it custodial?
