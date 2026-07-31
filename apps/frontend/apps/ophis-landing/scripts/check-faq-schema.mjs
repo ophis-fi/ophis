@@ -34,7 +34,20 @@ const visibleTextOf = (html) => {
   let out = parts[0] ?? ''
   let skipUntil = null
   for (const part of parts.slice(1)) {
-    const gt = part.indexOf('>')
+    // The tag ends at the first '>' that is NOT inside a quoted attribute, so
+    // <abbr title="1 > 0">true</abbr> yields "true" rather than `0">true`.
+    let gt = -1
+    for (let j = 0, quote = null; j < part.length; j++) {
+      const c = part[j]
+      if (quote) {
+        if (c === quote) quote = null
+      } else if (c === '"' || c === "'") {
+        quote = c
+      } else if (c === '>') {
+        gt = j
+        break
+      }
+    }
     const tag = gt === -1 ? part : part.slice(0, gt)
     const text = gt === -1 ? '' : part.slice(gt + 1)
     const name = (/^\/?\s*([a-zA-Z][a-zA-Z0-9]*)/.exec(tag)?.[1] ?? '').toLowerCase()
@@ -128,6 +141,16 @@ for (const page of pagesUnder(distBlog)) {
       continue
     }
     answersChecked++
+    // An undecoded named entity means the extractors disagree with the browser.
+    // Both sides would carry it identically, so the verbatim comparison below
+    // cannot see it: check explicitly.
+    const stray = [...`${question} ${answer}`.matchAll(/&([a-zA-Z][a-zA-Z0-9]{1,31});/g)].map((m) => m[0])
+    if (stray.length) {
+      failures.push(
+        `${slug}: FAQ schema contains undecoded HTML entities ${[...new Set(stray)].join(', ')} ` +
+          `(add them to NAMED in scripts/lib/html-text.mjs)`,
+      )
+    }
     if (!visible.includes(question)) {
       failures.push(`${slug}: question not found in visible text: ${JSON.stringify(question.slice(0, 70))}`)
     }
