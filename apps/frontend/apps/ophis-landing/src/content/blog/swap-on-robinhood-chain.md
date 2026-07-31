@@ -9,7 +9,7 @@ cover: ./swap-on-robinhood-chain.cover.jpg
 coverAlt: "Ophis emblem ringed by supported chains with the Robinhood feather as the featured node"
 ---
 
-Ophis is live on Robinhood Chain. Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign an EIP-712 order: you never broadcast a transaction and you pay no gas for the swap itself. Three solver lanes are live on the chain and compete wherever they can route your pair, the winner settles it on-chain in a batch through an Ophis-deployed `GPv2Settlement` at `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, and the cost is a flat 0.10% of volume with no cut of any price improvement. Robinhood Chain is the third network where Ophis runs its own orderbook and settlement contracts rather than routing through CoW Protocol's hosted stack, and the first where the tradable universe is mostly tokenized equities.
+Ophis is live on Robinhood Chain. Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign an EIP-712 order: for a token sell you never broadcast a transaction and you pay no gas for the swap itself (selling native ETH is the one exception, covered below). Three solver lanes are live on the chain and compete wherever they can route your pair, the winner settles it on-chain in a batch through an Ophis-deployed `GPv2Settlement` at `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, and the cost is a flat 0.10% of volume with no cut of any price improvement. Robinhood Chain is the third network where Ophis runs its own orderbook and settlement contracts rather than routing through CoW Protocol's hosted stack, and the first where the tradable universe is mostly tokenized equities.
 
 Two sentences of context. Robinhood Chain is chain id 4663, an Arbitrum Orbit L2, and it is one of the 13 EVM chains [Ophis](https://ophis.fi/) supports. Ophis is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top, and on Robinhood Chain it runs a sovereign deployment whose specifics are the subject of the rest of this post.
 
@@ -160,7 +160,9 @@ One exception is worth knowing, because this post advertises it. Selling native 
 
 ### What happens if my order cannot be filled?
 
-Nothing lands on chain and you pay nothing. Because the order is a signed message rather than a broadcast transaction, there is no failed transaction to pay gas for. If no solver can fill it at or above your signed limit price before it expires, it simply expires. Execution below the limit you signed cannot settle at all.
+For an ERC-20 order, nothing lands on chain and you pay nothing. The order is a signed message rather than a broadcast transaction, so there is no failed transaction to pay gas for: if no solver can fill it at or above your signed limit before it expires, it simply expires. Execution below the limit you signed cannot settle at all.
+
+Selling native ETH differs, because placing that order is itself an on-chain EthFlow transaction. That placement already cost gas and already moved your ETH into the contract, so an unfilled order there is not free: it ends in a refund of the ETH rather than in nothing having happened. The limit price protects you the same way in both cases.
 
 ## Start swapping
 

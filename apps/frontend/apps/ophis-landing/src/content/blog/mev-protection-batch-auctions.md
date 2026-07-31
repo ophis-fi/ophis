@@ -104,7 +104,7 @@ than that, the price improvement beyond the quote you signed is called
 where Ophis runs its own settlement, 100% of that surplus is yours; on the ten
 chains that settle through CoW Protocol's canonical contracts, CoW Protocol
 keeps half. The Ophis fee is a flat 0.10% of trade volume (0.01% for same-chain
-stablecoin-to-stablecoin swaps), taken in the token you sell, and on those
+stablecoin-to-stablecoin swaps), taken out of the trade itself, and on those
 CoW-settled chains CoW Protocol's protocol fee applies on top for an all-in cost
 of about 0.12%. The Ophis numbers live on the
 [fees page](https://docs.ophis.fi/fees).
@@ -118,7 +118,7 @@ Precisely this: when Ophis calls a swap MEV protected, it means the protection
 is structural, built from a batch auction, a uniform clearing price, and
 off-chain order flow. It is not a best-effort service scanning for attacks, and
 it does not depend on you configuring the right RPC. Orders are also gasless
-(no native token needed; the fee is taken in the sell token) and
+(no native token needed; the fee comes out of the traded amount) and
 self-custodial (Ophis never holds funds; every order requires your EIP-712 or
 ERC-1271 signature).
 
@@ -153,7 +153,7 @@ wallet. You can sign a new order with a fresh quote whenever you like.
 No. The winning solver submits the settlement transaction and pays its gas; you
 only sign a message. Beyond a one-time approval the first time you sell a given
 token, you do not need the chain's native token, because the flat 0.10% fee is
-taken in the token you sell. More edge cases are covered
+comes out of the traded amount. More edge cases are covered
 in the [docs FAQ](https://docs.ophis.fi/faq).
 
 ### Does this work on all 13 chains?
