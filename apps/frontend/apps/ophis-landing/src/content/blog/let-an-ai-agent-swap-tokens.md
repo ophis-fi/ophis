@@ -172,9 +172,12 @@ one-line summary: let the SDK resolve anything that is chain-specific.
 
 Here is the part that flips swaps from a cost center to a revenue line. Every
 swap routed through your integration carries the Ophis partner fee: a flat
-**0.05%** (just **0.01%** for stablecoin-to-stablecoin pairs) written into the
-order's `appData`. Integrators earn a **rebate** on the volume they route, and
-the `lookup_tier` tool surfaces a wallet's 30-day volume tier.
+**0.05%** written into the order's `appData`. A reduced **0.01%** is available on
+same-chain stablecoin pairs, but only to callers that build `appData` themselves
+and classify the pair; orders built by the hosted MCP always carry the flat
+0.05%. The FAQ below has the per-chain arithmetic. Integrators earn a **rebate**
+on the volume they route, and the `lookup_tier` tool surfaces a wallet's 30-day
+volume tier.
 
 An agent that swaps frequently is not an expense to its builder; it is recurring,
 attributable volume. The more your agent trades, the more you earn back.
@@ -249,9 +252,16 @@ stablecoin pairs included. Do not budget 1 bp for an agent trading over MCP.
 Then the chain decides whether anything sits on top. On the three
 Ophis-operated chains, Optimism, Unichain, and Robinhood Chain, that partner
 rate is the entire cost and 100% of any price improvement goes back to the
-wallet. On the other ten, CoW Protocol adds its own 0.02% volume fee (0.003% on
-correlated pairs such as stablecoins) and keeps half of any quote improvement,
-so the same swap runs about 0.07% all-in at the 5 bps rate.
+wallet. On the other ten, CoW Protocol adds its own volume fee: 0.02%, or
+0.003% on correlated pairs such as stablecoins. At the flat 5 bps an MCP agent
+pays, that puts the fixed charge around 0.07% on an ordinary pair and 0.053% on
+a correlated one; a manual caller that qualified for 1 bp would pay about 0.013%
+on a correlated pair.
+
+Note that fixed is not the same as total on those ten chains. CoW Protocol also
+keeps half of any improvement over your signed quote, which is variable and can
+push the real cost above the fixed number. Only on the three Ophis-operated
+chains is the partner rate genuinely the whole bill.
 
 Either way the fee comes out of the traded amount rather than being billed
 separately, so an agent wallet funded only in the tokens it trades can still

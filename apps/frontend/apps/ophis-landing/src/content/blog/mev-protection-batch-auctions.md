@@ -105,8 +105,8 @@ where Ophis runs its own settlement, 100% of that surplus is yours; on the ten
 chains that settle through CoW Protocol's canonical contracts, CoW Protocol
 keeps half. The Ophis fee is a flat 0.10% of trade volume (0.01% for same-chain
 stablecoin-to-stablecoin swaps), taken out of the trade itself, and on those
-CoW-settled chains CoW Protocol's protocol fee applies on top for an all-in cost
-of about 0.12%. The Ophis numbers live on the
+CoW-settled chains CoW Protocol's protocol fee applies on top for a fixed cost
+of about 0.12%, before the half of any quote improvement CoW also keeps. The Ophis numbers live on the
 [fees page](https://docs.ophis.fi/fees).
 
 So the auction cuts both ways. Attackers cannot extract value from your trade's
