@@ -121,7 +121,11 @@ pub fn render_svg(
         );
     }
 
-    // Nodes. Solver winners get an accent outline.
+    // Nodes. Solver winners get an accent outline. Match on the node id's raw
+    // solver key ("solver:<name>"), NOT the label: the label is the brand-neutral
+    // public string ("External solver" for every competitor lane), so several
+    // solver nodes share one label and matching by label would mis-highlight
+    // them all. The id keeps the raw name as a stable, non-rendered key.
     let winners: std::collections::HashSet<&str> = graph
         .solvers
         .iter()
@@ -130,7 +134,8 @@ pub fn render_svg(
         .collect();
 
     for b in &l.nodes {
-        let is_winner = b.kind == PathVizNodeKind::Solver && winners.contains(b.label.as_str());
+        let node_solver_key = b.id.strip_prefix("solver:").unwrap_or(b.id.as_str());
+        let is_winner = b.kind == PathVizNodeKind::Solver && winners.contains(node_solver_key);
         let stroke = if is_winner {
             theme.link_color(0)
         } else {
@@ -289,16 +294,18 @@ mod tests {
     fn single_order_graph() -> PathVizGraph {
         let mut g = PathVizGraph::new();
         g.nodes.push(token("in:weth", "WETH", 0));
+        // id follows the real "solver:<name>" convention so the id-based winner
+        // match resolves against g.solvers by name.
         g.nodes.push(PathVizNode {
-            id: "solver:winner".into(),
+            id: "solver:odos-solver".into(),
             label: "odos-solver".into(),
             kind: PathVizNodeKind::Solver,
             column: 1,
             address: None,
         });
         g.nodes.push(token("out:usdc", "USDC", 3));
-        g.links.push(route("in:weth", "solver:winner"));
-        g.links.push(route("solver:winner", "out:usdc"));
+        g.links.push(route("in:weth", "solver:odos-solver"));
+        g.links.push(route("solver:odos-solver", "out:usdc"));
         g.solvers.push(PathVizSolverBid {
             name: "odos-solver".into(),
             winner: true,
@@ -353,6 +360,58 @@ mod tests {
     fn dark_cosmic_is_the_default_background() {
         let svg = render_svg(&single_order_graph(), None).unwrap();
         assert!(svg.contains(r##"fill="#02000D""##));
+    }
+
+    #[test]
+    fn never_renders_a_competitor_solver_brand_and_still_highlights_the_winner() {
+        // Two competitor lanes competed; velora won. As the graph builder now
+        // produces: node ids keep the raw name (machine key), labels are the
+        // brand-neutral public string. The SVG must draw NO competitor brand,
+        // yet still outline the winner — matched by id, since both labels read
+        // "External solver" and a label match would highlight neither.
+        let mut g = PathVizGraph::new();
+        g.nodes.push(token("in", "USDC", 0));
+        g.nodes.push(PathVizNode {
+            id: "solver:velora".into(),
+            label: "External solver".into(),
+            kind: PathVizNodeKind::Solver,
+            column: 1,
+            address: None,
+        });
+        g.nodes.push(PathVizNode {
+            id: "solver:kyberswap".into(),
+            label: "External solver".into(),
+            kind: PathVizNodeKind::Solver,
+            column: 1,
+            address: None,
+        });
+        g.nodes.push(token("out", "WETH", 3));
+        g.links.push(route("in", "solver:velora"));
+        g.links.push(route("solver:velora", "out"));
+        g.solvers.push(PathVizSolverBid {
+            name: "velora".into(),
+            winner: true,
+            executed_sell_atoms: Some("1".into()),
+            executed_buy_atoms: Some("1".into()),
+        });
+        g.solvers.push(PathVizSolverBid {
+            name: "kyberswap".into(),
+            winner: false,
+            executed_sell_atoms: None,
+            executed_buy_atoms: None,
+        });
+        let svg = render_svg(&g, None).unwrap();
+        let lower = svg.to_lowercase();
+        assert!(!lower.contains("velora"), "competitor brand leaked in the rendered SVG");
+        assert!(!lower.contains("kyberswap"), "competitor brand leaked in the rendered SVG");
+        assert!(svg.contains("External solver"), "neutral label should render");
+        // Only Route links here (stroke-width 6), so the winner node rect is the
+        // sole stroke-width=2. Exactly one proves the id-based winner match fired.
+        assert_eq!(
+            svg.matches(r#"stroke-width="2""#).count(),
+            1,
+            "winner outline must survive label neutralization (matched by id)"
+        );
     }
 
     #[test]
