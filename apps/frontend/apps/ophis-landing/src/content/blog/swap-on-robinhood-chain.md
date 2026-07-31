@@ -83,11 +83,11 @@ All three lanes run under the same bounds: 1% relative slippage and an absolute 
 
 ## Stock tokens: what Ophis checks before you sign
 
-Most chains list tokens. Robinhood Chain mostly lists tokenized equities: reading Robinhood's public registry on 2026-07-31 returned **96 stock tokens** deployed on 4663. That registry is live and changes, so treat the figures in this section as a dated snapshot rather than a constant; you can pull the current set yourself from `swap.ophis.fi/api/robinhood/assets`. Those instruments behave in ways an ERC-20 router has no concept of, so Ophis added a Robinhood-specific verification path in front of the quote.
+Most chains list tokens. Robinhood Chain mostly lists tokenized equities. The exact set is a live, changing registry, so rather than quote a number that will be stale by the time you read this: Ophis's daily canary fails if that registry returns fewer than 80 assets on chain 4663, which is the floor the stack is built to expect. For the current list, read `swap.ophis.fi/api/robinhood/assets` directly. These instruments behave in ways an ERC-20 router has no concept of, so Ophis added a Robinhood-specific verification path in front of the quote.
 
 **It confirms the token is the canonical deployment.** The panel matches the selected token address against Robinhood's own published registry, scoped to chain id 4663. A token that merely calls itself AAPL does not match. This is the same anti-spoofing principle the `resolve_token` MCP tool applies, which matters more here than usual: a fake tokenized Apple share is a far more convincing lure than a fake memecoin.
 
-**It reads the corporate-action multiplier.** A stock token's on-chain balance is not necessarily one-for-one with underlying shares. Each asset carries a multiplier, and the panel uses it to show what your balance represents. Most assets sit at exactly 1, so the distinction never surfaces, but not all of them do: reading the registry on 2026-07-31 returned a handful that did not, including CRWD at 4. At a multiplier of 4, a balance of 10 tokens is shown as representing about 40 underlying shares. Check the current value per asset rather than assuming. When Robinhood publishes a multiplier change ahead of its effective time, the panel says a change is pending instead of quietly repricing after the fact.
+**It reads the corporate-action multiplier.** A stock token's on-chain balance is not necessarily one-for-one with underlying shares. Each asset carries a multiplier, and the panel uses it to show what your balance represents. Most assets sit at exactly 1, so the distinction never surfaces, but not all of them do, and which ones changes over time. The mechanic is worth understanding before it matters to you: at a multiplier of 4, a balance of 10 tokens is shown as representing about 40 underlying shares. Read the current value per asset rather than assuming it is 1. When Robinhood publishes a multiplier change ahead of its effective time, the panel says a change is pending instead of quietly repricing after the fact.
 
 **It surfaces trading restrictions.** Each asset publishes a trading status per session, across market, extended, and overnight hours, and separately for whole and fractional quantities. If any of them is anything other than tradable, or if the asset itself is not active, the panel switches to an attention state naming the affected symbol.
 
@@ -146,7 +146,7 @@ No. Orders are gasless: you sign an EIP-712 typed-data message rather than broad
 
 ### Can I swap tokenized stocks on Robinhood Chain?
 
-Yes, and Ophis adds checks specific to them. Before you sign, it verifies the token is the canonical deployment listed in Robinhood's official registry for chain 4663, reports the asset's corporate-action multiplier so you can see how the balance maps to underlying shares, flags any pending multiplier change, and warns when an asset carries a trading restriction in market, extended, or overnight sessions. At the time of writing the registry lists 96 stock tokens on the chain. If that metadata cannot be fetched, Ophis says so rather than presenting the trade as verified.
+Yes, and Ophis adds checks specific to them. Before you sign, it verifies the token is the canonical deployment listed in Robinhood's official registry for chain 4663, reports the asset's corporate-action multiplier so you can see how the balance maps to underlying shares, flags any pending multiplier change, and warns when an asset carries a trading restriction in market, extended, or overnight sessions. The registry is live and its contents change, so read `swap.ophis.fi/api/robinhood/assets` for the current set. If that metadata cannot be fetched, Ophis says so rather than presenting the trade as verified.
 
 ### How is Robinhood Chain different from the other chains Ophis supports?
 
@@ -154,7 +154,9 @@ Technically it is an Arbitrum Orbit L2 running Offchain Labs Nitro, posting data
 
 ### Does a higher gas price get my order filled first?
 
-No. Your order is an off-chain signed message, not a transaction, so it carries no gas bid at all: there is no priority fee attached to it and nothing for anyone to outbid. Orders are collected into batch auctions and solvers compete to fill them, which is what removes the sandwich, and that holds on every chain Ophis settles on. Approvals and wrapping are ordinary transactions and still cost gas like any other.
+No. A normal ERC-20 order is an off-chain signed message rather than a transaction, so it carries no gas bid at all: there is no priority fee attached to it and nothing for anyone to outbid. What protects it from sandwiching is that the order flow stays off-chain until settlement and then settles in a batch, not the gas market.
+
+One exception is worth knowing, because this post advertises it. Selling native ETH goes through the EthFlow contract, and that placement really is an on-chain transaction: you broadcast a payable `createOrder` call, it costs gas, and it is visible like any other transaction. What it creates is still an order that settles in a batch on the same terms as the rest. Approvals and wrapping are ordinary transactions too, and also cost gas.
 
 ### What happens if my order cannot be filled?
 
