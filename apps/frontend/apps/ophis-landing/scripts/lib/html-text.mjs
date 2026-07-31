@@ -23,18 +23,42 @@ const BLOCK = new Set([
 // Elements whose CONTENT is not visible text.
 const RAW_TEXT = new Set(['script', 'style'])
 
+// Named entities this decoder understands. Remark decodes entities in ordinary
+// markdown text before we ever see the HTML, so what reaches here comes from raw
+// HTML blocks and from Astro's own escaping of `<`, `>`, `&`, `"`. The set is
+// therefore deliberately small rather than the full HTML5 table of ~2200 names,
+// and `undecodedEntitiesIn` below makes anything outside it a LOUD failure
+// instead of a silent page/schema mismatch (a bare `&copy;` in the schema where
+// the browser shows ©).
+const NAMED = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  copy: '©', reg: '®', trade: '™', deg: '°',
+  hellip: '…', mdash: '—', ndash: '–', shy: '­',
+  lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+  laquo: '«', raquo: '»', times: '×', divide: '÷',
+  plusmn: '±', micro: 'µ', middot: '·', bull: '•',
+  dagger: '†', permil: '‰', prime: '′', Prime: '″',
+  euro: '€', pound: '£', yen: '¥', cent: '¢',
+  frac12: '½', frac14: '¼', frac34: '¾', sup2: '²', sup3: '³',
+}
+
+const NAMED_RE = new RegExp(`&(${Object.keys(NAMED).join('|')});`, 'g')
+
+/** Named entities left over after decoding, i.e. ones NAMED does not cover. */
+export function undecodedEntitiesIn(s) {
+  return [...s.matchAll(/&([a-zA-Z][a-zA-Z0-9]{1,31});/g)]
+    .map((m) => m[0])
+    .filter((e) => !(e.slice(1, -1) in NAMED))
+}
+
 export function decodeEntities(s) {
   return (
     s
       .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d)))
       .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&nbsp;/g, ' ')
-      // Last: an entity's own '&' must not be re-decoded into another entity.
-      .replace(/&amp;/g, '&')
+      // Single pass over the named set so a decoded value cannot be re-decoded:
+      // `&amp;copy;` must yield the text "&copy;", not "©".
+      .replace(NAMED_RE, (_m, name) => NAMED[name])
   )
 }
 
@@ -57,7 +81,25 @@ export function htmlToText(html) {
       i = end === -1 ? n : end + 3
       continue
     }
-    const gt = html.indexOf('>', lt)
+    // Find the tag's real end, skipping any '>' that sits inside a quoted
+    // attribute value: <abbr title="1 > 0">true</abbr> must yield "true", not
+    // `0">true`. indexOf('>') alone gets this wrong.
+    let gt = -1
+    for (let j = lt + 1, quote = null; j < n; j++) {
+      const c = html[j]
+      if (quote) {
+        if (c === quote) quote = null
+        continue
+      }
+      if (c === '"' || c === "'") {
+        quote = c
+        continue
+      }
+      if (c === '>') {
+        gt = j
+        break
+      }
+    }
     if (gt === -1) break // unterminated tag: nothing after it is trustworthy text
 
     const tag = html.slice(lt + 1, gt)
