@@ -92,35 +92,38 @@ struct ReceiptData {
 /// Settlement-counterparty registry, loaded from TOML.
 ///
 /// The route column is an ALLOWLIST: a settlement counterparty is drawn only if
-/// it is an approved `[venues]` entry. Everything else -- known aggregator
-/// routers, downstream pools an aggregator internally hopped through, unknown
-/// addresses, and every counterparty seen when the registry could not be loaded
-/// -- is NOT drawn. This fails closed for the cases the registry can decide on
-/// its own: a missing, malformed, or empty file draws nothing, and an unknown
-/// address is never drawn. The route column can only ever name an address an
-/// operator explicitly listed under `[venues]`, mirroring how the frontend
-/// gates solver names through the display-alias layer.
+/// it is an approved `[venues]` entry. Everything else -- unknown addresses and
+/// every counterparty seen when the registry could not be loaded -- is NOT drawn,
+/// and `venues_for_settlement` additionally suppresses the whole column when a
+/// known competitor router took part (see there). This fails closed for the cases
+/// the registry can decide on its own: a missing, malformed, or empty file draws
+/// nothing, and an unknown address is never drawn. The column can only ever name
+/// an address an operator explicitly listed under `[venues]`, mirroring how the
+/// frontend gates solver names through the display-alias layer.
 ///
 /// The one gap it CANNOT close on its own: an address an operator wrongly lists
 /// under `[venues]` is drawn even if it is a competitor. The in-file disjointness
 /// check below rejects an address that is in both `[venues]` and `[routers]`, but
-/// the authoritative router set is the driver's `custom_allowlist` in a different
-/// crate, and cross-checking it at runtime would couple orderbook to the driver.
-/// Keeping `[routers]` in sync with that list is therefore an operator
-/// responsibility (see the ownership note in the venues file), not a guarantee
-/// enforced here.
+/// there is no runtime cross-check against an external source, so keeping the two
+/// tables correct is an operator responsibility (see the ownership note in the
+/// venues file), not a guarantee enforced here.
 ///
-/// `[venues]` are real liquidity venues (AMM/PMM pools) that ARE drawn, each
-/// with a human label.
+/// `[venues]` are DIRECT liquidity venues that ARE drawn, each with a human
+/// label: integrated AMM/PMM pools and Ophis' own settlement adapters (e.g.
+/// `OphisUniswapV4Adapter`, which only Settlement can call and which returns
+/// output only to Settlement).
 ///
-/// `[routers]` are aggregator routers Ophis solvers call. Ophis routes THROUGH
-/// them but they are competitors and are never drawn. Under the allowlist they
-/// would be excluded anyway (they are not `[venues]`); the section is kept as
-/// documentation AND as a load-time guardrail: an address may not appear in both
-/// tables, so a known competitor already recorded here can never be promoted to
-/// a drawn venue. On chains that settle exclusively through aggregator routers
-/// (Optimism today) `[venues]` is empty, so the column is empty and the graph
-/// degrades to solver -> out.
+/// `[routers]` are COMPETITOR aggregator routers Ophis solvers call (KyberSwap,
+/// LI.FI, Odos, ...). Ophis routes THROUGH them but they are competitors and are
+/// never drawn. NOTE: this is NOT the driver's `custom_allowlist`, which is a
+/// mixed set of every custom interaction target -- competitor routers AND Ophis'
+/// own direct adapters. Each new allowlist entry must be classified by hand: a
+/// competitor router goes here; a direct pool or Ophis adapter goes in `[venues]`.
+/// The section is documentation AND a load-time guardrail: an address may not
+/// appear in both tables, so a known competitor recorded here can never be
+/// promoted to a drawn venue. On chains that settle exclusively through
+/// competitor routers (Optimism today) `[venues]` is empty, so the column is
+/// empty and the graph degrades to solver -> out.
 #[derive(Clone, Debug, Default)]
 pub struct VenueRegistry {
     labels: HashMap<Address, String>,
@@ -129,9 +132,10 @@ pub struct VenueRegistry {
 
 impl VenueRegistry {
     /// Parse `[venues]` (address = "label", the drawn allowlist) and `[routers]`
-    /// (address = "note", known aggregators kept out of the allowlist).
-    /// Ownership of this file is assigned to infra ops (decision 27). Errors if
-    /// an address is listed in both tables: a router must never be drawable.
+    /// (address = "note", known COMPETITOR aggregator routers, never drawn and
+    /// whose presence suppresses the column). Ownership of this file is assigned
+    /// to infra ops (decision 27). Errors if an address is listed in both tables:
+    /// a competitor router must never be drawable.
     pub fn from_toml(src: &str) -> anyhow::Result<Self> {
         #[derive(serde::Deserialize)]
         struct Doc {
@@ -489,6 +493,42 @@ pub fn classify_settlement(
     (venues, matched)
 }
 
+/// Resolve the drawable venue column for a single-order settlement's transfers.
+/// Pure (no RPC), so it is unit-tested directly and `venues_for_settlement` is
+/// the only thing that adds the receipt fetch and multi-order guard on top.
+///
+/// 1. If a known competitor router took part, IT did the routing. ERC-20 transfer
+///    endpoints cannot prove which contract was CALLED: an aggregator can send its
+///    final pool's output straight to the settlement contract (`pool ->
+///    settlement`) while the ROUTER was the callee, so any pool surfaced here
+///    could be one the aggregator merely used, not one Ophis settled through.
+///    Suppress the whole column rather than misattribute a pool (this is also why
+///    Optimism degrades to solver -> out). Disambiguating would need call traces.
+/// 2. Otherwise draw only ALLOWLISTED `[venues]` counterparties (direct venues:
+///    an Ophis adapter or an integrated AMM). Unknowns and anything at all when
+///    the registry failed to load are dropped. The allowlist is applied BEFORE
+///    the cap so a drawable pool late in a large receipt is not lost to excluded
+///    counterparties ahead of it.
+fn resolve_venue_column(
+    registry: &VenueRegistry,
+    transfers: &[TransferLog],
+    trader: Address,
+    receiver: Address,
+) -> Vec<(Address, String)> {
+    if transfers
+        .iter()
+        .any(|t| registry.is_router(t.from) || registry.is_router(t.to))
+    {
+        return Vec::new();
+    }
+    let (venues, _matched) = classify_settlement(transfers, trader, receiver);
+    venues
+        .into_iter()
+        .filter_map(|addr| registry.labeled_venue(addr).map(|label| (addr, label)))
+        .take(MAX_VENUES)
+        .collect()
+}
+
 /// Build the SETTLED graph: full 4-column story with the venue column,
 /// solver competition, surplus, and optional fee.
 #[allow(clippy::too_many_arguments)]
@@ -827,24 +867,12 @@ impl PathVizService {
         if receipt.trade_count > 1 {
             return Some(Vec::new());
         }
-        let (venues, _matched) = classify_settlement(&receipt.transfers, trader, receiver);
-        Some(
-            venues
-                .into_iter()
-                // ALLOWLIST: draw a counterparty only if it is an approved
-                // `[venues]` pool. Known aggregator routers, downstream pools an
-                // aggregator internally hopped through, unknown addresses, and
-                // everything at all when the registry failed to load are dropped,
-                // so the column never names or draws a competitor and fails
-                // closed on a missing/stale registry. Filtering BEFORE the cap
-                // means an eligible pool late in a large receipt is not lost to
-                // excluded counterparties ahead of it. On chains that settle only
-                // through routers (Optimism) `[venues]` is empty, so the column is
-                // empty and the graph degrades to solver -> out.
-                .filter_map(|addr| self.registry.labeled_venue(addr).map(|label| (addr, label)))
-                .take(MAX_VENUES)
-                .collect(),
-        )
+        Some(resolve_venue_column(
+            &self.registry,
+            &receipt.transfers,
+            trader,
+            receiver,
+        ))
     }
 
     /// Assemble the graph for an existing order (quote-time or settled).
@@ -1097,15 +1125,6 @@ mod tests {
         assert!(!venues.contains(&receiver));
     }
 
-    // Mirrors venues_for_settlement's draw rule: allowlist, then cap.
-    fn drawn_venues(reg: &VenueRegistry, venues: Vec<Address>) -> Vec<(Address, String)> {
-        venues
-            .into_iter()
-            .filter_map(|a| reg.labeled_venue(a).map(|l| (a, l)))
-            .take(MAX_VENUES)
-            .collect()
-    }
-
     #[test]
     fn classify_excludes_addresses_reached_behind_a_router() {
         // The OP topology plus a downstream pool the aggregator internally hopped
@@ -1132,12 +1151,11 @@ mod tests {
 
     #[test]
     fn allowlisted_pool_behind_a_router_is_not_misattributed() {
-        // finding 1: a pool that is allowlisted for DIRECT settlement, but which
-        // an aggregator merely passed through as an internal hop, must NOT be
-        // drawn for this order. Because it is not a direct settlement
-        // counterparty here, classify never surfaces it, so the allowlist never
-        // sees it. The SAME pool, when the settlement hub transacts with it
-        // directly, IS drawn.
+        // A pool that is allowlisted for DIRECT settlement, but which an
+        // aggregator merely passed through as an internal hop, must NOT be drawn.
+        // It is not a direct settlement counterparty, AND the router's presence
+        // suppresses the column. The SAME pool, settled through directly with no
+        // router involved, IS drawn.
         let trader = Address::with_last_byte(0x11);
         let router = Address::with_last_byte(0xCA);
         let pool = Address::with_last_byte(0xBB); // allowlisted for direct settlement
@@ -1154,16 +1172,70 @@ mod tests {
             TransferLog { token, from: pool, to: router, value: U256::from(98u64) },
             TransferLog { token, from: router, to: SETTLEMENT_CONTRACT, value: U256::from(98u64) },
         ];
-        let (venues, _) = classify_settlement(&behind, trader, trader);
-        assert!(drawn_venues(&reg, venues).is_empty(), "pool behind a router is not attributed");
+        assert!(
+            resolve_venue_column(&reg, &behind, trader, trader).is_empty(),
+            "pool behind a router is not attributed"
+        );
 
-        // (b) same pool, settled through directly -> drawn.
+        // (b) same pool, settled through directly (no router) -> drawn.
         let direct = vec![
             TransferLog { token, from: SETTLEMENT_CONTRACT, to: pool, value: U256::from(100u64) },
             TransferLog { token, from: pool, to: SETTLEMENT_CONTRACT, value: U256::from(98u64) },
         ];
-        let (venues, _) = classify_settlement(&direct, trader, trader);
-        assert_eq!(drawn_venues(&reg, venues), vec![(pool, "RealPool".to_string())]);
+        assert_eq!(
+            resolve_venue_column(&reg, &direct, trader, trader),
+            vec![(pool, "RealPool".to_string())]
+        );
+    }
+
+    #[test]
+    fn router_presence_suppresses_a_pool_that_paid_settlement_directly() {
+        // finding: ERC-20 endpoints cannot prove the callee. An aggregator can
+        // have its final pool send output STRAIGHT to the settlement contract
+        // (pool -> settlement) while the ROUTER was the called contract, so the
+        // pool looks like a direct counterparty. Because the router took part, the
+        // whole column is suppressed rather than misattributing the pool.
+        let trader = Address::with_last_byte(0x11);
+        let router = Address::with_last_byte(0xCA);
+        let pool = Address::with_last_byte(0xBB); // allowlisted
+        let token = Address::with_last_byte(0x01);
+        let reg = {
+            let toml = format!("[venues]\n\"{pool}\" = \"RealPool\"\n[routers]\n\"{router}\" = \"SomeAggregator\"\n");
+            VenueRegistry::from_toml(&toml).unwrap()
+        };
+        // settlement -> router (sell), then the router's last pool pays settlement
+        // directly (buy). The pool is a direct counterparty here, but the router's
+        // presence must still suppress it.
+        let transfers = vec![
+            TransferLog { token, from: SETTLEMENT_CONTRACT, to: router, value: U256::from(100u64) },
+            TransferLog { token, from: pool, to: SETTLEMENT_CONTRACT, value: U256::from(98u64) },
+        ];
+        assert!(
+            resolve_venue_column(&reg, &transfers, trader, trader).is_empty(),
+            "a router in the receipt suppresses any pool attribution"
+        );
+    }
+
+    #[test]
+    fn direct_ophis_adapter_is_drawn() {
+        // finding 3 positive case: Ophis' own direct settlement adapter (e.g.
+        // OphisUniswapV4Adapter) is a real venue, not a competitor router, so it
+        // belongs under [venues] and IS drawn when it settles directly.
+        let trader = Address::with_last_byte(0x11);
+        let adapter = Address::with_last_byte(0xA4); // OphisUniswapV4Adapter-style
+        let token = Address::with_last_byte(0x01);
+        let reg = {
+            let toml = format!("[venues]\n\"{adapter}\" = \"Uniswap V4\"\n");
+            VenueRegistry::from_toml(&toml).unwrap()
+        };
+        let transfers = vec![
+            TransferLog { token, from: SETTLEMENT_CONTRACT, to: adapter, value: U256::from(100u64) },
+            TransferLog { token, from: adapter, to: SETTLEMENT_CONTRACT, value: U256::from(98u64) },
+        ];
+        assert_eq!(
+            resolve_venue_column(&reg, &transfers, trader, trader),
+            vec![(adapter, "Uniswap V4".to_string())]
+        );
     }
 
     #[test]
@@ -1171,7 +1243,7 @@ mod tests {
         // A large receipt whose only allowlisted pool is the LAST counterparty,
         // after MAX_VENUES non-drawable ones. Filtering before the cap keeps it;
         // the pre-fix order (cap in classify, then filter) would have truncated
-        // it away. (finding 1)
+        // it away.
         let trader = Address::with_last_byte(0x11);
         let token = Address::with_last_byte(0x01);
         let pool = Address::with_last_byte(0xEE);
@@ -1194,10 +1266,11 @@ mod tests {
             let toml = format!("[venues]\n\"{pool}\" = \"RealPool\"\n");
             VenueRegistry::from_toml(&toml).unwrap()
         };
-        let (venues, _matched) = classify_settlement(&transfers, trader, trader);
-        assert!(venues.len() > MAX_VENUES, "more candidates than the cap");
-        let drawn = drawn_venues(&reg, venues);
-        assert_eq!(drawn, vec![(pool, "RealPool".to_string())], "the late pool survives the cap");
+        assert_eq!(
+            resolve_venue_column(&reg, &transfers, trader, trader),
+            vec![(pool, "RealPool".to_string())],
+            "the late pool survives the cap"
+        );
     }
 
     #[test]
