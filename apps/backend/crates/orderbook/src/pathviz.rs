@@ -303,6 +303,11 @@ pub fn build_quote_graph(
     solver_name: &str,
 ) -> PathVizGraph {
     let mut g = PathVizGraph::new();
+    // Same "solver:<name>" id convention as build_settled_graph: the SVG matches
+    // the winning solver by this id (the label is the brand-neutral public
+    // string), so the bare "solver" would never match and the sole quote-time
+    // solver would lose its accent outline.
+    let solver_id = format!("solver:{solver_name}");
     g.nodes.push(PathVizNode {
         id: "in".into(),
         label: sell.symbol.clone(),
@@ -311,7 +316,7 @@ pub fn build_quote_graph(
         address: Some(sell.address.to_string()),
     });
     g.nodes.push(PathVizNode {
-        id: "solver".into(),
+        id: solver_id.clone(),
         label: solver_public_label(solver_name).to_string(),
         kind: PathVizNodeKind::Solver,
         column: 1,
@@ -326,14 +331,14 @@ pub fn build_quote_graph(
     });
     g.links.push(PathVizLink {
         from: "in".into(),
-        to: "solver".into(),
+        to: solver_id.clone(),
         kind: PathVizLinkKind::Route,
         amount_atoms: Some(sell_atoms.to_string()),
         amount_display: Some(format_atoms(sell_atoms, sell.decimals, &sell.symbol)),
         token_symbol: Some(sell.symbol.clone()),
     });
     g.links.push(PathVizLink {
-        from: "solver".into(),
+        from: solver_id.clone(),
         to: "out".into(),
         kind: PathVizLinkKind::Route,
         amount_atoms: Some(buy_atoms.to_string()),
@@ -1141,6 +1146,29 @@ mod tests {
         }
         // The winner is still resolvable via the id the SVG matches on.
         assert!(g.nodes.iter().any(|n| n.kind == PathVizNodeKind::Solver && n.id == "solver:velora"));
+    }
+
+    #[test]
+    fn quote_graph_winner_is_highlighted_after_neutralization() {
+        // Regression: the quote-time solver keeps its winner accent even though
+        // its label is now the neutral "External solver". The SVG matches the
+        // winner by node id, so the quote builder must use "solver:<name>" (a
+        // bare "solver" id would never match and the accent would vanish).
+        let g = build_quote_graph(
+            &tv("WETH", 18),
+            &tv("USDC", 6),
+            "1000000000000000000",
+            "3214700000",
+            "kyberswap",
+        );
+        let solver = g.nodes.iter().find(|n| n.kind == PathVizNodeKind::Solver).unwrap();
+        assert_eq!(solver.id, "solver:kyberswap", "quote solver must follow the id convention");
+        assert_eq!(solver.label, "External solver");
+        let svg = pathviz::render_svg(&g, None).unwrap();
+        assert!(!svg.to_lowercase().contains("kyberswap"), "no brand leak in the quote SVG");
+        // Only Route links (stroke-width 6) here, so the winner node rect is the
+        // sole stroke-width=2 — proves the accent survived neutralization.
+        assert_eq!(svg.matches(r#"stroke-width="2""#).count(), 1, "quote winner outline preserved");
     }
 
     #[test]
