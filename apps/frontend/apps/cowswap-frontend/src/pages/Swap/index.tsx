@@ -6,7 +6,7 @@ import { InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useLingui } from '@lingui/react/macro'
-import { OphisTrending, PriceChart, ReferralCta, RoutePanel } from 'ophis/components'
+import { OphisTrending, PriceChart, ReferralCta } from 'ophis/components'
 import { Navigate, NavLink, useLocation, useParams } from 'react-router'
 import styled from 'styled-components/macro'
 
@@ -124,11 +124,13 @@ export function SwapPage(): ReactNode {
             no panel ever fetches a third-party API from one. */}
         {!isInjectedWidget() && (
           <SideRail>
-            {/* Chart first: it is the highest-value content when the rail drops
-                into normal flow below the widget on narrow viewports, where the
-                Route panel's copy is already reachable in the fee accordion. */}
+            {/* Odos-shaped rail: a price chart and trending, no pre-trade "route"
+                panel. Ophis is a meta-aggregator with no pool-level route to draw
+                before signing, so a Route panel could only list the competing
+                solvers, which read as noise and lengthened the rail. The solver
+                count still lives in the fee-details accordion for anyone who wants
+                it. */}
             <PriceChart />
-            <RoutePanel />
             <OphisTrending />
           </SideRail>
         )}
