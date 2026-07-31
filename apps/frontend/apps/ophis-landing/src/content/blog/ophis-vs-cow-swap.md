@@ -21,7 +21,7 @@ Ophis did not reimplement settlement. A CoW Protocol fork inherits the three pro
 
 **The [MEV protection](/blog/mev-protection-batch-auctions/) model.** Order flow stays off-chain until settlement, and a uniform clearing price leaves no in-batch ordering to exploit, so there is nothing for a sandwich bot to reorder. The protection is structural, not best-effort.
 
-**Non-custody.** Ophis never holds funds. Assets move only against a valid EIP-712 or ERC-1271 signature, and orders are [gasless](/blog/gasless-swaps-how-intents-work/): no native token needed, the fee is taken in the sell token.
+**Non-custody.** Ophis never holds funds. Assets move only against a valid EIP-712 or ERC-1271 signature, and orders are [gasless](/blog/gasless-swaps-how-intents-work/): no native token needed, the fee comes out of the traded amount.
 
 If you have used CoW Swap, all three behave exactly the way you expect. It is the same mechanism.
 
@@ -82,11 +82,11 @@ Mostly, yes. You still build and sign a CoW Protocol order: same order struct, s
 
 ### Why fork CoW Protocol at all?
 
-Three reasons. First, an agent-first product: a keyless MCP server, an Intent API, receiver pinning, and slippage caps need a different surface than a human-first swap UI. Second, sovereign chains: on Optimism, Unichain, and Robinhood Chain, Ophis operates the orderbook and the settlement deployment directly. Third, the economics: the flat 0.10% fee is taken in the sell token, and the tiered monthly WETH rebates and the 8% affiliate share are paid from the fee Safe, which requires controlling the fee path end to end.
+Three reasons. First, an agent-first product: a keyless MCP server, an Intent API, receiver pinning, and slippage caps need a different surface than a human-first swap UI. Second, sovereign chains: on Optimism, Unichain, and Robinhood Chain, Ophis operates the orderbook and the settlement deployment directly. Third, the economics: the flat 0.10% fee is taken out of the trade itself, and the tiered monthly WETH rebates and the 8% affiliate share are paid from the fee Safe, which requires controlling the fee path end to end.
 
 ### What does a trade on Ophis cost?
 
-The Ophis fee is a flat 0.10% of volume, or 0.01% for same-chain stablecoin pairs, taken in the sell token; orders are gasless, so you need no native token. On Optimism, Unichain, and Robinhood Chain that is the whole cost and you keep 100% of any price improvement. On the ten chains that settle through CoW Protocol's contracts, CoW Protocol's protocol fee applies on top (all-in about 0.12%, or about 0.013% on stable pairs) and half of any price improvement goes to the protocol; see [docs.cow.fi](https://docs.cow.fi). Volume tiers (10% to 50% by 30-day volume) weight your share of a monthly WETH rebate pool, with tier progress shown on the swap page.
+The Ophis fee is a flat 0.10% of volume, or 0.01% for same-chain stablecoin pairs, taken in the surplus token (the token you receive on a standard sell order); orders are gasless, so you need no native token. On Optimism, Unichain, and Robinhood Chain that is the whole cost and you keep 100% of any price improvement. On the ten chains that settle through CoW Protocol's contracts, CoW Protocol's protocol fee applies on top (all-in about 0.12%, or about 0.013% on stable pairs) and half of any price improvement goes to the protocol; see [docs.cow.fi](https://docs.cow.fi). Volume tiers (10% to 50% by 30-day volume) weight your share of a monthly WETH rebate pool, with tier progress shown on the swap page.
 
 ## Try it
 

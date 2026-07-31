@@ -23,7 +23,7 @@ Context in two sentences. Unichain is chain id 130, one of the 13 EVM chains Oph
 
 4. **Review the quote.** The quote carries a hard limit price, and that limit is what you sign: the worst execution you can receive. If solvers find a better price at settlement, 100% of the improvement goes to you, and the fee takes no share of that surplus.
 
-5. **Sign the order.** Your wallet shows an EIP-712 typed-data message, not a transaction. Signing costs nothing: orders are gasless, no native token needed, and the 0.10% fee is taken in the token you sell.
+5. **Sign the order.** Your wallet shows an EIP-712 typed-data message, not a transaction. Signing costs nothing: orders are gasless, no native token needed, and the 0.10% fee comes out of the traded amount.
 
 6. **Wait for settlement.** Competing solvers race to fill the order, and the result settles on-chain in a batch. The order status updates on the page until the trade lands.
 
@@ -33,7 +33,7 @@ The mechanism behind gasless signing and settlement is the same one that [remove
 
 On a regular DEX you broadcast a swap into a public mempool, where searchers can sandwich it: buy in front of you, sell behind you, pocket the spread. On Ophis your order is an intent that stays off-chain until settlement. Solvers batch orders together and settle each batch at a uniform clearing price, so there is no transaction ordering inside a batch to exploit. The protection is structural (batch auction, uniform clearing price, off-chain order flow), not a best-effort add-on.
 
-[Gaslessness](/blog/gasless-swaps-how-intents-work/) falls out of the same design. You sign, solvers settle, and the fee is taken in the token you sell, so a wallet with no ETH on Unichain can still trade.
+[Gaslessness](/blog/gasless-swaps-how-intents-work/) falls out of the same design. You sign, solvers settle, and the fee comes out of the traded amount, so a wallet with no ETH on Unichain can still trade.
 
 ## Ophis runs a sovereign deployment on Unichain
 
@@ -43,7 +43,7 @@ If you swap through the page, this changes nothing; the app targets the right co
 
 ## Fees and volume rebates
 
-Every trade pays a flat 0.10% of volume. Same-chain stablecoin-to-stablecoin trades pay 0.01%. The fee is charged in the sell token and takes no share of any surplus your order earns.
+Every trade pays a flat 0.10% of volume. Same-chain stablecoin-to-stablecoin trades pay 0.01%. The fee is charged in the surplus token, which on a standard sell order is the token you receive, and it takes no share of any surplus your order earns.
 
 Trade enough and part of it comes back. Rebate tiers run on rolling 30-day volume: Bronze ($20,000+) 10%, Silver ($50,000+) 15%, Gold ($100,000+) 25%, Palladium ($500,000+) 35%, Platinum ($1,000,000+) 50%. Rebates are paid monthly in WETH from the fee Safe, out of a pool of 21.25% of collected WETH fees split by tier-weighted 30-day volume. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) have the full breakdown.
 
@@ -57,7 +57,7 @@ For the full safety model (bounded orders, pinned receivers, and what to lock do
 
 ### Do I need ETH on Unichain to pay for gas?
 
-No. Orders are gasless (no native token needed): you sign a typed-data message, settlement happens in the solver's batch, and the fee is taken in the sell token. A wallet holding only the token you want to sell can trade, aside from a one-time on-chain approval the first time it sells a given token.
+No. Orders are gasless (no native token needed): you sign a typed-data message, settlement happens in the solver's batch, and the fee comes out of the traded amount. A wallet holding only the token you want to sell can trade, aside from a one-time on-chain approval the first time it sells a given token.
 
 ### What tokens can I trade on Unichain?
 
@@ -65,7 +65,7 @@ Solvers compete to fill the order you sign, so what matters in practice is the l
 
 ### Is there a fee?
 
-Yes. A flat 0.10% of trade volume, reduced to 0.01% for same-chain stablecoin-to-stablecoin pairs, charged in the sell token. It takes no share of surplus, and volume rebate tiers (10% to 50% by rolling 30-day volume) weight your share of a monthly WETH rebate pool.
+Yes. A flat 0.10% of trade volume, reduced to 0.01% for same-chain stablecoin-to-stablecoin pairs, charged in the surplus token (the token you receive on a standard sell order). It takes no share of surplus, and volume rebate tiers (10% to 50% by rolling 30-day volume) weight your share of a monthly WETH rebate pool.
 
 ### Can AI agents swap on Unichain?
 
