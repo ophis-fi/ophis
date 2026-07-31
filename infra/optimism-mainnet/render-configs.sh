@@ -71,6 +71,32 @@ if [[ "${-}" == *x* ]]; then
   exit 2
 fi
 
+# Rendered-eRPC validation, factored out so it can be invoked directly:
+#     ./render-configs.sh --check-rendered <file>
+# exit 0 = clean, exit 16 = an upstream endpoint lost its credential.
+# A guard that can only be reached by a full sudo-requiring render is a guard
+# nobody tests; the review that prompted this seam rightly refused assertions
+# that merely grepped this file for its own error strings.
+validate_rendered_erpc() {
+  local f="$1" bad=0
+  if grep -nE '^[[:space:]]*endpoint:[[:space:]]*\S+/$' "$f" >&2; then
+    echo "ERROR: the upstream endpoint above ends in '/' — a key substituted EMPTY." >&2
+    bad=1
+  fi
+  if grep -nE '^[[:space:]]*endpoint:[[:space:]]*https?://[^[:space:]]*//' "$f" >&2; then
+    echo "ERROR: the upstream endpoint above contains '//' mid-path — empty substitution." >&2
+    bad=1
+  fi
+  return $(( bad * 16 ))
+}
+
+if [[ "${1:-}" == "--check-rendered" ]]; then
+  [[ -n "${2:-}" && -f "${2:-}" ]] || { echo "usage: $0 --check-rendered <rendered-erpc.yaml>" >&2; exit 2; }
+  validate_rendered_erpc "$2" || exit 16
+  echo "OK: no empty key substitutions in $2"
+  exit 0
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
@@ -476,13 +502,8 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # its anonymous tier (see the ZAN_API_KEY note above). Catch the shape rather
   # than enumerating every key, so the next renamed variable is caught too.
   if [[ "$name" == "erpc.yaml" ]]; then
-    if grep -nE '^[[:space:]]*endpoint:[[:space:]]*\S+/$' "$out_tmp" >&2; then
-      echo "ERROR: an upstream endpoint above ends in '/' — a key substituted EMPTY." >&2
+    if ! validate_rendered_erpc "$out_tmp"; then
       echo "       Refusing to install $out. Check the *_KEY vars in .env." >&2
-      rm -f "$out_tmp"; exit 16
-    fi
-    if grep -nE '^[[:space:]]*endpoint:[[:space:]]*https?://[^[:space:]]*//' "$out_tmp" >&2; then
-      echo "ERROR: an upstream endpoint above contains '//' mid-path — empty substitution." >&2
       rm -f "$out_tmp"; exit 16
     fi
   fi

@@ -216,8 +216,15 @@ case "$prev" in
       if [[ "$observed" == "up" ]]; then echo up >"$STATE_FILE"; fi
       prev=up
     else
-      echo "state file $STATE_FILE is present but malformed ('${prev}') — assuming 'down' so a pending RECOVERED is not lost" >&2
-      prev=down
+      # Corrupt belief. Do NOT guess a concrete value. Guessing "down" looks safe
+      # for a healthy service (it re-sends RECOVERED) but is catastrophic for a
+      # sick one: observed would EQUAL the guess, so no alert fires, the malformed
+      # file is never rewritten, and the outage goes unreported on every
+      # subsequent tick — forever. Guessing "up" has the mirror-image flaw.
+      # Use a third value instead: it matches neither observation, so whatever we
+      # actually see is owed a message, and delivering that message repairs the file.
+      echo "state file $STATE_FILE is present but malformed ('${prev}') — belief unknown, announcing whatever is observed" >&2
+      prev=unknown
     fi
     ;;
 esac

@@ -211,15 +211,49 @@ echo "         one — silently seeding 'up' would discard a pending RECOVERED"
 SD="$WORK/s13"; mkdir -p "$SD"; printf 'garbage\n' > "$SD/op-health.state"; mode 200 200
 run "$SD"
 ck "corruption reported, not silently seeded" "$(grep -c 'present but malformed' "$WORK/out.log")" "1"
-ck "assumed 'down' so the RECOVERED is still attempted" "$(grep -c 'ALERT UNDELIVERED' "$WORK/out.log")" "1"
+ck "healthy + corrupt -> RECOVERED still attempted" "$(grep -c 'ALERT UNDELIVERED' "$WORK/out.log")" "1"
 
 echo
-echo "TEST 14 (REGRESSION): renderer must refuse an empty key substitution"
+echo "TEST 13b (REGRESSION): corrupt state while the service is genuinely DOWN must"
+echo "          still page. Guessing prev=down here made observed==prev, so no alert"
+echo "          fired and the malformed file was never repaired — the outage would"
+echo "          have gone unreported on every tick, forever."
+SD="$WORK/s13b"; mkdir -p "$SD"; printf 'garbage\n' > "$SD/op-health.state"; mode 502 502
+run "$SD" OPHIS_BOOT_GRACE_SECONDS=0
+ck "down + corrupt -> DOWN page attempted" "$(grep -c 'ALERT UNDELIVERED' "$WORK/out.log")" "1"
+ck "belief not advanced while undelivered" "$(st "$SD")" "garbage"
+
+echo
+echo "TEST 14 (REGRESSION): the renderer must be EXERCISED, not grepped. Earlier"
+echo "         versions of this block only checked that error strings existed in"
+echo "         the source, which stays green if the guards become unreachable."
 R="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ -f "$R/render-configs.sh" ]]; then
-  ck "renderer migrates the legacy ZAN_OP_KEY name" "$(grep -c 'Migrating to ZAN_API_KEY' "$R/render-configs.sh")" "1"
-  ck "renderer fails closed when no zan key at all" "$(grep -c 'exit 15' "$R/render-configs.sh")" "1"
-  ck "renderer rejects an endpoint ending in '/'" "$(grep -c 'substituted EMPTY' "$R/render-configs.sh")" "1"
+  SB="$WORK/render-sandbox"; mkdir -p "$SB"; cp "$R/render-configs.sh" "$SB/"
+  # render-configs.sh cd's to its own directory, so the sandbox copy reads the
+  # sandbox .env. The zan guard sits after `source .env` and BEFORE the sudo PK
+  # read, so these invocations are real and need no privileges.
+  runrender(){ ( cd "$SB" && bash ./render-configs.sh >"$SB/out.log" 2>&1 ); echo $?; }
+
+  printf 'POSTGRES_USER=x\n' > "$SB/.env"                       # neither zan name
+  rc="$(runrender)"
+  ck "no zan key at all -> exits 15" "$rc" "15"
+  ck "and says why" "$(grep -c 'Refusing to render' "$SB/out.log")" "1"
+
+  printf 'POSTGRES_USER=x\nZAN_OP_KEY=legacy-value\n' > "$SB/.env"   # legacy name only
+  rc="$(runrender)"
+  ck "legacy name migrates instead of exiting 15" "$([ "$rc" != "15" ] && echo migrated || echo refused)" "migrated"
+  ck "and warns to rename it" "$(grep -c 'Migrating to ZAN_API_KEY' "$SB/out.log")" "1"
+
+  # The endpoint validator, invoked directly through its --check-rendered seam.
+  printf 'upstreams:\n  - id: zan-op\n    endpoint: https://api.zan.top/node/v1/opt/mainnet/abc123\n' > "$SB/good.yaml"
+  ( cd "$SB" && bash ./render-configs.sh --check-rendered "$SB/good.yaml" >/dev/null 2>&1 ); ck "valid rendered config passes" "$?" "0"
+
+  printf 'upstreams:\n  - id: zan-op\n    endpoint: https://api.zan.top/node/v1/opt/mainnet/\n' > "$SB/empty.yaml"
+  ( cd "$SB" && bash ./render-configs.sh --check-rendered "$SB/empty.yaml" >/dev/null 2>&1 ); ck "empty key (trailing /) is rejected with 16" "$?" "16"
+
+  printf 'upstreams:\n  - id: vc-op\n    endpoint: https://mainnet.optimism.validationcloud.io/v1//more\n' > "$SB/dbl.yaml"
+  ( cd "$SB" && bash ./render-configs.sh --check-rendered "$SB/dbl.yaml" >/dev/null 2>&1 ); ck "empty key mid-path (//) is rejected with 16" "$?" "16"
 else
   echo "  SKIP  render-configs.sh not found next to this suite"
 fi
