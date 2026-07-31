@@ -5,6 +5,9 @@ import Footer from '../../components/Footer.astro'
 import { getCollection, render } from 'astro:content'
 import { Image, getImage } from 'astro:assets'
 import { isPublished } from '../../lib/posts'
+// Shared with scripts/check-faq-schema.mjs so the gate and the generator cannot
+// disagree about what the visible text is.
+import { htmlToText } from '../../../scripts/lib/html-text.mjs'
 
 export async function getStaticPaths() {
   const posts = await getCollection('blog', isPublished)
@@ -72,30 +75,6 @@ const jsonLd = {
 // boundaries Markdown classifies with Unicode). Astro has already parsed all of
 // that, so the rendered HTML is the authoritative visible text and tag-stripping
 // it is a total function rather than a growing pile of special cases.
-const decodeEntities = (s: string): string =>
-  s
-    .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d)))
-    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&') // last: an entity's own `&` must not be re-decoded
-
-// Visible text of an HTML fragment. Block tags become spaces so adjacent blocks
-// do not run together; everything else is dropped, which keeps `<a>` labels and
-// `<code>` contents while discarding href targets and attributes.
-const htmlToText = (html: string): string =>
-  decodeEntities(
-    html
-      .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
-      .replace(/<(?:br|\/p|\/li|\/h[1-6]|\/div|\/tr|\/td|\/th|\/blockquote)\b[^>]*>/gi, ' ')
-      .replace(/<[^>]+>/g, ''),
-  )
-    .replace(/\s+/g, ' ')
-    .trim()
-
 function faqPageSchema(renderedHtml: string, pageUrl: string) {
   const h2 = /<h2\b[^>]*>\s*FAQ\s*<\/h2>/i.exec(renderedHtml)
   if (!h2) return null
@@ -130,6 +109,19 @@ function faqPageSchema(renderedHtml: string, pageUrl: string) {
 // `rendered.html` is populated by the render() call above (content-layer entry).
 // Falling back to '' means "no FAQ schema" rather than a wrong one.
 const faqLd = faqPageSchema(post.rendered?.html ?? '', url)
+
+// JSON.stringify does NOT escape `<`, so a post containing a literal
+// `</script>` (e.g. inside a code span, which renders as an entity and is
+// decoded back by htmlToText) would terminate this ld+json block early and
+// inject live markup into <head>. Reproduced before this guard existed.
+// U+2028/2029 are valid in JSON strings but break JS parsers.
+const jsonLdSafe = (value: unknown): string =>
+  JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
 ---
 <Base
   title={`${post.data.title} | Ophis`}
@@ -145,8 +137,8 @@ const faqLd = faqPageSchema(post.rendered?.html ?? '', url)
   )}
   <meta slot="head" property="article:author" content={post.data.author} />
   {post.data.tags.map((t) => <meta slot="head" property="article:tag" content={t} />)}
-  <script slot="head" type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
-  {faqLd && <script slot="head" type="application/ld+json" is:inline set:html={JSON.stringify(faqLd)} />}
+  <script slot="head" type="application/ld+json" is:inline set:html={jsonLdSafe(jsonLd)} />
+  {faqLd && <script slot="head" type="application/ld+json" is:inline set:html={jsonLdSafe(faqLd)} />}
 
   <Nav />
   <main id="main" tabindex="-1" class="post">

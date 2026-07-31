@@ -21,17 +21,37 @@ import { readFileSync, readdirSync, existsSync } from 'fs'
 import { resolve, dirname, join, relative } from 'path'
 import { fileURLToPath } from 'url'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const root = resolve(__dirname, '..')
-const distBlog = resolve(root, 'dist/blog')
-
-if (!existsSync(distBlog)) {
-  console.error('check-faq-schema: dist/blog missing - run the build first.')
-  process.exit(1)
-}
-
-const decodeEntities = (s) =>
-  s
+// DELIBERATELY does not import the generator's htmlToText from scripts/lib/.
+// A verifier that shares the implementation it verifies cannot detect a bug in
+// that implementation: both sides transform identically, the two strings still
+// match, and the gate stays green while the real page disagrees with the schema.
+// Proved by mutation - making the shared extractor strip underscores left this
+// gate passing while pages showed `build_order` and schema said "buildorder".
+// So visible text is recovered here by an independent walk, and the duplication
+// is the point.
+const visibleTextOf = (html) => {
+  const parts = html.split('<')
+  let out = parts[0] ?? ''
+  let skipUntil = null
+  for (const part of parts.slice(1)) {
+    const gt = part.indexOf('>')
+    const tag = gt === -1 ? part : part.slice(0, gt)
+    const text = gt === -1 ? '' : part.slice(gt + 1)
+    const name = (/^\/?\s*([a-zA-Z][a-zA-Z0-9]*)/.exec(tag)?.[1] ?? '').toLowerCase()
+    if (skipUntil) {
+      if (tag.startsWith('/') && name === skipUntil) skipUntil = null
+      continue
+    }
+    if (!tag.startsWith('/') && (name === 'script' || name === 'style')) {
+      skipUntil = name
+      continue
+    }
+    // A block boundary is a word boundary in the rendered text.
+    out += /^\/?(?:p|br|div|li|ul|ol|tr|td|th|table|thead|tbody|blockquote|pre|section|article|header|footer|h[1-6]|hr|figure|figcaption|dl|dt|dd)$/.test(name)
+      ? ' ' + text
+      : text
+  }
+  return out
     .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d)))
     .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
     .replace(/&quot;/g, '"')
@@ -40,17 +60,18 @@ const decodeEntities = (s) =>
     .replace(/&gt;/g, '>')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
-
-// Mirrors htmlToText() in src/pages/blog/[...slug].astro.
-const htmlToText = (html) =>
-  decodeEntities(
-    html
-      .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
-      .replace(/<(?:br|\/p|\/li|\/h[1-6]|\/div|\/tr|\/td|\/th|\/blockquote)\b[^>]*>/gi, ' ')
-      .replace(/<[^>]+>/g, ''),
-  )
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const root = resolve(__dirname, '..')
+const distBlog = resolve(root, 'dist/blog')
+
+if (!existsSync(distBlog)) {
+  console.error('check-faq-schema: dist/blog missing - run the build first.')
+  process.exit(1)
+}
 
 // Every index.html under dist/blog, at any depth, so nested posts are covered.
 const pagesUnder = (dir) =>
@@ -95,8 +116,8 @@ for (const page of pagesUnder(distBlog)) {
 
   // Strip the JSON-LD itself before extracting visible text, or the schema
   // would trivially "appear" inside its own serialized copy.
-  const visible = htmlToText(
-    html.replace(/<script type="application\/ld\+json">.*?<\/script>/gs, ''),
+  const visible = visibleTextOf(
+    html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, ''),
   )
 
   for (const q of faq.mainEntity ?? []) {
