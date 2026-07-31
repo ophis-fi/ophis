@@ -23,7 +23,7 @@ receiver of the bought tokens.
 ### Step 1: resolve chain constants and owner
 
 ```bash
-chainId=10   # or 130; resolve ORDERBOOK / SETTLEMENT / RELAYER per SKILL.md
+chainId=10   # or 130, or 4663; resolve ORDERBOOK / SETTLEMENT / RELAYER per SKILL.md
 owner=$(cast wallet address "${SIGNER_ARGS[@]}")
 sellToken="0x4200000000000000000000000000000000000006"  # WETH on Optimism
 buyToken="0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"   # USDC (native) on Optimism

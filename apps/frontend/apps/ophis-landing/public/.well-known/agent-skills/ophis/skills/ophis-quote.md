@@ -14,7 +14,8 @@ swap without committing to execute it. This is the read-only sibling of
 
 ## Inputs you need from the user
 
-- **chainId**: 10 (Optimism) or 130 (Unichain). Ask if not given.
+- **chainId**: 10 (Optimism), 130 (Unichain), or 4663 (Robinhood Chain). Ask if
+  not given.
 - **sellToken** address.
 - **buyToken** address.
 - **amount** in the sell token's base units, as a decimal string (e.g.

@@ -135,14 +135,17 @@ amounts exceed 53-bit floats; never do amount math in `jq` or shell).
 ## Picking the chain
 
 ```bash
-chainId=10   # or 130
+chainId=10   # or 130, or 4663
 case "$chainId" in
-  10)  ORDERBOOK="https://optimism-mainnet.ophis.fi"
-       SETTLEMENT="0x310784c7FCE12d578dA6f53460777bAc9718B859"
-       RELAYER="0x83847EaB41ad9ea43809ce71569eB2e9daF51830" ;;
-  130) ORDERBOOK="https://unichain-mainnet.ophis.fi"
-       SETTLEMENT="0x108A678716e5E1776036eF044CAB7064226F714E"
-       RELAYER="0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb" ;;
+  10)   ORDERBOOK="https://optimism-mainnet.ophis.fi"
+        SETTLEMENT="0x310784c7FCE12d578dA6f53460777bAc9718B859"
+        RELAYER="0x83847EaB41ad9ea43809ce71569eB2e9daF51830" ;;
+  130)  ORDERBOOK="https://unichain-mainnet.ophis.fi"
+        SETTLEMENT="0x108A678716e5E1776036eF044CAB7064226F714E"
+        RELAYER="0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb" ;;
+  4663) ORDERBOOK="https://robinhood-mainnet.ophis.fi"
+        SETTLEMENT="0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+        RELAYER="0xB52C38097c19cd38238c62DD36027a7918eFa890" ;;
   *)   echo "chain $chainId is not in this skill's pinned policy" >&2; exit 1 ;;
 esac
 ```
