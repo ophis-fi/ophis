@@ -58,57 +58,63 @@ const jsonLd = {
   ...(post.data.tags.length ? { keywords: post.data.tags.join(', ') } : {}),
 }
 
-// FAQPage structured data, parsed from the post's own "## FAQ" section (### question
-// followed by its answer paragraphs). Single-sourced from the visible markdown, so
-// the schema always matches on-page content (Google's FAQ requirement). Posts with
-// no FAQ section emit nothing.
-const stripMd = (s: string): string =>
+// FAQPage structured data, taken from the post's own "## FAQ" section (### question
+// followed by its answer paragraphs). Google requires the schema to reproduce the
+// visible answer text, so it is read from the RENDERED HTML rather than from the
+// markdown source.
+//
+// Why not the markdown: hand-stripping inline syntax means reimplementing a
+// Markdown parser, and three successive attempts here each fixed one case and
+// broke another (a wholesale `[*_`]` strip turned `build_order` into
+// "buildorder"; narrowing to single underscores then left `__strong__` in the
+// schema; widening to underscore runs then ate the delimiters of a `__init__`
+// code span, mishandled nested `_a __b__ c_`, and used ASCII-only `\w` for
+// boundaries Markdown classifies with Unicode). Astro has already parsed all of
+// that, so the rendered HTML is the authoritative visible text and tag-stripping
+// it is a total function rather than a growing pile of special cases.
+const decodeEntities = (s: string): string =>
   s
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url) -> text
-    // Underscore emphasis ONLY when the underscores are not intraword. Blindly
-    // stripping `_` mangled every snake_case identifier we name in an FAQ
-    // answer (`build_order` -> "buildorder"), which both misnames the tool to
-    // anyone quoting the schema and breaks Google's requirement that FAQ schema
-    // match the visible text. Per CommonMark, intraword `_` is not emphasis, so
-    // matching the emphasis form is the correct narrowing.
-    //
-    // The run is 1-3 long so `_em_`, `__strong__` and `___both___` all unwrap,
-    // and the backreference forces the closing run to match the opening one.
-    // `(?=[^\s_])` plus a content tail of `[^\s_]` keep the delimiters tight to
-    // the emphasised text, so `__snake_case__` yields `snake_case` rather than
-    // eating the inner underscore.
-    .replace(/(?<!\w)(_{1,3})(?=[^\s_])([\s\S]*?[^\s_])\1(?!\w)/g, '$2')
-    .replace(/[*`]/g, '') // bold / italic / inline-code markers
+    .replace(/&#(\d+);/g, (_m, d) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&') // last: an entity's own `&` must not be re-decoded
+
+// Visible text of an HTML fragment. Block tags become spaces so adjacent blocks
+// do not run together; everything else is dropped, which keeps `<a>` labels and
+// `<code>` contents while discarding href targets and attributes.
+const htmlToText = (html: string): string =>
+  decodeEntities(
+    html
+      .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
+      .replace(/<(?:br|\/p|\/li|\/h[1-6]|\/div|\/tr|\/td|\/th|\/blockquote)\b[^>]*>/gi, ' ')
+      .replace(/<[^>]+>/g, ''),
+  )
     .replace(/\s+/g, ' ')
     .trim()
 
-function faqPageSchema(body: string, pageUrl: string) {
-  const lines = body.split(/\r?\n/)
-  const start = lines.findIndex((l) => /^##\s+FAQ\s*$/i.test(l))
-  if (start === -1) return null
+function faqPageSchema(renderedHtml: string, pageUrl: string) {
+  const h2 = /<h2\b[^>]*>\s*FAQ\s*<\/h2>/i.exec(renderedHtml)
+  if (!h2) return null
+  // The FAQ section runs from that heading to the next h2 (or the end).
+  const after = renderedHtml.slice(h2.index + h2[0].length)
+  const nextH2 = /<h2\b/i.exec(after)
+  const section = nextH2 ? after.slice(0, nextH2.index) : after
+
   const items: { q: string; a: string }[] = []
-  let q: string | null = null
-  let answer: string[] = []
-  const flush = () => {
-    if (q) {
-      const a = stripMd(answer.join(' '))
-      if (a) items.push({ q: stripMd(q), a })
-    }
-    q = null
-    answer = []
+  const h3 = /<h3\b[^>]*>([\s\S]*?)<\/h3>/gi
+  const heads: { q: string; start: number; end: number }[] = []
+  for (let m = h3.exec(section); m; m = h3.exec(section)) {
+    heads.push({ q: htmlToText(m[1]), start: m.index, end: m.index + m[0].length })
   }
-  for (let i = start + 1; i < lines.length; i++) {
-    const line = lines[i]
-    if (/^##\s+/.test(line)) break // next H2 closes the FAQ section
-    const h3 = line.match(/^###\s+(.+?)\s*$/)
-    if (h3) {
-      flush()
-      q = h3[1]
-      continue
-    }
-    if (q) answer.push(line)
+  for (const [i, head] of heads.entries()) {
+    const body = section.slice(head.end, heads[i + 1]?.start ?? section.length)
+    const a = htmlToText(body)
+    if (head.q && a) items.push({ q: head.q, a })
   }
-  flush()
   if (!items.length) return null
   return {
     '@context': 'https://schema.org',
@@ -121,7 +127,9 @@ function faqPageSchema(body: string, pageUrl: string) {
     })),
   }
 }
-const faqLd = faqPageSchema(post.body ?? '', url)
+// `rendered.html` is populated by the render() call above (content-layer entry).
+// Falling back to '' means "no FAQ schema" rather than a wrong one.
+const faqLd = faqPageSchema(post.rendered?.html ?? '', url)
 ---
 <Base
   title={`${post.data.title} | Ophis`}
