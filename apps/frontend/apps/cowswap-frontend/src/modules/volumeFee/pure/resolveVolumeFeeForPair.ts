@@ -1,7 +1,7 @@
 import { STABLECOINS } from '@cowprotocol/common-const'
-import { getAddressKey } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
 
-import { CorrelatedTokens } from 'entities/correlatedTokens/state/correlatedTokensAtom'
+import type { CorrelatedTokens } from 'entities/correlatedTokens'
 
 import { isBoostedToken, OPHIS_BOOSTED_VOLUME_BPS } from 'ophis/boostedTokens'
 import {
@@ -143,8 +143,7 @@ export function resolveVolumeFeeForPair(
 
   if (OPHIS_FLAT_VOLUME_FEE_ENABLED) {
     const isOphisOwnFee =
-      widgetPartnerFee &&
-      widgetPartnerFee.recipient.toLowerCase() === OPHIS_PARTNER_FEE_RECIPIENT.toLowerCase()
+      widgetPartnerFee && areAddressesEqual(widgetPartnerFee.recipient, OPHIS_PARTNER_FEE_RECIPIENT)
 
     if (isOphisOwnFee) {
       if (isBoostedPair(pair)) {
