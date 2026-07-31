@@ -11,7 +11,7 @@ coverAlt: "Ophis emblem with Optimism and supported chain logos"
 
 To swap on Optimism, open the Ophis swap page with chain id 10 pre-selected, pick your pair, and sign the order your wallet shows. That order is an EIP-712 intent with a hard limit price, not a transaction: a competing solver network fills it and settles it in an MEV-protected batch. The fee is a flat 0.10% of trade volume, and active traders earn a share of a monthly WETH rebate pool, weighted by 30-day volume tier.
 
-Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's frontend with a natural-language intent layer and an agent stack (MCP server, SDK, plugins) on top. It runs on 13 EVM chains, and Optimism is one of three where the deployment is sovereign, alongside Unichain and Robinhood Chain: Ophis operates its own orderbook and settlement contracts there. This post covers the flow, what batch settlement changes versus a router, what it costs, and how integrators earn on referred flow.
+Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's frontend with a natural-language intent layer and an agent stack (MCP server, SDK, plugins) on top. It runs on 13 EVM chains, and Optimism is one of three where the deployment is sovereign, alongside [Unichain](/blog/how-to-swap-on-unichain/) and [Robinhood Chain](/blog/swap-on-robinhood-chain/): Ophis operates its own orderbook and settlement contracts there. This post covers the flow, what batch settlement changes versus a router, what it costs, and how integrators earn on referred flow.
 
 ## Swap on Optimism in four steps
 
