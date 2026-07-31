@@ -291,20 +291,30 @@ pub fn compute_surplus(
     let executed_sell = parse(executed_sell_atoms)?;
     let executed_buy = parse(executed_buy_atoms)?;
 
-    // scaled = whole * num / den, computed as mul-before-div to keep precision.
-    // Returns None on a zero denominator or a mul overflow rather than a wrong
-    // number: surplus is a display field, degrade it, never fabricate it.
-    let scale = |whole: U256, num: U256, den: U256| -> Option<U256> {
+    // scaled = whole * num / den, mul-before-div to keep precision. `round_up`
+    // ceilings the result. Returns None on a zero denominator or a mul/add
+    // overflow rather than a wrong number: surplus is a display field, degrade
+    // it, never fabricate it.
+    let scale = |whole: U256, num: U256, den: U256, round_up: bool| -> Option<U256> {
         if den.is_zero() {
             return None;
         }
-        whole.checked_mul(num).map(|p| p / den)
+        let prod = whole.checked_mul(num)?;
+        if round_up {
+            // ceil(prod/den) = (prod + den - 1) / den; den >= 1 so no underflow.
+            Some(prod.checked_add(den - U256::from(1u8))? / den)
+        } else {
+            Some(prod / den)
+        }
     };
 
     if is_sell_order {
         // Filled fraction = executed_sell / signed_sell. The pro-rated minimum
-        // buy is signed_buy * that fraction; surplus is executed_buy above it.
-        let scaled_min_buy = scale(signed_buy, executed_sell, signed_sell)?;
+        // buy is signed_buy * that fraction, rounded UP: the settlement math
+        // uses ceiling division for the smallest permitted executed buy, so
+        // flooring here would under-state the minimum and report up to 1 atom of
+        // phantom surplus on a ratio that does not divide evenly.
+        let scaled_min_buy = scale(signed_buy, executed_sell, signed_sell, true)?;
         let diff = executed_buy.checked_sub(scaled_min_buy).filter(|d| !d.is_zero())?;
         Some(Surplus {
             amount_atoms: diff.to_string(),
@@ -314,9 +324,10 @@ pub fn compute_surplus(
         })
     } else {
         // Buy order: filled fraction = executed_buy / signed_buy. The pro-rated
-        // maximum sell is signed_sell * that fraction; surplus is how far
-        // executed_sell came in under it.
-        let scaled_max_sell = scale(signed_sell, executed_buy, signed_buy)?;
+        // maximum sell is signed_sell * that fraction, rounded DOWN (the tightest
+        // bound the trader is protected by); surplus is how far executed_sell
+        // came in under it.
+        let scaled_max_sell = scale(signed_sell, executed_buy, signed_buy, false)?;
         let diff = scaled_max_sell.checked_sub(executed_sell).filter(|d| !d.is_zero())?;
         Some(Surplus {
             amount_atoms: diff.to_string(),
@@ -338,9 +349,20 @@ pub struct OrderVizParams {
     pub signed_buy_atoms: String,
     pub executed_sell_atoms: Option<String>,
     pub executed_buy_atoms: Option<String>,
+    /// Executed sell BEFORE fees, for surplus/limit math only (the graph's route
+    /// label keeps the gross `executed_sell_atoms`). Using the gross amount here
+    /// subtracts the fee as if it were route spend and hides real surplus, even
+    /// on a full fill for buy orders. Mirrors the frontend surplus calculation.
+    pub executed_sell_before_fees_atoms: Option<String>,
     pub solvers: Vec<PathVizSolverBid>,
     pub context: VizContext,
     pub owner: Address,
+    /// Effective buy-token receiver (`order.data.receiver` or the owner). Kept
+    /// out of the venue set so a custom recipient is not drawn as a route hop.
+    pub receiver: Address,
+    /// Partially-fillable orders can settle across multiple transactions, so
+    /// their graph is NOT immutable and must not be cached by uid.
+    pub partially_fillable: bool,
     pub settlement_tx: Option<B256>,
     pub fee: Option<Fee>,
 }
@@ -352,6 +374,7 @@ pub struct OrderVizParams {
 pub fn classify_settlement(
     transfers: &[TransferLog],
     trader: Address,
+    receiver: Address,
 ) -> (Vec<Address>, bool) {
     let mut venues: Vec<Address> = Vec::new();
     let mut seen: HashSet<Address> = HashSet::new();
@@ -365,7 +388,15 @@ pub fn classify_settlement(
             trader_in = true;
         }
         for party in [t.from, t.to] {
-            if party == trader || party == SETTLEMENT_CONTRACT || party.is_zero() {
+            // The receiver (the buy-token payout target, which may differ from
+            // the owner on a custom-receiver order) is a settlement endpoint,
+            // not a venue. When there is no custom receiver it equals the
+            // trader, so this is a no-op.
+            if party == trader
+                || party == receiver
+                || party == SETTLEMENT_CONTRACT
+                || party.is_zero()
+            {
                 continue;
             }
             if seen.insert(party) {
@@ -702,23 +733,18 @@ impl PathVizService {
         (graph, image)
     }
 
-    /// Resolve the venue address set from a settlement tx into
-    /// registry-labelled (address, label) pairs.
     /// Resolve the venue column for a settled order, or `None` when the receipt
-    /// could not be read (so the caller does not cache a transient failure).
-    ///
-    /// A multi-order batch returns `Some` with EMPTY venues and
-    /// `multi_order: true`: `classify_settlement` treats every non-trader,
-    /// non-hub counterparty in the receipt as a venue, but in a batch those
-    /// counterparties belong to the OTHER orders too, so attributing them here
-    /// would draw someone else's pool as this order's route and could push the
-    /// real venue past `MAX_VENUES`. Degrading to solver -> out is the honest
-    /// answer until per-order transfer attribution exists.
-    /// Resolves to the venue column, or `None` when the receipt could not be
-    /// read (so the caller does not cache a transient failure). A multi-order
-    /// batch resolves to `Some(empty)`: the same degradation as a genuinely
-    /// venue-less settlement, and cacheable, but never someone else's venues.
-    async fn venues_for_settlement(&self, tx_hash: B256, trader: Address) -> Option<Vec<(Address, String)>> {
+    /// could not be read (so the caller does not cache a transient failure). A
+    /// multi-order batch resolves to `Some(empty)`: the same degradation as a
+    /// genuinely venue-less settlement, and cacheable, but never someone else's
+    /// venues, because a shared receipt cannot attribute counterparties to one
+    /// order.
+    async fn venues_for_settlement(
+        &self,
+        tx_hash: B256,
+        trader: Address,
+        receiver: Address,
+    ) -> Option<Vec<(Address, String)>> {
         let receipt = self.fetch_receipt(tx_hash).await?;
         // A shared receipt cannot attribute its counterparties to one order, so
         // a batch of more than one order degrades to no venue column rather than
@@ -726,7 +752,7 @@ impl PathVizService {
         if receipt.trade_count > 1 {
             return Some(Vec::new());
         }
-        let (venues, _matched) = classify_settlement(&receipt.transfers, trader);
+        let (venues, _matched) = classify_settlement(&receipt.transfers, trader, receiver);
         Some(
             venues
                 .into_iter()
@@ -754,10 +780,14 @@ impl PathVizService {
             // do NOT cache it, so the next request retries. Only a successfully
             // read receipt (even a multi-order one with no venues) is cacheable.
             let venue_result = match p.settlement_tx {
-                Some(tx) => self.venues_for_settlement(tx, p.owner).await,
+                Some(tx) => self.venues_for_settlement(tx, p.owner, p.receiver).await,
                 None => None,
             };
-            let cacheable = venue_result.is_some();
+            // Cacheable only when the receipt was read AND the order can receive
+            // no further fills. A partially-fillable order can settle again with
+            // different executed amounts, solver competition, and settlement tx,
+            // so caching its graph by uid would pin the first fill forever.
+            let cacheable = venue_result.is_some() && !p.partially_fillable;
             let venues = venue_result.unwrap_or_default();
             let exec_sell = p
                 .executed_sell_atoms
@@ -767,13 +797,20 @@ impl PathVizService {
                 .executed_buy_atoms
                 .clone()
                 .unwrap_or_else(|| p.signed_buy_atoms.clone());
+            // Surplus uses the BEFORE-FEES executed sell (falling back to the
+            // gross only if unavailable): the fee is a protocol cost, not route
+            // spend, and counting it hides real surplus, especially on buy orders.
+            let exec_sell_for_surplus = p
+                .executed_sell_before_fees_atoms
+                .clone()
+                .unwrap_or_else(|| exec_sell.clone());
             let surplus = compute_surplus(
                 &sell,
                 &buy,
                 p.is_sell_order,
                 &p.signed_sell_atoms,
                 &p.signed_buy_atoms,
-                &exec_sell,
+                &exec_sell_for_surplus,
                 &exec_buy,
             );
             let graph = build_settled_graph(
@@ -906,9 +943,31 @@ mod tests {
             // settlement -> trader (buy leg)
             TransferLog { token, from: SETTLEMENT_CONTRACT, to: trader, value: U256::from(98u64) },
         ];
-        let (venues, matched) = classify_settlement(&transfers, trader);
+        // No custom receiver: the payout target is the trader itself.
+        let (venues, matched) = classify_settlement(&transfers, trader, trader);
         assert_eq!(venues, vec![venue_a, venue_b]);
         assert!(matched); // trader both sent and received
+    }
+
+    #[test]
+    fn classify_settlement_excludes_custom_receiver() {
+        // Custom-receiver order: the buy leg pays out to `receiver`, not the
+        // owner. That address is a settlement endpoint, not a liquidity venue,
+        // and must not be drawn as a route hop.
+        let trader = Address::with_last_byte(0x11);
+        let receiver = Address::with_last_byte(0x22);
+        let venue = Address::with_last_byte(0xAA);
+        let token = Address::with_last_byte(0x01);
+        let transfers = vec![
+            TransferLog { token, from: trader, to: SETTLEMENT_CONTRACT, value: U256::from(100u64) },
+            TransferLog { token, from: SETTLEMENT_CONTRACT, to: venue, value: U256::from(100u64) },
+            TransferLog { token, from: venue, to: SETTLEMENT_CONTRACT, value: U256::from(98u64) },
+            // buy leg pays the custom receiver, not the trader
+            TransferLog { token, from: SETTLEMENT_CONTRACT, to: receiver, value: U256::from(98u64) },
+        ];
+        let (venues, _matched) = classify_settlement(&transfers, trader, receiver);
+        assert_eq!(venues, vec![venue]);
+        assert!(!venues.contains(&receiver));
     }
 
     #[test]
@@ -990,6 +1049,18 @@ mod tests {
     fn surplus_partial_sell_exact_shows_none() {
         // Half-filled at exactly the pro-rated minimum: no surplus, not a spurious one.
         assert!(compute_surplus(&tv("USDC", 6), &tv("WETH", 18), true, "1000", "500", "500", "250").is_none());
+    }
+
+    #[test]
+    fn surplus_sell_minimum_ceilings_no_phantom_atom() {
+        // A ratio that does not divide evenly: signed_buy=100, executed_sell=1,
+        // signed_sell=3 -> exact min buy = 100/3 = 33.33. Flooring gives 33, so
+        // executed_buy=34 would falsely show 1 atom of surplus. Ceiling gives 34,
+        // and 34 executed against a 34 minimum is NOT surplus.
+        assert!(compute_surplus(&tv("USDC", 6), &tv("WETH", 18), true, "3", "100", "1", "34").is_none());
+        // One atom above the ceilinged minimum IS real surplus.
+        let s = compute_surplus(&tv("USDC", 6), &tv("WETH", 18), true, "3", "100", "1", "35").unwrap();
+        assert_eq!(s.amount_atoms, "1");
     }
 
     #[test]

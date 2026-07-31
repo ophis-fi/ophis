@@ -151,9 +151,16 @@ async fn assemble(
         signed_buy_atoms: order.data.buy_amount.to_string(),
         executed_sell_atoms: Some(order.metadata.executed_sell_amount.to_string()),
         executed_buy_atoms: Some(order.metadata.executed_buy_amount.to_string()),
+        executed_sell_before_fees_atoms: Some(
+            order.metadata.executed_sell_amount_before_fees.to_string(),
+        ),
         solvers,
         context,
         owner: order.metadata.owner,
+        // A custom receiver differs from the owner; default to the owner. Kept
+        // out of the venue set so the payout target is not drawn as a route hop.
+        receiver: order.data.receiver.unwrap_or(order.metadata.owner),
+        partially_fillable: order.data.partially_fillable,
         settlement_tx,
         fee: None,
     };
