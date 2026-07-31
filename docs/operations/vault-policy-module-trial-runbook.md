@@ -40,13 +40,42 @@ deviation-driven and updates every few minutes in practice, so the tight 2h
 window applies everywhere; the 26h window is only for the 24h-heartbeat stable
 feeds.
 
+### Plasma (9745) — WXPL/USDT0 variant
+
+Plasma does not fit the USDC/WETH matrix above, so it gets its own config.
+Plasma is CoW-hosted (canonical settlement + relayer) and an L1 (PlasmaBFT, not
+an OP-stack rollup), so — like Ethereum — there is no Chainlink sequencer-uptime
+feed and the gate is disabled. Plasma has no USDC, so the allowlist is the
+native pair WXPL (wrapped-native) + USDT0. Both feeds carry a 24h heartbeat, so
+the staleness window is 26h on BOTH legs (unlike the 2h volatile leg elsewhere).
+
+| | Plasma (9745) |
+|---|---|
+| Settlement | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (canonical) |
+| USDT0 (6dp) | `0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb` |
+| WXPL (18dp) | `0x6100E367285b01F48D07953803A2d8dCA5D19873` |
+| USDT0/USD feed (8dp) | `0x3205B49b3C8c5D593589e1e70567993f72C5F845` |
+| XPL/USD feed (8dp) | `0xF932477C37715aE6657Ab884414Bd9876FE3f750` |
+| Sequencer uptime | none (L1: gate disabled) |
+| maxStaleness (WXPL / USDT0) | 26h / 26h |
+| seq grace | — |
+
+Status: DEPLOYED + enabled on Plasma mainnet (2026-07-24) — module
+`0x905f8fd53D6568C8cd488CdbFFcb3A81fF1DEAf4`, factory
+`0x8BfD02f98854647f4235D770A284DDbBAc0bF2Ca`, on the shared trial Safe
+`0x4E2b51d89EA315949d27C906fAB1187b88F4e786` (same curator + appData as the other
+5 chains). For a new Plasma vault, the rebalance pair is WXPL/USDT0 (a non-stable pair), so keep
+`isStablePair = false` and `CHAIN_ID = 9745` when deriving the appData in Step 1,
+and fund the trial Safe with USDT0 (not USDC) for the rebalance.
+
 ## Prerequisites
 
 - A trial Safe (canonical Safe v1.3.0) on the target chain, owned by you.
 - A dedicated curator address (EOA / MPC / multisig) that is NOT a Safe owner
   and NOT an enabled module on that Safe.
 - A deployer EOA funded with a little native gas on the target chain.
-- Some USDC in the trial Safe for the rebalance (10-50 USDC is plenty).
+- Some of the sell token in the trial Safe for the rebalance — USDC on
+  OP/Base/Ethereum/Arbitrum, USDT0 on Plasma (10-50 is plenty).
 
 ## Step 0 — run the preflight (no funds, verifies the chain config)
 
@@ -66,6 +95,9 @@ OPHIS_FORK_RPC_ETH=https://ethereum-rpc.publicnode.com \
 # Arbitrum
 OPHIS_FORK_RPC_ARBITRUM=https://arb1.arbitrum.io/rpc \
   forge test --match-path 'test/fork/VaultPolicyModuleArbitrumReal.t.sol' -vv
+# Plasma
+OPHIS_FORK_RPC_PLASMA=https://rpc.plasma.to \
+  forge test --match-path 'test/fork/VaultPolicyModulePlasmaReal.t.sol' -vv
 ```
 
 3/3 pass = the feeds, settlement, and tokens are live and the module builds.
@@ -82,7 +114,7 @@ import { buildOphisOrderMetadata } from '@ophis/sdk';
 import { MetadataApi, stringifyDeterministic } from '@cowprotocol/app-data';
 import { keccak256, toBytes } from 'viem';
 
-const CHAIN_ID = 10;           // 1 Ethereum | 10 OP | 8453 Base | 42161 Arbitrum
+const CHAIN_ID = 10;           // 1 Ethereum | 10 OP | 8453 Base | 42161 Arbitrum | 9745 Plasma
 const SAFE = '0xYourTrialSafe';
 const input = buildOphisOrderMetadata({ chainId: CHAIN_ID, signer: SAFE });
 const full = await stringifyDeterministic(await new MetadataApi().generateAppDataDoc(input));
@@ -113,6 +145,9 @@ forge script script/DeployVaultPolicyModuleEthereum.s.sol \
 # Arbitrum
 forge script script/DeployVaultPolicyModuleArbitrum.s.sol \
   --rpc-url https://arb1.arbitrum.io/rpc --broadcast --account <deployer-keystore>
+# Plasma (public RPC is rate-limited / "not for production" — prefer the Ophis QuickNode endpoint)
+forge script script/DeployVaultPolicyModulePlasma.s.sol \
+  --rpc-url https://rpc.plasma.to --broadcast --account <deployer-keystore>
 ```
 
 Use a foundry keystore (`--account`) or `--ledger` for the deployer — never pass
@@ -122,7 +157,8 @@ is a Safe owner or an enabled module, or if any feed is stale/invalid.
 
 ## Step 3 — fund the trial Safe
 
-Send the USDC you intend to rebalance to `VAULT_SAFE` (from Step 2's config).
+Send the sell token you intend to rebalance (USDC on OP/Base/Ethereum/Arbitrum,
+USDT0 on Plasma) to `VAULT_SAFE` (from Step 2's config).
 
 ## Step 4 — enable the module on the Safe
 
@@ -150,6 +186,7 @@ const CHAINS = {
   8453:  { usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', weth: '0x4200000000000000000000000000000000000006' }, // Base
   1:     { usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', weth: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' }, // Ethereum
   42161: { usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', weth: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1' }, // Arbitrum
+  9745:  { usdc: '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb', weth: '0x6100E367285b01F48D07953803A2d8dCA5D19873' }, // Plasma (no USDC: usdc slot = USDT0, weth slot = WXPL; both 6dp/18dp)
 };
 
 const CHAIN_ID = 10;                        // set to the chain you deployed on
