@@ -117,7 +117,7 @@ const visibleTextOf = (html) => {
     .trim()
 }
 
-export { visibleTextOf }
+export { visibleTextOf, NAMED_REFS }
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
@@ -172,6 +172,38 @@ function main() {
       continue
     }
     pagesWithFaq++
+
+    // Named references the extractors do not know are a genuine blind spot:
+    // both sides would carry `&theta;` through identically, so the verbatim
+    // comparison below cannot see that the browser shows θ instead. Scan the
+    // FAQ region of the SOURCE, not the decoded text - the previous version of
+    // this check scanned decoded text and so rejected a legitimate `&amp;copy;`
+    // code span, whose visible text really is the string "&copy;".
+    //
+    // Remark decodes named references while producing rendered.html (probed:
+    // `&theta; &spades; &oplus;` arrive as θ ♠ ⊕), so this should never fire on
+    // markdown content. It exists for the day that stops being true.
+    const faqRegion = (() => {
+      const h2 = /<h2\b[^>]*\bid="faq"[^>]*>/i.exec(html)
+      if (!h2) return ''
+      const after = html.slice(h2.index + h2[0].length)
+      const next = /<h2\b/i.exec(after)
+      return next ? after.slice(0, next.index) : after
+    })()
+    const unsupported = [
+      ...new Set(
+        [...faqRegion.matchAll(/&([a-zA-Z][a-zA-Z0-9]{1,31});/g)]
+          .map((m) => m[1])
+          .filter((name) => !(name in NAMED_REFS)),
+      ),
+    ]
+    if (unsupported.length) {
+      failures.push(
+        `${slug}: FAQ HTML contains named references this extractor does not decode: ` +
+          `${unsupported.map((n) => `&${n};`).join(', ')} ` +
+          `(add them to NAMED in scripts/lib/html-text.mjs AND NAMED_REFS here)`,
+      )
+    }
 
     // Strip the JSON-LD itself before extracting visible text, or the schema
     // would trivially "appear" inside its own serialized copy.
