@@ -8,6 +8,27 @@ sidebar_position: 9
 
 # Migrating from Odos
 
+:::tip[Start here: this is probably not your page]
+
+This page documents one narrow surface: the Odos v3 **quote shape**, signed by
+an **EOA**, on an **Ophis-operated chain**. Four common integrations look like
+they belong here and do not. Check this table before you read further.
+
+| If this is you | Go here instead |
+|---|---|
+| Your signature is validated by a **contract**: a Safe, a smart account, a vault, an MPC signer behind EIP-1271, or a DAO treasury module | **[Partner integration (SDK)](./partners.md).** This surface accepts only `eip712` and `ethsign` and rejects `presign` and `eip1271`, so a contract-validated signer has no path here at all. The SDK reaches those schemes directly |
+| You trade on **Ethereum, Base, Arbitrum, or any other CoW-hosted chain** | **[Partner integration (SDK)](./partners.md).** This surface serves only chains 10, 130 and 4663. The SDK covers those three plus every CoW-hosted chain |
+| You trade mostly **same-chain stable pairs** | **[Partner integration (SDK)](./partners.md)**, which reaches the reduced 1 bp rate. This surface always embeds 5 bps |
+| You compose swap **calldata inside your own contract call** | Neither page. Ophis returns an intent, not a transaction, and that is a settlement-model difference rather than a backlog item. See [What this surface is](#what-this-surface-is-and-what-it-is-not) |
+
+A vault rebalancing console, a treasury tool, or anything that signs as a
+contract is exactly the case the SDK guide was written for, even though the
+word "Odos" does not appear in its title.
+
+If none of the four rows describe you, you are in the right place: read on.
+
+:::
+
 ## What this surface is, and what it is not
 
 This is a **quote-shape compatibility layer**, not a general migration path off
