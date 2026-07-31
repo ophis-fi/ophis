@@ -6,7 +6,7 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { correlatedTokensAtom } from 'entities/correlatedTokens'
 
-import { resolveVolumeFeeForPair, VolumeFee, widgetPartnerFeeAtom } from 'modules/volumeFee'
+import { basketWidgetVolumeFeeAtom, resolveVolumeFeeForPair, VolumeFee } from 'modules/volumeFee'
 
 /** Resolves the Volume fee for one leg's own token pair. */
 export type ResolveLegPartnerFeeFn = (leg: {
@@ -36,7 +36,10 @@ export type ResolveLegPartnerFeeFn = (leg: {
  */
 export function useBasketLegPartnerFee(): ResolveLegPartnerFeeFn {
   const { chainId } = useWalletInfo()
-  const widgetPartnerFee = useAtomValue(widgetPartnerFeeAtom)
+  // basketWidgetVolumeFeeAtom, NOT widgetPartnerFeeAtom: the latter reads the URL
+  // trade type, which is null on a dedicated basket route and would drop the fee
+  // for every leg. The basket variant pins the widget trade type to SWAP.
+  const widgetPartnerFee = useAtomValue(basketWidgetVolumeFeeAtom)
   const correlatedTokensByChain = useAtomValue(correlatedTokensAtom)
   const correlatedTokens = chainId ? correlatedTokensByChain[chainId] : undefined
 

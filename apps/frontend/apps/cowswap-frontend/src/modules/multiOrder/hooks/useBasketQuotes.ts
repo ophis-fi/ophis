@@ -55,27 +55,35 @@ export function useBasketQuotes(
   resolveLegPartnerFee: ResolveLegPartnerFeeFn,
 ): UseBasketQuotesResult {
   const [quotes, setQuotes] = useState<Record<string, BasketLegQuote>>({})
+  // The signature the current `quotes` were fanned out for. Compared against the
+  // live `legsSig` to invalidate stale quotes synchronously (see the return).
+  const [quotedSig, setQuotedSig] = useState('')
   const runIdRef = useRef(0)
 
   // Stable identity for the leg set so the effect only re-fans on real changes.
-  // Includes the sell/buy TOKEN addresses (legsQuoteSignature), so swapping a
-  // token at the same slot/amount re-fans instead of reusing the stale pair's quote.
-  const legsSig = useMemo(() => legsQuoteSignature(legs), [legs])
+  // Includes the sell/buy TOKEN addresses AND each leg's resolved fee
+  // (legsQuoteSignature), so swapping a token or a fee change at the same
+  // slot/amount re-fans instead of reusing a quote for the stale pair or fee.
+  const legsSig = useMemo(() => legsQuoteSignature(legs, resolveLegPartnerFee), [legs, resolveLegPartnerFee])
 
   useEffect(() => {
     if (!legs || legs.length === 0 || !owner) {
       setQuotes({})
+      setQuotedSig(legsSig)
       return
     }
     const controller = new AbortController()
     const runId = ++runIdRef.current
 
-    // Seed every leg as loading up front so the UI shows the full set immediately.
+    // Seed every leg as loading up front so the UI shows the full set immediately,
+    // and record the signature this fan-out is for so the render before this
+    // effect ran (with the previous signature) reads as not-ready.
     setQuotes(
       Object.fromEntries(
         legs.map((l) => [legKey(l), { sellIndex: l.sellIndex, buyIndex: l.buyIndex, buyAmount: null, isLoading: true }]),
       ),
     )
+    setQuotedSig(legsSig)
 
     for (const leg of legs) {
       quoteFn(
@@ -122,9 +130,16 @@ export function useBasketQuotes(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [legsSig, owner, chainId, validTo, quoteFn, resolveLegPartnerFee])
 
+  // Synchronous stale-fee invalidation: until the effect has re-fanned for the
+  // CURRENT signature (which folds in each leg's resolved fee), treat the quotes
+  // as not-ready. Without this, when correlated data or the fee changes the old
+  // completed quotes read allQuoted=true for a render while useBuildBasketLegAppData
+  // already closes over the new fee, so a confirm in that window would sign a fee
+  // different from the one the minimum-buy amount was quoted with.
+  const staleFee = quotedSig !== legsSig
   const values = Object.values(quotes)
-  const isLoading = values.some((q) => q.isLoading)
-  const allQuoted = values.length > 0 && values.every((q) => q.buyAmount !== null)
+  const isLoading = staleFee || values.some((q) => q.isLoading)
+  const allQuoted = !staleFee && values.length > 0 && values.every((q) => q.buyAmount !== null)
 
   return { quotes, isLoading, allQuoted }
 }

@@ -39,4 +39,20 @@ describe('legsQuoteSignature', () => {
     const upper = legsQuoteSignature([leg(A.toUpperCase(), B.toUpperCase(), 100n)])
     expect(upper).toBe(lower) // token addresses are compared case-insensitively
   })
+
+  it('folds in the resolved fee so a fee change invalidates the quote (F2)', () => {
+    const at10 = legsQuoteSignature([leg(A, B, 100n)], () => ({ volumeBps: 10, recipient: A }))
+    // A different bps, a different recipient, and no fee each produce a distinct
+    // signature at the same tokens/amount, so the caller re-fans and does not sign
+    // with a fee that differs from the quote.
+    expect(legsQuoteSignature([leg(A, B, 100n)], () => ({ volumeBps: 5, recipient: A }))).not.toBe(at10)
+    expect(legsQuoteSignature([leg(A, B, 100n)], () => ({ volumeBps: 10, recipient: C }))).not.toBe(at10)
+    expect(legsQuoteSignature([leg(A, B, 100n)], () => undefined)).not.toBe(at10)
+    // Fee recipient is compared case-insensitively, like the token addresses.
+    expect(legsQuoteSignature([leg(A, B, 100n)], () => ({ volumeBps: 10, recipient: A.toUpperCase() }))).toBe(at10)
+  })
+
+  it('without a fee resolver, matches the fee-less baseline (back-compat)', () => {
+    expect(legsQuoteSignature([leg(A, B, 100n)])).toBe(legsQuoteSignature([leg(A, B, 100n)], () => undefined))
+  })
 })

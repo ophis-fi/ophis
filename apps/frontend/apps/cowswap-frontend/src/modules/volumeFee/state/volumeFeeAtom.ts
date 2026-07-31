@@ -8,7 +8,7 @@ import { resolveFlexibleConfig } from '@cowprotocol/widget-lib'
 import { correlatedTokensAtom } from 'entities/correlatedTokens'
 
 import { injectedWidgetPartnerFeeAtom } from 'modules/injectedWidget'
-import { derivedTradeStateAtom, tradeTypeAtom, TradeTypeToWidgetTradeTypeMap } from 'modules/trade'
+import { derivedTradeStateAtom, tradeTypeAtom, TradeType, TradeTypeToWidgetTradeTypeMap } from 'modules/trade'
 import { tradeQuotesAtom } from 'modules/tradeQuote'
 
 import { getBridgeIntermediateTokenAddress } from 'common/utils/getBridgeIntermediateTokenAddress'
@@ -124,6 +124,35 @@ export const widgetPartnerFeeAtom = atom<VolumeFee | undefined>((get) => {
 
   const bps = resolveFlexibleConfig(partnerFee.bps, chainId, TradeTypeToWidgetTradeTypeMap[tradeType])
   const recipient = resolveFlexibleConfig(partnerFee.recipient, chainId, TradeTypeToWidgetTradeTypeMap[tradeType])
+
+  if (!bps || !recipient) return undefined
+
+  return {
+    volumeBps: bps,
+    recipient,
+  }
+})
+
+/**
+ * Widget Volume fee for a BASKET leg, resolved for the SWAP (market) order type
+ * explicitly rather than from `tradeTypeAtom`.
+ *
+ * `widgetPartnerFeeAtom` reads the trade type from the URL (`tradeTypeAtom`),
+ * which is null on a dedicated basket route (`useTradeTypeInfoFromUrl` knows only
+ * swap/limit/advanced/yield). It would then return undefined and, under the
+ * flat-volume flag, drop the fee for every basket leg in both the quote and the
+ * signed appData. A basket leg is a market swap, so pin the widget trade type to
+ * SWAP and stay independent of the route the basket happens to be mounted on.
+ */
+export const basketWidgetVolumeFeeAtom = atom<VolumeFee | undefined>((get) => {
+  const { chainId } = get(walletInfoAtom)
+  const partnerFee = get(injectedWidgetPartnerFeeAtom)
+
+  if (!partnerFee) return undefined
+
+  const widgetTradeType = TradeTypeToWidgetTradeTypeMap[TradeType.SWAP]
+  const bps = resolveFlexibleConfig(partnerFee.bps, chainId, widgetTradeType)
+  const recipient = resolveFlexibleConfig(partnerFee.recipient, chainId, widgetTradeType)
 
   if (!bps || !recipient) return undefined
 
