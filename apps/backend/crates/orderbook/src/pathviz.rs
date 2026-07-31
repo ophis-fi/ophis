@@ -95,10 +95,20 @@ struct ReceiptData {
 /// it is an approved `[venues]` entry. Everything else -- known aggregator
 /// routers, downstream pools an aggregator internally hopped through, unknown
 /// addresses, and every counterparty seen when the registry could not be loaded
-/// -- is NOT drawn. This fails closed: the route column can only ever name an
-/// address an operator explicitly approved, so it never leaks a competitor even
-/// on a missing, stale, or malformed registry (the frontend enforces the same
-/// rule for solver names via the display-alias layer).
+/// -- is NOT drawn. This fails closed for the cases the registry can decide on
+/// its own: a missing, malformed, or empty file draws nothing, and an unknown
+/// address is never drawn. The route column can only ever name an address an
+/// operator explicitly listed under `[venues]`, mirroring how the frontend
+/// gates solver names through the display-alias layer.
+///
+/// The one gap it CANNOT close on its own: an address an operator wrongly lists
+/// under `[venues]` is drawn even if it is a competitor. The in-file disjointness
+/// check below rejects an address that is in both `[venues]` and `[routers]`, but
+/// the authoritative router set is the driver's `custom_allowlist` in a different
+/// crate, and cross-checking it at runtime would couple orderbook to the driver.
+/// Keeping `[routers]` in sync with that list is therefore an operator
+/// responsibility (see the ownership note in the venues file), not a guarantee
+/// enforced here.
 ///
 /// `[venues]` are real liquidity venues (AMM/PMM pools) that ARE drawn, each
 /// with a human label.
@@ -107,10 +117,10 @@ struct ReceiptData {
 /// them but they are competitors and are never drawn. Under the allowlist they
 /// would be excluded anyway (they are not `[venues]`); the section is kept as
 /// documentation AND as a load-time guardrail: an address may not appear in both
-/// tables, so a known competitor can never be accidentally promoted to a drawn
-/// venue. On chains that settle exclusively through aggregator routers (Optimism
-/// today) `[venues]` is empty, so the column is empty and the graph degrades to
-/// solver -> out.
+/// tables, so a known competitor already recorded here can never be promoted to
+/// a drawn venue. On chains that settle exclusively through aggregator routers
+/// (Optimism today) `[venues]` is empty, so the column is empty and the graph
+/// degrades to solver -> out.
 #[derive(Clone, Debug, Default)]
 pub struct VenueRegistry {
     labels: HashMap<Address, String>,
@@ -420,13 +430,17 @@ pub struct OrderVizParams {
     pub fee: Option<Fee>,
 }
 
-/// Classify settlement transfers relative to the trader and the settlement
-/// hub: every counterparty that is neither the trader, the receiver, nor the
-/// settlement contract is a candidate. Returns the ordered, de-duplicated
-/// candidate set (UNCAPPED) plus the matched-in-batch evidence flag. The caller
-/// applies the `[venues]` allowlist and only then caps to MAX_VENUES, so an
-/// eligible pool late in a large receipt is not lost to excluded counterparties
-/// ahead of it.
+/// Classify settlement transfers into the venues Ophis DIRECTLY settled with:
+/// the counterparty of every transfer whose other endpoint is the settlement
+/// hub. Addresses reached BEHIND that counterparty (an aggregator's internal
+/// router <-> pool hops, where the settlement contract is neither endpoint) are
+/// the aggregator's own routing, not where we settled, so they are excluded even
+/// if they happen to be an allowlisted pool used elsewhere for direct settlement
+/// (otherwise a pool an aggregator merely passed through would be misattributed
+/// as this order's venue). Returns the ordered, de-duplicated direct-counterparty
+/// set (UNCAPPED) plus the matched-in-batch evidence flag. The caller applies the
+/// `[venues]` allowlist and only then caps to MAX_VENUES, so an eligible pool late
+/// in a large receipt is not lost to excluded counterparties ahead of it.
 pub fn classify_settlement(
     transfers: &[TransferLog],
     trader: Address,
@@ -443,21 +457,25 @@ pub fn classify_settlement(
         if t.to == trader {
             trader_in = true;
         }
-        for party in [t.from, t.to] {
-            // The receiver (the buy-token payout target, which may differ from
-            // the owner on a custom-receiver order) is a settlement endpoint,
-            // not a venue. When there is no custom receiver it equals the
-            // trader, so this is a no-op.
-            if party == trader
-                || party == receiver
-                || party == SETTLEMENT_CONTRACT
-                || party.is_zero()
-            {
-                continue;
-            }
-            if seen.insert(party) {
-                venues.push(party);
-            }
+        // Only a DIRECT settlement counterparty is a venue: the transfer's other
+        // endpoint must be the settlement hub. A transfer where neither endpoint
+        // is the hub is an aggregator-internal hop and is skipped entirely.
+        let party = if t.from == SETTLEMENT_CONTRACT {
+            t.to
+        } else if t.to == SETTLEMENT_CONTRACT {
+            t.from
+        } else {
+            continue;
+        };
+        // The trader and the receiver (the buy-token payout target, which may
+        // differ from the owner on a custom-receiver order) are settlement
+        // endpoints, not venues. When there is no custom receiver it equals the
+        // trader, so that arm is a no-op.
+        if party == trader || party == receiver || party == SETTLEMENT_CONTRACT || party.is_zero() {
+            continue;
+        }
+        if seen.insert(party) {
+            venues.push(party);
         }
     }
     // NOT capped here: the caller applies the allowlist first, then caps, so a
@@ -1089,14 +1107,14 @@ mod tests {
     }
 
     #[test]
-    fn only_allowlisted_venues_are_drawn_routers_and_pools_dropped() {
+    fn classify_excludes_addresses_reached_behind_a_router() {
         // The OP topology plus a downstream pool the aggregator internally hopped
-        // through. Neither the router nor the downstream pool is allowlisted, so
-        // nothing is drawn: build_settled_graph degrades to solver -> out and no
-        // competitor (named or bare-hex) appears. (finding 3)
+        // through. Only the router transacts DIRECTLY with the settlement hub, so
+        // classify returns the router alone; the downstream pool (router <-> pool,
+        // hub not an endpoint) is the aggregator's own routing and is excluded.
         let trader = Address::with_last_byte(0x11);
         let router = Address::with_last_byte(0xCA); // outer aggregator router
-        let downstream_pool = Address::with_last_byte(0xDD); // internal hop, unlisted
+        let downstream_pool = Address::with_last_byte(0xDD); // internal hop
         let token = Address::with_last_byte(0x01);
         let transfers = vec![
             TransferLog { token, from: trader, to: SETTLEMENT_CONTRACT, value: U256::from(100u64) },
@@ -1107,19 +1125,45 @@ mod tests {
             TransferLog { token, from: router, to: SETTLEMENT_CONTRACT, value: U256::from(98u64) },
             TransferLog { token, from: SETTLEMENT_CONTRACT, to: trader, value: U256::from(98u64) },
         ];
+        let (venues, _matched) = classify_settlement(&transfers, trader, trader);
+        assert_eq!(venues, vec![router], "only the direct settlement counterparty");
+        assert!(!venues.contains(&downstream_pool), "a pool behind the router is not a venue");
+    }
+
+    #[test]
+    fn allowlisted_pool_behind_a_router_is_not_misattributed() {
+        // finding 1: a pool that is allowlisted for DIRECT settlement, but which
+        // an aggregator merely passed through as an internal hop, must NOT be
+        // drawn for this order. Because it is not a direct settlement
+        // counterparty here, classify never surfaces it, so the allowlist never
+        // sees it. The SAME pool, when the settlement hub transacts with it
+        // directly, IS drawn.
+        let trader = Address::with_last_byte(0x11);
+        let router = Address::with_last_byte(0xCA);
+        let pool = Address::with_last_byte(0xBB); // allowlisted for direct settlement
+        let token = Address::with_last_byte(0x01);
         let reg = {
-            let toml = format!("[routers]\n\"{router}\" = \"SomeAggregator\"\n");
+            let toml = format!("[venues]\n\"{pool}\" = \"RealPool\"\n[routers]\n\"{router}\" = \"SomeAggregator\"\n");
             VenueRegistry::from_toml(&toml).unwrap()
         };
-        let (venues, _matched) = classify_settlement(&transfers, trader, trader);
-        assert!(
-            venues.contains(&router) && venues.contains(&downstream_pool),
-            "classify captures both the router and the downstream pool"
-        );
-        assert!(
-            drawn_venues(&reg, venues).is_empty(),
-            "neither is allowlisted, so nothing is drawn"
-        );
+
+        // (a) pool reached only behind the router -> not drawn.
+        let behind = vec![
+            TransferLog { token, from: SETTLEMENT_CONTRACT, to: router, value: U256::from(100u64) },
+            TransferLog { token, from: router, to: pool, value: U256::from(100u64) },
+            TransferLog { token, from: pool, to: router, value: U256::from(98u64) },
+            TransferLog { token, from: router, to: SETTLEMENT_CONTRACT, value: U256::from(98u64) },
+        ];
+        let (venues, _) = classify_settlement(&behind, trader, trader);
+        assert!(drawn_venues(&reg, venues).is_empty(), "pool behind a router is not attributed");
+
+        // (b) same pool, settled through directly -> drawn.
+        let direct = vec![
+            TransferLog { token, from: SETTLEMENT_CONTRACT, to: pool, value: U256::from(100u64) },
+            TransferLog { token, from: pool, to: SETTLEMENT_CONTRACT, value: U256::from(98u64) },
+        ];
+        let (venues, _) = classify_settlement(&direct, trader, trader);
+        assert_eq!(drawn_venues(&reg, venues), vec![(pool, "RealPool".to_string())]);
     }
 
     #[test]
