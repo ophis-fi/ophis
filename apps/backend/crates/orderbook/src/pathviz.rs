@@ -89,32 +89,53 @@ struct ReceiptData {
 }
 
 
-/// Address -> human label registry, loaded from TOML. Missing entries
-/// degrade to the bare `0x...` address (owner decision 27), never a
-/// fabricated name.
+/// Settlement-counterparty registry, loaded from TOML.
+///
+/// `[venues]` are real liquidity venues (AMM/PMM pools) that ARE drawn as route
+/// hops, each with a human label; a `[venues]` address with no label degrades to
+/// the bare `0x...` address (owner decision 27), never a fabricated name.
+///
+/// `[routers]` are aggregator routers that Ophis solvers call. Ophis routes
+/// THROUGH them, but they are competitors, and the standing copy rule is that
+/// Ophis public copy never names one (the frontend enforces the same rule for
+/// solver names via the display-alias layer). They are recorded here so
+/// `venues_for_settlement` can drop them from the route column: a counterparty
+/// in this set becomes a settlement pass-through, not a drawn hop. On chains
+/// that settle exclusively through aggregator routers (Optimism today), this
+/// leaves an empty venue column and the graph degrades to solver -> out.
 #[derive(Clone, Debug, Default)]
 pub struct VenueRegistry {
     labels: HashMap<Address, String>,
+    routers: HashSet<Address>,
 }
 
 impl VenueRegistry {
-    /// Parse a `[venues]` TOML table of `address = "label"`. Ownership of
-    /// this file is assigned to infra ops (decision 27).
+    /// Parse `[venues]` (address = "label", shown) and `[routers]`
+    /// (address = "note", excluded from the venue column). Ownership of this
+    /// file is assigned to infra ops (decision 27). The router note is human
+    /// documentation only; the code uses the keys as an exclusion set.
     pub fn from_toml(src: &str) -> anyhow::Result<Self> {
         #[derive(serde::Deserialize)]
         struct Doc {
             #[serde(default)]
             venues: HashMap<String, String>,
+            #[serde(default)]
+            routers: HashMap<String, String>,
         }
+        let parse_addr = |addr: &str| -> anyhow::Result<Address> {
+            addr.parse()
+                .map_err(|e| anyhow::anyhow!("venue key {addr:?} is not an address: {e}"))
+        };
         let doc: Doc = toml::from_str(src)?;
         let mut labels = HashMap::new();
         for (addr, label) in doc.venues {
-            let parsed: Address = addr
-                .parse()
-                .map_err(|e| anyhow::anyhow!("venue key {addr:?} is not an address: {e}"))?;
-            labels.insert(parsed, label);
+            labels.insert(parse_addr(&addr)?, label);
         }
-        Ok(Self { labels })
+        let mut routers = HashSet::new();
+        for addr in doc.routers.keys() {
+            routers.insert(parse_addr(addr)?);
+        }
+        Ok(Self { labels, routers })
     }
 
     pub fn load(path: &Path) -> anyhow::Result<Self> {
@@ -129,6 +150,17 @@ impl VenueRegistry {
             .get(&address)
             .cloned()
             .unwrap_or_else(|| address.to_string())
+    }
+
+    /// True when the address is a known aggregator router: a competitor Ophis
+    /// routes through, never drawn as a route hop or named in public copy.
+    pub fn is_router(&self, address: Address) -> bool {
+        self.routers.contains(&address)
+    }
+
+    /// Count of excluded aggregator routers (for the startup log).
+    pub fn router_count(&self) -> usize {
+        self.routers.len()
     }
 
     pub fn len(&self) -> usize {
@@ -756,6 +788,11 @@ impl PathVizService {
         Some(
             venues
                 .into_iter()
+                // Aggregator routers are competitors Ophis routes through; drop
+                // them so the route column never names one (standing copy rule).
+                // On chains that settle only through routers this empties the
+                // column and the graph degrades to solver -> out.
+                .filter(|addr| !self.registry.is_router(*addr))
                 .map(|addr| (addr, self.registry.label_for(addr)))
                 .collect(),
         )
@@ -861,16 +898,21 @@ mod tests {
 
     #[test]
     fn committed_op_venue_registry_loads() {
-        // Guards the checked-in registry: every key must be a valid
-        // EIP-55 address and the file must parse. Mirrors the invariant
-        // scripts that pin other user-facing literals.
+        // Guards the checked-in registry: every key must be a valid EIP-55
+        // address and the file must parse. Mirrors the invariant scripts that
+        // pin other user-facing literals. On OP every counterparty is an
+        // aggregator router, so [venues] is empty and all 10 are excluded.
         let src = include_str!(
             "../../../../../infra/optimism-mainnet/configs/pathviz-venues.toml"
         );
         let reg = VenueRegistry::from_toml(src).expect("committed venue registry must parse");
-        assert_eq!(reg.len(), 10, "expected the 10 seeded OP venues");
+        assert_eq!(reg.len(), 0, "OP settles only through routers: no drawn venues");
+        assert_eq!(reg.router_count(), 10, "expected the 10 excluded OP routers");
+        // The competitor aggregators are routers (never drawn), not venues.
         let odos: Address = "0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680".parse().unwrap();
-        assert_eq!(reg.label_for(odos), "Odos");
+        assert!(reg.is_router(odos));
+        let kyber: Address = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5".parse().unwrap();
+        assert!(reg.is_router(kyber));
     }
 
     #[test]
@@ -878,14 +920,24 @@ mod tests {
         let toml = r#"
 [venues]
 "0x9c12939390052919aF3155f41Bf4160Fd3666A6f" = "Velodrome"
+
+[routers]
+"0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680" = "Odos"
 "#;
         let reg = VenueRegistry::from_toml(toml).unwrap();
         assert_eq!(reg.len(), 1);
         let known: Address = "0x9c12939390052919aF3155f41Bf4160Fd3666A6f".parse().unwrap();
         assert_eq!(reg.label_for(known), "Velodrome");
-        // Unknown address degrades to its bare hex (never fabricated).
+        assert!(!reg.is_router(known), "a real pool is drawn, not excluded");
+        // The router is excluded from the venue column.
+        let odos: Address = "0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680".parse().unwrap();
+        assert!(reg.is_router(odos));
+        assert_eq!(reg.router_count(), 1);
+        // Unknown address degrades to its bare hex (never fabricated) and is not
+        // treated as a router.
         let unknown = Address::with_last_byte(0xAB);
         assert_eq!(reg.label_for(unknown), unknown.to_string());
+        assert!(!reg.is_router(unknown));
     }
 
     #[test]
@@ -968,6 +1020,31 @@ mod tests {
         let (venues, _matched) = classify_settlement(&transfers, trader, receiver);
         assert_eq!(venues, vec![venue]);
         assert!(!venues.contains(&receiver));
+    }
+
+    #[test]
+    fn router_counterparties_are_dropped_from_the_venue_column() {
+        // Mirrors venues_for_settlement's filter: a settlement whose only
+        // counterparty is an aggregator router (the OP topology) yields an empty
+        // venue column, so build_settled_graph degrades to solver -> out and no
+        // competitor is ever drawn or named.
+        let trader = Address::with_last_byte(0x11);
+        let router = Address::with_last_byte(0xCA); // an aggregator router
+        let token = Address::with_last_byte(0x01);
+        let transfers = vec![
+            TransferLog { token, from: trader, to: SETTLEMENT_CONTRACT, value: U256::from(100u64) },
+            TransferLog { token, from: SETTLEMENT_CONTRACT, to: router, value: U256::from(100u64) },
+            TransferLog { token, from: router, to: SETTLEMENT_CONTRACT, value: U256::from(98u64) },
+            TransferLog { token, from: SETTLEMENT_CONTRACT, to: trader, value: U256::from(98u64) },
+        ];
+        let reg = {
+            let toml = format!("[routers]\n\"{router}\" = \"SomeAggregator\"\n");
+            VenueRegistry::from_toml(&toml).unwrap()
+        };
+        let (venues, _matched) = classify_settlement(&transfers, trader, trader);
+        assert_eq!(venues, vec![router], "classify sees the router as a counterparty");
+        let drawn: Vec<Address> = venues.into_iter().filter(|a| !reg.is_router(*a)).collect();
+        assert!(drawn.is_empty(), "the router is dropped, leaving no drawn venue");
     }
 
     #[test]

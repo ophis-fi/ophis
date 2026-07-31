@@ -286,7 +286,11 @@ pub async fn run(config: Configuration) {
         let registry = match &config.pathviz.venues_file {
             Some(path) => match crate::pathviz::VenueRegistry::load(path) {
                 Ok(registry) => {
-                    tracing::info!(venues = registry.len(), "pathviz venue registry loaded");
+                    tracing::info!(
+                        venues = registry.len(),
+                        routers = registry.router_count(),
+                        "pathviz venue registry loaded"
+                    );
                     registry
                 }
                 Err(err) => {
