@@ -37,7 +37,7 @@ On a regular DEX you broadcast a swap into a public mempool, where searchers can
 
 ## Ophis runs a sovereign deployment on Unichain
 
-On most supported chains, Ophis settles through CoW Protocol's canonical audited GPv2 contracts via api.cow.fi. Unichain is one of three Ophis-operated chains, alongside [Optimism](/blog/how-to-swap-on-optimism/) and Robinhood Chain, where Ophis operates a sovereign deployment instead: its own orderbook and a bytecode-identical deployment of CoW Protocol's audited GPv2Settlement at a non-canonical address.
+On most supported chains, Ophis settles through CoW Protocol's canonical audited GPv2 contracts via api.cow.fi. Unichain is one of three Ophis-operated chains, alongside [Optimism](/blog/how-to-swap-on-optimism/) and [Robinhood Chain](/blog/swap-on-robinhood-chain/), where Ophis operates a sovereign deployment instead: its own orderbook and a bytecode-identical deployment of CoW Protocol's audited GPv2Settlement at a non-canonical address.
 
 If you swap through the page, this changes nothing; the app targets the right contracts for chain 130. It matters if you integrate programmatically: an order built for the canonical CoW settlement domain will not verify against the Unichain deployment. Resolve the per-chain settlement domain via `@ophis/sdk` or the MCP `list_chains` tool instead of hardcoding anything.
 
