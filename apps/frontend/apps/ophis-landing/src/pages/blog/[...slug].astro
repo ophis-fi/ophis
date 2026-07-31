@@ -71,7 +71,13 @@ const stripMd = (s: string): string =>
     // anyone quoting the schema and breaks Google's requirement that FAQ schema
     // match the visible text. Per CommonMark, intraword `_` is not emphasis, so
     // matching the emphasis form is the correct narrowing.
-    .replace(/(?<!\w)_(?=\S)([^_]*[^_\s])_(?!\w)/g, '$1')
+    //
+    // The run is 1-3 long so `_em_`, `__strong__` and `___both___` all unwrap,
+    // and the backreference forces the closing run to match the opening one.
+    // `(?=[^\s_])` plus a content tail of `[^\s_]` keep the delimiters tight to
+    // the emphasised text, so `__snake_case__` yields `snake_case` rather than
+    // eating the inner underscore.
+    .replace(/(?<!\w)(_{1,3})(?=[^\s_])([\s\S]*?[^\s_])\1(?!\w)/g, '$2')
     .replace(/[*`]/g, '') // bold / italic / inline-code markers
     .replace(/\s+/g, ' ')
     .trim()
