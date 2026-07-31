@@ -38,6 +38,22 @@ projects:
             # tag disagreement still returns an error under 2-of-2.
             enforceHighestBlock: false
             enforceNonNullTaggedBlocks: true
+        # The public gateway must expose its head methods to its own eRPC state
+        # poller so it can become an eligible consensus voter. Application head
+        # reads remain self-node-only: strict equality at `latest` is impossible
+        # on this fast chain and these values drive auction deadlines.
+        selectionPolicy:
+          evalScope: network-method
+          evalFunc: |
+            (upstreams, ctx) => {
+              if (ctx.method === 'eth_blockNumber' || ctx.method === 'eth_getBlockByNumber') {
+                return upstreams.filter((upstream) => upstream.id === 'ophis-self-rbh')
+              }
+              return upstreams
+                .removeCordoned()
+                .whenEmpty(() => upstreams)
+                .sortByScore(PREFER_FASTEST)
+            }
         failsafe:
           - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
             timeout:
@@ -89,12 +105,10 @@ projects:
 
       - id: robinhood-official
         endpoint: https://rpc.mainnet.chain.robinhood.com
-        # Block-head inputs drive the shared block stream and settlement
-        # deadlines. Route them only through the header-anchored Cadia node;
-        # strict equality at "latest" is impossible on this fast chain.
+        # Block-head inputs are restricted to Cadia by the per-method selection
+        # policy above. Do not ignore them here: this upstream's private state
+        # poller needs those methods to establish its served tip.
         ignoreMethods:
-          - eth_blockNumber
-          - eth_getBlockByNumber
           # Robinhood produces ~7.5 blocks/s and autopilot indexes each canonical
           # block by hash. The free gateway cannot sustain that permanent log
           # stream and its 429s previously rejected otherwise-valid Kyber routes.

@@ -22,6 +22,18 @@ projects:
           integrity:
             enforceHighestBlock: false
             enforceNonNullTaggedBlocks: true
+        selectionPolicy:
+          evalScope: network-method
+          evalFunc: |
+            (upstreams, ctx) => {
+              if (ctx.method === 'eth_blockNumber' || ctx.method === 'eth_getBlockByNumber') {
+                return upstreams.filter((upstream) => upstream.id === 'ophis-self-rbh')
+              }
+              return upstreams
+                .removeCordoned()
+                .whenEmpty(() => upstreams)
+                .sortByScore(PREFER_FASTEST)
+            }
         failsafe:
           - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
             timeout:
@@ -62,8 +74,6 @@ projects:
       - id: robinhood-official
         endpoint: https://rpc.mainnet.chain.robinhood.com
         ignoreMethods:
-          - eth_blockNumber
-          - eth_getBlockByNumber
           - eth_getLogs
         failsafe:
           - matchMethod: "*"
