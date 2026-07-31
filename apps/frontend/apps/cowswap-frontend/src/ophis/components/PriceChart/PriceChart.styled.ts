@@ -1,8 +1,8 @@
 import styled from 'styled-components/macro'
 
 /**
- * Same glass treatment as RoutePanel and Trending so the side rail reads as one
- * surface. Keep the three in step if any is restyled.
+ * Same glass treatment as the Trending panel so the side rail reads as one
+ * surface. Keep the two in step if either is restyled.
  */
 export const Panel = styled.aside`
   width: 300px;
