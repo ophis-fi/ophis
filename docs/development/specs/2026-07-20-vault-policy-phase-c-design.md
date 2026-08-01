@@ -966,12 +966,15 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     mapping(address => LiveOrder)  internal liveOrder;       // sellToken => its single live order
     // MAX_ALLOWED_TOKENS = 16, NORMATIVE. The concurrent per-vault allowlist
     // cap every bounded structure sizes against: removeToken's sweep is at
-    // most 16 settlement calls, the residual store at most 2*16 = 32 entries,
-    // and sweepResidual's worst case (32 entries x RESIDUAL_CALL_GAS plus
-    // bookkeeping) fits in a fraction of a block. 16 comfortably exceeds any
-    // realistic vault composition (the live Phase-B deployments hold < 6);
-    // raising it requires re-deriving those gas bounds, not just editing the
-    // constant.
+    // most 16 settlement calls; ONE removal appends at most 2*16 = 32
+    // residual entries (also the RESIDUAL_GLOBAL_CAP threshold); the GLOBAL
+    // residual store is sized for its hard maximum of 64 unswept entries
+    // (CAP + one post-crossing generation - the cleanup-mode derivation at
+    // the residual rules below); sweepResidual's worst case (64 entries x
+    // RESIDUAL_CALL_GAS plus bookkeeping) fits in a fraction of a block. 16
+    // comfortably exceeds any realistic vault composition (the live Phase-B
+    // deployments hold < 6); raising it requires re-deriving those gas
+    // bounds, not just editing the constant.
     address[] public allowedTokens;                          // capped at MAX_ALLOWED_TOKENS (= 16)
     // FEED => the aggregator that was actually REVIEWED when eligibility was granted
     // (address(0) = not eligible). A bare boolean would certify the PROXY, not the
@@ -1076,6 +1079,15 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // re-registration on remaining tokens mints fresh uids and the "bound"
     // grows with every remove cycle.) removeToken itself is NEVER gated -
     // the emergency path always runs.
+    // Read-only band probe for off-chain monitoring (the STATICCALL-safe
+    // observability the depeg-exit rule promises): returns the current
+    // composed route value, composed anchor value, the configured
+    // maxDivergenceBps, and whether the band is currently breached. Reverts
+    // only on what reads always revert on (stale legs, sequencer gate) - a
+    // BREACHED band is a RETURN VALUE here, never a revert, or the monitor
+    // could not observe the very state it exists to watch.
+    function anchorBandState(address token) external view
+        returns (uint256 routeValue, uint256 anchorValue, uint32 maxDivergenceBps, bool breached);
     function sweepResidual(address token) external;             // retry residual revocations that failed
     // The Safe-only WRITE-OFF for a residual whose call permanently reverts
     // (e.g. a bricked token's approve(0)): deletes exactly one recorded entry,
@@ -1530,7 +1542,19 @@ the verification log tracks which currently have no assigned target.
   the gap - new presignature, new exact allowance - fillable at its V1 limit
   until the later step lands (and a zero-unlock proof run afterwards would
   merely classify it as consumed). One batch leaves no block in which V1 can
-  still register while any allowance survives; (3) the post-disable
+  still register while any allowance survives. Each zeroing subcall goes
+  through a return-value-checking wrapper (safeApprove semantics: revert
+  unless the call succeeds AND the returned boolean, if any, is true) - a
+  raw MultiSend subcall checks only CALL success, so a paused/misbehaving
+  token returning `false` without reverting would read as zeroed while the
+  allowance survives. A batch that reverts on such a token is the CORRECT
+  outcome: containment for it cannot be proven by zeroing, and the runbook
+  handles it explicitly - retry once unpaused, prove its uids dead per-uid
+  (zero-unlock semantics need no allowance zeroing), or proceed with a batch
+  excluding it under a MANDATORY wait-out unlock, accepting the documented
+  bounded exposure that its missed order stays fillable until its own
+  `validTo` (expiry, not allowance, is the terminal containment for an
+  unzeroable token); (3) the post-disable
   enumeration/proof (zero-unlock) or wait computation; (4) enable V2 + the
   EFH/verifier wiring batch, which RE-zeroes any residual allowance it finds
   as belt-and-suspenders. That enablement re-zeroing is HYGIENE,
