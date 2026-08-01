@@ -122,6 +122,32 @@ describe('enrollOphisTrader', () => {
     expect(res).toEqual({ enrolled: false });
   });
 
+  it('bounded timeout: a HUNG connection (never settles) resolves { enrolled:false } instead of stalling the swap', async () => {
+    // A server that accepts but never responds would bypass the catch forever without the
+    // timeout — callers await enrollment before submitting the order, so this must degrade
+    // into the network-failure path, not block for the platform's own (minutes-long) timeout.
+    const hangingFetch = vi.fn(
+      (_url: unknown, init?: { signal?: AbortSignal }) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    const res = await enrollOphisTrader(OWNER, { fetch: hangingFetch as unknown as typeof fetch, timeoutMs: 20 });
+    expect(res).toEqual({ enrolled: false });
+  });
+
+  it('blocking:true + timeout throws (fail-closed integrations see the stall as an error)', async () => {
+    const hangingFetch = vi.fn(
+      (_url: unknown, init?: { signal?: AbortSignal }) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    await expect(
+      enrollOphisTrader(OWNER, { blocking: true, fetch: hangingFetch as unknown as typeof fetch, timeoutMs: 20 }),
+    ).rejects.toThrow(/failed to reach the rebate indexer/);
+  });
+
   it('blocking:true throws on a network error too', async () => {
     const netErr = vi.fn((): Promise<Response> => Promise.reject(new Error('ECONNREFUSED')));
     await expect(

@@ -144,16 +144,29 @@ export interface EnrollOphisTraderOptions {
   /** Fetch implementation. Defaults to the global `fetch`. */
   readonly fetch?: typeof fetch;
   /**
-   * Fail closed: throw on ANY enrollment failure (network error or non-2xx)
-   * instead of returning a result. Default `false` (best-effort). Only set this
-   * if you deliberately want to block the first swap until enrollment is
-   * confirmed. It is NOT needed to avoid losing rebates: enrollment is
-   * idempotent and the indexer backfills a wallet's FULL trade history on the
-   * next successful enroll, so a trade placed while the indexer is briefly down
-   * is still credited once a later enroll succeeds. Programmer errors (invalid
-   * wallet/host, no fetch impl) always throw, regardless of this flag.
+   * Fail closed: throw on ANY enrollment failure (network error, non-2xx, or
+   * timeout) instead of returning a result. Default `false` (best-effort).
+   * Enrollment is idempotent and a later successful enroll backfills the
+   * wallet's recent history, so a brief indexer outage is usually recovered by
+   * re-calling this on the next connect/swap. The recovery window is BOUNDED,
+   * though: the indexer's volume view spans the last 30 days and rebate cycles
+   * cut monthly, so a trade whose wallet stays un-enrolled past a monthly
+   * cutoff (or that ages past 30 days) permanently misses credit. Set
+   * `blocking: true` when an integration must guarantee enrollment before
+   * trading. Programmer errors (invalid wallet/host, no fetch impl) always
+   * throw, regardless of this flag.
    */
   readonly blocking?: boolean;
+  /**
+   * Abort the enrollment request after this many milliseconds (default 10_000).
+   * Callers await enrollment before submitting the order, so a hung connection
+   * (server accepts, never responds) would otherwise stall the swap until the
+   * platform's own network timeout — minutes on some stacks. A timeout is
+   * treated like any network failure: `{ enrolled: false }` in best-effort
+   * mode, a throw when `blocking` is set. Requires a fetch impl that honors
+   * `signal` (the global fetch does).
+   */
+  readonly timeoutMs?: number;
 }
 
 /** Outcome of {@link enrollOphisTrader}. */
@@ -171,12 +184,14 @@ export interface EnrollOphisTraderResult {
  * an Ophis frontend is NEVER indexed unless enrolled here. Call this per trader
  * wallet on wallet-connect; it is idempotent (the endpoint upserts) and cheap.
  *
- * Best-effort by default: a transient indexer failure (network error or non-2xx,
- * e.g. the indexer being briefly down) is reported in the returned
- * `{ enrolled, status }` — NOT thrown — so the caller can still place the order.
- * No rebate is lost: enrollment is idempotent and the indexer backfills the
- * wallet's full history on the next successful enroll, so just call this again on
- * the next connect/swap. Pass `{ blocking: true }` to restore the strict
+ * Best-effort by default: a transient indexer failure (network error, non-2xx,
+ * or timeout) is reported in the returned `{ enrolled, status }` — NOT thrown —
+ * so the caller can still place the order. Re-call on the next connect/swap:
+ * enrollment is idempotent and a later success backfills the wallet's recent
+ * (30-day) history. The recovery window is BOUNDED: a wallet left un-enrolled
+ * past a monthly rebate cutoff (or whose trade ages past the indexer's 30-day
+ * view) permanently misses credit for that trade — integrations that must not
+ * risk that should pass `{ blocking: true }` to restore the strict
  * throw-on-any-failure gate. Invalid wallet/host or a missing fetch impl always
  * throw (programmer errors), regardless of `blocking`.
  */
@@ -213,20 +228,27 @@ export async function enrollOphisTrader(
   if (typeof doFetch !== 'function') {
     throw new Error('Ophis: no fetch implementation available; pass opts.fetch.');
   }
+  // Bound the request: callers await enrollment before submitting the order, so a
+  // hung connection must degrade into the same path as a network error, not stall.
+  const aborter = new AbortController();
+  const timer = setTimeout(() => aborter.abort(), opts.timeoutMs ?? 10_000);
   let res: Response;
   try {
     res = await doFetch(`${host}/tier/${wallet}`, {
       method: 'GET',
       headers: { accept: 'application/json' },
+      signal: aborter.signal,
     });
   } catch (err) {
-    // Transport/network error: the indexer was unreachable. Fail closed only when
-    // asked; otherwise report and let the caller place the order (see docstring).
+    // Transport/network error or timeout: the indexer was unreachable. Fail closed
+    // only when asked; otherwise report and let the caller place the order.
     if (opts.blocking) {
       const reason = err instanceof Error ? err.message : String(err);
       throw new Error(`Ophis: failed to reach the rebate indexer to enroll ${wallet} (${reason}).`);
     }
     return { enrolled: false };
+  } finally {
+    clearTimeout(timer);
   }
   if (!res.ok) {
     if (opts.blocking) {
