@@ -1042,6 +1042,18 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // while residuals[token] is non-empty (sweep first). Without both rules,
     // remove/re-add churn on a token with a sticky failure grows the array
     // with removal history until sweepResidual itself exceeds the gas limit.
+    // The bound is GLOBAL, not only per bucket: distinct removed tokens each
+    // leave their own bucket, so per-bucket rules alone let total residual
+    // state grow with every fresh token address. Normatively,
+    // `executeTokenAdd` (for ANY token) additionally reverts while the TOTAL
+    // unswept residual entries exceed RESIDUAL_GLOBAL_CAP = 2 *
+    // MAX_ALLOWED_TOKENS (= 32): above it the allowlist can only SHRINK until
+    // residuals are swept - or voided via `voidResidual(sellToken, uid, kind)`
+    // (ONLY address(safe), evented): the explicit accountability action for a
+    // permanently-bricked token whose approve(0) will never succeed (its
+    // allowance is then unusable value the Safe knowingly writes off, not a
+    // live risk). Worst-case global storage is therefore CAP + one removal's
+    // worst case = 64 entries, and sweepResidual stays executable forever.
     function sweepResidual(address token) external;             // retry residual revocations that failed
     function rotateGuardian(address newGuardian) external;      // Safe-submitted, TIMELOCKED like a token add and
                                                                 // incumbent-guardian-cancelable (C16: instant rotation
