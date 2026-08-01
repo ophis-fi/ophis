@@ -554,6 +554,15 @@ field:
   (`try`/`catch` per call), emitting `ResidualRevocationFailed(token, uid,
   reason)` rather than reverting the transaction, and the failure is deferred
   to a retryable `sweepResidual(token)`. C15 must bound reverts, not just gas.
+  **Isolation needs a gas cap and returndata discipline, not just try/catch:**
+  a hostile token's `approve(0)` can burn (nearly) all forwarded gas - the
+  63/64 retention rule leaves too little to finish the sweep - or return
+  pathological amounts of data that the caller's implicit returndata copy
+  turns into the caller's own OOM. Each isolated residual call therefore uses
+  an EXPLICIT gas stipend (a per-call constant sized for an honest
+  approve/settlement call, e.g. `{gas: RESIDUAL_CALL_GAS}`) and a low-level
+  call that does NOT copy returndata (the excessively-safe-call pattern), so
+  no single token can starve or bloat the surrounding removal.
   **But revert-tolerance and the removal guarantee conflict in Presign mode,
   and the conflict must be resolved by mode, not waved away.** In Eip1271 mode
   de-allowlisting IS the enforcement: the fill-time allowlist re-check refuses
@@ -621,6 +630,15 @@ AND-constraint, Morpho `adapterRegistry`-style).
      `EFH.domainVerifiers(safe, domainSeparator)` must equal this module -
      otherwise the posted order could silently fall through to owner-threshold
      validation;
+   - **rejects a CONSUMED uid before registering**: requires the settlement's
+     `filledAmount(uid) == 0` at registration. A uid already filled, or
+     hard-invalidated to `uint256.max` by a prior cancel/supersession, can
+     never fill again - registering it would charge turnover for a dead order
+     (burning curator budget for nothing) and re-open the exact
+     refund-after-consumption edges C4 closes. (A solver-zeroed
+     `freeFilledAmountStorage` slot only exists AFTER `validTo`, and a
+     re-registration would mint a NEW digest/validTo, so this check binds at
+     the only moment the old uid could be replayed.)
    - registers `orderState[digest] = Registered{sellToken, buyToken, validTo,
      registeredAt, minBuyOverride, sellUsd18}`. `validTo` is STORED, not
      re-derived from caller input later: it is the refund time gate and it is
@@ -906,7 +924,11 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     function submitTokenAdd(TokenAdd calldata add) external;    // only address(safe)
     function executeTokenAdd(TokenAdd calldata add) external;   // ONLY address(safe), within [eta, eta+WINDOW], revalidates
     function cancelPending(bytes32 key) external;               // guardian or safe, instant
-    function removeToken(address token) external;               // guardian or safe, instant, revert-TOLERANT sweep
+    function removeToken(address token) external;               // guardian or safe, instant, revert-TOLERANT sweep;
+                                                                // ALSO cancels any live pending TokenAdd for `token`
+                                                                // (submitted or matured-unexecuted): otherwise the Safe
+                                                                // could execute a matured add one block after the
+                                                                // guardian's removal and silently undo the veto
     function sweepResidual(address token) external;             // retry residual revocations that failed
     function rotateGuardian(address newGuardian) external;      // Safe-submitted, TIMELOCKED like a token add and
                                                                 // incumbent-guardian-cancelable (C16: instant rotation
@@ -930,10 +952,15 @@ makes execution a single-timestamp race that generally cannot land, an
 unbounded window recreates the indefinitely-executable stale pending the
 expiry design exists to eliminate, and `submittedAt + DELAY + EXECUTE_WINDOW`
 uses checked arithmetic so an absurd value cannot revert the pending math
-later), `TokenAdd[]` initial set - token address + route, the same struct the
-mutable path uses; a bare `TokenRoute[]` carries no token address, so nothing
-could key the token-policy mapping or populate `allowedTokens` (same probe
-discipline as Phase B, length <= `MAX_ALLOWED_TOKENS`). Factory and constructor enforce
+later), the initial CERTIFIED FEED PAIRS (`(feed, aggregator)[]`, seeded into
+`feedCertifiedAggregator` FIRST - in Eip1271 mode the route validation that
+follows requires every fill-eligible leg's pair to already be certified, so
+seeding after (or omitting) the pairs would make any nonempty initial set
+unconstructible), then `TokenAdd[]` initial set - token address + route, the
+same struct the mutable path uses; a bare `TokenRoute[]` carries no token
+address, so nothing could key the token-policy mapping or populate
+`allowedTokens` (same probe discipline as Phase B, length <=
+`MAX_ALLOWED_TOKENS`, validated AFTER the feed seeding). Factory and constructor enforce
 curator-not-owner/module exactly as today, plus GUARDIAN IDENTITY: `guardian
 != address(0)` (a zero guardian silently deletes the veto/emergency-removal
 power the design advertises), `guardian != curator`, and `guardian !=
