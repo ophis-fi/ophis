@@ -58,7 +58,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   const sql = await getSql();
-  await sql`TRUNCATE partner_fee_trades, partner_fee_cursor RESTART IDENTITY CASCADE`;
+  await sql`TRUNCATE partner_fee_trades, partner_fee_cursor, partner_fee_skips RESTART IDENTITY CASCADE`;
   vi.restoreAllMocks();
 });
 
@@ -76,6 +76,51 @@ describe('partner-fee feed ingestion', () => {
     expect(rows[0]!.fee_amount).toBe('3000');
     expect(`0x${rows[0]!.fee_token_hex}`).toBe(BUY);
     expect(rows[0]!.volume_bps).toBe(30);
+    // The skip left a DURABLE identity-keyed marker (the accrual gate blocks on it).
+    const skips = await sql<{ n: string }[]>`SELECT COUNT(*)::text AS n FROM partner_fee_skips WHERE resolved_at IS NULL`;
+    expect(skips[0]!.n).toBe('1');
+  });
+
+  it('re-fetching the same ambiguous settlement (cursor rewind) does NOT inflate the skip ledger', async () => {
+    const sql = await getSql();
+    await runFetch();
+    // Rewind the cursor (crash-before-save / operator rewind) and re-drain the feed.
+    await sql`UPDATE partner_fee_cursor SET next_block = 0, next_log_index = 0`;
+    const r2 = await runFetch();
+    expect(r2.skipped).toBe(1); // counted per run...
+    const skips = await sql<{ n: string }[]>`SELECT COUNT(*)::text AS n FROM partner_fee_skips`;
+    expect(skips[0]!.n).toBe('1'); // ...but ONE durable row: identity-keyed, idempotent
+    // A rewind over an already-RESOLVED skip stays resolved (accounted for once).
+    await sql`UPDATE partner_fee_skips SET resolved_at = now()`;
+    await sql`UPDATE partner_fee_cursor SET next_block = 0, next_log_index = 0`;
+    await runFetch();
+    const unresolved = await sql<{ n: string }[]>`SELECT COUNT(*)::text AS n FROM partner_fee_skips WHERE resolved_at IS NULL`;
+    expect(unresolved[0]!.n).toBe('0');
+  });
+
+  it('a feed with NO trades yet still writes an ACTIVATION cursor row (so later removal fails closed)', async () => {
+    const sql = await getSql();
+    const { runPartnerFeeFetch } = await import('../../src/partnerFees/fetch.js');
+    const r = await runPartnerFeeFetch({
+      feeds: [{ chainId: 10, url: FEED }],
+      fetcher: async () => ({ trades: [] }), // live feed, zero history
+      blockTimestamp: async () => new Date('2026-05-15T00:00:00Z'),
+    });
+    expect(r.misconfigured).toBe(false);
+    const rows = await sql<{ chain_id: number }[]>`SELECT chain_id FROM partner_fee_cursor`;
+    expect(rows).toHaveLength(1); // activation row despite the empty page
+    // Trimming the zero-history feed from the config now fails closed.
+    const r2 = await (await import('../../src/partnerFees/fetch.js')).runPartnerFeeFetch({ feeds: [], fetcher: async () => ({ trades: [] }) });
+    expect(r2.misconfigured).toBe(true);
+  });
+
+  it('a PARTIALLY trimmed feed config (cursor chain missing from feeds) is MISCONFIGURED', async () => {
+    const sql = await getSql();
+    // The program has been active on 10 AND 130; the config now lists only 10.
+    await sql`INSERT INTO partner_fee_cursor (chain_id, next_block, next_log_index) VALUES (130, 5, 0)`;
+    const r = await runFetch(); // runFetch configures chain 10 only
+    expect(r.misconfigured).toBe(true);
+    expect(r.inserted).toBe(0); // fail-closed: no partial work that would look healthy
   });
 
   it('advances the cursor to just AFTER the last trade', async () => {

@@ -263,15 +263,38 @@ async function backfillBlockTimestamps(fetcher: BlockTimestampFetcher): Promise<
  * in a partially-returned block is ever skipped OR double-counted. Skipped (ambiguous)
  * attributions are surfaced via a capped alert; they are NOT inserted (fail-safe under-count).
  */
-export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promise<{ inserted: number; skipped: number; enriched: number; capped: boolean }> {
+export async function runPartnerFeeFetch(
+  deps: PartnerFeeFetchDeps = {},
+): Promise<{ inserted: number; skipped: number; enriched: number; capped: boolean; misconfigured: boolean }> {
   const feeds = deps.feeds ?? resolvePartnerFeeFeeds();
   const fetcher = deps.fetcher ?? defaultFeedFetcher;
   // Re-assert even for injected feeds (resolvePartnerFeeFeeds already asserts the env path), so a
   // test or a direct caller can never bypass the config-fee-free guard.
   assertFeedsConfigFeeFree(feeds);
+  // MISCONFIGURATION check, PER CHAIN not just list-empty: every chain the program has
+  // ever polled (a cursor row exists) must still be configured. A partially trimmed
+  // PARTNER_FEE_FEED_URLS (e.g. cursor rows for 10 AND 130 but only 10 configured) leaves
+  // the dropped chain's new settlements entirely absent from the DB -- invisible to the
+  // accrual completeness gate -- while a quiet zero/partial-work success would let the
+  // shared Safe distribute WETH owed to that chain's partners. Fail-closed instead. To
+  // DECOMMISSION a chain deliberately: settle its ledger, then DELETE its
+  // partner_fee_cursor row (an explicit, auditable operator action, not a config edit).
+  {
+    const sqlc = await getSql();
+    const configured = new Set(feeds.map((f) => f.chainId));
+    const cursorRows = await sqlc<{ chain_id: number }[]>`SELECT chain_id FROM partner_fee_cursor`;
+    const orphaned = cursorRows.map((r) => r.chain_id).filter((c) => !configured.has(c));
+    if (orphaned.length > 0) {
+      log.error(
+        { orphanedChains: orphaned, configuredChains: [...configured] },
+        'partner-fee feed config is missing chain(s) the program has been active on; MISCONFIGURED (fail-closed). To decommission a chain, settle its ledger then delete its partner_fee_cursor row.',
+      );
+      return { inserted: 0, skipped: 0, enriched: 0, capped: false, misconfigured: true };
+    }
+  }
   if (feeds.length === 0) {
     log.debug('no partner-fee feeds configured (PARTNER_FEE_FEED_URLS unset); skipping');
-    return { inserted: 0, skipped: 0, enriched: 0, capped: false };
+    return { inserted: 0, skipped: 0, enriched: 0, capped: false, misconfigured: false };
   }
 
   let inserted = 0;
@@ -286,6 +309,18 @@ export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promis
     let cursor = await loadCursor(feed.chainId);
     for (let page = 0; page < MAX_PAGES_PER_RUN; page++) {
       const resp = await fetcher(feed, cursor.block, cursor.logIndex, FEED_LIMIT);
+      if (page === 0) {
+        // ACTIVATION marker on the FIRST successful poll, even an EMPTY one: saveCursor
+        // only runs after a nonempty page, so a live feed with no trades yet would leave
+        // no cursor row - and the orphaned-chain misconfiguration check above keys on
+        // cursor rows, so silently dropping that feed from the config would NOT fail
+        // closed. DO NOTHING on conflict: never disturb a real cursor position.
+        await (await getSql())`
+          INSERT INTO partner_fee_cursor (chain_id, next_block, next_log_index)
+          VALUES (${feed.chainId}, ${cursor.block.toString()}, ${cursor.logIndex.toString()})
+          ON CONFLICT (chain_id) DO NOTHING
+        `;
+      }
       const trades = resp.trades ?? [];
       for (const t of trades) {
         const result = attributePartnerFees(t);
@@ -293,6 +328,18 @@ export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promis
           skipped++;
           if (skippedExamples.length < 10) skippedExamples.push(`${t.orderUid} (${result.reason})`);
           log.warn({ orderUid: t.orderUid, reason: result.reason, chainId: feed.chainId }, 'partner-fee attribution skipped (ambiguous slot mapping); not accrued');
+          // DURABLE, IDENTITY-KEYED marker (migration 0022): the cursor advances past this
+          // row, so the drop is otherwise undetectable later. Keyed by settlement identity
+          // + ON CONFLICT DO NOTHING, a re-fetch (crash before the cursor save, or an
+          // intentional rewind) is a no-op -- never an inflated count -- and a rewind over
+          // an already-RESOLVED skip stays resolved (accounted for once). The accrual gate
+          // blocks while any row is unresolved, across restarts and month boundaries,
+          // until the operator reconciles + clears via `partner-fee-resolve-skips --chain`.
+          await (await getSql())`
+            INSERT INTO partner_fee_skips (chain_id, trade_uid, block_number, log_index, reason)
+            VALUES (${feed.chainId}, decode(${t.orderUid.slice(2)}, 'hex'), ${String(t.blockNumber)}, ${String(t.logIndex)}, ${result.reason ?? 'ambiguous attribution'})
+            ON CONFLICT (chain_id, trade_uid, block_number, log_index) DO NOTHING
+          `;
           continue;
         }
         for (const a of result.attributions) {
@@ -345,5 +392,5 @@ export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promis
   }
 
   log.info({ inserted, skipped, enriched, feeds: feeds.length }, 'partner-fee fetch complete');
-  return { inserted, skipped, enriched, capped };
+  return { inserted, skipped, enriched, capped, misconfigured: false };
 }

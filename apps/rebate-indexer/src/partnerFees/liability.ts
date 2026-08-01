@@ -84,6 +84,22 @@ export async function inflightPaidLiabilityWei(): Promise<bigint> {
   return BigInt(row?.wei ?? '0');
 }
 
+/**
+ * The AUTHORITATIVE USD value of component (a): Σ carried_usd over every unfolded
+ * carried/quarantined entry. The partner PROPOSER reserves this converted at the
+ * PROPOSAL-TIME price (owed_wei snapshots under-reserve the unchanged USD obligation
+ * after a WETH drop, and the proposer can run weeks after accrual); the rebate/affiliate
+ * batchers keep the wei-snapshot rollup above, whose drift is bounded by hours.
+ */
+export async function carriedQuarantinedUsd(): Promise<number> {
+  const [row] = await sql<{ usd: string }[]>`
+    SELECT COALESCE(SUM(carried_usd), 0)::text AS usd
+    FROM partner_fee_batch_entries
+    WHERE status IN ('carried', 'quarantined') AND folded_into_batch_id IS NULL
+  `;
+  return parseFloat(row?.usd ?? '0');
+}
+
 /** One recipient's current carried-forward USD balance (sub-threshold, never paid). */
 export interface CarriedBalance {
   readonly recipient: `0x${string}`;
