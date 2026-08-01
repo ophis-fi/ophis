@@ -1086,10 +1086,14 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // breached=false, and NEVER reverts for the missing anchor, so a monitor
     // can poll the complete allowlist with one code path), the composed
     // anchor value, the configured maxDivergenceBps, and whether the band is
-    // currently breached. Reverts only on what reads always revert on (stale
-    // legs, sequencer gate) - a BREACHED band is a RETURN VALUE here, never a
-    // revert, or the monitor could not observe the very state it exists to
-    // watch.
+    // currently breached. Reverts exactly when the underlying reads revert -
+    // stale legs, the sequencer gate, zero/negative/malformed source values,
+    // an aggregator-pin mismatch, a rate leg outside its RateBound (C18) -
+    // i.e. whenever a composed value cannot be produced at all; the ONE case
+    // this view converts from the validation path's revert into a return
+    // value is the band breach itself, or the monitor could not observe the
+    // very state it exists to watch. Monitors treat a revert as "route
+    // unreadable" (itself an alertable state), distinct from breached.
     function anchorBandState(address token) external view
         returns (uint256 routeValue, bool hasAnchor, uint256 anchorValue, uint32 maxDivergenceBps, bool breached);
     function sweepResidual(address token) external;             // retry residual revocations that failed
@@ -1554,11 +1558,16 @@ the verification log tracks which currently have no assigned target.
   allowance survives. A batch that reverts on such a token is the CORRECT
   outcome: containment for it cannot be proven by zeroing, and the runbook
   handles it explicitly - retry once unpaused, prove its uids dead per-uid
-  (zero-unlock semantics need no allowance zeroing), or proceed with a batch
-  excluding it under a MANDATORY wait-out unlock, accepting the documented
-  bounded exposure that its missed order stays fillable until its own
-  `validTo` (expiry, not allowance, is the terminal containment for an
-  unzeroable token); (3) the post-disable
+  (zero-unlock semantics need no allowance zeroing), or - the last resort -
+  re-run the batch WITHOUT that token's zeroing and HOLD step (4): V2 is NOT
+  ENABLED until every uid selling the unzeroable token is provably dead
+  on-chain (`validTo < now`, consumed, or revoked). C14 admits no
+  accepted-exposure carve-out - `migrationUnlockAt` withholds only NEW
+  allowances and cannot starve one a live V1 order already holds, so
+  enabling V2 during that window would leave a fillable V1 order, exactly
+  what C14 forbids. Expiry is still the terminal containment for an
+  unzeroable token; the wait for it happens BEFORE enablement, never around
+  it; (3) the post-disable
   enumeration/proof (zero-unlock) or wait computation; (4) enable V2 + the
   EFH/verifier wiring batch, which RE-zeroes any residual allowance it finds
   as belt-and-suspenders. That enablement re-zeroing is HYGIENE,
