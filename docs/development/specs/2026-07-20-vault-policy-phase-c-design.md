@@ -1059,8 +1059,11 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // the same reason as removeToken's Presign classification (they touch
     // ONLY the settlement: an owner check + one storage write, no hostile
     // token anywhere in the path, so nothing can brick them). No residual
-    // path exists or is needed for them; residuals remain reserved for
-    // token-touching hygiene (allowance zeroing) only. And like removeToken,
+    // path exists or is needed for THAT call; residuals remain reserved for
+    // the FAILURE-ISOLATED steps - allowance zeroing (token-touching) and
+    // the Eip1271-mode invalidateOrder hygiene revocation (deferred-safe
+    // there because the fill-time gate already refuses the order) - exactly
+    // the two-per-order recovery the residual-record definition specifies. And like removeToken,
     // revoke bumps a per-feed nonce folded into feed-certification pending
     // keys, so a matured-unexecuted executeFeedEligibility for the same feed
     // cannot be executed one block later to undo the revocation.
@@ -1075,12 +1078,13 @@ values whose `submittedAt + DELAY` overflows at every schedule/check, leaving
 a deployment that can never add a route or recover a lost guardian), `uint256
 executeWindow` (immutable, BOUNDED - see below), `uint256 migrationUnlockAt`
 (immutable; the on-chain V1->V2 containment gate `rebalance` checks - see the
-C5 migration ceremony: 0 on the verified-cancellation path, `enableTime +
-V1_MAX_TTL + 1` on the wait-out path (strictly past the last `validTo >=
-block.timestamp` boundary a maximum-TTL V1 order can validate at); the
-constructor validates it is either 0 or within `[block.timestamp,
-block.timestamp + V1_MAX_TTL + 7 days]`, so a typo cannot brick rebalancing
-forever), continuing with `executeWindow`: `1 hours <=
+C5 migration ceremony: 0 when containment is ALREADY proven (per-uid
+verification, or a wait that fully elapsed before deploy, proven from the
+DisabledModule event timestamp), `disableTime + V1_MAX_TTL + 1` for a
+still-running wait-out (strictly past the last `validTo >= block.timestamp`
+boundary a maximum-TTL V1 order can validate at); the constructor validates
+it is either 0 or within `(block.timestamp, block.timestamp + V1_MAX_TTL +
+7 days]`, so a typo cannot brick rebalancing forever), continuing with `executeWindow`: `1 hours <=
 executeWindow <= 30 days`, enforced in the constructor AND the factory - zero
 makes execution a single-timestamp race that generally cannot land, an
 unbounded window recreates the indefinitely-executable stale pending the
@@ -1480,12 +1484,17 @@ the verification log tracks which currently have no assigned target.
   curator would simply restore the shared relayer allowance and let the
   missed V1 presignature fill at its old limit. V2 therefore carries an
   immutable `migrationUnlockAt` (constructor): `rebalance` reverts before it.
-  The verified-cancellation path deploys with `migrationUnlockAt = 0`; the
-  wait-out path deploys with `enableTime + V1_MAX_TTL + 1` - STRICTLY past
-  the last timestamp a maximum-TTL V1 order can validate (validation accepts
-  `validTo >= block.timestamp`, so at exactly `enableTime + V1_MAX_TTL` such
-  an order is STILL valid and a same-timestamp first rebalance would restore
-  its allowance for that block). The deploy script's
+  `migrationUnlockAt = 0` is valid under EITHER proof: per-uid verification
+  (above), OR an ALREADY-ELAPSED wait - `disableTime + V1_MAX_TTL + 1 <=
+  deployTime`, proven from the on-chain `DisabledModule` event's block
+  timestamp - since a fully served wait needs no further on-chain gate and a
+  strictly-future requirement would otherwise leave a patiently waited-out
+  migration with NO valid deployment path. A NOT-yet-elapsed wait-out deploys
+  with `disableTime + V1_MAX_TTL + 1` - STRICTLY past the last timestamp a
+  maximum-TTL V1 order can validate (validation accepts `validTo >=
+  block.timestamp`, so at exactly `+ V1_MAX_TTL` such an order is STILL valid
+  and a same-timestamp first rebalance would restore its allowance for that
+  block). The deploy script's
   job is choosing the path and PROVING the choice (the per-uid assertions
   above for the zero case), not enforcing the wait. PROOF ORDERING IS
   NORMATIVE for the zero-unlock path: `disableModule(V1)` executes FIRST,
