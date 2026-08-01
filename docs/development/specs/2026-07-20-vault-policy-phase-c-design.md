@@ -951,7 +951,15 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
 
     mapping(bytes32 => OrderState) internal orderState;      // digest-keyed, O(1) reads only
     mapping(address => LiveOrder)  internal liveOrder;       // sellToken => its single live order
-    address[] public allowedTokens;                          // capped at MAX_ALLOWED_TOKENS
+    // MAX_ALLOWED_TOKENS = 16, NORMATIVE. The concurrent per-vault allowlist
+    // cap every bounded structure sizes against: removeToken's sweep is at
+    // most 16 settlement calls, the residual store at most 2*16 = 32 entries,
+    // and sweepResidual's worst case (32 entries x RESIDUAL_CALL_GAS plus
+    // bookkeeping) fits in a fraction of a block. 16 comfortably exceeds any
+    // realistic vault composition (the live Phase-B deployments hold < 6);
+    // raising it requires re-deriving those gas bounds, not just editing the
+    // constant.
+    address[] public allowedTokens;                          // capped at MAX_ALLOWED_TOKENS (= 16)
     // FEED => the aggregator that was actually REVIEWED when eligibility was granted
     // (address(0) = not eligible). A bare boolean would certify the PROXY, not the
     // implementation: repoint an eligible proxy from reviewed aggregator A to
@@ -1290,10 +1298,14 @@ the verification log tracks which currently have no assigned target.
   (a) POSITIVE verification per V1 uid (revoked, consumed, or expired,
   asserted on-chain by the deploy-script hard gate) before V2's first
   rebalance of that sell token, or (b) the wait-out path - allowance zeroed
-  at enablement AND V2's first rebalance of that token delayed past V1's
-  `maxTtl`, so a missed order is STARVED (no allowance while valid) rather
-  than cancelled. Stated as fillability, not as "every order cancelled":
-  cancellation is one mechanism, not the invariant.
+  at enablement FOR EVERY V1 SELL TOKEN - enumerated from V1's own allowlist
+  and registration events, explicitly INCLUDING tokens V2 does not admit,
+  since a V1 sell token outside V2's allowlist is never visited by any V2
+  cleanup and `migrationUnlockAt` only prevents V2 from granting NEW
+  allowances, not from leaving an old one live - AND V2's first rebalance of
+  that token delayed past V1's `maxTtl`, so a missed order is STARVED (no
+  allowance while valid) rather than cancelled. Stated as fillability, not as
+  "every order cancelled": cancellation is one mechanism, not the invariant.
 
 ## Threat-model deltas vs Phase B
 
@@ -1469,7 +1481,9 @@ the verification log tracks which currently have no assigned target.
   skipped, the P1 guarantee has a <= 1h hole - this is the Phase-B NatSpec's
   "disable the old module and let its orders expire/cancel first" rule, now
   load-bearing. V2 enablement additionally zeroes any residual relayer
-  allowance it finds for allowlisted tokens - but that zeroing is HYGIENE,
+  allowance it finds for EVERY V1 SELL TOKEN (enumerated from V1's allowlist
+  and registration events - explicitly including tokens V2 does not admit,
+  which no later V2 code path would ever visit) - but that zeroing is HYGIENE,
   NOT containment: the first V2 `rebalance` of the same sell token grants the
   SHARED relayer a fresh allowance, and a missed still-presigned V1 order can
   consume it at its old, non-fill-time-checked limit. The ceremony therefore
