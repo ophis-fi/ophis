@@ -1077,6 +1077,13 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // grows with every remove cycle.) removeToken itself is NEVER gated -
     // the emergency path always runs.
     function sweepResidual(address token) external;             // retry residual revocations that failed
+    // The Safe-only WRITE-OFF for a residual whose call permanently reverts
+    // (e.g. a bricked token's approve(0)): deletes exactly one recorded entry,
+    // emits ResidualVoided(token, sellToken, uid, kind). Without it, a vault
+    // above RESIDUAL_GLOBAL_CAP whose sweep can never succeed is permanently
+    // cleanup-locked (no rebalance, no adds). kind identifies which of the
+    // order's two operations is voided; the (token) bucket is the first arg.
+    function voidResidual(address token, address sellToken, bytes calldata uid, uint8 kind) external; // ONLY address(safe)
     function rotateGuardian(address newGuardian) external;      // Safe-submitted, TIMELOCKED like a token add and
                                                                 // incumbent-guardian-cancelable (C16: instant rotation
                                                                 // = veto escape); full identity checks re-applied
@@ -1335,11 +1342,13 @@ the verification log tracks which currently have no assigned target.
   (a) POSITIVE verification per V1 uid (revoked, consumed, or expired,
   asserted on-chain by the deploy-script hard gate) before V2's first
   rebalance of that sell token, or (b) the wait-out path - allowance zeroed
-  at enablement FOR EVERY V1 SELL TOKEN - enumerated from V1's own allowlist
-  and registration events, explicitly INCLUDING tokens V2 does not admit,
-  since a V1 sell token outside V2's allowlist is never visited by any V2
-  cleanup and `migrationUnlockAt` only prevents V2 from granting NEW
-  allowances, not from leaving an old one live - AND V2's first rebalance of
+  ATOMICALLY WITH THE V1 DISABLE (one Safe MultiSend, see the C5 ceremony)
+  FOR EVERY V1 SELL TOKEN - enumerated from V1's own allowlist and
+  registration events, explicitly INCLUDING tokens V2 does not admit, since
+  a V1 sell token outside V2's allowlist is never visited by any V2 cleanup
+  and `migrationUnlockAt` only prevents V2 from granting NEW allowances, not
+  from leaving an old one live (enablement re-zeroing stays as hygiene) -
+  AND V2's first rebalance of
   that token delayed past V1's `maxTtl`, so a missed order is STARVED (no
   allowance while valid) rather than cancelled. Stated as fillability, not as
   "every order cancelled": cancellation is one mechanism, not the invariant.
@@ -1509,18 +1518,22 @@ the verification log tracks which currently have no assigned target.
 - **C5** - gated live rollout, OP trial first (sovereign, we control driver
   behavior), then Base/Arb/Ethereum, then Unichain (after EFH replay-deploy);
   same runbook discipline as Phase B. **Migration ceremony (ordered, and the
-  order matters):** (1) curator `cancel`s every live V1 order and confirms
-  zero residual relayer allowance - `disableModule` alone does NOT revoke a
-  V1 presignature or its allowance (both live in settlement/token storage the
-  Safe owns), so a V1 order presigned just before migration stays fillable at
-  its V1-signed limit for up to V1's `maxTtl` with no fill-time floor; (2)
-  disable V1; (3) enable V2 + the EFH/verifier wiring batch. If step (1) is
-  skipped, the P1 guarantee has a <= 1h hole - this is the Phase-B NatSpec's
-  "disable the old module and let its orders expire/cancel first" rule, now
-  load-bearing. V2 enablement additionally zeroes any residual relayer
-  allowance it finds for EVERY V1 SELL TOKEN (enumerated from V1's allowlist
-  and registration events - explicitly including tokens V2 does not admit,
-  which no later V2 code path would ever visit) - but that zeroing is HYGIENE,
+  order matters):** (1) curator `cancel`s every live V1 order - courtesy
+  cleanup that shrinks step (2)'s work, but NEVER trusted alone:
+  `disableModule` does NOT revoke a V1 presignature or its allowance (both
+  live in settlement/token storage the Safe owns); (2) ONE ATOMIC Safe
+  MultiSend that BOTH disables V1 AND zeroes the relayer allowance of EVERY
+  V1 sell token (enumerated from V1's allowlist and registration events -
+  explicitly including tokens V2 will not admit, which no later V2 code path
+  would ever visit). Atomicity is the point: with disable and zeroing in
+  separate transactions, a compromised curator registers a fresh V1 order in
+  the gap - new presignature, new exact allowance - fillable at its V1 limit
+  until the later step lands (and a zero-unlock proof run afterwards would
+  merely classify it as consumed). One batch leaves no block in which V1 can
+  still register while any allowance survives; (3) the post-disable
+  enumeration/proof (zero-unlock) or wait computation; (4) enable V2 + the
+  EFH/verifier wiring batch, which RE-zeroes any residual allowance it finds
+  as belt-and-suspenders. That enablement re-zeroing is HYGIENE,
   NOT containment: the first V2 `rebalance` of the same sell token grants the
   SHARED relayer a fresh allowance, and a missed still-presigned V1 order can
   consume it at its old, non-fill-time-checked limit. The ceremony therefore
