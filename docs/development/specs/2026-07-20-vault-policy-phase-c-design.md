@@ -314,14 +314,27 @@ the depegging asset - both new `rebalance` calls and outstanding 1271 sell
 orders fail exactly when exiting at the lower anchored price is the
 risk-reducing action, deleting the vault's curator-operated exit path during
 the event the anchor detects. Normatively: when the breached band belongs to
-the SELL token's route, validation proceeds using the CONSERVATIVE price
-`min(routeValue, anchorValue)` for the sell side (a lower assumed sell price
-=> a HIGHER required buy floor, so the depegging asset can be exited but
-never underpriced against the un-breached leg) and emits an
-`AnchorBandBreached` event; when the breached band belongs to the BUY token's
-route, validation REVERTS - acquiring an asset whose price integrity is in
-question is risk-ADDING and has no exit rationale. `removeToken` remains the
-instant operational escape in both directions.
+the SELL token's route, validation proceeds using the price
+`min(routeValue, anchorValue)` for the sell side. Stated honestly, that
+LOWERS the required buy floor (`floorBuyAmount` scales with the sell price):
+the point is that the exit clears at the HONEST, anchored market valuation
+of the depegging asset instead of an overvalued route price no solver could
+ever fill against. The protections that remain are exactly the ones that
+matter: the floor is never derived from a price ABOVE what either source
+supports (no overvaluation, and never zero - it is still an oracle-derived
+floor), the un-breached BUY-side leg is untouched, and the curator's
+`minBuyOverride` binds absolutely regardless of the band. When the breached
+band belongs to the BUY token's route, validation REVERTS - acquiring an
+asset whose price integrity is in question is risk-ADDING and has no exit
+rationale. NO EVENT is emitted on the validation path: `isValidSafeSignature`
+is `view` and invoked by STATICCALL, where a log write is illegal - a literal
+implementation would fail compilation or revert validation and defeat this
+exit path. The breach is observable instead via (a) the `AnchorBandBreached`
+event emitted by the STATE-CHANGING `rebalance` path when a registration
+prices through a breached sell-side band, and (b) a public view
+(`anchorBandState(token)`) monitoring polls off-chain. `removeToken` remains
+the instant operational escape in both directions. C18 and the fill-time
+lifecycle state this sell-side exception explicitly (see C18).
 The snapshot in `RateBound` is advanced ONLY through the P3 timelock, never by
 `rebalance` - a curator-advanced snapshot would let the constrained party move
 its own bound. The consequence is deliberate and must be operated for: a rate
@@ -453,8 +466,11 @@ eligibility is NOT open: it was settled with on-chain proof in the
 verification log - SVR feeds run `DualAggregator 1.0.0` with the same
 privileged-writer allowlist gate on `transmit`/`transmitSecondary`, so they
 ARE fill-eligible. C2 implementers must follow that normative answer, which
-matters because four of Unichain's ten production feeds - including the
-ETH/USD leg every Unichain route composes through - are SVR.)
+matters because four of Unichain's ten production feeds are SVR - including
+the ETH/USD leg every EXCHANGE-RATE-COMPOSED Unichain route (the wstETH-style
+ExR x ETH/USD shape) runs through. Routes built on a direct UsdPrice feed -
+BTC/USD, LINK/USD, UNI/USD, USDC/USD - complete without ETH/USD and carry no
+such dependency.)
 
 
 ### P3 lane: in-module pending map, Safe-proposed, guardian-vetoable
@@ -736,7 +752,10 @@ AND-constraint, Morpho `adapterRegistry`-style).
      each affected token is individually removed, defeating the instant
      risk-reducing revoke), and
      `order.buyAmount >= max(freshOracleFloor, storedMinBuyOverride)` with the
-     composed price inside the route's stored `[sanityLow, sanityHigh]`;
+     composed price inside the route's stored `[sanityLow, sanityHigh]` and
+     the anchor band evaluated DIRECTION-AWARE per the depeg-exit rule (a
+     sell-side breach prices the floor at `min(routeValue, anchorValue)`
+     instead of reverting; a buy-side breach reverts - see C18);
    - returns `0x1626ba7e` on success; on failure reverts with **typed
      reasons** split transient vs fatal (`FloorNotMet`, `StaleOraclePrice`,
      `SequencerStarting` = transient; `OrderNotRegistered`, `TokenNotAllowed`,
@@ -1013,12 +1032,17 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // refuses every dependent route at the next validation). In PRESIGN mode
     // there is no fill-time gate - settlement reads its own preSignature
     // mapping - so revoke ALSO sweeps the liveOrder slots whose route (legs or
-    // anchor) reads the revoked feed and revokes their presignatures
-    // (setPreSignature(uid,false), policy-critical + residual-recorded, same
-    // discipline as removeToken). And like removeToken, revoke bumps a
-    // per-feed nonce folded into feed-certification pending keys, so a
-    // matured-unexecuted executeFeedEligibility for the same feed cannot be
-    // executed one block later to undo the revocation.
+    // anchor) reads the revoked feed and revokes their presignatures. Those
+    // setPreSignature(uid,false) calls are POLICY-CRITICAL and ATOMIC: they
+    // MUST all succeed or the whole revoke reverts - which is SAFE here for
+    // the same reason as removeToken's Presign classification (they touch
+    // ONLY the settlement: an owner check + one storage write, no hostile
+    // token anywhere in the path, so nothing can brick them). No residual
+    // path exists or is needed for them; residuals remain reserved for
+    // token-touching hygiene (allowance zeroing) only. And like removeToken,
+    // revoke bumps a per-feed nonce folded into feed-certification pending
+    // keys, so a matured-unexecuted executeFeedEligibility for the same feed
+    // cannot be executed one block later to undo the revocation.
     function revokeFeedEligibility(address feed) external;      // guardian or safe, INSTANT (risk-reducing)
 }
 ```
@@ -1209,9 +1233,15 @@ the verification log tracks which currently have no assigned target.
   Eip1271 mode rather than silently degrading to a weaker guarantee; such
   routes are usable at `rebalance` time in Presign mode only.
 - **C18**: bounds fail closed, never clamp. A rate leg outside its CAPO-style
-  growth cap or growing lower bound, or an anchor outside `maxDivergenceBps`,
-  REVERTS - deliberately diverging from Aave's reference, which clamps and
-  returns zero, because a clamped price silently yields a wrong floor.
+  growth cap or growing lower bound REVERTS - deliberately diverging from
+  Aave's reference, which clamps and returns zero, because a clamped price
+  silently yields a wrong floor. The anchor band carries ONE stated
+  exception (the depeg-exit rule in the P2 lane): a band breach on the SELL
+  token's route does NOT revert - validation proceeds at
+  `min(routeValue, anchorValue)`, an oracle-derived price both sources
+  support - while a breach on the BUY token's route reverts unconditionally.
+  Tests assert BOTH arms; a blanket both-direction revert is a C18 violation,
+  not a stricter implementation of it.
 - **C12**: `rebalance` in 1271 mode reverts unless the Safe's fallback handler
   is the pinned EFH and `EFH.domainVerifiers(safe, domainSeparator) == this`.
   (No silent fall-through to owner-threshold validation.)
@@ -1403,8 +1433,16 @@ the verification log tracks which currently have no assigned target.
   each assert on-chain that `preSignature(uid) == 0` (revoked) OR
   `filledAmount(uid) != 0` (consumed) OR `validTo < now` (expired) - or, if
   enumeration cannot be completed trustworthily, WAIT OUT V1's `maxTtl` from
-  the disable block before the first V2 rebalance. The deploy script encodes
-  this as a hard gate, not an operator checklist item.
+  the disable block before the first V2 rebalance. The wait is enforced
+  ON-CHAIN, not by the script: a deploy-script check cannot bind the curator,
+  who can call `rebalance` directly the moment V2 is enabled - a compromised
+  curator would simply restore the shared relayer allowance and let the
+  missed V1 presignature fill at its old limit. V2 therefore carries an
+  immutable `migrationUnlockAt` (constructor): `rebalance` reverts before it.
+  The verified-cancellation path deploys with `migrationUnlockAt = 0`; the
+  wait-out path deploys with `enableTime + V1_MAX_TTL`. The deploy script's
+  job is choosing the path and PROVING the choice (the per-uid assertions
+  above for the zero case), not enforcing the wait.
 
 ## Open decisions (for review - recommendation first)
 
