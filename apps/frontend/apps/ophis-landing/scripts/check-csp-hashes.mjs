@@ -53,6 +53,28 @@ if (htmlFiles.length === 0) {
   process.exit(1)
 }
 
+// CSP accepts sha256, sha384 and sha512, and its base64-value grammar allows
+// BOTH the standard alphabet and base64url (`-`/`_` for `+`/`/`). Two bypasses
+// lived here, both reproduced 2026-08-01: matching only sha256 hid a
+// sha384/sha512 entry, and matching only `+/` hid the base64url spelling of the
+// very same digest - a browser decodes `sha256-zjLSe-Ifl...` and
+// `sha256-zjLSe+Ifl...` identically, so the base64url form of a Cloudflare hash
+// would have executed while this guard passed.
+//
+// So compare DECODED digests, not strings.
+const canonicalHash = (raw) => {
+  const m = /^(sha(?:256|384|512))-([A-Za-z0-9+/\-_]+={0,2})$/.exec(raw)
+  if (!m) return null
+  const b64 = m[2].replace(/-/g, '+').replace(/_/g, '/')
+  return `${m[1]}-${Buffer.from(b64, 'base64').toString('hex')}`
+}
+// Header entries, canonicalised once, so BOTH directions compare digests.
+const headerCanonical = new Set(
+  [...headers.matchAll(/'(sha(?:256|384|512)-[A-Za-z0-9+/\-_=]+)'/g)]
+    .map((m) => canonicalHash(m[1]))
+    .filter(Boolean),
+)
+
 const seen = new Set()
 // Same scripts, digested under every CSP-supported algorithm (see below).
 const seenAnyAlgo = new Set()
@@ -75,7 +97,12 @@ for (const file of htmlFiles) {
     for (const algo of ['sha256', 'sha384', 'sha512']) {
       seenAnyAlgo.add(`${algo}-` + createHash(algo).update(body).digest('base64'))
     }
-    if (!headers.includes(`'${hash}'`) && !seen.has(hash)) {
+    // Canonical, not literal: `'sha256-l2grA_0G…'` (base64url) and
+    // `'sha256-l2grA/0G…'` are the same digest to a browser, and an entry
+    // written the first way was previously reported MISSING. Reproduced
+    // 2026-08-01; the earlier acceptance test missed it because it ADDED the
+    // base64url entry while leaving the standard one in place.
+    if (!headerCanonical.has(canonicalHash(hash)) && !seen.has(hash)) {
       console.error(`check-csp-hashes: MISSING hash in _headers: '${hash}'  (${relative(root, file)})`)
       failed = true
     }
@@ -124,21 +151,6 @@ const KNOWN_THIRD_PARTY = {
 const weakened = []
 
 // 1. Every inline hash in _headers must be backed by a script in dist.
-// CSP accepts sha256, sha384 and sha512, and its base64-value grammar allows
-// BOTH the standard alphabet and base64url (`-`/`_` for `+`/`/`). Two bypasses
-// lived here, both reproduced 2026-08-01: matching only sha256 hid a
-// sha384/sha512 entry, and matching only `+/` hid the base64url spelling of the
-// very same digest - a browser decodes `sha256-zjLSe-Ifl...` and
-// `sha256-zjLSe+Ifl...` identically, so the base64url form of a Cloudflare hash
-// would have executed while this guard passed.
-//
-// So compare DECODED digests, not strings.
-const canonicalHash = (raw) => {
-  const m = /^(sha(?:256|384|512))-([A-Za-z0-9+/\-_]+={0,2})$/.exec(raw)
-  if (!m) return null
-  const b64 = m[2].replace(/-/g, '+').replace(/_/g, '/')
-  return `${m[1]}-${Buffer.from(b64, 'base64').toString('hex')}`
-}
 const seenCanonical = new Set([...seenAnyAlgo].map(canonicalHash).filter(Boolean))
 const headerHashes = [...headers.matchAll(/'(sha(?:256|384|512)-[A-Za-z0-9+/\-_=]+)'/g)].map((m) => m[1])
 for (const hash of new Set(headerHashes)) {

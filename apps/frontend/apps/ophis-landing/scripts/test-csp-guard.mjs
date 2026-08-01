@@ -172,3 +172,22 @@ test('rejects a duplicate script-src whose FIRST copy is permissive', { skip: !d
   assert.match(r.out, /unsafe-inline' in script-src/)
   assert.match(r.out, /duplicate 'script-src' directive/)
 })
+
+test('ACCEPTS a shipped script whose ONLY entry is the base64url spelling', { skip: !distExists && 'run astro build first' }, () => {
+  // REPLACES the standard entry rather than adding beside it. The earlier
+  // acceptance test added one, so the standard spelling still satisfied the
+  // dist->headers check and the missing canonicalisation on that side stayed
+  // hidden: a legitimate base64url-only policy was reported as MISSING.
+  const r = runWith((h) =>
+    h.replace(/'sha256-([A-Za-z0-9+/=]+)'/, (_m, b64) => `'sha256-${b64.replace(/\+/g, '-').replace(/\//g, '_')}'`),
+  )
+  assert.equal(r.code, 0, r.out)
+  assert.match(r.out, /check-csp-hashes: OK/)
+})
+
+test('still reports a genuinely missing hash when an entry is deleted', { skip: !distExists && 'run astro build first' }, () => {
+  // Guard against the above turning into "accept anything": deletion must fail.
+  const r = runWith((h) => h.replace(/'sha256-[A-Za-z0-9+/=]+'\s?/, ''))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /MISSING hash in _headers/)
+})
