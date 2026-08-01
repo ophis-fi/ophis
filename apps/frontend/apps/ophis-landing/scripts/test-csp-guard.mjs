@@ -138,3 +138,37 @@ test("rejects 'unsafe-inline' in default-src when it is the only script directiv
   assert.equal(r.code, 1)
   assert.match(r.out, /unsafe-inline' in default-src/)
 })
+
+test('rejects the base64url spelling of an unbacked hash', { skip: !distExists && 'run astro build first' }, () => {
+  // CSP's base64-value grammar allows -/_ as well as +/. A browser decodes
+  // 'sha256-zjLSe-Ifl…' and 'sha256-zjLSe+Ifl…' to the SAME digest, so matching
+  // only the standard alphabet let the base64url form of a Cloudflare hash
+  // through while this guard passed.
+  const b64url = 'zjLSe+IflcBnH+CRkSBSMcUK03hIJ1iKjyFreRtwze4='.replace(/\+/g, '-').replace(/\//g, '_')
+  const r = runWith(addToScriptSrc(`sha256-${b64url}`))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /Cloudflare Tag Gateway|no inline script in dist produces this hash/)
+})
+
+test('ACCEPTS the base64url spelling of a hash dist really produces', { skip: !distExists && 'run astro build first' }, () => {
+  // Canonicalising must not turn into "reject anything with -/_".
+  const { createHash } = require('node:crypto')
+  const html = readFileSync(join(root, 'dist/index.html'), 'utf8')
+  const m = /<script(?![^>]*\bsrc=)(?![^>]*type="(?:application\/ld\+json|importmap|speculationrules)")[^>]*>([\s\S]*?)<\/script>/.exec(html)
+  assert.ok(m, 'expected an inline script in dist/index.html')
+  const std = createHash('sha256').update(m[1]).digest('base64')
+  const url = std.replace(/\+/g, '-').replace(/\//g, '_')
+  const r = runWith(addToScriptSrc(`sha256-${url}`))
+  assert.equal(r.code, 0, r.out)
+})
+
+test('rejects a duplicate script-src whose FIRST copy is permissive', { skip: !distExists && 'run astro build first' }, () => {
+  // Browsers enforce the first occurrence and ignore later ones, so a
+  // last-wins parse would have read the strict copy and passed.
+  const r = runWith((h) =>
+    h.replace(/script-src /, "script-src 'self' 'unsafe-inline'; script-src "),
+  )
+  assert.equal(r.code, 1)
+  assert.match(r.out, /unsafe-inline' in script-src/)
+  assert.match(r.out, /duplicate 'script-src' directive/)
+})

@@ -124,12 +124,26 @@ const KNOWN_THIRD_PARTY = {
 const weakened = []
 
 // 1. Every inline hash in _headers must be backed by a script in dist.
-// CSP accepts sha256, sha384 and sha512. Matching only sha256 left a bypass:
-// a sha384/sha512 entry pasted from a violation report was invisible here and
-// the guard passed. Reproduced 2026-08-01.
-const headerHashes = [...headers.matchAll(/'(sha(?:256|384|512)-[A-Za-z0-9+/=]+)'/g)].map((m) => m[1])
+// CSP accepts sha256, sha384 and sha512, and its base64-value grammar allows
+// BOTH the standard alphabet and base64url (`-`/`_` for `+`/`/`). Two bypasses
+// lived here, both reproduced 2026-08-01: matching only sha256 hid a
+// sha384/sha512 entry, and matching only `+/` hid the base64url spelling of the
+// very same digest - a browser decodes `sha256-zjLSe-Ifl...` and
+// `sha256-zjLSe+Ifl...` identically, so the base64url form of a Cloudflare hash
+// would have executed while this guard passed.
+//
+// So compare DECODED digests, not strings.
+const canonicalHash = (raw) => {
+  const m = /^(sha(?:256|384|512))-([A-Za-z0-9+/\-_]+={0,2})$/.exec(raw)
+  if (!m) return null
+  const b64 = m[2].replace(/-/g, '+').replace(/_/g, '/')
+  return `${m[1]}-${Buffer.from(b64, 'base64').toString('hex')}`
+}
+const seenCanonical = new Set([...seenAnyAlgo].map(canonicalHash).filter(Boolean))
+const headerHashes = [...headers.matchAll(/'(sha(?:256|384|512)-[A-Za-z0-9+/\-_=]+)'/g)].map((m) => m[1])
 for (const hash of new Set(headerHashes)) {
-  if (seenAnyAlgo.has(hash)) continue
+  const canon = canonicalHash(hash)
+  if (canon && seenCanonical.has(canon)) continue
   const known = KNOWN_THIRD_PARTY[hash]
   weakened.push(
     known
@@ -148,16 +162,24 @@ for (const hash of new Set(headerHashes)) {
 // `Content-Security-Policy: ` and returned null, defeating the fallback check.
 // Reproduced 2026-08-01.
 const cspValue = /^\s*Content-Security-Policy:\s*(.+)$/im.exec(headers)?.[1] ?? ''
-const directives = new Map(
-  cspValue
-    .split(';')
-    .map((d) => d.trim())
-    .filter(Boolean)
-    .map((d) => {
-      const i = d.search(/\s/)
-      return i === -1 ? [d.toLowerCase(), ''] : [d.slice(0, i).toLowerCase(), d.slice(i + 1).trim()]
-    }),
-)
+//
+// Duplicates: a browser IGNORES every repeat of a directive and enforces the
+// FIRST. `new Map()` keeps the LAST, so
+// `script-src 'self' 'unsafe-inline'; script-src 'self' <hashes>` is permissive
+// live while the guard would only ever see the strict copy. Keep the first, and
+// treat any duplicate as weakening in its own right, since it is unreadable.
+const directives = new Map()
+const duplicateDirectives = []
+for (const raw of cspValue.split(';').map((d) => d.trim()).filter(Boolean)) {
+  const i = raw.search(/\s/)
+  const name = (i === -1 ? raw : raw.slice(0, i)).toLowerCase()
+  const value = i === -1 ? '' : raw.slice(i + 1).trim()
+  if (directives.has(name)) {
+    duplicateDirectives.push(name)
+    continue // first occurrence wins, as in a browser
+  }
+  directives.set(name, value)
+}
 const directiveValue = (name) => directives.get(name) ?? null
 const scriptSrc = directiveValue('script-src')
 const scriptSrcElem = directiveValue('script-src-elem')
@@ -182,14 +204,22 @@ for (const [name, value] of [['script-src', scriptSrc], ['script-src-elem', scri
   }
 }
 
+for (const name of new Set(duplicateDirectives)) {
+  weakened.push(
+    `duplicate '${name}' directive — browsers enforce the FIRST and ignore the rest, ` +
+      `so the later copy is decorative; collapse them into one`,
+  )
+}
+
 if (weakened.length) {
   console.error('check-csp-hashes: CSP WEAKENED — refusing to pass:\n')
   for (const w of weakened) console.error(`  - ${w}`)
   console.error(
     '\nAn inline hash belongs in _headers only while a script in dist produces it.\n' +
-      "To silence Cloudflare's edge-injected gtag violations, disable AUTOMATIC\n" +
-      'INJECTION for Google tag gateway on the ophis.fi zone in the Cloudflare\n' +
-      'dashboard — not by adding hashes here.\n',
+      'Google tag gateway was fully disabled on the ophis.fi zone on 2026-08-01\n' +
+      '(nothing depends on /938g any more), so its scripts should no longer be\n' +
+      'injected at all. If they reappear, turn the zone feature off again — never\n' +
+      'by adding hashes here.\n',
   )
   process.exit(1)
 }
