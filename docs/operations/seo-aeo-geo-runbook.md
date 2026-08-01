@@ -145,18 +145,41 @@ gtag block in `Base.astro` (DOM-built bar, re-run check-csp-hashes after edits);
 inline) mounted from `initGa4()`; **docs** uses a `clientModules` entry
 (`src/consent-banner.ts`). All share the `localStorage['ophis_consent']` key.
 
-DONE (2026-06-07): Cloudflare **Google Tag Gateway** (first-party tag serving)
-is enabled on the ophis.fi zone, endpoint **`/938g`** (measurementId
-G-NG9YX5G9CM, hideOriginalIp). All three surfaces load gtag.js from the
-same-origin first-party path (`/938g/gtag/js?id=...`) instead of
-googletagmanager.com. **The beacon half of this is NOT working (measured
-2026-08-01): `collect` requests go to `region1.google-analytics.com`, not
-through `/938g`, so the ad-blocker recovery this was adopted for is not
-currently being realised.** Only the gtag.js *fetch* is first-party. See the
-note above the analytics section for what was ruled out. Covered by each CSP's `'self'` (script-src + connect-src); the
-googletagmanager.com / *.google-analytics.com allowances are kept for fallback.
-The endpoint path is assigned by Cloudflare; if it ever rotates, update the
-`/938g` literal in Base.astro, docusaurus.config.ts, and initGa4.ts.
+REMOVED (2026-08-01): Cloudflare **Google Tag Gateway** was enabled on the
+ophis.fi zone from 2026-06-07 (endpoint `/938g`, measurementId G-NG9YX5G9CM) and
+has been backed out. All three surfaces now load gtag.js from
+`https://www.googletagmanager.com/gtag/js?id=...` again, which every CSP already
+allowed (the allowances had been kept as fallback), so no header change was
+needed beyond rotating the landing's inline-script hash.
+
+Why it was removed, in the order it was discovered:
+1. Its edge HTML rewriting injected **two inline scripts** into browser-like
+   requests only (plain `curl` 91,129 bytes vs Chrome UA 91,545), which never
+   appear in `dist/` and so were invisible to CI while producing two
+   `script-src-elem` violations on every page in production.
+2. Those scripts were a **duplicate, consent-unaware GA4 setup**: they ran
+   BEFORE the block in `Base.astro` and called
+   `gtag('config','G-NG9YX5G9CM')` with no consent defaults and no
+   `anonymize_ip`. Had anyone silenced the console by whitelisting their hashes,
+   the result would have been double-counted `page_view`s and analytics cookies
+   set for EEA visitors before opt-in. `check-csp-hashes.mjs` now refuses any
+   inline hash not produced by a script in `dist`, so that fix is unavailable.
+3. The benefit it was adopted for **was not being delivered**: measurement on
+   2026-08-01 showed `collect` beacons going to `region1.google-analytics.com`,
+   not through `/938g`. Only the gtag.js fetch was ever first-party. Pushing the
+   `google_tags_first_party` marker from our own code did not change the
+   transport, so this was not a side-effect of the CSP block.
+
+Trade-off accepted: the gtag.js *fetch* is third-party again, so a blocker that
+blocks googletagmanager.com will block it. That was already true of the beacons,
+which is the larger half.
+
+⚠️ **The zone toggle is dashboard-only.** There is no API for it: it is absent
+from `/zones/{id}/settings` and every plausible route
+(`google_tag_gateway`, `gtg`, `zaraz/config`, `tag_gateway`, `first_party_tags`,
+account-level included) returns 400. Turn it off in the Cloudflare dashboard
+AFTER this code is deployed - doing it first would 404 `/938g/gtag/js` and break
+GA4 on all three surfaces until the deploy landed.
 
 ### (reference) swap CSP, as implemented
 
