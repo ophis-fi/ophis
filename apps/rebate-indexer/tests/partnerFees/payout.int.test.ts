@@ -387,6 +387,58 @@ describe('round-3 hardening', () => {
     expect(rows[1]!.status).toBe('computed');
   });
 
+  it('round-7: a PRE-SUBMIT failure on the oldest batch STOPS the catch-up (funding preserved oldest-first)', async () => {
+    const sql = await getSql();
+    await seedTrade(sql, R1, 125, '2026-05-15T00:00:00Z'); // June: $100 paid
+    await accrue(JUN);
+    await seedTrade(sql, R2, 125, '2026-06-15T00:00:00Z'); // July: $100 paid
+    await accrue(new Date('2026-07-01T02:00:00Z'));
+    let calls = 0;
+    const r = await propose(wei(150), {
+      propose: async () => {
+        calls++;
+        throw new Error('rpc down'); // BEFORE onBeforeSubmit -> presubmit-failed
+      },
+    });
+    expect(calls).toBe(1); // the newer batch did NOT consume the older one's funding
+    expect(r.proposed).toBe(0);
+    const rows = await sql<{ status: string }[]>`SELECT status FROM partner_fee_batches ORDER BY cycle_month`;
+    expect(rows[0]!.status).toBe('computed'); // retried next run, oldest first
+    expect(rows[1]!.status).toBe('computed');
+  });
+
+  it('round-7: a DURABLE unresolved skip blocks the accrual across runs until operator-cleared', async () => {
+    const sql = await getSql();
+    await seedTrade(sql, R1, 100);
+    await sql`INSERT INTO partner_fee_cursor (chain_id, unresolved_skips) VALUES (10, 2)
+              ON CONFLICT (chain_id) DO UPDATE SET unresolved_skips = 2`;
+    await expect(accrue(JUN)).rejects.toThrow(/skipped \(ambiguous\) feed attribution/);
+    // Operator reconciles + clears (what partner-fee-resolve-skips does) -> accrual proceeds.
+    await sql`UPDATE partner_fee_cursor SET unresolved_skips = 0`;
+    const r = await accrue(JUN);
+    expect(r.status).toBe('computed');
+  });
+
+  it('round-7: the carried/quarantined reservation is REPRICED at proposal time (WETH drop reserves more)', async () => {
+    const sql = await getSql();
+    // June: R2 carries $24 (below threshold). July: R1 owed $100, payable.
+    await seedTrade(sql, R2, 30, '2026-05-15T00:00:00Z'); // 0.8*30 = $24 carried
+    await accrue(JUN);
+    await seedTrade(sql, R1, 125, '2026-06-15T00:00:00Z'); // $100 paid
+    await accrue(new Date('2026-07-01T02:00:00Z'));
+    // WETH halves before the proposal. Balance covers $100 + the $24 carry at the NEW price
+    // minus one wei -> the payable batch must be BLOCKED. Under the old wei-snapshot
+    // reservation the carry was reserved at HALF this size and the batch would have proposed.
+    const half = PRICE / 2;
+    const need = usdFpToWei(usdToFp(100), half) + usdFpToWei(usdToFp(24), half);
+    const r = await propose(need - 1n, { fetchWethUsdPrice: async () => half });
+    expect(r.blocked).toBe(1);
+    expect(r.proposed).toBe(0);
+    // With exactly enough balance it proposes.
+    const r2 = await propose(need, { fetchWethUsdPrice: async () => half });
+    expect(r2.proposed).toBe(1);
+  });
+
   it('round-4: a proposal-time quarantine reduces the spendable remainder (no proposing against just-reserved WETH)', async () => {
     const sql = await getSql();
     // June: R1 $80 (paid at accrual). July: R2 $100 (paid). Safe balance exactly $100-worth.

@@ -126,6 +126,19 @@ async function runPipelineSteps(): Promise<void> {
       partnerFeedOk = false;
       log.error('partner-fee fetch hit its per-run page cap with pages remaining; the 1st-of-month shared-Safe distribution fails closed until the feed drains');
     }
+    // Feeds unset AFTER the program was active = misconfiguration: new partner settlements
+    // would be entirely absent from the DB, invisible to the accrual completeness gate.
+    if (pf.misconfigured) {
+      partnerFeedOk = false;
+      log.error('PARTNER_FEE_FEED_URLS is empty but the partner-fee program has been active; fail-closed until the feed config is restored');
+      await alerts.alert('partner-fee', 'PARTNER_FEE_FEED_URLS is EMPTY but partner-fee cursor rows exist (the program was active). Fail-closed: the shared-Safe distribution is blocked until the feed config is restored.').catch(() => {});
+    }
+    // An anomalous (over-cap) fee valuation was quarantined unpriced -- same fail-closed
+    // posture as a pricing failure until the operator investigates.
+    if (pfp.anomalous > 0) {
+      partnerFeedOk = false;
+      log.error({ anomalous: pfp.anomalous }, 'partner-fee pricer quarantined anomalous valuation(s); the shared-Safe distribution fails closed pending investigation');
+    }
     log.info({ fetched: pf.inserted, skipped: pf.skipped, priced: pfp.priced, priceFailed: pfp.failed }, 'partner-fee fetch+price complete');
   } catch (err) {
     partnerFeedOk = false;

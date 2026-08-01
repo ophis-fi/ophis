@@ -8,7 +8,7 @@ import { getProposalStatus, waitForExecution } from '../batch/poll.js';
 import { buildEthCallSimulator, isolateBadRecipients, type Transfer } from '../batch/dryRun.js';
 import { computePartnerFees } from './computePartnerFees.js';
 import { usdFpToWei, usdToFp } from './split.js';
-import { currentCarriedUsdByRecipient, carriedQuarantinedLiabilityWei } from './liability.js';
+import { currentCarriedUsdByRecipient, carriedQuarantinedUsd } from './liability.js';
 import { isScreenedOut, resolveSanctionsList } from './screening.js';
 import { notify, alerts } from '../telegram/alerter.js';
 import { logger } from '../logger.js';
@@ -119,6 +119,22 @@ export async function accruePartnerFees(deps: PartnerFeeAccrualDeps = {}): Promi
       `partner-fee accrual blocked: ${incompleteCount} in-scope trade(s) are unpriced or missing a ` +
         'block timestamp, so the cycle owed would under-count. Fix the partner-fee pricer/poller ' +
         'backlog and re-trigger the pipeline (accrual re-runs idempotently).',
+    );
+  }
+  // DURABLE skip gate (migration 0022): a skipped (ambiguous) attribution is dropped fees the
+  // cursor has advanced past -- invisible to the row-based check above and to any later query.
+  // The counter persists across restarts and month boundaries, so a mid-month skip still
+  // blocks the NEXT accrual until the operator reconciles it (re-cursor or manual accounting)
+  // and clears it via `partner-fee-resolve-skips`.
+  const [skipRow] = await sql<{ n: string }[]>`
+    SELECT COALESCE(SUM(unresolved_skips), 0)::text AS n FROM partner_fee_cursor
+  `;
+  const unresolvedSkips = parseInt(skipRow?.n ?? '0', 10);
+  if (unresolvedSkips > 0) {
+    throw new Error(
+      `partner-fee accrual blocked: ${unresolvedSkips} skipped (ambiguous) feed attribution(s) remain ` +
+        'unresolved -- their fees were dropped past the cursor and the cycle owed would silently ' +
+        "under-count. Reconcile them, then clear with the 'partner-fee-resolve-skips' CLI.",
     );
   }
 
@@ -381,12 +397,22 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
   const balance = await readBalance({ rpcUrl: deps.rpcUrl, weth });
   // Reserve BOTH (i) other programs' queued (unsigned) proposals AND the partner program's own
   // already-queued paid proposals -- `sumQueuedReservedWei` -- AND (ii) the partner program's own
-  // carried/quarantined liability -- `carriedQuarantinedLiabilityWei` -- so proposing a fresh
+  // carried/quarantined liability -- `carriedQuarantinedUsd`, repriced at proposal -- so proposing a fresh
   // paid batch under an underfunded Safe can never leave a carried/quarantined obligation
   // unfunded. This mirrors what the rebate/affiliate batchers reserve (the full partner
   // liability), so R + P + A <= B holds across all three consumers. (Codex symmetric-reservation)
   const queuedReserved = await sumQueuedReservedWei();
-  const ownCarriedQuarantined = await carriedQuarantinedLiabilityWei();
+  // REPRICE the carried/quarantined reservation at the proposal-time rate: the entries'
+  // owed_wei are accrual-time snapshots, and this proposer can run WEEKS later (nightly
+  // retries, funding waits). The USD obligation is unchanged, so after a WETH drop the
+  // snapshot sum under-reserves it -- per-recipient amounts are sub-$25 but the AGGREGATE is
+  // unbounded (10k recipients x $24 need 4x the WETH after a $4000->$1000 move), and a
+  // catch-up payout could consume exactly the WETH those carries still need. (The
+  // rebate/affiliate batchers keep reading the wei snapshots: they run minutes after the
+  // monthly accrual repriced every entry, so their drift is bounded by hours, not weeks.)
+  const ownCarriedQuarantinedUsd = await carriedQuarantinedUsd();
+  const ownCarriedQuarantined =
+    ownCarriedQuarantinedUsd > 0 ? usdFpToWei(usdToFp(ownCarriedQuarantinedUsd), wethUsdPrice) : 0n;
   const reserved = queuedReserved + ownCarriedQuarantined;
   let remaining = balance > reserved ? balance - reserved : 0n;
   if (reserved > 0n) {
@@ -522,6 +548,13 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
       // unverified queue. The alert already fired; reconcile/manual verification resolves the
       // batch, and the nightly proposal retry picks the remaining batches up next run.
       log.error({ cycle, batchId: batch.id }, 'partner-fee catch-up STOPPED after an ambiguous Safe submission; remaining batches retry next run');
+      break;
+    } else {
+      // presubmit-failed: nothing was queued, but this batch's owed is still due OLDEST
+      // FIRST -- continuing would let newer batches consume the funding it retries against
+      // next run (150 available, two 100-owed batches: a transient pre-submit failure on
+      // the oldest must not let the newer one queue 100 and strand the older at 50).
+      log.error({ cycle, batchId: batch.id }, 'partner-fee catch-up STOPPED after a pre-submit failure on the oldest batch; retried next run before any newer cycle');
       break;
     }
   }

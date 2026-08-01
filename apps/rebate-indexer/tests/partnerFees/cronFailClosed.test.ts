@@ -15,7 +15,8 @@ process.env.PARTNER_FEE_PAYOUT_ENABLED = 'true';
 const cronState = vi.hoisted(() => ({
   firstOfMonth: true,
   batcherRanThisMonth: false,
-  feed: { inserted: 0, skipped: 0, enriched: 0, capped: false },
+  feed: { inserted: 0, skipped: 0, enriched: 0, capped: false, misconfigured: false },
+  pricer: { priced: 0, failed: 0, anomalous: 0 },
 }));
 
 const runBatcher = vi.fn(async () => ({ status: 'no_recipients', batchId: 1, safeTxHash: null, recipientCount: 0, poolWei: 0n }));
@@ -39,7 +40,7 @@ vi.mock('../../src/affiliate/payoutPlan.js', () => ({ resolveAffiliatePayoutEnab
 vi.mock('../../src/ownFee/payout.js', () => ({ accrueOwnFee: vi.fn(async () => ({})), proposeOwnFeeBatches, reconcileOwnFeeBatches: vi.fn(async () => ({})) }));
 vi.mock('../../src/ownFee/payoutPlan.js', () => ({ resolveOwnFeePayoutEnabled: () => true }));
 vi.mock('../../src/partnerFees/fetch.js', () => ({ runPartnerFeeFetch: vi.fn(async () => ({ ...cronState.feed })) }));
-vi.mock('../../src/partnerFees/pricePartnerFees.js', () => ({ runPartnerFeePricer: vi.fn(async () => ({ priced: 0, failed: 0 })) }));
+vi.mock('../../src/partnerFees/pricePartnerFees.js', () => ({ runPartnerFeePricer: vi.fn(async () => ({ ...cronState.pricer })) }));
 vi.mock('../../src/partnerFees/payout.js', () => ({
   accruePartnerFees,
   proposePartnerFeeBatches,
@@ -63,7 +64,8 @@ describe('P1.2 cron fail-closed on partner accrual failure', () => {
     vi.clearAllMocks();
     cronState.firstOfMonth = true;
     cronState.batcherRanThisMonth = false;
-    cronState.feed = { inserted: 0, skipped: 0, enriched: 0, capped: false };
+    cronState.feed = { inserted: 0, skipped: 0, enriched: 0, capped: false, misconfigured: false };
+    cronState.pricer = { priced: 0, failed: 0, anomalous: 0 };
   });
 
   it('SKIPS the rebate batcher + affiliate payout when partner accrual throws (own-fee still runs)', async () => {
@@ -87,7 +89,7 @@ describe('P1.2 cron fail-closed on partner accrual failure', () => {
   });
 
   it('SKIPS the shared-Safe distribution when the fetch reported skipped (ambiguous) attributions', async () => {
-    cronState.feed = { inserted: 0, skipped: 2, enriched: 0, capped: false };
+    cronState.feed = { inserted: 0, skipped: 2, enriched: 0, capped: false, misconfigured: false };
     const { runNightlyPipeline } = await import('../../src/cron.js');
     await runNightlyPipeline();
     expect(accruePartnerFees).toHaveBeenCalledTimes(1); // accrual still records what it can
@@ -97,7 +99,23 @@ describe('P1.2 cron fail-closed on partner accrual failure', () => {
   });
 
   it('SKIPS the shared-Safe distribution when the fetch was page-CAPPED (feed only partially drained)', async () => {
-    cronState.feed = { inserted: 500, skipped: 0, enriched: 0, capped: true };
+    cronState.feed = { inserted: 500, skipped: 0, enriched: 0, capped: true, misconfigured: false };
+    const { runNightlyPipeline } = await import('../../src/cron.js');
+    await runNightlyPipeline();
+    expect(runBatcher).not.toHaveBeenCalled();
+    expect(runAffiliatePayout).not.toHaveBeenCalled();
+  });
+
+  it('SKIPS the shared-Safe distribution when the feed config is MISSING on an active deployment', async () => {
+    cronState.feed = { inserted: 0, skipped: 0, enriched: 0, capped: false, misconfigured: true };
+    const { runNightlyPipeline } = await import('../../src/cron.js');
+    await runNightlyPipeline();
+    expect(runBatcher).not.toHaveBeenCalled();
+    expect(runAffiliatePayout).not.toHaveBeenCalled();
+  });
+
+  it('SKIPS the shared-Safe distribution when the pricer quarantined an ANOMALOUS valuation', async () => {
+    cronState.pricer = { priced: 3, failed: 0, anomalous: 1 };
     const { runNightlyPipeline } = await import('../../src/cron.js');
     await runNightlyPipeline();
     expect(runBatcher).not.toHaveBeenCalled();

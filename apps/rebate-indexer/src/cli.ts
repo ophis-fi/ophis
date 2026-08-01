@@ -113,6 +113,23 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
     });
     if (!ran) log.error('pipeline lock busy (nightly run or another command in progress); retry later');
   },
+  // Clear the durable skipped-attribution markers AFTER reconciling them (re-cursor or manual
+  // accounting). The accrual completeness gate blocks while any are set (migration 0022), so
+  // this is the explicit operator sign-off that the dropped fees were accounted for.
+  async ['partner-fee-resolve-skips']() {
+    const ran = await withPipelineLock(async () => {
+      const rows = await sql<{ chain_id: number; unresolved_skips: number }[]>`
+        SELECT chain_id, unresolved_skips FROM partner_fee_cursor WHERE unresolved_skips > 0
+      `;
+      if (rows.length === 0) {
+        log.info('no unresolved partner-fee skips');
+        return;
+      }
+      await sql`UPDATE partner_fee_cursor SET unresolved_skips = 0, updated_at = now() WHERE unresolved_skips > 0`;
+      log.warn({ cleared: rows.map((r) => ({ chainId: r.chain_id, skips: r.unresolved_skips })) }, 'partner-fee unresolved skips CLEARED by operator (accrual gate re-opened)');
+    });
+    if (!ran) log.error('pipeline lock busy (nightly run or another command in progress); retry later');
+  },
   // Dry-run the monthly partner-fee payout (accrue, then propose in dry-run mode — records the
   // ledger + dry-runs transfers, never submits a Safe tx). Locked: contains an accrual.
   async ['partner-fee-dry-run']() {

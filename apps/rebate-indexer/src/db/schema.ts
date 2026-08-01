@@ -334,6 +334,10 @@ export const partnerFeeCursor = pgTable('partner_fee_cursor', {
   nextBlock: bigint('next_block', { mode: 'bigint' }).notNull().default(0n),
   nextLogIndex: bigint('next_log_index', { mode: 'bigint' }).notNull().default(0n),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  // Skipped (ambiguous) attributions whose rows the cursor advanced past — dropped fees no
+  // query can re-detect. Durable so the accrual completeness gate blocks across restarts and
+  // month boundaries until the operator reconciles + clears (partner-fee-resolve-skips).
+  unresolvedSkips: integer('unresolved_skips').notNull().default(0),
 });
 
 // One row per (settled fee-bearing trade, partner recipient). PK (trade_uid,

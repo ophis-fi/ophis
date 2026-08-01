@@ -263,15 +263,28 @@ async function backfillBlockTimestamps(fetcher: BlockTimestampFetcher): Promise<
  * in a partially-returned block is ever skipped OR double-counted. Skipped (ambiguous)
  * attributions are surfaced via a capped alert; they are NOT inserted (fail-safe under-count).
  */
-export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promise<{ inserted: number; skipped: number; enriched: number; capped: boolean }> {
+export async function runPartnerFeeFetch(
+  deps: PartnerFeeFetchDeps = {},
+): Promise<{ inserted: number; skipped: number; enriched: number; capped: boolean; misconfigured: boolean }> {
   const feeds = deps.feeds ?? resolvePartnerFeeFeeds();
   const fetcher = deps.fetcher ?? defaultFeedFetcher;
   // Re-assert even for injected feeds (resolvePartnerFeeFeeds already asserts the env path), so a
   // test or a direct caller can never bypass the config-fee-free guard.
   assertFeedsConfigFeeFree(feeds);
   if (feeds.length === 0) {
+    // Default-inert pre-launch state -- UNLESS the program has already been active (any
+    // cursor row exists): then an empty PARTNER_FEE_FEED_URLS is a MISCONFIGURATION, not
+    // inertness. Returning a quiet zero-work success would leave partnerFeedOk true while
+    // new partner settlements are entirely absent from the DB -- invisible to the accrual
+    // completeness gate -- and the shared Safe would distribute WETH owed to partners.
+    const sqlc = await getSql();
+    const [row] = await sqlc<{ active: boolean }[]>`SELECT EXISTS(SELECT 1 FROM partner_fee_cursor) AS active`;
+    if (row?.active) {
+      log.error('PARTNER_FEE_FEED_URLS is empty but the partner-fee program has been active (cursor rows exist); treating the feed as MISCONFIGURED (fail-closed)');
+      return { inserted: 0, skipped: 0, enriched: 0, capped: false, misconfigured: true };
+    }
     log.debug('no partner-fee feeds configured (PARTNER_FEE_FEED_URLS unset); skipping');
-    return { inserted: 0, skipped: 0, enriched: 0, capped: false };
+    return { inserted: 0, skipped: 0, enriched: 0, capped: false, misconfigured: false };
   }
 
   let inserted = 0;
@@ -293,6 +306,14 @@ export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promis
           skipped++;
           if (skippedExamples.length < 10) skippedExamples.push(`${t.orderUid} (${result.reason})`);
           log.warn({ orderUid: t.orderUid, reason: result.reason, chainId: feed.chainId }, 'partner-fee attribution skipped (ambiguous slot mapping); not accrued');
+          // DURABLE marker (migration 0022): the cursor advances past this row, so the drop
+          // is otherwise undetectable later. The accrual completeness gate blocks while any
+          // unresolved skip exists, across restarts and month boundaries, until the operator
+          // reconciles and runs `partner-fee-resolve-skips`.
+          await (await getSql())`
+            INSERT INTO partner_fee_cursor (chain_id, unresolved_skips) VALUES (${feed.chainId}, 1)
+            ON CONFLICT (chain_id) DO UPDATE SET unresolved_skips = partner_fee_cursor.unresolved_skips + 1, updated_at = now()
+          `;
           continue;
         }
         for (const a of result.attributions) {
@@ -345,5 +366,5 @@ export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promis
   }
 
   log.info({ inserted, skipped, enriched, feeds: feeds.length }, 'partner-fee fetch complete');
-  return { inserted, skipped, enriched, capped };
+  return { inserted, skipped, enriched, capped, misconfigured: false };
 }
