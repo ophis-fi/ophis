@@ -45,6 +45,36 @@ structured data.
 > Only **executable** scripts (e.g. external `gtag.js` and its inline bootstrap)
 > require a `script-src` allowance.
 
+> **The two gtag CSP console violations are EXPECTED, and must not be "fixed"
+> by whitelisting (diagnosed 2026-08-01).** Every page on `ophis.fi` logs two
+> `script-src-elem` violations. They are NOT ours: Cloudflare's Google Tag
+> Gateway rewrites the HTML at the edge and injects two inline scripts, into
+> browser-like requests only (a plain `curl` gets 91,129 bytes, a Chrome UA gets
+> 91,545). They are absent from `dist/`, which is why `check-csp-hashes` passes
+> while production violates.
+>
+> Blocking them is correct. They duplicate, and pre-empt, the consent-aware
+> block in `Base.astro`: CF's pair runs first and calls
+> `gtag('config','G-NG9YX5G9CM')` with **no consent defaults and no
+> `anonymize_ip`**. Allowing them would double-count every `page_view` and set
+> analytics cookies for EEA visitors before opt-in. GA4 is verified working
+> today without them (gtag.js loads first-party from `/938g`, `dataLayer`
+> populates, a `collect` beacon fires after Accept).
+>
+> `scripts/check-csp-hashes.mjs` now FAILS if either injected hash, or
+> `'unsafe-inline'`, appears in `public/_headers` (mutation-tested both ways).
+>
+> **To actually clear the console:** disable *automatic injection* for Google
+> tag gateway on the `ophis.fi` zone in the Cloudflare dashboard. It is not
+> exposed on the zone-settings API, so it needs the dashboard. Keep the `/938g`
+> proxy path itself, since `Base.astro` loads gtag.js through it.
+>
+> Separately: measurement beacons currently go to `region1.google-analytics.com`,
+> not through `/938g`, so the ad-blocker-resilience benefit of Tag Gateway is not
+> being realised. Tested and ruled out as a CSP side-effect: pushing the
+> `google_tags_first_party` marker ourselves before load does NOT switch the
+> transport. Unresolved, and independent of the violations above.
+
 ## Done: analytics + verification (live as of 2026-06-03)
 
 ### 1. Search Console / Bing / Yandex verification (GSC + Bing DONE; Yandex apex done, subdomains PENDING)
