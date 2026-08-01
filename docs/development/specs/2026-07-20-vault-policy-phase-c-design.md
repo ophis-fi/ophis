@@ -929,6 +929,13 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
                                                                 // (submitted or matured-unexecuted): otherwise the Safe
                                                                 // could execute a matured add one block after the
                                                                 // guardian's removal and silently undo the veto
+    // Failed residual steps are PERSISTED so the retry knows WHAT to retry:
+    // removing buy-side token T can fail zeroing approve(S, 0) on the ORDER'S
+    // SELL token S, and `sweepResidual(T)` receives only T. removeToken records
+    // residuals[token] = {sellToken, uid, kind}[] (bounded: one per affected
+    // live order, <= MAX_ALLOWED_TOKENS entries); sweepResidual iterates and
+    // clears them on success. Without the record, a residual involving another
+    // token's allowance is unrecoverable once the failure event scrolls by.
     function sweepResidual(address token) external;             // retry residual revocations that failed
     function rotateGuardian(address newGuardian) external;      // Safe-submitted, TIMELOCKED like a token add and
                                                                 // incumbent-guardian-cancelable (C16: instant rotation
@@ -1006,7 +1013,14 @@ the verification log tracks which currently have no assigned target.
   `max(0, sellUsd18 - leaked(sellUsd18, block.timestamp - registeredAt))`,
   the charge decayed by the SAME leak schedule the bucket applies (OrderState
   already stores `registeredAt`), still saturating against the current bucket
-  level. Refund arithmetic saturates at zero: a naive
+  level. The CHARGE itself is the in-band worst case: `sellUsd18` is computed
+  at the SELL route's `sanityHigh`, not the live route price. A correlated
+  underreport (sell and buy routes low by the same factor, both inside their
+  bands) cancels out of the cross-rate floor AND any same-denominated anchor
+  comparison - the floor is immune, but a route-price-based charge would
+  stretch the effective per-day turnover past the cap by exactly that factor.
+  Overcharging is fail-closed (a curator hits the cap sooner); operators size
+  `dailyUsdTurnoverCap` knowing charges land at top-of-band. Refund arithmetic saturates at zero: a naive
   subtraction underflow-reverts on a drained bucket and, through the shared
   cancel path, would propagate into `removeToken`. Bucket accounting never exceeds Phase-B
   bounds (instantaneous <= cap, rolling 24h <= ~2x cap). (Fuzz target: fill an
@@ -1196,7 +1210,15 @@ the verification log tracks which currently have no assigned target.
 - **infra**: Unichain EFH replay-deploy (one funded tx to the CREATE2 proxy;
   initcode preserved); per-chain deploy scripts extended with the wiring
   ceremony (Safe owners: `setFallbackHandler(EFH)` THEN
-  `setDomainVerifier(domainSeparator, module)`). Two mechanics the scripts
+  `setDomainVerifier(domainSeparator, module)`). The ceremony FIRST reads
+  `EFH.domainVerifiers(safe, domainSeparator)` and REFUSES to proceed if a
+  different nonzero verifier is already registered: EFH has ONE verifier slot
+  per (safe, domain), so overwriting silently kills the Safe's existing
+  conditional orders (e.g. a ComposableCoW deployment), and restoring the old
+  verifier later kills every Ophis order instead. A Safe already using EFH on
+  this settlement domain is onboarded only after an explicit migration
+  decision - coexistence on one domain is structurally impossible and must be
+  surfaced, never clobbered. Two mechanics the scripts
   must get right: (a) a single `execTransaction` has one `to`, so batching two
   self-calls requires `operation = DELEGATECALL` into MultiSendCallOnly -
   which is what the Safe Transaction Builder emits, but is NOT what the
