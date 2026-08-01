@@ -11,6 +11,7 @@ import { computePublicStats } from './stats.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
+import { getPartnerFeeDashboard, getPartnerFeeStats } from './partnerFees/report.js';
 import {
   FEE_SHARE_BPS,
   GROSS_FEE_BPS,
@@ -856,6 +857,37 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       nextPayoutAt: nextFirstOfMonth().toISOString(),
       referees: referees.map((x) => ({ wallet: `0x${x.wallet_hex}`, boundAt: x.bound_at, lifetimeVolumeUsd: x.volume_usd ? parseFloat(x.volume_usd) : 0 })),
     };
+  });
+
+  // Partner-fee dashboard (partner-fees Phase B) — SIGNATURE gated. POST (not GET) so the
+  // signature never lands in a URL/access log. The caller proves ownership of the recipient
+  // address by signing the partnerAuth message (action-namespaced), and only ever sees their
+  // OWN figures: the recovered signer must equal the requested wallet. No whitelist beyond
+  // ownership — the data is self-scoped (a non-partner just sees zeros).
+  app.post<{ Body: { wallet?: string; issued?: number; signature?: string } }>('/partner-fees', {
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const wallet = String(req.body?.wallet ?? '').toLowerCase();
+    const issued = Number(req.body?.issued);
+    const signature = String(req.body?.signature ?? '');
+    if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
+    if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
+    if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
+
+    const auth = await verifyPartnerAuth({ action: 'Partner Fee dashboard access', address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
+    if (!auth.ok) return reply.code(401).send({ error: auth.reason });
+
+    reply.header('vary', 'Origin');
+    return getPartnerFeeDashboard(auth.address, new Date());
+  });
+
+  // Public aggregate partner-fee stats (partner-fees Phase B) — no per-partner detail, safe to
+  // expose. Optional companion to the signature-gated dashboard.
+  app.get('/partner-fees/stats', {
+    config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
+  }, async (_req, reply) => {
+    reply.header('X-Robots-Tag', 'noindex');
+    return getPartnerFeeStats();
   });
 
   // Seed / manage referral codes — ADMIN-token gated. Used to whitelist partners

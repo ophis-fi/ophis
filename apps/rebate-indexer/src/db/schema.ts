@@ -319,3 +319,90 @@ export const ownFeeBatchEntries = pgTable(
     recipientIdx: index('own_fee_entries_recipient_idx').on(t.recipient),
   }),
 );
+
+// ─── Self-serve PARTNER-FEE program (partner-fees Phase B, migration 0019) ────
+// Deliberately SEPARATE from the rebate / affiliate / own-fee tables so partner
+// recipient addresses + amounts are never mixed. Fed by the restricted accrual feed
+// (NOT the fetcher's per-owner trade scan), paid 80% monthly in WETH from the Ophis
+// Safe (20% retained) via the same affiliate Safe rails (decision 18). Reopens audit
+// finding C3/F6 on the money path. See migrations/0019_partner_fees.sql for the
+// full column contract.
+
+// Resumable position of the restricted partner-fee feed poller, per chain.
+export const partnerFeeCursor = pgTable('partner_fee_cursor', {
+  chainId: integer('chain_id').primaryKey(),
+  nextBlock: bigint('next_block', { mode: 'bigint' }).notNull().default(0n),
+  nextLogIndex: bigint('next_log_index', { mode: 'bigint' }).notNull().default(0n),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One row per (settled fee-bearing trade, partner recipient). PK (trade_uid,
+// recipient): a trade can carry up to 3 distinct partner recipients. Idempotent
+// on re-ingest. fee_amount is the ACTUALLY-COLLECTED protocol fee (the money);
+// fee_usd is priced from it and summed into the owed basis. batch_id != NULL means
+// the trade has been accounted into a payout cycle (never counted twice).
+export const partnerFeeTrades = pgTable(
+  'partner_fee_trades',
+  {
+    tradeUid: bytea('trade_uid').notNull(),
+    recipient: bytea('recipient').notNull(),
+    chainId: integer('chain_id').notNull(),
+    blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+    logIndex: bigint('log_index', { mode: 'bigint' }).notNull(),
+    volumeBps: integer('volume_bps').notNull(),
+    feeToken: bytea('fee_token').notNull(),
+    feeAmount: uint256('fee_amount').notNull(),
+    valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
+    feeUsd: numeric('fee_usd', { precision: 20, scale: 4 }),
+    pricedAt: timestamp('priced_at', { withTimezone: true }),
+    blockTimestamp: timestamp('block_timestamp', { withTimezone: true }),
+    batchId: integer('batch_id').references(() => partnerFeeBatches.id),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    // PK includes settlement identity (chain, block, log) so a partiallyFillable order's
+    // multiple settlements each persist (see migration 0019). recipient distinguishes multiple
+    // partners on one trade.
+    pk: primaryKey({ columns: [t.tradeUid, t.recipient, t.chainId, t.blockNumber, t.logIndex] }),
+    recipientIdx: index('partner_fee_trades_recipient_idx').on(t.recipient),
+  }),
+);
+
+// One partner payout batch per cycle month (mirrors affiliate_batches). total_owed_wei
+// is the WETH actually proposed for payout (Σ paid entries), NOT the whole owed.
+export const partnerFeeBatches = pgTable('partner_fee_batches', {
+  id: serial('id').primaryKey(),
+  cycleMonth: date('cycle_month').notNull().unique(),
+  totalOwedWei: uint256('total_owed_wei').notNull(),
+  wethUsdPrice: numeric('weth_usd_price', { precision: 20, scale: 4 }),
+  status: text('status').notNull(),
+  safeProposalHash: bytea('safe_proposal_hash'),
+  safeTxHash: bytea('safe_tx_hash'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One row per recipient per cycle. status ∈ {paid, carried, quarantined}. owed_wei is
+// present on every status (paid amount; carried/quarantined snapshot for the liability
+// reservation). carried_usd is the authoritative USD carry-forward (0 for paid).
+export const partnerFeeBatchEntries = pgTable(
+  'partner_fee_batch_entries',
+  {
+    batchId: integer('batch_id')
+      .notNull()
+      .references(() => partnerFeeBatches.id),
+    recipient: bytea('recipient').notNull(),
+    owedUsd: numeric('owed_usd', { precision: 20, scale: 4 }).notNull(),
+    owedWei: uint256('owed_wei').notNull().default(0n),
+    carriedUsd: numeric('carried_usd', { precision: 20, scale: 4 }).notNull().default('0'),
+    paidWei: uint256('paid_wei'),
+    status: text('status').notNull(),
+    // The batch whose accrual FOLDED this carried/quarantined entry into its owed (NULL =
+    // not yet folded => still counted by the liability rollup + the next carry read).
+    foldedIntoBatchId: integer('folded_into_batch_id').references(() => partnerFeeBatches.id),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.batchId, t.recipient] }),
+    recipientIdx: index('partner_fee_batch_entries_recipient_idx').on(t.recipient),
+  }),
+);

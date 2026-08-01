@@ -10,6 +10,9 @@ import { resolveAffiliatePayoutEnabled } from './affiliate/payoutPlan.js';
 import { OWN_FEE_GUARANTEED_CHAIN_IDS } from './affiliate/rates.js';
 import { accrueOwnFee, proposeOwnFeeBatches, reconcileOwnFeeBatches } from './ownFee/payout.js';
 import { resolveOwnFeePayoutEnabled } from './ownFee/payoutPlan.js';
+import { runPartnerFeeFetch } from './partnerFees/fetch.js';
+import { runPartnerFeePricer } from './partnerFees/pricePartnerFees.js';
+import { accruePartnerFees, proposePartnerFeeBatches, reconcilePartnerFeeBatches, resolvePartnerFeePayoutEnabled } from './partnerFees/payout.js';
 import { alerts } from './telegram/alerter.js';
 import { logger } from './logger.js';
 import { sql } from './db/index.js';
@@ -55,6 +58,18 @@ export function resolveBatcherProposeEnabled(): boolean {
 }
 
 /**
+ * True when THIS calendar month's batcher step already completed: the heartbeat writes a
+ * first_of_month=true pipeline_runs row ONLY when runBatcher actually executed (any result),
+ * never on a skip/fail-closed cycle -- which is exactly what makes it a retry gate.
+ */
+async function batcherRanThisMonth(): Promise<boolean> {
+  const [row] = await sql<{ ok: boolean }[]>`
+    SELECT EXISTS(SELECT 1 FROM pipeline_runs WHERE first_of_month AND ran_at >= date_trunc('month', now())) AS ok
+  `;
+  return row?.ok ?? false;
+}
+
+/**
  * The full nightly pipeline. Runs sequentially. Called by the daily cron tick.
  * On the 1st of the month, batcher runs as the final step — never as a separate
  * cron entry, eliminating the race noted in the spec §"Safe batch flow → Step 1".
@@ -78,6 +93,45 @@ async function runPipelineSteps(): Promise<void> {
   const scored = await runScorer();
   log.info(scored, 'scorer complete');
 
+  // Partner-fee accrual feed (partner-fees Phase B): pull new fee-bearing trades from the
+  // restricted feed and price their collected fee. Nightly, like the main pricer; the monthly
+  // batcher (below) consumes the priced trades. Wrapped so a restricted-feed / pricing outage
+  // never breaks the main pipeline (the feature is inert until PARTNER_FEE_FEED_URLS is set).
+  // BUT the failure is NOT swallowed for money purposes: partnerFeedOk feeds the 1st-of-month
+  // fail-closed guard below -- a feed the fetcher could not drain (or rows the pricer left
+  // unpriced) means the partner liability would silently UNDER-count, and the shared-Safe
+  // rebate/affiliate distribution must not run against it. (Accrual itself also fail-louds on
+  // in-scope unpriced/un-timestamped rows, which covers backlogs from earlier nights.)
+  let partnerFeedOk = true;
+  try {
+    const pf = await runPartnerFeeFetch();
+    const pfp = await runPartnerFeePricer();
+    if (pfp.failed > 0) {
+      partnerFeedOk = false;
+      log.error({ priceFailed: pfp.failed }, 'partner-fee pricer left rows unpriced; the 1st-of-month shared-Safe distribution fails closed until they price');
+    }
+    // A SKIPPED (ambiguous) attribution is dropped fees for real partners on that row -- the
+    // cursor advances past it, so no later query can see the absence. Tonight's skips fail the
+    // cycle closed like unpriced rows do; a mid-month skip is surfaced by the fetch-time capped
+    // alert and MUST be resolved (re-cursor or manual accounting) before month-end -- it cannot
+    // be re-detected here once its night has passed.
+    if (pf.skipped > 0) {
+      partnerFeedOk = false;
+      log.error({ skipped: pf.skipped }, 'partner-fee fetch skipped ambiguous attributions; the 1st-of-month shared-Safe distribution fails closed (fees dropped from the feed)');
+    }
+    // A page-capped run drained only a PREFIX of the feed: accruing it would under-count the
+    // liability exactly like unpriced rows would. Fails the cycle closed; the fetch resumes
+    // from its cursor next night and the (retried) monthly section completes once drained.
+    if (pf.capped) {
+      partnerFeedOk = false;
+      log.error('partner-fee fetch hit its per-run page cap with pages remaining; the 1st-of-month shared-Safe distribution fails closed until the feed drains');
+    }
+    log.info({ fetched: pf.inserted, skipped: pf.skipped, priced: pfp.priced, priceFailed: pfp.failed }, 'partner-fee fetch+price complete');
+  } catch (err) {
+    partnerFeedOk = false;
+    log.error({ err }, 'partner-fee fetch/price failed (non-fatal to the rest of the pipeline; the 1st-of-month shared-Safe distribution fails closed)');
+  }
+
   // tierer.ts has no batch refresh — it's read-on-demand. Nothing to call here.
 
   // Reconcile open Safe batches EVERY night (independent of the 1st-of-month
@@ -96,6 +150,9 @@ async function runPipelineSteps(): Promise<void> {
     // the Safe service on its OWN chain 10/130). Read-only, so also safe to run always.
     const ofrec = await reconcileOwnFeeBatches({});
     log.info(ofrec, 'own-fee reconcile complete');
+    // Same nightly heal for partner-fee batches (separate table, same Gnosis Safe service).
+    const pfrec = await reconcilePartnerFeeBatches({});
+    log.info(pfrec, 'partner-fee reconcile complete');
   } catch (err) {
     log.error({ err }, 'reconcile failed (non-fatal; observability only)');
     await alerts.alert('reconcile', `Nightly batch reconciliation failed: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
@@ -117,7 +174,19 @@ async function runPipelineSteps(): Promise<void> {
   // must NOT advance /health.last_batcher_run_at, or the signal would claim the
   // batcher ticked while masking the very missed batch it exists to expose.
   let batcherRan = false;
-  if (isFirstOfMonth()) {
+  // Hoisted out of the first-of-month block: the NIGHTLY partner-fee proposal retry (below)
+  // gates on it too. On non-1st days it stays true (no accrual ran to invalidate it).
+  let partnerAccrualOk = true;
+  // The monthly section runs on the 1st -- OR on any later night while THIS month's batcher
+  // step has not yet completed (no first_of_month=true pipeline_runs row this month). That
+  // row is written ONLY when runBatcher actually executed, so a 1st that failed closed (feed
+  // outage), was skipped (lock contention, missing key), or never ran (host down) is RETRIED
+  // the next night instead of silently deferring the whole shared-Safe cycle a month. Every
+  // step inside is cycle-idempotent: accruals re-run while 'computed', runBatcher resumes or
+  // aborts an already-proposed cycle, and proposals fire at most once per batch.
+  const monthlyDue = isFirstOfMonth() || !(await batcherRanThisMonth());
+  if (monthlyDue) {
+    if (!isFirstOfMonth()) log.warn('monthly batcher step missing for this month; running CATCH-UP monthly section tonight');
     log.info('first-of-month: running batcher');
     // Sovereign own-fee ACCRUAL (phase A). Runs FIRST, flag-INDEPENDENT and proposer-key
     // -INDEPENDENT: it records the owed ledger to a 'computed' batch per sovereign chain
@@ -133,39 +202,70 @@ async function runPipelineSteps(): Promise<void> {
         log.error({ err, chainId }, 'own-fee accrual failed (non-fatal to the rest of the cycle)');
       }
     }
+    // Partner-fee ACCRUAL (partner-fees Phase B) — MUST run FIRST, BEFORE the rebate batcher
+    // and affiliate payout (money-correctness): it records this cycle's partner-owed ledger,
+    // which is the outstanding liability those two batchers SUBTRACT to avoid paying the same
+    // WETH twice. Flag- AND proposer-key-INDEPENDENT (records the ledger regardless). If it
+    // THROWS, we FAIL CLOSED: the rebate batcher AND affiliate payout are SKIPPED this cycle,
+    // because both distribute the SAME Ophis Safe and, without an up-to-date partner liability,
+    // could pay out WETH owed to partners. Own-fee (a separate sovereign Safe) is unaffected.
+    // The guard covers the WHOLE ingestion->accrual chain, not just accruePartnerFees: a feed
+    // the fetcher could not drain tonight means trades may be MISSING entirely (undetectable
+    // by accrual), so partnerFeedOk fails the cycle closed too. Accrual still RUNS on a bad
+    // feed night -- it records what is known, is idempotent while 'computed', and a pipeline
+    // re-trigger after the feed heals re-accrues the full month before anything distributes.
+    partnerAccrualOk = partnerFeedOk;
+    if (!partnerFeedOk) {
+      log.error('partner-fee feed/pricing incomplete on the 1st; fail-closed: SKIPPING the rebate batcher + affiliate payout this cycle');
+      await alerts.alert('partner-fee', 'Partner-fee feed fetch/pricing INCOMPLETE on the 1st. FAIL-CLOSED: the rebate batcher AND affiliate payout are SKIPPED this cycle (the partner liability could under-count missing/unpriced trades). Fix the feed/pricer and re-trigger the pipeline.').catch(() => {});
+    }
+    try {
+      await accruePartnerFees({});
+    } catch (err) {
+      partnerAccrualOk = false;
+      log.error({ err }, 'partner-fee accrual FAILED; fail-closed: SKIPPING the rebate batcher + affiliate payout this cycle (shared Safe must not be distributed against a stale/absent partner liability)');
+      await alerts.alert('partner-fee', 'Partner-fee accrual FAILED on the 1st. FAIL-CLOSED: the rebate batcher AND affiliate payout are SKIPPED this cycle (they share the Ophis Safe and could otherwise spend WETH owed to partners against a stale/absent liability). Fix accrual and re-trigger the pipeline.').catch(() => {});
+    }
     const proposeEnabled = resolveBatcherProposeEnabled();
     const proposerKey = process.env.SAFE_PROPOSER_PRIVATE_KEY;
     if (!proposerKey) {
       log.error('SAFE_PROPOSER_PRIVATE_KEY missing; skipping batcher');
       await alerts.alert('batcher', 'SAFE_PROPOSER_PRIVATE_KEY env var missing — no proposal made');
     } else {
-      const result = await runBatcher({
-        chainId: 100,
-        rpcUrl: gnosisRpc(),
-        proposerPrivateKey: proposerKey as `0x${string}`,
-        proposeEnabled,
-      });
-      batcherRan = true; // batcher executed (any result — proposed / no_recipients / dry-run)
-      if (result.status === 'proposed') {
-        await alerts.batchReady({
-          cycle: new Date().toISOString().slice(0, 7),
-          pool: (Number(result.poolWei) / 1e18).toFixed(5),
-          count: result.recipientCount,
-          safeQueueUrl: 'https://app.safe.global/transactions/queue?safe=gno:0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
-          topRecipient: 'see /batches/' + result.batchId,
+      // Shared-Safe distribution (rebate + affiliate) runs ONLY when partner accrual
+      // succeeded (fail-closed): both draw from the same Ophis Safe and must never distribute
+      // it against a stale/absent partner liability.
+      if (partnerAccrualOk) {
+        const result = await runBatcher({
+          chainId: 100,
+          rpcUrl: gnosisRpc(),
+          proposerPrivateKey: proposerKey as `0x${string}`,
+          proposeEnabled,
         });
-      }
-      // Affiliate payout — runs AFTER the rebate batcher (it reads this cycle's
-      // rebate pool for the double-spend guard) and is independently flag-gated
-      // (AFFILIATE_PAYOUT_ENABLED, default OFF). A separate Safe MultiSend at the
-      // next free nonce; execution still needs the 2-of-3 signature. Wrapped so a
-      // payout failure never blocks the report or the heartbeat.
-      if (resolveAffiliatePayoutEnabled()) {
-        try {
-          await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
-        } catch (err) {
-          log.error({ err }, 'affiliate payout failed (non-fatal to the rest of the cycle)');
+        batcherRan = true; // batcher executed (any result: proposed / no_recipients / dry-run)
+        if (result.status === 'proposed') {
+          await alerts.batchReady({
+            cycle: new Date().toISOString().slice(0, 7),
+            pool: (Number(result.poolWei) / 1e18).toFixed(5),
+            count: result.recipientCount,
+            safeQueueUrl: 'https://app.safe.global/transactions/queue?safe=gno:0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
+            topRecipient: 'see /batches/' + result.batchId,
+          });
         }
+        // Affiliate payout: runs AFTER the rebate batcher (it reads this cycle's
+        // rebate pool for the double-spend guard) and is independently flag-gated
+        // (AFFILIATE_PAYOUT_ENABLED, default OFF). A separate Safe MultiSend at the
+        // next free nonce; execution still needs the 2-of-3 signature. Wrapped so a
+        // payout failure never blocks the report or the heartbeat.
+        if (resolveAffiliatePayoutEnabled()) {
+          try {
+            await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
+          } catch (err) {
+            log.error({ err }, 'affiliate payout failed (non-fatal to the rest of the cycle)');
+          }
+        }
+      } else {
+        log.error('skipping rebate batcher + affiliate payout this cycle: partner accrual failed (fail-closed, shared Safe)');
       }
       // Sovereign per-recipient own-fee PROPOSAL (phase B). Needs the proposer key
       // (this branch) AND OWN_FEE_PAYOUT_ENABLED (default OFF). Accrual (phase A) ran
@@ -189,6 +289,31 @@ async function runPipelineSteps(): Promise<void> {
     // reflects this cycle's numbers. Self-contained + fire-and-forget (alerts on
     // failure, never throws), so a report hiccup can never block the heartbeat below.
     await deliverMonthlyReport({ rpcUrl: gnosisRpc() });
+  }
+
+  // Partner-fee PROPOSAL (partner-fees Phase B) — NIGHTLY, not first-of-month-only. Needs
+  // PARTNER_FEE_PAYOUT_ENABLED (default OFF) + the proposer key. proposePartnerFeeBatches
+  // proposes EVERY un-proposed 'computed' batch (each at most once), so a batch left behind by
+  // an underfunded Safe, a transient pre-submit failure, an ambiguous-submission stop, or a
+  // flag flipped mid-month is retried the NEXT NIGHT instead of waiting for the next 1st.
+  // ACCRUAL stays monthly (above). Gated on partnerAccrualOk so the 1st never proposes against
+  // a failed/incomplete accrual; on other nights it is trivially true. Its over-draw guard
+  // reserves the already-queued rebate/affiliate proposals, the mirror of their reservation of
+  // the partner liability. Wrapped so a failure never blocks the heartbeat. (On the 1st this
+  // runs after deliverMonthlyReport; the report reads point-in-time stats, so ordering is
+  // cosmetic.)
+  if (partnerAccrualOk && resolvePartnerFeePayoutEnabled()) {
+    const proposerKey = process.env.SAFE_PROPOSER_PRIVATE_KEY;
+    if (!proposerKey) {
+      log.error('SAFE_PROPOSER_PRIVATE_KEY missing; skipping the nightly partner-fee proposal');
+      await alerts.alert('partner-fee', 'PARTNER_FEE_PAYOUT_ENABLED is on but SAFE_PROPOSER_PRIVATE_KEY is missing — no partner-fee proposal made.').catch(() => {});
+    } else {
+      try {
+        await proposePartnerFeeBatches({ rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled: resolveBatcherProposeEnabled() });
+      } catch (err) {
+        log.error({ err }, 'partner-fee proposal failed (non-fatal; retried next night)');
+      }
+    }
   }
 
   // Durable nightly-completion heartbeat — LAST, so a row means the whole

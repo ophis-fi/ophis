@@ -8,6 +8,7 @@ import { waitForExecution } from '../batch/poll.js';
 import { buildAffiliateReferrers } from './accrual.js';
 import { computeAffiliate } from './computeAffiliate.js';
 import { planAffiliatePayout } from './payoutPlan.js';
+import { outstandingPartnerLiabilityWei } from '../partnerFees/liability.js';
 import { notify, alerts } from '../telegram/alerter.js';
 import { logger } from '../logger.js';
 
@@ -99,11 +100,20 @@ export async function runAffiliatePayout(deps: AffiliatePayoutDeps): Promise<{ s
     log.info({ safeBalanceWei: safeBalanceWei.toString(), reservedForQueuedWei: reservedForQueuedWei.toString(), availableBalanceWei: availableBalanceWei.toString() }, 'affiliate payout: reserved WETH already committed to queued (unsigned) affiliate proposals');
   }
 
-  const plan = planAffiliatePayout(owed, availableBalanceWei, rebatePoolWei);
+  // MONEY-CORRECTNESS (partner-fees Phase B): reserve the outstanding partner liability too, so
+  // the affiliate net-fee basis (its available balance) never pays out WETH earmarked for a
+  // partner. Partner accrual ran FIRST this cycle (cron), so this is current. 0n until the first
+  // partner cycle records -> byte-inert for the existing affiliate flow.
+  const partnerLiabilityWei = await outstandingPartnerLiabilityWei();
+  if (partnerLiabilityWei > 0n) {
+    log.info({ partnerLiabilityWei: partnerLiabilityWei.toString() }, 'affiliate payout: reserved outstanding partner liability (no double-pay)');
+  }
+
+  const plan = planAffiliatePayout(owed, availableBalanceWei, rebatePoolWei, partnerLiabilityWei);
 
   if (plan.blocked) {
-    log.error({ cycleMonth: label, totalOwedWei: plan.totalOwedWei.toString(), rebatePoolWei: rebatePoolWei.toString(), safeBalanceWei: safeBalanceWei.toString(), reservedForQueuedWei: reservedForQueuedWei.toString(), availableBalanceWei: availableBalanceWei.toString() }, 'affiliate payout BLOCKED');
-    await alerts.alert('affiliate-payout', `Affiliate payout ${label} BLOCKED: ${plan.reason}. rebate ${rebatePoolWei} + affiliate ${plan.totalOwedWei} > available Safe WETH ${availableBalanceWei} wei (balance ${safeBalanceWei} net of queued ${reservedForQueuedWei}). No proposal made; investigate.`).catch(() => {});
+    log.error({ cycleMonth: label, totalOwedWei: plan.totalOwedWei.toString(), rebatePoolWei: rebatePoolWei.toString(), partnerLiabilityWei: partnerLiabilityWei.toString(), safeBalanceWei: safeBalanceWei.toString(), reservedForQueuedWei: reservedForQueuedWei.toString(), availableBalanceWei: availableBalanceWei.toString() }, 'affiliate payout BLOCKED');
+    await alerts.alert('affiliate-payout', `Affiliate payout ${label} BLOCKED: ${plan.reason}. rebate ${rebatePoolWei} + partner ${partnerLiabilityWei} + affiliate ${plan.totalOwedWei} > available Safe WETH ${availableBalanceWei} wei (balance ${safeBalanceWei} net of queued ${reservedForQueuedWei}). No proposal made; investigate.`).catch(() => {});
     return { status: 'blocked' };
   }
   if (plan.transfers.length === 0) {

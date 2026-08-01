@@ -1,8 +1,12 @@
 import { runMigrations } from './db/migrate.js';
-import { runFetcher, backfillOwnFee } from './fetcher.js';
+import { runFetcher, backfillOwnFee, withPipelineLock } from './fetcher.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { runBatcher } from './batcher.js';
+import { runPartnerFeeFetch } from './partnerFees/fetch.js';
+import { runPartnerFeePricer } from './partnerFees/pricePartnerFees.js';
+import { accruePartnerFees, proposePartnerFeeBatches } from './partnerFees/payout.js';
+import { outstandingPartnerLiabilityWei } from './partnerFees/liability.js';
 import { sql } from './db/index.js';
 import { logger } from './logger.js';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -84,6 +88,42 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
   },
   async ['dry-run-monthly']() {
     await cmds['simulate-batch']!([]);
+  },
+  // One-shot partner-fee feed poll + price (partner-fees Phase B). Idempotent; needs
+  // PARTNER_FEE_FEED_URLS configured or it is a no-op. Under the PIPELINE LOCK: a manual
+  // fetch racing the monthly accrual could commit a priced trade between accrual's fee sum
+  // and its trade stamp -- the stamp would consume a fee no cycle ever counted. Every
+  // partner_fee_trades writer and the accrual itself serialize on this lock.
+  async ['partner-fee-fetch']() {
+    const ran = await withPipelineLock(async () => {
+      const f = await runPartnerFeeFetch();
+      const p = await runPartnerFeePricer();
+      log.info({ ...f, ...p }, 'partner-fee fetch+price complete');
+    });
+    if (!ran) log.error('pipeline lock busy (nightly run or another command in progress); retry later');
+  },
+  // Record the settled-month partner-fee ledger (flag/key-independent). Establishes the
+  // outstanding liability the rebate/affiliate batchers reserve. Same lock discipline as
+  // partner-fee-fetch (accrual is the other side of the same race).
+  async ['partner-fee-accrue']() {
+    const ran = await withPipelineLock(async () => {
+      const r = await accruePartnerFees({});
+      const liability = await outstandingPartnerLiabilityWei();
+      log.info({ ...r, outstandingLiabilityWei: liability.toString() }, 'partner-fee accrual complete');
+    });
+    if (!ran) log.error('pipeline lock busy (nightly run or another command in progress); retry later');
+  },
+  // Dry-run the monthly partner-fee payout (accrue, then propose in dry-run mode — records the
+  // ledger + dry-runs transfers, never submits a Safe tx). Locked: contains an accrual.
+  async ['partner-fee-dry-run']() {
+    const ran = await withPipelineLock(async () => {
+      await accruePartnerFees({});
+      const rpcUrl = process.env.GNOSIS_RPC_URL ?? 'https://rpc.gnosischain.com';
+      const proposerKey = process.env.SAFE_PROPOSER_PRIVATE_KEY ?? (('0x' + '00'.repeat(32)) as `0x${string}`);
+      const r = await proposePartnerFeeBatches({ rpcUrl, proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled: false });
+      console.log(JSON.stringify(r, null, 2));
+    });
+    if (!ran) log.error('pipeline lock busy (nightly run or another command in progress); retry later');
   },
   async ['rotate-proposer'](args) {
     const newKey = args.find((a) => a.startsWith('--new-key='))?.split('=')[1];

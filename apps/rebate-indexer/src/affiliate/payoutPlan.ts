@@ -36,16 +36,24 @@ export interface AffiliatePlan {
 
 /**
  * Pure: turn computed owed amounts into a payout plan, with the DOUBLE-SPEND GUARD.
- * Affiliate is paid from the SAME Safe as rebates, so the affiliate total plus the
- * rebate pool already proposed this cycle must fit within the Safe's WETH balance —
- * otherwise the two proposals could together over-draw the Safe. If they would, the
- * plan is BLOCKED (no proposal made) and the caller alerts. Zero-amount and
- * zero-address recipients are dropped.
+ * Affiliate is paid from the SAME Safe as rebates AND partner fees, so the affiliate total
+ * plus the rebate pool already proposed this cycle PLUS the outstanding partner liability
+ * must fit within the Safe's WETH balance — otherwise the proposals could together over-draw
+ * the Safe, or affiliate could pay out WETH already earmarked for a partner. If they would,
+ * the plan is BLOCKED (no proposal made) and the caller alerts. Zero-amount and zero-address
+ * recipients are dropped.
+ *
+ * `partnerLiabilityWei` (money-correctness, partner-fees Phase B) is the WETH owed to partners
+ * but not yet paid out (still in the Safe). Reserving it here means the affiliate net-fee basis
+ * — its available-balance basis — SUBTRACTS the partner liability, so the same WETH is never
+ * paid as both an affiliate payout and a partner payout. Defaults to 0n for the pre-partner
+ * callers/tests (byte-inert until the first partner cycle).
  */
 export function planAffiliatePayout(
   owed: readonly AffiliateOwed[],
   safeBalanceWei: bigint,
   rebatePoolWei: bigint,
+  partnerLiabilityWei: bigint = 0n,
 ): AffiliatePlan {
   // The RECIPIENT is the payout wallet when set, else the referrer wallet (identity).
   // EXACTLY today's behavior when payoutWallet is null/undefined. We drop a transfer
@@ -55,8 +63,8 @@ export function planAffiliatePayout(
     .map((o) => ({ owed: o, to: (o.payoutWallet ?? o.referrer_wallet) as `0x${string}` }))
     .filter(({ owed: o, to }) => o.owedWei > 0n && to.toLowerCase() !== ZERO_ADDRESS);
   const totalOwedWei = valid.reduce((acc, { owed: o }) => acc + o.owedWei, 0n);
-  if (rebatePoolWei + totalOwedWei > safeBalanceWei) {
-    return { transfers: [], totalOwedWei, blocked: true, reason: 'rebate pool + affiliate owed exceed the Safe WETH balance' };
+  if (rebatePoolWei + partnerLiabilityWei + totalOwedWei > safeBalanceWei) {
+    return { transfers: [], totalOwedWei, blocked: true, reason: 'rebate pool + partner liability + affiliate owed exceed the Safe WETH balance' };
   }
   const transfers = valid.map(({ owed: o, to }) => ({
     to,
