@@ -397,6 +397,9 @@ export const partnerFeeBatchEntries = pgTable(
     carriedUsd: numeric('carried_usd', { precision: 20, scale: 4 }).notNull().default('0'),
     paidWei: uint256('paid_wei'),
     status: text('status').notNull(),
+    // The batch whose accrual FOLDED this carried/quarantined entry into its owed (NULL =
+    // not yet folded => still counted by the liability rollup + the next carry read).
+    foldedIntoBatchId: integer('folded_into_batch_id').references(() => partnerFeeBatches.id),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.batchId, t.recipient] }),

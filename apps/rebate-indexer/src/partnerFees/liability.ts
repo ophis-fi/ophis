@@ -23,11 +23,14 @@ import { sql } from '../db/index.js';
  * The WETH (wei) Ophis currently OWES partners and has NOT yet paid out on-chain -- i.e. the
  * partner-owed WETH still sitting in the Safe. The UNION of two disjoint components:
  *
- *   (a) the carried/quarantined ROLLUP: each recipient's LATEST entry (DISTINCT ON, newest
- *       cycle first) when that latest entry is `carried` or `quarantined`. Latest-only is
- *       correct here because the running carry accumulates INTO the latest entry (an older
- *       carried entry's amount is folded into the newer one via carriedUsd(prev)), so summing
- *       older carried entries too would double-count.
+ *   (a) the carried/quarantined ROLLUP: Σ owed_wei over every UNFOLDED `carried` /
+ *       `quarantined` entry (folded_into_batch_id IS NULL). When a monthly accrual consumes
+ *       a carry into a new batch's owed it stamps the source entry's folded_into_batch_id in
+ *       the same transaction, so a folded entry's amount lives on in its successor and is
+ *       never double-counted -- while an entry quarantined at PROPOSAL time (or carried off a
+ *       failed execution) in an OLD batch stays unfolded and keeps counting until an accrual
+ *       folds it. (The previous latest-entry-per-recipient heuristic silently DROPPED those
+ *       independent per-batch carries when several catch-up batches were in flight.)
  *
  *   (b) the in-flight PAID amounts: EVERY `paid` entry whose batch is NOT yet `executed`
  *       (its WETH is earmarked in the Safe but has not settled). This must sum ALL such
@@ -48,26 +51,18 @@ export async function outstandingPartnerLiabilityWei(): Promise<bigint> {
 }
 
 /**
- * Component (a): the carried/quarantined rollup = Σ owed_wei over each recipient's LATEST
- * entry, but only when that latest entry is `carried` or `quarantined` (a `paid` latest entry
- * consumed the carry into the paid amount, so its carry is 0 and it is captured by (b)
- * instead). Exposed so the partner PROPOSER can reserve its own not-yet-payable obligations
- * symmetrically with how the rebate/affiliate batchers reserve the full liability.
+ * Component (a): the carried/quarantined rollup = Σ owed_wei over every UNFOLDED `carried` /
+ * `quarantined` entry. An entry folded into a later accrual (folded_into_batch_id set) is
+ * excluded -- its amount lives on in the successor entry -- so the sum never double-counts,
+ * while independent unfolded carries across multiple in-flight batches ALL count. Exposed so
+ * the partner PROPOSER can reserve its own not-yet-payable obligations symmetrically with how
+ * the rebate/affiliate batchers reserve the full liability.
  */
 export async function carriedQuarantinedLiabilityWei(): Promise<bigint> {
   const [row] = await sql<{ wei: string }[]>`
-    WITH latest AS (
-      SELECT DISTINCT ON (e.recipient)
-        e.recipient,
-        e.status   AS entry_status,
-        e.owed_wei
-      FROM partner_fee_batch_entries e
-      JOIN partner_fee_batches b ON b.id = e.batch_id
-      ORDER BY e.recipient, b.cycle_month DESC, b.id DESC
-    )
     SELECT COALESCE(SUM(owed_wei), 0)::text AS wei
-    FROM latest
-    WHERE entry_status IN ('carried', 'quarantined')
+    FROM partner_fee_batch_entries
+    WHERE status IN ('carried', 'quarantined') AND folded_into_batch_id IS NULL
   `;
   return BigInt(row?.wei ?? '0');
 }
@@ -96,26 +91,29 @@ export interface CarriedBalance {
 }
 
 /**
- * Each recipient's CURRENT carry-forward USD balance = the `carried_usd` of their LATEST
- * entry, but ONLY when that latest entry is `carried` or `quarantined` (a `paid` latest
- * entry consumed the carry into the paid amount, so the balance resets to 0 and the
- * recipient does not appear here). This is `carriedUsd(prev)` for the next cycle's
- * computePartnerFees, so a quarantined amount is re-attempted (and never lost) next cycle.
+ * Each recipient's CURRENT carry-forward USD balance = Σ `carried_usd` over their UNFOLDED
+ * `carried` / `quarantined` entries. Summing (not latest-only) is what keeps independent
+ * per-batch carries alive: a recipient quarantined at proposal time in TWO catch-up batches
+ * has two unfolded entries, and BOTH must fold into the next cycle's owed. Entries already
+ * folded into a later accrual are excluded (their amount lives on in the successor entry).
+ * This is `carriedUsd(prev)` for the next cycle's computePartnerFees; the accrual that
+ * consumes these balances stamps their folded_into_batch_id in the same transaction.
+ *
+ * `releaseBatchId`: a re-accrual recomputes a still-'computed' batch, whose OWN entries are
+ * about to be deleted and whose fold marks are about to be cleared -- so the read must (i)
+ * EXCLUDE that batch's own entries and (ii) INCLUDE entries currently folded INTO it, as if
+ * the release had already happened (the release itself commits atomically with the recompute).
  */
-export async function currentCarriedUsdByRecipient(): Promise<CarriedBalance[]> {
+export async function currentCarriedUsdByRecipient(releaseBatchId?: number): Promise<CarriedBalance[]> {
+  const release = releaseBatchId ?? -1;
   const rows = await sql<{ recipient_hex: string; carried_usd: string }[]>`
-    WITH latest AS (
-      SELECT DISTINCT ON (e.recipient)
-        e.recipient,
-        e.status        AS entry_status,
-        e.carried_usd
-      FROM partner_fee_batch_entries e
-      JOIN partner_fee_batches b ON b.id = e.batch_id
-      ORDER BY e.recipient, b.cycle_month DESC, b.id DESC
-    )
-    SELECT encode(recipient, 'hex') AS recipient_hex, carried_usd::text AS carried_usd
-    FROM latest
-    WHERE entry_status IN ('carried', 'quarantined') AND carried_usd > 0
+    SELECT encode(recipient, 'hex') AS recipient_hex, SUM(carried_usd)::text AS carried_usd
+    FROM partner_fee_batch_entries
+    WHERE status IN ('carried', 'quarantined')
+      AND (folded_into_batch_id IS NULL OR folded_into_batch_id = ${release})
+      AND batch_id <> ${release}
+    GROUP BY recipient
+    HAVING SUM(carried_usd) > 0
   `;
   return rows.map((r) => ({
     recipient: `0x${r.recipient_hex}` as `0x${string}`,

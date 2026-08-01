@@ -168,13 +168,24 @@ describe('partner liability subtracted from the rebate DIRECT distributable', ()
     expect(r.poolWei).toBe(1n * ONE); // nothing reserved -> full delta
   });
 
-  it('the CARRIED rollup takes only the LATEST entry per recipient (running carry never double-counts)', async () => {
+  it('a FOLDED carry is excluded from the rollup (running carry never double-counts)', async () => {
     const sql = await getSql();
-    // Cycle 1: carried 0.3 (consumed into cycle 2). Cycle 2 (later): the same recipient paid 0.5.
-    await seedPartnerLiability(sql, '2026-04-01', 'executed', 'cc'.repeat(20), (ONE * 3n) / 10n, 'carried', 15);
-    await seedPartnerLiability(sql, MAY, 'proposed', 'cc'.repeat(20), ONE / 2n, 'paid');
-    // The carried 0.3 was consumed into the 0.5 paid (latest entry is paid); liability = 0.5.
+    // Cycle 1: carried 0.3, consumed into cycle 2's 0.5 paid entry -- the accrual stamps the
+    // fold in the same transaction; mirror that here. Only the successor counts.
+    const b1 = await seedPartnerLiability(sql, '2026-04-01', 'executed', 'cc'.repeat(20), (ONE * 3n) / 10n, 'carried', 15);
+    const b2 = await seedPartnerLiability(sql, MAY, 'proposed', 'cc'.repeat(20), ONE / 2n, 'paid');
+    await sql`UPDATE partner_fee_batch_entries SET folded_into_batch_id = ${b2} WHERE batch_id = ${b1}`;
     expect(await liability()).toBe(ONE / 2n);
+  });
+
+  it('UNFOLDED carries across MULTIPLE batches ALL count (round 3: proposal-time quarantines are independent)', async () => {
+    const sql = await getSql();
+    // Two catch-up batches each quarantined the same recipient at PROPOSAL time. Neither
+    // amount was ever folded into the other, so BOTH must stay reserved -- the old
+    // latest-only rollup silently dropped the April 0.3 the moment May's entry existed.
+    await seedPartnerLiability(sql, '2026-04-01', 'computed', 'cc'.repeat(20), (ONE * 3n) / 10n, 'quarantined', 600);
+    await seedPartnerLiability(sql, MAY, 'computed', 'cc'.repeat(20), ONE / 2n, 'quarantined', 1000);
+    expect(await liability()).toBe((ONE * 3n) / 10n + ONE / 2n);
   });
 
   it('a SUPERSEDED still-queued PAID entry is NOT dropped (both in-flight amounts reserved)', async () => {

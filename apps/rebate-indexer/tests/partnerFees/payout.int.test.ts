@@ -31,11 +31,11 @@ async function getSql() {
 // settledAt defaults to mid-May 2026, before every month-end cutoff these tests use (JUN accrual
 // -> cutoff June 1; the carry test's July accrual -> cutoff July 1). Pass null for an un-enriched
 // (held) trade, or a post-cutoff date to exercise the month-end boundary.
-async function seedTrade(sql: Awaited<ReturnType<typeof getSql>>, recipient20: string, feeUsd: number, settledAt: string | null = '2026-05-15T00:00:00Z') {
+async function seedTrade(sql: Awaited<ReturnType<typeof getSql>>, recipient20: string, feeUsd: number | null, settledAt: string | null = '2026-05-15T00:00:00Z') {
   const u = (tradeSeq++).toString(16).padStart(112, '0');
   await sql`
     INSERT INTO partner_fee_trades (trade_uid, recipient, chain_id, block_number, log_index, volume_bps, fee_token, fee_amount, fee_usd, priced_at, block_timestamp)
-    VALUES (decode(${u}, 'hex'), decode(${recipient20}, 'hex'), 10, ${tradeSeq}, 0, 30, decode(${'bb'.repeat(20)}, 'hex'), 1000, ${feeUsd}, now(), ${settledAt})`;
+    VALUES (decode(${u}, 'hex'), decode(${recipient20}, 'hex'), 10, ${tradeSeq}, 0, 30, decode(${'bb'.repeat(20)}, 'hex'), 1000, ${feeUsd}, ${feeUsd === null ? null : sql`now()`}, ${settledAt})`;
 }
 async function accrue(now: Date) {
   const { accruePartnerFees } = await import('../../src/partnerFees/payout.js');
@@ -74,6 +74,9 @@ async function propose(balanceWei: bigint, over: Record<string, unknown> = {}) {
     readSafeWethBalanceWei: async () => balanceWei,
     getNextNonce: async () => 0,
     simulate: async () => ({ ok: true }),
+    // Proposal-time reprice (round 3): pin to the same PRICE the accrual used so existing
+    // amount assertions stay exact; the dedicated reprice test overrides this.
+    fetchWethUsdPrice: async () => PRICE,
     propose: async (p) => {
       await p.onBeforeSubmit?.();
       return { safeTxHash: ('0x' + 'ab'.repeat(32)) as `0x${string}`, proposerAddress: ('0x' + '99'.repeat(20)) as `0x${string}`, nonce: 0 };
@@ -257,21 +260,137 @@ describe('P2.7 failed-batch carry-forward', () => {
 });
 
 describe('P2.8 month-end cutoff', () => {
-  it('excludes post-cutoff and null-timestamp trades from the prior month; holds them for later', async () => {
+  it('excludes post-cutoff trades from the prior month; holds them for the next cycle', async () => {
     const sql = await getSql();
-    const R4 = '44'.repeat(20);
     await seedTrade(sql, R1, 100, '2026-05-20T00:00:00Z'); // May -> accrued (owed 80 -> paid)
     await seedTrade(sql, R2, 100, '2026-06-01T01:00:00Z'); // 1st 01:00 (NEW month, >= cutoff) -> excluded
-    await seedTrade(sql, R4, 100, null); // un-enriched timestamp -> HELD
     await accrue(JUN); // monthEnd = 2026-06-01
     const rows = await sql<{ r: string }[]>`SELECT encode(recipient, 'hex') AS r FROM partner_fee_batch_entries`;
     const set = new Set(rows.map((x) => x.r));
     expect(set.has(R1)).toBe(true); // within the settled month
     expect(set.has(R2)).toBe(false); // pre-drain new-month trade NOT stamped to the prior month
-    expect(set.has(R4)).toBe(false); // null-timestamp held out
-    // The excluded trades stay UNBATCHED (batch_id NULL) for a later cycle.
+    // The excluded trade stays UNBATCHED (batch_id NULL) for a later cycle.
     const unbatched = await sql<{ n: string }[]>`SELECT COUNT(*)::text AS n FROM partner_fee_trades WHERE batch_id IS NULL`;
-    expect(unbatched[0]!.n).toBe('2');
+    expect(unbatched[0]!.n).toBe('1');
+  });
+
+  it('FAIL-LOUD (round 3): a null-timestamp trade BLOCKS the accrual instead of silently under-counting', async () => {
+    const sql = await getSql();
+    await seedTrade(sql, R1, 100, '2026-05-20T00:00:00Z');
+    await seedTrade(sql, '44'.repeat(20), 100, null); // un-enriched timestamp: month unknown
+    await expect(accrue(JUN)).rejects.toThrow(/accrual blocked/);
+    // Nothing was stamped or recorded: the throw propagates into the cron's fail-closed guard.
+    const batches = await sql<{ n: string }[]>`SELECT COUNT(*)::text AS n FROM partner_fee_batches`;
+    expect(batches[0]!.n).toBe('0');
+  });
+
+  it('FAIL-LOUD (round 3): an in-scope UNPRICED trade blocks the accrual', async () => {
+    const sql = await getSql();
+    await seedTrade(sql, R1, 100, '2026-05-20T00:00:00Z');
+    await seedTrade(sql, R2, null, '2026-05-21T00:00:00Z'); // pricer backlog
+    await expect(accrue(JUN)).rejects.toThrow(/accrual blocked/);
+  });
+
+  it('an unpriced POST-cutoff trade does NOT block (provably next cycle, held silently)', async () => {
+    const sql = await getSql();
+    await seedTrade(sql, R1, 100, '2026-05-20T00:00:00Z');
+    await seedTrade(sql, R2, null, '2026-06-02T00:00:00Z'); // next month's business
+    const r = await accrue(JUN);
+    expect(r.status).toBe('computed');
+  });
+});
+
+describe('round-3 hardening', () => {
+  it('F5: an empty cycle records no_recipients WITHOUT fetching a WETH price', async () => {
+    const { accruePartnerFees } = await import('../../src/partnerFees/payout.js');
+    const priceSpy = vi.fn(async () => PRICE);
+    const r = await accruePartnerFees({ now: JUN, fetchWethUsdPrice: priceSpy, sanctions: new Set() });
+    expect(r.status).toBe('no_recipients');
+    expect(priceSpy).not.toHaveBeenCalled(); // a pricing outage cannot fail the inert path
+  });
+
+  it('F2: a re-accrual that fails mid-way leaves the PRIOR ledger fully intact (atomic replacement)', async () => {
+    const sql = await getSql();
+    await seedTrade(sql, R1, 100);
+    await accrue(JUN); // batch 1: R1 paid $80
+    const before = await liability();
+    expect(before).toBe(wei(80));
+    // Re-accrue with a failing price fetch: the READS run first, the price fetch throws, and
+    // NO mutation has happened -- entries, stamps, and the liability are untouched.
+    const { accruePartnerFees } = await import('../../src/partnerFees/payout.js');
+    await seedTrade(sql, R2, 50); // new in-scope trade to force a non-empty recompute
+    await expect(
+      accruePartnerFees({ now: JUN, fetchWethUsdPrice: async () => { throw new Error('price down'); }, sanctions: new Set([`0x${R3}`]) }),
+    ).rejects.toThrow('price down');
+    expect(await liability()).toBe(before);
+    const entries = await sql<{ n: string }[]>`SELECT COUNT(*)::text AS n FROM partner_fee_batch_entries`;
+    expect(entries[0]!.n).toBe('1'); // batch 1's entry survived
+  });
+
+  it('F3: quarantines stranded in MULTIPLE catch-up batches ALL fold into the next accrual', async () => {
+    const sql = await getSql();
+    // June cycle: R1 paid $80, quarantined at proposal (sanctions changed).
+    await seedTrade(sql, R1, 100, '2026-05-15T00:00:00Z');
+    await accrue(JUN);
+    await propose(wei(1000), { sanctions: new Set([`0x${R1}`]) });
+    // July cycle: R1 paid $80 again, quarantined at proposal again.
+    await seedTrade(sql, R1, 100, '2026-06-15T00:00:00Z');
+    await accrue(new Date('2026-07-01T02:00:00Z'));
+    await propose(wei(1000), { sanctions: new Set([`0x${R1}`]) });
+    // BOTH independent quarantined amounts are reserved (the old latest-only view kept $80)...
+    expect(await liability()).toBe(wei(80) + wei(80));
+    // ...and the August accrual folds BOTH into one $160 owed (clears the threshold -> paid).
+    await accrue(new Date('2026-08-01T02:00:00Z'));
+    const [entry] = await sql<{ owed_usd: string; status: string }[]>`
+      SELECT e.owed_usd::text AS owed_usd, e.status AS status FROM partner_fee_batch_entries e
+      JOIN partner_fee_batches b ON b.id = e.batch_id
+      WHERE b.cycle_month = '2026-07-01' AND e.recipient = decode(${R1}, 'hex')`;
+    expect(entry!.status).toBe('paid');
+    expect(parseFloat(entry!.owed_usd)).toBeCloseTo(160, 2);
+    // The two source entries are now FOLDED (excluded from the rollup); only the successor counts.
+    expect(await liability()).toBe(wei(160));
+  });
+
+  it('F6: a delayed batch is REPRICED at proposal time (USD obligation, not the stale wei snapshot)', async () => {
+    const sql = await getSql();
+    await seedTrade(sql, R1, 100); // $80 owed -> 0.04 WETH at the $2000 accrual price
+    await accrue(JUN);
+    const sent: { amount: bigint }[][] = [];
+    await propose(wei(1000), {
+      fetchWethUsdPrice: async () => PRICE / 2, // WETH halved to $1000 while the batch waited
+      propose: async (p: { transfers: { amount: bigint }[]; onBeforeSubmit?: () => Promise<void> }) => {
+        sent.push(p.transfers);
+        await p.onBeforeSubmit?.();
+        return { safeTxHash: ('0x' + 'ab'.repeat(32)) as `0x${string}`, proposerAddress: ('0x' + '99'.repeat(20)) as `0x${string}`, nonce: 0 };
+      },
+    });
+    // $80 at $1000/WETH = 0.08 WETH -- double the stale snapshot.
+    expect(sent[0]![0]!.amount).toBe(usdFpToWei(usdToFp(80), PRICE / 2));
+    // The persisted entry + batch total record what was actually proposed.
+    const [e] = await sql<{ owed_wei: string }[]>`SELECT owed_wei::text AS owed_wei FROM partner_fee_batch_entries WHERE recipient = decode(${R1}, 'hex')`;
+    expect(e!.owed_wei).toBe(usdFpToWei(usdToFp(80), PRICE / 2).toString());
+  });
+
+  it('F8: an AMBIGUOUS Safe submission STOPS the catch-up (no later batch proposed on a guessed nonce)', async () => {
+    const sql = await getSql();
+    // Two catch-up cycles, both payable.
+    await seedTrade(sql, R1, 100, '2026-05-15T00:00:00Z');
+    await accrue(JUN);
+    await seedTrade(sql, R1, 100, '2026-06-15T00:00:00Z');
+    await accrue(new Date('2026-07-01T02:00:00Z'));
+    let calls = 0;
+    const r = await propose(wei(1000), {
+      propose: async (p: { onBeforeSubmit?: () => Promise<void> }) => {
+        calls++;
+        await p.onBeforeSubmit?.(); // submit was SENT...
+        throw new Error('safe service 502'); // ...but the response was lost: outcome ambiguous
+      },
+    });
+    expect(calls).toBe(1); // the second batch was NOT attempted
+    expect(r.proposed).toBe(0);
+    const rows = await sql<{ cycle: string; status: string }[]>`SELECT cycle_month::text AS cycle, status FROM partner_fee_batches ORDER BY cycle_month`;
+    expect(rows[0]!.status).toBe('proposing'); // ambiguous: left for reconcile/manual verification
+    expect(rows[1]!.status).toBe('computed'); // untouched, retried next nightly run
   });
 });
 
