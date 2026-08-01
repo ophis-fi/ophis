@@ -525,8 +525,11 @@ field:
   lets value leave. Registration therefore also requires (per the C0.5 P2
   model): every fill-eligible leg's (feed, aggregator) pair to match the
   CERTIFIED pair (`feedCertifiedAggregator[leg.feed] == leg.aggregator`, with
-  the proxy's live `aggregator()` equal to it) if the vault runs Eip1271 mode
-  (C17) - which alone excludes the TEST CAPPED proxy, since it is simply not
+  the proxy's live `aggregator()` equal to it) - checked at TokenAdd for
+  Eip1271-mode vaults (C17), and re-checked by `rebalance` at EVERY
+  registration in BOTH modes (in Presign mode this registration-time check is
+  the ONLY certification gate, since no fill-time recheck exists there; see
+  the rebalance sketch) - which alone excludes the TEST CAPPED proxy, since it is simply not
   certified, and excludes an eligible proxy that was repointed to an
   unreviewed aggregator after certification; each fill-eligible leg's
   `decimals()` to be read, validated (<= 18) and cached as `feedDecimals` so
@@ -964,6 +967,15 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // rebalance and let a compromised curator gas-brick removeToken.
 
     // P1 - curator surface (unchanged names, extended semantics)
+    // rebalance RE-CHECKS feed certification at REGISTRATION time in BOTH
+    // modes: every fill-eligible leg of the stored route must still satisfy
+    // feedCertifiedAggregator[leg.feed] == leg.aggregator (and the live
+    // aggregator() equality). The fill-time recheck exists only in Eip1271
+    // mode, so without this a Presign curator could re-presign THROUGH a feed
+    // the guardian just revoked, undoing the risk-reducing action one block
+    // later; in Eip1271 mode it merely rejects earlier and cheaper. A route
+    // referencing a revoked feed is thus dead for NEW orders in both modes -
+    // the guardian may follow with removeToken, but does not have to.
     function rebalance(GPv2Order.Data calldata order, uint256 minBuyOverride)
         external returns (bytes memory orderUid);        // registers (1271) or presigns (presign mode)
     function cancel(bytes32 digest) external;            // uid REBUILT internally; never trust caller uid bytes
@@ -1008,7 +1020,13 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // mode) and the allowance zeroing can fail INDEPENDENTLY and each needs its
     // own retryable entry - so <= 2 * MAX_ALLOWED_TOKENS entries; gas/sweep
     // budgets are sized to that bound); sweepResidual iterates and
-    // clears them on success. Without the record, a residual involving another
+    // clears them on success. The retry RE-APPLIES the ownership rule the
+    // original path used, it never replays blindly: an allowance-zeroing
+    // residual executes only while the allowance still belongs to the
+    // RECORDED uid (liveOrder[sellToken].uid unchanged) - if the sell token
+    // has since registered a NEW order (new slot, new exact allowance), the
+    // residual is DROPPED as superseded instead of zeroing the new order's
+    // allowance and making it unfillable. Without the record, a residual involving another
     // token's allowance is unrecoverable once the failure event scrolls by.
     // BOUNDED ACROSS REMOVALS, not just per call: appends are DEDUPLICATED by
     // (sellToken, uid, kind) - a retried removal re-recording the same failed
@@ -1058,9 +1076,11 @@ a deployment that can never add a route or recover a lost guardian), `uint256
 executeWindow` (immutable, BOUNDED - see below), `uint256 migrationUnlockAt`
 (immutable; the on-chain V1->V2 containment gate `rebalance` checks - see the
 C5 migration ceremony: 0 on the verified-cancellation path, `enableTime +
-V1_MAX_TTL` on the wait-out path; the constructor validates it is either 0 or
-within `[block.timestamp, block.timestamp + V1_MAX_TTL + 7 days]`, so a typo
-cannot brick rebalancing forever), continuing with `executeWindow`: `1 hours <=
+V1_MAX_TTL + 1` on the wait-out path (strictly past the last `validTo >=
+block.timestamp` boundary a maximum-TTL V1 order can validate at); the
+constructor validates it is either 0 or within `[block.timestamp,
+block.timestamp + V1_MAX_TTL + 7 days]`, so a typo cannot brick rebalancing
+forever), continuing with `executeWindow`: `1 hours <=
 executeWindow <= 30 days`, enforced in the constructor AND the factory - zero
 makes execution a single-timestamp race that generally cannot land, an
 unbounded window recreates the indefinitely-executable stale pending the
@@ -1461,7 +1481,11 @@ the verification log tracks which currently have no assigned target.
   missed V1 presignature fill at its old limit. V2 therefore carries an
   immutable `migrationUnlockAt` (constructor): `rebalance` reverts before it.
   The verified-cancellation path deploys with `migrationUnlockAt = 0`; the
-  wait-out path deploys with `enableTime + V1_MAX_TTL`. The deploy script's
+  wait-out path deploys with `enableTime + V1_MAX_TTL + 1` - STRICTLY past
+  the last timestamp a maximum-TTL V1 order can validate (validation accepts
+  `validTo >= block.timestamp`, so at exactly `enableTime + V1_MAX_TTL` such
+  an order is STILL valid and a same-timestamp first rebalance would restore
+  its allowance for that block). The deploy script's
   job is choosing the path and PROVING the choice (the per-uid assertions
   above for the zero case), not enforcing the wait. PROOF ORDERING IS
   NORMATIVE for the zero-unlock path: `disableModule(V1)` executes FIRST,
