@@ -788,13 +788,20 @@ AND-constraint, Morpho `adapterRegistry`-style).
   stETH/USD, no LST market feeds - wstETH->USD requires the ExR x ETH/USD
   composition (peg assumption) anchored by RedStone's wstETH/ETH market feed
   (`0x24c89643...`), which is the independent leg.
-- **OP/Base/Arb/Ethereum**: rich Chainlink coverage incl. market + ExR feed
-  pairs for wstETH/rETH/weETH/cbETH/ezETH/rsETH and sUSDe (full addresses in
-  the research digest; each goes through the same pin-by-address + on-chain
+- **OP/Base/Arb**: rich Chainlink coverage incl. market + ExR feed pairs for
+  wstETH/rETH/weETH/cbETH/ezETH/rsETH and sUSDe (full addresses in the
+  research digest; each goes through the same pin-by-address + on-chain
   re-probe discipline at deploy). Decimals must be read per feed at
   registration, never assumed from a per-chain convention: same-named feeds on
   one chain differ (Arbitrum ships BOTH 8- and 18-decimal ETH/USD and
   USDC/USD), a second argument for pin-by-address.
+- **Ethereum**: NOT grouped with the L2s - its exchange-rate PROXY coverage is
+  substantially thinner (no wstETH/stETH, rETH/ETH, weETH/eETH, cbETH/ETH or
+  ezETH/ETH proxy; see the verified correction in the status section), so the
+  L2 market+ExR pairing pattern does not carry over. Ethereum routes must be
+  cataloged from what actually exists there, feed by feed, before any token
+  add is proposed - the launch-set sizing below deliberately makes no Ethereum
+  coverage claim.
 - **Feed churn is real, and announcements are not shutdowns**: Chainlink flags
   feeds `deprecating` with ~2-week notice (Arbitrum ETHx/ETH ExR
   `0x1f5C0C2C...` was announced for 2025-12-22 and is STILL publishing as of
@@ -865,10 +872,14 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
         external returns (bytes memory orderUid);        // registers (1271) or presigns (presign mode)
     function cancel(bytes32 digest) external;            // uid REBUILT internally; never trust caller uid bytes
     // COMPAT overload preserving Phase B's ABI (C6 parity): a GPv2 uid is
-    // digest || owner || validTo, so this extracts uid[0:32] as the digest and
-    // enters the digest path above - the remaining 24 caller bytes are DISCARDED
-    // (the canonical uid is rebuilt from storage), so forged owner/validTo bytes
-    // buy nothing. Without it, existing safe-swap callers and the V1 order-path
+    // digest || owner || validTo. Per the refund-hardening rule ("any bytes
+    // overload must compare against the stored uid BEFORE evaluating a gate"),
+    // this takes uid[0:32] as the digest, REBUILDS the canonical uid from
+    // storage (packOrderUidParams(digest, safe, state.validTo)), and requires
+    // the caller's 56 bytes to equal it EXACTLY - a mismatched owner/validTo
+    // tail REVERTS (the mandatory negative test), it is never trusted or
+    // silently corrected. All gates then evaluate against the rebuilt uid.
+    // Without the overload, existing safe-swap callers and the V1 order-path
     // suite would invoke a selector V2 does not implement, and the promised
     // drop-in Presign parity would fail before reaching any refund behavior.
     function cancel(bytes calldata orderUid) external;
@@ -983,10 +994,20 @@ the verification log tracks which currently have no assigned target.
   Safe ONLY (never the guardian; see C10) - inside `[eta, eta + EXECUTE_WINDOW]` after a
   Safe-proposed `submitTokenAdd`, with execute-time revalidation passing; a
   pending outside its window is dead.
-- **C9**: `removeToken` is instant and atomically deregisters + invalidates
-  EVERY live order the token appears in (sell side or buy side) and zeroes the
-  sell-side allowance(s); after it no new registration, no 1271 validation,
-  and no module-created presignature can involve that token.
+- **C9**: `removeToken` is instant, and in ONE transaction de-allowlists the
+  token and ATTEMPTS deregistration + invalidation of EVERY live order the
+  token appears in (sell side or buy side) plus zeroing of the sell-side
+  allowance(s); after it no new registration, no 1271 validation, and no
+  module-created presignature can involve that token. Stated to match the
+  normative revert-tolerant sweep, NOT as all-or-nothing: each external
+  revocation/allowance call is try/catch'd (a hostile token whose `approve`
+  reverts must never brick the removal - see C15), a failure emits
+  `ResidualRevocationFailed` and defers to `sweepResidual`, and the HARD part
+  of the guarantee is what never depends on those external calls succeeding:
+  de-allowlisting always lands, which makes every affected order policy-dead
+  in Eip1271 mode at the next fill-time check; Presign mode's stricter
+  handling of a failed `setPreSignature(uid, false)` is resolved by mode as
+  specified in the P3 lane.
 - **C15**: `removeToken` ALWAYS succeeds in de-allowlisting for any token or
   order state a token can induce - no ERC20 behaviour (pausing, blacklisting,
   reverting approve) can block it, because the policy-critical settlement calls
