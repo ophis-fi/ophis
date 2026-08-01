@@ -1325,11 +1325,20 @@ the verification log tracks which currently have no assigned target.
   `setPreSignature` makes a presign order fillable the same block, with no
   fill-time floor at all, so 1271 mode strictly narrows the window's harm;
   (b) any direct settle must still pass the FULL fill-time gate (fresh oracle
-  floor, minBuyOverride, sanity band, staleness, sequencer), so the loss is
-  capped at the auction surplus ABOVE the floored limit - price-improvement
-  forgone, never principal; (c) the builder's existing buffer rule
-  (`slippageBps + fee + quote-vs-oracle gap < 50bps`) bounds that forgone
-  surplus to bps of the trade. A two-phase register-then-activate flow (extra
+  floor, minBuyOverride, sanity band, staleness, sequencer), so what is at
+  risk is auction surplus ABOVE the floored limit - price-improvement
+  forgone, never principal. Stated precisely rather than optimistically: the
+  builder's buffer rule (`slippageBps + fee + quote-vs-oracle gap < 50bps`)
+  bounds the limit's distance below the REGISTRATION-TIME quote - it does
+  NOT bound what an auction might later have produced. A favorable market
+  move inside the staleness window (or a CoW coincidence) can make the
+  clearing price arbitrarily better than the limit, and the back-runner
+  captures that whole difference: the forgone-surplus exposure is bounded
+  below (~the buffer) but NOT above. What keeps it acceptable: the DOWNSIDE
+  stays hard-bounded (no fill below the oracle-floored limit), Phase-B
+  presign carries the identical unbounded-forgone-surplus exposure with NO
+  fill-time floor at all, and the short order TTL bounds the per-order
+  exposure window. A two-phase register-then-activate flow (extra
   Safe tx per rebalance, curator latency, and the activate tx is itself
   back-runnable) was considered and rejected as cost without a closed window;
   revisit only if realized fills show systematic limit-only execution.
@@ -1442,7 +1451,15 @@ the verification log tracks which currently have no assigned target.
   The verified-cancellation path deploys with `migrationUnlockAt = 0`; the
   wait-out path deploys with `enableTime + V1_MAX_TTL`. The deploy script's
   job is choosing the path and PROVING the choice (the per-uid assertions
-  above for the zero case), not enforcing the wait.
+  above for the zero case), not enforcing the wait. PROOF ORDERING IS
+  NORMATIVE for the zero-unlock path: `disableModule(V1)` executes FIRST,
+  and the uid enumeration + per-uid assertions run only AFTER it - while V1
+  is still enabled, a compromised curator can register one more V1 order
+  BETWEEN the proof and the disable, leaving a valid presignature the proof
+  never saw; disable-first makes the V1 uid set immutable before it is
+  enumerated. If any assertion then fails (an un-revoked, un-consumed,
+  un-expired uid remains), the zero-unlock path is FORFEIT and the deploy
+  falls back to the wait-out `migrationUnlockAt`.
 
 ## Open decisions (for review - recommendation first)
 
