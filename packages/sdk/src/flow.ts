@@ -164,7 +164,10 @@ export interface EnrollOphisTraderOptions {
    * platform's own network timeout — minutes on some stacks. A timeout is
    * treated like any network failure: `{ enrolled: false }` in best-effort
    * mode, a throw when `blocking` is set. Requires a fetch impl that honors
-   * `signal` (the global fetch does).
+   * `signal` (the global fetch does). Must be a positive finite number -
+   * anything else (NaN/negative/Infinity) throws as a programmer error, since
+   * setTimeout would silently coerce it to an instant abort that kills every
+   * healthy request.
    */
   readonly timeoutMs?: number;
 }
@@ -230,8 +233,15 @@ export async function enrollOphisTrader(
   }
   // Bound the request: callers await enrollment before submitting the order, so a
   // hung connection must degrade into the same path as a network error, not stall.
+  // Validate the bound itself (programmer error => always throws): setTimeout
+  // silently coerces NaN/negative/Infinity to an (effectively) immediate delay, which
+  // would abort every HEALTHY request - and under `blocking` would block every swap.
+  const timeoutMs = opts.timeoutMs ?? 10_000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(`Ophis: timeoutMs must be a positive finite number of milliseconds; got ${String(opts.timeoutMs)}.`);
+  }
   const aborter = new AbortController();
-  const timer = setTimeout(() => aborter.abort(), opts.timeoutMs ?? 10_000);
+  const timer = setTimeout(() => aborter.abort(), timeoutMs);
   let res: Response;
   try {
     res = await doFetch(`${host}/tier/${wallet}`, {

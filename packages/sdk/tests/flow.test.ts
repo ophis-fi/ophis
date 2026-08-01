@@ -136,6 +136,14 @@ describe('enrollOphisTrader', () => {
     expect(res).toEqual({ enrolled: false });
   });
 
+  it('rejects a non-finite / non-positive timeoutMs (setTimeout would coerce it to an instant abort)', async () => {
+    for (const bad of [NaN, -1, 0, Infinity]) {
+      await expect(enrollOphisTrader(OWNER, { timeoutMs: bad, fetch: okFetch() as unknown as typeof fetch })).rejects.toThrow(
+        /timeoutMs must be a positive finite number/,
+      );
+    }
+  });
+
   it('blocking:true + timeout throws (fail-closed integrations see the stall as an error)', async () => {
     const hangingFetch = vi.fn(
       (_url: unknown, init?: { signal?: AbortSignal }) =>
