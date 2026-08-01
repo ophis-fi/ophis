@@ -1057,12 +1057,16 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // own retryable entry - so <= 2 * MAX_ALLOWED_TOKENS entries; gas/sweep
     // budgets are sized to that bound); sweepResidual iterates and
     // clears them on success. The retry RE-APPLIES the ownership rule the
-    // original path used, it never replays blindly: an allowance-zeroing
-    // residual executes only while the allowance still belongs to the
-    // RECORDED uid (liveOrder[sellToken].uid unchanged) - if the sell token
-    // has since registered a NEW order (new slot, new exact allowance), the
-    // residual is DROPPED as superseded instead of zeroing the new order's
-    // allowance and making it unfillable. Without the record, a residual involving another
+    // original path used, it never replays blindly - and the supersession
+    // test is DROP ONLY ON A DIFFERENT SUCCESSOR: an allowance-zeroing
+    // residual is dropped as superseded only when `liveOrder[sellToken]` now
+    // holds a DIFFERENT, non-empty uid (a new order owns a fresh exact
+    // allowance that must not be zeroed out from under it). An EMPTY slot is
+    // NOT supersession - the removal path clears the live slot BEFORE
+    // attempting approve(0) (the shared cancellation path, as in Phase B),
+    // so with no successor the slot is empty while the stale allowance still
+    // dangles: exactly the state the residual exists to clean, and the retry
+    // EXECUTES. Without the record, a residual involving another
     // token's allowance is unrecoverable once the failure event scrolls by.
     // BOUNDED ACROSS REMOVALS, not just per call: appends are DEDUPLICATED by
     // (sellToken, uid, kind) - a retried removal re-recording the same failed
