@@ -248,7 +248,17 @@ struct Leg {
 /// with dt = block.timestamp - snapshotTs and 0 <= minGrowthPerYearBps <=
 /// maxGrowthPerYearBps (0 = a flat floor at the snapshot, the conservative
 /// default; positive = a guaranteed minimum accrual for rates that provably
-/// only rise). No subtraction, so no underflow path exists. Outside
+/// only rise). No subtraction, so no underflow path exists.
+/// IMPLEMENTATION ORDER IS NORMATIVE - multiply before dividing: evaluated
+/// naively in integer math, `bps/1e4` truncates to ZERO for every realistic
+/// bps (500/10000 = 0), freezing maxRatio at the snapshot forever so the
+/// first genuine accrual fails the leg closed permanently. The formulas are
+/// implemented as
+///   maxRatio = snapshotRatio * (RATE_DENOM + maxGrowthPerYearBps * dt) / RATE_DENOM
+/// with RATE_DENOM = 10_000 * 365 days, using overflow-safe mulDiv (512-bit
+/// intermediate) for the snapshotRatio product; same ordering for minRatio.
+/// The C1 test plan includes the truncation case (bps=500, dt=1 day => a
+/// strictly increasing maxRatio) so a naive re-implementation cannot pass. Outside
 /// [minRatio, maxRatio] the read REVERTS (C18) - it does not clamp, unlike
 /// Aave's reference. The operational consequence stands (see below): a stalled
 /// rate drifts under a rising floor and fails closed until governance
@@ -264,6 +274,12 @@ struct RateBound {
 struct TokenRoute {
     bool      allowed;
     uint8     tokenDecimals; // cached; floorBuyAmount still takes token decimals
+    // BOTH arrays are LENGTH-CAPPED (MAX_ROUTE_LEGS = 4, MAX_ANCHOR_LEGS = 2,
+    // enforced at the constructor AND executeTokenAdd): every leg costs external
+    // reads + checks on EVERY 1271 validation, and an uncapped route that fits
+    // registration gas could exceed the orderbook's 8M per-order verification
+    // budget at fill time, making every order for that token unplaceable. No
+    // verified route today needs more than 3 legs (UsdPrice x 2 ExchangeRate).
     Leg[]     legs;          // composed: legs[0] (UsdPrice) x each ExchangeRate leg
     Leg[]     anchor;        // optional, composed by the SAME rule as legs
     uint32    maxDivergenceBps;
@@ -289,8 +305,22 @@ Unichain wstETH route composes to a USD price (~4.5e21) while the natural
 anchor is a wstETH/ETH ratio (~1.2e18) and comparing those breaches any band
 on every call. The band is then one comparison in one denomination:
 `abs(anchorValue - routeValue) * 10000 / routeValue <= maxDivergenceBps`,
-enforced in both directions, reverting outside it. Registration rejects any
-anchor whose composed shape is not comparable to the route's.
+enforced in both directions. Registration rejects any anchor whose composed
+shape is not comparable to the route's.
+**A band breach is DIRECTION-AWARE at order validation, not a blanket
+revert.** An unconditional revert during a genuine depeg also blocks SELLING
+the depegging asset - both new `rebalance` calls and outstanding 1271 sell
+orders fail exactly when exiting at the lower anchored price is the
+risk-reducing action, deleting the vault's curator-operated exit path during
+the event the anchor detects. Normatively: when the breached band belongs to
+the SELL token's route, validation proceeds using the CONSERVATIVE price
+`min(routeValue, anchorValue)` for the sell side (a lower assumed sell price
+=> a HIGHER required buy floor, so the depegging asset can be exited but
+never underpriced against the un-breached leg) and emits an
+`AnchorBandBreached` event; when the breached band belongs to the BUY token's
+route, validation REVERTS - acquiring an asset whose price integrity is in
+question is risk-ADDING and has no exit rationale. `removeToken` remains the
+instant operational escape in both directions.
 The snapshot in `RateBound` is advanced ONLY through the P3 timelock, never by
 `rebalance` - a curator-advanced snapshot would let the constrained party move
 its own bound. The consequence is deliberate and must be operated for: a rate
@@ -417,11 +447,13 @@ docs must state) to carry such pairs. Admitting one unsupported pair never
 silently downgrades an existing fill-time-floored vault.
 
 **Open sizing questions for review** (deliberately not invented here):
-`maxDivergenceBps` per asset class, the CAPO growth ceiling, and whether
-Chainlink SVR (OEV-auction) feeds - four of Unichain's ten production feeds,
-including the ETH/USD feed the LIVE module already uses - are acceptable as
-fill-eligible legs given their different update dynamics. That last one is a
-question about deployed code, not only about Phase C.
+`maxDivergenceBps` per asset class and the CAPO growth ceilings. (SVR
+eligibility is NOT open: it was settled with on-chain proof in the
+verification log - SVR feeds run `DualAggregator 1.0.0` with the same
+privileged-writer allowlist gate on `transmit`/`transmitSecondary`, so they
+ARE fill-eligible. C2 implementers must follow that normative answer, which
+matters because four of Unichain's ten production feeds - including the
+ETH/USD leg every Unichain route composes through - are SVR.)
 
 
 ### P3 lane: in-module pending map, Safe-proposed, guardian-vetoable
@@ -532,13 +564,20 @@ field:
   `<= 1 live order per sell token`) into
   `liveOrder[sellToken] = {bytes uid, address buyToken, bytes32 digest}`.
   Storage is O(allowlist), self-overwriting on supersede, and retains no
-  history. `removeToken(token)` iterates `allowedTokens` - length-capped at
-  `MAX_ALLOWED_TOKENS` so the sweep is statically bounded - and for each sell
-  token `S` with a live record `R`, revokes `R` when `S == token` OR
-  `R.buyToken == token`, then zeroes `S`'s relayer allowance when the revoked
-  order still owned it (the existing `cancel()` ownership rule, refactored
-  into a shared internal path). Worst case is one settlement call per
-  allowlisted token, bounded at deploy.
+  history. `removeToken(token)` is TWO-PHASE: it first SWEEPS the complete
+  pre-removal `allowedTokens` list - and only after the sweep finishes does it
+  COMPACT the list (swap-pop the removed token). Ordering is load-bearing in
+  both directions: compacting first while the removed token is itself a sell
+  token makes the sweep miss its own `liveOrder` slot (the very order most in
+  need of revocation), while never compacting turns `allowedTokens.length`
+  into a lifetime-additions counter that ordinary remove/add churn walks up to
+  `MAX_ALLOWED_TOKENS`, permanently bricking `executeTokenAdd`. Compaction
+  keeps the cap a CONCURRENT-set bound. Per sell token `S` with a live record
+  `R`, the sweep revokes `R` when `S == token` OR `R.buyToken == token`, then
+  zeroes `S`'s relayer allowance when the revoked order still owned it (the
+  existing `cancel()` ownership rule, refactored into a shared internal
+  path). Worst case is one settlement call per allowlisted token, bounded at
+  deploy.
   **The sweep must be revert-tolerant, not all-or-nothing.** Every step is an
   external call through the Safe - `approve` on an arbitrary allowlisted ERC20
   and `setPreSignature`/`invalidateOrder` on the settlement. A pausable or
@@ -816,8 +855,12 @@ AND-constraint, Morpho `adapterRegistry`-style).
   sequencer gate rather than by any adapter).
   NO USDT/USD (RedStone `0x58fa68A3...` is the only push option), no
   stETH/USD, no LST market feeds - wstETH->USD requires the ExR x ETH/USD
-  composition (peg assumption) anchored by RedStone's wstETH/ETH market feed
-  (`0x24c89643...`), which is the independent leg.
+  composition (peg assumption); the only independent market leg is RedStone's
+  wstETH/ETH feed (`0x24c89643...`), which is NOT certifiable (RedStone's
+  write path is permissionlessly updateable, failing the privileged-writer
+  eligibility rule) - so this route is **registration-anchored / Presign-only**
+  (C17 rejects it for an Eip1271 vault). Listed for completeness, not as an
+  Eip1271 route shape.
 - **OP/Base/Arb**: rich Chainlink coverage incl. market + ExR feed pairs for
   wstETH/rETH/weETH/cbETH/ezETH/rsETH and sUSDe (full addresses in the
   research digest; each goes through the same pin-by-address + on-chain
@@ -925,10 +968,15 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     function executeTokenAdd(TokenAdd calldata add) external;   // ONLY address(safe), within [eta, eta+WINDOW], revalidates
     function cancelPending(bytes32 key) external;               // guardian or safe, instant
     function removeToken(address token) external;               // guardian or safe, instant, revert-TOLERANT sweep;
-                                                                // ALSO cancels any live pending TokenAdd for `token`
-                                                                // (submitted or matured-unexecuted): otherwise the Safe
-                                                                // could execute a matured add one block after the
-                                                                // guardian's removal and silently undo the veto
+                                                                // ALSO invalidates EVERY live pending TokenAdd for
+                                                                // `token` (submitted or matured-unexecuted) via a
+                                                                // PER-TOKEN NONCE folded into the pending key --
+                                                                // pendings are keyed by full calldata, so several
+                                                                // distinct routes for one token can be pending at once
+                                                                // and a by-token scan cannot enumerate them; bumping
+                                                                // tokenNonce[token] kills them all in O(1). Otherwise
+                                                                // the Safe could execute a matured add one block after
+                                                                // the guardian's removal and silently undo the veto.
     // Failed residual steps are PERSISTED so the retry knows WHAT to retry:
     // removing buy-side token T can fail zeroing approve(S, 0) on the ORDER'S
     // SELL token S, and `sweepResidual(T)` receives only T. removeToken records
@@ -936,6 +984,12 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // live order, <= MAX_ALLOWED_TOKENS entries); sweepResidual iterates and
     // clears them on success. Without the record, a residual involving another
     // token's allowance is unrecoverable once the failure event scrolls by.
+    // BOUNDED ACROSS REMOVALS, not just per call: appends are DEDUPLICATED by
+    // (sellToken, uid, kind) - a retried removal re-recording the same failed
+    // operation is a no-op - and `executeTokenAdd` REFUSES to re-admit a token
+    // while residuals[token] is non-empty (sweep first). Without both rules,
+    // remove/re-add churn on a token with a sticky failure grows the array
+    // with removal history until sweepResidual itself exceeds the gas limit.
     function sweepResidual(address token) external;             // retry residual revocations that failed
     function rotateGuardian(address newGuardian) external;      // Safe-submitted, TIMELOCKED like a token add and
                                                                 // incumbent-guardian-cancelable (C16: instant rotation
@@ -948,12 +1002,27 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // instantly binding for every route already using the feed.
     function submitFeedEligibility(address feed, address aggregator) external;   // ONLY address(safe)
     function executeFeedEligibility(address feed, address aggregator) external;  // ONLY address(safe), [eta, eta+WINDOW]
+    // revoke is MODE-AWARE like removeToken (C15's Presign lesson): in Eip1271
+    // mode clearing the mapping is the enforcement (the fill-time recheck
+    // refuses every dependent route at the next validation). In PRESIGN mode
+    // there is no fill-time gate - settlement reads its own preSignature
+    // mapping - so revoke ALSO sweeps the liveOrder slots whose route (legs or
+    // anchor) reads the revoked feed and revokes their presignatures
+    // (setPreSignature(uid,false), policy-critical + residual-recorded, same
+    // discipline as removeToken). And like removeToken, revoke bumps a
+    // per-feed nonce folded into feed-certification pending keys, so a
+    // matured-unexecuted executeFeedEligibility for the same feed cannot be
+    // executed one block later to undo the revocation.
     function revokeFeedEligibility(address feed) external;      // guardian or safe, INSTANT (risk-reducing)
 }
 ```
 
 Constructor additions: `Mode mode`, `address guardian`, `uint256 delay`
-(>= 24h, immutable), `uint256 executeWindow` (immutable, BOUNDED: `1 hours <=
+(BOUNDED both sides: `24 hours <= delay <= 90 days`, immutable - the floor is
+the review guarantee, and an unbounded ceiling accepted near-`uint256.max`
+values whose `submittedAt + DELAY` overflows at every schedule/check, leaving
+a deployment that can never add a route or recover a lost guardian), `uint256
+executeWindow` (immutable, BOUNDED: `1 hours <=
 executeWindow <= 30 days`, enforced in the constructor AND the factory - zero
 makes execution a single-timestamp race that generally cannot land, an
 unbounded window recreates the indefinitely-executable stale pending the
@@ -1201,6 +1270,24 @@ the verification log tracks which currently have no assigned target.
   caller executes -> `submitOphisVaultOrder`) rather than the current
   post-then-return-txs shape. A naive scheme-string swap would 400 on every
   order. This ordering is normative for milestone C1.
+  **The ordering opens a PRE-PLACEMENT window, stated rather than hidden:**
+  once `rebalance` lands, the calldata reveals the full order, the verifier
+  answers valid, and the allowance is live - an authorized solver can back-run
+  registration and settle DIRECTLY at the signed limit before the order
+  reaches any auction (settlement never checks orderbook membership). The
+  design ACCEPTS this window with a bounded-loss argument instead of a
+  two-phase activate: (a) it is EXACTLY Phase B's existing exposure -
+  `setPreSignature` makes a presign order fillable the same block, with no
+  fill-time floor at all, so 1271 mode strictly narrows the window's harm;
+  (b) any direct settle must still pass the FULL fill-time gate (fresh oracle
+  floor, minBuyOverride, sanity band, staleness, sequencer), so the loss is
+  capped at the auction surplus ABOVE the floored limit - price-improvement
+  forgone, never principal; (c) the builder's existing buffer rule
+  (`slippageBps + fee + quote-vs-oracle gap < 50bps`) bounds that forgone
+  surplus to bps of the trade. A two-phase register-then-activate flow (extra
+  Safe tx per rebalance, curator latency, and the activate tx is itself
+  back-runnable) was considered and rejected as cost without a closed window;
+  revisit only if realized fills show systematic limit-only execution.
 - **services/backend**: NO changes required. Verified against our actual pin
   (`apps/backend` = subtree of cowprotocol/services @ upstream `0720b9bc`,
   2026-04-30, recorded in `.greg-upstream`): full 1271 placement + creation
@@ -1290,7 +1377,17 @@ the verification log tracks which currently have no assigned target.
   skipped, the P1 guarantee has a <= 1h hole - this is the Phase-B NatSpec's
   "disable the old module and let its orders expire/cancel first" rule, now
   load-bearing. V2 enablement additionally zeroes any residual relayer
-  allowance it finds for allowlisted tokens as belt-and-suspenders.
+  allowance it finds for allowlisted tokens - but that zeroing is HYGIENE,
+  NOT containment: the first V2 `rebalance` of the same sell token grants the
+  SHARED relayer a fresh allowance, and a missed still-presigned V1 order can
+  consume it at its old, non-fill-time-checked limit. The ceremony therefore
+  requires POSITIVE verification, per sell token, before V2 may rebalance it:
+  enumerate every V1 uid from the module's own registration events, and for
+  each assert on-chain that `preSignature(uid) == 0` (revoked) OR
+  `filledAmount(uid) != 0` (consumed) OR `validTo < now` (expired) - or, if
+  enumeration cannot be completed trustworthily, WAIT OUT V1's `maxTtl` from
+  the disable block before the first V2 rebalance. The deploy script encodes
+  this as a hard gate, not an operator checklist item.
 
 ## Open decisions (for review - recommendation first)
 
