@@ -54,6 +54,8 @@ if (htmlFiles.length === 0) {
 }
 
 const seen = new Set()
+// Same scripts, digested under every CSP-supported algorithm (see below).
+const seenAnyAlgo = new Set()
 let execCount = 0
 let failed = false
 for (const file of htmlFiles) {
@@ -67,6 +69,12 @@ for (const file of htmlFiles) {
     if (!body.trim()) continue
     execCount++
     const hash = 'sha256-' + createHash('sha256').update(body).digest('base64')
+    // CSP accepts sha256/384/512. Record all three per script so the allowlist
+    // check below can validate a header entry in ANY of them: a sha384 hash
+    // pasted from a violation report must be recognised, not silently skipped.
+    for (const algo of ['sha256', 'sha384', 'sha512']) {
+      seenAnyAlgo.add(`${algo}-` + createHash(algo).update(body).digest('base64'))
+    }
     if (!headers.includes(`'${hash}'`) && !seen.has(hash)) {
       console.error(`check-csp-hashes: MISSING hash in _headers: '${hash}'  (${relative(root, file)})`)
       failed = true
@@ -116,9 +124,12 @@ const KNOWN_THIRD_PARTY = {
 const weakened = []
 
 // 1. Every inline hash in _headers must be backed by a script in dist.
-const headerHashes = [...headers.matchAll(/'(sha256-[A-Za-z0-9+/=]+)'/g)].map((m) => m[1])
+// CSP accepts sha256, sha384 and sha512. Matching only sha256 left a bypass:
+// a sha384/sha512 entry pasted from a violation report was invisible here and
+// the guard passed. Reproduced 2026-08-01.
+const headerHashes = [...headers.matchAll(/'(sha(?:256|384|512)-[A-Za-z0-9+/=]+)'/g)].map((m) => m[1])
 for (const hash of new Set(headerHashes)) {
-  if (seen.has(hash)) continue
+  if (seenAnyAlgo.has(hash)) continue
   const known = KNOWN_THIRD_PARTY[hash]
   weakened.push(
     known
@@ -131,8 +142,23 @@ for (const hash of new Set(headerHashes)) {
 //    script-src alone was insufficient: script-src-elem takes precedence over
 //    script-src for script elements, so a permissive script-src-elem next to a
 //    strict script-src would have passed.
-const directiveValue = (name) =>
-  new RegExp(`(?:^|;)\\s*${name}\\s([^;]*)`, 'i').exec(headers)?.[1] ?? null
+// Parse the CSP header VALUE, then split it into directives. The previous
+// version regexed the raw file and anchored on `^` or `;`, so the FIRST
+// directive was unreachable: `default-src` sits right after
+// `Content-Security-Policy: ` and returned null, defeating the fallback check.
+// Reproduced 2026-08-01.
+const cspValue = /^\s*Content-Security-Policy:\s*(.+)$/im.exec(headers)?.[1] ?? ''
+const directives = new Map(
+  cspValue
+    .split(';')
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .map((d) => {
+      const i = d.search(/\s/)
+      return i === -1 ? [d.toLowerCase(), ''] : [d.slice(0, i).toLowerCase(), d.slice(i + 1).trim()]
+    }),
+)
+const directiveValue = (name) => directives.get(name) ?? null
 const scriptSrc = directiveValue('script-src')
 const scriptSrcElem = directiveValue('script-src-elem')
 const defaultSrc = directiveValue('default-src')

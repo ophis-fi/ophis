@@ -58,22 +58,24 @@ structured data.
 > `gtag('config','G-NG9YX5G9CM')` with **no consent defaults and no
 > `anonymize_ip`**. Allowing them would double-count every `page_view` and set
 > analytics cookies for EEA visitors before opt-in. GA4 is verified working
-> today without them (gtag.js loads first-party from `/938g`, `dataLayer`
+> today without them (at the time: gtag.js from `/938g`; now from
+> googletagmanager.com per PR #1048 - either way `dataLayer`
 > populates, a `collect` beacon fires after Accept).
 >
-> `scripts/check-csp-hashes.mjs` now FAILS if either injected hash, or
-> `'unsafe-inline'`, appears in `public/_headers` (mutation-tested both ways).
+> `scripts/check-csp-hashes.mjs` refuses any inline hash not produced by a
+> script in `dist` (sha256/384/512), and any `'unsafe-inline'` in the directive
+> that governs script elements. Covered by `scripts/test-csp-guard.mjs`.
 >
-> **To actually clear the console:** disable *automatic injection* for Google
-> tag gateway on the `ophis.fi` zone in the Cloudflare dashboard. It is not
-> exposed on the zone-settings API, so it needs the dashboard. Keep the `/938g`
-> proxy path itself, since `Base.astro` loads gtag.js through it.
+> **To clear the console:** disable **Google tag gateway** on the `ophis.fi`
+> zone in the Cloudflare dashboard. It is not exposed on any API, so it needs
+> the dashboard.
 >
-> Separately: measurement beacons currently go to `region1.google-analytics.com`,
-> not through `/938g`, so the ad-blocker-resilience benefit of Tag Gateway is not
-> being realised. Tested and ruled out as a CSP side-effect: pushing the
-> `google_tags_first_party` marker ourselves before load does NOT switch the
-> transport. Unresolved, and independent of the violations above.
+> ⚠️ **Superseded 2026-08-01:** an earlier version of this note said to keep the
+> `/938g` proxy because `Base.astro` loaded gtag.js through it. That is no
+> longer true - PR #1048 pointed all three surfaces back at
+> `googletagmanager.com`, so nothing depends on `/938g` and the zone feature can
+> be turned off outright. Disable the whole thing; there is no part worth
+> keeping (see the REMOVED note in the analytics section below for why).
 
 ## Done: analytics + verification (live as of 2026-06-03)
 
