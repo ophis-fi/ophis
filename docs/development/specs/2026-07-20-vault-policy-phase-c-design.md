@@ -318,10 +318,17 @@ the depegging asset - both new `rebalance` calls and outstanding 1271 sell
 orders fail exactly when exiting at the lower anchored price is the
 risk-reducing action, deleting the vault's curator-operated exit path during
 the event the anchor detects. Normatively: when the breached band belongs to
-the SELL token's route, validation proceeds using the price
-`min(routeValue, anchorValue)` for the sell side, REQUIRED to still lie
-inside the route's persisted `[sanityLow, sanityHigh]` - if the selected
-price falls below `sanityLow`, validation REVERTS even on the sell side. The
+the SELL token's route AND `anchorValue < routeValue`, validation proceeds
+using the price `min(routeValue, anchorValue)` (= the anchor) for the sell
+side, REQUIRED to still lie inside the route's persisted
+`[sanityLow, sanityHigh]` - if the selected price falls below `sanityLow`,
+validation REVERTS even on the sell side. The direction condition is
+load-bearing: the exit rationale exists only when the ANCHOR is the low
+side (the route overvalues a depegging asset no solver would fill at). A
+breach where the ROUTE is the low outlier (route 80, anchor 100) is not a
+depeg exit - it is the primary route reading suspiciously LOW against the
+independent anchor, exactly the manipulated/faulty-route case the band
+exists to catch, and it REVERTS in both trade directions. The
 sanity band is the ABSOLUTE guardrail and the depeg exception never pierces
 it: without this clamp-free bound-check, a certified anchor publishing a
 fresh, nonzero erroneous EXTREME (the faulty-feed scenario the persisted
@@ -772,9 +779,10 @@ AND-constraint, Morpho `adapterRegistry`-style).
      `order.buyAmount >= max(freshOracleFloor, storedMinBuyOverride)` with the
      composed price inside the route's stored `[sanityLow, sanityHigh]` and
      the anchor band evaluated DIRECTION-AWARE per the depeg-exit rule (a
-     sell-side breach prices the floor at `min(routeValue, anchorValue)`,
-     still bound within the persisted sanity band, instead of reverting; a
-     buy-side breach - or a selected price below `sanityLow` - reverts; see
+     sell-side breach with the ANCHOR as the low side prices the floor at
+     the anchor value, still bound within the persisted sanity band, instead
+     of reverting; a buy-side breach, a sell-side breach where the ROUTE is
+     the low outlier, or a selected price below `sanityLow` - reverts; see
      C18);
    - returns `0x1626ba7e` on success; on failure reverts with **typed
      reasons** split transient vs fatal (`FloorNotMet`, `StaleOraclePrice`,
@@ -1346,12 +1354,13 @@ the verification log tracks which currently have no assigned target.
   Aave's reference, which clamps and returns zero, because a clamped price
   silently yields a wrong floor. The anchor band carries ONE stated
   exception (the depeg-exit rule in the P2 lane): a band breach on the SELL
-  token's route does NOT revert - validation proceeds at
-  `min(routeValue, anchorValue)`, an oracle-derived price both sources
-  support, PROVIDED it still lies inside the persisted
-  `[sanityLow, sanityHigh]` (below `sanityLow` even the sell side reverts;
-  the sanity band is never pierced) - while a breach on the BUY token's
-  route reverts unconditionally.
+  token's route where the ANCHOR is the LOW side (`anchorValue <
+  routeValue`) does NOT revert - validation proceeds at the anchor price,
+  PROVIDED it still lies inside the persisted `[sanityLow, sanityHigh]`
+  (below `sanityLow` even the sell side reverts; the sanity band is never
+  pierced) - while a breach with the ROUTE as the low outlier (a
+  suspiciously low primary reading against the independent anchor) or on
+  the BUY token's route reverts unconditionally.
   Tests assert BOTH arms; a blanket both-direction revert is a C18 violation,
   not a stricter implementation of it.
 - **C12**: `rebalance` in 1271 mode reverts unless the Safe's fallback handler
