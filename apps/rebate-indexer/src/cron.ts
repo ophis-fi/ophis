@@ -58,6 +58,18 @@ export function resolveBatcherProposeEnabled(): boolean {
 }
 
 /**
+ * True when THIS calendar month's batcher step already completed: the heartbeat writes a
+ * first_of_month=true pipeline_runs row ONLY when runBatcher actually executed (any result),
+ * never on a skip/fail-closed cycle -- which is exactly what makes it a retry gate.
+ */
+async function batcherRanThisMonth(): Promise<boolean> {
+  const [row] = await sql<{ ok: boolean }[]>`
+    SELECT EXISTS(SELECT 1 FROM pipeline_runs WHERE first_of_month AND ran_at >= date_trunc('month', now())) AS ok
+  `;
+  return row?.ok ?? false;
+}
+
+/**
  * The full nightly pipeline. Runs sequentially. Called by the daily cron tick.
  * On the 1st of the month, batcher runs as the final step — never as a separate
  * cron entry, eliminating the race noted in the spec §"Safe batch flow → Step 1".
@@ -106,6 +118,13 @@ async function runPipelineSteps(): Promise<void> {
     if (pf.skipped > 0) {
       partnerFeedOk = false;
       log.error({ skipped: pf.skipped }, 'partner-fee fetch skipped ambiguous attributions; the 1st-of-month shared-Safe distribution fails closed (fees dropped from the feed)');
+    }
+    // A page-capped run drained only a PREFIX of the feed: accruing it would under-count the
+    // liability exactly like unpriced rows would. Fails the cycle closed; the fetch resumes
+    // from its cursor next night and the (retried) monthly section completes once drained.
+    if (pf.capped) {
+      partnerFeedOk = false;
+      log.error('partner-fee fetch hit its per-run page cap with pages remaining; the 1st-of-month shared-Safe distribution fails closed until the feed drains');
     }
     log.info({ fetched: pf.inserted, skipped: pf.skipped, priced: pfp.priced, priceFailed: pfp.failed }, 'partner-fee fetch+price complete');
   } catch (err) {
@@ -158,7 +177,16 @@ async function runPipelineSteps(): Promise<void> {
   // Hoisted out of the first-of-month block: the NIGHTLY partner-fee proposal retry (below)
   // gates on it too. On non-1st days it stays true (no accrual ran to invalidate it).
   let partnerAccrualOk = true;
-  if (isFirstOfMonth()) {
+  // The monthly section runs on the 1st -- OR on any later night while THIS month's batcher
+  // step has not yet completed (no first_of_month=true pipeline_runs row this month). That
+  // row is written ONLY when runBatcher actually executed, so a 1st that failed closed (feed
+  // outage), was skipped (lock contention, missing key), or never ran (host down) is RETRIED
+  // the next night instead of silently deferring the whole shared-Safe cycle a month. Every
+  // step inside is cycle-idempotent: accruals re-run while 'computed', runBatcher resumes or
+  // aborts an already-proposed cycle, and proposals fire at most once per batch.
+  const monthlyDue = isFirstOfMonth() || !(await batcherRanThisMonth());
+  if (monthlyDue) {
+    if (!isFirstOfMonth()) log.warn('monthly batcher step missing for this month; running CATCH-UP monthly section tonight');
     log.info('first-of-month: running batcher');
     // Sovereign own-fee ACCRUAL (phase A). Runs FIRST, flag-INDEPENDENT and proposer-key
     // -INDEPENDENT: it records the owed ledger to a 'computed' batch per sovereign chain

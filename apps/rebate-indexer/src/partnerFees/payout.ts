@@ -263,20 +263,26 @@ export async function accruePartnerFees(deps: PartnerFeeAccrualDeps = {}): Promi
             inArray(schema.partnerFeeTrades.recipient, entries.map((e) => e.recipient)),
           ),
         );
-      // FOLD the consumed carries: every unfolded carried/quarantined entry in an OLDER batch
-      // was just read into this batch's owed (the carry read returns exactly the unfolded
-      // set), so stamp its folded_into_batch_id. From now on the liability rollup and the
-      // next carry read count the SUCCESSOR entry instead -- never both, never neither.
-      await tx
-        .update(schema.partnerFeeBatchEntries)
-        .set({ foldedIntoBatchId: id })
-        .where(
-          and(
-            isNull(schema.partnerFeeBatchEntries.foldedIntoBatchId),
-            inArray(schema.partnerFeeBatchEntries.status, ['carried', 'quarantined']),
-            ne(schema.partnerFeeBatchEntries.batchId, id),
-          ),
-        );
+      // FOLD the consumed carries -- EXACTLY the (batch_id, recipient) rows the carry read
+      // summed, never a blanket "everything unfolded" update: the in-process execution
+      // poller can concurrently convert an older proposed batch's paid entries to carried
+      // (finalizeExecutedPartnerBatch runs outside the pipeline lock), and folding a row
+      // whose amount was never in the sum would silently delete it from the ledger. A row
+      // created after the read stays unfolded and is consumed next cycle instead. From now
+      // on the liability rollup and the next carry read count the SUCCESSOR entry.
+      for (const c of carried) {
+        for (const sourceBatchId of c.sourceBatchIds) {
+          await tx
+            .update(schema.partnerFeeBatchEntries)
+            .set({ foldedIntoBatchId: id })
+            .where(
+              and(
+                eq(schema.partnerFeeBatchEntries.batchId, sourceBatchId),
+                eq(schema.partnerFeeBatchEntries.recipient, c.recipient),
+              ),
+            );
+        }
+      }
     }
     return id;
   });
@@ -398,10 +404,15 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
 
   // Quarantine one recipient's entry (persisted only in a real run): carried_usd rolls the owed
   // forward so a cleared recipient is re-attempted next cycle and the amount is never lost.
-  async function quarantine(batchId: number, to: `0x${string}`): Promise<void> {
+  // owed_wei is updated to the just-repriced amount too -- the surviving entries persist the
+  // proposal-time conversion, and a quarantined entry's owed_wei is exactly what the liability
+  // rollup reserves, so leaving the stale accrual-time snapshot would reserve a different
+  // number than the batch total and the survivors imply.
+  async function quarantine(batchId: number, to: `0x${string}`, repricedWei: bigint): Promise<void> {
     if (!persist) return;
     await sql`
-      UPDATE partner_fee_batch_entries SET status = 'quarantined', carried_usd = owed_usd
+      UPDATE partner_fee_batch_entries
+      SET status = 'quarantined', carried_usd = owed_usd, owed_wei = ${repricedWei.toString()}
       WHERE batch_id = ${batchId} AND recipient = decode(${to.slice(2)}, 'hex')
     `;
   }
@@ -424,7 +435,7 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
     // newly-blocked recipient must be quarantined BEFORE the simulate/submit, never paid.
     const sanctioned = transfers.filter((t) => isScreenedOut(t.to, screen));
     if (sanctioned.length > 0) {
-      for (const s of sanctioned) await quarantine(batch.id, s.to);
+      for (const s of sanctioned) await quarantine(batch.id, s.to, s.amount);
       transfers = transfers.filter((t) => !isScreenedOut(t.to, screen));
       log.warn({ cycle, sanctionedCount: sanctioned.length }, 'partner-fee: recipients screened out at proposal (sanctions/list); owed carries forward');
       await alerts.alert('partner-fee-payout', `Partner-fee ${cycle}: ${sanctioned.length} recipient(s) SCREENED OUT at proposal (sanctions/list changed since accrual); owed carries forward. Investigate.`).catch(() => {});
@@ -434,7 +445,7 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
     // WETH.transfer reverts is QUARANTINED, never proposed.
     const { good, bad } = await isolateBadRecipients(transfers, simulate);
     if (bad.length > 0) {
-      for (const b of bad) await quarantine(batch.id, b.to);
+      for (const b of bad) await quarantine(batch.id, b.to, b.amount);
       const quarantinedWei = bad.reduce((acc, t) => acc + t.amount, 0n);
       log.warn({ cycle, badCount: bad.length, quarantinedWei: quarantinedWei.toString(), persist }, 'partner-fee: recipients quarantined at dry-run; owed carries forward');
       await alerts.alert('partner-fee-payout', `Partner-fee ${cycle}: ${bad.length} recipient(s) QUARANTINED (transfer reverted at dry-run); their owed carries forward and is re-attempted next cycle. Investigate.`).catch(() => {});
@@ -552,7 +563,15 @@ async function proposeComputedBatch(
   wait({ chainId: PARTNER_FEE_CHAIN, safeTxHash })
     .then(async (r) => {
       if (r.executed) {
-        await finalizeExecutedPartnerBatch(batch.id, { isSuccessful: r.isSuccessful === true, transactionHash: r.transactionHash });
+        // DEFINITIVE results only: executed with isSuccessful still null/undefined means the
+        // Safe service has not populated the receipt yet. Coercing unknown to "failed" would
+        // convert paid entries to carry on a tx that actually SUCCEEDED -- a double-pay on
+        // the re-attempt. Leave the batch 'proposed'; reconcile finalizes once definitive.
+        if (typeof r.isSuccessful !== 'boolean') {
+          log.warn({ batchId: batch.id, safeTxHash }, 'partner-fee executed with UNKNOWN success; finalization deferred to reconcile');
+          return;
+        }
+        await finalizeExecutedPartnerBatch(batch.id, { isSuccessful: r.isSuccessful, transactionHash: r.transactionHash });
       }
     })
     .catch((err) => log.error({ err, batchId: batch.id }, 'partner-fee polling failed'));
@@ -633,10 +652,19 @@ export async function reconcilePartnerFeeBatches(opts: { now?: Date } = {}): Pro
       continue;
     }
     if (status.executed) {
+      // DEFINITIVE results only (see the in-process poller): an executed tx whose
+      // isSuccessful the Safe service has not yet populated must NOT be coerced to
+      // "failed" -- that carries debt forward on a possibly-successful payment and
+      // double-pays on the re-attempt. Leave it 'proposed'; the next nightly retries.
+      if (typeof status.isSuccessful !== 'boolean') {
+        log.warn({ cycle, batchId: row.id, txHash: status.transactionHash }, 'partner-fee executed with UNKNOWN success; leaving for the next reconcile');
+        await alerts.alert('partner-fee-reconcile', `Partner-fee ${cycle} executed on-chain but the Safe service has not reported success/failure yet; finalization deferred to the next reconcile.`).catch(() => {});
+        continue;
+      }
       // Terminal batch status + entry settlement/carry state commit in ONE transaction
       // (finalizeExecutedPartnerBatch) so a crash can never strand a terminal batch with
       // unsettled entries.
-      await finalizeExecutedPartnerBatch(row.id, { isSuccessful: status.isSuccessful === true, transactionHash: status.transactionHash }, now);
+      await finalizeExecutedPartnerBatch(row.id, { isSuccessful: status.isSuccessful, transactionHash: status.transactionHash }, now);
       if (status.isSuccessful) {
         advancedExecuted++;
         await alerts.alert('partner-fee-reconcile', `Partner-fee ${cycle} EXECUTED on-chain (tx ${status.transactionHash}).`).catch(() => {});

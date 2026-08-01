@@ -88,6 +88,14 @@ export async function inflightPaidLiabilityWei(): Promise<bigint> {
 export interface CarriedBalance {
   readonly recipient: `0x${string}`;
   readonly carriedUsd: number;
+  /**
+   * The batch ids of the exact unfolded entries this balance was summed from. The consuming
+   * accrual folds PRECISELY these (batch_id, recipient) rows - never a blanket "everything
+   * unfolded" update, which could fold an entry created AFTER this read (e.g. the in-process
+   * execution poller concurrently converting an older batch's paid entries to carried) whose
+   * amount was never included in the sum, silently deleting it from the ledger.
+   */
+  readonly sourceBatchIds: readonly number[];
 }
 
 /**
@@ -106,17 +114,22 @@ export interface CarriedBalance {
  */
 export async function currentCarriedUsdByRecipient(releaseBatchId?: number): Promise<CarriedBalance[]> {
   const release = releaseBatchId ?? -1;
-  const rows = await sql<{ recipient_hex: string; carried_usd: string }[]>`
-    SELECT encode(recipient, 'hex') AS recipient_hex, SUM(carried_usd)::text AS carried_usd
+  // Per-entry rows (not GROUP BY): the caller needs the exact source rows to fold.
+  const rows = await sql<{ recipient_hex: string; batch_id: number; carried_usd: string }[]>`
+    SELECT encode(recipient, 'hex') AS recipient_hex, batch_id, carried_usd::text AS carried_usd
     FROM partner_fee_batch_entries
     WHERE status IN ('carried', 'quarantined')
       AND (folded_into_batch_id IS NULL OR folded_into_batch_id = ${release})
       AND batch_id <> ${release}
-    GROUP BY recipient
-    HAVING SUM(carried_usd) > 0
+      AND carried_usd > 0
   `;
-  return rows.map((r) => ({
-    recipient: `0x${r.recipient_hex}` as `0x${string}`,
-    carriedUsd: parseFloat(r.carried_usd),
-  }));
+  const byRecipient = new Map<`0x${string}`, { carriedUsd: number; sourceBatchIds: number[] }>();
+  for (const r of rows) {
+    const recipient = `0x${r.recipient_hex}` as `0x${string}`;
+    const agg = byRecipient.get(recipient) ?? { carriedUsd: 0, sourceBatchIds: [] };
+    agg.carriedUsd += parseFloat(r.carried_usd);
+    agg.sourceBatchIds.push(r.batch_id);
+    byRecipient.set(recipient, agg);
+  }
+  return [...byRecipient.entries()].map(([recipient, v]) => ({ recipient, ...v }));
 }

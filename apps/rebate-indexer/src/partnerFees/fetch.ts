@@ -263,7 +263,7 @@ async function backfillBlockTimestamps(fetcher: BlockTimestampFetcher): Promise<
  * in a partially-returned block is ever skipped OR double-counted. Skipped (ambiguous)
  * attributions are surfaced via a capped alert; they are NOT inserted (fail-safe under-count).
  */
-export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promise<{ inserted: number; skipped: number; enriched: number }> {
+export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promise<{ inserted: number; skipped: number; enriched: number; capped: boolean }> {
   const feeds = deps.feeds ?? resolvePartnerFeeFeeds();
   const fetcher = deps.fetcher ?? defaultFeedFetcher;
   // Re-assert even for injected feeds (resolvePartnerFeeFeeds already asserts the env path), so a
@@ -271,11 +271,15 @@ export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promis
   assertFeedsConfigFeeFree(feeds);
   if (feeds.length === 0) {
     log.debug('no partner-fee feeds configured (PARTNER_FEE_FEED_URLS unset); skipping');
-    return { inserted: 0, skipped: 0, enriched: 0 };
+    return { inserted: 0, skipped: 0, enriched: 0, capped: false };
   }
 
   let inserted = 0;
   let skipped = 0;
+  // True when any feed still had pages beyond MAX_PAGES_PER_RUN: the run drained only a
+  // PREFIX of the feed. Surfaced so the 1st-of-month guard treats the feed as incomplete --
+  // accruing the fetched prefix would under-count the liability exactly like unpriced rows.
+  let capped = false;
   const skippedExamples: string[] = [];
 
   for (const feed of feeds) {
@@ -315,7 +319,8 @@ export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promis
       // A full page sets nextBlock; its absence means the window is drained.
       if (resp.nextBlock === undefined || resp.nextBlock === null) break;
       if (page === MAX_PAGES_PER_RUN - 1) {
-        log.warn({ chainId: feed.chainId }, 'partner-fee fetch hit the per-run page cap; will continue next run');
+        capped = true;
+        log.warn({ chainId: feed.chainId }, 'partner-fee fetch hit the per-run page cap with pages remaining; feed incomplete this run (continues next run)');
       }
     }
   }
@@ -340,5 +345,5 @@ export async function runPartnerFeeFetch(deps: PartnerFeeFetchDeps = {}): Promis
   }
 
   log.info({ inserted, skipped, enriched, feeds: feeds.length }, 'partner-fee fetch complete');
-  return { inserted, skipped, enriched };
+  return { inserted, skipped, enriched, capped };
 }
