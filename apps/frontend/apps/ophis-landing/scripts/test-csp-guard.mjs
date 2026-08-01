@@ -22,6 +22,8 @@ import { mkdtempSync, cpSync, readFileSync, writeFileSync, existsSync, rmSync } 
 import { tmpdir } from 'node:os'
 import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
+const require = createRequire(import.meta.url)
 
 const here = dirname(fileURLToPath(import.meta.url))
 const root = resolve(here, '..')
@@ -93,4 +95,46 @@ test('still catches a dist script missing from _headers', { skip: !distExists &&
   const r = runWith((h) => h.replace(/'sha256-[A-Za-z0-9+/=]+'\s?/, ''))
   assert.equal(r.code, 1)
   assert.match(r.out, /MISSING hash in _headers/)
+})
+
+test('rejects a sha384 hash with no matching script in dist', { skip: !distExists && 'run astro build first' }, () => {
+  // CSP accepts sha256/384/512. Matching only sha256 meant a hash pasted from a
+  // violation report in another algorithm was invisible and the guard passed.
+  const r = runWith(addToScriptSrc('sha384-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /no inline script in dist produces this hash/)
+})
+
+test('rejects a sha512 hash with no matching script in dist', { skip: !distExists && 'run astro build first' }, () => {
+  const r = runWith(addToScriptSrc('sha512-' + 'B'.repeat(86) + '=='))
+  assert.equal(r.code, 1)
+  assert.match(r.out, /no inline script in dist produces this hash/)
+})
+
+test('ACCEPTS a sha384 hash that a real dist script produces', { skip: !distExists && 'run astro build first' }, () => {
+  // The algorithm widening must not become "reject anything non-sha256": a
+  // legitimate sha384 entry for a script we actually ship has to pass.
+  const { createHash } = require('node:crypto')
+  const html = readFileSync(join(root, 'dist/index.html'), 'utf8')
+  const m = /<script(?![^>]*\bsrc=)(?![^>]*type="(?:application\/ld\+json|importmap|speculationrules)")[^>]*>([\s\S]*?)<\/script>/.exec(html)
+  assert.ok(m, 'expected at least one inline script in dist/index.html')
+  const sha384 = 'sha384-' + createHash('sha384').update(m[1]).digest('base64')
+  const r = runWith(addToScriptSrc(sha384))
+  assert.equal(r.code, 0, r.out)
+})
+
+test("rejects 'unsafe-inline' in default-src when it is the only script directive", { skip: !distExists && 'run astro build first' }, () => {
+  // default-src is the FIRST directive, so the old regex (anchored on ^ or ;)
+  // never saw it and the fallback check silently did nothing.
+  // Fold script-src's contents (hashes included, so the MISSING-hash check
+  // still passes) into default-src, drop script-src, and weaken default-src.
+  const r = runWith((h) => {
+    const m = /script-src ([^;]*);/.exec(h)
+    assert.ok(m, 'expected a script-src directive to relocate')
+    return h
+      .replace(/script-src [^;]*;/, '')
+      .replace("default-src 'self'", `default-src 'self' 'unsafe-inline' ${m[1]}`)
+  })
+  assert.equal(r.code, 1)
+  assert.match(r.out, /unsafe-inline' in default-src/)
 })
