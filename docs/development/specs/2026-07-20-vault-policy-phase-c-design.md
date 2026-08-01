@@ -359,8 +359,11 @@ Chainlink-shaped by construction, the adapter indirection buys nothing there:
 the module calls `latestRoundData()` on the allowlisted feed itself, applying
 Phase B's full validation - reject `answer <= 0`, reject `updatedAt == 0` and
 `answeredInRound < roundId` (an incomplete or carried-over round from a stalled
-or newly-swapped aggregator would otherwise pass a pure age check), then the
-per-leg staleness bound. Adapters survive ONLY for registration-only legs
+or newly-swapped aggregator would otherwise pass a pure age check), reject
+`updatedAt > block.timestamp` (a FUTURE-DATED round from a faulty or
+misconfigured feed would otherwise read as fresh until that future time plus
+the staleness window, keeping a stale value valid far past its budget), then
+the per-leg staleness bound. Adapters survive ONLY for registration-only legs
 (ERC-4626 rates and similar), where the value is already accepted as
 solver-movable and never gates a fill.
 Eligibility is additionally pinned to the AGGREGATOR, not just the proxy: a
@@ -405,9 +408,13 @@ pair cannot run fill-time-floored on Unichain; the Unichain wstETH route must
 take a Chainlink ExR leg with no independent eligible anchor, or run
 registration-anchored; and several Ethereum exchange-rate rows in Chainlink's
 directory are Data Streams entries with `proxyAddress: null`, which no adapter
-can read. Where a chain lacks an eligible source for a pair, the vault runs that
-pair in Presign mode with a registration-time floor and the docs say so, rather
-than quietly degrading a guarantee.
+can read. Where a chain lacks an eligible source for a pair, the fallback is
+PER VAULT, not per pair - `Mode` is immutable at deploy, so there is no
+route-level Presign carve-out: either the pair is EXCLUDED from an
+Eip1271-mode vault's allowlist, or a SEPARATE vault is deployed in Presign
+mode (registration-time floors for EVERY route it holds, a real forfeit the
+docs must state) to carry such pairs. Admitting one unsupported pair never
+silently downgrades an existing fill-time-floored vault.
 
 **Open sizing questions for review** (deliberately not invented here):
 `maxDivergenceBps` per asset class, the CAPO growth ceiling, and whether
@@ -450,7 +457,12 @@ field:
 - **Validate at execute, not only at submit.** Morpho validates nothing at
   submit and documents the footgun; Aera probes at schedule AND commit.
   `executeTokenAdd` re-runs constructor-grade validation: duplicate-reject,
-  decimals <= 36, staleness bounds, live adapter probe, sequencer gate, and
+  decimals <= 18 (NOT 36: Phase B's unchanged `floorBuyAmount` multiplies
+  `sellAmount * sellPrice18 * 10**buyTokenDecimals` BEFORE dividing, so a
+  36-decimal buy token overflows uint256 on routine sizes - selling ~1M
+  18-decimal $1 tokens already reaches ~1e78 - turning every floor evaluation
+  into a revert and the token into a policy-DoS), staleness bounds, live
+  adapter probe, sequencer gate, and
   `allowedTokens.length < MAX_ALLOWED_TOKENS` (the cap that keeps
   `removeToken`'s sweep statically bounded - see C15).
   **A liveness probe is not identity validation.** "The adapter returned a
@@ -896,7 +908,9 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     function cancelPending(bytes32 key) external;               // guardian or safe, instant
     function removeToken(address token) external;               // guardian or safe, instant, revert-TOLERANT sweep
     function sweepResidual(address token) external;             // retry residual revocations that failed
-    function rotateGuardian(address newGuardian) external;      // ONLY address(safe); guardian must not be entrenchable
+    function rotateGuardian(address newGuardian) external;      // Safe-submitted, TIMELOCKED like a token add and
+                                                                // incumbent-guardian-cancelable (C16: instant rotation
+                                                                // = veto escape); full identity checks re-applied
     // Feed eligibility is the root of trust for C2/C17, so it gets its OWN
     // timelocked pending type - a TokenAdd must never certify its own feeds.
     // execute STORES the reviewed pair: feedCertifiedAggregator[feed] = aggregator
@@ -916,8 +930,10 @@ makes execution a single-timestamp race that generally cannot land, an
 unbounded window recreates the indefinitely-executable stale pending the
 expiry design exists to eliminate, and `submittedAt + DELAY + EXECUTE_WINDOW`
 uses checked arithmetic so an absurd value cannot revert the pending math
-later), `TokenRoute[]` initial set (same probe discipline as Phase B, length
-<= `MAX_ALLOWED_TOKENS`). Factory and constructor enforce
+later), `TokenAdd[]` initial set - token address + route, the same struct the
+mutable path uses; a bare `TokenRoute[]` carries no token address, so nothing
+could key the token-policy mapping or populate `allowedTokens` (same probe
+discipline as Phase B, length <= `MAX_ALLOWED_TOKENS`). Factory and constructor enforce
 curator-not-owner/module exactly as today, plus GUARDIAN IDENTITY: `guardian
 != address(0)` (a zero guardian silently deletes the veto/emergency-removal
 power the design advertises), `guardian != curator`, and `guardian !=
@@ -953,7 +969,17 @@ the verification log tracks which currently have no assigned target.
   were forged. Cumulative refunds NEVER exceed cumulative charges - the
   existing suites assert only the bucket LEVEL (`turnoverSpentUsd <= cap`),
   which no refund bug can ever falsify, so C4 requires a new ghost-variable
-  property comparing totals. Refund arithmetic saturates at zero: a naive
+  property comparing totals. The refund amount is the order's REMAINING bucket
+  share, not its original charge: the bucket leaks continuously, so part of a
+  charge may already have drained away, and refunding the full `sellUsd18`
+  then erases OTHER orders' reservations - with a cap of 100, reserve A for
+  100, let ~4 leak over an hour, register B for 4, cancel A: a full-charge
+  refund saturates the bucket to 0 and B's reservation vanishes, re-opening
+  headroom C4 exists to deny. Normatively: refund
+  `max(0, sellUsd18 - leaked(sellUsd18, block.timestamp - registeredAt))`,
+  the charge decayed by the SAME leak schedule the bucket applies (OrderState
+  already stores `registeredAt`), still saturating against the current bucket
+  level. Refund arithmetic saturates at zero: a naive
   subtraction underflow-reverts on a drained bucket and, through the shared
   cancel path, would propagate into `removeToken`. Bucket accounting never exceeds Phase-B
   bounds (instantaneous <= cap, rolling 24h <= ~2x cap). (Fuzz target: fill an
@@ -1034,10 +1060,18 @@ the verification log tracks which currently have no assigned target.
   the very veto the delay exists to provide; and `guardian != curator` was
   stated only for the constructor, so rotation could set `guardian = curator`
   post-deploy and hand the curator the whole admin surface (which also
-  falsifies C7). Normatively: `rotateGuardian` enforces `guardian != curator`,
-  and either runs through the same DELAY as a token add or is blocked while any
-  pending operation is live. A lost guardian must still never permanently DoS
-  the allowlist.
+  falsifies C7). Normatively: `rotateGuardian` enforces the full identity
+  checks (nonzero, != curator, != safe) and runs through the SAME timelocked
+  pending type as a token add - submit by the Safe, mature after DELAY, execute
+  within the window, and CANCELABLE BY THE INCUMBENT GUARDIAN like any pending,
+  so the outgoing guardian can veto its own replacement. The previously-allowed
+  alternative ("blocked while any pending operation is live") is REJECTED as
+  insufficient: with no operation pending, the Safe could rotate instantly to a
+  Safe-controlled guardian and only THEN submit the token add, leaving the
+  former independent guardian unable to veto it during the delay - the exact
+  escape the invariant forbids. A lost guardian must still never permanently
+  DoS the allowlist (the timelocked rotation is itself the recovery path: a
+  dead guardian cannot cancel it).
 - **C11**: exactly one enforcement boundary per property, which the C0.5 model
   makes structural rather than aspirational: a SOURCE judges only what it alone
   can (zero/negative, and - for a directly-read Chainlink leg - an incomplete
