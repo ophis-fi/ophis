@@ -1081,13 +1081,17 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // the emergency path always runs.
     // Read-only band probe for off-chain monitoring (the STATICCALL-safe
     // observability the depeg-exit rule promises): returns the current
-    // composed route value, composed anchor value, the configured
-    // maxDivergenceBps, and whether the band is currently breached. Reverts
-    // only on what reads always revert on (stale legs, sequencer gate) - a
-    // BREACHED band is a RETURN VALUE here, never a revert, or the monitor
-    // could not observe the very state it exists to watch.
+    // composed route value, whether the route HAS an anchor (anchors are
+    // optional - an unanchored token returns hasAnchor=false, anchorValue=0,
+    // breached=false, and NEVER reverts for the missing anchor, so a monitor
+    // can poll the complete allowlist with one code path), the composed
+    // anchor value, the configured maxDivergenceBps, and whether the band is
+    // currently breached. Reverts only on what reads always revert on (stale
+    // legs, sequencer gate) - a BREACHED band is a RETURN VALUE here, never a
+    // revert, or the monitor could not observe the very state it exists to
+    // watch.
     function anchorBandState(address token) external view
-        returns (uint256 routeValue, uint256 anchorValue, uint32 maxDivergenceBps, bool breached);
+        returns (uint256 routeValue, bool hasAnchor, uint256 anchorValue, uint32 maxDivergenceBps, bool breached);
     function sweepResidual(address token) external;             // retry residual revocations that failed
     // The Safe-only WRITE-OFF for a residual whose call permanently reverts
     // (e.g. a bricked token's approve(0)): deletes exactly one recorded entry,
