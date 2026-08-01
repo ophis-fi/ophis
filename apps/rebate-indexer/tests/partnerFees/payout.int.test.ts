@@ -410,11 +410,12 @@ describe('round-3 hardening', () => {
   it('round-7: a DURABLE unresolved skip blocks the accrual across runs until operator-cleared', async () => {
     const sql = await getSql();
     await seedTrade(sql, R1, 100);
-    await sql`INSERT INTO partner_fee_cursor (chain_id, unresolved_skips) VALUES (10, 2)
-              ON CONFLICT (chain_id) DO UPDATE SET unresolved_skips = 2`;
+    await sql`INSERT INTO partner_fee_skips (chain_id, trade_uid, block_number, log_index, reason)
+              VALUES (10, decode(${'ee'.repeat(56)}, 'hex'), 123, 0, 'ambiguous')`;
     await expect(accrue(JUN)).rejects.toThrow(/skipped \(ambiguous\) feed attribution/);
-    // Operator reconciles + clears (what partner-fee-resolve-skips does) -> accrual proceeds.
-    await sql`UPDATE partner_fee_cursor SET unresolved_skips = 0`;
+    // Operator reconciles + resolves the chain (what partner-fee-resolve-skips --chain=10
+    // does) -> accrual proceeds. A resolved row persists as the audit trail.
+    await sql`UPDATE partner_fee_skips SET resolved_at = now() WHERE resolved_at IS NULL`;
     const r = await accrue(JUN);
     expect(r.status).toBe('computed');
   });

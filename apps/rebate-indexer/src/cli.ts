@@ -113,20 +113,43 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
     });
     if (!ran) log.error('pipeline lock busy (nightly run or another command in progress); retry later');
   },
-  // Clear the durable skipped-attribution markers AFTER reconciling them (re-cursor or manual
-  // accounting). The accrual completeness gate blocks while any are set (migration 0022), so
-  // this is the explicit operator sign-off that the dropped fees were accounted for.
-  async ['partner-fee-resolve-skips']() {
+  // Resolve the durable skipped-attribution markers for ONE chain, AFTER reconciling that
+  // chain's dropped fees (re-cursor or manual accounting). The accrual completeness gate
+  // blocks while any skip is unresolved (migration 0022). CHAIN-SCOPED on purpose: with
+  // skips on several feed chains, an unqualified clear would reopen the gate while another
+  // chain's dropped fees remain unaccounted -- run once per reconciled chain. Invoked with
+  // no argument it only LISTS the unresolved skips (safe default, mutates nothing).
+  async ['partner-fee-resolve-skips'](args) {
+    const chainArg = args.find((a) => a.startsWith('--chain='))?.split('=')[1];
+    const chainId = chainArg === undefined ? undefined : Number(chainArg);
+    if (chainArg !== undefined && (!Number.isInteger(chainId) || chainId! <= 0)) {
+      throw new Error(`--chain must be a positive integer chain id; got "${chainArg}"`);
+    }
     const ran = await withPipelineLock(async () => {
-      const rows = await sql<{ chain_id: number; unresolved_skips: number }[]>`
-        SELECT chain_id, unresolved_skips FROM partner_fee_cursor WHERE unresolved_skips > 0
+      const open = await sql<{ chain_id: number; n: string }[]>`
+        SELECT chain_id, COUNT(*)::text AS n FROM partner_fee_skips WHERE resolved_at IS NULL GROUP BY chain_id ORDER BY chain_id
       `;
-      if (rows.length === 0) {
+      if (open.length === 0) {
         log.info('no unresolved partner-fee skips');
         return;
       }
-      await sql`UPDATE partner_fee_cursor SET unresolved_skips = 0, updated_at = now() WHERE unresolved_skips > 0`;
-      log.warn({ cleared: rows.map((r) => ({ chainId: r.chain_id, skips: r.unresolved_skips })) }, 'partner-fee unresolved skips CLEARED by operator (accrual gate re-opened)');
+      if (chainId === undefined) {
+        log.error({ unresolved: open.map((r) => ({ chainId: r.chain_id, skips: parseInt(r.n, 10) })) }, 'unresolved partner-fee skips by chain; re-run with --chain=<id> AFTER reconciling that chain (nothing cleared)');
+        return;
+      }
+      const cleared = await sql<{ trade_uid: Buffer; block_number: string }[]>`
+        UPDATE partner_fee_skips SET resolved_at = now()
+        WHERE chain_id = ${chainId} AND resolved_at IS NULL
+        RETURNING trade_uid, block_number::text AS block_number
+      `;
+      if (cleared.length === 0) {
+        log.info({ chainId }, 'no unresolved partner-fee skips on this chain');
+        return;
+      }
+      log.warn(
+        { chainId, resolved: cleared.map((r) => ({ uid: `0x${r.trade_uid.toString('hex')}`, block: r.block_number })) },
+        'partner-fee skips RESOLVED by operator for this chain (accrual gate re-opens once every chain is clear)',
+      );
     });
     if (!ran) log.error('pipeline lock busy (nightly run or another command in progress); retry later');
   },

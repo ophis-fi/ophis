@@ -334,11 +334,27 @@ export const partnerFeeCursor = pgTable('partner_fee_cursor', {
   nextBlock: bigint('next_block', { mode: 'bigint' }).notNull().default(0n),
   nextLogIndex: bigint('next_log_index', { mode: 'bigint' }).notNull().default(0n),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  // Skipped (ambiguous) attributions whose rows the cursor advanced past — dropped fees no
-  // query can re-detect. Durable so the accrual completeness gate blocks across restarts and
-  // month boundaries until the operator reconciles + clears (partner-fee-resolve-skips).
-  unresolvedSkips: integer('unresolved_skips').notNull().default(0),
 });
+
+// Skipped (ambiguous) attributions whose rows the cursor advanced past — dropped fees no
+// query can re-detect. Keyed by SETTLEMENT IDENTITY so re-fetches (crash before the cursor
+// save, intentional rewinds) are idempotent, and resolved per chain by the operator
+// (partner-fee-resolve-skips --chain). The accrual gate blocks while any row is unresolved.
+export const partnerFeeSkips = pgTable(
+  'partner_fee_skips',
+  {
+    chainId: integer('chain_id').notNull(),
+    tradeUid: bytea('trade_uid').notNull(),
+    blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+    logIndex: bigint('log_index', { mode: 'bigint' }).notNull(),
+    reason: text('reason').notNull(),
+    firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.chainId, t.tradeUid, t.blockNumber, t.logIndex] }),
+  }),
+);
 
 // One row per (settled fee-bearing trade, partner recipient). PK (trade_uid,
 // recipient): a trade can carry up to 3 distinct partner recipients. Idempotent

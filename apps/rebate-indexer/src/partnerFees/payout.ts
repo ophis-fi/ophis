@@ -123,18 +123,18 @@ export async function accruePartnerFees(deps: PartnerFeeAccrualDeps = {}): Promi
   }
   // DURABLE skip gate (migration 0022): a skipped (ambiguous) attribution is dropped fees the
   // cursor has advanced past -- invisible to the row-based check above and to any later query.
-  // The counter persists across restarts and month boundaries, so a mid-month skip still
-  // blocks the NEXT accrual until the operator reconciles it (re-cursor or manual accounting)
-  // and clears it via `partner-fee-resolve-skips`.
+  // Skips are identity-keyed rows, so they persist across restarts and month boundaries and a
+  // mid-month skip still blocks the NEXT accrual until the operator reconciles that chain and
+  // clears it via `partner-fee-resolve-skips --chain=<id>`.
   const [skipRow] = await sql<{ n: string }[]>`
-    SELECT COALESCE(SUM(unresolved_skips), 0)::text AS n FROM partner_fee_cursor
+    SELECT COUNT(*)::text AS n FROM partner_fee_skips WHERE resolved_at IS NULL
   `;
   const unresolvedSkips = parseInt(skipRow?.n ?? '0', 10);
   if (unresolvedSkips > 0) {
     throw new Error(
       `partner-fee accrual blocked: ${unresolvedSkips} skipped (ambiguous) feed attribution(s) remain ` +
         'unresolved -- their fees were dropped past the cursor and the cycle owed would silently ' +
-        "under-count. Reconcile them, then clear with the 'partner-fee-resolve-skips' CLI.",
+        "under-count. Reconcile per chain, then clear with 'partner-fee-resolve-skips --chain=<id>'.",
     );
   }
 
