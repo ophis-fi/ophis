@@ -219,20 +219,46 @@ struct Leg {
     LegKind kind;
     uint64  maxStaleness;    // PER LEG, sized to that feed's heartbeat
     bool    fillEligible;    // from the feed allowlist; never self-declared
+    // For a fill-eligible leg the module reads latestRoundData() RAW, so it must
+    // normalize to 18-dec itself: feedDecimals is read from the proxy's decimals()
+    // at registration, validated (<= 18), stored, and every read scales the answer
+    // by 10^(18 - feedDecimals). Without it, a common 8-dec Chainlink price sits
+    // 1e10 away from an 18-dec leg and composition corrupts the floor silently.
+    // Cached (not re-read live) is sound ONLY because every read also re-checks
+    // the aggregator pin below: a proxy cannot change decimals without repointing
+    // its aggregator, and a repoint already reverts the read.
+    uint8   feedDecimals;
+    // Bounds THIS registration-only rate leg (meaningful only when source is
+    // set). PER LEG, not per route: a route can hold multiple registration-only
+    // rate legs (legs and anchor each), and their ratios, snapshot times and
+    // growth profiles are independent - one shared bound either rejects valid
+    // observations or leaves a leg unbounded, and C18 promises a bound for EVERY
+    // rate leg. Registration rejects a registration-only rate leg without one.
+    RateBound bound;
 }
 
-/// Bounds a registration-only rate leg. Upper side is Aave CAPO's formula;
-/// the lower side MUST also track the snapshot, since a static floor decays to
-/// a no-op against a monotonically rising rate.
+/// Bounds a registration-only rate leg. Upper side is Aave CAPO's formula; the
+/// lower side must NEVER weaken with time for a monotonically accruing rate: a
+/// decaying floor (snapshotRatio * (1 - decline*dt)) trends to zero, admits an
+/// ever-larger downward manipulation, and eventually underflows - the exact
+/// progressively-useless floor this mechanism exists to avoid. The lower bound
+/// therefore RATCHETS from the snapshot:
 ///   maxRatio = snapshotRatio * (1 + maxGrowthPerYearBps/1e4 * dt/365d)
-///   minRatio = snapshotRatio * (1 - maxDeclinePerYearBps/1e4 * dt/365d)
-/// with dt = block.timestamp - snapshotTs. Outside [minRatio, maxRatio] the
-/// read REVERTS (C18) - it does not clamp, unlike Aave's reference.
+///   minRatio = snapshotRatio * (1 + minGrowthPerYearBps/1e4 * dt/365d)
+/// with dt = block.timestamp - snapshotTs and 0 <= minGrowthPerYearBps <=
+/// maxGrowthPerYearBps (0 = a flat floor at the snapshot, the conservative
+/// default; positive = a guaranteed minimum accrual for rates that provably
+/// only rise). No subtraction, so no underflow path exists. Outside
+/// [minRatio, maxRatio] the read REVERTS (C18) - it does not clamp, unlike
+/// Aave's reference. The operational consequence stands (see below): a stalled
+/// rate drifts under a rising floor and fails closed until governance
+/// re-snapshots - deliberate, since the alternative is a floor that stops
+/// flooring.
 struct RateBound {
     uint256 snapshotRatio;
     uint64  snapshotTs;
     uint32  maxGrowthPerYearBps;
-    uint32  maxDeclinePerYearBps;
+    uint32  minGrowthPerYearBps;  // 0 = flat floor at snapshotRatio; never decays
 }
 
 struct TokenRoute {
@@ -241,7 +267,16 @@ struct TokenRoute {
     Leg[]     legs;          // composed: legs[0] (UsdPrice) x each ExchangeRate leg
     Leg[]     anchor;        // optional, composed by the SAME rule as legs
     uint32    maxDivergenceBps;
-    RateBound bound;         // only meaningful if a registration-only leg is present
+    // The per-token sanity band from the TokenAdd payload, PERSISTED so every
+    // later oracle read enforces it - not just the execute-time probe. Stored
+    // here (not only in calldata) because a privileged feed that later
+    // publishes a fresh-but-erroneous extreme value passes staleness and the
+    // rate bounds yet collapses the cross-rate floor; Phase B enforces its
+    // configured price bounds on EVERY read and Phase C must not regress that.
+    // rebalance and isValidSafeSignature both revert when the composed route
+    // price leaves [sanityLow, sanityHigh].
+    uint256   sanityLow;
+    uint256   sanityHigh;
 }
 ```
 
@@ -424,13 +459,20 @@ field:
   a live 8-decimal `USDC / USD TEST CAPPED` proxy - see the catalog), or a
   constant. Any of those silently collapses the floor in the direction that
   lets value leave. Registration therefore also requires (per the C0.5 P2
-  model): every leg's `feed` to be on the eligibility allowlist if the vault
-  runs Eip1271 mode (C17) - which alone excludes the TEST CAPPED proxy, since
-  it is simply not listed; each leg's declared `LegKind` to match its position
-  in the route (a `UsdPrice` leg cannot sit where an `ExchangeRate` is
-  composed); and the composed price to fall inside an explicit per-token sanity
-  band supplied in the `TokenAdd` payload, so the proposer states what "right"
-  looks like and the timelock makes that claim publicly reviewable.
+  model): every fill-eligible leg's (feed, aggregator) pair to match the
+  CERTIFIED pair (`feedCertifiedAggregator[leg.feed] == leg.aggregator`, with
+  the proxy's live `aggregator()` equal to it) if the vault runs Eip1271 mode
+  (C17) - which alone excludes the TEST CAPPED proxy, since it is simply not
+  certified, and excludes an eligible proxy that was repointed to an
+  unreviewed aggregator after certification; each fill-eligible leg's
+  `decimals()` to be read, validated (<= 18) and cached as `feedDecimals` so
+  every later raw read normalizes to 18-dec; each leg's declared `LegKind` to
+  match its position in the route (a `UsdPrice` leg cannot sit where an
+  `ExchangeRate` is composed); and the composed price to fall inside the
+  per-token sanity band carried in the route - PERSISTED at execute and
+  enforced on every subsequent read, not just probed once - so the proposer
+  states what "right" looks like and the timelock makes that claim publicly
+  reviewable.
 - **Pendings expire, and execution is NOT permissionless.** Morpho, OZ
   TimelockController, and Aera pendings live forever and execute
   permissionless-after-delay - a forgotten pending add is a landmine anyone
@@ -612,8 +654,16 @@ AND-constraint, Morpho `adapterRegistry`-style).
      anyone could post policy-passing orders for the Safe);
    - re-runs the **time-varying** checks against live state:
      `validTo >= block.timestamp`, sell+buy tokens still allowed (P3 removal
-     => instant invalidity), sequencer gate, adapter reads with staleness, and
-     `order.buyAmount >= max(freshOracleFloor, storedMinBuyOverride)`;
+     => instant invalidity), sequencer gate, adapter reads with staleness,
+     **every fill-eligible leg's feed still eligible and still pinned**
+     (`feedCertifiedAggregator[leg.feed] == leg.aggregator` AND the proxy's
+     live `aggregator()` equals it - so `revokeFeedEligibility` invalidates
+     EVERY route using that feed at the next fill attempt, exactly like token
+     removal; without this recheck a revoked feed keeps signing fills until
+     each affected token is individually removed, defeating the instant
+     risk-reducing revoke), and
+     `order.buyAmount >= max(freshOracleFloor, storedMinBuyOverride)` with the
+     composed price inside the route's stored `[sanityLow, sanityHigh]`;
    - returns `0x1626ba7e` on success; on failure reverts with **typed
      reasons** split transient vs fatal (`FloorNotMet`, `StaleOraclePrice`,
      `SequencerStarting` = transient; `OrderNotRegistered`, `TokenNotAllowed`,
@@ -783,7 +833,7 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // Leg, RateBound and TokenRoute are defined normatively in the P2 lane.
     // fillEligible comes from the feed allowlist - never self-declared; a
     // fill-eligible leg is read by the MODULE from `feed` directly (no adapter).
-    struct TokenAdd  { address token; TokenRoute route; uint256 sanityLow; uint256 sanityHigh; }
+    struct TokenAdd  { address token; TokenRoute route; }   // sanity band lives IN the route (persisted; see P2 lane)
     // validTo is STORED, never re-read from a caller-supplied uid (see cancel).
     struct OrderState { address sellToken; address buyToken; uint32 validTo;
                         uint96 registeredAt; uint256 minBuyOverride; uint256 sellUsd18; }
@@ -796,8 +846,16 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     mapping(bytes32 => OrderState) internal orderState;      // digest-keyed, O(1) reads only
     mapping(address => LiveOrder)  internal liveOrder;       // sellToken => its single live order
     address[] public allowedTokens;                          // capped at MAX_ALLOWED_TOKENS
-    mapping(address => bool) public feedFillEligible;        // FEED address => eligible
-                                                             // seeded at deploy, extended via P3 timelock only
+    // FEED => the aggregator that was actually REVIEWED when eligibility was granted
+    // (address(0) = not eligible). A bare boolean would certify the PROXY, not the
+    // implementation: repoint an eligible proxy from reviewed aggregator A to
+    // unreviewed B and a later TokenAdd could pin B in its Leg, pass the live
+    // aggregator() equality check, and ride the stale `true` - putting an
+    // unreviewed write path behind the eligibility root of trust. Storing the
+    // certified aggregator makes eligibility mean one reviewed (feed, aggregator)
+    // PAIR: TokenAdd requires leg.aggregator == feedCertifiedAggregator[leg.feed],
+    // and a repoint therefore forces a fresh timelocked eligibility round.
+    mapping(address => address) public feedCertifiedAggregator; // seeded at deploy, extended via P3 timelock only
     // NOTE: deliberately NO token => uid[] index. A fill (STATICCALL) and a
     // passive expiry cannot prune such an array, so it would grow per
     // rebalance and let a compromised curator gas-brick removeToken.
@@ -806,6 +864,14 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     function rebalance(GPv2Order.Data calldata order, uint256 minBuyOverride)
         external returns (bytes memory orderUid);        // registers (1271) or presigns (presign mode)
     function cancel(bytes32 digest) external;            // uid REBUILT internally; never trust caller uid bytes
+    // COMPAT overload preserving Phase B's ABI (C6 parity): a GPv2 uid is
+    // digest || owner || validTo, so this extracts uid[0:32] as the digest and
+    // enters the digest path above - the remaining 24 caller bytes are DISCARDED
+    // (the canonical uid is rebuilt from storage), so forged owner/validTo bytes
+    // buy nothing. Without it, existing safe-swap callers and the V1 order-path
+    // suite would invoke a selector V2 does not implement, and the promised
+    // drop-in Presign parity would fail before reaching any refund behavior.
+    function cancel(bytes calldata orderUid) external;
 
     // P1 - EFH callback (view; the fill-time gate)
     function isValidSafeSignature(
@@ -822,6 +888,10 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     function rotateGuardian(address newGuardian) external;      // ONLY address(safe); guardian must not be entrenchable
     // Feed eligibility is the root of trust for C2/C17, so it gets its OWN
     // timelocked pending type - a TokenAdd must never certify its own feeds.
+    // execute STORES the reviewed pair: feedCertifiedAggregator[feed] = aggregator
+    // (after asserting the proxy's live aggregator() equals it at execute time);
+    // revoke sets it back to address(0), and the fill-time recheck makes that
+    // instantly binding for every route already using the feed.
     function submitFeedEligibility(address feed, address aggregator) external;   // ONLY address(safe)
     function executeFeedEligibility(address feed, address aggregator) external;  // ONLY address(safe), [eta, eta+WINDOW]
     function revokeFeedEligibility(address feed) external;      // guardian or safe, INSTANT (risk-reducing)
@@ -829,10 +899,20 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
 ```
 
 Constructor additions: `Mode mode`, `address guardian`, `uint256 delay`
-(>= 24h, immutable), `uint256 executeWindow` (immutable), `TokenRoute[]`
-initial set (same probe discipline as Phase B, length <=
-`MAX_ALLOWED_TOKENS`). Factory enforces curator-not-owner/module exactly as
-today, plus `guardian != curator`.
+(>= 24h, immutable), `uint256 executeWindow` (immutable, BOUNDED: `1 hours <=
+executeWindow <= 30 days`, enforced in the constructor AND the factory - zero
+makes execution a single-timestamp race that generally cannot land, an
+unbounded window recreates the indefinitely-executable stale pending the
+expiry design exists to eliminate, and `submittedAt + DELAY + EXECUTE_WINDOW`
+uses checked arithmetic so an absurd value cannot revert the pending math
+later), `TokenRoute[]` initial set (same probe discipline as Phase B, length
+<= `MAX_ALLOWED_TOKENS`). Factory and constructor enforce
+curator-not-owner/module exactly as today, plus GUARDIAN IDENTITY: `guardian
+!= address(0)` (a zero guardian silently deletes the veto/emergency-removal
+power the design advertises), `guardian != curator`, and `guardian !=
+address(safe)` (a Safe-as-guardian collapses the proposer/veto split into one
+party at deploy). `rotateGuardian` re-applies ALL three checks - rotation must
+not be able to reach an identity deployment rejects.
 
 ## Security invariants (Phase C additions, C1-C18)
 
@@ -874,14 +954,27 @@ the verification log tracks which currently have no assigned target.
   `setPreSignature(uid, false)` MUST succeed, there being no fill-time gate to
   fall back on. `filledAmount` and `preSignature` are separate raw-uid
   mappings, so neither call substitutes for the other. Allowance rules preserved
-  (<= 1 live order per sell token; allowance == that order's amount - the
-  existing invariant suite extends to 1271 mode).
+  (<= 1 live order per sell token; allowance == that order's amount WHILE THE
+  ORDER IS UNFILLED). The invariant is stated fill-aware on purpose: a
+  successful fill consumes the exact allowance via the vault relayer's
+  transferFrom (allowance -> 0) while `liveOrder[sellToken]` stays populated -
+  signature validation is a STATICCALL and settlement offers no module
+  callback to clear it - so "allowance == amount" is FALSE immediately after
+  every normal fill, and an invariant handler without a fill action would
+  report a misleading green. The suite therefore models fills (drive the
+  relayer transferFrom, assert allowance -> 0 with the slot still populated,
+  then assert the next rebalance/supersede re-establishes exactness).
 - **C6**: in Presign + FROZEN mode the module's order path is behaviorally
   identical to Phase B except `cancel`'s turnover refund (a strictly
-  depositor-favorable delta; refunds apply uniformly in both modes). The V1
-  order-path test suite passes against V2-in-presign+frozen mode modulo the
-  refund assertions. (Default deployments are timelocked and additionally
-  carry the P3 admin surface - deltas enumerated, not hidden.)
+  depositor-favorable delta; refunds apply uniformly in both modes). Parity
+  includes the ABI: the `cancel(bytes orderUid)` compat overload (see the
+  contract sketch) keeps existing safe-swap callers and the V1 order-path
+  suite calling the selector they already use - the overload extracts
+  uid[0:32] (the digest) and discards the caller's remaining bytes, so it
+  reintroduces no forged-uid trust. The V1 order-path test suite passes
+  against V2-in-presign+frozen mode modulo the refund assertions. (Default
+  deployments are timelocked and additionally carry the P3 admin surface -
+  deltas enumerated, not hidden.)
 - **C7**: the curator cannot cause any admin-state transition: not propose,
   not execute, not cancel pendings, not remove tokens (enforced by
   construction: every admin entrypoint gates on `msg.sender == address(safe)`
@@ -1604,7 +1697,8 @@ and the wrong key for buy-side removals, C6's Presign-parity claim now that
 invariants have targets. These are contained within P3.
 
 **Decisions that need a human, not a lens**: the seven open decisions, plus
-`maxDivergenceBps` per asset class and the CAPO growth/decline ceilings. Two
+`maxDivergenceBps` per asset class and the CAPO growth ceilings (max and
+guaranteed-minimum; the lower bound ratchets, never decays). Two
 have moved since they were written - the fill-eligibility correction shrinks
 coverage (Unichain USDT/USD has no eligible source; the Unichain wstETH route
 is registration-anchored until an eligible anchor exists), and Ethereum turns
