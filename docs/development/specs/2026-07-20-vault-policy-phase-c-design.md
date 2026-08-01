@@ -290,8 +290,12 @@ struct TokenRoute {
     // publishes a fresh-but-erroneous extreme value passes staleness and the
     // rate bounds yet collapses the cross-rate floor; Phase B enforces its
     // configured price bounds on EVERY read and Phase C must not regress that.
-    // rebalance and isValidSafeSignature both revert when the composed route
-    // price leaves [sanityLow, sanityHigh].
+    // The band binds the EFFECTIVE price the floor consumes: normally the
+    // composed route price; under the sell-side depeg rule, the selected
+    // min(routeValue, anchorValue). rebalance and isValidSafeSignature revert
+    // when THAT price leaves [sanityLow, sanityHigh] - a raw route above
+    // sanityHigh with an in-band anchor is precisely the detected-overvaluation
+    // case the depeg rule prices through, not an extra revert condition.
     uint256   sanityLow;
     uint256   sanityHigh;
 }
