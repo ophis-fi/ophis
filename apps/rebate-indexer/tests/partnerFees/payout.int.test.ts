@@ -371,6 +371,22 @@ describe('round-3 hardening', () => {
     expect(e!.owed_wei).toBe(usdFpToWei(usdToFp(80), PRICE / 2).toString());
   });
 
+  it('round-4: a proposal-time quarantine reduces the spendable remainder (no proposing against just-reserved WETH)', async () => {
+    const sql = await getSql();
+    // June: R1 $80 (paid at accrual). July: R2 $100 (paid). Safe balance exactly $100-worth.
+    await seedTrade(sql, R1, 100, '2026-05-15T00:00:00Z');
+    await accrue(JUN);
+    await seedTrade(sql, R2, 125, '2026-06-15T00:00:00Z');
+    await accrue(new Date('2026-07-01T02:00:00Z'));
+    // R1 is sanctioned at proposal: its $80 becomes quarantined liability THIS RUN. The $100
+    // batch must now be BLOCKED (100 > 100 - 80), not proposed against the reserved WETH.
+    const r = await propose(wei(100), { sanctions: new Set([`0x${R1}`]) });
+    expect(r.proposed).toBe(0);
+    expect(r.blocked).toBe(1);
+    const rows = await sql<{ cycle: string; status: string }[]>`SELECT cycle_month::text AS cycle, status FROM partner_fee_batches ORDER BY cycle_month`;
+    expect(rows[1]!.status).toBe('computed'); // blocked, retried when funded
+  });
+
   it('F8: an AMBIGUOUS Safe submission STOPS the catch-up (no later batch proposed on a guessed nonce)', async () => {
     const sql = await getSql();
     // Two catch-up cycles, both payable.
@@ -391,6 +407,15 @@ describe('round-3 hardening', () => {
     const rows = await sql<{ cycle: string; status: string }[]>`SELECT cycle_month::text AS cycle, status FROM partner_fee_batches ORDER BY cycle_month`;
     expect(rows[0]!.status).toBe('proposing'); // ambiguous: left for reconcile/manual verification
     expect(rows[1]!.status).toBe('computed'); // untouched, retried next nightly run
+  });
+});
+
+describe('nextPartnerPayoutAt', () => {
+  it('on the 1st BEFORE 02:00 UTC returns TODAY 02:00 (the payout is still due today)', async () => {
+    const { nextPartnerPayoutAt } = await import('../../src/partnerFees/report.js');
+    expect(nextPartnerPayoutAt(new Date('2026-08-01T00:30:00Z')).toISOString()).toBe('2026-08-01T02:00:00.000Z');
+    expect(nextPartnerPayoutAt(new Date('2026-08-01T02:00:01Z')).toISOString()).toBe('2026-09-01T02:00:00.000Z');
+    expect(nextPartnerPayoutAt(new Date('2026-08-15T12:00:00Z')).toISOString()).toBe('2026-09-01T02:00:00.000Z');
   });
 });
 

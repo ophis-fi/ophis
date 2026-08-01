@@ -178,6 +178,16 @@ describe('partner liability subtracted from the rebate DIRECT distributable', ()
     expect(await liability()).toBe(ONE / 2n);
   });
 
+  it('the partner REPORT sums every unfolded carry too (dashboard mirrors the reservation)', async () => {
+    const sql = await getSql();
+    const { getPartnerFeeStats } = await import('../../src/partnerFees/report.js');
+    await seedPartnerLiability(sql, '2026-04-01', 'computed', 'cc'.repeat(20), (ONE * 3n) / 10n, 'quarantined', 600);
+    await seedPartnerLiability(sql, MAY, 'computed', 'cc'.repeat(20), ONE / 2n, 'quarantined', 1000);
+    const stats = await getPartnerFeeStats();
+    // Both unfolded quarantined carries count; latest-only would report 1000.
+    expect(stats.pendingOwedUsd).toBeCloseTo(1600, 2);
+  });
+
   it('UNFOLDED carries across MULTIPLE batches ALL count (round 3: proposal-time quarantines are independent)', async () => {
     const sql = await getSql();
     // Two catch-up batches each quarantined the same recipient at PROPOSAL time. Neither

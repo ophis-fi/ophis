@@ -98,6 +98,15 @@ async function runPipelineSteps(): Promise<void> {
       partnerFeedOk = false;
       log.error({ priceFailed: pfp.failed }, 'partner-fee pricer left rows unpriced; the 1st-of-month shared-Safe distribution fails closed until they price');
     }
+    // A SKIPPED (ambiguous) attribution is dropped fees for real partners on that row -- the
+    // cursor advances past it, so no later query can see the absence. Tonight's skips fail the
+    // cycle closed like unpriced rows do; a mid-month skip is surfaced by the fetch-time capped
+    // alert and MUST be resolved (re-cursor or manual accounting) before month-end -- it cannot
+    // be re-detected here once its night has passed.
+    if (pf.skipped > 0) {
+      partnerFeedOk = false;
+      log.error({ skipped: pf.skipped }, 'partner-fee fetch skipped ambiguous attributions; the 1st-of-month shared-Safe distribution fails closed (fees dropped from the feed)');
+    }
     log.info({ fetched: pf.inserted, skipped: pf.skipped, priced: pfp.priced, priceFailed: pfp.failed }, 'partner-fee fetch+price complete');
   } catch (err) {
     partnerFeedOk = false;

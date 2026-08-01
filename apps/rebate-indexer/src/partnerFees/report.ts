@@ -4,8 +4,14 @@ import { PARTNER_FEE_PARTNER_SHARE_BPS, MIN_PARTNER_PAYOUT_USD } from './split.j
 // Read-only reporting for the signature-gated partner dashboard (POST /partner-fees) and the
 // optional public GET /partner-fees/stats (partner-fees Phase B). No money movement here.
 
-/** 1st of next month, 02:00 UTC (when the monthly partner batcher next runs). */
+/**
+ * The next monthly partner batcher run: the 1st at 02:00 UTC. On the 1st BETWEEN 00:00 and
+ * 02:00 the prior cycle's payout is still due later TODAY, so return today's 02:00 rather
+ * than skipping a month ahead.
+ */
 export function nextPartnerPayoutAt(now: Date = new Date()): Date {
+  const todaysRun = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 2, 0, 0));
+  if (now.getUTCDate() === 1 && now.getTime() < todaysRun.getTime()) return todaysRun;
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 2, 0, 0));
 }
 
@@ -63,17 +69,13 @@ export async function getPartnerFeeDashboard(recipient: `0x${string}`, now: Date
   const grossFeeUsd = parseFloat(cur?.gross_fee_usd ?? '0');
   const partnerShareUsd = (grossFeeUsd * PARTNER_FEE_PARTNER_SHARE_BPS) / 10_000;
 
-  // Carry from the recipient's LATEST entry, iff it is carried/quarantined.
+  // Carry = Σ over the recipient's UNFOLDED carried/quarantined entries (the fold ledger --
+  // see liability.ts). Latest-only would understate here exactly where it understated the
+  // reservation: independent proposal-time quarantines across catch-up batches are all owed.
   const [carryRow] = await sql<{ carried_usd: string }[]>`
-    WITH latest AS (
-      SELECT e.status, e.carried_usd
-      FROM partner_fee_batch_entries e
-      JOIN partner_fee_batches b ON b.id = e.batch_id
-      WHERE e.recipient = ${buf}
-      ORDER BY b.cycle_month DESC, b.id DESC
-      LIMIT 1
-    )
-    SELECT COALESCE(carried_usd, 0)::text AS carried_usd FROM latest WHERE status IN ('carried', 'quarantined')
+    SELECT COALESCE(SUM(carried_usd), 0)::text AS carried_usd
+    FROM partner_fee_batch_entries
+    WHERE recipient = ${buf} AND status IN ('carried', 'quarantined') AND folded_into_batch_id IS NULL
   `;
   const carriedInUsd = parseFloat(carryRow?.carried_usd ?? '0');
 
@@ -133,24 +135,19 @@ export async function getPartnerFeeStats(): Promise<PartnerFeeStats> {
   // parts (so it does NOT read ~0 right after accrual stamps the trades, and never double-counts
   // the running carry):
   //   (a) in-flight PAID entries in an unexecuted batch (owed_usd) -- accrued + queued but unsettled;
-  //   (b) the carried/quarantined ROLLUP (latest entry per recipient's carried_usd) -- accrued, sub-threshold;
+  //   (b) the carried/quarantined ROLLUP: Σ carried_usd over UNFOLDED entries (the fold
+  //       ledger, see liability.ts) -- a folded entry's amount lives on in its successor, so
+  //       the accumulation is counted once, while independent per-batch quarantines all count;
   //   (c) the not-yet-accrued current-cycle share (unbatched priced trades * 80%).
-  // (a) uses owed_usd of paid entries, (b) uses carried_usd of the LATEST carried/quarantined
-  // entry (so the carry accumulation is counted once), (c) uses fee_usd of trades no batch has
-  // consumed. A fee is in exactly one of the three.
+  // A fee is in exactly one of the three.
   const [row] = await sql<{ partners: string; paid_weth: string; pending_owed_usd: string }[]>`
-    WITH latest AS (
-      SELECT DISTINCT ON (e.recipient) e.recipient, e.status AS entry_status, e.carried_usd
-      FROM partner_fee_batch_entries e
-      JOIN partner_fee_batches b ON b.id = e.batch_id
-      ORDER BY e.recipient, b.cycle_month DESC, b.id DESC
-    )
     SELECT
       (SELECT COUNT(DISTINCT recipient) FROM partner_fee_trades)::text AS partners,
       COALESCE((SELECT SUM(paid_wei::numeric) / 1e18 FROM partner_fee_batch_entries WHERE paid_wei IS NOT NULL), 0)::text AS paid_weth,
       (
         COALESCE((SELECT SUM(e.owed_usd) FROM partner_fee_batch_entries e JOIN partner_fee_batches b ON b.id = e.batch_id WHERE e.status = 'paid' AND b.status <> 'executed'), 0)
-        + COALESCE((SELECT SUM(carried_usd) FROM latest WHERE entry_status IN ('carried','quarantined')), 0)
+        + COALESCE((SELECT SUM(carried_usd) FROM partner_fee_batch_entries
+                    WHERE status IN ('carried','quarantined') AND folded_into_batch_id IS NULL), 0)
         + COALESCE((SELECT SUM(fee_usd) * ${PARTNER_FEE_PARTNER_SHARE_BPS} / 10000 FROM partner_fee_trades WHERE batch_id IS NULL AND fee_usd IS NOT NULL), 0)
       )::text AS pending_owed_usd
   `;

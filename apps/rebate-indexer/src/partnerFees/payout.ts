@@ -461,6 +461,16 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
         await tx.update(schema.partnerFeeBatches).set({ totalOwedWei: newTotal, updatedAt: new Date() }).where(eq(schema.partnerFeeBatches.id, batch.id));
       });
     }
+    // Newly quarantined amounts (screen + dry-run) just became carried/quarantined liability
+    // that the pre-loop `ownCarriedQuarantined` reservation could NOT have seen -- reduce the
+    // spendable remainder NOW, or a fresh batch could be proposed against WETH that must stay
+    // reserved for the just-quarantined obligation (e.g. quarantine $80, then still propose a
+    // full $100 against a $100 balance). Applied in BOTH modes so a dry-run models a real run.
+    const quarantinedNowWei =
+      sanctioned.reduce((acc, t) => acc + t.amount, 0n) + bad.reduce((acc, t) => acc + t.amount, 0n);
+    if (quarantinedNowWei > 0n) {
+      remaining = remaining > quarantinedNowWei ? remaining - quarantinedNowWei : 0n;
+    }
     if (transfers.length === 0) {
       // Everything quarantined: nothing to propose. Leave 'computed' so a cleared recipient
       // re-proposes next cycle (the entries already carry). Not a double-pay hazard (no tx).
