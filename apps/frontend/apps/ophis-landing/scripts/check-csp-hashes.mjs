@@ -85,6 +85,49 @@ if (failed) {
   process.exit(1)
 }
 
+// --- CSP weakening guard --------------------------------------------------
+//
+// Cloudflare's Google Tag Gateway injects TWO inline scripts at the edge, into
+// browser-like requests only (verified 2026-08-01: a plain curl gets 91,129
+// bytes, a Chrome UA gets 91,545). They never appear in dist/, so the loop above
+// cannot see them, and CSP blocks them in production - which is the two console
+// violations on every page.
+//
+// They must STAY blocked. They are a duplicate, consent-unaware GA4 setup that
+// runs BEFORE our own hashed block in Base.astro:
+//   1. (function(w,i,g){...})(window,'G-NG9YX5G9CM','google_tags_first_party')
+//   2. dataLayer init + gtag('js') + gtag('config','G-NG9YX5G9CM')   <-- no
+//      consent defaults, no anonymize_ip
+// Allowing them would double-count every page_view AND configure GA4 before the
+// EEA-scoped consent default is set, i.e. cookies before opt-in. Our own block
+// already loads gtag.js first-party from /938g and configures GA4 correctly
+// (verified: dataLayer populated, collect beacon fires after Accept).
+//
+// The real fix is turning OFF automatic injection in the Cloudflare dashboard;
+// silencing the console by pasting these hashes into _headers is the tempting
+// WRONG fix, so it fails here instead.
+const CF_INJECTED = {
+  "sha256-zjLSe+IflcBnH+CRkSBSMcUK03hIJ1iKjyFreRtwze4=": "CF Tag Gateway first-party marker",
+  "sha256-DB1UU0B/mr+5VxNTIplcok5EhFglyp9QTt4EpZxLem4=": "CF Tag Gateway gtag config (no consent defaults)",
+}
+const weakened = []
+for (const [hash, what] of Object.entries(CF_INJECTED)) {
+  if (headers.includes(hash)) weakened.push(`${hash} — ${what}`)
+}
+const scriptSrc = /script-src([^;]*)/.exec(headers)?.[1] ?? ''
+if (/'unsafe-inline'/.test(scriptSrc)) weakened.push("'unsafe-inline' in script-src")
+if (weakened.length) {
+  console.error('check-csp-hashes: CSP WEAKENED — refusing to pass:\n')
+  for (const w of weakened) console.error(`  - ${w}`)
+  console.error(
+    '\nThese entries would let Cloudflare\'s edge-injected gtag scripts execute,\n' +
+      'double-counting GA4 page_views and configuring GA4 before consent.\n' +
+      'To silence the console violations, disable automatic injection in the\n' +
+      'Cloudflare dashboard (Google tag gateway on the ophis.fi zone) instead.\n',
+  )
+  process.exit(1)
+}
+
 console.log(
   `check-csp-hashes: OK — ${seen.size} distinct executable inline-script hash(es) verified across ${htmlFiles.length} page(s)`,
 )
