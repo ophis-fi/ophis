@@ -257,8 +257,9 @@ struct Leg {
 ///   maxRatio = snapshotRatio * (RATE_DENOM + maxGrowthPerYearBps * dt) / RATE_DENOM
 /// with RATE_DENOM = 10_000 * 365 days, using overflow-safe mulDiv (512-bit
 /// intermediate) for the snapshotRatio product; same ordering for minRatio.
-/// The C1 test plan includes the truncation case (bps=500, dt=1 day => a
-/// strictly increasing maxRatio) so a naive re-implementation cannot pass. Outside
+/// The Test plan's Unit bullet includes the truncation case (bps=500, dt=1
+/// day => a strictly increasing maxRatio; RateBound ships with milestone C2)
+/// so a naive re-implementation cannot pass. Outside
 /// [minRatio, maxRatio] the read REVERTS (C18) - it does not clamp, unlike
 /// Aave's reference. The operational consequence stands (see below): a stalled
 /// rate drifts under a rising floor and fails closed until governance
@@ -489,6 +490,9 @@ field:
 - **Validate at execute, not only at submit.** Morpho validates nothing at
   submit and documents the footgun; Aera probes at schedule AND commit.
   `executeTokenAdd` re-runs constructor-grade validation: duplicate-reject,
+  `residuals[token]` EMPTY (a token with unswept residual revocations from a
+  prior removal may not be re-admitted - sweep first; this is also what keeps
+  the residual store bounded across remove/re-add cycles),
   decimals <= 18 (NOT 36: Phase B's unchanged `floorBuyAmount` multiplies
   `sellAmount * sellPrice18 * 10**buyTokenDecimals` BEFORE dividing, so a
   36-decimal buy token overflows uint256 on routine sizes - selling ~1M
@@ -998,8 +1002,10 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // timelocked pending type - a TokenAdd must never certify its own feeds.
     // execute STORES the reviewed pair: feedCertifiedAggregator[feed] = aggregator
     // (after asserting the proxy's live aggregator() equals it at execute time);
-    // revoke sets it back to address(0), and the fill-time recheck makes that
-    // instantly binding for every route already using the feed.
+    // revoke sets it back to address(0). In Eip1271 mode the fill-time recheck
+    // makes that instantly binding for every route already using the feed; in
+    // Presign mode there is NO fill-time gate, so binding-ness comes from the
+    // presignature sweep specified below - the mapping alone binds nothing there.
     function submitFeedEligibility(address feed, address aggregator) external;   // ONLY address(safe)
     function executeFeedEligibility(address feed, address aggregator) external;  // ONLY address(safe), [eta, eta+WINDOW]
     // revoke is MODE-AWARE like removeToken (C15's Presign lesson): in Eip1271
@@ -1150,7 +1156,11 @@ the verification log tracks which currently have no assigned target.
   never touch the token. Two parts: (i) gas is statically bounded and
   independent of history - at most one settlement call per allowlisted token
   (`allowedTokens.length <= MAX_ALLOWED_TOKENS`), and no code path lets order
-  activity grow any structure removal must iterate; (ii) no external call can
+  activity grow any structure removal must iterate; "independent of history"
+  HOLDS only because removeToken's two-phase sweep-then-compact keeps
+  `allowedTokens` a CONCURRENT set (see the P2 lane) and residual records are
+  deduplicated with re-admission blocked while unswept - without those two
+  rules this clause would be false under remove/add churn; (ii) no external call can
   revert the de-allowlisting - storage is updated first and every residual
   revocation is individually failure-isolated, so a paused, blacklisting or
   otherwise hostile ERC20 cannot brick removal of itself OR of any unrelated
@@ -1209,10 +1219,15 @@ the verification log tracks which currently have no assigned target.
   decisions (settlement context is adversarial; payload is unauthenticated),
   and answers ONLY for its own Safe and settlement domain
   (`safe_ == address(safe)`, `domainSeparator_ == domainSeparator`).
-- **C14**: migration safety - after the C5 ceremony no order signed under a
-  previous module (V1 presignature) remains fillable: every live V1 order is
-  cancelled and its relayer allowance zeroed before V2 is enabled. (The
-  guarantee that would otherwise have a <= V1-`maxTtl` hole.)
+- **C14**: migration safety - after the C5 ceremony NO order signed under a
+  previous module (V1 presignature) remains FILLABLE, by either closing path:
+  (a) POSITIVE verification per V1 uid (revoked, consumed, or expired,
+  asserted on-chain by the deploy-script hard gate) before V2's first
+  rebalance of that sell token, or (b) the wait-out path - allowance zeroed
+  at enablement AND V2's first rebalance of that token delayed past V1's
+  `maxTtl`, so a missed order is STARVED (no allowance while valid) rather
+  than cancelled. Stated as fillability, not as "every order cancelled":
+  cancellation is one mechanism, not the invariant.
 
 ## Threat-model deltas vs Phase B
 
@@ -1329,7 +1344,9 @@ the verification log tracks which currently have no assigned target.
 - **Unit**: every C-invariant; EFH muxer round-trip against the REAL deployed
   EFH bytecode on a fork (not a reimplementation); adapter classes incl.
   donation-attack vectors against the ERC-4626 rate source and its RateBound
-  (replay the wUSDM shape),
+  (replay the wUSDM shape), the RateBound integer-truncation case (bps=500,
+  dt=1 day must yield a strictly INCREASING maxRatio - a naive bps/1e4
+  evaluation freezes it at the snapshot and must fail this test),
   anchor-band both-direction breaches in MODULE tests (these are no longer
   adapter behaviours), plus aggregator-repoint detection and the round-guard
   rejections on directly-read legs.
@@ -1689,6 +1706,28 @@ before it, plus ~20 MAJORs concentrated in the same two lanes. Applied:
   C16 now requires the check and either a DELAY on rotation or a block while
   pendings are live.
 
+[2026-08-01 reconciliation - the two lists below are the HISTORICAL log of the
+C0.5 verification round and are kept verbatim for provenance. Since they were
+written, the review-round amendments folded normative fixes into the design
+text for a number of their entries; where an entry below conflicts with the
+normative sections above, THE NORMATIVE TEXT WINS. Now resolved: SVR
+eligibility (settled fill-eligible, catalog + open-questions aligned);
+Ethereum's ExR rows (catalog split); the de-allowlist-first vs sweep ordering
+(two-phase sweep-then-compact); sweepResidual's missing state and wrong key
+(persisted deduplicated residual records); C6's Presign-parity vs the cancel
+ABI (validated bytes-uid compat overload); the depeg-exit policy
+(direction-aware band); EXECUTE_WINDOW / DELAY / leg-count bounds; the
+compaction question (concurrent cap, normative); the EFH verifier-slot
+clobber (ceremony preflight refusal); consumed-uid re-registration (rejected
+at rebalance); C14's containment (fillability invariant + deploy-script hard
+gate); pending lifecycle per-token/per-feed nonces. Still genuinely open:
+the turnover ratio-vs-absolute oracle error budget in the cap-sizing formula
+(the sanityHigh worst-case charge addresses correlated in-band error, not the
+staleness term), Ophis values for maxDivergenceBps and the CAPO ceilings, and
+the invariant-handler coverage items (fill action shipped in the C5 invariant
+text but C7/C10/C12/C13 targets are still assigned in the test plan, not
+proven).]
+
 STILL OPEN from this round - these are NOT patched, and they are the reason the
 next step is a consolidation rewrite of the P1/P2 sections rather than a sixth
 patch (see "Status" below): `AnchoredAdapter` is absent from the eligible-source
@@ -1891,11 +1930,13 @@ it literally would have stripped Unichain of any eligible ETH leg - including
 the feed the LIVE module reads today. The test is corrected; the principle
 stands.
 
-**P3 remains open** and is the next work: the de-allowlist-first ordering
-versus the sweep over `allowedTokens`, `sweepResidual` having no residual state
-and the wrong key for buy-side removals, C6's Presign-parity claim now that
-`cancel`'s signature changed, and the test-plan/TRACKED disagreement over which
-invariants have targets. These are contained within P3.
+**P3's original open items are now closed in the design text** (2026-08-01
+amendments): the de-allowlist-first ordering versus the sweep is resolved by
+the normative two-phase sweep-then-compact; `sweepResidual` operates on
+persisted, deduplicated residual records keyed by the actual failed operation;
+C6's Presign-parity holds via the validated bytes-uid compat overload. What
+remains for P3 is IMPLEMENTATION plus the test-plan/TRACKED reconciliation of
+which invariants have assigned targets (C7/C10/C12/C13).
 
 **Decisions that need a human, not a lens**: the seven open decisions, plus
 `maxDivergenceBps` per asset class and the CAPO growth ceilings (max and
