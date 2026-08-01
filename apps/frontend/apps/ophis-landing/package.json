@@ -8,12 +8,13 @@
     "new:post": "node scripts/new-post.mjs",
     "dev": "pnpm prebuild && astro dev",
     "build": "pnpm prebuild && pnpm test:unit && node scripts/check-blog-alt.mjs && astro build",
-    "postbuild": "node scripts/check-csp-hashes.mjs && node scripts/check-faq-schema.mjs",
+    "postbuild": "node scripts/check-csp-hashes.mjs && pnpm test:csp && node scripts/check-faq-schema.mjs",
     "preview": "astro preview",
     "typecheck": "astro check",
     "test": "playwright test",
     "lh": "lhci autorun",
-    "test:unit": "node scripts/test-html-text.mjs"
+    "test:unit": "node scripts/test-html-text.mjs",
+    "test:csp": "node scripts/test-csp-guard.mjs"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.9",

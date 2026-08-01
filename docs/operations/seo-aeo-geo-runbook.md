@@ -149,9 +149,11 @@ DONE (2026-06-07): Cloudflare **Google Tag Gateway** (first-party tag serving)
 is enabled on the ophis.fi zone, endpoint **`/938g`** (measurementId
 G-NG9YX5G9CM, hideOriginalIp). All three surfaces load gtag.js from the
 same-origin first-party path (`/938g/gtag/js?id=...`) instead of
-googletagmanager.com; the CF-served gtag.js carries `transport_url=/938g`, so
-the measurement beacons are first-party too — this is what recovers hits lost to
-ad-blockers. Covered by each CSP's `'self'` (script-src + connect-src); the
+googletagmanager.com. **The beacon half of this is NOT working (measured
+2026-08-01): `collect` requests go to `region1.google-analytics.com`, not
+through `/938g`, so the ad-blocker recovery this was adopted for is not
+currently being realised.** Only the gtag.js *fetch* is first-party. See the
+note above the analytics section for what was ruled out. Covered by each CSP's `'self'` (script-src + connect-src); the
 googletagmanager.com / *.google-analytics.com allowances are kept for fallback.
 The endpoint path is assigned by Cloudflare; if it ever rotates, update the
 `/938g` literal in Base.astro, docusaurus.config.ts, and initGa4.ts.

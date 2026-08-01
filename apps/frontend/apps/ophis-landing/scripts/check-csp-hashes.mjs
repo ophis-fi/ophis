@@ -87,43 +87,83 @@ if (failed) {
 
 // --- CSP weakening guard --------------------------------------------------
 //
-// Cloudflare's Google Tag Gateway injects TWO inline scripts at the edge, into
-// browser-like requests only (verified 2026-08-01: a plain curl gets 91,129
-// bytes, a Chrome UA gets 91,545). They never appear in dist/, so the loop above
-// cannot see them, and CSP blocks them in production - which is the two console
-// violations on every page.
+// The check above is one-directional (every dist hash must be in _headers), so
+// stale hashes accumulate forever: each edit to an inline script added a new
+// hash and never removed the old one. Six had built up by 2026-08-01, from PRs
+// #320, #368, #374, #385, #553 and #557. Every stale hash silently keeps a
+// script body executable that the site no longer ships, and - worse - it makes
+// "is this hash legitimate?" unanswerable, which is the hole an attacker or a
+// well-meaning console-noise fix walks through.
 //
-// They must STAY blocked. They are a duplicate, consent-unaware GA4 setup that
-// runs BEFORE our own hashed block in Base.astro:
-//   1. (function(w,i,g){...})(window,'G-NG9YX5G9CM','google_tags_first_party')
-//   2. dataLayer init + gtag('js') + gtag('config','G-NG9YX5G9CM')   <-- no
-//      consent defaults, no anonymize_ip
-// Allowing them would double-count every page_view AND configure GA4 before the
-// EEA-scoped consent default is set, i.e. cookies before opt-in. Our own block
-// already loads gtag.js first-party from /938g and configures GA4 correctly
-// (verified: dataLayer populated, collect beacon fires after Accept).
+// So the rule is now bidirectional: an inline hash may appear in _headers ONLY
+// if a script with that hash is actually emitted into dist. That is an
+// allowlist derived from the build, which needs no hardcoded third-party
+// hashes and therefore does not rot when the third party changes its snippet.
 //
-// The real fix is turning OFF automatic injection in the Cloudflare dashboard;
-// silencing the console by pasting these hashes into _headers is the tempting
-// WRONG fix, so it fails here instead.
-const CF_INJECTED = {
-  "sha256-zjLSe+IflcBnH+CRkSBSMcUK03hIJ1iKjyFreRtwze4=": "CF Tag Gateway first-party marker",
-  "sha256-DB1UU0B/mr+5VxNTIplcok5EhFglyp9QTt4EpZxLem4=": "CF Tag Gateway gtag config (no consent defaults)",
+// Concretely it rejects Cloudflare's Google Tag Gateway scripts. CF rewrites
+// the HTML at the edge for browser-like requests (curl 91,129 bytes vs Chrome
+// UA 91,545), injecting a duplicate, consent-unaware GA4 setup that runs BEFORE
+// our own hashed block in Base.astro and calls gtag('config') with no consent
+// defaults. They are correctly blocked in production; whitelisting them to
+// silence the console would double-count page_views and set analytics cookies
+// before EEA opt-in. Because the rule is derived from dist, it catches those
+// two hashes AND any future variant of them.
+const KNOWN_THIRD_PARTY = {
+  'sha256-zjLSe+IflcBnH+CRkSBSMcUK03hIJ1iKjyFreRtwze4=': 'Cloudflare Tag Gateway first-party marker',
+  'sha256-DB1UU0B/mr+5VxNTIplcok5EhFglyp9QTt4EpZxLem4=': 'Cloudflare Tag Gateway gtag config (no consent defaults)',
 }
+
 const weakened = []
-for (const [hash, what] of Object.entries(CF_INJECTED)) {
-  if (headers.includes(hash)) weakened.push(`${hash} — ${what}`)
+
+// 1. Every inline hash in _headers must be backed by a script in dist.
+const headerHashes = [...headers.matchAll(/'(sha256-[A-Za-z0-9+/=]+)'/g)].map((m) => m[1])
+for (const hash of new Set(headerHashes)) {
+  if (seen.has(hash)) continue
+  const known = KNOWN_THIRD_PARTY[hash]
+  weakened.push(
+    known
+      ? `${hash} — ${known}: edge-injected, never in dist, must stay blocked`
+      : `${hash} — no inline script in dist produces this hash (stale, or pasted from a CSP report)`,
+  )
 }
-const scriptSrc = /script-src([^;]*)/.exec(headers)?.[1] ?? ''
-if (/'unsafe-inline'/.test(scriptSrc)) weakened.push("'unsafe-inline' in script-src")
+
+// 2. 'unsafe-inline' in ANY directive that governs <script> ELEMENTS. Checking
+//    script-src alone was insufficient: script-src-elem takes precedence over
+//    script-src for script elements, so a permissive script-src-elem next to a
+//    strict script-src would have passed.
+const directiveValue = (name) =>
+  new RegExp(`(?:^|;)\\s*${name}\\s([^;]*)`, 'i').exec(headers)?.[1] ?? null
+const scriptSrc = directiveValue('script-src')
+const scriptSrcElem = directiveValue('script-src-elem')
+const defaultSrc = directiveValue('default-src')
+// Precedence for <script> elements: script-src-elem > script-src > default-src.
+const effective =
+  scriptSrcElem !== null
+    ? ['script-src-elem', scriptSrcElem]
+    : scriptSrc !== null
+      ? ['script-src', scriptSrc]
+      : defaultSrc !== null
+        ? ['default-src', defaultSrc]
+        : null
+if (effective && /'unsafe-inline'/.test(effective[1])) {
+  weakened.push(`'unsafe-inline' in ${effective[0]} (the directive that governs <script> elements here)`)
+}
+// Flag it in the non-effective ones too: harmless today, a trap the next time
+// the directives are reordered.
+for (const [name, value] of [['script-src', scriptSrc], ['script-src-elem', scriptSrcElem], ['default-src', defaultSrc]]) {
+  if (value !== null && /'unsafe-inline'/.test(value) && effective?.[0] !== name) {
+    weakened.push(`'unsafe-inline' in ${name} (not effective for script elements today, but remove it)`)
+  }
+}
+
 if (weakened.length) {
   console.error('check-csp-hashes: CSP WEAKENED — refusing to pass:\n')
   for (const w of weakened) console.error(`  - ${w}`)
   console.error(
-    '\nThese entries would let Cloudflare\'s edge-injected gtag scripts execute,\n' +
-      'double-counting GA4 page_views and configuring GA4 before consent.\n' +
-      'To silence the console violations, disable automatic injection in the\n' +
-      'Cloudflare dashboard (Google tag gateway on the ophis.fi zone) instead.\n',
+    '\nAn inline hash belongs in _headers only while a script in dist produces it.\n' +
+      "To silence Cloudflare's edge-injected gtag violations, disable AUTOMATIC\n" +
+      'INJECTION for Google tag gateway on the ophis.fi zone in the Cloudflare\n' +
+      'dashboard — not by adding hashes here.\n',
   )
   process.exit(1)
 }
