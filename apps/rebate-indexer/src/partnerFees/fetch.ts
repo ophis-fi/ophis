@@ -309,6 +309,18 @@ export async function runPartnerFeeFetch(
     let cursor = await loadCursor(feed.chainId);
     for (let page = 0; page < MAX_PAGES_PER_RUN; page++) {
       const resp = await fetcher(feed, cursor.block, cursor.logIndex, FEED_LIMIT);
+      if (page === 0) {
+        // ACTIVATION marker on the FIRST successful poll, even an EMPTY one: saveCursor
+        // only runs after a nonempty page, so a live feed with no trades yet would leave
+        // no cursor row - and the orphaned-chain misconfiguration check above keys on
+        // cursor rows, so silently dropping that feed from the config would NOT fail
+        // closed. DO NOTHING on conflict: never disturb a real cursor position.
+        await (await getSql())`
+          INSERT INTO partner_fee_cursor (chain_id, next_block, next_log_index)
+          VALUES (${feed.chainId}, ${cursor.block.toString()}, ${cursor.logIndex.toString()})
+          ON CONFLICT (chain_id) DO NOTHING
+        `;
+      }
       const trades = resp.trades ?? [];
       for (const t of trades) {
         const result = attributePartnerFees(t);

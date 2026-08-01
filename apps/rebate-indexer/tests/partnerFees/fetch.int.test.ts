@@ -98,6 +98,22 @@ describe('partner-fee feed ingestion', () => {
     expect(unresolved[0]!.n).toBe('0');
   });
 
+  it('a feed with NO trades yet still writes an ACTIVATION cursor row (so later removal fails closed)', async () => {
+    const sql = await getSql();
+    const { runPartnerFeeFetch } = await import('../../src/partnerFees/fetch.js');
+    const r = await runPartnerFeeFetch({
+      feeds: [{ chainId: 10, url: FEED }],
+      fetcher: async () => ({ trades: [] }), // live feed, zero history
+      blockTimestamp: async () => new Date('2026-05-15T00:00:00Z'),
+    });
+    expect(r.misconfigured).toBe(false);
+    const rows = await sql<{ chain_id: number }[]>`SELECT chain_id FROM partner_fee_cursor`;
+    expect(rows).toHaveLength(1); // activation row despite the empty page
+    // Trimming the zero-history feed from the config now fails closed.
+    const r2 = await (await import('../../src/partnerFees/fetch.js')).runPartnerFeeFetch({ feeds: [], fetcher: async () => ({ trades: [] }) });
+    expect(r2.misconfigured).toBe(true);
+  });
+
   it('a PARTIALLY trimmed feed config (cursor chain missing from feeds) is MISCONFIGURED', async () => {
     const sql = await getSql();
     // The program has been active on 10 AND 130; the config now lists only 10.

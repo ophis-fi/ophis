@@ -43,6 +43,7 @@ export async function runPartnerFeePricer(): Promise<{ priced: number; failed: n
   let priced = 0;
   let failed = 0;
   let anomalous = 0;
+  const anomalousExamples: string[] = [];
   // Keyset cursor over the FULL primary key (trade_uid, recipient, chain_id, block_number,
   // log_index): (trade_uid, recipient) alone is NOT unique now that a partiallyFillable order's
   // multiple settlements each persist, so a narrower cursor could loop or skip rows.
@@ -97,16 +98,13 @@ export async function runPartnerFeePricer(): Promise<{ priced: number; failed: n
         // distorted quote becomes an operator incident, never a payout.
         if (feeUsd > maxFeeUsd) {
           anomalous++;
+          if (anomalousExamples.length < 10) {
+            anomalousExamples.push(`0x${r.trade_uid.toString('hex')} ($${feeUsd.toFixed(2)})`);
+          }
           log.error(
             { tradeUid: `0x${r.trade_uid.toString('hex')}`, chainId: r.chain_id, feeUsd, maxFeeUsd },
             'partner-fee valuation ANOMALOUS (exceeds PARTNER_FEE_MAX_FEE_USD); left unpriced for investigation',
           );
-          await alerts
-            .alert(
-              'partner-fee-pricer',
-              `Partner-fee trade 0x${r.trade_uid.toString('hex')} priced at $${feeUsd.toFixed(2)} — above the ${maxFeeUsd} USD single-fee cap. LEFT UNPRICED (accrual blocked) pending investigation; raise PARTNER_FEE_MAX_FEE_USD only if the fee is genuine.`,
-            )
-            .catch(() => {});
           continue;
         }
         // Reporting-only implied trade volume: fee_usd / (bps/1e4). Only when bps > 0.
@@ -125,6 +123,18 @@ export async function runPartnerFeePricer(): Promise<{ priced: number; failed: n
     }
   }
 
+  // ONE summary alert per run, after the loop (mirrors the fetch skip alert and the main
+  // pricer): a systemic oracle problem can push HUNDREDS of rows over the cap, and they stay
+  // unpriced so the same set recurs nightly - one awaited Telegram send per row (up to ~10s
+  // each) would stall the rest of the nightly pipeline for hours and flood the channel.
+  if (anomalous > 0) {
+    await alerts
+      .alert(
+        'partner-fee-pricer',
+        `${anomalous} partner-fee valuation(s) exceeded the ${maxFeeUsd} USD single-fee cap and were LEFT UNPRICED (accrual blocked) pending investigation. Examples: ${anomalousExamples.join(', ')}${anomalous > anomalousExamples.length ? `, +${anomalous - anomalousExamples.length} more` : ''}. Raise PARTNER_FEE_MAX_FEE_USD only if the fees are genuine.`,
+      )
+      .catch((e) => log.warn({ err: e }, 'partner-fee anomalous-valuation alert failed'));
+  }
   log.info({ priced, failed, anomalous }, 'partner-fee pricer complete');
   return { priced, failed, anomalous };
 }
