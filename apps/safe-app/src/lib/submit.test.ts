@@ -7,7 +7,7 @@ import { getOphisSettlementAddress, getOphisVaultRelayer } from '@ophis/sdk';
 // hoisted above module consts, so the shared spies must come from vi.hoisted().
 const { sendOrder, enrollTrackedWallet } = vi.hoisted(() => ({
   sendOrder: vi.fn<(body: unknown) => Promise<string>>(),
-  enrollTrackedWallet: vi.fn<(addr: string) => Promise<void>>(),
+  enrollTrackedWallet: vi.fn<(addr: string) => Promise<{ enrolled: boolean; status?: number }>>(),
 }));
 vi.mock('./quote', () => ({ ophisOrderBook: () => ({ sendOrder }) }));
 vi.mock('./tracking', () => ({ enrollTrackedWallet }));
@@ -66,10 +66,26 @@ function mockSdk(allowance: bigint | 'throws') {
 beforeEach(() => {
   vi.clearAllMocks();
   sendOrder.mockResolvedValue(UID);
-  enrollTrackedWallet.mockResolvedValue();
+  enrollTrackedWallet.mockResolvedValue({ enrolled: true, status: 200 });
 });
 
 describe('submitOrder (shared @ophis/safe-swap batch + wire body)', () => {
+  it('surfaces enrollmentWarning when best-effort enrollment resolves not-enrolled (order still submits)', async () => {
+    // The SDK's best-effort contract RESOLVES { enrolled:false } on a non-2xx/timeout instead of
+    // throwing, so a catch-only caller would silently drop the warning — this pins the fix.
+    enrollTrackedWallet.mockResolvedValue({ enrolled: false, status: 530 });
+    const { sdk } = mockSdk(0n);
+    const res = await submitOrder(sdk, CHAIN, OWNER, order, FULL_APP_DATA, APP_DATA_HASH);
+    expect(res.orderUid).toBe(UID);
+    expect(res.enrollmentWarning).toMatch(/HTTP 530/);
+  });
+
+  it('no enrollmentWarning when enrollment succeeds', async () => {
+    const { sdk } = mockSdk(0n);
+    const res = await submitOrder(sdk, CHAIN, OWNER, order, FULL_APP_DATA, APP_DATA_HASH);
+    expect(res.enrollmentWarning).toBeUndefined();
+  });
+
   it('zero allowance -> [approve(exact), presign] against Ophis relayer/settlement', async () => {
     const { sdk, send } = mockSdk(0n);
     const res = await submitOrder(sdk, CHAIN, OWNER, order, FULL_APP_DATA, APP_DATA_HASH);

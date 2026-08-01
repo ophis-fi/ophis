@@ -149,7 +149,11 @@ export async function executeOphisSwap(
   // abort the swap; the rebate simply won't index until the wallet is enrolled.
   let enrollmentWarning: string | undefined;
   try {
-    await enrollOphisTrader(owner);
+    const enrollment = await enrollOphisTrader(owner);
+    if (!enrollment.enrolled) {
+      const reason = enrollment.status !== undefined ? `HTTP ${enrollment.status}` : 'indexer unreachable';
+      enrollmentWarning = `rebate-indexer enrollment failed (swap still executes; rebate may not index): ${reason}`;
+    }
   } catch (e) {
     enrollmentWarning = `rebate-indexer enrollment failed (swap still executes; rebate may not index): ${(e as Error).message}`;
   }

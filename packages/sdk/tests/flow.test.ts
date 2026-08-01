@@ -85,9 +85,10 @@ describe('enrollOphisTrader', () => {
       Promise.resolve(new Response('{}', { status })),
     );
 
-  it('GETs the indexer /tier/:wallet endpoint with the default host', async () => {
+  it('GETs the indexer /tier/:wallet endpoint with the default host, and reports enrolled', async () => {
     const fetchMock = okFetch();
-    await enrollOphisTrader(OWNER, { fetch: fetchMock as unknown as typeof fetch });
+    const res = await enrollOphisTrader(OWNER, { fetch: fetchMock as unknown as typeof fetch });
+    expect(res).toEqual({ enrolled: true, status: 200 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe(`${OPHIS_REBATE_INDEXER_URL}/tier/${OWNER}`);
@@ -100,9 +101,66 @@ describe('enrollOphisTrader', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe(`https://staging.example.com/tier/${OWNER}`);
   });
 
-  it('throws on a non-2xx response so the caller can block the first swap', async () => {
+  it('best-effort by default: a non-2xx does NOT throw, it reports { enrolled:false, status }', async () => {
+    // The indexer being briefly down must not block the swap; the trade is still
+    // fee-bearing on-chain and the rebate backfills on the next successful enroll.
+    const fetchMock = okFetch(530);
+    const res = await enrollOphisTrader(OWNER, { fetch: fetchMock as unknown as typeof fetch });
+    expect(res).toEqual({ enrolled: false, status: 530 });
+  });
+
+  it('blocking:true restores the strict gate (throws on a non-2xx)', async () => {
     const fetchMock = okFetch(500);
-    await expect(enrollOphisTrader(OWNER, { fetch: fetchMock as unknown as typeof fetch })).rejects.toThrow(/HTTP 500/);
+    await expect(
+      enrollOphisTrader(OWNER, { blocking: true, fetch: fetchMock as unknown as typeof fetch }),
+    ).rejects.toThrow(/HTTP 500/);
+  });
+
+  it('best-effort swallows a network error (fetch rejects) -> { enrolled:false } with no status', async () => {
+    const netErr = vi.fn((): Promise<Response> => Promise.reject(new Error('ECONNREFUSED')));
+    const res = await enrollOphisTrader(OWNER, { fetch: netErr as unknown as typeof fetch });
+    expect(res).toEqual({ enrolled: false });
+  });
+
+  it('bounded timeout: a HUNG connection (never settles) resolves { enrolled:false } instead of stalling the swap', async () => {
+    // A server that accepts but never responds would bypass the catch forever without the
+    // timeout — callers await enrollment before submitting the order, so this must degrade
+    // into the network-failure path, not block for the platform's own (minutes-long) timeout.
+    const hangingFetch = vi.fn(
+      (_url: unknown, init?: { signal?: AbortSignal }) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    const res = await enrollOphisTrader(OWNER, { fetch: hangingFetch as unknown as typeof fetch, timeoutMs: 20 });
+    expect(res).toEqual({ enrolled: false });
+  });
+
+  it('rejects a non-finite / non-positive timeoutMs (setTimeout would coerce it to an instant abort)', async () => {
+    for (const bad of [NaN, -1, 0, Infinity]) {
+      await expect(enrollOphisTrader(OWNER, { timeoutMs: bad, fetch: okFetch() as unknown as typeof fetch })).rejects.toThrow(
+        /timeoutMs must be a positive finite number/,
+      );
+    }
+  });
+
+  it('blocking:true + timeout throws (fail-closed integrations see the stall as an error)', async () => {
+    const hangingFetch = vi.fn(
+      (_url: unknown, init?: { signal?: AbortSignal }) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    await expect(
+      enrollOphisTrader(OWNER, { blocking: true, fetch: hangingFetch as unknown as typeof fetch, timeoutMs: 20 }),
+    ).rejects.toThrow(/failed to reach the rebate indexer/);
+  });
+
+  it('blocking:true throws on a network error too', async () => {
+    const netErr = vi.fn((): Promise<Response> => Promise.reject(new Error('ECONNREFUSED')));
+    await expect(
+      enrollOphisTrader(OWNER, { blocking: true, fetch: netErr as unknown as typeof fetch }),
+    ).rejects.toThrow(/failed to reach the rebate indexer/);
   });
 
   it('throws on a malformed wallet before making any request', async () => {

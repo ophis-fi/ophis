@@ -4,7 +4,10 @@ import type { OphisAgentWallet, Address } from '../src/index.js';
 // A mutable quote the mocked orderbook returns. Defaults to {} so the input-guard tests keep
 // throwing at order-build (unchanged); the binding-guard tests set a concrete quote to drive
 // past the build and exercise the request<->quote binding checks.
-const hoisted = vi.hoisted(() => ({ quote: {} as Record<string, unknown> }));
+const hoisted = vi.hoisted(() => ({
+  quote: {} as Record<string, unknown>,
+  enroll: { enrolled: true, status: 200 } as { enrolled: boolean; status?: number },
+}));
 
 // Stub the cow-sdk / app-data modules so importing swap.ts doesn't pull the heavy CoW order stack
 // (and its ethers-v5 CJS shim) into Node. These input-guard tests throw BEFORE any of it is used.
@@ -32,7 +35,7 @@ vi.mock('@cowprotocol/app-data', () => ({
 // rebate indexer (enrollOphisTrader) or any real network — keeps the suite deterministic in CI.
 vi.mock('@ophis/sdk', () => ({
   isOphisFeeChain: (id: number) => id === 1,
-  enrollOphisTrader: async () => {},
+  enrollOphisTrader: async () => hoisted.enroll,
   buildOphisOrderMetadata: () => ({}),
   getOphisOrderbookUrl: () => 'https://orderbook.test',
   getOphisVaultRelayer: () => '0x2222222222222222222222222222222222222222',
@@ -188,6 +191,24 @@ describe('executeOphisSwap quote<->request binding (defense against a malicious/
     await expect(
       executeOphisSwap(mockWallet(1, 18), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, REF),
     ).rejects.toThrow(/zero-proceeds|buy floor/i);
+  });
+
+  it('surfaces an enrollmentWarning when best-effort enrollment reports not-enrolled (swap still executes)', async () => {
+    hoisted.quote = { ...honest };
+    hoisted.enroll = { enrolled: false, status: 530 };
+    try {
+      const res = await executeOphisSwap(mockWallet(1, 18), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, REF);
+      expect(res.orderUid).toBe('uid');
+      expect(res.enrollmentWarning).toMatch(/HTTP 530/);
+    } finally {
+      hoisted.enroll = { enrolled: true, status: 200 };
+    }
+  });
+
+  it('no enrollmentWarning when enrollment succeeds', async () => {
+    hoisted.quote = { ...honest };
+    const res = await executeOphisSwap(mockWallet(1, 18), { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, REF);
+    expect(res.enrollmentWarning).toBeUndefined();
   });
 
   it('does not reject an honest quote for a binding reason', async () => {

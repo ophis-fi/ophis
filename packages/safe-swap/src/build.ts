@@ -187,7 +187,11 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
   // enrollment is not a settlement precondition: a failure surfaces a warning.
   let enrollmentWarning: string | undefined;
   try {
-    await enrollOphisTrader(p.safe);
+    const enrollment = await enrollOphisTrader(p.safe);
+    if (!enrollment.enrolled) {
+      const reason = enrollment.status !== undefined ? `HTTP ${enrollment.status}` : 'indexer unreachable';
+      enrollmentWarning = `rebate-indexer enrollment failed (order still created; rebate may not index): ${reason}`;
+    }
   } catch (e) {
     enrollmentWarning = (e as Error).message;
   }
