@@ -371,6 +371,22 @@ describe('round-3 hardening', () => {
     expect(e!.owed_wei).toBe(usdFpToWei(usdToFp(80), PRICE / 2).toString());
   });
 
+  it('round-6: an UNDERFUNDED oldest batch STOPS the catch-up (no newer batch jumps the queue)', async () => {
+    const sql = await getSql();
+    // Oldest cycle owes $120, newer owes $80; balance covers only $100.
+    await seedTrade(sql, R1, 150, '2026-05-15T00:00:00Z'); // June batch: 0.8*150 = $120 paid
+    await accrue(JUN);
+    await seedTrade(sql, R2, 100, '2026-06-15T00:00:00Z'); // July batch: $80 paid
+    await accrue(new Date('2026-07-01T02:00:00Z'));
+    const r = await propose(wei(100));
+    // Oldest ($120 > $100) blocks AND stops: the newer $80 must NOT consume the funds.
+    expect(r.blocked).toBe(1);
+    expect(r.proposed).toBe(0);
+    const rows = await sql<{ status: string }[]>`SELECT status FROM partner_fee_batches ORDER BY cycle_month`;
+    expect(rows[0]!.status).toBe('computed');
+    expect(rows[1]!.status).toBe('computed');
+  });
+
   it('round-4: a proposal-time quarantine reduces the spendable remainder (no proposing against just-reserved WETH)', async () => {
     const sql = await getSql();
     // June: R1 $80 (paid at accrual). July: R2 $100 (paid). Safe balance exactly $100-worth.

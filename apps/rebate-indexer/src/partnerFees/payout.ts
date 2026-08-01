@@ -492,9 +492,13 @@ export async function proposePartnerFeeBatches(deps: PartnerFeeProposeDeps): Pro
     const owedWei = transfers.reduce((acc, t) => acc + t.amount, 0n);
     if (owedWei > remaining) {
       blocked++;
-      log.error({ cycle, batchId: batch.id, owedWei: owedWei.toString(), remainingWei: remaining.toString() }, 'partner-fee batch BLOCKED (owed exceeds available Safe WETH)');
-      await alerts.alert('partner-fee-payout', `Partner-fee batch ${cycle} BLOCKED: owed ${owedWei} > available Safe WETH ${remaining} wei (net of queued proposals). Left 'computed'; fund the Safe and it proposes next run.`).catch(() => {});
-      continue;
+      log.error({ cycle, batchId: batch.id, owedWei: owedWei.toString(), remainingWei: remaining.toString() }, 'partner-fee batch BLOCKED (owed exceeds available Safe WETH); STOPPING oldest-first catch-up');
+      await alerts.alert('partner-fee-payout', `Partner-fee batch ${cycle} BLOCKED: owed ${owedWei} > available Safe WETH ${remaining} wei (net of queued proposals). Catch-up STOPPED at this batch (oldest first); fund the Safe and the nightly retry proposes it before any newer cycle.`).catch(() => {});
+      // STOP, don't skip: batches propose OLDEST FIRST, and letting a newer, smaller batch
+      // consume the funds the oldest cannot fit inverts that priority -- the older liability
+      // would sit unpaid while later cycles drain the balance (120 owed vs 100 balance must
+      // not let a newer 80 jump the queue). The nightly retry resumes once funded.
+      break;
     }
 
     // DRY-RUN: everything above (screen + simulate + balance check) ran for operator validation;
