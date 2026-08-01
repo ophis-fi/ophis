@@ -315,14 +315,25 @@ orders fail exactly when exiting at the lower anchored price is the
 risk-reducing action, deleting the vault's curator-operated exit path during
 the event the anchor detects. Normatively: when the breached band belongs to
 the SELL token's route, validation proceeds using the price
-`min(routeValue, anchorValue)` for the sell side. Stated honestly, that
-LOWERS the required buy floor (`floorBuyAmount` scales with the sell price):
-the point is that the exit clears at the HONEST, anchored market valuation
-of the depegging asset instead of an overvalued route price no solver could
-ever fill against. The protections that remain are exactly the ones that
-matter: the floor is never derived from a price ABOVE what either source
-supports (no overvaluation, and never zero - it is still an oracle-derived
-floor), the un-breached BUY-side leg is untouched, and the curator's
+`min(routeValue, anchorValue)` for the sell side, REQUIRED to still lie
+inside the route's persisted `[sanityLow, sanityHigh]` - if the selected
+price falls below `sanityLow`, validation REVERTS even on the sell side. The
+sanity band is the ABSOLUTE guardrail and the depeg exception never pierces
+it: without this clamp-free bound-check, a certified anchor publishing a
+fresh, nonzero erroneous EXTREME (the faulty-feed scenario the persisted
+band exists to stop) would be selected by `min()` and collapse the floor
+arbitrarily - and `minBuyOverride` is curator-supplied, no protection
+against a compromised curator. A genuine depeg BEYOND the operator-declared
+plausible range therefore fails closed until governance acts (`removeToken`,
+or a timelocked band update) - deliberate: past that line the operator's own
+risk declaration says automated pricing is no longer trustworthy. Stated
+honestly, the in-band exception LOWERS the required buy floor
+(`floorBuyAmount` scales with the sell price): the point is that the exit
+clears at the HONEST, anchored market valuation of the depegging asset
+instead of an overvalued route price no solver could ever fill against. The
+protections that remain are exactly the ones that matter: the floor is never
+derived from a price ABOVE what either source supports nor BELOW
+`sanityLow`, the un-breached BUY-side leg is untouched, and the curator's
 `minBuyOverride` binds absolutely regardless of the band. When the breached
 band belongs to the BUY token's route, validation REVERTS - acquiring an
 asset whose price integrity is in question is risk-ADDING and has no exit
@@ -757,8 +768,10 @@ AND-constraint, Morpho `adapterRegistry`-style).
      `order.buyAmount >= max(freshOracleFloor, storedMinBuyOverride)` with the
      composed price inside the route's stored `[sanityLow, sanityHigh]` and
      the anchor band evaluated DIRECTION-AWARE per the depeg-exit rule (a
-     sell-side breach prices the floor at `min(routeValue, anchorValue)`
-     instead of reverting; a buy-side breach reverts - see C18);
+     sell-side breach prices the floor at `min(routeValue, anchorValue)`,
+     still bound within the persisted sanity band, instead of reverting; a
+     buy-side breach - or a selected price below `sanityLow` - reverts; see
+     C18);
    - returns `0x1626ba7e` on success; on failure reverts with **typed
      reasons** split transient vs fatal (`FloorNotMet`, `StaleOraclePrice`,
      `SequencerStarting` = transient; `OrderNotRegistered`, `TokenNotAllowed`,
@@ -1045,15 +1058,24 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // The bound is GLOBAL, not only per bucket: distinct removed tokens each
     // leave their own bucket, so per-bucket rules alone let total residual
     // state grow with every fresh token address. Normatively,
-    // `executeTokenAdd` (for ANY token) additionally reverts while the TOTAL
-    // unswept residual entries exceed RESIDUAL_GLOBAL_CAP = 2 *
-    // MAX_ALLOWED_TOKENS (= 32): above it the allowlist can only SHRINK until
-    // residuals are swept - or voided via `voidResidual(sellToken, uid, kind)`
-    // (ONLY address(safe), evented): the explicit accountability action for a
-    // permanently-bricked token whose approve(0) will never succeed (its
-    // allowance is then unusable value the Safe knowingly writes off, not a
-    // live risk). Worst-case global storage is therefore CAP + one removal's
-    // worst case = 64 entries, and sweepResidual stays executable forever.
+    // BOTH `executeTokenAdd` AND `rebalance` (for ANY token) additionally
+    // revert while the TOTAL unswept residual entries exceed
+    // RESIDUAL_GLOBAL_CAP = 2 * MAX_ALLOWED_TOKENS (= 32): above the cap the
+    // vault is in CLEANUP MODE - only removals, sweeps, cancels and voids -
+    // until residuals are swept or voided via `voidResidual(sellToken, uid,
+    // kind)` (ONLY address(safe), evented): the explicit accountability
+    // action for a permanently-bricked token whose approve(0) will never
+    // succeed (its allowance is then unusable value the Safe knowingly
+    // writes off, not a live risk). Gating rebalance is what makes the bound
+    // DERIVABLE, not decorative: every residual entry traces to a live order
+    // uid, new uids exist only while total <= CAP, each uid contributes at
+    // most 2 entries ever (dedup), and at most MAX_ALLOWED_TOKENS live
+    // orders exist when the cap is first exceeded - so unswept entries <=
+    // CAP + 2 * MAX_ALLOWED_TOKENS = 64, HARD, under arbitrary
+    // rebalance/removal churn. (Without the rebalance gate, post-cap
+    // re-registration on remaining tokens mints fresh uids and the "bound"
+    // grows with every remove cycle.) removeToken itself is NEVER gated -
+    // the emergency path always runs.
     function sweepResidual(address token) external;             // retry residual revocations that failed
     function rotateGuardian(address newGuardian) external;      // Safe-submitted, TIMELOCKED like a token add and
                                                                 // incumbent-guardian-cancelable (C16: instant rotation
@@ -1295,7 +1317,10 @@ the verification log tracks which currently have no assigned target.
   exception (the depeg-exit rule in the P2 lane): a band breach on the SELL
   token's route does NOT revert - validation proceeds at
   `min(routeValue, anchorValue)`, an oracle-derived price both sources
-  support - while a breach on the BUY token's route reverts unconditionally.
+  support, PROVIDED it still lies inside the persisted
+  `[sanityLow, sanityHigh]` (below `sanityLow` even the sell side reverts;
+  the sanity band is never pierced) - while a breach on the BUY token's
+  route reverts unconditionally.
   Tests assert BOTH arms; a blanket both-direction revert is a C18 violation,
   not a stricter implementation of it.
 - **C12**: `rebalance` in 1271 mode reverts unless the Safe's fallback handler
