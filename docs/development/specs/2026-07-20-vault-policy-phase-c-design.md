@@ -1003,8 +1003,11 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // Failed residual steps are PERSISTED so the retry knows WHAT to retry:
     // removing buy-side token T can fail zeroing approve(S, 0) on the ORDER'S
     // SELL token S, and `sweepResidual(T)` receives only T. removeToken records
-    // residuals[token] = {sellToken, uid, kind}[] (bounded: one per affected
-    // live order, <= MAX_ALLOWED_TOKENS entries); sweepResidual iterates and
+    // residuals[token] = {sellToken, uid, kind}[] (bounded: AT MOST TWO per
+    // affected live order - the hygiene revocation (invalidateOrder in Eip1271
+    // mode) and the allowance zeroing can fail INDEPENDENTLY and each needs its
+    // own retryable entry - so <= 2 * MAX_ALLOWED_TOKENS entries; gas/sweep
+    // budgets are sized to that bound); sweepResidual iterates and
     // clears them on success. Without the record, a residual involving another
     // token's allowance is unrecoverable once the failure event scrolls by.
     // BOUNDED ACROSS REMOVALS, not just per call: appends are DEDUPLICATED by
@@ -1052,7 +1055,12 @@ Constructor additions: `Mode mode`, `address guardian`, `uint256 delay`
 the review guarantee, and an unbounded ceiling accepted near-`uint256.max`
 values whose `submittedAt + DELAY` overflows at every schedule/check, leaving
 a deployment that can never add a route or recover a lost guardian), `uint256
-executeWindow` (immutable, BOUNDED: `1 hours <=
+executeWindow` (immutable, BOUNDED - see below), `uint256 migrationUnlockAt`
+(immutable; the on-chain V1->V2 containment gate `rebalance` checks - see the
+C5 migration ceremony: 0 on the verified-cancellation path, `enableTime +
+V1_MAX_TTL` on the wait-out path; the constructor validates it is either 0 or
+within `[block.timestamp, block.timestamp + V1_MAX_TTL + 7 days]`, so a typo
+cannot brick rebalancing forever), continuing with `executeWindow`: `1 hours <=
 executeWindow <= 30 days`, enforced in the constructor AND the factory - zero
 makes execution a single-timestamp race that generally cannot land, an
 unbounded window recreates the indefinitely-executable stale pending the
@@ -1146,9 +1154,13 @@ the verification log tracks which currently have no assigned target.
   depositor-favorable delta; refunds apply uniformly in both modes). Parity
   includes the ABI: the `cancel(bytes orderUid)` compat overload (see the
   contract sketch) keeps existing safe-swap callers and the V1 order-path
-  suite calling the selector they already use - the overload extracts
-  uid[0:32] (the digest) and discards the caller's remaining bytes, so it
-  reintroduces no forged-uid trust. The V1 order-path test suite passes
+  suite calling the selector they already use - the overload takes uid[0:32]
+  as the digest, REBUILDS the canonical 56-byte uid from storage, and
+  REVERTS unless the caller's bytes equal it exactly (a forged owner/validTo
+  tail is rejected, never silently corrected - the same strict semantics the
+  interface and the refund-hardening negative test mandate; an honest V1
+  caller always passes because it supplies the true uid). The V1 order-path
+  test suite passes
   against V2-in-presign+frozen mode modulo the refund assertions. (Default
   deployments are timelocked and additionally carry the P3 admin surface -
   deltas enumerated, not hidden.)
