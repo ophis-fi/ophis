@@ -13,11 +13,18 @@ on:
       # was added, 2026-05-29). swap.ophis.fi gets the same file via its own
       # workflow; this keeps the two hosts' /api/intent in lockstep.
       - 'functions/api/**'
+      # The landing's check-chain-count gate cross-checks the swap app's
+      # SORTED_CHAIN_IDS in this file. Without this path, a chain add/retire
+      # would deploy the swap app while the landing (pages, llms.txt, schema)
+      # kept advertising the stale list until an unrelated landing change
+      # happened to trigger a build - the exact drift the gate exists to stop.
+      - 'apps/frontend/libs/common-const/src/chainInfo.ts'
       - '.github/workflows/landing-deploy.yml'
   pull_request:
     paths:
       - 'apps/frontend/apps/ophis-landing/**'
       - 'functions/api/**'
+      - 'apps/frontend/libs/common-const/src/chainInfo.ts'
 
 permissions:
   contents: read

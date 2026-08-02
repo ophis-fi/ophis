@@ -93,9 +93,85 @@ for (const file of walk(resolve(root, 'src'))) {
   }
 }
 
+// 3. Cross-check against the swap app's runtime chain list. The landing keeps
+// its own presentation data (full names, strip order, logos), but its CHAIN
+// IDS must equal apps/frontend/libs/common-const/src/chainInfo.ts
+// SORTED_CHAIN_IDS, the product's authoritative list; otherwise the landing,
+// llms.txt, and structured data can advertise chains the app retired, or
+// miss ones it gained, while this gate stays green.
+const chainInfoPath = resolve(root, '../../libs/common-const/src/chainInfo.ts')
+const chainInfoSrc = readFileSync(chainInfoPath, 'utf8')
+const sortedBlock = chainInfoSrc.match(/SORTED_CHAIN_IDS[^=]*=\s*\[([\s\S]*?)\]/)
+if (!sortedBlock) {
+  failures.push('could not locate SORTED_CHAIN_IDS in libs/common-const/src/chainInfo.ts')
+} else {
+  // Enum member -> canonical chain id. An entry this map does not know FAILS
+  // the build (fail-closed on novelty): update this map AND src/data/chains.ts
+  // together when the product gains a chain.
+  const ENUM_IDS = {
+    MAINNET: 1,
+    BNB: 56,
+    BASE: 8453,
+    ARBITRUM_ONE: 42161,
+    POLYGON: 137,
+    AVALANCHE: 43114,
+    LINEA: 59144,
+    PLASMA: 9745,
+    INK: 57073,
+    GNOSIS_CHAIN: 100,
+    OPTIMISM: 10,
+    SEPOLIA: 11155111,
+  }
+  const appIds = []
+  // Strip line comments first (they run to end of line), THEN split the whole
+  // block on commas: entries are comma-delimited, not line-delimited, so two
+  // entries sharing a physical line must both be parsed. Each fragment must
+  // match an ANCHORED entry pattern in full — an unparsed suffix fails the
+  // gate instead of being silently discarded.
+  const entries = sortedBlock[1]
+    .split('\n')
+    .map((l) => l.replace(/\/\/.*$/, ''))
+    .join('\n')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  for (const entry of entries) {
+    const num = entry.match(/^(\d+)(?:\s+as\b[\w\s.]*)?$/)
+    const member = entry.match(/^(?:SupportedChainId|AdditionalTargetChainId)\.(\w+)(?:\s+as\b[\w\s.]*)?$/)
+    if (num) {
+      appIds.push(Number(num[1]))
+    } else if (member) {
+      if (!(member[1] in ENUM_IDS)) {
+        failures.push(
+          `SORTED_CHAIN_IDS has an enum member this gate does not know: "${member[1]}" — add it to ENUM_IDS in this script AND the chain to src/data/chains.ts`,
+        )
+      } else {
+        appIds.push(ENUM_IDS[member[1]])
+      }
+    } else {
+      failures.push(`unparseable SORTED_CHAIN_IDS entry: "${entry}"`)
+    }
+  }
+  const landingIds = [...chainsSrc.matchAll(/chainId: (\d+)/g)].map((m) => Number(m[1]))
+  const appSet = new Set(appIds)
+  const landingSet = new Set(landingIds)
+  for (const id of appIds) {
+    if (!landingSet.has(id)) {
+      failures.push(`swap app SORTED_CHAIN_IDS lists chain ${id} but src/data/chains.ts does not`)
+    }
+  }
+  for (const id of landingIds) {
+    if (!appSet.has(id)) {
+      failures.push(`src/data/chains.ts advertises chain ${id} which is not in the swap app's SORTED_CHAIN_IDS`)
+    }
+  }
+}
+
 if (failures.length) {
   console.error('check-chain-count: FAIL')
   for (const f of failures) console.error(`  - ${f}`)
   process.exit(1)
 }
-console.log(`check-chain-count: OK — ${count} EVM chains consistent across chains.ts, llms.txt, and src/`)
+console.log(
+  `check-chain-count: OK — ${count} EVM chains consistent across chains.ts, llms.txt, src/, and the swap app's SORTED_CHAIN_IDS`,
+)
