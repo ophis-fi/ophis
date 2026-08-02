@@ -5,13 +5,22 @@ spec (`2026-07-20-vault-policy-phase-c-design.md`). Requirement set by Clement
 (2026-08-02): every number proven from primary or authoritative sources - no
 guessed data. Anything that could not be traced to such a source is labeled
 UNVERIFIED and excluded from the derivation. Both parameters are per-token
-`TokenAdd` fields behind the P3 timelock: a wrong value FAILS CLOSED (reverted
-reads / blocked trades), never open - unlike a price-capping design, where a
-misconfiguration reprices collateral (Aave, 2026-03-10: a CAPO snapshot
-misconfiguration capped wstETH/ETH at ~1.1939 vs ~1.228 market and caused ~$27M
-of wrongful liquidations; coindesk.com/business/2026/03/10/defi-lending-platform-aave-sees-a-rare-usd27-million-liquidations-after-a-price-glitch).
-Our reverts-not-clamps posture (C18) turns the same class of mistake into
-downtime instead of losses.
+`TokenAdd` fields behind the P3 timelock. The misconfiguration asymmetry is
+stated honestly, because it is NOT symmetric: a value set TOO TIGHT fails
+closed (reverted reads, blocked trades - an availability incident); a value
+set TOO LOOSE silently WEAKENS the check - an oversized `maxDivergenceBps`
+accepts a faulty route/anchor discrepancy and an oversized growth ceiling
+accepts abnormal rate inflation, and the bad value then flows into the floor.
+That loosening direction is exactly why both parameters live behind the
+timelock with a per-listing review, and why the class defaults below are
+derived tight-side-of-defensible rather than generous. What our
+reverts-not-clamps posture (C18) does buy: a TIGHT misconfiguration can never
+reprice collateral the way a price-capping design can (Aave, 2026-03-10: a
+CAPO snapshot misconfiguration capped wstETH/ETH at ~1.1939 vs ~1.228 market
+and caused ~$27M of wrongful liquidations;
+coindesk.com/business/2026/03/10/defi-lending-platform-aave-sees-a-rare-usd27-million-liquidations-after-a-price-glitch)
+- with us the same mistake is downtime. The loose direction has no such
+shield anywhere; only review does.
 
 ## A. `maxDivergenceBps` - how far may route and anchor legitimately disagree?
 
@@ -70,8 +79,20 @@ memory topic `2026-08-02`; contracts `0x7f39C581...` `stEthPerToken`,
 
 The Block Analitica observation matters for DESIGN validation, not the number:
 during a fast crash the band WILL trip without any depeg. Under our
-direction-aware rule that is the intended behavior - buys of the volatile
-asset revert, exits still validate at the conservative anchor-low price.
+direction-aware rule, buys of the volatile asset revert, and exits validate
+at the conservative anchor-low price - PROVIDED the anchor is the low side
+and still inside the persisted `[sanityLow, sanityHigh]`; below `sanityLow`
+even the exit reverts (the band is never pierced; normative rule in the
+Phase-C spec). Sizing implication, so the exit path actually survives a
+fast crash of the cited magnitude: the SANITY band is the coarse absolute
+plausibility rail and must be sized WIDE relative to the divergence band -
+listing guidance is sanityLow at least 25-30% below the listing-time
+composed price (comfortably under the 11.76% transient and every historical
+depeg in A.3, while still catching decimal/aggregator-class faults, which
+mis-scale by orders of magnitude, not tens of percent). A sanity band sized
+tighter than the worst fast-crash transient silently converts the depeg-exit
+path into a hard freeze - that is a per-listing review checkpoint, not a
+default anyone should inherit blindly.
 
 ### A.4 Peer thresholds (primary)
 
@@ -88,8 +109,17 @@ asset revert, exits still validate at the conservative anchor-low price.
 
 | Route class | maxDivergenceBps | Derivation |
 |---|---|---|
-| ExR route vs market-feed anchor, standard 0.5%-deviation feeds (mainnet/OP/Base/Arb LSTs) | **150** | noise floor 100 (threshold sum) + basis envelope 20 + update-desync margin 30. Sits BELOW Aave's 250 emergency line (we fail closed before peers declare emergencies) and FAR below every real depeg it must catch (290/600/800). |
-| Tight-feed comparisons (0.05% Unichain ExR legs, Base rETH update-on-change, tETH/wstETH 0.02%), or anchors composed so ETH/USD cancels | **100** | noise floor <=55 (e.g. 0.05+0.5 worst pairing) + the same basis + desync margins, rounded to a single defensible tier. |
+| Standard tier: any comparison whose feed deviation-threshold SUM is > 50 bps (e.g. the common 0.5% + 0.5% ExR-vs-market pairing = 100 bps) | **150** | threshold sum up to 100 + basis envelope 20 + update-desync margin 30. Sits BELOW Aave's 250 emergency line (we fail closed before peers declare emergencies) and FAR below every real depeg it must catch (290/600/800). |
+| Tight tier: comparisons whose feed deviation-threshold SUM is <= 50 bps (e.g. two Unichain 0.05% ExR legs = 10; 0.05% vs 0.2% = 25; tETH/wstETH 0.02% + 0.05% = 7) | **100** | threshold sum <= 50 + the same 20 basis + 30 desync margins = <= 100, margins fully preserved. |
+
+Tier membership is decided by ONE arithmetic test - sum the two sides'
+deviation thresholds (after removing any shared leg that cancels) and compare
+to 50 bps - never by feed family. Two consequences Codex-review made explicit:
+canceling a shared ETH/USD leg does NOT by itself qualify a route for the
+tight tier (two remaining 0.5% legs still sum to 100 bps -> standard tier),
+and a pairing like Unichain's 0.05% ExR against the chain's 0.5% ETH/USD
+(sum 55) sits just OVER the boundary -> standard tier, keeping the documented
+margins intact rather than shaving them.
 
 Both are per-token `TokenAdd` values behind the timelock; these are the class
 defaults, and the C5 trial runs `anchorBandState` monitoring to record the
@@ -121,11 +151,20 @@ and consistent across chains in `bgd-labs/aave-capo/scripts/Deploy*.s.sol`:
 
 Cross-check against observed base yields (DefiLlama daily APY series, pool ids
 in the research log): medians cluster at 2.7-3.1% for the ETH LSTs with
-all-time single-day prints up to 11.77% (stETH, 2025-02-03). Single-day prints
-above the cap are fine: CAPO bounds the SUSTAINED ratio trajectory from a
-snapshot, not daily APY prints, and the ~3x median-to-cap headroom absorbs
-spikes. Aave pairs these caps with a 7-14 day MINIMUM_SNAPSHOT_DELAY and a
-180-day MAXIMUM_SNAPSHOT_TERM (PriceCapAdapterBase.sol, verified in the repo).
+all-time single-day prints up to 11.77% (stETH, 2025-02-03). A single-day
+print above the cap is safe ONLY when headroom has accrued since the
+snapshot - immediately after a FRESH snapshot there is none, and that 11.77%
+day adds ~3.2 bps to the ratio while a 9.68%/yr linear bound allows ~2.65 bps
+for that day: the read would revert. Aave's mechanism for exactly this is
+MINIMUM_SNAPSHOT_DELAY (7 days ETH LSTs / 14 days others,
+PriceCapAdapterBase.sol + the Chaos framework post): the snapshot ratio must
+be an observation AT LEAST that old, so the bound activates with accrued
+cushion already in place. **We adopt the same rule, conservative side: every
+P3 re-snapshot uses a ratio observation >= 14 days old.** At a 3% median
+yield that is ~11.5 bps of cushion at activation vs ~3.2 bps for the worst
+observed single-day spike - a ~3.6x margin, and the margin GROWS every
+below-cap day thereafter. (MAXIMUM_SNAPSHOT_TERM 180 days is the other Aave
+bound; our 90-day runbook in B.2 sits at half of it.)
 
 ### B.2 Our snapshot-cadence delta, and the resulting runbook rule
 
@@ -182,5 +221,10 @@ operating consequence the spec already documents for a stalled rate.
   (tight-feed or denominator-cancelling comparisons); per-token overridable;
   C5 trial monitors before size.
 - CAPO: **wstETH 968 / weETH 875 / rETH 930 / ezETH 1089 / rsETH 983 /
-  cbETH 812 bps/yr**, `minGrowth 0` everywhere; re-snapshot runbook <= 90 days;
-  **sUSDe deferred**.
+  cbETH 812 bps/yr**, `minGrowth 0` everywhere; re-snapshot runbook <= 90 days
+  AND every snapshot uses a ratio observation >= 14 days old (the
+  post-snapshot spike cushion, B.1); **sUSDe deferred**.
+- Sanity bands (per-listing checkpoint, not a class default): `sanityLow` at
+  least 25-30% below the listing-time composed price, so the depeg-exit path
+  survives fast-crash transients (A.3) while still catching
+  order-of-magnitude faults.
