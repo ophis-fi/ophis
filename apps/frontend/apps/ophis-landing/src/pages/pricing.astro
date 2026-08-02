@@ -1,0 +1,118 @@
+---
+/**
+ * /pricing: THE canonical fee page. Every other property (homepage FAQ, blog
+ * posts, docs, business, llms.txt) should state fees consistently with this
+ * page and link here. Fee facts below mirror the live post-#1026 wording:
+ * fee on volume only, taken in the surplus token, no cut of surplus anywhere.
+ *
+ * FAQ answers are rendered VERBATIM as the visible section body (the postbuild
+ * check-faq-schema gate requires schema text to appear in visible text), so
+ * edit the FAQS constants, not the markup.
+ */
+import ContentPage from '../layouts/ContentPage.astro'
+import { canonicalPage } from '../data/canonicalPages'
+import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../data/chains'
+
+const { updated } = canonicalPage('/pricing/')
+
+const FAQS = [
+  {
+    q: 'What does Ophis charge?',
+    a: `Ophis applies a flat 0.10% (10 bps) fee on trade volume in the swap app, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. SDK and MCP integrations pay a reduced 0.05% (5 bps) partner rate. The fee is on volume only and is taken in the surplus token (the token you receive on a standard sell order). ERC-20 orders are gasless: you pay no network gas on the swap itself. Selling native ETH is the exception, it places an on-chain EthFlow transaction that pays normal network gas, and token approvals you sign separately also cost gas.`,
+  },
+  {
+    q: 'What is the all-in cost on each chain?',
+    a: `On the Ophis-operated chains, ${sovereignList}, the flat Ophis fee is the entire protocol cost and 100% of any price improvement a solver finds beyond your signed quote is returned to the trader. On the CoW-hosted chains, CoW Protocol adds its own fees on top: a 0.02% volume fee (0.003% on correlated pairs) plus 50% of quote improvement, capped at 0.98% of volume, making the fixed all-in there 0.12% standard and 0.013% on stable pairs.`,
+  },
+  {
+    q: 'Does Ophis take a cut of surplus?',
+    a: `No. Ophis takes no cut of price improvement on any chain. On ${sovereignList}, 100% of the improvement is returned to the trader. On CoW-hosted chains, CoW Protocol retains 50% of quote improvement upstream before the remainder is returned.`,
+  },
+  {
+    q: 'What do integrators pay, and what can they charge?',
+    a: `Integrations pay a 5 bps base rate: 0.05% of volume. The SDK sets a reduced 1 bp on same-chain stablecoin pairs; the keyless MCP charges the flat 5 bps base. Using the SDK or a manual appData build, integrators charge their own fee on top of ERC-20 orders, up to 95 bps under the default 100 bps aggregate cap, and Ophis takes 0% of the markup. An own-fee requires onboarding first: it is chargeable today on the CoW-hosted chains and paid out under CoW's terms, while on the Ophis-operated chains your fee recipient must be onboarded (allowlisted) before orders carrying it are accepted, and the monthly payout must be enabled for you before you receive it. Robinhood Chain own-fee payout is not yet enabled.`,
+  },
+  {
+    q: 'Are the APIs free?',
+    a: `Yes. The public Intent API and the MCP server are free to call. The Intent API is rate-limited to 30 requests per minute per IP; partner-tier rate limits are reviewed case by case.`,
+  },
+  {
+    q: 'Are there rebates?',
+    a: `Yes. Volume rebate tiers (10% to 50% by rolling 30-day volume) weight your share of a monthly WETH rebate pool, and a referral layer pays 8% or 12% of the net fee Ophis keeps, monthly in WETH, on-chain.`,
+  },
+]
+---
+
+<ContentPage
+  title="Ophis fees and pricing"
+  description="The canonical Ophis fee reference: a flat 0.10% (10 bps) on trade volume, 0.01% on same-chain stablecoin pairs, 5 bps for SDK and MCP integrations, all-in on the Ophis-operated chains."
+  path="/pricing/"
+  heading="Fees and pricing"
+  lede="One flat fee on trade volume, no gas, no cut of surplus. This page is the canonical reference for what Ophis charges on every path and every chain."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> the swap app charges a flat 0.10% (10 bps) of trade volume,
+    reduced to 0.01% (1 bp) for same-chain stablecoin-to-stablecoin swaps. SDK and MCP integrations
+    pay a 5 bps partner rate. On the Ophis-operated chains, {sovereignList}, that fee is the all-in
+    cost. The fee is taken in the surplus token, and Ophis takes no cut of surplus on any chain.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Path</th>
+        <th scope="col">Standard rate</th>
+        <th scope="col">Same-chain stablecoin pair</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a href="https://swap.ophis.fi/">Swap app</a></td>
+        <td>0.10% (10 bps)</td>
+        <td>0.01% (1 bp)</td>
+      </tr>
+      <tr>
+        <td><a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> integrations</td>
+        <td>0.05% (5 bps)</td>
+        <td>0.01% (1 bp)</td>
+      </tr>
+      <tr>
+        <td><a href="https://docs.ophis.fi/ai-agents">MCP server</a> (keyless)</td>
+        <td>0.05% (5 bps)</td>
+        <td>0.05% (5 bps, flat)</td>
+      </tr>
+      <tr>
+        <td>Intent API and MCP calls themselves</td>
+        <td>Free</td>
+        <td>Free</td>
+      </tr>
+    </tbody>
+  </table>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Worked example</h2>
+  <p>
+    A 100,000 USDC trade pays 100 USDC all-in on an Ophis-operated chain ({sovereignList}, 0.10%),
+    or 120 USDC fixed all-in on a CoW-hosted chain (0.12%). The same 100,000 between two
+    stablecoins on one chain pays 10 USDC (Ophis-operated) or 13 USDC fixed (CoW-hosted), before
+    CoW's share of any quote improvement.
+  </p>
+
+  <h2>Sources and detail</h2>
+  <p>
+    Chain-by-chain fee detail lives at <a href="https://docs.ophis.fi/fees">docs.ophis.fi/fees</a>,
+    integrator terms at <a href="https://docs.ophis.fi/partners">docs.ophis.fi/partners</a> and
+    <a href="https://business.ophis.fi/">business.ophis.fi</a>, rebate mechanics at
+    <a href="https://docs.ophis.fi/affiliate">docs.ophis.fi/affiliate</a>, and CoW Protocol's own
+    fee schedule at <a href="https://docs.cow.fi/governance/fees">docs.cow.fi</a>. See also
+    <a href="/supported-chains/">supported chains</a> for which chains are Ophis-operated.
+  </p>
+</ContentPage>

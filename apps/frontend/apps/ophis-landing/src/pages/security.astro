@@ -1,0 +1,84 @@
+---
+/**
+ * /security: the canonical security page. Audit facts mirror
+ * docs.ophis.fi/audits exactly (inherited CoW settlement audits + the two
+ * Ophis-specific pieces reviewed internally). No external audit firm is named
+ * because none is engaged; do not add one here without a verifiable public
+ * relationship. MEV claims keep the qualified wording from the homepage FAQ.
+ */
+import ContentPage from '../layouts/ContentPage.astro'
+import { canonicalPage } from '../data/canonicalPages'
+import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../data/chains'
+
+const { updated } = canonicalPage('/security/')
+
+const FAQS = [
+  {
+    q: 'Is Ophis custodial?',
+    a: `No. Ophis is non-custodial. Orders are gasless, off-chain, EIP-712-signed intents; the trader or agent signs with its own key and the keys never leave the signer. An agent signs a bounded capability with a hard limit price, not an arbitrary transaction.`,
+  },
+  {
+    q: 'Is Ophis audited?',
+    a: `The core settlement contract is CoW Protocol's audited code, so CoW's settlement audits apply to it directly. Two pieces are Ophis-specific and were reviewed in Ophis's own security audits: a hardened GPv2AllowListAuthentication with a two-step manager transfer, and the partner-fee settlement-buffer handling. Ophis has not yet engaged an external audit firm for the fork-specific pieces.`,
+  },
+  {
+    q: 'Is MEV protection guaranteed?',
+    a: `Orders settle through CoW Protocol batch auctions, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.`,
+  },
+  {
+    q: 'How should an autonomous agent trade safely?',
+    a: `Build a bounded order with a hard limit price, pin the receiver to the owner, and resolve the per-chain settlement domain via the @ophis/sdk helpers or the MCP list_chains tool before signing. On ${sovereignList} the settlement contract lives at a non-canonical address, so signing against CoW's canonical address yields a domain the deployed contract rejects. Set an expiry, and keep signing keys separate from custody of meaningful balances.`,
+  },
+  {
+    q: 'How do I report a vulnerability?',
+    a: `Follow the disclosure policy in SECURITY.md in the public repository. Report privately first; do not open a public issue for an exploitable finding.`,
+  },
+]
+---
+
+<ContentPage
+  title="Security | Ophis"
+  description="How Ophis handles security: non-custodial EIP-712 intents, CoW Protocol's audited settlement contracts, qualified MEV protection, agent safety rules, and vulnerability disclosure."
+  path="/security/"
+  heading="Security"
+  lede="Non-custodial by construction: bounded, signed intents settled on CoW Protocol's audited contracts. This page is the canonical reference for the custody model, audits, and disclosure."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> Ophis never holds keys or funds. A trade is an off-chain
+    EIP-712 order with a hard limit price, signed by your own key and settled in a CoW Protocol
+    batch auction. The settlement contract is CoW's audited GPv2 code, and the fork-specific pieces
+    were reviewed in Ophis's own security audits. Details and links below.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Sources and links</h2>
+  <ul>
+    <li>
+      Audit references and the fork delta: <a href="https://docs.ophis.fi/audits">docs.ophis.fi/audits</a>
+    </li>
+    <li>
+      CoW Protocol's settlement contract audits:
+      <a href="https://github.com/cowprotocol/contracts">github.com/cowprotocol/contracts</a>
+    </li>
+    <li>
+      Disclosure policy:
+      <a href="https://github.com/ophis-fi/ophis/blob/main/SECURITY.md">SECURITY.md</a>
+    </li>
+    <li>
+      Agent safety in depth (receiver pinning, domain resolution, spending limits):
+      <a href="https://docs.ophis.fi/ai-agents">docs.ophis.fi/ai-agents</a> and the
+      <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>
+    </li>
+    <li>
+      Which chains are Ophis-operated: <a href="/supported-chains/">supported chains</a>
+    </li>
+  </ul>
+</ContentPage>

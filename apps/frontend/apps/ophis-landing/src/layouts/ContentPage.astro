@@ -1,0 +1,220 @@
+---
+/**
+ * Shared layout for the canonical fact pages (/pricing, /supported-chains,
+ * /security). Emits BreadcrumbList JSON-LD always, FAQPage JSON-LD when the
+ * page passes its FAQ array, and any page-specific extra schema via `extraLd`.
+ *
+ * FAQ invariant (enforced by scripts/check-faq-schema.mjs at postbuild): every
+ * FAQPage answer must appear VERBATIM in the page's visible text. Pages
+ * therefore render their body sections from the SAME `faqs` constants they
+ * pass here, never from separately-worded prose.
+ *
+ * JSON-LD blocks are non-executed data (not subject to CSP script-src);
+ * scripts/check-csp-hashes.mjs skips them, so no _headers hashes are needed.
+ */
+import Base from './Base.astro'
+import Nav from '../components/Nav.astro'
+import Footer from '../components/Footer.astro'
+import { jsonLdSafe } from '../lib/jsonld'
+
+export interface Faq {
+  q: string
+  a: string
+}
+
+export interface Props {
+  title: string
+  description: string
+  /** Trailing-slash path (CF Pages serves the directory form at 200). */
+  path: string
+  heading: string
+  lede: string
+  updated: Date
+  faqs?: Faq[]
+  /** Additional page-specific JSON-LD payloads (e.g. an ItemList). */
+  extraLd?: object[]
+}
+
+const { title, description, path, heading, lede, updated, faqs = [], extraLd = [] } = Astro.props
+const url = `https://ophis.fi${path}`
+// timeZone UTC: dates are date-only ISO strings (UTC midnight); without it a
+// build machine west of UTC renders the visible date one day earlier than the
+// <time datetime> attribute and the sitemap lastmod.
+const fmtDate = new Intl.DateTimeFormat('en-US', { dateStyle: 'long', timeZone: 'UTC' }).format(updated)
+
+const breadcrumbLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  '@id': `${url}#breadcrumb`,
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://ophis.fi/' },
+    { '@type': 'ListItem', position: 2, name: heading, item: url },
+  ],
+}
+
+const faqLd = faqs.length
+  ? {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      '@id': `${url}#faq`,
+      mainEntity: faqs.map((f) => ({
+        '@type': 'Question',
+        name: f.q,
+        acceptedAnswer: { '@type': 'Answer', text: f.a },
+      })),
+    }
+  : null
+---
+
+<Base title={title} description={description} canonical={url}>
+  <script slot="head" type="application/ld+json" is:inline set:html={jsonLdSafe(breadcrumbLd)} />
+  {faqLd && <script slot="head" type="application/ld+json" is:inline set:html={jsonLdSafe(faqLd)} />}
+  {extraLd.map((ld) => (
+    <script slot="head" type="application/ld+json" is:inline set:html={jsonLdSafe(ld)} />
+  ))}
+
+  <Nav />
+  <main id="main" tabindex="-1" class="page">
+    <article>
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">Home</a>
+        <span class="sep" aria-hidden="true">/</span>
+        <span aria-current="page">{heading}</span>
+      </nav>
+      <header class="page-header">
+        <h1>{heading}</h1>
+        <p class="lede">{lede}</p>
+        <p class="updated">
+          Last updated: <time datetime={updated.toISOString().slice(0, 10)}>{fmtDate}</time>
+        </p>
+      </header>
+      <div class="prose">
+        <slot />
+      </div>
+    </article>
+  </main>
+  <Footer />
+</Base>
+
+<style>
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+  }
+  .crumbs {
+    font-size: 13px;
+    color: var(--ophis-fg-faded);
+    margin-bottom: 24px;
+  }
+  .crumbs a {
+    color: var(--ophis-fg-faded);
+    text-decoration: none;
+    transition: color 120ms ease;
+  }
+  .crumbs a:hover { color: var(--ophis-saffron-60); }
+  .crumbs .sep { margin: 0 8px; }
+  .page-header {
+    margin-bottom: 40px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--ophis-border);
+  }
+  .page-header h1 {
+    font-size: clamp(30px, 5.2vw, 46px);
+    line-height: 1.12;
+    letter-spacing: -0.025em;
+    font-weight: 600;
+    margin: 0 0 18px;
+  }
+  .page-header .lede {
+    color: var(--ophis-fg-muted);
+    font-size: 19px;
+    line-height: 1.55;
+    margin: 0 0 14px;
+  }
+  .updated {
+    font-size: 13px;
+    color: var(--ophis-fg-faded);
+    margin: 0;
+  }
+  .updated time { font-variant-numeric: tabular-nums; }
+
+  /* Article body: same prose treatment as the blog post template, kept in sync
+     by eye (both are small). :global() because slotted HTML is unscoped. */
+  .prose {
+    font-size: 17.5px;
+    line-height: 1.72;
+    color: var(--ophis-fg-muted);
+  }
+  .prose :global(h2) {
+    color: var(--ophis-fg);
+    font-size: 27px;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+    margin: 52px 0 16px;
+    scroll-margin-top: 90px;
+  }
+  .prose :global(p) { margin: 0 0 20px; }
+  .prose :global(a) {
+    color: var(--ophis-saffron-60);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(242, 166, 62, 0.35);
+    transition: border-color 120ms ease;
+  }
+  .prose :global(a:hover) { border-bottom-color: var(--ophis-saffron-60); }
+  .prose :global(a:focus-visible) {
+    outline: 2px solid var(--ophis-saffron-60);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  .prose :global(strong) { color: var(--ophis-fg); font-weight: 600; }
+  .prose :global(ul),
+  .prose :global(ol) { margin: 0 0 20px; padding-left: 24px; }
+  .prose :global(li) { margin: 0 0 8px; }
+  .prose :global(li::marker) { color: var(--ophis-fg-faded); }
+  .prose :global(:not(pre) > code) {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.86em;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--ophis-border);
+    border-radius: 6px;
+    padding: 1.5px 6px;
+    color: var(--ophis-saffron-30);
+    word-break: break-word;
+  }
+  .prose :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14.5px;
+    margin: 0 0 24px;
+    display: block;
+    overflow-x: auto;
+  }
+  .prose :global(th),
+  .prose :global(td) {
+    text-align: left;
+    padding: 10px 14px;
+    border: 1px solid var(--ophis-border);
+    vertical-align: top;
+  }
+  .prose :global(th) {
+    color: var(--ophis-fg);
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .prose :global(.badge) {
+    display: inline-block;
+    border: 1px solid rgba(242, 166, 62, 0.4);
+    border-radius: 999px;
+    padding: 1px 9px;
+    font-size: 11.5px;
+    color: var(--ophis-saffron-30);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 600px) {
+    .page { padding: 36px 18px 72px; }
+    .prose { font-size: 16.5px; }
+  }
+</style>

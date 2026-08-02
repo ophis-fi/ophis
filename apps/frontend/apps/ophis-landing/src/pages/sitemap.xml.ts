@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro'
 import { getPublishedPosts } from '../lib/posts'
+import { CANONICAL_PAGES } from '../data/canonicalPages'
 
 // Dynamic sitemap. Prerendered to dist/sitemap.xml at build time (output:'static'),
 // so it stays a plain static file at https://ophis.fi/sitemap.xml — but blog posts
@@ -15,6 +16,13 @@ export const GET: APIRoute = async () => {
   const urls = [
     { loc: `${SITE}/`, changefreq: 'weekly', priority: '1.0' },
     { loc: `${SITE}/blog/`, changefreq: 'weekly', priority: '0.8' },
+    // Canonical fact pages; lastmod comes from the same data the pages render.
+    ...CANONICAL_PAGES.map((p) => ({
+      loc: `${SITE}${p.path}`,
+      lastmod: p.updated.toISOString().slice(0, 10),
+      changefreq: 'monthly',
+      priority: '0.8',
+    })),
     ...posts.map((p) => ({
       // Trailing slash to match the 200 URL CF Pages serves (no-slash 308s).
       loc: `${SITE}/blog/${p.id}/`,

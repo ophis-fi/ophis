@@ -12,6 +12,9 @@
  *
  * Accurate Ophis facts only. No em-dash in rendered copy (commas / colons).
  */
+import { EVM_CHAIN_COUNT } from '../data/chains'
+import { jsonLdSafe } from '../lib/jsonld'
+
 const faqs: { q: string; a: string }[] = [
   {
     q: 'What is Ophis?',
@@ -23,7 +26,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'Which chains does Ophis support?',
-    a: 'Ophis covers 13 EVM chains, with Optimism, Unichain, and Robinhood Chain as its operated sovereign networks, and supports Solana and Bitcoin as destinations via NEAR Intents.',
+    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with Optimism, Unichain, and Robinhood Chain as its operated sovereign networks, and supports Solana and Bitcoin as destinations via NEAR Intents.`,
   },
   {
     q: 'How is Ophis different from CoW Swap?',
@@ -85,7 +88,7 @@ const faqSchema = {
   </div>
 </section>
 
-<script type="application/ld+json" is:inline set:html={JSON.stringify(faqSchema)} />
+<script type="application/ld+json" is:inline set:html={jsonLdSafe(faqSchema)} />
 
 <style>
   .faq { padding: 80px 56px; }
