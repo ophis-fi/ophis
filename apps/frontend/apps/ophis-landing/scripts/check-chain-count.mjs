@@ -36,7 +36,9 @@ const llms = readFileSync(resolve(root, 'public/llms.txt'), 'utf8')
 if (!llms.includes(`${count} EVM chains`)) {
   failures.push(`public/llms.txt does not say "${count} EVM chains" (chains.ts has ${count} entries)`)
 }
-const wrongCount = llms.match(/\b(\d+) EVM chains\b/g)?.filter((s) => s !== `${count} EVM chains`)
+const wrongCount = llms
+  .match(/\b(\d+) EVM (?:\w+ )?(?:chains|networks)\b/gi)
+  ?.filter((s) => !s.startsWith(`${count} `))
 if (wrongCount?.length) {
   failures.push(`public/llms.txt contains a stale count: ${[...new Set(wrongCount)].join(', ')}`)
 }
@@ -78,9 +80,12 @@ function walk(dir) {
 const contentDir = resolve(root, 'src/content')
 for (const file of walk(resolve(root, 'src'))) {
   // Blog posts are dated content: a count that was true at publication stays.
-  if (file.startsWith(contentDir)) continue
+  // Separator-suffixed so a sibling like src/content.config.ts is NOT exempt.
+  if (file.startsWith(`${contentDir}/`)) continue
   const text = readFileSync(file, 'utf8')
-  const hits = text.match(/\b\d+ EVM chains\b/g)
+  // Optional middle word + chains|networks so "12 EVM Production chains" (the
+  // motivating incident) and "13 EVM networks" phrasings are caught too.
+  const hits = text.match(/\b\d+ EVM (?:\w+ )?(?:chains|networks)\b/gi)
   if (hits) {
     failures.push(
       `${relative(root, file)} hardcodes "${hits[0]}" — interpolate EVM_CHAIN_COUNT from src/data/chains.ts instead`,

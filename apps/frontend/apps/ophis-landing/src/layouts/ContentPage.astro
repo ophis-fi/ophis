@@ -37,7 +37,10 @@ export interface Props {
 
 const { title, description, path, heading, lede, updated, faqs = [], extraLd = [] } = Astro.props
 const url = `https://ophis.fi${path}`
-const fmtDate = new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(updated)
+// timeZone UTC: dates are date-only ISO strings (UTC midnight); without it a
+// build machine west of UTC renders the visible date one day earlier than the
+// <time datetime> attribute and the sitemap lastmod.
+const fmtDate = new Intl.DateTimeFormat('en-US', { dateStyle: 'long', timeZone: 'UTC' }).format(updated)
 
 const breadcrumbLd = {
   '@context': 'https://schema.org',
