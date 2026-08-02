@@ -576,14 +576,22 @@ field:
   SAME snapshot validations `executeRouteRecalibration` enforces - with
   the ceiling TIGHTENED to what the add path can actually service:
   `execTs - snapshotTs` in
-  [14 days, min(21 days + DELAY, 180 days - DELAY - 7 days)] - because a
-  refresh CANNOT be pre-staged against a token that is not yet allowed:
-  at DELAY = 90d the recalibration window alone would admit a
-  111-day-old install whose first refresh, submitted the moment the add
-  executes, matures at day 201, past the 180-day outer term (at the
-  recommended DELAY = 24h the min() changes nothing). Plus the live
-  ratio satisfying the new bound at execTs, and the sanity rail centered
-  per the RailSpec rules. Without this, an add (or remove-and-re-add) installs
+  [14 days, min(21 days + DELAY, 180 days - DELAY)] - because a refresh
+  CANNOT be pre-staged against a token that is not yet allowed: the
+  recalibration window alone would admit an install whose first
+  refresh, submitted the moment the add executes, matures past the
+  180-day outer term. NO extra lead is baked into the on-chain bound
+  (a -7d term would make the window EMPTY at DELAY = 90, where
+  snapshot-predates-submission already forces age >= DELAY at eta and
+  every snapshot-bearing add would revert); the resulting execution
+  window spans `180d - 2 x DELAY`, so it is comfortable at the
+  recommended 24h, keeps a week of slack up to DELAY ~86 days, and
+  DEGENERATES beyond that: a vault configured with DELAY > ~86 days
+  cannot practically list registration-only rate legs - a stated
+  deploy-time consequence of choosing a near-ceiling review delay
+  (feed-only routes are unaffected; the runbook, not the chain, carries
+  the submission-lead guidance). Plus the live ratio satisfying the new
+  bound at execTs, and the sanity rail centered per the RailSpec rules. Without this, an add (or remove-and-re-add) installs
   an arbitrarily OLD observation and instantly pre-grants years of
   accumulated growth headroom - `(cap - realized) x age` of slack - walking
   around the 21-day cap the sizing doc's B.1 window exists to enforce. The

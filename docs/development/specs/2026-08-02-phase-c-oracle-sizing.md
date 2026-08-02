@@ -525,10 +525,12 @@ observation's age at EXECUTE must lie in [14 days, 21 days + DELAY]** -
 and a bound binds EVERY path that installs a RateBound, with the window
 PER PATH (each normative in the spec): recalibration
 [14d, 21d + DELAY]; `executeTokenAdd`
-[14d, min(21d + DELAY, 180d - DELAY - 7d)] - tightened because a
-just-listed token's first refresh cannot be pre-staged, so an
-install must remain serviceable before the 180-day term (83 days, not
-111, at the DELAY = 90d ceiling); the constructor [14d, 21d] (no
+[14d, min(21d + DELAY, 180d - DELAY)] - tightened because a just-listed
+token's first refresh cannot be pre-staged, so an install must remain
+serviceable before the 180-day term; the resulting `180d - 2 x DELAY`
+execution window keeps >= 7 days of slack only up to DELAY ~86 days,
+so near-ceiling vaults cannot practically list snapshot-bearing routes
+(spec: execute-time validation); the constructor [14d, 21d] (no
 timelock transit); and LOWER-BOUND RECOVERY alone waives the 14-day
 floor for the breached leg ((0, 21d + DELAY], the fresh post-rebase
 re-base). Without these, an add or remove-and-re-add installs an
