@@ -252,13 +252,20 @@ registration-anchored route gets NO numeric class default: its divergence
 value is set per listing from measured update behavior of the actual anchor,
 through the timelock like everything else.
 
-**Detection floor, stated honestly:** with standard-tier feeds the band
-cannot distinguish a shallow depeg from legitimate noise. With the sourced
-margins the standard tier lands at 130 bps, which DOES react to the rsETH
-April-2024 event (150 > 130) - an improvement over the earlier
-unsourced-margin draft - but events at or under ~130 bps remain inside the
-legitimate-noise envelope of 0.5%-deviation feeds and are structurally
-undetectable there; the tight tier detects from ~80 bps. This is a physics limit of the feed specs, not a
+**Detection floor, stated honestly - and masking-aware:** with
+standard-tier feeds the band cannot distinguish a shallow depeg from
+legitimate noise, and the OBSERVED divergence understates a true depeg by
+up to the feed-error sum when the two in-band errors point TOWARD each
+other (rate feed ~50 bps low, market feed ~50 bps high on the standard
+pair). Detection is therefore GUARANTEED only above band + threshold sum
+- standard tier 130 + 100 = **230 bps**, tight tier 80 + 50 = **130 bps**
+- and PROBABILISTIC between the band width and that line: the rsETH
+April-2024 event (150 bps) sits in the standard tier's probabilistic
+zone (it trips the band only when the concurrent feed errors do not mask
+it - the earlier draft's "150 > 130 reacts" claim overstated this), while
+every sourced deep depeg (290 / 600 / 800 bps, A.3) clears the 230-bps
+guarantee line. Events at or under the band width remain structurally
+undetectable. This is a physics limit of the feed specs, not a
 tunable: shrinking the standard band below its own noise envelope trades a
 undetectable-shallow-event risk for recurring false fail-closed downtime.
 The residual exposure is bounded: a shallow in-band divergence mis-prices the
@@ -419,8 +426,10 @@ bps, landing 245): standard route, 0.5% PROTOCOL ExR FEED rate leg +
 0.5%/1h ETH/USD leg: (1/((1 - 0.0075)(1 - 0.0295))) x 1.0685 - 1 =
 1,093.0 bps -> **1095**. Same shape on an Arbitrum-style 0.05%/24h
 ETH/USD leg: 1,041.8 bps -> **1045**. Live-read rate leg + 0.5%/1h
-ETH/USD: 1,037.4 bps -> **1040**. A stable-sell rotation applies
-x 1.0060 to its own (small) composition envelope instead. Overcharge at
+ETH/USD: 1,037.4 bps -> **1040**. A stable-sell rotation applies its
+PER-STABLE measured factor to its own (small) composition envelope
+instead: x 1.0035 for a USDC sell, x 1.0025 for a USDT sell (the table
+above - there is no universal stable factor). Overcharge at
 this scale is fail-closed: charges on volatile-sell orders land
 ~10.4-11% above live - the stated price of a reservation that covers 99%
 of ANY-START windows on record - the effective daily budget shrinks by
@@ -644,8 +653,10 @@ movement as an alertable signal in both cases.
   (e.g. the Unichain RedStone anchor) -> NO default, per-route derivation
   from the measured statistics in listing review. Per-token overridable; C5
   trial monitors with `anchorBandState` before size migrates. Detection
-  floor: the 130 tier reacts to the rsETH-2024 class (150 bps); events
-  <= ~130 bps are structurally undetectable on 0.5%-deviation feeds (A.5).
+  floor, masking-aware: GUARANTEED above band + threshold sum (230 bps
+  standard / 130 tight), probabilistic between band width and that line
+  (the rsETH-2024 150-bps event is in the probabilistic zone); events
+  <= band width structurally undetectable on 0.5%-deviation feeds (A.5).
 - CAPO: **wstETH 968 / weETH 875 / rETH 930 / ezETH 1089 / rsETH 983 /
   cbETH 812 bps/yr**; `minGrowth 0` VERIFIED for wstETH, rETH, weETH, cbETH
   (on-chain monotonicity scans) and sUSDe (contractual); **ezETH + rsETH

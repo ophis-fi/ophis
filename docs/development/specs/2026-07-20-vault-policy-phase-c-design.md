@@ -1242,10 +1242,16 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // widen the pre-granted headroom the 21-day cap exists to bound), so
     // a snapshot already 14 days old at submission is executable for only
     // the first 7 post-eta days regardless of a 30-day window. The
-    // runbook takes observations JUST BEFORE submission (they must merely
-    // predate it), which preserves 21 days of post-eta executability;
-    // rail-only payloads (no snapshots) keep the full advertised window,
-    // and the deadline watcher computes the min, not the envelope
+    // runbook takes observations `max(0, 14 days - DELAY)` BEFORE
+    // submission - NOT merely just-before: with DELAY = 24h a
+    // just-taken observation is only 1 day old at eta and fails the
+    // 14-day age FLOOR until 13 days later, leaving a <= 7-day window
+    // with NO executable instant at all. With the correct lead the
+    // observation turns exactly 14 days old at eta, and post-eta
+    // executability is min(WINDOW, 7 days + DELAY) - the full 21 days
+    // only when DELAY >= 14d makes the lead zero. Rail-only payloads
+    // (no snapshots) keep the full advertised window, and the deadline
+    // watcher computes the min, not the envelope
     // (exactly [14, 21] is realized on the recommended sovereign config,
     // DELAY = 24h with prompt execution). Runbook corollary (sizing doc
     // B.2): the recalibration INTERVAL must keep every ACTIVE snapshot
@@ -1870,16 +1876,22 @@ the verification log tracks which currently have no assigned target.
   so the watcher polls every route's per-leg `snapshotTs` and the rail's
   last re-center time from route storage (publicly readable; no event
   needed) and alerts on EXECUTABLE DEADLINES, suppressed PER DEADLINE - an
-  alert for deadline D is silenced only by a pending whose own scheduled
-  execution (eta) satisfies D, never by the in-flight PREDECESSOR whose
-  execution D exists to follow up on (at DELAY = 90d the predecessor is
-  pending precisely when the successor's submission warning must fire;
-  suppressing on any-pending would delay the successor past the active
-  snapshot's service deadline): WARN when
+  alert for deadline D is silenced only by a pending that SATISFIES D:
+  its eta lands on or before D AND it carries what D is about (the
+  required snapshots for a snapshot deadline; non-rateOnly for a rail
+  deadline). Never by the in-flight PREDECESSOR whose execution D exists
+  to follow up on, and never by a TOO-LATE successor: a pending whose
+  eta overshoots D must neither suppress the alert NOR re-anchor the
+  formula (re-anchoring `referenceExec` to the most recent submission
+  unconditionally would let a day-80 submission with eta = day 170 move
+  a day-62 WARN to day 149, silencing exactly the alert that proves the
+  pending is too late - anchors ADVANCE only when a satisfying pending
+  executes): WARN when
   `now > referenceExec + interval - DELAY - 7 days`, where referenceExec
   = the SCHEDULED execution time (eta - known the moment it is
-  submitted) of the most recently submitted still-pending refresh, else
-  the last ACTUAL execution time (the last comfortable SUBMISSION date
+  submitted) of the most recently submitted still-pending refresh THAT
+  SATISFIES THE CURRENT DEADLINE (eta on or before it, required
+  snapshots carried), else the last ACTUAL execution time (the last comfortable SUBMISSION date
   from which an on-schedule execution is still reachable - with long
   delays the successor's submission deadline lands BEFORE the
   predecessor even executes, which is exactly the B.2 pre-staging
