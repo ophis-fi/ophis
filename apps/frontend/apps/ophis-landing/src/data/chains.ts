@@ -45,5 +45,13 @@ export const EVM_CHAIN_COUNT = EVM_CHAINS.length
 
 export const SOVEREIGN_CHAINS = EVM_CHAINS.filter((c) => c.sovereign)
 
+/** Prose-ready sovereign list ("Optimism, Unichain, and Robinhood Chain"),
+    formatted from the full array so adding or removing an operated chain
+    flows into every page that names them, at any cardinality. */
+export const SOVEREIGN_CHAIN_LIST = new Intl.ListFormat('en', {
+  style: 'long',
+  type: 'conjunction',
+}).format(SOVEREIGN_CHAINS.map((c) => c.name))
+
 /** Non-EVM destinations reachable from EVM source chains via NEAR Intents. */
 export const NEAR_DESTINATIONS = ['Solana', 'Bitcoin'] as const

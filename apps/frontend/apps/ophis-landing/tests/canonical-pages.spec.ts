@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { SOVEREIGN_CHAINS } from '../src/data/chains'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const dist = (f: string) => join(__dirname, '..', 'dist', f)
@@ -49,7 +50,7 @@ test('supported-chains lists every chain from the canonical data, sovereigns bad
   for (const name of ['Ethereum', 'Robinhood Chain', 'Unichain', 'Optimism', 'Plasma', 'Solana', 'Bitcoin']) {
     await expect(table).toContainText(name)
   }
-  await expect(page.locator('.badge')).toHaveCount(3) // Optimism, Unichain, Robinhood Chain
+  await expect(page.locator('.badge')).toHaveCount(SOVEREIGN_CHAINS.length)
 })
 
 test('sitemap lists the canonical pages with trailing-slash URLs', () => {

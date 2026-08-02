@@ -8,11 +8,9 @@
  */
 import ContentPage from '../layouts/ContentPage.astro'
 import { canonicalPage } from '../data/canonicalPages'
-import { SOVEREIGN_CHAINS } from '../data/chains'
+import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../data/chains'
 
 const { updated } = canonicalPage('/security/')
-const sovereignNames = SOVEREIGN_CHAINS.map((c) => c.name)
-const sovereignList = `${sovereignNames[0]}, ${sovereignNames[1]}, and ${sovereignNames[2]}`
 
 const FAQS = [
   {

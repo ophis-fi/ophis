@@ -8,11 +8,15 @@
  */
 import ContentPage from '../layouts/ContentPage.astro'
 import { canonicalPage } from '../data/canonicalPages'
-import { EVM_CHAINS, EVM_CHAIN_COUNT, SOVEREIGN_CHAINS, NEAR_DESTINATIONS } from '../data/chains'
+import {
+  EVM_CHAINS,
+  EVM_CHAIN_COUNT,
+  SOVEREIGN_CHAINS,
+  SOVEREIGN_CHAIN_LIST as sovereignList,
+  NEAR_DESTINATIONS,
+} from '../data/chains'
 
 const { updated } = canonicalPage('/supported-chains/')
-const sovereignNames = SOVEREIGN_CHAINS.map((c) => c.name)
-const sovereignList = `${sovereignNames[0]}, ${sovereignNames[1]}, and ${sovereignNames[2]}`
 // Alphabetical for the reference table (the homepage strip keeps display order).
 const tableChains = [...EVM_CHAINS].sort((a, b) => a.name.localeCompare(b.name))
 

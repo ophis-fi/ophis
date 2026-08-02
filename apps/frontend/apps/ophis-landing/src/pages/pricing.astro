@@ -11,16 +11,14 @@
  */
 import ContentPage from '../layouts/ContentPage.astro'
 import { canonicalPage } from '../data/canonicalPages'
-import { SOVEREIGN_CHAINS } from '../data/chains'
+import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../data/chains'
 
 const { updated } = canonicalPage('/pricing/')
-const sovereignNames = SOVEREIGN_CHAINS.map((c) => c.name) // Optimism, Unichain, Robinhood Chain
-const sovereignList = `${sovereignNames[0]}, ${sovereignNames[1]}, and ${sovereignNames[2]}`
 
 const FAQS = [
   {
     q: 'What does Ophis charge?',
-    a: `Ophis applies a flat 0.10% (10 bps) fee on trade volume in the swap app, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. SDK and MCP integrations pay a reduced 0.05% (5 bps) partner rate. The fee is on volume only and is taken in the surplus token (the token you receive on a standard sell order). Orders are gasless: you pay no network gas on the swap itself.`,
+    a: `Ophis applies a flat 0.10% (10 bps) fee on trade volume in the swap app, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. SDK and MCP integrations pay a reduced 0.05% (5 bps) partner rate. The fee is on volume only and is taken in the surplus token (the token you receive on a standard sell order). ERC-20 orders are gasless: you pay no network gas on the swap itself. Selling native ETH is the exception, it places an on-chain EthFlow transaction that pays normal network gas, and token approvals you sign separately also cost gas.`,
   },
   {
     q: 'What is the all-in cost on each chain?',
@@ -32,7 +30,7 @@ const FAQS = [
   },
   {
     q: 'What do integrators pay, and what can they charge?',
-    a: `Integrations pay a 5 bps base rate: 0.05% of volume. The SDK sets a reduced 1 bp on same-chain stablecoin pairs; the keyless MCP charges the flat 5 bps base. Using the SDK or a manual appData build, integrators charge their own fee on top of ERC-20 orders, up to 95 bps under the default 100 bps aggregate cap, and Ophis takes 0% of the markup.`,
+    a: `Integrations pay a 5 bps base rate: 0.05% of volume. The SDK sets a reduced 1 bp on same-chain stablecoin pairs; the keyless MCP charges the flat 5 bps base. Using the SDK or a manual appData build, integrators charge their own fee on top of ERC-20 orders, up to 95 bps under the default 100 bps aggregate cap, and Ophis takes 0% of the markup. An own-fee requires onboarding first: it is chargeable today on the CoW-hosted chains and paid out under CoW's terms, while on the Ophis-operated chains your fee recipient must be onboarded (allowlisted) before orders carrying it are accepted, and the monthly payout must be enabled for you before you receive it. Robinhood Chain own-fee payout is not yet enabled.`,
   },
   {
     q: 'Are the APIs free?',

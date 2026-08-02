@@ -44,8 +44,11 @@ const ogImageAlt = post.data.cover
   : undefined
 
 // Human byline (E-E-A-T): posts default to the site author; a post can still
-// set an explicit `author` in frontmatter to override the name.
+// set an explicit `author` in frontmatter to override the name. The founder
+// profile (jobTitle, worksFor) applies ONLY to the default author: a guest
+// byline gets a bare Person, not false Ophis-employment metadata.
 const authorName = post.data.author !== 'Ophis' ? post.data.author : AUTHOR.name
+const isDefaultAuthor = authorName === AUTHOR.name
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -57,8 +60,12 @@ const jsonLd = {
   author: {
     '@type': 'Person',
     name: authorName,
-    jobTitle: AUTHOR.jobTitle,
-    worksFor: { '@type': 'Organization', name: 'Ophis', url: 'https://ophis.fi/' },
+    ...(isDefaultAuthor
+      ? {
+          jobTitle: AUTHOR.jobTitle,
+          worksFor: { '@type': 'Organization', name: 'Ophis', url: 'https://ophis.fi/' },
+        }
+      : {}),
   },
   publisher: {
     '@type': 'Organization',

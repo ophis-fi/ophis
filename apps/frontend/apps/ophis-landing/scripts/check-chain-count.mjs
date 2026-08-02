@@ -44,6 +44,27 @@ for (const name of names) {
   if (!llms.includes(name)) failures.push(`public/llms.txt is missing chain "${name}"`)
 }
 
+// 1b. BOTH directions: the advertised "EVM chains: A, B, ... and Z." sentence
+// must equal the chains.ts set exactly. A retired chain left in the sentence
+// (with only the numeric count updated) must fail, not just a missing one.
+const listMatch = llms.match(/EVM chains:\s*([^.]+)\./)
+if (!listMatch) {
+  failures.push('public/llms.txt has no "EVM chains: ..." list sentence to verify')
+} else {
+  const advertised = listMatch[1]
+    .split(',')
+    .map((s) => s.replace(/^\s*and\s+/, '').trim())
+    .filter(Boolean)
+  const want = new Set(names)
+  for (const n of advertised) {
+    if (!want.has(n)) failures.push(`public/llms.txt advertises "${n}" which is not in chains.ts`)
+  }
+  const got = new Set(advertised)
+  for (const n of names) {
+    if (!got.has(n)) failures.push(`public/llms.txt chain-list sentence is missing "${n}"`)
+  }
+}
+
 // 2. No hardcoded "N EVM chains" literals in src/ — interpolate EVM_CHAIN_COUNT.
 function walk(dir) {
   let out = []
