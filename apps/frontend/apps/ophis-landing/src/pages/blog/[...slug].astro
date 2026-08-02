@@ -22,7 +22,9 @@ const { Content } = await render(post)
 // Trailing slash: CF Pages serves the directory-style route at /blog/<id>/ (it
 // 308-redirects the no-slash form), so the canonical must match the 200 URL.
 const url = `https://ophis.fi/blog/${post.id}/`
-const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(d)
+// timeZone UTC: pubDate is a date-only ISO string (UTC midnight); without it a
+// build machine west of UTC shows the previous day vs the datetime attribute.
+const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long', timeZone: 'UTC' }).format(d)
 
 // Rough reading time from the raw markdown (≈200 wpm).
 const words = (post.body ?? '').trim().split(/\s+/).filter(Boolean).length

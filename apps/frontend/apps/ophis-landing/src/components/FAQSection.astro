@@ -13,6 +13,7 @@
  * Accurate Ophis facts only. No em-dash in rendered copy (commas / colons).
  */
 import { EVM_CHAIN_COUNT } from '../data/chains'
+import { jsonLdSafe } from '../lib/jsonld'
 
 const faqs: { q: string; a: string }[] = [
   {
@@ -87,7 +88,7 @@ const faqSchema = {
   </div>
 </section>
 
-<script type="application/ld+json" is:inline set:html={JSON.stringify(faqSchema)} />
+<script type="application/ld+json" is:inline set:html={jsonLdSafe(faqSchema)} />
 
 <style>
   .faq { padding: 80px 56px; }
