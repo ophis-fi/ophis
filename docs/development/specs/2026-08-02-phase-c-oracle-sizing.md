@@ -177,6 +177,71 @@ defaults, and the C5 trial runs `anchorBandState` monitoring to record the
 observed divergence distribution BEFORE real size migrates - any tightening is
 then based on our own measured data.
 
+### A.6 Turnover charge gross-up (`turnoverGrossUpBps`), sized
+
+The spec's C4 charge is `sellUsd18 = live route price x (1 +
+turnoverGrossUpBps/1e4)`, with the gross-up PERSISTED per route (reviewed at
+TokenAdd, refreshed by recalibration). What it must bound is the route's own
+worst IN-BAND underreport of USD value - NOT divergence: the divergence band
+is anchor-relative and definitionally blind to common-mode error (route and
+anchor low by the same factor read as agreeing), so `maxDivergenceBps` is
+the wrong quantity, and the anchor plays no role in the charge at all. The
+same formula applies to anchored and unanchored routes.
+
+**Formula:** `turnoverGrossUpBps` = the multiplicative composition of
+per-leg in-band error terms, rounded UP to the next 5 bps:
+
+- market-priced leg (ETH/USD, or any leg whose underlying moves at market
+  speed): term = its deviation threshold + a **165 bps** update-landing
+  allowance. Mechanism: a fresh feed either has not drifted past its
+  threshold (error <= threshold) or has, and the triggered update lands
+  within the ~2-minute propagation lag Gauntlet documented (A.1) - during
+  which the market moves at most the observed 2-minute extreme. 165 bps =
+  the measured 30-day max 2-minute ETH move (164.3 bps, A.1) rounded up;
+  p99.99 is 107.6 bps, so the allowance clears virtually every observed
+  window with margin.
+- rate leg (ExR or market LST ratio): term = **25 bps**, the SAME sourced
+  margin set as A.1 (15 = 3x measured calm-market basis + 10 labeled
+  jitter). The underlying moves ~3%/yr, so intra-lag drift is negligible;
+  the term is dominated by basis, and a LIP-23-scale rebase day (~19 bps)
+  still fits inside it.
+
+Worked defaults (multiplicative, per the same composition rule as A.5):
+standard route, 0.5% ExR rate leg + 0.5%/1h ETH/USD leg:
+(1 + 0.0025)(1 + 0.0050 + 0.0165) - 1 = 240.5 bps -> **245**.
+Arbitrum-style 0.05%/24h ETH/USD leg:
+(1 + 0.0025)(1 + 0.0005 + 0.0165) - 1 = 195.4 bps -> **200**. Overcharge at
+this scale is fail-closed: charges land ~2-2.5% above live, the effective
+daily budget shrinks by the same factor, and operators size
+`dailyUsdTurnoverCap` knowing that.
+
+**The residual beyond the envelope, quantified rather than waved at:** the
+one in-model way a FRESH leg can be wrong by more than
+deviation-plus-landing is an update-landing outage longer than the
+~2-minute norm coinciding with a fast market move, sustained inside
+`maxStaleness`. Underreporting - the direction that stretches turnover -
+needs an UP-move. Bounding facts, computed from the full Binance ETHUSDT
+1h-kline history (2017-08-17..2026-08-02, 78,415 candles;
+close-to-window-high, method in the research log): worst up-move within 1h
+**+24.4%**, within 2h **+42.8%** (both 2020-03-13, the COVID-crash
+rebound), within 25h **+47.9%** (2021-01-03). (Single-venue candle wicks on
+the first thin-book listing days run higher; Chainlink aggregates
+volume-weighted across venues, so close-to-high over the liquid record is
+the representative bound.) A route whose USD leg runs a 1h-class staleness
+budget therefore has its actual-vs-charged ratio bounded by ~1.24/(1 + E)
+even through the worst recorded pump-during-outage coincidence; a
+25h-class budget admits ~1.48. The exposure is transient (it lasts at most
+the stall), requires the coincidence, and the SAME stalled reads corrupt
+the C2 oracle floor - the direct value path - so `maxStaleness` is a
+turnover parameter as well as a floor parameter: listing review sizes it
+with both in mind, and folding the full staleness envelope into every
+charge instead would permanently burn 20-50% of the budget to prepay that
+coincidence. Beyond THAT: an in-band error on a fresh leg exceeding
+deviation-plus-landing means a certified aggregator no longer updating
+past its own threshold - a write-path malfunction of the root of trust the
+oracle floor itself stands on, out of the model for the cap as for
+everything else.
+
 Unichain note: the only wstETH anchor there (RedStone wstETH/ETH) is not
 certifiable under the write-path rule, so that route is registration-anchored /
 Presign-only per the spec - and it gets NO numeric class default: RedStone
@@ -243,9 +308,16 @@ sits at half of it, and the observation-age window binds independently.)
 ### B.2 Our snapshot-cadence delta, and the resulting runbook rule
 
 Aave refreshes snapshots semi-automatically; our snapshots advance ONLY via the
-P3 timelock. Rule derived from Aave's own bound: **re-snapshot every rate leg
-at most 90 days apart** (half of Aave's 180-day maximum term), encoded as a
-runbook item with a monitoring nag. At a 3% real yield a 90-day-stale snapshot
+P3 timelock. Rule derived from Aave's own bound, DELAY-AWARE because an
+observation can already be `21 days + DELAY` old when it goes live (the B.1
+execute-time window): **re-snapshot every rate leg at most `min(90 days,
+159 days - DELAY)` apart**, so no ACTIVE snapshot ever exceeds the 180-day
+maximum term the cadence is derived from (interval + 21d + DELAY <= 180d; a
+bare 90-day interval plus a 90-day-DELAY install age would let a snapshot
+serve to ~201 days old). On the recommended sovereign config (DELAY = 24h)
+the plain 90-day cadence leaves a worst active age of ~112 days; at the
+constructor's 90-day DELAY ceiling the interval tightens to 69 days.
+Encoded as a runbook item with a monitoring nag. At a 3% real yield a 90-day-stale snapshot
 consumes ~0.75% of a ~9% annual budget - ample headroom - while a stalled
 snapshot past 90 days is an operational alert well before any legitimate
 accrual could approach the cap.
@@ -340,14 +412,19 @@ movement as an alertable signal in both cases.
   floor** (B.4). Recalibration via the spec's timelocked
   executeRouteRecalibration (bounds-only, non-disruptive, DELAY-aware
   observation window [14d, 21d + DELAY], live-ratio-vs-new-bound check,
-  recovery mode for breached bounds) <= every 90 days; **sUSDe deferred** -
+  recovery mode for breached bounds) <= every min(90 days, 159 days -
+  DELAY) so no active snapshot outlives the 180-day outer term (B.2);
+  **sUSDe deferred** -
   clamp-vs-revert product decision, not a calibration (B.3).
+- Turnover gross-up: `turnoverGrossUpBps` per A.6 - the route's own
+  in-band composition envelope, same formula anchored or unanchored
+  (standard route **245 bps**, Arbitrum-style **200**), NOT
+  maxDivergenceBps (anchor-relative, blind to common-mode) and NOT
+  sanityHigh (~5x notional). Permitted-lag residual bounded by the
+  computed worst up-move over the staleness window (1h +24.4% / 25h
+  +47.9%), so `maxStaleness` is reviewed as a turnover parameter too.
 - Sanity rail (absolute-price fault rail, NOT a divergence tool and NOT a
-  turnover basis - the spec's turnover charge uses the persisted, reviewed
-  `turnoverGrossUpBps` on the live route price instead of sanityHigh, which
-  would have billed ~5x notional; common-mode error beyond the certified
-  feeds' own thresholds is outside the threat model the cap can defend, as
-  the spec now states explicitly): **[P/5, 5P]
+  turnover basis): **[P/5, 5P]
   re-centered at every recalibration** - P/5 = -80% sits below the computed
   worst-ever 90-day ETH drawdown (-75.0%, Binance daily klines 2017-2026),
   so no historically observed market path freezes a route between

@@ -300,7 +300,8 @@ struct TokenRoute {
     uint256   sanityHigh;
     // Reviewed turnover-charge gross-up (C4): sellUsd18 = live route price x
     // (1 + turnoverGrossUpBps/1e4). Set at TokenAdd, refreshed by
-    // RouteRecalibration; the module cannot derive feed deviation sums
+    // RouteRecalibration, sized per sizing doc A.6 (the route's own in-band
+    // composition envelope); the module cannot derive feed deviation sums
     // on-chain, so the reviewed value is persisted here.
     uint16    turnoverGrossUpBps;
 }
@@ -1149,7 +1150,11 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // pre-granted headroom a stale observation grants scales with the
     // vault's OWN governance delay, a tradeoff its owners chose at deploy
     // (exactly [14, 21] is realized on the recommended sovereign config,
-    // DELAY = 24h with prompt execution). Two further checks: the CURRENT
+    // DELAY = 24h with prompt execution). Runbook corollary (sizing doc
+    // B.2): the recalibration INTERVAL must keep every ACTIVE snapshot
+    // under the 180-day outer term the cadence is derived from - interval
+    // <= min(90 days, 159 days - DELAY) - because an observation can
+    // already be 21d + DELAY old when it goes live. Two further checks: the CURRENT
     // live ratio must satisfy the NEW RateBound evaluated at execTs
     // (installing a bound the present already violates would make every
     // subsequent read revert - recalibration must never brick what it
@@ -1164,6 +1169,21 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // the authority for that - without recovery mode, the one situation the
     // refresh exists for (a breached bound needing governance re-set) would
     // be the one it cannot handle, forcing the remove+re-add outage.
+    // Recovery also WAIVES THE 14-DAY AGE FLOOR for the BREACHED leg's
+    // snapshot entry (its window becomes (0, 21 days + DELAY]): after a
+    // negative rebase, every honest observation old enough for the normal
+    // window PREDATES the rebase and so exceeds the live ratio - the
+    // live-vs-new-bound check would reject it and the route would stay dark
+    // ANOTHER 14 days after the timelock, recovery mode notwithstanding. A
+    // fresh post-rebase observation is exactly what re-basing needs; the
+    // spike cushion the 14-day floor buys in normal operation is provided
+    // here by the compensating controls (a DELAY-long public review of a
+    // visibly frozen route + guardian veto), and the risk direction is
+    // inverted - the cushion guards against ratcheting a bound UP off a
+    // transient spike, while recovery re-bases DOWN onto a realized loss.
+    // Non-breached legs in the same payload keep the normal window, and the
+    // live-vs-new-bound check is NOT waived in either case - so recovery
+    // downtime is the timelock transit, not transit plus 14 days.
     // The payload, fully specified so multi-leg routes are unambiguous:
     //   struct LegSnapshot {
     //       bool    isAnchorLeg;   // false => index into TokenRoute.legs, true => .anchor
@@ -1183,6 +1203,20 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     //   }
     // Pending key = keccak256(token, tokenNonce[token], abi.encode(r)) - same
     // calldata-keyed discipline and per-token nonce as TokenAdd.
+    // EXECUTION of ANY pending for a token (TokenAdd or RouteRecalibration)
+    // ADVANCES tokenNonce[token], permanently invalidating every other
+    // not-yet-executed pending keyed under the prior nonce. Without that,
+    // two recalibrations for the same token can mature with overlapping
+    // execution windows and land in either order - executing the OLDER one
+    // second would silently roll snapshots, rail, and gross-up back over
+    // the newer review. Normative events, same loudness rule as token adds:
+    // RouteRecalibrationSubmitted(token, pendingKey, eta) /
+    // RouteRecalibrationCancelled(token, pendingKey) /
+    // RouteRecalibrationExecuted(token, pendingKey). Pendings are stored
+    // under calldata hashes and are NOT enumerable on-chain, so without a
+    // submission event the guardian's only veto window on a rail/gross-up
+    // loosening would be invisible; the monitoring section alerts on
+    // submission accordingly.
     function submitRouteRecalibration(address token, RouteRecalibration calldata r) external;  // ONLY address(safe)
     function executeRouteRecalibration(address token, RouteRecalibration calldata r) external; // ONLY address(safe), [eta, eta+WINDOW]
     // Feed eligibility is the root of trust for C2/C17, so it gets its OWN
@@ -1293,27 +1327,41 @@ the verification log tracks which currently have no assigned target.
   already stores `registeredAt`), still saturating against the current bucket
   level. The CHARGE itself is the in-band worst case: `sellUsd18` = the live
   route price GROSSED UP by the route's PERSISTED `turnoverGrossUpBps` - a
-  reviewed per-route field set at TokenAdd/recalibration (the module cannot
-  derive feed deviation sums or sizing margins on-chain, so the value is
-  stored, not computed): defaulted to `maxDivergenceBps` for anchored routes
-  and to the route's feed deviation-threshold sum plus the sizing doc's
-  margins for unanchored ones. NOT the sanity rail: the rail is an
+  reviewed per-route field set at TokenAdd and refreshed by recalibration
+  (the module cannot derive feed deviation sums or sizing margins on-chain,
+  so the value is stored, not computed). SIZED (sizing doc A.6) as the
+  route's OWN worst in-band composition error: the multiplicative product,
+  over the route's USD-composition legs, of each leg's in-band error term
+  (deviation threshold + the measured update-landing allowance for
+  market-priced legs; the sourced margin set for rate legs), rounded up.
+  The SAME formula for anchored and unanchored routes, because the anchor
+  plays no role in the charge and `maxDivergenceBps` would be the WRONG
+  bound anyway: the divergence band is anchor-RELATIVE and definitionally
+  blind to common-mode error (route and anchor low by the same factor read
+  as agreeing), while the composition envelope bounds the route's absolute
+  in-band underreport directly. NOT the sanity rail either: the rail is an
   order-of-magnitude fault backstop sized in MULTIPLES of the price (sizing
   doc: [P/5, 5P]), and charging at `sanityHigh` would bill every order ~5x
   its notional, silently deleting ~80% of the configured turnover budget.
-  THREAT-MODEL BOUNDARY, stated because divergence is definitionally blind
-  to COMMON-MODE error (route and anchor low by the same factor read as
-  agreeing): within the model, every pricing input is a CERTIFIED
-  privileged-writer feed or a CAPO-bounded rate leg, so the largest
-  in-model common-mode error is the certified feeds' own deviation
-  thresholds (~1%), which the gross-up covers. A common-mode failure LARGER
-  than that requires the certified Chainlink aggregators themselves to be
-  wrong together - the same root of trust the ORACLE FLOOR stands on, so in
-  that event the vault's entire pricing is compromised and no in-module
-  charge denomination survives it; the turnover cap is not, and cannot be,
-  the defense against a systemic oracle compromise. Overcharging by the
-  gross-up (~1-2%) is fail-closed (a curator hits the cap imperceptibly
-  sooner); operators size
+  The one in-model channel LEFT beyond the envelope, stated rather than
+  hidden: a market UP-move during a genuine update-landing outage that
+  stays inside a leg's `maxStaleness` (the write path normally lands
+  within ~2 minutes - which is what the allowance covers - so this
+  requires an extended landing failure coinciding with a violent pump).
+  Its size is absolutely bounded by the worst up-move over the staleness
+  window, computed from primary data in A.6 (~24% over 1h-class windows,
+  ~48% over 25h-class); it lasts at most the stall; and the SAME stalled
+  reads corrupt the C2 oracle floor, the direct value path. `maxStaleness`
+  is therefore a TURNOVER parameter as well as a floor parameter, and
+  listing review sizes it with both in mind - folding the full staleness
+  envelope into every charge instead would permanently burn 20-50% of the
+  budget to prepay that coincidence. An in-band error on a FRESH leg
+  exceeding deviation-plus-landing requires a certified aggregator that no
+  longer updates past its own deviation threshold - a write-path
+  malfunction of the same root of trust the ORACLE FLOOR stands on, out of
+  model for the cap as for everything else. Overcharging by the gross-up
+  (~2-2.5%, A.6 worked defaults) is fail-closed (a curator hits the cap
+  imperceptibly sooner); operators size
   `dailyUsdTurnoverCap` knowing charges land at top-of-band. Refund arithmetic saturates at zero: a naive
   subtraction underflow-reverts on a drained bucket and, through the shared
   cancel path, would propagate into `removeToken`. Bucket accounting never exceeds Phase-B
@@ -1582,7 +1630,10 @@ the verification log tracks which currently have no assigned target.
   the calls in the wrong order;
   watch-trial-order gains 1271-order awareness (status polling identical; add
   a floor-vs-fill assertion from the `Rebalanced` event vs the settled price).
-- **monitoring**: alert on `TokenAddSubmitted` (anywhere), on repeated
+- **monitoring**: alert on `TokenAddSubmitted` AND
+  `RouteRecalibrationSubmitted` (anywhere - a recalibration can loosen the
+  sanity rail or turnover gross-up under the same veto-gated model as an
+  add, so its submission is the same guardian-reaction event), on repeated
   transient-revert simulation failures for a live order (floor blocking =
   expected but report it), and on `getMinDelay`-style wiring drift (fallback
   handler changed, verifier deregistered).
