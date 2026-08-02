@@ -123,11 +123,21 @@ if (!sortedBlock) {
     SEPOLIA: 11155111,
   }
   const appIds = []
-  for (const raw of sortedBlock[1].split('\n')) {
-    const line = raw.replace(/\/\/.*$/, '').trim().replace(/,\s*$/, '')
-    if (!line) continue
-    const num = line.match(/^(\d+)\b/)
-    const member = line.match(/^(?:SupportedChainId|AdditionalTargetChainId)\.(\w+)/)
+  // Strip line comments first (they run to end of line), THEN split the whole
+  // block on commas: entries are comma-delimited, not line-delimited, so two
+  // entries sharing a physical line must both be parsed. Each fragment must
+  // match an ANCHORED entry pattern in full — an unparsed suffix fails the
+  // gate instead of being silently discarded.
+  const entries = sortedBlock[1]
+    .split('\n')
+    .map((l) => l.replace(/\/\/.*$/, ''))
+    .join('\n')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  for (const entry of entries) {
+    const num = entry.match(/^(\d+)(?:\s+as\b[\w\s.]*)?$/)
+    const member = entry.match(/^(?:SupportedChainId|AdditionalTargetChainId)\.(\w+)(?:\s+as\b[\w\s.]*)?$/)
     if (num) {
       appIds.push(Number(num[1]))
     } else if (member) {
@@ -139,7 +149,7 @@ if (!sortedBlock) {
         appIds.push(ENUM_IDS[member[1]])
       }
     } else {
-      failures.push(`unparseable SORTED_CHAIN_IDS entry: "${line}"`)
+      failures.push(`unparseable SORTED_CHAIN_IDS entry: "${entry}"`)
     }
   }
   const landingIds = [...chainsSrc.matchAll(/chainId: (\d+)/g)].map((m) => Number(m[1]))
