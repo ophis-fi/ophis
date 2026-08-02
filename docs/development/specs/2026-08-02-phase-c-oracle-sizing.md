@@ -296,7 +296,12 @@ TokenAdd, refreshed by recalibration). What it must bound is the route's own
 worst IN-BAND underreport of USD value - NOT divergence: the divergence band
 is anchor-relative and definitionally blind to common-mode error (route and
 anchor low by the same factor read as agreeing), so `maxDivergenceBps` is
-the wrong quantity, and the anchor plays no role in the charge at all. The
+the wrong quantity, and the anchor plays no role in the charge at all -
+NORMATIVELY so: the charge prices at the composed ROUTE value even on the
+depeg path where the FLOOR validates at min(route, anchor), because the
+selected min() shrinks the reservation exactly when prices disagree and
+would import the anchor's error envelope (market-ratio legs with their
+own terms) into a route-sized gross-up (spec, TokenRoute comment). The
 same formula applies to anchored and unanchored routes.
 
 **Formula:** an in-band-low route reads `true x prod(1 - term_i)`, so the

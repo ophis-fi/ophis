@@ -314,10 +314,21 @@ struct TokenRoute {
     // Reviewed turnover-charge gross-up (C4). The charge is the order
     // NOTIONAL, exactly Phase B's _validateAndPrice shape with the price
     // grossed up:
-    //   grossedPrice18 = mulDiv(sellPrice18, 10_000 + uint256(turnoverGrossUpBps), 10_000)
+    //   grossedPrice18 = mulDiv(routePrice18, 10_000 + uint256(turnoverGrossUpBps), 10_000)
     //   sellUsd18      = sellAmount * grossedPrice18 / 10**sellTokenDecimals
     // (a price-only formula would charge every order the same few dollars
-    // regardless of sellAmount, deleting the cap for large orders) -
+    // regardless of sellAmount, deleting the cap for large orders), where
+    // routePrice18 is ALWAYS the composed ROUTE price - never the C18
+    // depeg-selected min(route, anchor) the FLOOR validates at. The min()
+    // is conservative for the floor (a lower proceeds bound) but
+    // ANTI-conservative for the charge (a smaller reservation), and it
+    // would drag the ANCHOR's error envelope - market-ratio legs with
+    // their own landing and recovery terms - into a gross-up sized only
+    // from the route's legs. Charging at the route price keeps the
+    // stored envelope route-sized and sufficient whenever the route is
+    // in-band, whatever the anchor does; the overcharge on the
+    // detected-overvaluation branch (route high, anchor selected for the
+    // floor) is fail-closed -
     // multiply-before-divide is NORMATIVE exactly as for RateBound (the
     // literal `price * (1 + bps / 1e4)` truncates the quotient to zero
     // for every value below 10_000 and charges the ungrossed price,
@@ -1581,7 +1592,12 @@ the verification log tracks which currently have no assigned target.
   record), so the tail is a stated multiplier on the guarantee, not a
   breach of an unqualified one. The order TTL is the reviewable knob.
   The SAME formula for anchored and unanchored routes, because the anchor
-  plays no role in the charge and `maxDivergenceBps` would be the WRONG
+  plays no role in the charge - NORMATIVELY: the charge prices at the
+  composed ROUTE value even when the C18 depeg rule validates the floor
+  at a lower anchor, since the depeg-selected min() would shrink the
+  reservation exactly when prices disagree and would import the anchor's
+  own error envelope into a route-sized gross-up (TokenRoute struct
+  comment) - and `maxDivergenceBps` would be the WRONG
   bound anyway: the divergence band is anchor-RELATIVE and definitionally
   blind to common-mode error (route and anchor low by the same factor read
   as agreeing), while the composition envelope bounds the route's absolute
