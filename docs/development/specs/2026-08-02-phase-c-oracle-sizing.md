@@ -284,31 +284,57 @@ composition envelope above bounds MISMEASUREMENT of value at the charging
 instant; between registration and fill (up to the order TTL, decision 6:
 1 hour) the sell asset can genuinely REPRICE, and a fill at the
 appreciated price moves more USD than was reserved - the 1271 fill check
-is a STATICCALL and cannot append the difference to the bucket. Measured
-1-hour up-moves (close to next-hour high, full Binance 1h history per
-symbol): p99 ETH **363** / BTC **295** / LINK **462** / UNI **461** bps;
-p99.9 767 / 653 / 902 / 1026; max 2441 / 2775 / 7466 / 5762 (the ETH max
-is 2020-03-13). Recommended default: fold the SELL asset's p99 into the
-stored value - `turnoverGrossUpBps = (1/prod(1 - term_i)) x (1 +
-ttlP99) - 1` - so the reservation covers the composition envelope AND all
-but ~1% of historical hours of repricing; stable-sell routes (rotations
-INTO volatile assets) take ttlP99 = 0. The tail beyond p99 is accepted
-and stated: overshoot requires the pump to land inside the order's open
-TTL, is bounded by the recorded per-TTL maxima above, and the Phase-B
-rolling-24h <= ~2x cap bound holds regardless; the order TTL is the knob
-(shorter TTL, smaller envelope - re-measure at the chosen TTL).
+is a STATICCALL and cannot append the difference to the bucket. Sampling
+methodology matters and is stated: a close-to-next-hour-high series only
+models orders registered exactly AT hourly candle closes, while
+`rebalance` registers at ANY instant. The statistic used is therefore the
+ANY-START BOUND `max(high[i], high[i+1]) / low[i] - 1`: every <=1h window
+opening at any offset inside candle i starts at a price >= low[i] and
+peaks <= max of the two straddled highs, so the bound COVERS every
+possible order window - over-covering by construction (it spans up to 2h
+wick-to-wick; the close-anchored p99s, ETH 363 / BTC 295 / LINK 462 /
+UNI 461 bps, bracket the true any-start value from below). Computed over
+each symbol's full Binance 1h history:
 
-Worked defaults (reciprocal form, ETH-exposure sell asset, ttlP99 = 365
+| Sell asset | p99 (bps) | p99.9 | p99.99 | envelope (p99 rounded up) |
+|---|---|---|---|---|
+| ETH-exposure | 682 | 1,453 | 2,751 | **685** |
+| BTC | 569 | 1,202 | 2,243 | **570** |
+| LINK | 839 | 1,838 | 4,517 | **840** |
+| UNI | 857 | 2,011 | 5,924 | **860** |
+| Stablecoin (USDCUSDT, 2018-12+) | 55 | 198 | 3,154 | **60** |
+
+Raw sample MAXIMA are dominated by documented single-venue wick
+artifacts (ETH's +114% intra-candle 2017-08-22 listing week, LINK's
+2020-03-13 near-zero wick, UNI's 2020-09-17 listing day) and are not the
+sizing basis; the close-anchored maxima (ETH +24.4% on 2020-03-13) remain
+the representative extreme prints. Recommended default: fold the SELL
+asset's any-start p99 into the stored value - `turnoverGrossUpBps =
+(1/prod(1 - term_i)) x (1 + ttlP99) - 1`. STABLE-SELL routes take the
+measured stablecoin envelope of **60 bps, never zero**: a stable order
+registered below peg that recovers inside the TTL fills at genuinely
+higher USD value (the USDC p99.9 of 198 bps is exactly the depeg-recovery
+class, March 2023), so a zero envelope under-reserves precisely in the
+scenario that produces stable-sell repricing. The tail beyond p99 is
+accepted and stated: overshoot requires the pump to land inside the
+order's open TTL, the p99.9 column bounds all but ~0.1% of windows, and
+the Phase-B rolling-24h <= ~2x cap bound holds regardless; the order TTL
+is the knob (shorter TTL, smaller envelope - re-measure at the chosen
+TTL).
+
+Worked defaults (reciprocal form, ETH-exposure sell asset, ttlP99 = 685
 bps): standard route, 0.5% ExR FEED rate leg + 0.5%/1h ETH/USD leg:
-(1/((1 - 0.0075)(1 - 0.0215))) x 1.0365 - 1 = 672.8 bps -> **675**. Same
-shape on an Arbitrum-style 0.05%/24h ETH/USD leg: 624 bps -> **625**.
-Live-read rate leg + 0.5%/1h ETH/USD: 619.3 bps -> **620**. A
-stable-sell rotation (ttlP99 = 0) keeps the bare composition envelope,
-e.g. 300/250/250 for the same shapes. Overcharge at this scale is
-fail-closed: charges on volatile-sell orders land ~6-7% above live (the
-price of a reservation that covers 99% of hours), the effective daily
-budget shrinks by the same factor, and operators size
-`dailyUsdTurnoverCap` knowing that.
+(1/((1 - 0.0075)(1 - 0.0215))) x 1.0685 - 1 = 1,002.3 bps -> **1005**.
+Same shape on an Arbitrum-style 0.05%/24h ETH/USD leg: 951.9 bps ->
+**955**. Live-read rate leg + 0.5%/1h ETH/USD: 947.1 bps -> **950**. A
+stable-sell rotation applies x 1.0060 to its own (small) composition
+envelope instead. Overcharge at this scale is fail-closed: charges on
+volatile-sell orders land ~9.5-10% above live - the stated price of a
+reservation that covers 99% of ANY-START windows on record - the
+effective daily budget shrinks by the same factor, and operators size
+`dailyUsdTurnoverCap` knowing that. If that price is judged too high for
+a given vault, the reviewable trade is a shorter TTL, not a thinner
+envelope.
 
 **The residual beyond the envelope, quantified rather than waved at:** the
 one in-model way a FRESH leg can be wrong by more than
@@ -532,10 +558,13 @@ movement as an alertable signal in both cases.
   clamp-vs-revert product decision, not a calibration (B.3).
 - Turnover gross-up: `turnoverGrossUpBps` per A.6 = the route's in-band
   composition envelope (reciprocal form) x the SELL asset's TTL
-  appreciation envelope (p99 of measured 1h up-moves; fills reprice
-  during the TTL and the static fill check cannot re-charge): standard
-  ETH-exposure route **675 bps**, live-read **620**, Arbitrum-style
-  **625**; stable-sell rotations keep the bare envelope (300/250/250).
+  appreciation envelope (the ANY-START p99 bound of 1h up-moves - a
+  close-anchored sample only covers hourly-close registrations; fills
+  reprice during the TTL and the static fill check cannot re-charge):
+  standard ETH-exposure route **1005 bps**, live-read **950**,
+  Arbitrum-style **955**; stable-sell rotations take the measured **60
+  bps** recovery envelope (below-peg registration recovering inside the
+  TTL), never zero.
   Same formula anchored or unanchored; NOT maxDivergenceBps
   (anchor-relative, blind to common-mode) and NOT sanityHigh (~5-8x
   notional). Landing allowance 165 bps = cross-asset envelope of the four

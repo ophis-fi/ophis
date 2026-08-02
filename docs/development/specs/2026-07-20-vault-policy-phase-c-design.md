@@ -305,11 +305,16 @@ struct TokenRoute {
     uint256   sanityLow;
     uint256   sanityHigh;
     // Reviewed turnover-charge gross-up (C4): sellUsd18 =
-    // mulDiv(liveRoutePrice, 10_000 + turnoverGrossUpBps, 10_000) -
-    // multiply-before-divide is NORMATIVE exactly as for RateBound: the
+    // mulDiv(liveRoutePrice, 10_000 + uint256(turnoverGrossUpBps), 10_000) -
+    // multiply-before-divide is NORMATIVE exactly as for RateBound (the
     // literal `price * (1 + bps / 1e4)` truncates the quotient to zero
     // for every value below 10_000 and charges the ungrossed price,
-    // silently deleting the entire reserve. Set at TokenAdd, refreshed by
+    // silently deleting the entire reserve), and the addend WIDENS FIRST:
+    // at uint16 width `10_000 + g` overflows for g >= 55_536 and bricks
+    // every registration on the route. Submit and execute additionally
+    // REJECT turnoverGrossUpBps > 10_000 - a >100% gross-up exceeds every
+    // sized envelope (A.6) by an order of magnitude and is only reachable
+    // as a typo. Set at TokenAdd, refreshed by
     // RouteRecalibration, sized per sizing doc A.6 (the route's own in-band
     // composition envelope); the module cannot derive feed deviation sums
     // on-chain, so the reviewed value is persisted here.
@@ -1472,8 +1477,10 @@ the verification log tracks which currently have no assigned target.
   threshold + the sourced margin set for rate legs read from a feed, the
   margins alone for registration-only live contract reads. The stored
   value ALSO folds in the SELL asset's TTL-APPRECIATION envelope (A.6,
-  recommended p99 of its measured 1-hour up-moves; zero for stable-sell
-  rotations): the composition envelope bounds mismeasurement AT the
+  recommended: the ANY-START p99 bound of its measured 1-hour up-moves -
+  close-anchored sampling only covers hourly-close registrations; ~60 bps
+  measured stable-recovery envelope for stable-sell rotations - a
+  below-peg registration can recover to peg inside the TTL - never zero): the composition envelope bounds mismeasurement AT the
   charging instant, but between registration and fill the asset can
   genuinely REPRICE, the fill check is a STATICCALL that cannot append
   the difference to the bucket, and without the envelope a fill during
