@@ -132,14 +132,24 @@ with that label, close basis retained. UNI's -83.5% wick (window from
 
 Rule, derived from those facts plus the recalibration cadence: **the
 sanity rail is per-asset and ASYMMETRIC, centered on the composed price
-READ AT EXECUTION, re-centered at every <= 90-day recalibration** (spec:
-executeRouteRecalibration; the payload carries the width as 1e18-scaled
-ratios and execute centers them on the price it reads then). Defaults,
-each clearing BOTH bases in the 90d columns with margin: **ETH-exposure
-(all LST/LRT routes) and BTC: [P/5, 8P]** (P/5 = -80% below the -75.0%
-worst; 8P = 56% above the 5.12x worst); **LINK: [P/5, 12P]**; **UNI:
-[P/8, 16P]**; **any underlying not in the table: NO default** - same
-per-listing derivation discipline as everything else here. The low side
+READ AT EXECUTION, re-centered on an EXECUTION-to-execution cadence of
+<= 90 days** (spec: executeRouteRecalibration; the payload carries the
+width as 1e18-scaled ratios and execute centers them on the price it
+reads then; the runbook derives SUBMISSION dates from the execution
+schedule and the deadline watcher enforces executions, because a
+submission cadence alone lets one refresh execute at eta and its
+successor near its snapshot deadline or through a 30-day rail-only
+window - stretching the governed span to ~111-120 days). The widths are
+therefore sized on the **120-DAY columns**, so even a maximally late
+execution cannot outrun them: **ETH-exposure (all LST/LRT routes) and
+BTC: [P/5, 8P]** (P/5 = -80% below the worst 120d closes -76.3%/-65.4%,
+thin 1.9-point margin on the ETH wick basis stated; 8P = 20% above the
+6.69x 120d worst); **LINK: [P/5, 12P]** (11.35x wick 120d worst);
+**UNI: [P/8, 20P]** (the recorded 17.11x 120-day move pierces a 16P
+rail, so 16P was WRONG for a late execution - 20P covers it with 17%
+margin, and P/8 = -87.5% sits below the -83.5% wick worst); **any
+underlying not in the table: NO default** - same per-listing derivation
+discipline as everything else here. The low side
 stays tight everywhere it can (undervaluation is the direction that
 collapses the floor; the depeg direction rule and divergence band bind
 there), the high side follows each asset's recorded bull runs - and at
@@ -266,12 +276,27 @@ that is already the SHRUNKEN side of the envelope.) Per-leg terms:
   1-minute Binance samples read 2026-08-02, 43.2k candles each): max ETH
   **211.3** / BTC **155.8** / LINK **206.1** / UNI **241.1** bps; p99.99
   146.2 / 107.5 / 153.7 / 205.5. The allowance is set to **245 bps for
-  all four measured underlyings** - the cross-asset envelope, a LABELED
-  robustness choice rather than per-asset maxes, because a single month
-  under-samples each asset's own tail. Any underlying not measured here
-  gets NO default: its 30-day any-start landing envelope is measured at
-  listing review, and the allowance is max(own measured max rounded up,
-  245).
+  all four measured underlyings** - the cross-asset envelope of the
+  30-day samples - and it is a NORMAL-REGIME RESERVE, not a bound; the
+  stress tail is modeled separately rather than a short-sample maximum
+  being promoted to a bound. Measured across the nine recorded crash
+  days of the full history (2018-02-05, 2020-03-12/13, 2021-05-19,
+  2022-05-12, 2022-06-13, 2022-11-09, 2024-08-05, 2025-10-10),
+  close-basis 2-minute envelopes reach ETH **1,333** / BTC **1,502** /
+  LINK **2,846** / UNI **3,994** bps (single-venue wick-basis extremes
+  run higher still - ETH 1,714, UNI 11,520, LINK's is the labeled
+  near-zero artifact - but a volume-weighted index does not print lone
+  order-book wicks, so close basis is the representative index bound).
+  The residual is therefore stated, not hidden: a registration whose
+  feed is mid-landing during a crash-class 2-minute window under-reserves
+  by up to (stress envelope - 245); such windows occurred on ~9 days in
+  ~3,200 recorded, each lasting minutes, the rolling-24h <= ~2x cap
+  bound holds regardless, and `turnoverGrossUpBps` is a per-route
+  REVIEWED field - an operator who wants the stress envelope priced into
+  every order may size it so (at the stated cost: a 13-40% permanent
+  charge premium). Any underlying not measured here gets NO default: its
+  30-day any-start landing envelope is measured at listing review, and
+  the allowance is max(own measured max rounded up, 245).
 - PROTOCOL exchange-rate leg read from a FEED (the contract-rate mirrors:
   rETH-ETH ExR, weETH/eETH ExR, tETH/wstETH ExR classes): term = the
   feed's own deviation threshold + **25 bps**, the SAME sourced margin set
@@ -318,8 +343,8 @@ each symbol's full Binance 1h history:
 | BTC | 569 | 1,202 | 2,243 | **570** |
 | LINK | 839 | 1,838 | 4,517 | **840** |
 | UNI | 857 | 2,011 | 5,924 | **860** |
-| USDC (USDCUSDT direct, 2018-12+) | 55 | 198 | 3,154 | **60** |
-| USDT (reciprocal of USDCUSDT: high[i]/min(low[i],low[i+1])) | 54 | 165 | 3,154 | **60** |
+| USDC vs USD (synthetic: USDCUSDT x Coinbase USDT-USD, 2021-05+) | 32 | 214 | - | **35** |
+| USDT vs USD (Coinbase USDT-USD direct, 2021-05+) | 21 | 104 | - | **25** |
 
 Raw sample MAXIMA are dominated by documented single-venue wick
 artifacts (ETH's +114% intra-candle 2017-08-22 listing week, LINK's
@@ -330,20 +355,32 @@ asset's any-start p99 into the stored value - `turnoverGrossUpBps =
 (1/prod(1 - term_i)) x (1 + ttlP99) - 1`. STABLE-SELL routes take a
 PER-STABLE measured envelope, **never zero**: a stable order registered
 below peg that recovers inside the TTL fills at genuinely higher USD
-value (the USDC p99.9 of 198 bps is exactly the depeg-recovery class,
-March 2023), so a zero envelope under-reserves precisely in the scenario
-that produces stable-sell repricing. And the measurement is DIRECTIONAL
-per asset: USDT appreciation shows up as a DOWN-move in USDCUSDT, so the
-direct pair's upside quantiles bound nothing for a USDT sell - USDT gets
-the reciprocal series (table row above; its 60 bps is its own measured
-p99, coincidentally equal to USDC's). Every admitted stable is measured
-against its own series (direct or reciprocal) before listing; no
-universal stable default exists. The tail beyond p99 is
-accepted and stated: overshoot requires the pump to land inside the
-order's open TTL, the p99.9 column bounds all but ~0.1% of windows, and
-the Phase-B rolling-24h <= ~2x cap bound holds regardless; the order TTL
-is the knob (shorter TTL, smaller envelope - re-measure at the chosen
-TTL).
+value, so a zero envelope under-reserves precisely in the scenario that
+produces stable-sell repricing. And the measurement must be
+USD-DENOMINATED, not a stable-vs-stable cross: a cross (USDCUSDT) and
+its reciprocal stay near 1 while BOTH stables recover together from a
+common discount, so neither direction of the cross bounds either asset's
+USD appreciation. The series used: Coinbase's real USDT-USD book
+(direct), and synthetic USDC/USD = USDCUSDT x USDT-USD. Recorded
+extremes behind the p99.9 column: USDT +1,049 bps in the 2021-05-19
+flight-to-stable and +728 bps on 2025-10-10; USDC's March-2023
+depeg-recovery hours; the synthetic maxima column is withheld because
+the extremes-product construction over-bounds absurdly when both
+components are volatile (its top row, +400% on 2021-12-04, is a lone
+mispriced Coinbase candle with no corroborating market event - labeled
+data artifact). Every admitted stable is measured against a
+USD-denominated series (direct or synthetic) before listing; no
+universal stable default exists. A route whose composition includes a MARKET-RATIO leg has TWO
+repricing factors inside the TTL - the USD underlying AND the ratio
+itself (a depegged LST recovering during the order's hour) - so its TTL
+envelope COMPOUNDS the underlying's row with a per-listing measured
+any-start 1h envelope of the ratio series; no ratio series was measured
+in this document, so such routes have NO default and the compounding is
+a listing-review obligation. The tail beyond p99 is accepted and
+stated: overshoot requires the pump to land inside the order's open
+TTL, the p99.9 column bounds all but ~0.1% of windows, and the Phase-B
+rolling-24h <= ~2x cap bound holds regardless; the order TTL is the
+knob (shorter TTL, smaller envelope - re-measure at the chosen TTL).
 
 Worked defaults (reciprocal form, ETH-exposure sell asset, ttlP99 = 685
 bps, landing 245): standard route, 0.5% PROTOCOL ExR FEED rate leg +
@@ -365,16 +402,21 @@ deviation-plus-landing is an update-landing outage longer than the
 ~2-minute norm coinciding with a fast market move, sustained inside
 `maxStaleness`. Underreporting - the direction that stretches turnover -
 needs an UP-move. Bounding facts, computed from the full Binance ETHUSDT
-1h-kline history (2017-08-17..2026-08-02, 78,415 candles;
-close-to-window-high, method in the research log): worst up-move within 1h
-**+24.4%**, within 2h **+42.8%** (both 2020-03-13, the COVID-crash
-rebound), within 25h **+47.9%** (2021-01-03). (Single-venue candle wicks on
+1h-kline history (78,415 candles) in BOTH bases - close-anchored worst
+up-moves +24.4% (1h) / +42.8% (2h) / +47.9% (25h), and the ANY-START
+low-to-straddled-high bound (an outage can begin at any instant, so the
+close anchor alone under-states): **+60.5% (1h and 2h)** and **+62.4%
+(25h)**, all from the 2020-03-13 rebound off the capitulation wick
+(listing-month candles excluded; the wick anchor is partly single-venue,
+so the truth sits between the two bases - both stated, the any-start
+value used as the outer bound). (Single-venue candle wicks on
 the first thin-book listing days run higher; Chainlink aggregates
 volume-weighted across venues, so close-to-high over the liquid record is
 the representative bound.) A route whose USD leg runs a 1h-class staleness
-budget therefore has its actual-vs-charged ratio bounded by ~1.24/(1 + E)
-even through the worst recorded pump-during-outage coincidence; a
-25h-class budget admits ~1.48. The exposure is transient (it lasts at most
+budget therefore has its actual-vs-charged ratio bounded by ~1.61/(1 + E)
+on the any-start basis (~1.24 close-anchored) even through the worst
+recorded pump-during-outage coincidence; a 25h-class budget admits ~1.62
+(~1.48 close-anchored). The exposure is transient (it lasts at most
 the stall), requires the coincidence, and the SAME stalled reads corrupt
 the C2 oracle floor - the direct value path - so `maxStaleness` is a
 turnover parameter as well as a floor parameter: listing review sizes it
@@ -585,28 +627,33 @@ movement as an alertable signal in both cases.
   close-anchored sample only covers hourly-close registrations; fills
   reprice during the TTL and the static fill check cannot re-charge):
   standard ETH-exposure route **1095 bps**, live-read **1040**,
-  Arbitrum-style **1045**; stable-sell rotations take PER-STABLE measured
-  recovery envelopes (USDC 60 direct, USDT 60 via the reciprocal series;
-  below-peg registration recovering inside the TTL), never zero.
+  Arbitrum-style **1045**; stable-sell rotations take PER-STABLE, USD-DENOMINATED
+  recovery envelopes (USDC 35 via synthetic USDC/USD, USDT 25 via
+  Coinbase USDT-USD - a stable-vs-stable cross cannot see both stables
+  recovering together), never zero; market-ratio sell routes compound a
+  per-listing measured ratio recovery envelope.
   Same formula anchored or unanchored; NOT maxDivergenceBps
   (anchor-relative, blind to common-mode) and NOT sanityHigh (~5-8x
   notional). Landing allowance 245 bps = any-start cross-asset envelope of the
   four measured underlyings (ETH/BTC/LINK/UNI); market-RATIO anchor feeds
   are market-speed legs with per-listing measured envelopes; unmeasured
   underlyings are measured at listing. Permitted-lag residual bounded by the computed
-  worst up-move over the staleness window (1h +24.4% / 25h +47.9%), so
-  `maxStaleness` is reviewed as a turnover parameter too; beyond-p99 TTL
-  repricing bounded by the recorded per-TTL maxima and the rolling-24h
-  <= ~2x cap bound.
+  any-start worst up-move over the staleness window (1h +60.5% / 25h
+  +62.4%; close-anchored +24.4%/+47.9%), so `maxStaleness` is reviewed
+  as a turnover parameter too; landing reserve is normal-regime 245 with
+  the crash-day stress tail (1,333-3,994 bps close-basis) documented and
+  operator-overridable per route; beyond-p99 TTL repricing bounded by
+  the recorded per-TTL maxima and the rolling-24h <= ~2x cap bound.
 - Sanity rail (absolute-price fault rail, NOT a divergence tool and NOT a
   turnover basis): **PER-ASSET and ASYMMETRIC, centered on the composed
   price AT EXECUTION, re-centered at every recalibration** - ETH-exposure
-  & BTC [P/5, 8P], LINK [P/5, 12P], UNI [P/8, 16P], unmeasured assets NO
-  default (computed from each asset's full Binance history, both wick and
-  close bases; the old ETH-only [P/5, 5P] failed the record: every
-  asset's bull-run up-moves pierce 5P). Payload carries the width as
-  ratios plus a reviewed absolute center range sized for DELAY +
-  EXECUTE_WINDOW (120d columns when > 90d; ETH/BTC [S/5, 8S], LINK
+  & BTC [P/5, 8P], LINK [P/5, 12P], UNI [P/8, 20P], unmeasured assets NO
+  default (sized on the 120-DAY columns so a late execution cannot outrun
+  them - the cadence is normative on EXECUTIONS <= 90d apart; the old
+  ETH-only [P/5, 5P] failed the record: every asset's bull-run up-moves
+  pierce 5P, and UNI's recorded 17.11x 120-day move pierced even 16P).
+  Payload carries the width as ratios plus a reviewed absolute center
+  range sized for DELAY + EXECUTE_WINDOW (ETH/BTC [S/5, 8S], LINK
   [S/5, 12S], UNI [S/8, 20S]) - a submission-time center would govern
   DELAY + interval of drift, and an unreviewed center would launder
   faults (A.3).

@@ -1179,6 +1179,18 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // unreadable" (itself an alertable state), distinct from breached.
     function anchorBandState(address token) external view
         returns (uint256 routeValue, bool hasAnchor, uint256 anchorValue, uint32 maxDivergenceBps, bool breached);
+    // Watcher-facing views, NORMATIVE because the deadline monitoring
+    // below is impossible through the generated ABI otherwise: a public
+    // mapping getter cannot return the nested Leg[] (and their
+    // RateBound.snapshotTs), and anchorBandState exposes no timestamps.
+    function routeConfig(address token) external view
+        returns (uint64 railCenteredAt, uint256 sanityLow, uint256 sanityHigh, uint16 turnoverGrossUpBps);
+    // One row per rate leg (route legs first, then anchor legs), each
+    // (isAnchorLeg, legIndex, snapshotRatio, snapshotTs) - the exact
+    // identification scheme RouteRecalibration payloads use, so the
+    // watcher's rows map 1:1 onto the refresh it must submit.
+    function routeSnapshots(address token) external view
+        returns (LegSnapshot[] memory);
     function sweepResidual(address token) external;             // retry residual revocations that failed
     // The Safe-only WRITE-OFF for a residual whose call permanently reverts
     // (e.g. a bricked token's approve(0)): deletes exactly one recorded entry,
@@ -1271,12 +1283,19 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // route stays intentionally usable for sell-side exits - snapshots
     // would age past their envelope and force a disruptive remove+re-add.
     // Hence `rateOnly = true`: a snapshots-ONLY refresh whose payload
-    // carries zeroed rail/center/gross-up fields, touches neither the
-    // rail nor the divergence config, SKIPS the composed centering read
-    // entirely, and validates each leg against its OWN source (age
-    // window, snapshotTs <= submittedAt, live ratio within the new
-    // bound, monotonicity, staleness, sequencer - no divergence or rail
-    // consultation). The rail keeps its old center through such an
+    // carries zeroed rail/center fields, touches neither the rail nor
+    // the divergence config, SKIPS the composed centering read entirely,
+    // and validates each leg against its OWN source (age window,
+    // snapshotTs <= submittedAt, live ratio within the new bound,
+    // monotonicity, staleness, sequencer - no divergence or rail
+    // consultation). ONE exception to the zero-fields rule:
+    // turnoverGrossUpBps may be RAISED in a rateOnly payload (zero =
+    // unchanged; any nonzero value must EXCEED the stored one, and the
+    // live-order supersession duty below applies) - a months-long
+    // divergence must not hand the market a veto over a RISK-REDUCING
+    // reserve correction while exit orders keep consuming the cap at
+    // the old undersized charge; a DECREASE still requires the full
+    // path with its centering read. The rail keeps its old center through such an
     // event; the residual is stated rather than hidden: if a divergence
     // outlives the rail's own re-center cadence AND the market
     // simultaneously moves toward a stale rail edge, the route freezes
