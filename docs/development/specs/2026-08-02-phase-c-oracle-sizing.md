@@ -230,10 +230,14 @@ then based on our own measured data.
 
 ### A.6 Turnover charge gross-up (`turnoverGrossUpBps`), sized
 
-The spec's C4 charge is `sellUsd18 = mulDiv(liveRoutePrice, 10_000 +
-turnoverGrossUpBps, 10_000)` (multiply-before-divide normative - the
-literal `x (1 + bps/1e4)` truncates to an ungrossed charge in integer
-math), with the gross-up PERSISTED per route (reviewed at
+The spec's C4 charge is the order NOTIONAL with the price grossed up -
+`grossedPrice18 = mulDiv(sellPrice18, 10_000 + uint256(turnoverGrossUpBps),
+10_000)`, then `sellUsd18 = sellAmount x grossedPrice18 /
+10**sellTokenDecimals`, Phase B's _validateAndPrice shape
+(multiply-before-divide normative - the literal `x (1 + bps/1e4)`
+truncates to an ungrossed charge in integer math, and a price-only
+equality would charge size-independently, deleting the cap for large
+orders) - with the gross-up PERSISTED per route (reviewed at
 TokenAdd, refreshed by recalibration). What it must bound is the route's own
 worst IN-BAND underreport of USD value - NOT divergence: the divergence band
 is anchor-relative and definitionally blind to common-mode error (route and

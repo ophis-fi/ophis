@@ -1373,7 +1373,19 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // events, same loudness rule as token adds:
     // RouteRecalibrationSubmitted(token, pendingKey, eta) /
     // RouteRecalibrationCancelled(token, pendingKey) /
-    // RouteRecalibrationExecuted(token, pendingKey). Pendings are stored
+    // RouteRecalibrationExecuted(token, pendingKey). One more execution
+    // duty: if the payload RAISES turnoverGrossUpBps and the token has an
+    // UNFILLED live order, execution SUPERSEDES that order through the
+    // standard mode-aware cancel path (deregister + invalidateOrder /
+    // setPreSignature(false), decayed refund per the C4 rule, allowance
+    // zeroing with the usual residual fallback - the same C15
+    // failure-isolation removeToken uses, bounded at one order by the
+    // one-live-order-per-sell-token invariant). The alternatives both
+    // fail: leaving the order lets it fill at the OLD undersized
+    // reservation for up to the TTL, defeating the corrective raise; and
+    // requiring no-live-order at execute hands a compromised curator an
+    // indefinite VETO over the correction (1h TTL, re-register forever).
+    // Equal-or-lower gross-up updates touch no live order. Pendings are stored
     // under calldata hashes and are NOT enumerable on-chain, so without a
     // submission event the guardian's only veto window on a rail/gross-up
     // loosening would be invisible; the monitoring section alerts on
