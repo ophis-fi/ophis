@@ -1,0 +1,77 @@
+---
+/**
+ * /learn/intent-based-dex-aggregator: evergreen canonical answer page for
+ * "what is an intent-based DEX aggregator". Definitional and neutral first,
+ * Ophis-specific facts second; fee and chain claims link to the canonical
+ * /pricing and /supported-chains pages rather than restating numbers.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/learn/intent-based-dex-aggregator/')
+
+const FAQS = [
+  {
+    q: 'What is a trading intent?',
+    a: `A trading intent is a signed message that describes an outcome: the token you sell, the token you receive, the amount, a hard limit price, and an expiry. It is an EIP-712 signature, not a transaction. Whoever executes it can never settle it below the signed limit, and if nobody can meet the limit before expiry, nothing happens and nothing is spent.`,
+  },
+  {
+    q: 'How is that different from a classic DEX aggregator?',
+    a: `A classic aggregator quotes you a route, then hands you a transaction to submit yourself: you pay gas, the routing calldata is fixed at signing time, and the pending transaction is visible in the public mempool where slippage tolerance can be exploited. With an intent, you only sign the outcome. A solver builds and submits the settlement transaction, pays the gas, and absorbs the execution risk: if the market moves, the solver either fills you at your limit or better, or does not fill you at all.`,
+  },
+  {
+    q: 'What is a solver?',
+    a: `A solver is a professional execution party that competes to fill signed intents. In each batch, solvers propose settlements sourcing liquidity from on-chain AMMs, aggregators, and their own inventory; the solver offering the best execution wins the batch. Competition is what turns better routing into better prices for the trader instead of profit for the router.`,
+  },
+  {
+    q: 'What is batch-auction settlement?',
+    a: `Orders are collected into discrete batches and all trades of the same token pair in a batch settle at one uniform clearing price. There is no advantage to being ordered first or last inside the batch, which removes the reordering games that power most MEV. When two orders in a batch want opposite sides of the same pair, they can settle against each other directly, a coincidence of wants, without touching an AMM at all.`,
+  },
+  {
+    q: 'Where does RFQ liquidity fit in?',
+    a: `Request-for-quote systems ask professional market makers for a firm price on a specific size. Intents generalize this: solvers can incorporate RFQ quotes, AMM routes, and private inventory into one settlement, and the batch auction decides which combination wins. A trader does not choose between RFQ and on-chain routing; the solver competition does.`,
+  },
+  {
+    q: 'Is an intent-based aggregator custodial?',
+    a: `No, not when built as Ophis is. Orders are gasless, off-chain, EIP-712-signed intents; the trader or agent signs with its own key and the keys never leave the signer. Settlement happens against audited on-chain contracts, and an order that is never filled simply expires.`,
+  },
+]
+---
+
+<ContentPage
+  title="What is an intent-based DEX aggregator? | Ophis"
+  description="An intent-based DEX aggregator lets you sign the outcome you want instead of submitting a swap transaction: solvers compete to fill your signed order, batch-settled with MEV protection."
+  path="/learn/intent-based-dex-aggregator/"
+  heading="What is an intent-based DEX aggregator?"
+  lede="You sign the outcome you want, a solver competition executes it. Here is how intents differ from routers and RFQs, and why batch auctions change the trader's position."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> an intent-based DEX aggregator lets you sign what you want
+    (sell this token, receive at least that amount) instead of submitting a routed swap transaction
+    yourself. Competing solvers execute the signed order, pay the gas, and cannot fill it below
+    your signed limit. Settlement happens in a batch auction at a uniform clearing price, which is
+    what provides the MEV protection. Ophis is an intent-based aggregator built on CoW Protocol's
+    batch-auction design, extended for autonomous agents.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>How Ophis implements this</h2>
+  <p>
+    Ophis adds a natural-language intent layer (describe the trade, the parser fills the order), a
+    public <a href="https://docs.ophis.fi/ai-agents">MCP server</a> so autonomous agents can trade
+    with their own keys, and the <a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a>
+    safety helpers for building bounded orders. Fees are on the
+    <a href="/pricing/">pricing page</a>, the chain list on
+    <a href="/supported-chains/">supported chains</a>, and the custody and audit detail on the
+    <a href="/security/">security page</a>. For the MEV mechanics in depth, read
+    <a href="/learn/mev-protected-swaps/">MEV-protected swaps, explained</a>.
+  </p>
+</ContentPage>

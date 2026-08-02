@@ -1,0 +1,75 @@
+---
+/**
+ * /learn/mev-protected-swaps: evergreen canonical answer page for MEV
+ * protection. States precisely what IS protected and keeps the qualified
+ * "not an absolute guarantee" wording next to every strong claim (same
+ * sentence as the homepage FAQ; do not strengthen it here).
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/learn/mev-protected-swaps/')
+
+const FAQS = [
+  {
+    q: 'What is MEV?',
+    a: `MEV (maximal extractable value) is profit extracted by reordering, inserting, or censoring transactions around yours. For traders the common forms are front-running, where someone executes ahead of your visible pending trade, and sandwiching, where an attacker buys before your trade moves the price and sells right after it, pocketing the difference your slippage tolerance allowed.`,
+  },
+  {
+    q: 'How does a sandwich attack work?',
+    a: `Your swap sits in the public mempool with a slippage tolerance. A searcher spots it, places a buy just before it to push the price up, lets your trade execute at the worse price you tolerated, then sells immediately after. Your slippage setting is exactly the budget the attacker harvests. The attack requires seeing your trade before it executes and being able to order around it.`,
+  },
+  {
+    q: 'How do batch auctions mitigate MEV?',
+    a: `Three properties work together. First, orders are signed off-chain and submitted to an orderbook, not broadcast as transactions, so there is no pending swap in the public mempool to spot and sandwich. Second, all trades of a pair in a batch settle at one uniform clearing price, so ordering inside the batch carries no advantage. Third, solvers compete on execution quality, so price improvement flows back to the trader instead of being captured by the router.`,
+  },
+  {
+    q: 'What does the signed limit price guarantee?',
+    a: `An order can never be settled below its signed limit price. That bound is enforced by the settlement contract, not by the goodwill of any solver: a settlement that violates it reverts. Anything a solver achieves beyond your limit is surplus, and Ophis takes no cut of surplus on any chain.`,
+  },
+  {
+    q: 'Is MEV protection guaranteed?',
+    a: `Orders settle through CoW Protocol batch auctions, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.`,
+  },
+  {
+    q: 'Do I pay gas for an MEV-protected swap?',
+    a: `Not for ERC-20 orders: the winning solver submits the settlement transaction and pays the gas, and you pay a flat fee on trade volume instead, taken in the surplus token. Selling native ETH is the exception: it places an on-chain EthFlow transaction that pays normal network gas, and on chains where the EthFlow contract is not deployed you wrap ETH to WETH first, which also costs gas. Token approvals you sign separately cost gas too.`,
+  },
+]
+---
+
+<ContentPage
+  title="MEV-protected swaps, explained | Ophis"
+  description="What MEV and sandwich attacks are, how batch-auction settlement mitigates them, what a signed limit price actually guarantees, and what is not guaranteed."
+  path="/learn/mev-protected-swaps/"
+  heading="MEV-protected swaps, explained"
+  lede="What sandwich attacks actually exploit, which of those levers batch auctions remove, and the precise boundary of the protection."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> MEV extraction needs two things, a visible pending trade
+    and the ability to order around it. Batch-auction settlement removes both: orders are signed
+    off-chain instead of sitting in the mempool, and everything in a batch clears at one uniform
+    price. Your signed limit is enforced by the contract, so no fill can ever be worse than what
+    you signed. The protection is structural, and it is qualified: it mitigates MEV by design, it
+    is not an absolute guarantee against all adversarial conditions.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Where to go next</h2>
+  <p>
+    The mechanism behind this page is covered in
+    <a href="/learn/intent-based-dex-aggregator/">what is an intent-based DEX aggregator</a>. Fees
+    per path and per chain are on the <a href="/pricing/">pricing page</a>, and which chains settle
+    on Ophis-operated contracts is on <a href="/supported-chains/">supported chains</a>. For a
+    narrative walkthrough with examples, see the blog post
+    <a href="/blog/mev-protection-batch-auctions/">MEV protection and batch auctions</a>.
+  </p>
+</ContentPage>

@@ -1,0 +1,78 @@
+---
+/**
+ * /learn/ai-agent-token-swaps: evergreen canonical answer page for letting an
+ * AI agent swap tokens safely. Security-conscious by design: the page teaches
+ * the bounded-order pattern (hard limit, receiver pinning, domain resolution,
+ * expiry) rather than "give the agent your key and hope".
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../../data/chains'
+
+const { updated } = canonicalPage('/learn/ai-agent-token-swaps/')
+
+const FAQS = [
+  {
+    q: 'Why should an agent sign orders instead of transactions?',
+    a: `A transaction is an open-ended capability: whatever calldata the agent signs, executes. An Ophis order is a bounded capability: an EIP-712 message naming the sell token, buy token, amount, a hard limit price, and an expiry. The worst case of an arbitrary signed transaction is everything the key can reach; a signed order narrows that to the single trade it describes. The bound applies per order, though: it does not police which trade the agent chose, so the signer's own policy still has to control what an agent may trade at all.`,
+  },
+  {
+    q: 'What is receiver pinning, and why is it the first rule?',
+    a: `The receiver field says where the bought tokens go. An unpinned receiver is the top drain vector for an automated signer: a manipulated agent that signs an otherwise-correct order with an attacker receiver has lost the funds even though the price was fair. Pin the receiver to the owner and assert it in code before signing; the @ophis/sdk ships assertReceiverIsOwner for exactly this.`,
+  },
+  {
+    q: 'Why must an agent resolve the settlement domain per chain?',
+    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement contract at a non-canonical address. An EIP-712 signature binds to the verifying contract, so signing against CoW's canonical address yields a domain the deployed contract rejects. Resolve the per-chain settlement domain and orderbook host via the @ophis/sdk helpers or the MCP list_chains tool before signing, never hardcode them.`,
+  },
+  {
+    q: 'What does the Ophis MCP server do, and what does it never do?',
+    a: `The MCP server at mcp.ophis.fi lets an agent parse an intent, resolve tokens, quote, build a bounded order, and submit a pre-signed order. It is public, unauthenticated, and keyless: it never holds keys and never signs. The agent signs locally with its own key, so custody never leaves the agent's side.`,
+  },
+  {
+    q: 'What else should a production agent enforce?',
+    a: `Restrict the tokens the agent may trade to a signer-enforced allowlist, and check every quote against an independent price source before signing, so a manipulated quote cannot set an absurd limit on a worthless pair. Set an expiry on every order so a stale quote cannot execute later. Keep the signing key separate from custody of meaningful balances and fund it per mandate. Bound the notional per order and per period in the agent's own policy. Validate before submitting, the MCP validate_order tool exists for preflight, and log every signed payload so a bad decision is auditable afterward.`,
+  },
+  {
+    q: 'What does an agent pay?',
+    a: `Calling the MCP server and the Intent API is free. When an order settles, the keyless MCP path charges a flat 5 bps (0.05%) of volume; SDK integrations pay the same 5 bps partner rate with 1 bp on same-chain stablecoin pairs. The fee is taken in the surplus token and there is no gas for the trade itself.`,
+  },
+]
+---
+
+<ContentPage
+  title="AI agent token swaps: the safe pattern | Ophis"
+  description="How to let an AI agent swap tokens without handing it open-ended signing power: bounded EIP-712 orders, receiver pinning, per-chain domain resolution, expiry, and the keyless MCP server."
+  path="/learn/ai-agent-token-swaps/"
+  heading="AI agent token swaps: the safe pattern"
+  lede="An agent should sign bounded orders, not arbitrary transactions. The pattern: hard limit price, receiver pinned to the owner, resolved per-chain domain, expiry, and keys that never leave the agent."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> never give an agent open-ended signing power. On Ophis an
+    agent signs a bounded EIP-712 order (sell token, buy token, amount, hard limit price, expiry)
+    with the receiver pinned to its owner, resolved against the correct per-chain settlement
+    domain. The MCP server does the quoting and order building but never touches keys. A bounded
+    order caps what one signature can lose, but it does not choose the trade: a manipulated agent
+    can still sign a bad order within its bounds, so pair the pattern with a signer-enforced token
+    allowlist, notional caps, and an independent price check.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Build it</h2>
+  <p>
+    The step-by-step integration lives at <a href="https://docs.ophis.fi/ai-agents">docs.ophis.fi/ai-agents</a>,
+    with the SDK at <a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a>
+    and the machine-readable per-chain contract-pinning policy in the
+    <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>. Rates
+    are on the <a href="/pricing/">pricing page</a>; the custody model and disclosure policy are on
+    the <a href="/security/">security page</a>. For a walkthrough of an agent making its first
+    swap, see <a href="/blog/let-an-ai-agent-swap-tokens/">the blog post</a>.
+  </p>
+</ContentPage>
