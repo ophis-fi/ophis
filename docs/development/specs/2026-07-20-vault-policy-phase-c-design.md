@@ -304,8 +304,12 @@ struct TokenRoute {
     // case the depeg rule prices through, not an extra revert condition.
     uint256   sanityLow;
     uint256   sanityHigh;
-    // Reviewed turnover-charge gross-up (C4): sellUsd18 = live route price x
-    // (1 + turnoverGrossUpBps/1e4). Set at TokenAdd, refreshed by
+    // Reviewed turnover-charge gross-up (C4): sellUsd18 =
+    // mulDiv(liveRoutePrice, 10_000 + turnoverGrossUpBps, 10_000) -
+    // multiply-before-divide is NORMATIVE exactly as for RateBound: the
+    // literal `price * (1 + bps / 1e4)` truncates the quotient to zero
+    // for every value below 10_000 and charges the ungrossed price,
+    // silently deleting the entire reserve. Set at TokenAdd, refreshed by
     // RouteRecalibration, sized per sizing doc A.6 (the route's own in-band
     // composition envelope); the module cannot derive feed deviation sums
     // on-chain, so the reviewed value is persisted here.
@@ -992,7 +996,25 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // Leg, RateBound and TokenRoute are defined normatively in the P2 lane.
     // fillEligible comes from the feed allowlist - never self-declared; a
     // fill-eligible leg is read by the MODULE from `feed` directly (no adapter).
-    struct TokenAdd  { address token; TokenRoute route; }   // sanity band lives IN the route (persisted; see P2 lane)
+    // The reviewed rail INPUT, carried by every path that installs or
+    // refreshes a band (TokenAdd, the constructor's initial set, and
+    // RouteRecalibration embeds the same four fields): ratios are applied
+    // to the composed price READ AT EXECUTE, the center range is the
+    // absolute gate that keeps that read reviewable (see the
+    // recalibration comment for the full semantics). TokenRoute itself
+    // stores only the RESULTING absolutes - without this struct the add
+    // path had no reviewed input at all and would have centered a new
+    // route's rail on an unchecked execution-time price, the exact
+    // laundering case the recalibration gate exists to prevent.
+    struct RailSpec {
+        uint256 railLowRatioE18;   // e.g. 0.2e18 / 8e18 = [P/5, 8P] (per-asset, sizing A.3)
+        uint256 railHighRatioE18;  // submit validates low < 1e18 < high
+        uint256 execCenterLow;     // reviewed ABSOLUTE center range, horizon DELAY +
+        uint256 execCenterHigh;    // EXECUTE_WINDOW (sizing A.3 120d columns when > 90d)
+    }
+    struct TokenAdd  { address token; TokenRoute route; RailSpec rail; }
+    // route.sanityLow/High in a PAYLOAD must be zero - execute computes and
+    // persists them from rail x the gated execute-time read (see P2 lane)
     // validTo is STORED, never re-read from a caller-supplied uid (see cancel).
     struct OrderState { address sellToken; address buyToken; uint32 validTo;
                         uint96 registeredAt; uint256 minBuyOverride; uint256 sellUsd18; }
@@ -1170,7 +1192,15 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // cushion (auto-satisfied whenever DELAY >= 14d); the ceiling is the
     // 21-day slack budget plus the unavoidable timelock transit - so the
     // pre-granted headroom a stale observation grants scales with the
-    // vault's OWN governance delay, a tradeoff its owners chose at deploy
+    // vault's OWN governance delay, a tradeoff its owners chose at deploy.
+    // Every snapshot must also PREDATE ITS PENDING'S SUBMISSION
+    // (`snapshotTs <= pending.submittedAt`, all modes, TokenAdd path
+    // included; constructor: <= deployTs): with DELAY > 14 days, an
+    // execute-time-only age check would accept a snapshotTs AFTER
+    // submission - a fabricated observation that did not exist when the
+    // guardian's review window opened, chosen to match a later transient,
+    // yet 14 days old by execution. The review window must review a real,
+    // already-taken observation
     // (exactly [14, 21] is realized on the recommended sovereign config,
     // DELAY = 24h with prompt execution). Runbook corollary (sizing doc
     // B.2): the recalibration INTERVAL must keep every ACTIVE snapshot
@@ -1206,7 +1236,26 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // read (staleness, sequencer, divergence band, rate bounds) minus
     // exactly the breached constraint in a recovery - so an in-model
     // fault (a diverged anchor, a stale leg, an out-of-bound ratio)
-    // cannot be centered on either. RECOVERY MODE: when a rate leg is ALREADY out of its old bound
+    // cannot be centered on either. That gate creates one legitimate
+    // deadlock the design must not have: a PERSISTENT anchor divergence
+    // (the sizing doc's stETH 2022 row: 6-7% for ~5 months, longer than
+    // the refresh interval) would block every recalibration while the
+    // route stays intentionally usable for sell-side exits - snapshots
+    // would age past their envelope and force a disruptive remove+re-add.
+    // Hence `rateOnly = true`: a snapshots-ONLY refresh whose payload
+    // carries zeroed rail/center/gross-up fields, touches neither the
+    // rail nor the divergence config, SKIPS the composed centering read
+    // entirely, and validates each leg against its OWN source (age
+    // window, snapshotTs <= submittedAt, live ratio within the new
+    // bound, monotonicity, staleness, sequencer - no divergence or rail
+    // consultation). The rail keeps its old center through such an
+    // event; the residual is stated rather than hidden: if a divergence
+    // outlives the rail's own re-center cadence AND the market
+    // simultaneously moves toward a stale rail edge, the route freezes
+    // fail-closed - the per-asset widths (sizing A.3) put that
+    // coincidence beyond every recorded 90-day path, and a freeze
+    // during depeg-plus-crash is the intended posture, not an outage
+    // bug. RECOVERY MODE: when a rate leg is ALREADY out of its old bound
     // (reads reverting - a realized negative rebase below the floor, or
     // sustained growth past a stale ceiling), those two checks are evaluated
     // with the BREACHED leg's old bound disabled on an internal read path
@@ -1249,6 +1298,8 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     //       uint64  snapshotTs;    // the observation timestamp the age window validates
     //   }
     //   struct RouteRecalibration {
+    //       bool rateOnly;                // see below: snapshots-only refresh; rail, center
+    //                                     // range, and turnoverGrossUpBps fields MUST be zero
     //       LegSnapshot[] snapshots;      // MUST cover EVERY registration-only rate leg of
     //                                     // the route EXACTLY ONCE (execute reverts on a
     //                                     // missing, duplicate, or non-rate-leg entry) -
@@ -1737,11 +1788,18 @@ the verification log tracks which currently have no assigned target.
   a missed refresh silently operates past the approved slack envelope),
   so the watcher polls every route's per-leg `snapshotTs` and the rail's
   last re-center time from route storage (publicly readable; no event
-  needed) and alerts at TWO thresholds: WARN when any age exceeds
-  `interval - DELAY - 7 days` (the last comfortable submission date for
-  an on-schedule refresh), CRITICAL when any snapshot age exceeds 165
-  days (15 days before the 180-day term the B.1/B.2 window arithmetic is
-  derived from). Also alert on repeated
+  needed) and alerts on EXECUTABLE DEADLINES, suppressed while a matching
+  pending is already in flight: WARN when
+  `now > lastExecTime + interval - DELAY - 7 days` (the last comfortable
+  SUBMISSION date from which an on-schedule execution is still reachable
+  - with long delays this lands BEFORE the previous refresh even
+  executes, which is exactly the B.2 pre-staging pipeline, so the anchor
+  is the next EXECUTION deadline, never elapsed-time-since-last-refresh:
+  a naive `age > interval - DELAY` goes negative at DELAY = 90d),
+  CRITICAL when `now > snapshotTs + 180 days - DELAY` (the last instant
+  a fresh submission can still mature before the term is breached - a
+  flat 165-day trigger would leave 15 days of runway against a 90-day
+  DELAY). Also alert on repeated
   transient-revert simulation failures for a live order (floor blocking =
   expected but report it), and on `getMinDelay`-style wiring drift (fallback
   handler changed, verifier deregistered).
