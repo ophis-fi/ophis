@@ -1,21 +1,13 @@
 ---
+import { EVM_CHAINS } from '../data/chains'
+
+// EVM entries come from the canonical chain list (src/data/chains.ts); the two
+// NEAR-destination entries stay local because they render bespoke inline SVGs.
 type Chain = { name: string; logo: string | null; status: string; svg?: string }
 const chains: Chain[] = [
-  { name: 'Ethereum',  logo: '/logos/chain-ethereum.png',  status: 'live' },
-  { name: 'BNB',       logo: '/logos/chain-bnb.png',       status: 'live' },
-  { name: 'Base',      logo: '/logos/chain-base.png',      status: 'live' },
-  { name: 'Arbitrum',  logo: '/logos/chain-arbitrum.jpg',  status: 'live' },
-  { name: 'Polygon',   logo: '/logos/chain-polygon.png',   status: 'live' },
-  { name: 'Avalanche', logo: '/logos/chain-avalanche.png', status: 'live' },
-  { name: 'Linea',     logo: '/logos/chain-linea.jpg',     status: 'live' },
-  { name: 'Plasma',    logo: '/logos/chain-plasma.svg',     status: 'live' },
-  { name: 'Ink',       logo: '/logos/chain-ink.svg',        status: 'live' },
-  { name: 'Gnosis',    logo: '/logos/chain-gnosis.png',    status: 'live' },
-  { name: 'Optimism',  logo: '/logos/chain-optimism.png',  status: 'live' },
-  { name: 'Unichain',  logo: '/logos/chain-unichain.svg',  status: 'live' },
-  { name: 'Robinhood', logo: '/logos/chain-robinhood.svg', status: 'live' },
-  { name: 'Solana',    logo: null,                          status: 'via-near', svg: 'solana' },
-  { name: 'Bitcoin',   logo: null,                          status: 'via-near', svg: 'bitcoin' },
+  ...EVM_CHAINS.map((c) => ({ name: c.shortName, logo: c.logo, status: 'live' })),
+  { name: 'Solana',    logo: null, status: 'via-near', svg: 'solana' },
+  { name: 'Bitcoin',   logo: null, status: 'via-near', svg: 'bitcoin' },
 ]
 // Two passes feed a seamless CSS marquee: the first is the real, accessible set
 // (counted by tests + read by AT); the second is an aria-hidden clone marked

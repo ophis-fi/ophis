@@ -5,6 +5,8 @@ import Footer from '../../components/Footer.astro'
 import { getCollection, render } from 'astro:content'
 import { Image, getImage } from 'astro:assets'
 import { isPublished } from '../../lib/posts'
+import { jsonLdSafe } from '../../lib/jsonld'
+import { AUTHOR } from '../../data/site'
 // Shared with scripts/check-faq-schema.mjs so the gate and the generator cannot
 // disagree about what the visible text is.
 import { htmlToText } from '../../../scripts/lib/html-text.mjs'
@@ -41,6 +43,10 @@ const ogImageAlt = post.data.cover
   ? (post.data.coverAlt ?? `Cover image for ${post.data.title}`)
   : undefined
 
+// Human byline (E-E-A-T): posts default to the site author; a post can still
+// set an explicit `author` in frontmatter to override the name.
+const authorName = post.data.author !== 'Ophis' ? post.data.author : AUTHOR.name
+
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'BlogPosting',
@@ -48,7 +54,12 @@ const jsonLd = {
   description: post.data.description,
   datePublished: post.data.pubDate.toISOString(),
   dateModified: (post.data.updatedDate ?? post.data.pubDate).toISOString(),
-  author: { '@type': 'Organization', name: post.data.author, url: 'https://ophis.fi/' },
+  author: {
+    '@type': 'Person',
+    name: authorName,
+    jobTitle: AUTHOR.jobTitle,
+    worksFor: { '@type': 'Organization', name: 'Ophis', url: 'https://ophis.fi/' },
+  },
   publisher: {
     '@type': 'Organization',
     name: 'Ophis',
@@ -110,18 +121,19 @@ function faqPageSchema(renderedHtml: string, pageUrl: string) {
 // Falling back to '' means "no FAQ schema" rather than a wrong one.
 const faqLd = faqPageSchema(post.rendered?.html ?? '', url)
 
-// JSON.stringify does NOT escape `<`, so a post containing a literal
-// `</script>` (e.g. inside a code span, which renders as an entity and is
-// decoded back by htmlToText) would terminate this ld+json block early and
-// inject live markup into <head>. Reproduced before this guard existed.
-// U+2028/2029 are valid in JSON strings but break JS parsers.
-const jsonLdSafe = (value: unknown): string =>
-  JSON.stringify(value)
-    .replace(/</g, '\\u003c')
-    .replace(/>/g, '\\u003e')
-    .replace(/&/g, '\\u0026')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029')
+// jsonLdSafe (src/lib/jsonld.ts) escapes `<`/`>`/`&` and U+2028/2029 so post
+// content can never terminate the ld+json block early. See its header comment.
+
+const breadcrumbLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  '@id': `${url}#breadcrumb`,
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://ophis.fi/' },
+    { '@type': 'ListItem', position: 2, name: 'Blog', item: 'https://ophis.fi/blog/' },
+    { '@type': 'ListItem', position: 3, name: post.data.title, item: url },
+  ],
+}
 ---
 <Base
   title={`${post.data.title} | Ophis`}
@@ -135,9 +147,10 @@ const jsonLdSafe = (value: unknown): string =>
   {post.data.updatedDate && (
     <meta slot="head" property="article:modified_time" content={post.data.updatedDate.toISOString()} />
   )}
-  <meta slot="head" property="article:author" content={post.data.author} />
+  <meta slot="head" property="article:author" content={authorName} />
   {post.data.tags.map((t) => <meta slot="head" property="article:tag" content={t} />)}
   <script slot="head" type="application/ld+json" is:inline set:html={jsonLdSafe(jsonLd)} />
+  <script slot="head" type="application/ld+json" is:inline set:html={jsonLdSafe(breadcrumbLd)} />
   {faqLd && <script slot="head" type="application/ld+json" is:inline set:html={jsonLdSafe(faqLd)} />}
 
   <Nav />
@@ -146,6 +159,8 @@ const jsonLdSafe = (value: unknown): string =>
       <a class="back" href="/blog/">← All posts</a>
       <header class="post-header">
         <div class="post-meta">
+          <span>By {authorName}</span>
+          <span class="dot" aria-hidden="true">·</span>
           <time datetime={post.data.pubDate.toISOString()}>{fmtDate(post.data.pubDate)}</time>
           <span class="dot" aria-hidden="true">·</span>
           <span>{readingMin} min read</span>

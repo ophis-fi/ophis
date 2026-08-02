@@ -1,0 +1,116 @@
+---
+/**
+ * /supported-chains: THE canonical chain list. Generated from
+ * src/data/chains.ts (the same file that drives the homepage strip, the FAQ
+ * answer, and the JSON-LD in Base.astro), so this page cannot drift from the
+ * rest of the site. scripts/check-chain-count.mjs locks llms.txt to the same
+ * list at build time.
+ */
+import ContentPage from '../layouts/ContentPage.astro'
+import { canonicalPage } from '../data/canonicalPages'
+import { EVM_CHAINS, EVM_CHAIN_COUNT, SOVEREIGN_CHAINS, NEAR_DESTINATIONS } from '../data/chains'
+
+const { updated } = canonicalPage('/supported-chains/')
+const sovereignNames = SOVEREIGN_CHAINS.map((c) => c.name)
+const sovereignList = `${sovereignNames[0]}, ${sovereignNames[1]}, and ${sovereignNames[2]}`
+// Alphabetical for the reference table (the homepage strip keeps display order).
+const tableChains = [...EVM_CHAINS].sort((a, b) => a.name.localeCompare(b.name))
+
+const FAQS = [
+  {
+    q: 'Which chains does Ophis support?',
+    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated sovereign networks, and supports Solana and Bitcoin as destinations via NEAR Intents.`,
+  },
+  {
+    q: 'What does Ophis-operated mean?',
+    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement contract at a non-canonical address, the flat Ophis fee is the all-in cost, and 100% of any price improvement is returned to the trader. Agents and integrators must resolve the per-chain settlement domain and orderbook host via the @ophis/sdk helpers or the MCP list_chains tool before signing, because CoW's canonical address yields a domain the deployed contract rejects.`,
+  },
+  {
+    q: 'How do Solana and Bitcoin destinations work?',
+    a: `Solana and Bitcoin are supported as destinations from any EVM source chain via NEAR Intents, with no second wallet required. They are destinations only: a swap starts from an EVM chain.`,
+  },
+  {
+    q: 'Is there a testnet?',
+    a: `Yes. The Sepolia testnet is available for integration testing. This page lists production chains only.`,
+  },
+]
+
+const itemListLd = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  '@id': 'https://ophis.fi/supported-chains/#chains',
+  name: `EVM chains supported by Ophis`,
+  numberOfItems: EVM_CHAIN_COUNT,
+  itemListElement: EVM_CHAINS.map((c, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name: c.name,
+  })),
+}
+---
+
+<ContentPage
+  title={`Supported chains: ${EVM_CHAIN_COUNT} EVM networks | Ophis`}
+  description={`The canonical list of the ${EVM_CHAIN_COUNT} EVM chains Ophis supports, including the Ophis-operated sovereign networks, plus Solana and Bitcoin destinations via NEAR Intents.`}
+  path="/supported-chains/"
+  heading="Supported chains"
+  lede={`Ophis settles MEV-protected batch auctions on ${EVM_CHAIN_COUNT} EVM chains and reaches Solana and Bitcoin as destinations via NEAR Intents. This page is the canonical list.`}
+  updated={updated}
+  faqs={FAQS}
+  extraLd={[itemListLd]}
+>
+  <p>
+    <strong>The short version:</strong> {FAQS[0].a}
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Chain</th>
+        <th scope="col">Chain ID</th>
+        <th scope="col">Settlement</th>
+      </tr>
+    </thead>
+    <tbody>
+      {tableChains.map((c) => (
+        <tr>
+          <td>{c.name}</td>
+          <td><code>{c.chainId}</code></td>
+          <td>
+            {c.sovereign ? (
+              <span class="badge">Ophis-operated</span>
+            ) : (
+              'CoW Protocol hosted'
+            )}
+          </td>
+        </tr>
+      ))}
+      {NEAR_DESTINATIONS.map((d) => (
+        <tr>
+          <td>{d}</td>
+          <td>n/a</td>
+          <td>Destination via NEAR Intents</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+
+  {FAQS.slice(1).map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>For agents and integrators</h2>
+  <p>
+    The machine-readable per-chain contract-pinning policy (settlement addresses, vault relayers,
+    EIP-712 domains, orderbook hosts) ships in the
+    <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>. The
+    <a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> helpers
+    resolve the correct settlement domain per chain, and the
+    <a href="https://docs.ophis.fi/ai-agents">MCP server</a> exposes the same data through the
+    <code>list_chains</code> tool. Fee detail per chain lives on the
+    <a href="/pricing/">pricing page</a>.
+  </p>
+</ContentPage>

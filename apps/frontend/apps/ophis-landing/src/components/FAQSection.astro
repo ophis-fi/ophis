@@ -12,6 +12,8 @@
  *
  * Accurate Ophis facts only. No em-dash in rendered copy (commas / colons).
  */
+import { EVM_CHAIN_COUNT } from '../data/chains'
+
 const faqs: { q: string; a: string }[] = [
   {
     q: 'What is Ophis?',
@@ -23,7 +25,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'Which chains does Ophis support?',
-    a: 'Ophis covers 13 EVM chains, with Optimism, Unichain, and Robinhood Chain as its operated sovereign networks, and supports Solana and Bitcoin as destinations via NEAR Intents.',
+    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with Optimism, Unichain, and Robinhood Chain as its operated sovereign networks, and supports Solana and Bitcoin as destinations via NEAR Intents.`,
   },
   {
     q: 'How is Ophis different from CoW Swap?',
