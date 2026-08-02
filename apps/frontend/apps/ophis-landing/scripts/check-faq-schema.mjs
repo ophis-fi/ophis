@@ -137,11 +137,14 @@ function main() {
   }
 
   // Every index.html under dist/, at any depth, so nested pages are covered.
+  // EVERY generated .html file, not just directory-style index.html: Astro
+  // also emits flat routes (dist/404.html), and a flat page carrying FAQPage
+  // schema must not silently escape the gate.
   const pagesUnder = (dir) =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const p = join(dir, e.name)
       if (e.isDirectory()) return pagesUnder(p)
-      return e.name === 'index.html' ? [p] : []
+      return e.name.endsWith('.html') ? [p] : []
     })
 
   const failures = []
@@ -155,10 +158,15 @@ function main() {
     let faq = null
     // Attribute-tolerant: a tag like <script id="x" type="application/ld+json">
     // must NOT silently drop the page from coverage (mutation-proved: the old
-    // byte-exact pattern let a page leave the gate with exit 0).
-    for (const m of html.matchAll(
-      /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>(.*?)<\/script>/gis,
-    )) {
+    // byte-exact pattern let a page leave the gate with exit 0). The matches
+    // are kept (full spans included) so the visible-text step below removes
+    // exactly the blocks this finder saw - one pattern, no second regex.
+    const ldBlocks = [
+      ...html.matchAll(
+        /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>(.*?)<\/script>/gis,
+      ),
+    ]
+    for (const m of ldBlocks) {
       let parsed
       try {
         parsed = JSON.parse(m[1])
@@ -224,16 +232,16 @@ function main() {
     }
 
     // Strip the JSON-LD itself before extracting visible text, or the schema
-    // would trivially "appear" inside its own serialized copy.
-    const visible = visibleTextOf(
-      // Same attribute-tolerant pattern as the finder above: if the strip were
-      // narrower, an attribute-carrying schema block would survive into the
-      // "visible" text and trivially match its own serialization.
-      html.replace(
-        /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi,
-        '',
-      ),
-    )
+    // would trivially "appear" inside its own serialized copy. Removal is by
+    // the finder's own match indices (descending, so earlier offsets stay
+    // valid) - the strip can never see a block the finder missed or vice
+    // versa, and there is no replace-based sanitization for remnants to
+    // survive.
+    let htmlSansLd = html
+    for (const m of [...ldBlocks].sort((a, b) => b.index - a.index)) {
+      htmlSansLd = htmlSansLd.slice(0, m.index) + htmlSansLd.slice(m.index + m[0].length)
+    }
+    const visible = visibleTextOf(htmlSansLd)
 
     for (const q of faq.mainEntity ?? []) {
       const question = (q.name ?? '').trim()
