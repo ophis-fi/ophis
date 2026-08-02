@@ -153,7 +153,12 @@ function main() {
     const html = readFileSync(page, 'utf8')
 
     let faq = null
-    for (const m of html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)) {
+    // Attribute-tolerant: a tag like <script id="x" type="application/ld+json">
+    // must NOT silently drop the page from coverage (mutation-proved: the old
+    // byte-exact pattern let a page leave the gate with exit 0).
+    for (const m of html.matchAll(
+      /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>(.*?)<\/script>/gis,
+    )) {
       let parsed
       try {
         parsed = JSON.parse(m[1])
@@ -221,7 +226,13 @@ function main() {
     // Strip the JSON-LD itself before extracting visible text, or the schema
     // would trivially "appear" inside its own serialized copy.
     const visible = visibleTextOf(
-      html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, ''),
+      // Same attribute-tolerant pattern as the finder above: if the strip were
+      // narrower, an attribute-carrying schema block would survive into the
+      // "visible" text and trivially match its own serialization.
+      html.replace(
+        /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi,
+        '',
+      ),
     )
 
     for (const q of faq.mainEntity ?? []) {
