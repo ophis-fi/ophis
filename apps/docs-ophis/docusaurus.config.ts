@@ -221,7 +221,11 @@ const config: Config = {
           title: 'Product',
           items: [
             {label: 'Trade', href: APP_URL},
-            {label: 'Learn', href: `${SWAP_URL}/#/learn`},
+            // Canonical fact + learn pages on the landing (crawlable), not the
+            // swap app's hash-routed #/learn which search engines cannot index.
+            {label: 'Learn', href: `${APP_URL}/learn/`},
+            {label: 'Pricing', href: `${APP_URL}/pricing/`},
+            {label: 'Supported chains', href: `${APP_URL}/supported-chains/`},
             {label: 'About', href: `${SWAP_URL}/#/about`},
             {label: 'Business', href: BUSINESS_URL},
           ],
@@ -236,7 +240,9 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Best-execution, MEV-protected trading across 13 EVM chains. © Ophis ${new Date().getFullYear()}.`,
+      // Count-agnostic on purpose: this string is a known chain-count drift
+      // source (the canonical count lives at ophis.fi/supported-chains).
+      copyright: `Best-execution, MEV-protected trading across every supported EVM chain. © Ophis ${new Date().getFullYear()}.`,
     },
     prism: {
       theme: prismThemes.oneLight,
