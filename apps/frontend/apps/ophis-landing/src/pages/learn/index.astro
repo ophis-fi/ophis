@@ -1,0 +1,114 @@
+---
+/**
+ * /learn: hub for the evergreen guides. Deliberately small: it indexes the
+ * canonical answer pages and the fact pages, it is not a blog mirror. New
+ * guides get a card here, an entry in src/data/canonicalPages.ts, and that
+ * is all.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/learn/')
+
+const GUIDES = [
+  {
+    href: '/learn/intent-based-dex-aggregator/',
+    title: 'What is an intent-based DEX aggregator?',
+    blurb:
+      'Intents vs routers vs RFQ, what a solver is, and why batch auctions change the trader’s position.',
+  },
+  {
+    href: '/learn/mev-protected-swaps/',
+    title: 'MEV-protected swaps, explained',
+    blurb:
+      'What sandwich attacks exploit, which levers batch auctions remove, and the precise boundary of the protection.',
+  },
+  {
+    href: '/learn/ai-agent-token-swaps/',
+    title: 'AI agent token swaps: the safe pattern',
+    blurb:
+      'Bounded orders, receiver pinning, per-chain domain resolution, expiry, and the keyless MCP server.',
+  },
+]
+
+const FACTS = [
+  { href: '/pricing/', title: 'Fees and pricing', blurb: 'The canonical fee reference for every path and chain.' },
+  { href: '/supported-chains/', title: 'Supported chains', blurb: 'The canonical chain list, with settlement mode per chain.' },
+  { href: '/security/', title: 'Security', blurb: 'Custody model, audits, agent safety, disclosure.' },
+]
+
+const itemListLd = {
+  '@context': 'https://schema.org',
+  '@type': 'ItemList',
+  '@id': 'https://ophis.fi/learn/#guides',
+  name: 'Ophis learn guides',
+  numberOfItems: GUIDES.length,
+  itemListElement: GUIDES.map((g, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name: g.title,
+    url: `https://ophis.fi${g.href}`,
+  })),
+}
+---
+
+<ContentPage
+  title="Learn: intents, MEV protection, agent swaps | Ophis"
+  description="Evergreen guides to intent-based trading: what an intent-based DEX aggregator is, how MEV-protected swaps work, and the safe pattern for AI agent token swaps."
+  path="/learn/"
+  heading="Learn"
+  lede="Evergreen guides to how intent-based, MEV-protected trading works, written to answer the question in the title. For dated announcements and walkthroughs, see the blog."
+  updated={updated}
+  extraLd={[itemListLd]}
+>
+  <h2>Guides</h2>
+  <ul class="hub">
+    {GUIDES.map((g) => (
+      <li>
+        <a href={g.href}>{g.title}</a>
+        <p>{g.blurb}</p>
+      </li>
+    ))}
+  </ul>
+
+  <h2>Reference pages</h2>
+  <ul class="hub">
+    {FACTS.map((g) => (
+      <li>
+        <a href={g.href}>{g.title}</a>
+        <p>{g.blurb}</p>
+      </li>
+    ))}
+  </ul>
+
+  <h2>More</h2>
+  <p>
+    The <a href="/blog/">blog</a> carries dated posts (chain launches, walkthroughs, comparisons),
+    the <a href="https://docs.ophis.fi/">docs</a> carry the full protocol and API reference, and
+    <a href="https://business.ophis.fi/">business.ophis.fi</a> covers integrator terms.
+  </p>
+</ContentPage>
+
+<style>
+  .hub {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 20px;
+  }
+  .hub li {
+    border: 1px solid var(--ophis-border);
+    border-radius: var(--ophis-radius);
+    padding: 18px 20px;
+    margin: 0 0 14px;
+  }
+  .hub li a {
+    font-weight: 600;
+    font-size: 18px;
+    border-bottom: none;
+  }
+  .hub li p {
+    margin: 6px 0 0;
+    font-size: 15px;
+    color: var(--ophis-fg-faded);
+  }
+</style>

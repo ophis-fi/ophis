@@ -15,6 +15,21 @@ const PAGES = [
   { route: '/pricing', canonical: 'https://ophis.fi/pricing/', h1: 'Fees and pricing' },
   { route: '/supported-chains', canonical: 'https://ophis.fi/supported-chains/', h1: 'Supported chains' },
   { route: '/security', canonical: 'https://ophis.fi/security/', h1: 'Security' },
+  {
+    route: '/learn/intent-based-dex-aggregator',
+    canonical: 'https://ophis.fi/learn/intent-based-dex-aggregator/',
+    h1: 'What is an intent-based DEX aggregator?',
+  },
+  {
+    route: '/learn/mev-protected-swaps',
+    canonical: 'https://ophis.fi/learn/mev-protected-swaps/',
+    h1: 'MEV-protected swaps, explained',
+  },
+  {
+    route: '/learn/ai-agent-token-swaps',
+    canonical: 'https://ophis.fi/learn/ai-agent-token-swaps/',
+    h1: 'AI agent token swaps: the safe pattern',
+  },
 ]
 
 for (const p of PAGES) {
@@ -35,6 +50,14 @@ for (const p of PAGES) {
     await expect(page.locator('.updated time')).toBeVisible()
   })
 }
+
+test('/learn hub renders and links every guide', async ({ page }) => {
+  await page.goto('/learn')
+  await expect(page.locator('h1')).toHaveText('Learn')
+  for (const p of PAGES.filter((x) => x.route.startsWith('/learn/'))) {
+    await expect(page.locator(`.hub a[href="${p.route}/"]`)).toBeVisible()
+  }
+})
 
 test('pricing page states the flat fee and the partner rate', async ({ page }) => {
   await page.goto('/pricing')
