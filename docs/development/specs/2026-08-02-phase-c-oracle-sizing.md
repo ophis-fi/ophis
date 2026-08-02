@@ -175,16 +175,38 @@ erroneous certified print at execute must not launder a fault into the
 accepted range): the payload also commits a reviewed ABSOLUTE range
 `[execCenterLow, execCenterHigh]` the center must fall in, around the
 SUBMISSION-time composed price S. Its horizon is `DELAY +
-EXECUTE_WINDOW` - execution is permitted through `eta + WINDOW`, and
-WINDOW can add up to 30 days on top of a 90-day DELAY - so: when
-`DELAY + WINDOW <= 90 days`, use the asset's rail factors; otherwise use
-the 120d columns, which every allowed config satisfies
-(`90d + 30d = 120d` max): **LST/LRT [S/6, 8S]** (same compounded floor as
-the rail), **direct ETH/BTC [S/5, 8S]** (worst 120d down -78.1% vs the
--80% bound - a thin 1.9-point margin, stated: a miss only reverts the
-execute for a resubmit, and costs a second timelock ONLY if the old
-rail is simultaneously breached), **LINK [S/5, 12S]**,
-**UNI [S/8, 20S]** (17.11x worst vs 20). The guardian therefore sees the
+EXECUTE_WINDOW` (execution is permitted through `eta + WINDOW`), and the
+range MUST be HORIZON-MATCHED, never blanket rail-width: on an
+UNANCHORED route the range is the ONLY absolute gate at re-center
+(anchored routes also face the divergence read), and a rail-width range
+re-admits the very laundering it exists to stop - a fresh erroneous 7P
+print passes [S/5, 8S] AND the old [P/5, 8P] rail, re-centers the rail
+to [1.17P, 56P], freezes the route when the feed returns to truth, and
+every repeat ratchets the accepted band outward. Measured worst moves
+per horizon (wick basis, listing month excluded; LINK's down column uses
+its close basis, -51.2/-57.7/-62.2%, with the labeled 2020-03-13
+near-zero wick excluded - UNI's wick governs the class):
+
+| Horizon (>= DELAY+WINDOW) | ETH/BTC down / up | range | LINK/UNI down / up | range |
+|---|---|---|---|---|
+| 2 days | -55.8% / 1.50x | **[S/3, 2S]** | -75.2% / 2.00x | **[S/5, 2.5S]** |
+| 8 days | -64.9% / 1.87x | **[S/4, 3S]** | -76.1% / 2.71x | **[S/5, 3S]** |
+| 31 days | -69.8% / 3.37x | **[S/4, 4S]** | -80.4% / 5.18x | **[S/8, 6S]** |
+| 120 days | -78.1% / 6.69x | **[S/5, 8S]** | -83.5% / 17.11x | **UNI [S/8, 20S], LINK [S/5, 12S]** |
+
+Pick the smallest row covering the config's `DELAY + WINDOW`; LST/LRT
+low sides compound the -11.76% ratio transient exactly as the rail does
+(rounded factors unchanged except the 120-day row's [S/6]). On the
+recommended sovereign config (DELAY 24h, window <= 7d -> the 8-day row)
+a 7S-class fault fails the 3S ceiling OUTRIGHT, killing the ratchet. At
+long horizons the range necessarily widens toward the rail width, and
+the residual is stated rather than hidden: an UNANCHORED route on a
+long-DELAY vault retains a range-wide ratchet surface - such routes
+should carry an anchor or run on short-DELAY deployments - while every
+re-center still passes the full validation read, emits its events, and
+stamps `railCenteredAt` for the watcher. A range miss from legitimate
+drift only reverts the execute for a resubmit, and costs a second
+timelock ONLY if the old rail is simultaneously breached. The guardian therefore sees the
 worst-case absolute rail (range endpoint x rail ratio) during the veto
 window, and the spec adds a center-inside-the-OLD-rail induction check
 on top (waived only in rail recovery; spec: executeRouteRecalibration).
@@ -669,7 +691,8 @@ movement as an alertable signal in both cases.
   ETH-only [P/5, 5P] failed the record: every asset's bull-run up-moves
   pierce 5P, and UNI's recorded 17.11x 120-day move pierced even 16P).
   Payload carries the width as ratios plus a reviewed absolute center
-  range sized for DELAY + EXECUTE_WINDOW (ETH/BTC [S/5, 8S], LINK
-  [S/5, 12S], UNI [S/8, 20S]) - a submission-time center would govern
+  range HORIZON-MATCHED to DELAY + EXECUTE_WINDOW (A.3 table; 8-day row
+  [S/4, 3S] on the recommended config - blanket rail-width ranges
+  re-admit the unanchored-route ratchet A.3 documents) - a submission-time center would govern
   DELAY + interval of drift, and an unreviewed center would launder
   faults (A.3).

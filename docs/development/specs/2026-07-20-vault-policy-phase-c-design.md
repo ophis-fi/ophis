@@ -1370,12 +1370,12 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     //                                     // validates low < 1e18 < high
     //       uint256 execCenterLow;        // REVIEWED ABSOLUTE range the execute-time center
     //       uint256 execCenterHigh;       // must fall in, around the submission-time
-    //                                     // composed price S. Sized for the FULL horizon
-    //                                     // DELAY + EXECUTE_WINDOW (execution is legal
-    //                                     // through eta + WINDOW, up to 30 days past
-    //                                     // maturity): the asset's rail factors when
-    //                                     // DELAY + WINDOW <= 90d, the sizing doc's 120d
-    //                                     // columns otherwise (A.3). What keeps the
+    //                                     // composed price S. HORIZON-MATCHED to
+    //                                     // DELAY + EXECUTE_WINDOW via the sizing doc's
+    //                                     // A.3 table (8-day row on the recommended
+    //                                     // config) - a blanket rail-width range would
+    //                                     // re-admit the unanchored-route re-center
+    //                                     // ratchet A.3 documents. What keeps the
     //                                     // resulting absolute rail guardian-reviewable:
     //                                     // the worst case visible at submit is
     //                                     // [execCenterLow x lowRatio, execCenterHigh x highRatio]
@@ -1544,9 +1544,11 @@ the verification log tracks which currently have no assigned target.
   value ALSO folds in the SELL asset's TTL-APPRECIATION envelope (A.6,
   recommended: the ANY-START p99 bound of its measured 1-hour up-moves -
   close-anchored sampling only covers hourly-close registrations; per-stable
-  measured recovery envelopes for stable-sell rotations (USDC via its
-  direct series, USDT via the reciprocal - a below-peg registration can
-  recover to peg inside the TTL), never zero): the composition envelope bounds mismeasurement AT the
+  measured recovery envelopes for stable-sell rotations, USD-DENOMINATED
+  per A.6 (Coinbase's USDT-USD book directly for USDT, synthetic
+  USDC/USD for USDC - never a stable-vs-stable cross, which cannot see
+  both stables recovering together from a common discount; a below-peg
+  registration can recover to peg inside the TTL), never zero): the composition envelope bounds mismeasurement AT the
   charging instant, but between registration and fill the asset can
   genuinely REPRICE, the fill check is a STATICCALL that cannot append
   the difference to the bucket, and without the envelope a fill during
@@ -1571,8 +1573,10 @@ the verification log tracks which currently have no assigned target.
   within ~2 minutes - which is what the allowance covers - so this
   requires an extended landing failure coinciding with a violent pump).
   Its size is absolutely bounded by the worst up-move over the staleness
-  window, computed from primary data in A.6 (~24% over 1h-class windows,
-  ~48% over 25h-class); it lasts at most the stall; and the SAME stalled
+  window, computed from primary data in A.6 (ANY-START basis: ~61% over
+  1h-class windows, ~62% over 25h-class; close-anchored ~24%/~48% - an
+  outage can begin at any instant, so the any-start figures govern); it
+  lasts at most the stall; and the SAME stalled
   reads corrupt the C2 oracle floor, the direct value path. `maxStaleness`
   is therefore a TURNOVER parameter as well as a floor parameter, and
   listing review sizes it with both in mind - folding the full staleness
@@ -1886,14 +1890,22 @@ the verification log tracks which currently have no assigned target.
   CRITICAL when `now > snapshotTs + 180 days - DELAY` (the last instant
   a fresh submission can still mature before the term is breached - a
   flat 165-day trigger would leave 15 days of runway against a 90-day
-  DELAY). The RAIL runs its OWN deadline keyed on `railCenteredAt`, not
-  on refresh executions: rateOnly refreshes advance the execution clock
-  while INTENTIONALLY leaving the rail stale, so a snapshot-keyed
-  formula stays silent while the 90-day re-center cadence expires and an
-  obsolete absolute rail drifts toward freezing valid trades. Rail WARN
-  when `now > railCenteredAt + interval - DELAY - 7 days`, rail OVERDUE
-  when `now > railCenteredAt + interval`, suppressible ONLY by a pending
-  NON-rateOnly recalibration whose eta lands before that deadline. Also alert on repeated
+  DELAY). The RAIL runs its OWN deadline keyed on `railCenteredAt` and its
+  OWN 90-DAY interval (A.3's cadence - NOT the snapshot interval, which
+  shrinks to 69 days at DELAY = 90 and would mark a constructor-installed
+  route overdue before any refresh could possibly execute): rateOnly
+  refreshes advance the execution clock while INTENTIONALLY leaving the
+  rail stale, so a snapshot-keyed formula stays silent while the
+  re-center cadence expires and an obsolete absolute rail drifts toward
+  freezing valid trades. Rail WARN when
+  `now > railReference + 90 days - DELAY - 7 days`, rail OVERDUE when
+  `now > railReference + 90 days`, where railReference = the eta of the
+  most recently submitted still-pending NON-rateOnly recalibration, else
+  `railCenteredAt` (constructor routes start at deployTs) - the same
+  scheduled-execution anchoring as the snapshot WARN, because at long
+  DELAY the successor's submission is due before the predecessor
+  executes; suppression is per-deadline, ONLY by a pending NON-rateOnly
+  recalibration whose eta lands before the deadline in question. Also alert on repeated
   transient-revert simulation failures for a live order (floor blocking =
   expected but report it), and on `getMinDelay`-style wiring drift (fallback
   handler changed, verifier deregistered).
