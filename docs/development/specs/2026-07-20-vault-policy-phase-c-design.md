@@ -1255,12 +1255,19 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     //                                     // partial refreshes would silently leave one
     //                                     // leg's bound stale while appearing recalibrated
     //       uint256 railLowRatioE18;      // the new rail as 1e18-scaled RATIOS to the
-    //       uint256 railHighRatioE18;     // composed price READ AT EXECUTE (0.2e18/5e18
-    //                                     // = [P/5, 5P]); submit validates low < 1e18 < high
+    //       uint256 railHighRatioE18;     // composed price READ AT EXECUTE (per-asset
+    //                                     // asymmetric, sizing doc A.3 - e.g. 0.2e18/8e18
+    //                                     // = [P/5, 8P] for ETH-exposure routes); submit
+    //                                     // validates low < 1e18 < high
     //       uint256 execCenterLow;        // REVIEWED ABSOLUTE range the execute-time center
-    //       uint256 execCenterHigh;       // must fall in (sizing doc: [S/5, 5S] around the
-    //                                     // submission-time composed price S) - what keeps
-    //                                     // the resulting absolute rail guardian-reviewable:
+    //       uint256 execCenterHigh;       // must fall in, around the submission-time
+    //                                     // composed price S. Sized for the FULL horizon
+    //                                     // DELAY + EXECUTE_WINDOW (execution is legal
+    //                                     // through eta + WINDOW, up to 30 days past
+    //                                     // maturity): the asset's rail factors when
+    //                                     // DELAY + WINDOW <= 90d, the sizing doc's 120d
+    //                                     // columns otherwise (A.3). What keeps the
+    //                                     // resulting absolute rail guardian-reviewable:
     //                                     // the worst case visible at submit is
     //                                     // [execCenterLow x lowRatio, execCenterHigh x highRatio]
     //       uint16  turnoverGrossUpBps;   // the reviewed charge gross-up (see C4)
@@ -1412,7 +1419,18 @@ the verification log tracks which currently have no assigned target.
   USD-composition leg: deviation threshold + the measured update-landing
   allowance for market-priced legs; the rate FEED's own deviation
   threshold + the sourced margin set for rate legs read from a feed, the
-  margins alone for registration-only live contract reads.
+  margins alone for registration-only live contract reads. The stored
+  value ALSO folds in the SELL asset's TTL-APPRECIATION envelope (A.6,
+  recommended p99 of its measured 1-hour up-moves; zero for stable-sell
+  rotations): the composition envelope bounds mismeasurement AT the
+  charging instant, but between registration and fill the asset can
+  genuinely REPRICE, the fill check is a STATICCALL that cannot append
+  the difference to the bucket, and without the envelope a fill during
+  an in-TTL pump moves more USD than was reserved. Beyond-p99 repricing
+  is the documented tail: bounded by the recorded per-TTL maxima, it
+  requires the pump to land inside an open order's TTL, and the Phase-B
+  rolling-24h <= ~2x cap bound holds regardless - the order TTL is the
+  reviewable knob.
   The SAME formula for anchored and unanchored routes, because the anchor
   plays no role in the charge and `maxDivergenceBps` would be the WRONG
   bound anyway: the divergence band is anchor-RELATIVE and definitionally
@@ -1420,8 +1438,9 @@ the verification log tracks which currently have no assigned target.
   as agreeing), while the composition envelope bounds the route's absolute
   in-band underreport directly. NOT the sanity rail either: the rail is an
   order-of-magnitude fault backstop sized in MULTIPLES of the price (sizing
-  doc: [P/5, 5P]), and charging at `sanityHigh` would bill every order ~5x
-  its notional, silently deleting ~80% of the configured turnover budget.
+  doc A.3: per-asset asymmetric, e.g. [P/5, 8P] for ETH-exposure), and
+  charging at `sanityHigh` would bill every order ~5-8x its notional,
+  silently deleting most of the configured turnover budget.
   The one in-model channel LEFT beyond the envelope, stated rather than
   hidden: a market UP-move during a genuine update-landing outage that
   stays inside a leg's `maxStaleness` (the write path normally lands
@@ -1712,7 +1731,17 @@ the verification log tracks which currently have no assigned target.
 - **monitoring**: alert on `TokenAddSubmitted` AND
   `RouteRecalibrationSubmitted` (anywhere - a recalibration can loosen the
   sanity rail or turnover gross-up under the same veto-gated model as an
-  add, so its submission is the same guardian-reaction event), on repeated
+  add, so its submission is the same guardian-reaction event), on
+  RECALIBRATION DEADLINES, not just submissions - the B.2 cadence has no
+  on-chain expiry (a stale RateBound ceiling keeps expanding linearly and
+  a missed refresh silently operates past the approved slack envelope),
+  so the watcher polls every route's per-leg `snapshotTs` and the rail's
+  last re-center time from route storage (publicly readable; no event
+  needed) and alerts at TWO thresholds: WARN when any age exceeds
+  `interval - DELAY - 7 days` (the last comfortable submission date for
+  an on-schedule refresh), CRITICAL when any snapshot age exceeds 165
+  days (15 days before the 180-day term the B.1/B.2 window arithmetic is
+  derived from). Also alert on repeated
   transient-revert simulation failures for a live order (floor blocking =
   expected but report it), and on `getMinDelay`-style wiring drift (fallback
   handler changed, verifier deregistered).
