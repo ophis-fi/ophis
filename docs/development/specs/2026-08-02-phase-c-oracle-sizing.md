@@ -253,31 +253,43 @@ undershoot the compounded worst case - the gross-up is applied to a value
 that is already the SHRUNKEN side of the envelope.) Per-leg terms:
 
 - market-priced leg (ETH/USD, or any leg whose underlying moves at market
-  speed): term = its deviation threshold + a **165 bps** update-landing
+  speed): term = its deviation threshold + a **245 bps** update-landing
   allowance. Mechanism: a fresh feed either has not drifted past its
   threshold (error <= threshold) or has, and the triggered update lands
   within the ~2-minute propagation lag Gauntlet documented (A.1) - during
-  which the market moves at most the observed 2-minute extreme. Measured
-  PER UNDERLYING (30-day 1-minute Binance samples read 2026-08-02, 43.2k
-  candles each; 2-minute absolute moves): max ETH **164.3** / BTC
-  **100.6** / LINK **156.0** / UNI **164.3** bps; p99.99 ETH 107.6 / BTC
-  71.6 / LINK 127.5 / UNI 141.7. The allowance is set to **165 bps for
+  which the market moves at most the 2-minute extreme. A trigger fires at
+  ANY instant, so the statistic is the ANY-START bound
+  `max(high[i..i+2]) / low[i] - 1` (every <=2-minute window opening
+  anywhere in minute i starts >= low[i] and peaks <= the straddled highs
+  - over-covering by construction; close-anchored 2-minute maxes, ETH
+  164.3 bps, bracket from below). Measured PER UNDERLYING (30-day
+  1-minute Binance samples read 2026-08-02, 43.2k candles each): max ETH
+  **211.3** / BTC **155.8** / LINK **206.1** / UNI **241.1** bps; p99.99
+  146.2 / 107.5 / 153.7 / 205.5. The allowance is set to **245 bps for
   all four measured underlyings** - the cross-asset envelope, a LABELED
   robustness choice rather than per-asset maxes, because a single month
-  under-samples each asset's own tail (LINK's and UNI's p99.99 exceed
-  ETH's while their maxes do not rank consistently). Any underlying not
-  measured here gets NO default: its 30-day landing envelope is measured
-  at listing review, and the allowance is max(own measured max rounded
-  up, 165).
-- rate leg read from a FEED (ExR or market LST ratio): term = the feed's
-  own deviation threshold + **25 bps**, the SAME sourced margin set as A.1
-  (15 = 3x measured calm-market basis + 10 labeled jitter). The feed's
-  promise is only update-on-threshold-or-heartbeat, so it may sit up to its
-  threshold from truth while fresh - a 0.5% ExR feed contributes 50 bps of
-  in-band error the margins alone do not cover. No 165-bps landing
-  allowance on top: the underlying RATIO moves ~3%/yr (A.1) and the sourced
-  depeg events unfold over hours-to-months (A.3), so ratio movement inside
-  the ~2-minute landing lag stays inside the 10-bps jitter allowance.
+  under-samples each asset's own tail. Any underlying not measured here
+  gets NO default: its 30-day any-start landing envelope is measured at
+  listing review, and the allowance is max(own measured max rounded up,
+  245).
+- PROTOCOL exchange-rate leg read from a FEED (the contract-rate mirrors:
+  rETH-ETH ExR, weETH/eETH ExR, tETH/wstETH ExR classes): term = the
+  feed's own deviation threshold + **25 bps**, the SAME sourced margin set
+  as A.1 (15 = 3x measured calm-market basis + 10 labeled jitter). The
+  feed's promise is only update-on-threshold-or-heartbeat, so it may sit
+  up to its threshold from truth while fresh - a 0.5% ExR feed contributes
+  50 bps of in-band error the margins alone do not cover. No landing
+  allowance on top: the underlying CONTRACT RATE moves ~3%/yr (A.1) and
+  cannot gap intra-minute, so movement inside the ~2-minute landing lag
+  stays inside the 10-bps jitter allowance.
+- MARKET-ratio leg read from a FEED (STETH/ETH market, CBETH/ETH market
+  classes) is a MARKET-SPEED leg, not a slow rate leg: the ratio is a
+  traded price that can gap during a fast crash or repeg - the record's
+  11.76% momentary market-vs-rate divergence (A.3) is exactly such a
+  window - so its in-band error is NOT bounded by threshold + 25. Term =
+  its deviation threshold + a landing envelope MEASURED FOR THAT RATIO
+  SERIES at listing review (any-start method as above); NO numeric
+  default here, because no ratio series was measured in this document.
 - registration-only rate leg read LIVE from the token contract (no feed, no
   update threshold): term = **25 bps**, the margins alone - a direct read
   has no feed lag; the term covers basis against real value, and a
@@ -306,7 +318,8 @@ each symbol's full Binance 1h history:
 | BTC | 569 | 1,202 | 2,243 | **570** |
 | LINK | 839 | 1,838 | 4,517 | **840** |
 | UNI | 857 | 2,011 | 5,924 | **860** |
-| Stablecoin (USDCUSDT, 2018-12+) | 55 | 198 | 3,154 | **60** |
+| USDC (USDCUSDT direct, 2018-12+) | 55 | 198 | 3,154 | **60** |
+| USDT (reciprocal of USDCUSDT: high[i]/min(low[i],low[i+1])) | 54 | 165 | 3,154 | **60** |
 
 Raw sample MAXIMA are dominated by documented single-venue wick
 artifacts (ETH's +114% intra-candle 2017-08-22 listing week, LINK's
@@ -314,12 +327,18 @@ artifacts (ETH's +114% intra-candle 2017-08-22 listing week, LINK's
 sizing basis; the close-anchored maxima (ETH +24.4% on 2020-03-13) remain
 the representative extreme prints. Recommended default: fold the SELL
 asset's any-start p99 into the stored value - `turnoverGrossUpBps =
-(1/prod(1 - term_i)) x (1 + ttlP99) - 1`. STABLE-SELL routes take the
-measured stablecoin envelope of **60 bps, never zero**: a stable order
-registered below peg that recovers inside the TTL fills at genuinely
-higher USD value (the USDC p99.9 of 198 bps is exactly the depeg-recovery
-class, March 2023), so a zero envelope under-reserves precisely in the
-scenario that produces stable-sell repricing. The tail beyond p99 is
+(1/prod(1 - term_i)) x (1 + ttlP99) - 1`. STABLE-SELL routes take a
+PER-STABLE measured envelope, **never zero**: a stable order registered
+below peg that recovers inside the TTL fills at genuinely higher USD
+value (the USDC p99.9 of 198 bps is exactly the depeg-recovery class,
+March 2023), so a zero envelope under-reserves precisely in the scenario
+that produces stable-sell repricing. And the measurement is DIRECTIONAL
+per asset: USDT appreciation shows up as a DOWN-move in USDCUSDT, so the
+direct pair's upside quantiles bound nothing for a USDT sell - USDT gets
+the reciprocal series (table row above; its 60 bps is its own measured
+p99, coincidentally equal to USDC's). Every admitted stable is measured
+against its own series (direct or reciprocal) before listing; no
+universal stable default exists. The tail beyond p99 is
 accepted and stated: overshoot requires the pump to land inside the
 order's open TTL, the p99.9 column bounds all but ~0.1% of windows, and
 the Phase-B rolling-24h <= ~2x cap bound holds regardless; the order TTL
@@ -327,18 +346,18 @@ is the knob (shorter TTL, smaller envelope - re-measure at the chosen
 TTL).
 
 Worked defaults (reciprocal form, ETH-exposure sell asset, ttlP99 = 685
-bps): standard route, 0.5% ExR FEED rate leg + 0.5%/1h ETH/USD leg:
-(1/((1 - 0.0075)(1 - 0.0215))) x 1.0685 - 1 = 1,002.3 bps -> **1005**.
-Same shape on an Arbitrum-style 0.05%/24h ETH/USD leg: 951.9 bps ->
-**955**. Live-read rate leg + 0.5%/1h ETH/USD: 947.1 bps -> **950**. A
-stable-sell rotation applies x 1.0060 to its own (small) composition
-envelope instead. Overcharge at this scale is fail-closed: charges on
-volatile-sell orders land ~9.5-10% above live - the stated price of a
-reservation that covers 99% of ANY-START windows on record - the
-effective daily budget shrinks by the same factor, and operators size
-`dailyUsdTurnoverCap` knowing that. If that price is judged too high for
-a given vault, the reviewable trade is a shorter TTL, not a thinner
-envelope.
+bps, landing 245): standard route, 0.5% PROTOCOL ExR FEED rate leg +
+0.5%/1h ETH/USD leg: (1/((1 - 0.0075)(1 - 0.0295))) x 1.0685 - 1 =
+1,093.0 bps -> **1095**. Same shape on an Arbitrum-style 0.05%/24h
+ETH/USD leg: 1,041.8 bps -> **1045**. Live-read rate leg + 0.5%/1h
+ETH/USD: 1,037.4 bps -> **1040**. A stable-sell rotation applies
+x 1.0060 to its own (small) composition envelope instead. Overcharge at
+this scale is fail-closed: charges on volatile-sell orders land
+~10.4-11% above live - the stated price of a reservation that covers 99%
+of ANY-START windows on record - the effective daily budget shrinks by
+the same factor, and operators size `dailyUsdTurnoverCap` knowing that.
+If that price is judged too high for a given vault, the reviewable trade
+is a shorter TTL, not a thinner envelope.
 
 **The residual beyond the envelope, quantified rather than waved at:** the
 one in-model way a FRESH leg can be wrong by more than
@@ -565,15 +584,16 @@ movement as an alertable signal in both cases.
   appreciation envelope (the ANY-START p99 bound of 1h up-moves - a
   close-anchored sample only covers hourly-close registrations; fills
   reprice during the TTL and the static fill check cannot re-charge):
-  standard ETH-exposure route **1005 bps**, live-read **950**,
-  Arbitrum-style **955**; stable-sell rotations take the measured **60
-  bps** recovery envelope (below-peg registration recovering inside the
-  TTL), never zero.
+  standard ETH-exposure route **1095 bps**, live-read **1040**,
+  Arbitrum-style **1045**; stable-sell rotations take PER-STABLE measured
+  recovery envelopes (USDC 60 direct, USDT 60 via the reciprocal series;
+  below-peg registration recovering inside the TTL), never zero.
   Same formula anchored or unanchored; NOT maxDivergenceBps
   (anchor-relative, blind to common-mode) and NOT sanityHigh (~5-8x
-  notional). Landing allowance 165 bps = cross-asset envelope of the four
-  measured underlyings (ETH/BTC/LINK/UNI); unmeasured underlyings are
-  measured at listing. Permitted-lag residual bounded by the computed
+  notional). Landing allowance 245 bps = any-start cross-asset envelope of the
+  four measured underlyings (ETH/BTC/LINK/UNI); market-RATIO anchor feeds
+  are market-speed legs with per-listing measured envelopes; unmeasured
+  underlyings are measured at listing. Permitted-lag residual bounded by the computed
   worst up-move over the staleness window (1h +24.4% / 25h +47.9%), so
   `maxStaleness` is reviewed as a turnover parameter too; beyond-p99 TTL
   repricing bounded by the recorded per-TTL maxima and the rolling-24h

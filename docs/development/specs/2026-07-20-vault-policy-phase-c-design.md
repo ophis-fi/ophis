@@ -1513,9 +1513,10 @@ the verification log tracks which currently have no assigned target.
   margins alone for registration-only live contract reads. The stored
   value ALSO folds in the SELL asset's TTL-APPRECIATION envelope (A.6,
   recommended: the ANY-START p99 bound of its measured 1-hour up-moves -
-  close-anchored sampling only covers hourly-close registrations; ~60 bps
-  measured stable-recovery envelope for stable-sell rotations - a
-  below-peg registration can recover to peg inside the TTL - never zero): the composition envelope bounds mismeasurement AT the
+  close-anchored sampling only covers hourly-close registrations; per-stable
+  measured recovery envelopes for stable-sell rotations (USDC via its
+  direct series, USDT via the reciprocal - a below-peg registration can
+  recover to peg inside the TTL), never zero): the composition envelope bounds mismeasurement AT the
   charging instant, but between registration and fill the asset can
   genuinely REPRICE, the fill check is a STATICCALL that cannot append
   the difference to the bucket, and without the envelope a fill during
@@ -1552,10 +1553,10 @@ the verification log tracks which currently have no assigned target.
   malfunction of the same root of trust the ORACLE FLOOR stands on, out of
   model for the cap as for everything else. Overcharging by the gross-up is
   fail-closed but NOT small at the recommended envelopes: A.6's worked
-  defaults land at ~9.5-10% for volatile-sell routes (composition envelope
-  x any-start TTL bound) and near the bare composition envelope for
-  stable-sell rotations - so the usable daily budget on volatile-sell
-  routes is ~90% of the configured cap, and operators size
+  defaults land at ~10.4-11% for volatile-sell routes (composition
+  envelope x any-start TTL bound) and near the bare composition envelope
+  for stable-sell rotations - so the usable daily budget on volatile-sell
+  routes is ~89% of the configured cap, and operators size
   `dailyUsdTurnoverCap` (and judge the TTL trade, A.6) knowing charges
   land at top-of-band. Refund arithmetic saturates at zero: a naive
   subtraction underflow-reverts on a drained bucket and, through the shared
@@ -1836,12 +1837,17 @@ the verification log tracks which currently have no assigned target.
   last re-center time from route storage (publicly readable; no event
   needed) and alerts on EXECUTABLE DEADLINES, suppressed while a matching
   pending is already in flight: WARN when
-  `now > lastExecTime + interval - DELAY - 7 days` (the last comfortable
-  SUBMISSION date from which an on-schedule execution is still reachable
-  - with long delays this lands BEFORE the previous refresh even
-  executes, which is exactly the B.2 pre-staging pipeline, so the anchor
-  is the next EXECUTION deadline, never elapsed-time-since-last-refresh:
-  a naive `age > interval - DELAY` goes negative at DELAY = 90d),
+  `now > referenceExec + interval - DELAY - 7 days`, where referenceExec
+  = the SCHEDULED execution time (eta - known the moment it is
+  submitted) of the most recently submitted still-pending refresh, else
+  the last ACTUAL execution time (the last comfortable SUBMISSION date
+  from which an on-schedule execution is still reachable - with long
+  delays the successor's submission deadline lands BEFORE the
+  predecessor even executes, which is exactly the B.2 pre-staging
+  pipeline, so the anchor must be a deadline computable at SUBMISSION:
+  anchoring on the completed execution would fire 28 days too late at
+  DELAY = 90d, and a naive `age > interval - DELAY` goes negative
+  there),
   CRITICAL when `now > snapshotTs + 180 days - DELAY` (the last instant
   a fresh submission can still mature before the term is breached - a
   flat 165-day trigger would leave 15 days of runway against a 90-day
