@@ -1185,10 +1185,15 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // RateBound.snapshotTs), and anchorBandState exposes no timestamps.
     function routeConfig(address token) external view
         returns (uint64 railCenteredAt, uint256 sanityLow, uint256 sanityHigh, uint16 turnoverGrossUpBps);
-    // One row per rate leg (route legs first, then anchor legs), each
-    // (isAnchorLeg, legIndex, snapshotRatio, snapshotTs) - the exact
-    // identification scheme RouteRecalibration payloads use, so the
-    // watcher's rows map 1:1 onto the refresh it must submit.
+    // One row per REGISTRATION-ONLY rate leg (route legs first, then
+    // anchor legs), each (isAnchorLeg, legIndex, snapshotRatio,
+    // snapshotTs) - the exact identification scheme RouteRecalibration
+    // payloads use, so the watcher's rows map 1:1 onto the refresh it
+    // must submit. Fill-eligible FEED legs are EXCLUDED: they carry no
+    // governed snapshot (Leg.bound is meaningful only for
+    // registration-only source legs), and a zero-timestamp row would
+    // read as a permanently overdue refresh the payload could never
+    // satisfy.
     function routeSnapshots(address token) external view
         returns (LegSnapshot[] memory);
     function sweepResidual(address token) external;             // retry residual revocations that failed
@@ -1881,7 +1886,14 @@ the verification log tracks which currently have no assigned target.
   CRITICAL when `now > snapshotTs + 180 days - DELAY` (the last instant
   a fresh submission can still mature before the term is breached - a
   flat 165-day trigger would leave 15 days of runway against a 90-day
-  DELAY). Also alert on repeated
+  DELAY). The RAIL runs its OWN deadline keyed on `railCenteredAt`, not
+  on refresh executions: rateOnly refreshes advance the execution clock
+  while INTENTIONALLY leaving the rail stale, so a snapshot-keyed
+  formula stays silent while the 90-day re-center cadence expires and an
+  obsolete absolute rail drifts toward freezing valid trades. Rail WARN
+  when `now > railCenteredAt + interval - DELAY - 7 days`, rail OVERDUE
+  when `now > railCenteredAt + interval`, suppressible ONLY by a pending
+  NON-rateOnly recalibration whose eta lands before that deadline. Also alert on repeated
   transient-revert simulation failures for a live order (floor blocking =
   expected but report it), and on `getMinDelay`-style wiring drift (fallback
   handler changed, verifier deregistered).

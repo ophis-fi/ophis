@@ -141,11 +141,18 @@ submission cadence alone lets one refresh execute at eta and its
 successor near its snapshot deadline or through a 30-day rail-only
 window - stretching the governed span to ~111-120 days). The widths are
 therefore sized on the **120-DAY columns**, so even a maximally late
-execution cannot outrun them: **ETH-exposure (all LST/LRT routes) and
-BTC: [P/5, 8P]** (P/5 = -80% below the worst 120d closes -76.3%/-65.4%,
-thin 1.9-point margin on the ETH wick basis stated; 8P = 20% above the
-6.69x 120d worst); **LINK: [P/5, 12P]** (11.35x wick 120d worst);
-**UNI: [P/8, 20P]** (the recorded 17.11x 120-day move pierces a 16P
+execution cannot outrun them - and for LST/LRT routes the DOWN side is
+COMPOUNDED, because the rail binds the EFFECTIVE composed price
+(underlying x ratio), so a concurrent drawdown and market-ratio depeg
+multiply: **LST/LRT routes: [P/6, 8P]** - the ETH 120d wick drawdown
+(-78.1% -> 0.219) times the largest sourced ratio transient (-11.76%,
+A.3) gives 0.219 x 0.8824 = **0.193P, which PIERCES P/5**; P/6 = 0.167
+covers it with a 16% margin, and the UP side needs no compounding (even
+a 2% ratio premium, above anything in the A.2 record, leaves 6.69 x
+1.02 = 6.82 < 8); **direct ETH and BTC routes: [P/5, 8P]** (P/5 = -80%
+below the worst 120d closes -76.3%/-65.4%, thin 1.9-point margin on the
+ETH wick basis stated; 8P = 20% above the 6.69x 120d worst);
+**LINK: [P/5, 12P]** (11.35x wick 120d worst); **UNI: [P/8, 20P]** (the recorded 17.11x 120-day move pierces a 16P
 rail, so 16P was WRONG for a late execution - 20P covers it with 17%
 margin, and P/8 = -87.5% sits below the -83.5% wick worst); **any
 underlying not in the table: NO default** - same per-listing derivation
@@ -172,17 +179,20 @@ EXECUTE_WINDOW` - execution is permitted through `eta + WINDOW`, and
 WINDOW can add up to 30 days on top of a 90-day DELAY - so: when
 `DELAY + WINDOW <= 90 days`, use the asset's rail factors; otherwise use
 the 120d columns, which every allowed config satisfies
-(`90d + 30d = 120d` max): **ETH/BTC [S/5, 8S]** (worst 120d down -78.1%
-vs the -80% bound - a thin 1.9-point margin, stated: a miss only
-reverts the execute for a resubmit, and costs a second timelock ONLY if
-the old rail is simultaneously breached), **LINK [S/5, 12S]**,
+(`90d + 30d = 120d` max): **LST/LRT [S/6, 8S]** (same compounded floor as
+the rail), **direct ETH/BTC [S/5, 8S]** (worst 120d down -78.1% vs the
+-80% bound - a thin 1.9-point margin, stated: a miss only reverts the
+execute for a resubmit, and costs a second timelock ONLY if the old
+rail is simultaneously breached), **LINK [S/5, 12S]**,
 **UNI [S/8, 20S]** (17.11x worst vs 20). The guardian therefore sees the
 worst-case absolute rail (range endpoint x rail ratio) during the veto
 window, and the spec adds a center-inside-the-OLD-rail induction check
 on top (waived only in rail recovery; spec: executeRouteRecalibration).
-The depeg-exit consequence follows for free: an 11.76%-class transient
-never approaches any of these floors, so the exit path survives every
-sourced stress event. The residual this prices: a
+The depeg-exit consequence is now priced in directly rather than
+assumed: an 11.76%-class transient ALONE never approaches any floor, and
+the concurrent crash-plus-depeg product - the case that pierced P/5 - is
+exactly what the LST/LRT P/6 floor is sized against, so the sell-side
+exit survives every sourced stress event INCLUDING the compounded one. The residual this prices: a
 certified-but-erroneous anchor may lower the floor anywhere inside the
 divergence band (A.5) - the SANITY rail was never the defense against that;
 the certified-pair requirement, the anchor<route direction rule, the
@@ -651,9 +661,10 @@ movement as an alertable signal in both cases.
   the recorded per-TTL maxima and the rolling-24h <= ~2x cap bound.
 - Sanity rail (absolute-price fault rail, NOT a divergence tool and NOT a
   turnover basis): **PER-ASSET and ASYMMETRIC, centered on the composed
-  price AT EXECUTION, re-centered at every recalibration** - ETH-exposure
-  & BTC [P/5, 8P], LINK [P/5, 12P], UNI [P/8, 20P], unmeasured assets NO
-  default (sized on the 120-DAY columns so a late execution cannot outrun
+  price AT EXECUTION, re-centered at every recalibration** - LST/LRT
+  [P/6, 8P] (underlying drawdown x ratio depeg COMPOUNDED - the product
+  pierces P/5 on the record), direct ETH & BTC [P/5, 8P], LINK
+  [P/5, 12P], UNI [P/8, 20P], unmeasured assets NO default (sized on the 120-DAY columns so a late execution cannot outrun
   them - the cadence is normative on EXECUTIONS <= 90d apart; the old
   ETH-only [P/5, 5P] failed the record: every asset's bull-run up-moves
   pierce 5P, and UNI's recorded 17.11x 120-day move pierced even 16P).
