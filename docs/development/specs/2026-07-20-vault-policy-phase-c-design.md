@@ -1123,6 +1123,27 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     function rotateGuardian(address newGuardian) external;      // Safe-submitted, TIMELOCKED like a token add and
                                                                 // incumbent-guardian-cancelable (C16: instant rotation
                                                                 // = veto escape); full identity checks re-applied
+    // ROUTE RECALIBRATION - the non-disruptive refresh the sizing runbook
+    // (2026-08-02-phase-c-oracle-sizing.md) requires. Updates ONLY the
+    // bounds-class fields of an EXISTING allowed route: RateBound snapshot
+    // (snapshotRatio, snapshotTs) per registration-only leg, and the
+    // [sanityLow, sanityHigh] rail. It can NEVER touch legs, feeds,
+    // aggregator pins, kinds, staleness budgets or divergence values - those
+    // remain remove+timelocked-add territory (a bounds refresh is
+    // risk-equivalent to what the P2 lane already mandates: "the snapshot is
+    // advanced ONLY through the P3 timelock"; without a dedicated operation
+    // that sentence was unimplementable except via full removal, which the
+    // pending-invalidation rules make a per-quarter outage per token). Same
+    // pending discipline as every other P3 type: Safe-only submit + execute,
+    // [eta, eta+WINDOW], guardian-cancelable, per-token nonce. Execute-time
+    // validation: the new snapshotTs lies in [now - 30 days, now - 14 days]
+    // (the sizing doc's observation-age window, enforceable on-chain), the
+    // new snapshot ratio does not violate the leg's own bounds evaluated at
+    // execute time, and the new sanity rail CONTAINS the current composed
+    // price (a recalibration can widen or re-center, never brick the route
+    // it refreshes).
+    function submitRouteRecalibration(address token, RouteRecalibration calldata r) external;  // ONLY address(safe)
+    function executeRouteRecalibration(address token, RouteRecalibration calldata r) external; // ONLY address(safe), [eta, eta+WINDOW]
     // Feed eligibility is the root of trust for C2/C17, so it gets its OWN
     // timelocked pending type - a TokenAdd must never certify its own feeds.
     // execute STORES the reviewed pair: feedCertifiedAggregator[feed] = aggregator

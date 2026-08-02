@@ -83,23 +83,30 @@ direction-aware rule, buys of the volatile asset revert, and exits validate
 at the conservative anchor-low price - PROVIDED the anchor is the low side
 and still inside the persisted `[sanityLow, sanityHigh]`; below `sanityLow`
 even the exit reverts (the band is never pierced; normative rule in the
-Phase-C spec). Sizing implication: the SANITY band must sit below the worst
-sourced stress divergence or the depeg-exit path silently becomes a hard
-freeze in exactly the event it exists for. Derivation, with the safety
-factor labeled as what it is: the binding requirement is sanityLow >
-11.76% below the composed price (the largest sourced transient, A.3; the
-largest sourced sustained depeg is 8%). Applying a standard 2x engineering
-safety factor to the worst observation gives **sanityLow ~= 25% below the
-listing-time composed price** - the 2x factor is a CHOSEN convention (like
-any factor of safety), not itself data, and is the labeled residual
-judgment in this document. The trade it prices: a wider band admits a
-certified-but-erroneous anchor to lower the floor by up to that width
-(counterweights: the anchor must be a certified privileged-writer feed, the
-direction rule requires anchor < route, and minBuyOverride binds
-absolutely), while a narrower band converts fast-crash exits into freezes.
-Decimal/aggregator-class faults mis-scale by orders of magnitude and are
-caught at ANY sane width. Per-listing review checkpoint, not a blind
-default.
+Phase-C spec). Sizing the rail correctly requires being explicit about WHAT
+it bounds: the spec's sanity band constrains the ABSOLUTE composed price -
+for a USD-composed route that includes every legitimate market move of the
+underlying, not just route/anchor disagreement. A rail fixed relative to the
+LISTING-TIME price therefore must survive real market drawdowns between
+recalibrations, or ordinary volatility freezes the route (including its
+exits) with both feeds agreeing. The bounding fact, computed from primary
+data (Binance ETHUSDT daily klines, 2017-08-17..2026-08-02, 3,273 candles;
+close-to-intraday-low, method in the research log): the worst 90-day ETH
+drawdown on record is **-75.0%** (window starting 2022-04-03; worst 30-day:
+-69.8%, 2020-02-14). Rule, derived from that fact plus the recalibration
+cadence: **the sanity rail is [P/5, 5P] around the composed price at each
+recalibration, re-centered at every <= 90-day recalibration** (spec:
+executeRouteRecalibration). P/5 = -80% sits below the worst-ever 90-day
+move with margin, so no historically observed market path can freeze a
+route between on-schedule recalibrations - while ANY order-of-magnitude
+fault (wrong decimals = 1e10-class, aggregator mis-scale) still lands far
+outside it, which is the rail's actual job. The depeg-exit consequence
+follows for free: an 11.76%-class transient never approaches P/5, so the
+exit path survives every sourced stress event. The residual this prices: a
+certified-but-erroneous anchor may lower the floor anywhere inside the
+divergence band (A.5) - the SANITY rail was never the defense against that;
+the certified-pair requirement, the anchor<route direction rule, the
+divergence band itself, and minBuyOverride are.
 
 ### A.4 Peer thresholds (primary)
 
@@ -116,9 +123,9 @@ default.
 
 | Route class | maxDivergenceBps | Derivation |
 |---|---|---|
-| Standard tier: feed deviation-threshold SUM in (50, 100] bps (e.g. the common 0.5% + 0.5% ExR-vs-market pairing = 100) | **150** | threshold sum up to 100 + basis envelope 20 + update-desync margin 30. Sits BELOW Aave's 250 emergency line (we fail closed before peers declare emergencies) and below the sourced deep-depeg magnitudes (290/600/800). |
-| Tight tier: feed deviation-threshold SUM <= 50 bps (e.g. two Unichain 0.05% ExR legs = 10; 0.05% vs 0.2% = 25; tETH/wstETH 0.02% + 0.05% = 7) | **100** | threshold sum <= 50 + the same 20 basis + 30 desync margins = <= 100, margins fully preserved. |
-| Sum > 100 bps (e.g. mainnet CBETH/ETH market at 1% paired with an ExR leg): NO class default | derived per route | value = threshold sum + 20 + 30, rounded up to the next 25; flagged in listing review. A 150 default here would let feed noise alone consume the whole band. |
+| Standard tier: feed deviation-threshold SUM in (50, 100] bps (e.g. the common 0.5% + 0.5% ExR-vs-market pairing = 100) | **155** | worst-case divergence composes MULTIPLICATIVELY, not additively, because the band divides by routeValue: route low by (dev 0.5% + desync 0.3%), anchor high by (dev 0.5% + basis 0.2%) gives (1.007 - 0.992) / 0.992 = 151.2 bps - already over an additive 150. 155 = the multiplicative worst case rounded up to the next 5. Sits BELOW Aave's 250 emergency line and below the sourced deep-depeg magnitudes (290/600/800). |
+| Tight tier: feed deviation-threshold SUM <= 50 bps (e.g. two Unichain 0.05% ExR legs = 10; 0.05% vs 0.2% = 25; tETH/wstETH 0.02% + 0.05% = 7) | **105** | same multiplicative composition with sum <= 50: worst split (1.002 - 0.992) / 0.992 = 100.8 bps -> 105, margins fully preserved. |
+| Sum > 100 bps (e.g. mainnet CBETH/ETH market at 1% paired with an ExR leg): NO class default | derived per route | value = multiplicative worst case of (sum + 20 + 30), rounded up to the next 25; flagged in listing review. A class default here would let feed noise alone consume the whole band. |
 
 Tier membership is decided by ONE arithmetic test - sum the two sides'
 deviation thresholds (after removing any shared leg that cancels) - never by
@@ -135,10 +142,10 @@ through the timelock like everything else.
 
 **Detection floor, stated honestly:** with standard-tier feeds the band
 cannot distinguish a shallow depeg from legitimate noise - the rsETH
-April-2024 event (-1.5% = 150 bps) sits exactly AT the standard tier's limit,
-and the normative comparison passes at `<= maxDivergenceBps`, so that event
-class is NOT reliably detected on 0.5%-deviation feeds. It IS detected on the
-tight tier (150 > 100). This is a physics limit of the feed specs, not a
+April-2024 event (-1.5% = 150 bps) sits INSIDE the standard tier's 155-bps
+band (the normative comparison passes at `<= maxDivergenceBps`), so that
+event class is NOT reliably detected on 0.5%-deviation feeds. It IS detected
+on the tight tier (150 > 105). This is a physics limit of the feed specs, not a
 tunable: shrinking the standard band below its own noise envelope trades a
 undetectable-shallow-event risk for recurring false fail-closed downtime.
 The residual exposure is bounded: a shallow in-band divergence mis-prices the
@@ -152,7 +159,10 @@ then based on our own measured data.
 
 Unichain note: the only wstETH anchor there (RedStone wstETH/ETH) is not
 certifiable under the write-path rule, so that route is registration-anchored /
-Presign-only per the spec; the 100 bps tier applies at registration time.
+Presign-only per the spec - and it gets NO numeric class default: RedStone
+publishes no Chainlink-style deviation threshold, so the arithmetic tier test
+is inapplicable (A.5). Its registration-time divergence value is set per
+listing from the anchor's MEASURED update envelope, through the timelock.
 
 ## B. CAPO growth ceilings (`maxGrowthPerYearBps` / `minGrowthPerYearBps`)
 
@@ -182,20 +192,26 @@ day adds ~3.2 bps to the ratio while a 9.68%/yr linear bound allows ~2.65 bps
 for that day: the read would revert. Aave's mechanism for exactly this is
 MINIMUM_SNAPSHOT_DELAY (7 days ETH LSTs / 14 days others,
 PriceCapAdapterBase.sol + the Chaos framework post): the snapshot ratio must
-be an observation AT LEAST that old, so the bound activates with accrued
-cushion already in place. **We adopt the rule as a bounded WINDOW, not just a
-minimum: every P3 re-snapshot uses a ratio observation between 14 and 30
-days old.** The lower bound is the spike cushion (at a 3% median yield,
-~11.5 bps accrued vs ~3.2 bps for the worst observed single-day print - a
-~3.6x margin that grows every below-cap day). The UPPER bound exists because
-a minimum alone is arbitrarily loose: an operator could re-snapshot on
-schedule while supplying an ancient observation, granting the cap formula
-headroom for the observation's whole age and pinning the ratchet floor to a
-uselessly stale level - 30 days caps that slack at ~2.5 bps-per-percent-yield
-of excess headroom while staying operationally easy to satisfy. (Aave's own
-outer rail is MAXIMUM_SNAPSHOT_TERM = 180 days on the snapshot itself; our
-90-day re-snapshot cadence in B.2 sits at half of it, and the observation-age
-window binds independently of that cadence.)
+be an observation AT LEAST that old. **We adopt the rule as a bounded WINDOW:
+every recalibration uses a ratio observation between 14 and 21 days old**
+(enforced on-chain by executeRouteRecalibration - see the spec's P3
+surface). Stated precisely, because "cushion" is CONDITIONAL, not automatic:
+the slack at any moment is (cap - realized growth) x observation age - prior
+growth CONSUMES the linear allowance rather than creating headroom. With
+observed medians (~3%) against a 9.68% cap, 14 days give (9.68 - 3)% x
+14/365 ~= 25.6 bps of slack vs ~3.2 bps for the worst observed single-day
+print (~8x margin); a regime that sustains AT the cap has zero slack by
+definition - but that is a mis-sized cap (or an sUSDe-class asset, B.3), a
+different failure than a spike. The UPPER bound exists because a minimum
+alone is arbitrarily loose: the window pre-grants (cap - realized) x age of
+headroom a manipulated rate could consume before tripping - correctly
+computed, that is 8.22 bps per percentage-point of cap-minus-realized gap
+per 30 days (1% x 30/365), i.e. ~55 bps at 30 days for the 6.68-point
+wstETH gap. Capping the age at 21 days bounds the pre-granted slack at
+~38 bps while leaving a 7-day execution window for the timelocked
+recalibration (comfortably above DELAY >= 24h). (Aave's own outer rail is
+MAXIMUM_SNAPSHOT_TERM = 180 days; our 90-day recalibration cadence in B.2
+sits at half of it, and the observation-age window binds independently.)
 
 ### B.2 Our snapshot-cadence delta, and the resulting runbook rule
 
@@ -257,32 +273,38 @@ day observation window means some headroom exists from activation), a small
 dip that stays above the snapshot passes silently. That is the intended
 semantics: the floor exists to catch CUMULATIVE declines and fault-class
 drops below a governance-verified level, not to alarm on every bounded
-oracle wiggle - LIP-23-bounded dips (~19 bps/day) sit inside legitimate
-headroom precisely because Lido's own protocol treats them as within-bounds
-events. A decline large or sustained enough to reach the snapshot level
-fails closed until governance re-verifies. Monitoring (not the module)
-watches for any negative day-over-day rate movement as an alertable signal.
+oracle wiggle. Whether a bounded dip trips is purely a race between dip size
+and accrued headroom: near a fresh recalibration (14-day-old observation at
+~3% median yield ~= 11.5 bps of headroom) a LIP-23-scale ~19 bps dip DOES
+reach below the snapshot and fails the leg closed - the correct posture for
+an unexplained decline right after a governance verification - while the
+same dip months later passes silently inside accumulated headroom.
+Monitoring (not the module) watches for any negative day-over-day rate
+movement as an alertable signal in both cases.
 
 ## C. The ask (approve = these become the TokenAdd defaults)
 
 - `maxDivergenceBps` by the ARITHMETIC TIER TEST of A.5 (sum the two sides'
-  deviation thresholds after cancelling shared legs): sum <= 50 bps -> **100**;
-  sum in (50, 100] -> **150**; sum > 100 or any side without a published
-  deviation threshold (e.g. the Unichain RedStone anchor) -> NO default,
-  per-route derivation (sum + 20 + 30, rounded up to the next 25) in listing
+  deviation thresholds after cancelling shared legs; worst cases compose
+  MULTIPLICATIVELY): sum <= 50 bps -> **105**; sum in (50, 100] -> **155**;
+  sum > 100 or any side without a published deviation threshold (e.g. the
+  Unichain RedStone anchor) -> NO default, per-route derivation in listing
   review. Denominator cancellation is an input to the sum, never a tier
   shortcut. Per-token overridable; C5 trial monitors with `anchorBandState`
-  before size migrates. Known detection floor: shallow (<=150 bps) events are
-  not reliably detectable on standard-tier feeds (A.5).
+  before size migrates. Known detection floor: shallow (<=155 bps) events
+  are not reliably detectable on standard-tier feeds (A.5).
 - CAPO: **wstETH 968 / weETH 875 / rETH 930 / ezETH 1089 / rsETH 983 /
   cbETH 812 bps/yr**, `minGrowth 0` everywhere (guarantee = never below the
-  last verified snapshot, NOT alarm-on-every-dip; B.4); re-snapshot runbook
-  <= 90 days AND every snapshot uses a ratio observation aged 14-30 days
-  (spike cushion below, staleness slack capped above; B.1);
-  **sUSDe deferred** - listing it is a clamp-vs-revert product decision,
-  not a calibration (B.3).
-- Sanity bands (per-listing checkpoint, not a class default): `sanityLow`
-  ~= 25% below the listing-time composed price = the largest sourced
-  transient (11.76%) x a labeled 2x safety factor, so the depeg-exit path
-  survives the sourced fast-crash class while any order-of-magnitude fault
-  is still caught (A.3).
+  last verified snapshot; a bounded dip trips ONLY while headroom is thin -
+  correct near a fresh verification, silent later; B.4); recalibration via
+  the spec's new timelocked executeRouteRecalibration (bounds-only,
+  non-disruptive) <= every 90 days, with the ratio observation aged 14-21
+  days (conditional spike slack below, pre-granted-headroom slack capped
+  ~38 bps above; B.1); **sUSDe deferred** - listing it is a clamp-vs-revert
+  product decision, not a calibration (B.3).
+- Sanity rail (absolute-price fault rail, NOT a divergence tool): **[P/5,
+  5P] re-centered at every recalibration** - P/5 = -80% sits below the
+  computed worst-ever 90-day ETH drawdown (-75.0%, Binance daily klines
+  2017-2026), so no historically observed market path freezes a route
+  between on-schedule recalibrations, while any order-of-magnitude fault
+  still lands far outside (A.3).
