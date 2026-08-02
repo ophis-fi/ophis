@@ -1345,13 +1345,19 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     //       uint64  snapshotTs;    // the observation timestamp the age window validates
     //   }
     //   struct RouteRecalibration {
-    //       bool rateOnly;                // see below: snapshots-only refresh; rail, center
-    //                                     // range, and turnoverGrossUpBps fields MUST be zero
-    //       LegSnapshot[] snapshots;      // MUST cover EVERY registration-only rate leg of
-    //                                     // the route EXACTLY ONCE (execute reverts on a
-    //                                     // missing, duplicate, or non-rate-leg entry) -
-    //                                     // partial refreshes would silently leave one
-    //                                     // leg's bound stale while appearing recalibrated
+    //       bool rateOnly;                // see below: snapshots-only refresh; rail and
+    //                                     // center-range fields MUST be zero; turnoverGrossUpBps
+    //                                     // MUST be zero (= unchanged) OR strictly greater than
+    //                                     // the stored value (the increase-only exception below)
+    //       LegSnapshot[] snapshots;      // EMPTY = preserve every existing bound (a
+    //                                     // rail-only or gross-up-only payload; no snapshot
+    //                                     // age deadline attaches, so the full execute
+    //                                     // window stays usable). When NON-empty it MUST
+    //                                     // cover EVERY registration-only rate leg EXACTLY
+    //                                     // ONCE (execute reverts on a missing, duplicate,
+    //                                     // or non-rate-leg entry) - PARTIAL refreshes would
+    //                                     // silently leave one leg's bound stale while
+    //                                     // appearing recalibrated; all-or-none, never some
     //       uint256 railLowRatioE18;      // the new rail as 1e18-scaled RATIOS to the
     //       uint256 railHighRatioE18;     // composed price READ AT EXECUTE (per-asset
     //                                     // asymmetric, sizing doc A.3 - e.g. 0.2e18/8e18
@@ -1854,8 +1860,13 @@ the verification log tracks which currently have no assigned target.
   a missed refresh silently operates past the approved slack envelope),
   so the watcher polls every route's per-leg `snapshotTs` and the rail's
   last re-center time from route storage (publicly readable; no event
-  needed) and alerts on EXECUTABLE DEADLINES, suppressed while a matching
-  pending is already in flight: WARN when
+  needed) and alerts on EXECUTABLE DEADLINES, suppressed PER DEADLINE - an
+  alert for deadline D is silenced only by a pending whose own scheduled
+  execution (eta) satisfies D, never by the in-flight PREDECESSOR whose
+  execution D exists to follow up on (at DELAY = 90d the predecessor is
+  pending precisely when the successor's submission warning must fire;
+  suppressing on any-pending would delay the successor past the active
+  snapshot's service deadline): WARN when
   `now > referenceExec + interval - DELAY - 7 days`, where referenceExec
   = the SCHEDULED execution time (eta - known the moment it is
   submitted) of the most recently submitted still-pending refresh, else

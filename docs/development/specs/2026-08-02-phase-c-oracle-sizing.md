@@ -546,9 +546,14 @@ scope anyway (decision 7), so: **defer sUSDe; listing it later requires
 either a clamp-class carve-out decision or acceptance of regime-driven
 fail-closed windows - a product decision, not a calibration.**
 
-### B.4 `minGrowthPerYearBps = 0` for every listed asset (the flat ratchet floor)
+### B.4 `minGrowthPerYearBps = 0` for the VERIFIED assets (the flat ratchet floor)
 
-Justified by the factual record, per asset:
+The flat floor is the default ONLY for the four scan-verified assets
+(wstETH, rETH, weETH, cbETH) and contractually-floored sUSDe. ezETH and
+rsETH are NOT covered by any default and cannot be listed with a flat
+floor - or at all - until the per-listing review below supplies an
+approved lower-bound policy for their AVS-slashing surface. Justified by
+the factual record, per asset:
 
 - **stETH/wstETH**: negative daily rebase has NEVER occurred on mainnet
   (docs.lido.fi tokens integration guide, checked 2026-08-02). The Oct-2023
