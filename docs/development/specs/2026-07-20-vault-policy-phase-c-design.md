@@ -304,8 +304,20 @@ struct TokenRoute {
     // case the depeg rule prices through, not an extra revert condition.
     uint256   sanityLow;
     uint256   sanityHigh;
-    // Reviewed turnover-charge gross-up (C4): sellUsd18 =
-    // mulDiv(liveRoutePrice, 10_000 + uint256(turnoverGrossUpBps), 10_000) -
+    // When the rail was last (re-)centered: set by the constructor,
+    // executeTokenAdd, and every NON-rateOnly executeRouteRecalibration;
+    // rateOnly refreshes leave it untouched. Persisted BECAUSE the
+    // deadline watcher polls it - lastRecalSubmittedAt tracks pending
+    // ordering, not rail freshness, and a rateOnly execution would
+    // otherwise make a stale rail look freshly serviced.
+    uint64    railCenteredAt;
+    // Reviewed turnover-charge gross-up (C4). The charge is the order
+    // NOTIONAL, exactly Phase B's _validateAndPrice shape with the price
+    // grossed up:
+    //   grossedPrice18 = mulDiv(sellPrice18, 10_000 + uint256(turnoverGrossUpBps), 10_000)
+    //   sellUsd18      = sellAmount * grossedPrice18 / 10**sellTokenDecimals
+    // (a price-only formula would charge every order the same few dollars
+    // regardless of sellAmount, deleting the cap for large orders) -
     // multiply-before-divide is NORMATIVE exactly as for RateBound (the
     // literal `price * (1 + bps / 1e4)` truncates the quotient to zero
     // for every value below 10_000 and charges the ungrossed price,
@@ -1205,7 +1217,18 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // submission - a fabricated observation that did not exist when the
     // guardian's review window opened, chosen to match a later transient,
     // yet 14 days old by execution. The review window must review a real,
-    // already-taken observation
+    // already-taken observation. Consequence for the pending lifecycle,
+    // stated so nobody discovers it by revert: for a snapshot-bearing
+    // payload the BINDING execution deadline is
+    // `min(eta + EXECUTE_WINDOW, snapshotTs + 21 days + DELAY)` - the age
+    // ceiling is not extended by the execution window (extending it would
+    // widen the pre-granted headroom the 21-day cap exists to bound), so
+    // a snapshot already 14 days old at submission is executable for only
+    // the first 7 post-eta days regardless of a 30-day window. The
+    // runbook takes observations JUST BEFORE submission (they must merely
+    // predate it), which preserves 21 days of post-eta executability;
+    // rail-only payloads (no snapshots) keep the full advertised window,
+    // and the deadline watcher computes the min, not the envelope
     // (exactly [14, 21] is realized on the recommended sovereign config,
     // DELAY = 24h with prompt execution). Runbook corollary (sizing doc
     // B.2): the recalibration INTERVAL must keep every ACTIVE snapshot
@@ -1515,10 +1538,14 @@ the verification log tracks which currently have no assigned target.
   exceeding deviation-plus-landing requires a certified aggregator that no
   longer updates past its own deviation threshold - a write-path
   malfunction of the same root of trust the ORACLE FLOOR stands on, out of
-  model for the cap as for everything else. Overcharging by the gross-up
-  (~2.5-3%, A.6 worked defaults) is fail-closed (a curator hits the cap
-  imperceptibly sooner); operators size
-  `dailyUsdTurnoverCap` knowing charges land at top-of-band. Refund arithmetic saturates at zero: a naive
+  model for the cap as for everything else. Overcharging by the gross-up is
+  fail-closed but NOT small at the recommended envelopes: A.6's worked
+  defaults land at ~9.5-10% for volatile-sell routes (composition envelope
+  x any-start TTL bound) and near the bare composition envelope for
+  stable-sell rotations - so the usable daily budget on volatile-sell
+  routes is ~90% of the configured cap, and operators size
+  `dailyUsdTurnoverCap` (and judge the TTL trade, A.6) knowing charges
+  land at top-of-band. Refund arithmetic saturates at zero: a naive
   subtraction underflow-reverts on a drained bucket and, through the shared
   cancel path, would propagate into `removeToken`. Bucket accounting never exceeds Phase-B
   bounds (instantaneous <= cap, rolling 24h <= ~2x cap). (Fuzz target: fill an
