@@ -343,9 +343,11 @@ movement as an alertable signal in both cases.
   recovery mode for breached bounds) <= every 90 days; **sUSDe deferred** -
   clamp-vs-revert product decision, not a calibration (B.3).
 - Sanity rail (absolute-price fault rail, NOT a divergence tool and NOT a
-  turnover basis - the spec's turnover charge now grosses up the live route
-  price by the divergence/deviation bound instead of charging at
-  sanityHigh, which would have billed ~5x notional): **[P/5, 5P]
+  turnover basis - the spec's turnover charge uses the persisted, reviewed
+  `turnoverGrossUpBps` on the live route price instead of sanityHigh, which
+  would have billed ~5x notional; common-mode error beyond the certified
+  feeds' own thresholds is outside the threat model the cap can defend, as
+  the spec now states explicitly): **[P/5, 5P]
   re-centered at every recalibration** - P/5 = -80% sits below the computed
   worst-ever 90-day ETH drawdown (-75.0%, Binance daily klines 2017-2026),
   so no historically observed market path freezes a route between

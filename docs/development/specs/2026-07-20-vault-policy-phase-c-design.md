@@ -298,6 +298,11 @@ struct TokenRoute {
     // case the depeg rule prices through, not an extra revert condition.
     uint256   sanityLow;
     uint256   sanityHigh;
+    // Reviewed turnover-charge gross-up (C4): sellUsd18 = live route price x
+    // (1 + turnoverGrossUpBps/1e4). Set at TokenAdd, refreshed by
+    // RouteRecalibration; the module cannot derive feed deviation sums
+    // on-chain, so the reviewed value is persisted here.
+    uint16    turnoverGrossUpBps;
 }
 ```
 
@@ -1159,6 +1164,25 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // the authority for that - without recovery mode, the one situation the
     // refresh exists for (a breached bound needing governance re-set) would
     // be the one it cannot handle, forcing the remove+re-add outage.
+    // The payload, fully specified so multi-leg routes are unambiguous:
+    //   struct LegSnapshot {
+    //       bool    isAnchorLeg;   // false => index into TokenRoute.legs, true => .anchor
+    //       uint8   legIndex;
+    //       uint256 snapshotRatio;
+    //       uint64  snapshotTs;    // the observation timestamp the age window validates
+    //   }
+    //   struct RouteRecalibration {
+    //       LegSnapshot[] snapshots;      // MUST cover EVERY registration-only rate leg of
+    //                                     // the route EXACTLY ONCE (execute reverts on a
+    //                                     // missing, duplicate, or non-rate-leg entry) -
+    //                                     // partial refreshes would silently leave one
+    //                                     // leg's bound stale while appearing recalibrated
+    //       uint256 sanityLow;            // the new rail (contains-current-price checked)
+    //       uint256 sanityHigh;
+    //       uint16  turnoverGrossUpBps;   // the reviewed charge gross-up (see C4)
+    //   }
+    // Pending key = keccak256(token, tokenNonce[token], abi.encode(r)) - same
+    // calldata-keyed discipline and per-token nonce as TokenAdd.
     function submitRouteRecalibration(address token, RouteRecalibration calldata r) external;  // ONLY address(safe)
     function executeRouteRecalibration(address token, RouteRecalibration calldata r) external; // ONLY address(safe), [eta, eta+WINDOW]
     // Feed eligibility is the root of trust for C2/C17, so it gets its OWN
@@ -1267,21 +1291,29 @@ the verification log tracks which currently have no assigned target.
   `max(0, sellUsd18 - leaked(sellUsd18, block.timestamp - registeredAt))`,
   the charge decayed by the SAME leak schedule the bucket applies (OrderState
   already stores `registeredAt`), still saturating against the current bucket
-  level. The CHARGE itself is the in-band worst case, with the bound chosen
-  from the RIGHT band: `sellUsd18` = the live route price GROSSED UP by the
-  route's worst in-band error - `x (1 + maxDivergenceBps)` for an anchored
-  route, `x (1 + its feed deviation-threshold sum + the sizing doc's margins)`
-  for an unanchored one. NOT the sanity rail: the rail is an
-  order-of-magnitude fault backstop sized in MULTIPLES of the price
-  (sizing doc: [P/5, 5P]), and charging at `sanityHigh` would bill every
-  order ~5x its notional, silently deleting ~80% of the configured turnover
-  budget. The divergence/deviation bound is what actually limits a
-  correlated in-band underreport (sell and buy routes low by the same
-  factor cancel out of the cross-rate floor - the floor is immune, but a
-  bare route-price charge would stretch the effective per-day turnover past
-  the cap by exactly that factor, and that factor is bounded by the
-  divergence band, not the rail). Overcharging by the gross-up (~1-2%) is
-  fail-closed (a curator hits the cap imperceptibly sooner); operators size
+  level. The CHARGE itself is the in-band worst case: `sellUsd18` = the live
+  route price GROSSED UP by the route's PERSISTED `turnoverGrossUpBps` - a
+  reviewed per-route field set at TokenAdd/recalibration (the module cannot
+  derive feed deviation sums or sizing margins on-chain, so the value is
+  stored, not computed): defaulted to `maxDivergenceBps` for anchored routes
+  and to the route's feed deviation-threshold sum plus the sizing doc's
+  margins for unanchored ones. NOT the sanity rail: the rail is an
+  order-of-magnitude fault backstop sized in MULTIPLES of the price (sizing
+  doc: [P/5, 5P]), and charging at `sanityHigh` would bill every order ~5x
+  its notional, silently deleting ~80% of the configured turnover budget.
+  THREAT-MODEL BOUNDARY, stated because divergence is definitionally blind
+  to COMMON-MODE error (route and anchor low by the same factor read as
+  agreeing): within the model, every pricing input is a CERTIFIED
+  privileged-writer feed or a CAPO-bounded rate leg, so the largest
+  in-model common-mode error is the certified feeds' own deviation
+  thresholds (~1%), which the gross-up covers. A common-mode failure LARGER
+  than that requires the certified Chainlink aggregators themselves to be
+  wrong together - the same root of trust the ORACLE FLOOR stands on, so in
+  that event the vault's entire pricing is compromised and no in-module
+  charge denomination survives it; the turnover cap is not, and cannot be,
+  the defense against a systemic oracle compromise. Overcharging by the
+  gross-up (~1-2%) is fail-closed (a curator hits the cap imperceptibly
+  sooner); operators size
   `dailyUsdTurnoverCap` knowing charges land at top-of-band. Refund arithmetic saturates at zero: a naive
   subtraction underflow-reverts on a drained bucket and, through the shared
   cancel path, would propagate into `removeToken`. Bucket accounting never exceeds Phase-B
