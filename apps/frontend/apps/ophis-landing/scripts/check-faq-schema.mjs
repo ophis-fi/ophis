@@ -121,35 +121,52 @@ export { visibleTextOf, NAMED_REFS }
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
-const distBlog = resolve(root, 'dist/blog')
+// The whole dist tree, not just dist/blog: the canonical pages (/pricing,
+// /security, /supported-chains), the /learn guides, and the home page carry
+// FAQPage schema too, and Google's verbatim-visible-text requirement applies
+// to every one of them equally.
+const distRoot = resolve(root, 'dist')
 
 // Importing this module must not run the gate: the conformance suite in
 // scripts/test-html-text.mjs imports visibleTextOf to hold both extractors to
 // one spec, and test:unit runs BEFORE astro build, when dist/ does not exist.
 function main() {
-  if (!existsSync(distBlog)) {
-    console.error('check-faq-schema: dist/blog missing - run the build first.')
+  if (!existsSync(distRoot)) {
+    console.error('check-faq-schema: dist/ missing - run the build first.')
     process.exit(1)
   }
 
-  // Every index.html under dist/blog, at any depth, so nested posts are covered.
+  // Every index.html under dist/, at any depth, so nested pages are covered.
+  // EVERY generated .html file, not just directory-style index.html: Astro
+  // also emits flat routes (dist/404.html), and a flat page carrying FAQPage
+  // schema must not silently escape the gate.
   const pagesUnder = (dir) =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const p = join(dir, e.name)
       if (e.isDirectory()) return pagesUnder(p)
-      return e.name === 'index.html' ? [p] : []
+      return e.name.endsWith('.html') ? [p] : []
     })
 
   const failures = []
   let pagesWithFaq = 0
   let answersChecked = 0
 
-  for (const page of pagesUnder(distBlog)) {
-    const slug = relative(distBlog, dirname(page)) || '(index)'
+  for (const page of pagesUnder(distRoot)) {
+    const slug = relative(distRoot, dirname(page)) || '(index)'
     const html = readFileSync(page, 'utf8')
 
     let faq = null
-    for (const m of html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)) {
+    // Attribute-tolerant: a tag like <script id="x" type="application/ld+json">
+    // must NOT silently drop the page from coverage (mutation-proved: the old
+    // byte-exact pattern let a page leave the gate with exit 0). The matches
+    // are kept (full spans included) so the visible-text step below removes
+    // exactly the blocks this finder saw - one pattern, no second regex.
+    const ldBlocks = [
+      ...html.matchAll(
+        /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>(.*?)<\/script>/gis,
+      ),
+    ]
+    for (const m of ldBlocks) {
       let parsed
       try {
         parsed = JSON.parse(m[1])
@@ -160,17 +177,26 @@ function main() {
       if (parsed?.['@type'] === 'FAQPage') faq = parsed
     }
 
-    // The rendered article carries <h2 id="faq">; if it does, schema is expected.
-    const hasFaqHeading = /<h2\b[^>]*\bid="faq"/i.test(html)
-    if (hasFaqHeading && !faq) {
-      failures.push(`${slug}: renders an FAQ heading but emits no FAQPage schema`)
-      continue
+    // Blog posts have a known shape: faqPageSchema() derives the schema from a
+    // rendered "## FAQ" section, so heading and schema must exist together.
+    // Non-blog pages (home FAQSection, /pricing, /security, /learn guides)
+    // build schema and visible sections from the SAME frontmatter constants,
+    // in varying markup (details/summary, question-h2s), so only the verbatim
+    // rule below applies to them.
+    const isBlog = slug === 'blog' || slug.startsWith('blog/')
+    if (isBlog) {
+      // The rendered article carries <h2 id="faq">; if it does, schema is expected.
+      const hasFaqHeading = /<h2\b[^>]*\bid="faq"/i.test(html)
+      if (hasFaqHeading && !faq) {
+        failures.push(`${slug}: renders an FAQ heading but emits no FAQPage schema`)
+        continue
+      }
+      if (faq && !hasFaqHeading) {
+        failures.push(`${slug}: emits FAQPage schema but renders no FAQ heading`)
+        continue
+      }
     }
     if (!faq) continue
-    if (!hasFaqHeading) {
-      failures.push(`${slug}: emits FAQPage schema but renders no FAQ heading`)
-      continue
-    }
     pagesWithFaq++
 
     // Named references the extractors do not know are a genuine blind spot:
@@ -206,10 +232,16 @@ function main() {
     }
 
     // Strip the JSON-LD itself before extracting visible text, or the schema
-    // would trivially "appear" inside its own serialized copy.
-    const visible = visibleTextOf(
-      html.replace(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g, ''),
-    )
+    // would trivially "appear" inside its own serialized copy. Removal is by
+    // the finder's own match indices (descending, so earlier offsets stay
+    // valid) - the strip can never see a block the finder missed or vice
+    // versa, and there is no replace-based sanitization for remnants to
+    // survive.
+    let htmlSansLd = html
+    for (const m of [...ldBlocks].sort((a, b) => b.index - a.index)) {
+      htmlSansLd = htmlSansLd.slice(0, m.index) + htmlSansLd.slice(m.index + m[0].length)
+    }
+    const visible = visibleTextOf(htmlSansLd)
 
     for (const q of faq.mainEntity ?? []) {
       const question = (q.name ?? '').trim()

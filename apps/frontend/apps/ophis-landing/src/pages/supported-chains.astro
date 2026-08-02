@@ -64,7 +64,9 @@ const itemListLd = {
   extraLd={[itemListLd]}
 >
   <p>
-    <strong>The short version:</strong> {FAQS[0].a}
+    <strong>The short version:</strong> {EVM_CHAIN_COUNT} EVM chains, {SOVEREIGN_CHAINS.length} of
+    them Ophis-operated ({sovereignList}), plus Solana and Bitcoin as NEAR Intents destinations.
+    The full table with chain IDs and settlement mode:
   </p>
 
   <table>
@@ -99,7 +101,7 @@ const itemListLd = {
     </tbody>
   </table>
 
-  {FAQS.slice(1).map((f) => (
+  {FAQS.map((f) => (
     <section>
       <h2>{f.q}</h2>
       <p>{f.a}</p>
