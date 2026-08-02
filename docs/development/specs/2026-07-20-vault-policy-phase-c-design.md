@@ -573,11 +573,17 @@ field:
   `allowedTokens.length < MAX_ALLOWED_TOKENS` (the cap that keeps
   `removeToken`'s sweep statically bounded - see C15), and - because a
   RateBound is INSTALLED here, not only refreshed by recalibration - the
-  SAME snapshot validations `executeRouteRecalibration` enforces: every
-  registration-only rate leg's observation age within the DELAY-aware
-  window (`execTs - snapshotTs` in [14 days, 21 days + DELAY]), the live
-  ratio satisfying the new bound at execTs, and the sanity rail containing
-  the composed price. Without this, an add (or remove-and-re-add) installs
+  SAME snapshot validations `executeRouteRecalibration` enforces - with
+  the ceiling TIGHTENED to what the add path can actually service:
+  `execTs - snapshotTs` in
+  [14 days, min(21 days + DELAY, 180 days - DELAY - 7 days)] - because a
+  refresh CANNOT be pre-staged against a token that is not yet allowed:
+  at DELAY = 90d the recalibration window alone would admit a
+  111-day-old install whose first refresh, submitted the moment the add
+  executes, matures at day 201, past the 180-day outer term (at the
+  recommended DELAY = 24h the min() changes nothing). Plus the live
+  ratio satisfying the new bound at execTs, and the sanity rail centered
+  per the RailSpec rules. Without this, an add (or remove-and-re-add) installs
   an arbitrarily OLD observation and instantly pre-grants years of
   accumulated growth headroom - `(cap - realized) x age` of slack - walking
   around the 21-day cap the sizing doc's B.1 window exists to enforce. The
@@ -1561,8 +1567,11 @@ the verification log tracks which currently have no assigned target.
   an in-TTL pump moves more USD than was reserved. Beyond-p99 repricing
   is the documented tail: bounded by the recorded per-TTL maxima, it
   requires the pump to land inside an open order's TTL, and the Phase-B
-  rolling-24h <= ~2x cap bound holds regardless - the order TTL is the
-  reviewable knob.
+  rolling-24h <= ~2x bound constrains CHARGED notional - actual USD in a
+  beat-the-reserve window carries the multiplier A.6 states
+  ((1 + recorded worst move)/(1 + reserve), ~1.16-1.50 on the ETH
+  record), so the tail is a stated multiplier on the guarantee, not a
+  breach of an unqualified one. The order TTL is the reviewable knob.
   The SAME formula for anchored and unanchored routes, because the anchor
   plays no role in the charge and `maxDivergenceBps` would be the WRONG
   bound anyway: the divergence band is anchor-RELATIVE and definitionally
@@ -1910,14 +1919,18 @@ the verification log tracks which currently have no assigned target.
   rail stale, so a snapshot-keyed formula stays silent while the
   re-center cadence expires and an obsolete absolute rail drifts toward
   freezing valid trades. Rail WARN when
-  `now > railReference + 90 days - DELAY - 7 days`, rail OVERDUE when
-  `now > railReference + 90 days`, where railReference = the eta of the
-  most recently submitted still-pending NON-rateOnly recalibration, else
+  `now > railReference + 90 days - DELAY - 7 days`, where railReference
+  = the eta of the most recently submitted still-pending NON-rateOnly
+  recalibration THAT SATISFIES the current rail deadline, else
   `railCenteredAt` (constructor routes start at deployTs) - the same
   scheduled-execution anchoring as the snapshot WARN, because at long
   DELAY the successor's submission is due before the predecessor
-  executes; suppression is per-deadline, ONLY by a pending NON-rateOnly
-  recalibration whose eta lands before the deadline in question. Also alert on repeated
+  executes. Rail OVERDUE when `now > railCenteredAt + 90 days` -
+  ANCHORED ON ACTUAL EXECUTION, never on a pending's eta and never
+  suppressed: a pending may excuse the missing SUBMISSION, but only an
+  executed re-center changes the fact that the old rail has exceeded
+  its cadence, and eta-anchoring would keep the watcher quiet while the
+  Safe executes late in a 30-day window - or never executes at all. Also alert on repeated
   transient-revert simulation failures for a live order (floor blocking =
   expected but report it), and on `getMinDelay`-style wiring drift (fallback
   handler changed, verifier deregistered).

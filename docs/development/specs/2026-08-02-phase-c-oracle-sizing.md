@@ -329,9 +329,11 @@ that is already the SHRUNKEN side of the envelope.) Per-leg terms:
   The residual is therefore stated, not hidden: a registration whose
   feed is mid-landing during a crash-class 2-minute window under-reserves
   by up to (stress envelope - 245); such windows occurred on ~9 days in
-  ~3,200 recorded, each lasting minutes, the rolling-24h <= ~2x cap
-  bound holds regardless, and `turnoverGrossUpBps` is a per-route
-  REVIEWED field - an operator who wants the stress envelope priced into
+  ~3,200 recorded, each lasting minutes; the rolling-24h <= ~2x bound
+  constrains charged units, with actual USD on an affected order
+  carrying the multiplier (1 + realized landing move)/(1 + 245 bps),
+  bounded by the stress envelopes above; and `turnoverGrossUpBps` is a
+  per-route REVIEWED field - an operator who wants the stress envelope priced into
   every order may size it so (at the stated cost: a 13-40% permanent
   charge premium). Any underlying not measured here gets NO default: its
   30-day any-start landing envelope is measured at listing review, and
@@ -416,10 +418,18 @@ envelope COMPOUNDS the underlying's row with a per-listing measured
 any-start 1h envelope of the ratio series; no ratio series was measured
 in this document, so such routes have NO default and the compounding is
 a listing-review obligation. The tail beyond p99 is accepted and
-stated: overshoot requires the pump to land inside the order's open
-TTL, the p99.9 column bounds all but ~0.1% of windows, and the Phase-B
-rolling-24h <= ~2x cap bound holds regardless; the order TTL is the
-knob (shorter TTL, smaller envelope - re-measure at the chosen TTL).
+stated PRECISELY: overshoot requires the pump to land inside the
+order's open TTL, and the p99.9 column bounds all but ~0.1% of windows.
+The Phase-B rolling-24h <= ~2x cap bound constrains CHARGED accounting
+units, NOT actual USD - once a fill beats the reserve, actual turnover
+exceeds charged by (1 + realized move)/(1 + reserve), so the actual-USD
+guarantee is the rolling bound TIMES that multiplier, bounded on the
+record by (1 + worst recorded TTL move)/(1 + reserve): for ETH-exposure
+~1.24/1.0685 = **~1.16** close-anchored, ~1.61/1.0685 = **~1.50** on
+the any-start outer basis - i.e. worst-case actual rolling turnover <=
+~3x the configured cap on recorded moves, transient and exogenous. The
+order TTL is the knob (shorter TTL, smaller envelope - re-measure at
+the chosen TTL).
 
 Worked defaults (reciprocal form, ETH-exposure sell asset, ttlP99 = 685
 bps, landing 245): standard route, 0.5% PROTOCOL ExR FEED rate leg +
