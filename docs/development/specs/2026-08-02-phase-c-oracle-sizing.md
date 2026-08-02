@@ -259,14 +259,17 @@ standard-tier feeds the band cannot distinguish a shallow depeg from
 legitimate noise, and the OBSERVED divergence understates a true depeg by
 up to the feed-error sum when the two in-band errors point TOWARD each
 other (rate feed ~50 bps low, market feed ~50 bps high on the standard
-pair). Detection is therefore GUARANTEED only above band + threshold sum
-- standard tier 130 + 100 = **230 bps**, tight tier 80 + 50 = **130 bps**
-- and PROBABILISTIC between the band width and that line: the rsETH
+pair). Detection is therefore GUARANTEED only above band + the COMPLETE
+masking envelope - the threshold sum AND the same 25 bps of legitimate
+basis/jitter the band's own sizing admits, since anything the band
+tolerates as noise can also point toward hiding a depeg: standard tier
+130 + 100 + 25 = **255 bps**, tight tier 80 + 50 + 25 = **155 bps** -
+and PROBABILISTIC between the band width and that line: the rsETH
 April-2024 event (150 bps) sits in the standard tier's probabilistic
-zone (it trips the band only when the concurrent feed errors do not mask
-it - the earlier draft's "150 > 130 reacts" claim overstated this), while
-every sourced deep depeg (290 / 600 / 800 bps, A.3) clears the 230-bps
-guarantee line. Events at or under the band width remain structurally
+zone (it trips the band only when the concurrent in-band errors do not
+mask it - the earlier draft's "150 > 130 reacts" claim overstated
+this), while every sourced deep depeg (290 / 600 / 800 bps, A.3) clears
+the 255-bps guarantee line. Events at or under the band width remain structurally
 undetectable. This is a physics limit of the feed specs, not a
 tunable: shrinking the standard band below its own noise envelope trades a
 undetectable-shallow-event risk for recurring false fail-closed downtime.
@@ -670,10 +673,11 @@ movement as an alertable signal in both cases.
   (e.g. the Unichain RedStone anchor) -> NO default, per-route derivation
   from the measured statistics in listing review. Per-token overridable; C5
   trial monitors with `anchorBandState` before size migrates. Detection
-  floor, masking-aware: GUARANTEED above band + threshold sum (230 bps
-  standard / 130 tight), probabilistic between band width and that line
-  (the rsETH-2024 150-bps event is in the probabilistic zone); events
-  <= band width structurally undetectable on 0.5%-deviation feeds (A.5).
+  floor, masking-aware: GUARANTEED above band + the complete error
+  budget, threshold sum + margins (255 bps standard / 155 tight),
+  probabilistic between band width and that line (the rsETH-2024
+  150-bps event is in the probabilistic zone); events <= band width
+  structurally undetectable on 0.5%-deviation feeds (A.5).
 - CAPO: **wstETH 968 / weETH 875 / rETH 930 / ezETH 1089 / rsETH 983 /
   cbETH 812 bps/yr**; `minGrowth 0` VERIFIED for wstETH, rETH, weETH, cbETH
   (on-chain monotonicity scans) and sUSDe (contractual); **ezETH + rsETH
