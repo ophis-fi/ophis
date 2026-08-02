@@ -122,7 +122,18 @@ the timelock before service even begins, so an allowed 60-day DELAY plus
 the 90-day cadence would leave one center governing ~150 days of drift -
 beyond the 90-day envelope this paragraph derives the width from - while
 execute-centering keeps the governed span equal to the execution-to-
-execution interval, <= 90 days at every allowed DELAY (B.2 pipeline). P/5 = -80% sits below the worst-ever 90-day
+execution interval, <= 90 days at every allowed DELAY (B.2 pipeline). The
+execute-time center is NOT taken on trust (an erroneous certified print at
+execute must not launder a fault into the accepted range): the payload
+also commits a reviewed ABSOLUTE range `[execCenterLow, execCenterHigh]`
+the center must fall in, sized by the SAME width rule around the
+SUBMISSION-time composed price S - **[S/5, 5S]** - because the range must
+survive legitimate submission-to-execution drift and DELAY <= 90 days is
+covered by the same worst-90-day-drawdown fact (-75.0% > -80%) the rail
+width itself rests on. The guardian therefore sees the worst-case absolute
+rail ([S/25, 25S]) during the veto window, and the spec adds a
+center-inside-the-OLD-rail induction check on top (waived only in rail
+recovery; spec: executeRouteRecalibration). P/5 = -80% sits below the worst-ever 90-day
 move with margin, so no historically observed market path can freeze a
 route between on-schedule recalibrations - while ANY order-of-magnitude
 fault (wrong decimals = 1e10-class, aggregator mis-scale) still lands far
@@ -466,8 +477,9 @@ movement as an alertable signal in both cases.
 - Sanity rail (absolute-price fault rail, NOT a divergence tool and NOT a
   turnover basis): **[P/5, 5P] centered on the composed price AT
   EXECUTION, re-centered at every recalibration** (payload carries the
-  width as ratios; a submission-time center would govern DELAY + interval
-  of drift, A.3) - P/5 = -80% sits below the computed
+  width as ratios plus a reviewed [S/5, 5S] absolute center range - a
+  submission-time center would govern DELAY + interval of drift, and an
+  unreviewed center would launder faults; A.3) - P/5 = -80% sits below the computed
   worst-ever 90-day ETH drawdown (-75.0%, Binance daily klines 2017-2026),
   so no historically observed market path freezes a route between
   on-schedule recalibrations, while any order-of-magnitude fault still

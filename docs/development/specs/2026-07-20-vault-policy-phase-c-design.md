@@ -287,9 +287,11 @@ struct TokenRoute {
     // The per-token sanity band, PERSISTED as ABSOLUTE bounds so every
     // later oracle read enforces it - not just the execute-time probe. The
     // PAYLOAD (TokenAdd and RouteRecalibration alike) carries the band as
-    // 1e18-scaled RATIOS to the execute-time composed price; execute (and
-    // the constructor, at deploy) centers them on the price it reads THEN
-    // and stores the absolutes here. Stored
+    // 1e18-scaled RATIOS to the execute-time composed price PLUS a
+    // reviewed ABSOLUTE range the center must fall in ([execCenterLow,
+    // execCenterHigh] - sizing doc A.3); execute (and the constructor, at
+    // deploy) centers the ratios on the price it reads THEN, gated by that
+    // range, and stores the absolutes here. Stored
     // here (not only in calldata) because a privileged feed that later
     // publishes a fresh-but-erroneous extreme value passes staleness and the
     // rate bounds yet collapses the cross-rate floor; Phase B enforces its
@@ -582,10 +584,12 @@ field:
   match its position in the route (a `UsdPrice` leg cannot sit where an
   `ExchangeRate` is composed); and the sanity-band RATIOS carried in the
   route (low < 1e18 < high) to be centered on the composed price read at
-  execute and PERSISTED as absolutes, enforced on every subsequent read,
-  not just probed once - so the proposer states what "right" looks like
-  (the reviewed width) and the timelock makes that claim publicly
-  reviewable.
+  execute - REQUIRED to fall inside the payload's reviewed absolute
+  [execCenterLow, execCenterHigh] range, there being no prior rail on an
+  add to induct from - and PERSISTED as absolutes, enforced on every
+  subsequent read, not just probed once - so the proposer states what
+  "right" looks like (the reviewed width AND the reviewed center range)
+  and the timelock makes both claims publicly reviewable.
 - **Pendings expire, and execution is NOT permissionless.** Morpho, OZ
   TimelockController, and Aera pendings live forever and execute
   permissionless-after-delay - a forgotten pending add is a landmine anyone
@@ -1183,7 +1187,26 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // derived for the recalibration INTERVAL, not interval + DELAY; the
     // ratio form also makes the old contains-current-price check
     // structural (low < 1e18 < high, validated at submit) instead of a
-    // race against DELAY-long drift. RECOVERY MODE: when a rate leg is ALREADY out of its old bound
+    // race against DELAY-long drift. The CENTER ITSELF IS NOT TRUSTED:
+    // an unchecked live read at execute would let a certified feed's
+    // fresh-but-erroneous extreme launder a fault into the accepted range
+    // (a 10x mis-scale the old rail rejects becoming the center of the
+    // new one). Two gates, so the absolute outcome stays reviewable and
+    // vetoable: (i) the center must fall inside the payload's REVIEWED
+    // absolute range [execCenterLow, execCenterHigh] - committed at
+    // submit, so the guardian sees the worst-case absolute rail during
+    // the veto window; (ii) defense in depth, the center must also lie
+    // inside the OLD stored rail - an induction chain of reviewed rails
+    // anchored at the constructor - waived ONLY when the old rail is
+    // itself the breached constraint (rail recovery: the composed price
+    // sits outside the old rail and every read already reverts), where
+    // the reviewed range of (i) plus the guardian veto is the authority,
+    // exactly symmetric with how rate-bound recovery waives only the
+    // breached leg's old bound. The centering read is the FULL validation
+    // read (staleness, sequencer, divergence band, rate bounds) minus
+    // exactly the breached constraint in a recovery - so an in-model
+    // fault (a diverged anchor, a stale leg, an out-of-bound ratio)
+    // cannot be centered on either. RECOVERY MODE: when a rate leg is ALREADY out of its old bound
     // (reads reverting - a realized negative rebase below the floor, or
     // sustained growth past a stale ceiling), those two checks are evaluated
     // with the BREACHED leg's old bound disabled on an internal read path
@@ -1234,6 +1257,12 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     //       uint256 railLowRatioE18;      // the new rail as 1e18-scaled RATIOS to the
     //       uint256 railHighRatioE18;     // composed price READ AT EXECUTE (0.2e18/5e18
     //                                     // = [P/5, 5P]); submit validates low < 1e18 < high
+    //       uint256 execCenterLow;        // REVIEWED ABSOLUTE range the execute-time center
+    //       uint256 execCenterHigh;       // must fall in (sizing doc: [S/5, 5S] around the
+    //                                     // submission-time composed price S) - what keeps
+    //                                     // the resulting absolute rail guardian-reviewable:
+    //                                     // the worst case visible at submit is
+    //                                     // [execCenterLow x lowRatio, execCenterHigh x highRatio]
     //       uint16  turnoverGrossUpBps;   // the reviewed charge gross-up (see C4)
     //   }
     // Pending key = keccak256(token, tokenNonce[token], abi.encode(r)) - same
