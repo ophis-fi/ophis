@@ -121,18 +121,22 @@ export { visibleTextOf, NAMED_REFS }
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
-const distBlog = resolve(root, 'dist/blog')
+// The whole dist tree, not just dist/blog: the canonical pages (/pricing,
+// /security, /supported-chains), the /learn guides, and the home page carry
+// FAQPage schema too, and Google's verbatim-visible-text requirement applies
+// to every one of them equally.
+const distRoot = resolve(root, 'dist')
 
 // Importing this module must not run the gate: the conformance suite in
 // scripts/test-html-text.mjs imports visibleTextOf to hold both extractors to
 // one spec, and test:unit runs BEFORE astro build, when dist/ does not exist.
 function main() {
-  if (!existsSync(distBlog)) {
-    console.error('check-faq-schema: dist/blog missing - run the build first.')
+  if (!existsSync(distRoot)) {
+    console.error('check-faq-schema: dist/ missing - run the build first.')
     process.exit(1)
   }
 
-  // Every index.html under dist/blog, at any depth, so nested posts are covered.
+  // Every index.html under dist/, at any depth, so nested pages are covered.
   const pagesUnder = (dir) =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const p = join(dir, e.name)
@@ -144,8 +148,8 @@ function main() {
   let pagesWithFaq = 0
   let answersChecked = 0
 
-  for (const page of pagesUnder(distBlog)) {
-    const slug = relative(distBlog, dirname(page)) || '(index)'
+  for (const page of pagesUnder(distRoot)) {
+    const slug = relative(distRoot, dirname(page)) || '(index)'
     const html = readFileSync(page, 'utf8')
 
     let faq = null
@@ -160,17 +164,26 @@ function main() {
       if (parsed?.['@type'] === 'FAQPage') faq = parsed
     }
 
-    // The rendered article carries <h2 id="faq">; if it does, schema is expected.
-    const hasFaqHeading = /<h2\b[^>]*\bid="faq"/i.test(html)
-    if (hasFaqHeading && !faq) {
-      failures.push(`${slug}: renders an FAQ heading but emits no FAQPage schema`)
-      continue
+    // Blog posts have a known shape: faqPageSchema() derives the schema from a
+    // rendered "## FAQ" section, so heading and schema must exist together.
+    // Non-blog pages (home FAQSection, /pricing, /security, /learn guides)
+    // build schema and visible sections from the SAME frontmatter constants,
+    // in varying markup (details/summary, question-h2s), so only the verbatim
+    // rule below applies to them.
+    const isBlog = slug === 'blog' || slug.startsWith('blog/')
+    if (isBlog) {
+      // The rendered article carries <h2 id="faq">; if it does, schema is expected.
+      const hasFaqHeading = /<h2\b[^>]*\bid="faq"/i.test(html)
+      if (hasFaqHeading && !faq) {
+        failures.push(`${slug}: renders an FAQ heading but emits no FAQPage schema`)
+        continue
+      }
+      if (faq && !hasFaqHeading) {
+        failures.push(`${slug}: emits FAQPage schema but renders no FAQ heading`)
+        continue
+      }
     }
     if (!faq) continue
-    if (!hasFaqHeading) {
-      failures.push(`${slug}: emits FAQPage schema but renders no FAQ heading`)
-      continue
-    }
     pagesWithFaq++
 
     // Named references the extractors do not know are a genuine blind spot:
