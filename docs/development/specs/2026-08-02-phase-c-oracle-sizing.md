@@ -243,8 +243,10 @@ Tier membership is decided by ONE arithmetic test - sum the two sides'
 deviation thresholds (after removing any shared leg that cancels) - never by
 feed family. Consequences the review made explicit: canceling a shared
 ETH/USD leg does NOT by itself qualify a route for the tight tier (two
-remaining 0.5% legs still sum to 100 -> standard tier); Unichain's 0.05% ExR
-against the chain's 0.5% ETH/USD (sum 55) lands standard tier; and the test
+remaining 0.5% legs still sum to 100 -> standard tier); the summed sides
+must be the two COMPARED sides after cancellation, never two legs of the
+same composed price (an ExR leg and the ETH/USD leg it multiplies are
+factors of ONE side - summing them classifies nothing); and the test
 is INAPPLICABLE to a source without a published deviation threshold - which
 includes the RedStone wstETH/ETH anchor on Unichain (its permissionless
 update path has no Chainlink-style deviation trigger), so that
@@ -517,11 +519,16 @@ PriceCapAdapterBase.sol + the Chaos framework post): the snapshot ratio must
 be an observation AT LEAST that old. **We adopt the rule as a bounded,
 DELAY-AWARE window enforced on-chain by executeRouteRecalibration: the
 observation's age at EXECUTE must lie in [14 days, 21 days + DELAY]** -
-and the window binds EVERY path that installs a RateBound, not just
-recalibration: `executeTokenAdd` enforces the same age window plus
-live-ratio-vs-new-bound check, and the constructor's initial set enforces
-[14 days, 21 days] with no timelock transit (spec: execute-time
-validation) - otherwise an add or remove-and-re-add installs an
+and a bound binds EVERY path that installs a RateBound, with the window
+PER PATH (each normative in the spec): recalibration
+[14d, 21d + DELAY]; `executeTokenAdd`
+[14d, min(21d + DELAY, 180d - DELAY - 7d)] - tightened because a
+just-listed token's first refresh cannot be pre-staged, so an
+install must remain serviceable before the 180-day term (83 days, not
+111, at the DELAY = 90d ceiling); the constructor [14d, 21d] (no
+timelock transit); and LOWER-BOUND RECOVERY alone waives the 14-day
+floor for the breached leg ((0, 21d + DELAY], the fresh post-rebase
+re-base). Without these, an add or remove-and-re-add installs an
 arbitrarily old observation and pre-grants `(cap - realized) x age` of
 instant headroom, bypassing the 21-day slack cap this section derives. The
 observation is committed at submission and ages through the timelock, so a
