@@ -200,20 +200,29 @@ per-leg in-band error terms, rounded UP to the next 5 bps:
   the measured 30-day max 2-minute ETH move (164.3 bps, A.1) rounded up;
   p99.99 is 107.6 bps, so the allowance clears virtually every observed
   window with margin.
-- rate leg (ExR or market LST ratio): term = **25 bps**, the SAME sourced
-  margin set as A.1 (15 = 3x measured calm-market basis + 10 labeled
-  jitter). The underlying moves ~3%/yr, so intra-lag drift is negligible;
-  the term is dominated by basis, and a LIP-23-scale rebase day (~19 bps)
-  still fits inside it.
+- rate leg read from a FEED (ExR or market LST ratio): term = the feed's
+  own deviation threshold + **25 bps**, the SAME sourced margin set as A.1
+  (15 = 3x measured calm-market basis + 10 labeled jitter). The feed's
+  promise is only update-on-threshold-or-heartbeat, so it may sit up to its
+  threshold from truth while fresh - a 0.5% ExR feed contributes 50 bps of
+  in-band error the margins alone do not cover. No 165-bps landing
+  allowance on top: the underlying RATIO moves ~3%/yr (A.1) and the sourced
+  depeg events unfold over hours-to-months (A.3), so ratio movement inside
+  the ~2-minute landing lag stays inside the 10-bps jitter allowance.
+- registration-only rate leg read LIVE from the token contract (no feed, no
+  update threshold): term = **25 bps**, the margins alone - a direct read
+  has no feed lag; the term covers basis against real value, and a
+  LIP-23-scale rebase day (~19 bps) still fits inside it.
 
 Worked defaults (multiplicative, per the same composition rule as A.5):
-standard route, 0.5% ExR rate leg + 0.5%/1h ETH/USD leg:
-(1 + 0.0025)(1 + 0.0050 + 0.0165) - 1 = 240.5 bps -> **245**.
-Arbitrum-style 0.05%/24h ETH/USD leg:
-(1 + 0.0025)(1 + 0.0005 + 0.0165) - 1 = 195.4 bps -> **200**. Overcharge at
-this scale is fail-closed: charges land ~2-2.5% above live, the effective
-daily budget shrinks by the same factor, and operators size
-`dailyUsdTurnoverCap` knowing that.
+standard route, 0.5% ExR FEED rate leg + 0.5%/1h ETH/USD leg:
+(1 + 0.0050 + 0.0025)(1 + 0.0050 + 0.0165) - 1 = 291.6 bps -> **295**.
+Same shape on an Arbitrum-style 0.05%/24h ETH/USD leg:
+(1 + 0.0075)(1 + 0.0005 + 0.0165) - 1 = 246.3 bps -> **250**. Live-read
+rate leg + 0.5%/1h ETH/USD: (1 + 0.0025)(1 + 0.0050 + 0.0165) - 1 =
+240.5 bps -> **245**. Overcharge at this scale is fail-closed: charges
+land ~2.5-3% above live, the effective daily budget shrinks by the same
+factor, and operators size `dailyUsdTurnoverCap` knowing that.
 
 **The residual beyond the envelope, quantified rather than waved at:** the
 one in-model way a FRESH leg can be wrong by more than
@@ -279,7 +288,14 @@ MINIMUM_SNAPSHOT_DELAY (7 days ETH LSTs / 14 days others,
 PriceCapAdapterBase.sol + the Chaos framework post): the snapshot ratio must
 be an observation AT LEAST that old. **We adopt the rule as a bounded,
 DELAY-AWARE window enforced on-chain by executeRouteRecalibration: the
-observation's age at EXECUTE must lie in [14 days, 21 days + DELAY].** The
+observation's age at EXECUTE must lie in [14 days, 21 days + DELAY]** -
+and the window binds EVERY path that installs a RateBound, not just
+recalibration: `executeTokenAdd` enforces the same age window plus
+live-ratio-vs-new-bound check, and the constructor's initial set enforces
+[14 days, 21 days] with no timelock transit (spec: execute-time
+validation) - otherwise an add or remove-and-re-add installs an
+arbitrarily old observation and pre-grants `(cap - realized) x age` of
+instant headroom, bypassing the 21-day slack cap this section derives. The
 observation is committed at submission and ages through the timelock, so a
 fixed [14, 21] would be unreachable for any vault whose DELAY exceeds 21
 days (the review caught this): the ceiling therefore carries the vault's
@@ -418,7 +434,8 @@ movement as an alertable signal in both cases.
   clamp-vs-revert product decision, not a calibration (B.3).
 - Turnover gross-up: `turnoverGrossUpBps` per A.6 - the route's own
   in-band composition envelope, same formula anchored or unanchored
-  (standard route **245 bps**, Arbitrum-style **200**), NOT
+  (standard route with a 0.5% ExR feed leg **295 bps**, live-read rate leg
+  **245**, Arbitrum-style ETH/USD **250**), NOT
   maxDivergenceBps (anchor-relative, blind to common-mode) and NOT
   sanityHigh (~5x notional). Permitted-lag residual bounded by the
   computed worst up-move over the staleness window (1h +24.4% / 25h

@@ -544,7 +544,20 @@ field:
   into a revert and the token into a policy-DoS), staleness bounds, live
   adapter probe, sequencer gate, and
   `allowedTokens.length < MAX_ALLOWED_TOKENS` (the cap that keeps
-  `removeToken`'s sweep statically bounded - see C15).
+  `removeToken`'s sweep statically bounded - see C15), and - because a
+  RateBound is INSTALLED here, not only refreshed by recalibration - the
+  SAME snapshot validations `executeRouteRecalibration` enforces: every
+  registration-only rate leg's observation age within the DELAY-aware
+  window (`execTs - snapshotTs` in [14 days, 21 days + DELAY]), the live
+  ratio satisfying the new bound at execTs, and the sanity rail containing
+  the composed price. Without this, an add (or remove-and-re-add) installs
+  an arbitrarily OLD observation and instantly pre-grants years of
+  accumulated growth headroom - `(cap - realized) x age` of slack - walking
+  around the 21-day cap the sizing doc's B.1 window exists to enforce. The
+  CONSTRUCTOR's initial `TokenAdd[]` enforces the same checks with no
+  timelock transit to account for: `deployTs - snapshotTs` in
+  [14 days, 21 days] - deployment prep simply takes its observations
+  14-21 days before deploy.
   **A liveness probe is not identity validation.** "The adapter returned a
   nonzero number" cannot distinguish a token/USD price from an exchange rate,
   a decimals-mismatched proxy, a deliberately capped TEST feed (Unichain ships
@@ -1169,21 +1182,31 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // the authority for that - without recovery mode, the one situation the
     // refresh exists for (a breached bound needing governance re-set) would
     // be the one it cannot handle, forcing the remove+re-add outage.
-    // Recovery also WAIVES THE 14-DAY AGE FLOOR for the BREACHED leg's
-    // snapshot entry (its window becomes (0, 21 days + DELAY]): after a
-    // negative rebase, every honest observation old enough for the normal
-    // window PREDATES the rebase and so exceeds the live ratio - the
-    // live-vs-new-bound check would reject it and the route would stay dark
-    // ANOTHER 14 days after the timelock, recovery mode notwithstanding. A
-    // fresh post-rebase observation is exactly what re-basing needs; the
-    // spike cushion the 14-day floor buys in normal operation is provided
-    // here by the compensating controls (a DELAY-long public review of a
-    // visibly frozen route + guardian veto), and the risk direction is
-    // inverted - the cushion guards against ratcheting a bound UP off a
-    // transient spike, while recovery re-bases DOWN onto a realized loss.
-    // Non-breached legs in the same payload keep the normal window, and the
-    // live-vs-new-bound check is NOT waived in either case - so recovery
-    // downtime is the timelock transit, not transit plus 14 days.
+    // Recovery also WAIVES THE 14-DAY AGE FLOOR - but ONLY for a leg whose
+    // live ratio sits BELOW its old floor (the negative-rebase side,
+    // determined per leg on the same bounds-disabled internal read; its
+    // window becomes (0, 21 days + DELAY]): after a negative rebase, every
+    // honest observation old enough for the normal window PREDATES the
+    // rebase and so exceeds the live ratio - the live-vs-new-bound check
+    // would reject it and the route would stay dark ANOTHER 14 days after
+    // the timelock, recovery mode notwithstanding. A fresh post-rebase
+    // observation is exactly what re-basing needs; the spike cushion the
+    // 14-day floor buys in normal operation is provided here by the
+    // compensating controls (a DELAY-long public review of a visibly
+    // frozen route + guardian veto), and the risk direction is inverted -
+    // the cushion guards against ratcheting a bound UP off a transient
+    // spike, while a lower-breach recovery re-bases DOWN onto a realized
+    // loss. An UPPER-bound breach keeps the FULL [14d, 21d + DELAY]
+    // window: waiving it there would let a transiently inflated rate
+    // ratchet the ceiling up off a one-day-old observation - the exact
+    // spike the floor exists to exclude - and if realized growth is STILL
+    // above the cap across a 14-day observation, the correct outcome is
+    // remaining closed pending a growth-cap re-review (a sustained
+    // above-cap regime is a mis-sized cap, sizing doc B.3, not a
+    // recoverable transient). Non-breached legs in the same payload keep
+    // the normal window, and the live-vs-new-bound check is NOT waived in
+    // any case - so lower-breach recovery downtime is the timelock
+    // transit, not transit plus 14 days.
     // The payload, fully specified so multi-leg routes are unambiguous:
     //   struct LegSnapshot {
     //       bool    isAnchorLeg;   // false => index into TokenRoute.legs, true => .anchor
@@ -1333,7 +1356,9 @@ the verification log tracks which currently have no assigned target.
   route's OWN worst in-band composition error: the multiplicative product,
   over the route's USD-composition legs, of each leg's in-band error term
   (deviation threshold + the measured update-landing allowance for
-  market-priced legs; the sourced margin set for rate legs), rounded up.
+  market-priced legs; the rate FEED's own deviation threshold + the sourced
+  margin set for rate legs read from a feed, the margins alone for
+  registration-only live contract reads), rounded up.
   The SAME formula for anchored and unanchored routes, because the anchor
   plays no role in the charge and `maxDivergenceBps` would be the WRONG
   bound anyway: the divergence band is anchor-RELATIVE and definitionally
@@ -1360,7 +1385,7 @@ the verification log tracks which currently have no assigned target.
   longer updates past its own deviation threshold - a write-path
   malfunction of the same root of trust the ORACLE FLOOR stands on, out of
   model for the cap as for everything else. Overcharging by the gross-up
-  (~2-2.5%, A.6 worked defaults) is fail-closed (a curator hits the cap
+  (~2.5-3%, A.6 worked defaults) is fail-closed (a curator hits the cap
   imperceptibly sooner); operators size
   `dailyUsdTurnoverCap` knowing charges land at top-of-band. Refund arithmetic saturates at zero: a naive
   subtraction underflow-reverts on a drained bucket and, through the shared
