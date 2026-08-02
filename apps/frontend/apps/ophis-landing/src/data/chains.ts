@@ -38,7 +38,10 @@ export const EVM_CHAINS: EvmChain[] = [
   { name: 'Gnosis Chain', shortName: 'Gnosis', chainId: 100, logo: '/logos/chain-gnosis.png', sovereign: false },
   { name: 'Optimism', shortName: 'Optimism', chainId: 10, logo: '/logos/chain-optimism.png', sovereign: true },
   { name: 'Unichain', shortName: 'Unichain', chainId: 130, logo: '/logos/chain-unichain.svg', sovereign: true },
-  { name: 'Robinhood Chain', shortName: 'Robinhood', chainId: 4663, logo: '/logos/chain-robinhood.svg', sovereign: true },
+  // -v2 filename: corrected brand art (black feather on #ccff00, per Robinhood
+  // Chain team feedback 2026-08-02); /logos/* is cached immutable, so a brand
+  // fix must ship under a new filename (see public/_headers).
+  { name: 'Robinhood Chain', shortName: 'Robinhood', chainId: 4663, logo: '/logos/chain-robinhood-v2.svg', sovereign: true },
 ]
 
 export const EVM_CHAIN_COUNT = EVM_CHAINS.length
