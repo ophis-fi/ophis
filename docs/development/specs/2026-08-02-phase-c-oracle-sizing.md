@@ -53,10 +53,29 @@ its own threshold; Gauntlet documented the resulting ~2-minute update desyncs
 between correlated feeds as the motivation for synchronized adapters:
 governance.aave.com/t/arfc-gauntlet-and-bgd-chainlink-synchronicity-price-adapter-2-0/13046).
 For the standard 0.5% + 0.5% pairing the mechanical noise floor is **100 bps**.
-Where route and anchor share the same ETH/USD leg, composing the anchor so the
-denominator CANCELS (compare in ETH terms - the spec's composed-anchor rule
-already supports this) removes that leg's threshold from the sum; route shapes
-SHOULD do this wherever possible.
+
+**Denominator cancellation is MANDATORY for any route claiming a class
+default, not a nicety** - measured, not asserted: the desynchronization
+exposure of a NON-cancelling comparison (route and anchor each carrying
+their own USD leg, updating ~2 minutes apart per the Gauntlet observation)
+is the underlying's move across that lag. Computed from 30 days of Binance
+ETHUSDT 1-minute closes (43,200 candles, read 2026-08-02; method in the
+research log): 2-minute absolute ETH moves reach p99 29.2 bps, p99.9 55.1
+bps, p99.99 107.6 bps, max 164.3 bps. A side-by-side USD comparison
+therefore sees desync excursions ABOVE any sane band several times a month
+- it is unclassifiable, and gets only a per-route derivation built on those
+measured statistics. A CANCELLED comparison (ratio vs ratio in ETH terms -
+the spec's composed-anchor rule) removes the USD leg entirely; the compared
+LST ratios move ~3%/yr, so their 2-minute drift is negligible and the
+desync term collapses.
+
+**The margins, each sourced or labeled:** basis envelope **15 bps** = 3x the
+worst measured calm-market basis (4.0 bps, A.2; the 3x is a labeled safety
+factor), plus **10 bps** desync-and-jitter allowance for market-feed ratio
+movement inside the update lag (labeled allowance - the measured ExR-side
+drift is ~0, this covers the market-feed side). Total margins: 25 bps. The
+earlier draft's 20+30 split was flagged in review as unsourced and is
+withdrawn.
 
 ### A.2 The steady-state basis (measured, primary)
 
@@ -123,9 +142,9 @@ divergence band itself, and minBuyOverride are.
 
 | Route class | maxDivergenceBps | Derivation |
 |---|---|---|
-| Standard tier: feed deviation-threshold SUM in (50, 100] bps (e.g. the common 0.5% + 0.5% ExR-vs-market pairing = 100) | **155** | worst-case divergence composes MULTIPLICATIVELY, not additively, because the band divides by routeValue: route low by (dev 0.5% + desync 0.3%), anchor high by (dev 0.5% + basis 0.2%) gives (1.007 - 0.992) / 0.992 = 151.2 bps - already over an additive 150. 155 = the multiplicative worst case rounded up to the next 5. Sits BELOW Aave's 250 emergency line and below the sourced deep-depeg magnitudes (290/600/800). |
-| Tight tier: feed deviation-threshold SUM <= 50 bps (e.g. two Unichain 0.05% ExR legs = 10; 0.05% vs 0.2% = 25; tETH/wstETH 0.02% + 0.05% = 7) | **105** | same multiplicative composition with sum <= 50: worst split (1.002 - 0.992) / 0.992 = 100.8 bps -> 105, margins fully preserved. |
-| Sum > 100 bps (e.g. mainnet CBETH/ETH market at 1% paired with an ExR leg): NO class default | derived per route | value = multiplicative worst case of (sum + 20 + 30), rounded up to the next 25; flagged in listing review. A class default here would let feed noise alone consume the whole band. |
+| Standard tier: CANCELLED comparison, feed deviation-threshold SUM in (50, 100] bps (e.g. the common 0.5% + 0.5% ExR-vs-market pairing = 100) | **130** | envelope = sum 100 + margins 25 = 125 additive; worst-case divergence composes MULTIPLICATIVELY because the band divides by routeValue: (1.00625 / 0.99375) - 1 = 125.8 bps -> 130 (rounded up to 5). Sits BELOW Aave's 250 emergency line and below the sourced deep-depeg magnitudes (290/600/800). |
+| Tight tier: CANCELLED comparison, feed deviation-threshold SUM <= 50 bps (e.g. two Unichain 0.05% ExR legs = 10; 0.05% vs 0.2% = 25; tETH/wstETH 0.02% + 0.05% = 7) | **80** | envelope = 50 + 25 = 75 additive -> multiplicative (1.00375 / 0.99625) - 1 = 75.3 bps -> 80, margins fully preserved. |
+| NON-cancelling comparisons, or sum > 100 bps (e.g. mainnet CBETH/ETH market at 1%): NO class default | derived per route | non-cancelling shapes start from the measured 2-minute desync statistics above (p99.9 55 / max 164 bps get ADDED to the envelope); sum > 100 uses the multiplicative worst of (sum + 25), rounded up to the next 25; both flagged in listing review. |
 
 Tier membership is decided by ONE arithmetic test - sum the two sides'
 deviation thresholds (after removing any shared leg that cancels) - never by
@@ -141,11 +160,12 @@ value is set per listing from measured update behavior of the actual anchor,
 through the timelock like everything else.
 
 **Detection floor, stated honestly:** with standard-tier feeds the band
-cannot distinguish a shallow depeg from legitimate noise - the rsETH
-April-2024 event (-1.5% = 150 bps) sits INSIDE the standard tier's 155-bps
-band (the normative comparison passes at `<= maxDivergenceBps`), so that
-event class is NOT reliably detected on 0.5%-deviation feeds. It IS detected
-on the tight tier (150 > 105). This is a physics limit of the feed specs, not a
+cannot distinguish a shallow depeg from legitimate noise. With the sourced
+margins the standard tier lands at 130 bps, which DOES react to the rsETH
+April-2024 event (150 > 130) - an improvement over the earlier
+unsourced-margin draft - but events at or under ~130 bps remain inside the
+legitimate-noise envelope of 0.5%-deviation feeds and are structurally
+undetectable there; the tight tier detects from ~80 bps. This is a physics limit of the feed specs, not a
 tunable: shrinking the standard band below its own noise envelope trades a
 undetectable-shallow-event risk for recurring false fail-closed downtime.
 The residual exposure is bounded: a shallow in-band divergence mis-prices the
@@ -192,10 +212,17 @@ day adds ~3.2 bps to the ratio while a 9.68%/yr linear bound allows ~2.65 bps
 for that day: the read would revert. Aave's mechanism for exactly this is
 MINIMUM_SNAPSHOT_DELAY (7 days ETH LSTs / 14 days others,
 PriceCapAdapterBase.sol + the Chaos framework post): the snapshot ratio must
-be an observation AT LEAST that old. **We adopt the rule as a bounded WINDOW:
-every recalibration uses a ratio observation between 14 and 21 days old**
-(enforced on-chain by executeRouteRecalibration - see the spec's P3
-surface). Stated precisely, because "cushion" is CONDITIONAL, not automatic:
+be an observation AT LEAST that old. **We adopt the rule as a bounded,
+DELAY-AWARE window enforced on-chain by executeRouteRecalibration: the
+observation's age at EXECUTE must lie in [14 days, 21 days + DELAY].** The
+observation is committed at submission and ages through the timelock, so a
+fixed [14, 21] would be unreachable for any vault whose DELAY exceeds 21
+days (the review caught this): the ceiling therefore carries the vault's
+own governance delay - the exact [14, 21] target is realized on the
+recommended sovereign config (DELAY = 24h, prompt execution), and a
+long-DELAY vault's extra pre-granted slack is a consequence of ITS
+governance choice, bounded at (cap - realized) x (21d + DELAY) and
+documented rather than hidden. Stated precisely, because "cushion" is CONDITIONAL, not automatic:
 the slack at any moment is (cap - realized growth) x observation age - prior
 growth CONSUMES the linear allowance rather than creating headroom. With
 observed medians (~3%) against a 9.68% cap, 14 days give (9.68 - 3)% x
@@ -260,6 +287,17 @@ Justified by the factual record, per asset:
   operator bonds + RPL collateral (docs.rocketpool.net protocol FAQ).
 - **weETH**: 990 daily on-chain samples of `getRate()` (Nov 2023 - Aug 2026):
   ZERO decreases; no slashing incident to date (hackmd.io/@PrismaRisk/weETH).
+- **cbETH**: 1,156 daily on-chain samples of `exchangeRate()`
+  (`0xBe9895146f...`, selector 0x3ba0b9a9) over ~3.2 years (Aug 2022 - Aug
+  2026, archive eth_call, method as for rETH/weETH): ZERO decreases; rate
+  1.00480 -> 1.11414.
+- **ezETH, rsETH: UNVERIFIED - flat floor NOT approved by this document.**
+  No rate-history scan was run for either, and both are RESTAKING assets
+  whose AVS-slashing surface the verified LSTs do not carry, so their rates
+  CAN legitimately fall in ways the record above does not cover. Listing
+  either requires the same archive-scan verification (daily monotonicity
+  over the full token history) plus a slashing-model review, per listing,
+  before `minGrowth 0` is adopted for it.
 - **sUSDe** (when listed): the share price contractually cannot decrease -
   negative funding is absorbed by the separate reserve fund, never the staking
   contract (docs.ethena.fi technical-design/staking-usde).
@@ -284,27 +322,32 @@ movement as an alertable signal in both cases.
 
 ## C. The ask (approve = these become the TokenAdd defaults)
 
-- `maxDivergenceBps` by the ARITHMETIC TIER TEST of A.5 (sum the two sides'
-  deviation thresholds after cancelling shared legs; worst cases compose
-  MULTIPLICATIVELY): sum <= 50 bps -> **105**; sum in (50, 100] -> **155**;
-  sum > 100 or any side without a published deviation threshold (e.g. the
-  Unichain RedStone anchor) -> NO default, per-route derivation in listing
-  review. Denominator cancellation is an input to the sum, never a tier
-  shortcut. Per-token overridable; C5 trial monitors with `anchorBandState`
-  before size migrates. Known detection floor: shallow (<=155 bps) events
-  are not reliably detectable on standard-tier feeds (A.5).
+- `maxDivergenceBps` by the ARITHMETIC TIER TEST of A.5, valid ONLY for
+  denominator-CANCELLED comparisons (measured 2-minute desync makes
+  non-cancelling shapes unclassifiable): sum <= 50 bps -> **80**; sum in
+  (50, 100] -> **130** (margins now sourced: 15 basis = 3x measured, + 10
+  labeled jitter allowance; multiplicative composition). Non-cancelling
+  shapes, sum > 100, or any side without a published deviation threshold
+  (e.g. the Unichain RedStone anchor) -> NO default, per-route derivation
+  from the measured statistics in listing review. Per-token overridable; C5
+  trial monitors with `anchorBandState` before size migrates. Detection
+  floor: the 130 tier reacts to the rsETH-2024 class (150 bps); events
+  <= ~130 bps are structurally undetectable on 0.5%-deviation feeds (A.5).
 - CAPO: **wstETH 968 / weETH 875 / rETH 930 / ezETH 1089 / rsETH 983 /
-  cbETH 812 bps/yr**, `minGrowth 0` everywhere (guarantee = never below the
-  last verified snapshot; a bounded dip trips ONLY while headroom is thin -
-  correct near a fresh verification, silent later; B.4); recalibration via
-  the spec's new timelocked executeRouteRecalibration (bounds-only,
-  non-disruptive) <= every 90 days, with the ratio observation aged 14-21
-  days (conditional spike slack below, pre-granted-headroom slack capped
-  ~38 bps above; B.1); **sUSDe deferred** - listing it is a clamp-vs-revert
-  product decision, not a calibration (B.3).
-- Sanity rail (absolute-price fault rail, NOT a divergence tool): **[P/5,
-  5P] re-centered at every recalibration** - P/5 = -80% sits below the
-  computed worst-ever 90-day ETH drawdown (-75.0%, Binance daily klines
-  2017-2026), so no historically observed market path freezes a route
-  between on-schedule recalibrations, while any order-of-magnitude fault
-  still lands far outside (A.3).
+  cbETH 812 bps/yr**; `minGrowth 0` VERIFIED for wstETH, rETH, weETH, cbETH
+  (on-chain monotonicity scans) and sUSDe (contractual); **ezETH + rsETH
+  UNVERIFIED - per-listing scan + slashing review required before flat
+  floor** (B.4). Recalibration via the spec's timelocked
+  executeRouteRecalibration (bounds-only, non-disruptive, DELAY-aware
+  observation window [14d, 21d + DELAY], live-ratio-vs-new-bound check,
+  recovery mode for breached bounds) <= every 90 days; **sUSDe deferred** -
+  clamp-vs-revert product decision, not a calibration (B.3).
+- Sanity rail (absolute-price fault rail, NOT a divergence tool and NOT a
+  turnover basis - the spec's turnover charge now grosses up the live route
+  price by the divergence/deviation bound instead of charging at
+  sanityHigh, which would have billed ~5x notional): **[P/5, 5P]
+  re-centered at every recalibration** - P/5 = -80% sits below the computed
+  worst-ever 90-day ETH drawdown (-75.0%, Binance daily klines 2017-2026),
+  so no historically observed market path freezes a route between
+  on-schedule recalibrations, while any order-of-magnitude fault still
+  lands far outside (A.3).

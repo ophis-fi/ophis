@@ -1136,12 +1136,29 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // pending-invalidation rules make a per-quarter outage per token). Same
     // pending discipline as every other P3 type: Safe-only submit + execute,
     // [eta, eta+WINDOW], guardian-cancelable, per-token nonce. Execute-time
-    // validation: the new snapshotTs lies in [now - 30 days, now - 14 days]
-    // (the sizing doc's observation-age window, enforceable on-chain), the
-    // new snapshot ratio does not violate the leg's own bounds evaluated at
-    // execute time, and the new sanity rail CONTAINS the current composed
-    // price (a recalibration can widen or re-center, never brick the route
-    // it refreshes).
+    // validation, DELAY-AWARE because the observation is committed at submit
+    // but ages through the timelock: `execTs - snapshotTs` must lie in
+    // [14 days, 21 days + DELAY]. The 14-day floor is the sizing doc's spike
+    // cushion (auto-satisfied whenever DELAY >= 14d); the ceiling is the
+    // 21-day slack budget plus the unavoidable timelock transit - so the
+    // pre-granted headroom a stale observation grants scales with the
+    // vault's OWN governance delay, a tradeoff its owners chose at deploy
+    // (exactly [14, 21] is realized on the recommended sovereign config,
+    // DELAY = 24h with prompt execution). Two further checks: the CURRENT
+    // live ratio must satisfy the NEW RateBound evaluated at execTs
+    // (installing a bound the present already violates would make every
+    // subsequent read revert - recalibration must never brick what it
+    // refreshes), and the new sanity rail must CONTAIN the current composed
+    // price. RECOVERY MODE: when a rate leg is ALREADY out of its old bound
+    // (reads reverting - a realized negative rebase below the floor, or
+    // sustained growth past a stale ceiling), those two checks are evaluated
+    // with the BREACHED leg's old bound disabled on an internal read path
+    // used only here, and the new-snapshot-satisfies-the-OLD-bound
+    // requirement is waived: recovery re-bases on current reality, and the
+    // same timelock + guardian veto that authorizes any recalibration is
+    // the authority for that - without recovery mode, the one situation the
+    // refresh exists for (a breached bound needing governance re-set) would
+    // be the one it cannot handle, forcing the remove+re-add outage.
     function submitRouteRecalibration(address token, RouteRecalibration calldata r) external;  // ONLY address(safe)
     function executeRouteRecalibration(address token, RouteRecalibration calldata r) external; // ONLY address(safe), [eta, eta+WINDOW]
     // Feed eligibility is the root of trust for C2/C17, so it gets its OWN
@@ -1250,13 +1267,21 @@ the verification log tracks which currently have no assigned target.
   `max(0, sellUsd18 - leaked(sellUsd18, block.timestamp - registeredAt))`,
   the charge decayed by the SAME leak schedule the bucket applies (OrderState
   already stores `registeredAt`), still saturating against the current bucket
-  level. The CHARGE itself is the in-band worst case: `sellUsd18` is computed
-  at the SELL route's `sanityHigh`, not the live route price. A correlated
-  underreport (sell and buy routes low by the same factor, both inside their
-  bands) cancels out of the cross-rate floor AND any same-denominated anchor
-  comparison - the floor is immune, but a route-price-based charge would
-  stretch the effective per-day turnover past the cap by exactly that factor.
-  Overcharging is fail-closed (a curator hits the cap sooner); operators size
+  level. The CHARGE itself is the in-band worst case, with the bound chosen
+  from the RIGHT band: `sellUsd18` = the live route price GROSSED UP by the
+  route's worst in-band error - `x (1 + maxDivergenceBps)` for an anchored
+  route, `x (1 + its feed deviation-threshold sum + the sizing doc's margins)`
+  for an unanchored one. NOT the sanity rail: the rail is an
+  order-of-magnitude fault backstop sized in MULTIPLES of the price
+  (sizing doc: [P/5, 5P]), and charging at `sanityHigh` would bill every
+  order ~5x its notional, silently deleting ~80% of the configured turnover
+  budget. The divergence/deviation bound is what actually limits a
+  correlated in-band underreport (sell and buy routes low by the same
+  factor cancel out of the cross-rate floor - the floor is immune, but a
+  bare route-price charge would stretch the effective per-day turnover past
+  the cap by exactly that factor, and that factor is bounded by the
+  divergence band, not the rail). Overcharging by the gross-up (~1-2%) is
+  fail-closed (a curator hits the cap imperceptibly sooner); operators size
   `dailyUsdTurnoverCap` knowing charges land at top-of-band. Refund arithmetic saturates at zero: a naive
   subtraction underflow-reverts on a drained bucket and, through the shared
   cancel path, would propagate into `removeToken`. Bucket accounting never exceeds Phase-B
