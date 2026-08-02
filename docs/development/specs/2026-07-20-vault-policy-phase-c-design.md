@@ -284,8 +284,12 @@ struct TokenRoute {
     Leg[]     legs;          // composed: legs[0] (UsdPrice) x each ExchangeRate leg
     Leg[]     anchor;        // optional, composed by the SAME rule as legs
     uint32    maxDivergenceBps;
-    // The per-token sanity band from the TokenAdd payload, PERSISTED so every
-    // later oracle read enforces it - not just the execute-time probe. Stored
+    // The per-token sanity band, PERSISTED as ABSOLUTE bounds so every
+    // later oracle read enforces it - not just the execute-time probe. The
+    // PAYLOAD (TokenAdd and RouteRecalibration alike) carries the band as
+    // 1e18-scaled RATIOS to the execute-time composed price; execute (and
+    // the constructor, at deploy) centers them on the price it reads THEN
+    // and stores the absolutes here. Stored
     // here (not only in calldata) because a privileged feed that later
     // publishes a fresh-but-erroneous extreme value passes staleness and the
     // rate bounds yet collapses the cross-rate floor; Phase B enforces its
@@ -576,10 +580,11 @@ field:
   `decimals()` to be read, validated (<= 18) and cached as `feedDecimals` so
   every later raw read normalizes to 18-dec; each leg's declared `LegKind` to
   match its position in the route (a `UsdPrice` leg cannot sit where an
-  `ExchangeRate` is composed); and the composed price to fall inside the
-  per-token sanity band carried in the route - PERSISTED at execute and
-  enforced on every subsequent read, not just probed once - so the proposer
-  states what "right" looks like and the timelock makes that claim publicly
+  `ExchangeRate` is composed); and the sanity-band RATIOS carried in the
+  route (low < 1e18 < high) to be centered on the composed price read at
+  execute and PERSISTED as absolutes, enforced on every subsequent read,
+  not just probed once - so the proposer states what "right" looks like
+  (the reviewed width) and the timelock makes that claim publicly
   reviewable.
 - **Pendings expire, and execution is NOT permissionless.** Morpho, OZ
   TimelockController, and Aera pendings live forever and execute
@@ -1171,8 +1176,14 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // live ratio must satisfy the NEW RateBound evaluated at execTs
     // (installing a bound the present already violates would make every
     // subsequent read revert - recalibration must never brick what it
-    // refreshes), and the new sanity rail must CONTAIN the current composed
-    // price. RECOVERY MODE: when a rate leg is ALREADY out of its old bound
+    // refreshes), and the new rail ratios are CENTERED on the composed
+    // price read at execute and persisted as absolutes - a center
+    // committed at submission would age through the whole timelock before
+    // service starts, and the sizing doc's drawdown envelope (A.3) is
+    // derived for the recalibration INTERVAL, not interval + DELAY; the
+    // ratio form also makes the old contains-current-price check
+    // structural (low < 1e18 < high, validated at submit) instead of a
+    // race against DELAY-long drift. RECOVERY MODE: when a rate leg is ALREADY out of its old bound
     // (reads reverting - a realized negative rebase below the floor, or
     // sustained growth past a stale ceiling), those two checks are evaluated
     // with the BREACHED leg's old bound disabled on an internal read path
@@ -1220,19 +1231,31 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     //                                     // missing, duplicate, or non-rate-leg entry) -
     //                                     // partial refreshes would silently leave one
     //                                     // leg's bound stale while appearing recalibrated
-    //       uint256 sanityLow;            // the new rail (contains-current-price checked)
-    //       uint256 sanityHigh;
+    //       uint256 railLowRatioE18;      // the new rail as 1e18-scaled RATIOS to the
+    //       uint256 railHighRatioE18;     // composed price READ AT EXECUTE (0.2e18/5e18
+    //                                     // = [P/5, 5P]); submit validates low < 1e18 < high
     //       uint16  turnoverGrossUpBps;   // the reviewed charge gross-up (see C4)
     //   }
     // Pending key = keccak256(token, tokenNonce[token], abi.encode(r)) - same
     // calldata-keyed discipline and per-token nonce as TokenAdd.
-    // EXECUTION of ANY pending for a token (TokenAdd or RouteRecalibration)
-    // ADVANCES tokenNonce[token], permanently invalidating every other
-    // not-yet-executed pending keyed under the prior nonce. Without that,
-    // two recalibrations for the same token can mature with overlapping
-    // execution windows and land in either order - executing the OLDER one
-    // second would silently roll snapshots, rail, and gross-up back over
-    // the newer review. Normative events, same loudness rule as token adds:
+    // EXECUTION of a TokenAdd ADVANCES tokenNonce[token] (a shape change
+    // must strand every stale pending, recalibrations included). Executing
+    // a RouteRecalibration does NOT advance it - serializing refreshes
+    // behind the nonce would make the sizing doc's B.2 cadence
+    // UNSCHEDULABLE at DELAY > ~79 days (the successor could only be
+    // submitted after the predecessor executes and would mature another
+    // DELAY later, while the required interval `159d - DELAY` is already
+    // SHORTER than DELAY at that point). Rollback protection is
+    // MONOTONICITY instead of serialization: execute stores the pending's
+    // submission timestamp as lastRecalSubmittedAt[token] and requires
+    // pending.submittedAt > stored value - an earlier-submitted payload
+    // can never land after a later-submitted one, whatever order they
+    // mature or however their windows overlap - plus, defense in depth for
+    // the bounds themselves, each supplied snapshotTs must be STRICTLY
+    // GREATER than the stored leg's. This is what restores PRE-STAGING
+    // (submitting a successor while its predecessor is still pending),
+    // which the long-DELAY refresh pipeline in B.2 depends on. Normative
+    // events, same loudness rule as token adds:
     // RouteRecalibrationSubmitted(token, pendingKey, eta) /
     // RouteRecalibrationCancelled(token, pendingKey) /
     // RouteRecalibrationExecuted(token, pendingKey). Pendings are stored
@@ -1353,12 +1376,14 @@ the verification log tracks which currently have no assigned target.
   reviewed per-route field set at TokenAdd and refreshed by recalibration
   (the module cannot derive feed deviation sums or sizing margins on-chain,
   so the value is stored, not computed). SIZED (sizing doc A.6) as the
-  route's OWN worst in-band composition error: the multiplicative product,
-  over the route's USD-composition legs, of each leg's in-band error term
-  (deviation threshold + the measured update-landing allowance for
-  market-priced legs; the rate FEED's own deviation threshold + the sourced
-  margin set for rate legs read from a feed, the margins alone for
-  registration-only live contract reads), rounded up.
+  route's OWN worst in-band composition error in RECIPROCAL form -
+  `1/prod(1 - term_i) - 1`, rounded up - because an in-band-low route
+  reads `true x prod(1 - term_i)` and the charge must DIVIDE the
+  underreport back out, not mirror it with `(1 + term)`; the terms per
+  USD-composition leg: deviation threshold + the measured update-landing
+  allowance for market-priced legs; the rate FEED's own deviation
+  threshold + the sourced margin set for rate legs read from a feed, the
+  margins alone for registration-only live contract reads.
   The SAME formula for anchored and unanchored routes, because the anchor
   plays no role in the charge and `maxDivergenceBps` would be the WRONG
   bound anyway: the divergence band is anchor-RELATIVE and definitionally

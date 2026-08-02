@@ -113,9 +113,16 @@ data (Binance ETHUSDT daily klines, 2017-08-17..2026-08-02, 3,273 candles;
 close-to-intraday-low, method in the research log): the worst 90-day ETH
 drawdown on record is **-75.0%** (window starting 2022-04-03; worst 30-day:
 -69.8%, 2020-02-14). Rule, derived from that fact plus the recalibration
-cadence: **the sanity rail is [P/5, 5P] around the composed price at each
-recalibration, re-centered at every <= 90-day recalibration** (spec:
-executeRouteRecalibration). P/5 = -80% sits below the worst-ever 90-day
+cadence: **the sanity rail is [P/5, 5P] around the composed price READ AT
+EXECUTION, re-centered at every <= 90-day recalibration** (spec:
+executeRouteRecalibration; the payload carries the width as 1e18-scaled
+ratios and execute centers them on the price it reads then). Centering at
+EXECUTION is load-bearing: a center committed at submission ages through
+the timelock before service even begins, so an allowed 60-day DELAY plus
+the 90-day cadence would leave one center governing ~150 days of drift -
+beyond the 90-day envelope this paragraph derives the width from - while
+execute-centering keeps the governed span equal to the execution-to-
+execution interval, <= 90 days at every allowed DELAY (B.2 pipeline). P/5 = -80% sits below the worst-ever 90-day
 move with margin, so no historically observed market path can freeze a
 route between on-schedule recalibrations - while ANY order-of-magnitude
 fault (wrong decimals = 1e10-class, aggregator mis-scale) still lands far
@@ -188,8 +195,12 @@ anchor low by the same factor read as agreeing), so `maxDivergenceBps` is
 the wrong quantity, and the anchor plays no role in the charge at all. The
 same formula applies to anchored and unanchored routes.
 
-**Formula:** `turnoverGrossUpBps` = the multiplicative composition of
-per-leg in-band error terms, rounded UP to the next 5 bps:
+**Formula:** an in-band-low route reads `true x prod(1 - term_i)`, so the
+charge must DIVIDE the underreport back out rather than mirror it:
+`turnoverGrossUpBps` = `1/prod(1 - term_i) - 1`, rounded UP to the next
+5 bps. (Both the additive `1 + sum(term)` and the product `prod(1 + term)`
+undershoot the compounded worst case - the gross-up is applied to a value
+that is already the SHRUNKEN side of the envelope.) Per-leg terms:
 
 - market-priced leg (ETH/USD, or any leg whose underlying moves at market
   speed): term = its deviation threshold + a **165 bps** update-landing
@@ -214,15 +225,14 @@ per-leg in-band error terms, rounded UP to the next 5 bps:
   has no feed lag; the term covers basis against real value, and a
   LIP-23-scale rebase day (~19 bps) still fits inside it.
 
-Worked defaults (multiplicative, per the same composition rule as A.5):
-standard route, 0.5% ExR FEED rate leg + 0.5%/1h ETH/USD leg:
-(1 + 0.0050 + 0.0025)(1 + 0.0050 + 0.0165) - 1 = 291.6 bps -> **295**.
-Same shape on an Arbitrum-style 0.05%/24h ETH/USD leg:
-(1 + 0.0075)(1 + 0.0005 + 0.0165) - 1 = 246.3 bps -> **250**. Live-read
-rate leg + 0.5%/1h ETH/USD: (1 + 0.0025)(1 + 0.0050 + 0.0165) - 1 =
-240.5 bps -> **245**. Overcharge at this scale is fail-closed: charges
-land ~2.5-3% above live, the effective daily budget shrinks by the same
-factor, and operators size `dailyUsdTurnoverCap` knowing that.
+Worked defaults (reciprocal form): standard route, 0.5% ExR FEED rate leg
++ 0.5%/1h ETH/USD leg: 1/((1 - 0.0075)(1 - 0.0215)) - 1 = 296.9 bps ->
+**300**. Same shape on an Arbitrum-style 0.05%/24h ETH/USD leg:
+1/((1 - 0.0075)(1 - 0.0170)) - 1 = 249.8 bps -> **250**. Live-read rate
+leg + 0.5%/1h ETH/USD: 1/((1 - 0.0025)(1 - 0.0215)) - 1 = 245.3 bps ->
+**250**. Overcharge at this scale is fail-closed: charges land ~2.5-3%
+above live, the effective daily budget shrinks by the same factor, and
+operators size `dailyUsdTurnoverCap` knowing that.
 
 **The residual beyond the envelope, quantified rather than waved at:** the
 one in-model way a FRESH leg can be wrong by more than
@@ -333,6 +343,17 @@ bare 90-day interval plus a 90-day-DELAY install age would let a snapshot
 serve to ~201 days old). On the recommended sovereign config (DELAY = 24h)
 the plain 90-day cadence leaves a worst active age of ~112 days; at the
 constructor's 90-day DELAY ceiling the interval tightens to 69 days.
+The cadence is SCHEDULABLE at every allowed DELAY because recalibrations
+PRE-STAGE (spec: recalibration execution does not advance the token nonce;
+rollback is prevented by submission-time monotonicity plus strictly
+increasing per-leg snapshotTs, not by serialization): a successor is
+submitted while its predecessor is still pending. At the 90-day DELAY
+ceiling: submit every 69 days, each payload executing 90 days after its
+submission - every observation is 90 days old at install (inside the
+111-day window) and no snapshot serves past 159 days of age, under the
+180-day term. Without pre-staging the formula would be self-contradictory
+above DELAY ~79 days (next submit only after the previous execute, +DELAY
+to mature, while the required interval is already shorter than DELAY).
 Encoded as a runbook item with a monitoring nag. At a 3% real yield a 90-day-stale snapshot
 consumes ~0.75% of a ~9% annual budget - ample headroom - while a stalled
 snapshot past 90 days is an operational alert well before any legitimate
@@ -429,20 +450,24 @@ movement as an alertable signal in both cases.
   executeRouteRecalibration (bounds-only, non-disruptive, DELAY-aware
   observation window [14d, 21d + DELAY], live-ratio-vs-new-bound check,
   recovery mode for breached bounds) <= every min(90 days, 159 days -
-  DELAY) so no active snapshot outlives the 180-day outer term (B.2);
+  DELAY) so no active snapshot outlives the 180-day outer term -
+  schedulable at every DELAY because refreshes pre-stage (B.2);
   **sUSDe deferred** -
   clamp-vs-revert product decision, not a calibration (B.3).
 - Turnover gross-up: `turnoverGrossUpBps` per A.6 - the route's own
   in-band composition envelope, same formula anchored or unanchored
-  (standard route with a 0.5% ExR feed leg **295 bps**, live-read rate leg
-  **245**, Arbitrum-style ETH/USD **250**), NOT
+  (reciprocal form, A.6: standard route with a 0.5% ExR feed leg
+  **300 bps**, live-read rate leg **250**, Arbitrum-style ETH/USD **250**),
+  NOT
   maxDivergenceBps (anchor-relative, blind to common-mode) and NOT
   sanityHigh (~5x notional). Permitted-lag residual bounded by the
   computed worst up-move over the staleness window (1h +24.4% / 25h
   +47.9%), so `maxStaleness` is reviewed as a turnover parameter too.
 - Sanity rail (absolute-price fault rail, NOT a divergence tool and NOT a
-  turnover basis): **[P/5, 5P]
-  re-centered at every recalibration** - P/5 = -80% sits below the computed
+  turnover basis): **[P/5, 5P] centered on the composed price AT
+  EXECUTION, re-centered at every recalibration** (payload carries the
+  width as ratios; a submission-time center would govern DELAY + interval
+  of drift, A.3) - P/5 = -80% sits below the computed
   worst-ever 90-day ETH drawdown (-75.0%, Binance daily klines 2017-2026),
   so no historically observed market path freezes a route between
   on-schedule recalibrations, while any order-of-magnitude fault still
