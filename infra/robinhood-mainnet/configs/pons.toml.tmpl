@@ -1,0 +1,21 @@
+# Ophis - Robinhood Chain pons direct-liquidity solver.
+# Contract addresses are pinned from https://docs.ponsfamily.com/ and verified
+# onchain against Robinhood mainnet on 2026-08-03.
+
+node-url = "${ROBINHOOD_MAINNET_RPC}"
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+
+# The pons router returns directly to Settlement; validate every SELL swap by
+# strict output simulation because launch tokens are permissionless.
+strict-market-output-simulation = "all"
+internalize-interactions = false
+
+[dex]
+weth = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+factories = [
+  "0xA5aAb3F0c6EeadF30Ef1D3Eb997108E976351feB", # active, block 8,991,118
+  "0x0c37a24F5D23A486FA692d1500881d698B1F77a4", # legacy, block 8,606,162
+]
+v3-factory = "0x1f7d7550B1b028f7571E69A784071F0205FD2EfA"
+router = "0xCaf681a66D020601342297493863E78C959E5cb2"
+quoter = "0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7"

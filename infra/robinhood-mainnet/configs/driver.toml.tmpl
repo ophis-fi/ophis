@@ -3,8 +3,8 @@
 # TEMPLATE FILE. Render with envsubst at deploy time: ./render-configs.sh
 #
 # Baseline ships EMPTY on Robinhood: the active liquidity includes protocols
-# the built-in UniV2/V3 baseline reader cannot route. KyberSwap and LI.FI are
-# independent execution lanes; Kyber currently reaches Ekubo and Uniswap pools.
+# the built-in UniV2/V3 baseline reader cannot route. KyberSwap, LI.FI, direct
+# Uniswap V4, and direct pons are independent execution lanes.
 app-data-fetching-enabled = true
 orderbook-url = "http://orderbook"
 tx-gas-limit = "30000000"
@@ -60,6 +60,15 @@ account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 [[solver]]
 name = "uniswap-v4"
 endpoint = "http://uniswap-v4-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+# pons launch-token/WETH/token direct V3 lane. Token authenticity, fee tier, pool,
+# quote and execution target are all resolved against pinned onchain contracts.
+[[solver]]
+name = "pons"
+endpoint = "http://pons-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"

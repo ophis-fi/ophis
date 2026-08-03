@@ -83,6 +83,11 @@ pub enum Command {
         #[clap(long, env)]
         config: PathBuf,
     },
+    /// solve pons launch-token/WETH and token/WETH/token orders through pinned V3 contracts
+    Pons {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
     /// solve individual orders via the Enso aggregator API
     Enso {
         #[clap(long, env)]

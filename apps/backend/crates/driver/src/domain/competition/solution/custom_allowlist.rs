@@ -193,6 +193,12 @@ const ROBINHOOD_MAINNET: &[Address] = &[
     // constructor pins Settlement, Uniswap PoolManager, WETH, and USDG; only
     // Settlement can call it and output can only return to Settlement.
     address!("8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae"),
+    // pons SwapRouter02. Serves as both Custom interaction target and ERC-20
+    // allowance spender for the direct pons solver. Authenticated from pons's
+    // published integration contract registry (docs.ponsfamily.com); onchain
+    // `factory()` resolves to the separately published pons V3 factory
+    // 0x1f7d...EfA (verified 2026-08-03).
+    address!("Caf681a66D020601342297493863E78C959E5cb2"),
     // KyberSwap MetaAggregationRouterV2. Router == ERC-20 spender.
     // AUTHENTICATION: this is byte-for-byte the SAME CREATE2-deterministic
     // address already allowlisted above for OP / HyperEVM / Unichain, each
@@ -432,6 +438,8 @@ mod tests {
     // OKX V6 spender on OP (separate from router — verifies router/spender
     // distinct-address handling).
     const OKX_OP_SPENDER: Address = address!("68D6B739D2020067D1e2F713b999dA97E4d54812");
+    // pons SwapRouter02 on Robinhood mainnet.
+    const PONS_ROUTER: Address = address!("Caf681a66D020601342297493863E78C959E5cb2");
     // Random off-allowlist address (audit-style attacker control).
     const ATTACKER: Address = address!("4242424242424242424242424242424242424242");
 
@@ -466,6 +474,16 @@ mod tests {
     fn target_allowlisted_hl() {
         let c = make_custom(KYBER, vec![(KYBER, U256::from(1000u64))]);
         assert_eq!(validate(&c, 999), Ok(()));
+    }
+
+    #[test]
+    fn pons_router_and_spender_allowlisted_only_on_robinhood() {
+        let c = make_custom(PONS_ROUTER, vec![(PONS_ROUTER, U256::from(1000u64))]);
+        assert_eq!(validate(&c, 4663), Ok(()));
+        assert!(matches!(
+            validate(&c, 10),
+            Err(Error::TargetNotAllowed { .. })
+        ));
     }
 
     #[test]

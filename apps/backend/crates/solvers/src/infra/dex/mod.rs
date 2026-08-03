@@ -12,6 +12,7 @@ pub mod lifi;
 pub mod odos;
 pub mod okx;
 pub mod openocean;
+pub mod pons;
 pub mod simulator;
 pub mod uniswap_v4;
 pub mod velora;
@@ -30,6 +31,7 @@ pub enum Dex {
     Lifi(Box<lifi::Lifi>),
     Enso(Box<enso::Enso>),
     UniswapV4(Box<uniswap_v4::UniswapV4>),
+    Pons(Box<pons::Pons>),
 }
 
 impl Dex {
@@ -60,6 +62,7 @@ impl Dex {
             Dex::Lifi(lifi) => lifi.swap(order, slippage).await?,
             Dex::Enso(enso) => enso.swap(order, slippage).await?,
             Dex::UniswapV4(uniswap) => uniswap.swap(order, slippage, is_quote).await?,
+            Dex::Pons(pons) => pons.swap(order, slippage).await?,
         };
         Ok(swap)
     }
@@ -237,6 +240,16 @@ impl From<uniswap_v4::Error> for Error {
         match err {
             uniswap_v4::Error::OrderNotSupported => Self::OrderNotSupported,
             uniswap_v4::Error::NotFound => Self::NotFound,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<pons::Error> for Error {
+    fn from(err: pons::Error) -> Self {
+        match err {
+            pons::Error::OrderNotSupported => Self::OrderNotSupported,
+            pons::Error::NotFound => Self::NotFound,
             _ => Self::Other(Box::new(err)),
         }
     }
