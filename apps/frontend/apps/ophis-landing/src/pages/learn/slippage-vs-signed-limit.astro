@@ -25,7 +25,7 @@ const FAQS = [
   },
   {
     q: 'How is a signed limit price different?',
-    a: `A signed limit is not a tolerance around a quote, it is the order. An Ophis order is an EIP-712 message whose limit price is an enforced floor: the settlement contract rejects any fill below it, no matter what pools did in the meantime. There is no separate slippage knob to set, and no pre-authorized band for anyone to harvest.`,
+    a: `The slippage input still exists on Ophis, but it hardens into the order itself: the quote adjusted by your slippage becomes the signed limit, an enforced floor in the EIP-712 message that the settlement contract will not cross, no matter what pools did in the meantime. The difference is what happens to the band. In a router swap the tolerance sits as an open offer on a visible pending transaction; on Ophis the order is off-chain, the batch clears at a uniform price, and execution above your floor is returned as surplus instead of being available to harvest.`,
   },
   {
     q: 'What happens when the price moves in my favor?',
@@ -50,8 +50,9 @@ const FAQS = [
   <p>
     <strong>The short version:</strong> a slippage tolerance pre-authorizes a worse price and
     hopes nobody takes the offer; a signed limit price is an enforced floor the settlement
-    contract will not cross, with execution beyond it returned as surplus. On Ophis you sign the
-    floor, solvers compete above it, and there is no tolerance band for anyone to harvest.
+    contract will not cross, with execution beyond it returned as surplus. On Ophis your
+    slippage input becomes that signed floor: solvers compete above it off-chain, so the band is
+    not sitting in a public mempool for anyone to harvest.
   </p>
 
   {FAQS.map((f) => (
