@@ -17,7 +17,9 @@ const ROBINHOOD_CHAIN_ID = 4663
 const ONE_18 = 10n ** 18n
 const ROBINHOOD_MARK = (
   <styledEl.Mark>
-    <img src="/robinhood-feather.svg" alt="" aria-hidden="true" />
+    {/* Dark feather on the neon tile (brand mark); the white feather variant
+        stays for monochrome-on-dark contexts like the header announcement. */}
+    <img src="/robinhood-feather-dark.svg" alt="" aria-hidden="true" />
   </styledEl.Mark>
 )
 
