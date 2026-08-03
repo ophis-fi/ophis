@@ -13,6 +13,10 @@ export interface CanonicalPage {
     | '/learn/intent-based-dex-aggregator/'
     | '/learn/mev-protected-swaps/'
     | '/learn/ai-agent-token-swaps/'
+    | '/learn/mcp-server-for-trading/'
+    | '/learn/ai-agent-custody/'
+    | '/learn/api-keys-vs-wallet-signatures/'
+    | '/learn/what-is-eip-712/'
   updated: Date
 }
 
@@ -20,10 +24,14 @@ export const CANONICAL_PAGES: CanonicalPage[] = [
   { path: '/pricing/', updated: new Date('2026-08-02') },
   { path: '/supported-chains/', updated: new Date('2026-08-02') },
   { path: '/security/', updated: new Date('2026-08-02') },
-  { path: '/learn/', updated: new Date('2026-08-02') },
+  { path: '/learn/', updated: new Date('2026-08-03') },
   { path: '/learn/intent-based-dex-aggregator/', updated: new Date('2026-08-02') },
   { path: '/learn/mev-protected-swaps/', updated: new Date('2026-08-02') },
   { path: '/learn/ai-agent-token-swaps/', updated: new Date('2026-08-02') },
+  { path: '/learn/mcp-server-for-trading/', updated: new Date('2026-08-03') },
+  { path: '/learn/ai-agent-custody/', updated: new Date('2026-08-03') },
+  { path: '/learn/api-keys-vs-wallet-signatures/', updated: new Date('2026-08-03') },
+  { path: '/learn/what-is-eip-712/', updated: new Date('2026-08-03') },
 ]
 
 export function canonicalPage(path: CanonicalPage['path']): CanonicalPage {

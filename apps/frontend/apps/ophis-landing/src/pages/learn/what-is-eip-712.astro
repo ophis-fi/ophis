@@ -1,0 +1,71 @@
+---
+/**
+ * /learn/what-is-eip-712: canonical answer page for EIP-712 typed-data
+ * signing, angled at trading agents. The domain-resolution warning mirrors
+ * the supported-chains page wording; keep the two consistent.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../../data/chains'
+
+const { updated } = canonicalPage('/learn/what-is-eip-712/')
+
+const FAQS = [
+  {
+    q: 'What is EIP-712?',
+    a: `EIP-712 is Ethereum's standard for signing typed, structured data. Instead of an opaque hex blob, the signer sees named, typed fields: for a trade, the sell token, buy token, amounts, limit, expiry, and receiver. Wallets can render those fields to a human, and programs can validate them before signing.`,
+  },
+  {
+    q: 'What is the domain separator?',
+    a: `The domain separator binds a signature to one verifying contract on one chain (plus a name and version). A signature produced for one domain is invalid everywhere else, which is what prevents a signed order from being replayed against a different contract or a different chain. It is also why getting the domain right is not optional: sign against the wrong one and the real contract rejects the result.`,
+  },
+  {
+    q: 'Why does EIP-712 matter for trading agents?',
+    a: `Because the signed order IS the agent's capability. Typed fields mean the agent's policy layer can inspect exactly what is about to be authorized (which tokens, what amount, what floor price, until when, and to whom the proceeds go) before the signature exists. Every signed payload is also its own audit record: what the agent authorized is provable, not inferred from logs.`,
+  },
+  {
+    q: 'Why must agents resolve the signing domain per chain on Ophis?',
+    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement contract at a non-canonical address. An EIP-712 signature binds to the verifying contract, so signing against CoW's canonical address yields a domain the deployed contract rejects. Resolve the per-chain settlement domain and orderbook host via the @ophis/sdk helpers or the MCP list_chains tool before signing, never hardcode them.`,
+  },
+  {
+    q: 'Is an EIP-712 signature the same as a transaction?',
+    a: `No. It is an off-chain message: signing it costs no gas and moves nothing. On Ophis the signed order goes to an orderbook, solvers compete to settle it in a batch, and the winning solver pays the gas. If nobody can fill the order within its limit before expiry, it simply lapses with nothing spent.`,
+  },
+]
+---
+
+<ContentPage
+  title="What is EIP-712, and why do agents sign typed data? | Ophis"
+  description="EIP-712 is Ethereum's typed structured-data signing standard: named fields instead of opaque hex, a domain separator against replay, and for agents, an inspectable bounded capability."
+  path="/learn/what-is-eip-712/"
+  heading="What is EIP-712, and why do agents sign typed data?"
+  lede="Typed fields a program can inspect before signing, a domain that pins the signature to one contract on one chain, and no gas until settlement. The standard underneath every Ophis order."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> EIP-712 turns a signature from an opaque blob into a
+    typed, inspectable statement: this token, this amount, this floor price, this expiry, this
+    receiver, on this contract, on this chain. For an autonomous agent that is the whole game:
+    policy can check every field before the signature exists, and the signature itself is the
+    audit record.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Go deeper</h2>
+  <p>
+    How the signed order travels from message to settlement:
+    <a href="/learn/intent-based-dex-aggregator/">what is an intent-based DEX aggregator</a>. Why
+    this beats standing exchange authority for agents:
+    <a href="/learn/api-keys-vs-wallet-signatures/">API keys vs wallet signatures</a>. The
+    per-chain domains and addresses are in the machine-readable policy shipped with the
+    <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>, and
+    the chain list is on <a href="/supported-chains/">supported chains</a>.
+  </p>
+</ContentPage>

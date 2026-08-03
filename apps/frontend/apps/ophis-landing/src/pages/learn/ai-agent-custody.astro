@@ -1,0 +1,70 @@
+---
+/**
+ * /learn/ai-agent-custody: canonical answer page for how an autonomous agent
+ * should hold funds and keys. Same qualified framing as the agent-swaps
+ * guide: layers bound the damage, nothing makes a compromised agent safe.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/learn/ai-agent-custody/')
+
+const FAQS = [
+  {
+    q: 'Should an AI agent have its own wallet?',
+    a: `Yes, a dedicated one. Give the agent its own signing key, funded per mandate with only what its job needs, and keep it strictly separate from treasury or personal keys. If the agent misbehaves or its host is compromised, the exposure is the mandate, not everything the operator owns.`,
+  },
+  {
+    q: 'What limits the damage if an agent is compromised?',
+    a: `Layers, each enforced outside the model. Bounded orders cap what one signature can do: sell token, buy token, amount, a hard limit price, an expiry, and the receiver pinned to the owner. The signer's policy caps what the agent may attempt at all: a token allowlist, notional caps per order and per period, and an independent price check so a manipulated quote cannot set an absurd limit. None of these makes a compromised agent safe; together they turn a catastrophe into a bounded loss.`,
+  },
+  {
+    q: 'Why is the receiver field the first thing to pin?',
+    a: `The receiver says where bought tokens go. An agent that signs an otherwise-correct order with an attacker's receiver has lost the funds even though the price was fair, which makes an unpinned receiver the top drain vector for an automated signer. Pin it to the owner and assert it in code before signing; the @ophis/sdk ships assertReceiverIsOwner for exactly this.`,
+  },
+  {
+    q: 'Can a smart account enforce policy on-chain?',
+    a: `Yes, and it is the strongest layer because it binds even a fully compromised agent process. A smart account such as a Safe can hold the funds while a policy module restricts what any session key or module may do: which tokens, which contracts, what size. The agent then proposes, and the account enforces. Ophis publishes a vault policy module for exactly this pattern in curated-vault contexts.`,
+  },
+  {
+    q: 'What should be logged?',
+    a: `Every signed payload, before it leaves the signer. When something goes wrong you want to reconstruct exactly what the agent signed and when, not what the model claims it did. Logs of unsigned proposals that policy rejected are just as valuable: they are your early warning that the agent is being steered.`,
+  },
+]
+---
+
+<ContentPage
+  title="How should an AI agent hold custody? | Ophis"
+  description="A dedicated funded-per-mandate wallet, bounded orders, signer-enforced policy, optional on-chain enforcement via a smart account, and logging of every signed payload."
+  path="/learn/ai-agent-custody/"
+  heading="How should an AI agent hold custody?"
+  lede="Give the agent its own key, fund it per mandate, and bound every signature. The layers that keep an autonomous trader's worst day survivable."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> a trading agent gets a dedicated key funded with only its
+    mandate, signs bounded EIP-712 orders instead of open-ended transactions, and operates behind
+    signer-enforced policy: token allowlist, notional caps, expiry, an independent price check,
+    and the receiver pinned to the owner. For the strongest setup, a smart account enforces the
+    policy on-chain. Log every signed payload.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Go deeper</h2>
+  <p>
+    The full policy checklist lives at
+    <a href="https://docs.ophis.fi/agent-wallet-policies">docs.ophis.fi/agent-wallet-policies</a>,
+    and the order-level pattern in
+    <a href="/learn/ai-agent-token-swaps/">AI agent token swaps: the safe pattern</a>. Why signed
+    orders beat exchange API keys for agents:
+    <a href="/learn/api-keys-vs-wallet-signatures/">API keys vs wallet signatures</a>. The custody
+    model overall is on the <a href="/security/">security page</a>.
+  </p>
+</ContentPage>
