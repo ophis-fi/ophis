@@ -23,6 +23,68 @@ export interface PublicStatsData {
   avgTradeUsd: number | null;
 }
 
+export interface DefiLlamaChainDay {
+  chainId: number;
+  volumeUsd: number;
+  feesUsd: number;
+  revenueUsd: number;
+  supplySideRevenueUsd: number;
+  trades: number;
+}
+
+/** Daily, chain-level accounting for DefiLlama from settled, USD-priced trades. */
+export async function computeDefiLlamaDay(
+  sql: Sql,
+  date: string,
+  chainIds: number[],
+  sovereignChainIds: number[],
+  legacyFeeBps: number,
+  hostedKeepBps: number,
+): Promise<DefiLlamaChainDay[]> {
+  const start = `${date}T00:00:00.000Z`;
+  const endDate = new Date(start);
+  endDate.setUTCDate(endDate.getUTCDate() + 1);
+  const end = endDate.toISOString();
+
+  const rows = await sql<{
+    chain_id: number;
+    volume_usd: string;
+    fees_usd: string;
+    revenue_usd: string;
+    trades: string;
+  }[]>`
+    SELECT
+      chain_id,
+      COALESCE(SUM(value_usd), 0)::text AS volume_usd,
+      COALESCE(SUM(value_usd * COALESCE(volume_fee_bps, ${legacyFeeBps}) / 10000), 0)::text AS fees_usd,
+      COALESCE(SUM(
+        value_usd * COALESCE(volume_fee_bps, ${legacyFeeBps}) / 10000
+        * CASE WHEN chain_id = ANY(${sovereignChainIds}) THEN 1 ELSE ${hostedKeepBps}::numeric / 10000 END
+      ), 0)::text AS revenue_usd,
+      COUNT(*)::text AS trades
+    FROM trades
+    WHERE chain_id = ANY(${chainIds})
+      AND block_timestamp >= ${start}
+      AND block_timestamp < ${end}
+      AND value_usd IS NOT NULL
+    GROUP BY chain_id
+    ORDER BY chain_id
+  `;
+
+  return rows.map((row) => {
+    const feesUsd = Number(row.fees_usd);
+    const revenueUsd = Number(row.revenue_usd);
+    return {
+      chainId: row.chain_id,
+      volumeUsd: Number(row.volume_usd),
+      feesUsd,
+      revenueUsd,
+      supplySideRevenueUsd: feesUsd - revenueUsd,
+      trades: Number(row.trades),
+    };
+  });
+}
+
 /**
  * Compute the public cumulative stats from the indexed `trades` table, restricted to
  * the given production chain ids (testnet dust never inflates the figures).
