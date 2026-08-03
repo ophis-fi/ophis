@@ -20,7 +20,7 @@ const FAQS = [
   },
   {
     q: 'Which fails worse when the agent is compromised?',
-    a: `They fail differently. A stolen trade-scoped API key exposes whatever the scope allows against the whole account balance until revoked, and a withdraw-scoped key is game over. On the wallet side the scale depends on what the key can sign: a raw EOA key exposes everything the wallet holds, transfers and approvals included, not just orders. The failure becomes order-scale only when the key is constrained, funded per mandate and, in the strongest setup, held behind a smart account that can only produce bounded orders. Signer-enforced policy (allowlists, notional caps, price checks) matters in both models.`,
+    a: `They fail differently. A stolen trade-scoped API key exposes whatever the scope allows against the whole account balance until revoked, and a withdraw-scoped key is game over. On the wallet side the scale depends on what the key can sign: a raw EOA key exposes everything the wallet holds, transfers and approvals included, not just orders. Constraining the key helps only as far as the constraints compose: a smart account that can only produce bounded orders still allows many individually valid orders in a row, so the loss is capped by the mandate and its aggregate limits (a daily turnover or rate cap), not by any single order. Signer-enforced policy (allowlists, per-order and cumulative caps, price checks) matters in both models.`,
   },
   {
     q: 'How does revocation compare?',
@@ -46,10 +46,11 @@ const FAQS = [
     <strong>The short version:</strong> an exchange API key is standing authority over an account
     the exchange custodies; it fails at account scale and revokes only as fast as the exchange
     reacts. A wallet signature is a per-trade, bounded capability over self-custodied funds that
-    expires by construction, but the wallet's own exposure is whatever its key can sign: keep the
-    failure order-scale by funding per mandate and constraining the key. Autonomous agents
-    trading on-chain assets are better served by signatures, with signer-enforced policy on top
-    in either model.
+    expires by construction, but the wallet's own exposure is whatever its key can sign: cap the
+    failure at the mandate by funding per mandate, constraining the key, and enforcing aggregate
+    turnover limits, since per-order bounds alone still allow many valid orders in a row.
+    Autonomous agents trading on-chain assets are better served by signatures, with
+    signer-enforced policy on top in either model.
   </p>
 
   {FAQS.map((f) => (
