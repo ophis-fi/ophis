@@ -287,7 +287,11 @@ function serveCached(response: Response): Response {
   });
 }
 
-async function safeCacheMatch(cache: Cache, key: Request): Promise<Response | undefined> {
+async function safeCacheMatch(
+  cache: Cache | undefined,
+  key: Request,
+): Promise<Response | undefined> {
+  if (!cache) return undefined;
   try {
     return (await cache.match(key)) ?? undefined;
   } catch {
@@ -296,7 +300,12 @@ async function safeCacheMatch(cache: Cache, key: Request): Promise<Response | un
   }
 }
 
-async function safeCachePut(cache: Cache, key: Request, response: Response): Promise<void> {
+async function safeCachePut(
+  cache: Cache | undefined,
+  key: Request,
+  response: Response,
+): Promise<void> {
+  if (!cache) return;
   try {
     await cache.put(key, response);
   } catch {
@@ -305,7 +314,10 @@ async function safeCachePut(cache: Cache, key: Request, response: Response): Pro
 }
 
 export const onRequestGet: PagesFunction = async (context) => {
-  const cache = (caches as CloudflareCacheStorage).default;
+  // Some Pages direct-upload runtimes omit the Cache API global even though
+  // standard Pages Functions expose it. Live discovery must still operate.
+  const cache =
+    typeof caches === 'undefined' ? undefined : (caches as CloudflareCacheStorage).default;
   const cacheUrl = new URL(context.request.url);
   cacheUrl.search = '';
   const cacheKey = new Request(cacheUrl, { method: 'GET' });
