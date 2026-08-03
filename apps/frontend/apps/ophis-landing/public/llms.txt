@@ -31,7 +31,7 @@ curl -X POST https://swap.ophis.fi/api/intent \
 ## Product
 
 - [Swap app](https://swap.ophis.fi/): the trading interface: start from a natural-language intent.
-- [Learn guides](https://ophis.fi/learn/): evergreen explainers on intent-based trading and MEV protection, plus an agent-builder cluster: safe agent swaps, agent custody, the trading MCP server, API keys vs wallet signatures, and EIP-712 typed-data signing.
+- [Learn guides](https://ophis.fi/learn/): evergreen explainers on intent-based trading and MEV protection (sandwich attacks, solvers, coincidence of wants), plus an agent-builder cluster: safe agent swaps, agent custody, the trading MCP server, API keys vs wallet signatures, and EIP-712 typed-data signing.
 - [Pricing](https://ophis.fi/pricing/): the canonical fee page: rates per path, all-in cost per chain, integrator terms, worked examples.
 - [Supported chains](https://ophis.fi/supported-chains/): the canonical chain list with chain IDs and the settlement mode per chain.
 - [Security](https://ophis.fi/security/): custody model, audits, agent-safety rules, vulnerability disclosure.

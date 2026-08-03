@@ -1,0 +1,68 @@
+---
+/**
+ * /learn/what-is-a-sandwich-attack: canonical answer page for the highest
+ * search-volume MEV query. MEV-protection claims keep the qualified wording
+ * from the MEV guide; the slippage-tolerance-as-budget framing matches it.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/learn/what-is-a-sandwich-attack/')
+
+const FAQS = [
+  {
+    q: 'What is a sandwich attack?',
+    a: `A sandwich attack brackets your swap between two attacker trades: a buy placed just before yours pushes the price up, your swap executes at that worse price, and a sell placed just after captures the difference. You still receive tokens, just fewer of them, which is why many victims never notice. The attacker's profit comes out of your execution price.`,
+  },
+  {
+    q: 'How does the attacker see my trade before it executes?',
+    a: `Through the public mempool. A normal swap is a transaction that sits visible and pending before it is mined, carrying the pool it will trade against and the worst price it will accept. Bots scan pending transactions for exactly this and can pay for the ordering they need around yours.`,
+  },
+  {
+    q: 'How much can a sandwich cost me?',
+    a: `Up to your slippage tolerance. The tolerance is the worst price you pre-authorized, so it is precisely the budget an attacker can harvest: a 1% tolerance on a large swap hands over up to 1% of it. Tightening the tolerance shrinks the budget but starts failing your trades in volatile markets, which is the uncomfortable trade-off tolerance-based execution forces.`,
+  },
+  {
+    q: 'How do batch auctions prevent sandwich attacks?',
+    a: `By removing both preconditions. Orders are signed off-chain and submitted to an orderbook, so there is no pending swap in the public mempool to spot. Settlement happens in batches where every trade of a pair clears at one uniform price, so ordering inside the batch carries no advantage to sell. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.`,
+  },
+  {
+    q: 'Does a tight slippage setting protect me on a regular DEX?',
+    a: `Only partially. A tighter tolerance shrinks the attacker's budget but does not remove the visible pending transaction that invites the attack, and it raises the chance your trade reverts and you pay gas for nothing. Hiding the transaction (a private RPC) or removing the tolerance model entirely (a signed hard limit settled in a batch auction) addresses the cause rather than the budget.`,
+  },
+]
+---
+
+<ContentPage
+  title="What is a sandwich attack? | Ophis"
+  description="A sandwich attack brackets your visible pending swap with a buy and a sell, harvesting up to your slippage tolerance. What makes it possible, what it costs, and what removes the preconditions."
+  path="/learn/what-is-a-sandwich-attack/"
+  heading="What is a sandwich attack?"
+  lede="The most common MEV attack on traders: a buy before your swap, a sell after it, and your slippage tolerance as the budget. Here is how it works and what actually removes it."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> a sandwich attack needs two things: a visible pending
+    swap, and a slippage tolerance that pre-authorizes a worse price. The attacker buys before
+    you, lets your trade move the price, and sells after you, pocketing up to your tolerance.
+    Remove the visibility and the tolerance model and the attack has nothing to work with, which
+    is what batch-auction settlement does structurally.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Go deeper</h2>
+  <p>
+    The full protection picture, including exactly what is and is not guaranteed, is in
+    <a href="/learn/mev-protected-swaps/">MEV-protected swaps, explained</a>. How orders work
+    without a tolerance at all: <a href="/learn/intent-based-dex-aggregator/">what is an
+    intent-based DEX aggregator</a>. The role of the parties who settle your trade:
+    <a href="/learn/what-is-a-solver/">what is a solver</a>.
+  </p>
+</ContentPage>

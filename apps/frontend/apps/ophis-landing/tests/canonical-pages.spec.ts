@@ -50,6 +50,21 @@ const PAGES = [
     canonical: 'https://ophis.fi/learn/what-is-eip-712/',
     h1: 'What is EIP-712, and why do agents sign typed data?',
   },
+  {
+    route: '/learn/what-is-a-sandwich-attack',
+    canonical: 'https://ophis.fi/learn/what-is-a-sandwich-attack/',
+    h1: 'What is a sandwich attack?',
+  },
+  {
+    route: '/learn/what-is-a-solver',
+    canonical: 'https://ophis.fi/learn/what-is-a-solver/',
+    h1: 'What is a solver?',
+  },
+  {
+    route: '/learn/coincidence-of-wants',
+    canonical: 'https://ophis.fi/learn/coincidence-of-wants/',
+    h1: 'What is a coincidence of wants?',
+  },
 ]
 
 for (const p of PAGES) {

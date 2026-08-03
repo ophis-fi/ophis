@@ -1,0 +1,70 @@
+---
+/**
+ * /learn/what-is-a-solver: canonical answer page for the solver role.
+ * Deliberately count-free (solver rosters change; the swap app's registry
+ * is the live source) and generic on reward mechanics, which differ per
+ * deployment and drift.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/learn/what-is-a-solver/')
+
+const FAQS = [
+  {
+    q: 'What is a solver?',
+    a: `A solver is a professional execution party that competes to settle signed orders. Instead of the trader picking a route, solvers pick up the order from an orderbook, each proposes the best settlement it can construct, and the proposal with the best execution wins the batch and goes on-chain.`,
+  },
+  {
+    q: 'What does a solver actually do with my order?',
+    a: `It hunts for the best way to fill it: routing across on-chain AMMs and aggregators, quoting professional market makers, using its own inventory, or matching your order directly against an opposite one in the same batch. It then bundles the result into a settlement transaction, submits it, and pays the gas. Your signed limit binds it the whole way: a settlement below your limit reverts.`,
+  },
+  {
+    q: 'Why does solver competition help me?',
+    a: `Because the auction turns routing skill into your price instead of the router's margin. Every solver that finds a better fill than the current best has an incentive to bid it, since that is how it wins the batch. Whatever execution the winner achieves beyond your signed limit is surplus, and on Ophis surplus is not skimmed by the protocol.`,
+  },
+  {
+    q: 'What happens if a solver fails or misbehaves?',
+    a: `A failed settlement transaction is the solver's cost, not yours: your order simply stays open for the next batch, and an order that never settles pays no fee. Solvers are also bonded and accountable for the settlements they submit, and a solver that proposes worse executions than its competitors just stops winning batches.`,
+  },
+  {
+    q: 'Do I choose which solver settles my trade?',
+    a: `No, and that is the point. You sign what you want and the auction decides who delivers it best for that batch. Choosing a solver yourself would reintroduce exactly the trust-one-router model that competition exists to replace.`,
+  },
+]
+---
+
+<ContentPage
+  title="What is a solver? | Ophis"
+  description="A solver is a professional execution party that competes to settle signed orders: routing, matching, and submitting the settlement while your signed limit binds it. Why the competition is the product."
+  path="/learn/what-is-a-solver/"
+  heading="What is a solver?"
+  lede="The party that actually executes your trade, chosen by auction rather than by you. What solvers do, why they compete, and what happens when one fails."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> a solver is an execution specialist that competes in
+    per-batch auctions to settle signed orders. It finds the route or the match, submits the
+    settlement, pays the gas, and can never fill you below your signed limit. Competition between
+    solvers is what turns better routing into better prices for you instead of profit for a
+    router.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Go deeper</h2>
+  <p>
+    Where solvers fit in the full mechanism:
+    <a href="/learn/intent-based-dex-aggregator/">what is an intent-based DEX aggregator</a>. The
+    direct-match case where no AMM is touched at all:
+    <a href="/learn/coincidence-of-wants/">what is a coincidence of wants</a>. What the winning
+    execution's extra value is called and who keeps it: the surplus section of the
+    <a href="/pricing/">pricing page</a>.
+  </p>
+</ContentPage>
