@@ -9,12 +9,14 @@ export const Panel = styled.aside<{ $attention: boolean }>`
   align-items: start;
   margin: 2px 0;
   padding: 11px 12px;
-  border: 1px solid ${({ $attention }) => ($attention ? 'rgba(255, 178, 55, 0.42)' : 'rgba(0, 200, 5, 0.28)')};
+  /* Robinhood Chain brand neon #ccff00 (correct mark per the Robinhood Chain
+     team, 2026-08-02) — NOT the retired #00c805 green. */
+  border: 1px solid ${({ $attention }) => ($attention ? 'rgba(255, 178, 55, 0.42)' : 'rgba(204, 255, 0, 0.30)')};
   border-radius: var(--ophis-radius-md, 16px);
   background: ${({ $attention }) =>
     $attention
       ? 'linear-gradient(120deg, rgba(255, 178, 55, 0.10), rgba(255, 178, 55, 0.025))'
-      : 'linear-gradient(120deg, rgba(0, 200, 5, 0.085), rgba(0, 200, 5, 0.018))'};
+      : 'linear-gradient(120deg, rgba(204, 255, 0, 0.075), rgba(204, 255, 0, 0.016))'};
   color: var(${UI.COLOR_TEXT_PAPER});
 `
 
@@ -24,9 +26,9 @@ export const Mark = styled.div`
   width: 28px;
   height: 28px;
   border-radius: 9px;
-  background: #00c805;
-  color: #051006;
-  box-shadow: 0 6px 18px rgba(0, 200, 5, 0.2);
+  background: #ccff00;
+  color: #1c180d;
+  box-shadow: 0 6px 18px rgba(204, 255, 0, 0.2);
 
   img {
     width: 15px;
