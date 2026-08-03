@@ -125,6 +125,23 @@ jobs:
       - name: Check solver registry mirrors the chain-10 driver config
         run: ./scripts/check-solver-registry-invariant.sh
 
+  robinhood-brand-invariant:
+    name: Robinhood Chain brand invariant
+    runs-on: ubuntu-latest
+    # Input-invariant gate: skip on the weekly cron (advisory jobs only).
+    if: github.event_name != 'schedule'
+    # 2026-08-02: the Robinhood Chain team supplied the correct brand mark
+    # (black #1c180d feather on neon #CCFF00) after we shipped the retired
+    # #00C805 green on several surfaces. The jest mirrors of these assertions
+    # are not a repo-root CI gate (see solver-registry-invariant above), so
+    # this script is the binding check that the shared chain color, the
+    # light-mode contrast override, and the inlined icon stay on-brand and
+    # the retired green cannot return.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Check Robinhood Chain branding invariants
+        run: ./scripts/check-robinhood-brand-invariant.sh
+
   basket-metadata-invariant:
     name: Basket-metadata cross-workspace invariant
     runs-on: ubuntu-latest
