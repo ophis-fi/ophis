@@ -17,6 +17,9 @@ export interface CanonicalPage {
     | '/learn/ai-agent-custody/'
     | '/learn/api-keys-vs-wallet-signatures/'
     | '/learn/what-is-eip-712/'
+    | '/learn/what-is-a-sandwich-attack/'
+    | '/learn/what-is-a-solver/'
+    | '/learn/coincidence-of-wants/'
   updated: Date
 }
 
@@ -32,6 +35,9 @@ export const CANONICAL_PAGES: CanonicalPage[] = [
   { path: '/learn/ai-agent-custody/', updated: new Date('2026-08-03') },
   { path: '/learn/api-keys-vs-wallet-signatures/', updated: new Date('2026-08-03') },
   { path: '/learn/what-is-eip-712/', updated: new Date('2026-08-03') },
+  { path: '/learn/what-is-a-sandwich-attack/', updated: new Date('2026-08-03') },
+  { path: '/learn/what-is-a-solver/', updated: new Date('2026-08-03') },
+  { path: '/learn/coincidence-of-wants/', updated: new Date('2026-08-03') },
 ]
 
 export function canonicalPage(path: CanonicalPage['path']): CanonicalPage {

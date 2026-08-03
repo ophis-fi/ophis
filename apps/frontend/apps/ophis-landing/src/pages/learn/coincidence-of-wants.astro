@@ -1,0 +1,67 @@
+---
+/**
+ * /learn/coincidence-of-wants: canonical answer page for the mechanism the
+ * upstream protocol is named after. No frequency statistics: match rates
+ * depend on flow overlap and any number would be fabricated or stale.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/learn/coincidence-of-wants/')
+
+const FAQS = [
+  {
+    q: 'What is a coincidence of wants?',
+    a: `A coincidence of wants (CoW) is when two parties each hold what the other wants: one order sells the token another order is buying, at compatible prices. In that situation the two can trade directly with each other, and no market, pool, or intermediary is needed for the exchange itself.`,
+  },
+  {
+    q: 'How do batch auctions find coincidences of wants?',
+    a: `By collecting orders into discrete batches instead of executing them one by one. Within a batch, solvers look across all open orders for overlap: a sell of WETH for USDC and a buy of WETH with USDC can settle against each other at the batch's uniform clearing price. The overlap does not need to be exact, since the matched portion nets peer-to-peer and only the remainder routes to on-chain liquidity.`,
+  },
+  {
+    q: 'Why is a peer match better than routing through an AMM?',
+    a: `Because the matched portion skips the costs that pools impose: no liquidity-provider fee, no price impact from walking a curve, and no exposure to the pool's state at execution time. Two traders simply cross at one price. That saving shows up as better execution, and better execution is how a solver wins the batch, so solvers have a direct incentive to find every match that exists.`,
+  },
+  {
+    q: 'How often do coincidences of wants happen?',
+    a: `It depends entirely on how much opposite flow arrives in the same window, so any fixed rate would be made up. Popular pairs at busy times match more; long-tail pairs mostly route to on-chain liquidity. The mechanism costs nothing when no match exists: orders simply settle through the best route instead.`,
+  },
+  {
+    q: 'Is this where the name CoW Protocol comes from?',
+    a: `Yes. CoW Protocol, the settlement layer Ophis is forked from, is named after the coincidence of wants. Ophis inherits the batch-auction mechanism, including peer matching, and runs it with its own settlement deployments on its operated chains.`,
+  },
+]
+---
+
+<ContentPage
+  title="What is a coincidence of wants (CoW)? | Ophis"
+  description="When one order sells exactly what another is buying, the two can settle against each other directly: no pool, no LP fee, no price impact. How batch auctions find these matches."
+  path="/learn/coincidence-of-wants/"
+  heading="What is a coincidence of wants?"
+  lede="Two orders that mirror each other can simply trade with each other. The mechanism that lets batches settle peer-to-peer before touching a pool, and the origin of CoW Protocol's name."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> when one order in a batch sells what another order buys,
+    the matched portion settles directly between the two at the batch's uniform price: no pool,
+    no liquidity-provider fee, no price impact. Whatever does not match routes to on-chain
+    liquidity as usual. Solvers hunt for these matches because finding them wins batches.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Go deeper</h2>
+  <p>
+    The full batch-auction mechanism around this:
+    <a href="/learn/intent-based-dex-aggregator/">what is an intent-based DEX aggregator</a>. Who
+    does the matching and why they bother:
+    <a href="/learn/what-is-a-solver/">what is a solver</a>. How the same batches shut down
+    sandwich attacks: <a href="/learn/what-is-a-sandwich-attack/">what is a sandwich attack</a>.
+  </p>
+</ContentPage>
