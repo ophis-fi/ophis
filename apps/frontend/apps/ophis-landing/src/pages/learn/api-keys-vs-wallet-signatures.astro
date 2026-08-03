@@ -1,0 +1,69 @@
+---
+/**
+ * /learn/api-keys-vs-wallet-signatures: canonical comparison for agent
+ * builders choosing between exchange API keys and self-custody signing.
+ * Fair to both models; the comparative claims stay concrete and qualified.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/learn/api-keys-vs-wallet-signatures/')
+
+const FAQS = [
+  {
+    q: 'How does an exchange API key work for a trading bot?',
+    a: `A CEX API key is standing authority over an account the exchange custodies. The bot authenticates with the key and the exchange executes on its behalf, within the key's scopes (read, trade, sometimes withdraw). The funds sit with the exchange, and the key works until someone notices and revokes it.`,
+  },
+  {
+    q: 'How do wallet signatures work for an agent?',
+    a: `The agent holds its own key and signs each order individually as an EIP-712 message: sell token, buy token, amount, a hard limit price, an expiry, and the receiver. Funds stay in the agent's wallet until settlement executes on-chain. There is no standing session: every trade is its own explicitly signed decision.`,
+  },
+  {
+    q: 'Which fails worse when the agent is compromised?',
+    a: `They fail differently. A stolen trade-scoped API key exposes whatever the scope allows against the whole account balance until revoked, and a withdraw-scoped key is game over. A compromised self-custody agent can only produce orders, each bounded by its own parameters, though it can still trade badly within them, which is why signer-enforced policy (allowlists, notional caps, price checks) matters in both models.`,
+  },
+  {
+    q: 'How does revocation compare?',
+    a: `An API key is revoked by asking the exchange, and the window between compromise and revocation belongs to the attacker. A signed order carries its own expiry and can be cancelled on the orderbook before it fills; standing token approvals are the one long-lived onchain authority, and they can be revoked or bounded with Permit-style approvals per trade.`,
+  },
+  {
+    q: 'Which should an autonomous agent use?',
+    a: `For on-chain assets, self-custody signatures: every action is independently verifiable, the audit trail is the signatures themselves, and no third party can freeze or front-run the account relationship. Exchange API keys still make sense where an agent genuinely needs what an exchange provides, such as fiat rails. On Ophis the signature model is the native path: bounded orders, gasless settlement, MEV-protected batch auctions.`,
+  },
+]
+---
+
+<ContentPage
+  title="Agent trading: API keys vs wallet signatures | Ophis"
+  description="Exchange API keys are standing authority over custodied funds; wallet signatures are per-trade bounded capabilities over self-custodied funds. How the two models fail, revoke, and audit."
+  path="/learn/api-keys-vs-wallet-signatures/"
+  heading="Agent trading: API keys vs wallet signatures"
+  lede="Standing authority over someone else's custody, or a per-trade signature over your own. The failure modes, revocation paths, and audit trails of the two models for autonomous agents."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> an exchange API key is standing authority over an account
+    the exchange custodies; it fails at account scale and revokes only as fast as the exchange
+    reacts. A wallet signature is a per-trade, bounded capability over self-custodied funds; it
+    fails at order scale and expires by construction. Autonomous agents trading on-chain assets
+    are better served by signatures, with signer-enforced policy on top in either model.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Go deeper</h2>
+  <p>
+    What the signature actually contains:
+    <a href="/learn/what-is-eip-712/">what is EIP-712</a>. How to structure the wallet side:
+    <a href="/learn/ai-agent-custody/">how an AI agent should hold custody</a>. The end-to-end
+    agent flow, including the keyless
+    <a href="/learn/mcp-server-for-trading/">MCP server</a>, is at
+    <a href="https://docs.ophis.fi/ai-agents">docs.ophis.fi/ai-agents</a>.
+  </p>
+</ContentPage>

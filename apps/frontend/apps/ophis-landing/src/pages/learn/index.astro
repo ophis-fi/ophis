@@ -23,13 +23,42 @@ const GUIDES = [
     blurb:
       'What sandwich attacks exploit, which levers batch auctions remove, and the precise boundary of the protection.',
   },
+]
+
+const AGENT_GUIDES = [
   {
     href: '/learn/ai-agent-token-swaps/',
     title: 'AI agent token swaps: the safe pattern',
     blurb:
       'Bounded orders, receiver pinning, per-chain domain resolution, expiry, and the keyless MCP server.',
   },
+  {
+    href: '/learn/ai-agent-custody/',
+    title: 'How should an AI agent hold custody?',
+    blurb:
+      'A dedicated funded-per-mandate key, signer-enforced policy, on-chain enforcement, and what to log.',
+  },
+  {
+    href: '/learn/mcp-server-for-trading/',
+    title: 'What is an MCP server for trading?',
+    blurb:
+      'How an assistant goes from talking about a trade to executing one, and what a keyless server never touches.',
+  },
+  {
+    href: '/learn/api-keys-vs-wallet-signatures/',
+    title: 'Agent trading: API keys vs wallet signatures',
+    blurb:
+      'Standing authority over custodied funds vs per-trade signatures over your own. Failure modes and revocation.',
+  },
+  {
+    href: '/learn/what-is-eip-712/',
+    title: 'What is EIP-712, and why do agents sign typed data?',
+    blurb:
+      'Typed inspectable fields, the domain separator, and why the signature itself is the audit record.',
+  },
 ]
+
+const ALL_GUIDES = [...GUIDES, ...AGENT_GUIDES]
 
 const FACTS = [
   { href: '/pricing/', title: 'Fees and pricing', blurb: 'The canonical fee reference for every path and chain.' },
@@ -42,8 +71,8 @@ const itemListLd = {
   '@type': 'ItemList',
   '@id': 'https://ophis.fi/learn/#guides',
   name: 'Ophis learn guides',
-  numberOfItems: GUIDES.length,
-  itemListElement: GUIDES.map((g, i) => ({
+  numberOfItems: ALL_GUIDES.length,
+  itemListElement: ALL_GUIDES.map((g, i) => ({
     '@type': 'ListItem',
     position: i + 1,
     name: g.title,
@@ -61,9 +90,19 @@ const itemListLd = {
   updated={updated}
   extraLd={[itemListLd]}
 >
-  <h2>Guides</h2>
+  <h2>How intent trading works</h2>
   <ul class="hub">
     {GUIDES.map((g) => (
+      <li>
+        <a href={g.href}>{g.title}</a>
+        <p>{g.blurb}</p>
+      </li>
+    ))}
+  </ul>
+
+  <h2>For agent builders</h2>
+  <ul class="hub">
+    {AGENT_GUIDES.map((g) => (
       <li>
         <a href={g.href}>{g.title}</a>
         <p>{g.blurb}</p>

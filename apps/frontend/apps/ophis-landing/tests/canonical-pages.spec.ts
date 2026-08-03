@@ -30,6 +30,26 @@ const PAGES = [
     canonical: 'https://ophis.fi/learn/ai-agent-token-swaps/',
     h1: 'AI agent token swaps: the safe pattern',
   },
+  {
+    route: '/learn/mcp-server-for-trading',
+    canonical: 'https://ophis.fi/learn/mcp-server-for-trading/',
+    h1: 'What is an MCP server for trading?',
+  },
+  {
+    route: '/learn/ai-agent-custody',
+    canonical: 'https://ophis.fi/learn/ai-agent-custody/',
+    h1: 'How should an AI agent hold custody?',
+  },
+  {
+    route: '/learn/api-keys-vs-wallet-signatures',
+    canonical: 'https://ophis.fi/learn/api-keys-vs-wallet-signatures/',
+    h1: 'Agent trading: API keys vs wallet signatures',
+  },
+  {
+    route: '/learn/what-is-eip-712',
+    canonical: 'https://ophis.fi/learn/what-is-eip-712/',
+    h1: 'What is EIP-712, and why do agents sign typed data?',
+  },
 ]
 
 for (const p of PAGES) {

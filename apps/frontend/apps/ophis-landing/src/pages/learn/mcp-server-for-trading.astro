@@ -1,0 +1,69 @@
+---
+/**
+ * /learn/mcp-server-for-trading: canonical answer page for "what is an MCP
+ * server for trading". Keyless/custody claims stay qualified: the server
+ * never signs, so a bad tool result yields a bad UNSIGNED order proposal
+ * that the signer's own policy must still catch.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/learn/mcp-server-for-trading/')
+
+const FAQS = [
+  {
+    q: 'What is an MCP server?',
+    a: `MCP (Model Context Protocol) is an open standard that lets an AI assistant call external tools. An MCP server advertises a set of tools with typed inputs and outputs; the model decides when to call them and gets structured results back. It is how an assistant like Claude or ChatGPT goes from talking about an action to performing one.`,
+  },
+  {
+    q: 'What does a trading MCP server expose?',
+    a: `The Ophis MCP server exposes 14 tools covering the full trade lifecycle: parse_intent turns natural language into a structured swap, resolve_token maps a symbol to a canonical address and fails closed on spoofs, get_quote fetches a best-execution quote, build_order returns a bounded, ready-to-sign EIP-712 order with the receiver pinned to the owner, validate_order preflights it, and submit_order relays the signed result. Supporting tools cover chains, balances, portfolio, gas, charts, and expected surplus.`,
+  },
+  {
+    q: 'Does the MCP server hold keys or funds?',
+    a: `No. The Ophis MCP server is public, unauthenticated, and keyless: it never holds keys and never signs. The agent signs locally with its own key, so custody never leaves the agent's side. The flip side is that signing is where your safety lives: a faulty or manipulated tool result can only ever produce a bad unsigned proposal, and the signer's own policy has to catch it before signing.`,
+  },
+  {
+    q: 'What does using it cost?',
+    a: `Calling the MCP server and its tools is free. When an order actually settles, the keyless MCP path charges a flat 5 bps (0.05%) of trade volume, taken in the surplus token. There is no key to provision and no subscription.`,
+  },
+  {
+    q: 'How does an agent connect to it?',
+    a: `The endpoint is mcp.ophis.fi/mcp, a Streamable-HTTP MCP server. It is discoverable through the machine-readable manifest at ophis.fi/.well-known/mcp.json and listed in the official MCP registry as fi.ophis/mcp. Point any MCP-capable client at the endpoint and the tools appear; no signup step exists.`,
+  },
+]
+---
+
+<ContentPage
+  title="What is an MCP server for trading? | Ophis"
+  description="An MCP server gives an AI assistant callable tools. A trading MCP server exposes quoting, order building, and submission as tools; Ophis runs a public keyless one where the agent always signs with its own key."
+  path="/learn/mcp-server-for-trading/"
+  heading="What is an MCP server for trading?"
+  lede="MCP is how an AI assistant goes from talking about a trade to executing one. Here is what a trading MCP server exposes, what it never touches, and how the keyless model keeps custody with the agent."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> an MCP server gives an AI assistant a set of callable
+    tools. A trading MCP server makes quoting, order building, and submission callable, so an
+    agent can trade programmatically. Ophis runs a public, keyless one at
+    <code>mcp.ophis.fi</code>: it quotes and builds bounded orders, but every order is signed by
+    the agent's own key, never by the server.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Go deeper</h2>
+  <p>
+    The integration walkthrough is at <a href="https://docs.ophis.fi/ai-agents">docs.ophis.fi/ai-agents</a>.
+    For the safety pattern the tools are built around, read
+    <a href="/learn/ai-agent-token-swaps/">AI agent token swaps: the safe pattern</a> and
+    <a href="/learn/ai-agent-custody/">how an AI agent should hold custody</a>. Rates are on the
+    <a href="/pricing/">pricing page</a>.
+  </p>
+</ContentPage>
