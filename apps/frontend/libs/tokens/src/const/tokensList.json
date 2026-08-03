@@ -233,6 +233,11 @@
       "priority": 1,
       "enabledByDefault": true,
       "source": "https://ipfs.io/ipns/tokens.uniswap.org"
+    },
+    {
+      "priority": 2,
+      "enabledByDefault": false,
+      "source": "https://swap.ophis.fi/api/pons-token-list"
     }
   ],
   "4326": [

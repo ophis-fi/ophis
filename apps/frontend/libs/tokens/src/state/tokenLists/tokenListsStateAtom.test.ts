@@ -164,7 +164,7 @@ describe('listsStatesByChainAtom - token lists state', () => {
   })
 
   describe('upsertListsAtom', () => {
-    it('restores a list that was marked as deleted with isEnabled defaulting to true', async () => {
+    it('preserves a removed-list tombstone when a refresh has no explicit enabled state', async () => {
       const store = createStore()
 
       const initialState: TokenListsByChainState = {
@@ -183,11 +183,8 @@ describe('listsStatesByChainAtom - token lists state', () => {
 
       const updatedState = await store.get(listsStatesByChainAtom)
 
-      // Should be restored with isEnabled defaulting to true
-      expect(updatedState?.[MOCK_CHAIN_ID]?.[MOCK_LIST_STATE.source]).toEqual({
-        ...listWithoutEnabled,
-        isEnabled: true,
-      })
+      // Periodic refreshes must not make the removed list visible again.
+      expect(updatedState?.[MOCK_CHAIN_ID]?.[MOCK_LIST_STATE.source]).toBe('deleted')
     })
 
     it('upserts a new list that does not exist in state', async () => {
