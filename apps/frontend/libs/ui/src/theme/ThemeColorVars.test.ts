@@ -93,6 +93,29 @@ describe('Chain Accent Colors', () => {
       expect(sdkColor).toBe('#62688F') // Verify SDK color is different
     })
 
+    it('applies the Robinhood Chain brand accents per mode (light contrast override)', () => {
+      const chainId = 4663 as unknown as SupportedChainId
+      const colors = getChainAccentColors(chainId)
+
+      // Shared source of truth carries the brand neon, not the retired green.
+      expect(CHAIN_INFO[chainId].color).toBe('#CCFF00')
+
+      // Dark mode uses the brand neon; light mode uses the darkened same-hue
+      // olive so the accent stays readable as text/checkmark on light surfaces.
+      expect(colors?.darkColor).toBe('#CCFF00')
+      expect(colors?.lightColor).toBe('#5C7300')
+
+      // Derived surfaces follow the mode-appropriate base color
+      // (color2k emits "rgba(r, g, b, a)").
+      expect(colors?.darkBg).toContain('204, 255, 0')
+      expect(colors?.darkBorder).toContain('204, 255, 0')
+      expect(colors?.lightBg).toContain('92, 115, 0')
+      expect(colors?.lightBorder).toContain('92, 115, 0')
+
+      // The retired #00C805 green appears nowhere in the derived config.
+      expect(JSON.stringify(colors)).not.toMatch(/00C805|0,\s*200,\s*5/i)
+    })
+
     it('should use CHAIN_INFO color for chains without overrides', () => {
       const colors = getChainAccentColors(SupportedChainId.BASE)
       const sdkColor = CHAIN_INFO[SupportedChainId.BASE].color

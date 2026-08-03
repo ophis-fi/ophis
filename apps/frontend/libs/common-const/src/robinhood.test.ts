@@ -17,6 +17,16 @@ describe('Robinhood official branding', () => {
       light: ROBINHOOD_CHAIN_LOGO,
       dark: ROBINHOOD_CHAIN_LOGO,
     })
+    // The icon is the brand mark supplied by the Robinhood Chain team
+    // (2026-08-02): black #1c180d feather on neon #ccff00, inlined as a
+    // data: URI. Decode it and assert both brand colors are in the art.
+    expect(ROBINHOOD_CHAIN_LOGO).toMatch(/^data:image\/svg\+xml;base64,/)
+    const svg = Buffer.from(ROBINHOOD_CHAIN_LOGO.split(',')[1], 'base64').toString('utf8')
+    expect(svg).toContain('#ccff00')
+    expect(svg).toContain('#1c180d')
+    expect(svg.toLowerCase()).not.toContain('#00c805')
+    // The shared chain accent color matches the icon ground.
+    expect(CHAIN_INFO[ROBINHOOD_CHAIN_ID].color).toBe('#CCFF00')
     expect(NATIVE_CURRENCIES[ROBINHOOD_CHAIN_ID].logoURI).toBe(
       ALL_SUPPORTED_CHAINS_MAP[SupportedChainId.MAINNET].nativeCurrency.logoUrl,
     )
