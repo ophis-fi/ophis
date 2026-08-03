@@ -287,6 +287,23 @@ function serveCached(response: Response): Response {
   });
 }
 
+async function safeCacheMatch(cache: Cache, key: Request): Promise<Response | undefined> {
+  try {
+    return (await cache.match(key)) ?? undefined;
+  } catch {
+    // Cache availability must never take down live token discovery.
+    return undefined;
+  }
+}
+
+async function safeCachePut(cache: Cache, key: Request, response: Response): Promise<void> {
+  try {
+    await cache.put(key, response);
+  } catch {
+    // The live response remains valid even when an edge cannot persist it.
+  }
+}
+
 export const onRequestGet: PagesFunction = async (context) => {
   const cache = (caches as CloudflareCacheStorage).default;
   const cacheUrl = new URL(context.request.url);
@@ -295,11 +312,11 @@ export const onRequestGet: PagesFunction = async (context) => {
   const staleUrl = new URL(cacheUrl);
   staleUrl.pathname = `${staleUrl.pathname}.__last_known_good`;
   const staleKey = new Request(staleUrl, { method: 'GET' });
-  const cached = await cache.match(cacheKey);
+  const cached = await safeCacheMatch(cache, cacheKey);
   if (cached) return serveCached(cached);
 
   const unavailable = async (): Promise<Response> => {
-    const stale = await cache.match(staleKey);
+    const stale = await safeCacheMatch(cache, staleKey);
     return stale
       ? serveCached(stale)
       : json({ error: 'Pons catalog is temporarily unavailable.' }, 502);
@@ -329,8 +346,8 @@ export const onRequestGet: PagesFunction = async (context) => {
     const result = json(list);
     context.waitUntil(
       Promise.all([
-        cache.put(cacheKey, cacheResponse(result, CACHE_SECONDS)),
-        cache.put(staleKey, cacheResponse(result, LAST_KNOWN_GOOD_SECONDS)),
+        safeCachePut(cache, cacheKey, cacheResponse(result, CACHE_SECONDS)),
+        safeCachePut(cache, staleKey, cacheResponse(result, LAST_KNOWN_GOOD_SECONDS)),
       ]).then(() => undefined),
     );
     return result;
