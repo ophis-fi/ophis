@@ -581,7 +581,6 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       date,
       [...PRODUCTION_CHAIN_IDS],
       [...SOVEREIGN_CHAIN_IDS],
-      GROSS_FEE_BPS,
       10_000 - COW_TAKE_BPS,
     );
     const totals = chains.reduce(

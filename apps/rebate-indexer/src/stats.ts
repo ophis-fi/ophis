@@ -38,7 +38,6 @@ export async function computeDefiLlamaDay(
   date: string,
   chainIds: number[],
   sovereignChainIds: number[],
-  legacyFeeBps: number,
   hostedKeepBps: number,
 ): Promise<DefiLlamaChainDay[]> {
   const start = `${date}T00:00:00.000Z`;
@@ -56,17 +55,19 @@ export async function computeDefiLlamaDay(
     SELECT
       chain_id,
       COALESCE(SUM(value_usd), 0)::text AS volume_usd,
-      COALESCE(SUM(value_usd * COALESCE(volume_fee_bps, ${legacyFeeBps}) / 10000), 0)::text AS fees_usd,
+      COALESCE(SUM(value_usd * volume_fee_bps / 10000)
+        FILTER (WHERE volume_fee_bps IS NOT NULL), 0)::text AS fees_usd,
       COALESCE(SUM(
-        value_usd * COALESCE(volume_fee_bps, ${legacyFeeBps}) / 10000
+        value_usd * volume_fee_bps / 10000
         * CASE WHEN chain_id = ANY(${sovereignChainIds}) THEN 1 ELSE ${hostedKeepBps}::numeric / 10000 END
-      ), 0)::text AS revenue_usd,
+      ) FILTER (WHERE volume_fee_bps IS NOT NULL), 0)::text AS revenue_usd,
       COUNT(*)::text AS trades
-    FROM trades
+    FROM defillama_fills
     WHERE chain_id = ANY(${chainIds})
-      AND block_timestamp >= ${start}
-      AND block_timestamp < ${end}
+      AND settlement_timestamp >= ${start}
+      AND settlement_timestamp < ${end}
       AND value_usd IS NOT NULL
+      AND fee_verified = true
     GROUP BY chain_id
     ORDER BY chain_id
   `;

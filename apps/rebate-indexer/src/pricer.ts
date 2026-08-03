@@ -212,6 +212,74 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
       }
     }
   }
+  // DefiLlama uses a separate settlement-fill ledger. Price each fill independently
+  // so partial orders settling on different days retain the correct daily volume.
+  // These public reporting values are not rebate weights, so the rebate-only per-order
+  // cap above is intentionally not applied here.
+  let fillPriced = 0;
+  let fillFailed = 0;
+  type FillPriceRow = {
+    chain_id: number;
+    block_number: string;
+    log_index: number;
+    trade_uid: Buffer;
+    sell_token: Buffer;
+    sell_amount: string;
+  };
+  let fillCursor: { chainId: number; blockNumber: string; logIndex: number; tradeUid: Buffer } | null = null;
+  for (;;) {
+    let rows: FillPriceRow[];
+    if (fillCursor === null) {
+      rows = await sql<FillPriceRow[]>`
+          SELECT chain_id, block_number::text, log_index, trade_uid, sell_token, sell_amount::text
+          FROM defillama_fills
+          WHERE value_usd IS NULL
+          ORDER BY chain_id, block_number, log_index, trade_uid
+          LIMIT 1000
+        `;
+    } else {
+      rows = await sql<FillPriceRow[]>`
+          SELECT chain_id, block_number::text, log_index, trade_uid, sell_token, sell_amount::text
+          FROM defillama_fills
+          WHERE value_usd IS NULL
+            AND (chain_id, block_number, log_index, trade_uid) >
+                (${fillCursor.chainId}, ${fillCursor.blockNumber}, ${fillCursor.logIndex}, ${fillCursor.tradeUid})
+          ORDER BY chain_id, block_number, log_index, trade_uid
+          LIMIT 1000
+        `;
+    }
+    if (rows.length === 0) break;
+
+    for (const r of rows) {
+      fillCursor = {
+        chainId: r.chain_id,
+        blockNumber: r.block_number,
+        logIndex: r.log_index,
+        tradeUid: r.trade_uid,
+      };
+      const row = {
+        tradeUid: `0x${r.trade_uid.toString('hex')}` as `0x${string}`,
+        chainId: r.chain_id,
+        sellToken: `0x${r.sell_token.toString('hex')}` as `0x${string}`,
+        sellAmount: BigInt(r.sell_amount),
+      };
+      try {
+        const usd = await priceTrade(row, refPriceCache);
+        await sql`
+          UPDATE defillama_fills
+          SET value_usd = ${usd}, priced_at = now()
+          WHERE chain_id = ${r.chain_id}
+            AND block_number = ${r.block_number}
+            AND log_index = ${r.log_index}
+            AND trade_uid = ${r.trade_uid}
+        `;
+        fillPriced++;
+      } catch (err) {
+        log.warn({ err, tradeUid: row.tradeUid, chainId: row.chainId }, 'DefiLlama fill pricing failed');
+        fillFailed++;
+      }
+    }
+  }
   if (clamped > 0) {
     log.warn({ clamped, cap: maxTradeUsd, examples: clampedExamples }, 'trades clamped to per-trade rebate cap');
     // Fire-and-forget: surfacing possible volume manipulation must not block the
@@ -241,6 +309,6 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
       )
       .catch((e) => log.warn({ err: e }, 'pricer-failure alert failed'));
   }
-  log.info({ priced, failed, clamped }, 'pricer complete');
+  log.info({ priced, failed, clamped, fillPriced, fillFailed }, 'pricer complete');
   return { priced, failed };
 }
