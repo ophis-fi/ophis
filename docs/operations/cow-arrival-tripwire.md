@@ -18,18 +18,53 @@ never echoed).
 | `networks_stub` = GONE | The cowswap frontend's OPTIMISM "bridge-only" stub comment was removed, frontend migration started. |
 | `barn_optimism` / `barn_unichain` = 200 | CoW staging orderbook is live for the chain. Launch imminent (days to weeks). |
 | `api_optimism` / `api_unichain` = 200 | CoW hosted orderbook is LIVE. The only-venue claim on that chain is over. |
+| `sdk_enum` = PARSE | NOT an arrival. The SupportedChainId enum was renamed or moved; the probe needs updating. |
 
 Baseline as of 2026-07-04: all four orderbook probes 404, sdk enum has
 neither chain, stub comment present.
 
-`networks_stub` is the softest of the four signals: it reads a prose comment,
-so an upstream reflow or rewording can move it without any change in CoW's
-actual support. On 2026-08-03 it fired falsely when upstream hard-wrapped the
-comment across two lines and the then line-anchored grep stopped seeing it.
-The probe now matches whitespace-agnostically over the whole file, but the
-rule stands: if `networks_stub` flips ALONE while all four orderbook probes
-are still 404 and `sdk_enum` is still no/no, read the upstream file before
-acting on it.
+### Hard signals vs soft signals
+
+`api_*` and `barn_*` probe HTTP endpoints: they change only when CoW's
+behaviour changes, so treat them as authoritative.
+
+`sdk_enum` and `networks_stub` parse upstream SOURCE, including prose that CoW
+reformats at will. Both have been fragile:
+
+- **2026-08-03, `networks_stub` false positive.** Upstream reflowed the JSDoc
+  comment across two lines; the then line-anchored grep stopped seeing it and
+  the tripwire reported GONE ("frontend migration started") while nothing had
+  changed. Fixed in PR #1067, and fixed again here: collapsing whitespace was
+  not enough, because a wrap falling between the two words leaves
+  `future * migration` with the JSDoc marker in the middle. Markers are now
+  stripped before collapsing.
+- **2026-08-03, `sdk_enum` audit.** Found to (a) read a member commented out
+  with `/* */` as a real member, i.e. a false ARRIVAL alert, (b) return `ERR`
+  on a reflowed declaration, which the alerting layer suppresses by design, so
+  a genuine arrival shipping alongside a reformat would have been silently
+  swallowed, and (c) keep substring-matching a renamed enum. Now parsed in
+  slurp mode with comments stripped first, and a missing declaration reports
+  `PARSE` (which alerts) rather than `ERR` (which does not).
+
+**Triage rule:** if a soft signal flips ALONE while all four orderbook probes
+are still 404, read the upstream file before acting on it. Only trust a soft
+signal that is corroborated by a hard one, or by your own reading of the diff.
+
+### Probe tests
+
+`scripts/ops/test-cow-tripwire-probes.sh` mutation-tests both source-parsing
+probes offline (inline fixtures, no network). It extracts the real functions
+from the shipped script rather than reimplementing them, asserts each fixture
+mutation actually applied, and covers both directions: a cosmetic reformat must
+NOT alert, and a genuine arrival MUST still alert even if a reformat lands in
+the same release.
+
+```
+bash scripts/ops/test-cow-tripwire-probes.sh
+```
+
+Run it after any edit to `sdk_signal` or `stub_signal`, and whenever upstream
+restructures either file.
 
 ## Behavior
 

@@ -75,16 +75,31 @@ sdk_signal() { # echoes e.g. "optimism=no unichain=no", or "ERR"
   local src block op un
   src=$(fetch_raw "https://raw.githubusercontent.com/cowprotocol/cow-sdk/main/packages/config/src/chains/types.ts")
   [[ -z "$src" ]] && { echo "ERR"; return; }
-  # Anchor on the REAL exported declaration, tolerant of leading whitespace or
-  # preceding tokens (upstream could reformat): match a line that contains
-  # "export enum SupportedChainId" and is NOT a line comment. The file opens with
-  # a commented-out example enum of the same name, and the EvmChains enum
-  # legitimately lists OPTIMISM as a bridge target; both are false-positive traps.
-  # Strip trailing line comments inside the block so a commented OPTIMISM mention
-  # cannot false-positive. awk consumes the whole var via here-string (no early
-  # pipe exit, so pipefail/SIGPIPE cannot fire).
-  block=$(awk '/export enum SupportedChainId/ && $0 !~ /^[[:space:]]*\/\//{f=1} f{sub(/\/\/.*/,""); print} f&&/^[[:space:]]*\}/{exit}' <<< "$src")
-  [[ -z "$block" ]] && { echo "ERR"; return; }
+  # Parsed in slurp mode, NOT line by line. The previous line-anchored awk was
+  # fragile to upstream reformatting in three ways (all mutation-tested, see
+  # docs/operations/cow-arrival-tripwire.md):
+  #   - a member commented out with /* */ instead of // read as a real member,
+  #     i.e. a FALSE ARRIVAL alert;
+  #   - a declaration reflowed across lines lost the anchor and returned ERR,
+  #     and ERR transitions are suppressed by design, so a genuine arrival
+  #     landing in the same release would have been silently swallowed;
+  #   - a renamed enum still substring-matched, so the probe kept reading a
+  #     declaration that was no longer the one it was written for.
+  # Order matters: strip block comments first (non-greedy, across newlines),
+  # then line comments, THEN anchor. The file opens with commented-out decoy
+  # enums of the same name and the EvmChains enum legitimately lists OPTIMISM
+  # as a bridge target; stripping first removes the decoys outright.
+  # [^{}]* keeps the match inside a single brace level.
+  block=$(perl -0777 -ne '
+    s{/\*.*?\*/}{ }gs;
+    s{//[^\n]*}{}g;
+    if (/export\s+enum\s+SupportedChainId\s*\{([^{}]*)\}/s) { print $1 }
+  ' <<< "$src")
+  # Fetch succeeded but the declaration is gone: that is a STRUCTURAL upstream
+  # change, not transient network noise, so it must not share ERR's suppression.
+  # PARSE differs from the stored value and therefore alerts once, telling ops
+  # to go look rather than leaving the probe dark forever.
+  [[ -z "${block//[[:space:]]/}" ]] && { echo "PARSE"; return; }
   # grep -c always exits 0 here via the || 0 guard; count matches on the
   # comment-stripped block.
   op=$(grep -ci "optimism" <<< "$block" || true)
@@ -104,7 +119,14 @@ stub_signal() { # echoes "present", "GONE", or "ERR"
   # The 240-char proximity window keeps a bridge-only comment about any OTHER
   # chain from holding this "present". perl exit is captured, never in a
   # pipefail pipeline.
+  #
+  # Comment MARKERS are stripped before whitespace is collapsed. Collapsing
+  # alone is not enough: this lives in a JSDoc block, so a wrap falling between
+  # the two words leaves "future * migration" and the match still fails. That
+  # gap survived the first fix (PR #1067) and was caught by the mutation tests
+  # in test-cow-tripwire-probes.sh, which is why they exist.
   hit=$(perl -0777 -ne '
+    s{^[ \t]*(?:\*+|//+)[ \t]?}{}mg;
     s/\s+/ /g;
     print "hit" if
       /optimism.{0,240}?(?:bridge-only|future migration)/i ||
@@ -209,7 +231,7 @@ if [[ -n "$changes" ]]; then
 Signals changed on CoW's side for the Ophis sovereign chains:
 
 ${changes}
-Read: barn 200 = staging up, launch imminent. api 200 = LAUNCHED. sdk_enum YES = sell-from support merged upstream. networks_stub GONE = frontend migration started.
+Read: barn 200 = staging up, launch imminent. api 200 = LAUNCHED. sdk_enum YES = sell-from support merged upstream. networks_stub GONE = frontend migration started. Either of the last two alone, with all four orderbook probes still 404, is soft: it reads upstream source, so verify before acting. sdk_enum PARSE = the enum was renamed or moved, probe needs updating, NOT an arrival.
 
 Affected: ${affected}. Playbook: re-check only-venue claims and reassess the 100 percent fee-keep story for the affected chain, and weight sovereign messaging toward the chain NOT in the change above."
   # Token hygiene: the Telegram API requires the token in the URL path, but the
