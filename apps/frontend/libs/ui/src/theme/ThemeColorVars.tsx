@@ -122,6 +122,12 @@ const CHAIN_ACCENT_OVERRIDES: Partial<Record<SupportedChainId, ChainAccentOverri
     // Override: Original color #627EEA differs from SDK's #62688F
     color: '#627EEA',
   },
+  [4663 as unknown as SupportedChainId]: {
+    // Robinhood Chain brand neon (#CCFF00, from CHAIN_INFO.color) works as an
+    // accent on dark surfaces but is near-invisible as text/checkmark on light
+    // ones, so light mode uses a darkened same-hue olive for contrast.
+    lightColor: '#5C7300',
+  },
 }
 
 /**
