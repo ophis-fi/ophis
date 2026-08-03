@@ -201,7 +201,7 @@ impl Pons {
                             })
                             .call()
                             .await
-                            .map_err(Error::Rpc)?
+                            .map_err(classify_quote_error)?
                             .amountOut
                     }
                     Route::Multi { sell_fee, buy_fee } => {
@@ -218,7 +218,7 @@ impl Pons {
                             )
                             .call()
                             .await
-                            .map_err(Error::Rpc)?
+                            .map_err(classify_quote_error)?
                             .amountOut
                     }
                 };
@@ -270,7 +270,7 @@ impl Pons {
                             })
                             .call()
                             .await
-                            .map_err(Error::Rpc)?
+                            .map_err(classify_quote_error)?
                             .amountIn
                     }
                     Route::Multi { sell_fee, buy_fee } => {
@@ -287,7 +287,7 @@ impl Pons {
                             )
                             .call()
                             .await
-                            .map_err(Error::Rpc)?
+                            .map_err(classify_quote_error)?
                             .amountIn
                     }
                 };
@@ -386,6 +386,24 @@ impl Pons {
     }
 }
 
+/// Classifies a Quoter execution revert as route unavailability so partially
+/// fillable orders retry at a smaller amount. Transport failures and local ABI
+/// errors remain RPC failures: they do not prove that a smaller fill will work.
+fn classify_quote_error(err: alloy::contract::Error) -> Error {
+    use ethrpc::alloy::errors::ContractErrorExt;
+
+    let is_execution_revert = matches!(
+        &err,
+        alloy::contract::Error::TransportError(transport)
+            if transport.as_error_resp().is_some()
+    ) && err.is_contract_revert();
+    if is_execution_revert {
+        Error::NotFound
+    } else {
+        Error::Rpc(err)
+    }
+}
+
 fn subtract_slippage(amount: U256, bps: u16) -> Option<U256> {
     let numerator = U512::from(amount) * U512::from(10_000u16.saturating_sub(bps));
     U256::uint_try_from(numerator / U512::from(10_000u16)).ok()
@@ -438,6 +456,27 @@ pub enum Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn contract_error(payload_json: &str) -> alloy::contract::Error {
+        let dummy = serde_json::from_str::<u8>("x").unwrap_err();
+        let rpc_err = alloy::transports::TransportError::deser_err(dummy, payload_json);
+        assert!(rpc_err.is_error_resp(), "test setup: expected an ErrorResp");
+        alloy::contract::Error::TransportError(rpc_err)
+    }
+
+    #[test]
+    fn quote_execution_revert_is_unavailable_route() {
+        let err = contract_error(r#"{"code":3,"message":"execution reverted","data":"0x"}"#);
+        assert!(matches!(classify_quote_error(err), Error::NotFound));
+    }
+
+    #[test]
+    fn quote_transport_failure_remains_rpc_error() {
+        let err = alloy::contract::Error::TransportError(
+            alloy::transports::TransportError::local_usage_str("connection reset"),
+        );
+        assert!(matches!(classify_quote_error(err), Error::Rpc(_)));
+    }
 
     #[test]
     fn slippage_floor_is_exact_and_overflow_safe() {
