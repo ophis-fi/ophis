@@ -25,7 +25,7 @@ const FAQS = [
   },
   {
     q: 'Can I use both?',
-    a: `Sensibly, yes. Swaps on Ophis never touch the public mempool, so they need no special RPC. The on-chain transactions you still send yourself, token approvals, wrapping, or native-ETH order placement, can go through a private RPC for the same hiding benefit. The two defenses cover different layers and do not conflict.`,
+    a: `Sensibly, yes. ERC-20 swaps on Ophis are off-chain signed orders that never touch the public mempool, so they need no special RPC. The on-chain transactions you still send yourself, token approvals, wrapping, and native-ETH order placement through EthFlow (which is broadcast and visible like any transaction), can go through a private RPC for the same hiding benefit. The two defenses cover different layers and do not conflict.`,
   },
   {
     q: 'Which should a trader choose?',

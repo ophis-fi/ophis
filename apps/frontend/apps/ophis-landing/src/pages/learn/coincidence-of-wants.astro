@@ -6,6 +6,7 @@
  */
 import ContentPage from '../../layouts/ContentPage.astro'
 import { canonicalPage } from '../../data/canonicalPages'
+import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../../data/chains'
 
 const { updated } = canonicalPage('/learn/coincidence-of-wants/')
 
@@ -24,7 +25,7 @@ const FAQS = [
   },
   {
     q: 'Do coincidences of wants happen on Ophis today?',
-    a: `On the CoW-hosted chains, orders settle through CoW Protocol's solver competition, which includes solvers that combine orders, so matches happen there when opposite flow overlaps. On the Ophis-operated chains (Optimism, Unichain, and Robinhood Chain), the current solver lineup builds each settlement against on-chain liquidity per order, so peer matches do not occur there today; the settlement layer supports them, and they arrive with the solver lineup, not with a contract change. Where matching runs, the rate depends entirely on opposite flow in the same window, so any fixed number would be made up.`,
+    a: `On the CoW-hosted chains, orders settle through CoW Protocol's solver competition, which includes solvers that combine orders, so matches happen there when opposite flow overlaps. On the Ophis-operated chains (${sovereignList}), the current solver lineup builds each settlement against on-chain liquidity per order, so peer matches do not occur there today; the settlement layer supports them, and they arrive with the solver lineup, not with a contract change. Where matching runs, the rate depends entirely on opposite flow in the same window, so any fixed number would be made up.`,
   },
   {
     q: 'Is this where the name CoW Protocol comes from?',
