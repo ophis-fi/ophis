@@ -26,7 +26,7 @@ const FAQS = [
   },
   {
     q: 'How is a signed limit price different?',
-    a: `The slippage input still exists on Ophis, but it hardens into the order itself: the quote adjusted by your slippage becomes the signed limit, an enforced floor in the EIP-712 message that the settlement contract will not cross, no matter what pools did in the meantime. The difference is what happens to the band. In a router swap the tolerance sits as an open offer on a visible pending transaction; on Ophis the order is off-chain, the batch clears at a uniform price, and execution above your floor is returned as surplus instead of being available to harvest.`,
+    a: `The slippage input still exists on Ophis, but it hardens into the order itself: the quote adjusted by your slippage becomes the signed limit, an enforced floor in the EIP-712 message that the settlement contract will not cross, no matter what pools did in the meantime. The difference is what happens to the band. In a router swap the tolerance sits as an open offer on a visible pending transaction; on Ophis the ERC-20 order is off-chain (selling native ETH places an on-chain EthFlow transaction instead), the batch clears at a uniform price, and execution above your floor is returned as surplus instead of being available to harvest.`,
   },
   {
     q: 'What happens when the price moves in my favor?',
