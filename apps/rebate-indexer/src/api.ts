@@ -7,7 +7,7 @@ import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
 import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
-import { computePublicStats } from './stats.js';
+import { computeDefiLlamaDay, computePublicStats } from './stats.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
@@ -15,6 +15,7 @@ import { getPartnerFeeDashboard, getPartnerFeeStats } from './partnerFees/report
 import {
   FEE_SHARE_BPS,
   GROSS_FEE_BPS,
+  COW_TAKE_BPS,
   OPTIMISM_CHAIN_ID,
   SOVEREIGN_CHAIN_IDS,
   keepFractionBps,
@@ -555,6 +556,48 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // by trades still awaiting a price. Null until the first priced trade.
     const avgTradeUsd = data.avgTradeUsd;
     return { ok: true, ...stats, avgTradeUsd, execution: EXECUTION_FACTS };
+  });
+
+  // Public daily aggregates consumed by DefiLlama. This deliberately exposes
+  // protocol-level totals only: no wallets, orders, referrals, current-cycle
+  // payout state, or operational timing. Values come from settled trades after
+  // appData attribution and USD pricing by this indexer.
+  app.get<{ Querystring: { date?: string } }>('/defillama', {
+    config: {
+      rateLimit: { max: 120, timeWindow: '1 minute' },
+    },
+  }, async (req, reply) => {
+    const date = req.query.date;
+    if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return reply.code(400).send({ error: 'date must be YYYY-MM-DD' });
+    }
+    const parsed = new Date(`${date}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+      return reply.code(400).send({ error: 'date must be a valid UTC calendar date' });
+    }
+
+    const chains = await computeDefiLlamaDay(
+      sql,
+      date,
+      [...PRODUCTION_CHAIN_IDS],
+      [...SOVEREIGN_CHAIN_IDS],
+      GROSS_FEE_BPS,
+      10_000 - COW_TAKE_BPS,
+    );
+    const totals = chains.reduce(
+      (sum, chain) => ({
+        volumeUsd: sum.volumeUsd + chain.volumeUsd,
+        feesUsd: sum.feesUsd + chain.feesUsd,
+        revenueUsd: sum.revenueUsd + chain.revenueUsd,
+        supplySideRevenueUsd: sum.supplySideRevenueUsd + chain.supplySideRevenueUsd,
+        trades: sum.trades + chain.trades,
+      }),
+      { volumeUsd: 0, feesUsd: 0, revenueUsd: 0, supplySideRevenueUsd: 0, trades: 0 },
+    );
+
+    return reply
+      .header('cache-control', 'public, max-age=300')
+      .send({ ok: true, date, totals, chains });
   });
 
   // PUBLIC, keyless, per-appCode integrator earnings - the trust surface that lets an

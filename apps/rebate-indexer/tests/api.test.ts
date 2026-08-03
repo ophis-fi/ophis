@@ -114,6 +114,28 @@ test('/stats serves a styled HTML page to a browser (Accept: text/html)', async 
   expect(res.headers['content-security-policy']).toBeDefined();
 });
 
+test('/defillama returns bounded daily protocol aggregates only', async () => {
+  app = await buildApiServer();
+  const res = await app.inject({ method: 'GET', url: '/defillama?date=2026-08-03' });
+  expect(res.statusCode).toBe(200);
+  expect(JSON.parse(res.body)).toEqual({
+    ok: true,
+    date: '2026-08-03',
+    totals: { volumeUsd: 0, feesUsd: 0, revenueUsd: 0, supplySideRevenueUsd: 0, trades: 0 },
+    chains: [],
+  });
+  expect(res.body.toLowerCase()).not.toMatch(/wallet|order|referral|payout/);
+  expect(res.headers['cache-control']).toBe('public, max-age=300');
+});
+
+test('/defillama rejects missing and impossible dates', async () => {
+  app = await buildApiServer();
+  const missing = await app.inject({ method: 'GET', url: '/defillama' });
+  const impossible = await app.inject({ method: 'GET', url: '/defillama?date=2026-02-30' });
+  expect(missing.statusCode).toBe(400);
+  expect(impossible.statusCode).toBe(400);
+});
+
 test('/earnings/:appCode returns keyless per-appCode JSON, scoped + disclaimed, with no leak', async () => {
   app = await buildApiServer();
   // The mocked db returns [] for every query, so this exercises the route wiring +

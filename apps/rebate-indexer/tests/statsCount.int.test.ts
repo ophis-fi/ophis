@@ -10,6 +10,7 @@ import { DECODER_ETHFLOW_OWNERS } from '../src/fetcher.js';
 let container: StartedPostgreSqlContainer;
 let sql: any;
 let computePublicStats: typeof import('../src/stats.js')['computePublicStats'];
+let computeDefiLlamaDay: typeof import('../src/stats.js')['computeDefiLlamaDay'];
 
 const W = (h: string) => h.replace(/^0x/, '').padStart(40, '0');
 const UID = (h: string) => h.padStart(112, '0');
@@ -44,7 +45,7 @@ beforeAll(async () => {
   ({ sql } = await import('../src/db/index.js'));
   const { runMigrations } = await import('../src/db/migrate.js');
   await runMigrations();
-  ({ computePublicStats } = await import('../src/stats.js'));
+  ({ computePublicStats, computeDefiLlamaDay } = await import('../src/stats.js'));
   await ins('01', 100, HUMAN_A, '100'); // human A, Gnosis
   await ins('02', 100, HUMAN_A, '50'); // human A again (same person, 2 trades)
   await ins('03', 1, HUMAN_B, '19000'); // human B, Ethereum
@@ -80,5 +81,40 @@ describe('computePublicStats', () => {
     const eth = s.byChain.find((c) => c.chainId === 1);
     expect(eth?.trades).toBe(1 + ROUTERS.length); // human B + every router, all on Ethereum
     expect(eth?.volumeUsd).toBeCloseTo(19000 + ROUTER_VOLUME_EACH * ROUTERS.length, 4);
+  });
+});
+
+describe('computeDefiLlamaDay', () => {
+  it('uses the legacy rate for NULL fees and assigns the hosted cut to supply-side revenue', async () => {
+    const rows = await computeDefiLlamaDay(sql, RECENT.slice(0, 10), [1, 100], [10, 130, 4663], 10, 7500);
+    expect(rows.reduce((sum, row) => sum + row.volumeUsd, 0)).toBeCloseTo(TOTAL_VOLUME, 4);
+    expect(rows.reduce((sum, row) => sum + row.feesUsd, 0)).toBeCloseTo(TOTAL_VOLUME * 0.001, 6);
+    expect(rows.reduce((sum, row) => sum + row.revenueUsd, 0)).toBeCloseTo(TOTAL_VOLUME * 0.00075, 6);
+    expect(rows.reduce((sum, row) => sum + row.supplySideRevenueUsd, 0)).toBeCloseTo(TOTAL_VOLUME * 0.00025, 6);
+  });
+
+  it('preserves explicit zero fees and retains the full fee on sovereign chains', async () => {
+    const zeroUid = UID('f0');
+    const sovereignUid = UID('f1');
+    await sql`
+      INSERT INTO trades (
+        trade_uid, chain_id, wallet, block_number, block_timestamp,
+        sell_token, buy_token, sell_amount, buy_amount, app_code,
+        value_usd, priced_at, volume_fee_bps)
+      VALUES
+        (decode(${zeroUid}, 'hex'), 1, decode(${W(HUMAN_A)}, 'hex'), 2, ${RECENT},
+         decode(${W('5e11')}, 'hex'), decode(${W('b111')}, 'hex'), 1, 1, 'ophis', 1000, ${RECENT}, 0),
+        (decode(${sovereignUid}, 'hex'), 10, decode(${W(HUMAN_A)}, 'hex'), 3, ${RECENT},
+         decode(${W('5e11')}, 'hex'), decode(${W('b111')}, 'hex'), 1, 1, 'ophis', 2000, ${RECENT}, 5)
+    `;
+    const rows = await computeDefiLlamaDay(sql, RECENT.slice(0, 10), [1, 10], [10, 130, 4663], 10, 7500);
+    const sovereign = rows.find((row) => row.chainId === 10);
+    expect(sovereign).toMatchObject({ volumeUsd: 2000, feesUsd: 1, revenueUsd: 1, supplySideRevenueUsd: 0 });
+
+    const eth = rows.find((row) => row.chainId === 1)!;
+    // The explicit 0-bps row adds volume but no fee to Ethereum's legacy rows.
+    const legacyEthVolume = 19000 + ROUTER_VOLUME_EACH * ROUTERS.length;
+    expect(eth.volumeUsd).toBeCloseTo(legacyEthVolume + 1000, 4);
+    expect(eth.feesUsd).toBeCloseTo(legacyEthVolume * 0.001, 6);
   });
 });
