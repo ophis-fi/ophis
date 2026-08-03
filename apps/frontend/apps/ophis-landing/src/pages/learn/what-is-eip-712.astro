@@ -21,7 +21,7 @@ const FAQS = [
   },
   {
     q: 'Why does EIP-712 matter for trading agents?',
-    a: `Because the signed order IS the agent's capability. Typed fields mean the agent's policy layer can inspect exactly what is about to be authorized (which tokens, what amount, what floor price, until when, and to whom the proceeds go) before the signature exists. Retained together, the full typed payload, its signature, and a timestamp form a provable audit record; the signature bytes alone cannot be decoded back into the order, so log the payload, not just the signature.`,
+    a: `Because the signed order IS the agent's capability. Typed fields mean the agent's policy layer can inspect exactly what is about to be authorized (which tokens, what amount, what floor price, until when, and to whom the proceeds go) before the signature exists. For the audit trail, retain the full typed payload with its signature: together they prove exactly what the agent authorized, though not when it was signed, so record a timestamp as ordinary log metadata alongside. The signature bytes alone cannot be decoded back into the order, so log the payload, not just the signature.`,
   },
   {
     q: 'Why must agents resolve the signing domain per chain on Ophis?',
@@ -29,7 +29,7 @@ const FAQS = [
   },
   {
     q: 'Is an EIP-712 signature the same as a transaction?',
-    a: `No. For ERC-20 orders it is an off-chain message: signing it costs no gas and moves nothing. The signed order goes to an orderbook, solvers compete to settle it in a batch, the winning solver pays the gas, and an order nobody can fill within its limit simply lapses with nothing spent. Selling native ETH is the exception: EthFlow places an on-chain transaction that escrows the ETH and pays normal network gas, and an expired order is refunded on-chain rather than lapsing for free.`,
+    a: `No. For ERC-20 orders it is an off-chain message: signing it costs no gas and moves nothing. The signed order goes to an orderbook, solvers compete to settle it in a batch, the winning solver pays the gas, and an order nobody can fill within its limit simply lapses with nothing spent. Selling native ETH is the exception: EthFlow places an on-chain transaction that escrows the ETH and pays normal network gas, and expiry alone does not release the escrow: a separate on-chain refund transaction, submitted by a refunder service or by the user, returns the ETH.`,
   },
 ]
 ---
