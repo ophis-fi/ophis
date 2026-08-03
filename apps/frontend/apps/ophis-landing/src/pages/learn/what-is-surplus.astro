@@ -1,0 +1,69 @@
+---
+/**
+ * /learn/what-is-surplus: canonical answer page for surplus and who keeps
+ * it. The distribution facts mirror /pricing and llms.txt verbatim in
+ * substance; the sovereign list comes from the shared chain data.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../../data/chains'
+
+const { updated } = canonicalPage('/learn/what-is-surplus/')
+
+const FAQS = [
+  {
+    q: 'What is surplus?',
+    a: `Surplus is execution beyond the terms you signed: your order named a limit, settlement achieved better, and the difference is surplus. On a sell order it means receiving more of the buy token than your floor required; on a buy order, spending less of the sell token than your cap allowed.`,
+  },
+  {
+    q: 'Where does surplus come from?',
+    a: `Three main places. Prices move between signing and settlement, and movement in your favor lands beyond your limit. Solvers compete, so a better route, a market-maker quote, or private inventory found by the winning solver shows up as execution above your floor. And a coincidence of wants inside the batch skips pool fees and price impact entirely, with the saving surfacing as surplus on both sides.`,
+  },
+  {
+    q: 'Who keeps the surplus?',
+    a: `Ophis takes no cut of price improvement on any chain. On ${sovereignList}, 100% of the improvement is returned to the trader. On CoW-hosted chains, CoW Protocol retains 50% of quote improvement upstream before the remainder is returned. The Ophis fee is charged on volume, never as a share of your surplus.`,
+  },
+  {
+    q: 'How is surplus different from positive slippage?',
+    a: `Positive slippage is the tolerance-model cousin: price movement in your favor inside a router swap. Whether it reaches you depends on how the router handles it, and captured positive slippage has historically been a quiet revenue line in parts of the industry. Surplus in a batch auction is explicit by construction: the signed limit defines exactly where your terms end, so everything beyond it is measurable, attributable, and returned under published rules.`,
+  },
+  {
+    q: 'Can I see the surplus on my trades?',
+    a: `Yes. Every settlement is public, and the executed price against your signed limit is checkable on-chain per order. The Ophis explorer shows settlements, and the swap app surfaces the improvement on an order once it fills.`,
+  },
+]
+---
+
+<ContentPage
+  title="What is surplus, and who keeps it? | Ophis"
+  description="Surplus is execution beyond your signed limit: where it comes from (price movement, solver competition, peer matches) and who keeps it on each chain."
+  path="/learn/what-is-surplus/"
+  heading="What is surplus, and who keeps it?"
+  lede="Your signed limit defines where your terms end. Everything better than that is surplus, and the rules for who keeps it are published per chain."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> surplus is the gap between what you signed for and the
+    better execution settlement achieved. It comes from price movement, solver competition, and
+    peer matches. Ophis takes no cut of it on any chain: 100% is returned on the Ophis-operated
+    chains, while CoW-hosted chains pass through CoW Protocol's upstream 50% share of quote
+    improvement first. The fee is on volume, never on surplus.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Go deeper</h2>
+  <p>
+    The full fee and all-in cost picture per chain is on the
+    <a href="/pricing/">pricing page</a>. Why a signed limit makes surplus measurable at all:
+    <a href="/learn/slippage-vs-signed-limit/">slippage vs a signed limit price</a>. Two of the
+    three surplus sources in depth: <a href="/learn/what-is-a-solver/">what is a solver</a> and
+    <a href="/learn/coincidence-of-wants/">what is a coincidence of wants</a>.
+  </p>
+</ContentPage>
