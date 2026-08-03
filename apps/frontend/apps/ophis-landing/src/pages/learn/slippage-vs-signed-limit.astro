@@ -1,0 +1,72 @@
+---
+/**
+ * /learn/slippage-vs-signed-limit: canonical answer page for the slippage
+ * query family, angled on the structural difference: a tolerance is a
+ * pre-authorized worse price, a signed limit is an enforced floor. Surplus
+ * wording mirrors /pricing and llms.txt exactly.
+ */
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/learn/slippage-vs-signed-limit/')
+
+const FAQS = [
+  {
+    q: 'What is slippage in crypto trading?',
+    a: `Slippage is the difference between the price you were quoted and the price you actually get. It exists because time passes between quoting and execution: other trades land first, pools move, and your transaction executes against whatever state it finds. A slippage tolerance is the worst version of that outcome you agree to accept in advance.`,
+  },
+  {
+    q: 'Why do router DEXes need a slippage tolerance?',
+    a: `Because a router swap fixes its route at signing time and executes later on-chain. If the pool has moved by more than the tolerance when the transaction lands, the swap reverts and you pay gas for nothing, so the tolerance exists to keep trades from failing constantly. The price of that convenience is pre-authorizing a worse fill every single time.`,
+  },
+  {
+    q: 'What does a slippage tolerance actually cost?',
+    a: `It is a standing offer to accept up to that much less, and in adversarial conditions the offer gets taken: a sandwich attacker can harvest up to the full tolerance, and ordinary price movement inside the tolerance is simply yours to absorb. Set it tight and trades revert; set it loose and you fund the attack. That dilemma is built into the tolerance model itself.`,
+  },
+  {
+    q: 'How is a signed limit price different?',
+    a: `A signed limit is not a tolerance around a quote, it is the order. An Ophis order is an EIP-712 message whose limit price is an enforced floor: the settlement contract rejects any fill below it, no matter what pools did in the meantime. There is no separate slippage knob to set, and no pre-authorized band for anyone to harvest.`,
+  },
+  {
+    q: 'What happens when the price moves in my favor?',
+    a: `Execution beyond your signed limit is surplus, and it is returned rather than captured. Ophis takes no cut of price improvement on any chain: on Optimism, Unichain, and Robinhood Chain, 100% of the improvement is returned to the trader, and on CoW-hosted chains CoW Protocol retains 50% of quote improvement upstream before the remainder is returned. In tolerance systems, movement in your favor within the band may simply never reach you.`,
+  },
+  {
+    q: 'Do hard-limit orders fail more often?',
+    a: `They fail differently, and cheaper. A router swap that violates its tolerance reverts on-chain and burns gas. An ERC-20 order that cannot be filled at its limit just stays open until it expires and lapses with nothing spent; you signed a message, not a transaction. You either trade at your floor or better, or you do not trade.`,
+  },
+]
+---
+
+<ContentPage
+  title="Slippage vs a signed limit price | Ophis"
+  description="A slippage tolerance is a pre-authorized worse price that attackers can harvest; a signed limit is a contract-enforced floor. What each costs, and where price improvement goes."
+  path="/learn/slippage-vs-signed-limit/"
+  heading="Slippage vs a signed limit price"
+  lede="One model asks how much worse you will accept; the other enforces a floor and returns anything better. The structural difference behind most bad fills."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <strong>The short version:</strong> a slippage tolerance pre-authorizes a worse price and
+    hopes nobody takes the offer; a signed limit price is an enforced floor the settlement
+    contract will not cross, with execution beyond it returned as surplus. On Ophis you sign the
+    floor, solvers compete above it, and there is no tolerance band for anyone to harvest.
+  </p>
+
+  {FAQS.map((f) => (
+    <section>
+      <h2>{f.q}</h2>
+      <p>{f.a}</p>
+    </section>
+  ))}
+
+  <h2>Go deeper</h2>
+  <p>
+    How the tolerance gets harvested in practice:
+    <a href="/learn/what-is-a-sandwich-attack/">what is a sandwich attack</a>. What happens to
+    execution above your floor: <a href="/learn/what-is-surplus/">what is surplus</a>. The
+    mechanism that enforces the floor:
+    <a href="/learn/intent-based-dex-aggregator/">what is an intent-based DEX aggregator</a>.
+  </p>
+</ContentPage>

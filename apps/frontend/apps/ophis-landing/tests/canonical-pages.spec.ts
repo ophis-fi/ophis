@@ -65,6 +65,21 @@ const PAGES = [
     canonical: 'https://ophis.fi/learn/coincidence-of-wants/',
     h1: 'What is a coincidence of wants?',
   },
+  {
+    route: '/learn/slippage-vs-signed-limit',
+    canonical: 'https://ophis.fi/learn/slippage-vs-signed-limit/',
+    h1: 'Slippage vs a signed limit price',
+  },
+  {
+    route: '/learn/what-is-surplus',
+    canonical: 'https://ophis.fi/learn/what-is-surplus/',
+    h1: 'What is surplus, and who keeps it?',
+  },
+  {
+    route: '/learn/mev-blockers-vs-batch-auctions',
+    canonical: 'https://ophis.fi/learn/mev-blockers-vs-batch-auctions/',
+    h1: 'MEV blockers vs batch auctions',
+  },
 ]
 
 for (const p of PAGES) {

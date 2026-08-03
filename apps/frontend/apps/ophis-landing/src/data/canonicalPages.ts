@@ -20,6 +20,9 @@ export interface CanonicalPage {
     | '/learn/what-is-a-sandwich-attack/'
     | '/learn/what-is-a-solver/'
     | '/learn/coincidence-of-wants/'
+    | '/learn/slippage-vs-signed-limit/'
+    | '/learn/what-is-surplus/'
+    | '/learn/mev-blockers-vs-batch-auctions/'
   updated: Date
 }
 
@@ -38,6 +41,9 @@ export const CANONICAL_PAGES: CanonicalPage[] = [
   { path: '/learn/what-is-a-sandwich-attack/', updated: new Date('2026-08-03') },
   { path: '/learn/what-is-a-solver/', updated: new Date('2026-08-03') },
   { path: '/learn/coincidence-of-wants/', updated: new Date('2026-08-03') },
+  { path: '/learn/slippage-vs-signed-limit/', updated: new Date('2026-08-03') },
+  { path: '/learn/what-is-surplus/', updated: new Date('2026-08-03') },
+  { path: '/learn/mev-blockers-vs-batch-auctions/', updated: new Date('2026-08-03') },
 ]
 
 export function canonicalPage(path: CanonicalPage['path']): CanonicalPage {
