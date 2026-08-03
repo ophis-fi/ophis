@@ -22,6 +22,15 @@ never echoed).
 Baseline as of 2026-07-04: all four orderbook probes 404, sdk enum has
 neither chain, stub comment present.
 
+`networks_stub` is the softest of the four signals: it reads a prose comment,
+so an upstream reflow or rewording can move it without any change in CoW's
+actual support. On 2026-08-03 it fired falsely when upstream hard-wrapped the
+comment across two lines and the then line-anchored grep stopped seeing it.
+The probe now matches whitespace-agnostically over the whole file, but the
+rule stands: if `networks_stub` flips ALONE while all four orderbook probes
+are still 404 and `sdk_enum` is still no/no, read the upstream file before
+acting on it.
+
 ## Behavior
 
 - State lives at `~/.local/state/ophis/cow-tripwire.json`; alerts fire on
