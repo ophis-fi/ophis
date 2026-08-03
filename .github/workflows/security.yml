@@ -410,8 +410,19 @@ jobs:
           # workspace is now actually patched (brace-expansion 5.0.8 via the
           # ">=5.0.0 <5.0.8" override in package.json), so no suppression is
           # needed. Only apps/docs-ophis still carries that ignore; see there.
+          # IGNORE brace-expansion GHSA-rgw5-rvv9-x895 (HIGH DoS, published
+          # 2026-08-03: 5.0.8's CVE-2026-14257 mitigation is bypassable via
+          # unbounded intermediate arrays; fixed in 5.0.9). Same reachability
+          # analysis as the prior brace-expansion advisory: the only consumer
+          # here is minimatch@10 in build/test tooling with config-authored
+          # globs, no attacker-supplied brace patterns, and no published
+          # tarball ships it. 5.0.9 was hours old at suppression time; per the
+          # 7-day minimumReleaseAge policy the bump lands after soak
+          # (~2026-08-10) via the pnpm-workspace.yaml-documented pin procedure.
+          # DATED: fails closed 2026-08-17 to force that bump.
           python3 scripts/osv-gate.py /tmp/osv-root.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg
+            --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg \
+            --ignore GHSA-rgw5-rvv9-x895:2026-08-17
 
   pnpm-audit-frontend:
     name: pnpm audit (frontend deps)
@@ -450,8 +461,16 @@ jobs:
           # pnpm-workspace.yaml documents: temporarily name-exclude, install to
           # pin 5.0.8 in the committed lockfile, then remove the exclusion, so
           # frozen-lockfile installs use it without re-resolving.
+          # IGNORE brace-expansion GHSA-rgw5-rvv9-x895 (HIGH DoS, published
+          # 2026-08-03: the 5.0.8 mitigation this workspace deliberately pinned
+          # is bypassable; fixed in 5.0.9). Only consumer is minimatch@10 in
+          # build/test tooling, config-authored globs, client SPA ships no Node
+          # runtime -> unreachable. Bump to 5.0.9 after the 7-day soak
+          # (~2026-08-10) via the documented name-exclude + pin procedure.
+          # DATED: fails closed 2026-08-17 to force that bump.
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp --ignore GHSA-qwww-vcr4-c8h2
+            --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp --ignore GHSA-qwww-vcr4-c8h2 \
+            --ignore GHSA-rgw5-rvv9-x895:2026-08-17
 
   pnpm-audit-docs:
     name: pnpm audit (docs-ophis deps)
