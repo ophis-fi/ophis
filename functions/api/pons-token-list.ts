@@ -28,6 +28,7 @@ const TIMEOUT_MS = 12_000;
 const CACHE_SECONDS = 300;
 const LAST_KNOWN_GOOD_SECONDS = 86_400;
 const RPC_BATCH_SIZE = 20;
+const RPC_CONCURRENCY = 2;
 const REFERENCE_PONS: PonsLaunch = {
   factory: '0x0c37a24F5D23A486FA692d1500881d698B1F77a4',
   token: '0x39dBED3a2bd333467115dE45665cC57F813C4571',
@@ -207,37 +208,46 @@ async function verifyLaunchesOnchain(
     candidates.slice(index * RPC_BATCH_SIZE, (index + 1) * RPC_BATCH_SIZE),
   );
 
-  const verifiedChunks = await Promise.all(
-    chunks.map(async (chunk, chunkIndex) => {
-      const requests = chunk.map((launch, itemIndex) => ({
-        jsonrpc: '2.0',
-        id: chunkIndex * RPC_BATCH_SIZE + itemIndex,
-        method: 'eth_call',
-        params: [
-          {
-            to: launch.factory,
-            data: `0x${GET_LAUNCHED_TOKEN_SELECTOR}${String(launch.token).slice(2).toLowerCase().padStart(64, '0')}`,
-          },
-          'latest',
-        ],
-      }));
-      const response = await fetch(ROBINHOOD_RPC, {
-        method: 'POST',
-        signal,
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(requests),
-      });
-      if (!response.ok) throw new Error('Robinhood RPC verification failed');
-      const raw: unknown = await response.json();
-      const byId = rpcResultsById(
-        raw,
-        requests.map(({ id }) => id),
-      );
-      return chunk.filter((launch, itemIndex) =>
-        isVerifiedLaunchResult(launch, byId.get(chunkIndex * RPC_BATCH_SIZE + itemIndex)),
-      );
-    }),
-  );
+  const verifiedChunks: PonsLaunch[][] = [];
+  const verifyChunk = async (chunk: PonsLaunch[], chunkIndex: number): Promise<PonsLaunch[]> => {
+    const requests = chunk.map((launch, itemIndex) => ({
+      jsonrpc: '2.0',
+      id: chunkIndex * RPC_BATCH_SIZE + itemIndex,
+      method: 'eth_call',
+      params: [
+        {
+          to: launch.factory,
+          data: `0x${GET_LAUNCHED_TOKEN_SELECTOR}${String(launch.token).slice(2).toLowerCase().padStart(64, '0')}`,
+        },
+        'latest',
+      ],
+    }));
+    const response = await fetch(ROBINHOOD_RPC, {
+      method: 'POST',
+      signal,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(requests),
+    });
+    if (!response.ok) throw new Error('Robinhood RPC verification failed');
+    const raw: unknown = await response.json();
+    const byId = rpcResultsById(
+      raw,
+      requests.map(({ id }) => id),
+    );
+    return chunk.filter((launch, itemIndex) =>
+      isVerifiedLaunchResult(launch, byId.get(chunkIndex * RPC_BATCH_SIZE + itemIndex)),
+    );
+  };
+
+  // Robinhood's public RPC intermittently rate-limits a six-request burst.
+  // Two-way bounded concurrency avoids that burst without accumulating all six
+  // RPC latencies under the shared end-to-end deadline.
+  for (let start = 0; start < chunks.length; start += RPC_CONCURRENCY) {
+    const group = chunks.slice(start, start + RPC_CONCURRENCY);
+    verifiedChunks.push(
+      ...(await Promise.all(group.map((chunk, offset) => verifyChunk(chunk, start + offset)))),
+    );
+  }
   return verifiedChunks.flat();
 }
 
