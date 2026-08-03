@@ -11,7 +11,11 @@
 
 const CHAIN_ID = 4663;
 const PONS_ORIGIN = 'https://www.ponsfamily.com';
-const ROBINHOOD_RPC = 'https://rpc.mainnet.chain.robinhood.com';
+const ROBINHOOD_RPCS = [
+  'https://rpc.mainnet.chain.robinhood.com',
+  'https://rpc.arrowrpc.com',
+  'https://robinhood-mainnet-rpc.blockreq.com/v1/rpc/public',
+];
 const UPSTREAM_URL =
   `${PONS_ORIGIN}/api/pons-launches?explore=1&sort=recentBuys&age=all&page=1&pageSize=100` +
   '&graduatedPage=1&graduatedPageSize=1&includeGraduated=0&v=10';
@@ -24,11 +28,13 @@ const FACTORIES = new Set([
 ]);
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const MAX_TEXT_LENGTH = 100;
-const TIMEOUT_MS = 12_000;
+const TIMEOUT_MS = 15_000;
 const CACHE_SECONDS = 300;
 const LAST_KNOWN_GOOD_SECONDS = 86_400;
 const RPC_BATCH_SIZE = 20;
 const RPC_CONCURRENCY = 2;
+const RPC_ATTEMPT_TIMEOUT_MS = 3_500;
+const RPC_QUORUM = 2;
 const REFERENCE_PONS: PonsLaunch = {
   factory: '0x0c37a24F5D23A486FA692d1500881d698B1F77a4',
   token: '0x39dBED3a2bd333467115dE45665cC57F813C4571',
@@ -193,7 +199,7 @@ export function rpcResultsById(raw: unknown, expectedIds: number[]): Map<number,
   return byId;
 }
 
-async function verifyLaunchesOnchain(
+export async function verifyLaunchesOnchain(
   launches: PonsLaunch[],
   signal: AbortSignal,
 ): Promise<PonsLaunch[]> {
@@ -222,21 +228,80 @@ async function verifyLaunchesOnchain(
         'latest',
       ],
     }));
-    const response = await fetch(ROBINHOOD_RPC, {
-      method: 'POST',
-      signal,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(requests),
+    const verifyWithRpc = async (rpc: string, attempt: AbortController): Promise<Set<number>> => {
+      if (signal.aborted) throw new Error('Robinhood RPC verification aborted');
+      const onOuterAbort = (): void => attempt.abort();
+      signal.addEventListener('abort', onOuterAbort, { once: true });
+      const attemptTimer = setTimeout(() => attempt.abort(), RPC_ATTEMPT_TIMEOUT_MS);
+      try {
+        const response = await fetch(rpc, {
+          method: 'POST',
+          signal: attempt.signal,
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(requests),
+        });
+        if (!response.ok) throw new Error('Robinhood RPC verification failed');
+        const raw: unknown = await response.json();
+        const byId = rpcResultsById(
+          raw,
+          requests.map(({ id }) => id),
+        );
+        return new Set(
+          chunk
+            .map((launch, itemIndex) => ({
+              id: chunkIndex * RPC_BATCH_SIZE + itemIndex,
+              launch,
+            }))
+            .filter(({ id, launch }) => isVerifiedLaunchResult(launch, byId.get(id)))
+            .map(({ id }) => id),
+        );
+      } finally {
+        clearTimeout(attemptTimer);
+        signal.removeEventListener('abort', onOuterAbort);
+      }
+    };
+
+    const attempts = ROBINHOOD_RPCS.map(() => new AbortController());
+    const pending = ROBINHOOD_RPCS.map((rpc, index) =>
+      verifyWithRpc(rpc, attempts[index]!).then(
+        (value) => ({ index, value }),
+        () => ({ index, value: undefined }),
+      ),
+    );
+    const remaining = new Map(pending.map((promise, index) => [index, promise]));
+    const verifiedSets: Set<number>[] = [];
+
+    while (remaining.size > 0) {
+      const settled = await Promise.race(remaining.values());
+      remaining.delete(settled.index);
+      if (settled.value) verifiedSets.push(settled.value);
+
+      if (verifiedSets.length + remaining.size < RPC_QUORUM) {
+        for (const index of remaining.keys()) attempts[index]!.abort();
+        throw new Error('Robinhood RPC quorum unavailable');
+      }
+      if (!settled.value) continue;
+
+      const matching = verifiedSets.find(
+        (candidate) =>
+          candidate !== settled.value &&
+          candidate.size === settled.value.size &&
+          [...candidate].every((token) => settled.value?.has(token)),
+      );
+      if (matching) {
+        for (const index of remaining.keys()) attempts[index]!.abort();
+        return chunk.filter((_launch, itemIndex) =>
+          matching.has(chunkIndex * RPC_BATCH_SIZE + itemIndex),
+        );
+      }
+    }
+
+    if (verifiedSets.length < RPC_QUORUM) throw new Error('Robinhood RPC quorum unavailable');
+
+    return chunk.filter((_launch, itemIndex) => {
+      const id = chunkIndex * RPC_BATCH_SIZE + itemIndex;
+      return verifiedSets.filter((verified) => verified.has(id)).length >= RPC_QUORUM;
     });
-    if (!response.ok) throw new Error('Robinhood RPC verification failed');
-    const raw: unknown = await response.json();
-    const byId = rpcResultsById(
-      raw,
-      requests.map(({ id }) => id),
-    );
-    return chunk.filter((launch, itemIndex) =>
-      isVerifiedLaunchResult(launch, byId.get(chunkIndex * RPC_BATCH_SIZE + itemIndex)),
-    );
   };
 
   // Robinhood's public RPC intermittently rate-limits a six-request burst.
@@ -327,26 +392,26 @@ export const onRequestGet: PagesFunction = async (context) => {
   const cached = await safeCacheMatch(cache, cacheKey);
   if (cached) return serveCached(cached);
 
-  const unavailable = async (): Promise<Response> => {
+  const unavailable = async (stage: 'catalog' | 'verification'): Promise<Response> => {
     const stale = await safeCacheMatch(cache, staleKey);
     return stale
       ? serveCached(stale)
-      : json({ error: 'Pons catalog is temporarily unavailable.' }, 502);
+      : json({ error: 'Pons catalog is temporarily unavailable.', stage }, 503);
   };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  let failureStage: 'catalog' | 'verification' = 'catalog';
   try {
     const activeResponse = await fetch(UPSTREAM_URL, {
       signal: controller.signal,
       headers: { accept: 'application/json', 'user-agent': 'Ophis pons token-list adapter' },
     });
-    if (!activeResponse.ok) return unavailable();
+    if (!activeResponse.ok) return unavailable('catalog');
     const active = await activeResponse.json();
-    const verified = await verifyLaunchesOnchain(
-      [REFERENCE_PONS, ...parsePonsCatalog(active)],
-      controller.signal,
-    );
+    const launches = parsePonsCatalog(active);
+    failureStage = 'verification';
+    const verified = await verifyLaunchesOnchain([REFERENCE_PONS, ...launches], controller.signal);
     const list = ponsTokenListFromResponse(verified);
     if (
       !list.tokens.some(
@@ -364,7 +429,7 @@ export const onRequestGet: PagesFunction = async (context) => {
     );
     return result;
   } catch {
-    return unavailable();
+    return unavailable(failureStage);
   } finally {
     clearTimeout(timer);
   }
