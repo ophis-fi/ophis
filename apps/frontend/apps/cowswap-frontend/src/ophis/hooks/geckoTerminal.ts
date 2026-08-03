@@ -37,6 +37,7 @@ export const GECKO_NETWORK: Record<number, string> = {
   43114: 'avax',
   57073: 'ink',
   59144: 'linea',
+  4663: 'robinhood',
 }
 
 const GECKO_BASE = 'https://api.geckoterminal.com/api/v2'

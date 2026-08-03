@@ -18,6 +18,10 @@ export const upsertListsAtom = atom(null, async (get, set, chainId: SupportedCha
 
   const update = listsStates.reduce<{ [listId: string]: ListState }>((acc, list) => {
     const listState = chainState?.[list.source]
+    // A periodic refresh has no explicit enabled state and must preserve an
+    // explicit removal. User-driven adds carry `isEnabled: true` and may
+    // intentionally restore the list.
+    if (listState === 'deleted' && list.isEnabled !== true) return acc
     const defaultEnabledState = listState === 'deleted' ? true : listState?.isEnabled
 
     acc[list.source] = {

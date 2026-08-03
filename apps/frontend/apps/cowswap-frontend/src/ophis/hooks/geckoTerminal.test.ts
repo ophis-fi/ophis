@@ -117,6 +117,7 @@ describe('GECKO_NETWORK', () => {
     expect(GECKO_NETWORK[1]).toBe('eth')
     expect(GECKO_NETWORK[8453]).toBe('base')
     expect(GECKO_NETWORK[100]).toBe('xdai')
+    expect(GECKO_NETWORK[4663]).toBe('robinhood')
     expect(GECKO_NETWORK[999999]).toBeUndefined()
   })
 })
