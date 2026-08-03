@@ -20,6 +20,7 @@ const RECENT = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 // Every eth-flow router (Ophis-dedicated + canonical CoW prod/barn), from the single
 // source of truth — so the test excludes the FULL set, not a hardcoded subset.
 const ROUTERS = [...DECODER_ETHFLOW_OWNERS];
+let fillLogIndex = 0;
 
 async function ins(uid: string, chain: number, wallet: string, usd: string) {
   await sql`
@@ -29,6 +30,13 @@ async function ins(uid: string, chain: number, wallet: string, usd: string) {
     VALUES (
       decode(${UID(uid)}, 'hex'), ${chain}, decode(${W(wallet)}, 'hex'), 1, ${RECENT},
       decode(${W('5e11')}, 'hex'), decode(${W('b111')}, 'hex'), 1, 1, 'ophis', ${usd}, ${RECENT})`;
+  await sql`
+    INSERT INTO defillama_fills (
+      chain_id, block_number, log_index, trade_uid, settlement_timestamp,
+      sell_token, sell_amount, volume_fee_bps, fee_verified, value_usd, priced_at)
+    VALUES (
+      ${chain}, 1, ${fillLogIndex++}, decode(${UID(uid)}, 'hex'), ${RECENT},
+      decode(${W('5e11')}, 'hex'), 1, NULL, true, ${usd}, ${RECENT})`;
 }
 
 // Fixed seed set: 2 humans (3 trades) + one $20 trade per router, all priced.
@@ -85,12 +93,12 @@ describe('computePublicStats', () => {
 });
 
 describe('computeDefiLlamaDay', () => {
-  it('uses the legacy rate for NULL fees and assigns the hosted cut to supply-side revenue', async () => {
-    const rows = await computeDefiLlamaDay(sql, RECENT.slice(0, 10), [1, 100], [10, 130, 4663], 10, 7500);
+  it('counts verified volume but excludes unknown fees from fee and revenue totals', async () => {
+    const rows = await computeDefiLlamaDay(sql, RECENT.slice(0, 10), [1, 100], [10, 130, 4663], 7500);
     expect(rows.reduce((sum, row) => sum + row.volumeUsd, 0)).toBeCloseTo(TOTAL_VOLUME, 4);
-    expect(rows.reduce((sum, row) => sum + row.feesUsd, 0)).toBeCloseTo(TOTAL_VOLUME * 0.001, 6);
-    expect(rows.reduce((sum, row) => sum + row.revenueUsd, 0)).toBeCloseTo(TOTAL_VOLUME * 0.00075, 6);
-    expect(rows.reduce((sum, row) => sum + row.supplySideRevenueUsd, 0)).toBeCloseTo(TOTAL_VOLUME * 0.00025, 6);
+    expect(rows.reduce((sum, row) => sum + row.feesUsd, 0)).toBe(0);
+    expect(rows.reduce((sum, row) => sum + row.revenueUsd, 0)).toBe(0);
+    expect(rows.reduce((sum, row) => sum + row.supplySideRevenueUsd, 0)).toBe(0);
   });
 
   it('preserves explicit zero fees and retains the full fee on sovereign chains', async () => {
@@ -107,14 +115,73 @@ describe('computeDefiLlamaDay', () => {
         (decode(${sovereignUid}, 'hex'), 10, decode(${W(HUMAN_A)}, 'hex'), 3, ${RECENT},
          decode(${W('5e11')}, 'hex'), decode(${W('b111')}, 'hex'), 1, 1, 'ophis', 2000, ${RECENT}, 5)
     `;
-    const rows = await computeDefiLlamaDay(sql, RECENT.slice(0, 10), [1, 10], [10, 130, 4663], 10, 7500);
+    await sql`
+      INSERT INTO defillama_fills (
+        chain_id, block_number, log_index, trade_uid, settlement_timestamp,
+        sell_token, sell_amount, volume_fee_bps, fee_verified, value_usd, priced_at)
+      VALUES
+        (1, 2, ${fillLogIndex++}, decode(${zeroUid}, 'hex'), ${RECENT},
+         decode(${W('5e11')}, 'hex'), 1, 0, true, 1000, ${RECENT}),
+        (10, 3, ${fillLogIndex++}, decode(${sovereignUid}, 'hex'), ${RECENT},
+         decode(${W('5e11')}, 'hex'), 1, 5, true, 2000, ${RECENT})
+    `;
+    const rows = await computeDefiLlamaDay(sql, RECENT.slice(0, 10), [1, 10], [10, 130, 4663], 7500);
     const sovereign = rows.find((row) => row.chainId === 10);
     expect(sovereign).toMatchObject({ volumeUsd: 2000, feesUsd: 1, revenueUsd: 1, supplySideRevenueUsd: 0 });
 
     const eth = rows.find((row) => row.chainId === 1)!;
-    // The explicit 0-bps row adds volume but no fee to Ethereum's legacy rows.
+    // The explicit 0-bps row adds volume but no fee; unknown-fee rows also add no assumed fee.
     const legacyEthVolume = 19000 + ROUTER_VOLUME_EACH * ROUTERS.length;
     expect(eth.volumeUsd).toBeCloseTo(legacyEthVolume + 1000, 4);
-    expect(eth.feesUsd).toBeCloseTo(legacyEthVolume * 0.001, 6);
+    expect(eth.feesUsd).toBe(0);
+  });
+
+  it('excludes unverified decoder discovery rows from all DefiLlama metrics', async () => {
+    await sql`
+      INSERT INTO trades (
+        trade_uid, chain_id, wallet, block_number, block_timestamp,
+        sell_token, buy_token, sell_amount, buy_amount, app_code,
+        value_usd, priced_at, volume_fee_bps, fee_verified)
+      VALUES (
+        decode(${UID('f2')}, 'hex'), 100, decode(${W(HUMAN_A)}, 'hex'), 4, ${RECENT},
+        decode(${W('5e11')}, 'hex'), decode(${W('b111')}, 'hex'), 1, 1, 'ophis',
+        999999, ${RECENT}, 0, false)
+    `;
+    await sql`
+      INSERT INTO defillama_fills (
+        chain_id, block_number, log_index, trade_uid, settlement_timestamp,
+        sell_token, sell_amount, volume_fee_bps, fee_verified, value_usd, priced_at)
+      VALUES (
+        100, 4, ${fillLogIndex++}, decode(${UID('f2')}, 'hex'), ${RECENT},
+        decode(${W('5e11')}, 'hex'), 1, 0, false, 999999, ${RECENT})
+    `;
+    const rows = await computeDefiLlamaDay(sql, RECENT.slice(0, 10), [100], [10, 130, 4663], 7500);
+    const gnosis = rows.find((row) => row.chainId === 100)!;
+    expect(gnosis.volumeUsd).toBe(150);
+    expect(gnosis.trades).toBe(2);
+  });
+
+  it('buckets separate fills of one order by their settlement timestamps', async () => {
+    const uid = UID('f3');
+    const day = RECENT.slice(0, 10);
+    const next = new Date(`${day}T12:00:00.000Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    await sql`
+      INSERT INTO defillama_fills (
+        chain_id, block_number, log_index, trade_uid, settlement_timestamp,
+        sell_token, sell_amount, volume_fee_bps, fee_verified, value_usd, priced_at)
+      VALUES
+        (1, 5, ${fillLogIndex++}, decode(${uid}, 'hex'), ${day + 'T23:59:59.000Z'},
+         decode(${W('5e11')}, 'hex'), 1, 10, true, 10, ${RECENT}),
+        (1, 6, ${fillLogIndex++}, decode(${uid}, 'hex'), ${next.toISOString()},
+         decode(${W('5e11')}, 'hex'), 1, 10, true, 20, ${RECENT})
+    `;
+    const first = await computeDefiLlamaDay(sql, day, [1], [10, 130, 4663], 7500);
+    const second = await computeDefiLlamaDay(sql, next.toISOString().slice(0, 10), [1], [10, 130, 4663], 7500);
+    expect(first.find((row) => row.chainId === 1)?.volumeUsd).toBeCloseTo(
+      19000 + ROUTER_VOLUME_EACH * ROUTERS.length + 1000 + 10,
+      4,
+    );
+    expect(second).toMatchObject([{ chainId: 1, volumeUsd: 20, trades: 1 }]);
   });
 });

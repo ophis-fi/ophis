@@ -115,6 +115,32 @@ export const trades = pgTable(
   }),
 );
 
+// Settlement-fill ledger used only for public DefiLlama reporting. Unlike `trades`
+// (one aggregate row per order for rebate scoring), this preserves every partial fill
+// and its actual settlement block time so daily volume is never bucketed by creation.
+export const defillamaFills = pgTable(
+  'defillama_fills',
+  {
+    chainId: integer('chain_id').notNull(),
+    blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
+    logIndex: integer('log_index').notNull(),
+    tradeUid: bytea('trade_uid').notNull(),
+    settlementTimestamp: timestamp('settlement_timestamp', { withTimezone: true }).notNull(),
+    sellToken: bytea('sell_token').notNull(),
+    sellAmount: uint256('sell_amount').notNull(),
+    volumeFeeBps: integer('volume_fee_bps'),
+    feeVerified: boolean('fee_verified').notNull(),
+    valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
+    pricedAt: timestamp('priced_at', { withTimezone: true }),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.chainId, t.blockNumber, t.logIndex, t.tradeUid] }),
+    unpricedIdx: index('defillama_fills_unpriced_idx').on(t.chainId, t.blockNumber, t.logIndex),
+    dailyIdx: index('defillama_fills_daily_idx').on(t.settlementTimestamp, t.chainId),
+  }),
+);
+
 // Owner registry the fetcher iterates. CoW's orderbook can only be queried
 // per-owner (`/api/v1/trades?owner=`), so we keep the set of wallets to fetch
 // here — populated by `GET /tier/:wallet` and seeded in migration 0001.

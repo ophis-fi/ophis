@@ -4,6 +4,7 @@ import { APP_CODES, type AppCode } from './cow/types.js';
 import { GROSS_FEE_BPS, OWN_FEE_MAX_BPS } from './affiliate/rates.js';
 import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
+import { getRpcClient } from './rpc/client.js';
 
 // The Ophis partner-fee recipient (the Safe). A fee only counts toward the rebate
 // base when it actually pays THIS recipient.
@@ -23,6 +24,29 @@ export interface FetcherDeps {
    * Optional drizzle db instance for dedup checks. Omit in unit tests to skip DB calls.
    */
   db?: FetcherDb | null;
+  /** Optional fill sink used by the production fetcher for DefiLlama reporting. */
+  defillamaFills?: PendingDefiLlamaFill[];
+  /** True when this exact settlement fill is already persisted. */
+  hasDefiLlamaFill?: (fill: Pick<PendingDefiLlamaFill, 'chainId' | 'blockNumber' | 'logIndex' | 'tradeUid'>) => Promise<boolean>;
+  /** Settlement block timestamp resolver; injected in tests. */
+  getSettlementTimestamp?: (chainId: number, blockNumber: bigint) => Promise<Date>;
+}
+
+export interface PendingDefiLlamaFill {
+  chainId: number;
+  blockNumber: bigint;
+  logIndex: number;
+  tradeUid: `0x${string}`;
+  settlementTimestamp: Date;
+  sellToken: `0x${string}`;
+  sellAmount: bigint;
+  volumeFeeBps: number | null;
+  feeVerified: boolean;
+}
+
+async function getSettlementTimestamp(chainId: number, blockNumber: bigint): Promise<Date> {
+  const block = await getRpcClient(chainId).getBlock({ blockNumber });
+  return new Date(Number(block.timestamp) * 1000);
 }
 
 export interface PendingTrade {
@@ -437,13 +461,14 @@ export async function fetchChainTrades(
     if (page.length === 0) break;
 
     for (const t of page) {
-      // One order can settle across multiple fills — CoW returns one trade row
-      // per fill, all sharing the same orderUid. We key trades by orderUid and
-      // record the order's total executed amount, so process each orderUid once.
-      if (seen.has(t.orderUid)) continue;
-      seen.add(t.orderUid);
+      // The rebate ledger collapses an order's fills into one total, while the
+      // DefiLlama ledger preserves every fill. `firstForOrder` controls only the
+      // former; never skip a later API trade row before reporting it.
+      const firstForOrder = !seen.has(t.orderUid);
+      if (firstForOrder) seen.add(t.orderUid);
 
       // Skip if already in DB — cheap key lookup. Skipped when db not provided (e.g. unit tests).
+      let rebateRowComplete = false;
       if (deps.db) {
         // Lazily import sql + schema only when we have a real db instance.
         const { sql, schema } = await import('./db/index.js');
@@ -466,8 +491,18 @@ export async function fetchChainTrades(
         //    cataloged before its wallet was tracked is not left permanently at 0.
         // Once authoritatively populated it is skipped here (self-healing, one re-fetch).
         const row = already[0] as { volumeFeeBps: number | null; feeVerified: boolean } | undefined;
-        if (row && row.volumeFeeBps !== null && row.feeVerified) continue;
+        rebateRowComplete = Boolean(row && row.volumeFeeBps !== null && row.feeVerified);
       }
+      const fillKey = {
+        chainId,
+        blockNumber: BigInt(t.blockNumber),
+        logIndex: t.logIndex,
+        tradeUid: t.orderUid as `0x${string}`,
+      };
+      const reportFillComplete = deps.defillamaFills
+        ? await deps.hasDefiLlamaFill?.(fillKey) ?? false
+        : true;
+      if ((!firstForOrder || rebateRowComplete) && reportFillComplete) continue;
 
       // Confirm appCode by fetching the order. We could store unfiltered trades and filter
       // at scoring time, but fetching the order resolves fullAppData (avoids storing trades
@@ -501,19 +536,50 @@ export async function fetchChainTrades(
       // fills this could land in the wrong 30-day window — tracked as a follow-up if
       // non-market volume appears. The default (Ophis-dedicated) eth-flow owner set is
       // correct here: the API path only ever queries those contracts as an owner.
-      const trade = attributeOrder(meta, {
-        owner: t.owner,
-        receiver: order.receiver,
-        sellToken: t.sellToken as `0x${string}`,
-        buyToken: t.buyToken as `0x${string}`,
-        executedSell: BigInt(execSell),
-        executedBuy: BigInt(execBuy),
-        tradeUid: t.orderUid as `0x${string}`,
-        chainId,
-        blockNumber: BigInt(t.blockNumber),
-        blockTimestamp: new Date(order.creationDate),
-      });
-      if (trade) out.push(trade);
+      if (firstForOrder && !rebateRowComplete) {
+        const trade = attributeOrder(meta, {
+          owner: t.owner,
+          receiver: order.receiver,
+          sellToken: t.sellToken as `0x${string}`,
+          buyToken: t.buyToken as `0x${string}`,
+          executedSell: BigInt(execSell),
+          executedBuy: BigInt(execBuy),
+          tradeUid: t.orderUid as `0x${string}`,
+          chainId,
+          blockNumber: BigInt(t.blockNumber),
+          blockTimestamp: new Date(order.creationDate),
+        });
+        if (trade) out.push(trade);
+      }
+
+      if (deps.defillamaFills && !reportFillComplete) {
+        const settlementTimestamp = await (deps.getSettlementTimestamp ?? getSettlementTimestamp)(
+          chainId,
+          BigInt(t.blockNumber),
+        );
+        const fill = attributeOrder(meta, {
+          owner: t.owner,
+          receiver: order.receiver,
+          sellToken: t.sellToken as `0x${string}`,
+          buyToken: t.buyToken as `0x${string}`,
+          executedSell: BigInt(t.sellAmount),
+          executedBuy: BigInt(t.buyAmount),
+          tradeUid: t.orderUid as `0x${string}`,
+          chainId,
+          blockNumber: BigInt(t.blockNumber),
+          blockTimestamp: settlementTimestamp,
+        });
+        if (fill) {
+          deps.defillamaFills.push({
+            ...fillKey,
+            settlementTimestamp,
+            sellToken: fill.sellToken,
+            sellAmount: fill.sellAmount,
+            volumeFeeBps: fill.volumeFeeBps,
+            feeVerified: true,
+          });
+        }
+      }
     }
 
     if (page.length < PAGE_SIZE) break;
@@ -590,7 +656,24 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       return { inserted: 0, owners: 0 };
     }
 
-    const dbDeps: FetcherDeps = { db: db as unknown as FetcherDb };
+    const pendingDefillamaFills: PendingDefiLlamaFill[] = [];
+    const dbDeps: FetcherDeps = {
+      db: db as unknown as FetcherDb,
+      defillamaFills: pendingDefillamaFills,
+      hasDefiLlamaFill: async (fill) => {
+        const [row] = await sql<{ present: boolean }[]>`
+          SELECT EXISTS(
+            SELECT 1 FROM defillama_fills
+            WHERE chain_id = ${fill.chainId}
+              AND block_number = ${fill.blockNumber.toString()}
+              AND log_index = ${fill.logIndex}
+              AND trade_uid = decode(${fill.tradeUid.slice(2)}, 'hex')
+          ) AS present
+        `;
+        return row?.present === true;
+      },
+      getSettlementTimestamp,
+    };
 
     // Bounded, round-robin owner set. `/tier` is public, so tracked_wallets can
     // be spammed with arbitrary addresses; without a cap, runFetcher would do
@@ -696,6 +779,14 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
         });
       return rows.length;
     };
+    const flushDefillamaFills = async (): Promise<void> => {
+      if (pendingDefillamaFills.length === 0) return;
+      const rows = pendingDefillamaFills.splice(0);
+      await db
+        .insert(schema.defillamaFills)
+        .values(rows)
+        .onConflictDoNothing();
+    };
     for (const { wallet } of owners) {
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
@@ -703,6 +794,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
         try {
           const rows = await fetchChainTrades(chainId, owner, dbDeps);
           inserted += await upsertTrades(rows);
+          await flushDefillamaFills();
         } catch (err) {
           ownerOk = false; // a transient CoW failure must not silently advance the cursor
           log.error({ err, chainId, owner }, 'owner/chain fetch failed'); // single failure does not abort others
@@ -731,6 +823,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       try {
         const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
         inserted += await upsertTrades(rows);
+        await flushDefillamaFills();
       } catch (err) {
         log.error({ err, chainId, ethFlowOwner }, 'eth-flow owner fetch failed');
       }

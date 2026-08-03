@@ -28,9 +28,19 @@ const DRPC_NETWORK: Record<number, string> = {
 // on 2000-block windows at the sovereign settlement) keylessly; publicnode stays for
 // Base (8453), whose decoder use is tip-only.
 const DEFAULT_FALLBACK: Record<number, string> = {
+  1: 'https://ethereum-rpc.publicnode.com',
+  56: 'https://bsc-rpc.publicnode.com',
+  100: 'https://gnosis-rpc.publicnode.com',
+  137: 'https://polygon-bor-rpc.publicnode.com',
   8453: 'https://base-rpc.publicnode.com',
+  9745: 'https://rpc.plasma.to',
+  42161: 'https://arbitrum-one-rpc.publicnode.com',
+  43114: 'https://avalanche-c-chain-rpc.publicnode.com',
+  57073: 'https://rpc-gel.inkonchain.com',
+  59144: 'https://linea-rpc.publicnode.com',
   10: 'https://mainnet.optimism.io',
   130: 'https://mainnet.unichain.org',
+  4663: 'https://rpc.mainnet.chain.robinhood.com',
 };
 
 const RPC_TIMEOUT_MS = 15_000;

@@ -89,6 +89,38 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows[0]!.blockTimestamp.toISOString()).toBe('2026-05-01T12:00:00.000Z');
   });
 
+  it('preserves every partial fill with its settlement block timestamp for DefiLlama', async () => {
+    const uid = '0x' + '0c'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([
+      { ...sampleTrade(uid, owner, '400', '800'), blockNumber: 100, logIndex: 3 },
+      { ...sampleTrade(uid, owner, '600', '1200'), blockNumber: 200, logIndex: 7 },
+    ]);
+    handlers.order.mockReturnValue({
+      ...orderWithAppData(uid, owner, { appCode: 'ophis', metadata: { partnerFee: OPHIS_FEE } }),
+      executedSellAmount: '1000',
+      executedBuyAmount: '2000',
+    });
+    const defillamaFills: import('../src/fetcher.js').PendingDefiLlamaFill[] = [];
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {
+      defillamaFills,
+      hasDefiLlamaFill: async () => false,
+      getSettlementTimestamp: async (_chainId, blockNumber) => new Date(Number(blockNumber) * 1000),
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.sellAmount).toBe(1000n); // rebate ledger remains one order-total row
+    expect(defillamaFills).toMatchObject([
+      { blockNumber: 100n, logIndex: 3, sellAmount: 400n, volumeFeeBps: 5, feeVerified: true },
+      { blockNumber: 200n, logIndex: 7, sellAmount: 600n, volumeFeeBps: 5, feeVerified: true },
+    ]);
+    expect(defillamaFills.map((fill) => fill.settlementTimestamp.toISOString())).toEqual([
+      '1970-01-01T00:01:40.000Z',
+      '1970-01-01T00:03:20.000Z',
+    ]);
+  });
+
   it('indexes Ophis orders regardless of appCode casing (case-insensitive; stores lowercase)', async () => {
     // Regression: the widget/MCP and the frontend fallback emit appCode 'Ophis' (capital). A
     // case-sensitive match would drop these orders and silently forfeit their rebates.
