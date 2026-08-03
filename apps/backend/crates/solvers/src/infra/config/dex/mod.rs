@@ -7,6 +7,7 @@ pub mod lifi;
 pub mod odos;
 pub mod okx;
 pub mod openocean;
+pub mod pons;
 pub mod uniswap_v4;
 pub mod velora;
 

@@ -27,7 +27,8 @@ enabled because the autopilot requires `debug_traceTransaction`.
 | orderbook     | 8410        | REST API - order creation, quotes, status |
 | driver        | 8411        | Solver engine + settlement submitter |
 | baseline      | 9310        | On-chain liquidity solver - ships EMPTY (Robinhood liquidity is Uniswap V4) |
-| lifi-solver   | 9311        | LI.FI same-chain aggregator - the ONLY supported lane on 4663 today |
+| lifi-solver   | 9311        | LI.FI same-chain aggregator lane |
+| pons-solver   | 9312        | Direct authenticated pons token/WETH and token/WETH/token V3 lane |
 | rpc-proxy     | 4003        | 2-of-2 read consensus + transaction relay (chain 4663) |
 | prometheus    | 9096        | Metrics (observability profile) |
 | alertmanager  | 9097        | Telegram alerts (observability profile) |
@@ -59,6 +60,11 @@ and Robinhood WETH.
   `0xB477751B76CF82d00a686A1232f5fCD772414Af3`, NOT the usual LiFiDiamond. Add it to
   `dex::lifi::LIFI_ROUTER_ALLOWLIST` AND `driver custom_allowlist::ROBINHOOD_MAINNET`, or
   every quote fails the same-chain safety check. See `configs/lifi.toml.tmpl`.
+- **pons contract pinning:** the pons lane must retain the active + legacy launch
+  factories, V3 factory, router, quoter and WETH published in pons's integration
+  docs. The driver independently allowlists only the pinned router. New pons
+  deployments require a reviewed config and allowlist update; never learn an
+  execution target from a token or quote response.
 - **Chain wiring:** chain 4663 is wired into the backend and solver chain enums.
   The frontend, Safe app, compatibility API, MCP server, and `@ophis/sdk` must
   retain their checked Robinhood URL and deployed-contract mappings.
@@ -95,13 +101,14 @@ settlement pauses. CI locks this topology through `assert-erpc-failclosed.py`.
 |------------|--------------|--------|
 | lifi       | Confirmed (li.quest lists 4663; live same-chain quotes) | **Active** |
 | kyberswap  | Confirmed (`robinhood` API; live Ekubo/Uniswap routes) | **Active** |
+| uniswap-v4 | Direct canonical V4 pool quoting through the Ophis adapter | **Active** |
+| pons       | Active + legacy factories, direct V3 token/WETH/token quoting | **Implemented - direct lane** |
 | baseline   | n/a - ships empty (unsupported pool types) | Inactive |
 | okx / velora / openocean / dodo / enso | NOT on 4663 today | Disabled - revisit as each adds the chain |
 
-LI.FI and KyberSwap compete independently. Kyber's route builder reaches the
-deployed Robinhood DEX liquidity while the solver and driver enforce a static
-router allowlist. A fully self-hosted pool-specific solver remains desirable
-because both active lanes still depend on external route APIs.
+LI.FI, KyberSwap, direct Uniswap V4, and pons compete independently. The pons
+lane adds direct launch-token/WETH and two-hop launch-token/WETH/launch-token
+routes while the driver enforces static execution-target allowlists.
 
 ## Common Failures
 
