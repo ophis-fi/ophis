@@ -219,7 +219,10 @@ export const CHAIN_INFO: ChainInfoMap = {
     label: 'Robinhood Chain',
     eip155Label: 'Robinhood Chain',
     explorerTitle: 'Robinhood Chain Blockscout',
-    color: '#00C805',
+    // Brand neon per the Robinhood Chain team (2026-08-02); drives
+    // getChainAccentColors() in the token-picker chain selector. The old
+    // #00C805 green is retired.
+    color: '#CCFF00',
     name: 'robinhood',
     urlAlias: 'robinhood',
     nativeCurrency: NATIVE_CURRENCIES[4663 as unknown as SupportedChainId],
