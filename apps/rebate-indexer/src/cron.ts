@@ -16,6 +16,7 @@ import { accruePartnerFees, proposePartnerFeeBatches, reconcilePartnerFeeBatches
 import { alerts } from './telegram/alerter.js';
 import { logger } from './logger.js';
 import { sql } from './db/index.js';
+import { completeDefiLlamaBackfillIfReady } from './defillamaBackfill.js';
 
 const log = logger.child({ module: 'cron' });
 
@@ -89,6 +90,7 @@ async function runPipelineSteps(): Promise<void> {
 
   const priced = await runPricer();
   log.info(priced, 'pricer complete');
+  await completeDefiLlamaBackfillIfReady();
 
   const scored = await runScorer();
   log.info(scored, 'scorer complete');

@@ -7,6 +7,7 @@ import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
 import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
+import { isDefiLlamaBackfillComplete } from './defillamaBackfill.js';
 import { computeDefiLlamaDay, computePublicStats } from './stats.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { logger } from './logger.js';
@@ -574,6 +575,9 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const parsed = new Date(`${date}T00:00:00.000Z`);
     if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
       return reply.code(400).send({ error: 'date must be a valid UTC calendar date' });
+    }
+    if (!await isDefiLlamaBackfillComplete()) {
+      return reply.code(503).send({ error: 'DefiLlama settlement history backfill in progress' });
     }
 
     const chains = await computeDefiLlamaDay(

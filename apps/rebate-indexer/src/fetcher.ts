@@ -5,6 +5,7 @@ import { GROSS_FEE_BPS, OWN_FEE_MAX_BPS } from './affiliate/rates.js';
 import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
 import { getRpcClient } from './rpc/client.js';
+import { PRODUCTION_CHAIN_IDS } from './stats-page.js';
 
 // The Ophis partner-fee recipient (the Safe). A fee only counts toward the rebate
 // base when it actually pays THIS recipient.
@@ -12,6 +13,8 @@ const OPHIS_FEE_RECIPIENT = OPHIS_SAFE_ADDRESS.toLowerCase();
 
 const log = logger.child({ module: 'fetcher' });
 const PAGE_SIZE = 1_000;
+const DEFILLAMA_CHAIN_IDS = new Set(PRODUCTION_CHAIN_IDS);
+export const FETCHER_MAX_OWNERS_PER_RUN = 500;
 
 // Minimal DB interface — accepts the real drizzle instance or a test stub.
 // When omitted the dedup check is skipped (fine for unit tests).
@@ -499,7 +502,8 @@ export async function fetchChainTrades(
         logIndex: t.logIndex,
         tradeUid: t.orderUid as `0x${string}`,
       };
-      const reportFillComplete = deps.defillamaFills
+      const fillSink = DEFILLAMA_CHAIN_IDS.has(chainId) ? deps.defillamaFills : undefined;
+      const reportFillComplete = fillSink
         ? await deps.hasDefiLlamaFill?.(fillKey) ?? false
         : true;
       if ((!firstForOrder || rebateRowComplete) && reportFillComplete) continue;
@@ -509,15 +513,11 @@ export async function fetchChainTrades(
       // that turn out to be unrelated to Ophis) and gives us the settlement creationDate.
       const order = await getOrder(chainId, t.orderUid as `0x${string}`);
 
-      // Record settled volume only from orders in a TERMINAL state, using the order's
-      // EXECUTED amounts (total across fills, surplus-inclusive). Includes orders that
-      // partially filled then cancelled/expired (real settled CoW volume; the executed
-      // amount is final once terminal). Skip still-active orders (open/presignaturePending):
-      // they may fill more and re-evaluate on a later run. This status pre-filter is
-      // API-source-specific — an on-chain Trade event is terminal by construction.
+      // The aggregate rebate row is terminal-only because it stores one lifetime
+      // order total. The reporting fill below is independent and is recorded as soon
+      // as its settled API trade appears, including while a partial order remains open.
       const isTerminal =
         order.status === 'fulfilled' || order.status === 'cancelled' || order.status === 'expired';
-      if (!isTerminal) continue;
       const execSell = order.executedSellAmount ?? t.sellAmount;
       const execBuy = order.executedBuyAmount ?? t.buyAmount;
 
@@ -536,7 +536,7 @@ export async function fetchChainTrades(
       // fills this could land in the wrong 30-day window — tracked as a follow-up if
       // non-market volume appears. The default (Ophis-dedicated) eth-flow owner set is
       // correct here: the API path only ever queries those contracts as an owner.
-      if (firstForOrder && !rebateRowComplete) {
+      if (isTerminal && firstForOrder && !rebateRowComplete) {
         const trade = attributeOrder(meta, {
           owner: t.owner,
           receiver: order.receiver,
@@ -552,7 +552,7 @@ export async function fetchChainTrades(
         if (trade) out.push(trade);
       }
 
-      if (deps.defillamaFills && !reportFillComplete) {
+      if (fillSink && !reportFillComplete) {
         const settlementTimestamp = await (deps.getSettlementTimestamp ?? getSettlementTimestamp)(
           chainId,
           BigInt(t.blockNumber),
@@ -570,7 +570,7 @@ export async function fetchChainTrades(
           blockTimestamp: settlementTimestamp,
         });
         if (fill) {
-          deps.defillamaFills.push({
+          fillSink.push({
             ...fillKey,
             settlementTimestamp,
             sellToken: fill.sellToken,
@@ -681,7 +681,6 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.
-    const MAX_OWNERS_PER_RUN = 500;
     const ownerRows = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
@@ -691,7 +690,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       -- selection FIFO so /tier spam can't starve an older legit wallet that
       -- registered before the flood (they'd otherwise tie on last_fetched=NULL).
       ORDER BY (wallet IN (SELECT wallet FROM trades)) DESC, last_fetched ASC NULLS FIRST, first_seen ASC
-      LIMIT ${MAX_OWNERS_PER_RUN}
+      LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
     `;
     // Drop any Ophis eth-flow contract spam-registered via the public /tier
     // endpoint: it is fetched separately as a synthetic owner below (attributing

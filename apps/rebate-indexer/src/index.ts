@@ -1,10 +1,11 @@
 import { runMigrations } from './db/migrate.js';
 import { startApi } from './api.js';
 import { startCron } from './cron.js';
-import { runFetcher, withPipelineLock } from './fetcher.js';
+import { FETCHER_MAX_OWNERS_PER_RUN, runFetcher, withPipelineLock } from './fetcher.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { logger } from './logger.js';
+import { completeDefiLlamaBackfillIfReady } from './defillamaBackfill.js';
 
 async function main() {
   await runMigrations();
@@ -26,8 +27,23 @@ async function main() {
       // Under the pipeline lock so it can't overlap the nightly cron (which
       // batches on the 1st). If the nightly is already running, just skip.
       const ran = await withPipelineLock(async () => {
-        const { inserted } = await runFetcher();
-        const priced = await runPricer();
+        let inserted = 0;
+        let priced = { priced: 0, failed: 0 };
+        // Migration 0024 can requeue more owners than runFetcher's bounded batch.
+        // Drain successive successful batches now; a persistent failure remains
+        // fail-closed through defillama_reporting_state instead of serving partial data.
+        for (let i = 0; i < 100; i++) {
+          const fetched = await runFetcher();
+          inserted += fetched.inserted;
+          const pass = await runPricer();
+          priced = { priced: priced.priced + pass.priced, failed: priced.failed + pass.failed };
+          if (await completeDefiLlamaBackfillIfReady()) break;
+          // A short batch means every currently eligible owner was attempted. Do
+          // not hammer a persistently failing owner or an unpriceable fill 100 times;
+          // readiness stays false and the nightly pipeline retries it safely.
+          if (fetched.owners < FETCHER_MAX_OWNERS_PER_RUN) break;
+          if (i === 99) logger.error('DefiLlama startup backfill hit guard limit');
+        }
         const scored = await runScorer();
         logger.info({ inserted, priced, scored }, 'initial backfill complete');
       });

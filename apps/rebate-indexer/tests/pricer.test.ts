@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // these stay pure unit tests (no network).
 vi.mock('../src/cow/client.js', () => ({ nativePrice: vi.fn(), OPTIMISM_CHAIN_ID: 10 }));
 
-import { priceTrade } from '../src/pricer.js';
+import { priceDefiLlamaFill, priceTrade } from '../src/pricer.js';
 import { nativePrice } from '../src/cow/client.js';
 
 const mockNativePrice = vi.mocked(nativePrice);
@@ -53,6 +53,46 @@ describe('priceTrade — stablecoin self-pricing', () => {
     });
     expect(usd).toBeCloseTo(12_345, 2);
     expect(mockNativePrice).not.toHaveBeenCalled();
+  });
+});
+
+describe('priceDefiLlamaFill — settlement-time pricing', () => {
+  it('uses the settlement timestamp in the historical-price request', async () => {
+    const settlementTimestamp = new Date('2026-08-02T00:00:00Z');
+    const timestamp = Math.floor(settlementTimestamp.getTime() / 1000);
+    const coin = `xdai:${WETH}`;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      coins: { [coin]: { decimals: 18, price: 2_000, timestamp } },
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const usd = await priceDefiLlamaFill({
+      chainId: 100,
+      sellToken: WETH,
+      sellAmount: 2n * 10n ** 18n,
+      settlementTimestamp,
+    });
+
+    expect(usd).toBe(4_000);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://coins.llama.fi/prices/historical/${timestamp}/${coin}?searchWidth=4h`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('self-prices the chain USD reference without a network request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const usd = await priceDefiLlamaFill({
+      chainId: 100,
+      sellToken: USDC_E,
+      sellAmount: 2_500_000n,
+      settlementTimestamp: new Date('2026-08-02T00:00:00Z'),
+    });
+    expect(usd).toBe(2.5);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });
 

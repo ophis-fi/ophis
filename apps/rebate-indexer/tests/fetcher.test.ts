@@ -121,6 +121,44 @@ describe('fetcher.fetchChainTrades', () => {
     ]);
   });
 
+  it('records a settled reporting fill while its partially-fillable order remains open', async () => {
+    const uid = '0x' + '0d'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([{ ...sampleTrade(uid, owner), blockNumber: 321, logIndex: 4 }]);
+    handlers.order.mockReturnValue({
+      ...orderWithAppData(uid, owner, { appCode: 'ophis', metadata: { partnerFee: OPHIS_FEE } }),
+      status: 'open',
+    });
+    const defillamaFills: import('../src/fetcher.js').PendingDefiLlamaFill[] = [];
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {
+      defillamaFills,
+      hasDefiLlamaFill: async () => false,
+      getSettlementTimestamp: async () => new Date('2026-08-01T12:00:00Z'),
+    });
+
+    expect(rows).toEqual([]); // aggregate rebate row remains terminal-only
+    expect(defillamaFills).toHaveLength(1);
+    expect(defillamaFills[0]).toMatchObject({ blockNumber: 321n, logIndex: 4, tradeUid: uid });
+  });
+
+  it('does not request a reporting timestamp for Sepolia fills', async () => {
+    const uid = '0x' + '0e'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    const getSettlementTimestamp = vi.fn();
+    const defillamaFills: import('../src/fetcher.js').PendingDefiLlamaFill[] = [];
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    // Use a dedicated Sepolia handler because the suite's default MSW routes Gnosis.
+    server.use(
+      http.get(`${COW_FAKE_BASE}/sepolia/api/v2/trades`, () => HttpResponse.json([sampleTrade(uid, owner)])),
+      http.get(`${COW_FAKE_BASE}/sepolia/api/v1/orders/:uid`, () => HttpResponse.json(sampleOrder(uid, owner))),
+    );
+    await fetchChainTrades(11155111, owner as `0x${string}`, { defillamaFills, getSettlementTimestamp });
+
+    expect(getSettlementTimestamp).not.toHaveBeenCalled();
+    expect(defillamaFills).toEqual([]);
+  });
+
   it('indexes Ophis orders regardless of appCode casing (case-insensitive; stores lowercase)', async () => {
     // Regression: the widget/MCP and the frontend fallback emit appCode 'Ophis' (capital). A
     // case-sensitive match would drop these orders and silently forfeit their rebates.

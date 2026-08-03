@@ -4,6 +4,57 @@ import { alerts } from './telegram/alerter.js';
 
 const log = logger.child({ module: 'pricer' });
 
+const DEFILLAMA_CHAIN_SLUG: Readonly<Record<number, string>> = {
+  1: 'ethereum',
+  10: 'optimism',
+  56: 'bsc',
+  100: 'xdai',
+  130: 'unichain',
+  137: 'polygon',
+  8453: 'base',
+  9745: 'plasma',
+  42161: 'arbitrum',
+  43114: 'avax',
+  57073: 'ink',
+  59144: 'linea',
+};
+
+interface HistoricalPriceResponse {
+  coins?: Record<string, { decimals?: number; price?: number; timestamp?: number }>;
+}
+
+/** Price a reporting fill at its settlement time, never at pricer runtime. */
+export async function priceDefiLlamaFill(row: {
+  chainId: number;
+  sellToken: `0x${string}`;
+  sellAmount: bigint;
+  settlementTimestamp: Date;
+}): Promise<number> {
+  const ref = USD_REFERENCE[row.chainId];
+  if (!ref) throw new Error(`no USD reference for chain ${row.chainId}`);
+  if (row.sellToken.toLowerCase() === ref.token.toLowerCase()) {
+    return Number(row.sellAmount) / 10 ** ref.decimals;
+  }
+
+  const slug = DEFILLAMA_CHAIN_SLUG[row.chainId];
+  if (!slug) throw new Error(`no DefiLlama historical-price namespace for chain ${row.chainId}`);
+  const requestedTimestamp = Math.floor(row.settlementTimestamp.getTime() / 1000);
+  const coin = `${slug}:${row.sellToken}`;
+  const url = `https://coins.llama.fi/prices/historical/${requestedTimestamp}/${coin}?searchWidth=4h`;
+  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  if (!response.ok) throw new Error(`DefiLlama historical price ${response.status} for ${coin}`);
+  const body = await response.json() as HistoricalPriceResponse;
+  const quote = body.coins?.[coin];
+  if (!quote || !Number.isInteger(quote.decimals) || quote.decimals! < 0 || quote.decimals! > 255 ||
+      !Number.isFinite(quote.price) || quote.price! <= 0 || !Number.isInteger(quote.timestamp) ||
+      Math.abs(quote.timestamp! - requestedTimestamp) > 4 * 60 * 60) {
+    throw new Error(`invalid DefiLlama historical price for ${coin} at ${requestedTimestamp}`);
+  }
+  const usd = Number(row.sellAmount) / 10 ** quote.decimals! * quote.price!;
+  if (!Number.isFinite(usd) || usd < 0) throw new Error(`non-finite historical USD for ${coin}`);
+  return usd;
+}
+
 // ─── OP native_price is per-atom (since the 2026-07-06 oracle fix) ───────────
 // The OP sovereign backend's native_price oracle USED to normalize every token
 // to 18 decimals, so a d-decimal token's value came back inflated by 10^(18-d)
@@ -225,13 +276,14 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
     trade_uid: Buffer;
     sell_token: Buffer;
     sell_amount: string;
+    settlement_timestamp: Date;
   };
   let fillCursor: { chainId: number; blockNumber: string; logIndex: number; tradeUid: Buffer } | null = null;
   for (;;) {
     let rows: FillPriceRow[];
     if (fillCursor === null) {
       rows = await sql<FillPriceRow[]>`
-          SELECT chain_id, block_number::text, log_index, trade_uid, sell_token, sell_amount::text
+          SELECT chain_id, block_number::text, log_index, trade_uid, sell_token, sell_amount::text, settlement_timestamp
           FROM defillama_fills
           WHERE value_usd IS NULL
           ORDER BY chain_id, block_number, log_index, trade_uid
@@ -239,7 +291,7 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
         `;
     } else {
       rows = await sql<FillPriceRow[]>`
-          SELECT chain_id, block_number::text, log_index, trade_uid, sell_token, sell_amount::text
+          SELECT chain_id, block_number::text, log_index, trade_uid, sell_token, sell_amount::text, settlement_timestamp
           FROM defillama_fills
           WHERE value_usd IS NULL
             AND (chain_id, block_number, log_index, trade_uid) >
@@ -264,7 +316,12 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
         sellAmount: BigInt(r.sell_amount),
       };
       try {
-        const usd = await priceTrade(row, refPriceCache);
+        const usd = await priceDefiLlamaFill({
+          chainId: row.chainId,
+          sellToken: row.sellToken,
+          sellAmount: row.sellAmount,
+          settlementTimestamp: r.settlement_timestamp,
+        });
         await sql`
           UPDATE defillama_fills
           SET value_usd = ${usd}, priced_at = now()
