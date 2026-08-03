@@ -28,7 +28,7 @@ const FAQS = [
   },
   {
     q: 'Does a tight slippage setting protect me on a regular DEX?',
-    a: `Only partially. A tighter tolerance shrinks the attacker's budget but does not remove the visible pending transaction that invites the attack, and it raises the chance your trade reverts and you pay gas for nothing. Hiding the transaction (a private RPC) or removing the tolerance model entirely (a signed hard limit settled in a batch auction) addresses the cause rather than the budget.`,
+    a: `Only partially. A tighter tolerance shrinks the attacker's budget but does not remove the visible pending transaction that invites the attack, and it raises the chance your trade reverts and you pay gas for nothing. Hiding the transaction (a private RPC) or hardening the tolerance into a contract-enforced floor on an off-chain order (a signed limit settled in a batch auction) addresses the cause rather than the budget: with no pending swap to bracket and no fill possible below the floor, the band is not harvestable.`,
   },
 ]
 ---
@@ -46,8 +46,9 @@ const FAQS = [
     <strong>The short version:</strong> a sandwich attack needs two things: a visible pending
     swap, and a slippage tolerance that pre-authorizes a worse price. The attacker buys before
     you, lets your trade move the price, and sells after you, pocketing up to your tolerance.
-    Remove the visibility and the tolerance model and the attack has nothing to work with, which
-    is what batch-auction settlement does structurally.
+    Remove the visibility, and harden the tolerance into a contract-enforced floor cleared at a
+    uniform batch price, and the attack has nothing to work with, which is what batch-auction
+    settlement does structurally.
   </p>
 
   {FAQS.map((f) => (

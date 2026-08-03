@@ -21,11 +21,11 @@ const FAQS = [
   },
   {
     q: 'Why does solver competition help me?',
-    a: `Because the auction turns routing skill into your price instead of the router's margin. Every solver that finds a better fill than the current best has an incentive to bid it, since that is how it wins the batch. Whatever execution the winner achieves beyond your signed limit is surplus, and on Ophis surplus is not skimmed by the protocol.`,
+    a: `Because the auction turns routing skill into your price instead of the router's margin. Every solver that finds a better fill than the current best has an incentive to bid it, since that is how it wins the batch. Whatever execution the winner achieves beyond your signed limit is surplus. Ophis takes no cut of it on any chain: on the Ophis-operated chains 100% is returned to the trader, while on CoW-hosted chains CoW Protocol retains 50% of quote improvement upstream before the remainder is returned.`,
   },
   {
     q: 'What happens if a solver fails or misbehaves?',
-    a: `A failed settlement transaction is the solver's cost, not yours: your order simply stays open for the next batch, and an order that never settles pays no fee. Solvers are also bonded and accountable for the settlements they submit, and a solver that proposes worse executions than its competitors just stops winning batches.`,
+    a: `A failed settlement transaction is the solver's cost, not yours: your order simply stays open for the next batch, and an order that never settles pays no fee. Accountability differs by deployment: on CoW-governed deployments, solvers post bonds and answer to the protocol's onboarding rules, while on the Ophis-operated chains settlement submission is allowlisted and run by Ophis itself, so accountability there is operational rather than bond-based. In both cases, a lane that proposes worse executions than its competitors stops winning batches.`,
   },
   {
     q: 'Do I choose which solver settles my trade?',
