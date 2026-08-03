@@ -23,7 +23,7 @@ overrides:
   js-yaml: ^4.3.0
   brace-expansion@<1.1.16: '>=1.1.16'
   brace-expansion@>=2.0.0 <2.1.2: '>=2.1.2'
-  brace-expansion@>=5.0.0 <5.0.8: '>=5.0.8'
+  brace-expansion@>=5.0.0 <5.0.9: '>=5.0.9'
   vite: ^7.0.0
   '@grpc/grpc-js': 1.14.4
   hono: 4.12.27
@@ -3597,6 +3597,10 @@ packages:
 
   brace-expansion@5.0.8:
     resolution: {integrity: sha512-JZyDyq3D4AUifKTPOB7DELf6XsB3WdPuNxCtob1vFXPsSXhdAiHBWJ/tJ8HAc9aH84BK+5JFZLNkJKx3G9kzQg==}
+    engines: {node: 20 || >=22}
+
+  brace-expansion@5.0.9:
+    resolution: {integrity: sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==}
     engines: {node: 20 || >=22}
 
   brorand@1.1.0:
@@ -12051,6 +12055,10 @@ snapshots:
     dependencies:
       balanced-match: 4.0.4
 
+  brace-expansion@5.0.9:
+    dependencies:
+      balanced-match: 4.0.4
+
   brorand@1.1.0: {}
 
   brotli-wasm@3.0.1: {}
@@ -13842,7 +13850,7 @@ snapshots:
 
   minimatch@10.2.5:
     dependencies:
-      brace-expansion: 5.0.8
+      brace-expansion: 5.0.9
 
   minimatch@3.1.5:
     dependencies:
