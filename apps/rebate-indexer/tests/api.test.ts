@@ -9,6 +9,9 @@ vi.mock('../src/db/index.js', () => ({
     if (text.includes('SELECT (EXISTS (SELECT 1 FROM existing) OR EXISTS (SELECT 1 FROM inserted)) AS accepted')) {
       return [{ accepted: process.env.REBATE_ENROLLMENT_QUEUE_MAX !== '0' }];
     }
+    if (text.includes('completed_at IS NOT NULL AS ready')) {
+      return [{ ready: process.env.TEST_DEFILLAMA_BACKFILL_PENDING !== '1' }];
+    }
     return [];
   }, {
     unsafe: async () => [],
@@ -40,6 +43,7 @@ afterEach(async () => {
   app = undefined;
   delete process.env.REBATE_INDEXER_ADMIN_TOKEN;
   delete process.env.REBATE_ENROLLMENT_QUEUE_MAX;
+  delete process.env.TEST_DEFILLAMA_BACKFILL_PENDING;
 });
 
 // Must import AFTER vi.mock() calls above are hoisted.
@@ -126,6 +130,14 @@ test('/defillama returns bounded daily protocol aggregates only', async () => {
   });
   expect(res.body.toLowerCase()).not.toMatch(/wallet|order|referral|payout/);
   expect(res.headers['cache-control']).toBe('public, max-age=300');
+});
+
+test('/defillama fails closed while settlement history is backfilling', async () => {
+  process.env.TEST_DEFILLAMA_BACKFILL_PENDING = '1';
+  app = await buildApiServer();
+  const res = await app.inject({ method: 'GET', url: '/defillama?date=2026-08-03' });
+  expect(res.statusCode).toBe(503);
+  expect(JSON.parse(res.body)).toEqual({ error: 'DefiLlama settlement history backfill in progress' });
 });
 
 test('/defillama rejects missing and impossible dates', async () => {

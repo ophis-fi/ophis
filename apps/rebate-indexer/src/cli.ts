@@ -1,6 +1,7 @@
 import { runMigrations } from './db/migrate.js';
 import { runFetcher, backfillOwnFee, withPipelineLock } from './fetcher.js';
 import { runPricer } from './pricer.js';
+import { completeDefiLlamaBackfillIfReady } from './defillamaBackfill.js';
 import { runScorer } from './scorer.js';
 import { runBatcher } from './batcher.js';
 import { runPartnerFeeFetch } from './partnerFees/fetch.js';
@@ -45,7 +46,10 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
   async ['replay-from-genesis']() {
     await runMigrations();
     log.info('clearing derived state');
-    await sql`TRUNCATE rebate_batch_entries, rebate_batches, trades RESTART IDENTITY CASCADE`;
+    await sql`TRUNCATE rebate_batch_entries, rebate_batches, defillama_fills, trades RESTART IDENTITY CASCADE`;
+    await sql`UPDATE defillama_reporting_state SET backfill_started_at = now(), completed_at = NULL WHERE singleton = true`;
+    await sql`TRUNCATE defillama_backfill_wallets`;
+    await sql`INSERT INTO defillama_backfill_wallets (wallet) SELECT wallet FROM tracked_wallets`;
     // Reset the fetch cursor too: runFetcher only re-fetches wallets whose
     // last_fetched is NULL or older than 6h. After a truncate, a replay run
     // shortly after the nightly fetch would otherwise skip every recently-
@@ -62,6 +66,7 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
       if (i === 99) log.warn('replay-from-genesis fetch loop hit guard limit (persistently-failing owners?)');
     }
     await runPricer();
+    await completeDefiLlamaBackfillIfReady();
     await runScorer();
   },
   async ['replay-pricer'](args) {
