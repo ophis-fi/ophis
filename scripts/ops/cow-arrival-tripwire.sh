@@ -97,11 +97,19 @@ stub_signal() { # echoes "present", "GONE", or "ERR"
   local src hit
   src=$(fetch_raw "https://raw.githubusercontent.com/cowprotocol/cowswap/main/libs/common-const/src/networks.ts")
   [[ -z "$src" ]] && { echo "ERR"; return; }
-  # Anchor to the OPTIMISM stub specifically: a line mentioning OPTIMISM that
-  # also says bridge-only (or "future migration"). A bridge-only comment about
-  # any other chain must not keep this "present". grep exit is captured, never
-  # in a pipefail pipeline.
-  hit=$(grep -iE 'optimism.*(bridge-only|future migration)|(bridge-only|future migration).*optimism' <<< "$src" || true)
+  # Anchor to the OPTIMISM stub specifically: OPTIMISM must appear near the words
+  # bridge-only / future migration. Matched whitespace-agnostically across the
+  # WHOLE file (slurp mode), because upstream hard-wraps this comment and a
+  # reflow used to break a line-anchored grep -> false "GONE" (2026-08-03).
+  # The 240-char proximity window keeps a bridge-only comment about any OTHER
+  # chain from holding this "present". perl exit is captured, never in a
+  # pipefail pipeline.
+  hit=$(perl -0777 -ne '
+    s/\s+/ /g;
+    print "hit" if
+      /optimism.{0,240}?(?:bridge-only|future migration)/i ||
+      /(?:bridge-only|future migration).{0,240}?optimism/i;
+  ' <<< "$src" || true)
   if [[ -n "$hit" ]]; then echo "present"; else echo "GONE"; fi
 }
 
