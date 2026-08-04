@@ -13,8 +13,8 @@ const CHAIN_ID = 4663;
 const PONS_ORIGIN = 'https://www.ponsfamily.com';
 const ROBINHOOD_RPCS = [
   'https://rpc.mainnet.chain.robinhood.com',
+  'https://hood-rpc.pastrylabs.cloud',
   'https://rpc.arrowrpc.com',
-  'https://robinhood-mainnet-rpc.blockreq.com/v1/rpc/public',
 ];
 const UPSTREAM_URL =
   `${PONS_ORIGIN}/api/pons-launches?explore=1&sort=recentBuys&age=all&page=1&pageSize=100` +

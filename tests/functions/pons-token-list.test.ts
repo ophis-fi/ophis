@@ -150,7 +150,7 @@ test('RPC quorum obeys an expired outer deadline and fails once quorum is imposs
     let minorityAborted = false;
     globalThis.fetch = async (input, init) => {
       fetchCalls += 1;
-      if (String(input).includes('blockreq')) {
+      if (String(input).includes('arrowrpc')) {
         return await new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener(
             'abort',
