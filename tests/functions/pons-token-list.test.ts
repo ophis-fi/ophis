@@ -199,3 +199,47 @@ test('RPC quorum binds verification to the exact factory-token request', async (
     globalThis.fetch = originalFetch;
   }
 });
+
+test('fast mirror failures do not abort a pending authoritative verification', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (input, init) => {
+      if (!String(input).includes('rpc.mainnet.chain.robinhood.com')) {
+        throw new Error('mirror unavailable');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const requests = JSON.parse(String(init?.body)) as { id: number }[];
+      return Response.json(
+        requests.map(({ id }) => ({ jsonrpc: '2.0', id, result: verifiedResult() })),
+      );
+    };
+
+    const verified = await verifyLaunchesOnchain([launch()], new AbortController().signal);
+    assert.equal(verified.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('mirror agreement cannot override a slower authoritative response', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async (input, init) => {
+      const requests = JSON.parse(String(init?.body)) as { id: number }[];
+      if (String(input).includes('rpc.mainnet.chain.robinhood.com')) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return Response.json(
+          requests.map(({ id }) => ({ jsonrpc: '2.0', id, result: '0xdeadbeef' })),
+        );
+      }
+      return Response.json(
+        requests.map(({ id }) => ({ jsonrpc: '2.0', id, result: verifiedResult() })),
+      );
+    };
+
+    const verified = await verifyLaunchesOnchain([launch()], new AbortController().signal);
+    assert.deepEqual(verified, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
