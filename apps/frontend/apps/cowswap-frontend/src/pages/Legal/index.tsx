@@ -204,6 +204,8 @@ export default function LegalPage(): ReactNode {
         <Callout tone="success" title="In short">
           Ophis does not intentionally collect account-registration data, identity documents, or
           KYC. Your wallet address is pseudonymous; we don&#39;t link it to off-chain identity.
+          The one exception is a reward claim: if you claim a partner-issued perk you give us an
+          email address, which we pass to that partner so they can send your code (section 7.6).
           We use Sentry for anonymized error telemetry and Google Analytics 4 for aggregate usage
           analytics that is consent-governed: off by default in the EEA, UK, and Switzerland until
           you opt in, on by default elsewhere. No advertising cookies. Note that pseudonymous data
@@ -223,7 +225,9 @@ export default function LegalPage(): ReactNode {
         <h3>7.2. What we collect, and the legal basis</h3>
         <p>
           The Service does not intentionally collect account-registration data, identity
-          documents, or know-your-customer (KYC) information. Wallet addresses are pseudonymous
+          documents, or know-your-customer (KYC) information. The sole exception is the email
+          address you volunteer when claiming a partner-issued reward, covered in section 7.6.
+          Wallet addresses are pseudonymous
           public-blockchain identifiers and are transmitted during normal operation; the
           operator does not link them to off-chain identity. Under GDPR, pseudonymous identifiers
           and IP addresses may still qualify as personal data when linkable to a natural person.
@@ -326,7 +330,24 @@ export default function LegalPage(): ReactNode {
           </li>
         </ul>
 
-        <h3>7.6. Your rights (GDPR)</h3>
+        <h3>7.6. Reward claims</h3>
+        <p>
+          The <TextLink href="/rewards">Rewards</TextLink> page lists discounts offered by third-party
+          partners. Some partners issue their codes themselves rather than through the Service. When
+          you claim one of those rewards, you are asked for an email address, and the operator
+          records your wallet address, the reward claimed, that email address, and the wallet
+          signature proving you control the address. The email address is collected for one purpose
+          only: to be passed to the named partner so they can send you the code. That transfer is
+          disclosed on the claim form and requires your explicit agreement before the claim is
+          recorded, which is the legal basis for the processing and the transfer (GDPR arts. 6(1)(a)
+          and 49(1)(a)). No other data is shared with the partner, and the partner then processes
+          your email address under its own privacy policy. Rewards that ship a public discount code
+          in the Service require no claim and collect nothing. You can withdraw your agreement and
+          ask for the claim record to be deleted at any time via section 7.7 below; a code already
+          issued by the partner is outside the operator&#39;s control.
+        </p>
+
+        <h3>7.7. Your rights (GDPR)</h3>
         <p>
           If you are in the European Economic Area, you have the right to access, rectify, erase,
           restrict, port, or object to processing of personal data the operator holds about you

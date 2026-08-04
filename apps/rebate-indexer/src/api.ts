@@ -12,6 +12,7 @@ import { computeDefiLlamaDay, computePublicStats } from './stats.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
+import { findReward } from './rewards.js';
 import { getPartnerFeeDashboard, getPartnerFeeStats } from './partnerFees/report.js';
 import {
   FEE_SHARE_BPS,
@@ -253,6 +254,43 @@ async function admitTrackedWallet(rawWallet: `0x${string}`): Promise<boolean> {
     SELECT (EXISTS (SELECT 1 FROM existing) OR EXISTS (SELECT 1 FROM inserted)) AS accepted
   `;
   return rows[0]?.accepted !== false;
+}
+
+/**
+ * One CSV cell: always quoted (so a comma or newline inside a value cannot shift
+ * columns), inner quotes doubled per RFC 4180.
+ *
+ * Leading `= + - @` are additionally neutralized with a `'` prefix: the claim
+ * export is opened in a spreadsheet by the PARTNER, and Excel/Sheets evaluate a
+ * cell starting with those as a formula. An email address is attacker-chosen
+ * text, so `=HYPERLINK(...)` in the local part would otherwise become live
+ * content in someone else's spreadsheet (CSV injection, CWE-1236).
+ */
+function csvCell(value: string): string {
+  const guarded = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return `"${guarded.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Lifetime fee-bearing volume (USD) for one wallet — the quantity XP is derived
+ * from (1 XP per $1, floored). Shared by GET /xp/:wallet and POST /rewards/claim
+ * so a reward can never be claimed against a different balance than the one the
+ * page displayed. Fee-gated exactly like the `wallets` matview (volume_fee_bps = 0
+ * means examined-and-fee-free, which must not mint XP) and restricted to
+ * production chains so testnet dust never unlocks a perk.
+ */
+async function lifetimeFeeBearingVolumeUsd(wallet: `0x${string}`): Promise<number> {
+  const walletBuf = Buffer.from(wallet.slice(2), 'hex');
+  const chainIds = [...PRODUCTION_CHAIN_IDS];
+  const rows = await sql<{ vol: string }[]>`
+    SELECT COALESCE(SUM(value_usd), 0)::text AS vol
+    FROM trades
+    WHERE wallet = ${walletBuf}
+      AND chain_id = ANY(${chainIds})
+      AND value_usd IS NOT NULL
+      AND (volume_fee_bps IS NULL OR volume_fee_bps > 0)
+  `;
+  return Number(rows[0]?.vol ?? '0');
 }
 
 function isTrustedProxyPeer(addr: string): boolean {
@@ -1044,17 +1082,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     if (!(await admitTrackedWallet(raw as `0x${string}`))) {
       return reply.code(429).send({ error: 'rebate enrollment queue is full; place an Ophis order or retry later' });
     }
-    const walletBuf = Buffer.from(raw.slice(2), 'hex');
-    const chainIds = [...PRODUCTION_CHAIN_IDS];
-    const rows = await sql<{ vol: string }[]>`
-      SELECT COALESCE(SUM(value_usd), 0)::text AS vol
-      FROM trades
-      WHERE wallet = ${walletBuf}
-        AND chain_id = ANY(${chainIds})
-        AND value_usd IS NOT NULL
-        AND (volume_fee_bps IS NULL OR volume_fee_bps > 0)
-    `;
-    const lifetimeVolumeUsd = Number(rows[0]?.vol ?? '0');
+    const lifetimeVolumeUsd = await lifetimeFeeBearingVolumeUsd(raw as `0x${string}`);
     reply.header('vary', 'Origin');
     reply.header('cache-control', 'public, max-age=60');
     return {
@@ -1063,6 +1091,176 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       lifetimeVolumeUsd,
       generatedAt: new Date().toISOString(),
     };
+  });
+
+  // ─── Reward claims ───────────────────────────────────────────────────────
+
+  // Record a reward claim. PUBLIC + rate-limited + SIGNATURE-gated.
+  //
+  // This is what makes a claim EXIST. The /rewards page previously ended its
+  // claim flow at a `mailto:` link, so a partner-fulfilled perk had no claim
+  // list at all — only whatever mail happened to arrive. Partners (Octav) need
+  // (address, email) pairs to issue codes, so the claim is persisted here.
+  //
+  // Nothing from the client is trusted for eligibility: the signature proves the
+  // caller controls `wallet` (same EIP-191 mechanism as /ref/codes, namespaced
+  // by the `claim reward <id>` action so a dashboard signature cannot be
+  // replayed into a claim), the XP threshold comes from the server-side catalog,
+  // and the XP balance is recomputed here from indexed trades.
+  //
+  // Idempotent by (wallet, reward): a repeat claim updates the email — someone
+  // fixing a typo — instead of adding a row the partner would mail twice.
+  app.post<{
+    Body: {
+      wallet?: string;
+      rewardId?: string;
+      email?: string;
+      consentSharePartner?: boolean;
+      issued?: number;
+      signature?: string;
+    };
+  }>('/rewards/claim', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    const wallet = String(req.body?.wallet ?? '').toLowerCase();
+    const rewardId = String(req.body?.rewardId ?? '');
+    // Trim only — the local part of an address is case-sensitive per RFC 5321,
+    // and this address is what the partner actually mails the code to.
+    const email = String(req.body?.email ?? '').trim();
+    const issued = Number(req.body?.issued);
+    const signature = String(req.body?.signature ?? '');
+
+    if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
+    if (!/^[a-z0-9-]{2,64}$/.test(rewardId)) return reply.code(400).send({ error: 'invalid rewardId' });
+    // Deliberately permissive shape check (no attempt at RFC 5322): reject the
+    // obviously-unmailable and let the partner's mailer be the real judge. The
+    // 254-char cap is the SMTP path limit.
+    if (email.length > 254 || !/^[^\s@,;:<>"]+@[^\s@,;:<>".]+\.[a-z]{2,}$/i.test(email)) {
+      return reply.code(400).send({ error: 'invalid email address' });
+    }
+    // The email is collected ONLY to pass to the partner, so an unconsented
+    // claim has no lawful purpose — refuse it rather than storing it.
+    if (req.body?.consentSharePartner !== true) {
+      return reply.code(400).send({ error: 'consent to share the email with the partner is required' });
+    }
+    if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
+    if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
+
+    const reward = findReward(rewardId);
+    if (!reward) return reply.code(404).send({ error: 'unknown reward' });
+    // Self-service perks ship a public code + affiliate link in the client
+    // bundle; there is no partner hand-off, so collecting an email for one would
+    // be storing PII with no purpose to serve.
+    if (!reward.partnerFulfilled) {
+      return reply.code(400).send({ error: 'this reward is redeemed in-app and needs no claim' });
+    }
+
+    // Prove control of `wallet` before any DB write. Rebuilds
+    // `Ophis claim reward <id>\nAddress: <wallet>\nIssued: <issued>` — byte-identical
+    // to what the frontend signs — and enforces the 5-minute replay window.
+    const auth = await verifyPartnerAuth({
+      action: `claim reward ${rewardId}`,
+      address: wallet,
+      issued,
+      signature: signature as `0x${string}`,
+      nowSec: Math.floor(Date.now() / 1000),
+    });
+    if (!auth.ok) return reply.code(401).send({ error: auth.reason });
+
+    // Eligibility from the server's own index, against the server's own
+    // threshold. A client that fakes its XP still cannot claim.
+    const xp = Math.floor(await lifetimeFeeBearingVolumeUsd(auth.address));
+    if (xp < reward.xpRequired) {
+      return reply.code(403).send({ error: 'wallet has not reached the XP threshold for this reward' });
+    }
+
+    // Store the RECOVERED address, not the raw body field.
+    const walletBuf = Buffer.from(auth.address.slice(2), 'hex');
+    const rows = await sql<{ first_claim: boolean }[]>`
+      INSERT INTO reward_claims (wallet, reward_id, email, consent_share_partner, xp_at_claim, signature, issued)
+      VALUES (${walletBuf}, ${rewardId}, ${email}, true, ${xp}, ${signature}, ${issued})
+      ON CONFLICT (wallet, reward_id) DO UPDATE
+        SET email      = EXCLUDED.email,
+            signature  = EXCLUDED.signature,
+            issued     = EXCLUDED.issued,
+            updated_at = now()
+      RETURNING (reward_claims.claimed_at = reward_claims.updated_at) AS first_claim
+    `;
+    return { claimed: true, rewardId, xp, alreadyClaimed: rows[0]?.first_claim === false };
+  });
+
+  // Partner-facing claim export. ADMIN-ONLY (bearer token) — it is a list of
+  // wallet addresses paired with email addresses, i.e. exactly the deanonymizing
+  // join the rest of this API is built to avoid handing out.
+  //
+  //   GET /rewards/claims?reward=octav-20&format=csv[&since=<ISO-8601>]
+  //
+  // `since` filters on updated_at so a follow-up share only carries what is new
+  // since the last hand-off. CSV is the format partners actually want.
+  app.get<{ Querystring: { reward?: string; since?: string; format?: string } }>('/rewards/claims', {
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    if (!assertAdminAuth(req, reply)) return reply;
+
+    const rewardId = req.query.reward;
+    if (rewardId !== undefined && !/^[a-z0-9-]{2,64}$/.test(rewardId)) {
+      return reply.code(400).send({ error: 'invalid reward filter' });
+    }
+    let since: Date | undefined;
+    if (req.query.since !== undefined) {
+      since = new Date(req.query.since);
+      if (Number.isNaN(since.getTime())) return reply.code(400).send({ error: 'invalid since timestamp' });
+    }
+    const format = req.query.format ?? 'json';
+    if (format !== 'json' && format !== 'csv') {
+      return reply.code(400).send({ error: 'invalid format (json|csv)' });
+    }
+
+    const rows = await sql<{
+      wallet_hex: string;
+      reward_id: string;
+      email: string;
+      xp_at_claim: string;
+      claimed_at: string;
+      updated_at: string;
+    }[]>`
+      SELECT encode(wallet, 'hex') AS wallet_hex,
+             reward_id,
+             email,
+             xp_at_claim::text AS xp_at_claim,
+             claimed_at::text  AS claimed_at,
+             updated_at::text  AS updated_at
+      FROM reward_claims
+      WHERE (${rewardId ?? null}::text IS NULL OR reward_id = ${rewardId ?? null})
+        AND (${since ?? null}::timestamptz IS NULL OR updated_at >= ${since ?? null})
+      ORDER BY updated_at DESC
+    `;
+
+    // Never cached, never indexed: this response is the PII join.
+    reply.header('cache-control', 'no-store');
+    reply.header('X-Robots-Tag', 'noindex');
+
+    const claims = rows.map((r) => ({
+      wallet: `0x${r.wallet_hex}`,
+      rewardId: r.reward_id,
+      email: r.email,
+      xpAtClaim: Number(r.xp_at_claim),
+      claimedAt: r.claimed_at,
+      updatedAt: r.updated_at,
+    }));
+
+    if (format === 'csv') {
+      const header = 'wallet,reward_id,email,xp_at_claim,claimed_at,updated_at';
+      const body = claims
+        .map((c) => [c.wallet, c.rewardId, c.email, String(c.xpAtClaim), c.claimedAt, c.updatedAt].map(csvCell).join(','))
+        .join('\n');
+      return reply
+        .type('text/csv; charset=utf-8')
+        .header('content-disposition', `attachment; filename="reward-claims-${rewardId ?? 'all'}.csv"`)
+        .send(`${header}\n${body}${body ? '\n' : ''}`);
+    }
+
+    return { total: claims.length, generatedAt: new Date().toISOString(), claims };
   });
 
   // Rate-limit 404s too — otherwise an attacker hitting random paths

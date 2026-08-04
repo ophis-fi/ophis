@@ -182,3 +182,64 @@ export const ClaimNote = styled.span`
   opacity: 0.6;
   line-height: 1.4;
 `
+
+/* Claim form (partner-fulfilled perks): email + consent, posted to the rebate
+   indexer so the partner has a list to issue codes from. */
+export const ClaimForm = styled.form`
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+`
+
+export const ClaimLabel = styled.label`
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 500;
+  opacity: 0.8;
+`
+
+export const ClaimInput = styled.input`
+  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-size: 14px;
+  color: inherit;
+  background: rgba(8, 4, 24, 0.4);
+  border: 1px solid rgba(245, 239, 230, 0.18);
+  border-radius: 10px;
+  padding: 9px 12px;
+  transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+
+  &::placeholder {
+    opacity: 0.4;
+  }
+  &:focus {
+    outline: none;
+    border-color: #f2a63e;
+    box-shadow: 0 0 0 3px rgba(242, 166, 62, 0.18);
+  }
+  &:disabled {
+    opacity: 0.6;
+  }
+`
+
+/* Consent row: the checkbox must sit beside the first line of its label, not be
+   stretched by the flex row, hence the fixed-size, no-shrink input. */
+export const ConsentRow = styled.label`
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.75;
+  cursor: pointer;
+
+  > input {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    accent-color: #f2a63e;
+    cursor: pointer;
+  }
+`

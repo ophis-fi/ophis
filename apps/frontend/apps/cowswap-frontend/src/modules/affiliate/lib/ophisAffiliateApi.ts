@@ -285,6 +285,47 @@ export function getRankStatus(wallet: string): Promise<RankStatus> {
   }).then((res) => parseJson<RankStatus>(res))
 }
 
+/**
+ * Body for POST /rewards/claim. The claim is signature-gated on the SAME
+ * `claim reward <id>` message the card already has the wallet sign, so the
+ * ownership proof is reused rather than prompting a second time.
+ *
+ * `consentSharePartner` must be true: the email exists only to be handed to the
+ * partner who issues the code, and the backend refuses a claim without the
+ * claimer's agreement to that transfer (it is recorded per-row).
+ */
+export interface RewardClaimRequestBody {
+  wallet: string
+  rewardId: string
+  email: string
+  consentSharePartner: boolean
+  issued: number
+  signature: string
+}
+
+export interface RewardClaimResponse {
+  claimed: boolean
+  rewardId: string
+  /** Server-computed XP at claim time (the client's own figure is never trusted). */
+  xp: number
+  /** True when this wallet had already claimed this reward (the email was updated). */
+  alreadyClaimed: boolean
+}
+
+/**
+ * Record a reward claim so the partner can issue the code. Eligibility and the
+ * XP threshold are re-checked server-side; a 403 means the wallet is below the
+ * threshold, a 401 that the signature did not verify.
+ */
+export function submitRewardClaim(body: RewardClaimRequestBody): Promise<RewardClaimResponse> {
+  return fetch(`${REBATES_API}/rewards/claim`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: timeoutSignal(),
+  }).then((res) => parseJson<RewardClaimResponse>(res))
+}
+
 export function getPartnerDashboard(body: SignedRequestBody): Promise<PartnerDashboard> {
   return fetch(`${REBATES_API}/partner`, {
     method: 'POST',

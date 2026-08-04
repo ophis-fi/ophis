@@ -452,3 +452,31 @@ export const partnerFeeBatchEntries = pgTable(
     recipientIdx: index('partner_fee_batch_entries_recipient_idx').on(t.recipient),
   }),
 );
+
+// Reward claims (migration 0025). One row per (wallet, reward): who claimed which
+// partner perk, and the email the partner mails the code to. Re-claiming UPDATES
+// the row (email correction) rather than duplicating it.
+//
+// `email` is PII collected for a single declared purpose — handing it to the named
+// partner — and `consentSharePartner` records the claimer's agreement to that
+// transfer (the API refuses a claim without it). `signature`/`issued` keep the
+// EIP-191 ownership proof re-verifiable offline.
+export const rewardClaims = pgTable(
+  'reward_claims',
+  {
+    wallet: bytea('wallet').notNull(),
+    rewardId: text('reward_id').notNull(),
+    email: text('email').notNull(),
+    consentSharePartner: boolean('consent_share_partner').notNull(),
+    // Server-computed XP at claim time (never taken from the client).
+    xpAtClaim: bigint('xp_at_claim', { mode: 'number' }).notNull(),
+    signature: text('signature').notNull(),
+    issued: bigint('issued', { mode: 'number' }).notNull(),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.wallet, t.rewardId] }),
+    rewardUpdatedIdx: index('reward_claims_reward_updated_idx').on(t.rewardId, t.updatedAt),
+  }),
+);
