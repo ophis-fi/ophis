@@ -11,8 +11,9 @@
 
 const CHAIN_ID = 4663;
 const PONS_ORIGIN = 'https://www.ponsfamily.com';
+const TRUSTED_ROBINHOOD_RPC = 'https://rpc.mainnet.chain.robinhood.com';
 const ROBINHOOD_RPCS = [
-  'https://rpc.mainnet.chain.robinhood.com',
+  TRUSTED_ROBINHOOD_RPC,
   'https://hood-rpc.pastrylabs.cloud',
   'https://rpc.arrowrpc.com',
 ];
@@ -28,11 +29,11 @@ const FACTORIES = new Set([
 ]);
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const MAX_TEXT_LENGTH = 100;
-const TIMEOUT_MS = 15_000;
+const TIMEOUT_MS = 25_000;
 const CACHE_SECONDS = 300;
 const LAST_KNOWN_GOOD_SECONDS = 86_400;
 const RPC_BATCH_SIZE = 20;
-const RPC_CONCURRENCY = 2;
+const RPC_CONCURRENCY = 1;
 const RPC_ATTEMPT_TIMEOUT_MS = 3_500;
 const RPC_QUORUM = 2;
 const REFERENCE_PONS: PonsLaunch = {
@@ -276,7 +277,19 @@ export async function verifyLaunchesOnchain(
       remaining.delete(settled.index);
       if (settled.value) verifiedSets.push(settled.value);
 
-      if (verifiedSets.length + remaining.size < RPC_QUORUM) {
+      // Robinhood's chain-operated endpoint is authoritative for current
+      // mainnet state. Public mirrors still provide a 2-of-2 fallback, but a
+      // mirror outage must not suppress tuples verified by the chain itself.
+      if (settled.value && ROBINHOOD_RPCS[settled.index] === TRUSTED_ROBINHOOD_RPC) {
+        for (const index of remaining.keys()) attempts[index]!.abort();
+        return chunk.filter((_launch, itemIndex) =>
+          settled.value?.has(chunkIndex * RPC_BATCH_SIZE + itemIndex),
+        );
+      }
+
+      const trustedIndex = ROBINHOOD_RPCS.indexOf(TRUSTED_ROBINHOOD_RPC);
+      const trustedPending = remaining.has(trustedIndex);
+      if (!trustedPending && verifiedSets.length + remaining.size < RPC_QUORUM) {
         for (const index of remaining.keys()) attempts[index]!.abort();
         throw new Error('Robinhood RPC quorum unavailable');
       }
@@ -289,6 +302,7 @@ export async function verifyLaunchesOnchain(
           [...candidate].every((token) => settled.value?.has(token)),
       );
       if (matching) {
+        if (trustedPending) continue;
         for (const index of remaining.keys()) attempts[index]!.abort();
         return chunk.filter((_launch, itemIndex) =>
           matching.has(chunkIndex * RPC_BATCH_SIZE + itemIndex),
@@ -304,9 +318,8 @@ export async function verifyLaunchesOnchain(
     });
   };
 
-  // Robinhood's public RPC intermittently rate-limits a six-request burst.
-  // Two-way bounded concurrency avoids that burst without accumulating all six
-  // RPC latencies under the shared end-to-end deadline.
+  // Robinhood's public RPC rate-limits shared Cloudflare egress. Sequential
+  // batches keep the authoritative path below that limit.
   for (let start = 0; start < chunks.length; start += RPC_CONCURRENCY) {
     const group = chunks.slice(start, start + RPC_CONCURRENCY);
     verifiedChunks.push(
