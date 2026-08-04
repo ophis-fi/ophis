@@ -108,7 +108,7 @@ export function RewardsPage(): ReactNode {
           </li>
           <li>
             Some partners issue their codes themselves. Those rewards ask for an email, used only
-            to contact you about the reward you claimed — never for marketing or any other
+            to contact you about the reward you claimed, never for marketing or any other
             commercial purpose.
           </li>
           <li>

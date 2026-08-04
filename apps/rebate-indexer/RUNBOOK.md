@@ -108,7 +108,7 @@ and routes its single hostname to Caddy on `127.0.0.1:80`.
 
 Partner-fulfilled perks (currently `octav-20`) are issued by the PARTNER, not by
 Ophis, so the partner needs the list of who claimed. Claims land in
-`reward_claims` via `POST /rewards/claim` — signature-gated, XP re-checked
+`reward_claims` via `POST /rewards/claim`: signature-gated, XP re-checked
 server-side, one row per (wallet, reward).
 
 Export the list (admin token, from Cadia or over the tunnel):
@@ -119,7 +119,7 @@ curl -fsS -H "Authorization: Bearer $REBATE_INDEXER_ADMIN_TOKEN" \
   -o octav-claims.csv
 ```
 
-For a follow-up hand-off, send only what is new since the last one — `since`
+For a follow-up hand-off, send only what is new since the last one. `since`
 filters on `updated_at`, so it also catches a claimer who corrected their email:
 
 ```bash
@@ -132,7 +132,7 @@ Columns: `wallet, reward_id, email, xp_at_claim, claimed_at, updated_at`. Send
 the partner **only** the columns they need to issue codes (`wallet`, `email`);
 `xp_at_claim` is the eligibility evidence Ophis keeps.
 
-Handling rules — this file is a wallet↔email join, the one piece of directly
+Handling rules. This file is a wallet↔email join, the one piece of directly
 identifying data this system holds. Claimers are told the email is used only to
 contact them about the reward they claimed, never for marketing or any other
 commercial purpose; that promise binds what these exports may be used for:
@@ -142,9 +142,9 @@ commercial purpose; that promise binds what these exports may be used for:
   delete the local copy afterwards.
 - `?format=json` exists for scripting; `format=csv` is what partners want. Both
   are `no-store` and admin-only.
-- Never load an export into a mailing list, CRM, or any commercial outreach —
-  the claim form promises the address is used only for this reward.
-- Deletion requests: delete the row, then tell the partner —
+- Never load an export into a mailing list, CRM, or any commercial outreach.
+  The claim form promises the address is used only for this reward.
+- Deletion requests: delete the row, then tell the partner.
   `DELETE FROM reward_claims WHERE wallet = decode('<addr-no-0x>','hex') AND reward_id = '<id>';`
 - Adding a partner-fulfilled perk means adding it to BOTH catalogs:
   `src/rewards.ts` here (the authority for claims + thresholds) and

@@ -10,8 +10,8 @@
 -- claim UPDATES the email (someone correcting a typo) instead of inserting a
 -- duplicate the partner would mail twice.
 --
--- `email` is collected for ONE purpose: contacting the claimer about this reward
--- — in practice, passing it to the named partner so they can send the code. It is
+-- `email` is collected for ONE purpose: contacting the claimer about this reward,
+-- in practice by passing it to the named partner so they can send the code. It is
 -- not a marketing list and must not be used for one. The signed proof
 -- (`signature` over `Ophis claim reward <id>\nAddress: ...\nIssued: ...`) makes
 -- every row attributable to a wallet that provably asked for it.

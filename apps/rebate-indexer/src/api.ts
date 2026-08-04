@@ -272,7 +272,7 @@ function csvCell(value: string): string {
 }
 
 /**
- * Lifetime fee-bearing volume (USD) for one wallet — the quantity XP is derived
+ * Lifetime fee-bearing volume (USD) for one wallet: the quantity XP is derived
  * from (1 XP per $1, floored). Shared by GET /xp/:wallet and POST /rewards/claim
  * so a reward can never be claimed against a different balance than the one the
  * page displayed. Fee-gated exactly like the `wallets` matview (volume_fee_bps = 0
@@ -1099,7 +1099,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   //
   // This is what makes a claim EXIST. The /rewards page previously ended its
   // claim flow at a `mailto:` link, so a partner-fulfilled perk had no claim
-  // list at all — only whatever mail happened to arrive. Partners (Octav) need
+  // list at all, only whatever mail happened to arrive. Partners (Octav) need
   // (address, email) pairs to issue codes, so the claim is persisted here.
   //
   // Nothing from the client is trusted for eligibility: the signature proves the
@@ -1108,8 +1108,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // replayed into a claim), the XP threshold comes from the server-side catalog,
   // and the XP balance is recomputed here from indexed trades.
   //
-  // Idempotent by (wallet, reward): a repeat claim updates the email — someone
-  // fixing a typo — instead of adding a row the partner would mail twice.
+  // Idempotent by (wallet, reward): a repeat claim updates the email (someone
+  // fixing a typo) instead of adding a row the partner would mail twice.
   app.post<{
     Body: {
       wallet?: string;
@@ -1123,7 +1123,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   }, async (req, reply) => {
     const wallet = String(req.body?.wallet ?? '').toLowerCase();
     const rewardId = String(req.body?.rewardId ?? '');
-    // Trim only — the local part of an address is case-sensitive per RFC 5321,
+    // Trim only: the local part of an address is case-sensitive per RFC 5321,
     // and this address is what the partner actually mails the code to.
     const email = String(req.body?.email ?? '').trim();
     const issued = Number(req.body?.issued);
@@ -1150,8 +1150,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     }
 
     // Prove control of `wallet` before any DB write. Rebuilds
-    // `Ophis claim reward <id>\nAddress: <wallet>\nIssued: <issued>` — byte-identical
-    // to what the frontend signs — and enforces the 5-minute replay window.
+    // `Ophis claim reward <id>\nAddress: <wallet>\nIssued: <issued>`, byte-identical
+    // to what the frontend signs, and enforces the 5-minute replay window.
     const auth = await verifyPartnerAuth({
       action: `claim reward ${rewardId}`,
       address: wallet,
@@ -1183,7 +1183,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     return { claimed: true, rewardId, xp, alreadyClaimed: rows[0]?.first_claim === false };
   });
 
-  // Partner-facing claim export. ADMIN-ONLY (bearer token) — it is a list of
+  // Partner-facing claim export. ADMIN-ONLY (bearer token): it is a list of
   // wallet addresses paired with email addresses, i.e. exactly the deanonymizing
   // join the rest of this API is built to avoid handing out.
   //

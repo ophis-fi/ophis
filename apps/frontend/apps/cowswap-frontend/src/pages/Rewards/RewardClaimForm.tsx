@@ -1,14 +1,14 @@
 /**
- * RewardClaimForm — email capture for partner-fulfilled perks.
+ * RewardClaimForm: email capture for partner-fulfilled perks.
  *
  * Rendered only AFTER the address validation in RewardCard succeeds, so the
  * signature that proves wallet ownership already exists and is reused as the
  * claim's auth (no second wallet prompt).
  *
- * The email is collected for one purpose only — contacting the claimer about
- * this reward, i.e. the partner sending the code — and the form says so.
+ * The email is collected for one purpose only: contacting the claimer about
+ * this reward, i.e. the partner sending the code. The form says so.
  *
- * Why it exists: perks like Octav have no in-app code — the partner issues the
+ * Why it exists: perks like Octav have no in-app code. The partner issues the
  * codes, which means Ophis has to hand them a list of who claimed. The previous
  * flow ended at a `mailto:` link, so a claim only existed if the visitor
  * actually sent the pre-filled mail; there was no claim list at all. This posts
@@ -121,7 +121,7 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
         />
       </styledEl.ClaimLabel>
       <styledEl.ClaimNote>
-        We only use your email to contact you about this reward — {perk.partner} needs it to send
+        We only use your email to contact you about this reward. {perk.partner} needs it to send
         your code. No marketing, no commercial use.
       </styledEl.ClaimNote>
       <styledEl.ClaimActionButton type="submit" disabled={state.step === 'sending'}>
@@ -135,8 +135,8 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
               You can also{' '}
               <TextLink href={claimHref(perk, wallet, issued, signature)}>
                 request it by email
-              </TextLink>{' '}
-              — the message carries the same signed proof.
+              </TextLink>
+              . The message carries the same signed proof.
             </>
           )}
         </styledEl.ClaimNote>

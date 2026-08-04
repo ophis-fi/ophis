@@ -36,7 +36,7 @@ export interface RewardPerk {
    * the codes, so the validated panel renders RewardClaimForm, which records
    * the claim (address + email) via POST /rewards/claim for the
    * hand-off. A partner-fulfilled perk must also be listed in the indexer's
-   * server-side catalog (apps/rebate-indexer/src/rewards.ts) — that copy is the
+   * server-side catalog (apps/rebate-indexer/src/rewards.ts). That copy is the
    * authority for what can be claimed and at which XP threshold.
    */
   code?: string

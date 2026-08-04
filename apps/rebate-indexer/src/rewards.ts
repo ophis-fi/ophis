@@ -2,8 +2,8 @@
  * Server-side reward catalog.
  *
  * MUST stay in sync with the frontend catalog at
- * apps/frontend/apps/cowswap-frontend/src/pages/Rewards/rewards.const.ts —
- * the frontend copy drives what is RENDERED, this copy is the AUTHORITY for
+ * apps/frontend/apps/cowswap-frontend/src/pages/Rewards/rewards.const.ts.
+ * The frontend copy drives what is RENDERED, this copy is the AUTHORITY for
  * what can be CLAIMED. The XP threshold is duplicated on purpose: the claim
  * endpoint must never take an eligibility threshold (or an XP balance) from the
  * client, so it re-checks against this table using its own indexed volume.

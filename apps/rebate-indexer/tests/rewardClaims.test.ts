@@ -78,7 +78,7 @@ test('a valid claim above the threshold is recorded with the server-computed XP'
 
   expect(res.statusCode).toBe(200);
   expect(res.json).toMatchObject({ claimed: true, rewardId: 'octav-20', xp: 51234, alreadyClaimed: false });
-  // The email and the FLOORED server-side XP are what get persisted — never a
+  // The email and the FLOORED server-side XP are what get persisted, never a
   // client-supplied balance.
   expect(lastInsert).toContain('trader@example.com');
   expect(lastInsert).toContain(51234);
