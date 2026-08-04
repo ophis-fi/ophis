@@ -9,8 +9,9 @@
  *                    action, so the team can recover and verify the signer).
  *   4. validated   : the reward is unblocked for that address -> redemption
  *                    panel. Perks with an in-app `code`/`redeemUrl` show the
- *                    code plus a shop link; the rest fall back to an email
- *                    request carrying the signed proof.
+ *                    code plus a shop link; partner-fulfilled perks render
+ *                    RewardClaimForm, which records the claim (address + email)
+ *                    so the partner has a list to issue codes from.
  *
  * The reward only unblocks AFTER the address validation succeeds; eligibility
  * alone (step 2) never reveals redemption content.
@@ -22,6 +23,7 @@ import { useAccountType, useIsSmartContractWallet } from '@cowprotocol/wallet'
 
 import { useOphisAffiliateSign } from 'modules/affiliate'
 
+import { RewardClaimForm } from './RewardClaimForm'
 import * as styledEl from './Rewards.styled'
 import { CLAIM_EMAIL, RewardPerk } from './rewards.const'
 
@@ -33,19 +35,6 @@ function formatXp(value: number): string {
 
 function truncateAddress(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
-}
-
-function claimHref(perk: RewardPerk, account: string, issued: number, signature: string): string {
-  const subject = `Reward claim: ${perk.title}`
-  const body = [
-    `Reward: ${perk.id}`,
-    `Address: ${account}`,
-    `Issued: ${issued}`,
-    `Signature: ${signature}`,
-    '',
-    `Please send my ${perk.partner} discount code to this email address.`,
-  ].join('\n')
-  return `mailto:${CLAIM_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
 }
 
 type ClaimState =
@@ -177,14 +166,12 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
                 </styledEl.ClaimNote>
               </>
             ) : (
-              <>
-                <styledEl.ClaimButton href={claimHref(perk, claim.wallet, claim.issued, claim.signature)}>
-                  Request your code by email
-                </styledEl.ClaimButton>
-                <styledEl.ClaimNote>
-                  The email includes your signed proof; the {perk.partner} code is sent back after a quick check.
-                </styledEl.ClaimNote>
-              </>
+              <RewardClaimForm
+                perk={perk}
+                wallet={claim.wallet}
+                issued={claim.issued}
+                signature={claim.signature}
+              />
             )}
           </styledEl.ClaimPanel>
         ) : isSmartContractWallet ? (

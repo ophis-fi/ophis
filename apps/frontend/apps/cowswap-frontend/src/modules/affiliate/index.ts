@@ -21,6 +21,7 @@ export {
   getRankStatus,
   getWalletXp,
   lookupRefCode,
+  submitRewardClaim,
 } from './lib/ophisAffiliateApi'
 export type {
   AffiliateKind,
@@ -35,6 +36,8 @@ export type {
   RefBindResponse,
   RefCodeCreateResponse,
   RefLookupResponse,
+  RewardClaimRequestBody,
+  RewardClaimResponse,
   SignedRequestBody,
   WalletXp,
 } from './lib/ophisAffiliateApi'

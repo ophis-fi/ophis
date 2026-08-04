@@ -30,8 +30,14 @@ export interface RewardPerk {
    * the client bundle, so use them ONLY for public, shareable partner codes
    * (e.g. a broadcast affiliate code) — never a secret or per-address code. A
    * gated secret would need a server that releases it after verifying the
-   * signature. Provide either, both, or neither. Perks without these (e.g.
-   * Octav) keep the email-claim flow unchanged.
+   * signature. Provide either, both, or neither.
+   *
+   * Perks with NEITHER are partner-fulfilled (e.g. Octav): the partner issues
+   * the codes, so the validated panel renders RewardClaimForm, which records
+   * the claim (address + email) via POST /rewards/claim for the
+   * hand-off. A partner-fulfilled perk must also be listed in the indexer's
+   * server-side catalog (apps/rebate-indexer/src/rewards.ts). That copy is the
+   * authority for what can be claimed and at which XP threshold.
    */
   code?: string
   redeemUrl?: string

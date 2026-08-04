@@ -104,6 +104,53 @@ and routes its single hostname to Caddy on `127.0.0.1:80`.
 5. Do not create a replacement tunnel or DNS record during an incident; the
    persistent tunnel ID and hostname route remain the production identity.
 
+### Handing reward claims to a partner (Octav)
+
+Partner-fulfilled perks (currently `octav-20`) are issued by the PARTNER, not by
+Ophis, so the partner needs the list of who claimed. Claims land in
+`reward_claims` via `POST /rewards/claim`: signature-gated, XP re-checked
+server-side, one row per (wallet, reward).
+
+Export the list (admin token, from Cadia or over the tunnel):
+
+```bash
+curl -fsS -H "Authorization: Bearer $REBATE_INDEXER_ADMIN_TOKEN" \
+  'https://rebates.ophis.fi/rewards/claims?reward=octav-20&format=csv' \
+  -o octav-claims.csv
+```
+
+For a follow-up hand-off, send only what is new since the last one. `since`
+filters on `updated_at`, so it also catches a claimer who corrected their email:
+
+```bash
+curl -fsS -H "Authorization: Bearer $REBATE_INDEXER_ADMIN_TOKEN" \
+  'https://rebates.ophis.fi/rewards/claims?reward=octav-20&format=csv&since=2026-08-01T00:00:00Z' \
+  -o octav-claims-delta.csv
+```
+
+Columns: `wallet, reward_id, email, xp_at_claim, claimed_at, updated_at`. Send
+the partner **only** the columns they need to issue codes (`wallet`, `email`);
+`xp_at_claim` is the eligibility evidence Ophis keeps.
+
+Handling rules. This file is a wallet↔email join, the one piece of directly
+identifying data this system holds. Claimers are told the email is used only to
+contact them about the reward they claimed, never for marketing or any other
+commercial purpose; that promise binds what these exports may be used for:
+
+- Never commit an export, never post it in a shared channel, and never attach it
+  to a ticket. Send it to the partner contact over an agreed private channel and
+  delete the local copy afterwards.
+- `?format=json` exists for scripting; `format=csv` is what partners want. Both
+  are `no-store` and admin-only.
+- Never load an export into a mailing list, CRM, or any commercial outreach.
+  The claim form promises the address is used only for this reward.
+- Deletion requests: delete the row, then tell the partner.
+  `DELETE FROM reward_claims WHERE wallet = decode('<addr-no-0x>','hex') AND reward_id = '<id>';`
+- Adding a partner-fulfilled perk means adding it to BOTH catalogs:
+  `src/rewards.ts` here (the authority for claims + thresholds) and
+  `apps/frontend/.../pages/Rewards/rewards.const.ts` (what renders). A perk
+  missing from this side cannot be claimed at all.
+
 ### Adding a new chain to the payout footprint (post-Phase-1)
 Out of scope for v1. When ready, edit `src/safe/addresses.ts` `WETH_BY_CHAIN`, deploy the Safe MultiSendCallOnly on the new chain (CREATE2 via `@safe-global/safe-deployments`), and bridge WETH to that chain's Safe address.
 
