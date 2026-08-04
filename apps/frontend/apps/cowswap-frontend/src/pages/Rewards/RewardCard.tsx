@@ -1,20 +1,20 @@
 /**
- * RewardCard — one partner reward with the claim state machine.
+ * RewardCard: one partner reward, with two distinct claim paths.
  *
- * Claim flow (in order):
- *   1. locked      : connected address below the XP threshold -> progress bar.
- *   2. eligible    : address meets the threshold -> "Claim reward" CTA.
- *   3. validating  : ownership check - the address signs `claim reward <id>`
- *                    (EIP-191, same message shape as every other Ophis signed
- *                    action, so the team can recover and verify the signer).
- *   4. validated   : the reward is unblocked for that address -> redemption
- *                    panel. Perks with an in-app `code`/`redeemUrl` show the
- *                    code plus a shop link; partner-fulfilled perks render
- *                    RewardClaimForm, which records the claim (address + email)
- *                    so the partner has a list to issue codes from.
+ * Both start the same way: below the XP threshold the card shows a progress
+ * bar, and nothing is revealed on eligibility alone. What follows depends on
+ * how the perk is fulfilled.
  *
- * The reward only unblocks AFTER the address validation succeeds; eligibility
- * alone (step 2) never reveals redemption content.
+ * SELF-SERVICE perks (an in-app `code` / `redeemUrl`) keep the sign-to-reveal
+ * machine that lives here: "Claim reward" -> the address signs
+ * `claim reward <id>` -> the code and shop link appear. The signature is the
+ * gate on revealing content, so it has to come first.
+ *
+ * PARTNER-FULFILLED perks (neither field) delegate to RewardClaimForm, which
+ * collects the email BEFORE signing, because the signed message binds the
+ * destination (`claim reward <id> for <email>`). There is nothing to reveal
+ * here, so a pre-signature would only produce a proof that goes stale in an
+ * open form and cannot cover where the code gets mailed.
  */
 import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
@@ -62,6 +62,9 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
   // is the real loading signal we gate the claim button on (Codex review).
   const accountType = useAccountType()
   const [claim, setClaim] = useState<ClaimState>({ step: 'idle' })
+  // Partner-fulfilled perks own their flow in RewardClaimForm; this only drives
+  // the badge once that form reports a recorded claim.
+  const [claimRecorded, setClaimRecorded] = useState(false)
 
   // Latest account, for guarding async claim continuations against a wallet
   // switch that lands while the signature prompt is pending.
@@ -77,7 +80,12 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
   const accountKey = account ? getAddressKey(account) : undefined
   useEffect(() => {
     setClaim({ step: 'idle' })
+    setClaimRecorded(false)
   }, [accountKey])
+
+  // Perks that ship a redeemable code in the bundle are self-service; the rest
+  // are issued by the partner from the claim list.
+  const isSelfService = Boolean(perk.code || perk.redeemUrl)
 
   const isEligible = account !== undefined && xp !== null && xp >= perk.xpRequired
   // Compare addresses case-insensitively: a reconnect can re-emit the same
@@ -92,6 +100,10 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
     const startAccount = account
     setClaim({ step: 'validating' })
     try {
+      // Self-service only: this signature gates the on-page reveal and is never
+      // sent anywhere, so it stays the bare `claim reward <id>`. The backend's
+      // claim endpoint accepts only the email-bound form and rejects
+      // self-service rewards outright, so this can never authorize a claim.
       const signed = await sign(`claim reward ${perk.id}`)
       // Bail if the wallet actually changed during signing (case-insensitive:
       // a same-wallet reconnect can re-emit different casing). The
@@ -108,7 +120,7 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
 
   const badge = !isEligible ? (
     <Badge tone="planned">{`${formatXp(perk.xpRequired)} XP`}</Badge>
-  ) : isValidated ? (
+  ) : isValidated || claimRecorded ? (
     <Badge tone="live">Unlocked</Badge>
   ) : (
     <Badge tone="live">Eligible</Badge>
@@ -139,40 +151,29 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
                 : `${formatXp(xp)} / ${formatXp(perk.xpRequired)} XP`}
             </styledEl.ProgressLabel>
           </>
-        ) : isValidated && claim.step === 'validated' ? (
+        ) : isSelfService && isValidated && claim.step === 'validated' ? (
           <styledEl.ClaimPanel>
             <p>
               Address <strong>{truncateAddress(claim.wallet)}</strong> validated. Your reward is unlocked.
             </p>
-            {perk.code || perk.redeemUrl ? (
-              <>
-                {perk.code && (
-                  <styledEl.RedeemRow>
-                    <styledEl.ClaimNote>Code</styledEl.ClaimNote>
-                    <styledEl.CodeChip>{perk.code}</styledEl.CodeChip>
-                  </styledEl.RedeemRow>
-                )}
-                {perk.redeemUrl && (
-                  <styledEl.ClaimButton href={perk.redeemUrl} target="_blank" rel="noopener noreferrer">
-                    {perk.redeemLabel ?? `Shop ${perk.partner}`}
-                  </styledEl.ClaimButton>
-                )}
-                <styledEl.ClaimNote>
-                  {perk.code && perk.redeemUrl
-                    ? 'Use this link and enter the code above at checkout to get your discount.'
-                    : perk.code
-                      ? 'Enter the code above at checkout to get your discount.'
-                      : 'Shop through this link to get your discount.'}
-                </styledEl.ClaimNote>
-              </>
-            ) : (
-              <RewardClaimForm
-                perk={perk}
-                wallet={claim.wallet}
-                issued={claim.issued}
-                signature={claim.signature}
-              />
+            {perk.code && (
+              <styledEl.RedeemRow>
+                <styledEl.ClaimNote>Code</styledEl.ClaimNote>
+                <styledEl.CodeChip>{perk.code}</styledEl.CodeChip>
+              </styledEl.RedeemRow>
             )}
+            {perk.redeemUrl && (
+              <styledEl.ClaimButton href={perk.redeemUrl} target="_blank" rel="noopener noreferrer">
+                {perk.redeemLabel ?? `Shop ${perk.partner}`}
+              </styledEl.ClaimButton>
+            )}
+            <styledEl.ClaimNote>
+              {perk.code && perk.redeemUrl
+                ? 'Use this link and enter the code above at checkout to get your discount.'
+                : perk.code
+                  ? 'Enter the code above at checkout to get your discount.'
+                  : 'Shop through this link to get your discount.'}
+            </styledEl.ClaimNote>
           </styledEl.ClaimPanel>
         ) : isSmartContractWallet ? (
           <styledEl.ClaimPanel>
@@ -196,6 +197,13 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
             <styledEl.ClaimActionButton type="button" disabled>
               Checking wallet...
             </styledEl.ClaimActionButton>
+          </styledEl.ClaimPanel>
+        ) : !isSelfService && account ? (
+          // Partner-fulfilled: the form collects the email, signs a message that
+          // BINDS that email, and posts the claim. No pre-signature, so nothing
+          // can go stale between validating and submitting.
+          <styledEl.ClaimPanel>
+            <RewardClaimForm perk={perk} account={account} onClaimed={() => setClaimRecorded(true)} />
           </styledEl.ClaimPanel>
         ) : (
           <styledEl.ClaimPanel>

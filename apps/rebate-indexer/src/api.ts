@@ -1133,8 +1133,15 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     if (!/^[a-z0-9-]{2,64}$/.test(rewardId)) return reply.code(400).send({ error: 'invalid rewardId' });
     // Deliberately permissive shape check (no attempt at RFC 5322): reject the
     // obviously-unmailable and let the partner's mailer be the real judge. The
-    // 254-char cap is the SMTP path limit.
-    if (email.length > 254 || !/^[^\s@,;:<>"]+@[^\s@,;:<>".]+\.[a-z]{2,}$/i.test(email)) {
+    // 254-char cap is the SMTP path limit, checked FIRST so the pattern never
+    // runs on an unbounded string.
+    //
+    // The domain class must allow dots. An earlier version excluded them, which
+    // rejected every multi-label domain: not just `mail.example.co.uk` but the
+    // whole `.co.uk` / `.com.au` / `.co.jp` family, i.e. a large share of real
+    // addresses. Both classes exclude `@`, so the two halves cannot overlap and
+    // matching stays linear (no catastrophic backtracking on a 254-char input).
+    if (email.length > 254 || !/^[^\s@,;:<>"]+@[^\s@,;:<>"]+\.[a-z]{2,}$/i.test(email)) {
       return reply.code(400).send({ error: 'invalid email address' });
     }
     if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
@@ -1150,10 +1157,20 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     }
 
     // Prove control of `wallet` before any DB write. Rebuilds
-    // `Ophis claim reward <id>\nAddress: <wallet>\nIssued: <issued>`, byte-identical
-    // to what the frontend signs, and enforces the 5-minute replay window.
+    // `Ophis claim reward <id> for <email>\nAddress: <wallet>\nIssued: <issued>`,
+    // byte-identical to what the frontend signs, and enforces the 5-minute
+    // replay window.
+    //
+    // The EMAIL IS PART OF THE SIGNED MESSAGE, not just the body. It is the
+    // destination the partner mails the code to, so leaving it unsigned would
+    // make a captured signature (phished inside the replay window, say)
+    // replayable with an attacker's address swapped in: the victim's wallet
+    // proves eligibility, the attacker receives the code. Binding it means a
+    // signature authorizes exactly one (reward, email) pair and changing the
+    // email invalidates it. `email` here is the same trimmed string that gets
+    // stored, so the frontend can sign precisely what it sends.
     const auth = await verifyPartnerAuth({
-      action: `claim reward ${rewardId}`,
+      action: `claim reward ${rewardId} for ${email}`,
       address: wallet,
       issued,
       signature: signature as `0x${string}`,

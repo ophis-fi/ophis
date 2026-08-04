@@ -144,9 +144,11 @@ export type AffiliateSignedAction =
   // Bind is per-code, so the action string carries the code itself. The
   // backend rebuilds `bind referral code <code>` and byte-matches it.
   | `bind referral code ${string}`
-  // Rewards claim: proves the connected address owns the XP being claimed.
-  // Verified by the team on claim processing (recoverMessageAddress over the
-  // same `Ophis <action>\nAddress: ...\nIssued: ...` message shape).
+  // Rewards claim. The action carries BOTH the reward id and the destination
+  // email (`claim reward <id> for <email>`), so the signature authorizes exactly
+  // one (reward, email) pair: a captured signature cannot be replayed with a
+  // different address swapped in to redirect the partner's code. The backend
+  // rebuilds the identical string from the request body and byte-matches it.
   | `claim reward ${string}`
 
 export interface SignedRequestBody {
@@ -286,9 +288,9 @@ export function getRankStatus(wallet: string): Promise<RankStatus> {
 }
 
 /**
- * Body for POST /rewards/claim. The claim is signature-gated on the SAME
- * `claim reward <id>` message the card already has the wallet sign, so the
- * ownership proof is reused rather than prompting a second time.
+ * Body for POST /rewards/claim. Signature-gated on
+ * `claim reward <id> for <email>`, so the email must be known BEFORE signing
+ * and the proof covers where the code gets sent.
  *
  * `email` is collected for one purpose only: contacting the claimer about this
  * reward (the partner needs it to send the code). Never a marketing list.

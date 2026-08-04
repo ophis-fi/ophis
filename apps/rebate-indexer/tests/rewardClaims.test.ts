@@ -49,9 +49,15 @@ const { buildApiServer } = await import('../src/api.js');
 const account = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d');
 const WALLET = account.address.toLowerCase();
 
-async function signClaim(rewardId: string, issued: number, wallet = WALLET): Promise<string> {
+// The signed message BINDS the destination email, so the helper takes it too.
+async function signClaim(
+  rewardId: string,
+  issued: number,
+  email = 'trader@example.com',
+  wallet = WALLET,
+): Promise<string> {
   return account.signMessage({
-    message: `Ophis claim reward ${rewardId}\nAddress: ${wallet}\nIssued: ${issued}`,
+    message: `Ophis claim reward ${rewardId} for ${email}\nAddress: ${wallet}\nIssued: ${issued}`,
   });
 }
 
@@ -112,7 +118,10 @@ test('a claim cannot be filed on behalf of another wallet', async () => {
   const victim = '0x000000000000000000000000000000000000dead';
   // Correctly signed for the victim's address, but by the attacker's key, so
   // recovery yields the attacker and the claimed address does not match.
-  const res = await claim({ ...validBody(issued, await signClaim('octav-20', issued, victim)), wallet: victim });
+  const res = await claim({
+    ...validBody(issued, await signClaim('octav-20', issued, 'trader@example.com', victim)),
+    wallet: victim,
+  });
 
   expect(res.statusCode).toBe(401);
   expect(lastInsert).toBeUndefined();
@@ -130,7 +139,10 @@ test('an expired signature is rejected', async () => {
 test('a malformed email is rejected before any signature work', async () => {
   volumeUsd = '100000';
   const issued = Math.floor(Date.now() / 1000);
-  const res = await claim({ ...validBody(issued, await signClaim('octav-20', issued)), email: 'not-an-email' });
+  const res = await claim({
+    ...validBody(issued, await signClaim('octav-20', issued, 'not-an-email')),
+    email: 'not-an-email',
+  });
 
   expect(res.statusCode).toBe(400);
   expect(res.json.error).toBe('invalid email address');
@@ -154,6 +166,79 @@ test('an unknown reward id is a 404', async () => {
 
   expect(res.statusCode).toBe(404);
 });
+
+test('a signature that does not cover an email is rejected outright', async () => {
+  volumeUsd = '100000';
+  const issued = Math.floor(Date.now() / 1000);
+  // The pre-binding message shape: wallet + reward + timestamp, no email. This
+  // is the one an attacker most wants, because it authorizes the claim without
+  // saying where the code should go. Accepting it would mean the destination is
+  // attacker-chosen, so it must not verify at all.
+  const unboundSignature = await account.signMessage({
+    message: `Ophis claim reward octav-20\nAddress: ${WALLET}\nIssued: ${issued}`,
+  });
+  const res = await claim(validBody(issued, unboundSignature));
+
+  expect(res.statusCode).toBe(401);
+  expect(lastInsert).toBeUndefined();
+});
+
+test('a signature bound to one email cannot redirect the code to another', async () => {
+  volumeUsd = '100000';
+  const issued = Math.floor(Date.now() / 1000);
+  // The victim signed for their own address. An attacker who captures that
+  // signature inside the replay window swaps in their own email; without the
+  // email in the signed message this would succeed and the partner would post
+  // the victim's code to the attacker.
+  const victimSignature = await signClaim('octav-20', issued, 'victim@example.com');
+  const res = await claim({
+    ...validBody(issued, victimSignature),
+    email: 'attacker@example.com',
+  });
+
+  expect(res.statusCode).toBe(401);
+  expect(lastInsert).toBeUndefined();
+});
+
+test('a claim for the signed email still succeeds (the binding is not over-tight)', async () => {
+  volumeUsd = '100000';
+  const issued = Math.floor(Date.now() / 1000);
+  const res = await claim({
+    ...validBody(issued, await signClaim('octav-20', issued, 'victim@example.com')),
+    email: 'victim@example.com',
+  });
+
+  expect(res.statusCode).toBe(200);
+  expect(lastInsert).toContain('victim@example.com');
+});
+
+// Regression: the domain class once excluded dots, which rejected not just
+// subdomained addresses but the entire .co.uk / .com.au / .co.jp family.
+test.each([
+  'alice@example.co.uk',
+  'alice@mail.example.co.uk',
+  'bob@sub.domain.example.org',
+  'carol@example.com',
+])('accepts the real-world address %s', async (email) => {
+  volumeUsd = '100000';
+  const issued = Math.floor(Date.now() / 1000);
+  const res = await claim({ ...validBody(issued, await signClaim('octav-20', issued, email)), email });
+
+  expect(res.statusCode).toBe(200);
+  expect(lastInsert).toContain(email);
+});
+
+test.each(['not-an-email', 'a@.com', 'a@example.', 'a b@example.com', ''])(
+  'still rejects the unmailable address %s',
+  async (email) => {
+    volumeUsd = '100000';
+    const issued = Math.floor(Date.now() / 1000);
+    const res = await claim({ ...validBody(issued, await signClaim('octav-20', issued, email)), email });
+
+    expect(res.statusCode).toBe(400);
+    expect(lastInsert).toBeUndefined();
+  },
+);
 
 test('the claim export refuses to serve the wallet/email join without admin auth', async () => {
   process.env.REBATE_INDEXER_ADMIN_TOKEN = 'secret-token';
