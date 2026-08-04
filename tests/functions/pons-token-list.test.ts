@@ -204,7 +204,7 @@ test('fast mirror failures do not abort a pending authoritative verification', a
   const originalFetch = globalThis.fetch;
   try {
     globalThis.fetch = async (input, init) => {
-      if (!String(input).includes('rpc.mainnet.chain.robinhood.com')) {
+      if (String(input) !== 'https://rpc.mainnet.chain.robinhood.com') {
         throw new Error('mirror unavailable');
       }
       await new Promise((resolve) => setTimeout(resolve, 10));
@@ -226,7 +226,7 @@ test('mirror agreement cannot override a slower authoritative response', async (
   try {
     globalThis.fetch = async (input, init) => {
       const requests = JSON.parse(String(init?.body)) as { id: number }[];
-      if (String(input).includes('rpc.mainnet.chain.robinhood.com')) {
+      if (String(input) === 'https://rpc.mainnet.chain.robinhood.com') {
         await new Promise((resolve) => setTimeout(resolve, 10));
         return Response.json(
           requests.map(({ id }) => ({ jsonrpc: '2.0', id, result: '0xdeadbeef' })),
