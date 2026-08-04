@@ -183,8 +183,8 @@ export const ClaimNote = styled.span`
   line-height: 1.4;
 `
 
-/* Claim form (partner-fulfilled perks): email + consent, posted to the rebate
-   indexer so the partner has a list to issue codes from. */
+/* Claim form (partner-fulfilled perks): the email the partner mails the code to,
+   posted to the rebate indexer so the partner has a list to issue codes from. */
 export const ClaimForm = styled.form`
   display: flex;
   flex-direction: column;
@@ -220,26 +220,5 @@ export const ClaimInput = styled.input`
   }
   &:disabled {
     opacity: 0.6;
-  }
-`
-
-/* Consent row: the checkbox must sit beside the first line of its label, not be
-   stretched by the flex row, hence the fixed-size, no-shrink input. */
-export const ConsentRow = styled.label`
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 1.45;
-  opacity: 0.75;
-  cursor: pointer;
-
-  > input {
-    flex: 0 0 auto;
-    width: 14px;
-    height: 14px;
-    margin-top: 2px;
-    accent-color: #f2a63e;
-    cursor: pointer;
   }
 `

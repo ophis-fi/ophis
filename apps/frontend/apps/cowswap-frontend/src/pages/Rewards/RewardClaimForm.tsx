@@ -5,6 +5,9 @@
  * signature that proves wallet ownership already exists and is reused as the
  * claim's auth (no second wallet prompt).
  *
+ * The email is collected for one purpose only — contacting the claimer about
+ * this reward, i.e. the partner sending the code — and the form says so.
+ *
  * Why it exists: perks like Octav have no in-app code — the partner issues the
  * codes, which means Ophis has to hand them a list of who claimed. The previous
  * flow ended at a `mailto:` link, so a claim only existed if the visitor
@@ -60,7 +63,6 @@ const EXPIRED_MESSAGE = 'This claim expired. Close and click "Claim reward" agai
 
 export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaimFormProps): ReactNode {
   const [email, setEmail] = useState('')
-  const [consent, setConsent] = useState(false)
   const [state, setState] = useState<SubmitState>({ step: 'idle' })
 
   async function onSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
@@ -72,7 +74,6 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
         wallet,
         rewardId: perk.id,
         email: email.trim(),
-        consentSharePartner: consent,
         issued,
         signature,
       })
@@ -98,7 +99,7 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
         <styledEl.ClaimNote>
           {state.alreadyClaimed
             ? `You had already claimed this perk; we updated the email ${perk.partner} will send your code to.`
-            : `${perk.partner} issues the codes: they receive your address and email from Ophis and send your code to that address.`}
+            : `${perk.partner} issues the codes and will send yours to that address. We only use it to contact you about this reward.`}
         </styledEl.ClaimNote>
       </>
     )
@@ -119,20 +120,11 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
           disabled={state.step === 'sending'}
         />
       </styledEl.ClaimLabel>
-      <styledEl.ConsentRow>
-        <input
-          type="checkbox"
-          checked={consent}
-          onChange={(e) => setConsent(e.target.checked)}
-          required
-          disabled={state.step === 'sending'}
-        />
-        <span>
-          Share my email and address with {perk.partner} so they can send my code. Nothing else is
-          shared, and you can ask us to delete it at any time.
-        </span>
-      </styledEl.ConsentRow>
-      <styledEl.ClaimActionButton type="submit" disabled={state.step === 'sending' || !consent}>
+      <styledEl.ClaimNote>
+        We only use your email to contact you about this reward — {perk.partner} needs it to send
+        your code. No marketing, no commercial use.
+      </styledEl.ClaimNote>
+      <styledEl.ClaimActionButton type="submit" disabled={state.step === 'sending'}>
         {state.step === 'sending' ? 'Recording claim...' : 'Claim my code'}
       </styledEl.ClaimActionButton>
       {state.step === 'error' && (

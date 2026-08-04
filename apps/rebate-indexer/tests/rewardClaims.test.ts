@@ -66,7 +66,6 @@ function validBody(issued: number, signature: string): Record<string, unknown> {
     wallet: WALLET,
     rewardId: 'octav-20',
     email: 'trader@example.com',
-    consentSharePartner: true,
     issued,
     signature,
   };
@@ -126,15 +125,6 @@ test('an expired signature is rejected', async () => {
 
   expect(res.statusCode).toBe(401);
   expect(res.json.error).toBe('signature expired');
-});
-
-test('consent is mandatory: no consent, no stored email', async () => {
-  volumeUsd = '100000';
-  const issued = Math.floor(Date.now() / 1000);
-  const res = await claim({ ...validBody(issued, await signClaim('octav-20', issued)), consentSharePartner: false });
-
-  expect(res.statusCode).toBe(400);
-  expect(lastInsert).toBeUndefined();
 });
 
 test('a malformed email is rejected before any signature work', async () => {

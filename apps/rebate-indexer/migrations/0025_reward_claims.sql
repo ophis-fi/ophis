@@ -10,13 +10,11 @@
 -- claim UPDATES the email (someone correcting a typo) instead of inserting a
 -- duplicate the partner would mail twice.
 --
--- PII: `email` is personal data under GDPR and is collected for one declared
--- purpose — passing it to the named partner so they can issue the code. The
--- claimer's agreement to that transfer is recorded per-row in
--- `consent_share_partner` (the API rejects a claim without it), and the signed
--- proof (`signature` over `Ophis claim reward <id>\nAddress: ...\nIssued: ...`)
--- makes every row attributable to a wallet that provably asked for it. Disclosed
--- in the Privacy Policy (Legal 7.6 "Reward claims").
+-- `email` is collected for ONE purpose: contacting the claimer about this reward
+-- — in practice, passing it to the named partner so they can send the code. It is
+-- not a marketing list and must not be used for one. The signed proof
+-- (`signature` over `Ophis claim reward <id>\nAddress: ...\nIssued: ...`) makes
+-- every row attributable to a wallet that provably asked for it.
 --
 -- `xp_at_claim` snapshots the server-computed XP at claim time. Eligibility is
 -- re-checked server-side on every claim (never trusted from the client), and the
@@ -27,9 +25,6 @@ CREATE TABLE reward_claims (
   wallet                BYTEA        NOT NULL,
   reward_id             TEXT         NOT NULL,
   email                 TEXT         NOT NULL,
-  -- Explicit, per-claim agreement to share the email with the partner. NOT NULL
-  -- + CHECK true: a row can only exist for a claimer who agreed.
-  consent_share_partner BOOLEAN      NOT NULL CHECK (consent_share_partner),
   -- Server-computed XP (floor of lifetime fee-bearing volume USD) at claim time.
   xp_at_claim           BIGINT       NOT NULL,
   -- EIP-191 ownership proof + the timestamp it embeds, kept so a claim can be

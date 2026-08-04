@@ -290,15 +290,13 @@ export function getRankStatus(wallet: string): Promise<RankStatus> {
  * `claim reward <id>` message the card already has the wallet sign, so the
  * ownership proof is reused rather than prompting a second time.
  *
- * `consentSharePartner` must be true: the email exists only to be handed to the
- * partner who issues the code, and the backend refuses a claim without the
- * claimer's agreement to that transfer (it is recorded per-row).
+ * `email` is collected for one purpose only: contacting the claimer about this
+ * reward (the partner needs it to send the code). Never a marketing list.
  */
 export interface RewardClaimRequestBody {
   wallet: string
   rewardId: string
   email: string
-  consentSharePartner: boolean
   issued: number
   signature: string
 }

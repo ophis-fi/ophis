@@ -1115,7 +1115,6 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       wallet?: string;
       rewardId?: string;
       email?: string;
-      consentSharePartner?: boolean;
       issued?: number;
       signature?: string;
     };
@@ -1137,11 +1136,6 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // 254-char cap is the SMTP path limit.
     if (email.length > 254 || !/^[^\s@,;:<>"]+@[^\s@,;:<>".]+\.[a-z]{2,}$/i.test(email)) {
       return reply.code(400).send({ error: 'invalid email address' });
-    }
-    // The email is collected ONLY to pass to the partner, so an unconsented
-    // claim has no lawful purpose — refuse it rather than storing it.
-    if (req.body?.consentSharePartner !== true) {
-      return reply.code(400).send({ error: 'consent to share the email with the partner is required' });
     }
     if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
     if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
@@ -1177,8 +1171,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // Store the RECOVERED address, not the raw body field.
     const walletBuf = Buffer.from(auth.address.slice(2), 'hex');
     const rows = await sql<{ first_claim: boolean }[]>`
-      INSERT INTO reward_claims (wallet, reward_id, email, consent_share_partner, xp_at_claim, signature, issued)
-      VALUES (${walletBuf}, ${rewardId}, ${email}, true, ${xp}, ${signature}, ${issued})
+      INSERT INTO reward_claims (wallet, reward_id, email, xp_at_claim, signature, issued)
+      VALUES (${walletBuf}, ${rewardId}, ${email}, ${xp}, ${signature}, ${issued})
       ON CONFLICT (wallet, reward_id) DO UPDATE
         SET email      = EXCLUDED.email,
             signature  = EXCLUDED.signature,

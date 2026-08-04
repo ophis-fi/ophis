@@ -107,10 +107,9 @@ export function RewardsPage(): ReactNode {
             one-time signature. No transaction, no gas.
           </li>
           <li>
-            Some partners issue their codes themselves. Those rewards ask for an email so the
-            partner can send you the code; it is shared with that partner and nobody else, only
-            after you agree. See the{' '}
-            <TextLink href="/legal#privacy">Privacy Policy</TextLink> for the details.
+            Some partners issue their codes themselves. Those rewards ask for an email, used only
+            to contact you about the reward you claimed — never for marketing or any other
+            commercial purpose.
           </li>
           <li>
             Partners who want to list a reward can <TextLink href={`mailto:${CLAIM_EMAIL}`}>get in touch</TextLink>.
