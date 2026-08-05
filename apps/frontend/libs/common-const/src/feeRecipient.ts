@@ -13,13 +13,6 @@ import { mapAddressToSupportedNetworks, SupportedChainId } from '@cowprotocol/co
  * `feeRecipient.test.ts` enforces this against a hardcoded literal in
  * each test file.
  *
- * Phase 3 audit H1 (2026-05-19): the prior implementation routed Ophis-
- * operated chains 4326 (MegaETH) and 999 (HyperEVM) to wrong addresses:
- *   - MegaETH → `0x22af…2A76` (the CoW default placeholder), so partner
- *     fees from MegaETH would have leaked to a non-Ophis recipient.
- *   - HL (999) → `0xe049…01cF` (the *protocol* Safe — the governance
- *     multisig, NOT the partner-fee recipient).
- * Both now correctly route to the canonical `0x858f…CeF8`.
  */
 export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as const
 
@@ -31,7 +24,7 @@ export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF181
  * widget embeds. Sending Ophis fees from a third-party host's traffic on
  * Ethereum/Gnosis/Base/Arbitrum/etc. is wrong — they get the CoW default.
  *
- * Only the 3 chains we actually operate Ophis stacks on (10/4326/999)
+ * Only chains where Ophis operates the sovereign stack
  * override to the Ophis Safe.
  *
  * Sharp-edges MED-3 (pre-PR review caught the first cut routing all 10
@@ -43,6 +36,4 @@ export const DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK: Record<SupportedChainId,
   [10 as unknown as SupportedChainId]: OPHIS_PARTNER_FEE_RECIPIENT,
   [130 as unknown as SupportedChainId]: OPHIS_PARTNER_FEE_RECIPIENT,
   [4663 as unknown as SupportedChainId]: OPHIS_PARTNER_FEE_RECIPIENT,
-  [4326 as unknown as SupportedChainId]: OPHIS_PARTNER_FEE_RECIPIENT,
-  [999 as unknown as SupportedChainId]: OPHIS_PARTNER_FEE_RECIPIENT,
 }

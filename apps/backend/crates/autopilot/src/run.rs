@@ -569,6 +569,7 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         competition_native_price_updater.clone(),
         *eth.contracts().weth().address(),
         domain::ProtocolFees::new(
+            chain_id,
             &config.fee_policies,
             config
                 .shared

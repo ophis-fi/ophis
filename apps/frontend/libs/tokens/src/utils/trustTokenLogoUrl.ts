@@ -17,10 +17,6 @@ const chainIdToName: Record<SupportedChainId, string | null> = {
   // Ophis fork: Unichain mainnet (chain 130)
   [130 as unknown as SupportedChainId]: 'unichain',
   [4663 as unknown as SupportedChainId]: 'robinhood',
-  // Ophis fork: MegaETH mainnet (chain 4326) — not on Trust Wallet assets repo
-  [4326 as unknown as SupportedChainId]: null,
-  // Ophis fork: HyperEVM mainnet (chain 999) — not on Trust Wallet assets repo
-  [999 as unknown as SupportedChainId]: null,
 }
 
 /**

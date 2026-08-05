@@ -36,10 +36,6 @@ export const PERMIT_GAS_LIMIT_MIN: Record<SupportedChainId, number> = {
   [130 as unknown as SupportedChainId]: DEFAULT_MIN_GAS_LIMIT,
   // Ophis fork: Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: DEFAULT_MIN_GAS_LIMIT,
-  // Ophis fork: MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: DEFAULT_MIN_GAS_LIMIT,
-  // Ophis fork: HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: DEFAULT_MIN_GAS_LIMIT,
 }
 
 /**

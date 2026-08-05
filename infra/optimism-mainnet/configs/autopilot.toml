@@ -112,6 +112,15 @@ url = "http://driver/dodo"
 address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
 
 [fee-policies]
+max-partner-fee = 0.01
+
+# Ophis-operated-chain economics: retain 80% of execution improvement over the
+# reference quote, capped at 30 bps of volume. The autopilot substitutes the
+# stablecoin policy (50%, capped at 10 bps) when both tokens are recognized OP
+# stablecoins. The signed appData partner fee supplies the separate 1 bp base.
+[[fee-policies.policies]]
+kind.price-improvement = { factor = 0.80, max-volume-factor = 0.003 }
+order-class = "market"
 
 # Partner-fee recipient registry (partner-fees Phase A). `registration-enabled`
 # is the MASTER ENABLE for the whole feature and the autopilot honors it exactly

@@ -240,11 +240,7 @@ function isAppCodeOfInterest(code: string | undefined): code is AppCode {
  * so querying it as an "owner" surfaces ONLY Ophis eth-flow trades, which we then
  * attribute to the receiver. Mirrors apps/frontend/libs/common-const/src/common.ts
  * OPHIS_ETHFLOW_OVERRIDES, kept in sync by hand (grep OPHIS_ETHFLOW_OVERRIDES).
- * Paused chains are omitted, but for DIFFERENT reasons: MegaETH (4326) is a zero
- * sentinel (no contract deployed), whereas HyperEVM (999) IS a real deployed
- * eth-flow contract, omitted ONLY because the chain is strategically paused. When
- * HyperEVM un-pauses (mirroring the FE un-pause), ADD 999 here or native-ETH HL
- * rebates will silently never index. The shared canonical eth-flow on CoW-hosted
+ * The shared canonical eth-flow on CoW-hosted
  * chains (e.g. Base) is NOT here: scanning it would pull all CoW eth-flow traffic,
  * impractical on the free API (tracked as a follow-up).
  */

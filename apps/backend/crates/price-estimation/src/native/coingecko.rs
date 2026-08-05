@@ -100,10 +100,6 @@ impl CoinGecko {
             Chain::Sepolia
             | Chain::Goerli
             | Chain::Hardhat
-            | Chain::MegaethTestnet
-            | Chain::MegaethMainnet
-            | Chain::HyperEvmTestnet
-            | Chain::HyperEvmMainnet
             | Chain::OptimismSepolia
             | Chain::KatanaTestnet
             | Chain::KatanaMainnet

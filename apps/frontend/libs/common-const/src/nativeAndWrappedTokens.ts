@@ -26,18 +26,6 @@ const ROBINHOOD_WETH_ADDRESS = '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73'
 const ETHEREUM_NATIVE_TOKEN_LOGO = ALL_SUPPORTED_CHAINS_MAP[SupportedChainId.MAINNET].nativeCurrency.logoUrl
 const ETHEREUM_WRAPPED_TOKEN_LOGO = WRAPPED_NATIVE_CURRENCIES_SDK[SupportedChainId.MAINNET].logoUrl
 
-// Ophis fork: MegaETH mainnet (chain 4326) WETH address.
-// MegaETH is an OP-Stack rollup, so the predeploy slot 0x4200…0006 is the
-// expected WETH9 address. Confirmed 2026-05-15 — code exists at slot.
-//
-const MEGAETH_WETH_ADDRESS = '0x4200000000000000000000000000000000000006'
-
-// Ophis fork: HyperEVM mainnet (chain 999) wrapped native (WHYPE).
-// HyperEVM is NOT an OP-Stack chain — it does NOT use the 0x4200…0006
-// predeploy slot. WHYPE is deployed at the all-5s vanity address, native
-// token symbol is HYPE (18 decimals, ETH-equivalent semantics).
-const HYPEREVM_WHYPE_ADDRESS = '0x5555555555555555555555555555555555555555'
-
 export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> = {
   ...mapSupportedNetworks(getTokenWithLogoFromWrappedNativeCurrency),
   // Ophis fork: WETH on OP mainnet
@@ -67,68 +55,17 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
     'WETH',
     'Wrapped Ether',
   ),
-  // Ophis fork: WETH on MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: new TokenWithLogo(
-    undefined,
-    4326 as unknown as SupportedChainId,
-    MEGAETH_WETH_ADDRESS,
-    18,
-    'WETH',
-    'Wrapped Ether',
-  ),
-  // Ophis fork: WHYPE on HyperEVM mainnet (chain 999). Native HYPE wraps to
-  // WHYPE (analogous to ETH/WETH) but is NOT compatible with WETH9 — the
-  // contract at 0x5555…5555 has a slightly different interface. Verify any
-  // wrap/unwrap code paths once they are exercised.
-  [999 as unknown as SupportedChainId]: new TokenWithLogo(
-    undefined,
-    999 as unknown as SupportedChainId,
-    HYPEREVM_WHYPE_ADDRESS,
-    18,
-    'WHYPE',
-    'Wrapped HYPE',
-  ),
 }
 
-// 2026-05-17: the SDK's AdditionalTargetChainId enum only contains OPTIMISM=10.
-// `mapAllNetworks` iterates only over chains the SDK knows — so without the
-// explicit overrides below, NATIVE_CURRENCIES[999] (HYPE) and [4326]
-// (MegaETH ETH) would be undefined. Result: native HYPE / native MegaETH
-// ETH never appear in the swap-form's token selector for those chains; users
-// can only see the wrapped forms (WHYPE, WETH). Mirror the manual approach
-// already used for WRAPPED_NATIVE_CURRENCIES above.
 export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
   ...mapAllNetworks(getTokenWithLogoFromNativeCurrency),
-  // Native HYPE on HyperEVM mainnet (chain 999). The on-chain gas token;
-  // accessed via the EVM native-currency sentinel address. 18 decimals,
-  // ETH-equivalent transfer semantics. Wraps to WHYPE at 0x5555…5555
-  // (see WRAPPED_NATIVE_CURRENCIES above).
-  [999 as unknown as SupportedChainId]: new TokenWithLogo(
-    undefined,
-    999 as unknown as SupportedChainId,
-    NATIVE_CURRENCY_ADDRESS,
-    18,
-    'HYPE',
-    'Hyperliquid',
-  ),
-  // Native ETH on MegaETH mainnet (chain 4326). OP-stack-style native gas
-  // token. Same sentinel-address pattern as mainnet ETH; wraps to WETH at
-  // the OP-stack predeploy slot 0x4200…0006 (see WRAPPED_NATIVE_CURRENCIES).
-  [4326 as unknown as SupportedChainId]: new TokenWithLogo(
-    undefined,
-    4326 as unknown as SupportedChainId,
-    NATIVE_CURRENCY_ADDRESS,
-    18,
-    'ETH',
-    'Ether',
-  ),
   // Native ETH on Optimism (chain 10). OP IS in the SDK's
   // AdditionalTargetChainId, so `mapAllNetworks` would otherwise give it the
   // SDK's non-standard native address (0xDeAd…0000). The trading SDK's
   // eth-flow detection is keyed on NATIVE_CURRENCY_ADDRESS (0xEeee…EEeE), so
   // with the 0xDeAd address it never recognises the sell as native, never
   // substitutes WETH for the eth-flow quote, and the quote 404s
-  // (NoLiquidity). Override to the canonical sentinel like 999/4326 so
+  // (NoLiquidity). Override to the canonical sentinel so
   // selling native ETH on OP quotes WETH (0x4200) via EthFlow.
   [10 as unknown as SupportedChainId]: new TokenWithLogo(
     undefined,

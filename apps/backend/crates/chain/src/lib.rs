@@ -25,13 +25,6 @@ pub enum Chain {
     // Ophis Phase 0 — Unichain (Uniswap Labs OP-stack L2, chain 130). Aggregator-
     // routed Uniswap v4 (KyberSwap/OKX) is the wedge; the baseline cannot route v4.
     Unichain = 130,
-    // Ophis additions for Phase 3 — MegaETH testnet (live; chain 6342 is the
-    // deprecated previous testnet) and MegaETH mainnet.
-    MegaethTestnet = 6343,
-    MegaethMainnet = 4326,
-    // Ophis additions for Phase 3b — Hyperliquid HyperEVM.
-    HyperEvmTestnet = 998,
-    HyperEvmMainnet = 999,
     // Ophis additions for Phase 3c — multi-chain expansion (Optimism mainnet
     // is already declared above; just add OP Sepolia for testnet).
     OptimismSepolia = 11155420,
@@ -72,10 +65,6 @@ impl Chain {
             Self::Plasma => "Plasma",
             Self::Ink => "Ink",
             Self::Unichain => "Unichain",
-            Self::MegaethTestnet => "MegaETH / Testnet",
-            Self::MegaethMainnet => "MegaETH",
-            Self::HyperEvmTestnet => "Hyperliquid / HyperEVM Testnet",
-            Self::HyperEvmMainnet => "Hyperliquid / HyperEVM",
             Self::OptimismSepolia => "Optimism / Sepolia",
             Self::KatanaTestnet => "Katana / Bokuto",
             Self::KatanaMainnet => "Katana",
@@ -98,10 +87,6 @@ impl Chain {
             | Self::Optimism
             | Self::Ink
             | Self::Unichain
-            | Self::MegaethTestnet
-            | Self::MegaethMainnet
-            | Self::HyperEvmTestnet
-            | Self::HyperEvmMainnet
             | Self::OptimismSepolia
             | Self::KatanaTestnet
             | Self::KatanaMainnet
@@ -138,12 +123,6 @@ impl Chain {
             // Unichain: OP-stack 1s canonical blocks (Flashblocks 200ms preconfs
             // are out-of-protocol; we poll the 1s canonical chain).
             Self::Unichain => Duration::from_millis(1_000),
-            // MegaETH does sub-second mini-blocks plus 1s EVM blocks; use 1s.
-            Self::MegaethTestnet => Duration::from_millis(1_000),
-            Self::MegaethMainnet => Duration::from_millis(1_000),
-            // HyperEVM small blocks are 1s (big blocks 60s; we tune for steady-state which is small blocks).
-            Self::HyperEvmTestnet => Duration::from_millis(1_000),
-            Self::HyperEvmMainnet => Duration::from_millis(1_000),
             // Optimism: ~2s blocks. OP Sepolia same.
             Self::OptimismSepolia => Duration::from_millis(2_000),
             // Katana: 1s block time per docs.
@@ -190,10 +169,6 @@ impl TryFrom<u64> for Chain {
             x if x == Self::Plasma as u64 => Self::Plasma,
             x if x == Self::Ink as u64 => Self::Ink,
             x if x == Self::Unichain as u64 => Self::Unichain,
-            x if x == Self::MegaethTestnet as u64 => Self::MegaethTestnet,
-            x if x == Self::MegaethMainnet as u64 => Self::MegaethMainnet,
-            x if x == Self::HyperEvmTestnet as u64 => Self::HyperEvmTestnet,
-            x if x == Self::HyperEvmMainnet as u64 => Self::HyperEvmMainnet,
             x if x == Self::OptimismSepolia as u64 => Self::OptimismSepolia,
             x if x == Self::KatanaTestnet as u64 => Self::KatanaTestnet,
             x if x == Self::KatanaMainnet as u64 => Self::KatanaMainnet,

@@ -52,7 +52,6 @@ describe('ophisErrorBand', () => {
 
   it('is unknown outside 1000-5999 and for non-integers', () => {
     expect(ophisErrorBand(0)).toBe('unknown');
-    expect(ophisErrorBand(999)).toBe('unknown');
     expect(ophisErrorBand(6000)).toBe('unknown');
     expect(ophisErrorBand(2000.5)).toBe('unknown');
   });

@@ -6,8 +6,6 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 STACKS = [
-    ROOT / 'infra' / 'hyperevm-mainnet' / 'docker-compose.yml',
-    ROOT / 'infra' / 'megaeth-mainnet' / 'docker-compose.yml',
     ROOT / 'infra' / 'optimism-mainnet' / 'docker-compose.yml',
     ROOT / 'infra' / 'robinhood-mainnet' / 'docker-compose.yml',
     ROOT / 'infra' / 'unichain-mainnet' / 'docker-compose.yml',

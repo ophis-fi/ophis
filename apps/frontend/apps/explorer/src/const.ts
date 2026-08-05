@@ -102,11 +102,6 @@ export const WRAPPED_NATIVE_ADDRESS: Record<SupportedChainId, string> = {
   [130 as unknown as SupportedChainId]: '0x4200000000000000000000000000000000000006',
   // Ophis fork: WETH on Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
-  // Ophis fork: WETH on MegaETH mainnet (chain 4326) — predeploy slot, TBD post-deploy.
-  [4326 as unknown as SupportedChainId]: '0x4200000000000000000000000000000000000006',
-  // Ophis fork: WHYPE on HyperEVM mainnet (chain 999). NOT an OP-Stack chain,
-  // so this is the all-5s vanity address, not the 0x4200…0006 predeploy slot.
-  [999 as unknown as SupportedChainId]: '0x5555555555555555555555555555555555555555',
 }
 
 export const NATIVE_TOKEN_PER_NETWORK: Record<SupportedChainId, TokenErc20> = {
@@ -130,22 +125,6 @@ export const NATIVE_TOKEN_PER_NETWORK: Record<SupportedChainId, TokenErc20> = {
     address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
     name: 'Ether',
     symbol: 'ETH',
-    decimals: 18,
-  } as TokenErc20,
-  // Ophis fork: ETH on MegaETH mainnet (chain 4326). The chain ticker is
-  // technically "MEGA" but it is bridged ETH from L1, so we expose it as ETH.
-  [4326 as unknown as SupportedChainId]: {
-    address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
-    name: 'Ether',
-    symbol: 'ETH',
-    decimals: 18,
-  } as TokenErc20,
-  // Ophis fork: HYPE on HyperEVM mainnet (chain 999). Native token is HYPE
-  // (18 decimals); display name "Hyperliquid" per industry convention.
-  [999 as unknown as SupportedChainId]: {
-    address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
-    name: 'Hyperliquid',
-    symbol: 'HYPE',
     decimals: 18,
   } as TokenErc20,
 }

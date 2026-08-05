@@ -35,13 +35,6 @@ export const DEFILLAMA_PLATFORMS: Record<SupportedChainId, string | null> = {
   // Robinhood Chain is not listed by DefiLlama yet; disable this source
   // explicitly instead of guessing a platform slug.
   [4663 as unknown as SupportedChainId]: null,
-  // Ophis fork: MegaETH mainnet (chain 4326) — DefiLlama may not have a
-  // platform slug for MegaETH yet; null disables price lookups gracefully.
-  // Re-evaluate post-launch.
-  [4326 as unknown as SupportedChainId]: null,
-  // Ophis fork: HyperEVM mainnet (chain 999) — DefiLlama uses the
-  // 'hyperliquid' platform slug for HyperEVM tokens.
-  [999 as unknown as SupportedChainId]: 'hyperliquid',
 }
 
 const BASE_URL = 'https://coins.llama.fi/prices/current'

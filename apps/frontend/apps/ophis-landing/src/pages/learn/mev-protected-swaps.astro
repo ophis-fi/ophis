@@ -25,7 +25,7 @@ const FAQS = [
   },
   {
     q: 'What does the signed limit price guarantee?',
-    a: `An order can never be settled below its signed limit price. That bound is enforced by the settlement contract, not by the goodwill of any solver: a settlement that violates it reverts. Anything a solver achieves beyond your limit is surplus, and Ophis takes no cut of surplus on any chain.`,
+    a: `An order can never be settled below its signed limit price. That bound is enforced by the settlement contract, not by the goodwill of any solver: a settlement that violates it reverts. On Ophis-operated chains, improvement beyond the signed reference quote is shared under the published capped pricing policy.`,
   },
   {
     q: 'Is MEV protection guaranteed?',

@@ -1,18 +1,20 @@
 import { STABLECOINS } from '@cowprotocol/common-const'
 import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
 
-import type { CorrelatedTokens } from 'entities/correlatedTokens'
-
 import { isBoostedToken, OPHIS_BOOSTED_VOLUME_BPS } from 'ophis/boostedTokens'
 import {
   OPHIS_FLAT_VOLUME_FEE_ENABLED,
   OPHIS_PARTNER_FEE_RECIPIENT,
+  OPHIS_SOVEREIGN_BASE_FEE_BPS,
   OPHIS_STABLE_VOLUME_BPS,
+  isVolumeOnlyChain,
   ophisVolumeOnlyFloorFee,
 } from 'ophis/partnerFeeDefault'
 
 import { isCorrelatedTrade } from '../state/isCorrelatedTrade'
 import { VolumeFee } from '../types'
+
+import type { CorrelatedTokens } from 'entities/correlatedTokens'
 
 /**
  * The token pair a fee is being resolved for.
@@ -103,6 +105,21 @@ export function isCorrelatedPair(
   )
 }
 
+function resolveOphisOwnVolumeFee(pair: VolumeFeePair, fee: VolumeFee): VolumeFee {
+  if (isVolumeOnlyChain(pair.chainId)) {
+    return { ...fee, volumeBps: OPHIS_SOVEREIGN_BASE_FEE_BPS }
+  }
+  if (isBoostedPair(pair)) return { ...fee, volumeBps: OPHIS_BOOSTED_VOLUME_BPS }
+  if (isStableStablePair(pair)) return { ...fee, volumeBps: OPHIS_STABLE_VOLUME_BPS }
+  return fee
+}
+
+function resolveFlatVolumeFee(pair: VolumeFeePair, widgetPartnerFee: VolumeFee | undefined): VolumeFee | undefined {
+  const isOphisOwnFee =
+    widgetPartnerFee && areAddressesEqual(widgetPartnerFee.recipient, OPHIS_PARTNER_FEE_RECIPIENT)
+  return isOphisOwnFee ? resolveOphisOwnVolumeFee(pair, widgetPartnerFee) : widgetPartnerFee
+}
+
 /**
  * Resolve the Volume fee for ONE token pair.
  *
@@ -142,18 +159,7 @@ export function resolveVolumeFeeForPair(
   }
 
   if (OPHIS_FLAT_VOLUME_FEE_ENABLED) {
-    const isOphisOwnFee =
-      widgetPartnerFee && areAddressesEqual(widgetPartnerFee.recipient, OPHIS_PARTNER_FEE_RECIPIENT)
-
-    if (isOphisOwnFee) {
-      if (isBoostedPair(pair)) {
-        return { ...widgetPartnerFee, volumeBps: OPHIS_BOOSTED_VOLUME_BPS }
-      }
-      if (isStableStablePair(pair)) {
-        return { ...widgetPartnerFee, volumeBps: OPHIS_STABLE_VOLUME_BPS }
-      }
-    }
-    return widgetPartnerFee
+    return resolveFlatVolumeFee(pair, widgetPartnerFee)
   }
 
   if (!widgetPartnerFee) {

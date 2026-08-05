@@ -28,11 +28,6 @@ describe('getOphisSettlementAddress', () => {
     expect(getOphisSettlementAddress(100)).toBe(CANONICAL);
   });
 
-  it('mirrors the frontend map for the paused Ophis-operated chains (4326, 999)', () => {
-    expect(getOphisSettlementAddress(4326)).toBe(OPHIS_OP); // MegaETH — same as OP
-    expect(getOphisSettlementAddress(999)).toBe('0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce'); // HyperEVM
-  });
-
   it('throws on an unsupported / invalid chainId', () => {
     expect(() => getOphisSettlementAddress(12345)).toThrow(/no settlement address/);
     // @ts-expect-error missing arg

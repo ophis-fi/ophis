@@ -37,14 +37,6 @@ const UNISWAP_TOKEN_LIST_URL: Record<SupportedChainId, string> = {
   [130 as unknown as SupportedChainId]: UNISWAP_TOKENS_LIST,
   // Ophis fork: use the multichain list plus pinned WETH/USDG favorites.
   [4663 as unknown as SupportedChainId]: UNISWAP_TOKENS_LIST,
-  // Ophis fork: MegaETH mainnet (chain 4326). No upstream curated list exists
-  // yet; the multichain Uniswap list is the safest fallback (entries for chain
-  // 4326 will simply be empty until a published list lands).
-  [4326 as unknown as SupportedChainId]: UNISWAP_TOKENS_LIST,
-  // Ophis fork: HyperEVM mainnet (chain 999). No upstream curated Uniswap list
-  // is published for HyperEVM yet; the multichain Uniswap list is the safest
-  // fallback (entries for chain 999 will simply be empty until a list lands).
-  [999 as unknown as SupportedChainId]: UNISWAP_TOKENS_LIST,
 }
 
 const curatedListSourceAtom = atom((get) => {

@@ -42,13 +42,6 @@ function _getExplorerUrlByEnvironment(): Record<ChainId, string> {
     [130 as unknown as ChainId]: `${baseUrl}/unichain`,
     // Ophis fork: Robinhood Chain mainnet (chain 4663).
     [4663 as unknown as ChainId]: `${baseUrl}/robinhood`,
-    // Ophis fork: MegaETH mainnet (chain 4326). Same rationale — Blockscout
-    // has no /orders/ route, so order-level URLs fall back to the address
-    // page (see getExplorerOrderLink below).
-    [4326 as unknown as ChainId]: 'https://megaeth.blockscout.com',
-    // Ophis fork: HyperEVM mainnet (chain 999). HyperEVMScan is Blockscout-
-    // flavored and likewise has no /orders/ route — same fallback applies.
-    [999 as unknown as ChainId]: 'https://hyperevmscan.io',
   }
 }
 
@@ -72,20 +65,6 @@ export function getExplorerBaseUrl(chainId: ChainId): string {
 
 export function getExplorerOrderLink(chainId: ChainId, orderId: UID): string {
   const baseUrl = getExplorerBaseUrl(chainId)
-
-  // MegaETH (4326) / HyperEVM (999) still point at Blockscout-flavored
-  // explorers with no /orders/ route, so the CoW-style URL would 404. We
-  // degrade gracefully by linking to the order owner's address page. The
-  // CoW order UID encodes the owner in bytes 32..52, extracted from the
-  // 114-char hex string (2 prefix + 64 hash + 40 owner + 8 validTo).
-  // OP (10) now has /orders/ on explorer.ophis.fi/opt, so it is NOT here.
-  if (
-    ((chainId as number) === 4326 || (chainId as number) === 999) &&
-    orderId.length === 114
-  ) {
-    const owner = '0x' + orderId.slice(66, 106)
-    return baseUrl + `/address/${owner}`
-  }
 
   return baseUrl + `/orders/${orderId}`
 }

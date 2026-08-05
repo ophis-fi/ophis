@@ -747,8 +747,6 @@ const CHAIN_NAMES: Record<number, string> = {
   130: 'Unichain',
   4663: 'Robinhood Chain',
   137: 'Polygon',
-  999: 'HyperEVM',
-  4326: 'MegaETH',
   8453: 'Base',
   9745: 'Plasma',
   42161: 'Arbitrum One',
@@ -770,11 +768,7 @@ export interface PausedChain {
 export interface ChainList {
   /** Chains you can quote/build/submit on right now (orderbook host is live). */
   tradeable: ChainInfo[]
-  /**
-   * Fee chains whose settlement contract is deployed but whose orderbook host
-   * is NOT live yet (MegaETH, HyperEVM). get_quote / build_order throw for
-   * these, so do not pick them — listed only for transparency.
-   */
+  /** Fee chains whose orderbook host is not live yet. */
   paused: PausedChain[]
 }
 
@@ -837,8 +831,8 @@ const MULTICALL3: Address = '0xcA11bde05977b3631167028862bE2a173976CA11'
 
 /** Native gas-token symbol per chain (all 18-decimal). For display only. */
 const NATIVE_SYMBOL: Record<number, string> = {
-  1: 'ETH', 10: 'ETH', 56: 'BNB', 100: 'xDAI', 137: 'POL', 999: 'HYPE',
-  4326: 'ETH', 8453: 'ETH', 9745: 'XPL', 42161: 'ETH', 43114: 'AVAX',
+  1: 'ETH', 10: 'ETH', 56: 'BNB', 100: 'xDAI', 137: 'POL',
+  8453: 'ETH', 9745: 'XPL', 42161: 'ETH', 43114: 'AVAX',
   4663: 'ETH', 57073: 'ETH', 59144: 'ETH', 11155111: 'ETH',
 }
 

@@ -19,10 +19,6 @@ const SAFE_FEE_RECIPIENT_PER_NETWORK: Record<SupportedChainId, string> = {
   [130 as unknown as SupportedChainId]: '0x8025BAcF968aa82BDfE51B513123b55BFb0060D3',
   // Ophis fork: Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: '0x8025BAcF968aa82BDfE51B513123b55BFb0060D3',
-  // Ophis fork: MegaETH mainnet (chain 4326) — same Safe-app fee recipient
-  [4326 as unknown as SupportedChainId]: '0x8025BAcF968aa82BDfE51B513123b55BFb0060D3',
-  // Ophis fork: HyperEVM mainnet (chain 999) — same Safe-app fee recipient
-  [999 as unknown as SupportedChainId]: '0x8025BAcF968aa82BDfE51B513123b55BFb0060D3',
 }
 
 const FEE_TIERS = {

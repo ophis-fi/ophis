@@ -43,6 +43,7 @@ describe('attributePartnerFees', () => {
     const r = attributePartnerFees({
       protocolFeeAmounts: ['1000'],
       protocolFeeTokens: [BUY],
+      protocolFeeKinds: ['volume'],
       fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }]),
     });
     expect(r.skipped).toBe(false);
@@ -53,6 +54,7 @@ describe('attributePartnerFees', () => {
     const r = attributePartnerFees({
       protocolFeeAmounts: ['1000', '3000'], // ophis 1000, partner 3000
       protocolFeeTokens: [BUY, BUY],
+      protocolFeeKinds: ['volume', 'volume'],
       fullAppData: appData([
         { volumeBps: 10, recipient: OPHIS },
         { volumeBps: 30, recipient: PARTNER_A },
@@ -68,6 +70,7 @@ describe('attributePartnerFees', () => {
     const r = attributePartnerFees({
       protocolFeeAmounts: ['4200'],
       protocolFeeTokens: [BUY],
+      protocolFeeKinds: ['volume'],
       fullAppData: appData({ volumeBps: 30, recipient: PARTNER_A }),
     });
     expect(r.attributions).toEqual([{ recipient: PARTNER_A.toLowerCase(), volumeBps: 30, feeToken: BUY, feeAmount: 4200n }]);
@@ -78,6 +81,7 @@ describe('attributePartnerFees', () => {
     const r = attributePartnerFees({
       protocolFeeAmounts: ['1000'],
       protocolFeeTokens: [BUY],
+      protocolFeeKinds: ['volume'],
       fullAppData: appData([
         { volumeBps: 10, recipient: OPHIS },
         { volumeBps: 30, recipient: PARTNER_A },
@@ -92,6 +96,7 @@ describe('attributePartnerFees', () => {
     const r = attributePartnerFees({
       protocolFeeAmounts: ['1000', '2000', '500'],
       protocolFeeTokens: [BUY, BUY, BUY],
+      protocolFeeKinds: ['volume', 'volume', 'volume'],
       fullAppData: appData([
         { volumeBps: 10, recipient: OPHIS },
         { volumeBps: 20, recipient: PARTNER_A },
@@ -108,6 +113,7 @@ describe('attributePartnerFees', () => {
     const r = attributePartnerFees({
       protocolFeeAmounts: ['1000', '0'],
       protocolFeeTokens: [BUY, BUY],
+      protocolFeeKinds: ['volume', 'volume'],
       fullAppData: appData([
         { volumeBps: 10, recipient: OPHIS },
         { volumeBps: 30, recipient: PARTNER_A },
@@ -121,6 +127,7 @@ describe('attributePartnerFees', () => {
     const r = attributePartnerFees({
       protocolFeeAmounts: ['1000', '3000', '2000'],
       protocolFeeTokens: [BUY, BUY, BUY],
+      protocolFeeKinds: ['volume', 'volume', 'volume'],
       fullAppData: appData([
         { volumeBps: 10, recipient: OPHIS },
         { volumeBps: 30, recipient: PARTNER_A },
@@ -134,5 +141,21 @@ describe('attributePartnerFees', () => {
         { recipient: PARTNER_B.toLowerCase(), volumeBps: 20, feeToken: BUY, feeAmount: 2000n },
       ]),
     );
+  });
+
+  it('ignores a prepended config price-improvement slot before partner attribution', () => {
+    const r = attributePartnerFees({
+      protocolFeeAmounts: ['8000', '1000', '3000'],
+      protocolFeeTokens: [BUY, BUY, BUY],
+      protocolFeeKinds: ['priceImprovement', 'volume', 'volume'],
+      fullAppData: appData([
+        { volumeBps: 1, recipient: OPHIS },
+        { volumeBps: 30, recipient: PARTNER_A },
+      ]),
+    });
+    expect(r.skipped).toBe(false);
+    expect(r.attributions).toEqual([
+      { recipient: PARTNER_A.toLowerCase(), volumeBps: 30, feeToken: BUY, feeAmount: 3000n },
+    ]);
   });
 });

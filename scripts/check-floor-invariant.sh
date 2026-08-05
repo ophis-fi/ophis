@@ -3,7 +3,7 @@
 #
 # The OP self-hosted backend floors the CIP-75 Volume partner fee
 # (app_data.rs partner_fee_floor_bps):
-#   * OPHIS_NON_STABLE_FLOOR_BPS (4 bps) for a non-stable, non-boosted pair,
+#   * OPHIS_NON_STABLE_FLOOR_BPS (1 bp) for a non-stable, non-boosted pair,
 #   * OPHIS_STABLE_VOLUME_FEE_BPS  (1 bp)   for a same-chain stable pair (both
 #     tokens in OPTIMISM_STABLECOINS) OR a boosted pair (either token in
 #     OPTIMISM_BOOSTED_TOKENS).
@@ -96,7 +96,7 @@ compare_sets "OPTIMISM_BOOSTED_TOKENS (OP)" \
   "$fe_boosted_op" \
   "$(rust_addr_set "$APP_DATA" OPTIMISM_BOOSTED_TOKENS)"
 
-# 3. Floor VALUES. The 10 bps non-stable floor and the 1 bp reduced floor are
+# 3. Floor VALUES. The 1 bp sovereign base and reduced floor are
 # hand-mirrored as literals across backend / frontend / SDK. Anchor each grep on
 # the const DECLARATION (pub const / const / export const) so doc-comment
 # mentions of the same name are not matched; head -1 as a belt-and-suspenders.
@@ -111,6 +111,7 @@ fe_floor="$(decl_num    "$PARTNERFEE_TS" 'const BACKEND_NON_STABLE_FLOOR_BPS =')
 fe_retail="$(decl_num   "$PARTNERFEE_TS" 'const OPHIS_FRONTEND_OP_VOLUME_BPS =')"
 fe_reduced="$(decl_num  "$BOOSTED_TS"    'const OPHIS_BOOSTED_VOLUME_BPS =')"
 sdk_partner="$(decl_num "$SDK"           'export const OPHIS_VOLUME_FEE_BPS =')"
+sdk_sovereign="$(decl_num "$SDK"         'export const OPHIS_SOVEREIGN_VOLUME_FEE_BPS =')"
 sdk_stable="$(decl_num  "$SDK"           'export const OPHIS_STABLE_VOLUME_FEE_BPS =')"
 
 check_value() { # $1=label $2=expected-nonempty ; remaining = actuals "name:val"
@@ -126,20 +127,20 @@ check_value() { # $1=label $2=expected-nonempty ; remaining = actuals "name:val"
   done
 }
 
-# Tiered wholesale/retail model: the OP backend FLOOR (min accepted) sits below
-# the SDK PARTNER rate, which sits below the front-end RETAIL rate. The floor and
-# retail are each mirrored across backend<->frontend and must match exactly.
+# Sovereign orders use one 1 bp base for retail and SDK traffic; hosted SDK
+# traffic retains the independent 5 bps wholesale rate.
 check_value "non-stable FLOOR (backend <-> frontend)" \
   "backend:$be_floor" "frontend:$fe_floor"
-check_value "non-stable RETAIL (backend <-> frontend)" \
-  "backend:$be_retail" "frontend:$fe_retail"
+check_value "sovereign base (backend <-> SDK)" \
+  "backend:$be_retail" "sdk:$sdk_sovereign"
 check_value "reduced floor (1 bp)" \
   "backend:$be_stable" "sdk:$sdk_stable" "frontend-boosted:$fe_reduced"
 
-# Ordering invariant: floor <= sdk-partner <= retail (every value must parse).
-if [[ -n "$be_floor" && -n "$sdk_partner" && -n "$be_retail" ]]; then
-  if ! (( be_floor <= sdk_partner && sdk_partner <= be_retail )); then
-    echo "FAIL: tier ordering violated — need floor($be_floor) <= partner($sdk_partner) <= retail($be_retail)" >&2
+# Ordering invariant on sovereign chains: floor <= base; hosted partner remains
+# positive but is not bounded by the sovereign base.
+if [[ -n "$be_floor" && -n "$sdk_sovereign" && -n "$be_retail" && -n "$sdk_partner" ]]; then
+  if ! (( be_floor <= sdk_sovereign && sdk_sovereign == be_retail && sdk_partner > 0 )); then
+    echo "FAIL: fee ordering violated — need floor($be_floor) <= sovereign($sdk_sovereign) == base($be_retail), hosted partner > 0 (got $sdk_partner)" >&2
     fail=1
   fi
 else
@@ -155,8 +156,8 @@ if (( fail )); then
   exit 1
 fi
 
-echo "OK: partner-fee tiered-floor invariants hold:"
+echo "OK: partner-fee floor invariants hold:"
 echo "  - OPTIMISM_STABLECOINS match (frontend <-> backend)"
 echo "  - OPTIMISM_BOOSTED_TOKENS[OP] match (frontend <-> backend)"
-echo "  - tiers: floor=${be_floor} bps <= partner(SDK)=${sdk_partner} bps <= retail=${be_retail} bps; reduced=${be_stable} bp"
+echo "  - sovereign: floor=${be_floor} bps <= base=${sdk_sovereign} bps; hosted SDK=${sdk_partner} bps; reduced=${be_stable} bp"
 exit 0

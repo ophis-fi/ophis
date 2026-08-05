@@ -13,8 +13,8 @@
  *     (`OPHIS_NON_STABLE_FLOOR_BPS = 4` / `OPHIS_STABLE_VOLUME_FEE_BPS = 1`:
  *     the MINIMUM Volume bps the OP self-hosted backend accepts for a fee to the
  *     Ophis recipient, enforced at order ingress and re-clamped in the autopilot.
- *     This SDK's 5 bps partner rate clears that 4 bps floor; the front-end charges
- *     the 10 bps retail rate, `OPHIS_DEFAULT_VOLUME_FEE_BPS`.)
+ *     sovereign chains require the 1 bp base; hosted chains retain 5 bps partner
+ *     pricing.)
  *   - apps/frontend/.../appData/updater/shouldEmitOphisPartnerFee.ts (chain gate)
  */
 
@@ -33,11 +33,9 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
  * Partner volume fee: the @ophis/sdk default is a flat 5 bps (0.05%) of trade
  * volume, below comparable aggregators (Matcha 10 bps, Velora 15 bps). This is
  * the PARTNER (wholesale) rate that integrators routing through Ophis charge;
- * the Ophis front-end (swap.ophis.fi) charges its own separate 10 bps RETAIL
- * rate (apps/frontend/.../partnerFeeDefault.ts). The two are intentionally
- * different. Charged via the CIP-75 VOLUME policy. The OP self-hosted backend
- * floors a non-stable fee to the Ophis recipient at OPHIS_NON_STABLE_FLOOR_BPS
- * (4 bps in app_data.rs), so 5 bps clears with 1 bp of headroom. A Volume fee is
+ * the Ophis front-end charges the same hosted retail rate. On sovereign chains
+ * `ophisDefaultPartnerFee` substitutes the 1 bp base and the backend adds capped
+ * price-improvement capture. A Volume fee is
  * bounded above only by the autopilot's operator-set global `max_partner_fee`.
  *
  * Cross-workspace invariant (scripts/check-floor-invariant.sh): backend floor
@@ -53,6 +51,10 @@ export const OPHIS_VOLUME_FEE_BPS = 5;
  * for stable-stable orders. Use ophisVolumeBpsForPair() to pick the right rate.
  */
 export const OPHIS_STABLE_VOLUME_FEE_BPS = 1;
+
+/** Base fee on Ophis-operated chains; price-improvement capture is enforced by
+ * the sovereign backend and therefore must not be duplicated in appData. */
+export const OPHIS_SOVEREIGN_VOLUME_FEE_BPS = 1;
 
 /** Volume bps for a pair: 1 bp if both tokens are stablecoins, else the standard rate. */
 export const ophisVolumeBpsForPair = (isStablePair: boolean): number =>
@@ -73,7 +75,7 @@ export const ophisVolumeBpsForPair = (isStablePair: boolean): number =>
  */
 const FEE_CHAIN_IDS = [
   // Ophis-operated (own stack — 100%; NOT cow-sdk SupportedChainId members)
-  10, 130, 4663, 4326, 999,
+  10, 130, 4663,
   // CoW-hosted = cow-sdk SupportedChainId (settle via api.cow.fi, 75% weekly).
   // Sepolia (11155111) is the testnet member — kept so the fee path is testable.
   1, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
@@ -85,6 +87,7 @@ const FEE_CHAIN_IDS = [
  * elsewhere) cannot change which chains charge a fee by mutating a public value.
  */
 const FEE_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>(FEE_CHAIN_IDS);
+const SOVEREIGN_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>([10, 130, 4663]);
 
 /**
  * Frozen, immutable list of the fee chain ids. Membership: `.includes(id)` or
@@ -107,7 +110,9 @@ export const ophisDefaultPartnerFee = (chainId: number): OphisPartnerFee | undef
   assertValidChainId(chainId);
   if (!FEE_CHAIN_ID_SET.has(chainId)) return undefined;
   return {
-    volumeBps: OPHIS_VOLUME_FEE_BPS,
+    volumeBps: SOVEREIGN_CHAIN_ID_SET.has(chainId)
+      ? OPHIS_SOVEREIGN_VOLUME_FEE_BPS
+      : OPHIS_VOLUME_FEE_BPS,
     recipient: OPHIS_PARTNER_FEE_RECIPIENT,
   };
 };

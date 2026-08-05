@@ -18,14 +18,8 @@ pub enum ChainId {
     // Ophis Phase 0 — Unichain (OP-stack L2, chain 130). Without this variant
     // the kyberswap/velora chain_id TOML deserializer rejects 130 at startup.
     Unichain = 130,
-    // Ophis: Hyperliquid HyperEVM mainnet. The `chain` crate already had
-    // HyperEvmMainnet=999 but the solvers crate keeps its own duplicate
-    // enum (CoW upstream design quirk). Without this variant the kyberswap
-    // solver's chain_id TOML deserializer panics with "unsupported chain"
-    // at startup.
-    HyperEvm = 999,
     // Ophis: Robinhood Chain (Arbitrum Orbit L2, chain 4663). Same upstream quirk
-    // as Unichain/HyperEVM above — the solvers crate keeps its own duplicate of the
+    // as Unichain above — the solvers crate keeps its own duplicate of the
     // `chain` crate enum, so without this variant the lifi solver's chain_id TOML
     // deserializer rejects 4663 at startup.
     Robinhood = 4663,
@@ -47,7 +41,6 @@ impl ChainId {
             9745 => Ok(Self::Plasma),
             57073 => Ok(Self::Ink),
             130 => Ok(Self::Unichain),
-            999 => Ok(Self::HyperEvm),
             4663 => Ok(Self::Robinhood),
             _ => Err(UnsupportedChain),
         }
@@ -69,7 +62,6 @@ impl ChainId {
             ChainId::Plasma => "9745",
             ChainId::Ink => "57073",
             ChainId::Unichain => "130",
-            ChainId::HyperEvm => "999",
             ChainId::Robinhood => "4663",
         }
     }

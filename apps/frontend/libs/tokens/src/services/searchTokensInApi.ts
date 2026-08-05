@@ -143,12 +143,6 @@ const CHAIN_NAMES: Record<SupportedChainId, Chain | null> = {
   [130 as unknown as SupportedChainId]: null,
   // Ophis fork: no supported Uniswap token-search endpoint for Robinhood Chain.
   [4663 as unknown as SupportedChainId]: null,
-  // Ophis fork: MegaETH mainnet (chain 4326) — Uniswap token-search GraphQL has
-  // no MegaETH coverage; null disables remote search but local token list still works.
-  [4326 as unknown as SupportedChainId]: null,
-  // Ophis fork: HyperEVM mainnet (chain 999) — Uniswap token-search GraphQL has
-  // no HyperEVM coverage; null disables remote search but local token list still works.
-  [999 as unknown as SupportedChainId]: null,
 }
 
 const CHAIN_IDS = Object.entries(CHAIN_NAMES).reduce(

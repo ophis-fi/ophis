@@ -17,18 +17,12 @@ export function useTwapFormState(): TwapFormState | null {
   const { chainId } = useWalletInfo()
   const twapOrder = useTwapOrder()
 
-  // Ophis: TWAP requires ComposableCow + ExtensibleFallbackHandler, which
-  // aren't deployed on OP mainnet (Spec 2), MegaETH mainnet (chain 4326), or
-  // HyperEVM mainnet (chain 999). Codex review 2026-05-14 flagged the broken-UI
-  // promise where the button is reachable but silent no-ops because the SDK's
-  // COMPOSABLE_COW_CONTRACT_ADDRESS[10] / [4326] / [999] is undefined.
-  // Returning null here makes the TWAP tab clearly disabled instead.
+  // TWAP requires ComposableCow + ExtensibleFallbackHandler, which are not
+  // deployed on the sovereign chains. Disable the tab instead of no-oping.
   if (
     (chainId as number) === 10 ||
     (chainId as number) === 130 ||
-    (chainId as number) === 4663 ||
-    (chainId as number) === 4326 ||
-    (chainId as number) === 999
+    (chainId as number) === 4663
   )
     return null
 

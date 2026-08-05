@@ -67,9 +67,9 @@ describe('partnerFeeDefault', () => {
   })
 
   describe('ophisVolumeOnlyFloorFee (single OP floor source for display + appData)', () => {
-    it('returns the 10 bps non-stable floor Volume fee on Optimism', () => {
+    it('returns the 1 bp base Volume fee on Optimism', () => {
       expect(ophisVolumeOnlyFloorFee(10, false)).toEqual({
-        volumeBps: 10,
+        volumeBps: 1,
         recipient: CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT,
       })
     })

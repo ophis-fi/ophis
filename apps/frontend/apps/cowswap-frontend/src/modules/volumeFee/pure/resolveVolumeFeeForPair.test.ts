@@ -121,7 +121,7 @@ describe('resolveVolumeFeeForPair', () => {
     ).toEqual({ volumeBps: OPHIS_STABLE_VOLUME_BPS, recipient: OPHIS_PARTNER_FEE_RECIPIENT })
   })
 
-  it('THE PER-LEG BUG: two legs of one basket get different rates', () => {
+  it('uses the same 1 bp sovereign base for stable and volatile basket legs', () => {
     // This is the regression the per-leg wiring exists to prevent. Resolving
     // once from the swap form and reusing it would give both legs whichever of
     // these two answers the form happened to hold.
@@ -136,7 +136,7 @@ describe('resolveVolumeFeeForPair', () => {
 
     expect(stableLeg?.volumeBps).toBe(OPHIS_STABLE_VOLUME_BPS)
     expect(volatileLeg?.volumeBps).toBe(OPHIS_NON_STABLE_VOLUME_BPS)
-    expect(stableLeg?.volumeBps).not.toBe(volatileLeg?.volumeBps)
+    expect(stableLeg?.volumeBps).toBe(volatileLeg?.volumeBps)
   })
 
   it('emits no fee on a CoW-hosted chain when nothing else applies', () => {

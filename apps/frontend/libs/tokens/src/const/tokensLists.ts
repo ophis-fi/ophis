@@ -8,8 +8,8 @@ import { ListSourceConfig, ListsSourcesByNetwork } from '../types'
 export const LP_TOKEN_LISTS = lpTokensList as Array<ListSourceConfig>
 
 // Ophis: tokensList.json has explicit entries for the Ophis-operated and
-// scaffolded chains, but `mapSupportedNetworks` only
-// iterates SDK's SupportedChainId (no OP, Unichain, MegaETH, or HyperEVM).
+// sovereign chains, but `mapSupportedNetworks` only
+// iterates SDK's SupportedChainId.
 // Manually inject those entries after the SDK map so curated-mode users on
 // those chains get a working token list rather than undefined.
 const _baseTokensLists = mapSupportedNetworks((chainId) => tokensList[chainId])
@@ -18,8 +18,6 @@ export const DEFAULT_TOKENS_LISTS: ListsSourcesByNetwork = {
   [10 as unknown as SupportedChainId]: tokensList['10' as unknown as keyof typeof tokensList],
   [130 as unknown as SupportedChainId]: tokensList['130' as unknown as keyof typeof tokensList],
   [4663 as unknown as SupportedChainId]: tokensList['4663' as unknown as keyof typeof tokensList],
-  [4326 as unknown as SupportedChainId]: tokensList['4326' as unknown as keyof typeof tokensList],
-  [999 as unknown as SupportedChainId]: tokensList['999' as unknown as keyof typeof tokensList],
 }
 
 export const UNISWAP_TOKENS_LIST = 'https://ipfs.io/ipns/tokens.uniswap.org'

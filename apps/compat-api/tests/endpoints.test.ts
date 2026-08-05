@@ -134,7 +134,7 @@ describe('POST /sor/quote/v3', () => {
     expect(body.percentDiff).toBe(0);
     expect(body.permit2Message).toBeNull();
     expect(body.pathViz).toBeNull();
-    expect(body.partnerFeePercent).toBe(0.05); // 5 bps SDK partner rate on chain 10
+    expect(body.partnerFeePercent).toBe(0.01); // 1 bp sovereign base on chain 10
     expect(body.pathId).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
     expect(body.blockNumber).toBe(0);
     expect(body.inValues[0]).toBeCloseTo(0.5388, 3);
@@ -318,14 +318,14 @@ describe('referralFee -> partnerFee mapping', () => {
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, any>;
-    // metadata.partnerFee is now an array: Ophis default (5 bps) + partner (10 bps).
+    // metadata.partnerFee is now an array: Ophis base (1 bp) + partner (10 bps).
     // Keys are deterministically sorted, so recipient precedes volumeBps.
     expect(body.ophis.fullAppData).toContain('"partnerFee":[');
     expect(body.ophis.fullAppData).toContain(`"recipient":"${PARTNER}","volumeBps":10`);
     // The quote request carried the same appData the draft signs.
     expect(quoteAppData).toBe(body.ophis.fullAppData);
-    // partnerFeePercent reflects total embedded volume bps: 5 + 10 = 15 bps.
-    expect(body.partnerFeePercent).toBe(0.15);
+    // partnerFeePercent reflects total embedded volume bps: 1 + 10 = 11 bps.
+    expect(body.partnerFeePercent).toBe(0.11);
     const codes = body.ophis.warnings.map((w: { code: string }) => w.code);
     expect(codes).toContain('PARTNER_FEE_MAPPED');
   });
@@ -984,7 +984,7 @@ describe.runIf(process.env.COMPAT_LIVE === '1')('live Optimism integration (read
     expect(quote.ophis.signing.domain.verifyingContract).toBe(
       '0x310784c7FCE12d578dA6f53460777bAc9718B859',
     );
-    expect(quote.partnerFeePercent).toBe(0.05);
+    expect(quote.partnerFeePercent).toBe(0.01);
     expect(quote.inValues[0]).toBeGreaterThan(0);
 
     const assembleRes = await handleRequest(

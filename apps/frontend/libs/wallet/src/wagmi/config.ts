@@ -20,63 +20,9 @@ import {
 } from 'viem/chains'
 import { createConfig, Transport } from 'wagmi'
 
-// One-shot scrub of stale wagmi/web3-react persisted state from pre-PR
-// #167 sessions. PR #232 fixed the config-time crash, but persisted
-// localStorage still hydrates wagmi's `connections` Map with stale
-// `chainId: 4326|999` entries. wagmi's `getClient` then calls
-// `chains.find(c => c.id === chainId)` on those, finds undefined (because
-// PR #167 + PR #232 correctly removed those chains from the runtime list),
-// and crashes with "Cannot read properties of undefined (reading 'id')"
-// at the `.id` deref a few lines later.
-//
-// The scrub purges any persisted state referencing 4326 or 999. Cost:
-// affected users get re-prompted to connect their wallet ONCE on next
-// load. Benefit: the SPA boots. Wallet reconnection re-populates the
-// persisted state with a valid chainId.
-//
-// Idempotent: runs once per cold page load; no-op if storage already
-// clean. Wrapped in try/catch because SSR/private-browsing/quota-exceeded
-// scenarios shouldn't prevent the SPA from booting at all.
-if (typeof window !== 'undefined') {
-  try {
-    const STORAGE_KEYS = ['wagmi.store', 'wagmi.cache', 'redux_localstorage_simple_user']
-    const stalePattern = /"chainId":\s*(?:4326|999)\b/
-    for (const key of STORAGE_KEYS) {
-      const raw = window.localStorage.getItem(key)
-      if (raw && stalePattern.test(raw)) {
-        window.localStorage.removeItem(key)
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[ophis] purged stale persisted state at localStorage["${key}"] containing chainId 4326 or 999`,
-        )
-      }
-    }
-  } catch {
-    // localStorage unavailable (SSR, private browsing, quota) — no-op;
-    // the user will hit a fresh state anyway since persistence is unavailable.
-  }
-}
-
 const SUPPORTED_CHAIN_IDS = Object.values(SupportedChainId).filter((v) => typeof v === 'number')
 
 // Ophis fork: OP mainnet (chain 10) added at frontend layer.
-//
-// PR #167 (2026-05-21) removed MegaETH (4326) and HyperEVM (999) from
-// the FE chain list because those backends aren't production-wired.
-// That PR dropped the `SUPPORTED_CHAINS` map entries but LEFT the
-// corresponding `*_CHAIN_ID` constants in `ALL_CHAIN_IDS_FOR_WAGMI`.
-// Net result: the `chains:` array passed to wagmi's `createConfig`
-// contained 2 trailing `undefined` slots. Any wagmi internal hook
-// that does `chains.find(c => c.id === chainId)` inside its
-// `useSyncExternalStore` selector then dereferenced `c.id` against
-// `undefined` and threw — taking the entire SPA down with
-// `Cannot read properties of undefined (reading 'id')` on every
-// page load.
-//
-// Fix landed in P0 hotfix 2026-05-22: drop the two dangling chain
-// IDs entirely + add `filter(Boolean)` belt-and-suspenders guard at
-// the array-build site so the next incomplete sweep can't repeat
-// this exact crash mode.
 const OPTIMISM_CHAIN_ID = 10 as unknown as SupportedChainId
 // Ophis fork: Unichain (chain 130) added at frontend layer, same pattern as OP.
 const UNICHAIN_CHAIN_ID = 130 as unknown as SupportedChainId
@@ -96,6 +42,24 @@ const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [
   UNICHAIN_CHAIN_ID,
   ROBINHOOD_CHAIN_ID,
 ]
+
+// Persisted wallet state can outlive the supported-chain registry. Purge any
+// store containing an unsupported chain before wagmi hydrates it, otherwise a
+// stale connection can make wagmi dereference a missing chain and crash boot.
+if (typeof window !== 'undefined') {
+  try {
+    const supported = new Set<number>(ALL_CHAIN_IDS_FOR_WAGMI as number[])
+    for (const key of ['wagmi.store', 'wagmi.cache', 'redux_localstorage_simple_user']) {
+      const raw = window.localStorage.getItem(key)
+      const chainIds = raw?.matchAll(/"chainId":\s*(\d+)/g)
+      if (chainIds && Array.from(chainIds, (match) => Number(match[1])).some((chainId) => !supported.has(chainId))) {
+        window.localStorage.removeItem(key)
+      }
+    }
+  } catch {
+    // Storage can be unavailable during SSR or in privacy-restricted contexts.
+  }
+}
 
 const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
   [SupportedChainId.MAINNET]: mainnet,

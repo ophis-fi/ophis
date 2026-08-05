@@ -317,13 +317,6 @@ export function ProtocolPage(): ReactNode {
                 <Badge tone="draft">Testnet</Badge>
               </Td>
             </Tr>
-            <Tr>
-              <RowTh scope="row">Paused</RowTh>
-              <Td>HyperEVM, MegaETH, previously announced, not currently routable</Td>
-              <Td>
-                <Badge tone="draft">Paused</Badge>
-              </Td>
-            </Tr>
           </Tbody>
         </Table>
         <p>

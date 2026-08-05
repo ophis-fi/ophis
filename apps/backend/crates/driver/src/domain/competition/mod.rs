@@ -1204,24 +1204,11 @@ impl Competition {
 
 const MAX_SOLUTIONS_TO_MERGE: usize = 10;
 
-/// Maximum gas a single user-declared pre/post hook is allowed to request
-/// on the given chain. Audit MEDIUM-8 (2026-05-17): on chains with tight
-/// block-gas budgets (HyperEVM chain 999, `tx-gas-limit = 2_900_000`), a
-/// malicious hook with `gas_limit > gasleft()*63/64` consumes the settle's
-/// entire gas budget via EIP-150 and forces a revert; the solver pays.
-/// Returns `None` for chains where the orderbook's aggregate
-/// `additional_gas` check already provides sufficient defense.
+/// Maximum gas a single user-declared pre/post hook is allowed to request.
+/// The aggregate `additional_gas` check protects every supported chain.
 fn max_per_hook_gas_for_chain(chain_id: u64) -> Option<u64> {
-    match chain_id {
-        // HyperEVM mainnet — `tx-gas-limit = 2_900_000`, leave ~400k headroom
-        // for the settle call itself.
-        999 => Some(2_500_000),
-        // Other supported chains (1 ETH / 10 OP / 100 Gnosis / 4326 MegaETH /
-        // 11155111 Sepolia) have block-gas-limits ≥ 30M; the orderbook's
-        // aggregate `additional_gas` check is sufficient there. Returning
-        // `None` makes this filter a no-op.
-        _ => None,
-    }
+    let _ = chain_id;
+    None
 }
 
 #[cfg(test)]
@@ -1229,13 +1216,8 @@ mod hook_gas_cap_tests {
     use super::max_per_hook_gas_for_chain;
 
     #[test]
-    fn hyperevm_chain_999_capped_at_2_500_000() {
-        assert_eq!(max_per_hook_gas_for_chain(999), Some(2_500_000));
-    }
-
-    #[test]
     fn other_chains_uncapped() {
-        for chain_id in [1u64, 10, 100, 4326, 11155111, 42161] {
+        for chain_id in [1u64, 10, 100, 130, 4663, 11155111, 42161] {
             assert_eq!(max_per_hook_gas_for_chain(chain_id), None);
         }
     }

@@ -42,9 +42,10 @@ What that buys you on every trade:
 - **Gasless, MEV-protected.** Orders settle in a batch auction where every trade
   clears at one uniform price, so sandwiches and front-running are structurally
   absent, not best-effort.
-- **Surplus stays with you.** Solvers compete to beat the price you signed, and
-  any improvement is returned to you in full. Ophis takes a flat fee on volume
-  and zero share of your surplus.
+- **Solver-aligned pricing.** On Ophis-operated chains the base fee is 1 bp and
+  Ophis earns primarily when execution beats its reference quote: 80% of
+  improvement on volatile pairs (30 bps cap), or 50% on stable pairs (10 bps
+  cap). Hosted chains retain their existing flat-fee path.
 - **Non-custodial, no account, no auth.** Every order is signed in your own
   wallet (EIP-712 or ERC-1271). Ophis never holds keys or funds and cannot move,
   freeze, or recover them. The signature is the only trust boundary.
@@ -155,8 +156,8 @@ full fee):
 | Chain | Chain ID | Status |
 |---|---|---|
 | Optimism | 10 | **Live**: settlement, solver, partner fee |
-| HyperEVM | 999 | Contracts deployed, stack paused |
-| MegaETH | 4326 | Contracts deployed, stack paused |
+| Unichain | 130 | **Live**: settlement, solver, partner fee |
+| Robinhood Chain | 4663 | **Live**: settlement, solver, partner fee |
 
 **CoW-hosted** (orders route through CoW Protocol's settlement and solver network,
 with the partner fee disbursed by CoW): Ethereum, Base, Arbitrum, Polygon, BNB,
@@ -189,7 +190,7 @@ Canonical contract addresses and the disclosure policy live in
 | `packages/sdk/` | New | [`@ophis/sdk`](packages/sdk): dependency-free helpers for the per-chain orderbook host, EIP-712 order domain, CIP-75 partner-fee `appData`, receiver-pinning guards, tier assignment, and the supported-chain registry. |
 | `contracts/` | [`cowprotocol/contracts`](https://github.com/cowprotocol/contracts) (subtree) | `GPv2Settlement`, `GPv2VaultRelayer`, `GPv2AllowListAuthentication`, deployed under an Ophis-controlled solver allowlist. Per-network artifacts in `contracts/deployments/`. |
 | `functions/` | New | Cloudflare Pages Functions: `api/intent.ts` (the natural-language parser, shared by swap and landing), `api/bungee` (bridge proxy), `_middleware.ts` (host routing). |
-| `infra/` | New | Per-chain runtime stacks (`optimism-mainnet/`, `hyperevm-mainnet/`, `megaeth-mainnet/`, `local/`), plus `rpc/` (eRPC) and `cloudflare/` config. |
+| `infra/` | New | Per-chain runtime stacks (`optimism-mainnet/`, `unichain-mainnet/`, `robinhood-mainnet/`, `local/`), plus `rpc/` (eRPC) and `cloudflare/` config. |
 
 Upstream subtrees are vendored as-is; Ophis changes are catalogued in
 `apps/frontend/.ophis-divergences.md` and `apps/backend/.ophis-divergences.md`
@@ -264,11 +265,11 @@ scans), and [`echidna.yml`](.github/workflows/echidna.yml) (contract fuzzing).
 
 ## Fees and rebates
 
-Ophis charges the CoW Protocol CIP-75 volume policy: a flat **0.10% (10 bps)** of
-trade volume, reduced to **0.01% (1 bp)** on same-chain stablecoin pairs, and
-nothing on surplus. On Optimism the stack settles on its own infrastructure and
-keeps the full fee; on CoW-hosted chains the partner share is disbursed weekly in
-WETH.
+On Ophis-operated chains, Ophis charges a **0.01% (1 bp)** base plus a capped
+share of reference-quote improvement: **80% capped at 30 bps** for volatile
+pairs and **50% capped at 10 bps** for stable pairs. CoW-hosted chains retain
+the flat 10 bps retail / 5 bps partner / 1 bp stablecoin model; the partner
+share is disbursed weekly in WETH.
 
 Part of the fee flows back to traders:
 

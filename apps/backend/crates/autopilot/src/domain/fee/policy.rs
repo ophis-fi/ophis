@@ -81,6 +81,23 @@ impl PriceImprovement {
             }),
         }
     }
+
+    pub fn apply_with_override(
+        &self,
+        order: &boundary::Order,
+        quote: &domain::Quote,
+        factor: FeeFactor,
+        max_volume_factor: FeeFactor,
+    ) -> Option<domain::fee::Policy> {
+        match order.metadata.class {
+            boundary::OrderClass::Market | boundary::OrderClass::Liquidity => None,
+            boundary::OrderClass::Limit => Some(domain::fee::Policy::PriceImprovement {
+                factor,
+                max_volume_factor,
+                quote: Quote::from_domain(quote),
+            }),
+        }
+    }
 }
 
 impl Volume {

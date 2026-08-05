@@ -21,7 +21,7 @@ const FAQS = [
   },
   {
     q: 'Who keeps the surplus?',
-    a: `Ophis takes no cut of price improvement on any chain. On ${sovereignList}, 100% of the improvement is returned to the trader. On CoW-hosted chains, CoW Protocol retains 50% of quote improvement upstream before the remainder is returned. The Ophis fee is charged on volume, never as a share of your surplus.`,
+    a: `On ${sovereignList}, Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 30 bps of volume, or 50% on stable pairs, capped at 10 bps; the trader receives the remainder. CoW-hosted chains follow CoW Protocol's upstream surplus policy.`,
   },
   {
     q: 'How is surplus different from positive slippage?',
@@ -46,9 +46,9 @@ const FAQS = [
   <p>
     <strong>The short version:</strong> surplus is the gap between what you signed for and the
     better execution settlement achieved. It comes from price movement, solver competition, and
-    peer matches. Ophis takes no cut of it on any chain: 100% is returned on the Ophis-operated
-    chains, while CoW-hosted chains pass through CoW Protocol's upstream 50% share of quote
-    improvement first. The fee is on volume, never on surplus.
+    peer matches. On Ophis-operated chains, the trader receives the remainder after Ophis's capped
+    reference-improvement capture, while CoW-hosted chains pass through CoW Protocol's upstream
+    surplus policy.
   </p>
 
   {FAQS.map((f) => (

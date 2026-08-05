@@ -1,4 +1,4 @@
-import { USDC, USDT0_HYPEREVM, WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/common-const'
+import { USDC } from '@cowprotocol/common-const'
 import { mapAddressToSupportedNetworks, mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount, Percent } from '@cowprotocol/currency'
 
@@ -39,10 +39,6 @@ export const TWAP_HANDLER_ADDRESS: Record<SupportedChainId, string> = {
   [10 as unknown as SupportedChainId]: twapHandlerAddress,
   // Ophis fork: Unichain mainnet (chain 130) — same canonical TWAP handler
   [130 as unknown as SupportedChainId]: twapHandlerAddress,
-  // Ophis fork: MegaETH mainnet (chain 4326) — TBD post-deploy
-  [4326 as unknown as SupportedChainId]: twapHandlerAddress,
-  // Ophis fork: HyperEVM mainnet (chain 999) — TBD post-deploy
-  [999 as unknown as SupportedChainId]: twapHandlerAddress,
 }
 
 export const TWAP_PENDING_STATUSES = [TwapOrderStatus.WaitSigning, TwapOrderStatus.Pending, TwapOrderStatus.Cancelling]
@@ -58,18 +54,6 @@ export const MINIMUM_PART_SELL_AMOUNT_FIAT: Record<SupportedChainId, CurrencyAmo
   [10 as unknown as SupportedChainId]: CurrencyAmount.fromRawAmount(USDC[10 as unknown as SupportedChainId], 1e6),
   // Ophis fork: Unichain mainnet (chain 130) — USDC has 6 decimals, $1 minimum
   [130 as unknown as SupportedChainId]: CurrencyAmount.fromRawAmount(USDC[130 as unknown as SupportedChainId], 1e6),
-  // Ophis fork: MegaETH mainnet (chain 4326) — no USDC at launch, denominate
-  // the TWAP minimum-part threshold in WETH instead. 0.001 ETH ≈ a few dollars.
-  [4326 as unknown as SupportedChainId]: CurrencyAmount.fromRawAmount(
-    WRAPPED_NATIVE_CURRENCIES[4326 as unknown as SupportedChainId],
-    BigInt(1e15).toString(), // 0.001 WETH
-  ),
-  // Ophis fork: HyperEVM mainnet (chain 999) — USD₮0 is the canonical
-  // stablecoin (6 decimals). $1 minimum-part threshold matches most chains.
-  // Note: TWAP is currently gated at the useTwapFormState layer for chain 999
-  // (ComposableCoW not deployed), so this value is reachable only after that
-  // gate is removed.
-  [999 as unknown as SupportedChainId]: CurrencyAmount.fromRawAmount(USDT0_HYPEREVM, 1e6), // $1
 }
 
 export const MINIMUM_PART_TIME = ms`5min` / 1000 // in seconds
