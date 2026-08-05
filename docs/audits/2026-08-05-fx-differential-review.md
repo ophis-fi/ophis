@@ -157,3 +157,13 @@ Reviewed all changed production files, the complete new swap function, its confi
 **Confidence:** High for the disabled solver code and exact-input redemption construction; medium for production readiness because a successful live redemption was unavailable during review.
 
 The full solver test suite and driver compilation pass. Clippy with `-D warnings` cannot complete because pre-existing warnings in `poison-recovery` (`explicit_auto_deref`) and `app-data` (`mixed_case_hex_literals`) are promoted to errors before the F(x) crate analysis completes; neither file is changed by this integration.
+
+## Independent Codex follow-up
+
+The first Codex 5.6 Sol pass rejected the implementation and identified three issues, all fixed before merge:
+
+- Ethereum driver authorization now accepts only the exact fxUSD `redeem(address,uint256,address,uint256)` calldata shape. It binds the receiver to Settlement and binds calldata assets and amounts to the interaction inputs, outputs, and self-allowance. The fxUSD proxy is deliberately excluded from the generic address-only router allowlist, preventing arbitrary ERC-20 selectors such as `transfer`.
+- The balance-slot proof first reads the live Settlement balance and overrides it with a different sentinel. This proves the configured slot actually controls `balanceOf` before the requested order amount is used for the redemption quote.
+- The Odos-removal replay's pathviz fixture now uses one consistent neutral solver node ID.
+
+Regression coverage includes malicious-selector and attacker-receiver rejection in the driver, the complete pathviz suite, and the F(x) adapter unit tests.

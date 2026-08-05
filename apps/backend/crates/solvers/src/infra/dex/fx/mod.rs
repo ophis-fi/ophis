@@ -76,30 +76,42 @@ impl Fx {
             return Err(Error::NotFound);
         }
         let balance_key = solidity_mapping_key(self.settlement, self.balance_slot);
-        let balance_value = B256::from(amount_in.to_be_bytes::<32>());
-        let overrides = || {
-            StateOverridesBuilder::with_capacity(1)
-                .with_state_diff(self.fxusd, [(balance_key, balance_value)])
+        let overrides = |balance: U256| {
+            StateOverridesBuilder::with_capacity(1).with_state_diff(
+                self.fxusd,
+                [(balance_key, B256::from(balance.to_be_bytes::<32>()))],
+            )
         };
 
         // A proxy upgrade can change storage layout. Prove that the configured
-        // slot still controls exactly Settlement's fxUSD balance before using
-        // it for a stateful quote; otherwise an override could perturb unrelated
-        // protocol storage and produce a quote that real execution cannot match.
+        // slot still controls Settlement's fxUSD balance before using it for a
+        // stateful quote. The sentinel MUST differ from the live value: checking
+        // only `amount_in` can false-pass when the real balance already happens
+        // to equal the order amount while a stale slot mutates unrelated state.
+        let live_balance = contract
+            .balanceOf(self.settlement)
+            .call()
+            .await
+            .map_err(Error::Rpc)?;
+        let sentinel = if live_balance == U256::MAX {
+            U256::ZERO
+        } else {
+            live_balance + U256::from(1)
+        };
         let overridden_balance = contract
             .balanceOf(self.settlement)
             .call()
-            .overrides(overrides())
+            .overrides(overrides(sentinel))
             .await
             .map_err(Error::Rpc)?;
-        if overridden_balance != amount_in {
+        if overridden_balance != sentinel {
             return Err(Error::InvalidBalanceSlot);
         }
         let quote = contract
             .redeem(order.buy.0, amount_in, self.settlement, U256::ZERO)
             .from(self.settlement)
             .call()
-            .overrides(overrides())
+            .overrides(overrides(amount_in))
             .await
             .map_err(classify_quote_error)?;
 
@@ -123,9 +135,18 @@ impl Fx {
         .abi_encode();
 
         Ok(dex::Swap {
-            calls: vec![dex::Call { to: self.fxusd, calldata }],
-            input: eth::Asset { token: order.sell, amount: amount_in },
-            output: eth::Asset { token: order.buy, amount: min_out },
+            calls: vec![dex::Call {
+                to: self.fxusd,
+                calldata,
+            }],
+            input: eth::Asset {
+                token: order.sell,
+                amount: amount_in,
+            },
+            output: eth::Asset {
+                token: order.buy,
+                amount: min_out,
+            },
             allowance: dex::Allowance {
                 // `redeem` burns `_msgSender()` directly and never calls
                 // transferFrom, but the shared Swap shape requires an
@@ -212,7 +233,10 @@ mod tests {
 
     #[test]
     fn slippage_floor_is_exact_and_overflow_safe() {
-        assert_eq!(subtract_slippage(U256::from(1_000), 100), Some(U256::from(990)));
+        assert_eq!(
+            subtract_slippage(U256::from(1_000), 100),
+            Some(U256::from(990))
+        );
         assert_eq!(subtract_slippage(U256::MAX, 0), Some(U256::MAX));
     }
 

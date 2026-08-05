@@ -3,12 +3,12 @@
 //! (via [`svg_to_base64`]) a `data:`-ready base64 payload.
 //!
 //! Security posture:
-//! - The output is self-contained: NO external references (`<script>`,
-//!   `href`, `<image>`, `<foreignObject>`, `url(...)`), enforced by a test.
-//!   This lets the `.svg` endpoint serve it under `Content-Security-Policy:
-//!   default-src 'none'` with `X-Content-Type-Options: nosniff`.
-//! - Every hostile label (token symbols, venue/solver names) is passed
-//!   through [`crate::escape`] before it reaches an attribute or text node.
+//! - The output is self-contained: NO external references (`<script>`, `href`,
+//!   `<image>`, `<foreignObject>`, `url(...)`), enforced by a test. This lets
+//!   the `.svg` endpoint serve it under `Content-Security-Policy: default-src
+//!   'none'` with `X-Content-Type-Options: nosniff`.
+//! - Every hostile label (token symbols, venue/solver names) is passed through
+//!   [`crate::escape`] before it reaches an attribute or text node.
 
 use {
     crate::{
@@ -201,9 +201,7 @@ pub fn render_svg(
         footer_y += 22.0;
     }
 
-    if show_surplus
-        && let Some(surplus) = &graph.surplus
-    {
+    if show_surplus && let Some(surplus) = &graph.surplus {
         let amount = surplus
             .amount_display
             .clone()
@@ -266,8 +264,10 @@ pub fn svg_to_base64(svg: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use model::pathviz::{Fee, PathVizLink, PathVizNode, PathVizSolverBid};
+    use {
+        super::*,
+        model::pathviz::{Fee, PathVizLink, PathVizNode, PathVizSolverBid},
+    };
 
     fn token(id: &str, label: &str, col: u8) -> PathVizNode {
         PathVizNode {
@@ -297,15 +297,15 @@ mod tests {
         // id follows the real "solver:<name>" convention so the id-based winner
         // match resolves against g.solvers by name.
         g.nodes.push(PathVizNode {
-            id: "solver:winner".into(),
+            id: "solver:external-solver".into(),
             label: "external-solver".into(),
             kind: PathVizNodeKind::Solver,
             column: 1,
             address: None,
         });
         g.nodes.push(token("out:usdc", "USDC", 3));
-        g.links.push(route("in:weth", "solver:odos-solver"));
-        g.links.push(route("solver:odos-solver", "out:usdc"));
+        g.links.push(route("in:weth", "solver:external-solver"));
+        g.links.push(route("solver:external-solver", "out:usdc"));
         g.solvers.push(PathVizSolverBid {
             name: "external-solver".into(),
             winner: true,
@@ -402,9 +402,18 @@ mod tests {
         });
         let svg = render_svg(&g, None).unwrap();
         let lower = svg.to_lowercase();
-        assert!(!lower.contains("velora"), "competitor brand leaked in the rendered SVG");
-        assert!(!lower.contains("kyberswap"), "competitor brand leaked in the rendered SVG");
-        assert!(svg.contains("External solver"), "neutral label should render");
+        assert!(
+            !lower.contains("velora"),
+            "competitor brand leaked in the rendered SVG"
+        );
+        assert!(
+            !lower.contains("kyberswap"),
+            "competitor brand leaked in the rendered SVG"
+        );
+        assert!(
+            svg.contains("External solver"),
+            "neutral label should render"
+        );
         // Only Route links here (stroke-width 6), so the winner node rect is the
         // sole stroke-width=2. Exactly one proves the id-based winner match fired.
         assert_eq!(
