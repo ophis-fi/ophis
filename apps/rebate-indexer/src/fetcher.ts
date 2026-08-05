@@ -633,7 +633,11 @@ export async function withPipelineLock(fn: () => Promise<void>): Promise<boolean
   }
 }
 
-export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: number; owners: number }> {
+export async function runFetcher(_deps?: FetcherDeps): Promise<{
+  inserted: number;
+  owners: number;
+  reportingProgress: boolean;
+}> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
   const { db, sql, schema } = await import('./db/index.js');
 
@@ -653,7 +657,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     locked = lockRow?.locked === true;
     if (!locked) {
       log.info('fetcher already running (advisory lock held); skipping');
-      return { inserted: 0, owners: 0 };
+      return { inserted: 0, owners: 0, reportingProgress: false };
     }
 
     const pendingDefillamaFills: PendingDefiLlamaFill[] = [];
@@ -882,7 +886,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // would delete aged, not-yet-refetched wallets before later iterations reach
     // them, silently rebuilding an incomplete ledger.
     log.info({ owners: owners.length, inserted }, 'fetcher complete');
-    return { inserted, owners: owners.length };
+    return { inserted, owners: owners.length, reportingProgress: ethFlowReportingOk };
   } finally {
     // Always runs — even if the lock acquire or unlock throws — so a transient
     // error can't leak the reserved connection. Unlock on the SAME connection
