@@ -22,7 +22,7 @@ use {
 fn required_fx_output(
     solution: &solvers_dto::solution::Solution,
     auction: &competition::Auction,
-) -> Result<Option<(eth::U256, eth::U256)>, super::Error> {
+) -> Result<Option<(alloy::primitives::Address, eth::U256, eth::U256)>, super::Error> {
     const FXUSD: alloy::primitives::Address =
         alloy::primitives::address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
     let fx_interactions = solution
@@ -80,7 +80,7 @@ fn required_fx_output(
             (numerator % buy_price != eth::U256::ZERO) as u8,
         ))
         .ok_or_else(|| super::Error("F(x) clearing amount overflow".to_owned()))?;
-    Ok(Some((amount_in, required)))
+    Ok(Some((buy, amount_in, required)))
 }
 
 /// Validate a solver-supplied raw `Call`-style interaction (used for
