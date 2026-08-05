@@ -153,9 +153,14 @@ describe('partner-fee feed ingestion', () => {
     expect(r2.inserted).toBe(1); // it re-attributed (the ON CONFLICT is the real dedupe)
   });
 
-  it('REFUSES to poll a chain not asserted config-fee-free (fail loud, before any DB write)', async () => {
+  it('polls config-fee chains because the feed supplies aligned policy kinds', async () => {
     const { runPartnerFeeFetch } = await import('../../src/partnerFees/fetch.js');
-    await expect(runPartnerFeeFetch({ feeds: [{ chainId: 8453, url: FEED }] })).rejects.toThrow(/config-fee-free/i);
+    await expect(
+      runPartnerFeeFetch({
+        feeds: [{ chainId: 8453, url: FEED }],
+        fetcher: async () => ({ trades: [] }),
+      }),
+    ).resolves.toMatchObject({ misconfigured: false });
   });
 
   it('preserves BOTH settlements of a partiallyFillable order (same uid, distinct block/log)', async () => {
