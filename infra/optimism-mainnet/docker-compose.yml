@@ -249,6 +249,7 @@ services:
       kyberswap-solver: { condition: service_healthy }
       velora-solver: { condition: service_healthy }
       curve-solver: { condition: service_healthy }
+      woofi-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
       # Driver uses eRPC proxy for block-stream polling + eth_call workload.
@@ -524,6 +525,31 @@ services:
     command: ["curve", "--config", "/curve.toml"]
     ports:
       - "127.0.0.1:9031:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  woofi-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/woofi.toml:/woofi.toml:ro
+    command: ["woofi", "--config", "/woofi.toml"]
+    ports:
+      - "127.0.0.1:9032:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s

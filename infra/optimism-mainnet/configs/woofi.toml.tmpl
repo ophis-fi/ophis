@@ -1,0 +1,13 @@
+# Ophis Optimism direct WOOFi solver. Exact-input only; the router is pinned
+# from WOOFi's canonical deployment records and selector-scoped in the driver.
+# This secret-bearing render lives on the managed RAM disk because the RPC URL
+# may contain an embedded provider token.
+node-url = "${OP_MAINNET_RPC}"
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+internalize-interactions = false
+strict-market-output-simulation = "all"
+wrapped-native = "0x4200000000000000000000000000000000000006"
+wrapped-native-balance-slot = 3
+
+[dex]
+router = "0x4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7"

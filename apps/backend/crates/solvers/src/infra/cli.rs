@@ -58,6 +58,11 @@ pub enum Command {
         #[clap(long, env)]
         config: PathBuf,
     },
+    /// solve exact-input orders through the pinned Optimism WOOFi router
+    Woofi {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
     /// solve individual orders via the KyberSwap aggregator API
     KyberSwap {
         #[clap(long, env)]
