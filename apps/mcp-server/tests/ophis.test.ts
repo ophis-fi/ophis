@@ -206,15 +206,15 @@ describe('validateOrder (offline preflight)', () => {
     expect(r.valid).toBe(true)
   })
 
-  it('rejects a 2 bps Ophis-recipient Volume fee below the non-stable floor on Optimism', () => {
+  it('accepts the 1 bp sovereign base on a non-stable Optimism pair', () => {
     const doc = JSON.stringify({
       version: APP_DATA_VERSION,
       appCode: 'ophis',
-      metadata: { partnerFee: { recipient: OPHIS_SAFE, volumeBps: 2 } },
+      metadata: { partnerFee: { recipient: OPHIS_SAFE, volumeBps: 1 } },
     })
     const r = validateOrder({ chainId: 10, order: { sellToken: WETH_OP, buyToken: OP_TOKEN }, fullAppData: doc }, NOW)
-    expect(r.valid).toBe(false)
-    expect(r.errors.some((e) => /below the Ophis 4-bps non-stable Volume floor/i.test(e))).toBe(true)
+    expect(r.errors.some((e) => /Volume floor/i.test(e))).toBe(false)
+    expect(r.valid).toBe(true)
   })
 
   it('rejects a stacked non-Ophis partnerFee recipient (backend allowlist rejects the whole order)', () => {
@@ -237,17 +237,6 @@ describe('validateOrder (offline preflight)', () => {
     expect(r.errors.some((e) => /not the Ophis recipient/i.test(e) && /allowlist/i.test(e) && e.includes(ATTACKER))).toBe(true)
   })
 
-  it('warns (does not silently pass) when the Ophis fee may breach the floor but the tokens are omitted', () => {
-    // Same 2 bps fee as the floor test above, but with no sellToken/buyToken: the
-    // pair cannot be confirmed, so a bypass-by-omission must surface as a warning.
-    const doc = JSON.stringify({
-      version: APP_DATA_VERSION,
-      appCode: 'ophis',
-      metadata: { partnerFee: { recipient: OPHIS_SAFE, volumeBps: 2 } },
-    })
-    const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
-    expect(r.warnings.some((w) => /may breach the Ophis Volume floor/i.test(w))).toBe(true)
-  })
 })
 
 describe('buildOrder', () => {

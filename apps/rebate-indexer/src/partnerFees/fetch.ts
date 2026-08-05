@@ -10,9 +10,19 @@ async function getSql() {
 }
 
 /** Resolve a per-chain RPC URL for block-timestamp enrichment (reuses the settle-decoder env). */
-const DEFAULT_RPC: Record<number, string> = { 10: 'https://mainnet.optimism.io', 130: 'https://mainnet.unichain.org' };
+const DEFAULT_RPC: Record<number, string> = {
+  10: 'https://mainnet.optimism.io',
+  130: 'https://mainnet.unichain.org',
+  4663: 'https://rpc.mainnet.chain.robinhood.com',
+};
 function partnerFeeRpc(chainId: number): string {
-  return process.env[`PARTNER_FEE_RPC_URL_${chainId}`] ?? process.env[`SETTLE_RPC_URL_${chainId}`] ?? DEFAULT_RPC[chainId] ?? 'https://mainnet.optimism.io';
+  const url = process.env[`PARTNER_FEE_RPC_URL_${chainId}`] ?? process.env[`SETTLE_RPC_URL_${chainId}`] ?? DEFAULT_RPC[chainId];
+  if (!url) {
+    throw new Error(
+      `partner-fee feed: no RPC configured for chain ${chainId}; set PARTNER_FEE_RPC_URL_${chainId} or SETTLE_RPC_URL_${chainId}`,
+    );
+  }
+  return url;
 }
 
 /** Fetch a settlement block's UTC timestamp, or null on failure (retried next run). Injectable. */
@@ -113,7 +123,7 @@ export function resolvePartnerFeeFeeds(raw = process.env.PARTNER_FEE_FEED_URLS):
     seen.add(chainId);
     feeds.push({ chainId, url });
   }
-  assertFeedsConfigFeeFree(feeds); // fail loud on a chain not asserted config-fee-free
+  assertFeedsConfigFeeFree(feeds); // compatibility hook; policy-kind attribution is chain-safe
   return feeds;
 }
 

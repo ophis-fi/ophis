@@ -1,6 +1,6 @@
 import {
   OPHIS_PARTNER_FEE_RECIPIENT,
-  OPHIS_VOLUME_FEE_BPS,
+  ophisVolumeBpsForChainAndPair,
 } from './partner-fee.js';
 
 /** Ophis-operated chains (where Ophis runs its own stack and the partner fee accrues). */
@@ -19,6 +19,6 @@ export interface OphisDefaults {
 /** Default config for Ophis's primary live chain (Optimism), using the real recipient + CIP-75 volume fee. */
 export const ophisDefaults: OphisDefaults = Object.freeze({
   chainId: OPHIS_CHAIN_IDS.optimism,
-  volumeBps: OPHIS_VOLUME_FEE_BPS,
+  volumeBps: ophisVolumeBpsForChainAndPair(OPHIS_CHAIN_IDS.optimism, false),
   partnerRecipient: OPHIS_PARTNER_FEE_RECIPIENT,
 });

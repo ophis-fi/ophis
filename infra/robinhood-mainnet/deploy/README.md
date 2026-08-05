@@ -53,7 +53,7 @@ HooksTrampoline). At the end, only the 2-of-3 Safe can add/remove solvers or upg
     the bytecode gate instead of relying on the human ToB diff.
 - The Ledger (OPHIS_HW_WALLET `0xBeC5...0199`) funded ~0.02 ETH on 4663, connected, Ethereum app open, Ledger Live closed.
 - The `robinhood-mainnet` hardhat network (chainId 4663) - already added to
-  `contracts/hardhat-megaeth.config.ts` in this PR.
+  `contracts/hardhat-ophis.config.ts`.
 
 ## Arbitrum Orbit deltas vs the OP-Stack (Unichain) ceremony
 

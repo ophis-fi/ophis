@@ -72,9 +72,8 @@ impl PriceImprovement {
         quote: &domain::Quote,
     ) -> Option<domain::fee::Policy> {
         match order.metadata.class {
-            boundary::OrderClass::Market => None,
             boundary::OrderClass::Liquidity => None,
-            boundary::OrderClass::Limit => Some(domain::fee::Policy::PriceImprovement {
+            boundary::OrderClass::Market | boundary::OrderClass::Limit => Some(domain::fee::Policy::PriceImprovement {
                 factor: self.factor,
                 max_volume_factor: self.max_volume_factor,
                 quote: Quote::from_domain(quote),
@@ -90,8 +89,8 @@ impl PriceImprovement {
         max_volume_factor: FeeFactor,
     ) -> Option<domain::fee::Policy> {
         match order.metadata.class {
-            boundary::OrderClass::Market | boundary::OrderClass::Liquidity => None,
-            boundary::OrderClass::Limit => Some(domain::fee::Policy::PriceImprovement {
+            boundary::OrderClass::Liquidity => None,
+            boundary::OrderClass::Market | boundary::OrderClass::Limit => Some(domain::fee::Policy::PriceImprovement {
                 factor,
                 max_volume_factor,
                 quote: Quote::from_domain(quote),
@@ -120,5 +119,42 @@ impl Volume {
                 Some(domain::fee::Policy::Volume { factor })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn price_improvement() -> PriceImprovement {
+        PriceImprovement {
+            factor: FeeFactor::try_from(0.8).unwrap(),
+            max_volume_factor: FeeFactor::try_from(0.003).unwrap(),
+        }
+    }
+
+    #[test]
+    fn price_improvement_applies_to_in_market_orders() {
+        let mut order = boundary::Order::default();
+        order.metadata.class = boundary::OrderClass::Market;
+
+        assert!(price_improvement().apply(&order, &domain::Quote::default()).is_some());
+        assert!(
+            price_improvement()
+                .apply_with_override(
+                    &order,
+                    &domain::Quote::default(),
+                    FeeFactor::try_from(0.5).unwrap(),
+                    FeeFactor::try_from(0.001).unwrap(),
+                )
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn price_improvement_still_excludes_liquidity_orders() {
+        let mut order = boundary::Order::default();
+        order.metadata.class = boundary::OrderClass::Liquidity;
+        assert!(price_improvement().apply(&order, &domain::Quote::default()).is_none());
     }
 }

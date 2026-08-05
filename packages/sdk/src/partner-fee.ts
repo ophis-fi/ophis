@@ -10,7 +10,7 @@
  *   - apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts
  *     (`OPHIS_DEFAULT_APP_DATA_PARTNER_FEE`; separate pnpm workspace, mirrored)
  *   - apps/backend/crates/app-data/src/app_data.rs
- *     (`OPHIS_NON_STABLE_FLOOR_BPS = 4` / `OPHIS_STABLE_VOLUME_FEE_BPS = 1`:
+ *     (`OPHIS_NON_STABLE_FLOOR_BPS = 1` / `OPHIS_STABLE_VOLUME_FEE_BPS = 1`:
  *     the MINIMUM Volume bps the OP self-hosted backend accepts for a fee to the
  *     Ophis recipient, enforced at order ingress and re-clamped in the autopilot.
  *     sovereign chains require the 1 bp base; hosted chains retain 5 bps partner
@@ -39,7 +39,7 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
  * bounded above only by the autopilot's operator-set global `max_partner_fee`.
  *
  * Cross-workspace invariant (scripts/check-floor-invariant.sh): backend floor
- * (4) <= this partner rate (5) <= front-end retail (10). Republish in lockstep.
+ * (1) <= this hosted partner rate (5) <= hosted front-end retail (10).
  */
 export const OPHIS_VOLUME_FEE_BPS = 5;
 
@@ -89,6 +89,15 @@ const FEE_CHAIN_IDS = [
 const FEE_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>(FEE_CHAIN_IDS);
 const SOVEREIGN_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>([10, 130, 4663]);
 
+/** Chain-aware volume fee for high-level order builders. Sovereign chains always
+ * use their 1 bp base; hosted chains use 1 bp for stable pairs and 5 bps otherwise. */
+export const ophisVolumeBpsForChainAndPair = (chainId: number, isStablePair: boolean): number => {
+  assertValidChainId(chainId);
+  return SOVEREIGN_CHAIN_ID_SET.has(chainId)
+    ? OPHIS_SOVEREIGN_VOLUME_FEE_BPS
+    : ophisVolumeBpsForPair(isStablePair);
+};
+
 /**
  * Frozen, immutable list of the fee chain ids. Membership: `.includes(id)` or
  * spread it. The SDK's own fee decisions read the private Set above, never this
@@ -110,9 +119,7 @@ export const ophisDefaultPartnerFee = (chainId: number): OphisPartnerFee | undef
   assertValidChainId(chainId);
   if (!FEE_CHAIN_ID_SET.has(chainId)) return undefined;
   return {
-    volumeBps: SOVEREIGN_CHAIN_ID_SET.has(chainId)
-      ? OPHIS_SOVEREIGN_VOLUME_FEE_BPS
-      : OPHIS_VOLUME_FEE_BPS,
+    volumeBps: ophisVolumeBpsForChainAndPair(chainId, false),
     recipient: OPHIS_PARTNER_FEE_RECIPIENT,
   };
 };

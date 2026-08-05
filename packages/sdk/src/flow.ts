@@ -21,7 +21,7 @@
 
 import {
   OPHIS_PARTNER_FEE_RECIPIENT,
-  ophisVolumeBpsForPair,
+  ophisVolumeBpsForChainAndPair,
   OPHIS_FEE_CHAIN_IDS,
   type OphisPartnerFee,
 } from './partner-fee.js';
@@ -54,11 +54,9 @@ export interface OphisOrderMetadataOptions {
   readonly referralCode?: string;
   /**
    * True ONLY for a same-chain stablecoin pair, which charges the reduced 1 bp
-   * rate instead of the standard 5 bps partner rate. You decide this; the SDK is
-   * chain-only and cannot detect the pair. Defaults to false. Setting it true for
-   * a pair that is not actually stable-stable undercharges: on the OP self-hosted
-   * backend the order still clears the 4 bps floor but undercharges; on CoW-hosted
-   * chains it may silently settle (and rebate) at a fifth. When in doubt, leave it false.
+   * hosted rate instead of the standard 5 bps hosted partner rate. Sovereign
+   * chains use their 1 bp base regardless because price-improvement capture is
+   * applied by the backend. You decide pair classification; the SDK has no token list.
    */
   readonly isStablePair?: boolean;
   /**
@@ -122,7 +120,7 @@ export function buildOphisOrderMetadata(opts: OphisOrderMetadataOptions): OphisA
   }
   const partnerFee: OphisPartnerFee = {
     recipient: OPHIS_PARTNER_FEE_RECIPIENT,
-    volumeBps: ophisVolumeBpsForPair(isStablePair),
+    volumeBps: ophisVolumeBpsForChainAndPair(chainId, isStablePair),
   };
   // buildOphisReferrerMetadata validates the code grammar and throws on a typo;
   // with no code it returns {} so the order is fee-bearing but unattributed.

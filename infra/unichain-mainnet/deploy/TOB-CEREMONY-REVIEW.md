@@ -1,7 +1,7 @@
 # Independent Adversarial Review — Unichain (130) Sovereign GPv2 Deploy Ceremony
 
 Artifact: `infra/unichain-mainnet/deploy/deploy-mainnet-all.sh`
-Relies on: `contracts/hardhat-megaeth.config.ts` (network `unichain-mainnet`, chainId 130)
+Relies on: `contracts/hardhat-ophis.config.ts` (network `unichain-mainnet`, chainId 130)
 Baseline (rehearsed): `infra/megaeth/deploy/deploy-mainnet-all.sh`
 Deploy logic: `contracts/src/deploy/001_authenticator.ts`, `002_settlement.ts`, `contracts/src/ts/deploy.ts`
 Authority contract: `contracts/src/contracts/GPv2AllowListAuthentication.sol`
@@ -302,7 +302,7 @@ better, ship a `resume.sh` that re-validates $SAFE before the manual setManager.
 ### F8 — [PASS] Secret / key handling
 **Maps to question 7.**
 
-- No private key is ever in this script or in `hardhat-megaeth.config.ts` for the mainnet path.
+- No private key is ever in this script or in `hardhat-ophis.config.ts` for the mainnet path.
   Mainnet signs via Ledger (`ledgerAccounts: [OPHIS_HW_WALLET]`); `accounts` is empty for the
   Ledger networks. `OPHIS_MEGAETH_DEPLOYER_PK` is consumed only by TESTNET networks.
 - The driver submitter PK is explicitly NOT in the repo (comment `:64`), lives 0600 on the host.
