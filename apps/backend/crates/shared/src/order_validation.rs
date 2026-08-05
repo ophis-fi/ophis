@@ -1135,30 +1135,24 @@ mod tests {
     #[test]
     fn partner_fee_floor_rejects_below_minimum_volume_fee() {
         // Arbitrary non-stable OP token pair (WETH / OP) so the floor is the
-        // non-stable floor (4 bps).
+        // sovereign non-stable floor (1 bp).
         let weth = address!("0x4200000000000000000000000000000000000006");
         let op = address!("0x4200000000000000000000000000000000000042");
 
         // The original bypass: a near-zero fee to the Ophis recipient.
         let err = enforce_partner_fee_floor(volume_fee(0).iter(), weth, op)
-            .expect_err("0 bps must be rejected against the 4 bps non-stable floor");
+            .expect_err("0 bps must be rejected against the 1 bp non-stable floor");
         assert!(matches!(
             err,
             ValidationError::PartnerFeeBelowFloor {
                 bps: 0,
-                floor: 4,
+                floor: 1,
                 ..
             }
         ));
 
-        // Anything strictly below the floor is rejected.
-        assert!(matches!(
-            enforce_partner_fee_floor(volume_fee(3).iter(), weth, op),
-            Err(ValidationError::PartnerFeeBelowFloor { floor: 4, .. })
-        ));
-
-        // At and above the floor is accepted (incl. the 5 bps partner SDK tier).
-        for bps in [4u64, 5, 10, 50, 100] {
+        // At and above the floor is accepted (including legacy hosted tiers).
+        for bps in [1u64, 5, 10, 50, 100] {
             assert!(
                 enforce_partner_fee_floor(volume_fee(bps).iter(), weth, op).is_ok(),
                 "{bps} bps should be accepted"
