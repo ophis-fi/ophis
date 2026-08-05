@@ -23,7 +23,7 @@ mod dto;
 pub const DEFAULT_SELL_ORDERS_ENDPOINT: &str = "https://web3.okx.com/api/v6/dex/aggregator/";
 
 /// Maximum slippage (in bps) we will ever send to OKX. Mirrors the cap the
-/// other aggregator lanes apply (kyberswap / velora / odos): an upstream-
+/// other aggregator lanes apply (kyberswap / velora): an upstream-
 /// requested slippage above this is clamped so a degenerate config can't widen
 /// the router's enforced minReceived. The SAME clamped value is sent to OKX AND
 /// used to reconstruct the reported floor (below), so the two never diverge.
@@ -349,7 +349,7 @@ impl Okx {
         // (token, side) keys if the allowlist itself is ever wrong).
         validate_router_allowlist(self.defaults.chain_index, &swap_response.tx.to)?;
 
-        // Buffer-siphon guard (mirrors kyberswap/mod.rs:187, velora, odos, dodo,
+        // Buffer-siphon guard (mirrors kyberswap/mod.rs:187, velora, dodo,
         // lifi, enso, openocean, bitget — the one lane that was missing it). For
         // a SELL (exactIn) order the input is fixed by the signed order. A
         // compromised/hijacked OKX edge could echo a larger `from_token_amount`,

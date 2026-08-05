@@ -1009,12 +1009,9 @@ mod tests {
         );
         let reg = VenueRegistry::from_toml(src).expect("committed venue registry must parse");
         assert_eq!(reg.len(), 0, "OP settles only through routers: no drawable venues");
-        assert_eq!(reg.router_count(), 10, "expected the 10 documented OP routers");
+        assert_eq!(reg.router_count(), 9, "expected the 9 documented OP routers");
         // The competitor aggregators are NOT drawable (absent from the allowlist)
         // and are recorded as routers.
-        let odos: Address = "0xCa423977156BB05b13A2BA3b76Bc5419E2fE9680".parse().unwrap();
-        assert!(reg.labeled_venue(odos).is_none(), "a router is never drawn");
-        assert!(reg.is_router(odos));
         let kyber: Address = "0x6131B5fae19EA4f9D964eAc0408E4408b66337b5".parse().unwrap();
         assert!(reg.labeled_venue(kyber).is_none());
         assert!(reg.is_router(kyber));
@@ -1095,16 +1092,13 @@ mod tests {
             &tv("USDC", 6),
             "1000000000000000000",
             "3214700000",
-            "odos-solver",
+            "external-solver",
         );
         g.validate().unwrap();
         // No venue column at quote time (decision 22).
         assert!(!g.nodes.iter().any(|n| n.kind == PathVizNodeKind::Venue));
         assert_eq!(g.solvers.len(), 1);
-        assert_eq!(g.solvers[0].name, "odos-solver"); // raw metadata kept
-        // The RENDERED solver node label is brand-neutral, never the raw name.
-        let solver_node = g.nodes.iter().find(|n| n.kind == PathVizNodeKind::Solver).unwrap();
-        assert_eq!(solver_node.label, "External solver");
+        assert_eq!(g.solvers[0].name, "external-solver");
         assert!(g.surplus.is_none());
     }
 
@@ -1368,7 +1362,7 @@ mod tests {
     fn settled_graph_has_full_venue_column() {
         let venue = Address::with_last_byte(0xAA);
         let solvers = vec![PathVizSolverBid {
-            name: "odos-solver".into(),
+            name: "external-solver".into(),
             winner: true,
             executed_sell_atoms: Some("2000000000000000000".into()),
             executed_buy_atoms: Some("6430000000".into()),

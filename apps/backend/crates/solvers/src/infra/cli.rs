@@ -63,11 +63,6 @@ pub enum Command {
         #[clap(long, env)]
         config: PathBuf,
     },
-    /// solve individual orders via the Odos aggregator API
-    Odos {
-        #[clap(long, env)]
-        config: PathBuf,
-    },
     /// solve individual orders via the OpenOcean aggregator API
     OpenOcean {
         #[clap(long, env)]
@@ -85,6 +80,11 @@ pub enum Command {
     },
     /// solve pons launch-token/WETH and token/WETH/token orders through pinned V3 contracts
     Pons {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
+    /// redeem fxUSD through the native f(x) Protocol contracts on Ethereum
+    Fx {
         #[clap(long, env)]
         config: PathBuf,
     },

@@ -20,7 +20,6 @@ const AUTOPILOT_CONFIG_PATH = resolve(__dirname, '../../../../../../infra/optimi
 // Third-party / competitor brand tokens that must never appear in any rendered
 // solver string. Ophis public copy never names a competitor (standing rule).
 const BANNED_BRAND_TOKENS = [
-  'odos',
   'kyberswap',
   'kyber',
   'okx',

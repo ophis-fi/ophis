@@ -69,7 +69,7 @@ pub async fn load(path: &Path) -> super::Config {
             // dodo::Dex::try_new only fires on `None`; a TOML that renders the
             // key from an env placeholder yields `apikey = ""` via envsubst when
             // the var is unset, and an empty string would otherwise be sent
-            // verbatim, defeating the default. Mirrors the Odos coercion.
+            // verbatim, defeating the default. Normalize it here.
             apikey: config.apikey.filter(|k| !k.trim().is_empty()),
             block_stream: base.block_stream.clone(),
         },

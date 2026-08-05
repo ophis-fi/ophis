@@ -12,11 +12,10 @@
 //!
 //!   1. `Custom.target` must be on the per-chain allowlist.
 //!   2. Each `allowance.spender` must be on the per-chain allowlist.
-//!   3. Each `allowance.amount` must be ≤ `MAX_CUSTOM_ALLOWANCE`. This
-//!      rejects `U256::MAX` (the structural "unlimited approval" anti-
-//!      pattern flagged by the audit) plus any value in the top
-//!      ~50-orders-of-magnitude band — none of which any real order
-//!      needs.
+//!   3. Each `allowance.amount` must be ≤ `MAX_CUSTOM_ALLOWANCE`. This rejects
+//!      `U256::MAX` (the structural "unlimited approval" anti- pattern flagged
+//!      by the audit) plus any value in the top ~50-orders-of-magnitude band —
+//!      none of which any real order needs.
 //!
 //! The per-chain lists below mirror the union of all currently-deployed
 //! solver allowlists at the time of audit closure (2026-05-22). When a
@@ -38,18 +37,18 @@
 //!   1. The upstream's canonical deployment records (e.g. LI.FI publishes
 //!      `deployments/<network>.json` at github.com/lifinance/contracts;
 //!      KyberSwap and Velora publish per-chain address docs).
-//!   2. A byte-for-byte match with an address ALREADY allowlisted for
-//!      another chain from source (1) — a poisoned response cannot
-//!      introduce a NEW address that way, only agree with a trusted one.
-//!      This is why the CREATE2-deterministic KyberSwap / Velora / Enso /
-//!      OpenOcean entries are sound.
+//!   2. A byte-for-byte match with an address ALREADY allowlisted for another
+//!      chain from source (1) — a poisoned response cannot introduce a NEW
+//!      address that way, only agree with a trusted one. This is why the
+//!      CREATE2-deterministic KyberSwap / Velora / Enso / OpenOcean entries are
+//!      sound.
 //! On-chain and API evidence is corroboration that a contract is deployed
 //! and in use — never the basis for trusting it.
 //!
 //! PROVENANCE AUDIT STATUS: the LI.FI entries (chains 10 / 130 / 4663) were
 //! re-authenticated against LI.FI's canonical repo on 2026-07-26 and all
 //! three matched. NOT yet re-authenticated to standard (1) or (2): the OKX
-//! router/spender pair, the Odos routers, and the DODO router/approve-proxy
+//! router/spender pair and the DODO router/approve-proxy
 //! pair, whose notes still cite an API response plus a code-size check.
 //! Their addresses may well be correct — the point is the recorded basis is
 //! not sufficient. Re-authenticate them from upstream sources before
@@ -60,17 +59,21 @@ use {
     alloy::primitives::{Address, U256, address},
 };
 
+const ETHEREUM_FXUSD: Address = address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
+const ETHEREUM_SETTLEMENT: Address = address!("9008D19f58Aabd9eD0D60971565AA8510560ab41");
+const FXUSD_REDEEM_SELECTOR: [u8; 4] = [0xf3, 0xf0, 0x94, 0xa1];
+
 /// Cap on the value of any allowance a solver can request via a `Custom`
 /// interaction. = `2^200` ≈ `1.6e60`.
 ///
 /// Why this value:
 /// - Rejects `U256::MAX` and any "infinite approval" sentinel value.
-/// - Plenty of headroom for legitimate orders: even an 18-decimal token
-///   at `2^200` wei is `1.6e42` tokens — ~24 orders of magnitude beyond
-///   any token's total supply.
-/// - Power-of-two so the const can be expressed as `from_limbs` without
-///   a runtime helper. Bit 200 lives in the 4th `u64` limb at offset
-///   `200 - 192 = 8`.
+/// - Plenty of headroom for legitimate orders: even an 18-decimal token at
+///   `2^200` wei is `1.6e42` tokens — ~24 orders of magnitude beyond any
+///   token's total supply.
+/// - Power-of-two so the const can be expressed as `from_limbs` without a
+///   runtime helper. Bit 200 lives in the 4th `u64` limb at offset `200 - 192 =
+///   8`.
 ///
 /// **KNOWN INCOMPATIBILITY — OKX buy-mode (Codex PR-227 P1 `r3287846607`).**
 /// OKX's exact-out / buy-order endpoint emits `U256::MAX` allowances when
@@ -143,9 +146,6 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // `/approve-transaction` as `dexContractAddress` — the ERC-20
     // approval grantee. Verified 2026-05-18 alongside the router.
     address!("68D6B739D2020067D1e2F713b999dA97E4d54812"),
-    // Odos OdosRouterV2 on Optimism (10) -- router (tx.to) == ERC-20 spender.
-    // Per-chain; verified 2026-07-06 via api.odos.xyz + eth_getCode (14721 B).
-    address!("Ca423977156BB05b13A2BA3b76Bc5419E2fE9680"),
     // Enso EnsoRouter on Optimism (10) -- tx.to == approval target.
     // CREATE2-deterministic (same as Unichain). Verified 2026-07-06 (3313 B).
     address!("F75584eF6673aD213a685a1B58Cc0330B8eA22Cf"),
@@ -154,8 +154,8 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // "verified via li.quest + code size", which is API-plus-existence and does
     // NOT establish control (see the note on LIFI_ROUTER_ALLOWLIST). Now
     // AUTHENTICATED against LI.FI's canonical deployment records --
-    // github.com/lifinance/contracts @ 24b24e0f112e542d3992aa42de31c31f6c84dc4c (immutable commit, not a mutable
-    // branch path), deployments/optimism.json -> LiFiDiamond matches this
+    // github.com/lifinance/contracts @ 24b24e0f112e542d3992aa42de31c31f6c84dc4c (immutable commit,
+    // not a mutable branch path), deployments/optimism.json -> LiFiDiamond matches this
     // address exactly. Address unchanged; only the basis for trusting it is
     // now sound.
     address!("1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE"),
@@ -180,12 +180,14 @@ const HYPEREVM_MAINNET: &[Address] = &[
 ];
 
 /// Robinhood mainnet (chain 4663). KyberSwap + LI.FI as of 2026-07-26. Velora
-/// and Odos explicitly do NOT support 4663 (both return an unsupported-network
-/// error listing their chains); OKX is parked. When another aggregator adds
-/// 4663, append its router/spender here after upstream verification.
+/// and retired aggregators do not support 4663 (returning an
+/// unsupported-network error listing their chains); OKX is parked. When another
+/// aggregator adds 4663, append its router/spender here after upstream
+/// verification.
 ///
 /// NOTE: the LI.FI entry is a per-chain LiFiDiamond address (as on Optimism) —
-/// the Unichain diamond has no code on 4663, so its address does not carry over.
+/// the Unichain diamond has no code on 4663, so its address does not carry
+/// over.
 const ROBINHOOD_MAINNET: &[Address] = &[
     // OphisUniswapV4Adapter V1. Deterministic CREATE2 deployment through the
     // canonical 0x4e59 deployer with salt
@@ -223,7 +225,7 @@ const ROBINHOOD_MAINNET: &[Address] = &[
     address!("B477751B76CF82d00a686A1232f5fCD772414Af3"),
 ];
 
-/// Unichain mainnet (chain 130). KyberSwap + Velora + Odos + OpenOcean + DODO +
+/// Unichain mainnet (chain 130). KyberSwap + Velora + OpenOcean + DODO +
 /// OKX + LI.FI + Enso. When a new aggregator is enabled on Unichain, append its
 /// router/spender here after upstream verification — the SOLVER-level allowlist
 /// is NOT sufficient: the driver independently rejects any non-allowlisted
@@ -239,10 +241,6 @@ const UNICHAIN_MAINNET: &[Address] = &[
     // returns this exact contractAddress == tokenTransferProxy; matches the
     // solver-level VELORA_ROUTER_ALLOWLIST. Same address on all Velora chains.
     address!("6A000F20005980200259B80c5102003040001068"),
-    // Odos OdosRouterV2 on Unichain (130) — the `to` of the assembled tx AND
-    // the ERC-20 spender (Odos approves a single router). Verified on-chain via
-    // `cast code` on chain 130; matches the solver-level ODOS_ROUTER_ALLOWLIST.
-    address!("6409722F3a1C4486A3b1FE566cBDd5e9D946A1f3"),
     // OpenOcean OpenOceanExchangeProxy on Unichain (130) — router (`tx.to`) ==
     // ERC-20 spender. Verified on-chain via `cast code` on chain 130; matches
     // the solver-level OPENOCEAN_ROUTER_ALLOWLIST.
@@ -300,16 +298,16 @@ pub enum Error {
     SpenderNotAllowed { spender: Address, chain_id: u64 },
 
     #[error(
-        "Custom allowance amount {amount} exceeds MAX_CUSTOM_ALLOWANCE (2^200). Solvers must \
-         not request unlimited approvals (U256::MAX) — issue per-trade amounts scoped to the \
-         actual order size."
+        "Custom allowance amount {amount} exceeds MAX_CUSTOM_ALLOWANCE (2^200). Solvers must not \
+         request unlimited approvals (U256::MAX) — issue per-trade amounts scoped to the actual \
+         order size."
     )]
     AmountTooLarge { amount: U256 },
 
     #[error(
-        "interaction native-ETH value {value} exceeds MAX_INTERACTION_VALUE (2^200). Solvers \
-         must not request unbounded native-token transfers — value must be scoped to settlement \
-         ETH balance."
+        "interaction native-ETH value {value} exceeds MAX_INTERACTION_VALUE (2^200). Solvers must \
+         not request unbounded native-token transfers — value must be scoped to settlement ETH \
+         balance."
     )]
     ValueTooLarge { value: U256 },
 
@@ -319,6 +317,9 @@ pub enum Error {
          custom_allowlist.rs."
     )]
     ChainNotConfigured { chain_id: u64 },
+
+    #[error("interaction calldata is not authorized for target {target:?} on chain {chain_id}")]
+    CallDataNotAllowed { target: Address, chain_id: u64 },
 }
 
 impl Error {
@@ -331,6 +332,7 @@ impl Error {
             Error::AmountTooLarge { .. } => "amount_too_large",
             Error::ValueTooLarge { .. } => "value_too_large",
             Error::ChainNotConfigured { .. } => "chain_not_configured",
+            Error::CallDataNotAllowed { .. } => "calldata_not_allowed",
         }
     }
 }
@@ -341,6 +343,30 @@ impl Error {
 /// violation — callers should log + emit `custom_interaction_rejected`
 /// metric + propagate to the solver as a parse error.
 pub fn validate(custom: &interaction::Custom, chain_id: u64) -> Result<(), Error> {
+    validate_with_required_output(custom, chain_id, None)
+}
+
+pub fn validate_with_required_output(
+    custom: &interaction::Custom,
+    chain_id: u64,
+    required_amounts: Option<(Address, U256, U256)>,
+) -> Result<(), Error> {
+    // Ethereum's native f(x) lane is intentionally NOT added to the generic
+    // address-only router allowlist. fxUSD is an ERC-20 proxy, so allowing the
+    // address generically would also authorize `transfer(attacker, ...)` from
+    // Settlement. Accept only the exact redeem shape emitted by the solver and
+    // bind its receiver, assets and amounts to the declared interaction.
+    if chain_id == 1 && Address::from(custom.target) == ETHEREUM_FXUSD {
+        validate_value(custom.value.0)?;
+        for required in &custom.allowances {
+            if required.0.amount > MAX_CUSTOM_ALLOWANCE {
+                return Err(Error::AmountTooLarge {
+                    amount: required.0.amount,
+                });
+            }
+        }
+        return validate_fxusd_redeem(custom, required_amounts);
+    }
     let allowlist = chain_allowlist(chain_id)?;
 
     // (1) target — `ContractAddress(Address)` is opaque from outside its
@@ -376,6 +402,71 @@ pub fn validate(custom: &interaction::Custom, chain_id: u64) -> Result<(), Error
         }
     }
 
+    Ok(())
+}
+
+fn validate_fxusd_redeem(
+    custom: &interaction::Custom,
+    required_amounts: Option<(Address, U256, U256)>,
+) -> Result<(), Error> {
+    let reject = || Error::CallDataNotAllowed {
+        target: ETHEREUM_FXUSD,
+        chain_id: 1,
+    };
+    let data = custom.call_data.as_ref();
+    if data.len() != 4 + 32 * 4 || data[..4] != FXUSD_REDEEM_SELECTOR || !custom.value.0.is_zero() {
+        return Err(reject());
+    }
+    let word_address = |offset: usize| Address::from_slice(&data[offset + 12..offset + 32]);
+    let word_u256 = |offset: usize| U256::from_be_slice(&data[offset..offset + 32]);
+    let base_token = word_address(4);
+    let amount_in = word_u256(36);
+    let receiver = word_address(68);
+    let min_out = word_u256(100);
+    let Some((required_token, required_input, required_output)) = required_amounts else {
+        return Err(reject());
+    };
+    if base_token != required_token || amount_in > required_input || min_out < required_output {
+        return Err(reject());
+    }
+
+    let Some(input) = custom
+        .inputs
+        .as_slice()
+        .first()
+        .filter(|_| custom.inputs.len() == 1)
+    else {
+        return Err(reject());
+    };
+    let Some(output) = custom
+        .outputs
+        .as_slice()
+        .first()
+        .filter(|_| custom.outputs.len() == 1)
+    else {
+        return Err(reject());
+    };
+    let Some(required) = custom
+        .allowances
+        .as_slice()
+        .first()
+        .filter(|_| custom.allowances.len() == 1)
+    else {
+        return Err(reject());
+    };
+    let allowance = required.0;
+    if receiver != ETHEREUM_SETTLEMENT
+        || Address::from(input.token) != ETHEREUM_FXUSD
+        || input.amount.0 != amount_in
+        || Address::from(output.token) != base_token
+        || output.amount.0 != min_out
+        || allowance.token != ETHEREUM_FXUSD.into()
+        || allowance.spender != ETHEREUM_SETTLEMENT
+        || allowance.amount != amount_in
+        || custom.internalize
+    {
+        return Err(reject());
+    }
     Ok(())
 }
 
@@ -464,6 +555,131 @@ mod tests {
         }
     }
 
+    fn make_fx_redeem(receiver: Address) -> Custom {
+        let base = address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        let amount_in = U256::from(1_000u64);
+        let min_out = U256::from(990u64);
+        let mut data = Vec::with_capacity(132);
+        data.extend_from_slice(&FXUSD_REDEEM_SELECTOR);
+        for word in [
+            U256::from_be_slice(base.as_slice()),
+            amount_in,
+            U256::from_be_slice(receiver.as_slice()),
+            min_out,
+        ] {
+            data.extend_from_slice(&word.to_be_bytes::<32>());
+        }
+        Custom {
+            target: ETHEREUM_FXUSD.into(),
+            value: eth::Ether(U256::ZERO),
+            call_data: data.into(),
+            allowances: vec![
+                eth::Allowance {
+                    token: ETHEREUM_FXUSD.into(),
+                    spender: ETHEREUM_SETTLEMENT,
+                    amount: amount_in,
+                }
+                .into(),
+            ],
+            inputs: vec![eth::Asset {
+                token: ETHEREUM_FXUSD.into(),
+                amount: eth::TokenAmount(amount_in),
+            }],
+            outputs: vec![eth::Asset {
+                token: base.into(),
+                amount: eth::TokenAmount(min_out),
+            }],
+            internalize: false,
+        }
+    }
+
+    #[test]
+    fn fx_redeem_is_selector_and_receiver_scoped() {
+        let usdc = address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        assert_eq!(
+            validate_with_required_output(
+                &make_fx_redeem(ETHEREUM_SETTLEMENT),
+                1,
+                Some((usdc, U256::from(1_000u64), U256::from(990u64))),
+            ),
+            Ok(())
+        );
+
+        let mut transfer = make_fx_redeem(ETHEREUM_SETTLEMENT);
+        let mut transfer_data = transfer.call_data.to_vec();
+        transfer_data[..4].copy_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
+        transfer.call_data = transfer_data.into();
+        assert!(matches!(
+            validate_with_required_output(
+                &transfer,
+                1,
+                Some((usdc, U256::from(1_000u64), U256::from(990u64))),
+            ),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        let attacker_receiver = make_fx_redeem(ATTACKER);
+        assert!(matches!(
+            validate_with_required_output(
+                &attacker_receiver,
+                1,
+                Some((usdc, U256::from(1_000u64), U256::from(990u64))),
+            ),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        assert!(matches!(
+            validate_with_required_output(
+                &make_fx_redeem(ETHEREUM_SETTLEMENT),
+                1,
+                Some((usdc, U256::from(1_000u64), U256::from(991u64))),
+            ),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        // A protocol floor stricter than the credited fulfillment output is
+        // safe and occurs on fee-bearing full-fill LIMIT orders.
+        assert_eq!(
+            validate_with_required_output(
+                &make_fx_redeem(ETHEREUM_SETTLEMENT),
+                1,
+                Some((usdc, U256::from(1_000u64), U256::from(981u64))),
+            ),
+            Ok(())
+        );
+
+        // On a positive-fee partial LIMIT fill the fee can remain in
+        // Settlement, so routed amountIn is below executed + fee. The upper
+        // bound is the security invariant: redemption may not consume more
+        // fxUSD than the fulfillment contributes.
+        assert_eq!(
+            validate_with_required_output(
+                &make_fx_redeem(ETHEREUM_SETTLEMENT),
+                1,
+                Some((usdc, U256::from(1_010u64), U256::from(981u64))),
+            ),
+            Ok(())
+        );
+
+        assert!(matches!(
+            validate_with_required_output(
+                &make_fx_redeem(ETHEREUM_SETTLEMENT),
+                1,
+                Some((usdc, U256::from(999u64), U256::from(981u64))),
+            ),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        assert!(matches!(
+            validate_with_required_output(
+                &make_fx_redeem(ETHEREUM_SETTLEMENT),
+                1,
+                Some((ATTACKER, U256::from(1_000u64), U256::from(981u64))),
+            ),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+    }
+
     #[test]
     fn target_allowlisted_op() {
         let c = make_custom(KYBER, vec![(KYBER, U256::from(1000u64))]);
@@ -490,7 +706,10 @@ mod tests {
     fn target_not_allowlisted() {
         let c = make_custom(ATTACKER, vec![]);
         match validate(&c, 10) {
-            Err(Error::TargetNotAllowed { target, chain_id: 10 }) if target == ATTACKER => {}
+            Err(Error::TargetNotAllowed {
+                target,
+                chain_id: 10,
+            }) if target == ATTACKER => {}
             other => panic!("expected TargetNotAllowed, got {other:?}"),
         }
     }
@@ -522,7 +741,10 @@ mod tests {
     #[test]
     fn allowance_amount_u256_max_rejected() {
         let c = make_custom(KYBER, vec![(KYBER, U256::MAX)]);
-        assert!(matches!(validate(&c, 10), Err(Error::AmountTooLarge { .. })));
+        assert!(matches!(
+            validate(&c, 10),
+            Err(Error::AmountTooLarge { .. })
+        ));
     }
 
     #[test]
@@ -530,7 +752,10 @@ mod tests {
         // 2^201 = MAX_CUSTOM_ALLOWANCE * 2 — over the cap.
         let above_cap = MAX_CUSTOM_ALLOWANCE.saturating_mul(U256::from(2u64));
         let c = make_custom(KYBER, vec![(KYBER, above_cap)]);
-        assert!(matches!(validate(&c, 10), Err(Error::AmountTooLarge { .. })));
+        assert!(matches!(
+            validate(&c, 10),
+            Err(Error::AmountTooLarge { .. })
+        ));
     }
 
     #[test]
@@ -594,10 +819,7 @@ mod tests {
         // future refactor doesn't silently change error semantics.
         let c = make_custom(
             KYBER,
-            vec![
-                (ATTACKER, U256::from(1000u64)),
-                (ATTACKER, U256::MAX),
-            ],
+            vec![(ATTACKER, U256::from(1000u64)), (ATTACKER, U256::MAX)],
         );
         assert!(matches!(
             validate(&c, 10),
@@ -639,7 +861,10 @@ mod tests {
     #[test]
     fn validate_value_under_cap_ok() {
         // Realistic order ETH value: 10 ETH = 1e19 wei.
-        assert_eq!(validate_value(U256::from(10u64).pow(U256::from(19u64))), Ok(()));
+        assert_eq!(
+            validate_value(U256::from(10u64).pow(U256::from(19u64))),
+            Ok(())
+        );
     }
 
     #[test]
@@ -704,8 +929,8 @@ mod tests {
         let count = src.matches("{PR-E-WIRING-CALL}").count();
         assert_eq!(
             count, 2,
-            "Expected exactly 2 [PR-E-WIRING] tags in driver dto/solution.rs (pre + post); \
-             found {count}. Did a refactor drop a validate_raw_interaction call?"
+            "Expected exactly 2 [PR-E-WIRING] tags in driver dto/solution.rs (pre + post); found \
+             {count}. Did a refactor drop a validate_raw_interaction call?"
         );
     }
 

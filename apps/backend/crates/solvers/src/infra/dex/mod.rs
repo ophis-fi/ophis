@@ -7,9 +7,9 @@ use {
 pub mod bitget;
 pub mod dodo;
 pub mod enso;
+pub mod fx;
 pub mod kyberswap;
 pub mod lifi;
-pub mod odos;
 pub mod okx;
 pub mod openocean;
 pub mod pons;
@@ -25,12 +25,12 @@ pub enum Dex {
     Okx(Box<okx::Okx>),
     KyberSwap(Box<kyberswap::KyberSwap>),
     Velora(Box<velora::Velora>),
-    Odos(Box<odos::Odos>),
     OpenOcean(Box<openocean::OpenOcean>),
     Dodo(Box<dodo::Dodo>),
     Lifi(Box<lifi::Lifi>),
     Enso(Box<enso::Enso>),
     UniswapV4(Box<uniswap_v4::UniswapV4>),
+    Fx(Box<fx::Fx>),
     Pons(Box<pons::Pons>),
 }
 
@@ -56,12 +56,12 @@ impl Dex {
             Dex::Okx(okx) => okx.swap(order, slippage).await?,
             Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage, is_quote).await?,
             Dex::Velora(velora) => velora.swap(order, slippage, tokens, is_quote).await?,
-            Dex::Odos(odos) => odos.swap(order, slippage).await?,
             Dex::OpenOcean(openocean) => openocean.swap(order, slippage, tokens).await?,
             Dex::Dodo(dodo) => dodo.swap(order, slippage).await?,
             Dex::Lifi(lifi) => lifi.swap(order, slippage).await?,
             Dex::Enso(enso) => enso.swap(order, slippage).await?,
             Dex::UniswapV4(uniswap) => uniswap.swap(order, slippage, is_quote).await?,
+            Dex::Fx(fx) => fx.swap(order, slippage).await?,
             Dex::Pons(pons) => pons.swap(order, slippage).await?,
         };
         Ok(swap)
@@ -177,17 +177,6 @@ impl From<velora::Error> for Error {
     }
 }
 
-impl From<odos::Error> for Error {
-    fn from(err: odos::Error) -> Self {
-        match err {
-            odos::Error::OrderNotSupported => Self::OrderNotSupported,
-            odos::Error::NotFound => Self::NotFound,
-            odos::Error::RateLimited => Self::RateLimited,
-            _ => Self::Other(Box::new(err)),
-        }
-    }
-}
-
 impl From<openocean::Error> for Error {
     fn from(err: openocean::Error) -> Self {
         match err {
@@ -250,6 +239,16 @@ impl From<pons::Error> for Error {
         match err {
             pons::Error::OrderNotSupported => Self::OrderNotSupported,
             pons::Error::NotFound => Self::NotFound,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<fx::Error> for Error {
+    fn from(err: fx::Error) -> Self {
+        match err {
+            fx::Error::OrderNotSupported => Self::OrderNotSupported,
+            fx::Error::NotFound => Self::NotFound,
             _ => Self::Other(Box::new(err)),
         }
     }
