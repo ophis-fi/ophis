@@ -31,6 +31,7 @@ import {
   assertReceiverIsOwner,
   ophisDefaultPartnerFee,
   OPHIS_STABLE_VOLUME_FEE_BPS,
+  OPHIS_SOVEREIGN_VOLUME_FEE_BPS,
   isZeroAddress,
   OPHIS_CHAIN_IDS,
   OPHIS_FEE_CHAIN_IDS,
@@ -89,10 +90,10 @@ const BYTES32_RE = /^0x[0-9a-fA-F]{64}$/
  * Same-chain stablecoin (or boosted) pairs floor at OPHIS_STABLE_VOLUME_FEE_BPS
  * (1 bp) instead. This offline preflight has no cheap stablecoin list, so it
  * applies the conservative non-stable floor and names the reduced stable-pair
- * floor in the error. Not exported by the SDK (Rust-only constant), so it is
- * mirrored here; keep in lockstep with app_data.rs.
+ * floor in the error. The sovereign appData base exported by the SDK is the
+ * same ingress floor, avoiding a second numeric mirror.
  */
-const OPHIS_NON_STABLE_FLOOR_BPS = 4
+const OPHIS_NON_STABLE_FLOOR_BPS = OPHIS_SOVEREIGN_VOLUME_FEE_BPS
 
 /**
  * Normalizes an orderbook base URL to `origin + pathname` (lowercased, a single

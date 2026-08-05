@@ -6,6 +6,7 @@ import {
   OPHIS_VOLUME_FEE_BPS,
   OPHIS_STABLE_VOLUME_FEE_BPS,
   OPHIS_SOVEREIGN_VOLUME_FEE_BPS,
+  ophisVolumeBpsForChainAndPair,
   ophisVolumeBpsForPair,
   OPHIS_FEE_CHAIN_IDS,
 } from '@ophis/sdk';
@@ -50,6 +51,13 @@ describe('@ophis/sdk partner fee defaults', () => {
     expect(OPHIS_STABLE_VOLUME_FEE_BPS).toBe(1);
     expect(ophisVolumeBpsForPair(true)).toBe(1);
     expect(ophisVolumeBpsForPair(false)).toBe(OPHIS_VOLUME_FEE_BPS);
+  });
+
+  it('selects fees with both chain economics and pair class', () => {
+    expect(ophisVolumeBpsForChainAndPair(10, false)).toBe(1);
+    expect(ophisVolumeBpsForChainAndPair(4663, false)).toBe(1);
+    expect(ophisVolumeBpsForChainAndPair(1, false)).toBe(5);
+    expect(ophisVolumeBpsForChainAndPair(1, true)).toBe(1);
   });
 
   it('OPHIS_FEE_CHAIN_IDS covers all served chains (operated + CoW-hosted incl. Sepolia)', () => {

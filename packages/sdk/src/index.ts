@@ -11,6 +11,7 @@ export {
   OPHIS_VOLUME_FEE_BPS,
   OPHIS_STABLE_VOLUME_FEE_BPS,
   OPHIS_SOVEREIGN_VOLUME_FEE_BPS,
+  ophisVolumeBpsForChainAndPair,
   ophisVolumeBpsForPair,
   OPHIS_FEE_CHAIN_IDS,
   type OphisPartnerFee,

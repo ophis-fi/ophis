@@ -170,7 +170,7 @@ export UNICHAIN_MAINNET_RPC
 LOG="$REPO_ROOT/infra/unichain-mainnet/deploy-log-mainnet-$(date +%Y%m%d-%H%M%S).log"
 # HARDHAT_NETWORK must be set explicitly — the --network flag doesn't propagate to
 # process.env, which the chain-aware gas logic in 001_authenticator.ts reads.
-HARDHAT_CONFIG=hardhat-megaeth.config.ts \
+HARDHAT_CONFIG=hardhat-ophis.config.ts \
 HARDHAT_NETWORK=unichain-mainnet \
   pnpm exec hardhat deploy --network unichain-mainnet 2>&1 | tee "$LOG"
 

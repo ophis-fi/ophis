@@ -50,7 +50,7 @@
 #     and ROBINHOOD_SUBMITTER_ADDR set (a NEW per-chain Tier-1-isolated EOA; its PK
 #     lives on the stack host, NEVER here - only the address is needed).
 #   - The robinhood-mainnet hardhat network (chainId 4663) exists (added to
-#     contracts/hardhat-megaeth.config.ts).
+#     contracts/hardhat-ophis.config.ts).
 #   - Ledger Live CLOSED, device connected, Ethereum app open.
 
 set -euo pipefail
@@ -214,7 +214,7 @@ export ROBINHOOD_MAINNET_RPC
 LOG="$REPO_ROOT/infra/robinhood-mainnet/deploy-log-mainnet-$(date +%Y%m%d-%H%M%S).log"
 # ORBIT GAS: if the proxy deploy hits out-of-gas, set OPHIS_AUTH_PROXY_GAS_LIMIT
 # (read by 001_authenticator.ts) high enough for Arbitrum's ArbGas accounting.
-HARDHAT_CONFIG=hardhat-megaeth.config.ts \
+HARDHAT_CONFIG=hardhat-ophis.config.ts \
 HARDHAT_NETWORK=robinhood-mainnet \
   pnpm exec hardhat deploy --network robinhood-mainnet 2>&1 | tee "$LOG"
 
