@@ -349,7 +349,7 @@ pub fn validate(custom: &interaction::Custom, chain_id: u64) -> Result<(), Error
 pub fn validate_with_required_output(
     custom: &interaction::Custom,
     chain_id: u64,
-    required_output: Option<U256>,
+    required_amounts: Option<(U256, U256)>,
 ) -> Result<(), Error> {
     // Ethereum's native f(x) lane is intentionally NOT added to the generic
     // address-only router allowlist. fxUSD is an ERC-20 proxy, so allowing the
@@ -365,7 +365,7 @@ pub fn validate_with_required_output(
                 });
             }
         }
-        return validate_fxusd_redeem(custom, required_output);
+        return validate_fxusd_redeem(custom, required_amounts);
     }
     let allowlist = chain_allowlist(chain_id)?;
 
@@ -407,7 +407,7 @@ pub fn validate_with_required_output(
 
 fn validate_fxusd_redeem(
     custom: &interaction::Custom,
-    required_output: Option<U256>,
+    required_amounts: Option<(U256, U256)>,
 ) -> Result<(), Error> {
     let reject = || Error::CallDataNotAllowed {
         target: ETHEREUM_FXUSD,
@@ -423,7 +423,10 @@ fn validate_fxusd_redeem(
     let amount_in = word_u256(36);
     let receiver = word_address(68);
     let min_out = word_u256(100);
-    if required_output != Some(min_out) {
+    let Some((required_input, required_output)) = required_amounts else {
+        return Err(reject());
+    };
+    if amount_in != required_input || min_out < required_output {
         return Err(reject());
     }
 
@@ -596,7 +599,7 @@ mod tests {
             validate_with_required_output(
                 &make_fx_redeem(ETHEREUM_SETTLEMENT),
                 1,
-                Some(U256::from(990u64)),
+                Some((U256::from(1_000u64), U256::from(990u64))),
             ),
             Ok(())
         );
@@ -606,13 +609,21 @@ mod tests {
         transfer_data[..4].copy_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
         transfer.call_data = transfer_data.into();
         assert!(matches!(
-            validate_with_required_output(&transfer, 1, Some(U256::from(990u64))),
+            validate_with_required_output(
+                &transfer,
+                1,
+                Some((U256::from(1_000u64), U256::from(990u64))),
+            ),
             Err(Error::CallDataNotAllowed { .. })
         ));
 
         let attacker_receiver = make_fx_redeem(ATTACKER);
         assert!(matches!(
-            validate_with_required_output(&attacker_receiver, 1, Some(U256::from(990u64))),
+            validate_with_required_output(
+                &attacker_receiver,
+                1,
+                Some((U256::from(1_000u64), U256::from(990u64))),
+            ),
             Err(Error::CallDataNotAllowed { .. })
         ));
 
@@ -620,7 +631,27 @@ mod tests {
             validate_with_required_output(
                 &make_fx_redeem(ETHEREUM_SETTLEMENT),
                 1,
-                Some(U256::from(991u64)),
+                Some((U256::from(1_000u64), U256::from(991u64))),
+            ),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        // A protocol floor stricter than the credited fulfillment output is
+        // safe and occurs on fee-bearing full-fill LIMIT orders.
+        assert_eq!(
+            validate_with_required_output(
+                &make_fx_redeem(ETHEREUM_SETTLEMENT),
+                1,
+                Some((U256::from(1_000u64), U256::from(981u64))),
+            ),
+            Ok(())
+        );
+
+        assert!(matches!(
+            validate_with_required_output(
+                &make_fx_redeem(ETHEREUM_SETTLEMENT),
+                1,
+                Some((U256::from(999u64), U256::from(981u64))),
             ),
             Err(Error::CallDataNotAllowed { .. })
         ));

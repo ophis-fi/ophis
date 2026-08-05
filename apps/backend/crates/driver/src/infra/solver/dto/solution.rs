@@ -22,10 +22,21 @@ use {
 fn required_fx_output(
     solution: &solvers_dto::solution::Solution,
     auction: &competition::Auction,
-) -> Result<Option<eth::U256>, super::Error> {
+) -> Result<Option<(eth::U256, eth::U256)>, super::Error> {
     const FXUSD: alloy::primitives::Address =
         alloy::primitives::address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
-    if solution.trades.len() != 1 {
+    let fx_interactions = solution
+        .interactions
+        .iter()
+        .filter(|interaction| {
+            matches!(
+                interaction,
+                solvers_dto::solution::Interaction::Custom(custom)
+                    if custom.target == FXUSD
+            )
+        })
+        .count();
+    if solution.trades.len() != 1 || fx_interactions != 1 {
         return Ok(None);
     }
     let solvers_dto::solution::Trade::Fulfillment(fulfillment) = &solution.trades[0] else {
@@ -56,7 +67,11 @@ fn required_fx_output(
         .copied()
         .filter(|price| !price.is_zero())
         .ok_or_else(|| super::Error("missing or zero F(x) buy clearing price".to_owned()))?;
-    let numerator = eth::U256::from(fulfillment.executed_amount)
+    let executed = eth::U256::from(fulfillment.executed_amount);
+    let amount_in = executed
+        .checked_add(fulfillment.fee.unwrap_or_default())
+        .ok_or_else(|| super::Error("F(x) fulfillment input overflow".to_owned()))?;
+    let numerator = executed
         .checked_mul(sell_price)
         .ok_or_else(|| super::Error("F(x) clearing amount overflow".to_owned()))?;
     let quotient = numerator / buy_price;
@@ -65,7 +80,7 @@ fn required_fx_output(
             (numerator % buy_price != eth::U256::ZERO) as u8,
         ))
         .ok_or_else(|| super::Error("F(x) clearing amount overflow".to_owned()))?;
-    Ok(Some(required))
+    Ok(Some((amount_in, required)))
 }
 
 /// Validate a solver-supplied raw `Call`-style interaction (used for
