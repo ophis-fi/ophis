@@ -76,6 +76,7 @@ pub fn request_sent() {
 /// integration cannot silently spawn a new Prometheus series.
 #[derive(Debug, Clone, Copy)]
 pub enum Dex {
+    Curve,
     KyberSwap,
     Velora,
     OpenOcean,
@@ -92,6 +93,7 @@ pub enum Dex {
 impl Dex {
     fn as_label(self) -> &'static str {
         match self {
+            Dex::Curve => "curve",
             Dex::KyberSwap => "kyberswap",
             Dex::Velora => "velora",
             Dex::OpenOcean => "openocean",

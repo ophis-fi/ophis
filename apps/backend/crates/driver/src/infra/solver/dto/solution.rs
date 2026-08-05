@@ -19,25 +19,35 @@ use {
     std::{collections::HashMap, str::FromStr},
 };
 
-fn required_fx_output(
+fn required_custom_amounts(
     solution: &solvers_dto::solution::Solution,
     auction: &competition::Auction,
-) -> Result<Option<(alloy::primitives::Address, eth::U256, eth::U256)>, super::Error> {
+) -> Result<Option<competition::solution::custom_allowlist::RequiredAmounts>, super::Error> {
     const FXUSD: alloy::primitives::Address =
         alloy::primitives::address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
-    let fx_interactions = solution
+    const OPTIMISM_CURVE_3POOL: alloy::primitives::Address =
+        alloy::primitives::address!("1337BedC9D22ecbe766dF105c9623922A27963EC");
+    let protected_interactions: Vec<_> = solution
         .interactions
         .iter()
-        .filter(|interaction| {
-            matches!(
-                interaction,
-                solvers_dto::solution::Interaction::Custom(custom)
-                    if custom.target == FXUSD
-            )
+        .filter_map(|interaction| {
+            let solvers_dto::solution::Interaction::Custom(custom) = interaction else {
+                return None;
+            };
+            [FXUSD, OPTIMISM_CURVE_3POOL]
+                .contains(&custom.target)
+                .then_some(custom.target)
         })
-        .count();
-    if solution.trades.len() != 1 || fx_interactions != 1 {
+        .collect();
+    if protected_interactions.is_empty() {
         return Ok(None);
+    }
+    if solution.trades.len() != 1 || protected_interactions.len() != 1 {
+        return Err(super::Error(
+            "protected direct-liquidity solutions require exactly one fulfillment and one \
+             interaction"
+                .to_owned(),
+        ));
     }
     let solvers_dto::solution::Trade::Fulfillment(fulfillment) = &solution.trades[0] else {
         return Ok(None);
@@ -49,13 +59,15 @@ fn required_fx_output(
     else {
         return Ok(None);
     };
-    if alloy::primitives::Address::from(order.sell.token) != FXUSD
-        || order.side != competition::order::Side::Sell
-    {
-        return Ok(None);
-    }
     let sell = alloy::primitives::Address::from(order.sell.token);
     let buy = alloy::primitives::Address::from(order.buy.token);
+    if order.side != competition::order::Side::Sell
+        || (protected_interactions[0] == FXUSD && sell != FXUSD)
+    {
+        return Err(super::Error(
+            "protected direct-liquidity interaction does not match a SELL fulfillment".to_owned(),
+        ));
+    }
     let sell_price = solution
         .prices
         .get(&sell)
@@ -80,7 +92,14 @@ fn required_fx_output(
             (numerator % buy_price != eth::U256::ZERO) as u8,
         ))
         .ok_or_else(|| super::Error("F(x) clearing amount overflow".to_owned()))?;
-    Ok(Some((buy, amount_in, required)))
+    Ok(Some(
+        competition::solution::custom_allowlist::RequiredAmounts {
+            sell_token: sell,
+            buy_token: buy,
+            max_input: amount_in,
+            min_output: required,
+        },
+    ))
 }
 
 /// Validate a solver-supplied raw `Call`-style interaction (used for
@@ -118,7 +137,11 @@ fn validate_raw_interaction(
     if let Err(err) = validate {
         crate::infra::observe::metrics::get()
             .custom_interaction_rejected
-            .with_label_values(&[solver.name().as_str(), &chain_id.to_string(), err.metric_reason()])
+            .with_label_values(&[
+                solver.name().as_str(),
+                &chain_id.to_string(),
+                err.metric_reason(),
+            ])
             .inc();
         tracing::warn!(
             solver = %solver.name(),
@@ -154,7 +177,7 @@ impl Solutions {
         self.0
             .into_iter()
             .map(|solution| {
-                let required_fx_output = required_fx_output(&solution, auction)?;
+                let required_custom_amounts = required_custom_amounts(&solution, auction)?;
                 competition::Solution::new(
                     competition::solution::Id::new(solution.id),
                     solution
@@ -333,7 +356,7 @@ impl Solutions {
                                 let chain_id = solver.eth.chain().id();
                                 if let Err(err) =
                                     competition::solution::custom_allowlist::validate_with_required_output(
-                                        &custom, chain_id, required_fx_output,
+                                        &custom, chain_id, required_custom_amounts,
                                     )
                                 {
                                     crate::infra::observe::metrics::get()
@@ -543,8 +566,8 @@ impl JitOrder {
             // caller maps to a solver-specific failure metric.
             let sig = self.0.signature.get(20..).ok_or_else(|| {
                 super::Error(format!(
-                    "EIP-1271 signature too short to strip prepended signer: got {} bytes, \
-                     need >= 20",
+                    "EIP-1271 signature too short to strip prepended signer: got {} bytes, need \
+                     >= 20",
                     self.0.signature.len()
                 ))
             })?;
