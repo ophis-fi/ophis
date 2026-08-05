@@ -42,7 +42,7 @@ An intent flips each of those properties.
 
 - **A hard limit price, signed.** The EIP-712 order states the minimum you will receive. There is no tolerance band to be filled to the bottom of; execution below your limit cannot settle at all.
 - **[MEV protection](/blog/mev-protection-batch-auctions/) by construction.** Order flow stays off chain until settlement, orders settle in batch auctions, and every trade in a batch clears at a uniform clearing price. There is no pending swap in a public mempool to sandwich and no in-batch ordering to exploit. The protection is structural, not best-effort.
-- **Surplus returned in full.** Solvers compete for every batch, and competition surfaces prices better than the signed quote. 100% of that improvement goes to the trader; the fee takes no share of surplus.
+- **Capped, published improvement sharing.** Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 30 bps of volume, or 50% on stable pairs, capped at 10 bps. The trader receives the remainder and everything above the cap.
 
 The [comparison page](https://docs.ophis.fi/comparison) goes deeper on the trade-offs, and [Ophis vs CoW Swap](/blog/ophis-vs-cow-swap/) covers what the fork changes.
 
@@ -76,7 +76,7 @@ For apps that want the interface without the plumbing, `@ophis/widget-react` emb
 
 ### How is Ophis different from a router aggregator on Optimism?
 
-A router aggregator executes your swap as an on-chain transaction through a router contract, protected only by a slippage tolerance. Ophis never broadcasts your trade: you sign an order with a hard limit price, competing solvers fill it, and the batch settles at a uniform clearing price. Sandwiching is blocked by construction rather than mitigated, and 100% of the price improvement beyond your signed quote is returned to you.
+A router aggregator executes your swap as an on-chain transaction through a router contract, protected only by a slippage tolerance. Ophis never broadcasts your order as a public-mempool router swap: you sign an order with a hard limit price, solvers fill it, and the batch settles at a uniform clearing price. The signed limit remains enforceable, while any reference-quote improvement is shared under Ophis's published capped policy.
 
 ### Do failed swaps cost gas?
 

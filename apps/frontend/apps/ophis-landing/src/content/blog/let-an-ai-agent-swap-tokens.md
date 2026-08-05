@@ -171,11 +171,10 @@ one-line summary: let the SDK resolve anything that is chain-specific.
 ## Agents that trade *earn*: the rebate
 
 Here is the part that flips swaps from a cost center to a revenue line. Every
-swap routed through your integration carries the Ophis partner fee: a flat
-**0.05%** written into the order's `appData`. A reduced **0.01%** is available on
-same-chain stablecoin pairs, but only to callers that build `appData` themselves
-and classify the pair; orders built by the hosted MCP always carry the flat
-0.05%. The FAQ below has the per-chain arithmetic. Integrators earn a **rebate**
+swap routed through your integration carries the chain-aware Ophis base in
+`appData`: **0.01%** on operated chains, or **0.05%** on hosted volatile pairs
+and **0.01%** on hosted stable pairs. Operated-chain backends also apply capped
+price-improvement capture. The FAQ below has the per-chain arithmetic. Integrators earn a **rebate**
 on the volume they route, and the `lookup_tier` tool surfaces a wallet's 30-day
 volume tier.
 
@@ -242,26 +241,16 @@ EIP-1271 policy gate rather than trusting the agent to honour them.
 
 ### What does it cost an agent to swap?
 
-Two things set the number, so it is worth being exact. The partner rate is a
-flat 0.05% (5 bps) of trade volume, half the 0.10% retail rate the swap app
-charges. A caller building `appData` itself can drop that to 0.01% (1 bp) on a
-same-chain stablecoin pair, using `ophisVolumeBpsForPair` to pick the rate, but
-the hosted MCP `build_order` has no pair input and always embeds the flat 5 bps,
-stablecoin pairs included. Do not budget 1 bp for an agent trading over MCP.
-
-Then the chain decides whether anything sits on top. On the three
-Ophis-operated chains, Optimism, Unichain, and Robinhood Chain, that partner
-rate is the entire cost and 100% of any price improvement goes back to the
-wallet. On the other ten, CoW Protocol adds its own volume fee: 0.02%, or
-0.003% on correlated pairs such as stablecoins. At the flat 5 bps an MCP agent
-pays, that puts the fixed charge around 0.07% on an ordinary pair and 0.053% on
-a correlated one; a manual caller that qualified for 1 bp would pay about 0.013%
-on a correlated pair.
-
-Note that fixed is not the same as total on those ten chains. CoW Protocol also
-keeps half of any improvement over your signed quote, which is variable and can
-push the real cost above the fixed number. Only on the three Ophis-operated
-chains is the partner rate genuinely the whole bill.
+Two things set the number, so it is worth being exact. On Optimism, Unichain,
+and Robinhood Chain, the MCP and high-level SDK builders embed a 1 bp base; the
+backend then retains 80% of reference-quote improvement on volatile pairs (30
+bps cap), or 50% on stable pairs (10 bps cap). On CoW-hosted chains, partner
+flow embeds 5 bps on volatile pairs or 1 bp on stable pairs, and CoW Protocol's
+upstream volume and improvement fees apply. Manual builders should use
+`ophisVolumeBpsForChainAndPair(chainId, isStablePair)` so the chain and pair are
+both reflected. Fixed is not the same as total on either path: operated chains
+have capped Ophis improvement capture, while hosted chains have CoW Protocol's
+upstream variable charge.
 
 Either way the fee comes out of the traded amount rather than being billed
 separately, so an agent wallet funded only in the tokens it trades can still

@@ -91,18 +91,19 @@ makes the structure visible:
 
 | Front-end | Fixed fee on 1,000 USDC | Improvement (surplus) split |
 | --- | --- | --- |
-| Ophis on Optimism / Unichain | **1.00 USDC** (0.10%) | **100% to you** |
+| Ophis-operated chain, volatile pair | **0.10 USDC** base (0.01%) | Trader receives 20% until Ophis's 30 bps capture cap binds; all improvement above the cap goes to the trader |
 | Ophis on CoW-hosted chains | **1.20 USDC** (0.12% all-in) | 50% of quote improvement retained upstream by CoW Protocol |
 | CoW Swap | **0.20 USDC** (0.02%) | 50% of quote improvement retained by CoW Protocol |
 | Matcha | **2.50 USDC** (0.25%) | Positive slippage, route-dependent |
 | Velora | **1.50 USDC** (0.15%) | Positive slippage, route-dependent |
 
-On a same-chain stablecoin-to-stablecoin swap of 1,000 USDC, Ophis charges
-**0.10 USDC** (0.01%) on Optimism, Unichain, and Robinhood Chain and **0.13 USDC** all-in on
+On a same-chain stablecoin-to-stablecoin swap of 1,000 USDC, Ophis charges a
+**0.10 USDC** (0.01%) base on Optimism, Unichain, and Robinhood Chain, plus 50%
+of reference-quote improvement capped at 1.00 USDC. It charges **0.13 USDC** fixed all-in on
 CoW-hosted chains, Matcha **0.50 USDC** (0.05%), and Velora **0.10 USDC**
 (0.01%). The takeaway is not that one number is always lowest. It is that the
-Ophis fee is **flat and published all-in per chain**, and that on the
-Ophis-operated chains no one takes any share of your price improvement.
+Ophis fee schedule is **published per chain**: solver-aligned and capped on
+Ophis-operated chains, flat before upstream CoW fees on hosted chains.
 
 ### Where the surplus goes
 
@@ -110,17 +111,17 @@ Both Ophis and CoW Swap run batch auctions where solvers compete to **beat** the
 price you signed. The extra value a solver finds beyond your quote is the
 **surplus** (price improvement).
 
-**Ophis itself takes zero cut of surplus on any chain**: its fee is flat on
-volume, never on improvement. Where the order settles decides the rest:
+Where the order settles determines how improvement is shared:
 
-- On **Optimism, Unichain, and Robinhood Chain** (the chains Ophis operates end to end), **100%
-  of the price improvement is returned to you**. Among the venues on this
-  page, that is the best published improvement split.
+- On **Optimism, Unichain, and Robinhood Chain**, Ophis retains **80% of
+  reference-quote improvement on volatile pairs, capped at 30 bps of volume**,
+  or **50% on stable pairs, capped at 10 bps**. The trader receives the
+  remainder and all improvement above the applicable cap.
 - On the **10 CoW-hosted chains**, CoW Protocol's fee model retains **50% of
   the quote improvement** (capped at 0.98% of volume) before the remainder is
   returned. That upstream capture applies equally to CoW Swap itself and to
   every front-end settling through CoW's hosted infrastructure, Ophis
-  included. You are never charged an *Ophis* price-improvement fee anywhere.
+  included. Ophis adds no second improvement charge on these hosted chains.
 
 ### Agent-first API
 

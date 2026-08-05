@@ -1,6 +1,7 @@
 import {
   OPHIS_PARTNER_FEE_RECIPIENT,
-  ophisVolumeBpsForPair,
+  ophisVolumeBpsForChainAndPair,
+  OPHIS_VOLUME_FEE_BPS,
 } from '@ophis/sdk';
 import type { CowSwapWidgetParams } from '@cowprotocol/widget-react';
 
@@ -18,13 +19,12 @@ export const OPHIS_WIDGET_APP_CODE = 'ophis';
 /**
  * The widget's `PartnerFee` type is `{ bps, recipient }` (FlexibleConfig).
  * The SDK exposes the fee as `{ volumeBps, recipient }`. We map volumeBps -> bps
- * here. `bps` is the volume fee in basis points; 5 = 0.05% the @ophis/sdk partner
- * rate (1 for same-chain stable pairs, but the widget cannot know the pair ahead
- * of time, so we default to the standard rate and let same-chain-stable handling
- * stay server-side).
+ * here. This exported constant is the hosted-chain volatile fallback used when
+ * no chainId is configured. `withOphisDefaults` resolves a configured sovereign
+ * chain to its 1 bp base.
  */
 export const OPHIS_WIDGET_PARTNER_FEE: NonNullable<CowSwapWidgetParams['partnerFee']> = {
-  bps: ophisVolumeBpsForPair(false), // 5 bps partner volume fee
+  bps: OPHIS_VOLUME_FEE_BPS,
   recipient: OPHIS_PARTNER_FEE_RECIPIENT,
 };
 
@@ -49,6 +49,10 @@ function orDefault(value: string | undefined, fallback: string): string {
 
 export function withOphisDefaults(params: CowSwapWidgetParams): CowSwapWidgetParams {
   const callerFee = params.partnerFee;
+  const configuredChainId = typeof params.chainId === 'number' ? params.chainId : undefined;
+  const defaultBps = configuredChainId === undefined
+    ? OPHIS_WIDGET_PARTNER_FEE.bps
+    : ophisVolumeBpsForChainAndPair(configuredChainId, false);
 
   return {
     ...params,
@@ -59,7 +63,7 @@ export function withOphisDefaults(params: CowSwapWidgetParams): CowSwapWidgetPar
     baseUrl: orDefault(params.baseUrl, OPHIS_WIDGET_BASE_URL),
     // Always enforce the Ophis recipient; honour a caller bps override.
     partnerFee: {
-      bps: callerFee?.bps ?? OPHIS_WIDGET_PARTNER_FEE.bps,
+      bps: callerFee?.bps ?? defaultBps,
       recipient: OPHIS_WIDGET_PARTNER_FEE.recipient,
     },
   };

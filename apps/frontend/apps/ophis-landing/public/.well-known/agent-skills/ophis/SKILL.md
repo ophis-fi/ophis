@@ -58,10 +58,9 @@ metadata:
 Ophis is a non-custodial, intent-based DEX aggregator (a CoW Protocol fork).
 An order is not a transaction: it is an off-chain, EIP-712-signed intent with a
 hard limit price. Solvers compete to fill it inside a batch auction at a
-uniform clearing price, so the trade is MEV-protected by construction and
-cannot settle below the signed minimum. The signer pays no gas at settlement
-(solvers do), and any price improvement over the signed limit is returned to
-the trader as surplus.
+uniform clearing price, which mitigates common MEV while enforcing the signed
+minimum. The signer pays no gas at settlement (solvers do). Price improvement
+is shared under the chain's published fee policy.
 
 This skill family drives the raw HTTP + `cast` flow against the three
 Ophis-operated chains, whose orderbooks and settlement contracts Ophis runs
@@ -71,6 +70,7 @@ itself:
 | --- | --- | --- |
 | Optimism | 10 | `https://optimism-mainnet.ophis.fi` |
 | Unichain | 130 | `https://unichain-mainnet.ophis.fi` |
+| Robinhood Chain | 4663 | `https://robinhood-mainnet.ophis.fi` |
 
 Ophis also serves other EVM chains through the swap app and the hosted MCP
 server (`https://mcp.ophis.fi/mcp`, see `/.well-known/mcp.json`); those chains
@@ -172,7 +172,7 @@ appData=$(jq -Snc --argjson slippageBips "$slippageBips" '{
   appCode: "ophis",
   metadata: {
     orderClass: { orderClass: "market" },
-    partnerFee: { recipient: "0x858f0F5eE954846D47155F5203c04aF1819eCeF8", volumeBps: 5 },
+    partnerFee: { recipient: "0x858f0F5eE954846D47155F5203c04aF1819eCeF8", volumeBps: 1 },
     quote: { slippageBips: $slippageBips },
     ophisSource: { app: "skill:ophis-swap@0.1.0" }
   },
@@ -181,9 +181,10 @@ appData=$(jq -Snc --argjson slippageBips "$slippageBips" '{
 appDataHash=$(cast keccak "$appData")
 ```
 
-- The integration fee is a flat 5 bips (0.05%) of volume via the CIP-75
-  `partnerFee` entry, paid to the Ophis fee Safe. For a same-chain
-  stablecoin-to-stablecoin pair use `volumeBps: 1` (0.01%) instead.
+- The three chains pinned by this skill use the 1 bip (0.01%) sovereign base
+  via the CIP-75 `partnerFee` entry. Their backends separately apply capped
+  reference-quote-improvement capture; never encode that policy as another
+  appData fee.
 - Optional referral: if the user has an Ophis referral code (minted at
   https://swap.ophis.fi/#/rewards), add
   `ophisReferrer: { code: "<code>" }` to `metadata` (lowercase, 3-64 chars of
@@ -193,10 +194,10 @@ appDataHash=$(cast keccak "$appData")
 
 ## Fees
 
-A flat 0.05% (5 bips) integration fee on trade volume (0.01% on same-chain
-stablecoin pairs), carried in the appData above. On the Ophis-operated chains
-this is the all-in cost and 100% of price improvement (surplus) is returned to
-the trader. A share of fees is returned monthly to active wallets as
+The appData carries the 1 bip sovereign base. Ophis also retains 80% of
+reference-quote improvement on volatile pairs, capped at 30 bips of volume, or
+50% on stable pairs, capped at 10 bips. The trader receives the remainder and
+all improvement above the cap. A share of fees is returned monthly to active wallets as
 volume-tier rebates. Details: https://docs.ophis.fi/fees.
 
 ## Errors you'll see

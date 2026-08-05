@@ -33,7 +33,7 @@ const FAQS = [
   },
   {
     q: 'Do I pay gas for an MEV-protected swap?',
-    a: `Not for ERC-20 orders: the winning solver submits the settlement transaction and pays the gas, and you pay a flat fee on trade volume instead, taken in the surplus token. Selling native ETH is the exception: it places an on-chain EthFlow transaction that pays normal network gas, and on chains where the EthFlow contract is not deployed you wrap ETH to WETH first, which also costs gas. Token approvals you sign separately cost gas too.`,
+    a: `Not for ERC-20 orders: the winning solver submits the settlement transaction and pays the gas, while the applicable chain-aware trading charge is taken from the trade. Selling native ETH is the exception: it places an on-chain EthFlow transaction that pays normal network gas, and on chains where the EthFlow contract is not deployed you wrap ETH to WETH first, which also costs gas. Token approvals you sign separately cost gas too.`,
   },
 ]
 ---

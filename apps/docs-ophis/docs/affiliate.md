@@ -52,7 +52,7 @@ that month ($90 to $120 on the partner tier), depending on the chains your
 referrals trade on. If you run your own integration, the referral share is the
 smallest of three earning layers: see
 [Partner economics](./partners.md#partner-economics-the-three-layers) for the
-5 bps partner rate and how to charge your own fee on top.
+chain-aware base, hosted partner rate, and how to charge your own fee on top.
 
 ## How attribution and payout work
 

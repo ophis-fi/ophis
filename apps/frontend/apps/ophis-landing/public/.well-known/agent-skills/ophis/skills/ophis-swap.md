@@ -67,7 +67,8 @@ minBuyAmount=$(python3 -c "print(int('$buyAmountQuoted') * (10000 - int('$slippa
 ### Step 4: confirm with the user
 
 **Always.** Show: sell amount and token, quoted buy amount, the signed
-minimum (`minBuyAmount`), the 5 bips fee note, and the order lifetime.
+minimum (`minBuyAmount`), the 1 bip sovereign base plus capped-improvement fee
+note, and the order lifetime.
 Ask "shall I proceed?" and do not continue until they say yes. If more than
 about 30 seconds pass after the quote, re-quote first.
 

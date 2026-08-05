@@ -53,19 +53,21 @@ best-effort.
 
 ## The fee comes out of the trade, not your gas balance
 
-Ophis charges a flat 0.10% of trade volume on every trade, 0.01% for
-same-chain stablecoin-to-stablecoin pairs, and takes it in the surplus token (the
+Ophis uses chain-aware pricing. Operated chains charge a 1 bp base plus capped
+reference-quote-improvement capture; hosted chains retain flat retail and
+stable-pair rates, with CoW Protocol fees upstream. Fees are taken from the
+trade rather than billed in native gas (the
 full [fee schedule](https://docs.ophis.fi/fees) is public; on the chains that
 settle through CoW Protocol, CoW Protocol's protocol fee applies on top of the
 Ophis fee). On a standard sell order that is the token you receive: sell USDC for ETH and the fee is a slice of the ETH. On a buy order, where you name the amount you want to receive, it comes off the token you spend instead. At no point does anything denominated in
 the native gas token leave your wallet, because you never send the transaction
 that would need it.
 
-The limit you signed still bounds the outcome. Solvers compete to beat your
-quote, and when one does, the Ophis fee takes no share of the price improvement
-beyond the signed quote. On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own
-settlement, 100% of that improvement is paid to you as surplus; on the chains
-that settle through CoW Protocol, CoW Protocol keeps half.
+The limit you signed still bounds the outcome. Solvers compete to beat the
+reference quote. On Optimism, Unichain, and Robinhood Chain, Ophis retains 80%
+of that improvement on volatile pairs (30 bps cap) or 50% on stable pairs (10
+bps cap); the trader receives the remainder and everything above the cap.
+Hosted chains follow CoW Protocol's upstream improvement policy.
 
 ## Failed and expired orders cost nothing
 
@@ -116,8 +118,8 @@ remove the prerequisite entirely.
 
 ### Do I need ETH to swap?
 
-No. You sign an off-chain order, a solver executes it and pays the gas, and the
-flat 0.10% fee comes out of the traded amount. The one exception is a
+No. You sign an off-chain order, a solver executes it and pays the settlement
+gas, and the applicable fee comes out of the traded amount. The one exception is a
 first-time token approval, a single on-chain transaction, paid once per token
 per chain. After that, trading that token needs no native balance at all.
 
@@ -126,15 +128,14 @@ per chain. After that, trading that token needs no native balance at all.
 Your order carries a hard limit price that you signed, and it cannot settle
 below that price. If the market never reaches your limit before expiry, the
 order expires at zero cost to you. If the market moves in your favor, solvers
-still compete for the fill, and the improvement beyond your signed quote comes
-back to you as surplus (100% of it on Optimism, Unichain, and Robinhood Chain; on chains that
-settle through CoW Protocol, CoW Protocol keeps half).
+still compete for the fill, and improvement beyond the reference quote is
+shared under the operated-chain capped policy or the hosted CoW policy.
 
 ### Who pays the solver?
 
-The winning solver pays the gas for the settlement transaction. Your only cost
-is the flat 0.10% fee (0.01% for same-chain stablecoin pairs), taken out of
-the trade itself, and the limit price you signed bounds the outcome either way.
+The winning solver pays the gas for the settlement transaction. The trading
+fee follows the current chain-aware schedule and is taken from the trade; the
+limit price you signed bounds the outcome either way.
 Solver compensation is never billed to you in the native token.
 
 ### Is it custodial?

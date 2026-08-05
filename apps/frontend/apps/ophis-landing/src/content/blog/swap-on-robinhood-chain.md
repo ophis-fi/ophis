@@ -1,6 +1,6 @@
 ---
 title: "Ophis on Robinhood Chain: gasless, MEV-protected stock-token swaps"
-description: "Ophis runs a sovereign deployment on Robinhood Chain (chain 4663): its own GPv2Settlement, its own orderbook, and three competing solver lanes. Gasless, 0.10% flat."
+description: "Ophis runs a sovereign deployment on Robinhood Chain (chain 4663): its own GPv2Settlement, orderbook, and solver lanes, with chain-aware pricing."
 pubDate: 2026-07-31
 author: Ophis
 tags: [robinhood-chain, stock-tokens, dex-aggregator, mev, swaps]
@@ -9,7 +9,7 @@ cover: ./swap-on-robinhood-chain.cover.jpg
 coverAlt: "Ophis emblem ringed by supported chains with the Robinhood feather as the featured node"
 ---
 
-Ophis is live on Robinhood Chain. Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign an EIP-712 order: for a token sell you never broadcast a transaction and you pay no gas for the swap itself (selling native ETH is the one exception, covered below). Three solver lanes are live on the chain and compete wherever they can route your pair, the winner settles it on-chain in a batch through an Ophis-deployed `GPv2Settlement` at `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, and the cost is a flat 0.10% of volume with no cut of any price improvement. Robinhood Chain is the third network where Ophis runs its own orderbook and settlement contracts rather than routing through CoW Protocol's hosted stack, and the first where the tradable universe is mostly tokenized equities.
+Ophis is live on Robinhood Chain. Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign an EIP-712 order: for an ERC-20 sell you do not broadcast the settlement transaction or pay its gas (selling native ETH is the exception covered below). Solver lanes route the pair and the winning settlement lands through Ophis's `GPv2Settlement` at `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`. Pricing is a 1 bp base plus capped reference-quote-improvement capture. Robinhood Chain is the third network where Ophis runs its own orderbook and settlement contracts rather than routing through CoW Protocol's hosted stack, and the first where the tradable universe is mostly tokenized equities.
 
 Two sentences of context. Robinhood Chain is chain id 4663, an Arbitrum Orbit L2, and it is one of the 13 EVM chains [Ophis](https://ophis.fi/) supports. Ophis is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top, and on Robinhood Chain it runs a sovereign deployment whose specifics are the subject of the rest of this post.
 
@@ -109,7 +109,7 @@ The canary carries its own copy of the addresses, so what it catches is the depl
 
 ## Fees and rebates
 
-Every trade pays a flat 0.10% (10 bps) of volume. Same-chain stablecoin-to-stablecoin trades pay 0.01% (1 bp). It is deducted from the traded amount rather than invoiced separately, so no native token is needed to pay it, and it takes no share of surplus: 100% of any execution better than your signed limit is yours. Because Robinhood Chain is Ophis-operated rather than CoW-hosted, that flat fee is the entire protocol cost: there is no second fee layer on top.
+Every trade pays a 1 bp base. Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 30 bps of volume, or 50% on stablecoin pairs, capped at 10 bps. The trader receives the remainder and all improvement above the cap. Because Robinhood Chain is Ophis-operated, there is no upstream CoW-hosted fee layer.
 
 Volume then earns part of it back, on rolling 30-day volume:
 
@@ -150,7 +150,7 @@ Yes, and Ophis adds checks specific to them. Before you sign, it verifies the to
 
 ### How is Robinhood Chain different from the other chains Ophis supports?
 
-Technically it is an Arbitrum Orbit L2 running Offchain Labs Nitro, posting data availability as EIP-4844 blobs to Ethereum, whereas Ophis's other two sovereign chains, Optimism and Unichain, are OP-Stack. Its public RPC serves no trace namespaces, so Ophis runs its own Nitro node to supply `debug_traceTransaction` and pauses settlement when that node is unavailable. Its liquidity is Uniswap V4, so the CoW baseline solver ships empty and three other solver lanes do the work. Commercially it is Ophis-operated, so the flat 0.10% fee is the entire protocol cost and 100% of price improvement is returned to the trader.
+Technically it is an Arbitrum Orbit L2 running Offchain Labs Nitro, posting data availability as EIP-4844 blobs to Ethereum, whereas Ophis's other two sovereign chains, Optimism and Unichain, are OP-Stack. Its public RPC serves no trace namespaces, so Ophis runs its own Nitro node to supply `debug_traceTransaction` and pauses settlement when that node is unavailable. Its liquidity is Uniswap V4, so the CoW baseline solver ships empty and three other solver lanes do the work. Commercially it is Ophis-operated, so it uses the 1 bp base plus capped improvement-capture schedule without an upstream CoW fee.
 
 ### Does a higher gas price get my order filled first?
 
@@ -166,4 +166,4 @@ Selling native ETH differs, because placing that order is itself an on-chain Eth
 
 ## Start swapping
 
-Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign your first Robinhood Chain order. Gasless, MEV-protected, 0.10% flat, with the stock-token checks running before you sign. If you are integrating rather than trading, start from the [getting-started guide](https://docs.ophis.fi/getting-started) and resolve the chain's settlement domain through the SDK.
+Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign your first Robinhood Chain order. ERC-20 settlement is gasless, the signed limit is enforced, and stock-token checks run before signing. If you are integrating rather than trading, start from the [getting-started guide](https://docs.ophis.fi/getting-started) and resolve the chain's settlement domain and fee through the SDK.

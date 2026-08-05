@@ -126,7 +126,8 @@ const partnerFeeSrc = read(SDK_PARTNER_FEE);
 const sdkFeeRecipient = partnerFeeSrc.match(/OPHIS_PARTNER_FEE_RECIPIENT\s*=\s*\n?\s*'(0x[0-9a-fA-F]{40})'/)?.[1];
 const sdkVolumeBps = partnerFeeSrc.match(/export const OPHIS_VOLUME_FEE_BPS = (\d+);/)?.[1];
 const sdkStableBps = partnerFeeSrc.match(/export const OPHIS_STABLE_VOLUME_FEE_BPS = (\d+);/)?.[1];
-if (!sdkFeeRecipient || !sdkVolumeBps || !sdkStableBps) {
+const sdkSovereignBps = partnerFeeSrc.match(/export const OPHIS_SOVEREIGN_VOLUME_FEE_BPS = (\d+);/)?.[1];
+if (!sdkFeeRecipient || !sdkVolumeBps || !sdkStableBps || !sdkSovereignBps) {
   fail(`could not parse fee recipient / bps constants from ${SDK_PARTNER_FEE}`);
 }
 
@@ -358,11 +359,11 @@ for (const f of familyFiles) {
 if (sdkFeeRecipient && !umbrella.includes(`recipient: "${sdkFeeRecipient}"`)) {
   fail(`umbrella SKILL.md partnerFee recipient drifted from SDK OPHIS_PARTNER_FEE_RECIPIENT ${sdkFeeRecipient}`);
 }
-if (sdkVolumeBps && !umbrella.includes(`volumeBps: ${sdkVolumeBps} }`)) {
-  fail(`umbrella SKILL.md partnerFee volumeBps drifted from SDK OPHIS_VOLUME_FEE_BPS ${sdkVolumeBps}`);
+if (sdkSovereignBps && !umbrella.includes(`volumeBps: ${sdkSovereignBps} }`)) {
+  fail(`umbrella SKILL.md partnerFee volumeBps drifted from SDK OPHIS_SOVEREIGN_VOLUME_FEE_BPS ${sdkSovereignBps}`);
 }
-if (sdkStableBps && !umbrella.includes(`volumeBps: ${sdkStableBps}\``)) {
-  fail(`umbrella SKILL.md stable-pair rate drifted from SDK OPHIS_STABLE_VOLUME_FEE_BPS ${sdkStableBps}`);
+if (sdkStableBps && !umbrella.includes(`1 bip (0.01%) sovereign base`)) {
+  fail(`umbrella SKILL.md does not describe the SDK ${sdkStableBps} bp stable/sovereign rate`);
 }
 if (appDataVersion && !umbrella.includes(`version: "${appDataVersion}"`)) {
   fail(`umbrella SKILL.md appData version drifted from SDK APP_DATA_VERSION ${appDataVersion}`);

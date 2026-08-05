@@ -433,27 +433,21 @@ const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.op
 
 ### 2. Build the partner-fee appData correctly
 
-The partner fee for SDK and manual integrations is a flat 0.05% (5 bps) fee on
-trade volume (the Ophis swap app charges its own 0.10% retail rate), written into
-the order's `appData` at `metadata.partnerFee`. This section is for callers that
-build appData themselves; the keyless MCP `build_order` embeds this fee for you
-at the flat 5 bps rate (it does not apply the reduced stable-pair rate). Use the
-CIP-75 **volume** shape `{ volumeBps: 5, recipient }`, **not** the
+The appData base is chain-aware: **1 bp on Ophis-operated chains**, or **5 bps
+on CoW-hosted volatile pairs and 1 bp on hosted stable pairs**. The keyless MCP
+`build_order` and high-level SDK builders select the operated-chain base from
+the chain ID. Use the CIP-75 **volume** shape, **not** the
 price-improvement shape `{ priceImprovementBps, maxVolumeBps, recipient }`:
 the two shapes use different denominators, so slotting a value into the wrong
 field is a silent magnitude error. Hash the appData with cow-sdk's deterministic
 serializer, **never** `keccak256(JSON.stringify(doc))`. JSON key order isn't
 stable, so the hash won't match what solvers expect.
 
-Stablecoin-to-stablecoin swaps pay a reduced 0.01% (1 bp): same-chain pairs
-where both tokens are stablecoins use `{ volumeBps: 1, recipient }` instead of
-`{ volumeBps: 5, recipient }`. The `@ophis/sdk` exposes
-`OPHIS_STABLE_VOLUME_FEE_BPS` and a helper `ophisVolumeBpsForPair(isStablePair)`
-to pick the right rate. The SDK is chain-only and cannot detect the pair itself,
-so on this manual path you pass `isStablePair` based on your own token
-classification. The drop-in adapters above (AgentKit, GOAT, elizaOS) and the
-platform integrations derive it for you from a verified stablecoin list, so you
-only make this call when hand-rolling orders.
+For a manual builder, call
+`ophisVolumeBpsForChainAndPair(chainId, isStablePair)`. This prevents a
+sovereign volatile order from accidentally inheriting the hosted 5 bps rate.
+The drop-in adapters above derive stable-pair status from a verified stablecoin
+list.
 
 ```typescript
 import { MetadataApi, stringifyDeterministic } from '@cowprotocol/cow-sdk';
@@ -466,16 +460,11 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 // OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
 // fork serves), or `undefined` on any other chain.
 //
-// On the Ophis-operated chains (Optimism, Unichain, Robinhood Chain) the partner rate you charge
-// is 5 bps (1 bp stable pairs). The backend also enforces an anti-abuse MINIMUM:
-// it rejects (HTTP 400) any order to the Ophis fee recipient whose fee is below
-// 4 bps non-stable (or 1 bp for a same-chain stablecoin pair), or that uses a
-// Surplus/PriceImprovement policy. The 4 bps is a floor the backend accepts, not
-// a rate to target. Carry this fragment unchanged: do not lower the bps and do
-// not drop the fee, or the order is rejected.
+// On Optimism, Unichain, and Robinhood Chain this returns the required 1 bp
+// base. Their backends enforce the same 1 bp anti-bypass floor and separately
+// apply capped price-improvement capture.
 const partnerFee = buildOphisAppDataPartnerFee(10);
-// -> the Ophis flat-volume partner-fee fragment { volumeBps: 5, recipient }
-//    for this chain (enforced as a minimum on Optimism: at least the floor)
+// -> { volumeBps: 1, recipient }
 
 const metadataApi = new MetadataApi();
 const doc = await metadataApi.generateAppDataDoc({

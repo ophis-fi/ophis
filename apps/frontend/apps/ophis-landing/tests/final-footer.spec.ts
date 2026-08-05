@@ -4,7 +4,8 @@ test('final CTA shows new multi-chain headline + Trade CTA', async ({ page }) =>
   await page.goto('/')
   await expect(page.locator('.final h2')).toContainText('Trade anywhere')
   await expect(page.locator('.final h2')).toContainText('Settle in one batch')
-  await expect(page.locator('.final p')).toContainText('13 chains')
+  await expect(page.locator('.final p')).toContainText('13 EVM production deployments')
+  await expect(page.locator('.final p')).toContainText('Check live status before routing')
   await expect(page.locator('.final .cta-primary')).toContainText(/Trade/)
 })
 

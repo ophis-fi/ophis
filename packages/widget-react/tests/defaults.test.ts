@@ -16,6 +16,11 @@ describe('withOphisDefaults', () => {
     expect(merged.partnerFee?.bps).toBe(5);
   });
 
+  it.each([10, 130, 4663])('uses the 1 bp base for configured sovereign chain %i', (chainId) => {
+    const merged = withOphisDefaults({ tradeType: 'swap', chainId } as any);
+    expect(merged.partnerFee?.bps).toBe(1);
+  });
+
   it('lets the caller override host, appCode and fee bps', () => {
     const merged = withOphisDefaults({
       tradeType: 'swap',
