@@ -17,9 +17,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-# Chain dirs + expected suffixes (parallel arrays).
+# Chain dirs + accepted chain-specific ID tags (parallel arrays). Existing
+# metric IDs use both abbreviated suffixes and descriptive prefixes.
 CHAIN_DIRS=("optimism-mainnet" "unichain-mainnet" "robinhood-mainnet")
-CHAIN_SUFFIXES=("op"            "uni"               "rh")
+CHAIN_TAGS=("-op"               "-uni unichain-"     "-rbh robinhood-")
 
 errors=0
 ALL_IDS_FILE=$(mktemp)
@@ -27,21 +28,22 @@ trap 'rm -f "$ALL_IDS_FILE"' EXIT
 
 for i in "${!CHAIN_DIRS[@]}"; do
   chain_dir="${CHAIN_DIRS[$i]}"
-  expected_suffix="${CHAIN_SUFFIXES[$i]}"
+  expected_tags="${CHAIN_TAGS[$i]}"
   cfg="infra/${chain_dir}/configs/erpc.yaml.tmpl"
   [[ -f "$cfg" ]] || continue  # paused chain — skip
 
   while IFS= read -r id; do
     [[ -z "$id" ]] && continue
 
-    # Check suffix
-    case "$id" in
-      *"-${expected_suffix}") ;;  # OK
-      *)
-        echo "FAIL: $cfg upstream '$id' lacks chain suffix '-${expected_suffix}'" >&2
-        errors=$((errors + 1))
-        ;;
-    esac
+    # Check that the metric ID carries one of this chain's established tags.
+    tag_match=0
+    for tag in $expected_tags; do
+      case "$id" in *"$tag"*) tag_match=1 ;; esac
+    done
+    if (( tag_match == 0 )); then
+      echo "FAIL: $cfg upstream '$id' lacks a chain tag (${expected_tags})" >&2
+      errors=$((errors + 1))
+    fi
 
     # Check collision (look up in flat ALL_IDS_FILE)
     if grep -Fxq "${id}|" "$ALL_IDS_FILE" 2>/dev/null; then
@@ -59,7 +61,7 @@ if (( errors > 0 )); then
   echo "eRPC ID lint FAILED ($errors issues)." >&2
   echo "" >&2
   echo "Every upstream 'id:' field must:" >&2
-  echo "  1. End with the chain's configured suffix" >&2
+  echo "  1. Include one of the chain's configured ID tags" >&2
   echo "  2. NOT appear in any other chain's eRPC config" >&2
   exit 1
 fi
