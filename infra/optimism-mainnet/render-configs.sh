@@ -309,12 +309,42 @@ _mount_ram_disk_linux() {
 # Existing-mount check uses a marker file inside the volume rather
 # than diskutil's volume name (newfs_hfs labels are invisible to
 # diskutil for ram-disks). See sharp-edges audit history in PR #147.
+_macos_device_is_ram_image() {
+  local expected_dev="$1" expected_mount="$2" plist image_count image_index
+  local image_path entity_count entity_index dev_entry mount_point
+  plist=$(mktemp)
+  if ! hdiutil info -plist > "$plist"; then
+    rm -f "$plist"
+    return 1
+  fi
+  image_count=$(plutil -extract images raw -o - "$plist" 2>/dev/null || echo 0)
+  for ((image_index = 0; image_index < image_count; image_index++)); do
+    image_path=$(plutil -extract "images.${image_index}.image-path" raw -o - "$plist" 2>/dev/null || true)
+    [[ "$image_path" == ram://* ]] || continue
+    entity_count=$(plutil -extract "images.${image_index}.system-entities" raw -o - "$plist" 2>/dev/null || echo 0)
+    for ((entity_index = 0; entity_index < entity_count; entity_index++)); do
+      dev_entry=$(plutil -extract "images.${image_index}.system-entities.${entity_index}.dev-entry" raw -o - "$plist" 2>/dev/null || true)
+      mount_point=$(plutil -extract "images.${image_index}.system-entities.${entity_index}.mount-point" raw -o - "$plist" 2>/dev/null || true)
+      if [[ "$dev_entry" == "$expected_dev" && "$mount_point" == "$expected_mount" ]]; then
+        rm -f "$plist"
+        return 0
+      fi
+    done
+  done
+  rm -f "$plist"
+  return 1
+}
+
 _mount_ram_disk_macos() {
   if mount | grep -Fq " on ${RAM_PK_MOUNT} ("; then
     local existing_dev
     existing_dev=$(mount | grep -F " on ${RAM_PK_MOUNT} (" | awk '{print $1}')
     if [[ ! "$existing_dev" =~ ^/dev/disk[0-9]+ ]]; then
       echo "ERROR: $RAM_PK_MOUNT mounted but device '$existing_dev' isn't /dev/disk*" >&2
+      return 1
+    fi
+    if ! _macos_device_is_ram_image "$existing_dev" "$RAM_PK_MOUNT"; then
+      echo "ERROR: $RAM_PK_MOUNT device '$existing_dev' is not a ram:// hdiutil image." >&2
       return 1
     fi
     local marker="${RAM_PK_MOUNT}/.ophis-ram-pk-marker"
@@ -343,6 +373,12 @@ _mount_ram_disk_macos() {
 
   if ! mount -t hfs "$dev" "$RAM_PK_MOUNT"; then
     echo "ERROR: mount -t hfs $dev $RAM_PK_MOUNT failed" >&2
+    hdiutil detach "$dev" >/dev/null 2>&1 || true
+    return 1
+  fi
+  if ! _macos_device_is_ram_image "$dev" "$RAM_PK_MOUNT"; then
+    echo "ERROR: mounted device $dev is not registered as a ram:// hdiutil image." >&2
+    sudo umount -f "$RAM_PK_MOUNT" >/dev/null 2>&1 || true
     hdiutil detach "$dev" >/dev/null 2>&1 || true
     return 1
   fi

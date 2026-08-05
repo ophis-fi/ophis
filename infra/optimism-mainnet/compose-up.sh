@@ -170,6 +170,31 @@ echo ""
 echo "==> verifying secret-bearing config symlinks resolve"
 ram_render_root="$HOME/.local/state/ophis/ram-pk"
 ram_marker="$ram_render_root/.ophis-ram-pk-marker"
+macos_device_is_ram_image() {
+  local expected_dev="$1" expected_mount="$2" plist image_count image_index
+  local image_path entity_count entity_index dev_entry mount_point
+  plist=$(mktemp)
+  if ! hdiutil info -plist > "$plist"; then
+    rm -f "$plist"
+    return 1
+  fi
+  image_count=$(plutil -extract images raw -o - "$plist" 2>/dev/null || echo 0)
+  for ((image_index = 0; image_index < image_count; image_index++)); do
+    image_path=$(plutil -extract "images.${image_index}.image-path" raw -o - "$plist" 2>/dev/null || true)
+    [[ "$image_path" == ram://* ]] || continue
+    entity_count=$(plutil -extract "images.${image_index}.system-entities" raw -o - "$plist" 2>/dev/null || echo 0)
+    for ((entity_index = 0; entity_index < entity_count; entity_index++)); do
+      dev_entry=$(plutil -extract "images.${image_index}.system-entities.${entity_index}.dev-entry" raw -o - "$plist" 2>/dev/null || true)
+      mount_point=$(plutil -extract "images.${image_index}.system-entities.${entity_index}.mount-point" raw -o - "$plist" 2>/dev/null || true)
+      if [[ "$dev_entry" == "$expected_dev" && "$mount_point" == "$expected_mount" ]]; then
+        rm -f "$plist"
+        return 0
+      fi
+    done
+  done
+  rm -f "$plist"
+  return 1
+}
 if [[ ! -f "$ram_marker" ]] || ! grep -qFx "ophis-ram-pk" "$ram_marker" 2>/dev/null; then
   echo "ERROR: managed RAM-disk marker is missing or invalid at $ram_marker." >&2
   exit 8
@@ -179,6 +204,10 @@ case "$(uname -s)" in
     ram_device=$(mount | awk -v path="$ram_render_root" '$2 == "on" && $3 == path {print $1}')
     if [[ ! "$ram_device" =~ ^/dev/disk[0-9]+$ ]]; then
       echo "ERROR: $ram_render_root is not backed by the managed macOS RAM disk." >&2
+      exit 8
+    fi
+    if ! macos_device_is_ram_image "$ram_device" "$ram_render_root"; then
+      echo "ERROR: $ram_render_root is not a ram:// hdiutil image." >&2
       exit 8
     fi
     ;;
