@@ -426,7 +426,7 @@ fn validate_fxusd_redeem(
     let Some((required_input, required_output)) = required_amounts else {
         return Err(reject());
     };
-    if amount_in != required_input || min_out < required_output {
+    if amount_in > required_input || min_out < required_output {
         return Err(reject());
     }
 
@@ -643,6 +643,19 @@ mod tests {
                 &make_fx_redeem(ETHEREUM_SETTLEMENT),
                 1,
                 Some((U256::from(1_000u64), U256::from(981u64))),
+            ),
+            Ok(())
+        );
+
+        // On a positive-fee partial LIMIT fill the fee can remain in
+        // Settlement, so routed amountIn is below executed + fee. The upper
+        // bound is the security invariant: redemption may not consume more
+        // fxUSD than the fulfillment contributes.
+        assert_eq!(
+            validate_with_required_output(
+                &make_fx_redeem(ETHEREUM_SETTLEMENT),
+                1,
+                Some((U256::from(1_010u64), U256::from(981u64))),
             ),
             Ok(())
         );
