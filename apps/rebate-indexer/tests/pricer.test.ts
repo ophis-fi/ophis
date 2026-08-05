@@ -94,6 +94,22 @@ describe('priceDefiLlamaFill — settlement-time pricing', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
+
+  it('values a fill from its USD-reference buy side when the sell chain has no price namespace', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const usd = await priceDefiLlamaFill({
+      chainId: 4663,
+      sellToken: '0x0bd7d308f8e1639fab988df18a8011f41eacad73',
+      sellAmount: 2_000_000_000_000_000n,
+      buyToken: ROBINHOOD_USDG,
+      buyAmount: 3_675_409n,
+      settlementTimestamp: new Date('2026-08-04T14:28:53Z'),
+    });
+    expect(usd).toBe(3.675409);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('priceTrade — native_price oracle', () => {

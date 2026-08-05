@@ -128,6 +128,8 @@ export const defillamaFills = pgTable(
     settlementTimestamp: timestamp('settlement_timestamp', { withTimezone: true }).notNull(),
     sellToken: bytea('sell_token').notNull(),
     sellAmount: uint256('sell_amount').notNull(),
+    buyToken: bytea('buy_token'),
+    buyAmount: uint256('buy_amount'),
     volumeFeeBps: integer('volume_fee_bps'),
     feeVerified: boolean('fee_verified').notNull(),
     valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),

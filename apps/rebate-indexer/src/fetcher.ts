@@ -43,6 +43,8 @@ export interface PendingDefiLlamaFill {
   settlementTimestamp: Date;
   sellToken: `0x${string}`;
   sellAmount: bigint;
+  buyToken: `0x${string}`;
+  buyAmount: bigint;
   volumeFeeBps: number | null;
   feeVerified: boolean;
 }
@@ -571,6 +573,8 @@ export async function fetchChainTrades(
             settlementTimestamp,
             sellToken: fill.sellToken,
             sellAmount: fill.sellAmount,
+            buyToken: fill.buyToken,
+            buyAmount: fill.buyAmount,
             volumeFeeBps: fill.volumeFeeBps,
             feeVerified: true,
           });

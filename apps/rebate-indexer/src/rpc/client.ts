@@ -26,13 +26,14 @@ const DRPC_NETWORK: Record<number, string> = {
 // old blocks, which publicnode's keyless tier REJECTS ("Archive requests require a
 // personal token"). The official OP/Unichain endpoints serve archive getLogs (verified
 // on 2000-block windows at the sovereign settlement) keylessly; publicnode stays for
-// Base (8453), whose decoder use is tip-only.
+// Base (8453). The reporting fill backfill resolves historical settlement block
+// timestamps, so its fallback must be archive-capable too.
 const DEFAULT_FALLBACK: Record<number, string> = {
   1: 'https://ethereum-rpc.publicnode.com',
   56: 'https://bsc-rpc.publicnode.com',
   100: 'https://gnosis-rpc.publicnode.com',
   137: 'https://polygon-bor-rpc.publicnode.com',
-  8453: 'https://base-rpc.publicnode.com',
+  8453: 'https://base.drpc.org',
   9745: 'https://rpc.plasma.to',
   42161: 'https://arbitrum-one-rpc.publicnode.com',
   43114: 'https://avalanche-c-chain-rpc.publicnode.com',

@@ -28,12 +28,17 @@ export async function priceDefiLlamaFill(row: {
   chainId: number;
   sellToken: `0x${string}`;
   sellAmount: bigint;
+  buyToken?: `0x${string}`;
+  buyAmount?: bigint;
   settlementTimestamp: Date;
 }): Promise<number> {
   const ref = USD_REFERENCE[row.chainId];
   if (!ref) throw new Error(`no USD reference for chain ${row.chainId}`);
   if (row.sellToken.toLowerCase() === ref.token.toLowerCase()) {
     return Number(row.sellAmount) / 10 ** ref.decimals;
+  }
+  if (row.buyToken?.toLowerCase() === ref.token.toLowerCase() && row.buyAmount !== undefined) {
+    return Number(row.buyAmount) / 10 ** ref.decimals;
   }
 
   const slug = DEFILLAMA_CHAIN_SLUG[row.chainId];
@@ -276,6 +281,8 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
     trade_uid: Buffer;
     sell_token: Buffer;
     sell_amount: string;
+    buy_token: Buffer | null;
+    buy_amount: string | null;
     settlement_timestamp: Date;
   };
   let fillCursor: { chainId: number; blockNumber: string; logIndex: number; tradeUid: Buffer } | null = null;
@@ -283,7 +290,8 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
     let rows: FillPriceRow[];
     if (fillCursor === null) {
       rows = await sql<FillPriceRow[]>`
-          SELECT chain_id, block_number::text, log_index, trade_uid, sell_token, sell_amount::text, settlement_timestamp
+          SELECT chain_id, block_number::text, log_index, trade_uid, sell_token, sell_amount::text,
+                 buy_token, buy_amount::text, settlement_timestamp
           FROM defillama_fills
           WHERE value_usd IS NULL
           ORDER BY chain_id, block_number, log_index, trade_uid
@@ -291,7 +299,8 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
         `;
     } else {
       rows = await sql<FillPriceRow[]>`
-          SELECT chain_id, block_number::text, log_index, trade_uid, sell_token, sell_amount::text, settlement_timestamp
+          SELECT chain_id, block_number::text, log_index, trade_uid, sell_token, sell_amount::text,
+                 buy_token, buy_amount::text, settlement_timestamp
           FROM defillama_fills
           WHERE value_usd IS NULL
             AND (chain_id, block_number, log_index, trade_uid) >
@@ -320,6 +329,8 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
           chainId: row.chainId,
           sellToken: row.sellToken,
           sellAmount: row.sellAmount,
+          buyToken: r.buy_token ? `0x${r.buy_token.toString('hex')}` as `0x${string}` : undefined,
+          buyAmount: r.buy_amount === null ? undefined : BigInt(r.buy_amount),
           settlementTimestamp: r.settlement_timestamp,
         });
         await sql`
