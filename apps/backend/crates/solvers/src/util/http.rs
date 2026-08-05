@@ -86,7 +86,7 @@ where
                 RoundtripError::Http(if status.is_success() {
                     // A 2xx whose body parses as neither the success type nor a
                     // structured API error is almost always upstream schema
-                    // drift (cf. the Odos `outputTokens` incident, where a
+                    // drift (cf. an upstream `outputTokens` incident, where a
                     // changed field silently turned every real route into a
                     // "no solution"). The raw body is only `TRACE`-logged above,
                     // so without this the broken field is invisible at prod log

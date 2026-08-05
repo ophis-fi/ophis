@@ -48,12 +48,12 @@ fn link(from: &str, to: &str, kind: PathVizLinkKind, disp: Option<&str>, sym: Op
 fn single_order() -> PathVizGraph {
     let mut g = PathVizGraph::new();
     g.nodes.push(token("in:weth", "WETH", 0, "0x4200000000000000000000000000000000000006"));
-    g.nodes.push(other("s:win", "odos-solver", 1, PathVizNodeKind::Solver));
+    g.nodes.push(other("s:win", "external-solver", 1, PathVizNodeKind::Solver));
     g.nodes.push(token("out:usdc", "USDC", 3, "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"));
     g.links.push(link("in:weth", "s:win", PathVizLinkKind::Route, Some("1.0 WETH"), Some("WETH")));
     g.links.push(link("s:win", "out:usdc", PathVizLinkKind::Route, Some("3,214.7 USDC"), Some("USDC")));
     g.solvers.push(PathVizSolverBid {
-        name: "odos-solver".into(),
+        name: "external-solver".into(),
         winner: true,
         executed_sell_atoms: Some("1000000000000000000".into()),
         executed_buy_atoms: Some("3214700000".into()),
@@ -76,7 +76,7 @@ fn multi_order_batch() -> PathVizGraph {
     g.nodes.push(token("in:usdc", "USDC", 0, "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"));
     g.nodes.push(token("in:op", "OP", 0, "0x4200000000000000000000000000000000000042"));
     // Solvers.
-    g.nodes.push(other("s:win", "odos-solver", 1, PathVizNodeKind::Solver));
+    g.nodes.push(other("s:win", "external-solver", 1, PathVizNodeKind::Solver));
     g.nodes.push(other("s:lose", "baseline", 1, PathVizNodeKind::Solver));
     // Outputs.
     g.nodes.push(token("out:usdc", "USDC", 3, "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"));
@@ -92,7 +92,7 @@ fn multi_order_batch() -> PathVizGraph {
     // A losing bid for the WETH order.
     g.links.push(link("in:weth", "s:lose", PathVizLinkKind::Bid, None, Some("WETH")));
     g.solvers.push(PathVizSolverBid {
-        name: "odos-solver".into(),
+        name: "external-solver".into(),
         winner: true,
         executed_sell_atoms: None,
         executed_buy_atoms: None,
@@ -120,7 +120,7 @@ fn settled_with_venues() -> PathVizGraph {
     g.nodes.push(token("in:weth", "WETH", 0, "0x4200000000000000000000000000000000000006"));
     g.nodes.push(token("in:usdc", "USDC", 0, "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"));
     // Winning solver.
-    g.nodes.push(other("s:win", "odos-solver", 1, PathVizNodeKind::Solver));
+    g.nodes.push(other("s:win", "external-solver", 1, PathVizNodeKind::Solver));
     // Venues (registry labels; one degraded to a bare address on purpose).
     g.nodes.push(other("v:uni", "Uniswap v3 0.05%", 2, PathVizNodeKind::Venue));
     g.nodes.push(other("v:velo", "Velodrome", 2, PathVizNodeKind::Venue));
@@ -146,7 +146,7 @@ fn settled_with_venues() -> PathVizGraph {
     // Peer-to-peer coverage inside the batch (transfer-log evidence).
     g.links.push(link("in:weth", "out:weth", PathVizLinkKind::Matched, Some("0.06 WETH"), Some("WETH")));
     g.solvers.push(PathVizSolverBid {
-        name: "odos-solver".into(),
+        name: "external-solver".into(),
         winner: true,
         executed_sell_atoms: Some("2000000000000000000".into()),
         executed_buy_atoms: Some("6430000000".into()),

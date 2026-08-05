@@ -9,7 +9,6 @@ pub mod dodo;
 pub mod enso;
 pub mod kyberswap;
 pub mod lifi;
-pub mod odos;
 pub mod okx;
 pub mod openocean;
 pub mod pons;
@@ -25,7 +24,6 @@ pub enum Dex {
     Okx(Box<okx::Okx>),
     KyberSwap(Box<kyberswap::KyberSwap>),
     Velora(Box<velora::Velora>),
-    Odos(Box<odos::Odos>),
     OpenOcean(Box<openocean::OpenOcean>),
     Dodo(Box<dodo::Dodo>),
     Lifi(Box<lifi::Lifi>),
@@ -56,7 +54,6 @@ impl Dex {
             Dex::Okx(okx) => okx.swap(order, slippage).await?,
             Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage, is_quote).await?,
             Dex::Velora(velora) => velora.swap(order, slippage, tokens, is_quote).await?,
-            Dex::Odos(odos) => odos.swap(order, slippage).await?,
             Dex::OpenOcean(openocean) => openocean.swap(order, slippage, tokens).await?,
             Dex::Dodo(dodo) => dodo.swap(order, slippage).await?,
             Dex::Lifi(lifi) => lifi.swap(order, slippage).await?,
@@ -172,17 +169,6 @@ impl From<velora::Error> for Error {
             // next auction iteration when /prices returns a fresh route.
             velora::Error::NotFound | velora::Error::RateChanged => Self::NotFound,
             velora::Error::RateLimited => Self::RateLimited,
-            _ => Self::Other(Box::new(err)),
-        }
-    }
-}
-
-impl From<odos::Error> for Error {
-    fn from(err: odos::Error) -> Self {
-        match err {
-            odos::Error::OrderNotSupported => Self::OrderNotSupported,
-            odos::Error::NotFound => Self::NotFound,
-            odos::Error::RateLimited => Self::RateLimited,
             _ => Self::Other(Box::new(err)),
         }
     }

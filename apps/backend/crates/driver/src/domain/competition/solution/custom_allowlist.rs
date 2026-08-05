@@ -49,7 +49,7 @@
 //! PROVENANCE AUDIT STATUS: the LI.FI entries (chains 10 / 130 / 4663) were
 //! re-authenticated against LI.FI's canonical repo on 2026-07-26 and all
 //! three matched. NOT yet re-authenticated to standard (1) or (2): the OKX
-//! router/spender pair, the Odos routers, and the DODO router/approve-proxy
+//! router/spender pair and the DODO router/approve-proxy
 //! pair, whose notes still cite an API response plus a code-size check.
 //! Their addresses may well be correct — the point is the recorded basis is
 //! not sufficient. Re-authenticate them from upstream sources before
@@ -143,9 +143,6 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // `/approve-transaction` as `dexContractAddress` — the ERC-20
     // approval grantee. Verified 2026-05-18 alongside the router.
     address!("68D6B739D2020067D1e2F713b999dA97E4d54812"),
-    // Odos OdosRouterV2 on Optimism (10) -- router (tx.to) == ERC-20 spender.
-    // Per-chain; verified 2026-07-06 via api.odos.xyz + eth_getCode (14721 B).
-    address!("Ca423977156BB05b13A2BA3b76Bc5419E2fE9680"),
     // Enso EnsoRouter on Optimism (10) -- tx.to == approval target.
     // CREATE2-deterministic (same as Unichain). Verified 2026-07-06 (3313 B).
     address!("F75584eF6673aD213a685a1B58Cc0330B8eA22Cf"),
@@ -180,7 +177,7 @@ const HYPEREVM_MAINNET: &[Address] = &[
 ];
 
 /// Robinhood mainnet (chain 4663). KyberSwap + LI.FI as of 2026-07-26. Velora
-/// and Odos explicitly do NOT support 4663 (both return an unsupported-network
+/// and retired aggregators do not support 4663 (returning an unsupported-network
 /// error listing their chains); OKX is parked. When another aggregator adds
 /// 4663, append its router/spender here after upstream verification.
 ///
@@ -223,7 +220,7 @@ const ROBINHOOD_MAINNET: &[Address] = &[
     address!("B477751B76CF82d00a686A1232f5fCD772414Af3"),
 ];
 
-/// Unichain mainnet (chain 130). KyberSwap + Velora + Odos + OpenOcean + DODO +
+/// Unichain mainnet (chain 130). KyberSwap + Velora + OpenOcean + DODO +
 /// OKX + LI.FI + Enso. When a new aggregator is enabled on Unichain, append its
 /// router/spender here after upstream verification — the SOLVER-level allowlist
 /// is NOT sufficient: the driver independently rejects any non-allowlisted
@@ -239,10 +236,6 @@ const UNICHAIN_MAINNET: &[Address] = &[
     // returns this exact contractAddress == tokenTransferProxy; matches the
     // solver-level VELORA_ROUTER_ALLOWLIST. Same address on all Velora chains.
     address!("6A000F20005980200259B80c5102003040001068"),
-    // Odos OdosRouterV2 on Unichain (130) — the `to` of the assembled tx AND
-    // the ERC-20 spender (Odos approves a single router). Verified on-chain via
-    // `cast code` on chain 130; matches the solver-level ODOS_ROUTER_ALLOWLIST.
-    address!("6409722F3a1C4486A3b1FE566cBDd5e9D946A1f3"),
     // OpenOcean OpenOceanExchangeProxy on Unichain (130) — router (`tx.to`) ==
     // ERC-20 spender. Verified on-chain via `cast code` on chain 130; matches
     // the solver-level OPENOCEAN_ROUTER_ALLOWLIST.

@@ -69,7 +69,7 @@ export const PRODUCTION_CHAIN_IDS: readonly number[] = Object.freeze(
  *     kyberswap, velora; baseline routes Sushi V2 there)
  *   - infra/unichain-mainnet/configs/driver.toml.tmpl  (9 engine blocks, but the
  *     baseline ships without on-chain AMM sources on Unichain and cannot bid, so
- *     8 aggregators compete: okx, kyberswap, velora, odos, openocean, dodo,
+ *     Aggregators compete: okx, kyberswap, velora, openocean, dodo,
  *     lifi, enso)
  *   - infra/robinhood-mainnet/configs/driver.toml.tmpl (LI.FI is the one active
  *     bidding lane; baseline has no verified Robinhood liquidity source)

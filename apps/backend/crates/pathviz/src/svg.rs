@@ -297,8 +297,8 @@ mod tests {
         // id follows the real "solver:<name>" convention so the id-based winner
         // match resolves against g.solvers by name.
         g.nodes.push(PathVizNode {
-            id: "solver:odos-solver".into(),
-            label: "odos-solver".into(),
+            id: "solver:winner".into(),
+            label: "external-solver".into(),
             kind: PathVizNodeKind::Solver,
             column: 1,
             address: None,
@@ -307,7 +307,7 @@ mod tests {
         g.links.push(route("in:weth", "solver:odos-solver"));
         g.links.push(route("solver:odos-solver", "out:usdc"));
         g.solvers.push(PathVizSolverBid {
-            name: "odos-solver".into(),
+            name: "external-solver".into(),
             winner: true,
             executed_sell_atoms: Some("1000000000000000000".into()),
             executed_buy_atoms: Some("3200000000".into()),

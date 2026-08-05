@@ -353,7 +353,7 @@ mod tests {
         let mut graph = PathVizGraph::new();
         graph.nodes.push(node("in:weth", 0, PathVizNodeKind::Token));
         graph.solvers.push(PathVizSolverBid {
-            name: "odos-solver".into(),
+            name: "external-solver".into(),
             winner: true,
             executed_sell_atoms: Some("1000".into()),
             executed_buy_atoms: None,

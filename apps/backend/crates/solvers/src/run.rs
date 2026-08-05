@@ -84,15 +84,6 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
-        cli::Command::Odos { config: path } => {
-            let config = config::dex::odos::file::load(&path).await;
-            solver::Solver::Dex(Box::new(solver::Dex::new(
-                dex::Dex::Odos(Box::new(
-                    dex::odos::Odos::try_new(config.odos).expect("invalid Odos configuration"),
-                )),
-                config.base,
-            )))
-        }
         cli::Command::OpenOcean { config: path } => {
             let config = config::dex::openocean::file::load(&path).await;
             solver::Solver::Dex(Box::new(solver::Dex::new(

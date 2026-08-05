@@ -120,7 +120,7 @@ fn validate_dodo_address(addr: &Address, expected: &Address, role: &str) -> Resu
 /// Whether a DODO `RouteData.value` (a decimal or hex string) represents a
 /// NON-ZERO native amount. Empty / `"0"` / `"0x0"` / `"0x00"` / whitespace are
 /// zero; an unparseable/garbage shape has a non-`'0'` byte and is treated as
-/// non-zero, i.e. rejected fail-closed. Mirrors the LI.FI / Odos native-value
+/// non-zero, i.e. rejected fail-closed. Mirrors the LI.FI native-value
 /// guards so all three handle `"0x0"`, whitespace and decimal forms identically.
 /// A bare `value != "0"` compare wrongly accepts a hex-encoded zero and, more
 /// importantly, invites an inconsistent (possibly unsafe) copy on the next
