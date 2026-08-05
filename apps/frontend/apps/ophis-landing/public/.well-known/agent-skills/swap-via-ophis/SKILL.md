@@ -48,18 +48,16 @@ All endpoints are public and require no API key or authentication.
 
 ## Fees
 
-A flat 0.10% (10 bps) fee on trade volume on the swap app, with a reduced
-0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps; orders built through
-the SDK/MCP integration path carry a reduced 0.05% (5 bps) partner rate. On the
-Ophis-operated chains (Optimism, Unichain, Robinhood Chain) the Ophis fee is the
-all-in cost and
-100% of price improvement is returned to the trader; on CoW-hosted chains CoW
-Protocol's own fees apply on top (a 0.02% volume fee, 0.003% on correlated
-pairs, plus 50% of quote improvement, capped at 0.98% of volume). Details:
+On Optimism, Unichain, and Robinhood Chain, orders carry a 1 bp base and the
+backend retains 80% of reference-quote improvement on volatile pairs (30 bps
+cap), or 50% on stable pairs (10 bps cap). On CoW-hosted chains, Ophis retains
+10 bps retail, 5 bps partner, or 1 bp stable-pair pricing and CoW Protocol's own
+fees apply upstream. Details:
 https://docs.ophis.fi/fees. A share of fees is returned
 monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,
-`OPHIS_STABLE_VOLUME_FEE_BPS`, and `ophisVolumeBpsForPair(isStablePair)`.
+`OPHIS_STABLE_VOLUME_FEE_BPS`, and
+`ophisVolumeBpsForChainAndPair(chainId, isStablePair)`.
 
 ## Safety
 

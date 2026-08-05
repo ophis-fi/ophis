@@ -1,6 +1,6 @@
 ---
 title: "How to swap on Unichain: gasless and MEV-protected"
-description: "Step-by-step guide to swapping on Unichain with Ophis: connect a wallet, sign an EIP-712 order, and solvers settle it in a batch. Gasless, MEV-protected, 0.10% fee."
+description: "Step-by-step guide to swapping on Unichain with Ophis: connect a wallet, sign an EIP-712 order, and settle it in a MEV-protected batch."
 pubDate: 2026-07-14
 author: Ophis
 tags: [unichain, swaps, mev, defi, how-to]
@@ -21,9 +21,9 @@ Context in two sentences. Unichain is chain id 130, one of the 13 EVM chains Oph
 
 3. **Pick the pair, or describe it.** Fill the form the usual way (sell token, buy token, amount), or type the trade in plain language, "swap 250 USDC for WETH", and the intent layer fills the form for you.
 
-4. **Review the quote.** The quote carries a hard limit price, and that limit is what you sign: the worst execution you can receive. If solvers find a better price at settlement, 100% of the improvement goes to you, and the fee takes no share of that surplus.
+4. **Review the quote.** The quote carries a hard limit price, and that limit is what you sign: the worst execution you can receive. Ophis charges a 1 bp base and retains 80% of reference-quote improvement on volatile pairs (30 bps cap), or 50% on stable pairs (10 bps cap); the remainder and all improvement above the cap go to you.
 
-5. **Sign the order.** Your wallet shows an EIP-712 typed-data message, not a transaction. Signing costs nothing: orders are gasless, no native token needed, and the 0.10% fee comes out of the traded amount.
+5. **Sign the order.** Your wallet shows an EIP-712 typed-data message, not a transaction. Signing costs nothing: ERC-20 orders are gasless, while approvals and other direct wallet transactions still require native gas.
 
 6. **Wait for settlement.** Competing solvers race to fill the order, and the result settles on-chain in a batch. The order status updates on the page until the trade lands.
 
@@ -73,4 +73,4 @@ Yes. The Ophis MCP server covers Unichain along with every other supported chain
 
 ## Start swapping
 
-Open [swap.ophis.fi/#/130/swap](https://swap.ophis.fi/#/130/swap), connect a wallet, and sign your first Unichain order. Gasless, MEV-protected, and 0.10% flat.
+Check the [live service status](https://docs.ophis.fi/status) first, then open [swap.ophis.fi/#/130/swap](https://swap.ophis.fi/#/130/swap), connect a wallet, and sign your Unichain order. ERC-20 settlement is gasless and the current fee is the published sovereign 1 bp base plus capped improvement capture.

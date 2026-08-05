@@ -30,8 +30,8 @@ Why the difference: on the 10 CoW-hosted chains, orders settle through CoW
 Protocol's hosted orderbook and solver network, which charges its own
 [protocol fees](https://docs.cow.fi/governance/fees) on top of the Ophis fee.
 On **Optimism, Unichain, and Robinhood Chain**, Ophis operates the entire stack itself
-(settlement contracts, orderbook, solvers), so there is no upstream fee and no
-upstream fee. The 1 bp base and capped price-improvement policy are the complete
+(settlement contracts, orderbook, solvers), so there is no upstream fee. The 1
+bp base and capped price-improvement policy are the complete
 Ophis charge.
 
 ## How it works
@@ -78,21 +78,22 @@ examples above for Optimism, Unichain, and Robinhood Chain.
 | $10,000 | $25 | $30 | **$10** | **$15 to $20** | $12 | $13 to $18 |
 | $100,000 | $250 | $300 | **$100** | **$150 to $200** | $120 | $130 to $180 |
 
-### Same-chain stablecoin pair (e.g. USDC to USDT), on Optimism / Unichain: 0.01% all-in
+### Same-chain stablecoin pair (e.g. USDC to USDT): 0.01% sovereign base
 
 | Trade size | AMM at 0.25% | AMM at 0.30% | Ophis (0.01%) | You save | Ophis on CoW-hosted (0.013%) | You save |
 | --- | --- | --- | --- | --- | --- | --- |
 | $10,000 | $25 | $30 | **$1** | **$24 to $29** | $1.30 | $23.70 to $28.70 |
 | $100,000 | $250 | $300 | **$10** | **$240 to $290** | $13 | $237 to $287 |
 
-The same flat rate applies to every trade, no matter the size, so the savings
-scale directly with your volume. On Optimism, Unichain, and Robinhood Chain, add the full price
-improvement a solver wins on top of these numbers; on CoW-hosted chains, add
-the post-capture remainder (see the all-in table above).
+The table isolates the fixed base so it can be compared with AMM fees. On
+Optimism, Unichain, and Robinhood Chain, the realized charge also includes 50%
+of reference-quote improvement, capped at 10 bps of volume; the trader receives
+the remainder and all improvement above the cap. On CoW-hosted chains, the
+fixed and improvement charges in the all-in table above apply.
 
 ## What you get back: monthly WETH rebates
 
-Beyond the low flat fee, a large share of what you do pay **comes back to you**.
+Beyond the published trading charge, a share of collected WETH fees **comes back to active traders**.
 Each month, **21.25% of the WETH fees collected by the Ophis fee Safe** is paid
 out as rebates, split across active wallets in proportion to their **30-day
 volume weighted by tier**.
@@ -128,8 +129,8 @@ Wallets below $20,000 of 30-day volume are unranked and do not share in the pool
 Your current tier and progress to the next one are shown on the swap page. Add
 the returned **surplus** on top of every figure above: the rebate is a refund
 of fee, the savings table is fee you never paid, and the surplus is upside the
-solver found for you (returned 100% on Optimism, Unichain, and Robinhood Chain, post-capture on
-CoW-hosted chains).
+solver found for you after the applicable capped Ophis capture on operated
+chains or upstream CoW capture on hosted chains.
 
 ## How it's collected
 

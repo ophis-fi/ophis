@@ -28,9 +28,10 @@ swap 100 USDC for ETH on Base
 
 - **Intent-based, not router-based.** You sign your _desired outcome_;
   solvers compete on _how_ to deliver it.
-- **MEV-protected.** Orders settle through a batch auction where every
-  trade clears at one uniform price. Sandwich attacks and front-running
-  are structurally absent, not best-effort.
+- **MEV-protected by design.** Orders settle through a batch auction where
+  trades clear at a uniform price, mitigating front-running and sandwiching.
+  This is a mechanism-level defense, not an absolute guarantee against every
+  adversarial condition.
 - **Self-custodial.** Ophis never holds funds. Every order is signed by
   your wallet (EIP-712 or ERC-1271) and executed by an authorized solver
   from the allowlisted solver set.

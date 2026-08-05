@@ -10,8 +10,10 @@ license: MIT
 
 The user wants evidence, not adjectives: how much better their trades
 settled than the minimums they signed. Surplus is the difference between
-the signed limit and the actual clearing price; on the Ophis-operated
-chains 100% of it goes to the trader.
+the signed limit and the actual clearing price. On Ophis-operated chains the
+current fee policy retains a capped share of reference-quote improvement, so
+describe this endpoint's reported surplus separately from the trader's net
+remainder after fees.
 
 ## Inputs you need
 

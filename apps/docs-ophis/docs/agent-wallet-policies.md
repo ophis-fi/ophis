@@ -64,7 +64,7 @@ enforce the orderbook host and appData in your in-code policy gate.
 
 :::
 
-## Addresses (the 12 live chains)
+## Addresses (the 13 production chains)
 
 The packs pin these values. They are mirrored from `addresses.json`, which CI
 diffs against `@ophis/sdk` (`OPHIS_SETTLEMENT_ADDRESSES` /
@@ -87,9 +87,8 @@ is added. Addresses are EIP-55 checksummed.
 | Ink | 57073 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Linea | 59144 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 
-Two further chains have settlement deployed but their orderbooks are paused
-(4326 and 999), and Sepolia (11155111) is a testnet, so the packs cover the 12
-live chains and exclude all three.
+Sepolia (11155111) is a testnet, so the production packs cover the 13 networks
+above and exclude Sepolia.
 
 ## The order EIP-712 types
 

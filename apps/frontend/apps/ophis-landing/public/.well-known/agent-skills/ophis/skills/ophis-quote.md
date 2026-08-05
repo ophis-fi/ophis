@@ -77,8 +77,8 @@ order will carry keeps the quoted and signed economics identical.
 
 A plain-language summary, not raw JSON:
 
-> "Best quote sells 0.001 WETH for about 2.61 USDC. The all-in Ophis fee is
-> 0.05% of volume, already reflected in the numbers. The quote expires in a
+> "Best quote sells 0.001 WETH for about 2.61 USDC. The order carries a 0.01%
+> sovereign base and capped price-improvement capture can also apply. The quote expires in a
 > few minutes; with 0.5% slippage your signed minimum would be 2.597 USDC,
 > and anything better settles as surplus back to you."
 

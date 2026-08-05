@@ -36,18 +36,18 @@ proceeds anywhere but your signed receiver, or fill below your limit price.
 
 ## MEV protection by construction
 
-Orders settle through a batch auction in which every trade clears at the same
-uniform price. This eliminates the common MEV vectors structurally, not as a
-best-effort mitigation:
+Orders settle through a batch auction in which trades clear at a uniform price.
+This is designed to mitigate common MEV vectors at the mechanism layer:
 
 - **No front-running**: there is no pending-order mempool race to win.
 - **No sandwiching**: the protocol does not reorder trades for value.
 - **No priority-gas auction**: execution order within a batch is not for sale.
 
-When the winning settlement transaction is broadcast, its calldata is briefly
-visible in the public mempool like any transaction. This neither reorders nor
-worsens your trade and carries no fund-loss risk: your signed limits bound the
-outcome regardless.
+When the winning settlement transaction is broadcast, its calldata can be
+visible in the public mempool like any transaction. The signed sell amount,
+receiver, and limit price remain enforced by the settlement contract. Batch
+settlement materially mitigates common MEV; it is not an absolute guarantee
+against every adversarial or infrastructure condition.
 
 ## Smart contracts
 
@@ -67,6 +67,12 @@ backend or frontend) can upgrade, pause, or re-point them:
 | `GPv2Settlement` | `0x108A678716e5E1776036eF044CAB7064226F714E` | Immutable, no admin/proxy |
 | `GPv2VaultRelayer` | `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb` | Immutable, only ever honors the Settlement above |
 | `CoWSwapEthFlow` | `0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7` | Immutable, native-ETH sells (see below) |
+
+| Contract | Address (Robinhood Chain) | Property |
+| --- | --- | --- |
+| `GPv2Settlement` | `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | Immutable, no admin/proxy |
+| `GPv2VaultRelayer` | `0xB52C38097c19cd38238c62DD36027a7918eFa890` | Immutable, only ever honors the Settlement above |
+| `CoWSwapEthFlow` | `0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29` | Immutable, native-ETH sells (see below) |
 
 The core settlement contract is CoW Protocol's audited code, so CoW's
 settlement audits apply to it directly:

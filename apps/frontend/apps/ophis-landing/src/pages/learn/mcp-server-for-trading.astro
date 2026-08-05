@@ -25,7 +25,7 @@ const FAQS = [
   },
   {
     q: 'What does using it cost?',
-    a: `Calling the MCP server and its tools is free. When an order actually settles, the keyless MCP path charges a flat 5 bps (0.05%) of trade volume, taken in the surplus token. There is no key to provision and no subscription.`,
+    a: `Calling the MCP server and its tools is free. A settled order still pays the chain's trading fees: the MCP embeds a 1 bp base on Ophis-operated chains, where capped price-improvement capture also applies, and uses hosted partner pricing on CoW-hosted chains. There is no key to provision and no subscription.`,
   },
   {
     q: 'How does an agent connect to it?',

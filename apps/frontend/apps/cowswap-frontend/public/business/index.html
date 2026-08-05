@@ -52,6 +52,7 @@
       "mainEntity": [
         { "@type": "Question", "name": "Is Ophis a regulated financial-services entity?", "acceptedAnswer": { "@type": "Answer", "text": "No. Ophis is operated independently and provides a non-custodial software interface to permissionless on-chain protocols. It does not take custody of funds, execute discretionary trades, or hold a regulated financial-services license. Full operator and entity details are provided on request for formal contractual arrangements." } },
         { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "On Ophis-operated Optimism, Unichain, and Robinhood Chain, integrations pay a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 30 bps of volume, or 50% on stable pairs, capped at 10 bps. CoW-hosted integrations retain the 5 bps base, reduced to 1 bp on stable pairs. Integrators can stack an onboarded own-fee on top of ERC-20 orders, and Ophis takes 0% of that markup." } },
+        { "@type": "Question", "name": "Where are integrator own-fees guaranteed for payout?", "acceptedAnswer": { "@type": "Answer", "text": "Ophis-operated own-fee payout is currently guaranteed on Optimism and Unichain once the recipient is onboarded and its payout lane is enabled. Robinhood accrual is reported as non-guaranteed until its dedicated payout lane exists. CoW-hosted payouts follow CoW Protocol's terms and service fee." } },
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The public Intent API allows 30 requests per minute per IP, adequate for low and medium-volume operators. Partner-tier rate limits for higher throughput are reviewed case by case; reach out with a brief description of your use case and target volume." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Three paths: point your operators at swap.ophis.fi for direct use, call POST /api/intent from your bot or agent, or embed the upstream CoW Widget. Documentation is at docs.ophis.fi." } },
         { "@type": "Question", "name": "What happens if a solver fails or the upstream protocol has an outage?", "acceptedAnswer": { "@type": "Answer", "text": "Solver competition handles single-solver failures automatically: the order is settled by whichever solver wins the batch. If the underlying CoW Protocol orderbook is degraded, Ophis surfaces an explicit error instead of routing through a degraded venue. Unsettled orders incur no Ophis or CoW settlement fee, though network gas may still apply to token approvals or other wallet actions you signed first." } },
@@ -422,7 +423,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
           your own fee entry (your recipient, within the aggregate cap) next to the Ophis base.
           Ophis takes 0% of your fee; the protocol charge is separate. On
           Optimism and Unichain your own-fee is paid to your recipient monthly in WETH from the
-          Ophis Safe once you are onboarded; on CoW-hosted chains it pays through CoW's weekly
+          Ophis Safe once you are onboarded. Robinhood own-fee payout is not yet guaranteed and is
+          reported with non-guaranteed accruals until its payout lane is enabled. On CoW-hosted chains it pays through CoW's weekly
           distribution under CoW's terms. Native-ETH orders use the eth-flow helper; add your own
           fee via a manual appData build.
         </p>
@@ -461,8 +463,9 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         </div>
         <div class="feerow">
           <span class="big zero">0%</span>
-          <span class="txt"><b>Ophis's cut of your markup.</b> Your own fee entry, up to 95 bps under
-          the default aggregate cap, has no Ophis cut; the protocol charge is applied separately, not
+          <span class="txt"><b>Ophis's cut of your markup.</b> Your own fee entry can use the room
+          remaining under the 100 bps aggregate appData cap: 99 bps beside a 1 bp base or 95 bps
+          beside a 5 bps hosted base. Ophis takes no cut; the protocol charge is applied separately, not
           taken from it. Your net receipt depends on the payout path (see below). On CoW-hosted chains, payout runs through CoW's weekly distribution under
           CoW's terms.</span>
         </div>
@@ -475,8 +478,9 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
           Worked example: your own rate <b>80 bps</b> on <b>$1,000,000</b> monthly volume.<br>
           Ophis takes <b>0%</b> of your <b>$8,000</b> markup. On an operated chain, the separate
           Ophis charge is 1 bp plus capped price-improvement capture. You receive your markup on the CoW-hosted chains today,
-          paid out under CoW's terms; on the sovereign chains it is paid to you monthly in WETH from
-          the sovereign chain's Safe once you are onboarded and we enable it.<br>
+          paid out under CoW's terms; on Optimism and Unichain it is paid to you monthly in WETH from
+          the sovereign chain's Safe once you are onboarded and we enable it. Robinhood payout is not
+          guaranteed until its dedicated payout lane is enabled.<br>
           <span class="plus">For reference, <a href="https://support.metamask.io/trade/swap/user-guide-swaps/" target="_blank" rel="noopener noreferrer">MetaMask Swaps charges 0.875%</a>.</span>
         </div>
       </div>
@@ -508,9 +512,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
           and paid to your recipient monthly in WETH from the sovereign chain's Ophis Safe, with
           Ophis taking 0% of it. Execution is a 2-of-3 Safe signature. The payout runs once your
           recipient is onboarded (allowlisted) and we have enabled and funded it; amounts are
-          USD-valued from routed volume, not exact per-token restitution. The flat all-in Ophis fee
-          and 100%-of-price-improvement-returned still hold on these chains: those are properties of
-          the base rail, not of a third-party own-fee.
+          USD-valued from routed volume, not exact per-token restitution. The 1 bp sovereign base
+          and capped price-improvement policy remain separate from the third-party own-fee.
         </p>
       </div>
       <div class="card">
@@ -822,8 +825,9 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
           <p>
             Using the SDK or a manual appData build, you charge your own fee on top of ERC-20
             orders and Ophis takes 0% of it: the order's appData <code>partnerFee</code> field accepts an
-            array, so you stack your own entry (your recipient address, your rate, up to 95 bps
-            under the default 100 bps aggregate cap) next to the Ophis base entry, and Ophis takes
+            array, so you stack your own entry (your recipient address and rate: up to 99 bps beside
+            a 1 bp base or 95 bps beside a 5 bps hosted base under the default 100 bps aggregate cap)
+            next to the Ophis base entry, and Ophis takes
             0% of your markup. Set your own rate to 80 bps on $1,000,000 of monthly volume and Ophis
             takes 0% of your $8,000 markup; Ophis's chain-specific protocol charge is separate.
             You receive that markup on the CoW-hosted chains today (under CoW terms); on the
@@ -839,6 +843,18 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
             pays 8% of the net fee Ophis keeps (self-serve, referred volume capped at $1M/month) or
             12% (partner tier, uncapped, contact us), paid monthly in WETH, on-chain. Active traders
             earn pooled, volume-tier rewards.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>Where are integrator own-fees guaranteed for payout?</summary>
+        <div class="body">
+          <p>
+            Ophis-operated own-fee payout is currently guaranteed on Optimism and Unichain once
+            the recipient is onboarded and its payout lane is enabled. Robinhood accrual remains
+            non-guaranteed until its dedicated payout lane exists. CoW-hosted payouts follow CoW
+            Protocol's terms and service fee.
           </p>
         </div>
       </details>

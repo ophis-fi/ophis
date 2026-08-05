@@ -65,16 +65,17 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Check 3 source-of-truth files match canonical Safe address
         run: ./scripts/check-partner-fee-invariant.sh
+      - name: Check public fee and chain claims match the current model
+        run: ./scripts/check-public-economics-invariant.sh
 
   floor-invariant:
     name: OP partner-fee floor cross-workspace invariant
     runs-on: ubuntu-latest
     # Input-invariant gate: skip on the weekly cron (advisory jobs only).
     if: github.event_name != 'schedule'
-    # 2026-06-18. The OP backend floors the CIP-75 Volume partner fee per token
-    # pair (app_data.rs partner_fee_floor_bps): 10 bps default, 1 bp for
-    # same-chain stable pairs (OPTIMISM_STABLECOINS) or boosted pairs
-    # (OPTIMISM_BOOSTED_TOKENS). The frontend + SDK charge the matching sets AND
+    # The sovereign backend floors the CIP-75 Ophis Volume base at 1 bp. Stable
+    # and boosted token sets remain mirrored because they also drive pair
+    # classification. The frontend + SDK charge the matching sets AND
     # values from their OWN copies in separate pnpm workspaces (no shared
     # import). Any drift makes the backend floor reject legitimate reduced-rate
     # orders at ingress (PartnerFeeBelowFloor). A Rust unit test also guards the
@@ -658,4 +659,3 @@ jobs:
             --redact \
             --no-banner \
             --exit-code 1
-

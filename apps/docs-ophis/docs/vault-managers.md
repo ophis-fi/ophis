@@ -204,8 +204,10 @@ access instantly, and `cancel` revokes any open order.
 
 ## Fees
 
-Rebalances carry the standard Ophis partner fee (5 bps SDK tier) in the pinned
-appData, attributed on settlement. See [Fees](/fees) for the full schedule.
+Rebalances carry the SDK's chain-aware Ophis base in pinned appData: 1 bp on
+operated chains, or hosted partner pricing elsewhere. Operated-chain capped
+price-improvement capture and hosted upstream fees apply separately. See
+[Fees](/fees) for the full schedule.
 
 ## FAQ
 

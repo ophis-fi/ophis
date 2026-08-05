@@ -48,7 +48,7 @@ them. Pass a `provider` for an injected wallet.
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | Yes (e.g. a staging host) |
 | `appCode` | `ophis` | Yes |
-| `partnerFee.bps` | `5` (0.05%) | Yes |
+| `partnerFee.bps` | Chain-aware when `chainId` is configured: 1 bp sovereign, otherwise 5 bps hosted fallback | Yes |
 | `partnerFee.recipient` | Ophis Safe `0x858f0F5e...CeF8` | No, always pinned |
 
 Everything else is the upstream `CowSwapWidgetParams` API. The raw

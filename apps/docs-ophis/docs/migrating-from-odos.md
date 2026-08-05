@@ -18,7 +18,7 @@ they belong here and do not. Check this table before you read further.
 |---|---|
 | Your signature is validated by a **contract**: a Safe, a smart account, a vault, an MPC signer behind EIP-1271, or a DAO treasury module | **[Partner integration (SDK)](./partners.md).** This surface accepts only `eip712` and `ethsign` and rejects `presign` and `eip1271`, so a contract-validated signer has no path here at all. The SDK reaches those schemes directly |
 | You trade on **Ethereum, Base, Arbitrum, or any other CoW-hosted chain** | **[Partner integration (SDK)](./partners.md).** This surface serves only chains 10, 130 and 4663. The SDK covers those three plus every CoW-hosted chain |
-| You trade mostly **same-chain stable pairs** | **[Partner integration (SDK)](./partners.md)**, which reaches the reduced 1 bp rate. This surface always embeds 5 bps |
+| You trade mostly **same-chain stable pairs** | This surface and the **[Partner integration (SDK)](./partners.md)** both use the 1 bp sovereign base; the SDK also covers hosted chains |
 | You compose swap **calldata inside your own contract call** | Neither page. Ophis returns an intent, not a transaction, and that is a settlement-model difference rather than a backlog item. See [What this surface is](#what-this-surface-is-and-what-it-is-not) |
 
 A vault rebalancing console, a treasury tool, or anything that signs as a
@@ -65,7 +65,8 @@ to or affiliate of Odos.
 
 ## Production status
 
-As verified against `https://compat.ophis.fi` on 30 July 2026:
+As verified against `https://compat.ophis.fi` and its orderbook dependencies on
+5 August 2026:
 
 - `/healthz` reports chains 10, 130 and 4663 as enabled.
 - A `POST /sor/quote/v3` request with `userAddr` was verified on chain 10. It
@@ -82,14 +83,12 @@ As verified against `https://compat.ophis.fi` on 30 July 2026:
 
 ## Pricing, for comparison
 
-The compat surface charges a flat **5 bps** (`partnerFeePercent: 0.05`) on
-every pair. There is no API key, no paid tier and no daily request cap; the only
+The compat surface serves only Ophis-operated chains, so it embeds the **1 bp
+sovereign base** (`partnerFeePercent: 0.01`) on every pair. The sovereign backend
+then applies the current price-improvement policy: 80% of reference-quote
+improvement on volatile pairs capped at 30 bps of volume, or 50% on stable pairs
+capped at 10 bps. There is no API key, paid tier, or daily request cap; the only
 limit is a best-effort 60 requests per 60 seconds per IP and Cloudflare colo.
-
-**Stable pairs are not discounted on this surface.** The Ophis 1 bp same-chain
-stable rate needs token-pair context to establish, and the compat app-data
-builder is chain-only, so it always embeds 5 bps. If you trade mostly stables,
-the [SDK](./partners.md) reaches the reduced rate and this surface does not.
 
 ## Quote-only use
 
@@ -347,7 +346,7 @@ soon as the order settles or the wait elapses (see Settlement timing above).
 | `priceImpact` | `null` (no independent mid-price feed; nothing is fabricated) |
 | `percentDiff` | `0` |
 | `permit2Message`, `permit2Hash` | `null` |
-| `partnerFeePercent` | Total CIP-75 Volume bps embedded in the order, as a percent. With the current production fee switch off, this is the Ophis fee (`0.05` = 5 bps). Already priced into `outAmounts` |
+| `partnerFeePercent` | CIP-75 sovereign base embedded in the order, as a percent (`0.01` = 1 bp). The backend's capped price-improvement policy is separate and is not represented as another appData Volume entry |
 | `pathId` | A stateless signed token, valid up to 60 s and consumed by `/sor/assemble`. Populated when the request carried `userAddr`; explicitly `null` (not omitted) on a quote-only request |
 | `pathViz`, `pathVizImage` | The route-visualization graph and rendered base64 SVG when requested and the feature is enabled, else `null` |
 | `blockNumber` | 0 + warning (quotes are auction-based, not block-pinned; use `ophis.expiration`) |

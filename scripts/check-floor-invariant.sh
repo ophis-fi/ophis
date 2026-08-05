@@ -19,7 +19,8 @@
 # can check without compiling:
 #   1. OPTIMISM_STABLECOINS    address set (frontend tokens.ts        <-> backend)
 #   2. OPTIMISM_BOOSTED_TOKENS  OP address set (frontend boostedTokens.ts <-> backend)
-#   3. the tiered VALUES: floor (4) <= sdk-partner (5) <= retail (10), reduced 1 bp
+#   3. the VALUES: sovereign floor (1) == sovereign base (1), hosted partner 5,
+#      reduced 1 bp
 # It does NOT substitute for the floor-LOGIC tests, which stay CI-unverified; the
 # runtime code still enforces the floor regardless.
 #

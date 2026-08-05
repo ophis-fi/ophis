@@ -100,11 +100,12 @@ your order below it. The worst case is not a bad fill; it is no fill.
 The same competition that protects you also pays you. Your signed order carries
 the minimum you will accept. When the winning solver finds better execution
 than that, the price improvement beyond the quote you signed is called
-**surplus**, and the Ophis fee takes no share of it. On Optimism, Unichain, and Robinhood Chain,
-where Ophis runs its own settlement, 100% of that surplus is yours; on the ten
-chains that settle through CoW Protocol's canonical contracts, CoW Protocol
-keeps half. The Ophis fee is a flat 0.10% of trade volume (0.01% for same-chain
-stablecoin-to-stablecoin swaps), taken out of the trade itself, and on those
+**surplus**. On Optimism, Unichain, and Robinhood Chain, Ophis retains 80% of
+reference-quote improvement on volatile pairs (30 bps cap) or 50% on stable
+pairs (10 bps cap); the trader receives the remainder and everything above the
+cap. On the ten chains that settle through CoW Protocol's canonical contracts,
+CoW Protocol applies its upstream improvement policy. The Ophis base is 1 bp
+on operated chains; hosted Ophis rates remain flat, and on those
 CoW-settled chains CoW Protocol's protocol fee applies on top for a fixed cost
 of about 0.12%, before the half of any quote improvement CoW also keeps. The Ophis numbers live on the
 [fees page](https://docs.ophis.fi/fees).
@@ -152,7 +153,7 @@ wallet. You can sign a new order with a fresh quote whenever you like.
 
 No. The winning solver submits the settlement transaction and pays its gas; you
 only sign a message. Beyond a one-time approval the first time you sell a given
-token, you do not need the chain's native token, because the flat 0.10% fee is
+token, you do not need the chain's native token because the applicable fee
 comes out of the traded amount. More edge cases are covered
 in the [docs FAQ](https://docs.ophis.fi/faq).
 
@@ -171,5 +172,5 @@ GPv2Settlement. The underlying protocol is documented at
 Your next swap does not have to be a public mempool transaction. Open
 [swap.ophis.fi](https://swap.ophis.fi/), pick a pair, and the order you sign
 settles through a batch auction with everything above built in: no mempool
-exposure, one clearing price, a hard limit, and your surplus back (100% of it on
-Optimism, Unichain, and Robinhood Chain).
+exposure, one clearing price, a hard limit, and the trader's remainder after
+the published chain-specific improvement policy.
