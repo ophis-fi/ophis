@@ -121,6 +121,15 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
+        cli::Command::Fx { config: path } => {
+            let config = config::dex::fx::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Fx(Box::new(
+                    dex::fx::Fx::try_new(config.fx).expect("invalid f(x) configuration"),
+                )),
+                config.base,
+            )))
+        }
         cli::Command::Enso { config: path } => {
             let config = config::dex::enso::file::load(&path).await;
             solver::Solver::Dex(Box::new(solver::Dex::new(

@@ -2,6 +2,7 @@ pub mod bitget;
 pub mod dodo;
 pub mod enso;
 pub mod file;
+pub mod fx;
 pub mod kyberswap;
 pub mod lifi;
 pub mod okx;

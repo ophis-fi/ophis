@@ -7,6 +7,7 @@ use {
 pub mod bitget;
 pub mod dodo;
 pub mod enso;
+pub mod fx;
 pub mod kyberswap;
 pub mod lifi;
 pub mod okx;
@@ -29,6 +30,7 @@ pub enum Dex {
     Lifi(Box<lifi::Lifi>),
     Enso(Box<enso::Enso>),
     UniswapV4(Box<uniswap_v4::UniswapV4>),
+    Fx(Box<fx::Fx>),
     Pons(Box<pons::Pons>),
 }
 
@@ -59,6 +61,7 @@ impl Dex {
             Dex::Lifi(lifi) => lifi.swap(order, slippage).await?,
             Dex::Enso(enso) => enso.swap(order, slippage).await?,
             Dex::UniswapV4(uniswap) => uniswap.swap(order, slippage, is_quote).await?,
+            Dex::Fx(fx) => fx.swap(order, slippage).await?,
             Dex::Pons(pons) => pons.swap(order, slippage).await?,
         };
         Ok(swap)
@@ -236,6 +239,16 @@ impl From<pons::Error> for Error {
         match err {
             pons::Error::OrderNotSupported => Self::OrderNotSupported,
             pons::Error::NotFound => Self::NotFound,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<fx::Error> for Error {
+    fn from(err: fx::Error) -> Self {
+        match err {
+            fx::Error::OrderNotSupported => Self::OrderNotSupported,
+            fx::Error::NotFound => Self::NotFound,
             _ => Self::Other(Box::new(err)),
         }
     }

@@ -83,6 +83,11 @@ pub enum Command {
         #[clap(long, env)]
         config: PathBuf,
     },
+    /// redeem fxUSD through the native f(x) Protocol contracts on Ethereum
+    Fx {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
     /// solve individual orders via the Enso aggregator API
     Enso {
         #[clap(long, env)]
