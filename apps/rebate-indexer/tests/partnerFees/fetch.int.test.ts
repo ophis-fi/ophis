@@ -18,9 +18,9 @@ const appData = (pf: unknown) => JSON.stringify({ metadata: { partnerFee: pf } }
 
 // Ophis-only (no attribution), a registered partner (attributed), and an ambiguous mismatch.
 const TRADES = [
-  { blockNumber: 100, logIndex: 1, orderUid: uid(1), owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000'], protocolFeeTokens: [BUY], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }]) },
-  { blockNumber: 100, logIndex: 2, orderUid: uid(2), owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000', '3000'], protocolFeeTokens: [BUY, BUY], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 30, recipient: PARTNER_A }]) },
-  { blockNumber: 101, logIndex: 1, orderUid: uid(3), owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000'], protocolFeeTokens: [BUY], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 30, recipient: PARTNER_B }]) },
+  { blockNumber: 100, logIndex: 1, orderUid: uid(1), owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000'], protocolFeeTokens: [BUY], protocolFeeKinds: ['volume'], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }]) },
+  { blockNumber: 100, logIndex: 2, orderUid: uid(2), owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000', '3000'], protocolFeeTokens: [BUY, BUY], protocolFeeKinds: ['volume', 'volume'], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 30, recipient: PARTNER_A }]) },
+  { blockNumber: 101, logIndex: 1, orderUid: uid(3), owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000'], protocolFeeTokens: [BUY], protocolFeeKinds: ['volume'], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 30, recipient: PARTNER_B }]) },
 ];
 
 // Serve the 3 trades only from the genesis cursor; any advanced cursor is drained. Single page.
@@ -166,8 +166,8 @@ describe('partner-fee feed ingestion', () => {
     // distinct partner fee. The old (trade_uid, recipient) PK would ON CONFLICT DO NOTHING the
     // second -> discard 2000. The widened PK persists both.
     const twoSettlements = [
-      { blockNumber: 200, logIndex: 1, orderUid: uidA, owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000', '3000'], protocolFeeTokens: [BUY, BUY], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 30, recipient: PARTNER_A }]) },
-      { blockNumber: 201, logIndex: 5, orderUid: uidA, owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000', '2000'], protocolFeeTokens: [BUY, BUY], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 30, recipient: PARTNER_A }]) },
+      { blockNumber: 200, logIndex: 1, orderUid: uidA, owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000', '3000'], protocolFeeTokens: [BUY, BUY], protocolFeeKinds: ['volume', 'volume'], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 30, recipient: PARTNER_A }]) },
+      { blockNumber: 201, logIndex: 5, orderUid: uidA, owner: OPHIS, sellToken: BUY, buyToken: BUY, sellAmount: '1', buyAmount: '1', protocolFeeAmounts: ['1000', '2000'], protocolFeeTokens: [BUY, BUY], protocolFeeKinds: ['volume', 'volume'], fullAppData: appData([{ volumeBps: 10, recipient: OPHIS }, { volumeBps: 30, recipient: PARTNER_A }]) },
     ];
     const r = await runPartnerFeeFetch({
       feeds: [{ chainId: 10, url: FEED }],

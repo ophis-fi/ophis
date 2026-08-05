@@ -42,7 +42,7 @@ describe('deterministicStringify', () => {
 describe('buildOphisAppData', () => {
   it('embeds the CIP-75 partner fee on an Ophis fee chain (Optimism)', () => {
     const ad = buildOphisAppData(10)
-    expect(ad.partnerFee).toEqual({ volumeBps: 5, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' })
+    expect(ad.partnerFee).toEqual({ volumeBps: 1, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' })
     expect(ad.doc.version).toBe(APP_DATA_VERSION)
     expect(ad.fullAppData).toContain('partnerFee')
     expect(ad.fullAppData).toContain('"appCode":"ophis"')
@@ -413,7 +413,7 @@ describe('listChains', () => {
     expect(op?.ophisOperated).toBe(true)
     expect(op?.settlement).toBe(OPHIS_OP_SETTLEMENT)
     expect(op?.orderbookUrl).toBe('https://optimism-mainnet.ophis.fi')
-    expect(op?.partnerFee?.volumeBps).toBe(5)
+    expect(op?.partnerFee?.volumeBps).toBe(1)
   })
 
   it('names Unichain (130) with its real display name, not a chain-130 placeholder', () => {
@@ -434,11 +434,9 @@ describe('listChains', () => {
     expect(eth?.settlement).toBe('0x9008D19f58AAbD9eD0D60971565AA8510560ab41')
   })
 
-  it('puts orderbook-paused fee chains (MegaETH, HyperEVM) in paused, not tradeable', () => {
+  it('does not expose retired chains through the fee-chain registry', () => {
     const { tradeable, paused } = listChains()
-    expect(paused.map((c) => c.chainId)).toEqual(expect.arrayContaining([4326, 999]))
-    expect(tradeable.map((c) => c.chainId)).not.toContain(4326)
-    expect(tradeable.map((c) => c.chainId)).not.toContain(999)
+    expect(paused).toEqual([])
     // Every tradeable chain has a real orderbook URL (no dead-ends).
     expect(tradeable.every((c) => typeof c.orderbookUrl === 'string')).toBe(true)
   })

@@ -159,6 +159,14 @@ const OPTIMISM_STABLECOINS: &[Address] = &[
     address!("0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1"), // DAI
 ];
 
+const UNICHAIN_STABLECOINS: &[Address] = &[
+    address!("0x078D782b760474a361dDA0AF3839290b0EF57AD6"), // USDC
+];
+
+const ROBINHOOD_STABLECOINS: &[Address] = &[
+    address!("0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"), // USDG
+];
+
 /// Optimism boosted-token set (mirrors the frontend `OPHIS_BOOSTED_TOKENS[10]`).
 /// Empty today (ALEPH is Mainnet/Base only); a swap where EITHER side is boosted
 /// floors at the reduced rate. Kept explicit so adding an OP boosted token to the
@@ -202,8 +210,14 @@ pub fn partner_fee_floor_bps(sell_token: Address, buy_token: Address, recipient:
 /// Whether both legs are recognized Optimism stablecoins. The autopilot uses
 /// this non-spoofable token-pair classification to select Ophis's reduced 50%
 /// stablecoin price-improvement capture instead of the standard 80% policy.
-pub fn is_ophis_stable_pair(sell_token: Address, buy_token: Address) -> bool {
-    OPTIMISM_STABLECOINS.contains(&sell_token) && OPTIMISM_STABLECOINS.contains(&buy_token)
+pub fn is_ophis_stable_pair(chain_id: u64, sell_token: Address, buy_token: Address) -> bool {
+    let stablecoins = match chain_id {
+        10 => OPTIMISM_STABLECOINS,
+        130 => UNICHAIN_STABLECOINS,
+        4663 => ROBINHOOD_STABLECOINS,
+        _ => return false,
+    };
+    stablecoins.contains(&sell_token) && stablecoins.contains(&buy_token)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1249,6 +1263,21 @@ mod tests {
         assert_eq!(partner_fee_floor_bps(weth, weth, r), OPHIS_NON_STABLE_FLOOR_BPS);
         // floor is never zero
         assert!(partner_fee_floor_bps(weth, usdc, r) >= OPHIS_STABLE_VOLUME_FEE_BPS);
+    }
+
+    #[test]
+    fn stable_pair_classification_is_chain_aware() {
+        let optimism_usdc = address!("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
+        let optimism_usdt = address!("0x94b008aA00579c1307B0EF2c499aD98a8ce58e58");
+        let unichain_usdc = address!("0x078D782b760474a361dDA0AF3839290b0EF57AD6");
+        let robinhood_usdg = address!("0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
+
+        assert!(is_ophis_stable_pair(10, optimism_usdc, optimism_usdt));
+        assert!(is_ophis_stable_pair(130, unichain_usdc, unichain_usdc));
+        assert!(is_ophis_stable_pair(4663, robinhood_usdg, robinhood_usdg));
+        assert!(!is_ophis_stable_pair(130, optimism_usdc, optimism_usdt));
+        assert!(!is_ophis_stable_pair(4663, unichain_usdc, unichain_usdc));
+        assert!(!is_ophis_stable_pair(1, optimism_usdc, optimism_usdt));
     }
 
     #[test]

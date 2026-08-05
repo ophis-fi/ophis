@@ -67,12 +67,6 @@ describe('buildOphisOrderMetadata', () => {
     expect(() => buildOphisOrderMetadata({ chainId: NON_FEE_CHAIN, referralCode: 'yourcode' })).toThrow(/no live Ophis orderbook/);
   });
 
-  it('throws on a fee chain whose orderbook is paused (in fee set but no live orderbook URL)', () => {
-    // 4326 / 999 are in OPHIS_FEE_CHAIN_IDS but absent from OPHIS_ORDERBOOK_URLS.
-    expect(() => buildOphisOrderMetadata({ chainId: 4326, referralCode: 'yourcode' })).toThrow(/no live Ophis orderbook/);
-    expect(() => buildOphisOrderMetadata({ chainId: 999, referralCode: 'yourcode' })).toThrow(/no live Ophis orderbook/);
-  });
-
   it('throws on an invalid referral code (typo fails at build, not silently)', () => {
     expect(() => buildOphisOrderMetadata({ chainId: 1, referralCode: 'bad code' })).toThrow();
   });

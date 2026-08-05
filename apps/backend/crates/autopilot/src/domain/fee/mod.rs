@@ -107,6 +107,7 @@ impl UpcomingProtocolFees {
 pub type ProtocolFeeExemptAddresses = HashSet<Address>;
 
 pub struct ProtocolFees {
+    chain_id: u64,
     fee_policies: Vec<ProtocolFee>,
     max_partner_fee: FeeFactor,
     upcoming_fee_policies: Option<UpcomingProtocolFees>,
@@ -123,6 +124,7 @@ impl ProtocolFees {
     const OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_FACTOR: f64 = 0.001;
 
     pub fn new(
+        chain_id: u64,
         config: &FeePoliciesConfig,
         volume_fee_bucket_overrides: Vec<TokenBucketFeeOverride>,
         enable_sell_equals_buy_volume_fee: bool,
@@ -156,6 +158,7 @@ impl ProtocolFees {
             enable_sell_equals_buy_volume_fee,
         );
         Self {
+            chain_id,
             fee_policies: config
                 .policies
                 .iter()
@@ -417,7 +420,11 @@ impl ProtocolFees {
         match policy {
             policy::Policy::Surplus(variant) => variant.apply(order),
             policy::Policy::PriceImprovement(variant)
-                if app_data::is_ophis_stable_pair(order.data.sell_token, order.data.buy_token) =>
+                if app_data::is_ophis_stable_pair(
+                    self.chain_id,
+                    order.data.sell_token,
+                    order.data.buy_token,
+                ) =>
             {
                 variant.apply_with_override(
                     order,
@@ -519,7 +526,7 @@ mod test {
             max_partner_fee: FeeFactor::new(0.00005), // 0.5 bps < 1 bp base
             ..Default::default()
         };
-        let _ = ProtocolFees::new(&config, vec![], false, Arc::new(app_data::AllowlistRecipientPolicy));
+        let _ = ProtocolFees::new(10, &config, vec![], false, Arc::new(app_data::AllowlistRecipientPolicy));
     }
 
     #[test]
@@ -530,7 +537,7 @@ mod test {
                 max_partner_fee: FeeFactor::new(factor),
                 ..Default::default()
             };
-            let _ = ProtocolFees::new(&config, vec![], false, Arc::new(app_data::AllowlistRecipientPolicy));
+            let _ = ProtocolFees::new(10, &config, vec![], false, Arc::new(app_data::AllowlistRecipientPolicy));
         }
     }
 

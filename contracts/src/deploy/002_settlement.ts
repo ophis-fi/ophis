@@ -57,13 +57,9 @@ const deploySettlement: DeployFunction = async function ({
     }
   }
 
-  // Ophis patch: chain-aware gas limit. See 001_authenticator.ts for context.
+  // Allow operators to override the safe deployment gas limit.
   const overrideGas = process.env.OPHIS_SETTLEMENT_GAS_LIMIT;
-  const gasLimit = overrideGas
-    ? Number(overrideGas)
-    : (process.env.HARDHAT_NETWORK ?? "").startsWith("megaeth")
-      ? 250000000
-      : 28000000;
+  const gasLimit = overrideGas ? Number(overrideGas) : 28000000;
   await deploy(settlement, {
     from: deployer,
     gasLimit,

@@ -55,6 +55,10 @@ pub struct PartnerFeeFeedRow {
     /// The token of each executed protocol fee, aligned to
     /// `protocol_fee_amounts`.
     pub protocol_fee_tokens: Vec<String>,
+    /// Policy kind for each executed fee slot, aligned to amounts/tokens. This
+    /// lets consumers distinguish config-derived price-improvement fees from
+    /// appData-derived partner Volume fees without positional guessing.
+    pub protocol_fee_kinds: Vec<String>,
     pub full_app_data: Option<String>,
 }
 
@@ -144,6 +148,13 @@ SELECT
     t.buy_amount::text  AS buy_amount,
     COALESCE(oe.protocol_fee_amounts::text[], '{}'::text[]) AS protocol_fee_amounts,
     COALESCE(oe.protocol_fee_tokens, '{}'::bytea[])         AS protocol_fee_tokens,
+    COALESCE(ARRAY(
+        SELECT fp.kind::text
+        FROM fee_policies fp
+        WHERE fp.order_uid = t.order_uid
+          AND fp.auction_id = settlement.auction_id
+        ORDER BY fp.application_order ASC
+    ), '{}'::text[]) AS protocol_fee_kinds,
     ad.full_app_data
 FROM trades t
 JOIN orders o ON o.uid = t.order_uid
@@ -191,6 +202,7 @@ struct PartnerFeeFeedRawRow {
     buy_amount: String,
     protocol_fee_amounts: Vec<String>,
     protocol_fee_tokens: Vec<ByteArray<20>>,
+    protocol_fee_kinds: Vec<String>,
     full_app_data: Option<Vec<u8>>,
 }
 
@@ -218,6 +230,7 @@ impl TryFrom<PartnerFeeFeedRawRow> for PartnerFeeFeedRow {
                 .iter()
                 .map(ToString::to_string)
                 .collect(),
+            protocol_fee_kinds: row.protocol_fee_kinds,
             full_app_data,
         })
     }

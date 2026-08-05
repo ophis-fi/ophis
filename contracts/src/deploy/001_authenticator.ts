@@ -11,16 +11,9 @@ const deployAuthenticator: DeployFunction = async function ({
   const { deploy } = deployments;
 
   const { authenticator } = CONTRACT_NAMES;
-  // Ophis patch: chain-aware gas limit. MegaETH consumes ~45× more gas per
-  // opcode than standard EVM, so we ship a high default for it; HyperEVM
-  // (and other normal chains) cap at 30M per big block, so we use a much
-  // lower value there. Read OPHIS_AUTH_PROXY_GAS_LIMIT to override.
+  // Read OPHIS_AUTH_PROXY_GAS_LIMIT to override the safe default.
   const overrideGas = process.env.OPHIS_AUTH_PROXY_GAS_LIMIT;
-  const gasLimit = overrideGas
-    ? Number(overrideGas)
-    : (process.env.HARDHAT_NETWORK ?? "").startsWith("megaeth")
-      ? 100000000
-      : 25000000;
+  const gasLimit = overrideGas ? Number(overrideGas) : 25000000;
   await deploy(authenticator, {
     from: deployer,
     gasLimit,

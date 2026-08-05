@@ -156,8 +156,8 @@ full fee):
 | Chain | Chain ID | Status |
 |---|---|---|
 | Optimism | 10 | **Live**: settlement, solver, partner fee |
-| HyperEVM | 999 | Contracts deployed, stack paused |
-| MegaETH | 4326 | Contracts deployed, stack paused |
+| Unichain | 130 | **Live**: settlement, solver, partner fee |
+| Robinhood Chain | 4663 | **Live**: settlement, solver, partner fee |
 
 **CoW-hosted** (orders route through CoW Protocol's settlement and solver network,
 with the partner fee disbursed by CoW): Ethereum, Base, Arbitrum, Polygon, BNB,
@@ -190,7 +190,7 @@ Canonical contract addresses and the disclosure policy live in
 | `packages/sdk/` | New | [`@ophis/sdk`](packages/sdk): dependency-free helpers for the per-chain orderbook host, EIP-712 order domain, CIP-75 partner-fee `appData`, receiver-pinning guards, tier assignment, and the supported-chain registry. |
 | `contracts/` | [`cowprotocol/contracts`](https://github.com/cowprotocol/contracts) (subtree) | `GPv2Settlement`, `GPv2VaultRelayer`, `GPv2AllowListAuthentication`, deployed under an Ophis-controlled solver allowlist. Per-network artifacts in `contracts/deployments/`. |
 | `functions/` | New | Cloudflare Pages Functions: `api/intent.ts` (the natural-language parser, shared by swap and landing), `api/bungee` (bridge proxy), `_middleware.ts` (host routing). |
-| `infra/` | New | Per-chain runtime stacks (`optimism-mainnet/`, `hyperevm-mainnet/`, `megaeth-mainnet/`, `local/`), plus `rpc/` (eRPC) and `cloudflare/` config. |
+| `infra/` | New | Per-chain runtime stacks (`optimism-mainnet/`, `unichain-mainnet/`, `robinhood-mainnet/`, `local/`), plus `rpc/` (eRPC) and `cloudflare/` config. |
 
 Upstream subtrees are vendored as-is; Ophis changes are catalogued in
 `apps/frontend/.ophis-divergences.md` and `apps/backend/.ophis-divergences.md`

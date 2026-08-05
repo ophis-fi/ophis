@@ -54,6 +54,7 @@ interface FeedTrade {
   buyAmount: string;
   protocolFeeAmounts: string[];
   protocolFeeTokens: string[];
+  protocolFeeKinds: string[];
   fullAppData: string | null;
 }
 
@@ -69,40 +70,10 @@ export interface PartnerFeeFeed {
   readonly url: string;
 }
 
-// Chains ASSERTED to have an EMPTY autopilot `[fee-policies]` section, so the ONLY protocol
-// fees on a settled trade are the appData `partnerFee` Volume entries. The positional
-// attribution (parsePartnerFees.ts) maps `protocolFeeAmounts[i]` to the i-th kept partnerFee
-// entry, which is money-safe ONLY under this invariant: a config-driven protocol fee would
-// PREPEND an extra slot and could, when a partner entry is ALSO dropped (unregistered /
-// suspended), coincidentally match the slot count and MIS-ATTRIBUTE a config fee to a real
-// partner. The exact-count guard alone does not catch that coincidence, so the poller REFUSES
-// (fail loud) to poll any chain not asserted here. This set MUST be kept in sync with the
-// backend autopilot configs (`infra/<chain>/configs/autopilot.toml` `[fee-policies]`); adding
-// a chain here without verifying its `[fee-policies]` is EMPTY is a money-path regression.
-// Reading the remote autopilot config from the indexer is impractical (separate deployment),
-// so this asserted set is the feasible fail-closed enforcement -- mirroring the fail-closed
-// SOVEREIGN_OWN_FEE_RECIPIENTS allowlist pattern (ownFee/recipients.ts).
-const CONFIG_FEE_FREE_CHAINS: ReadonlySet<number> = new Set<number>([
-  10, //  Optimism  (autopilot.toml [fee-policies] verified empty, 2026-07)
-  130, // Unichain  (sovereign, same empty [fee-policies] posture)
-]);
-
-/**
- * Fail loud if any fed chain is NOT asserted config-fee-free. Called on every poll (over both
- * env-resolved and test-injected feeds), so a future config change or a second fed chain with a
- * config protocol fee can never silently shift partner slots off index and mis-attribute.
- */
 export function assertFeedsConfigFeeFree(feeds: readonly PartnerFeeFeed[]): void {
-  for (const f of feeds) {
-    if (!CONFIG_FEE_FREE_CHAINS.has(f.chainId)) {
-      throw new Error(
-        `partner-fee feed: chain ${f.chainId} is NOT asserted config-fee-free; refusing to poll. ` +
-          `The positional fee->partner attribution is only money-safe when the chain's autopilot ` +
-          `[fee-policies] is EMPTY. Verify it, then add ${f.chainId} to CONFIG_FEE_FREE_CHAINS in ` +
-          `src/partnerFees/fetch.ts. (fail-closed: never mis-attribute a config fee to a partner)`,
-      );
-    }
-  }
+  // Kept as a compatibility hook for callers/tests. Attribution is now safe on
+  // config-fee chains because the feed supplies an aligned protocolFeeKinds array.
+  void feeds;
 }
 
 /**

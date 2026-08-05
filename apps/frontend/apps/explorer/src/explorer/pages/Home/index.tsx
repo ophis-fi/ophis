@@ -77,10 +77,6 @@ const SHOW_TOKENS_TABLE: Record<SupportedChainId, boolean> = {
   [130 as unknown as SupportedChainId]: false,
   // Ophis fork: Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: false,
-  // Ophis fork: MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: false,
-  // Ophis fork: HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: false,
 }
 
 export const Home: React.FC = () => {

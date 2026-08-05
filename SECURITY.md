@@ -2,15 +2,15 @@
 
 ## Supported deployment
 
-Ophis Finance runs a fork of [cowprotocol/services](https://github.com/cowprotocol/services). Only **one** chain is operationally live as of 2026-05-20:
+Ophis Finance runs a fork of [cowprotocol/services](https://github.com/cowprotocol/services). The operational deployment set is:
 
 | Chain | Status | Settlement contract |
 |---|---|---|
 | Optimism mainnet (10) | LIVE | `0x310784c7FCE12d578dA6f53460777bAc9718B859` |
-| HyperEVM mainnet (999) | Contracts deployed, stack PAUSED 2026-05-19 | — |
-| MegaETH mainnet (4326) | Contracts deployed, stack PAUSED 2026-05-18 | — |
+| Unichain mainnet (130) | LIVE | See `contracts/deployments/unichain-mainnet/` |
+| Robinhood Chain (4663) | LIVE | See `contracts/deployments/robinhood-mainnet/` |
 
-The frontend at https://ophis.fi targets only the live chain set. Reports against paused chains are still in scope (contracts remain deployed) but will be triaged at a lower urgency.
+The frontend at https://ophis.fi targets only this live chain set.
 
 ## Reporting a vulnerability
 
@@ -41,7 +41,7 @@ The following are NOT considered vulnerabilities by this policy:
 - Anything in `apps/frontend/` that's pure upstream CoW Protocol code (file a report with [`cowprotocol/cowswap`](https://github.com/cowprotocol/cowswap) instead). Ophis-specific FE code lives under `apps/frontend/apps/cowswap-frontend/src/ophis/` and similar `ophis/`-prefixed paths.
 - Findings in `apps/backend/` against pure upstream CoW Protocol code (file with [`cowprotocol/services`](https://github.com/cowprotocol/services) instead). Ophis additions are marked with `ophis::` module paths or live in dedicated crates: `poison-recovery`, `retry-helper`, `configs`.
 - Theoretical attacks requiring nation-state level adversary capability against shared infrastructure (e.g. Cloudflare DNS control-plane compromise).
-- Findings against the deprecated infra dirs that were removed in #124 — `infra/optimism/`, `infra/hyperevm/`, `infra/katana/`, `infra/linea/`, `infra/mantle/`. These no longer exist.
+- Findings against deprecated infrastructure directories that no longer exist.
 - DoS via known public-tier rate limits on free RPC providers (the eRPC consensus posture fails closed under low-participants — this is the intended behavior, not a vulnerability).
 
 ## In scope
@@ -60,7 +60,6 @@ Examples of what we consider in scope (non-exhaustive):
 
 | Date | Scope | Reviewers | Findings doc |
 |---|---|---|---|
-| 2026-05-17 | Phase 1 — HyperEVM contracts | sharp-edges + ToB-style review | `docs/audits/2026-05-17-phase1-hyperevm-contracts.md` |
 | 2026-05-18 | Phase 2 — Rust backend | sharp-edges + Codex | `docs/audits/2026-05-18-phase2-backend.md` |
 | 2026-05-19 | Phase 3 — Frontend; Phase 4 — OP infra | sharp-edges × 2 (Codex unavailable that day) | `docs/audits/2026-05-19-phase3-frontend-and-phase4-infra.md` |
 

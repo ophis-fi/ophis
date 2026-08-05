@@ -10,8 +10,8 @@ Thanks for your interest in Ophis. This document is the **operational** contract
 | `apps/frontend/` | TS/React frontend. Fork of cowprotocol/cowswap with Ophis additions in `apps/cowswap-frontend/src/ophis/`. |
 | `contracts/` | Foundry workspace for the GPv2Settlement / Authentication / VaultRelayer fork. |
 | `infra/optimism-mainnet/` | Live OP mainnet stack (docker-compose). |
-| `infra/hyperevm-mainnet/` | HL contracts deployed, stack paused. |
-| `infra/megaeth-mainnet/` | MegaETH contracts deployed, stack paused. |
+| `infra/unichain-mainnet/` | Live Unichain mainnet stack. |
+| `infra/robinhood-mainnet/` | Live Robinhood Chain stack. |
 | `infra/shared/` | Cross-stack ops (cron jobs etc.). |
 | `docs/` | Architecture, audits, operations runbooks, specs, brand. |
 | `packages/sdk/` | Public TypeScript SDK for partner-fee integrations. |

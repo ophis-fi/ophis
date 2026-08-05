@@ -592,20 +592,6 @@ export const USDCE_INK = new TokenWithLogo(
   'Stargate Bridged USDC',
 )
 
-// HyperEVM (chain 999) — Ophis fork
-// USD₮0 is Tether's omnichain canonical bridge stablecoin on HyperEVM.
-// Note: chain 999 is not in SupportedChainId / EvmChains, so we type via
-// `as unknown as SupportedChainId` and reuse the USDT logo.
-export const USDT0_HYPEREVM = new TokenWithLogo(
-  USDT.logoURI,
-  999 as unknown as SupportedChainId,
-  // https://hyperevmscan.io/token/0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb
-  '0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb',
-  6,
-  'USD₮0',
-  'USD₮0',
-)
-
 // Optimism
 
 export const USDC_OPTIMISM = new TokenWithLogo(
@@ -712,10 +698,6 @@ export const V_COW: Record<SupportedChainId, TokenWithLogo | null> = {
   [130 as unknown as SupportedChainId]: null,
   // Ophis fork: vCOW not deployed on Robinhood Chain (4663)
   [4663 as unknown as SupportedChainId]: null,
-  // Ophis fork: vCOW not deployed on MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: null,
-  // Ophis fork: vCOW not deployed on HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: null,
 }
 
 /**
@@ -768,10 +750,6 @@ export const COW_TOKEN_TO_CHAIN: Record<SupportedChainId, TokenWithLogo | null> 
   [130 as unknown as SupportedChainId]: null,
   // Ophis fork: COW not deployed on Robinhood Chain (4663)
   [4663 as unknown as SupportedChainId]: null,
-  // Ophis fork: COW token not deployed on MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: null,
-  // Ophis fork: COW token not deployed on HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: null,
 }
 
 export const GNO: Record<SupportedChainId, TokenWithLogo | null> = {
@@ -786,10 +764,6 @@ export const GNO: Record<SupportedChainId, TokenWithLogo | null> = {
   [130 as unknown as SupportedChainId]: null,
   // Ophis fork: GNO not deployed on Robinhood Chain (4663)
   [4663 as unknown as SupportedChainId]: null,
-  // Ophis fork: GNO not deployed on MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: null,
-  // Ophis fork: GNO not deployed on HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: null,
 }
 
 const SDAI_GNOSIS_CHAIN_ADDRESS = '0xaf204776c7245bf4147c2612bf6e5972ee483701'
@@ -877,16 +851,6 @@ const UNICHAIN_STABLECOINS = [USDC_UNICHAIN.address].map((t) => t.toLowerCase())
 
 const ROBINHOOD_STABLECOINS = [USDG_ROBINHOOD.address].map((t) => t.toLowerCase())
 
-// Ophis fork: MegaETH mainnet stablecoins. At launch, the only stablecoin
-// expected on chain 4326 is USDT0 (Tether's omnichain canonical bridge).
-// Address from 2026-05-15 deploy.
-const MEGAETH_STABLECOINS: string[] = []
-
-// Ophis fork: HyperEVM mainnet (chain 999) stablecoins. USD₮0 (Tether's
-// omnichain canonical bridge) is the canonical USD stablecoin on HyperEVM.
-// Symbol displays as "USD₮0", decimals 6.
-const HYPEREVM_STABLECOINS = [USDT0_HYPEREVM.address].map((t) => t.toLowerCase())
-
 export const STABLECOINS: Record<SupportedChainId, Set<string>> = {
   [SupportedChainId.MAINNET]: new Set(MAINNET_STABLECOINS),
   [SupportedChainId.GNOSIS_CHAIN]: new Set(GNOSIS_CHAIN_STABLECOINS),
@@ -905,10 +869,6 @@ export const STABLECOINS: Record<SupportedChainId, Set<string>> = {
   [130 as unknown as SupportedChainId]: new Set(UNICHAIN_STABLECOINS),
   // Ophis fork: Robinhood Chain mainnet (chain 4663) — USDG
   [4663 as unknown as SupportedChainId]: new Set(ROBINHOOD_STABLECOINS),
-  // Ophis fork: MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: new Set(MEGAETH_STABLECOINS),
-  // Ophis fork: HyperEVM mainnet (chain 999) — USD₮0 at launch
-  [999 as unknown as SupportedChainId]: new Set(HYPEREVM_STABLECOINS),
 }
 
 /**
@@ -925,10 +885,6 @@ export const MERKLE_DROP_CONTRACT_ADDRESSES: Record<SupportedChainId, string> = 
   // Ophis fork: no airdrop on Unichain (chain 130)
   [130 as unknown as SupportedChainId]: '',
   [4663 as unknown as SupportedChainId]: '',
-  // Ophis fork: no airdrop on MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: '',
-  // Ophis fork: no airdrop on HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: '',
 }
 
 export const TOKEN_DISTRO_CONTRACT_ADDRESSES: Record<SupportedChainId, string> = {
@@ -940,8 +896,4 @@ export const TOKEN_DISTRO_CONTRACT_ADDRESSES: Record<SupportedChainId, string> =
   // Ophis fork: no token distro on Unichain (chain 130)
   [130 as unknown as SupportedChainId]: '',
   [4663 as unknown as SupportedChainId]: '',
-  // Ophis fork: no token distro on MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: '',
-  // Ophis fork: no token distro on HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: '',
 }

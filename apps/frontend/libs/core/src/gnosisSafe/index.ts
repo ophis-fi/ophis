@@ -19,14 +19,6 @@ export const SAFE_TRANSACTION_SERVICE_URL: Record<SupportedChainId, HttpsString>
   [10 as unknown as SupportedChainId]: 'https://safe-transaction-optimism.safe.global/api',
   // Ophis fork: Unichain mainnet (chain 130)
   [130 as unknown as SupportedChainId]: 'https://safe-transaction-unichain.safe.global/api',
-  // Ophis fork: MegaETH mainnet (chain 4326) — Safe Transaction Service is not
-  // deployed for MegaETH. Empty string disables Safe-app features (createSafeApiKitInstance
-  // returns null on falsy URL, so multisig flows degrade gracefully).
-  [4326 as unknown as SupportedChainId]: '' as HttpsString,
-  // Ophis fork: HyperEVM mainnet (chain 999) — Safe contracts are deployed but
-  // the official Safe transaction-service is not. Empty string disables Safe-app
-  // features (multisig flows degrade gracefully).
-  [999 as unknown as SupportedChainId]: '' as HttpsString,
 }
 
 const SAFE_BASE_URL = 'https://app.safe.global'

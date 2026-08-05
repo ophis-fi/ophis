@@ -92,28 +92,6 @@ fn try_new_succeeds_on_gnosis() {
 }
 
 #[test]
-fn try_new_rejects_hyperevm() {
-    // Velora does NOT support chain 999 (HyperEVM) — try_new must reject.
-    // This guard is the entire reason for fail-fast chain validation:
-    // without it the solver would silently return NotFound for every
-    // auction and burn solver-competition slots on a dead route.
-    //
-    // Verified upstream: GET https://api.paraswap.io/tokens/999
-    // returns {"error": "Invalid network. Supported chains: 1, 10,
-    // 56, 100, 130, 137, 146, 8453, 42161, 43114"}.
-    let config = make_config(ChainId::HyperEvm);
-    let result = Velora::try_new(config);
-    let err = match result {
-        Ok(_) => panic!("expected HL to be rejected"),
-        Err(e) => e,
-    };
-    match err {
-        CreationError::UnsupportedChain(999) => (),
-        other => panic!("expected UnsupportedChain(999), got {other:?}"),
-    }
-}
-
-#[test]
 fn try_new_rejects_linea() {
     // Linea (59144) — present in CoW's ChainId enum but not in Velora.
     let config = make_config(ChainId::Linea);

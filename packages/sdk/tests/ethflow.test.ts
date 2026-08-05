@@ -48,11 +48,6 @@ describe('OPHIS_ETHFLOW_ADDRESSES', () => {
     expect(OPHIS_ETHFLOW_ADDRESSES[42161]).toBe(CANONICAL);
   });
 
-  it('excludes chains with no live orderbook: MegaETH (4326) and HyperEVM (999)', () => {
-    expect(OPHIS_ETHFLOW_ADDRESSES[4326]).toBeUndefined();
-    expect(OPHIS_ETHFLOW_ADDRESSES[999]).toBeUndefined();
-  });
-
   it('is frozen with a null prototype (cannot be mutated or prototype-forged)', () => {
     expect(Object.isFrozen(OPHIS_ETHFLOW_ADDRESSES)).toBe(true);
     expect(Object.getPrototypeOf(OPHIS_ETHFLOW_ADDRESSES)).toBeNull();
@@ -65,18 +60,15 @@ describe('OPHIS_ETHFLOW_ADDRESSES', () => {
 });
 
 describe('isOphisEthFlowChain / getOphisEthFlowAddress', () => {
-  it('is true for supported chains, false for unsupported (incl. 999/4326)', () => {
+  it('is true for supported chains and false for unknown chains', () => {
     expect(isOphisEthFlowChain(10)).toBe(true);
     expect(isOphisEthFlowChain(4663)).toBe(true);
     expect(isOphisEthFlowChain(8453)).toBe(true);
-    expect(isOphisEthFlowChain(999)).toBe(false); // HyperEVM: no live orderbook
-    expect(isOphisEthFlowChain(4326)).toBe(false); // MegaETH
     expect(isOphisEthFlowChain(12345)).toBe(false); // unknown
   });
 
   it('returns the address or undefined', () => {
     expect(getOphisEthFlowAddress(10)).toBe(OP_ETHFLOW);
-    expect(getOphisEthFlowAddress(999)).toBeUndefined();
   });
 
   it('throws on an invalid chainId', () => {
@@ -136,8 +128,6 @@ describe('buildOphisEthFlowOrder - happy path', () => {
 
 describe('buildOphisEthFlowOrder - fund-safety guards', () => {
   it('throws on a chain without native-ETH support (wrap to WETH instead)', () => {
-    expect(() => buildOphisEthFlowOrder(baseParams({ chainId: 4326 }))).toThrow(/native ETH is not supported/);
-    expect(() => buildOphisEthFlowOrder(baseParams({ chainId: 999 }))).toThrow(/native ETH is not supported/);
     expect(() => buildOphisEthFlowOrder(baseParams({ chainId: 12345 }))).toThrow(/native ETH is not supported/);
   });
 

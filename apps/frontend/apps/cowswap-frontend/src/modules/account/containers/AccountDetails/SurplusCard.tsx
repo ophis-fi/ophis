@@ -33,8 +33,6 @@ const INK_START_DATE = 'February 2026'
 const OPTIMISM_START_DATE = 'May 2026'
 const UNICHAIN_START_DATE = 'June 2026'
 const ROBINHOOD_START_DATE = 'July 2026'
-const MEGAETH_START_DATE = 'May 2026'
-const HYPEREVM_START_DATE = 'May 2026'
 
 const START_DATE: Record<SupportedChainId, string> = {
   [SupportedChainId.MAINNET]: DEFAULT_START_DATE,
@@ -54,10 +52,6 @@ const START_DATE: Record<SupportedChainId, string> = {
   [130 as unknown as SupportedChainId]: UNICHAIN_START_DATE,
   // Ophis fork: Robinhood Chain mainnet (chain 4663)
   [4663 as unknown as SupportedChainId]: ROBINHOOD_START_DATE,
-  // Ophis fork: MegaETH mainnet (chain 4326)
-  [4326 as unknown as SupportedChainId]: MEGAETH_START_DATE,
-  // Ophis fork: HyperEVM mainnet (chain 999)
-  [999 as unknown as SupportedChainId]: HYPEREVM_START_DATE,
 }
 
 const Wrapper = styled.div`

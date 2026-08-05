@@ -1,10 +1,10 @@
 import { shouldEmitOphisPartnerFee } from './shouldEmitOphisPartnerFee'
 
 describe('shouldEmitOphisPartnerFee', () => {
-  it('returns true for Ophis-operated chains (10/4326/999)', () => {
+  it('returns true for Ophis-operated chains', () => {
     expect(shouldEmitOphisPartnerFee(10)).toBe(true) // Optimism mainnet
-    expect(shouldEmitOphisPartnerFee(4326)).toBe(true) // MegaETH mainnet
-    expect(shouldEmitOphisPartnerFee(999)).toBe(true) // HyperEVM mainnet
+    expect(shouldEmitOphisPartnerFee(130)).toBe(true) // Unichain mainnet
+    expect(shouldEmitOphisPartnerFee(4663)).toBe(true) // Robinhood Chain
   })
 
   it('returns true for all CoW-supported chains (restored all-chain fee model 2026-05-27)', () => {

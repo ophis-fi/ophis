@@ -13,21 +13,15 @@ import { assertValidChainId } from './guards.js';
  * canonical address, so resolve the verifying contract through
  * getOphisSettlementAddress / getOphisOrderDomain, never the SDK default.
  *
- * Includes the Ophis-operated chains whose orderbook is currently paused
- * (MegaETH 4326, HyperEVM 999): the settlement contracts ARE deployed there,
- * so the map mirrors cowProtocolContracts.ts even though getOphisOrderbookUrl
- * omits them (no live orderbook host yet). Values are the PROD deployment;
- * barn/staging uses different contracts on migrated networks (out of scope).
+ * Values are the production deployments; barn/staging uses different contracts
+ * on migrated networks (out of scope).
  */
 
 /** CoW Protocol's canonical GPv2Settlement (CREATE2-deterministic across official CoW chains). */
 const CANONICAL_COW_SETTLEMENT = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41' as const;
 
-/** Ophis-deployed GPv2Settlement on Optimism (10) + MegaETH (4326) — same deterministic address. */
+/** Ophis-deployed GPv2Settlement on Optimism (10). */
 const OPHIS_SETTLEMENT = '0x310784c7FCE12d578dA6f53460777bAc9718B859' as const;
-
-/** Ophis-deployed GPv2Settlement on HyperEVM (999). */
-const OPHIS_HYPEREVM_SETTLEMENT = '0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce' as const;
 
 /** Ophis-deployed GPv2Settlement on Unichain (130). Verified on-chain (has code). */
 const OPHIS_UNICHAIN_SETTLEMENT = '0x108A678716e5E1776036eF044CAB7064226F714E' as const;
@@ -50,8 +44,6 @@ export const OPHIS_SETTLEMENT_ADDRESSES: Readonly<Partial<Record<number, `0x${st
   10: OPHIS_SETTLEMENT, // Optimism — Ophis self-hosted settlement (verified on-chain)
   130: OPHIS_UNICHAIN_SETTLEMENT, // Unichain — Ophis self-hosted settlement (verified on-chain)
   4663: OPHIS_ROBINHOOD_SETTLEMENT, // Robinhood — Ophis self-hosted settlement (verified on-chain)
-  4326: OPHIS_SETTLEMENT, // MegaETH — same deterministic Ophis settlement (orderbook paused)
-  999: OPHIS_HYPEREVM_SETTLEMENT, // HyperEVM — Ophis settlement (orderbook paused)
 });
 
 /**
@@ -111,11 +103,8 @@ export const getOphisOrderDomain = (chainId: number): OphisOrderDomain => ({
 /** CoW Protocol's canonical GPv2VaultRelayer (CREATE2-deterministic across official CoW chains). */
 const CANONICAL_COW_VAULT_RELAYER = '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110' as const;
 
-/** Ophis-deployed GPv2VaultRelayer on Optimism (10) + MegaETH (4326) — same deterministic address. */
+/** Ophis-deployed GPv2VaultRelayer on Optimism (10). */
 const OPHIS_VAULT_RELAYER = '0x83847EaB41ad9ea43809ce71569eB2e9daF51830' as const;
-
-/** Ophis-deployed GPv2VaultRelayer on HyperEVM (999). */
-const OPHIS_HYPEREVM_VAULT_RELAYER = '0x842F655C9310C32e5932A0eBFa80c4Cd358c0205' as const;
 
 /** Ophis-deployed GPv2VaultRelayer on Unichain (130). Confirmed via settlement.vaultRelayer() on-chain. */
 const OPHIS_UNICHAIN_VAULT_RELAYER = '0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb' as const;
@@ -138,8 +127,6 @@ export const OPHIS_VAULT_RELAYER_ADDRESSES: Readonly<Partial<Record<number, `0x$
   10: OPHIS_VAULT_RELAYER, // Optimism — Ophis self-hosted relayer (NOT canonical)
   130: OPHIS_UNICHAIN_VAULT_RELAYER, // Unichain — Ophis self-hosted relayer (NOT canonical; confirmed via settlement.vaultRelayer())
   4663: OPHIS_ROBINHOOD_VAULT_RELAYER, // Robinhood — Ophis self-hosted relayer (NOT canonical; confirmed on-chain)
-  4326: OPHIS_VAULT_RELAYER, // MegaETH — same deterministic Ophis relayer (orderbook paused)
-  999: OPHIS_HYPEREVM_VAULT_RELAYER, // HyperEVM — Ophis relayer (orderbook paused)
 });
 
 /**

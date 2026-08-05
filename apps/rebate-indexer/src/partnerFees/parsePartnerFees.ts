@@ -6,10 +6,8 @@ import { OPHIS_SAFE_ADDRESS } from '../safe/addresses.js';
 // (apps/backend/crates/app-data/src/app_data.rs + autopilot fee/mod.rs):
 //   - metadata.partnerFee is an object OR array of `{ <policy>, recipient }`; ingress
 //     accepts ONLY the flat Volume shape ({ volumeBps } or legacy { bps }).
-//   - The autopilot emits ONE protocol-fee slot per ALLOWED-recipient entry, in appData
-//     ARRAY ORDER, and on Optimism there are NO config-driven protocol fees prepended
-//     (infra/optimism-mainnet/configs/autopilot.toml [fee-policies] is empty). So
-//     `protocolFeeAmounts[i]` aligns positionally to the i-th kept entry.
+//   - The feed supplies an aligned protocolFeeKinds array. Config-derived fee slots are
+//     removed first; the remaining Volume slots align to allowed appData entries.
 //   - An entry whose recipient is NOT allowed (not the Ophis Safe, and -- once the registry
 //     is enabled -- not an active registered third party) is DROPPED with NO slot, which
 //     shifts indices. The indexer cannot see the registry, so it aligns positionally ONLY
@@ -99,6 +97,7 @@ export interface AttributionResult {
 export function attributePartnerFees(row: {
   protocolFeeAmounts: readonly string[];
   protocolFeeTokens: readonly string[];
+  protocolFeeKinds: readonly string[];
   fullAppData: string | null | undefined;
 }): AttributionResult {
   const candidates = parsePartnerFeeCandidates(row.fullAppData);
@@ -109,18 +108,22 @@ export function attributePartnerFees(row: {
 
   const amounts = row.protocolFeeAmounts;
   const tokens = row.protocolFeeTokens;
-  if (amounts.length !== tokens.length) {
-    return { attributions: [], skipped: true, reason: 'feed protocolFeeAmounts/Tokens length mismatch' };
+  const kinds = row.protocolFeeKinds;
+  if (amounts.length !== tokens.length || amounts.length !== kinds.length) {
+    return { attributions: [], skipped: true, reason: 'feed protocol fee arrays length mismatch' };
   }
+  const volumeSlots = kinds
+    .map((kind, index) => ({ kind, amount: amounts[index]!, token: tokens[index]! }))
+    .filter((slot) => slot.kind.toLowerCase() === 'volume');
   // MONEY-SAFETY GUARD: only align positionally when every kept candidate has a slot. A
   // mismatch means an entry was dropped at settlement (unregistered/suspended recipient) or
   // an unexpected extra slot exists, so the index -> recipient mapping is ambiguous. Skip
   // (under-pay + surface) rather than risk paying a fee to the wrong recipient.
-  if (candidates.length !== amounts.length) {
+  if (candidates.length !== volumeSlots.length) {
     return {
       attributions: [],
       skipped: true,
-      reason: `kept-candidate count ${candidates.length} != collected-fee slot count ${amounts.length}`,
+      reason: `kept-candidate count ${candidates.length} != collected Volume-fee slot count ${volumeSlots.length}`,
     };
   }
 
@@ -130,12 +133,12 @@ export function attributePartnerFees(row: {
     if (c.recipient === OPHIS_RECIPIENT_LOWER) continue; // Ophis retained fee, not a payout
     let amount: bigint;
     try {
-      amount = BigInt(amounts[i]!);
+      amount = BigInt(volumeSlots[i]!.amount);
     } catch {
       return { attributions: [], skipped: true, reason: `non-integer fee amount at slot ${i}` };
     }
     if (amount <= 0n) continue; // no fee collected for this slot
-    const tokenRaw = tokens[i];
+    const tokenRaw = volumeSlots[i]!.token;
     if (typeof tokenRaw !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(tokenRaw)) {
       return { attributions: [], skipped: true, reason: `invalid fee token at slot ${i}` };
     }

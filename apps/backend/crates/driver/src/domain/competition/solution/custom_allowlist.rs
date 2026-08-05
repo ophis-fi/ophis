@@ -95,10 +95,10 @@ pub const MAX_CUSTOM_ALLOWANCE: U256 = U256::from_limbs([0, 0, 0, 1u64 << 8]);
 ///
 /// **DESIGN — fail-secure for unconfigured chains.** Codex PR-227 review
 /// P1 (`r3287846601`) flagged that solvers like KyberSwap/Velora support
-/// chains beyond `[10, 999]` (e.g. Ethereum mainnet, Base, Arbitrum,
+/// chains beyond the explicitly configured deployment set (e.g. Ethereum mainnet, Base, Arbitrum,
 /// Polygon, BSC). The driver allowlist *intentionally* only covers chains
 /// where Ophis ACTUALLY DEPLOYS WITH CUSTOM-INTERACTION SOLVERS — chains
-/// 10 (OP) and 999 (HL) as of 2026-05-22. Per `project_ophis.md`, Ophis
+/// 10 (OP), 130 (Unichain), and 4663 (Robinhood). Per `project_ophis.md`, Ophis
 /// has no mainnet deployments on chains 1/8453/137/42161/etc. and no
 /// near-term plan to add them.
 ///
@@ -117,7 +117,6 @@ pub const MAX_CUSTOM_ALLOWANCE: U256 = U256::from_limbs([0, 0, 0, 1u64 << 8]);
 const ALLOWLIST: &[(u64, &[Address])] = &[
     (10, OPTIMISM_MAINNET),
     (130, UNICHAIN_MAINNET),
-    (999, HYPEREVM_MAINNET),
     (4663, ROBINHOOD_MAINNET),
 ];
 
@@ -168,15 +167,6 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // DODO DODOApproveProxy on Optimism (10) -- ERC-20 approval target,
     // distinct from the router above. Verified 2026-07-06 (2432 B).
     address!("a492d6eABcdc3E204676f15B950bBdD448080364"),
-];
-
-/// HyperEVM mainnet (chain 999). Only KyberSwap currently supports this
-/// chain; Velora and OKX do NOT deploy here as of 2026-05-22. When OKX
-/// or Velora add HyperEVM support, append their router/spender after
-/// upstream verification.
-const HYPEREVM_MAINNET: &[Address] = &[
-    // KyberSwap MetaAggregationRouterV2 (same CREATE2 address as OP).
-    address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
 ];
 
 /// Robinhood mainnet (chain 4663). KyberSwap + LI.FI as of 2026-07-26. Velora
@@ -523,7 +513,6 @@ mod tests {
     // KyberSwap router (verified on both OP and HL).
     const KYBER: Address = address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5");
     // Velora Augustus V6.2 (OP only).
-    const VELORA: Address = address!("6A000F20005980200259B80c5102003040001068");
     // OKX V6 router on OP (used in the OKX coverage test below).
     const OKX_OP_ROUTER: Address = address!("Dd5E9B947c99Aa60bab00ca4631Dce63b49983E7");
     // OKX V6 spender on OP (separate from router — verifies router/spender
@@ -687,12 +676,6 @@ mod tests {
     }
 
     #[test]
-    fn target_allowlisted_hl() {
-        let c = make_custom(KYBER, vec![(KYBER, U256::from(1000u64))]);
-        assert_eq!(validate(&c, 999), Ok(()));
-    }
-
-    #[test]
     fn pons_router_and_spender_allowlisted_only_on_robinhood() {
         let c = make_custom(PONS_ROUTER, vec![(PONS_ROUTER, U256::from(1000u64))]);
         assert_eq!(validate(&c, 4663), Ok(()));
@@ -712,18 +695,6 @@ mod tests {
             }) if target == ATTACKER => {}
             other => panic!("expected TargetNotAllowed, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn velora_not_supported_on_hl() {
-        // Velora router is allowlisted on OP but NOT on HL (Velora doesn't
-        // deploy there). Same allowance should pass on OP, fail on HL.
-        let c = make_custom(VELORA, vec![(VELORA, U256::from(1000u64))]);
-        assert_eq!(validate(&c, 10), Ok(()));
-        assert!(matches!(
-            validate(&c, 999),
-            Err(Error::TargetNotAllowed { .. })
-        ));
     }
 
     #[test]
@@ -774,11 +745,10 @@ mod tests {
 
     #[test]
     fn unknown_chain_fail_secure() {
-        // chain 4326 (MegaETH mainnet) is intentionally not in the allowlist
-        // yet — verifies the fail-secure default.
+        // An unconfigured chain verifies the fail-secure default.
         let c = make_custom(KYBER, vec![]);
-        match validate(&c, 4326) {
-            Err(Error::ChainNotConfigured { chain_id: 4326 }) => {}
+        match validate(&c, 777777) {
+            Err(Error::ChainNotConfigured { chain_id: 777777 }) => {}
             other => panic!("expected ChainNotConfigured, got {other:?}"),
         }
     }
@@ -807,7 +777,7 @@ mod tests {
             "amount_too_large"
         );
         assert_eq!(
-            Error::ChainNotConfigured { chain_id: 4326 }.metric_reason(),
+            Error::ChainNotConfigured { chain_id: 777777 }.metric_reason(),
             "chain_not_configured"
         );
     }
@@ -853,8 +823,8 @@ mod tests {
     #[test]
     fn validate_target_helper_unknown_chain_fail_secure() {
         assert!(matches!(
-            validate_target(KYBER, 4326),
-            Err(Error::ChainNotConfigured { chain_id: 4326 })
+            validate_target(KYBER, 777777),
+            Err(Error::ChainNotConfigured { chain_id: 777777 })
         ));
     }
 

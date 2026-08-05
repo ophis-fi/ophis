@@ -14,8 +14,7 @@
  *
  * SOURCE OF TRUTH for the addresses (kept in lockstep with the frontend):
  *   - apps/frontend/libs/common-const/src/common.ts `OPHIS_ETHFLOW_OVERRIDES`
- *     (Ophis-operated chains: OP 10, Unichain 130, Robinhood 4663;
- *      MegaETH 4326 disabled)
+ *     (Ophis-operated chains: OP 10, Unichain 130, Robinhood 4663)
  *   - @cowprotocol/sdk-config `ETH_FLOW_ADDRESSES` (canonical CoW eth-flow,
  *     CREATE2-deterministic across CoW's SupportedChainId set)
  *   - the on-chain struct + selector: the CoWSwapEthFlow `createOrder` ABI
@@ -38,9 +37,8 @@ import { OPHIS_PARTNER_FEE_RECIPIENT } from './partner-fee.js';
  * NOT the canonical CoW address: it is wired to the Ophis OP settlement, so a
  * native-ETH sell on Optimism MUST go to this address.
  *   - 10 Optimism: deployed 2026-06-07, indexed by the Ophis autopilot. VERIFIED LIVE.
- * Chains whose orderbook is not live (MegaETH 4326, HyperEVM 999) are intentionally
- * ABSENT: getOphisOrderbookUrl throws there, so the documented eth-flow appData
- * upload step could not complete. Native-ETH support must imply a live orderbook.
+ * Chains without a live orderbook are absent: native-ETH support must imply a
+ * live orderbook.
  */
 const OPHIS_OPERATED_ETHFLOW: Readonly<Record<number, `0x${string}`>> = {
   10: '0x764fE4aa1FF493cf39931c7923C8ff5837596504',

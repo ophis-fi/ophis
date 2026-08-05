@@ -42,10 +42,6 @@ fn chain_slug(chain_id: eth::ChainId) -> &'static str {
         eth::ChainId::Bnb => "bsc",
         eth::ChainId::Avalanche => "avalanche",
         eth::ChainId::Linea => "linea",
-        // KyberSwap slug for Hyperliquid HyperEVM — verified live 2026-05-15:
-        // GET https://aggregator-api.kyberswap.com/hyperevm/api/v1/routes
-        // returns real routes for WHYPE→USD₮0.
-        eth::ChainId::HyperEvm => "hyperevm",
         // KyberSwap slug for Unichain — verified live 2026-06-22:
         // GET https://aggregator-api.kyberswap.com/unichain/api/v1/routes
         // returns real Uniswap-v4 routes for USDC→WETH on chain 130.

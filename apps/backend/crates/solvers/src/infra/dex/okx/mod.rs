@@ -898,18 +898,18 @@ mod tests {
 
     #[test]
     fn router_allowlist_rejects_unknown_chain() {
-        let err = validate_router_allowlist(999, &op_router()).unwrap_err();
+        let err = validate_router_allowlist(777777, &op_router()).unwrap_err();
         assert!(
-            matches!(err, Error::ChainNotInAllowlist { chain_id: 999 }),
+            matches!(err, Error::ChainNotInAllowlist { chain_id: 777777 }),
             "expected ChainNotInAllowlist, got {err:?}"
         );
     }
 
     #[test]
     fn spender_allowlist_rejects_unknown_chain() {
-        let err = validate_spender_allowlist(999, &op_spender()).unwrap_err();
+        let err = validate_spender_allowlist(777777, &op_spender()).unwrap_err();
         assert!(
-            matches!(err, Error::ChainNotInAllowlist { chain_id: 999 }),
+            matches!(err, Error::ChainNotInAllowlist { chain_id: 777777 }),
             "expected ChainNotInAllowlist, got {err:?}"
         );
     }

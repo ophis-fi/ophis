@@ -8,8 +8,6 @@ export const OPHIS_CHAIN_IDS = Object.freeze({
   optimism: 10,
   unichain: 130,
   robinhood: 4663,
-  megaeth: 4326,
-  hyperevm: 999,
 } as const);
 
 export interface OphisDefaults {

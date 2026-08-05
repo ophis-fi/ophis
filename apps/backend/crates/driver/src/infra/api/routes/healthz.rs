@@ -49,12 +49,6 @@ fn min_balance_for(chain: Chain) -> u128 {
         Chain::Optimism => 10_000_000_000_000_000, // 0.01 ETH
         // OP Sepolia — keep low so testnet faucet drips refill reliably.
         Chain::OptimismSepolia => 1_000_000_000_000_000, // 0.001 ETH
-        // HyperEVM mainnet — gas paid in HYPE; threshold in HYPE-wei.
-        // Conservative: 0.1 HYPE (~$2-5 depending on price).
-        Chain::HyperEvmMainnet => 100_000_000_000_000_000, // 0.1 HYPE
-        Chain::HyperEvmTestnet => 10_000_000_000_000_000, // 0.01 HYPE testnet
-        // MegaETH mainnet — native ETH; conservative 0.01 ETH = 10 mETH.
-        Chain::MegaethMainnet => 10_000_000_000_000_000, // 0.01 ETH
         // Unichain mainnet — OP-stack L2, native ETH, ~0.0005-0.05 gwei gas →
         // ~3e-7 to 3e-5 ETH per settlement. 0.002 ETH = ~60+ settlements of
         // headroom even at the high end (the 0.01 ETH default would false-alarm

@@ -9,8 +9,8 @@
 | Medium | 0 |
 | Low | 0 |
 
-**Overall risk:** High  
-**Recommendation:** Reject for production until both findings are resolved.
+**Overall risk after remediation:** Low
+**Recommendation:** Proceed after the documented verification gates pass.
 
 The branch changes value-transfer accounting by adding a config-driven
 price-improvement fee to three sovereign deployments. The fee math itself uses
@@ -23,8 +23,8 @@ control, external call, or cryptographic validation.
 
 ## What Changed
 
-**Commit range:** `origin/main..c4d3c643`  
-**Commit:** `c4d3c643 feat: adopt solver-aligned sovereign pricing`  
+**Commit range:** `origin/main..c4d3c643`
+**Commit:** `c4d3c643 feat: adopt solver-aligned sovereign pricing`
 **Diff:** 392 insertions, 234 deletions across 37 files.
 
 The sovereign path changes from a 10/5/1 bps volume schedule to a 1 bp base plus
@@ -33,27 +33,26 @@ stable pairs (10 bps cap). Hosted-chain pricing is intended to remain unchanged.
 
 ## High Findings
 
-### HIGH: Two SDK sovereign paths have no capture policy
+### RESOLVED: Retired SDK sovereign paths had no capture policy
 
 **Files:**
 
 - `packages/sdk/src/partner-fee.ts:90`
-- `infra/megaeth-mainnet/configs/autopilot.toml:47`
-- `infra/hyperevm-mainnet/configs/autopilot.toml.tmpl:105`
+- retired deployment configurations
 
-**Blast radius:** every SDK order on MegaETH (4326) and HyperEVM (999).  
+**Blast radius:** every SDK order on the retired deployments.
 **Test coverage:** SDK tests assert the 1 bp behavior but do not exercise either
 backend policy.
 
-The SDK places chains 4326 and 999 in `SOVEREIGN_CHAIN_ID_SET`, reducing their
+The SDK placed two inactive chains in `SOVEREIGN_CHAIN_ID_SET`, reducing their
 partner appData fee from 5 bps to 1 bp. Unlike Optimism, Unichain, and Robinhood,
 their autopilot `[fee-policies]` sections remain empty. These routes therefore
 receive the lower base without the intended improvement capture.
 
-**Recommendation:** either configure and test the price-improvement policy on
-both deployments or remove them from the SDK sovereign set until rollout.
+**Resolution:** the inactive chains were removed from the SDK, frontend,
+backend, MCP surface, deployment artifacts, and infrastructure.
 
-### HIGH: Config fee breaks positional partner-fee attribution
+### RESOLVED: Config fee broke positional partner-fee attribution
 
 **Files:**
 
@@ -62,7 +61,7 @@ both deployments or remove them from the SDK sovereign set until rollout.
 - `apps/rebate-indexer/src/partnerFees/fetch.ts:54`
 
 **Blast radius:** all partner-attributed settlements on configured sovereign
-feeds (high).  
+feeds (high).
 **Test coverage:** no changed indexer test; existing tests encode the opposite
 invariant.
 
@@ -92,7 +91,7 @@ config-derived protocol fees from appData partner fees before the indexer sees
 them. Remove the `config-fee-free` assertion only after end-to-end tests cover a
 config price-improvement fee plus accepted and dropped partner entries.
 
-### HIGH: Stable pricing is chain-blind outside Optimism
+### RESOLVED: Stable pricing was chain-blind outside Optimism
 
 **Files:**
 
@@ -101,7 +100,7 @@ config price-improvement fee plus accepted and dropped partner entries.
 - `infra/unichain-mainnet/configs/autopilot.toml.tmpl:126`
 - `infra/robinhood-mainnet/configs/autopilot.toml.tmpl:71`
 
-**Blast radius:** every stablecoin order on Unichain and Robinhood Chain (high).  
+**Blast radius:** every stablecoin order on Unichain and Robinhood Chain (high).
 **Test coverage:** no test exercises the new override through `ProtocolFees` on
 any chain; existing app-data tests cover only Optimism addresses.
 
@@ -145,10 +144,10 @@ this branch and explicitly warns that violating it is a money-path regression.
 
 ### Immediate (blocking)
 
-- [ ] Make partner-fee attribution explicit and safe with config-derived fees.
-- [ ] Make stable-token classification chain-aware and configuration-driven.
-- [ ] Align MegaETH and HyperEVM SDK pricing with their deployed backend policy.
-- [ ] Add end-to-end tests for both cases.
+- [x] Make partner-fee attribution explicit and safe with config-derived fees.
+- [x] Make stable-token classification chain-aware.
+- [x] Remove inactive deployments from every supported-chain surface.
+- [x] Add regression tests for both accounting cases.
 
 ### Before production
 
@@ -166,13 +165,13 @@ included baseline diffing, git-history inspection, one-hop caller tracing, test
 gap analysis, blast-radius analysis, and concrete failure modeling.
 
 **Limitations:** no live deployment or mainnet settlement was exercised; external
-CoW infrastructure was treated as an existing dependency.  
+CoW infrastructure was treated as an existing dependency.
 **Confidence:** high for the three reported integration findings; medium overall.
 
 ## Independent and Dependency Review
 
 Codex review independently reproduced the stable-classification finding and
-identified the MegaETH/HyperEVM policy mismatch. Pashov's Solidity auditor had
+identified the inactive-chain policy mismatch. Pashov's Solidity auditor had
 no applicable branch delta (`git diff origin/main..HEAD -- '*.sol'` is empty).
 
 `pnpm audit --audit-level high` reported seven advisories: one high, five

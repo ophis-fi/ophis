@@ -2,12 +2,12 @@
 # Ophis — cross-stack eRPC upstream-ID collision lint.
 #
 # Phase 2.6 (2026-05-20). Roadmap #6. eRPC exports per-upstream
-# Prometheus metrics labeled by `id:`. If HL and OP stacks share an
+# Prometheus metrics labeled by `id:`. If stacks share an
 # upstream ID, the same metric label gets two different sources and
 # dashboards mis-attribute load.
 #
 # This script asserts:
-#   1. Every upstream id has a chain-suffix (-hl, -op, -mega)
+#   1. Every upstream id has a chain suffix
 #   2. No id appears in more than one chain's eRPC config
 #
 # POSIX-friendly (no associative arrays — macOS bash 3.2 compat).
@@ -18,8 +18,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # Chain dirs + expected suffixes (parallel arrays).
-CHAIN_DIRS=("hyperevm-mainnet"  "optimism-mainnet"  "megaeth-mainnet")
-CHAIN_SUFFIXES=("hl"             "op"                "mega")
+CHAIN_DIRS=("optimism-mainnet" "unichain-mainnet" "robinhood-mainnet")
+CHAIN_SUFFIXES=("op"            "uni"               "rh")
 
 errors=0
 ALL_IDS_FILE=$(mktemp)
@@ -59,7 +59,7 @@ if (( errors > 0 )); then
   echo "eRPC ID lint FAILED ($errors issues)." >&2
   echo "" >&2
   echo "Every upstream 'id:' field must:" >&2
-  echo "  1. End with the chain's suffix (-hl / -op / -mega)" >&2
+  echo "  1. End with the chain's configured suffix" >&2
   echo "  2. NOT appear in any other chain's eRPC config" >&2
   exit 1
 fi
