@@ -28,8 +28,11 @@ function partnerFeeRpc(chainId: number): string {
 /** Fetch a settlement block's UTC timestamp, or null on failure (retried next run). Injectable. */
 export type BlockTimestampFetcher = (chainId: number, blockNumber: bigint) => Promise<Date | null>;
 async function defaultBlockTimestamp(chainId: number, blockNumber: bigint): Promise<Date | null> {
+  // Configuration errors are permanent and must escape. Only an actual RPC
+  // request failure is retryable enrichment state.
+  const rpcUrl = partnerFeeRpc(chainId);
   try {
-    const client = createPublicClient({ transport: http(partnerFeeRpc(chainId)) });
+    const client = createPublicClient({ transport: http(rpcUrl) });
     const block = await client.getBlock({ blockNumber });
     return new Date(Number(block.timestamp) * 1000);
   } catch {
@@ -124,6 +127,9 @@ export function resolvePartnerFeeFeeds(raw = process.env.PARTNER_FEE_FEED_URLS):
     feeds.push({ chainId, url });
   }
   assertFeedsConfigFeeFree(feeds); // compatibility hook; policy-kind attribution is chain-safe
+  // Fail at configuration parsing/startup, before any feed rows can be inserted
+  // without timestamps. Unknown chains must provide an explicit per-chain RPC.
+  for (const feed of feeds) partnerFeeRpc(feed.chainId);
   return feeds;
 }
 

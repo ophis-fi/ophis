@@ -1,10 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { resolvePartnerFeeFeeds, assertFeedsConfigFeeFree } from '../../src/partnerFees/fetch.js';
 
 // Fee policy kinds travel alongside fee amounts, so configured protocol-fee slots can be
 // distinguished from partner volume-fee slots on every supported chain.
 
 describe('resolvePartnerFeeFeeds', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it('parses <chainId>=<url> entries', () => {
     expect(resolvePartnerFeeFeeds('10=https://a.test/feed,130=https://b.test/feed')).toEqual([
       { chainId: 10, url: 'https://a.test/feed' },
@@ -22,9 +24,18 @@ describe('resolvePartnerFeeFeeds', () => {
   });
 
   it('accepts config-fee chains because attribution uses aligned policy kinds', () => {
+    vi.stubEnv('PARTNER_FEE_RPC_URL_8453', 'https://base-rpc.test');
     expect(resolvePartnerFeeFeeds('8453=https://x.test/feed')).toEqual([
       { chainId: 8453, url: 'https://x.test/feed' },
     ]);
+  });
+
+  it('rejects a configured feed with no timestamp RPC before polling starts', () => {
+    vi.stubEnv('PARTNER_FEE_RPC_URL_8453', '');
+    vi.stubEnv('SETTLE_RPC_URL_8453', '');
+    expect(() => resolvePartnerFeeFeeds('8453=https://x.test/feed')).toThrow(
+      /no RPC configured for chain 8453/i,
+    );
   });
 
   it('rejects a malformed url / duplicate chain', () => {
