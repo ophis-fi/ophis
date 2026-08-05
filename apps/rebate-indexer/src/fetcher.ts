@@ -680,12 +680,17 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     const ownerRows = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
-      WHERE last_fetched IS NULL OR last_fetched < now() - INTERVAL '6 hours'
+      WHERE last_fetched IS NULL
+         OR last_fetched < now() - INTERVAL '6 hours'
+         OR wallet IN (SELECT wallet FROM defillama_backfill_wallets)
       -- proven wallets first; then least-recently-fetched (never-fetched first);
       -- then OLDEST registration. The first_seen tiebreaker makes never-fetched
       -- selection FIFO so /tier spam can't starve an older legit wallet that
       -- registered before the flood (they'd otherwise tie on last_fetched=NULL).
-      ORDER BY (wallet IN (SELECT wallet FROM trades)) DESC, last_fetched ASC NULLS FIRST, first_seen ASC
+      ORDER BY (wallet IN (SELECT wallet FROM defillama_backfill_wallets)) DESC,
+               (wallet IN (SELECT wallet FROM trades)) DESC,
+               last_fetched ASC NULLS FIRST,
+               first_seen ASC
       LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
     `;
     // Drop any Ophis eth-flow contract spam-registered via the public /tier
@@ -785,6 +790,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     for (const { wallet } of owners) {
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
+      let reportingOk = true;
       for (const chainId of SUPPORTED_CHAIN_IDS) {
         try {
           const rows = await fetchChainTrades(chainId, owner, dbDeps);
@@ -792,8 +798,15 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
           await flushDefillamaFills();
         } catch (err) {
           ownerOk = false; // a transient CoW failure must not silently advance the cursor
+          if (DEFILLAMA_CHAIN_IDS.has(chainId)) reportingOk = false;
           log.error({ err, chainId, owner }, 'owner/chain fetch failed'); // single failure does not abort others
         }
+      }
+      // The one-time reporting queue tracks production chains only. A Sepolia
+      // orderbook outage must not hold the public mainnet history closed forever.
+      // Conversely, any production-chain failure keeps this wallet queued for retry.
+      if (reportingOk) {
+        await sql`DELETE FROM defillama_backfill_wallets WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
       }
       // Always record the attempt; advance last_fetched only when EVERY chain
       // succeeded. A transient CoW outage must not mark the wallet fully fetched

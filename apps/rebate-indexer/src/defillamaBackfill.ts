@@ -8,11 +8,7 @@ export async function completeDefiLlamaBackfillIfReady(): Promise<boolean> {
   const [row] = await sql<{ ready: boolean }[]>`
     WITH readiness AS (
       SELECT NOT EXISTS (
-        SELECT 1
-        FROM defillama_backfill_wallets q
-        JOIN tracked_wallets w ON w.wallet = q.wallet
-        CROSS JOIN defillama_reporting_state s
-        WHERE (w.last_fetched IS NULL OR w.last_fetched < s.backfill_started_at)
+        SELECT 1 FROM defillama_backfill_wallets
       ) AND NOT EXISTS (
         SELECT 1 FROM defillama_fills WHERE fee_verified = true AND value_usd IS NULL
       ) AS ready
