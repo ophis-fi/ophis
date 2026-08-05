@@ -20,8 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # ── Deploy-safety guard (2026-07-22 OP outage) ──────────────────────────────
-# The final line of this script runs `docker compose up -d --build`, which
-# rebuilds every image from whatever source SCRIPT_DIR points at. On 2026-07-22
+# This script builds every local image before it restarts services, from whatever
+# source SCRIPT_DIR points at. On 2026-07-22
 # it was run from a STALE checkout — a branch ~160 commits behind origin/main
 # whose infra/ configs had been hand-forward-ported to 8 solvers but whose
 # apps/backend source had NOT — so `--build` compiled a `solvers` binary missing
@@ -228,7 +228,17 @@ else
 fi
 
 echo ""
-# Force-recreate config-mounted services BEFORE running `up`. Docker
+# Build every local image BEFORE restarting config-mounted services. A newly
+# added service can reference a CLI command that does not exist in the previous
+# image; starting it before `--build` makes its health dependency fail and
+# aborts the deploy before the final build (Curve rollout, 2026-08-05).
+# Building is non-disruptive and cache-backed; the sequenced restart below then
+# always creates containers from binaries matching this exact origin/main.
+echo "==> docker compose $PROFILES_ARG build"
+docker compose $PROFILES_ARG build
+
+echo ""
+# Force-recreate config-mounted services AFTER building. Docker
 # Compose's change-detection only looks at the image+env+volume-spec
 # tuple; if the CONTENT of a bind-mounted file changes (e.g.
 # render-configs.sh rewrote rendered/erpc.yaml after an eRPC config
@@ -294,8 +304,8 @@ fi
 # already closed on the HL stack via PR #200's Codex Cyber HIGH; the OP
 # stack had been missing the symmetric fix. Conditional on the rendered
 # config existing AND the service being up (skipped on first-deploy
-# where the service isn't running yet — the final
-# `docker compose up -d --build` below brings it up fresh).
+# where the service isn't running yet — the final `docker compose up -d` below
+# brings it up from the image built before the restart sequence).
 if [[ -f observability-rendered/alertmanager.yml ]] && \
    docker compose ps --services 2>/dev/null | grep -qF alertmanager; then
   echo "==> force-recreating alertmanager to pick up rendered Telegram token"
@@ -371,8 +381,8 @@ for retired in "${RETIRED_SERVICES[@]}"; do
 done
 
 echo ""
-echo "==> docker compose $PROFILES_ARG up -d --build $*"
-docker compose $PROFILES_ARG up -d --build "$@"
+echo "==> docker compose $PROFILES_ARG up -d $*"
+docker compose $PROFILES_ARG up -d "$@"
 
 echo ""
 echo "Stack startup initiated. Verify with:"
