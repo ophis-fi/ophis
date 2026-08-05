@@ -167,19 +167,52 @@ echo "==> render-configs.sh"
 ./render-configs.sh
 
 echo ""
-echo "==> verifying driver.toml symlink resolves"
-if [[ ! -L rendered/driver.toml ]]; then
-  echo "ERROR: rendered/driver.toml is not a symlink. Tier 1.5 expects it to" >&2
-  echo "       point at the RAM-disk. Has render-configs.sh been edited?" >&2
+echo "==> verifying secret-bearing config symlinks resolve"
+ram_render_root="$HOME/.local/state/ophis/ram-pk"
+ram_marker="$ram_render_root/.ophis-ram-pk-marker"
+if [[ ! -f "$ram_marker" ]] || ! grep -qFx "ophis-ram-pk" "$ram_marker" 2>/dev/null; then
+  echo "ERROR: managed RAM-disk marker is missing or invalid at $ram_marker." >&2
   exit 8
 fi
-target=$(readlink rendered/driver.toml)
-if [[ ! -s "$target" ]]; then
-  echo "ERROR: rendered/driver.toml -> $target, but the target is empty/missing." >&2
-  echo "       The RAM-disk may have been unmounted between render and verify." >&2
-  exit 9
-fi
-echo "  ok: rendered/driver.toml -> $target ($(wc -c < "$target" | tr -d ' ') bytes)"
+case "$(uname -s)" in
+  Darwin)
+    ram_device=$(mount | awk -v path="$ram_render_root" '$2 == "on" && $3 == path {print $1}')
+    if [[ ! "$ram_device" =~ ^/dev/disk[0-9]+$ ]]; then
+      echo "ERROR: $ram_render_root is not backed by the managed macOS RAM disk." >&2
+      exit 8
+    fi
+    ;;
+  Linux)
+    if ! mount | grep -F " on $ram_render_root " | grep -q " type tmpfs"; then
+      echo "ERROR: $ram_render_root is not backed by tmpfs." >&2
+      exit 8
+    fi
+    ;;
+  *)
+    echo "ERROR: unsupported platform $(uname -s) for RAM-disk verification." >&2
+    exit 8
+    ;;
+esac
+for secret_render in driver.toml curve.toml; do
+  rendered_path="rendered/$secret_render"
+  expected_target="$ram_render_root/$secret_render"
+  if [[ ! -L "$rendered_path" ]]; then
+    echo "ERROR: $rendered_path is not a symlink. Tier 1.5 expects it to" >&2
+    echo "       point at the RAM-disk. Has render-configs.sh been edited?" >&2
+    exit 8
+  fi
+  target=$(readlink "$rendered_path")
+  if [[ "$target" != "$expected_target" ]]; then
+    echo "ERROR: $rendered_path points to $target, expected $expected_target." >&2
+    exit 8
+  fi
+  if [[ ! -s "$target" ]]; then
+    echo "ERROR: $rendered_path -> $target, but the target is empty/missing." >&2
+    echo "       The RAM-disk may have been unmounted between render and verify." >&2
+    exit 9
+  fi
+  echo "  ok: $rendered_path -> $target ($(wc -c < "$target" | tr -d ' ') bytes)"
+done
 
 echo ""
 # Sharp-edges HIGH-2 (2026-05-20): the observability profile (prometheus +

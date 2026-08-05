@@ -439,8 +439,8 @@ fi
 
 # Templates that contain substituted SECRETS (after envsubst) MUST land
 # on the RAM-disk; everything else stays in ./rendered/ on disk. The
-# canonical list covers the submitter PK, the OKX credentials (api-key +
-# secret-key + passphrase), and the Enso API key. The post-render
+# canonical list covers the submitter PK, API credentials, and configs whose
+# RPC URL may contain an embedded provider token. The post-render
 # assertion below scans all non-PK_BEARING files for both PK and
 # OKX-shaped secret literals, so a future template-edit that adds a
 # secret-substitution to a non-listed file will fail-closed before the
@@ -451,7 +451,7 @@ fi
 # bearing render (Time-Machine / APFS-snapshot / Spotlight protection) rather than
 # leaving it on the FileVault SSD — matches how enso/okx keys are handled, and
 # the post-render leak assertion below cannot pattern-match these key shapes anyway.
-PK_BEARING_NAMES=(driver.toml okx.toml enso.toml erpc.yaml)
+PK_BEARING_NAMES=(driver.toml okx.toml enso.toml curve.toml erpc.yaml)
 
 is_pk_bearing() {
   local n="$1"
