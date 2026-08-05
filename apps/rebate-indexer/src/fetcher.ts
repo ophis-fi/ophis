@@ -633,7 +633,11 @@ export async function withPipelineLock(fn: () => Promise<void>): Promise<boolean
   }
 }
 
-export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: number; owners: number }> {
+export async function runFetcher(_deps?: FetcherDeps): Promise<{
+  inserted: number;
+  owners: number;
+  reportingProgress: boolean;
+}> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
   const { db, sql, schema } = await import('./db/index.js');
 
@@ -653,7 +657,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     locked = lockRow?.locked === true;
     if (!locked) {
       log.info('fetcher already running (advisory lock held); skipping');
-      return { inserted: 0, owners: 0 };
+      return { inserted: 0, owners: 0, reportingProgress: false };
     }
 
     const pendingDefillamaFills: PendingDefiLlamaFill[] = [];
@@ -702,6 +706,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // its trades to the receiver, not itself), so processing it as a tracked
     // wallet would double-fetch chain 10 and inflate the `inserted` log count.
     const owners = ownerRows.filter((o) => !OPHIS_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
+    const reportingReadyOwners: `0x${string}`[] = [];
     let inserted = 0;
     // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
     // FEE arms: only a verified API write ever moves volume_fee_bps / fee_verified.
@@ -806,11 +811,11 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
           log.error({ err, chainId, owner }, 'owner/chain fetch failed'); // single failure does not abort others
         }
       }
-      // The one-time reporting queue tracks production chains only. A Sepolia
-      // orderbook outage must not hold the public mainnet history closed forever.
-      // Conversely, any production-chain failure keeps this wallet queued for retry.
+      // Dequeue only after the synthetic eth-flow sweep below also succeeds. An
+      // eth-flow order is queried under its router owner, not this receiver, so a
+      // successful receiver query alone does not prove its reporting fills exist.
       if (reportingOk) {
-        await sql`DELETE FROM defillama_backfill_wallets WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
+        reportingReadyOwners.push(owner);
       }
       // Always record the attempt; advance last_fetched only when EVERY chain
       // succeeded. A transient CoW outage must not mark the wallet fully fetched
@@ -829,6 +834,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // owner on its own chain; fetchChainTrades attributes each trade to its
     // receiver. Fixed addresses (one per override chain), so no tracked-wallet
     // budget cost, and they are never added to tracked_wallets (fetched directly).
+    let ethFlowReportingOk = true;
     for (const [chainIdStr, ethFlowOwner] of Object.entries(OPHIS_ETHFLOW_OWNER_BY_CHAIN)) {
       const chainId = Number(chainIdStr);
       if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
@@ -837,8 +843,23 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
         inserted += await upsertTrades(rows);
         await flushDefillamaFills();
       } catch (err) {
+        if (DEFILLAMA_CHAIN_IDS.has(chainId)) ethFlowReportingOk = false;
         log.error({ err, chainId, ethFlowOwner }, 'eth-flow owner fetch failed');
       }
+    }
+
+    if (ethFlowReportingOk) {
+      for (const owner of reportingReadyOwners) {
+        await sql`DELETE FROM defillama_backfill_wallets WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
+      }
+      // Migration 0024 seeded receivers from trades, including eth-flow receivers
+      // that were never registered in tracked_wallets. A successful sweep of every
+      // production eth-flow router is the durable proof that those orphan receivers'
+      // settlement fills have been rebuilt, so they can no longer pin readiness.
+      await sql`
+        DELETE FROM defillama_backfill_wallets q
+        WHERE NOT EXISTS (SELECT 1 FROM tracked_wallets w WHERE w.wallet = q.wallet)
+      `;
     }
 
     // On-chain settle() decoder (SUPPLEMENTAL source): closes the rebate gap for
@@ -865,7 +886,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // would delete aged, not-yet-refetched wallets before later iterations reach
     // them, silently rebuilding an incomplete ledger.
     log.info({ owners: owners.length, inserted }, 'fetcher complete');
-    return { inserted, owners: owners.length };
+    return { inserted, owners: owners.length, reportingProgress: ethFlowReportingOk };
   } finally {
     // Always runs — even if the lock acquire or unlock throws — so a transient
     // error can't leak the reserved connection. Unlock on the SAME connection
