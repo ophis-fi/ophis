@@ -122,6 +122,15 @@ absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
+# Direct Curve StableSwap lane. Phase one is intentionally limited to the
+# canonical Optimism 3pool and exact-input orders; no API-returned targets.
+[[solver]]
+name = "curve"
+endpoint = "http://curve-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.1"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
 [submission]
 # OP mainnet typical L2 gas price is 0.001-0.05 gwei (1 Mgwei = 10^15 wei
 # domain, often ~10^-3 gwei). The prior cap of 1000 gwei (10^12 wei) was

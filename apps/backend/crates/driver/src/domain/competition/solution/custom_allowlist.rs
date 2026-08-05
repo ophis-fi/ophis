@@ -62,6 +62,21 @@ use {
 const ETHEREUM_FXUSD: Address = address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
 const ETHEREUM_SETTLEMENT: Address = address!("9008D19f58Aabd9eD0D60971565AA8510560ab41");
 const FXUSD_REDEEM_SELECTOR: [u8; 4] = [0xf3, 0xf0, 0x94, 0xa1];
+const OPTIMISM_CURVE_3POOL: Address = address!("1337BedC9D22ecbe766dF105c9623922A27963EC");
+const CURVE_EXCHANGE_SELECTOR: [u8; 4] = [0x3d, 0xf0, 0x21, 0x24];
+const OPTIMISM_CURVE_3POOL_COINS: [Address; 3] = [
+    address!("DA10009cBd5D07dd0CeCc66161FC93D7c9000da1"),
+    address!("7F5c764cBc14f9669B88837ca1490cCa17c31607"),
+    address!("94b008aA00579c1307B0EF2c499aD98a8ce58e58"),
+];
+
+#[derive(Clone, Copy, Debug)]
+pub struct RequiredAmounts {
+    pub sell_token: Address,
+    pub buy_token: Address,
+    pub max_input: U256,
+    pub min_output: U256,
+}
 
 /// Cap on the value of any allowance a solver can request via a `Custom`
 /// interaction. = `2^200` ≈ `1.6e60`.
@@ -339,7 +354,7 @@ pub fn validate(custom: &interaction::Custom, chain_id: u64) -> Result<(), Error
 pub fn validate_with_required_output(
     custom: &interaction::Custom,
     chain_id: u64,
-    required_amounts: Option<(Address, U256, U256)>,
+    required_amounts: Option<RequiredAmounts>,
 ) -> Result<(), Error> {
     // Ethereum's native f(x) lane is intentionally NOT added to the generic
     // address-only router allowlist. fxUSD is an ERC-20 proxy, so allowing the
@@ -356,6 +371,21 @@ pub fn validate_with_required_output(
             }
         }
         return validate_fxusd_redeem(custom, required_amounts);
+    }
+    // Like f(x), direct Curve receives a selector-scoped exception rather than
+    // joining the generic address allowlist. This binds pool indices, assets,
+    // exact input, output floor and allowance to the declared interaction and
+    // keeps the pool forbidden in arbitrary pre/post interaction slots.
+    if chain_id == 10 && Address::from(custom.target) == OPTIMISM_CURVE_3POOL {
+        validate_value(custom.value.0)?;
+        for required in &custom.allowances {
+            if required.0.amount > MAX_CUSTOM_ALLOWANCE {
+                return Err(Error::AmountTooLarge {
+                    amount: required.0.amount,
+                });
+            }
+        }
+        return validate_curve_exchange(custom, required_amounts);
     }
     let allowlist = chain_allowlist(chain_id)?;
 
@@ -397,7 +427,7 @@ pub fn validate_with_required_output(
 
 fn validate_fxusd_redeem(
     custom: &interaction::Custom,
-    required_amounts: Option<(Address, U256, U256)>,
+    required_amounts: Option<RequiredAmounts>,
 ) -> Result<(), Error> {
     let reject = || Error::CallDataNotAllowed {
         target: ETHEREUM_FXUSD,
@@ -413,10 +443,14 @@ fn validate_fxusd_redeem(
     let amount_in = word_u256(36);
     let receiver = word_address(68);
     let min_out = word_u256(100);
-    let Some((required_token, required_input, required_output)) = required_amounts else {
+    let Some(required) = required_amounts else {
         return Err(reject());
     };
-    if base_token != required_token || amount_in > required_input || min_out < required_output {
+    if required.sell_token != ETHEREUM_FXUSD
+        || base_token != required.buy_token
+        || amount_in > required.max_input
+        || min_out < required.min_output
+    {
         return Err(reject());
     }
 
@@ -452,6 +486,73 @@ fn validate_fxusd_redeem(
         || output.amount.0 != min_out
         || allowance.token != ETHEREUM_FXUSD.into()
         || allowance.spender != ETHEREUM_SETTLEMENT
+        || allowance.amount != amount_in
+        || custom.internalize
+    {
+        return Err(reject());
+    }
+    Ok(())
+}
+
+fn validate_curve_exchange(
+    custom: &interaction::Custom,
+    required_amounts: Option<RequiredAmounts>,
+) -> Result<(), Error> {
+    let reject = || Error::CallDataNotAllowed {
+        target: OPTIMISM_CURVE_3POOL,
+        chain_id: 10,
+    };
+    let data = custom.call_data.as_ref();
+    if data.len() != 4 + 32 * 4 || data[..4] != CURVE_EXCHANGE_SELECTOR || !custom.value.0.is_zero()
+    {
+        return Err(reject());
+    }
+    let word_u256 = |offset: usize| U256::from_be_slice(&data[offset..offset + 32]);
+    let i = word_u256(4);
+    let j = word_u256(36);
+    let amount_in = word_u256(68);
+    let min_out = word_u256(100);
+    let Ok(i): Result<usize, _> = i.try_into() else {
+        return Err(reject());
+    };
+    let Ok(j): Result<usize, _> = j.try_into() else {
+        return Err(reject());
+    };
+    if i == j || i >= OPTIMISM_CURVE_3POOL_COINS.len() || j >= OPTIMISM_CURVE_3POOL_COINS.len() {
+        return Err(reject());
+    }
+    let sell_token = OPTIMISM_CURVE_3POOL_COINS[i];
+    let buy_token = OPTIMISM_CURVE_3POOL_COINS[j];
+    let Some(required) = required_amounts else {
+        return Err(reject());
+    };
+    if sell_token != required.sell_token
+        || buy_token != required.buy_token
+        || amount_in > required.max_input
+        || min_out < required.min_output
+    {
+        return Err(reject());
+    }
+    let Some(input) = custom.inputs.first().filter(|_| custom.inputs.len() == 1) else {
+        return Err(reject());
+    };
+    let Some(output) = custom.outputs.first().filter(|_| custom.outputs.len() == 1) else {
+        return Err(reject());
+    };
+    let Some(required) = custom
+        .allowances
+        .first()
+        .filter(|_| custom.allowances.len() == 1)
+    else {
+        return Err(reject());
+    };
+    let allowance = required.0;
+    if Address::from(input.token) != sell_token
+        || input.amount.0 != amount_in
+        || Address::from(output.token) != buy_token
+        || output.amount.0 != min_out
+        || allowance.token != sell_token.into()
+        || allowance.spender != OPTIMISM_CURVE_3POOL
         || allowance.amount != amount_in
         || custom.internalize
     {
@@ -582,6 +683,49 @@ mod tests {
         }
     }
 
+    fn make_curve_exchange(i: usize, j: usize) -> Custom {
+        let amount_in = U256::from(1_000u64);
+        let min_out = U256::from(990u64);
+        let mut data = Vec::with_capacity(132);
+        data.extend_from_slice(&CURVE_EXCHANGE_SELECTOR);
+        for word in [U256::from(i), U256::from(j), amount_in, min_out] {
+            data.extend_from_slice(&word.to_be_bytes::<32>());
+        }
+        let sell = OPTIMISM_CURVE_3POOL_COINS[i];
+        let buy = OPTIMISM_CURVE_3POOL_COINS[j];
+        Custom {
+            target: OPTIMISM_CURVE_3POOL.into(),
+            value: eth::Ether(U256::ZERO),
+            call_data: data.into(),
+            allowances: vec![
+                eth::Allowance {
+                    token: sell.into(),
+                    spender: OPTIMISM_CURVE_3POOL,
+                    amount: amount_in,
+                }
+                .into(),
+            ],
+            inputs: vec![eth::Asset {
+                token: sell.into(),
+                amount: eth::TokenAmount(amount_in),
+            }],
+            outputs: vec![eth::Asset {
+                token: buy.into(),
+                amount: eth::TokenAmount(min_out),
+            }],
+            internalize: false,
+        }
+    }
+
+    fn required(sell: Address, buy: Address, max_input: u64, min_output: u64) -> RequiredAmounts {
+        RequiredAmounts {
+            sell_token: sell,
+            buy_token: buy,
+            max_input: U256::from(max_input),
+            min_output: U256::from(min_output),
+        }
+    }
+
     #[test]
     fn fx_redeem_is_selector_and_receiver_scoped() {
         let usdc = address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
@@ -589,7 +733,7 @@ mod tests {
             validate_with_required_output(
                 &make_fx_redeem(ETHEREUM_SETTLEMENT),
                 1,
-                Some((usdc, U256::from(1_000u64), U256::from(990u64))),
+                Some(required(ETHEREUM_FXUSD, usdc, 1_000, 990)),
             ),
             Ok(())
         );
@@ -602,7 +746,7 @@ mod tests {
             validate_with_required_output(
                 &transfer,
                 1,
-                Some((usdc, U256::from(1_000u64), U256::from(990u64))),
+                Some(required(ETHEREUM_FXUSD, usdc, 1_000, 990)),
             ),
             Err(Error::CallDataNotAllowed { .. })
         ));
@@ -612,7 +756,7 @@ mod tests {
             validate_with_required_output(
                 &attacker_receiver,
                 1,
-                Some((usdc, U256::from(1_000u64), U256::from(990u64))),
+                Some(required(ETHEREUM_FXUSD, usdc, 1_000, 990)),
             ),
             Err(Error::CallDataNotAllowed { .. })
         ));
@@ -621,7 +765,7 @@ mod tests {
             validate_with_required_output(
                 &make_fx_redeem(ETHEREUM_SETTLEMENT),
                 1,
-                Some((usdc, U256::from(1_000u64), U256::from(991u64))),
+                Some(required(ETHEREUM_FXUSD, usdc, 1_000, 991)),
             ),
             Err(Error::CallDataNotAllowed { .. })
         ));
@@ -632,7 +776,7 @@ mod tests {
             validate_with_required_output(
                 &make_fx_redeem(ETHEREUM_SETTLEMENT),
                 1,
-                Some((usdc, U256::from(1_000u64), U256::from(981u64))),
+                Some(required(ETHEREUM_FXUSD, usdc, 1_000, 981)),
             ),
             Ok(())
         );
@@ -645,7 +789,7 @@ mod tests {
             validate_with_required_output(
                 &make_fx_redeem(ETHEREUM_SETTLEMENT),
                 1,
-                Some((usdc, U256::from(1_010u64), U256::from(981u64))),
+                Some(required(ETHEREUM_FXUSD, usdc, 1_010, 981)),
             ),
             Ok(())
         );
@@ -654,7 +798,7 @@ mod tests {
             validate_with_required_output(
                 &make_fx_redeem(ETHEREUM_SETTLEMENT),
                 1,
-                Some((usdc, U256::from(999u64), U256::from(981u64))),
+                Some(required(ETHEREUM_FXUSD, usdc, 999, 981)),
             ),
             Err(Error::CallDataNotAllowed { .. })
         ));
@@ -663,7 +807,7 @@ mod tests {
             validate_with_required_output(
                 &make_fx_redeem(ETHEREUM_SETTLEMENT),
                 1,
-                Some((ATTACKER, U256::from(1_000u64), U256::from(981u64))),
+                Some(required(ETHEREUM_FXUSD, ATTACKER, 1_000, 981)),
             ),
             Err(Error::CallDataNotAllowed { .. })
         ));
@@ -682,6 +826,113 @@ mod tests {
         assert!(matches!(
             validate(&c, 10),
             Err(Error::TargetNotAllowed { .. })
+        ));
+    }
+
+    #[test]
+    fn curve_pool_target_and_spender_are_allowlisted_only_on_optimism() {
+        let c = make_curve_exchange(0, 1);
+        assert_eq!(
+            validate_with_required_output(
+                &c,
+                10,
+                Some(required(
+                    OPTIMISM_CURVE_3POOL_COINS[0],
+                    OPTIMISM_CURVE_3POOL_COINS[1],
+                    1_000,
+                    990,
+                )),
+            ),
+            Ok(())
+        );
+        assert!(matches!(
+            validate(&c, 130),
+            Err(Error::TargetNotAllowed { .. })
+        ));
+        assert!(matches!(
+            validate_target(OPTIMISM_CURVE_3POOL, 10),
+            Err(Error::TargetNotAllowed { .. })
+        ));
+    }
+
+    #[test]
+    fn curve_exchange_rejects_mismatched_indices_and_assets() {
+        let context = Some(required(
+            OPTIMISM_CURVE_3POOL_COINS[0],
+            OPTIMISM_CURVE_3POOL_COINS[1],
+            1_000,
+            990,
+        ));
+        let mut wrong_output = make_curve_exchange(0, 1);
+        wrong_output.outputs[0].token = ATTACKER.into();
+        assert!(matches!(
+            validate_with_required_output(&wrong_output, 10, context),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        let mut wrong_selector = make_curve_exchange(0, 1);
+        let mut data = wrong_selector.call_data.to_vec();
+        data[..4].copy_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
+        wrong_selector.call_data = data.into();
+        assert!(matches!(
+            validate_with_required_output(&wrong_selector, 10, context),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        let mut wrong_spender = make_curve_exchange(0, 1);
+        wrong_spender.allowances[0].0.spender = ATTACKER;
+        assert!(matches!(
+            validate_with_required_output(&wrong_spender, 10, context),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        let mut internalized = make_curve_exchange(0, 1);
+        internalized.internalize = true;
+        assert!(matches!(
+            validate_with_required_output(&internalized, 10, context),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        assert!(matches!(
+            validate_with_required_output(
+                &make_curve_exchange(0, 1),
+                10,
+                Some(required(
+                    OPTIMISM_CURVE_3POOL_COINS[2],
+                    OPTIMISM_CURVE_3POOL_COINS[1],
+                    1_000,
+                    990,
+                )),
+            ),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        assert!(matches!(
+            validate_with_required_output(
+                &make_curve_exchange(0, 1),
+                10,
+                Some(required(
+                    OPTIMISM_CURVE_3POOL_COINS[0],
+                    OPTIMISM_CURVE_3POOL_COINS[1],
+                    999,
+                    990,
+                )),
+            ),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        assert!(matches!(
+            validate_with_required_output(
+                &make_curve_exchange(0, 1),
+                10,
+                Some(required(
+                    OPTIMISM_CURVE_3POOL_COINS[0],
+                    OPTIMISM_CURVE_3POOL_COINS[1],
+                    1_000,
+                    991,
+                )),
+            ),
+            Err(Error::CallDataNotAllowed { .. })
         ));
     }
 

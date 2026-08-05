@@ -5,6 +5,7 @@ use {
 };
 
 pub mod bitget;
+pub mod curve;
 pub mod dodo;
 pub mod enso;
 pub mod fx;
@@ -22,6 +23,7 @@ pub use self::simulator::Simulator;
 /// A supported external DEX/DEX aggregator API.
 pub enum Dex {
     Bitget(bitget::Bitget),
+    Curve(Box<curve::Curve>),
     Okx(Box<okx::Okx>),
     KyberSwap(Box<kyberswap::KyberSwap>),
     Velora(Box<velora::Velora>),
@@ -53,6 +55,7 @@ impl Dex {
     ) -> Result<dex::Swap, Error> {
         let swap = match self {
             Dex::Bitget(bitget) => bitget.swap(order, slippage, tokens).await?,
+            Dex::Curve(curve) => curve.swap(order, slippage, is_quote).await?,
             Dex::Okx(okx) => okx.swap(order, slippage).await?,
             Dex::KyberSwap(kyberswap) => kyberswap.swap(order, slippage, is_quote).await?,
             Dex::Velora(velora) => velora.swap(order, slippage, tokens, is_quote).await?,
@@ -148,6 +151,16 @@ impl From<bitget::Error> for Error {
             bitget::Error::NotFound => Self::NotFound,
             bitget::Error::MissingDecimals | bitget::Error::BadRequest => Self::BadRequest,
             bitget::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<curve::Error> for Error {
+    fn from(err: curve::Error) -> Self {
+        match err {
+            curve::Error::OrderNotSupported => Self::OrderNotSupported,
+            curve::Error::NotFound => Self::NotFound,
             _ => Self::Other(Box::new(err)),
         }
     }

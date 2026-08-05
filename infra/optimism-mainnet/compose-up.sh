@@ -20,8 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # ── Deploy-safety guard (2026-07-22 OP outage) ──────────────────────────────
-# The final line of this script runs `docker compose up -d --build`, which
-# rebuilds every image from whatever source SCRIPT_DIR points at. On 2026-07-22
+# This script builds every local image before it restarts services, from whatever
+# source SCRIPT_DIR points at. On 2026-07-22
 # it was run from a STALE checkout — a branch ~160 commits behind origin/main
 # whose infra/ configs had been hand-forward-ported to 8 solvers but whose
 # apps/backend source had NOT — so `--build` compiled a `solvers` binary missing
@@ -167,19 +167,81 @@ echo "==> render-configs.sh"
 ./render-configs.sh
 
 echo ""
-echo "==> verifying driver.toml symlink resolves"
-if [[ ! -L rendered/driver.toml ]]; then
-  echo "ERROR: rendered/driver.toml is not a symlink. Tier 1.5 expects it to" >&2
-  echo "       point at the RAM-disk. Has render-configs.sh been edited?" >&2
+echo "==> verifying secret-bearing config symlinks resolve"
+ram_render_root="$HOME/.local/state/ophis/ram-pk"
+ram_marker="$ram_render_root/.ophis-ram-pk-marker"
+macos_device_is_ram_image() {
+  local expected_dev="$1" expected_mount="$2" plist image_count image_index
+  local image_path entity_count entity_index dev_entry mount_point
+  plist=$(mktemp)
+  if ! hdiutil info -plist > "$plist"; then
+    rm -f "$plist"
+    return 1
+  fi
+  image_count=$(plutil -extract images raw -o - "$plist" 2>/dev/null || echo 0)
+  for ((image_index = 0; image_index < image_count; image_index++)); do
+    image_path=$(plutil -extract "images.${image_index}.image-path" raw -o - "$plist" 2>/dev/null || true)
+    [[ "$image_path" == ram://* ]] || continue
+    entity_count=$(plutil -extract "images.${image_index}.system-entities" raw -o - "$plist" 2>/dev/null || echo 0)
+    for ((entity_index = 0; entity_index < entity_count; entity_index++)); do
+      dev_entry=$(plutil -extract "images.${image_index}.system-entities.${entity_index}.dev-entry" raw -o - "$plist" 2>/dev/null || true)
+      mount_point=$(plutil -extract "images.${image_index}.system-entities.${entity_index}.mount-point" raw -o - "$plist" 2>/dev/null || true)
+      if [[ "$dev_entry" == "$expected_dev" && "$mount_point" == "$expected_mount" ]]; then
+        rm -f "$plist"
+        return 0
+      fi
+    done
+  done
+  rm -f "$plist"
+  return 1
+}
+if [[ ! -f "$ram_marker" ]] || ! grep -qFx "ophis-ram-pk" "$ram_marker" 2>/dev/null; then
+  echo "ERROR: managed RAM-disk marker is missing or invalid at $ram_marker." >&2
   exit 8
 fi
-target=$(readlink rendered/driver.toml)
-if [[ ! -s "$target" ]]; then
-  echo "ERROR: rendered/driver.toml -> $target, but the target is empty/missing." >&2
-  echo "       The RAM-disk may have been unmounted between render and verify." >&2
-  exit 9
-fi
-echo "  ok: rendered/driver.toml -> $target ($(wc -c < "$target" | tr -d ' ') bytes)"
+case "$(uname -s)" in
+  Darwin)
+    ram_device=$(mount | awk -v path="$ram_render_root" '$2 == "on" && $3 == path {print $1}')
+    if [[ ! "$ram_device" =~ ^/dev/disk[0-9]+$ ]]; then
+      echo "ERROR: $ram_render_root is not backed by the managed macOS RAM disk." >&2
+      exit 8
+    fi
+    if ! macos_device_is_ram_image "$ram_device" "$ram_render_root"; then
+      echo "ERROR: $ram_render_root is not a ram:// hdiutil image." >&2
+      exit 8
+    fi
+    ;;
+  Linux)
+    if ! mount | grep -F " on $ram_render_root " | grep -q " type tmpfs"; then
+      echo "ERROR: $ram_render_root is not backed by tmpfs." >&2
+      exit 8
+    fi
+    ;;
+  *)
+    echo "ERROR: unsupported platform $(uname -s) for RAM-disk verification." >&2
+    exit 8
+    ;;
+esac
+for secret_render in driver.toml curve.toml; do
+  rendered_path="rendered/$secret_render"
+  expected_target="$ram_render_root/$secret_render"
+  if [[ ! -L "$rendered_path" ]]; then
+    echo "ERROR: $rendered_path is not a symlink. Tier 1.5 expects it to" >&2
+    echo "       point at the RAM-disk. Has render-configs.sh been edited?" >&2
+    exit 8
+  fi
+  target=$(readlink "$rendered_path")
+  if [[ "$target" != "$expected_target" ]]; then
+    echo "ERROR: $rendered_path points to $target, expected $expected_target." >&2
+    exit 8
+  fi
+  if [[ ! -s "$target" ]]; then
+    echo "ERROR: $rendered_path -> $target, but the target is empty/missing." >&2
+    echo "       The RAM-disk may have been unmounted between render and verify." >&2
+    exit 9
+  fi
+  echo "  ok: $rendered_path -> $target ($(wc -c < "$target" | tr -d ' ') bytes)"
+done
 
 echo ""
 # Sharp-edges HIGH-2 (2026-05-20): the observability profile (prometheus +
@@ -195,7 +257,17 @@ else
 fi
 
 echo ""
-# Force-recreate config-mounted services BEFORE running `up`. Docker
+# Build every local image BEFORE restarting config-mounted services. A newly
+# added service can reference a CLI command that does not exist in the previous
+# image; starting it before `--build` makes its health dependency fail and
+# aborts the deploy before the final build (Curve rollout, 2026-08-05).
+# Building is non-disruptive and cache-backed; the sequenced restart below then
+# always creates containers from binaries matching this exact origin/main.
+echo "==> docker compose $PROFILES_ARG build"
+docker compose $PROFILES_ARG build
+
+echo ""
+# Force-recreate config-mounted services AFTER building. Docker
 # Compose's change-detection only looks at the image+env+volume-spec
 # tuple; if the CONTENT of a bind-mounted file changes (e.g.
 # render-configs.sh rewrote rendered/erpc.yaml after an eRPC config
@@ -213,7 +285,7 @@ echo ""
 # its image gets rebuilt on every `--build` so a fresh container always
 # spawns. Listed here for completeness in case `--build` ever gets
 # stripped from the invocation.
-CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot okx-solver enso-solver lifi-solver openocean-solver dodo-solver)
+CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot okx-solver enso-solver lifi-solver openocean-solver dodo-solver curve-solver)
 if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   echo "==> sequenced restart of config-mounted services to pick up rendered/* changes"
   echo "    (services: ${CONFIG_BOUND_SERVICES[*]})"
@@ -235,7 +307,7 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   # Trailing `|| true` removed: if a service fails to stop/start, we
   # want compose-up.sh to exit non-zero so operator sees the failure
   # before declaring deploy complete.
-  DOWNSTREAM=(driver orderbook autopilot okx-solver enso-solver lifi-solver openocean-solver dodo-solver)
+  DOWNSTREAM=(driver orderbook autopilot okx-solver enso-solver lifi-solver openocean-solver dodo-solver curve-solver)
   docker compose stop "${DOWNSTREAM[@]}"
   docker compose up -d --no-deps --force-recreate rpc-proxy
   # Wait for rpc-proxy-health (busybox tcp probe) to report healthy.
@@ -261,8 +333,8 @@ fi
 # already closed on the HL stack via PR #200's Codex Cyber HIGH; the OP
 # stack had been missing the symmetric fix. Conditional on the rendered
 # config existing AND the service being up (skipped on first-deploy
-# where the service isn't running yet — the final
-# `docker compose up -d --build` below brings it up fresh).
+# where the service isn't running yet — the final `docker compose up -d` below
+# brings it up from the image built before the restart sequence).
 if [[ -f observability-rendered/alertmanager.yml ]] && \
    docker compose ps --services 2>/dev/null | grep -qF alertmanager; then
   echo "==> force-recreating alertmanager to pick up rendered Telegram token"
@@ -338,8 +410,8 @@ for retired in "${RETIRED_SERVICES[@]}"; do
 done
 
 echo ""
-echo "==> docker compose $PROFILES_ARG up -d --build $*"
-docker compose $PROFILES_ARG up -d --build "$@"
+echo "==> docker compose $PROFILES_ARG up -d $*"
+docker compose $PROFILES_ARG up -d "$@"
 
 echo ""
 echo "Stack startup initiated. Verify with:"

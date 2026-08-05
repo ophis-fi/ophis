@@ -53,6 +53,11 @@ pub enum Command {
         #[clap(long, env)]
         config: PathBuf,
     },
+    /// solve exact-input orders through verified direct Curve pools
+    Curve {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
     /// solve individual orders via the KyberSwap aggregator API
     KyberSwap {
         #[clap(long, env)]

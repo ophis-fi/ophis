@@ -1,0 +1,19 @@
+# Ophis Optimism direct Curve solver. Exact-input only; pool and ordered coins
+# are pinned from Curve's canonical deployment data and verified onchain.
+# This render is listed in render-configs.sh's PK_BEARING_NAMES because the RPC
+# URL may contain an embedded provider token; rendered/curve.toml is a symlink
+# to the managed RAM disk, never a normal on-disk file.
+node-url = "${OP_MAINNET_RPC}"
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+internalize-interactions = false
+strict-market-output-simulation = "all"
+wrapped-native = "0x4200000000000000000000000000000000000006"
+wrapped-native-balance-slot = 3
+
+[[dex.pools]]
+address = "0x1337BedC9D22ecbe766dF105c9623922A27963EC"
+coins = [
+  "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
+  "0x7F5c764cBc14f9669B88837ca1490cCa17c31607",
+  "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
+]
