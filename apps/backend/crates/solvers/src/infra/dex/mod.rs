@@ -17,6 +17,7 @@ pub mod pons;
 pub mod simulator;
 pub mod uniswap_v4;
 pub mod velora;
+pub mod woofi;
 
 pub use self::simulator::Simulator;
 
@@ -34,6 +35,7 @@ pub enum Dex {
     UniswapV4(Box<uniswap_v4::UniswapV4>),
     Fx(Box<fx::Fx>),
     Pons(Box<pons::Pons>),
+    Woofi(Box<woofi::Woofi>),
 }
 
 impl Dex {
@@ -66,6 +68,7 @@ impl Dex {
             Dex::UniswapV4(uniswap) => uniswap.swap(order, slippage, is_quote).await?,
             Dex::Fx(fx) => fx.swap(order, slippage).await?,
             Dex::Pons(pons) => pons.swap(order, slippage).await?,
+            Dex::Woofi(woofi) => woofi.swap(order, slippage, is_quote).await?,
         };
         Ok(swap)
     }
@@ -161,6 +164,16 @@ impl From<curve::Error> for Error {
         match err {
             curve::Error::OrderNotSupported => Self::OrderNotSupported,
             curve::Error::NotFound => Self::NotFound,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<woofi::Error> for Error {
+    fn from(err: woofi::Error) -> Self {
+        match err {
+            woofi::Error::OrderNotSupported => Self::OrderNotSupported,
+            woofi::Error::NotFound => Self::NotFound,
             _ => Self::Other(Box::new(err)),
         }
     }

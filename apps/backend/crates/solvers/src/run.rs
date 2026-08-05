@@ -123,14 +123,23 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
         }
         cli::Command::Curve { config: path } => {
             let config = config::dex::curve::file::load(&path).await;
-            let curve = dex::curve::Curve::try_new(config.curve)
-                .expect("invalid Curve configuration");
+            let curve =
+                dex::curve::Curve::try_new(config.curve).expect("invalid Curve configuration");
             curve
                 .validate_onchain()
                 .await
                 .expect("Curve pool configuration does not match live contracts");
             solver::Solver::Dex(Box::new(solver::Dex::new(
                 dex::Dex::Curve(Box::new(curve)),
+                config.base,
+            )))
+        }
+        cli::Command::Woofi { config: path } => {
+            let config = config::dex::woofi::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Woofi(Box::new(
+                    dex::woofi::Woofi::try_new(config.woofi).expect("invalid WOOFi configuration"),
+                )),
                 config.base,
             )))
         }

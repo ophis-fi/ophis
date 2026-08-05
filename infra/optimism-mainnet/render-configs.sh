@@ -487,7 +487,7 @@ fi
 # bearing render (Time-Machine / APFS-snapshot / Spotlight protection) rather than
 # leaving it on the FileVault SSD — matches how enso/okx keys are handled, and
 # the post-render leak assertion below cannot pattern-match these key shapes anyway.
-PK_BEARING_NAMES=(driver.toml okx.toml enso.toml curve.toml erpc.yaml)
+PK_BEARING_NAMES=(driver.toml okx.toml enso.toml curve.toml woofi.toml erpc.yaml)
 
 is_pk_bearing() {
   local n="$1"

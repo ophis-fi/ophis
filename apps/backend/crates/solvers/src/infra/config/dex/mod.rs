@@ -11,6 +11,7 @@ pub mod openocean;
 pub mod pons;
 pub mod uniswap_v4;
 pub mod velora;
+pub mod woofi;
 
 use {
     crate::domain::{

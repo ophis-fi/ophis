@@ -69,6 +69,9 @@ const OPTIMISM_CURVE_3POOL_COINS: [Address; 3] = [
     address!("7F5c764cBc14f9669B88837ca1490cCa17c31607"),
     address!("94b008aA00579c1307B0EF2c499aD98a8ce58e58"),
 ];
+const OPTIMISM_WOOFI_ROUTER: Address = address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7");
+const OPTIMISM_SETTLEMENT: Address = address!("310784c7FCE12d578dA6f53460777bAc9718B859");
+const WOOFI_SWAP_SELECTOR: [u8; 4] = [0x7d, 0xc2, 0x03, 0x82];
 
 #[derive(Clone, Copy, Debug)]
 pub struct RequiredAmounts {
@@ -387,6 +390,20 @@ pub fn validate_with_required_output(
         }
         return validate_curve_exchange(custom, required_amounts);
     }
+    // WOOFi's router also exposes arbitrary external-swap functionality. Keep
+    // it out of the address-only allowlist and accept only the exact direct
+    // swap shape, bound to the fulfillment and Settlement recipient.
+    if chain_id == 10 && Address::from(custom.target) == OPTIMISM_WOOFI_ROUTER {
+        validate_value(custom.value.0)?;
+        for required in &custom.allowances {
+            if required.0.amount > MAX_CUSTOM_ALLOWANCE {
+                return Err(Error::AmountTooLarge {
+                    amount: required.0.amount,
+                });
+            }
+        }
+        return validate_woofi_swap(custom, required_amounts);
+    }
     let allowlist = chain_allowlist(chain_id)?;
 
     // (1) target — `ContractAddress(Address)` is opaque from outside its
@@ -561,6 +578,69 @@ fn validate_curve_exchange(
     Ok(())
 }
 
+fn validate_woofi_swap(
+    custom: &interaction::Custom,
+    required_amounts: Option<RequiredAmounts>,
+) -> Result<(), Error> {
+    let reject = || Error::CallDataNotAllowed {
+        target: OPTIMISM_WOOFI_ROUTER,
+        chain_id: 10,
+    };
+    let data = custom.call_data.as_ref();
+    if data.len() != 4 + 32 * 6 || data[..4] != WOOFI_SWAP_SELECTOR || !custom.value.0.is_zero() {
+        return Err(reject());
+    }
+    let word_address = |offset: usize| Address::from_slice(&data[offset + 12..offset + 32]);
+    let word_u256 = |offset: usize| U256::from_be_slice(&data[offset..offset + 32]);
+    let sell_token = word_address(4);
+    let buy_token = word_address(36);
+    let amount_in = word_u256(68);
+    let min_out = word_u256(100);
+    let recipient = word_address(132);
+    let rebate = word_address(164);
+    let Some(required) = required_amounts else {
+        return Err(reject());
+    };
+    if sell_token != required.sell_token
+        || buy_token != required.buy_token
+        || sell_token.is_zero()
+        || buy_token.is_zero()
+        || sell_token == buy_token
+        || amount_in > required.max_input
+        || min_out < required.min_output
+        || recipient != OPTIMISM_SETTLEMENT
+        || !rebate.is_zero()
+    {
+        return Err(reject());
+    }
+    let Some(input) = custom.inputs.first().filter(|_| custom.inputs.len() == 1) else {
+        return Err(reject());
+    };
+    let Some(output) = custom.outputs.first().filter(|_| custom.outputs.len() == 1) else {
+        return Err(reject());
+    };
+    let Some(allowance) = custom
+        .allowances
+        .first()
+        .filter(|_| custom.allowances.len() == 1)
+    else {
+        return Err(reject());
+    };
+    let allowance = allowance.0;
+    if Address::from(input.token) != sell_token
+        || input.amount.0 != amount_in
+        || Address::from(output.token) != buy_token
+        || output.amount.0 != min_out
+        || allowance.token != sell_token.into()
+        || allowance.spender != OPTIMISM_WOOFI_ROUTER
+        || allowance.amount != amount_in
+        || custom.internalize
+    {
+        return Err(reject());
+    }
+    Ok(())
+}
+
 /// Cap on the native-ETH `value` field of any solver-supplied interaction
 /// (Custom + raw pre/post). Identical numeric to [`MAX_CUSTOM_ALLOWANCE`]
 /// (`2^200`); kept as a distinct alias so future tuning of one doesn't
@@ -701,6 +781,45 @@ mod tests {
                 eth::Allowance {
                     token: sell.into(),
                     spender: OPTIMISM_CURVE_3POOL,
+                    amount: amount_in,
+                }
+                .into(),
+            ],
+            inputs: vec![eth::Asset {
+                token: sell.into(),
+                amount: eth::TokenAmount(amount_in),
+            }],
+            outputs: vec![eth::Asset {
+                token: buy.into(),
+                amount: eth::TokenAmount(min_out),
+            }],
+            internalize: false,
+        }
+    }
+
+    fn make_woofi_swap(sell: Address, buy: Address) -> Custom {
+        let amount_in = U256::from(1_000u64);
+        let min_out = U256::from(990u64);
+        let mut data = Vec::with_capacity(196);
+        data.extend_from_slice(&WOOFI_SWAP_SELECTOR);
+        for word in [
+            U256::from_be_slice(sell.as_slice()),
+            U256::from_be_slice(buy.as_slice()),
+            amount_in,
+            min_out,
+            U256::from_be_slice(OPTIMISM_SETTLEMENT.as_slice()),
+            U256::ZERO,
+        ] {
+            data.extend_from_slice(&word.to_be_bytes::<32>());
+        }
+        Custom {
+            target: OPTIMISM_WOOFI_ROUTER.into(),
+            value: eth::Ether(U256::ZERO),
+            call_data: data.into(),
+            allowances: vec![
+                eth::Allowance {
+                    token: sell.into(),
+                    spender: OPTIMISM_WOOFI_ROUTER,
                     amount: amount_in,
                 }
                 .into(),
@@ -933,6 +1052,53 @@ mod tests {
                 )),
             ),
             Err(Error::CallDataNotAllowed { .. })
+        ));
+    }
+
+    #[test]
+    fn woofi_swap_is_selector_recipient_and_fulfillment_scoped() {
+        let sell = address!("4200000000000000000000000000000000000006");
+        let buy = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
+        let context = Some(required(sell, buy, 1_000, 990));
+        let valid = make_woofi_swap(sell, buy);
+        assert_eq!(validate_with_required_output(&valid, 10, context), Ok(()));
+        assert!(matches!(
+            validate_target(OPTIMISM_WOOFI_ROUTER, 10),
+            Err(Error::TargetNotAllowed { .. })
+        ));
+
+        let mut external_swap = valid.clone();
+        let mut data = external_swap.call_data.to_vec();
+        data[..4].copy_from_slice(&[0x6f, 0x40, 0x59, 0xb6]);
+        external_swap.call_data = data.into();
+        assert!(matches!(
+            validate_with_required_output(&external_swap, 10, context),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        let mut attacker_recipient = valid.clone();
+        let mut data = attacker_recipient.call_data.to_vec();
+        data[144..164].copy_from_slice(ATTACKER.as_slice());
+        attacker_recipient.call_data = data.into();
+        assert!(matches!(
+            validate_with_required_output(&attacker_recipient, 10, context),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        let mut rebate = valid.clone();
+        let mut data = rebate.call_data.to_vec();
+        data[176..196].copy_from_slice(ATTACKER.as_slice());
+        rebate.call_data = data.into();
+        assert!(matches!(
+            validate_with_required_output(&rebate, 10, context),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        let mut unlimited = valid.clone();
+        unlimited.allowances[0].0.amount = U256::MAX;
+        assert!(matches!(
+            validate_with_required_output(&unlimited, 10, context),
+            Err(Error::AmountTooLarge { .. })
         ));
     }
 

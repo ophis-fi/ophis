@@ -21,12 +21,14 @@ use {
 
 fn required_custom_amounts(
     solution: &solvers_dto::solution::Solution,
-    auction: &competition::Auction,
+    orders: &[competition::Order],
 ) -> Result<Option<competition::solution::custom_allowlist::RequiredAmounts>, super::Error> {
     const FXUSD: alloy::primitives::Address =
         alloy::primitives::address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
     const OPTIMISM_CURVE_3POOL: alloy::primitives::Address =
         alloy::primitives::address!("1337BedC9D22ecbe766dF105c9623922A27963EC");
+    const OPTIMISM_WOOFI_ROUTER: alloy::primitives::Address =
+        alloy::primitives::address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7");
     let protected_interactions: Vec<_> = solution
         .interactions
         .iter()
@@ -34,7 +36,7 @@ fn required_custom_amounts(
             let solvers_dto::solution::Interaction::Custom(custom) = interaction else {
                 return None;
             };
-            [FXUSD, OPTIMISM_CURVE_3POOL]
+            [FXUSD, OPTIMISM_CURVE_3POOL, OPTIMISM_WOOFI_ROUTER]
                 .contains(&custom.target)
                 .then_some(custom.target)
         })
@@ -52,11 +54,7 @@ fn required_custom_amounts(
     let solvers_dto::solution::Trade::Fulfillment(fulfillment) = &solution.trades[0] else {
         return Ok(None);
     };
-    let Some(order) = auction
-        .orders()
-        .iter()
-        .find(|order| order.uid == fulfillment.order.0)
-    else {
+    let Some(order) = orders.iter().find(|order| order.uid == fulfillment.order.0) else {
         return Ok(None);
     };
     let sell = alloy::primitives::Address::from(order.sell.token);
@@ -72,26 +70,26 @@ fn required_custom_amounts(
         .prices
         .get(&sell)
         .copied()
-        .ok_or_else(|| super::Error("missing fxUSD sell clearing price".to_owned()))?;
+        .ok_or_else(|| super::Error("missing protected sell clearing price".to_owned()))?;
     let buy_price = solution
         .prices
         .get(&buy)
         .copied()
         .filter(|price| !price.is_zero())
-        .ok_or_else(|| super::Error("missing or zero F(x) buy clearing price".to_owned()))?;
+        .ok_or_else(|| super::Error("missing or zero protected buy clearing price".to_owned()))?;
     let executed = eth::U256::from(fulfillment.executed_amount);
     let amount_in = executed
         .checked_add(fulfillment.fee.unwrap_or_default())
-        .ok_or_else(|| super::Error("F(x) fulfillment input overflow".to_owned()))?;
+        .ok_or_else(|| super::Error("protected fulfillment input overflow".to_owned()))?;
     let numerator = executed
         .checked_mul(sell_price)
-        .ok_or_else(|| super::Error("F(x) clearing amount overflow".to_owned()))?;
+        .ok_or_else(|| super::Error("protected clearing amount overflow".to_owned()))?;
     let quotient = numerator / buy_price;
     let required = quotient
         .checked_add(eth::U256::from(
             (numerator % buy_price != eth::U256::ZERO) as u8,
         ))
-        .ok_or_else(|| super::Error("F(x) clearing amount overflow".to_owned()))?;
+        .ok_or_else(|| super::Error("protected clearing amount overflow".to_owned()))?;
     Ok(Some(
         competition::solution::custom_allowlist::RequiredAmounts {
             sell_token: sell,
@@ -177,7 +175,7 @@ impl Solutions {
         self.0
             .into_iter()
             .map(|solution| {
-                let required_custom_amounts = required_custom_amounts(&solution, auction)?;
+                let required_custom_amounts = required_custom_amounts(&solution, auction.orders())?;
                 competition::Solution::new(
                     competition::solution::Id::new(solution.id),
                     solution
@@ -586,5 +584,79 @@ impl JitOrder {
             .uid(&DomainSeparator(domain.0), signature.signer)
             .0
             .into())
+    }
+}
+
+#[cfg(test)]
+mod protected_interaction_tests {
+    use super::*;
+    use alloy::primitives::{Address, U256, address};
+
+    #[test]
+    fn woofi_dto_interaction_receives_fulfillment_context() {
+        let sell = address!("4200000000000000000000000000000000000006");
+        let buy = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
+        let target = address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7");
+        let uid = competition::order::Uid::default();
+        let order = competition::Order {
+            uid,
+            receiver: None,
+            created: 0.into(),
+            valid_to: u32::MAX.into(),
+            buy: eth::Asset {
+                token: buy.into(),
+                amount: eth::TokenAmount(U256::from(990)),
+            },
+            sell: eth::Asset {
+                token: sell.into(),
+                amount: eth::TokenAmount(U256::from(1_000)),
+            },
+            side: competition::order::Side::Sell,
+            kind: competition::order::Kind::Market,
+            app_data: Default::default(),
+            partial: competition::order::Partial::No,
+            pre_interactions: vec![],
+            post_interactions: vec![],
+            sell_token_balance: competition::order::SellTokenBalance::Erc20,
+            buy_token_balance: competition::order::BuyTokenBalance::Erc20,
+            signature: competition::order::Signature {
+                scheme: competition::order::signature::Scheme::PreSign,
+                data: Bytes::new(),
+                signer: Address::ZERO,
+            },
+            protocol_fees: vec![],
+            quote: None,
+        };
+        let solution: solvers_dto::solution::Solution = serde_json::from_value(serde_json::json!({
+            "id": 1,
+            "prices": {
+                format!("{sell:#x}"): "990",
+                format!("{buy:#x}"): "1000"
+            },
+            "trades": [{
+                "kind": "fulfillment",
+                "order": format!("0x{}", "00".repeat(56)),
+                "executedAmount": "1000"
+            }],
+            "interactions": [{
+                "kind": "custom",
+                "internalize": false,
+                "target": format!("{target:#x}"),
+                "value": "0",
+                "callData": "0x",
+                "allowances": [],
+                "inputs": [],
+                "outputs": []
+            }]
+        }))
+        .unwrap();
+
+        let context = required_custom_amounts(&solution, &[order])
+            .unwrap()
+            .unwrap();
+        assert_eq!(context.sell_token, sell);
+        assert_eq!(context.buy_token, buy);
+        assert_eq!(context.max_input, U256::from(1_000));
+        assert_eq!(context.min_output, U256::from(990));
     }
 }
