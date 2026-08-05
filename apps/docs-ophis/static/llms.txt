@@ -9,11 +9,11 @@
 
 ## Fees
 
-Ophis charges a flat 0.10% (10 bps) fee on trade volume (0.01% on same-chain stablecoin pairs); SDK/MCP partner integrations charge a reduced 0.05% (5 bps). On the Ophis-operated chains (Optimism, Unichain, Robinhood Chain) the flat Ophis fee is the all-in cost and 100% of any price improvement a solver wins beyond your signed quote stays with you. On CoW-hosted chains, CoW Protocol charges its own fees on top (0.02% volume fee, 0.003% correlated, plus 50% of quote improvement capped at 0.98% of volume), so the fixed all-in there is 0.12% / 0.013%. See [The all-in cost, per chain](https://docs.ophis.fi/fees#the-all-in-cost-per-chain).
+On Ophis-operated Optimism, Unichain, and Robinhood Chain, every path pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 30 bps of volume, or 50% on stable pairs, capped at 10 bps. CoW-hosted chains retain 10 bps retail, 5 bps partner, and 1 bp stablecoin Ophis rates, with CoW Protocol fees applying upstream. See [Fees and price improvement](https://docs.ophis.fi/fees).
 
 Worked examples:
-- Swap $10,000 USDC to ETH on Optimism (a volatile pair): fee is 0.10% = $10 all-in. On a CoW-hosted chain: 0.12% = $12 fixed all-in. See [Volatile pair](https://docs.ophis.fi/fees#volatile-pair-eg-usdc-to-eth-010-flat).
-- Swap $10,000 USDC to USDT on the same chain (a stablecoin pair): fee is 0.01% = $1 on Optimism/Unichain, 0.013% = $1.30 all-in on a CoW-hosted chain. See [Same-chain stablecoin pair](https://docs.ophis.fi/fees#same-chain-stablecoin-pair-eg-usdc-to-usdt-001-flat).
+- A $10,000 volatile trade with 20 bps of reference-quote improvement pays the $1 base plus $16 of captured improvement on an Ophis-operated chain.
+- A $10,000 stablecoin trade with 20 bps of improvement pays the $1 base plus $10 of captured improvement on an Ophis-operated chain.
 - A large share of the fee comes back monthly in WETH rebates. See [Monthly WETH rebates](https://docs.ophis.fi/fees#what-you-get-back-monthly-weth-rebates).
 
 ## Reference

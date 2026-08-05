@@ -20,7 +20,7 @@ export interface EvmChain {
   /** Logo path under public/ (same-origin; CSP img-src is 'self'). */
   logo: string
   /** Ophis-operated sovereign network: Ophis's own GPv2Settlement at a
-      non-canonical address, all-in fee, 100% of surplus returned. */
+      non-canonical address, 1 bp base plus capped reference-improvement capture. */
   sovereign: boolean
 }
 

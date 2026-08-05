@@ -121,6 +121,11 @@ url = "http://driver/enso"
 address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
 
 [fee-policies]
+max-partner-fee = 0.01
+
+[[fee-policies.policies]]
+kind.price-improvement = { factor = 0.80, max-volume-factor = 0.003 }
+order-class = "market"
 
 [database]
 write-url = "%DB_WRITE_URL"

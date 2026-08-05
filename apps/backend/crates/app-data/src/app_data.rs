@@ -131,19 +131,17 @@ impl RecipientPolicy for PermissiveRecipientPolicy {
 /// are the MINIMUM Volume bps the OP self-hosted backend will accept for a fee to
 /// an allowlisted recipient — closing the prior bypass where a Volume fee to the
 /// Ophis recipient could be set to 0 and still settle on our solver stack.
-pub const OPHIS_DEFAULT_VOLUME_FEE_BPS: u64 = 10;
+pub const OPHIS_DEFAULT_VOLUME_FEE_BPS: u64 = 1;
 pub const OPHIS_STABLE_VOLUME_FEE_BPS: u64 = 1;
 
 /// The MINIMUM non-stable Volume bps the OP self-hosted backend ACCEPTS for a
 /// fee to an allowlisted recipient (the anti-zero-bypass floor). DECOUPLED from
-/// OPHIS_DEFAULT_VOLUME_FEE_BPS (the 10 bps RETAIL rate the frontend charges and
-/// mirrors): the ingress floor sits BELOW retail so the partner SDK tier (5 bps)
-/// clears with headroom and a future VIP tier has room, while the frontend keeps
-/// charging 10 bps. Invariant: OPHIS_STABLE_VOLUME_FEE_BPS (1) <=
-/// OPHIS_NON_STABLE_FLOOR_BPS (4) <= OPHIS_DEFAULT_VOLUME_FEE_BPS (10) <= the
+/// OPHIS_DEFAULT_VOLUME_FEE_BPS (the 1 bp sovereign base the frontend and SDK
+/// mirror). Invariant: OPHIS_STABLE_VOLUME_FEE_BPS (1) ==
+/// OPHIS_NON_STABLE_FLOOR_BPS (1) == OPHIS_DEFAULT_VOLUME_FEE_BPS (1) <= the
 /// autopilot max_partner_fee cap (100). A floor (min accepted), never an upper
 /// bound and never the fee a user is charged.
-pub const OPHIS_NON_STABLE_FLOOR_BPS: u64 = 4;
+pub const OPHIS_NON_STABLE_FLOOR_BPS: u64 = 1;
 
 /// Optimism (chain 10) stablecoin set, mirrored from the frontend
 /// `OPTIMISM_STABLECOINS` (libs/common-const/src/tokens.ts). A swap where BOTH
@@ -177,9 +175,8 @@ const OPTIMISM_BOOSTED_TOKENS: &[Address] = &[];
 /// added after the partner Safe is independently verified and allowlisted.
 fn recipient_base_floor_bps(_recipient: Address) -> u64 {
     // Only the Ophis Safe is allowlisted today, floored at OPHIS_NON_STABLE_FLOOR_BPS
-    // (4 bps). The frontend still CHARGES the 10 bps retail rate; this floor only sets
-    // the minimum the backend accepts, leaving room for the 5 bps partner SDK tier and
-    // a future sub-5-bps VIP tier keyed on the recipient:
+    // (1 bp). The frontend and SDK charge the same sovereign base; hosted-chain
+    // pricing is enforced by the hosted orderbook and is outside this floor.
     //   if recipient == LAGOON_PARTNER_FEE_RECIPIENT { 4 } else { OPHIS_NON_STABLE_FLOOR_BPS }
     OPHIS_NON_STABLE_FLOOR_BPS
 }
@@ -200,6 +197,13 @@ pub fn partner_fee_floor_bps(sell_token: Address, buy_token: Address, recipient:
     } else {
         recipient_base_floor_bps(recipient)
     }
+}
+
+/// Whether both legs are recognized Optimism stablecoins. The autopilot uses
+/// this non-spoofable token-pair classification to select Ophis's reduced 50%
+/// stablecoin price-improvement capture instead of the standard 80% policy.
+pub fn is_ophis_stable_pair(sell_token: Address, buy_token: Address) -> bool {
+    OPTIMISM_STABLECOINS.contains(&sell_token) && OPTIMISM_STABLECOINS.contains(&buy_token)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1228,7 +1232,7 @@ mod tests {
     fn partner_fee_floor_is_token_pair_aware() {
         // Mirrors the frontend: same-chain stable pairs (both OP stablecoins) and
         // boosted pairs floor at 1 bp; everything else floors at the recipient base
-        // rate (10 bps for the Ophis recipient). Keyed on on-chain token addresses
+        // rate (1 bp for the Ophis recipient). Keyed on on-chain token addresses
         // (non-spoofable), closing the prior 0-fee bypass.
         let usdc = address!("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
         let usdt = address!("0x94b008aA00579c1307B0EF2c499aD98a8ce58e58");

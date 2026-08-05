@@ -66,6 +66,11 @@ url = "http://driver/uniswap-v4"
 address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
 
 [fee-policies]
+max-partner-fee = 0.01
+
+[[fee-policies.policies]]
+kind.price-improvement = { factor = 0.80, max-volume-factor = 0.003 }
+order-class = "market"
 
 [database]
 write-url = "%DB_WRITE_URL"

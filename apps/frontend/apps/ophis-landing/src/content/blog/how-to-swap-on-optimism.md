@@ -1,6 +1,6 @@
 ---
 title: "Swap on Optimism: MEV-protected DEX aggregator + rebates"
-description: "How to swap on Optimism with Ophis: intent orders with a hard limit price, MEV-protected batch settlement, a flat 0.10% fee, and volume rebates up to 50%."
+description: "How to swap on Optimism with Ophis: intent orders, MEV-protected batch settlement, and solver-aligned pricing."
 pubDate: 2026-07-13
 author: Ophis
 tags: [optimism, dex-aggregator, mev, rebates, swaps]
@@ -9,7 +9,7 @@ cover: ./how-to-swap-on-optimism.cover.jpg
 coverAlt: "Ophis emblem with Optimism and supported chain logos"
 ---
 
-To swap on Optimism, open the Ophis swap page with chain id 10 pre-selected, pick your pair, and sign the order your wallet shows. That order is an EIP-712 intent with a hard limit price, not a transaction: a competing solver network fills it and settles it in an MEV-protected batch. The fee is a flat 0.10% of trade volume, and active traders earn a share of a monthly WETH rebate pool, weighted by 30-day volume tier.
+To swap on Optimism, open the Ophis swap page with chain id 10 pre-selected, pick your pair, and sign the order your wallet shows. That order is an EIP-712 intent with a hard limit price, not a transaction: a competing solver network fills it and settles it in an MEV-protected batch. Pricing is a 1 bp base plus capped reference-quote improvement capture; see the [current schedule](/pricing/).
 
 Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's frontend with a natural-language intent layer and an agent stack (MCP server, SDK, plugins) on top. It runs on 13 EVM chains, and Optimism is one of three where the deployment is sovereign, alongside [Unichain](/blog/how-to-swap-on-unichain/) and [Robinhood Chain](/blog/swap-on-robinhood-chain/): Ophis operates its own orderbook and settlement contracts there. This post covers the flow, what batch settlement changes versus a router, what it costs, and how integrators earn on referred flow.
 
@@ -17,7 +17,7 @@ Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's 
 
 1. **Open the app.** [swap.ophis.fi/#/10/swap](https://swap.ophis.fi/#/10/swap) loads with Optimism (chain id 10) pre-selected. Connect a wallet. Ophis is self-custodial: it never holds your funds, and nothing moves without your EIP-712 or ERC-1271 signature.
 2. **Sign an intent, not a transaction.** Enter the pair and amount, review the quote, and sign the order. The signature carries a hard limit price, the worst execution you can receive. Orders are gasless: no native token needed, the fee comes out of the traded amount.
-3. **Let solvers compete.** Your order goes to the Ophis orderbook off chain, where solvers race to fill it. The batch settles at a uniform clearing price, and 100% of any price improvement beyond your signed quote comes back to you as surplus. The fee takes no share of it.
+3. **Let solvers compete.** Your order goes to the Ophis orderbook off chain, where solvers race to fill it. The batch settles at a uniform clearing price, and improvement is shared under the published capped pricing policy.
 4. **Watch the rebate meter.** The swap page shows your rolling 30-day volume tier and your progress toward the next one. From $20,000 of 30-day volume you enter the tier ladder, and a higher tier means a larger share of the monthly rebate pool.
 
 Step for step, this is the same flow as on any other Ophis chain. What is different on Optimism sits underneath.
@@ -48,7 +48,7 @@ The [comparison page](https://docs.ophis.fi/comparison) goes deeper on the trade
 
 ## Fees and the rebate ladder
 
-Pricing is one number: a flat 0.10% (10 bps) fee on trade volume, every trade. Same-chain stablecoin-to-stablecoin swaps pay 0.01% (1 bp).
+Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 30 bps of volume, or 50% on stable pairs, capped at 10 bps.
 
 Volume then earns part of that back. Tiers follow your rolling 30-day volume:
 

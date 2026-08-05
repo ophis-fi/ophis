@@ -21,7 +21,7 @@ const FAQS = [
   },
   {
     q: 'Why does solver competition help me?',
-    a: `Because the auction turns routing skill into your price instead of the router's margin. Every solver that finds a better fill than the current best has an incentive to bid it, since that is how it wins the batch. Whatever execution the winner achieves beyond your signed limit is surplus. Ophis takes no cut of it on any chain: on the Ophis-operated chains 100% is returned to the trader, while on CoW-hosted chains CoW Protocol retains 50% of quote improvement upstream before the remainder is returned.`,
+    a: `Because the auction turns routing skill into a competitive price. Every solver that finds a better fill has an incentive to bid it, since that is how it wins the batch. On Ophis-operated chains, Ophis retains a capped share of improvement measured against the signed reference quote, and the trader receives the remainder. CoW-hosted chains follow CoW Protocol's upstream policy.`,
   },
   {
     q: 'What happens if a solver fails or misbehaves?',

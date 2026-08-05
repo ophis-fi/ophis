@@ -119,6 +119,9 @@ pub struct ProtocolFees {
 }
 
 impl ProtocolFees {
+    const OPHIS_STABLE_PRICE_IMPROVEMENT_FACTOR: f64 = 0.50;
+    const OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_FACTOR: f64 = 0.001;
+
     pub fn new(
         config: &FeePoliciesConfig,
         volume_fee_bucket_overrides: Vec<TokenBucketFeeOverride>,
@@ -129,15 +132,12 @@ impl ProtocolFees {
         // the operator-set UPPER cap applied to every partner fee in
         // `get_partner_fee` via `fee_factor_from_capped`. The recipient allowlist
         // means every partner fee is an Ophis fee. The HIGHEST rate any legitimate
-        // Ophis order carries is OPHIS_DEFAULT_VOLUME_FEE_BPS, the 10 bps RETAIL
-        // rate the front-end emits (the SDK partner rate is 5 bps and the stable
-        // rate 1 bp, both below it). The front-end pins its env to EXACTLY this
-        // retail rate (readVolumeFeeBps enables the flat fee only for that value),
-        // so no Ophis order can carry MORE than the retail rate; therefore
+        // Ophis-operated orders carry the 1 bp sovereign base. Hosted-chain
+        // 10/5/1 bps pricing never reaches this autopilot. Therefore
         // `cap >= retail` is exactly sufficient — no super-retail order exists for
         // the cap to wrongly pass. A cap below the retail rate would silently clamp
-        // a legitimate 10 bps retail order DOWN at settlement (and, a fortiori,
-        // could undercut the 4 bps floor on the eth-flow / on-chain path that skips
+        // a legitimate 1 bp base DOWN at settlement (and, a fortiori,
+        // could undercut the 1 bp floor on the eth-flow / on-chain path that skips
         // ingress). Fail fast at startup rather than under-charge at settlement.
         let cap = config.max_partner_fee.get();
         let retail_bps = app_data::OPHIS_DEFAULT_VOLUME_FEE_BPS;
@@ -416,6 +416,16 @@ impl ProtocolFees {
     ) -> Option<Policy> {
         match policy {
             policy::Policy::Surplus(variant) => variant.apply(order),
+            policy::Policy::PriceImprovement(variant)
+                if app_data::is_ophis_stable_pair(order.data.sell_token, order.data.buy_token) =>
+            {
+                variant.apply_with_override(
+                    order,
+                    quote,
+                    FeeFactor::new(Self::OPHIS_STABLE_PRICE_IMPROVEMENT_FACTOR),
+                    FeeFactor::new(Self::OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_FACTOR),
+                )
+            }
             policy::Policy::PriceImprovement(variant) => variant.apply(order, quote),
             policy::Policy::Volume(variant) => variant.apply(order, &self.volume_fee_policy),
         }
@@ -501,12 +511,12 @@ mod test {
     #[test]
     #[should_panic(expected = "below the Ophis retail rate")]
     fn new_panics_when_max_partner_fee_below_floor() {
-        // A cap below the 10 bps retail rate would let the autopilot's upper cap
+        // A cap below the 1 bp sovereign base would let the autopilot's upper cap
         // settle a legitimate retail order BELOW retail (and could undercut the
         // floor on the eth-flow path that skips ingress). The constructor must
         // refuse to build (fail fast at boot).
         let config = FeePoliciesConfig {
-            max_partner_fee: FeeFactor::new(0.0005), // 5 bps < 10 bps retail
+            max_partner_fee: FeeFactor::new(0.00005), // 0.5 bps < 1 bp base
             ..Default::default()
         };
         let _ = ProtocolFees::new(&config, vec![], false, Arc::new(app_data::AllowlistRecipientPolicy));
@@ -610,7 +620,7 @@ mod test {
         // token-pair floor by the defense-in-depth autopilot floor (mirrors the
         // orderbook ingress validator). This closes the prior 0-fee bypass for any
         // path that skips the off-chain ingress (eth-flow / on-chain orders, stale
-        // DB rows). The order's default token pair is non-stable -> the 4 bps floor.
+        // DB rows). The order's default token pair uses the 1 bp sovereign floor.
         let order = boundary::Order {
             metadata: OrderMetadata {
                 full_app_data: Some(
@@ -639,12 +649,11 @@ mod test {
         let max_partner_fee = 0.3; // 30%
         let result = ProtocolFees::get_partner_fee(&order, &Default::default(), max_partner_fee, &app_data::AllowlistRecipientPolicy);
 
-        // Expected: 0 bps clamped UP to the 4 bps floor (default tokens are
-        // non-stable; 4 bps = 0.0004), never settling a sub-floor Volume fee.
+        // Expected: 0 bps clamped UP to the 1 bp sovereign base.
         assert_eq!(
             result,
             vec![Policy::Volume {
-                factor: FeeFactor::try_from(0.0004).unwrap(),
+                factor: FeeFactor::try_from(0.0001).unwrap(),
             }]
         );
     }
@@ -994,11 +1003,11 @@ mod test {
     #[test]
     fn surplus_fee_to_allowlisted_recipient_neutralized_to_floor() {
         // Default (non-stable) token pair, so the floor is
-        // OPHIS_NON_STABLE_FLOOR_BPS (4 bps = 0.0004). The surplus bps value is
+        // OPHIS_NON_STABLE_FLOOR_BPS (1 bp = 0.0001). The surplus bps value is
         // irrelevant: it is discarded and replaced by the token-pair floor, so a
         // near-zero surplus fee on an eth-flow order can never be used to settle
         // below the minimum. max_partner_fee = 1.0 here, so the cap never binds.
-        let floor = FeeFactor::try_from(0.0004).unwrap();
+        let floor = FeeFactor::try_from(0.0001).unwrap();
         assert_eq!(neutralized_surplus_factor(0), floor);
         assert_eq!(neutralized_surplus_factor(1), floor);
         assert_eq!(neutralized_surplus_factor(2500), floor);
@@ -1008,7 +1017,7 @@ mod test {
 
     #[test]
     fn price_improvement_fee_to_allowlisted_recipient_neutralized_to_floor() {
-        let floor = FeeFactor::try_from(0.0004).unwrap();
+        let floor = FeeFactor::try_from(0.0001).unwrap();
         assert_eq!(neutralized_price_improvement_factor(0), floor);
         assert_eq!(neutralized_price_improvement_factor(2500), floor);
         assert_eq!(neutralized_price_improvement_factor(9999), floor);

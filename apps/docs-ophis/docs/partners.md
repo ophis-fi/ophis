@@ -8,6 +8,14 @@ sidebar_position: 4
 
 # Partner integration (SDK)
 
+:::important Sovereign-chain pricing
+On Ophis-operated Optimism, Unichain, and Robinhood Chain, the SDK writes the
+required 1 bp base fee and the backend applies the protocol policy: 80% of
+reference-quote improvement on volatile pairs (30 bps cap), or 50% on stable
+pairs (10 bps cap). The legacy 5 bps partner rate remains only on CoW-hosted
+chains. Integrator own-fees remain separate, and Ophis takes 0% of that markup.
+:::
+
 This guide is for teams that run their **own** swap or treasury tool (for
 example a vault rebalancing console) and want to route orders through Ophis,
 charge the Ophis fee, and earn a rebate, signing with a smart-contract wallet
@@ -304,10 +312,10 @@ with the Ophis-operated chains.
 
 An SDK integration earns on three layers, and all three numbers are published:
 
-1. **Your users pay the reduced 5 bps partner rate** (1 bp on same-chain
-   stablecoin pairs) instead of the 10 bps retail rate the Ophis front-end
-   charges. On Optimism, Unichain, and Robinhood Chain that 5 bps is all-in; on CoW-hosted
-   chains, CoW Protocol's own fees apply on top (see
+1. **Your users get the chain's published integration pricing.** On sovereign
+   chains that is the 1 bp base plus capped improvement capture described above.
+   On CoW-hosted chains, the reduced 5 bps partner rate applies (1 bp on
+   same-chain stablecoin pairs), with CoW Protocol's own fees on top (see
    [Fees & rebates](./fees.md#the-all-in-cost-per-chain)).
 2. **You earn a share of the fee Ophis keeps** on every trade you route: 8%
    on the self-serve tier, **12% on the partner tier** (uncapped referred

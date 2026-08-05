@@ -29,7 +29,7 @@ export const howToLd = {
       '@type': 'HowToStep',
       name: 'Intent: parse the request',
       url: 'https://docs.ophis.fi/getting-started#1--intent-parse-the-request',
-      text: 'Open ophis.fi, connect your wallet, and type the swap as a plain sentence such as swap 100 USDC for ETH on Base. An open LLM extracts the sell token, buy token, amount, and chain into a structured order and pre-fills the swap form. Ophis is non-custodial and charges a flat 0.10% (10 bps) fee on trade volume, or 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps.',
+      text: 'Open ophis.fi, connect your wallet, and type the swap as a plain sentence such as swap 100 USDC for ETH on Base. An open LLM extracts the sell token, buy token, amount, and chain into a structured order and pre-fills the swap form. Ophis is non-custodial; fee terms depend on whether the chain is Ophis-operated or CoW-hosted.',
     },
     {
       '@type': 'HowToStep',
@@ -41,7 +41,7 @@ export const howToLd = {
       '@type': 'HowToStep',
       name: 'Settle: on-chain, MEV-protected',
       url: 'https://docs.ophis.fi/getting-started#3--settle-on-chain-mev-protected',
-      text: 'The winning solver settles the signed order without exposing it as a public-mempool router swap. The signed limit price is enforced on-chain; on Robinhood Chain, paying a higher priority fee does not buy earlier sequencer ordering. Ophis takes no cut of surplus: on the Ophis-operated chains (Optimism, Unichain, Robinhood Chain) 100% of price surplus goes to the trader; on CoW-hosted chains CoW Protocol retains 50% of quote improvement.',
+      text: 'The winning solver settles the signed order without exposing it as a public-mempool router swap. The signed limit price is enforced on-chain. On Ophis-operated chains, Ophis retains a capped share of improvement over its reference quote; on CoW-hosted chains CoW Protocol applies its upstream improvement policy.',
     },
   ],
 };

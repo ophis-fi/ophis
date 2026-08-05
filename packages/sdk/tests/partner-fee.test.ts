@@ -5,6 +5,7 @@ import {
   OPHIS_PARTNER_FEE_RECIPIENT,
   OPHIS_VOLUME_FEE_BPS,
   OPHIS_STABLE_VOLUME_FEE_BPS,
+  OPHIS_SOVEREIGN_VOLUME_FEE_BPS,
   ophisVolumeBpsForPair,
   OPHIS_FEE_CHAIN_IDS,
 } from '@ophis/sdk';
@@ -27,7 +28,7 @@ describe('@ophis/sdk partner fee defaults', () => {
   it('returns the CIP-75 flat volume fee on Ophis-operated chains', () => {
     for (const chainId of [10, 4326, 999]) {
       const fee = ophisDefaultPartnerFee(chainId);
-      expect(fee?.volumeBps).toBe(5);
+      expect(fee?.volumeBps).toBe(OPHIS_SOVEREIGN_VOLUME_FEE_BPS);
       expect(fee?.recipient).toBe(OPHIS_PARTNER_FEE_RECIPIENT);
     }
   });
@@ -75,7 +76,7 @@ describe('@ophis/sdk partner fee defaults', () => {
 
   it('buildOphisAppDataPartnerFee returns the exact appData.metadata.partnerFee fragment', () => {
     expect(buildOphisAppDataPartnerFee(10)).toEqual({
-      volumeBps: 5,
+      volumeBps: 1,
       recipient: OPHIS_PARTNER_FEE_RECIPIENT,
     });
     expect(buildOphisAppDataPartnerFee(1)).toEqual({

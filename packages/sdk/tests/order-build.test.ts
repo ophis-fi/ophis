@@ -41,7 +41,7 @@ describe('buildOphisFullAppData', () => {
   it('embeds the CIP-75 partner fee on an Ophis fee chain (Optimism)', () => {
     const ad = buildOphisFullAppData(10);
     expect(ad.partnerFee).toEqual({
-      volumeBps: 5,
+      volumeBps: 1,
       recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
     });
     expect(ad.doc.version).toBe(APP_DATA_VERSION);
@@ -82,13 +82,13 @@ describe('buildOphisFullAppData', () => {
     const entries = (ad.doc.metadata as { partnerFee: unknown }).partnerFee;
     expect(Array.isArray(entries)).toBe(true);
     expect(entries).toEqual([
-      { volumeBps: 5, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' },
+      { volumeBps: 1, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' },
       { volumeBps: 10, recipient: ATTACKER },
     ]);
     // The single Ophis default is still surfaced on the return for callers that
     // read `.partnerFee`; the extras live in the doc/appData.
     expect(ad.partnerFee).toEqual({
-      volumeBps: 5,
+      volumeBps: 1,
       recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
     });
     expect(ad.appDataHash).toBe(keccak256(toBytes(ad.fullAppData)));
@@ -99,7 +99,7 @@ describe('buildOphisFullAppData', () => {
     const without = buildOphisFullAppData(10);
     expect(withEmpty.fullAppData).toBe(without.fullAppData);
     expect((withEmpty.doc.metadata as { partnerFee: unknown }).partnerFee).toEqual({
-      volumeBps: 5,
+      volumeBps: 1,
       recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
     });
   });

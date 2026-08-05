@@ -9,7 +9,7 @@ cover: ./how-to-swap-on-unichain.cover.jpg
 coverAlt: "Ophis emblem with Unichain and supported chain logos"
 ---
 
-To swap on Unichain, open [swap.ophis.fi/#/130/swap](https://swap.ophis.fi/#/130/swap), connect your wallet, pick or describe the pair, and sign an EIP-712 order. You never broadcast a transaction and you pay no gas for the swap itself: a network of competing solvers fills the order and settles it on-chain in a batch, MEV-protected by construction. The rest of this guide walks through each step, explains what happens after you sign, and covers the cost (a flat 0.10% fee, 0.01% for same-chain stablecoin-to-stablecoin trades).
+To swap on Unichain, open [swap.ophis.fi/#/130/swap](https://swap.ophis.fi/#/130/swap), connect your wallet, pick or describe the pair, and sign an EIP-712 order. You never broadcast a transaction and you pay no gas for the swap itself: competing solvers fill the order and settle it on-chain in an MEV-protected batch. Pricing is a 1 bp base plus capped reference-quote improvement capture.
 
 Context in two sentences. Unichain is chain id 130, one of the 13 EVM chains Ophis supports. [Ophis](https://ophis.fi/) is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top, and on Unichain it runs a deployment of its own, which matters in one specific way covered below.
 
@@ -43,7 +43,7 @@ If you swap through the page, this changes nothing; the app targets the right co
 
 ## Fees and volume rebates
 
-Every trade pays a flat 0.10% of volume. Same-chain stablecoin-to-stablecoin trades pay 0.01%. The fee is charged in the surplus token, which on a standard sell order is the token you receive, and it takes no share of any surplus your order earns.
+Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs (30 bps cap) or 50% on stable pairs (10 bps cap).
 
 Trade enough and part of it comes back. Rebate tiers run on rolling 30-day volume: Bronze ($20,000+) 10%, Silver ($50,000+) 15%, Gold ($100,000+) 25%, Palladium ($500,000+) 35%, Platinum ($1,000,000+) 50%. Rebates are paid monthly in WETH from the fee Safe, out of a pool of 21.25% of collected WETH fees split by tier-weighted 30-day volume. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) have the full breakdown.
 
@@ -61,11 +61,11 @@ No. Orders are gasless (no native token needed): you sign a typed-data message, 
 
 ### What tokens can I trade on Unichain?
 
-Solvers compete to fill the order you sign, so what matters in practice is the liquidity available for the pair on Unichain at your limit price. The limit is the worst execution you can receive, and 100% of any price improvement beyond it goes to you.
+Solvers compete to fill the order you sign, so what matters in practice is the liquidity available for the pair on Unichain at your limit price. The limit remains the worst execution you can receive; improvement against the reference quote is shared under the capped pricing policy.
 
 ### Is there a fee?
 
-Yes. A flat 0.10% of trade volume, reduced to 0.01% for same-chain stablecoin-to-stablecoin pairs, charged in the surplus token (the token you receive on a standard sell order). It takes no share of surplus, and volume rebate tiers (10% to 50% by rolling 30-day volume) weight your share of a monthly WETH rebate pool.
+Yes. A 1 bp base plus 80% of reference-quote improvement on volatile pairs (30 bps cap), or 50% on stable pairs (10 bps cap). See the [pricing page](/pricing/) for worked examples.
 
 ### Can AI agents swap on Unichain?
 

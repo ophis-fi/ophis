@@ -55,13 +55,14 @@ export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF181
 // partner rate. Decoupled from the backend floor (BACKEND_NON_STABLE_FLOOR_BPS).
 const OPHIS_FRONTEND_OP_VOLUME_BPS = 10
 // The OP self-hosted backend's MINIMUM non-stable Volume bps (mirrors
-// app_data.rs OPHIS_NON_STABLE_FLOOR_BPS = 4). The cross-workspace floor-invariant
+// app_data.rs OPHIS_NON_STABLE_FLOOR_BPS = 1). The cross-workspace floor-invariant
 // gate (scripts/check-floor-invariant.sh) greps this declaration to assert
 // floor(4) <= partner(5) <= retail(10). It is NOT the env bound: partner
 // integrations charge 5 bps (via @ophis/sdk) above this floor while swap.ophis.fi
-// keeps the 10 bps retail rate. Exported (not a bare local) so it documents the
+// keeps the 10 bps hosted retail rate. Exported so it documents the
 // mirrored backend floor for any consumer and is not flagged as an unused local.
-export const BACKEND_NON_STABLE_FLOOR_BPS = 4
+export const BACKEND_NON_STABLE_FLOOR_BPS = 1
+export const OPHIS_SOVEREIGN_BASE_FEE_BPS = 1
 function readVolumeFeeBps(): number {
   // EXACT-STRING match against the retail rate, identical to the CI deploy guard's
   // byte compare (`[[ "$BPS" != "10" ]]` in cloudflare-deploy.yml). Using the raw
@@ -135,8 +136,8 @@ export const OPHIS_DEFAULT_APP_DATA_PARTNER_FEE = {
  */
 const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10, 130, 4663])
 
-/** The OP non-stable RETAIL fee the front-end charges and writes on-chain (OPHIS_FRONTEND_OP_VOLUME_BPS = 10 bps, hoisted above). */
-export const OPHIS_NON_STABLE_VOLUME_BPS = OPHIS_FRONTEND_OP_VOLUME_BPS
+/** The 1 bp base the front-end writes on Ophis-operated chains. */
+export const OPHIS_NON_STABLE_VOLUME_BPS = OPHIS_SOVEREIGN_BASE_FEE_BPS
 
 /** True on a self-hosted, Volume-only, fee-floor-enforcing chain (Optimism, Unichain today). */
 export function isVolumeOnlyChain(chainId: number | undefined): boolean {
@@ -152,7 +153,7 @@ export function isVolumeOnlyChain(chainId: number | undefined): boolean {
  * SINGLE source used for BOTH the displayed fee row and the on-chain appData fee
  * (see volumeFeeAtom), so the two never diverge. `reducedRate` true (a same-chain
  * stablecoin pair or a boosted token) floors at the reduced 1 bp; otherwise the
- * 10 bps non-stable floor. Recipient is the canonical Ophis Safe.
+ * 1 bp sovereign base. Recipient is the canonical Ophis Safe.
  */
 export function ophisVolumeOnlyFloorFee(
   chainId: number | undefined,

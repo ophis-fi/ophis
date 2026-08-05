@@ -22,7 +22,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'What does Ophis charge?',
-    a: 'Ophis applies a flat 0.10% (10 bps) fee on trade volume, with a reduced 0.01% (1 bp) on same-chain stablecoin-to-stablecoin swaps. The fee is on volume only: Ophis takes no cut of surplus on any chain. On its operated chains, Optimism, Unichain, and Robinhood Chain, that fee is the all-in cost and 100% of any price improvement a solver finds beyond your signed quote is returned to the trader; on CoW-hosted chains CoW Protocol adds its own fees on top: a 0.02% volume fee (0.003% on correlated pairs) plus 50% of quote improvement, capped at 0.98% of volume. The public Intent API and the MCP server are free.',
+    a: 'On Ophis-operated chains every trade pays a 1 bp base fee. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 30 bps of volume, or 50% on stablecoin pairs, capped at 10 bps. CoW-hosted chains retain the existing flat Ophis rates and CoW Protocol adds its own upstream fees. The public Intent API and MCP server are free.',
   },
   {
     q: 'Which chains does Ophis support?',
@@ -30,7 +30,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'How is Ophis different from CoW Swap?',
-    a: 'Ophis is a CoW Protocol fork focused on autonomous agents. It runs its own GPv2Settlement contract at a non-canonical address on its operated chains (Optimism, Unichain, and Robinhood Chain), exposes a public MCP server and Intent API, ships the @ophis/sdk agent-safety helpers, and applies a flat 0.10% volume fee. Agents must resolve the per-chain settlement domain via the SDK or MCP before signing, because the CoW canonical address yields a domain the deployed contract rejects.',
+    a: 'Ophis is a CoW Protocol fork focused on autonomous agents. It runs its own GPv2Settlement contract at a non-canonical address on its operated chains, exposes a public MCP server and Intent API, ships the @ophis/sdk agent-safety helpers, and uses solver-aligned price-improvement pricing there. Agents must resolve the per-chain settlement domain via the SDK or MCP before signing.',
   },
   {
     q: 'Is MEV protection guaranteed?',
