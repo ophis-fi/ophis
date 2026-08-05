@@ -16,7 +16,11 @@ struct Config {
 }
 
 pub async fn load(path: &Path) -> super::Config {
-    let (base, config) = file::load::<Config>(path).await;
+    let (mut base, config) = file::load::<Config>(path).await;
+    // F(x) redemption must execute onchain so its minOut protects the actual
+    // fulfillment. Buffer internalization would skip the call and is therefore
+    // never valid for this lane, regardless of the shared default.
+    base.internalize_interactions = false;
     let provider = blockchain::rpc(&base.node_url).provider;
     super::Config {
         fx: fx::Config {

@@ -19,6 +19,55 @@ use {
     std::{collections::HashMap, str::FromStr},
 };
 
+fn required_fx_output(
+    solution: &solvers_dto::solution::Solution,
+    auction: &competition::Auction,
+) -> Result<Option<eth::U256>, super::Error> {
+    const FXUSD: alloy::primitives::Address =
+        alloy::primitives::address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
+    if solution.trades.len() != 1 {
+        return Ok(None);
+    }
+    let solvers_dto::solution::Trade::Fulfillment(fulfillment) = &solution.trades[0] else {
+        return Ok(None);
+    };
+    let Some(order) = auction
+        .orders()
+        .iter()
+        .find(|order| order.uid == fulfillment.order.0)
+    else {
+        return Ok(None);
+    };
+    if alloy::primitives::Address::from(order.sell.token) != FXUSD
+        || order.side != competition::order::Side::Sell
+    {
+        return Ok(None);
+    }
+    let sell = alloy::primitives::Address::from(order.sell.token);
+    let buy = alloy::primitives::Address::from(order.buy.token);
+    let sell_price = solution
+        .prices
+        .get(&sell)
+        .copied()
+        .ok_or_else(|| super::Error("missing fxUSD sell clearing price".to_owned()))?;
+    let buy_price = solution
+        .prices
+        .get(&buy)
+        .copied()
+        .filter(|price| !price.is_zero())
+        .ok_or_else(|| super::Error("missing or zero F(x) buy clearing price".to_owned()))?;
+    let numerator = eth::U256::from(fulfillment.executed_amount)
+        .checked_mul(sell_price)
+        .ok_or_else(|| super::Error("F(x) clearing amount overflow".to_owned()))?;
+    let quotient = numerator / buy_price;
+    let required = quotient
+        .checked_add(eth::U256::from(
+            (numerator % buy_price != eth::U256::ZERO) as u8,
+        ))
+        .ok_or_else(|| super::Error("F(x) clearing amount overflow".to_owned()))?;
+    Ok(Some(required))
+}
+
 /// Validate a solver-supplied raw `Call`-style interaction (used for
 /// `pre_interactions` and `post_interactions`) against the driver-level
 /// allowlist + value cap. Emits the `custom_interaction_rejected` metric
@@ -90,6 +139,7 @@ impl Solutions {
         self.0
             .into_iter()
             .map(|solution| {
+                let required_fx_output = required_fx_output(&solution, auction)?;
                 competition::Solution::new(
                     competition::solution::Id::new(solution.id),
                     solution
@@ -267,8 +317,8 @@ impl Solutions {
                                 // ALLOWLISTs in solvers/src/infra/dex/*.
                                 let chain_id = solver.eth.chain().id();
                                 if let Err(err) =
-                                    competition::solution::custom_allowlist::validate(
-                                        &custom, chain_id,
+                                    competition::solution::custom_allowlist::validate_with_required_output(
+                                        &custom, chain_id, required_fx_output,
                                     )
                                 {
                                     crate::infra::observe::metrics::get()
