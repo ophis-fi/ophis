@@ -38,6 +38,14 @@ describe('resolvePartnerFeeFeeds', () => {
     );
   });
 
+  it.each([10, 130, 4663])('treats blank RPC overrides as unset for defaulted chain %i', (chainId) => {
+    vi.stubEnv(`PARTNER_FEE_RPC_URL_${chainId}`, '   ');
+    vi.stubEnv(`SETTLE_RPC_URL_${chainId}`, '');
+    expect(resolvePartnerFeeFeeds(`${chainId}=https://x.test/feed`)).toEqual([
+      { chainId, url: 'https://x.test/feed' },
+    ]);
+  });
+
   it('rejects a malformed url / duplicate chain', () => {
     expect(() => resolvePartnerFeeFeeds('10=not-a-url')).toThrow(/invalid url/i);
     expect(() => resolvePartnerFeeFeeds('10=https://a.test,10=https://b.test')).toThrow(/duplicate/i);

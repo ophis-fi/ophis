@@ -15,8 +15,15 @@ const DEFAULT_RPC: Record<number, string> = {
   130: 'https://mainnet.unichain.org',
   4663: 'https://rpc.mainnet.chain.robinhood.com',
 };
+function nonBlankEnv(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
 function partnerFeeRpc(chainId: number): string {
-  const url = process.env[`PARTNER_FEE_RPC_URL_${chainId}`] ?? process.env[`SETTLE_RPC_URL_${chainId}`] ?? DEFAULT_RPC[chainId];
+  const url =
+    nonBlankEnv(process.env[`PARTNER_FEE_RPC_URL_${chainId}`]) ??
+    nonBlankEnv(process.env[`SETTLE_RPC_URL_${chainId}`]) ??
+    DEFAULT_RPC[chainId];
   if (!url) {
     throw new Error(
       `partner-fee feed: no RPC configured for chain ${chainId}; set PARTNER_FEE_RPC_URL_${chainId} or SETTLE_RPC_URL_${chainId}`,
