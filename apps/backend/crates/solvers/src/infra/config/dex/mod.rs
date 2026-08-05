@@ -1,4 +1,5 @@
 pub mod bitget;
+pub mod curve;
 pub mod dodo;
 pub mod enso;
 pub mod file;

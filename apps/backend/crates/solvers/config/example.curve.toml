@@ -1,0 +1,14 @@
+node-url = "https://mainnet.optimism.io"
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+internalize-interactions = false
+strict-market-output-simulation = "all"
+
+[[dex.pools]]
+# Curve Optimism 3pool. Coin order is authenticated from Curve's canonical
+# curve-js deployment registry and must match the pool's onchain indices.
+address = "0x1337BedC9D22ecbe766dF105c9623922A27963EC"
+coins = [
+  "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", # DAI
+  "0x7F5c764cBc14f9669B88837ca1490cCa17c31607", # USDC.e
+  "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58", # USDT
+]
