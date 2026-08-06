@@ -9,8 +9,11 @@ strict-market-output-simulation = "all"
 [dex]
 chain-id = 4663
 # Immutable OphisUniswapV4Adapter deployed for the chain-4663 Settlement.
-adapter = "0x0000000000000000000000000000000000000000"
-# Defaults below are Uniswap's official Robinhood deployments.
+adapter = "0x8573c5fcf5bd890f4edd4a41e783eac552b307ae"
+# All pool-key and deployment fields are mandatory; there are no cross-chain
+# defaults that can silently select the wrong network's contracts.
 quoter = "0x8dc178efb8111bb0973dd9d722ebeff267c98f94"
 wrapped-native = "0x0bd7d308f8e1639fab988df18a8011f41eacad73"
 stablecoin = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
+pool-fee = 500
+tick-spacing = 10

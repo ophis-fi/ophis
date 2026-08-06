@@ -1,4 +1,4 @@
-//! Direct Robinhood Uniswap V4 solver lane.
+//! Direct hookless Uniswap V4 solver lane.
 //!
 //! Quotes come from Uniswap's canonical V4Quoter over Ophis' own RPC. The
 //! executable interaction calls the immutable, pair-restricted
@@ -48,6 +48,8 @@ pub struct Config {
     pub adapter: Address,
     pub wrapped_native: Address,
     pub stablecoin: Address,
+    pub pool_fee: u32,
+    pub tick_spacing: i32,
 }
 
 pub struct UniswapV4 {
@@ -95,8 +97,16 @@ impl UniswapV4 {
                 poolKey: PoolKey {
                     currency0: Address::ZERO,
                     currency1: self.config.stablecoin,
-                    fee: 500u32.try_into().expect("500 fits uint24"),
-                    tickSpacing: 10i32.try_into().expect("10 fits int24"),
+                    fee: self
+                        .config
+                        .pool_fee
+                        .try_into()
+                        .map_err(|_| Error::InvalidPoolKey)?,
+                    tickSpacing: self
+                        .config
+                        .tick_spacing
+                        .try_into()
+                        .map_err(|_| Error::InvalidPoolKey)?,
                     hooks: Address::ZERO,
                 },
                 zeroForOne: zero_for_one,
@@ -218,11 +228,24 @@ impl UniswapV4 {
             .json()
             .await?;
         if let Some(error) = response.error {
+            // V4Quoter reports absent pools, exhausted liquidity, and an
+            // amount that crosses all initialized liquidity as an execution
+            // revert. This is route unavailability, not an RPC transport
+            // failure; classifying it as NotFound lets partially fillable
+            // orders reduce their next attempt instead of retrying 100%
+            // forever in every auction.
+            if is_quote_unavailable(error.code, &error.message) {
+                return Err(Error::NotFound);
+            }
             return Err(Error::Rpc(error.code, error.message));
         }
         let result = response.result.ok_or(Error::MissingResult)?;
         const_hex::decode(result).map_err(Error::Hex)
     }
+}
+
+fn is_quote_unavailable(code: i64, message: &str) -> bool {
+    matches!(code, 3 | -32_000) && message.to_ascii_lowercase().contains("revert")
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -235,6 +258,8 @@ pub enum Error {
     AmountTooLarge,
     #[error("invalid slippage")]
     InvalidSlippage,
+    #[error("invalid Uniswap V4 pool key")]
+    InvalidPoolKey,
     #[error("RPC error {0}: {1}")]
     Rpc(i64, String),
     #[error("RPC response omitted result")]
@@ -251,4 +276,20 @@ pub enum Error {
 pub enum CreationError {
     #[error(transparent)]
     Client(#[from] reqwest::Error),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_quote_unavailable;
+
+    #[test]
+    fn execution_reverts_are_unavailable_routes_but_transport_errors_are_not() {
+        assert!(is_quote_unavailable(3, "execution reverted"));
+        assert!(is_quote_unavailable(
+            -32_000,
+            "Execution Reverted: PoolNotInitialized"
+        ));
+        assert!(!is_quote_unavailable(-32_000, "upstream timeout"));
+        assert!(!is_quote_unavailable(-32_605, "execution reverted"));
+    }
 }

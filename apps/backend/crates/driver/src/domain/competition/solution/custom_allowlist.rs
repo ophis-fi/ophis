@@ -72,6 +72,10 @@ const OPTIMISM_CURVE_3POOL_COINS: [Address; 3] = [
 const OPTIMISM_WOOFI_ROUTER: Address = address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7");
 const OPTIMISM_SETTLEMENT: Address = address!("310784c7FCE12d578dA6f53460777bAc9718B859");
 const WOOFI_SWAP_SELECTOR: [u8; 4] = [0x7d, 0xc2, 0x03, 0x82];
+const OPTIMISM_UNISWAP_V4_ADAPTER: Address = address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
+const OPTIMISM_WETH: Address = address!("4200000000000000000000000000000000000006");
+const OPTIMISM_USDC: Address = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
+const UNISWAP_V4_SWAP_EXACT_INPUT_SELECTOR: [u8; 4] = [0xd9, 0x95, 0x94, 0x9a];
 
 #[derive(Clone, Copy, Debug)]
 pub struct RequiredAmounts {
@@ -113,12 +117,12 @@ pub const MAX_CUSTOM_ALLOWANCE: U256 = U256::from_limbs([0, 0, 0, 1u64 << 8]);
 ///
 /// **DESIGN — fail-secure for unconfigured chains.** Codex PR-227 review
 /// P1 (`r3287846601`) flagged that solvers like KyberSwap/Velora support
-/// chains beyond the explicitly configured deployment set (e.g. Ethereum mainnet, Base, Arbitrum,
-/// Polygon, BSC). The driver allowlist *intentionally* only covers chains
-/// where Ophis ACTUALLY DEPLOYS WITH CUSTOM-INTERACTION SOLVERS — chains
-/// 10 (OP), 130 (Unichain), and 4663 (Robinhood). Per `project_ophis.md`, Ophis
-/// has no mainnet deployments on chains 1/8453/137/42161/etc. and no
-/// near-term plan to add them.
+/// chains beyond the explicitly configured deployment set (e.g. Ethereum
+/// mainnet, Base, Arbitrum, Polygon, BSC). The driver allowlist *intentionally*
+/// only covers chains where Ophis ACTUALLY DEPLOYS WITH CUSTOM-INTERACTION
+/// SOLVERS — chains 10 (OP), 130 (Unichain), and 4663 (Robinhood). Per
+/// `project_ophis.md`, Ophis has no mainnet deployments on chains
+/// 1/8453/137/42161/etc. and no near-term plan to add them.
 ///
 /// If a driver instance gets deployed on a new chain (e.g. Base mainnet
 /// expansion), the operator MUST add a chain entry here in the SAME PR
@@ -404,6 +408,20 @@ pub fn validate_with_required_output(
         }
         return validate_woofi_swap(custom, required_amounts);
     }
+    // The immutable Ophis adapter has no arbitrary-call or recipient surface,
+    // but still receives a selector-scoped exception so a compromised solver
+    // cannot misdeclare its pair, input, output floor, or allowance.
+    if chain_id == 10 && Address::from(custom.target) == OPTIMISM_UNISWAP_V4_ADAPTER {
+        validate_value(custom.value.0)?;
+        for required in &custom.allowances {
+            if required.0.amount > MAX_CUSTOM_ALLOWANCE {
+                return Err(Error::AmountTooLarge {
+                    amount: required.0.amount,
+                });
+            }
+        }
+        return validate_uniswap_v4_swap(custom, required_amounts);
+    }
     let allowlist = chain_allowlist(chain_id)?;
 
     // (1) target — `ContractAddress(Address)` is opaque from outside its
@@ -641,6 +659,71 @@ fn validate_woofi_swap(
     Ok(())
 }
 
+fn validate_uniswap_v4_swap(
+    custom: &interaction::Custom,
+    required_amounts: Option<RequiredAmounts>,
+) -> Result<(), Error> {
+    let reject = || Error::CallDataNotAllowed {
+        target: OPTIMISM_UNISWAP_V4_ADAPTER,
+        chain_id: 10,
+    };
+    let data = custom.call_data.as_ref();
+    if data.len() != 4 + 32 * 3
+        || data[..4] != UNISWAP_V4_SWAP_EXACT_INPUT_SELECTOR
+        || !custom.value.0.is_zero()
+    {
+        return Err(reject());
+    }
+    let word_address = |offset: usize| Address::from_slice(&data[offset + 12..offset + 32]);
+    let word_u256 = |offset: usize| U256::from_be_slice(&data[offset..offset + 32]);
+    let sell_token = word_address(4);
+    let amount_in = word_u256(36);
+    let min_out = word_u256(68);
+    let buy_token = if sell_token == OPTIMISM_WETH {
+        OPTIMISM_USDC
+    } else if sell_token == OPTIMISM_USDC {
+        OPTIMISM_WETH
+    } else {
+        return Err(reject());
+    };
+    let Some(required) = required_amounts else {
+        return Err(reject());
+    };
+    if required.sell_token != sell_token
+        || required.buy_token != buy_token
+        || amount_in > required.max_input
+        || min_out < required.min_output
+    {
+        return Err(reject());
+    }
+    let Some(input) = custom.inputs.first().filter(|_| custom.inputs.len() == 1) else {
+        return Err(reject());
+    };
+    let Some(output) = custom.outputs.first().filter(|_| custom.outputs.len() == 1) else {
+        return Err(reject());
+    };
+    let Some(allowance) = custom
+        .allowances
+        .first()
+        .filter(|_| custom.allowances.len() == 1)
+    else {
+        return Err(reject());
+    };
+    let allowance = allowance.0;
+    if Address::from(input.token) != sell_token
+        || input.amount.0 != amount_in
+        || Address::from(output.token) != buy_token
+        || output.amount.0 != min_out
+        || allowance.token != sell_token.into()
+        || allowance.spender != OPTIMISM_UNISWAP_V4_ADAPTER
+        || allowance.amount != amount_in
+        || custom.internalize
+    {
+        return Err(reject());
+    }
+    Ok(())
+}
+
 /// Cap on the native-ETH `value` field of any solver-supplied interaction
 /// (Custom + raw pre/post). Identical numeric to [`MAX_CUSTOM_ALLOWANCE`]
 /// (`2^200`); kept as a distinct alias so future tuning of one doesn't
@@ -820,6 +903,38 @@ mod tests {
                 eth::Allowance {
                     token: sell.into(),
                     spender: OPTIMISM_WOOFI_ROUTER,
+                    amount: amount_in,
+                }
+                .into(),
+            ],
+            inputs: vec![eth::Asset {
+                token: sell.into(),
+                amount: eth::TokenAmount(amount_in),
+            }],
+            outputs: vec![eth::Asset {
+                token: buy.into(),
+                amount: eth::TokenAmount(min_out),
+            }],
+            internalize: false,
+        }
+    }
+
+    fn make_uniswap_v4_swap(sell: Address, buy: Address) -> Custom {
+        let amount_in = U256::from(1_000u64);
+        let min_out = U256::from(990u64);
+        let mut data = Vec::with_capacity(100);
+        data.extend_from_slice(&UNISWAP_V4_SWAP_EXACT_INPUT_SELECTOR);
+        for word in [U256::from_be_slice(sell.as_slice()), amount_in, min_out] {
+            data.extend_from_slice(&word.to_be_bytes::<32>());
+        }
+        Custom {
+            target: OPTIMISM_UNISWAP_V4_ADAPTER.into(),
+            value: eth::Ether(U256::ZERO),
+            call_data: data.into(),
+            allowances: vec![
+                eth::Allowance {
+                    token: sell.into(),
+                    spender: OPTIMISM_UNISWAP_V4_ADAPTER,
                     amount: amount_in,
                 }
                 .into(),
@@ -1095,6 +1210,50 @@ mod tests {
         ));
 
         let mut unlimited = valid.clone();
+        unlimited.allowances[0].0.amount = U256::MAX;
+        assert!(matches!(
+            validate_with_required_output(&unlimited, 10, context),
+            Err(Error::AmountTooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn uniswap_v4_swap_is_pair_selector_and_fulfillment_scoped() {
+        let context = Some(required(OPTIMISM_WETH, OPTIMISM_USDC, 1_000, 990));
+        let valid = make_uniswap_v4_swap(OPTIMISM_WETH, OPTIMISM_USDC);
+        assert_eq!(validate_with_required_output(&valid, 10, context), Ok(()));
+        assert!(matches!(
+            validate_target(OPTIMISM_UNISWAP_V4_ADAPTER, 10),
+            Err(Error::TargetNotAllowed { .. })
+        ));
+
+        let reverse = make_uniswap_v4_swap(OPTIMISM_USDC, OPTIMISM_WETH);
+        assert_eq!(
+            validate_with_required_output(
+                &reverse,
+                10,
+                Some(required(OPTIMISM_USDC, OPTIMISM_WETH, 1_000, 990)),
+            ),
+            Ok(())
+        );
+
+        let mut wrong_selector = valid.clone();
+        let mut data = wrong_selector.call_data.to_vec();
+        data[..4].copy_from_slice(&[0xa9, 0x05, 0x9c, 0xbb]);
+        wrong_selector.call_data = data.into();
+        assert!(matches!(
+            validate_with_required_output(&wrong_selector, 10, context),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        let mut wrong_output = valid.clone();
+        wrong_output.outputs[0].token = ATTACKER.into();
+        assert!(matches!(
+            validate_with_required_output(&wrong_output, 10, context),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        let mut unlimited = valid;
         unlimited.allowances[0].0.amount = U256::MAX;
         assert!(matches!(
             validate_with_required_output(&unlimited, 10, context),

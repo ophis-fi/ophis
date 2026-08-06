@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Ophis Optimism Uniswap V4 adapter deployment</title>
+    <style>
+      body { max-width: 760px; margin: 4rem auto; padding: 0 1rem; font: 16px/1.5 system-ui; background: #0d0718; color: #f7f2ff }
+      button { padding: .8rem 1.2rem; font: inherit; cursor: pointer }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #180d2b; padding: 1rem }
+    </style>
+  </head>
+  <body>
+    <h1>Deploy Ophis's Optimism V4 adapter</h1>
+    <p>This ceremony sends one zero-value CREATE2 deployment transaction. It verifies the chain, wallet, artifact hash, init-code hash, deterministic address, vacant target, and gas estimate before opening the wallet confirmation.</p>
+    <button id="deploy">Verify and deploy</button>
+    <pre id="status">No transaction prepared.</pre>
+    <script src="/ophis-uniswap-v4-optimism-ceremony.js"></script>
+  </body>
+</html>
