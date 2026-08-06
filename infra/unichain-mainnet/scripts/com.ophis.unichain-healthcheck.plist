@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Ophis Unichain (130) liveness monitor. Runs on the Mac mini, NOT on the
+  Unichain VM: a monitor hosted on the box it watches cannot report that box
+  being gone, which is exactly how the 2026-07-28 outage went unnoticed for
+  nine days.
+
+  INSTALL:
+    cp infra/unichain-mainnet/scripts/com.ophis.unichain-healthcheck.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ophis.unichain-healthcheck.plist
+    launchctl kickstart -k gui/$(id -u)/com.ophis.unichain-healthcheck
+
+  VERIFY IT IS ACTUALLY RUNNING (loaded is not the same as running):
+    launchctl print gui/$(id -u)/com.ophis.unichain-healthcheck | grep -E 'state|last exit'
+    tail ~/Library/Logs/ophis-unichain-healthcheck.err.log
+
+  WARNING: the ProgramArguments path below is absolute. If this checkout moves
+  or is pruned, launchd logs "No such file or directory" every 5 minutes and
+  alerting silently dies. The OP sibling lost weeks of coverage this way.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.ophis.unichain-healthcheck</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/scep/greg-wt/uni-monitor/infra/unichain-mainnet/scripts/unichain-healthcheck.sh</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/scep/Library/Logs/ophis-unichain-healthcheck.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/scep/Library/Logs/ophis-unichain-healthcheck.err.log</string>
+</dict>
+</plist>
