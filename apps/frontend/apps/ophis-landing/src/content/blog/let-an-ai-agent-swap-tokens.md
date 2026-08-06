@@ -243,8 +243,8 @@ EIP-1271 policy gate rather than trusting the agent to honour them.
 
 Two things set the number, so it is worth being exact. On Optimism, Unichain,
 and Robinhood Chain, the MCP and high-level SDK builders embed a 1 bp base; the
-backend then retains 80% of reference-quote improvement on volatile pairs (30
-bps cap), or 50% on stable pairs (10 bps cap). On CoW-hosted chains, partner
+backend then retains 80% of reference-quote improvement on volatile pairs (50
+bps cap), or 50% on stable pairs (20 bps cap). On CoW-hosted chains, partner
 flow embeds 5 bps on volatile pairs or 1 bp on stable pairs, and CoW Protocol's
 upstream volume and improvement fees apply. Manual builders should use
 `ophisVolumeBpsForChainAndPair(chainId, isStablePair)` so the chain and pair are

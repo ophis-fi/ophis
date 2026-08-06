@@ -15,9 +15,9 @@ solver auction, and settlement stack. Instead of charging retail users a fixed
 charge a **1 bp base fee** and earn primarily when execution beats the reference
 quote.
 
-On volatile pairs, Ophis retains **80% of price improvement, capped at 30 bps
+On volatile pairs, Ophis retains **80% of price improvement, capped at 50 bps
 of trade volume**. On same-chain stablecoin pairs, Ophis retains **50%, capped
-at 10 bps**. The base remains 1 bp in both cases.
+at 20 bps**. The base remains 1 bp in both cases.
 
 The change applies to Ophis-operated Optimism, Unichain, and Robinhood Chain.
 CoW-hosted chains keep their existing flat Ophis fee path because their
@@ -45,16 +45,16 @@ large price move cannot create an unlimited fee.
 
 | Pair | Base | Ophis share of improvement | Capture cap | Maximum Ophis charge |
 | --- | ---: | ---: | ---: | ---: |
-| Volatile | 1 bp | 80% | 30 bps of volume | 31 bps |
-| Stablecoin | 1 bp | 50% | 10 bps of volume | 11 bps |
+| Volatile | 1 bp | 80% | 50 bps of volume | 51 bps |
+| Stablecoin | 1 bp | 50% | 20 bps of volume | 21 bps |
 
 For a $100,000 volatile trade with 20 bps of reference-quote improvement, the
 base is $10 and the improvement capture is $160, for $170 total. The trader
 still receives the remaining $40 of improvement.
 
-For a $100,000 stablecoin trade with the same 20 bps improvement, the 10 bps
-cap binds: Ophis receives $10 base plus $100 captured improvement. Improvement
-beyond the cap goes to the trader.
+For a $100,000 stablecoin trade with the same 20 bps improvement, Ophis receives
+$10 base plus $100 captured improvement. The 20 bps cap starts binding when
+reference-quote improvement reaches 40 bps; improvement above it goes to the trader.
 
 ## Reference quote, not slippage tolerance
 

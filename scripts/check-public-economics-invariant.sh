@@ -33,6 +33,7 @@ reject "removed sovereign-chain names remain on a public surface" 'MegaETH|Hyper
 reject "retired 100%-surplus promise remains on a public surface" '100% (of (any |the |that )?(price improvement|improvement|surplus)|of it goes to the (wallet|trader)|to you)'
 reject "retired flat sovereign pricing remains on a public surface" '(flat 0\.10%|0\.10% flat|Surplus returned in full|takes zero cut of surplus|takes no share of (any )?surplus)'
 reject "retired sovereign floor remains on a public surface" '(4 bps non-stable|below \*\*4 bps|always embeds (the )?flat 5 bps)'
+reject "retired sovereign capture caps remain on a public surface" '(volatile.{0,100}(30 bps|0\.30%)|(30 bps|0\.30%).{0,100}volatile|stable.{0,100}(10 bps cap|capped at 10 bps|0\.10% stables)|(10 bps cap|capped at 10 bps|0\.10% stables).{0,100}stable)'
 
 require_text() {
   local file="$1"
@@ -45,8 +46,14 @@ require_text() {
 
 require_text apps/docs-ophis/docs/fees.md "80% of price improvement on volatile pairs"
 require_text apps/docs-ophis/docs/fees.md "50% on stablecoin pairs"
+require_text apps/docs-ophis/docs/fees.md "capped at 50 bps of volume"
+require_text apps/docs-ophis/docs/fees.md "capped at 20 bps"
 require_text apps/frontend/apps/ophis-landing/src/content/blog/solver-aligned-pricing.md "The base remains 1 bp in both cases."
 require_text apps/frontend/apps/cowswap-frontend/public/business/index.html "Robinhood payout is not"
+require_text infra/optimism-mainnet/configs/autopilot.toml "max-volume-factor = 0.005"
+require_text infra/unichain-mainnet/configs/autopilot.toml.tmpl "max-volume-factor = 0.005"
+require_text infra/robinhood-mainnet/configs/autopilot.toml.tmpl "max-volume-factor = 0.005"
+require_text apps/backend/crates/autopilot/src/domain/fee/mod.rs "OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_FACTOR: f64 = 0.002"
 
 if (( fail )); then
   echo "Public economics invariant FAILED." >&2

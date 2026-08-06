@@ -27,7 +27,7 @@ const FAQS = [
   },
   {
     q: 'What does Ophis-operated mean?',
-    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement contract at a non-canonical address. Every path pays a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs (30 bps cap) or 50% on stable pairs (10 bps cap). Agents and integrators must resolve the per-chain settlement domain and orderbook host via the @ophis/sdk helpers or the MCP list_chains tool before signing, because CoW's canonical address yields a domain the deployed contract rejects.`,
+    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement contract at a non-canonical address. Every path pays a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs (50 bps cap) or 50% on stable pairs (20 bps cap). Agents and integrators must resolve the per-chain settlement domain and orderbook host via the @ophis/sdk helpers or the MCP list_chains tool before signing, because CoW's canonical address yields a domain the deployed contract rejects.`,
   },
   {
     q: 'How do Solana and Bitcoin destinations work?',
