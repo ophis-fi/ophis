@@ -65,6 +65,9 @@ price-estimation-drivers = [
   { name = "lifi", url = "http://driver/lifi" },
   { name = "openocean", url = "http://driver/openocean" },
   { name = "dodo", url = "http://driver/dodo" },
+  { name = "curve", url = "http://driver/curve" },
+  { name = "woofi", url = "http://driver/woofi" },
+  { name = "uniswap-v4", url = "http://driver/uniswap-v4" },
 ]
 
 [price-estimation]

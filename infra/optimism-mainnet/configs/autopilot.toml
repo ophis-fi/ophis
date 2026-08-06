@@ -111,6 +111,21 @@ name = "dodo"
 url = "http://driver/dodo"
 address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
 
+[[drivers]]
+name = "curve"
+url = "http://driver/curve"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
+name = "woofi"
+url = "http://driver/woofi"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
+name = "uniswap-v4"
+url = "http://driver/uniswap-v4"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
 [fee-policies]
 max-partner-fee = 0.01
 
@@ -149,6 +164,9 @@ price-estimation-drivers = [
   { name = "lifi", url = "http://driver/lifi" },
   { name = "openocean", url = "http://driver/openocean" },
   { name = "dodo", url = "http://driver/dodo" },
+  { name = "curve", url = "http://driver/curve" },
+  { name = "woofi", url = "http://driver/woofi" },
+  { name = "uniswap-v4", url = "http://driver/uniswap-v4" },
 ]
 
 [price-estimation]
