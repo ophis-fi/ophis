@@ -1,0 +1,18 @@
+# Ophis Optimism direct hookless Uniswap V4 solver. Quotes use the canonical
+# V4Quoter through Ophis's eRPC proxy; execution is restricted to the immutable
+# ETH/USDC 0.05% adapter and selector-scoped by the driver.
+node-url = "http://rpc-proxy:4000/main/evm/10"
+settlement = "0x310784c7FCE12d578dA6f53460777bAc9718B859"
+internalize-interactions = false
+strict-market-output-simulation = "all"
+wrapped-native = "0x4200000000000000000000000000000000000006"
+wrapped-native-balance-slot = 3
+
+[dex]
+chain-id = "10"
+adapter = "0xd882da9CB91EB458337413E5846824CDCADB2Ddc"
+quoter = "0x1f3131a13296fb91c90870043742c3cdbff1a8d7"
+wrapped-native = "0x4200000000000000000000000000000000000006"
+stablecoin = "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"
+pool-fee = 500
+tick-spacing = 10

@@ -29,6 +29,8 @@ fn required_custom_amounts(
         alloy::primitives::address!("1337BedC9D22ecbe766dF105c9623922A27963EC");
     const OPTIMISM_WOOFI_ROUTER: alloy::primitives::Address =
         alloy::primitives::address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7");
+    const OPTIMISM_UNISWAP_V4_ADAPTER: alloy::primitives::Address =
+        alloy::primitives::address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
     let protected_interactions: Vec<_> = solution
         .interactions
         .iter()
@@ -36,9 +38,14 @@ fn required_custom_amounts(
             let solvers_dto::solution::Interaction::Custom(custom) = interaction else {
                 return None;
             };
-            [FXUSD, OPTIMISM_CURVE_3POOL, OPTIMISM_WOOFI_ROUTER]
-                .contains(&custom.target)
-                .then_some(custom.target)
+            [
+                FXUSD,
+                OPTIMISM_CURVE_3POOL,
+                OPTIMISM_WOOFI_ROUTER,
+                OPTIMISM_UNISWAP_V4_ADAPTER,
+            ]
+            .contains(&custom.target)
+            .then_some(custom.target)
         })
         .collect();
     if protected_interactions.is_empty() {
@@ -589,14 +596,19 @@ impl JitOrder {
 
 #[cfg(test)]
 mod protected_interaction_tests {
-    use super::*;
-    use alloy::primitives::{Address, U256, address};
+    use {
+        super::*,
+        alloy::primitives::{Address, U256, address},
+    };
 
     #[test]
-    fn woofi_dto_interaction_receives_fulfillment_context() {
+    fn protected_optimism_interactions_receive_fulfillment_context() {
         let sell = address!("4200000000000000000000000000000000000006");
         let buy = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
-        let target = address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7");
+        let targets = [
+            address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7"),
+            address!("d882da9CB91EB458337413E5846824CDCADB2Ddc"),
+        ];
         let uid = competition::order::Uid::default();
         let order = competition::Order {
             uid,
@@ -627,36 +639,39 @@ mod protected_interaction_tests {
             protocol_fees: vec![],
             quote: None,
         };
-        let solution: solvers_dto::solution::Solution = serde_json::from_value(serde_json::json!({
-            "id": 1,
-            "prices": {
-                format!("{sell:#x}"): "990",
-                format!("{buy:#x}"): "1000"
-            },
-            "trades": [{
-                "kind": "fulfillment",
-                "order": format!("0x{}", "00".repeat(56)),
-                "executedAmount": "1000"
-            }],
-            "interactions": [{
-                "kind": "custom",
-                "internalize": false,
-                "target": format!("{target:#x}"),
-                "value": "0",
-                "callData": "0x",
-                "allowances": [],
-                "inputs": [],
-                "outputs": []
-            }]
-        }))
-        .unwrap();
+        for target in targets {
+            let solution: solvers_dto::solution::Solution =
+                serde_json::from_value(serde_json::json!({
+                    "id": 1,
+                    "prices": {
+                        format!("{sell:#x}"): "990",
+                        format!("{buy:#x}"): "1000"
+                    },
+                    "trades": [{
+                        "kind": "fulfillment",
+                        "order": format!("0x{}", "00".repeat(56)),
+                        "executedAmount": "1000"
+                    }],
+                    "interactions": [{
+                        "kind": "custom",
+                        "internalize": false,
+                        "target": format!("{target:#x}"),
+                        "value": "0",
+                        "callData": "0x",
+                        "allowances": [],
+                        "inputs": [],
+                        "outputs": []
+                    }]
+                }))
+                .unwrap();
 
-        let context = required_custom_amounts(&solution, &[order])
-            .unwrap()
-            .unwrap();
-        assert_eq!(context.sell_token, sell);
-        assert_eq!(context.buy_token, buy);
-        assert_eq!(context.max_input, U256::from(1_000));
-        assert_eq!(context.min_output, U256::from(990));
+            let context = required_custom_amounts(&solution, std::slice::from_ref(&order))
+                .unwrap()
+                .unwrap();
+            assert_eq!(context.sell_token, sell);
+            assert_eq!(context.buy_token, buy);
+            assert_eq!(context.max_input, U256::from(1_000));
+            assert_eq!(context.min_output, U256::from(990));
+        }
     }
 }
