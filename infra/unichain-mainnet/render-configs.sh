@@ -219,6 +219,13 @@ RAM_PK_MOUNT="$HOME/.local/state/ophis/ram-pk"
 RAM_PK_VOLNAME="ophis-ram-pk"
 RAM_PK_SIZE_SECTORS=2048   # 2048 * 512B = 1 MB
 
+# uid the backend images run as (driver, autopilot, orderbook, solvers, refunder
+# are all USER 10001:10001). Only consumed on Linux, where bind-mount perms are
+# literal and a root-owned 0600 config is unreadable by the container. Override
+# only if the images' USER changes; verify with:
+#   docker image inspect local-driver:latest --format '{{.Config.User}}'
+OPHIS_CONTAINER_UID="${OPHIS_CONTAINER_UID:-10001}"
+
 # Idempotent mount. Exits non-zero on failure — we WANT this to hard-fail
 # rather than fall through to writing the PK on disk.
 #
@@ -476,6 +483,22 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # (chmod is redundant-but-defensive under the umask 077 set at script top.)
   if is_pk_bearing "$name"; then
     chmod 600 "$out_tmp"
+    # Same literal-perms problem as the 0644 branch above, but a PK-bearing
+    # config CANNOT be widened to 0644 — so on Linux give it to the container
+    # uid instead and keep 0600. The backend images (driver, solvers) all run
+    # as 10001:10001; macOS/colima's uid mapping masks this, which is why the
+    # Linux path went unexercised until the 2026-08-06 VM rebuild, where every
+    # PK-bearing lane crash-looped on `PermissionDenied` reading /okx.toml.
+    # Mirrors the telegram-token chown below, including FAIL CLOSED: shipping
+    # a config the container cannot read starts the stack broken.
+    if [[ "$(uname -s)" == "Linux" ]]; then
+      if ! sudo chown "${OPHIS_CONTAINER_UID}:${OPHIS_CONTAINER_UID}" "$out_tmp" 2>/dev/null; then
+        rm -f "$out_tmp"
+        echo "ERROR: could not chown $name to uid ${OPHIS_CONTAINER_UID} (container user)." >&2
+        echo "       Needs passwordless sudo (same requirement as the tmpfs mount)." >&2
+        exit 9
+      fi
+    fi
   else
     chmod 644 "$out_tmp"
   fi
