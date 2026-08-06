@@ -52,7 +52,9 @@ fn required_custom_amounts(
         return Ok(None);
     }
     if solution.trades.len() != 1
+        || !solution.pre_interactions.is_empty()
         || solution.interactions.len() != 1
+        || !solution.post_interactions.is_empty()
         || protected_interactions.len() != 1
     {
         return Err(super::Error(
@@ -716,6 +718,51 @@ mod protected_interaction_tests {
             }))
             .unwrap();
 
+        let err = required_custom_amounts(&solution, &[]).unwrap_err();
+        assert!(err.0.contains("exactly one fulfillment and one interaction"));
+    }
+
+    fn protected_solution_with_raw_interaction(
+        field: &str,
+    ) -> solvers_dto::solution::Solution {
+        let protected = address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
+        let mut solution = serde_json::json!({
+            "id": 1,
+            "prices": {},
+            "trades": [{
+                "kind": "fulfillment",
+                "order": format!("0x{}", "00".repeat(56)),
+                "executedAmount": "1"
+            }],
+            "interactions": [{
+                "kind": "custom",
+                "internalize": false,
+                "target": format!("{protected:#x}"),
+                "value": "0",
+                "callData": "0x",
+                "allowances": [],
+                "inputs": [],
+                "outputs": []
+            }]
+        });
+        solution[field] = serde_json::json!([{
+            "target": "0x0000000000000000000000000000000000000001",
+            "value": "0",
+            "callData": "0x"
+        }]);
+        serde_json::from_value(solution).unwrap()
+    }
+
+    #[test]
+    fn protected_solution_rejects_a_pre_interaction() {
+        let solution = protected_solution_with_raw_interaction("preInteractions");
+        let err = required_custom_amounts(&solution, &[]).unwrap_err();
+        assert!(err.0.contains("exactly one fulfillment and one interaction"));
+    }
+
+    #[test]
+    fn protected_solution_rejects_a_post_interaction() {
+        let solution = protected_solution_with_raw_interaction("postInteractions");
         let err = required_custom_amounts(&solution, &[]).unwrap_err();
         assert!(err.0.contains("exactly one fulfillment and one interaction"));
     }
