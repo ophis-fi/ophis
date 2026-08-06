@@ -47,7 +47,11 @@ RECOVER_COOLDOWN=3600   # seconds between allocation-notify attempts
 TG_ENV="${TELEGRAM_BOT_TOKEN_ENV_FILE:-$HOME/.claude/channels/telegram/.env}"
 CHAT_ID="${TELEGRAM_CHAT_ID:-735726338}"
 
-STATE_DIR="$HOME/.local/state/ophis"
+# Overridable so a test run can use a scratch state dir. Do NOT test this script
+# by overriding HOME instead: `security` resolves the login Keychain through HOME,
+# so a HOME override silently breaks token lookup and makes a WORKING notify path
+# look broken (it did, during review of this file).
+STATE_DIR="${OPHIS_STATE_DIR:-$HOME/.local/state/ophis}"
 # BELIEF, not observation: what the recipient currently thinks is true. Any
 # mismatch between belief and observation is a message we still owe, so a failed
 # send is retried next run instead of being lost. Conflating "service is down"
@@ -79,11 +83,36 @@ trap 'exit 130' INT
 # Returns 0 ONLY if Telegram accepted (HTTP 200). Callers MUST gate the persisted
 # state on this: a monitor that loses its page without saying so is worse than one
 # that pages twice.
+#
+# Token resolution order matters. This directory's own setup-telegram-keychain.sh
+# exists specifically to REPLACE the cleartext .env, so a host provisioned per the
+# documented path has the Keychain entry and NO .env — keying only off the .env
+# would mean every transition silently hit the missing-file branch and no page was
+# ever delivered on exactly the setup we tell operators to use. Keychain is
+# therefore consulted before the legacy file, mirroring render-configs.sh.
+resolve_token() {
+  local tok=""
+  # 1. explicit env (launchd plist / operator override) wins
+  if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then printf '%s' "$TELEGRAM_BOT_TOKEN"; return 0; fi
+  # 2. macOS Keychain — the supported store
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    tok="$(security find-generic-password -a "$USER" -s ophis-telegram-bot -w 2>/dev/null)"
+    [[ -n "$tok" ]] && { printf '%s' "$tok"; return 0; }
+  fi
+  # 3. legacy channel .env
+  if [[ -f "$TG_ENV" ]]; then
+    tok="$(grep -E '^TELEGRAM_BOT_TOKEN=' "$TG_ENV" | head -1 | cut -d= -f2-)"
+    [[ -n "$tok" ]] && { printf '%s' "$tok"; return 0; }
+  fi
+  return 1
+}
+
 notify() {
   local tok code
-  [[ -f "$TG_ENV" ]] || { echo "ALERT UNDELIVERED: token file $TG_ENV missing" >&2; return 1; }
-  tok="$(grep -E '^TELEGRAM_BOT_TOKEN=' "$TG_ENV" | head -1 | cut -d= -f2-)"
-  [[ -n "$tok" ]] || { echo "ALERT UNDELIVERED: no TELEGRAM_BOT_TOKEN in $TG_ENV" >&2; return 1; }
+  if ! tok="$(resolve_token)"; then
+    echo "ALERT UNDELIVERED: no token in \$TELEGRAM_BOT_TOKEN, Keychain (ophis-telegram-bot), or $TG_ENV" >&2
+    return 1
+  fi
   code="$(curl -sS -m 12 -o /dev/null -w '%{http_code}' \
     "https://api.telegram.org/bot${tok}/sendMessage" \
     --data-urlencode "chat_id=${CHAT_ID}" --data-urlencode "text=$1" \
@@ -126,9 +155,16 @@ if [[ "$code" == "200" ]]; then
   msg="✅ Ophis Unichain (130) RECOVERED — ${VERSION_URL} is serving again."
 else
   observed=down
-  # 530/000 = the cloudflared origin is gone, i.e. the VM itself, which is the
-  # signature of an Aleph credit-VM stop. Kick it before paging.
-  recovery="$(attempt_recovery)"
+  # Only ORIGIN-LOSS codes mean "the box is gone": 000 (timeout/DNS), 502/503/504
+  # and Cloudflare 530, i.e. the tunnel is registered but no connector is
+  # attached. An app-level 401/404/429/500 means the VM is up and answering, so
+  # kicking it would be pointless AND harmful: it would burn the 1h cooldown, and
+  # if the VM genuinely stopped minutes later the real restart would be skipped as
+  # "on cooldown". Page for every non-200; only recover for origin loss.
+  case "$code" in
+    000|502|503|504|530) recovery="$(attempt_recovery)" ;;
+    *) recovery="not attempted — HTTP $code means the VM is answering, so this is an application fault, not a stopped box" ;;
+  esac
   msg="🔴 Ophis Unichain (130) DOWN — ${VERSION_URL} returned HTTP ${code:-000}.
 Chain 130 cannot quote or settle. Aleph VM ${ALEPH_VM_HASH:0:12} on ${ALEPH_CRN_URL#https://}.
 Recovery: ${recovery}

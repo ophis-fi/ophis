@@ -18,6 +18,17 @@
   WARNING: the ProgramArguments path below is absolute. If this checkout moves
   or is pruned, launchd logs "No such file or directory" every 5 minutes and
   alerting silently dies. The OP sibling lost weeks of coverage this way.
+
+  It therefore points at /Users/scep/greg-wt/monitors, a PERMANENT worktree
+  reserved for long-lived watchers (same convention as the op-deploy worktree),
+  NOT a throwaway feature branch. Two rules keep it honest:
+    - never prune greg-wt/monitors
+    - after this PR merges, park it on main so the agent runs merged code:
+        git -C /Users/scep/greg-wt/monitors checkout main
+        git -C /Users/scep/greg-wt/monitors pull --ff-only
+        launchctl kickstart -k gui/$(id -u)/com.ophis.unichain-healthcheck
+  Leaving it on the feature branch is the silent-staleness half of this warning:
+  launchd keeps exiting 0 while running code nobody updates again.
 -->
 <plist version="1.0">
 <dict>
@@ -27,7 +38,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/scep/greg-wt/uni-monitor/infra/unichain-mainnet/scripts/unichain-healthcheck.sh</string>
+    <string>/Users/scep/greg-wt/monitors/infra/unichain-mainnet/scripts/unichain-healthcheck.sh</string>
   </array>
 
   <key>StartInterval</key>
