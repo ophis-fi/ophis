@@ -11,8 +11,8 @@ sidebar_position: 4
 :::important Sovereign-chain pricing
 On Ophis-operated Optimism, Unichain, and Robinhood Chain, the SDK writes the
 required 1 bp base fee and the backend applies the protocol policy: 80% of
-reference-quote improvement on volatile pairs (30 bps cap), or 50% on stable
-pairs (10 bps cap). The legacy 5 bps partner rate remains only on CoW-hosted
+reference-quote improvement on volatile pairs (50 bps cap), or 50% on stable
+pairs (20 bps cap). The legacy 5 bps partner rate remains only on CoW-hosted
 chains. Integrator own-fees remain separate, and Ophis takes 0% of that markup.
 :::
 

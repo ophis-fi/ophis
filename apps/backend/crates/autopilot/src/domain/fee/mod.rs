@@ -121,7 +121,7 @@ pub struct ProtocolFees {
 
 impl ProtocolFees {
     const OPHIS_STABLE_PRICE_IMPROVEMENT_FACTOR: f64 = 0.50;
-    const OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_FACTOR: f64 = 0.001;
+    const OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_FACTOR: f64 = 0.002;
 
     pub fn new(
         chain_id: u64,
@@ -514,6 +514,14 @@ impl Quote {
 #[cfg(test)]
 mod test {
     use {super::*, model::order::OrderMetadata};
+
+    #[test]
+    fn sovereign_stable_price_improvement_cap_is_20_bps() {
+        assert_eq!(
+            ProtocolFees::OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_FACTOR,
+            0.002
+        );
+    }
 
     #[test]
     #[should_panic(expected = "below the Ophis retail rate")]

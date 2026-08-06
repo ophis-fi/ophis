@@ -129,8 +129,13 @@ mod tests {
     fn price_improvement() -> PriceImprovement {
         PriceImprovement {
             factor: FeeFactor::try_from(0.8).unwrap(),
-            max_volume_factor: FeeFactor::try_from(0.003).unwrap(),
+            max_volume_factor: FeeFactor::try_from(0.005).unwrap(),
         }
+    }
+
+    #[test]
+    fn sovereign_volatile_price_improvement_cap_is_50_bps() {
+        assert_eq!(price_improvement().max_volume_factor.get(), 0.005);
     }
 
     #[test]
@@ -145,7 +150,7 @@ mod tests {
                     &order,
                     &domain::Quote::default(),
                     FeeFactor::try_from(0.5).unwrap(),
-                    FeeFactor::try_from(0.001).unwrap(),
+                    FeeFactor::try_from(0.002).unwrap(),
                 )
                 .is_some()
         );

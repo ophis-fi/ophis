@@ -49,8 +49,8 @@ All endpoints are public and require no API key or authentication.
 ## Fees
 
 On Optimism, Unichain, and Robinhood Chain, orders carry a 1 bp base and the
-backend retains 80% of reference-quote improvement on volatile pairs (30 bps
-cap), or 50% on stable pairs (10 bps cap). On CoW-hosted chains, the hosted MCP
+backend retains 80% of reference-quote improvement on volatile pairs (50 bps
+cap), or 50% on stable pairs (20 bps cap). On CoW-hosted chains, the hosted MCP
 `build_order` path carries 5 bps because it does not classify token pairs. The
 1 bp hosted stable-pair rate is available only through a pair-aware/manual SDK
 appData build; CoW Protocol's own fees also apply upstream. Details:

@@ -45,13 +45,13 @@
       "provider": { "@id": "https://ophis.fi/#organization" },
       "url": "https://business.ophis.fi",
       "areaServed": "Worldwide",
-      "description": "Non-custodial intent routing with MEV-protected batch-auction settlement across 13 EVM chains. Ophis-operated Optimism, Unichain, and Robinhood Chain charge a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 30 bps of volume, or 50% on stable pairs, capped at 10 bps. CoW-hosted integrations retain the 5 bps base, reduced to 1 bp on stable pairs. Integrators can stack an onboarded own-fee on top, and Ophis takes 0% of that markup."
+      "description": "Non-custodial intent routing with MEV-protected batch-auction settlement across 13 EVM chains. Ophis-operated Optimism, Unichain, and Robinhood Chain charge a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations retain the 5 bps base, reduced to 1 bp on stable pairs. Integrators can stack an onboarded own-fee on top, and Ophis takes 0% of that markup."
     },
     {
       "@type": "FAQPage",
       "mainEntity": [
         { "@type": "Question", "name": "Is Ophis a regulated financial-services entity?", "acceptedAnswer": { "@type": "Answer", "text": "No. Ophis is operated independently and provides a non-custodial software interface to permissionless on-chain protocols. It does not take custody of funds, execute discretionary trades, or hold a regulated financial-services license. Full operator and entity details are provided on request for formal contractual arrangements." } },
-        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "On Ophis-operated Optimism, Unichain, and Robinhood Chain, integrations pay a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 30 bps of volume, or 50% on stable pairs, capped at 10 bps. CoW-hosted integrations retain the 5 bps base, reduced to 1 bp on stable pairs. Integrators can stack an onboarded own-fee on top of ERC-20 orders, and Ophis takes 0% of that markup." } },
+        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "On Ophis-operated Optimism, Unichain, and Robinhood Chain, integrations pay a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations retain the 5 bps base, reduced to 1 bp on stable pairs. Integrators can stack an onboarded own-fee on top of ERC-20 orders, and Ophis takes 0% of that markup." } },
         { "@type": "Question", "name": "Where are integrator own-fees guaranteed for payout?", "acceptedAnswer": { "@type": "Answer", "text": "Ophis-operated own-fee payout is currently guaranteed on Optimism and Unichain once the recipient is onboarded and its payout lane is enabled. Robinhood accrual is reported as non-guaranteed until its dedicated payout lane exists. CoW-hosted payouts follow CoW Protocol's terms and service fee." } },
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The public Intent API allows 30 requests per minute per IP, adequate for low and medium-volume operators. Partner-tier rate limits for higher throughput are reviewed case by case; reach out with a brief description of your use case and target volume." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Three paths: point your operators at swap.ophis.fi for direct use, call POST /api/intent from your bot or agent, or embed the upstream CoW Widget. Documentation is at docs.ophis.fi." } },
@@ -409,7 +409,7 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
     <h2 class="reveal">Charge your own fee. Ophis takes 0% of it.</h2>
     <p class="lede reveal">
       Ophis publishes its terms. On operated chains, integrations pay a 1 bp base plus 80% of
-      reference-quote improvement on volatile pairs (30 bps cap), or 50% on stable pairs (10 bps
+      reference-quote improvement on volatile pairs (50 bps cap), or 50% on stable pairs (20 bps
       cap). Hosted integrations retain the 5 bps base, reduced to 1 bp on stable pairs. Using the
       SDK or manual appData, you can still add your own fee and Ophis takes 0% of that markup.
     </p>
@@ -459,7 +459,7 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <div class="feerow">
           <span class="big take">1 bp</span>
           <span class="txt"><b>Sovereign base rate</b>, plus 80% of volatile improvement capped at
-          30 bps, or 50% of stable improvement capped at 10 bps. Hosted integrations remain 5 bps.</span>
+          50 bps, or 50% of stable improvement capped at 20 bps. Hosted integrations remain 5 bps.</span>
         </div>
         <div class="feerow">
           <span class="big zero">0%</span>
@@ -470,9 +470,9 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
           CoW's terms.</span>
         </div>
         <div class="feerow">
-          <span class="big cap">30 bps</span>
+          <span class="big cap">50 bps</span>
           <span class="txt"><b>Volatile capture cap</b> on operated chains. Stablecoin capture is
-          capped at 10 bps; each also carries the 1 bp base.</span>
+          capped at 20 bps; each also carries the 1 bp base.</span>
         </div>
         <div class="example">
           Worked example: your own rate <b>80 bps</b> on <b>$1,000,000</b> monthly volume.<br>
@@ -816,8 +816,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <div class="body">
           <p>
             The rates are published. On Optimism, Unichain, and Robinhood Chain, integrations pay
-            a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 30 bps
-            of volume, or 50% on stable pairs, capped at 10 bps. CoW-hosted integrations retain the
+            a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 50 bps
+            of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations retain the
             5 bps base, reduced to 1 bp on stable pairs, plus CoW Protocol's upstream fees.
             Execution is benchmarked against leading aggregators, with the additional protection of
             MEV-safe, uniform-price batch settlement that public mempool routes cannot offer.

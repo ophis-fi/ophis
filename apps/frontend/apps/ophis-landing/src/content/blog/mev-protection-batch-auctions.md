@@ -101,8 +101,8 @@ The same competition that protects you also pays you. Your signed order carries
 the minimum you will accept. When the winning solver finds better execution
 than that, the price improvement beyond the quote you signed is called
 **surplus**. On Optimism, Unichain, and Robinhood Chain, Ophis retains 80% of
-reference-quote improvement on volatile pairs (30 bps cap) or 50% on stable
-pairs (10 bps cap); the trader receives the remainder and everything above the
+reference-quote improvement on volatile pairs (50 bps cap) or 50% on stable
+pairs (20 bps cap); the trader receives the remainder and everything above the
 cap. On the ten chains that settle through CoW Protocol's canonical contracts,
 CoW Protocol applies its upstream improvement policy. The Ophis base is 1 bp
 on operated chains; hosted Ophis rates remain flat, and on those

@@ -21,7 +21,7 @@ export const faqLd = {
       name: 'How is Ophis different from 1inch or Matcha?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Ophis uses batch auctions and solver competition to settle orders with MEV protection by construction. On Ophis-operated Optimism, Unichain, and Robinhood Chain, every path pays a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 30 bps of volume, or 50% on stable pairs, capped at 10 bps. CoW-hosted chains retain the published 10 bps retail, 5 bps partner, and 1 bp stablecoin Ophis rates, with CoW Protocol fees applying upstream.",
+        text: "Ophis uses batch auctions and solver competition to settle orders with MEV protection by construction. On Ophis-operated Optimism, Unichain, and Robinhood Chain, every path pays a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains retain the published 10 bps retail, 5 bps partner, and 1 bp stablecoin Ophis rates, with CoW Protocol fees applying upstream.",
       },
     },
     {
@@ -105,7 +105,7 @@ construction. The natural-language input lets you skip token-pickers
 entirely. The [fee model](./fees.md) is published by settlement path. On
 Ophis-operated Optimism, Unichain, and Robinhood Chain, every trade pays a
 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs,
-capped at 30 bps of volume, or 50% on stable pairs, capped at 10 bps. CoW-hosted
+capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted
 chains retain the flat 10 bps retail, 5 bps partner, and 1 bp stablecoin Ophis
 rates, with CoW Protocol fees applying upstream.
 

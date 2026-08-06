@@ -10,7 +10,7 @@ sidebar_position: 3
 
 Ophis uses two fee models. On Ophis-operated chains, every trade pays a **1 bp
 base fee**. Ophis also retains **80% of price improvement on volatile pairs,
-capped at 30 bps of volume**, or **50% on stablecoin pairs, capped at 10 bps**.
+capped at 50 bps of volume**, or **50% on stablecoin pairs, capped at 20 bps**.
 On CoW-hosted chains, the existing flat 10 bps retail, 5 bps partner, and 1 bp
 stablecoin rates remain in force because CoW controls the upstream fee policy.
 
@@ -21,7 +21,7 @@ complete number per chain type, with nothing left out:
 
 | | Ophis-operated chains (Optimism, Unichain, Robinhood Chain) | CoW-hosted chains (the other 10) |
 | --- | --- | --- |
-| Ophis fee | 0.01% base + 80% of price improvement (50% stables), capped at 0.30% (0.10% stables) | 0.10% retail / 0.05% partner / 0.01% stable pairs |
+| Ophis fee | 0.01% base + 80% of price improvement (50% stables), capped at 0.50% (0.20% stables) | 0.10% retail / 0.05% partner / 0.01% stable pairs |
 | Upstream protocol fee | **None** | CoW Protocol volume fee: 0.02% (0.003% on correlated pairs such as stablecoins) |
 | **All-in fixed cost** | **0.01%** | **0.12% retail / 0.07% partner / 0.013% stables** |
 | Price improvement | Trader receives 20% on volatile pairs or 50% on stable pairs until the cap; all improvement above the cap returns to the trader | CoW Protocol retains 50% of quote improvement (capped at 0.98% of volume); Ophis takes no additional share |
@@ -37,8 +37,8 @@ Ophis charge.
 ## How it works
 
 - A **1 bp base fee** is applied on Ophis-operated chains.
-- Volatile pairs add 80% of reference-quote improvement, capped at 30 bps.
-- Stablecoin pairs add 50% of reference-quote improvement, capped at 10 bps.
+- Volatile pairs add 80% of reference-quote improvement, capped at 50 bps.
+- Stablecoin pairs add 50% of reference-quote improvement, capped at 20 bps.
 - On CoW-hosted chains, the upstream CoW Protocol fees in the table above are
   charged in addition; Ophis does not receive them.
 
@@ -51,8 +51,8 @@ beyond the quote.
 
 The capture is measured against the backend's reference quote, not against a
 loose user slippage limit. For volatile pairs Ophis retains 80%, until the fee
-reaches 30 bps of volume. For stablecoin pairs it retains 50%, until the fee
-reaches 10 bps. The separate 1 bp base fee always applies.
+reaches 50 bps of volume. For stablecoin pairs it retains 50%, until the fee
+reaches 20 bps. The separate 1 bp base fee always applies.
 
 Where the order settles still matters:
 
@@ -87,7 +87,7 @@ examples above for Optimism, Unichain, and Robinhood Chain.
 
 The table isolates the fixed base so it can be compared with AMM fees. On
 Optimism, Unichain, and Robinhood Chain, the realized charge also includes 50%
-of reference-quote improvement, capped at 10 bps of volume; the trader receives
+of reference-quote improvement, capped at 20 bps of volume; the trader receives
 the remainder and all improvement above the cap. On CoW-hosted chains, the
 fixed and improvement charges in the all-in table above apply.
 

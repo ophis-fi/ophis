@@ -36,8 +36,8 @@ swap 100 USDC for ETH on Base
   your wallet (EIP-712 or ERC-1271) and executed by an authorized solver
   from the allowlisted solver set.
 - **Transparent, chain-aware fees.** Ophis-operated chains charge a 1 bp base
-  plus 80% of reference-quote improvement on volatile pairs (30 bps cap), or
-  50% on stable pairs (10 bps cap). CoW-hosted chains retain the existing flat
+  plus 80% of reference-quote improvement on volatile pairs (50 bps cap), or
+  50% on stable pairs (20 bps cap). CoW-hosted chains retain the existing flat
   rates and [CoW Protocol's own fees apply on top](./fees.md).
 - **Open.** The full frontend, intent-parser proxy, and infra runbooks
   are public.
