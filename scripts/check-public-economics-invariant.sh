@@ -12,7 +12,7 @@ PUBLIC_PATHS=(
   apps/docs-ophis/static
   apps/frontend/apps/ophis-landing/src
   apps/frontend/apps/ophis-landing/public
-  apps/frontend/apps/cowswap-frontend/public/business
+  apps/frontend/apps/cowswap-frontend/public
 )
 
 fail=0

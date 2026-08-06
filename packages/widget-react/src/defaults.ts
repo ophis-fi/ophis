@@ -1,7 +1,7 @@
 import {
+  OPHIS_FEE_CHAIN_IDS,
   OPHIS_PARTNER_FEE_RECIPIENT,
   ophisVolumeBpsForChainAndPair,
-  OPHIS_VOLUME_FEE_BPS,
 } from '@ophis/sdk';
 import type { CowSwapWidgetParams } from '@cowprotocol/widget-react';
 
@@ -19,12 +19,14 @@ export const OPHIS_WIDGET_APP_CODE = 'ophis';
 /**
  * The widget's `PartnerFee` type is `{ bps, recipient }` (FlexibleConfig).
  * The SDK exposes the fee as `{ volumeBps, recipient }`. We map volumeBps -> bps
- * here. This exported constant is the hosted-chain volatile fallback used when
- * no chainId is configured. `withOphisDefaults` resolves a configured sovereign
- * chain to its 1 bp base.
+ * here. Keep `bps` as a per-network FlexibleConfig: the embedded widget resolves
+ * it against the active wallet chain after every network switch. Collapsing it
+ * against the initial `params.chainId` would make that initial fee stick.
  */
 export const OPHIS_WIDGET_PARTNER_FEE: NonNullable<CowSwapWidgetParams['partnerFee']> = {
-  bps: OPHIS_VOLUME_FEE_BPS,
+  bps: Object.freeze(Object.fromEntries(
+    OPHIS_FEE_CHAIN_IDS.map((chainId) => [chainId, ophisVolumeBpsForChainAndPair(chainId, false)]),
+  )) as NonNullable<CowSwapWidgetParams['partnerFee']>['bps'],
   recipient: OPHIS_PARTNER_FEE_RECIPIENT,
 };
 
@@ -49,10 +51,6 @@ function orDefault(value: string | undefined, fallback: string): string {
 
 export function withOphisDefaults(params: CowSwapWidgetParams): CowSwapWidgetParams {
   const callerFee = params.partnerFee;
-  const configuredChainId = typeof params.chainId === 'number' ? params.chainId : undefined;
-  const defaultBps = configuredChainId === undefined
-    ? OPHIS_WIDGET_PARTNER_FEE.bps
-    : ophisVolumeBpsForChainAndPair(configuredChainId, false);
 
   return {
     ...params,
@@ -63,7 +61,7 @@ export function withOphisDefaults(params: CowSwapWidgetParams): CowSwapWidgetPar
     baseUrl: orDefault(params.baseUrl, OPHIS_WIDGET_BASE_URL),
     // Always enforce the Ophis recipient; honour a caller bps override.
     partnerFee: {
-      bps: callerFee?.bps ?? defaultBps,
+      bps: callerFee?.bps ?? OPHIS_WIDGET_PARTNER_FEE.bps,
       recipient: OPHIS_WIDGET_PARTNER_FEE.recipient,
     },
   };

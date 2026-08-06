@@ -50,9 +50,10 @@ All endpoints are public and require no API key or authentication.
 
 On Optimism, Unichain, and Robinhood Chain, orders carry a 1 bp base and the
 backend retains 80% of reference-quote improvement on volatile pairs (30 bps
-cap), or 50% on stable pairs (10 bps cap). On CoW-hosted chains, Ophis retains
-10 bps retail, 5 bps partner, or 1 bp stable-pair pricing and CoW Protocol's own
-fees apply upstream. Details:
+cap), or 50% on stable pairs (10 bps cap). On CoW-hosted chains, the hosted MCP
+`build_order` path carries 5 bps because it does not classify token pairs. The
+1 bp hosted stable-pair rate is available only through a pair-aware/manual SDK
+appData build; CoW Protocol's own fees also apply upstream. Details:
 https://docs.ophis.fi/fees. A share of fees is returned
 monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,
