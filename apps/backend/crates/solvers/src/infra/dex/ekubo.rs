@@ -87,6 +87,7 @@ impl Ekubo {
         Ok(Self {
             client: reqwest::Client::builder()
                 .user_agent("ophis-ekubo-solver/1.0")
+                .timeout(std::time::Duration::from_secs(4))
                 .build()?,
             config,
         })
@@ -225,7 +226,10 @@ fn encode_routes(
         let mut current = specified;
         for node in &split.route {
             let hop = &node.swap;
-            if hop.pool_key.token0 >= hop.pool_key.token1 {
+            // The control word can alter linear route execution (skip-ahead
+            // and partial-fill semantics). The driver validates a simple
+            // connected path, so the first release accepts only zero controls.
+            if hop.skip_ahead != 0 || hop.pool_key.token0 >= hop.pool_key.token1 {
                 return Err(Error::InvalidQuote);
             }
             let config = decode_fixed::<32>(&hop.pool_key.config)?;
@@ -370,5 +374,31 @@ mod tests {
         assert_eq!(encoded.len(), 78 + 17 + 109);
         assert_eq!(encoded[78 + 17], 1);
         assert_eq!(&encoded[78 + 18..78 + 38], ROBINHOOD_VE33.as_slice());
+    }
+
+    #[test]
+    fn rejects_nonzero_route_controls() {
+        let token0 = Address::with_last_byte(1);
+        let token1 = Address::with_last_byte(2);
+        let split = Split {
+            amount_specified: "7".into(),
+            amount_calculated: "5".into(),
+            route: vec![Node {
+                swap: Swap {
+                    r#type: "core".into(),
+                    pool_key: PoolKey {
+                        token0,
+                        token1,
+                        config: format!("0x{}", "00".repeat(32)),
+                    },
+                    sqrt_ratio_limit: format!("0x{}", "00".repeat(12)),
+                    skip_ahead: 1,
+                },
+            }],
+        };
+        assert!(matches!(
+            encode_routes(token0, token1, 5, Address::with_last_byte(3), &[split]),
+            Err(Error::InvalidQuote)
+        ));
     }
 }

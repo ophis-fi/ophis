@@ -644,7 +644,12 @@ fn validate_ekubo_route(
             let token0 = Address::from_slice(&data[cursor..cursor + 20]);
             let token1 = Address::from_slice(&data[cursor + 20..cursor + 40]);
             let extension = Address::from_slice(&data[cursor + 40..cursor + 60]);
-            if token0 >= token1 || extension != expected_extension {
+            // The final four bytes are Ekubo's route control word. Non-zero
+            // controls can change the linear hop semantics validated here.
+            if token0 >= token1
+                || extension != expected_extension
+                || data[cursor + 84..cursor + 88] != [0; 4]
+            {
                 return Err(reject());
             }
             current = if current == token0 {
@@ -1262,6 +1267,19 @@ mod tests {
         forwarded.call_data = bytes.into();
         assert!(matches!(
             validate_with_required_output(&forwarded, 4663, Some(required(sell, buy, 1_000, 990))),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
+        let mut controlled = custom;
+        let mut bytes = controlled.call_data.to_vec();
+        *bytes.last_mut().unwrap() = 1;
+        controlled.call_data = bytes.into();
+        assert!(matches!(
+            validate_with_required_output(
+                &controlled,
+                4663,
+                Some(required(sell, buy, 1_000, 990))
+            ),
             Err(Error::CallDataNotAllowed { .. })
         ));
     }
