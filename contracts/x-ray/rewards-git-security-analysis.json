@@ -1,0 +1,197 @@
+{
+  "meta": {
+    "repo": "/Users/hodlmedia/ophis-economic-model/contracts",
+    "src_dir": "src/contracts/rewards",
+    "generated_at": "2026-08-07T15:08:14.087120+00:00",
+    "git_head": "338354e0",
+    "git_branch": "feat/increase-price-improvement-caps",
+    "total_commits": 1341,
+    "total_source_files": 1,
+    "analysis_time_ms": 1270
+  },
+  "repo_shape": {
+    "classification": "squashed_import",
+    "total_commits": 1341,
+    "source_touching_commits": 0,
+    "bulk_import_sha": null,
+    "date_spread_days": 96,
+    "first_commit_date": "2026-05-02",
+    "last_commit_date": "2026-08-06",
+    "signals": [
+      "Only 1 commit touches source files",
+      "Date spread: 96 days",
+      "0 commits touch source files out of 1341 total"
+    ]
+  },
+  "fix_candidates": [
+    {
+      "sha": "238aed0d",
+      "full_sha": "238aed0de96f5dda4e65557164431b40a0290c4e",
+      "date": "2026-07-25",
+      "author": "San Clemente",
+      "subject": "fix(orderbook): correct quote/draft after-fee sell, signing-scheme drafts, slippage overflow, full ABIs (api-dx review) (#925)",
+      "score": 10,
+      "reasons": [
+        "explicit security language",
+        "involves oracle/pricing"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "7fcd3a84",
+      "full_sha": "7fcd3a84610ade1bbaf0c1eb97feff861fd908d6",
+      "date": "2026-08-05",
+      "author": "San Clemente",
+      "subject": "docs: record sovereign pricing security review",
+      "score": 8,
+      "reasons": [
+        "explicit security language"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "6a5a73d7",
+      "full_sha": "6a5a73d7873b98f6bdb8bcdac77080a1ab6a2e9a",
+      "date": "2026-08-03",
+      "author": "San Clemente",
+      "subject": "chore(security): brace-expansion ignore expires before the Monday audit; full root consumer set (#1082)",
+      "score": 8,
+      "reasons": [
+        "explicit security language"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "072903d6",
+      "full_sha": "072903d64362c6c7e8544b2c3293e75d31b6a794",
+      "date": "2026-08-03",
+      "author": "San Clemente",
+      "subject": "chore(security): dated ignore for brace-expansion GHSA-rgw5-rvv9-x895 (#1081)",
+      "score": 8,
+      "reasons": [
+        "explicit security language"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "56867ede",
+      "full_sha": "56867edec00fe120ae9349b99f7906666684bb7d",
+      "date": "2026-08-03",
+      "author": "San Clemente",
+      "subject": "feat(learn): mechanism cluster 2a - sandwich attack, solver, coincidence of wants (#1076)",
+      "score": 8,
+      "reasons": [
+        "explicit security language"
+      ],
+      "source_files_touched": [],
+      "test_changed": true,
+      "lines_changed": 0
+    },
+    {
+      "sha": "0d4b6605",
+      "full_sha": "0d4b6605a8b66c69c1b146b023a948e60a647827",
+      "date": "2026-08-02",
+      "author": "San Clemente",
+      "subject": "feat(landing): canonical /pricing, /supported-chains, /security + single-source chain list (#1055)",
+      "score": 8,
+      "reasons": [
+        "explicit security language"
+      ],
+      "source_files_touched": [],
+      "test_changed": true,
+      "lines_changed": 0
+    },
+    {
+      "sha": "99aacf52",
+      "full_sha": "99aacf522ba5da6a0bf1ffc9b3ae4efb987852f2",
+      "date": "2026-07-27",
+      "author": "San Clemente",
+      "subject": "Fix audited security and tooling issues (#940)",
+      "score": 8,
+      "reasons": [
+        "explicit security language"
+      ],
+      "source_files_touched": [],
+      "test_changed": true,
+      "lines_changed": 0
+    },
+    {
+      "sha": "1742467f",
+      "full_sha": "1742467fb28898647926b912655f6e9f4d80c64c",
+      "date": "2026-07-25",
+      "author": "San Clemente",
+      "subject": "fix(security): restore the undeclared isolateHits (P0, live /api/bungee 500) + close 18 Dependabot alerts (#909)",
+      "score": 8,
+      "reasons": [
+        "explicit security language"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "275bd8a7",
+      "full_sha": "275bd8a756c591f0991a9cf549c2a49027d40299",
+      "date": "2026-07-25",
+      "author": "San Clemente",
+      "subject": "fix(security): unblock osv-gates on brace-expansion GHSA-mh99-v99m-4gvg (documented ignore) (#910)",
+      "score": 8,
+      "reasons": [
+        "explicit security language"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    },
+    {
+      "sha": "e4bdcf2f",
+      "full_sha": "e4bdcf2f22d8179dc51323481c87ebc07be74ac3",
+      "date": "2026-07-24",
+      "author": "San Clemente",
+      "subject": "fix(security): unblock osv-gate -- postcss CVE bump + unreachable react-router ignore (#900)",
+      "score": 8,
+      "reasons": [
+        "explicit security language"
+      ],
+      "source_files_touched": [],
+      "test_changed": false,
+      "lines_changed": 0
+    }
+  ],
+  "dangerous_area_changes": {},
+  "late_changes": {
+    "window_days": 30,
+    "cutoff_date": "2026-07-07",
+    "latest_commit_date": "2026-08-06",
+    "late_commits": [],
+    "source_without_test_count": 0,
+    "total_late_source_commits": 0
+  },
+  "forked_deps": {
+    "detected_libs": [],
+    "removed_submodules": []
+  },
+  "tech_debt": {
+    "total_count": 0,
+    "items": [],
+    "files_with_debt": 0,
+    "capped": false
+  },
+  "dev_patterns": {
+    "test_co_change_rate": 0.0,
+    "fix_without_test_rate": 0.7,
+    "avg_commit_size": 0.0,
+    "avg_commit_size_note": null,
+    "single_developer_pct": 0.0,
+    "top_contributor": "unknown",
+    "contributor_breakdown": []
+  }
+}

@@ -18,6 +18,7 @@ evm_version = "cancun"
 skip = [
   "*ERC20PresetPermit.sol",
   "*ChiToken.sol",
+  "test/rewards/fizz",
 ]
 
 deny_warnings = true
@@ -31,6 +32,7 @@ deny_warnings = true
 # test/vault) remain fully warning-gated.
 ignored_warnings_from = [
   "test/fizz",
+  "test/rewards/fizz",
   "test/GPv2Signing",
   "src/contracts/libraries",
   "lib/forge-std",
@@ -52,6 +54,20 @@ ignore = [
 
 [profile.ci]
 fuzz.seed = '0'
+
+# Isolated security campaign for the finite rewards distributor. This avoids
+# compiling unrelated legacy deployment fixtures during Medusa/Echidna runs.
+[profile.rewards-fuzz]
+src = "src/contracts/rewards"
+test = "test/rewards/fizz"
+script = "script/rewards-fuzz"
+out = "out/rewards-fuzz"
+libs = ["node_modules", "lib"]
+optimizer = true
+optimizer_runs = 1000000
+evm_version = "cancun"
+deny_warnings = false
+skip = []
 
 [lint]
 # forge 1.5's build-time linter aborts the build on style lints (mixed-case,

@@ -14,6 +14,7 @@ import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import { findReward } from './rewards.js';
 import { getPartnerFeeDashboard, getPartnerFeeStats } from './partnerFees/report.js';
+import { registerTradeRewardRoutes } from './tradeRewards/routes.js';
 import {
   FEE_SHARE_BPS,
   GROSS_FEE_BPS,
@@ -376,6 +377,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     }
   });
   app.options('*', async (_req, reply) => reply.code(204).send());
+  registerTradeRewardRoutes(app);
 
   // rebates.ophis.fi is the rebate-indexer API host (JSON endpoints + the
   // per-wallet /tier HTML page). Google was crawling the bare host root and

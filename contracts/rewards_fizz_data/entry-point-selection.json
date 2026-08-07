@@ -1,0 +1,105 @@
+[
+  {
+    "name": "OphisRewardsDistributor",
+    "sourcePath": "src/contracts/rewards/OphisRewardsDistributor.sol",
+    "artifactPath": "out/OphisRewardsDistributor.sol/OphisRewardsDistributor.json",
+    "constructor": {
+      "inputs": [
+        {
+          "name": "token",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "safeOwner",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "initialRewardSigner",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "tier": "primary"
+    },
+    "functions": [
+      {
+        "name": "assign",
+        "inputs": [
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "ticketId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "amount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "v",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "r",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "s",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary"
+      },
+      {
+        "name": "claim",
+        "inputs": [
+          {
+            "name": "recipient",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "primary"
+      },
+      {
+        "name": "setPaused",
+        "inputs": [
+          {
+            "name": "nextPaused",
+            "type": "bool",
+            "internalType": "bool"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      },
+      {
+        "name": "setRewardSigner",
+        "inputs": [
+          {
+            "name": "nextRewardSigner",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable",
+        "tier": "secondary"
+      }
+    ],
+    "hasReceive": false,
+    "hasFallback": false
+  }
+]

@@ -77,6 +77,17 @@ services:
       SETTLE_SCAN_START_BLOCK_130: ${SETTLE_SCAN_START_BLOCK_130:-51998330}
       SETTLE_RPC_URL_10: ${SETTLE_RPC_URL_10:-}
       SETTLE_RPC_URL_130: ${SETTLE_RPC_URL_130:-}
+      # Finite Robinhood Chain reward campaign. Keep disabled until the contract
+      # is deployed, verified, funded with at least 150 USDG, and the immutable
+      # allocation commitment has been recorded.
+      TRADE_REWARDS_ENABLED: ${TRADE_REWARDS_ENABLED:-false}
+      REWARDS_DISTRIBUTOR_ADDRESS: ${REWARDS_DISTRIBUTOR_ADDRESS:-0x398d1287E07560AAab2fdc81896beF65D8e94e5E}
+      REWARDS_ROBINHOOD_RPC_URL: ${REWARDS_ROBINHOOD_RPC_URL:-}
+      # Paths and read-only mounts are supplied only by the production rewards
+      # override. Disabled/local deployments must not require reward secrets.
+      TRADE_REWARDS_ALLOCATION_SEED_FILE: ${TRADE_REWARDS_ALLOCATION_SEED_FILE:-}
+      REWARDS_SIGNER_PRIVATE_KEY_FILE: ${REWARDS_SIGNER_PRIVATE_KEY_FILE:-}
+      REWARDS_RELAYER_PRIVATE_KEY_FILE: ${REWARDS_RELAYER_PRIVATE_KEY_FILE:-}
     ports:
       # Bind to loopback only. Caddy reaches the indexer over the compose network
       # (reverse_proxy indexer:8080) and the deploy health-check curls

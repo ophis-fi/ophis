@@ -19,6 +19,7 @@ out/
 /broadcast/**/dry-run/
 # Ignores logs of some scripts
 /broadcast/TransferOwnership.s.sol/
+/broadcast/DeployRewardsDistributor.s.sol/
 
 # Dotenv file
 .env
