@@ -104,8 +104,20 @@ export async function assertRewardsContractReady(): Promise<void> {
   if (owner.toLowerCase() !== TRADE_REWARDS_DISTRIBUTOR_SAFE.toLowerCase()) throw new Error('rewards owner mismatch');
   if (signer.toLowerCase() !== TRADE_REWARDS_SIGNER.toLowerCase()) throw new Error('rewards signer mismatch');
   if (token.toLowerCase() !== ROBINHOOD_USDG.toLowerCase()) throw new Error('rewards token mismatch');
-  if (balance + claimedValue !== TRADE_REWARDS_MAX_PAYOUT) {
-    throw new Error(`rewards funding invariant failed: balance + paid = ${balance + claimedValue}/${TRADE_REWARDS_MAX_PAYOUT} USDG base units`);
+  assertRewardsFunding(balance, claimedValue);
+}
+
+/**
+ * Require enough USDG to cover the campaign's remaining maximum liability.
+ * Excess tokens are harmless: ERC-20 transfers cannot be rejected, so exact
+ * equality would let any account halt assignments by donating one base unit.
+ */
+export function assertRewardsFunding(balance: bigint, claimedValue: bigint): void {
+  const lifetimeFunding = balance + claimedValue;
+  if (lifetimeFunding < TRADE_REWARDS_MAX_PAYOUT) {
+    throw new Error(
+      `rewards funding invariant failed: balance + paid = ${lifetimeFunding}/${TRADE_REWARDS_MAX_PAYOUT} USDG base units`,
+    );
   }
 }
 

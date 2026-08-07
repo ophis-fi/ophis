@@ -78,7 +78,7 @@ services:
       SETTLE_RPC_URL_10: ${SETTLE_RPC_URL_10:-}
       SETTLE_RPC_URL_130: ${SETTLE_RPC_URL_130:-}
       # Finite Robinhood Chain reward campaign. Keep disabled until the contract
-      # is deployed, verified, funded with exactly 150 USDG, and the immutable
+      # is deployed, verified, funded with at least 150 USDG, and the immutable
       # allocation commitment has been recorded.
       TRADE_REWARDS_ENABLED: ${TRADE_REWARDS_ENABLED:-false}
       REWARDS_DISTRIBUTOR_ADDRESS: ${REWARDS_DISTRIBUTOR_ADDRESS:-0x398d1287E07560AAab2fdc81896beF65D8e94e5E}

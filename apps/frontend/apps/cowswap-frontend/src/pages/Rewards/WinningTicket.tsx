@@ -35,8 +35,8 @@ export function WinningTicket({ account }: WinningTicketProps): ReactNode {
       <styledEl.TicketEmpty>
         <h3>No ticket yet</h3>
         <p>
-          Make a settled Ophis swap of at least $100 with a wallet that has six months of onchain activity. One winning
-          ticket is available per wallet while rewards remain.
+          Make a verified, settled Ophis swap of at least $100 after the campaign starts. One winning ticket is
+          available per wallet while rewards remain.
         </p>
         {error && <styledEl.TicketError>{error}</styledEl.TicketError>}
       </styledEl.TicketEmpty>
