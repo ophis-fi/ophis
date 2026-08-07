@@ -170,13 +170,16 @@ impl Up33 {
         }
         let mut best: Option<(Vec<IUp33Router::Route>, U256)> = None;
         for routes in candidates {
-            let Ok(amounts) = self
+            let amounts = self
                 .router
                 .getAmountsOut(amount, routes.clone())
                 .call()
                 .await
-            else {
-                continue;
+                .map_err(classify_quote_error);
+            let amounts = match amounts {
+                Ok(amounts) => amounts,
+                Err(Error::NotFound) => continue,
+                Err(err) => return Err(err),
             };
             let Some(output) = amounts.last().copied().filter(|x| !x.is_zero()) else {
                 continue;

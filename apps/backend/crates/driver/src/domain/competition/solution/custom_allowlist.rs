@@ -643,7 +643,9 @@ fn validate_ekubo_route(
             };
             let token0 = Address::from_slice(&data[cursor..cursor + 20]);
             let token1 = Address::from_slice(&data[cursor + 20..cursor + 40]);
-            let extension = Address::from_slice(&data[cursor + 40..cursor + 60]);
+            // PoolConfig begins after token0/token1. Its extension occupies
+            // the trailing 20 bytes after the 12-byte fee/tick prefix.
+            let extension = Address::from_slice(&data[cursor + 52..cursor + 72]);
             // The final four bytes are Ekubo's route control word. Non-zero
             // controls can change the linear hop semantics validated here.
             if token0 >= token1
@@ -1255,7 +1257,11 @@ mod tests {
         data.push(0);
         data.extend_from_slice(sell.as_slice());
         data.extend_from_slice(buy.as_slice());
-        data.extend_from_slice(&[0u8; 32 + 12 + 4]);
+        let mut config_and_limits = [0u8; 32 + 12 + 4];
+        // Ordinary core pools legitimately have non-zero fee/tick metadata
+        // in the first 12 bytes of PoolConfig.
+        config_and_limits[..12].fill(1);
+        data.extend_from_slice(&config_and_limits);
         let custom = direct_custom(ROBINHOOD_EKUBO_ROUTER, sell, buy, 1_000, 990, data);
         assert_eq!(
             validate_with_required_output(&custom, 4663, Some(required(sell, buy, 1_000, 990))),
@@ -1275,11 +1281,7 @@ mod tests {
         *bytes.last_mut().unwrap() = 1;
         controlled.call_data = bytes.into();
         assert!(matches!(
-            validate_with_required_output(
-                &controlled,
-                4663,
-                Some(required(sell, buy, 1_000, 990))
-            ),
+            validate_with_required_output(&controlled, 4663, Some(required(sell, buy, 1_000, 990))),
             Err(Error::CallDataNotAllowed { .. })
         ));
     }

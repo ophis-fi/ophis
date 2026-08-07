@@ -233,7 +233,9 @@ fn encode_routes(
                 return Err(Error::InvalidQuote);
             }
             let config = decode_fixed::<32>(&hop.pool_key.config)?;
-            let extension = Address::from_slice(&config[..20]);
+            // PoolConfig packs fee/tick spacing in the leading 12 bytes and
+            // the extension address in the trailing 20 bytes.
+            let extension = Address::from_slice(&config[12..]);
             let kind = match hop.r#type.as_str() {
                 "core" if extension.is_zero() => 0,
                 "forwarded" if extension == ROBINHOOD_VE33 => 1,
@@ -328,7 +330,7 @@ mod tests {
                     pool_key: PoolKey {
                         token0: Address::ZERO,
                         token1: Address::with_last_byte(1),
-                        config: format!("0x01{}", "00".repeat(31)),
+                        config: format!("0x{}01", "00".repeat(31)),
                     },
                     sqrt_ratio_limit: format!("0x{}", "00".repeat(12)),
                     skip_ahead: 0,
@@ -352,7 +354,7 @@ mod tests {
         let token0 = Address::with_last_byte(1);
         let token1 = Address::with_last_byte(2);
         let mut config = [0u8; 32];
-        config[..20].copy_from_slice(ROBINHOOD_VE33.as_slice());
+        config[12..].copy_from_slice(ROBINHOOD_VE33.as_slice());
         let split = Split {
             amount_specified: "7".into(),
             amount_calculated: "5".into(),
