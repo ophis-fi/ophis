@@ -31,6 +31,10 @@ fn required_custom_amounts(
         alloy::primitives::address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7");
     const OPTIMISM_UNISWAP_V4_ADAPTER: alloy::primitives::Address =
         alloy::primitives::address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
+    const ROBINHOOD_EKUBO_ROUTER: alloy::primitives::Address =
+        alloy::primitives::address!("7B2aA7Ecc0B5936b7C52E6259A19C3BA557d0748");
+    const ROBINHOOD_UP33_ROUTER: alloy::primitives::Address =
+        alloy::primitives::address!("f5198743240fAC98db71868F34c70139b1eb0474");
     let protected_interactions: Vec<_> = solution
         .interactions
         .iter()
@@ -43,6 +47,8 @@ fn required_custom_amounts(
                 OPTIMISM_CURVE_3POOL,
                 OPTIMISM_WOOFI_ROUTER,
                 OPTIMISM_UNISWAP_V4_ADAPTER,
+                ROBINHOOD_EKUBO_ROUTER,
+                ROBINHOOD_UP33_ROUTER,
             ]
             .contains(&custom.target)
             .then_some(custom.target)

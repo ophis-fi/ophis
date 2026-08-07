@@ -1,6 +1,7 @@
 pub mod bitget;
 pub mod curve;
 pub mod dodo;
+pub mod ekubo;
 pub mod enso;
 pub mod file;
 pub mod fx;
@@ -10,6 +11,7 @@ pub mod okx;
 pub mod openocean;
 pub mod pons;
 pub mod uniswap_v4;
+pub mod up33;
 pub mod velora;
 pub mod woofi;
 
