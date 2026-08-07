@@ -1,5 +1,5 @@
 import type { Hex } from 'viem';
-import { readFile, stat } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import { sql } from '../db/index.js';
 import { logger } from '../logger.js';
 import { allocationCommitment, buildRewardAllocation, parseAllocationSeed } from './allocation.js';
@@ -43,11 +43,18 @@ function enabledFromEnv(): boolean {
 async function campaignAllocation(): Promise<readonly bigint[]> {
   const seedPath = process.env.TRADE_REWARDS_ALLOCATION_SEED_FILE?.trim();
   if (!seedPath) throw new Error('TRADE_REWARDS_ALLOCATION_SEED_FILE is required');
-  const seedMetadata = await stat(seedPath);
-  if (!seedMetadata.isFile() || (seedMetadata.mode & 0o077) !== 0) {
-    throw new Error('TRADE_REWARDS_ALLOCATION_SEED_FILE must be a regular file with mode 0600 or stricter');
+  const handle = await open(seedPath, 'r');
+  let rawSeed: string;
+  try {
+    const seedMetadata = await handle.stat();
+    if (!seedMetadata.isFile() || (seedMetadata.mode & 0o077) !== 0) {
+      throw new Error('TRADE_REWARDS_ALLOCATION_SEED_FILE must be a regular file with mode 0600 or stricter');
+    }
+    rawSeed = await handle.readFile('utf8');
+  } finally {
+    await handle.close();
   }
-  const seed = parseAllocationSeed((await readFile(seedPath, 'utf8')).trim());
+  const seed = parseAllocationSeed(rawSeed.trim());
   const allocation = buildRewardAllocation(seed);
   const commitment = allocationCommitment(seed, allocation);
   const commitmentBytes = Buffer.from(commitment.slice(2), 'hex');

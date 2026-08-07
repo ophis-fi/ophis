@@ -1,6 +1,6 @@
 import { createPublicClient, createWalletClient, http, type Hex } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { readFile, stat } from 'node:fs/promises';
+import { open } from 'node:fs/promises';
 import {
   TRADE_REWARDS_CHAIN_ID,
   TRADE_REWARDS_DISTRIBUTOR_SAFE,
@@ -58,10 +58,17 @@ const ASSIGNMENT_TYPES = {
 async function privateKeyFromFile(envName: string): Promise<Hex> {
   const path = process.env[envName]?.trim();
   if (!path) throw new Error(`${envName} is required`);
-  const metadata = await stat(path);
-  if (!metadata.isFile()) throw new Error(`${envName} must point to a regular file`);
-  if ((metadata.mode & 0o077) !== 0) throw new Error(`${envName} must have mode 0600 or stricter`);
-  const value = (await readFile(path, 'utf8')).trim();
+  const handle = await open(path, 'r');
+  let rawValue: string;
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) throw new Error(`${envName} must point to a regular file`);
+    if ((metadata.mode & 0o077) !== 0) throw new Error(`${envName} must have mode 0600 or stricter`);
+    rawValue = await handle.readFile('utf8');
+  } finally {
+    await handle.close();
+  }
+  const value = rawValue.trim();
   if (!/^0x[0-9a-fA-F]{64}$/.test(value)) throw new Error(`${envName} does not contain a private key`);
   return value as Hex;
 }
