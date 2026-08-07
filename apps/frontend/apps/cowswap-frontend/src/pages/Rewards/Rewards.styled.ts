@@ -208,7 +208,9 @@ export const ClaimInput = styled.input`
   border: 1px solid rgba(245, 239, 230, 0.18);
   border-radius: 10px;
   padding: 9px 12px;
-  transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
+  transition:
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out;
 
   &::placeholder {
     opacity: 0.4;

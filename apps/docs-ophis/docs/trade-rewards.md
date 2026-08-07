@@ -1,0 +1,45 @@
+---
+sidebar_position: 4
+title: Trade rewards
+description: Rules and claim flow for the finite Ophis winning-ticket campaign.
+---
+
+# Ophis trade rewards
+
+Ophis has prepared a finite reward pilot to study how traders use the product. The campaign is not
+active until Ophis publishes the Robinhood Chain distributor address and enables the claim service.
+There is no token launch or speculative airdrop.
+
+## Fixed campaign
+
+- 105 winning tickets: 100 worth 1 USDG and 5 worth 10 USDG.
+- Total lifetime reward inventory: 150 USDG.
+- One ticket per wallet.
+- Every issued ticket wins; losing tickets are not created.
+- No claim deadline. An assigned reward remains claimable until it is claimed.
+- Rewards are paid in USDG on Robinhood Chain, and Ophis sponsors the claim transaction.
+
+The order of denominations is committed before the campaign starts. The unrevealed allocation seed
+is held separately from the public commitment so neither a trader nor the relayer can choose a
+ticket's denomination after a qualifying swap. Per-ticket odds are not presented in the swap UI.
+
+## Eligibility
+
+A wallet must complete a settled Ophis swap with a priced value of at least **$100** on Ethereum,
+BNB Chain, Arbitrum, Optimism, Base, Robinhood Chain, Unichain, Plasma, Ink, Gnosis, Avalanche, or
+Polygon. The indexer accepts only trades whose Ophis fee was verified; unrelated swaps do not count.
+
+The wallet must also show onchain activity at least 180 days before the qualifying trade. Ophis
+checks historical nonce or contract-code evidence against archive RPCs across the supported list. A
+single positive chain is sufficient; if there is no positive evidence and any archive check failed,
+eligibility fails closed. This is an age/activity check, not an identity check.
+
+## Claiming
+
+Connect the qualifying wallet at [swap.ophis.fi/#/rewards](https://swap.ophis.fi/#/rewards). Once the
+signed assignment is confirmed on Robinhood Chain, select **Claim**. Ophis submits and pays for the
+transaction; the distributor sends USDG directly to the qualifying wallet. A relayer cannot redirect
+the payment.
+
+The campaign contract has no owner withdrawal function. The Ophis Safe can pause assignment and
+claims during an incident and rotate the offchain reward signer, but cannot sweep the committed USDG.

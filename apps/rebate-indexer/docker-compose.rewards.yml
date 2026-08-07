@@ -1,0 +1,12 @@
+services:
+  indexer:
+    environment:
+      TRADE_REWARDS_ENABLED: "true"
+      REWARDS_DISTRIBUTOR_ADDRESS: 0x398d1287E07560AAab2fdc81896beF65D8e94e5E
+      TRADE_REWARDS_ALLOCATION_SEED_FILE: /run/ophis-rewards/allocation-seed
+      REWARDS_SIGNER_PRIVATE_KEY_FILE: /run/ophis-rewards/signer-private-key
+      REWARDS_RELAYER_PRIVATE_KEY_FILE: /run/ophis-rewards/relayer-private-key
+    volumes:
+      - ${TRADE_REWARDS_ALLOCATION_SEED_HOST_FILE:?set TRADE_REWARDS_ALLOCATION_SEED_HOST_FILE}:/run/ophis-rewards/allocation-seed:ro
+      - ${REWARDS_SIGNER_PRIVATE_KEY_HOST_FILE:?set REWARDS_SIGNER_PRIVATE_KEY_HOST_FILE}:/run/ophis-rewards/signer-private-key:ro
+      - ${REWARDS_RELAYER_PRIVATE_KEY_HOST_FILE:?set REWARDS_RELAYER_PRIVATE_KEY_HOST_FILE}:/run/ophis-rewards/relayer-private-key:ro

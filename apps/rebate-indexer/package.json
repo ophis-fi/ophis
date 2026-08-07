@@ -15,7 +15,8 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "cli": "tsx src/cli.ts",
-    "scan": "tsx src/scan/cli.ts"
+    "scan": "tsx src/scan/cli.ts",
+    "trade-rewards:commitment": "tsx scripts/trade-rewards-commitment.ts"
   },
   "dependencies": {
     "@fastify/rate-limit": "^10.3.0",

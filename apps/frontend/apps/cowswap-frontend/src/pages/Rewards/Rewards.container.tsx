@@ -22,9 +22,10 @@ import { Callout, PageShell, Section, TextLink } from 'ophis/ds'
 import { ConnectWalletCta } from 'pages/Affiliate/ConnectWalletCta'
 
 import { RewardCard } from './RewardCard'
-import * as styledEl from './Rewards.styled'
 import { CLAIM_EMAIL, REWARDS_PERKS } from './rewards.const'
+import * as styledEl from './Rewards.styled'
 import { useWalletXp } from './useWalletXp'
+import { WinningTicket } from './WinningTicket'
 import { XpRing } from './XpRing'
 
 function formatXp(value: number): string {
@@ -46,15 +47,19 @@ export function RewardsPage(): ReactNode {
     <PageShell
       width="medium"
       eyebrow="Rewards"
-      title="Trade. Earn XP. Unlock rewards."
-      lede="Every dollar of volume you trade on Ophis earns 1 XP. XP unlocks rewards from partners, and it never expires."
+      title="Trade. Win. Claim on Robinhood Chain."
+      lede="A qualifying $100+ Ophis swap earns one winning ticket per eligible wallet while the finite reward pool remains."
     >
+      <Section id="winning-ticket" title="Your trade reward">
+        <WinningTicket account={account} />
+      </Section>
+
       <Section id="xp" title="Your XP">
         {!account ? (
           <Callout tone="info" title="Connect a wallet">
             <p>
-              XP is read from your trading history on the public rebate indexer. Connect a wallet to
-              see your balance and unlock rewards. Nothing to sign, nothing stored by Ophis.
+              XP is read from your trading history on the public rebate indexer. Connect a wallet to see your balance
+              and unlock rewards. Nothing to sign, nothing stored by Ophis.
             </p>
             <ConnectWalletCta />
           </Callout>
@@ -79,8 +84,8 @@ export function RewardsPage(): ReactNode {
               </p>
               {nextUnlockXp !== null ? (
                 <p>
-                  {formatXp(Math.max(nextUnlockXp - (xp ?? 0), 0))} XP to your next unlock. Every swap
-                  counts: $1 traded = 1 XP, on any supported chain.
+                  {formatXp(Math.max(nextUnlockXp - (xp ?? 0), 0))} XP to your next unlock. Every swap counts: $1 traded
+                  = 1 XP, on any supported chain.
                 </p>
               ) : (
                 <p>All current rewards are unlocked. New rewards are added as partners join.</p>
@@ -103,13 +108,12 @@ export function RewardsPage(): ReactNode {
           <li>$1 of traded volume = 1 XP, counted across all production chains. Fee-free flows do not earn XP.</li>
           <li>XP is cumulative and never expires. Rewards stay unlocked once you reach the threshold.</li>
           <li>
-            Claiming validates your address: an eligibility check against the threshold, then a
-            one-time signature. No transaction, no gas.
+            Claiming validates your address: an eligibility check against the threshold, then a one-time signature. No
+            transaction, no gas.
           </li>
           <li>
-            Some partners issue their codes themselves. Those rewards ask for an email, used only
-            to contact you about the reward you claimed, never for marketing or any other
-            commercial purpose.
+            Some partners issue their codes themselves. Those rewards ask for an email, used only to contact you about
+            the reward you claimed, never for marketing or any other commercial purpose.
           </li>
           <li>
             Partners who want to list a reward can <TextLink href={`mailto:${CLAIM_EMAIL}`}>get in touch</TextLink>.
