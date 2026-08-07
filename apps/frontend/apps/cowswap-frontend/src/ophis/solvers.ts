@@ -57,7 +57,8 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   // Mirrors each stack's AUTOPILOT [[drivers]], the only list that decides which
   // lanes are dispatched an auction. Pinned per chain by
   // scripts/check-solver-registry-invariant.sh.
-  //   chain 10   baseline, okx, kyberswap, velora, enso, lifi, openocean, dodo
+  //   chain 10   baseline, okx, kyberswap, velora, enso, lifi, openocean, dodo,
+  //              curve, woofi, uniswap-v4
   //   chain 130  baseline, okx, kyberswap, velora, openocean, dodo, lifi, enso
   //   chain 4663 baseline, lifi, kyberswap, uniswap-v4
   {
@@ -104,7 +105,12 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
     solverId: 'dodo',
     chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
   }, // external aggregator
-  { solverId: 'uniswap-v4', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
+  { solverId: 'curve', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
+  { solverId: 'woofi', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
+  {
+    solverId: 'uniswap-v4',
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
+  }, // direct on-chain lane
   // No odos entry: #996 removed that lane from BOTH sovereign autopilots after
   // its API began answering 410. It is in no autopilot, so it is in no registry.
 ]

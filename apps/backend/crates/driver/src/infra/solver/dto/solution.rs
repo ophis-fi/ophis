@@ -51,7 +51,12 @@ fn required_custom_amounts(
     if protected_interactions.is_empty() {
         return Ok(None);
     }
-    if solution.trades.len() != 1 || protected_interactions.len() != 1 {
+    if solution.trades.len() != 1
+        || !solution.pre_interactions.is_empty()
+        || solution.interactions.len() != 1
+        || !solution.post_interactions.is_empty()
+        || protected_interactions.len() != 1
+    {
         return Err(super::Error(
             "protected direct-liquidity solutions require exactly one fulfillment and one \
              interaction"
@@ -673,5 +678,92 @@ mod protected_interaction_tests {
             assert_eq!(context.max_input, U256::from(1_000));
             assert_eq!(context.min_output, U256::from(990));
         }
+    }
+
+    #[test]
+    fn protected_solution_rejects_an_extra_unprotected_interaction() {
+        let protected = address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
+        let unprotected = address!("0000000000000000000000000000000000000001");
+        let solution: solvers_dto::solution::Solution =
+            serde_json::from_value(serde_json::json!({
+                "id": 1,
+                "prices": {},
+                "trades": [{
+                    "kind": "fulfillment",
+                    "order": format!("0x{}", "00".repeat(56)),
+                    "executedAmount": "1"
+                }],
+                "interactions": [
+                    {
+                        "kind": "custom",
+                        "internalize": false,
+                        "target": format!("{protected:#x}"),
+                        "value": "0",
+                        "callData": "0x",
+                        "allowances": [],
+                        "inputs": [],
+                        "outputs": []
+                    },
+                    {
+                        "kind": "custom",
+                        "internalize": false,
+                        "target": format!("{unprotected:#x}"),
+                        "value": "0",
+                        "callData": "0x",
+                        "allowances": [],
+                        "inputs": [],
+                        "outputs": []
+                    }
+                ]
+            }))
+            .unwrap();
+
+        let err = required_custom_amounts(&solution, &[]).unwrap_err();
+        assert!(err.0.contains("exactly one fulfillment and one interaction"));
+    }
+
+    fn protected_solution_with_raw_interaction(
+        field: &str,
+    ) -> solvers_dto::solution::Solution {
+        let protected = address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
+        let mut solution = serde_json::json!({
+            "id": 1,
+            "prices": {},
+            "trades": [{
+                "kind": "fulfillment",
+                "order": format!("0x{}", "00".repeat(56)),
+                "executedAmount": "1"
+            }],
+            "interactions": [{
+                "kind": "custom",
+                "internalize": false,
+                "target": format!("{protected:#x}"),
+                "value": "0",
+                "callData": "0x",
+                "allowances": [],
+                "inputs": [],
+                "outputs": []
+            }]
+        });
+        solution[field] = serde_json::json!([{
+            "target": "0x0000000000000000000000000000000000000001",
+            "value": "0",
+            "callData": "0x"
+        }]);
+        serde_json::from_value(solution).unwrap()
+    }
+
+    #[test]
+    fn protected_solution_rejects_a_pre_interaction() {
+        let solution = protected_solution_with_raw_interaction("preInteractions");
+        let err = required_custom_amounts(&solution, &[]).unwrap_err();
+        assert!(err.0.contains("exactly one fulfillment and one interaction"));
+    }
+
+    #[test]
+    fn protected_solution_rejects_a_post_interaction() {
+        let solution = protected_solution_with_raw_interaction("postInteractions");
+        let err = required_custom_amounts(&solution, &[]).unwrap_err();
+        assert!(err.0.contains("exactly one fulfillment and one interaction"));
     }
 }
