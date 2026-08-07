@@ -9,7 +9,13 @@ on:
       - "pnpm-workspace.yaml"
       - "tsconfig.base.json"
       - ".github/workflows/rebate-indexer-deploy.yml"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      verify_rewards_disabled:
+        description: Verify the prepared reward runtime is disabled and has issued no tickets
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: rebate-indexer-deploy
@@ -137,3 +143,27 @@ jobs:
           done
           echo "::error::public rebate health failed after Cadia deploy"
           exit 1
+
+      - name: verify prepared reward runtime (read-only)
+        if: ${{ inputs.verify_rewards_disabled }}
+        env:
+          SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
+          SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
+          SSH_PORT: ${{ secrets.CADIA_REBATES_SSH_PORT }}
+        run: |
+          ssh -i "$RUNNER_TEMP/ssh/deploy_key" -p "$SSH_PORT" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" \
+            "$SSH_USER@$SSH_HOST" \
+            "set -e
+             cd /srv/ophis/apps/rebate-indexer
+             for secret in trade-rewards-allocation-seed rewards-signer-private-key rewards-relayer-private-key; do
+               test -s \"secrets/\$secret\"
+               test \"\$(stat -c %a \"secrets/\$secret\")\" = 600
+             done
+             docker compose exec -T indexer sh -c 'test \"\$TRADE_REWARDS_ENABLED\" = false'
+             test \"\$(docker compose exec -T pg psql -U rebates -Atc \"SELECT count(*) FROM __migrations WHERE filename = '0028_trade_rewards_simplify_eligibility.sql'\")\" = 1
+             test \"\$(docker compose exec -T pg psql -U rebates -Atc 'SELECT count(*) FROM trade_reward_tickets')\" = 0
+             test \"\$(docker compose exec -T pg psql -U rebates -Atc \"SELECT count(*) FROM information_schema.columns WHERE table_name = 'trade_reward_tickets' AND column_name LIKE 'wallet_age_%'\")\" = 0
+             test \"\$(docker compose exec -T pg psql -U rebates -Atc \"SELECT count(*) FROM pg_class WHERE oid = to_regclass('public.trade_reward_wallet_blocks')\")\" = 1
+             echo 'reward runtime verified: disabled, zero tickets, migration applied, protected files present'"
