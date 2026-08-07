@@ -7,6 +7,7 @@ use {
 pub mod bitget;
 pub mod curve;
 pub mod dodo;
+pub mod ekubo;
 pub mod enso;
 pub mod fx;
 pub mod kyberswap;
@@ -16,6 +17,7 @@ pub mod openocean;
 pub mod pons;
 pub mod simulator;
 pub mod uniswap_v4;
+pub mod up33;
 pub mod velora;
 pub mod woofi;
 
@@ -36,6 +38,8 @@ pub enum Dex {
     Fx(Box<fx::Fx>),
     Pons(Box<pons::Pons>),
     Woofi(Box<woofi::Woofi>),
+    Ekubo(Box<ekubo::Ekubo>),
+    Up33(Box<up33::Up33>),
 }
 
 impl Dex {
@@ -69,6 +73,8 @@ impl Dex {
             Dex::Fx(fx) => fx.swap(order, slippage).await?,
             Dex::Pons(pons) => pons.swap(order, slippage).await?,
             Dex::Woofi(woofi) => woofi.swap(order, slippage, is_quote).await?,
+            Dex::Ekubo(ekubo) => ekubo.swap(order, slippage, is_quote).await?,
+            Dex::Up33(up33) => up33.swap(order, slippage, is_quote).await?,
         };
         Ok(swap)
     }
@@ -174,6 +180,27 @@ impl From<woofi::Error> for Error {
         match err {
             woofi::Error::OrderNotSupported => Self::OrderNotSupported,
             woofi::Error::NotFound => Self::NotFound,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<ekubo::Error> for Error {
+    fn from(err: ekubo::Error) -> Self {
+        match err {
+            ekubo::Error::OrderNotSupported => Self::OrderNotSupported,
+            ekubo::Error::NotFound => Self::NotFound,
+            ekubo::Error::RateLimited => Self::RateLimited,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<up33::Error> for Error {
+    fn from(err: up33::Error) -> Self {
+        match err {
+            up33::Error::OrderNotSupported => Self::OrderNotSupported,
+            up33::Error::NotFound => Self::NotFound,
             _ => Self::Other(Box::new(err)),
         }
     }

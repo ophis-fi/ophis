@@ -108,4 +108,14 @@ pub enum Command {
         #[clap(long, env)]
         config: PathBuf,
     },
+    /// solve ERC-20 orders through Ekubo's canonical Core-only routes
+    Ekubo {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
+    /// solve orders through UP33's pinned V2 factory and router
+    Up33 {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
 }

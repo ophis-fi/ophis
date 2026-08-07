@@ -28,7 +28,9 @@ enabled because the autopilot requires `debug_traceTransaction`.
 | driver        | 8411        | Solver engine + settlement submitter |
 | baseline      | 9310        | On-chain liquidity solver - ships EMPTY (Robinhood liquidity is Uniswap V4) |
 | lifi-solver   | 9311        | LI.FI same-chain aggregator lane |
-| pons-solver   | 9312        | Direct authenticated pons token/WETH and token/WETH/token V3 lane |
+| pons-solver   | 9314        | Direct authenticated pons token/WETH and token/WETH/token V3 lane |
+| ekubo-solver  | 9315        | Direct Ekubo Core/STONX Ve33 ERC-20 routes with packed-calldata validation |
+| up33-solver   | 9316        | Direct UP33 Solidly V2 stable/volatile routes |
 | rpc-proxy     | 4003        | 2-of-2 read consensus + transaction relay (chain 4663) |
 | prometheus    | 9096        | Metrics (observability profile) |
 | alertmanager  | 9097        | Telegram alerts (observability profile) |
@@ -103,6 +105,8 @@ settlement pauses. CI locks this topology through `assert-erpc-failclosed.py`.
 | kyberswap  | Confirmed (`robinhood` API; live Ekubo/Uniswap routes) | **Active** |
 | uniswap-v4 | Direct canonical V4 pool quoting through the Ophis adapter | **Active** |
 | pons       | Active + legacy factories, direct V3 token/WETH/token quoting | **Implemented - direct lane** |
+| ekubo      | Canonical Core + pinned Ve33 routes from block-pinned quoter | **Implemented - ERC-20 SELL lane** |
+| up33       | Pinned Solidly V2 factory/router, stable + volatile routing | **Implemented - SELL lane** |
 | baseline   | n/a - ships empty (unsupported pool types) | Inactive |
 | okx / velora / openocean / dodo / enso | NOT on 4663 today | Disabled - revisit as each adds the chain |
 

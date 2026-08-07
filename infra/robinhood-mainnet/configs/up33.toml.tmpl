@@ -1,0 +1,14 @@
+# Ophis Robinhood direct UP33 V2 lane. Factory discovery, path validation and
+# quotes are onchain; execution is pinned to the canonical V2 router.
+node-url = "${ROBINHOOD_MAINNET_RPC}"
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+wrapped-native = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+wrapped-native-balance-slot = 51
+strict-market-output-simulation = "all"
+internalize-interactions = false
+
+[dex]
+chain-id = 4663
+weth = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+factory = "0xFA5429AEBa338BEa2BFcc1b9a889862Ee395bc28"
+router = "0xf5198743240fAC98db71868F34c70139b1eb0474"

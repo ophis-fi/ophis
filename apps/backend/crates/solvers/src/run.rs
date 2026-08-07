@@ -171,6 +171,24 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
+        cli::Command::Ekubo { config: path } => {
+            let config = config::dex::ekubo::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Ekubo(Box::new(
+                    dex::ekubo::Ekubo::try_new(config.ekubo).expect("invalid Ekubo configuration"),
+                )),
+                config.base,
+            )))
+        }
+        cli::Command::Up33 { config: path } => {
+            let config = config::dex::up33::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Up33(Box::new(
+                    dex::up33::Up33::try_new(config.up33).expect("invalid UP33 configuration"),
+                )),
+                config.base,
+            )))
+        }
     };
 
     crate::api::Api {

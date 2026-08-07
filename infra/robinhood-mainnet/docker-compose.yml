@@ -12,6 +12,8 @@
 #   lifi-solver:       9311
 #   uniswap-v4-solver: 9313
 #   pons-solver:       9314
+#   ekubo-solver:      9315
+#   up33-solver:       9316
 #   rpc-proxy (eRPC):  4003   (OP=4001, HL=4000, Uni=4002)
 #   prometheus:        9096
 #   alertmanager:      9097
@@ -183,6 +185,8 @@ services:
       kyberswap-solver: { condition: service_healthy }
       uniswap-v4-solver: { condition: service_healthy }
       pons-solver: { condition: service_healthy }
+      ekubo-solver: { condition: service_healthy }
+      up33-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
       ETHRPC: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
@@ -325,6 +329,54 @@ services:
     command: ["pons", "--config", "/pons.toml"]
     ports:
       - "127.0.0.1:9314:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  ekubo-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/ekubo.toml:/ekubo.toml:ro
+    command: ["ekubo", "--config", "/ekubo.toml"]
+    ports:
+      - "127.0.0.1:9315:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  up33-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/up33.toml:/up33.toml:ro
+    command: ["up33", "--config", "/up33.toml"]
+    ports:
+      - "127.0.0.1:9316:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s

@@ -76,6 +76,13 @@ const OPTIMISM_UNISWAP_V4_ADAPTER: Address = address!("d882da9CB91EB458337413E58
 const OPTIMISM_WETH: Address = address!("4200000000000000000000000000000000000006");
 const OPTIMISM_USDC: Address = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
 const UNISWAP_V4_SWAP_EXACT_INPUT_SELECTOR: [u8; 4] = [0xd9, 0x95, 0x94, 0x9a];
+const ROBINHOOD_SETTLEMENT: Address = address!("886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD");
+const ROBINHOOD_WETH: Address = address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73");
+const ROBINHOOD_EKUBO_ROUTER: Address = address!("7B2aA7Ecc0B5936b7C52E6259A19C3BA557d0748");
+const ROBINHOOD_UP33_ROUTER: Address = address!("f5198743240fAC98db71868F34c70139b1eb0474");
+const UP33_SWAP_EXACT_TOKENS_SELECTOR: [u8; 4] = [0xca, 0xc8, 0x8e, 0xa9];
+const ROBINHOOD_UP33_FACTORY: Address = address!("FA5429AEBa338BEa2BFcc1b9a889862Ee395bc28");
+const ROBINHOOD_EKUBO_VE33: Address = address!("D18685a514E59b06d59824e16Db07e73345d9953");
 
 #[derive(Clone, Copy, Debug)]
 pub struct RequiredAmounts {
@@ -422,6 +429,20 @@ pub fn validate_with_required_output(
         }
         return validate_uniswap_v4_swap(custom, required_amounts);
     }
+    // Ekubo's Yul router has no ABI selector and embeds route instructions in
+    // packed calldata. Keep it out of the generic allowlist: accept only the
+    // Core-hop grammar emitted by the dedicated solver, with forwarding scoped
+    // exclusively to Robinhood's authenticated Ve33 deployment.
+    if chain_id == 4663 && Address::from(custom.target) == ROBINHOOD_EKUBO_ROUTER {
+        validate_value(custom.value.0)?;
+        return validate_ekubo_route(custom, required_amounts);
+    }
+    // UP33's Solidly V2 router exposes more functionality than Ophis needs.
+    // Permit only exact-input paths bound to the fulfillment and Settlement.
+    if chain_id == 4663 && Address::from(custom.target) == ROBINHOOD_UP33_ROUTER {
+        validate_value(custom.value.0)?;
+        return validate_up33_swap(custom, required_amounts);
+    }
     let allowlist = chain_allowlist(chain_id)?;
 
     // (1) target — `ContractAddress(Address)` is opaque from outside its
@@ -457,6 +478,194 @@ pub fn validate_with_required_output(
         }
     }
 
+    Ok(())
+}
+
+fn validate_common_direct_swap(
+    custom: &interaction::Custom,
+    required: RequiredAmounts,
+    target: Address,
+    amount_in: U256,
+    min_out: U256,
+) -> bool {
+    let Some(input) = custom.inputs.first().filter(|_| custom.inputs.len() == 1) else {
+        return false;
+    };
+    let Some(output) = custom.outputs.first().filter(|_| custom.outputs.len() == 1) else {
+        return false;
+    };
+    let Some(allowance) = custom
+        .allowances
+        .first()
+        .filter(|_| custom.allowances.len() == 1)
+    else {
+        return false;
+    };
+    let allowance = allowance.0;
+    amount_in <= required.max_input
+        && min_out >= required.min_output
+        && Address::from(input.token) == required.sell_token
+        && input.amount.0 == amount_in
+        && Address::from(output.token) == required.buy_token
+        && output.amount.0 == min_out
+        && allowance.token == required.sell_token.into()
+        && allowance.spender == target
+        && allowance.amount == amount_in
+        && allowance.amount <= MAX_CUSTOM_ALLOWANCE
+        && custom.value.0.is_zero()
+        && !custom.internalize
+}
+
+fn validate_up33_swap(
+    custom: &interaction::Custom,
+    required_amounts: Option<RequiredAmounts>,
+) -> Result<(), Error> {
+    let reject = || Error::CallDataNotAllowed {
+        target: ROBINHOOD_UP33_ROUTER,
+        chain_id: 4663,
+    };
+    let data = custom.call_data.as_ref();
+    if data.len() < 4 + 32 * 10 || data[..4] != UP33_SWAP_EXACT_TOKENS_SELECTOR {
+        return Err(reject());
+    }
+    let word = |offset: usize| U256::from_be_slice(&data[offset..offset + 32]);
+    let address = |offset: usize| Address::from_slice(&data[offset + 12..offset + 32]);
+    let amount_in = word(4);
+    let min_out = word(36);
+    if word(68) != U256::from(160) || address(100) != ROBINHOOD_SETTLEMENT || word(132) != U256::MAX
+    {
+        return Err(reject());
+    }
+    let route_len: usize = word(164).try_into().map_err(|_| reject())?;
+    if !(1..=2).contains(&route_len) || data.len() != 4 + 32 * 6 + 128 * route_len {
+        return Err(reject());
+    }
+    let mut current = address(196);
+    let sell = current;
+    for i in 0..route_len {
+        let offset = 196 + i * 128;
+        let from = address(offset);
+        let to = address(offset + 32);
+        let stable = word(offset + 64);
+        let factory = address(offset + 96);
+        if from != current || stable > U256::from(1) || factory != ROBINHOOD_UP33_FACTORY {
+            return Err(reject());
+        }
+        current = to;
+        if route_len == 2 && i == 0 && current != ROBINHOOD_WETH {
+            return Err(reject());
+        }
+    }
+    let Some(required) = required_amounts else {
+        return Err(reject());
+    };
+    if sell != required.sell_token
+        || current != required.buy_token
+        || !validate_common_direct_swap(custom, required, ROBINHOOD_UP33_ROUTER, amount_in, min_out)
+    {
+        return Err(reject());
+    }
+    Ok(())
+}
+
+fn validate_ekubo_route(
+    custom: &interaction::Custom,
+    required_amounts: Option<RequiredAmounts>,
+) -> Result<(), Error> {
+    let reject = || Error::CallDataNotAllowed {
+        target: ROBINHOOD_EKUBO_ROUTER,
+        chain_id: 4663,
+    };
+    let data = custom.call_data.as_ref();
+    const HEADER: usize = 78;
+    const CORE_HOP: usize = 89;
+    if data.len() < HEADER + 17 + CORE_HOP || data[0] != 1 {
+        return Err(reject());
+    }
+    let split_count = usize::from(data[1]) + 1;
+    if split_count > 8 {
+        return Err(reject());
+    }
+    let specified = Address::from_slice(&data[2..22]);
+    let calculated = Address::from_slice(&data[22..42]);
+    let threshold = i128::from_be_bytes(data[42..58].try_into().map_err(|_| reject())?);
+    let recipient = Address::from_slice(&data[58..78]);
+    let Some(required) = required_amounts else {
+        return Err(reject());
+    };
+    if specified != required.sell_token
+        || calculated != required.buy_token
+        || recipient != ROBINHOOD_SETTLEMENT
+        || threshold <= 0
+    {
+        return Err(reject());
+    }
+    let mut cursor = HEADER;
+    let mut total_in = U256::ZERO;
+    for _ in 0..split_count {
+        if cursor + 17 > data.len() {
+            return Err(reject());
+        }
+        let amount =
+            i128::from_be_bytes(data[cursor..cursor + 16].try_into().map_err(|_| reject())?);
+        if amount <= 0 {
+            return Err(reject());
+        }
+        total_in = total_in
+            .checked_add(U256::from(amount as u128))
+            .ok_or_else(reject)?;
+        let hops = usize::from(data[cursor + 16]) + 1;
+        if hops > 4 {
+            return Err(reject());
+        }
+        cursor += 17;
+        let mut current = specified;
+        for _ in 0..hops {
+            if cursor + CORE_HOP > data.len() {
+                return Err(reject());
+            }
+            let kind = data[cursor];
+            cursor += 1;
+            let expected_extension = if kind == 0 {
+                Address::ZERO
+            } else if kind == 1 {
+                if cursor + 20 + CORE_HOP - 1 > data.len() {
+                    return Err(reject());
+                }
+                let forwardee = Address::from_slice(&data[cursor..cursor + 20]);
+                cursor += 20;
+                if forwardee != ROBINHOOD_EKUBO_VE33 {
+                    return Err(reject());
+                }
+                forwardee
+            } else {
+                return Err(reject());
+            };
+            let token0 = Address::from_slice(&data[cursor..cursor + 20]);
+            let token1 = Address::from_slice(&data[cursor + 20..cursor + 40]);
+            let extension = Address::from_slice(&data[cursor + 40..cursor + 60]);
+            if token0 >= token1 || extension != expected_extension {
+                return Err(reject());
+            }
+            current = if current == token0 {
+                token1
+            } else if current == token1 {
+                token0
+            } else {
+                return Err(reject());
+            };
+            cursor += CORE_HOP - 1;
+        }
+        if current != calculated {
+            return Err(reject());
+        }
+    }
+    let min_out = U256::from(threshold as u128);
+    if cursor != data.len()
+        || !validate_common_direct_swap(custom, required, ROBINHOOD_EKUBO_ROUTER, total_in, min_out)
+    {
+        return Err(reject());
+    }
     Ok(())
 }
 
@@ -958,6 +1167,103 @@ mod tests {
             max_input: U256::from(max_input),
             min_output: U256::from(min_output),
         }
+    }
+
+    fn direct_custom(
+        target: Address,
+        sell: Address,
+        buy: Address,
+        amount: u64,
+        output: u64,
+        data: Vec<u8>,
+    ) -> Custom {
+        Custom {
+            target: target.into(),
+            value: eth::Ether(U256::ZERO),
+            call_data: data.into(),
+            allowances: vec![
+                eth::Allowance {
+                    token: sell.into(),
+                    spender: target,
+                    amount: U256::from(amount),
+                }
+                .into(),
+            ],
+            inputs: vec![eth::Asset {
+                token: sell.into(),
+                amount: eth::TokenAmount(U256::from(amount)),
+            }],
+            outputs: vec![eth::Asset {
+                token: buy.into(),
+                amount: eth::TokenAmount(U256::from(output)),
+            }],
+            internalize: false,
+        }
+    }
+
+    #[test]
+    fn up33_swap_is_solidly_path_and_factory_scoped() {
+        let sell = address!("020bfC650A365f8BB26819deAAbF3E21291018b4");
+        let buy = address!("5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
+        let mut data = Vec::new();
+        data.extend_from_slice(&UP33_SWAP_EXACT_TOKENS_SELECTOR);
+        for word in [
+            U256::from(1_000),
+            U256::from(990),
+            U256::from(160),
+            U256::from_be_slice(ROBINHOOD_SETTLEMENT.as_slice()),
+            U256::MAX,
+            U256::from(1),
+            U256::from_be_slice(sell.as_slice()),
+            U256::from_be_slice(buy.as_slice()),
+            U256::ZERO,
+            U256::from_be_slice(ROBINHOOD_UP33_FACTORY.as_slice()),
+        ] {
+            data.extend_from_slice(&word.to_be_bytes::<32>());
+        }
+        let custom = direct_custom(ROBINHOOD_UP33_ROUTER, sell, buy, 1_000, 990, data);
+        assert_eq!(
+            validate_with_required_output(&custom, 4663, Some(required(sell, buy, 1_000, 990))),
+            Ok(())
+        );
+        let mut poisoned = custom.clone();
+        let mut bytes = poisoned.call_data.to_vec();
+        bytes[4 + 32 * 9 + 31] ^= 1;
+        poisoned.call_data = bytes.into();
+        assert!(matches!(
+            validate_with_required_output(&poisoned, 4663, Some(required(sell, buy, 1_000, 990))),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+    }
+
+    #[test]
+    fn ekubo_route_is_core_grammar_and_fulfillment_scoped() {
+        let sell = address!("020bfC650A365f8BB26819deAAbF3E21291018b4");
+        let buy = address!("5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
+        let mut data = vec![1, 0];
+        data.extend_from_slice(sell.as_slice());
+        data.extend_from_slice(buy.as_slice());
+        data.extend_from_slice(&990i128.to_be_bytes());
+        data.extend_from_slice(ROBINHOOD_SETTLEMENT.as_slice());
+        data.extend_from_slice(&1_000i128.to_be_bytes());
+        data.push(0);
+        data.push(0);
+        data.extend_from_slice(sell.as_slice());
+        data.extend_from_slice(buy.as_slice());
+        data.extend_from_slice(&[0u8; 32 + 12 + 4]);
+        let custom = direct_custom(ROBINHOOD_EKUBO_ROUTER, sell, buy, 1_000, 990, data);
+        assert_eq!(
+            validate_with_required_output(&custom, 4663, Some(required(sell, buy, 1_000, 990))),
+            Ok(())
+        );
+        let mut forwarded = custom.clone();
+        let mut bytes = forwarded.call_data.to_vec();
+        bytes[95] = 2;
+        forwarded.call_data = bytes.into();
+        assert!(matches!(
+            validate_with_required_output(&forwarded, 4663, Some(required(sell, buy, 1_000, 990))),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
     }
 
     #[test]
