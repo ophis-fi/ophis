@@ -182,9 +182,6 @@ importers:
       '@eslint/js':
         specifier: ^9.39.2
         version: 9.39.2
-      '@lingui/swc-plugin':
-        specifier: ^5.6.0
-        version: 5.6.1(@lingui/core@5.5.1(@lingui/babel-plugin-lingui-macro@5.5.1(babel-plugin-macros@3.1.0))(babel-plugin-macros@3.1.0))(@swc/core@1.15.47(@swc/helpers@0.5.17))(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))
       '@lingui/vite-plugin':
         specifier: ^5.4.1
         version: 5.5.1(babel-plugin-macros@3.1.0)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))
@@ -4372,18 +4369,6 @@ packages:
       '@lingui/babel-plugin-lingui-macro':
         optional: true
       babel-plugin-macros:
-        optional: true
-
-  '@lingui/swc-plugin@5.6.1':
-    resolution: {integrity: sha512-kT/ghCKMlTa+SJZU/xn2vvU1QE3/NO3m3Feg6r2OVOovAB6VHKShVElU5truBC2KXn/cPqE9Kz2Yj0+jUmO6xQ==}
-    peerDependencies:
-      '@lingui/core': '5'
-      '@swc/core': '*'
-      next: '*'
-    peerDependenciesMeta:
-      '@swc/core':
-        optional: true
-      next:
         optional: true
 
   '@lingui/vite-plugin@5.5.1':
@@ -20645,13 +20630,6 @@ snapshots:
     optionalDependencies:
       '@lingui/babel-plugin-lingui-macro': 5.5.1(babel-plugin-macros@3.1.0)
       babel-plugin-macros: 3.1.0
-
-  '@lingui/swc-plugin@5.6.1(@lingui/core@5.5.1(@lingui/babel-plugin-lingui-macro@5.5.1(babel-plugin-macros@3.1.0))(babel-plugin-macros@3.1.0))(@swc/core@1.15.47(@swc/helpers@0.5.17))(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))':
-    dependencies:
-      '@lingui/core': 5.5.1(@lingui/babel-plugin-lingui-macro@5.5.1(babel-plugin-macros@3.1.0))(babel-plugin-macros@3.1.0)
-    optionalDependencies:
-      '@swc/core': 1.15.47(@swc/helpers@0.5.17)
-      next: 15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
 
   '@lingui/vite-plugin@5.5.1(babel-plugin-macros@3.1.0)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.4.2)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.0)(yaml@1.10.3))':
     dependencies:
