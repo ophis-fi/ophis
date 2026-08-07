@@ -213,6 +213,7 @@
     "@commitlint/config-conventional": "^20.0.0",
     "@eslint/eslintrc": "^3.1.0",
     "@eslint/js": "^9.39.2",
+    "@lingui/babel-plugin-lingui-macro": "^5.4.1",
     "@lingui/vite-plugin": "^5.4.1",
     "@next/eslint-plugin-next": "^16.1.6",
     "@nx/cypress": "22.7.8",
