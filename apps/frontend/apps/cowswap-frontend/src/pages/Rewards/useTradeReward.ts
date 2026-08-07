@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-import { areAddressesEqual } from '@cowprotocol/common-utils'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
 import { claimTradeReward, getTradeRewardStatus, TradeRewardStatus } from 'modules/affiliate'
 
