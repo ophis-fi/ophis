@@ -68,6 +68,8 @@ describe('OPHIS_SOLVERS registry', () => {
       'kyberswap',
       'lifi',
       'uniswap-v4',
+      'ekubo',
+      'up33',
     ])
     expect(getOphisSolversForChain(1).length).toBe(0)
   })
@@ -101,6 +103,8 @@ describe('solver display-alias layer', () => {
   it('labels the Ophis-operated direct solver distinctly', () => {
     expect(ophisSolverPublicLabel('uniswap-v4')).toBe('Ophis direct solver')
     expect(ophisSolverPublicLabel('UNISWAP-V4')).toBe('Ophis direct solver')
+    expect(ophisSolverPublicLabel('ekubo')).toBe('Ophis direct solver')
+    expect(ophisSolverPublicLabel('up33')).toBe('Ophis direct solver')
     expect(ophisSolverPublicDescription('uniswap-v4')).toMatch(/Ophis-operated direct solver/i)
   })
 
@@ -108,7 +112,7 @@ describe('solver display-alias layer', () => {
     // The Ophis-RUN solvers keep a plain descriptive label; everything else must
     // neutralize. `uniswap-v4` joined that set when the Robinhood direct lane
     // shipped, and this loop was not updated, so it has been failing since.
-    const OPHIS_RUN_SOLVER_IDS = ['baseline', 'uniswap-v4']
+    const OPHIS_RUN_SOLVER_IDS = ['baseline', 'uniswap-v4', 'ekubo', 'up33']
 
     for (const solver of OPHIS_SOLVERS) {
       if (OPHIS_RUN_SOLVER_IDS.includes(solver.solverId)) continue
