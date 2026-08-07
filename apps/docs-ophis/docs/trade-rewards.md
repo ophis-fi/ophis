@@ -27,12 +27,13 @@ ticket's denomination after a qualifying swap. Per-ticket odds are not presented
 
 A wallet must complete a settled Ophis swap with a priced value of at least **$100** on Ethereum,
 BNB Chain, Arbitrum, Optimism, Base, Robinhood Chain, Unichain, Plasma, Ink, Gnosis, Avalanche, or
-Polygon. The indexer accepts only trades whose Ophis fee was verified; unrelated swaps do not count.
+Polygon after the campaign starts. The indexer accepts only settled trades whose Ophis fee was
+verified; unrelated swaps and swaps between the same token do not count. Wallet age and wallet
+balance are not eligibility requirements.
 
-The wallet must also show onchain activity at least 180 days before the qualifying trade. Ophis
-checks historical nonce or contract-code evidence against archive RPCs across the supported list. A
-single positive chain is sufficient; if there is no positive evidence and any archive check failed,
-eligibility fails closed. This is an age/activity check, not an identity check.
+Each wallet can receive only one ticket. Ophis may exclude wallets involved in evident self-dealing,
+automation abuse, or coordinated attempts to manufacture qualifying volume. Exclusions are reviewed
+and recorded by an operator before rewards are assigned.
 
 ## Claiming
 

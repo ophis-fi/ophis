@@ -10,7 +10,6 @@ export const ROBINHOOD_USDG =
   '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168' as const;
 
 export const TRADE_REWARDS_MINIMUM_SWAP_USD = 100;
-export const TRADE_REWARDS_WALLET_AGE_DAYS = 180;
 export const ONE_USDG = 1_000_000n;
 export const TEN_USDG = 10_000_000n;
 export const TRADE_REWARDS_MAX_TICKETS = 105;

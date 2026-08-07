@@ -10,7 +10,6 @@ import {
   TRADE_REWARDS_MINIMUM_SWAP_USD,
 } from './config.js';
 import { assertRewardsContractReady, relayAssignment, relayClaim, rewardState, signRewardAssignment } from './contract.js';
-import { findWalletAgeEvidence } from './walletAge.js';
 
 const log = logger.child({ module: 'trade-rewards' });
 
@@ -19,7 +18,6 @@ interface CandidateTrade {
   readonly wallet_hex: string;
   readonly chain_id: number;
   readonly value_usd: string;
-  readonly block_timestamp: Date;
 }
 
 export interface TradeRewardStatus {
@@ -80,17 +78,19 @@ async function candidateTrades(limit = 25): Promise<CandidateTrade[]> {
       encode(t.trade_uid, 'hex') AS trade_uid_hex,
       encode(t.wallet, 'hex') AS wallet_hex,
       t.chain_id,
-      t.value_usd::text,
-      t.block_timestamp
+      t.value_usd::text
     FROM trades t
+    JOIN trade_reward_campaigns c ON c.campaign_id = ${TRADE_REWARDS_CAMPAIGN_ID}
     LEFT JOIN trade_reward_tickets rt ON rt.wallet = t.wallet
-    LEFT JOIN trade_reward_rejections rr ON rr.qualifying_trade_uid = t.trade_uid
+    LEFT JOIN trade_reward_wallet_blocks rb ON rb.wallet = t.wallet
     WHERE rt.wallet IS NULL
-      AND rr.qualifying_trade_uid IS NULL
+      AND rb.wallet IS NULL
       AND t.chain_id = ANY(${[...TRADE_REWARDS_ELIGIBLE_CHAIN_IDS]})
       AND t.value_usd >= ${TRADE_REWARDS_MINIMUM_SWAP_USD}
       AND t.fee_verified = true
       AND t.volume_fee_bps > 0
+      AND t.sell_token <> t.buy_token
+      AND t.block_timestamp >= c.created_at
     ORDER BY t.block_timestamp ASC, t.trade_uid ASC
     LIMIT ${limit}
   `;
@@ -98,20 +98,6 @@ async function candidateTrades(limit = 25): Promise<CandidateTrade[]> {
 
 async function reserveTicket(candidate: CandidateTrade, allocation: readonly bigint[]): Promise<boolean> {
   const wallet = `0x${candidate.wallet_hex}` as `0x${string}`;
-  const evidence = await findWalletAgeEvidence(wallet, candidate.block_timestamp);
-  if (!evidence) {
-    await sql`
-      INSERT INTO trade_reward_rejections (qualifying_trade_uid, wallet, reason)
-      VALUES (
-        ${Buffer.from(candidate.trade_uid_hex, 'hex')},
-        ${Buffer.from(candidate.wallet_hex, 'hex')},
-        'wallet_too_young'
-      )
-      ON CONFLICT (qualifying_trade_uid) DO NOTHING
-    `;
-    return false;
-  }
-
   return sql.begin(async (tx) => {
     await tx`SELECT pg_advisory_xact_lock(hashtext(${TRADE_REWARDS_CAMPAIGN_ID}))`;
     const campaignRows = await tx<{ next_allocation_index: number; enabled: boolean }[]>`
@@ -122,6 +108,8 @@ async function reserveTicket(candidate: CandidateTrade, allocation: readonly big
     `;
     const campaign = campaignRows[0];
     if (!campaign?.enabled || campaign.next_allocation_index >= TRADE_REWARDS_MAX_TICKETS) return false;
+    const blocked = await tx`SELECT 1 FROM trade_reward_wallet_blocks WHERE wallet = ${Buffer.from(candidate.wallet_hex, 'hex')}`;
+    if (blocked.length > 0) return false;
     const existing = await tx`SELECT 1 FROM trade_reward_tickets WHERE wallet = ${Buffer.from(candidate.wallet_hex, 'hex')}`;
     if (existing.length > 0) return false;
 
@@ -132,12 +120,10 @@ async function reserveTicket(candidate: CandidateTrade, allocation: readonly big
     await tx`
       INSERT INTO trade_reward_tickets (
         wallet, ticket_id, amount_usdg, qualifying_trade_uid,
-        qualifying_chain_id, qualifying_value_usd, wallet_age_chain_id,
-        wallet_age_block, wallet_age_cutoff, assignment_signature, signer_epoch
+        qualifying_chain_id, qualifying_value_usd, assignment_signature, signer_epoch
       ) VALUES (
         ${Buffer.from(candidate.wallet_hex, 'hex')}, ${ticketId}, ${amount.toString()},
         ${Buffer.from(candidate.trade_uid_hex, 'hex')}, ${candidate.chain_id}, ${candidate.value_usd},
-        ${evidence.chainId}, ${evidence.cutoffBlock.toString()}, ${evidence.cutoffTimestamp.toISOString()},
         ${Buffer.from(signature.slice(2), 'hex')}, ${signerEpoch.toString()}
       )
     `;

@@ -13,8 +13,9 @@ be active until the Robinhood Chain distributor address is published and the cla
 
 The inventory is fixed at 100 rewards of 1 USDG and five rewards of 10 USDG. We create only winning
 tickets, with one ticket available per qualifying wallet. A qualifying wallet must make a settled,
-verified Ophis swap worth at least $100 on one of the twelve listed Ophis-supported chains and must
-have onchain activity dating back at least 180 days.
+verified Ophis swap worth at least $100 on one of the twelve listed Ophis-supported chains after the
+campaign starts. Wallet age and wallet balance are not requirements. Same-token swaps do not qualify,
+and Ophis may exclude evident self-dealing or coordinated attempts to manufacture qualifying volume.
 
 Rewards will be assigned from a precommitted shuffled inventory. That prevents either the trader or
 the sponsored relayer from selecting a denomination after the trade. We will not show per-ticket odds
