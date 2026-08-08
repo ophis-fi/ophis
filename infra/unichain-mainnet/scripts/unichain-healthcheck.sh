@@ -155,15 +155,22 @@ if [[ "$code" == "200" ]]; then
   msg="✅ Ophis Unichain (130) RECOVERED — ${VERSION_URL} is serving again."
 else
   observed=down
-  # Only ORIGIN-LOSS codes mean "the box is gone": 000 (timeout/DNS), 502/503/504
-  # and Cloudflare 530, i.e. the tunnel is registered but no connector is
-  # attached. An app-level 401/404/429/500 means the VM is up and answering, so
-  # kicking it would be pointless AND harmful: it would burn the 1h cooldown, and
-  # if the VM genuinely stopped minutes later the real restart would be skipped as
-  # "on cooldown". Page for every non-200; only recover for origin loss.
+  # ONLY 530 triggers recovery. When the VM stops, cloudflared dies with it and
+  # the tunnel is left registered with no connector, which Cloudflare answers as
+  # 530 / error 1033 — the exact signature of the 2026-07-28 outage.
+  #
+  # Everything else is deliberately excluded, and the near-misses matter:
+  #   502/503/504 mean the connector IS alive (so the VM is UP) and the app
+  #     behind it is failing. They are positive evidence AGAINST a stopped box.
+  #   000 is a local failure — this monitor's own DNS/network — not the VM's.
+  # Both were in an earlier version of this list. Including them is not merely
+  # useless: a false trigger burns the 1h cooldown, so a REAL stop minutes later
+  # is skipped as "on cooldown" and the box stays down. A recovery lever that
+  # fires on ambiguous evidence is worse than one that fires late.
+  # Page for every non-200 regardless; only RECOVER on proven origin loss.
   case "$code" in
-    000|502|503|504|530) recovery="$(attempt_recovery)" ;;
-    *) recovery="not attempted — HTTP $code means the VM is answering, so this is an application fault, not a stopped box" ;;
+    530) recovery="$(attempt_recovery)" ;;
+    *) recovery="not attempted — only HTTP 530 (tunnel registered, no connector) proves the box is gone; HTTP $code does not" ;;
   esac
   msg="🔴 Ophis Unichain (130) DOWN — ${VERSION_URL} returned HTTP ${code:-000}.
 Chain 130 cannot quote or settle. Aleph VM ${ALEPH_VM_HASH:0:12} on ${ALEPH_CRN_URL#https://}.
