@@ -1,12 +1,38 @@
 import { sql } from '../db/index.js';
+import { withPipelineLock } from '../fetcher.js';
 import { logger } from '../logger.js';
+import { alerts } from '../telegram/alerter.js';
 import { runTradeRewards } from './service.js';
 
 const log = logger.child({ module: 'trade-rewards-scheduler' });
 const TRADE_REWARDS_LOCK_KEY = 770044;
 const TRADE_REWARDS_INTERVAL_MS = 5 * 60 * 1_000;
+const TRADE_REWARDS_ALERT_INTERVAL = '1 hour';
 
-export async function runScheduledTradeRewards(trigger: 'startup' | 'cron' | 'manual'): Promise<boolean> {
+function escapeTelegramHtml(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+async function alertScheduledFailure(trigger: 'startup' | 'cron' | 'manual', message: string): Promise<void> {
+  // Claim the alert window atomically. This is shared by every replica and
+  // survives restarts, unlike an in-memory timer.
+  const rows = await sql<{ claimed: boolean }[]>`
+    UPDATE trade_reward_scheduler_state
+    SET last_alert_at = now()
+    WHERE singleton = TRUE
+      AND (last_alert_at IS NULL OR last_alert_at <= now() - ${TRADE_REWARDS_ALERT_INTERVAL}::interval)
+    RETURNING TRUE AS claimed
+  `;
+  if (rows[0]?.claimed) {
+    await alerts.alert(
+      'trade-rewards',
+      `Scheduled reward run failed (${trigger}); automatic retries continue every 5 minutes. ` +
+        `Latest error: ${escapeTelegramHtml(message.slice(0, 500))}`,
+    );
+  }
+}
+
+async function runWithRewardLock(trigger: 'startup' | 'cron' | 'manual'): Promise<boolean> {
   const lockConn = await sql.reserve();
   let locked = false;
   try {
@@ -41,6 +67,11 @@ export async function runScheduledTradeRewards(trigger: 'startup' | 'cron' | 'ma
         WHERE singleton = TRUE
       `;
       log.error({ trigger, err }, 'trade rewards scheduler failed closed');
+      try {
+        await alertScheduledFailure(trigger, message);
+      } catch (alertErr) {
+        log.warn({ err: alertErr }, 'trade rewards scheduler alert failed');
+      }
       throw err;
     }
   } finally {
@@ -55,10 +86,24 @@ export async function runScheduledTradeRewards(trigger: 'startup' | 'cron' | 'ma
   }
 }
 
+export async function runScheduledTradeRewards(trigger: 'startup' | 'cron' | 'manual'): Promise<boolean> {
+  let rewardRun = false;
+  const refreshIdle = await withPipelineLock(async () => {
+    rewardRun = await runWithRewardLock(trigger);
+  });
+  if (!refreshIdle) {
+    log.info({ trigger }, 'trade rewards deferred while trade refresh is active');
+    return false;
+  }
+  return rewardRun;
+}
+
 export function startTradeRewardsScheduler(): void {
-  void runScheduledTradeRewards('startup').catch(() => {});
   setInterval(() => {
     void runScheduledTradeRewards('cron').catch(() => {});
   }, TRADE_REWARDS_INTERVAL_MS);
-  log.info('trade rewards scheduled: startup + every 5 minutes');
+  // The startup pass is invoked by index.ts only after its trade backfill has
+  // released the pipeline lock. Starting a competing pass here could win that
+  // lock first and allocate finite tickets from the pre-refresh trade set.
+  log.info('trade rewards scheduled: after startup refresh + every 5 minutes');
 }
