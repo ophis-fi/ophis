@@ -37,6 +37,8 @@ overrides:
   jayson>uuid: ^11.1.1
   '@metamask/sdk>uuid': ^11.1.1
   '@metamask/sdk-communication-layer>uuid': ^11.1.1
+  nanoid@<3.3.17: 3.3.17
+  nanoid@>=4.0.0 <5.1.16: 5.1.16
 
 importers:
 
@@ -5372,13 +5374,13 @@ packages:
   nan@2.26.2:
     resolution: {integrity: sha512-0tTvBTYkt3tdGw22nrAy50x7gpbGCCFH3AFcyS5WiUu7Eu4vWlri1woE6qHBSfy11vksDqkiwjOnlR7WV8G1Hw==}
 
-  nanoid@3.3.12:
-    resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
+  nanoid@3.3.17:
+    resolution: {integrity: sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
-  nanoid@5.1.11:
-    resolution: {integrity: sha512-v+KEsUv2ps74PaSKv0gHTxTCgMXOIfBEbaqa6w6ISIGC7ZsvHN4N9oJ8d4cmf0n5oTzQz2SLmThbQWhjd/8eKg==}
+  nanoid@5.1.16:
+    resolution: {integrity: sha512-kVrnsrJqMR8+oLJnGEmSWw9BivK5mt7H3FZatVRjrc5wGqFYuBxX1yG7+A7Gi5AefkX6t/oCkizcQgpu0cY1dQ==}
     engines: {node: ^18 || >=20}
     hasBin: true
 
@@ -11757,7 +11759,7 @@ snapshots:
       ai: 6.0.193(zod@3.25.76)
       cron-schedule: 6.0.0
       mimetext: 3.0.28
-      nanoid: 5.1.11
+      nanoid: 5.1.16
       partyserver: 0.5.6(@cloudflare/workers-types@4.20260529.1)
       partysocket: 1.1.19(react@19.2.6)
       react: 19.2.6
@@ -13947,9 +13949,9 @@ snapshots:
   nan@2.26.2:
     optional: true
 
-  nanoid@3.3.12: {}
+  nanoid@3.3.17: {}
 
-  nanoid@5.1.11: {}
+  nanoid@5.1.16: {}
 
   natural-compare@1.4.0: {}
 
@@ -14345,7 +14347,7 @@ snapshots:
   partyserver@0.5.6(@cloudflare/workers-types@4.20260529.1):
     dependencies:
       '@cloudflare/workers-types': 4.20260529.1
-      nanoid: 5.1.11
+      nanoid: 5.1.16
 
   partysocket@1.1.19(react@19.2.6):
     dependencies:
@@ -14492,7 +14494,7 @@ snapshots:
 
   postcss@8.5.19:
     dependencies:
-      nanoid: 3.3.12
+      nanoid: 3.3.17
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
