@@ -40,6 +40,9 @@ NODE_RPC="${OPHIS_UNI_NODE_RPC:-http://100.90.134.52:8545}"
 # ~1s blocks, so 300s of no new block is far beyond any normal jitter while
 # still well inside the "nobody noticed for two days" territory this prevents.
 STALE_AFTER="${OPHIS_UNI_NODE_STALE_AFTER:-300}"
+# How many blocks to walk back looking for a transaction to trace. Unichain has
+# ~1s blocks, so 30 covers a very quiet half-minute without hammering the node.
+TRACE_LOOKBACK="${OPHIS_UNI_NODE_TRACE_LOOKBACK:-30}"
 
 TG_ENV="${TELEGRAM_BOT_TOKEN_ENV_FILE:-$HOME/.claude/channels/telegram/.env}"
 CHAT_ID="${TELEGRAM_CHAT_ID:-735726338}"
@@ -113,7 +116,7 @@ for _ in 1 2 3; do
   sleep 5
 done
 
-observed=up; detail=""
+observed=up; detail=""; trace_unverified=0; log_note=""
 if [[ -z "$head_hex" ]]; then
   observed=down
   detail="RPC unreachable at ${NODE_RPC} (node box down, or this monitor's tailnet is down)"
@@ -132,15 +135,35 @@ else
       detail="head #${head_dec} is ${age}s old (threshold ${STALE_AFTER}s) — DERIVATION STALLED. op-node is the usual culprit; check it is not crash-looping and that DNS on the host resolves."
     else
       # --- check 3: traceable (autopilot hard-requirement) ---
-      tx="$(printf '%s' "$blk" | sed -n 's/.*"transactions"[[:space:]]*:[[:space:]]*\[[[:space:]]*"\([^"]*\)".*/\1/p')"
+      # Walk back for a block that actually HAS a transaction. An empty block is
+      # not a failure, but it is also not proof of health: treating "no tx to
+      # trace" as healthy meant a single transaction-free block could flip a
+      # down state to RECOVERED while tracing was still broken, hiding the very
+      # settlement pause this monitor exists to catch.
+      probe="$head_hex"
+      probe_body="$blk"
+      tx=""
+      for _ in $(seq 1 "$TRACE_LOOKBACK"); do
+        tx="$(printf '%s' "$probe_body" | sed -n 's/.*"transactions"[[:space:]]*:[[:space:]]*\[[[:space:]]*"\([^"]*\)".*/\1/p')"
+        [[ -n "$tx" ]] && break
+        probe_dec=$((16#${probe#0x}))
+        (( probe_dec <= 0 )) && break
+        probe="$(printf '0x%x' $((probe_dec - 1)))"
+        probe_body="$(rpc eth_getBlockByNumber "[\"$probe\",false]")"
+      done
       if [[ -n "$tx" ]]; then
         tr="$(rpc debug_traceTransaction "[\"$tx\",{\"tracer\":\"callTracer\"}]")"
         if ! printf '%s' "$tr" | grep -q '"result"'; then
           observed=down
           detail="head is fresh (#${head_dec}, ${age}s) but debug_traceTransaction FAILED — the autopilot cannot decode settlements, so chain 130 settlement is paused."
         fi
+      else
+        # Nothing to trace in the whole lookback. Freshness passed, so do not
+        # page — but tracing is UNPROVEN, so this must not be allowed to clear an
+        # existing down state (see the withhold below).
+        trace_unverified=1
+        log_note="tracing unverified: no transactions in the last ${TRACE_LOOKBACK} blocks"
       fi
-      # a block with zero transactions is normal; absence of a tx is not a failure
     fi
   fi
 fi
@@ -154,8 +177,13 @@ This node is the ONLY source of debug_traceTransaction for chain 130; while it i
 Host: ${NODE_RPC}. It has died silently twice before — 2026-08-05 was op-node crash-looping on a broken DNS resolver."
 fi
 
-if [[ "$observed" != "$believed" ]]; then
+if [[ "$observed" == "up" && "$believed" == "down" && "$trace_unverified" == "1" ]]; then
+  # Do NOT claim recovery on evidence we do not have. The node went down; only a
+  # SUCCESSFUL trace proves the capability that matters came back. Stay down and
+  # re-check next tick; a real recovery clears this as soon as any block has a tx.
+  echo "withholding RECOVERED — ${log_note}"
+elif [[ "$observed" != "$believed" ]]; then
   if notify "$msg"; then printf '%s' "$observed" > "$STATE_FILE"; fi
 else
-  echo "no change (believed=$believed observed=$observed)${detail:+ — $detail}"
+  echo "no change (believed=$believed observed=$observed)${detail:+ — $detail}${log_note:+ [$log_note]}"
 fi
