@@ -598,6 +598,11 @@ export async function fetchChainTrades(
 // Fixed keys for the advisory locks (any constants work; must be distinct).
 const FETCHER_LOCK_KEY = 770042;
 const PIPELINE_LOCK_KEY = 770043;
+// How long a `wait: true` caller queues behind an active holder before giving up.
+// Sized to outlive a trade-rewards run (the 5-minutely competitor for this lock)
+// while still bounding the wait so a wedged holder cannot hang the caller.
+const PIPELINE_LOCK_WAIT_MS = 15 * 60 * 1_000;
+const PIPELINE_LOCK_RETRY_MS = 5_000;
 
 /**
  * Run `fn` while holding a PIPELINE-level advisory lock so the two pipeline
@@ -618,9 +623,25 @@ export async function withPipelineLock(
   let locked = false;
   try {
     if (options.wait) {
+      // BOUNDED wait, not pg_advisory_lock(). A plain blocking acquire waits
+      // forever: an advisory lock is held for as long as its session lives, so a
+      // reward run wedged on an RPC call with no timeout would pin this reserved
+      // connection indefinitely and the nightly pipeline would never run OR
+      // report. That converts a visible, recoverable skip into a silent hang on
+      // a money path (the 1st-of-month Safe proposal). Poll instead and give the
+      // caller back a `false` it can alert on.
       log.info('waiting for exclusive pipeline lock');
-      await lockConn`SELECT pg_advisory_lock(${PIPELINE_LOCK_KEY})`;
-      locked = true;
+      const deadline = Date.now() + PIPELINE_LOCK_WAIT_MS;
+      for (;;) {
+        const [row] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${PIPELINE_LOCK_KEY}) AS locked`;
+        locked = row?.locked === true;
+        if (locked) break;
+        if (Date.now() >= deadline) {
+          log.error({ waitedMs: PIPELINE_LOCK_WAIT_MS }, 'gave up waiting for the pipeline lock');
+          return false;
+        }
+        await new Promise((resolve) => setTimeout(resolve, PIPELINE_LOCK_RETRY_MS));
+      }
     } else {
       const [row] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${PIPELINE_LOCK_KEY}) AS locked`;
       locked = row?.locked === true;
