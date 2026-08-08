@@ -30,7 +30,10 @@ export async function priceDefiLlamaFill(row: {
   sellAmount: bigint;
   buyToken?: `0x${string}`;
   buyAmount?: bigint;
-  settlementTimestamp: Date;
+  // postgres-js returns raw TIMESTAMPTZ projections as ISO strings, while
+  // Drizzle-backed/test callers provide Date objects. Accept both explicitly so
+  // a non-reference token cannot strand the global reporting backfill.
+  settlementTimestamp: Date | string;
 }): Promise<number> {
   const ref = USD_REFERENCE[row.chainId];
   if (!ref) throw new Error(`no USD reference for chain ${row.chainId}`);
@@ -43,7 +46,11 @@ export async function priceDefiLlamaFill(row: {
 
   const slug = DEFILLAMA_CHAIN_SLUG[row.chainId];
   if (!slug) throw new Error(`no DefiLlama historical-price namespace for chain ${row.chainId}`);
-  const requestedTimestamp = Math.floor(row.settlementTimestamp.getTime() / 1000);
+  const settlementMs = row.settlementTimestamp instanceof Date
+    ? row.settlementTimestamp.getTime()
+    : Date.parse(row.settlementTimestamp);
+  if (!Number.isFinite(settlementMs)) throw new Error('invalid settlement timestamp');
+  const requestedTimestamp = Math.floor(settlementMs / 1000);
   const coin = `${slug}:${row.sellToken}`;
   const url = `https://coins.llama.fi/prices/historical/${requestedTimestamp}/${coin}?searchWidth=4h`;
   const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
@@ -283,7 +290,7 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
     sell_amount: string;
     buy_token: Buffer | null;
     buy_amount: string | null;
-    settlement_timestamp: Date;
+    settlement_timestamp: Date | string;
   };
   let fillCursor: { chainId: number; blockNumber: string; logIndex: number; tradeUid: Buffer } | null = null;
   for (;;) {

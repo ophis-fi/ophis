@@ -50,10 +50,6 @@ export function RewardsPage(): ReactNode {
       title="Trade. Win. Claim on Robinhood Chain."
       lede="A qualifying $100+ Ophis swap earns one winning ticket per eligible wallet while the finite reward pool remains."
     >
-      <Section id="winning-ticket" title="Your trade reward">
-        <WinningTicket account={account} />
-      </Section>
-
       <Section id="xp" title="Your XP">
         {!account ? (
           <Callout tone="info" title="Connect a wallet">
@@ -100,6 +96,7 @@ export function RewardsPage(): ReactNode {
           {REWARDS_PERKS.map((perk) => (
             <RewardCard key={perk.id} perk={perk} xp={xp} account={account} />
           ))}
+          <WinningTicket account={account} />
         </styledEl.PerkGrid>
       </Section>
 

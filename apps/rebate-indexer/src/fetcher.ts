@@ -948,6 +948,7 @@ export async function pruneStaleWallets(): Promise<{ pruned: number }> {
       const pruned = await sql`
         DELETE FROM tracked_wallets
         WHERE wallet NOT IN (SELECT wallet FROM trades)
+          AND wallet NOT IN (SELECT wallet FROM defillama_backfill_wallets)
           AND (
             (last_fetched IS NOT NULL AND first_seen < now() - INTERVAL '7 days')
             OR (last_fetched IS NULL AND last_attempt_at IS NOT NULL AND last_attempt_at < now() - INTERVAL '30 days')

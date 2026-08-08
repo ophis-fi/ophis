@@ -81,6 +81,39 @@ describe('priceDefiLlamaFill — settlement-time pricing', () => {
     vi.unstubAllGlobals();
   });
 
+  it('accepts the ISO timestamp strings returned by raw postgres queries', async () => {
+    const settlementTimestamp = '2026-08-06T15:41:40.000Z';
+    const timestamp = Math.floor(Date.parse(settlementTimestamp) / 1000);
+    const coin = `bsc:${WETH}`;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      coins: { [coin]: { decimals: 18, price: 1.25, timestamp } },
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const usd = await priceDefiLlamaFill({
+      chainId: 56,
+      sellToken: WETH,
+      sellAmount: 2n * 10n ** 18n,
+      settlementTimestamp,
+    });
+
+    expect(usd).toBe(2.5);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://coins.llama.fi/prices/historical/${timestamp}/${coin}?searchWidth=4h`,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('fails closed on an invalid settlement timestamp', async () => {
+    await expect(priceDefiLlamaFill({
+      chainId: 100,
+      sellToken: WETH,
+      sellAmount: 1n,
+      settlementTimestamp: 'not-a-timestamp',
+    })).rejects.toThrow('invalid settlement timestamp');
+  });
+
   it('self-prices the chain USD reference without a network request', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
