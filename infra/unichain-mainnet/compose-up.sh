@@ -9,9 +9,12 @@
 #   1. Always re-runs render-configs.sh (idempotent; re-mounts RAM-disk if
 #      needed, re-writes driver.toml).
 #   2. Verifies the resulting `rendered/driver.toml` symlink resolves to a
-#      readable file (defense in depth — the post-render assertion in
-#      render-configs.sh already catches this, but a wrapper-level check
-#      protects against partial render-configs.sh changes).
+#      non-empty file that the CONTAINER can read (defense in depth — the
+#      post-render assertion in render-configs.sh already catches this, but a
+#      wrapper-level check protects against partial render-configs.sh changes).
+#      NOTE: "readable by the container", not "readable by the deploy user".
+#      On Linux the PK render is owned by the container uid at 0600, so a
+#      non-root deploy user cannot open it — and must not have to.
 #   3. Then runs the docker compose up command.
 
 set -euo pipefail
@@ -85,6 +88,12 @@ if [[ -f .env ]]; then
   )
 fi
 
+# Single source of truth for the container uid, EXPORTED so render-configs.sh
+# and the verification below cannot disagree. An operator override therefore
+# applies to both halves; defining it in only one is how the writer and the
+# checker drift apart.
+export OPHIS_CONTAINER_UID="${OPHIS_CONTAINER_UID:-10001}"
+
 echo "==> render-configs.sh"
 ./render-configs.sh
 
@@ -101,7 +110,34 @@ if [[ ! -s "$target" ]]; then
   echo "       The RAM-disk may have been unmounted between render and verify." >&2
   exit 9
 fi
-echo "  ok: rendered/driver.toml -> $target ($(wc -c < "$target" | tr -d ' ') bytes)"
+# Size via stat, NOT `wc -c < "$target"`. On Linux the PK render is owned by the
+# container uid (10001) at 0600, so a non-root deploy user gets EACCES opening it.
+# That failure is inside a command substitution in an `echo`, which `set -e` does
+# NOT catch — the wrapper would print "ok: ... ( bytes)" and sail on, i.e. a check
+# that cannot fail. `stat` (like the `-s` test above) needs only directory
+# traverse, so it reports the truth without opening the secret.
+size=$(stat -c %s "$target" 2>/dev/null || stat -f %z "$target" 2>/dev/null || echo "")
+if [[ -z "$size" ]]; then
+  echo "ERROR: cannot stat $target — the RAM-disk may have been unmounted." >&2
+  exit 9
+fi
+
+# Assert the container can actually read it. `-s` above only proves the file is
+# non-empty; it says nothing about whether the uid the driver runs as can open
+# it. A 0600 file owned by anyone else renders the stack DOA with
+# PermissionDenied, which is exactly the 2026-08-06 failure this pairs with.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  owner=$(stat -c %u "$target" 2>/dev/null || echo "?")
+  mode=$(stat -c %a "$target" 2>/dev/null || echo "?")
+  if [[ "$owner" != "$OPHIS_CONTAINER_UID" || "$mode" != "600" ]]; then
+    echo "ERROR: $target is uid=$owner mode=$mode; expected uid=$OPHIS_CONTAINER_UID mode=600." >&2
+    echo "       The driver container runs as $OPHIS_CONTAINER_UID and could not read this." >&2
+    echo "       Re-run ./render-configs.sh; if it persists the images' USER may have changed" >&2
+    echo "       (docker image inspect local-driver:latest --format '{{.Config.User}}')." >&2
+    exit 10
+  fi
+fi
+echo "  ok: rendered/driver.toml -> $target ($size bytes)"
 
 echo ""
 # Sharp-edges HIGH-2 (2026-05-20): the observability profile (prometheus +
