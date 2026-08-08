@@ -107,8 +107,22 @@ resolve_token() {
   return 1
 }
 
+# DRY RUN. Every branch of this script has to be exercisable, but the ready/down
+# branches END in a real Telegram page — so testing them pages the operator with
+# an outage that is not happening. That is not merely noisy: it teaches the
+# recipient that alerts from this monitor may be fake, which degrades the exact
+# alarm this script exists to provide. (It happened twice on 2026-08-07/08: a
+# forced ready-branch test and a 000-classification test both paged for real.)
+#
+# OPHIS_NO_NOTIFY=1 prints the page instead of sending it and returns SUCCESS, so
+# the delivery-gated state machine downstream is still exercised faithfully.
+# ALWAYS set it when testing. It is opt-in, so production is unaffected.
 notify() {
   local tok code
+  if [[ "${OPHIS_NO_NOTIFY:-0}" == "1" ]]; then
+    echo "[DRY RUN — not sent] $1"
+    return 0
+  fi
   if ! tok="$(resolve_token)"; then
     echo "ALERT UNDELIVERED: no token in \$TELEGRAM_BOT_TOKEN, Keychain (ophis-telegram-bot), or $TG_ENV" >&2
     return 1
