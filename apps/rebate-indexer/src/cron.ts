@@ -351,7 +351,26 @@ export async function runNightlyPipeline(): Promise<void> {
     // Unlike optional startup/reward passes, the only daily refresh must never
     // disappear because a five-minute reward tick owned the lock at 02:00.
     // Queue behind active work; later reward ticks use try-lock and defer.
-    await withPipelineLock(runPipelineSteps, { wait: true });
+    //
+    // The wait is BOUNDED (see withPipelineLock), so this can still return false
+    // if a holder wedges for 15 minutes. That outcome must stay LOUD: it is the
+    // same "the nightly run did not happen" condition the pre-wait code alerted
+    // on, and on the 1st it defers the monthly Safe proposal. Dropping the alert
+    // along with the skip path would make the one case we cannot fix silent.
+    const ran = await withPipelineLock(runPipelineSteps, { wait: true });
+    if (!ran) {
+      log.error('nightly pipeline did not run — waited out the pipeline lock');
+      const monthly = isFirstOfMonth()
+        ? ' This is the 1st: the monthly rebate batch may be deferred — verify the Safe queue or re-trigger.'
+        : '';
+      // A manual re-trigger is safe and recovers a stuck cycle: runBatcher RESUMES
+      // a 'computing'/'failed' row that never proposed, and ABORTS (no double-pay)
+      // if the cycle was already proposed/terminal.
+      await alerts.alert(
+        'batcher',
+        `Nightly pipeline did not run: another pipeline run held the lock for the full wait window.${monthly}`,
+      );
+    }
   } catch (err: any) {
     log.error({ err: err?.message ?? err }, 'pipeline failed');
     await alerts.alert('pipeline', String(err?.message ?? err));
