@@ -1,0 +1,4 @@
+This is a Brave Creators publisher verification file.
+
+Domain: ophis.fi
+Token: 4e6cf762affc3be767cd412f47903e489cb2e593511da47020307c9d300361b9
