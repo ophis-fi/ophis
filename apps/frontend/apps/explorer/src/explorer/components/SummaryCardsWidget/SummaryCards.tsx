@@ -56,7 +56,7 @@ const WrapperDoubleContent = styled.div`
 
 interface SummaryCardsProps {
   summaryData: TotalSummaryResponse | undefined
-  children: React.ReactNode
+  children: React.ComponentProps<typeof Card>['children']
 }
 
 // TODO: Break down this large function into smaller functions

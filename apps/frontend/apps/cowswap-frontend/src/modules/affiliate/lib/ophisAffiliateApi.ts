@@ -203,9 +203,7 @@ async function parseJson<T>(res: Response): Promise<T> {
 }
 
 export function lookupRefCode(code: string): Promise<RefLookupResponse> {
-  return fetch(`${REBATES_API}/ref/${encodeURIComponent(code)}`).then((res) =>
-    parseJson<RefLookupResponse>(res),
-  )
+  return fetch(`${REBATES_API}/ref/${encodeURIComponent(code)}`).then((res) => parseJson<RefLookupResponse>(res))
 }
 
 /** GET /xp/:wallet — 1 XP per $1 of the wallet's own lifetime fee-bearing volume. */
@@ -263,9 +261,7 @@ export function createRefCode(body: SignedRequestBody): Promise<RefCodeCreateRes
 export function getLeaderboard(limit = 100, self?: string): Promise<LeaderboardResponse> {
   const params = new URLSearchParams({ limit: String(limit) })
   if (self) params.set('self', getAddressKey(self))
-  return fetch(`${REBATES_API}/leaderboard?${params.toString()}`).then((res) =>
-    parseJson<LeaderboardResponse>(res),
-  )
+  return fetch(`${REBATES_API}/leaderboard?${params.toString()}`).then((res) => parseJson<LeaderboardResponse>(res))
 }
 
 export function getAffiliateStats(wallet: string): Promise<AffiliateStats> {
@@ -322,6 +318,40 @@ export function submitRewardClaim(body: RewardClaimRequestBody): Promise<RewardC
     body: JSON.stringify(body),
     signal: timeoutSignal(),
   }).then((res) => parseJson<RewardClaimResponse>(res))
+}
+
+export interface TradeRewardStatus {
+  wallet: string
+  eligible: boolean
+  ticketId?: number
+  amountUsdg?: number
+  assignmentStatus?: 'pending' | 'submitted' | 'confirmed' | 'failed'
+  claimStatus?: 'unclaimed' | 'submitted' | 'claimed' | 'failed'
+  assignmentTxHash?: string
+  claimTxHash?: string
+}
+
+export interface SponsoredTradeRewardClaim {
+  wallet: string
+  transactionHash?: string
+  status: 'claimed'
+}
+
+export function getTradeRewardStatus(wallet: string): Promise<TradeRewardStatus> {
+  return fetch(`${REBATES_API}/trade-rewards/${encodeURIComponent(getAddressKey(wallet))}`, {
+    headers: { accept: 'application/json' },
+    cache: 'no-store',
+    signal: timeoutSignal(),
+  }).then((res) => parseJson<TradeRewardStatus>(res))
+}
+
+export function claimTradeReward(wallet: string): Promise<SponsoredTradeRewardClaim> {
+  return fetch(`${REBATES_API}/trade-rewards/claim`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ wallet: getAddressKey(wallet) }),
+    signal: timeoutSignal(),
+  }).then((res) => parseJson<SponsoredTradeRewardClaim>(res))
 }
 
 export function getPartnerDashboard(body: SignedRequestBody): Promise<PartnerDashboard> {

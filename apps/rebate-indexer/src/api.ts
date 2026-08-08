@@ -14,6 +14,7 @@ import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import { findReward } from './rewards.js';
 import { getPartnerFeeDashboard, getPartnerFeeStats } from './partnerFees/report.js';
+import { registerTradeRewardRoutes } from './tradeRewards/routes.js';
 import {
   FEE_SHARE_BPS,
   GROSS_FEE_BPS,
@@ -376,6 +377,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     }
   });
   app.options('*', async (_req, reply) => reply.code(204).send());
+  registerTradeRewardRoutes(app);
 
   // rebates.ophis.fi is the rebate-indexer API host (JSON endpoints + the
   // per-wallet /tier HTML page). Google was crawling the bare host root and
@@ -427,18 +429,24 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // last_batcher_run_at = MAX(ran_at) over first-of-month runs: when the monthly
     //                    Safe batcher step last executed, so "did the batcher tick
     //                    on the 1st?" is answerable from /health without admin auth.
+    // trade_rewards_last_* = independent five-minute reward scheduler heartbeat;
+    //                    unlike the nightly pipeline it also runs immediately at startup.
     // All are single aggregate timestamps — no wallet data exposed.
     const healthRows = await sql<{
       last_fetch: string | null;
       last_fetch_attempt: string | null;
       last_pipeline_run_at: string | null;
       last_batcher_run_at: string | null;
+      trade_rewards_last_attempt_at: string | null;
+      trade_rewards_last_success_at: string | null;
     }[]>`
       SELECT
         (SELECT MAX(fetched_at)::text FROM trades) AS last_fetch,
         (SELECT MAX(last_attempt_at)::text FROM tracked_wallets) AS last_fetch_attempt,
         (SELECT MAX(ran_at)::text FROM pipeline_runs) AS last_pipeline_run_at,
-        (SELECT MAX(ran_at)::text FROM pipeline_runs WHERE first_of_month) AS last_batcher_run_at
+        (SELECT MAX(ran_at)::text FROM pipeline_runs WHERE first_of_month) AS last_batcher_run_at,
+        (SELECT last_attempt_at::text FROM trade_reward_scheduler_state WHERE singleton = TRUE) AS trade_rewards_last_attempt_at,
+        (SELECT last_success_at::text FROM trade_reward_scheduler_state WHERE singleton = TRUE) AS trade_rewards_last_success_at
     `;
     // pending_batches = in-flight (computing/proposing/proposed) — expected to be
     // transient. failed_batches = cycles that did NOT pay out (execution reverted,
@@ -457,6 +465,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const last_fetch_attempt = healthRows[0]?.last_fetch_attempt ?? null;
     const last_pipeline_run_at = healthRows[0]?.last_pipeline_run_at ?? null;
     const last_batcher_run_at = healthRows[0]?.last_batcher_run_at ?? null;
+    const trade_rewards_last_attempt_at = healthRows[0]?.trade_rewards_last_attempt_at ?? null;
+    const trade_rewards_last_success_at = healthRows[0]?.trade_rewards_last_success_at ?? null;
     const pending = batchCountRows[0]?.pending ?? '0';
     const failed = batchCountRows[0]?.failed ?? '0';
     return {
@@ -465,6 +475,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       last_fetch_attempt,
       last_pipeline_run_at,
       last_batcher_run_at,
+      trade_rewards_last_attempt_at,
+      trade_rewards_last_success_at,
       pending_batches: parseInt(pending, 10),
       failed_batches: parseInt(failed, 10),
     };

@@ -1,0 +1,7 @@
+[
+  {"type": "constructor", "inputs": [{"name": "owner", "type": "address"}, {"name": "token", "type": "address"}, {"name": "signer", "type": "address"}, {"name": "domainSeparator", "type": "uint256"}], "stateMutability": "nonpayable"},
+  {"type": "function", "name": "assign", "inputs": [{"name": "recipient", "type": "address"}, {"name": "ticketId", "type": "uint256"}, {"name": "amount", "type": "uint256"}, {"name": "v", "type": "uint256"}, {"name": "r", "type": "bytes32"}, {"name": "s", "type": "bytes32"}], "outputs": [], "stateMutability": "nonpayable"},
+  {"type": "function", "name": "claim", "inputs": [{"name": "recipient", "type": "address"}], "outputs": [], "stateMutability": "nonpayable"},
+  {"type": "function", "name": "setPaused", "inputs": [{"name": "nextPaused", "type": "uint256"}], "outputs": [], "stateMutability": "nonpayable"},
+  {"type": "function", "name": "setRewardSigner", "inputs": [{"name": "nextSigner", "type": "address"}], "outputs": [], "stateMutability": "nonpayable"}
+]

@@ -1,0 +1,19 @@
+{
+  "title": "Ophis Rewards Architecture",
+  "nodes": [
+    {"id":"recipient","label":"Recipient / Relayer","subtitle":"Permissionless","type":"actor","row":0},
+    {"id":"service","label":"Eligibility Service","subtitle":"Signer + sponsor","type":"actor","row":0},
+    {"id":"safe","label":"Ophis Safe","subtitle":"1-of-2 owner","type":"actor","row":0},
+    {"id":"distributor","label":"Rewards Distributor","subtitle":"Finite reservations","type":"protocol","row":1},
+    {"id":"usdg","label":"Robinhood USDG","subtitle":"Reward token","type":"external","row":2},
+    {"id":"rpcs","label":"12-chain RPCs","subtitle":"Age evidence","type":"external","row":1}
+  ],
+  "edges": [
+    {"from":"recipient","to":"distributor","label":"assign / claim"},
+    {"from":"service","to":"distributor","label":"sign / relay"},
+    {"from":"safe","to":"distributor","label":"pause / rotate"},
+    {"from":"distributor","to":"usdg","label":"pay reward"},
+    {"from":"service","to":"rpcs","label":"verify age"}
+  ],
+  "groups": []
+}

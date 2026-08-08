@@ -26,12 +26,10 @@ name: frontend CI
 #   useBuildBasketLegAppData.ts(46,27): error TS2345 ...
 # and passes once restored.
 #
-# WHY TYPECHECK AND NOT THE FULL BUILD. The production build needs repo secrets
-# (REACT_APP_OPHIS_VOLUME_FEE_BPS, Bungee affiliate id, ...). Requiring them
-# would either expose secrets to PRs or make the job fail on forks. The failure
-# class we are gating — a type error — is fully caught by `tsc`, which needs no
-# secrets. If a future breakage slips through as a BUNDLER (not type) error,
-# promote this to `pnpm run build:cowswap` on a secret-bearing trigger.
+# The production build also runs without deployment secrets: unset public build
+# variables select their safe defaults. This deliberately exercises the real Nx,
+# SWC, Vite, and plugin path before merge; Cloudflare injects production values
+# later without changing that toolchain.
 #
 # COST: path-scoped to apps/frontend/**, so PRs that do not touch the frontend
 # skip it entirely. pnpm's store is cached via setup-node.
@@ -56,7 +54,7 @@ concurrency:
 
 jobs:
   typecheck:
-    name: frontend (typecheck cowswap)
+    name: frontend (typecheck + production build)
     runs-on: ubuntu-latest
     steps:
       # Actions pinned to commit SHAs, matching cloudflare-deploy.yml (audit
@@ -88,3 +86,7 @@ jobs:
       - name: typecheck cowswap-frontend
         working-directory: apps/frontend
         run: pnpm typecheck
+
+      - name: production-build cowswap-frontend
+        working-directory: apps/frontend
+        run: pnpm build:cowswap

@@ -2,7 +2,7 @@
 import { CONTRACTS_PKG_VERSION as CONTRACT_VERSION } from '@cowprotocol/sdk-contracts-ts'
 
 import { lingui } from '@lingui/vite-plugin'
-import react from '@vitejs/plugin-react-swc'
+import react from '@vitejs/plugin-react'
 import { defineConfig, searchForWorkspaceRoot } from 'vite'
 import macrosPlugin from 'vite-plugin-babel-macros'
 import dynamicImport from 'vite-plugin-dynamic-import'
@@ -74,8 +74,13 @@ export default defineConfig(({ mode }) => {
         },
         protocolImports: true,
       }),
+      // Use the same Babel-based Lingui path as the swap app. Lingui's WASM
+      // SWC plugin serialisation ABI can drift from @swc/core and make an
+      // otherwise unchanged production explorer build fail at startup.
       react({
-        plugins: [['@lingui/swc-plugin', {}]],
+        babel: {
+          plugins: ['@lingui/babel-plugin-lingui-macro'],
+        },
       }),
       viteTsConfigPaths({
         root: '../../',

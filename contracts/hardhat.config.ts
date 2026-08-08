@@ -120,6 +120,7 @@ export default {
         version: "0.8.28",
       },
       "src/contracts/vault/OphisChainlinkFloor.sol": { version: "0.8.28" },
+      "src/contracts/rewards/OphisRewardsDistributor.sol": { version: "0.8.28" },
       "src/contracts/vault/interfaces/IVaultPolicyDeps.sol": {
         version: "0.8.28",
       },

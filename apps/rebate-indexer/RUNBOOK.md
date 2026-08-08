@@ -65,6 +65,26 @@ Last-resort operator handbook. If a scenario isn't here, open an incident note a
 
 ## Routine ops
 
+### Finite trade-reward campaign
+
+The campaign creates one winning ticket per eligible wallet for a verified, settled Ophis swap of
+at least $100 made after the campaign row's immutable `created_at`. Same-token swaps are excluded.
+Wallet age and wallet balance are not checked.
+
+Before enabling the rewards Compose override, review qualifying-wallet clusters and record any
+evident self-dealing or manufactured volume in `trade_reward_wallet_blocks`. Every block requires a
+plain-language reason, evidence reference, and operator identity. Never block a wallet solely because
+it is new or has a low balance.
+
+```sql
+INSERT INTO trade_reward_wallet_blocks (wallet, reason, evidence, created_by)
+VALUES (decode('<address-without-0x>', 'hex'), '<reason>', '<incident/query reference>', '<operator>');
+```
+
+Keep `TRADE_REWARDS_ENABLED=false` until that review is complete. The database and contract enforce
+one ticket per wallet and stop allocation after ticket 105. Do not alter the allocation seed after
+the campaign commitment has been stored.
+
 ### Fee-treasury sweeps feed the payout pool (documentation reference)
 OP-chain CIP-75 fees accrue in the Settlement contract and reach the fee
 Safe only via the fee-treasury sweep (OphisFeeLiquidator; runner

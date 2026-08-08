@@ -57,9 +57,10 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   // Mirrors each stack's AUTOPILOT [[drivers]], the only list that decides which
   // lanes are dispatched an auction. Pinned per chain by
   // scripts/check-solver-registry-invariant.sh.
-  //   chain 10   baseline, okx, kyberswap, velora, enso, lifi, openocean, dodo
+  //   chain 10   baseline, okx, kyberswap, velora, enso, lifi, openocean, dodo,
+  //              curve, woofi, uniswap-v4
   //   chain 130  baseline, okx, kyberswap, velora, openocean, dodo, lifi, enso
-  //   chain 4663 baseline, lifi, kyberswap, uniswap-v4
+  //   chain 4663 baseline, lifi, kyberswap, uniswap-v4, ekubo, up33
   {
     solverId: 'baseline',
     chainIds: [
@@ -104,7 +105,14 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
     solverId: 'dodo',
     chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
   }, // external aggregator
-  { solverId: 'uniswap-v4', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
+  { solverId: 'curve', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
+  { solverId: 'woofi', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
+  {
+    solverId: 'uniswap-v4',
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
+  }, // direct on-chain lane
+  { solverId: 'ekubo', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
+  { solverId: 'up33', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   // No odos entry: #996 removed that lane from BOTH sovereign autopilots after
   // its API began answering 410. It is in no autopilot, so it is in no registry.
 ]
@@ -123,7 +131,7 @@ export function ophisSolverPublicLabel(solverId: string): string {
   const normalizedSolverId = solverId.toLowerCase()
 
   if (normalizedSolverId === 'baseline') return 'Baseline'
-  if (normalizedSolverId === 'uniswap-v4') return 'Ophis direct solver'
+  if (['uniswap-v4', 'ekubo', 'up33'].includes(normalizedSolverId)) return 'Ophis direct solver'
 
   return OPHIS_EXTERNAL_SOLVER_LABEL
 }
@@ -133,7 +141,7 @@ export function ophisSolverPublicDescription(solverId: string): string {
   const normalizedSolverId = solverId.toLowerCase()
 
   if (normalizedSolverId === 'baseline') return 'Ophis baseline solver routing over on-chain liquidity.'
-  if (normalizedSolverId === 'uniswap-v4') {
+  if (['uniswap-v4', 'ekubo', 'up33'].includes(normalizedSolverId)) {
     return 'Ophis-operated direct solver routing through canonical on-chain liquidity.'
   }
 

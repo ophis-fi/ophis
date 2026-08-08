@@ -475,9 +475,18 @@ jobs:
           # name-exclude + pin procedure. DATED 2026-08-16 (a Sunday): osv-gate
           # expires ignores when expiry < today, so the Monday 08-17 scheduled
           # audit runs with this already failing closed.
+          # IGNORE image-size GHSA-5p2g-fcmc-qvqq (HIGH DoS, published 2026-08-07:
+          # JXL and HEIF parsers loop infinitely on malformed files) and
+          # GHSA-w3rx-r6r6-pgpr (HIGH DoS, ICNS parser infinite loop). Sole consumer
+          # in this lockfile: less@4.4.2 optional dep for CSS data-uri image dimension
+          # detection -- build-time, developer-authored assets only; an attacker cannot
+          # supply a crafted image here. NO patched release exists (vulnerable_versions
+          # = "<=2.0.2", latest is 2.0.2). DATED 2026-11-08: re-check for a patched
+          # release and either upgrade or renew with fresh evidence.
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
             --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp --ignore GHSA-qwww-vcr4-c8h2 \
-            --ignore GHSA-rgw5-rvv9-x895:2026-08-16
+            --ignore GHSA-rgw5-rvv9-x895:2026-08-16 \
+            --ignore GHSA-5p2g-fcmc-qvqq:2026-11-08 --ignore GHSA-w3rx-r6r6-pgpr:2026-11-08
 
   pnpm-audit-docs:
     name: pnpm audit (docs-ophis deps)
@@ -534,8 +543,17 @@ jobs:
           # same advisory). 2026-10-31 = a ~3-month review horizon; on expiry,
           # re-check whether serve-handler still pulls minimatch@3 and either
           # move to 5.0.8 or renew the date with fresh evidence.
+          # IGNORE image-size GHSA-5p2g-fcmc-qvqq (HIGH DoS, published 2026-08-07:
+          # JXL and HEIF parsers loop infinitely on malformed files) and
+          # GHSA-w3rx-r6r6-pgpr (HIGH DoS, ICNS parser infinite loop). Sole consumer
+          # in this lockfile: @docusaurus/mdx-loader@3.10.1 (MDX build pipeline) --
+          # build-time, developer-authored assets only; an attacker cannot supply a
+          # crafted image here. NO patched release exists (vulnerable_versions
+          # = "<=2.0.2", latest is 2.0.2). DATED 2026-11-08: re-check for a patched
+          # release and either upgrade or renew with fresh evidence.
           python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-mh99-v99m-4gvg:2026-10-31
+            --osv-rc "$rc" --ignore GHSA-mh99-v99m-4gvg:2026-10-31 \
+            --ignore GHSA-5p2g-fcmc-qvqq:2026-11-08 --ignore GHSA-w3rx-r6r6-pgpr:2026-11-08
 
   cargo-audit:
     name: cargo audit (Rust deps)
