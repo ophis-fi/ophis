@@ -36,8 +36,9 @@ minimumReleaseAgeExclude:
   # uses; the dev-only v2 advisory GHSA-64mm-vxmg-q3vj is now fixed by the 2.0.10 v2
   # patch, pinned via the >=2.0.0 <2.0.10 override which keeps that v2 API),
   # piscina 4.9.3 (GHSA-x9g3-xrwr-cwfg), fast-uri 3.1.5 (GHSA-7p8r-x3mc-p8w7),
-  # socket.io-parser 4.2.7 (GHSA-2m8v-j782-fhvr), and brace-expansion 5.0.9
-  # (GHSA-rgw5-rvv9-x895) are intentionally NOT name-excluded here. A
+  # socket.io-parser 4.2.7 (GHSA-2m8v-j782-fhvr), brace-expansion 5.0.9
+  # (GHSA-rgw5-rvv9-x895), and nanoid 3.3.18 (GHSA-28wg-ghj8-5hjv +
+  # GHSA-2v37-7h3g-55p8) are intentionally NOT name-excluded here. A
   # package-name exclude would permanently bypass the soak for EVERY future
   # publish of those packages; instead each fixed version is pinned in the
   # committed lockfile, so frozen-lockfile installs use it without re-resolving
