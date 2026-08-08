@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // which takes the SAME pipeline lock every 5 minutes.
 const state = vi.hoisted(() => ({ heldFor: 0, attempts: 0, nightlyPending: false }));
 
-const PIPELINE_KEY = '770043';
+// Only the nightly-pending key needs naming: the stub branches on it and treats
+// every other key as the pipeline lock.
 const NIGHTLY_KEY = '770045';
 
 const release = vi.fn();
