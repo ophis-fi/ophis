@@ -323,6 +323,9 @@ export function submitRewardClaim(body: RewardClaimRequestBody): Promise<RewardC
 export interface TradeRewardStatus {
   wallet: string
   eligible: boolean
+  campaignEnabled: boolean
+  campaignAvailable: boolean
+  ticketsRemaining: number
   ticketId?: number
   amountUsdg?: number
   assignmentStatus?: 'pending' | 'submitted' | 'confirmed' | 'failed'

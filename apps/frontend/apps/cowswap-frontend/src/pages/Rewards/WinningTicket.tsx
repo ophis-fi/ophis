@@ -31,13 +31,17 @@ export function WinningTicket({ account }: WinningTicketProps): ReactNode {
     )
 
   if (!status?.eligible || status.ticketId === undefined || status.amountUsdg === undefined) {
+    const availabilityMessage = !status
+      ? 'Campaign availability could not be checked. Refresh the page to try again.'
+      : status.campaignAvailable
+        ? 'The campaign is live. Make a verified, settled Ophis swap of at least $100 to receive one winning ticket per wallet while rewards remain.'
+        : status.ticketsRemaining === 0
+          ? 'All winning tickets have been allocated. Existing ticket holders can still claim their rewards.'
+          : 'The campaign is currently paused. Existing ticket holders can still claim their rewards.'
     return (
       <styledEl.TicketEmpty>
         <h3>No ticket yet</h3>
-        <p>
-          Make a verified, settled Ophis swap of at least $100 after the campaign starts. One winning ticket is
-          available per wallet while rewards remain.
-        </p>
+        <p>{availabilityMessage}</p>
         {error && <styledEl.TicketError>{error}</styledEl.TicketError>}
       </styledEl.TicketEmpty>
     )
