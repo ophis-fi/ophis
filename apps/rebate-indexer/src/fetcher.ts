@@ -604,20 +604,30 @@ const PIPELINE_LOCK_KEY = 770043;
  * triggers — the non-blocking startup backfill and the nightly cron — can never
  * overlap. Without this they can race on price/score, and on the 1st the cron's
  * batcher could propose a Safe payout off a matview a concurrent backfill is
- * mid-updating. Returns true if it ran, false if another pipeline held the lock
- * (the caller decides whether a skip matters). Distinct key from the fetcher
- * lock, so runFetcher (FETCHER_LOCK_KEY) nested inside still works.
+ * mid-updating. The default is a non-blocking attempt for optional startup and
+ * reward work. The once-daily nightly pipeline passes `wait: true`, so it queues
+ * instead of losing its only invocation to a short reward tick. Distinct key
+ * from the fetcher lock, so nested runFetcher calls still work.
  */
-export async function withPipelineLock(fn: () => Promise<void>): Promise<boolean> {
+export async function withPipelineLock(
+  fn: () => Promise<void>,
+  options: { wait?: boolean } = {},
+): Promise<boolean> {
   const { sql } = await import('./db/index.js');
   const lockConn = await sql.reserve();
   let locked = false;
   try {
-    const [row] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${PIPELINE_LOCK_KEY}) AS locked`;
-    locked = row?.locked === true;
-    if (!locked) {
-      log.info('another pipeline run holds the lock; skipping');
-      return false;
+    if (options.wait) {
+      log.info('waiting for exclusive pipeline lock');
+      await lockConn`SELECT pg_advisory_lock(${PIPELINE_LOCK_KEY})`;
+      locked = true;
+    } else {
+      const [row] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${PIPELINE_LOCK_KEY}) AS locked`;
+      locked = row?.locked === true;
+      if (!locked) {
+        log.info('another pipeline run holds the lock; skipping');
+        return false;
+      }
     }
     await fn();
     return true;

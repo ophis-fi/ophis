@@ -68,6 +68,15 @@ describe('P1.2 cron fail-closed on partner accrual failure', () => {
     cronState.pricer = { priced: 0, failed: 0, anomalous: 0 };
   });
 
+  it('waits for the pipeline lock so a reward tick cannot cancel the daily refresh', async () => {
+    const { runNightlyPipeline } = await import('../../src/cron.js');
+    const { withPipelineLock } = await import('../../src/fetcher.js');
+
+    await runNightlyPipeline();
+
+    expect(withPipelineLock).toHaveBeenCalledWith(expect.any(Function), { wait: true });
+  });
+
   it('SKIPS the rebate batcher + affiliate payout when partner accrual throws (own-fee still runs)', async () => {
     accruePartnerFees.mockRejectedValueOnce(new Error('accrual boom'));
     const { runNightlyPipeline } = await import('../../src/cron.js');
