@@ -546,7 +546,7 @@ jobs:
           # IGNORE image-size GHSA-5p2g-fcmc-qvqq (HIGH DoS, published 2026-08-07:
           # JXL and HEIF parsers loop infinitely on malformed files) and
           # GHSA-w3rx-r6r6-pgpr (HIGH DoS, ICNS parser infinite loop). Sole consumer
-          # in this lockfile: @docusaurus/plugin-ideal-image (build-time resizing) --
+          # in this lockfile: @docusaurus/mdx-loader@3.10.1 (MDX build pipeline) --
           # build-time, developer-authored assets only; an attacker cannot supply a
           # crafted image here. NO patched release exists (vulnerable_versions
           # = "<=2.0.2", latest is 2.0.2). DATED 2026-11-08: re-check for a patched
