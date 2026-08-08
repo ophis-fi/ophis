@@ -138,7 +138,7 @@ describe('pruneStaleWallets', () => {
   it('evicts only confirmed junk; keeps proven, recently-retried, and recent wallets', async () => {
     const { sql } = await import('../src/db/index.js');
     const { pruneStaleWallets } = await import('../src/fetcher.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE defillama_backfill_wallets, trades, tracked_wallets`;
 
     const proven = 'a'.repeat(40);
     // Proven wallet must have a row in `trades` so the prune never touches it.
@@ -153,8 +153,10 @@ describe('pruneStaleWallets', () => {
       (decode(${'d'.repeat(40)}, 'hex'),   now() - interval '40 days', NULL,                        now() - interval '31 days'),  -- attempted, never ok, 31d -> EVICT
       (decode(${'e'.repeat(40)}, 'hex'),   now() - interval '40 days', NULL,                        now() - interval '2 days'),   -- attempted 2d ago (retrying) -> KEEP (P2)
       (decode(${'f'.repeat(40)}, 'hex'),   now() - interval '31 days', NULL,                        NULL),                        -- never attempted 31d -> EVICT
-      (decode(${'1a'.repeat(20)}, 'hex'),  now() - interval '3 days',  NULL,                        NULL)                         -- never attempted 3d -> KEEP
+      (decode(${'1a'.repeat(20)}, 'hex'),  now() - interval '3 days',  NULL,                        NULL),                        -- never attempted 3d -> KEEP
+      (decode(${'2b'.repeat(20)}, 'hex'),  now() - interval '40 days', NULL,                        now() - interval '31 days')   -- queued backfill -> KEEP
     `;
+    await sql`INSERT INTO defillama_backfill_wallets (wallet) VALUES (decode(${'2b'.repeat(20)}, 'hex'))`;
 
     await pruneStaleWallets();
     const rows = await sql<{ w: string }[]>`SELECT encode(wallet, 'hex') AS w FROM tracked_wallets`;
@@ -164,11 +166,12 @@ describe('pruneStaleWallets', () => {
     expect(survivors.has('c'.repeat(40))).toBe(true);   // fetched-empty 3d (< 7d)
     expect(survivors.has('e'.repeat(40))).toBe(true);   // recently retried (P2: a chain outage must not evict it)
     expect(survivors.has('1a'.repeat(20))).toBe(true);  // never attempted, only 3d old
+    expect(survivors.has('2b'.repeat(20))).toBe(true);  // queued reporting work remains reachable despite age
     expect(survivors.has('b'.repeat(40))).toBe(false);  // fetched-empty 8d
     expect(survivors.has('d'.repeat(40))).toBe(false);  // attempted, never ok, 31d
     expect(survivors.has('f'.repeat(40))).toBe(false);  // never attempted, 31d
 
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE defillama_backfill_wallets, trades, tracked_wallets`;
   }, 30_000); // integration: container + prune over a fixtured wallet set
 });
 
