@@ -5,7 +5,14 @@ import { alerts } from '../telegram/alerter.js';
 import { runTradeRewards } from './service.js';
 
 const log = logger.child({ module: 'trade-rewards-scheduler' });
-const TRADE_REWARDS_LOCK_KEY = 770044;
+// MUST be distinct from every other advisory key in this service:
+// 770042 fetcher, 770043 pipeline, 770044 BATCHER, 770045 nightly-pending.
+// This was 770044 — the same key as BATCHER_LOCK_KEY, whose own comment requires
+// it to be unique. A reward run holding it makes runBatcher's try-lock fail, and
+// runBatcher THROWS on that ("aborting to avoid a concurrent cycle"), which would
+// abort a monthly Safe proposal. Latent today only because both paths currently
+// sit under the pipeline lock; that is an accident of scheduling, not a guarantee.
+const TRADE_REWARDS_LOCK_KEY = 770046;
 const TRADE_REWARDS_INTERVAL_MS = 5 * 60 * 1_000;
 const TRADE_REWARDS_ALERT_INTERVAL = '1 hour';
 

@@ -601,7 +601,22 @@ const PIPELINE_LOCK_KEY = 770043;
 // How long a `wait: true` caller queues behind an active holder before giving up.
 // Sized to outlive a trade-rewards run (the 5-minutely competitor for this lock)
 // while still bounding the wait so a wedged holder cannot hang the caller.
-const PIPELINE_LOCK_WAIT_MS = 15 * 60 * 1_000;
+// Bound on a `wait: true` acquisition. Derived from the WORST-CASE runtime of the
+// competing holder, not guessed: submitPendingAssignments (tradeRewards/service.ts)
+// processes up to 10 rows sequentially and each relayAssignment awaits
+// waitForTransactionReceipt with NO explicit timeout, so viem's 180s default
+// applies per row => ~30 min of legitimate, non-wedged work. A bound below that
+// would skip the nightly refresh while the holder was healthy and still
+// progressing. 40 min leaves headroom for the per-row signing/state reads.
+// If either input changes (the LIMIT 10, or an explicit receipt timeout), revisit.
+const PIPELINE_LOCK_WAIT_MS = 40 * 60 * 1_000;
+// Held by a `wait: true` caller for its ENTIRE wait+run. Non-waiting callers
+// check it and defer, which is what actually gives the nightly run priority: a
+// polling waiter is NOT a registered Postgres lock waiter during its sleep, so
+// without this gate a 5-minutely reward tick could repeatedly win the lock in the
+// gap between the holder releasing and the next poll, starving the nightly run
+// for its whole window even though no individual holder was wedged.
+const NIGHTLY_PENDING_LOCK_KEY = 770045;
 const PIPELINE_LOCK_RETRY_MS = 5_000;
 
 /**
@@ -621,7 +636,36 @@ export async function withPipelineLock(
   const { sql } = await import('./db/index.js');
   const lockConn = await sql.reserve();
   let locked = false;
+  let pending = false;
   try {
+    if (options.wait) {
+      // Announce the pending nightly run BEFORE queueing for the pipeline lock,
+      // and hold it for the whole wait+run. Non-waiting callers defer on it, so
+      // reward ticks stop competing the moment a nightly run starts waiting.
+      // Without this the poll loop below can be starved: it is not a registered
+      // Postgres lock waiter while it sleeps, so a try-locking reward tick can
+      // slip in during the gap after a holder releases.
+      const [p] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${NIGHTLY_PENDING_LOCK_KEY}) AS locked`;
+      pending = p?.locked === true;
+      if (!pending) {
+        // Another nightly run is already pending/active. Two concurrent nightly
+        // runs is exactly what the pipeline lock exists to prevent, so decline
+        // rather than queue a second waiter.
+        log.error('another nightly pipeline run is already pending; skipping');
+        return false;
+      }
+    }
+    if (!options.wait) {
+      // Defer to a pending nightly run. It only gets ONE invocation a day; this
+      // caller (reward tick, startup backfill, CLI) will run again shortly.
+      const [p] = await lockConn<{ locked: boolean }[]>`SELECT pg_try_advisory_lock(${NIGHTLY_PENDING_LOCK_KEY}) AS locked`;
+      if (p?.locked !== true) {
+        log.info('a nightly pipeline run is pending; deferring');
+        return false;
+      }
+      // We only probed. Release immediately — holding it would block the nightly.
+      await lockConn`SELECT pg_advisory_unlock(${NIGHTLY_PENDING_LOCK_KEY})`;
+    }
     if (options.wait) {
       // BOUNDED wait, not pg_advisory_lock(). A plain blocking acquire waits
       // forever: an advisory lock is held for as long as its session lives, so a
@@ -658,6 +702,15 @@ export async function withPipelineLock(
         await lockConn`SELECT pg_advisory_unlock(${PIPELINE_LOCK_KEY})`;
       } catch (err) {
         log.error({ err }, 'pipeline advisory unlock failed');
+      }
+    }
+    if (pending) {
+      try {
+        await lockConn`SELECT pg_advisory_unlock(${NIGHTLY_PENDING_LOCK_KEY})`;
+      } catch (err) {
+        // Not fatal: the lock is session-scoped and dies with this reserved
+        // connection. Logged because until then every non-waiting caller defers.
+        log.error({ err }, 'nightly-pending advisory unlock failed');
       }
     }
     lockConn.release();
