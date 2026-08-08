@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Ophis Unichain self-node monitor. Sibling of com.ophis.unichain-healthcheck:
+  that one watches the ORDERBOOK (public endpoint), this one watches the NODE
+  that feeds it. Both are needed — on 2026-08-05 the node froze while the
+  orderbook endpoint stayed 200, so the orderbook monitor alone was blind to it.
+
+  Runs on the Mac mini, not on the node, so it can still report the node being
+  gone.
+
+  INSTALL:
+    cp infra/unichain-mainnet/scripts/com.ophis.uninode-healthcheck.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ophis.uninode-healthcheck.plist
+
+  VERIFY (loaded is not the same as running):
+    launchctl print gui/$(id -u)/com.ophis.uninode-healthcheck | grep -E 'last exit'
+    tail ~/Library/Logs/ophis-uninode-healthcheck.out.log
+
+  TESTING: always set OPHIS_NO_NOTIFY=1, or the test pages the operator with an
+  outage that is not happening.
+
+  WARNING: the path below is absolute and points at greg-wt/monitors, a PERMANENT
+  worktree reserved for long-lived watchers. Never prune it, and keep it parked on
+  main so launchd does not run stale code.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.ophis.uninode-healthcheck</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/scep/greg-wt/monitors/infra/unichain-mainnet/scripts/uninode-healthcheck.sh</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/scep/Library/Logs/ophis-uninode-healthcheck.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/scep/Library/Logs/ophis-uninode-healthcheck.err.log</string>
+</dict>
+</plist>
