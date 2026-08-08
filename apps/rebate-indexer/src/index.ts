@@ -47,10 +47,14 @@ async function main() {
           if (i === 99) logger.error('DefiLlama startup backfill hit guard limit');
         }
         const scored = await runScorer();
-        await runScheduledTradeRewards('startup');
         logger.info({ inserted, priced, scored }, 'initial backfill complete');
       });
       if (!ran) logger.info('initial backfill skipped (nightly pipeline running)');
+      // This deliberately runs after the pipeline lock is released. The rewards
+      // worker takes that same lock, so it can never select tickets from a
+      // partially refreshed trade set. If a nightly refresh won the lock in the
+      // meantime, the independent five-minute scheduler retries it.
+      await runScheduledTradeRewards('startup');
     } catch (err) {
       logger.error({ err: err instanceof Error ? err.message : err }, 'initial backfill failed');
     }
