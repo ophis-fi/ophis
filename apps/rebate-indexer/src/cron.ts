@@ -17,7 +17,6 @@ import { alerts } from './telegram/alerter.js';
 import { logger } from './logger.js';
 import { sql } from './db/index.js';
 import { completeDefiLlamaBackfillIfReady } from './defillamaBackfill.js';
-import { runTradeRewards } from './tradeRewards/service.js';
 
 const log = logger.child({ module: 'cron' });
 
@@ -95,17 +94,6 @@ async function runPipelineSteps(): Promise<void> {
 
   const scored = await runScorer();
   log.info(scored, 'scorer complete');
-
-  try {
-    const rewards = await runTradeRewards();
-    log.info(rewards, 'trade rewards complete');
-  } catch (err) {
-    log.error({ err }, 'trade rewards failed closed; no ticket was issued');
-    await alerts.alert(
-      'trade-rewards',
-      `Trade rewards failed closed: ${err instanceof Error ? err.message : String(err)}`,
-    ).catch(() => {});
-  }
 
   // Partner-fee accrual feed (partner-fees Phase B): pull new fee-bearing trades from the
   // restricted feed and price their collected fee. Nightly, like the main pricer; the monthly

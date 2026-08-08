@@ -6,11 +6,13 @@ import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { logger } from './logger.js';
 import { completeDefiLlamaBackfillIfReady } from './defillamaBackfill.js';
+import { runScheduledTradeRewards, startTradeRewardsScheduler } from './tradeRewards/scheduler.js';
 
 async function main() {
   await runMigrations();
   await startApi();
   startCron();
+  startTradeRewardsScheduler();
   logger.info('rebate-indexer ready');
 
   // Initial backfill so freshly-deployed / newly-seeded tracked wallets populate
@@ -45,6 +47,7 @@ async function main() {
           if (i === 99) logger.error('DefiLlama startup backfill hit guard limit');
         }
         const scored = await runScorer();
+        await runScheduledTradeRewards('startup');
         logger.info({ inserted, priced, scored }, 'initial backfill complete');
       });
       if (!ran) logger.info('initial backfill skipped (nightly pipeline running)');
