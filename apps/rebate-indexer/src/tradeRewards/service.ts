@@ -23,6 +23,9 @@ interface CandidateTrade {
 export interface TradeRewardStatus {
   readonly wallet: `0x${string}`;
   readonly eligible: boolean;
+  readonly campaignEnabled: boolean;
+  readonly campaignAvailable: boolean;
+  readonly ticketsRemaining: number;
   readonly ticketId?: number;
   readonly amountUsdg?: number;
   readonly assignmentStatus?: string;
@@ -214,6 +217,16 @@ export async function runTradeRewards(): Promise<{ reserved: number; submitted: 
 }
 
 export async function getTradeRewardStatus(wallet: `0x${string}`): Promise<TradeRewardStatus> {
+  const campaignRows = await sql<{ enabled: boolean; tickets_remaining: number }[]>`
+    SELECT enabled,
+           GREATEST(${TRADE_REWARDS_MAX_TICKETS} - next_allocation_index, 0)::integer AS tickets_remaining
+    FROM trade_reward_campaigns
+    WHERE campaign_id = ${TRADE_REWARDS_CAMPAIGN_ID}
+  `;
+  const campaign = campaignRows[0];
+  const campaignEnabled = campaign?.enabled === true;
+  const ticketsRemaining = campaign?.tickets_remaining ?? 0;
+  const campaignAvailable = campaignEnabled && ticketsRemaining > 0;
   const rows = await sql<{
     ticket_id: number; amount_usdg: string; assignment_status: string; claim_status: string;
     assignment_tx_hex: string | null; claim_tx_hex: string | null;
@@ -225,10 +238,13 @@ export async function getTradeRewardStatus(wallet: `0x${string}`): Promise<Trade
     WHERE wallet = ${Buffer.from(wallet.slice(2), 'hex')}
   `;
   const row = rows[0];
-  if (!row) return { wallet, eligible: false };
+  if (!row) return { wallet, eligible: false, campaignEnabled, campaignAvailable, ticketsRemaining };
   return {
     wallet,
     eligible: true,
+    campaignEnabled,
+    campaignAvailable,
+    ticketsRemaining,
     ticketId: row.ticket_id,
     amountUsdg: Number(BigInt(row.amount_usdg)) / 1_000_000,
     assignmentStatus: row.assignment_status,
