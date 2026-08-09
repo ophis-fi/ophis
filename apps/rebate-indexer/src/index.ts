@@ -40,6 +40,10 @@ async function main() {
           const pass = await runPricer();
           priced = { priced: priced.priced + pass.priced, failed: priced.failed + pass.failed };
           if (await completeDefiLlamaBackfillIfReady()) break;
+          // A production eth-flow outage deliberately keeps the whole batch queued.
+          // Stop this startup drain now instead of selecting the same 500 owners up
+          // to 100 times; the nightly pipeline will retry the fail-closed queue.
+          if (!fetched.reportingProgress) break;
           // A short batch means every currently eligible owner was attempted. Do
           // not hammer a persistently failing owner or an unpriceable fill 100 times;
           // readiness stays false and the nightly pipeline retries it safely.
