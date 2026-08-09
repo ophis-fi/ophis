@@ -191,6 +191,12 @@ groups:
         # Round 5: Mempools::try_new pre-creates every (mempool, result)
         # child at 0 — all 6 result values, registry-asserted by a driver
         # unit test — so rate() always has real series and transitions.
+        # Round 7 asymmetry note: unlike the gas-cap alert, this one does
+        # NOT need a change-detector arm for the >15m-outage boot-window
+        # case — submission failures during an outage REPEAT, so rate() has
+        # two samples and fires within a scrape or two of continued failures;
+        # a cap violation can be a single event, which is why only the
+        # gas-cap expr carries the union.
         # Fires: failing submissions with ZERO successes over 15m, i.e. a
         # submission outage. Only sound on drivers that pre-initialize
         # (deployed together with that driver build).
@@ -272,6 +278,18 @@ groups:
         # already covered by `for: 15m`, which outlives any driver warmup.
         # LESSON: TSDB-verify every metric name WITH its matchers — a name
         # that exists for a different job still yields an empty join.
+        # Round 7: deliberately NOT replaced with an `up`-based restart
+        # guard. MEASURED 2026-08-09: a driver container recreate did not
+        # dip `up{job="driver"}` at all (the swap is faster than the 15s
+        # scrape cadence), so `min_over_time(up[...]) == 1` provably cannot
+        # bind on this stack — adding it would recreate the exact
+        # gate-that-cannot-fire defect removed above. The back-to-back-
+        # restart false-page scenario needs >0.5 SimulationRevert drops/s
+        # sustained 15m — a restart every ~10s for 15 minutes, i.e. a
+        # crash-loop, which OphisOpDriverDown (and the up-gaps a true
+        # crash-loop DOES produce) already pages on. If the driver ever
+        # exports process_start_time_seconds (tracked follow-up), restore a
+        # real uptime gate then.
         expr: |
           sum(rate(driver_dropped_solutions{reason="SimulationRevert"}[10m])) > 0.5
         for: 15m
@@ -665,21 +683,33 @@ groups:
         # construction. Deployed together with that driver build — this
         # expression is only sound on drivers that pre-initialize.
         #
-        # Round 6 (boot-window analysis): a violation BETWEEN driver start
-        # and the first scrape is still caught on every RESTART, because the
-        # previous process's pre-initialized samples sit in the window and
-        # increase() is reset-aware (5,5 -> 1 counts as +1; 0,0 -> 1 as +1).
+        # Round 6/7 (boot-window analysis, corrected): a violation BETWEEN
+        # driver start and the first scrape is caught on a restart with
+        # downtime < 5m — the previous process's pre-initialized samples sit
+        # in the window and increase() is reset-aware (5,5 -> 1 counts +1;
+        # 0,0 -> 1 counts +1). Round 7: for downtime > 5m those samples age
+        # OUT of the window and a flat post-outage series shows no increase —
+        # the second arm (round-4 change detector, 7d lookback) bridges any
+        # realistic outage by comparing against the last known value.
         # Verified deployed 2026-08-09: 6 gas-cap + 18 submission children
-        # present at 0 in the TSDB before any event. The ONLY unreachable
-        # cases have NO samples at all and no expression can close them:
-        #  (a) a brand-new stack's first-ever driver process with a violation
+        # present at 0 in the TSDB before any event.
+        # Remaining residuals, all requiring NO usable samples plus a
+        # coincidence — no expression can close them:
+        #  (a) brand-new stack's first-ever driver process with a violation
         #      before its very first scrape — bootstrap checklist: after first
         #      driver start, verify `driver_gas_price_cap_exceeded == 0`
         #      returns all children BEFORE enabling traffic;
-        #  (b) a Prometheus outage longer than the window coinciding with the
-        #      event — monitoring-of-monitoring concern, not an expr concern.
+        #  (b) Prometheus outage longer than the lookback coinciding with the
+        #      event — monitoring-of-monitoring concern;
+        #  (c) driver outage > 5m AND violation before the first post-outage
+        #      scrape AND the reborn child landing on exactly its last
+        #      pre-outage value (triple coincidence).
+        # Sound closure for (a)+(c): export process_start_time_seconds from
+        # the driver (register prometheus ProcessCollector, Linux-only) and
+        # gate a young-process arm on it — tracked driver follow-up.
         expr: |
-          increase(driver_gas_price_cap_exceeded[5m]) > 0
+          (increase(driver_gas_price_cap_exceeded[5m]) > 0)
+          or (driver_gas_price_cap_exceeded != (last_over_time(driver_gas_price_cap_exceeded[7d] offset 5m) or (driver_gas_price_cap_exceeded * 0)))
         for: 0m
         labels:
           severity: critical
