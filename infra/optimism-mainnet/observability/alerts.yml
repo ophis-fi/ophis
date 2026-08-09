@@ -183,16 +183,30 @@ groups:
         # both directions. Partial-provider degradation is NOT observable from
         # this metric at all (cancelled futures increment nothing); that needs
         # per-provider instrumentation in the driver.
+        #
+        # 2026-08-09 codex round 3: the failure arm needs the same lazy-child
+        # appearance handling as OphisOpGasPriceCapExceeded — the FIRST
+        # all-provider failure after a driver restart creates the failure
+        # children at value 1 with no 0->1 transition, so rate() over a
+        # single sample is empty and a genuine day-one outage would not page.
+        # The `== 1 unless offset` arm fires on first-violation child birth;
+        # `== 1` keeps a scrape-gap reappearance of an OLD child (value >1)
+        # from paging. Residual: a child stuck at exactly 1 across a >15m
+        # scrape gap re-pages once on recovery — accepted; the real fix is
+        # pre-initializing children in the driver (see gas-cap note).
         expr: |
-          sum(rate(driver_mempool_submission{result!="Success"}[15m])) > 0
+          (
+            sum(rate(driver_mempool_submission{result!="Success"}[15m])) > 0
+            or on() count((driver_mempool_submission{result!="Success"} == 1) unless (driver_mempool_submission{result!="Success"} offset 15m)) > 0
+          )
           and on() ((sum(rate(driver_mempool_submission{result="Success"}[15m])) or vector(0)) == 0)
         for: 5m
         labels:
           severity: warning
           chain: optimism
         annotations:
-          summary: "OP: >35% of mempool submissions failing over 15m"
-          description: "Aggregate mempool submission failure rate exceeds 35% across the 3 raced mempools (PublicNode, OP Foundation gateway, Tenderly). One single-provider outage typically pushes this to ~33% and select_ok still succeeds — this alert fires when ≥2 providers are degraded, which IS a genuine submission risk. Inspect `mempool_submission{mempool=...,result=...}` per-provider series to identify the failing operator(s). Causes: RPC provider degradation, nonce-race regression, gas-price cap rejection (see `driver_gas_price_cap_exceeded`). Trace via `driver::infra::submission` logs."
+          summary: "OP: mempool submissions failing with ZERO successes over 15m"
+          description: "Settlement submissions are failing and NO submission has succeeded in the last 15m — a submission outage, not a partial degradation. (This alert deliberately does not measure a failure ratio: select_ok cancels the losing futures on first success, so the counter only sees completed attempts and any ratio over it is misleading; a single degraded provider is invisible here by construction.) Inspect `driver_mempool_submission{mempool=...,result=...}` series to identify the failing lane(s). Causes: RPC provider degradation across the submission relays, nonce-race regression, gas-price cap rejection (see `driver_gas_price_cap_exceeded`). Trace via `driver::infra::submission` logs."
 
       - alert: OphisOpSolverDropRateHigh
         # 2026-08-09: renamed to driver_-prefixed metrics. driver_dropped_solutions
@@ -204,11 +218,18 @@ groups:
         # so the inner sum produced an empty denominator the moment drops
         # existed — the alert could still never fire. sum by (solver) each side
         # first, then add.
+        # 2026-08-09 codex round 3: denominator restricted to result="Success".
+        # observe::solved counts EVERY solve outcome in driver_solutions —
+        # SolutionNotFound and request errors included (observe/mod.rs:257) —
+        # while driver_dropped_solutions counts discarded real proposals.
+        # An unrestricted denominator dilutes the drop rate with non-proposals,
+        # letting a solver whose actual proposals are mostly dropped sit far
+        # below the 50% threshold.
         expr: |
           (
             sum by (solver) (rate(driver_dropped_solutions[15m]))
             /
-            (sum by (solver) (rate(driver_solutions[15m])) + sum by (solver) (rate(driver_dropped_solutions[15m])))
+            (sum by (solver) (rate(driver_solutions{result="Success"}[15m])) + sum by (solver) (rate(driver_dropped_solutions[15m])))
           ) > 0.50
         for: 15m
         labels:
@@ -630,13 +651,19 @@ groups:
         # the moment the cap first trips, so its first scraped sample is
         # already 1 — Prometheus never sees a 0→1 transition, and increase()
         # over a single-sample series returns nothing. The `unless offset`
-        # arm fires on series APPEARANCE (child creation IS a violation, and
-        # the child vanishes again only via staleness after a driver restart);
-        # the increase() arm catches subsequent violations on an existing
-        # child. Real fix belongs in the driver (pre-initialize children to 0
-        # at startup) — this expression is the alerts-side compensation.
+        # arm fires on series APPEARANCE; the increase() arm catches
+        # subsequent violations on an existing child.
+        # 2026-08-09 codex round 3: appearance arm constrained to `== 1` —
+        # bare appearance also matches an OLD child re-emerging from a >5m
+        # scrape gap at value N>1, which is scrape recovery, not a violation.
+        # Birth of a lazy child is always value 1, so `== 1` keeps the
+        # first-violation page and drops the recovery false page. Residual:
+        # a child stuck at exactly 1 across a >5m gap re-pages once on
+        # recovery (rare, benign for a critical). Real fix belongs in the
+        # driver (pre-initialize children to 0 at startup) — this expression
+        # is the alerts-side compensation.
         expr: |
-          (driver_gas_price_cap_exceeded unless (driver_gas_price_cap_exceeded offset 5m))
+          ((driver_gas_price_cap_exceeded == 1) unless (driver_gas_price_cap_exceeded offset 5m))
           or (increase(driver_gas_price_cap_exceeded[5m]) > 0)
         for: 0m
         labels:
