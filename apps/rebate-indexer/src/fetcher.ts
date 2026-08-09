@@ -61,10 +61,23 @@ export interface PendingDefiLlamaFill {
  */
 export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promise<void> {
   if (rows.length === 0) return;
+  // Deduplicate on the composite conflict key first: one INSERT ... ON CONFLICT
+  // DO UPDATE statement cannot affect the same target row twice (Postgres raises
+  // a cardinality violation), and one batch CAN legitimately carry duplicates,
+  // e.g. an offset-paged owner fetch where a trade settling between page
+  // requests shifts a boundary row into both pages (the old DO NOTHING path
+  // absorbed this silently). A VERIFIED copy wins over a provisional one so the
+  // in-batch pick can never lose the authoritative fee.
+  const byKey = new Map<string, PendingDefiLlamaFill>();
+  for (const row of rows) {
+    const key = `${row.chainId}:${row.blockNumber}:${row.logIndex}:${row.tradeUid}`;
+    const prev = byKey.get(key);
+    if (!prev || (!prev.feeVerified && row.feeVerified)) byKey.set(key, row);
+  }
   const { db, schema } = await import('./db/index.js');
   await db
     .insert(schema.defillamaFills)
-    .values(rows)
+    .values([...byKey.values()])
     .onConflictDoUpdate({
       target: [
         schema.defillamaFills.chainId,

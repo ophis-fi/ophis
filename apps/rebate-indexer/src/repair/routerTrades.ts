@@ -1,6 +1,7 @@
 import { sql } from '../db/index.js';
 import { getOrder } from '../cow/client.js';
 import { DECODER_ETHFLOW_OWNERS } from '../fetcher.js';
+import { TRADE_REWARDS_CAMPAIGN_ID } from '../tradeRewards/config.js';
 import { logger } from '../logger.js';
 
 const log = logger.child({ module: 'repair-router-trades' });
@@ -110,20 +111,27 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
         log.warn({ uid, chainId: r.chain_id, receiver: receiver ?? null }, 'router repair: no usable receiver; skipping');
         continue;
       }
-      // ATOMIC re-check inside the UPDATE: the pre-check above is advisory (it
-      // produces the clear warning); this predicate is the enforcement. The
-      // reward scheduler runs concurrently with an out-of-band CLI repair, and
-      // candidateTrades now excludes router wallets so it can no longer ticket a
-      // repairable trade at all, but the single-statement NOT EXISTS keeps the
-      // guard correct for any future wallet-rewrite path regardless of timing.
-      const updated = await sql`
-        UPDATE trades SET wallet = decode(${receiver.slice(2)}, 'hex')
-        WHERE trade_uid = ${r.trade_uid}
-          AND NOT EXISTS (
-            SELECT 1 FROM trade_reward_tickets WHERE qualifying_trade_uid = ${r.trade_uid}
-          )
-      `;
-      if (updated.count === 0) {
+      // SERIALIZED re-check + rewrite: the pre-check above is advisory (it
+      // produces the clear warning); enforcement happens here, under the SAME
+      // campaign advisory xact lock reserveTicket takes, in one transaction.
+      // While the lock is held no reservation can commit, and reserveTicket
+      // re-verifies the trade's wallet inside its own locked transaction, so the
+      // check-then-update and select-then-insert pairs can never interleave into
+      // a ticket signed for a wallet that no longer owns the trade. The NOT
+      // EXISTS predicate stays in the UPDATE as defense in depth for any future
+      // rewrite path that forgets the lock.
+      const repairedThis = await sql.begin(async (tx) => {
+        await tx`SELECT pg_advisory_xact_lock(hashtext(${TRADE_REWARDS_CAMPAIGN_ID}))`;
+        const updated = await tx`
+          UPDATE trades SET wallet = decode(${receiver.slice(2)}, 'hex')
+          WHERE trade_uid = ${r.trade_uid}
+            AND NOT EXISTS (
+              SELECT 1 FROM trade_reward_tickets WHERE qualifying_trade_uid = ${r.trade_uid}
+            )
+        `;
+        return updated.count > 0;
+      });
+      if (!repairedThis) {
         skipped++;
         log.warn({ uid, chainId: r.chain_id }, 'router repair: ticket appeared before re-attribution; skipping');
         continue;
