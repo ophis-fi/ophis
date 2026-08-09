@@ -36,6 +36,19 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
     const { scanned, updated } = await backfillOwnFee(Number.isFinite(limit) && limit > 0 ? limit : 500);
     log.info({ scanned, updated }, 'backfill-own-fee complete');
   },
+  // One-shot repair of trades mis-stored with wallet = an eth-flow router
+  // (see src/repair/routerTrades.ts): re-attributes each order to its receiver
+  // via the CoW API, removes the routers from the fetch queues, then re-scores
+  // so the rebate ranking reflects the repair immediately. Idempotent; the
+  // nightly cron also runs it, so this exists for out-of-band verification.
+  async ['repair-router-trades']() {
+    const { repairRouterTrades } = await import('./repair/routerTrades.js');
+    const result = await repairRouterTrades();
+    log.info(result, 'repair-router-trades complete');
+    if (result.repaired > 0) {
+      await runScorer();
+    }
+  },
   // Register a wallet in the owner registry so the next fetch backfills it.
   async ['track-wallet'](args) {
     const addr = args.find((a) => /^0x[0-9a-fA-F]{40}$/.test(a))?.toLowerCase();

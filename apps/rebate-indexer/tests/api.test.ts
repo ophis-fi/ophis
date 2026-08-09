@@ -317,6 +317,24 @@ test('/tier/:wallet rejects new enrollments when the global admission queue is f
   expect(JSON.parse(res.body)).toMatchObject({ error: expect.stringContaining('enrollment queue is full') });
 });
 
+test('/tier/:wallet never enrolls an eth-flow router contract, even with the queue open', async () => {
+  // Queue open (max unset -> mocked sql accepts). The canonical CoW eth-flow prod
+  // router enrolled through this exact route is how its owner-scoped fetch began
+  // mis-storing Ophis trades with wallet = the router (repair/routerTrades.ts).
+  app = await buildApiServer();
+  const res = await app.inject({
+    method: 'GET',
+    url: '/tier/0xba3cb449bd2b4adddbc894d8697f5170800eadec',
+  });
+  expect(res.statusCode).toBe(429);
+  // A human wallet through the same open queue still enrolls fine.
+  const human = await app.inject({
+    method: 'GET',
+    url: '/tier/0x04981fF1F1a901B0F5221af38E7Ee4ACa8353A27',
+  });
+  expect(human.statusCode).toBe(200);
+});
+
 test('/xp/:wallet rejects new enrollments when the global admission queue is full', async () => {
   process.env.REBATE_ENROLLMENT_QUEUE_MAX = '0';
   app = await buildApiServer();
