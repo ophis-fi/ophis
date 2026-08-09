@@ -114,9 +114,23 @@ groups:
         # orders). Detect quiet vs. broken by checking that the auction
         # loop IS ticking — autopilot exposes `auction_preprocessing` as a
         # histogram that increments on every auction.
+        # 2026-08-09 audit: this alert had NEVER been able to fire — THREE
+        # independent defects, found while asking why a 2h all-solvers outage
+        # paged nothing:
+        #   1. bare `settlements` / `auction_preprocessing_count` do not exist;
+        #      the services register `driver_`-prefixed names.
+        #   2. the result label value is "Success" (capitalized), not "success".
+        #   3. `driver_settlements` is a lazy counter vec — after a driver
+        #      restart with no settlement yet there are NO series, and
+        #      `increase(<empty>) == 0` matches nothing. `or vector(0)` closes
+        #      that absent-series hole (which was live: last settlement
+        #      2026-07-31, driver restarted 08-07, incident 08-09).
+        # Verified against the live TSDB: metric names, label shapes, and a
+        # replay of this expr at the 08-09 incident time (fires) vs a quiet
+        # window (does not fire).
         expr: |
-          increase(settlements{result="success"}[1h]) == 0
-          and on() increase(auction_preprocessing_count[1h]) > 0
+          (sum(increase(driver_settlements{result="Success"}[1h])) or vector(0)) == 0
+          and on() (sum(increase(driver_auction_preprocessing_count[1h])) > 0)
         for: 5m
         labels:
           severity: critical
@@ -126,11 +140,15 @@ groups:
           description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and publicnode status; (3) driver-submitter wallet out of ETH — `cast balance 0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1 --rpc-url https://optimism-rpc.publicnode.com`."
 
       - alert: OphisOpSettlementFailureRateHigh
+        # 2026-08-09: renamed bare `settlements` -> `driver_settlements` and
+        # fixed the label value case ("Success"). The old lowercase filter
+        # would have counted every Success as a failure once settlements
+        # resumed — a guaranteed false page.
         expr: |
           (
-            sum(rate(settlements{result!="success"}[15m]))
+            sum(rate(driver_settlements{result!="Success"}[15m]))
             /
-            sum(rate(settlements[15m]))
+            sum(rate(driver_settlements[15m]))
           ) > 0.05
         for: 10m
         labels:
@@ -150,11 +168,13 @@ groups:
       # cap-rejection across all 3) still trips. To attribute the failure
       # to a specific provider, drill down via `mempool_submission{mempool=...}`.
       - alert: OphisOpMempoolSubmissionFailing
+        # 2026-08-09: renamed to `driver_mempool_submission`; result values are
+        # {"Success","Other"} (verified in TSDB), so filter on !="Success".
         expr: |
           (
-            sum(rate(mempool_submission{result!="success"}[15m]))
+            sum(rate(driver_mempool_submission{result!="Success"}[15m]))
             /
-            sum(rate(mempool_submission[15m]))
+            sum(rate(driver_mempool_submission[15m]))
           ) > 0.35
         for: 5m
         labels:
@@ -165,11 +185,14 @@ groups:
           description: "Aggregate mempool submission failure rate exceeds 35% across the 3 raced mempools (PublicNode, OP Foundation gateway, Tenderly). One single-provider outage typically pushes this to ~33% and select_ok still succeeds — this alert fires when ≥2 providers are degraded, which IS a genuine submission risk. Inspect `mempool_submission{mempool=...,result=...}` per-provider series to identify the failing operator(s). Causes: RPC provider degradation, nonce-race regression, gas-price cap rejection (see `driver_gas_price_cap_exceeded`). Trace via `driver::infra::submission` logs."
 
       - alert: OphisOpSolverDropRateHigh
+        # 2026-08-09: renamed to driver_-prefixed metrics. driver_dropped_solutions
+        # is lazily registered (no series until the first drop) — harmless here,
+        # since absence means a zero numerator, i.e. nothing to alert on.
         expr: |
           (
-            sum by (solver) (rate(dropped_solutions[15m]))
+            sum by (solver) (rate(driver_dropped_solutions[15m]))
             /
-            sum by (solver) (rate(solutions[15m]) + rate(dropped_solutions[15m]))
+            sum by (solver) (rate(driver_solutions[15m]) + rate(driver_dropped_solutions[15m]))
           ) > 0.50
         for: 15m
         labels:
@@ -197,8 +220,12 @@ groups:
         # balance snapshots. Don't alert until the driver has been up
         # for 5m to swallow that transient. Otherwise back-to-back
         # restarts during a config roll would false-page Clement.
+        # 2026-08-09: renamed to driver_dropped_solutions (lazy vec — absence is
+        # a zero numerator, safe). The reason label value "SimulationRevert"
+        # could not be TSDB-verified (no drop has occurred within retention);
+        # re-check it the first time this metric materializes.
         expr: |
-          sum(rate(dropped_solutions{reason="SimulationRevert"}[10m])) > 0.5
+          sum(rate(driver_dropped_solutions{reason="SimulationRevert"}[10m])) > 0.5
           and on(instance) (time() - process_start_time_seconds{job="driver"}) > 300
         for: 15m
         labels:
@@ -479,8 +506,9 @@ groups:
     interval: 30s
     rules:
       - alert: OphisOpAuctionLatencyHigh
+        # 2026-08-09: renamed to driver_auction_preprocessing_bucket (verified live).
         expr: |
-          histogram_quantile(0.95, rate(auction_preprocessing_bucket[10m])) > 5
+          histogram_quantile(0.95, rate(driver_auction_preprocessing_bucket[10m])) > 5
         for: 10m
         labels:
           severity: warning
@@ -490,8 +518,11 @@ groups:
           description: "Auction preprocessing p95 above 5s for 10m. RPC reads (block fetch, balance reads) are slowing the auction loop. Likely RPC provider degradation — inspect eRPC proxy metrics for consensus failures."
 
       - alert: OphisOpSolveTimeBudgetExhausted
+        # 2026-08-09: renamed to driver_remaining_solve_time_bucket; the kind
+        # label values are {"auction","quote"} (verified in TSDB) — "dispatched"
+        # does not exist. Auction solve budget is what this alert is about.
         expr: |
-          histogram_quantile(0.99, rate(remaining_solve_time_bucket{kind="dispatched"}[10m])) < 1.0
+          histogram_quantile(0.99, rate(driver_remaining_solve_time_bucket{kind="auction"}[10m])) < 1.0
         for: 10m
         labels:
           severity: warning
@@ -512,11 +543,13 @@ groups:
       # exported by apps/backend/crates/ethrpc/src/block_stream.rs:329.
       # `rate()` on a monotonic Gauge yields blocks/sec (≈ 1.0 on OP today).
       - alert: OphisOpBlockTimeDrift
+        # 2026-08-09: renamed to gp_v2_autopilot_last_block_number (verified
+        # live: rate ~= 0.5/s on OP's 2s blocks, inside the 0.4-0.7 band).
         expr: |
           (
-            rate(last_block_number{job="autopilot"}[5m]) < 0.4
+            rate(gp_v2_autopilot_last_block_number{job="autopilot"}[5m]) < 0.4
             or
-            rate(last_block_number{job="autopilot"}[5m]) > 0.7
+            rate(gp_v2_autopilot_last_block_number{job="autopilot"}[5m]) > 0.7
           )
         for: 15m
         labels:
@@ -538,8 +571,11 @@ groups:
         # `external_labels: chain: optimism` so each chain's Prom only
         # emits its own series — but pinning here means the rule wouldn't
         # misfire on cross-chain series if the tenancy ever changes.
+        # 2026-08-09: renamed to the registered gp_v2_autopilot_ name and DROPPED
+        # the {chain="optimism"} matcher — these series carry only instance/job
+        # labels (verified in TSDB); the chain filter silently matched nothing.
         expr: |
-          autopilot_maintenance_eth_basefee_wei{chain="optimism"} > 1500000000
+          gp_v2_autopilot_autopilot_maintenance_eth_basefee_wei > 1500000000
         for: 5m
         labels:
           severity: warning
@@ -565,8 +601,12 @@ groups:
       # Either way this counter increments and the alert fires — operator
       # must investigate. Non-zero rate is anomalous regardless of context.
       - alert: OphisOpGasPriceCapExceeded
+        # 2026-08-09: DROPPED the {chain="optimism"} matcher — driver metrics
+        # carry no chain label (verified on driver_settlements/driver_solutions),
+        # so the filter guaranteed an empty match. Metric is lazily registered
+        # (no series until the cap first trips); absence is safe for a >0 alert.
         expr: |
-          increase(driver_gas_price_cap_exceeded{chain="optimism"}[5m]) > 0
+          increase(driver_gas_price_cap_exceeded[5m]) > 0
         for: 0m
         labels:
           severity: critical
@@ -592,16 +632,25 @@ groups:
       # a subgraph alerter, or have the rebate-indexer (which already
       # listens for cow-fi events) tail EthFlow logs.
       # TODO once metric producer lands: re-evaluate threshold.
-      - alert: OphisOpEthFlowTransferFailed
-        expr: |
-          increase(ethflow_eth_transfer_failed_total{chain="optimism"}[10m]) > 0
-        for: 0m
-        labels:
-          severity: critical
-          chain: optimism
-        annotations:
-          summary: "OP EthFlow refund/transfer failed — investigate WETH or recipient state"
-          description: "EthFlow at 0xd031Ce1C…b61B emitted EthTransferFailed. Possible causes: (1) WETH.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash in driver logs, decode the orderData.owner field, and confirm whether WETH codehash changed via `cast keccak (cast code 0x5555…)`. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."
+      #
+      # 2026-08-09 alert audit: DISABLED (commented out), not deleted. This
+      # alert could never fire — no service exports
+      # ethflow_eth_transfer_failed_total AND the refunder container is not a
+      # Prometheus scrape target (no metrics port; see observability/
+      # prometheus.yml job list). A defined-but-unfirable critical alert reads
+      # as coverage that does not exist. Re-enable by (1) exporting the counter
+      # from a producer, (2) adding its scrape job, (3) verifying the series in
+      # the TSDB, then uncommenting.
+      # - alert: OphisOpEthFlowTransferFailed
+      #   expr: |
+      #     increase(ethflow_eth_transfer_failed_total{chain="optimism"}[10m]) > 0
+      #   for: 0m
+      #   labels:
+      #     severity: critical
+      #     chain: optimism
+      #   annotations:
+      #     summary: "OP EthFlow refund/transfer failed — investigate WETH or recipient state"
+      #     description: "EthFlow at 0xd031Ce1C…b61B emitted EthTransferFailed. Possible causes: (1) WETH.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash in driver logs, decode the orderData.owner field, and confirm whether WETH codehash changed via cast. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."
 
   - name: ophis-op-sanctions-oracle
     interval: 30s
