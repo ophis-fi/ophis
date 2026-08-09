@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { runFetcher, pruneStaleWallets, withPipelineLock } from './fetcher.js';
+import { repairRouterTrades } from './repair/routerTrades.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { runBatcher, isFirstOfMonth } from './batcher.js';
@@ -87,6 +88,22 @@ async function runPipelineSteps(): Promise<void> {
   // wallets and any still being retried.
   const { pruned } = await pruneStaleWallets();
   log.info({ pruned }, 'prune complete');
+
+  // Self-healing repair for router-attributed trades (see repair/routerTrades.ts).
+  // Placed BEFORE the pricer + backfill-readiness check so the queue cleanup can
+  // unstick the /defillama gate the same night, and before the scorer so the
+  // matview refresh picks up re-attributed wallets. Idempotent no-op once clean.
+  // Wrapped: a CoW/API hiccup here must not break the money pipeline behind it
+  // (skipped rows are already excluded from every public surface and the payout
+  // gate, so a failed repair run costs nothing and retries tomorrow).
+  try {
+    const routerRepair = await repairRouterTrades();
+    if (routerRepair.scanned > 0 || routerRepair.dequeued > 0) {
+      log.info(routerRepair, 'router repair complete');
+    }
+  } catch (err) {
+    log.error({ err }, 'router repair failed (pipeline continues)');
+  }
 
   const priced = await runPricer();
   log.info(priced, 'pricer complete');

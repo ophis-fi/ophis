@@ -30,6 +30,9 @@ vi.mock('../../src/fetcher.js', () => ({
   pruneStaleWallets: vi.fn(async () => ({ pruned: 0 })),
   withPipelineLock: vi.fn(async (fn: () => Promise<void>) => { await fn(); return true; }),
 }));
+vi.mock('../../src/repair/routerTrades.js', () => ({
+  repairRouterTrades: vi.fn(async () => ({ scanned: 0, repaired: 0, skipped: 0, dequeued: 0 })),
+}));
 vi.mock('../../src/pricer.js', () => ({ runPricer: vi.fn(async () => ({ priced: 0, failed: 0 })) }));
 vi.mock('../../src/scorer.js', () => ({ runScorer: vi.fn(async () => ({})) }));
 vi.mock('../../src/batcher.js', () => ({ runBatcher, isFirstOfMonth: () => cronState.firstOfMonth }));

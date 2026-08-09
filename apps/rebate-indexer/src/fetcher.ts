@@ -781,11 +781,19 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
                first_seen ASC
       LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
     `;
-    // Drop any Ophis eth-flow contract spam-registered via the public /tier
-    // endpoint: it is fetched separately as a synthetic owner below (attributing
-    // its trades to the receiver, not itself), so processing it as a tracked
-    // wallet would double-fetch chain 10 and inflate the `inserted` log count.
-    const owners = ownerRows.filter((o) => !OPHIS_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
+    // Drop EVERY eth-flow contract enrolled as a tracked wallet (the /tier
+    // endpoint now rejects them, but historical enrollments may persist):
+    //   - Ophis-dedicated routers are fetched separately as synthetic owners
+    //     below (attributing trades to the receiver, not themselves), so
+    //     processing one here would double-fetch chain 10 and inflate the
+    //     `inserted` log count.
+    //   - The SHARED canonical CoW routers must never be fetched as an owner at
+    //     all: an owner-scoped fetch of the shared contract lists all of CoW's
+    //     eth-flow traffic, and attributeOrder's API path (narrow Ophis set)
+    //     then stores Ophis orders with wallet = the router, the mis-attribution
+    //     repaired by repair/routerTrades.ts. Their native-ETH orders attribute
+    //     correctly via the on-chain settle() decoder (full DECODER set).
+    const owners = ownerRows.filter((o) => !DECODER_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
     // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
     // FEE arms: only a verified API write ever moves volume_fee_bps / fee_verified.
