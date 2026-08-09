@@ -184,22 +184,31 @@ groups:
         # this metric at all (cancelled futures increment nothing); that needs
         # per-provider instrumentation in the driver.
         #
-        # 2026-08-09 codex round 3: the failure arm needs the same lazy-child
-        # appearance handling as OphisOpGasPriceCapExceeded — the FIRST
-        # all-provider failure after a driver restart creates the failure
-        # children at value 1 with no 0->1 transition, so rate() over a
-        # single sample is empty and a genuine day-one outage would not page.
-        # The `== 1 unless offset` arm fires on first-violation child birth;
-        # `== 1` keeps a scrape-gap reappearance of an OLD child (value >1)
-        # from paging. Residual: a child stuck at exactly 1 across a >15m
-        # scrape gap re-pages once on recovery — accepted; the real fix is
-        # pre-initializing children in the driver (see gas-cap note).
+        # 2026-08-09 codex rounds 3-4 (consolidated): both arms use the same
+        # per-child CHANGE DETECTOR as OphisOpGasPriceCapExceeded — rate()
+        # misses lazily-born children (first submission after driver restart:
+        # one sample at any value, no transition), `== 1` appearance testing
+        # misses bursts between scrapes (first SCRAPED value need not be the
+        # birth value), and the zero-success gate ALSO needs it: a newly-born
+        # Success child has an empty rate() too, which the old vector(0)
+        # fallback misread as "no successes" and false-paged a healthy
+        # restart. "Activity" on a side = any child whose value differs from
+        # its last known value (0 for never-seen; a restart-reborn child
+        # differs from pre-restart history, which is correct — rebirth
+        # requires a real event). Fires: failure activity AND no success
+        # activity over the 15m offset horizon, sustained for: 5m.
+        # STRUCTURAL FIX (tracked follow-up): pre-initialize children in the
+        # driver, then both arms collapse back to plain rate() forms.
         expr: |
-          (
-            sum(rate(driver_mempool_submission{result!="Success"}[15m])) > 0
-            or on() count((driver_mempool_submission{result!="Success"} == 1) unless (driver_mempool_submission{result!="Success"} offset 15m)) > 0
-          )
-          and on() ((sum(rate(driver_mempool_submission{result="Success"}[15m])) or vector(0)) == 0)
+          ((count(
+            driver_mempool_submission{result!="Success"}
+              != (last_over_time(driver_mempool_submission{result!="Success"}[7d] offset 15m) or (driver_mempool_submission{result!="Success"} * 0))
+          ) or vector(0)) > 0)
+          and on()
+          ((count(
+            driver_mempool_submission{result="Success"}
+              != (last_over_time(driver_mempool_submission{result="Success"}[7d] offset 15m) or (driver_mempool_submission{result="Success"} * 0))
+          ) or vector(0)) == 0)
         for: 5m
         labels:
           severity: warning
@@ -646,25 +655,28 @@ groups:
         # carry no chain label (verified on driver_settlements/driver_solutions),
         # so the filter guaranteed an empty match.
         #
-        # 2026-08-09 codex round 2: `increase()` alone MISSES the first (and
-        # possibly only) violation. The CounterVec child is created lazily at
-        # the moment the cap first trips, so its first scraped sample is
-        # already 1 — Prometheus never sees a 0→1 transition, and increase()
-        # over a single-sample series returns nothing. The `unless offset`
-        # arm fires on series APPEARANCE; the increase() arm catches
-        # subsequent violations on an existing child.
-        # 2026-08-09 codex round 3: appearance arm constrained to `== 1` —
-        # bare appearance also matches an OLD child re-emerging from a >5m
-        # scrape gap at value N>1, which is scrape recovery, not a violation.
-        # Birth of a lazy child is always value 1, so `== 1` keeps the
-        # first-violation page and drops the recovery false page. Residual:
-        # a child stuck at exactly 1 across a >5m gap re-pages once on
-        # recovery (rare, benign for a critical). Real fix belongs in the
-        # driver (pre-initialize children to 0 at startup) — this expression
-        # is the alerts-side compensation.
+        # 2026-08-09 (codex rounds 2-4, consolidated): the CounterVec child is
+        # created LAZILY at the first violation, so plain increase() misses it
+        # (no 0->1 transition; one sample yields nothing), an appearance arm
+        # (`unless offset`) false-pages on scrape-gap recovery, and an `== 1`
+        # appearance arm misses bursts — in-process birth value is 1 but the
+        # first SCRAPED value is whatever the counter reached by scrape time.
+        # Final form is a per-child CHANGE DETECTOR: current value differs
+        # from its last known value, defaulting to 0 for a never-seen child
+        # (`or (m * 0)` supplies a label-matched zero). Covers: first
+        # violation at any scraped value, bursts between scrapes, later
+        # increments, restart-reborn children (value != pre-restart history);
+        # stays silent on flat scrape-gap recovery, and a nonflat gap
+        # recovery means real violations occurred during the gap. Condition
+        # holds ~5m after the change (the offset), pairing with for: 0m.
+        # Live-controlled 2026-08-09: fires on an incrementing counter and on
+        # a no-history series, silent on a flat counter.
+        # STRUCTURAL FIX (tracked follow-up): pre-initialize the metric
+        # children to 0 at driver startup (touch with_label_values for known
+        # label combos) — then this collapses back to increase() > 0.
         expr: |
-          ((driver_gas_price_cap_exceeded == 1) unless (driver_gas_price_cap_exceeded offset 5m))
-          or (increase(driver_gas_price_cap_exceeded[5m]) > 0)
+          driver_gas_price_cap_exceeded
+            != (last_over_time(driver_gas_price_cap_exceeded[7d] offset 5m) or (driver_gas_price_cap_exceeded * 0))
         for: 0m
         labels:
           severity: critical
