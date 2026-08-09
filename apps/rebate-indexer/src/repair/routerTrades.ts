@@ -110,10 +110,24 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
         log.warn({ uid, chainId: r.chain_id, receiver: receiver ?? null }, 'router repair: no usable receiver; skipping');
         continue;
       }
-      await sql`
+      // ATOMIC re-check inside the UPDATE: the pre-check above is advisory (it
+      // produces the clear warning); this predicate is the enforcement. The
+      // reward scheduler runs concurrently with an out-of-band CLI repair, and
+      // candidateTrades now excludes router wallets so it can no longer ticket a
+      // repairable trade at all, but the single-statement NOT EXISTS keeps the
+      // guard correct for any future wallet-rewrite path regardless of timing.
+      const updated = await sql`
         UPDATE trades SET wallet = decode(${receiver.slice(2)}, 'hex')
         WHERE trade_uid = ${r.trade_uid}
+          AND NOT EXISTS (
+            SELECT 1 FROM trade_reward_tickets WHERE qualifying_trade_uid = ${r.trade_uid}
+          )
       `;
+      if (updated.count === 0) {
+        skipped++;
+        log.warn({ uid, chainId: r.chain_id }, 'router repair: ticket appeared before re-attribution; skipping');
+        continue;
+      }
       repaired++;
       log.info({ uid, chainId: r.chain_id, from: storedWallet, to: receiver }, 'router repair: trade re-attributed');
     } catch (err) {

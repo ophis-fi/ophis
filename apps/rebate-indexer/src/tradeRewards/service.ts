@@ -10,8 +10,13 @@ import {
   TRADE_REWARDS_MINIMUM_SWAP_USD,
 } from './config.js';
 import { assertRewardsContractReady, relayAssignment, relayClaim, rewardState, signRewardAssignment } from './contract.js';
+import { DECODER_ETHFLOW_OWNERS } from '../fetcher.js';
 
 const log = logger.child({ module: 'trade-rewards' });
+
+// eth-flow ROUTER contracts, same single source of truth as the stats /
+// leaderboard / batcher / repair exclusions (see those sites).
+const ROUTER_WALLETS: readonly string[] = Object.freeze([...DECODER_ETHFLOW_OWNERS]);
 
 interface CandidateTrade {
   readonly trade_uid_hex: string;
@@ -85,6 +90,11 @@ async function candidateTrades(limit = 25): Promise<CandidateTrade[]> {
     LEFT JOIN trade_reward_wallet_blocks rb ON rb.wallet = t.wallet
     WHERE rt.wallet IS NULL
       AND rb.wallet IS NULL
+      -- routers are contracts, not reward participants (same invariant as
+      -- stats/leaderboard/batcher): a ticket assigned to an eth-flow router is
+      -- an unclaimable stranded prize, and excluding them here also removes the
+      -- only concurrent-ticket race against the router-trades repair.
+      AND ('0x' || encode(t.wallet, 'hex')) <> ALL(${ROUTER_WALLETS})
       AND t.chain_id = ANY(${[...TRADE_REWARDS_ELIGIBLE_CHAIN_IDS]})
       AND t.value_usd >= ${TRADE_REWARDS_MINIMUM_SWAP_USD}
       AND t.fee_verified = true
@@ -196,18 +206,37 @@ export async function runTradeRewards(): Promise<{ reserved: number; submitted: 
   await assertRewardsContractReady();
   const allocation = await campaignAllocation();
   let reserved = 0;
+  const unexpectedErrors: unknown[] = [];
   for (const candidate of await candidateTrades()) {
-    // Per-candidate isolation: candidateTrades orders deterministically, so a
-    // single throwing candidate (e.g. a qualifying_trade_uid UNIQUE violation
-    // from a trade whose ticket exists under a different wallet after a data
-    // repair) would otherwise sit at the head of the queue and abort EVERY run
-    // at the same spot, starving all later candidates. reserveTicket runs in
-    // its own transaction, so a failure rolls back cleanly and the loop moves on.
+    // Per-candidate isolation for CONFLICTS ONLY: candidateTrades orders
+    // deterministically, so a single conflicting candidate (a 23505 UNIQUE
+    // violation, e.g. a trade whose ticket exists under a different wallet)
+    // would otherwise sit at the head of the queue and abort EVERY run at the
+    // same spot, starving all later candidates. reserveTicket runs in its own
+    // transaction, so a conflict rolls back cleanly and the loop moves on.
+    // Everything else (signer key, RPC, DB outage) is SYSTEMIC: it is collected
+    // and re-thrown after the loop so the scheduler records a FAILED run and the
+    // alert fires, instead of stamping last_success_at over a run that reserved
+    // nothing.
     try {
       if (await reserveTicket(candidate, allocation)) reserved += 1;
     } catch (err) {
-      log.error({ err, tradeUid: `0x${candidate.trade_uid_hex}` }, 'trade-rewards: reserveTicket failed for candidate; continuing');
+      const code = (err as { code?: string })?.code;
+      if (code === '23505') {
+        log.error({ err, tradeUid: `0x${candidate.trade_uid_hex}` }, 'trade-rewards: reserveTicket conflict for candidate; continuing');
+      } else {
+        log.error({ err, tradeUid: `0x${candidate.trade_uid_hex}` }, 'trade-rewards: reserveTicket failed for candidate');
+        unexpectedErrors.push(err);
+      }
     }
+  }
+  if (unexpectedErrors.length > 0) {
+    throw new Error(
+      `trade-rewards: ${unexpectedErrors.length} candidate reservation(s) failed with non-conflict errors; first: ${String(
+        unexpectedErrors[0] instanceof Error ? unexpectedErrors[0].message : unexpectedErrors[0],
+      )}`,
+      { cause: unexpectedErrors[0] },
+    );
   }
   const submitted = await submitPendingAssignments();
   return { reserved, submitted };

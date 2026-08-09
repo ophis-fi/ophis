@@ -49,6 +49,37 @@ export interface PendingDefiLlamaFill {
   feeVerified: boolean;
 }
 
+/**
+ * Insert settlement fills, UPGRADING a provisional decoder row in place. The
+ * decoder writes DISCOVERY fills with fee_verified=false (ToB B1: no decoder-
+ * derived fee reaches reporting); when the owner-scoped API later serves the
+ * authoritative fee for the same (chain, block, logIndex, uid), that verified
+ * write must replace the provisional fee fields or the fill stays permanently
+ * excluded from computeDefiLlamaDay. Upgrade-only (setWhere): a verified row is
+ * never downgraded, and a re-scanned discovery row can never overwrite one.
+ * Exported for the int test; runFetcher's flush is the production caller.
+ */
+export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promise<void> {
+  if (rows.length === 0) return;
+  const { db, schema } = await import('./db/index.js');
+  await db
+    .insert(schema.defillamaFills)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [
+        schema.defillamaFills.chainId,
+        schema.defillamaFills.blockNumber,
+        schema.defillamaFills.logIndex,
+        schema.defillamaFills.tradeUid,
+      ],
+      set: {
+        volumeFeeBps: dsql`excluded.volume_fee_bps`,
+        feeVerified: dsql`excluded.fee_verified`,
+      },
+      setWhere: dsql`${schema.defillamaFills.feeVerified} = false AND excluded.fee_verified = true`,
+    });
+}
+
 async function getSettlementTimestamp(chainId: number, blockNumber: bigint): Promise<Date> {
   const block = await getRpcClient(chainId).getBlock({ blockNumber });
   return new Date(Number(block.timestamp) * 1000);
@@ -745,6 +776,11 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       db: db as unknown as FetcherDb,
       defillamaFills: pendingDefillamaFills,
       hasDefiLlamaFill: async (fill) => {
+        // Complete = VERIFIED. A decoder DISCOVERY fill (fee_verified=false) must
+        // not satisfy this check: the API path is the only source that can serve
+        // the authoritative fee, and treating the provisional row as complete
+        // would skip the re-process that upgrades it (computeDefiLlamaDay counts
+        // verified fills only, so an un-upgradeable row is permanently omitted).
         const [row] = await sql<{ present: boolean }[]>`
           SELECT EXISTS(
             SELECT 1 FROM defillama_fills
@@ -752,6 +788,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
               AND block_number = ${fill.blockNumber.toString()}
               AND log_index = ${fill.logIndex}
               AND trade_uid = decode(${fill.tradeUid.slice(2)}, 'hex')
+              AND fee_verified = true
           ) AS present
         `;
         return row?.present === true;
@@ -877,11 +914,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     };
     const flushDefillamaFills = async (): Promise<void> => {
       if (pendingDefillamaFills.length === 0) return;
-      const rows = pendingDefillamaFills.splice(0);
-      await db
-        .insert(schema.defillamaFills)
-        .values(rows)
-        .onConflictDoNothing();
+      await upsertDefillamaFills(pendingDefillamaFills.splice(0));
     };
     for (const { wallet } of owners) {
       const owner = wallet as `0x${string}`;
