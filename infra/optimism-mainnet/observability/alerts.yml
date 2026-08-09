@@ -184,31 +184,19 @@ groups:
         # this metric at all (cancelled futures increment nothing); that needs
         # per-provider instrumentation in the driver.
         #
-        # 2026-08-09 codex rounds 3-4 (consolidated): both arms use the same
-        # per-child CHANGE DETECTOR as OphisOpGasPriceCapExceeded — rate()
-        # misses lazily-born children (first submission after driver restart:
-        # one sample at any value, no transition), `== 1` appearance testing
-        # misses bursts between scrapes (first SCRAPED value need not be the
-        # birth value), and the zero-success gate ALSO needs it: a newly-born
-        # Success child has an empty rate() too, which the old vector(0)
-        # fallback misread as "no successes" and false-paged a healthy
-        # restart. "Activity" on a side = any child whose value differs from
-        # its last known value (0 for never-seen; a restart-reborn child
-        # differs from pre-restart history, which is correct — rebirth
-        # requires a real event). Fires: failure activity AND no success
-        # activity over the 15m offset horizon, sustained for: 5m.
-        # STRUCTURAL FIX (tracked follow-up): pre-initialize children in the
-        # driver, then both arms collapse back to plain rate() forms.
+        # 2026-08-09 (codex rounds 2-5): see the gas-cap alert for the full
+        # lazy-child history — every samples-only form had a hole (missed
+        # day-one outage, missed bursts, false page on a healthy restart's
+        # newly-born Success child, missed reborn-at-same-value children).
+        # Round 5: Mempools::try_new pre-creates every (mempool, result)
+        # child at 0 — all 6 result values, registry-asserted by a driver
+        # unit test — so rate() always has real series and transitions.
+        # Fires: failing submissions with ZERO successes over 15m, i.e. a
+        # submission outage. Only sound on drivers that pre-initialize
+        # (deployed together with that driver build).
         expr: |
-          ((count(
-            driver_mempool_submission{result!="Success"}
-              != (last_over_time(driver_mempool_submission{result!="Success"}[7d] offset 15m) or (driver_mempool_submission{result!="Success"} * 0))
-          ) or vector(0)) > 0)
-          and on()
-          ((count(
-            driver_mempool_submission{result="Success"}
-              != (last_over_time(driver_mempool_submission{result="Success"}[7d] offset 15m) or (driver_mempool_submission{result="Success"} * 0))
-          ) or vector(0)) == 0)
+          sum(rate(driver_mempool_submission{result!="Success"}[15m])) > 0
+          and on() (sum(rate(driver_mempool_submission{result="Success"}[15m])) == 0)
         for: 5m
         labels:
           severity: warning
@@ -655,28 +643,20 @@ groups:
         # carry no chain label (verified on driver_settlements/driver_solutions),
         # so the filter guaranteed an empty match.
         #
-        # 2026-08-09 (codex rounds 2-4, consolidated): the CounterVec child is
-        # created LAZILY at the first violation, so plain increase() misses it
-        # (no 0->1 transition; one sample yields nothing), an appearance arm
-        # (`unless offset`) false-pages on scrape-gap recovery, and an `== 1`
-        # appearance arm misses bursts — in-process birth value is 1 but the
-        # first SCRAPED value is whatever the counter reached by scrape time.
-        # Final form is a per-child CHANGE DETECTOR: current value differs
-        # from its last known value, defaulting to 0 for a never-seen child
-        # (`or (m * 0)` supplies a label-matched zero). Covers: first
-        # violation at any scraped value, bursts between scrapes, later
-        # increments, restart-reborn children (value != pre-restart history);
-        # stays silent on flat scrape-gap recovery, and a nonflat gap
-        # recovery means real violations occurred during the gap. Condition
-        # holds ~5m after the change (the offset), pairing with for: 0m.
-        # Live-controlled 2026-08-09: fires on an incrementing counter and on
-        # a no-history series, silent on a flat counter.
-        # STRUCTURAL FIX (tracked follow-up): pre-initialize the metric
-        # children to 0 at driver startup (touch with_label_values for known
-        # label combos) — then this collapses back to increase() > 0.
+        # 2026-08-09 (codex rounds 2-5): every samples-only PromQL form over a
+        # LAZY CounterVec proved unfixable — increase() misses the single-
+        # sample birth, appearance arms either false-page on scrape-gap
+        # recovery or miss bursts (first scraped value != birth value), and a
+        # change detector misses a restart-reborn child landing on its exact
+        # pre-restart value. Round 5 closed the gap AT THE PRODUCER:
+        # Mempools::try_new pre-creates every (mempool, context) child at 0
+        # (observe::init_mempool_metric_children, registry-asserted by a
+        # driver unit test), so from the first scrape every violation is a
+        # real observed transition and plain increase() is correct by
+        # construction. Deployed together with that driver build — this
+        # expression is only sound on drivers that pre-initialize.
         expr: |
-          driver_gas_price_cap_exceeded
-            != (last_over_time(driver_gas_price_cap_exceeded[7d] offset 5m) or (driver_gas_price_cap_exceeded * 0))
+          increase(driver_gas_price_cap_exceeded[5m]) > 0
         for: 0m
         labels:
           severity: critical

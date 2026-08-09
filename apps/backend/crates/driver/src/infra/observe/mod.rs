@@ -363,6 +363,50 @@ pub fn solver_response(
         .observe(compute_time.as_secs_f64());
 }
 
+/// Every `result` label value that `mempool_executed` can emit. Kept adjacent
+/// to the match in `mempool_executed` (which `debug_assert!`s membership) so
+/// the two cannot drift silently.
+pub(crate) const MEMPOOL_SUBMISSION_RESULTS: [&str; 6] = [
+    "Success",
+    "Revert",
+    "Expired",
+    "GasPriceCapExceeded",
+    "Other",
+    "Disabled",
+];
+
+/// Every `context` label value used on `gas_price_cap_exceeded`
+/// (domain/mempools.rs submit + cancel paths).
+pub(crate) const GAS_PRICE_CAP_CONTEXTS: [&str; 2] = ["submit_settlement", "cancel_settlement"];
+
+/// Pre-create the lazy CounterVec children the alerting layer depends on, so
+/// Prometheus exports them at 0 from the first scrape and every later
+/// increment is an observable transition.
+///
+/// Why this exists (observability/alerts.yml, 2026-08-09 incident review):
+/// a lazily-born child's first scraped value is arbitrary — a burst between
+/// scrapes lands at 2+, and after a driver restart a reborn child can land on
+/// exactly its pre-restart value. No PromQL over the samples alone can
+/// distinguish those histories (missed critical pages or false pages,
+/// depending on the expression), so the gap has to be closed here at the
+/// producer: with children present at 0, plain `increase()`/`rate()` alert
+/// forms are correct by construction.
+pub fn init_mempool_metric_children(mempool_names: &[String]) {
+    let metrics = metrics::get();
+    for name in mempool_names {
+        for result in MEMPOOL_SUBMISSION_RESULTS {
+            metrics
+                .mempool_submission
+                .with_label_values(&[name.as_str(), result]);
+        }
+        for context in GAS_PRICE_CAP_CONTEXTS {
+            metrics
+                .gas_price_cap_exceeded
+                .with_label_values(&[name.as_str(), context]);
+        }
+    }
+}
+
 /// Observe the result of mempool transaction execution.
 pub fn mempool_executed(
     mempool: &Mempool,
@@ -401,6 +445,12 @@ pub fn mempool_executed(
         Err(mempools::Error::Other(_)) => "Other",
         Err(mempools::Error::Disabled) => "Disabled",
     };
+    // A value missing from the const would resurrect the lazy-child alerting
+    // gap for that value — keep the list and this match in lockstep.
+    debug_assert!(
+        MEMPOOL_SUBMISSION_RESULTS.contains(&result),
+        "mempool_executed result {result:?} missing from MEMPOOL_SUBMISSION_RESULTS"
+    );
     metrics::get()
         .mempool_submission
         .with_label_values(&[mempool.to_string().as_str(), result])
@@ -503,5 +553,58 @@ pub fn simulated(eth: &Ethereum, tx: &eth::Tx, gas: &Result<Gas, simulator::Erro
     match gas {
         Ok(gas) => tracing::debug!(block = ?block, gas = ?gas.0, ?tx, "simulated settlement"),
         Err(err) => tracing::debug!(block = ?block, ?err, "simulated settlement"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The children must be present at 0 in the REGISTRY after init — asserted
+    /// via gather(), which cannot create children, so a passing test proves
+    /// pre-initialization did (a with_label_values-based assertion would
+    /// create the child it checks and could never fail).
+    #[test]
+    fn init_mempool_metric_children_exports_zeroed_children() {
+        metrics::init();
+        init_mempool_metric_children(&["Mempool(test_lane)".to_string()]);
+
+        let families = ::observe::metrics::get_storage_registry().gather();
+        let assert_children = |metric_name: &str, label_name: &str, expected: &[&str]| {
+            let family = families
+                .iter()
+                .find(|f| f.get_name().ends_with(metric_name))
+                .unwrap_or_else(|| panic!("{metric_name} family missing from registry"));
+            for value in expected {
+                let child = family
+                    .get_metric()
+                    .iter()
+                    .find(|m| {
+                        let labels = m.get_label();
+                        labels
+                            .iter()
+                            .any(|l| l.name() == "mempool" && l.value() == "Mempool(test_lane)")
+                            && labels
+                                .iter()
+                                .any(|l| l.name() == label_name && l.value() == *value)
+                    })
+                    .unwrap_or_else(|| panic!("{metric_name} child {value:?} missing"));
+                assert_eq!(
+                    child.get_counter().value(),
+                    0.0,
+                    "{metric_name} child {value:?} must start at 0"
+                );
+            }
+        };
+        assert_children(
+            "mempool_submission",
+            "result",
+            &MEMPOOL_SUBMISSION_RESULTS[..],
+        );
+        assert_children(
+            "gas_price_cap_exceeded",
+            "context",
+            &GAS_PRICE_CAP_CONTEXTS[..],
+        );
     }
 }

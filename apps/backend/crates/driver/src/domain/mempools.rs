@@ -53,6 +53,13 @@ impl Mempools {
         if mempools.is_empty() {
             Err(NoMempools)
         } else {
+            // Pre-create the per-mempool CounterVec children so they are
+            // exported at 0 from the first scrape — the alerting layer's
+            // increase()/rate() forms rely on observing real transitions
+            // rather than lazy child births (see
+            // observe::init_mempool_metric_children).
+            let names: Vec<String> = mempools.iter().map(|m| m.to_string()).collect();
+            observe::init_mempool_metric_children(&names);
             Ok(Self { mempools, ethereum })
         }
     }
