@@ -205,6 +205,21 @@ impl Metrics {
 /// Setup the metrics registry.
 pub fn init() {
     observe::metrics::setup_registry_reentrant(Some("driver".to_owned()), None);
+    // Export process_start_time_seconds (+ cpu/fd gauges) so the alerting
+    // layer has a sound process-age signal. 2026-08-09 alert-audit rounds
+    // 6-9: without this, every "suppress during warmup" / "young process"
+    // guard had to be approximated from counter samples, and each
+    // approximation carried a blind spot (alerts.yml gas-cap +
+    // SimulationRevertSpike comments). The collector is Linux-only in the
+    // prometheus crate; registration is best-effort because
+    // setup_registry_reentrant makes init() re-runnable and a duplicate
+    // registration returns AlreadyReg.
+    #[cfg(target_os = "linux")]
+    {
+        let _ = observe::metrics::get_storage_registry().register(Box::new(
+            prometheus::process_collector::ProcessCollector::for_self(),
+        ));
+    }
 }
 
 /// Get the metrics instance.

@@ -391,6 +391,28 @@ pub(crate) const GAS_PRICE_CAP_CONTEXTS: [&str; 2] = ["submit_settlement", "canc
 /// depending on the expression), so the gap has to be closed here at the
 /// producer: with children present at 0, plain `increase()`/`rate()` alert
 /// forms are correct by construction.
+/// Pre-create the per-solver `Success` children of the counters the alerting
+/// layer reads: `driver_settlements{solver,result="Success"}` feeds
+/// OphisOpNoSettlements1h and `driver_solutions{solver,result="Success"}` is
+/// the drop-rate denominator. 2026-08-09: the first settlement after a driver
+/// restart was lazily born at 1 — no observable 0->1 transition — so
+/// `increase()` read zero and the no-settlements CRITICAL kept firing for ~1h
+/// after a successful settlement. Error children stay lazy DELIBERATELY: no
+/// alert matches a specific error value, failing operations repeat (rate()
+/// self-heals within a scrape), and enumerating the error label set
+/// (SubmissionError kinds included) would be a drift hazard.
+pub fn init_solver_metric_children(solver_names: &[String]) {
+    let metrics = metrics::get();
+    for name in solver_names {
+        metrics
+            .settlements
+            .with_label_values(&[name.as_str(), "Success"]);
+        metrics
+            .solutions
+            .with_label_values(&[name.as_str(), "Success"]);
+    }
+}
+
 pub fn init_mempool_metric_children(mempool_names: &[String]) {
     let metrics = metrics::get();
     for name in mempool_names {
@@ -605,6 +627,57 @@ mod tests {
             "gas_price_cap_exceeded",
             "context",
             &GAS_PRICE_CAP_CONTEXTS[..],
+        );
+    }
+
+    /// Same registry-level proof for the per-solver Success children — the
+    /// series NoSettlements1h and the drop-rate denominator read.
+    #[test]
+    fn init_solver_metric_children_exports_zeroed_success_children() {
+        metrics::init();
+        init_solver_metric_children(&["test_solver_lane".to_string()]);
+
+        let families = ::observe::metrics::get_storage_registry().gather();
+        for metric_name in ["settlements", "solutions"] {
+            let family = families
+                .iter()
+                .find(|f| f.get_name().ends_with(metric_name))
+                .unwrap_or_else(|| panic!("{metric_name} family missing from registry"));
+            let child = family
+                .get_metric()
+                .iter()
+                .find(|m| {
+                    let labels = m.get_label();
+                    labels
+                        .iter()
+                        .any(|l| l.name() == "solver" && l.value() == "test_solver_lane")
+                        && labels
+                            .iter()
+                            .any(|l| l.name() == "result" && l.value() == "Success")
+                })
+                .unwrap_or_else(|| panic!("{metric_name} Success child missing"));
+            assert_eq!(
+                child.get_counter().value(),
+                0.0,
+                "{metric_name} Success child must start at 0"
+            );
+        }
+    }
+
+    /// The ProcessCollector must be registered on Linux (CI runs Linux; the
+    /// collector is compile-time absent elsewhere). Guards the alerting
+    /// layer's process-age signal: without this series every warmup/young-
+    /// process gate is unbindable (2026-08-09 rounds 6-9).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn process_collector_registered_on_linux() {
+        metrics::init();
+        let families = ::observe::metrics::get_storage_registry().gather();
+        assert!(
+            families
+                .iter()
+                .any(|f| f.get_name().ends_with("process_start_time_seconds")),
+            "process_start_time_seconds family missing — ProcessCollector not registered"
         );
     }
 }

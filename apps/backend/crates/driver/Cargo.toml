@@ -55,7 +55,10 @@ moka = { workspace = true, features = ["future"] }
 num = { workspace = true }
 number = { workspace = true }
 price-estimation = { workspace = true }
-prometheus = { workspace = true }
+# "process" enables the Linux ProcessCollector (process_start_time_seconds
+# etc.) registered in infra/observe/metrics.rs — the process-age signal the
+# alerting layer relies on (2026-08-09 alert-audit rounds 6-9).
+prometheus = { workspace = true, features = ["process"] }
 prometheus-metric-storage = { workspace = true }
 rand = { workspace = true }
 poison-recovery = { workspace = true }

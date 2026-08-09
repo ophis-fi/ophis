@@ -84,7 +84,10 @@ async fn run_with(args: cli::Args, addr_sender: Option<oneshot::Sender<SocketAdd
             let signer_addr = <solver::Account as alloy::network::TxSigner<
                 alloy::signers::Signature,
             >>::address(&s.account);
-            format!("name={} signer_kind={} signer_addr={:?}", s.name, signer_kind, signer_addr)
+            format!(
+                "name={} signer_kind={} signer_addr={:?}",
+                s.name, signer_kind, signer_addr
+            )
         })
         .collect();
     tracing::info!(
@@ -94,6 +97,17 @@ async fn run_with(args: cli::Args, addr_sender: Option<oneshot::Sender<SocketAdd
         ?solver_summary,
         tx_gas_limit = ?config.tx_gas_limit,
         "driver starting"
+    );
+
+    // Pre-create the per-solver Success metric children the alerting layer
+    // reads, so the first success after a restart is an observable 0->1
+    // transition (see observe::init_solver_metric_children).
+    infra::observe::init_solver_metric_children(
+        &config
+            .solvers
+            .iter()
+            .map(|s| s.name.to_string())
+            .collect::<Vec<_>>(),
     );
 
     let (shutdown_sender, shutdown_receiver) = tokio::sync::oneshot::channel();
