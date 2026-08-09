@@ -282,15 +282,18 @@ groups:
         # a driver container recreate did not dip `up{job="driver"}` (the
         # swap is faster than the 15s scrape cadence), so it could not bind.
         # Round 10 (with the driver now registering ProcessCollector): the
-        # ORIGINAL uptime gate is restored and finally bindable —
-        # process_start_time_seconds{job="driver"} exists. Warmup replay
-        # bursts within 5m of driver start are suppressed; `for: 15m` still
-        # covers the tail. TSDB-verify the series after every driver image
-        # change: if the process feature is ever dropped, this gate silently
-        # returns to unfirable (the round-6 defect).
+        # ORIGINAL uptime gate is restored and finally bindable. NOTE the
+        # metric name: the driver's storage registry namespaces everything,
+        # so the series is driver_process_start_time_seconds — the deploy-day
+        # TSDB check caught the unprefixed name failing to bind (verified
+        # live 2026-08-09 21:10: prefixed name resolves, uptime ~132s).
+        # Warmup replay bursts within 5m of driver start are suppressed;
+        # `for: 15m` still covers the tail. TSDB-verify the series after
+        # every driver image change: if the process feature is ever dropped,
+        # this gate silently returns to unfirable (the round-6 defect).
         expr: |
           sum(rate(driver_dropped_solutions{reason="SimulationRevert"}[10m])) > 0.5
-          and on() ((time() - process_start_time_seconds{job="driver"}) > 300)
+          and on() ((time() - driver_process_start_time_seconds{job="driver"}) > 300)
         for: 15m
         labels:
           severity: critical
@@ -715,7 +718,7 @@ groups:
         expr: |
           (increase(driver_gas_price_cap_exceeded[5m]) > 0)
           or ((driver_gas_price_cap_exceeded != (last_over_time(driver_gas_price_cap_exceeded[7d] offset 5m) or (driver_gas_price_cap_exceeded * 0))) and (driver_gas_price_cap_exceeded > 0))
-          or ((driver_gas_price_cap_exceeded > 0) and on() ((time() - process_start_time_seconds{job="driver"}) < 300))
+          or ((driver_gas_price_cap_exceeded > 0) and on() ((time() - driver_process_start_time_seconds{job="driver"}) < 300))
         for: 0m
         labels:
           severity: critical
