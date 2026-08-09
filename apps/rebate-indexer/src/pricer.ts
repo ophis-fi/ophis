@@ -4,13 +4,23 @@ import { alerts } from './telegram/alerter.js';
 
 const log = logger.child({ module: 'pricer' });
 
-const DEFILLAMA_CHAIN_SLUG: Readonly<Record<number, string>> = {
+/**
+ * DefiLlama coins-API namespace per chain. MUST cover every chain that produces
+ * `defillama_fills` rows (DEFILLAMA_CHAIN_IDS in fetcher.ts, i.e. every production
+ * chain): a fill on a chain missing from this map can never be priced, its value_usd
+ * stays NULL forever, and the backfill readiness gate in defillamaBackfill.ts
+ * (`NOT EXISTS (... fee_verified AND value_usd IS NULL)`) can then never be satisfied,
+ * which holds GET /defillama at 503 permanently. defillamaSlugCoverage.test.ts asserts
+ * the two sets stay in sync; do not add a production chain without a namespace here.
+ */
+export const DEFILLAMA_CHAIN_SLUG: Readonly<Record<number, string>> = {
   1: 'ethereum',
   10: 'optimism',
   56: 'bsc',
   100: 'xdai',
   130: 'unichain',
   137: 'polygon',
+  4663: 'robinhood',
   8453: 'base',
   9745: 'plasma',
   42161: 'arbitrum',
@@ -383,6 +393,24 @@ export async function runPricer(): Promise<{ priced: number; failed: number }> {
             : '. If this persists, volume/tier data goes stale; check the indexer logs.'),
       )
       .catch((e) => log.warn({ err: e }, 'pricer-failure alert failed'));
+  }
+  // Same systemic-outage shape as the rebate-trade alert above, for the SETTLEMENT-FILL
+  // ledger. This one is load-bearing rather than cosmetic: an unpriced fee_verified fill
+  // holds completeDefiLlamaBackfillIfReady() false forever, so GET /defillama stays 503
+  // and Ophis reports no volume at all. Once the healthy chains' backlog drains,
+  // fillPriced falls to 0 while a structurally unpriceable chain keeps failing every
+  // run, so `fillFailed >= max(1, fillPriced)` trips within a day instead of the outage
+  // sitting silent in a log line (it went unnoticed for months when 4663 shipped with no
+  // DefiLlama coins namespace).
+  if (fillFailed > 0 && fillFailed >= Math.max(1, fillPriced)) {
+    void alerts
+      .alert(
+        'pricer',
+        `Pricer: ${fillFailed} of ${fillPriced + fillFailed} DefiLlama settlement fill(s) failed to price this run. ` +
+          `Any fee-verified fill left unpriced keeps the reporting backfill incomplete and GET /defillama serving 503. ` +
+          `check the indexer logs for the failing chain (a chain with no DEFILLAMA_CHAIN_SLUG namespace can never price).`,
+      )
+      .catch((e) => log.warn({ err: e }, 'pricer fill-failure alert failed'));
   }
   log.info({ priced, failed, clamped, fillPriced, fillFailed }, 'pricer complete');
   return { priced, failed };

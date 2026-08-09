@@ -8,6 +8,7 @@ import { convertFeesToWeth } from './batch/convert.js';
 import { waitForExecution } from './batch/poll.js';
 import { assignTier, POOL_SPLIT_BPS } from './tiers.js';
 import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from './safe/addresses.js';
+import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
 import { getNonWethTokenBalances } from './safe/balances.js';
 import { outstandingPartnerLiabilityWei } from './partnerFees/liability.js';
 import { alerts } from './telegram/alerter.js';
@@ -16,6 +17,17 @@ import { logger } from './logger.js';
 
 const log = logger.child({ module: 'batcher' });
 const ERC20 = parseAbi(['function balanceOf(address) view returns (uint256)']);
+
+/**
+ * eth-flow ROUTER contracts (see the identical exclusions in stats.ts and
+ * leaderboard.ts). A router mis-stored as a trade owner can enter the `wallets`
+ * matview with real 30d volume, but it must never be a rebate RECIPIENT: it is a
+ * contract with no sweep path (a WETH transfer to it is unrecoverable), and its
+ * weight in the share denominator dilutes every human's payout. This is the
+ * MONEY-path arm of the invariant "routers are not people"; the display arms
+ * alone would hide the mis-attribution while the batch kept paying it.
+ */
+const ROUTER_WALLETS: readonly string[] = Object.freeze([...DECODER_ETHFLOW_OWNERS]);
 
 // Telegram alerts are sent with parse_mode 'HTML' (alerter.ts). An ERC20
 // `symbol` is attacker-controllable — anyone can airdrop a token with markup in
@@ -302,9 +314,14 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   //       standalone conversion there would occupy a nonce with no payout above it and
   //       could block a later cycle's payout if left unsigned. (Codex #474 P1)
 
-  // 2. Read eligible wallets.
+  // 2. Read eligible wallets. Routers are excluded HERE, at the payout gate, not
+  //    only in the display queries: exclusion in the matview would also work but
+  //    would hardcode the address list in a migration, which drifts when a new
+  //    eth-flow contract ships; this arm reuses the runtime single source of truth.
   const eligible = await sql<{ wallet: Buffer; volume_30d_usd: string }[]>`
-    SELECT wallet, volume_30d_usd::text FROM wallets WHERE volume_30d_usd > 0
+    SELECT wallet, volume_30d_usd::text FROM wallets
+    WHERE volume_30d_usd > 0
+      AND ('0x' || encode(wallet, 'hex')) <> ALL(${ROUTER_WALLETS})
   `;
   const wallets: EligibleWallet[] = eligible.map((r) => ({
     wallet: (`0x${r.wallet.toString('hex')}`) as `0x${string}`,

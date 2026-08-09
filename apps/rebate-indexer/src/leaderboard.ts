@@ -1,4 +1,23 @@
 import { TIERS, assignTier, type Tier } from './tiers.js';
+import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
+
+/**
+ * eth-flow ROUTER contracts. A native-ETH order settles with owner = one of these,
+ * and such a row can land in `trades` (the canonical CoW 0xba3c… did, mis-stored by
+ * the owner-scoped API fetch). A router is NOT a person, so it must never occupy a
+ * leaderboard rank, the same exclusion computePublicStats applies to its public
+ * distinct-trader count. Derived from the single source of truth in fetcher.ts so the
+ * two surfaces can never disagree about who counts as a trader.
+ */
+const ROUTER_WALLETS: readonly string[] = Object.freeze([...DECODER_ETHFLOW_OWNERS]);
+
+/**
+ * Sepolia. The fetcher indexes it alongside the production chains and its trades DO
+ * get priced (it has a USD_REFERENCE entry), so every wallet-facing volume figure has
+ * to exclude it explicitly. Matches the targeted exclusion in migration 0018 rather
+ * than an allow-list, so adding a new mainnet cannot silently drop its volume.
+ */
+const TESTNET_CHAIN_ID = 11155111;
 
 /**
  * Truncated display form of an address (0xXXXX...XXXX). The public /leaderboard
@@ -139,7 +158,11 @@ async function fetchLeaderboardEntries(limit: number): Promise<CachedLeaderboard
         w.wallet,
         w.volume_30d_usd,
         -- the wallets matview is a 30-day rolling view; all-time volume is
-        -- aggregated from the trades table.
+        -- aggregated from the trades table. The subquery repeats the matview's
+        -- filters VERBATIM (priced, fee-gated, no Sepolia) and differs only in
+        -- the time window, so this column is directly comparable to the 30d one
+        -- shown beside it and total >= 30d always holds. Without the repeat,
+        -- testnet dust and examined-0-fee trades inflated all-time only.
         COALESCE(tv.volume_total_usd, w.volume_30d_usd) AS volume_total_usd,
         encode(w.wallet, 'hex') AS wallet_hex
       FROM wallets w
@@ -147,9 +170,13 @@ async function fetchLeaderboardEntries(limit: number): Promise<CachedLeaderboard
         SELECT wallet, SUM(value_usd) AS volume_total_usd
         FROM trades
         WHERE value_usd IS NOT NULL
+          AND (volume_fee_bps IS NULL OR volume_fee_bps > 0)
+          AND chain_id <> ${TESTNET_CHAIN_ID}
         GROUP BY wallet
       ) tv ON tv.wallet = w.wallet
       WHERE w.volume_30d_usd > 0
+        -- routers are not people (see ROUTER_WALLETS)
+        AND ('0x' || encode(w.wallet, 'hex')) <> ALL(${ROUTER_WALLETS})
       ORDER BY w.volume_30d_usd DESC, w.wallet ASC
       LIMIT ${limit}
     ),
@@ -157,12 +184,18 @@ async function fetchLeaderboardEntries(limit: number): Promise<CachedLeaderboard
       SELECT
         r.referrer_wallet,
         COUNT(DISTINCT r.referred_wallet)::text AS affiliate_count,
+        -- Same fee gate + Sepolia exclusion as every other volume column on this
+        -- endpoint, so referred testnet dust or examined-0-fee trades cannot
+        -- inflate a referrer's displayed figure. (The affiliate MONEY path in
+        -- affiliate/accrual.ts applies its own, stricter cycle-scoped filters.)
         COALESCE(SUM(t.value_usd), 0)::text AS referred_volume_usd
       FROM referrals r
       LEFT JOIN trades t
         ON t.wallet = r.referred_wallet
         AND t.block_timestamp >= r.bound_at
         AND t.value_usd IS NOT NULL
+        AND (t.volume_fee_bps IS NULL OR t.volume_fee_bps > 0)
+        AND t.chain_id <> ${TESTNET_CHAIN_ID}
       GROUP BY r.referrer_wallet
     )
     SELECT
@@ -270,6 +303,9 @@ export async function getRankInfo(wallet: `0x${string}`): Promise<RankInfo | nul
       SELECT wallet, ROW_NUMBER() OVER (ORDER BY volume_30d_usd DESC, wallet ASC) AS position
       FROM wallets
       WHERE volume_30d_usd > 0
+        -- same router exclusion as fetchLeaderboardEntries, so the position
+        -- reported here is the rank the wallet actually occupies on the board
+        AND ('0x' || encode(wallet, 'hex')) <> ALL(${ROUTER_WALLETS})
     )
     SELECT position::text
     FROM ranked
