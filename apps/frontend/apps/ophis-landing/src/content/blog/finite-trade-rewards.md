@@ -5,6 +5,8 @@ pubDate: 2026-08-09
 author: Ophis
 tags: [rewards, giveaway, trading]
 draft: false
+cover: ./finite-trade-rewards.cover.png
+coverAlt: "A gold winning ticket with a serpent emblem glowing against a dark purple background"
 ---
 
 The **Ophis Trade Rewards Giveaway is live**. Make a qualifying swap of at least
