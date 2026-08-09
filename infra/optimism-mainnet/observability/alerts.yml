@@ -262,9 +262,18 @@ groups:
         # left side's sum() strips the instance label, so an instance-keyed
         # join could never match and the alert stayed unfirable. The uptime
         # guard is a global gate, not a per-instance join.
+        # 2026-08-09 round 6: uptime gate REMOVED entirely — the Rust
+        # services register no process collector, so
+        # process_start_time_seconds exists only for node-exporter /
+        # prometheus / rpc-proxy (TSDB-verified BY JOB, not just by name).
+        # The `and on()` join against an empty vector made this alert
+        # unfirable since inception, through every prior repair round.
+        # The gate's warmup-suppression intent (sharp-edges N3 above) is
+        # already covered by `for: 15m`, which outlives any driver warmup.
+        # LESSON: TSDB-verify every metric name WITH its matchers — a name
+        # that exists for a different job still yields an empty join.
         expr: |
           sum(rate(driver_dropped_solutions{reason="SimulationRevert"}[10m])) > 0.5
-          and on() ((time() - process_start_time_seconds{job="driver"}) > 300)
         for: 15m
         labels:
           severity: critical
@@ -655,6 +664,20 @@ groups:
         # real observed transition and plain increase() is correct by
         # construction. Deployed together with that driver build — this
         # expression is only sound on drivers that pre-initialize.
+        #
+        # Round 6 (boot-window analysis): a violation BETWEEN driver start
+        # and the first scrape is still caught on every RESTART, because the
+        # previous process's pre-initialized samples sit in the window and
+        # increase() is reset-aware (5,5 -> 1 counts as +1; 0,0 -> 1 as +1).
+        # Verified deployed 2026-08-09: 6 gas-cap + 18 submission children
+        # present at 0 in the TSDB before any event. The ONLY unreachable
+        # cases have NO samples at all and no expression can close them:
+        #  (a) a brand-new stack's first-ever driver process with a violation
+        #      before its very first scrape — bootstrap checklist: after first
+        #      driver start, verify `driver_gas_price_cap_exceeded == 0`
+        #      returns all children BEFORE enabling traffic;
+        #  (b) a Prometheus outage longer than the window coinciding with the
+        #      event — monitoring-of-monitoring concern, not an expr concern.
         expr: |
           increase(driver_gas_price_cap_exceeded[5m]) > 0
         for: 0m
