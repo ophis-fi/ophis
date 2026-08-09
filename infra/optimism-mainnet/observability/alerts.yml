@@ -693,32 +693,29 @@ groups:
         # realistic outage by comparing against the last known value.
         # Verified deployed 2026-08-09: 6 gas-cap + 18 submission children
         # present at 0 in the TSDB before any event.
-        # Round 8: the change-detector arm compares with `>`, NOT `!=`.
-        # Under pre-init (#1151) a reborn child starts at 0 by
-        # INITIALIZATION, so after any historical violation a routine driver
-        # restart would make `!=` compare new-0 against old-nonzero and fire
-        # a ~5m false critical on every such restart. `>` fires only when
-        # the value EXCEEDS the last known one: routine restarts (0 vs V)
-        # stay silent; increments and rebirth-at->V still page. (The round-4
-        # "rebirth implies an event" premise was only true BEFORE pre-init
-        # existed; pre-init made rebirth-at-0 routine.)
-        # Remaining residuals, all requiring NO usable samples plus a
-        # coincidence — no expression can close them:
-        #  (a) brand-new stack's first-ever driver process with a violation
-        #      before its very first scrape — bootstrap checklist: after first
-        #      driver start, verify `driver_gas_price_cap_exceeded == 0`
-        #      returns all children BEFORE enabling traffic;
-        #  (b) Prometheus outage longer than the lookback coinciding with the
-        #      event — monitoring-of-monitoring concern;
+        # Round 8/9: the change-detector arm is `(value != last-known) AND
+        # (value > 0)`. Under pre-init (#1151) a reborn child starts at 0 by
+        # INITIALIZATION, so a bare `!=` false-paged ~5m on every routine
+        # restart after any historical nonzero (round 8); a bare `>` avoided
+        # that but missed post-reset counts BELOW the historical value
+        # (old 5 -> reborn 1). The nonzero gate silences initialized zeroes
+        # while any positive value differing from history pages (round 9).
+        # This arm also covers a brand-new stack's first-ever violation
+        # before its first scrape: no history -> label-matched 0 -> N != 0
+        # AND N > 0 fires.
+        # Remaining residuals — both need NO usable samples plus a
+        # coincidence; no expression over samples can close them:
+        #  (b) Prometheus outage longer than the lookback coinciding with
+        #      the event — monitoring-of-monitoring concern;
         #  (c) driver outage > 5m AND violation before the first post-outage
-        #      scrape AND the reborn child's value not exceeding its last
-        #      pre-outage sample (V_old >= N_new).
-        # Sound closure for (a)+(c): export process_start_time_seconds from
-        # the driver (register prometheus ProcessCollector, Linux-only) and
-        # gate a young-process arm on it — tracked driver follow-up.
+        #      scrape AND the reborn child landing on EXACTLY its last
+        #      pre-outage value.
+        # Sound closure for (c): export process_start_time_seconds from the
+        # driver (register prometheus ProcessCollector, Linux-only) and gate
+        # a young-process arm on it — tracked driver follow-up.
         expr: |
           (increase(driver_gas_price_cap_exceeded[5m]) > 0)
-          or (driver_gas_price_cap_exceeded > (last_over_time(driver_gas_price_cap_exceeded[7d] offset 5m) or (driver_gas_price_cap_exceeded * 0)))
+          or ((driver_gas_price_cap_exceeded != (last_over_time(driver_gas_price_cap_exceeded[7d] offset 5m) or (driver_gas_price_cap_exceeded * 0))) and (driver_gas_price_cap_exceeded > 0))
         for: 0m
         labels:
           severity: critical
