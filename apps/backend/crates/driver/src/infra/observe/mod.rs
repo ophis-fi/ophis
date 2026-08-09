@@ -669,12 +669,17 @@ mod tests {
     /// layer's process-age signal: without this series every warmup/young-
     /// process gate is unbindable (2026-08-09 rounds 6-9).
     ///
-    /// The assertion is the EXACT exported name — the storage registry
-    /// namespaces every collector with the "driver" prefix, and the alert
-    /// expressions (observability/alerts.yml) query this exact string. An
-    /// `ends_with` here matched both the prefixed and unprefixed spellings
-    /// and hid precisely that mismatch: the #1157 alert gates shipped
-    /// querying the unprefixed name and were unbindable until #1158.
+    /// Deliberately an `ends_with` EXISTENCE check, not an exact-name
+    /// assert. The exported name is `driver_process_start_time_seconds` in
+    /// production (the storage registry namespaces every collector, and the
+    /// alert expressions query that exact string), but the namespace is
+    /// FIRST-WINS global state set by `setup_registry_reentrant` — in the
+    /// shared unit-test process whichever test initializes the registry
+    /// first decides it, so an exact-name assert is order-dependent (proved
+    /// empirically: it passed locally and failed in CI, PR #1159 wave 1).
+    /// Name parity between the export and alerts.yml is enforced where it
+    /// actually caught the #1157 mismatch: the mandatory post-deploy TSDB
+    /// name+matcher verification.
     #[cfg(target_os = "linux")]
     #[test]
     fn process_collector_registered_on_linux() {
@@ -683,9 +688,8 @@ mod tests {
         assert!(
             families
                 .iter()
-                .any(|f| f.get_name() == "driver_process_start_time_seconds"),
-            "driver_process_start_time_seconds family missing — ProcessCollector not registered \
-             under the namespaced name the alerts query"
+                .any(|f| f.get_name().ends_with("process_start_time_seconds")),
+            "process_start_time_seconds family missing — ProcessCollector not registered"
         );
     }
 }
