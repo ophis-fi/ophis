@@ -11,7 +11,7 @@ import {
   FEE_VERIFICATION_IMPLEMENTED,
   type OrderTotals,
 } from '../src/cow/onchain.js';
-import { attributeOrder, DECODER_ETHFLOW_OWNERS } from '../src/fetcher.js';
+import { attributeOrder, DECODER_ETHFLOW_OWNERS, type PendingDefiLlamaFill } from '../src/fetcher.js';
 import { OPHIS_SAFE_ADDRESS } from '../src/safe/addresses.js';
 
 const OPHIS = OPHIS_SAFE_ADDRESS.toLowerCase();
@@ -312,6 +312,47 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     const disc = await decodeWindow(8453, mockClient(calldata), logs as never, totalsFn(), true);
     expect(disc[0]?.volumeFeeBps).toBe(0);
     expect(disc[0]?.feeVerified).toBe(false);
+  });
+
+  it('collects per-fill reporting rows into the fill sink, fee fields mirroring the trade', async () => {
+    const docA = ophisDoc();
+    const hA = hashOf(docA);
+    stubAppDataApi({ [hA]: docA });
+    const calldata = encodeSettle([T0, T1], [mkTrade({ appData: hA, receiver: TRADER })]);
+    const logs = [
+      mkLog({ owner: SHARED_ETHFLOW, sellToken: T0, buyToken: T1, sellAmount: 5_000n, buyAmount: 9_000n, orderUid: uid(2), logIndex: 7 }),
+    ];
+    const fills: PendingDefiLlamaFill[] = [];
+    const rows = await decodeWindow(
+      8453,
+      mockClient(calldata),
+      logs as never,
+      totalsFn({ [uid(2)]: { executedSell: 50_000n, executedBuy: 90_000n } }),
+      false,
+      fills,
+    );
+    // The trade row upgrades to the order TOTAL, but the FILL keeps the event's
+    // per-fill amounts (partial fills settling on different days must each carry
+    // their own daily volume).
+    expect(rows[0]?.sellAmount).toBe(50_000n);
+    expect(fills).toHaveLength(1);
+    const f = fills[0]!;
+    expect(f.tradeUid).toBe(uid(2));
+    expect(f.chainId).toBe(8453);
+    expect(f.blockNumber).toBe(100n);
+    expect(f.logIndex).toBe(7);
+    expect(f.sellAmount).toBe(5_000n);
+    expect(f.buyAmount).toBe(9_000n);
+    expect(f.volumeFeeBps).toBe(10); // mirrors the trade's final fee (normal mode)
+    expect(f.feeVerified).toBe(true);
+
+    // DISCOVERY mode: the fill mirrors the downgraded trade (fee 0, unverified),
+    // so computeDefiLlamaDay excludes it - same ToB-B1 posture as the trade row.
+    const discFills: PendingDefiLlamaFill[] = [];
+    await decodeWindow(8453, mockClient(calldata), logs as never, totalsFn(), true, discFills);
+    expect(discFills).toHaveLength(1);
+    expect(discFills[0]?.volumeFeeBps).toBe(0);
+    expect(discFills[0]?.feeVerified).toBe(false);
   });
 
   it('aborts the window (throws) on a transient getTransaction failure (Codex #3)', async () => {
