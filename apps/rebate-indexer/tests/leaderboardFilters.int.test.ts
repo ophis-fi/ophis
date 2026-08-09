@@ -71,6 +71,19 @@ beforeAll(async () => {
   // The router: real settled volume, but not a person.
   await ins('06', 1, ROUTER, '500', RECENT, null);
 
+  // HUMAN_A refers HUMAN_B (bound before every seeded trade), then B adds the same
+  // two dirty-trade shapes: referredVolumeUsd must count only B's clean $50, not
+  // testnet dust or examined-0-fee volume (same rules as every other column).
+  const BOUND = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  await sql`
+    INSERT INTO ref_codes (code, referrer_wallet, kind, active)
+    VALUES ('itest', decode(${W(HUMAN_A)}, 'hex'), 'regular', true)`;
+  await sql`
+    INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at)
+    VALUES (decode(${W(HUMAN_B)}, 'hex'), 'itest', decode(${W(HUMAN_A)}, 'hex'), true, ${BOUND})`;
+  await ins('07', SEPOLIA, HUMAN_B, '9000', RECENT, null);
+  await ins('08', 1, HUMAN_B, '8000', RECENT, 0);
+
   await sql.unsafe('REFRESH MATERIALIZED VIEW wallets');
 }, 180_000);
 
@@ -106,6 +119,15 @@ describe('getLeaderboard', () => {
     // 100 recent + 200 old. NOT 12300: the 5000 Sepolia and 7000 fee-0 rows are
     // filtered out of the 30d column and must be filtered out of all-time too.
     expect(a.volumeTotalUsd).toBeCloseTo(300, 4);
+  });
+
+  it('excludes Sepolia and examined-0-fee trades from referred volume', async () => {
+    const board = await getLeaderboard(100);
+    const a = board.entries.find((e) => e.wallet.startsWith('0x0494'))!;
+    expect(a.affiliateCount).toBe(1);
+    // B's clean $50 only. NOT 17050: the $9000 Sepolia and $8000 fee-0 referred
+    // trades are display-dust exactly like they are in the volume columns.
+    expect(a.referredVolumeUsd).toBeCloseTo(50, 4);
   });
 
   it('keeps all-time >= 30d for every ranked wallet', async () => {

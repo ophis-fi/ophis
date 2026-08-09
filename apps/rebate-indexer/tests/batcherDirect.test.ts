@@ -187,6 +187,29 @@ describe('direct-mode accrual basis', () => {
     expect(BigInt(entry!.a)).toBe(ONE / 4n);
   });
 
+  it('router wallet earns no WETH share and does not dilute human shares', async () => {
+    const sql = await getSql();
+    await seedBatch(sql, MAY, 'executed', 9n * ONE);
+    // The canonical CoW eth-flow prod router, exactly as it sits in the live
+    // `trades` table (mis-stored by the owner-scoped API fetch). Equal volume to
+    // the human: without the payout-gate exclusion it would take an equal
+    // fee_share (halving the human's rebate) AND receive an unrecoverable WETH
+    // transfer of its own.
+    const ROUTER = 'ba3cb449bd2b4adddbc894d8697f5170800eadec';
+    await seedWallet(sql, 'aa'.repeat(20), 100_000); // gold human
+    await seedWallet(sql, ROUTER, 100_000); // same volume, not a person
+    mockBalanceWei = 10n * ONE; // distributable = 10 - 9 = 1 WETH
+    const r = await runBatcher(JUN);
+    expect(r.status).toBe('proposed');
+    expect(r.recipientCount).toBe(1); // the human only
+    const entries = await sql<{ wallet_hex: string; a: string }[]>`
+      SELECT encode(wallet, 'hex') AS wallet_hex, weth_amount_wei::text AS a FROM rebate_batch_entries`;
+    expect(entries.map((e) => e.wallet_hex)).toEqual(['aa'.repeat(20)]); // no router entry
+    // UNDILUTED: sole gold wallet takes the full 1 WETH fee_share -> 25% rebate,
+    // not the 0.125 it would get sharing the pool with the router.
+    expect(BigInt(entries[0]!.a)).toBe(ONE / 4n);
+  });
+
   it('quarantined recipient: unpaid rebate stays in the Safe, NOT redistributed (P2-4)', async () => {
     const sql = await getSql();
     await seedBatch(sql, MAY, 'executed', 9n * ONE);
