@@ -122,6 +122,14 @@ async function reserveTicket(candidate: CandidateTrade, allocation: readonly big
     if (blocked.length > 0) return false;
     const existing = await tx`SELECT 1 FROM trade_reward_tickets WHERE wallet = ${Buffer.from(candidate.wallet_hex, 'hex')}`;
     if (existing.length > 0) return false;
+    // Re-verify the trade still belongs to the candidate wallet INSIDE the lock:
+    // the router-trades repair (or any future wallet rewrite) serializes on the
+    // same campaign advisory lock, so a trade re-attributed after candidateTrades
+    // selected it is caught here and the stale candidate is dropped instead of a
+    // ticket being signed for a wallet that no longer owns the trade.
+    const [tradeRow] = await tx<{ w: string }[]>`
+      SELECT encode(wallet, 'hex') AS w FROM trades WHERE trade_uid = ${Buffer.from(candidate.trade_uid_hex, 'hex')}`;
+    if (tradeRow?.w !== candidate.wallet_hex) return false;
 
     const ticketId = campaign.next_allocation_index + 1;
     const amount = allocation[campaign.next_allocation_index];
@@ -222,7 +230,15 @@ export async function runTradeRewards(): Promise<{ reserved: number; submitted: 
       if (await reserveTicket(candidate, allocation)) reserved += 1;
     } catch (err) {
       const code = (err as { code?: string })?.code;
-      if (code === '23505') {
+      const constraintName = (err as { constraint_name?: string })?.constraint_name;
+      // Swallow ONLY the qualifying-trade collision (the poison-pill class this
+      // isolation exists for). Any OTHER unique violation, e.g. ticket_id from a
+      // stale allocation index, or the wallet PK, means the campaign state is
+      // inconsistent and must fail the run loudly. Matched on the column name
+      // inside the auto-generated constraint (exact-name matching broke before:
+      // see the rebate_batches_cycle_month_key note in batcher.ts); a missing
+      // constraint_name falls through to the rethrow arm (fail loud).
+      if (code === '23505' && typeof constraintName === 'string' && constraintName.includes('qualifying_trade_uid')) {
         log.error({ err, tradeUid: `0x${candidate.trade_uid_hex}` }, 'trade-rewards: reserveTicket conflict for candidate; continuing');
       } else {
         log.error({ err, tradeUid: `0x${candidate.trade_uid_hex}` }, 'trade-rewards: reserveTicket failed for candidate');

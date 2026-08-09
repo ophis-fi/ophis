@@ -76,4 +76,20 @@ describe('upsertDefillamaFills', () => {
     await upsertDefillamaFills([fill({ volumeFeeBps: 10, feeVerified: true })]);
     expect(await readRow()).toMatchObject({ bps: 10, verified: true });
   });
+
+  it('deduplicates same-key rows within one batch, verified copy winning', async () => {
+    // A page-boundary shift can deliver the same fill twice in one flush. One
+    // ON CONFLICT DO UPDATE statement cannot touch the same row twice, so
+    // without in-batch dedup this whole flush throws a cardinality violation.
+    const dup = fill({ blockNumber: 77n, logIndex: 9 });
+    await expect(
+      upsertDefillamaFills([dup, { ...dup, volumeFeeBps: 10, feeVerified: true }]),
+    ).resolves.toBeUndefined();
+    const [row] = await sql<{ bps: number | null; verified: boolean }[]>`
+      SELECT volume_fee_bps AS bps, fee_verified AS verified FROM defillama_fills
+      WHERE chain_id = 100 AND block_number = 77 AND log_index = 9
+        AND trade_uid = decode(${UID.slice(2)}, 'hex')`;
+    // The verified in-batch copy won over the provisional one.
+    expect(row).toMatchObject({ bps: 10, verified: true });
+  });
 });
