@@ -33,4 +33,14 @@ describe('DefiLlama chain-slug coverage', () => {
       expect(slug, `chain ${id}`).toMatch(/^[a-z0-9-]+$/);
     }
   });
+
+  it('pins the verified Robinhood Chain namespace', () => {
+    // Verified against the live coins API 2026-08-09: both tokens that trade on the
+    // chain resolve under this namespace on the historical endpoint the pricer uses
+    // (USDG 0x5fc5...d168 and WETH 0x0Bd7...aD73, confidence 0.99). 'robinhoodchain'
+    // also resolves upstream but this is the canonical short form; a plausible-looking
+    // wrong value (e.g. 'robinhood-chain') returns empty coins and would strand every
+    // fill exactly like the missing entry did.
+    expect(DEFILLAMA_CHAIN_SLUG[4663]).toBe('robinhood');
+  });
 });

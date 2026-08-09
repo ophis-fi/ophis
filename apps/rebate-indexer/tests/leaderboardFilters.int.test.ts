@@ -17,6 +17,7 @@ import { DECODER_ETHFLOW_OWNERS } from '../src/fetcher.js';
 let container: StartedPostgreSqlContainer;
 let sql: any;
 let getLeaderboard: typeof import('../src/leaderboard.js')['getLeaderboard'];
+let getRankInfo: typeof import('../src/leaderboard.js')['getRankInfo'];
 
 const W = (h: string) => h.replace(/^0x/, '').padStart(40, '0');
 const UID = (h: string) => h.padStart(112, '0');
@@ -56,7 +57,7 @@ beforeAll(async () => {
   ({ sql } = await import('../src/db/index.js'));
   const { runMigrations } = await import('../src/db/migrate.js');
   await runMigrations();
-  ({ getLeaderboard } = await import('../src/leaderboard.js'));
+  ({ getLeaderboard, getRankInfo } = await import('../src/leaderboard.js'));
 
   // HUMAN_A: one recent + one old production trade -> 30d = 100, all-time = 300.
   await ins('01', 100, HUMAN_A, '100', RECENT, null);
@@ -113,5 +114,26 @@ describe('getLeaderboard', () => {
     for (const entry of board.entries) {
       expect(entry.volumeTotalUsd).toBeGreaterThanOrEqual(entry.volume30dUsd);
     }
+  });
+});
+
+describe('getRankInfo', () => {
+  // The router's 500 is the LARGEST 30d volume in the seed set, so without the
+  // exclusion it would hold position 1 and push every human down one: exactly the
+  // live skew this PR fixes. getRankInfo counts positions in an independent
+  // ROW_NUMBER() query, so it must be pinned separately from getLeaderboard.
+  it('reports positions matching the router-free board', async () => {
+    const a = await getRankInfo(`0x${HUMAN_A}`);
+    const b = await getRankInfo(`0x${HUMAN_B}`);
+    expect(a?.position).toBe(1); // 100 (30d) beats 50
+    expect(b?.position).toBe(2);
+  });
+
+  it('gives a router volume and tier but never a position', async () => {
+    const r = await getRankInfo(`0x${ROUTER}`);
+    // The router IS in the wallets matview (its 30d volume is real), so tier data
+    // resolves, but it occupies no rank on the board it was excluded from.
+    expect(r?.volume30dUsd).toBeCloseTo(500, 4);
+    expect(r?.position).toBeNull();
   });
 });
