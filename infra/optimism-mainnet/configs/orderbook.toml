@@ -63,7 +63,24 @@ price-estimation-drivers = [
   { name = "velora", url = "http://driver/velora" },
   { name = "enso", url = "http://driver/enso" },
   { name = "lifi", url = "http://driver/lifi" },
-  { name = "openocean", url = "http://driver/openocean" },
+  # openocean REMOVED from the QUOTE fanout 2026-08-09 (it stays in the
+  # autopilot SOLVING fanout — this list only feeds price estimation).
+  # Measured that day on USDC->WETH (3.700495 USDC): openocean's estimate was
+  # 1949817368493755 wei out — +2.4% above the six-lane route cluster
+  # (~1904e12, lifi/dodo/woofi/uniswap-v4/okx/enso) and +1.35% above the best
+  # deliverable route (velora/kyberswap ~1923e12). Because quote competitions
+  # pick the HIGHEST estimate and trade verification fails open for USDC
+  # sells ("could not set spardose balance override" -> simulation cannot run
+  # without the trader's approval -> `verified: false` estimates accepted),
+  # openocean's fantasy price won EVERY quote, was baked into orders as their
+  # limit AND their priceImprovement fee baseline, and no lane — including
+  # openocean itself — could then fill them: every UI swap expired unfilled
+  # (Clement's three orders on 08-09; zero settlements since 08-07).
+  # An UNDERquoting lane is harmless in a best-wins competition; only
+  # overquoters poison it. Re-adding openocean requires first verifying its
+  # /solve deliverable price matches its quote on a dust-sized USDC sell.
+  # Structural follow-up: make quote verification fail CLOSED for estimates
+  # that cannot be simulated, instead of accepting them unverified.
   { name = "dodo", url = "http://driver/dodo" },
   { name = "curve", url = "http://driver/curve" },
   { name = "woofi", url = "http://driver/woofi" },
