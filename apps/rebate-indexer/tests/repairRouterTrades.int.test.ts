@@ -93,6 +93,20 @@ beforeAll(async () => {
   ORDERS.set(`0x${UID('06')}`, { owner: `0x${PROD_ROUTER}`, receiver: `0x${'00'.repeat(20)}` });
   // u7: an ordinary human trade the repair must never scan or touch.
   await insTrade('07', HUMAN_Y);
+  // u8: repairable on its face (owner matches, receiver usable), but it already
+  // backs a reward ticket. The ticket's assignment_signature signs the WALLET and
+  // qualifying_trade_uid is UNIQUE, so re-attributing the trade would strand the
+  // ticket AND poison the reward scheduler (reserveTicket would hit the UNIQUE
+  // constraint on the same deterministic candidate every run). Must be skipped.
+  await insTrade('08', PROD_ROUTER);
+  ORDERS.set(`0x${UID('08')}`, { owner: `0x${PROD_ROUTER}`, receiver: `0x${HUMAN_X}` });
+  await sql`
+    INSERT INTO trade_reward_tickets (
+      wallet, ticket_id, amount_usdg, qualifying_trade_uid, qualifying_chain_id,
+      qualifying_value_usd, assignment_signature, signer_epoch)
+    VALUES (
+      decode(${PROD_ROUTER}, 'hex'), 1, 1000000, decode(${UID('08')}, 'hex'), 1,
+      100, decode(${'ab'.repeat(65)}, 'hex'), 1)`;
 
   // Queues: router + human in both tables; only the router rows may be deleted.
   await sql`INSERT INTO tracked_wallets (wallet) VALUES
@@ -109,14 +123,19 @@ afterAll(async () => {
 describe('repairRouterTrades', () => {
   it('re-attributes only the repairable row and cleans the router out of both queues', async () => {
     const result = await repairRouterTrades();
-    expect(result).toEqual({ scanned: 6, repaired: 1, skipped: 5, dequeued: 2 });
+    expect(result).toEqual({ scanned: 7, repaired: 1, skipped: 6, dequeued: 2 });
 
     // u1 now belongs to the real trader, lowercased.
     expect(await walletOf('01')).toBe(HUMAN_X);
-    // Every guarded case is untouched.
-    for (const uid of ['02', '03', '04', '05', '06']) {
+    // Every guarded case is untouched, including the ticketed trade u8.
+    for (const uid of ['02', '03', '04', '05', '06', '08']) {
       expect(await walletOf(uid)).toBe(PROD_ROUTER);
     }
+    // The ticket row itself is untouched (operator decision, never automatic).
+    const [ticket] = await sql<{ w: string }[]>`
+      SELECT encode(wallet, 'hex') AS w FROM trade_reward_tickets
+      WHERE qualifying_trade_uid = decode(${UID('08')}, 'hex')`;
+    expect(ticket!.w).toBe(PROD_ROUTER);
     // The human row was never in scope.
     expect(await walletOf('07')).toBe(HUMAN_Y);
 
@@ -134,9 +153,9 @@ describe('repairRouterTrades', () => {
 
   it('is idempotent: a second run repairs nothing and dequeues nothing', async () => {
     const again = await repairRouterTrades();
-    // The 5 guarded rows are re-scanned (still router-walleted) and re-skipped;
+    // The 6 guarded rows are re-scanned (still router-walleted) and re-skipped;
     // nothing changes and the queue deletes match no rows.
-    expect(again).toEqual({ scanned: 5, repaired: 0, skipped: 5, dequeued: 0 });
+    expect(again).toEqual({ scanned: 6, repaired: 0, skipped: 6, dequeued: 0 });
     expect(await walletOf('01')).toBe(HUMAN_X);
   });
 });

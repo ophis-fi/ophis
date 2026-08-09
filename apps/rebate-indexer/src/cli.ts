@@ -45,9 +45,10 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
     const { repairRouterTrades } = await import('./repair/routerTrades.js');
     const result = await repairRouterTrades();
     log.info(result, 'repair-router-trades complete');
-    if (result.repaired > 0) {
-      await runScorer();
-    }
+    // Unconditional: a PRIOR partially-failed invocation (rows updated, then the
+    // cleanup or scorer threw) leaves the matview stale while a retry reports
+    // repaired = 0, so gating the refresh on this run's count would skip it.
+    await runScorer();
   },
   // Register a wallet in the owner registry so the next fetch backfills it.
   async ['track-wallet'](args) {

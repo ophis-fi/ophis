@@ -19,7 +19,7 @@ import { TRADE_EVENT, SETTLE_FN, settlementAddressFor } from './settleAbi.js';
 import { getRpcClient } from '../rpc/client.js';
 import { orderbookBase, getOrder } from './client.js';
 import { resolveAppData } from './appDataResolver.js';
-import { attributeOrder, DECODER_ETHFLOW_OWNERS, type PendingTrade } from '../fetcher.js';
+import { attributeOrder, DECODER_ETHFLOW_OWNERS, type PendingTrade, type PendingDefiLlamaFill } from '../fetcher.js';
 import { logger } from '../logger.js';
 
 const log = logger.child({ module: 'settle-decoder' });
@@ -30,6 +30,19 @@ type SqlTag = <T = Record<string, unknown>>(strings: TemplateStringsArray, ...ar
 export interface SettleDecoderDeps {
   sql: SqlTag;
   upsertTrades: (rows: PendingTrade[]) => Promise<number>;
+  /**
+   * Optional settlement-fill persistence (defillama_fills). The decoder is the
+   * ONLY source that ever sees hosted-chain native-ETH (shared eth-flow) fills:
+   * the owner-scoped API fetch structurally cannot list them without enumerating
+   * the shared router's entire CoW traffic. Persisting each Trade event here
+   * preserves the per-fill data (block, logIndex, per-fill amounts, settlement
+   * time) that cannot be reconstructed later without a chain re-scan. Fee fields
+   * mirror the trade row's post-gate values, so in DISCOVERY mode the fills are
+   * fee_verified=false and computeDefiLlamaDay EXCLUDES them, the same ToB-B1
+   * posture as the trade rows: nothing is publicly reported from decoder fees
+   * until on-chain fee verification lands, but the data is ready to upgrade.
+   */
+  appendDefillamaFills?: (fills: PendingDefiLlamaFill[]) => Promise<void>;
 }
 
 // Decoded GPv2Settlement Trade event log (args fully decoded since `event` is passed).
@@ -176,7 +189,12 @@ export async function decodeWindow(
   logs: TradeLog[],
   getOrderTotals: (chainId: number, uid: `0x${string}`) => Promise<OrderTotals | null> = defaultGetOrderTotals,
   discoveryOnly = false,
+  fillSink?: PendingDefiLlamaFill[],
 ): Promise<PendingTrade[]> {
+  // Per-fill reporting rows paired with their trade so the fee fields can mirror
+  // the trade's FINAL values (the surplus->0 in-loop downgrade and the
+  // discovery-mode downgrade below both mutate the trade after attribution).
+  const fillPairs: { fill: Omit<PendingDefiLlamaFill, 'volumeFeeBps' | 'feeVerified'>; trade: PendingTrade }[] = [];
   const rows: PendingTrade[] = [];
   const byTx = new Map<`0x${string}`, TradeLog[]>();
   for (const l of logs) {
@@ -295,6 +313,26 @@ export async function decodeWindow(
       }
 
       rows.push(trade);
+      if (fillSink) {
+        // Structural fill data from the EVENT (per-fill amounts, NOT the order
+        // totals the trade row was just upgraded to; partial fills settling on
+        // different days must keep their own daily volume). Fee fields attach at
+        // return time from the trade's final values.
+        fillPairs.push({
+          fill: {
+            chainId,
+            blockNumber: lg.blockNumber,
+            logIndex: lg.logIndex,
+            tradeUid: ev.orderUid as `0x${string}`,
+            settlementTimestamp: ts,
+            sellToken: ev.sellToken,
+            sellAmount: ev.sellAmount,
+            buyToken: ev.buyToken,
+            buyAmount: ev.buyAmount,
+          },
+          trade,
+        });
+      }
     }
   }
   if (discoveryOnly) {
@@ -306,6 +344,11 @@ export async function decodeWindow(
     for (const r of rows) {
       r.volumeFeeBps = 0;
       r.feeVerified = false;
+    }
+  }
+  if (fillSink) {
+    for (const { fill, trade } of fillPairs) {
+      fillSink.push({ ...fill, volumeFeeBps: trade.volumeFeeBps, feeVerified: trade.feeVerified });
     }
   }
   return rows;
@@ -373,9 +416,13 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
       }
       throw err; // genuine error -> abort chain (cursor not advanced -> re-scanned)
     }
-    const rows = await decodeWindow(chainId, client, logs, undefined, discoveryOnly);
+    const fills: PendingDefiLlamaFill[] = [];
+    const rows = await decodeWindow(chainId, client, logs, undefined, discoveryOnly, deps.appendDefillamaFills ? fills : undefined);
     if (rows.length > 0) inserted += await deps.upsertTrades(rows);
-    await writeCursor(chainId, to, deps.sql); // advance ONLY after the window's rows upsert
+    // Persist fills BEFORE the cursor advances: a crash in between re-scans the
+    // window and the (chain, block, logIndex, uid)-keyed insert is idempotent.
+    if (fills.length > 0) await deps.appendDefillamaFills!(fills);
+    await writeCursor(chainId, to, deps.sql); // advance ONLY after the window's rows + fills persist
     from = to + 1n;
     if (window < DEFAULT_WINDOW) window = DEFAULT_WINDOW; // restore after a clean window
   }

@@ -946,6 +946,16 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
         inserted += await runSettleDecoder({
           sql: sql as unknown as Parameters<typeof runSettleDecoder>[0]['sql'],
           upsertTrades,
+          // Settlement-fill persistence for decoder-discovered trades: the only
+          // source of hosted-chain native-ETH (shared eth-flow) fills now that
+          // routers are never fetched as owners. Fee fields carry the decoder's
+          // gated values (DISCOVERY mode: fee 0 / unverified), so these fills are
+          // excluded from /defillama until fee verification lands (ToB B1); the
+          // per-fill event data is preserved for that upgrade.
+          appendDefillamaFills: async (fills) => {
+            pendingDefillamaFills.push(...fills.filter((f) => DEFILLAMA_CHAIN_IDS.has(f.chainId)));
+            await flushDefillamaFills();
+          },
         });
       } catch (err) {
         log.error({ err }, 'settle-decoder pass failed');

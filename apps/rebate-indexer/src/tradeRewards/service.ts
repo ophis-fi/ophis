@@ -197,7 +197,17 @@ export async function runTradeRewards(): Promise<{ reserved: number; submitted: 
   const allocation = await campaignAllocation();
   let reserved = 0;
   for (const candidate of await candidateTrades()) {
-    if (await reserveTicket(candidate, allocation)) reserved += 1;
+    // Per-candidate isolation: candidateTrades orders deterministically, so a
+    // single throwing candidate (e.g. a qualifying_trade_uid UNIQUE violation
+    // from a trade whose ticket exists under a different wallet after a data
+    // repair) would otherwise sit at the head of the queue and abort EVERY run
+    // at the same spot, starving all later candidates. reserveTicket runs in
+    // its own transaction, so a failure rolls back cleanly and the loop moves on.
+    try {
+      if (await reserveTicket(candidate, allocation)) reserved += 1;
+    } catch (err) {
+      log.error({ err, tradeUid: `0x${candidate.trade_uid_hex}` }, 'trade-rewards: reserveTicket failed for candidate; continuing');
+    }
   }
   const submitted = await submitPendingAssignments();
   return { reserved, submitted };

@@ -72,6 +72,23 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
     const uid = `0x${r.trade_uid.toString('hex')}` as `0x${string}`;
     const storedWallet = `0x${r.wallet_hex}`;
     try {
+      // A trade that already backs a reward ticket must NOT change owner. The
+      // ticket's assignment_signature signs the WALLET, tickets are one-per-wallet
+      // (PK) and one-per-trade (UNIQUE qualifying_trade_uid), so re-pointing the
+      // trade would leave a ticket the receiver can never claim AND make the
+      // re-attributed trade look candidate-eligible again: reserveTicket would
+      // then hit the qualifying_trade_uid UNIQUE constraint, and since
+      // candidateTrades orders deterministically, that poisoned candidate would
+      // abort every scheduler run at the same spot. Leave the row router-walleted
+      // (every public surface and the payout gate already exclude it) and warn:
+      // an operator must decide (block the wallet / void the ticket) first.
+      const ticketed = await sql`
+        SELECT 1 FROM trade_reward_tickets WHERE qualifying_trade_uid = ${r.trade_uid}`;
+      if (ticketed.length > 0) {
+        skipped++;
+        log.warn({ uid, chainId: r.chain_id }, 'router repair: trade backs a reward ticket; operator must resolve before re-attribution');
+        continue;
+      }
       const order = await getOrder(r.chain_id, uid);
       const owner = order.owner.toLowerCase();
       // Sanity: the mis-store recorded the order OWNER. If CoW reports a different
