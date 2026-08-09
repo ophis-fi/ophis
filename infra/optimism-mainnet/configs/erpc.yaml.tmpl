@@ -90,12 +90,14 @@
 # alchemy) since 2026-08-09 — the "second keyed lane" hardening item left open by
 # the 2026-07-30 rebuild is now closed. The keyed pair can satisfy 2-of-3 by
 # itself, so the free lane (publicnode) flaking at the tip no longer collapses
-# the quorum — which is exactly the failure mode that made the 07-23, 07-30 and
-# 08-09 incidents: a single keyed lane + two rate-capped free lanes meant any
-# load spike dropped participants below threshold → lowParticipants:returnError
-# (driver pauses; safe but unavailable). Per-block consensus equality is sound on
-# OP: post-Bedrock block contents are deterministic per L2 block number; only tip
-# drift on "latest" varies, handled by `enforceHighestBlock`.
+# the quorum. The common cause across the 07-23, 07-30 and 08-09 outages
+# (each with a DIFFERENT lane topology — see this file's history sections) was
+# that quorum depended on rate-capped free lanes answering under load; a load
+# spike dropped participants below threshold → lowParticipants:returnError
+# (driver pauses; safe but unavailable). A keyed pair removes free-lane
+# availability from the quorum-critical path. Per-block consensus equality is
+# sound on OP: post-Bedrock block contents are deterministic per L2 block
+# number; only tip drift on "latest" varies, handled by `enforceHighestBlock`.
 #
 # Endpoint exposed: http://rpc-proxy:4000/main/evm/10
 
@@ -560,10 +562,14 @@ projects:
         # rebate-indexer's mainnet polling. It monthly-quota-exhausted in July
         # (429 "Monthly capacity limit exceeded") precisely because multiple
         # consumers shared it. OphisOpErpcUpstreamCredentialFailing (alerts.yml,
-        # PR #1016) is the tripwire for a repeat; if it fires near month-end,
-        # the quorum degrades to zan + publicnode until the 1st (safe:
-        # lowParticipants stays returnError) — swap in a fresh keyed lane rather
-        # than loosening the policy.
+        # PR #1016) is the tripwire for a repeat. ⚠️ IF IT FIRES, REPLACE THE
+        # LANE IMMEDIATELY — the degraded state is NOT fail-closed for Block
+        # A/B: zan + publicnode still make agreementThreshold:2, so disputes
+        # tie-break via preferBlockHeadLeader across only TWO capable lanes —
+        # the exact single-compromise hole documented in this file's 2026-07-30
+        # P1 (a hostile lane's freshest-head answer wins with nothing agreeing).
+        # Only receipts fail closed (zan alone < 2). Swap in a vetted keyed
+        # lane rather than loosening the policy.
         endpoint: https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
         failsafe:
           - matchMethod: "*"
@@ -617,8 +623,13 @@ projects:
       # or bump to 2-of-4 — the latter ALSO needs assert-erpc-failclosed.py's
       # EXPECTED_UPSTREAMS + EXPECTED_UPSTREAM_HOSTS updated. A self-hosted OP node
       # remains the structural fix for free-tier quota exposure overall.
-      # tenderly (x-tdly-limit:20) remains a KNOWN-GOOD emergency keyless fallback if
-      # a keyed lane dies mid-cycle — but never as a load-bearing quorum member.
+      # tenderly is NOT a fallback quorum member: in a fixed 3-lane set any
+      # swapped-in lane is load-bearing by construction, and tenderly's hard
+      # x-tdly-limit:20 cap is the named cause of three outages (07-23, 07-30,
+      # 08-09). Keep it only as a keyless DIAGNOSTIC probe endpoint. If a keyed
+      # lane dies mid-cycle, re-vet a replacement against the full bar:
+      # non-Cloudflare, receipt-capable, all 10 protected methods, sustained
+      # burst through the proxy — not just a low-rate hand probe.
       # drpc / 1rpc / meowrpc / omnia / blockdaemon(2026-08-09) are disqualified as
       # ADDITIONAL lanes: all are Cloudflare-fronted, so pairing any of them with
       # publicnode would create the 2-CF quorum that defeats the fork-poisoning
