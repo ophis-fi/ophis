@@ -170,12 +170,22 @@ groups:
       - alert: OphisOpMempoolSubmissionFailing
         # 2026-08-09: renamed to `driver_mempool_submission`; result values are
         # {"Success","Other"} (verified in TSDB), so filter on !="Success".
+        #
+        # 2026-08-09 codex round 2: the old failure-RATIO (>0.35) was
+        # structurally meaningless. Mempools::execute races providers via
+        # select_ok and DROPS the remaining futures on first success
+        # (driver/src/domain/mempools.rs:66, `_remaining_futures`), so
+        # observe::mempool_executed only counts futures that COMPLETED before
+        # the winner: one fast failure + one success scores 50% (false page),
+        # while two hung providers + one fast success scores 0% (hides a
+        # 2-of-3 degradation). Reframed as an OUTAGE alert: failures observed
+        # AND zero successes over the window — immune to the undercount in
+        # both directions. Partial-provider degradation is NOT observable from
+        # this metric at all (cancelled futures increment nothing); that needs
+        # per-provider instrumentation in the driver.
         expr: |
-          (
-            sum(rate(driver_mempool_submission{result!="Success"}[15m]))
-            /
-            sum(rate(driver_mempool_submission[15m]))
-          ) > 0.35
+          sum(rate(driver_mempool_submission{result!="Success"}[15m])) > 0
+          and on() ((sum(rate(driver_mempool_submission{result="Success"}[15m])) or vector(0)) == 0)
         for: 5m
         labels:
           severity: warning
@@ -188,11 +198,17 @@ groups:
         # 2026-08-09: renamed to driver_-prefixed metrics. driver_dropped_solutions
         # is lazily registered (no series until the first drop) — harmless here,
         # since absence means a zero numerator, i.e. nothing to alert on.
+        # 2026-08-09 codex round 2: aggregate EACH metric before adding.
+        # driver_solutions carries a `result` label and driver_dropped_solutions
+        # a `reason` label; raw vector addition matches on the full label set,
+        # so the inner sum produced an empty denominator the moment drops
+        # existed — the alert could still never fire. sum by (solver) each side
+        # first, then add.
         expr: |
           (
             sum by (solver) (rate(driver_dropped_solutions[15m]))
             /
-            sum by (solver) (rate(driver_solutions[15m]) + rate(driver_dropped_solutions[15m]))
+            (sum by (solver) (rate(driver_solutions[15m])) + sum by (solver) (rate(driver_dropped_solutions[15m])))
           ) > 0.50
         for: 15m
         labels:
@@ -224,9 +240,13 @@ groups:
         # a zero numerator, safe). The reason label value "SimulationRevert"
         # could not be TSDB-verified (no drop has occurred within retention);
         # re-check it the first time this metric materializes.
+        # 2026-08-09 codex round 2: `and on()` not `and on(instance)` — the
+        # left side's sum() strips the instance label, so an instance-keyed
+        # join could never match and the alert stayed unfirable. The uptime
+        # guard is a global gate, not a per-instance join.
         expr: |
           sum(rate(driver_dropped_solutions{reason="SimulationRevert"}[10m])) > 0.5
-          and on(instance) (time() - process_start_time_seconds{job="driver"}) > 300
+          and on() ((time() - process_start_time_seconds{job="driver"}) > 300)
         for: 15m
         labels:
           severity: critical
@@ -603,10 +623,21 @@ groups:
       - alert: OphisOpGasPriceCapExceeded
         # 2026-08-09: DROPPED the {chain="optimism"} matcher — driver metrics
         # carry no chain label (verified on driver_settlements/driver_solutions),
-        # so the filter guaranteed an empty match. Metric is lazily registered
-        # (no series until the cap first trips); absence is safe for a >0 alert.
+        # so the filter guaranteed an empty match.
+        #
+        # 2026-08-09 codex round 2: `increase()` alone MISSES the first (and
+        # possibly only) violation. The CounterVec child is created lazily at
+        # the moment the cap first trips, so its first scraped sample is
+        # already 1 — Prometheus never sees a 0→1 transition, and increase()
+        # over a single-sample series returns nothing. The `unless offset`
+        # arm fires on series APPEARANCE (child creation IS a violation, and
+        # the child vanishes again only via staleness after a driver restart);
+        # the increase() arm catches subsequent violations on an existing
+        # child. Real fix belongs in the driver (pre-initialize children to 0
+        # at startup) — this expression is the alerts-side compensation.
         expr: |
-          increase(driver_gas_price_cap_exceeded[5m]) > 0
+          (driver_gas_price_cap_exceeded unless (driver_gas_price_cap_exceeded offset 5m))
+          or (increase(driver_gas_price_cap_exceeded[5m]) > 0)
         for: 0m
         labels:
           severity: critical
@@ -615,9 +646,13 @@ groups:
           summary: "OP driver gas_price_cap policy violated (context={{ $labels.context }}, mempool={{ $labels.mempool }})"
           description: "The driver computed a final gas price > 5 gwei policy cap after RBF/solver-override. If context='submit_settlement' the broadcast was ABORTED (settle tx is not on-chain); if context='cancel_settlement' the broadcast PROCEEDED anyway to avoid nonce-stuck (cancellation is 21k gas — bounded drain). Possible causes: (1) hostile/misconfigured upstream returning a fake eth_gasPrice spike; (2) genuine OP fee surge while a solver-override pushed past the cap; (3) repeated RBF bumps cascading above policy. Inspect driver logs near the alert window for `gas price ... exceeds configured cap`. Cross-check basefee with `cast basefee --rpc-url https://optimism-rpc.publicnode.com`. If the surge is real, decide whether to raise gas_price_cap (config edit + render + recreate driver) or pause solving until congestion abates."
 
-  - name: ophis-op-ethflow
-    interval: 30s
-    rules:
+  # ── ophis-op-ethflow group REMOVED while its only rule is disabled ──
+  # (2026-08-09 codex round 2). A group whose `rules:` key parses to null is
+  # tolerated by prometheus/promtool v3.0.1 (verified live: file loaded, group
+  # silently skipped) but is fragile against stricter rulefmt versions — so the
+  # group header goes too, not just the rule. Restore the group AND the alert
+  # together via the re-enable steps below.
+  #
       # Audit HIGH-2 defense-in-depth (2026-05-18): WETH WETH9 parity
       # confirmed empirically (see docs/audits/2026-05-18-whype-weth9-parity.md)
       # — every EthFlow assumption holds today. This alert is the canary for
@@ -640,7 +675,8 @@ groups:
       # prometheus.yml job list). A defined-but-unfirable critical alert reads
       # as coverage that does not exist. Re-enable by (1) exporting the counter
       # from a producer, (2) adding its scrape job, (3) verifying the series in
-      # the TSDB, then uncommenting.
+      # the TSDB, then (4) recreating the `- name: ophis-op-ethflow` group
+      # (interval: 30s) with this alert uncommented under its `rules:` key.
       # - alert: OphisOpEthFlowTransferFailed
       #   expr: |
       #     increase(ethflow_eth_transfer_failed_total{chain="optimism"}[10m]) > 0
