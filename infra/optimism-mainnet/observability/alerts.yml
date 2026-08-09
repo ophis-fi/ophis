@@ -246,8 +246,16 @@ groups:
           description: |
             eRPC is failing consensus because fewer than 2 of 3 upstreams respond
             within the retry budget for `{{ $labels.category }}` requests. Sustained
-            elevation indicates one or more OP upstream(s) (publicnode / tenderly /
-            ophis-self-op) are slow or rate-limited.
+            elevation indicates one or more OP upstream(s) (publicnode / zan /
+            alchemy) are slow or rate-limited.
+
+            ⚠️ 2026-08-09 lesson: this alert only trips at >5/s, which assumes
+            steady driver/orderbook polling. A LOW-TRAFFIC stack with one live
+            order fails every auction at well under 5 consensus errors/s — the
+            08-09 swap outage (every solver NoSolutions for 2h) never crossed
+            this threshold. If users report stuck swaps, check
+            `docker logs optimism-mainnet-autopilot-1 | grep 'no solutions'`
+            regardless of whether this alert fired.
 
             Diagnose: `cast block-number --rpc-url <each upstream>` to find
             which one is unresponsive. Check rpc-proxy logs:
@@ -280,8 +288,9 @@ groups:
             On OP, expect occasional disputes on tip queries (PR #71 trade-off).
             Sustained elevation = investigate which upstream is drifting:
               cast block-number --rpc-url https://optimism-rpc.publicnode.com
-              cast block-number --rpc-url https://optimism.gateway.tenderly.co
-              cast block-number --rpc-url http://100.77.53.81:8545
+            (zan + alchemy are keyed — build their URLs from ZAN_API_KEY /
+            ALCHEMY_API_KEY in infra/optimism-mainnet/.env; never paste keyed
+            URLs into shared terminals or logs)
             and compare. Provider > 5 blocks behind the median should be
             sit-out-penalized by eRPC's punishMisbehavior — verify.
 
@@ -386,7 +395,7 @@ groups:
             Expected `false` for healthy. If `{result: {...}}`, op-node
             is still bootstrapping.
 
-            For publicnode-op / tenderly-op: provider-side regression.
+            For publicnode-op / zan-op / alchemy-op: provider-side regression.
             Consider hot-swap if sustained > 1h.
 
       # ── Provider credential / quota death (2026-07-30 incident) ─────────────
@@ -451,9 +460,13 @@ groups:
             with ErrEndpointCapacityExceeded for 30 minutes. The lane is
             technically reachable but contributes nothing to consensus.
 
-            Some capacity errors are NORMAL on free tiers (tenderly advertises
-            x-tdly-limit: 20), which is why this is a RATIO over a long window
-            rather than a raw count — a lane that is merely busy will not trip it.
+            Some capacity errors are NORMAL on free tiers, which is why this is
+            a RATIO over a long window rather than a raw count — a lane that is
+            merely busy will not trip it. ⚠️ The ratio is also why tenderly's
+            chronic throttling (2026-08-09 incident: ~10-20 rejections/h idle,
+            near-total rejection only during auction bursts) never tripped it —
+            burst-correlated rejection dilutes below 90% over 30m. Do not treat
+            this alert's silence as lane health.
 
             Measured precedent 2026-07-30: official-op and nodies-op both returned
             429 on 12/12 probes from this host, i.e. hard per-IP blocks, while the

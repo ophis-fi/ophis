@@ -523,9 +523,11 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # an empty/partial config during the envsubst write window.
   #
   # envsubst only substitutes the explicit list we pass — keeps unknown
-  # ${VARS} in eRPC's YAML syntax (none today, but defensive against
-  # future eRPC config additions like ${ALCHEMY_API_KEY}).
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${ZAN_API_KEY}' \
+  # ${VARS} in eRPC's YAML syntax, defensive against future config additions.
+  # ALCHEMY_API_KEY added 2026-08-09 (alchemy-op replaced tenderly-op as the
+  # second keyed eRPC lane); an unset/empty value is caught by
+  # validate_rendered_erpc before install (endpoint ending in '/v2/').
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${ZAN_API_KEY} ${ALCHEMY_API_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.
