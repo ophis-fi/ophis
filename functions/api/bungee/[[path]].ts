@@ -5,8 +5,9 @@
  * `x-api-key` header, and Bungee's docs mandate it stay SERVER-SIDE (never in
  * the browser bundle, where it could be extracted / rate-limit-drained). So the
  * frontend bridging SDK points its Bungee `apiBaseUrl` at this same-origin
- * proxy; we inject the key here and forward to Bungee. The integrator feeBps is
- * configured in the Bungee dashboard (bound to the key), not passed per-request.
+ * proxy; we inject the key here and forward to Bungee. The integrator fee is
+ * per-request query params (`feeBps` + `feeTakerAddress`, rejected on the
+ * public tier — verified live 2026-08-10), injected below on quote requests.
  *
  * SAFE BY DEFAULT: if `BUNGEE_API` is unset, we forward WITHOUT the key, so the
  * proxy degrades to plain affiliate-attribution behavior rather than breaking
@@ -73,6 +74,40 @@ const FORWARD_REQUEST_HEADERS = ['content-type', 'accept', 'affiliate']
 const ALLOWED_PATH_RE = /^\/api\/v1\/bungee(-manual)?(\/|$)/
 
 const ALLOWED_METHODS = new Set(['GET', 'POST'])
+
+// Ophis integrator fee on bridge quotes: 3 bps of the input amount, taken in
+// the input token, paid to the partner-fee Safe (Clement, 2026-08-10). Fee
+// params only work on the dedicated tier — the public API 400s on them — so
+// injection is gated on the key being present, preserving the keyless
+// degradation path. The quote's `quoteId` binds the fee for build-tx, so the
+// quote endpoint is the only injection point.
+const BUNGEE_INTEGRATOR_FEE_BPS = 3
+// MUST equal OPHIS_PARTNER_FEE_RECIPIENT in
+// apps/frontend/libs/common-const/src/feeRecipient.ts (functions/ is a
+// separate compilation unit and cannot import it; per the repo convention a
+// test compares this literal against the canonical one).
+export const BUNGEE_INTEGRATOR_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
+const FEE_PARAM_PATH_RE = /^\/api\/v1\/bungee\/quote\/?$/
+
+/**
+ * Rebuild the upstream query string. Client-supplied fee params are ALWAYS
+ * dropped — forwarded verbatim they would let any caller redirect the
+ * integrator fee to an arbitrary address — and Ophis's fee is injected on
+ * quote requests when the dedicated key is available.
+ */
+export function buildUpstreamSearch(searchInput: string, restPath: string, feeEnabled: boolean): string {
+  const params = new URLSearchParams(searchInput)
+  params.delete('feeBps')
+  params.delete('feeTakerAddress')
+
+  if (feeEnabled && FEE_PARAM_PATH_RE.test(restPath)) {
+    params.set('feeBps', String(BUNGEE_INTEGRATOR_FEE_BPS))
+    params.set('feeTakerAddress', BUNGEE_INTEGRATOR_FEE_RECIPIENT)
+  }
+
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
+}
 
 // Cap proxied request bodies. Bungee bridge quote/build payloads are small JSON
 // (well under a few KB); a 64 KB ceiling blocks abusive oversized POSTs from
@@ -190,7 +225,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   const backend = (env.BUNGEE_BACKEND || DEFAULT_BACKEND).replace(/\/+$/, '')
-  const upstream = `${backend}${rest}${url.search}`
+  const upstream = `${backend}${rest}${buildUpstreamSearch(url.search, rest, Boolean(env.BUNGEE_API))}`
 
   const headers = new Headers()
   for (const h of FORWARD_REQUEST_HEADERS) {
