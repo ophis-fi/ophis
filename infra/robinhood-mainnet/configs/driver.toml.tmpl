@@ -87,6 +87,16 @@ absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
+# pools.trade graduated-token liquidity. LI.FI is restricted to the Nordstern
+# exchange key in pools.toml, producing a venue-specific competing lane while
+# retaining the hardened same-chain and router-allowlist checks.
+[[solver]]
+name = "pools"
+endpoint = "http://pools-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
 [submission]
 # Robinhood L2 gas is ~0.02 gwei. 5 gwei cap is far above realistic traffic.
 gas-price-cap = "5000000000"

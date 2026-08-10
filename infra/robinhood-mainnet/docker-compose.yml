@@ -14,6 +14,7 @@
 #   pons-solver:       9314
 #   ekubo-solver:      9315
 #   up33-solver:       9316
+#   pools-solver:      9317
 #   rpc-proxy (eRPC):  4003   (OP=4001, HL=4000, Uni=4002)
 #   prometheus:        9096
 #   alertmanager:      9097
@@ -187,6 +188,7 @@ services:
       pons-solver: { condition: service_healthy }
       ekubo-solver: { condition: service_healthy }
       up33-solver: { condition: service_healthy }
+      pools-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
       ETHRPC: ${ROBINHOOD_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/4663}
@@ -377,6 +379,31 @@ services:
     command: ["up33", "--config", "/up33.toml"]
     ports:
       - "127.0.0.1:9316:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  # pools.trade graduated-token lane. Uses the hardened LI.FI adapter with
+  # allowExchanges=nordstern, the venue serving Pools' Uniswap v4 liquidity.
+  pools-solver:
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/pools.toml:/pools.toml:ro
+    command: ["lifi", "--config", "/pools.toml"]
+    ports:
+      - "127.0.0.1:9317:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s

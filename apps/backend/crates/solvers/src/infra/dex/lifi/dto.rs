@@ -131,6 +131,11 @@ pub struct Action {
 pub struct Step {
     #[serde(rename = "type", default)]
     pub step_type: String,
+    /// LI.FI exchange key that produced this step (for example `nordstern`).
+    /// Constrained solver lanes validate every swap step against their
+    /// configured exchange instead of trusting the request filter alone.
+    #[serde(default)]
+    pub tool: String,
 }
 
 // ---------------------------------------------------------------------------

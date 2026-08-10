@@ -12,7 +12,7 @@ import Sushi from '@cowprotocol/assets/cow-swap/ammslogo/sushi.png'
 import Swapr from '@cowprotocol/assets/cow-swap/ammslogo/swapr.png'
 import Symmetric from '@cowprotocol/assets/cow-swap/ammslogo/symmetric.png'
 import Uniswap from '@cowprotocol/assets/cow-swap/ammslogo/uniswap.png'
-import Gno from '@cowprotocol/assets/cow-swap/network-gnosis-chain-logo.svg'
+import UnknownSolver from '@cowprotocol/assets/images/image-solvers.svg'
 
 const SushiImage = { src: Sushi, alt: 'AMMs Sushi' }
 const OneInchImage = { src: Oneinch, alt: 'AMMs 1inch' }
@@ -44,5 +44,7 @@ export const AMM_LOGOS: Record<string, typeof SushiImage> = {
   symmetric: SymmetricImage,
   uniswap: UniswapImage,
   zerox: ZeroXImage,
-  default: { src: Gno, alt: 'Default unknown AMM' },
+  // This fallback is global, so it must remain operator-neutral. The old
+  // Gnosis chain logo incorrectly branded every unknown solver on every chain.
+  default: { src: UnknownSolver, alt: 'Unknown solver' },
 }

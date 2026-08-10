@@ -172,13 +172,13 @@ echo ""
 # its image gets rebuilt on every `--build` so a fresh container always
 # spawns. Listed here for completeness in case `--build` ever gets
 # stripped from the invocation.
-# Solver lanes: baseline (empty) + lifi-solver + pons-solver. Each binds a rendered config
+# Solver lanes: baseline plus external and direct solver services. Each binds a rendered config
 # (rendered/<name>.toml), so each must be force-recreated on a config render —
 # otherwise an endpoint rotation leaves the running solver pinned to the old
 # mounted file (Docker only recreates on image/config change; render-configs.sh
 # rewrites atomically via temp+mv). Add more solver services here as lanes are
 # enabled (a self-run Uniswap V4 dex-solver is the planned 2nd lane).
-CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot baseline lifi-solver kyberswap-solver uniswap-v4-solver pons-solver ekubo-solver up33-solver)
+CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot baseline lifi-solver kyberswap-solver uniswap-v4-solver pons-solver ekubo-solver up33-solver pools-solver)
 if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   echo "==> sequenced restart of config-mounted services to pick up rendered/* changes"
   echo "    (services: ${CONFIG_BOUND_SERVICES[*]})"
@@ -200,7 +200,7 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   # Trailing `|| true` removed: if a service fails to stop/start, we
   # want compose-up.sh to exit non-zero so operator sees the failure
   # before declaring deploy complete.
-  DOWNSTREAM=(driver orderbook autopilot baseline lifi-solver kyberswap-solver uniswap-v4-solver pons-solver ekubo-solver up33-solver)
+  DOWNSTREAM=(driver orderbook autopilot baseline lifi-solver kyberswap-solver uniswap-v4-solver pons-solver ekubo-solver up33-solver pools-solver)
   docker compose stop "${DOWNSTREAM[@]}"
   docker compose up -d --no-deps --force-recreate rpc-proxy
   # Wait for rpc-proxy-health (busybox tcp probe) to report healthy.
