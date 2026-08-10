@@ -1,5 +1,5 @@
 import { BRIDGE_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
-import { isEvmChainInfo } from '@cowprotocol/cow-sdk'
+import { isEvmChainInfo, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { AcrossBridgeProvider, BungeeBridgeProvider, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
@@ -23,6 +23,43 @@ describe('ophisBridgeProviders', () => {
     it('has no duplicate chain ids', async () => {
       const extended = ids(await new OphisAcrossBridgeProvider().getNetworks())
       expect(new Set(extended).size).toBe(extended.length)
+    })
+
+    describe('getBuyTokens source gating', () => {
+      const upstreamResult = { tokens: [], isRouteAvailable: true }
+
+      afterEach(() => jest.restoreAllMocks())
+
+      it('reports unavailable without hitting the API when the sell chain is not an executable Across source', async () => {
+        const upstreamSpy = jest
+          .spyOn(AcrossBridgeProvider.prototype, 'getBuyTokens')
+          .mockResolvedValue(upstreamResult)
+
+        // Gnosis -> Robinhood Chain: Across is the only provider serving the
+        // destination but cannot execute from the source — must not report
+        // route availability (the chain chip would light with dead quotes).
+        const result = await new OphisAcrossBridgeProvider().getBuyTokens({
+          buyChainId: 4663,
+          sellChainId: SupportedChainId.GNOSIS_CHAIN,
+        })
+
+        expect(result).toEqual({ tokens: [], isRouteAvailable: false })
+        expect(upstreamSpy).not.toHaveBeenCalled()
+      })
+
+      it('delegates to the upstream implementation for executable sources', async () => {
+        const upstreamSpy = jest
+          .spyOn(AcrossBridgeProvider.prototype, 'getBuyTokens')
+          .mockResolvedValue(upstreamResult)
+
+        const result = await new OphisAcrossBridgeProvider().getBuyTokens({
+          buyChainId: 4663,
+          sellChainId: SupportedChainId.MAINNET,
+        })
+
+        expect(result).toBe(upstreamResult)
+        expect(upstreamSpy).toHaveBeenCalledTimes(1)
+      })
     })
   })
 
