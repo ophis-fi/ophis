@@ -13,6 +13,10 @@
 node-url = "${ROBINHOOD_MAINNET_RPC}"
 
 settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+wrapped-native = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+# Robinhood's canonical wrapper is upgradeable aeWETH, whose balanceOf
+# mapping is at slot 0x33 (51), not the WETH9 default slot 3.
+wrapped-native-balance-slot = 51
 
 [dex]
 chain-id = "4663"
