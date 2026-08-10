@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { buildUpstreamSearch, BUNGEE_INTEGRATOR_FEE_RECIPIENT } from '../../functions/api/bungee/[[path]].ts';
@@ -6,13 +7,24 @@ import { buildUpstreamSearch, BUNGEE_INTEGRATOR_FEE_RECIPIENT } from '../../func
 const QUOTE_PATH = '/api/v1/bungee/quote';
 const DEST_TOKENS_PATH = '/api/v1/bungee-manual/dest-tokens';
 
-// Canonical value from apps/frontend/libs/common-const/src/feeRecipient.ts
-// (OPHIS_PARTNER_FEE_RECIPIENT). Per the repo convention documented there,
-// each consumer's test compares against a hardcoded literal — the functions/
-// compilation unit cannot import the frontend lib.
+// Independent copy per the repo convention documented in feeRecipient.ts —
+// guards against an accidental edit of either the proxy constant or the
+// canonical extraction below.
 const CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8';
 
 test('fee recipient matches the canonical partner-fee Safe', () => {
+  // Real cross-file invariant: extract the literal from the canonical source
+  // (the functions/ compilation unit cannot import the frontend lib, and a
+  // same-file literal alone would stay green through a deliberate rotation).
+  // readFileSync throws if the canonical file moves — fail-closed.
+  const canonicalSource = readFileSync(
+    new URL('../../apps/frontend/libs/common-const/src/feeRecipient.ts', import.meta.url),
+    'utf8',
+  );
+  const extracted = canonicalSource.match(/OPHIS_PARTNER_FEE_RECIPIENT = '(0x[0-9a-fA-F]{40})'/);
+
+  assert.ok(extracted, 'OPHIS_PARTNER_FEE_RECIPIENT literal not found in feeRecipient.ts');
+  assert.equal(BUNGEE_INTEGRATOR_FEE_RECIPIENT, extracted[1]);
   assert.equal(BUNGEE_INTEGRATOR_FEE_RECIPIENT, CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT);
 });
 
