@@ -1,0 +1,20 @@
+# Ophis - Robinhood Chain mainnet pools.trade solver config.
+#
+# pools.trade graduated-token liquidity is executed through Nordstern, a
+# Uniswap v4 venue exposed by LI.FI as exchange key `nordstern`. This dedicated
+# lane uses the existing hardened LI.FI adapter but restricts every quote to
+# Nordstern so it competes independently from the unrestricted LI.FI solver.
+#
+# Live verification 2026-08-10: WETH -> POOLS
+# (0x385b36Ff682Ab4C76E7c37A66b96aABC466471d5) returned a Nordstern-only
+# same-chain route whose transaction target and top-level approval target are
+# the allowlisted Robinhood LiFiDiamond.
+
+node-url = "${ROBINHOOD_MAINNET_RPC}"
+
+settlement = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD"
+
+[dex]
+chain-id = "4663"
+integrator = "ophis"
+allow-exchange = "nordstern"

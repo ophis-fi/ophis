@@ -28,6 +28,11 @@ struct Config {
     /// defaults to `"ophis"`.
     #[serde(default = "default_integrator")]
     integrator: String,
+
+    /// Optional LI.FI exchange key. Used by dedicated venue lanes such as the
+    /// Robinhood pools.trade/Nordstern lane.
+    #[serde(default)]
+    allow_exchange: Option<String>,
 }
 
 fn default_endpoint() -> reqwest::Url {
@@ -59,6 +64,10 @@ pub async fn load(path: &Path) -> super::Config {
     } else {
         config.integrator
     };
+    let allow_exchange = config
+        .allow_exchange
+        .map(|exchange| exchange.trim().to_owned())
+        .filter(|exchange| !exchange.is_empty());
 
     super::Config {
         lifi: lifi::Config {
@@ -66,6 +75,7 @@ pub async fn load(path: &Path) -> super::Config {
             chain_id: config.chain_id,
             settlement_contract: base.contracts.settlement,
             integrator,
+            allow_exchange,
             block_stream: base.block_stream.clone(),
         },
         base,

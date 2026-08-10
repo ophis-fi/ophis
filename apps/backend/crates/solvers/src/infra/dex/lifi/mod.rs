@@ -178,6 +178,9 @@ pub struct Lifi {
     /// Required `integrator` query param (LI.FI 404s without one). Identifies
     /// our integration; does not affect calldata correctness.
     integrator: String,
+    /// Optional LI.FI exchange key used to constrain this solver lane to one
+    /// liquidity source (for example `nordstern` for pools.trade liquidity).
+    allow_exchange: Option<String>,
 }
 
 pub struct Config {
@@ -195,6 +198,11 @@ pub struct Config {
     /// Required `integrator` string (LI.FI rejects quotes without it). Defaults
     /// to `"ophis"`.
     pub integrator: String,
+
+    /// Optional LI.FI `allowExchanges` value. A constrained instance competes
+    /// independently from the unrestricted LI.FI lane while retaining the
+    /// same calldata, same-chain and router-poisoning guards.
+    pub allow_exchange: Option<String>,
 
     /// Block stream used to attach the current block hash header so an egress
     /// proxy can cache responses per block.
@@ -218,6 +226,7 @@ impl Lifi {
             chain_id: config.chain_id as u64,
             settlement_contract: config.settlement_contract,
             integrator: config.integrator,
+            allow_exchange: config.allow_exchange,
         })
     }
 
@@ -276,6 +285,20 @@ impl Lifi {
                         "LI.FI route contains a bridge step (type={}); refusing — its \
                          calldata is not deferred-settlement-safe",
                         step.step_type
+                    ),
+                });
+            }
+
+            // `allowExchanges` is an upstream request filter, not a trust
+            // boundary. Fail closed unless the response contains at least one
+            // swap step and every swap step names the configured venue.
+            if let Some(exchange) = &self.allow_exchange
+                && !route_uses_only_exchange(&quote.included_steps, exchange)
+            {
+                return Err(Error::Api {
+                    code: -1,
+                    reason: format!(
+                        "LI.FI route does not exclusively use configured exchange {exchange}"
                     ),
                 });
             }
@@ -382,7 +405,7 @@ impl Lifi {
             .to_string();
 
         let settlement = format!("{:#x}", self.settlement_contract);
-        let query = [
+        let mut query = vec![
             ("fromChain", self.chain_id.to_string()),
             ("toChain", self.chain_id.to_string()),
             ("fromToken", format!("{:#x}", order.sell.0)),
@@ -399,6 +422,9 @@ impl Lifi {
             // Required by LI.FI (404s without it).
             ("integrator", self.integrator.clone()),
         ];
+        if let Some(exchange) = &self.allow_exchange {
+            query.push(("allowExchanges", exchange.clone()));
+        }
 
         let url = self
             .base_url
@@ -411,6 +437,18 @@ impl Lifi {
 
         Ok(response)
     }
+}
+
+fn route_uses_only_exchange(steps: &[dto::Step], expected: &str) -> bool {
+    let swap_steps: Vec<_> = steps
+        .iter()
+        .filter(|step| step.step_type.eq_ignore_ascii_case("swap"))
+        .collect();
+
+    !swap_steps.is_empty()
+        && swap_steps
+            .iter()
+            .all(|step| step.tool.eq_ignore_ascii_case(expected))
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -528,5 +566,26 @@ mod tests {
 
         let bad = Address::new([0x11; 20]);
         assert!(validate_router_allowlist(&bad, "router").is_err());
+    }
+
+    #[test]
+    fn constrained_routes_require_only_the_configured_exchange() {
+        let step = |step_type: &str, tool: &str| dto::Step {
+            step_type: step_type.to_owned(),
+            tool: tool.to_owned(),
+        };
+
+        assert!(route_uses_only_exchange(
+            &[step("protocol", "lifi"), step("swap", "nordstern")],
+            "nordstern"
+        ));
+        assert!(!route_uses_only_exchange(
+            &[step("swap", "nordstern"), step("swap", "other")],
+            "nordstern"
+        ));
+        assert!(!route_uses_only_exchange(
+            &[step("protocol", "lifi")],
+            "nordstern"
+        ));
     }
 }

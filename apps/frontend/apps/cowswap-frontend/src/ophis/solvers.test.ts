@@ -16,6 +16,10 @@ import {
 // The AUTOPILOT, not driver.toml.tmpl: a lane only competes if the autopilot
 // dispatches an auction to it. Mirrors scripts/check-solver-registry-invariant.sh.
 const AUTOPILOT_CONFIG_PATH = resolve(__dirname, '../../../../../../infra/optimism-mainnet/configs/autopilot.toml')
+const ROBINHOOD_AUTOPILOT_CONFIG_PATH = resolve(
+  __dirname,
+  '../../../../../../infra/robinhood-mainnet/configs/autopilot.toml.tmpl',
+)
 
 // Third-party / competitor brand tokens that must never appear in any rendered
 // solver string. Ophis public copy never names a competitor (standing rule).
@@ -34,8 +38,8 @@ const BANNED_BRAND_TOKENS = [
   'oneinch',
 ]
 
-function readAutopilotDriverNames(): string[] {
-  const toml = readFileSync(AUTOPILOT_CONFIG_PATH, 'utf8')
+function readAutopilotDriverNames(path = AUTOPILOT_CONFIG_PATH): string[] {
+  const toml = readFileSync(path, 'utf8')
   // Strip comments so prose never contributes a name.
   const stripped = toml.replace(/#[^\n]*/g, '')
   const names: string[] = []
@@ -70,6 +74,7 @@ describe('OPHIS_SOLVERS registry', () => {
       'uniswap-v4',
       'ekubo',
       'up33',
+      'pools',
     ])
     expect(getOphisSolversForChain(1).length).toBe(0)
   })
@@ -85,6 +90,21 @@ describe('OPHIS_SOLVERS registry', () => {
 
     const driverNames = readAutopilotDriverNames().sort()
     const registryIds = getOphisSolversForChain(OPHIS_SOLVER_REGISTRY_CHAIN_ID)
+      .map((solver) => solver.solverId)
+      .sort()
+
+    expect(driverNames.length).toBeGreaterThan(0)
+    expect(registryIds).toEqual(driverNames)
+  })
+
+  it('mirrors the Robinhood autopilot driver names exactly', () => {
+    if (!existsSync(ROBINHOOD_AUTOPILOT_CONFIG_PATH)) {
+      console.warn(`skipping Robinhood autopilot mirror check: ${ROBINHOOD_AUTOPILOT_CONFIG_PATH} not found`)
+      return
+    }
+
+    const driverNames = readAutopilotDriverNames(ROBINHOOD_AUTOPILOT_CONFIG_PATH).sort()
+    const registryIds = getOphisSolversForChain(OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID)
       .map((solver) => solver.solverId)
       .sort()
 

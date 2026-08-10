@@ -31,6 +31,7 @@ enabled because the autopilot requires `debug_traceTransaction`.
 | pons-solver   | 9314        | Direct authenticated pons token/WETH and token/WETH/token V3 lane |
 | ekubo-solver  | 9315        | Direct Ekubo Core/STONX Ve33 ERC-20 routes with packed-calldata validation |
 | up33-solver   | 9316        | Direct UP33 Solidly V2 stable/volatile routes |
+| pools-solver  | 9317        | pools.trade graduated-token liquidity via Nordstern/Uniswap v4 |
 | rpc-proxy     | 4003        | 2-of-2 read consensus + transaction relay (chain 4663) |
 | prometheus    | 9096        | Metrics (observability profile) |
 | alertmanager  | 9097        | Telegram alerts (observability profile) |
@@ -107,12 +108,13 @@ settlement pauses. CI locks this topology through `assert-erpc-failclosed.py`.
 | pons       | Active + legacy factories, direct V3 token/WETH/token quoting | **Implemented - direct lane** |
 | ekubo      | Canonical Core + pinned Ve33 routes from block-pinned quoter | **Implemented - ERC-20 SELL lane** |
 | up33       | Pinned Solidly V2 factory/router, stable + volatile routing | **Implemented - SELL lane** |
+| pools      | Live Pools token route verified through LI.FI exchange `nordstern` | **Implemented - venue-restricted lane** |
 | baseline   | n/a - ships empty (unsupported pool types) | Inactive |
 | okx / velora / openocean / dodo / enso | NOT on 4663 today | Disabled - revisit as each adds the chain |
 
-LI.FI, KyberSwap, direct Uniswap V4, and pons compete independently. The pons
-lane adds direct launch-token/WETH and two-hop launch-token/WETH/launch-token
-routes while the driver enforces static execution-target allowlists.
+LI.FI, KyberSwap, direct Uniswap V4, Ekubo, UP33, and Pools compete
+independently. The Pools lane restricts LI.FI to Nordstern while retaining the
+same simulation, guaranteed-output, same-chain, and router-allowlist checks.
 
 ## Common Failures
 
