@@ -154,6 +154,22 @@ else
 fi
 
 echo ""
+# Build before stopping any running service. The sequenced restart below can
+# include a newly-added service whose config requires code that is not present
+# in the host's previous shared backend image. Starting that service before the
+# final `up --build` would reuse the stale image, fail its healthcheck, and abort
+# the deploy before Docker ever reaches the build.
+echo "==> docker compose $PROFILES_ARG build"
+docker compose $PROFILES_ARG build
+
+# The build can also update orderbook/autopilot images. Apply the matching
+# migrations before the no-deps restart below is allowed to recreate either
+# service with new code. Running this in the foreground makes any migration
+# failure abort while the existing application containers are still serving.
+echo "==> docker compose run --rm migrations"
+docker compose run --rm migrations
+
+echo ""
 # Force-recreate config-mounted services BEFORE running `up`. Docker
 # Compose's change-detection only looks at the image+env+volume-spec
 # tuple; if the CONTENT of a bind-mounted file changes (e.g.
@@ -226,8 +242,8 @@ fi
 # already closed on the HL stack via PR #200's Codex Cyber HIGH; the OP
 # stack had been missing the symmetric fix. Conditional on the rendered
 # config existing AND the service being up (skipped on first-deploy
-# where the service isn't running yet — the final
-# `docker compose up -d --build` below brings it up fresh).
+# where the service isn't running yet — the final `docker compose up -d`
+# below brings it up fresh from the image built before the restart).
 if [[ -f observability-rendered/alertmanager.yml ]] && \
    docker compose ps --services 2>/dev/null | grep -qF alertmanager; then
   echo "==> force-recreating alertmanager to pick up rendered Telegram token"
@@ -239,8 +255,8 @@ if [[ -f observability-rendered/alertmanager.yml ]] && \
 fi
 
 echo ""
-echo "==> docker compose $PROFILES_ARG up -d --build $*"
-docker compose $PROFILES_ARG up -d --build "$@"
+echo "==> docker compose $PROFILES_ARG up -d $*"
+docker compose $PROFILES_ARG up -d "$@"
 
 echo ""
 echo "Stack startup initiated. Verify with:"
