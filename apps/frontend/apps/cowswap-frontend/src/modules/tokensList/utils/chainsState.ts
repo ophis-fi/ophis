@@ -1,3 +1,5 @@
+import { BRIDGE_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
+import { isSupportedChainId } from '@cowprotocol/common-utils'
 import { AdditionalTargetChainId, ChainInfo, SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { sortChainsByDisplayOrder } from './sortChainsByDisplayOrder'
@@ -64,7 +66,12 @@ export function createOutputChainsState({
   const orderedChains = sortChainsByDisplayOrder(chainsWithCurrent)
 
   const destinationIds = new Set(filterDestinationChains(bridgeSupportedNetworks)?.map((c) => c.id) ?? [])
-  const sourceSupported = destinationIds.has(chainId)
+  // Source capability is NOT the destination list: destinations only need the
+  // provider API to deliver there, while sources need on-chain execution
+  // machinery (see BRIDGE_SOURCE_CHAIN_IDS). Gating on destinationIds here
+  // would offer bridging FROM destination-only chains (Unichain, Robinhood
+  // Chain, Ink, Linea) where every quote fails.
+  const sourceSupported = BRIDGE_SOURCE_CHAIN_IDS.has(chainId)
 
   const baseDisabledChainIds = computeDisabledChainIds(
     orderedChains,
@@ -88,7 +95,12 @@ export function createOutputChainsState({
 }
 
 export function filterDestinationChains(bridgeSupportedNetworks: ChainInfo[] | undefined): ChainInfo[] | undefined {
-  return bridgeSupportedNetworks?.filter((chain) => chain.id in SupportedChainId || chain.id in AdditionalTargetChainId)
+  // isSupportedChainId admits the Ophis chains missing from the SDK enums
+  // (Unichain 130, Robinhood Chain 4663) so the widened provider network lists
+  // survive this filter; unknown chains a provider might list are still dropped.
+  return bridgeSupportedNetworks?.filter(
+    (chain) => chain.id in SupportedChainId || chain.id in AdditionalTargetChainId || isSupportedChainId(chain.id),
+  )
 }
 
 export function resolveDefaultChainId(

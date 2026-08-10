@@ -339,5 +339,49 @@ describe('chainsState', () => {
 
       expect(result.chains).toBeDefined()
     })
+
+    describe('Ophis destination/source asymmetry', () => {
+      const UNICHAIN = createChainInfo(130, 'Unichain')
+      const ROBINHOOD = createChainInfo(4663, 'Robinhood Chain')
+
+      it('filterDestinationChains keeps the Ophis extra chains missing from the SDK enums', () => {
+        const result = filterDestinationChains([MAINNET, UNICHAIN, ROBINHOOD, UNSUPPORTED])
+
+        expect(result).toContainEqual(UNICHAIN)
+        expect(result).toContainEqual(ROBINHOOD)
+        expect(result).not.toContainEqual(UNSUPPORTED)
+      })
+
+      it('offers Unichain and Robinhood Chain as destinations from a source-capable chain', () => {
+        const result = createOutputChainsState(
+          createOptions({
+            chainId: SupportedChainId.MAINNET,
+            bridgeSupportedNetworks: [MAINNET, GNOSIS, UNICHAIN, ROBINHOOD],
+            supportedChains: [MAINNET, GNOSIS, UNICHAIN, ROBINHOOD],
+          }),
+        )
+
+        expect(result.disabledChainIds?.has(130) ?? false).toBe(false)
+        expect(result.disabledChainIds?.has(4663) ?? false).toBe(false)
+      })
+
+      it('disables every destination when the current chain is destination-only', () => {
+        // Unichain is a valid DESTINATION but not a source (no on-chain
+        // execution machinery yet) — even though the provider network lists
+        // contain it, bridging FROM it must stay off.
+        const result = createOutputChainsState(
+          createOptions({
+            chainId: 130 as unknown as SupportedChainId,
+            currentChainInfo: UNICHAIN,
+            bridgeSupportedNetworks: [MAINNET, GNOSIS, UNICHAIN],
+            supportedChains: [MAINNET, GNOSIS, UNICHAIN],
+          }),
+        )
+
+        expect(result.disabledChainIds?.has(SupportedChainId.MAINNET)).toBe(true)
+        expect(result.disabledChainIds?.has(SupportedChainId.GNOSIS_CHAIN)).toBe(true)
+        expect(result.disabledChainIds?.has(130) ?? false).toBe(false)
+      })
+    })
   })
 })
