@@ -353,7 +353,7 @@ groups:
             eRPC is failing consensus because fewer than 2 of 3 upstreams respond
             within the retry budget for `{{ $labels.category }}` requests. Sustained
             elevation indicates one or more OP upstream(s) (publicnode / zan /
-            alchemy) are slow or rate-limited.
+            ophis-self) are slow or unavailable.
 
             ⚠️ 2026-08-09 lesson: this alert only trips at >5/s, which assumes
             steady driver/orderbook polling. A LOW-TRAFFIC stack with one live
@@ -394,9 +394,9 @@ groups:
             On OP, expect occasional disputes on tip queries (PR #71 trade-off).
             Sustained elevation = investigate which upstream is drifting:
               cast block-number --rpc-url https://optimism-rpc.publicnode.com
-            (zan + alchemy are keyed — build their URLs from ZAN_API_KEY /
-            ALCHEMY_API_KEY in infra/optimism-mainnet/.env; never paste keyed
-            URLs into shared terminals or logs)
+            For ZAN, build the URL from ZAN_API_KEY without pasting it into
+            shared terminals or logs. Check the owned node at
+            http://100.90.108.54:8545 from inside the rpc-proxy network.
             and compare. Provider > 5 blocks behind the median should be
             sit-out-penalized by eRPC's punishMisbehavior — verify.
 
@@ -494,14 +494,14 @@ groups:
             punishMisbehavior.
 
             For ophis-self-op: SSH check op-node + op-reth sync.
-              ssh root@100.77.53.81 \
+              ssh -p 24028 root@46.255.204.207 \
                 'curl -s -H content-type:application/json \
                   -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"id\":1}" \
                   http://localhost:8545'
             Expected `false` for healthy. If `{result: {...}}`, op-node
             is still bootstrapping.
 
-            For publicnode-op / zan-op / alchemy-op: provider-side regression.
+            For publicnode-op / zan-op: provider-side regression.
             Consider hot-swap if sustained > 1h.
 
       # ── Provider credential / quota death (2026-07-30 incident) ─────────────

@@ -1,6 +1,6 @@
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape: 2-of-3 consensus across publicnode + zan(KEYED) + alchemy(KEYED).**
+# **Current shape: 2-of-3 across PublicNode + ZAN + Ophis-owned Aleph op-reth.**
 #
 # Iteration history:
 #  - #130 deploy: tried publicnode + official-op + ankr-op. official-op
@@ -37,24 +37,22 @@
 #                                                      CDN: none detected (NON-Cloudflare)
 #                                                      auth: KEYED (${ZAN_API_KEY}, URL path)
 #                                                      serves ALL protected methods
-#   alchemy-op          opt-mainnet.g.alchemy.com     Alchemy
-#                                                      CDN: istio-envoy, no CF headers
-#                                                           (NON-Cloudflare; measured 2026-08-09)
-#                                                      auth: KEYED (${ALCHEMY_API_KEY}, URL path)
+#   ophis-self-op       100.90.108.54:8545            Ophis / Aleph op-reth
+#                                                      transport: Tailscale-only TCP proxy
+#                                                      auth: tailnet ACL
 #                                                      serves ALL protected methods
 #
 # **Threat model — 2-of-3 over 3 distinct failure domains, with the hard
 # invariant that AT MOST ONE upstream is Cloudflare-fronted (now publicnode):**
 #
-#  - Cloudflare compromise → only publicnode is hijacked. zan (non-CF) and
-#    alchemy (istio-envoy/GCP) return the real answer → dispute → returnError →
+#  - Cloudflare compromise → only publicnode is hijacked. ZAN and the owned
+#    Aleph node return the real answer → dispute → returnError →
 #    driver does NOT settle against forged state.
-#  - ZAN OR Alchemy compromise → the other two form quorum on the real
+#  - ZAN OR the Aleph node is compromised → the other two form quorum on the real
 #    answer → safe. NO 2-upstream subset shares one CDN/DNS, so a single-provider
 #    compromise can never satisfy quorum alone. (This property survived the
 #    2026-07-30 keyed withdrawal AND the 2026-08-09 tenderly retirement: it is
-#    why alchemy was chosen over blockdaemon, which measured Cloudflare-fronted
-#    on 2026-08-09 — cf-ray present — and would have made TWO CF lanes.)
+#    and the owned node introduces no shared CDN.)
 #  - ⚠️ THE PRECONDITION for the line above: that claim holds ONLY where all three
 #    lanes can actually ANSWER the method. It is not automatic — it is a property
 #    to re-check whenever a lane changes. Review finding 2026-07-30 (P1): while zan
@@ -71,7 +69,7 @@
 #    single-compromise protection is GONE for that method — either add a capable
 #    lane or force that method to disputeBehavior:returnError.
 #    Still true today for eth_getTransactionReceipt (publicnode is archive-gated,
-#    so only zan + alchemy serve it) — which is why the receipt rule below is
+#    so only ZAN + the owned node serve it) — which is why the receipt rule below is
 #    already disputeBehavior:returnError, i.e. fail-closed rather than tie-broken.
 #  - Two independent failure domains compromised at once: nation-state class,
 #    out of scope.
@@ -86,16 +84,15 @@
 #
 # Rationale (replace-not-expand): N=3 keeps the 2-of-3 invariant defensible;
 # expanding N>3 under eRPC's random sampling (maxParticipants:3) would silently
-# weaken the model to "attacker needs ≥2 of N". TWO upstreams are KEYED (zan +
-# alchemy) since 2026-08-09 — the "second keyed lane" hardening item left open by
-# the 2026-07-30 rebuild is now closed. The keyed pair can satisfy 2-of-3 by
-# itself, so the free lane (publicnode) flaking at the tip no longer collapses
-# the quorum. The common cause across the 07-23, 07-30 and 08-09 outages
+# weaken the model to "attacker needs ≥2 of N". ZAN plus the owned node can
+# satisfy 2-of-3 by themselves, so PublicNode flaking at the tip no longer
+# collapses the quorum. The common cause across the 07-23, 07-30, 08-09 and
+# 08-11 outages
 # (each with a DIFFERENT lane topology — see this file's history sections) was
 # that quorum depended on rate-capped free lanes answering under load; a load
 # spike dropped participants below threshold → lowParticipants:returnError
-# (driver pauses; safe but unavailable). A keyed pair removes free-lane
-# availability from the quorum-critical path. Per-block consensus equality is
+# (driver pauses; safe but unavailable). The owned node removes shared free
+# quotas from the quorum-critical path. Per-block consensus equality is
 # sound on OP: post-Bedrock block contents are deterministic per L2 block
 # number; only tip drift on "latest" varies, handled by `enforceHighestBlock`.
 #
@@ -284,7 +281,7 @@ projects:
               # 2-of-3 across fully-independent failure domains:
               # - publicnode-op (Allnodes; CF DNS)
               # - zan-op (Ant Digital Technologies; non-CF)
-              # - alchemy-op (Alchemy; istio-envoy/GCP, non-CF)
+              # - ophis-self-op (Ophis-owned Aleph op-reth; tailnet-only)
               agreementThreshold: 2
               # Tip-drift fix (#476): on OP's ~2s blocks publicnode + self
               # frequently sit 1 block apart on `latest`-tagged reads — a
@@ -430,11 +427,12 @@ projects:
         statePollerDebounce: 1s
 
     upstreams:
-      # ─── Keyed-pair consensus set (2026-08-09 incident) ───
-      # publicnode(free, CF) + zan(KEYED) + alchemy(KEYED). This executes the
-      # RESTORE PATH left open by the 2026-07-30 stopgap ("put ≥2 keyed lanes
-      # back"): alchemy's free quota reset 2026-08-01 as predicted and measured
-      # clean on 2026-08-09.
+      # ─── Owned-node consensus set (2026-08-11 incident) ───
+      # publicnode (free, CF) + zan (keyed, non-CF) + Ophis's Aleph op-reth
+      # node (owned, non-CF, tailnet-only). The owned node replaces Alchemy,
+      # whose shared free monthly quota exhausted two days after admission and
+      # caused protected eth_call requests to fail low-participants whenever
+      # PublicNode was momentarily behind ZAN at the OP tip.
       #
       # WHY 2026-08-09 BROKE (tenderly retired): a user swap on OP sat unsolved
       # >30min and expired. Autopilot logged NoSolutions from all 12 solvers on
@@ -449,28 +447,24 @@ projects:
       # idle days because tenderly's cap only bites under real auction load.
       # Last settled block before the fix: 154955332 (~2026-07-31).
       #
-      # Candidates measured 2026-08-09 (all 10 protected methods + 12-shot burst):
-      #   alchemy         ALL OK, 12/12 burst, server: istio-envoy (NON-CF)  ← chosen
+      # Candidates measured 2026-08-09 (historical incident record):
+      #   alchemy         ALL OK then, but its shared free quota exhausted 08-11
       #   validationcloud null responses, 0/12 — client still disabled
       #   blockdaemon     10/12 burst BUT now Cloudflare-fronted (cf-ray) →
       #                   would pair a 2nd CF lane with publicnode → disqualified
       #
-      # CDN-DIVERSITY INVARIANT — PRESERVED. "≤1 Cloudflare-fronted upstream per
-      # quorum" still holds: publicnode is the ONE CF lane; zan (no CF headers)
-      # and alchemy (istio-envoy/GCP) are two non-CF failure domains, so a single
-      # CDN compromise still cannot forge a 2-of-3 quorum.
+      # CDN-DIVERSITY INVARIANT — PRESERVED. PublicNode is the one CF lane;
+      # ZAN and the owned Aleph node are independent non-CF failure domains.
       #
-      # Hosts are LITERAL so the CI guard's urlsplit can pin the failure domain.
-      # TWO ${...KEY} envsubst secrets (ZAN_API_KEY, ALCHEMY_API_KEY) — erpc.yaml
-      # is in PK_BEARING_NAMES so the rendered file lands on the RAM-disk.
+      # Hosts are literal so the CI guard can pin the failure domains. The only
+      # endpoint credential is ZAN_API_KEY; erpc.yaml remains RAM-disk rendered.
       - id: publicnode-op
         # Cloudflare-fronted (Allnodes) — the ONE permitted CF lane here.
         # Fastest of the three (median 54ms) and the most reliable for the pricing
         # path. Measured 2026-07-30: 12/12 burst, eth_call / eth_getLogs /
         # eth_estimateGas / eth_feeHistory all OK.
-        # ⚠️ CANNOT serve eth_getTransactionReceipt: returns -32602 "Archive requests
-        # require a personal token". That is why BOTH lanes below are keyed and
-        # receipt-capable — the strict receipt rule needs two (zan + alchemy).
+        # Cannot serve eth_getTransactionReceipt without a personal token. ZAN
+        # and the owned node are the two receipt-capable voters.
         endpoint: https://optimism-rpc.publicnode.com
         failsafe:
           - matchMethod: "*"
@@ -485,7 +479,7 @@ projects:
 
       - id: zan-op
         # KEYED (registered account, 2026-07-30) and NON-Cloudflare (no cf-ray, no CF
-        # server header) — together with alchemy this is what keeps the ≤1-CF
+        # server header) — together with the owned node this keeps the ≤1-CF
         # invariant intact.
         #
         # Measured on the KEYED endpoint 2026-07-30: ALL TEN guard-protected methods
@@ -547,30 +541,13 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: alchemy-op
-        # KEYED (free tier, monthly quota resets on the 1st) and NON-Cloudflare
-        # (server: istio-envoy, no cf-ray) — the second authenticated lane,
-        # replacing tenderly-op on 2026-08-09 after tenderly's hard x-tdly-limit:20
-        # cap broke the quorum under auction load for the third time (07-23,
-        # 07-30, 08-09). Measured on the KEYED endpoint 2026-08-09: ALL TEN
-        # guard-protected methods OK (including eth_getTransactionReceipt, which
-        # publicnode can never serve) and 12/12 on an unpaced eth_call burst.
-        # chainId verified 0xa.
-        #
-        # ⚠️ QUOTA COUPLING: ${ALCHEMY_API_KEY} is the ACCOUNT-WIDE alchemy key
-        # (keychain: alchemy-api-key) — the same account whose L1 lane feeds the
-        # rebate-indexer's mainnet polling. It monthly-quota-exhausted in July
-        # (429 "Monthly capacity limit exceeded") precisely because multiple
-        # consumers shared it. OphisOpErpcUpstreamCredentialFailing (alerts.yml,
-        # PR #1016) is the tripwire for a repeat. ⚠️ IF IT FIRES, REPLACE THE
-        # LANE IMMEDIATELY — the degraded state is NOT fail-closed for Block
-        # A/B: zan + publicnode still make agreementThreshold:2, so disputes
-        # tie-break via preferBlockHeadLeader across only TWO capable lanes —
-        # the exact single-compromise hole documented in this file's 2026-07-30
-        # P1 (a hostile lane's freshest-head answer wins with nothing agreeing).
-        # Only receipts fail closed (zan alone < 2). Swap in a vetted keyed
-        # lane rather than loosening the policy.
-        endpoint: https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
+      - id: ophis-self-op
+        # Ophis-owned op-reth v2.3.3 on an Aleph VM, reached only through
+        # Tailscale Serve. The execution RPC itself remains loopback-bound on
+        # the VM; no public RPC port is exposed. Verified 2026-08-11: synced at
+        # the same head as PublicNode and served all ten protected methods plus
+        # eth_createAccessList, including fresh receipts.
+        endpoint: http://100.90.108.54:8545
         failsafe:
           - matchMethod: "*"
             timeout:
@@ -582,14 +559,14 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      # ─── Consensus set (2026-08-09): publicnode + zan + alchemy ───
+      # ─── Consensus set (2026-08-11): publicnode + zan + self-hosted ───
       # 2-of-3, agreementThreshold=2, maxParticipants=3 — UNCHANGED. This incident
-      # swapped only the tenderly endpoint for a keyed alchemy lane; no consensus
-      # parameter was touched and every rule remains fail-closed. Exactly one
+      # swapped only the dead quota-bound lane; no consensus parameter was
+      # touched and every rule remains fail-closed. Exactly one
       # CF-fronted upstream (publicnode) → a single-CDN compromise still can't
       # poison a full quorum.
       #
-      # Per-method quorum margin, re-measured 2026-08-09 on the KEYED alchemy lane:
+      # Per-method quorum margin, measured 2026-08-11 on the owned node:
       #   eth_call / eth_getLogs / eth_estimateGas ..................... 3 of 3 lanes
       #   eth_getCode / eth_getStorageAt / eth_getBalance / txCount .... 3 of 3 lanes
       #   eth_feeHistory / eth_getTransactionByHash .................... 3 of 3 lanes
@@ -604,25 +581,20 @@ projects:
       # reason its rule is disputeBehavior:returnError rather than
       # preferBlockHeadLeader — with two responders a leader tie-break is
       # attacker-selectable, so it must fail closed instead. The RECEIPT rule needs
-      # BOTH zan and alchemy to answer and agree; if either is rate-limited,
+      # BOTH zan and the owned node to answer and agree; if either is unavailable,
       # lowParticipantsBehavior:returnError makes it fail CLOSED (safe — the driver
       # refuses to conclude Executed/Reverted rather than guessing) while
       # settlement indexing stalls until it recovers.
       #
-      # AVAILABILITY PROPERTY OF THE KEYED PAIR (why this set fixes 08-09): the
-      # two keyed lanes alone satisfy agreementThreshold:2 for every protected
-      # method, so publicnode tip-lag or free-tier throttling degrades nothing.
+      # AVAILABILITY PROPERTY: ZAN plus the owned node satisfy threshold 2 for
+      # every protected method, so PublicNode tip-lag degrades nothing and the
+      # quorum no longer depends on Alchemy's monthly free allowance.
       # Under the single-keyed 07-30 set, quorum required at least one of two
       # rate-capped free lanes to answer — which is what failed under auction load
       # three times. Verify receipts THROUGH THE PROXY, not just /quote: with
       # agreementThreshold:2 a dead 3rd lane hides behind the other two satisfying
       # quorum (/quote stayed 10/10 green while receipts were 0/12 on 07-30).
       #
-      # #841 self-host (46.255.204.207, op-reth) is now OPTIONAL, not load-bearing. If
-      # re-added, keep the ≤1-CF-per-quorum invariant and either swap a lane (stay at 3)
-      # or bump to 2-of-4 — the latter ALSO needs assert-erpc-failclosed.py's
-      # EXPECTED_UPSTREAMS + EXPECTED_UPSTREAM_HOSTS updated. A self-hosted OP node
-      # remains the structural fix for free-tier quota exposure overall.
       # tenderly is NOT a fallback quorum member: in a fixed 3-lane set any
       # swapped-in lane is load-bearing by construction, and tenderly's hard
       # x-tdly-limit:20 cap is the named cause of three outages (07-23, 07-30,
@@ -635,4 +607,3 @@ projects:
       # publicnode would create the 2-CF quorum that defeats the fork-poisoning
       # threat model. validationcloud: client still disabled (null responses,
       # 0/12) as of 2026-08-09.
-
