@@ -32,11 +32,12 @@ export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   widgetPartnerFee: TWidgetFee | undefined,
   volumeFee: TVolumeFee | undefined,
   chainId: number | undefined,
+  isStablePair = false,
 ): TWidgetFee | TVolumeFee | undefined {
   // Two type parameters, not one: the widget fee is a price-improvement shape
   // and the volume fee is a Volume shape, so collapsing them to a single `T`
   // makes the two arguments fight and the call site stops compiling. The union
   // return mirrors what `??` produces at the swap call site.
   const gated = shouldEmitOphisPartnerFee(chainId) ? widgetPartnerFee : undefined
-  return ophisAppDataPartnerFeeForChain(gated, chainId) ?? volumeFee
+  return ophisAppDataPartnerFeeForChain(gated, chainId, isStablePair) ?? volumeFee
 }

@@ -63,14 +63,14 @@ describe('renderStatsPage', () => {
     expect(html).toContain('Solver competition on every order');
     expect(html).toContain('Optimism: 11, Unichain: 7, Robinhood Chain: 6');
     expect(html).not.toContain('On Unichain, 8 aggregator solvers');
-    expect(html).toContain('The Ophis base fee is 0.01% (1 bp) on every supported chain');
+    expect(html).toContain('The Ophis fee on every supported chain is a 0.01% (1 bp) base');
   });
 
-  it('states the exact fee and improvement split for sovereign and hosted chains', () => {
+  it('states the exact all-chain fee and improvement split', () => {
     const html = renderStatsPage(sample);
-    expect(html).toContain('The Ophis base fee is 0.01% (1 bp) on every supported chain');
-    expect(html).toContain('0.02% volume fee (0.003% on correlated pairs)');
-    expect(html).toContain('retains 50% of quote improvement upstream, capped at 0.98% of volume');
+    expect(html).toContain('80% of reference-quote improvement on volatile pairs (99 bps cap)');
+    expect(html).toContain('50% on stable pairs (20 bps cap)');
+    expect(html).toContain('CoW-hosted chains also apply CoW Protocol fees upstream');
   });
 
   it('gives the lifetime totals their early-stage, on-chain-verifiable context line', () => {

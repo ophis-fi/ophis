@@ -109,12 +109,12 @@ test('/learn hub renders and links every guide', async ({ page }) => {
   }
 })
 
-test('pricing page states sovereign capture and hosted rates', async ({ page }) => {
+test('pricing page states the all-chain capture policy', async ({ page }) => {
   await page.goto('/pricing')
   const body = page.locator('main')
   await expect(body).toContainText('1 bp + 80% improvement')
   await expect(body).toContainText('50%/20 bps cap for stables')
-  await expect(body).toContainText('1 bp Ophis base')
+  await expect(body).toContainText('Same 1 bp + capped improvement policy')
   await expect(body).not.toContainText('5 bps')
 })
 

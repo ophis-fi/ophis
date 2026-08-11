@@ -30,7 +30,7 @@ import {
   type Address,
   type BuiltOrder,
   type OphisAppData,
-  type OphisPartnerFee,
+  type OphisVolumePartnerFee,
 } from '@ophis/sdk';
 
 import { parseAssembleRequest, parseQuoteRequest, parseSubmitRequest } from './mapping.js';
@@ -161,7 +161,7 @@ interface QuoteArtifacts {
   built: BuiltOrder | null;
   pathId: string | null;
   /** Integrator-priced partner-fee entry embedded beside the Ophis default, or null. */
-  mappedPartnerFee: OphisPartnerFee | null;
+  mappedPartnerFee: OphisVolumePartnerFee | null;
   /** Typical quote-to-settlement latency (seconds), from the configured baseline. */
   expectedSettlementSeconds: number;
   values: { inValues: number[]; outValues: number[]; netOutValue: number };
@@ -182,6 +182,7 @@ async function quoteCore(env: Env, deps: Deps, req: CompatQuoteRequest): Promise
     req.referrerCode ?? undefined,
     'compat',
     extraPartnerFees,
+    req.isStablePair,
   );
 
   const quote = await fetchOrderbookQuote(
@@ -294,6 +295,7 @@ async function quoteCore(env: Env, deps: Deps, req: CompatQuoteRequest): Promise
       slp: req.slippageBips,
       ref: req.referrerCode,
       pf: req.partnerFee,
+      sp: req.isStablePair,
       qid: quote.quoteId,
       iat: nowSeconds,
       exp,
@@ -394,7 +396,13 @@ const quoteResponse = (traceId: string, art: QuoteArtifacts): CompatQuoteRespons
   // protocol fee plus any mapped integrator referralFee. Both are already priced
   // into outAmounts.
   partnerFeePercent:
-    ((art.appData.partnerFee?.volumeBps ?? 0) + (art.mappedPartnerFee?.volumeBps ?? 0)) / 100,
+    ((art.appData.partnerFee
+      ? (Array.isArray(art.appData.partnerFee)
+          ? art.appData.partnerFee.find((fee) => 'volumeBps' in fee)?.volumeBps
+          : 'volumeBps' in art.appData.partnerFee
+            ? art.appData.partnerFee.volumeBps
+            : 0) ?? 0
+      : 0) + (art.mappedPartnerFee?.volumeBps ?? 0)) / 100,
   pathId: art.pathId,
   pathViz: art.quote.pathViz,
   pathVizImage: art.quote.pathVizImage,
@@ -523,6 +531,7 @@ async function handleAssemble(
       owner: payload.usr,
       sellToken: payload.st,
       buyToken: payload.bt,
+      isStablePair: payload.sp === true,
       sellAmount: payload.ssa,
       buyAmount: payload.sba,
       kind: 'sell',
@@ -554,6 +563,7 @@ async function handleAssemble(
       chainId: payload.cid,
       sellToken: payload.st,
       buyToken: payload.bt,
+      isStablePair: payload.sp === true,
       sellAmount: payload.ssa,
       userAddr: payload.usr,
       slippageBips: payload.slp,
@@ -655,6 +665,7 @@ async function handleSwap(
           referrerCode: req.referrerCode ?? undefined,
           source: 'compat',
           partnerFees: req.partnerFee ? [req.partnerFee] : undefined,
+          isStablePair: req.isStablePair,
           unsafeCustomReceiver: receiver,
         },
         Math.floor(deps.nowMs() / 1000),

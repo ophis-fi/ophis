@@ -9,12 +9,21 @@ export {
   buildOphisAppDataPartnerFee,
   OPHIS_PARTNER_FEE_RECIPIENT,
   OPHIS_VOLUME_FEE_BPS,
+  OPHIS_PRICE_IMPROVEMENT_BPS,
+  OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS,
+  OPHIS_STABLE_PRICE_IMPROVEMENT_BPS,
+  OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_BPS,
+  OPHIS_MAX_PARTNER_REQUEST_BPS,
+  OPHIS_AGGREGATE_PARTNER_FEE_CAP_BPS,
   OPHIS_STABLE_VOLUME_FEE_BPS,
   OPHIS_SOVEREIGN_VOLUME_FEE_BPS,
   ophisVolumeBpsForChainAndPair,
   ophisVolumeBpsForPair,
   OPHIS_FEE_CHAIN_IDS,
   type OphisPartnerFee,
+  type OphisVolumePartnerFee,
+  type OphisPriceImprovementPartnerFee,
+  type OphisPartnerFeeConfig,
 } from './partner-fee.js';
 
 export {

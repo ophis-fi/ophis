@@ -23,7 +23,7 @@ Both packages register one capability (GOAT names the tool `ophis_swap`; AgentKi
 4. approves the vault relayer of the chain's settlement deployment once (a standard ERC-20 allowance),
 5. submits the order and returns the order UID plus an explorer URL.
 
-From there it is Ophis's normal intent flow: solvers compete to fill the order, and settlement lands in a batch auction at a uniform clearing price. The order is not exposed as a public-mempool router swap; [MEV protection](/blog/mev-protection-batch-auctions/) is built into the settlement model. On Optimism, Unichain, and Robinhood Chain, Ophis retains a capped share of reference-quote improvement under its published sovereign pricing; hosted chains follow CoW Protocol's upstream policy. ERC-20 orders are [gasless](/blog/gasless-swaps-how-intents-work/) after any required approval.
+From there it is Ophis's normal intent flow: solvers compete to fill the order, and settlement lands in a batch auction at a uniform clearing price. The order is not exposed as a public-mempool router swap; [MEV protection](/blog/mev-protection-batch-auctions/) is built into the settlement model. On every supported chain, Ophis retains its published capped share of reference-quote improvement; hosted chains additionally apply CoW Protocol's upstream fees. ERC-20 orders are [gasless](/blog/gasless-swaps-how-intents-work/) after any required approval.
 
 The packages also resolve the per-chain orderbook and EIP-712 settlement domain for you: on some chains Ophis runs its own bytecode-identical deployment of CoW Protocol's audited GPv2Settlement, on the rest orders settle through the canonical audited contracts. Guessing either value by hand produces silently rejected or misrouted orders.
 

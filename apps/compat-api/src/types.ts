@@ -11,7 +11,7 @@
  * semantics. Where the original semantics cannot be honored, the response says
  * so with structural nulls and named warnings; nothing is fabricated.
  */
-import type { Address, BuiltOrder, OphisPartnerFee } from '@ophis/sdk';
+import type { Address, BuiltOrder, OphisVolumePartnerFee } from '@ophis/sdk';
 
 // --- environment -----------------------------------------------------------
 
@@ -213,6 +213,8 @@ export interface CompatQuoteRequest {
   chainId: number;
   sellToken: Address;
   buyToken: Address;
+  /** Explicit pair classification for the hosted 50%/20 bps stable policy. */
+  isStablePair: boolean;
   /** Sell amount in atoms (exact-in; the v3 shape is exact-in only). */
   sellAmount: string;
   /** Checksummed trading account, or null (quote-only, not assemblable). */
@@ -227,7 +229,7 @@ export interface CompatQuoteRequest {
    * appData beside the Ophis default fee; the orderbook validates the recipient
    * against the partner-fee registry.
    */
-  partnerFee: OphisPartnerFee | null;
+  partnerFee: OphisVolumePartnerFee | null;
   priceQuality: 'fast' | 'optimal';
   /** Odos `pathViz` flag: request the route-visualization graph in the response. */
   pathViz: boolean;
@@ -281,7 +283,9 @@ export interface PathIdPayload {
   /** normalized Ophis referral code, or null */
   ref: string | null;
   /** mapped integrator partner-fee entry (Odos referralFee), or null */
-  pf: OphisPartnerFee | null;
+  pf: OphisVolumePartnerFee | null;
+  /** stable-pair policy marker */
+  sp?: boolean;
   /** orderbook quote id, or null */
   qid: number | null;
   /** unix seconds: mint time and expiry (min(iat+60, quote expiration)) */

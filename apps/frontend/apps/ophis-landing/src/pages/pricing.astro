@@ -2,8 +2,8 @@
 /**
  * /pricing: THE canonical fee page. Every other property (homepage FAQ, blog
  * posts, docs, business, llms.txt) should state fees consistently with this
- * page and link here. Sovereign pricing is enforced by the Ophis backend;
- * hosted pricing remains the CIP-75 flat-fee path.
+ * page and link here. Operated pricing is enforced by the Ophis backend;
+ * hosted pricing uses the equivalent CIP-75 appData policy.
  *
  * FAQ answers are rendered VERBATIM as the visible section body (the postbuild
  * check-faq-schema gate requires schema text to appear in visible text), so
@@ -18,19 +18,19 @@ const { updated } = canonicalPage('/pricing/')
 const FAQS = [
   {
     q: 'What does Ophis charge?',
-    a: `Every supported chain pays a 1 bp Ophis base. On ${sovereignList}, Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains pay CoW Protocol fees separately upstream.`,
+    a: `Every supported chain pays a 1 bp Ophis base. Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay CoW Protocol fees upstream.`,
   },
   {
     q: 'What is the all-in cost on each chain?',
-    a: `On ${sovereignList}, the minimum is 1 bp and the maximum Ophis charge is 100 bps on volatile pairs or 21 bps on stable pairs. On CoW-hosted chains, CoW Protocol adds its own fees on top of Ophis's hosted flat fee.`,
+    a: `On every supported chain, the minimum is 1 bp and the maximum Ophis charge is 100 bps on volatile pairs or 21 bps on stable pairs. On CoW-hosted chains, CoW Protocol adds its own fees on top.`,
   },
   {
     q: 'Does Ophis take a cut of surplus?',
-    a: `On ${sovereignList}, yes: 80% on volatile pairs or 50% on stable pairs, subject to the caps. The measurement is improvement over the backend reference quote, not the user's slippage limit. On CoW-hosted chains Ophis takes no additional improvement share.`,
+    a: `Yes, on every supported chain: 80% on volatile pairs or 50% on stable pairs, subject to the caps. The measurement is improvement over the reference quote, not the user's slippage limit.`,
   },
   {
     q: 'What do integrators pay, and what can they charge?',
-    a: `Integrations pay the same 1 bp base plus capped improvement capture on sovereign chains. Hosted integrations use the same 1 bp Ophis base. Integrators can still charge an onboarded own-fee on top.`,
+    a: `Integrations pay the same 1 bp base plus capped improvement capture on every chain. Integrators can still charge an onboarded own-fee of up to 90 bps on top; hosted settlement reserves a 190 bps aggregate ceiling.`,
   },
   {
     q: 'Are the APIs free?',
@@ -45,17 +45,17 @@ const FAQS = [
 
 <ContentPage
   title="Ophis fees and pricing"
-  description="The canonical Ophis fee reference: 1 bp plus capped price-improvement capture on Ophis-operated chains, with existing flat rates on CoW-hosted chains."
+  description="The canonical Ophis fee reference: 1 bp plus capped price-improvement capture on every supported chain."
   path="/pricing/"
   heading="Fees and pricing"
-  lede="Solver-aligned pricing on Ophis-operated chains and transparent flat rates on hosted chains."
+  lede="The same solver-aligned Ophis pricing on every supported chain."
   updated={updated}
   faqs={FAQS}
 >
   <p>
-    <strong>The short version:</strong> on {sovereignList}, Ophis charges 1 bp plus 80% of
+    <strong>The short version:</strong> on every supported chain, Ophis charges 1 bp plus 80% of
     reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap).
-    Hosted chains retain the existing flat rates.
+    CoW-hosted chains additionally pay CoW Protocol's upstream fees.
   </p>
 
   <table>
@@ -70,12 +70,12 @@ const FAQS = [
       <tr>
         <td><a href="https://swap.ophis.fi/">Swap app</a></td>
         <td>1 bp + 80% improvement (99 bps cap); 50%/20 bps cap for stables</td>
-        <td>1 bp Ophis base</td>
+        <td>Same 1 bp + capped improvement policy</td>
       </tr>
       <tr>
         <td><a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> integrations</td>
         <td>Same sovereign model</td>
-        <td>1 bp partner; 1 bp stables</td>
+        <td>Same all-chain policy via CIP-75 appData</td>
       </tr>
       <tr>
         <td><a href="https://docs.ophis.fi/ai-agents">MCP server</a> (keyless)</td>

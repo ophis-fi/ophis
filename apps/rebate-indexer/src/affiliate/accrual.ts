@@ -116,8 +116,9 @@ export async function buildAffiliateReferrers(
   // bind arm above is signature-gated and keeps its cutover-gated NULL fallback
   // pre-per-trade-tracking rows. Excluding NULL here (vs the bind arm) closes the
   // surplus/PI-NULL -> retail-COALESCE forge at the money path, as a second line behind
-  // the fetcher's attribution gate. Ophis emitters never emit surplus/PI, so a NULL on
-  // an appData-attributed trade is forge-or-unconfirmed; a legit legacy NULL row is
+  // the fetcher's attribution gate. Current hosted emitters include a 1 bp Volume
+  // entry alongside PI, so they remain positive here; a PI-only NULL row is
+  // forge-or-unconfirmed until a realized-fee source can price it. A legit legacy NULL row is
   // converged to a positive rate by the self-healing backfill and then credited. The
   // dashboard's appData arm (api.ts) mirrors this exact > 0 gate so display == payout.
   const appdataRows = await sql<

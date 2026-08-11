@@ -32,7 +32,7 @@ import {
   MAX_SLIPPAGE_BIPS,
   normalizeOphisReferralCode,
   type Address,
-  type OphisPartnerFee,
+  type OphisVolumePartnerFee,
 } from '@ophis/sdk';
 
 import {
@@ -209,7 +209,7 @@ export function parseQuoteRequest(
   // is rejected rather than mapped into a draft that the orderbook refuses at
   // ingress.
   const referralFee = body.referralFee;
-  let partnerFee: OphisPartnerFee | null = null;
+  let partnerFee: OphisVolumePartnerFee | null = null;
   if (referralFee !== undefined && referralFee !== null) {
     if (typeof referralFee !== 'number' || !Number.isFinite(referralFee) || referralFee < 0) {
       throw new CompatError('INVALID_REQUEST', 'referralFee: must be a non-negative number.');
@@ -322,6 +322,7 @@ export function parseQuoteRequest(
   const pathViz = body.pathViz === true;
   const pathVizImage = body.pathVizImage === true;
   const pathVizImageConfig = isRecord(body.pathVizImageConfig) ? body.pathVizImageConfig : null;
+  const isStablePair = body.isStablePair === true;
   if (body.permit2 === true) {
     warnings.push(
       warning(
@@ -336,6 +337,7 @@ export function parseQuoteRequest(
     chainId,
     sellToken,
     buyToken,
+    isStablePair,
     sellAmount,
     userAddr,
     slippageBips,

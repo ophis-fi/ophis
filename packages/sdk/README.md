@@ -14,7 +14,7 @@ npm install @ophis/sdk
 
 - **`getOphisOrderbookUrl(chainId)`** — the correct orderbook host per chain. Optimism is self-hosted at `optimism-mainnet.ophis.fi`, **not** `api.cow.fi`; getting this wrong silently bypasses the Ophis solver and partner fee.
 - **`getOphisOrderDomain(chainId)`** / **`getOphisSettlementAddress(chainId)`** — the EIP-712 signing domain with the correct per-chain `verifyingContract` (the OP settlement is non-canonical, so the cow-sdk default is wrong there).
-- **`buildOphisAppDataPartnerFee(chainId)`** — the exact CIP-75 volume-fee fragment (`{ volumeBps, recipient }`) for `appData.metadata.partnerFee`.
+- **`buildOphisAppDataPartnerFee(chainId, isStablePair)`** — the exact CIP-75 fee config. Operated chains return the 1 bp base (their backend adds improvement capture); hosted chains return base + pair-aware capped improvement entries.
 - **`ophisOrderReceiver`** / **`assertReceiverIsOwner`** — pin a CoW order's `receiver` to the owner. An unpinned receiver is the #1 drain vector for an automated signer.
 - **`buildOphisOrderMetadata`** / **`enrollOphisTrader`** / **`buildOphisOrderCreation`** — the high-level order-flow helpers that collapse the integration footguns into one call each: `appCode` is always `'ophis'` (a custom one silently forfeits the rebate), each trader wallet is enrolled with the rebate indexer, the receiver is asserted, and the `sendOrder` wire shape (full `appData` string + `appDataHash`) is correct.
 - **`getOphisVaultRelayer(chainId)`** — the correct `approve` spender for the one-time sell-token approval. On Optimism the Ophis relayer is **not** cow-sdk's canonical one, so resolve it here.
@@ -35,7 +35,7 @@ import {
 
 const orderbook = getOphisOrderbookUrl(10);          // https://optimism-mainnet.ophis.fi
 const domain = getOphisOrderDomain(10);               // { name, version, chainId, verifyingContract }
-const partnerFee = buildOphisAppDataPartnerFee(10);   // { volumeBps, recipient }
+const partnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair);
 
 assertReceiverIsOwner(owner, order.receiver);         // throws if proceeds would leave the account
 ```

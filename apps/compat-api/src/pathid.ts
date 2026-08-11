@@ -128,5 +128,5 @@ export async function verifyPathId(
     );
   }
   // Older tokens minted before the partner-fee mapping carry no `pf`; treat as null.
-  return { ...p, pf: p.pf ?? null } as PathIdPayload;
+  return { ...p, pf: p.pf ?? null, sp: p.sp === true } as PathIdPayload;
 }

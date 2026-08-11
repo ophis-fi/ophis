@@ -217,7 +217,9 @@ function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | 
  *
  * appData is attacker-controllable, so a crafted array cannot use a decoy
  * `{recipient: attacker, volumeBps: 10}` to over-credit: only Ophis-recipient
- * entries are considered, and a real Volume fee is preferred over a surplus/PI one.
+ * entries are considered, and the 1 bp base Volume entry is preferred over the
+ * accompanying surplus/PI entry. This deliberately accounts only realized-flat
+ * revenue; the PI cap is never treated as if it were collected.
  * The caller additionally leaves NULL for unparseable appData / pre-per-trade rows.
  */
 function readVolumeFeeBps(meta: unknown): number | null {

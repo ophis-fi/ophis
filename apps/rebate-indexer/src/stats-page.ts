@@ -148,7 +148,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <li><strong>Hard signed limit price</strong>Your signed order is a contract-enforced price floor. A fill below it cannot settle on-chain.</li>
   <li><strong>Gasless execution</strong>Solvers pay the settlement gas and costs settle inside the trade. After a one-time token approval before the first sell, no native gas token is needed, and failed settlements cost you nothing.</li>
   <li><strong>Solver competition on every order</strong>Configured Ophis-operated routing lanes: ${esc(operatedSolverSummary)}. Pair coverage and live participation vary by auction. Other chains draw on ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
-  <li class="wide"><strong>Where the price improvement goes</strong>The Ophis base fee is 0.01% (1 bp) on every supported chain. On CoW-hosted chains, CoW Protocol separately adds a 0.02% volume fee (0.003% on correlated pairs) and retains 50% of quote improvement upstream, capped at 0.98% of volume.</li>
+  <li class="wide"><strong>Where the price improvement goes</strong>The Ophis fee on every supported chain is a 0.01% (1 bp) base plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). CoW-hosted chains also apply CoW Protocol fees upstream.</li>
 </ul>
 <h2>Settled volume by chain</h2>
 <table>

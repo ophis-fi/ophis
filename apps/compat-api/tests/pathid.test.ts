@@ -20,6 +20,7 @@ const payload = (overrides: Partial<PathIdPayload> = {}): PathIdPayload => ({
   slp: 30,
   ref: 'odos123',
   pf: null,
+  sp: false,
   qid: 9858,
   iat: NOW,
   exp: NOW + 60,

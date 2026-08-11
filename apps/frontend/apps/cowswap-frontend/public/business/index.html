@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ophis">
 <meta property="og:title" content="Ophis for Business">
-<meta property="og:description" content="Non-custodial intent routing for desks, treasuries, and integrators. Ophis-operated chains use a 1 bp base plus capped price-improvement capture; hosted integrations use the same 1 bp base. Charge your own fee on top and Ophis takes 0% of it.">
+<meta property="og:description" content="Non-custodial intent routing for desks, treasuries, and integrators. Every supported chain uses a 1 bp base plus capped price-improvement capture. Charge your own fee on top and Ophis takes 0% of it.">
 <meta property="og:url" content="https://business.ophis.fi">
 <meta property="og:image" content="https://business.ophis.fi/ophis-og.jpg">
 <meta property="og:image:width" content="1920">
@@ -45,13 +45,13 @@
       "provider": { "@id": "https://ophis.fi/#organization" },
       "url": "https://business.ophis.fi",
       "areaServed": "Worldwide",
-      "description": "Non-custodial intent routing with MEV-protected batch-auction settlement across 13 EVM chains. Ophis-operated Optimism, Unichain, and Robinhood Chain charge a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations use the same 1 bp base, reduced to 1 bp on stable pairs. Integrators can stack an onboarded own-fee on top, and Ophis takes 0% of that markup."
+      "description": "Non-custodial intent routing with MEV-protected batch-auction settlement across 13 EVM chains. Every supported chain charges a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations additionally pay CoW Protocol fees upstream. Integrators can stack an onboarded own-fee on top, and Ophis takes 0% of that markup."
     },
     {
       "@type": "FAQPage",
       "mainEntity": [
         { "@type": "Question", "name": "Is Ophis a regulated financial-services entity?", "acceptedAnswer": { "@type": "Answer", "text": "No. Ophis is operated independently and provides a non-custodial software interface to permissionless on-chain protocols. It does not take custody of funds, execute discretionary trades, or hold a regulated financial-services license. Full operator and entity details are provided on request for formal contractual arrangements." } },
-        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "On Ophis-operated Optimism, Unichain, and Robinhood Chain, integrations pay a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations use the same 1 bp base, reduced to 1 bp on stable pairs. Integrators can stack an onboarded own-fee on top of ERC-20 orders, and Ophis takes 0% of that markup." } },
+        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "Every supported chain charges a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations additionally pay CoW Protocol fees upstream. Integrators can stack an onboarded own-fee up to 90 bps on top of ERC-20 orders, and Ophis takes 0% of that markup." } },
         { "@type": "Question", "name": "Where are integrator own-fees guaranteed for payout?", "acceptedAnswer": { "@type": "Answer", "text": "Ophis-operated own-fee payout is currently guaranteed on Optimism and Unichain once the recipient is onboarded and its payout lane is enabled. Robinhood accrual is reported as non-guaranteed until its dedicated payout lane exists. CoW-hosted payouts follow CoW Protocol's terms and service fee." } },
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The public Intent API allows 30 requests per minute per IP, adequate for low and medium-volume operators. Partner-tier rate limits for higher throughput are reviewed case by case; reach out with a brief description of your use case and target volume." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Three paths: point your operators at swap.ophis.fi for direct use, call POST /api/intent from your bot or agent, or embed the upstream CoW Widget. Documentation is at docs.ophis.fi." } },
@@ -459,20 +459,20 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
         <div class="ttl">Published rates</div>
         <div class="feerow">
           <span class="big take">1 bp</span>
-          <span class="txt"><b>Operated-chain base rate</b>, plus 80% of volatile improvement capped at
-          99 bps, or 50% of stable improvement capped at 20 bps. Hosted integrations also use 1 bp.</span>
+          <span class="txt"><b>All-chain base rate</b>, plus 80% of volatile improvement capped at
+          99 bps, or 50% of stable improvement capped at 20 bps on every supported chain.</span>
         </div>
         <div class="feerow">
           <span class="big zero">0%</span>
           <span class="txt"><b>Ophis's cut of your markup.</b> Your own fee entry can use the room
-          remaining under the 100 bps aggregate appData cap: 99 bps beside the 1 bp Ophis base
-          on every supported chain. Ophis takes no cut; the protocol charge is applied separately, not
+          permitted up to the 90 bps registered-partner ceiling. Hosted settlement uses a 190 bps
+          aggregate cap so that fee can coexist with Ophis's 100 bps worst case. Ophis takes no cut; the protocol charge is applied separately, not
           taken from it. Your net receipt depends on the payout path (see below). On CoW-hosted chains, payout runs through CoW's weekly distribution under
           CoW's terms.</span>
         </div>
         <div class="feerow">
           <span class="big cap">99 bps</span>
-          <span class="txt"><b>Volatile capture cap</b> on operated chains. Stablecoin capture is
+          <span class="txt"><b>Volatile capture cap</b> on every supported chain. Stablecoin capture is
           capped at 20 bps; each also carries the 1 bp base.</span>
         </div>
         <div class="example">
@@ -602,7 +602,7 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
           Call Ophis from your bot, agent, or backend with the dependency-free
           <code>@ophis/sdk</code> across 13 chains, including Robinhood Chain and native ETH. The SDK path pays the
           chain-specific Ophis rate, carries your own fee entry on ERC-20 orders within the
-          default 100 bps aggregate cap, no Ophis cut), and carries your referral code for the 8% or
+          190 bps hosted aggregate cap and 90 bps per-partner ceiling, no Ophis cut), and carries your referral code for the 8% or
           12% share on the flow you send.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
@@ -826,8 +826,8 @@ footer.site { padding: 64px 24px 36px; background: rgba(2, 0, 13, 0.6); border-t
           <p>
             Using the SDK or a manual appData build, you charge your own fee on top of ERC-20
             orders and Ophis takes 0% of it: the order's appData <code>partnerFee</code> field accepts an
-            array, so you stack your own entry (your recipient address and rate: up to 99 bps beside
-            the 1 bp Ophis base under the default 100 bps aggregate cap)
+            array, so you stack your own entry (your recipient address and rate: up to 90 bps under
+            the registered-partner ceiling and 190 bps hosted aggregate cap)
             next to the Ophis base entry, and Ophis takes
             0% of your markup. Set your own rate to 80 bps on $1,000,000 of monthly volume and Ophis
             takes 0% of your $8,000 markup; Ophis's chain-specific protocol charge is separate.

@@ -2,6 +2,8 @@ import {
   OPHIS_PARTNER_FEE_RECIPIENT,
   OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
   OPHIS_DEFAULT_PARTNER_FEE,
+  OPHIS_STABLE_APP_DATA_PARTNER_FEE,
+  OPHIS_AGGREGATE_PARTNER_FEE_CAP_BPS,
   ophisAppDataPartnerFeeForChain,
   ophisVolumeOnlyFloorFee,
   isVolumeOnlyChain,
@@ -28,13 +30,15 @@ describe('partnerFeeDefault', () => {
   })
 
   it('OPHIS_DEFAULT_APP_DATA_PARTNER_FEE.recipient matches the canonical recipient', () => {
-    expect(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE.recipient).toBe(CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT)
+    expect(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE.every((fee) => fee.recipient === CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT)).toBe(true)
   })
 
   it('OPHIS_DEFAULT_APP_DATA_PARTNER_FEE carries the spec-mandated price-improvement bps + maxVolumeBps', () => {
-    // CIP-75 priceImprovementBps:2500 maxVolumeBps:50 — partner-fee spec.
-    expect(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE.priceImprovementBps).toBe(2500)
-    expect(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE.maxVolumeBps).toBe(50)
+    expect(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE).toEqual([
+      { volumeBps: 1, recipient: CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT },
+      { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT },
+    ])
+    expect(OPHIS_AGGREGATE_PARTNER_FEE_CAP_BPS).toBe(190)
   })
 
   describe('ophisAppDataPartnerFeeForChain (PI suppression on self-hosted chains)', () => {
@@ -51,6 +55,12 @@ describe('partnerFeeDefault', () => {
       )
       expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, 8453)).toBe(
         OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
+      )
+    })
+
+    it('selects the stable 50% / 20 bps policy on a hosted stable pair', () => {
+      expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, 1, true)).toBe(
+        OPHIS_STABLE_APP_DATA_PARTNER_FEE,
       )
     })
 
