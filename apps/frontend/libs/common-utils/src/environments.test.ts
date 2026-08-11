@@ -58,6 +58,26 @@ describe('Detect environments using host and path', () => {
     it('swap.cow.fi', () => {
       expect(checkEnvironment('swap.cow.fi', '')).toEqual(isProduction)
     })
+
+    // Ophis fork domains MUST be prod via the DEFAULTS: the REACT_APP env
+    // override is a dynamic process.env lookup no bundler inlines, so these
+    // ran with every flag false until 2026-08-11 (Bungee -> barn BFF 403).
+    it('ophis.fi', () => {
+      expect(checkEnvironment('ophis.fi', '')).toEqual(isProduction)
+    })
+
+    it('swap.ophis.fi', () => {
+      expect(checkEnvironment('swap.ophis.fi', '')).toEqual(isProduction)
+    })
+
+    it('explorer.ophis.fi', () => {
+      expect(checkEnvironment('explorer.ophis.fi', '')).toEqual(isProduction)
+    })
+
+    it('ophis.fi preview deploys are NOT production', () => {
+      expect(checkEnvironment('9fbd9b47.greg-etm.pages.dev', '')).toEqual(DEFAULT_ENVIRONMENTS_CHECKS)
+      expect(checkEnvironment('evil-ophis.fi.attacker.example', '')).toEqual(DEFAULT_ENVIRONMENTS_CHECKS)
+    })
   })
 
   describe('Is ENS', () => {
