@@ -57,7 +57,7 @@ export const trades = pgTable(
     //               pre-per-trade historical row, unparseable appData, OR a VALID
     //               surplus/price-improvement Ophis fee this volume-derived indexer
     //               cannot compute (so it still earns at the default rather than 0).
-    // 0 vs NULL is load-bearing: COALESCE(volume_fee_bps, GROSS_FEE_BPS) keeps 0 as
+    // 0 vs NULL is load-bearing: COALESCE(volume_fee_bps, LEGACY_UNDECODED_FEE_BPS) keeps 0 as
     // 0 (no credit) but maps NULL to retail. The self-healing backfill only upgrades
     // NULL -> a POSITIVE rate, so re-fetching history never reclassifies it to 0.
     volumeFeeBps: integer('volume_fee_bps'),

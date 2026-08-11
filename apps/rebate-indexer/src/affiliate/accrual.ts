@@ -1,6 +1,6 @@
 import { sql } from '../db/index.js';
 import type { AffiliateReferrer } from './computeAffiliate.js';
-import { GROSS_FEE_BPS, type AffiliateKind } from './rates.js';
+import { LEGACY_UNDECODED_FEE_BPS, type AffiliateKind } from './rates.js';
 
 // Reads the referral graph + trades and builds the per-referrer, per-chain referred
 // volume for a cycle, ready for computeAffiliate().
@@ -68,7 +68,7 @@ export async function buildAffiliateReferrers(
     SELECT
       encode(r.referrer_wallet, 'hex')                AS referrer_hex,
       t.chain_id                                      AS chain_id,
-      COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})::int AS gross_bps,
+      COALESCE(t.volume_fee_bps, ${LEGACY_UNDECODED_FEE_BPS})::int AS gross_bps,
       SUM(t.value_usd)::text                          AS volume_usd
     FROM referrals r
     JOIN trades t ON t.wallet = r.referred_wallet

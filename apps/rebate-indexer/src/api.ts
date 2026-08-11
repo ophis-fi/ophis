@@ -19,6 +19,7 @@ import { registerTradeRewardRoutes } from './tradeRewards/routes.js';
 import {
   FEE_SHARE_BPS,
   GROSS_FEE_BPS,
+  LEGACY_UNDECODED_FEE_BPS,
   COW_TAKE_BPS,
   OPTIMISM_CHAIN_ID,
   SOVEREIGN_CHAIN_IDS,
@@ -61,7 +62,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           -- Cycle NET fee = SUM(value * actual bps * keepFraction(chain)) so the
           -- estimate matches the per-trade, per-chain payout: sovereign chains
           -- (OP, Unichain) keep 100%, hosted 75% (NULL bps -> retail default, like accrual).
-          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${LEGACY_UNDECODED_FEE_BPS})
             * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
             WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           ), 0)::text AS cycle_net_weighted,
@@ -89,7 +90,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
         SELECT
           COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
           COALESCE(SUM(t.value_usd), 0)::text AS cycle_volume_usd,
-          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${LEGACY_UNDECODED_FEE_BPS})
             * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)), 0)::text AS cycle_net_weighted,
           '0'::text AS lifetime_volume_usd
         FROM referrals r

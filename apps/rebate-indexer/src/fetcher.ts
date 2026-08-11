@@ -190,7 +190,7 @@ function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | 
  * and clamped to [1, retail]. Classifies the Ophis partner fee against the backend
  * app_data.rs FeePolicyDeserializer arms and returns one of THREE states (which
  * must NOT collapse, because accrual/dashboard SQL applies
- * COALESCE(volume_fee_bps, GROSS_FEE_BPS) and would credit a NULL at the retail
+ * COALESCE(volume_fee_bps, LEGACY_UNDECODED_FEE_BPS) and would credit a NULL at the legacy retail
  * default):
  *
  *   N (1..retail) -- a settled flat Volume fee to Ophis: CIP-75 `{ volumeBps }` or

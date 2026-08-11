@@ -13,6 +13,7 @@ import {
   estimateEarningsUsd,
   estimateEarningsFromNetFeeUsd,
   GROSS_FEE_BPS,
+  LEGACY_UNDECODED_FEE_BPS,
   type AffiliateKind,
 } from '../../src/affiliate/rates.js';
 
@@ -50,6 +51,11 @@ const retailRef = (w: `0x${string}`, kind: AffiliateKind, v: Map<number, number>
   ref(w, kind, [...v].map(([chainId, volumeUsd]) => ({ chainId, volumeUsd, grossBps: GROSS_FEE_BPS })));
 
 describe('computeAffiliate — canonical 1 bp Ophis fee', () => {
+  it('keeps the new-order default separate from the legacy undecoded fallback', () => {
+    expect(GROSS_FEE_BPS).toBe(1);
+    expect(LEGACY_UNDECODED_FEE_BPS).toBe(10);
+  });
+
   it('Regular hosted under cap: $500k -> $3', () => {
     const r = computeAffiliate([retailRef(wallet('a'), 'regular', new Map([[HOSTED, 500_000]]))], PRICE)[0]!;
     expect(r.owedUsd).toBeCloseTo(3, 6);
