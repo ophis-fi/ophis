@@ -41,30 +41,24 @@ EXPECTED_UPSTREAMS = 3
 # IP-literal, or extra provider cannot pose as a 3rd domain. A deliberate provider
 # change MUST update this set (that is the point — see module docstring).
 #
-# 2026-08-09: tenderly-op → alchemy-op (KEYED). Tenderly's hard x-tdly-limit:20
-# rate cap broke the 2-of-3 quorum under auction load for the third time
-# (07-23, 07-30, 08-09 — the 08-09 incident left a user swap unsolved for 30min
-# until expiry, with every solver returning NoSolutions because every consensus
-# eth_call failed lowParticipants). This restores the ≥2-keyed-lanes backbone
-# ("restore path" documented in the 07-30 stopgap): zan + alchemy are keyed and
-# can satisfy agreementThreshold:2 by themselves, so free-lane throttling or
-# publicnode tip-lag no longer collapses the quorum.
+# 2026-08-11: alchemy-op -> ophis-self-op. Alchemy's shared free monthly quota
+# exhausted two days after it joined the quorum, recreating the exact
+# low-participants outage it was meant to prevent. The replacement is Ophis's
+# synced Aleph op-reth node, reached only over Tailscale. It has no provider
+# quota and was verified against every protected method before admission.
 #
 # The "≤1 Cloudflare-fronted upstream per quorum" property is PRESERVED:
-# publicnode is the one CF lane, while zan (no CF headers) and alchemy
-# (istio-envoy/GCP, measured 2026-08-09) are two non-CF failure domains, so a
-# single CDN compromise still cannot forge a 2-of-3 quorum. blockdaemon was
-# REJECTED for this slot on that exact test: it measured Cloudflare-fronted
-# (cf-ray) on 2026-08-09, which would have paired a 2nd CF lane with publicnode.
+# publicnode is the one CF lane, while zan and the self-hosted Aleph node are
+# non-CF failure domains, so a single CDN compromise cannot forge 2-of-3.
 #
 # Thin-method note: publicnode is archive-gated so it cannot serve
-# eth_getTransactionReceipt — receipts run 2-of-3 on zan+alchemy, which is why
+# eth_getTransactionReceipt — receipts run 2-of-3 on zan+self, which is why
 # the template's receipt rule is disputeBehavior:returnError (fail closed).
 # This guard's consensus-parameter assertions are unchanged.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
     "optimism-rpc.publicnode.com",
     "api.zan.top",
-    "opt-mainnet.g.alchemy.com",
+    "100.90.108.54",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus
