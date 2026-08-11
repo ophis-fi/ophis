@@ -478,7 +478,10 @@ groups:
       # is a per-category rate and harder to interpret). Threshold of 5
       # blocks = ~10 seconds of OP block time = real lag, not microsecond drift.
       - alert: OphisOpErpcUpstreamBlockHeadLagging
-        expr: erpc_upstream_block_head_lag{network="evm:10"} > 5
+        # Pin alerts to admitted voters. Prometheus retains retired-upstream
+        # series after a hot-swap; without this allowlist the removed lane can
+        # page again from historical samples even though eRPC no longer uses it.
+        expr: erpc_upstream_block_head_lag{network="evm:10",upstream=~"publicnode-op|zan-op|ophis-self-op"} > 5
         for: 15m
         labels:
           severity: warning
@@ -518,7 +521,7 @@ groups:
       - alert: OphisOpErpcUpstreamCredentialFailing
         expr: |
           sum by (upstream) (
-            increase(erpc_upstream_request_errors_total{network="evm:10",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
+            increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|ophis-self-op",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
           ) > 3
         for: 10m
         labels:
@@ -551,9 +554,9 @@ groups:
       - alert: OphisOpErpcUpstreamRateLimitedDead
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",error="ErrEndpointCapacityExceeded"}[15m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|ophis-self-op",error="ErrEndpointCapacityExceeded"}[15m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[15m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|ophis-self-op"}[15m])), 0.001)
           ) > 0.9
         for: 30m
         labels:
