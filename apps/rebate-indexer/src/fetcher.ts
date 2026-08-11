@@ -357,7 +357,12 @@ function isCanonicalOphisImprovement(
  * This is an assessed settlement-policy amount, not recipient-reconciled cash,
  * and therefore must never be copied into the affiliate-liability ledger.
  */
-export function readAssessedOphisFeeBps(chainId: number, meta: unknown, trade: CowTrade): string | null {
+export function readAssessedOphisFeeBps(
+  chainId: number,
+  orderClass: 'market' | 'limit' | 'liquidity' | undefined,
+  meta: unknown,
+  trade: CowTrade,
+): string | null {
   const raw = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
   const appFees = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Array<{ recipient?: unknown }>;
   const executed = trade.executedProtocolFees ?? [];
@@ -369,9 +374,12 @@ export function readAssessedOphisFeeBps(chainId: number, meta: unknown, trade: C
   const sovereign = SOVEREIGN_CHAIN_IDS.has(chainId);
   let hasSovereignImprovement = false;
   if (sovereign) {
-    if (executed.length === appFees.length + 1 && isCanonicalOphisImprovement(executed[0]!.policy)) {
+    if (orderClass === 'market'
+      && executed.length === appFees.length + 1
+      && isCanonicalOphisImprovement(executed[0]!.policy)) {
       hasSovereignImprovement = true;
-    } else if (executed.length !== appFees.length) {
+    } else if ((orderClass !== 'limit' && orderClass !== 'liquidity')
+      || executed.length !== appFees.length) {
       return null;
     }
   }
@@ -781,7 +789,7 @@ export async function fetchChainTrades(
             buyToken: fill.buyToken,
             buyAmount: fill.buyAmount,
             volumeFeeBps: fill.volumeFeeBps,
-            assessedFeeBps: readAssessedOphisFeeBps(chainId, meta, t),
+            assessedFeeBps: readAssessedOphisFeeBps(chainId, order.class, meta, t),
             feeVerified: true,
           });
         }
