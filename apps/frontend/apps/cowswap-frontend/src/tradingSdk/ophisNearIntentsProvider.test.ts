@@ -7,6 +7,7 @@ import {
   OphisNearIntentsBridgeProvider,
   stableStringifyFlat,
   withOphisNearQuoteParams,
+  wrapNearApiWithOphisQuoteParams,
 } from './ophisNearIntentsProvider'
 
 // Deterministic fixture with GOLDEN values computed offline (independent of
@@ -72,6 +73,36 @@ describe('ophisNearIntentsProvider', () => {
       expect(out.referral).toBe('ophis')
       expect(out.appFees).toEqual([{ recipient: OPHIS_PARTNER_FEE_RECIPIENT, fee: 3 }])
       expect(out.amount).toBe('1')
+    })
+  })
+
+  describe('wrapNearApiWithOphisQuoteParams', () => {
+    it('rebinds api.getQuote so the underlying call receives the injected params', async () => {
+      const underlying = jest.fn().mockResolvedValue('quote-result')
+      const api = { getQuote: underlying }
+
+      wrapNearApiWithOphisQuoteParams(api)
+      const result = await api.getQuote({ amount: '5', referral: 'cow' })
+
+      expect(result).toBe('quote-result')
+      expect(underlying).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: '5',
+          referral: 'ophis',
+          appFees: [{ recipient: OPHIS_PARTNER_FEE_RECIPIENT, fee: 3 }],
+        }),
+      )
+    })
+
+    it('is installed by the provider constructor', () => {
+      const provider = new OphisNearIntentsBridgeProvider({})
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const api = (provider as any).api
+
+      // The wrap replaces getQuote with an own-property function shadowing
+      // the prototype implementation; a removed constructor wrap fails here.
+      expect(api.getQuote).not.toBe(Object.getPrototypeOf(api).getQuote)
+      expect(Object.prototype.hasOwnProperty.call(api, 'getQuote')).toBe(true)
     })
   })
 

@@ -112,12 +112,22 @@ export function withOphisNearQuoteParams<T extends object>(request: T): T {
   return { ...request, referral: OPHIS_NEAR_REFERRAL, appFees: OPHIS_NEAR_APP_FEES } as T
 }
 
+/**
+ * Rebinds api.getQuote so every outgoing 1-Click quote request carries the
+ * Ophis referral + appFees. Split out so the wrapping mechanics are testable
+ * against a fake api (the constructor is the single untested line).
+ */
+export function wrapNearApiWithOphisQuoteParams<T extends { getQuote: (...args: never[]) => Promise<unknown> }>(
+  api: T,
+): void {
+  const originalGetQuote = (api.getQuote as (request: unknown) => Promise<unknown>).bind(api)
+  api.getQuote = ((request: unknown) => originalGetQuote(withOphisNearQuoteParams(request as object))) as T['getQuote']
+}
+
 export class OphisNearIntentsBridgeProvider extends NearIntentsBridgeProvider {
   constructor(options?: ConstructorParameters<typeof NearIntentsBridgeProvider>[0]) {
     super(options)
-
-    const originalGetQuote = this.api.getQuote.bind(this.api)
-    this.api.getQuote = (request) => originalGetQuote(withOphisNearQuoteParams(request))
+    wrapNearApiWithOphisQuoteParams(this.api)
   }
 
   async recoverDepositAddress(
