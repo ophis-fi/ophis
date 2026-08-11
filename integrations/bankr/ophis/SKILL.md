@@ -86,7 +86,7 @@ python3 scripts/ophis-swap.py <chain_id> <sell_token> <sell_decimals> <amount> <
 
 ## Supported Chains
 
-See `references/chains-and-tokens.md` for chain IDs, the CoW Settlement + VaultRelayer addresses per chain, and common token addresses. Ophis is same-chain best-execution on the CoW-supported networks; Optimism (10) and Unichain (130) are Ophis-sovereign (100% of price improvement returned to the trader).
+See `references/chains-and-tokens.md` for chain IDs, the Settlement + VaultRelayer addresses per chain, and common token addresses. Ophis is same-chain best-execution on supported networks. Optimism (10), Unichain (130), and Robinhood Chain (4663) are Ophis-operated: the 1 bp base applies and Ophis retains 80% of volatile reference-quote improvement (99 bps cap), or 50% of stable improvement (20 bps cap).
 
 ## Notes
 

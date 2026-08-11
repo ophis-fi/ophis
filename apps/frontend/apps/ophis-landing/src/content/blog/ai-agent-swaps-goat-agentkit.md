@@ -145,7 +145,7 @@ Whichever framework your agent already runs on; the swap behavior is identical b
 
 ### What does this cost?
 
-The packages are free and open source. Their SDK builders select the fee by chain and pair: a 1 bp base on Optimism, Unichain, and Robinhood Chain, where the backend also applies capped improvement capture; or the hosted 5 bps partner rate, reduced to 1 bp for stable pairs, on CoW-hosted chains. CoW Protocol's fees apply upstream on hosted chains. Details are maintained at [docs.ophis.fi/fees](https://docs.ophis.fi/fees); with a referral code set, the applicable referral share is calculated from the net fee Ophis keeps.
+The packages are free and open source. Their SDK builders select the fee by chain and pair: a 1 bp base on Optimism, Unichain, and Robinhood Chain, where the backend also applies capped improvement capture; or the hosted 1 bp partner rate, reduced to 1 bp for stable pairs, on CoW-hosted chains. CoW Protocol's fees apply upstream on hosted chains. Details are maintained at [docs.ophis.fi/fees](https://docs.ophis.fi/fees); with a referral code set, the applicable referral share is calculated from the net fee Ophis keeps.
 
 ## Start here
 

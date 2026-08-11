@@ -114,7 +114,7 @@ test('pricing page states sovereign capture and hosted rates', async ({ page }) 
   const body = page.locator('main')
   await expect(body).toContainText('1 bp + 80% improvement')
   await expect(body).toContainText('50%/20 bps cap for stables')
-  await expect(body).toContainText('10 bps retail')
+  await expect(body).toContainText('1 bp Ophis base')
   await expect(body).toContainText('5 bps')
 })
 

@@ -62,11 +62,11 @@ export function renderTierPage(
   const nextCycle = fmtCycle(opts.nextCycleIso);
 
   // Fee disclaimer for the live flat-fee model (activated alongside this copy).
-  // A flat 0.10% (10 bps) volume fee applies to every trade, so this de-claims
+  // A flat 0.01% (1 bp) Ophis volume fee applies to every trade, so this de-claims
   // the old "price improvement only / never touch your principal" wording. Kept
   // in sync with the docs + frontend; rollback = revert the activation PR.
   const feeNote =
-    'A flat 0.10% (10 bps) fee applies to your trade volume (0.01% on stablecoin pairs); rebates return a share of it by tier.';
+    'A flat 0.01% (1 bp) Ophis fee applies to your trade volume; rebates return a share of it by tier.';
 
   // Progress bar toward the next tier (capped 0..100). Platinum has no next.
   let progressHtml = '';

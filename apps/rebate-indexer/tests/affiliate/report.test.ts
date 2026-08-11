@@ -58,10 +58,10 @@ describe('assembleReport — monthly settlement', () => {
   });
 
   it('computes a coverage gap between attribution and the Safe balance', () => {
-    // $3M hosted volume -> implied net = 3M * 10bps * 0.75 = $2,250.
+    // $3M hosted volume -> implied net = 3M * 1bp * 0.75 = $225.
     // Safe balance 10 WETH * $2500 = $25,000 -> huge positive gap -> [REVIEW].
     const r = assembleReport(base());
-    expect(r.impliedNetFeeUsd).toBeCloseTo(2250, 2);
+    expect(r.impliedNetFeeUsd).toBeCloseTo(225, 2);
     expect(Math.abs(r.coverageGapPct)).toBeGreaterThan(0.15);
     expect(r.text).toContain('[REVIEW]');
   });

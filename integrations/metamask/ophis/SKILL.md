@@ -55,7 +55,7 @@ python3 scripts/ophis-swap.py <chain_id> <sell_token> <sell_decimals> <amount> <
 
 ## Supported chains
 
-See `references/chains-and-tokens.md` for chain IDs, the CoW Settlement + VaultRelayer per chain, and common token addresses. Optimism (10) and Unichain (130) are Ophis-sovereign (100% of price improvement returned). Pass any EIP-155 chain id `mm chains list` supports; Ophis covers Ethereum, Optimism, BNB, Gnosis, Unichain, Polygon, Base, Ink, Arbitrum, Avalanche, Linea.
+See `references/chains-and-tokens.md` for chain IDs, the Settlement + VaultRelayer per chain, and common token addresses. Optimism (10), Unichain (130), and Robinhood Chain (4663) are Ophis-operated and use the published capped improvement-capture policy. Pass a supported EIP-155 chain ID from `mm chains list`; use the reference table rather than guessing endpoint or contract addresses.
 
 ## Notes
 

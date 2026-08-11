@@ -41,7 +41,7 @@ CANONICAL_VAULT_RELAYER = "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110"
 # ── Ophis partner fee (partner-fee.ts). The fee rides in appData (partnerFee),
 # so the signed order's own feeAmount is 0. ───────────────────────────────────
 OPHIS_PARTNER_FEE_RECIPIENT = "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"  # Ophis Safe
-OPHIS_VOLUME_FEE_BPS = 5
+OPHIS_VOLUME_FEE_BPS = 1
 OPHIS_STABLE_VOLUME_FEE_BPS = 1
 APP_DATA_VERSION = "1.4.0"
 REBATE_INDEXER_URL = "https://rebates.ophis.fi"

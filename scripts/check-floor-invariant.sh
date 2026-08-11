@@ -19,8 +19,8 @@
 # can check without compiling:
 #   1. OPTIMISM_STABLECOINS    address set (frontend tokens.ts        <-> backend)
 #   2. OPTIMISM_BOOSTED_TOKENS  OP address set (frontend boostedTokens.ts <-> backend)
-#   3. the VALUES: sovereign floor (1) == sovereign base (1), hosted partner 5,
-#      reduced 1 bp
+#   3. the VALUES: backend floor == frontend base == SDK base == 1 bp on every
+#      supported settlement path
 # It does NOT substitute for the floor-LOGIC tests, which stay CI-unverified; the
 # runtime code still enforces the floor regardless.
 #
@@ -128,20 +128,20 @@ check_value() { # $1=label $2=expected-nonempty ; remaining = actuals "name:val"
   done
 }
 
-# Sovereign orders use one 1 bp base for retail and SDK traffic; hosted SDK
-# traffic retains the independent 5 bps wholesale rate.
+# Every supported chain uses one 1 bp Ophis base for retail and SDK traffic.
 check_value "non-stable FLOOR (backend <-> frontend)" \
   "backend:$be_floor" "frontend:$fe_floor"
 check_value "sovereign base (backend <-> SDK)" \
   "backend:$be_retail" "sdk:$sdk_sovereign"
+check_value "all-chain base (backend <-> SDK)" \
+  "backend:$be_retail" "sdk:$sdk_partner"
 check_value "reduced floor (1 bp)" \
   "backend:$be_stable" "sdk:$sdk_stable" "frontend-boosted:$fe_reduced"
 
-# Ordering invariant on sovereign chains: floor <= base; hosted partner remains
-# positive but is not bounded by the sovereign base.
+# All fixed Ophis rates are identical to the ingress floor.
 if [[ -n "$be_floor" && -n "$sdk_sovereign" && -n "$be_retail" && -n "$sdk_partner" ]]; then
-  if ! (( be_floor <= sdk_sovereign && sdk_sovereign == be_retail && sdk_partner > 0 )); then
-    echo "FAIL: fee ordering violated — need floor($be_floor) <= sovereign($sdk_sovereign) == base($be_retail), hosted partner > 0 (got $sdk_partner)" >&2
+  if ! (( be_floor == sdk_sovereign && sdk_sovereign == be_retail && be_retail == sdk_partner )); then
+    echo "FAIL: fee parity violated — floor=$be_floor sovereign=$sdk_sovereign backend-default=$be_retail SDK=$sdk_partner; all must match" >&2
     fail=1
   fi
 else
@@ -160,5 +160,5 @@ fi
 echo "OK: partner-fee floor invariants hold:"
 echo "  - OPTIMISM_STABLECOINS match (frontend <-> backend)"
 echo "  - OPTIMISM_BOOSTED_TOKENS[OP] match (frontend <-> backend)"
-echo "  - sovereign: floor=${be_floor} bps <= base=${sdk_sovereign} bps; hosted SDK=${sdk_partner} bps; reduced=${be_stable} bp"
+echo "  - all-chain base: floor=${be_floor} bps = sovereign=${sdk_sovereign} bps = hosted SDK=${sdk_partner} bps; reduced=${be_stable} bp"
 exit 0

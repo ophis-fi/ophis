@@ -11,6 +11,6 @@ export async function getOphisSupportedChains(
   const names = supportedChains.map(getChainName).join(', ');
   return toResult(
     `Ophis (CoW Protocol) MEV-protected same-chain swaps are available on: ${names}. ` +
-      `Optimism is Ophis-sovereign (100% of price improvement returned); the rest settle via CoW's hosted solvers. Same-chain only — no bridging.`,
+      `Optimism, Unichain, and Robinhood Chain are Ophis-operated and use Ophis's published capped improvement-capture policy; the rest settle via CoW's hosted solvers. Same-chain only — no bridging.`,
   );
 }

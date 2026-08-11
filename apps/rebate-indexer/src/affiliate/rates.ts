@@ -9,16 +9,15 @@
 // hosted chains, 0% on Optimism (sovereign Ophis backend). So Ophis keeps 75% on
 // hosted, 100% on OP.
 //
-// ACCRUAL BASIS (updated 2026-06-19, per-trade fees): the fee is now per-channel
-// (retail 10 bps, SDK/partner 5 bps, stable 1 bp), so accrual takes the tier share
+// ACCRUAL BASIS: the Ophis fee is 1 bp on every channel, so accrual takes the tier share
 // of the ACTUAL gross fee each trade carried, read from appData and stored per
-// trade (trades.volume_fee_bps, clamped [1, retail]; NULL -> the retail default
+// trade (trades.volume_fee_bps, clamped to 1; NULL -> the canonical default
 // GROSS_FEE_BPS). owed = feeShare * keepFraction(chain) * SUM(value * actual_bps).
-// For an ALL-RETAIL (10 bps) referrer this reduces EXACTLY to the published rates:
+// At the canonical 1 bp fee this reduces to:
 //   feeShare * GROSS_FEE_BPS * keepFraction(chain)
-//   Regular hosted = 0.08 * 10 * 0.75 = 0.60 bps   (OP = 0.08 * 10 * 1.00 = 0.80 bps)
-//   Partner hosted = 0.12 * 10 * 0.75 = 0.90 bps   (OP = 0.12 * 10 * 1.00 = 1.20 bps)
-// A 5 bps SDK referrer earns HALF those; a 1 bp stable pair a tenth. The indexer
+//   Regular hosted = 0.08 * 1 * 0.75 = 0.06 bps   (OP = 0.08 bps)
+//   Partner hosted = 0.12 * 1 * 0.75 = 0.09 bps   (OP = 0.12 bps)
+// The indexer
 // still indexes only the CoW-hosted chains (Optimism not indexed yet).
 
 export type AffiliateKind = 'regular' | 'partner';
@@ -29,14 +28,12 @@ export const FEE_SHARE_BPS: Readonly<Record<AffiliateKind, number>> = {
   partner: 1200, // 12%
 };
 
-/** The RETAIL gross volume fee, in bps. Two roles now that the fee is per-channel:
- *  (1) the DEFAULT/legacy rate accrual assumes when a trade's actual
- *  trades.volume_fee_bps is NULL (historical rows or an unreadable fee), and
- *  (2) the CLAMP CEILING the fetcher applies to a trade's claimed volumeBps, so an
- *  attacker-crafted appData can never inflate the fee base above the retail rate.
- *  Accrual otherwise uses the ACTUAL per-trade bps; this is no longer the single
- *  assumed gross. Mirrors OPHIS_FRONTEND_OP_VOLUME_BPS in the frontend. */
-export const GROSS_FEE_BPS = 10;
+/** Canonical current Ophis fee and fallback for rows without a decoded fee. */
+export const GROSS_FEE_BPS = 1;
+
+/** Highest legacy Ophis volume fee that may appear on already-settled orders.
+ * Keep historical accounting faithful; new orders are emitted at GROSS_FEE_BPS. */
+export const HISTORICAL_OPHIS_FEE_MAX_BPS = 10;
 
 /** CoW DAO's protocol cut on the partner fee, in bps (25%), on hosted chains. */
 export const COW_TAKE_BPS = 2500;
@@ -45,11 +42,11 @@ export const COW_TAKE_BPS = 2500;
  *  by the fetcher when it reads a non-Ophis partnerFee entry from a settled order's
  *  appData (migration 0014). appData is attacker-controllable, so a crafted entry
  *  cannot inflate the reported own-fee above this bound. The verified own-fee max is
- *  95 bps: the aggregate of an integrator's own entry plus the 5 bps Ophis base is
+ *  99 bps: the aggregate of an integrator's own entry plus the 1 bp Ophis base is
  *  bounded by the 100 bps aggregate cap, so the own entry alone can settle at most
- *  95 bps. That is the correct clamp for a SETTLED order (the only kind this fetcher
+ *  99 bps. That is the correct clamp for a SETTLED order (the only kind this fetcher
  *  reads); a crafted entry above it never validates and never settles. */
-export const OWN_FEE_MAX_BPS = 95;
+export const OWN_FEE_MAX_BPS = 99;
 
 /** Hard cap on REFERRED VOLUME per referrer per calendar month, for Regular only.
  *  Partner is uncapped. Volume past the cap earns zero (hard-stop, Clement 2026-06-10). */

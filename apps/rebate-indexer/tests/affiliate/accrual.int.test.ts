@@ -146,7 +146,7 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     expect(refs.find((r) => r.referrer_wallet === `0x${selfOwner}`)).toBeFalsy();
   });
 
-  it('per-rate buckets (real SQL): volume_fee_bps splits (chain,bps); 5 bps earns half of 10 bps; NULL -> retail', async () => {
+  it('per-rate buckets preserve explicit legacy fees while NULL defaults to the current 1 bp rate', async () => {
     const referrer = W('a5a5');
     const referred = W('c5c5');
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('rate1', decode(${referrer},'hex'), 'regular', true)`;
@@ -154,32 +154,35 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
       VALUES (decode(${referred},'hex'),'rate1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
-    // Same chain (100), three rates: 10 bps (retail), 5 bps (SDK), NULL (-> retail default).
+    // Same chain (100), three records: two explicit historical rates and one
+    // unknown rate, which defaults to the canonical current 1 bp.
     const insFee = (uid: string, usd: string, bps: number | null) => sql`
       INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, priced_at)
       VALUES (decode(${UID(uid)},'hex'), 100, decode(${referred},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, ${bps}, now())`;
-    await insFee('e51', '100000', 10); // retail
-    await insFee('e52', '100000', 5); //  SDK -> half
-    await insFee('e53', '100000', null); // unknown -> COALESCE to 10
+    await insFee('e51', '100000', 10); // explicit historical retail
+    await insFee('e52', '100000', 5); // explicit historical partner
+    await insFee('e53', '100000', null); // unknown -> current 1 bp default
 
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const refs = await buildAffiliateReferrers(start, end);
     const r = refs.find((x) => x.referrer_wallet === `0x${referrer}`);
     expect(r).toBeTruthy();
-    // The chain-100 volume splits into a 10-bps bucket (retail 100k + NULL-default 100k = 200k)
-    // and a 5-bps bucket (100k) — the real SQL GROUP BY on COALESCE(volume_fee_bps, 10).
+    // Explicit historical fees remain faithful to what settled; only an unknown
+    // fee uses the current default. The SQL groups on
+    // COALESCE(volume_fee_bps, GROSS_FEE_BPS).
     const b10 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 10);
     const b5 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 5);
-    expect(b10?.volumeUsd).toBe(200000);
+    const b1 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 1);
+    expect(b10?.volumeUsd).toBe(100000);
     expect(b5?.volumeUsd).toBe(100000);
+    expect(b1?.volumeUsd).toBe(100000);
 
-    // owed end-to-end: 8% * 75% * (200k*10 + 100k*5)/1e4 = 0.06 * 250 = $15. The 5-bps
-    // $100k contributes half ($3) of what the 10-bps $100k does ($6).
+    // owed end-to-end: 8% * 75% * (100k*10 + 100k*5 + 100k*1)/1e4 = $9.60.
     const { computeAffiliate } = await import('../../src/affiliate/computeAffiliate.js');
     const owed = computeAffiliate(refs, 2500).find((o) => o.referrer_wallet === `0x${referrer}`);
     expect(owed).toBeTruthy();
-    expect(owed!.owedUsd).toBeCloseTo(15, 6);
+    expect(owed!.owedUsd).toBeCloseTo(9.6, 6);
   });
 
   it('appData arm: both 0 (rejected policy) AND NULL (unconfirmed) credit ZERO — only a confirmed fee earns', async () => {

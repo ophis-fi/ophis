@@ -13,8 +13,7 @@
  *     (`OPHIS_NON_STABLE_FLOOR_BPS = 1` / `OPHIS_STABLE_VOLUME_FEE_BPS = 1`:
  *     the MINIMUM Volume bps the OP self-hosted backend accepts for a fee to the
  *     Ophis recipient, enforced at order ingress and re-clamped in the autopilot.
- *     sovereign chains require the 1 bp base; hosted chains retain 5 bps partner
- *     pricing.)
+ *     every served chain requires the canonical 1 bp Ophis base.)
  *   - apps/frontend/.../appData/updater/shouldEmitOphisPartnerFee.ts (chain gate)
  */
 
@@ -30,18 +29,15 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
   '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as `0x${string}`;
 
 /**
- * Partner volume fee: the @ophis/sdk default is a flat 5 bps (0.05%) of trade
- * volume, below comparable aggregators (Matcha 10 bps, Velora 15 bps). This is
- * the PARTNER (wholesale) rate that integrators routing through Ophis charge;
- * the Ophis front-end charges the same hosted retail rate. On sovereign chains
- * `ophisDefaultPartnerFee` substitutes the 1 bp base and the backend adds capped
- * price-improvement capture. A Volume fee is
+ * Partner volume fee: the @ophis/sdk default is a flat 1 bp (0.01%) of trade
+ * volume on every served chain. On Ophis-operated chains the backend also adds
+ * capped price-improvement capture. A Volume fee is
  * bounded above only by the autopilot's operator-set global `max_partner_fee`.
  *
- * Cross-workspace invariant (scripts/check-floor-invariant.sh): backend floor
- * (1) <= this hosted partner rate (5) <= hosted front-end retail (10).
+ * Cross-workspace invariant (scripts/check-floor-invariant.sh): backend floor,
+ * SDK default, frontend default, and integration defaults are all 1 bp.
  */
-export const OPHIS_VOLUME_FEE_BPS = 5;
+export const OPHIS_VOLUME_FEE_BPS = 1;
 
 /**
  * Reduced rate for stablecoin-to-stablecoin swaps: a flat 1 bp (0.01%). The
@@ -89,8 +85,7 @@ const FEE_CHAIN_IDS = [
 const FEE_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>(FEE_CHAIN_IDS);
 const SOVEREIGN_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>([10, 130, 4663]);
 
-/** Chain-aware volume fee for high-level order builders. Sovereign chains always
- * use their 1 bp base; hosted chains use 1 bp for stable pairs and 5 bps otherwise. */
+/** Chain-aware volume fee for high-level order builders: 1 bp on every served chain. */
 export const ophisVolumeBpsForChainAndPair = (chainId: number, isStablePair: boolean): number => {
   assertValidChainId(chainId);
   return SOVEREIGN_CHAIN_ID_SET.has(chainId)
@@ -106,7 +101,7 @@ export const ophisVolumeBpsForChainAndPair = (chainId: number, isStablePair: boo
 export const OPHIS_FEE_CHAIN_IDS: readonly number[] = Object.freeze([...FEE_CHAIN_IDS]);
 
 export interface OphisPartnerFee {
-  /** Flat fee as a fraction of trade volume, in bps (5 = 0.05%). */
+  /** Flat fee as a fraction of trade volume, in bps (1 = 0.01%). */
   readonly volumeBps: number;
   readonly recipient: `0x${string}`;
 }

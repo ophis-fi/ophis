@@ -62,32 +62,25 @@ export const PRODUCTION_CHAIN_IDS: readonly number[] = Object.freeze(
  * Static execution-model facts served alongside the cumulative figures on the
  * public /stats JSON surface. Configuration facts only, no indexed data and no
  * timing signal, so they are safe to expose (see the current-cycle exclusion in
- * the header comment). `solvers` is the number of engines that can actually BID
- * per auction on each chain; update it when a solver is added or removed in the
- * sovereign driver configs:
- *   - infra/optimism-mainnet/configs/driver.toml.tmpl  (4: baseline, okx,
- *     kyberswap, velora; baseline routes Sushi V2 there)
- *   - infra/unichain-mainnet/configs/driver.toml.tmpl  (9 engine blocks, but the
- *     baseline ships without on-chain AMM sources on Unichain and cannot bid, so
- *     Aggregators compete: okx, kyberswap, velora, openocean, dodo,
- *     lifi, enso)
- *   - infra/robinhood-mainnet/configs/driver.toml.tmpl (LI.FI is the one active
- *     bidding lane; baseline has no verified Robinhood liquidity source)
+ * the header comment). `solvers` is the number of configured lanes capable of
+ * returning bids for supported pairs; actual per-auction participation depends
+ * on pair support and runtime availability. Update it with the driver configs.
  */
 export const EXECUTION_FACTS = {
   mevProtection: 'batch-auction',
   settlementModel: 'intent, uniform clearing price',
   solverCompetition: {
-    // solvers = engines that can bid (Unichain's baseline ships empty there).
+    // Baseline has modeled liquidity on Optimism; it is excluded on Unichain
+    // and Robinhood, where the baseline liquidity reader is intentionally empty.
     sovereignChains: [
-      { chainId: 10, solvers: 4 },
-      { chainId: 130, solvers: 8 },
-      { chainId: 4663, solvers: 1 },
+      { chainId: 10, solvers: 11 },
+      { chainId: 130, solvers: 7 },
+      { chainId: 4663, solvers: 6 },
     ],
     hostedChains: 'CoW Protocol solver network',
   },
   improvementSplit: {
-    sovereign: '100% of price improvement returned to the trader',
+    sovereign: 'Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)',
     hosted: 'CoW Protocol retains 50% of quote improvement upstream',
   },
 } as const;
@@ -152,7 +145,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <li><strong>Hard signed limit price</strong>Your signed order is a contract-enforced price floor. A fill below it cannot settle on-chain.</li>
   <li><strong>Gasless execution</strong>Solvers pay the settlement gas and costs settle inside the trade. After a one-time token approval before the first sell, no native gas token is needed, and failed settlements cost you nothing.</li>
   <li><strong>Solver competition on every order</strong>On Unichain, 8 aggregator solvers compete per auction (plus a baseline that ships without on-chain AMM sources there); on Optimism, 4 solvers compete; Robinhood currently has one active LI.FI lane. Other chains draw on CoW Protocol's solver network.</li>
-  <li class="wide"><strong>Where the price improvement goes</strong>On Optimism, Unichain, and Robinhood Chain, 100% of price improvement is returned to the trader, and the Ophis fee is all-in (0.10% on the swap app, 0.05% for SDK and MCP partners; 0.01% on same-chain stable pairs). On CoW-hosted chains, CoW Protocol adds a 0.02% volume fee (0.003% on correlated pairs) and retains 50% of quote improvement upstream, capped at 0.98% of volume.</li>
+  <li class="wide"><strong>Where the price improvement goes</strong>The Ophis base fee is 0.01% (1 bp) on every supported chain. On CoW-hosted chains, CoW Protocol separately adds a 0.02% volume fee (0.003% on correlated pairs) and retains 50% of quote improvement upstream, capped at 0.98% of volume.</li>
 </ul>
 <h2>Settled volume by chain</h2>
 <table>

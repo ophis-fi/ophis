@@ -86,7 +86,7 @@ As verified against `https://compat.ophis.fi` and its orderbook dependencies on
 The compat surface serves only Ophis-operated chains, so it embeds the **1 bp
 sovereign base** (`partnerFeePercent: 0.01`) on every pair. The sovereign backend
 then applies the current price-improvement policy: 80% of reference-quote
-improvement on volatile pairs capped at 50 bps of volume, or 50% on stable pairs
+improvement on volatile pairs capped at 99 bps of volume, or 50% on stable pairs
 capped at 20 bps. There is no API key, paid tier, or daily request cap; the only
 limit is a best-effort 60 requests per 60 seconds per IP and Cloudflare colo.
 

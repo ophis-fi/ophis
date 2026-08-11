@@ -15,7 +15,7 @@ solver auction, and settlement stack. Instead of charging retail users a fixed
 charge a **1 bp base fee** and earn primarily when execution beats the reference
 quote.
 
-On volatile pairs, Ophis retains **80% of price improvement, capped at 50 bps
+On volatile pairs, Ophis retains **80% of price improvement, capped at 99 bps
 of trade volume**. On same-chain stablecoin pairs, Ophis retains **50%, capped
 at 20 bps**. The base remains 1 bp in both cases.
 
@@ -37,15 +37,15 @@ This produces a clearer operating incentive:
 - grow sovereign-chain volume;
 - earn more when users receive better execution.
 
-It also lowers the predictable fixed charge from 10 bps to 1 bp on sovereign
-chains. The variable component is bounded, so an unusually stale market or
+It also sets the predictable Ophis fixed charge to 1 bp on every supported
+chain. The operated-chain variable component is bounded, so an unusually stale market or
 large price move cannot create an unlimited fee.
 
 ## The exact schedule
 
 | Pair | Base | Ophis share of improvement | Capture cap | Maximum Ophis charge |
 | --- | ---: | ---: | ---: | ---: |
-| Volatile | 1 bp | 80% | 50 bps of volume | 51 bps |
+| Volatile | 1 bp | 80% | 99 bps of volume | 100 bps |
 | Stablecoin | 1 bp | 50% | 20 bps of volume | 21 bps |
 
 For a $100,000 volatile trade with 20 bps of reference-quote improvement, the
@@ -74,12 +74,8 @@ batch settlement, and bounded by the signed limit price. Integrators can still
 add an onboarded fee of their own, and Ophis continues to take 0% of that
 integrator markup.
 
-On CoW-hosted chains, the existing schedule remains:
-
-- 10 bps for retail volatile flow;
-- 5 bps for partner volatile flow;
-- 1 bp for same-chain stablecoin pairs;
-- CoW Protocol's upstream fees apply separately.
+On CoW-hosted chains, Ophis also charges a flat 1 bp. CoW Protocol's upstream
+fees apply separately and are not Ophis fees.
 
 ## A model designed to evolve
 

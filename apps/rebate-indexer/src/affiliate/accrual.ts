@@ -15,8 +15,7 @@ import { GROSS_FEE_BPS, type AffiliateKind } from './rates.js';
 // Accrual counts a referred wallet's trades only AFTER its bound_at (so a referrer
 // never earns on pre-binding history) and only within the cycle window. Volume is
 // bucketed by (chain, effective gross bps) so computeAffiliate takes the tier share
-// of the ACTUAL kept fee — the 5 bps SDK channel accrues half of the 10 bps retail
-// channel — and applies the regular cap LEAST-VALUABLE-FIRST even within a chain
+// of the ACTUAL kept fee and applies the regular cap LEAST-VALUABLE-FIRST even within a chain
 // that carries mixed-rate trades. Today every indexed trade is on a hosted chain
 // (Optimism is not indexed); the bucketing is OP-ready for when OP indexing ships.
 
@@ -144,7 +143,7 @@ export async function buildAffiliateReferrers(
   // cover disjoint trade sets, so adding per (referrer, chain, bps) is correct (a
   // referrer can earn bind volume AND appData volume on the same chain+rate — both
   // count). Keeping the rate per bucket is what lets computeAffiliate take the tier
-  // share of the ACTUAL kept fee (5 bps SDK accrues half of 10 bps retail) AND apply
+  // share of the ACTUAL kept fee AND apply
   // the regular cap least-valuable-first within a mixed-rate chain.
   const byReferrer = new Map<
     `0x${string}`,

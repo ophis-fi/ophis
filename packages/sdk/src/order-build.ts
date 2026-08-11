@@ -113,7 +113,7 @@ function normalizeExtraPartnerFee(entry: OphisPartnerFee): OphisPartnerFee {
 
 /**
  * Builds the Ophis appData document for a chain: appCode "ophis", market
- * orderClass, and the CIP-75 partner fee (flat `volumeBps` shape, the 5 bps
+ * orderClass, and the CIP-75 partner fee (flat `volumeBps` shape, the 1 bp
  * @ophis/sdk partner rate via buildOphisAppDataPartnerFee) where Ophis charges one.
  * Returns the doc, its deterministic serialization, and its keccak256 hash.
  *

@@ -57,7 +57,7 @@ relayer / orderbook / signing domain by `chainId`, with no per-chain code. (A fe
 resolve a settlement but have no live orderbook, e.g. paused chains like 4326 / 999; those
 throw at the quote step and are not tradeable.)
 
-- **Ophis self-hosted** (non-canonical settlement, 100% fee): Optimism, Unichain.
+- **Ophis-operated** (non-canonical settlement): Optimism, Unichain, Robinhood Chain.
 - **CoW-hosted** (canonical settlement, fee via appData): Ethereum, Base, Arbitrum, Polygon,
   Gnosis, BNB, Avalanche, Linea, Ink, Plasma.
 

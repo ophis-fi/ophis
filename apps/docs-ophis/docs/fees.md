@@ -1,18 +1,17 @@
 ---
 id: fees
 title: Fees & rebates
-description: Ophis-operated chains charge a 1 bp base plus a capped share of price improvement; CoW-hosted chains retain the existing flat-fee model and upstream CoW fees.
+description: Every supported chain charges a 1 bp Ophis base; operated chains also use capped price-improvement capture, while hosted chains have separate upstream CoW fees.
 sidebar_label: Fees & rebates
 sidebar_position: 3
 ---
 
 # Fees & rebates
 
-Ophis uses two fee models. On Ophis-operated chains, every trade pays a **1 bp
-base fee**. Ophis also retains **80% of price improvement on volatile pairs,
-capped at 50 bps of volume**, or **50% on stablecoin pairs, capped at 20 bps**.
-On CoW-hosted chains, the existing flat 10 bps retail, 5 bps partner, and 1 bp
-stablecoin rates remain in force because CoW controls the upstream fee policy.
+Every supported chain pays a **1 bp Ophis base fee**. On Ophis-operated chains,
+Ophis also retains **80% of price improvement on volatile pairs,
+capped at 99 bps of volume**, or **50% on stablecoin pairs, capped at 20 bps**.
+On CoW-hosted chains, CoW Protocol applies its own upstream fee policy separately.
 
 What you pay **all-in** depends on where the order settles, so here is the
 complete number per chain type, with nothing left out:
@@ -21,9 +20,9 @@ complete number per chain type, with nothing left out:
 
 | | Ophis-operated chains (Optimism, Unichain, Robinhood Chain) | CoW-hosted chains (the other 10) |
 | --- | --- | --- |
-| Ophis fee | 0.01% base + 80% of price improvement (50% stables), capped at 0.50% (0.20% stables) | 0.10% retail / 0.05% partner / 0.01% stable pairs |
+| Ophis fee | 0.01% base + 80% of price improvement (50% stables), capped at 0.99% (0.20% stables) | 0.01% base |
 | Upstream protocol fee | **None** | CoW Protocol volume fee: 0.02% (0.003% on correlated pairs such as stablecoins) |
-| **All-in fixed cost** | **0.01%** | **0.12% retail / 0.07% partner / 0.013% stables** |
+| **All-in fixed cost** | **0.01%** | **0.03% volatile / 0.013% correlated stables** |
 | Price improvement | Trader receives 20% on volatile pairs or 50% on stable pairs until the cap; all improvement above the cap returns to the trader | CoW Protocol retains 50% of quote improvement (capped at 0.98% of volume); Ophis takes no additional share |
 
 Why the difference: on the 10 CoW-hosted chains, orders settle through CoW
@@ -37,8 +36,9 @@ Ophis charge.
 ## How it works
 
 - A **1 bp base fee** is applied on Ophis-operated chains.
-- Volatile pairs add 80% of reference-quote improvement, capped at 50 bps.
+- Volatile pairs add 80% of reference-quote improvement, capped at 99 bps.
 - Stablecoin pairs add 50% of reference-quote improvement, capped at 20 bps.
+- A **1 bp base fee** is applied on every supported chain.
 - On CoW-hosted chains, the upstream CoW Protocol fees in the table above are
   charged in addition; Ophis does not receive them.
 
@@ -51,7 +51,7 @@ beyond the quote.
 
 The capture is measured against the backend's reference quote, not against a
 loose user slippage limit. For volatile pairs Ophis retains 80%, until the fee
-reaches 50 bps of volume. For stablecoin pairs it retains 50%, until the fee
+reaches 99 bps of volume. For stablecoin pairs it retains 50%, until the fee
 reaches 20 bps. The separate 1 bp base fee always applies.
 
 Where the order settles still matters:
@@ -66,17 +66,15 @@ Where the order settles still matters:
 ## What you save versus a typical AMM
 
 Ophis-operated chains use a 1 bp base plus capped reference-improvement capture,
-so the realized charge depends on execution quality. CoW-hosted chains retain
-the flat 10 bps retail and 1 bp stablecoin rates described above. The historical
-flat-rate tables below apply to the hosted path only; use the worked sovereign
-examples above for Optimism, Unichain, and Robinhood Chain.
+so the realized charge depends on execution quality. CoW-hosted chains use the
+same 1 bp Ophis base plus CoW Protocol's separate upstream fees.
 
-### Historical flat-rate comparison (CoW-hosted volatile path)
+### Flat-rate comparison (CoW-hosted volatile path)
 
-| Trade size | AMM at 0.25% | AMM at 0.30% | Ophis (0.10%) | You save | Ophis on CoW-hosted (0.12%) | You save |
+| Trade size | AMM at 0.25% | AMM at 0.30% | Ophis base (0.01%) | You save | Ophis + CoW fixed fees (0.03%) | You save |
 | --- | --- | --- | --- | --- | --- | --- |
-| $10,000 | $25 | $30 | **$10** | **$15 to $20** | $12 | $13 to $18 |
-| $100,000 | $250 | $300 | **$100** | **$150 to $200** | $120 | $130 to $180 |
+| $10,000 | $25 | $30 | **$1** | **$24 to $29** | $3 | $22 to $27 |
+| $100,000 | $250 | $300 | **$10** | **$240 to $290** | $30 | $220 to $270 |
 
 ### Same-chain stablecoin pair (e.g. USDC to USDT): 0.01% sovereign base
 
@@ -136,8 +134,7 @@ chains or upstream CoW capture on hosted chains.
 
 The fee uses CoW Protocol's partner-fee model: a `volumeBps` value written into
 the order's `appData` and taken from the trade output at settlement. The Ophis
-swap app and SDK write the 1 bp sovereign base. Hosted retail and partner paths
-continue to write 10 bps and 5 bps respectively, or 1 bp on stable pairs.
+swap app and SDK write the 1 bp base on every supported chain.
 
 On the **Ophis-operated stacks (Optimism, Unichain, Robinhood Chain)**, the backend also enforces
 an **anti-abuse minimum** at settlement, so a fee is guaranteed on chain rather
