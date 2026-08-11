@@ -134,4 +134,36 @@ describe('upsertDefillamaFills', () => {
       FROM defillama_reporting_state s WHERE s.singleton = true`;
     expect(state).toEqual({ open: true, queued: true, fetch_reset: true });
   });
+
+  it('requeues the UID owner of a verified unresolved partial fill', async () => {
+    const owner = '12'.repeat(20);
+    const tradeUid = `${'34'.repeat(32)}${owner}${'56'.repeat(4)}`;
+    const token = '78'.repeat(20);
+    await sql`INSERT INTO tracked_wallets (wallet, last_fetched)
+      VALUES (decode(${owner}, 'hex'), now()) ON CONFLICT (wallet) DO UPDATE SET last_fetched = now()`;
+    await sql`INSERT INTO defillama_fills (
+      chain_id, block_number, log_index, trade_uid, settlement_timestamp,
+      sell_token, sell_amount, buy_token, buy_amount, volume_fee_bps,
+      assessed_fee_bps, fee_verified
+    ) VALUES (
+      10, 90, 12, decode(${tradeUid}, 'hex'), now(),
+      decode(${token}, 'hex'), 10000, decode(${token}, 'hex'), 9999, 1,
+      NULL, true
+    )`;
+    await sql`DELETE FROM trades WHERE wallet = decode(${owner}, 'hex')`;
+    await sql`DELETE FROM defillama_backfill_wallets`;
+    await sql`UPDATE defillama_reporting_state SET completed_at = now() WHERE singleton = true`;
+
+    const migration = readFileSync(new URL('../migrations/0036_requeue_partial_fill_owners.sql', import.meta.url), 'utf8');
+    await sql.unsafe(migration);
+
+    const [state] = await sql<{ open: boolean; queued: boolean; fetch_reset: boolean }[]>`
+      SELECT
+        s.completed_at IS NULL AS open,
+        EXISTS(SELECT 1 FROM defillama_backfill_wallets q WHERE q.wallet = decode(${owner}, 'hex')) AS queued,
+        EXISTS(SELECT 1 FROM tracked_wallets t
+          WHERE t.wallet = decode(${owner}, 'hex') AND t.last_fetched IS NULL) AS fetch_reset
+      FROM defillama_reporting_state s WHERE s.singleton = true`;
+    expect(state).toEqual({ open: true, queued: true, fetch_reset: true });
+  });
 });
