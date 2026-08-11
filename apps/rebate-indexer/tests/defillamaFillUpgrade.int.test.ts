@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { startPg, stopPg } from './fixtures/pgContainer.js';
 import type { PendingDefiLlamaFill } from '../src/fetcher.js';
+import { readFileSync } from 'node:fs';
 
 // upsertDefillamaFills must UPGRADE a provisional decoder fill (fee_verified=false,
 // ToB-B1 discovery posture) in place when the owner-scoped API later serves the
@@ -93,5 +94,44 @@ describe('upsertDefillamaFills', () => {
         AND trade_uid = decode(${UID.slice(2)}, 'hex')`;
     // The verified in-batch copy won over the provisional one.
     expect(row).toMatchObject({ bps: 1, verified: true });
+  });
+
+  it('accepts the compounded canonical maximum but rejects values above 100.01 bps', async () => {
+    await expect(upsertDefillamaFills([
+      fill({ blockNumber: 88n, logIndex: 10, assessedFeeBps: '100.00990000', feeVerified: true }),
+    ])).resolves.toBeUndefined();
+
+    await expect(upsertDefillamaFills([
+      fill({ blockNumber: 89n, logIndex: 11, assessedFeeBps: '100.01000001', feeVerified: true }),
+    ])).rejects.toThrow();
+  });
+
+  it('reopens and repopulates the fail-closed backfill when assessments are reset', async () => {
+    const wallet = 'ab'.repeat(20);
+    const tradeUid = 'cd'.repeat(56);
+    const token = 'ef'.repeat(20);
+    await sql`INSERT INTO tracked_wallets (wallet, last_fetched)
+      VALUES (decode(${wallet}, 'hex'), now()) ON CONFLICT (wallet) DO UPDATE SET last_fetched = now()`;
+    await sql`INSERT INTO trades (
+      trade_uid, chain_id, wallet, block_number, block_timestamp,
+      sell_token, buy_token, sell_amount, buy_amount, app_code, fee_verified
+    ) VALUES (
+      decode(${tradeUid}, 'hex'), 10, decode(${wallet}, 'hex'), 1, now(),
+      decode(${token}, 'hex'), decode(${token}, 'hex'), 1, 1, 'ophis', true
+    )`;
+    await sql`DELETE FROM defillama_backfill_wallets`;
+    await sql`UPDATE defillama_reporting_state SET completed_at = now() WHERE singleton = true`;
+
+    const migration = readFileSync(new URL('../migrations/0035_assessed_fee_compound_bound.sql', import.meta.url), 'utf8');
+    await sql.unsafe(migration);
+
+    const [state] = await sql<{ open: boolean; queued: boolean; fetch_reset: boolean }[]>`
+      SELECT
+        s.completed_at IS NULL AS open,
+        EXISTS(SELECT 1 FROM defillama_backfill_wallets q WHERE q.wallet = decode(${wallet}, 'hex')) AS queued,
+        EXISTS(SELECT 1 FROM tracked_wallets t
+          WHERE t.wallet = decode(${wallet}, 'hex') AND t.last_fetched IS NULL) AS fetch_reset
+      FROM defillama_reporting_state s WHERE s.singleton = true`;
+    expect(state).toEqual({ open: true, queued: true, fetch_reset: true });
   });
 });

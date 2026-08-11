@@ -602,7 +602,7 @@ describe('readAssessedOphisFeeBps', () => {
       { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OTHER },
     ] } };
 
-    expect(readAssessedOphisFeeBps(1, meta, trade)).toBe('50.00000000');
+    expect(readAssessedOphisFeeBps(1, undefined, meta, trade)).toBe('50.00000000');
   });
 
   it('preserves fractional basis points', async () => {
@@ -623,7 +623,7 @@ describe('readAssessedOphisFeeBps', () => {
       { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS },
     ] } };
 
-    expect(readAssessedOphisFeeBps(1, meta, trade)).toBe('1.50000000');
+    expect(readAssessedOphisFeeBps(1, undefined, meta, trade)).toBe('1.50000000');
   });
 
   it('includes the operated-chain backend improvement policy', async () => {
@@ -641,7 +641,7 @@ describe('readAssessedOphisFeeBps', () => {
     });
     const meta = { metadata: { partnerFee: { volumeBps: 1, recipient: OPHIS } } };
 
-    expect(readAssessedOphisFeeBps(10, meta, trade)).toBe('50.00000000');
+    expect(readAssessedOphisFeeBps(10, 'market', meta, trade)).toBe('50.00000000');
   });
 
   it('removes sell-token protocol fees from a buy-order gross volume', async () => {
@@ -663,7 +663,7 @@ describe('readAssessedOphisFeeBps', () => {
       { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS },
     ] } };
 
-    expect(readAssessedOphisFeeBps(1, meta, trade)).toBe('15.00000000');
+    expect(readAssessedOphisFeeBps(1, undefined, meta, trade)).toBe('15.00000000');
   });
 
   it('accepts an operated-chain limit fill with no market-only improvement policy', async () => {
@@ -680,7 +680,7 @@ describe('readAssessedOphisFeeBps', () => {
     });
     const meta = { metadata: { partnerFee: { volumeBps: 1, recipient: OPHIS } } };
 
-    expect(readAssessedOphisFeeBps(10, meta, trade)).toBe('1.00000000');
+    expect(readAssessedOphisFeeBps(10, 'limit', meta, trade)).toBe('1.00000000');
   });
 
   it('allows the compounded operated-chain 99 bp improvement plus 1 bp base maximum', async () => {
@@ -698,7 +698,7 @@ describe('readAssessedOphisFeeBps', () => {
     });
     const meta = { metadata: { partnerFee: { volumeBps: 1, recipient: OPHIS } } };
 
-    expect(readAssessedOphisFeeBps(10, meta, trade)).toBe('100.00990000');
+    expect(readAssessedOphisFeeBps(10, 'market', meta, trade)).toBe('100.00990000');
   });
 
   it('rejects operated-chain alignment when an appData recipient was filtered', async () => {
@@ -719,6 +719,27 @@ describe('readAssessedOphisFeeBps', () => {
       { volumeBps: 1, recipient: OTHER },
     ] } };
 
-    expect(readAssessedOphisFeeBps(10, meta, trade)).toBeNull();
+    expect(readAssessedOphisFeeBps(10, 'market', meta, trade)).toBeNull();
+  });
+
+  it('rejects an equal-length market layout whose filtered first entry mimics the backend policy', async () => {
+    const [{ readAssessedOphisFeeBps }, { CowTrade }] = await Promise.all([
+      import('../src/fetcher.js'),
+      import('../src/cow/types.js'),
+    ]);
+    const token = '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83';
+    const trade = CowTrade.parse({
+      ...sampleTrade('0x' + '92'.repeat(56), '0x' + 'aa'.repeat(20), '10000', '9998'),
+      executedProtocolFees: [
+        { amount: '1', token, policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } } },
+        { amount: '1', token, policy: { volume: { factor: 0.0001 } } },
+      ],
+    });
+    const meta = { metadata: { partnerFee: [
+      { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OTHER },
+      { volumeBps: 1, recipient: OPHIS },
+    ] } };
+
+    expect(readAssessedOphisFeeBps(10, 'market', meta, trade)).toBeNull();
   });
 });

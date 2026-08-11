@@ -52,6 +52,7 @@ export const CowOrder = z.object({
   // attribute to the router).
   receiver: z.string().nullable().optional(),
   creationDate: z.string(),                                           // ISO 8601 (informational)
+  class: z.enum(['market', 'limit', 'liquidity']).optional(),          // operator fee applicability
   status: z.string().optional(),                                      // 'fulfilled' | 'open' | 'cancelled' | 'expired' | ...
   // Total filled across ALL fills (surplus-inclusive on the buy side). We
   // record these instead of a single trade-fill's amount so partial-fill / TWAP
