@@ -90,18 +90,18 @@ makes the structure visible:
 | Front-end | Fixed fee on 1,000 USDC | Improvement (surplus) split |
 | --- | --- | --- |
 | Ophis-operated chain, volatile pair | **0.10 USDC** base (0.01%) | Trader receives 20% until Ophis's 99 bps capture cap binds; all improvement above the cap goes to the trader |
-| Ophis on CoW-hosted chains | **1.20 USDC** (0.12% all-in) | 50% of quote improvement retained upstream by CoW Protocol |
+| Ophis on CoW-hosted chains | **0.30 USDC** fixed (0.03%) | Ophis's 80%/99 bps capture applies, plus CoW Protocol's upstream improvement fee |
 | CoW Swap | **0.20 USDC** (0.02%) | 50% of quote improvement retained by CoW Protocol |
 | Matcha | **2.50 USDC** (0.25%) | Positive slippage, route-dependent |
 | Velora | **1.50 USDC** (0.15%) | Positive slippage, route-dependent |
 
 On a same-chain stablecoin-to-stablecoin swap of 1,000 USDC, Ophis charges a
-**0.10 USDC** (0.01%) base on Optimism, Unichain, and Robinhood Chain, plus 50%
-of reference-quote improvement capped at 1.00 USDC. It charges **0.13 USDC** fixed all-in on
+**0.10 USDC** (0.01%) base on every supported chain, plus 50%
+of reference-quote improvement capped at 2.00 USDC. It charges **0.13 USDC** fixed all-in on
 CoW-hosted chains, Matcha **0.50 USDC** (0.05%), and Velora **0.10 USDC**
 (0.01%). The takeaway is not that one number is always lowest. It is that the
 Ophis fee schedule is **published per chain**: solver-aligned and capped on
-Ophis-operated chains, flat before upstream CoW fees on hosted chains.
+every supported chain, with separate upstream CoW fees on hosted chains.
 
 ### Where the surplus goes
 

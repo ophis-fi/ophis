@@ -81,7 +81,7 @@ export const EXECUTION_FACTS = {
   },
   improvementSplit: {
     sovereign: 'Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)',
-    hosted: 'CoW Protocol retains 50% of quote improvement upstream',
+    hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
   },
 } as const;
 

@@ -110,7 +110,7 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
     expect(EXECUTION_FACTS.settlementModel).toBe('intent, uniform clearing price');
     expect(EXECUTION_FACTS.solverCompetition.hostedChains).toBe('CoW Protocol solver network');
     expect(EXECUTION_FACTS.improvementSplit.sovereign).toBe('Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)');
-    expect(EXECUTION_FACTS.improvementSplit.hosted).toBe('CoW Protocol retains 50% of quote improvement upstream');
+    expect(EXECUTION_FACTS.improvementSplit.hosted).toBe('The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream');
   });
 });
 
