@@ -15,6 +15,7 @@ import {
   GROSS_FEE_BPS,
   LEGACY_UNDECODED_FEE_BPS,
   undecodedFeeFallbackBpsForOrderCreatedAt,
+  affiliateFeeBpsForOrderCreatedAt,
   type AffiliateKind,
 } from '../../src/affiliate/rates.js';
 
@@ -60,6 +61,9 @@ describe('computeAffiliate — canonical 1 bp Ophis fee', () => {
   it('derives the undecoded policy marker from order creation time', () => {
     expect(undecodedFeeFallbackBpsForOrderCreatedAt(new Date('2026-08-11T12:44:59.999Z'))).toBe(10);
     expect(undecodedFeeFallbackBpsForOrderCreatedAt(new Date('2026-08-11T12:45:00.000Z'))).toBe(1);
+    expect(affiliateFeeBpsForOrderCreatedAt(10, new Date('2026-08-11T12:44:59.999Z'))).toBe(10);
+    expect(affiliateFeeBpsForOrderCreatedAt(10, new Date('2026-08-11T12:45:00.000Z'))).toBe(1);
+    expect(affiliateFeeBpsForOrderCreatedAt(null, new Date('2026-08-11T12:45:00.000Z'))).toBeNull();
   });
 
   it('Regular hosted under cap: $500k -> $3', () => {

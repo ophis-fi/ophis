@@ -25,13 +25,15 @@ const fill = (over: Partial<PendingDefiLlamaFill>): PendingDefiLlamaFill => ({
   buyToken: `0x${'22'.repeat(20)}`,
   buyAmount: 2_000n,
   volumeFeeBps: 0,
+  assessedFeeBps: null,
   feeVerified: false,
   ...over,
 });
 
 async function readRow() {
-  const [row] = await sql<{ bps: number | null; verified: boolean; sell: string }[]>`
-    SELECT volume_fee_bps AS bps, fee_verified AS verified, sell_amount::text AS sell
+  const [row] = await sql<{ bps: number | null; assessed: string | null; verified: boolean; sell: string }[]>`
+    SELECT volume_fee_bps AS bps, assessed_fee_bps::text AS assessed,
+           fee_verified AS verified, sell_amount::text AS sell
     FROM defillama_fills
     WHERE chain_id = 100 AND block_number = 42 AND log_index = 3
       AND trade_uid = decode(${UID.slice(2)}, 'hex')`;
@@ -60,21 +62,21 @@ describe('upsertDefillamaFills', () => {
   });
 
   it('upgrades the provisional row in place on a verified write', async () => {
-    await upsertDefillamaFills([fill({ volumeFeeBps: 10, feeVerified: true })]);
+    await upsertDefillamaFills([fill({ volumeFeeBps: 1, assessedFeeBps: '2.50000000', feeVerified: true })]);
     const row = await readRow();
-    expect(row).toMatchObject({ bps: 10, verified: true });
+    expect(row).toMatchObject({ bps: 1, assessed: '2.50000000', verified: true });
     // Upgrade touches the FEE fields only; the per-fill amounts stay.
     expect(row.sell).toBe('1000');
   });
 
   it('never downgrades a verified row back to provisional', async () => {
     await upsertDefillamaFills([fill({ volumeFeeBps: 0, feeVerified: false })]);
-    expect(await readRow()).toMatchObject({ bps: 10, verified: true });
+    expect(await readRow()).toMatchObject({ bps: 1, assessed: '2.50000000', verified: true });
   });
 
   it('is idempotent for an identical verified re-write', async () => {
-    await upsertDefillamaFills([fill({ volumeFeeBps: 10, feeVerified: true })]);
-    expect(await readRow()).toMatchObject({ bps: 10, verified: true });
+    await upsertDefillamaFills([fill({ volumeFeeBps: 1, assessedFeeBps: '2.50000000', feeVerified: true })]);
+    expect(await readRow()).toMatchObject({ bps: 1, assessed: '2.50000000', verified: true });
   });
 
   it('deduplicates same-key rows within one batch, verified copy winning', async () => {
@@ -83,13 +85,13 @@ describe('upsertDefillamaFills', () => {
     // without in-batch dedup this whole flush throws a cardinality violation.
     const dup = fill({ blockNumber: 77n, logIndex: 9 });
     await expect(
-      upsertDefillamaFills([dup, { ...dup, volumeFeeBps: 10, feeVerified: true }]),
+      upsertDefillamaFills([dup, { ...dup, volumeFeeBps: 1, assessedFeeBps: '2.5', feeVerified: true }]),
     ).resolves.toBeUndefined();
     const [row] = await sql<{ bps: number | null; verified: boolean }[]>`
       SELECT volume_fee_bps AS bps, fee_verified AS verified FROM defillama_fills
       WHERE chain_id = 100 AND block_number = 77 AND log_index = 9
         AND trade_uid = decode(${UID.slice(2)}, 'hex')`;
     // The verified in-batch copy won over the provisional one.
-    expect(row).toMatchObject({ bps: 10, verified: true });
+    expect(row).toMatchObject({ bps: 1, verified: true });
   });
 });

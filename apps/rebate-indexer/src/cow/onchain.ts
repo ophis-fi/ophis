@@ -194,7 +194,10 @@ export async function decodeWindow(
   // Per-fill reporting rows paired with their trade so the fee fields can mirror
   // the trade's FINAL values (the surplus->0 in-loop downgrade and the
   // discovery-mode downgrade below both mutate the trade after attribution).
-  const fillPairs: { fill: Omit<PendingDefiLlamaFill, 'volumeFeeBps' | 'feeVerified'>; trade: PendingTrade }[] = [];
+  const fillPairs: {
+    fill: Omit<PendingDefiLlamaFill, 'volumeFeeBps' | 'assessedFeeBps' | 'feeVerified'>;
+    trade: PendingTrade;
+  }[] = [];
   const rows: PendingTrade[] = [];
   const byTx = new Map<`0x${string}`, TradeLog[]>();
   for (const l of logs) {
@@ -348,7 +351,12 @@ export async function decodeWindow(
   }
   if (fillSink) {
     for (const { fill, trade } of fillPairs) {
-      fillSink.push({ ...fill, volumeFeeBps: trade.volumeFeeBps, feeVerified: trade.feeVerified });
+      fillSink.push({
+        ...fill,
+        volumeFeeBps: trade.volumeFeeBps,
+        assessedFeeBps: null,
+        feeVerified: trade.feeVerified,
+      });
     }
   }
   return rows;

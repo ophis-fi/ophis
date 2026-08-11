@@ -55,12 +55,12 @@ export async function computeDefiLlamaDay(
     SELECT
       chain_id,
       COALESCE(SUM(value_usd), 0)::text AS volume_usd,
-      COALESCE(SUM(value_usd * volume_fee_bps / 10000)
-        FILTER (WHERE volume_fee_bps IS NOT NULL), 0)::text AS fees_usd,
+      COALESCE(SUM(value_usd * COALESCE(assessed_fee_bps, volume_fee_bps) / 10000)
+        FILTER (WHERE COALESCE(assessed_fee_bps, volume_fee_bps) IS NOT NULL), 0)::text AS fees_usd,
       COALESCE(SUM(
-        value_usd * volume_fee_bps / 10000
+        value_usd * COALESCE(assessed_fee_bps, volume_fee_bps) / 10000
         * CASE WHEN chain_id = ANY(${sovereignChainIds}) THEN 1 ELSE ${hostedKeepBps}::numeric / 10000 END
-      ) FILTER (WHERE volume_fee_bps IS NOT NULL), 0)::text AS revenue_usd,
+      ) FILTER (WHERE COALESCE(assessed_fee_bps, volume_fee_bps) IS NOT NULL), 0)::text AS revenue_usd,
       COUNT(*)::text AS trades
     FROM defillama_fills
     WHERE chain_id = ANY(${chainIds})

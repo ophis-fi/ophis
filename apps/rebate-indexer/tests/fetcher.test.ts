@@ -89,6 +89,21 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows[0]!.blockTimestamp.toISOString()).toBe('2026-05-01T12:00:00.000Z');
   });
 
+  it('caps a post-cutover custom Ophis flat fee at the 1 bp affiliate base', async () => {
+    const uid = '0x' + '7a'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue({
+      ...orderWithAppData(uid, owner, { appCode: 'ophis', metadata: { partnerFee: OPHIS_FEE } }),
+      creationDate: '2026-08-11T12:45:00.000Z',
+    });
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, owner as `0x${string}`, {});
+    expect(rows[0]?.volumeFeeBps).toBe(1);
+    expect(rows[0]?.undecodedFeeFallbackBps).toBe(1);
+  });
+
   it('preserves every partial fill with its settlement block timestamp for DefiLlama', async () => {
     const uid = '0x' + '0c'.repeat(56);
     const owner = '0xa'.padEnd(42, '0');
@@ -559,5 +574,55 @@ describe('fetcher.fetchChainTrades', () => {
     expect(byUid[uids.inflated]!.ownFeeBps).toBe(90); // clamped to OWN_FEE_MAX_BPS (90)
     expect(byUid[uids.single]!.ownFeeBps).toBe(30);
     expect(byUid[uids.single]!.ownFeeRecipient).toBe(INTEGRATOR.toLowerCase());
+  });
+});
+
+describe('readAssessedOphisFeeBps', () => {
+  const OPHIS = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8';
+  const OTHER = '0x1111111111111111111111111111111111111111';
+
+  it('uses appData ordering to exclude another recipient with an identical policy', async () => {
+    const [{ readAssessedOphisFeeBps }, { CowTrade }] = await Promise.all([
+      import('../src/fetcher.js'),
+      import('../src/cow/types.js'),
+    ]);
+    const trade = CowTrade.parse({
+      ...sampleTrade('0x' + '99'.repeat(56), '0x' + 'aa'.repeat(20), '10000', '9920'),
+      sellAmountBeforeFees: '10000',
+      executedProtocolFees: [
+        { amount: '0', token: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83', policy: { volume: { factor: 0.0002 } } },
+        { amount: '1', token: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83', policy: { volume: { factor: 0.0001 } } },
+        { amount: '49', token: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83', policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } } },
+        { amount: '30', token: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83', policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } } },
+      ],
+    });
+    const meta = { metadata: { partnerFee: [
+      { volumeBps: 1, recipient: OPHIS },
+      { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS },
+      { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OTHER },
+    ] } };
+
+    expect(readAssessedOphisFeeBps(meta, trade)).toBe('50.00000000');
+  });
+
+  it('preserves fractional basis points', async () => {
+    const [{ readAssessedOphisFeeBps }, { CowTrade }] = await Promise.all([
+      import('../src/fetcher.js'),
+      import('../src/cow/types.js'),
+    ]);
+    const token = '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83';
+    const trade = CowTrade.parse({
+      ...sampleTrade('0x' + '98'.repeat(56), '0x' + 'aa'.repeat(20), '100000', '99985'),
+      executedProtocolFees: [
+        { amount: '10', token, policy: { volume: { factor: 0.0001 } } },
+        { amount: '5', token, policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } } },
+      ],
+    });
+    const meta = { metadata: { partnerFee: [
+      { volumeBps: 1, recipient: OPHIS },
+      { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS },
+    ] } };
+
+    expect(readAssessedOphisFeeBps(meta, trade)).toBe('1.50000000');
   });
 });
