@@ -130,7 +130,7 @@ The chain is wired through the whole Ophis stack, not just the app: the frontend
 - **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated, with fourteen tools covering every supported chain. `list_chains` resolves the Robinhood orderbook host and settlement domain, `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
 - **SDK.** `@ophis/sdk` 0.3.0 resolves the orderbook URL, the EIP-712 signing domain, the vault relayer, and the EthFlow address per chain. On a sovereign chain that is the difference between an order that verifies and one that does not.
 - **Widget.** `@ophis/widget-react` embeds the swap form directly. See the [widget docs](https://docs.ophis.fi/widget).
-- **Affiliate.** Mint a referral code and earn 8% of the net fee Ophis keeps on trades your referred wallets route, paid monthly in WETH. Details in the [affiliate docs](https://docs.ophis.fi/affiliate).
+- **Affiliate.** Mint a referral code and earn 8% of the verified base fee Ophis keeps on trades your referred wallets route, paid monthly in WETH. Details in the [affiliate docs](https://docs.ophis.fi/affiliate).
 
 If you want the same walkthrough for the other two Ophis-operated chains, read [how to swap on Optimism](/blog/how-to-swap-on-optimism/) and [how to swap on Unichain](/blog/how-to-swap-on-unichain/).
 

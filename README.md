@@ -277,7 +277,7 @@ Part of the fee flows back to traders:
   The [rebate indexer](https://rebates.ophis.fi) computes shares and a Safe batch
   proposer pays out.
 - **Referrals.** Mint a code, share `https://swap.ophis.fi/?ref=YOURCODE`, and earn
-  8% of the net fee Ophis keeps on trades your referrals route, paid monthly in WETH.
+  8% of the verified base fee Ophis keeps on trades your referrals route, paid monthly in WETH.
 
 Full numbers and the tier ladder: [docs.ophis.fi/fees](https://docs.ophis.fi/fees)
 and [docs.ophis.fi/affiliate](https://docs.ophis.fi/affiliate).

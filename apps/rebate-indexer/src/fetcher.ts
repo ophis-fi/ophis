@@ -217,10 +217,11 @@ function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | 
  *
  * appData is attacker-controllable, so a crafted array cannot use a decoy
  * `{recipient: attacker, volumeBps: 10}` to over-credit: only Ophis-recipient
- * entries are considered. This decoder returns the flat entry only; the API
- * fetch path subsequently replaces it with an effective rate computed from the
- * authoritative `executedProtocolFees` amounts when those are available. The
- * PI cap itself is never treated as if it were collected.
+ * entries are considered. This decoder returns the verified flat entry only.
+ * CoW's `executedProtocolFees` reports intended policy amounts without a fee
+ * recipient and is not proof that Ophis received the transfer, so improvement
+ * revenue stays excluded until it can be reconciled against actual transfers
+ * to the Ophis Safe. The PI cap is never treated as collected revenue.
  * The caller additionally leaves NULL for unparseable appData / pre-per-trade rows.
  */
 function readVolumeFeeBps(meta: unknown): number | null {
@@ -281,54 +282,6 @@ function readVolumeFeeBps(meta: unknown): number | null {
   // No usable flat Volume fee. A seen surplus/PI Ophis fee -> NULL (policy-marker fallback,
   // still earns). Otherwise Ophis collected nothing -> 0 (credit zero).
   return sawOphisNonVolumeFee ? null : 0;
-}
-
-const approx = (actual: number, expected: number): boolean => Math.abs(actual - expected) < 1e-9;
-
-/**
- * Effective Ophis bps actually collected for a hosted settlement fill.
- * `executedProtocolFees` is emitted by CoW's authoritative trades endpoint in
- * appData-policy order. Match only Ophis's exact policy signatures, sum their
- * realized amounts, and divide by the executed volume in that fee token. This
- * intentionally ignores both the advertised cap and CoW's separate upstream
- * policies.
- */
-export function readRealizedOphisFeeBps(trade: CowTrade): number | null {
-  const fees = trade.executedProtocolFees ?? [];
-  type ExecutedFee = NonNullable<CowTrade['executedProtocolFees']>[number];
-  const isOphisPolicy = (policy: ExecutedFee['policy']): boolean => {
-    if ('volume' in policy) return approx(policy.volume.factor, 0.0001);
-    if ('priceImprovement' in policy) {
-      const p = policy.priceImprovement;
-      return (
-        (approx(p.factor, 0.8) && approx(p.maxVolumeFactor, 0.0099)) ||
-        (approx(p.factor, 0.5) && approx(p.maxVolumeFactor, 0.002))
-      );
-    }
-    return false;
-  };
-  const matched = fees.filter((fee) => isOphisPolicy(fee.policy));
-  if (matched.length === 0) return null;
-
-  const token = matched[0]!.token.toLowerCase();
-  if (matched.some((fee) => fee.token.toLowerCase() !== token)) return null;
-  const collected = matched.reduce((sum, fee) => sum + BigInt(fee.amount), 0n);
-  if (collected <= 0n) return 0;
-
-  const allFeesInToken = fees
-    .filter((fee) => fee.token.toLowerCase() === token)
-    .reduce((sum, fee) => sum + BigInt(fee.amount), 0n);
-  let grossVolume: bigint;
-  if (token === trade.buyToken.toLowerCase()) {
-    grossVolume = BigInt(trade.buyAmount) + allFeesInToken;
-  } else if (token === trade.sellToken.toLowerCase()) {
-    grossVolume = BigInt(trade.sellAmountBeforeFees ?? trade.sellAmount);
-  } else {
-    return null;
-  }
-  if (grossVolume <= 0n) return null;
-  const roundedBps = Number((collected * 10_000n + grossVolume / 2n) / grossVolume);
-  return Math.max(1, Math.min(100, roundedBps));
 }
 
 function isAppCodeOfInterest(code: string | undefined): code is AppCode {
@@ -657,13 +610,6 @@ export async function fetchChainTrades(
           blockTimestamp: new Date(order.creationDate),
         });
         if (trade) {
-          // Require the appData recipient gate from attributeOrder first. The
-          // trades endpoint does not expose fee recipients, so policy factors
-          // alone must never turn an attacker-tagged order into Ophis revenue.
-          if (trade.volumeFeeBps !== null && trade.volumeFeeBps > 0) {
-            const realizedOphisFeeBps = readRealizedOphisFeeBps(t);
-            if (realizedOphisFeeBps !== null) trade.volumeFeeBps = realizedOphisFeeBps;
-          }
           trade.undecodedFeeFallbackBps = undecodedFeeFallbackBpsForOrderCreatedAt(
             new Date(order.creationDate),
           );

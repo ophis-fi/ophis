@@ -311,9 +311,11 @@ An SDK integration earns on three layers, and all three numbers are published:
    chains that is the 1 bp base plus capped improvement capture described above.
    The same policy applies on CoW-hosted chains, with CoW Protocol's own fees on top (see
    [Fees & rebates](./fees.md#the-all-in-cost-per-chain)).
-2. **You earn a share of the fee Ophis keeps** on every trade you route: 8%
-   on the self-serve tier, **12% on the partner tier** (uncapped referred
-   volume; ask us to upgrade your code). Paid monthly in WETH, on-chain.
+2. **You earn a share of Ophis's verified 1 bp base fee** on every trade you
+   route: 8% on the self-serve tier, **12% on the partner tier** (uncapped
+   referred volume; ask us to upgrade your code). Paid monthly in WETH,
+   on-chain. Improvement capture is excluded until receipts can be reconciled
+   to the Ophis Safe.
 3. **You can charge your own fee on top** of an ERC-20 order: up to 90 bps under
    the registered-partner ceiling. The hosted aggregate cap is 190 bps, leaving
    room for Ophis's 100 bps worst case and the full partner entry. You keep 100%
@@ -324,10 +326,10 @@ An SDK integration earns on three layers, and all three numbers are published:
 What layer 2 pays per **$1,000,000 of referred monthly volume** (non-stable,
 labeled estimates; exact value depends on chain mix):
 
-| Tier            | Share of net fee           | Roughly, per $1M/month |
+| Tier            | Share of verified base fee | Roughly, per $1M/month |
 | --------------- | -------------------------- | ---------------------- |
-| Self-serve (8%) | 8% of the fee Ophis keeps  | $6 hosted / $8 operated in WETH  |
-| Partner (12%)   | 12% of the fee Ophis keeps | $9 hosted / $12 operated in WETH |
+| Self-serve (8%) | 8% of the base Ophis keeps | $6 hosted / $8 operated in WETH  |
+| Partner (12%)   | 12% of the base Ophis keeps | $9 hosted / $12 operated in WETH |
 
 Layer 2 alone is not a business; it is a kicker. The business case for an
 operator is **layer 3**: your own fee entry, charged alongside the chain's
@@ -407,8 +409,9 @@ How your fee reaches you depends on the chain:
 Layer 2 is separate from the fee your users pay. The fee itself is set in
 `appData` at settlement (the chain-aware base, plus your own entry if you add one).
 The **referral share** of 8% or 12% is a distinct earning: it is a portion of
-the net fee Ophis keeps, paid back to you monthly in WETH. Tag each order with
-your referral code and Ophis pays it out each cycle.
+the verified 1 bp base fee Ophis keeps, paid back to you monthly in WETH. Tag
+each order with your referral code and Ophis pays it out each cycle. Improvement
+capture remains excluded until receipts can be reconciled to the Ophis Safe.
 
 ```ts
 import {

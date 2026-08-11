@@ -1,18 +1,18 @@
 ---
 id: affiliate
 title: Affiliate program
-description: Share an Ophis referral code and earn 8% (self-serve) or 12% (partner tier, uncapped) of the net fee Ophis keeps on every trade your referrals route. Paid monthly in WETH, for life.
+description: Share an Ophis referral code and earn 8% (self-serve) or 12% (partner tier, uncapped) of the verified base fee Ophis keeps on every trade your referrals route. Paid monthly in WETH, for life.
 sidebar_label: Affiliate program
 sidebar_position: 4
 ---
 
 # Affiliate program
 
-The Ophis affiliate program is a referral scheme that pays you a share of the fee
-Ophis keeps whenever a wallet you referred trades, settled monthly in WETH.
+The Ophis affiliate program pays a share of the verified 1 bp base fee Ophis
+keeps whenever a wallet you referred trades, settled monthly in WETH.
 
 Share a referral code. Every time someone you refer trades on Ophis, **you earn a
-share of the fee Ophis keeps on that trade, for life.** It is paid in WETH, every
+share of the verified base fee Ophis keeps on that trade, for life.** It is paid in WETH, every
 month, from the same Safe that pays volume-tier rebates.
 
 ## How it works
@@ -31,7 +31,7 @@ There are two tiers, and both numbers are published:
 
 | | Self-serve | Partner |
 | --- | --- | --- |
-| Share of the net fee Ophis keeps | **8%** | **12%** |
+| Share of the verified base fee Ophis keeps | **8%** | **12%** |
 | Referred volume counted | Capped at **$1,000,000/month** | **Uncapped** |
 | How to get it | Mint a code on the swap page | [Contact us](https://business.ophis.fi) to upgrade your code |
 
@@ -42,13 +42,13 @@ There are two tiers, and both numbers are published:
 - **Lifetime** attribution: once a referred wallet is bound to your code, you keep
   earning on its trades for as long as it trades.
 
-The share is taken on the fee Ophis **retains**, not the headline volume fee, so
-your earnings track the real fees your referrals generate, never a bounty on raw
-volume.
+The share is taken on the verified 1 bp base fee Ophis **retains**, not raw
+volume. Improvement capture is excluded until actual transfers can be
+reconciled to the Ophis Safe.
 
 A quick read on the scale: drive **$1,000,000** of referred retail volume in a
-month and the self-serve share works out to roughly **$60 to $80** in WETH for
-that month ($90 to $120 on the partner tier), depending on the chains your
+month and the self-serve share works out to roughly **$6 to $8** in WETH for
+that month ($9 to $12 on the partner tier), depending on the chains your
 referrals trade on. If you run your own integration, the referral share is the
 smallest of three earning layers: see
 [Partner economics](./partners.md#partner-economics-the-three-layers) for the
@@ -74,7 +74,7 @@ These are two separate ways to earn, and you can use both:
 | | Affiliate program | Volume-tier rebates |
 | --- | --- | --- |
 | Who earns | You, on trades your **referrals** route | You, on **your own** trade volume |
-| What | 8% (self-serve) or 12% (partner) of the net fee Ophis keeps | Share of the WETH rebate pool, weighted by your tier |
+| What | 8% (self-serve) or 12% (partner) of the verified base fee Ophis keeps | Share of the WETH rebate pool, weighted by your tier |
 | Paid in | WETH, monthly | WETH, monthly |
 
 See [Fees & rebates](./fees.md) for the volume-tier rebate model.
