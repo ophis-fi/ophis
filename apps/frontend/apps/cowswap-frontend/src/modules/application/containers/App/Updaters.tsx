@@ -80,6 +80,15 @@ function useDeferredMount(): boolean {
   return ready
 }
 
+// CoW CMS announcements are no longer fetched (AnnouncementsUpdater is not
+// mounted below), but announcementsAtom is atomWithStorage-backed
+// ('announcements:v0' in @cowprotocol/core cms state) — without this purge,
+// banners cached before the unmount would render stale forever in the header
+// URLWarning. Same pattern as the twap-part-orders-list:v1 cleanup.
+if (typeof window !== 'undefined') {
+  localStorage.removeItem('announcements:v0')
+}
+
 export function Updaters(): ReactNode {
   const { account } = useWalletInfo()
   const deferred = useDeferredMount()
