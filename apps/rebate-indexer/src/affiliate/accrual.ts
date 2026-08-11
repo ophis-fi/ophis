@@ -1,6 +1,11 @@
 import { sql } from '../db/index.js';
 import type { AffiliateReferrer } from './computeAffiliate.js';
-import { LEGACY_UNDECODED_FEE_BPS, type AffiliateKind } from './rates.js';
+import {
+  GROSS_FEE_BPS,
+  LEGACY_UNDECODED_FEE_BPS,
+  ONE_BP_FEE_CUTOVER_AT,
+  type AffiliateKind,
+} from './rates.js';
 
 // Reads the referral graph + trades and builds the per-referrer, per-chain referred
 // volume for a cycle, ready for computeAffiliate().
@@ -59,8 +64,8 @@ export async function buildAffiliateReferrers(
   }
 
   // Grouped by (referrer, chain, EFFECTIVE gross bps) — splitting volume by its
-  // per-trade fee rate (NULL bps -> the legacy retail rate, so pre-split trades are
-  // unchanged) lets computeAffiliate apply the regular cap LEAST-VALUABLE-FIRST even
+  // per-trade fee rate (NULL bps -> 10 only before the 1 bp rollout cutover, otherwise
+  // the current 1 bp rate) lets computeAffiliate apply the regular cap LEAST-VALUABLE-FIRST even
   // when one chain carries mixed-rate (5/10/1 bps) trades.
   const rows = await sql<
     { referrer_hex: string; chain_id: number; gross_bps: number; volume_usd: string }[]
@@ -68,7 +73,10 @@ export async function buildAffiliateReferrers(
     SELECT
       encode(r.referrer_wallet, 'hex')                AS referrer_hex,
       t.chain_id                                      AS chain_id,
-      COALESCE(t.volume_fee_bps, ${LEGACY_UNDECODED_FEE_BPS})::int AS gross_bps,
+      COALESCE(t.volume_fee_bps, CASE
+        WHEN t.block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}
+        ELSE ${GROSS_FEE_BPS}
+      END)::int AS gross_bps,
       SUM(t.value_usd)::text                          AS volume_usd
     FROM referrals r
     JOIN trades t ON t.wallet = r.referred_wallet
@@ -111,7 +119,7 @@ export async function buildAffiliateReferrers(
   //
   // FEE GATE (appData arm only): require volume_fee_bps > 0 — a CONFIRMED Ophis Volume
   // fee. appdata_ref_code is attacker-controllable, so this is the forge surface; the
-  // bind arm above is signature-gated and keeps its NULL->retail COALESCE for legacy
+  // bind arm above is signature-gated and keeps its cutover-gated NULL fallback
   // pre-per-trade-tracking rows. Excluding NULL here (vs the bind arm) closes the
   // surplus/PI-NULL -> retail-COALESCE forge at the money path, as a second line behind
   // the fetcher's attribution gate. Ophis emitters never emit surplus/PI, so a NULL on

@@ -189,9 +189,8 @@ function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | 
  * Read the order's gross volume-fee rate (bps) from its appData, recipient-guarded
  * and clamped to [1, retail]. Classifies the Ophis partner fee against the backend
  * app_data.rs FeePolicyDeserializer arms and returns one of THREE states (which
- * must NOT collapse, because accrual/dashboard SQL applies
- * COALESCE(volume_fee_bps, LEGACY_UNDECODED_FEE_BPS) and would credit a NULL at the legacy retail
- * default):
+ * must NOT collapse, because accrual/dashboard SQL applies a timestamp-gated
+ * fallback to NULL: 10 bps before the production cutover, 1 bp afterward):
  *
  *   N (1..retail) -- a settled flat Volume fee to Ophis: CIP-75 `{ volumeBps }` or
  *     legacy `{ bps }` with surplusBps/priceImprovementBps/maxVolumeBps all absent
@@ -201,8 +200,7 @@ function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | 
  *   null -- a VALID Surplus `{ surplusBps, maxVolumeBps }` or PriceImprovement
  *     `{ priceImprovementBps, maxVolumeBps }` fee to Ophis. Ophis DID collect a fee,
  *     but this volume-derived indexer cannot compute a surplus/PI amount, so it is
- *     UNKNOWN -> COALESCEs to the retail default and still earns a rebate (the
- *     pre-per-trade behaviour) rather than being zeroed.
+ *     UNKNOWN -> receives the cutover-appropriate fallback rather than being zeroed.
  *
  *   0 -- examined, NO settled Ophis fee at ALL: a non-Ophis recipient, an absent /
  *     0-bps fee, or a backend-REJECTED shape (capped `{ volumeBps/bps, maxVolumeBps }`,
@@ -250,8 +248,8 @@ function readVolumeFeeBps(meta: unknown): number | null {
       // arm { priceImprovementBps, maxVolumeBps } (integers, mutually exclusive, no
       // volumeBps/bps). A VALID such fee is a real Ophis fee on a CoW-hosted chain
       // (CoW accepts CIP-75 Surplus/PI; only the OP sovereign backend rejects it),
-      // but the volume-derived indexer can't compute it -> defer to NULL (retail
-      // default) so it still earns. A MALFORMED surplus-ish shape (e.g. missing
+      // but the volume-derived indexer can't compute it -> defer to NULL (the
+      // timestamp-gated fallback) so it still earns. A MALFORMED surplus-ish shape (e.g. missing
       // maxVolumeBps, non-integer, or mixed with volumeBps/bps) is backend-rejected
       // (no settled fee) and must NOT get the retail default -> falls through to 0.
       (isInt(entry.surplusBps) &&
@@ -270,7 +268,7 @@ function readVolumeFeeBps(meta: unknown): number | null {
     // else: capped { volumeBps/bps, maxVolumeBps }, both-aliases, or a malformed
     // surplus/PI shape -> backend Errs (no settled fee) -> not creditable; try next.
   }
-  // No usable flat Volume fee. A seen surplus/PI Ophis fee -> NULL (retail default,
+  // No usable flat Volume fee. A seen surplus/PI Ophis fee -> NULL (cutover-gated default,
   // still earns). Otherwise Ophis collected nothing -> 0 (credit zero).
   return sawOphisNonVolumeFee ? null : 0;
 }

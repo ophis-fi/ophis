@@ -146,40 +146,47 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     expect(refs.find((r) => r.referrer_wallet === `0x${selfOwner}`)).toBeFalsy();
   });
 
-  it('per-rate buckets preserve explicit fees while NULL uses the legacy undecoded fallback', async () => {
+  it('uses 10 bps only for pre-cutover NULL rows and 1 bp for current NULL rows', async () => {
     const referrer = W('a5a5');
     const referred = W('c5c5');
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('rate1', decode(${referrer},'hex'), 'regular', true)`;
     await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at)
       VALUES (decode(${referred},'hex'),'rate1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
-    const now = new Date();
-    const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
-    // Same chain (100), three records: two explicit historical rates and one
-    // legacy undecoded rate, which conservatively retains the old retail fallback.
-    const insFee = (uid: string, usd: string, bps: number | null) => sql`
+    const beforeCutover = '2026-08-11T12:44:59.000Z';
+    const afterCutover = '2026-08-11T12:45:00.000Z';
+    // Same chain (100): explicit rates remain exact. An undecoded pre-cutover row
+    // keeps 10 bps, while a current surplus/PI NULL row gets the canonical 1 bp.
+    const insFee = (uid: string, usd: string, bps: number | null, timestamp: string) => sql`
       INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, priced_at)
-      VALUES (decode(${UID(uid)},'hex'), 100, decode(${referred},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, ${bps}, now())`;
-    await insFee('e51', '100000', 10); // explicit historical retail
-    await insFee('e52', '100000', 5); // explicit historical partner
-    await insFee('e53', '100000', null); // undecoded historical -> 10 bps fallback
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${referred},'hex'), 1, ${timestamp}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, ${bps}, now())`;
+    await insFee('e51', '100000', 10, beforeCutover);
+    await insFee('e52', '100000', 5, beforeCutover);
+    await insFee('e53', '100000', null, beforeCutover);
+    await insFee('e54', '100000', null, afterCutover);
 
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const start = new Date('2026-08-01T00:00:00.000Z');
+    const end = new Date('2026-09-01T00:00:00.000Z');
     const refs = await buildAffiliateReferrers(start, end);
     const r = refs.find((x) => x.referrer_wallet === `0x${referrer}`);
     expect(r).toBeTruthy();
-    // Explicit historical fees remain faithful to what settled; NULL uses the
-    // separate legacy fallback, not the current new-order default.
+    // Explicit historical fees remain faithful; NULL is split by the rollout boundary.
     const b10 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 10);
     const b5 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 5);
+    const b1 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 1);
     expect(b10?.volumeUsd).toBe(200000);
     expect(b5?.volumeUsd).toBe(100000);
+    expect(b1?.volumeUsd).toBe(100000);
 
-    // owed end-to-end: 8% * 75% * (200k*10 + 100k*5)/1e4 = $15.
+    // owed end-to-end: 8% * 75% * (200k*10 + 100k*5 + 100k*1)/1e4 = $15.60.
     const { computeAffiliate } = await import('../../src/affiliate/computeAffiliate.js');
     const owed = computeAffiliate(refs, 2500).find((o) => o.referrer_wallet === `0x${referrer}`);
     expect(owed).toBeTruthy();
-    expect(owed!.owedUsd).toBeCloseTo(15, 6);
+    expect(owed!.owedUsd).toBeCloseTo(15.6, 6);
+
+    // Dashboard uses the identical boundary: gross fee base is $260, hosted net is $195.
+    const stats = await getReferrerStats(`0x${referrer}`, new Date('2026-08-12T00:00:00.000Z'));
+    expect(stats.currentCycleVolumeUsd).toBe(400000);
+    expect(stats.currentCycleNetFeeUsd).toBeCloseTo(195, 6);
   });
 
   it('appData arm: both 0 (rejected policy) AND NULL (unconfirmed) credit ZERO — only a confirmed fee earns', async () => {

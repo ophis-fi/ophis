@@ -20,6 +20,7 @@ import {
   FEE_SHARE_BPS,
   GROSS_FEE_BPS,
   LEGACY_UNDECODED_FEE_BPS,
+  ONE_BP_FEE_CUTOVER_AT,
   COW_TAKE_BPS,
   OPTIMISM_CHAIN_ID,
   SOVEREIGN_CHAIN_IDS,
@@ -61,8 +62,12 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           ), 0)::text AS cycle_volume_usd,
           -- Cycle NET fee = SUM(value * actual bps * keepFraction(chain)) so the
           -- estimate matches the per-trade, per-chain payout: sovereign chains
-          -- (OP, Unichain) keep 100%, hosted 75% (NULL bps -> retail default, like accrual).
-          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${LEGACY_UNDECODED_FEE_BPS})
+          -- (OP, Unichain) keep 100%, hosted 75%. NULL uses 10 bps only before
+          -- the production cutover; current undecodable surplus/PI fees use 1 bp.
+          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, CASE
+              WHEN t.block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}
+              ELSE ${GROSS_FEE_BPS}
+            END)
             * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
             WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           ), 0)::text AS cycle_net_weighted,
@@ -73,7 +78,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
           -- Exclude explicit 0-fee trades (no settled Ophis fee): they earn nothing
           -- in accrual (grossBps>0 filter), so they must not inflate displayed volume
-          -- or consume the regular cap here. NULL (-> retail) and positive rates stay.
+          -- or consume the regular cap here. NULL (-> cutover-gated fallback) and positive rates stay.
           AND t.volume_fee_bps IS DISTINCT FROM 0
           -- Production chains only: mirror of accrual's Sepolia exclusion.
           AND t.chain_id <> 11155111
@@ -90,7 +95,10 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
         SELECT
           COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
           COALESCE(SUM(t.value_usd), 0)::text AS cycle_volume_usd,
-          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${LEGACY_UNDECODED_FEE_BPS})
+          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, CASE
+              WHEN t.block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}
+              ELSE ${GROSS_FEE_BPS}
+            END)
             * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)), 0)::text AS cycle_net_weighted,
           '0'::text AS lifetime_volume_usd
         FROM referrals r
