@@ -78,6 +78,15 @@ describe('Detect environments using host and path', () => {
       expect(checkEnvironment('9fbd9b47.greg-etm.pages.dev', '')).toEqual(DEFAULT_ENVIRONMENTS_CHECKS)
       expect(checkEnvironment('evil-ophis.fi.attacker.example', '')).toEqual(DEFAULT_ENVIRONMENTS_CHECKS)
     })
+
+    it('registrable dot-substitution lookalikes are NOT production', () => {
+      // Escaped dots in the ophis entries: with unescaped dots these all
+      // matched as "production" (dot = any char).
+      expect(checkEnvironment('swap-ophis-fi', '')).toEqual(DEFAULT_ENVIRONMENTS_CHECKS)
+      expect(checkEnvironment('swap-ophis.fi', '')).toEqual(DEFAULT_ENVIRONMENTS_CHECKS)
+      expect(checkEnvironment('ophis-fi', '')).toEqual(DEFAULT_ENVIRONMENTS_CHECKS)
+      expect(checkEnvironment('explorerxophis.fi', '')).toEqual(DEFAULT_ENVIRONMENTS_CHECKS)
+    })
   })
 
   describe('Is ENS', () => {
