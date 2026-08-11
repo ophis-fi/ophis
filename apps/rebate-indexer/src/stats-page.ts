@@ -75,7 +75,7 @@ export const EXECUTION_FACTS = {
     sovereignChains: [
       { chainId: 10, solvers: 11 },
       { chainId: 130, solvers: 7 },
-      { chainId: 4663, solvers: 6 },
+      { chainId: 4663, solvers: 7 },
     ],
     hostedChains: 'CoW Protocol solver network',
   },

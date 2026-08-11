@@ -4,7 +4,7 @@ import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from '../safe/addresses.js';
 import { priceTrade } from '../pricer.js';
 import { buildAffiliateReferrers } from './accrual.js';
 import { computeAffiliate } from './computeAffiliate.js';
-import { LEGACY_UNDECODED_FEE_BPS } from './rates.js';
+import { GROSS_FEE_BPS, LEGACY_UNDECODED_FEE_BPS, ONE_BP_FEE_CUTOVER_AT } from './rates.js';
 import { assembleReport } from './report.js';
 import { notify } from '../telegram/alerter.js';
 import { logger } from '../logger.js';
@@ -76,7 +76,10 @@ export async function deliverMonthlyReport(deps: { rpcUrl: string; now?: Date })
       SELECT
         chain_id,
         COALESCE(SUM(value_usd), 0)::text AS vol,
-        COALESCE(SUM(value_usd * COALESCE(volume_fee_bps, ${LEGACY_UNDECODED_FEE_BPS})), 0)::text AS fee_weighted
+        COALESCE(SUM(value_usd * COALESCE(volume_fee_bps, CASE
+          WHEN block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}::int
+          ELSE ${GROSS_FEE_BPS}::int
+        END)), 0)::text AS fee_weighted
       FROM trades
       WHERE block_timestamp >= ${start.toISOString()} AND block_timestamp < ${end.toISOString()} AND value_usd IS NOT NULL
       GROUP BY chain_id
