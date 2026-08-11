@@ -51,6 +51,14 @@ export function undecodedFeeFallbackBpsForOrderCreatedAt(createdAt: Date): numbe
     : GROSS_FEE_BPS;
 }
 
+/** Affiliate liability uses the historical decoded flat rate before rollout,
+ * but never more than the canonical 1 bp base for an order created afterward.
+ * The creation timestamp is authoritative; settlement time is not. */
+export function affiliateFeeBpsForOrderCreatedAt(feeBps: number | null, createdAt: Date): number | null {
+  if (feeBps === null || createdAt.getTime() < Date.parse(ONE_BP_FEE_CUTOVER_AT)) return feeBps;
+  return Math.min(feeBps, GROSS_FEE_BPS);
+}
+
 /** Highest legacy Ophis volume fee that may appear on already-settled orders.
  * Keep historical accounting faithful; new orders are emitted at GROSS_FEE_BPS. */
 export const HISTORICAL_OPHIS_FEE_MAX_BPS = 10;

@@ -29,6 +29,7 @@ export const OPHIS_STABLECOINS: Readonly<Record<number, ReadonlySet<string>>> = 
     '0xe9e7cea3dedca5984780bafc599bd69add087d56',
   ]),
   100: new Set([
+    '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
     '0x2a22f9c3b484c3629090feed35f17ff8f88f76f0',
     '0x4ecaba5870353805a9f068101a40e0f32ed605c6',
     '0x5cb9073902f2035222b9749f8fb0c9bfe5527108',

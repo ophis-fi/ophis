@@ -51,7 +51,7 @@ export const trades = pgTable(
     // improvement is excluded: executedProtocolFees is intended rather than
     // recipient-reconciled revenue and cannot safely fund affiliate payouts.
     // Three states:
-    //   N (1..100) = the verified flat per-trade Ophis fee rate;
+    //   N (1..10)  = verified historical flat rate; post-cutover rows are 1 bp;
     //   0         = examined, NO settled Ophis fee at all (a backend-rejected shape
     //               like capped {volumeBps,maxVolumeBps} or both-aliases, a non-Ophis
     //               recipient, an absent/0-bps fee) -> credited at ZERO;
@@ -137,6 +137,9 @@ export const defillamaFills = pgTable(
     buyToken: bytea('buy_token'),
     buyAmount: uint256('buy_amount'),
     volumeFeeBps: integer('volume_fee_bps'),
+    // Reporting-only assessed Ophis fee rate, including improvement capture.
+    // Numeric preserves fractional bps. It never enters affiliate accrual.
+    assessedFeeBps: numeric('assessed_fee_bps', { precision: 20, scale: 8 }),
     feeVerified: boolean('fee_verified').notNull(),
     valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
     pricedAt: timestamp('priced_at', { withTimezone: true }),

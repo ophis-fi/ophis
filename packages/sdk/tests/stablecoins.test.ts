@@ -17,6 +17,16 @@ describe('isOphisStablePair', () => {
     expect(isOphisStablePair(4663, usdg, usdg)).toBe(true);
   });
 
+  it('includes native xDAI on Gnosis', () => {
+    expect(
+      isOphisStablePair(
+        100,
+        '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+        '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83',
+      ),
+    ).toBe(true);
+  });
+
   it('fails closed for volatile tokens and unknown chains', () => {
     const usdc = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
     const weth = '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2';
