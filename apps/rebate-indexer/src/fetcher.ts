@@ -363,12 +363,17 @@ export function readAssessedOphisFeeBps(chainId: number, meta: unknown, trade: C
   const executed = trade.executedProtocolFees ?? [];
   if (appFees.length === 0 || executed.length < appFees.length) return null;
 
-  // Operated orderbooks prepend exactly one canonical Ophis improvement policy.
-  // Requiring the exact total length also rejects bypass/stale orders for which
-  // the backend filtered one or more appData recipients before settlement.
+  // Operated market orders prepend one canonical Ophis improvement policy;
+  // limit orders have only the appData policies. Exact cardinality plus the
+  // value-level suffix match below rejects layouts where a recipient was filtered.
   const sovereign = SOVEREIGN_CHAIN_IDS.has(chainId);
-  if (sovereign && (executed.length !== appFees.length + 1 || !isCanonicalOphisImprovement(executed[0]!.policy))) {
-    return null;
+  let hasSovereignImprovement = false;
+  if (sovereign) {
+    if (executed.length === appFees.length + 1 && isCanonicalOphisImprovement(executed[0]!.policy)) {
+      hasSovereignImprovement = true;
+    } else if (executed.length !== appFees.length) {
+      return null;
+    }
   }
 
   const offset = executed.length - appFees.length;
@@ -384,7 +389,7 @@ export function readAssessedOphisFeeBps(chainId: number, meta: unknown, trade: C
       ? [executed[offset + i]!]
       : [],
   );
-  if (sovereign) ophisFees.unshift(executed[0]!);
+  if (hasSovereignImprovement) ophisFees.unshift(executed[0]!);
   if (ophisFees.length === 0) return null;
   const token = ophisFees[0]!.token.toLowerCase();
   if (ophisFees.some((fee) => fee.token.toLowerCase() !== token)) return null;
@@ -397,9 +402,10 @@ export function readAssessedOphisFeeBps(chainId: number, meta: unknown, trade: C
   if (token === trade.buyToken.toLowerCase()) {
     grossVolume = BigInt(trade.buyAmount) + allFeesInToken;
   } else if (token === trade.sellToken.toLowerCase()) {
-    const sellBeforeNetworkFee = BigInt(trade.sellAmountBeforeFees ?? trade.sellAmount);
-    if (sellBeforeNetworkFee <= allFeesInToken) return null;
-    grossVolume = sellBeforeNetworkFee - allFeesInToken;
+    // The trades API defines sellAmountBeforeFees as the fee-free executed sell
+    // amount (database derivation: sell_amount - fee_amount). Do not deduct the
+    // executed protocol fees a second time.
+    grossVolume = BigInt(trade.sellAmountBeforeFees ?? trade.sellAmount);
   } else {
     return null;
   }
@@ -407,7 +413,8 @@ export function readAssessedOphisFeeBps(chainId: number, meta: unknown, trade: C
 
   const scale = 100_000_000n;
   const scaledBps = (assessed * 10_000n * scale + grossVolume / 2n) / grossVolume;
-  if (scaledBps > 100n * scale) return null;
+  // Sequential 99 bp improvement + 1 bp base can compound to 100.0099 bps.
+  if (scaledBps > 10_001_000_000n) return null;
   return `${scaledBps / scale}.${(scaledBps % scale).toString().padStart(8, '0')}`;
 }
 
