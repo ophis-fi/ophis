@@ -15,7 +15,7 @@ import { getBridgeIntermediateTokenAddress } from 'common/utils/getBridgeInterme
 
 import { safeAppFeeAtom } from './safeAppFeeAtom'
 
-import { isBoostedPair, resolveVolumeFeeForPair, VolumeFeePair } from '../pure/resolveVolumeFeeForPair'
+import { isBoostedPair, isStableStablePair, resolveVolumeFeeForPair, VolumeFeePair } from '../pure/resolveVolumeFeeForPair'
 import { VolumeFee } from '../types'
 
 /**
@@ -105,6 +105,12 @@ export const isBoostedTradeAtom = atom<boolean>((get) => {
   const pair = get(tradeVolumeFeePairAtom)
 
   return pair ? isBoostedPair(pair) : false
+})
+
+/** True when the active same-chain pair qualifies for stable pricing. */
+export const isStableTradeAtom = atom<boolean>((get) => {
+  const pair = get(tradeVolumeFeePairAtom)
+  return pair ? isStableStablePair(pair) : false
 })
 
 /**

@@ -161,7 +161,7 @@ describe('validateOrder (offline preflight)', () => {
     })
     const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
     expect(r.valid).toBe(false)
-    expect(r.errors.some((e) => /volumeBps must be an integer in \[1, 100\]/.test(e))).toBe(true)
+    expect(r.errors.some((e) => /exactly one valid Volume or PriceImprovement policy/.test(e))).toBe(true)
   })
 
   it('errors on a non-tradeable chain and lists tradeable ids', () => {
@@ -197,7 +197,7 @@ describe('validateOrder (offline preflight)', () => {
       version: APP_DATA_VERSION,
       appCode: 'ophis',
       metadata: {
-        partnerFee: { recipient: OPHIS_SAFE, volumeBps: 5 },
+        partnerFee: { recipient: OPHIS_SAFE, volumeBps: 1 },
         ophisReferrer: { code: 'ACME-Bot_1' },
       },
     })
@@ -217,6 +217,31 @@ describe('validateOrder (offline preflight)', () => {
     expect(r.valid).toBe(true)
   })
 
+  it('accepts the complete volatile policy on a hosted chain', () => {
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: {
+        partnerFee: [
+          { recipient: OPHIS_SAFE, volumeBps: 1 },
+          { recipient: OPHIS_SAFE, priceImprovementBps: 8_000, maxVolumeBps: 99 },
+        ],
+      },
+    })
+    expect(validateOrder({ chainId: 1, fullAppData: doc }, NOW).valid).toBe(true)
+  })
+
+  it('rejects a hosted policy missing the improvement entry', () => {
+    const doc = JSON.stringify({
+      version: APP_DATA_VERSION,
+      appCode: 'ophis',
+      metadata: { partnerFee: { recipient: OPHIS_SAFE, volumeBps: 1 } },
+    })
+    const r = validateOrder({ chainId: 1, fullAppData: doc }, NOW)
+    expect(r.valid).toBe(false)
+    expect(r.errors.some((e) => /exactly one canonical Ophis PriceImprovement/i.test(e))).toBe(true)
+  })
+
   it('rejects a stacked non-Ophis partnerFee recipient (backend allowlist rejects the whole order)', () => {
     // The Ophis entry is present (so no missing-recipient error), but a stacked
     // own-fee entry to a foreign recipient makes the backend reject the WHOLE
@@ -227,7 +252,7 @@ describe('validateOrder (offline preflight)', () => {
       appCode: 'ophis',
       metadata: {
         partnerFee: [
-          { recipient: OPHIS_SAFE, volumeBps: 5 },
+          { recipient: OPHIS_SAFE, volumeBps: 1 },
           { recipient: ATTACKER, volumeBps: 30 },
         ],
       },
@@ -402,7 +427,7 @@ describe('listChains', () => {
     expect(op?.ophisOperated).toBe(true)
     expect(op?.settlement).toBe(OPHIS_OP_SETTLEMENT)
     expect(op?.orderbookUrl).toBe('https://optimism-mainnet.ophis.fi')
-    expect(op?.partnerFee?.volumeBps).toBe(1)
+    expect(op?.partnerFee).toEqual({ volumeBps: 1, recipient: OPHIS_SAFE })
   })
 
   it('names Unichain (130) with its real display name, not a chain-130 placeholder', () => {

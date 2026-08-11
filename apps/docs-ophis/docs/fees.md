@@ -1,14 +1,14 @@
 ---
 id: fees
 title: Fees & rebates
-description: Every supported chain charges a 1 bp Ophis base; operated chains also use capped price-improvement capture, while hosted chains have separate upstream CoW fees.
+description: Every supported chain charges a 1 bp Ophis base plus capped price-improvement capture; hosted chains also have separate upstream CoW fees.
 sidebar_label: Fees & rebates
 sidebar_position: 3
 ---
 
 # Fees & rebates
 
-Every supported chain pays a **1 bp Ophis base fee**. On Ophis-operated chains,
+Every supported chain pays a **1 bp Ophis base fee**. On every chain,
 Ophis also retains **80% of price improvement on volatile pairs,
 capped at 99 bps of volume**, or **50% on stablecoin pairs, capped at 20 bps**.
 On CoW-hosted chains, CoW Protocol applies its own upstream fee policy separately.
@@ -20,10 +20,10 @@ complete number per chain type, with nothing left out:
 
 | | Ophis-operated chains (Optimism, Unichain, Robinhood Chain) | CoW-hosted chains (the other 10) |
 | --- | --- | --- |
-| Ophis fee | 0.01% base + 80% of price improvement (50% stables), capped at 0.99% (0.20% stables) | 0.01% base |
+| Ophis fee | 0.01% base + 80% of price improvement (50% stables), capped at 0.99% (0.20% stables) | Same Ophis policy: 0.01% base + capped improvement capture |
 | Upstream protocol fee | **None** | CoW Protocol volume fee: 0.02% (0.003% on correlated pairs such as stablecoins) |
 | **All-in fixed cost** | **0.01%** | **0.03% volatile / 0.013% correlated stables** |
-| Price improvement | Trader receives 20% on volatile pairs or 50% on stable pairs until the cap; all improvement above the cap returns to the trader | CoW Protocol retains 50% of quote improvement (capped at 0.98% of volume); Ophis takes no additional share |
+| Price improvement | Trader receives the remainder after Ophis's capped capture; all improvement above the cap returns to the trader | Ophis's capped capture applies, and CoW Protocol's upstream improvement policy applies separately |
 
 Why the difference: on the 10 CoW-hosted chains, orders settle through CoW
 Protocol's hosted orderbook and solver network, which charges its own
@@ -42,7 +42,7 @@ Ophis charge.
 - On CoW-hosted chains, the upstream CoW Protocol fees in the table above are
   charged in addition; Ophis does not receive them.
 
-## Price-improvement capture on Ophis-operated chains
+## Price-improvement capture on every supported chain
 
 Solvers compete to fill your order, and any execution that beats the quote you
 signed (the **surplus**, or price improvement) is upside you did not have to
@@ -56,12 +56,11 @@ reaches 20 bps. The separate 1 bp base fee always applies.
 
 Where the order settles still matters:
 
-- **Optimism, Unichain, and Robinhood Chain:** the new capped capture model applies.
-- **CoW-hosted chains:** CoW Protocol's own fee model retains 50% of the quote
-  improvement (capped at 0.98% of volume) before the remainder is returned to
-  you. That is an upstream protocol fee, not an Ophis fee, and it applies to
-  every front-end that settles through CoW's hosted infrastructure, including
-  CoW Swap itself.
+- **Optimism, Unichain, and Robinhood Chain:** the backend applies the capped
+  capture model as a protocol policy.
+- **CoW-hosted chains:** the same Ophis policy is encoded in CIP-75 appData.
+  CoW Protocol's own fee model also applies upstream. That upstream charge is
+  not an Ophis fee and applies to every frontend using CoW-hosted settlement.
 
 ## What you save versus a typical AMM
 
@@ -132,9 +131,10 @@ chains or upstream CoW capture on hosted chains.
 
 ## How it's collected
 
-The fee uses CoW Protocol's partner-fee model: a `volumeBps` value written into
-the order's `appData` and taken from the trade output at settlement. The Ophis
-swap app and SDK write the 1 bp base on every supported chain.
+The fee uses CoW Protocol's partner-fee model. The Ophis swap app and SDK write
+the 1 bp base on every supported chain. On hosted chains they also write a
+pair-aware `priceImprovementBps` entry with a hard `maxVolumeBps` cap; operated
+chains apply that second component in the backend instead to avoid duplication.
 
 On the **Ophis-operated stacks (Optimism, Unichain, Robinhood Chain)**, the backend also enforces
 an **anti-abuse minimum** at settlement, so a fee is guaranteed on chain rather

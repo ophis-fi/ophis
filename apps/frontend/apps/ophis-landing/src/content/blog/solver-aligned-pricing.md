@@ -19,9 +19,9 @@ On volatile pairs, Ophis retains **80% of price improvement, capped at 99 bps
 of trade volume**. On same-chain stablecoin pairs, Ophis retains **50%, capped
 at 20 bps**. The base remains 1 bp in both cases.
 
-The change applies to Ophis-operated Optimism, Unichain, and Robinhood Chain.
-CoW-hosted chains keep their existing flat Ophis fee path because their
-upstream fee policy is controlled by CoW Protocol.
+The change applies on every supported chain. Operated-chain backends enforce
+the improvement policy directly; CoW-hosted orders encode the same policy in
+CIP-75 appData, with CoW Protocol's upstream fees applied separately.
 
 ## Why change the model?
 
@@ -74,8 +74,8 @@ batch settlement, and bounded by the signed limit price. Integrators can still
 add an onboarded fee of their own, and Ophis continues to take 0% of that
 integrator markup.
 
-On CoW-hosted chains, Ophis also charges a flat 1 bp. CoW Protocol's upstream
-fees apply separately and are not Ophis fees.
+On CoW-hosted chains, the same Ophis improvement policy is encoded in appData.
+CoW Protocol's upstream fees apply separately and are not Ophis fees.
 
 ## A model designed to evolve
 

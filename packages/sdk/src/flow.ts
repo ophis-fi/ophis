@@ -20,10 +20,9 @@
  */
 
 import {
-  OPHIS_PARTNER_FEE_RECIPIENT,
-  ophisVolumeBpsForChainAndPair,
+  buildOphisAppDataPartnerFee,
   OPHIS_FEE_CHAIN_IDS,
-  type OphisPartnerFee,
+  type OphisPartnerFeeConfig,
 } from './partner-fee.js';
 import { buildOphisReferrerMetadata } from './referral.js';
 import { OPHIS_ORDERBOOK_URLS } from './orderbook.js';
@@ -53,9 +52,9 @@ export interface OphisOrderMetadataOptions {
    *  rebate. Mint one at https://swap.ophis.fi/#/rewards. */
   readonly referralCode?: string;
   /**
-   * True ONLY for a same-chain stablecoin pair. The Ophis base is currently
-   * 1 bp for every pair and chain; this flag preserves pair classification for
-   * future policy changes. You decide classification; the SDK has no token list.
+   * True ONLY for a same-chain stablecoin pair. It selects the 50% improvement
+   * share capped at 20 bps instead of the volatile 80% share capped at 99 bps
+   * on hosted chains. You decide classification; the SDK has no token list.
    */
   readonly isStablePair?: boolean;
   /**
@@ -70,7 +69,7 @@ export interface OphisAppDataInput {
   /** Always the literal 'ophis'. A custom appCode silently forfeits the rebate. */
   readonly appCode: 'ophis';
   readonly metadata: {
-    readonly partnerFee: OphisPartnerFee;
+    readonly partnerFee: OphisPartnerFeeConfig;
     /** Present only when a referral code was supplied; the partner fee applies
      *  either way, so an order without it is still a valid, fee-bearing Ophis order. */
     readonly ophisReferrer?: { readonly code: string };
@@ -82,8 +81,8 @@ export interface OphisAppDataInput {
 /**
  * Builds the appCode + metadata for an Ophis order in one call, getting the three
  * silent-failure details right: appCode is 'ophis' (NOT your app name; a custom
- * appCode makes the rebate indexer drop the order), the CIP-75 Volume partner fee
- * goes to the Ophis recipient at the correct rate, and your referral code is
+ * appCode makes the rebate indexer drop the order), the chain-aware CIP-75 Ophis
+ * fee policy goes to the Ophis recipient, and your referral code is
  * tagged so the rebate accrues.
  *
  * Throws on a chain Ophis does not serve (so you never route an order that pays
@@ -117,10 +116,8 @@ export function buildOphisOrderMetadata(opts: OphisOrderMetadataOptions): OphisA
         'a chain with a live orderbook (see getOphisOrderbookUrl).',
     );
   }
-  const partnerFee: OphisPartnerFee = {
-    recipient: OPHIS_PARTNER_FEE_RECIPIENT,
-    volumeBps: ophisVolumeBpsForChainAndPair(chainId, isStablePair),
-  };
+  const partnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair);
+  if (!partnerFee) throw new Error(`Ophis: chain ${chainId} has no fee policy.`);
   // buildOphisReferrerMetadata validates the code grammar and throws on a typo;
   // with no code it returns {} so the order is fee-bearing but unattributed.
   const referrerTag = buildOphisReferrerMetadata(referralCode);

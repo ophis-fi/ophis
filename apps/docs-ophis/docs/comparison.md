@@ -69,14 +69,12 @@ you named. Bitcoin as a destination is, among these four, unique to Ophis.
 
 The four projects price trades on different models:
 
-- **Ophis**: on **Ophis-operated Optimism, Unichain, and Robinhood Chain**, a
-  **1 bp base** plus 80% of reference-quote improvement on volatile pairs
-  (99 bps cap), or 50% on stable pairs (20 bps cap). On the 10 CoW-hosted
-  chains, Ophis charges the same 1 bp base;
-  CoW Protocol's own fees apply
+- **Ophis**: on every supported chain, a **1 bp base** plus 80% of
+  reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable
+  pairs (20 bps cap). On the 10 CoW-hosted chains, CoW Protocol's own fees apply
   on top (a 0.02% protocol volume fee, 0.003% on correlated pairs, plus 50% of
   any quote improvement, capped at 0.98% of volume), bringing the fixed all-in
-  to **0.12% / 0.013%** there. The fixed part is knowable before you trade.
+  to **0.03% / 0.013%** there. The fixed part is knowable before you trade.
 - **CoW Swap**: a **0.02% (2 bps)** protocol volume fee (0.003% on correlated
   pairs) plus **50% of the quote improvement** a solver finds beyond your
   quote (capped at 0.98% of volume), so part of the cost depends on how the
@@ -162,8 +160,8 @@ settlement foundation.
 | **How you trade** | Natural language, e.g. "swap 100 USDC for ETH on Base" | Token picker (signed intents) | Token picker | Token picker |
 | **Settlement** | CoW Protocol batch auctions (shared foundation) | CoW Protocol batch auctions | 0x aggregation / RFQ | Aggregation across DEXs |
 | **Cross-chain scope** | 13 EVM chains + Solana + Bitcoin (via NEAR Intents) | EVM + Solana (via NEAR Intents); no Bitcoin | EVM + Solana | EVM only |
-| **Fee model** | Every supported chain: 1 bp Ophis base. Operated chains also retain 80% of volatile improvement (99 bps cap), or 50% of stable improvement (20 bps cap); hosted chains pay upstream CoW fees separately | 0.02% protocol volume fee (0.003% correlated) + 50% of quote improvement, capped at 0.98% of volume | Tiered: ~0.25% on most pairs, ~0.05% on stablecoin pairs | 0.15% (15 bps) on most swaps; 0.01% (1 bp) on stablecoin pairs |
-| **Surplus (price improvement)** | Trader receives the remainder after the capped Ophis capture on operated chains; CoW-hosted chains follow CoW's upstream surplus policy | 50% of quote improvement retained (capped 0.98% of volume), remainder to the trader | Returned via positive slippage, route-dependent | Returned via positive slippage, route-dependent |
+| **Fee model** | Every supported chain: 1 bp Ophis base + 80% of volatile improvement (99 bps cap), or 50% of stable improvement (20 bps cap); hosted chains additionally pay upstream CoW fees | 0.02% protocol volume fee (0.003% correlated) + 50% of quote improvement, capped at 0.98% of volume | Tiered: ~0.25% on most pairs, ~0.05% on stablecoin pairs | 0.15% (15 bps) on most swaps; 0.01% (1 bp) on stablecoin pairs |
+| **Surplus (price improvement)** | Trader receives the remainder after the capped Ophis capture on every chain; hosted chains additionally follow CoW's upstream policy | 50% of quote improvement retained (capped 0.98% of volume), remainder to the trader | Returned via positive slippage, route-dependent | Returned via positive slippage, route-dependent |
 | **Agent API** | Public `POST /api/intent` (no key) + hosted MCP server | Orderbook REST API and SDK | 0x Swap API | REST API and SDK |
 | **Rebates** | 21.25% of WETH fees paid back monthly as volume-tier rebates | Not applicable | Not applicable | Not applicable |
 | **MEV protection** | Yes (batch auctions) | Yes (batch auctions) | Partial / route-dependent | Partial / route-dependent |

@@ -63,11 +63,11 @@ export const COW_TAKE_BPS = 2500;
  *  by the fetcher when it reads a non-Ophis partnerFee entry from a settled order's
  *  appData (migration 0014). appData is attacker-controllable, so a crafted entry
  *  cannot inflate the reported own-fee above this bound. The verified own-fee max is
- *  99 bps: the aggregate of an integrator's own entry plus the 1 bp Ophis base is
- *  bounded by the 100 bps aggregate cap, so the own entry alone can settle at most
- *  99 bps. That is the correct clamp for a SETTLED order (the only kind this fetcher
+ *  90 bps: the program-wide registered-partner ceiling. Hosted settlement now
+ *  allows 190 bps aggregate so Ophis's 1+99 bps maximum can coexist with this
+ *  full integrator fee. That is the correct clamp for a SETTLED order (the only kind this fetcher
  *  reads); a crafted entry above it never validates and never settles. */
-export const OWN_FEE_MAX_BPS = 99;
+export const OWN_FEE_MAX_BPS = 90;
 
 /** Hard cap on REFERRED VOLUME per referrer per calendar month, for Regular only.
  *  Partner is uncapped. Volume past the cap earns zero (hard-stop, Clement 2026-06-10). */

@@ -11,6 +11,7 @@ import { AppDataInfo, buildAppData, resolveOphisPartnerFee } from 'modules/appDa
 import { useAppCode, useAppDataHooks } from 'modules/appData/hooks'
 import { useRwaConsentForAppData } from 'modules/appData/hooks/useRwaConsentForAppData'
 import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
+import { isStableStablePair } from 'modules/volumeFee'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
 import { useUtm } from 'modules/utm'
 
@@ -64,7 +65,12 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
         throw new Error('basket: appData metadata is not ready yet (no connected wallet context)')
       }
       const { appCode: code, environment, widget } = appCodeWithWidgetMetadata
-      const partnerFee = resolveOphisPartnerFee(widgetPartnerFee, resolveLegPartnerFee(leg), chainId)
+      const partnerFee = resolveOphisPartnerFee(
+        widgetPartnerFee,
+        resolveLegPartnerFee(leg),
+        chainId,
+        isStableStablePair({ chainId, sellTokenAddress: leg.sellToken, buyTokenAddress: leg.buyToken }),
+      )
 
       return buildAppData({
         appCode: code,

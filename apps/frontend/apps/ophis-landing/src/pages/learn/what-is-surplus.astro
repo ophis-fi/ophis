@@ -2,11 +2,10 @@
 /**
  * /learn/what-is-surplus: canonical answer page for surplus and who keeps
  * it. The distribution facts mirror /pricing and llms.txt verbatim in
- * substance; the sovereign list comes from the shared chain data.
+ * substance.
  */
 import ContentPage from '../../layouts/ContentPage.astro'
 import { canonicalPage } from '../../data/canonicalPages'
-import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../../data/chains'
 
 const { updated } = canonicalPage('/learn/what-is-surplus/')
 
@@ -21,7 +20,7 @@ const FAQS = [
   },
   {
     q: 'Who keeps the surplus?',
-    a: `On ${sovereignList}, Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps; the trader receives the remainder. CoW-hosted chains follow CoW Protocol's upstream surplus policy.`,
+    a: `On every supported chain, Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps; the trader receives the remainder. CoW-hosted chains additionally apply CoW Protocol's upstream fees.`,
   },
   {
     q: 'How is surplus different from positive slippage?',

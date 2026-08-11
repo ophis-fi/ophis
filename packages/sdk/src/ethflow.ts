@@ -329,7 +329,8 @@ export function buildOphisEthFlowOrder(params: OphisEthFlowParams): OphisEthFlow
   // The appData MUST actually carry the Ophis partner fee, or the native trade
   // settles with NO Ophis fee (silent revenue loss). Dependency-free, so parse the
   // JSON we were handed and require a positive fee to the Ophis recipient.
-  let parsedAppData: { metadata?: { partnerFee?: { recipient?: unknown; volumeBps?: unknown } } };
+  type ParsedFee = { recipient?: unknown; volumeBps?: unknown };
+  let parsedAppData: { metadata?: { partnerFee?: ParsedFee | ParsedFee[] } };
   try {
     parsedAppData = JSON.parse(fullAppData) as typeof parsedAppData;
   } catch {
@@ -338,12 +339,15 @@ export function buildOphisEthFlowOrder(params: OphisEthFlowParams): OphisEthFlow
     );
   }
   const partnerFee = parsedAppData?.metadata?.partnerFee;
-  if (
-    typeof partnerFee?.recipient !== 'string' ||
-    !addressesEqual(partnerFee.recipient, OPHIS_PARTNER_FEE_RECIPIENT) ||
-    typeof partnerFee.volumeBps !== 'number' ||
-    partnerFee.volumeBps <= 0
-  ) {
+  const feeEntries = partnerFee ? (Array.isArray(partnerFee) ? partnerFee : [partnerFee]) : [];
+  const volumeFee = feeEntries.find(
+    (fee) =>
+      typeof fee.recipient === 'string' &&
+      addressesEqual(fee.recipient, OPHIS_PARTNER_FEE_RECIPIENT) &&
+      typeof fee.volumeBps === 'number' &&
+      fee.volumeBps > 0,
+  );
+  if (!volumeFee) {
     throw new Error(
       `Ophis: fullAppData.metadata.partnerFee must charge a positive volumeBps to the Ophis recipient ` +
         `${OPHIS_PARTNER_FEE_RECIPIENT}. Build the appData with buildOphisOrderMetadata so the native trade earns the fee.`,

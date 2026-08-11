@@ -8,7 +8,7 @@ import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
 import { useReplacedOrderUid } from 'modules/trade/state/alternativeOrder'
 import { useUtm } from 'modules/utm'
-import { useVolumeFee } from 'modules/volumeFee'
+import { isStableTradeAtom, useVolumeFee } from 'modules/volumeFee'
 
 import { AppDataHooksUpdater } from './AppDataHooksUpdater'
 import { AppDataInfoUpdater, UseAppDataParams } from './AppDataInfoUpdater'
@@ -33,6 +33,7 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   const typedHooks = useAppDataHooks()
   const appCodeWithWidgetMetadata = useAppCodeWidgetAware(appCode)
   const volumeFee = useVolumeFee()
+  const isStablePair = useAtomValue(isStableTradeAtom)
   // Ophis: price-improvement partnerFee shape (CIP-75) takes
   // precedence over the volumeFee pipeline when set. The volumeFee
   // path stays for widget consumers that override partnerFee with
@@ -50,7 +51,7 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   // (ophisVolumeOnlyFloorFee, surfaced via volumeFeeAtom) whether the flag is on
   // or off, so the displayed fee and this on-chain appData fee come from the same
   // source and never diverge. On CoW-hosted chains the PI shape passes through.
-  const partnerFee = resolveOphisPartnerFee(ophisAppDataPartnerFeeRaw, volumeFee, chainId)
+  const partnerFee = resolveOphisPartnerFee(ophisAppDataPartnerFeeRaw, volumeFee, chainId, isStablePair)
   const replacedOrderUid = useReplacedOrderUid()
   const userConsent = useRwaConsentForAppData()
   const { savedCode: refCode } = useAtomValue(affiliateTraderSavedCodeAtom)

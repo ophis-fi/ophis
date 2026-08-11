@@ -46,7 +46,7 @@ export interface OphisSwapOptions {
    * you just forgo the rebate. Mint one in ~30s at https://swap.ophis.fi/#/rewards.
    */
   referralCode?: string;
-  /** Set true for stablecoin<>stablecoin pairs to apply the 1bp stable fee tier. */
+  /** Set true for stablecoin<>stablecoin pairs to apply the 50%/20 bps stable improvement tier. */
   isStablePair?: boolean;
 }
 

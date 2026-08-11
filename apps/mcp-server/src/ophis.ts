@@ -35,6 +35,13 @@ import {
   isZeroAddress,
   OPHIS_CHAIN_IDS,
   OPHIS_FEE_CHAIN_IDS,
+  OPHIS_AGGREGATE_PARTNER_FEE_CAP_BPS,
+  OPHIS_MAX_PARTNER_REQUEST_BPS,
+  OPHIS_PRICE_IMPROVEMENT_BPS,
+  OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS,
+  OPHIS_STABLE_PRICE_IMPROVEMENT_BPS,
+  OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_BPS,
+  OPHIS_VOLUME_FEE_BPS,
   OPHIS_ORDERBOOK_URLS,
   OPHIS_SETTLEMENT_ADDRESSES,
   assertChain,
@@ -47,7 +54,7 @@ import {
   type Address,
   type BuiltOrder,
   type OphisOrderDomain,
-  type OphisPartnerFee,
+  type OphisPartnerFeeConfig,
   type Tier,
 } from '@ophis/sdk'
 
@@ -138,7 +145,7 @@ export interface ValidateOrderExpected {
   settlement: Address | null
   signingDomain: OphisOrderDomain | null
   appCode: 'ophis'
-  partnerFee: OphisPartnerFee | null
+  partnerFee: OphisPartnerFeeConfig | null
 }
 
 export interface ValidateOrderResult {
@@ -274,11 +281,22 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
         // PARTNER_FEE_RECIPIENT_ALLOWLIST). Sourced from expected.partnerFee, the
         // per-chain fee config already computed above via the same SDK helper
         // buildOrder uses, so there is no second copy of the address here.
-        const ophisRecipient = expected.partnerFee?.recipient?.toLowerCase()
+        const expectedEntries = expected.partnerFee
+          ? (Array.isArray(expected.partnerFee) ? expected.partnerFee : [expected.partnerFee])
+          : []
+        const ophisRecipient = expectedEntries[0]?.recipient.toLowerCase()
         let ophisRecipientSeen = false
+        let ophisBaseCount = 0
+        let ophisImprovementCount = 0
+        let aggregateMaxBps = 0
         entries.forEach((entry: unknown, i: number) => {
           const label = Array.isArray(partnerFee) ? `appData metadata.partnerFee[${i}]` : 'appData metadata.partnerFee'
-          const fee = (entry && typeof entry === 'object' ? entry : {}) as { recipient?: unknown; volumeBps?: unknown }
+          const fee = (entry && typeof entry === 'object' ? entry : {}) as {
+            recipient?: unknown
+            volumeBps?: unknown
+            priceImprovementBps?: unknown
+            maxVolumeBps?: unknown
+          }
           const recipientOk = typeof fee.recipient === 'string' && ADDRESS_RE.test(fee.recipient)
           if (!recipientOk) {
             errors.push(`${label}.recipient must be a 0x-prefixed 40-hex-char address, got ${JSON.stringify(fee.recipient)}.`)
@@ -288,8 +306,22 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
             Number.isInteger(fee.volumeBps) &&
             fee.volumeBps >= 1 &&
             fee.volumeBps <= 100
-          if (!volumeBpsOk) {
-            errors.push(`${label}.volumeBps must be an integer in [1, 100], got ${JSON.stringify(fee.volumeBps)}.`)
+          const improvementOk =
+            typeof fee.priceImprovementBps === 'number' &&
+            Number.isInteger(fee.priceImprovementBps) &&
+            fee.priceImprovementBps >= 1 &&
+            fee.priceImprovementBps <= 10_000 &&
+            typeof fee.maxVolumeBps === 'number' &&
+            Number.isInteger(fee.maxVolumeBps) &&
+            fee.maxVolumeBps >= 1 &&
+            fee.maxVolumeBps <= 99
+          if (volumeBpsOk === improvementOk) {
+            errors.push(`${label} must contain exactly one valid Volume or PriceImprovement policy.`)
+          } else {
+            aggregateMaxBps += volumeBpsOk ? (fee.volumeBps as number) : (fee.maxVolumeBps as number)
+          }
+          if (ophisOperated && improvementOk) {
+            errors.push(`${label} uses PriceImprovement on Ophis-operated chain ${chainId}; omit it because the backend applies that policy and would otherwise double charge.`)
           }
           // The backend allowlist (app_data.rs validate_partner_fees) gates EVERY
           // entry: it rejects the WHOLE order if ANY recipient is not in
@@ -298,6 +330,21 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
             recipientOk && ophisRecipient !== undefined && (fee.recipient as string).toLowerCase() === ophisRecipient
           if (isOphisRecipient) {
             ophisRecipientSeen = true
+            if (volumeBpsOk && fee.volumeBps === OPHIS_VOLUME_FEE_BPS) ophisBaseCount += 1
+            if (volumeBpsOk && fee.volumeBps !== OPHIS_VOLUME_FEE_BPS) {
+              errors.push(`${label}.volumeBps must equal the canonical ${OPHIS_VOLUME_FEE_BPS} bp Ophis base.`)
+            }
+            if (
+              improvementOk &&
+              ((fee.priceImprovementBps === OPHIS_PRICE_IMPROVEMENT_BPS &&
+                fee.maxVolumeBps === OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS) ||
+                (fee.priceImprovementBps === OPHIS_STABLE_PRICE_IMPROVEMENT_BPS &&
+                  fee.maxVolumeBps === OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_BPS))
+            ) {
+              ophisImprovementCount += 1
+            } else if (improvementOk && !ophisOperated) {
+              errors.push(`${label} does not match either canonical Ophis PriceImprovement policy (80%/99 bps volatile or 50%/20 bps stable).`)
+            }
             // Token-pair Volume floor, enforced ONLY on Ophis-operated chains (the
             // self-hosted backend applies partner_fee_floor_bps; CoW-hosted chains do
             // not). The preflight has no cheap stablecoin list, so it applies the
@@ -315,6 +362,13 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
                 `${label}.volumeBps ${fee.volumeBps} may breach the Ophis Volume floor (${OPHIS_NON_STABLE_FLOOR_BPS} bps non-stable, ${OPHIS_STABLE_VOLUME_FEE_BPS} bp same-chain stable) on Ophis-operated chain ${chainId}; supply sellToken/buyToken so the preflight can confirm, or the backend may reject the order at ingress.`,
               )
             }
+          } else if (recipientOk && !ophisOperated) {
+            if (improvementOk) {
+              errors.push(`${label} uses PriceImprovement for a third-party recipient; integrator own-fees must use the Volume policy.`)
+            }
+            if (volumeBpsOk && (fee.volumeBps as number) > OPHIS_MAX_PARTNER_REQUEST_BPS) {
+              errors.push(`${label}.volumeBps ${fee.volumeBps} exceeds the ${OPHIS_MAX_PARTNER_REQUEST_BPS} bps registered-integrator ceiling.`)
+            }
           } else if (recipientOk && ophisOperated) {
             // A non-Ophis recipient on an Ophis-operated chain. validate_partner_fees
             // rejects the ENTIRE order if ANY recipient is not allowlisted, and only
@@ -328,6 +382,15 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
             )
           }
         })
+        if (aggregateMaxBps > OPHIS_AGGREGATE_PARTNER_FEE_CAP_BPS) {
+          errors.push(`appData metadata.partnerFee has an aggregate maximum of ${aggregateMaxBps} bps, above the ${OPHIS_AGGREGATE_PARTNER_FEE_CAP_BPS} bps settlement cap.`)
+        }
+        if (expected.partnerFee && ophisBaseCount !== 1) {
+          errors.push(`appData metadata.partnerFee must include exactly one canonical ${OPHIS_VOLUME_FEE_BPS} bp Ophis base entry.`)
+        }
+        if (!ophisOperated && expected.partnerFee && ophisImprovementCount !== 1) {
+          errors.push('appData metadata.partnerFee must include exactly one canonical Ophis PriceImprovement entry (80%/99 bps volatile or 50%/20 bps stable).')
+        }
         // The Ophis recipient MUST appear on a fee chain: the backend allowlist
         // (app_data.rs validate_partner_fees) rejects a partner fee whose recipient
         // is not the Ophis Safe, so a document carrying only a foreign recipient
@@ -337,7 +400,7 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
         // that recipient is independently allowlisted.
         if (expected.partnerFee && !ophisRecipientSeen) {
           errors.push(
-            `appData metadata.partnerFee has no entry paying the Ophis recipient ${expected.partnerFee.recipient} on fee chain ${chainId}: the backend partner-fee allowlist rejects a fee to any other recipient, so this order earns no Ophis fee and is rejected at ingress. Set the Ophis fee entry's recipient to ${expected.partnerFee.recipient}.`,
+            `appData metadata.partnerFee has no entry paying the Ophis recipient ${expectedEntries[0]?.recipient} on fee chain ${chainId}: this order earns no Ophis fee. Set the Ophis fee entry's recipient to ${expectedEntries[0]?.recipient}.`,
           )
         }
       }
@@ -527,6 +590,8 @@ export interface QuoteParams {
   amount: string
   /** The trading account. Quotes are account-aware (balances/permits). */
   from: Address
+  /** True only when both assets are same-chain stablecoins. */
+  isStablePair?: boolean
   validForSeconds?: number
   /** Absolute order expiry (unix seconds). When set, the quote is requested for this EXACT
    *  validTo rather than a relative window, so the enforcement quote matches the signed
@@ -541,7 +606,14 @@ export async function getQuote(p: QuoteParams, fetchImpl: typeof fetch = fetch):
   const sellToken = checksum(p.sellToken, 'sellToken')
   const buyToken = checksum(p.buyToken, 'buyToken')
   assertAtoms(p.amount, 'amount')
-  const { fullAppData, appDataHash } = buildOphisFullAppData(chainId)
+  const { fullAppData, appDataHash } = buildOphisFullAppData(
+    chainId,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    p.isStablePair ?? false,
+  )
   const amountKey = p.kind === 'sell' ? 'sellAmountBeforeFee' : 'buyAmountAfterFee'
   const body: Record<string, unknown> = {
     sellToken,
@@ -737,7 +809,7 @@ export interface ChainInfo {
   ophisOperated: boolean
   orderbookUrl: string | null
   settlement: Address | null
-  partnerFee: OphisPartnerFee | null
+  partnerFee: OphisPartnerFeeConfig | null
 }
 
 const CHAIN_NAMES: Record<number, string> = {

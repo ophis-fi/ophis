@@ -9,7 +9,7 @@
 
 ## Fees
 
-Every supported chain pays a 1 bp Ophis base. On Ophis-operated Optimism, Unichain, and Robinhood Chain, Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains pay CoW Protocol fees separately upstream. See [Fees and price improvement](https://docs.ophis.fi/fees).
+Every supported chain pays a 1 bp Ophis base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay CoW Protocol fees upstream. See [Fees and price improvement](https://docs.ophis.fi/fees).
 
 Worked examples:
 - A $10,000 volatile trade with 20 bps of reference-quote improvement pays the $1 base plus $16 of captured improvement on an Ophis-operated chain.

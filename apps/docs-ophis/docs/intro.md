@@ -35,10 +35,10 @@ swap 100 USDC for ETH on Base
 - **Self-custodial.** Ophis never holds funds. Every order is signed by
   your wallet (EIP-712 or ERC-1271) and executed by an authorized solver
   from the allowlisted solver set.
-- **Transparent, chain-aware fees.** Ophis-operated chains charge a 1 bp base
+- **Transparent, chain-aware fees.** Every supported chain charges a 1 bp base
   plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or
-  50% on stable pairs (20 bps cap). CoW-hosted chains retain the existing flat
-  rates and [CoW Protocol's own fees apply on top](./fees.md).
+  50% on stable pairs (20 bps cap). On CoW-hosted chains,
+  [CoW Protocol's own fees apply on top](./fees.md).
 - **Open.** The full frontend, intent-parser proxy, and infra runbooks
   are public.
 
@@ -48,7 +48,7 @@ swap 100 USDC for ETH on Base
 | --- | --- |
 | [Getting started](./getting-started.md) | Make your first swap; how the three-step flow works; supported networks. |
 | [How it works](./architecture.md) | Intent lifecycle, batch auctions, the parser proxy, and settlement. |
-| [Fees & rebates](./fees.md) | Sovereign price-improvement pricing, hosted flat fees, and rebates. |
+| [Fees & rebates](./fees.md) | All-chain price-improvement pricing, hosted upstream fees, and rebates. |
 | [Affiliate program](./affiliate.md) | Share a referral code, earn 8% of the net fee on every trade your referrals route. |
 | [Intent API](./intent-api.md) | The public `POST /api/intent` endpoint, parse English into a structured order. |
 | [AI agent integration](./ai-agents.md) | Wire the intent API into LangChain, AutoGPT, or your own agent. |

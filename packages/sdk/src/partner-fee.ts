@@ -30,14 +30,32 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
 
 /**
  * Partner volume fee: the @ophis/sdk default is a flat 1 bp (0.01%) of trade
- * volume on every served chain. On Ophis-operated chains the backend also adds
- * capped price-improvement capture. A Volume fee is
+ * volume on every served chain. Ophis-operated backends add capped
+ * price-improvement capture; hosted appData includes the equivalent CIP-75
+ * PriceImprovement entry. A Volume fee is
  * bounded above only by the autopilot's operator-set global `max_partner_fee`.
  *
  * Cross-workspace invariant (scripts/check-floor-invariant.sh): backend floor,
  * SDK default, frontend default, and integration defaults are all 1 bp.
  */
 export const OPHIS_VOLUME_FEE_BPS = 1;
+
+/** Ophis's share of reference-quote improvement on volatile pairs (80%). */
+export const OPHIS_PRICE_IMPROVEMENT_BPS = 8_000;
+/** Hard volatile-pair ceiling for the improvement component (0.99% of volume). */
+export const OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS = 99;
+/** Ophis's share of reference-quote improvement on stable pairs (50%). */
+export const OPHIS_STABLE_PRICE_IMPROVEMENT_BPS = 5_000;
+/** Hard stable-pair ceiling for the improvement component (0.20% of volume). */
+export const OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_BPS = 20;
+
+/** Maximum flat fee a registered integrator may stack beside Ophis's entries. */
+export const OPHIS_MAX_PARTNER_REQUEST_BPS = 90;
+/**
+ * Settlement-wide ceiling: Ophis's worst case (1 bp base + 99 bps captured
+ * improvement) plus the registered integrator ceiling (90 bps).
+ */
+export const OPHIS_AGGREGATE_PARTNER_FEE_CAP_BPS = 190;
 
 /**
  * Reduced rate for stablecoin-to-stablecoin swaps: a flat 1 bp (0.01%). The
@@ -100,36 +118,67 @@ export const ophisVolumeBpsForChainAndPair = (chainId: number, isStablePair: boo
  */
 export const OPHIS_FEE_CHAIN_IDS: readonly number[] = Object.freeze([...FEE_CHAIN_IDS]);
 
-export interface OphisPartnerFee {
+export interface OphisVolumePartnerFee {
   /** Flat fee as a fraction of trade volume, in bps (1 = 0.01%). */
   readonly volumeBps: number;
   readonly recipient: `0x${string}`;
 }
 
+export interface OphisPriceImprovementPartnerFee {
+  /** Share of reference-quote improvement, in bps of the improvement. */
+  readonly priceImprovementBps: number;
+  /** Hard ceiling, in bps of traded volume. */
+  readonly maxVolumeBps: number;
+  readonly recipient: `0x${string}`;
+}
+
+export type OphisPartnerFee = OphisVolumePartnerFee | OphisPriceImprovementPartnerFee;
+export type OphisPartnerFeeConfig = OphisPartnerFee | readonly OphisPartnerFee[];
+
 /**
  * Returns Ophis's CIP-75 partner-fee config for a given chain, or `undefined`
  * for chains Ophis does not serve (not in `OPHIS_FEE_CHAIN_IDS`).
  */
-export const ophisDefaultPartnerFee = (chainId: number): OphisPartnerFee | undefined => {
+export const ophisDefaultPartnerFee = (
+  chainId: number,
+  isStablePair = false,
+): OphisPartnerFeeConfig | undefined => {
   assertValidChainId(chainId);
   if (!FEE_CHAIN_ID_SET.has(chainId)) return undefined;
-  return {
+  const base: OphisVolumePartnerFee = {
     volumeBps: ophisVolumeBpsForChainAndPair(chainId, false),
     recipient: OPHIS_PARTNER_FEE_RECIPIENT,
   };
+  // Ophis-operated orderbooks apply the pair-aware improvement component as a
+  // backend protocol policy. Hosted orderbooks need the equivalent CIP-75
+  // entry in appData so the economics are identical without double charging.
+  if (SOVEREIGN_CHAIN_ID_SET.has(chainId)) return base;
+  return [
+    base,
+    {
+      priceImprovementBps: isStablePair
+        ? OPHIS_STABLE_PRICE_IMPROVEMENT_BPS
+        : OPHIS_PRICE_IMPROVEMENT_BPS,
+      maxVolumeBps: isStablePair
+        ? OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_BPS
+        : OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS,
+      recipient: OPHIS_PARTNER_FEE_RECIPIENT,
+    },
+  ];
 };
 
 /**
  * Builds the exact value for a CoW order's `appData.metadata.partnerFee`, or
  * `undefined` on chains where Ophis charges no fee. Use this instead of
- * hand-assembling the object: it guarantees the CIP-75 VOLUME shape
- * `{ volumeBps, recipient }` (a flat fee on trade volume), NOT the
- * price-improvement `{ priceImprovementBps, maxVolumeBps, recipient }` shape.
- * Mixing the two shapes is a silent magnitude error.
+ * hand-assembling it. Operated chains return the base Volume object because
+ * their backend supplies improvement capture. Hosted chains return an array
+ * containing the base plus the pair-aware capped PriceImprovement entry.
  *
  * @example
  *   const partnerFee = buildOphisAppDataPartnerFee(10);
  *   const appData = { metadata: { partnerFee, hooks: { pre: [], post: [] } } };
  */
-export const buildOphisAppDataPartnerFee = (chainId: number): OphisPartnerFee | undefined =>
-  ophisDefaultPartnerFee(chainId);
+export const buildOphisAppDataPartnerFee = (
+  chainId: number,
+  isStablePair = false,
+): OphisPartnerFeeConfig | undefined => ophisDefaultPartnerFee(chainId, isStablePair);
