@@ -65,8 +65,8 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           -- (OP, Unichain) keep 100%, hosted 75%. NULL uses 10 bps only before
           -- the production cutover; current undecodable surplus/PI fees use 1 bp.
           COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, CASE
-              WHEN t.block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}
-              ELSE ${GROSS_FEE_BPS}
+              WHEN t.block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}::int
+              ELSE ${GROSS_FEE_BPS}::int
             END)
             * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
             WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
@@ -96,8 +96,8 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
           COALESCE(SUM(t.value_usd), 0)::text AS cycle_volume_usd,
           COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, CASE
-              WHEN t.block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}
-              ELSE ${GROSS_FEE_BPS}
+              WHEN t.block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}::int
+              ELSE ${GROSS_FEE_BPS}::int
             END)
             * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)), 0)::text AS cycle_net_weighted,
           '0'::text AS lifetime_volume_usd

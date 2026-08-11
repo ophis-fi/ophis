@@ -74,8 +74,8 @@ export async function buildAffiliateReferrers(
       encode(r.referrer_wallet, 'hex')                AS referrer_hex,
       t.chain_id                                      AS chain_id,
       COALESCE(t.volume_fee_bps, CASE
-        WHEN t.block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}
-        ELSE ${GROSS_FEE_BPS}
+        WHEN t.block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}::int
+        ELSE ${GROSS_FEE_BPS}::int
       END)::int AS gross_bps,
       SUM(t.value_usd)::text                          AS volume_usd
     FROM referrals r

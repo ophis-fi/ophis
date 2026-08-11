@@ -77,8 +77,8 @@ export async function deliverMonthlyReport(deps: { rpcUrl: string; now?: Date })
         chain_id,
         COALESCE(SUM(value_usd), 0)::text AS vol,
         COALESCE(SUM(value_usd * COALESCE(volume_fee_bps, CASE
-          WHEN block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}
-          ELSE ${GROSS_FEE_BPS}
+          WHEN block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}::int
+          ELSE ${GROSS_FEE_BPS}::int
         END)), 0)::text AS fee_weighted
       FROM trades
       WHERE block_timestamp >= ${start.toISOString()} AND block_timestamp < ${end.toISOString()} AND value_usd IS NOT NULL
