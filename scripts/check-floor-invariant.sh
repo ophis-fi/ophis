@@ -128,20 +128,23 @@ check_value() { # $1=label $2=expected-nonempty ; remaining = actuals "name:val"
   done
 }
 
-# Sovereign orders use one 1 bp base for retail and SDK traffic; hosted SDK
-# traffic retains the independent 5 bps wholesale rate.
+# Since the 2026-08-11 cutover every tier is a uniform 1 bp: the sovereign
+# base, the SDK partner rate, and the stable/reduced floor all equal the
+# non-stable floor. The checks below assert that uniformity so a future
+# 1-vs-N drift on ANY tier (e.g. reintroducing a 5 bps partner rate) fails CI.
 check_value "non-stable FLOOR (backend <-> frontend)" \
   "backend:$be_floor" "frontend:$fe_floor"
 check_value "sovereign base (backend <-> SDK)" \
   "backend:$be_retail" "sdk:$sdk_sovereign"
 check_value "reduced floor (1 bp)" \
   "backend:$be_stable" "sdk:$sdk_stable" "frontend-boosted:$fe_reduced"
+check_value "partner rate aligned to the uniform base" \
+  "sdk-partner:$sdk_partner" "sdk-sovereign:$sdk_sovereign"
 
-# Ordering invariant on sovereign chains: floor <= base; hosted partner remains
-# positive but is not bounded by the sovereign base.
+# Ordering invariant: floor <= base == sovereign == partner (uniform rate).
 if [[ -n "$be_floor" && -n "$sdk_sovereign" && -n "$be_retail" && -n "$sdk_partner" ]]; then
-  if ! (( be_floor <= sdk_sovereign && sdk_sovereign == be_retail && sdk_partner > 0 )); then
-    echo "FAIL: fee ordering violated — need floor($be_floor) <= sovereign($sdk_sovereign) == base($be_retail), hosted partner > 0 (got $sdk_partner)" >&2
+  if ! (( be_floor <= sdk_sovereign && sdk_sovereign == be_retail && sdk_partner == sdk_sovereign )); then
+    echo "FAIL: fee ordering violated — need floor($be_floor) <= sovereign($sdk_sovereign) == base($be_retail) == partner($sdk_partner)" >&2
     fail=1
   fi
 else

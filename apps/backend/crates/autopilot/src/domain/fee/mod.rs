@@ -135,7 +135,7 @@ impl ProtocolFees {
         // `get_partner_fee` via `fee_factor_from_capped`. The recipient allowlist
         // means every partner fee is an Ophis fee. The HIGHEST rate any legitimate
         // Ophis-operated orders carry the 1 bp sovereign base. Hosted-chain
-        // 10/5/1 bps pricing never reaches this autopilot. Therefore
+        // pricing (now also a uniform 1 bp) never reaches this autopilot. Therefore
         // `cap >= retail` is exactly sufficient — no super-retail order exists for
         // the cap to wrongly pass. A cap below the retail rate would silently clamp
         // a legitimate 1 bp base DOWN at settlement (and, a fortiori,

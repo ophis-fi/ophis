@@ -62,12 +62,12 @@ const BPS_BASE: u16 = 10_000;
 /// `packages/sdk/src/order-build.ts` (cow-sdk LATEST_APP_DATA_VERSION).
 const APP_DATA_VERSION: &str = "1.14.0";
 
-/// Volume bps of the defaulted partner-fee document: the 5 bps integrator
-/// (wholesale) rate, parity with `OPHIS_VOLUME_FEE_BPS` in
-/// `packages/sdk/src/partner-fee.ts`. Must clear the ingress floor
-/// (`app_data::OPHIS_NON_STABLE_FLOOR_BPS`, enforced on fees to the Ophis
-/// recipient), which a test below pins.
-const DRAFT_VOLUME_FEE_BPS: u64 = 5;
+/// Volume bps of the defaulted partner-fee document: the uniform 1 bp rate
+/// (aligned across every tier since the 2026-08-11 cutover), parity with
+/// `OPHIS_VOLUME_FEE_BPS` in `packages/sdk/src/partner-fee.ts`. Must clear the
+/// ingress floor (`app_data::OPHIS_NON_STABLE_FLOOR_BPS`, enforced on fees to
+/// the Ophis recipient), which a test below pins.
+const DRAFT_VOLUME_FEE_BPS: u64 = 1;
 
 /// A quote request plus the draft-only `slippageBps` knob.
 #[derive(Clone, Debug, Deserialize)]
@@ -591,14 +591,14 @@ mod tests {
     #[test]
     fn default_app_data_is_the_sdk_cip75_document_byte_for_byte() {
         // Pins the exact serialization (sorted keys, compact separators, the
-        // checksummed recipient, the 5 bps partner rate): parity with
+        // checksummed recipient, the uniform 1 bp rate): parity with
         // @ophis/sdk buildOphisFullAppData(10, 50). A workspace serde_json
         // feature change (preserve_order) or a constant drift breaks this.
         assert_eq!(
             default_draft_app_data(50),
             "{\"appCode\":\"ophis\",\"metadata\":{\"orderClass\":{\"orderClass\":\"market\"},\
              \"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\
-             \"volumeBps\":5},\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+             \"volumeBps\":1},\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
         );
     }
 
@@ -616,9 +616,9 @@ mod tests {
         .expect("the default draft appData must validate");
         let fee = validated.protocol.partner_fee.iter().next().unwrap();
         assert_eq!(fee.recipient, app_data::OPHIS_PARTNER_FEE_RECIPIENT);
-        // The 5 bps draft rate must clear the non-stable ingress floor for
-        // fees to the Ophis recipient, or defaulted drafts would build
-        // orders the orderbook itself rejects.
+        // The 1 bp draft rate must clear the non-stable ingress floor for
+        // fees to the Ophis recipient (1 bp == the floor), or defaulted drafts
+        // would build orders the orderbook itself rejects.
         assert!(DRAFT_VOLUME_FEE_BPS >= app_data::OPHIS_NON_STABLE_FLOOR_BPS);
     }
 
