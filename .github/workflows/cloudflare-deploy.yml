@@ -162,6 +162,12 @@ jobs:
           # proxy. Set to 'true' only after BUNGEE_API is a CF Pages runtime
           # secret + the dedicated host/feeBps are confirmed. Empty -> OFF.
           REACT_APP_BUNGEE_DEDICATED_ENABLED: ${{ secrets.REACT_APP_BUNGEE_DEDICATED_ENABLED }}
+          # NEAR Intents 1-Click API key (self-serve: partners.near-intents.org).
+          # PUBLIC-tier value, safe in the bundle. Keyless mode works BUT every
+          # unauthenticated quote carries NEAR's 0.2% (20 bps) platform fee
+          # baked into amountOut — set the secret to remove it. Empty -> keyless
+          # (bridgingSdk.ts maps empty to undefined so no blank Bearer header).
+          REACT_APP_NEAR_API_KEY: ${{ secrets.REACT_APP_NEAR_API_KEY }}
           # Cloudflare Turnstile site key for the /contact form widget. PUBLIC
           # value (rendered to the browser as a `sitekey` attr) — safe to
           # inline in the bundle. The matching SECRET is NOT a CI secret: it

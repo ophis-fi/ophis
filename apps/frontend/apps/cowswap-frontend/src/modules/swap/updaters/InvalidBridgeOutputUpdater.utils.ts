@@ -1,3 +1,4 @@
+import { BRIDGE_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
 import { isAddress } from '@cowprotocol/common-utils'
 import { areAddressesEqual, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 
@@ -34,7 +35,12 @@ export function getUnsupportedBridgePairPatch(params: UnsupportedBridgePairPatch
 
   const destinationIds = new Set((bridgeSupportedNetworks ?? []).map((chain) => chain.id))
 
-  const isSourceSupported = destinationIds.has(sourceChainId)
+  // The provider network union gates DESTINATIONS only; source capability is
+  // the narrower BRIDGE_SOURCE_CHAIN_IDS (destination-only chains like
+  // Unichain/Robinhood are in the union but cannot execute a bridge order).
+  // Without this, a crafted URL with a destination-only source chain keeps a
+  // cross-chain output alive and quote polling fails forever downstream.
+  const isSourceSupported = BRIDGE_SOURCE_CHAIN_IDS.has(sourceChainId)
   const isTargetSupported = destinationIds.has(targetChainId)
 
   if (!isSourceSupported || !isTargetSupported) {

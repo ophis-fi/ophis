@@ -1,14 +1,10 @@
 import { bungeeAffiliateCode } from '@cowprotocol/common-const'
 import { isBarn, isDev, isProd, isStaging } from '@cowprotocol/common-utils'
-import {
-  AcrossBridgeProvider,
-  BridgingSdk,
-  BungeeBridgeProvider,
-  NearIntentsBridgeProvider,
-} from '@cowprotocol/sdk-bridging'
+import { BridgingSdk, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 
 import { orderBookApi } from 'cowSdk'
 
+import { OphisAcrossBridgeProvider, OphisBungeeBridgeProvider } from './ophisBridgeProviders'
 import { tradingSdk } from './tradingSdk'
 
 // Dedicated-integrator tier (flag-gated, default OFF). When enabled, route
@@ -31,8 +27,17 @@ const bungeeApiBase = getBungeeApiBase()
 // dedicated-backend.bungee.exchange, "rather than exposing the key in frontend
 // code"). Enabling the dedicated tier + explicit feeBps is a follow-up via a
 // Cloudflare Function proxy, not the browser bundle.
-export const bungeeBridgeProvider = new BungeeBridgeProvider({
+export const bungeeBridgeProvider = new OphisBungeeBridgeProvider({
   apiOptions: {
+    // Curated route allowlist — the ONLY slugs sdk-bridging 4.0.2 accepts
+    // (BungeeApi.validateBridges throws at construction on anything else).
+    // Consequences, verified against Bungee's live per-chain bridge lists
+    // (2026-08-10): Unichain/Ink/Linea routes still flow via `across`/`cctp`,
+    // but Bungee serves nothing from/to Gnosis (its bridges are stargate-v2/
+    // symbiosis only — NEAR Intents covers Gnosis instead) and Circle's
+    // cctp-v2(-fast) fast paths are unavailable. Widening needs the sdk
+    // bump to >=4.2 (types cctp-v2/-fast; stargate-v2 still untyped there)
+    // or the Socket V3 provider follow-up.
     includeBridges: ['across', 'cctp', 'gnosis-native-bridge'],
     apiBaseUrl: bungeeApiBase ? `${bungeeApiBase}/api/v1/bungee` : undefined,
     manualApiBaseUrl: bungeeApiBase ? `${bungeeApiBase}/api/v1/bungee-manual` : undefined,
@@ -40,9 +45,15 @@ export const bungeeBridgeProvider = new BungeeBridgeProvider({
   },
 })
 
-export const acrossBridgeProvider = new AcrossBridgeProvider()
+export const acrossBridgeProvider = new OphisAcrossBridgeProvider()
 
-export const nearIntentsBridgeProvider = new NearIntentsBridgeProvider({ apiKey: process.env.REACT_APP_NEAR_API_KEY })
+// `|| undefined`: an unset GitHub secret renders as '' in the deploy env, and
+// an empty-string apiKey would make the SDK send a blank Bearer header instead
+// of falling back to keyless mode (which works, but costs NEAR's 20 bps
+// unauthenticated platform fee — set REACT_APP_NEAR_API_KEY to remove it).
+export const nearIntentsBridgeProvider = new NearIntentsBridgeProvider({
+  apiKey: process.env.REACT_APP_NEAR_API_KEY || undefined,
+})
 
 export const bridgingSdk = new BridgingSdk({
   providers: [bungeeBridgeProvider, acrossBridgeProvider, nearIntentsBridgeProvider],

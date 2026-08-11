@@ -1,4 +1,5 @@
 export * from './bff'
+export * from './bridgeSourceChains.const'
 export * from './chainInfo'
 export * from './cdn'
 export * from './common'

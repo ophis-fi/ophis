@@ -144,4 +144,24 @@ describe('getUnsupportedBridgePairPatch', () => {
 
     expect(result).toBeNull()
   })
+
+  it('clears cross-chain state when the source is a destination-only chain, even if it is in the network union', () => {
+    // Unichain (130) is in the widened provider network lists as a
+    // DESTINATION, but has no bridge execution machinery as a source — a
+    // crafted URL must not keep a cross-chain output alive from it.
+    const UNICHAIN_CHAIN_ID = 130
+
+    const result = getUnsupportedBridgePairPatch({
+      sourceChainId: UNICHAIN_CHAIN_ID as SupportedChainId,
+      targetChainId: SupportedChainId.MAINNET,
+      bridgeSupportedNetworks: [{ id: UNICHAIN_CHAIN_ID }, { id: SupportedChainId.MAINNET }],
+      isBridgeSupportedNetworksLoading: false,
+    })
+
+    expect(result).toEqual({
+      targetChainId: null,
+      outputCurrencyId: null,
+      outputCurrencyAmount: null,
+    })
+  })
 })
