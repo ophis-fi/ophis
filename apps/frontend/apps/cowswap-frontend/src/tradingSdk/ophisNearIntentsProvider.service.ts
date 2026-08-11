@@ -2,6 +2,7 @@ import { OPHIS_PARTNER_FEE_RECIPIENT } from '@cowprotocol/common-const'
 import { NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 
 import { utils } from 'ethers'
+import jsonStringify from 'json-stringify-deterministic'
 
 /**
  * Ophis NEAR Intents provider. Two jobs:
@@ -35,27 +36,13 @@ const OPHIS_NEAR_REFERRAL = 'ophis'
 // only one.
 const OPHIS_NEAR_APP_FEES = [{ recipient: OPHIS_PARTNER_FEE_RECIPIENT, fee: 3 }]
 
-// Attestation constants (not exported by sdk-bridging; mirrored from its
-// dist and verified live: the recovered signer equals ATTESTATOR_ADDRESS).
+// Attestation message constants (not exported by sdk-bridging; mirrored from
+// its dist). The base class validates the recovered signer against its own
+// private attestor constant (0x0073DD…2790) after this override returns.
 const ATTESTATION_PREFIX = '0x0a773570'
 const ATTESTATION_VERSION_BYTE = '0x00'
-export const NEAR_INTENTS_ATTESTATOR_ADDRESS = '0x0073DD100b51C555E41B2a452E5933ef76F42790'
 
-type NearQuoteResponse = Parameters<NearIntentsBridgeProvider['recoverDepositAddress']>[0]
-
-/**
- * Sorted-key JSON serialization, byte-identical to json-stable-stringify for
- * the FLAT struct below (string/number/boolean values, undefined dropped —
- * no nesting, so no recursive sorting is needed and the dependency isn't
- * either). Cross-validated against the real json-stable-stringify via the
- * golden hash in the test file.
- */
-export function stableStringifyFlat(obj: Record<string, unknown>): string {
-  const sorted = Object.entries(obj)
-    .filter(([, value]) => value !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : 1))
-  return JSON.stringify(Object.fromEntries(sorted))
-}
+export type NearQuoteResponse = Parameters<NearIntentsBridgeProvider['recoverDepositAddress']>[0]
 
 /**
  * The exact object the 1-Click server hashes for deposit-address attestation
@@ -137,7 +124,9 @@ export class OphisNearIntentsBridgeProvider extends NearIntentsBridgeProvider {
       const { quote, quoteRequest, timestamp } = quoteResponse
       if (!quote?.depositAddress) return null
 
-      const stringifiedQuote = stableStringifyFlat(buildNearQuoteHashInput(quote, quoteRequest, timestamp))
+      // json-stringify-deterministic is byte-identical to the
+      // json-stable-stringify the SDK uses (pinned by the golden-hash test).
+      const stringifiedQuote = jsonStringify(buildNearQuoteHashInput(quote, quoteRequest, timestamp))
 
       const quoteHash = utils.sha256(utils.toUtf8Bytes(stringifiedQuote)) as `0x${string}`
       const depositAddress = utils.getAddress(quote.depositAddress)

@@ -5,7 +5,7 @@ import { BridgingSdk } from '@cowprotocol/sdk-bridging'
 import { orderBookApi } from 'cowSdk'
 
 import { OphisAcrossBridgeProvider, OphisBungeeBridgeProvider } from './ophisBridgeProviders'
-import { OphisNearIntentsBridgeProvider } from './ophisNearIntentsProvider'
+import { OphisNearIntentsBridgeProvider } from './ophisNearIntentsProvider.service'
 import { tradingSdk } from './tradingSdk'
 
 // Dedicated-integrator tier (flag-gated, default OFF). When enabled, route
