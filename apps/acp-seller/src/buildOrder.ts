@@ -106,9 +106,9 @@ export async function buildSignableOrder(req: SwapRequest, nowSeconds: number): 
   if (!orderbookUrl) throw new Error(`chain ${req.chainId} has no live Ophis orderbook`)
 
   // 1. appData: appCode 'ophis' + the Ophis partner fee from the SDK helper (the
-  //    flat 5 bps partner rate). The reduced 1 bp stable rate is deliberately NOT
+  //    canonical flat 1 bp partner rate). Pair classification is deliberately NOT
   //    applied from a caller-supplied flag: that would let a buyer claim a stable
-  //    pair to underpay. Defaulting to the standard rate is always safe, and
+  //    pair to influence fee policy. Defaulting to the standard rate is safe, and
   //    matches the keyless MCP. The buyer can add its own fee entry separately.
   const partnerFee = buildOphisAppDataPartnerFee(req.chainId)
   const metadata: Record<string, unknown> = { orderClass: { orderClass: 'market' }, ophisSource: { app: 'acp' } }

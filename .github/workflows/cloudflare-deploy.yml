@@ -117,7 +117,7 @@ jobs:
           # OPHIS_FRONTEND_OP_VOLUME_BPS in
           # apps/frontend/apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts.
           # Move both in lockstep if the retail rate ever changes.
-          RETAIL_BPS: '10'
+          RETAIL_BPS: '1'
         run: |
           if [[ "$BPS" != "$RETAIL_BPS" ]]; then
             echo "::error::REACT_APP_OPHIS_VOLUME_FEE_BPS must equal the retail rate ${RETAIL_BPS}; got '${BPS:-<unset>}'. readVolumeFeeBps() enables the flat fee ONLY for exactly ${RETAIL_BPS} bps — any other value (incl. the 5 bps partner rate) silently reverts production to the legacy price-improvement fee. Fix the repo secret to ${RETAIL_BPS}."

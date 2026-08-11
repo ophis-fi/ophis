@@ -13,6 +13,7 @@ Ophis is **same-chain best execution** (MEV-protected CoW batch settlement). For
 | BNB | 56 | `https://api.cow.fi/bnb` | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` | CoW-hosted | ✅ |
 | Ethereum | 1 | `https://api.cow.fi/mainnet` | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` | CoW-hosted | ✅ |
 | Optimism | 10 | `https://optimism-mainnet.ophis.fi` | `0x310784c7FCE12d578dA6f53460777bAc9718B859` | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` | **Ophis-sovereign** | ✅ (EIP-155) |
+| Robinhood Chain | 4663 | `https://robinhood-mainnet.ophis.fi` | `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | `0xB52C38097c19cd38238c62DD36027a7918eFa890` | **Ophis-operated** | ✅ (EIP-155) |
 | Gnosis | 100 | `https://api.cow.fi/xdai` | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` | CoW-hosted | ✅ (EIP-155) |
 | Avalanche | 43114 | `https://api.cow.fi/avalanche` | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` | CoW-hosted | ✅ (EIP-155) |
 | Linea | 59144 | `https://api.cow.fi/linea` | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` | CoW-hosted | ✅ (EIP-155) |
@@ -20,7 +21,7 @@ Ophis is **same-chain best execution** (MEV-protected CoW batch settlement). For
 | Ink | 57073 | `https://api.cow.fi/ink` | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` | CoW-hosted | ✅ (EIP-155) |
 | Sepolia (testnet) | 11155111 | `https://api.cow.fi/sepolia` | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` | CoW-hosted | ✅ (EIP-155) |
 
-- **Sovereign** (OP, Unichain): Ophis runs its own solver stack; 100% of price improvement is returned to the trader; contracts are non-canonical (use the addresses above, not CoW's canonical ones).
+- **Ophis-operated** (Optimism, Unichain, Robinhood Chain): Ophis runs its own solver stack and applies the published capped improvement-capture policy; contracts are non-canonical (use the addresses above, not CoW's canonical ones).
 - **mm-supported** = the MetaMask `mm` CLI accepts the chain for sign/tx. `mm` takes any EIP-155 chain id for `sign-typed-data` / `send-transaction`, so every Ophis chain is reachable — but confirm the current CLI build with `mm chains list` (bridge/swap routing coverage is narrower than raw sign/tx). Best targets: **Base + Unichain** (Ophis-sovereign / live).
 
 ## Common token addresses

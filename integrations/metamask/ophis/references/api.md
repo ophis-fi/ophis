@@ -41,10 +41,10 @@ mm wallet sign-typed-data --chain-id <CHAIN> \
 
 ## appData (routes the fee to Ophis)
 
-`{"appCode":"ophis","metadata":{"hooks":{},"partnerFee":{"recipient":"0x858f0F5eE954846D47155F5203c04aF1819eCeF8","volumeBps":5},"ophisReferrer":{"code":"<yourcode>"}},"version":"1.4.0"}`
+`{"appCode":"ophis","metadata":{"hooks":{},"partnerFee":{"recipient":"0x858f0F5eE954846D47155F5203c04aF1819eCeF8","volumeBps":1},"ophisReferrer":{"code":"<yourcode>"}},"version":"1.4.0"}`
 
 - **`appCode` MUST be `"ophis"`** or the rebate indexer silently drops the order.
-- `partnerFee` = CIP-75 VOLUME `{volumeBps, recipient}`; 5 bps default, 1 bp for stable pairs. Recipient is the Ophis Safe (deterministic across chains).
+- `partnerFee` = CIP-75 VOLUME `{volumeBps, recipient}`; 1 bp on every supported chain and pair. Recipient is the Ophis Safe (deterministic across chains).
 - `ophisReferrer.code` (`/^[a-z0-9_-]{3,64}$/`, optional) = how the integrator earns the rebate.
 
 ## Gotchas

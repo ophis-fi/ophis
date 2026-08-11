@@ -21,7 +21,7 @@ Context in two sentences. Unichain is chain id 130, one of the 13 EVM chains Oph
 
 3. **Pick the pair, or describe it.** Fill the form the usual way (sell token, buy token, amount), or type the trade in plain language, "swap 250 USDC for WETH", and the intent layer fills the form for you.
 
-4. **Review the quote.** The quote carries a hard limit price, and that limit is what you sign: the worst execution you can receive. Ophis charges a 1 bp base and retains 80% of reference-quote improvement on volatile pairs (50 bps cap), or 50% on stable pairs (20 bps cap); the remainder and all improvement above the cap go to you.
+4. **Review the quote.** The quote carries a hard limit price, and that limit is what you sign: the worst execution you can receive. Ophis charges a 1 bp base and retains 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap); the remainder and all improvement above the cap go to you.
 
 5. **Sign the order.** Your wallet shows an EIP-712 typed-data message, not a transaction. Signing costs nothing: ERC-20 orders are gasless, while approvals and other direct wallet transactions still require native gas.
 
@@ -43,7 +43,7 @@ If you swap through the page, this changes nothing; the app targets the right co
 
 ## Fees and volume rebates
 
-Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs (50 bps cap) or 50% on stable pairs (20 bps cap).
+Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap).
 
 Trade enough and part of it comes back. Rebate tiers run on rolling 30-day volume: Bronze ($20,000+) 10%, Silver ($50,000+) 15%, Gold ($100,000+) 25%, Palladium ($500,000+) 35%, Platinum ($1,000,000+) 50%. Rebates are paid monthly in WETH from the fee Safe, out of a pool of 21.25% of collected WETH fees split by tier-weighted 30-day volume. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) have the full breakdown.
 
@@ -65,7 +65,7 @@ Solvers compete to fill the order you sign, so what matters in practice is the l
 
 ### Is there a fee?
 
-Yes. A 1 bp base plus 80% of reference-quote improvement on volatile pairs (50 bps cap), or 50% on stable pairs (20 bps cap). See the [pricing page](/pricing/) for worked examples.
+Yes. A 1 bp base plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). See the [pricing page](/pricing/) for worked examples.
 
 ### Can AI agents swap on Unichain?
 

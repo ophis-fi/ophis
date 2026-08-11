@@ -74,7 +74,7 @@ VAULT_RELAYER = {
 
 # ── Ophis partner fee (partner-fee.ts) ────────────────────────────────────────
 OPHIS_PARTNER_FEE_RECIPIENT = "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"  # Ophis Safe
-OPHIS_VOLUME_FEE_BPS = 5          # integrator/partner rate
+OPHIS_VOLUME_FEE_BPS = 1          # canonical Ophis rate on every chain
 OPHIS_STABLE_VOLUME_FEE_BPS = 1   # stable-stable pair rate
 APP_DATA_VERSION = "1.4.0"
 

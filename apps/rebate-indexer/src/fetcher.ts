@@ -1,7 +1,7 @@
 import { sql as dsql } from 'drizzle-orm';
 import { listTrades, getOrder, SUPPORTED_CHAIN_IDS } from './cow/client.js';
 import { APP_CODES, type AppCode } from './cow/types.js';
-import { GROSS_FEE_BPS, OWN_FEE_MAX_BPS } from './affiliate/rates.js';
+import { HISTORICAL_OPHIS_FEE_MAX_BPS, OWN_FEE_MAX_BPS } from './affiliate/rates.js';
 import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
 import { getRpcClient } from './rpc/client.js';
@@ -117,7 +117,7 @@ export interface PendingTrade {
    *  groups the legs of one basket for after-the-fact volume measurement. */
   basketId: string | null;
   /** Gross volume-fee rate (bps) from appData metadata.partnerFee.volumeBps,
-   *  clamped to [1, GROSS_FEE_BPS]; null when absent/unreadable (accrual then
+   *  clamped to the highest legacy settled Ophis fee; null when absent/unreadable (accrual then
    *  treats it as the legacy retail rate). */
   volumeFeeBps: number | null;
   /** True when volumeFeeBps is authoritative (API row under the owner-allowlist, or an
@@ -243,7 +243,7 @@ function readVolumeFeeBps(meta: unknown): number | null {
     if (isFlatVolume) {
       const raw = entry.volumeBps !== undefined ? entry.volumeBps : entry.bps;
       if (isInt(raw) && raw >= 1) {
-        return Math.min(raw, GROSS_FEE_BPS);
+        return Math.min(raw, HISTORICAL_OPHIS_FEE_MAX_BPS);
       }
     } else if (
       // EXACT backend Surplus arm { surplusBps, maxVolumeBps } or PriceImprovement

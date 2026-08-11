@@ -6,8 +6,8 @@ Ophis is a CoW Protocol fork supporting 13 EVM chains: Ethereum, Arbitrum One, A
 
 ## Pricing
 
-- Ophis-operated pricing: Optimism, Unichain, and Robinhood Chain charge a 1 bp base on every path, plus 80% of reference-quote improvement on volatile pairs (50 bps cap) or 50% on stable pairs (20 bps cap).
-- CoW-hosted pricing: the existing 10 bps retail, 5 bps partner, and 1 bp stablecoin Ophis rates remain, with CoW Protocol fees applying upstream.
+- Ophis-operated pricing: Optimism, Unichain, and Robinhood Chain charge a 1 bp base on every path, plus 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap).
+- CoW-hosted pricing: the Ophis base is 1 bp, with CoW Protocol fees applying separately upstream.
 - Integrator own-fees: onboarded integrators may stack their own ERC-20 fee on top; Ophis takes 0% of that markup. See https://docs.ophis.fi/partners.
 - Surplus: traders receive the price improvement remaining after the applicable capped protocol capture.
 - APIs: the public MCP server and the Intent API are free. The Intent API is rate-limited to 30 requests per minute per IP.
@@ -42,5 +42,5 @@ curl -X POST https://swap.ophis.fi/api/intent \
 
 - [GitHub](https://github.com/ophis-fi/ophis): full source.
 - [Full docs text](https://docs.ophis.fi/llms-full.txt): the entire documentation concatenated into one file for LLM context windows.
-- Fee model: Ophis-operated chains charge 1 bp plus capped reference-improvement capture (80% volatile/50 bps cap; 50% stable/20 bps cap). CoW-hosted paths retain 10 bps retail, 5 bps partner, and 1 bp stable rates plus upstream CoW fees.
+- Fee model: every supported chain charges a 1 bp Ophis base. Operated chains also use capped reference-improvement capture (80% volatile/99 bps cap; 50% stable/20 bps cap); hosted paths pay upstream CoW fees separately.
 - Surplus: traders receive the remainder after the applicable capped capture.

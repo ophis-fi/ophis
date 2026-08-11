@@ -16,7 +16,7 @@ export interface AffiliateReferrer {
   /**
    * Referred volume split into (chain, gross bps) buckets. The tier share is taken
    * of each bucket's ACTUAL fee (volume * bps), so per-channel fees accrue their
-   * real kept fee (5 bps SDK = half of 10 bps retail; 1 bp stable = a tenth), and
+   * real kept fee (canonically 1 bp), and
    * the regular cap discards the LEAST-VALUABLE volume first even when one chain
    * carries mixed-rate trades.
    */
@@ -46,10 +46,7 @@ export interface AffiliateOwed {
  * (FEE_SHARE_BPS) of the ACTUAL net fee Ophis keeps on their referred volume:
  * `owed = feeShare * keepFraction(chain) * grossFeeUsd(chain)`, where grossFeeUsd
  * is SUM(value * per-trade bps)/1e4 from accrual. This honours the locked "share
- * of the fee Ophis KEEPS" policy across the per-channel fees (retail 10 bps, SDK
- * 5 bps, stable 1 bp): a 5 bps SDK order accrues half of a 10 bps retail order.
- * For an all-retail (10 bps) referrer this reduces EXACTLY to the published rates
- * (Regular 0.6 bps hosted / 0.8 OP; Partner 0.9 / 1.2).
+ * of the fee Ophis KEEPS" policy at the canonical 1 bp fee.
  *
  * The Regular tier is hard-capped at REGULAR_VOL_CAP_USD of referred VOLUME per
  * cycle: volume past the cap earns ZERO. The cap is allocated HIGHEST-VALUE-FIRST

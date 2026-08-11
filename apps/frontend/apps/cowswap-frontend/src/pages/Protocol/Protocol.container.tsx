@@ -16,7 +16,7 @@
  * zones — every claim below is source-verified, not recalled):
  *   - Parser model: functions/api/intent.ts → LIBERTAI_MODEL = 'qwen3.6-27b'.
  *     Framed as "currently" (implementation detail, drift-prone).
- *   - Fee framing mirrors the /learn copy and docs.ophis.fi/fees (flat 0.10%
+ *   - Fee framing mirrors the /learn copy and docs.ophis.fi/fees (flat 0.01%
  *     volume fee, 0.01% on stablecoin pairs — live since the volume-fee flag
  *     shipped). Source of truth: ophis/partnerFeeDefault.ts, which mirrors
  *     packages/sdk/src/partner-fee.ts. Update all fee copy together.
@@ -177,7 +177,7 @@ export function ProtocolPage(): ReactNode {
             <Tr>
               <RowTh scope="row">Partner fee</RowTh>
               <Td>CIP-75 framework</Td>
-              <Td>Flat 0.10% on volume · 0.01% on same-chain stablecoin pairs · allow-listed recipient</Td>
+              <Td>Flat 0.01% (1 bp) on volume · allow-listed recipient</Td>
               <Td>
                 <Badge tone="live">Ophis</Badge>
               </Td>
@@ -233,10 +233,10 @@ export function ProtocolPage(): ReactNode {
       <Section
         id="fees"
         title="Fees"
-        intro="Ophis charges a flat 0.10% (10 bps) fee on trade volume, written into your order as a CIP-75 partner fee and taken from the trade output at settlement. Same-chain stablecoin-to-stablecoin swaps pay 0.01% (1 bp)."
+        intro="Ophis charges a flat 0.01% (1 bp) fee on trade volume, written into your order as a CIP-75 partner fee and taken from the trade output at settlement."
       >
         <FeatureGrid minCardWidth="200px" gap="12px">
-          <MetricCard label="All trades" value="0.10%" sublabel="flat fee on trade volume (10 bps)" />
+          <MetricCard label="All trades" value="0.01%" sublabel="flat Ophis fee on trade volume (1 bp)" />
           <MetricCard
             label="Stablecoin pairs"
             value="0.01%"

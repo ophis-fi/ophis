@@ -35,7 +35,7 @@ The `OPHIS_SWAP` action extracts the intent, resolves the chain + token addresse
 
 ## Supported chains
 
-Ethereum, Optimism, BNB, Gnosis, **Unichain**, Polygon, Base, Ink, Arbitrum, Avalanche, Linea. Optimism and Unichain are Ophis-sovereign (100% of price improvement returned). Same-chain only.
+Ethereum, Optimism, BNB, Gnosis, **Unichain**, Robinhood Chain, Polygon, Base, Plasma, Ink, Arbitrum, Avalanche, Linea. Optimism, Unichain, and Robinhood Chain are Ophis-operated and use the published capped improvement-capture policy. Same-chain only.
 
 ## Tokens
 

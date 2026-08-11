@@ -18,11 +18,11 @@ const { updated } = canonicalPage('/pricing/')
 const FAQS = [
   {
     q: 'What does Ophis charge?',
-    a: `On ${sovereignList}, every path pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains retain 10 bps retail, 5 bps partner, and 1 bp stablecoin rates.`,
+    a: `Every supported chain pays a 1 bp Ophis base. On ${sovereignList}, Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains pay CoW Protocol fees separately upstream.`,
   },
   {
     q: 'What is the all-in cost on each chain?',
-    a: `On ${sovereignList}, the minimum is 1 bp and the maximum Ophis charge is 51 bps on volatile pairs or 21 bps on stable pairs. On CoW-hosted chains, CoW Protocol adds its own fees on top of Ophis's hosted flat fee.`,
+    a: `On ${sovereignList}, the minimum is 1 bp and the maximum Ophis charge is 100 bps on volatile pairs or 21 bps on stable pairs. On CoW-hosted chains, CoW Protocol adds its own fees on top of Ophis's hosted flat fee.`,
   },
   {
     q: 'Does Ophis take a cut of surplus?',
@@ -30,7 +30,7 @@ const FAQS = [
   },
   {
     q: 'What do integrators pay, and what can they charge?',
-    a: `Integrations pay the same 1 bp base plus capped improvement capture on sovereign chains. Hosted integrations retain the 5 bps base, reduced to 1 bp for stable pairs. Integrators can still charge an onboarded own-fee on top.`,
+    a: `Integrations pay the same 1 bp base plus capped improvement capture on sovereign chains. Hosted integrations use the same 1 bp Ophis base. Integrators can still charge an onboarded own-fee on top.`,
   },
   {
     q: 'Are the APIs free?',
@@ -54,7 +54,7 @@ const FAQS = [
 >
   <p>
     <strong>The short version:</strong> on {sovereignList}, Ophis charges 1 bp plus 80% of
-    reference-quote improvement on volatile pairs (50 bps cap), or 50% on stable pairs (20 bps cap).
+    reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap).
     Hosted chains retain the existing flat rates.
   </p>
 
@@ -69,13 +69,13 @@ const FAQS = [
     <tbody>
       <tr>
         <td><a href="https://swap.ophis.fi/">Swap app</a></td>
-        <td>1 bp + 80% improvement (50 bps cap); 50%/20 bps cap for stables</td>
-        <td>10 bps retail; 1 bp stables</td>
+        <td>1 bp + 80% improvement (99 bps cap); 50%/20 bps cap for stables</td>
+        <td>1 bp Ophis base</td>
       </tr>
       <tr>
         <td><a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> integrations</td>
         <td>Same sovereign model</td>
-        <td>5 bps partner; 1 bp stables</td>
+        <td>1 bp partner; 1 bp stables</td>
       </tr>
       <tr>
         <td><a href="https://docs.ophis.fi/ai-agents">MCP server</a> (keyless)</td>

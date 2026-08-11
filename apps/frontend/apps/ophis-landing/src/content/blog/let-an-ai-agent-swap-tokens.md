@@ -172,8 +172,7 @@ one-line summary: let the SDK resolve anything that is chain-specific.
 
 Here is the part that flips swaps from a cost center to a revenue line. Every
 swap routed through your integration carries the chain-aware Ophis base in
-`appData`: **0.01%** on operated chains, or **0.05%** on hosted volatile pairs
-and **0.01%** on hosted stable pairs. Operated-chain backends also apply capped
+`appData`: **0.01% on every supported chain and pair**. Operated-chain backends also apply capped
 price-improvement capture. The FAQ below has the per-chain arithmetic. Integrators earn a **rebate**
 on the volume they route, and the `lookup_tier` tool surfaces a wallet's 30-day
 volume tier.
@@ -243,10 +242,10 @@ EIP-1271 policy gate rather than trusting the agent to honour them.
 
 Two things set the number, so it is worth being exact. On Optimism, Unichain,
 and Robinhood Chain, the MCP and high-level SDK builders embed a 1 bp base; the
-backend then retains 80% of reference-quote improvement on volatile pairs (50
-bps cap), or 50% on stable pairs (20 bps cap). On CoW-hosted chains, partner
-flow embeds 5 bps on volatile pairs or 1 bp on stable pairs, and CoW Protocol's
-upstream volume and improvement fees apply. Manual builders should use
+backend then retains 80% of reference-quote improvement on volatile pairs (99 bps
+cap), or 50% on stable pairs (20 bps cap). On CoW-hosted chains, partner
+flow also embeds 1 bp, and CoW Protocol's upstream volume and improvement fees
+apply separately. Manual builders should use
 `ophisVolumeBpsForChainAndPair(chainId, isStablePair)` so the chain and pair are
 both reflected. Fixed is not the same as total on either path: operated chains
 have capped Ophis improvement capture, while hosted chains have CoW Protocol's

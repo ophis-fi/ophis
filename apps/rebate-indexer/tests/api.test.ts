@@ -91,14 +91,14 @@ test('/stats returns public cumulative JSON for an API client', async () => {
     settlementModel: 'intent, uniform clearing price',
     solverCompetition: {
       sovereignChains: [
-        { chainId: 10, solvers: 4 },
-        { chainId: 130, solvers: 8 },
-        { chainId: 4663, solvers: 1 },
+        { chainId: 10, solvers: 11 },
+        { chainId: 130, solvers: 7 },
+        { chainId: 4663, solvers: 6 },
       ],
       hostedChains: 'CoW Protocol solver network',
     },
     improvementSplit: {
-      sovereign: '100% of price improvement returned to the trader',
+      sovereign: 'Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)',
       hosted: 'CoW Protocol retains 50% of quote improvement upstream',
     },
   });

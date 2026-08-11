@@ -53,10 +53,9 @@ export interface OphisOrderMetadataOptions {
    *  rebate. Mint one at https://swap.ophis.fi/#/rewards. */
   readonly referralCode?: string;
   /**
-   * True ONLY for a same-chain stablecoin pair, which charges the reduced 1 bp
-   * hosted rate instead of the standard 5 bps hosted partner rate. Sovereign
-   * chains use their 1 bp base regardless because price-improvement capture is
-   * applied by the backend. You decide pair classification; the SDK has no token list.
+   * True ONLY for a same-chain stablecoin pair. The Ophis base is currently
+   * 1 bp for every pair and chain; this flag preserves pair classification for
+   * future policy changes. You decide classification; the SDK has no token list.
    */
   readonly isStablePair?: boolean;
   /**

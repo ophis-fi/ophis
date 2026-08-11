@@ -65,7 +65,7 @@ that would need it.
 
 The limit you signed still bounds the outcome. Solvers compete to beat the
 reference quote. On Optimism, Unichain, and Robinhood Chain, Ophis retains 80%
-of that improvement on volatile pairs (50 bps cap) or 50% on stable pairs (20
+of that improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20
 bps cap); the trader receives the remainder and everything above the cap.
 Hosted chains follow CoW Protocol's upstream improvement policy.
 

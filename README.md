@@ -44,13 +44,12 @@ What that buys you on every trade:
   absent, not best-effort.
 - **Solver-aligned pricing.** On Ophis-operated chains the base fee is 1 bp and
   Ophis earns primarily when execution beats its reference quote: 80% of
-  improvement on volatile pairs (50 bps cap), or 50% on stable pairs (20 bps
+  improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps
   cap). Hosted chains retain their existing flat-fee path.
 - **Non-custodial, no account, no auth.** Every order is signed in your own
   wallet (EIP-712 or ERC-1271). Ophis never holds keys or funds and cannot move,
   freeze, or recover them. The signature is the only trust boundary.
-- **A flat, transparent fee.** 0.10% (10 bps) on volume, dropping to 0.01%
-  (1 bp) on same-chain stablecoin pairs, with a share returned monthly as WETH
+- **A flat, transparent fee.** 0.01% (1 bp) on volume, with a share returned monthly as WETH
   rebates plus an 8% referral on trades you bring.
 
 **Live across the CoW-supported chains**, with its own self-hosted settlement and
@@ -266,9 +265,9 @@ scans), and [`echidna.yml`](.github/workflows/echidna.yml) (contract fuzzing).
 ## Fees and rebates
 
 On Ophis-operated chains, Ophis charges a **0.01% (1 bp)** base plus a capped
-share of reference-quote improvement: **80% capped at 50 bps** for volatile
+share of reference-quote improvement: **80% capped at 99 bps** for volatile
 pairs and **50% capped at 20 bps** for stable pairs. CoW-hosted chains retain
-the flat 10 bps retail / 5 bps partner / 1 bp stablecoin model; the partner
+the flat 1 bp Ophis fee; the partner
 share is disbursed weekly in WETH.
 
 Part of the fee flows back to traders:

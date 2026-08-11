@@ -42,13 +42,13 @@ An intent flips each of those properties.
 
 - **A hard limit price, signed.** The EIP-712 order states the minimum you will receive. There is no tolerance band to be filled to the bottom of; execution below your limit cannot settle at all.
 - **[MEV protection](/blog/mev-protection-batch-auctions/) by construction.** Order flow stays off chain until settlement, orders settle in batch auctions, and every trade in a batch clears at a uniform clearing price. There is no pending swap in a public mempool to sandwich and no in-batch ordering to exploit. The protection is structural, not best-effort.
-- **Capped, published improvement sharing.** Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps. The trader receives the remainder and everything above the cap.
+- **Capped, published improvement sharing.** Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. The trader receives the remainder and everything above the cap.
 
 The [comparison page](https://docs.ophis.fi/comparison) goes deeper on the trade-offs, and [Ophis vs CoW Swap](/blog/ophis-vs-cow-swap/) covers what the fork changes.
 
 ## Fees and the rebate ladder
 
-Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps.
+Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps.
 
 Volume then earns part of that back. Tiers follow your rolling 30-day volume:
 

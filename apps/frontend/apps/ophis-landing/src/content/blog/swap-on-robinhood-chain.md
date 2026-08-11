@@ -109,7 +109,7 @@ The canary carries its own copy of the addresses, so what it catches is the depl
 
 ## Fees and rebates
 
-Every trade pays a 1 bp base. Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stablecoin pairs, capped at 20 bps. The trader receives the remainder and all improvement above the cap. Because Robinhood Chain is Ophis-operated, there is no upstream CoW-hosted fee layer.
+Every trade pays a 1 bp base. Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps. The trader receives the remainder and all improvement above the cap. Because Robinhood Chain is Ophis-operated, there is no upstream CoW-hosted fee layer.
 
 Volume then earns part of it back, on rolling 30-day volume:
 

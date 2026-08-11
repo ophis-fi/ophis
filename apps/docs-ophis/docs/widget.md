@@ -71,7 +71,7 @@ createCowSwapWidget(container, {
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | The iframe host. Override for a self-hosted/staging Ophis. |
 | `appCode` | `ophis` | Tags orders in appData. Set it to a referral code you have minted and activated to earn the [affiliate rebate](./affiliate.md) on widget orders (an arbitrary label earns nothing). |
-| `partnerFee.bps` | Derived from `buildOphisAppDataPartnerFee(chainId)` in the example | Recompute when the configured chain changes; operated chains use 1 bp and hosted volatile flow uses 5 bps. |
+| `partnerFee.bps` | Derived from `buildOphisAppDataPartnerFee(chainId)` in the example | The Ophis base is 1 bp on every supported chain. |
 | `partnerFee.recipient` | Ophis Safe | Always pinned by the React wrapper. |
 | `chainId`, `sell`, `buy`, `theme`, `tokenLists` | upstream defaults | Full [CoW widget params](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
 

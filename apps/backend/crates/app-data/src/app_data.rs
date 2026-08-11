@@ -124,8 +124,7 @@ impl RecipientPolicy for PermissiveRecipientPolicy {
     }
 }
 
-/// Standard Ophis volume fee (0.10%) and the reduced same-chain-stablecoin /
-/// boosted rate (0.01%). These MUST stay in lockstep with the frontend
+/// Standard Ophis volume fee (0.01%). This MUST stay in lockstep with the frontend
 /// (modules/volumeFee/state/volumeFeeAtom.ts + ophis/partnerFeeDefault.ts +
 /// ophis/boostedTokens.ts) and the SDK (packages/sdk/src/partner-fee.ts). They
 /// are the MINIMUM Volume bps the OP self-hosted backend will accept for a fee to
