@@ -11,8 +11,8 @@
 //
 // ACCRUAL BASIS: the Ophis fee is 1 bp on every channel, so accrual takes the tier share
 // of the ACTUAL gross fee each trade carried, read from appData and stored per
-// trade (trades.volume_fee_bps, clamped to 1; NULL -> the canonical default
-// GROSS_FEE_BPS). owed = feeShare * keepFraction(chain) * SUM(value * actual_bps).
+// trade. New orders use GROSS_FEE_BPS; NULL historical/undecoded rows use the
+// separate LEGACY_UNDECODED_FEE_BPS fallback until they are backfilled.
 // At the canonical 1 bp fee this reduces to:
 //   feeShare * GROSS_FEE_BPS * keepFraction(chain)
 //   Regular hosted = 0.08 * 1 * 0.75 = 0.06 bps   (OP = 0.08 bps)
@@ -28,8 +28,15 @@ export const FEE_SHARE_BPS: Readonly<Record<AffiliateKind, number>> = {
   partner: 1200, // 12%
 };
 
-/** Canonical current Ophis fee and fallback for rows without a decoded fee. */
+/** Canonical current Ophis fee emitted by every new-order surface. */
 export const GROSS_FEE_BPS = 1;
+
+/** Conservative accounting fallback for already-settled rows whose fee could
+ * not be decoded. Before per-trade fee persistence, NULL meant the then-current
+ * 10 bps retail rate; changing this with the new-order default would underpay
+ * historical referrals. Remove only after every nullable settled row is
+ * deterministically backfilled. */
+export const LEGACY_UNDECODED_FEE_BPS = 10;
 
 /** Highest legacy Ophis volume fee that may appear on already-settled orders.
  * Keep historical accounting faithful; new orders are emitted at GROSS_FEE_BPS. */
@@ -97,10 +104,9 @@ export function effectiveVolumeBps(kind: AffiliateKind, chainId: number): number
 /**
  * Volume-derived UPPER-BOUND estimate of an affiliate's current-cycle earnings on
  * a USD referred volume, for the dashboard. Given only a volume (no per-trade fee
- * mix), it assumes the full RETAIL rate (GROSS_FEE_BPS) on the hosted keep
- * fraction, so it is the MOST the volume could earn. The settled monthly accrual
- * uses the ACTUAL per-trade fee, so real earnings are LOWER for any SDK-channel
- * (5 bps) or stable-pair (1 bp) volume. Regular affiliates are capped at
+ * mix), it assumes the canonical current rate (GROSS_FEE_BPS) on the hosted keep
+ * fraction. The settled monthly accrual uses the ACTUAL per-trade fee, including
+ * a separate legacy fallback for undecoded historical rows. Regular affiliates are capped at
  * REGULAR_VOL_CAP_USD / month; partners are uncapped.
  */
 export function estimateEarningsUsd(volumeUsd: number, kind: AffiliateKind): number {
@@ -117,9 +123,9 @@ export function estimateEarningsUsd(volumeUsd: number, kind: AffiliateKind): num
  * ACTUAL cycle NET fee (netFeeUsd = SUM(value * per-trade bps * keepFraction(chain))
  * / 1e8, with the per-chain CoW cut already applied at the SQL layer so Optimism
  * volume keeps 100% and hosted volume 75%, matching the accrual). owed = feeShare *
- * netFee, so it MATCHES what the settled monthly accrual pays (a 5 bps SDK partner
- * sees ~half of the old retail-assumed figure, not 2x; OP volume is not understated
- * by 25%). Regular caps on VOLUME at REGULAR_VOL_CAP_USD, applied proportionally to
+ * netFee, so it MATCHES what the settled monthly accrual pays and does not
+ * understate operated-chain volume by 25%. Regular caps on VOLUME at
+ * REGULAR_VOL_CAP_USD, applied proportionally to
  * the net fee (the dashboard estimate does not need the accrual's exact
  * least-valuable-first cap allocation). volumeUsd is the cycle referred volume that
  * produced netFeeUsd, used only to compute the regular cap.

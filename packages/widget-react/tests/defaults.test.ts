@@ -13,7 +13,7 @@ describe('withOphisDefaults', () => {
     expect(merged.baseUrl).toBe('https://swap.ophis.fi');
     expect(merged.appCode).toBe(OPHIS_WIDGET_APP_CODE);
     expect(merged.partnerFee?.recipient).toBe(OPHIS_PARTNER_FEE_RECIPIENT);
-    expect((merged.partnerFee?.bps as any)[1]).toBe(5);
+    expect((merged.partnerFee?.bps as any)[1]).toBe(1);
   });
 
   it('keeps the default fee chain-aware across network switches', () => {
@@ -23,8 +23,8 @@ describe('withOphisDefaults', () => {
     expect(bps[10]).toBe(1);
     expect(bps[130]).toBe(1);
     expect(bps[4663]).toBe(1);
-    expect(bps[1]).toBe(5);
-    expect(bps[8453]).toBe(5);
+    expect(bps[1]).toBe(1);
+    expect(bps[8453]).toBe(1);
   });
 
   it('lets the caller override host, appCode and fee bps', () => {

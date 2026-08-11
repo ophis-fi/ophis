@@ -325,8 +325,8 @@ labeled estimates; exact value depends on chain mix):
 
 | Tier            | Share of net fee           | Roughly, per $1M/month |
 | --------------- | -------------------------- | ---------------------- |
-| Self-serve (8%) | 8% of the fee Ophis keeps  | $30 to $40 in WETH     |
-| Partner (12%)   | 12% of the fee Ophis keeps | $45 to $60 in WETH     |
+| Self-serve (8%) | 8% of the fee Ophis keeps  | $6 hosted / $8 operated in WETH  |
+| Partner (12%)   | 12% of the fee Ophis keeps | $9 hosted / $12 operated in WETH |
 
 Layer 2 alone is not a business; it is a kicker. The business case for an
 operator is **layer 3**: your own fee entry, charged alongside the chain's

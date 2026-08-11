@@ -115,7 +115,7 @@ test('pricing page states sovereign capture and hosted rates', async ({ page }) 
   await expect(body).toContainText('1 bp + 80% improvement')
   await expect(body).toContainText('50%/20 bps cap for stables')
   await expect(body).toContainText('1 bp Ophis base')
-  await expect(body).toContainText('5 bps')
+  await expect(body).not.toContainText('5 bps')
 })
 
 test('supported-chains lists every chain from the canonical data, sovereigns badged', async ({ page }) => {
