@@ -2,10 +2,7 @@ import { atom } from 'jotai'
 
 import { CowSwapWidgetAppParams } from '@cowprotocol/widget-lib'
 
-import {
-  OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
-  OPHIS_DEFAULT_PARTNER_FEE,
-} from 'ophis/partnerFeeDefault'
+import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_DEFAULT_PARTNER_FEE } from 'ophis/partnerFeeDefault'
 
 export type WidgetParamsErrors = Partial<{ [key in keyof CowSwapWidgetAppParams]: string[] | undefined }>
 

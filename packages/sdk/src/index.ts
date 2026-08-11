@@ -26,6 +26,8 @@ export {
   type OphisPartnerFeeConfig,
 } from './partner-fee.js';
 
+export { OPHIS_STABLECOINS, isOphisStablePair } from './stablecoins.js';
+
 export {
   normalizeOphisReferralCode,
   buildOphisReferrerMetadata,

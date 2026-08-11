@@ -30,6 +30,7 @@ import {
   validateOrder,
   type Address,
 } from './ophis.js'
+import { resolveStablePair } from './stablePair.js'
 
 /** Identity reported by both transports (stdio + Worker). */
 export const SERVER_INFO = { name: 'ophis', version: '0.1.0' } as const
@@ -100,7 +101,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
         isStablePair: z
           .boolean()
           .optional()
-          .describe('Set true only when both assets are same-chain stablecoins; selects 50% improvement capture with a 20 bps cap instead of 80%/99 bps.'),
+          .describe('Optional assertion checked against the server-owned stablecoin registry; omit to auto-classify.'),
         kind: z
           .enum(['sell', 'buy'])
           .describe("'sell' = you specify the sell amount; 'buy' = you specify the buy amount."),
@@ -116,12 +117,13 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     },
     async (a) => {
       try {
+        const isStablePair = resolveStablePair(a.chainId, a.sellToken, a.buyToken, a.isStablePair)
         return ok(
           await getQuote({
             chainId: a.chainId,
             sellToken: a.sellToken as Address,
             buyToken: a.buyToken as Address,
-            isStablePair: a.isStablePair,
+            isStablePair,
             kind: a.kind,
             amount: a.amount,
             from: a.from as Address,
@@ -150,7 +152,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
         isStablePair: z
           .boolean()
           .optional()
-          .describe('Set true only when both assets are same-chain stablecoins; selects 50% improvement capture with a 20 bps cap instead of 80%/99 bps.'),
+          .describe('Optional assertion checked against the server-owned stablecoin registry; omit to auto-classify.'),
         sellAmount: z
           .string()
           .describe("In atoms. kind 'sell': the EXACT amount you sell. kind 'buy': the MAXIMUM you'll spend (slippage-adjusted UP from the quote)."),
@@ -225,6 +227,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     },
     async (a) => {
       try {
+        const isStablePair = resolveStablePair(a.chainId, a.sellToken, a.buyToken, a.isStablePair)
         const built = buildOrder(
           {
             chainId: a.chainId,
@@ -247,7 +250,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             // funnel can attribute settled volume to the MCP surface. Not a
             // caller-controlled field: every order this tool builds is 'mcp'.
             source: 'mcp',
-            isStablePair: a.isStablePair,
+            isStablePair,
           },
           Math.floor(Date.now() / 1000),
         )
@@ -266,7 +269,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             kind: a.kind,
             amount: a.kind === 'sell' ? a.sellAmount : a.buyAmount,
             from: a.owner as Address,
-            isStablePair: a.isStablePair,
+            isStablePair,
             // Bound slippage against a quote for the EXACT order being signed: pass the
             // order's ABSOLUTE validTo (computed once in buildOrder above), not a relative
             // window. A relative validFor would re-anchor to the orderbook's later request

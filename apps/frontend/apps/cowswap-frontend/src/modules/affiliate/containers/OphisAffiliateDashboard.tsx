@@ -185,10 +185,10 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
         ) : (
           <>
             <p>
-              Earn {rate}% of the fee Ophis keeps on every trade your referrals route. Paid monthly in WETH.
+              Earn {rate}% of the verified base fee Ophis keeps on every trade your referrals route. Paid monthly in WETH.
             </p>
             <MetricRow>
-              <MetricCard label="Your rate" value={`${rate}%`} sublabel="of the fee Ophis keeps" compact />
+              <MetricCard label="Your rate" value={`${rate}%`} sublabel="of the verified base fee" compact />
               <MetricCard label="Referred wallets" value={stats?.referredCount ?? 0} compact />
               <MetricCard
                 label="Referred volume"
@@ -250,7 +250,7 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
           )}
           <p>
             Share your code or link. When a net-new wallet trades on Ophis after using your link,
-            they&apos;re bound to you, and you earn a share of the fee Ophis keeps on their trades.
+            they&apos;re bound to you, and you earn a share of the verified base fee Ophis keeps on their trades.
             Aggregate totals only, no per-trade tracking is shown here.
           </p>
         </Section>

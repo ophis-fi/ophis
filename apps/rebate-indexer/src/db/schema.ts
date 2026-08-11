@@ -47,11 +47,11 @@ export const trades = pgTable(
     appCode: text('app_code').notNull(),
     partnerFeeWei: uint256('partner_fee_wei'),
 
-    // Effective gross Ophis fee rate (bps). Flat-only orders are decoded from
-    // appData; hosted orders with improvement capture use the authoritative
-    // settlement `executedProtocolFees` amounts and are clamped to [1, 100].
+    // Verified gross Ophis flat fee rate (bps), decoded from appData. Capped
+    // improvement is excluded: executedProtocolFees is intended rather than
+    // recipient-reconciled revenue and cannot safely fund affiliate payouts.
     // Three states:
-    //   N (1..100) = the actual effective per-trade Ophis fee rate;
+    //   N (1..100) = the verified flat per-trade Ophis fee rate;
     //   0         = examined, NO settled Ophis fee at all (a backend-rejected shape
     //               like capped {volumeBps,maxVolumeBps} or both-aliases, a non-Ophis
     //               recipient, an absent/0-bps fee) -> credited at ZERO;

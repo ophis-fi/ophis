@@ -9,10 +9,12 @@
 // hosted chains, 0% on Optimism (sovereign Ophis backend). So Ophis keeps 75% on
 // hosted, 100% on OP.
 //
-// ACCRUAL BASIS: every order has a 1 bp base and may also realize capped
-// price-improvement revenue. Accrual takes the tier share of the ACTUAL gross
-// fee kept on each trade. API rows derive an effective bps from authoritative
-// executedProtocolFees; legacy NULL rows use the creation-time fallback below.
+// ACCRUAL BASIS: every order has a verified 1 bp base and may also realize
+// capped price-improvement revenue. Today accrual includes only that verified
+// base: CoW's executedProtocolFees is an intended amount, has no recipient, and
+// does not prove payment to the Ophis Safe. Improvement revenue must not enter
+// affiliate payouts until a future source reconciles actual recipient transfers.
+// Legacy NULL rows use the creation-time fallback below.
 // With no realized improvement, the 1 bp baseline reduces to:
 //   feeShare * GROSS_FEE_BPS * keepFraction(chain)
 //   Regular hosted = 0.08 * 1 * 0.75 = 0.06 bps   (OP = 0.08 bps)

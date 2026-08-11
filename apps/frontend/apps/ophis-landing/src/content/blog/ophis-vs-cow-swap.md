@@ -58,7 +58,7 @@ The practical consequence for anyone integrating: never hardcode api.cow.fi or t
 
 Your current tier and progress toward the next one show directly on the swap page.
 
-**An affiliate program.** Mint a referral code and earn 8% of the net fee Ophis keeps on every trade your referred wallets route, paid monthly in WETH from the same Safe. The regular tier caps at $1M of referred volume per month; an invitation-only Partner tier (12%, uncapped) exists. Details in the [affiliate docs](https://docs.ophis.fi/affiliate).
+**An affiliate program.** Mint a referral code and earn 8% of the verified base fee Ophis keeps on every trade your referred wallets route, paid monthly in WETH from the same Safe. The regular tier caps at $1M of referred volume per month; an invitation-only Partner tier (12%, uncapped) exists. Details in the [affiliate docs](https://docs.ophis.fi/affiliate).
 
 ## When CoW Swap is the right pick
 

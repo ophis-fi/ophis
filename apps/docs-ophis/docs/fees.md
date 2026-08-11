@@ -151,7 +151,7 @@ For the protocol-level details, see
 
 The rebate pool is the **WETH** the fee Safe holds; fees collected in other
 tokens are not currently part of it. Want to earn on trades you refer? See the
-[Affiliate program](./affiliate.md): share a code and earn a share of the net
-fee Ophis keeps on every trade your referrals route.
+[Affiliate program](./affiliate.md): share a code and earn a share of the
+verified base fee Ophis keeps on every trade your referrals route.
 
 :::
