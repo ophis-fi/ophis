@@ -163,6 +163,9 @@ describe('buildOphisEthFlowOrder - fund-safety guards', () => {
     // zero volumeBps (no actual fee)
     const zeroFee = JSON.stringify({ metadata: { partnerFee: { volumeBps: 0, recipient: OPHIS_PARTNER_FEE_RECIPIENT } } });
     expect(() => buildOphisEthFlowOrder(baseParams({ fullAppData: zeroFee }))).toThrow(/partnerFee/);
+    expect(() =>
+      buildOphisEthFlowOrder(baseParams({ chainId: 1, fullAppData: FULL_APP_DATA })),
+    ).toThrow(/hosted eth-flow appData.*price-improvement policy/);
   });
 
   it('rejects empty or non-JSON fullAppData', () => {

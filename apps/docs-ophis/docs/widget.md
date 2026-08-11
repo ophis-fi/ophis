@@ -33,23 +33,21 @@ export function Swap() {
 ```
 
 Pass a `provider` (an EIP-1193 injected wallet) to let users connect inside the
-widget. `baseUrl`, `appCode`, and the partner fee are injected for you.
+widget. `baseUrl` and `appCode` are injected for you; the Ophis iframe applies
+the complete fee policy when no explicit override is supplied.
 
 ## Vanilla JS
 
 No React? Use the underlying library and point it at Ophis:
 
 ```bash
-npm install @cowprotocol/widget-lib @ophis/sdk
+npm install @cowprotocol/widget-lib
 ```
 
 ```ts
 import { createCowSwapWidget } from '@cowprotocol/widget-lib';
-import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 
 const container = document.getElementById('ophis-widget')!;
-const fee = buildOphisAppDataPartnerFee(10); // { volumeBps, recipient } on OP
-
 createCowSwapWidget(container, {
   params: {
     baseUrl: 'https://swap.ophis.fi', // the Ophis host
@@ -57,13 +55,13 @@ createCowSwapWidget(container, {
     tradeType: 'swap',
     width: '450px',
     height: '640px',
-    partnerFee: fee ? { bps: fee.volumeBps, recipient: fee.recipient } : undefined,
   },
 });
 ```
 
-> The widget's `partnerFee` uses `bps`; the SDK exposes the same number as
-> `volumeBps`. Map `volumeBps` to `bps` as shown.
+> Leave `partnerFee` unset to receive Ophis's complete base + improvement
+> policy. Supplying it is an explicit volume-fee override; the iframe honors
+> that `bps` instead of layering the default improvement policy on top.
 
 ## Configuration
 
@@ -71,8 +69,8 @@ createCowSwapWidget(container, {
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | The iframe host. Override for a self-hosted/staging Ophis. |
 | `appCode` | `ophis` | Tags orders in appData. Set it to a referral code you have minted and activated to earn the [affiliate rebate](./affiliate.md) on widget orders (an arbitrary label earns nothing). |
-| `partnerFee.bps` | Derived from `buildOphisAppDataPartnerFee(chainId)` in the example | The Ophis base is 1 bp on every supported chain. |
-| `partnerFee.recipient` | Ophis Safe | Always pinned by the React wrapper. |
+| `partnerFee` | Unset; the iframe applies the complete policy | An explicit override is authoritative. |
+| `partnerFee.recipient` | Ophis Safe when overridden | Always pinned by the React wrapper. |
 | `chainId`, `sell`, `buy`, `theme`, `tokenLists` | upstream defaults | Full [CoW widget params](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
 
 ## Theming

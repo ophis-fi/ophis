@@ -265,6 +265,7 @@ async function quoteCore(env: Env, deps: Deps, req: CompatQuoteRequest): Promise
         referrerCode: req.referrerCode ?? undefined,
         source: 'compat',
         partnerFees: extraPartnerFees,
+        isStablePair: req.isStablePair,
       },
       nowSeconds,
     );

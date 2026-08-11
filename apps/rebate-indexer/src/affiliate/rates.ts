@@ -9,17 +9,14 @@
 // hosted chains, 0% on Optimism (sovereign Ophis backend). So Ophis keeps 75% on
 // hosted, 100% on OP.
 //
-// ACCRUAL BASIS: the Ophis fee is 1 bp on every channel, so accrual takes the tier share
-// of the ACTUAL gross fee each trade carried, read from appData and stored per
-// trade. New orders use GROSS_FEE_BPS; only NULL rows whose authoritative order
-// creation predates the rollout use LEGACY_UNDECODED_FEE_BPS.
-// At the canonical 1 bp fee this reduces to:
+// ACCRUAL BASIS: every order has a 1 bp base and may also realize capped
+// price-improvement revenue. Accrual takes the tier share of the ACTUAL gross
+// fee kept on each trade. API rows derive an effective bps from authoritative
+// executedProtocolFees; legacy NULL rows use the creation-time fallback below.
+// With no realized improvement, the 1 bp baseline reduces to:
 //   feeShare * GROSS_FEE_BPS * keepFraction(chain)
 //   Regular hosted = 0.08 * 1 * 0.75 = 0.06 bps   (OP = 0.08 bps)
 //   Partner hosted = 0.12 * 1 * 0.75 = 0.09 bps   (OP = 0.12 bps)
-// The indexer
-// still indexes only the CoW-hosted chains (Optimism not indexed yet).
-
 export type AffiliateKind = 'regular' | 'partner';
 
 /** Share of the NET fee paid to the affiliate, in basis points of the net fee. */
@@ -116,18 +113,18 @@ export function effectiveVolumeBps(kind: AffiliateKind, chainId: number): number
 }
 
 /**
- * Volume-derived UPPER-BOUND estimate of an affiliate's current-cycle earnings on
- * a USD referred volume, for the dashboard. Given only a volume (no per-trade fee
- * mix), it assumes the canonical current rate (GROSS_FEE_BPS) on the hosted keep
- * fraction. The settled monthly accrual uses the ACTUAL per-trade fee, including
+ * Volume-derived BASELINE estimate of an affiliate's current-cycle earnings on
+ * a USD referred volume, for the dashboard. Given only volume (no settled
+ * improvement-fee mix), it assumes the 1 bp base on the hosted keep fraction.
+ * The settled monthly accrual uses the ACTUAL per-trade effective fee, including
  * a separate legacy fallback for undecoded historical rows. Regular affiliates are capped at
  * REGULAR_VOL_CAP_USD / month; partners are uncapped.
  */
 export function estimateEarningsUsd(volumeUsd: number, kind: AffiliateKind): number {
   if (!Number.isFinite(volumeUsd) || volumeUsd <= 0) return 0;
   const cappedVolume = kind === 'regular' ? Math.min(volumeUsd, REGULAR_VOL_CAP_USD) : volumeUsd;
-  // Any non-Optimism chain id yields the hosted keep fraction (0.75); the
-  // indexer does not index Optimism, so all referred volume here is hosted.
+  // This volume-only fallback has no chain mix, so it deliberately uses the
+  // conservative hosted keep fraction (0.75).
   const HOSTED_CHAIN_ID = 1;
   return (cappedVolume * effectiveVolumeBps(kind, HOSTED_CHAIN_ID)) / 10_000;
 }

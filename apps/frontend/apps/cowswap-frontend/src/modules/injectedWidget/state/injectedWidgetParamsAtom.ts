@@ -5,7 +5,6 @@ import { CowSwapWidgetAppParams } from '@cowprotocol/widget-lib'
 import {
   OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
   OPHIS_DEFAULT_PARTNER_FEE,
-  OPHIS_PARTNER_FEE_RECIPIENT,
 } from 'ophis/partnerFeeDefault'
 
 export type WidgetParamsErrors = Partial<{ [key in keyof CowSwapWidgetAppParams]: string[] | undefined }>
@@ -31,9 +30,8 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => {
  */
 export const injectedWidgetAppDataPartnerFeeAtom = atom((get) => {
   const widgetFee = get(injectedWidgetParamsAtom).params.partnerFee
-  // A non-Ophis widget override remains authoritative. The official
-  // @ophis/widget's canonical recipient selects the complete Ophis policy
-  // (base + improvement) instead of accidentally stripping the improvement.
-  if (widgetFee && widgetFee.recipient !== OPHIS_PARTNER_FEE_RECIPIENT) return undefined
+  // Presence, not recipient identity, makes this an explicit host override.
+  // The widget's volume-fee pipeline will serialize exactly that override.
+  if (widgetFee) return undefined
   return OPHIS_DEFAULT_APP_DATA_PARTNER_FEE
 })

@@ -115,11 +115,12 @@ Where the order settles determines how improvement is shared:
   reference-quote improvement on volatile pairs, capped at 99 bps of volume**,
   or **50% on stable pairs, capped at 20 bps**. The trader receives the
   remainder and all improvement above the applicable cap.
-- On the **10 CoW-hosted chains**, CoW Protocol's fee model retains **50% of
-  the quote improvement** (capped at 0.98% of volume) before the remainder is
-  returned. That upstream capture applies equally to CoW Swap itself and to
-  every front-end settling through CoW's hosted infrastructure, Ophis
-  included. Ophis adds no second improvement charge on these hosted chains.
+- On the **10 CoW-hosted chains**, the same Ophis capture applies first:
+  **80% of reference-quote improvement on volatile pairs, capped at 99 bps of
+  volume**, or **50% on stable pairs, capped at 20 bps**. CoW Protocol also
+  applies its separate upstream policy: **50% of quote improvement, capped at
+  0.98% of volume**. The trader receives what remains after both independently
+  capped policies, plus all improvement beyond their applicable caps.
 
 ### Agent-first API
 
