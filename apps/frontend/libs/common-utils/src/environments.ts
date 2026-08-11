@@ -11,8 +11,11 @@ const DEFAULT_ENVIRONMENTS_REGEX: Record<EnvironmentName, string> = {
   // browser build — production ran with every env flag false (which silently
   // routed Bungee to the barn BFF fallback, 403, for months). Do not rely on
   // the env override for anything that must hold in production.
+  // The ophis entries use ESCAPED dots: unescaped, `swap.ophis.fi` also
+  // matches registrable hyphen lookalikes like `swap-ophis-fi` (Codex review,
+  // PR #1163). Upstream's own entries are left as-is to minimize divergence.
   production:
-    '^(swap.cow.fi|explorer.cow.fi|swap-prod.vercel.app|explorer-prod-seven.vercel.app|cow.trade|cowswap.exchange|ophis.fi|swap.ophis.fi|explorer.ophis.fi)$',
+    '^(swap.cow.fi|explorer.cow.fi|swap-prod.vercel.app|explorer-prod-seven.vercel.app|cow.trade|cowswap.exchange|ophis\\.fi|swap\\.ophis\\.fi|explorer\\.ophis\\.fi)$',
   barn: '^(barn.cow.fi|barn.explorer.cow.fi|swap-barn.vercel.app|explorer-barn.vercel.app|barn.cowswap.exchange)$',
   ens: '(:?^cowswap.eth|ipfs)',
 }
