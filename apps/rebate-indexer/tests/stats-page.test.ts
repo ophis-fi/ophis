@@ -61,7 +61,7 @@ describe('renderStatsPage', () => {
     expect(html).toContain('Hard signed limit price');
     expect(html).toContain('Gasless execution');
     expect(html).toContain('Solver competition on every order');
-    expect(html).toContain('Optimism: 11, Unichain: 7, Robinhood Chain: 7');
+    expect(html).toContain('Optimism: 11, Unichain: 7, Robinhood Chain: 6');
     expect(html).not.toContain('On Unichain, 8 aggregator solvers');
     expect(html).toContain('The Ophis base fee is 0.01% (1 bp) on every supported chain');
   });
@@ -101,7 +101,7 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
     expect(EXECUTION_FACTS.solverCompetition.sovereignChains).toEqual([
       { chainId: 10, solvers: 11 },
       { chainId: 130, solvers: 7 },
-      { chainId: 4663, solvers: 7 },
+      { chainId: 4663, solvers: 6 },
     ]);
   });
 

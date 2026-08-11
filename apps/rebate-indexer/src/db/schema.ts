@@ -54,12 +54,17 @@ export const trades = pgTable(
     //               like capped {volumeBps,maxVolumeBps} or both-aliases, a non-Ophis
     //               recipient, an absent/0-bps fee) -> credited at ZERO;
     //   NULL      = unknown; covers a pre-per-trade historical row, unparseable
-    //               appData, OR a valid surplus/price-improvement fee. Accrual maps
-    //               it to 10 bps only before the rollout cutover and 1 bp afterward.
-    // 0 vs NULL is load-bearing: the timestamp-gated fallback keeps 0 as 0 (no
-    // credit). The self-healing backfill only upgrades
+    //               appData, OR a valid surplus/price-improvement fee. Accrual uses
+    //               the separately persisted order-creation policy marker.
+    // 0 vs NULL is load-bearing: the marker fallback keeps 0 as 0 (no credit).
+    // The self-healing backfill only upgrades
     // NULL -> a POSITIVE rate, so re-fetching history never reclassifies it to 0.
     volumeFeeBps: integer('volume_fee_bps'),
+
+    // API-derived policy version for a NULL volumeFeeBps. Computed exclusively
+    // from order.creationDate: 10 before the 1 bp rollout, 1 afterward. NULL means
+    // a decoder-first row has not been API-enriched and must be held from accrual.
+    undecodedFeeFallbackBps: integer('undecoded_fee_fallback_bps'),
 
     // True when volume_fee_bps is AUTHORITATIVE: an API row fetched under the
     // owner-allowlist, or an on-chain-verified decoder row. False for a settle()

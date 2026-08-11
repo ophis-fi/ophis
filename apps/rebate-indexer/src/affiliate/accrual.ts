@@ -1,11 +1,6 @@
 import { sql } from '../db/index.js';
 import type { AffiliateReferrer } from './computeAffiliate.js';
-import {
-  GROSS_FEE_BPS,
-  LEGACY_UNDECODED_FEE_BPS,
-  ONE_BP_FEE_CUTOVER_AT,
-  type AffiliateKind,
-} from './rates.js';
+import { type AffiliateKind } from './rates.js';
 
 // Reads the referral graph + trades and builds the per-referrer, per-chain referred
 // volume for a cycle, ready for computeAffiliate().
@@ -64,8 +59,9 @@ export async function buildAffiliateReferrers(
   }
 
   // Grouped by (referrer, chain, EFFECTIVE gross bps) — splitting volume by its
-  // per-trade fee rate (NULL bps -> 10 only before the 1 bp rollout cutover, otherwise
-  // the current 1 bp rate) lets computeAffiliate apply the regular cap LEAST-VALUABLE-FIRST even
+  // per-trade fee rate. NULL fees use the policy marker derived from the authoritative
+  // order creation time; unenriched decoder-only rows are held from accrual. This lets
+  // computeAffiliate apply the regular cap LEAST-VALUABLE-FIRST even
   // when one chain carries mixed-rate (5/10/1 bps) trades.
   const rows = await sql<
     { referrer_hex: string; chain_id: number; gross_bps: number; volume_usd: string }[]
@@ -73,10 +69,7 @@ export async function buildAffiliateReferrers(
     SELECT
       encode(r.referrer_wallet, 'hex')                AS referrer_hex,
       t.chain_id                                      AS chain_id,
-      COALESCE(t.volume_fee_bps, CASE
-        WHEN t.block_timestamp < ${ONE_BP_FEE_CUTOVER_AT}::timestamptz THEN ${LEGACY_UNDECODED_FEE_BPS}::int
-        ELSE ${GROSS_FEE_BPS}::int
-      END)::int AS gross_bps,
+      COALESCE(t.volume_fee_bps, t.undecoded_fee_fallback_bps)::int AS gross_bps,
       SUM(t.value_usd)::text                          AS volume_usd
     FROM referrals r
     JOIN trades t ON t.wallet = r.referred_wallet
@@ -84,6 +77,7 @@ export async function buildAffiliateReferrers(
       AND t.block_timestamp <  ${monthEnd.toISOString()}
       AND t.block_timestamp >= r.bound_at
       AND t.value_usd IS NOT NULL
+      AND (t.volume_fee_bps IS NOT NULL OR t.undecoded_fee_fallback_bps IS NOT NULL)
       -- Production chains only: Sepolia is indexed for dev visibility but must
       -- never accrue a real WETH payout (audit 2026-07-09).
       AND t.chain_id <> 11155111
