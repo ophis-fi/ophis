@@ -10,7 +10,7 @@
  * between three monetisation models — `volumeBps` (flat), `surplusBps`
  * (% of on-chain surplus), or `priceImprovementBps` (% of execution that
  * beats the quote). Ophis runs the FLAT volumeBps model in production
- * (REACT_APP_OPHIS_VOLUME_FEE_BPS=10 is set at build time, see
+ * (REACT_APP_OPHIS_VOLUME_FEE_BPS=1 is set at build time, see
  * cloudflare-deploy.yml); the price-improvement object below is only the
  * flag-off fallback.
  *
@@ -31,46 +31,47 @@ export const OPHIS_PARTNER_FEE_RECIPIENT = '0x858f0F5eE954846D47155F5203c04aF181
  * FLAG-GATED FEE MODEL. Default OFF = the legacy price-improvement model
  * (the fallback only; PRODUCTION RUNS WITH THE FLAG ON). The flag enables ONLY
  * when `REACT_APP_OPHIS_VOLUME_FEE_BPS` equals EXACTLY the retail rate
- * OPHIS_FRONTEND_OP_VOLUME_BPS (10 = 0.10%, set via a GH repo secret consumed in
+ * OPHIS_FRONTEND_OP_VOLUME_BPS (1 = 0.01%, set via a GH repo secret consumed in
  * cloudflare-deploy.yml). Any other value keeps the flag OFF.
  *
  * Why EXACTLY the retail rate (not a range):
- *  - Sub-retail (e.g. the 5 bps partner rate): the front-end must NOT charge a
- *    partner-tier fee to its own retail users. A sub-retail value disables the
- *    flag; the OP path then charges the 10 bps retail via ophisVolumeOnlyFloorFee
- *    and CoW-hosted chains use the price-improvement object. The deploy guard
- *    rejects such a secret before build so production can never silently ship the
- *    legacy fallback at the wrong rate.
- *  - Super-retail (>10): if the front-end could emit a retail fee above 10, the
- *    autopilot's operator cap (asserted `>= retail`) could silently clamp it down
- *    at settlement. Pinning to exactly the retail rate keeps that assert sufficient.
- *  - Stable pairs are charged 1 bp separately via OPHIS_STABLE_VOLUME_BPS; the OP
- *    backend floor (4 bps non-stable, 1 bp stable) is enforced server-side and is
- *    BELOW the retail rate, so it never gates the retail front-end.
+ *  - A wrong/stale secret (e.g. the legacy 10, or unset): the front-end must
+ *    not silently charge a different rate than the one the fee model is aligned
+ *    to. A mismatched value disables the flag; the OP path then charges the 1 bp
+ *    retail via ophisVolumeOnlyFloorFee and CoW-hosted chains use the
+ *    price-improvement object. The deploy guard rejects a mismatched secret
+ *    before build so production can never silently ship the legacy fallback.
+ *  - Super-retail (>1): if the front-end could emit a retail fee above the
+ *    aligned rate, the autopilot's operator cap (asserted `>= retail`) could
+ *    silently clamp it down at settlement. Pinning to exactly the retail rate
+ *    keeps that assert sufficient.
+ *  - Stable pairs are charged 1 bp via OPHIS_STABLE_VOLUME_BPS (same as the
+ *    aligned retail rate now); the OP backend floor (1 bp) is enforced
+ *    server-side and equals the retail rate, so it never gates the front-end.
  */
-// The Ophis front-end's RETAIL non-stable Volume rate (10 bps). swap.ophis.fi
-// charges this, and it is the LOWER BOUND for the env flag below: a build can
-// only configure a retail rate AT OR ABOVE it. A partner-tier value (e.g. 5)
-// must NOT enable the flag, or OP retail orders would be undercharged at the
-// partner rate. Decoupled from the backend floor (BACKEND_NON_STABLE_FLOOR_BPS).
-const OPHIS_FRONTEND_OP_VOLUME_BPS = 10
+// The Ophis front-end's RETAIL non-stable Volume rate. Uniform 1 bp across
+// retail / partner / sovereign / stable since the 2026-08-11 alignment cutover
+// (mirrors GROSS_FEE_BPS in the rebate-indexer, which stays the accrual default
+// + clamp ceiling). swap.ophis.fi charges this, and the env secret must equal
+// it EXACTLY to enable the flat-fee flag below.
+const OPHIS_FRONTEND_OP_VOLUME_BPS = 1
 // The OP self-hosted backend's MINIMUM non-stable Volume bps (mirrors
 // app_data.rs OPHIS_NON_STABLE_FLOOR_BPS = 1). The cross-workspace floor-invariant
 // gate (scripts/check-floor-invariant.sh) greps this declaration to assert
-// floor(4) <= partner(5) <= retail(10). It is NOT the env bound: partner
-// integrations charge 5 bps (via @ophis/sdk) above this floor while swap.ophis.fi
-// keeps the 10 bps hosted retail rate. Exported so it documents the
-// mirrored backend floor for any consumer and is not flagged as an unused local.
+// floor(1) == sovereign base(1) and a positive partner rate. Since the
+// 2026-08-11 alignment cutover the floor, partner, retail and stable rates are
+// all 1 bp. Exported so it documents the mirrored backend floor for any
+// consumer and is not flagged as an unused local.
 export const BACKEND_NON_STABLE_FLOOR_BPS = 1
 export const OPHIS_SOVEREIGN_BASE_FEE_BPS = 1
 function readVolumeFeeBps(): number {
   // EXACT-STRING match against the retail rate, identical to the CI deploy guard's
-  // byte compare (`[[ "$BPS" != "10" ]]` in cloudflare-deploy.yml). Using the raw
+  // byte compare (`[[ "$BPS" != "1" ]]` in cloudflare-deploy.yml). Using the raw
   // string (not Number()) keeps the two gates equivalent: a malformed-but-coercible
-  // secret like '010' / '10.0' / '1e1' must NOT enable the flag here when CI would
+  // secret like '01' / '1.0' / '1e0' must NOT enable the flag here when CI would
   // reject it, so neither gate is solely load-bearing. The flag enables ONLY for
-  // exactly the retail rate; a partner-tier value (5), a super-retail value, or any
-  // garbage DISABLES it (the OP path then charges the 10 bps retail via
+  // exactly the retail rate; the legacy 10, a super-retail value, or any garbage
+  // DISABLES it (the OP path then charges the 1 bp retail via
   // ophisVolumeOnlyFloorFee; CoW-hosted chains fall back to the price-improvement
   // object). Pinning to exactly the retail rate is also what makes the autopilot
   // startup assert (cap >= retail) provably sufficient: the front-end can never emit

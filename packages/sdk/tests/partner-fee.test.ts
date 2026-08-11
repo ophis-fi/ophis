@@ -38,13 +38,14 @@ describe('@ophis/sdk partner fee defaults', () => {
     // cow-sdk SupportedChainId members, incl. the Sepolia (11155111) testnet.
     for (const chainId of [1, 100, 8453, 42161, 137, 43114, 56, 59144, 9745, 57073, 11155111]) {
       const fee = ophisDefaultPartnerFee(chainId);
-      expect(fee?.volumeBps).toBe(5);
+      expect(fee?.volumeBps).toBe(1);
       expect(fee?.recipient).toBe(OPHIS_PARTNER_FEE_RECIPIENT);
     }
   });
 
   it('exposes the flat volume-fee constant matching the live config', () => {
-    expect(OPHIS_VOLUME_FEE_BPS).toBe(5);
+    // Uniform 1 bp across all tiers since the 2026-08-11 alignment cutover.
+    expect(OPHIS_VOLUME_FEE_BPS).toBe(1);
   });
 
   it('charges a reduced 1 bp on stablecoin-to-stablecoin pairs', () => {
@@ -56,7 +57,7 @@ describe('@ophis/sdk partner fee defaults', () => {
   it('selects fees with both chain economics and pair class', () => {
     expect(ophisVolumeBpsForChainAndPair(10, false)).toBe(1);
     expect(ophisVolumeBpsForChainAndPair(4663, false)).toBe(1);
-    expect(ophisVolumeBpsForChainAndPair(1, false)).toBe(5);
+    expect(ophisVolumeBpsForChainAndPair(1, false)).toBe(1);
     expect(ophisVolumeBpsForChainAndPair(1, true)).toBe(1);
   });
 
@@ -88,7 +89,7 @@ describe('@ophis/sdk partner fee defaults', () => {
       recipient: OPHIS_PARTNER_FEE_RECIPIENT,
     });
     expect(buildOphisAppDataPartnerFee(1)).toEqual({
-      volumeBps: 5,
+      volumeBps: 1,
       recipient: OPHIS_PARTNER_FEE_RECIPIENT,
     });
   });

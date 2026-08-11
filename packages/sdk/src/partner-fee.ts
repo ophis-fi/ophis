@@ -13,8 +13,8 @@
  *     (`OPHIS_NON_STABLE_FLOOR_BPS = 1` / `OPHIS_STABLE_VOLUME_FEE_BPS = 1`:
  *     the MINIMUM Volume bps the OP self-hosted backend accepts for a fee to the
  *     Ophis recipient, enforced at order ingress and re-clamped in the autopilot.
- *     sovereign chains require the 1 bp base; hosted chains retain 5 bps partner
- *     pricing.)
+ *     Since the 2026-08-11 cutover every tier — sovereign base, hosted retail
+ *     and partner — is a uniform 1 bp.)
  *   - apps/frontend/.../appData/updater/shouldEmitOphisPartnerFee.ts (chain gate)
  */
 
@@ -30,18 +30,19 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
   '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' as `0x${string}`;
 
 /**
- * Partner volume fee: the @ophis/sdk default is a flat 5 bps (0.05%) of trade
- * volume, below comparable aggregators (Matcha 10 bps, Velora 15 bps). This is
- * the PARTNER (wholesale) rate that integrators routing through Ophis charge;
- * the Ophis front-end charges the same hosted retail rate. On sovereign chains
- * `ophisDefaultPartnerFee` substitutes the 1 bp base and the backend adds capped
- * price-improvement capture. A Volume fee is
- * bounded above only by the autopilot's operator-set global `max_partner_fee`.
+ * Volume fee: a flat 1 bp (0.01%) of trade volume, far below comparable
+ * aggregators (Matcha 10 bps, Velora 15 bps). Aligned across every tier as of
+ * the 2026-08-11 cutover — partner (this constant), hosted front-end retail
+ * (OPHIS_FRONTEND_OP_VOLUME_BPS), the sovereign base, and the stable rate are
+ * now all 1 bp; there is no longer a separate wholesale partner rate. A Volume
+ * fee is bounded above only by the autopilot's operator-set global
+ * `max_partner_fee`.
  *
  * Cross-workspace invariant (scripts/check-floor-invariant.sh): backend floor
- * (1) <= this hosted partner rate (5) <= hosted front-end retail (10).
+ * (1) <= this rate (1) == hosted front-end retail (1); the script requires this
+ * rate be positive and the sovereign base == floor.
  */
-export const OPHIS_VOLUME_FEE_BPS = 5;
+export const OPHIS_VOLUME_FEE_BPS = 1;
 
 /**
  * Reduced rate for stablecoin-to-stablecoin swaps: a flat 1 bp (0.01%). The
@@ -89,8 +90,8 @@ const FEE_CHAIN_IDS = [
 const FEE_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>(FEE_CHAIN_IDS);
 const SOVEREIGN_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>([10, 130, 4663]);
 
-/** Chain-aware volume fee for high-level order builders. Sovereign chains always
- * use their 1 bp base; hosted chains use 1 bp for stable pairs and 5 bps otherwise. */
+/** Chain-aware volume fee for high-level order builders. Uniform 1 bp since the
+ * 2026-08-11 alignment cutover, across sovereign/hosted and stable/non-stable. */
 export const ophisVolumeBpsForChainAndPair = (chainId: number, isStablePair: boolean): number => {
   assertValidChainId(chainId);
   return SOVEREIGN_CHAIN_ID_SET.has(chainId)
