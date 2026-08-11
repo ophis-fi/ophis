@@ -99,7 +99,7 @@ test('/stats returns public cumulative JSON for an API client', async () => {
     },
     improvementSplit: {
       sovereign: 'Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)',
-      hosted: 'CoW Protocol retains 50% of quote improvement upstream',
+      hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
     },
   });
   // Security invariant: the public JSON must never grow current-cycle 30d
