@@ -4,6 +4,7 @@ import { APP_CODES, type AppCode, type CowTrade } from './cow/types.js';
 import {
   HISTORICAL_OPHIS_FEE_MAX_BPS,
   OWN_FEE_MAX_BPS,
+  SOVEREIGN_CHAIN_IDS,
   affiliateFeeBpsForOrderCreatedAt,
   undecodedFeeFallbackBpsForOrderCreatedAt,
 } from './affiliate/rates.js';
@@ -310,6 +311,42 @@ function executedFeeKind(policy: NonNullable<CowTrade['executedProtocolFees']>[n
   return 'priceImprovement';
 }
 
+function approxFactor(actual: number, bps: number): boolean {
+  return Math.abs(actual - bps / 10_000) <= 1e-10;
+}
+
+function appDataMatchesExecutedFee(
+  entry: unknown,
+  policy: NonNullable<CowTrade['executedProtocolFees']>[number]['policy'],
+): boolean {
+  const fee = entry as {
+    volumeBps?: unknown;
+    bps?: unknown;
+    surplusBps?: unknown;
+    priceImprovementBps?: unknown;
+    maxVolumeBps?: unknown;
+  };
+  const volumeBps = typeof fee.volumeBps === 'number' ? fee.volumeBps : fee.bps;
+  if ('volume' in policy) return typeof volumeBps === 'number' && approxFactor(policy.volume.factor, volumeBps);
+  if ('surplus' in policy) {
+    return typeof fee.surplusBps === 'number' && typeof fee.maxVolumeBps === 'number'
+      && approxFactor(policy.surplus.factor, fee.surplusBps)
+      && approxFactor(policy.surplus.maxVolumeFactor, fee.maxVolumeBps);
+  }
+  return typeof fee.priceImprovementBps === 'number' && typeof fee.maxVolumeBps === 'number'
+    && approxFactor(policy.priceImprovement.factor, fee.priceImprovementBps)
+    && approxFactor(policy.priceImprovement.maxVolumeFactor, fee.maxVolumeBps);
+}
+
+function isCanonicalOphisImprovement(
+  policy: NonNullable<CowTrade['executedProtocolFees']>[number]['policy'],
+): boolean {
+  if (!('priceImprovement' in policy)) return false;
+  const fee = policy.priceImprovement;
+  return (approxFactor(fee.factor, 8_000) && approxFactor(fee.maxVolumeFactor, 99))
+    || (approxFactor(fee.factor, 5_000) && approxFactor(fee.maxVolumeFactor, 20));
+}
+
 /**
  * Per-fill Ophis fee rate for public reporting only. Backend fee policies are
  * applied as operator policies followed by appData partner fees, and the trades
@@ -320,16 +357,26 @@ function executedFeeKind(policy: NonNullable<CowTrade['executedProtocolFees']>[n
  * This is an assessed settlement-policy amount, not recipient-reconciled cash,
  * and therefore must never be copied into the affiliate-liability ledger.
  */
-export function readAssessedOphisFeeBps(meta: unknown, trade: CowTrade): string | null {
+export function readAssessedOphisFeeBps(chainId: number, meta: unknown, trade: CowTrade): string | null {
   const raw = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
   const appFees = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Array<{ recipient?: unknown }>;
   const executed = trade.executedProtocolFees ?? [];
   if (appFees.length === 0 || executed.length < appFees.length) return null;
 
+  // Operated orderbooks prepend exactly one canonical Ophis improvement policy.
+  // Requiring the exact total length also rejects bypass/stale orders for which
+  // the backend filtered one or more appData recipients before settlement.
+  const sovereign = SOVEREIGN_CHAIN_IDS.has(chainId);
+  if (sovereign && (executed.length !== appFees.length + 1 || !isCanonicalOphisImprovement(executed[0]!.policy))) {
+    return null;
+  }
+
   const offset = executed.length - appFees.length;
   for (let i = 0; i < appFees.length; i += 1) {
     const expected = appDataFeeKind(appFees[i]);
-    if (expected === null || executedFeeKind(executed[offset + i]!.policy) !== expected) return null;
+    if (expected === null
+      || executedFeeKind(executed[offset + i]!.policy) !== expected
+      || !appDataMatchesExecutedFee(appFees[i], executed[offset + i]!.policy)) return null;
   }
 
   const ophisFees = appFees.flatMap((entry, i) =>
@@ -337,6 +384,7 @@ export function readAssessedOphisFeeBps(meta: unknown, trade: CowTrade): string 
       ? [executed[offset + i]!]
       : [],
   );
+  if (sovereign) ophisFees.unshift(executed[0]!);
   if (ophisFees.length === 0) return null;
   const token = ophisFees[0]!.token.toLowerCase();
   if (ophisFees.some((fee) => fee.token.toLowerCase() !== token)) return null;
@@ -349,7 +397,9 @@ export function readAssessedOphisFeeBps(meta: unknown, trade: CowTrade): string 
   if (token === trade.buyToken.toLowerCase()) {
     grossVolume = BigInt(trade.buyAmount) + allFeesInToken;
   } else if (token === trade.sellToken.toLowerCase()) {
-    grossVolume = BigInt(trade.sellAmountBeforeFees ?? trade.sellAmount);
+    const sellBeforeNetworkFee = BigInt(trade.sellAmountBeforeFees ?? trade.sellAmount);
+    if (sellBeforeNetworkFee <= allFeesInToken) return null;
+    grossVolume = sellBeforeNetworkFee - allFeesInToken;
   } else {
     return null;
   }
@@ -724,7 +774,7 @@ export async function fetchChainTrades(
             buyToken: fill.buyToken,
             buyAmount: fill.buyAmount,
             volumeFeeBps: fill.volumeFeeBps,
-            assessedFeeBps: readAssessedOphisFeeBps(meta, t) ?? String(fill.volumeFeeBps ?? 0),
+            assessedFeeBps: readAssessedOphisFeeBps(chainId, meta, t),
             feeVerified: true,
           });
         }
