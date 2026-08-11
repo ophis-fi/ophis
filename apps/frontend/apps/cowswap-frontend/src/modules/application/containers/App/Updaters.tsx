@@ -38,7 +38,6 @@ import { UsdPricesUpdater } from 'modules/usdAmount'
 import { LpTokensWithBalancesUpdater, PoolsInfoUpdater, VampireAttackUpdater } from 'modules/yield'
 
 import { SurplusInvalidationListenerUpdater } from 'common/state/totalSurplusState'
-import { AnnouncementsUpdater } from 'common/updaters/AnnouncementsUpdater'
 import { ConnectionStatusUpdater } from 'common/updaters/ConnectionStatusUpdater'
 import { FeatureFlagsUpdater } from 'common/updaters/FeatureFlagsUpdater'
 import { GasUpdater } from 'common/updaters/GasUpdater'
@@ -79,6 +78,15 @@ function useDeferredMount(): boolean {
     return () => window.clearTimeout(t)
   }, [])
   return ready
+}
+
+// CoW CMS announcements are no longer fetched (AnnouncementsUpdater is not
+// mounted below), but announcementsAtom is atomWithStorage-backed
+// ('announcements:v0' in @cowprotocol/core cms state) — without this purge,
+// banners cached before the unmount would render stale forever in the header
+// URLWarning. Same pattern as the twap-part-orders-list:v1 cleanup.
+if (typeof window !== 'undefined') {
+  localStorage.removeItem('announcements:v0')
 }
 
 export function Updaters(): ReactNode {
@@ -127,9 +135,13 @@ export function Updaters(): ReactNode {
       <OrderProgressStateUpdater />
       <ProgressBarExecutingOrdersUpdater />
       <OrderProgressEventsUpdater />
-      {/* deferred to idle: post-trade solver cosmetics + CoW announcement banner (cms.cow.fi) */}
+      {/* deferred to idle: post-trade solver cosmetics */}
       {deferred && <SolversInfoUpdater />}
-      {deferred && <AnnouncementsUpdater />}
+      {/* AnnouncementsUpdater intentionally NOT mounted: its only source is
+          CoW's hardcoded cms.cow.fi stream, and with env detection fixed
+          (isProdLike true on ophis.fi) it would render CoW's PRODUCTION
+          incident/campaign banners on the Ophis UI. Re-mount only when an
+          Ophis-controlled CMS source exists. */}
       <SurplusInvalidationListenerUpdater />
       <BridgingEnabledUpdater />
       <FaviconAnimationUpdater />

@@ -5,8 +5,14 @@ const DEFAULT_ENVIRONMENTS_REGEX: Record<EnvironmentName, string> = {
   pr: '^((?:explorer|swap)-dev-git-[\\w\\d-]+|swap-\\w{9}-)cowswap-dev\\.vercel\\.app',
   development: '^(dev.swap.cow.fi|dev.explorer.cow.fi|swap-develop.vercel.app|explorer-dev.vercel.app)',
   staging: '^(staging.swap.cow.fi|staging.explorer.cow.fi|swap-staging.vercel.app|explorer-staging.vercel.app)',
+  // Ophis fork: the ophis.fi domains MUST live in this DEFAULT list. The
+  // REACT_APP_DOMAIN_REGEX_* override below is read via a DYNAMIC process.env
+  // lookup that bundlers cannot inline, so it has never taken effect in a
+  // browser build — production ran with every env flag false (which silently
+  // routed Bungee to the barn BFF fallback, 403, for months). Do not rely on
+  // the env override for anything that must hold in production.
   production:
-    '^(swap.cow.fi|explorer.cow.fi|swap-prod.vercel.app|explorer-prod-seven.vercel.app|cow.trade|cowswap.exchange)$',
+    '^(swap.cow.fi|explorer.cow.fi|swap-prod.vercel.app|explorer-prod-seven.vercel.app|cow.trade|cowswap.exchange|ophis.fi|swap.ophis.fi|explorer.ophis.fi)$',
   barn: '^(barn.cow.fi|barn.explorer.cow.fi|swap-barn.vercel.app|explorer-barn.vercel.app|barn.cowswap.exchange)$',
   ens: '(:?^cowswap.eth|ipfs)',
 }
