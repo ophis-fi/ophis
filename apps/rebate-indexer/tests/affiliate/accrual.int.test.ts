@@ -42,8 +42,8 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${referred2},'hex'),'par1',decode(${partner},'hex'),true, now() - interval '90 days')`;
     // trades in the window
     const insTrade = (uid: string, wallet: string, chain: number, usd: string, ts: string) => sql`
-      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, priced_at)
-      VALUES (decode(${UID(uid)},'hex'), ${chain}, decode(${wallet},'hex'), 1, ${ts}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, now())`;
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, undecoded_fee_fallback_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), ${chain}, decode(${wallet},'hex'), 1, ${ts}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, 10, now())`;
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
     const before = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1)).toISOString();
@@ -80,8 +80,8 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
       VALUES (decode(${referred},'hex'),'pay1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
-    await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, priced_at)
-      VALUES (decode(${UID('f1')},'hex'), 100, decode(${referred},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', '123456', now())`;
+    await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, undecoded_fee_fallback_bps, priced_at)
+      VALUES (decode(${UID('f1')},'hex'), 100, decode(${referred},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', '123456', 10, now())`;
 
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
