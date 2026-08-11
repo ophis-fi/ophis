@@ -7,24 +7,17 @@ import {
 } from '../src/defaults.js';
 
 describe('withOphisDefaults', () => {
-  it('injects the Ophis host, appCode and fee recipient', () => {
+  it('injects the Ophis host and appCode while leaving the full fee policy to the iframe', () => {
     const merged = withOphisDefaults({ tradeType: 'swap' } as any);
     expect(merged.baseUrl).toBe(OPHIS_WIDGET_BASE_URL);
     expect(merged.baseUrl).toBe('https://swap.ophis.fi');
     expect(merged.appCode).toBe(OPHIS_WIDGET_APP_CODE);
-    expect(merged.partnerFee?.recipient).toBe(OPHIS_PARTNER_FEE_RECIPIENT);
-    expect((merged.partnerFee?.bps as any)[1]).toBe(1);
+    expect(merged.partnerFee).toBeUndefined();
   });
 
-  it('keeps the default fee chain-aware across network switches', () => {
+  it('does not turn the wrapper default into an explicit fee override', () => {
     const merged = withOphisDefaults({ tradeType: 'swap', chainId: 10 } as any);
-    const bps = merged.partnerFee?.bps as any;
-
-    expect(bps[10]).toBe(1);
-    expect(bps[130]).toBe(1);
-    expect(bps[4663]).toBe(1);
-    expect(bps[1]).toBe(1);
-    expect(bps[8453]).toBe(1);
+    expect(merged.partnerFee).toBeUndefined();
   });
 
   it('lets the caller override host, appCode and fee bps', () => {

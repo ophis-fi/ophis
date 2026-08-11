@@ -48,8 +48,8 @@ them. Pass a `provider` for an injected wallet.
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | Yes (e.g. a staging host) |
 | `appCode` | `ophis` | Yes |
-| `partnerFee.bps` | 1 bp base on every supported network; the Ophis iframe adds pair-aware capped improvement capture on hosted chains | Yes |
-| `partnerFee.recipient` | Ophis Safe `0x858f0F5e...CeF8` | No, always pinned |
+| `partnerFee` | Omitted so the Ophis iframe applies the complete all-chain policy | Yes; an explicit override is honored |
+| `partnerFee.recipient` | Ophis Safe `0x858f0F5e...CeF8` when overridden | No, always pinned |
 
 Everything else is the upstream `CowSwapWidgetParams` API. The raw
 `CowSwapWidget` and all types are re-exported if you need the escape hatch.

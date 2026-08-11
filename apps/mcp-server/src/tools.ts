@@ -247,6 +247,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             // funnel can attribute settled volume to the MCP surface. Not a
             // caller-controlled field: every order this tool builds is 'mcp'.
             source: 'mcp',
+            isStablePair: a.isStablePair,
           },
           Math.floor(Date.now() / 1000),
         )

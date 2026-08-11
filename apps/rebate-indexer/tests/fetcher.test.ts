@@ -13,6 +13,7 @@ const sampleTrade = (uid: string, owner: string, sell = '1000000000000000000', b
   buyToken:  '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83',
   sellAmount: sell,
   buyAmount: buy,
+  executedProtocolFees: [],
   txHash: '0x' + '11'.repeat(32),
 });
 
@@ -559,5 +560,37 @@ describe('fetcher.fetchChainTrades', () => {
     expect(byUid[uids.inflated]!.ownFeeBps).toBe(90); // clamped to OWN_FEE_MAX_BPS (90)
     expect(byUid[uids.single]!.ownFeeBps).toBe(30);
     expect(byUid[uids.single]!.ownFeeRecipient).toBe(INTEGRATOR.toLowerCase());
+  });
+});
+
+describe('readRealizedOphisFeeBps', () => {
+  const baseTrade = {
+    ...sampleTrade('0x' + '99'.repeat(56), '0x' + 'aa'.repeat(20), '10000', '9930'),
+    sellAmountBeforeFees: '10000',
+  };
+
+  it('uses collected base + volatile improvement amounts and excludes upstream CoW fees', async () => {
+    const { readRealizedOphisFeeBps } = await import('../src/fetcher.js');
+    expect(readRealizedOphisFeeBps({
+      ...baseTrade,
+      executedProtocolFees: [
+        { amount: '1', token: baseTrade.buyToken, policy: { volume: { factor: 0.0001 } } },
+        { amount: '49', token: baseTrade.buyToken, policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } } },
+        { amount: '20', token: baseTrade.buyToken, policy: { volume: { factor: 0.0002 } } },
+      ],
+    } as any)).toBe(50);
+  });
+
+  it('recognizes the stable policy and refuses to infer revenue from appData caps', async () => {
+    const { readRealizedOphisFeeBps } = await import('../src/fetcher.js');
+    expect(readRealizedOphisFeeBps({
+      ...baseTrade,
+      buyAmount: '9990',
+      executedProtocolFees: [
+        { amount: '1', token: baseTrade.buyToken, policy: { volume: { factor: 0.0001 } } },
+        { amount: '9', token: baseTrade.buyToken, policy: { priceImprovement: { factor: 0.5, maxVolumeFactor: 0.002 } } },
+      ],
+    } as any)).toBe(10);
+    expect(readRealizedOphisFeeBps({ ...baseTrade, executedProtocolFees: [] } as any)).toBeNull();
   });
 });
