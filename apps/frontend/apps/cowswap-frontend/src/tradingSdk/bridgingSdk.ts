@@ -1,10 +1,11 @@
 import { bungeeAffiliateCode } from '@cowprotocol/common-const'
 import { isBarn, isDev, isProd, isStaging } from '@cowprotocol/common-utils'
-import { BridgingSdk, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
+import { BridgingSdk } from '@cowprotocol/sdk-bridging'
 
 import { orderBookApi } from 'cowSdk'
 
 import { OphisAcrossBridgeProvider, OphisBungeeBridgeProvider } from './ophisBridgeProviders'
+import { OphisNearIntentsBridgeProvider } from './ophisNearIntentsProvider'
 import { tradingSdk } from './tradingSdk'
 
 // Dedicated-integrator tier (flag-gated, default OFF). When enabled, route
@@ -49,9 +50,11 @@ export const acrossBridgeProvider = new OphisAcrossBridgeProvider()
 
 // `|| undefined`: an unset GitHub secret renders as '' in the deploy env, and
 // an empty-string apiKey would make the SDK send a blank Bearer header instead
-// of falling back to keyless mode (which works, but costs NEAR's 20 bps
-// unauthenticated platform fee — set REACT_APP_NEAR_API_KEY to remove it).
-export const nearIntentsBridgeProvider = new NearIntentsBridgeProvider({
+// of falling back to keyless mode (which works, but carries NEAR's
+// unauthenticated platform appFee — set REACT_APP_NEAR_API_KEY to remove it).
+// The Ophis subclass fixes the attestation hash the pinned SDK gets wrong AND
+// adds referral attribution + the 3 bps integrator appFee (see its header).
+export const nearIntentsBridgeProvider = new OphisNearIntentsBridgeProvider({
   apiKey: process.env.REACT_APP_NEAR_API_KEY || undefined,
 })
 
