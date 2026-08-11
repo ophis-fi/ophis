@@ -127,8 +127,8 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.sellAmount).toBe(1000n); // rebate ledger remains one order-total row
     expect(defillamaFills).toMatchObject([
-      { blockNumber: 100n, logIndex: 3, sellAmount: 400n, volumeFeeBps: 5, feeVerified: true },
-      { blockNumber: 200n, logIndex: 7, sellAmount: 600n, volumeFeeBps: 5, feeVerified: true },
+      { blockNumber: 100n, logIndex: 3, sellAmount: 400n, volumeFeeBps: 5, assessedFeeBps: null, feeVerified: true },
+      { blockNumber: 200n, logIndex: 7, sellAmount: 600n, volumeFeeBps: 5, assessedFeeBps: null, feeVerified: true },
     ]);
     expect(defillamaFills.map((fill) => fill.settlementTimestamp.toISOString())).toEqual([
       '1970-01-01T00:01:40.000Z',
@@ -602,7 +602,7 @@ describe('readAssessedOphisFeeBps', () => {
       { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OTHER },
     ] } };
 
-    expect(readAssessedOphisFeeBps(meta, trade)).toBe('50.00000000');
+    expect(readAssessedOphisFeeBps(1, meta, trade)).toBe('50.00000000');
   });
 
   it('preserves fractional basis points', async () => {
@@ -623,6 +623,67 @@ describe('readAssessedOphisFeeBps', () => {
       { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS },
     ] } };
 
-    expect(readAssessedOphisFeeBps(meta, trade)).toBe('1.50000000');
+    expect(readAssessedOphisFeeBps(1, meta, trade)).toBe('1.50000000');
+  });
+
+  it('includes the operated-chain backend improvement policy', async () => {
+    const [{ readAssessedOphisFeeBps }, { CowTrade }] = await Promise.all([
+      import('../src/fetcher.js'),
+      import('../src/cow/types.js'),
+    ]);
+    const token = '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83';
+    const trade = CowTrade.parse({
+      ...sampleTrade('0x' + '97'.repeat(56), '0x' + 'aa'.repeat(20), '10000', '9950'),
+      executedProtocolFees: [
+        { amount: '49', token, policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } } },
+        { amount: '1', token, policy: { volume: { factor: 0.0001 } } },
+      ],
+    });
+    const meta = { metadata: { partnerFee: { volumeBps: 1, recipient: OPHIS } } };
+
+    expect(readAssessedOphisFeeBps(10, meta, trade)).toBe('50.00000000');
+  });
+
+  it('removes sell-token protocol fees from a buy-order gross volume', async () => {
+    const [{ readAssessedOphisFeeBps }, { CowTrade }] = await Promise.all([
+      import('../src/fetcher.js'),
+      import('../src/cow/types.js'),
+    ]);
+    const token = '0x6a023ccd1ff6f2045c3309768ead9e68f978f6e1';
+    const trade = CowTrade.parse({
+      ...sampleTrade('0x' + '96'.repeat(56), '0x' + 'aa'.repeat(20), '10015', '5000'),
+      sellAmountBeforeFees: '10015',
+      executedProtocolFees: [
+        { amount: '10', token, policy: { volume: { factor: 0.0001 } } },
+        { amount: '5', token, policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } } },
+      ],
+    });
+    const meta = { metadata: { partnerFee: [
+      { volumeBps: 1, recipient: OPHIS },
+      { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS },
+    ] } };
+
+    expect(readAssessedOphisFeeBps(1, meta, trade)).toBe('15.00000000');
+  });
+
+  it('rejects operated-chain alignment when an appData recipient was filtered', async () => {
+    const [{ readAssessedOphisFeeBps }, { CowTrade }] = await Promise.all([
+      import('../src/fetcher.js'),
+      import('../src/cow/types.js'),
+    ]);
+    const token = '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83';
+    const trade = CowTrade.parse({
+      ...sampleTrade('0x' + '95'.repeat(56), '0x' + 'aa'.repeat(20), '10000', '9998'),
+      executedProtocolFees: [
+        { amount: '1', token, policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } } },
+        { amount: '1', token, policy: { volume: { factor: 0.0001 } } },
+      ],
+    });
+    const meta = { metadata: { partnerFee: [
+      { volumeBps: 1, recipient: OPHIS },
+      { volumeBps: 1, recipient: OTHER },
+    ] } };
+
+    expect(readAssessedOphisFeeBps(10, meta, trade)).toBeNull();
   });
 });
