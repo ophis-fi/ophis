@@ -146,36 +146,37 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     expect(refs.find((r) => r.referrer_wallet === `0x${selfOwner}`)).toBeFalsy();
   });
 
-  it('uses 10 bps only for pre-cutover NULL rows and 1 bp for current NULL rows', async () => {
+  it('uses the order-creation policy marker, independent of settlement time', async () => {
     const referrer = W('a5a5');
     const referred = W('c5c5');
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('rate1', decode(${referrer},'hex'), 'regular', true)`;
     await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at)
-      VALUES (decode(${referred},'hex'),'rate1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
-    const beforeCutover = '2026-08-11T12:44:59.000Z';
-    const afterCutover = '2026-08-11T12:45:00.000Z';
-    // Same chain (100): explicit rates remain exact. An undecoded pre-cutover row
-    // keeps 10 bps, while a current surplus/PI NULL row gets the canonical 1 bp.
-    const insFee = (uid: string, usd: string, bps: number | null, timestamp: string) => sql`
-      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, priced_at)
-      VALUES (decode(${UID(uid)},'hex'), 100, decode(${referred},'hex'), 1, ${timestamp}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, ${bps}, now())`;
-    await insFee('e51', '100000', 10, beforeCutover);
-    await insFee('e52', '100000', 5, beforeCutover);
-    await insFee('e53', '100000', null, beforeCutover);
-    await insFee('e54', '100000', null, afterCutover);
+      VALUES (decode(${referred},'hex'),'rate1',decode(${referrer},'hex'),true, '2026-08-01T00:00:00.000Z')`;
+    const settlementTime = '2026-08-20T00:00:00.000Z';
+    // Both undecoded orders settle after rollout. Their API-derived markers preserve
+    // the different creation-time policies: legacy=10, current=1.
+    const insFee = (uid: string, usd: string, bps: number | null, fallback: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, undecoded_fee_fallback_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${referred},'hex'), 1, ${settlementTime}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, ${bps}, ${fallback}, now())`;
+    await insFee('e51', '100000', 10, null);
+    await insFee('e52', '100000', 5, null);
+    await insFee('e53', '100000', null, 10);
+    await insFee('e54', '100000', null, 1);
+    await insFee('e55', '100000', null, null); // decoder-only: held until API enrichment
 
     const start = new Date('2026-08-01T00:00:00.000Z');
     const end = new Date('2026-09-01T00:00:00.000Z');
     const refs = await buildAffiliateReferrers(start, end);
     const r = refs.find((x) => x.referrer_wallet === `0x${referrer}`);
     expect(r).toBeTruthy();
-    // Explicit historical fees remain faithful; NULL is split by the rollout boundary.
+    // Explicit fees remain faithful; NULL buckets follow order creation, not settlement.
     const b10 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 10);
     const b5 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 5);
     const b1 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 1);
     expect(b10?.volumeUsd).toBe(200000);
     expect(b5?.volumeUsd).toBe(100000);
     expect(b1?.volumeUsd).toBe(100000);
+    expect(volOnChain(r, 100)).toBe(400000);
 
     // owed end-to-end: 8% * 75% * (200k*10 + 100k*5 + 100k*1)/1e4 = $15.60.
     const { computeAffiliate } = await import('../../src/affiliate/computeAffiliate.js');

@@ -11,8 +11,8 @@
 //
 // ACCRUAL BASIS: the Ophis fee is 1 bp on every channel, so accrual takes the tier share
 // of the ACTUAL gross fee each trade carried, read from appData and stored per
-// trade. New orders use GROSS_FEE_BPS; only NULL rows settled before the fee
-// rollout cutover use LEGACY_UNDECODED_FEE_BPS until they are backfilled.
+// trade. New orders use GROSS_FEE_BPS; only NULL rows whose authoritative order
+// creation predates the rollout use LEGACY_UNDECODED_FEE_BPS.
 // At the canonical 1 bp fee this reduces to:
 //   feeShare * GROSS_FEE_BPS * keepFraction(chain)
 //   Regular hosted = 0.08 * 1 * 0.75 = 0.06 bps   (OP = 0.08 bps)
@@ -43,6 +43,14 @@ export const LEGACY_UNDECODED_FEE_BPS = 10;
  * A NULL fee before this boundary is genuinely legacy; a NULL fee at or after
  * it is a current surplus/price-improvement fee and must never inherit 10 bps. */
 export const ONE_BP_FEE_CUTOVER_AT = '2026-08-11T12:45:00.000Z';
+
+/** Policy marker persisted by the API fetcher from CoW's authoritative
+ * order.creationDate. Settlement time must never be used for this decision. */
+export function undecodedFeeFallbackBpsForOrderCreatedAt(createdAt: Date): number {
+  return createdAt.getTime() < Date.parse(ONE_BP_FEE_CUTOVER_AT)
+    ? LEGACY_UNDECODED_FEE_BPS
+    : GROSS_FEE_BPS;
+}
 
 /** Highest legacy Ophis volume fee that may appear on already-settled orders.
  * Keep historical accounting faithful; new orders are emitted at GROSS_FEE_BPS. */

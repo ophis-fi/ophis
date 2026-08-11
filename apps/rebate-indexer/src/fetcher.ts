@@ -1,7 +1,11 @@
 import { sql as dsql } from 'drizzle-orm';
 import { listTrades, getOrder, SUPPORTED_CHAIN_IDS } from './cow/client.js';
 import { APP_CODES, type AppCode } from './cow/types.js';
-import { HISTORICAL_OPHIS_FEE_MAX_BPS, OWN_FEE_MAX_BPS } from './affiliate/rates.js';
+import {
+  HISTORICAL_OPHIS_FEE_MAX_BPS,
+  OWN_FEE_MAX_BPS,
+  undecodedFeeFallbackBpsForOrderCreatedAt,
+} from './affiliate/rates.js';
 import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
 import { getRpcClient } from './rpc/client.js';
@@ -120,6 +124,9 @@ export interface PendingTrade {
    *  clamped to the highest legacy settled Ophis fee; null when absent/unreadable (accrual then
    *  treats it as the legacy retail rate). */
   volumeFeeBps: number | null;
+  /** API-derived fallback for an undecodable fee, based on order.creationDate.
+   * NULL on decoder-only rows; affiliate accrual holds those until enrichment. */
+  undecodedFeeFallbackBps: number | null;
   /** True when volumeFeeBps is authoritative (API row under the owner-allowlist, or an
    *  on-chain-verified decoder row). False for a settle() decoder DISCOVERY row whose
    *  volumeFeeBps is a provisional 0 — the API fetcher may still upgrade it to the real
@@ -189,8 +196,8 @@ function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | 
  * Read the order's gross volume-fee rate (bps) from its appData, recipient-guarded
  * and clamped to [1, retail]. Classifies the Ophis partner fee against the backend
  * app_data.rs FeePolicyDeserializer arms and returns one of THREE states (which
- * must NOT collapse, because accrual/dashboard SQL applies a timestamp-gated
- * fallback to NULL: 10 bps before the production cutover, 1 bp afterward):
+ * must NOT collapse, because accrual/dashboard SQL applies the API-persisted
+ * order-creation policy marker to NULL):
  *
  *   N (1..retail) -- a settled flat Volume fee to Ophis: CIP-75 `{ volumeBps }` or
  *     legacy `{ bps }` with surplusBps/priceImprovementBps/maxVolumeBps all absent
@@ -248,8 +255,8 @@ function readVolumeFeeBps(meta: unknown): number | null {
       // arm { priceImprovementBps, maxVolumeBps } (integers, mutually exclusive, no
       // volumeBps/bps). A VALID such fee is a real Ophis fee on a CoW-hosted chain
       // (CoW accepts CIP-75 Surplus/PI; only the OP sovereign backend rejects it),
-      // but the volume-derived indexer can't compute it -> defer to NULL (the
-      // timestamp-gated fallback) so it still earns. A MALFORMED surplus-ish shape (e.g. missing
+      // but the volume-derived indexer can't compute it -> defer to NULL (the API
+      // later supplies its order-creation policy marker). A MALFORMED shape (e.g. missing
       // maxVolumeBps, non-integer, or mixed with volumeBps/bps) is backend-rejected
       // (no settled fee) and must NOT get the retail default -> falls through to 0.
       (isInt(entry.surplusBps) &&
@@ -268,7 +275,7 @@ function readVolumeFeeBps(meta: unknown): number | null {
     // else: capped { volumeBps/bps, maxVolumeBps }, both-aliases, or a malformed
     // surplus/PI shape -> backend Errs (no settled fee) -> not creditable; try next.
   }
-  // No usable flat Volume fee. A seen surplus/PI Ophis fee -> NULL (cutover-gated default,
+  // No usable flat Volume fee. A seen surplus/PI Ophis fee -> NULL (policy-marker fallback,
   // still earns). Otherwise Ophis collected nothing -> 0 (credit zero).
   return sawOphisNonVolumeFee ? null : 0;
 }
@@ -468,6 +475,7 @@ export function attributeOrder(
     appdataRefCode,
     basketId,
     volumeFeeBps,
+    undecodedFeeFallbackBps: null,
     // API attribution runs under the owner-allowlist, so its fee is authoritative. The
     // settle() decoder overrides this to false for a discovery (catalog-only) row.
     feeVerified: true,
@@ -519,6 +527,7 @@ export async function fetchChainTrades(
           .select({
             uid: schema.trades.tradeUid,
             volumeFeeBps: schema.trades.volumeFeeBps,
+            undecodedFeeFallbackBps: schema.trades.undecodedFeeFallbackBps,
             feeVerified: schema.trades.feeVerified,
           })
           .from(schema.trades)
@@ -533,8 +542,15 @@ export async function fetchChainTrades(
         //    write the real owner-allowlist-confirmed fee, so a trade the decoder
         //    cataloged before its wallet was tracked is not left permanently at 0.
         // Once authoritatively populated it is skipped here (self-healing, one re-fetch).
-        const row = already[0] as { volumeFeeBps: number | null; feeVerified: boolean } | undefined;
-        rebateRowComplete = Boolean(row && row.volumeFeeBps !== null && row.feeVerified);
+        const row = already[0] as {
+          volumeFeeBps: number | null;
+          undecodedFeeFallbackBps: number | null;
+          feeVerified: boolean;
+        } | undefined;
+        rebateRowComplete = Boolean(
+          row && row.feeVerified &&
+          (row.volumeFeeBps !== null || row.undecodedFeeFallbackBps !== null),
+        );
       }
       const fillKey = {
         chainId,
@@ -589,7 +605,12 @@ export async function fetchChainTrades(
           blockNumber: BigInt(t.blockNumber),
           blockTimestamp: new Date(order.creationDate),
         });
-        if (trade) out.push(trade);
+        if (trade) {
+          trade.undecodedFeeFallbackBps = undecodedFeeFallbackBpsForOrderCreatedAt(
+            new Date(order.creationDate),
+          );
+          out.push(trade);
+        }
       }
 
       if (fillSink && !reportFillComplete) {
@@ -854,6 +875,9 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     const OWN_FEE_FILL_ARM = dsql`${schema.trades.ownFeeBps} IS NULL
                                   AND excluded.own_fee_bps IS NOT NULL
                                   AND excluded.fee_verified = true`;
+    const POLICY_MARKER_FILL_ARM = dsql`${schema.trades.undecodedFeeFallbackBps} IS NULL
+                                        AND excluded.undecoded_fee_fallback_bps IS NOT NULL
+                                        AND excluded.fee_verified = true`;
     // Upsert a batch of fetched trades. Shared by the tracked-wallet loop and the
     // eth-flow synthetic-owner pass below so both apply identical backfill semantics.
     const upsertTrades = async (rows: PendingTrade[]): Promise<number> => {
@@ -878,6 +902,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
             // on-conflict set below, mirroring appdata_ref_code's immutability.
             basketId: r.basketId,
             volumeFeeBps: r.volumeFeeBps,
+            undecodedFeeFallbackBps: r.undecodedFeeFallbackBps,
             feeVerified: r.feeVerified,
             ownFeeBps: r.ownFeeBps,
             ownFeeRecipient: r.ownFeeRecipient,
@@ -888,13 +913,13 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
             ownFeeScannedAt: new Date(),
           })),
         )
-        // UPGRADE-only backfill on a re-encountered row, via THREE disjoint arms (a
+        // UPGRADE-only backfill on a re-encountered row, via four disjoint arms (a
         // VERIFIED API write is the only thing that ever updates an existing row; never a
         // downgrade, never a decoder clobber). Each column is set with a CASE so an arm
         // only touches the columns it owns:
         //  (1) FEE self-heal: a still-NULL pre-per-trade row -> a POSITIVE rate. The `> 0`
         //      is load-bearing: a historical NULL whose appData yields 0/NULL must STAY
-        //      NULL (unknown -> retail), so re-fetching history can't reclassify it.
+        //      NULL (unknown), so re-fetching history can't reclassify it.
         //  (2) FEE decoder-upgrade: replace a settle() decoder DISCOVERY row
         //      (fee_verified=false, provisional 0) with the API's owner-allowlist-confirmed
         //      fee + fee_verified=true, at whatever rate (0 or > 0).
@@ -903,6 +928,8 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
         //      row the fee arms miss, e.g. a surplus/PI Ophis fee row (volume_fee_bps
         //      stays NULL) that stacked an integrator own-fee. It updates ONLY the own-fee
         //      columns and NEVER volume_fee_bps / fee_verified.
+        //  (4) POLICY marker fill: persist the API-derived creation-time fallback
+        //      without rewriting the decoder's settlement timestamp.
         // A decoder upsert carries excluded.fee_verified=false, so it satisfies NO arm ->
         // it can only INSERT a brand-new row and never overwrites an existing one.
         // volume_fee_bps / fee_verified move ONLY on the FEE arms (1|2); own_fee_bps /
@@ -915,11 +942,12 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
           set: {
             volumeFeeBps: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) THEN excluded.volume_fee_bps ELSE ${schema.trades.volumeFeeBps} END`,
             feeVerified: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) THEN excluded.fee_verified ELSE ${schema.trades.feeVerified} END`,
+            undecodedFeeFallbackBps: dsql`CASE WHEN (${POLICY_MARKER_FILL_ARM}) THEN excluded.undecoded_fee_fallback_bps ELSE ${schema.trades.undecodedFeeFallbackBps} END`,
             ownFeeBps: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) THEN excluded.own_fee_bps ELSE ${schema.trades.ownFeeBps} END`,
             ownFeeRecipient: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) THEN excluded.own_fee_recipient ELSE ${schema.trades.ownFeeRecipient} END`,
             ownFeeScannedAt: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) THEN excluded.own_fee_scanned_at ELSE ${schema.trades.ownFeeScannedAt} END`,
           },
-          setWhere: dsql`(${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM})`,
+          setWhere: dsql`(${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) OR (${POLICY_MARKER_FILL_ARM})`,
         });
       return rows.length;
     };
