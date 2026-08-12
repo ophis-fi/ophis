@@ -112,6 +112,20 @@ describe('ophisBridgeProviders', () => {
 
         expect(result).toEqual([])
       })
+
+      it('degrades to [] on a malformed routes response instead of crashing the quote', async () => {
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
+        jest.spyOn(global, 'fetch' as never).mockResolvedValue({
+          ok: true,
+          // null entries + a non-string originToken would throw if unguarded
+          json: async () => [null, { originToken: 12345 }, { notOrigin: 'x' }],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any)
+
+        const result = await new OphisAcrossBridgeProvider().getIntermediateTokens(req)
+
+        expect(result).toEqual([])
+      })
     })
   })
 

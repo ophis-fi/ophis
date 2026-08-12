@@ -13,10 +13,6 @@ import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChai
 // host and the app CSP already allows it, so a direct GET here needs no proxy.
 const ACROSS_API_URL = 'https://app.across.to/api'
 
-interface AcrossRoute {
-  originToken: string
-}
-
 /**
  * sdk-bridging 4.0.2 hardcodes each provider's network list far below what the
  * provider APIs actually serve (verified against the live APIs, 2026-08-10):
@@ -103,23 +99,31 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
       destinationToken: buyTokenAddress,
     })
 
-    let routes: AcrossRoute[]
+    // Whole body guarded: any failure — network, a malformed/garbage routes
+    // response, a non-string originToken, the token-list fetch — degrades to
+    // "no intermediate found" rather than crashing the quote pipeline.
     try {
       const response = await fetch(`${ACROSS_API_URL}/available-routes?${params.toString()}`)
       if (!response.ok) return []
-      routes = (await response.json()) as AcrossRoute[]
+      const routes = (await response.json()) as unknown
+      if (!Array.isArray(routes) || routes.length === 0) return []
+
+      const originAddresses = new Set(
+        routes
+          .map((route) => (typeof route?.originToken === 'string' ? route.originToken.toLowerCase() : undefined))
+          .filter((address): address is string => Boolean(address)),
+      )
+      if (originAddresses.size === 0) return []
+
+      // Return the SDK's own TokenInfo objects (with decimals/symbol/logo) for
+      // the route origins, so the downstream quote path gets the shape it wants.
+      const tokens = await this.api.getSupportedTokens()
+      return tokens.filter(
+        (token) => token.chainId === sellTokenChainId && originAddresses.has(token.address?.toLowerCase()),
+      )
     } catch {
       return []
     }
-    if (!Array.isArray(routes) || routes.length === 0) return []
-
-    const originAddresses = new Set(routes.map((route) => route.originToken?.toLowerCase()).filter(Boolean))
-    // Return the SDK's own TokenInfo objects (with decimals/symbol/logo) for the
-    // route origins, so the downstream quote path gets the shape it expects.
-    const tokens = await this.api.getSupportedTokens()
-    return tokens.filter(
-      (token) => token.chainId === sellTokenChainId && originAddresses.has(token.address?.toLowerCase()),
-    )
   }
 }
 
