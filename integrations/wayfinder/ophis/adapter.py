@@ -1,7 +1,9 @@
 """Ophis (CoW Protocol) swap adapter for Wayfinder Paths.
 
 Ophis routes a same-chain ERC-20 swap as an OFF-CHAIN, EIP-712-signed CoW order:
-MEV-protected, gasless at settlement, surplus returned, no sandwiching. This adapter
+MEV-protected, gasless at settlement, no sandwiching. Ophis charges a 1 bp base plus
+capped reference-quote-improvement capture; the trader keeps the remainder and all
+improvement above the cap. This adapter
 mirrors the `uniswap_adapter` shape but, because there is no router `execute()` call,
 it (1) approves the CoW VaultRelayer with Wayfinder's audited `ensure_allowance` and
 (2) signs the GPv2 order with Wayfinder's typed-data callback, then submits it to the

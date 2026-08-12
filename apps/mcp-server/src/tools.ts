@@ -143,7 +143,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
       // enforce slippage); it never moves funds. submit_order is the write path.
       annotations: { title: 'Build signable order', readOnlyHint: true, openWorldHint: true },
       description:
-        "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism and Unichain are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%); when omitted, the enforced backstop defaults to 100 bps (1%). ENFORCED: build_order fetches a live quote and REJECTS the call if the limit is worse than slippageBips vs that quote (or if a quote cannot be fetched; retry). Sign `order` as EIP-712 with `signing`, then call submit_order.",
+        "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism, Unichain, and Robinhood Chain are non-canonical) and applies the canonical Ophis fee policy. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%); when omitted, the enforced backstop defaults to 100 bps (1%). ENFORCED: build_order fetches a live quote and REJECTS the call if the limit is worse than slippageBips vs that quote (or if a quote cannot be fetched; retry). Sign `order` as EIP-712 with `signing`, then call submit_order.",
       inputSchema: {
         chainId: z.number().int().describe('EVM chain id (use a chainId from list_chains `tradeable`).'),
         owner: z.string().describe('The signer/owner address (receiver defaults to this).'),
@@ -435,7 +435,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'List Ophis chains', readOnlyHint: true, openWorldHint: false },
       description:
-        "List Ophis chains, split into `tradeable` (orderbook host is live, only route get_quote/build_order to these) and `paused` (settlement deployed but no live orderbook yet, so these throw). Each tradeable chain includes its orderbook host and GPv2Settlement contract (Optimism and Unichain are non-canonical) and partner-fee config. No input.",
+        "List Ophis chains, split into `tradeable` (orderbook host is live, only route get_quote/build_order to these) and `paused` (settlement deployed but no live orderbook yet, so these throw). Each tradeable chain includes its orderbook host, GPv2Settlement contract (Optimism, Unichain, and Robinhood Chain are non-canonical), and canonical Ophis fee config. No input.",
       inputSchema: {},
     },
     async () => {

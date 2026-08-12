@@ -2,8 +2,8 @@
 
 Pure, I/O-free render crate for Ophis route/surplus visualization
 (`PathVizGraph` -> themeable SVG). Server-rendered, Sankey-style, with the
-solver-competition column and the surplus callout ("surplus returned vs
-your signed minimum") that the Odos surface could not draw.
+solver-competition column and the improvement callout ("execution above your
+signed minimum") that the Odos surface could not draw.
 
 ## Clean-room / no-port rule (LICENSE-critical)
 

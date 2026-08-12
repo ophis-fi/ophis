@@ -2990,7 +2990,7 @@ components:
           type: object
           description: >
             Present once settled. The callout wording is
-            "surplus returned vs your signed minimum".
+            "execution above your signed minimum".
           properties:
             amountAtoms:
               type: string

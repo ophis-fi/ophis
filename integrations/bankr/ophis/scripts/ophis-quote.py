@@ -46,7 +46,7 @@ def main() -> None:
     print(f"buyAmount (wei):  {buy_wei}")
     print(f"feeAmount (wei):  {fee_wei}")
     print(f"validTo:          {valid_to}")
-    print(f"partner fee:      {oc.OPHIS_VOLUME_FEE_BPS} bps (in appData; MEV-protected, surplus returned)")
+    print(f"Ophis base:       {oc.OPHIS_VOLUME_FEE_BPS} bp (plus capped improvement capture; trader keeps the remainder and all above the cap)")
 
 
 if __name__ == "__main__":

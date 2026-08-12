@@ -69,7 +69,7 @@ export const faqLd = {
       name: 'How are partner fees collected?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Via the CoW Protocol partner-fee field in the order's appData, set to the volume shape { volumeBps: 10, recipient }, taken from the trade output at settlement.",
+        text: "Every order carries Ophis's 1 bp base. On Ophis-operated chains the backend adds the capped improvement policy; on CoW-hosted chains appData carries both the 1 bp Volume entry and the pair-aware PriceImprovement entry: 80% capped at 99 bps for volatile pairs, or 50% capped at 20 bps for stable pairs.",
       },
     },
     {
@@ -146,9 +146,11 @@ on-chain, so no solver can fill it worse than the price you accepted.
 
 ### How are partner fees collected?
 
-Via the CoW Protocol partner-fee field in the order's `appData`, set to the
-volume shape `{ volumeBps: 10, recipient }`, taken from the trade output at
-settlement. Full detail on the [Fees & rebates](./fees.md) page.
+Every order carries Ophis's **1 bp base**. On Ophis-operated chains the backend
+adds the capped improvement policy. On CoW-hosted chains, `appData` carries both
+the 1 bp `Volume` entry and the pair-aware `PriceImprovement` entry: **80%
+capped at 99 bps** for volatile pairs, or **50% capped at 20 bps** for stable
+pairs. Full detail is on the [Fees & rebates](./fees.md) page.
 
 ### Is Ophis open source?
 

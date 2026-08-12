@@ -42,7 +42,7 @@ def main() -> None:
     print(f"feeAmount (wei):  {int(quote.get('feeAmount', '0'))}")
     print(f"validTo:          {quote.get('validTo')}")
     fee_bps = oc.OPHIS_STABLE_VOLUME_FEE_BPS if is_stable else oc.OPHIS_VOLUME_FEE_BPS
-    print(f"partner fee:      {fee_bps} bps (in appData; MEV-protected, surplus returned)")
+    print(f"Ophis base:       {fee_bps} bp (plus capped improvement capture; trader keeps the remainder and all above the cap)")
 
 
 if __name__ == "__main__":

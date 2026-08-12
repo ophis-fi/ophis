@@ -61,12 +61,10 @@ export function renderTierPage(
   const wallet = shortWallet(status.wallet);
   const nextCycle = fmtCycle(opts.nextCycleIso);
 
-  // Fee disclaimer for the live flat-fee model (activated alongside this copy).
-  // A flat 0.01% (1 bp) Ophis volume fee applies to every trade, so this de-claims
-  // the old "price improvement only / never touch your principal" wording. Kept
-  // in sync with the docs + frontend; rollback = revert the activation PR.
+  // Canonical all-chain fee disclaimer. Keep this synchronized with the public
+  // pricing page and machine-readable documentation.
   const feeNote =
-    'A flat 0.01% (1 bp) Ophis fee applies to your trade volume; rebates return a share of it by tier.';
+    'Every supported chain charges a 0.01% (1 bp) Ophis base plus capped reference-quote-improvement capture: 80% capped at 99 bps on volatile pairs, or 50% capped at 20 bps on stable pairs. Rebates are calculated from the verified base fee.';
 
   // Progress bar toward the next tier (capped 0..100). Platinum has no next.
   let progressHtml = '';

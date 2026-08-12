@@ -2,7 +2,13 @@
 
 MEV-protected **same-chain** token swaps for [elizaOS](https://elizaos.ai) agents, routed through **Ophis** (a [CoW Protocol](https://cow.fi) intent-settlement layer).
 
-Instead of an AMM swap that can be sandwiched, the agent's order settles in a **batch auction**: uniform clearing price, surplus (price improvement) returned to the trader, and **gasless** settlement (solvers pay the gas). The agent signs the CoW order with its **own EVM key** (EIP-712) — no managed-wallet dependency. Each order carries the Ophis partner fee in `appData`; set a referral code to earn the 8-12% rebate.
+Instead of an AMM swap that can be sandwiched, the agent's order settles in a
+**batch auction** with **gasless** settlement (solvers pay the gas). Ophis charges
+a 1 bp base plus 80% of reference-quote improvement capped at 99 bps on volatile
+pairs, or 50% capped at 20 bps on stable pairs; the trader keeps the remainder
+and all improvement above the cap. The agent signs the CoW order with its **own
+EVM key** (EIP-712)—no managed-wallet dependency. Hosted orders carry the Ophis
+policy in `appData`; set a referral code for attribution.
 
 Complements bridging plugins — this is *same-chain best execution*, not cross-chain.
 

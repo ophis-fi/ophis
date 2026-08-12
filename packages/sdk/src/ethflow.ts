@@ -38,9 +38,9 @@ import {
 } from './partner-fee.js';
 
 /**
- * Ophis-deployed eth-flow contract on the self-hosted Optimism chain. This is
- * NOT the canonical CoW address: it is wired to the Ophis OP settlement, so a
- * native-ETH sell on Optimism MUST go to this address.
+ * Ophis-deployed eth-flow contracts on operated chains. These are NOT the
+ * canonical CoW addresses: each is wired to its Ophis settlement, so a native-
+ * currency sell on an operated chain MUST use the matching address below.
  *   - 10 Optimism: deployed 2026-06-07, indexed by the Ophis autopilot. VERIFIED LIVE.
  * Chains without a live orderbook are absent: native-ETH support must imply a
  * live orderbook.

@@ -12,7 +12,7 @@ const adapter: AdapterExport = {
   tools,
   functions,
   description:
-    'Ophis: MEV-protected same-chain token swaps on CoW Protocol. Swaps settle in a batch auction (uniform clearing price, surplus returned to the trader, no sandwiching) and are gasless — the wallet signs an EIP-712 order and solvers pay settlement gas. Carries an integrator partner fee. ophisSwap: execute a swap; getOphisSupportedChains: list supported chains.',
+    'Ophis: MEV-protected same-chain token swaps on CoW Protocol. Swaps settle in a batch auction with no sandwiching and are gasless — the wallet signs an EIP-712 order and solvers pay settlement gas. Ophis charges a 1 bp base plus capped reference-quote-improvement capture on every chain; the trader keeps the remainder and all improvement above the cap. ophisSwap: execute a swap; getOphisSupportedChains: list supported chains.',
   tags: [AdapterTag.DEX],
   chains: supportedChains.map(getChainName) as Chain[],
   executableFunctions: ['ophisSwap'],

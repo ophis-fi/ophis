@@ -64,11 +64,12 @@ Where the order settles still matters:
 
 ## What you save versus a typical AMM
 
-Ophis-operated chains use a 1 bp base plus capped reference-improvement capture,
-so the realized charge depends on execution quality. CoW-hosted chains use the
-same 1 bp Ophis base plus CoW Protocol's separate upstream fees.
+Every supported chain uses the same 1 bp Ophis base plus capped
+reference-improvement capture, so the realized Ophis charge depends on execution
+quality. CoW-hosted chains additionally pay CoW Protocol's separate upstream
+fees.
 
-### Flat-rate comparison (CoW-hosted volatile path)
+### Fixed-cost comparison (CoW-hosted volatile path)
 
 | Trade size | AMM at 0.25% | AMM at 0.30% | Ophis base (0.01%) | You save | Ophis + CoW fixed fees (0.03%) | You save |
 | --- | --- | --- | --- | --- | --- | --- |

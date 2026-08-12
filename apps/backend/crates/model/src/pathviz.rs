@@ -167,8 +167,9 @@ pub struct Surplus {
 }
 
 impl Surplus {
-    /// Owner-approved callout wording (decision 26).
-    pub const CALLOUT: &'static str = "surplus returned vs your signed minimum";
+    /// Neutral wording: measures execution above the signed floor without
+    /// implying that gross improvement bypasses the published fee policy.
+    pub const CALLOUT: &'static str = "execution above your signed minimum";
 }
 
 /// Fee annotation for the diagram footer.

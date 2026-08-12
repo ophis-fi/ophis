@@ -79,6 +79,8 @@ pinned to itself.
 Point any MCP client at `https://mcp.ophis.fi/mcp` (no key), or read the
 [AI agent integration guide](./ai-agents.md). Prefer `build_order` to construct
 orders: it fetches a live quote, applies your slippage bound, pins the receiver
-to the owner, and embeds the chain-aware Ophis base (1 bp on operated chains;
-hosted partner pricing elsewhere), so the returned order is bounded
+to the owner, and applies the canonical all-chain Ophis policy: a 1 bp base plus
+80% of reference-quote improvement capped at 99 bps on volatile pairs, or 50%
+capped at 20 bps on stable pairs. Operated-chain backends add the improvement
+policy; hosted orders encode it in CIP-75 appData. The returned order is bounded
 before your agent signs it.

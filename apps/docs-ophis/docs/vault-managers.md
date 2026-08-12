@@ -204,10 +204,11 @@ access instantly, and `cancel` revokes any open order.
 
 ## Fees
 
-Rebalances carry the SDK's chain-aware Ophis base in pinned appData: 1 bp on
-operated chains, or hosted partner pricing elsewhere. Operated-chain capped
-price-improvement capture and hosted upstream fees apply separately. See
-[Fees](/fees) for the full schedule.
+Rebalances use the canonical all-chain Ophis policy: a 1 bp base plus 80% of
+reference-quote improvement capped at 99 bps on volatile pairs, or 50% capped
+at 20 bps on stable pairs. Operated-chain backends add the improvement policy;
+hosted orders encode it in CIP-75 appData and separately pay CoW Protocol's
+upstream fees. See [Fees](/fees) for the full schedule.
 
 ## FAQ
 
