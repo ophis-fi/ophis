@@ -61,6 +61,58 @@ describe('ophisBridgeProviders', () => {
         expect(upstreamSpy).toHaveBeenCalledTimes(1)
       })
     })
+
+    describe('getIntermediateTokens route-based fallback', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const req = { kind: 'sell', sellTokenChainId: 1, buyTokenChainId: 4663, buyTokenAddress: '0xUSDG' } as any
+      const USDC = { chainId: 1, address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC' }
+      const USDG_MAINNET = { chainId: 1, address: '0xe343167631d89B6Ffc58B88d6b7fB0228795491D', symbol: 'USDG-MAINNET' }
+      const BASE_USDC = { chainId: 8453, address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC' }
+
+      afterEach(() => jest.restoreAllMocks())
+
+      it('returns the symbol match untouched when it is non-empty (no route fetch)', async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const symbolMatch = [{ chainId: 1, address: '0xWETH', symbol: 'WETH' }] as any
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue(symbolMatch)
+        const fetchSpy = jest.spyOn(global, 'fetch' as never)
+
+        const result = await new OphisAcrossBridgeProvider().getIntermediateTokens(req)
+
+        expect(result).toBe(symbolMatch)
+        expect(fetchSpy).not.toHaveBeenCalled()
+      })
+
+      it('falls back to Across available-routes when the symbol match is empty (the USDG corridor)', async () => {
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
+        jest.spyOn(global, 'fetch' as never).mockResolvedValue({
+          ok: true,
+          json: async () => [
+            { originToken: USDC.address }, // cross-asset USDC -> USDG
+            { originToken: USDG_MAINNET.address }, // chain-aliased USDG-MAINNET -> USDG
+          ],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any)
+        // api is protected; the route origins are matched against getSupportedTokens
+        const provider = new OphisAcrossBridgeProvider()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(provider as any).api.getSupportedTokens = jest.fn().mockResolvedValue([USDC, USDG_MAINNET, BASE_USDC])
+
+        const result = await provider.getIntermediateTokens(req)
+
+        // Both mainnet route origins returned; the Base USDC (wrong chain) excluded.
+        expect(result).toEqual([USDC, USDG_MAINNET])
+      })
+
+      it('returns [] when the route fetch fails (no crash, corridor just unavailable)', async () => {
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
+        jest.spyOn(global, 'fetch' as never).mockRejectedValue(new Error('network'))
+
+        const result = await new OphisAcrossBridgeProvider().getIntermediateTokens(req)
+
+        expect(result).toEqual([])
+      })
+    })
   })
 
   describe('OphisBungeeBridgeProvider', () => {
