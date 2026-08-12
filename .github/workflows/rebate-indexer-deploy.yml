@@ -118,7 +118,9 @@ jobs:
              docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
              docker compose ps
              # Require the indexer, Caddy, and the Cloudflare replica to be up.
-             for i in 1 2 3 4 5 6 7 8 9 10; do
+             # Initial indexing can legitimately take more than 30 seconds after
+             # a container replacement; keep the gate strict but allow 90 seconds.
+             for i in {1..30}; do
                if curl -fsS http://localhost:8080/health >/dev/null &&
                   curl -fsS http://localhost:80/health >/dev/null &&
                   test \"\$(docker inspect -f '{{.State.Running}}' rebate-indexer-cloudflared-1)\" = true; then
@@ -127,21 +129,21 @@ jobs:
                fi
                sleep 3
              done
-             echo 'health check failed after 30s'
+             echo 'health check failed after 90s'
              docker compose logs indexer | tail -30
              docker compose logs caddy | tail -30
              docker compose logs cloudflared | tail -30
              exit 1"
           # This catches a connected tunnel with a missing/bad ingress rule—the
           # exact failure mode that local origin probes cannot see.
-          for i in 1 2 3 4 5 6 7 8 9 10; do
+          for i in {1..30}; do
             if curl -fsS https://rebates.ophis.fi/health >/dev/null; then
               echo "public health ok"
               exit 0
             fi
             sleep 3
           done
-          echo "::error::public rebate health failed after Cadia deploy"
+          echo "::error::public rebate health failed after 90s after Cadia deploy"
           exit 1
 
       - name: verify prepared reward runtime (read-only)
