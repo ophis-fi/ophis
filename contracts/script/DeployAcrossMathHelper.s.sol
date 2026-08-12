@@ -25,18 +25,24 @@ import {AcrossMathHelper} from "../src/contracts/AcrossMathHelper.sol";
 ///   logged `predicted` value; it MUST equal the value registered in the
 ///   frontend sdk-bridging pnpm patch (ACROSS_MATH_CONTRACT_ADDRESSES).
 ///
-/// Usage:
+/// Usage (matches contracts/README.md: key passed to Forge with --private-key,
+/// not an env var — vm.startBroadcast() does not read PRIVATE_KEY):
 ///   # dry-run (no broadcast; logs the predicted address + whether it exists):
 ///   forge script DeployAcrossMathHelper --rpc-url $INK_RPC --sender $EOA
 ///   # live (only after reviewing the dry-run):
-///   AMH_CONFIRM=1 PRIVATE_KEY=… \
-///     forge script DeployAcrossMathHelper --rpc-url $INK_RPC --broadcast
+///   AMH_CONFIRM=1 \
+///     forge script DeployAcrossMathHelper --rpc-url $INK_RPC --private-key $PRIVATE_KEY --broadcast --slow
 contract DeployAcrossMathHelper is Script {
     // Namespaced salt: keeps the address distinct from any unrelated CREATE2
     // deploy of the same initcode while staying identical across every chain we
     // deploy to. Changing this string changes the address - do not.
     bytes32 internal constant SALT = keccak256("ophis.AcrossMathHelper.v1");
     address internal constant CREATE2_PROXY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
+    // The address registered in the frontend sdk-bridging patch
+    // (ACROSS_MATH_CONTRACT_ADDRESSES for INK/LINEA). The deploy MUST land here
+    // or the frontend would call a codeless address, so we assert on it rather
+    // than only self-comparing the deployed vs freshly-predicted address.
+    address internal constant EXPECTED_HELPER = 0xEdE97D044d4C8aAA682968bee10284521B9f311a;
 
     function run() public returns (AcrossMathHelper helper) {
         bytes32 initcodeHash = keccak256(type(AcrossMathHelper).creationCode);
@@ -46,7 +52,18 @@ contract DeployAcrossMathHelper is Script {
         console.log("salt     ", vm.toString(SALT));
         console.log("initcode ", vm.toString(initcodeHash));
         console.log("predicted", predicted);
+        console.log("expected ", EXPECTED_HELPER);
         console.log("hasCode  ", predicted.code.length > 0);
+
+        // Bind the deploy to the address the frontend was patched with. If the
+        // compiler or foundry.toml optimizer/evm settings ever drift, the
+        // creation bytecode changes, predicted diverges from EXPECTED_HELPER, and
+        // this reverts on BOTH the dry-run and the broadcast - so we can never
+        // deploy code the frontend will not call.
+        require(
+            predicted == EXPECTED_HELPER,
+            "DeployAcrossMathHelper: predicted != registered address (compiler/settings drift)"
+        );
 
         // The deterministic proxy must exist on the target chain, else the
         // CREATE2 deploy silently no-ops to a plain send. It is present on Ink

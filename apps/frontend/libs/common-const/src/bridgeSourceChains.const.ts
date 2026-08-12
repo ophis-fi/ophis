@@ -3,7 +3,7 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 /**
  * Ink (57073) and Linea (59144) become Across bridge SOURCES once the Across
  * math helper is deployed on each (contracts/script/DeployAcrossMathHelper.s.sol,
- * deterministic at 0xad5a04185aBa66985d458a13ECAb5D8eD9Fa0687) and registered in
+ * deterministic at 0xEdE97D044d4C8aAA682968bee10284521B9f311a) and registered in
  * the sdk-bridging patch. This flag stages that switch: it stays OFF until the
  * helper is live, so merging the source-enabling code never advertises a corridor
  * whose deposit hook would CALL a codeless address. Flip it — set

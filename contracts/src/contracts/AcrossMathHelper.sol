@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: LGPL-3.0-or-later
-pragma solidity ^0.8;
+// Pinned (not ^0.8): the deterministic CREATE2 address registered in the frontend
+// sdk-bridging patch is a function of the exact creation bytecode, which includes
+// the appended metadata hash - so it depends on this file's compiler version and
+// even its source text. Keeping solc fixed (plus not editing this file after the
+// address is registered) keeps that address reproducible; the deploy script
+// asserts predicted == the registered address, so any drift fails loudly. The
+// literal address lives ONLY in the deploy script and the patch, never here, so
+// that documenting it can never shift the address it documents.
+pragma solidity 0.8.28;
 
 /// @title AcrossMathHelper
 ///

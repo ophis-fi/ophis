@@ -26,6 +26,21 @@ contract AcrossMathHelperTest is Test {
         assertEq(AcrossMathHelper.multiplyAndSubtract.selector, bytes4(0x029beb8e));
     }
 
+    /// Drift guard: the deterministic CREATE2 address must stay the one
+    /// registered in the frontend sdk-bridging patch and asserted in
+    /// DeployAcrossMathHelper (EXPECTED_HELPER). It is baked into the creation
+    /// bytecode (metadata hash), so editing this contract's source shifts it -
+    /// this fails immediately, before any deploy, if that happens. If you change
+    /// the contract, recompute and update the address in all three places.
+    function test_deterministicAddressMatchesRegistered() public pure {
+        address predicted = vm.computeCreate2Address(
+            keccak256("ophis.AcrossMathHelper.v1"),
+            keccak256(type(AcrossMathHelper).creationCode),
+            0x4e59b44847b379578588920cA78FbF26c0B4956C
+        );
+        assertEq(predicted, 0xEdE97D044d4C8aAA682968bee10284521B9f311a);
+    }
+
     function test_zeroFeeReturnsInput() public view {
         assertEq(helper.multiplyAndSubtract(123_456 ether, 0), 123_456 ether);
     }
