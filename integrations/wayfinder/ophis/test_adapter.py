@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
 import logging
 import os
 import sys
@@ -198,6 +199,14 @@ def test_excess_precision_amount_is_rejected(monkeypatch):
 
 
 def test_appdata_is_deterministic_and_hashes():
-    full, h = oc.build_app_data(referral_code="my-code", is_stable_pair=False)
+    full, h = oc.build_app_data(8453, referral_code="my-code", is_stable_pair=False)
     assert '"appCode":"ophis"' in full and h.startswith("0x") and len(h) == 66
-    assert oc.build_app_data(referral_code="my-code")[1] == h  # deterministic
+    assert oc.build_app_data(8453, referral_code="my-code")[1] == h  # deterministic
+    hosted_fee = json.loads(full)["metadata"]["partnerFee"]
+    assert hosted_fee[0]["volumeBps"] == 1
+    assert hosted_fee[1]["priceImprovementBps"] == 8000
+    assert hosted_fee[1]["maxVolumeBps"] == 99
+    stable_full, _ = oc.build_app_data(8453, is_stable_pair=True)
+    stable_fee = json.loads(stable_full)["metadata"]["partnerFee"]
+    assert stable_fee[1]["priceImprovementBps"] == 5000
+    assert stable_fee[1]["maxVolumeBps"] == 20

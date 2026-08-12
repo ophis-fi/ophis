@@ -1,6 +1,6 @@
 ---
 name: ophis
-description: MEV-protected same-chain token swaps via Ophis (CoW Protocol) using the MetaMask Agent Wallet. Use when the user wants to swap one ERC-20 for another ON THE SAME CHAIN with best execution, no sandwiching/front-running, and gasless settlement. Ophis charges a 1 bp base plus capped reference-quote-improvement capture; the trader keeps the remainder and all improvement above the cap. The MetaMask wallet signs the CoW order directly (EIP-712 via `mm wallet sign-typed-data`) and sends the ERC-20 approval via `mm wallet send-transaction`; the order is submitted to the Ophis/CoW orderbook. Supports Base, Optimism, Unichain, Arbitrum, Polygon, BNB, Ethereum. NOT for cross-chain bridging.
+description: MEV-protected same-chain token swaps via Ophis (CoW Protocol) using the MetaMask Agent Wallet. Use when the user wants to swap one ERC-20 for another ON THE SAME CHAIN with best execution, no sandwiching/front-running, and gasless settlement. Ophis charges a 1 bp base plus capped reference-quote-improvement capture; hosted settlement additionally applies CoW Protocol's separate upstream policy. The MetaMask wallet signs the CoW order directly (EIP-712 via `mm wallet sign-typed-data`) and sends the ERC-20 approval via `mm wallet send-transaction`; the order is submitted to the Ophis/CoW orderbook. Supports Base, Optimism, Unichain, Arbitrum, Polygon, BNB, Ethereum. NOT for cross-chain bridging.
 license: Apache-2.0
 metadata:
   version: "0.1.0"
@@ -9,7 +9,7 @@ metadata:
 
 # Ophis — MEV-protected swaps via the MetaMask Agent Wallet
 
-Same-chain token swaps through **Ophis**, an intent-settlement layer on **CoW Protocol**. Instead of routing through an AMM (where the trade can be sandwiched), Ophis submits a signed *intent* that solvers compete to fill in a **batch auction**: MEV-protected and gasless (solvers pay settlement gas). Ophis charges a 1 bp base plus 80% of reference-quote improvement capped at 99 bps on volatile pairs, or 50% capped at 20 bps on stable pairs. The trader keeps the remainder and all improvement above the cap. The MetaMask Agent Wallet signs the order with a real **EIP-712** signature — no presign.
+Same-chain token swaps through **Ophis**, an intent-settlement layer on **CoW Protocol**. Instead of routing through an AMM (where the trade can be sandwiched), Ophis submits a signed *intent* that solvers compete to fill in a **batch auction**: MEV-protected and gasless (solvers pay settlement gas). Ophis charges a 1 bp base plus 80% of reference-quote improvement capped at 99 bps on volatile pairs, or 50% capped at 20 bps on stable pairs. On Ophis-operated chains the trader keeps the remainder and all improvement above Ophis's cap; hosted settlement additionally applies CoW Protocol's separate upstream policy. The MetaMask Agent Wallet signs the order with a real **EIP-712** signature — no presign.
 
 This is complementary to MetaMask's built-in `mm swap` (its own aggregator route): use this skill when the user specifically wants **MEV-protected / CoW / Ophis** execution.
 

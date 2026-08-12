@@ -76,6 +76,11 @@ VAULT_RELAYER = {
 OPHIS_PARTNER_FEE_RECIPIENT = "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"  # Ophis Safe
 OPHIS_VOLUME_FEE_BPS = 1          # canonical Ophis rate on every chain
 OPHIS_STABLE_VOLUME_FEE_BPS = 1   # stable-stable pair rate
+OPHIS_OPERATED_CHAIN_IDS = frozenset({10, 130, 4663})
+OPHIS_PRICE_IMPROVEMENT_BPS = 8000
+OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS = 99
+OPHIS_STABLE_PRICE_IMPROVEMENT_BPS = 5000
+OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_BPS = 20
 APP_DATA_VERSION = "1.4.0"
 
 REBATE_INDEXER_URL = "https://rebates.ophis.fi"
@@ -131,22 +136,23 @@ def keccak256(data: bytes) -> bytes:
 
 
 # ── Ophis appData (flow.ts / partner-fee.ts / referral.ts) ────────────────────
-def build_app_data(referral_code: str | None = None, is_stable_pair: bool = False):
+def build_app_data(chain_id: int, referral_code: str | None = None, is_stable_pair: bool = False):
     """Return (full_app_data_string, app_data_hash_0x).
 
     appCode MUST be the literal 'ophis' or the rebate indexer silently drops the
-    order. partnerFee is the CIP-75 VOLUME shape {volumeBps, recipient}. The pair
-    is signed with appData=hash but SUBMITTED with appData=full string + a separate
+    order. Hosted chains receive the CIP-75 base and improvement entries; operated
+    chains receive the base entry because their backend prepends improvement capture.
+    The pair is signed with appData=hash but SUBMITTED with appData=full string + a separate
     appDataHash; the backend checks keccak256(full) == hash, so the two are always
     self-consistent here regardless of key ordering.
     """
-    metadata = {
-        "partnerFee": {
-            "volumeBps": OPHIS_STABLE_VOLUME_FEE_BPS if is_stable_pair else OPHIS_VOLUME_FEE_BPS,
-            "recipient": OPHIS_PARTNER_FEE_RECIPIENT,
-        },
-        "hooks": {},
-    }
+    base_fee = {"volumeBps": 1, "recipient": OPHIS_PARTNER_FEE_RECIPIENT}
+    partner_fee = base_fee if int(chain_id) in OPHIS_OPERATED_CHAIN_IDS else [base_fee, {
+        "priceImprovementBps": OPHIS_STABLE_PRICE_IMPROVEMENT_BPS if is_stable_pair else OPHIS_PRICE_IMPROVEMENT_BPS,
+        "maxVolumeBps": OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_BPS if is_stable_pair else OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS,
+        "recipient": OPHIS_PARTNER_FEE_RECIPIENT,
+    }]
+    metadata = {"partnerFee": partner_fee, "hooks": {}}
     if referral_code:
         # Validate against the SDK grammar /^[a-z0-9_-]{3,64}$/ (referral.ts) and FAIL
         # LOUDLY on a bad code — an unmatchable code would be silently written to

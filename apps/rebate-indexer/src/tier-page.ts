@@ -64,7 +64,7 @@ export function renderTierPage(
   // Canonical all-chain fee disclaimer. Keep this synchronized with the public
   // pricing page and machine-readable documentation.
   const feeNote =
-    'Every supported chain charges a 0.01% (1 bp) Ophis base plus capped reference-quote-improvement capture: 80% capped at 99 bps on volatile pairs, or 50% capped at 20 bps on stable pairs. Rebates are calculated from the verified base fee.';
+    'Every supported chain charges a 0.01% (1 bp) Ophis base plus capped reference-quote-improvement capture: 80% capped at 99 bps on volatile pairs, or 50% capped at 20 bps on stable pairs. Verified fee-bearing trades determine eligibility and volume weighting; the rebate pool is funded from the Ophis Safe\'s distributable non-partner WETH balance, which can include collected improvement fees.';
 
   // Progress bar toward the next tier (capped 0..100). Platinum has no next.
   let progressHtml = '';

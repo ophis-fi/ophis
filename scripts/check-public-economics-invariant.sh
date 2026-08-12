@@ -31,7 +31,7 @@ reject() {
   local label="$1"
   local pattern="$2"
   local matches
-  matches="$(grep -RInE --include='*.md' --include='*.mdx' --include='*.astro' --include='*.html' --include='*.txt' --include='*.ts' --include='*.py' "$pattern" "${PUBLIC_PATHS[@]}" || true)"
+  matches="$(grep -RInE --include='*.md' --include='*.mdx' --include='*.astro' --include='*.html' --include='*.txt' --include='*.json' --include='*.ts' --include='*.py' "$pattern" "${PUBLIC_PATHS[@]}" || true)"
   if [[ -n "$matches" ]]; then
     echo "FAIL: $label" >&2
     echo "$matches" >&2
@@ -47,7 +47,7 @@ reject "retired sovereign capture caps remain on a public surface" '(volatile.{0
 reject "retired 50 bps volatile capture cap remains on a public surface" '(volatile.{0,100}(50 bps cap|capped at 50 bps|50 bps of volume)|(50 bps cap|capped at 50 bps|50 bps of volume).{0,100}volatile)'
 reject "retired hosted Ophis fee remains on a public surface" '(hosted.{0,100}(10 bps retail|5 bps partner|5 bps base)|(10 bps retail|5 bps partner|5 bps base).{0,100}hosted)'
 reject "retired 10 bps appData example remains on a public surface" 'volumeBps[": ]+10'
-reject "unqualified full-surplus promise remains on a public surface" '(surplus|price improvement).{0,40}returned to the trader|surplus returned'
+reject "unqualified full-surplus promise remains on a public surface" '((all|full|100% of (the )?)(surplus|price improvement).{0,30}(is |was |will be )?returned|(surplus|price improvement)( in full| entirely)? (is |was |will be )?returned to the trader([,.;]|$)|surplus returned([,.;]|$))'
 reject "vague hosted pricing placeholder remains on a public surface" 'hosted partner pricing elsewhere'
 
 require_text() {
@@ -68,6 +68,8 @@ require_text README.md "Hosted chains encode that policy in CIP-75 appData"
 require_text README.md "On every supported chain, Ophis charges a **0.01% (1 bp)** base"
 require_text apps/frontend/apps/ophis-landing/src/content/blog/solver-aligned-pricing.md "The base remains 1 bp in both cases."
 require_text apps/frontend/apps/ophis-landing/src/content/blog/let-an-ai-agent-swap-tokens.md "volatile pairs (99 bps"
+require_text apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json "Robinhood Chain"
+require_text apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json "80% of reference-quote improvement"
 require_text apps/frontend/apps/cowswap-frontend/public/business/index.html "Robinhood payout is not"
 require_text infra/optimism-mainnet/configs/autopilot.toml "max-volume-factor = 0.0099"
 require_text infra/unichain-mainnet/configs/autopilot.toml.tmpl "max-volume-factor = 0.0099"

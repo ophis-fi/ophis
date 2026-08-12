@@ -7,7 +7,7 @@
 - **Intent-based**, not router-based: users sign their *desired outcome*, solvers compete on *how* to deliver it.
 - **MEV-aware batch execution**: signed intents are auctioned off-chain and settle on-chain; uniform clearing and solver competition reduce common sandwich-attack exposure without promising that every execution is immune to every form of MEV.
 - **Self-custodial**: Ophis never holds funds. Every order is signed by the user's wallet (EIP-712 or ERC-1271).
-- **Published all-chain pricing**: every supported chain uses a 1 bp base plus 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap). The trader keeps the remainder and all improvement above the cap.
+- **Published all-chain pricing**: every supported chain uses a 1 bp base plus 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap). On Ophis-operated chains the trader keeps the remainder and all improvement above Ophis's cap; hosted settlement additionally applies CoW Protocol's separate upstream policy.
 - **Hosted-chain upstream pricing**: CoW-hosted swaps additionally pay CoW Protocol's separate upstream volume and price-improvement fees.
 - **Open**: full frontend, intent-parser proxy, and infra runbooks are public.
 
