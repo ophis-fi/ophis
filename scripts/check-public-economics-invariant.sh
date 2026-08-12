@@ -8,11 +8,21 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 PUBLIC_PATHS=(
+  README.md
   apps/docs-ophis/docs
   apps/docs-ophis/static
   apps/frontend/apps/ophis-landing/src
   apps/frontend/apps/ophis-landing/public
   apps/frontend/apps/cowswap-frontend/public
+  apps/rebate-indexer/src/stats-page.ts
+  apps/rebate-indexer/src/tier-page.ts
+  integrations/bankr/ophis
+  integrations/heyanon/ophis/src
+  integrations/metamask/ophis
+  integrations/swarms/ophis
+  integrations/wayfinder/ophis
+  packages/plugin-elizaos
+  packages/safe-swap/src/build.ts
 )
 
 fail=0
@@ -21,7 +31,7 @@ reject() {
   local label="$1"
   local pattern="$2"
   local matches
-  matches="$(grep -RInE --include='*.md' --include='*.mdx' --include='*.astro' --include='*.html' --include='*.txt' "$pattern" "${PUBLIC_PATHS[@]}" || true)"
+  matches="$(grep -RInE --include='*.md' --include='*.mdx' --include='*.astro' --include='*.html' --include='*.txt' --include='*.ts' --include='*.py' "$pattern" "${PUBLIC_PATHS[@]}" || true)"
   if [[ -n "$matches" ]]; then
     echo "FAIL: $label" >&2
     echo "$matches" >&2
@@ -36,6 +46,9 @@ reject "retired sovereign floor remains on a public surface" '(4 bps non-stable|
 reject "retired sovereign capture caps remain on a public surface" '(volatile.{0,100}(30 bps|0\.30%)|(30 bps|0\.30%).{0,100}volatile|stable.{0,100}(10 bps cap|capped at 10 bps|0\.10% stables)|(10 bps cap|capped at 10 bps|0\.10% stables).{0,100}stable)'
 reject "retired 50 bps volatile capture cap remains on a public surface" '(volatile.{0,100}(50 bps cap|capped at 50 bps|50 bps of volume)|(50 bps cap|capped at 50 bps|50 bps of volume).{0,100}volatile)'
 reject "retired hosted Ophis fee remains on a public surface" '(hosted.{0,100}(10 bps retail|5 bps partner|5 bps base)|(10 bps retail|5 bps partner|5 bps base).{0,100}hosted)'
+reject "retired 10 bps appData example remains on a public surface" 'volumeBps[": ]+10'
+reject "unqualified full-surplus promise remains on a public surface" '(surplus|price improvement).{0,40}returned to the trader|surplus returned'
+reject "vague hosted pricing placeholder remains on a public surface" 'hosted partner pricing elsewhere'
 
 require_text() {
   local file="$1"
@@ -50,6 +63,9 @@ require_text apps/docs-ophis/docs/fees.md "80% of price improvement on volatile 
 require_text apps/docs-ophis/docs/fees.md "50% on stablecoin pairs"
 require_text apps/docs-ophis/docs/fees.md "capped at 99 bps of volume"
 require_text apps/docs-ophis/docs/fees.md "capped at 20 bps"
+require_text apps/docs-ophis/docs/faq.mdx "Every order carries Ophis's **1 bp base**."
+require_text README.md "Hosted chains encode that policy in CIP-75 appData"
+require_text README.md "On every supported chain, Ophis charges a **0.01% (1 bp)** base"
 require_text apps/frontend/apps/ophis-landing/src/content/blog/solver-aligned-pricing.md "The base remains 1 bp in both cases."
 require_text apps/frontend/apps/ophis-landing/src/content/blog/let-an-ai-agent-swap-tokens.md "volatile pairs (99 bps"
 require_text apps/frontend/apps/cowswap-frontend/public/business/index.html "Robinhood payout is not"
@@ -69,4 +85,4 @@ if (( fail )); then
   exit 1
 fi
 
-echo "OK: public surfaces use the current sovereign economics and supported-chain set."
+echo "OK: public surfaces use the current all-chain economics and supported-chain set."

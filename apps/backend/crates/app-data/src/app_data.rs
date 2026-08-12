@@ -145,8 +145,8 @@ pub const OPHIS_NON_STABLE_FLOOR_BPS: u64 = 1;
 /// Optimism (chain 10) stablecoin set, mirrored from the frontend
 /// `OPTIMISM_STABLECOINS` (libs/common-const/src/tokens.ts). A swap where BOTH
 /// tokens are in this set is a same-chain stable pair and floors at the reduced
-/// rate. Optimism is the ONLY self-hosted chain, so this is the only set the
-/// backend needs; CoW-hosted chains are validated by CoW and never reach here.
+/// rate. Unichain and Robinhood Chain have their own operated-chain sets below;
+/// CoW-hosted chains are validated by CoW and never reach this floor path.
 /// Kept in sync with the frontend by the CI gate scripts/check-floor-invariant.sh
 /// (the hard gate, since the backend Rust suite does not run in CI) and, locally,
 /// by the `optimism_stablecoins_match_frontend_source_of_truth` unit test, so the
@@ -206,7 +206,7 @@ pub fn partner_fee_floor_bps(sell_token: Address, buy_token: Address, recipient:
     }
 }
 
-/// Whether both legs are recognized Optimism stablecoins. The autopilot uses
+/// Whether both legs are recognized stablecoins on an Ophis-operated chain. The autopilot uses
 /// this non-spoofable token-pair classification to select Ophis's reduced 50%
 /// stablecoin price-improvement capture instead of the standard 80% policy.
 pub fn is_ophis_stable_pair(chain_id: u64, sell_token: Address, buy_token: Address) -> bool {

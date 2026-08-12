@@ -128,14 +128,14 @@ const VOLUME_ONLY_CHAIN_IDS: ReadonlySet<number> = new Set<number>([10, 130, 466
 /** The 1 bp base the front-end writes on Ophis-operated chains. */
 export const OPHIS_NON_STABLE_VOLUME_BPS = OPHIS_SOVEREIGN_BASE_FEE_BPS
 
-/** True on a self-hosted, Volume-only, fee-floor-enforcing chain (Optimism, Unichain today). */
+/** True on an Ophis-operated, Volume-only, fee-floor-enforcing chain. */
 export function isVolumeOnlyChain(chainId: number | undefined): boolean {
   return chainId !== undefined && VOLUME_ONLY_CHAIN_IDS.has(chainId)
 }
 
 /**
- * The Ophis floor VOLUME fee for a self-hosted Volume-only chain (Optimism,
- * Unichain), or `undefined` off those chains. On those chains the backend
+ * The Ophis floor VOLUME fee for an operated Volume-only chain (Optimism,
+ * Unichain, or Robinhood Chain), or `undefined` off those chains. There the backend
  * enforces a fee FLOOR and would
  * reject a sub-floor fee or let an ABSENT one ride free, so the Ophis fee must be
  * present at >= the floor whether or not the flat-volume flag is on. This is the

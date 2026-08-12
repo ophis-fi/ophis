@@ -62,7 +62,7 @@ export interface OphisSafePresignParams {
   ttlSeconds?: number;
   /** Optional integrator rebate tag. */
   referralCode?: string;
-  /** Selects the 1 bp stable vs 5 bp partner volume fee. */
+  /** Selects the 50%/20 bps stable improvement tier instead of 80%/99 bps volatile; the base is always 1 bp. */
   isStablePair?: boolean;
   /**
    * Optional allowance reader. When provided, the builder prepends an approve

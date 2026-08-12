@@ -90,7 +90,8 @@ def ophis_swap(
     referral_code: str = "",
 ) -> str:
     """Swap one ERC-20 for another on the SAME chain via Ophis (CoW Protocol): MEV-protected,
-    gasless at settlement, surplus returned. Signs a GPv2 order with the agent's key (from env)
+    gasless at settlement. Ophis charges a 1 bp base plus capped improvement capture; the
+    trader keeps the remainder and all improvement above the cap. Signs a GPv2 order with the agent's key (from env)
     and submits it to the Ophis orderbook. Native ETH is not supported (wrap to WETH). This is
     a same-chain swap, not a bridge.
 

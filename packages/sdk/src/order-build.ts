@@ -266,7 +266,7 @@ export interface BuiltOrder {
 /**
  * Builds a bounded, ready-to-sign CoW order on Ophis. Pins the receiver to the
  * owner (unless unsafeCustomReceiver is set), uses the correct per-chain
- * settlement contract (Optimism and Unichain are NON-canonical) and
+ * settlement contract (Optimism, Unichain, and Robinhood Chain are NON-canonical) and
  * orderbook host, and embeds the CIP-75 partner fee in appData. Pure — no
  * network, no keys.
  */

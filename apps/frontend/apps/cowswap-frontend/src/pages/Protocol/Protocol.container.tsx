@@ -169,7 +169,7 @@ export function ProtocolPage(): ReactNode {
             <Tr>
               <RowTh scope="row">Backend services</RowTh>
               <Td>CoW-operated</Td>
-              <Td>Self-hosted orderbook + driver + solver on Optimism</Td>
+              <Td>Ophis-operated orderbooks, drivers, and solver lanes on Optimism, Unichain, and Robinhood Chain</Td>
               <Td>
                 <Badge tone="live">Ophis</Badge>
               </Td>
@@ -177,7 +177,7 @@ export function ProtocolPage(): ReactNode {
             <Tr>
               <RowTh scope="row">Partner fee</RowTh>
               <Td>CIP-75 framework</Td>
-              <Td>Flat 0.01% (1 bp) on volume · allow-listed recipient</Td>
+              <Td>1 bp base + capped improvement capture on every chain · allow-listed recipient</Td>
               <Td>
                 <Badge tone="live">Ophis</Badge>
               </Td>
@@ -290,7 +290,7 @@ export function ProtocolPage(): ReactNode {
               {/* Count mirrors SORTED_CHAIN_IDS in libs/common-const/chainInfo.ts, update together. */}
               <RowTh scope="row">EVM source chains</RowTh>
               <Td>
-                11 production chains selectable in the app, including Ethereum, Arbitrum, Base, Optimism, Polygon
+                13 production EVM chains selectable in the app, including Ethereum, Arbitrum, Base, Optimism, Unichain, and Robinhood Chain
               </Td>
               <Td>
                 <Badge tone="live">Selectable</Badge>
@@ -298,7 +298,7 @@ export function ProtocolPage(): ReactNode {
             </Tr>
             <Tr>
               <RowTh scope="row">Ophis-operated stack</RowTh>
-              <Td>Self-hosted orderbook, driver, and solver. Optimism mainnet</Td>
+              <Td>Ophis-operated orderbooks, drivers, and solver lanes on Optimism, Unichain, and Robinhood Chain</Td>
               <Td>
                 <Badge tone="live">Live</Badge>
               </Td>
