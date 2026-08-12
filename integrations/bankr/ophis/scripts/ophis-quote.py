@@ -32,7 +32,8 @@ def main() -> None:
     trader = sys.argv[8] if len(sys.argv) > 8 else "0x000000000000000000000000000000000000dEaD"
 
     sell_wei = oc.to_wei(amount, sell_dec)
-    full_app_data, app_hash = oc.build_app_data(referral_code=referral)
+    is_stable = oc.is_stable_pair(chain_id, sell_token, buy_token)
+    full_app_data, app_hash = oc.build_app_data(chain_id, referral_code=referral, is_stable_pair=is_stable)
     quote = oc.get_quote(chain_id, sell_token, buy_token, sell_wei, trader, full_app_data, app_hash)
 
     buy_wei = int(quote.get("buyAmount", "0"))
@@ -46,7 +47,7 @@ def main() -> None:
     print(f"buyAmount (wei):  {buy_wei}")
     print(f"feeAmount (wei):  {fee_wei}")
     print(f"validTo:          {valid_to}")
-    print(f"Ophis base:       {oc.OPHIS_VOLUME_FEE_BPS} bp (plus capped improvement capture; trader keeps the remainder and all above the cap)")
+    print(f"Ophis base:       {oc.OPHIS_VOLUME_FEE_BPS} bp (plus capped improvement capture; hosted chains also apply CoW's upstream policy)")
 
 
 if __name__ == "__main__":

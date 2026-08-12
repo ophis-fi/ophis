@@ -62,7 +62,7 @@ def main() -> None:
     # 1-2. appData (partner fee) + quote. The 1bp stable tier is DERIVED from a verified
     # stablecoin registry (never a caller flag), so a mislabeled pair can't undercharge.
     is_stable = oc.is_stable_pair(chain_id, sell_token, buy_token)
-    full_app_data, app_hash = oc.build_app_data(referral_code=referral, is_stable_pair=is_stable)
+    full_app_data, app_hash = oc.build_app_data(chain_id, referral_code=referral, is_stable_pair=is_stable)
     sell_atomic = oc.to_atomic(amount, sell_dec)
     quote = oc.get_quote(chain_id, sell_token, buy_token, sell_atomic, wallet, full_app_data, app_hash)
     # Require the binding fields to be PRESENT — a missing field must not silently default into the

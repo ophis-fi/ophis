@@ -30,7 +30,7 @@ def main() -> None:
 
     # Stable tier is DERIVED from the verified stablecoin registry (never a caller flag).
     is_stable = oc.is_stable_pair(chain_id, sell_token, buy_token)
-    full_app_data, app_hash = oc.build_app_data(referral_code=referral, is_stable_pair=is_stable)
+    full_app_data, app_hash = oc.build_app_data(chain_id, referral_code=referral, is_stable_pair=is_stable)
     sell_atomic = oc.to_atomic(amount, sell_dec)
     quote = oc.get_quote(chain_id, sell_token, buy_token, sell_atomic, ZERO, full_app_data, app_hash)
 
@@ -42,7 +42,7 @@ def main() -> None:
     print(f"feeAmount (wei):  {int(quote.get('feeAmount', '0'))}")
     print(f"validTo:          {quote.get('validTo')}")
     fee_bps = oc.OPHIS_STABLE_VOLUME_FEE_BPS if is_stable else oc.OPHIS_VOLUME_FEE_BPS
-    print(f"Ophis base:       {fee_bps} bp (plus capped improvement capture; trader keeps the remainder and all above the cap)")
+    print(f"Ophis base:       {fee_bps} bp (plus capped improvement capture; hosted chains also apply CoW's upstream policy)")
 
 
 if __name__ == "__main__":

@@ -163,7 +163,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <div class="card"><div class="n">${fmtInt(s.distinctTraders)}</div><div class="l">Traders</div></div>
   <div class="card"><div class="n">${fmtInt(s.chainsActive)}</div><div class="l">Chains active</div></div>
 </div>
-<p class="note">MEV-protected and gasless across 13 EVM chains with Solana and Bitcoin destinations. The trader keeps the remainder after Ophis's capped improvement capture and all improvement above the cap; hosted chains also apply CoW Protocol's upstream policy. Figures are cumulative settled volume priced in USD at index time, refreshed continuously. Reproduce them from on-chain settlement: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
+<p class="note">MEV-protected and gasless across 13 EVM chains with Solana and Bitcoin destinations. On Ophis-operated chains, the trader keeps the remainder after Ophis's capped capture and all improvement above its cap. On hosted chains, the trader receives the net remainder after both Ophis's policy and CoW Protocol's separate upstream policy. Figures are cumulative settled volume priced in USD at index time, refreshed continuously. Reproduce them from on-chain settlement: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
 <div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; swap.ophis.fi</span><span>Updated ${updated}</span></div>
 </div></body></html>`;
 }

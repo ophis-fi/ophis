@@ -1,6 +1,6 @@
 ---
 name: ophis
-description: MEV-protected same-chain token swaps via Ophis (CoW Protocol intent settlement). Use when the user wants to swap one token for another ON THE SAME CHAIN with best execution, no sandwiching/front-running, and gasless signing (solvers pay gas). Ophis charges a 1 bp base plus capped reference-quote-improvement capture; the trader keeps the remainder and all improvement above the cap. Supports Base, Optimism, Unichain, Arbitrum, Polygon, Gnosis, and Ethereum mainnet. Executes on-chain via the Bankr Submit API (token approval + on-chain order authorization); the order settles in a CoW batch auction. NOT for cross-chain bridging — use a bridging skill for that.
+description: MEV-protected same-chain token swaps via Ophis (CoW Protocol intent settlement). Use when the user wants to swap one token for another ON THE SAME CHAIN with best execution, no sandwiching/front-running, and gasless signing (solvers pay gas). Ophis charges a 1 bp base plus capped reference-quote-improvement capture; hosted settlement additionally applies CoW Protocol's separate upstream policy. Supports Base, Optimism, Unichain, Arbitrum, Polygon, Gnosis, and Ethereum mainnet. Executes on-chain via the Bankr Submit API (token approval + on-chain order authorization); the order settles in a CoW batch auction. NOT for cross-chain bridging — use a bridging skill for that.
 metadata:
   {
     "clawdbot":

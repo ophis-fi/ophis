@@ -3,8 +3,8 @@
 MEV-protected same-chain ERC-20 swaps via [Ophis](https://ophis.fi) (CoW Protocol) for
 [Wayfinder](https://wayfinder.ai) agents. A swap is settled as an off-chain, EIP-712-signed
 CoW order: gasless at settlement and protected from sandwiching. Ophis charges a 1 bp base
-plus capped reference-quote-improvement capture; the trader keeps the remainder and all
-improvement above the cap. The Ophis fee policy and integrator referral ride in the order's
+plus capped reference-quote-improvement capture; CoW-hosted settlement additionally applies
+CoW Protocol's separate upstream policy. The Ophis fee policy and integrator referral ride in the order's
 `appData` where required by the settlement path.
 
 ## Files
