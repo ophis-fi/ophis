@@ -41,7 +41,9 @@ ignored_warnings_from = [
 fs_permissions = [
   { access = "read", path = "./balancer"},
   { access = "read", path = "./networks.json"},
-  { access = "read", path = "./out"}
+  { access = "read", path = "./out"},
+  # CoW Shed redeploy artifacts (DeployCowShed.s.sol / DeployCowShed.t.sol)
+  { access = "read", path = "./script/cowshed"}
 ]
 
 [fmt]
