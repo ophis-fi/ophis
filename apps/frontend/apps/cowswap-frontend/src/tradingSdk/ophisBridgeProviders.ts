@@ -1,3 +1,4 @@
+import { EXTRA_ACROSS_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
 import { avalanche, bnb, ChainInfo, ink, linea, plasma, SupportedChainId } from '@cowprotocol/cow-sdk'
 import {
   AcrossBridgeProvider,
@@ -41,11 +42,15 @@ const BUNGEE_EXTRA_NETWORKS: ChainInfo[] = [ink, linea, UNICHAIN_BRIDGE_CHAIN]
 // have entries only for these (getUnsignedBridgeCall throws on any other
 // source). Deliberately narrower than the SDK's own 5-network source claim —
 // Polygon/Optimism lack the math helper upstream and have always failed there;
-// NEAR Intents covers every corridor that overlap loses.
-const ACROSS_EXECUTABLE_SOURCE_IDS: ReadonlySet<number> = new Set<number>([
+// NEAR Intents covers every corridor that overlap loses. Ink/Linea join via the
+// flagged EXTRA_ACROSS_SOURCE_CHAIN_IDS (their SpokePool ships upstream; our
+// patch adds the math helper) — the same shared const BRIDGE_SOURCE_CHAIN_IDS
+// spreads, so the executable set and the source set cannot disagree.
+export const ACROSS_EXECUTABLE_SOURCE_IDS: ReadonlySet<number> = new Set<number>([
   SupportedChainId.MAINNET,
   SupportedChainId.ARBITRUM_ONE,
   SupportedChainId.BASE,
+  ...EXTRA_ACROSS_SOURCE_CHAIN_IDS,
 ])
 
 export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
