@@ -80,7 +80,7 @@ const FAQS = [
       <tr>
         <td><a href="https://docs.ophis.fi/ai-agents">MCP server</a> (keyless)</td>
         <td>Same sovereign model</td>
-        <td>1 bp</td>
+        <td>Same all-chain policy via CIP-75 appData</td>
       </tr>
       <tr>
         <td>Intent API and MCP calls themselves</td>
@@ -101,7 +101,9 @@ const FAQS = [
   <p>
     On $100,000 of sovereign volatile volume with 20 bps of improvement, Ophis receives $10 base
     plus $160 of improvement capture: $170 total. On a stable pair with the same improvement, the
-    stable capture is 10 bps, producing $110 total; the new 20 bps cap does not bind until improvement reaches 40 bps. Hosted-chain costs follow the flat schedule above.
+    stable capture is 10 bps, producing $110 total; the 20 bps cap does not bind until improvement
+    reaches 40 bps. Hosted chains apply the same Ophis base and improvement policy, with CoW
+    Protocol's separate upstream fees added on top.
   </p>
 
   <h2>Sources and detail</h2>
