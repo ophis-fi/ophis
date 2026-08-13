@@ -1,12 +1,21 @@
-import { avalanche, bnb, ChainInfo, ink, linea, plasma, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { avalanche, bnb, ChainInfo, getAddressKey, ink, linea, plasma, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
+import { fetchWithTimeout } from '@cowprotocol/common-utils'
 import {
   AcrossBridgeProvider,
   BungeeBridgeProvider,
   BuyTokensParams,
   GetProviderBuyTokens,
+  QuoteBridgeRequest,
 } from '@cowprotocol/sdk-bridging'
 
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
+
+// Across's own API base (keyless). The SDK's internal AcrossApi uses the same
+// host and the app CSP already allows it, so a direct GET here needs no proxy.
+const ACROSS_API_URL = 'https://app.across.to/api'
+// A stalled available-routes request must not hang the quote — it degrades to
+// "no intermediate found" like every other route-fetch failure.
+const AVAILABLE_ROUTES_TIMEOUT_MS = 10_000
 
 /**
  * sdk-bridging 4.0.2 hardcodes each provider's network list far below what the
@@ -66,6 +75,69 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
     }
 
     return super.getBuyTokens(params)
+  }
+
+  // The base class picks source intermediates by EXACT symbol match against the
+  // buy token's symbol. That misses Across's cross-asset and chain-aliased
+  // routes: buying USDG on Robinhood Chain (symbol "USDG") bridges from either
+  // USDG-MAINNET (Ethereum — a chain-alias suffix) or USDC (many chains —
+  // cross-asset), neither of which shares the symbol "USDG", so the symbol
+  // match returns nothing and the corridor dies with NO_INTERMEDIATE_TOKENS.
+  // When the symbol match is empty, fall back to Across's authoritative
+  // available-routes, which enumerates the real origin tokens that bridge to
+  // the target. Fallback-only, so every currently-working corridor is
+  // untouched. (super throws ONLY_SELL_ORDER_SUPPORTED for non-SELL, which
+  // propagates through the await.)
+  async getIntermediateTokens(request: QuoteBridgeRequest): Promise<TokenInfo[]> {
+    // Same executable-source gate as getBuyTokens: Across can only build a
+    // deposit from a chain with the SpokePool + math helper, so a non-executable
+    // source has no valid intermediate regardless of what the symbol match or
+    // the route fallback would surface. Returning [] here (not just in
+    // getBuyTokens) keeps the direct getQuote path from advancing past this to a
+    // later getUnsignedBridgeCall throw.
+    if (!ACROSS_EXECUTABLE_SOURCE_IDS.has(request.sellTokenChainId)) return []
+
+    const bySymbol = await super.getIntermediateTokens(request)
+    if (bySymbol.length > 0) return bySymbol
+
+    return this.getIntermediateTokensFromRoutes(request)
+  }
+
+  private async getIntermediateTokensFromRoutes(request: QuoteBridgeRequest): Promise<TokenInfo[]> {
+    const { sellTokenChainId, buyTokenChainId, buyTokenAddress } = request
+    const params = new URLSearchParams({
+      originChainId: String(sellTokenChainId),
+      destinationChainId: String(buyTokenChainId),
+      destinationToken: buyTokenAddress,
+    })
+
+    // Whole body guarded: any failure — network, a timeout, a malformed/garbage
+    // routes response, a non-string originToken, the token-list fetch — degrades
+    // to "no intermediate found" rather than crashing the quote pipeline.
+    try {
+      const response = await fetchWithTimeout(`${ACROSS_API_URL}/available-routes?${params.toString()}`, {
+        timeout: AVAILABLE_ROUTES_TIMEOUT_MS,
+      })
+      if (!response.ok) return []
+      const routes = (await response.json()) as unknown
+      if (!Array.isArray(routes) || routes.length === 0) return []
+
+      // Normalize both sides with the repo's canonical address key (not a raw
+      // toLowerCase) so matching tracks the SDK's address semantics.
+      const originKeys = new Set(
+        routes
+          .map((route) => (typeof route?.originToken === 'string' ? getAddressKey(route.originToken) : undefined))
+          .filter((key): key is ReturnType<typeof getAddressKey> => Boolean(key)),
+      )
+      if (originKeys.size === 0) return []
+
+      // Return the SDK's own TokenInfo objects (with decimals/symbol/logo) for
+      // the route origins, so the downstream quote path gets the shape it wants.
+      const tokens = await this.api.getSupportedTokens()
+      return tokens.filter((token) => token.chainId === sellTokenChainId && originKeys.has(getAddressKey(token.address)))
+    } catch {
+      return []
+    }
   }
 }
 
