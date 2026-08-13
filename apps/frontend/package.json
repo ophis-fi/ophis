@@ -163,7 +163,8 @@
     "prepare": "husky",
     "analyze-build": "cross-env ANALYZE_BUNDLE=true ANALYZE_BUNDLE_TEMPLATE=sunburst pnpm run build",
     "install:sdk-preview": "node tools/scripts/install-sdk-preview.js && pnpm install",
-    "install:ci": "pnpm run install:sdk-preview"
+    "install:ci": "pnpm run install:sdk-preview",
+    "across-source-preflight": "node scripts/across-source-preflight.mjs"
   },
   "browser": {
     "crypto": false

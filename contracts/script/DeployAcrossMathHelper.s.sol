@@ -80,6 +80,17 @@ contract DeployAcrossMathHelper is Script {
             return AcrossMathHelper(predicted);
         }
 
+        // Refuse to broadcast off the chains that register this helper. The
+        // CREATE2 proxy exists on nearly every chain, so without this a stale
+        // --rpc-url would deploy on the wrong network while the registered chain
+        // stays empty. This set must equal the chains the frontend sdk-bridging
+        // patch registers in ACROSS_MATH_CONTRACT_ADDRESSES (Ink/Linea/Unichain/
+        // Robinhood) - add a chain here only alongside registering it there.
+        require(
+            block.chainid == 57073 || block.chainid == 59144 || block.chainid == 130 || block.chainid == 4663,
+            "DeployAcrossMathHelper: confirmed deploy only on Ink/Linea/Unichain/Robinhood - check --rpc-url"
+        );
+
         vm.startBroadcast();
         helper = new AcrossMathHelper{salt: SALT}();
         vm.stopBroadcast();
