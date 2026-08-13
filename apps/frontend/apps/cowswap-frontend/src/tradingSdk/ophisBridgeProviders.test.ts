@@ -4,8 +4,14 @@ import {
   BRIDGE_SOURCE_CHAIN_IDS,
   EXTRA_ACROSS_SOURCE_CHAIN_IDS,
 } from '@cowprotocol/common-const'
-import { isEvmChainInfo, SupportedChainId } from '@cowprotocol/cow-sdk'
-import { AcrossBridgeProvider, BungeeBridgeProvider, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
+import { isEvmChainInfo, OrderKind, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
+import {
+  AcrossApi,
+  AcrossBridgeProvider,
+  BungeeBridgeProvider,
+  NearIntentsBridgeProvider,
+  QuoteBridgeRequest,
+} from '@cowprotocol/sdk-bridging'
 
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
 import {
@@ -68,6 +74,95 @@ describe('ophisBridgeProviders', () => {
 
         expect(result).toBe(upstreamResult)
         expect(upstreamSpy).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    // Typed seam onto the protected AcrossApi so the route fallback's
+    // getSupportedTokens() call can be stubbed without an `as any`.
+    class TestableAcrossProvider extends OphisAcrossBridgeProvider {
+      get testApi(): AcrossApi {
+        return this.api
+      }
+    }
+
+    describe('getIntermediateTokens route-based fallback', () => {
+      // Typed fixtures so the test tracks the SDK contract the override depends on.
+      const USDG_4663 = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168'
+      const acrossRequest = (overrides: Partial<QuoteBridgeRequest> = {}): QuoteBridgeRequest =>
+        ({
+          kind: OrderKind.SELL,
+          sellTokenChainId: SupportedChainId.MAINNET,
+          buyTokenChainId: 4663,
+          buyTokenAddress: USDG_4663,
+          amount: 1_000_000n,
+          ...overrides,
+        }) as unknown as QuoteBridgeRequest
+
+      const USDC: TokenInfo = { chainId: 1, address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6 }
+      const USDG_MAINNET: TokenInfo = { chainId: 1, address: '0xe343167631d89B6Ffc58B88d6b7fB0228795491D', symbol: 'USDG-MAINNET', decimals: 6 }
+      const BASE_USDC: TokenInfo = { chainId: 8453, address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6 }
+
+      const mockRoutes = (routes: unknown): jest.SpyInstance =>
+        jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => routes } as Response)
+
+      afterEach(() => jest.restoreAllMocks())
+
+      it('returns [] for a non-executable source without hitting super or the API', async () => {
+        const superSpy = jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens')
+        const fetchSpy = jest.spyOn(global, 'fetch')
+
+        const result = await new OphisAcrossBridgeProvider().getIntermediateTokens(
+          acrossRequest({ sellTokenChainId: SupportedChainId.POLYGON }),
+        )
+
+        expect(result).toEqual([])
+        expect(superSpy).not.toHaveBeenCalled()
+        expect(fetchSpy).not.toHaveBeenCalled()
+      })
+
+      it('returns the symbol match untouched when it is non-empty (no route fetch)', async () => {
+        const symbolMatch: TokenInfo[] = [{ chainId: 1, address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', decimals: 18 }]
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue(symbolMatch)
+        const fetchSpy = jest.spyOn(global, 'fetch')
+
+        const result = await new OphisAcrossBridgeProvider().getIntermediateTokens(acrossRequest())
+
+        expect(result).toBe(symbolMatch)
+        expect(fetchSpy).not.toHaveBeenCalled()
+      })
+
+      it('falls back to Across available-routes when the symbol match is empty (the USDG corridor)', async () => {
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
+        mockRoutes([
+          { originToken: USDC.address }, // cross-asset USDC -> USDG
+          { originToken: USDG_MAINNET.address }, // chain-aliased USDG-MAINNET -> USDG
+        ])
+        const provider = new TestableAcrossProvider()
+        jest.spyOn(provider.testApi, 'getSupportedTokens').mockResolvedValue([USDC, USDG_MAINNET, BASE_USDC])
+
+        const result = await provider.getIntermediateTokens(acrossRequest())
+
+        // Both mainnet route origins returned; the Base USDC (wrong chain) excluded.
+        expect(result).toEqual([USDC, USDG_MAINNET])
+      })
+
+      it('returns [] when the route fetch fails (no crash, corridor just unavailable)', async () => {
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
+        jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network'))
+
+        const result = await new OphisAcrossBridgeProvider().getIntermediateTokens(acrossRequest())
+
+        expect(result).toEqual([])
+      })
+
+      it('degrades to [] on a malformed routes response instead of crashing the quote', async () => {
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
+        // null entries + a non-string originToken would throw if unguarded
+        mockRoutes([null, { originToken: 12345 }, { notOrigin: 'x' }])
+
+        const result = await new OphisAcrossBridgeProvider().getIntermediateTokens(acrossRequest())
+
+        expect(result).toEqual([])
       })
     })
   })
