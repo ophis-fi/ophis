@@ -1,8 +1,20 @@
 diff --git a/dist/index.js b/dist/index.js
-index 9fcba626054ad9f635643504d18de1afeddf2401..0e97bed1f842696848fd2678f9ec94bc59c9f5b8 100644
+index 9fcba626054ad9f635643504d18de1afeddf2401..e6ff56bc924f70f18d42af420c2f27243e27988d 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -1598,12 +1598,12 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+@@ -1585,7 +1585,10 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
+   [import_sdk_config4.SupportedChainId.GNOSIS_CHAIN]: void 0,
+   [import_sdk_config4.SupportedChainId.AVALANCHE]: void 0,
+   [import_sdk_config4.AdditionalTargetChainId.BITCOIN]: void 0,
+-  [import_sdk_config4.AdditionalTargetChainId.SOLANA]: void 0
++  [import_sdk_config4.AdditionalTargetChainId.SOLANA]: void 0,
++  // Ophis sovereign chains (not SupportedChainId members): verified SpokePools.
++  130: "0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64",
++  4663: "0xD29C85F15DF544bA632C9E25829fd29d767d7978",
+ };
+ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+   [import_sdk_config4.SupportedChainId.MAINNET]: "0xf2ae6728b6f146556977Af0A68bFbf5bADA22863",
+@@ -1598,16 +1601,19 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [import_sdk_config4.SupportedChainId.POLYGON]: void 0,
    [import_sdk_config4.SupportedChainId.AVALANCHE]: void 0,
    [import_sdk_config4.SupportedChainId.BNB]: void 0,
@@ -19,11 +31,31 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..0e97bed1f842696848fd2678f9ec94bc
    // TODO: confirm
    [import_sdk_config4.AdditionalTargetChainId.OPTIMISM]: void 0,
    [import_sdk_config4.AdditionalTargetChainId.BITCOIN]: void 0,
+-  [import_sdk_config4.AdditionalTargetChainId.SOLANA]: void 0
++  [import_sdk_config4.AdditionalTargetChainId.SOLANA]: void 0,
++  // Ophis sovereign chains: AcrossMathHelper (CREATE2; contracts/script/DeployAcrossMathHelper.s.sol).
++  130: "0xEdE97D044d4C8aAA682968bee10284521B9f311a",
++  4663: "0xEdE97D044d4C8aAA682968bee10284521B9f311a",
+ };
+ 
+ // src/providers/across/util.ts
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..3adfd9a23dd461967e4d9dc583b04403a65f23f4 100644
+index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..0dbd4615f58f7f9dca44a3349bf10487b019b950 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
-@@ -1541,12 +1541,12 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+@@ -1528,7 +1528,10 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
+   [SupportedChainId2.GNOSIS_CHAIN]: void 0,
+   [SupportedChainId2.AVALANCHE]: void 0,
+   [AdditionalTargetChainId.BITCOIN]: void 0,
+-  [AdditionalTargetChainId.SOLANA]: void 0
++  [AdditionalTargetChainId.SOLANA]: void 0,
++  // Ophis sovereign chains (not SupportedChainId members): verified SpokePools.
++  130: "0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64",
++  4663: "0xD29C85F15DF544bA632C9E25829fd29d767d7978",
+ };
+ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+   [SupportedChainId2.MAINNET]: "0xf2ae6728b6f146556977Af0A68bFbf5bADA22863",
+@@ -1541,16 +1544,19 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [SupportedChainId2.POLYGON]: void 0,
    [SupportedChainId2.AVALANCHE]: void 0,
    [SupportedChainId2.BNB]: void 0,
@@ -40,3 +72,11 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..3adfd9a23dd461967e4d9dc583b04403
    // TODO: confirm
    [AdditionalTargetChainId.OPTIMISM]: void 0,
    [AdditionalTargetChainId.BITCOIN]: void 0,
+-  [AdditionalTargetChainId.SOLANA]: void 0
++  [AdditionalTargetChainId.SOLANA]: void 0,
++  // Ophis sovereign chains: AcrossMathHelper (CREATE2; contracts/script/DeployAcrossMathHelper.s.sol).
++  130: "0xEdE97D044d4C8aAA682968bee10284521B9f311a",
++  4663: "0xEdE97D044d4C8aAA682968bee10284521B9f311a",
+ };
+ 
+ // src/providers/across/util.ts

@@ -1,6 +1,8 @@
 import {
   ACROSS_INK_LINEA_SOURCE_ENABLED,
+  ACROSS_UNI_ROBINHOOD_SOURCE_ENABLED,
   acrossInkLineaSourceIds,
+  acrossUniRobinhoodSourceIds,
   BRIDGE_SOURCE_CHAIN_IDS,
   EXTRA_ACROSS_SOURCE_CHAIN_IDS,
 } from '@cowprotocol/common-const'
@@ -230,25 +232,37 @@ describe('ophisBridgeProviders', () => {
       expect(new Set(BRIDGE_SOURCE_CHAIN_IDS)).toEqual(expected)
     })
 
-    it('keeps Ink and Linea OFF by default (flag unset in the build)', () => {
+    it('keeps every flagged source OFF when the env flags are unset (jest builds)', () => {
       expect(ACROSS_INK_LINEA_SOURCE_ENABLED).toBe(false)
+      expect(ACROSS_UNI_ROBINHOOD_SOURCE_ENABLED).toBe(false)
       expect(EXTRA_ACROSS_SOURCE_CHAIN_IDS).toEqual([])
-      expect(BRIDGE_SOURCE_CHAIN_IDS.has(57073)).toBe(false)
-      expect(BRIDGE_SOURCE_CHAIN_IDS.has(59144)).toBe(false)
       // The executable set and the source set derive from the same const, so
-      // they agree on Ink/Linea in every flag state.
-      expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(57073)).toBe(false)
-      expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(59144)).toBe(false)
+      // they agree on every flagged chain in every flag state.
+      for (const id of [57073, 59144, 130, 4663]) {
+        expect(BRIDGE_SOURCE_CHAIN_IDS.has(id)).toBe(false)
+        expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(id)).toBe(false)
+      }
     })
 
-    it('adds exactly Ink (57073) and Linea (59144) when the flag gate is enabled', () => {
-      // Both source sets spread EXTRA_ACROSS_SOURCE_CHAIN_IDS, which is
-      // acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED). Proving the gate
-      // for enabled=true proves what flipping the flag would add to both sets,
-      // deterministically and without re-evaluating the module under a mutated env.
+    it('adds exactly Ink (57073) and Linea (59144) when the Ink/Linea gate is enabled', () => {
+      // Both source sets spread EXTRA_ACROSS_SOURCE_CHAIN_IDS, which is the
+      // concat of the two pure gates. Proving each gate for enabled=true proves
+      // what flipping its flag would add to both sets, deterministically and
+      // without re-evaluating the module under a mutated env.
       expect([...acrossInkLineaSourceIds(true)].sort((a, b) => a - b)).toEqual([57073, 59144])
       expect(acrossInkLineaSourceIds(false)).toEqual([])
-      expect(EXTRA_ACROSS_SOURCE_CHAIN_IDS).toEqual(acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED))
+    })
+
+    it('adds exactly Unichain (130) and Robinhood Chain (4663) when the sovereign gate is enabled', () => {
+      expect([...acrossUniRobinhoodSourceIds(true)].sort((a, b) => a - b)).toEqual([130, 4663])
+      expect(acrossUniRobinhoodSourceIds(false)).toEqual([])
+    })
+
+    it('EXTRA_ACROSS_SOURCE_CHAIN_IDS is exactly the concat of the two gates', () => {
+      expect(EXTRA_ACROSS_SOURCE_CHAIN_IDS).toEqual([
+        ...acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED),
+        ...acrossUniRobinhoodSourceIds(ACROSS_UNI_ROBINHOOD_SOURCE_ENABLED),
+      ])
     })
   })
 })

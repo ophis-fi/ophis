@@ -104,7 +104,7 @@ overrides:
 
 patchedDependencies:
   '@cowprotocol/sdk-bridging@4.0.2':
-    hash: 13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45
+    hash: 6997e52b6645b9bffc087f974c25c64269cf32020d04b5b3175c25a9453e0b9e
     path: patches/@cowprotocol__sdk-bridging@4.0.2.patch
   '@cowprotocol/sdk-config@2.0.0':
     hash: ac25da38b76409daf7426b66ef468aea2de15fb9ced88cbda364376a16723a92
@@ -498,7 +498,7 @@ importers:
         version: link:../../libs/permit-utils
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=6997e52b6645b9bffc087f974c25c64269cf32020d04b5b3175c25a9453e0b9e)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-contracts-ts':
         specifier: 3.0.1
         version: 3.0.1
@@ -890,7 +890,7 @@ importers:
         version: link:../../libs/hook-dapp-lib
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=6997e52b6645b9bffc087f974c25c64269cf32020d04b5b3175c25a9453e0b9e)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-contracts-ts':
         specifier: 3.0.1
         version: 3.0.1
@@ -1574,7 +1574,7 @@ importers:
         version: 9.0.2(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=6997e52b6645b9bffc087f974c25c64269cf32020d04b5b3175c25a9453e0b9e)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/types':
         specifier: workspace:*
         version: link:../types
@@ -1824,7 +1824,7 @@ importers:
         version: link:../currency
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=6997e52b6645b9bffc087f974c25c64269cf32020d04b5b3175c25a9453e0b9e)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       eventemitter3:
         specifier: ^4.0.0
         version: 4.0.7
@@ -19069,7 +19069,7 @@ snapshots:
       json-stringify-deterministic: 1.0.12
       multiformats: 9.9.0
 
-  '@cowprotocol/sdk-bridging@4.0.2(patch_hash=13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+  '@cowprotocol/sdk-bridging@4.0.2(patch_hash=6997e52b6645b9bffc087f974c25c64269cf32020d04b5b3175c25a9453e0b9e)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
     dependencies:
       '@cowprotocol/sdk-app-data': 5.0.0(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-common': 0.10.2
