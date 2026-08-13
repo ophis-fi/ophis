@@ -165,12 +165,20 @@ jobs:
           # baked into amountOut — set the secret to remove it. Empty -> keyless
           # (bridgingSdk.ts maps empty to undefined so no blank Bearer header).
           REACT_APP_NEAR_API_KEY: ${{ secrets.REACT_APP_NEAR_API_KEY }}
-          # Ink (57073) + Linea (59144) as Across bridge SOURCES. Flip condition
-          # (met 2026-08-13): the AcrossMathHelper is deployed and functionally
-          # verified at 0xEdE97D044d4C8aAA682968bee10284521B9f311a on BOTH
-          # chains (contracts/script/DeployAcrossMathHelper.s.sol). Unset/empty
-          # -> sources stay off (bridgeSourceChains.const.ts).
-          REACT_APP_ACROSS_INK_LINEA_SOURCE: 'true'
+          # Ink (57073) + Linea (59144) as Across bridge SOURCES — DISABLED
+          # 2026-08-13 (incident). The Across deposit post-hook DELEGATECALLs the
+          # weiroll VM 0x9585c3062Df1C247d5E373Cfca9167F7dC2b5963, which has NO
+          # CODE on Ink/Linea/Unichain (present only on mainnet/arb/base). A
+          # delegatecall to a codeless target returns success with empty data and
+          # allowFailure:false cannot fire, so a bridge FROM these chains would
+          # settle the swap and silently skip the deposit — stranding the
+          # intermediate token in the user's CoW Shed. The AcrossMathHelper +
+          # CoW Shed deploys are necessary but NOT sufficient: the weiroll VM is
+          # the missing third chain-local dependency. Do NOT re-enable until the
+          # weiroll VM is deployed on each source chain AND a code-presence
+          # preflight covers SpokePool + CoW Shed + weiroll VM + math helper.
+          # Unset -> sources stay off (bridgeSourceChains.const.ts).
+          # REACT_APP_ACROSS_INK_LINEA_SOURCE: 'true'
           # Cloudflare Turnstile site key for the /contact form widget. PUBLIC
           # value (rendered to the browser as a `sitekey` attr) — safe to
           # inline in the bundle. The matching SECRET is NOT a CI secret: it
