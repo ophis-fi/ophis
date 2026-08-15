@@ -87,13 +87,15 @@ ALLOWED = {
     "network": {"architecture", "evm", "failsafe"},
     "network.evm": {"chainId", "integrity"},
     "integrity": {"enforceHighestBlock", "enforceNonNullTaggedBlocks"},
-    "rule": {"matchMethod", "timeout", "consensus", "retry"},
+    "rule": {"matchMethod", "timeout", "consensus", "retry", "hedge"},
     "consensus": {"agreementThreshold", "disputeBehavior", "lowParticipantsBehavior", "maxParticipants", "punishMisbehavior"},
     "punishMisbehavior": {"disputeThreshold", "disputeWindow", "sitOutPenalty"},
     "retry": {"backoffFactor", "backoffMaxDelay", "delay", "jitter", "maxAttempts"},
     "timeout": {"duration"},
+    "hedge": {"delay", "maxCount"},
     "upstream": {"endpoint", "failsafe", "id"},
-    "upstream_rule": {"matchMethod", "timeout", "retry"},
+    "upstream_rule": {"matchMethod", "timeout", "retry", "circuitBreaker"},
+    "circuitBreaker": {"failureThresholdCount", "failureThresholdCapacity", "halfOpenAfter", "successThresholdCount", "successThresholdCapacity"},
 }
 
 _SEGMENT_OK = re.compile(r"^[A-Za-z0-9_*]*$")
@@ -172,6 +174,10 @@ def _check_rule_subtree(r, path, errs, level="rule"):
         _check_keys(r["timeout"], "timeout", f"{path}.timeout", errs)
     if isinstance(r.get("retry"), dict):
         _check_keys(r["retry"], "retry", f"{path}.retry", errs)
+    if isinstance(r.get("hedge"), dict):
+        _check_keys(r["hedge"], "hedge", f"{path}.hedge", errs)
+    if isinstance(r.get("circuitBreaker"), dict):
+        _check_keys(r["circuitBreaker"], "circuitBreaker", f"{path}.circuitBreaker", errs)
     if isinstance(r.get("consensus"), dict):
         _check_keys(r["consensus"], "consensus", f"{path}.consensus", errs)
         if isinstance(r["consensus"].get("punishMisbehavior"), dict):
@@ -179,6 +185,130 @@ def _check_rule_subtree(r, path, errs, level="rule"):
         why, ok = _consensus_failclosed(r["consensus"])
         if not ok:
             errs.append(f"{path}.consensus is not fail-closed: {why}")
+
+
+def _seconds(v):
+    """Parse an eRPC duration ('12s', '200ms', '1.5s') to float seconds; None if unparseable."""
+    m = re.fullmatch(r"\s*([0-9.]+)\s*(ms|s|m)\s*", str(v))
+    if not m:
+        return None
+    n = float(m.group(1))
+    return n / 1000 if m.group(2) == "ms" else n * 60 if m.group(2) == "m" else n
+
+
+def _serial_budget_seconds(rule):
+    """Worst-case time ONE upstream can hold a request under this rule:
+    maxAttempts x timeout + a backoffMaxDelay-bounded gap between attempts."""
+    t = _seconds(((rule.get("timeout") or {}).get("duration")))
+    if t is None:
+        return None
+    retry = rule.get("retry") or {}
+    attempts = int(retry.get("maxAttempts") or 1)
+    gap = _seconds(retry.get("backoffMaxDelay") or retry.get("delay") or "0s") or 0.0
+    return attempts * t + (attempts - 1) * gap
+
+
+def _resolved_network_timeout(pattern_alt, net_rules):
+    """The network timeout that ACTUALLY bounds requests for methods matching one
+    upstream-rule alternative: build a representative concrete method from the
+    alternative ('debug_*' -> 'debug_x'), then take the FIRST network rule that
+    matches it, mirroring eRPC's first-match dispatch. Comparing pinned budgets
+    against the largest timeout anywhere in the policy is a false-negative
+    factory: a pinned eth_call rule with a 30s budget would pass while eth_call
+    really lives under the 12s consensus rule."""
+    rep = pattern_alt.replace("*", "x")
+    for r in net_rules:
+        if _method_matches(rep, r.get("matchMethod")):
+            return _seconds((r.get("timeout") or {}).get("duration"))
+    return None
+
+
+def _check_upstream_budgets(ups, net_rules, errs):
+    """THE 2026-08-14 INVARIANT: a single wedged upstream must never be able to
+    exhaust the network-level failsafe budget before failover reaches a healthy
+    lane. On 08-14 the routing-priority-1 lane became a silent blackhole and its
+    8s x 3-attempt budget (~24.5s) ate the whole 12s network budget — every
+    tip-following read died ErrFailsafeTimeoutExceeded with lastUpstream=nil for
+    23 hours (3rd incident of this class: 07-23, 08-09, 08-14).
+
+    Enforced: for every upstream rule that can serve arbitrary methods (matchMethod
+    absent or containing a bare '*'), serial budget < the SMALLEST network-rule
+    timeout. Method-pinned upstream rules (e.g. a debug_* rule on the only lane
+    serving those methods) are checked per alternative against the network rule
+    that actually dispatches that method — the tightest applicable deadline —
+    and may at most EQUAL it (a sole-server lane has no failover to leave room
+    for)."""
+    net_timeouts = [_seconds((r.get("timeout") or {}).get("duration")) for r in net_rules]
+    net_timeouts = [t for t in net_timeouts if t is not None]
+    if not net_timeouts:
+        errs.append("no network-rule timeouts found — cannot enforce the upstream serial-budget invariant")
+        return
+    strict_bound = min(net_timeouts)
+    for u in ups:
+        for j, r in enumerate(u.get("failsafe") or []):
+            if not isinstance(r, dict):
+                continue
+            budget = _serial_budget_seconds(r)
+            if budget is None:
+                errs.append(f"upstream[{u.get('id')}].failsafe[{j}]: unparseable timeout — cannot verify the serial-budget invariant")
+                continue
+            mm = r.get("matchMethod")
+            generic = mm is None or any(a.strip() == "*" for a in str(mm).split("|"))
+            if generic:
+                if budget >= strict_bound:
+                    errs.append(
+                        f"upstream[{u.get('id')}].failsafe[{j}]: worst-case serial budget {budget:.1f}s >= smallest "
+                        f"network timeout {strict_bound:.1f}s — a single wedged lane can starve every request before "
+                        f"failover (the 2026-08-14 outage); lower timeout/maxAttempts so attempts x timeout + backoff < {strict_bound:.1f}s"
+                    )
+                continue
+            for alt in str(mm).split("|"):
+                alt = alt.strip()
+                if not alt:
+                    continue
+                bound = _resolved_network_timeout(alt, net_rules)
+                if bound is None:
+                    errs.append(
+                        f"upstream[{u.get('id')}].failsafe[{j}]: no network rule dispatches methods matching {alt!r} — "
+                        f"cannot verify its serial budget against a real deadline"
+                    )
+                elif budget > bound:
+                    errs.append(
+                        f"upstream[{u.get('id')}].failsafe[{j}]: serial budget {budget:.1f}s for {alt!r} exceeds the "
+                        f"{bound:.1f}s network timeout of the rule that actually dispatches it — it can never complete "
+                        f"within its real deadline"
+                    )
+
+
+def _check_nonconsensus_hedges(net_rules, errs):
+    """The hedge is the mitigation PROVEN against a silently hanging lane (A/B on
+    erpc 0.0.64: 12/12 x ~12s failures without it, 18/18 OK at ~1.1s with it) —
+    the breaker alone cannot cover hangs because hedge-cancelled attempts may
+    record no outcome. EVERY non-consensus rule routes sequentially and is
+    exposed, so every one of them must hedge — checking only "a rule that
+    matches eth_blockNumber" would let a method-specific rule inserted above the
+    catch-all satisfy the guard while the real catch-all (still serving
+    eth_getBlockByNumber and everything else) silently loses its hedge.
+    Consensus rules are exempt: they fan out to all lanes in parallel and
+    short-circuit on quorum. A bare-wildcard default rule must also EXIST, so no
+    method falls off the end of the failsafe list."""
+    if not any(r.get("matchMethod") is None or any(a.strip() == "*" for a in str(r.get("matchMethod")).split("|"))
+               for r in net_rules):
+        errs.append("no bare-wildcard catch-all network rule exists — methods outside the listed rules have no failsafe home")
+    for i, r in enumerate(net_rules):
+        if isinstance(r.get("consensus"), dict):
+            continue
+        path = f"network failsafe[{i}] ({r.get('matchMethod') or '*'!r})"
+        hedge = r.get("hedge")
+        if not isinstance(hedge, dict):
+            errs.append(f"{path}: non-consensus rule has no hedge — a silently hanging priority-1 lane would starve these methods (2026-08-14)")
+            continue
+        d = _seconds(hedge.get("delay"))
+        if d is None or d > 2.0:
+            errs.append(f"{path}: hedge delay {hedge.get('delay')!r} must be a duration <= 2s to mask a hanging lane within block time")
+        mc = hedge.get("maxCount")
+        if not isinstance(mc, int) or isinstance(mc, bool) or mc < 1:
+            errs.append(f"{path}: hedge maxCount {mc!r} must be an integer >= 1 — a zero/absent count certifies a hedge that never fires")
 
 
 def validate(cfg):
@@ -219,6 +349,8 @@ def validate(cfg):
             rules = [r for r in (net.get("failsafe") or []) if isinstance(r, dict)]
             for i, r in enumerate(rules):
                 _check_rule_subtree(r, f"network[{CHAIN_ID}].failsafe[{i}]", errs)
+            _check_upstream_budgets(ups, rules, errs)
+            _check_nonconsensus_hedges(rules, errs)
             # every protected method's FIRST matchMethod-matching rule must be a
             # fail-closed consensus rule (matchFinality is rejected by the schema
             # lock, so first-match is purely by method order).

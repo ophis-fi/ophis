@@ -54,6 +54,9 @@ projects:
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+            hedge:
+              delay: 1s
+              maxCount: 1
     upstreamDefaults:
       evm:
         statePollerInterval: 1s
@@ -62,15 +65,31 @@ projects:
       - id: ophis-self-rbh
         endpoint: http://ophis-rbh-node:8547
         failsafe:
-          - matchMethod: "*"
+          - matchMethod: "debug_*|trace_*"
             timeout:
               duration: 30s
             retry:
-              maxAttempts: 3
+              maxAttempts: 1
+          - matchMethod: "eth_getLogs"
+            timeout:
+              duration: 30s
+            retry:
+              maxAttempts: 1
+          - matchMethod: "*"
+            timeout:
+              duration: 4s
+            retry:
+              maxAttempts: 2
               delay: 200ms
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+            circuitBreaker:
+              failureThresholdCount: 12
+              failureThresholdCapacity: 24
+              halfOpenAfter: 30s
+              successThresholdCount: 2
+              successThresholdCapacity: 4
       - id: robinhood-official
         endpoint: https://rpc.mainnet.chain.robinhood.com
         ignoreMethods:
@@ -78,13 +97,19 @@ projects:
         failsafe:
           - matchMethod: "*"
             timeout:
-              duration: 12s
+              duration: 4s
             retry:
-              maxAttempts: 3
+              maxAttempts: 2
               delay: 200ms
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+            circuitBreaker:
+              failureThresholdCount: 12
+              failureThresholdCapacity: 24
+              halfOpenAfter: 30s
+              successThresholdCount: 2
+              successThresholdCapacity: 4
 """.strip()
 
 
