@@ -34,6 +34,38 @@ groups:
           summary: "OP driver scrape failing for >5m"
           description: "Prometheus cannot reach driver:80/metrics. Solver competition has stopped. Check `docker compose ps driver`."
 
+      # ── The 2026-08-14 blind spot ───────────────────────────────────────────
+      # OphisOpDriverDown above keys on the SCRAPE, and /metrics kept answering
+      # for the whole 23h outage while /healthz returned 503 — so `up` never
+      # dipped and a total loss of OP solving paged nothing above `warning`.
+      # A driver that cannot observe a new block is down in every sense that
+      # matters, whether or not its metrics port answers. OP blocks are 2s, so
+      # an unchanged head across a 10m window is unambiguous.
+      # Replay-verified 2026-08-15 (systematic mutation test): FIRES at the
+      # incident timestamp (head frozen at 155567994, changes()==0) and is EMPTY
+      # at a known-healthy control 3 days earlier.
+      - alert: OphisOpDriverBlockStreamStalled
+        expr: changes(driver_last_block_number[10m]) == 0
+        for: 5m
+        labels:
+          severity: critical
+          chain: optimism
+        annotations:
+          summary: "OP driver has not observed a new block in >10m"
+          description: |
+            driver_last_block_number is frozen at {{ $value }}-changes over 10m,
+            i.e. the driver's block_stream cannot advance. Solving is stopped even
+            though the container is up and scrapeable.
+
+            Check the driver's own verdict first (it names the fault):
+              curl -s localhost:8103/healthz
+            "latest block was observed Ns ago" means the read path is broken, not
+            the driver. Then test the proxy directly:
+              curl -s -X POST localhost:4001/main/evm/10 -H content-type:application/json \
+                -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+            ErrFailsafeTimeoutExceeded there = an upstream is eating the network
+            budget; see OphisOpErpcNetworkFailsafeTimeouts.
+
       - alert: OphisOpOrderbookDown
         expr: up{job="orderbook"} == 0
         for: 5m
@@ -353,7 +385,7 @@ groups:
             eRPC is failing consensus because fewer than 2 of 3 upstreams respond
             within the retry budget for `{{ $labels.category }}` requests. Sustained
             elevation indicates one or more OP upstream(s) (publicnode / zan /
-            ophis-self) are slow or unavailable.
+            validationcloud) are slow or unavailable.
 
             ⚠️ 2026-08-09 lesson: this alert only trips at >5/s, which assumes
             steady driver/orderbook polling. A LOW-TRAFFIC stack with one live
@@ -394,9 +426,8 @@ groups:
             On OP, expect occasional disputes on tip queries (PR #71 trade-off).
             Sustained elevation = investigate which upstream is drifting:
               cast block-number --rpc-url https://optimism-rpc.publicnode.com
-            For ZAN, build the URL from ZAN_API_KEY without pasting it into
-            shared terminals or logs. Check the owned node at
-            http://100.90.108.54:8545 from inside the rpc-proxy network.
+            For ZAN and Validation Cloud, build each URL from its key in .env
+            without pasting the key into shared terminals or logs.
             and compare. Provider > 5 blocks behind the median should be
             sit-out-penalized by eRPC's punishMisbehavior — verify.
 
@@ -481,7 +512,7 @@ groups:
         # Pin alerts to admitted voters. Prometheus retains retired-upstream
         # series after a hot-swap; without this allowlist the removed lane can
         # page again from historical samples even though eRPC no longer uses it.
-        expr: erpc_upstream_block_head_lag{network="evm:10",upstream=~"publicnode-op|zan-op|ophis-self-op"} > 5
+        expr: erpc_upstream_block_head_lag{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"} > 5
         for: 15m
         labels:
           severity: warning
@@ -496,16 +527,55 @@ groups:
             stale state, gets disputed, eventually gets cordoned by
             punishMisbehavior.
 
-            For ophis-self-op: SSH check op-node + op-reth sync.
-              ssh -p 24028 root@46.255.204.207 \
-                'curl -s -H content-type:application/json \
-                  -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"id\":1}" \
-                  http://localhost:8545'
-            Expected `false` for healthy. If `{result: {...}}`, op-node
-            is still bootstrapping.
+            All three lanes are now third-party providers; a lag here is a
+            provider-side regression. Compare heads per lane, then consider a
+            hot-swap if it is sustained > 1h.
 
-            For publicnode-op / zan-op: provider-side regression.
-            Consider hot-swap if sustained > 1h.
+            ⚠️ A lane that is DEAD rather than lagging is the more dangerous
+            case and this alert is not the one that catches it: on 2026-08-14 the
+            retired self-hosted lane went away entirely and every tip-following
+            read failed with ErrFailsafeTimeoutExceeded for 23h. The alert that
+            binds that failure is OphisOpErpcNetworkFailsafeTimeouts below —
+            a dead upstream at routing priority 1 can outlast the 12s network
+            budget before failover, so watch network-level timeouts, not just lag.
+
+      # ── Network-level budget exhaustion (2026-08-14 incident) ───────────────
+      # WHY THIS EXISTS: every other eRPC alert here keys off CONSENSUS or off a
+      # single upstream's error counters. The 2026-08-14 failure produced neither.
+      # The owned-node lane went away completely; eRPC held it at routing priority
+      # 1, and its per-upstream budget (8s timeout x 3 attempts) is larger than the
+      # 12s network-level failsafe — so requests died at the NETWORK layer with
+      # lastUpstream=nil before any upstream counter was attributed and before
+      # consensus was ever reached. Consensus metrics stayed clean while ~20% of
+      # all traffic (every tip-following read) failed for 23 hours.
+      #
+      # This alert watches the one counter that did move. It binds any cause of
+      # network-budget exhaustion, not just a dead lane.
+      # Replay-verified 2026-08-15: FIRES at the incident timestamp (0.316/s) and
+      # is EMPTY at a known-healthy control 3 days earlier.
+      - alert: OphisOpErpcNetworkFailsafeTimeouts
+        expr: |
+          sum(rate(erpc_network_failed_request_total{network="evm:10",error="ErrFailsafeTimeoutExceeded"}[10m])) > 0.02
+        for: 10m
+        labels:
+          severity: critical
+          chain: optimism
+        annotations:
+          summary: "OP eRPC network-level failsafe timeouts sustained ({{ $value | printf \"%.2f\" }}/s)"
+          description: |
+            Requests are exhausting the 12s network-level failsafe budget before
+            any upstream returns. At this layer the failure is NOT attributed to an
+            upstream, so per-upstream alerts stay silent — check routing priority
+            and per-upstream health directly:
+              curl -s localhost:9091/api/v1/query --data-urlencode \
+                'query=erpc_upstream_block_head_lag'
+              curl -s localhost:9091/api/v1/query --data-urlencode \
+                'query=erpc_upstream_routing_priority'
+            A lane whose head lag is enormous (or whose VM is gone) while it still
+            holds priority 1 is the signature of the 2026-08-14 outage: eRPC has
+            not scored it out, and its retry budget outlasts the network budget.
+            Remedy: remove the lane from the rendered erpc.yaml and restart
+            rpc-proxy (eRPC does NOT hot-reload).
 
       # ── Provider credential / quota death (2026-07-30 incident) ─────────────
       # WHY THESE EXIST: on 2026-07-30 every keyed RPC provider we held died of
@@ -521,7 +591,7 @@ groups:
       - alert: OphisOpErpcUpstreamCredentialFailing
         expr: |
           sum by (upstream) (
-            increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|ophis-self-op",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
+            increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
           ) > 3
         for: 10m
         labels:
@@ -554,9 +624,9 @@ groups:
       - alert: OphisOpErpcUpstreamRateLimitedDead
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|ophis-self-op",error="ErrEndpointCapacityExceeded"}[15m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrEndpointCapacityExceeded"}[15m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|ophis-self-op"}[15m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[15m])), 0.001)
           ) > 0.9
         for: 30m
         labels:

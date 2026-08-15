@@ -48,17 +48,21 @@ EXPECTED_UPSTREAMS = 3
 # quota and was verified against every protected method before admission.
 #
 # The "≤1 Cloudflare-fronted upstream per quorum" property is PRESERVED:
-# publicnode is the one CF lane, while zan and the self-hosted Aleph node are
+# publicnode is the one CF lane, while zan and validationcloud (istio-envoy) are
 # non-CF failure domains, so a single CDN compromise cannot forge 2-of-3.
 #
 # Thin-method note: publicnode is archive-gated so it cannot serve
-# eth_getTransactionReceipt — receipts run 2-of-3 on zan+self, which is why
-# the template's receipt rule is disputeBehavior:returnError (fail closed).
+# eth_getTransactionReceipt — receipts run 2-of-3 on zan+validationcloud, which is
+# why the template's receipt rule is disputeBehavior:returnError (fail closed).
 # This guard's consensus-parameter assertions are unchanged.
+#
+# 2026-08-15: the self-hosted lane 100.90.108.54 was retired after its Aleph VM
+# died with its host and blocked the whole network policy for 23h (a dead lane at
+# routing priority 1 outlasts the 12s network budget). Replaced by validationcloud.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
     "optimism-rpc.publicnode.com",
     "api.zan.top",
-    "100.90.108.54",
+    "mainnet.optimism.validationcloud.io",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus

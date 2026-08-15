@@ -37,22 +37,24 @@
 #                                                      CDN: none detected (NON-Cloudflare)
 #                                                      auth: KEYED (${ZAN_API_KEY}, URL path)
 #                                                      serves ALL protected methods
-#   ophis-self-op       100.90.108.54:8545            Ophis / Aleph op-reth
-#                                                      transport: Tailscale-only TCP proxy
-#                                                      auth: tailnet ACL
+#   validationcloud-op  mainnet.optimism.validationcloud.io
+#                                                      Validation Cloud
+#                                                      CDN: none (server: istio-envoy) — NON-Cloudflare
+#                                                      auth: KEYED (${VALIDATIONCLOUD_OP_KEY}, URL path)
 #                                                      serves ALL protected methods
 #
 # **Threat model — 2-of-3 over 3 distinct failure domains, with the hard
 # invariant that AT MOST ONE upstream is Cloudflare-fronted (now publicnode):**
 #
-#  - Cloudflare compromise → only publicnode is hijacked. ZAN and the owned
-#    Aleph node return the real answer → dispute → returnError →
+#  - Cloudflare compromise → only publicnode is hijacked. ZAN and Validation
+#    Cloud return the real answer → dispute → returnError →
 #    driver does NOT settle against forged state.
-#  - ZAN OR the Aleph node is compromised → the other two form quorum on the real
+#  - ZAN OR Validation Cloud is compromised → the other two form quorum on the real
 #    answer → safe. NO 2-upstream subset shares one CDN/DNS, so a single-provider
 #    compromise can never satisfy quorum alone. (This property survived the
-#    2026-07-30 keyed withdrawal AND the 2026-08-09 tenderly retirement: it is
-#    and the owned node introduces no shared CDN.)
+#    2026-07-30 keyed withdrawal, the 2026-08-09 tenderly retirement AND the
+#    2026-08-15 owned-node retirement: zan.top and istio-fronted Validation Cloud
+#    each introduce a distinct non-CF failure domain.)
 #  - ⚠️ THE PRECONDITION for the line above: that claim holds ONLY where all three
 #    lanes can actually ANSWER the method. It is not automatic — it is a property
 #    to re-check whenever a lane changes. Review finding 2026-07-30 (P1): while zan
@@ -69,7 +71,7 @@
 #    single-compromise protection is GONE for that method — either add a capable
 #    lane or force that method to disputeBehavior:returnError.
 #    Still true today for eth_getTransactionReceipt (publicnode is archive-gated,
-#    so only ZAN + the owned node serve it) — which is why the receipt rule below is
+#    so only ZAN + Validation Cloud serve it) — which is why the receipt rule below is
 #    already disputeBehavior:returnError, i.e. fail-closed rather than tie-broken.
 #  - Two independent failure domains compromised at once: nation-state class,
 #    out of scope.
@@ -541,13 +543,29 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      - id: ophis-self-op
-        # Ophis-owned op-reth v2.3.3 on an Aleph VM, reached only through
-        # Tailscale Serve. The execution RPC itself remains loopback-bound on
-        # the VM; no public RPC port is exposed. Verified 2026-08-11: synced at
-        # the same head as PublicNode and served all ten protected methods plus
-        # eth_createAccessList, including fresh receipts.
-        endpoint: http://100.90.108.54:8545
+      - id: validationcloud-op
+        # KEYED and NON-Cloudflare (server: istio-envoy, no cf-ray) — with zan this
+        # keeps the ≤1-CF invariant intact and gives receipts a 3rd capable lane.
+        #
+        # Measured 2026-08-15 on this key: ALL TEN guard-protected methods OK
+        # (eth_call, eth_getLogs, eth_estimateGas, eth_getBalance, eth_getCode,
+        # eth_getStorageAt, eth_feeHistory, eth_getTransactionCount,
+        # eth_getTransactionByHash, eth_getTransactionReceipt), 20/20 on an unpaced
+        # eth_call burst, chainId 0xa, head level with publicnode.
+        #
+        # THIS SUPERSEDES ophis-self-op (Ophis-owned op-reth on an Aleph VM at
+        # 100.90.108.54, admitted 2026-08-11 by #1166). That VM died with its host on
+        # 2026-08-14 19:09 UTC and took OP solving down for 23h: eRPC kept it at
+        # routing priority 1, and its per-upstream budget (8s timeout x 3 attempts)
+        # exceeds the 12s network-level failsafe, so tip-following reads
+        # (eth_blockNumber / eth_getBlockByNumber latest) died with
+        # ErrFailsafeTimeoutExceeded BEFORE failover could reach a healthy lane.
+        # Re-admit an owned node only behind a liveness gate that ejects it faster
+        # than the network budget (see the deploy checklist), never as a bare lane.
+        #
+        # The 2026-08-09 note "validationcloud: client still disabled" is STALE — the
+        # account was re-enabled; re-verified above before this lane was re-admitted.
+        endpoint: https://mainnet.optimism.validationcloud.io/v1/${VALIDATIONCLOUD_OP_KEY}
         failsafe:
           - matchMethod: "*"
             timeout:
@@ -559,14 +577,14 @@ projects:
               backoffFactor: 1.5
               jitter: 50ms
 
-      # ─── Consensus set (2026-08-11): publicnode + zan + self-hosted ───
+      # ─── Consensus set (2026-08-15): publicnode + zan + validationcloud ───
       # 2-of-3, agreementThreshold=2, maxParticipants=3 — UNCHANGED. This incident
-      # swapped only the dead quota-bound lane; no consensus parameter was
+      # swapped only the dead owned-node lane; no consensus parameter was
       # touched and every rule remains fail-closed. Exactly one
       # CF-fronted upstream (publicnode) → a single-CDN compromise still can't
       # poison a full quorum.
       #
-      # Per-method quorum margin, measured 2026-08-11 on the owned node:
+      # Per-method quorum margin, measured 2026-08-15 on validationcloud:
       #   eth_call / eth_getLogs / eth_estimateGas ..................... 3 of 3 lanes
       #   eth_getCode / eth_getStorageAt / eth_getBalance / txCount .... 3 of 3 lanes
       #   eth_feeHistory / eth_getTransactionByHash .................... 3 of 3 lanes
@@ -581,14 +599,14 @@ projects:
       # reason its rule is disputeBehavior:returnError rather than
       # preferBlockHeadLeader — with two responders a leader tie-break is
       # attacker-selectable, so it must fail closed instead. The RECEIPT rule needs
-      # BOTH zan and the owned node to answer and agree; if either is unavailable,
+      # BOTH zan and validationcloud to answer and agree; if either is unavailable,
       # lowParticipantsBehavior:returnError makes it fail CLOSED (safe — the driver
       # refuses to conclude Executed/Reverted rather than guessing) while
       # settlement indexing stalls until it recovers.
       #
-      # AVAILABILITY PROPERTY: ZAN plus the owned node satisfy threshold 2 for
+      # AVAILABILITY PROPERTY: ZAN plus validationcloud satisfy threshold 2 for
       # every protected method, so PublicNode tip-lag degrades nothing and the
-      # quorum no longer depends on Alchemy's monthly free allowance.
+      # quorum depends on neither Alchemy's monthly allowance nor a self-hosted VM.
       # Under the single-keyed 07-30 set, quorum required at least one of two
       # rate-capped free lanes to answer — which is what failed under auction load
       # three times. Verify receipts THROUGH THE PROXY, not just /quote: with
@@ -605,5 +623,11 @@ projects:
       # drpc / 1rpc / meowrpc / omnia / blockdaemon(2026-08-09) are disqualified as
       # ADDITIONAL lanes: all are Cloudflare-fronted, so pairing any of them with
       # publicnode would create the 2-CF quorum that defeats the fork-poisoning
-      # threat model. validationcloud: client still disabled (null responses,
-      # 0/12) as of 2026-08-09.
+      # threat model. validationcloud's client was re-enabled and it is the
+      # admitted 3rd lane as of 2026-08-15 (11/11 methods, 20/20 burst, istio-envoy).
+      #
+      # A SELF-HOSTED lane is still the structurally right answer to free-tier quota
+      # exposure, but 2026-08-15 proved it cannot be admitted as a bare upstream: a
+      # single-VM lane that dies takes the whole network policy down with it, because
+      # eRPC's per-upstream budget can outlast the network budget. Gate it on
+      # liveness before re-admission.

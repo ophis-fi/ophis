@@ -1,0 +1,42 @@
+# Restores the RAM-disk PK configs after a reboot and starts the containers that
+# bind-mount them. See boot-restore.sh for the full incident rationale.
+#
+# Install (as root, on the Unichain orderbook VM):
+#   cp /opt/ophis/infra/unichain-mainnet/systemd/ophis-unichain-boot-restore.service \
+#      /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable ophis-unichain-boot-restore.service
+#
+# Verify WITHOUT rebooting (the mutation test that matters — a boot unit nobody
+# has ever seen run is not a guard):
+#   docker stop unichain-mainnet-driver-1
+#   umount /root/.local/state/ophis/ram-pk     # reproduce the post-reboot state
+#   systemctl start ophis-unichain-boot-restore.service
+#   systemctl status ophis-unichain-boot-restore.service   # expect exit 0
+[Unit]
+Description=Ophis Unichain: restore RAM-disk PK configs and start PK-bearing containers
+Documentation=file:/opt/ophis/infra/unichain-mainnet/boot-restore.sh
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/ophis/infra/unichain-mainnet
+ExecStart=/opt/ophis/infra/unichain-mainnet/boot-restore.sh
+TimeoutStartSec=600
+# REQUIRED: systemd does not set HOME, and render-configs.sh builds the RAM-disk
+# path from it ($HOME/.local/state/ophis/ram-pk) under `set -u`. Without this the
+# unit dies with "HOME: unbound variable" on every real boot while every
+# interactive test passes. The value must be /root — the rendered symlinks point
+# there. boot-restore.sh also defaults it, belt and braces.
+Environment=HOME=/root
+# The PK is rendered into tmpfs by this unit; keep its output out of any file the
+# journal would persist beyond the boot, and never trace the shell.
+Environment=PS4=
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
