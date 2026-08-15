@@ -104,11 +104,22 @@ projects:
       - id: ophis-self-rbh
         endpoint: http://ophis-rbh-node:8547
         failsafe:
+          # debug/trace keep the long budget: the autopilot REQUIRES
+          # debug_traceTransaction (README — "Autopilot stops settling /
+          # debug_traceTransaction errors") and this Nitro self-node is the
+          # ONLY lane serving it, so there is no failover to protect and a
+          # short generic timeout would cancel large-settlement traces and
+          # pause settlement. Single attempt: retrying a long trace inside
+          # the 30s network budget is pure waste. First-match: these pinned
+          # rules must stay above the generic one.
+          - matchMethod: "debug_*|trace_*"
+            timeout:
+              duration: 30s
+            retry:
+              maxAttempts: 1
           # eth_getLogs keeps the long budget: the official gateway ignores it
           # (429 storms on the permanent log stream), so this is the ONLY lane
-          # serving logs — no failover exists to protect. First-match: this
-          # rule must stay above the generic one. Single attempt: retrying a
-          # 30s scan inside a 30s network budget is pure waste.
+          # serving logs — no failover exists to protect.
           - matchMethod: "eth_getLogs"
             timeout:
               duration: 30s

@@ -65,6 +65,11 @@ projects:
       - id: ophis-self-rbh
         endpoint: http://ophis-rbh-node:8547
         failsafe:
+          - matchMethod: "debug_*|trace_*"
+            timeout:
+              duration: 30s
+            retry:
+              maxAttempts: 1
           - matchMethod: "eth_getLogs"
             timeout:
               duration: 30s
