@@ -95,6 +95,15 @@ projects:
           # === Block C: Catch-all retry (no consensus) ===
           # Carries debug_*/trace_* — only ophis-self-uni serves these; the
           # public legs don't support them, so eRPC fails over to the self-node.
+          #
+          # HEDGE (2026-08-15, per-upstream-budget fix): sequential routing on
+          # this rule is the path a silently-dead lane starves — on OP the
+          # 08-14 blackholed priority-1 lane killed every tip read for 23h
+          # (A/B-reproduced on the pinned image: 12/12 x ~12s failures without
+          # hedge, 18/18 OK at ~1.1s with it). ophis-self-uni is a single-VM
+          # tailnet lane with exactly that failure mode. A debug_* call that
+          # hedges to a lane lacking the method just loses the race — the
+          # original attempt continues; harmless.
           - matchMethod: "*"
             timeout:
               duration: 30s   # debug_traceTransaction is heavier than a plain read
@@ -104,6 +113,9 @@ projects:
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+            hedge:
+              delay: 1s
+              maxCount: 1
 
     # Unichain ~1s blocks: poll the tip faster than Base/OP's 5s/1s.
     upstreamDefaults:
@@ -117,29 +129,59 @@ projects:
         # read-consensus voter. ophis-uni-node = the WS13 VM's Tailscale name.
         endpoint: http://ophis-uni-node:8545
         failsafe:
-          - matchMethod: "*"
+          # debug/trace keep the long budget: this is the ONLY lane serving
+          # them, so there is no failover to protect — first-match, so this
+          # rule must stay ABOVE the generic one. Single attempt: retrying a
+          # 30s trace inside a 30s network budget is pure waste.
+          - matchMethod: "debug_*|trace_*"
             timeout:
               duration: 30s
             retry:
-              maxAttempts: 3
+              maxAttempts: 1
+          # BUDGET INVARIANT (2026-08-15, CI-enforced): one lane's worst-case
+          # serial budget must stay under the SMALLEST network timeout (12s on
+          # the consensus blocks) — 4s x 2 + 1s backoff = 9s. This lane is a
+          # single VM on a tailnet: when its host dies it becomes a silent
+          # blackhole (hanging SYN + pooled keep-alive writes), exactly the
+          # 08-14 OP outage. The breaker ejects clean-error floods; hangs are
+          # covered by the catch-all hedge.
+          - matchMethod: "*"
+            timeout:
+              duration: 4s
+            retry:
+              maxAttempts: 2
               delay: 200ms
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+            circuitBreaker:
+              failureThresholdCount: 12
+              failureThresholdCapacity: 24
+              halfOpenAfter: 30s
+              successThresholdCount: 2
+              successThresholdCapacity: 4
 
       - id: unichain-public
         # Unichain's own public node. Reads only — cannot serve debug_/trace_.
         endpoint: https://mainnet.unichain.org
         failsafe:
+          # Same budget invariant as ophis-self-uni's generic rule: 4s x 2 +
+          # 1s backoff = 9s < the 12s consensus-block network timeout.
           - matchMethod: "*"
             timeout:
-              duration: 8s
+              duration: 4s
             retry:
-              maxAttempts: 3
+              maxAttempts: 2
               delay: 200ms
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+            circuitBreaker:
+              failureThresholdCount: 12
+              failureThresholdCapacity: 24
+              halfOpenAfter: 30s
+              successThresholdCount: 2
+              successThresholdCapacity: 4
 
       - id: publicnode-uni
         # PublicNode — independent operator/DNS from Unichain Labs. Reads only.
@@ -147,12 +189,20 @@ projects:
         # substitute another independent free Unichain public RPC.
         endpoint: https://unichain-rpc.publicnode.com
         failsafe:
+          # Same budget invariant as ophis-self-uni's generic rule: 4s x 2 +
+          # 1s backoff = 9s < the 12s consensus-block network timeout.
           - matchMethod: "*"
             timeout:
-              duration: 8s
+              duration: 4s
             retry:
-              maxAttempts: 3
+              maxAttempts: 2
               delay: 200ms
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+            circuitBreaker:
+              failureThresholdCount: 12
+              failureThresholdCapacity: 24
+              halfOpenAfter: 30s
+              successThresholdCount: 2
+              successThresholdCapacity: 4
