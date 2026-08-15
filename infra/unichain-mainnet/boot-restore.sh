@@ -94,7 +94,17 @@ snap_paths() {  # every non-PK render output that exists right now
   local p
   for p in rendered/* observability-rendered/*; do
     [ -e "$p" ] || continue
-    case "$(basename "$p")" in driver.toml|okx.toml|enso.toml) continue;; esac
+    case "$(basename "$p")" in
+      driver.toml|okx.toml|enso.toml) continue;;
+      # Operator/backup artifacts are NOT deployed configs, and restoring them
+      # can UNDO a deliberate secret scrub: render-configs.sh deletes
+      # rendered/driver.toml.BAK* / driver.toml.OLD* on every run precisely
+      # because those patterns can carry historical PK literals — a restore
+      # here would resurrect them AFTER the renderer's post-render secret-leak
+      # assertion has already passed. The boot invariant protects what services
+      # READ, so backup/temp artifacts stay out of the snapshot entirely.
+      *.BAK*|*.OLD*|*.bak*|*.old*|*.tmp*) continue;;
+    esac
     [ -L "$p" ] && continue   # symlinks are the PK mechanism, never snapshot targets
     printf '%s\n' "$p"
   done
@@ -194,14 +204,25 @@ for svc in "${PK_SERVICES[@]}"; do
   done
 done
 
-# 8. Log the driver's own /healthz verdict for the boot journal. Its healthcheck
-#    already gated step 7, but the body names the failing check (e.g. submitter
-#    balance under the per-chain floor) and that is worth having in the log.
-h=$(docker run --rm --network "${COMPOSE_PROJECT}_default" curlimages/curl:latest \
-      -s --max-time 5 http://driver:80/healthz 2>/dev/null || true)
-case "$h" in
-  *'"ok":true'*) log "driver healthz ok" ;;
-  "")            log "WARN: could not fetch driver /healthz for the boot log" ;;
-  *)             log "WARN: driver healthz: $h" ;;
-esac
+# 8. Require a CURRENT ok:true from the driver's /healthz, not just docker's
+#    health state: docker keeps reporting "healthy" for a full
+#    interval-times-retries window after the endpoint starts failing, so step 7
+#    can pass on a verdict that is already stale. This gate polls the live
+#    endpoint (like the pre-review implementation did) and is FATAL on failure;
+#    the response body also names the failing check (e.g. submitter balance
+#    under the per-chain floor), which is worth having in the boot journal.
+driver_ok=""
+for _ in $(seq 1 15); do
+  h=$(docker run --rm --network "${COMPOSE_PROJECT}_default" curlimages/curl:latest \
+        -s --max-time 5 http://driver:80/healthz 2>/dev/null || true)
+  case "$h" in *'"ok":true'*) driver_ok=1; log "driver healthz ok"; break;; esac
+  sleep 4
+done
+if [ -z "$driver_ok" ]; then
+  case "$h" in
+    "") log "ERROR: could not fetch driver /healthz within 60s" ;;
+    *)  log "ERROR: driver healthz still failing after 60s: $h" ;;
+  esac
+  rc=8
+fi
 exit $rc
