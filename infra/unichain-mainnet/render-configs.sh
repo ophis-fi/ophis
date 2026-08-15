@@ -345,9 +345,16 @@ _mount_ram_disk_macos() {
 #
 # The -U flag updates if the entry already exists (idempotent).
 # Once added, the token persists across .env regenerations + reboots.
+# ${USER:-$(id -un)}: systemd oneshot units run without a login environment, so
+# under `set -u` a bare $USER aborts the whole render with "USER: unbound
+# variable" BEFORE the tmpfs is recreated — which turns a missing convenience
+# lookup into a failed boot recovery on any deployment whose .env omits
+# TELEGRAM_BOT_TOKEN. (2026-08-15 review finding on the boot-restore unit; the
+# macOS `security` binary doesn't exist on the Linux VMs anyway, so on Linux
+# this block is a harmless no-op either way.)
 if [[ -d observability && -z "${TELEGRAM_BOT_TOKEN:-}" ]]; then
-  if security find-generic-password -a "$USER" -s ophis-telegram-bot -w >/dev/null 2>&1; then
-    TELEGRAM_BOT_TOKEN=$(security find-generic-password -a "$USER" -s ophis-telegram-bot -w 2>/dev/null)
+  if security find-generic-password -a "${USER:-$(id -un)}" -s ophis-telegram-bot -w >/dev/null 2>&1; then
+    TELEGRAM_BOT_TOKEN=$(security find-generic-password -a "${USER:-$(id -un)}" -s ophis-telegram-bot -w 2>/dev/null)
     export TELEGRAM_BOT_TOKEN
     echo "  resolved TELEGRAM_BOT_TOKEN from Keychain (service=ophis-telegram-bot)"
   fi

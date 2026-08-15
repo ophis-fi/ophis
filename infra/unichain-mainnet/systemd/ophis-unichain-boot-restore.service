@@ -11,8 +11,17 @@
 # has ever seen run is not a guard):
 #   docker stop unichain-mainnet-driver-1
 #   umount /root/.local/state/ophis/ram-pk     # reproduce the post-reboot state
-#   systemctl start ophis-unichain-boot-restore.service
+#   systemctl restart ophis-unichain-boot-restore.service
 #   systemctl status ophis-unichain-boot-restore.service   # expect exit 0
+#
+# ⚠️ Use `restart`, NEVER `start`, when testing or re-running recovery by hand:
+# RemainAfterExit=yes keeps the unit "active (exited)" after a success, and
+# `systemctl start` on an active unit is a silent NO-OP — status shows the OLD
+# run's success while nothing executed. This bit during the 2026-08-15
+# verification: a test arm reported "success" from stale unit state while the
+# containers stayed down. (RemainAfterExit stays: at real boot the unit is
+# always fresh, and active-after-success is what makes failures visible in
+# `systemctl --failed`.)
 [Unit]
 Description=Ophis Unichain: restore RAM-disk PK configs and start PK-bearing containers
 Documentation=file:/opt/ophis/infra/unichain-mainnet/boot-restore.sh
