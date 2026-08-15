@@ -211,13 +211,34 @@ done
 #    endpoint (like the pre-review implementation did) and is FATAL on failure;
 #    the response body also names the failing check (e.g. submitter balance
 #    under the per-chain floor), which is worth having in the boot journal.
+#
+#    Probe from the HOST via the driver's published port with /usr/bin/curl — a
+#    guaranteed local executable. A `docker run curlimages/curl` probe would
+#    depend on an image no compose file provisions: after an image prune, an
+#    offline reboot would fail every probe before ever contacting the healthy
+#    driver, turning this fatal gate into a false boot failure. The published
+#    port is read from docker rather than hardcoded so a compose port change
+#    cannot silently break the gate.
+#
+#    The deadline is ELAPSED-TIME, not attempt-count: with each curl allowed a
+#    5s --max-time, a 15-attempt loop could run ~135s against a hanging
+#    endpoint while claiming a 60s budget in its own error message.
+hp=$(docker inspect -f '{{(index (index .NetworkSettings.Ports "80/tcp") 0).HostPort}}' \
+       "${COMPOSE_PROJECT}-driver-1" 2>/dev/null || true)
 driver_ok=""
-for _ in $(seq 1 15); do
-  h=$(docker run --rm --network "${COMPOSE_PROJECT}_default" curlimages/curl:latest \
-        -s --max-time 5 http://driver:80/healthz 2>/dev/null || true)
-  case "$h" in *'"ok":true'*) driver_ok=1; log "driver healthz ok"; break;; esac
-  sleep 4
-done
+h=""
+gate_deadline=$(( $(date +%s) + 60 ))
+if [ -z "$hp" ]; then
+  log "ERROR: driver container has no published 80/tcp host port — cannot probe /healthz"
+else
+  while :; do
+    h=$(curl -s --max-time 5 "http://127.0.0.1:${hp}/healthz" 2>/dev/null || true)
+    case "$h" in *'"ok":true'*) driver_ok=1; log "driver healthz ok"; break;; esac
+    now=$(date +%s)
+    [ $(( now + 4 )) -ge "$gate_deadline" ] && break
+    sleep 4
+  done
+fi
 if [ -z "$driver_ok" ]; then
   case "$h" in
     "") log "ERROR: could not fetch driver /healthz within 60s" ;;
