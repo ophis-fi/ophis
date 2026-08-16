@@ -1,0 +1,11 @@
+{
+  "name": "@ophis/lite",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test scripts/build.test.mjs",
+    "verify": "pnpm build && pnpm test"
+  }
+}

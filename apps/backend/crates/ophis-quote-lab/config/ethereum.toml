@@ -1,0 +1,137 @@
+schema-version = 1
+
+[network]
+name = "ethereum-mainnet"
+chain-id = 1
+observed-block = 25770315
+observed-block-hash = "0x40ab159b48087afc513764a99837f9ffbc9f960e96172034bcf562f69546f788"
+observed-at = "2026-08-16"
+
+[source]
+repository = "https://github.com/z-fi/zRouter"
+commit = "949d43bfafea78d71a8a22b85057724383caf525"
+retrieved-at = "2026-08-16"
+
+[[contract]]
+id = "ophis-fixture-fixed"
+name = "Ophis fixed-version quote fixture"
+address = "0xc7a03f9ed2be5feea18ce93e12f4f05c98287c16"
+runtime-code-hash = "0x675d036de8dc6bc225e2e69a19d91cb41485cf634f11e456e14a17ea8cd41b70"
+role = "quote-source"
+status = "historical"
+shadow-enabled = true
+source-url = "https://etherscan.io/address/0xc7a03f9ed2be5feea18ce93e12f4f05c98287c16#code"
+dependencies = []
+notes = "Retained as a fixed historical comparison fixture; its exact source commit is not asserted by this manifest."
+
+[[contract]]
+id = "ophis-fixture-prior"
+name = "Ophis prior Ethereum quote fixture"
+address = "0x0000002d9a651b729e3aFBE57Fc84FFDa4a98a13"
+runtime-code-hash = "0x906dc5689ec19cdfc2e92358bb2c6bc68b8c94668a1f640597d47d77529aafff"
+role = "quote-source"
+status = "historical"
+shadow-enabled = true
+source-url = "https://etherscan.io/address/0x0000002d9a651b729e3aFBE57Fc84FFDa4a98a13#code"
+dependencies = []
+notes = "Address named by the 2026-08-14 research report; retained for longitudinal comparison."
+
+[[contract]]
+id = "ophis-fixture-current"
+name = "Ophis current Ethereum quote fixture"
+address = "0x0180Fe9Ae92Cd04dA670F974DE9d928EA69CfA66"
+runtime-code-hash = "0x16c2767dd619d350ee01b74def21bb813f5801d629df1c32a7902f7bc25b80a0"
+role = "quote-source"
+status = "current"
+shadow-enabled = true
+source-url = "https://github.com/z-fi/zRouter/blob/949d43bfafea78d71a8a22b85057724383caf525/src/zQuoter.sol"
+dependencies = ["ophis-quote-helper-current"]
+notes = "Current address in the official repository README. Failures are recorded as observations, not promoted to execution."
+
+[[contract]]
+id = "ophis-quote-helper-current"
+name = "Ophis current aggregate quote helper"
+address = "0x658bF1A6608210FDE7310760f391AD4eC8006A5F"
+runtime-code-hash = "0xba483efe2005cd66547bb639c271d76772e262659de63a3119d2c5fb83776370"
+role = "quote-helper"
+status = "dependency"
+source-url = "https://github.com/z-fi/zRouter/blob/949d43bfafea78d71a8a22b85057724383caf525/src/zQuoterBase.sol"
+dependencies = ["uniswap-v2-factory", "sushiswap-v2-factory", "uniswap-v3-factory", "external-pool-observed", "uniswap-v3-quote-helper", "uniswap-v4-state-view"]
+notes = "The aggregate 14-candidate quote path delegates to this helper. Pair/pool contracts are derived dynamically and are recorded per observation later."
+
+[[contract]]
+id = "external-router-observed"
+name = "Ophis-observed Ethereum router dependency"
+address = "0x000000000000FB114709235f1ccBFfb925F600e4"
+runtime-code-hash = "0x364693249842eb263d8f21ddb178f9e786dcee1926d7241a47d2e14c561adf4c"
+role = "router"
+status = "dependency"
+source-url = "https://github.com/z-fi/zRouter/blob/949d43bfafea78d71a8a22b85057724383caf525/src/zRouter.sol"
+dependencies = ["external-pool-observed"]
+notes = "Monitored for provenance only. Ophis Quote Lab never calls this router and never uses source-returned execution calldata."
+
+[[contract]]
+id = "external-pool-observed"
+name = "Ophis-observed external pool dependency"
+address = "0x000000000000040470635EB91b7CE4D132D616eD"
+runtime-code-hash = "0xede047ed65de3caa20412c81f052b204da046cf05920abde34bbbb93c7a84d27"
+role = "amm"
+status = "dependency"
+source-url = "https://etherscan.io/address/0x000000000000040470635EB91b7CE4D132D616eD#code"
+dependencies = []
+notes = "Read-only pool reserve dependency for external quote candidates."
+
+[[contract]]
+id = "uniswap-v3-quote-helper"
+name = "Ophis-observed Uniswap V3 quote helper"
+address = "0x5e55C9e631FAE526cd4B0526C4818D6e0a9eF0e3"
+runtime-code-hash = "0x10151e6c35a8cd4a3dd99d4dc1f7a0a730bb0bcb8278edb5dd694f137e7bab8c"
+role = "quote-helper"
+status = "dependency"
+source-url = "https://etherscan.io/address/0x5e55C9e631FAE526cd4B0526C4818D6e0a9eF0e3#code"
+dependencies = ["uniswap-v3-factory"]
+notes = "Helper invoked by the aggregate source for V3 candidates."
+
+[[contract]]
+id = "uniswap-v4-state-view"
+name = "Uniswap V4 StateView"
+address = "0x7fFE42C4a5DEeA5b0feC41C94C136Cf115597227"
+runtime-code-hash = "0xd7947778589cf4aac9a092a4451292a2056380941635ab7006d3c691d8dfd878"
+role = "lens"
+status = "dependency"
+source-url = "https://github.com/Uniswap/v4-periphery"
+dependencies = []
+notes = "Read-only state dependency used by the helper's manual V4 quote calculation."
+
+[[contract]]
+id = "uniswap-v2-factory"
+name = "Uniswap V2 Factory"
+address = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f"
+runtime-code-hash = "0xbab145d02e7005f0d84c6c1639d39b799b0ea16df99ebbdaf5a14d9da820b4e0"
+role = "factory"
+status = "dependency"
+source-url = "https://docs.uniswap.org/contracts/v2/reference/smart-contracts/factory"
+dependencies = []
+notes = "Factory address and deterministic pair derivation dependency."
+
+[[contract]]
+id = "sushiswap-v2-factory"
+name = "SushiSwap V2 Factory"
+address = "0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac"
+runtime-code-hash = "0xeba2e349904f5b2c1f6086ffb00d5c7efb4a2c8ea8af2efccfd1c812c7869b6c"
+role = "factory"
+status = "dependency"
+source-url = "https://docs.sushi.com/contracts/cpamm"
+dependencies = []
+notes = "Factory address and deterministic pair derivation dependency."
+
+[[contract]]
+id = "uniswap-v3-factory"
+name = "Uniswap V3 Factory"
+address = "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+runtime-code-hash = "0x4d7b8525cd5d14343fa67a732fba5b24cddba11620ca88392f4ec6c52f91fd69"
+role = "factory"
+status = "dependency"
+source-url = "https://docs.uniswap.org/contracts/v3/reference/deployments/ethereum-deployments"
+dependencies = []
+notes = "Pool discovery dependency for the V3 quote candidates."

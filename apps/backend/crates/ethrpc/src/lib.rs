@@ -1,4 +1,5 @@
 pub mod alloy;
+pub mod block_context;
 pub mod block_stream;
 #[cfg(any(test, feature = "test-util"))]
 pub mod mock;

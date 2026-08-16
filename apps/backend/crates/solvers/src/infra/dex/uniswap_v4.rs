@@ -11,7 +11,7 @@ use {
         sol,
         sol_types::SolCall,
     },
-    serde::{Deserialize, Serialize},
+    ethrpc::block_context::{Error as ReadOnlyRpcError, ReadOnlyRpc},
 };
 
 sol! {
@@ -43,6 +43,7 @@ const MAX_SLIPPAGE_BPS: u16 = 2_000;
 const ADAPTER_OVERHEAD_GAS: u64 = 250_000;
 
 pub struct Config {
+    pub chain_id: u64,
     pub node_url: reqwest::Url,
     pub quoter: Address,
     pub adapter: Address,
@@ -53,16 +54,18 @@ pub struct Config {
 }
 
 pub struct UniswapV4 {
-    client: reqwest::Client,
+    client: ReadOnlyRpc,
     config: Config,
 }
 
 impl UniswapV4 {
     pub fn try_new(config: Config) -> Result<Self, CreationError> {
         Ok(Self {
-            client: reqwest::Client::builder()
-                .user_agent("ophis-uniswap-v4-solver/1.0")
-                .build()?,
+            client: ReadOnlyRpc::try_new(
+                config.node_url.clone(),
+                config.chain_id,
+                "ophis-uniswap-v4-solver/1.0",
+            )?,
             config,
         })
     }
@@ -182,65 +185,23 @@ impl UniswapV4 {
     }
 
     async fn eth_call(&self, to: Address, calldata: Vec<u8>) -> Result<Vec<u8>, Error> {
-        #[derive(Serialize)]
-        struct Request<'a> {
-            jsonrpc: &'static str,
-            id: u64,
-            method: &'static str,
-            params: [CallParams<'a>; 2],
-        }
-        #[derive(Serialize)]
-        #[serde(untagged)]
-        enum CallParams<'a> {
-            Call { to: String, data: String },
-            Block(&'a str),
-        }
-        #[derive(Deserialize)]
-        struct Response {
-            result: Option<String>,
-            error: Option<RpcError>,
-        }
-        #[derive(Debug, Deserialize)]
-        struct RpcError {
-            code: i64,
-            message: String,
-        }
-
-        let request = Request {
-            jsonrpc: "2.0",
-            id: 1,
-            method: "eth_call",
-            params: [
-                CallParams::Call {
-                    to: format!("{to:#x}"),
-                    data: const_hex::encode_prefixed(calldata),
-                },
-                CallParams::Block("latest"),
-            ],
-        };
-        let response: Response = self
-            .client
-            .post(self.config.node_url.clone())
-            .json(&request)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        if let Some(error) = response.error {
-            // V4Quoter reports absent pools, exhausted liquidity, and an
-            // amount that crosses all initialized liquidity as an execution
-            // revert. This is route unavailability, not an RPC transport
-            // failure; classifying it as NotFound lets partially fillable
-            // orders reduce their next attempt instead of retrying 100%
-            // forever in every auction.
-            if is_quote_unavailable(error.code, &error.message) {
-                return Err(Error::NotFound);
+        let context = self.client.snapshot().await?;
+        match self.client.call_at(context, to, calldata).await {
+            Ok(result) => Ok(result),
+            Err(ReadOnlyRpcError::Rpc(error)) => {
+                // V4Quoter reports absent pools, exhausted liquidity, and an
+                // amount that crosses all initialized liquidity as an execution
+                // revert. This is route unavailability, not an RPC transport
+                // failure; classifying it as NotFound lets partially fillable
+                // orders reduce their next attempt instead of retrying 100%
+                // forever in every auction.
+                if is_quote_unavailable(error.code, &error.message) {
+                    return Err(Error::NotFound);
+                }
+                Err(Error::PinnedRpc(ReadOnlyRpcError::Rpc(error)))
             }
-            return Err(Error::Rpc(error.code, error.message));
+            Err(error) => Err(Error::PinnedRpc(error)),
         }
-        let result = response.result.ok_or(Error::MissingResult)?;
-        const_hex::decode(result).map_err(Error::Hex)
     }
 }
 
@@ -260,14 +221,8 @@ pub enum Error {
     InvalidSlippage,
     #[error("invalid Uniswap V4 pool key")]
     InvalidPoolKey,
-    #[error("RPC error {0}: {1}")]
-    Rpc(i64, String),
-    #[error("RPC response omitted result")]
-    MissingResult,
-    #[error(transparent)]
-    Http(#[from] reqwest::Error),
-    #[error("invalid hex RPC response")]
-    Hex(#[source] const_hex::FromHexError),
+    #[error("pinned read-only RPC error")]
+    PinnedRpc(#[from] ReadOnlyRpcError),
     #[error("invalid V4Quoter response")]
     QuoteDecode(#[source] alloy::sol_types::Error),
 }

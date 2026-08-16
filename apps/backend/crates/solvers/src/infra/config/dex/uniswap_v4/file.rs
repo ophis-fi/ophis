@@ -68,6 +68,7 @@ pub async fn load(path: &Path) -> super::Config {
     assert_eq!(config.tick_spacing, 10, "unexpected V4 tick spacing");
     super::Config {
         uniswap_v4: uniswap_v4::Config {
+            chain_id: config.chain_id as u64,
             node_url: base.node_url.clone(),
             quoter: config.quoter,
             adapter: config.adapter,
