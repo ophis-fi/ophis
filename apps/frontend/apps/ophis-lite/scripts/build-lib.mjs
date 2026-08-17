@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
+
+import { keccak_256 } from '@noble/hashes/sha3'
 
 export const CHUNK_SIZE = 23_000
 
@@ -26,17 +27,8 @@ function sha256(bytes) {
   return `0x${createHash('sha256').update(bytes).digest('hex')}`
 }
 
-function castKeccak256(bytes) {
-  const encoded = `0x${bytes.toString('hex')}`
-  const digest = execFileSync('cast', ['keccak', encoded], {
-    encoding: 'utf8',
-    maxBuffer: 1024 * 1024,
-  }).trim()
-
-  if (!/^0x[0-9a-f]{64}$/.test(digest)) {
-    throw new Error('cast returned an invalid Keccak-256 digest')
-  }
-  return digest
+function nobleKeccak256(bytes) {
+  return `0x${Buffer.from(keccak_256(bytes)).toString('hex')}`
 }
 
 function validateSource(html) {
@@ -55,7 +47,7 @@ function validateSource(html) {
   }
 }
 
-export function buildArtifact(source, keccak256 = castKeccak256) {
+export function buildArtifact(source, keccak256 = nobleKeccak256) {
   const html = Buffer.from(source)
   validateSource(html.toString('utf8'))
 

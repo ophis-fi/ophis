@@ -1,6 +1,7 @@
 # Ophis Lite
 
-Ophis Lite is a dependency-free, single-file local interface prototype. This
+Ophis Lite is a single-file local interface prototype with no runtime
+dependencies. Its verifier uses only declared JavaScript dependencies. This
 milestone proves deterministic bytes and an auditable content manifest; it does
 not connect a wallet, sign an order, submit to an orderbook, or execute a
 transaction.

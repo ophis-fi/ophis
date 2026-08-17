@@ -393,6 +393,29 @@ impl QuoteLabClient {
         Ok(Verification { context, contracts })
     }
 
+    async fn verify_contract_closure_at(
+        &self,
+        context: BlockContext,
+        manifest: &Manifest,
+        source_id: &str,
+    ) -> Result<(), Error> {
+        for contract in contract_dependency_closure(manifest, source_id)? {
+            let expected = contract.parsed_code_hash()?;
+            let actual = self
+                .rpc
+                .code_hash_at(context, contract.parsed_address()?)
+                .await?;
+            if actual != expected {
+                return Err(Error::CodeHashMismatch {
+                    id: contract.id.clone(),
+                    expected,
+                    actual,
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Observe one exact-input quote. Quote failures are data and are returned
     /// as a successful observation with an error field; provenance failures
     /// remain hard errors.
@@ -513,16 +536,9 @@ impl QuoteLabClient {
             return Err(Error::SourceDisabled(source_id.to_owned()));
         }
 
+        self.verify_contract_closure_at(context, manifest, source_id)
+            .await?;
         let source_address = source.parsed_address()?;
-        let expected_hash = source.parsed_code_hash()?;
-        let actual_hash = self.rpc.code_hash_at(context, source_address).await?;
-        if actual_hash != expected_hash {
-            return Err(Error::CodeHashMismatch {
-                id: source.id.clone(),
-                expected: expected_hash,
-                actual: actual_hash,
-            });
-        }
 
         let started = Instant::now();
         let result = match source.quote_adapter {
@@ -814,22 +830,53 @@ fn validate_source_ids(manifest: &Manifest, source_ids: &[String]) -> Result<(),
     Ok(())
 }
 
+fn contract_dependency_closure<'a>(
+    manifest: &'a Manifest,
+    source_id: &str,
+) -> Result<Vec<&'a Contract>, Error> {
+    let mut pending = vec![source_id.to_owned()];
+    let mut visited = HashSet::new();
+    let mut contracts = Vec::new();
+
+    while let Some(contract_id) = pending.pop() {
+        if !visited.insert(contract_id.clone()) {
+            continue;
+        }
+        let contract = manifest.contract(&contract_id)?;
+        pending.extend(contract.dependencies.iter().cloned());
+        contracts.push(contract);
+    }
+
+    Ok(contracts)
+}
+
+fn validate_quote_candidate(
+    candidate: &RawQuote,
+    requested_amount_in: U256,
+) -> Result<(), &'static str> {
+    if candidate.amountIn != requested_amount_in {
+        return Err("quote amount-in differs from the request");
+    }
+    if candidate.amountOut.is_zero() {
+        return Err("quote amount-out is zero");
+    }
+    if candidate.source > 8 {
+        return Err("quote source enum is unknown");
+    }
+    if candidate.feeBps > U256::from(10_000) {
+        return Err("quote fee exceeds 100 percent");
+    }
+    Ok(())
+}
+
 fn validate_decoded_quote(
     best: &RawQuote,
     candidates: &[RawQuote],
     requested_amount_in: U256,
 ) -> Result<(), &'static str> {
-    if best.amountIn != requested_amount_in {
-        return Err("best amount-in differs from the request");
-    }
-    if best.amountOut.is_zero() {
-        return Err("best amount-out is zero");
-    }
-    if best.source > 8 {
-        return Err("best source enum is unknown");
-    }
-    if best.feeBps > U256::from(10_000) {
-        return Err("best fee exceeds 100 percent");
+    validate_quote_candidate(best, requested_amount_in)?;
+    for candidate in candidates {
+        validate_quote_candidate(candidate, requested_amount_in)?;
     }
     if !candidates.iter().any(|candidate| {
         candidate.source == best.source
@@ -1569,6 +1616,28 @@ mod tests {
     }
 
     #[test]
+    fn source_dependency_closure_is_transitive_and_unique() {
+        let manifest = Manifest::load(Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/config/ethereum.toml"
+        )))
+        .unwrap();
+        let closure = contract_dependency_closure(&manifest, "ophis-fixture-current").unwrap();
+        let ids: HashSet<_> = closure
+            .iter()
+            .map(|contract| contract.id.as_str())
+            .collect();
+
+        assert_eq!(ids.len(), closure.len());
+        assert_eq!(ids.len(), 8);
+        assert!(ids.contains("ophis-fixture-current"));
+        assert!(ids.contains("ophis-quote-helper-current"));
+        assert!(ids.contains("uniswap-v3-quote-helper"));
+        assert!(ids.contains("uniswap-v3-factory"));
+        assert!(ids.contains("external-pool-observed"));
+    }
+
+    #[test]
     fn v3_baseline_requires_unique_supported_fee_tiers() {
         let mut manifest = Manifest::load(Path::new(concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -1745,6 +1814,39 @@ mod tests {
             .is_err()
         );
         assert!(validate_decoded_quote(&valid, &[], U256::from(100)).is_err());
+
+        let malformed_candidates = [
+            RawQuote {
+                source: 3,
+                feeBps: U256::from(1),
+                amountIn: U256::from(99),
+                amountOut: U256::from(200),
+            },
+            RawQuote {
+                source: 3,
+                feeBps: U256::from(1),
+                amountIn: U256::from(100),
+                amountOut: U256::ZERO,
+            },
+            RawQuote {
+                source: 255,
+                feeBps: U256::from(1),
+                amountIn: U256::from(100),
+                amountOut: U256::from(200),
+            },
+            RawQuote {
+                source: 3,
+                feeBps: U256::from(10_001),
+                amountIn: U256::from(100),
+                amountOut: U256::from(200),
+            },
+        ];
+        for malformed in malformed_candidates {
+            assert!(
+                validate_decoded_quote(&valid, &[valid.clone(), malformed], U256::from(100))
+                    .is_err()
+            );
+        }
     }
 
     #[test]

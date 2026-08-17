@@ -1116,7 +1116,11 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  apps/ophis-lite: {}
+  apps/ophis-lite:
+    dependencies:
+      '@noble/hashes':
+        specifier: 1.8.0
+        version: 1.8.0
 
   libs/abis:
     dependencies:

@@ -146,9 +146,11 @@ function parseWalletReceipts(value: unknown): WalletReceiptSummary | undefined {
 export function parseWalletCapabilities(value: unknown): WalletCapabilities | undefined {
   if (!isRecord(value)) return undefined
 
-  const atomicStatus = parseAtomicStatus(value.atomic)
+  if ('atomic' in value) {
+    const atomicStatus = parseAtomicStatus(value.atomic)
 
-  if (atomicStatus) return { atomic: { status: atomicStatus } }
+    return atomicStatus ? { atomic: { status: atomicStatus } } : {}
+  }
 
   return hasLegacyAtomicBatchCapability(value.atomicBatch) ? { atomic: { status: 'supported' } } : {}
 }

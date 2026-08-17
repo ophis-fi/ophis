@@ -45,6 +45,7 @@ describe('wallet capabilities', () => {
     expect(hasAtomicBatchCapability(parseWalletCapabilities({ atomic: { status: 'unsupported' } }))).toBe(false)
     expect(hasAtomicBatchCapability(parseWalletCapabilities({ atomic: { status: true } }))).toBe(false)
     expect(hasAtomicBatchCapability(parseWalletCapabilities({ atomicBatch: { supported: true } }))).toBe(true)
+    expect(parseWalletCapabilities({ atomic: { status: true }, atomicBatch: { supported: true } })).toEqual({})
   })
 
   it('accepts only a bounded hexadecimal batch identifier', () => {
