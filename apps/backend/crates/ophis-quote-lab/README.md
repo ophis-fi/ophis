@@ -56,7 +56,8 @@ cargo run -p ophis-quote-lab -- \
   --source ophis-fixture-prior \
   --source ophis-fixture-current \
   --source ophis-baseline-uniswap-v3 \
-  --source ophis-baseline-uniswap-v2
+  --source ophis-baseline-uniswap-v2 \
+  --source ophis-baseline-uniswap-v4
 ```
 
 The checked-in manifest is an evidence record, not an endorsement. Update it
@@ -67,3 +68,6 @@ records the quoter's gas estimate. It is a measurement control, not a new Ophis
 execution venue.
 The V2 baseline performs one read-only direct two-token-path quote per case.
 It does not search intermediate assets or expose execution calldata.
+The V4 baseline performs four read-only hookless single-pool quote calls per
+case with exact allowlisted fee and tick-spacing pairs. Hooks, multi-hop paths,
+native currency, and execution calldata are excluded.

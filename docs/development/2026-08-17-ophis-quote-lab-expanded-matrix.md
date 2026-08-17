@@ -75,3 +75,8 @@ The direct V2 control was subsequently completed and reproduced both
 V2-labelled wins at the original block. Its implementation and evidence are
 recorded in
 [`2026-08-17-ophis-quote-lab-v2-baseline.md`](./2026-08-17-ophis-quote-lab-v2-baseline.md).
+
+The direct hookless V4 control was also completed and reproduced the
+V4-labelled win at the original block. Its implementation and evidence are
+recorded in
+[`2026-08-17-ophis-quote-lab-v4-baseline.md`](./2026-08-17-ophis-quote-lab-v4-baseline.md).

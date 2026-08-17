@@ -87,6 +87,21 @@ dependencies = ["uniswap-v3-factory"]
 notes = "Pinned read-only same-block baseline. Ophis calls quoteExactInputSingle at four allowlisted fee tiers and never consumes execution calldata."
 
 [[contract]]
+id = "ophis-baseline-uniswap-v4"
+name = "Ophis Ethereum V4 hookless single-pool baseline"
+address = "0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203"
+runtime-code-hash = "0x06de58fa119c5deaa7a667fb92d3894e25d9160e62fb82c8d86d43b47eefe441"
+role = "quote-source"
+status = "current"
+shadow-enabled = true
+quote-adapter = "uniswap-v4-single"
+fee-tiers = [100, 500, 3000, 10000]
+tick-spacings = [1, 10, 60, 200]
+source-url = "https://github.com/Uniswap/v4-periphery/blob/main/src/interfaces/IV4Quoter.sol"
+dependencies = ["uniswap-v4-pool-manager"]
+notes = "Pinned read-only same-block hookless baseline. Ophis calls only exact-input single-pool quotes at four exact fee and tick-spacing pairs."
+
+[[contract]]
 id = "external-router-observed"
 name = "Ophis-observed Ethereum router dependency"
 address = "0x000000000000FB114709235f1ccBFfb925F600e4"
@@ -118,6 +133,17 @@ status = "dependency"
 source-url = "https://etherscan.io/address/0x5e55C9e631FAE526cd4B0526C4818D6e0a9eF0e3#code"
 dependencies = ["uniswap-v3-factory"]
 notes = "Helper invoked by the aggregate source for V3 candidates."
+
+[[contract]]
+id = "uniswap-v4-pool-manager"
+name = "Uniswap V4 PoolManager"
+address = "0x000000000004444c5dc75cB358380D2e3dE08A90"
+runtime-code-hash = "0x785f1014552b7ce7d5fb7d0c970ca60edee94fd00425d7ca21609acac7ce1293"
+role = "amm"
+status = "dependency"
+source-url = "https://github.com/Uniswap/v4-core/blob/main/src/PoolManager.sol"
+dependencies = []
+notes = "Canonical Ethereum state dependency used by the pinned V4 quoter. Ophis Quote Lab never calls it directly."
 
 [[contract]]
 id = "uniswap-v4-state-view"

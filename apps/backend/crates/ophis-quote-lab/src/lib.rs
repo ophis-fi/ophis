@@ -5,7 +5,7 @@
 
 use {
     alloy::{
-        primitives::{Address, B256, U160, U256},
+        primitives::{Address, B256, Bytes, U160, U256},
         sol,
         sol_types::SolCall,
     },
@@ -48,6 +48,27 @@ sol! {
         external
         view
         returns (uint256[] amounts);
+
+    interface IV4Quoter {
+        struct PoolKey {
+            address currency0;
+            address currency1;
+            uint24 fee;
+            int24 tickSpacing;
+            address hooks;
+        }
+
+        struct QuoteExactSingleParams {
+            PoolKey poolKey;
+            bool zeroForOne;
+            uint128 exactAmount;
+            bytes hookData;
+        }
+
+        function quoteExactInputSingle(QuoteExactSingleParams params)
+            external
+            returns (uint256 amountOut, uint256 gasEstimate);
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -169,6 +190,8 @@ pub struct Contract {
     pub quote_adapter: QuoteAdapter,
     #[serde(default)]
     pub fee_tiers: Vec<u32>,
+    #[serde(default)]
+    pub tick_spacings: Vec<i32>,
     pub source_url: String,
     #[serde(default)]
     pub dependencies: Vec<String>,
@@ -211,9 +234,12 @@ pub enum QuoteAdapter {
     Aggregate,
     UniswapV2Direct,
     UniswapV3Single,
+    UniswapV4Single,
 }
 
 const UNISWAP_V3_BASELINE_FEES: [u32; 4] = [100, 500, 3_000, 10_000];
+const UNISWAP_V4_BASELINE_POOLS: [(u32, i32); 4] =
+    [(100, 1), (500, 10), (3_000, 60), (10_000, 200)];
 
 impl Manifest {
     pub fn load(path: &Path) -> Result<Self, Error> {
@@ -261,9 +287,9 @@ impl Manifest {
             }
             match contract.quote_adapter {
                 QuoteAdapter::Aggregate | QuoteAdapter::UniswapV2Direct
-                    if !contract.fee_tiers.is_empty() =>
+                    if !contract.fee_tiers.is_empty() || !contract.tick_spacings.is_empty() =>
                 {
-                    return Err(Error::UnexpectedFeeTiers(contract.id.clone()));
+                    return Err(Error::UnexpectedPoolConfiguration(contract.id.clone()));
                 }
                 QuoteAdapter::UniswapV2Direct => {
                     if contract.role != Role::QuoteSource || !contract.shadow_enabled {
@@ -273,6 +299,9 @@ impl Manifest {
                 QuoteAdapter::UniswapV3Single => {
                     if contract.role != Role::QuoteSource || !contract.shadow_enabled {
                         return Err(Error::SourceDisabled(contract.id.clone()));
+                    }
+                    if !contract.tick_spacings.is_empty() {
+                        return Err(Error::UnexpectedPoolConfiguration(contract.id.clone()));
                     }
                     if contract.fee_tiers.is_empty() {
                         return Err(Error::MissingFeeTiers(contract.id.clone()));
@@ -291,6 +320,22 @@ impl Manifest {
                                 fee: *fee,
                             });
                         }
+                    }
+                }
+                QuoteAdapter::UniswapV4Single => {
+                    if contract.role != Role::QuoteSource || !contract.shadow_enabled {
+                        return Err(Error::SourceDisabled(contract.id.clone()));
+                    }
+                    let configured: Vec<_> = contract
+                        .fee_tiers
+                        .iter()
+                        .copied()
+                        .zip(contract.tick_spacings.iter().copied())
+                        .collect();
+                    if configured != UNISWAP_V4_BASELINE_POOLS
+                        || contract.fee_tiers.len() != contract.tick_spacings.len()
+                    {
+                        return Err(Error::InvalidV4PoolConfiguration(contract.id.clone()));
                     }
                 }
                 QuoteAdapter::Aggregate => {}
@@ -469,6 +514,17 @@ impl QuoteLabClient {
                 )
                 .await
             }
+            QuoteAdapter::UniswapV4Single => {
+                self.observe_uniswap_v4_at(
+                    context,
+                    source_address,
+                    source,
+                    token_in,
+                    token_out,
+                    amount_in,
+                )
+                .await
+            }
         };
         let latency_micros = started.elapsed().as_micros().try_into().unwrap_or(u64::MAX);
 
@@ -629,6 +685,84 @@ impl QuoteLabClient {
             gas_estimate: None,
         };
         Ok((quote.clone(), vec![quote]))
+    }
+
+    async fn observe_uniswap_v4_at(
+        &self,
+        context: BlockContext,
+        source_address: Address,
+        source: &Contract,
+        token_in: Address,
+        token_out: Address,
+        amount_in: U256,
+    ) -> Result<(Quote, Vec<Quote>), String> {
+        let exact_amount: u128 = amount_in
+            .try_into()
+            .map_err(|_| "semantic: amount-in exceeds uint128".to_owned())?;
+        let (currency0, currency1, zero_for_one) = if token_in < token_out {
+            (token_in, token_out, true)
+        } else {
+            (token_out, token_in, false)
+        };
+        let mut successes = Vec::with_capacity(source.fee_tiers.len());
+        let mut failures = Vec::new();
+
+        for (fee, tick_spacing) in source.fee_tiers.iter().zip(&source.tick_spacings) {
+            let call = IV4Quoter::quoteExactInputSingleCall {
+                params: IV4Quoter::QuoteExactSingleParams {
+                    poolKey: IV4Quoter::PoolKey {
+                        currency0,
+                        currency1,
+                        fee: (*fee).try_into().expect("fee tier was validated"),
+                        tickSpacing: (*tick_spacing)
+                            .try_into()
+                            .expect("tick spacing was validated"),
+                        hooks: Address::ZERO,
+                    },
+                    zeroForOne: zero_for_one,
+                    exactAmount: exact_amount,
+                    hookData: Bytes::new(),
+                },
+            };
+            let result = self
+                .rpc
+                .call_at(context, source_address, call.abi_encode())
+                .await;
+            match result {
+                Ok(data) => match IV4Quoter::quoteExactInputSingleCall::abi_decode_returns(&data) {
+                    Ok(decoded) if !decoded.amountOut.is_zero() => successes.push((
+                        decoded.amountOut,
+                        Quote {
+                            source: 4,
+                            source_name: source_name(4),
+                            fee_bps: (*fee / 100).to_string(),
+                            amount_in: amount_in.to_string(),
+                            amount_out: decoded.amountOut.to_string(),
+                            gas_estimate: Some(decoded.gasEstimate.to_string()),
+                        },
+                    )),
+                    Ok(_) => {
+                        failures.push(format!("fee {fee}, spacing {tick_spacing}: zero output"))
+                    }
+                    Err(error) => failures.push(format!(
+                        "fee {fee}, spacing {tick_spacing}: decode: {error}"
+                    )),
+                },
+                Err(error) => {
+                    failures.push(format!("fee {fee}, spacing {tick_spacing}: rpc: {error}"))
+                }
+            }
+        }
+
+        let best = successes
+            .iter()
+            .max_by_key(|(amount_out, _)| amount_out)
+            .map(|(_, quote)| quote.clone())
+            .ok_or_else(|| format!("all V4 baseline pools failed: {}", failures.join("; ")))?;
+        Ok((
+            best,
+            successes.into_iter().map(|(_, quote)| quote).collect(),
+        ))
     }
 }
 
@@ -986,14 +1120,16 @@ pub enum Error {
     },
     #[error("non-source {0} cannot be shadow-enabled")]
     NonSourceEnabled(String),
-    #[error("quote source {0} cannot define fee tiers for its adapter")]
-    UnexpectedFeeTiers(String),
+    #[error("quote source {0} has pool configuration unsupported by its adapter")]
+    UnexpectedPoolConfiguration(String),
     #[error("V3 baseline source {0} must define at least one fee tier")]
     MissingFeeTiers(String),
     #[error("V3 baseline source {contract} defines unsupported fee tier {fee}")]
     UnsupportedFeeTier { contract: String, fee: u32 },
     #[error("V3 baseline source {contract} repeats fee tier {fee}")]
     DuplicateFeeTier { contract: String, fee: u32 },
+    #[error("V4 baseline source {0} must use the exact allowlisted fee and tick-spacing pairs")]
+    InvalidV4PoolConfiguration(String),
     #[error("unknown contract {0}")]
     UnknownContract(String),
     #[error("quote source {0} is not enabled for observation")]
@@ -1089,6 +1225,17 @@ mod tests {
                 .quote_adapter,
             QuoteAdapter::UniswapV2Direct
         );
+        let v4_baseline = manifest.contract("ophis-baseline-uniswap-v4").unwrap();
+        assert_eq!(v4_baseline.quote_adapter, QuoteAdapter::UniswapV4Single);
+        assert_eq!(
+            v4_baseline
+                .fee_tiers
+                .iter()
+                .copied()
+                .zip(v4_baseline.tick_spacings.iter().copied())
+                .collect::<Vec<_>>(),
+            UNISWAP_V4_BASELINE_POOLS
+        );
     }
 
     #[test]
@@ -1161,7 +1308,45 @@ mod tests {
         baseline.fee_tiers.push(3_000);
         assert!(matches!(
             manifest.validate(),
-            Err(Error::UnexpectedFeeTiers(_))
+            Err(Error::UnexpectedPoolConfiguration(_))
+        ));
+    }
+
+    #[test]
+    fn v4_baseline_uses_the_canonical_single_pool_selector() {
+        let call = IV4Quoter::quoteExactInputSingleCall {
+            params: IV4Quoter::QuoteExactSingleParams {
+                poolKey: IV4Quoter::PoolKey {
+                    currency0: Address::repeat_byte(0x11),
+                    currency1: Address::repeat_byte(0x22),
+                    fee: 100_u32.try_into().unwrap(),
+                    tickSpacing: 1_i32.try_into().unwrap(),
+                    hooks: Address::ZERO,
+                },
+                zeroForOne: true,
+                exactAmount: 100,
+                hookData: Bytes::new(),
+            },
+        };
+        assert_eq!(&call.abi_encode()[..4], &[0xaa, 0x9d, 0x21, 0xcb]);
+    }
+
+    #[test]
+    fn v4_baseline_requires_exact_allowlisted_pool_pairs() {
+        let mut manifest = Manifest::load(Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/config/ethereum.toml"
+        )))
+        .unwrap();
+        let baseline = manifest
+            .contracts
+            .iter_mut()
+            .find(|contract| contract.id == "ophis-baseline-uniswap-v4")
+            .unwrap();
+        baseline.tick_spacings[0] = 10;
+        assert!(matches!(
+            manifest.validate(),
+            Err(Error::InvalidV4PoolConfiguration(_))
         ));
     }
 

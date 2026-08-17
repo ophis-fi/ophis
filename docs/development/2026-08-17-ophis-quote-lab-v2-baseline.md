@@ -83,5 +83,7 @@ cases.
 
 Decision Gate 1 remains closed. The V2 control resolves venue provenance for
 two historical observations, but the evidence still lacks repeated
-time-window sampling, a direct V4 control, and an end-to-end gas model. No
-execution adapter, push, pull request, deployment, or release is authorized.
+time-window sampling and an end-to-end gas model. The direct V4 follow-up is
+recorded in
+[`2026-08-17-ophis-quote-lab-v4-baseline.md`](./2026-08-17-ophis-quote-lab-v4-baseline.md).
+No execution adapter, push, pull request, deployment, or release is authorized.
