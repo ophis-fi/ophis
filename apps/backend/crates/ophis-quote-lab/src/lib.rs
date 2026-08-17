@@ -5,7 +5,7 @@
 
 use {
     alloy::{
-        primitives::{Address, B256, U256},
+        primitives::{Address, B256, U160, U256},
         sol,
         sol_types::SolCall,
     },
@@ -26,6 +26,23 @@ sol! {
         external
         view
         returns (RawQuote best, RawQuote[] quotes);
+
+    struct QuoteExactInputSingleParams {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        uint24 fee;
+        uint160 sqrtPriceLimitX96;
+    }
+
+    function quoteExactInputSingle(QuoteExactInputSingleParams params)
+        external
+        returns (
+            uint256 amountOut,
+            uint160 sqrtPriceX96After,
+            uint32 initializedTicksCrossed,
+            uint256 gasEstimate
+        );
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -143,6 +160,10 @@ pub struct Contract {
     pub status: Status,
     #[serde(default)]
     pub shadow_enabled: bool,
+    #[serde(default)]
+    pub quote_adapter: QuoteAdapter,
+    #[serde(default)]
+    pub fee_tiers: Vec<u32>,
     pub source_url: String,
     #[serde(default)]
     pub dependencies: Vec<String>,
@@ -177,6 +198,16 @@ pub enum Status {
     Historical,
     Dependency,
 }
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum QuoteAdapter {
+    #[default]
+    Aggregate,
+    UniswapV3Single,
+}
+
+const UNISWAP_V3_BASELINE_FEES: [u32; 4] = [100, 500, 3_000, 10_000];
 
 impl Manifest {
     pub fn load(path: &Path) -> Result<Self, Error> {
@@ -221,6 +252,35 @@ impl Manifest {
             }
             if contract.shadow_enabled && contract.role != Role::QuoteSource {
                 return Err(Error::NonSourceEnabled(contract.id.clone()));
+            }
+            match contract.quote_adapter {
+                QuoteAdapter::Aggregate if !contract.fee_tiers.is_empty() => {
+                    return Err(Error::UnexpectedFeeTiers(contract.id.clone()));
+                }
+                QuoteAdapter::UniswapV3Single => {
+                    if contract.role != Role::QuoteSource || !contract.shadow_enabled {
+                        return Err(Error::SourceDisabled(contract.id.clone()));
+                    }
+                    if contract.fee_tiers.is_empty() {
+                        return Err(Error::MissingFeeTiers(contract.id.clone()));
+                    }
+                    let mut unique_fees = HashSet::new();
+                    for fee in &contract.fee_tiers {
+                        if !UNISWAP_V3_BASELINE_FEES.contains(fee) {
+                            return Err(Error::UnsupportedFeeTier {
+                                contract: contract.id.clone(),
+                                fee: *fee,
+                            });
+                        }
+                        if !unique_fees.insert(*fee) {
+                            return Err(Error::DuplicateFeeTier {
+                                contract: contract.id.clone(),
+                                fee: *fee,
+                            });
+                        }
+                    }
+                }
+                QuoteAdapter::Aggregate => {}
             }
         }
         for contract in &self.contracts {
@@ -375,61 +435,39 @@ impl QuoteLabClient {
             });
         }
 
-        let call = getQuotesCall {
-            exactOut: false,
-            tokenIn: token_in,
-            tokenOut: token_out,
-            swapAmount: amount_in,
-        };
         let started = Instant::now();
-        let result = self
-            .rpc
-            .call_at(context, source_address, call.abi_encode())
-            .await;
+        let result = match source.quote_adapter {
+            QuoteAdapter::Aggregate => {
+                self.observe_aggregate_at(context, source_address, token_in, token_out, amount_in)
+                    .await
+            }
+            QuoteAdapter::UniswapV3Single => {
+                self.observe_uniswap_v3_at(
+                    context,
+                    source_address,
+                    &source.fee_tiers,
+                    token_in,
+                    token_out,
+                    amount_in,
+                )
+                .await
+            }
+        };
         let latency_micros = started.elapsed().as_micros().try_into().unwrap_or(u64::MAX);
 
         match result {
-            Ok(data) => match getQuotesCall::abi_decode_returns(&data) {
-                Ok(result) => match validate_decoded_quote(&result.best, &result.quotes, amount_in)
-                {
-                    Ok(()) => Ok(Observation {
-                        context,
-                        source_id: source.id.clone(),
-                        token_in: format!("{token_in:#x}"),
-                        token_out: format!("{token_out:#x}"),
-                        amount_in: amount_in.to_string(),
-                        latency_micros,
-                        success: true,
-                        best: Some(result.best.into()),
-                        candidates: result.quotes.into_iter().map(Into::into).collect(),
-                        error: None,
-                    }),
-                    Err(error) => Ok(Observation {
-                        context,
-                        source_id: source.id.clone(),
-                        token_in: format!("{token_in:#x}"),
-                        token_out: format!("{token_out:#x}"),
-                        amount_in: amount_in.to_string(),
-                        latency_micros,
-                        success: false,
-                        best: None,
-                        candidates: Vec::new(),
-                        error: Some(format!("semantic: {error}")),
-                    }),
-                },
-                Err(error) => Ok(Observation {
-                    context,
-                    source_id: source.id.clone(),
-                    token_in: format!("{token_in:#x}"),
-                    token_out: format!("{token_out:#x}"),
-                    amount_in: amount_in.to_string(),
-                    latency_micros,
-                    success: false,
-                    best: None,
-                    candidates: Vec::new(),
-                    error: Some(format!("decode: {error}")),
-                }),
-            },
+            Ok((best, candidates)) => Ok(Observation {
+                context,
+                source_id: source.id.clone(),
+                token_in: format!("{token_in:#x}"),
+                token_out: format!("{token_out:#x}"),
+                amount_in: amount_in.to_string(),
+                latency_micros,
+                success: true,
+                best: Some(best),
+                candidates,
+                error: None,
+            }),
             Err(error) => Ok(Observation {
                 context,
                 source_id: source.id.clone(),
@@ -440,9 +478,96 @@ impl QuoteLabClient {
                 success: false,
                 best: None,
                 candidates: Vec::new(),
-                error: Some(format!("rpc: {error}")),
+                error: Some(error),
             }),
         }
+    }
+
+    async fn observe_aggregate_at(
+        &self,
+        context: BlockContext,
+        source_address: Address,
+        token_in: Address,
+        token_out: Address,
+        amount_in: U256,
+    ) -> Result<(Quote, Vec<Quote>), String> {
+        let call = getQuotesCall {
+            exactOut: false,
+            tokenIn: token_in,
+            tokenOut: token_out,
+            swapAmount: amount_in,
+        };
+        let data = self
+            .rpc
+            .call_at(context, source_address, call.abi_encode())
+            .await
+            .map_err(|error| format!("rpc: {error}"))?;
+        let result =
+            getQuotesCall::abi_decode_returns(&data).map_err(|error| format!("decode: {error}"))?;
+        validate_decoded_quote(&result.best, &result.quotes, amount_in)
+            .map_err(|error| format!("semantic: {error}"))?;
+
+        Ok((
+            result.best.into(),
+            result.quotes.into_iter().map(Into::into).collect(),
+        ))
+    }
+
+    async fn observe_uniswap_v3_at(
+        &self,
+        context: BlockContext,
+        source_address: Address,
+        fee_tiers: &[u32],
+        token_in: Address,
+        token_out: Address,
+        amount_in: U256,
+    ) -> Result<(Quote, Vec<Quote>), String> {
+        let mut successes = Vec::with_capacity(fee_tiers.len());
+        let mut failures = Vec::new();
+
+        for fee in fee_tiers {
+            let call = quoteExactInputSingleCall {
+                params: QuoteExactInputSingleParams {
+                    tokenIn: token_in,
+                    tokenOut: token_out,
+                    amountIn: amount_in,
+                    fee: (*fee).try_into().expect("fee tier was validated"),
+                    sqrtPriceLimitX96: U160::ZERO,
+                },
+            };
+            let result = self
+                .rpc
+                .call_at(context, source_address, call.abi_encode())
+                .await;
+            match result {
+                Ok(data) => match quoteExactInputSingleCall::abi_decode_returns(&data) {
+                    Ok(decoded) if !decoded.amountOut.is_zero() => successes.push((
+                        decoded.amountOut,
+                        Quote {
+                            source: 3,
+                            source_name: source_name(3),
+                            fee_bps: (*fee / 100).to_string(),
+                            amount_in: amount_in.to_string(),
+                            amount_out: decoded.amountOut.to_string(),
+                            gas_estimate: Some(decoded.gasEstimate.to_string()),
+                        },
+                    )),
+                    Ok(_) => failures.push(format!("fee {fee}: zero output")),
+                    Err(error) => failures.push(format!("fee {fee}: decode: {error}")),
+                },
+                Err(error) => failures.push(format!("fee {fee}: rpc: {error}")),
+            }
+        }
+
+        let best = successes
+            .iter()
+            .max_by_key(|(amount_out, _)| amount_out)
+            .map(|(_, quote)| quote.clone())
+            .ok_or_else(|| format!("all V3 baseline tiers failed: {}", failures.join("; ")))?;
+        Ok((
+            best,
+            successes.into_iter().map(|(_, quote)| quote).collect(),
+        ))
     }
 }
 
@@ -720,7 +845,7 @@ pub struct Observation {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Quote {
     pub source: u8,
@@ -728,6 +853,7 @@ pub struct Quote {
     pub fee_bps: String,
     pub amount_in: String,
     pub amount_out: String,
+    pub gas_estimate: Option<String>,
 }
 
 impl From<RawQuote> for Quote {
@@ -738,6 +864,7 @@ impl From<RawQuote> for Quote {
             fee_bps: value.feeBps.to_string(),
             amount_in: value.amountIn.to_string(),
             amount_out: value.amountOut.to_string(),
+            gas_estimate: None,
         }
     }
 }
@@ -798,6 +925,14 @@ pub enum Error {
     },
     #[error("non-source {0} cannot be shadow-enabled")]
     NonSourceEnabled(String),
+    #[error("aggregate quote source {0} cannot define fee tiers")]
+    UnexpectedFeeTiers(String),
+    #[error("V3 baseline source {0} must define at least one fee tier")]
+    MissingFeeTiers(String),
+    #[error("V3 baseline source {contract} defines unsupported fee tier {fee}")]
+    UnsupportedFeeTier { contract: String, fee: u32 },
+    #[error("V3 baseline source {contract} repeats fee tier {fee}")]
+    DuplicateFeeTier { contract: String, fee: u32 },
     #[error("unknown contract {0}")]
     UnknownContract(String),
     #[error("quote source {0} is not enabled for observation")]
@@ -862,6 +997,7 @@ mod tests {
                 fee_bps: "0".to_owned(),
                 amount_in: "1".to_owned(),
                 amount_out: amount_out.to_owned(),
+                gas_estimate: None,
             }),
             candidates: Vec::new(),
             error: amount_out.is_none().then(|| "fixture".to_owned()),
@@ -882,6 +1018,55 @@ mod tests {
                 .unwrap()
                 .shadow_enabled
         );
+        let baseline = manifest.contract("ophis-baseline-uniswap-v3").unwrap();
+        assert_eq!(baseline.quote_adapter, QuoteAdapter::UniswapV3Single);
+        assert_eq!(baseline.fee_tiers, UNISWAP_V3_BASELINE_FEES);
+    }
+
+    #[test]
+    fn v3_baseline_requires_unique_supported_fee_tiers() {
+        let mut manifest = Manifest::load(Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/config/ethereum.toml"
+        )))
+        .unwrap();
+        let baseline_index = manifest
+            .contracts
+            .iter()
+            .position(|contract| contract.id == "ophis-baseline-uniswap-v3")
+            .unwrap();
+
+        manifest.contracts[baseline_index].fee_tiers.clear();
+        assert!(matches!(
+            manifest.validate(),
+            Err(Error::MissingFeeTiers(_))
+        ));
+
+        manifest.contracts[baseline_index].fee_tiers = vec![100, 100];
+        assert!(matches!(
+            manifest.validate(),
+            Err(Error::DuplicateFeeTier { .. })
+        ));
+
+        manifest.contracts[baseline_index].fee_tiers = vec![42];
+        assert!(matches!(
+            manifest.validate(),
+            Err(Error::UnsupportedFeeTier { .. })
+        ));
+    }
+
+    #[test]
+    fn v3_baseline_uses_the_canonical_quoter_v2_selector() {
+        let call = quoteExactInputSingleCall {
+            params: QuoteExactInputSingleParams {
+                tokenIn: Address::repeat_byte(0x11),
+                tokenOut: Address::repeat_byte(0x22),
+                amountIn: U256::from(100),
+                fee: 500_u32.try_into().unwrap(),
+                sqrtPriceLimitX96: U160::ZERO,
+            },
+        };
+        assert_eq!(&call.abi_encode()[..4], &[0xc6, 0xa5, 0x02, 0x6a]);
     }
 
     #[test]

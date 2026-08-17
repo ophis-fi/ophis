@@ -60,6 +60,20 @@ dependencies = ["uniswap-v2-factory", "sushiswap-v2-factory", "uniswap-v3-factor
 notes = "The aggregate 14-candidate quote path delegates to this helper. Pair/pool contracts are derived dynamically and are recorded per observation later."
 
 [[contract]]
+id = "ophis-baseline-uniswap-v3"
+name = "Ophis Ethereum V3 single-pool baseline"
+address = "0x61fFE014bA17989E743c5F6cB21bF9697530B21e"
+runtime-code-hash = "0x06148f47d0f41a68d3bc970030a7150e5d608cfbc28d372440a2e41ce543d92b"
+role = "quote-source"
+status = "current"
+shadow-enabled = true
+quote-adapter = "uniswap-v3-single"
+fee-tiers = [100, 500, 3000, 10000]
+source-url = "https://github.com/Uniswap/v3-periphery/blob/main/contracts/interfaces/IQuoterV2.sol"
+dependencies = ["uniswap-v3-factory"]
+notes = "Pinned read-only same-block baseline. Ophis calls quoteExactInputSingle at four allowlisted fee tiers and never consumes execution calldata."
+
+[[contract]]
 id = "external-router-observed"
 name = "Ophis-observed Ethereum router dependency"
 address = "0x000000000000FB114709235f1ccBFfb925F600e4"

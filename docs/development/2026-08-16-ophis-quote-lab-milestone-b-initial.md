@@ -24,11 +24,11 @@ Ophis fixture IDs and raw token amounts from
 
 ## Reliability and latency
 
-| Ophis fixture | Success | Wins | p50 | p95 | p99 |
-|---|---:|---:|---:|---:|---:|
-| Fixed historical | 10/10 | 10 ties | 119.499 ms | 1,590.729 ms | 1,590.729 ms |
-| Prior Ethereum | 10/10 | 10 ties | 154.489 ms | 459.536 ms | 459.536 ms |
-| Current Ethereum | 4/10 | 4 ties | 103.303 ms | 160.141 ms | 160.141 ms |
+| Ophis fixture    | Success |    Wins |        p50 |          p95 |          p99 |
+| ---------------- | ------: | ------: | ---------: | -----------: | -----------: |
+| Fixed historical |   10/10 | 10 ties | 119.499 ms | 1,590.729 ms | 1,590.729 ms |
+| Prior Ethereum   |   10/10 | 10 ties | 154.489 ms |   459.536 ms |   459.536 ms |
+| Current Ethereum |    4/10 |  4 ties | 103.303 ms |   160.141 ms |   160.141 ms |
 
 Latency includes successful and reverted quote calls. Calls were sequential on
 one public RPC endpoint, so this first sample is an availability smoke test,
@@ -36,18 +36,18 @@ not a stable provider-performance benchmark.
 
 ## Case dataset
 
-| Case | Fixed | Prior | Current | Best output base units |
-|---|---:|---:|---:|---:|
-| WETH→USDC, 0.1 | Success | Success | Revert | `187486036` |
-| WETH→USDC, 1 | Success | Success | Revert | `1874778159` |
-| WETH→USDC, 10 | Success | Success | Revert | `18739564989` |
-| USDC→WETH, 100 | Success | Success | Revert | `53326240163457513` |
-| USDC→WETH, 1,000 | Success | Success | Revert | `533249931551918912` |
-| USDC→WETH, 10,000 | Success | Success | Revert | `5331252627946093290` |
-| WETH→DAI, 1 | Success | Success | Success | `1868822941777811578558` |
-| WETH→DAI, 10 | Success | Success | Success | `18621801684233444514678` |
-| DAI→WETH, 1,000 | Success | Success | Success | `532000310426179529` |
-| DAI→WETH, 10,000 | Success | Success | Success | `5306767220584680602` |
+| Case              |   Fixed |   Prior | Current |    Best output base units |
+| ----------------- | ------: | ------: | ------: | ------------------------: |
+| WETH→USDC, 0.1    | Success | Success |  Revert |               `187486036` |
+| WETH→USDC, 1      | Success | Success |  Revert |              `1874778159` |
+| WETH→USDC, 10     | Success | Success |  Revert |             `18739564989` |
+| USDC→WETH, 100    | Success | Success |  Revert |       `53326240163457513` |
+| USDC→WETH, 1,000  | Success | Success |  Revert |      `533249931551918912` |
+| USDC→WETH, 10,000 | Success | Success |  Revert |     `5331252627946093290` |
+| WETH→DAI, 1       | Success | Success | Success |  `1868822941777811578558` |
+| WETH→DAI, 10      | Success | Success | Success | `18621801684233444514678` |
+| DAI→WETH, 1,000   | Success | Success | Success |      `532000310426179529` |
+| DAI→WETH, 10,000  | Success | Success | Success |     `5306767220584680602` |
 
 The fixed and prior fixtures returned identical decoded outputs in all 10
 cases. The current fixture returned identical outputs when it succeeded, but
@@ -74,6 +74,9 @@ The next safe measurement step is to add an Ophis baseline adapter for each
 relevant existing quote source, keep every comparison on the same block hash,
 and repeat the matrix over a time window and multiple RPC providers. No
 execution integration should be started from this result.
+
+The first V3 control and two-provider repeat are recorded in
+[`2026-08-17-ophis-quote-lab-v3-baseline.md`](./2026-08-17-ophis-quote-lab-v3-baseline.md).
 
 ## Reproduction
 

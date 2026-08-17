@@ -47,8 +47,19 @@ cargo run -p ophis-quote-lab -- \
   --source ophis-fixture-fixed \
   --source ophis-fixture-prior \
   --source ophis-fixture-current
+
+cargo run -p ophis-quote-lab -- \
+  --rpc-url "$ETHEREUM_RPC_URL" \
+  matrix \
+  --source ophis-fixture-fixed \
+  --source ophis-fixture-prior \
+  --source ophis-fixture-current \
+  --source ophis-baseline-uniswap-v3
 ```
 
 The checked-in manifest is an evidence record, not an endorsement. Update it
 only after verifying source provenance and deployed bytecode at a named block.
 Matrix output is descriptive evidence; it cannot enable routing or trading.
+The V3 baseline performs four read-only single-pool quote calls per case and
+records the quoter's gas estimate. It is a measurement control, not a new Ophis
+execution venue.
