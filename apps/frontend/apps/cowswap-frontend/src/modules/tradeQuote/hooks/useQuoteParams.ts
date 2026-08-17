@@ -6,7 +6,7 @@ import { COW_PROTOCOL_ETH_FLOW_ADDRESS, getCurrencyAddress } from '@cowprotocol/
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 import { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
-import { isTradeAllowedByTokenPolicy } from '@cowprotocol/tokens'
+import { isTradeAllowedByTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { useWalletInfo } from '@cowprotocol/wallet'
 import { useWalletProvider } from '@cowprotocol/wallet-provider'
 
@@ -48,7 +48,11 @@ function getQuoteCurrencies(state: ReturnType<typeof useDerivedTradeState>): {
     inputCurrency,
     outputCurrency,
     orderKind,
-    isTokenPolicyAllowed: isTradeAllowedByTokenPolicy(inputCurrency, outputCurrency),
+    isTokenPolicyAllowed: isTradeAllowedByTokenPolicy(
+      inputCurrency,
+      outputCurrency,
+      TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
+    ),
   }
 }
 

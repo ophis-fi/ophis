@@ -2,7 +2,7 @@ import { getEthFlowContractAddresses } from '@cowprotocol/common-const'
 import { captureError, ERROR_TYPES, normalizeError, reportPlaceOrderWithExpiredQuote } from '@cowprotocol/common-utils'
 import { areAddressesEqual, OrderClass, SigningScheme, SigningStepManager } from '@cowprotocol/cow-sdk'
 import { Percent } from '@cowprotocol/currency'
-import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
+import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
 
 import { t } from '@lingui/core/macro'
@@ -81,6 +81,7 @@ export async function ethFlow({
   assertTradeTokenPolicy(
     { chainId: inputAmount.currency.chainId, address: inputAmount.currency.wrapped.address },
     { chainId: outputAmount.currency.chainId, address: outputAmount.currency.wrapped.address },
+    TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
   )
 
   logTradeFlow('ETH FLOW', 'STEP 1: confirm price impact')

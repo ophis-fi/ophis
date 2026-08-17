@@ -2,7 +2,7 @@ import { captureError, ERROR_TYPES, normalizeError, reportPermitWithDefaultSigne
 import { SigningScheme } from '@cowprotocol/cow-sdk'
 import { Percent } from '@cowprotocol/currency'
 import { isSupportedPermitInfo } from '@cowprotocol/permit-utils'
-import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
+import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { Command, UiOrderType } from '@cowprotocol/types'
 
 import { tradingSdk } from 'tradingSdk/tradingSdk'
@@ -55,6 +55,7 @@ export async function tradeFlow(
   assertTradeTokenPolicy(
     { chainId: sellToken.chainId, address: sellToken.address },
     { chainId: buyToken.chainId, address: buyToken.address },
+    TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
   )
 
   const swapFlowAnalyticsContext: TradeFlowAnalyticsContext = {

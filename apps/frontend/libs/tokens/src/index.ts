@@ -91,6 +91,7 @@ export {
   getCurrencyTokenPolicyDecision,
   getTokenPolicyDecision,
   isTradeAllowedByTokenPolicy,
+  TokenPolicyProfile,
 } from './services/tokenPolicy'
 export type { TokenPolicyAsset, TokenPolicyDecision, TokenPolicyReason } from './services/tokenPolicy'
 
