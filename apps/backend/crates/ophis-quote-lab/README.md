@@ -51,6 +51,7 @@ cargo run -p ophis-quote-lab -- \
 cargo run -p ophis-quote-lab -- \
   --rpc-url "$ETHEREUM_RPC_URL" \
   matrix \
+  --matrix crates/ophis-quote-lab/config/ethereum-matrix-expanded.toml \
   --source ophis-fixture-fixed \
   --source ophis-fixture-prior \
   --source ophis-fixture-current \

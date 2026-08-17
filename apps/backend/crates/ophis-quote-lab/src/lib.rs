@@ -1077,6 +1077,13 @@ mod tests {
         )))
         .unwrap();
         assert_eq!(matrix.cases.len(), 10);
+
+        let expanded = BenchmarkMatrix::load(Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/config/ethereum-matrix-expanded.toml"
+        )))
+        .unwrap();
+        assert_eq!(expanded.cases.len(), 30);
     }
 
     #[test]

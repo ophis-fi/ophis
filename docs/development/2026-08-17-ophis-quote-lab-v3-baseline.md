@@ -79,3 +79,6 @@ Current evidence says:
 5. the quoter gas estimate is not yet sufficient for net-surplus comparison.
 
 The next measurement step is to broaden the allowlisted pair matrix to cases where V2, V4, or other existing Ophis liquidity sources can plausibly win, record repeated samples across time and providers, and add a comparable gas model. None of this authorizes an execution adapter.
+
+The first 30-case expansion is recorded in
+[`2026-08-17-ophis-quote-lab-expanded-matrix.md`](./2026-08-17-ophis-quote-lab-expanded-matrix.md).
