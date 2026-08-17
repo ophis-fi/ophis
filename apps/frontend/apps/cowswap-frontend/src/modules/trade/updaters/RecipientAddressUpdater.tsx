@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import { useENSAddress } from '@cowprotocol/ens'
+import { useOphisNameResolution } from 'common/hooks/useOphisNameResolution'
 
 import { useTradeState } from '../hooks/useTradeState'
 
@@ -8,7 +8,8 @@ import { useTradeState } from '../hooks/useTradeState'
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function RecipientAddressUpdater() {
   const { state, updateState } = useTradeState()
-  const { address: recipientAddress } = useENSAddress(state?.recipient)
+  const recipientChainId = state?.targetChainId || state?.chainId || undefined
+  const { address: recipientAddress } = useOphisNameResolution(state?.recipient, recipientChainId)
 
   useEffect(() => {
     if (state?.recipientAddress !== recipientAddress) {

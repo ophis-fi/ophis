@@ -35,9 +35,7 @@ export function NetworksList({
   // Ophis: render chains alphabetically by label. The active
   // chain pops to the top via `order: -1` on the wrapper, so the
   // user always sees their current network first.
-  const sortedChains = [...availableChains].sort((a, b) =>
-    getChainInfo(a).label.localeCompare(getChainInfo(b).label),
-  )
+  const sortedChains = [...availableChains].sort((a, b) => getChainInfo(a).label.localeCompare(getChainInfo(b).label))
 
   return (
     <>

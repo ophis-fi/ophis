@@ -16,18 +16,18 @@
  * The reward only unblocks AFTER the address validation succeeds; eligibility
  * alone (step 2) never reveals redemption content.
  */
-import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
 import { useAccountType, useIsSmartContractWallet } from '@cowprotocol/wallet'
 
+import { Badge, TextLink } from 'ophis/ds'
+
 import { useOphisAffiliateSign } from 'modules/affiliate'
 
 import { RewardClaimForm } from './RewardClaimForm'
-import * as styledEl from './Rewards.styled'
 import { CLAIM_EMAIL, RewardPerk } from './rewards.const'
-
-import { Badge, TextLink } from 'ophis/ds'
+import * as styledEl from './Rewards.styled'
 
 function formatXp(value: number): string {
   return value.toLocaleString('en-US')
@@ -52,9 +52,19 @@ interface RewardCardProps {
   account: string | undefined
 }
 
-export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
+interface RewardClaimModel {
+  accountType: ReturnType<typeof useAccountType>
+  claim: ClaimState
+  isEligible: boolean
+  isSmartContractWallet: boolean
+  isValidated: boolean
+  onClaim: () => Promise<void>
+  progressPct: number
+}
+
+function useRewardClaim(perk: RewardPerk, xp: number | null, account: string | undefined): RewardClaimModel {
   const sign = useOphisAffiliateSign(account)
-  const isSmartContractWallet = useIsSmartContractWallet()
+  const isSmartContractWallet = !!useIsSmartContractWallet()
   // useIsSmartContractWallet() coalesces to `false` while the on-chain code
   // lookup is still pending (a Safe resolves synchronously; a non-Safe
   // contract wallet does not), so it cannot itself signal "still loading".
@@ -66,7 +76,9 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
   // Latest account, for guarding async claim continuations against a wallet
   // switch that lands while the signature prompt is pending.
   const accountRef = useRef(account)
-  accountRef.current = account
+  useLayoutEffect(() => {
+    accountRef.current = account
+  }, [account])
 
   // Normalized address key: a GENUINE wallet switch resets the claim machine
   // (a validation belongs to the address that signed it), but a checksum-only
@@ -82,7 +94,7 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
   const isEligible = account !== undefined && xp !== null && xp >= perk.xpRequired
   // Compare addresses case-insensitively: a reconnect can re-emit the same
   // wallet with different checksum casing (Codex review).
-  const isValidated = claim.step === 'validated' && areAddressesEqual(claim.wallet, account)
+  const isValidated = claim.step === 'validated' && !!areAddressesEqual(claim.wallet, account)
   const progressPct = xp === null ? 0 : (xp / perk.xpRequired) * 100
 
   const onClaim = useCallback(async () => {
@@ -106,9 +118,120 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
     }
   }, [account, isEligible, perk.id, sign])
 
-  const badge = !isEligible ? (
+  return { accountType, claim, isEligible, isSmartContractWallet, isValidated, onClaim, progressPct }
+}
+
+function ValidatedReward({
+  claim,
+  perk,
+}: {
+  claim: Extract<ClaimState, { step: 'validated' }>
+  perk: RewardPerk
+}): ReactNode {
+  const claimNote = perk.code
+    ? perk.redeemUrl
+      ? 'Use this link and enter the code above at checkout to get your discount.'
+      : 'Enter the code above at checkout to get your discount.'
+    : 'Shop through this link to get your discount.'
+
+  return (
+    <styledEl.ClaimPanel>
+      <p>
+        Address <strong>{truncateAddress(claim.wallet)}</strong> validated. Your reward is unlocked.
+      </p>
+      {perk.code || perk.redeemUrl ? (
+        <>
+          {perk.code && (
+            <styledEl.RedeemRow>
+              <styledEl.ClaimNote>Code</styledEl.ClaimNote>
+              <styledEl.CodeChip>{perk.code}</styledEl.CodeChip>
+            </styledEl.RedeemRow>
+          )}
+          {perk.redeemUrl && (
+            <styledEl.ClaimButton href={perk.redeemUrl} target="_blank" rel="noopener noreferrer">
+              {perk.redeemLabel ?? `Shop ${perk.partner}`}
+            </styledEl.ClaimButton>
+          )}
+          <styledEl.ClaimNote>{claimNote}</styledEl.ClaimNote>
+        </>
+      ) : (
+        <RewardClaimForm perk={perk} wallet={claim.wallet} issued={claim.issued} signature={claim.signature} />
+      )}
+    </styledEl.ClaimPanel>
+  )
+}
+
+interface RewardFooterProps {
+  model: RewardClaimModel
+  perk: RewardPerk
+  xp: number | null
+}
+
+function RewardFooter({ model, perk, xp }: RewardFooterProps): ReactNode {
+  if (!model.isEligible) {
+    return (
+      <>
+        <styledEl.ProgressTrack aria-hidden="true">
+          <styledEl.ProgressFill $pct={model.progressPct} />
+        </styledEl.ProgressTrack>
+        <styledEl.ProgressLabel>
+          {xp === null
+            ? `Unlocks at ${formatXp(perk.xpRequired)} XP`
+            : `${formatXp(xp)} / ${formatXp(perk.xpRequired)} XP`}
+        </styledEl.ProgressLabel>
+      </>
+    )
+  }
+  if (model.isValidated && model.claim.step === 'validated') {
+    return <ValidatedReward claim={model.claim} perk={perk} />
+  }
+  if (model.isSmartContractWallet) {
+    return (
+      <styledEl.ClaimPanel>
+        <styledEl.ClaimNote>
+          Smart-contract wallets are not supported for signature claims yet. Email{' '}
+          <TextLink href={`mailto:${CLAIM_EMAIL}`}>{CLAIM_EMAIL}</TextLink> from your project contact and include your
+          Safe address; eligibility is checked on-chain.
+        </styledEl.ClaimNote>
+      </styledEl.ClaimPanel>
+    )
+  }
+  if (model.accountType === undefined) {
+    return (
+      <styledEl.ClaimPanel>
+        <styledEl.ClaimActionButton type="button" disabled>
+          Checking wallet...
+        </styledEl.ClaimActionButton>
+      </styledEl.ClaimPanel>
+    )
+  }
+
+  return (
+    <styledEl.ClaimPanel>
+      <styledEl.ClaimActionButton type="button" onClick={model.onClaim} disabled={model.claim.step === 'validating'}>
+        {model.claim.step === 'validating' ? 'Validating address...' : 'Claim reward'}
+      </styledEl.ClaimActionButton>
+      {model.claim.step === 'rejected' && (
+        <styledEl.ClaimNote>
+          Signature declined. Claiming needs a one-time signature to validate your address.
+        </styledEl.ClaimNote>
+      )}
+      {model.claim.step === 'error' && <styledEl.ClaimNote>Validation did not complete. Try again.</styledEl.ClaimNote>}
+      {model.claim.step === 'idle' && (
+        <styledEl.ClaimNote>
+          A one-time signature validates that you own this address. No transaction, no gas.
+        </styledEl.ClaimNote>
+      )}
+    </styledEl.ClaimPanel>
+  )
+}
+
+export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
+  const model = useRewardClaim(perk, xp, account)
+
+  const badge = !model.isEligible ? (
     <Badge tone="planned">{`${formatXp(perk.xpRequired)} XP`}</Badge>
-  ) : isValidated ? (
+  ) : model.isValidated ? (
     <Badge tone="live">Unlocked</Badge>
   ) : (
     <Badge tone="live">Eligible</Badge>
@@ -128,95 +251,7 @@ export function RewardCard({ perk, xp, account }: RewardCardProps): ReactNode {
         </TextLink>
       </styledEl.PerkDescription>
       <styledEl.PerkFooter>
-        {!isEligible ? (
-          <>
-            <styledEl.ProgressTrack aria-hidden="true">
-              <styledEl.ProgressFill $pct={progressPct} />
-            </styledEl.ProgressTrack>
-            <styledEl.ProgressLabel>
-              {xp === null
-                ? `Unlocks at ${formatXp(perk.xpRequired)} XP`
-                : `${formatXp(xp)} / ${formatXp(perk.xpRequired)} XP`}
-            </styledEl.ProgressLabel>
-          </>
-        ) : isValidated && claim.step === 'validated' ? (
-          <styledEl.ClaimPanel>
-            <p>
-              Address <strong>{truncateAddress(claim.wallet)}</strong> validated. Your reward is unlocked.
-            </p>
-            {perk.code || perk.redeemUrl ? (
-              <>
-                {perk.code && (
-                  <styledEl.RedeemRow>
-                    <styledEl.ClaimNote>Code</styledEl.ClaimNote>
-                    <styledEl.CodeChip>{perk.code}</styledEl.CodeChip>
-                  </styledEl.RedeemRow>
-                )}
-                {perk.redeemUrl && (
-                  <styledEl.ClaimButton href={perk.redeemUrl} target="_blank" rel="noopener noreferrer">
-                    {perk.redeemLabel ?? `Shop ${perk.partner}`}
-                  </styledEl.ClaimButton>
-                )}
-                <styledEl.ClaimNote>
-                  {perk.code && perk.redeemUrl
-                    ? 'Use this link and enter the code above at checkout to get your discount.'
-                    : perk.code
-                      ? 'Enter the code above at checkout to get your discount.'
-                      : 'Shop through this link to get your discount.'}
-                </styledEl.ClaimNote>
-              </>
-            ) : (
-              <RewardClaimForm
-                perk={perk}
-                wallet={claim.wallet}
-                issued={claim.issued}
-                signature={claim.signature}
-              />
-            )}
-          </styledEl.ClaimPanel>
-        ) : isSmartContractWallet ? (
-          <styledEl.ClaimPanel>
-            {/* Safe and other contract wallets cannot produce the recoverable
-                EIP-191 signature the claim check verifies (they sign via
-                EIP-1271, which needs an on-chain call to validate). Route
-                them to email until a 1271-aware claim path exists. A Safe
-                resolves synchronously so it lands here without a loading hold. */}
-            <styledEl.ClaimNote>
-              Smart-contract wallets are not supported for signature claims yet. Email{' '}
-              <TextLink href={`mailto:${CLAIM_EMAIL}`}>{CLAIM_EMAIL}</TextLink> from your project
-              contact and include your Safe address; eligibility is checked on-chain.
-            </styledEl.ClaimNote>
-          </styledEl.ClaimPanel>
-        ) : accountType === undefined ? (
-          <styledEl.ClaimPanel>
-            {/* getCode still resolving for a non-Safe wallet: hold the button
-                rather than defaulting to the EOA signature path, so a contract
-                wallet can't enter the EIP-191 flow before detection completes
-                (Codex review). Fail-closed if the lookup errors. */}
-            <styledEl.ClaimActionButton type="button" disabled>
-              Checking wallet...
-            </styledEl.ClaimActionButton>
-          </styledEl.ClaimPanel>
-        ) : (
-          <styledEl.ClaimPanel>
-            <styledEl.ClaimActionButton
-              type="button"
-              onClick={onClaim}
-              disabled={claim.step === 'validating'}
-            >
-              {claim.step === 'validating' ? 'Validating address...' : 'Claim reward'}
-            </styledEl.ClaimActionButton>
-            {claim.step === 'rejected' && (
-              <styledEl.ClaimNote>Signature declined. Claiming needs a one-time signature to validate your address.</styledEl.ClaimNote>
-            )}
-            {claim.step === 'error' && (
-              <styledEl.ClaimNote>Validation did not complete. Try again.</styledEl.ClaimNote>
-            )}
-            {claim.step === 'idle' && (
-              <styledEl.ClaimNote>A one-time signature validates that you own this address. No transaction, no gas.</styledEl.ClaimNote>
-            )}
-          </styledEl.ClaimPanel>
-        )}
+        <RewardFooter model={model} perk={perk} xp={xp} />
       </styledEl.PerkFooter>
     </styledEl.PerkCard>
   )

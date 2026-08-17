@@ -1,8 +1,9 @@
+import { NATIVE_CURRENCY_ADDRESS, TokenWithLogo } from '@cowprotocol/common-const'
+import { TokenInfo } from '@cowprotocol/types'
 import { getAddress } from '@ethersproject/address'
 
-import { NATIVE_CURRENCY_ADDRESS, TokenWithLogo } from '@cowprotocol/common-const'
-
 import { enabledTokensByAddressForChain, symbolToAddressResolver, tokenBySymbolMap } from './useTokenForChainBySymbol'
+
 import { ListState } from '../../types'
 
 // Real mainnet addresses, intentionally lowercased so the checksum step is exercised.
@@ -22,7 +23,7 @@ function byAddress(...tokens: TokenWithLogo[]): Record<string, TokenWithLogo> {
   return m
 }
 
-function tokenInfo(address: string, symbol: string, chainId = 1) {
+function tokenInfo(address: string, symbol: string, chainId = 1): TokenInfo {
   return { chainId, address, symbol, decimals: 18, name: symbol }
 }
 function listState(tokens: ReturnType<typeof tokenInfo>[], priority: number, isEnabled?: boolean): ListState {

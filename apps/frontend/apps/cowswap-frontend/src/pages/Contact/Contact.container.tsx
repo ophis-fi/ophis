@@ -14,13 +14,11 @@
  * AGENTS.md compliance: named export, page implementation in *.container.tsx,
  * barrel re-export in index.ts.
  */
-import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
-
-import styled from 'styled-components/macro'
-
-import { Callout, PageShell, Section, TextLink } from 'ophis/ds'
+import { Dispatch, ReactNode, SetStateAction, useCallback, useEffect, useRef, useState } from 'react'
 
 import { trackGa4Event } from 'ophis/analytics/track'
+import { Callout, PageShell, Section, TextLink } from 'ophis/ds'
+import styled from 'styled-components/macro'
 
 declare global {
   interface Window {
@@ -140,7 +138,10 @@ const SubmitButton = styled.button`
   color: #02000d;
   background: #f2a63e;
   cursor: pointer;
-  transition: background 120ms ease-out, transform 80ms ease-out, opacity 120ms ease-out;
+  transition:
+    background 120ms ease-out,
+    transform 80ms ease-out,
+    opacity 120ms ease-out;
 
   &:hover:not(:disabled) {
     background: #ffbb6e;
@@ -154,28 +155,19 @@ const SubmitButton = styled.button`
   }
 `
 
-export function ContactPage(): ReactNode {
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [telegram, setTelegram] = useState('')
-  const [requestType, setRequestType] = useState('')
-  const [replyVia, setReplyVia] = useState('Email')
-  const [message, setMessage] = useState('')
-  const [company, setCompany] = useState('') // honeypot
-  const [status, setStatus] = useState<Status>('idle')
+interface TurnstileRefs {
+  widgetIdRef: { current: string | undefined }
+  widgetRef: { current: HTMLDivElement | null }
+}
 
+function useTurnstile(): TurnstileRefs {
   const widgetRef = useRef<HTMLDivElement>(null)
   const widgetIdRef = useRef<string | undefined>(undefined)
 
-  // Explicitly render Turnstile (SPA-safe: the implicit class scan only runs on
-  // script load, so a later route mount would get no widget + no token). Load
-  // the script if needed, render into our ref'd div, clean up on unmount.
   useEffect(() => {
     const siteKey = TURNSTILE_SITE_KEY
     if (!siteKey) return
     let cancelled = false
-    // Narrowed-to-string copy so the nested closure sees `string`, not
-    // `string | undefined` (TS flow narrowing doesn't cross into nested fns).
     const key: string = siteKey
 
     function renderWidget(): void {
@@ -208,56 +200,257 @@ export function ContactPage(): ReactNode {
     }
   }, [])
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
-    e.preventDefault()
-    if (status === 'sending') return
+  return { widgetIdRef, widgetRef }
+}
 
-    let turnstileToken: string | undefined
-    if (TURNSTILE_SITE_KEY) {
-      turnstileToken = window.turnstile?.getResponse(widgetIdRef.current)
-      if (!turnstileToken) {
-        setStatus('captcha')
-        return
+interface ContactFormModel {
+  company: string
+  email: string
+  handleSubmit: (event: Event) => Promise<void>
+  message: string
+  name: string
+  replyVia: string
+  requestType: string
+  setCompany: Dispatch<SetStateAction<string>>
+  setEmail: Dispatch<SetStateAction<string>>
+  setMessage: Dispatch<SetStateAction<string>>
+  setName: Dispatch<SetStateAction<string>>
+  setReplyVia: Dispatch<SetStateAction<string>>
+  setRequestType: Dispatch<SetStateAction<string>>
+  setTelegram: Dispatch<SetStateAction<string>>
+  status: Status
+  telegram: string
+}
+
+function useContactForm(widgetIdRef: TurnstileRefs['widgetIdRef']): ContactFormModel {
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [telegram, setTelegram] = useState('')
+  const [requestType, setRequestType] = useState('')
+  const [replyVia, setReplyVia] = useState('Email')
+  const [message, setMessage] = useState('')
+  const [company, setCompany] = useState('') // honeypot
+  const [status, setStatus] = useState<Status>('idle')
+
+  const handleSubmit = useCallback(
+    async (event: Event): Promise<void> => {
+      event.preventDefault()
+      if (status === 'sending') return
+
+      let turnstileToken: string | undefined
+      if (TURNSTILE_SITE_KEY) {
+        turnstileToken = window.turnstile?.getResponse(widgetIdRef.current)
+        if (!turnstileToken) {
+          setStatus('captcha')
+          return
+        }
       }
-    }
 
-    setStatus('sending')
-    try {
-      const res = await fetch(FORMSPREE_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          name,
-          email,
-          telegram,
-          request_type: requestType,
-          reply_via: replyVia,
-          message,
-          _subject: `Ophis contact [${requestType || 'General'}]: ${name}`,
-          _gotcha: company,
-          ...(turnstileToken ? { 'cf-turnstile-response': turnstileToken } : {}),
-        }),
-      })
-      if (res.ok) {
-        setStatus('success')
-        // Conversion signal: a partner/contact lead was submitted. request_type
-        // is a non-PII category; name/email/telegram/message are never sent.
-        trackGa4Event('generate_lead', { method: 'contact_form', lead_type: requestType || 'general' })
-        setName('')
-        setEmail('')
-        setTelegram('')
-        setRequestType('')
-        setReplyVia('Email')
-        setMessage('')
-      } else {
+      setStatus('sending')
+      try {
+        const res = await fetch(FORMSPREE_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            name,
+            email,
+            telegram,
+            request_type: requestType,
+            reply_via: replyVia,
+            message,
+            _subject: `Ophis contact [${requestType || 'General'}]: ${name}`,
+            _gotcha: company,
+            ...(turnstileToken ? { 'cf-turnstile-response': turnstileToken } : {}),
+          }),
+        })
+        if (res.ok) {
+          setStatus('success')
+          // Conversion signal: a partner/contact lead was submitted. request_type
+          // is a non-PII category; name/email/telegram/message are never sent.
+          trackGa4Event('generate_lead', { method: 'contact_form', lead_type: requestType || 'general' })
+          setName('')
+          setEmail('')
+          setTelegram('')
+          setRequestType('')
+          setReplyVia('Email')
+          setMessage('')
+        } else {
+          setStatus('error')
+          window.turnstile?.reset(widgetIdRef.current)
+        }
+      } catch {
         setStatus('error')
-        window.turnstile?.reset(widgetIdRef.current)
+        window.turnstile?.reset()
       }
-    } catch {
-      setStatus('error')
-      window.turnstile?.reset()
-    }
+    },
+    [company, email, message, name, replyVia, requestType, status, telegram, widgetIdRef],
+  )
+
+  return {
+    company,
+    email,
+    handleSubmit,
+    message,
+    name,
+    replyVia,
+    requestType,
+    setCompany,
+    setEmail,
+    setMessage,
+    setName,
+    setReplyVia,
+    setRequestType,
+    setTelegram,
+    status,
+    telegram,
   }
+}
+
+function useNativeSubmitHandler(handleSubmit: ContactFormModel['handleSubmit']): { current: HTMLFormElement | null } {
+  const formRef = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    const form = formRef.current
+    if (!form) return
+    const listener = (event: Event): void => void handleSubmit(event)
+    form.addEventListener('submit', listener)
+    return () => form.removeEventListener('submit', listener)
+  }, [handleSubmit])
+  return formRef
+}
+
+function ContactIdentityFields({ model }: { model: ContactFormModel }): ReactNode {
+  return (
+    <>
+      <Field>
+        Name
+        <Input
+          type="text"
+          name="name"
+          value={model.name}
+          onChange={(event) => model.setName(event.target.value)}
+          required
+          maxLength={120}
+          placeholder="Your name"
+          autoComplete="name"
+        />
+      </Field>
+      <Field>
+        Email
+        <Input
+          type="email"
+          name="email"
+          value={model.email}
+          onChange={(event) => model.setEmail(event.target.value)}
+          required
+          maxLength={254}
+          placeholder="you@example.com"
+          autoComplete="email"
+        />
+      </Field>
+      <Field>
+        Telegram handle <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span>
+        <Input
+          type="text"
+          name="telegram"
+          value={model.telegram}
+          onChange={(event) => model.setTelegram(event.target.value)}
+          maxLength={64}
+          placeholder="@yourhandle"
+        />
+      </Field>
+      <Field>
+        Type of request
+        <Select
+          name="request_type"
+          value={model.requestType}
+          onChange={(event) => model.setRequestType(event.target.value)}
+          required
+        >
+          <option value="" disabled>
+            Select a topic…
+          </option>
+          {REQUEST_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {type}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field>
+        Preferred reply
+        <Select name="reply_via" value={model.replyVia} onChange={(event) => model.setReplyVia(event.target.value)}>
+          <option value="Email">Email</option>
+          <option value="Telegram">Telegram</option>
+        </Select>
+      </Field>
+      <Field>
+        Message
+        <Textarea
+          name="message"
+          value={model.message}
+          onChange={(event) => model.setMessage(event.target.value)}
+          required
+          maxLength={4000}
+          placeholder="How can we help?"
+        />
+      </Field>
+    </>
+  )
+}
+
+function ContactFormContent({
+  model,
+  widgetRef,
+}: {
+  model: ContactFormModel
+  widgetRef: TurnstileRefs['widgetRef']
+}): ReactNode {
+  const formRef = useNativeSubmitHandler(model.handleSubmit)
+
+  return (
+    <Form ref={formRef} action={FORMSPREE_ENDPOINT} method="POST">
+      <ContactIdentityFields model={model} />
+      <input type="hidden" name="_subject" value="New Ophis contact form submission" />
+      <Honeypot aria-hidden="true">
+        <label>
+          Company
+          <input
+            type="text"
+            name="_gotcha"
+            tabIndex={-1}
+            autoComplete="off"
+            value={model.company}
+            onChange={(event) => model.setCompany(event.target.value)}
+          />
+        </label>
+      </Honeypot>
+      {TURNSTILE_SITE_KEY && <TurnstileWidget ref={widgetRef} />}
+      {model.status === 'captcha' && (
+        <Callout tone="warning" title="Verification needed">
+          <p>Please complete the anti-spam check above, then send again.</p>
+        </Callout>
+      )}
+      {model.status === 'error' && (
+        <Callout tone="warning" title="Could not send">
+          <p>
+            Something went wrong sending your message. Please try again in a moment, or reach us via{' '}
+            <TextLink href="https://github.com/ophis-fi/ophis" external>
+              GitHub
+            </TextLink>
+            .
+          </p>
+        </Callout>
+      )}
+      <SubmitButton type="submit" disabled={model.status === 'sending'}>
+        {model.status === 'sending' ? 'Sending…' : 'Send message'}
+      </SubmitButton>
+    </Form>
+  )
+}
+
+export function ContactPage(): ReactNode {
+  const { widgetIdRef, widgetRef } = useTurnstile()
+  const model = useContactForm(widgetIdRef)
 
   return (
     <PageShell
@@ -267,11 +460,11 @@ export function ContactPage(): ReactNode {
       lede="Partnerships, integrations, institutional desks, press, or support. Tell us what you need and how to reach you, and the right person on the Ophis team gets back to you."
     >
       <Section id="form" title="Send a message">
-        {status === 'success' ? (
+        {model.status === 'success' ? (
           <Callout tone="success" title="Message sent">
             <p>
-              Thanks, your message is on its way. We&apos;ll reply via your preferred channel. For
-              institutional or desk enquiries in the meantime, see{' '}
+              Thanks, your message is on its way. We&apos;ll reply via your preferred channel. For institutional or desk
+              enquiries in the meantime, see{' '}
               <TextLink href="https://business.ophis.fi" external>
                 business.ophis.fi
               </TextLink>
@@ -279,126 +472,7 @@ export function ContactPage(): ReactNode {
             </p>
           </Callout>
         ) : (
-          <Form onSubmit={handleSubmit} action={FORMSPREE_ENDPOINT} method="POST">
-            <Field>
-              Name
-              <Input
-                type="text"
-                name="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                maxLength={120}
-                placeholder="Your name"
-                autoComplete="name"
-              />
-            </Field>
-            <Field>
-              Email
-              <Input
-                type="email"
-                name="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                maxLength={254}
-                placeholder="you@example.com"
-                autoComplete="email"
-              />
-            </Field>
-            <Field>
-              Telegram handle <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span>
-              <Input
-                type="text"
-                name="telegram"
-                value={telegram}
-                onChange={(e) => setTelegram(e.target.value)}
-                maxLength={64}
-                placeholder="@yourhandle"
-              />
-            </Field>
-            <Field>
-              Type of request
-              <Select
-                name="request_type"
-                value={requestType}
-                onChange={(e) => setRequestType(e.target.value)}
-                required
-              >
-                <option value="" disabled>
-                  Select a topic…
-                </option>
-                {REQUEST_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field>
-              Preferred reply
-              <Select name="reply_via" value={replyVia} onChange={(e) => setReplyVia(e.target.value)}>
-                <option value="Email">Email</option>
-                <option value="Telegram">Telegram</option>
-              </Select>
-            </Field>
-            <Field>
-              Message
-              <Textarea
-                name="message"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                required
-                maxLength={4000}
-                placeholder="How can we help?"
-              />
-            </Field>
-
-            {/* Native-fallback subject (no-JS path); the AJAX path sends a richer
-                dynamic _subject built from the request type. */}
-            <input type="hidden" name="_subject" value="New Ophis contact form submission" />
-
-            <Honeypot aria-hidden="true">
-              <label>
-                Company
-                <input
-                  type="text"
-                  name="_gotcha"
-                  tabIndex={-1}
-                  autoComplete="off"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                />
-              </label>
-            </Honeypot>
-
-            {TURNSTILE_SITE_KEY && (
-              <TurnstileWidget ref={widgetRef} />
-            )}
-
-            {status === 'captcha' && (
-              <Callout tone="warning" title="Verification needed">
-                <p>Please complete the anti-spam check above, then send again.</p>
-              </Callout>
-            )}
-
-            {status === 'error' && (
-              <Callout tone="warning" title="Could not send">
-                <p>
-                  Something went wrong sending your message. Please try again in a moment, or reach
-                  us via{' '}
-                  <TextLink href="https://github.com/ophis-fi/ophis" external>
-                    GitHub
-                  </TextLink>
-                  .
-                </p>
-              </Callout>
-            )}
-
-            <SubmitButton type="submit" disabled={status === 'sending'}>
-              {status === 'sending' ? 'Sending…' : 'Send message'}
-            </SubmitButton>
-          </Form>
+          <ContactFormContent model={model} widgetRef={widgetRef} />
         )}
       </Section>
     </PageShell>

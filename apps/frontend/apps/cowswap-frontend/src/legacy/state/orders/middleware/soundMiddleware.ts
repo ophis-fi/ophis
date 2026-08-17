@@ -3,8 +3,9 @@
 import { isAnyOf } from '@reduxjs/toolkit'
 import { AnyAction, Dispatch, Middleware, MiddlewareAPI } from 'redux'
 
-import { getIsBridgeOrder } from 'common/utils/getIsBridgeOrder'
 import { getCowSoundError, getCowSoundSend, getCowSoundSuccess } from 'modules/sounds'
+
+import { getIsBridgeOrder } from 'common/utils/getIsBridgeOrder'
 
 import { AppState } from '../../index'
 import { AddPendingOrderParams, BatchOrdersUpdateParams, UpdateOrderParams } from '../actions'

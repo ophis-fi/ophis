@@ -8,18 +8,42 @@ const isOphisRecipient = (entry: unknown): boolean =>
   typeof (entry as { recipient?: unknown }).recipient === 'string' &&
   (entry as { recipient: string }).recipient.toLowerCase() === OPHIS_PARTNER_FEE_RECIPIENT.toLowerCase()
 
+type PartnerFeeRecord = Record<string, unknown> & { recipient: string }
+
+function selectPartnerFee(raw: unknown): unknown {
+  return Array.isArray(raw) ? raw.find(isOphisRecipient) : raw
+}
+
+function asPartnerFeeRecord(value: unknown): PartnerFeeRecord | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  return typeof record.recipient === 'string' ? (record as PartnerFeeRecord) : null
+}
+
+function decodePartnerFee(record: PartnerFeeRecord): PartnerFeeInfo | null {
+  if (typeof record.priceImprovementBps === 'number' && typeof record.maxVolumeBps === 'number') {
+    return {
+      type: 'priceImprovement',
+      priceImprovementBps: record.priceImprovementBps,
+      maxVolumeBps: record.maxVolumeBps,
+      recipient: record.recipient,
+    }
+  }
+  const volumeBps = record.volumeBps ?? record.bps
+  return typeof volumeBps === 'number' ? { type: 'volume', volumeBps, recipient: record.recipient } : null
+}
+
 const extractPartnerFee = (fullAppData: string | null): PartnerFeeInfo | null => {
   if (!fullAppData) return null
   try {
-    const parsed = JSON.parse(fullAppData)
-    const raw = parsed?.metadata?.partnerFee
+    const parsed = JSON.parse(fullAppData) as { metadata?: { partnerFee?: unknown } }
+    const partnerFee = asPartnerFeeRecord(selectPartnerFee(parsed.metadata?.partnerFee))
     // metadata.partnerFee is a single object (SDK/front-end orders) OR an array
     // (a compat order that mapped an Odos referralFee stacks the integrator entry
     // beside the Ophis default). For the array, pick the Ophis-recipient entry:
     // this receipt reports the Ophis protocol fee, not a third party's fee. A
     // single object is used as-is, whatever its recipient (unchanged behavior).
-    const pf = Array.isArray(raw) ? (raw.find(isOphisRecipient) ?? null) : raw
-    if (!pf || typeof pf.recipient !== 'string') return null
+    if (!partnerFee) return null
     // Ophis-scoped decode: only the two fee models Ophis can produce are
     // recognised. CIP-75's surplus and tiered-array models never appear in
     // Ophis appData, so any other shape falls through to null rather than
@@ -30,19 +54,7 @@ const extractPartnerFee = (fullAppData: string | null): PartnerFeeInfo | null =>
     // flip). Checked before the volume branch: a PI appData carries no
     // volumeBps, so the pre-fix `volumeBps ?? bps` path returned null and the
     // receipt under-reported a real 25%-of-improvement fee as "(none)".
-    if (typeof pf.priceImprovementBps === 'number' && typeof pf.maxVolumeBps === 'number') {
-      return {
-        type: 'priceImprovement',
-        priceImprovementBps: pf.priceImprovementBps,
-        maxVolumeBps: pf.maxVolumeBps,
-        recipient: pf.recipient,
-      }
-    }
-    // Flat-volume model — what Ophis writes in production since the
-    // 2026-06-08 flag flip (also: widget overrides, `bps` legacy alias).
-    const volumeBps = pf.volumeBps ?? pf.bps
-    if (typeof volumeBps !== 'number') return null
-    return { type: 'volume', volumeBps, recipient: pf.recipient }
+    return decodePartnerFee(partnerFee)
   } catch {
     return null
   }
@@ -58,6 +70,14 @@ const calcSurplus = (executedBuy: string, quotedBuy: string): number | null => {
   return num / denom
 }
 
+function nullable<T>(value: T | null | undefined): T | null {
+  return value ?? null
+}
+
+function surplusForTrade(trade: BuildReceiptInput['trade'], executedBuy: string, quotedBuy: string): number | null {
+  return trade ? calcSurplus(executedBuy, quotedBuy) : null
+}
+
 export const buildReceipt = ({ order, trade, chainId, pathVizSvgBase64 }: BuildReceiptInput): MevProofReceipt => ({
   orderUid: order.uid,
   chainId,
@@ -69,12 +89,12 @@ export const buildReceipt = ({ order, trade, chainId, pathVizSvgBase64 }: BuildR
   executedSellAmount: order.executedSellAmount,
   executedBuyAmount: order.executedBuyAmount,
   validTo: order.validTo,
-  settlementTxHash: trade?.txHash ?? null,
-  settlementBlock: trade?.blockNumber ?? null,
+  settlementTxHash: nullable(trade?.txHash),
+  settlementBlock: nullable(trade?.blockNumber),
   status: order.status,
   partnerFee: extractPartnerFee(order.fullAppData),
-  surplusVsQuote: trade ? calcSurplus(order.executedBuyAmount, order.buyAmount) : null,
-  pathVizSvgBase64: pathVizSvgBase64 ?? null,
+  surplusVsQuote: surplusForTrade(trade, order.executedBuyAmount, order.buyAmount),
+  pathVizSvgBase64: nullable(pathVizSvgBase64),
   receiptVersion: '3',
   generatedAt: new Date().toISOString(),
 })

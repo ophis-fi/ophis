@@ -1,12 +1,12 @@
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 
-import { TradeType } from 'modules/trade'
-import { TradeQuoteState } from 'modules/tradeQuote'
+import { TradeType } from 'modules/trade/types/TradeType'
+import type { TradeQuoteState } from 'modules/tradeQuote/state/tradeQuoteAtom'
 
 import { validateTradeForm } from './validateTradeForm'
 
-import { ApproveRequiredReason } from '../../erc20Approve'
+import { ApproveRequiredReason } from '../../erc20Approve/types'
 import { TradeFormValidation, TradeFormValidationContext } from '../types'
 
 const mockCurrencyAmount = (value: string): CurrencyAmount<Currency> =>
@@ -41,6 +41,7 @@ describe('validateTradeForm - xStock logic', () => {
     isWrapUnwrap: false,
     isSafeReadonlyUser: false,
     isSwapUnsupported: false,
+    isTokenPolicyDenied: false,
     recipientEnsAddress: null,
     isInsufficientBalanceOrderAllowed: false,
     isProviderNetworkUnsupported: false,
@@ -181,5 +182,11 @@ describe('validateTradeForm - xStock logic', () => {
 
     const result = validateTradeForm(context)
     expect(result).toEqual([TradeFormValidation.XstockMinimumTradeSize])
+  })
+
+  test('blocks a trade denied by the Ophis token policy', () => {
+    const context = { ...baseContext, isTokenPolicyDenied: true } as unknown as TradeFormValidationContext
+
+    expect(validateTradeForm(context)).toContain(TradeFormValidation.TokenPolicyDenied)
   })
 })

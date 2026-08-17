@@ -1,7 +1,7 @@
 import { ReactNode } from 'react'
 
-import { COW_TOKEN_TO_CHAIN, WETH_SEPOLIA } from '@cowprotocol/common-const'
-import { OrderKind, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
+import { OrderKind } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount } from '@cowprotocol/currency'
 import { WalletInfo, walletInfoAtom } from '@cowprotocol/wallet'
 
@@ -50,13 +50,8 @@ const useEnoughAllowanceMock = useEnoughAllowance as jest.Mock
 
 const bridgingSdkMock = bridgingSdk as unknown as { getQuote: jest.Mock }
 
-const inputCurrencyAmount = CurrencyAmount.fromRawAmount(WETH_SEPOLIA, 10_000_000)
-
-if (!COW_TOKEN_TO_CHAIN[SupportedChainId.SEPOLIA]) {
-  throw new Error(`COW token not found for chain ${SupportedChainId.SEPOLIA}`)
-}
-
-const outputCurrencyAmount = CurrencyAmount.fromRawAmount(COW_TOKEN_TO_CHAIN[SupportedChainId.SEPOLIA], 2_000_000)
+const inputCurrencyAmount = CurrencyAmount.fromRawAmount(WETH_MAINNET, 10_000_000)
+const outputCurrencyAmount = CurrencyAmount.fromRawAmount(USDC_MAINNET, 2_000_000)
 
 const walletInfoMock: WalletInfo = {
   chainId: 1,
@@ -84,7 +79,7 @@ const Wrapper =
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (mocks: any) =>
     ({ children }: { children: ReactNode }) => (
-      <WithMockedWeb3 location={{ pathname: '/5/limit' }}>
+      <WithMockedWeb3 location={{ pathname: '/1/limit' }}>
         <JotaiTestProvider initialValues={mocks}>{children}</JotaiTestProvider>
       </WithMockedWeb3>
     )

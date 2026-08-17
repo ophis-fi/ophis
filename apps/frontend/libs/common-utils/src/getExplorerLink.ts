@@ -27,9 +27,9 @@ const BLOCK_EXPLORER_URL_OVERRIDE = process.env.REACT_APP_BLOCK_EXPLORER_URL
  *
  * Links point at the Ophis explorer (explorer.ophis.fi) via the per-chain base
  * in `./explorer` (getExplorerBaseUrl), instead of Etherscan/native scanners.
- * Chains the Ophis explorer does not serve (OP/MegaETH/HyperEVM) keep their
- * native fallback, which getExplorerBaseUrl already resolves. Token links use
- * the explorer's address route (the Ophis explorer has no token page).
+ * Unsupported chains retain the native fallback resolved by
+ * getExplorerBaseUrl. Token links use the explorer's address route because
+ * the Ophis explorer has no separate token page.
  */
 export function getExplorerLink(
   chainId: number,

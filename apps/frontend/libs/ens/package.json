@@ -34,7 +34,8 @@
     "@ethersproject/hash": "5.7.0",
     "ethers": "5.7.2",
     "react": "19.1.2",
-    "swr": "^2.3.3"
+    "swr": "^2.3.3",
+    "viem": "^2.42.1"
   },
   "devDependencies": {
     "@types/react": "19.1.3"

@@ -334,8 +334,7 @@ function TokensTableContent(props: TokensTableContentProps): ReactNode {
       balances={balances}
       tokensData={tokensData}
       allowances={allowances}
-    >
-    </TokenTable>
+    ></TokenTable>
   )
 }
 

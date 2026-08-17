@@ -97,8 +97,8 @@ export function getNonNativeSlippageTooltip({
       <SimpleStyledText>
         <p>
           <Trans>
-            Ophis has dynamically selected this slippage tolerance, accounting for current gas prices and trade size,
-            to ensure your trade executes quickly while still getting the best price.
+            Ophis has dynamically selected this slippage tolerance, accounting for current gas prices and trade size, to
+            ensure your trade executes quickly while still getting the best price.
           </Trans>
         </p>
 

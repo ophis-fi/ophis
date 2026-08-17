@@ -1,6 +1,5 @@
-import { useCallback } from 'react'
-
 import { useAtomValue } from 'jotai'
+import { useCallback } from 'react'
 
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -11,9 +10,9 @@ import { AppDataInfo, buildAppData, resolveOphisPartnerFee } from 'modules/appDa
 import { useAppCode, useAppDataHooks } from 'modules/appData/hooks'
 import { useRwaConsentForAppData } from 'modules/appData/hooks/useRwaConsentForAppData'
 import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
-import { isStableStablePair } from 'modules/volumeFee'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
 import { useUtm } from 'modules/utm'
+import { isStableStablePair } from 'modules/volumeFee'
 
 import { useBasketLegPartnerFee } from './useBasketLegPartnerFee'
 import { BuildBasketLegAppDataFn } from './useBasketPlacement'

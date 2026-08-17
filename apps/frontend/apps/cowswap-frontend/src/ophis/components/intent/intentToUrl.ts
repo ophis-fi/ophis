@@ -46,6 +46,54 @@ export interface IntentFields {
   field: 'sell' | 'buy'
 }
 
+interface CollectedIntentFields {
+  chainId?: number
+  sell?: string
+  buy?: string
+  amount?: string
+  sellStart?: number
+  buyStart?: number
+  amountStart?: number
+}
+
+function collectIntentEntity(fields: CollectedIntentFields, entity: ParsedIntent['entities'][number]): void {
+  if (entity.type === 'chain' && fields.chainId === undefined) {
+    fields.chainId = chainSlugToId(entity.value)
+    return
+  }
+  if (entity.type === 'sellToken' && fields.sell === undefined) {
+    fields.sell = entity.value
+    fields.sellStart = entity.start
+    return
+  }
+  if (entity.type === 'buyToken' && fields.buy === undefined) {
+    fields.buy = entity.value
+    fields.buyStart = entity.start
+    return
+  }
+  if (entity.type === 'amount' && fields.amount === undefined) {
+    fields.amount = entity.value
+    fields.amountStart = entity.start
+  }
+}
+
+function resolveIntentToken(
+  symbol: string | undefined,
+  resolveToken?: (symbol: string) => string | null,
+): string | undefined {
+  if (symbol === undefined) return undefined
+  return resolveToken?.(symbol) ?? symbol
+}
+
+function getIntentAmountField(fields: CollectedIntentFields): 'sell' | 'buy' {
+  const { sell, buy, amountStart, sellStart, buyStart } = fields
+  if (sell === undefined || buy === undefined || amountStart === undefined) return sell !== undefined ? 'sell' : 'buy'
+
+  const sellDistance = sellStart === undefined ? Number.POSITIVE_INFINITY : Math.abs(amountStart - sellStart)
+  const buyDistance = buyStart === undefined ? Number.POSITIVE_INFINITY : Math.abs(amountStart - buyStart)
+  return buyDistance < sellDistance ? 'buy' : 'sell'
+}
+
 /**
  * Pull the structured trade fields out of a ParsedIntent, applying the same
  * symbol->address resolution intentToUrl uses. Shared by intentToUrl (the URL)
@@ -56,51 +104,35 @@ export function extractIntentFields(
   parsed: ParsedIntent,
   resolveToken?: (symbol: string) => string | null,
 ): IntentFields {
-  let chainId: number | undefined
-  let sell: string | undefined
-  let buy: string | undefined
-  let amount: string | undefined
-  let sellStart: number | undefined
-  let buyStart: number | undefined
-  let amountStart: number | undefined
-
-  for (const e of parsed.entities) {
-    if (e.type === 'chain' && chainId === undefined) chainId = chainSlugToId(e.value)
-    else if (e.type === 'sellToken' && sell === undefined) {
-      sell = e.value
-      sellStart = e.start
-    } else if (e.type === 'buyToken' && buy === undefined) {
-      buy = e.value
-      buyStart = e.start
-    } else if (e.type === 'amount' && amount === undefined) {
-      amount = e.value
-      amountStart = e.start
-    }
-  }
-
-  const resolve = (symbol: string | undefined): string | undefined =>
-    symbol === undefined ? undefined : (resolveToken?.(symbol) ?? symbol)
+  const fields: CollectedIntentFields = {}
+  parsed.entities.forEach((entity) => collectIntentEntity(fields, entity))
 
   // Bind the amount to the positionally-nearest token, so "buy 500 COW with USDC"
   // (amount adjacent to the BUY token) fills the buy side, while "swap 100 USDC for
   // ETH" (amount adjacent to the SELL token) fills the sell side. Fall back to the
   // sell side when only one token is present or positions are unavailable.
-  let field: 'sell' | 'buy'
-  if (sell !== undefined && buy !== undefined && amountStart !== undefined) {
-    const dSell = sellStart !== undefined ? Math.abs(amountStart - sellStart) : Number.POSITIVE_INFINITY
-    const dBuy = buyStart !== undefined ? Math.abs(amountStart - buyStart) : Number.POSITIVE_INFINITY
-    field = dBuy < dSell ? 'buy' : 'sell'
-  } else {
-    field = sell !== undefined ? 'sell' : 'buy'
-  }
-
   return {
-    chainId,
-    sellToken: resolve(sell),
-    buyToken: resolve(buy),
-    amount: amount || undefined,
-    field,
+    chainId: fields.chainId,
+    sellToken: resolveIntentToken(fields.sell, resolveToken),
+    buyToken: resolveIntentToken(fields.buy, resolveToken),
+    amount: fields.amount || undefined,
+    field: getIntentAmountField(fields),
   }
+}
+
+function buildIntentPath(chainId: number | undefined, sellToken: string | undefined, buyToken: string | undefined): string {
+  const segments = chainId === undefined ? ['swap'] : [String(chainId), 'swap']
+  if (sellToken || buyToken) {
+    segments.push(sellToken ? encodeURIComponent(sellToken) : '_')
+    if (buyToken) segments.push(encodeURIComponent(buyToken))
+  }
+  return `/${segments.join('/')}`
+}
+
+function buildAmountQuery(fields: IntentFields): string {
+  if (!fields.amount) return ''
+  const amountKey = fields.field === 'buy' ? (fields.buyToken ? BUY_AMOUNT_KEY : null) : fields.sellToken ? SELL_AMOUNT_KEY : null
+  return amountKey ? `?${amountKey}=${encodeURIComponent(fields.amount)}` : ''
 }
 
 export function intentToUrl(
@@ -110,35 +142,12 @@ export function intentToUrl(
 ): string {
   if (parsed.intent !== 'swap') return '/swap'
 
-  const { chainId, sellToken, buyToken, amount, field } = extractIntentFields(parsed, resolveToken)
+  const fields = extractIntentFields(parsed, resolveToken)
 
   // Emit a chain segment whenever we know one (parsed, else the caller's fallback =
   // the connected/default chain). A chainless URL that carries an amount is unsafe:
   // cowswap's SwapPageRedirect rebuilds the path from the DEFAULT pair while keeping
   // the query, so ?sellAmount would apply to WETH/USDC instead of the parsed tokens.
-  const effectiveChainId = chainId ?? fallbackChainId
-
-  const segments: string[] = []
-  if (effectiveChainId !== undefined) segments.push(String(effectiveChainId))
-  segments.push('swap')
-
-  // Encode token segments: valid symbols/addresses are unaffected, but a
-  // malformed parser value (containing `/`, `?`, `#`, …) can't alter the route.
-  if (sellToken || buyToken) {
-    segments.push(sellToken ? encodeURIComponent(sellToken) : '_')
-    if (buyToken) segments.push(encodeURIComponent(buyToken))
-  }
-
-  let url = '/' + segments.join('/')
-
-  // Pre-fill the amount (human units) on the side it binds to (see extractIntentFields).
-  // cowswap's amount updater ignores an amount whose currency isn't loaded yet and
-  // re-applies once it is, so this is always safe.
-  if (amount) {
-    const amountKey =
-      field === 'buy' ? (buyToken ? BUY_AMOUNT_KEY : undefined) : sellToken ? SELL_AMOUNT_KEY : undefined
-    if (amountKey) url += `?${amountKey}=${encodeURIComponent(amount)}`
-  }
-
-  return url
+  const effectiveChainId = fields.chainId ?? fallbackChainId
+  return buildIntentPath(effectiveChainId, fields.sellToken, fields.buyToken) + buildAmountQuery(fields)
 }

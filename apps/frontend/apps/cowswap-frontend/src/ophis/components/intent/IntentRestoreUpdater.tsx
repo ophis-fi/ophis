@@ -34,7 +34,9 @@ import { useEffect, useRef } from 'react'
 import { usePrevious } from '@cowprotocol/common-hooks'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import { useLocation, useNavigate } from 'react-router'
+import { useLocation } from 'react-router'
+
+import { useNavigate } from 'common/hooks/useNavigate'
 
 import { clearIntentStash, readIntentStash } from './intentStash'
 

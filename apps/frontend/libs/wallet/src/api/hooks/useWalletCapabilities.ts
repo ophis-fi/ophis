@@ -1,5 +1,5 @@
 import { LAUNCH_DARKLY_VIEM_MIGRATION, SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
-import { isInjectedWidget, isMobile } from '@cowprotocol/common-utils'
+import { isInjectedWidget, isMobile, log } from '@cowprotocol/common-utils'
 import type { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useWalletProvider } from '@cowprotocol/wallet-provider'
 import type { Web3Provider } from '@ethersproject/providers'
@@ -13,14 +13,18 @@ import { useWidgetProviderMetaInfo } from './useWidgetProviderMetaInfo'
 import { useIsWalletConnect } from '../../wagmi/hooks/useIsWalletConnect'
 import { useIsWalletConnect as legacyUseIsWalletConnect } from '../../web3-react/hooks/useIsWalletConnect'
 import { useWalletInfo } from '../hooks'
-
-export type WalletCapabilities = {
-  atomic?: { status: 'supported' | 'ready' | 'unsupported' }
-}
+import {
+  getWalletCapabilitiesForChain,
+  parseWalletCapabilities,
+  type WalletCapabilities,
+} from '../pure/walletCapabilities'
 
 const requestTimeout = ms`10s`
 
 const EMPTY_SWR_RESPONSE = { data: undefined, isLoading: true }
+
+type CapabilitiesResponse = { data: WalletCapabilities | undefined; isLoading: boolean }
+type CapabilitiesSWRKey = readonly [Web3Provider, string, SupportedChainId] | null
 
 /**
  * Walletconnect in mobile browsers initiates a request with confirmation to the wallet
@@ -41,6 +45,37 @@ function shouldCheckCapabilities(
   return !((isWalletConnect || isWalletConnectViaWidget) && isMobile)
 }
 
+function canFetchCapabilities(
+  shouldCheck: boolean,
+  provider: Web3Provider | undefined,
+  account: string | undefined,
+  chainId: SupportedChainId | undefined,
+): boolean {
+  return Boolean(shouldCheck && provider && account && chainId)
+}
+
+function getCapabilitiesSWRKey(
+  shouldFetch: boolean,
+  provider: Web3Provider | undefined,
+  account: string | undefined,
+  chainId: SupportedChainId | undefined,
+): CapabilitiesSWRKey {
+  return shouldFetch && provider && account && chainId ? [provider, account, chainId] : null
+}
+
+function selectCapabilitiesResponse(
+  wagmiResponse: { data: unknown; isLoading: boolean },
+  swrResponse: CapabilitiesResponse,
+  shouldFetch: boolean,
+  isWidgetMetadataLoading: boolean,
+): CapabilitiesResponse {
+  if (LAUNCH_DARKLY_VIEM_MIGRATION) {
+    return { data: parseWalletCapabilities(wagmiResponse.data), isLoading: wagmiResponse.isLoading }
+  }
+
+  return !shouldFetch && isWidgetMetadataLoading ? EMPTY_SWR_RESPONSE : swrResponse
+}
+
 export function useWalletCapabilities(): { data: WalletCapabilities | undefined; isLoading: boolean } {
   const provider = useWalletProvider()
   const newIsWalletConnect = useIsWalletConnect()
@@ -50,21 +85,17 @@ export function useWalletCapabilities(): { data: WalletCapabilities | undefined;
 
   const capabilities = useCapabilities({ account, chainId })
 
-  let isWalletConnect = legacyIsWalletConnect
-  if (LAUNCH_DARKLY_VIEM_MIGRATION) {
-    isWalletConnect = newIsWalletConnect
-  }
-
-  const shouldFetchCapabilities = Boolean(
-    shouldCheckCapabilities(isWalletConnect, widgetProviderMetaInfo) && provider && account && chainId,
+  const isWalletConnect = LAUNCH_DARKLY_VIEM_MIGRATION ? newIsWalletConnect : legacyIsWalletConnect
+  const shouldFetchCapabilities = canFetchCapabilities(
+    shouldCheckCapabilities(isWalletConnect, widgetProviderMetaInfo),
+    provider,
+    account,
+    chainId,
   )
+  const swrKey = getCapabilitiesSWRKey(shouldFetchCapabilities, provider, account, chainId)
 
-  const swrResponse = useSWR<
-    WalletCapabilities | undefined,
-    unknown,
-    readonly [Web3Provider, string, SupportedChainId] | null
-  >(
-    shouldFetchCapabilities ? [provider!, account!, chainId] : null,
+  const swrResponse = useSWR<WalletCapabilities | undefined, unknown, CapabilitiesSWRKey>(
+    swrKey,
     ([provider, account, chainId]) => {
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {
@@ -73,28 +104,20 @@ export function useWalletCapabilities(): { data: WalletCapabilities | undefined;
 
         provider
           .send('wallet_getCapabilities', [account])
-          .then((result: { [chainIdHex: string]: WalletCapabilities }) => {
+          .then((result: unknown) => {
             clearTimeout(timeout)
-
-            if (!result) {
-              resolve(undefined)
-              return
-            }
-            const chainIdHex = '0x' + (+chainId).toString(16)
-
-            // fallback for Safe wallets https://github.com/safe-global/safe-wallet-monorepo/issues/6906
-            resolve(result[chainIdHex] || result[Object.keys(result)[0]])
+            resolve(getWalletCapabilitiesForChain(result, chainId))
           })
-          .catch((error) => {
+          .catch((error: unknown) => {
             // Ophis fork: many wallets / RPCs (notably some OP-mainnet providers)
             // do not implement `wallet_getCapabilities` and reject with -32601
             // (Method not found) or -32603 (Internal error). Treat the call as
             // unsupported instead of spamming the console.
-            const code = error?.code ?? error?.cause?.code
+            const code = getProviderErrorCode(error)
             if (code === -32601 || code === -32603 || code === -32004) {
-              console.debug('useWalletCapabilities() unsupported by provider', code)
+              log('WalletCapabilities', '#6b7280', 'Provider does not support capability discovery', code)
             } else {
-              console.warn('useWalletCapabilities() error', error)
+              log('WalletCapabilities', '#b45309', 'Capability discovery failed', error)
             }
             clearTimeout(timeout)
             resolve(undefined)
@@ -104,11 +127,24 @@ export function useWalletCapabilities(): { data: WalletCapabilities | undefined;
     SWR_NO_REFRESH_OPTIONS,
   )
 
-  if (LAUNCH_DARKLY_VIEM_MIGRATION) {
-    return capabilities
-  } else if (!shouldFetchCapabilities && widgetProviderMetaInfo.isLoading) {
-    return EMPTY_SWR_RESPONSE
-  }
+  return selectCapabilitiesResponse(
+    capabilities,
+    swrResponse,
+    shouldFetchCapabilities,
+    widgetProviderMetaInfo.isLoading,
+  )
+}
 
-  return swrResponse
+function getProviderErrorCode(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) return undefined
+
+  const directCode = Reflect.get(error, 'code')
+  if (typeof directCode === 'number') return directCode
+
+  const cause = Reflect.get(error, 'cause')
+  if (typeof cause !== 'object' || cause === null) return undefined
+
+  const causeCode = Reflect.get(cause, 'code')
+
+  return typeof causeCode === 'number' ? causeCode : undefined
 }

@@ -2,7 +2,9 @@ import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
 
 import { getJotaiIsolatedStorage, jotaiStore } from '@cowprotocol/core'
-import { EIP6963AnnounceProviderEvent, EIP6963ProviderDetail } from '@cowprotocol/types'
+import type { EIP6963ProviderDetail } from '@cowprotocol/types'
+
+import { findEip6963ProviderByRdns, upsertEip6963Provider } from '../pure/eip6963Providers'
 
 export const multiInjectedProvidersAtom = atom<EIP6963ProviderDetail[]>([])
 
@@ -17,20 +19,17 @@ export const selectedEip6963ProviderAtom = atom((get) => {
   const providers = get(multiInjectedProvidersAtom)
   const selectedProviderId = get(selectedEip6963ProviderRdnsAtom)
 
-  return selectedProviderId ? providers.find((p) => p.info.rdns === selectedProviderId) : null
+  return findEip6963ProviderByRdns(providers, selectedProviderId)
 })
 
-window.addEventListener('eip6963:announceProvider', (event: Event) => {
-  const providerEvent = event as EIP6963AnnounceProviderEvent
+if (typeof window !== 'undefined') {
+  window.addEventListener('eip6963:announceProvider', (event: Event) => {
+    const announcement = Reflect.get(event, 'detail')
 
-  jotaiStore.set(multiInjectedProvidersAtom, (prev: EIP6963ProviderDetail[]) => {
-    const newProvider = providerEvent.detail
-    const existingProvider = prev.find((p) => p.info.rdns === newProvider.info.rdns)
-
-    if (existingProvider) return prev
-
-    return [newProvider, ...prev]
+    jotaiStore.set(multiInjectedProvidersAtom, (prev: EIP6963ProviderDetail[]) =>
+      upsertEip6963Provider(prev, announcement),
+    )
   })
-})
 
-window.dispatchEvent(new Event('eip6963:requestProvider'))
+  window.dispatchEvent(new Event('eip6963:requestProvider'))
+}

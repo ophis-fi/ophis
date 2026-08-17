@@ -1,18 +1,19 @@
-import { useCallback, useRef, useState } from 'react'
-
 import { useSetAtom } from 'jotai'
 import { useAtomCallback } from 'jotai/utils'
+import { useCallback, useRef, useState } from 'react'
+
+import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
 
 import { OphisBasketTag } from 'ophis/basketMetadata'
 
 import type { AppDataInfo } from 'modules/appData'
 
-import { basketDraftAtom, updateBasketLegAtom } from '../state/multiOrder.atoms'
-import { BasketDraft, BasketLeg } from '../types'
 import { basketLegMarker } from '../pure/basketLegAppData'
 import { CancelCandidate, runLegCancellation } from '../pure/cancellation'
 import { isDraftForContext } from '../pure/draftContext'
 import { PlacedLeg, runBasketPlacement } from '../pure/placement'
+import { basketDraftAtom, updateBasketLegAtom } from '../state/multiOrder.atoms'
+import { BasketDraft, BasketLeg } from '../types'
 
 /** Build ONE leg's appData with its basket marker merged (metadata.ophisBasket).
  *  Supplied by the container (useBuildBasketLegAppData). This is what makes the
@@ -45,6 +46,15 @@ export interface UseBasketPlacementResult {
   readonly abort: () => void
   /** Manual one-click cancel of every still-open (unfilled) leg. */
   readonly cancelUnfilled: () => Promise<void>
+}
+
+function assertBasketTokenPolicy(draft: BasketDraft): void {
+  for (const leg of draft.legs) {
+    assertTradeTokenPolicy(
+      { chainId: draft.chainId, address: leg.sellToken },
+      { chainId: draft.chainId, address: leg.buyToken },
+    )
+  }
 }
 
 /**
@@ -104,6 +114,7 @@ export function useBasketPlacement(
     if (!draft) return
     // Never place a basket composed under a different account/chain.
     if (!isDraftForContext(draft, owner, chainId)) return
+    assertBasketTokenPolicy(draft)
     const controller = new AbortController()
     abortRef.current = controller
     setIsPlacing(true)
@@ -124,7 +135,10 @@ export function useBasketPlacement(
         // 'cancelling' (retryable) if the soft-cancel is rejected.
         cancelLegs: (placed) => cancelWithStatus(placed.map((p) => ({ leg: p.leg.leg, orderUid: p.orderUid }))),
         onLegFailed: (leg, _index, error) =>
-          updateLeg({ leg: leg.leg, patch: { status: 'failed', error: error instanceof Error ? error.message : String(error) } }),
+          updateLeg({
+            leg: leg.leg,
+            patch: { status: 'failed', error: error instanceof Error ? error.message : String(error) },
+          }),
       })
     } finally {
       setIsPlacing(false)
@@ -132,9 +146,7 @@ export function useBasketPlacement(
     }
   }, [draft, owner, chainId, buildLegAppData, placeLeg, cancelWithStatus, updateLeg])
 
-  const abort = useCallback(() => {
-    abortRef.current?.abort()
-  }, [])
+  const abort = useCallback(() => abortRef.current?.abort(), [])
 
   // Manual retry: cancel every still-cancellable placed leg, reading fresh state.
   const cancelUnfilled = useAtomCallback(

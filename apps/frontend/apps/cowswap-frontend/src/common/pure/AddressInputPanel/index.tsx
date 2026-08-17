@@ -6,13 +6,7 @@ import {
   isPrefixedAddress,
   parsePrefixedAddress,
 } from '@cowprotocol/common-utils'
-import {
-  AdditionalTargetChainId,
-  isBtcAddress,
-  isSolanaAddress,
-  SupportedChainId,
-} from '@cowprotocol/cow-sdk'
-import { useENS } from '@cowprotocol/ens'
+import { AdditionalTargetChainId, isBtcAddress, isSolanaAddress, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { ExternalLink, RowBetween, UI } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -22,6 +16,7 @@ import styled from 'styled-components/macro'
 import { AutoColumn } from 'legacy/components/Column'
 import { useIsDarkMode } from 'legacy/state/user/hooks'
 
+import { useOphisNameResolution } from '../../hooks/useOphisNameResolution'
 import { autofocus } from '../../utils/autofocus'
 import ChainPrefixWarning from '../ChainPrefixWarning'
 
@@ -90,6 +85,13 @@ const Input = styled.input<{ error?: boolean }>`
   }
 `
 
+const ResolvedRecipient = styled.div`
+  color: inherit;
+  font-size: 12px;
+  opacity: 0.72;
+  overflow-wrap: anywhere;
+`
+
 // TODO: Break down this large function into smaller functions
 // TODO: Add proper return type annotation
 // TODO: Reduce function complexity by extracting logic
@@ -133,7 +135,13 @@ export function AddressInputPanel({
 
   // Skip ENS lookup when target is non-EVM — base58 / native input never
   // resolves via ENS and would always show the loading spinner forever.
-  const { address: evmAddress, loading, name } = useENS(isNonEvmTarget ? null : value)
+  const {
+    address: evmAddress,
+    loading,
+    name,
+    system,
+    integrityError,
+  } = useOphisNameResolution(isNonEvmTarget ? null : value, chainId)
 
   const nonEvmAddress = useMemo<string | null>(() => {
     if (!value || !isNonEvmTarget) return null
@@ -180,7 +188,7 @@ export function AddressInputPanel({
     }
   }, [chainPrefixWarning, addressPrefix])
 
-  const error = Boolean(value.length > 0 && !loading && !address)
+  const error = Boolean(value.length > 0 && !loading && (!address || integrityError))
 
   return (
     <InputPanel id={id}>
@@ -193,7 +201,7 @@ export function AddressInputPanel({
             <RowBetween>
               <span>{label ?? <Trans>Recipient</Trans>}</span>
               {address && chainId && (
-                <ExternalLink href={getExplorerLink(chainId, 'address', name ?? address)} style={{ fontSize: '14px' }}>
+                <ExternalLink href={getExplorerLink(chainId, 'address', address)} style={{ fontSize: '14px' }}>
                   <Trans>(View on Explorer)</Trans>
                 </ExternalLink>
               )}
@@ -205,13 +213,18 @@ export function AddressInputPanel({
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck="false"
-              placeholder={placeholder ?? t`Wallet Address or ENS name`}
+              placeholder={placeholder ?? t`Wallet address, ENS, or .wei name`}
               error={error}
               pattern="^(0x[a-fA-F0-9]{40})$"
               onChange={handleInput}
               value={value}
               onFocus={autofocus}
             />
+            {name && address && system ? (
+              <ResolvedRecipient>
+                {system === 'ens' ? 'ENS' : '.wei'} · {address}
+              </ResolvedRecipient>
+            ) : null}
           </AutoColumn>
         </InputContainer>
       </ContainerRow>

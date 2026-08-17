@@ -1,8 +1,9 @@
 import { AnyAction, Dispatch, MiddlewareAPI } from 'redux'
 import { instance, mock, resetCalls, when } from 'ts-mockito'
 
-import { getIsBridgeOrder } from 'common/utils/getIsBridgeOrder'
 import { getCowSoundError, getCowSoundSend, getCowSoundSuccess } from 'modules/sounds'
+
+import { getIsBridgeOrder } from 'common/utils/getIsBridgeOrder'
 
 import { soundMiddleware } from './soundMiddleware'
 

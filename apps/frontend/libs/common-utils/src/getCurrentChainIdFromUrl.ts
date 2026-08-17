@@ -16,11 +16,7 @@ export function getCurrentChainIdFromUrl(location = window.location): SupportedC
 
 // Trying to get chainId from URL (#/100/swap)
 export function getRawCurrentChainIdFromUrl(location = window.location): SupportedChainId | null {
-  const urlChainIdMatch = location.hash.match(/^#\/(\d{1,9})\D/)
-  const searchParams = new URLSearchParams(location.hash.split('?')[1])
-  const chainQueryParam = searchParams.get('chain')
-
-  const chainId = +(urlChainIdMatch?.[1] || chainNameToIdMap[chainQueryParam || ''] || '')
+  const chainId = readChainIdFromHash(location.hash)
 
   // Ophis fork: chains 10 (Optimism), 130 (Unichain), and 4663 (Robinhood)
   // are supported at frontend
@@ -29,4 +25,12 @@ export function getRawCurrentChainIdFromUrl(location = window.location): Support
     return chainId as SupportedChainId
 
   return null
+}
+
+function readChainIdFromHash(hash: string): number {
+  const pathMatch = hash.match(/^#\/(\d{1,9})\D/)
+  if (pathMatch) return Number(pathMatch[1])
+
+  const chainName = new URLSearchParams(hash.split('?')[1]).get('chain')
+  return chainName ? chainNameToIdMap[chainName] || 0 : 0
 }

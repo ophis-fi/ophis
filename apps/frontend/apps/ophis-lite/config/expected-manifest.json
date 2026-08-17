@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "product": "Ophis Lite",
+  "version": "0.0.1",
+  "mode": "local-prototype",
+  "deploymentAuthorized": false,
+  "source": "src/index.html",
+  "output": "dist/index.html",
+  "encoding": "utf-8",
+  "byteLength": 7432,
+  "sha256": "0x9e08bc55300f60757d9266c6a327ec8ca564bb01d37baf20a53bbde3fb98c1c9",
+  "keccak256": "0x68bd2aaa61d91a4b91d80cf4403897eb78fe205634c5609e22019df372edfb11",
+  "chunkSize": 23000,
+  "chunks": [
+    {
+      "index": 0,
+      "offset": 0,
+      "length": 7432,
+      "sha256": "0x9e08bc55300f60757d9266c6a327ec8ca564bb01d37baf20a53bbde3fb98c1c9",
+      "keccak256": "0x68bd2aaa61d91a4b91d80cf4403897eb78fe205634c5609e22019df372edfb11"
+    }
+  ]
+}

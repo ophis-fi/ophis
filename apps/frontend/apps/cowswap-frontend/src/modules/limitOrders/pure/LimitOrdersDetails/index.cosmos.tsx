@@ -33,6 +33,7 @@ const tradeContext: TradeFlowContext = {
   permitInfo: undefined,
   generatePermitHook: () => Promise.resolve(undefined),
   getCachedPermit: () => Promise.resolve(undefined),
+  verifyRecipientName: () => Promise.resolve(),
   postOrderParams: {
     class: OrderClass.LIMIT,
     account: '0x000',

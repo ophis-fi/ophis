@@ -8,7 +8,12 @@ import { Trans } from '@lingui/react/macro'
 
 import { useIsEoaEthFlow } from 'modules/trade'
 import { useTradeQuote } from 'modules/tradeQuote'
-import { useIsSlippageModified, useIsSmartSlippageApplied, useSlippageConfig, useTradeSlippage } from 'modules/tradeSlippage'
+import {
+  useIsSlippageModified,
+  useIsSmartSlippageApplied,
+  useSlippageConfig,
+  useTradeSlippage,
+} from 'modules/tradeSlippage'
 
 import { getNativeSlippageTooltip, getNonNativeSlippageTooltip } from 'common/utils/tradeSettingsTooltips'
 import useNativeCurrency from 'lib/hooks/useNativeCurrency'

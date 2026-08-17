@@ -6,6 +6,7 @@ import { LAUNCH_DARKLY_VIEM_MIGRATION } from '@cowprotocol/common-const'
 import { useConnection } from 'wagmi'
 
 import { useWalletCapabilities } from './hooks/useWalletCapabilities'
+import { hasAtomicBatchCapability } from './pure/walletCapabilities'
 import {
   gnosisSafeInfoAtom,
   walletDetailsAtom,
@@ -65,7 +66,7 @@ export function useIsTxBundlingSupported(): boolean | null {
 
   if (isCapabilitiesLoading) return null
 
-  return isSafeViaWc && capabilities?.atomic?.status === 'supported'
+  return isSafeViaWc && hasAtomicBatchCapability(capabilities)
 }
 
 // TODO: Add proper return type annotation

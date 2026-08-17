@@ -1,7 +1,7 @@
 import { Provider as JotaiProvider } from 'jotai'
 import { useHydrateAtoms } from 'jotai/utils'
 import { createStore } from 'jotai/vanilla'
-import { ReactElement, ReactNode, useMemo } from 'react'
+import { ReactNode, useMemo } from 'react'
 
 import { LegacyWeb3Provider, Web3Provider } from '@cowprotocol/wallet'
 import { initializeConnector, Web3ReactHooks, Web3ReactProvider } from '@web3-react/core'
@@ -9,7 +9,7 @@ import { Connector } from '@web3-react/types'
 
 import { i18n } from '@lingui/core'
 import { I18nProvider } from '@lingui/react'
-import { render } from '@testing-library/react'
+import { render, RenderResult } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router'
 import { ThemeProvider as StyledComponentsThemeProvider } from 'styled-components/macro'
@@ -53,10 +53,10 @@ const WithProviders = ({ children }: { children?: ReactNode }): ReactNode => {
 }
 
 // TODO: Add proper return type annotation
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+
 // `@testing-library/react`'s `.d.ts` was compiled against an older `@types/react` whose
 // `React.ReactNode` does not include `bigint`. Cast bridges the version skew.
-const customRender = (ui: ReactNode) =>
+const customRender = (ui: ReactNode): RenderResult =>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render(ui as React.ReactNode, { wrapper: WithProviders as any })
 

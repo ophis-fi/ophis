@@ -13,27 +13,20 @@ export function ProfileActions(): ReactNode {
     <FeatureGrid minCardWidth="240px">
       <FeatureCard title="Trade">
         <p>
-          Natural-language intents across supported EVM chains, plus Solana and Bitcoin
-          destinations via NEAR Intents.
+          Natural-language intents across supported EVM chains, plus Solana and Bitcoin destinations via NEAR Intents.
         </p>
         <p>
           <TextLink href="/">Open the trade form →</TextLink>
         </p>
       </FeatureCard>
       <FeatureCard title="About Ophis">
-        <p>
-          How the protocol works, audit references, what&apos;s live vs planned. All claims
-          status-tagged.
-        </p>
+        <p>How the protocol works, audit references, what&apos;s live vs planned. All claims status-tagged.</p>
         <p>
           <TextLink href="/about">About →</TextLink>
         </p>
       </FeatureCard>
       <FeatureCard title="Institutional">
-        <p>
-          For OTC desks, funds, treasuries. Non-custodial routing, MEV-protected execution,
-          transparent fees.
-        </p>
+        <p>For OTC desks, funds, treasuries. Non-custodial routing, MEV-protected execution, transparent fees.</p>
         <p>
           <TextLink href="https://business.ophis.fi" external>
             Talk to us →

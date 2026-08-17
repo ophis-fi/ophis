@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; img-src data:; font-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Ophis Lite — fixed-output prototype</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #151915;
+        --muted: #536153;
+        --paper: #f1f0e8;
+        --surface: #fbfaf2;
+        --line: #bdc5b8;
+        --brand: #0b6b44;
+        --brand-ink: #eaffd8;
+        --warn: #8d3f12;
+        --shadow: 0 20px 60px rgb(17 37 25 / 12%);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+          --ink: #edf5e9;
+          --muted: #adbaaa;
+          --paper: #0d120e;
+          --surface: #151c16;
+          --line: #354438;
+          --brand: #86ef86;
+          --brand-ink: #08230f;
+          --warn: #ffb07c;
+          --shadow: 0 20px 60px rgb(0 0 0 / 32%);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        color: var(--ink);
+        background:
+          linear-gradient(90deg, transparent 49.8%, color-mix(in srgb, var(--line) 35%, transparent) 50%, transparent 50.2%),
+          var(--paper);
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .shell {
+        width: min(880px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 32px 0 56px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 0 4px 24px;
+      }
+
+      .wordmark {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+      }
+
+      .mark {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border-radius: 50% 50% 46% 54%;
+        color: var(--brand-ink);
+        background: var(--brand);
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+
+      .build-mode {
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      main {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: var(--surface);
+        box-shadow: var(--shadow);
+      }
+
+      .hero {
+        padding: clamp(32px, 7vw, 72px);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .eyebrow {
+        margin: 0 0 14px;
+        color: var(--brand);
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 12ch;
+        margin: 0;
+        font-size: clamp(2.5rem, 9vw, 5.6rem);
+        line-height: 0.94;
+        letter-spacing: -0.065em;
+      }
+
+      .lede {
+        max-width: 58ch;
+        margin: 28px 0 0;
+        color: var(--muted);
+        font-size: clamp(1rem, 2vw, 1.18rem);
+        line-height: 1.65;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .status {
+        min-height: 168px;
+        padding: 28px;
+        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .status:nth-child(2n) {
+        border-right: 0;
+      }
+
+      .status:nth-last-child(-n + 2) {
+        border-bottom: 0;
+      }
+
+      .status h2 {
+        margin: 0 0 12px;
+        font-size: 0.82rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .status strong {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--brand);
+        font-size: 1.22rem;
+      }
+
+      .status p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .warning {
+        margin: 0;
+        padding: 22px 28px;
+        border-top: 1px solid var(--line);
+        color: var(--warn);
+        font-weight: 680;
+        line-height: 1.5;
+      }
+
+      footer {
+        padding: 20px 4px 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.5;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+
+      @media (max-width: 620px) {
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .status-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .status,
+        .status:nth-child(2n),
+        .status:nth-last-child(-n + 2) {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .status:last-child {
+          border-bottom: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <div class="wordmark"><span class="mark" aria-hidden="true">O</span> Ophis Lite</div>
+        <div class="build-mode">local prototype · no execution</div>
+      </header>
+
+      <main>
+        <section class="hero" aria-labelledby="page-title">
+          <p class="eyebrow">Fixed-output interface study</p>
+          <h1 id="page-title">Small surface. Visible trust.</h1>
+          <p class="lede">
+            This build proves that Ophis can produce one self-contained HTML document with deterministic,
+            independently hashable bytes. It is an interface artifact, not a trading application.
+          </p>
+        </section>
+
+        <section class="status-grid" aria-label="Prototype boundaries">
+          <article class="status">
+            <h2>UI provenance</h2>
+            <strong>Fixed local bytes</strong>
+            <p>Verify this document against the adjacent Ophis build manifest.</p>
+          </article>
+          <article class="status">
+            <h2>Network target</h2>
+            <strong>Ethereum mainnet</strong>
+            <p>No RPC endpoint is embedded and this prototype makes no network request.</p>
+          </article>
+          <article class="status">
+            <h2>Wallet state</h2>
+            <strong>Not connected</strong>
+            <p>Wallet discovery will reuse Ophis capability logic in a later reviewed slice.</p>
+          </article>
+          <article class="status">
+            <h2>Order services</h2>
+            <strong>Unavailable by design</strong>
+            <p>Order submission and solver competition remain offchain services and are not implemented here.</p>
+          </article>
+        </section>
+
+        <p class="warning">
+          No wallet request, signature, approval, order, swap, or transaction can be created by this build.
+        </p>
+      </main>
+
+      <footer>
+        Ophis Lite prototype <code>0.0.1</code>. A future fixed version must display its chain, contract address,
+        content hash, signing domain, and service health before enabling any action.
+      </footer>
+    </div>
+  </body>
+</html>

@@ -46,8 +46,8 @@ export function useOnSelectNetwork(): (chainId: SupportedChainId, skipClose?: bo
           icon: 'alert',
           content: (
             <Trans>
-              Failed to switch networks from the Ophis Interface. In order to use Ophis on {chainInfoLabel}, you
-              must change the network in your wallet.
+              Failed to switch networks from the Ophis Interface. In order to use Ophis on {chainInfoLabel}, you must
+              change the network in your wallet.
             </Trans>
           ),
         })

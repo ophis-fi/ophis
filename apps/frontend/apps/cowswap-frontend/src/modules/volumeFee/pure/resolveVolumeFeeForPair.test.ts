@@ -1,4 +1,8 @@
-import { OPHIS_NON_STABLE_VOLUME_BPS, OPHIS_PARTNER_FEE_RECIPIENT, OPHIS_STABLE_VOLUME_BPS } from 'ophis/partnerFeeDefault'
+import {
+  OPHIS_NON_STABLE_VOLUME_BPS,
+  OPHIS_PARTNER_FEE_RECIPIENT,
+  OPHIS_STABLE_VOLUME_BPS,
+} from 'ophis/partnerFeeDefault'
 
 import {
   isBoostedPair,
@@ -54,37 +58,41 @@ describe('isStableStablePair', () => {
     // The bridge intermediate lives on the SELL chain, so it can be in this
     // chain's stablecoin set. Without the cross-chain bail-out a bridge trade
     // would silently take the reduced rate, which the swap path never did.
-    expect(
-      isStableStablePair(pair({ sellTokenAddress: USDC_OP, buyTokenAddress: USDT_OP, isCrossChain: true })),
-    ).toBe(false)
+    expect(isStableStablePair(pair({ sellTokenAddress: USDC_OP, buyTokenAddress: USDT_OP, isCrossChain: true }))).toBe(
+      false,
+    )
   })
 })
 
 describe('isBoostedPair', () => {
   it('is true when EITHER side is boosted', () => {
-    expect(isBoostedPair(pair({ chainId: MAINNET, sellTokenAddress: ALEPH_MAINNET, buyTokenAddress: WETH_MAINNET }))).toBe(true)
-    expect(isBoostedPair(pair({ chainId: MAINNET, sellTokenAddress: WETH_MAINNET, buyTokenAddress: ALEPH_MAINNET }))).toBe(true)
-    expect(isBoostedPair(pair({ chainId: MAINNET, sellTokenAddress: WETH_MAINNET, buyTokenAddress: USDC_OP }))).toBe(false)
+    expect(
+      isBoostedPair(pair({ chainId: MAINNET, sellTokenAddress: ALEPH_MAINNET, buyTokenAddress: WETH_MAINNET })),
+    ).toBe(true)
+    expect(
+      isBoostedPair(pair({ chainId: MAINNET, sellTokenAddress: WETH_MAINNET, buyTokenAddress: ALEPH_MAINNET })),
+    ).toBe(true)
+    expect(isBoostedPair(pair({ chainId: MAINNET, sellTokenAddress: WETH_MAINNET, buyTokenAddress: USDC_OP }))).toBe(
+      false,
+    )
   })
 
   it('keys on the chain, so the same token is not boosted everywhere', () => {
     expect(isBoostedPair(pair({ chainId: BASE, sellTokenAddress: ALEPH_BASE, buyTokenAddress: WETH_OP }))).toBe(true)
     // The Base ALEPH address is not the mainnet one, so it must not match on mainnet.
-    expect(isBoostedPair(pair({ chainId: MAINNET, sellTokenAddress: ALEPH_BASE, buyTokenAddress: WETH_OP }))).toBe(false)
+    expect(isBoostedPair(pair({ chainId: MAINNET, sellTokenAddress: ALEPH_BASE, buyTokenAddress: WETH_OP }))).toBe(
+      false,
+    )
   })
 
   it('honours boostedChainId over chainId', () => {
     // The swap path keys the boost on the TRADE's chain while the stablecoin set
     // keys on the WALLET's chain; they differ mid-chain-switch.
-    expect(
-      isBoostedPair(pair({ chainId: OP, boostedChainId: MAINNET, sellTokenAddress: ALEPH_MAINNET })),
-    ).toBe(true)
+    expect(isBoostedPair(pair({ chainId: OP, boostedChainId: MAINNET, sellTokenAddress: ALEPH_MAINNET }))).toBe(true)
   })
 
   it('is false for a cross-chain pair even when the sell token is boosted', () => {
-    expect(
-      isBoostedPair(pair({ chainId: MAINNET, sellTokenAddress: ALEPH_MAINNET, isCrossChain: true })),
-    ).toBe(false)
+    expect(isBoostedPair(pair({ chainId: MAINNET, sellTokenAddress: ALEPH_MAINNET, isCrossChain: true }))).toBe(false)
   })
 })
 
@@ -116,19 +124,17 @@ describe('resolveVolumeFeeForPair', () => {
   })
 
   it('emits the reduced floor for a stable-to-stable pair', () => {
-    expect(
-      resolveVolumeFeeForPair(pair({ sellTokenAddress: USDC_OP, buyTokenAddress: USDT_OP }), NO_CONTEXT),
-    ).toEqual({ volumeBps: OPHIS_STABLE_VOLUME_BPS, recipient: OPHIS_PARTNER_FEE_RECIPIENT })
+    expect(resolveVolumeFeeForPair(pair({ sellTokenAddress: USDC_OP, buyTokenAddress: USDT_OP }), NO_CONTEXT)).toEqual({
+      volumeBps: OPHIS_STABLE_VOLUME_BPS,
+      recipient: OPHIS_PARTNER_FEE_RECIPIENT,
+    })
   })
 
   it('uses the same 1 bp sovereign base for stable and volatile basket legs', () => {
     // This is the regression the per-leg wiring exists to prevent. Resolving
     // once from the swap form and reusing it would give both legs whichever of
     // these two answers the form happened to hold.
-    const stableLeg = resolveVolumeFeeForPair(
-      pair({ sellTokenAddress: USDC_OP, buyTokenAddress: USDT_OP }),
-      NO_CONTEXT,
-    )
+    const stableLeg = resolveVolumeFeeForPair(pair({ sellTokenAddress: USDC_OP, buyTokenAddress: USDT_OP }), NO_CONTEXT)
     const volatileLeg = resolveVolumeFeeForPair(
       pair({ sellTokenAddress: USDC_OP, buyTokenAddress: WETH_OP }),
       NO_CONTEXT,
@@ -142,7 +148,9 @@ describe('resolveVolumeFeeForPair', () => {
   it('emits no fee on a CoW-hosted chain when nothing else applies', () => {
     // No Volume-only floor off the sovereign chains, and the appData
     // price-improvement shape carries the fee there instead.
-    expect(resolveVolumeFeeForPair(pair({ chainId: MAINNET, sellTokenAddress: WETH_MAINNET }), NO_CONTEXT)).toBeUndefined()
+    expect(
+      resolveVolumeFeeForPair(pair({ chainId: MAINNET, sellTokenAddress: WETH_MAINNET }), NO_CONTEXT),
+    ).toBeUndefined()
   })
 
   it('exempts a correlated pair, and the floor does not force a fee back on', () => {

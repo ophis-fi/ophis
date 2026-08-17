@@ -28,13 +28,12 @@
  *
  * Renders nothing.
  */
+import { useAtomValue, useSetAtom } from 'jotai'
+import { RESET } from 'jotai/utils'
 import { ReactNode, useEffect, useRef } from 'react'
 
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 import { useWalletInfo } from '@cowprotocol/wallet'
-
-import { useAtomValue, useSetAtom } from 'jotai'
-import { RESET } from 'jotai/utils'
 
 import { useAffiliateTraderCodeFromUrl } from '../hooks/useAffiliateTraderCodeFromUrl'
 import { useOphisAffiliateSign } from '../hooks/useOphisAffiliateSign'

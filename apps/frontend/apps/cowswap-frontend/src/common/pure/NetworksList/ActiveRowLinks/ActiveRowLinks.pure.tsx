@@ -17,9 +17,7 @@ export interface ActiveRowLinksProps {
 // natively in-app via Bungee + Across (EVM to EVM) and NEAR Intents (Solana,
 // Bitcoin); you just pick a destination chain in the token picker. Block-explorer
 // links still appear on order receipts and transaction rows.
-export function ActiveRowLinks({
-  helpCenterUrl,
-}: ActiveRowLinksProps): ReactNode {
+export function ActiveRowLinks({ helpCenterUrl }: ActiveRowLinksProps): ReactNode {
   return (
     <styledEl.ActiveRowLinkList>
       {helpCenterUrl && (

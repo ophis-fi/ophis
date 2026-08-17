@@ -31,7 +31,9 @@ export const Wrapper = styled.label<{ withReceiveAmountInfo: boolean; readOnly: 
   min-height: 106px;
   pointer-events: ${({ pointerDisabled }) => (pointerDisabled ? 'none' : '')};
   max-width: 100%;
-  transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
+  transition:
+    border-color 160ms ease-out,
+    box-shadow 160ms ease-out;
 
   &:hover {
     border-color: var(${UI.COLOR_PAPER_DARKEST});

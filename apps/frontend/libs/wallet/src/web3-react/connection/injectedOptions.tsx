@@ -7,6 +7,7 @@ import { injectedWalletConnection } from './injectedWallet'
 import { default as InjectedImage, default as InjectedImageDark } from '../../api/assets/arrow-right.svg'
 import { useSelectedEip6963ProviderRdns, useSetEip6963Provider } from '../../api/hooks'
 import { ConnectWalletOption } from '../../api/pure/ConnectWalletOption'
+import { areEip6963RdnsEqual } from '../../api/pure/eip6963Providers'
 import { ConnectionType } from '../../api/types'
 import { getConnectionName } from '../../api/utils/connection'
 import { useIsActiveConnection } from '../hooks/useIsActiveConnection'
@@ -61,7 +62,9 @@ export function Eip6963Option({
   const setEip6963Provider = useSetEip6963Provider()
   const selectedRdns = useSelectedEip6963ProviderRdns()
   const isActive =
-    useIsActiveConnection(selectedWallet, injectedWalletConnection) && !!selectedWallet && selectedRdns === info.rdns
+    useIsActiveConnection(selectedWallet, injectedWalletConnection) &&
+    !!selectedWallet &&
+    areEip6963RdnsEqual(selectedRdns, info.rdns)
 
   const onClick = useCallback(() => {
     // Save the previous provider in case the user disconnects to switch back to it

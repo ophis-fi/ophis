@@ -3,10 +3,9 @@ import { ReactNode, useEffect, useMemo } from 'react'
 import { ButtonPrimary, Media, UI } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
+import { Ophis404Scene } from 'ophis/components'
 import { Link } from 'react-router'
 import styled from 'styled-components/macro'
-
-import { Ophis404Scene } from 'ophis/components'
 
 import { usePageBackground, Content, GdocsListStyle, Page, Title } from 'modules/application'
 

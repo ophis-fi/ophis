@@ -11,7 +11,7 @@
 // `<script src="/emergency.js">` in /docs/index.html), the path-to-
 // hash rewriter doesn't mangle the URL — the subdomain pages are real
 // static files, not SPA routes.
-var __ophisSubdomain = ({ 'docs.ophis.fi': true, 'business.ophis.fi': true })[window.location.hostname]
+const __ophisSubdomain = { 'docs.ophis.fi': true, 'business.ophis.fi': true }[window.location.hostname]
 
 // Redirect from the outdated domain
 if (window.location.host === 'cowswap.exchange') {
@@ -46,11 +46,7 @@ try {
 // Subdomains (docs.ophis.fi, business.ophis.fi) are exempt: their
 // `/docs/` and `/business/` paths are real static files served by
 // CF Pages, not SPA routes.
-if (
-  !__ophisSubdomain &&
-  window.location.pathname !== '/' &&
-  !window.location.hash
-) {
+if (!__ophisSubdomain && window.location.pathname !== '/' && !window.location.hash) {
   window.location.replace('/#' + window.location.pathname + window.location.search)
 }
 
@@ -58,11 +54,7 @@ if (
 // subdomain. Users who land on the landing with #faq (from old links
 // or guessed URLs) get bounced to the right place. /faq itself is
 // handled by FaqRedirect in the SPA router.
-if (
-  !__ophisSubdomain &&
-  window.location.pathname === '/' &&
-  window.location.hash === '#faq'
-) {
+if (!__ophisSubdomain && window.location.pathname === '/' && window.location.hash === '#faq') {
   window.location.replace('https://docs.ophis.fi/faq')
 }
 
@@ -70,10 +62,7 @@ if (
 // docs.ophis.fi subdomain. /docs is NOT a React route; hitting
 // /#/docs in the SPA falls through to NotFound. Redirect to the
 // subdomain so the user lands on the actual docs surface.
-if (
-  !__ophisSubdomain &&
-  /^#\/docs(\/.*)?$/.test(window.location.hash)
-) {
+if (!__ophisSubdomain && /^#\/docs(\/.*)?$/.test(window.location.hash)) {
   window.location.replace('https://docs.ophis.fi/' + window.location.hash.slice(7))
 }
 

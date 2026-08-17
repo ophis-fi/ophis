@@ -1,7 +1,6 @@
 import { ReactNode } from 'react'
 
 import { Trans } from '@lingui/react/macro'
-
 import { Badge, BadgeTone } from 'ophis/ds/Badge'
 
 import { BasketLeg, BasketLegStatus, CANCELLABLE_LEG_STATUSES } from '../../types'
@@ -37,9 +36,7 @@ export function BasketStatus({ legs, isPlacing, onCancelUnfilled }: BasketStatus
   return (
     <div>
       <p>
-        <Trans>
-          Basket of {legs.length} orders. Legs settle independently. This is not an atomic swap.
-        </Trans>
+        <Trans>Basket of {legs.length} orders. Legs settle independently. This is not an atomic swap.</Trans>
       </p>
       <ul>
         {legs.map((leg) => (

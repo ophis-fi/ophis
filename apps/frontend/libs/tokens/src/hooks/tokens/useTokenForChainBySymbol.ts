@@ -1,6 +1,5 @@
+import { useAtomValue } from 'jotai'
 import { useMemo } from 'react'
-
-import { getAddress } from '@ethersproject/address'
 
 import {
   NATIVE_CURRENCIES,
@@ -10,8 +9,7 @@ import {
 } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { TokenInfo } from '@cowprotocol/types'
-
-import { useAtomValue } from 'jotai'
+import { getAddress } from '@ethersproject/address'
 
 import { allListsSourcesAtom, listsStatesByChainAtom } from '../../state/tokenLists/tokenListsStateAtom'
 import { TokensByAddress } from '../../state/tokens/allTokensAtom'
@@ -88,20 +86,23 @@ export function tokenBySymbolMap(
   const bySymbol: Record<string, TokenWithLogo> = {}
 
   for (const token of Object.values(byAddress)) {
-    if (!token) continue
-    const key = token.symbol?.toLowerCase()
-    if (key && !(key in bySymbol)) bySymbol[key] = token
+    addTokenBySymbol(bySymbol, token)
   }
-
-  if (wrapped?.symbol) {
-    const k = wrapped.symbol.toLowerCase()
-    if (!(k in bySymbol)) bySymbol[k] = wrapped
-  }
-  if (native?.symbol) {
-    bySymbol[native.symbol.toLowerCase()] = native
-  }
+  addTokenBySymbol(bySymbol, wrapped)
+  addTokenBySymbol(bySymbol, native, true)
 
   return bySymbol
+}
+
+function addTokenBySymbol(
+  bySymbol: Record<string, TokenWithLogo>,
+  token: TokenWithLogo | undefined,
+  overwrite = false,
+): void {
+  if (!token?.symbol) return
+  const key = token.symbol.toLowerCase()
+  if (!overwrite && key in bySymbol) return
+  bySymbol[key] = token
 }
 
 /**

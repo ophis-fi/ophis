@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { VolumeFee } from 'modules/volumeFee'
 
+import { ResolveLegPartnerFeeFn } from './useBasketLegPartnerFee'
+
 import { DecomposedLeg } from '../pure/decomposition'
 import { legQuoteKey, legsQuoteSignature } from '../pure/quoteSignature'
-import { ResolveLegPartnerFeeFn } from './useBasketLegPartnerFee'
 import { BasketLegQuote } from '../types'
 
 /** One leg's quote request (the port the container wires to CoW's quote API). */
@@ -80,7 +81,10 @@ export function useBasketQuotes(
     // effect ran (with the previous signature) reads as not-ready.
     setQuotes(
       Object.fromEntries(
-        legs.map((l) => [legKey(l), { sellIndex: l.sellIndex, buyIndex: l.buyIndex, buyAmount: null, isLoading: true }]),
+        legs.map((l) => [
+          legKey(l),
+          { sellIndex: l.sellIndex, buyIndex: l.buyIndex, buyAmount: null, isLoading: true },
+        ]),
       ),
     )
     setQuotedSig(legsSig)
@@ -102,7 +106,12 @@ export function useBasketQuotes(
           if (runId !== runIdRef.current) return
           setQuotes((prev) => ({
             ...prev,
-            [legKey(leg)]: { sellIndex: leg.sellIndex, buyIndex: leg.buyIndex, buyAmount: res.buyAmountAtoms, isLoading: false },
+            [legKey(leg)]: {
+              sellIndex: leg.sellIndex,
+              buyIndex: leg.buyIndex,
+              buyAmount: res.buyAmountAtoms,
+              isLoading: false,
+            },
           }))
         })
         .catch((e: unknown) => {

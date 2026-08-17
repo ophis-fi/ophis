@@ -21,6 +21,7 @@ import { useTradeQuote } from 'modules/tradeQuote'
 import { useGP2SettlementContract } from 'common/hooks/useContract'
 import { useEnoughAllowance } from 'common/hooks/useEnoughAllowance'
 import { useSafeMemo } from 'common/hooks/useSafeMemo'
+import { useVerifyOphisRecipientName } from 'common/hooks/useVerifyOphisRecipientName'
 
 import { useLimitOrdersDerivedState } from './useLimitOrdersDerivedState'
 
@@ -46,6 +47,7 @@ export function useTradeFlowContext(): TradeFlowContext | null {
   const enoughAllowance = useEnoughAllowance(amountToApprove || undefined)
   const generatePermitHook = useGeneratePermitHook()
   const getCachedPermit = useGetCachedPermit()
+  const verifyRecipientName = useVerifyOphisRecipientName()
 
   const isQuoteReady = !!quoteState.quote && !quoteState.isLoading && !!quoteState.localQuoteTimestamp
 
@@ -86,6 +88,7 @@ export function useTradeFlowContext(): TradeFlowContext | null {
       generatePermitHook,
       getCachedPermit,
       quoteState,
+      verifyRecipientName,
       postOrderParams: {
         class: OrderClass.LIMIT,
         kind: state.orderKind,
@@ -127,6 +130,7 @@ export function useTradeFlowContext(): TradeFlowContext | null {
     generatePermitHook,
     getCachedPermit,
     quoteState,
+    verifyRecipientName,
     sellToken,
     buyToken,
     recipient,

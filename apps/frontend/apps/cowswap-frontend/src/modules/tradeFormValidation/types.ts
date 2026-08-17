@@ -1,12 +1,12 @@
-import { Currency, CurrencyAmount } from '@cowprotocol/currency'
-import { Command } from '@cowprotocol/types'
-import { CowSwapWidgetAppParams } from '@cowprotocol/widget-lib'
+import type { Currency, CurrencyAmount } from '@cowprotocol/currency'
+import type { Command } from '@cowprotocol/types'
+import type { CowSwapWidgetAppParams } from '@cowprotocol/widget-lib'
 
-import { PriceImpact } from 'legacy/hooks/usePriceImpact'
+import type { PriceImpact } from 'legacy/hooks/usePriceImpact'
 
-import { ApprovalState, ApproveRequiredReason } from 'modules/erc20Approve'
-import { TradeDerivedState } from 'modules/trade'
-import { TradeQuoteState } from 'modules/tradeQuote'
+import type { ApprovalState, ApproveRequiredReason } from 'modules/erc20Approve/types'
+import type { TradeDerivedState } from 'modules/trade/types/TradeDerivedState'
+import type { TradeQuoteState } from 'modules/tradeQuote/state/tradeQuoteAtom'
 
 export interface TradeFormButtonContext {
   defaultText: string
@@ -40,6 +40,7 @@ export interface TradeFormValidationCommonContext {
   isBundlingSupported: boolean | null
   isSupportedWallet: boolean
   isSwapUnsupported: boolean
+  isTokenPolicyDenied: boolean
   isSafeReadonlyUser: boolean
   isApproveRequired: ApproveRequiredReason
   isInsufficientBalanceOrderAllowed: boolean
@@ -68,6 +69,7 @@ export enum TradeFormValidation {
   // Quote errors
   QuoteErrors,
   CurrencyNotSupported,
+  TokenPolicyDenied,
 
   // Wallet
   WalletNotConnected,

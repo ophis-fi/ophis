@@ -124,9 +124,7 @@ describe('useSafeMemo() to avoid redundant actuation of hooks', () => {
       // is keyed by class name. Module-scoped Set means this test order matters;
       // a previous test in this describe block already warned for
       // 'CurrencyAmount', so we expect 0 NEW warnings here.
-      const currencyAmountWarnings = warnSpy.mock.calls.filter((call) =>
-        String(call[0]).includes('CurrencyAmount'),
-      )
+      const currencyAmountWarnings = warnSpy.mock.calls.filter((call) => String(call[0]).includes('CurrencyAmount'))
       expect(currencyAmountWarnings.length).toBeLessThanOrEqual(1)
     })
   })

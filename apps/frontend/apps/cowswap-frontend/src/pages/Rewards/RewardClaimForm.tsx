@@ -19,14 +19,14 @@
  * is blocked (offline, CORS, indexer down) can still reach a human, so a
  * backend outage never strands an eligible reward.
  */
-import { FormEvent, ReactNode, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+
+import { TextLink } from 'ophis/ds'
 
 import { AffiliateApiError, submitRewardClaim } from 'modules/affiliate'
 
-import * as styledEl from './Rewards.styled'
 import { CLAIM_EMAIL, RewardPerk } from './rewards.const'
-
-import { TextLink } from 'ophis/ds'
+import * as styledEl from './Rewards.styled'
 
 type SubmitState =
   | { step: 'idle' }
@@ -65,30 +65,42 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
   const [email, setEmail] = useState('')
   const [state, setState] = useState<SubmitState>({ step: 'idle' })
 
-  async function onSubmit(e: FormEvent<HTMLFormElement>): Promise<void> {
-    e.preventDefault()
-    if (state.step === 'sending') return
-    setState({ step: 'sending' })
-    try {
-      const res = await submitRewardClaim({
-        wallet,
-        rewardId: perk.id,
-        email: email.trim(),
-        issued,
-        signature,
-      })
-      setState({ step: 'done', email: email.trim(), alreadyClaimed: res.alreadyClaimed })
-    } catch (error: unknown) {
-      const status = error instanceof AffiliateApiError ? error.status : undefined
-      const message =
-        status === 401
-          ? EXPIRED_MESSAGE
-          : error instanceof AffiliateApiError && error.message
-            ? error.message
-            : 'Could not record your claim.'
-      setState({ step: 'error', message })
-    }
-  }
+  const onSubmit = useCallback(
+    async (event: Event): Promise<void> => {
+      event.preventDefault()
+      if (state.step === 'sending') return
+      setState({ step: 'sending' })
+      try {
+        const res = await submitRewardClaim({
+          wallet,
+          rewardId: perk.id,
+          email: email.trim(),
+          issued,
+          signature,
+        })
+        setState({ step: 'done', email: email.trim(), alreadyClaimed: res.alreadyClaimed })
+      } catch (error: unknown) {
+        const status = error instanceof AffiliateApiError ? error.status : undefined
+        const message =
+          status === 401
+            ? EXPIRED_MESSAGE
+            : error instanceof AffiliateApiError && error.message
+              ? error.message
+              : 'Could not record your claim.'
+        setState({ step: 'error', message })
+      }
+    },
+    [email, issued, perk.id, signature, state.step, wallet],
+  )
+
+  const formRef = useRef<HTMLFormElement>(null)
+  useEffect(() => {
+    const form = formRef.current
+    if (!form) return
+    const listener = (event: Event): void => void onSubmit(event)
+    form.addEventListener('submit', listener)
+    return () => form.removeEventListener('submit', listener)
+  }, [onSubmit])
 
   if (state.step === 'done') {
     return (
@@ -106,7 +118,7 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
   }
 
   return (
-    <styledEl.ClaimForm onSubmit={onSubmit}>
+    <styledEl.ClaimForm ref={formRef}>
       <styledEl.ClaimLabel>
         Email for your {perk.partner} code
         <styledEl.ClaimInput
@@ -121,8 +133,8 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
         />
       </styledEl.ClaimLabel>
       <styledEl.ClaimNote>
-        We only use your email to contact you about this reward. {perk.partner} needs it to send
-        your code. No marketing, no commercial use.
+        We only use your email to contact you about this reward. {perk.partner} needs it to send your code. No
+        marketing, no commercial use.
       </styledEl.ClaimNote>
       <styledEl.ClaimActionButton type="submit" disabled={state.step === 'sending'}>
         {state.step === 'sending' ? 'Recording claim...' : 'Claim my code'}
@@ -132,11 +144,8 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
           {state.message}{' '}
           {state.message === EXPIRED_MESSAGE ? null : (
             <>
-              You can also{' '}
-              <TextLink href={claimHref(perk, wallet, issued, signature)}>
-                request it by email
-              </TextLink>
-              . The message carries the same signed proof.
+              You can also <TextLink href={claimHref(perk, wallet, issued, signature)}>request it by email</TextLink>.
+              The message carries the same signed proof.
             </>
           )}
         </styledEl.ClaimNote>

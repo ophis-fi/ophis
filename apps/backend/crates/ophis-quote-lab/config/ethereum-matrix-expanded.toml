@@ -1,0 +1,191 @@
+schema-version = 1
+
+# Original control cases -----------------------------------------------------
+
+[[case]]
+id = "weth-usdc-0_1"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+amount-in = "100000000000000000"
+
+[[case]]
+id = "weth-usdc-1"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+amount-in = "1000000000000000000"
+
+[[case]]
+id = "weth-usdc-10"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+amount-in = "10000000000000000000"
+
+[[case]]
+id = "usdc-weth-100"
+token-in = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "100000000"
+
+[[case]]
+id = "usdc-weth-1000"
+token-in = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "1000000000"
+
+[[case]]
+id = "usdc-weth-10000"
+token-in = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "10000000000"
+
+[[case]]
+id = "weth-dai-1"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+amount-in = "1000000000000000000"
+
+[[case]]
+id = "weth-dai-10"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+amount-in = "10000000000000000000"
+
+[[case]]
+id = "dai-weth-1000"
+token-in = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "1000000000000000000000"
+
+[[case]]
+id = "dai-weth-10000"
+token-in = "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "10000000000000000000000"
+
+# USDT controls --------------------------------------------------------------
+
+[[case]]
+id = "weth-usdt-1"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+amount-in = "1000000000000000000"
+
+[[case]]
+id = "weth-usdt-10"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+amount-in = "10000000000000000000"
+
+[[case]]
+id = "usdt-weth-1000"
+token-in = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "1000000000"
+
+[[case]]
+id = "usdt-weth-10000"
+token-in = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "10000000000"
+
+# Stable/stable controls -----------------------------------------------------
+
+[[case]]
+id = "usdc-usdt-1000"
+token-in = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+token-out = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+amount-in = "1000000000"
+
+[[case]]
+id = "usdc-usdt-100000"
+token-in = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+token-out = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+amount-in = "100000000000"
+
+[[case]]
+id = "usdt-usdc-1000"
+token-in = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+token-out = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+amount-in = "1000000000"
+
+[[case]]
+id = "usdt-usdc-100000"
+token-in = "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+token-out = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+amount-in = "100000000000"
+
+# Wrapped BTC controls -------------------------------------------------------
+
+[[case]]
+id = "weth-wbtc-1"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+amount-in = "1000000000000000000"
+
+[[case]]
+id = "weth-wbtc-10"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+amount-in = "10000000000000000000"
+
+[[case]]
+id = "wbtc-weth-0_1"
+token-in = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "10000000"
+
+[[case]]
+id = "wbtc-weth-1"
+token-in = "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "100000000"
+
+# Liquid-staking wrapper controls -------------------------------------------
+
+[[case]]
+id = "weth-wsteth-1"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"
+amount-in = "1000000000000000000"
+
+[[case]]
+id = "weth-wsteth-10"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"
+amount-in = "10000000000000000000"
+
+[[case]]
+id = "wsteth-weth-1"
+token-in = "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "1000000000000000000"
+
+[[case]]
+id = "wsteth-weth-10"
+token-in = "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "10000000000000000000"
+
+[[case]]
+id = "weth-reth-1"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0xae78736Cd615f374D3085123A210448E74Fc6393"
+amount-in = "1000000000000000000"
+
+[[case]]
+id = "weth-reth-10"
+token-in = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+token-out = "0xae78736Cd615f374D3085123A210448E74Fc6393"
+amount-in = "10000000000000000000"
+
+[[case]]
+id = "reth-weth-1"
+token-in = "0xae78736Cd615f374D3085123A210448E74Fc6393"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "1000000000000000000"
+
+[[case]]
+id = "reth-weth-10"
+token-in = "0xae78736Cd615f374D3085123A210448E74Fc6393"
+token-out = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+amount-in = "10000000000000000000"

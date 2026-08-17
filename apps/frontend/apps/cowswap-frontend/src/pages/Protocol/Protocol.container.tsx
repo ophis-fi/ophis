@@ -244,10 +244,10 @@ export function ProtocolPage(): ReactNode {
           />
         </FeatureGrid>
         <p>
-          The fee is written into your order as a CIP-75 partner fee. Its recipient is checked against an
-          allowlist at app-data validation, and the fee level is bounded by an operator-set protocol ceiling
-          enforced by the backend. A share of collected fees flows back to traders each month as volume-tier
-          rebates; see the fee policy below for the current split.
+          The fee is written into your order as a CIP-75 partner fee. Its recipient is checked against an allowlist at
+          app-data validation, and the fee level is bounded by an operator-set protocol ceiling enforced by the backend.
+          A share of collected fees flows back to traders each month as volume-tier rebates; see the fee policy below
+          for the current split.
         </p>
         <KeyValueList
           items={[
@@ -290,7 +290,8 @@ export function ProtocolPage(): ReactNode {
               {/* Count mirrors SORTED_CHAIN_IDS in libs/common-const/chainInfo.ts, update together. */}
               <RowTh scope="row">EVM source chains</RowTh>
               <Td>
-                13 production EVM chains selectable in the app, including Ethereum, Arbitrum, Base, Optimism, Unichain, and Robinhood Chain
+                13 production EVM chains selectable in the app, including Ethereum, Arbitrum, Base, Optimism, Unichain,
+                and Robinhood Chain
               </Td>
               <Td>
                 <Badge tone="live">Selectable</Badge>

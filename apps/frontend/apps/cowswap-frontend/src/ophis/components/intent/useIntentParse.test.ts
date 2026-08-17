@@ -12,7 +12,7 @@ import { useIntentParse } from './useIntentParse'
 
 const realFetch = globalThis.fetch
 
-function mockFetchOnce(init: { status: number; body?: unknown; bodyText?: string; statusText?: string }) {
+function mockFetchOnce(init: { status: number; body?: unknown; bodyText?: string; statusText?: string }): void {
   const headers = new Headers()
   if (init.body !== undefined) headers.set('content-type', 'application/json')
   const body = init.bodyText !== undefined ? init.bodyText : init.body !== undefined ? JSON.stringify(init.body) : ''
@@ -28,7 +28,7 @@ describe('useIntentParse HTTP status branching', () => {
   })
 
   // Drive past the 400ms debounce + microtask queue.
-  async function advance() {
+  async function advance(): Promise<void> {
     await act(async () => {
       jest.advanceTimersByTime(500)
       await Promise.resolve()

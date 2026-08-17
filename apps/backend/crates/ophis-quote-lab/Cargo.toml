@@ -1,0 +1,28 @@
+[package]
+name = "ophis-quote-lab"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[lib]
+doctest = false
+
+[[bin]]
+name = "ophis-quote-lab"
+path = "src/main.rs"
+
+[dependencies]
+alloy = { workspace = true, features = ["sol-types"] }
+alloy-primitives = { workspace = true }
+clap = { workspace = true, features = ["derive", "env"] }
+ethrpc = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+toml = { workspace = true }
+url = { workspace = true }
+
+[lints]
+workspace = true

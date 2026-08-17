@@ -7,6 +7,7 @@ import { Nullish } from '@cowprotocol/types'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useLingui } from '@lingui/react/macro'
+import { OphisBeatMarket } from 'ophis/components'
 
 import type { PriceImpact } from 'legacy/hooks/usePriceImpact'
 
@@ -35,8 +36,6 @@ import { HighFeeWarning, RowDeadline, RowQuoteId } from 'modules/tradeWidgetAddo
 import { useRateInfoParams } from 'common/hooks/useRateInfoParams'
 import { CurrencyPreviewInfo } from 'common/pure/CurrencyAmountPreview'
 import { RateInfo } from 'common/pure/RateInfo'
-
-import { OphisBeatMarket } from 'ophis/components'
 
 import { useLabelsAndTooltips } from './useLabelsAndTooltips'
 

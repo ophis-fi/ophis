@@ -13,6 +13,34 @@ import type { IntentErrorCode, IntentResponse, ParsedIntent } from './types'
 const DEBOUNCE_MS = 400
 const ENDPOINT = '/api/intent'
 
+type HttpError = { code: IntentErrorCode; message: string }
+type PartialHttpError = { code?: IntentErrorCode; message?: string }
+
+const EXACT_HTTP_ERRORS: Readonly<Record<number, HttpError>> = {
+  401: { code: 'FORBIDDEN', message: 'request blocked' },
+  403: { code: 'FORBIDDEN', message: 'request blocked' },
+  408: { code: 'TIMEOUT', message: 'parser timed out' },
+  429: { code: 'RATE_LIMITED', message: 'too many requests, slow down a moment' },
+  504: { code: 'TIMEOUT', message: 'parser timed out' },
+}
+
+function defaultHttpError(status: number): HttpError {
+  const exact = EXACT_HTTP_ERRORS[status]
+  if (exact) return exact
+  return status >= 400 && status < 500
+    ? { code: 'BAD_INPUT', message: `request rejected (${status})` }
+    : { code: 'UPSTREAM', message: `parser unavailable (${status})` }
+}
+
+async function readStructuredHttpError(res: Response): Promise<PartialHttpError | undefined> {
+  try {
+    const parsed = (await res.clone().json()) as { error?: PartialHttpError } | undefined
+    return parsed?.error
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Map an HTTP non-ok response to the closest IntentErrorCode and an
  * informative message. Attempts to extract `{ ok: false, error }`
@@ -21,45 +49,12 @@ const ENDPOINT = '/api/intent'
  *
  * Never throws — defensive against arbitrary CF/upstream HTML payloads.
  */
-async function mapHttpStatus(res: Response): Promise<{ code: IntentErrorCode; message: string }> {
-  // Try to extract a structured error first.
-  let bodyErr: { code?: IntentErrorCode; message?: string } | undefined
-  try {
-    const cloned = res.clone()
-    const parsed = (await cloned.json()) as { error?: typeof bodyErr } | undefined
-    bodyErr = parsed?.error
-  } catch {
-    // Non-JSON body — fine, fall back to status-only mapping.
-  }
-
-  if (res.status === 429) {
-    return {
-      code: bodyErr?.code ?? 'RATE_LIMITED',
-      message: bodyErr?.message ?? 'too many requests, slow down a moment',
-    }
-  }
-  if (res.status === 401 || res.status === 403) {
-    return {
-      code: bodyErr?.code ?? 'FORBIDDEN',
-      message: bodyErr?.message ?? 'request blocked',
-    }
-  }
-  if (res.status === 408 || res.status === 504) {
-    return {
-      code: bodyErr?.code ?? 'TIMEOUT',
-      message: bodyErr?.message ?? 'parser timed out',
-    }
-  }
-  if (res.status >= 400 && res.status < 500) {
-    return {
-      code: bodyErr?.code ?? 'BAD_INPUT',
-      message: bodyErr?.message ?? `request rejected (${res.status})`,
-    }
-  }
-  // 5xx — upstream LLM down, CF tunnel hiccup, Workers OOM, etc.
+async function mapHttpStatus(res: Response): Promise<HttpError> {
+  const bodyError = await readStructuredHttpError(res)
+  const fallback = defaultHttpError(res.status)
   return {
-    code: bodyErr?.code ?? 'UPSTREAM',
-    message: bodyErr?.message ?? `parser unavailable (${res.status})`,
+    code: bodyError?.code ?? fallback.code,
+    message: bodyError?.message ?? fallback.message,
   }
 }
 
@@ -73,6 +68,39 @@ export interface IntentParseState {
 }
 
 const INITIAL: IntentParseState = { status: 'idle', parsed: null, errorCode: null, errorMessage: null }
+
+function errorState(error: HttpError): IntentParseState {
+  return { status: 'error', parsed: null, errorCode: error.code, errorMessage: error.message }
+}
+
+async function parseSuccessfulResponse(res: Response): Promise<IntentParseState> {
+  let body: IntentResponse
+  try {
+    body = (await res.json()) as IntentResponse
+  } catch {
+    return errorState({ code: 'INVALID_JSON', message: 'response was not valid JSON' })
+  }
+  if (!body.ok) return errorState(body.error)
+
+  const safeEntities = (Array.isArray(body.data?.entities) ? body.data.entities : []).filter(
+    (entity) => entity != null && typeof (entity as { type?: unknown }).type === 'string',
+  )
+  return {
+    status: 'ok',
+    parsed: { ...body.data, entities: safeEntities },
+    errorCode: null,
+    errorMessage: null,
+  }
+}
+
+async function parseIntentResponse(res: Response): Promise<IntentParseState> {
+  return res.ok ? parseSuccessfulResponse(res) : errorState(await mapHttpStatus(res))
+}
+
+function networkErrorState(error: unknown): IntentParseState {
+  const message = error instanceof Error && error.message ? error.message : 'network error'
+  return errorState({ code: 'UPSTREAM', message })
+}
 
 export function useIntentParse(text: string): IntentParseState {
   const [state, setState] = useState<IntentParseState>(INITIAL)
@@ -99,61 +127,7 @@ export function useIntentParse(text: string): IntentParseState {
       // Drop stale responses (user kept typing).
       if (requestId !== requestIdRef.current) return
 
-      // Phase 3 audit M (2026-05-19): HTTP status branching.
-      //
-      // Pre-fix: the code went straight to `res.json()` without checking
-      // `res.ok`. If the server returned a 5xx HTML error page (CF tunnel
-      // hiccup, Workers OOM, 429 plain-text from rate limiter), JSON
-      // parse threw and the catch generic'd everything as
-      // `code='UPSTREAM', message='network error'`. The user got the
-      // same opaque toast whether they hit our rate limit, an upstream
-      // LLM outage, or were genuinely blocked.
-      //
-      // Post-fix: read status first, map to a specific IntentErrorCode,
-      // and try to extract a richer message from the body if it happens
-      // to be JSON. Non-JSON 4xx/5xx bodies are fine — we keep the
-      // status-derived defaults.
-      if (!res.ok) {
-        const fallback = await mapHttpStatus(res)
-        setState({ status: 'error', parsed: null, errorCode: fallback.code, errorMessage: fallback.message })
-        return
-      }
-
-      // 2xx but body might still be a structured `{ ok: false, error }`
-      // (the CF Pages function returns 200 + ok:false for some user-input
-      // errors). JSON parse can still fail if the function returned an
-      // unexpected shape — branch that separately so we get
-      // INVALID_JSON instead of a generic UPSTREAM mask.
-      let body: IntentResponse
-      try {
-        body = (await res.json()) as IntentResponse
-      } catch {
-        setState({
-          status: 'error',
-          parsed: null,
-          errorCode: 'INVALID_JSON',
-          errorMessage: 'response was not valid JSON',
-        })
-        return
-      }
-      if (!body.ok) {
-        setState({ status: 'error', parsed: null, errorCode: body.error.code, errorMessage: body.error.message })
-        return
-      }
-      // Guard: a malformed 2xx (missing/non-array `entities`, or entries that
-      // aren't well-formed objects) must not crash consumers that iterate it
-      // (IntentLanding render, intentToUrl). Keep only object entries with a
-      // string `type`; the happy path is unchanged, a degraded response renders
-      // as "nothing parsed" instead of a white screen.
-      const safeEntities = (Array.isArray(body.data?.entities) ? body.data.entities : []).filter(
-        (e) => e != null && typeof (e as { type?: unknown }).type === 'string',
-      )
-      setState({
-        status: 'ok',
-        parsed: { ...body.data, entities: safeEntities },
-        errorCode: null,
-        errorMessage: null,
-      })
+      setState(await parseIntentResponse(res))
     } catch (err) {
       if (controller.signal.aborted) return
       if (requestId !== requestIdRef.current) return
@@ -161,8 +135,7 @@ export function useIntentParse(text: string): IntentParseState {
       // aborted by something other than our controller). The browser
       // surfaces these as TypeError; map to UPSTREAM and try to keep the
       // original message for the toast.
-      const msg = err instanceof Error && err.message ? err.message : 'network error'
-      setState({ status: 'error', parsed: null, errorCode: 'UPSTREAM', errorMessage: msg })
+      setState(networkErrorState(err))
     }
   }, [])
 

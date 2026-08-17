@@ -4,8 +4,12 @@ import { useIsOnline } from '@cowprotocol/common-hooks'
 import { getIsNativeToken } from '@cowprotocol/common-utils'
 import { Nullish } from '@cowprotocol/cow-sdk'
 import { Currency, Token } from '@cowprotocol/currency'
-import { useENSAddress } from '@cowprotocol/ens'
-import { useIsTradeUnsupported, useIsXstockToken, useTryFindToken } from '@cowprotocol/tokens'
+import {
+  isTradeAllowedByTokenPolicy,
+  useIsTradeUnsupported,
+  useIsXstockToken,
+  useTryFindToken,
+} from '@cowprotocol/tokens'
 import { useGnosisSafeInfo, useIsTxBundlingSupported, useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
 import { useHasHookBridgeProvidersEnabled } from 'entities/bridgeProvider'
@@ -21,6 +25,7 @@ import { TradeQuoteState, useTradeQuote } from 'modules/tradeQuote'
 import { QuoteApiError, QuoteApiErrorCodes } from 'api/cowProtocol/errors/QuoteError'
 import { useIsProviderNetworkDeprecated } from 'common/hooks/useIsProviderNetworkDeprecated'
 import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetworkUnsupported'
+import { useOphisNameResolution } from 'common/hooks/useOphisNameResolution'
 import { getBridgeIntermediateTokenAddress } from 'common/utils/getBridgeIntermediateTokenAddress'
 
 import { useTokenCustomTradeError } from './useTokenCustomTradeError'
@@ -43,9 +48,11 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
   const customTokenError = useTokenCustomTradeError(inputCurrency, outputCurrency, tradeQuote.error)
   const amountToApprove = useGetAmountToSignApprove()
   const { state: approvalState } = useApproveState(amountToApprove)
-  const { address: recipientEnsAddress } = useENSAddress(recipient)
+  const recipientChainId = outputCurrency?.chainId || inputCurrency?.chainId
+  const { address: recipientEnsAddress } = useOphisNameResolution(recipient, recipientChainId)
   const isSwapUnsupported =
     useIsTradeUnsupported(inputCurrency, outputCurrency) || isUnsupportedTokenInQuote(tradeQuote)
+  const isTokenPolicyDenied = getIsTokenPolicyDenied(inputCurrency, outputCurrency)
   const isInputCurrencyXstock = useIsXstockToken(getNonNativeCurrency(inputCurrency))
   const isOutputCurrencyXstock = useIsXstockToken(getNonNativeCurrency(outputCurrency))
 
@@ -85,6 +92,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
       isBundlingSupported,
       isSupportedWallet,
       isSwapUnsupported,
+      isTokenPolicyDenied,
       isSafeReadonlyUser,
       recipientEnsAddress,
       approvalState,
@@ -126,6 +134,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
     isSupportedWallet,
     isBalancesLoading,
     isSwapUnsupported,
+    isTokenPolicyDenied,
     isWrapUnwrap,
     isProxySetupValid,
     isInputCurrencyXstock,
@@ -149,4 +158,10 @@ function getNonNativeCurrency(currency: Nullish<Currency>): Token | null {
   }
 
   return currency
+}
+
+function getIsTokenPolicyDenied(inputCurrency: Nullish<Currency>, outputCurrency: Nullish<Currency>): boolean {
+  if (!inputCurrency || !outputCurrency) return false
+
+  return !isTradeAllowedByTokenPolicy(inputCurrency, outputCurrency)
 }

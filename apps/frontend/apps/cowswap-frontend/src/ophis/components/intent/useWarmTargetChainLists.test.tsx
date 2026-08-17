@@ -1,5 +1,5 @@
 import { createStore, Provider } from 'jotai'
-import { ReactNode, Suspense } from 'react'
+import { ReactElement, ReactNode, Suspense } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { fetchTokenList, listsStatesByChainAtom } from '@cowprotocol/tokens'
@@ -17,7 +17,7 @@ jest.mock('@cowprotocol/tokens', () => ({
 const BASE = 8453 as SupportedChainId
 const mockFetchTokenList = fetchTokenList as jest.Mock
 
-function makeList(source: string) {
+function makeList(source: string): Record<string, unknown> {
   return {
     source,
     list: {
@@ -35,8 +35,8 @@ function makeList(source: string) {
   }
 }
 
-function wrapperFor(store: ReturnType<typeof createStore>) {
-  return ({ children }: { children: ReactNode }) => (
+function wrapperFor(store: ReturnType<typeof createStore>): ({ children }: { children: ReactNode }) => ReactElement {
+  return ({ children }: { children: ReactNode }): ReactElement => (
     <Provider store={store}>
       <Suspense fallback={null}>{children}</Suspense>
     </Provider>

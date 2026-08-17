@@ -4236,6 +4236,7 @@ dependencies = [
  "scopeguard",
  "serde",
  "serde_json",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-stream",
  "tower 0.5.3",
@@ -6077,6 +6078,23 @@ dependencies = [
  "portable-atomic",
  "rand 0.9.4",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "ophis-quote-lab"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "alloy-primitives",
+ "clap",
+ "ethrpc",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "toml",
+ "url",
 ]
 
 [[package]]

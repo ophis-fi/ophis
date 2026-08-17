@@ -20,9 +20,7 @@ const Answer1: FC = () => {
 
   return (
     <>
-      <ExternalLink href="https://github.com/cowdao-grants/cow-shed">
-        {accountProxyLabelString}
-      </ExternalLink>{' '}
+      <ExternalLink href="https://github.com/cowdao-grants/cow-shed">{accountProxyLabelString}</ExternalLink>{' '}
       <Trans>is a helper contract that improves the user experience within Ophis for features like</Trans>{' '}
       <ExternalLink href="https://github.com/ophis-fi/ophis">
         <Trans>Hooks</Trans>
@@ -31,8 +29,8 @@ const Answer1: FC = () => {
       <br />
       <br />
       <Trans>
-        This contract is deployed per account, with that account becoming the single owner. It acts as an
-        intermediary account that handles trading on your behalf.
+        This contract is deployed per account, with that account becoming the single owner. It acts as an intermediary
+        account that handles trading on your behalf.
       </Trans>
       <br />
       <br />

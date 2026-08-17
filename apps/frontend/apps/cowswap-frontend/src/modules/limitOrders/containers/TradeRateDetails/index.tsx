@@ -50,9 +50,7 @@ export function TradeRateDetails({ rateInfoParams, alwaysExpanded = false }: Tra
   )
 
   if (!rateInfoParams) {
-    return (
-      <>{tradeFees}</>
-    )
+    return <>{tradeFees}</>
   }
 
   if (alwaysExpanded) {

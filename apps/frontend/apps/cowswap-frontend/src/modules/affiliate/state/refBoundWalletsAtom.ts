@@ -1,7 +1,7 @@
-import { getAddressKey } from '@cowprotocol/cow-sdk'
-
 import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
+
+import { getAddressKey } from '@cowprotocol/cow-sdk'
 
 /**
  * refBoundWalletsAtom — local memo of which (wallet, code) pairs have already

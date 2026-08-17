@@ -86,6 +86,13 @@ export { getChainCurrencySymbols } from './utils/getChainCurrencySymbols'
 
 // Services
 export { fetchTokenList } from './services/fetchTokenList'
+export {
+  assertTradeTokenPolicy,
+  getCurrencyTokenPolicyDecision,
+  getTokenPolicyDecision,
+  isTradeAllowedByTokenPolicy,
+} from './services/tokenPolicy'
+export type { TokenPolicyAsset, TokenPolicyDecision, TokenPolicyReason } from './services/tokenPolicy'
 
 // Consts
 export { DEFAULT_TOKENS_LISTS } from './const/tokensLists'

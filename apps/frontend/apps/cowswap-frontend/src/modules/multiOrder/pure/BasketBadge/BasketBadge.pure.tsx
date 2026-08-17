@@ -1,7 +1,6 @@
 import { ReactNode } from 'react'
 
 import { Trans } from '@lingui/react/macro'
-
 import { Badge } from 'ophis/ds/Badge'
 
 export interface BasketBadgeProps {

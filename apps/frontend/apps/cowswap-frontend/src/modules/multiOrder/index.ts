@@ -1,13 +1,7 @@
 // Public API of the multiOrder (basket / "ophis-multi-order") module. Import
 // basket features via this barrel only (per the module-boundary convention).
 
-export type {
-  BasketDraft,
-  BasketLeg,
-  BasketLegStatus,
-  BasketLegQuote,
-  BasketTier,
-} from './types'
+export type { BasketDraft, BasketLeg, BasketLegStatus, BasketLegQuote, BasketTier } from './types'
 export { CANCELLABLE_LEG_STATUSES } from './types'
 
 export {

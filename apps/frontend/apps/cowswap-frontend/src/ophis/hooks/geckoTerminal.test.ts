@@ -2,11 +2,11 @@ import { GECKO_NETWORK, parseTrending, safeLogoUrl } from './geckoTerminal'
 
 const TOK_A = `0x${'a'.repeat(40)}`
 
-const inc = (id: string, address: string, extra: Record<string, unknown> = {}) => ({
+const inc = (id: string, address: string, extra: Record<string, unknown> = {}): Record<string, unknown> => ({
   id,
   attributes: { address, symbol: 'AAA', name: 'Token A', ...extra },
 })
-const pool = (baseId: string, attrs: Record<string, unknown> = {}) => ({
+const pool = (baseId: string, attrs: Record<string, unknown> = {}): Record<string, unknown> => ({
   attributes: {
     base_token_price_usd: '1.5',
     reserve_in_usd: '50000',

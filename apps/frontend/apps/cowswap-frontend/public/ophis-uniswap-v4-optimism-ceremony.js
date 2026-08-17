@@ -1,4 +1,4 @@
-(() => {
+;(() => {
   'use strict'
 
   const CHAIN_ID_HEX = '0xa'
@@ -20,7 +20,9 @@
 
   const button = document.querySelector('#deploy')
   const status = document.querySelector('#status')
-  const setStatus = (message) => { status.textContent = message }
+  const setStatus = (message) => {
+    status.textContent = message
+  }
   const padWord = (word) => word.padStart(64, '0')
   const normalizeCode = (code) => String(code || '').toLowerCase()
 
@@ -37,13 +39,15 @@
       if (error?.code !== 4902) throw error
       await provider.request({
         method: 'wallet_addEthereumChain',
-        params: [{
-          chainId: CHAIN_ID_HEX,
-          chainName: 'OP Mainnet',
-          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-          rpcUrls: ['https://mainnet.optimism.io'],
-          blockExplorerUrls: ['https://optimistic.etherscan.io'],
-        }],
+        params: [
+          {
+            chainId: CHAIN_ID_HEX,
+            chainName: 'OP Mainnet',
+            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+            rpcUrls: ['https://mainnet.optimism.io'],
+            blockExplorerUrls: ['https://optimistic.etherscan.io'],
+          },
+        ],
       })
     }
     if ((await provider.request({ method: 'eth_chainId' })).toLowerCase() !== CHAIN_ID_HEX) {
@@ -61,7 +65,7 @@
       const response = await fetch(ARTIFACT_URL, { cache: 'no-store' })
       if (!response.ok) throw new Error(`Could not load artifact (${response.status})`)
       const artifactText = await response.text()
-      if (await sha256(artifactText) !== EXPECTED_ARTIFACT_SHA256) {
+      if ((await sha256(artifactText)) !== EXPECTED_ARTIFACT_SHA256) {
         throw new Error('Artifact hash mismatch; deployment refused')
       }
       const bytecode = JSON.parse(artifactText)?.bytecode?.object
@@ -91,16 +95,20 @@
         throw new Error('CREATE2 address mismatch')
       }
 
-      const estimate = BigInt(await provider.request({
-        method: 'eth_estimateGas',
-        params: [{ from: sender, to: DEPLOYER, data: deploymentData, value: '0x0' }],
-      }))
+      const estimate = BigInt(
+        await provider.request({
+          method: 'eth_estimateGas',
+          params: [{ from: sender, to: DEPLOYER, data: deploymentData, value: '0x0' }],
+        }),
+      )
       if (estimate < 500_000n || estimate > 3_000_000n) {
         throw new Error(`Unexpected gas estimate ${estimate}`)
       }
       const gas = `0x${((estimate * 120n) / 100n).toString(16)}`
 
-      setStatus(`Verified.\nSender: ${sender}\nChain: Optimism (10)\nValue: 0 ETH\nGas estimate: ${estimate}\nExpected adapter: ${EXPECTED_ADAPTER}\n\nReview the wallet confirmation.`)
+      setStatus(
+        `Verified.\nSender: ${sender}\nChain: Optimism (10)\nValue: 0 ETH\nGas estimate: ${estimate}\nExpected adapter: ${EXPECTED_ADAPTER}\n\nReview the wallet confirmation.`,
+      )
       const hash = await provider.request({
         method: 'eth_sendTransaction',
         params: [{ from: sender, to: DEPLOYER, data: deploymentData, value: '0x0', gas }],

@@ -50,9 +50,15 @@ export const LoadingWrapper = styled.button<{ $isLoading: boolean }>`
   text-align: center;
   transform-style: preserve-3d;
   transform-origin: center right;
-  transition: transform 0.25s ease-out, box-shadow 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out;
+  transition:
+    transform 0.25s ease-out,
+    box-shadow 160ms ease-out,
+    background 160ms ease-out,
+    border-color 160ms ease-out;
   border: 1.5px solid var(${UI.COLOR_PRIMARY});
-  box-shadow: 0 0 0 4px var(${UI.COLOR_PAPER}), 0 6px 18px rgba(0, 0, 0, 0.45);
+  box-shadow:
+    0 0 0 4px var(${UI.COLOR_PAPER}),
+    0 6px 18px rgba(0, 0, 0, 0.45);
   background: var(${UI.COLOR_PAPER});
   color: var(${UI.COLOR_PRIMARY});
   border-radius: 50%;

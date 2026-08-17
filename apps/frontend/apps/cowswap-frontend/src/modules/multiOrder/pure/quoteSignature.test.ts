@@ -1,5 +1,5 @@
-import { legsQuoteSignature } from './quoteSignature'
 import { DecomposedLeg } from './decomposition'
+import { legsQuoteSignature } from './quoteSignature'
 
 const A = '0x000000000000000000000000000000000000000a'
 const B = '0x000000000000000000000000000000000000000b'

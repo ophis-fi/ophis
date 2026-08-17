@@ -57,8 +57,8 @@ export function PartnerAffiliateSummary({ stats }: Props): ReactNode {
           <Badge tone="partner">Ophis Partner</Badge>
         </div>
         <p>
-          Earn {stats.rateOfNetFeePct}% of the verified base fee Ophis keeps on every trade your referrals route.
-          Paid monthly in WETH.
+          Earn {stats.rateOfNetFeePct}% of the verified base fee Ophis keeps on every trade your referrals route. Paid
+          monthly in WETH.
         </p>
         <MetricRow>
           <MetricCard
@@ -94,17 +94,17 @@ export function PartnerAffiliateSummary({ stats }: Props): ReactNode {
           </>
         ) : (
           <p>
-            Your partner code is being set up. It will appear here shortly. If it does not, reach out
-            to your Ophis contact.
+            Your partner code is being set up. It will appear here shortly. If it does not, reach out to your Ophis
+            contact.
           </p>
         )}
         <p>
-          Share your code or link. When a net-new wallet trades on Ophis after using your link,
-          they&apos;re bound to you, and you earn a share of the verified base fee Ophis keeps on their trades.
+          Share your code or link. When a net-new wallet trades on Ophis after using your link, they&apos;re bound to
+          you, and you earn a share of the verified base fee Ophis keeps on their trades.
         </p>
         <p>
-          <TextLink href={PARTNER_DASHBOARD_HREF}>View your full partner dashboard</TextLink> for the
-          per-referee breakdown (signature required).
+          <TextLink href={PARTNER_DASHBOARD_HREF}>View your full partner dashboard</TextLink> for the per-referee
+          breakdown (signature required).
         </p>
       </Section>
     </>

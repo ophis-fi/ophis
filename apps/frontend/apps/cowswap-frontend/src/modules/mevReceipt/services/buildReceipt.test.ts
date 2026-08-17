@@ -1,4 +1,6 @@
 import { buildReceipt } from './buildReceipt'
+import { exportJson } from './exportJson'
+import { exportPdf } from './exportPdf'
 
 const FIXTURE_ORDER = {
   uid: '0x8e03c24db84f4e74bae2d869e989088d643164f869acf0bd5ba8806ee6e915a2412cbcce46fcba707a3190eced8113bbc2c294ab69f79657',
@@ -169,8 +171,6 @@ describe('buildReceipt', () => {
   })
 })
 
-import { exportJson } from './exportJson'
-
 describe('exportJson', () => {
   it('produces a valid JSON string round-trippable to the original receipt', () => {
     const receipt = buildReceipt({ order: FIXTURE_ORDER, trade: FIXTURE_TRADE, chainId: 11155111 })
@@ -188,8 +188,6 @@ describe('exportJson', () => {
     expect(exportJson(receipt)).toBe(exportJson(receipt))
   })
 })
-
-import { exportPdf } from './exportPdf'
 
 describe('exportPdf', () => {
   it('produces a non-empty Blob with PDF mime type', () => {

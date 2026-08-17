@@ -4,7 +4,6 @@ import { stringifyDeterministic } from '@cowprotocol/cow-sdk'
 import { metadataApiSDK } from 'cowSdk'
 
 import { toKeccak256 } from 'common/utils/toKeccak256'
-import type { OphisBasketTag } from 'ophis/basketMetadata'
 
 import { filterHooks, HooksFilter } from './appDataFilter'
 import { ophisReferrerForRefCode } from './ophisReferrer'
@@ -20,6 +19,8 @@ import {
   AppDataWidget,
   TypedAppDataHooks,
 } from '../types'
+
+import type { OphisBasketTag } from 'ophis/basketMetadata'
 
 export type BuildAppDataParams = {
   appCode: string

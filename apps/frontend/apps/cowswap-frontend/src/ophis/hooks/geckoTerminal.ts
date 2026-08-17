@@ -53,6 +53,27 @@ const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/
 // host kills both the markup/CSS-injection risk and the third-party privacy beacon.
 const LOGO_HOST_SUFFIXES = ['.coingecko.com', '.geckoterminal.com']
 
+interface RawIncludedToken {
+  id?: string
+  attributes?: { address?: string; symbol?: string; name?: string; image_url?: string }
+}
+
+interface RawTrendingPool {
+  attributes?: {
+    base_token_price_usd?: string
+    reserve_in_usd?: string
+    price_change_percentage?: { h1?: string }
+  }
+  relationships?: { base_token?: { data?: { id?: string } } }
+}
+
+interface ParsedIncludedToken {
+  address: string
+  symbol: string
+  name: string
+  logo: string | null
+}
+
 /** Return the logo URL only if it's an https URL on a trusted host; else null. */
 export function safeLogoUrl(raw: unknown): string | null {
   if (typeof raw !== 'string' || !raw || raw.includes('missing')) return null
@@ -74,63 +95,83 @@ export function safeLogoUrl(raw: unknown): string | null {
   return u.toString()
 }
 
+function parseIncludedToken(included: RawIncludedToken | null | undefined): [string, ParsedIncludedToken] | null {
+  const attributes = included?.attributes
+  if (!included?.id || typeof attributes?.address !== 'string' || !ADDRESS_RE.test(attributes.address)) return null
+  if (!attributes.symbol) return null
+
+  const symbol = String(attributes.symbol)
+  const name = attributes.name == null ? symbol : String(attributes.name)
+  return [included.id, { address: attributes.address, symbol, name, logo: safeLogoUrl(attributes.image_url) }]
+}
+
+function readPoolData(pool: RawTrendingPool | null | undefined): {
+  id: string | undefined
+  price: number
+  liquidity: number
+  change: number
+} {
+  const attributes = pool?.attributes
+  return {
+    id: readBaseTokenId(pool),
+    price: Number(attributes?.base_token_price_usd),
+    liquidity: Number(attributes?.reserve_in_usd),
+    change: Number(attributes?.price_change_percentage?.h1),
+  }
+}
+
+function readBaseTokenId(pool: RawTrendingPool | null | undefined): string | undefined {
+  return pool?.relationships?.base_token?.data?.id
+}
+
+function normalizeChange(change: number): number {
+  return Number.isFinite(change) ? Math.round(change * 100) / 100 : 0
+}
+
+function parsePoolToken(
+  pool: RawTrendingPool | null | undefined,
+  tokensById: ReadonlyMap<string, ParsedIncludedToken>,
+  seen: ReadonlySet<string>,
+): TrendingToken | null {
+  const data = readPoolData(pool)
+  const token = data.id ? tokensById.get(data.id) : undefined
+  if (!token || seen.has(token.address)) return null
+  if (!Number.isFinite(data.price) || data.price <= 0) return null
+  if (!Number.isFinite(data.liquidity) || data.liquidity < MIN_LIQUIDITY_USD) return null
+
+  return {
+    symbol: token.symbol.slice(0, 12),
+    name: token.name.slice(0, 40),
+    address: token.address,
+    priceUsd: data.price,
+    change1h: normalizeChange(data.change),
+    logo: token.logo,
+  }
+}
+
 /** Shape GeckoTerminal's JSON:API trending_pools response into our token list. */
 export function parseTrending(raw: unknown): TrendingToken[] {
   // Total over any upstream shape: a non-object (null / primitive) yields [] rather
   // than throwing — parsing must fail soft, never crash, on a malformed response.
-  const r = (raw && typeof raw === 'object' ? raw : {}) as {
-    data?: Array<
-      | {
-          attributes?: {
-            base_token_price_usd?: string
-            reserve_in_usd?: string
-            price_change_percentage?: { h1?: string }
-          }
-          relationships?: { base_token?: { data?: { id?: string } } }
-        }
-      | null
-      | undefined
-    >
-    included?: Array<
-      | { id?: string; attributes?: { address?: string; symbol?: string; name?: string; image_url?: string } }
-      | null
-      | undefined
-    >
+  const response = (raw && typeof raw === 'object' ? raw : {}) as {
+    data?: Array<RawTrendingPool | null | undefined>
+    included?: Array<RawIncludedToken | null | undefined>
   }
-  const tokensById = new Map<string, { address: string; symbol: string; name: string; logo: string | null }>()
+  const tokensById = new Map<string, ParsedIncludedToken>()
   // Array.isArray + per-element optional chaining: a malformed body where `data` /
   // `included` is a non-array, or contains null entries, yields [] rather than throwing
   // (the parser's fail-soft contract — the hook also catches, but defence in depth).
-  for (const inc of Array.isArray(r.included) ? r.included : []) {
-    const a = inc?.attributes
-    if (inc?.id && typeof a?.address === 'string' && ADDRESS_RE.test(a.address) && a.symbol) {
-      // Coerce to string defensively: a non-string symbol/name would otherwise throw
-      // at .slice() below.
-      const symbol = String(a.symbol)
-      const name = a.name == null ? symbol : String(a.name)
-      tokensById.set(inc.id, { address: a.address, symbol, name, logo: safeLogoUrl(a.image_url) })
-    }
+  for (const included of Array.isArray(response.included) ? response.included : []) {
+    const parsed = parseIncludedToken(included)
+    if (parsed) tokensById.set(...parsed)
   }
   const out: TrendingToken[] = []
   const seen = new Set<string>()
-  for (const pool of Array.isArray(r.data) ? r.data : []) {
-    const id = pool?.relationships?.base_token?.data?.id
-    const tok = id ? tokensById.get(id) : undefined
-    if (!tok || seen.has(tok.address)) continue
-    const price = Number(pool?.attributes?.base_token_price_usd)
-    const liq = Number(pool?.attributes?.reserve_in_usd)
-    const chg = Number(pool?.attributes?.price_change_percentage?.h1)
-    if (!Number.isFinite(price) || price <= 0) continue
-    if (!Number.isFinite(liq) || liq < MIN_LIQUIDITY_USD) continue
-    seen.add(tok.address)
-    out.push({
-      symbol: tok.symbol.slice(0, 12),
-      name: tok.name.slice(0, 40),
-      address: tok.address,
-      priceUsd: price,
-      change1h: Number.isFinite(chg) ? Math.round(chg * 100) / 100 : 0,
-      logo: tok.logo,
-    })
+  for (const pool of Array.isArray(response.data) ? response.data : []) {
+    const token = parsePoolToken(pool, tokensById, seen)
+    if (!token) continue
+    seen.add(token.address)
+    out.push(token)
     if (out.length >= MAX_TOKENS) break
   }
   return out

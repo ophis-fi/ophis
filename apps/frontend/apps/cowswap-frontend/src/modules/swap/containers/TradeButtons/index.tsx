@@ -120,10 +120,7 @@ export function TradeButtons({
     // the default trade-form path instead (which surfaces a "wrong network"
     // primaryFormValidation error to the user).
     if (!context.wrappedToken) return null
-    return swapTradeButtonsMap[localFormValidation](
-      { ...context, wrappedToken: context.wrappedToken },
-      isDisabled,
-    )
+    return swapTradeButtonsMap[localFormValidation]({ ...context, wrappedToken: context.wrappedToken }, isDisabled)
   }
 
   return (

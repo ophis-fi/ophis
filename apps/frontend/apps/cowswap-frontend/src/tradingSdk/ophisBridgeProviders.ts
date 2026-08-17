@@ -1,6 +1,6 @@
 import { EXTRA_ACROSS_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
-import { avalanche, bnb, ChainInfo, getAddressKey, ink, linea, plasma, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
 import { fetchWithTimeout } from '@cowprotocol/common-utils'
+import { avalanche, bnb, ChainInfo, getAddressKey, ink, linea, plasma, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
 import {
   AcrossBridgeProvider,
   BungeeBridgeProvider,

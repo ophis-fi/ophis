@@ -32,8 +32,7 @@ export function PartnerReferralShare({ code }: { code: string | undefined }): Re
   if (!code) {
     return (
       <p>
-        Your partner code is being set up. It will appear here shortly. If it does not, reach out to
-        your Ophis contact.
+        Your partner code is being set up. It will appear here shortly. If it does not, reach out to your Ophis contact.
       </p>
     )
   }
@@ -52,10 +51,7 @@ export function PartnerReferralShare({ code }: { code: string | undefined }): Re
         <GhostButton type="button" onClick={() => copy(link)}>
           {isCopied ? 'Copied' : 'Copy share link'}
         </GhostButton>
-        <GhostButton
-          type="button"
-          onClick={() => window.open(shareOnXUrl(code), '_blank', 'noopener,noreferrer')}
-        >
+        <GhostButton type="button" onClick={() => window.open(shareOnXUrl(code), '_blank', 'noopener,noreferrer')}>
           Share on X
         </GhostButton>
       </ShareRow>
@@ -72,7 +68,8 @@ export function PartnerReferralShare({ code }: { code: string | undefined }): Re
 export function PartnerEmptyReferees({ rate }: { rate: number }): ReactNode {
   return (
     <>
-      <p>No referees yet. Here is how referrals work:</p>
+      <h3>How the program works</h3>
+      <p>No referees yet.</p>
       <ol>
         <li>Share your code or link above.</li>
         <li>A net-new wallet trades on Ophis after using it, and is bound to you for life.</li>

@@ -525,10 +525,6 @@ msgstr "h"
 msgid "Ophis returns surplus to you when solvers find a better price than quoted."
 msgstr "Ophis returns surplus to you when solvers find a better price than quoted."
 
-#: apps/cowswap-frontend/src/modules/ethFlow/services/ethFlow/index.ts
-msgid "EthFlow contract ({actualContractAddress}) address don't match the expected address for chain {chainId} ({expectedContractAddress}). Please refresh the page and try again."
-msgstr "EthFlow contract ({actualContractAddress}) address don't match the expected address for chain {chainId} ({expectedContractAddress}). Please refresh the page and try again."
-
 #: apps/cowswap-frontend/src/modules/swap/containers/SwapWidget/index.tsx
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/index.tsx
 #: apps/cowswap-frontend/src/modules/yield/containers/YieldWidget/index.tsx
@@ -734,6 +730,10 @@ msgstr "Sending {nativeTokenSymbol}"
 msgid "Tokens"
 msgstr "Tokens"
 
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid "The executable price is always the Ophis solver quote. <0>How Stock Tokens work ↗</0>"
+msgstr "The executable price is always the Ophis solver quote. <0>How Stock Tokens work ↗</0>"
+
 #: apps/cowswap-frontend/src/legacy/components/Copy/CopyMod.tsx
 #: apps/cowswap-frontend/src/modules/account/containers/CopyHelper/index.tsx
 msgid "Copied"
@@ -937,6 +937,10 @@ msgstr "Bridge transaction costs."
 #: apps/cowswap-frontend/src/modules/twap/pure/DeadlineSelector/index.tsx
 msgid "Custom"
 msgstr "Custom"
+
+#: apps/cowswap-frontend/src/modules/ethFlow/services/ethFlow/index.ts
+msgid "EthFlow contract ({actual}) address don't match the expected address for chain {chainId} ({expected}). Please refresh the page and try again."
+msgstr "EthFlow contract ({actual}) address don't match the expected address for chain {chainId} ({expected}). Please refresh the page and try again."
 
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/RateInput/index.tsx
 msgid "Est. partial fill price"
@@ -1433,6 +1437,10 @@ msgstr "balance."
 msgid "Fee tier"
 msgstr "Fee tier"
 
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid "Canonical deployments verified from Robinhood."
+msgstr "Canonical deployments verified from Robinhood."
+
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapFormWarnings/warnings/FallbackHandlerWarning.tsx
 msgid "Make the modification when placing order"
 msgstr "Make the modification when placing order"
@@ -1449,14 +1457,14 @@ msgstr "There are no open orders"
 msgid "Unknown"
 msgstr "Unknown"
 
-#: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
-msgid "Wallet Address or ENS name"
-msgstr "Wallet Address or ENS name"
-
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteBridgeContent/index.tsx
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteSwapContent/index.tsx
 msgid "Min. to receive"
 msgstr "Min. to receive"
+
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid "Robinhood Stock Token metadata is temporarily unavailable"
+msgstr "Robinhood Stock Token metadata is temporarily unavailable"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Content/NoOrders/OrdersTableNoOrdersContent.utils.tsx
 msgid "No unfillable orders"
@@ -1573,6 +1581,10 @@ msgstr "Filled orders"
 #: apps/cowswap-frontend/src/modules/tokensList/containers/LpTokenPage/index.tsx
 msgid "Volume (24h)"
 msgstr "Volume (24h)"
+
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid " Your displayed balance represents about {equivalent} underlying shares."
+msgstr " Your displayed balance represents about {equivalent} underlying shares."
 
 #: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
 msgid "If a solver settles your order at a better price, the surplus is returned to you on top."
@@ -2161,6 +2173,10 @@ msgstr "Expiration"
 msgid "Unsupported Wallet"
 msgstr "Unsupported Wallet"
 
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid "Robinhood Chain · gasless intent"
+msgstr "Robinhood Chain · gasless intent"
+
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
@@ -2288,6 +2304,10 @@ msgstr "Refunded to"
 #: apps/cowswap-frontend/src/modules/yield/containers/YieldWidget/index.tsx
 msgid "Maximize your yield on existing LP positions"
 msgstr "Maximize your yield on existing LP positions"
+
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid "{symbol}: corporate-action multiplier {multiplier}×."
+msgstr "{symbol}: corporate-action multiplier {multiplier}×."
 
 #: apps/cowswap-frontend/src/modules/twap/const.ts
 msgid "6 Hours"
@@ -2591,6 +2611,10 @@ msgstr "safeBundleFlowContext is not set!"
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/AddCustomHookForm/constants.tsx
 msgid "Invalid URL: No manifest.json file found. Please check the URL and try again."
 msgstr "Invalid URL: No manifest.json file found. Please check the URL and try again."
+
+#: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
+msgid "Wallet address, ENS, or .wei name"
+msgstr "Wallet address, ENS, or .wei name"
 
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Unwrap"
@@ -3491,6 +3515,10 @@ msgstr "The price of this pool is within your selected range. Your position is c
 msgid "FAQs"
 msgstr "FAQs"
 
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid " A multiplier change to {pendingMultiplier} is pending."
+msgstr " A multiplier change to {pendingMultiplier} is pending."
+
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/ActivityDetails.tsx
 msgid "more signatures are"
 msgstr "more signatures are"
@@ -3918,6 +3946,10 @@ msgstr "Follow these steps:"
 msgid "Please, connect your wallet to one of our supported networks."
 msgstr "Please, connect your wallet to one of our supported networks."
 
+#: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
+msgid "Token unavailable under Ophis safety policy"
+msgstr "Token unavailable under Ophis safety policy"
+
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/LimitOrdersWidget/index.tsx
 #: apps/cowswap-frontend/src/modules/swap/containers/SwapWidget/index.tsx
 msgid "Buy exactly"
@@ -4287,6 +4319,10 @@ msgstr "Out of range"
 msgid "Since prices can change significantly over time, we suggest increasing your price protection for orders with long deadlines."
 msgstr "Since prices can change significantly over time, we suggest increasing your price protection for orders with long deadlines."
 
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid "Swaps are gasless. Approvals and wrapping still use ETH; paying a higher priority fee does not buy earlier ordering. Need funds? <0>Bridge to Robinhood Chain ↗</0>"
+msgstr "Swaps are gasless. Approvals and wrapping still use ETH; paying a higher priority fee does not buy earlier ordering. Need funds? <0>Bridge to Robinhood Chain ↗</0>"
+
 #: apps/cowswap-frontend/src/modules/account/containers/AccountDetails/SurplusCard.tsx
 msgid "No surplus for the given time period"
 msgstr "No surplus for the given time period"
@@ -4339,6 +4375,10 @@ msgstr "Choose a custom deadline for your limit order"
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/ActivityDetails.tsx
 msgid "Cancelled order"
 msgstr "Cancelled order"
+
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid "Ophis could not verify current restrictions or corporate-action multipliers. Quotes remain available, but confirm the token status before trading. <0>Check Robinhood documentation ↗</0>"
+msgstr "Ophis could not verify current restrictions or corporate-action multipliers. Quotes remain available, but confirm the token status before trading. <0>Check Robinhood documentation ↗</0>"
 
 #: apps/cowswap-frontend/src/modules/accountProxy/containers/AccountProxiesPage/index.tsx
 msgid "on {chainLabel}"
@@ -5341,6 +5381,10 @@ msgstr "Expired order"
 msgid "Simulation Successful"
 msgstr "Simulation Successful"
 
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid "{selectedSymbols} · official Robinhood Stock Token"
+msgstr "{selectedSymbols} · official Robinhood Stock Token"
+
 #: apps/cowswap-frontend/src/modules/erc20Approve/containers/ActiveOrdersWithAffectedPermit/ActiveOrdersWithAffectedPermit.tsx
 msgid "Partial approval may block <0>{ordersWithPermitLength}</0> other {orderWord}"
 msgstr "Partial approval may block <0>{ordersWithPermitLength}</0> other {orderWord}"
@@ -5774,6 +5818,10 @@ msgstr "2/2 Sign transaction"
 #: apps/cowswap-frontend/src/common/pure/CoWAmmBannerContent/index.tsx
 msgid "yield over average"
 msgstr "yield over average"
+
+#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
+msgid " · check trading status for {restrictedSymbols}"
+msgstr " · check trading status for {restrictedSymbols}"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/SolvingStep.tsx
 msgid "Uh oh! The market price has moved outside of your slippage tolerance. You can wait for prices to change{cancellationModal}"

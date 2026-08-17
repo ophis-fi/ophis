@@ -2,6 +2,7 @@ import { captureError, ERROR_TYPES, normalizeError, reportPermitWithDefaultSigne
 import { SigningScheme } from '@cowprotocol/cow-sdk'
 import { Percent } from '@cowprotocol/currency'
 import { isSupportedPermitInfo } from '@cowprotocol/permit-utils'
+import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
 import { Command, UiOrderType } from '@cowprotocol/types'
 
 import { tradingSdk } from 'tradingSdk/tradingSdk'
@@ -45,10 +46,16 @@ export async function tradeFlow(
     generatePermitHook,
     quoteState,
     signer,
+    verifyRecipientName,
   } = params
   const { account, recipientAddressOrName, sellToken, buyToken, appData, isSafeWallet, inputAmount, outputAmount } =
     postOrderParams
   const marketLabel = [sellToken.symbol, buyToken.symbol].join(',')
+
+  assertTradeTokenPolicy(
+    { chainId: sellToken.chainId, address: sellToken.address },
+    { chainId: buyToken.chainId, address: buyToken.address },
+  )
 
   const swapFlowAnalyticsContext: TradeFlowAnalyticsContext = {
     account,
@@ -90,6 +97,8 @@ export async function tradeFlow(
     beforeTrade()
 
     logTradeFlow('LIMIT ORDER FLOW', 'STEP 4: sign and post order')
+
+    await verifyRecipientName(recipientAddressOrName, postOrderParams.recipient, buyToken.chainId)
 
     const {
       orderId,

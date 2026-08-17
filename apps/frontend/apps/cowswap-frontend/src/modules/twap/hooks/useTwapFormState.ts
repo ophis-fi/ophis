@@ -19,12 +19,7 @@ export function useTwapFormState(): TwapFormState | null {
 
   // TWAP requires ComposableCow + ExtensibleFallbackHandler, which are not
   // deployed on the sovereign chains. Disable the tab instead of no-oping.
-  if (
-    (chainId as number) === 10 ||
-    (chainId as number) === 130 ||
-    (chainId as number) === 4663
-  )
-    return null
+  const isUnsupportedChain = (chainId as number) === 10 || (chainId as number) === 130 || (chainId as number) === 4663
 
   const receiveAmountInfo = useGetReceiveAmountInfo()
   const { sellAmount } = receiveAmountInfo?.beforeAllFees || {}
@@ -36,6 +31,8 @@ export function useTwapFormState(): TwapFormState | null {
 
   const verification = useFallbackHandlerVerification()
   const isTxBundlingSupported = useIsTxBundlingSupported()
+
+  if (isUnsupportedChain) return null
 
   return getTwapFormState({
     isTxBundlingSupported,

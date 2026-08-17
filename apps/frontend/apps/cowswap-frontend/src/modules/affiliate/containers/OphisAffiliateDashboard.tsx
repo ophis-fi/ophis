@@ -20,22 +20,21 @@
  * AGENTS.md compliance: named export (no default), shared chrome reused from
  * the Affiliate page's styled module.
  */
-import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { useSetAtom } from 'jotai'
+import { Dispatch, ReactNode, SetStateAction, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { useCopyClipboard } from '@cowprotocol/common-hooks'
 import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
-
-import { useSetAtom } from 'jotai'
 
 import { Callout, InlineCode, KeyValueList, MetricCard, Section } from 'ophis/ds'
 
 import { ActionButton, GhostButton, MetricRow, ShareRow } from 'pages/Affiliate/Affiliate.styled'
 
+import { PartnerAffiliateSummary } from './PartnerAffiliateSummary'
+
 import { useOphisAffiliateSign } from '../hooks/useOphisAffiliateSign'
 import { type AffiliateStats, AffiliateApiError, createRefCode, getAffiliateStats } from '../lib/ophisAffiliateApi'
 import { setAffiliateOwnCodeAtom } from '../state/affiliateOwnCodeAtom'
-
-import { PartnerAffiliateSummary } from './PartnerAffiliateSummary'
 
 const SHARE_ORIGIN = 'https://swap.ophis.fi'
 
@@ -54,14 +53,17 @@ interface Props {
   account: string
 }
 
-export function OphisAffiliateDashboard({ account }: Props): ReactNode {
-  const sign = useOphisAffiliateSign(account)
-  const [isCopied, copy] = useCopyClipboard()
+interface AffiliateDashboardState {
+  loadError: boolean
+  loading: boolean
+  setStats: Dispatch<SetStateAction<AffiliateStats | null>>
+  stats: AffiliateStats | null
+}
 
+function useAffiliateDashboardState(account: string): AffiliateDashboardState {
   const [stats, setStats] = useState<AffiliateStats | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState(false)
-  const [createState, setCreateState] = useState<CreateState>('idle')
 
   const loadStats = useCallback((wallet: string, signal: { cancelled: boolean }) => {
     setLoading(true)
@@ -93,11 +95,28 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
     }
   }, [account, loadStats])
 
+  return { loadError, loading, setStats, stats }
+}
+
+interface CreateAffiliateCodeState {
+  createState: CreateState
+  onCreate: () => Promise<void>
+}
+
+function useCreateAffiliateCode(
+  account: string,
+  setStats: Dispatch<SetStateAction<AffiliateStats | null>>,
+): CreateAffiliateCodeState {
+  const sign = useOphisAffiliateSign(account)
+  const [createState, setCreateState] = useState<CreateState>('idle')
+
   // Latest connected account, for guarding async continuations: a wallet
   // switch mid-sign/mid-request must not render the OLD wallet's minted code
   // under the NEW wallet's dashboard.
   const accountRef = useRef(account)
-  accountRef.current = account
+  useLayoutEffect(() => {
+    accountRef.current = account
+  }, [account])
 
   // A GENUINE wallet switch resets the mint state machine (a stale in-flight
   // create or error/rejected state would otherwise mislabel the new wallet's
@@ -148,7 +167,138 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
         setCreateState('error')
       }
     }
-  }, [account, sign])
+  }, [account, setStats, sign])
+
+  return { createState, onCreate }
+}
+
+interface ReferralStatusSectionProps {
+  loadError: boolean
+  loading: boolean
+  rate: number
+  stats: AffiliateStats | null
+}
+
+function ReferralStatusSection({ loadError, loading, rate, stats }: ReferralStatusSectionProps): ReactNode {
+  let content: ReactNode
+  if (loading) {
+    content = <p>Loading your referral status...</p>
+  } else if (loadError) {
+    content = (
+      <Callout tone="warning" title="Could not load your status">
+        <p>The affiliate service did not respond. Refresh the page to try again.</p>
+      </Callout>
+    )
+  } else {
+    content = (
+      <>
+        <p>
+          Earn {rate}% of the verified base fee Ophis keeps on every trade your referrals route. Paid monthly in WETH.
+        </p>
+        <MetricRow>
+          <MetricCard label="Your rate" value={`${rate}%`} sublabel="of the verified base fee" compact />
+          <MetricCard label="Referred wallets" value={stats?.referredCount ?? 0} compact />
+          <MetricCard
+            label="Referred volume"
+            value={formatUsd(stats?.currentCycleVolumeUsd ?? 0)}
+            sublabel="this cycle"
+            compact
+          />
+        </MetricRow>
+      </>
+    )
+  }
+
+  return (
+    <Section id="referral" title="Refer and earn">
+      {content}
+    </Section>
+  )
+}
+
+interface ReferralCodeSectionProps {
+  activeCode?: string
+  copy: (value: string) => void
+  createState: CreateState
+  isCopied: boolean
+  onCreate: () => Promise<void>
+}
+
+function ReferralCodeSection({
+  activeCode,
+  copy,
+  createState,
+  isCopied,
+  onCreate,
+}: ReferralCodeSectionProps): ReactNode {
+  return (
+    <Section id="referral-code" title="Your referral code">
+      {activeCode ? (
+        <>
+          <KeyValueList
+            items={[
+              { label: 'Code', value: <InlineCode>{activeCode}</InlineCode> },
+              { label: 'Share link', value: <InlineCode>{shareLink(activeCode)}</InlineCode> },
+            ]}
+          />
+          <ShareRow>
+            <GhostButton type="button" onClick={() => copy(shareLink(activeCode))}>
+              {isCopied ? 'Copied' : 'Copy share link'}
+            </GhostButton>
+          </ShareRow>
+        </>
+      ) : (
+        <CreateReferralCodeContent createState={createState} onCreate={onCreate} />
+      )}
+      <p>
+        Share your code or link. When a net-new wallet trades on Ophis after using your link, they&apos;re bound to you,
+        and you earn a share of the verified base fee Ophis keeps on their trades. Aggregate totals only, no per-trade
+        tracking is shown here.
+      </p>
+    </Section>
+  )
+}
+
+function CreateReferralCodeContent({
+  createState,
+  onCreate,
+}: Pick<ReferralCodeSectionProps, 'createState' | 'onCreate'>): ReactNode {
+  const isCreating = createState === 'signing' || createState === 'creating'
+  const buttonLabel =
+    createState === 'signing'
+      ? 'Confirm in your wallet...'
+      : createState === 'creating'
+        ? 'Creating...'
+        : 'Mint your referral code'
+
+  return (
+    <>
+      <p>
+        You don&apos;t have an active code yet. Create one, it takes a single wallet signature (no transaction, no gas).
+      </p>
+      <ShareRow>
+        <ActionButton type="button" onClick={onCreate} disabled={isCreating}>
+          {buttonLabel}
+        </ActionButton>
+      </ShareRow>
+      {createState === 'rejected' && (
+        <Callout tone="warning" title="Signature cancelled">
+          <p>You declined the signature. Click the button again when you&apos;re ready.</p>
+        </Callout>
+      )}
+      {createState === 'error' && (
+        <Callout tone="warning" title="Could not create your code">
+          <p>Something went wrong. Please try again in a moment.</p>
+        </Callout>
+      )}
+    </>
+  )
+}
+
+export function OphisAffiliateDashboard({ account }: Props): ReactNode {
+  const [isCopied, copy] = useCopyClipboard()
+  const { loadError, loading, setStats, stats } = useAffiliateDashboardState(account)
+  const { createState, onCreate } = useCreateAffiliateCode(account, setStats)
 
   const activeCode = stats?.activeCodes?.[0]
   // Render the rate from the backend (8 is only a last-resort fallback before
@@ -175,85 +325,16 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
 
   return (
     <>
-      <Section id="referral" title="Refer and earn">
-        {loading ? (
-          <p>Loading your referral status...</p>
-        ) : loadError ? (
-          <Callout tone="warning" title="Could not load your status">
-            <p>The affiliate service did not respond. Refresh the page to try again.</p>
-          </Callout>
-        ) : (
-          <>
-            <p>
-              Earn {rate}% of the verified base fee Ophis keeps on every trade your referrals route. Paid monthly in WETH.
-            </p>
-            <MetricRow>
-              <MetricCard label="Your rate" value={`${rate}%`} sublabel="of the verified base fee" compact />
-              <MetricCard label="Referred wallets" value={stats?.referredCount ?? 0} compact />
-              <MetricCard
-                label="Referred volume"
-                value={formatUsd(stats?.currentCycleVolumeUsd ?? 0)}
-                sublabel="this cycle"
-                compact
-              />
-            </MetricRow>
-          </>
-        )}
-      </Section>
+      <ReferralStatusSection loadError={loadError} loading={loading} rate={rate} stats={stats} />
 
       {!loading && !loadError && (
-        <Section id="referral-code" title="Your referral code">
-          {activeCode ? (
-            <>
-              <KeyValueList
-                items={[
-                  { label: 'Code', value: <InlineCode>{activeCode}</InlineCode> },
-                  { label: 'Share link', value: <InlineCode>{shareLink(activeCode)}</InlineCode> },
-                ]}
-              />
-              <ShareRow>
-                <GhostButton type="button" onClick={() => copy(shareLink(activeCode))}>
-                  {isCopied ? 'Copied' : 'Copy share link'}
-                </GhostButton>
-              </ShareRow>
-            </>
-          ) : (
-            <>
-              <p>
-                You don&apos;t have an active code yet. Create one, it takes a single wallet
-                signature (no transaction, no gas).
-              </p>
-              <ShareRow>
-                <ActionButton
-                  type="button"
-                  onClick={onCreate}
-                  disabled={createState === 'signing' || createState === 'creating'}
-                >
-                  {createState === 'signing'
-                    ? 'Confirm in your wallet...'
-                    : createState === 'creating'
-                      ? 'Creating...'
-                      : 'Mint your referral code'}
-                </ActionButton>
-              </ShareRow>
-              {createState === 'rejected' && (
-                <Callout tone="warning" title="Signature cancelled">
-                  <p>You declined the signature. Click the button again when you&apos;re ready.</p>
-                </Callout>
-              )}
-              {createState === 'error' && (
-                <Callout tone="warning" title="Could not create your code">
-                  <p>Something went wrong. Please try again in a moment.</p>
-                </Callout>
-              )}
-            </>
-          )}
-          <p>
-            Share your code or link. When a net-new wallet trades on Ophis after using your link,
-            they&apos;re bound to you, and you earn a share of the verified base fee Ophis keeps on their trades.
-            Aggregate totals only, no per-trade tracking is shown here.
-          </p>
-        </Section>
+        <ReferralCodeSection
+          activeCode={activeCode}
+          copy={copy}
+          createState={createState}
+          isCopied={isCopied}
+          onCreate={onCreate}
+        />
       )}
     </>
   )

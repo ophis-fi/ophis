@@ -3,6 +3,7 @@ import { ReactNode, useCallback, useRef, useState } from 'react'
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
+import { TierChip } from 'ophis/components/TierChip'
 import ReactDOM from 'react-dom'
 
 import { useToggleAccountModal } from 'modules/account'
@@ -16,8 +17,6 @@ import {
 import { Web3Status } from 'modules/wallet'
 
 import { CowSwapAnalyticsCategory, toCowSwapGtmEvent } from 'common/analytics/types'
-
-import { TierChip } from 'ophis/components/TierChip'
 
 import { NotificationAlertPopover } from './NotificationAlertPopover'
 import { Wrapper } from './styled'

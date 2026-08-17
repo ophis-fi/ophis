@@ -1,5 +1,4 @@
 import { ReactNode, useRef, type MouseEvent } from 'react'
-import { createPortal } from 'react-dom'
 
 import { getChainInfo } from '@cowprotocol/common-const'
 import { useAvailableChains, useBodyScrollbarLocker, useMediaQuery, useOnClickOutside } from '@cowprotocol/common-hooks'
@@ -8,6 +7,7 @@ import { Media } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans, useLingui } from '@lingui/react/macro'
+import { createPortal } from 'react-dom'
 
 import { useModalIsOpen, useToggleModal } from 'legacy/state/application/hooks'
 import { ApplicationModal } from 'legacy/state/application/reducer'
@@ -168,7 +168,9 @@ function BridgeDestinationsFooter({ onClose }: { onClose?: () => void }): ReactN
             <styledEl.BridgeDestinationRow key={id} to="/1/swap/_/_" rel="nofollow" onClick={onClose}>
               <img src={logoUrl} alt="" />
               <span>{info.label}</span>
-              <span className="chevron" aria-hidden="true">→</span>
+              <span className="chevron" aria-hidden="true">
+                →
+              </span>
             </styledEl.BridgeDestinationRow>
           )
         })}

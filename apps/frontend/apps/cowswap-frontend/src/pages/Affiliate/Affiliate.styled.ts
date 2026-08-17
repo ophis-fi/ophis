@@ -17,7 +17,10 @@ export const ActionButton = styled.button`
   color: #02000d;
   background: #f2a63e;
   cursor: pointer;
-  transition: background 120ms ease-out, transform 80ms ease-out, opacity 120ms ease-out;
+  transition:
+    background 120ms ease-out,
+    transform 80ms ease-out,
+    opacity 120ms ease-out;
 
   &:hover:not(:disabled) {
     background: #ffbb6e;
@@ -46,7 +49,10 @@ export const GhostButton = styled.button`
   color: #f5efe6;
   background: rgba(245, 239, 230, 0.04);
   cursor: pointer;
-  transition: border-color 120ms ease-out, background 120ms ease-out, opacity 120ms ease-out;
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out,
+    opacity 120ms ease-out;
 
   &:hover:not(:disabled) {
     border-color: rgba(242, 166, 62, 0.5);

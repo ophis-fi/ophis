@@ -3,8 +3,10 @@ import { useEffect, useRef } from 'react'
 import { DEFAULT_APP_CODE } from '@cowprotocol/common-const'
 import { useDebounce } from '@cowprotocol/common-hooks'
 import { COW_PROTOCOL_ETH_FLOW_ADDRESS, getCurrencyAddress } from '@cowprotocol/common-utils'
+import { OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 import { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
+import { isTradeAllowedByTokenPolicy } from '@cowprotocol/tokens'
 import { useWalletInfo } from '@cowprotocol/wallet'
 import { useWalletProvider } from '@cowprotocol/wallet-provider'
 
@@ -34,6 +36,22 @@ export interface QuoteParams {
   hasSmartSlippage?: boolean
 }
 
+function getQuoteCurrencies(state: ReturnType<typeof useDerivedTradeState>): {
+  readonly inputCurrency: Currency | null | undefined
+  readonly outputCurrency: Currency | null | undefined
+  readonly orderKind: OrderKind | undefined
+  readonly isTokenPolicyAllowed: boolean
+} {
+  const { inputCurrency, outputCurrency, orderKind } = state || {}
+
+  return {
+    inputCurrency,
+    outputCurrency,
+    orderKind,
+    isTokenPolicyAllowed: isTradeAllowedByTokenPolicy(inputCurrency, outputCurrency),
+  }
+}
+
 export function useQuoteParams(amount: Nullish<string>, partiallyFillable = false): QuoteParams | undefined {
   const { account } = useWalletInfo()
   // TODO M-6 COW-573
@@ -60,14 +78,14 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
     smartSlippageBpsRef.current = smartSlippageBps
   }, [smartSlippageBps])
 
-  const { inputCurrency, outputCurrency, orderKind } = state || {}
+  const { inputCurrency, outputCurrency, orderKind, isTokenPolicyAllowed } = getQuoteCurrencies(state)
 
   const receiver = useQuoteParamsRecipient()
   const appDataDoc = appData?.doc
 
   // eslint-disable-next-line complexity
   const params = useSafeMemo(() => {
-    if (isWrapOrUnwrap || isProviderNetworkUnsupported || isProviderNetworkDeprecated) return
+    if (isWrapOrUnwrap || isProviderNetworkUnsupported || isProviderNetworkDeprecated || !isTokenPolicyAllowed) return
     if (!inputCurrency || !outputCurrency || !orderKind || !provider) return
 
     const appCode = appDataDoc?.appCode || DEFAULT_APP_CODE
@@ -142,6 +160,7 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
     isWrapOrUnwrap,
     isProviderNetworkUnsupported,
     isProviderNetworkDeprecated,
+    isTokenPolicyAllowed,
     userSlippageBps,
   ])
 
