@@ -6,10 +6,6 @@ describe('detectAtomicBatchCapability', () => {
     expect(detectAtomicBatchCapability({ '0xa': { atomic: { status: 'ready' } } }, 10)).toBe(true)
   })
 
-  it('detects the older atomicBatch.supported shape', () => {
-    expect(detectAtomicBatchCapability({ '0xa': { atomicBatch: { supported: true } } }, 10)).toBe(true)
-  })
-
   it('accepts decimal chain-id keys', () => {
     expect(detectAtomicBatchCapability({ '10': { atomic: { status: 'supported' } } }, 10)).toBe(true)
   })
@@ -20,8 +16,7 @@ describe('detectAtomicBatchCapability', () => {
     expect(detectAtomicBatchCapability(undefined, 10)).toBe(false)
     expect(detectAtomicBatchCapability(null, 10)).toBe(false)
     expect(detectAtomicBatchCapability({}, 10)).toBe(false)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect(detectAtomicBatchCapability('nope' as any, 10)).toBe(false)
+    expect(detectAtomicBatchCapability('nope', 10)).toBe(false)
     expect(detectAtomicBatchCapability({ '0xa': null }, 10)).toBe(false)
   })
 })

@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { useWalletClient } from 'wagmi'
+import { getWalletCallsId } from '@cowprotocol/wallet'
 
 import { encodeFunctionData } from 'viem'
+import { useWalletClient } from 'wagmi'
 
-import { buildSetPreSignatureCalls, detectAtomicBatchCapability, Eip5792Capabilities, SET_PRE_SIGNATURE_ABI } from '../pure/capabilities'
+import {
+  buildSetPreSignatureCalls,
+  detectAtomicBatchCapability,
+  SET_PRE_SIGNATURE_ABI,
+  type Eip5792Capabilities,
+} from '../pure/capabilities'
 
 /**
  * Smart-account (EIP-5792) basket tier: pre-sign every leg in ONE
@@ -73,19 +79,38 @@ export function useBatchPresign(chainId: number): UseBatchPresignResult {
   const presignBatch = useCallback(
     async (orderUids: readonly string[], settlement: string): Promise<string> => {
       if (!walletClient) throw new Error('useBatchPresign: no connected wallet client')
+      if (capable !== true) throw new Error('useBatchPresign: batch capability has not been confirmed')
       const calls = buildSetPreSignatureCalls(orderUids, settlement, (uid) =>
-        encodeFunctionData({ abi: SET_PRE_SIGNATURE_ABI, functionName: 'setPreSignature', args: [uid as `0x${string}`, true] }),
+        encodeFunctionData({
+          abi: SET_PRE_SIGNATURE_ABI,
+          functionName: 'setPreSignature',
+          args: [uid as `0x${string}`, true],
+        }),
       )
       const sendCalls = (walletClient as { sendCalls?: (args: unknown) => Promise<{ id: string } | string> }).sendCalls
       if (typeof sendCalls !== 'function') {
+        setCapable(false)
         throw new Error('useBatchPresign: wallet client does not support wallet_sendCalls')
       }
-      const res = await sendCalls.call(walletClient, {
-        calls: calls.map((c) => ({ to: c.to as `0x${string}`, data: c.data as `0x${string}`, value: BigInt(c.value) })),
-      })
-      return typeof res === 'string' ? res : res.id
+      try {
+        const result = await sendCalls.call(walletClient, {
+          calls: calls.map((call) => ({
+            to: call.to as `0x${string}`,
+            data: call.data as `0x${string}`,
+            value: BigInt(call.value),
+          })),
+        })
+
+        return getWalletCallsId(result)
+      } catch (error) {
+        // Disable the optional batch tier after any rejected or malformed
+        // response. The caller may offer the stepped tier on the next explicit
+        // user action, but must never replay an uncertain batch automatically.
+        setCapable(false)
+        throw error
+      }
     },
-    [walletClient],
+    [walletClient, capable],
   )
 
   return { capable, isDetecting, detect, presignBatch }

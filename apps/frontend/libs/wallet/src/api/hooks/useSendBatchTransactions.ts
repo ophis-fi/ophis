@@ -7,6 +7,7 @@ import { useWalletCapabilities } from './useWalletCapabilities'
 
 import { useSafeAppsSdk } from '../../web3-react/hooks/useSafeAppsSdk'
 import { useWalletInfo } from '../hooks'
+import { getWalletCallsId, hasAtomicBatchCapability } from '../pure/walletCapabilities'
 
 export type SendBatchTxCallback = (txs: MetaTransactionData[]) => Promise<string>
 
@@ -16,7 +17,7 @@ export function useSendBatchTransactions(): SendBatchTxCallback {
   const provider = useWalletProvider()
   const { chainId, account } = useWalletInfo()
   const { data: capabilities } = useWalletCapabilities()
-  const isAtomicBatchSupported = capabilities?.atomic?.status === 'supported'
+  const isAtomicBatchSupported = hasAtomicBatchCapability(capabilities)
 
   return useCallback(
     async (txs: MetaTransactionData[]) => {
@@ -26,9 +27,7 @@ export function useSendBatchTransactions(): SendBatchTxCallback {
 
         return provider
           .send('wallet_sendCalls', [{ version: '1.0', from: account, calls, chainId: chainIdHex }])
-          .then((res) => {
-            return typeof res === 'string' ? res : res.id
-          })
+          .then(getWalletCallsId)
       }
 
       if (safeAppsSdk) {

@@ -15,8 +15,10 @@
  * these helpers a capabilities object and an encoder.
  */
 
+import { getWalletCapabilitiesForChain, hasAtomicBatchCapability } from '@cowprotocol/wallet'
+
 /** Loosely-typed EIP-5792 capabilities map: chainId (hex or number key) -> caps. */
-export type Eip5792Capabilities = Record<string, unknown> | undefined | null
+export type Eip5792Capabilities = unknown
 
 /**
  * True when the wallet reports atomic-batch support for `chainId`. Handles both
@@ -26,25 +28,7 @@ export type Eip5792Capabilities = Record<string, unknown> | undefined | null
  * stepped tier). Never throws on a malformed object.
  */
 export function detectAtomicBatchCapability(caps: Eip5792Capabilities, chainId: number): boolean {
-  if (!caps || typeof caps !== 'object') return false
-  const entry = readChainEntry(caps as Record<string, unknown>, chainId)
-  if (!entry || typeof entry !== 'object') return false
-  const e = entry as { atomic?: { status?: unknown }; atomicBatch?: { supported?: unknown } }
-  const status = e.atomic?.status
-  if (status === 'supported' || status === 'ready') return true
-  if (e.atomicBatch?.supported === true) return true
-  return false
-}
-
-function readChainEntry(caps: Record<string, unknown>, chainId: number): unknown {
-  // Try the common key spellings a wallet might use for the chain id.
-  const hex = `0x${chainId.toString(16)}`
-  return (
-    caps[hex] ??
-    caps[hex.toLowerCase()] ??
-    caps[String(chainId)] ??
-    caps[chainId as unknown as string]
-  )
+  return hasAtomicBatchCapability(getWalletCapabilitiesForChain(caps, chainId))
 }
 
 /** One call in an EIP-5792 `wallet_sendCalls` batch. */
