@@ -43,6 +43,11 @@ sol! {
             uint32 initializedTicksCrossed,
             uint256 gasEstimate
         );
+
+    function getAmountsOut(uint256 amountIn, address[] path)
+        external
+        view
+        returns (uint256[] amounts);
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -204,6 +209,7 @@ pub enum Status {
 pub enum QuoteAdapter {
     #[default]
     Aggregate,
+    UniswapV2Direct,
     UniswapV3Single,
 }
 
@@ -254,8 +260,15 @@ impl Manifest {
                 return Err(Error::NonSourceEnabled(contract.id.clone()));
             }
             match contract.quote_adapter {
-                QuoteAdapter::Aggregate if !contract.fee_tiers.is_empty() => {
+                QuoteAdapter::Aggregate | QuoteAdapter::UniswapV2Direct
+                    if !contract.fee_tiers.is_empty() =>
+                {
                     return Err(Error::UnexpectedFeeTiers(contract.id.clone()));
+                }
+                QuoteAdapter::UniswapV2Direct => {
+                    if contract.role != Role::QuoteSource || !contract.shadow_enabled {
+                        return Err(Error::SourceDisabled(contract.id.clone()));
+                    }
                 }
                 QuoteAdapter::UniswapV3Single => {
                     if contract.role != Role::QuoteSource || !contract.shadow_enabled {
@@ -441,6 +454,10 @@ impl QuoteLabClient {
                 self.observe_aggregate_at(context, source_address, token_in, token_out, amount_in)
                     .await
             }
+            QuoteAdapter::UniswapV2Direct => {
+                self.observe_uniswap_v2_at(context, source_address, token_in, token_out, amount_in)
+                    .await
+            }
             QuoteAdapter::UniswapV3Single => {
                 self.observe_uniswap_v3_at(
                     context,
@@ -568,6 +585,50 @@ impl QuoteLabClient {
             best,
             successes.into_iter().map(|(_, quote)| quote).collect(),
         ))
+    }
+
+    async fn observe_uniswap_v2_at(
+        &self,
+        context: BlockContext,
+        source_address: Address,
+        token_in: Address,
+        token_out: Address,
+        amount_in: U256,
+    ) -> Result<(Quote, Vec<Quote>), String> {
+        let call = getAmountsOutCall {
+            amountIn: amount_in,
+            path: vec![token_in, token_out],
+        };
+        let data = self
+            .rpc
+            .call_at(context, source_address, call.abi_encode())
+            .await
+            .map_err(|error| format!("rpc: {error}"))?;
+        let result = getAmountsOutCall::abi_decode_returns(&data)
+            .map_err(|error| format!("decode: {error}"))?;
+
+        if result.len() != 2 {
+            return Err(format!(
+                "semantic: direct-pair response has {} amounts",
+                result.len()
+            ));
+        }
+        if result[0] != amount_in {
+            return Err("semantic: returned amount-in differs from the request".to_owned());
+        }
+        if result[1].is_zero() {
+            return Err("semantic: returned amount-out is zero".to_owned());
+        }
+
+        let quote = Quote {
+            source: 0,
+            source_name: source_name(0),
+            fee_bps: "30".to_owned(),
+            amount_in: amount_in.to_string(),
+            amount_out: result[1].to_string(),
+            gas_estimate: None,
+        };
+        Ok((quote.clone(), vec![quote]))
     }
 }
 
@@ -925,7 +986,7 @@ pub enum Error {
     },
     #[error("non-source {0} cannot be shadow-enabled")]
     NonSourceEnabled(String),
-    #[error("aggregate quote source {0} cannot define fee tiers")]
+    #[error("quote source {0} cannot define fee tiers for its adapter")]
     UnexpectedFeeTiers(String),
     #[error("V3 baseline source {0} must define at least one fee tier")]
     MissingFeeTiers(String),
@@ -1021,6 +1082,13 @@ mod tests {
         let baseline = manifest.contract("ophis-baseline-uniswap-v3").unwrap();
         assert_eq!(baseline.quote_adapter, QuoteAdapter::UniswapV3Single);
         assert_eq!(baseline.fee_tiers, UNISWAP_V3_BASELINE_FEES);
+        assert_eq!(
+            manifest
+                .contract("ophis-baseline-uniswap-v2")
+                .unwrap()
+                .quote_adapter,
+            QuoteAdapter::UniswapV2Direct
+        );
     }
 
     #[test]
@@ -1067,6 +1135,34 @@ mod tests {
             },
         };
         assert_eq!(&call.abi_encode()[..4], &[0xc6, 0xa5, 0x02, 0x6a]);
+    }
+
+    #[test]
+    fn v2_baseline_uses_the_canonical_get_amounts_out_selector() {
+        let call = getAmountsOutCall {
+            amountIn: U256::from(100),
+            path: vec![Address::repeat_byte(0x11), Address::repeat_byte(0x22)],
+        };
+        assert_eq!(&call.abi_encode()[..4], &[0xd0, 0x6c, 0xa6, 0x1f]);
+    }
+
+    #[test]
+    fn v2_baseline_rejects_fee_tiers() {
+        let mut manifest = Manifest::load(Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/config/ethereum.toml"
+        )))
+        .unwrap();
+        let baseline = manifest
+            .contracts
+            .iter_mut()
+            .find(|contract| contract.id == "ophis-baseline-uniswap-v2")
+            .unwrap();
+        baseline.fee_tiers.push(3_000);
+        assert!(matches!(
+            manifest.validate(),
+            Err(Error::UnexpectedFeeTiers(_))
+        ));
     }
 
     #[test]

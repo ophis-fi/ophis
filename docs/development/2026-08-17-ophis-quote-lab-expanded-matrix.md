@@ -70,3 +70,8 @@ The expanded sample changes the initial conclusion only slightly:
 5. Sequential latency is not an apples-to-apples computational comparison: the V3 baseline performs four separate calls.
 
 Decision Gate 1 remains closed. Before any execution design, Ophis still needs repeated time-window samples, direct V2 and V4 controls, and an end-to-end gas model that converts gross output deltas into net surplus.
+
+The direct V2 control was subsequently completed and reproduced both
+V2-labelled wins at the original block. Its implementation and evidence are
+recorded in
+[`2026-08-17-ophis-quote-lab-v2-baseline.md`](./2026-08-17-ophis-quote-lab-v2-baseline.md).
