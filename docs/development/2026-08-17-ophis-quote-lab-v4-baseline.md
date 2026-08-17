@@ -89,3 +89,6 @@ controls are now present, but a one-block matrix is not a production case.
 Ophis still needs repeated time-window samples and an end-to-end gas model that
 converts output deltas into net surplus. No execution adapter, push, pull
 request, deployment, or release is authorized.
+
+The bounded time-series runner follow-up is recorded in
+[`2026-08-17-ophis-quote-lab-series-runner.md`](./2026-08-17-ophis-quote-lab-series-runner.md).

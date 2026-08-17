@@ -58,6 +58,19 @@ cargo run -p ophis-quote-lab -- \
   --source ophis-baseline-uniswap-v3 \
   --source ophis-baseline-uniswap-v2 \
   --source ophis-baseline-uniswap-v4
+
+cargo run -p ophis-quote-lab -- \
+  --rpc-url "$ETHEREUM_RPC_URL" \
+  series \
+  --matrix crates/ophis-quote-lab/config/ethereum-matrix-expanded.toml \
+  --samples 3 \
+  --interval-seconds 60 \
+  --source ophis-fixture-fixed \
+  --source ophis-fixture-prior \
+  --source ophis-fixture-current \
+  --source ophis-baseline-uniswap-v3 \
+  --source ophis-baseline-uniswap-v2 \
+  --source ophis-baseline-uniswap-v4
 ```
 
 The checked-in manifest is an evidence record, not an endorsement. Update it
@@ -71,3 +84,5 @@ It does not search intermediate assets or expose execution calldata.
 The V4 baseline performs four read-only hookless single-pool quote calls per
 case with exact allowlisted fee and tick-spacing pairs. Hooks, multi-hop paths,
 native currency, and execution calldata are excluded.
+Series runs are bounded to 2–24 samples and 12–3,600 seconds between samples.
+Each sample must advance to a later block; duplicate-block samples fail closed.

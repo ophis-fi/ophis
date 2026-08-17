@@ -56,6 +56,20 @@ enum Command {
         #[arg(long, required = true)]
         source: Vec<String>,
     },
+    /// Repeat a matrix across advancing Ethereum blocks and aggregate it.
+    Series {
+        #[arg(
+            long,
+            default_value = "crates/ophis-quote-lab/config/ethereum-matrix.toml"
+        )]
+        matrix: PathBuf,
+        #[arg(long, required = true)]
+        source: Vec<String>,
+        #[arg(long, default_value_t = 3)]
+        samples: usize,
+        #[arg(long, default_value_t = 60)]
+        interval_seconds: u64,
+    },
 }
 
 #[tokio::main]
@@ -100,6 +114,18 @@ async fn main() -> Result<(), Error> {
             let matrix = BenchmarkMatrix::load(&matrix)?;
             let run = client.run_matrix(&manifest, &matrix, &source).await?;
             println!("{}", serde_json::to_string_pretty(&run).unwrap());
+        }
+        Command::Series {
+            matrix,
+            source,
+            samples,
+            interval_seconds,
+        } => {
+            let matrix = BenchmarkMatrix::load(&matrix)?;
+            let series = client
+                .run_matrix_series(&manifest, &matrix, &source, samples, interval_seconds)
+                .await?;
+            println!("{}", serde_json::to_string_pretty(&series).unwrap());
         }
     }
     Ok(())

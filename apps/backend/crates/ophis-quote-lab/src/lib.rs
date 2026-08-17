@@ -82,6 +82,10 @@ pub struct Manifest {
 }
 
 const MAX_MATRIX_CASES: usize = 100;
+const MIN_SERIES_SAMPLES: usize = 2;
+const MAX_SERIES_SAMPLES: usize = 24;
+const MIN_SERIES_INTERVAL_SECONDS: u64 = 12;
+const MAX_SERIES_INTERVAL_SECONDS: u64 = 3_600;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -462,6 +466,30 @@ impl QuoteLabClient {
         MatrixRun::try_new(context, source_ids, cases)
     }
 
+    /// Repeat a matrix over a bounded time window. Every sample must advance
+    /// to a later Ethereum block; duplicate-block observations fail closed.
+    pub async fn run_matrix_series(
+        &self,
+        manifest: &Manifest,
+        matrix: &BenchmarkMatrix,
+        source_ids: &[String],
+        samples: usize,
+        interval_seconds: u64,
+    ) -> Result<MatrixSeries, Error> {
+        validate_series_parameters(samples, interval_seconds)?;
+        matrix.validate()?;
+        validate_source_ids(manifest, source_ids)?;
+
+        let mut runs = Vec::with_capacity(samples);
+        for index in 0..samples {
+            runs.push(self.run_matrix(manifest, matrix, source_ids).await?);
+            if index + 1 < samples {
+                tokio::time::sleep(std::time::Duration::from_secs(interval_seconds)).await;
+            }
+        }
+        MatrixSeries::try_new(interval_seconds, source_ids, runs)
+    }
+
     async fn observe_exact_in_at(
         &self,
         context: BlockContext,
@@ -838,6 +866,50 @@ pub struct MatrixRun {
     pub summaries: Vec<SourceSummary>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatrixSeries {
+    pub sample_count: usize,
+    pub interval_seconds: u64,
+    pub first_context: BlockContext,
+    pub last_context: BlockContext,
+    pub summaries: Vec<SourceSummary>,
+    pub runs: Vec<MatrixRun>,
+}
+
+impl MatrixSeries {
+    fn try_new(
+        interval_seconds: u64,
+        source_ids: &[String],
+        runs: Vec<MatrixRun>,
+    ) -> Result<Self, Error> {
+        validate_series_parameters(runs.len(), interval_seconds)?;
+        for pair in runs.windows(2) {
+            let previous = pair[0].context;
+            let current = pair[1].context;
+            if previous.chain_id != current.chain_id || current.number <= previous.number {
+                return Err(Error::NonAdvancingSeriesBlock {
+                    previous: previous.number,
+                    current: current.number,
+                });
+            }
+        }
+
+        let first_context = runs.first().expect("series length was validated").context;
+        let last_context = runs.last().expect("series length was validated").context;
+        let cases: Vec<_> = runs.iter().flat_map(|run| run.cases.iter()).collect();
+        let summaries = summarize_source_refs(source_ids, &cases);
+        Ok(Self {
+            sample_count: runs.len(),
+            interval_seconds,
+            first_context,
+            last_context,
+            summaries,
+            runs,
+        })
+    }
+}
+
 impl MatrixRun {
     fn try_new(
         context: BlockContext,
@@ -936,7 +1008,22 @@ fn successful_amount_out(observation: &Observation) -> Option<U256> {
         .and_then(|quote| U256::from_str(&quote.amount_out).ok())
 }
 
+fn validate_series_parameters(samples: usize, interval_seconds: u64) -> Result<(), Error> {
+    if !(MIN_SERIES_SAMPLES..=MAX_SERIES_SAMPLES).contains(&samples) {
+        return Err(Error::InvalidSeriesSampleCount(samples));
+    }
+    if !(MIN_SERIES_INTERVAL_SECONDS..=MAX_SERIES_INTERVAL_SECONDS).contains(&interval_seconds) {
+        return Err(Error::InvalidSeriesInterval(interval_seconds));
+    }
+    Ok(())
+}
+
 fn summarize_sources(source_ids: &[String], cases: &[MatrixCaseResult]) -> Vec<SourceSummary> {
+    let cases: Vec<_> = cases.iter().collect();
+    summarize_source_refs(source_ids, &cases)
+}
+
+fn summarize_source_refs(source_ids: &[String], cases: &[&MatrixCaseResult]) -> Vec<SourceSummary> {
     source_ids
         .iter()
         .map(|source_id| {
@@ -1099,6 +1186,16 @@ pub enum Error {
     MatrixZeroAmount(String),
     #[error("benchmark matrix case {0} uses the same input and output token")]
     MatrixSameToken(String),
+    #[error(
+        "matrix series sample count {0} is outside the allowed range {MIN_SERIES_SAMPLES}..={MAX_SERIES_SAMPLES}"
+    )]
+    InvalidSeriesSampleCount(usize),
+    #[error(
+        "matrix series interval {0} seconds is outside the allowed range {MIN_SERIES_INTERVAL_SECONDS}..={MAX_SERIES_INTERVAL_SECONDS}"
+    )]
+    InvalidSeriesInterval(u64),
+    #[error("matrix series block did not advance: previous {previous}, current {current}")]
+    NonAdvancingSeriesBlock { previous: u64, current: u64 },
     #[error("manifest chain ID must be non-zero")]
     InvalidChainId,
     #[error("manifest observed block hash is invalid")]
@@ -1488,5 +1585,61 @@ mod tests {
         assert_eq!(b.winning_cases, 2);
         assert_eq!(b.outright_wins, 1);
         assert_eq!(b.tied_wins, 1);
+    }
+
+    #[test]
+    fn matrix_series_requires_advancing_blocks_and_aggregates_samples() {
+        let first = BlockContext {
+            chain_id: 1,
+            number: 42,
+            hash: B256::repeat_byte(0x11),
+            observed_at_unix_millis: 1,
+        };
+        let second = BlockContext {
+            chain_id: 1,
+            number: 43,
+            hash: B256::repeat_byte(0x22),
+            observed_at_unix_millis: 2,
+        };
+        let sources = vec!["a".to_owned()];
+        let first_run = MatrixRun::try_new(
+            first,
+            &sources,
+            vec![
+                MatrixCaseResult::try_new(
+                    first,
+                    "one".to_owned(),
+                    vec![observation(first, "a", 10, Some("10"))],
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let second_run = MatrixRun::try_new(
+            second,
+            &sources,
+            vec![
+                MatrixCaseResult::try_new(
+                    second,
+                    "one".to_owned(),
+                    vec![observation(second, "a", 20, Some("11"))],
+                )
+                .unwrap(),
+            ],
+        )
+        .unwrap();
+        let series = MatrixSeries::try_new(12, &sources, vec![first_run, second_run]).unwrap();
+        assert_eq!(series.sample_count, 2);
+        assert_eq!(series.first_context, first);
+        assert_eq!(series.last_context, second);
+        assert_eq!(series.summaries[0].attempts, 2);
+        assert_eq!(series.summaries[0].successes, 2);
+
+        let duplicate_first = MatrixRun::try_new(first, &sources, Vec::new()).unwrap();
+        let duplicate_second = MatrixRun::try_new(first, &sources, Vec::new()).unwrap();
+        assert!(matches!(
+            MatrixSeries::try_new(12, &sources, vec![duplicate_first, duplicate_second]),
+            Err(Error::NonAdvancingSeriesBlock { .. })
+        ));
     }
 }
