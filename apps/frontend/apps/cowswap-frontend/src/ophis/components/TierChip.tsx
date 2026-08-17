@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { ReactElement, useCallback } from 'react'
 
 import styles from './TierChip.module.css'
 
@@ -13,7 +13,7 @@ interface Props {
 // to rebates.ophis.fi. Instead we render a small ghost-style CTA that
 // invites them to enable the feature. Clicking it persists the opt-in
 // and the chip immediately switches to the live-data path on next render.
-export function TierChip({ wallet }: Props) {
+export function TierChip({ wallet }: Props): ReactElement | null {
   const { data, loading, optedIn } = useTier(wallet)
 
   const handleOptIn = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {

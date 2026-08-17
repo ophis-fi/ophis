@@ -1,6 +1,5 @@
-import styled from 'styled-components/macro'
-
 import { Tr } from 'ophis/ds'
+import styled from 'styled-components/macro'
 
 /**
  * Highlighted leaderboard row for the connected wallet. Saffron left rule +

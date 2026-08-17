@@ -19,7 +19,9 @@ import {
  * `issued` second is generated here and echoed in the body so the server
  * can re-derive the exact signed string (valid 5 minutes server-side).
  */
-export function useOphisAffiliateSign(account: string | undefined): (action: AffiliateSignedAction) => Promise<SignedRequestBody> {
+export function useOphisAffiliateSign(
+  account: string | undefined,
+): (action: AffiliateSignedAction) => Promise<SignedRequestBody> {
   const provider = useWalletProvider()
 
   return useCallback(

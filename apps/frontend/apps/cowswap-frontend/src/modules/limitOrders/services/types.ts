@@ -10,6 +10,8 @@ import { TypedAppDataHooks } from 'modules/appData'
 import { GeneratePermitHook, IsTokenPermittableResult, useGetCachedPermit } from 'modules/permit'
 import type { TradeQuoteState } from 'modules/tradeQuote'
 
+import type { VerifyOphisRecipientName } from 'common/hooks/useVerifyOphisRecipientName'
+
 export interface TradeFlowContext {
   // signer changes creates redundant re-renders
   // validTo must be calculated just before signing of an order
@@ -25,6 +27,7 @@ export interface TradeFlowContext {
   generatePermitHook: GeneratePermitHook
   getCachedPermit: ReturnType<typeof useGetCachedPermit>
   quoteState: TradeQuoteState
+  verifyRecipientName: VerifyOphisRecipientName
 }
 
 export interface SafeBundleFlowContext extends TradeFlowContext {

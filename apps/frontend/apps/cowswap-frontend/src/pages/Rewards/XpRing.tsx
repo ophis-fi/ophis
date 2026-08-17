@@ -83,7 +83,15 @@ export function XpRing({ xp, nextUnlockXp }: XpRingProps): ReactNode {
             <stop offset="100%" stopColor="#7a6ee0" />
           </linearGradient>
         </defs>
-        <circle cx={center} cy={center} r={RADIUS} fill="none" stroke="currentColor" strokeOpacity={0.12} strokeWidth={STROKE} />
+        <circle
+          cx={center}
+          cy={center}
+          r={RADIUS}
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity={0.12}
+          strokeWidth={STROKE}
+        />
         <circle
           className="progress"
           cx={center}

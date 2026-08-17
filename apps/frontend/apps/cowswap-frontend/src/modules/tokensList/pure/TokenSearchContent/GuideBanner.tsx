@@ -14,8 +14,7 @@ export function GuideBanner(): ReactNode {
     >
       <p>
         <Trans>
-          Can't find your token on the list? Paste its contract address into the search box to add it as a custom
-          token.
+          Can't find your token on the list? Paste its contract address into the search box to add it as a custom token.
         </Trans>
       </p>
     </InlineBanner>

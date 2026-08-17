@@ -1,9 +1,8 @@
 import { ReactNode } from 'react'
 
 import { Trans } from '@lingui/react/macro'
-
-import { Badge } from 'ophis/ds/Badge'
 import { MAX_BASKET_BUY_TOKENS, MAX_BASKET_LEGS, MAX_BASKET_SELL_TOKENS } from 'ophis/basketMetadata'
+import { Badge } from 'ophis/ds/Badge'
 
 import { DecomposedLeg } from '../decomposition'
 
@@ -45,17 +44,21 @@ export function BasketWidget({
       </h3>
       <p>
         <Trans>
-          Swap several tokens at once. Ophis splits your basket into up to {MAX_BASKET_LEGS} single-pair
-          orders that share one deadline. Best-effort together, not atomic.
+          Swap several tokens at once. Ophis splits your basket into up to {MAX_BASKET_LEGS} single-pair orders that
+          share one deadline. Best-effort together, not atomic.
         </Trans>
       </p>
 
       <div>
         <button type="button" onClick={onAddSell} disabled={sellCount >= MAX_BASKET_SELL_TOKENS}>
-          <Trans>Add sell token ({sellCount}/{MAX_BASKET_SELL_TOKENS})</Trans>
+          <Trans>
+            Add sell token ({sellCount}/{MAX_BASKET_SELL_TOKENS})
+          </Trans>
         </button>
         <button type="button" onClick={onAddBuy} disabled={buyCount >= MAX_BASKET_BUY_TOKENS}>
-          <Trans>Add buy token ({buyCount}/{MAX_BASKET_BUY_TOKENS})</Trans>
+          <Trans>
+            Add buy token ({buyCount}/{MAX_BASKET_BUY_TOKENS})
+          </Trans>
         </button>
       </div>
 

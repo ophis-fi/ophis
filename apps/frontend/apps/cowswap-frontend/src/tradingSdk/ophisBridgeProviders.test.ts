@@ -31,9 +31,7 @@ describe('ophisBridgeProviders', () => {
       afterEach(() => jest.restoreAllMocks())
 
       it('reports unavailable without hitting the API when the sell chain is not an executable Across source', async () => {
-        const upstreamSpy = jest
-          .spyOn(AcrossBridgeProvider.prototype, 'getBuyTokens')
-          .mockResolvedValue(upstreamResult)
+        const upstreamSpy = jest.spyOn(AcrossBridgeProvider.prototype, 'getBuyTokens').mockResolvedValue(upstreamResult)
 
         // Gnosis -> Robinhood Chain: Across is the only provider serving the
         // destination but cannot execute from the source — must not report
@@ -48,9 +46,7 @@ describe('ophisBridgeProviders', () => {
       })
 
       it('delegates to the upstream implementation for executable sources', async () => {
-        const upstreamSpy = jest
-          .spyOn(AcrossBridgeProvider.prototype, 'getBuyTokens')
-          .mockResolvedValue(upstreamResult)
+        const upstreamSpy = jest.spyOn(AcrossBridgeProvider.prototype, 'getBuyTokens').mockResolvedValue(upstreamResult)
 
         const result = await new OphisAcrossBridgeProvider().getBuyTokens({
           buyChainId: 4663,

@@ -1,17 +1,21 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
-import styled from 'styled-components/macro'
-
 import { initPixelAnalytics, useAnalyticsReporter, useCowAnalytics, WebVitalsAnalytics } from '@cowprotocol/analytics'
 import { isInjectedWidget } from '@cowprotocol/common-utils'
 import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
+
+import { OphisFooter } from 'ophis/components/OphisFooter'
+import { OphisHeader } from 'ophis/components/OphisHeader'
+import { ScrollToTop } from 'ophis/components/ScrollToTop'
+import { useOphisWalletFlag } from 'ophis/hooks/useOphisWalletFlag'
+import { Link, useLocation } from 'react-router'
+import styled from 'styled-components/macro'
 
 // Ophis: route-aware chrome.
 //   /          → chrome-less landing (IntentLanding handles its own).
 //   anywhere   → Ophis header (wordmark + wallet controls) + Ophis footer.
 // Cowswap's AppMenu, hiring banner, cow scene, snowfall, AMM banner are
 // dropped wholesale. See apps/frontend/.ophis-divergences.md.
-import { Link, useLocation } from 'react-router'
 
 import { URLWarning } from 'legacy/components/Header/URLWarning'
 
@@ -22,11 +26,6 @@ import { useInitializeUtm } from 'modules/utm'
 import { InvalidLocalTimeWarning } from 'common/containers/InvalidLocalTimeWarning'
 import { useCustomTheme } from 'common/hooks/useCustomTheme'
 import { useGetMarketDimension } from 'common/hooks/useGetMarketDimension'
-
-import { OphisFooter } from 'ophis/components/OphisFooter'
-import { OphisHeader } from 'ophis/components/OphisHeader'
-import { ScrollToTop } from 'ophis/components/ScrollToTop'
-import { useOphisWalletFlag } from 'ophis/hooks/useOphisWalletFlag'
 
 import { RecoveryBanner } from './RecoveryBanner'
 
@@ -72,7 +71,9 @@ const OpenTradeCTA = styled(Link)`
   font-weight: 600;
   font-size: 14px;
   text-decoration: none;
-  transition: filter 140ms ease-out, transform 140ms ease-out;
+  transition:
+    filter 140ms ease-out,
+    transform 140ms ease-out;
   &:hover,
   &:focus-visible {
     filter: brightness(1.06);
@@ -210,11 +211,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
         <OrdersPanel />
 
         <OphisHeader>
-          {isTradeRoute ? (
-            <NetworkAndAccountControls />
-          ) : (
-            <OpenTradeCTA to="/1/swap/_/_">Open Trade →</OpenTradeCTA>
-          )}
+          {isTradeRoute ? <NetworkAndAccountControls /> : <OpenTradeCTA to="/1/swap/_/_">Open Trade →</OpenTradeCTA>}
         </OphisHeader>
 
         <OphisBodyWrapper>

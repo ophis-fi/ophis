@@ -160,10 +160,7 @@ export function LeaderboardPage(): ReactNode {
         ) : (
           <>
             {account && selfResolved && selfMarkingAvailable && !selfEntry && (
-              <p>
-                Your wallet isn&apos;t in the top {data.entries.length} yet. Route more volume to climb
-                the board.
-              </p>
+              <p>Your wallet isn&apos;t in the top {data.entries.length} yet. Route more volume to climb the board.</p>
             )}
             <Table caption="Top traders by 30-day volume">
               <Thead>
@@ -178,11 +175,7 @@ export function LeaderboardPage(): ReactNode {
               </Thead>
               <Tbody>
                 {data.entries.map((entry) => (
-                  <LeaderboardRow
-                    key={entry.rank}
-                    entry={entry}
-                    isSelf={selfResolved && !!entry.isSelf}
-                  />
+                  <LeaderboardRow key={entry.rank} entry={entry} isSelf={selfResolved && !!entry.isSelf} />
                 ))}
               </Tbody>
             </Table>

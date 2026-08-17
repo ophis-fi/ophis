@@ -41,10 +41,88 @@ export interface BeatMarketState {
 }
 
 const IDLE: BeatMarketState = { status: 'idle', savingBps: null, ophisAmount: null, marketAmount: null }
+const ERROR: BeatMarketState = { status: 'error', savingBps: null, ophisAmount: null, marketAmount: null }
+
+interface BeatMarketRequest {
+  chainId: number
+  sellToken: string
+  buyToken: string
+  sellAmount: string
+  ophisOutAtoms: string
+  buyAmount: CurrencyAmount<Currency>
+  signature: string
+}
 
 /** The address an aggregator wants for a currency: the token address, else the native sentinel. */
 function aggAddress(currency: Currency): string | null {
   return currency.isToken ? currency.address : AGG_NATIVE
+}
+
+function buildBeatMarketRequest(info: ReceiveAmountInfo | null): BeatMarketRequest | null {
+  if (!info?.isSell) return null
+  const sellAmount = info.afterNetworkCosts.sellAmount
+  const buyAmount = info.afterNetworkCosts.buyAmount
+  const chainId = sellAmount.currency.chainId
+  const sellToken = aggAddress(sellAmount.currency)
+  const buyToken = aggAddress(buyAmount.currency)
+  const sellAtoms = sellAmount.quotient.toString()
+  const ophisOutAtoms = buyAmount.quotient.toString()
+  if (!chainId || !sellToken || !buyToken || sellAtoms === '0') return null
+
+  return {
+    chainId,
+    sellToken,
+    buyToken,
+    sellAmount: sellAtoms,
+    ophisOutAtoms,
+    buyAmount,
+    signature: `${chainId}|${sellToken}|${buyToken}|${sellAtoms}|${ophisOutAtoms}`,
+  }
+}
+
+function isValidMarketResponse(body: BeatMarketApiResponse): body is Extract<BeatMarketApiResponse, { ok: true }> {
+  return (
+    body.ok &&
+    !!body.data &&
+    /^[0-9]+$/.test(body.data.amountOut) &&
+    body.data.amountOut.length <= 80
+  )
+}
+
+function buildMarketState(request: BeatMarketRequest, amountOut: string): BeatMarketState {
+  const ophisOut = BigInt(request.ophisOutAtoms)
+  const marketOut = BigInt(amountOut)
+  if (marketOut <= 0n || ophisOut <= marketOut) return IDLE
+
+  return {
+    status: 'ok',
+    savingBps: Number(((ophisOut - marketOut) * 10_000n) / marketOut),
+    ophisAmount: request.buyAmount,
+    marketAmount: CurrencyAmount.fromRawAmount(request.buyAmount.currency, amountOut),
+  }
+}
+
+async function fetchBeatMarketState(request: BeatMarketRequest, signal: AbortSignal): Promise<BeatMarketState> {
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    signal,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      chainId: request.chainId,
+      sellToken: request.sellToken,
+      buyToken: request.buyToken,
+      sellAmount: request.sellAmount,
+    }),
+  })
+  if (!res.ok) return ERROR
+
+  let body: BeatMarketApiResponse
+  try {
+    body = (await res.json()) as BeatMarketApiResponse
+  } catch {
+    return ERROR
+  }
+  return isValidMarketResponse(body) ? buildMarketState(request, body.data.amountOut) : IDLE
 }
 
 export function useBeatMarket(info: ReceiveAmountInfo | null): BeatMarketState {
@@ -54,27 +132,14 @@ export function useBeatMarket(info: ReceiveAmountInfo | null): BeatMarketState {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestIdRef = useRef(0)
 
-  // Extract a stable request signature from the quote. Only sell orders are
-  // comparable (the reference API is exact-in); anything else clears the state.
-  const sellCurrency = info?.afterNetworkCosts.sellAmount.currency
-  const buyCurrency = info?.afterNetworkCosts.buyAmount.currency
-  const sellAtoms = info?.afterNetworkCosts.sellAmount.quotient.toString()
-  const ophisOutAtoms = info?.afterNetworkCosts.buyAmount.quotient.toString()
-  const chainId = sellCurrency?.chainId
-  const sellAddr = sellCurrency ? aggAddress(sellCurrency) : null
-  const buyAddr = buyCurrency ? aggAddress(buyCurrency) : null
-  const comparable =
-    !!info?.isSell && !!chainId && !!sellAddr && !!buyAddr && !!sellAtoms && !!ophisOutAtoms && sellAtoms !== '0'
-
-  // A signature string that changes exactly when the comparison inputs change,
-  // so we refetch on a new quote but not on unrelated re-renders.
-  const signature = comparable ? `${chainId}|${sellAddr}|${buyAddr}|${sellAtoms}|${ophisOutAtoms}` : ''
+  const request = buildBeatMarketRequest(info)
+  const signature = request ? request.signature : ''
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
     abortRef.current?.abort()
 
-    if (!comparable || !info) {
+    if (!request) {
       setState(IDLE)
       return
     }
@@ -85,56 +150,13 @@ export function useBeatMarket(info: ReceiveAmountInfo | null): BeatMarketState {
     timerRef.current = setTimeout(() => {
       const controller = new AbortController()
       abortRef.current = controller
-      ;(async () => {
-        try {
-          const res = await fetch(ENDPOINT, {
-            method: 'POST',
-            signal: controller.signal,
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ chainId, sellToken: sellAddr, buyToken: buyAddr, sellAmount: sellAtoms }),
-          })
-          if (id !== requestIdRef.current) return // stale (quote moved on)
-
-          if (!res.ok) {
-            setState({ status: 'error', savingBps: null, ophisAmount: null, marketAmount: null })
-            return
-          }
-          let body: BeatMarketApiResponse
-          try {
-            body = (await res.json()) as BeatMarketApiResponse
-          } catch {
-            setState({ status: 'error', savingBps: null, ophisAmount: null, marketAmount: null })
-            return
-          }
-          // Defense in depth (mirrors the proxy's own cap): a 78-digit uint256 is
-          // the max, so anything longer is malformed upstream data, not a price.
-          // The `!body.data` guard covers a malformed `{ ok: true }` with no data
-          // (the body is a runtime value behind a type assertion, not a real check).
-          if (!body.ok || !body.data || !/^[0-9]+$/.test(body.data.amountOut) || body.data.amountOut.length > 80) {
-            // No reference (unsupported chain / no route): idle, not an error toast.
-            setState(IDLE)
-            return
-          }
-
-          const ophisOut = BigInt(ophisOutAtoms as string)
-          const marketOut = BigInt(body.data.amountOut)
-          // Only surface a positive edge (see the file header on gross-vs-net).
-          if (marketOut <= 0n || ophisOut <= marketOut) {
-            setState(IDLE)
-            return
-          }
-          const savingBps = Number(((ophisOut - marketOut) * 10_000n) / marketOut)
-          setState({
-            status: 'ok',
-            savingBps,
-            ophisAmount: info.afterNetworkCosts.buyAmount,
-            marketAmount: CurrencyAmount.fromRawAmount(info.afterNetworkCosts.buyAmount.currency, body.data.amountOut),
-          })
-        } catch {
-          if (controller.signal.aborted || id !== requestIdRef.current) return
-          setState({ status: 'error', savingBps: null, ophisAmount: null, marketAmount: null })
-        }
-      })()
+      fetchBeatMarketState(request, controller.signal)
+        .then((nextState) => {
+          if (id === requestIdRef.current) setState(nextState)
+        })
+        .catch(() => {
+          if (!controller.signal.aborted && id === requestIdRef.current) setState(ERROR)
+        })
     }, DEBOUNCE_MS)
 
     return () => {

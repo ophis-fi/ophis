@@ -1,8 +1,8 @@
 import { ReactNode, useCallback } from 'react'
 
-import { useVolumeFeeTooltip } from 'modules/volumeFee'
-
 import { trackGa4Event } from 'ophis/analytics/track'
+
+import { useVolumeFeeTooltip } from 'modules/volumeFee'
 
 import { useNetReceivedUsd } from '../../hooks/useNetReceivedUsd'
 import { NetReceivedRowContent } from '../../pure/NetReceivedRow'

@@ -11,6 +11,7 @@ import { LegacyWeb3Provider, Web3Provider } from '@cowprotocol/wallet'
 
 import { Messages } from '@lingui/core'
 import { LanguageProvider } from 'i18n'
+import { initGa4 } from 'ophis/analytics'
 import { createRoot } from 'react-dom/client'
 import { HelmetProvider } from 'react-helmet-async'
 import SvgCacheProvider from 'react-inlinesvg/provider'
@@ -33,8 +34,6 @@ import {
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 
 import { loadActiveLocaleMessages } from 'lib/localeMessages'
-
-import { initGa4 } from 'ophis/analytics'
 
 import { APP_HEADER_ELEMENT_ID } from '../common/constants/common'
 import { WalletUnsupportedNetworkBanner } from '../common/containers/WalletUnsupportedNetworkBanner'

@@ -1,6 +1,6 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
-import { isInjectedWidget, isSellOrder } from '@cowprotocol/common-utils'
+import { isSellOrder } from '@cowprotocol/common-utils'
 import { useTryFindToken } from '@cowprotocol/tokens'
 import { useIsEagerConnectInProgress, useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
 
@@ -185,7 +185,15 @@ export function SwapWidget({ topContent, bottomContent, allowSwapSameToken }: Sw
   // CoW-marketing copy that doesn't belong on Ophis. Tracked in
   // apps/frontend/.ophis-divergences.md.
   const shouldShowLockScreen = false
-  void [isHydrated, isUnlocked, isNetworkUnsupported, isNetworkDeprecated, isConnected, isSmartContractWallet, isEagerConnectInProgress]
+  void [
+    isHydrated,
+    isUnlocked,
+    isNetworkUnsupported,
+    isNetworkDeprecated,
+    isConnected,
+    isSmartContractWallet,
+    isEagerConnectInProgress,
+  ]
 
   const slots: TradeWidgetSlots = {
     topContent,

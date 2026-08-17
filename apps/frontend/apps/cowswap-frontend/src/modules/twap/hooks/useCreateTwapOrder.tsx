@@ -4,6 +4,7 @@ import { useCallback } from 'react'
 import { useCowAnalytics } from '@cowprotocol/analytics'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Token } from '@cowprotocol/currency'
+import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
 import { useIsSmartContractWallet, useSendBatchTransactions, useWalletInfo } from '@cowprotocol/wallet'
 import { WidgetHookEvents } from '@cowprotocol/widget-lib'
@@ -21,6 +22,7 @@ import { TradeFlowAnalyticsContext, useTradeFlowAnalytics } from 'modules/trade/
 
 import { CowSwapAnalyticsCategory } from 'common/analytics/types'
 import { useConfirmPriceImpactWithoutFee } from 'common/hooks/useConfirmPriceImpactWithoutFee'
+import { useVerifyOphisRecipientName } from 'common/hooks/useVerifyOphisRecipientName'
 import { getAreBridgeCurrencies } from 'common/utils/getAreBridgeCurrencies'
 
 import { useExtensibleFallbackContext } from './useExtensibleFallbackContext'
@@ -63,7 +65,7 @@ export function useCreateTwapOrder() {
   const addTwapOrderToList = useSetAtom(addTwapOrderToListAtom)
   const navigateToOrdersTableTab = useNavigateToOrdersTableTab()
 
-  const { inputCurrencyAmount, outputCurrencyAmount } = useAdvancedOrdersDerivedState()
+  const { inputCurrencyAmount, outputCurrencyAmount, recipient } = useAdvancedOrdersDerivedState()
 
   const appDataInfo = useAppData()
   const sendSafeTransactions = useSendBatchTransactions()
@@ -80,6 +82,7 @@ export function useCreateTwapOrder() {
 
   const analytics = useCowAnalytics()
   const tradeFlowAnalytics = useTradeFlowAnalytics()
+  const verifyRecipientName = useVerifyOphisRecipientName()
 
   const sendOrderAnalytics = useCallback(
     (action: string, context: string) => {
@@ -120,6 +123,11 @@ export function useCreateTwapOrder() {
         !twapOrder
       )
         return
+
+      assertTradeTokenPolicy(
+        { chainId: inputCurrencyAmount.currency.chainId, address: inputCurrencyAmount.currency.wrapped.address },
+        { chainId: outputCurrencyAmount.currency.chainId, address: outputCurrencyAmount.currency.wrapped.address },
+      )
 
       const isPriceImpactConfirmed = await confirmPriceImpactWithoutFee(priceImpact)
 
@@ -175,6 +183,8 @@ export function useCreateTwapOrder() {
           chainId,
           env: 'prod', // Since WatchTower creates orders only in PROD env, we should have `prod` here
         })
+
+        await verifyRecipientName(recipient || null, twapOrder.receiver, outputCurrencyAmount.currency.chainId)
 
         const createOrderTxs = createTwapOrderTxs(twapOrder, paramsStruct, twapOrderCreationContext)
         const safeTxHash = await sendSafeTransactions([...fallbackSetupTxs, ...createOrderTxs])
@@ -244,6 +254,8 @@ export function useCreateTwapOrder() {
       tradeFlowAnalytics,
       navigateToOrdersTableTab,
       isSmartContractWallet,
+      recipient,
+      verifyRecipientName,
     ],
   )
 }

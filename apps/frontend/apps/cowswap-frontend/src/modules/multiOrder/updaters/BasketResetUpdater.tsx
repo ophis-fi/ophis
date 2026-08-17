@@ -1,10 +1,9 @@
+import { useSetAtom } from 'jotai'
 import { useEffect } from 'react'
 
 import { usePrevious } from '@cowprotocol/common-hooks'
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { useWalletInfo } from '@cowprotocol/wallet'
-
-import { useSetAtom } from 'jotai'
 
 import { resetBasketAtom } from '../state/multiOrder.atoms'
 

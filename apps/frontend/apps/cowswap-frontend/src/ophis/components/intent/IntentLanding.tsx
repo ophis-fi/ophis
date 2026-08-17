@@ -15,8 +15,10 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { symbolToAddressResolver, useTokenForChainMapBySymbol } from '@cowprotocol/tokens'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import styled, { keyframes } from 'styled-components/macro'
+
+import { useNavigate } from 'common/hooks/useNavigate'
 
 import { chainSlugToId } from './chainMap'
 import { IntentCarousel } from './IntentCarousel'

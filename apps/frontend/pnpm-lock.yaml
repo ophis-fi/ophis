@@ -1559,6 +1559,9 @@ importers:
       swr:
         specifier: ^2.3.3
         version: 2.3.3(react@19.1.2)
+      viem:
+        specifier: ^2.42.1
+        version: 2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3)
     devDependencies:
       '@types/react':
         specifier: 19.1.3

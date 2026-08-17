@@ -43,7 +43,7 @@ describe('useDecomposedPath', () => {
 
 describe('usePathPrefix', () => {
   it('should return network prefix when it matches the regex', () => {
-    const networkPrefix = '/sepolia'
+    const networkPrefix = '/gc'
     const pathSuffix = '/address/123'
     const mockLocation = networkPrefix + pathSuffix
 

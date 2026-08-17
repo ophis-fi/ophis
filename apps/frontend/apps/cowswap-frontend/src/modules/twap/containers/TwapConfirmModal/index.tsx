@@ -52,8 +52,8 @@ const getConfirmModalConfig = (): {
       </p>
       <p>
         <Trans>
-          This percentage only applies to dips; if prices are better than this percentage, Ophis will still execute
-          your order.
+          This percentage only applies to dips; if prices are better than this percentage, Ophis will still execute your
+          order.
         </Trans>
       </p>
     </>
@@ -61,8 +61,8 @@ const getConfirmModalConfig = (): {
   limitPriceLabel: t`Limit price (incl. fees)`,
   limitPriceTooltip: (
     <Trans>
-      If Ophis cannot get this price or better (taking into account fees and price protection tolerance), your TWAP
-      will not execute. Ophis will <strong>always</strong> improve on this price if possible.
+      If Ophis cannot get this price or better (taking into account fees and price protection tolerance), your TWAP will
+      not execute. Ophis will <strong>always</strong> improve on this price if possible.
     </Trans>
   ),
   minReceivedLabel: t`Minimum receive`,
@@ -71,7 +71,7 @@ const getConfirmModalConfig = (): {
 
 // TODO: Break down this large function into smaller functions
 // TODO: Add proper return type annotation
-// eslint-disable-next-line max-lines-per-function, @typescript-eslint/explicit-function-return-type
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function TwapConfirmModal() {
   const confirmModalConfig = getConfirmModalConfig()
   const { account } = useWalletInfo()

@@ -2,6 +2,8 @@ import { useMemo, useState, useCallback, ReactNode } from 'react'
 
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 
+import { OphisBeatMarket } from 'ophis/components'
+
 import { useBridgeQuoteAmounts } from 'modules/bridge'
 import {
   getTotalCosts,
@@ -21,8 +23,6 @@ import { useUsdAmount } from 'modules/usdAmount'
 import { QuoteApiError } from 'api/cowProtocol/errors/QuoteError'
 import { NetworkCostsSuffix } from 'common/pure/NetworkCostsSuffix'
 import { RateInfoParams } from 'common/pure/RateInfo'
-
-import { OphisBeatMarket } from 'ophis/components'
 
 import { NetworkCostsTooltipSuffix } from '../../pure/NetworkCostsTooltipSuffix'
 import { RowDeadline } from '../RowDeadline'

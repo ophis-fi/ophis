@@ -1,11 +1,12 @@
 import { getIsNativeToken, isAddress, isFractionFalsy, isSellOrder } from '@cowprotocol/common-utils'
 
-import { TradeType } from 'modules/trade'
-import { getIsFastQuote, isQuoteExpired } from 'modules/tradeQuote'
+import { TradeType } from 'modules/trade/types/TradeType'
+import { getIsFastQuote } from 'modules/tradeQuote/utils/getIsFastQuote'
+import { isQuoteExpired } from 'modules/tradeQuote/utils/quoteDeadline'
 
 import { getIsXstockTradeBelowLimit } from './getIsXstockTradeBelowLimit'
 
-import { ApproveRequiredReason } from '../../erc20Approve'
+import { ApproveRequiredReason } from '../../erc20Approve/types'
 import { TradeFormValidation, TradeFormValidationContext } from '../types'
 
 // eslint-disable-next-line max-lines-per-function, complexity
@@ -16,6 +17,7 @@ export function validateTradeForm(context: TradeFormValidationContext): TradeFor
     isSupportedWallet,
     isSafeReadonlyUser,
     isSwapUnsupported,
+    isTokenPolicyDenied,
     recipientEnsAddress,
     tradeQuote,
     account,
@@ -157,6 +159,10 @@ export function validateTradeForm(context: TradeFormValidationContext): TradeFor
 
     if (isSwapUnsupported) {
       validations.push(TradeFormValidation.CurrencyNotSupported)
+    }
+
+    if (isTokenPolicyDenied) {
+      validations.push(TradeFormValidation.TokenPolicyDenied)
     }
 
     if (isFastQuote || !tradeQuote.quote || (isBridging && tradeQuote.isLoading)) {

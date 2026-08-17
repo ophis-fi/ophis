@@ -8,7 +8,6 @@ import { msg } from '@lingui/core/macro'
 import AppziButton from 'legacy/components/AppziButton'
 import { Version } from 'legacy/components/Version'
 
-
 import { Routes } from 'common/constants/routes'
 
 import { getSolversExplorerUrl } from './menuConsts.utils'

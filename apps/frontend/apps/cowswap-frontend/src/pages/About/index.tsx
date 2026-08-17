@@ -48,8 +48,8 @@ export default function AboutPage(): ReactNode {
           <TextLink href="https://cow.fi" external>
             CoW Protocol
           </TextLink>
-          . You describe what you want to trade in your own words; we parse the tokens, chain, and amount, then route you
-          to a pre-filled swap form that you sign with your own wallet.
+          . You describe what you want to trade in your own words; we parse the tokens, chain, and amount, then route
+          you to a pre-filled swap form that you sign with your own wallet.
         </p>
         <p>
           Under the hood, every order is broadcast to a network of competing solvers who race to find the best path. The
@@ -139,15 +139,14 @@ export default function AboutPage(): ReactNode {
           <TextLink href="https://github.com/cowprotocol/contracts" external>
             G0 Group and Hacken
           </TextLink>{' '}
-          from the CoW Protocol launch period. The Ophis-specific surface, solver wiring, partner-fee
-          plumbing, the driver-level Custom-interaction allowlist, and the OP-mainnet AllowList contract upgrade, was
-          reviewed in May 2026 across multiple tooling passes. Findings are tracked in{' '}
-          <InlineCode>docs/audits/</InlineCode>.
+          from the CoW Protocol launch period. The Ophis-specific surface, solver wiring, partner-fee plumbing, the
+          driver-level Custom-interaction allowlist, and the OP-mainnet AllowList contract upgrade, was reviewed in May
+          2026 across multiple tooling passes. Findings are tracked in <InlineCode>docs/audits/</InlineCode>.
         </p>
         <FeatureGrid minCardWidth="200px" gap="12px">
           <FeatureCard title="GPv2 upstream">
-            CoW Protocol&#39;s settlement contracts audited by G0 Group and Hacken on initial launch; Ophis runs the same
-            bytecode under its own AllowList. <Badge tone="audit">Inherited</Badge>
+            CoW Protocol&#39;s settlement contracts audited by G0 Group and Hacken on initial launch; Ophis runs the
+            same bytecode under its own AllowList. <Badge tone="audit">Inherited</Badge>
           </FeatureCard>
           <FeatureCard title="Slither">
             Strict-mode static analysis on all Ophis-deployed contract surfaces (settlement + AllowList + helpers).{' '}
@@ -181,10 +180,9 @@ export default function AboutPage(): ReactNode {
 
       <Section id="operator" title="Who operates Ophis">
         <p>
-          The Ophis interface is non-custodial and operated independently. The formal operator
-          disclosure, including jurisdiction and entity details available on request for formal
-          contractual or regulatory matters, lives in the operator section of the{' '}
-          <TextLink href="/legal#operator">Legal page</TextLink>. Reach the team via the{' '}
+          The Ophis interface is non-custodial and operated independently. The formal operator disclosure, including
+          jurisdiction and entity details available on request for formal contractual or regulatory matters, lives in
+          the operator section of the <TextLink href="/legal#operator">Legal page</TextLink>. Reach the team via the{' '}
           <TextLink href="/contact">contact form</TextLink>.
         </p>
       </Section>
@@ -206,8 +204,7 @@ export default function AboutPage(): ReactNode {
           <Accordion summary="Is the natural-language parser reliable?">
             <p>
               The parser is best-effort. Ambiguous or malformed intents fall through to a standard swap form with
-              whatever fields the parser could extract, you can correct before signing. Nothing executes until you
-              sign.
+              whatever fields the parser could extract, you can correct before signing. Nothing executes until you sign.
             </p>
           </Accordion>
           <Accordion summary="Can I use Ophis from my own app?">

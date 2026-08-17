@@ -24,30 +24,30 @@ interface Props {
   compact?: boolean
 }
 
-export function OphisFooter({ borderless = false, compact = false }: Props): ReactNode {
-  if (compact) {
-    return (
-      <styledEl.CompactBar $borderless={borderless}>
-        <styledEl.CompactBrand>
-          <styledEl.BrandIcon src="/ophis-icon.svg" alt="" aria-hidden="true" />
-          <styledEl.Wordmark>
-            ophis<span>.</span>
-          </styledEl.Wordmark>
-        </styledEl.CompactBrand>
-        <styledEl.CompactLinks>
-          <styledEl.InternalLink to="/profile">Refer and earn</styledEl.InternalLink>
-          <styledEl.ExternalLink href="https://docs.ophis.fi/">Docs</styledEl.ExternalLink>
-          <styledEl.InternalLink to="/about">About</styledEl.InternalLink>
-          <styledEl.ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
-            GitHub
-          </styledEl.ExternalLink>
-          <styledEl.InternalLink to="/legal">Legal</styledEl.InternalLink>
-        </styledEl.CompactLinks>
-        <styledEl.CompactCopy>&copy; Ophis 2026</styledEl.CompactCopy>
-      </styledEl.CompactBar>
-    )
-  }
+function CompactFooter({ borderless }: { borderless: boolean }): ReactNode {
+  return (
+    <styledEl.CompactBar $borderless={borderless}>
+      <styledEl.CompactBrand>
+        <styledEl.BrandIcon src="/ophis-icon.svg" alt="" aria-hidden="true" />
+        <styledEl.Wordmark>
+          ophis<span>.</span>
+        </styledEl.Wordmark>
+      </styledEl.CompactBrand>
+      <styledEl.CompactLinks>
+        <styledEl.InternalLink to="/profile">Refer and earn</styledEl.InternalLink>
+        <styledEl.ExternalLink href="https://docs.ophis.fi/">Docs</styledEl.ExternalLink>
+        <styledEl.InternalLink to="/about">About</styledEl.InternalLink>
+        <styledEl.ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
+          GitHub
+        </styledEl.ExternalLink>
+        <styledEl.InternalLink to="/legal">Legal</styledEl.InternalLink>
+      </styledEl.CompactLinks>
+      <styledEl.CompactCopy>&copy; Ophis 2026</styledEl.CompactCopy>
+    </styledEl.CompactBar>
+  )
+}
 
+function FullFooter({ borderless }: { borderless: boolean }): ReactNode {
   return (
     <styledEl.Bar $borderless={borderless}>
       <styledEl.Grid>
@@ -148,4 +148,8 @@ export function OphisFooter({ borderless = false, compact = false }: Props): Rea
       </styledEl.BottomBar>
     </styledEl.Bar>
   )
+}
+
+export function OphisFooter({ borderless = false, compact = false }: Props): ReactNode {
+  return compact ? <CompactFooter borderless={borderless} /> : <FullFooter borderless={borderless} />
 }

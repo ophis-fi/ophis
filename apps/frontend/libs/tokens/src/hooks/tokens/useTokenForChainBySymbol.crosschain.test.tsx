@@ -1,14 +1,14 @@
 import { createStore, Provider } from 'jotai'
 import { ReactNode, Suspense } from 'react'
 
-import { renderHook, waitFor } from '@testing-library/react'
-
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
+
+import { renderHook, waitFor } from '@testing-library/react'
 
 import { useTokenForChainMapBySymbol } from './useTokenForChainBySymbol'
 
 import { listsStatesByChainAtom } from '../../state/tokenLists/tokenListsStateAtom'
-import { TokenListsByChainState } from '../../types'
+import { ListState, TokenListsByChainState } from '../../types'
 
 /**
  * Regression test for the cross-chain resolution path: the intent flow resolves
@@ -27,7 +27,7 @@ const ETHEREUM = 1 as SupportedChainId
 const BASE_USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913'
 const ETH_USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 
-function listFor(chainId: SupportedChainId, address: string) {
+function listFor(chainId: SupportedChainId, address: string): Record<string, ListState> {
   const source = `https://list-${chainId}.example/tokens.json`
   return {
     [source]: {
@@ -59,7 +59,7 @@ function storeWithBothChains(): ReturnType<typeof createStore> {
 // allListsSourcesAtom) which hydrate asynchronously on mount in the test env, so
 // we let them settle via waitFor instead of asserting on a transiently-suspended
 // render. (In production these atoms are already hydrated.)
-function wrapperFor(store: ReturnType<typeof createStore>) {
+function wrapperFor(store: ReturnType<typeof createStore>): ({ children }: { children: ReactNode }) => ReactNode {
   return ({ children }: { children: ReactNode }) => (
     <Provider store={store}>
       <Suspense fallback={null}>{children}</Suspense>

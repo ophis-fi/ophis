@@ -2,9 +2,9 @@ import { useCallback, useMemo } from 'react'
 
 import { newOphisBasketId } from 'ophis/basketMetadata'
 
+import { BasketComposition, decomposeBasket, DecomposedLeg } from '../pure/decomposition'
 import { BasketCompositionState } from '../state/multiOrder.atoms'
 import { BasketDraft, BasketLeg, BasketTier } from '../types'
-import { BasketComposition, decomposeBasket, DecomposedLeg } from '../pure/decomposition'
 
 const DEFAULT_VALID_FOR_SECONDS = 30 * 60 // 30 min; every leg shares this validTo
 

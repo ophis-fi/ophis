@@ -48,9 +48,7 @@ export interface BasketPlacementResult<L> {
   readonly error?: unknown
 }
 
-export async function runBasketPlacement<L>(
-  params: RunBasketPlacementParams<L>,
-): Promise<BasketPlacementResult<L>> {
+export async function runBasketPlacement<L>(params: RunBasketPlacementParams<L>): Promise<BasketPlacementResult<L>> {
   const { legs, placeLeg, cancelLegs, signal, onLegPlaced, onLegFailed } = params
   const placed: PlacedLeg<L>[] = []
 

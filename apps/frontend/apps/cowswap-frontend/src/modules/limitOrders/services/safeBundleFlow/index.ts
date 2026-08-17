@@ -1,6 +1,7 @@
 import { captureError, ERROR_TYPES, normalizeError } from '@cowprotocol/common-utils'
 import { SigningScheme } from '@cowprotocol/cow-sdk'
 import { Percent } from '@cowprotocol/currency'
+import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
 import { Command, UiOrderType } from '@cowprotocol/types'
 import { MaxUint256 } from '@ethersproject/constants'
 import type { MetaTransactionData } from '@safe-global/types-kit'
@@ -48,6 +49,11 @@ export async function safeBundleFlow(
   const { account, recipientAddressOrName, sellToken, buyToken, inputAmount, outputAmount, isSafeWallet } =
     params.postOrderParams
 
+  assertTradeTokenPolicy(
+    { chainId: sellToken.chainId, address: sellToken.address },
+    { chainId: buyToken.chainId, address: buyToken.address },
+  )
+
   params.postOrderParams.appData = await removePermitHookFromAppData(params.postOrderParams.appData, params.typedHooks)
 
   const swapFlowAnalyticsContext: TradeFlowAnalyticsContext = {
@@ -77,6 +83,8 @@ export async function safeBundleFlow(
     })
 
     logTradeFlow(LOG_PREFIX, 'STEP 3: post order')
+    await params.verifyRecipientName(recipientAddressOrName, postOrderParams.recipient, buyToken.chainId)
+
     const {
       orderId,
       signature,

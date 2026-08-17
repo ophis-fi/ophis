@@ -1,11 +1,10 @@
 import { ReactNode } from 'react'
 
 import { Trans } from '@lingui/react/macro'
-
 import { Badge } from 'ophis/ds/Badge'
 
-import { allLegsQuoted, canConfirmBasket } from '../basketReady'
 import { BasketDraft, BasketTier } from '../../types'
+import { allLegsQuoted, canConfirmBasket } from '../basketReady'
 
 export interface BasketConfirmProps {
   draft: BasketDraft
@@ -27,7 +26,13 @@ const TIER_LABEL: Record<BasketTier, ReactNode> = {
  * the non-atomic nature explicit: legs are placed as independent CoW orders,
  * best-effort together, and any that do not fill can be cancelled in one click.
  */
-export function BasketConfirm({ draft, batchAvailable, isPlacing, onConfirm, onCancel }: BasketConfirmProps): ReactNode {
+export function BasketConfirm({
+  draft,
+  batchAvailable,
+  isPlacing,
+  onConfirm,
+  onCancel,
+}: BasketConfirmProps): ReactNode {
   // Only allow placement once EVERY leg has a validated quote (a defined min-buy).
   // Starting the sequential loop while any quote is still loading or failed would
   // sign legs with no min-out and expose a partial basket.
@@ -41,9 +46,9 @@ export function BasketConfirm({ draft, batchAvailable, isPlacing, onConfirm, onC
 
       <p>
         <Trans>
-          Ophis places these as {draft.legs.length} independent orders sharing one deadline. They are
-          submitted best-effort together, but they are not atomic: some legs may fill while others do
-          not. Unfilled legs can be cancelled in one click.
+          Ophis places these as {draft.legs.length} independent orders sharing one deadline. They are submitted
+          best-effort together, but they are not atomic: some legs may fill while others do not. Unfilled legs can be
+          cancelled in one click.
         </Trans>
       </p>
 

@@ -1,4 +1,5 @@
 import { allLegsQuoted, canConfirmBasket, isLegQuoted } from './basketReady'
+
 import { BasketDraft, BasketLeg } from '../types'
 
 const leg = (n: number, buyAmount?: string): BasketLeg => ({

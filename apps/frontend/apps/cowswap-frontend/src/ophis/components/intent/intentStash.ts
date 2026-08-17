@@ -48,25 +48,34 @@ export function writeIntentStash(stash: Omit<IntentStash, 'ts'>): void {
   }
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function normalizeIntentStash(parsed: Partial<IntentStash> | null, ttlMs: number): IntentStash | null {
+  if (!parsed || typeof parsed.ts !== 'number') return null
+  if (Date.now() - parsed.ts > ttlMs) return null
+
+  const sellToken = optionalString(parsed.sellToken)
+  const buyToken = optionalString(parsed.buyToken)
+  if (!sellToken && !buyToken) return null
+
+  return {
+    chainId: typeof parsed.chainId === 'number' ? parsed.chainId : undefined,
+    sellToken,
+    buyToken,
+    amount: optionalString(parsed.amount),
+    field: parsed.field === 'buy' ? 'buy' : 'sell',
+    ts: parsed.ts,
+  }
+}
+
 export function readIntentStash(ttlMs: number = DEFAULT_TTL_MS): IntentStash | null {
   try {
     const raw = sessionStorage.getItem(INTENT_STASH_KEY)
     if (!raw) return null
-
     const parsed = JSON.parse(raw) as Partial<IntentStash> | null
-    if (!parsed || typeof parsed.ts !== 'number') return null
-    if (Date.now() - parsed.ts > ttlMs) return null
-    // Need at least one token to build a meaningful trade route.
-    if (!parsed.sellToken && !parsed.buyToken) return null
-
-    return {
-      chainId: typeof parsed.chainId === 'number' ? parsed.chainId : undefined,
-      sellToken: parsed.sellToken || undefined,
-      buyToken: parsed.buyToken || undefined,
-      amount: parsed.amount || undefined,
-      field: parsed.field === 'buy' ? 'buy' : 'sell',
-      ts: parsed.ts,
-    }
+    return normalizeIntentStash(parsed, ttlMs)
   } catch {
     return null
   }

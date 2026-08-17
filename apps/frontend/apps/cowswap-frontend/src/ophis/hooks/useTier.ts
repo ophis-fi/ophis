@@ -46,6 +46,37 @@ function isValidTier(t: unknown): t is Tier {
   )
 }
 
+function hasValidTierNumbers(json: Partial<TierStatus>): boolean {
+  return typeof json.volume_30d_usd === 'number' && Number.isFinite(json.volume_30d_usd)
+}
+
+function hasValidNextTier(json: Partial<TierStatus>): boolean {
+  if (json.next_tier == null) return true
+  return (
+    isValidTier(json.next_tier) &&
+    typeof json.usd_to_next_tier === 'number' &&
+    Number.isFinite(json.usd_to_next_tier)
+  )
+}
+
+function parseTierStatus(json: Partial<TierStatus>): TierStatus {
+  if (!hasValidTierNumbers(json) || !isValidTier(json.tier) || !hasValidNextTier(json)) {
+    throw new Error('malformed tier response')
+  }
+  return json as TierStatus
+}
+
+function fallbackTierStatus(wallet: `0x${string}`): TierStatus {
+  return {
+    wallet,
+    volume_30d_usd: 0,
+    trade_count_30d: 0,
+    tier: assignTier(0),
+    next_tier: { name: 'bronze', min_usd: 20_000, rebate_pct: 0.1 },
+    usd_to_next_tier: 20_000,
+  }
+}
+
 // Phase 3 audit M (2026-05-19): tier fetch is now gated behind an explicit
 // localStorage opt-in (see useRebatesOptIn.ts). When `optedIn === false`,
 // this hook MUST NOT issue any network request — TierChip will render its
@@ -75,30 +106,14 @@ export function useTier(wallet: `0x${string}` | undefined): UseTierResult {
         // A malformed 2xx (e.g. `{}`) must fall back to the local default (the
         // catch below: tier none/Unranked, with progress to Bronze), not crash
         // render — TierChip dereferences these fields.
-        if (
-          typeof json?.volume_30d_usd !== 'number' ||
-          !Number.isFinite(json.volume_30d_usd) ||
-          !isValidTier(json?.tier) ||
-          (json.next_tier != null && !isValidTier(json.next_tier)) ||
-          (json.next_tier != null &&
-            (typeof json.usd_to_next_tier !== 'number' || !Number.isFinite(json.usd_to_next_tier)))
-        ) {
-          throw new Error('malformed tier response')
-        }
-        if (!cancelled) setData(json as TierStatus)
+        const status = parseTierStatus(json)
+        if (!cancelled) setData(status)
       })
       .catch((err) => {
         if (cancelled) return
         setError(err)
         // Local fallback so the UI is never blank: Unranked with progress to Bronze.
-        setData({
-          wallet,
-          volume_30d_usd: 0,
-          trade_count_30d: 0,
-          tier: assignTier(0),
-          next_tier: { name: 'bronze', min_usd: 20_000, rebate_pct: 0.1 },
-          usd_to_next_tier: 20_000,
-        })
+        setData(fallbackTierStatus(wallet))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

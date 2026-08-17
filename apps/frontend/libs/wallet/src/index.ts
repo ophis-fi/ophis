@@ -9,12 +9,21 @@ export * from './constants'
 export * from './api/hooks'
 export { useWalletCapabilities } from './api/hooks/useWalletCapabilities'
 export {
+  buildWalletSendCallsRequest,
+  canSafelyRetryWalletCalls,
   getWalletCallsId,
   getWalletCapabilitiesForChain,
   hasAtomicBatchCapability,
+  parseWalletCallsStatus,
   parseWalletCapabilities,
 } from './api/pure/walletCapabilities'
-export type { WalletCapabilities } from './api/pure/walletCapabilities'
+export type {
+  WalletCallInput,
+  WalletCallsStatus,
+  WalletCallsStatusCategory,
+  WalletCapabilities,
+  WalletSendCallsRequest,
+} from './api/pure/walletCapabilities'
 export { useWidgetProviderMetaInfo } from './api/hooks/useWidgetProviderMetaInfo'
 export { useSendBatchTransactions } from './api/hooks/useSendBatchTransactions'
 export type { SendBatchTxCallback } from './api/hooks/useSendBatchTransactions'

@@ -2,14 +2,14 @@ import { ReactNode } from 'react'
 
 import { isSellOrder, percentToBps } from '@cowprotocol/common-utils'
 
+import { IntentRestoreUpdater } from 'ophis/components/intent'
+
 import { AppDataUpdater } from 'modules/appData'
 import { Erc20ApproveWidget } from 'modules/erc20Approve'
 import { EthFlowDeadlineUpdater } from 'modules/ethFlow'
 import { useIsHooksTradeType } from 'modules/trade'
 import { useSetTradeQuoteParams } from 'modules/tradeQuote'
 import { useIsSmartSlippageApplied } from 'modules/tradeSlippage'
-
-import { IntentRestoreUpdater } from 'ophis/components/intent'
 
 import { InvalidBridgeOutputUpdater } from './InvalidBridgeOutputUpdater'
 import { QuoteObserverUpdater } from './QuoteObserverUpdater'

@@ -1,4 +1,4 @@
-(() => {
+;(() => {
   'use strict'
 
   const CHAIN_ID = 4663
@@ -33,8 +33,10 @@
 
   const button = document.querySelector('#deploy')
   const status = document.querySelector('#status')
-  const setStatus = (message) => { status.textContent = message }
-  const stripHex = (value) => value.startsWith('0x') ? value.slice(2) : value
+  const setStatus = (message) => {
+    status.textContent = message
+  }
+  const stripHex = (value) => (value.startsWith('0x') ? value.slice(2) : value)
   const word = (value) => BigInt(value).toString(16).padStart(64, '0')
   const addressWord = (address) => stripHex(address).padStart(64, '0')
   const bytesPart = (value) => {
@@ -209,13 +211,15 @@
       if (error?.code !== 4902) throw error
       await provider.request({
         method: 'wallet_addEthereumChain',
-        params: [{
-          chainId: CHAIN_ID_HEX,
-          chainName: 'Robinhood Chain',
-          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-          rpcUrls: ['https://rpc.mainnet.chain.robinhood.com'],
-          blockExplorerUrls: ['https://robinhoodchain.blockscout.com'],
-        }],
+        params: [
+          {
+            chainId: CHAIN_ID_HEX,
+            chainName: 'Robinhood Chain',
+            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+            rpcUrls: ['https://rpc.mainnet.chain.robinhood.com'],
+            blockExplorerUrls: ['https://robinhoodchain.blockscout.com'],
+          },
+        ],
       })
     }
     if ((await provider.request({ method: 'eth_chainId' })).toLowerCase() !== CHAIN_ID_HEX) {
@@ -301,7 +305,9 @@
         ])
         if (receiptAfterConfirmation) return { receipt: receiptAfterConfirmation, replaced: false }
         if (transactionAfterConfirmation) {
-          throw new Error(`Transaction reappeared while confirmation was open; retry remains locked: ${transaction.hash}`)
+          throw new Error(
+            `Transaction reappeared while confirmation was open; retry remains locked: ${transaction.hash}`,
+          )
         }
         const [confirmedAfterConfirmation, pendingAfterConfirmation] = await Promise.all([
           provider.request({
@@ -331,7 +337,9 @@
   async function reconcilePendingTransaction(provider) {
     const transaction = readPendingTransaction()
     if (!transaction) return
-    setStatus(`Previous transaction still requires reconciliation: ${transaction.hash}\nWaiting for its receipt or nonce replacement…`)
+    setStatus(
+      `Previous transaction still requires reconciliation: ${transaction.hash}\nWaiting for its receipt or nonce replacement…`,
+    )
     const { receipt, replaced, dropped } = await waitForPendingResolution(provider, transaction)
     if (!forgetPendingTransaction(transaction.hash)) {
       throw new Error('A newer ceremony transaction lock exists; reconcile it before continuing')
@@ -411,8 +419,9 @@
     const offset = Number(BigInt(`0x${hex.slice(0, 64)}`)) * 2
     const count = Number(BigInt(`0x${hex.slice(offset, offset + 64)}`))
     if (count < 1 || count > 10 || hex.length < offset + 64 + count * 64) throw new Error('Invalid owner count')
-    return Array.from({ length: count }, (_, index) =>
-      `0x${hex.slice(offset + 64 + index * 64 + 24, offset + 64 + (index + 1) * 64)}`,
+    return Array.from(
+      { length: count },
+      (_, index) => `0x${hex.slice(offset + 64 + index * 64 + 24, offset + 64 + (index + 1) * 64)}`,
     )
   }
 
@@ -434,7 +443,8 @@
     if (!/^[0-9a-f]{130}$/i.test(hex)) throw new Error('Wallet returned a malformed signature')
     const recovery = Number.parseInt(hex.slice(128, 130), 16)
     const normalizedRecovery = recovery < 27 ? recovery + 27 : recovery
-    if (normalizedRecovery !== 27 && normalizedRecovery !== 28) throw new Error('Wallet returned an invalid recovery ID')
+    if (normalizedRecovery !== 27 && normalizedRecovery !== 28)
+      throw new Error('Wallet returned an invalid recovery ID')
     return `${hex.slice(0, 128)}${normalizedRecovery.toString(16).padStart(2, '0')}`
   }
 
@@ -500,22 +510,30 @@
       },
     }
     setStatus(`${label}: request 1 wallet signature, then 1 transaction confirmation.`)
-    const signature = normalizeSignature(await provider.request({
-      method: 'eth_signTypedData_v4',
-      params: [sender, JSON.stringify(typedData)],
-    }))
+    const signature = normalizeSignature(
+      await provider.request({
+        method: 'eth_signTypedData_v4',
+        params: [sender, JSON.stringify(typedData)],
+      }),
+    )
     const execData = encodeExecTransaction(data, signature)
-    const gasEstimate = BigInt(await provider.request({
-      method: 'eth_estimateGas',
-      params: [{ from: sender, to: EXPECTED_SAFE, data: execData, value: '0x0' }],
-    }))
-    return broadcastAndConfirm(provider, {
-      from: sender,
-      to: EXPECTED_SAFE,
-      data: execData,
-      value: '0x0',
-      gas: `0x${((gasEstimate * 120n) / 100n).toString(16)}`,
-    }, label)
+    const gasEstimate = BigInt(
+      await provider.request({
+        method: 'eth_estimateGas',
+        params: [{ from: sender, to: EXPECTED_SAFE, data: execData, value: '0x0' }],
+      }),
+    )
+    return broadcastAndConfirm(
+      provider,
+      {
+        from: sender,
+        to: EXPECTED_SAFE,
+        data: execData,
+        value: '0x0',
+        gas: `0x${((gasEstimate * 120n) / 100n).toString(16)}`,
+      },
+      label,
+    )
   }
 
   async function deployAndConfigure() {
@@ -541,19 +559,25 @@
         if (`0x${stripHex(predictedResult).slice(-40)}`.toLowerCase() !== EXPECTED_SAFE) {
           throw new Error('Factory did not predict the canonical fee Safe address')
         }
-        const gasEstimate = BigInt(await provider.request({
-          method: 'eth_estimateGas',
-          params: [{ from: sender, to: FACTORY, data: DEPLOY_DATA, value: '0x0' }],
-        }))
+        const gasEstimate = BigInt(
+          await provider.request({
+            method: 'eth_estimateGas',
+            params: [{ from: sender, to: FACTORY, data: DEPLOY_DATA, value: '0x0' }],
+          }),
+        )
         if (gasEstimate < 100_000n || gasEstimate > 2_000_000n) throw new Error('Unexpected deployment gas estimate')
         setStatus(`Verified canonical address ${EXPECTED_SAFE}.\nConfirm the 0 ETH Safe deployment transaction.`)
-        deploymentHash = await broadcastAndConfirm(provider, {
-          from: sender,
-          to: FACTORY,
-          data: DEPLOY_DATA,
-          value: '0x0',
-          gas: `0x${((gasEstimate * 120n) / 100n).toString(16)}`,
-        }, 'Deployment')
+        deploymentHash = await broadcastAndConfirm(
+          provider,
+          {
+            from: sender,
+            to: FACTORY,
+            data: DEPLOY_DATA,
+            value: '0x0',
+            gas: `0x${((gasEstimate * 120n) / 100n).toString(16)}`,
+          },
+          'Deployment',
+        )
         safeCode = await provider.request({ method: 'eth_getCode', params: [EXPECTED_SAFE, 'latest'] })
         if (safeCode === '0x') throw new Error('Deployment receipt succeeded but Safe code is absent')
       }
@@ -589,25 +613,29 @@
         throw new Error('Final Safe owners or threshold do not match the canonical 2-of-3 policy')
       }
 
-      setStatus([
-        'SAFE DEPLOYMENT COMPLETE',
-        `Safe: ${EXPECTED_SAFE}`,
-        `Owners: ${state.owners.join(', ')}`,
-        `Threshold: ${state.threshold}`,
-        deploymentHash ? `Deployment: ${deploymentHash}` : 'Deployment: already present',
-        secondOwnerHash ? `Owner 2: ${secondOwnerHash}` : 'Owner 2: already configured',
-        thirdOwnerHash ? `Owner 3: ${thirdOwnerHash}` : 'Owner 3: already configured',
-      ].join('\n'))
+      setStatus(
+        [
+          'SAFE DEPLOYMENT COMPLETE',
+          `Safe: ${EXPECTED_SAFE}`,
+          `Owners: ${state.owners.join(', ')}`,
+          `Threshold: ${state.threshold}`,
+          deploymentHash ? `Deployment: ${deploymentHash}` : 'Deployment: already present',
+          secondOwnerHash ? `Owner 2: ${secondOwnerHash}` : 'Owner 2: already configured',
+          thirdOwnerHash ? `Owner 3: ${thirdOwnerHash}` : 'Owner 3: already configured',
+        ].join('\n'),
+      )
       button.textContent = 'Safe configured'
     } catch (error) {
       const unresolvedTransaction = readPendingTransaction()
       if (unresolvedTransaction) {
-        setStatus([
-          'TRANSACTION STILL PENDING — RETRY LOCKED',
-          unresolvedTransaction.hash,
-          error?.message || String(error),
-          'Keep this page open or press the button after reloading to resume receipt reconciliation.',
-        ].join('\n'))
+        setStatus(
+          [
+            'TRANSACTION STILL PENDING — RETRY LOCKED',
+            unresolvedTransaction.hash,
+            error?.message || String(error),
+            'Keep this page open or press the button after reloading to resume receipt reconciliation.',
+          ].join('\n'),
+        )
       } else {
         setStatus(`REFUSED / STOPPED\n${error?.message || String(error)}`)
         button.disabled = false

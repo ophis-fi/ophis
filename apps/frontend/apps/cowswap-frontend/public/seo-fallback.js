@@ -12,9 +12,9 @@
 // This lives in an EXTERNAL file, not an inline <script>, because the swap-host
 // CSP is `script-src 'self'` with NO 'unsafe-inline' (see public/_headers) —
 // an inline script would be silently blocked in production.
-(function () {
-  var seo = document.getElementById('ophis-seo')
-  var root = document.getElementById('root')
+;(function () {
+  let seo = document.getElementById('ophis-seo')
+  const root = document.getElementById('root')
   if (!seo || !root) return
 
   function remove() {
@@ -29,7 +29,7 @@
   }
 
   // React mounts by appending element children to #root.
-  var obs = new MutationObserver(function () {
+  const obs = new MutationObserver(function () {
     if (root.childElementCount > 0) {
       remove()
       obs.disconnect()

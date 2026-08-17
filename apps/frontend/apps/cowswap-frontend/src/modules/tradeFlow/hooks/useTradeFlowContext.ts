@@ -26,6 +26,7 @@ import { getOrderValidTo, useTradeQuote } from 'modules/tradeQuote'
 
 import { useGP2SettlementContract } from 'common/hooks/useContract'
 import { useEnoughAllowance } from 'common/hooks/useEnoughAllowance'
+import { useVerifyOphisRecipientName } from 'common/hooks/useVerifyOphisRecipientName'
 
 import { useSetSigningStep } from './useSetSigningStep'
 
@@ -76,6 +77,7 @@ export function useTradeFlowContext({ deadline }: TradeFlowParams): TradeFlowCon
   const bridgeQuoteAmounts = useBridgeQuoteAmounts()
   const amountToSignApprove = useGetAmountToSignApprove()
   const permitAmountToSign = amountToSignApprove ? BigInt(amountToSignApprove.quotient.toString()) : undefined
+  const verifyRecipientName = useVerifyOphisRecipientName()
 
   const enoughAllowance = useEnoughAllowance(inputAmount)
 
@@ -137,6 +139,7 @@ export function useTradeFlowContext({ deadline }: TradeFlowParams): TradeFlowCon
             bridgeQuoteAmounts,
             addBridgeOrder,
             setSigningStep,
+            verifyRecipientName,
           ]
         : null,
       // TODO: Break down this large function into smaller functions
@@ -172,6 +175,7 @@ export function useTradeFlowContext({ deadline }: TradeFlowParams): TradeFlowCon
         bridgeQuoteAmounts,
         addBridgeOrder,
         setSigningStep,
+        verifyRecipientName,
       ]) => {
         return {
           tradeQuoteState,
@@ -192,6 +196,7 @@ export function useTradeFlowContext({ deadline }: TradeFlowParams): TradeFlowCon
             dispatch,
             addBridgeOrder,
             setSigningStep,
+            verifyRecipientName,
           },
           tradeConfirmActions,
           swapFlowAnalyticsContext: {

@@ -1,4 +1,4 @@
-import { utils } from 'ethers'
+import { getAddress } from '@ethersproject/address'
 
 import {
   DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK,
@@ -12,11 +12,6 @@ import {
  *   - packages/sdk/src/partner-fee.ts (OPHIS_PARTNER_FEE_RECIPIENT)
  *   - apps/cowswap-frontend/src/ophis/partnerFeeDefault.ts (OPHIS_PARTNER_FEE_RECIPIENT)
  *   - apps/frontend/libs/common-const/src/feeRecipient.ts (per-network override map)
- *
- * The third file drifted: MegaETH (4326) was routed to a CoW default placeholder,
- * HyperEVM (999) was routed to the *protocol* Safe (governance multisig) rather
- * than the partner-fee Safe. This file's fix pulled both back to canonical;
- * the assertions below ensure no future edit silently reintroduces drift.
  *
  * Cross-file drift guard (Codex pre-PR review MED-1): each of the 3 source
  * files lives in a separate pnpm workspace and cannot transitively import
@@ -37,10 +32,10 @@ describe('feeRecipient', () => {
   })
 
   it('exports a canonical EIP-55 partner-fee recipient', () => {
-    // utils.getAddress (ethers v5) throws on non-canonical checksum.
-    expect(() => utils.getAddress(OPHIS_PARTNER_FEE_RECIPIENT)).not.toThrow()
+    // getAddress throws on non-canonical checksum.
+    expect(() => getAddress(OPHIS_PARTNER_FEE_RECIPIENT)).not.toThrow()
     // The canonical form should equal the constant exactly (no case drift).
-    expect(utils.getAddress(OPHIS_PARTNER_FEE_RECIPIENT)).toBe(OPHIS_PARTNER_FEE_RECIPIENT)
+    expect(getAddress(OPHIS_PARTNER_FEE_RECIPIENT)).toBe(OPHIS_PARTNER_FEE_RECIPIENT)
   })
 
   it('routes Ophis-operated chains to the canonical recipient', () => {
@@ -70,8 +65,8 @@ describe('feeRecipient', () => {
 
   it('routes every entry to a canonical EIP-55 address', () => {
     for (const recipient of Object.values(DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK)) {
-      expect(() => utils.getAddress(recipient)).not.toThrow()
-      expect(utils.getAddress(recipient)).toBe(recipient)
+      expect(() => getAddress(recipient)).not.toThrow()
+      expect(getAddress(recipient)).toBe(recipient)
     }
   })
 })

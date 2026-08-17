@@ -11,16 +11,9 @@ import { TradeType, useDerivedTradeState } from 'modules/trade'
 import { useApproveState } from './useApproveState'
 import { useGetAmountToSignApprove } from './useGetAmountToSignApprove'
 
-import { ApprovalState } from '../types'
+import { ApprovalState, ApproveRequiredReason } from '../types'
 
-export enum ApproveRequiredReason {
-  Unsupported, // f.e. eth flow without bundling or for limit orders
-  NotRequired,
-  Required,
-  Eip2612PermitRequired,
-  DaiLikePermitRequired,
-  BundleApproveRequired,
-}
+export { ApproveRequiredReason } from '../types'
 
 type AdditionalParams = {
   // null is needed to prevent breaking changes, as this param was optional before

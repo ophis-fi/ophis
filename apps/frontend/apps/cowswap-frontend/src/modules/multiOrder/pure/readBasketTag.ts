@@ -1,5 +1,32 @@
 import { assertOphisBasketId, MAX_BASKET_LEGS, OphisBasketTag } from 'ophis/basketMetadata'
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+}
+
+function hasValidBasketId(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  try {
+    assertOphisBasketId(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function getValidPosition(leg: unknown, legs: unknown): { leg: number; legs: number } | null {
+  const isValid =
+    typeof leg === 'number' &&
+    typeof legs === 'number' &&
+    Number.isInteger(leg) &&
+    Number.isInteger(legs) &&
+    legs >= 1 &&
+    legs <= MAX_BASKET_LEGS &&
+    leg >= 1 &&
+    leg <= legs
+  return isValid ? { leg, legs } : null
+}
+
 /**
  * Read the `metadata.ophisBasket` marker off a parsed order appData doc, or null
  * when the order is not a basket leg. Defensive: appData is attacker-shaped, so a
@@ -8,29 +35,12 @@ import { assertOphisBasketId, MAX_BASKET_LEGS, OphisBasketTag } from 'ophis/bask
  * legs and render the Basket badge.
  */
 export function readBasketTag(appData: unknown): OphisBasketTag | null {
-  if (!appData || typeof appData !== 'object') return null
-  const metadata = (appData as { metadata?: unknown }).metadata
-  if (!metadata || typeof metadata !== 'object') return null
-  const raw = (metadata as { ophisBasket?: unknown }).ophisBasket
-  if (!raw || typeof raw !== 'object') return null
-  const { id, leg, legs } = raw as { id?: unknown; leg?: unknown; legs?: unknown }
-  if (typeof id !== 'string') return null
-  try {
-    assertOphisBasketId(id)
-  } catch {
-    return null
-  }
-  if (
-    typeof leg !== 'number' ||
-    typeof legs !== 'number' ||
-    !Number.isInteger(leg) ||
-    !Number.isInteger(legs) ||
-    legs < 1 ||
-    legs > MAX_BASKET_LEGS ||
-    leg < 1 ||
-    leg > legs
-  ) {
-    return null
-  }
-  return { id, leg, legs }
+  const appDataRecord = asRecord(appData)
+  const metadata = asRecord(appDataRecord?.metadata)
+  const raw = asRecord(metadata?.ophisBasket)
+  if (!raw) return null
+  const { id, leg, legs } = raw
+  const position = getValidPosition(leg, legs)
+  if (!hasValidBasketId(id) || !position) return null
+  return { id, ...position }
 }

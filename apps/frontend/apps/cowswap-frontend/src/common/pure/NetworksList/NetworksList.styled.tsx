@@ -73,7 +73,9 @@ export const FlyoutRow = styled.button<{ $active: boolean }>`
     height: ${ROW_HEIGHT_MOBILE};
   }
 
-  transition: background 0.16s ease-in-out, border-color 0.16s ease-in-out;
+  transition:
+    background 0.16s ease-in-out,
+    border-color 0.16s ease-in-out;
 `
 
 // Active-row dot: brand coral when selected, muted lavender-grey when
@@ -84,7 +86,9 @@ export const FlyoutRowActiveIndicator = styled.div<{ $active: boolean }>`
   border-radius: 50%;
   height: 8px;
   width: 8px;
-  transition: background-color 0.16s ease-in-out, box-shadow 0.16s ease-in-out;
+  transition:
+    background-color 0.16s ease-in-out,
+    box-shadow 0.16s ease-in-out;
 `
 
 // Ophis: active chain always at the top of the list (mobile and

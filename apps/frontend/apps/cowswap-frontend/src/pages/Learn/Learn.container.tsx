@@ -90,8 +90,8 @@ export function LearnPage(): ReactNode {
         <FeatureGrid minCardWidth="260px">
           <FeatureCard title="Trade form">
             <p>
-              The actual swap interface. Natural-language intent → pre-filled order → sign and settle. Supports EVM source
-              chains and Solana / Bitcoin destinations via NEAR Intents.
+              The actual swap interface. Natural-language intent → pre-filled order → sign and settle. Supports EVM
+              source chains and Solana / Bitcoin destinations via NEAR Intents.
             </p>
             <p>
               <TextLink href="/">Open trade form →</TextLink>

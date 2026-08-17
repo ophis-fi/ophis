@@ -1,4 +1,5 @@
 import { isDraftForContext } from './draftContext'
+
 import { BasketDraft } from '../types'
 
 const OWNER = '0x1111111111111111111111111111111111111111'
@@ -16,7 +17,7 @@ const draft: BasketDraft = {
 describe('isDraftForContext', () => {
   it('true for the same account (case-insensitive) and chain', () => {
     expect(isDraftForContext(draft, OWNER, 10)).toBe(true)
-    expect(isDraftForContext(draft, OWNER.toUpperCase(), 10)).toBe(true)
+    expect(isDraftForContext(draft, `0x${OWNER.slice(2).toUpperCase()}`, 10)).toBe(true)
   })
 
   it('false when the account changed', () => {

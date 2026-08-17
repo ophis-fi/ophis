@@ -6,10 +6,11 @@
  * (EIP-5792 wallet) can instead submit ONE `wallet_sendCalls` batch of
  * `setPreSignature(orderUid, true)` calls against the settlement contract (the
  * presign signing scheme), so all legs are pre-signed in a single wallet
- * interaction. This is BEST-EFFORT same-batch, NEVER atomic: even when the
- * wallet lands the calls in one transaction, the legs settle as independent CoW
- * orders (Phase A has no settler contract). We therefore never advertise
- * atomicity, and per-leg status + cancel-of-unfilled remain mandatory.
+ * interaction. The pre-sign calls themselves require atomic wallet execution,
+ * but that does not make later settlement atomic: the legs still settle as
+ * independent CoW orders (Phase A has no settler contract). We therefore never
+ * advertise atomic settlement, and per-leg status + cancel-of-unfilled remain
+ * mandatory.
  *
  * Pure: no wallet client, no network. The React hook (useBatchPresign) feeds
  * these helpers a capabilities object and an encoder.

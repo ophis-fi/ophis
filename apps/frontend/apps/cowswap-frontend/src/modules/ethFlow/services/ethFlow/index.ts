@@ -31,6 +31,24 @@ export interface EthFlowParams {
   analytics: TradeFlowAnalytics
 }
 
+function getAvailableEthFlowAddress(chainId: number): string {
+  const address = getEthFlowContractAddresses(ethFlowEnv, chainId)
+  if (!address || address === '0x0000000000000000000000000000000000000000') {
+    throw new Error(
+      t`Native-token swaps are not yet supported on this chain (${chainId}). Wrap your native token to the ERC-20 form first, then swap.`,
+    )
+  }
+  return address
+}
+
+function assertExpectedEthFlowAddress(actual: string, expected: string, chainId: number): void {
+  if (!areAddressesEqual(actual, expected)) {
+    throw new Error(
+      t`EthFlow contract (${actual}) address don't match the expected address for chain ${chainId} (${expected}). Please refresh the page and try again.`,
+    )
+  }
+}
+
 // TODO: Break down this large function into smaller functions
 // eslint-disable-next-line max-lines-per-function
 export async function ethFlow({
@@ -78,15 +96,7 @@ export async function ethFlow({
     // "contract address doesn't match" error AFTER the wallet popup already
     // opened. Throw inside the try block so existing error handling
     // (normalizeError, captureError, tradeConfirmActions.onError) fires.
-    const ethFlowAddrForChain = getEthFlowContractAddresses(ethFlowEnv, chainId)
-    if (
-      !ethFlowAddrForChain ||
-      ethFlowAddrForChain === '0x0000000000000000000000000000000000000000'
-    ) {
-      throw new Error(
-        t`Native-token swaps are not yet supported on this chain (${chainId}). Wrap your native token to the ERC-20 form first, then swap.`,
-      )
-    }
+    const ethFlowAddrForChain = getAvailableEthFlowAddress(chainId)
 
     // Do not proceed if fee is expired
     if (isQuoteExpired(tradeQuoteState)) {
@@ -99,13 +109,7 @@ export async function ethFlow({
 
     // Last check before signing the order of the actual eth flow contract address (sending ETH to the wrong contract could lead to loss of funds)
     const actualContractAddress = contract.address
-    const expectedContractAddress = getEthFlowContractAddresses(ethFlowEnv, chainId)
-
-    if (!areAddressesEqual(actualContractAddress, expectedContractAddress)) {
-      throw new Error(
-        t`EthFlow contract (${actualContractAddress}) address don't match the expected address for chain ${chainId} (${expectedContractAddress}). Please refresh the page and try again.`,
-      )
-    }
+    assertExpectedEthFlowAddress(actualContractAddress, ethFlowAddrForChain, chainId)
 
     logTradeFlow('ETH FLOW', 'STEP 3: sign order')
 

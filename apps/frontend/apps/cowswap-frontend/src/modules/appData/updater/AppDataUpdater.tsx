@@ -13,11 +13,10 @@ import { useVolumeFee } from 'modules/volumeFee'
 import { AppDataHooksUpdater } from './AppDataHooksUpdater'
 import { AppDataInfoUpdater, UseAppDataParams } from './AppDataInfoUpdater'
 
-import { resolveOphisPartnerFee } from '../utils/resolveOphisPartnerFee'
-
 import { useAppCode, useAppDataHooks } from '../hooks'
 import { useRwaConsentForAppData } from '../hooks/useRwaConsentForAppData'
 import { AppDataOrderClass } from '../types'
+import { resolveOphisPartnerFee } from '../utils/resolveOphisPartnerFee'
 
 interface AppDataUpdaterProps {
   slippageBips: number

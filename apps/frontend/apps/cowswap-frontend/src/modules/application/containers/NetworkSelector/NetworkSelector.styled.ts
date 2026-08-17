@@ -89,7 +89,8 @@ export const BridgeDestinationRow = styled(Link)`
 
   @media (prefers-reduced-motion: reduce) {
     transition: background-color 120ms ease-out;
-    &:hover, &:focus-visible {
+    &:hover,
+    &:focus-visible {
       transform: none;
     }
   }

@@ -118,15 +118,83 @@ const MAX_UINT256 = (1n << 256n) - 1n
 function firstDuplicateToken(tokens: readonly string[]): string | undefined {
   for (let i = 0; i < tokens.length; i++) {
     for (let j = i + 1; j < tokens.length; j++) {
-      if (areAddressesEqual(tokens[i], tokens[j])) return tokens[j]
+      if (areBasketTokensEqual(tokens[i], tokens[j])) return tokens[j]
     }
   }
   return undefined
 }
 
+function normalizeAddressPrefix(address: string): string {
+  return address.startsWith('0X') ? `0x${address.slice(2)}` : address
+}
+
+function areBasketTokensEqual(left: string, right: string): boolean {
+  return areAddressesEqual(normalizeAddressPrefix(left), normalizeAddressPrefix(right))
+}
+
 export interface BasketComposition {
   readonly sells: readonly BasketSellInput[]
   readonly buys: readonly BasketBuyInput[]
+}
+
+function validateBasketCounts(sells: readonly BasketSellInput[], buys: readonly BasketBuyInput[]): void {
+  if (sells.length < 1 || sells.length > MAX_BASKET_SELL_TOKENS) {
+    throw new Error(`basket: sells must be 1..${MAX_BASKET_SELL_TOKENS}, got ${sells.length}`)
+  }
+  if (buys.length < 1 || buys.length > MAX_BASKET_BUY_TOKENS) {
+    throw new Error(`basket: buys must be 1..${MAX_BASKET_BUY_TOKENS}, got ${buys.length}`)
+  }
+}
+
+function validateBuyWeights(buys: readonly BasketBuyInput[]): void {
+  for (const buy of buys) {
+    if (typeof buy.weight !== 'bigint' || buy.weight <= 0n) {
+      throw new Error('basket: every buy weight must be a positive bigint')
+    }
+  }
+}
+
+function validateBasketTokens(sells: readonly BasketSellInput[], buys: readonly BasketBuyInput[]): void {
+  const dupSell = firstDuplicateToken(sells.map((sell) => sell.token))
+  if (dupSell) throw new Error(`basket: duplicate sell token ${dupSell}`)
+  const dupBuy = firstDuplicateToken(buys.map((buy) => buy.token))
+  if (dupBuy) throw new Error(`basket: duplicate buy token ${dupBuy}`)
+
+  for (const sell of sells) {
+    if (buys.some((buy) => areBasketTokensEqual(sell.token, buy.token))) {
+      throw new Error(`basket: sell token ${sell.token} also appears as a buy token`)
+    }
+  }
+}
+
+function decomposeSell(
+  sell: BasketSellInput,
+  sellIndex: number,
+  buys: readonly BasketBuyInput[],
+  weights: readonly bigint[],
+): DecomposedLeg[] {
+  const amount = parseAtoms(sell.amount, `sells[${sellIndex}].amount`)
+  const shares = splitAmountExact(amount, weights)
+  const reconstituted = shares.reduce((sum, share) => sum + share, 0n)
+  if (reconstituted !== amount) {
+    throw new Error(`basket: split of sells[${sellIndex}] lost atoms (bug): ${reconstituted} != ${amount}`)
+  }
+
+  return buys.flatMap((buy, buyIndex) => {
+    const share = shares[buyIndex] ?? 0n
+    return share === 0n
+      ? []
+      : [{ sellToken: sell.token, buyToken: buy.token, sellAmount: share, sellIndex, buyIndex }]
+  })
+}
+
+function assertValidLegCount(legs: readonly DecomposedLeg[]): void {
+  if (legs.length < 1) throw new Error('basket: decomposition produced no legs')
+  if (legs.length > MAX_BASKET_LEGS) {
+    throw new Error(
+      `basket: ${legs.length} legs exceeds the ${MAX_BASKET_LEGS}-leg cap. Reduce the number of sell or buy tokens.`,
+    )
+  }
 }
 
 /**
@@ -147,60 +215,17 @@ export interface BasketComposition {
  */
 export function decomposeBasket(composition: BasketComposition): DecomposedLeg[] {
   const { sells, buys } = composition
-  if (sells.length < 1 || sells.length > MAX_BASKET_SELL_TOKENS) {
-    throw new Error(`basket: sells must be 1..${MAX_BASKET_SELL_TOKENS}, got ${sells.length}`)
-  }
-  if (buys.length < 1 || buys.length > MAX_BASKET_BUY_TOKENS) {
-    throw new Error(`basket: buys must be 1..${MAX_BASKET_BUY_TOKENS}, got ${buys.length}`)
-  }
-  for (const b of buys) {
-    if (typeof b.weight !== 'bigint' || b.weight <= 0n) {
-      throw new Error('basket: every buy weight must be a positive bigint')
-    }
-  }
+  validateBasketCounts(sells, buys)
+  validateBuyWeights(buys)
   // Per-side uniqueness: a token may appear at most once among the sells and at
   // most once among the buys. Two sell rows for the same token (or two buy rows)
   // are almost certainly a mistake, and would split/allocate that token twice.
   // Address comparison via areAddressesEqual (never === / toLowerCase, per AGENTS.md).
-  const dupSell = firstDuplicateToken(sells.map((s) => s.token))
-  if (dupSell) throw new Error(`basket: duplicate sell token ${dupSell}`)
-  const dupBuy = firstDuplicateToken(buys.map((b) => b.token))
-  if (dupBuy) throw new Error(`basket: duplicate buy token ${dupBuy}`)
+  validateBasketTokens(sells, buys)
 
-  // No sell token may equal a buy token (a self-swap leg is meaningless and the
-  // orderbook rejects sellToken == buyToken).
-  for (const s of sells) {
-    if (buys.some((b) => areAddressesEqual(s.token, b.token))) {
-      throw new Error(`basket: sell token ${s.token} also appears as a buy token`)
-    }
-  }
-
-  const weights = buys.map((b) => b.weight)
-  const legs: DecomposedLeg[] = []
-  sells.forEach((sell, i) => {
-    const amount = parseAtoms(sell.amount, `sells[${i}].amount`)
-    const shares = splitAmountExact(amount, weights)
-    // Exactness guard: the shares MUST reconstitute this sell's full amount.
-    // Cheap, and it converts any future math regression into a loud throw rather
-    // than a silently mis-funded order.
-    let reconstituted = 0n
-    for (const share of shares) reconstituted += share
-    if (reconstituted !== amount) {
-      throw new Error(`basket: split of sells[${i}] lost atoms (bug): ${reconstituted} != ${amount}`)
-    }
-    buys.forEach((buy, j) => {
-      const share = shares[j] ?? 0n
-      if (share === 0n) return // drop unsignable zero-amount legs
-      legs.push({ sellToken: sell.token, buyToken: buy.token, sellAmount: share, sellIndex: i, buyIndex: j })
-    })
-  })
-
-  if (legs.length < 1) throw new Error('basket: decomposition produced no legs')
-  if (legs.length > MAX_BASKET_LEGS) {
-    throw new Error(
-      `basket: ${legs.length} legs exceeds the ${MAX_BASKET_LEGS}-leg cap. Reduce the number of sell or buy tokens.`,
-    )
-  }
+  const weights = buys.map((buy) => buy.weight)
+  const legs = sells.flatMap((sell, sellIndex) => decomposeSell(sell, sellIndex, buys, weights))
+  assertValidLegCount(legs)
   return legs
 }
 

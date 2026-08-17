@@ -1,8 +1,13 @@
 import { isCancellableStatus, runLegCancellation, CancelCandidate } from './cancellation'
+
 import { BasketLegStatus } from '../types'
 
 // Minimal live-status store for the injected getStatus/setStatus.
-function makeStore(initial: Record<number, BasketLegStatus>) {
+function makeStore(initial: Record<number, BasketLegStatus>): {
+  getStatus(leg: number): BasketLegStatus | undefined
+  setStatus(leg: number, status: BasketLegStatus): void
+  snapshot(): Record<string, BasketLegStatus>
+} {
   const state = new Map<number, BasketLegStatus>(Object.entries(initial).map(([k, v]) => [Number(k), v]))
   return {
     getStatus: (leg: number) => state.get(leg),

@@ -57,7 +57,7 @@ const GIT_COMMIT_DATE = process.env.REACT_APP_GIT_COMMIT_DATE
 // isn't re-exported through @sentry/react) + `as never` on forward —
 // per LOW-1 audit note, benign because v8's dedupe ignores the param
 // at runtime.
-function dedupeWithExceptionsIntegration() {
+function dedupeWithExceptionsIntegration(): ReturnType<typeof Sentry.dedupeIntegration> {
   const base = Sentry.dedupeIntegration()
   return {
     ...base,

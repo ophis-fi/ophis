@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react'
+
 // Sentry v8 (2026-05-21): `@sentry/types` was deprecated and rolled into
 // `@sentry/core`. Types re-export through `@sentry/react`.
 import type { ErrorEvent as SentryErrorEvent } from '@sentry/react'

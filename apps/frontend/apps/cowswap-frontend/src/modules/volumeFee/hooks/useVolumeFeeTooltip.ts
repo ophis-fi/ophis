@@ -2,14 +2,13 @@ import { useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 
 import { t } from '@lingui/core/macro'
+import { OPHIS_BOOSTED_VOLUME_BPS } from 'ophis/boostedTokens'
+import { OPHIS_FLAT_VOLUME_FEE_ENABLED } from 'ophis/partnerFeeDefault'
 
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 
-import { OPHIS_FLAT_VOLUME_FEE_ENABLED } from 'ophis/partnerFeeDefault'
-import { OPHIS_BOOSTED_VOLUME_BPS } from 'ophis/boostedTokens'
-
-import { isBoostedTradeAtom } from '../state/volumeFeeAtom'
 import { safeAppFeeAtom } from '../state/safeAppFeeAtom'
+import { isBoostedTradeAtom } from '../state/volumeFeeAtom'
 
 export interface VolumeFeeTooltip {
   content: string | undefined

@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 
 import { useToggleWalletModal } from 'legacy/state/application/hooks'
+
 import { Web3Status } from 'modules/wallet'
 
 import { ActionButton } from './Affiliate.styled'

@@ -15,17 +15,11 @@ import {
   SupportedChainId,
   HttpsString,
 } from '@cowprotocol/cow-sdk'
+import { Connector } from '@web3-react/types'
+
 // Ophis fork: Unichain (130) isn't in the SDK chain set, so its RPC suggestion
 // comes from viem's `unichain` chain object.
 import { unichain } from 'viem/chains'
-import { Connector } from '@web3-react/types'
-
-// Ophis fork: MegaETH (4326) + HyperEVM (999) chain entries were removed
-// from the FE list in PR #167 (2026-05-21). The viem imports + RPC entries
-// for them were removed in P0 hotfix follow-up #233 because leaving the
-// switchChain entries would let any wallet call `switchChain(4326|999)` →
-// getChainInfo() returns undefined (chains absent from CHAIN_INFO) →
-// `info.eip155Label` throws. Same incomplete-sweep class as the P0 crash.
 
 import { getWeb3ReactConnection } from './getWeb3ReactConnection'
 import { isChainAllowed } from './isChainAllowed'
@@ -78,7 +72,11 @@ export const switchChain = async (connector: Connector, chainId: SupportedChainI
       chainId,
       chainName: info.eip155Label,
       rpcUrls: getRpcUrls(chainId),
-      nativeCurrency: { name: info.nativeCurrency.name, symbol: info.nativeCurrency.symbol, decimals: info.nativeCurrency.decimals },
+      nativeCurrency: {
+        name: info.nativeCurrency.name,
+        symbol: info.nativeCurrency.symbol,
+        decimals: info.nativeCurrency.decimals,
+      },
       blockExplorerUrls: [info.explorer],
     }
     await connector.activate(addChainParameter)

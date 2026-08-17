@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { isSupportedChainId } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { getCurrencyTokenPolicyDecision } from '@cowprotocol/tokens'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Field } from 'legacy/state/types'
@@ -42,6 +43,8 @@ export function useTokenSelectionHandler(
 
   return useCallback(
     async (token: TokenWithLogo) => {
+      if (!getCurrencyTokenPolicyDecision(token).allowed) return
+
       const chainToSwitch = getNetworkToSwitch({
         field: widgetState.field,
         tradeType: widgetState.tradeType,

@@ -18,27 +18,16 @@ import { ReactNode, useCallback, useState } from 'react'
 
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import {
-  Badge,
-  Callout,
-  InlineCode,
-  MetricCard,
-  PageShell,
-  Section,
-  Table,
-  Tbody,
-  Td,
-  Th,
-  Thead,
-  Tr,
-} from 'ophis/ds'
+import { Badge, Callout, InlineCode, MetricCard, PageShell, Section, Table, Tbody, Td, Th, Thead, Tr } from 'ophis/ds'
 
 import { type PartnerDashboard, AffiliateApiError, getPartnerDashboard, useOphisAffiliateSign } from 'modules/affiliate'
+
 import { ConnectWalletCta } from 'pages/Affiliate/ConnectWalletCta'
 
-import { ActionButton, MetricRow } from '../Affiliate/Affiliate.styled'
 import { PartnerEarnings, PartnerTraderRank, ReferredVolumeMetric } from './PartnerDashboardCards'
 import { PartnerEmptyReferees, PartnerReferralShare } from './PartnerReferralShare'
+
+import { ActionButton, MetricRow } from '../Affiliate/Affiliate.styled'
 
 function truncate(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
@@ -51,10 +40,137 @@ function formatUsd(value: number): string {
 
 function formatDate(iso: string): string {
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '-' : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+  return Number.isNaN(d.getTime())
+    ? '-'
+    : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
 type AccessState = 'idle' | 'signing' | 'loading' | 'forbidden' | 'unauthorized' | 'rejected' | 'error' | 'network'
+
+interface PartnerAccessProps {
+  busy: boolean
+  onAccess: () => Promise<void>
+  state: AccessState
+}
+
+function PartnerAccess({ busy, onAccess, state }: PartnerAccessProps): ReactNode {
+  const buttonLabel =
+    state === 'signing' ? 'Confirm in your wallet...' : state === 'loading' ? 'Loading...' : 'Access Partner Dashboard'
+
+  return (
+    <Section id="access" title="Access your dashboard">
+      <p>
+        Partner data is private. Sign a message with your partner wallet to load your stats and referee breakdown. This
+        is a signature only, no transaction and no gas.
+      </p>
+      <ActionButton type="button" onClick={onAccess} disabled={busy}>
+        {buttonLabel}
+      </ActionButton>
+      {state === 'forbidden' && (
+        <Callout tone="warning" title="Partners only">
+          <p>This dashboard is for Ophis partners only.</p>
+        </Callout>
+      )}
+      {state === 'unauthorized' && (
+        <Callout tone="warning" title="Signature expired">
+          <p>Your signature could not be verified or has expired. Please try again.</p>
+        </Callout>
+      )}
+      {state === 'rejected' && (
+        <Callout tone="warning" title="Signature cancelled">
+          <p>You declined the signature. Click the button again when you&apos;re ready.</p>
+        </Callout>
+      )}
+      {state === 'error' && (
+        <Callout tone="warning" title="Could not load the dashboard">
+          <p>Something went wrong. Please try again in a moment.</p>
+        </Callout>
+      )}
+      {state === 'network' && (
+        <Callout tone="warning" title="Could not reach the partner service">
+          <p>A network or connection issue blocked the request. Check your connection and try again in a moment.</p>
+        </Callout>
+      )}
+    </Section>
+  )
+}
+
+interface PartnerDashboardContentProps {
+  account: string
+  data: PartnerDashboard
+}
+
+function PartnerDashboardContent({ account, data }: PartnerDashboardContentProps): ReactNode {
+  const hasHiddenReferees = data.referredCount > data.referees.length
+
+  return (
+    <>
+      <Section id="overview" title="Your program">
+        <div style={{ marginBottom: 6 }}>
+          <Badge tone="partner">Partner</Badge>
+        </div>
+        <MetricRow>
+          <MetricCard label="Your rate" value={`${data.rateOfNetFeePct}%`} sublabel="of the fee Ophis keeps" />
+          <MetricCard label="Referred wallets" value={data.referredCount} />
+          <ReferredVolumeMetric lifetimeUsd={data.lifetimeReferredVolumeUsd} cycleUsd={data.currentCycleVolumeUsd} />
+        </MetricRow>
+        <div style={{ marginTop: 12 }}>
+          <PartnerTraderRank account={account} />
+        </div>
+      </Section>
+
+      <PartnerEarnings
+        estimatedCurrentCycleEarningsUsd={data.estimatedCurrentCycleEarningsUsd}
+        paidToDateWeth={data.paidToDateWeth}
+        paidToDateUsd={data.paidToDateUsd}
+        nextPayoutAt={data.nextPayoutAt}
+      />
+
+      <Section id="link" title="Your referral link">
+        <p>
+          Share your code or link. When a net-new wallet trades on Ophis after using it, they are bound to you, and you
+          earn {data.rateOfNetFeePct}% of the net fee Ophis keeps on their trades.
+        </p>
+        <PartnerReferralShare code={data.activeCodes[0]} />
+      </Section>
+
+      <Section id="referees" title="Referees">
+        {data.referees.length === 0 ? (
+          <PartnerEmptyReferees rate={data.rateOfNetFeePct} />
+        ) : (
+          <>
+            <Table caption="Your referred wallets, bind date, and lifetime referred volume.">
+              <Thead>
+                <Tr>
+                  <Th>Wallet</Th>
+                  <Th>Bound</Th>
+                  <Th>Lifetime volume</Th>
+                </Tr>
+              </Thead>
+              <Tbody>
+                {data.referees.map((referee) => (
+                  <Tr key={referee.wallet}>
+                    <Td>
+                      <InlineCode>{truncate(referee.wallet)}</InlineCode>
+                    </Td>
+                    <Td>{formatDate(referee.boundAt)}</Td>
+                    <Td>{formatUsd(referee.lifetimeVolumeUsd)}</Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+            {hasHiddenReferees && (
+              <p style={{ marginTop: 8, opacity: 0.75, fontSize: '0.9em' }}>
+                Showing the {data.referees.length} most recently bound of {data.referredCount} referees. Reach out to
+                your Ophis contact for a full export.
+              </p>
+            )}
+          </>
+        )}
+      </Section>
+    </>
+  )
+}
 
 export function PartnerPage(): ReactNode {
   const { account } = useWalletInfo()
@@ -118,122 +234,9 @@ export function PartnerPage(): ReactNode {
           <ConnectWalletCta>Connect Partner Wallet</ConnectWalletCta>
         </Callout>
       ) : !data ? (
-        <Section id="access" title="Access your dashboard">
-          <p>
-            Partner data is private. Sign a message with your partner wallet to load your stats and
-            referee breakdown. This is a signature only, no transaction and no gas.
-          </p>
-          <ActionButton type="button" onClick={onAccess} disabled={busy}>
-            {state === 'signing'
-              ? 'Confirm in your wallet...'
-              : state === 'loading'
-                ? 'Loading...'
-                : 'Access Partner Dashboard'}
-          </ActionButton>
-          {state === 'forbidden' && (
-            <Callout tone="warning" title="Partners only">
-              <p>This dashboard is for Ophis partners only.</p>
-            </Callout>
-          )}
-          {state === 'unauthorized' && (
-            <Callout tone="warning" title="Signature expired">
-              <p>Your signature could not be verified or has expired. Please try again.</p>
-            </Callout>
-          )}
-          {state === 'rejected' && (
-            <Callout tone="warning" title="Signature cancelled">
-              <p>You declined the signature. Click the button again when you&apos;re ready.</p>
-            </Callout>
-          )}
-          {state === 'error' && (
-            <Callout tone="warning" title="Could not load the dashboard">
-              <p>Something went wrong. Please try again in a moment.</p>
-            </Callout>
-          )}
-          {state === 'network' && (
-            <Callout tone="warning" title="Could not reach the partner service">
-              <p>
-                A network or connection issue blocked the request. Check your connection and try
-                again in a moment.
-              </p>
-            </Callout>
-          )}
-        </Section>
+        <PartnerAccess busy={busy} onAccess={onAccess} state={state} />
       ) : (
-        <>
-          <Section id="overview" title="Your program">
-            <div style={{ marginBottom: 6 }}>
-              <Badge tone="partner">Partner</Badge>
-            </div>
-            <MetricRow>
-              <MetricCard label="Your rate" value={`${data.rateOfNetFeePct}%`} sublabel="of the fee Ophis keeps" />
-              <MetricCard label="Referred wallets" value={data.referredCount} />
-              <ReferredVolumeMetric
-                lifetimeUsd={data.lifetimeReferredVolumeUsd}
-                cycleUsd={data.currentCycleVolumeUsd}
-              />
-            </MetricRow>
-            <div style={{ marginTop: 12 }}>
-              <PartnerTraderRank account={account} />
-            </div>
-          </Section>
-
-          <PartnerEarnings
-            estimatedCurrentCycleEarningsUsd={data.estimatedCurrentCycleEarningsUsd}
-            paidToDateWeth={data.paidToDateWeth}
-            paidToDateUsd={data.paidToDateUsd}
-            nextPayoutAt={data.nextPayoutAt}
-          />
-
-          <Section id="link" title="Your referral link">
-            <p>
-              Share your code or link. When a net-new wallet trades on Ophis after using it, they
-              are bound to you, and you earn {data.rateOfNetFeePct}% of the net fee Ophis keeps on
-              their trades.
-            </p>
-            <PartnerReferralShare code={data.activeCodes[0]} />
-          </Section>
-
-          <Section id="referees" title="Referees">
-            {data.referees.length === 0 ? (
-              <PartnerEmptyReferees rate={data.rateOfNetFeePct} />
-            ) : (
-              <>
-                <Table caption="Your referred wallets, bind date, and lifetime referred volume.">
-                  <Thead>
-                    <Tr>
-                      <Th>Wallet</Th>
-                      <Th>Bound</Th>
-                      <Th>Lifetime volume</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {data.referees.map((referee) => (
-                      <Tr key={referee.wallet}>
-                        <Td>
-                          <InlineCode>{truncate(referee.wallet)}</InlineCode>
-                        </Td>
-                        <Td>{formatDate(referee.boundAt)}</Td>
-                        <Td>{formatUsd(referee.lifetimeVolumeUsd)}</Td>
-                      </Tr>
-                    ))}
-                  </Tbody>
-                </Table>
-                {/* The /partner referees query is capped (ORDER BY bound_at DESC LIMIT N),
-                    so a partner with more referees than the cap sees a truncated table.
-                    referredCount is the un-capped total; the shown count is read from the
-                    array length so this note never hardcodes (or drifts from) the backend
-                    LIMIT. */}
-                {data.referredCount > data.referees.length && (
-                  <p style={{ marginTop: 8, opacity: 0.75, fontSize: '0.9em' }}>
-                    Showing the {data.referees.length} most recently bound of {data.referredCount}{' '}
-                    referees. Reach out to your Ophis contact for a full export.
-                  </p>
-                )}
-              </>
-            )}
-          </Section>
-        </>
+        <PartnerDashboardContent account={account} data={data} />
       )}
     </PageShell>
   )

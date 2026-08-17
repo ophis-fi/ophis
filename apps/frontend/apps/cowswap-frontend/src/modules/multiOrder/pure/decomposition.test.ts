@@ -64,14 +64,7 @@ describe('splitAmountExact', () => {
   })
 
   it('property: parts always sum to total across a sweep of totals and weightings', () => {
-    const weightings: bigint[][] = [
-      [1n],
-      [1n, 1n],
-      [1n, 2n],
-      [3n, 5n, 7n],
-      [1n, 1n, 1n, 1n, 1n, 1n],
-      [10n, 1n, 1n],
-    ]
+    const weightings: bigint[][] = [[1n], [1n, 1n], [1n, 2n], [3n, 5n, 7n], [1n, 1n, 1n, 1n, 1n, 1n], [10n, 1n, 1n]]
     for (let total = 0n; total <= 250n; total++) {
       for (const w of weightings) {
         const parts = splitAmountExact(total, w)
@@ -191,16 +184,26 @@ describe('decomposeBasket', () => {
   })
 
   it('enforces the 6x6 product caps', () => {
-    const sevenSells = Array.from({ length: 7 }, (_v, i) => ({ token: `0x${(i + 1).toString(16).padStart(40, '0')}`, amount: '10' }))
-    expect(() => decomposeBasket({ sells: sevenSells, buys: [{ token: B, weight: 1n }] })).toThrow(/sells must be 1\.\.6/)
-    const sevenBuys = Array.from({ length: 7 }, (_v, i) => ({ token: `0x${(i + 20).toString(16).padStart(40, '0')}`, weight: 1n }))
-    expect(() => decomposeBasket({ sells: [{ token: A, amount: '10' }], buys: sevenBuys })).toThrow(/buys must be 1\.\.6/)
+    const sevenSells = Array.from({ length: 7 }, (_v, i) => ({
+      token: `0x${(i + 1).toString(16).padStart(40, '0')}`,
+      amount: '10',
+    }))
+    expect(() => decomposeBasket({ sells: sevenSells, buys: [{ token: B, weight: 1n }] })).toThrow(
+      /sells must be 1\.\.6/,
+    )
+    const sevenBuys = Array.from({ length: 7 }, (_v, i) => ({
+      token: `0x${(i + 20).toString(16).padStart(40, '0')}`,
+      weight: 1n,
+    }))
+    expect(() => decomposeBasket({ sells: [{ token: A, amount: '10' }], buys: sevenBuys })).toThrow(
+      /buys must be 1\.\.6/,
+    )
   })
 
   it('rejects a sell token that is also a buy token (self-swap)', () => {
-    expect(() =>
-      decomposeBasket({ sells: [{ token: A, amount: '10' }], buys: [{ token: A, weight: 1n }] }),
-    ).toThrow(/also appears as a buy token/)
+    expect(() => decomposeBasket({ sells: [{ token: A, amount: '10' }], buys: [{ token: A, weight: 1n }] })).toThrow(
+      /also appears as a buy token/,
+    )
   })
 
   it('rejects a duplicate SELL token (case-insensitive)', () => {

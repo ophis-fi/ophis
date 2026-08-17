@@ -146,6 +146,9 @@ export const tradeButtonsMap: Record<TradeFormValidation, ButtonErrorConfig | Bu
   [TradeFormValidation.CurrencyNotSupported]: (props: ButtonComponentProps) => {
     return <UnsupportedTokenButton {...props} />
   },
+  [TradeFormValidation.TokenPolicyDenied]: {
+    text: <Trans>Token unavailable under Ophis safety policy</Trans>,
+  },
   [TradeFormValidation.QuoteErrors]: (props: ButtonComponentProps) => {
     const DEFAULT_QUOTE_ERROR = t`Error loading price. Try again later.`
 

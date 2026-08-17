@@ -1,4 +1,5 @@
 import { basketLegMarker, basketLegMarkers, buildBasketLegAppData } from './basketLegAppData'
+
 import { BasketDraft, BasketLeg } from '../types'
 
 const ID = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
@@ -49,8 +50,11 @@ describe('buildBasketLegAppData (marker reaches the built appData)', () => {
     // Stand-in for the real modules/appData buildAppData: echoes the params into
     // a doc whose metadata carries the merged ophisBasket, exactly as buildAppData
     // spreads `...(ophisBasket ? { ophisBasket } : {})` into metadata.
-    const fakeBuild = async (params: { appCode: string; ophisBasket: unknown }) => ({
-      doc: { appCode: params.appCode, metadata: { orderClass: { orderClass: 'market' }, ophisBasket: params.ophisBasket } },
+    const fakeBuild = async (params: { appCode: string; ophisBasket: unknown }): Promise<Record<string, unknown>> => ({
+      doc: {
+        appCode: params.appCode,
+        metadata: { orderClass: { orderClass: 'market' }, ophisBasket: params.ophisBasket },
+      },
       fullAppData: JSON.stringify({ ophisBasket: params.ophisBasket }),
       appDataKeccak256: '0xhash',
     })

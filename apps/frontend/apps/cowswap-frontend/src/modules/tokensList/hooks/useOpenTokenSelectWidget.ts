@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 import { LpToken, TokenWithLogo } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { Currency } from '@cowprotocol/currency'
+import { getCurrencyTokenPolicyDecision } from '@cowprotocol/tokens'
 
 import { Nullish } from 'types'
 
@@ -47,6 +48,8 @@ export function useOpenTokenSelectWidget(): (
         selectedTargetChainId: nextSelectedTargetChainId,
         tradeType,
         onSelectToken: (currency) => {
+          if (!getCurrencyTokenPolicyDecision(currency).allowed) return
+
           // Keep selector UX consistent with #6251: always close after a selection, even if a chain switch follows.
           closeTokenSelectWidget({ overrideForceLock: true })
           onSelectToken(currency)

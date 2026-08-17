@@ -227,8 +227,6 @@ export const CHAIN_INFO: ChainInfoMap = {
     urlAlias: 'robinhood',
     nativeCurrency: NATIVE_CURRENCIES[4663 as unknown as SupportedChainId],
   },
-  // MegaETH (4326) + HyperEVM (999) intentionally not in CHAIN_INFO —
-  // see top-of-file comment for context (removed 2026-05-20).
 }
 
 /**

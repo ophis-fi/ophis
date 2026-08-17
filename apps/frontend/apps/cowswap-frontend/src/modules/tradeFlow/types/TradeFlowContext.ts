@@ -16,6 +16,8 @@ import type { TradeConfirmActions } from 'modules/trade'
 import type { TradeFlowAnalyticsContext } from 'modules/trade/utils/tradeFlowAnalytics'
 import type { TradeQuoteState } from 'modules/tradeQuote'
 
+import type { VerifyOphisRecipientName } from 'common/hooks/useVerifyOphisRecipientName'
+
 export interface SafeBundleFlowContext {
   spender: string
   sendBatchTransactions: SendBatchTxCallback
@@ -43,6 +45,7 @@ export interface TradeFlowContext {
     dispatch: AppDispatch
     addBridgeOrder: (order: BridgeOrderData) => void
     setSigningStep(stepNumber: string, step: SigningSteps): void
+    verifyRecipientName: VerifyOphisRecipientName
   }
   tradeConfirmActions: TradeConfirmActions
   swapFlowAnalyticsContext: TradeFlowAnalyticsContext

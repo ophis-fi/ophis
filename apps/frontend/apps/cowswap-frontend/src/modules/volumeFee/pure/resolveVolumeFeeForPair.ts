@@ -71,9 +71,7 @@ export interface VolumeFeeContext {
 export function isBoostedPair(pair: VolumeFeePair): boolean {
   if (pair.isCrossChain) return false
   const chainId = pair.boostedChainId ?? pair.chainId
-  return (
-    isBoostedToken(chainId, pair.sellTokenAddress) || isBoostedToken(chainId, pair.buyTokenAddress)
-  )
+  return isBoostedToken(chainId, pair.sellTokenAddress) || isBoostedToken(chainId, pair.buyTokenAddress)
 }
 
 /** BOTH sides of a same-chain pair are stablecoins, so the reduced 1 bp applies. */
@@ -85,24 +83,14 @@ export function isStableStablePair(pair: VolumeFeePair): boolean {
   const stablecoins = (STABLECOINS as Record<number, Set<string> | undefined>)[pair.chainId]
   if (!stablecoins) return false
 
-  return (
-    stablecoins.has(getAddressKey(pair.sellTokenAddress)) &&
-    stablecoins.has(getAddressKey(pair.buyTokenAddress))
-  )
+  return stablecoins.has(getAddressKey(pair.sellTokenAddress)) && stablecoins.has(getAddressKey(pair.buyTokenAddress))
 }
 
 /** The pair is a correlated (like-kind) trade, which is fee-exempt on every chain. */
-export function isCorrelatedPair(
-  pair: VolumeFeePair,
-  correlatedTokens: CorrelatedTokens[] | undefined,
-): boolean {
+export function isCorrelatedPair(pair: VolumeFeePair, correlatedTokens: CorrelatedTokens[] | undefined): boolean {
   if (!correlatedTokens) return false
 
-  return isCorrelatedTrade(
-    getAddressKey(pair.sellTokenAddress),
-    getAddressKey(pair.buyTokenAddress),
-    correlatedTokens,
-  )
+  return isCorrelatedTrade(getAddressKey(pair.sellTokenAddress), getAddressKey(pair.buyTokenAddress), correlatedTokens)
 }
 
 function resolveOphisOwnVolumeFee(pair: VolumeFeePair, fee: VolumeFee): VolumeFee {
@@ -115,8 +103,7 @@ function resolveOphisOwnVolumeFee(pair: VolumeFeePair, fee: VolumeFee): VolumeFe
 }
 
 function resolveFlatVolumeFee(pair: VolumeFeePair, widgetPartnerFee: VolumeFee | undefined): VolumeFee | undefined {
-  const isOphisOwnFee =
-    widgetPartnerFee && areAddressesEqual(widgetPartnerFee.recipient, OPHIS_PARTNER_FEE_RECIPIENT)
+  const isOphisOwnFee = widgetPartnerFee && areAddressesEqual(widgetPartnerFee.recipient, OPHIS_PARTNER_FEE_RECIPIENT)
   return isOphisOwnFee ? resolveOphisOwnVolumeFee(pair, widgetPartnerFee) : widgetPartnerFee
 }
 
@@ -148,10 +135,7 @@ function resolveFlatVolumeFee(pair: VolumeFeePair, widgetPartnerFee: VolumeFee |
  *   4. Flag off, no widget fee: emit the Volume-only chain floor so the
  *      displayed fee and the on-chain appData fee stay in lockstep.
  */
-export function resolveVolumeFeeForPair(
-  pair: VolumeFeePair,
-  context: VolumeFeeContext,
-): VolumeFee | undefined {
+export function resolveVolumeFeeForPair(pair: VolumeFeePair, context: VolumeFeeContext): VolumeFee | undefined {
   const { widgetPartnerFee, safeAppFee, correlatedTokens } = context
 
   if (!widgetPartnerFee && isCorrelatedPair(pair, correlatedTokens)) {

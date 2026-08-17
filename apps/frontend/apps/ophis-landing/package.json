@@ -11,6 +11,7 @@
     "postbuild": "node scripts/check-csp-hashes.mjs && pnpm test:csp && node scripts/check-faq-schema.mjs",
     "preview": "astro preview",
     "typecheck": "astro check",
+    "pretest": "pnpm build",
     "test": "playwright test",
     "lh": "lhci autorun",
     "test:unit": "node scripts/test-html-text.mjs",

@@ -418,6 +418,43 @@ export interface IntentInputHandle {
   focus: () => void
 }
 
+function usePlainTextDropHandler(
+  editorRef: { current: HTMLDivElement | null },
+  value: string,
+  onChange: (value: string) => void,
+): (event: DragEvent<HTMLDivElement>) => void {
+  return useCallback(
+    (event: DragEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      const plain = event.dataTransfer.getData('text/plain') || event.dataTransfer.getData('text/uri-list')
+      const text = plain.replace(/[\r\n]+/g, ' ').trim()
+      const editor = editorRef.current
+      if (!text || !editor) return
+
+      const selection = window.getSelection()
+      let range: Range
+      if (selection && selection.rangeCount > 0 && editor.contains(selection.getRangeAt(0).endContainer)) {
+        range = selection.getRangeAt(0)
+      } else {
+        range = document.createRange()
+        range.selectNodeContents(editor)
+        range.collapse(false)
+      }
+      range.deleteContents()
+      range.insertNode(document.createTextNode(text))
+      range.collapse(false)
+      if (selection) {
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
+      const next = readPlainTextValue(editor).replace(/\n+/g, ' ')
+      if (next !== value) onChange(next)
+    },
+    [editorRef, onChange, value],
+  )
+}
+
 export const IntentInput = forwardRef(function IntentInput(
   { value, onChange, onSubmit, entities, pending, placeholder }: Props,
   ref: ForwardedRef<IntentInputHandle>,
@@ -491,57 +528,8 @@ export const IntentInput = forwardRef(function IntentInput(
     [onChange, value],
   )
 
-  // Phase 3 audit M (2026-05-19): onDrop sibling to onPaste.
-  //
-  // Without an explicit onDrop handler, the browser falls back to its
-  // default contenteditable drop behavior, which inserts the
-  // dragged payload AS HTML (images become <img>, links become <a>,
-  // styled spans keep their markup) — the same self-XSS / chip-spoof
-  // surface that onPaste already closes. Users can drag a link from
-  // another tab, an image from their desktop, or selected styled text
-  // straight into the input.
-  //
-  // Behavior: extract text/plain from the DataTransfer. If absent, fall
-  // back to text/uri-list (browser drops of links). If neither is text,
-  // ignore the drop (don't try to handle image/* — that would surprise
-  // users; we want pure text). Insert at the caret in the same shape
-  // as paste; we deliberately don't try to insert at the drop point
-  // because contenteditable's drop-position resolution is browser-
-  // specific and would lose this handler's plain-text guarantee.
-  const handleDrop = useCallback(
-    (e: DragEvent<HTMLDivElement>) => {
-      e.preventDefault()
-      e.stopPropagation()
-      const dt = e.dataTransfer
-      const plain = dt.getData('text/plain') || dt.getData('text/uri-list')
-      const text = plain.replace(/[\r\n]+/g, ' ').trim()
-      if (!text) return
-      const el = editorRef.current
-      if (!el) return
-      // Use a caret position consistent with where the user clicked LAST
-      // (focus position), not the drop coordinates — simpler and safer.
-      // If the editor doesn't have focus, append at the end.
-      const sel = window.getSelection()
-      let range: Range
-      if (sel && sel.rangeCount > 0 && el.contains(sel.getRangeAt(0).endContainer)) {
-        range = sel.getRangeAt(0)
-      } else {
-        range = document.createRange()
-        range.selectNodeContents(el)
-        range.collapse(false)
-      }
-      range.deleteContents()
-      range.insertNode(document.createTextNode(text))
-      range.collapse(false)
-      if (sel) {
-        sel.removeAllRanges()
-        sel.addRange(range)
-      }
-      const next = readPlainTextValue(el).replace(/\n+/g, ' ')
-      if (next !== value) onChange(next)
-    },
-    [onChange, value],
-  )
+  // Keep contenteditable drops plain-text-only, matching the paste path.
+  const handleDrop = usePlainTextDropHandler(editorRef, value, onChange)
 
   // Suppress the dragover/dragenter default so the drop event fires
   // reliably across browsers (Firefox in particular needs preventDefault

@@ -85,7 +85,7 @@ const PAGES = [
 for (const p of PAGES) {
   test(`${p.route} renders with canonical, breadcrumb + FAQ schema, and a Last updated date`, async ({ page }) => {
     await page.goto(p.route)
-    await expect(page.locator('h1')).toHaveText(p.h1)
+    await expect(page.locator('main h1')).toHaveText(p.h1)
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', p.canonical)
 
     const ldBlocks = await page.locator('script[type="application/ld+json"]').allTextContents()
@@ -103,7 +103,7 @@ for (const p of PAGES) {
 
 test('/learn hub renders and links every guide', async ({ page }) => {
   await page.goto('/learn')
-  await expect(page.locator('h1')).toHaveText('Learn')
+  await expect(page.locator('main h1')).toHaveText('Learn')
   for (const p of PAGES.filter((x) => x.route.startsWith('/learn/'))) {
     await expect(page.locator(`.hub a[href="${p.route}/"]`)).toBeVisible()
   }
@@ -124,7 +124,7 @@ test('supported-chains lists every chain from the canonical data, sovereigns bad
   for (const name of ['Ethereum', 'Robinhood Chain', 'Unichain', 'Optimism', 'Plasma', 'Solana', 'Bitcoin']) {
     await expect(table).toContainText(name)
   }
-  await expect(page.locator('.badge')).toHaveCount(SOVEREIGN_CHAINS.length)
+  await expect(table.locator('.badge')).toHaveCount(SOVEREIGN_CHAINS.length)
 })
 
 test('sitemap lists the canonical pages with trailing-slash URLs', () => {

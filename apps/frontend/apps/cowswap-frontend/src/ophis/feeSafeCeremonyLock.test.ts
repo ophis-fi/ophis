@@ -19,7 +19,22 @@ type Hooks = {
   ): Promise<unknown>
 }
 
-function loadCeremony() {
+type CeremonyHarness = {
+  hooks: Hooks
+  values: Map<string, string>
+  windowMock: {
+    __OPHIS_FEE_SAFE_TEST_HOOKS__: Hooks
+    confirm: jest.Mock
+    localStorage: {
+      getItem(key: string): string | null
+      removeItem(key: string): void
+      setItem(key: string, value: string): void
+    }
+  }
+  denyStorage(): void
+}
+
+function loadCeremony(): CeremonyHarness {
   const values = new Map<string, string>()
   let storageDenied = false
   const localStorage = {
@@ -39,14 +54,22 @@ function loadCeremony() {
   const hooks = {} as Hooks
   const button = { addEventListener: jest.fn(), disabled: false, textContent: '' }
   const status = { textContent: '' }
-  const source = fs.readFileSync(
-    path.resolve(__dirname, '../../public/ophis-fee-safe-robinhood-ceremony.js'),
-    'utf8',
-  )
+  const source = fs.readFileSync(path.resolve(__dirname, '../../public/ophis-fee-safe-robinhood-ceremony.js'), 'utf8')
   const execute = new Function('window', 'document', 'navigator', source)
   const windowMock = { __OPHIS_FEE_SAFE_TEST_HOOKS__: hooks, confirm: jest.fn(), localStorage }
-  execute(windowMock, { querySelector: (selector: string) => selector === '#deploy' ? button : status }, { locks: {} })
-  return { hooks, values, windowMock, denyStorage: () => { storageDenied = true } }
+  execute(
+    windowMock,
+    { querySelector: (selector: string) => (selector === '#deploy' ? button : status) },
+    { locks: {} },
+  )
+  return {
+    hooks,
+    values,
+    windowMock,
+    denyStorage: () => {
+      storageDenied = true
+    },
+  }
 }
 
 describe('Robinhood fee Safe ceremony lock', () => {

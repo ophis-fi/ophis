@@ -3,9 +3,6 @@ import { ReactElement, useEffect, useState } from 'react'
 import { ExplorerDataType, getExplorerLink, isSellOrder, shortenAddress } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Fraction, Token } from '@cowprotocol/currency'
-
-import { orderBookApi } from 'cowSdk'
-import { DownloadReceiptButton } from 'modules/mevReceipt'
 import { Command } from '@cowprotocol/types'
 import { BannerOrientation, ExternalLink, Icon, IconType, InlineBanner, StatusColorVariant, UI } from '@cowprotocol/ui'
 
@@ -13,11 +10,13 @@ import { MessageDescriptor } from '@lingui/core'
 import { msg, t } from '@lingui/core/macro'
 import { Trans as TransReact } from '@lingui/react'
 import { useLingui, Trans } from '@lingui/react/macro'
+import { orderBookApi } from 'cowSdk'
 import { CloseIcon } from 'theme'
 
 import { OrderStatus } from 'legacy/state/orders/actions'
 import { getOrderVolumeFee } from 'legacy/state/orders/utils'
 
+import { DownloadReceiptButton } from 'modules/mevReceipt'
 import { TwapOrderItem } from 'modules/twap'
 
 import { isPending } from 'common/hooks/useCategorizeRecentActivity'

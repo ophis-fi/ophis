@@ -1,6 +1,6 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-
 import { useWalletInfo } from '@cowprotocol/wallet'
+
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
 import {
   type PartnerDashboard,
@@ -128,9 +128,7 @@ describe('PartnerPage referee-table truncation note', () => {
 
     expect(screen.getByText(/how the program works/i)).toBeTruthy()
     // the bare one-liner is replaced by the 3-step guide
-    expect(
-      screen.queryByText('No referees yet. Share your code to start referring wallets.'),
-    ).toBeNull()
+    expect(screen.queryByText('No referees yet. Share your code to start referring wallets.')).toBeNull()
   })
 
   it('renders the earnings panel (estimated, paid-to-date, next payout)', async () => {

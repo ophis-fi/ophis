@@ -24,9 +24,9 @@ export function legQuoteKey(leg: Pick<DecomposedLeg, 'sellIndex' | 'buyIndex'>):
  */
 export function legsQuoteSignature(
   legs: readonly DecomposedLeg[] | null,
-  resolveFee?: (leg: Pick<DecomposedLeg, 'sellToken' | 'buyToken'>) =>
-    | { readonly volumeBps: number; readonly recipient: string }
-    | undefined,
+  resolveFee?: (
+    leg: Pick<DecomposedLeg, 'sellToken' | 'buyToken'>,
+  ) => { readonly volumeBps: number; readonly recipient: string } | undefined,
 ): string {
   if (!legs) return ''
   return legs

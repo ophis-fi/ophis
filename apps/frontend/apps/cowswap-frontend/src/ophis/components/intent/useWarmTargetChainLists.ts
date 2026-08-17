@@ -1,5 +1,5 @@
 import { useAtomValue, useSetAtom } from 'jotai'
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { DEFAULT_TOKENS_LISTS, fetchTokenList, listsStatesByChainAtom, upsertListsAtom } from '@cowprotocol/tokens'
@@ -37,9 +37,11 @@ export function useWarmTargetChainLists(chainId: SupportedChainId | undefined): 
   const upsertLists = useSetAtom(upsertListsAtom)
   const requested = useRef<Set<number>>(new Set())
   // Always-fresh view of the per-chain lists, so the async upsert below can re-check the
-  // slot at RESOLVE time (the effect closure's value is stale by then). Updated each render.
+  // slot at RESOLVE time (the effect closure's value is stale by then).
   const latestByChain = useRef(listsStatesByChain)
-  latestByChain.current = listsStatesByChain
+  useLayoutEffect(() => {
+    latestByChain.current = listsStatesByChain
+  }, [listsStatesByChain])
 
   useEffect(() => {
     if (!chainId || requested.current.has(chainId)) return

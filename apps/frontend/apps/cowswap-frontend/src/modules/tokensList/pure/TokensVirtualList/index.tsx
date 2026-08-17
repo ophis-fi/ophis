@@ -81,7 +81,6 @@ export function TokensVirtualList({
       items={rows}
       getItemView={getItemView}
       scrollResetKey={selectedTargetChainId}
-    >
-    </VirtualList>
+    ></VirtualList>
   )
 }

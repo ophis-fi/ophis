@@ -1,4 +1,4 @@
-(() => {
+;(() => {
   'use strict'
 
   const CHAIN_ID_HEX = '0x1237'
@@ -19,7 +19,9 @@
 
   const button = document.querySelector('#deploy')
   const status = document.querySelector('#status')
-  const setStatus = (message) => { status.textContent = message }
+  const setStatus = (message) => {
+    status.textContent = message
+  }
   const padAddress = (address) => address.padStart(64, '0')
   const toHex = (value) => `0x${value.toString(16)}`
   const normalizeCode = (code) => String(code || '').toLowerCase()
@@ -37,13 +39,15 @@
       if (error?.code !== 4902) throw error
       await provider.request({
         method: 'wallet_addEthereumChain',
-        params: [{
-          chainId: CHAIN_ID_HEX,
-          chainName: 'Robinhood Chain',
-          nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-          rpcUrls: ['https://rpc.mainnet.chain.robinhood.com'],
-          blockExplorerUrls: ['https://robinhoodchain.blockscout.com'],
-        }],
+        params: [
+          {
+            chainId: CHAIN_ID_HEX,
+            chainName: 'Robinhood Chain',
+            nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+            rpcUrls: ['https://rpc.mainnet.chain.robinhood.com'],
+            blockExplorerUrls: ['https://robinhoodchain.blockscout.com'],
+          },
+        ],
       })
     }
     if ((await provider.request({ method: 'eth_chainId' })).toLowerCase() !== CHAIN_ID_HEX) {
@@ -61,7 +65,7 @@
       const artifactResponse = await fetch(ARTIFACT_URL, { cache: 'no-store' })
       if (!artifactResponse.ok) throw new Error(`Could not load pinned artifact (${artifactResponse.status})`)
       const artifactText = await artifactResponse.text()
-      if (await sha256(artifactText) !== EXPECTED_ARTIFACT_SHA256) {
+      if ((await sha256(artifactText)) !== EXPECTED_ARTIFACT_SHA256) {
         throw new Error('Pinned artifact hash mismatch; deployment refused')
       }
       const artifact = JSON.parse(artifactText)
@@ -104,7 +108,9 @@
       }
       const gas = toHex((estimate * 120n) / 100n)
 
-      setStatus(`Verified.\nSender: ${sender}\nChain: 4663\nValue: 0 ETH\nGas estimate: ${estimate}\nExpected adapter: ${EXPECTED_ADAPTER}\n\nReview the wallet confirmation now.`)
+      setStatus(
+        `Verified.\nSender: ${sender}\nChain: 4663\nValue: 0 ETH\nGas estimate: ${estimate}\nExpected adapter: ${EXPECTED_ADAPTER}\n\nReview the wallet confirmation now.`,
+      )
       const transactionHash = await provider.request({
         method: 'eth_sendTransaction',
         params: [{ from: sender, to: DEPLOYER, data: deploymentData, value: '0x0', gas }],

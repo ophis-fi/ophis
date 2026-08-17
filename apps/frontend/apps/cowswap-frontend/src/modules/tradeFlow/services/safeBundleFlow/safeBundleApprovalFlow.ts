@@ -1,6 +1,7 @@
 import { captureError, ERROR_TYPES, normalizeError } from '@cowprotocol/common-utils'
 import { SigningScheme } from '@cowprotocol/cow-sdk'
 import { Percent } from '@cowprotocol/currency'
+import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
 import type { MetaTransactionData } from '@safe-global/types-kit'
 
@@ -57,6 +58,11 @@ export async function safeBundleApprovalFlow(
   const { account, isSafeWallet, recipientAddressOrName, inputAmount, outputAmount, kind } = orderParams
   const tradeAmounts = { inputAmount, outputAmount }
 
+  assertTradeTokenPolicy(
+    { chainId: inputAmount.currency.chainId, address: inputAmount.currency.wrapped.address },
+    { chainId: outputAmount.currency.chainId, address: outputAmount.currency.wrapped.address },
+  )
+
   analytics.approveAndPresign(swapFlowAnalyticsContext)
   tradeConfirmActions.onSign(tradeAmounts)
 
@@ -71,6 +77,8 @@ export async function safeBundleApprovalFlow(
     })
 
     orderParams.appData = await removePermitHookFromAppData(orderParams.appData, typedHooks)
+
+    await callbacks.verifyRecipientName(recipientAddressOrName, orderParams.recipient, outputAmount.currency.chainId)
 
     logTradeFlow(LOG_PREFIX, 'STEP 3: post order')
     const {

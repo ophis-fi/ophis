@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
-
 import { useWalletInfo } from '@cowprotocol/wallet'
+
+import { render, screen } from '@testing-library/react'
 
 import { type LeaderboardEntry, getLeaderboard } from 'modules/affiliate'
 
@@ -108,8 +108,24 @@ describe('LeaderboardPage', () => {
       updatedAt: '2026-06-12T00:00:00Z',
       total: 2,
       entries: [
-        { rank: 1, wallet: SELF_SHORT, tier: 'gold', volume30dUsd: 500_000, volumeTotalUsd: 500_000, affiliateCount: 0, referredVolumeUsd: 0 },
-        { rank: 2, wallet: '0xcccc...dddd', tier: 'gold', volume30dUsd: 50_000, volumeTotalUsd: 50_000, affiliateCount: 0, referredVolumeUsd: 0 },
+        {
+          rank: 1,
+          wallet: SELF_SHORT,
+          tier: 'gold',
+          volume30dUsd: 500_000,
+          volumeTotalUsd: 500_000,
+          affiliateCount: 0,
+          referredVolumeUsd: 0,
+        },
+        {
+          rank: 2,
+          wallet: '0xcccc...dddd',
+          tier: 'gold',
+          volume30dUsd: 50_000,
+          volumeTotalUsd: 50_000,
+          affiliateCount: 0,
+          referredVolumeUsd: 0,
+        },
       ],
     })
     useWalletInfoMock.mockReturnValue({ account: SELF, chainId: 1 })

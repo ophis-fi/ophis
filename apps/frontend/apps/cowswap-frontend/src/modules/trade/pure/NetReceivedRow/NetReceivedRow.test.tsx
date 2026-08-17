@@ -21,15 +21,7 @@ jest.mock('@cowprotocol/ui', () => ({
   TokenAmount: ({ amount }: { amount: CurrencyAmount<Token> | null }) => (
     <span data-testid="token-amount">{amount ? `${amount.toExact()} ${amount.currency.symbol}` : ''}</span>
   ),
-  HoverTooltip: ({
-    children,
-    content,
-    onOpen,
-  }: {
-    children: ReactNode
-    content: ReactNode
-    onOpen?: () => void
-  }) => (
+  HoverTooltip: ({ children, content, onOpen }: { children: ReactNode; content: ReactNode; onOpen?: () => void }) => (
     <span data-testid="tooltip-trigger" onMouseEnter={onOpen}>
       {children}
       <span data-testid="tooltip-content">{content}</span>

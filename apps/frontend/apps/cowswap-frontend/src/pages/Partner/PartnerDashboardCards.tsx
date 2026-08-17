@@ -80,13 +80,7 @@ export function PartnerTraderRank({ account }: { account: string }): ReactNode {
  * currentCycleVolumeUsd is already in the /partner payload; the toggle matches
  * how regular affiliates see cycle volume on the Profile.
  */
-export function ReferredVolumeMetric({
-  lifetimeUsd,
-  cycleUsd,
-}: {
-  lifetimeUsd: number
-  cycleUsd: number
-}): ReactNode {
+export function ReferredVolumeMetric({ lifetimeUsd, cycleUsd }: { lifetimeUsd: number; cycleUsd: number }): ReactNode {
   const [view, setView] = useState<'lifetime' | 'cycle'>('lifetime')
   const isLifetime = view === 'lifetime'
   const activeStyle = { borderColor: '#f2a63e', color: '#f2a63e' }
@@ -145,8 +139,8 @@ export function PartnerEarnings({
         <MetricCard label="Next payout" value={formatDate(nextPayoutAt)} sublabel="1st of the month" />
       </MetricRow>
       <p style={{ opacity: 0.75, fontSize: '0.9em', marginTop: 8 }}>
-        Estimated earnings are derived from referred volume and may differ from the settled amount.
-        Payouts run monthly in WETH.
+        Estimated earnings are derived from referred volume and may differ from the settled amount. Payouts run monthly
+        in WETH.
       </p>
     </Section>
   )

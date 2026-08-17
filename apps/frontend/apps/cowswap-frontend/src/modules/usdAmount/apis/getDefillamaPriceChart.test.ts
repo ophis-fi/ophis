@@ -85,14 +85,30 @@ describe('parseDefillamaPriceChart', () => {
   it('drops non-positive prices, which would flatten the series scale', () => {
     expect(
       parseDefillamaPriceChart({
-        coins: { k: { prices: [{ timestamp: 1, price: 0 }, { timestamp: 2, price: -5 }, { timestamp: 3, price: 7 }] } },
+        coins: {
+          k: {
+            prices: [
+              { timestamp: 1, price: 0 },
+              { timestamp: 2, price: -5 },
+              { timestamp: 3, price: 7 },
+            ],
+          },
+        },
       }),
     ).toEqual([{ time: 3, value: 7 }])
   })
 
   it('sorts ascending, because lightweight-charts throws on unsorted times', () => {
     const result = parseDefillamaPriceChart({
-      coins: { k: { prices: [{ timestamp: 300, price: 3 }, { timestamp: 100, price: 1 }, { timestamp: 200, price: 2 }] } },
+      coins: {
+        k: {
+          prices: [
+            { timestamp: 300, price: 3 },
+            { timestamp: 100, price: 1 },
+            { timestamp: 200, price: 2 },
+          ],
+        },
+      },
     })
 
     expect(result.map((p) => p.time)).toEqual([100, 200, 300])
@@ -100,7 +116,15 @@ describe('parseDefillamaPriceChart', () => {
 
   it('de-duplicates identical timestamps, which lightweight-charts also rejects', () => {
     const result = parseDefillamaPriceChart({
-      coins: { k: { prices: [{ timestamp: 100, price: 1 }, { timestamp: 100, price: 2 }, { timestamp: 200, price: 3 }] } },
+      coins: {
+        k: {
+          prices: [
+            { timestamp: 100, price: 1 },
+            { timestamp: 100, price: 2 },
+            { timestamp: 200, price: 3 },
+          ],
+        },
+      },
     })
 
     expect(result).toEqual([

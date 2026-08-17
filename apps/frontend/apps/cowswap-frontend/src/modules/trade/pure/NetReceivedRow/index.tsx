@@ -150,11 +150,7 @@ export function NetReceivedRowContent(props: NetReceivedRowContentProps): ReactN
         </Label>
       </RowFixed>
       <Value>
-        {showUsd ? (
-          <FiatAmount amount={netUsd} />
-        ) : (
-          <TokenAmount amount={netAmount} tokenSymbol={netAmount.currency} />
-        )}
+        {showUsd ? <FiatAmount amount={netUsd} /> : <TokenAmount amount={netAmount} tokenSymbol={netAmount.currency} />}
         {userPaysGasOnTop && (
           <GasSuffix>
             <Trans>+ gas</Trans>
