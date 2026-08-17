@@ -1,12 +1,14 @@
 import { ReactNode } from 'react'
 
 import { PAGE_TITLES, WRAPPED_NATIVE_CURRENCIES as WETH } from '@cowprotocol/common-const'
+import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { isInjectedWidget } from '@cowprotocol/common-utils'
 import { InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useLingui } from '@lingui/react/macro'
 import { OphisTrending, PriceChart, ReferralCta } from 'ophis/components'
+import { OphisDiscoveryPanel } from 'ophis/discovery'
 import { Navigate, NavLink, useLocation, useParams } from 'react-router'
 import styled from 'styled-components/macro'
 
@@ -104,6 +106,7 @@ const SideRail = styled.div`
 export function SwapPage(): ReactNode {
   const params = useParams()
   const { i18n } = useLingui()
+  const { isOphisOnchainDiscoveryEnabled } = useFeatureFlags()
   const swapDerivedStateToFill = useSwapDerivedStateToFill()
 
   if (!params.chainId) {
@@ -132,6 +135,9 @@ export function SwapPage(): ReactNode {
                 it. */}
             <PriceChart />
             <OphisTrending />
+            {/* Read-only and off by default. The panel cannot select a token or
+                alter routing, solver eligibility, approvals, or token lists. */}
+            {isOphisOnchainDiscoveryEnabled === true && <OphisDiscoveryPanel />}
           </SideRail>
         )}
       </SwapStage>
