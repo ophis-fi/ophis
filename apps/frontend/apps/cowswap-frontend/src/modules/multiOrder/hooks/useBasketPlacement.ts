@@ -2,7 +2,7 @@ import { useSetAtom } from 'jotai'
 import { useAtomCallback } from 'jotai/utils'
 import { useCallback, useRef, useState } from 'react'
 
-import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
+import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 
 import { OphisBasketTag } from 'ophis/basketMetadata'
 
@@ -53,6 +53,7 @@ function assertBasketTokenPolicy(draft: BasketDraft): void {
     assertTradeTokenPolicy(
       { chainId: draft.chainId, address: leg.sellToken },
       { chainId: draft.chainId, address: leg.buyToken },
+      TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
     )
   }
 }

@@ -1,41 +1,70 @@
 import { DAI, NATIVE_CURRENCY_ADDRESS, USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
-import { assertTradeTokenPolicy, getTokenPolicyDecision } from './tokenPolicy'
+import { assertTradeTokenPolicy, getTokenPolicyDecision, TokenPolicyProfile } from './tokenPolicy'
 
 describe('Ophis token policy', () => {
-  it.each([NATIVE_CURRENCY_ADDRESS, WETH_MAINNET.address, USDC_MAINNET.address, DAI.address])(
-    'allows reviewed Ethereum asset %s',
-    (address) => {
-      expect(getTokenPolicyDecision({ chainId: SupportedChainId.MAINNET, address })).toEqual({
+  it('preserves valid tokens on established settlement chains', () => {
+    expect(
+      getTokenPolicyDecision(
+        {
+          chainId: SupportedChainId.MAINNET,
+          address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+        },
+        TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
+      ),
+    ).toEqual({ allowed: true, reason: 'approved' })
+  })
+
+  it.each([1, 10, 56, 100, 130, 137, 4_663, 8_453, 9_745, 42_161, 43_114, 57_073, 59_144])(
+    'keeps chain %s available under established settlement',
+    (chainId) => {
+      expect(
+        getTokenPolicyDecision({ chainId, address: WETH_MAINNET.address }, TokenPolicyProfile.ESTABLISHED_SETTLEMENT),
+      ).toEqual({
         allowed: true,
         reason: 'approved',
       })
     },
   )
 
-  it('fails closed for an unreviewed token and chain', () => {
+  it.each([NATIVE_CURRENCY_ADDRESS, WETH_MAINNET.address, USDC_MAINNET.address, DAI.address])(
+    'allows reviewed Ethereum asset %s under restricted execution',
+    (address) => {
+      expect(
+        getTokenPolicyDecision({ chainId: SupportedChainId.MAINNET, address }, TokenPolicyProfile.RESTRICTED_EXECUTION),
+      ).toEqual({ allowed: true, reason: 'approved' })
+    },
+  )
+
+  it('fails closed for an unreviewed restricted-execution token and chain', () => {
     expect(
-      getTokenPolicyDecision({
-        chainId: SupportedChainId.MAINNET,
-        address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-      }),
+      getTokenPolicyDecision(
+        {
+          chainId: SupportedChainId.MAINNET,
+          address: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+        },
+        TokenPolicyProfile.RESTRICTED_EXECUTION,
+      ),
     ).toEqual({ allowed: false, reason: 'token-not-reviewed' })
-    expect(getTokenPolicyDecision({ chainId: 10, address: WETH_MAINNET.address })).toEqual({
-      allowed: false,
-      reason: 'chain-not-reviewed',
-    })
+    expect(
+      getTokenPolicyDecision({ chainId: 10, address: WETH_MAINNET.address }, TokenPolicyProfile.RESTRICTED_EXECUTION),
+    ).toEqual({ allowed: false, reason: 'chain-not-reviewed' })
+    expect(
+      getTokenPolicyDecision(
+        { chainId: 999_999, address: WETH_MAINNET.address },
+        TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
+      ),
+    ).toEqual({ allowed: false, reason: 'chain-not-reviewed' })
   })
 
   it('rejects malformed policy inputs', () => {
-    expect(getTokenPolicyDecision({ chainId: 1, address: 'not-an-address' })).toEqual({
-      allowed: false,
-      reason: 'invalid-token',
-    })
-    expect(getTokenPolicyDecision({ chainId: 0, address: WETH_MAINNET.address })).toEqual({
-      allowed: false,
-      reason: 'invalid-token',
-    })
+    expect(
+      getTokenPolicyDecision({ chainId: 1, address: 'not-an-address' }, TokenPolicyProfile.ESTABLISHED_SETTLEMENT),
+    ).toEqual({ allowed: false, reason: 'invalid-token' })
+    expect(
+      getTokenPolicyDecision({ chainId: 0, address: WETH_MAINNET.address }, TokenPolicyProfile.ESTABLISHED_SETTLEMENT),
+    ).toEqual({ allowed: false, reason: 'invalid-token' })
   })
 
   it('blocks signing when either side has not passed policy', () => {
@@ -43,6 +72,7 @@ describe('Ophis token policy', () => {
       assertTradeTokenPolicy(
         { chainId: 1, address: WETH_MAINNET.address },
         { chainId: 1, address: USDC_MAINNET.address },
+        TokenPolicyProfile.RESTRICTED_EXECUTION,
       ),
     ).not.toThrow()
 
@@ -50,6 +80,7 @@ describe('Ophis token policy', () => {
       assertTradeTokenPolicy(
         { chainId: 1, address: WETH_MAINNET.address },
         { chainId: 1, address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' },
+        TokenPolicyProfile.RESTRICTED_EXECUTION,
       ),
     ).toThrow('token-not-reviewed')
   })

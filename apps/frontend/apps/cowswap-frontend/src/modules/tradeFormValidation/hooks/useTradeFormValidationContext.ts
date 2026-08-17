@@ -6,6 +6,7 @@ import { Nullish } from '@cowprotocol/cow-sdk'
 import { Currency, Token } from '@cowprotocol/currency'
 import {
   isTradeAllowedByTokenPolicy,
+  TokenPolicyProfile,
   useIsTradeUnsupported,
   useIsXstockToken,
   useTryFindToken,
@@ -163,5 +164,5 @@ function getNonNativeCurrency(currency: Nullish<Currency>): Token | null {
 function getIsTokenPolicyDenied(inputCurrency: Nullish<Currency>, outputCurrency: Nullish<Currency>): boolean {
   if (!inputCurrency || !outputCurrency) return false
 
-  return !isTradeAllowedByTokenPolicy(inputCurrency, outputCurrency)
+  return !isTradeAllowedByTokenPolicy(inputCurrency, outputCurrency, TokenPolicyProfile.ESTABLISHED_SETTLEMENT)
 }

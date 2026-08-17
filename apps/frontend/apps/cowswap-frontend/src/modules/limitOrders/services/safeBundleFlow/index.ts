@@ -1,7 +1,7 @@
 import { captureError, ERROR_TYPES, normalizeError } from '@cowprotocol/common-utils'
 import { SigningScheme } from '@cowprotocol/cow-sdk'
 import { Percent } from '@cowprotocol/currency'
-import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
+import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { Command, UiOrderType } from '@cowprotocol/types'
 import { MaxUint256 } from '@ethersproject/constants'
 import type { MetaTransactionData } from '@safe-global/types-kit'
@@ -52,6 +52,7 @@ export async function safeBundleFlow(
   assertTradeTokenPolicy(
     { chainId: sellToken.chainId, address: sellToken.address },
     { chainId: buyToken.chainId, address: buyToken.address },
+    TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
   )
 
   params.postOrderParams.appData = await removePermitHookFromAppData(params.postOrderParams.appData, params.typedHooks)

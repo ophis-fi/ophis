@@ -10,7 +10,7 @@ import { SigningScheme, SigningStepManager } from '@cowprotocol/cow-sdk'
 import { Percent } from '@cowprotocol/currency'
 import { isSupportedPermitInfo } from '@cowprotocol/permit-utils'
 import { CoWShedEip1271SignatureInvalid } from '@cowprotocol/sdk-cow-shed'
-import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
+import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
 
 import { SigningSteps } from 'entities/trade'
@@ -62,6 +62,7 @@ export async function swapFlow(
   assertTradeTokenPolicy(
     { chainId: inputAmount.currency.chainId, address: inputAmount.currency.wrapped.address },
     { chainId: outputAmount.currency.chainId, address: outputAmount.currency.wrapped.address },
+    TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
   )
 
   logTradeFlow('SWAP FLOW', 'STEP 1: confirm price impact')

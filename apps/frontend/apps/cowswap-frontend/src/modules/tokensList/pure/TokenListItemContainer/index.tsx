@@ -2,7 +2,7 @@ import { ReactNode, useCallback } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { getAddressKey } from '@cowprotocol/cow-sdk'
-import { getTokenPolicyDecision } from '@cowprotocol/tokens'
+import { getTokenPolicyDecision, TokenPolicyProfile } from '@cowprotocol/tokens'
 
 import { useSelectTokenWidgetState } from '../../hooks/useSelectTokenWidgetState'
 import { SelectTokenContext } from '../../types'
@@ -33,7 +33,10 @@ export function TokenListItemContainer({
   const { onSelectToken, selectedToken } = useSelectTokenWidgetState()
 
   const addressKey = getAddressKey(token.address)
-  const tokenPolicyDecision = getTokenPolicyDecision({ chainId: token.chainId, address: token.address })
+  const tokenPolicyDecision = getTokenPolicyDecision(
+    { chainId: token.chainId, address: token.address },
+    TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
+  )
   const isDisabled = disabled || !tokenPolicyDecision.allowed
   const tokenPolicyDisabledReason = !tokenPolicyDecision.allowed
     ? 'Token has not passed the Ophis safety policy'

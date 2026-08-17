@@ -3,7 +3,7 @@ import { captureError, ERROR_TYPES, normalizeError } from '@cowprotocol/common-u
 import { SigningScheme, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Erc20 } from '@cowprotocol/cowswap-abis'
 import { Percent } from '@cowprotocol/currency'
-import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
+import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
 import type { MetaTransactionData } from '@safe-global/types-kit'
 
@@ -59,6 +59,7 @@ export async function safeBundleEthFlow(
   assertTradeTokenPolicy(
     { chainId: inputAmount.currency.chainId, address: inputAmount.currency.wrapped.address },
     { chainId: outputAmount.currency.chainId, address: outputAmount.currency.wrapped.address },
+    TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
   )
 
   const orderParams: PostOrderParams = {

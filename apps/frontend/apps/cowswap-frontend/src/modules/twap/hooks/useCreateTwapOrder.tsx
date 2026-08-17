@@ -4,7 +4,7 @@ import { useCallback } from 'react'
 import { useCowAnalytics } from '@cowprotocol/analytics'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Token } from '@cowprotocol/currency'
-import { assertTradeTokenPolicy } from '@cowprotocol/tokens'
+import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
 import { useIsSmartContractWallet, useSendBatchTransactions, useWalletInfo } from '@cowprotocol/wallet'
 import { WidgetHookEvents } from '@cowprotocol/widget-lib'
@@ -127,6 +127,7 @@ export function useCreateTwapOrder() {
       assertTradeTokenPolicy(
         { chainId: inputCurrencyAmount.currency.chainId, address: inputCurrencyAmount.currency.wrapped.address },
         { chainId: outputCurrencyAmount.currency.chainId, address: outputCurrencyAmount.currency.wrapped.address },
+        TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
       )
 
       const isPriceImpactConfirmed = await confirmPriceImpactWithoutFee(priceImpact)
