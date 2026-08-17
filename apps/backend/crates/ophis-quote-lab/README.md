@@ -71,6 +71,17 @@ cargo run -p ophis-quote-lab -- \
   --source ophis-baseline-uniswap-v3 \
   --source ophis-baseline-uniswap-v2 \
   --source ophis-baseline-uniswap-v4
+
+cargo run -p ophis-quote-lab -- \
+  --rpc-url "$ETHEREUM_RPC_URL" \
+  economics \
+  --matrix crates/ophis-quote-lab/config/ethereum-matrix-expanded.toml \
+  --candidate ophis-fixture-fixed \
+  --reference ophis-baseline-uniswap-v3 \
+  --gas-price-wei 1000000000 \
+  --incremental-gas 25000 \
+  --incremental-gas 50000 \
+  --incremental-gas 100000
 ```
 
 The checked-in manifest is an evidence record, not an endorsement. Update it
@@ -86,3 +97,8 @@ case with exact allowlisted fee and tick-spacing pairs. Hooks, multi-hop paths,
 native currency, and execution calldata are excluded.
 Series runs are bounded to 2–24 samples and 12–3,600 seconds between samples.
 Each sample must advance to a later block; duplicate-block samples fail closed.
+Economics runs value candidate improvements using a same-block V3 quote from
+one wrapped-native unit to the output token. Gas price and incremental gas are
+mandatory scenario inputs; the lab never presents them as measured execution
+gas. Break-even gas is rounded down and gross native value is rounded down, so
+the model does not overstate the candidate's margin.

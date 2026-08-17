@@ -1,7 +1,7 @@
 use {
     alloy_primitives::{Address, U256},
     clap::{Parser, Subcommand},
-    ophis_quote_lab::{BenchmarkMatrix, Error, Manifest, QuoteLabClient},
+    ophis_quote_lab::{BenchmarkMatrix, EconomicAnalysis, Error, Manifest, QuoteLabClient},
     std::{path::PathBuf, str::FromStr},
 };
 
@@ -70,6 +70,24 @@ enum Command {
         #[arg(long, default_value_t = 60)]
         interval_seconds: u64,
     },
+    /// Compare gross quote improvements with explicit incremental-gas assumptions.
+    Economics {
+        #[arg(
+            long,
+            default_value = "crates/ophis-quote-lab/config/ethereum-matrix-expanded.toml"
+        )]
+        matrix: PathBuf,
+        #[arg(long)]
+        candidate: String,
+        #[arg(long)]
+        reference: String,
+        /// Gas price in wei. This is an explicit scenario input, not fetched.
+        #[arg(long)]
+        gas_price_wei: String,
+        /// Assumed incremental execution gas over the reference route. Repeatable.
+        #[arg(long, required = true)]
+        incremental_gas: Vec<u64>,
+    },
 }
 
 #[tokio::main]
@@ -126,6 +144,26 @@ async fn main() -> Result<(), Error> {
                 .run_matrix_series(&manifest, &matrix, &source, samples, interval_seconds)
                 .await?;
             println!("{}", serde_json::to_string_pretty(&series).unwrap());
+        }
+        Command::Economics {
+            matrix,
+            candidate,
+            reference,
+            gas_price_wei,
+            incremental_gas,
+        } => {
+            let matrix = BenchmarkMatrix::load(&matrix)?;
+            let gas_price_wei = U256::from_str(&gas_price_wei).map_err(|_| Error::InvalidAmount)?;
+            let source = vec![candidate.clone(), reference.clone()];
+            let run = client.run_matrix(&manifest, &matrix, &source).await?;
+            let analysis = EconomicAnalysis::from_matrix(
+                &run,
+                &candidate,
+                &reference,
+                gas_price_wei,
+                &incremental_gas,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&analysis).unwrap());
         }
     }
     Ok(())

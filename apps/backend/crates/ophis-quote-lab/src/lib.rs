@@ -86,6 +86,9 @@ const MIN_SERIES_SAMPLES: usize = 2;
 const MAX_SERIES_SAMPLES: usize = 24;
 const MIN_SERIES_INTERVAL_SECONDS: u64 = 12;
 const MAX_SERIES_INTERVAL_SECONDS: u64 = 3_600;
+const MAX_INCREMENTAL_GAS_SCENARIOS: usize = 16;
+const ETHEREUM_WRAPPED_NATIVE: &str = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2";
+const NATIVE_WEI: u128 = 1_000_000_000_000_000_000;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -877,6 +880,43 @@ pub struct MatrixSeries {
     pub runs: Vec<MatrixRun>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EconomicAnalysis {
+    pub context: BlockContext,
+    pub candidate_source_id: String,
+    pub reference_source_id: String,
+    pub gas_price_wei: String,
+    pub comparable_cases: usize,
+    pub candidate_failures: usize,
+    pub reference_failures: usize,
+    pub candidate_wins: Vec<EconomicCase>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EconomicCase {
+    pub case_id: String,
+    pub token_out: String,
+    pub venue: &'static str,
+    pub fee_bps: String,
+    pub gross_output_delta: String,
+    pub output_units_per_native: String,
+    pub valuation_case_id: Option<String>,
+    pub gross_native_wei: String,
+    pub break_even_incremental_gas: String,
+    pub scenarios: Vec<GasScenarioResult>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GasScenarioResult {
+    pub incremental_gas_units: u64,
+    pub incremental_gas_cost_wei: String,
+    pub net_native_wei: String,
+    pub positive_net: bool,
+}
+
 impl MatrixSeries {
     fn try_new(
         interval_seconds: u64,
@@ -906,6 +946,115 @@ impl MatrixSeries {
             last_context,
             summaries,
             runs,
+        })
+    }
+}
+
+impl EconomicAnalysis {
+    pub fn from_matrix(
+        run: &MatrixRun,
+        candidate_source_id: &str,
+        reference_source_id: &str,
+        gas_price_wei: U256,
+        incremental_gas_scenarios: &[u64],
+    ) -> Result<Self, Error> {
+        validate_economic_parameters(
+            run,
+            candidate_source_id,
+            reference_source_id,
+            gas_price_wei,
+            incremental_gas_scenarios,
+        )?;
+
+        let mut comparable_cases = 0;
+        let mut candidate_failures = 0;
+        let mut reference_failures = 0;
+        let mut candidate_wins = Vec::new();
+
+        for case in &run.cases {
+            let candidate = case
+                .observations
+                .iter()
+                .find(|observation| observation.source_id == candidate_source_id)
+                .expect("economic source presence was validated");
+            let reference = case
+                .observations
+                .iter()
+                .find(|observation| observation.source_id == reference_source_id)
+                .expect("economic source presence was validated");
+            let Some(candidate_out) = successful_amount_out(candidate) else {
+                candidate_failures += 1;
+                if successful_amount_out(reference).is_none() {
+                    reference_failures += 1;
+                }
+                continue;
+            };
+            let Some(reference_out) = successful_amount_out(reference) else {
+                reference_failures += 1;
+                continue;
+            };
+            comparable_cases += 1;
+            if candidate_out <= reference_out {
+                continue;
+            }
+
+            let candidate_quote = candidate
+                .best
+                .as_ref()
+                .expect("successful quote has a best");
+            let gross_output_delta = candidate_out - reference_out;
+            let (output_units_per_native, valuation_case_id) =
+                native_valuation(run, reference_source_id, &case.token_out)
+                    .ok_or_else(|| Error::MissingNativeValuation(case.case_id.clone()))?;
+            let gross_native_wei = gross_output_delta
+                .checked_mul(U256::from(NATIVE_WEI))
+                .ok_or(Error::EconomicArithmeticOverflow)?
+                / output_units_per_native;
+            let break_even_incremental_gas = gross_native_wei / gas_price_wei;
+
+            let mut scenarios = Vec::with_capacity(incremental_gas_scenarios.len());
+            for incremental_gas_units in incremental_gas_scenarios {
+                let gas_cost = gas_price_wei
+                    .checked_mul(U256::from(*incremental_gas_units))
+                    .ok_or(Error::EconomicArithmeticOverflow)?;
+                let (net_native_wei, positive_net) = if gross_native_wei > gas_cost {
+                    ((gross_native_wei - gas_cost).to_string(), true)
+                } else if gross_native_wei == gas_cost {
+                    ("0".to_owned(), false)
+                } else {
+                    (format!("-{}", gas_cost - gross_native_wei), false)
+                };
+                scenarios.push(GasScenarioResult {
+                    incremental_gas_units: *incremental_gas_units,
+                    incremental_gas_cost_wei: gas_cost.to_string(),
+                    net_native_wei,
+                    positive_net,
+                });
+            }
+
+            candidate_wins.push(EconomicCase {
+                case_id: case.case_id.clone(),
+                token_out: case.token_out.clone(),
+                venue: candidate_quote.source_name,
+                fee_bps: candidate_quote.fee_bps.clone(),
+                gross_output_delta: gross_output_delta.to_string(),
+                output_units_per_native: output_units_per_native.to_string(),
+                valuation_case_id,
+                gross_native_wei: gross_native_wei.to_string(),
+                break_even_incremental_gas: break_even_incremental_gas.to_string(),
+                scenarios,
+            });
+        }
+
+        Ok(Self {
+            context: run.context,
+            candidate_source_id: candidate_source_id.to_owned(),
+            reference_source_id: reference_source_id.to_owned(),
+            gas_price_wei: gas_price_wei.to_string(),
+            comparable_cases,
+            candidate_failures,
+            reference_failures,
+            candidate_wins,
         })
     }
 }
@@ -1016,6 +1165,74 @@ fn validate_series_parameters(samples: usize, interval_seconds: u64) -> Result<(
         return Err(Error::InvalidSeriesInterval(interval_seconds));
     }
     Ok(())
+}
+
+fn validate_economic_parameters(
+    run: &MatrixRun,
+    candidate_source_id: &str,
+    reference_source_id: &str,
+    gas_price_wei: U256,
+    incremental_gas_scenarios: &[u64],
+) -> Result<(), Error> {
+    if candidate_source_id == reference_source_id {
+        return Err(Error::SameEconomicSource);
+    }
+    for source_id in [candidate_source_id, reference_source_id] {
+        if !run
+            .summaries
+            .iter()
+            .any(|summary| summary.source_id == source_id)
+            || run.cases.iter().any(|case| {
+                !case
+                    .observations
+                    .iter()
+                    .any(|observation| observation.source_id == source_id)
+            })
+        {
+            return Err(Error::MissingEconomicSource(source_id.to_owned()));
+        }
+    }
+    if gas_price_wei.is_zero() {
+        return Err(Error::ZeroEconomicGasPrice);
+    }
+    if incremental_gas_scenarios.is_empty()
+        || incremental_gas_scenarios.len() > MAX_INCREMENTAL_GAS_SCENARIOS
+    {
+        return Err(Error::InvalidIncrementalGasScenarioCount(
+            incremental_gas_scenarios.len(),
+        ));
+    }
+    let mut unique = HashSet::new();
+    for gas in incremental_gas_scenarios {
+        if *gas == 0 || !unique.insert(*gas) {
+            return Err(Error::InvalidIncrementalGasScenario(*gas));
+        }
+    }
+    Ok(())
+}
+
+fn native_valuation(
+    run: &MatrixRun,
+    reference_source_id: &str,
+    output_token: &str,
+) -> Option<(U256, Option<String>)> {
+    if output_token.eq_ignore_ascii_case(ETHEREUM_WRAPPED_NATIVE) {
+        return Some((U256::from(NATIVE_WEI), None));
+    }
+    run.cases.iter().find_map(|case| {
+        if !case.token_in.eq_ignore_ascii_case(ETHEREUM_WRAPPED_NATIVE)
+            || !case.token_out.eq_ignore_ascii_case(output_token)
+            || case.amount_in != NATIVE_WEI.to_string()
+        {
+            return None;
+        }
+        let amount = case
+            .observations
+            .iter()
+            .find(|observation| observation.source_id == reference_source_id)
+            .and_then(successful_amount_out)?;
+        (!amount.is_zero()).then(|| (amount, Some(case.case_id.clone())))
+    })
 }
 
 fn summarize_sources(source_ids: &[String], cases: &[MatrixCaseResult]) -> Vec<SourceSummary> {
@@ -1196,6 +1413,22 @@ pub enum Error {
     InvalidSeriesInterval(u64),
     #[error("matrix series block did not advance: previous {previous}, current {current}")]
     NonAdvancingSeriesBlock { previous: u64, current: u64 },
+    #[error("economic candidate and reference sources must differ")]
+    SameEconomicSource,
+    #[error("matrix is missing economic source {0}")]
+    MissingEconomicSource(String),
+    #[error("economic gas price must be non-zero")]
+    ZeroEconomicGasPrice,
+    #[error(
+        "incremental gas scenario count {0} is outside the allowed range 1..={MAX_INCREMENTAL_GAS_SCENARIOS}"
+    )]
+    InvalidIncrementalGasScenarioCount(usize),
+    #[error("incremental gas scenario {0} is zero or duplicated")]
+    InvalidIncrementalGasScenario(u64),
+    #[error("matrix case {0} has no same-block native valuation")]
+    MissingNativeValuation(String),
+    #[error("economic arithmetic overflow")]
+    EconomicArithmeticOverflow,
     #[error("manifest chain ID must be non-zero")]
     InvalidChainId,
     #[error("manifest observed block hash is invalid")]
@@ -1641,5 +1874,41 @@ mod tests {
             MatrixSeries::try_new(12, &sources, vec![duplicate_first, duplicate_second]),
             Err(Error::NonAdvancingSeriesBlock { .. })
         ));
+    }
+
+    #[test]
+    fn economics_calculates_break_even_and_explicit_gas_scenarios() {
+        let context = BlockContext {
+            chain_id: 1,
+            number: 42,
+            hash: B256::repeat_byte(0x11),
+            observed_at_unix_millis: 1,
+        };
+        let sources = vec!["candidate".to_owned(), "reference".to_owned()];
+        let mut candidate = observation(context, "candidate", 10, Some("110"));
+        candidate.token_out = ETHEREUM_WRAPPED_NATIVE.to_owned();
+        let mut reference = observation(context, "reference", 20, Some("100"));
+        reference.token_out = ETHEREUM_WRAPPED_NATIVE.to_owned();
+        let run = MatrixRun::try_new(
+            context,
+            &sources,
+            vec![
+                MatrixCaseResult::try_new(context, "win".to_owned(), vec![candidate, reference])
+                    .unwrap(),
+            ],
+        )
+        .unwrap();
+        let analysis =
+            EconomicAnalysis::from_matrix(&run, "candidate", "reference", U256::from(2), &[3, 6])
+                .unwrap();
+        assert_eq!(analysis.comparable_cases, 1);
+        assert_eq!(analysis.candidate_wins.len(), 1);
+        let win = &analysis.candidate_wins[0];
+        assert_eq!(win.gross_native_wei, "10");
+        assert_eq!(win.break_even_incremental_gas, "5");
+        assert_eq!(win.scenarios[0].net_native_wei, "4");
+        assert!(win.scenarios[0].positive_net);
+        assert_eq!(win.scenarios[1].net_native_wei, "-2");
+        assert!(!win.scenarios[1].positive_net);
     }
 }

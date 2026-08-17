@@ -64,3 +64,6 @@ and the net-surplus model.
 
 Decision Gate 1 remains closed. No execution adapter, push, pull request,
 deployment, or release is authorized.
+
+The explicit break-even gas model follow-up is recorded in
+[`2026-08-17-ophis-quote-lab-economics.md`](./2026-08-17-ophis-quote-lab-economics.md).
