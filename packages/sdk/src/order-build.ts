@@ -17,7 +17,11 @@ import { keccak256, toBytes, isAddress, getAddress } from 'viem';
 import { getOphisOrderDomain, type OphisOrderDomain } from './domain.js';
 import { getOphisOrderbookUrl } from './orderbook.js';
 import { ophisOrderReceiver, assertReceiverIsOwner } from './order.js';
-import { buildOphisAppDataPartnerFee, type OphisPartnerFee } from './partner-fee.js';
+import {
+  buildOphisAppDataPartnerFee,
+  type OphisPartnerFeeConfig,
+  type OphisVolumePartnerFee,
+} from './partner-fee.js';
 import { buildOphisReferrerMetadata } from './referral.js';
 
 /** CoW appData schema version the live Ophis frontend emits (cow-sdk LATEST_APP_DATA_VERSION). */
@@ -88,7 +92,7 @@ export interface OphisAppData {
   /** keccak256 of `fullAppData` — the bytes32 that goes into the signed order. */
   appDataHash: Address;
   /** The CIP-75 partner fee applied on this chain, or undefined where Ophis charges none. */
-  partnerFee?: OphisPartnerFee;
+  partnerFee?: OphisPartnerFeeConfig;
 }
 
 /**
@@ -99,7 +103,7 @@ export interface OphisAppData {
  * registry cap and Volume-only policy, this only guarantees a well-formed
  * appData object so a malformed entry never reaches the wire.
  */
-function normalizeExtraPartnerFee(entry: OphisPartnerFee): OphisPartnerFee {
+function normalizeExtraPartnerFee(entry: OphisVolumePartnerFee): OphisVolumePartnerFee {
   if (!Number.isInteger(entry.volumeBps) || entry.volumeBps < 0) {
     throw new Error(
       `partnerFee volumeBps must be a non-negative integer, got ${String(entry.volumeBps)}`,
@@ -113,8 +117,8 @@ function normalizeExtraPartnerFee(entry: OphisPartnerFee): OphisPartnerFee {
 
 /**
  * Builds the Ophis appData document for a chain: appCode "ophis", market
- * orderClass, and the CIP-75 partner fee (flat `volumeBps` shape, the 5 bps
- * @ophis/sdk partner rate via buildOphisAppDataPartnerFee) where Ophis charges one.
+ * orderClass, and the chain-aware CIP-75 Ophis policy from
+ * buildOphisAppDataPartnerFee where Ophis charges one.
  * Returns the doc, its deterministic serialization, and its keccak256 hash.
  *
  * `extraPartnerFees` appends integrator-priced CIP-75 Volume entries (the compat
@@ -129,26 +133,28 @@ export function buildOphisFullAppData(
   slippageBips?: number,
   referrerCode?: string,
   source?: string,
-  extraPartnerFees?: readonly OphisPartnerFee[],
+  extraPartnerFees?: readonly OphisVolumePartnerFee[],
+  isStablePair = false,
 ): OphisAppData {
-  const partnerFee = buildOphisAppDataPartnerFee(chainId);
+  const partnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair);
   const extras = (extraPartnerFees ?? []).map(normalizeExtraPartnerFee);
   // The backend rejects any appData with more than MAX_PARTNER_FEE_ENTRIES
   // partner-fee entries. On an Ophis fee chain the default entry already consumes
   // one slot, so the extras budget is one smaller there. Fail loudly at build
   // time rather than mint a draft the orderbook refuses at ingress.
-  const totalEntries = (partnerFee ? 1 : 0) + extras.length;
+  const ophisEntries = partnerFee ? (Array.isArray(partnerFee) ? [...partnerFee] : [partnerFee]) : [];
+  const totalEntries = ophisEntries.length + extras.length;
   if (totalEntries > MAX_PARTNER_FEE_ENTRIES) {
     throw new Error(
       `partner fee document would carry ${totalEntries} entries, exceeding the maximum of ` +
         `${MAX_PARTNER_FEE_ENTRIES}` +
         (partnerFee ? ` (the Ophis default fee already uses one slot on this chain)` : '') +
-        `. Pass at most ${MAX_PARTNER_FEE_ENTRIES - (partnerFee ? 1 : 0)} extra partner-fee entries.`,
+        `. Pass at most ${MAX_PARTNER_FEE_ENTRIES - ophisEntries.length} extra partner-fee entries.`,
     );
   }
   const metadata: Record<string, unknown> = { orderClass: { orderClass: 'market' } };
   if (extras.length > 0) {
-    metadata.partnerFee = [...(partnerFee ? [partnerFee] : []), ...extras];
+    metadata.partnerFee = [...ophisEntries, ...extras];
   } else if (partnerFee) {
     metadata.partnerFee = partnerFee;
   }
@@ -177,6 +183,8 @@ export interface BuildOrderParams {
   owner: Address;
   sellToken: Address;
   buyToken: Address;
+  /** True only when both tokens are same-chain stablecoins. Selects 50%/20 bps capture. */
+  isStablePair?: boolean;
   /**
    * sellAmount in atoms (uint256 decimal string). For kind 'sell' this is the
    * EXACT amount you sell. For kind 'buy' it is the MAXIMUM you are willing to
@@ -223,7 +231,7 @@ export interface BuildOrderParams {
    * When present, `metadata.partnerFee` serializes as an array. The ingress
    * orderbook validates each recipient against the partner-fee registry.
    */
-  partnerFees?: readonly OphisPartnerFee[];
+  partnerFees?: readonly OphisVolumePartnerFee[];
 }
 
 export interface BuiltOrder {
@@ -250,7 +258,7 @@ export interface BuiltOrder {
   /** The full appData string to pass to submit_order (the orderbook re-hashes it). */
   fullAppData: string;
   appDataHash: Address;
-  partnerFee?: OphisPartnerFee;
+  partnerFee?: OphisPartnerFeeConfig;
   /** Step-by-step next action for the calling agent. */
   next: string;
 }
@@ -258,7 +266,7 @@ export interface BuiltOrder {
 /**
  * Builds a bounded, ready-to-sign CoW order on Ophis. Pins the receiver to the
  * owner (unless unsafeCustomReceiver is set), uses the correct per-chain
- * settlement contract (Optimism and Unichain are NON-canonical) and
+ * settlement contract (Optimism, Unichain, and Robinhood Chain are NON-canonical) and
  * orderbook host, and embeds the CIP-75 partner fee in appData. Pure — no
  * network, no keys.
  */
@@ -289,6 +297,7 @@ export function buildOrder(p: BuildOrderParams, nowSeconds: number): BuiltOrder 
     p.referrerCode,
     p.source,
     p.partnerFees,
+    p.isStablePair ?? false,
   );
   const validFor = p.validForSeconds ?? 1200;
   if (!Number.isInteger(validFor) || validFor <= 0 || validFor > 60 * 60 * 24 * 365) {

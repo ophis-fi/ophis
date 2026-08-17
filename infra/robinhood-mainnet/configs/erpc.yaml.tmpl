@@ -71,6 +71,14 @@ projects:
               disputeBehavior: returnError
               lowParticipantsBehavior: returnError
 
+          # HEDGE (2026-08-15, per-upstream-budget fix, see the OP template for
+          # the incident record): a silently hanging lane on this sequential
+          # path otherwise burns the whole network budget before failover —
+          # A/B-proven on erpc 0.0.64 (12/12 x ~12s failures vs 18/18 OK at
+          # ~1.1s). Here the hang-capable lane is robinhood-official (remote
+          # CDN); ophis-self-rbh shares the Cadia host with this proxy and
+          # dies WITH it, so hedging mostly protects against official-gateway
+          # stalls.
           - matchMethod: "*"
             timeout:
               duration: 30s
@@ -80,6 +88,9 @@ projects:
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+            hedge:
+              delay: 1s
+              maxCount: 1
 
     upstreamDefaults:
       evm:
@@ -93,15 +104,48 @@ projects:
       - id: ophis-self-rbh
         endpoint: http://ophis-rbh-node:8547
         failsafe:
-          - matchMethod: "*"
+          # debug/trace keep the long budget: the autopilot REQUIRES
+          # debug_traceTransaction (README — "Autopilot stops settling /
+          # debug_traceTransaction errors") and this Nitro self-node is the
+          # ONLY lane serving it, so there is no failover to protect and a
+          # short generic timeout would cancel large-settlement traces and
+          # pause settlement. Single attempt: retrying a long trace inside
+          # the 30s network budget is pure waste. First-match: these pinned
+          # rules must stay above the generic one.
+          - matchMethod: "debug_*|trace_*"
             timeout:
               duration: 30s
             retry:
-              maxAttempts: 3
+              maxAttempts: 1
+          # eth_getLogs keeps the long budget: the official gateway ignores it
+          # (429 storms on the permanent log stream), so this is the ONLY lane
+          # serving logs — no failover exists to protect.
+          - matchMethod: "eth_getLogs"
+            timeout:
+              duration: 30s
+            retry:
+              maxAttempts: 1
+          # BUDGET INVARIANT (2026-08-15): one lane's worst-case serial budget
+          # (attempts x timeout + backoff = 4x2+1 = 9s) must stay under the
+          # smallest network timeout (12s consensus) so a wedged lane can
+          # never starve requests before failover — the 2026-08-14 OP outage
+          # class. Breaker ejects clean-error floods (the official gateway's
+          # 429 pattern); hangs are covered by the catch-all hedge.
+          - matchMethod: "*"
+            timeout:
+              duration: 4s
+            retry:
+              maxAttempts: 2
               delay: 200ms
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+            circuitBreaker:
+              failureThresholdCount: 12
+              failureThresholdCapacity: 24
+              halfOpenAfter: 30s
+              successThresholdCount: 2
+              successThresholdCapacity: 4
 
       - id: robinhood-official
         endpoint: https://rpc.mainnet.chain.robinhood.com
@@ -117,12 +161,21 @@ projects:
           # promotion time.
           - eth_getLogs
         failsafe:
+          # Same budget invariant as ophis-self-rbh's generic rule (9s < 12s).
+          # This remote lane is the one that can silently hang while the local
+          # stack survives — the exact 08-14 OP failure shape.
           - matchMethod: "*"
             timeout:
-              duration: 12s
+              duration: 4s
             retry:
-              maxAttempts: 3
+              maxAttempts: 2
               delay: 200ms
               backoffMaxDelay: 1s
               backoffFactor: 1.5
               jitter: 50ms
+            circuitBreaker:
+              failureThresholdCount: 12
+              failureThresholdCapacity: 24
+              halfOpenAfter: 30s
+              successThresholdCount: 2
+              successThresholdCapacity: 4

@@ -1,7 +1,13 @@
 import { sql as dsql } from 'drizzle-orm';
 import { listTrades, getOrder, SUPPORTED_CHAIN_IDS } from './cow/client.js';
-import { APP_CODES, type AppCode } from './cow/types.js';
-import { GROSS_FEE_BPS, OWN_FEE_MAX_BPS } from './affiliate/rates.js';
+import { APP_CODES, type AppCode, type CowTrade } from './cow/types.js';
+import {
+  HISTORICAL_OPHIS_FEE_MAX_BPS,
+  OWN_FEE_MAX_BPS,
+  SOVEREIGN_CHAIN_IDS,
+  affiliateFeeBpsForOrderCreatedAt,
+  undecodedFeeFallbackBpsForOrderCreatedAt,
+} from './affiliate/rates.js';
 import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
 import { getRpcClient } from './rpc/client.js';
@@ -46,6 +52,9 @@ export interface PendingDefiLlamaFill {
   buyToken: `0x${string}`;
   buyAmount: bigint;
   volumeFeeBps: number | null;
+  /** Reporting-only effective Ophis fee rate, including assessed improvement.
+   * Decimal string preserves fractional bps and never funds affiliate payouts. */
+  assessedFeeBps: string | null;
   feeVerified: boolean;
 }
 
@@ -87,9 +96,11 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
       ],
       set: {
         volumeFeeBps: dsql`excluded.volume_fee_bps`,
+        assessedFeeBps: dsql`COALESCE(excluded.assessed_fee_bps, ${schema.defillamaFills.assessedFeeBps})`,
         feeVerified: dsql`excluded.fee_verified`,
       },
-      setWhere: dsql`${schema.defillamaFills.feeVerified} = false AND excluded.fee_verified = true`,
+      setWhere: dsql`(${schema.defillamaFills.feeVerified} = false AND excluded.fee_verified = true)
+                     OR (${schema.defillamaFills.assessedFeeBps} IS NULL AND excluded.assessed_fee_bps IS NOT NULL)`,
     });
 }
 
@@ -116,10 +127,12 @@ export interface PendingTrade {
    *  or null when the order was not a basket leg. Pure analytics passthrough:
    *  groups the legs of one basket for after-the-fact volume measurement. */
   basketId: string | null;
-  /** Gross volume-fee rate (bps) from appData metadata.partnerFee.volumeBps,
-   *  clamped to [1, GROSS_FEE_BPS]; null when absent/unreadable (accrual then
-   *  treats it as the legacy retail rate). */
+  /** Affiliate-liability base rate from appData. Historical orders retain their
+   *  decoded rate; orders created after the canonical cutover are capped at 1 bp. */
   volumeFeeBps: number | null;
+  /** API-derived fallback for an undecodable fee, based on order.creationDate.
+   * NULL on decoder-only rows; affiliate accrual holds those until enrichment. */
+  undecodedFeeFallbackBps: number | null;
   /** True when volumeFeeBps is authoritative (API row under the owner-allowlist, or an
    *  on-chain-verified decoder row). False for a settle() decoder DISCOVERY row whose
    *  volumeFeeBps is a provisional 0 — the API fetcher may still upgrade it to the real
@@ -189,9 +202,8 @@ function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | 
  * Read the order's gross volume-fee rate (bps) from its appData, recipient-guarded
  * and clamped to [1, retail]. Classifies the Ophis partner fee against the backend
  * app_data.rs FeePolicyDeserializer arms and returns one of THREE states (which
- * must NOT collapse, because accrual/dashboard SQL applies
- * COALESCE(volume_fee_bps, GROSS_FEE_BPS) and would credit a NULL at the retail
- * default):
+ * must NOT collapse, because accrual/dashboard SQL applies the API-persisted
+ * order-creation policy marker to NULL):
  *
  *   N (1..retail) -- a settled flat Volume fee to Ophis: CIP-75 `{ volumeBps }` or
  *     legacy `{ bps }` with surplusBps/priceImprovementBps/maxVolumeBps all absent
@@ -201,8 +213,7 @@ function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | 
  *   null -- a VALID Surplus `{ surplusBps, maxVolumeBps }` or PriceImprovement
  *     `{ priceImprovementBps, maxVolumeBps }` fee to Ophis. Ophis DID collect a fee,
  *     but this volume-derived indexer cannot compute a surplus/PI amount, so it is
- *     UNKNOWN -> COALESCEs to the retail default and still earns a rebate (the
- *     pre-per-trade behaviour) rather than being zeroed.
+ *     UNKNOWN -> receives the cutover-appropriate fallback rather than being zeroed.
  *
  *   0 -- examined, NO settled Ophis fee at ALL: a non-Ophis recipient, an absent /
  *     0-bps fee, or a backend-REJECTED shape (capped `{ volumeBps/bps, maxVolumeBps }`,
@@ -212,7 +223,11 @@ function readOwnFee(meta: unknown): { bps: number; recipient: `0x${string}` } | 
  *
  * appData is attacker-controllable, so a crafted array cannot use a decoy
  * `{recipient: attacker, volumeBps: 10}` to over-credit: only Ophis-recipient
- * entries are considered, and a real Volume fee is preferred over a surplus/PI one.
+ * entries are considered. This decoder returns the verified flat entry only.
+ * CoW's `executedProtocolFees` reports intended policy amounts without a fee
+ * recipient and is not proof that Ophis received the transfer, so improvement
+ * revenue stays excluded until it can be reconciled against actual transfers
+ * to the Ophis Safe. The PI cap is never treated as collected revenue.
  * The caller additionally leaves NULL for unparseable appData / pre-per-trade rows.
  */
 function readVolumeFeeBps(meta: unknown): number | null {
@@ -243,15 +258,15 @@ function readVolumeFeeBps(meta: unknown): number | null {
     if (isFlatVolume) {
       const raw = entry.volumeBps !== undefined ? entry.volumeBps : entry.bps;
       if (isInt(raw) && raw >= 1) {
-        return Math.min(raw, GROSS_FEE_BPS);
+        return Math.min(raw, HISTORICAL_OPHIS_FEE_MAX_BPS);
       }
     } else if (
       // EXACT backend Surplus arm { surplusBps, maxVolumeBps } or PriceImprovement
       // arm { priceImprovementBps, maxVolumeBps } (integers, mutually exclusive, no
       // volumeBps/bps). A VALID such fee is a real Ophis fee on a CoW-hosted chain
       // (CoW accepts CIP-75 Surplus/PI; only the OP sovereign backend rejects it),
-      // but the volume-derived indexer can't compute it -> defer to NULL (retail
-      // default) so it still earns. A MALFORMED surplus-ish shape (e.g. missing
+      // but the volume-derived indexer can't compute it -> defer to NULL (the API
+      // later supplies its order-creation policy marker). A MALFORMED shape (e.g. missing
       // maxVolumeBps, non-integer, or mixed with volumeBps/bps) is backend-rejected
       // (no settled fee) and must NOT get the retail default -> falls through to 0.
       (isInt(entry.surplusBps) &&
@@ -270,9 +285,145 @@ function readVolumeFeeBps(meta: unknown): number | null {
     // else: capped { volumeBps/bps, maxVolumeBps }, both-aliases, or a malformed
     // surplus/PI shape -> backend Errs (no settled fee) -> not creditable; try next.
   }
-  // No usable flat Volume fee. A seen surplus/PI Ophis fee -> NULL (retail default,
+  // No usable flat Volume fee. A seen surplus/PI Ophis fee -> NULL (policy-marker fallback,
   // still earns). Otherwise Ophis collected nothing -> 0 (credit zero).
   return sawOphisNonVolumeFee ? null : 0;
+}
+
+type AppDataFeeKind = 'volume' | 'surplus' | 'priceImprovement';
+
+function appDataFeeKind(entry: unknown): AppDataFeeKind | null {
+  const fee = entry as {
+    volumeBps?: unknown;
+    bps?: unknown;
+    surplusBps?: unknown;
+    priceImprovementBps?: unknown;
+  };
+  if (typeof fee?.volumeBps === 'number' || typeof fee?.bps === 'number') return 'volume';
+  if (typeof fee?.surplusBps === 'number') return 'surplus';
+  if (typeof fee?.priceImprovementBps === 'number') return 'priceImprovement';
+  return null;
+}
+
+function executedFeeKind(policy: NonNullable<CowTrade['executedProtocolFees']>[number]['policy']): AppDataFeeKind {
+  if ('volume' in policy) return 'volume';
+  if ('surplus' in policy) return 'surplus';
+  return 'priceImprovement';
+}
+
+function approxFactor(actual: number, bps: number): boolean {
+  return Math.abs(actual - bps / 10_000) <= 1e-10;
+}
+
+function appDataMatchesExecutedFee(
+  entry: unknown,
+  policy: NonNullable<CowTrade['executedProtocolFees']>[number]['policy'],
+): boolean {
+  const fee = entry as {
+    volumeBps?: unknown;
+    bps?: unknown;
+    surplusBps?: unknown;
+    priceImprovementBps?: unknown;
+    maxVolumeBps?: unknown;
+  };
+  const volumeBps = typeof fee.volumeBps === 'number' ? fee.volumeBps : fee.bps;
+  if ('volume' in policy) return typeof volumeBps === 'number' && approxFactor(policy.volume.factor, volumeBps);
+  if ('surplus' in policy) {
+    return typeof fee.surplusBps === 'number' && typeof fee.maxVolumeBps === 'number'
+      && approxFactor(policy.surplus.factor, fee.surplusBps)
+      && approxFactor(policy.surplus.maxVolumeFactor, fee.maxVolumeBps);
+  }
+  return typeof fee.priceImprovementBps === 'number' && typeof fee.maxVolumeBps === 'number'
+    && approxFactor(policy.priceImprovement.factor, fee.priceImprovementBps)
+    && approxFactor(policy.priceImprovement.maxVolumeFactor, fee.maxVolumeBps);
+}
+
+function isCanonicalOphisImprovement(
+  policy: NonNullable<CowTrade['executedProtocolFees']>[number]['policy'],
+): boolean {
+  if (!('priceImprovement' in policy)) return false;
+  const fee = policy.priceImprovement;
+  return (approxFactor(fee.factor, 8_000) && approxFactor(fee.maxVolumeFactor, 99))
+    || (approxFactor(fee.factor, 5_000) && approxFactor(fee.maxVolumeFactor, 20));
+}
+
+/**
+ * Per-fill Ophis fee rate for public reporting only. Backend fee policies are
+ * applied as operator policies followed by appData partner fees, and the trades
+ * API returns execution amounts in that same application order. Requiring the
+ * complete appData suffix to match by policy kind lets us select only the slots
+ * whose recipient is Ophis, even when another recipient uses identical factors.
+ *
+ * This is an assessed settlement-policy amount, not recipient-reconciled cash,
+ * and therefore must never be copied into the affiliate-liability ledger.
+ */
+export function readAssessedOphisFeeBps(
+  chainId: number,
+  orderClass: 'market' | 'limit' | 'liquidity' | undefined,
+  meta: unknown,
+  trade: CowTrade,
+): string | null {
+  const raw = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
+  const appFees = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Array<{ recipient?: unknown }>;
+  const executed = trade.executedProtocolFees ?? [];
+  if (appFees.length === 0 || executed.length < appFees.length) return null;
+
+  // Operated market orders prepend one canonical Ophis improvement policy;
+  // limit orders have only the appData policies. Exact cardinality plus the
+  // value-level suffix match below rejects layouts where a recipient was filtered.
+  const sovereign = SOVEREIGN_CHAIN_IDS.has(chainId);
+  let hasSovereignImprovement = false;
+  if (sovereign) {
+    if (orderClass === 'market'
+      && executed.length === appFees.length + 1
+      && isCanonicalOphisImprovement(executed[0]!.policy)) {
+      hasSovereignImprovement = true;
+    } else if ((orderClass !== 'limit' && orderClass !== 'liquidity')
+      || executed.length !== appFees.length) {
+      return null;
+    }
+  }
+
+  const offset = executed.length - appFees.length;
+  for (let i = 0; i < appFees.length; i += 1) {
+    const expected = appDataFeeKind(appFees[i]);
+    if (expected === null
+      || executedFeeKind(executed[offset + i]!.policy) !== expected
+      || !appDataMatchesExecutedFee(appFees[i], executed[offset + i]!.policy)) return null;
+  }
+
+  const ophisFees = appFees.flatMap((entry, i) =>
+    typeof entry.recipient === 'string' && entry.recipient.toLowerCase() === OPHIS_FEE_RECIPIENT
+      ? [executed[offset + i]!]
+      : [],
+  );
+  if (hasSovereignImprovement) ophisFees.unshift(executed[0]!);
+  if (ophisFees.length === 0) return null;
+  const token = ophisFees[0]!.token.toLowerCase();
+  if (ophisFees.some((fee) => fee.token.toLowerCase() !== token)) return null;
+
+  const assessed = ophisFees.reduce((sum, fee) => sum + BigInt(fee.amount), 0n);
+  const allFeesInToken = executed
+    .filter((fee) => fee.token.toLowerCase() === token)
+    .reduce((sum, fee) => sum + BigInt(fee.amount), 0n);
+  let grossVolume: bigint;
+  if (token === trade.buyToken.toLowerCase()) {
+    grossVolume = BigInt(trade.buyAmount) + allFeesInToken;
+  } else if (token === trade.sellToken.toLowerCase()) {
+    // The trades API defines sellAmountBeforeFees as the fee-free executed sell
+    // amount (database derivation: sell_amount - fee_amount). Do not deduct the
+    // executed protocol fees a second time.
+    grossVolume = BigInt(trade.sellAmountBeforeFees ?? trade.sellAmount);
+  } else {
+    return null;
+  }
+  if (grossVolume <= 0n) return null;
+
+  const scale = 100_000_000n;
+  const scaledBps = (assessed * 10_000n * scale + grossVolume / 2n) / grossVolume;
+  // Sequential 99 bp improvement + 1 bp base can compound to 100.0099 bps.
+  if (scaledBps > 10_001_000_000n) return null;
+  return `${scaledBps / scale}.${(scaledBps % scale).toString().padStart(8, '0')}`;
 }
 
 function isAppCodeOfInterest(code: string | undefined): code is AppCode {
@@ -470,6 +621,7 @@ export function attributeOrder(
     appdataRefCode,
     basketId,
     volumeFeeBps,
+    undecodedFeeFallbackBps: null,
     // API attribution runs under the owner-allowlist, so its fee is authoritative. The
     // settle() decoder overrides this to false for a discovery (catalog-only) row.
     feeVerified: true,
@@ -521,6 +673,7 @@ export async function fetchChainTrades(
           .select({
             uid: schema.trades.tradeUid,
             volumeFeeBps: schema.trades.volumeFeeBps,
+            undecodedFeeFallbackBps: schema.trades.undecodedFeeFallbackBps,
             feeVerified: schema.trades.feeVerified,
           })
           .from(schema.trades)
@@ -535,8 +688,15 @@ export async function fetchChainTrades(
         //    write the real owner-allowlist-confirmed fee, so a trade the decoder
         //    cataloged before its wallet was tracked is not left permanently at 0.
         // Once authoritatively populated it is skipped here (self-healing, one re-fetch).
-        const row = already[0] as { volumeFeeBps: number | null; feeVerified: boolean } | undefined;
-        rebateRowComplete = Boolean(row && row.volumeFeeBps !== null && row.feeVerified);
+        const row = already[0] as {
+          volumeFeeBps: number | null;
+          undecodedFeeFallbackBps: number | null;
+          feeVerified: boolean;
+        } | undefined;
+        rebateRowComplete = Boolean(
+          row && row.feeVerified &&
+          (row.volumeFeeBps !== null || row.undecodedFeeFallbackBps !== null),
+        );
       }
       const fillKey = {
         chainId,
@@ -591,7 +751,14 @@ export async function fetchChainTrades(
           blockNumber: BigInt(t.blockNumber),
           blockTimestamp: new Date(order.creationDate),
         });
-        if (trade) out.push(trade);
+        if (trade) {
+          const createdAt = new Date(order.creationDate);
+          trade.volumeFeeBps = affiliateFeeBpsForOrderCreatedAt(trade.volumeFeeBps, createdAt);
+          trade.undecodedFeeFallbackBps = undecodedFeeFallbackBpsForOrderCreatedAt(
+            createdAt,
+          );
+          out.push(trade);
+        }
       }
 
       if (fillSink && !reportFillComplete) {
@@ -612,6 +779,8 @@ export async function fetchChainTrades(
           blockTimestamp: settlementTimestamp,
         });
         if (fill) {
+          const createdAt = new Date(order.creationDate);
+          fill.volumeFeeBps = affiliateFeeBpsForOrderCreatedAt(fill.volumeFeeBps, createdAt);
           fillSink.push({
             ...fillKey,
             settlementTimestamp,
@@ -620,6 +789,7 @@ export async function fetchChainTrades(
             buyToken: fill.buyToken,
             buyAmount: fill.buyAmount,
             volumeFeeBps: fill.volumeFeeBps,
+            assessedFeeBps: readAssessedOphisFeeBps(chainId, order.class, meta, t),
             feeVerified: true,
           });
         }
@@ -802,6 +972,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
               AND log_index = ${fill.logIndex}
               AND trade_uid = decode(${fill.tradeUid.slice(2)}, 'hex')
               AND fee_verified = true
+              AND assessed_fee_bps IS NOT NULL
           ) AS present
         `;
         return row?.present === true;
@@ -846,9 +1017,13 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     const owners = ownerRows.filter((o) => !DECODER_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
     // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
-    // FEE arms: only a verified API write ever moves volume_fee_bps / fee_verified.
+    // FEE arms: only a verified API write moves volume_fee_bps / fee_verified;
+    // the final arm also repairs post-cutover rows previously persisted above 1 bp.
     const FEE_UPGRADE_ARMS = dsql`(${schema.trades.volumeFeeBps} IS NULL AND excluded.volume_fee_bps > 0)
-                                  OR (${schema.trades.feeVerified} = false AND excluded.fee_verified = true)`;
+                                  OR (${schema.trades.feeVerified} = false AND excluded.fee_verified = true)
+                                  OR (${schema.trades.volumeFeeBps} > 1
+                                      AND excluded.undecoded_fee_fallback_bps = 1
+                                      AND excluded.fee_verified = true)`;
     // OWN-FEE fill arm (finding #4): a still-NULL own_fee_bps on an existing row + a
     // non-null own_fee_bps from a VERIFIED incoming row. Verified-only so a decoder
     // discovery row (fee_verified=false) can never fill it. Reaches surplus/PI Ophis-fee
@@ -856,6 +1031,9 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     const OWN_FEE_FILL_ARM = dsql`${schema.trades.ownFeeBps} IS NULL
                                   AND excluded.own_fee_bps IS NOT NULL
                                   AND excluded.fee_verified = true`;
+    const POLICY_MARKER_FILL_ARM = dsql`${schema.trades.undecodedFeeFallbackBps} IS NULL
+                                        AND excluded.undecoded_fee_fallback_bps IS NOT NULL
+                                        AND excluded.fee_verified = true`;
     // Upsert a batch of fetched trades. Shared by the tracked-wallet loop and the
     // eth-flow synthetic-owner pass below so both apply identical backfill semantics.
     const upsertTrades = async (rows: PendingTrade[]): Promise<number> => {
@@ -880,6 +1058,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
             // on-conflict set below, mirroring appdata_ref_code's immutability.
             basketId: r.basketId,
             volumeFeeBps: r.volumeFeeBps,
+            undecodedFeeFallbackBps: r.undecodedFeeFallbackBps,
             feeVerified: r.feeVerified,
             ownFeeBps: r.ownFeeBps,
             ownFeeRecipient: r.ownFeeRecipient,
@@ -890,13 +1069,13 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
             ownFeeScannedAt: new Date(),
           })),
         )
-        // UPGRADE-only backfill on a re-encountered row, via THREE disjoint arms (a
+        // UPGRADE-only backfill on a re-encountered row, via four disjoint arms (a
         // VERIFIED API write is the only thing that ever updates an existing row; never a
         // downgrade, never a decoder clobber). Each column is set with a CASE so an arm
         // only touches the columns it owns:
         //  (1) FEE self-heal: a still-NULL pre-per-trade row -> a POSITIVE rate. The `> 0`
         //      is load-bearing: a historical NULL whose appData yields 0/NULL must STAY
-        //      NULL (unknown -> retail), so re-fetching history can't reclassify it.
+        //      NULL (unknown), so re-fetching history can't reclassify it.
         //  (2) FEE decoder-upgrade: replace a settle() decoder DISCOVERY row
         //      (fee_verified=false, provisional 0) with the API's owner-allowlist-confirmed
         //      fee + fee_verified=true, at whatever rate (0 or > 0).
@@ -905,6 +1084,8 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
         //      row the fee arms miss, e.g. a surplus/PI Ophis fee row (volume_fee_bps
         //      stays NULL) that stacked an integrator own-fee. It updates ONLY the own-fee
         //      columns and NEVER volume_fee_bps / fee_verified.
+        //  (4) POLICY marker fill: persist the API-derived creation-time fallback
+        //      without rewriting the decoder's settlement timestamp.
         // A decoder upsert carries excluded.fee_verified=false, so it satisfies NO arm ->
         // it can only INSERT a brand-new row and never overwrites an existing one.
         // volume_fee_bps / fee_verified move ONLY on the FEE arms (1|2); own_fee_bps /
@@ -917,11 +1098,12 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
           set: {
             volumeFeeBps: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) THEN excluded.volume_fee_bps ELSE ${schema.trades.volumeFeeBps} END`,
             feeVerified: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) THEN excluded.fee_verified ELSE ${schema.trades.feeVerified} END`,
+            undecodedFeeFallbackBps: dsql`CASE WHEN (${POLICY_MARKER_FILL_ARM}) THEN excluded.undecoded_fee_fallback_bps ELSE ${schema.trades.undecodedFeeFallbackBps} END`,
             ownFeeBps: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) THEN excluded.own_fee_bps ELSE ${schema.trades.ownFeeBps} END`,
             ownFeeRecipient: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) THEN excluded.own_fee_recipient ELSE ${schema.trades.ownFeeRecipient} END`,
             ownFeeScannedAt: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) THEN excluded.own_fee_scanned_at ELSE ${schema.trades.ownFeeScannedAt} END`,
           },
-          setWhere: dsql`(${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM})`,
+          setWhere: dsql`(${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) OR (${POLICY_MARKER_FILL_ARM})`,
         });
       return rows.length;
     };

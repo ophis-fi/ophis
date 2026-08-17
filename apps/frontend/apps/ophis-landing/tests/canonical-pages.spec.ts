@@ -109,13 +109,17 @@ test('/learn hub renders and links every guide', async ({ page }) => {
   }
 })
 
-test('pricing page states sovereign capture and hosted rates', async ({ page }) => {
+test('pricing page states the all-chain capture policy', async ({ page }) => {
   await page.goto('/pricing')
   const body = page.locator('main')
   await expect(body).toContainText('1 bp + 80% improvement')
   await expect(body).toContainText('50%/20 bps cap for stables')
-  await expect(body).toContainText('10 bps retail')
-  await expect(body).toContainText('5 bps')
+  await expect(body).toContainText('Same 1 bp + capped improvement policy')
+  const mcpRow = page.locator('tr').filter({ has: page.getByRole('link', { name: 'MCP server' }) })
+  await expect(mcpRow.locator('td').nth(2)).toHaveText('Same all-chain policy via CIP-75 appData')
+  await expect(body).toContainText("Hosted chains apply the same Ophis base and improvement policy")
+  await expect(body).not.toContainText('5 bps')
+  await expect(body).not.toContainText('Hosted-chain costs follow the flat schedule')
 })
 
 test('supported-chains lists every chain from the canonical data, sovereigns badged', async ({ page }) => {

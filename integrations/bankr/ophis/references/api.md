@@ -28,11 +28,11 @@ A CoW order is normally authorized with an **EIP-712 signature**. Bankr's Submit
 Built by `ophis_common.build_app_data`:
 
 ```json
-{"appCode":"ophis","metadata":{"hooks":{},"partnerFee":{"recipient":"0x858f0F5eE954846D47155F5203c04aF1819eCeF8","volumeBps":5}},"version":"1.4.0"}
+{"appCode":"ophis","metadata":{"hooks":{},"partnerFee":{"recipient":"0x858f0F5eE954846D47155F5203c04aF1819eCeF8","volumeBps":1}},"version":"1.4.0"}
 ```
 
 - **`appCode` MUST be the literal `"ophis"`** — a custom appCode makes the rebate indexer silently drop the order.
-- **`partnerFee`** is the CIP-75 **VOLUME** policy `{volumeBps, recipient}` (NOT the price-improvement shape). Recipient is the Ophis Safe `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (CREATE2-deterministic across chains). Default **5 bps** (integrator rate); **1 bp** for stable↔stable pairs. The stable tier is DERIVED: `ophis-swap.py` calls `is_stable_pair(chain_id, sell, buy)` against the verified `STABLECOINS` registry (mirrored from the Ophis frontend's source-of-truth list) and never trusts a caller flag, so a mislabeled non-stable pair can never undercharge (a pair not in the registry conservatively gets 5 bps).
+- **`partnerFee`** is the CIP-75 **VOLUME** policy `{volumeBps, recipient}` (NOT the price-improvement shape). Recipient is the Ophis Safe `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (CREATE2-deterministic across chains). The canonical rate is **1 bp** on every supported chain and pair. Pair classification remains registry-derived for policy compatibility and never trusts a caller flag.
 - **Referral (optional):** `metadata.ophisReferrer.code` (`/^[a-z0-9_-]{3,64}$/`). Omitting it still yields a valid fee-bearing order; including a partner's own code is how the **integrator earns the rebate** — set it to monetize Bankr-routed volume.
 - Signed with `appData = keccak256(fullAppData)`; **submitted** with `appData = full JSON string` + `appDataHash = the hash`. The backend checks `keccak256(appData) == appDataHash`.
 

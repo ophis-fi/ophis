@@ -62,33 +62,26 @@ export const PRODUCTION_CHAIN_IDS: readonly number[] = Object.freeze(
  * Static execution-model facts served alongside the cumulative figures on the
  * public /stats JSON surface. Configuration facts only, no indexed data and no
  * timing signal, so they are safe to expose (see the current-cycle exclusion in
- * the header comment). `solvers` is the number of engines that can actually BID
- * per auction on each chain; update it when a solver is added or removed in the
- * sovereign driver configs:
- *   - infra/optimism-mainnet/configs/driver.toml.tmpl  (4: baseline, okx,
- *     kyberswap, velora; baseline routes Sushi V2 there)
- *   - infra/unichain-mainnet/configs/driver.toml.tmpl  (9 engine blocks, but the
- *     baseline ships without on-chain AMM sources on Unichain and cannot bid, so
- *     Aggregators compete: okx, kyberswap, velora, openocean, dodo,
- *     lifi, enso)
- *   - infra/robinhood-mainnet/configs/driver.toml.tmpl (LI.FI is the one active
- *     bidding lane; baseline has no verified Robinhood liquidity source)
+ * the header comment). `solvers` is the number of configured lanes capable of
+ * returning bids for supported pairs; actual per-auction participation depends
+ * on pair support and runtime availability. Update it with the driver configs.
  */
 export const EXECUTION_FACTS = {
   mevProtection: 'batch-auction',
   settlementModel: 'intent, uniform clearing price',
   solverCompetition: {
-    // solvers = engines that can bid (Unichain's baseline ships empty there).
+    // Baseline has modeled liquidity on Optimism; it is excluded on Unichain
+    // and Robinhood, where the baseline liquidity reader is intentionally empty.
     sovereignChains: [
-      { chainId: 10, solvers: 4 },
-      { chainId: 130, solvers: 8 },
-      { chainId: 4663, solvers: 1 },
+      { chainId: 10, solvers: 11 },
+      { chainId: 130, solvers: 7 },
+      { chainId: 4663, solvers: 6 },
     ],
     hostedChains: 'CoW Protocol solver network',
   },
   improvementSplit: {
-    sovereign: '100% of price improvement returned to the trader',
-    hosted: 'CoW Protocol retains 50% of quote improvement upstream',
+    sovereign: 'Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)',
+    hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
   },
 } as const;
 
@@ -108,6 +101,9 @@ export function renderStatsPage(s: PublicStats): string {
     })
     .join('');
   const updated = esc(s.generatedAt.slice(0, 16).replace('T', ' ')) + ' UTC';
+  const operatedSolverSummary = EXECUTION_FACTS.solverCompetition.sovereignChains
+    .map(({ chainId, solvers }) => `${CHAIN_NAME[chainId] ?? `Chain ${chainId}`}: ${solvers}`)
+    .join(', ');
 
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8">
@@ -151,8 +147,8 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <li><strong>MEV-protected batch settlement</strong>Orders settle in batch auctions, not the public mempool. No sandwiching, no frontrunning of your order flow.</li>
   <li><strong>Hard signed limit price</strong>Your signed order is a contract-enforced price floor. A fill below it cannot settle on-chain.</li>
   <li><strong>Gasless execution</strong>Solvers pay the settlement gas and costs settle inside the trade. After a one-time token approval before the first sell, no native gas token is needed, and failed settlements cost you nothing.</li>
-  <li><strong>Solver competition on every order</strong>On Unichain, 8 aggregator solvers compete per auction (plus a baseline that ships without on-chain AMM sources there); on Optimism, 4 solvers compete; Robinhood currently has one active LI.FI lane. Other chains draw on CoW Protocol's solver network.</li>
-  <li class="wide"><strong>Where the price improvement goes</strong>On Optimism, Unichain, and Robinhood Chain, 100% of price improvement is returned to the trader, and the Ophis fee is all-in (0.10% on the swap app, 0.05% for SDK and MCP partners; 0.01% on same-chain stable pairs). On CoW-hosted chains, CoW Protocol adds a 0.02% volume fee (0.003% on correlated pairs) and retains 50% of quote improvement upstream, capped at 0.98% of volume.</li>
+  <li><strong>Solver competition on every order</strong>Configured Ophis-operated routing lanes: ${esc(operatedSolverSummary)}. Pair coverage and live participation vary by auction. Other chains draw on ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
+  <li class="wide"><strong>Where the price improvement goes</strong>The Ophis fee on every supported chain is a 0.01% (1 bp) base plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). CoW-hosted chains also apply CoW Protocol fees upstream.</li>
 </ul>
 <h2>Settled volume by chain</h2>
 <table>
@@ -167,7 +163,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <div class="card"><div class="n">${fmtInt(s.distinctTraders)}</div><div class="l">Traders</div></div>
   <div class="card"><div class="n">${fmtInt(s.chainsActive)}</div><div class="l">Chains active</div></div>
 </div>
-<p class="note">MEV-protected, gasless, surplus returned to the trader, across 13 EVM chains with Solana and Bitcoin destinations. Figures are cumulative settled volume priced in USD at index time, refreshed continuously. Reproduce them from on-chain settlement: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
+<p class="note">MEV-protected and gasless across 13 EVM chains with Solana and Bitcoin destinations. On Ophis-operated chains, the trader keeps the remainder after Ophis's capped capture and all improvement above its cap. On hosted chains, the trader receives the net remainder after both Ophis's policy and CoW Protocol's separate upstream policy. Figures are cumulative settled volume priced in USD at index time, refreshed continuously. Reproduce them from on-chain settlement: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
 <div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; swap.ophis.fi</span><span>Updated ${updated}</span></div>
 </div></body></html>`;
 }

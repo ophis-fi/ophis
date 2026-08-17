@@ -53,9 +53,9 @@ best-effort.
 
 ## The fee comes out of the trade, not your gas balance
 
-Ophis uses chain-aware pricing. Operated chains charge a 1 bp base plus capped
-reference-quote-improvement capture; hosted chains retain flat retail and
-stable-pair rates, with CoW Protocol fees upstream. Fees are taken from the
+Ophis uses chain-aware pricing. Every supported chain charges a 1 bp base plus
+capped reference-quote-improvement capture; hosted chains additionally apply
+CoW Protocol fees upstream. Fees are taken from the
 trade rather than billed in native gas (the
 full [fee schedule](https://docs.ophis.fi/fees) is public; on the chains that
 settle through CoW Protocol, CoW Protocol's protocol fee applies on top of the
@@ -64,10 +64,10 @@ the native gas token leave your wallet, because you never send the transaction
 that would need it.
 
 The limit you signed still bounds the outcome. Solvers compete to beat the
-reference quote. On Optimism, Unichain, and Robinhood Chain, Ophis retains 80%
-of that improvement on volatile pairs (50 bps cap) or 50% on stable pairs (20
-bps cap); the trader receives the remainder and everything above the cap.
-Hosted chains follow CoW Protocol's upstream improvement policy.
+reference quote. On every supported chain, Ophis retains 80% of that
+improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps
+cap); the trader receives the remainder and everything above the cap. Hosted
+chains additionally apply CoW Protocol's upstream fees.
 
 ## Failed and expired orders cost nothing
 

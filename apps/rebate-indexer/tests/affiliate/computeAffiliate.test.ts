@@ -13,6 +13,9 @@ import {
   estimateEarningsUsd,
   estimateEarningsFromNetFeeUsd,
   GROSS_FEE_BPS,
+  LEGACY_UNDECODED_FEE_BPS,
+  undecodedFeeFallbackBpsForOrderCreatedAt,
+  affiliateFeeBpsForOrderCreatedAt,
   type AffiliateKind,
 } from '../../src/affiliate/rates.js';
 
@@ -45,51 +48,63 @@ const ref = (w: `0x${string}`, kind: AffiliateKind, buckets: AffiliateVolumeBuck
   buckets,
 });
 
-// All-RETAIL (10 bps) buckets from a chain->volume map, so the model-table
-// expectations (defined at the 10 bps rate) hold unchanged after the per-trade fix.
+// Canonical 1 bp buckets from a chain->volume map.
 const retailRef = (w: `0x${string}`, kind: AffiliateKind, v: Map<number, number>): AffiliateReferrer =>
   ref(w, kind, [...v].map(([chainId, volumeUsd]) => ({ chainId, volumeUsd, grossBps: GROSS_FEE_BPS })));
 
-describe('computeAffiliate — matches the model doc earnings tables (all-retail 10 bps)', () => {
-  it('Regular hosted under cap: $500k -> 0.6 bps -> $30', () => {
+describe('computeAffiliate — canonical 1 bp Ophis fee', () => {
+  it('keeps the new-order default separate from the legacy undecoded fallback', () => {
+    expect(GROSS_FEE_BPS).toBe(1);
+    expect(LEGACY_UNDECODED_FEE_BPS).toBe(10);
+  });
+
+  it('derives the undecoded policy marker from order creation time', () => {
+    expect(undecodedFeeFallbackBpsForOrderCreatedAt(new Date('2026-08-11T12:44:59.999Z'))).toBe(10);
+    expect(undecodedFeeFallbackBpsForOrderCreatedAt(new Date('2026-08-11T12:45:00.000Z'))).toBe(1);
+    expect(affiliateFeeBpsForOrderCreatedAt(10, new Date('2026-08-11T12:44:59.999Z'))).toBe(10);
+    expect(affiliateFeeBpsForOrderCreatedAt(10, new Date('2026-08-11T12:45:00.000Z'))).toBe(1);
+    expect(affiliateFeeBpsForOrderCreatedAt(null, new Date('2026-08-11T12:45:00.000Z'))).toBeNull();
+  });
+
+  it('Regular hosted under cap: $500k -> $3', () => {
     const r = computeAffiliate([retailRef(wallet('a'), 'regular', new Map([[HOSTED, 500_000]]))], PRICE)[0]!;
-    expect(r.owedUsd).toBeCloseTo(30, 6);
+    expect(r.owedUsd).toBeCloseTo(3, 6);
     expect(r.referredVolumeUsd).toBe(500_000);
-    expect(r.owedWei).toBe(wei(30));
+    expect(r.owedWei).toBe(wei(3));
   });
 
   it('Regular hosted at $1M -> $60 (model: Regular hosted $60/$1M)', () => {
     const r = computeAffiliate([retailRef(wallet('a'), 'regular', new Map([[HOSTED, 1_000_000]]))], PRICE)[0]!;
-    expect(r.owedUsd).toBeCloseTo(60, 6);
+    expect(r.owedUsd).toBeCloseTo(6, 6);
   });
 
   it('Regular HARD-STOP: $5M hosted flat-lines at the $1M cap -> $60, not $300', () => {
     const r = computeAffiliate([retailRef(wallet('a'), 'regular', new Map([[HOSTED, 5_000_000]]))], PRICE)[0]!;
     expect(r.referredVolumeUsd).toBe(1_000_000); // capped
-    expect(r.owedUsd).toBeCloseTo(60, 6);
+    expect(r.owedUsd).toBeCloseTo(6, 6);
   });
 
   it('Partner hosted uncapped: $5M -> 0.9 bps -> $450 (model: VIP hosted $450/$5M)', () => {
     const r = computeAffiliate([retailRef(wallet('b'), 'partner', new Map([[HOSTED, 5_000_000]]))], PRICE)[0]!;
     expect(r.referredVolumeUsd).toBe(5_000_000);
-    expect(r.owedUsd).toBeCloseTo(450, 6);
+    expect(r.owedUsd).toBeCloseTo(45, 6);
   });
 
   it('OP-ready: Regular $1M on Optimism -> 0.8 bps -> $80 (model: Regular OP $80/$1M)', () => {
     const r = computeAffiliate([retailRef(wallet('a'), 'regular', new Map([[OPTIMISM_CHAIN_ID, 1_000_000]]))], PRICE)[0]!;
-    expect(r.owedUsd).toBeCloseTo(80, 6);
+    expect(r.owedUsd).toBeCloseTo(8, 6);
   });
 
   it('Unichain is sovereign like OP: Regular $1M on Unichain -> 0.8 bps -> $80 (NOT $60 hosted)', () => {
     // keepFractionBps(130)=100% -> 0.8 bps, identical to OP. If 130 fell through to the
     // hosted 75% branch it would pay 0.6 bps -> $60, short-changing the trader 25%.
     const r = computeAffiliate([retailRef(wallet('c'), 'regular', new Map([[UNICHAIN_CHAIN_ID, 1_000_000]]))], PRICE)[0]!;
-    expect(r.owedUsd).toBeCloseTo(80, 6);
+    expect(r.owedUsd).toBeCloseTo(8, 6);
   });
 
   it('Partner $10M on OP -> 1.2 bps -> $1,200 (model: VIP OP $1,200/$10M)', () => {
     const r = computeAffiliate([retailRef(wallet('b'), 'partner', new Map([[OPTIMISM_CHAIN_ID, 10_000_000]]))], PRICE)[0]!;
-    expect(r.owedUsd).toBeCloseTo(1_200, 6);
+    expect(r.owedUsd).toBeCloseTo(120, 6);
   });
 
   it('multi-chain cap is OP-FIRST: $800k OP + $500k hosted, cap $1M -> keep all OP + $200k hosted', () => {
@@ -99,7 +114,7 @@ describe('computeAffiliate — matches the model doc earnings tables (all-retail
       PRICE,
     )[0]!;
     expect(r.referredVolumeUsd).toBe(1_000_000);
-    expect(r.owedUsd).toBeCloseTo(76, 6);
+    expect(r.owedUsd).toBeCloseTo(7.6, 6);
   });
 
   it('owedWei == owedUsd / price * 1e18 (within 1 wei)', () => {
@@ -193,19 +208,19 @@ describe('computeAffiliate — per-channel fee base (the 5/10/1 bps fix)', () =>
 
 describe('estimateEarningsUsd — dashboard current-cycle UPPER BOUND (assumes retail, hosted-only)', () => {
   it('partner is uncapped: $5M -> 0.9 bps -> $450 (upper bound at retail)', () => {
-    expect(estimateEarningsUsd(5_000_000, 'partner')).toBeCloseTo(450, 6);
+    expect(estimateEarningsUsd(5_000_000, 'partner')).toBeCloseTo(45, 6);
   });
 
   it('regular under cap: $500k -> 0.6 bps -> $30', () => {
-    expect(estimateEarningsUsd(500_000, 'regular')).toBeCloseTo(30, 6);
+    expect(estimateEarningsUsd(500_000, 'regular')).toBeCloseTo(3, 6);
   });
 
   it('regular caps at $1M/month: $5M -> $60, not $300', () => {
-    expect(estimateEarningsUsd(5_000_000, 'regular')).toBeCloseTo(60, 6);
+    expect(estimateEarningsUsd(5_000_000, 'regular')).toBeCloseTo(6, 6);
   });
 
   it('partner $1M -> $90', () => {
-    expect(estimateEarningsUsd(1_000_000, 'partner')).toBeCloseTo(90, 6);
+    expect(estimateEarningsUsd(1_000_000, 'partner')).toBeCloseTo(9, 6);
   });
 
   it('zero, negative, or non-finite volume -> 0', () => {

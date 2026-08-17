@@ -192,9 +192,11 @@ function ReferralStatusSection({ loadError, loading, rate, stats }: ReferralStat
   } else {
     content = (
       <>
-        <p>Earn {rate}% of the fee Ophis keeps on every trade your referrals route. Paid monthly in WETH.</p>
+        <p>
+          Earn {rate}% of the verified base fee Ophis keeps on every trade your referrals route. Paid monthly in WETH.
+        </p>
         <MetricRow>
-          <MetricCard label="Your rate" value={`${rate}%`} sublabel="of the fee Ophis keeps" compact />
+          <MetricCard label="Your rate" value={`${rate}%`} sublabel="of the verified base fee" compact />
           <MetricCard label="Referred wallets" value={stats?.referredCount ?? 0} compact />
           <MetricCard
             label="Referred volume"
@@ -250,8 +252,8 @@ function ReferralCodeSection({
       )}
       <p>
         Share your code or link. When a net-new wallet trades on Ophis after using your link, they&apos;re bound to you,
-        and you earn a share of the fee Ophis keeps on their trades. Aggregate totals only, no per-trade tracking is
-        shown here.
+        and you earn a share of the verified base fee Ophis keeps on their trades. Aggregate totals only, no per-trade
+        tracking is shown here.
       </p>
     </Section>
   )

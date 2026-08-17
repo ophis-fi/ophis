@@ -23,7 +23,7 @@ Both packages register one capability (GOAT names the tool `ophis_swap`; AgentKi
 4. approves the vault relayer of the chain's settlement deployment once (a standard ERC-20 allowance),
 5. submits the order and returns the order UID plus an explorer URL.
 
-From there it is Ophis's normal intent flow: solvers compete to fill the order, and settlement lands in a batch auction at a uniform clearing price. The order is not exposed as a public-mempool router swap; [MEV protection](/blog/mev-protection-batch-auctions/) is built into the settlement model. On Optimism, Unichain, and Robinhood Chain, Ophis retains a capped share of reference-quote improvement under its published sovereign pricing; hosted chains follow CoW Protocol's upstream policy. ERC-20 orders are [gasless](/blog/gasless-swaps-how-intents-work/) after any required approval.
+From there it is Ophis's normal intent flow: solvers compete to fill the order, and settlement lands in a batch auction at a uniform clearing price. The order is not exposed as a public-mempool router swap; [MEV protection](/blog/mev-protection-batch-auctions/) is built into the settlement model. On every supported chain, Ophis retains its published capped share of reference-quote improvement; hosted chains additionally apply CoW Protocol's upstream fees. ERC-20 orders are [gasless](/blog/gasless-swaps-how-intents-work/) after any required approval.
 
 The packages also resolve the per-chain orderbook and EIP-712 settlement domain for you: on some chains Ophis runs its own bytecode-identical deployment of CoW Protocol's audited GPv2Settlement, on the rest orders settle through the canonical audited contracts. Guessing either value by hand produces silently rejected or misrouted orders.
 
@@ -123,7 +123,7 @@ Two limits to plan around: the flow is ERC-20 to ERC-20 only (wrap native ETH to
 
 ## The referral code pays the builder
 
-Both snippets pass a `referralCode`. Every order carries the Ophis partner fee plus that code in its appData, attributing the swap volume your agent routes to you: you earn 8% of the net fee Ophis keeps on that volume, paid monthly in WETH (standard tier capped at $1M referred volume per month; an invitation-only Partner tier pays 12%, uncapped). Mint a code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate) (details in the [AI agent docs](https://docs.ophis.fi/ai-agents)).
+Both snippets pass a `referralCode`. Every order carries the Ophis partner fee plus that code in its appData, attributing the swap volume your agent routes to you: you earn 8% of the verified base fee Ophis keeps on that volume, paid monthly in WETH (standard tier capped at $1M referred volume per month; an invitation-only Partner tier pays 12%, uncapped). Mint a code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate) (details in the [AI agent docs](https://docs.ophis.fi/ai-agents)).
 
 ## Not writing TypeScript? Use the MCP server
 
@@ -145,7 +145,7 @@ Whichever framework your agent already runs on; the swap behavior is identical b
 
 ### What does this cost?
 
-The packages are free and open source. Their SDK builders select the fee by chain and pair: a 1 bp base on Optimism, Unichain, and Robinhood Chain, where the backend also applies capped improvement capture; or the hosted 5 bps partner rate, reduced to 1 bp for stable pairs, on CoW-hosted chains. CoW Protocol's fees apply upstream on hosted chains. Details are maintained at [docs.ophis.fi/fees](https://docs.ophis.fi/fees); with a referral code set, the applicable referral share is calculated from the net fee Ophis keeps.
+The packages are free and open source. Their SDK builders select the fee by chain and pair: a 1 bp base on Optimism, Unichain, and Robinhood Chain, where the backend also applies capped improvement capture; or the hosted 1 bp partner rate, reduced to 1 bp for stable pairs, on CoW-hosted chains. CoW Protocol's fees apply upstream on hosted chains. Details are maintained at [docs.ophis.fi/fees](https://docs.ophis.fi/fees); with a referral code set, the applicable referral share is calculated from the verified base fee Ophis keeps.
 
 ## Start here
 

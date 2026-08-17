@@ -9,6 +9,8 @@ import {
   ophisVolumeBpsForChainAndPair,
   ophisVolumeBpsForPair,
   OPHIS_FEE_CHAIN_IDS,
+  OPHIS_AGGREGATE_PARTNER_FEE_CAP_BPS,
+  OPHIS_MAX_PARTNER_REQUEST_BPS,
 } from '@ophis/sdk';
 
 /**
@@ -28,7 +30,7 @@ describe('@ophis/sdk partner fee defaults', () => {
 
   it('returns the CIP-75 flat volume fee on Ophis-operated chains', () => {
     for (const chainId of [10, 130, 4663]) {
-      const fee = ophisDefaultPartnerFee(chainId);
+      const fee = ophisDefaultPartnerFee(chainId) as { volumeBps: number; recipient: string };
       expect(fee?.volumeBps).toBe(OPHIS_SOVEREIGN_VOLUME_FEE_BPS);
       expect(fee?.recipient).toBe(OPHIS_PARTNER_FEE_RECIPIENT);
     }
@@ -38,13 +40,20 @@ describe('@ophis/sdk partner fee defaults', () => {
     // cow-sdk SupportedChainId members, incl. the Sepolia (11155111) testnet.
     for (const chainId of [1, 100, 8453, 42161, 137, 43114, 56, 59144, 9745, 57073, 11155111]) {
       const fee = ophisDefaultPartnerFee(chainId);
-      expect(fee?.volumeBps).toBe(5);
-      expect(fee?.recipient).toBe(OPHIS_PARTNER_FEE_RECIPIENT);
+      expect(fee).toEqual([
+        { volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+        { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+      ]);
     }
   });
 
   it('exposes the flat volume-fee constant matching the live config', () => {
-    expect(OPHIS_VOLUME_FEE_BPS).toBe(5);
+    expect(OPHIS_VOLUME_FEE_BPS).toBe(1);
+  });
+
+  it('reserves aggregate room for the full Ophis policy plus a registered partner fee', () => {
+    expect(OPHIS_AGGREGATE_PARTNER_FEE_CAP_BPS).toBe(190);
+    expect(OPHIS_MAX_PARTNER_REQUEST_BPS).toBe(90);
   });
 
   it('charges a reduced 1 bp on stablecoin-to-stablecoin pairs', () => {
@@ -56,7 +65,7 @@ describe('@ophis/sdk partner fee defaults', () => {
   it('selects fees with both chain economics and pair class', () => {
     expect(ophisVolumeBpsForChainAndPair(10, false)).toBe(1);
     expect(ophisVolumeBpsForChainAndPair(4663, false)).toBe(1);
-    expect(ophisVolumeBpsForChainAndPair(1, false)).toBe(5);
+    expect(ophisVolumeBpsForChainAndPair(1, false)).toBe(1);
     expect(ophisVolumeBpsForChainAndPair(1, true)).toBe(1);
   });
 
@@ -87,9 +96,13 @@ describe('@ophis/sdk partner fee defaults', () => {
       volumeBps: 1,
       recipient: OPHIS_PARTNER_FEE_RECIPIENT,
     });
-    expect(buildOphisAppDataPartnerFee(1)).toEqual({
-      volumeBps: 5,
-      recipient: OPHIS_PARTNER_FEE_RECIPIENT,
-    });
+    expect(buildOphisAppDataPartnerFee(1)).toEqual([
+      { volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+      { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+    ]);
+    expect(buildOphisAppDataPartnerFee(1, true)).toEqual([
+      { volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+      { priceImprovementBps: 5000, maxVolumeBps: 20, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+    ]);
   });
 });

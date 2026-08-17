@@ -30,6 +30,7 @@ import {
   validateOrder,
   type Address,
 } from './ophis.js'
+import { resolveStablePair } from './stablePair.js'
 
 /** Identity reported by both transports (stdio + Worker). */
 export const SERVER_INFO = { name: 'ophis', version: '0.1.0' } as const
@@ -97,6 +98,10 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
         chainId: z.number().int().describe('EVM chain id (use list_chains for supported chains).'),
         sellToken: z.string().describe('Sell token address (0x...).'),
         buyToken: z.string().describe('Buy token address (0x...).'),
+        isStablePair: z
+          .boolean()
+          .optional()
+          .describe('Optional assertion checked against the server-owned stablecoin registry; omit to auto-classify.'),
         kind: z
           .enum(['sell', 'buy'])
           .describe("'sell' = you specify the sell amount; 'buy' = you specify the buy amount."),
@@ -112,11 +117,13 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     },
     async (a) => {
       try {
+        const isStablePair = resolveStablePair(a.chainId, a.sellToken, a.buyToken, a.isStablePair)
         return ok(
           await getQuote({
             chainId: a.chainId,
             sellToken: a.sellToken as Address,
             buyToken: a.buyToken as Address,
+            isStablePair,
             kind: a.kind,
             amount: a.amount,
             from: a.from as Address,
@@ -136,12 +143,16 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
       // enforce slippage); it never moves funds. submit_order is the write path.
       annotations: { title: 'Build signable order', readOnlyHint: true, openWorldHint: true },
       description:
-        "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism and Unichain are non-canonical) and embeds the CIP-75 partner fee. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%); when omitted, the enforced backstop defaults to 100 bps (1%). ENFORCED: build_order fetches a live quote and REJECTS the call if the limit is worse than slippageBips vs that quote (or if a quote cannot be fetched; retry). Sign `order` as EIP-712 with `signing`, then call submit_order.",
+        "Build a bounded, ready-to-sign CoW order on Ophis. Returns { order, signing:{domain,types,primaryType}, fullAppData, appDataHash, partnerFee, next }. The receiver is ALWAYS PINNED to the owner (proceeds cannot leave the account); this public endpoint exposes no custom-receiver option. Uses the correct per-chain settlement contract (Optimism, Unichain, and Robinhood Chain are non-canonical) and applies the canonical Ophis fee policy. Apply slippage to the LIMIT side by kind: for kind 'sell' lower buyAmount (your minimum out); for kind 'buy' raise sellAmount (your maximum in). slippageBips is capped at 5000 (50%); when omitted, the enforced backstop defaults to 100 bps (1%). ENFORCED: build_order fetches a live quote and REJECTS the call if the limit is worse than slippageBips vs that quote (or if a quote cannot be fetched; retry). Sign `order` as EIP-712 with `signing`, then call submit_order.",
       inputSchema: {
         chainId: z.number().int().describe('EVM chain id (use a chainId from list_chains `tradeable`).'),
         owner: z.string().describe('The signer/owner address (receiver defaults to this).'),
         sellToken: z.string().describe('Sell token address (0x...).'),
         buyToken: z.string().describe('Buy token address (0x...).'),
+        isStablePair: z
+          .boolean()
+          .optional()
+          .describe('Optional assertion checked against the server-owned stablecoin registry; omit to auto-classify.'),
         sellAmount: z
           .string()
           .describe("In atoms. kind 'sell': the EXACT amount you sell. kind 'buy': the MAXIMUM you'll spend (slippage-adjusted UP from the quote)."),
@@ -216,6 +227,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     },
     async (a) => {
       try {
+        const isStablePair = resolveStablePair(a.chainId, a.sellToken, a.buyToken, a.isStablePair)
         const built = buildOrder(
           {
             chainId: a.chainId,
@@ -238,6 +250,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             // funnel can attribute settled volume to the MCP surface. Not a
             // caller-controlled field: every order this tool builds is 'mcp'.
             source: 'mcp',
+            isStablePair,
           },
           Math.floor(Date.now() / 1000),
         )
@@ -256,6 +269,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             kind: a.kind,
             amount: a.kind === 'sell' ? a.sellAmount : a.buyAmount,
             from: a.owner as Address,
+            isStablePair,
             // Bound slippage against a quote for the EXACT order being signed: pass the
             // order's ABSOLUTE validTo (computed once in buildOrder above), not a relative
             // window. A relative validFor would re-anchor to the orderbook's later request
@@ -276,7 +290,14 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
         // cap). The CIP-75 partner fee embedded in THIS order widens the bound: a
         // fee-chain order signs amounts net of that fee, so without the allowance a
         // correctly-built order would be false-rejected. (reviewer P1)
-        assertLimitWithinSlippage(a.kind, a.sellAmount, a.buyAmount, fair, a.slippageBips, built.partnerFee?.volumeBps ?? 0)
+        const feeEntries = built.partnerFee
+          ? (Array.isArray(built.partnerFee) ? built.partnerFee : [built.partnerFee])
+          : []
+        const partnerFeeMaxBps = feeEntries.reduce(
+          (sum, fee) => sum + ('volumeBps' in fee ? fee.volumeBps : fee.maxVolumeBps),
+          0,
+        )
+        assertLimitWithinSlippage(a.kind, a.sellAmount, a.buyAmount, fair, a.slippageBips, partnerFeeMaxBps)
         return ok(built)
       } catch (e) {
         return fail(e)
@@ -414,7 +435,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'List Ophis chains', readOnlyHint: true, openWorldHint: false },
       description:
-        "List Ophis chains, split into `tradeable` (orderbook host is live, only route get_quote/build_order to these) and `paused` (settlement deployed but no live orderbook yet, so these throw). Each tradeable chain includes its orderbook host and GPv2Settlement contract (Optimism and Unichain are non-canonical) and partner-fee config. No input.",
+        "List Ophis chains, split into `tradeable` (orderbook host is live, only route get_quote/build_order to these) and `paused` (settlement deployed but no live orderbook yet, so these throw). Each tradeable chain includes its orderbook host, GPv2Settlement contract (Optimism, Unichain, and Robinhood Chain are non-canonical), and canonical Ophis fee config. No input.",
       inputSchema: {},
     },
     async () => {

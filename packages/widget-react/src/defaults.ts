@@ -31,10 +31,11 @@ export const OPHIS_WIDGET_PARTNER_FEE: NonNullable<CowSwapWidgetParams['partnerF
 };
 
 /**
- * Merge Ophis defaults into caller-supplied params. Caller values win for every
- * field EXCEPT the fee recipient: we always pin `partnerFee.recipient` to the
- * Ophis Safe so an integrator cannot (accidentally or otherwise) redirect the
- * Ophis fee. They can still tune `partnerFee.bps`, theme, tokens, etc.
+ * Merge Ophis defaults into caller-supplied params. When the caller does not
+ * explicitly provide `partnerFee`, omit the widget param so swap.ophis.fi can
+ * apply its complete base + improvement policy. When the caller does provide
+ * one, preserve its bps and pin only the recipient; the iframe then treats the
+ * explicit volume override as authoritative.
  */
 /**
  * Treat a blank or whitespace-only string as "unset". Integrators routinely
@@ -59,10 +60,13 @@ export function withOphisDefaults(params: CowSwapWidgetParams): CowSwapWidgetPar
     // literal-before-spread shadowing TS rejects as TS2783).
     appCode: orDefault(params.appCode, OPHIS_WIDGET_APP_CODE),
     baseUrl: orDefault(params.baseUrl, OPHIS_WIDGET_BASE_URL),
-    // Always enforce the Ophis recipient; honour a caller bps override.
-    partnerFee: {
-      bps: callerFee?.bps ?? OPHIS_WIDGET_PARTNER_FEE.bps,
-      recipient: OPHIS_WIDGET_PARTNER_FEE.recipient,
-    },
+    ...(callerFee
+      ? {
+          partnerFee: {
+            bps: callerFee.bps,
+            recipient: OPHIS_WIDGET_PARTNER_FEE.recipient,
+          },
+        }
+      : { partnerFee: undefined }),
   };
 }

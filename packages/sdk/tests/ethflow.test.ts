@@ -17,7 +17,16 @@ const APP_DATA_HASH = ('0x' + '11'.repeat(32)) as `0x${string}`;
 // A real appData carries metadata.partnerFee to the Ophis recipient.
 const FULL_APP_DATA = JSON.stringify({
   appCode: 'ophis',
-  metadata: { partnerFee: { volumeBps: 10, recipient: OPHIS_PARTNER_FEE_RECIPIENT } },
+  metadata: { partnerFee: { volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT } },
+});
+const HOSTED_FULL_APP_DATA = JSON.stringify({
+  appCode: 'ophis',
+  metadata: {
+    partnerFee: [
+      { volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+      { priceImprovementBps: 8_000, maxVolumeBps: 99, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+    ],
+  },
 });
 const ZERO = '0x0000000000000000000000000000000000000000' as const;
 const NATIVE_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as const;
@@ -112,7 +121,9 @@ describe('buildOphisEthFlowOrder - happy path', () => {
   });
 
   it('resolves canonical chains too', () => {
-    expect(buildOphisEthFlowOrder(baseParams({ chainId: 8453 })).ethFlowContract).toBe(CANONICAL);
+    expect(
+      buildOphisEthFlowOrder(baseParams({ chainId: 8453, fullAppData: HOSTED_FULL_APP_DATA })).ethFlowContract,
+    ).toBe(CANONICAL);
   });
 
   it('routes to a named custom receiver only via the explicit opt-in', () => {
@@ -152,6 +163,9 @@ describe('buildOphisEthFlowOrder - fund-safety guards', () => {
     // zero volumeBps (no actual fee)
     const zeroFee = JSON.stringify({ metadata: { partnerFee: { volumeBps: 0, recipient: OPHIS_PARTNER_FEE_RECIPIENT } } });
     expect(() => buildOphisEthFlowOrder(baseParams({ fullAppData: zeroFee }))).toThrow(/partnerFee/);
+    expect(() =>
+      buildOphisEthFlowOrder(baseParams({ chainId: 1, fullAppData: FULL_APP_DATA })),
+    ).toThrow(/hosted eth-flow appData.*price-improvement policy/);
   });
 
   it('rejects empty or non-JSON fullAppData', () => {

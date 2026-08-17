@@ -129,9 +129,22 @@ def test_excess_precision(monkeypatch):
 
 
 def test_appdata_deterministic():
-    full, h = oc.build_app_data(referral_code="my-code")
+    full, h = oc.build_app_data(8453, referral_code="my-code")
     assert '"appCode":"ophis"' in full and h.startswith("0x") and len(h) == 66
-    assert oc.build_app_data(referral_code="my-code")[1] == h
+    assert oc.build_app_data(8453, referral_code="my-code")[1] == h
+    hosted_fee = json.loads(full)["metadata"]["partnerFee"]
+    assert hosted_fee[0]["volumeBps"] == 1
+    assert hosted_fee[1] == {
+        "maxVolumeBps": 99,
+        "priceImprovementBps": 8000,
+        "recipient": oc.OPHIS_PARTNER_FEE_RECIPIENT,
+    }
+    operated_full, _ = oc.build_app_data(4663)
+    assert json.loads(operated_full)["metadata"]["partnerFee"]["volumeBps"] == 1
+    stable_full, _ = oc.build_app_data(8453, is_stable_pair=True)
+    stable_fee = json.loads(stable_full)["metadata"]["partnerFee"]
+    assert stable_fee[1]["priceImprovementBps"] == 5000
+    assert stable_fee[1]["maxVolumeBps"] == 20
 
 
 def test_sovereign_chains_use_noncanonical_settlement():

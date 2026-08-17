@@ -41,8 +41,13 @@ CANONICAL_VAULT_RELAYER = "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110"
 # ── Ophis partner fee (partner-fee.ts). The fee rides in appData (partnerFee),
 # so the signed order's own feeAmount is 0. ───────────────────────────────────
 OPHIS_PARTNER_FEE_RECIPIENT = "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"  # Ophis Safe
-OPHIS_VOLUME_FEE_BPS = 5
+OPHIS_VOLUME_FEE_BPS = 1
 OPHIS_STABLE_VOLUME_FEE_BPS = 1
+OPHIS_OPERATED_CHAIN_IDS = frozenset({10, 130, 4663})
+OPHIS_PRICE_IMPROVEMENT_BPS = 8000
+OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS = 99
+OPHIS_STABLE_PRICE_IMPROVEMENT_BPS = 5000
+OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_BPS = 20
 APP_DATA_VERSION = "1.4.0"
 REBATE_INDEXER_URL = "https://rebates.ophis.fi"
 
@@ -106,16 +111,16 @@ def keccak256(data: bytes) -> bytes:
     return _keccak(data)
 
 
-def build_app_data(referral_code: str | None = None, is_stable_pair: bool = False):
+def build_app_data(chain_id: int, referral_code: str | None = None, is_stable_pair: bool = False):
     """Return (full_app_data_string, app_data_hash_0x). appCode MUST be 'ophis' or the
     rebate indexer silently drops the order. Self-consistent: hash == keccak256(full)."""
-    metadata = {
-        "partnerFee": {
-            "volumeBps": OPHIS_STABLE_VOLUME_FEE_BPS if is_stable_pair else OPHIS_VOLUME_FEE_BPS,
-            "recipient": OPHIS_PARTNER_FEE_RECIPIENT,
-        },
-        "hooks": {},
-    }
+    base_fee = {"volumeBps": 1, "recipient": OPHIS_PARTNER_FEE_RECIPIENT}
+    partner_fee = base_fee if int(chain_id) in OPHIS_OPERATED_CHAIN_IDS else [base_fee, {
+        "priceImprovementBps": OPHIS_STABLE_PRICE_IMPROVEMENT_BPS if is_stable_pair else OPHIS_PRICE_IMPROVEMENT_BPS,
+        "maxVolumeBps": OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_BPS if is_stable_pair else OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS,
+        "recipient": OPHIS_PARTNER_FEE_RECIPIENT,
+    }]
+    metadata = {"partnerFee": partner_fee, "hooks": {}}
     if referral_code:
         code = referral_code.strip().lower()
         if not re.match(r"^[a-z0-9_-]{3,64}$", code):

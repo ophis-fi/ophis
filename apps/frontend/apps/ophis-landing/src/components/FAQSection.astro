@@ -22,7 +22,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'What does Ophis charge?',
-    a: 'On Ophis-operated chains every trade pays a 1 bp base fee. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stablecoin pairs, capped at 20 bps. CoW-hosted chains retain the existing flat Ophis rates and CoW Protocol adds its own upstream fees. The public Intent API and MCP server are free.',
+    a: 'Every supported chain pays a 1 bp base fee. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps. CoW-hosted chains additionally apply CoW Protocol upstream fees. The public Intent API and MCP server are free.',
   },
   {
     q: 'Which chains does Ophis support?',
@@ -30,7 +30,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'How is Ophis different from CoW Swap?',
-    a: 'Ophis is a CoW Protocol fork focused on autonomous agents. It runs its own GPv2Settlement contract at a non-canonical address on its operated chains, exposes a public MCP server and Intent API, ships the @ophis/sdk agent-safety helpers, and uses solver-aligned price-improvement pricing there. Agents must resolve the per-chain settlement domain via the SDK or MCP before signing.',
+    a: 'Ophis is a CoW Protocol fork focused on autonomous agents. It runs its own GPv2Settlement contract at a non-canonical address on its operated chains, exposes a public MCP server and Intent API, ships the @ophis/sdk agent-safety helpers, and uses solver-aligned price-improvement pricing on every supported chain. Agents must resolve the per-chain settlement domain via the SDK or MCP before signing.',
   },
   {
     q: 'Is MEV protection guaranteed?',

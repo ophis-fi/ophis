@@ -1,7 +1,9 @@
 """Ophis (CoW Protocol) swap adapter for Wayfinder Paths.
 
 Ophis routes a same-chain ERC-20 swap as an OFF-CHAIN, EIP-712-signed CoW order:
-MEV-protected, gasless at settlement, surplus returned, no sandwiching. This adapter
+MEV-protected, gasless at settlement, no sandwiching. Ophis charges a 1 bp base plus
+capped reference-quote-improvement capture; CoW-hosted settlement additionally applies
+CoW Protocol's separate upstream policy. This adapter
 mirrors the `uniswap_adapter` shape but, because there is no router `execute()` call,
 it (1) approves the CoW VaultRelayer with Wayfinder's audited `ensure_allowance` and
 (2) signs the GPv2 order with Wayfinder's typed-data callback, then submits it to the
@@ -113,7 +115,7 @@ class OphisAdapter(BaseAdapter):
 
             # 1-2. Ophis partner-fee appData + a quote (quote carries the appData HASH).
             is_stable_pair = oc.is_stable_pair(self.chain_id, sell, buy)  # derived, not caller-controlled
-            full_app_data, app_hash = oc.build_app_data(referral_code=referral_code, is_stable_pair=is_stable_pair)
+            full_app_data, app_hash = oc.build_app_data(self.chain_id, referral_code=referral_code, is_stable_pair=is_stable_pair)
             quote = await asyncio.to_thread(oc.get_quote, self.chain_id, sell, buy, sell_atomic, self.owner, app_hash)
             if not isinstance(quote, dict):
                 return False, f"orderbook quote was not an object: {quote!r}"

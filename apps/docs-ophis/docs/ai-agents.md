@@ -433,10 +433,9 @@ const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.op
 
 ### 2. Build the partner-fee appData correctly
 
-The appData base is chain-aware: **1 bp on Ophis-operated chains**, or **5 bps
-on CoW-hosted volatile pairs and 1 bp on hosted stable pairs**. The keyless MCP
-`build_order` and high-level SDK builders select the operated-chain base from
-the chain ID. Use the CIP-75 **volume** shape, **not** the
+The appData base is **1 bp on every supported chain and pair**. The keyless MCP
+`build_order` and high-level SDK builders select it automatically. Use the
+CIP-75 **volume** shape, **not** the
 price-improvement shape `{ priceImprovementBps, maxVolumeBps, recipient }`:
 the two shapes use different denominators, so slotting a value into the wrong
 field is a silent magnitude error. Hash the appData with cow-sdk's deterministic
@@ -444,8 +443,8 @@ serializer, **never** `keccak256(JSON.stringify(doc))`. JSON key order isn't
 stable, so the hash won't match what solvers expect.
 
 For a manual builder, call
-`ophisVolumeBpsForChainAndPair(chainId, isStablePair)`. This prevents a
-sovereign volatile order from accidentally inheriting the hosted 5 bps rate.
+`ophisVolumeBpsForChainAndPair(chainId, isStablePair)`. This keeps manual
+builders aligned with the canonical policy.
 The drop-in adapters above derive stable-pair status from a verified stablecoin
 list.
 

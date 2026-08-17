@@ -73,7 +73,7 @@ export function PartnerEmptyReferees({ rate }: { rate: number }): ReactNode {
       <ol>
         <li>Share your code or link above.</li>
         <li>A net-new wallet trades on Ophis after using it, and is bound to you for life.</li>
-        <li>You earn {rate}% of the net fee Ophis keeps on their trades, paid monthly in WETH.</li>
+        <li>You earn {rate}% of the verified base fee Ophis keeps on their trades, paid monthly in WETH.</li>
       </ol>
       <p style={{ opacity: 0.75 }}>Your referees will appear here once a wallet binds to your code.</p>
     </>

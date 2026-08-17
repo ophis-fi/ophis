@@ -91,15 +91,15 @@ test('/stats returns public cumulative JSON for an API client', async () => {
     settlementModel: 'intent, uniform clearing price',
     solverCompetition: {
       sovereignChains: [
-        { chainId: 10, solvers: 4 },
-        { chainId: 130, solvers: 8 },
-        { chainId: 4663, solvers: 1 },
+        { chainId: 10, solvers: 11 },
+        { chainId: 130, solvers: 7 },
+        { chainId: 4663, solvers: 6 },
       ],
       hostedChains: 'CoW Protocol solver network',
     },
     improvementSplit: {
-      sovereign: '100% of price improvement returned to the trader',
-      hosted: 'CoW Protocol retains 50% of quote improvement upstream',
+      sovereign: 'Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)',
+      hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
     },
   });
   // Security invariant: the public JSON must never grow current-cycle 30d

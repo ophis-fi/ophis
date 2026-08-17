@@ -12,7 +12,7 @@ medium findings identified during review were fixed and regression-tested. The
 review does not authorize deployment, does not cover a new execution venue, and
 is not a human audit or an endorsement by Trail of Bits.
 
-The cumulative diff is broad: 281 files, 9,882 insertions, and 2,578 deletions
+The cumulative diff is broad: 291 files, 10,813 insertions, and 2,571 deletions
 at the time of review. Most of that surface predates or is mechanically related
 to the three features. This review therefore used a surgical strategy centered
 on trust boundaries, signing and submission sinks, parsing, retry behavior,
@@ -144,7 +144,7 @@ Evidence:
 ## Test Coverage
 
 - Repository test target: 27 of 27 projects passed.
-- Frontend Jest target: 158 suites, 1,246 tests, and 8 snapshots passed.
+- Frontend Jest target: 160 suites, 1,263 tests, and 8 snapshots passed.
 - Wallet library: 19 tests passed.
 - Token library: 75 tests passed.
 - Name library: 5 tests passed.
@@ -228,9 +228,9 @@ file.
 ### Review scope
 
 - Repository: `/Users/scep/ophis-priority-lab`
-- Base: `origin/main` at merge base `e86ffc37d162`
-- Local branch HEAD: `ea19e895`
-- Worktree: included
+- Base: `origin/main` at `dce09b13`
+- Reviewed branch: `codex/ophis-priority-lab`, including the resolved merge result
+- Worktree: included in the final verification run
 - Solidity differential: none
 
 ### Formal and specialist gate boundaries
@@ -245,4 +245,5 @@ file.
 
 ### Deployment status
 
-No branch was pushed, no release was created, and no deployment was performed.
+The review branch was pushed and opened as a draft pull request. No release was
+created and no deployment was performed.

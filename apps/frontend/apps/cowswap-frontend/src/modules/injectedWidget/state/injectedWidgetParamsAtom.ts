@@ -2,11 +2,7 @@ import { atom } from 'jotai'
 
 import { CowSwapWidgetAppParams } from '@cowprotocol/widget-lib'
 
-import {
-  OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
-  OPHIS_DEFAULT_PARTNER_FEE,
-  OPHIS_FLAT_VOLUME_FEE_ENABLED,
-} from 'ophis/partnerFeeDefault'
+import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_DEFAULT_PARTNER_FEE } from 'ophis/partnerFeeDefault'
 
 export type WidgetParamsErrors = Partial<{ [key in keyof CowSwapWidgetAppParams]: string[] | undefined }>
 
@@ -21,12 +17,9 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => {
 })
 
 /**
- * LEGACY Ophis price-improvement partner-fee shape, written directly into
- * appData.metadata.partnerFee when the flat-volume-fee flag is OFF (it is
- * ON in production since 2026-06-08, so this atom returns undefined there).
- * Bypasses the volumeFee pipeline (which only handles the `volumeBps`
- * shape) so the CIP-75 priceImprovementBps fallback works without
- * refactoring every fee-display component upstream.
+ * Ophis's hosted all-chain policy, written directly into
+ * appData.metadata.partnerFee. It bypasses the volumeFee pipeline because that
+ * pipeline can represent the 1 bp base but not the capped improvement entry.
  *
  * If a host widget overrides `partnerFee` in injectedWidgetParamsAtom,
  * we honour that override (volume-fee shape) and skip the Ophis on-chain
@@ -34,12 +27,8 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => {
  */
 export const injectedWidgetAppDataPartnerFeeAtom = atom((get) => {
   const widgetFee = get(injectedWidgetParamsAtom).params.partnerFee
-  // Suppress the direct price-improvement appData fee when EITHER (a) a host
-  // widget overrides partnerFee, OR (b) the flat-volume-fee flag is on. In case
-  // (b) the volumeFee pipeline (OPHIS_DEFAULT_PARTNER_FEE.bps) carries the
-  // on-chain fee via AppDataUpdater's `ophisAppDataPartnerFee ?? volumeFee`,
-  // so the displayed quote and the on-chain fee stay in lockstep (one source,
-  // no hidden or double charge).
-  if (widgetFee || OPHIS_FLAT_VOLUME_FEE_ENABLED) return undefined
+  // Presence, not recipient identity, makes this an explicit host override.
+  // The widget's volume-fee pipeline will serialize exactly that override.
+  if (widgetFee) return undefined
   return OPHIS_DEFAULT_APP_DATA_PARTNER_FEE
 })

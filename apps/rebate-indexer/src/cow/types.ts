@@ -1,5 +1,21 @@
 import { z } from 'zod';
 
+const ExecutedProtocolFee = z.object({
+  amount: z.string().regex(/^\d+$/),
+  token: z.string().regex(/^0x[0-9a-f]{40}$/i),
+  policy: z.union([
+    z.object({ volume: z.object({ factor: z.number().nonnegative() }) }),
+    z.object({ surplus: z.object({ factor: z.number().nonnegative(), maxVolumeFactor: z.number().nonnegative() }) }),
+    z.object({
+      priceImprovement: z.object({
+        factor: z.number().nonnegative(),
+        maxVolumeFactor: z.number().nonnegative(),
+        quote: z.unknown().optional(),
+      }),
+    }),
+  ]),
+});
+
 // CoW orderbook API: GET /api/v1/trades?app_data_hash=<hash>
 // Schema: https://docs.cow.fi/cow-protocol/reference/apis/orderbook (Trade)
 export const CowTrade = z.object({
@@ -10,8 +26,12 @@ export const CowTrade = z.object({
   sellToken: z.string().regex(/^0x[0-9a-f]{40}$/i),
   buyToken: z.string().regex(/^0x[0-9a-f]{40}$/i),
   sellAmount: z.string().regex(/^\d+$/),                              // uint256 as string
+  sellAmountBeforeFees: z.string().regex(/^\d+$/).optional(),
   buyAmount: z.string().regex(/^\d+$/),
   txHash: z.string().regex(/^0x[0-9a-f]{64}$/i),
+  // Applied policy amounts in application order. These have no recipient and
+  // therefore feed reporting only after positional correlation with appData.
+  executedProtocolFees: z.array(ExecutedProtocolFee).optional(),
   // The trade endpoint exposes appData only via the linked order — we fetch it lazily.
 });
 export type CowTrade = z.infer<typeof CowTrade>;
@@ -32,6 +52,7 @@ export const CowOrder = z.object({
   // attribute to the router).
   receiver: z.string().nullable().optional(),
   creationDate: z.string(),                                           // ISO 8601 (informational)
+  class: z.enum(['market', 'limit', 'liquidity']).optional(),          // operator fee applicability
   status: z.string().optional(),                                      // 'fulfilled' | 'open' | 'cancelled' | 'expired' | ...
   // Total filled across ALL fills (surplus-inclusive on the buy side). We
   // record these instead of a single trade-fill's amount so partial-fill / TWAP

@@ -8,12 +8,12 @@ sidebar_position: 4
 
 # Partner integration (SDK)
 
-:::important Sovereign-chain pricing
-On Ophis-operated Optimism, Unichain, and Robinhood Chain, the SDK writes the
-required 1 bp base fee and the backend applies the protocol policy: 80% of
-reference-quote improvement on volatile pairs (50 bps cap), or 50% on stable
-pairs (20 bps cap). The legacy 5 bps partner rate remains only on CoW-hosted
-chains. Integrator own-fees remain separate, and Ophis takes 0% of that markup.
+:::important All-chain pricing
+The SDK applies the same economics on every supported chain: a required 1 bp
+base plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or
+50% on stable pairs (20 bps cap). Operated-chain backends apply the improvement
+component directly; hosted orders encode it in CIP-75 appData. Integrator
+own-fees remain separate, and Ophis takes 0% of that markup.
 :::
 
 This guide is for teams that run their **own** swap or treasury tool (for
@@ -144,7 +144,7 @@ posted** and **which settlement contract signs**:
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Orderbook host                           | `optimism-mainnet.ophis.fi` / `unichain-mainnet.ophis.fi` / `robinhood-mainnet.ophis.fi` (Ophis, per chain via `@ophis/sdk`)                                                                            | `api.cow.fi/<chain>` (cow-sdk default)                                                           |
 | Settlement (EIP-712 `verifyingContract`) | Ophis, per chain via `@ophis/sdk`: Optimism `0x310784c7FCE12d578dA6f53460777bAc9718B859`, Unichain `0x108A678716e5E1776036eF044CAB7064226F714E`, Robinhood `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | CoW canonical `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (cow-sdk default)                     |
-| Partner fee                              | `buildOphisAppDataPartnerFee(chainId)`                                                                                                                                                                  | `buildOphisAppDataPartnerFee(chainId)`                                                           |
+| Partner fee                              | 1 bp from `buildOphisAppDataPartnerFee(chainId)`; improvement policy is applied by the backend | Base + pair-aware improvement entries from `buildOphisAppDataPartnerFee(chainId, isStablePair)` |
 | Fee enforcement                          | Enforced floor at settlement                                                                                                                                                                            | Carried in `appData`, validated by CoW                                                           |
 
 On CoW-hosted chains you change **nothing** about host or settlement (cow-sdk
@@ -183,7 +183,7 @@ import {
 } from '@ophis/sdk';
 
 // The chain-aware fragment uses the CIP-75 Volume shape: 1 bp on Ophis-operated
-// chains; on CoW-hosted chains it uses 5 bps for volatile pairs or 1 bp for
+// chains; on CoW-hosted chains it uses 1 bp for
 // same-chain stablecoin pairs.
 //   const partnerFee = buildOphisAppDataPartnerFee(10);
 const partnerFee = {
@@ -202,8 +202,9 @@ const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32, signed as o
 On the Ophis-operated chains (Optimism, Unichain, Robinhood Chain), the appData
 base is **1 bp** for every pair. The backend enforces that 1 bp anti-bypass floor
 and separately applies the capped price-improvement policy. Do not duplicate
-the improvement charge in appData or replace the chain-aware base with the
-hosted 5 bps rate.
+the improvement charge in appData. On hosted chains, use
+`buildOphisAppDataPartnerFee(chainId, isStablePair)` so the equivalent capped
+entry is included exactly once.
 
 ### 3. Sign with the Ophis EIP-712 domain
 
@@ -308,25 +309,27 @@ An SDK integration earns on three layers, and all three numbers are published:
 
 1. **Your users get the chain's published integration pricing.** On sovereign
    chains that is the 1 bp base plus capped improvement capture described above.
-   On CoW-hosted chains, the reduced 5 bps partner rate applies (1 bp on
-   same-chain stablecoin pairs), with CoW Protocol's own fees on top (see
+   The same policy applies on CoW-hosted chains, with CoW Protocol's own fees on top (see
    [Fees & rebates](./fees.md#the-all-in-cost-per-chain)).
-2. **You earn a share of the fee Ophis keeps** on every trade you route: 8%
-   on the self-serve tier, **12% on the partner tier** (uncapped referred
-   volume; ask us to upgrade your code). Paid monthly in WETH, on-chain.
-3. **You can charge your own fee on top** of an ERC-20 order: up to 99 bps on
-   operated chains or 95 bps on hosted volatile pairs under the default 100 bps
-   aggregate appData cap, and keep 100% of it before any hosted-chain CoW
+2. **You earn a share of Ophis's verified 1 bp base fee** on every trade you
+   route: 8% on the self-serve tier, **12% on the partner tier** (uncapped
+   referred volume; ask us to upgrade your code). Paid monthly in WETH,
+   on-chain. Improvement capture is excluded until receipts can be reconciled
+   to the Ophis Safe.
+3. **You can charge your own fee on top** of an ERC-20 order: up to 90 bps under
+   the registered-partner ceiling. The hosted aggregate cap is 190 bps, leaving
+   room for Ophis's 100 bps worst case and the full partner entry. You keep 100%
+   of it before any hosted-chain CoW
    service fee. Ophis takes no
    cut of your fee. See [Charge your own fee](#charge-your-own-fee) below.
 
 What layer 2 pays per **$1,000,000 of referred monthly volume** (non-stable,
 labeled estimates; exact value depends on chain mix):
 
-| Tier            | Share of net fee           | Roughly, per $1M/month |
+| Tier            | Share of verified base fee | Roughly, per $1M/month |
 | --------------- | -------------------------- | ---------------------- |
-| Self-serve (8%) | 8% of the fee Ophis keeps  | $30 to $40 in WETH     |
-| Partner (12%)   | 12% of the fee Ophis keeps | $45 to $60 in WETH     |
+| Self-serve (8%) | 8% of the base Ophis keeps | $6 hosted / $8 operated in WETH  |
+| Partner (12%)   | 12% of the base Ophis keeps | $9 hosted / $12 operated in WETH |
 
 Layer 2 alone is not a business; it is a kicker. The business case for an
 operator is **layer 3**: your own fee entry, charged alongside the chain's
@@ -346,21 +349,21 @@ and later), so your integration can stack its own fee entry, paid to your own
 address, next to the Ophis base entry:
 
 ```ts
+const ophisPartnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair);
 const partnerFee = [
-  // Ophis base: chain-aware (1 bp sovereign; hosted 5 bps volatile / 1 bp stable)
-  { recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: ophisVolumeBpsForChainAndPair(chainId, isStablePair) },
+  // Hosted: Ophis base + improvement entry. Operated: base only (backend adds improvement).
+  ...(Array.isArray(ophisPartnerFee) ? ophisPartnerFee : [ophisPartnerFee]),
   // Your fee, your address, your rate (charged on top of the base)
   { recipient: YOUR_FEE_ADDRESS, volumeBps: 80 },
 ];
 ```
 
 Ophis takes **0% of your fee**. The Ophis charge remains separate: 1 bp plus
-capped improvement capture on operated chains, or the hosted flat rate and
-upstream CoW fees on CoW-hosted chains.
-Each entry is capped at 100 bps by the appData schema, and the aggregate across
-entries is capped at settlement (100 bps default), leaving up to **99 bps**
-beside a 1 bp operated-chain base, **95 bps** beside a 5 bps hosted base, or
-**99 bps** beside a 1 bp hosted stable-pair base.
+capped improvement capture on every chain, plus upstream CoW fees on
+CoW-hosted chains.
+The Ophis entries can realize at most 100 bps on a volatile pair (1 + 99) or 21
+bps on a stable pair (1 + 20). The aggregate hosted settlement ceiling is 190
+bps, while a registered integrator entry remains capped at **90 bps**.
 
 The array applies to **ERC-20 orders**. A **native-ETH** sell built with the
 `buildOphisEthFlowOrder` helper carries the single Ophis base `partnerFee`
@@ -380,8 +383,8 @@ How your fee reaches you depends on the chain:
   with a **0.001 WETH minimum** (per CoW's terms a weekly amount below it can be voided, not carried forward), for
   **market-order trades** only
   ([CoW partner-fee docs](https://docs.cow.fi/governance/fees/partner-fee)). The
-  aggregate of all entries is capped at 100 bps, so your entry plus the 5 bps base
-  can total up to 100 bps. CoW's 25% is a CIP-75 default and is negotiable with
+  aggregate of all entries is capped at 190 bps, so the maximum Ophis policy and
+  a 90 bps registered integrator entry can coexist. CoW's 25% is a CIP-75 default and is negotiable with
   CoW DAO. We confirm the end-to-end payout to your recipient on the first settled
   trade.
 - **Optimism, Unichain, and Robinhood Chain (Ophis-operated):** a stacked own-fee to a
@@ -406,8 +409,9 @@ How your fee reaches you depends on the chain:
 Layer 2 is separate from the fee your users pay. The fee itself is set in
 `appData` at settlement (the chain-aware base, plus your own entry if you add one).
 The **referral share** of 8% or 12% is a distinct earning: it is a portion of
-the net fee Ophis keeps, paid back to you monthly in WETH. Tag each order with
-your referral code and Ophis pays it out each cycle.
+the verified 1 bp base fee Ophis keeps, paid back to you monthly in WETH. Tag
+each order with your referral code and Ophis pays it out each cycle. Improvement
+capture remains excluded until receipts can be reconciled to the Ophis Safe.
 
 ```ts
 import {

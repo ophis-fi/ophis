@@ -1,6 +1,6 @@
 import { sql } from '../db/index.js';
 import type { AffiliateReferrer } from './computeAffiliate.js';
-import { GROSS_FEE_BPS, type AffiliateKind } from './rates.js';
+import { type AffiliateKind } from './rates.js';
 
 // Reads the referral graph + trades and builds the per-referrer, per-chain referred
 // volume for a cycle, ready for computeAffiliate().
@@ -15,8 +15,7 @@ import { GROSS_FEE_BPS, type AffiliateKind } from './rates.js';
 // Accrual counts a referred wallet's trades only AFTER its bound_at (so a referrer
 // never earns on pre-binding history) and only within the cycle window. Volume is
 // bucketed by (chain, effective gross bps) so computeAffiliate takes the tier share
-// of the ACTUAL kept fee — the 5 bps SDK channel accrues half of the 10 bps retail
-// channel — and applies the regular cap LEAST-VALUABLE-FIRST even within a chain
+// of the ACTUAL kept fee and applies the regular cap LEAST-VALUABLE-FIRST even within a chain
 // that carries mixed-rate trades. Today every indexed trade is on a hosted chain
 // (Optimism is not indexed); the bucketing is OP-ready for when OP indexing ships.
 
@@ -60,8 +59,9 @@ export async function buildAffiliateReferrers(
   }
 
   // Grouped by (referrer, chain, EFFECTIVE gross bps) — splitting volume by its
-  // per-trade fee rate (NULL bps -> the legacy retail rate, so pre-split trades are
-  // unchanged) lets computeAffiliate apply the regular cap LEAST-VALUABLE-FIRST even
+  // per-trade fee rate. NULL fees use the policy marker derived from the authoritative
+  // order creation time; unenriched decoder-only rows are held from accrual. This lets
+  // computeAffiliate apply the regular cap LEAST-VALUABLE-FIRST even
   // when one chain carries mixed-rate (5/10/1 bps) trades.
   const rows = await sql<
     { referrer_hex: string; chain_id: number; gross_bps: number; volume_usd: string }[]
@@ -69,7 +69,7 @@ export async function buildAffiliateReferrers(
     SELECT
       encode(r.referrer_wallet, 'hex')                AS referrer_hex,
       t.chain_id                                      AS chain_id,
-      COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})::int AS gross_bps,
+      COALESCE(t.volume_fee_bps, t.undecoded_fee_fallback_bps)::int AS gross_bps,
       SUM(t.value_usd)::text                          AS volume_usd
     FROM referrals r
     JOIN trades t ON t.wallet = r.referred_wallet
@@ -77,6 +77,7 @@ export async function buildAffiliateReferrers(
       AND t.block_timestamp <  ${monthEnd.toISOString()}
       AND t.block_timestamp >= r.bound_at
       AND t.value_usd IS NOT NULL
+      AND (t.volume_fee_bps IS NOT NULL OR t.undecoded_fee_fallback_bps IS NOT NULL)
       -- Production chains only: Sepolia is indexed for dev visibility but must
       -- never accrue a real WETH payout (audit 2026-07-09).
       AND t.chain_id <> 11155111
@@ -112,11 +113,12 @@ export async function buildAffiliateReferrers(
   //
   // FEE GATE (appData arm only): require volume_fee_bps > 0 — a CONFIRMED Ophis Volume
   // fee. appdata_ref_code is attacker-controllable, so this is the forge surface; the
-  // bind arm above is signature-gated and keeps its NULL->retail COALESCE for legacy
+  // bind arm above is signature-gated and keeps its cutover-gated NULL fallback
   // pre-per-trade-tracking rows. Excluding NULL here (vs the bind arm) closes the
   // surplus/PI-NULL -> retail-COALESCE forge at the money path, as a second line behind
-  // the fetcher's attribution gate. Ophis emitters never emit surplus/PI, so a NULL on
-  // an appData-attributed trade is forge-or-unconfirmed; a legit legacy NULL row is
+  // the fetcher's attribution gate. Current hosted emitters include a 1 bp Volume
+  // entry alongside PI, so they remain positive here; a PI-only NULL row is
+  // forge-or-unconfirmed until a realized-fee source can price it. A legit legacy NULL row is
   // converged to a positive rate by the self-healing backfill and then credited. The
   // dashboard's appData arm (api.ts) mirrors this exact > 0 gate so display == payout.
   const appdataRows = await sql<
@@ -144,7 +146,7 @@ export async function buildAffiliateReferrers(
   // cover disjoint trade sets, so adding per (referrer, chain, bps) is correct (a
   // referrer can earn bind volume AND appData volume on the same chain+rate — both
   // count). Keeping the rate per bucket is what lets computeAffiliate take the tier
-  // share of the ACTUAL kept fee (5 bps SDK accrues half of 10 bps retail) AND apply
+  // share of the ACTUAL kept fee AND apply
   // the regular cap least-valuable-first within a mixed-rate chain.
   const byReferrer = new Map<
     `0x${string}`,

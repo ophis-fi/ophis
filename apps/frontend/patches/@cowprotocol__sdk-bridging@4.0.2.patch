@@ -1,0 +1,42 @@
+diff --git a/dist/index.js b/dist/index.js
+index 9fcba626054ad9f635643504d18de1afeddf2401..0e97bed1f842696848fd2678f9ec94bc59c9f5b8 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1598,12 +1598,12 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+   [import_sdk_config4.SupportedChainId.POLYGON]: void 0,
+   [import_sdk_config4.SupportedChainId.AVALANCHE]: void 0,
+   [import_sdk_config4.SupportedChainId.BNB]: void 0,
+-  // TODO: confirm
+-  [import_sdk_config4.SupportedChainId.LINEA]: void 0,
++  // Ophis-deployed AcrossMathHelper (CREATE2; contracts/script/DeployAcrossMathHelper.s.sol)
++  [import_sdk_config4.SupportedChainId.LINEA]: "0xEdE97D044d4C8aAA682968bee10284521B9f311a",
+   // TODO: confirm
+   [import_sdk_config4.SupportedChainId.PLASMA]: void 0,
+-  // TODO: confirm
+-  [import_sdk_config4.SupportedChainId.INK]: void 0,
++  // Ophis-deployed AcrossMathHelper (CREATE2; contracts/script/DeployAcrossMathHelper.s.sol)
++  [import_sdk_config4.SupportedChainId.INK]: "0xEdE97D044d4C8aAA682968bee10284521B9f311a",
+   // TODO: confirm
+   [import_sdk_config4.AdditionalTargetChainId.OPTIMISM]: void 0,
+   [import_sdk_config4.AdditionalTargetChainId.BITCOIN]: void 0,
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..3adfd9a23dd461967e4d9dc583b04403a65f23f4 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -1541,12 +1541,12 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+   [SupportedChainId2.POLYGON]: void 0,
+   [SupportedChainId2.AVALANCHE]: void 0,
+   [SupportedChainId2.BNB]: void 0,
+-  // TODO: confirm
+-  [SupportedChainId2.LINEA]: void 0,
++  // Ophis-deployed AcrossMathHelper (CREATE2; contracts/script/DeployAcrossMathHelper.s.sol)
++  [SupportedChainId2.LINEA]: "0xEdE97D044d4C8aAA682968bee10284521B9f311a",
+   // TODO: confirm
+   [SupportedChainId2.PLASMA]: void 0,
+-  // TODO: confirm
+-  [SupportedChainId2.INK]: void 0,
++  // Ophis-deployed AcrossMathHelper (CREATE2; contracts/script/DeployAcrossMathHelper.s.sol)
++  [SupportedChainId2.INK]: "0xEdE97D044d4C8aAA682968bee10284521B9f311a",
+   // TODO: confirm
+   [AdditionalTargetChainId.OPTIMISM]: void 0,
+   [AdditionalTargetChainId.BITCOIN]: void 0,

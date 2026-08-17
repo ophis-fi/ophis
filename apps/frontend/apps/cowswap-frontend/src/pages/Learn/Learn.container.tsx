@@ -85,7 +85,7 @@ export function LearnPage(): ReactNode {
       <Section
         id="trading-fees"
         title="Trading, routing, and fees"
-        intro="Mechanics of how Ophis charges (a flat 0.10% fee on trade volume, 0.01% on same-chain stablecoin pairs) and how routing decisions get made."
+        intro="Mechanics of how Ophis charges a flat 0.01% (1 bp) fee on trade volume and how routing decisions get made."
       >
         <FeatureGrid minCardWidth="260px">
           <FeatureCard title="Trade form">

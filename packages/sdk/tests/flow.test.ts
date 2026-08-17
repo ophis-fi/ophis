@@ -31,14 +31,20 @@ describe('buildOphisOrderMetadata', () => {
     expect(out.appCode).toBe('ophis');
   });
 
-  it('builds the partner fee to the Ophis recipient at 5 bps by default', () => {
+  it('builds the partner fee to the Ophis recipient at 1 bp by default', () => {
     const { metadata } = buildOphisOrderMetadata({ chainId: 1, referralCode: 'yourcode' });
-    expect(metadata.partnerFee).toEqual({ recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 5 });
+    expect(metadata.partnerFee).toEqual([
+      { recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 1 },
+      { recipient: OPHIS_PARTNER_FEE_RECIPIENT, priceImprovementBps: 8000, maxVolumeBps: 99 },
+    ]);
   });
 
   it('uses the reduced 1 bp rate for a stable pair', () => {
     const { metadata } = buildOphisOrderMetadata({ chainId: 1, referralCode: 'yourcode', isStablePair: true });
-    expect(metadata.partnerFee.volumeBps).toBe(1);
+    expect(metadata.partnerFee).toEqual([
+      { recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 1 },
+      { recipient: OPHIS_PARTNER_FEE_RECIPIENT, priceImprovementBps: 5000, maxVolumeBps: 20 },
+    ]);
   });
 
   it.each([10, 130, 4663])('uses the 1 bp sovereign base on chain %i', (chainId) => {
@@ -56,7 +62,7 @@ describe('buildOphisOrderMetadata', () => {
     // killer): omitting it keeps the partner fee and omits ophisReferrer.
     const { appCode, metadata } = buildOphisOrderMetadata({ chainId: 1 });
     expect(appCode).toBe('ophis');
-    expect(metadata.partnerFee).toEqual({ recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 5 });
+    expect(metadata.partnerFee).toHaveLength(2);
     expect(metadata.ophisReferrer).toBeUndefined();
   });
 

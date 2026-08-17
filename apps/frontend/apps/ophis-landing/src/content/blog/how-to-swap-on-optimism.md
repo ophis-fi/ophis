@@ -42,13 +42,13 @@ An intent flips each of those properties.
 
 - **A hard limit price, signed.** The EIP-712 order states the minimum you will receive. There is no tolerance band to be filled to the bottom of; execution below your limit cannot settle at all.
 - **[MEV protection](/blog/mev-protection-batch-auctions/) by construction.** Order flow stays off chain until settlement, orders settle in batch auctions, and every trade in a batch clears at a uniform clearing price. There is no pending swap in a public mempool to sandwich and no in-batch ordering to exploit. The protection is structural, not best-effort.
-- **Capped, published improvement sharing.** Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps. The trader receives the remainder and everything above the cap.
+- **Capped, published improvement sharing.** Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. The trader receives the remainder and everything above the cap.
 
 The [comparison page](https://docs.ophis.fi/comparison) goes deeper on the trade-offs, and [Ophis vs CoW Swap](/blog/ophis-vs-cow-swap/) covers what the fork changes.
 
 ## Fees and the rebate ladder
 
-Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps.
+Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps.
 
 Volume then earns part of that back. Tiers follow your rolling 30-day volume:
 
@@ -68,7 +68,7 @@ Optimism flow does not have to come from a human clicking a UI. Three integratio
 
 - **MCP server.** A hosted, keyless endpoint at `https://mcp.ophis.fi/mcp` exposes fourteen tools, from `parse_intent` and `get_quote` through `build_order`, `validate_order`, and `submit_order`. `list_chains` resolves the Optimism orderbook and settlement domain, `build_order` pins the receiver to the owner, and the server never holds keys or signs anything. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the full safety model.
 - **SDK.** `@ophis/sdk` (0.2.3 on npm) resolves the orderbook URL and the EIP-712 signing domain per chain. That is exactly the part integrations get wrong when they hardcode canonical endpoints on a sovereign chain. Details in the [AI agent docs](https://docs.ophis.fi/ai-agents).
-- **Affiliate rebate.** Anyone can mint a referral code and earn 8% of the net fee Ophis keeps on every trade their referred wallets route, paid monthly in WETH. The regular tier is capped at $1M of referred volume per month; an invitation-only Partner tier pays 12%, uncapped. Mechanics in the [affiliate docs](https://docs.ophis.fi/affiliate).
+- **Affiliate rebate.** Anyone can mint a referral code and earn 8% of the verified base fee Ophis keeps on every trade their referred wallets route, paid monthly in WETH. The regular tier is capped at $1M of referred volume per month; an invitation-only Partner tier pays 12%, uncapped. Mechanics in the [affiliate docs](https://docs.ophis.fi/affiliate).
 
 For apps that want the interface without the plumbing, `@ophis/widget-react` embeds the swap form directly; see the [widget docs](https://docs.ophis.fi/widget).
 
@@ -88,6 +88,6 @@ Your tier follows your rolling 30-day volume, from 10% back at $20,000 up to 50%
 
 ### Can I integrate Ophis into my app?
 
-Yes, at whichever depth fits. `@ophis/widget-react` is a drop-in swap UI, `@ophis/sdk` handles per-chain orderbook and signing-domain resolution for programmatic orders, and agents can point at the hosted MCP server with no keys involved. To earn on that flow, mint a referral code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate): trades from your referred wallets earn you 8% of the net fee Ophis keeps, paid monthly in WETH.
+Yes, at whichever depth fits. `@ophis/widget-react` is a drop-in swap UI, `@ophis/sdk` handles per-chain orderbook and signing-domain resolution for programmatic orders, and agents can point at the hosted MCP server with no keys involved. To earn on that flow, mint a referral code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate): trades from your referred wallets earn you 8% of the verified base fee Ophis keeps, paid monthly in WETH.
 
 One signature, a solver auction, batch settlement, and a fee ladder that pays volume back. If you are starting from zero, the [getting-started guide](https://docs.ophis.fi/getting-started) walks through a first swap end to end. When you are ready, open [swap.ophis.fi/#/10/swap](https://swap.ophis.fi/#/10/swap) with Optimism pre-selected and place your first order.

@@ -118,16 +118,16 @@ describe('computeDefiLlamaDay', () => {
     await sql`
       INSERT INTO defillama_fills (
         chain_id, block_number, log_index, trade_uid, settlement_timestamp,
-        sell_token, sell_amount, volume_fee_bps, fee_verified, value_usd, priced_at)
+        sell_token, sell_amount, volume_fee_bps, assessed_fee_bps, fee_verified, value_usd, priced_at)
       VALUES
         (1, 2, ${fillLogIndex++}, decode(${zeroUid}, 'hex'), ${RECENT},
-         decode(${W('5e11')}, 'hex'), 1, 0, true, 1000, ${RECENT}),
+         decode(${W('5e11')}, 'hex'), 1, 0, NULL, true, 1000, ${RECENT}),
         (10, 3, ${fillLogIndex++}, decode(${sovereignUid}, 'hex'), ${RECENT},
-         decode(${W('5e11')}, 'hex'), 1, 5, true, 2000, ${RECENT})
+         decode(${W('5e11')}, 'hex'), 1, 5, 7.5, true, 2000, ${RECENT})
     `;
     const rows = await computeDefiLlamaDay(sql, RECENT.slice(0, 10), [1, 10], [10, 130, 4663], 7500);
     const sovereign = rows.find((row) => row.chainId === 10);
-    expect(sovereign).toMatchObject({ volumeUsd: 2000, feesUsd: 1, revenueUsd: 1, supplySideRevenueUsd: 0 });
+    expect(sovereign).toMatchObject({ volumeUsd: 2000, feesUsd: 1.5, revenueUsd: 1.5, supplySideRevenueUsd: 0 });
 
     const eth = rows.find((row) => row.chainId === 1)!;
     // The explicit 0-bps row adds volume but no fee; unknown-fee rows also add no assumed fee.

@@ -10,7 +10,7 @@
   },
   "comment": "Standalone service, intentionally NOT a pnpm-workspace member (so the monorepo install and CI do not build it). It installs and runs on its own on the host VM. Uses the published @ophis/sdk, not the workspace one.",
   "dependencies": {
-    "@ophis/sdk": "^0.2.3",
+    "@ophis/sdk": "^0.4.0",
     "@virtuals-protocol/acp-node": "0.3.0-beta.40",
     "ethers": "^6.13.0"
   },

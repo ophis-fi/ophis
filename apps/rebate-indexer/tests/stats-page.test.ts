@@ -61,14 +61,16 @@ describe('renderStatsPage', () => {
     expect(html).toContain('Hard signed limit price');
     expect(html).toContain('Gasless execution');
     expect(html).toContain('Solver competition on every order');
-    expect(html).toContain('100% of price improvement is returned to the trader');
+    expect(html).toContain('Optimism: 11, Unichain: 7, Robinhood Chain: 6');
+    expect(html).not.toContain('On Unichain, 8 aggregator solvers');
+    expect(html).toContain('The Ophis fee on every supported chain is a 0.01% (1 bp) base');
   });
 
-  it('states the exact fee and improvement split for sovereign and hosted chains', () => {
+  it('states the exact all-chain fee and improvement split', () => {
     const html = renderStatsPage(sample);
-    expect(html).toContain('the Ophis fee is all-in (0.10% on the swap app, 0.05% for SDK and MCP partners; 0.01% on same-chain stable pairs)');
-    expect(html).toContain('0.02% volume fee (0.003% on correlated pairs)');
-    expect(html).toContain('retains 50% of quote improvement upstream, capped at 0.98% of volume');
+    expect(html).toContain('80% of reference-quote improvement on volatile pairs (99 bps cap)');
+    expect(html).toContain('50% on stable pairs (20 bps cap)');
+    expect(html).toContain('CoW-hosted chains also apply CoW Protocol fees upstream');
   });
 
   it('gives the lifetime totals their early-stage, on-chain-verifiable context line', () => {
@@ -97,9 +99,9 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
     // infra/optimism-mainnet/configs/driver.toml.tmpl and
     // infra/unichain-mainnet/configs/driver.toml.tmpl.
     expect(EXECUTION_FACTS.solverCompetition.sovereignChains).toEqual([
-      { chainId: 10, solvers: 4 },
-      { chainId: 130, solvers: 8 },
-      { chainId: 4663, solvers: 1 },
+      { chainId: 10, solvers: 11 },
+      { chainId: 130, solvers: 7 },
+      { chainId: 4663, solvers: 6 },
     ]);
   });
 
@@ -107,8 +109,8 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
     expect(EXECUTION_FACTS.mevProtection).toBe('batch-auction');
     expect(EXECUTION_FACTS.settlementModel).toBe('intent, uniform clearing price');
     expect(EXECUTION_FACTS.solverCompetition.hostedChains).toBe('CoW Protocol solver network');
-    expect(EXECUTION_FACTS.improvementSplit.sovereign).toBe('100% of price improvement returned to the trader');
-    expect(EXECUTION_FACTS.improvementSplit.hosted).toBe('CoW Protocol retains 50% of quote improvement upstream');
+    expect(EXECUTION_FACTS.improvementSplit.sovereign).toBe('Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)');
+    expect(EXECUTION_FACTS.improvementSplit.hosted).toBe('The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream');
   });
 });
 

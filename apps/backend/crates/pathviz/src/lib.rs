@@ -2,7 +2,7 @@
 //!
 //! Renders a Sankey-style SVG of how an order (or a whole settled batch)
 //! flowed through the solver competition and on-chain venues, plus the
-//! surplus callout ("surplus returned vs your signed minimum").
+//! improvement callout ("execution above your signed minimum").
 //!
 //! Design constraints:
 //! - Pure: no I/O, no async, no clock. Callers assemble a

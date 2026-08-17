@@ -30,12 +30,17 @@
 
 import { assertValidChainId, assertAddressLike, assertBytes32, isZeroAddress, addressesEqual } from './guards.js';
 import { ophisOrderReceiver, type ReceiverOptions } from './order.js';
-import { OPHIS_PARTNER_FEE_RECIPIENT } from './partner-fee.js';
+import {
+  OPHIS_PARTNER_FEE_RECIPIENT,
+  OPHIS_PRICE_IMPROVEMENT_BPS,
+  OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS,
+  OPHIS_VOLUME_FEE_BPS,
+} from './partner-fee.js';
 
 /**
- * Ophis-deployed eth-flow contract on the self-hosted Optimism chain. This is
- * NOT the canonical CoW address: it is wired to the Ophis OP settlement, so a
- * native-ETH sell on Optimism MUST go to this address.
+ * Ophis-deployed eth-flow contracts on operated chains. These are NOT the
+ * canonical CoW addresses: each is wired to its Ophis settlement, so a native-
+ * currency sell on an operated chain MUST use the matching address below.
  *   - 10 Optimism: deployed 2026-06-07, indexed by the Ophis autopilot. VERIFIED LIVE.
  * Chains without a live orderbook are absent: native-ETH support must imply a
  * live orderbook.
@@ -67,6 +72,7 @@ const NATIVE_TOKEN_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as co
 const CANONICAL_ETHFLOW_CHAIN_IDS = [
   1, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
 ] as const;
+const CANONICAL_ETHFLOW_CHAIN_ID_SET: ReadonlySet<number> = new Set(CANONICAL_ETHFLOW_CHAIN_IDS);
 
 /**
  * Build the per-chain map on a NULL-PROTOTYPE object so a bracket read for an
@@ -329,7 +335,13 @@ export function buildOphisEthFlowOrder(params: OphisEthFlowParams): OphisEthFlow
   // The appData MUST actually carry the Ophis partner fee, or the native trade
   // settles with NO Ophis fee (silent revenue loss). Dependency-free, so parse the
   // JSON we were handed and require a positive fee to the Ophis recipient.
-  let parsedAppData: { metadata?: { partnerFee?: { recipient?: unknown; volumeBps?: unknown } } };
+  type ParsedFee = {
+    recipient?: unknown;
+    volumeBps?: unknown;
+    priceImprovementBps?: unknown;
+    maxVolumeBps?: unknown;
+  };
+  let parsedAppData: { metadata?: { partnerFee?: ParsedFee | ParsedFee[] } };
   try {
     parsedAppData = JSON.parse(fullAppData) as typeof parsedAppData;
   } catch {
@@ -338,16 +350,35 @@ export function buildOphisEthFlowOrder(params: OphisEthFlowParams): OphisEthFlow
     );
   }
   const partnerFee = parsedAppData?.metadata?.partnerFee;
-  if (
-    typeof partnerFee?.recipient !== 'string' ||
-    !addressesEqual(partnerFee.recipient, OPHIS_PARTNER_FEE_RECIPIENT) ||
-    typeof partnerFee.volumeBps !== 'number' ||
-    partnerFee.volumeBps <= 0
-  ) {
+  const feeEntries = partnerFee ? (Array.isArray(partnerFee) ? partnerFee : [partnerFee]) : [];
+  const volumeFee = feeEntries.find(
+    (fee) =>
+      typeof fee.recipient === 'string' &&
+      addressesEqual(fee.recipient, OPHIS_PARTNER_FEE_RECIPIENT) &&
+      typeof fee.volumeBps === 'number' &&
+      fee.volumeBps === OPHIS_VOLUME_FEE_BPS,
+  );
+  if (!volumeFee) {
     throw new Error(
       `Ophis: fullAppData.metadata.partnerFee must charge a positive volumeBps to the Ophis recipient ` +
         `${OPHIS_PARTNER_FEE_RECIPIENT}. Build the appData with buildOphisOrderMetadata so the native trade earns the fee.`,
     );
+  }
+  if (CANONICAL_ETHFLOW_CHAIN_ID_SET.has(chainId)) {
+    const improvementFee = feeEntries.find(
+      (fee) =>
+        typeof fee.recipient === 'string' &&
+        addressesEqual(fee.recipient, OPHIS_PARTNER_FEE_RECIPIENT) &&
+        fee.priceImprovementBps === OPHIS_PRICE_IMPROVEMENT_BPS &&
+        fee.maxVolumeBps === OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS,
+    );
+    if (!improvementFee) {
+      throw new Error(
+        `Ophis: hosted eth-flow appData must include the canonical volatile price-improvement policy ` +
+          `(${OPHIS_PRICE_IMPROVEMENT_BPS} bps share, ${OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS} bps volume cap). ` +
+          `Build it with buildOphisOrderMetadata.`,
+      );
+    }
   }
 
   // Optional fail-closed binding: when the integrator passes a hasher, prove the

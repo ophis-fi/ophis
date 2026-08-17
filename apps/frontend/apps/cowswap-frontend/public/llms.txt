@@ -1,14 +1,14 @@
 # Ophis
 
-> Ophis is an intent-based DEX aggregator across 13 EVM production deployments, including Robinhood Chain. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it through batch auctions, and you sign the resulting order with your own wallet. Ophis-operated Optimism, Unichain, and Robinhood Chain charge a 1 bp base plus capped reference-quote-improvement capture: 80% on volatile pairs, capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted swaps use a 10 bps retail base, reduced to 1 bp when the swap app classifies a same-chain stablecoin pair, plus CoW Protocol's upstream fees (see https://docs.ophis.fi/fees). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
+> Ophis is an intent-based DEX aggregator across 13 EVM production deployments, including Robinhood Chain. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it through batch auctions, and you sign the resulting order with your own wallet. Every supported chain charges a 1 bp Ophis base fee plus capped reference-quote-improvement capture: 80% on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted swaps also pay CoW Protocol's separate upstream fees (see https://docs.ophis.fi/fees). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
 
 ## Core principles
 
 - **Intent-based**, not router-based: users sign their *desired outcome*, solvers compete on *how* to deliver it.
 - **MEV-aware batch execution**: signed intents are auctioned off-chain and settle on-chain; uniform clearing and solver competition reduce common sandwich-attack exposure without promising that every execution is immune to every form of MEV.
 - **Self-custodial**: Ophis never holds funds. Every order is signed by the user's wallet (EIP-712 or ERC-1271).
-- **Published operated-chain pricing**: Optimism, Unichain, and Robinhood Chain use a 1 bp base plus 80% of reference-quote improvement on volatile pairs (50 bps cap) or 50% on stable pairs (20 bps cap). The trader keeps the remainder and all improvement above the cap.
-- **Hosted-chain pricing**: the swap app uses a 10 bps retail base, reduced to 1 bp for a classified same-chain stablecoin pair, plus CoW Protocol's upstream volume and price-improvement fees. SDK/MCP integrations can use different published partner paths; see the current fee documentation rather than inferring their rate from the retail UI.
+- **Published all-chain pricing**: every supported chain uses a 1 bp base plus 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap). On Ophis-operated chains the trader keeps the remainder and all improvement above Ophis's cap; hosted settlement additionally applies CoW Protocol's separate upstream policy.
+- **Hosted-chain upstream pricing**: CoW-hosted swaps additionally pay CoW Protocol's separate upstream volume and price-improvement fees.
 - **Open**: full frontend, intent-parser proxy, and infra runbooks are public.
 
 ## Routes

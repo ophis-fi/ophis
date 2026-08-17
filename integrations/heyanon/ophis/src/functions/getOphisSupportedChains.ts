@@ -11,6 +11,6 @@ export async function getOphisSupportedChains(
   const names = supportedChains.map(getChainName).join(', ');
   return toResult(
     `Ophis (CoW Protocol) MEV-protected same-chain swaps are available on: ${names}. ` +
-      `Optimism is Ophis-sovereign (100% of price improvement returned); the rest settle via CoW's hosted solvers. Same-chain only — no bridging.`,
+      `Of the chains this HeyAnon adapter can execute on, Optimism is Ophis-operated and uses Ophis's published capped improvement-capture policy; the rest settle via CoW's hosted solvers. Same-chain only — no bridging.`,
   );
 }

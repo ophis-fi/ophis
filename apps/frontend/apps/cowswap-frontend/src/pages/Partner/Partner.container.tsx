@@ -110,7 +110,7 @@ function PartnerDashboardContent({ account, data }: PartnerDashboardContentProps
           <Badge tone="partner">Partner</Badge>
         </div>
         <MetricRow>
-          <MetricCard label="Your rate" value={`${data.rateOfNetFeePct}%`} sublabel="of the fee Ophis keeps" />
+          <MetricCard label="Your rate" value={`${data.rateOfNetFeePct}%`} sublabel="of the verified base fee" />
           <MetricCard label="Referred wallets" value={data.referredCount} />
           <ReferredVolumeMetric lifetimeUsd={data.lifetimeReferredVolumeUsd} cycleUsd={data.currentCycleVolumeUsd} />
         </MetricRow>
@@ -129,7 +129,7 @@ function PartnerDashboardContent({ account, data }: PartnerDashboardContentProps
       <Section id="link" title="Your referral link">
         <p>
           Share your code or link. When a net-new wallet trades on Ophis after using it, they are bound to you, and you
-          earn {data.rateOfNetFeePct}% of the net fee Ophis keeps on their trades.
+          earn {data.rateOfNetFeePct}% of the verified base fee Ophis keeps on their trades.
         </p>
         <PartnerReferralShare code={data.activeCodes[0]} />
       </Section>

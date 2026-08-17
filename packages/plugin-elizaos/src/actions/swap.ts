@@ -19,7 +19,7 @@ import { swapTemplate } from '../templates.js';
 export const ophisSwapAction: Action = {
   name: 'OPHIS_SWAP',
   description:
-    'Swap one ERC-20 for another on the SAME chain via Ophis (CoW Protocol): MEV-protected, gasless (solvers pay gas), surplus returned to the trader. Native ETH is not supported — use WETH. Not for cross-chain bridging.',
+    'Swap one ERC-20 for another on the SAME chain via Ophis (CoW Protocol): MEV-protected and gasless (solvers pay gas). Ophis charges a 1 bp base plus capped improvement capture; the trader keeps the remainder and all improvement above the cap. Native ETH is not supported — use WETH. Not for cross-chain bridging.',
   similes: ['SWAP_TOKENS', 'TOKEN_SWAP', 'EXCHANGE_TOKENS', 'TRADE_TOKENS', 'MEV_PROTECTED_SWAP'],
   // `template` is an allowed extra field on Action ([key: string]: unknown).
   template: swapTemplate,

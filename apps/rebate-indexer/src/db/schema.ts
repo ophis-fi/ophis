@@ -47,20 +47,26 @@ export const trades = pgTable(
     appCode: text('app_code').notNull(),
     partnerFeeWei: uint256('partner_fee_wei'),
 
-    // Gross volume-fee rate (bps) read from the order's appData by the fetcher,
-    // CLAMPED to [1, retail=10] (migration 0010). Three states:
-    //   N (1..10) = the actual per-trade flat Volume rate (SDK 5 / retail 10 / stable 1);
+    // Verified gross Ophis flat fee rate (bps), decoded from appData. Capped
+    // improvement is excluded: executedProtocolFees is intended rather than
+    // recipient-reconciled revenue and cannot safely fund affiliate payouts.
+    // Three states:
+    //   N (1..10)  = verified historical flat rate; post-cutover rows are 1 bp;
     //   0         = examined, NO settled Ophis fee at all (a backend-rejected shape
     //               like capped {volumeBps,maxVolumeBps} or both-aliases, a non-Ophis
     //               recipient, an absent/0-bps fee) -> credited at ZERO;
-    //   NULL      = unknown -> COALESCEs to the legacy retail rate; covers a
-    //               pre-per-trade historical row, unparseable appData, OR a VALID
-    //               surplus/price-improvement Ophis fee this volume-derived indexer
-    //               cannot compute (so it still earns at the default rather than 0).
-    // 0 vs NULL is load-bearing: COALESCE(volume_fee_bps, GROSS_FEE_BPS) keeps 0 as
-    // 0 (no credit) but maps NULL to retail. The self-healing backfill only upgrades
+    //   NULL      = unknown; covers a pre-per-trade historical row, unparseable
+    //               appData, OR a valid surplus/price-improvement fee. Accrual uses
+    //               the separately persisted order-creation policy marker.
+    // 0 vs NULL is load-bearing: the marker fallback keeps 0 as 0 (no credit).
+    // The self-healing backfill only upgrades
     // NULL -> a POSITIVE rate, so re-fetching history never reclassifies it to 0.
     volumeFeeBps: integer('volume_fee_bps'),
+
+    // API-derived policy version for a NULL volumeFeeBps. Computed exclusively
+    // from order.creationDate: 10 before the 1 bp rollout, 1 afterward. NULL means
+    // a decoder-first row has not been API-enriched and must be held from accrual.
+    undecodedFeeFallbackBps: integer('undecoded_fee_fallback_bps'),
 
     // True when volume_fee_bps is AUTHORITATIVE: an API row fetched under the
     // owner-allowlist, or an on-chain-verified decoder row. False for a settle()
@@ -131,6 +137,9 @@ export const defillamaFills = pgTable(
     buyToken: bytea('buy_token'),
     buyAmount: uint256('buy_amount'),
     volumeFeeBps: integer('volume_fee_bps'),
+    // Reporting-only assessed Ophis fee rate, including improvement capture.
+    // Numeric preserves fractional bps. It never enters affiliate accrual.
+    assessedFeeBps: numeric('assessed_fee_bps', { precision: 20, scale: 8 }),
     feeVerified: boolean('fee_verified').notNull(),
     valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
     pricedAt: timestamp('priced_at', { withTimezone: true }),

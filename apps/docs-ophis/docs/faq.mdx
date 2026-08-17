@@ -21,7 +21,7 @@ export const faqLd = {
       name: 'How is Ophis different from 1inch or Matcha?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Ophis uses batch auctions and solver competition to settle orders with MEV protection by construction. On Ophis-operated Optimism, Unichain, and Robinhood Chain, every path pays a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains retain the published 10 bps retail, 5 bps partner, and 1 bp stablecoin Ophis rates, with CoW Protocol fees applying upstream.",
+        text: "Ophis uses batch auctions and solver competition to settle orders with MEV protection by construction. Every supported chain pays a 1 bp Ophis base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay CoW Protocol fees upstream.",
       },
     },
     {
@@ -61,7 +61,7 @@ export const faqLd = {
       name: 'Who runs the solvers?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "On the CoW-hosted chains Ophis surfaces, CoW's established solver network competes. On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own stack, Ophis operates its own solvers. Available routing strategies vary by chain; Robinhood currently has three active routing lanes, including a direct Uniswap V4 adapter. The on-chain allowlist gates who may settle, and more solvers can be authorized over time. Your protection is the same either way: the signed order's limit price is enforced on-chain, so no solver can fill it worse than the price you accepted.",
+        text: "On the CoW-hosted chains Ophis surfaces, CoW's established solver network competes. On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own stack, Ophis operates multiple routing lanes. Their availability and pair coverage vary at runtime, so Ophis does not promise a fixed live count. The on-chain allowlist gates who may settle, and more solvers can be authorized over time. Your protection is the same either way: the signed order's limit price is enforced on-chain, so no solver can fill it worse than the price you accepted.",
       },
     },
     {
@@ -69,7 +69,7 @@ export const faqLd = {
       name: 'How are partner fees collected?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Via the CoW Protocol partner-fee field in the order's appData, set to the volume shape { volumeBps: 10, recipient }, taken from the trade output at settlement.",
+        text: "Every order carries Ophis's 1 bp base. On Ophis-operated chains the backend adds the capped improvement policy; on CoW-hosted chains appData carries both the 1 bp Volume entry and the pair-aware PriceImprovement entry: 80% capped at 99 bps for volatile pairs, or 50% capped at 20 bps for stable pairs.",
       },
     },
     {
@@ -102,12 +102,10 @@ export const faqLd = {
 Ophis uses batch auctions and a solver competition to settle every order
 at the best on-chain price, with [MEV protection](./architecture.md) by
 construction. The natural-language input lets you skip token-pickers
-entirely. The [fee model](./fees.md) is published by settlement path. On
-Ophis-operated Optimism, Unichain, and Robinhood Chain, every trade pays a
-1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs,
-capped at 50 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted
-chains retain the flat 10 bps retail, 5 bps partner, and 1 bp stablecoin Ophis
-rates, with CoW Protocol fees applying upstream.
+entirely. The [fee model](./fees.md) is published by settlement path. On every
+supported chain, each trade pays a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs,
+capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted
+chains additionally apply CoW Protocol fees upstream.
 
 ### Do I need to connect a wallet?
 
@@ -140,18 +138,19 @@ parameters, or cancel at any time.
 
 On the CoW-hosted chains Ophis surfaces, CoW's established solver network
 competes. On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own
-stack, Ophis operates its own solvers. Available routing strategies vary by
-chain; Robinhood currently has three active routing lanes, including a direct
-Uniswap V4 adapter. The on-chain allowlist
+stack, Ophis operates multiple routing lanes. Availability and pair coverage
+vary at runtime, so Ophis does not promise a fixed live count. The on-chain allowlist
 gates who may settle, and more solvers can be authorized over time. Your
 protection is the same either way: the signed order's limit price is enforced
 on-chain, so no solver can fill it worse than the price you accepted.
 
 ### How are partner fees collected?
 
-Via the CoW Protocol partner-fee field in the order's `appData`, set to the
-volume shape `{ volumeBps: 10, recipient }`, taken from the trade output at
-settlement. Full detail on the [Fees & rebates](./fees.md) page.
+Every order carries Ophis's **1 bp base**. On Ophis-operated chains the backend
+adds the capped improvement policy. On CoW-hosted chains, `appData` carries both
+the 1 bp `Volume` entry and the pair-aware `PriceImprovement` entry: **80%
+capped at 99 bps** for volatile pairs, or **50% capped at 20 bps** for stable
+pairs. Full detail is on the [Fees & rebates](./fees.md) page.
 
 ### Is Ophis open source?
 

@@ -42,19 +42,21 @@ What that buys you on every trade:
 - **Gasless, MEV-protected.** Orders settle in a batch auction where every trade
   clears at one uniform price, so sandwiches and front-running are structurally
   absent, not best-effort.
-- **Solver-aligned pricing.** On Ophis-operated chains the base fee is 1 bp and
+- **Solver-aligned pricing.** On every supported chain the base fee is 1 bp and
   Ophis earns primarily when execution beats its reference quote: 80% of
-  improvement on volatile pairs (50 bps cap), or 50% on stable pairs (20 bps
-  cap). Hosted chains retain their existing flat-fee path.
+  improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps
+  cap). Hosted chains encode that policy in CIP-75 appData and separately pay
+  CoW Protocol's upstream fees.
 - **Non-custodial, no account, no auth.** Every order is signed in your own
   wallet (EIP-712 or ERC-1271). Ophis never holds keys or funds and cannot move,
   freeze, or recover them. The signature is the only trust boundary.
-- **A flat, transparent fee.** 0.10% (10 bps) on volume, dropping to 0.01%
-  (1 bp) on same-chain stablecoin pairs, with a share returned monthly as WETH
-  rebates plus an 8% referral on trades you bring.
+- **Transparent, capped fees.** A 0.01% (1 bp) base plus the capped improvement
+  policy above, with a share returned monthly as WETH rebates plus an 8%
+  referral on trades you bring.
 
-**Live across the CoW-supported chains**, with its own self-hosted settlement and
-solver on Optimism (chain 10).
+**Live across 13 EVM chains**, with Ophis-operated settlement on Optimism
+(chain 10), Unichain (130), and Robinhood Chain (4663), plus CoW-hosted
+settlement on the other supported chains.
 
 ## Quickstart: the Intent API
 
@@ -255,7 +257,10 @@ Every surface deploys independently from `main`:
 - **Docs** [`docs-deploy.yml`](.github/workflows/docs-deploy.yml): the Docusaurus site to its own Cloudflare Pages project.
 - **MCP server** [`mcp-deploy.yml`](.github/workflows/mcp-deploy.yml): to Cloudflare Workers (custom domain `mcp.ophis.fi`) with a least-privilege Workers token.
 - **Rebate indexer** [`rebate-indexer-deploy.yml`](.github/workflows/rebate-indexer-deploy.yml): to self-hosted infrastructure over a private network.
-- **OP backend**: the live Optimism orderbook, autopilot, driver, and solvers run on self-hosted infrastructure via `docker compose` (defined under `infra/optimism-mainnet/`), exposed through a Cloudflare tunnel. Not a GitHub workflow.
+- **Operated-chain backends**: the Optimism, Unichain, and Robinhood Chain
+  orderbooks, autopilots, drivers, and solver lanes run on Ophis infrastructure
+  from `infra/optimism-mainnet/`, `infra/unichain-mainnet/`, and
+  `infra/robinhood-mainnet/`. They are not deployed by a GitHub workflow.
 
 Quality gates: [`ci.yml`](.github/workflows/ci.yml) (lint, typecheck, tests),
 [`codeql.yml`](.github/workflows/codeql.yml),
@@ -265,11 +270,11 @@ scans), and [`echidna.yml`](.github/workflows/echidna.yml) (contract fuzzing).
 
 ## Fees and rebates
 
-On Ophis-operated chains, Ophis charges a **0.01% (1 bp)** base plus a capped
-share of reference-quote improvement: **80% capped at 50 bps** for volatile
-pairs and **50% capped at 20 bps** for stable pairs. CoW-hosted chains retain
-the flat 10 bps retail / 5 bps partner / 1 bp stablecoin model; the partner
-share is disbursed weekly in WETH.
+On every supported chain, Ophis charges a **0.01% (1 bp)** base plus a capped
+share of reference-quote improvement: **80% capped at 99 bps** for volatile
+pairs and **50% capped at 20 bps** for stable pairs. Operated-chain backends
+apply the improvement policy; hosted orders encode it in CIP-75 appData and
+separately pay CoW Protocol's upstream fees.
 
 Part of the fee flows back to traders:
 
@@ -278,7 +283,7 @@ Part of the fee flows back to traders:
   The [rebate indexer](https://rebates.ophis.fi) computes shares and a Safe batch
   proposer pays out.
 - **Referrals.** Mint a code, share `https://swap.ophis.fi/?ref=YOURCODE`, and earn
-  8% of the net fee Ophis keeps on trades your referrals route, paid monthly in WETH.
+  8% of the verified base fee Ophis keeps on trades your referrals route, paid monthly in WETH.
 
 Full numbers and the tier ladder: [docs.ophis.fi/fees](https://docs.ophis.fi/fees)
 and [docs.ophis.fi/affiliate](https://docs.ophis.fi/affiliate).

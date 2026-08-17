@@ -9,7 +9,7 @@ export const tools: AdapterExport['tools'] = [
     function: {
       name: 'ophisSwap',
       description:
-        'Swap one ERC-20 for another on the SAME chain via Ophis (CoW Protocol): MEV-protected, gasless, surplus returned to the trader. The wallet signs a GPv2 order with EIP-712. Native ETH is not supported (use WETH). Not for cross-chain bridging.',
+        'Swap one ERC-20 for another on the SAME chain via Ophis (CoW Protocol): MEV-protected and gasless. Ophis charges a 1 bp base plus capped improvement capture; hosted settlement additionally applies CoW Protocol\'s separate upstream policy. The wallet signs a GPv2 order with EIP-712. Native ETH is not supported (use WETH). Not for cross-chain bridging.',
       strict: true,
       parameters: {
         type: 'object',

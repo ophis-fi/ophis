@@ -90,7 +90,8 @@ def ophis_swap(
     referral_code: str = "",
 ) -> str:
     """Swap one ERC-20 for another on the SAME chain via Ophis (CoW Protocol): MEV-protected,
-    gasless at settlement, surplus returned. Signs a GPv2 order with the agent's key (from env)
+    gasless at settlement. Ophis charges a 1 bp base plus capped improvement capture; the
+    hosted settlement additionally applies CoW Protocol's separate upstream policy. Signs a GPv2 order with the agent's key (from env)
     and submits it to the Ophis orderbook. Native ETH is not supported (wrap to WETH). This is
     a same-chain swap, not a bridge.
 
@@ -135,7 +136,7 @@ def ophis_swap(
 
         # 1-2. Ophis partner-fee appData + quote (quote carries the appData HASH).
         is_stable_pair = oc.is_stable_pair(chain_id, sell, buy)  # derived, not caller-controlled
-        full_app_data, app_hash = oc.build_app_data(referral_code=referral_code or None, is_stable_pair=is_stable_pair)
+        full_app_data, app_hash = oc.build_app_data(chain_id, referral_code=referral_code or None, is_stable_pair=is_stable_pair)
         quote = oc.get_quote(chain_id, sell, buy, sell_atomic, owner, app_hash)
         if not isinstance(quote, dict):
             raise RuntimeError(f"orderbook quote was not an object: {quote!r}")

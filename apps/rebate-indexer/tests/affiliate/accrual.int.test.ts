@@ -42,8 +42,8 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at) VALUES (decode(${referred2},'hex'),'par1',decode(${partner},'hex'),true, now() - interval '90 days')`;
     // trades in the window
     const insTrade = (uid: string, wallet: string, chain: number, usd: string, ts: string) => sql`
-      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, priced_at)
-      VALUES (decode(${UID(uid)},'hex'), ${chain}, decode(${wallet},'hex'), 1, ${ts}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, now())`;
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, undecoded_fee_fallback_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), ${chain}, decode(${wallet},'hex'), 1, ${ts}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, 10, now())`;
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
     const before = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 3, 1)).toISOString();
@@ -80,8 +80,8 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
       VALUES (decode(${referred},'hex'),'pay1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
     const now = new Date();
     const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
-    await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, priced_at)
-      VALUES (decode(${UID('f1')},'hex'), 100, decode(${referred},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', '123456', now())`;
+    await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, undecoded_fee_fallback_bps, priced_at)
+      VALUES (decode(${UID('f1')},'hex'), 100, decode(${referred},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', '123456', 10, now())`;
 
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -146,40 +146,48 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     expect(refs.find((r) => r.referrer_wallet === `0x${selfOwner}`)).toBeFalsy();
   });
 
-  it('per-rate buckets (real SQL): volume_fee_bps splits (chain,bps); 5 bps earns half of 10 bps; NULL -> retail', async () => {
+  it('uses the order-creation policy marker, independent of settlement time', async () => {
     const referrer = W('a5a5');
     const referred = W('c5c5');
     await sql`INSERT INTO ref_codes (code, referrer_wallet, kind, active) VALUES ('rate1', decode(${referrer},'hex'), 'regular', true)`;
     await sql`INSERT INTO referrals (referred_wallet, code, referrer_wallet, net_new, bound_at)
-      VALUES (decode(${referred},'hex'),'rate1',decode(${referrer},'hex'),true, now() - interval '90 days')`;
-    const now = new Date();
-    const inWindow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15)).toISOString();
-    // Same chain (100), three rates: 10 bps (retail), 5 bps (SDK), NULL (-> retail default).
-    const insFee = (uid: string, usd: string, bps: number | null) => sql`
-      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, priced_at)
-      VALUES (decode(${UID(uid)},'hex'), 100, decode(${referred},'hex'), 1, ${inWindow}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, ${bps}, now())`;
-    await insFee('e51', '100000', 10); // retail
-    await insFee('e52', '100000', 5); //  SDK -> half
-    await insFee('e53', '100000', null); // unknown -> COALESCE to 10
+      VALUES (decode(${referred},'hex'),'rate1',decode(${referrer},'hex'),true, '2026-08-01T00:00:00.000Z')`;
+    const settlementTime = '2026-08-20T00:00:00.000Z';
+    // Both undecoded orders settle after rollout. Their API-derived markers preserve
+    // the different creation-time policies: legacy=10, current=1.
+    const insFee = (uid: string, usd: string, bps: number | null, fallback: number | null) => sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, value_usd, volume_fee_bps, undecoded_fee_fallback_bps, priced_at)
+      VALUES (decode(${UID(uid)},'hex'), 100, decode(${referred},'hex'), 1, ${settlementTime}, decode(${W('5e11')},'hex'), decode(${W('b111')},'hex'), 1, 1, 'ophis', ${usd}, ${bps}, ${fallback}, now())`;
+    await insFee('e51', '100000', 10, null);
+    await insFee('e52', '100000', 5, null);
+    await insFee('e53', '100000', null, 10);
+    await insFee('e54', '100000', null, 1);
+    await insFee('e55', '100000', null, null); // decoder-only: held until API enrichment
 
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const start = new Date('2026-08-01T00:00:00.000Z');
+    const end = new Date('2026-09-01T00:00:00.000Z');
     const refs = await buildAffiliateReferrers(start, end);
     const r = refs.find((x) => x.referrer_wallet === `0x${referrer}`);
     expect(r).toBeTruthy();
-    // The chain-100 volume splits into a 10-bps bucket (retail 100k + NULL-default 100k = 200k)
-    // and a 5-bps bucket (100k) — the real SQL GROUP BY on COALESCE(volume_fee_bps, 10).
+    // Explicit fees remain faithful; NULL buckets follow order creation, not settlement.
     const b10 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 10);
     const b5 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 5);
+    const b1 = (r.buckets as any[]).find((b) => b.chainId === 100 && b.grossBps === 1);
     expect(b10?.volumeUsd).toBe(200000);
     expect(b5?.volumeUsd).toBe(100000);
+    expect(b1?.volumeUsd).toBe(100000);
+    expect(volOnChain(r, 100)).toBe(400000);
 
-    // owed end-to-end: 8% * 75% * (200k*10 + 100k*5)/1e4 = 0.06 * 250 = $15. The 5-bps
-    // $100k contributes half ($3) of what the 10-bps $100k does ($6).
+    // owed end-to-end: 8% * 75% * (200k*10 + 100k*5 + 100k*1)/1e4 = $15.60.
     const { computeAffiliate } = await import('../../src/affiliate/computeAffiliate.js');
     const owed = computeAffiliate(refs, 2500).find((o) => o.referrer_wallet === `0x${referrer}`);
     expect(owed).toBeTruthy();
-    expect(owed!.owedUsd).toBeCloseTo(15, 6);
+    expect(owed!.owedUsd).toBeCloseTo(15.6, 6);
+
+    // Dashboard uses the identical boundary: gross fee base is $260, hosted net is $195.
+    const stats = await getReferrerStats(`0x${referrer}`, new Date('2026-08-12T00:00:00.000Z'));
+    expect(stats.currentCycleVolumeUsd).toBe(400000);
+    expect(stats.currentCycleNetFeeUsd).toBeCloseTo(195, 6);
   });
 
   it('appData arm: both 0 (rejected policy) AND NULL (unconfirmed) credit ZERO — only a confirmed fee earns', async () => {

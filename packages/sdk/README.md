@@ -12,12 +12,12 @@ npm install @ophis/sdk
 
 ## What's in it
 
-- **`getOphisOrderbookUrl(chainId)`** — the correct orderbook host per chain. Optimism is self-hosted at `optimism-mainnet.ophis.fi`, **not** `api.cow.fi`; getting this wrong silently bypasses the Ophis solver and partner fee.
-- **`getOphisOrderDomain(chainId)`** / **`getOphisSettlementAddress(chainId)`** — the EIP-712 signing domain with the correct per-chain `verifyingContract` (the OP settlement is non-canonical, so the cow-sdk default is wrong there).
-- **`buildOphisAppDataPartnerFee(chainId)`** — the exact CIP-75 volume-fee fragment (`{ volumeBps, recipient }`) for `appData.metadata.partnerFee`.
+- **`getOphisOrderbookUrl(chainId)`** — the correct orderbook host per chain. Optimism, Unichain, and Robinhood Chain use Ophis-operated hosts, **not** `api.cow.fi`; getting this wrong bypasses the intended Ophis settlement path.
+- **`getOphisOrderDomain(chainId)`** / **`getOphisSettlementAddress(chainId)`** — the EIP-712 signing domain with the correct per-chain `verifyingContract` (all three Ophis-operated settlements are non-canonical, so the cow-sdk default is wrong there).
+- **`buildOphisAppDataPartnerFee(chainId, isStablePair)`** — the exact CIP-75 fee config. Operated chains return the 1 bp base (their backend adds improvement capture); hosted chains return base + pair-aware capped improvement entries.
 - **`ophisOrderReceiver`** / **`assertReceiverIsOwner`** — pin a CoW order's `receiver` to the owner. An unpinned receiver is the #1 drain vector for an automated signer.
 - **`buildOphisOrderMetadata`** / **`enrollOphisTrader`** / **`buildOphisOrderCreation`** — the high-level order-flow helpers that collapse the integration footguns into one call each: `appCode` is always `'ophis'` (a custom one silently forfeits the rebate), each trader wallet is enrolled with the rebate indexer, the receiver is asserted, and the `sendOrder` wire shape (full `appData` string + `appDataHash`) is correct.
-- **`getOphisVaultRelayer(chainId)`** — the correct `approve` spender for the one-time sell-token approval. On Optimism the Ophis relayer is **not** cow-sdk's canonical one, so resolve it here.
+- **`getOphisVaultRelayer(chainId)`** — the correct `approve` spender for the one-time sell-token approval. On Ophis-operated chains the relayer is **not** cow-sdk's canonical one, so resolve it here.
 - **`buildOphisEthFlowOrder`** / **`getOphisEthFlowAddress`** / **`isOphisEthFlowChain`** — sell **native ETH** through Ophis via the on-chain eth-flow `createOrder`, with the Ophis partner-fee appData embedded. Without this an integrator has to wrap to WETH first and Ophis is unavailable on native-ETH sells. The builder pins the receiver to the taker, hardcodes the eth-flow `feeAmount`/`msg.value` correctly, and (optionally) verifies the committed appData hash binds to the JSON you upload.
 - **`parseOphisApiError`** / **`withOphisRetry`** / **`isUnroutable`** / **`isRetryable`**: typed errors for the orderbook API's numeric code bands (1xxx-5xxx) with `traceId` capture (`X-Trace-Id` header + error body). "No route" is a typed **answer** (`OphisUnroutableError`), not a failure, and is never retried; 429 is never retried in-call (both hold even under a custom `shouldRetry`: the terminal classes are rethrown before the predicate runs; for every other error a custom predicate replaces the default policy entirely and can narrow or broaden it, so broadening callers must retry only transient failures); only the 3xxx upstream band (503 + `Retry-After`) is. Unknown codes degrade gracefully and preserve the raw payload.
 - **`ophisPreflight`** / **`isPreflightReady`** / **`approvalNeeded`**: one batched Multicall3 `balanceOf` + `allowance` read answering "can this order settle?" **before** the user signs. Takes any viem `PublicClient` (structural interface, no viem runtime dependency), defaults the spender to the correct per-chain vault relayer, and fails closed: an RPC failure throws (including an outage that viem surfaces as an all-failure batch), it never reports ready, the batch is one un-chunked `eth_call` (single block snapshot) on clients that honor `batchSize: 0` (viem `PublicClient`s do unless constructed with an explicit client-level `batch.multicall.batchSize`, which viem lets override the per-call value; clients that chunk anyway are covered by pair-consistency and transport-shape guards that throw instead of zeroing), and when the client exposes `getChainId` (viem's does) a client connected to a different chain than the requested `chainId` throws instead of returning plausible wrong-network balances.
@@ -35,7 +35,7 @@ import {
 
 const orderbook = getOphisOrderbookUrl(10);          // https://optimism-mainnet.ophis.fi
 const domain = getOphisOrderDomain(10);               // { name, version, chainId, verifyingContract }
-const partnerFee = buildOphisAppDataPartnerFee(10);   // { volumeBps, recipient }
+const partnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair);
 
 assertReceiverIsOwner(owner, order.receiver);         // throws if proceeds would leave the account
 ```

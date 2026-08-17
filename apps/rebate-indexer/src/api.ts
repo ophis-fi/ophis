@@ -18,7 +18,6 @@ import { getPartnerFeeDashboard, getPartnerFeeStats } from './partnerFees/report
 import { registerTradeRewardRoutes } from './tradeRewards/routes.js';
 import {
   FEE_SHARE_BPS,
-  GROSS_FEE_BPS,
   COW_TAKE_BPS,
   OPTIMISM_CHAIN_ID,
   SOVEREIGN_CHAIN_IDS,
@@ -60,8 +59,9 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           ), 0)::text AS cycle_volume_usd,
           -- Cycle NET fee = SUM(value * actual bps * keepFraction(chain)) so the
           -- estimate matches the per-trade, per-chain payout: sovereign chains
-          -- (OP, Unichain) keep 100%, hosted 75% (NULL bps -> retail default, like accrual).
-          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+          -- (OP, Unichain) keep 100%, hosted 75%. NULL uses the API-derived
+          -- order-creation policy marker; unenriched decoder rows are held out.
+          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, t.undecoded_fee_fallback_bps)
             * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)) FILTER (
             WHERE t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           ), 0)::text AS cycle_net_weighted,
@@ -72,8 +72,10 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
           -- Exclude explicit 0-fee trades (no settled Ophis fee): they earn nothing
           -- in accrual (grossBps>0 filter), so they must not inflate displayed volume
-          -- or consume the regular cap here. NULL (-> retail) and positive rates stay.
+          -- or consume the regular cap here. NULL stays only after authoritative
+          -- order-creation policy enrichment; decoder-only unknowns are held.
           AND t.volume_fee_bps IS DISTINCT FROM 0
+          AND (t.volume_fee_bps IS NOT NULL OR t.undecoded_fee_fallback_bps IS NOT NULL)
           -- Production chains only: mirror of accrual's Sepolia exclusion.
           AND t.chain_id <> 11155111
           -- appData-wins (mirror of accrual): exclude trades attributed via an
@@ -89,7 +91,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
         SELECT
           COUNT(DISTINCT r.referred_wallet)::text AS referred_count,
           COALESCE(SUM(t.value_usd), 0)::text AS cycle_volume_usd,
-          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, ${GROSS_FEE_BPS})
+          COALESCE(SUM(t.value_usd * COALESCE(t.volume_fee_bps, t.undecoded_fee_fallback_bps)
             * (CASE WHEN t.chain_id = ANY(${[...SOVEREIGN_CHAIN_IDS]}) THEN ${keepFractionBps(OPTIMISM_CHAIN_ID)}::int ELSE ${keepFractionBps(1)}::int END)), 0)::text AS cycle_net_weighted,
           '0'::text AS lifetime_volume_usd
         FROM referrals r
@@ -98,6 +100,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
           AND t.block_timestamp >= ${start.toISOString()} AND t.block_timestamp < ${end.toISOString()}
           AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
           AND t.volume_fee_bps IS DISTINCT FROM 0 -- exclude 0-fee trades (see partner branch)
+          AND (t.volume_fee_bps IS NOT NULL OR t.undecoded_fee_fallback_bps IS NOT NULL)
           AND t.chain_id <> 11155111 -- production chains only (mirror of accrual)
           -- appData-wins (mirror of accrual): see the partner branch above.
           AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
@@ -129,7 +132,7 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
       AND t.value_usd IS NOT NULL
       -- appData arm requires a CONFIRMED fee (> 0), mirroring accrual's appData fee gate:
       -- it is the attacker-controllable forge surface, so NULL (surplus/PI / unconfirmed)
-      -- is excluded here, unlike the bind arms above which keep NULL -> retail. Display
+      -- is excluded here, unlike the bind arms above which keep an API-enriched NULL. Display
       -- therefore matches the monthly payout exactly. (COALESCE on the rate is now dead
       -- since NULL is excluded.)
       AND t.volume_fee_bps > 0
@@ -919,9 +922,10 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         -- volume == the corrected headline + payout:
         --   (1) fee-gate out examined-0 trades. A settle() DISCOVERY row credits
         --       nothing (volume_fee_bps=0), so it must not inflate a referee's shown
-        --       volume; NULL is KEPT (the retail-default bind semantics). Same
-        --       IS DISTINCT FROM 0 gate as the headline (the bind arm above).
+        --       volume; an API-enriched NULL is kept through its policy marker,
+        --       while a decoder-only unknown is held. Same gates as the headline.
         AND t.volume_fee_bps IS DISTINCT FROM 0
+        AND (t.volume_fee_bps IS NOT NULL OR t.undecoded_fee_fallback_bps IS NOT NULL)
         --   (2) appData-wins: exclude trades attributed via an active code owned by
         --       someone OTHER than the trader.
         AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
