@@ -2,11 +2,11 @@ import { useMemo } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { ListState, TokenListTags } from '@cowprotocol/tokens'
+import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useManageWidgetVisibility } from './useManageWidgetVisibility'
 import { useTokenDataSources } from './useTokenDataSources'
 
-import { useSourceChainId } from '../../../hooks/useSourceChainId'
 import { TokenizedAssetProviderTag } from '../../../types'
 
 export interface ManageViewState {
@@ -20,7 +20,8 @@ export interface ManageViewState {
 
 export function useManageViewState(): ManageViewState | null {
   const { isManageWidgetOpen, closeManageWidget } = useManageWidgetVisibility()
-  const { chainId } = useSourceChainId()
+  // Manage's list and address-search hooks are scoped to the wallet environment chain.
+  const { chainId } = useWalletInfo()
   const tokenData = useTokenDataSources(chainId)
 
   return useMemo(() => {
