@@ -104,13 +104,15 @@ Context Protocol server:
 https://mcp.ophis.fi/mcp
 ```
 
-It speaks Streamable-HTTP MCP and exposes six tools: `parse_intent`,
-`get_quote`, `build_order`, `submit_order`, `lookup_tier`, and `list_chains`.
-The server holds no keys and never signs. `build_order` returns a bounded,
-ready-to-sign EIP-712 order with the receiver pinned to the owner; the agent
-signs locally with its own key and submits. (A bare request without an
-`Accept: text/event-stream` header returns HTTP 406, that is the transport
-negotiating, not an outage.)
+It speaks Streamable-HTTP MCP and exposes 14 tools: intent parsing, canonical
+token resolution, chain discovery, quoting, bounded order build/validation and
+submission, rebate and integrator lookups, balances, portfolios, gas, charts,
+and expected-surplus comparison. The server holds no keys and never signs.
+`build_order` returns a bounded, ready-to-sign EIP-712 order with the receiver
+pinned to the owner; the agent signs locally with its own key and submits. See
+the [complete tool reference](apps/mcp-server/README.md#tools). (A bare request
+without an `Accept: text/event-stream` header returns HTTP 406, that is the
+transport negotiating, not an outage.)
 
 ### @ophis/sdk
 
@@ -255,7 +257,7 @@ Every surface deploys independently from `main`:
 - **Swap app and Explorer** [`cloudflare-deploy.yml`](.github/workflows/cloudflare-deploy.yml): two sequential Cloudflare Pages deploys (swap.ophis.fi / ophis.fi, then explorer.ophis.fi).
 - **Landing** [`landing-deploy.yml`](.github/workflows/landing-deploy.yml): path-filtered build with a Playwright and Lighthouse budget gate, to Cloudflare Pages.
 - **Docs** [`docs-deploy.yml`](.github/workflows/docs-deploy.yml): the Docusaurus site to its own Cloudflare Pages project.
-- **MCP server** [`mcp-deploy.yml`](.github/workflows/mcp-deploy.yml): to Cloudflare Workers (custom domain `mcp.ophis.fi`) with a least-privilege Workers token.
+- **MCP server** [`mcp-deploy.yml`](.github/workflows/mcp-deploy.yml): to Cloudflare Workers (custom domain `mcp.ophis.fi`) with a least-privilege Workers token; [`mcp-registry-release.yml`](.github/workflows/mcp-registry-release.yml) publishes matching versioned metadata to the official MCP Registry from protected `mcp-v*` tags.
 - **Rebate indexer** [`rebate-indexer-deploy.yml`](.github/workflows/rebate-indexer-deploy.yml): to self-hosted infrastructure over a private network.
 - **Operated-chain backends**: the Optimism, Unichain, and Robinhood Chain
   orderbooks, autopilots, drivers, and solver lanes run on Ophis infrastructure
@@ -267,6 +269,8 @@ Quality gates: [`ci.yml`](.github/workflows/ci.yml) (lint, typecheck, tests),
 [`security.yml`](.github/workflows/security.yml) (dependency and supply-chain
 scans), and [`echidna.yml`](.github/workflows/echidna.yml) (contract fuzzing).
 [`sdk-release.yml`](.github/workflows/sdk-release.yml) publishes `@ophis/sdk` to npm.
+All package and MCP publishing controls are documented in the
+[release runbook](docs/operations/release-publishing.md).
 
 ## Fees and rebates
 

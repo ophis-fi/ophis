@@ -40,7 +40,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "vitest run --passWithNoTests",
+    "pretest": "pnpm --filter @ophis/sdk build && pnpm --filter @ophis/agent-swap build && pnpm run build",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

@@ -33,7 +33,27 @@ import {
 import { resolveStablePair } from './stablePair.js'
 
 /** Identity reported by both transports (stdio + Worker). */
-export const SERVER_INFO = { name: 'ophis', version: '0.1.0' } as const
+export const MCP_SERVER_VERSION = '0.1.1' as const
+
+/** Canonical public tool inventory. Metadata tests fail if registration or server.json drifts. */
+export const OPHIS_TOOL_NAMES = [
+  'parse_intent',
+  'resolve_token',
+  'list_chains',
+  'get_quote',
+  'expected_surplus',
+  'build_order',
+  'validate_order',
+  'submit_order',
+  'lookup_tier',
+  'get_integrator_earnings',
+  'get_balances',
+  'get_portfolio',
+  'get_gas',
+  'get_token_chart',
+] as const
+
+export const SERVER_INFO = { name: 'ophis', version: MCP_SERVER_VERSION } as const
 
 /**
  * Runtime-supplied config for the tools. On the Worker these come from the DO

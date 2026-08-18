@@ -1,0 +1,137 @@
+name: Publish Ophis MCP metadata to the official registry
+
+# The Worker deploys from main via mcp-deploy.yml. After that deploy succeeds,
+# an organization admin creates mcp-v<x.y.z>; this workflow proves that the live
+# Worker reports the same version, rotates/reasserts the DNS namespace proof,
+# then publishes server.json to the official MCP Registry.
+
+on:
+  push:
+    tags:
+      - 'mcp-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-registry-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: validate release metadata and implementation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: verify tag, version, and main ancestry
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::MCP release tags must point to a commit reachable from main" >&2
+            exit 1
+          fi
+          TAG_VERSION="${TAG#mcp-v}"
+          PACKAGE_VERSION="$(node -p "require('./apps/mcp-server/package.json').version")"
+          MANIFEST_VERSION="$(node -p "require('./apps/mcp-server/server.json').version")"
+          PUBLISHER_VERSION="$(node -p "require('./apps/mcp-server/server.json')._meta['io.modelcontextprotocol.registry/publisher-provided'].version")"
+          for version in "$PACKAGE_VERSION" "$MANIFEST_VERSION" "$PUBLISHER_VERSION"; do
+            if [ "$version" != "$TAG_VERSION" ]; then
+              echo "::error::tag $TAG ($TAG_VERSION) does not match all MCP metadata versions" >&2
+              exit 1
+            fi
+          done
+
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm --filter @ophis/sdk build
+      - run: pnpm --filter @ophis/mcp-server typecheck
+      - run: pnpm --filter @ophis/mcp-server test
+
+  publish:
+    name: verify live Worker and publish registry metadata
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: verify the tagged version is live
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          TAG_VERSION="${TAG#mcp-v}"
+          HEALTH="$(curl -fsS https://mcp.ophis.fi/health)"
+          if ! jq -e --arg version "$TAG_VERSION" '.status == "ok" and .version == $version' <<<"$HEALTH" >/dev/null; then
+            echo "::error::mcp.ophis.fi is not serving version $TAG_VERSION; deploy main before tagging" >&2
+            exit 1
+          fi
+
+      # The registry namespace is fi.ophis/*, so publication uses DNS proof.
+      # Reassert the public half of the encrypted MCP_PRIVATE_KEY before login;
+      # the DNS-scoped token cannot deploy Workers or read repository secrets.
+      - name: rotate and verify MCP Registry DNS proof
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          PUBLIC_PROOF='v=MCPv1; k=ed25519; p=mF11WqoY/j8M6Suwnwe5t4RIFRhjgwzAAF7wc6EJPIs='
+          API='https://api.cloudflare.com/client/v4'
+          AUTH=(-H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H 'Content-Type: application/json')
+
+          ZONE_JSON="$(curl -fsS "${AUTH[@]}" "${API}/zones?name=ophis.fi")"
+          ZONE_ID="$(jq -er '.result[0].id' <<<"$ZONE_JSON")"
+          RECORDS="$(curl -fsS "${AUTH[@]}" "${API}/zones/${ZONE_ID}/dns_records?type=TXT&name=ophis.fi")"
+          RECORD_ID="$(jq -r 'first(.result[] | select(.content | startswith("v=MCPv1;")) | .id) // empty' <<<"$RECORDS")"
+          PAYLOAD="$(jq -cn --arg proof "$PUBLIC_PROOF" '{type:"TXT",name:"ophis.fi",content:$proof,ttl:60}')"
+
+          if [ -n "$RECORD_ID" ]; then
+            RESULT="$(curl -fsS --request PUT "${AUTH[@]}" --data "$PAYLOAD" "${API}/zones/${ZONE_ID}/dns_records/${RECORD_ID}")"
+          else
+            RESULT="$(curl -fsS --request POST "${AUTH[@]}" --data "$PAYLOAD" "${API}/zones/${ZONE_ID}/dns_records")"
+          fi
+          jq -e '.success == true' <<<"$RESULT" >/dev/null
+
+          for attempt in $(seq 1 18); do
+            DNS_JSON="$(curl -fsS --get -H 'accept: application/dns-json' --data-urlencode 'name=ophis.fi' --data 'type=TXT' https://cloudflare-dns.com/dns-query)"
+            if jq -e --arg proof "$PUBLIC_PROOF" 'any((.Answer // [])[]; .data | contains($proof))' <<<"$DNS_JSON" >/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo '::error::new MCP Registry DNS proof did not propagate within 3 minutes' >&2
+          exit 1
+
+      - name: install pinned MCP Registry publisher
+        env:
+          PUBLISHER_VERSION: v1.8.1
+          PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+        run: |
+          curl -fsSLo mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/download/${PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum --check --strict
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
+
+      - name: validate server.json against the official registry
+        working-directory: apps/mcp-server
+        run: ../../mcp-publisher validate
+
+      - name: authenticate to the MCP Registry
+        working-directory: apps/mcp-server
+        env:
+          MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
+        run: ../../mcp-publisher login dns --domain ophis.fi --private-key "$MCP_PRIVATE_KEY"
+
+      - name: publish server.json
+        working-directory: apps/mcp-server
+        run: ../../mcp-publisher publish
