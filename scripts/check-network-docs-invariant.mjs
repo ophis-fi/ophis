@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const readJson = (path) => JSON.parse(read(path));
 
 const chains = [
   ['Ethereum', 1, 'SupportedChainId.MAINNET'],
@@ -65,6 +66,16 @@ const chainInfo = read('apps/frontend/libs/common-const/src/chainInfo.ts');
 const gettingStarted = read('apps/docs-ophis/docs/getting-started.md');
 const agentPolicies = read('apps/docs-ophis/docs/agent-wallet-policies.md');
 const faq = read('apps/docs-ophis/docs/faq.mdx');
+const aiAgents = read('apps/docs-ophis/docs/ai-agents.md');
+const mcpPackage = readJson('apps/mcp-server/package.json');
+const sdkPackage = readJson('packages/sdk/package.json');
+const agentSkillsPackage = readJson('packages/agent-skills/package.json');
+const adapterPackages = [
+  readJson('packages/agent-swap/package.json'),
+  readJson('packages/agentkit-ophis/package.json'),
+  readJson('packages/plugin-goat/package.json'),
+  readJson('packages/plugin-elizaos/package.json'),
+];
 
 const selectorMatch = chainInfo.match(/export const SORTED_CHAIN_IDS:[^=]+=\s*\[([\s\S]*?)\n\]/);
 assert.ok(selectorMatch, 'could not parse canonical SORTED_CHAIN_IDS');
@@ -112,10 +123,50 @@ for (const chain of sovereign) {
     `${chain.name} settlement drifted in wallet-policy docs`,
   );
   assert.ok(
-    `${gettingStarted}\n${faq}`.includes('Optimism, Unichain, and Robinhood Chain'),
+    `${gettingStarted}\n${faq}\n${aiAgents}`.includes('Optimism, Unichain, and Robinhood Chain'),
     'public docs must identify all three Ophis-operated chains together',
   );
 }
+
+const adapterVersions = new Set(adapterPackages.map(({ version }) => version));
+assert.equal(adapterVersions.size, 1, 'the four npm adapters must share one release version');
+const adapterVersion = adapterPackages[0].version;
+
+assert.ok(
+  aiAgents.includes(`current server release is **v${mcpPackage.version}**`),
+  'AI-agent docs MCP version drifted from its package',
+);
+assert.ok(
+  aiAgents.includes(`published on npm (v${sdkPackage.version}, public)`),
+  'AI-agent docs SDK version drifted from its package',
+);
+assert.ok(
+  aiAgents.includes(`The v${adapterVersion} adapter family`),
+  'AI-agent docs adapter version drifted from its packages',
+);
+assert.ok(
+  aiAgents.includes(`v${agentSkillsPackage.version} for runtimes`),
+  'AI-agent docs agent-skills version drifted from its package',
+);
+assert.match(
+  aiAgents,
+  /SWAP_APP = "https:\/\/swap\.ophis\.fi"[\s\S]*return f"\{SWAP_APP\}\/\#\//,
+  'AI-agent Python helper must build deep links on swap.ophis.fi',
+);
+assert.doesNotMatch(
+  aiAgents,
+  /return f"\{OPHIS\}\/\#\//,
+  'AI-agent Python helper must not build deep links on the API origin',
+);
+assert.ok(
+  aiAgents.includes('receiver unconditionally pinned to the owner'),
+  'AI-agent MCP docs must describe build_order receiver pinning as unconditional',
+);
+assert.match(
+  aiAgents,
+  /50% capped at 20 bps for stable pairs, versus 80%[\s\S]*capped at 99 bps for volatile pairs/,
+  'AI-agent docs fee policy drifted from the current stable/volatile improvement caps',
+);
 
 const robinhoodConstants = read('apps/frontend/libs/common-const/src/robinhood.const.ts');
 assert.ok(

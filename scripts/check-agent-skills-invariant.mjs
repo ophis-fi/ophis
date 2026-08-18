@@ -30,10 +30,10 @@
 //           key-touching commands in any fenced code block; execution skills
 //           sign keystore-first via SIGNER_ARGS and never grant unlimited
 //           approvals; no skill exports a raw private key.
-//   Gate E: fee + appData literals (volumeBps, recipient, appData version)
-//           match @ophis/sdk partner-fee.ts and the SDK order-build
-//           APP_DATA_VERSION (moved out of the MCP server by WP0/#899; the
-//           MCP path is kept as a parse fallback).
+//   Gate E: fee + appData literals (volumeBps, recipient, improvement shares
+//           and caps, appData version) match @ophis/sdk partner-fee.ts and the
+//           SDK order-build APP_DATA_VERSION (moved out of the MCP server by
+//           WP0/#899; the MCP path is kept as a parse fallback).
 //   Gate F: the slippage latches in the policy block are present and sane.
 //
 // Pure Node, no deps (mirrors scripts/check-policy-pack-addresses.mjs; the
@@ -78,7 +78,8 @@ const CANONICAL_RELAYER = '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110';
 // reason. Anything else 40-hex is a failure (Gate B).
 const EXAMPLE_ADDRESSES = {
   '0x4200000000000000000000000000000000000006': 'WETH on Optimism (documented example token)',
-  '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85': 'USDC native on Optimism (documented example token)',
+  '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85':
+    'USDC native on Optimism (documented example token)',
   '0x0000000000000000000000000000000000000001': 'neutral from-address for indicative quotes',
 };
 
@@ -98,7 +99,9 @@ function parseSdkMap(src, mapName) {
   for (const m of src.matchAll(/const\s+([A-Z0-9_]+)\s*=\s*'(0x[0-9a-fA-F]{40})'\s*as const;/g)) {
     consts[m[1]] = m[2];
   }
-  const body = src.match(new RegExp(`export const ${mapName}[^=]*=\\s*Object\\.freeze\\(\\{([\\s\\S]*?)\\}\\);`));
+  const body = src.match(
+    new RegExp(`export const ${mapName}[^=]*=\\s*Object\\.freeze\\(\\{([\\s\\S]*?)\\}\\);`),
+  );
   if (!body) {
     fail(`could not locate ${mapName} in ${SDK_DOMAIN}`);
     return {};
@@ -123,11 +126,32 @@ for (const m of read(SDK_ORDERBOOK).matchAll(/^\s*(\d+):\s*'(https:\/\/[^']+)',/
 }
 
 const partnerFeeSrc = read(SDK_PARTNER_FEE);
-const sdkFeeRecipient = partnerFeeSrc.match(/OPHIS_PARTNER_FEE_RECIPIENT\s*=\s*\n?\s*'(0x[0-9a-fA-F]{40})'/)?.[1];
+const sdkFeeRecipient = partnerFeeSrc.match(
+  /OPHIS_PARTNER_FEE_RECIPIENT\s*=\s*\n?\s*'(0x[0-9a-fA-F]{40})'/,
+)?.[1];
 const sdkVolumeBps = partnerFeeSrc.match(/export const OPHIS_VOLUME_FEE_BPS = (\d+);/)?.[1];
 const sdkStableBps = partnerFeeSrc.match(/export const OPHIS_STABLE_VOLUME_FEE_BPS = (\d+);/)?.[1];
-const sdkSovereignBps = partnerFeeSrc.match(/export const OPHIS_SOVEREIGN_VOLUME_FEE_BPS = (\d+);/)?.[1];
-if (!sdkFeeRecipient || !sdkVolumeBps || !sdkStableBps || !sdkSovereignBps) {
+const sdkSovereignBps = partnerFeeSrc.match(
+  /export const OPHIS_SOVEREIGN_VOLUME_FEE_BPS = (\d+);/,
+)?.[1];
+const numericConst = (name) => {
+  const literal = partnerFeeSrc.match(new RegExp(`export const ${name} = ([\\d_]+);`))?.[1];
+  return literal ? Number(literal.replaceAll('_', '')) : undefined;
+};
+const sdkVolatileImprovementBps = numericConst('OPHIS_PRICE_IMPROVEMENT_BPS');
+const sdkVolatileImprovementCapBps = numericConst('OPHIS_PRICE_IMPROVEMENT_MAX_VOLUME_BPS');
+const sdkStableImprovementBps = numericConst('OPHIS_STABLE_PRICE_IMPROVEMENT_BPS');
+const sdkStableImprovementCapBps = numericConst('OPHIS_STABLE_PRICE_IMPROVEMENT_MAX_VOLUME_BPS');
+if (
+  !sdkFeeRecipient ||
+  !sdkVolumeBps ||
+  !sdkStableBps ||
+  !sdkSovereignBps ||
+  sdkVolatileImprovementBps === undefined ||
+  sdkVolatileImprovementCapBps === undefined ||
+  sdkStableImprovementBps === undefined ||
+  sdkStableImprovementCapBps === undefined
+) {
   fail(`could not parse fee recipient / bps constants from ${SDK_PARTNER_FEE}`);
 }
 
@@ -180,10 +204,14 @@ if (!cancelSingleHash || !cancelBatchHash) {
   fail(`could not parse the cancellation type hashes from ${MODEL_ORDER_RS}`);
 }
 if (cancelSingleHash && !cancelSingleHash.startsWith('7b41b3a6')) {
-  fail(`single-cancel TYPE_HASH in ${MODEL_ORDER_RS} is 0x${cancelSingleHash}; expected the keccak of "${CANCEL_SINGLE_TYPE}" (0x7b41b3a6...). Re-verify with cast keccak before updating this gate.`);
+  fail(
+    `single-cancel TYPE_HASH in ${MODEL_ORDER_RS} is 0x${cancelSingleHash}; expected the keccak of "${CANCEL_SINGLE_TYPE}" (0x7b41b3a6...). Re-verify with cast keccak before updating this gate.`,
+  );
 }
 if (cancelBatchHash && !cancelBatchHash.startsWith('4c89efb9')) {
-  fail(`batch-cancel TYPE_HASH in ${MODEL_ORDER_RS} is 0x${cancelBatchHash}; expected the keccak of "${CANCEL_BATCH_TYPE}" (0x4c89efb9...). Re-verify with cast keccak before updating this gate.`);
+  fail(
+    `batch-cancel TYPE_HASH in ${MODEL_ORDER_RS} is 0x${cancelBatchHash}; expected the keccak of "${CANCEL_BATCH_TYPE}" (0x4c89efb9...). Re-verify with cast keccak before updating this gate.`,
+  );
 }
 // The enforced batch-cancel cap (cancel_orders_handler checks this constant;
 // its error-message text is not authoritative and has lagged it before).
@@ -207,7 +235,9 @@ try {
 const policy = umbrellaFm?.metadata?.openclaw?.web3?.policy;
 const policyIsObject = policy !== null && typeof policy === 'object' && !Array.isArray(policy);
 if (!policyIsObject) {
-  fail(`${UMBRELLA}: no policy block at the exact frontmatter path metadata.openclaw.web3.policy (moving it breaks policy-enforcing agent runtimes)`);
+  fail(
+    `${UMBRELLA}: no policy block at the exact frontmatter path metadata.openclaw.web3.policy (moving it breaks policy-enforcing agent runtimes)`,
+  );
 }
 const allowedContracts = (policyIsObject && policy.allowedContracts) || {};
 const allowedSpenders = (policyIsObject && policy.allowedSpenders) || {};
@@ -220,7 +250,9 @@ if (Object.keys(allowedContracts).length === 0) {
 
 // --- Gate A: policy <-> SDK --------------------------------------------------
 
-const policyChains = Object.keys(allowedContracts).map(Number).sort((a, b) => a - b);
+const policyChains = Object.keys(allowedContracts)
+  .map(Number)
+  .sort((a, b) => a - b);
 if (JSON.stringify(policyChains) !== JSON.stringify(POLICY_CHAIN_IDS)) {
   fail(`policy allowedContracts chains are [${policyChains}]; expected [${POLICY_CHAIN_IDS}]`);
 }
@@ -233,7 +265,9 @@ for (const chainId of POLICY_CHAIN_IDS) {
     continue;
   }
   if (wantSettlement === CANONICAL_SETTLEMENT) {
-    fail(`chain ${chainId} uses the canonical settlement in the SDK; the skills policy must cover sovereign chains only`);
+    fail(
+      `chain ${chainId} uses the canonical settlement in the SDK; the skills policy must cover sovereign chains only`,
+    );
   }
   const contracts = allowedContracts[chainId] ?? [];
   if (JSON.stringify(contracts) !== JSON.stringify([wantSettlement, wantRelayer])) {
@@ -243,17 +277,25 @@ for (const chainId of POLICY_CHAIN_IDS) {
   }
   const spenders = allowedSpenders[chainId] ?? [];
   if (JSON.stringify(spenders) !== JSON.stringify([wantRelayer])) {
-    fail(`chain ${chainId} allowedSpenders drift: policy [${spenders}] != SDK relayer [${wantRelayer}]`);
+    fail(
+      `chain ${chainId} allowedSpenders drift: policy [${spenders}] != SDK relayer [${wantRelayer}]`,
+    );
   }
   const dom = eip712[chainId] ?? {};
   if (dom.name !== 'Gnosis Protocol' || dom.version !== 'v2') {
-    fail(`chain ${chainId} eip712Domain name/version is ${JSON.stringify(dom)}; expected Gnosis Protocol / v2`);
+    fail(
+      `chain ${chainId} eip712Domain name/version is ${JSON.stringify(dom)}; expected Gnosis Protocol / v2`,
+    );
   }
   if (dom.verifyingContract !== wantSettlement) {
-    fail(`chain ${chainId} eip712 verifyingContract ${dom.verifyingContract} != SDK settlement ${wantSettlement}`);
+    fail(
+      `chain ${chainId} eip712 verifyingContract ${dom.verifyingContract} != SDK settlement ${wantSettlement}`,
+    );
   }
   if (orderbooks[chainId] !== sdkOrderbooks[chainId]) {
-    fail(`chain ${chainId} orderbook drift: policy ${orderbooks[chainId]} != SDK ${sdkOrderbooks[chainId]}`);
+    fail(
+      `chain ${chainId} orderbook drift: policy ${orderbooks[chainId]} != SDK ${sdkOrderbooks[chainId]}`,
+    );
   }
 }
 
@@ -284,11 +326,15 @@ for (const f of familyFiles) {
   const src = read(f);
   for (const m of src.matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)) {
     if (!allowlist.has(m[0])) {
-      fail(`${relative(rel('.'), rel(f))}: address ${m[0]} is not on the invariant allowlist (typo, or add it here with a reason)`);
+      fail(
+        `${relative(rel('.'), rel(f))}: address ${m[0]} is not on the invariant allowlist (typo, or add it here with a reason)`,
+      );
     }
   }
   if (src.includes(CANONICAL_SETTLEMENT) || src.includes(CANONICAL_RELAYER)) {
-    fail(`${f}: contains a canonical CoW GPv2 address; the family must pin the Ophis deployments only`);
+    fail(
+      `${f}: contains a canonical CoW GPv2 address; the family must pin the Ophis deployments only`,
+    );
   }
 }
 
@@ -316,13 +362,17 @@ for (const [what, want] of [
 // with it is rejected. (The plural string does not contain it as a substring:
 // the wrong variant closes the paren right after "orderUid".)
 if (cancelSrc.includes(CANCEL_BATCH_TYPE_WRONG_SINGULAR)) {
-  fail(`ophis-cancel.md: contains the singular batch type string "${CANCEL_BATCH_TYPE_WRONG_SINGULAR}", whose hash matches no deployed constant; the deployed batch type is "${CANCEL_BATCH_TYPE}"`);
+  fail(
+    `ophis-cancel.md: contains the singular batch type string "${CANCEL_BATCH_TYPE_WRONG_SINGULAR}", whose hash matches no deployed constant; the deployed batch type is "${CANCEL_BATCH_TYPE}"`,
+  );
 }
 // A drifted cap literal (e.g. a stale larger number) must fail even though the
 // correct literals are present.
 for (const m of cancelSrc.matchAll(/(?:up to|max|cap is) (\d{2,})/g)) {
   if (m[1] !== orderUidLimit) {
-    fail(`ophis-cancel.md: cap literal "${m[0]}" != ORDER_UID_LIMIT ${orderUidLimit} in ${MODEL_ORDER_RS}`);
+    fail(
+      `ophis-cancel.md: cap literal "${m[0]}" != ORDER_UID_LIMIT ${orderUidLimit} in ${MODEL_ORDER_RS}`,
+    );
   }
 }
 
@@ -339,31 +389,59 @@ for (const name of READ_ONLY_SKILLS) {
 for (const name of EXECUTION_SKILLS) {
   const blocks = codeBlocksOf(read(`${SKILLS_DIR}/skills/${name}`)).join('\n');
   if (!blocks.includes('SIGNER_ARGS')) {
-    fail(`${name} is an execution skill but no code block references SIGNER_ARGS (keystore-first signing)`);
+    fail(
+      `${name} is an execution skill but no code block references SIGNER_ARGS (keystore-first signing)`,
+    );
   }
   for (const banned of ['MaxUint256', 'maxuint', '2**256', 'ffffffffffffffffffffffffffffffff']) {
     if (blocks.toLowerCase().includes(banned.toLowerCase())) {
-      fail(`${name}: a code block contains "${banned}" (unlimited-approval pattern; approvals are exact-amount only)`);
+      fail(
+        `${name}: a code block contains "${banned}" (unlimited-approval pattern; approvals are exact-amount only)`,
+      );
     }
   }
 }
 for (const f of familyFiles) {
   const blocks = codeBlocksOf(read(f)).join('\n');
   if (/export\s+PRIVATE_KEY/.test(blocks)) {
-    fail(`${f}: a code block exports PRIVATE_KEY; raw keys in the environment are not a documented path`);
+    fail(
+      `${f}: a code block exports PRIVATE_KEY; raw keys in the environment are not a documented path`,
+    );
   }
 }
 
 // --- Gate E: fee + appData literals ------------------------------------------
 
 if (sdkFeeRecipient && !umbrella.includes(`recipient: "${sdkFeeRecipient}"`)) {
-  fail(`umbrella SKILL.md partnerFee recipient drifted from SDK OPHIS_PARTNER_FEE_RECIPIENT ${sdkFeeRecipient}`);
+  fail(
+    `umbrella SKILL.md partnerFee recipient drifted from SDK OPHIS_PARTNER_FEE_RECIPIENT ${sdkFeeRecipient}`,
+  );
 }
 if (sdkSovereignBps && !umbrella.includes(`volumeBps: ${sdkSovereignBps} }`)) {
-  fail(`umbrella SKILL.md partnerFee volumeBps drifted from SDK OPHIS_SOVEREIGN_VOLUME_FEE_BPS ${sdkSovereignBps}`);
+  fail(
+    `umbrella SKILL.md partnerFee volumeBps drifted from SDK OPHIS_SOVEREIGN_VOLUME_FEE_BPS ${sdkSovereignBps}`,
+  );
 }
 if (sdkStableBps && !umbrella.includes(`1 bip (0.01%) sovereign base`)) {
   fail(`umbrella SKILL.md does not describe the SDK ${sdkStableBps} bp stable/sovereign rate`);
+}
+if (
+  sdkVolatileImprovementBps !== undefined &&
+  sdkVolatileImprovementCapBps !== undefined &&
+  !umbrella.includes(
+    `retains ${sdkVolatileImprovementBps / 100}% of\nreference-quote improvement on volatile pairs, capped at ${sdkVolatileImprovementCapBps} bips of volume`,
+  )
+) {
+  fail('umbrella SKILL.md volatile price-improvement share/cap drifted from SDK');
+}
+if (
+  sdkStableImprovementBps !== undefined &&
+  sdkStableImprovementCapBps !== undefined &&
+  !umbrella.includes(
+    `${sdkStableImprovementBps / 100}% on stable pairs, capped at ${sdkStableImprovementCapBps} bips`,
+  )
+) {
+  fail('umbrella SKILL.md stable price-improvement share/cap drifted from SDK');
 }
 if (appDataVersion && !umbrella.includes(`version: "${appDataVersion}"`)) {
   fail(`umbrella SKILL.md appData version drifted from SDK APP_DATA_VERSION ${appDataVersion}`);
@@ -374,7 +452,9 @@ if (appDataVersion && !umbrella.includes(`version: "${appDataVersion}"`)) {
 const wantLatches = { defaultBips: 50, maxBips: 300, requireConfirmAboveBips: 500 };
 for (const [k, v] of Object.entries(wantLatches)) {
   if (slippage[k] !== v) {
-    fail(`policy slippage.${k} is ${slippage[k]}; expected ${v} (change deliberately in both the policy and this gate)`);
+    fail(
+      `policy slippage.${k} is ${slippage[k]}; expected ${v} (change deliberately in both the policy and this gate)`,
+    );
   }
 }
 

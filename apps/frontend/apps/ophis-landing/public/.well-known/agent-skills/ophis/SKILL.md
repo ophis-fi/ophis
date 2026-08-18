@@ -1,7 +1,7 @@
 ---
 name: ophis
 description: Use this skill when the user asks to swap tokens, get a swap quote, check or cancel an order, or report the surplus their trades earned, via Ophis, the intent-based MEV-protected DEX aggregator. Triggers on phrases like "swap X for Y", "best price", "quote", "order status", "cancel my order", "how much surplus did I earn", "Ophis". The skill loads sub-skills under `skills/` for each operation.
-version: 0.1.0
+version: 0.1.1
 homepage: https://docs.ophis.fi
 license: MIT
 metadata:
@@ -174,7 +174,7 @@ appData=$(jq -Snc --argjson slippageBips "$slippageBips" '{
     orderClass: { orderClass: "market" },
     partnerFee: { recipient: "0x858f0F5eE954846D47155F5203c04aF1819eCeF8", volumeBps: 1 },
     quote: { slippageBips: $slippageBips },
-    ophisSource: { app: "skill:ophis-swap@0.1.0" }
+    ophisSource: { app: "skill:ophis-swap@0.1.1" }
   },
   version: "1.14.0"
 }')
@@ -195,8 +195,8 @@ appDataHash=$(cast keccak "$appData")
 ## Fees
 
 The appData carries the 1 bip sovereign base. Ophis also retains 80% of
-reference-quote improvement on volatile pairs, capped at 30 bips of volume, or
-50% on stable pairs, capped at 10 bips. The trader receives the remainder and
+reference-quote improvement on volatile pairs, capped at 99 bips of volume, or
+50% on stable pairs, capped at 20 bips. The trader receives the remainder and
 all improvement above the cap. A share of fees is returned monthly to active wallets as
 volume-tier rebates. Details: https://docs.ophis.fi/fees.
 

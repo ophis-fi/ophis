@@ -1,6 +1,6 @@
 {
   "name": "@ophis/agent-skills",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The Ophis agent-skill family as an npm package: markdown skills (quote, swap, order status, cancel, surplus report) with a machine-readable per-chain policy block, for AI agents with shell access. Packaged unmodified from the canonical family served at ophis.fi/.well-known/agent-skills/.",
   "license": "MIT",
   "files": [
@@ -37,7 +37,8 @@
     "web3",
     "ethereum",
     "optimism",
-    "unichain"
+    "unichain",
+    "robinhood-chain"
   ],
   "publishConfig": {
     "access": "public"
