@@ -3,7 +3,13 @@ import { useMemo } from 'react'
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { ExplorerDataType, getExplorerLink } from '@cowprotocol/common-utils'
 import { getAddressKey, getTokenId } from '@cowprotocol/cow-sdk'
-import { TokenLogo, TokenSearchResponse, useRemoveUserToken, useResetUserTokens } from '@cowprotocol/tokens'
+import {
+  TokenListTags,
+  TokenLogo,
+  TokenSearchResponse,
+  useRemoveUserToken,
+  useResetUserTokens,
+} from '@cowprotocol/tokens'
 import { TokenSymbol } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
@@ -30,13 +36,14 @@ export interface ManageTokensProps {
   tokenSearchResponse: TokenSearchResponse
   verifiedTokenIds: ReadonlySet<string>
   tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
+  tokenListTags: TokenListTags
 }
 
 // TODO: Break down this large function into smaller functions
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function ManageTokens(props: ManageTokensProps) {
-  const { tokens, tokenSearchResponse, verifiedTokenIds, tokenizedAssetProviderByTokenId } = props
+  const { tokens, tokenSearchResponse, verifiedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags } = props
 
   const addTokenImportCallback = useAddTokenImportCallback()
   const removeTokenCallback = useRemoveUserToken()
@@ -67,6 +74,7 @@ export function ManageTokens(props: ManageTokensProps) {
                 existing={true}
                 isContractVerified={verifiedTokenIds.has(tokenId)}
                 tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
+                tokenListTags={tokenListTags}
               />
             )
           })}
@@ -80,6 +88,7 @@ export function ManageTokens(props: ManageTokensProps) {
                   importToken={addTokenImportCallback}
                   isContractVerified={verifiedTokenIds.has(tokenId)}
                   tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
+                  tokenListTags={tokenListTags}
                 />
               )
             })}

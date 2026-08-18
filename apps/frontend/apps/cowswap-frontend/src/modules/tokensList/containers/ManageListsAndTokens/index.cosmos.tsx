@@ -19,6 +19,7 @@ const Fixtures = {
         lists={listsMock}
         verifiedTokenIds={new Set()}
         tokenizedAssetProviderByTokenId={new Map()}
+        tokenListTags={{}}
         onBack={() => console.log('onBack')}
         onDismiss={() => console.log('onDismiss')}
       />

@@ -48,6 +48,7 @@ export function TokenSearchRowRenderer({
           disabledReason={row.disabledReason}
           isContractVerified={selectTokenContext.verifiedTokenIds.has(tokenId)}
           tokenizedAssetProvider={selectTokenContext.tokenizedAssetProviderByTokenId.get(tokenId)}
+          tokenListTags={selectTokenContext.tokenListTags}
         />
       )
     default:

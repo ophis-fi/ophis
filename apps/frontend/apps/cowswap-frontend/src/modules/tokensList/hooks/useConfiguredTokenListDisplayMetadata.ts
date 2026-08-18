@@ -88,6 +88,13 @@ interface ConfiguredTokenListsQueryOptions {
   refetchOnWindowFocus: true
 }
 
+export function fetchConfiguredTokenLists(
+  configuredLists: readonly ListSourceConfig[],
+  loadTokenList: typeof fetchTokenList = fetchTokenList,
+): Promise<ListState[]> {
+  return Promise.all(configuredLists.map(loadTokenList))
+}
+
 export function getConfiguredTokenListsQueryOptions(
   targetChainId: number | undefined,
 ): ConfiguredTokenListsQueryOptions {
@@ -97,10 +104,7 @@ export function getConfiguredTokenListsQueryOptions(
   return {
     queryKey: ['configured-token-list-display-metadata', targetChainId ?? 0, configuredSources],
     enabled: configuredLists.length > 0,
-    queryFn: async (): Promise<ListState[]> => {
-      const results = await Promise.allSettled(configuredLists.map(fetchTokenList))
-      return results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
-    },
+    queryFn: () => fetchConfiguredTokenLists(configuredLists),
     staleTime: CONFIGURED_LISTS_REFRESH_INTERVAL_MS,
     refetchInterval: CONFIGURED_LISTS_REFRESH_INTERVAL_MS,
     refetchOnWindowFocus: true,

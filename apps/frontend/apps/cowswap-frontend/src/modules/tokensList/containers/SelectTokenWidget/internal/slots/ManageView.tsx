@@ -14,6 +14,7 @@ export function ManageView(): ReactNode {
       customTokens={state.customTokens}
       verifiedTokenIds={state.verifiedTokenIds}
       tokenizedAssetProviderByTokenId={state.tokenizedAssetProviderByTokenId}
+      tokenListTags={state.tokenListTags}
       onBack={state.onBack}
     />
   )

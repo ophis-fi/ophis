@@ -2,7 +2,7 @@ import { ReactNode, useMemo, useState } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { isAddress, parseENSAddress, uriToHttp } from '@cowprotocol/common-utils'
-import { ListState, useSearchList, useSearchToken } from '@cowprotocol/tokens'
+import { ListState, TokenListTags, useSearchList, useSearchToken } from '@cowprotocol/tokens'
 import { ModalHeader } from '@cowprotocol/ui'
 
 import { msg } from '@lingui/core/macro'
@@ -19,6 +19,7 @@ export interface ManageListsAndTokensProps {
   customTokens: TokenWithLogo[]
   verifiedTokenIds: ReadonlySet<string>
   tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
+  tokenListTags: TokenListTags
   onBack(): void
   onDismiss?(): void
 }
@@ -28,7 +29,8 @@ const listsInputPlaceholder = msg`https:// or ipfs:// or ENS name`
 
 export function ManageListsAndTokens(props: ManageListsAndTokensProps): ReactNode {
   const { i18n } = useLingui()
-  const { lists, customTokens, verifiedTokenIds, tokenizedAssetProviderByTokenId, onBack, onDismiss } = props
+  const { lists, customTokens, verifiedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags, onBack, onDismiss } =
+    props
 
   const [currentTab, setCurrentTab] = useState<'tokens' | 'lists'>('lists')
   const [inputValue, setInputValue] = useState<string>('')
@@ -100,6 +102,7 @@ export function ManageListsAndTokens(props: ManageListsAndTokensProps): ReactNod
           tokens={customTokens}
           verifiedTokenIds={verifiedTokenIds}
           tokenizedAssetProviderByTokenId={tokenizedAssetProviderByTokenId}
+          tokenListTags={tokenListTags}
         />
       )}
     </styledEl.Wrapper>

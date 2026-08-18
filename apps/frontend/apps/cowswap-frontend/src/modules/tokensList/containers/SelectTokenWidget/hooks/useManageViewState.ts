@@ -1,11 +1,12 @@
 import { useMemo } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
-import { ListState } from '@cowprotocol/tokens'
+import { ListState, TokenListTags } from '@cowprotocol/tokens'
 
 import { useManageWidgetVisibility } from './useManageWidgetVisibility'
 import { useTokenDataSources } from './useTokenDataSources'
 
+import { useSourceChainId } from '../../../hooks/useSourceChainId'
 import { TokenizedAssetProviderTag } from '../../../types'
 
 export interface ManageViewState {
@@ -13,12 +14,14 @@ export interface ManageViewState {
   customTokens: TokenWithLogo[]
   verifiedTokenIds: ReadonlySet<string>
   tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
+  tokenListTags: TokenListTags
   onBack: () => void
 }
 
 export function useManageViewState(): ManageViewState | null {
   const { isManageWidgetOpen, closeManageWidget } = useManageWidgetVisibility()
-  const tokenData = useTokenDataSources()
+  const { chainId } = useSourceChainId()
+  const tokenData = useTokenDataSources(chainId)
 
   return useMemo(() => {
     if (!isManageWidgetOpen) return null
@@ -28,6 +31,7 @@ export function useManageViewState(): ManageViewState | null {
       customTokens: tokenData.userAddedTokens,
       verifiedTokenIds: tokenData.verifiedTokenIds,
       tokenizedAssetProviderByTokenId: tokenData.tokenizedAssetProviderByTokenId,
+      tokenListTags: tokenData.tokenListTags,
       onBack: closeManageWidget,
     }
   }, [
@@ -36,6 +40,7 @@ export function useManageViewState(): ManageViewState | null {
     tokenData.userAddedTokens,
     tokenData.verifiedTokenIds,
     tokenData.tokenizedAssetProviderByTokenId,
+    tokenData.tokenListTags,
     closeManageWidget,
   ])
 }

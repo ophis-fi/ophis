@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
+import { TokenListTags } from '@cowprotocol/tokens'
 import { HoverTooltip } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
@@ -11,6 +12,7 @@ import * as styledEl from './styled'
 import { TokenizedAssetProviderTag } from '../../types'
 import { ImportButton } from '../commonElements'
 import { TokenInfo } from '../TokenInfo'
+import { TokenTags } from '../TokenTags'
 
 export interface ImportTokenItemProps {
   token: TokenWithLogo
@@ -23,6 +25,7 @@ export interface ImportTokenItemProps {
   disabledReason?: string
   isContractVerified: boolean
   tokenizedAssetProvider: TokenizedAssetProviderTag | undefined
+  tokenListTags: TokenListTags
 }
 
 export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {
@@ -37,6 +40,7 @@ export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {
     disabledReason,
     isContractVerified,
     tokenizedAssetProvider,
+    tokenListTags,
   } = props
 
   const tokenInfo = (
@@ -47,6 +51,15 @@ export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {
         hideNetworkBadge
         isContractVerified={isContractVerified}
         tokenizedAssetProvider={tokenizedAssetProvider}
+        tags={
+          tokenizedAssetProvider ? (
+            <TokenTags
+              isUnsupported={false}
+              tokenListTags={tokenListTags}
+              tokenizedAssetProvider={tokenizedAssetProvider}
+            />
+          ) : null
+        }
       />
     </div>
   )

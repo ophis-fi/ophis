@@ -5,6 +5,7 @@ import {
   getConfiguredTokenListDisplayMetadata,
   getConfiguredTokenListDisplayMetadataForChain,
   getConfiguredTokenListsQueryOptions,
+  fetchConfiguredTokenLists,
 } from './useConfiguredTokenListDisplayMetadata'
 
 const MAINNET_SOURCE = 'https://tokens.ophis.fi/default.json'
@@ -98,5 +99,17 @@ describe('configured token-list display metadata', () => {
     expect(options.staleTime).toBe(6 * 60 * 60 * 1_000)
     expect(options.refetchInterval).toBe(options.staleTime)
     expect(options.refetchOnWindowFocus).toBe(true)
+  })
+
+  it('rejects a configured-list refresh when any source fails so the query can retry', async () => {
+    const configuredLists = [{ source: MAINNET_SOURCE }, { source: ARBITRUM_SOURCE }]
+    const failure = new Error('temporary list failure')
+    const loadTokenList = jest
+      .fn<Promise<ListState>, [(typeof configuredLists)[number]]>()
+      .mockResolvedValueOnce(createList(MAINNET_SOURCE, MAINNET_TOKEN))
+      .mockRejectedValueOnce(failure)
+
+    await expect(fetchConfiguredTokenLists(configuredLists, loadTokenList)).rejects.toBe(failure)
+    expect(loadTokenList).toHaveBeenCalledTimes(2)
   })
 })
