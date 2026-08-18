@@ -20,6 +20,11 @@
   .chip {
     padding: 4px 10px;
   }
+
+  .optIn .divider,
+  .optIn .volume {
+    display: none;
+  }
 }
 
 /* 'none' = sub-$20k floor (not yet earning): neutral ghost styling, like optIn. */

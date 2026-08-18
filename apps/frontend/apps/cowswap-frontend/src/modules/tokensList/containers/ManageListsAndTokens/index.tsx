@@ -10,12 +10,15 @@ import { Trans, useLingui } from '@lingui/react/macro'
 
 import * as styledEl from './styled'
 
+import { TokenizedAssetProviderTag } from '../../types'
 import { ManageLists } from '../ManageLists'
 import { ManageTokens } from '../ManageTokens'
 
 export interface ManageListsAndTokensProps {
   lists: ListState[]
   customTokens: TokenWithLogo[]
+  verifiedTokenIds: ReadonlySet<string>
+  tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
   onBack(): void
   onDismiss?(): void
 }
@@ -25,7 +28,7 @@ const listsInputPlaceholder = msg`https:// or ipfs:// or ENS name`
 
 export function ManageListsAndTokens(props: ManageListsAndTokensProps): ReactNode {
   const { i18n } = useLingui()
-  const { lists, customTokens, onBack, onDismiss } = props
+  const { lists, customTokens, verifiedTokenIds, tokenizedAssetProviderByTokenId, onBack, onDismiss } = props
 
   const [currentTab, setCurrentTab] = useState<'tokens' | 'lists'>('lists')
   const [inputValue, setInputValue] = useState<string>('')
@@ -92,7 +95,12 @@ export function ManageListsAndTokens(props: ManageListsAndTokensProps): ReactNod
       {currentTab === 'lists' ? (
         <ManageLists listSearchResponse={listSearchResponse} lists={lists} isListUrlValid={isListUrlValid} />
       ) : (
-        <ManageTokens tokenSearchResponse={tokenSearchResponse} tokens={customTokens} />
+        <ManageTokens
+          tokenSearchResponse={tokenSearchResponse}
+          tokens={customTokens}
+          verifiedTokenIds={verifiedTokenIds}
+          tokenizedAssetProviderByTokenId={tokenizedAssetProviderByTokenId}
+        />
       )}
     </styledEl.Wrapper>
   )

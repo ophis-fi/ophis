@@ -14,6 +14,7 @@ import * as styledEl from './styled'
 import { useAddTokenImportCallback } from '../../hooks/useAddTokenImportCallback'
 import { CommonListContainer } from '../../pure/commonElements'
 import { ImportTokenItem } from '../../pure/ImportTokenItem'
+import { TokenizedAssetProviderTag } from '../../types'
 
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -27,13 +28,15 @@ const tokensListToMap = (tokens: TokenWithLogo[]) => {
 export interface ManageTokensProps {
   tokens: TokenWithLogo[]
   tokenSearchResponse: TokenSearchResponse
+  verifiedTokenIds: ReadonlySet<string>
+  tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
 }
 
 // TODO: Break down this large function into smaller functions
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function ManageTokens(props: ManageTokensProps) {
-  const { tokens, tokenSearchResponse } = props
+  const { tokens, tokenSearchResponse, verifiedTokenIds, tokenizedAssetProviderByTokenId } = props
 
   const addTokenImportCallback = useAddTokenImportCallback()
   const removeTokenCallback = useRemoveUserToken()
@@ -56,11 +59,29 @@ export function ManageTokens(props: ManageTokensProps) {
       {(!!activeListsResult?.length || !!tokensToImport?.length) && (
         <styledEl.SearchResults>
           {activeListsResult?.map((token) => {
-            return <ImportTokenItem key={getTokenId(token)} token={token} existing={true} />
+            const tokenId = getTokenId(token)
+            return (
+              <ImportTokenItem
+                key={tokenId}
+                token={token}
+                existing={true}
+                isContractVerified={verifiedTokenIds.has(tokenId)}
+                tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
+              />
+            )
           })}
           {!activeListsResult?.length &&
             tokensToImport?.map((token) => {
-              return <ImportTokenItem key={getTokenId(token)} token={token} importToken={addTokenImportCallback} />
+              const tokenId = getTokenId(token)
+              return (
+                <ImportTokenItem
+                  key={tokenId}
+                  token={token}
+                  importToken={addTokenImportCallback}
+                  isContractVerified={verifiedTokenIds.has(tokenId)}
+                  tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
+                />
+              )
             })}
         </styledEl.SearchResults>
       )}

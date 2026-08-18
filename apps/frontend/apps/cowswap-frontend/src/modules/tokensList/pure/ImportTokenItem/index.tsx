@@ -21,8 +21,8 @@ export interface ImportTokenItemProps {
   isFirstInSection?: boolean
   isLastInSection?: boolean
   disabledReason?: string
-  isContractVerified?: boolean
-  tokenizedAssetProvider?: TokenizedAssetProviderTag
+  isContractVerified: boolean
+  tokenizedAssetProvider: TokenizedAssetProviderTag | undefined
 }
 
 export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {

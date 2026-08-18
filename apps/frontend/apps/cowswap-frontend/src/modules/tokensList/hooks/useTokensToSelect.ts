@@ -70,12 +70,18 @@ export function useTokensToSelect(): TokensToSelectContext {
   return useMemo(() => {
     // In bridge mode, hide favorites until we know what's actually bridgeable for this chain pair.
     // This avoids selecting a favorite token and then getting it cleared by async validation.
-    const favoriteTokensToSelect =
-      areTokensFromBridge && bridgeSupportedTokensMap === null
-        ? EMPTY_TOKENS
-        : bridgeSupportedTokensMap
-          ? favoriteTokens.filter((token) => bridgeSupportedTokensMap[getAddressKey(token.address)])
-          : favoriteTokens
+    const bridgeTokensByAddress = result?.tokens.reduce<Record<string, TokenWithLogo>>((acc, token) => {
+      acc[getAddressKey(token.address)] = token
+      return acc
+    }, {})
+    const favoriteTokensToSelect = areTokensFromBridge
+      ? bridgeTokensByAddress
+        ? favoriteTokens.flatMap((token) => {
+            const targetChainToken = bridgeTokensByAddress[getAddressKey(token.address)]
+            return targetChainToken ? [targetChainToken] : []
+          })
+        : EMPTY_TOKENS
+      : favoriteTokens
 
     return {
       isLoading: areTokensFromBridge ? isLoading : false,

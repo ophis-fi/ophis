@@ -8,5 +8,13 @@ export function ManageView(): ReactNode {
 
   if (!state) return null
 
-  return <ManageListsAndTokens lists={state.lists} customTokens={state.customTokens} onBack={state.onBack} />
+  return (
+    <ManageListsAndTokens
+      lists={state.lists}
+      customTokens={state.customTokens}
+      verifiedTokenIds={state.verifiedTokenIds}
+      tokenizedAssetProviderByTokenId={state.tokenizedAssetProviderByTokenId}
+      onBack={state.onBack}
+    />
+  )
 }

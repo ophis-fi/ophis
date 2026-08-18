@@ -91,6 +91,7 @@ export function ClickableAddress(props: ClickableAddressProps): ReactNode {
       <Wrapper alwaysShow={isMobile || !showAddress} ref={wrapperRef}>
         {showAddress ? <AddressWrapper>{shortAddress}</AddressWrapper> : null}
         <ContextMenuTooltip
+          ariaLabel={t`View contract details`}
           content={
             <>
               <ContractDetails $verified={isContractVerified}>
