@@ -131,6 +131,33 @@ for (const chain of sovereign) {
 const adapterVersions = new Set(adapterPackages.map(({ version }) => version));
 assert.equal(adapterVersions.size, 1, 'the four npm adapters must share one release version');
 const adapterVersion = adapterPackages[0].version;
+const documentedAdapterVersions = aiAgents.split('\n').flatMap((line) => {
+  const row = line.match(
+    /^\| \[`(@ophis\/[^`]+)`\]\(https:\/\/www\.npmjs\.com\/package\/\1\)\s*\| v(\d+\.\d+\.\d+)\s*\|/,
+  );
+  return row ? [{ name: row[1], version: row[2] }] : [];
+});
+
+assert.equal(
+  documentedAdapterVersions.length,
+  adapterPackages.length,
+  'AI-agent docs must contain exactly one versioned table row for every npm adapter',
+);
+for (const adapterPackage of adapterPackages) {
+  const documentedRows = documentedAdapterVersions.filter(
+    ({ name }) => name === adapterPackage.name,
+  );
+  assert.equal(
+    documentedRows.length,
+    1,
+    `AI-agent docs must contain exactly one table row for ${adapterPackage.name}`,
+  );
+  assert.equal(
+    documentedRows[0].version,
+    adapterPackage.version,
+    `AI-agent docs table version for ${adapterPackage.name} drifted from its manifest`,
+  );
+}
 
 assert.ok(
   aiAgents.includes(`current server release is **v${mcpPackage.version}**`),

@@ -19,7 +19,17 @@ on:
       - main
     paths:
       - 'apps/docs-ophis/**'
+      - 'scripts/check-published-agent-docs.mjs'
       - '.github/workflows/docs-deploy.yml'
+  # Package releases are intentionally separate protected-tag workflows. A
+  # successful release retriggers this deployment so docs held back by the
+  # registry gate below publish automatically once every claimed version exists.
+  workflow_run:
+    workflows:
+      - 'Publish @ophis/sdk to npm'
+      - 'Publish @ophis agent plugins to npm'
+      - 'Publish @ophis/agent-skills to npm'
+    types: [completed]
   workflow_dispatch: {}
 
 permissions:
@@ -33,6 +43,7 @@ permissions:
 jobs:
   deploy:
     name: build + deploy docs
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     concurrency:
       group: cloudflare-pages-docs-${{ github.ref }}
@@ -53,6 +64,12 @@ jobs:
           cache: pnpm
           cache-dependency-path: |
             apps/docs-ophis/pnpm-lock.yaml
+
+      # Never publish documentation that directs users to an npm artifact that
+      # does not exist yet. The release workflows above trigger this workflow
+      # again after a successful protected-tag publish.
+      - name: verify advertised npm releases exist
+        run: node scripts/check-published-agent-docs.mjs
 
       - name: install docs deps
         working-directory: apps/docs-ophis
