@@ -600,14 +600,26 @@ groups:
         annotations:
           summary: "OP eRPC upstream {{ $labels.upstream }} is failing on CREDENTIALS or BILLING"
           description: |
-            `{{ $labels.upstream }}` is returning auth/billing errors
-            (ErrEndpointUnauthorized / ErrEndpointBillingIssue). Unlike a rate
-            limit, these are NEVER normal — the lane is disabled, unpaid or
-            out of plan quota, and is contributing nothing to the quorum.
+            `{{ $labels.upstream }}` is returning auth, billing or generic 4xx
+            errors (ErrEndpointUnauthorized, ErrEndpointBillingIssue or
+            ErrEndpointClientSideException). Unlike a rate limit, these are NEVER
+            normal — the lane is disabled, unpaid or out of plan quota, and is
+            contributing nothing to the quorum.
 
-            This is the alert that was missing on 2026-07-30. The quorum may
-            still look healthy right now; it is one lane thinner than it appears
-            and the remaining lanes are absorbing the load.
+            ⚠️ Do NOT grep the metrics for Unauthorized/BillingIssue and conclude
+            nothing is wrong. eRPC classifies a provider 401 as
+            ErrEndpointClientSideException, its generic 4xx bucket — which is
+            exactly why this rule matched an empty vector through the whole
+            2026-08-18 Validation Cloud outage until its selector was widened.
+            Read the error label you actually have, rather than the one you
+            expect:
+              curl -s localhost:9091/api/v1/query --data-urlencode \
+                'query=sum by (upstream,error) (rate(erpc_upstream_request_errors_total{network="evm:10"}[15m]))'
+
+            This is the alert that was missing on 2026-07-30 and inert on
+            2026-08-18. The quorum may still look healthy right now; it is one
+            lane thinner than it appears and the remaining lanes are absorbing
+            the load.
 
             Diagnose (the error body says which):
               docker logs optimism-mainnet-rpc-proxy-1 --tail 200 | grep -i "{{ $labels.upstream }}"
