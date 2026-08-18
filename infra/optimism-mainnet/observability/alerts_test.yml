@@ -71,18 +71,25 @@ tests:
         upstream: validationcloud-op
       exp_annotations:
         summary: OP eRPC upstream validationcloud-op is failing on CREDENTIALS or BILLING
-        description: "`validationcloud-op` is returning auth/billing errors\n(ErrEndpointUnauthorized\
-          \ / ErrEndpointBillingIssue). Unlike a rate\nlimit, these are NEVER normal — the lane is disabled,\
-          \ unpaid or\nout of plan quota, and is contributing nothing to the quorum.\n\nThis is the alert\
-          \ that was missing on 2026-07-30. The quorum may\nstill look healthy right now; it is one lane\
-          \ thinner than it appears\nand the remaining lanes are absorbing the load.\n\nDiagnose (the\
-          \ error body says which):\n  docker logs optimism-mainnet-rpc-proxy-1 --tail 200 | grep -i \"\
-          validationcloud-op\"\nLook for: \"api client is disabled\" (account disabled), \"Monthly\ncapacity\
-          \ limit exceeded\" (plan quota), \"usage limit for your current\nplan\", 401/403.\n\nAct BEFORE\
-          \ the quorum breaks: renew/re-enable the provider, or swap\nthe lane. Keep >=1 non-Cloudflare\
-          \ lane so the CDN-diversity invariant\nin configs/erpc.yaml.tmpl still holds. Verify a replacement\
-          \ with\neth_getTransactionReceipt THROUGH the proxy, not just /quote — with\nagreementThreshold:2\
-          \ a dead third lane hides behind the other two.\n"
+        description: "`validationcloud-op` is returning auth, billing or generic 4xx\nerrors (ErrEndpointUnauthorized,\
+          \ ErrEndpointBillingIssue or\nErrEndpointClientSideException). Unlike a rate limit, these are\
+          \ NEVER\nnormal — the lane is disabled, unpaid or out of plan quota, and is\ncontributing nothing\
+          \ to the quorum.\n\n⚠️ Do NOT grep the metrics for Unauthorized/BillingIssue and conclude\n\
+          nothing is wrong. eRPC classifies a provider 401 as\nErrEndpointClientSideException, its generic\
+          \ 4xx bucket — which is\nexactly why this rule matched an empty vector through the whole\n2026-08-18\
+          \ Validation Cloud outage until its selector was widened.\nRead the error label you actually\
+          \ have, rather than the one you\nexpect:\n  curl -s localhost:9091/api/v1/query --data-urlencode\
+          \ \\\n    'query=sum by (upstream,error) (rate(erpc_upstream_request_errors_total{network=\"\
+          evm:10\"}[15m]))'\n\nThis is the alert that was missing on 2026-07-30 and inert on\n2026-08-18.\
+          \ The quorum may still look healthy right now; it is one\nlane thinner than it appears and the\
+          \ remaining lanes are absorbing\nthe load.\n\nDiagnose (the error body says which):\n  docker\
+          \ logs optimism-mainnet-rpc-proxy-1 --tail 200 | grep -i \"validationcloud-op\"\nLook for: \"\
+          api client is disabled\" (account disabled), \"Monthly\ncapacity limit exceeded\" (plan quota),\
+          \ \"usage limit for your current\nplan\", 401/403.\n\nAct BEFORE the quorum breaks: renew/re-enable\
+          \ the provider, or swap\nthe lane. Keep >=1 non-Cloudflare lane so the CDN-diversity invariant\n\
+          in configs/erpc.yaml.tmpl still holds. Verify a replacement with\neth_getTransactionReceipt\
+          \ THROUGH the proxy, not just /quote — with\nagreementThreshold:2 a dead third lane hides behind\
+          \ the other two.\n"
   - eval_time: 40m
     alertname: OphisOpErpcUpstreamPhantomParticipant
     exp_alerts: []
