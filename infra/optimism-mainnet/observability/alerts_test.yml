@@ -71,15 +71,17 @@ tests:
         upstream: validationcloud-op
       exp_annotations:
         summary: OP eRPC upstream validationcloud-op is failing on CREDENTIALS or BILLING
-        description: "`validationcloud-op` is returning auth, billing or generic 4xx\nerrors (ErrEndpointUnauthorized,\
-          \ ErrEndpointBillingIssue or\nErrEndpointClientSideException). Unlike a rate limit, these are\
-          \ NEVER\nnormal — the lane is disabled, unpaid or out of plan quota, and is\ncontributing nothing\
-          \ to the quorum.\n\n⚠️ Do NOT grep the metrics for Unauthorized/BillingIssue and conclude\n\
-          nothing is wrong. eRPC classifies a provider 401 as\nErrEndpointClientSideException, its generic\
-          \ 4xx bucket — which is\nexactly why this rule matched an empty vector through the whole\n2026-08-18\
-          \ Validation Cloud outage until its selector was widened.\nRead the error label you actually\
-          \ have, rather than the one you\nexpect:\n  curl -s localhost:9091/api/v1/query --data-urlencode\
-          \ \\\n    'query=sum by (upstream,error) (rate(erpc_upstream_request_errors_total{network=\"\
+        description: "Over 10% of the requests eRPC sent `validationcloud-op` in the\nlast 30 minutes\
+          \ came back as auth, billing or generic 4xx errors\n(ErrEndpointUnauthorized, ErrEndpointBillingIssue\
+          \ or\nErrEndpointClientSideException). The usual cause is a credential that\nis disabled, unpaid\
+          \ or out of plan quota — but CONFIRM IT from the\nerror body before acting, because ErrEndpointClientSideException\
+          \ is\neRPC's generic 4xx bucket and can also carry a malformed or\nunsupported request, which\
+          \ is a caller bug rather than lane death.\n\n⚠️ Do NOT grep the metrics for Unauthorized/BillingIssue\
+          \ and conclude\nnothing is wrong. eRPC classifies a provider 401 as\nErrEndpointClientSideException,\
+          \ its generic 4xx bucket — which is\nexactly why this rule matched an empty vector through the\
+          \ whole\n2026-08-18 Validation Cloud outage until its selector was widened.\nRead the error\
+          \ label you actually have, rather than the one you\nexpect:\n  curl -s localhost:9091/api/v1/query\
+          \ --data-urlencode \\\n    'query=sum by (upstream,error) (rate(erpc_upstream_request_errors_total{network=\"\
           evm:10\"}[15m]))'\n\nThis is the alert that was missing on 2026-07-30 and inert on\n2026-08-18.\
           \ The quorum may still look healthy right now; it is one\nlane thinner than it appears and the\
           \ remaining lanes are absorbing\nthe load.\n\nDiagnose (the error body says which):\n  docker\
@@ -615,4 +617,24 @@ tests:
     exp_alerts: []
   - eval_time: 200m
     alertname: OphisOpERPCDown
+    exp_alerts: []
+- interval: 1m
+  name: 'credential-alert false-positive guard: a HEALTHY high-traffic lane returning a trickle of generic
+    4xx (30 per 30m, 1% of requests) must NOT page as a dead credential - removing the 0.1 ratio gate
+    from OphisOpErpcUpstreamCredentialFailing must break this case'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="publicnode-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="zan-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="publicnode-op",error="ErrEndpointClientSideException"}
+    values: 0+1x400
+  alert_rule_test:
+  - eval_time: 60m
+    alertname: OphisOpErpcUpstreamCredentialFailing
+    exp_alerts: []
+  - eval_time: 60m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
     exp_alerts: []
