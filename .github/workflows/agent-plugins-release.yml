@@ -52,7 +52,7 @@ jobs:
       # Bind the published versions to the reviewed tag: the agent-plugins-v<x.y.z> suffix must equal
       # EACH package's package.json version. The tag is read from env (never interpolated) to avoid
       # expression injection.
-      - name: verify tag matches all three package versions
+      - name: verify tag matches all four package versions
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -87,6 +87,12 @@ jobs:
           pnpm --filter @ophis/agent-swap test
           pnpm --filter @ophis/plugin-goat test
           pnpm --filter @ophis/agentkit-ophis test
+
+      # Pack exactly what pnpm will publish and assert workspace dependencies
+      # resolve to the reviewed SDK / adapter versions. This blocks a repeat of
+      # agent-swap 0.3.1 pinning the obsolete @ophis/sdk 0.2.3 artifact.
+      - name: verify packed dependency versions
+        run: pnpm test:agent-plugin-release
 
       # Publish in dependency order. agent-swap FIRST (the adapters require it). --ignore-scripts so
       # publish does not re-run prepublishOnly (dist is already built above) inside the step where

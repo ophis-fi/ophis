@@ -11,7 +11,10 @@ sidebar_position: 2
 Ophis is designed to be agent-friendly. The [Intent API](./intent-api.md)
 accepts free-form natural language and returns structured JSON your agent
 can map directly to a pre-filled swap link. The agent does the parsing
-and routing; **the human always reviews and signs.**
+and routing; in this deep-link flow, **the human always reviews and signs.**
+The MCP server and framework adapters can also support programmatic signing;
+use the policy controls in [Autonomous agent trading](#autonomous-agent-trading-advanced)
+before giving an agent signing authority.
 
 :::tip[New: the full walkthrough]
 
@@ -37,22 +40,22 @@ The current server release is **v0.1.1**. Its package metadata, runtime
 handshake, discovery response, and official registry manifest are checked as a
 single versioned unit in CI.
 
-| Tool | What it does |
-| --- | --- |
-| `parse_intent` | Parse a natural-language request into a structured intent. |
-| `resolve_token` | Resolve a token symbol to its canonical address from the trusted Ophis/CoW token list; fails closed (anti-spoof). Call this before quoting or building so you never trade against a spoofed address. |
-| `get_quote` | Fetch an executable quote for a parsed intent. |
-| `build_order` | Build a bounded, ready-to-sign order (receiver pinned to the owner by default). |
-| `submit_order` | Submit a signed order to the correct per-chain orderbook. |
-| `validate_order` | Offline preflight for an order you built outside `build_order`: catches the silent-failure modes (wrong appCode, wrong orderbook host, wrong EIP-712 domain, appData-hash mismatch, unpinned receiver) before you sign. |
-| `lookup_tier` | Look up a wallet's 30-day volume tier / rebate status. |
-| `get_integrator_earnings` | Look up what an integrator's own-fee / referral routing earned, by appCode: routed volume, the Ophis base fee, your stacked fee, and rebate paid-to-date with payout tx links. |
-| `list_chains` | Resolve supported chains and their settlement / orderbook hosts. |
-| `get_balances` | Read a wallet's native and ERC-20 balances on one chain via a public RPC. |
-| `get_portfolio` | Read a wallet's token balances across multiple chains. |
-| `get_gas` | Fetch the current gas price for a chain. |
-| `get_token_chart` | Fetch a token's OHLCV price chart. |
-| `expected_surplus` | Estimate how much better an Ophis sell-quote beats the open market (`beatBps`). |
+| Tool                      | What it does                                                                                                                                                                                                            |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `parse_intent`            | Parse a natural-language request into a structured intent.                                                                                                                                                              |
+| `resolve_token`           | Resolve a token symbol to its canonical address from the trusted Ophis/CoW token list; fails closed (anti-spoof). Call this before quoting or building so you never trade against a spoofed address.                    |
+| `get_quote`               | Fetch an executable quote for a parsed intent.                                                                                                                                                                          |
+| `build_order`             | Build a bounded, ready-to-sign order (receiver unconditionally pinned to the owner).                                                                                                                                    |
+| `submit_order`            | Submit a signed order to the correct per-chain orderbook.                                                                                                                                                               |
+| `validate_order`          | Offline preflight for an order you built outside `build_order`: catches the silent-failure modes (wrong appCode, wrong orderbook host, wrong EIP-712 domain, appData-hash mismatch, unpinned receiver) before you sign. |
+| `lookup_tier`             | Look up a wallet's 30-day volume tier / rebate status.                                                                                                                                                                  |
+| `get_integrator_earnings` | Look up what an integrator's own-fee / referral routing earned, by appCode: routed volume, the Ophis base fee, your stacked fee, and rebate paid-to-date with payout tx links.                                          |
+| `list_chains`             | Resolve supported chains and their settlement / orderbook hosts.                                                                                                                                                        |
+| `get_balances`            | Read a wallet's native and ERC-20 balances on one chain via a public RPC.                                                                                                                                               |
+| `get_portfolio`           | Read a wallet's token balances across multiple chains.                                                                                                                                                                  |
+| `get_gas`                 | Fetch the current gas price for a chain.                                                                                                                                                                                |
+| `get_token_chart`         | Fetch a token's OHLCV price chart.                                                                                                                                                                                      |
+| `expected_surplus`        | Estimate how much better an Ophis sell-quote beats the open market (`beatBps`).                                                                                                                                         |
 
 Point any MCP client (Claude, Cursor, or a custom agent) at that URL. Ophis
 never holds keys: `build_order` returns a bounded order the agent signs
@@ -135,9 +138,10 @@ If you'd rather make a single REST call than wire up the full toolset, use the
 :::warning[The signature is the trust boundary]
 
 Ophis intentionally does **not** implement [x402](https://x402.org) or any
-HTTP-native payment automation. An order only becomes real when the user
-signs it in their wallet; bypassing that step would break self-custody.
-Agents must always hand off to the user for signing.
+HTTP-native payment automation. In the Intent API / deep-link flow, an order
+only becomes real when the user signs it in their wallet. Agents using this
+flow must hand off to the user for review and signing. Autonomous integrations
+instead need the deterministic signing policies described below.
 
 :::
 
@@ -158,10 +162,10 @@ curl -sS https://ophis.fi/api/intent \
   "data": {
     "intent": "swap",
     "entities": [
-      { "type": "amount",    "value": "100",  "raw": "100",  "start": 5,  "end": 8 },
-      { "type": "sellToken", "value": "USDC",  "raw": "USDC", "start": 9,  "end": 13 },
-      { "type": "buyToken",  "value": "ETH",   "raw": "ETH",  "start": 18, "end": 21 },
-      { "type": "chain",     "value": "base",  "raw": "Base", "start": 25, "end": 29 }
+      { "type": "amount", "value": "100", "raw": "100", "start": 5, "end": 8 },
+      { "type": "sellToken", "value": "USDC", "raw": "USDC", "start": 9, "end": 13 },
+      { "type": "buyToken", "value": "ETH", "raw": "ETH", "start": 18, "end": 21 },
+      { "type": "chain", "value": "base", "raw": "Base", "start": 25, "end": 29 }
     ]
   }
 }
@@ -172,7 +176,8 @@ curl -sS https://ophis.fi/api/intent \
 ```python
 import requests
 
-OPHIS = "https://ophis.fi"
+INTENT_API = "https://ophis.fi/api/intent"
+SWAP_APP = "https://swap.ophis.fi"
 
 # The 13 EVM chains the Intent API can return, mapped to their chain IDs.
 # Keep in sync with the API's supported-network list; build_deeplink()
@@ -196,7 +201,7 @@ CHAIN_SLUG_TO_ID = {
 
 def parse_intent(text: str) -> dict:
     """Call the Ophis Intent API and return the ParsedIntent payload."""
-    resp = requests.post(f"{OPHIS}/api/intent", json={"text": text}, timeout=10)
+    resp = requests.post(INTENT_API, json={"text": text}, timeout=10)
     resp.raise_for_status()
     body = resp.json()
     if not body["ok"]:
@@ -219,7 +224,7 @@ def build_deeplink(parsed: dict) -> str:
         # loud instead of silently routing the user to the wrong chain.
         raise ValueError(f"unmapped chain slug {chain_slug!r}; update CHAIN_SLUG_TO_ID")
     # The user sets/confirms the amount and signs in the app.
-    return f"{OPHIS}/#/{chain_id}/swap/{sell}/{buy}"
+    return f"{SWAP_APP}/#/{chain_id}/swap/{sell}/{buy}"
 
 
 intent = parse_intent("swap 100 USDC for ETH on Base")
@@ -283,14 +288,19 @@ Everything above keeps a human in the signing loop. If instead you are building
 an agent that executes swaps itself and you are on a common framework, you do
 not have to hand-roll the order flow in the next section. Four published npm
 packages wrap quote, EIP-712 sign, relayer approval, and submit into one call,
-and each stamps your referral code into every order so the rebate accrues:
+and each stamps your referral code into every order when one is supplied, so
+the rebate accrues:
 
-| Package | For | Registers |
-| --- | --- | --- |
-| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
-| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat) | [GOAT SDK](https://github.com/goat-sdk/goat) | an `ophis_swap` tool |
-| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | [elizaOS](https://github.com/elizaOS/eliza) | a `swap` action |
-| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap) | any custom EOA framework | the `executeOphisSwap()` core |
+| Package                                                                        | Version | For                                                       | Registers                            |
+| ------------------------------------------------------------------------------ | ------- | --------------------------------------------------------- | ------------------------------------ |
+| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.2  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
+| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.2  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
+| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.2  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
+| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.2  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
+
+The v0.3.2 adapter family is built and published against `@ophis/sdk` v0.4.2,
+so its fee policy, chain list, orderbook hosts, settlement contracts, and vault
+relayers match the current SDK.
 
 Coinbase AgentKit, in one line:
 
@@ -337,9 +347,11 @@ sells need CoW eth-flow, a separate path, so wrap to WETH first). The agent's
 wallet is the order owner **and** receiver, so funds only ever move through the
 audited CoW settlement contract, back to the same wallet.
 
-The stablecoin-to-stablecoin 1 bp fee tier is applied automatically: every drop-in
-adapter (AgentKit, GOAT, elizaOS) and the platform integrations below detect a
-stable pair from a verified stablecoin list, so you never set it by hand.
+The 1 bp base fee applies to every supported pair. Every drop-in adapter
+(AgentKit, GOAT, elizaOS) and the platform integrations below detect stable
+pairs from a verified stablecoin list so the reduced price-improvement policy
+is selected automatically: 50% capped at 20 bps for stable pairs, versus 80%
+capped at 99 bps for volatile pairs.
 
 The `referralCode` is optional: omit it and swaps still work and settle, you just
 forgo the rebate. Mint one below, then ship, no redeploy of the swap path needed
@@ -378,14 +390,18 @@ pinned per-chain settlement and vault-relayer contracts (the only allowed
 `approve` spenders), the EIP-712 signing domains, the orderbook hosts, and
 slippage latches. Policy-enforcing runtimes can apply it mechanically; CI in
 the Ophis repo pins the block against the deployed addresses so the published
-skills cannot drift. The skills cover the Ophis-operated chains (Optimism and
-Unichain); for other chains use the MCP server above, which resolves per-chain
-contracts via `list_chains`.
+skills cannot drift. The skills cover all three Ophis-operated chains
+(Optimism, Unichain, and Robinhood Chain); for other chains use the MCP server
+above, which resolves per-chain contracts via `list_chains`.
+
+The same canonical family is published as
+[`@ophis/agent-skills`](https://www.npmjs.com/package/@ophis/agent-skills)
+v0.1.1 for runtimes that install skills from npm.
 
 ## Get a referral code
 
 Every order these adapters (or the SDK below) build already carries the Ophis
-partner fee. Add your **referral code** and that same order also credits *you*
+partner fee. Add your **referral code** and that same order also credits _you_
 with the [affiliate rebate](./affiliate.md) on its volume, currently 8 to 12
 percent, paid on-chain. The code rides in the order's appData, so there is
 nothing for the end user to sign or opt into.
@@ -544,12 +560,12 @@ assertReceiverIsOwner(owner, order.receiver); // throws if receiver !== owner
 ## Autonomous agent trading (advanced)
 
 Everything above keeps a **human in the signing loop**. For an agent that signs
-*without* human review, off-chain helpers are not enough, a compromised or
+_without_ human review, off-chain helpers are not enough, a compromised or
 prompt-injected agent will sign whatever it is told. Safety has to be enforced
 where the agent cannot reach it:
 
 1. **Funds in a smart account (Safe).** The agent never holds the fund-owning
-   key; it only *proposes* orders. The account's EIP-1271 validator (or a Safe
+   key; it only _proposes_ orders. The account's EIP-1271 validator (or a Safe
    module) approves only order hashes that satisfy policy.
 2. **A deterministic policy gate** between the (untrusted) LLM and any signature,
    owning every order field:
@@ -557,7 +573,7 @@ where the agent cannot reach it:
    - `receiver` pinned to the account;
    - `appData` pinned to the Ophis canonical, hooks forced empty;
    - limit price within X% of an independent, staleness-checked oracle (CoW
-     guarantees you won't fill *below* your limit, not that your limit is sane);
+     guarantees you won't fill _below_ your limit, not that your limit is sane);
    - per-trade notional + rolling daily caps; short `validTo`; avoid `presign`.
 3. **Containment:** a bounded vault-relayer allowance (the blast radius if policy
    fails once), a guardian key that can revoke signing or pause, keys in an
@@ -567,9 +583,9 @@ where the agent cannot reach it:
 
 :::warning[The signing gate must be in code, not prose]
 
-Today "the human always signs" is a documented social contract, not an enforced
-boundary. Autonomous signing is fine to pursue, but only once that promise is
-replaced by the policy-enforced kit above. Otherwise an autonomous integrator is
-one unpinned `receiver` away from draining itself.
+In the human-mediated flow, "the human reviews and signs" is a documented social
+contract, not an enforced boundary. Autonomous signing is fine to pursue, but
+only once that promise is replaced by the policy-enforced kit above. Otherwise
+an autonomous integrator is one unpinned `receiver` away from draining itself.
 
 :::
