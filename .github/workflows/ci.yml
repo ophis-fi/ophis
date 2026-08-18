@@ -202,3 +202,38 @@ jobs:
         run: python3 infra/unichain-mainnet/assert-erpc-failclosed.py infra/unichain-mainnet/configs/erpc.yaml.tmpl
       - name: assert Robinhood eRPC template stays 2-of-3-across-3 fail-closed
         run: python3 infra/robinhood-mainnet/assert-erpc-failclosed.py infra/robinhood-mainnet/configs/erpc.yaml.tmpl
+
+  prometheus-alert-rules:
+    name: Prometheus alert rules — lint + mutation tests
+    runs-on: ubuntu-latest
+    # WHY THIS JOB EXISTS: alerts.yml was never linted or tested by CI. On
+    # 2026-08-18 OphisOpErpcUpstreamCredentialFailing — added specifically to
+    # catch a provider credential death after the 2026-07-30 incident — could
+    # not fire at all, because it matched an error label eRPC never emits. The
+    # rule was merged with a commit message asserting "it would have fired".
+    # Nothing proved it. promtool test rules is that proof.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: lint every chain's alert rules
+        run: |
+          for chain in optimism-mainnet unichain-mainnet robinhood-mainnet; do
+            echo "::group::promtool check rules — $chain"
+            docker run --rm -v "$PWD/infra/$chain/observability":/w:ro \
+              --entrypoint promtool prom/prometheus:v3.0.1 check rules /w/alerts.yml
+            echo "::endgroup::"
+          done
+      - name: run alert unit tests where they exist
+        run: |
+          found=0
+          for chain in optimism-mainnet unichain-mainnet robinhood-mainnet; do
+            test -f "infra/$chain/observability/alerts_test.yml" || continue
+            found=1
+            echo "::group::promtool test rules — $chain"
+            docker run --rm -v "$PWD/infra/$chain/observability":/w:ro \
+              --entrypoint promtool prom/prometheus:v3.0.1 test rules /w/alerts_test.yml
+            echo "::endgroup::"
+          done
+          if [ "$found" = "0" ]; then
+            echo "no alerts_test.yml found anywhere — the guard would be vacuous" >&2
+            exit 1
+          fi

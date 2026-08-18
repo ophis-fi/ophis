@@ -1,0 +1,178 @@
+# promtool unit tests for the OP eRPC lane-death alerts.
+#
+# WHY: on 2026-08-18 OphisOpErpcUpstreamCredentialFailing — written for exactly
+# that failure after the 2026-07-30 incident — could not fire, because it matched
+# ErrEndpointUnauthorized while eRPC emits ErrEndpointClientSideException for a
+# provider 401. Nobody had ever proven the rule could bind. These tests replay the
+# incident and a healthy control, so every rule here is shown to fire when it must
+# AND to stay silent when it must not.
+#
+# Run: promtool test rules infra/optimism-mainnet/observability/alerts_test.yml
+# (CI runs this; see .github/workflows/ci.yml -> prometheus-alert-rules)
+#
+# GENERATED-ASSISTED: exp_annotations mirror alerts.yml verbatim. If you edit the
+# operator text in a rule, this file must be updated too — that failure is the
+# point, not a nuisance.
+
+rule_files:
+- alerts.yml
+evaluation_interval: 1m
+tests:
+- interval: 1m
+  name: '2026-08-18 replay: validationcloud key disabled (HTTP 401 -> ErrEndpointClientSideException),
+    publicnode healthy, zan short-circuiting'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="publicnode-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="zan-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="validationcloud-op",error="ErrEndpointClientSideException"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="zan-op",error="ErrUpstreamBlockUnavailable"}
+    values: 0+90x400
+  - series: process_start_time_seconds{job="rpc-proxy"}
+    values: 100x400
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        upstream: validationcloud-op
+      exp_annotations:
+        summary: OP eRPC upstream validationcloud-op is failing ~everything
+        description: 'validationcloud-op has failed over 95% of the requests eRPC sent it for 10 minutes,
+          excluding block-availability short-circuits. Expired key, exhausted quota, revoked account or
+          provider outage — the lane is contributing nothing to the quorum. With agreementThreshold:2
+          across 3 lanes it hides behind the other two until a second lane blips, then everything fails
+          closed at once. eRPC will NOT shed it on its own: the per-upstream circuit breaker does not
+          open on 4xx, which it classifies as a client-side exception. Diagnose with docker logs optimism-mainnet-rpc-proxy-1
+          --tail 200, grepping the upstream id, then probe the provider directly for the raw HTTP status
+          and body. Remedy: renew or replace the credential, or remove the lane from the rendered erpc.yaml
+          and restart rpc-proxy (eRPC does not hot-reload). Keep at least one non-Cloudflare lane so the
+          CDN-diversity invariant in configs/erpc.yaml.tmpl still holds, and verify any replacement with
+          eth_getTransactionReceipt THROUGH the proxy, not just /quote.'
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamCredentialFailing
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        upstream: validationcloud-op
+      exp_annotations:
+        summary: OP eRPC upstream validationcloud-op is failing on CREDENTIALS or BILLING
+        description: "`validationcloud-op` is returning auth/billing errors\n(ErrEndpointUnauthorized\
+          \ / ErrEndpointBillingIssue). Unlike a rate\nlimit, these are NEVER normal — the lane is disabled,\
+          \ unpaid or\nout of plan quota, and is contributing nothing to the quorum.\n\nThis is the alert\
+          \ that was missing on 2026-07-30. The quorum may\nstill look healthy right now; it is one lane\
+          \ thinner than it appears\nand the remaining lanes are absorbing the load.\n\nDiagnose (the\
+          \ error body says which):\n  docker logs optimism-mainnet-rpc-proxy-1 --tail 200 | grep -i \"\
+          validationcloud-op\"\nLook for: \"api client is disabled\" (account disabled), \"Monthly\ncapacity\
+          \ limit exceeded\" (plan quota), \"usage limit for your current\nplan\", 401/403.\n\nAct BEFORE\
+          \ the quorum breaks: renew/re-enable the provider, or swap\nthe lane. Keep >=1 non-Cloudflare\
+          \ lane so the CDN-diversity invariant\nin configs/erpc.yaml.tmpl still holds. Verify a replacement\
+          \ with\neth_getTransactionReceipt THROUGH the proxy, not just /quote — with\nagreementThreshold:2\
+          \ a dead third lane hides behind the other two.\n"
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamPhantomParticipant
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcUpstreamPhantomParticipant
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: optimism
+        upstream: zan-op
+      exp_annotations:
+        summary: OP eRPC upstream zan-op is a phantom quorum participant
+        description: 'eRPC is refusing to send over 60% of requests to zan-op because it believes the
+          lane''s head is behind the block the request is pinned to. The lane counts toward the configured
+          quorum size but is not actually answering, so the real agreement margin is thinner than maxParticipants
+          suggests. Check whether this is a freshness artifact rather than a genuinely lagging node: compare
+          erpc_upstream_latest_block_number across lanes and see whether erpc_upstream_stale_upper_bound_total
+          tracks the error count one for one. If it does while a hand probe shows the lane at the tip,
+          the lane is losing the state-poll freshness race, not lagging. This does not fail closed on
+          its own; it quietly shrinks the number of lanes that can serve a method, so re-check the per-method
+          quorum margin rule of thumb in configs/erpc.yaml.tmpl before assuming 2-of-3 still holds.'
+  - eval_time: 5m
+    alertname: OphisOpErpcProxyRestarted
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: optimism
+        job: rpc-proxy
+      exp_annotations:
+        summary: OP eRPC proxy restarted in the last 5 minutes
+        description: 'The rpc-proxy process started less than 5 minutes ago. If you did not just restart
+          it, it crashed and compose brought it back. Check for a panic with docker logs optimism-mainnet-rpc-proxy-1
+          --tail 400 grepping for "fatal error", "panic" or "goroutine", and read the container''s RestartCount
+          via docker inspect. A "concurrent map iteration and map write" trace in consensus.trackAndPunishMisbehavingUpstreams
+          is erpc/erpc#864 and is triggered by an upstream already being unhealthy: treat it as a second
+          symptom, not the root cause, and find the dead or disputing lane.'
+  - eval_time: 20m
+    alertname: OphisOpErpcProxyRestarted
+    exp_alerts: []
+- interval: 1m
+  name: 'healthy control: all three lanes answering, no errors, proxy up for hours'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="publicnode-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="zan-op"}
+    values: 0+100x400
+  - series: process_start_time_seconds{job="rpc-proxy"}
+    values: 100x400
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts: []
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamCredentialFailing
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcUpstreamPhantomParticipant
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: OphisOpErpcProxyRestarted
+    exp_alerts: []
+- interval: 1m
+  name: 'exclusion guard: a lane short-circuited 99% by enforceHighestBlock is a PHANTOM, not a DEAD lane
+    - dropping error!="ErrUpstreamBlockUnavailable" from OphisOpErpcUpstreamEffectivelyDead must break
+    this case'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="publicnode-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="zan-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="zan-op",error="ErrUpstreamBlockUnavailable"}
+    values: 0+99x400
+  - series: process_start_time_seconds{job="rpc-proxy"}
+    values: 100x400
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcUpstreamPhantomParticipant
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: optimism
+        upstream: zan-op
+      exp_annotations:
+        summary: OP eRPC upstream zan-op is a phantom quorum participant
+        description: 'eRPC is refusing to send over 60% of requests to zan-op because it believes the
+          lane''s head is behind the block the request is pinned to. The lane counts toward the configured
+          quorum size but is not actually answering, so the real agreement margin is thinner than maxParticipants
+          suggests. Check whether this is a freshness artifact rather than a genuinely lagging node: compare
+          erpc_upstream_latest_block_number across lanes and see whether erpc_upstream_stale_upper_bound_total
+          tracks the error count one for one. If it does while a hand probe shows the lane at the tip,
+          the lane is losing the state-poll freshness race, not lagging. This does not fail closed on
+          its own; it quietly shrinks the number of lanes that can serve a method, so re-check the per-method
+          quorum margin rule of thumb in configs/erpc.yaml.tmpl before assuming 2-of-3 still holds.'

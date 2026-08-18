@@ -11,21 +11,31 @@ upstreams**:
 
 | Upstream | Endpoint | Failure domain | Notes |
 |---|---|---|---|
-| `official-op` | `https://mainnet.optimism.io` | Conduit / AWS (CF-fronted) | OP Foundation; DNS: Cloudflare; CA: CF/Google |
-| `publicnode-op` | `https://optimism-rpc.publicnode.com` | Allnodes multi-cloud | Prior sole provider; DNS: Route53; CA: Let's Encrypt |
-| `ankr-op` | `https://rpc.ankr.com/optimism` | Ankr public | DNS: Ankr-operated (NOT Cloudflare); CA: ZeroSSL/Sectigo |
+| `publicnode-op` | `https://optimism-rpc.publicnode.com` | Allnodes | CDN: Cloudflare — **the ONE permitted CF lane**; auth: none (free tier); gap: archive-gated `eth_getTransactionReceipt` (serves recent receipts fine) |
+| `zan-op` | `api.zan.top` | ZAN (Ant Digital) | CDN: none detected (non-CF); auth: keyed (`${ZAN_API_KEY}`); serves all protected methods; **slow: p50 ~1.1s, p95 ~4.6s against its own 4s timeout** |
+| `validationcloud-op` | `mainnet.optimism.validationcloud.io` | Validation Cloud | CDN: none (istio-envoy), non-CF; auth: keyed (`${VALIDATIONCLOUD_OP_KEY}`); **free tier = 50M compute units/calendar month, which this stack burns in ~2.5 days** |
 
-`llamarpc-op` was the initial 3rd pick — replaced by ankr-op
-(pre-merge adversarial review, PR #130) because llamarpc shared
-Cloudflare DNS with official-op (a single CF control-plane compromise
-would hijack 2-of-3 simultaneously, meeting the consensus threshold
-and forging reads). Failure-domain rationale lives in
-`infra/optimism-mainnet/configs/erpc.yaml.tmpl` header.
+The lane set is rebuilt often — six times in six weeks to 2026-08-18, and
+every rebuild but one was forced by a provider running out of quota or
+credentials. **The authoritative, dated list is the header of
+`infra/optimism-mainnet/configs/erpc.yaml.tmpl`**; treat any table in this
+runbook as secondary and check that header first.
 
-**Consensus policy:** `maxParticipants=2`, `agreementThreshold=2`,
-`disputeBehavior=returnError`, `lowParticipantsBehavior=returnError`.
-Audit-required to defeat fork-view-poisoning (any 1 hostile upstream
-cannot influence outcomes).
+**Hard invariant: at most ONE upstream may be Cloudflare-fronted.** publicnode
+holds that slot. A 2-upstream subset sharing one CDN/DNS could satisfy quorum
+alone under a single control-plane compromise. Measured 2026-08-18: dRPC, 1RPC,
+Nodies, BlastAPI, Omnia, BlockPI, Lava and Tatum are all CF-fronted and are
+therefore ineligible while publicnode is in the set.
+
+**Consensus policy:** `maxParticipants=3`, `agreementThreshold=2`,
+`lowParticipantsBehavior=returnError` on every protected group.
+`disputeBehavior=preferBlockHeadLeader` for the `eth_call`/`eth_getBalance` and
+`eth_getLogs` groups, and `returnError` for `eth_getTransactionReceipt`.
+Audit-required to defeat fork-view-poisoning: no single hostile upstream can
+influence outcomes **provided at least three lanes can actually serve the
+method**. When the count of capable lanes equals `agreementThreshold`, that
+protection is gone for that method — see the rule of thumb in the template
+header.
 
 **Fail-closed by design:** any consensus failure surfaces as a
 JSON-RPC error to the caller. Callers (autopilot/driver/orderbook)
@@ -45,22 +55,31 @@ project has its own bridge network. Only the host-bound port differs.
 
 ## Alert decoder
 
-**No OP-specific Prometheus alerts deployed yet** (as of 2026-05-19).
-The HL stack has `ophis-hl-erpc-consensus` (PR #76); the OP equivalent
-is on the long-tail roadmap as `ophis-op-erpc-consensus`. Until
-deployed, diagnose interactively from eRPC's `/metrics` endpoint
-(see Step 2 below).
+OP alerts **are** deployed: `infra/optimism-mainnet/observability/alerts.yml`
+is bind-mounted straight into Prometheus (no render step), and
+`alerts_test.yml` proves each eRPC rule fires and stays silent when it should.
 
-When the OP alert PR ships, the alert names will mirror HL with the
-`Op` infix:
-
-| Alert | Equivalent in HL | Severity |
+| Alert | Fires when | Severity |
 |---|---|---|
-| `OphisOpErpcConsensusLowParticipantsHigh` | `OphisHlErpc…` | warning |
-| `OphisOpErpcConsensusDisputeHigh` | same | warning |
-| `OphisOpErpcConsensusFailureCritical` | same | **critical** |
+| `OphisOpErpcUpstreamEffectivelyDead` | one lane fails >95% of requests for 10m, any error code | **critical** |
+| `OphisOpErpcUpstreamCredentialFailing` | auth/billing/4xx errors on a lane | **critical** |
+| `OphisOpErpcUpstreamRateLimitedDead` | >90% `ErrEndpointCapacityExceeded` for 30m | warning |
+| `OphisOpErpcUpstreamPhantomParticipant` | >60% of a lane's requests short-circuit on stale head for 2h | warning |
+| `OphisOpErpcUpstreamBlockHeadLagging` | a lane is >5 blocks behind the median for 15m | warning |
+| `OphisOpErpcNetworkFailsafeTimeouts` | 12s network budget exhausted before any upstream answers | **critical** |
+| `OphisOpErpcConsensusLowParticipantsHigh` | fewer than `agreementThreshold` lanes answering | warning |
+| `OphisOpErpcConsensusDisputeHigh` | lanes disagreeing | warning |
+| `OphisOpErpcConsensusFailureCritical` | sustained consensus failure | **critical** |
+| `OphisOpErpcProxyRestarted` | rpc-proxy process started <5m ago (i.e. it crashed) | warning |
+| `OphisOpERPCDown` | `up{job="rpc-proxy"}==0` for 3m | **critical** |
 
-All three would monitor `erpc_consensus_errors_total{network="evm:10"}`.
+⚠️ **Silence is not health.** Two of these were written for incidents they then
+failed to catch: `OphisOpErpcUpstreamCredentialFailing` matched
+`ErrEndpointUnauthorized` while eRPC emits `ErrEndpointClientSideException` for a
+provider 401 (2026-08-18), and `OphisOpErpcUpstreamRateLimitedDead` dilutes below
+its ratio threshold when rejection is burst-correlated (2026-08-09). If you add or
+edit a rule, add a case to `alerts_test.yml` and prove it fails when the rule is
+mutated back.
 
 ## Diagnostic playbook
 
@@ -127,8 +146,11 @@ upstream X failing
 Recovery from "single upstream sustained failure": replace the failing
 upstream with a known-healthy candidate.
 
-**Pre-vetted candidates** (probed conceptually 2026-05-19; re-probe
-before live use):
+**Pre-vetted candidates** — ⚠️ this list is from 2026-05-19 and has ROTTED.
+Re-probed 2026-08-18: BlastAPI and Omnia are now Cloudflare-fronted, so both
+are ineligible while publicnode holds the CF slot. Ankr no longer serves a
+keyless endpoint. Probe for `cf-ray`/`server` headers AND `dig NS` before
+admitting anything:
 
 - `https://op-mainnet.public.blastapi.io` — Blast API, distinct DNS
 - `https://endpoints.omniatech.io/v1/op/mainnet/public` — Omnia public
@@ -154,7 +176,10 @@ before live use):
 
 2. Re-render and recreate rpc-proxy:
    ```bash
-   cd /Users/scep/greg/infra/optimism-mainnet
+   # the LIVE deploy worktree — /Users/scep/greg is a stale object store,
+   # rendering there changes nothing that is mounted. Confirm with:
+   #   docker inspect optimism-mainnet-rpc-proxy-1 --format '{{range .Mounts}}{{.Source}}\n{{end}}'
+   cd /Users/scep/greg-wt/op-deploy-0730/infra/optimism-mainnet
    ./render-configs.sh
    docker compose up -d --force-recreate --no-deps rpc-proxy
    ```
