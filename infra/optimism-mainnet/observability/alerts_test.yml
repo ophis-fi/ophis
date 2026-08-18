@@ -1,18 +1,24 @@
-# promtool unit tests for the OP eRPC lane-death alerts.
+# promtool unit tests for the OP eRPC alert rules.
 #
-# WHY: on 2026-08-18 OphisOpErpcUpstreamCredentialFailing — written for exactly
-# that failure after the 2026-07-30 incident — could not fire, because it matched
+# WHY: on 2026-08-18 OphisOpErpcUpstreamCredentialFailing - written for exactly
+# that failure after the 2026-07-30 incident - could not fire, because it matched
 # ErrEndpointUnauthorized while eRPC emits ErrEndpointClientSideException for a
-# provider 401. Nobody had ever proven the rule could bind. These tests replay the
-# incident and a healthy control, so every rule here is shown to fire when it must
-# AND to stay silent when it must not.
+# provider 401. Nobody had ever proven the rule could bind, and CI never linted or
+# tested this file at all.
+#
+# COVERAGE: every eRPC rule in alerts.yml has BOTH a firing case and a silence
+# case here, plus a shared healthy control in which all of them must stay quiet.
+# Each firing case is paired with an eval_time before its `for:` elapses, so the
+# hold duration is exercised too, not just the threshold.
+#
+# If you add an eRPC rule, add cases here. A rule with no test is a rule nobody
+# has shown can fire.
 #
 # Run: promtool test rules infra/optimism-mainnet/observability/alerts_test.yml
 # (CI runs this; see .github/workflows/ci.yml -> prometheus-alert-rules)
 #
-# GENERATED-ASSISTED: exp_annotations mirror alerts.yml verbatim. If you edit the
-# operator text in a rule, this file must be updated too — that failure is the
-# point, not a nuisance.
+# exp_annotations mirror alerts.yml verbatim. Editing a rule's operator text
+# breaks these tests on purpose - confirm the new wording, then update it here.
 
 rule_files:
 - alerts.yml
@@ -32,7 +38,8 @@ tests:
     values: 0+100x400
   - series: erpc_upstream_request_errors_total{network="evm:10",upstream="zan-op",error="ErrUpstreamBlockUnavailable"}
     values: 0+90x400
-  - series: process_start_time_seconds{job="rpc-proxy"}
+  - &id001
+    series: process_start_time_seconds{job="rpc-proxy"}
     values: 100x400
   alert_rule_test:
   - eval_time: 40m
@@ -116,33 +123,8 @@ tests:
     alertname: OphisOpErpcProxyRestarted
     exp_alerts: []
 - interval: 1m
-  name: 'healthy control: all three lanes answering, no errors, proxy up for hours'
-  input_series:
-  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
-    values: 0+100x400
-  - series: erpc_upstream_request_total{network="evm:10",upstream="publicnode-op"}
-    values: 0+100x400
-  - series: erpc_upstream_request_total{network="evm:10",upstream="zan-op"}
-    values: 0+100x400
-  - series: process_start_time_seconds{job="rpc-proxy"}
-    values: 100x400
-  alert_rule_test:
-  - eval_time: 40m
-    alertname: OphisOpErpcUpstreamEffectivelyDead
-    exp_alerts: []
-  - eval_time: 40m
-    alertname: OphisOpErpcUpstreamCredentialFailing
-    exp_alerts: []
-  - eval_time: 200m
-    alertname: OphisOpErpcUpstreamPhantomParticipant
-    exp_alerts: []
-  - eval_time: 20m
-    alertname: OphisOpErpcProxyRestarted
-    exp_alerts: []
-- interval: 1m
   name: 'exclusion guard: a lane short-circuited 99% by enforceHighestBlock is a PHANTOM, not a DEAD lane
-    - dropping error!="ErrUpstreamBlockUnavailable" from OphisOpErpcUpstreamEffectivelyDead must break
-    this case'
+    - dropping error!="ErrUpstreamBlockUnavailable" from the dead-lane rule must break this case'
   input_series:
   - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
     values: 0+100x400
@@ -152,8 +134,7 @@ tests:
     values: 0+100x400
   - series: erpc_upstream_request_errors_total{network="evm:10",upstream="zan-op",error="ErrUpstreamBlockUnavailable"}
     values: 0+99x400
-  - series: process_start_time_seconds{job="rpc-proxy"}
-    values: 100x400
+  - *id001
   alert_rule_test:
   - eval_time: 40m
     alertname: OphisOpErpcUpstreamEffectivelyDead
@@ -176,3 +157,455 @@ tests:
           the lane is losing the state-poll freshness race, not lagging. This does not fail closed on
           its own; it quietly shrinks the number of lanes that can serve a method, so re-check the per-method
           quorum margin rule of thumb in configs/erpc.yaml.tmpl before assuming 2-of-3 still holds.'
+- interval: 1m
+  name: 'rate-limit death: a lane 95% rejected with ErrEndpointCapacityExceeded (2026-07-30 blockdaemon
+    429 shape)'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="publicnode-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="zan-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="publicnode-op",error="ErrEndpointCapacityExceeded"}
+    values: 0+95x400
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: OphisOpErpcUpstreamRateLimitedDead
+    exp_alerts: []
+  - eval_time: 60m
+    alertname: OphisOpErpcUpstreamRateLimitedDead
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: optimism
+        upstream: publicnode-op
+      exp_annotations:
+        summary: OP eRPC upstream publicnode-op is >90% rate-limited for 30m (effectively dead)
+        description: 'Over 90% of requests to `publicnode-op` have been rejected
+
+          with ErrEndpointCapacityExceeded for 30 minutes. The lane is
+
+          technically reachable but contributes nothing to consensus.
+
+
+          Some capacity errors are NORMAL on free tiers, which is why this is
+
+          a RATIO over a long window rather than a raw count — a lane that is
+
+          merely busy will not trip it. ⚠️ The ratio is also why tenderly''s
+
+          chronic throttling (2026-08-09 incident: ~10-20 rejections/h idle,
+
+          near-total rejection only during auction bursts) never tripped it —
+
+          burst-correlated rejection dilutes below 90% over 30m. Do not treat
+
+          this alert''s silence as lane health.
+
+
+          Measured precedent 2026-07-30: official-op and nodies-op both returned
+
+          429 on 12/12 probes from this host, i.e. hard per-IP blocks, while the
+
+          config still counted them as two of three lanes.
+
+
+          Check whether the provider needs a key, a paid tier, or replacing.
+
+          A self-hosted OP node removes this failure mode entirely.
+
+          '
+- interval: 1m
+  name: 'block-head lag: one lane frozen far behind the median (the only rule that caught 2026-08-18,
+    and only as a side effect)'
+  input_series:
+  - series: erpc_upstream_block_head_lag{network="evm:10",upstream="validationcloud-op"}
+    values: 3883x60
+  - series: erpc_upstream_block_head_lag{network="evm:10",upstream="publicnode-op"}
+    values: '0x60'
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: OphisOpErpcUpstreamBlockHeadLagging
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisOpErpcUpstreamBlockHeadLagging
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: optimism
+        upstream: validationcloud-op
+        network: evm:10
+      exp_annotations:
+        summary: OP eRPC upstream validationcloud-op >5 blocks behind for 15m
+        description: 'The validationcloud-op upstream has been more than 5 blocks
+
+          behind the median for 15 minutes. This is the dominant root
+
+          cause of dispute churn on Block A consensus methods (eth_call,
+
+          eth_getBalance) — the chronically-lagging upstream returns
+
+          stale state, gets disputed, eventually gets cordoned by
+
+          punishMisbehavior.
+
+
+          All three lanes are now third-party providers; a lag here is a
+
+          provider-side regression. Compare heads per lane, then consider a
+
+          hot-swap if it is sustained > 1h.
+
+
+          ⚠️ A lane that is DEAD rather than lagging is the more dangerous
+
+          case and this alert is not the one that catches it: on 2026-08-14 the
+
+          retired self-hosted lane went away entirely and every tip-following
+
+          read failed with ErrFailsafeTimeoutExceeded for 23h. The alert that
+
+          binds that failure is OphisOpErpcNetworkFailsafeTimeouts below —
+
+          a dead upstream at routing priority 1 can outlast the 12s network
+
+          budget before failover, so watch network-level timeouts, not just lag.
+
+          '
+- interval: 1m
+  name: 'network failsafe timeouts: requests exhausting the 12s network budget before any upstream answers
+    (2026-08-14 dead-lane-at-priority-1 shape)'
+  input_series:
+  - series: erpc_network_failed_request_total{network="evm:10",error="ErrFailsafeTimeoutExceeded"}
+    values: 0+6x60
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: OphisOpErpcNetworkFailsafeTimeouts
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisOpErpcNetworkFailsafeTimeouts
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+      exp_annotations:
+        summary: OP eRPC network-level failsafe timeouts sustained (0.10/s)
+        description: "Requests are exhausting the 12s network-level failsafe budget before\nany upstream\
+          \ returns. At this layer the failure is NOT attributed to an\nupstream, so per-upstream alerts\
+          \ stay silent — check routing priority\nand per-upstream health directly:\n  curl -s localhost:9091/api/v1/query\
+          \ --data-urlencode \\\n    'query=erpc_upstream_block_head_lag'\n  curl -s localhost:9091/api/v1/query\
+          \ --data-urlencode \\\n    'query=erpc_upstream_routing_priority'\nA lane whose head lag is\
+          \ enormous (or whose VM is gone) while it still\nholds priority 1 is the signature of the 2026-08-14\
+          \ outage: eRPC has\nnot scored it out, and its retry budget outlasts the network budget.\nRemedy:\
+          \ remove the lane from the rendered erpc.yaml and restart\nrpc-proxy (eRPC does NOT hot-reload).\n"
+- interval: 1m
+  name: 'consensus low participants: fewer than agreementThreshold lanes answering eth_call'
+  input_series:
+  - series: erpc_consensus_errors_total{network="evm:10",error="low_participants",category="eth_call"}
+    values: 0+600x60
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: OphisOpErpcConsensusLowParticipantsHigh
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisOpErpcConsensusLowParticipantsHigh
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: optimism
+        category: eth_call
+      exp_annotations:
+        summary: OP eRPC low-participants > 5/s on eth_call for 10m
+        description: 'eRPC is failing consensus because fewer than 2 of 3 upstreams respond
+
+          within the retry budget for `eth_call` requests. Sustained
+
+          elevation indicates one or more OP upstream(s) (publicnode / zan /
+
+          validationcloud) are slow or unavailable.
+
+
+          ⚠️ 2026-08-09 lesson: this alert only trips at >5/s, which assumes
+
+          steady driver/orderbook polling. A LOW-TRAFFIC stack with one live
+
+          order fails every auction at well under 5 consensus errors/s — the
+
+          08-09 swap outage (every solver NoSolutions for 2h) never crossed
+
+          this threshold. If users report stuck swaps, check
+
+          `docker logs optimism-mainnet-autopilot-1 | grep ''no solutions''`
+
+          regardless of whether this alert fired.
+
+
+          Diagnose: `cast block-number --rpc-url <each upstream>` to find
+
+          which one is unresponsive. Check rpc-proxy logs:
+
+          `docker logs optimism-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
+
+
+          Threshold history: 5/s ≈ 100% failure on `eth_call` consensus path
+
+          (driver/orderbook poll ~5/s steady state).
+
+          '
+- interval: 1m
+  name: 'consensus dispute: lanes disagreeing on eth_call'
+  input_series:
+  - series: erpc_consensus_errors_total{network="evm:10",error="dispute",category="eth_call"}
+    values: 0+600x60
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: OphisOpErpcConsensusDisputeHigh
+    exp_alerts: []
+  - eval_time: 40m
+    alertname: OphisOpErpcConsensusDisputeHigh
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: optimism
+        category: eth_call
+      exp_annotations:
+        summary: OP eRPC dispute rate > 5/s on eth_call for 15m
+        description: "Upstream OP providers are returning DIFFERENT responses for the same\nrequest —\
+          \ fork-view-poisoning suspect OR natural tip drift. 2-of-3\nconsensus is failing because responses\
+          \ don't match.\n\nSustained > 2/s is unusual: it means either (a) one of the 3\nupstreams is\
+          \ on a fork / lagging behind the others, OR (b) a\nspecific request pattern is triggering deterministic\
+          \ disagreement\n(e.g., a `latest`-tag query that resolves to different blocks).\n\nOn OP, expect\
+          \ occasional disputes on tip queries (PR #71 trade-off).\nSustained elevation = investigate\
+          \ which upstream is drifting:\n  cast block-number --rpc-url https://optimism-rpc.publicnode.com\n\
+          For ZAN and Validation Cloud, build each URL from its key in .env\nwithout pasting the key into\
+          \ shared terminals or logs.\nand compare. Provider > 5 blocks behind the median should be\n\
+          sit-out-penalized by eRPC's punishMisbehavior — verify.\n"
+- interval: 1m
+  name: 'consensus failure ratio: >70% of consensus rounds failing'
+  input_series:
+  - series: erpc_consensus_errors_total{network="evm:10",error="low_participants",category="eth_call"}
+    values: 0+90x60
+  - series: erpc_consensus_total{network="evm:10",category="eth_call"}
+    values: 0+100x60
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: OphisOpErpcConsensusFailureCritical
+    exp_alerts: []
+  - eval_time: 40m
+    alertname: OphisOpErpcConsensusFailureCritical
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+      exp_annotations:
+        summary: OP eRPC > 70% of consensus calls failing for 15m
+        description: "More than half of all consensus operations on the OP eRPC proxy are\nfailing. This\
+          \ is a real availability incident — driver / autopilot /\norderbook will stall, no new settlements\
+          \ can broadcast, in-flight\nsettlements will revert.\n\nLikely cause: 2 of 3 upstream OP providers\
+          \ simultaneously degraded\n(rate-limit, outage, or DNS). PR #71 (timestamp ignore removed) can\n\
+          contribute extra disputes but should not push the overall failure\nrate above 50%.\n\nImmediate\
+          \ actions:\n  1. Identify which upstreams are down via direct probe\n  2. Consider emergency\
+          \ hot-swap to a known-healthy provider\n     (see project_ophis_roadmap.md section 3 reliability\
+          \ map)\n  3. Worst case: temporarily lower agreementThreshold to 1 (NOT\n     audit-compliant\
+          \ — revert as soon as providers recover)\n"
+- interval: 1m
+  name: 'proxy hard down: scrape target gone (distinct from the panic-restart case, which up never sees)'
+  input_series:
+  - series: up{job="rpc-proxy"}
+    values: '0x60'
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: OphisOpERPCDown
+    exp_alerts: []
+  - eval_time: 10m
+    alertname: OphisOpERPCDown
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        job: rpc-proxy
+      exp_annotations:
+        summary: OP eRPC proxy scrape failing for >3m
+        description: Prometheus cannot reach rpc-proxy:4001/metrics. All upstream provider routing has
+          stopped — everything downstream will start failing. Restart rpc-proxy container.
+- interval: 1m
+  name: 'dead-lane threshold boundary: a flaky lane at 70% must stay silent while a lane at 97% fires'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="publicnode-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="zan-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="publicnode-op",error="ErrEndpointServerSideException"}
+    values: 0+70x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="zan-op",error="ErrEndpointServerSideException"}
+    values: 0+97x400
+  alert_rule_test:
+  - eval_time: 60m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        upstream: zan-op
+      exp_annotations:
+        summary: OP eRPC upstream zan-op is failing ~everything
+        description: 'zan-op has failed over 95% of the requests eRPC sent it for 10 minutes, excluding
+          block-availability short-circuits. Expired key, exhausted quota, revoked account or provider
+          outage — the lane is contributing nothing to the quorum. With agreementThreshold:2 across 3
+          lanes it hides behind the other two until a second lane blips, then everything fails closed
+          at once. eRPC will NOT shed it on its own: the per-upstream circuit breaker does not open on
+          4xx, which it classifies as a client-side exception. Diagnose with docker logs optimism-mainnet-rpc-proxy-1
+          --tail 200, grepping the upstream id, then probe the provider directly for the raw HTTP status
+          and body. Remedy: renew or replace the credential, or remove the lane from the rendered erpc.yaml
+          and restart rpc-proxy (eRPC does not hot-reload). Keep at least one non-Cloudflare lane so the
+          CDN-diversity invariant in configs/erpc.yaml.tmpl still holds, and verify any replacement with
+          eth_getTransactionReceipt THROUGH the proxy, not just /quote.'
+- interval: 1m
+  name: 'phantom threshold boundary: 50% short-circuited stays silent, 70% fires'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="publicnode-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="zan-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="publicnode-op",error="ErrUpstreamBlockUnavailable"}
+    values: 0+50x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="zan-op",error="ErrUpstreamBlockUnavailable"}
+    values: 0+70x400
+  alert_rule_test:
+  - eval_time: 200m
+    alertname: OphisOpErpcUpstreamPhantomParticipant
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: optimism
+        upstream: zan-op
+      exp_annotations:
+        summary: OP eRPC upstream zan-op is a phantom quorum participant
+        description: 'eRPC is refusing to send over 60% of requests to zan-op because it believes the
+          lane''s head is behind the block the request is pinned to. The lane counts toward the configured
+          quorum size but is not actually answering, so the real agreement margin is thinner than maxParticipants
+          suggests. Check whether this is a freshness artifact rather than a genuinely lagging node: compare
+          erpc_upstream_latest_block_number across lanes and see whether erpc_upstream_stale_upper_bound_total
+          tracks the error count one for one. If it does while a hand probe shows the lane at the tip,
+          the lane is losing the state-poll freshness race, not lagging. This does not fail closed on
+          its own; it quietly shrinks the number of lanes that can serve a method, so re-check the per-method
+          quorum margin rule of thumb in configs/erpc.yaml.tmpl before assuming 2-of-3 still holds.'
+- interval: 1m
+  name: 'rate-limit threshold boundary: 85% rejected stays silent, 95% fires'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="publicnode-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="zan-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="publicnode-op",error="ErrEndpointCapacityExceeded"}
+    values: 0+85x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="zan-op",error="ErrEndpointCapacityExceeded"}
+    values: 0+95x400
+  alert_rule_test:
+  - eval_time: 60m
+    alertname: OphisOpErpcUpstreamRateLimitedDead
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: optimism
+        upstream: zan-op
+      exp_annotations:
+        summary: OP eRPC upstream zan-op is >90% rate-limited for 30m (effectively dead)
+        description: 'Over 90% of requests to `zan-op` have been rejected
+
+          with ErrEndpointCapacityExceeded for 30 minutes. The lane is
+
+          technically reachable but contributes nothing to consensus.
+
+
+          Some capacity errors are NORMAL on free tiers, which is why this is
+
+          a RATIO over a long window rather than a raw count — a lane that is
+
+          merely busy will not trip it. ⚠️ The ratio is also why tenderly''s
+
+          chronic throttling (2026-08-09 incident: ~10-20 rejections/h idle,
+
+          near-total rejection only during auction bursts) never tripped it —
+
+          burst-correlated rejection dilutes below 90% over 30m. Do not treat
+
+          this alert''s silence as lane health.
+
+
+          Measured precedent 2026-07-30: official-op and nodies-op both returned
+
+          429 on 12/12 probes from this host, i.e. hard per-IP blocks, while the
+
+          config still counted them as two of three lanes.
+
+
+          Check whether the provider needs a key, a paid tier, or replacing.
+
+          A self-hosted OP node removes this failure mode entirely.
+
+          '
+- interval: 1m
+  name: 'healthy control: three lanes answering, heads level, consensus succeeding, proxy up for hours
+    - every eRPC alert must stay silent'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="publicnode-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_total{network="evm:10",upstream="zan-op"}
+    values: 0+100x400
+  - *id001
+  - series: up{job="rpc-proxy"}
+    values: 1x400
+  - series: erpc_upstream_block_head_lag{network="evm:10",upstream="publicnode-op"}
+    values: '0x400'
+  - series: erpc_upstream_block_head_lag{network="evm:10",upstream="zan-op"}
+    values: 1x400
+  - series: erpc_upstream_block_head_lag{network="evm:10",upstream="validationcloud-op"}
+    values: '0x400'
+  - series: erpc_consensus_total{network="evm:10",category="eth_call"}
+    values: 0+100x400
+  - series: erpc_network_failed_request_total{network="evm:10",error="ErrFailsafeTimeoutExceeded"}
+    values: '0x400'
+  alert_rule_test:
+  - eval_time: 200m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcUpstreamCredentialFailing
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcUpstreamPhantomParticipant
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcProxyRestarted
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcUpstreamRateLimitedDead
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcUpstreamBlockHeadLagging
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcNetworkFailsafeTimeouts
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcConsensusLowParticipantsHigh
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcConsensusDisputeHigh
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpErpcConsensusFailureCritical
+    exp_alerts: []
+  - eval_time: 200m
+    alertname: OphisOpERPCDown
+    exp_alerts: []

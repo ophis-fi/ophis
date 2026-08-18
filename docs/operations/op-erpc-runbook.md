@@ -56,8 +56,14 @@ project has its own bridge network. Only the host-bound port differs.
 ## Alert decoder
 
 OP alerts **are** deployed: `infra/optimism-mainnet/observability/alerts.yml`
-is bind-mounted straight into Prometheus (no render step), and
-`alerts_test.yml` proves each eRPC rule fires and stays silent when it should.
+is bind-mounted straight into Prometheus (no render step).
+
+Every eRPC rule in the table below — all eleven — has both a firing case and a
+silence case in `alerts_test.yml`, and each is verified by mutation: rewriting
+any of them to never-fire or always-fire makes the suite fail, and so does
+moving any ratio threshold in either direction. **The other rules in that file
+(settlement, gas, host, sanctions) are NOT covered yet**; for those, silence
+still proves nothing.
 
 | Alert | Fires when | Severity |
 |---|---|---|
