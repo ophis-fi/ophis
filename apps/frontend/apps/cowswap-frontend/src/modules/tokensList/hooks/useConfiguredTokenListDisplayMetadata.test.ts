@@ -4,11 +4,11 @@ import { DEFAULT_TOKENS_LISTS, ListState, TokenListsByChainState } from '@cowpro
 import {
   getConfiguredTokenListDisplayMetadata,
   getConfiguredTokenListDisplayMetadataForChain,
+  getMissingConfiguredTokenLists,
 } from './useConfiguredTokenListDisplayMetadata'
 
 const MAINNET_SOURCE = 'https://tokens.ophis.fi/default.json'
-const ARBITRUM_SOURCE =
-  DEFAULT_TOKENS_LISTS[SupportedChainId.ARBITRUM_ONE]?.[0]?.source ?? 'missing-configured-source'
+const ARBITRUM_SOURCE = DEFAULT_TOKENS_LISTS[SupportedChainId.ARBITRUM_ONE]?.[0]?.source ?? 'missing-configured-source'
 const USER_SOURCE = 'https://example.invalid/user-list.json'
 const MAINNET_TOKEN = {
   chainId: SupportedChainId.MAINNET,
@@ -35,7 +35,10 @@ const USER_TOKEN = {
   tags: ['xStocks'],
 }
 
-function createList(source: string, token: typeof MAINNET_TOKEN | typeof ARBITRUM_TOKEN | typeof USER_TOKEN): ListState {
+function createList(
+  source: string,
+  token: typeof MAINNET_TOKEN | typeof ARBITRUM_TOKEN | typeof USER_TOKEN,
+): ListState {
   return {
     source,
     list: {
@@ -43,6 +46,10 @@ function createList(source: string, token: typeof MAINNET_TOKEN | typeof ARBITRU
       timestamp: '2026-08-19T00:00:00.000Z',
       version: { major: 1, minor: 0, patch: 0 },
       tokens: [token],
+      tags: {
+        ondo: { name: 'Tokenized by Ondo', description: 'Issued by Ondo' },
+        xStocks: { name: 'xStock', description: 'Issued by xStocks' },
+      },
     },
   }
 }
@@ -59,6 +66,7 @@ describe('configured token-list display metadata', () => {
 
     expect(result.verifiedTokenIds.has(configuredTokenId)).toBe(true)
     expect(result.tokenizedAssetProviderByTokenId.get(configuredTokenId)).toBe('ondo')
+    expect(result.tokenListTags.ondo?.name).toBe('Tokenized by Ondo')
     expect(result.verifiedTokenIds.has(userTokenId)).toBe(false)
     expect(result.tokenizedAssetProviderByTokenId.has(userTokenId)).toBe(false)
   })
@@ -78,6 +86,28 @@ describe('configured token-list display metadata', () => {
 
     expect(result.verifiedTokenIds.has(getTokenId(ARBITRUM_TOKEN))).toBe(true)
     expect(result.tokenizedAssetProviderByTokenId.get(getTokenId(ARBITRUM_TOKEN))).toBe('xStocks')
+    expect(result.tokenListTags.xStocks?.name).toBe('xStock')
     expect(result.verifiedTokenIds.has(getTokenId(MAINNET_TOKEN))).toBe(false)
+  })
+
+  it('requests configured target lists that have not been loaded yet', () => {
+    const missingLists = getMissingConfiguredTokenLists(
+      [createList(MAINNET_SOURCE, MAINNET_TOKEN)],
+      {} as TokenListsByChainState,
+      SupportedChainId.ARBITRUM_ONE,
+    )
+
+    expect(missingLists.map(({ source }) => source)).toContain(ARBITRUM_SOURCE)
+  })
+
+  it('does not refetch configured target lists that are already loaded', () => {
+    const targetChainList = createList(ARBITRUM_SOURCE, ARBITRUM_TOKEN)
+    const listsStatesByChain = {
+      [SupportedChainId.ARBITRUM_ONE]: { [ARBITRUM_SOURCE]: targetChainList },
+    } as TokenListsByChainState
+
+    const missingLists = getMissingConfiguredTokenLists([], listsStatesByChain, SupportedChainId.ARBITRUM_ONE)
+
+    expect(missingLists.map(({ source }) => source)).not.toContain(ARBITRUM_SOURCE)
   })
 })

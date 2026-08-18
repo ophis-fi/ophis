@@ -32,6 +32,10 @@ export function ContextMenuTooltip({
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    // Tooltip content is rendered through a React portal, so keyboard events
+    // from its interactive controls still bubble through this trigger. Only
+    // toggle when the trigger itself owns the event.
+    if (event.target !== event.currentTarget) return
     if (event.key !== 'Enter' && event.key !== ' ') return
 
     event.stopPropagation()

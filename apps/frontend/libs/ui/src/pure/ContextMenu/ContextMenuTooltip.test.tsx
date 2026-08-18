@@ -5,7 +5,12 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { ContextMenuTooltip } from './ContextMenuTooltip'
 
 jest.mock('../Tooltip', () => ({
-  Tooltip: ({ children }: { children: ReactNode }) => children,
+  Tooltip: ({ children, content, show }: { children: ReactNode; content: ReactNode; show: boolean }) => (
+    <>
+      {children}
+      {show ? content : null}
+    </>
+  ),
 }))
 
 describe('ContextMenuTooltip', () => {
@@ -38,6 +43,24 @@ describe('ContextMenuTooltip', () => {
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
 
     fireEvent.keyDown(trigger, { key: 'Enter' })
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('does not intercept keyboard events from tooltip actions', () => {
+    render(
+      <ContextMenuTooltip
+        ariaLabel="View contract details"
+        content={<button type="button">Copy contract address</button>}
+      >
+        <span>Info</span>
+      </ContextMenuTooltip>,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'View contract details' })
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Copy contract address' }), { key: 'Enter' })
 
     expect(trigger.getAttribute('aria-expanded')).toBe('true')
   })

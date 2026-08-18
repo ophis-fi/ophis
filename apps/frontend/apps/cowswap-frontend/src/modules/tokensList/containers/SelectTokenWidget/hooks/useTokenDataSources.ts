@@ -32,8 +32,16 @@ export function useTokenDataSources(targetChainId?: number): TokenDataSources {
   const balancesState = useTokensBalancesCombined()
   const unsupportedTokens = useUnsupportedTokens()
   const permitCompatibleTokens = usePermitCompatibleTokens()
-  const tokenListTags = useTokenListsTags()
-  const { verifiedTokenIds, tokenizedAssetProviderByTokenId } = useConfiguredTokenListDisplayMetadata(targetChainId)
+  const currentChainTokenListTags = useTokenListsTags()
+  const {
+    verifiedTokenIds,
+    tokenizedAssetProviderByTokenId,
+    tokenListTags: targetChainTokenListTags,
+  } = useConfiguredTokenListDisplayMetadata(targetChainId)
+  const tokenListTags = useMemo(
+    () => ({ ...currentChainTokenListTags, ...targetChainTokenListTags }),
+    [currentChainTokenListTags, targetChainTokenListTags],
+  )
 
   return useMemo(
     () => ({
