@@ -3,10 +3,13 @@
  *
  * Agent-facing tools for the Ophis DEX:
  *   parse_intent     — natural language -> structured swap intent (LibertAI Qwen)
+ *   resolve_token    — trusted token symbol -> canonical address (anti-spoof)
  *   get_quote        — best-execution quote from the chain's Ophis orderbook
  *   build_order      — a bounded, ready-to-sign EIP-712 CoW order (receiver pinned)
+ *   validate_order   — offline preflight for externally-built orders
  *   submit_order     — relay a PRE-SIGNED order to the orderbook (no keys held here)
  *   lookup_tier      — a wallet's fee-rebate tier/status
+ *   get_integrator_earnings — routed volume, own fee, and referral earnings
  *   list_chains      — supported chains + orderbook host + settlement contract
  *   get_balances     — native + ERC-20 balances on one chain (public RPC multicall)
  *   get_portfolio    — native + ERC-20 balances across many chains
@@ -21,7 +24,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { McpAgent } from 'agents/mcp'
 
-import { registerOphisTools, SERVER_INFO } from './tools.js'
+import { OPHIS_TOOL_NAMES, registerOphisTools, SERVER_INFO } from './tools.js'
 
 /** Cloudflare Workers rate-limit binding (unsafe.bindings type "ratelimit"). */
 interface RateLimit {
@@ -98,24 +101,10 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
 
 const INFO = {
   name: 'Ophis MCP',
+  version: SERVER_INFO.version,
   description: 'Agent-facing tools for the Ophis DEX: parse swap intents, resolve token symbols to canonical addresses (anti-spoof), fetch quotes, build bounded signable CoW orders, submit signed orders, look up fee-rebate tiers, read balances and portfolios, gas, token OHLCV charts, and beat-the-market surplus.',
   transport: { type: 'streamable-http', endpoint: '/mcp' },
-  tools: [
-    'parse_intent',
-    'resolve_token',
-    'get_quote',
-    'build_order',
-    'submit_order',
-    'lookup_tier',
-    'get_integrator_earnings',
-    'list_chains',
-    'get_balances',
-    'get_portfolio',
-    'get_gas',
-    'get_token_chart',
-    'expected_surplus',
-    'validate_order',
-  ],
+  tools: OPHIS_TOOL_NAMES,
   docs: 'https://docs.ophis.fi/',
   source: 'https://github.com/ophis-fi/ophis',
   security:
@@ -138,7 +127,9 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
 
-    if (url.pathname === '/health') return Response.json({ status: 'ok' })
+    if (url.pathname === '/health') {
+      return Response.json({ status: 'ok', name: SERVER_INFO.name, version: SERVER_INFO.version })
+    }
     if (url.pathname === '/' || url.pathname === '/.well-known/mcp') {
       return Response.json(INFO, { headers: { 'cache-control': 'public, max-age=300' } })
     }

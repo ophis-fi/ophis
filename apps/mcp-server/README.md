@@ -3,6 +3,9 @@
 Agent-facing **MCP server** for the Ophis DEX, deployed as a Cloudflare Worker
 with the Streamable-HTTP transport at **`https://mcp.ophis.fi/mcp`**.
 
+Current server release: **v0.1.1**, with 14 tools across 14 configured EVM
+chains (13 mainnets plus Sepolia).
+
 It exposes the Ophis trading surface to autonomous agents and MCP clients
 without making them re-derive the fork's non-obvious, easy-to-get-wrong details
 (non-canonical settlement contracts on the Ophis-operated chains, the self
@@ -71,3 +74,8 @@ pnpm --filter @ophis/mcp-server deploy        # builds the SDK, then wrangler de
 ```
 
 Custom domain `mcp.ophis.fi` is provisioned from `wrangler.jsonc` (`routes`).
+
+After the `main` deployment succeeds, an organization admin creates the matching
+`mcp-v<x.y.z>` tag. `.github/workflows/mcp-registry-release.yml` verifies that
+the live `/health` version matches, then publishes `server.json` to the official
+MCP Registry. See the [release runbook](../../docs/operations/release-publishing.md).

@@ -33,6 +33,10 @@ https://mcp.ophis.fi/mcp
 
 It speaks streamable-HTTP MCP and exposes fourteen tools:
 
+The current server release is **v0.1.1**. Its package metadata, runtime
+handshake, discovery response, and official registry manifest are checked as a
+single versioned unit in CI.
+
 | Tool | What it does |
 | --- | --- |
 | `parse_intent` | Parse a natural-language request into a structured intent. |
@@ -407,7 +411,7 @@ adapters](#drop-in-framework-adapters) above already get all four right, hand-ro
 this only if you are on neither. The `@ophis/sdk` helpers below are also what
 those adapters call under the hood.
 
-The helpers below live in **`@ophis/sdk`**, published on npm (v0.2.3, public).
+The helpers below live in **`@ophis/sdk`**, published on npm (v0.4.2, public).
 Install it with `npm install @ophis/sdk`, or copy the values from the call-outs
 if you prefer to vendor them.
 

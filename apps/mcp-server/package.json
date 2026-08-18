@@ -1,9 +1,9 @@
 {
   "name": "@ophis/mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "Ophis MCP server — agent-facing tools to parse swap intents, fetch quotes, and build bounded, ready-to-sign CoW orders on the Ophis DEX. Holds no keys; build-only.",
+  "description": "Ophis MCP server — 14 agent-facing tools to parse intents, resolve tokens, quote, validate, build, and relay signed CoW orders. Holds no keys and never signs.",
   "scripts": {
     "dev": "wrangler dev",
     "build:sdk": "pnpm --filter @ophis/sdk build",

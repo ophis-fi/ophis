@@ -1,7 +1,7 @@
 name: Publish @ophis agent plugins to npm
 
 # Publishes packages/agent-swap, packages/plugin-goat, packages/agentkit-ophis, packages/plugin-elizaos to npm on an
-# `agent-plugins-v*` tag (e.g. `agent-plugins-v0.1.0`). The three share a version; the tag suffix
+# `agent-plugins-v*` tag (e.g. `agent-plugins-v0.1.0`). The four share a version; the tag suffix
 # must equal all four package.json `version`s. They are published in DEPENDENCY ORDER — agent-swap
 # first, because plugin-goat, agentkit-ophis and plugin-elizaos depend on it (pnpm rewrites `workspace:*` to the
 # concrete published versions at pack time). Requires the repo secret NPM_TOKEN (an npm automation
@@ -10,6 +10,8 @@ name: Publish @ophis agent plugins to npm
 # Security: the only secret (NPM_TOKEN) is passed via env: (never inline in a run:), no untrusted
 # github.event.* input is interpolated, all actions are pinned to commit SHAs, and --ignore-scripts
 # is used throughout so no third-party lifecycle script executes next to the token.
+# Matching release tags are protected by the active `protect-release-tags`
+# repository ruleset (organization-admin creation/update/deletion only).
 
 on:
   push:
@@ -26,6 +28,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: verify release commit is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::release tags must point to a commit reachable from main" >&2
+            exit 1
+          fi
 
       - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
         with:
@@ -72,7 +83,10 @@ jobs:
           pnpm --filter @ophis/plugin-elizaos build
 
       - name: test
-        run: pnpm --filter @ophis/agent-swap test
+        run: |
+          pnpm --filter @ophis/agent-swap test
+          pnpm --filter @ophis/plugin-goat test
+          pnpm --filter @ophis/agentkit-ophis test
 
       # Publish in dependency order. agent-swap FIRST (the adapters require it). --ignore-scripts so
       # publish does not re-run prepublishOnly (dist is already built above) inside the step where
