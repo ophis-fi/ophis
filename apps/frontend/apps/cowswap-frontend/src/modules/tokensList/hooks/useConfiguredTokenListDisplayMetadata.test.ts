@@ -1,10 +1,10 @@
 import { getTokenId, SupportedChainId } from '@cowprotocol/cow-sdk'
-import { DEFAULT_TOKENS_LISTS, ListState, TokenListsByChainState } from '@cowprotocol/tokens'
+import { DEFAULT_TOKENS_LISTS, ListState } from '@cowprotocol/tokens'
 
 import {
   getConfiguredTokenListDisplayMetadata,
   getConfiguredTokenListDisplayMetadataForChain,
-  getMissingConfiguredTokenLists,
+  getConfiguredTokenListsQueryOptions,
 } from './useConfiguredTokenListDisplayMetadata'
 
 const MAINNET_SOURCE = 'https://tokens.ophis.fi/default.json'
@@ -74,13 +74,9 @@ describe('configured token-list display metadata', () => {
   it('includes loaded configured lists from the selected target chain', () => {
     const currentChainList = createList(MAINNET_SOURCE, MAINNET_TOKEN)
     const targetChainList = createList(ARBITRUM_SOURCE, ARBITRUM_TOKEN)
-    const listsStatesByChain = {
-      [SupportedChainId.ARBITRUM_ONE]: { [ARBITRUM_SOURCE]: targetChainList },
-    } as TokenListsByChainState
 
     const result = getConfiguredTokenListDisplayMetadataForChain(
-      [currentChainList],
-      listsStatesByChain,
+      [currentChainList, targetChainList],
       SupportedChainId.ARBITRUM_ONE,
     )
 
@@ -90,24 +86,17 @@ describe('configured token-list display metadata', () => {
     expect(result.verifiedTokenIds.has(getTokenId(MAINNET_TOKEN))).toBe(false)
   })
 
-  it('requests configured target lists that have not been loaded yet', () => {
-    const missingLists = getMissingConfiguredTokenLists(
-      [createList(MAINNET_SOURCE, MAINNET_TOKEN)],
-      {} as TokenListsByChainState,
+  it('uses a shared query cache with an explicit six-hour freshness policy', () => {
+    const options = getConfiguredTokenListsQueryOptions(SupportedChainId.ARBITRUM_ONE)
+
+    expect(options.queryKey).toEqual([
+      'configured-token-list-display-metadata',
       SupportedChainId.ARBITRUM_ONE,
-    )
-
-    expect(missingLists.map(({ source }) => source)).toContain(ARBITRUM_SOURCE)
-  })
-
-  it('does not refetch configured target lists that are already loaded', () => {
-    const targetChainList = createList(ARBITRUM_SOURCE, ARBITRUM_TOKEN)
-    const listsStatesByChain = {
-      [SupportedChainId.ARBITRUM_ONE]: { [ARBITRUM_SOURCE]: targetChainList },
-    } as TokenListsByChainState
-
-    const missingLists = getMissingConfiguredTokenLists([], listsStatesByChain, SupportedChainId.ARBITRUM_ONE)
-
-    expect(missingLists.map(({ source }) => source)).not.toContain(ARBITRUM_SOURCE)
+      expect.arrayContaining([ARBITRUM_SOURCE]),
+    ])
+    expect(options.enabled).toBe(true)
+    expect(options.staleTime).toBe(6 * 60 * 60 * 1_000)
+    expect(options.refetchInterval).toBe(options.staleTime)
+    expect(options.refetchOnWindowFocus).toBe(true)
   })
 })
