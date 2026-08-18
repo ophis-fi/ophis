@@ -13,7 +13,7 @@ import { Nullish } from 'types'
 import * as styledEl from './styled'
 
 import { useDeferredVisibility } from '../../hooks/useDeferredVisibility'
-import { TokenSelectionHandler } from '../../types'
+import { TokenizedAssetProviderTag, TokenSelectionHandler } from '../../types'
 import { TokenInfo } from '../TokenInfo'
 import { TokenTags } from '../TokenTags'
 
@@ -39,6 +39,8 @@ export interface TokenListItemProps {
   className?: string
   disabled?: boolean
   disabledReason?: string
+  isContractVerified?: boolean
+  tokenizedAssetProvider?: TokenizedAssetProviderTag
 }
 
 interface DisabledProps {
@@ -101,6 +103,8 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
     className,
     disabled = false,
     disabledReason,
+    isContractVerified = false,
+    tokenizedAssetProvider,
   } = props
 
   const { ref: visibilityRef, isVisible: hasIntersected } = useDeferredVisibility<HTMLDivElement>({
@@ -137,7 +141,11 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
       >
         <TokenInfo
           token={token}
-          showAddress={hasIntersected}
+          showAddress={false}
+          showContractInfo={hasIntersected}
+          hideNetworkBadge
+          isContractVerified={isContractVerified}
+          tokenizedAssetProvider={tokenizedAssetProvider}
           tags={
             hasIntersected ? (
               <TokenTags
@@ -145,6 +153,7 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
                 isPermitCompatible={isPermitCompatible}
                 tags={token.tags}
                 tokenListTags={tokenListTags}
+                tokenizedAssetProvider={tokenizedAssetProvider}
               />
             ) : null
           }

@@ -8,6 +8,7 @@ import { CheckCircle } from 'react-feather'
 
 import * as styledEl from './styled'
 
+import { TokenizedAssetProviderTag } from '../../types'
 import { ImportButton } from '../commonElements'
 import { TokenInfo } from '../TokenInfo'
 
@@ -20,14 +21,33 @@ export interface ImportTokenItemProps {
   isFirstInSection?: boolean
   isLastInSection?: boolean
   disabledReason?: string
+  isContractVerified?: boolean
+  tokenizedAssetProvider?: TokenizedAssetProviderTag
 }
 
 export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {
-  const { token, importToken, shadowed, existing, wrapperId, isFirstInSection, isLastInSection, disabledReason } = props
+  const {
+    token,
+    importToken,
+    shadowed,
+    existing,
+    wrapperId,
+    isFirstInSection,
+    isLastInSection,
+    disabledReason,
+    isContractVerified,
+    tokenizedAssetProvider,
+  } = props
 
   const tokenInfo = (
     <div style={{ opacity: shadowed ? 0.6 : 1 }}>
-      <TokenInfo token={token} />
+      <TokenInfo
+        token={token}
+        showAddress={false}
+        hideNetworkBadge
+        isContractVerified={isContractVerified}
+        tokenizedAssetProvider={tokenizedAssetProvider}
+      />
     </div>
   )
 

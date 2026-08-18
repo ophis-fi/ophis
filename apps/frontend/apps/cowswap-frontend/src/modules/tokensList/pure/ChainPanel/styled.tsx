@@ -5,7 +5,7 @@ import styled from 'styled-components/macro'
 import { IconButton } from '../commonElements'
 
 export const Panel = styled.div<{ $variant: 'default' | 'fullscreen' }>`
-  width: ${({ $variant }) => ($variant === 'fullscreen' ? '100%' : '200px')};
+  width: ${({ $variant }) => ($variant === 'fullscreen' ? '100%' : '232px')};
   height: ${({ $variant }) => ($variant === 'fullscreen' ? '100%' : 'auto')};
   flex-shrink: 0;
   background: var(${UI.COLOR_PAPER_DARKER});

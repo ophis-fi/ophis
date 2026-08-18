@@ -6,28 +6,52 @@ import { TokenName, TokenSymbol } from '@cowprotocol/ui'
 
 import { ClickableAddress } from 'common/pure/ClickableAddress'
 
+import { getTokenDisplayName } from './getTokenDisplayName.utils'
 import * as styledEl from './styled'
+
+import { TokenizedAssetProviderTag } from '../../types'
 
 export interface TokenInfoProps {
   token: TokenWithLogo
   className?: string
   tags?: ReactNode
   showAddress?: boolean
+  showContractInfo?: boolean
+  hideNetworkBadge?: boolean
+  isContractVerified?: boolean
+  tokenizedAssetProvider?: TokenizedAssetProviderTag
 }
 
 export function TokenInfo(props: TokenInfoProps): ReactNode {
-  const { token, className, tags, showAddress = true } = props
+  const {
+    token,
+    className,
+    tags,
+    showAddress = true,
+    showContractInfo = true,
+    hideNetworkBadge = false,
+    isContractVerified = false,
+    tokenizedAssetProvider,
+  } = props
+  const displayName = getTokenDisplayName(token.name, token.tags, tokenizedAssetProvider)
 
   return (
     <styledEl.Wrapper className={className}>
-      <TokenLogo token={token} sizeMobile={32} size={40} />
+      <TokenLogo token={token} sizeMobile={32} size={40} hideNetworkBadge={hideNetworkBadge} />
       <styledEl.TokenDetails>
         <styledEl.TokenSymbolWrapper>
           <TokenSymbol token={token} />
-          {showAddress ? <ClickableAddress address={token.address} chainId={token.chainId} /> : null}
+          {showContractInfo ? (
+            <ClickableAddress
+              address={token.address}
+              chainId={token.chainId}
+              showAddress={showAddress}
+              isContractVerified={isContractVerified}
+            />
+          ) : null}
         </styledEl.TokenSymbolWrapper>
         <styledEl.TokenNameRow>
-          <TokenName token={token} />
+          <TokenName token={{ name: displayName }} />
           {tags}
         </styledEl.TokenNameRow>
       </styledEl.TokenDetails>

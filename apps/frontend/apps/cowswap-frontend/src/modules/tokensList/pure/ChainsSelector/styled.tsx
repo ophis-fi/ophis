@@ -103,6 +103,7 @@ export const ChainInfo = styled.div`
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1 1 auto;
   min-width: 0;
 `
 
@@ -128,6 +129,7 @@ export const ChainText = styled.span<{ disabled$?: boolean; loading$?: boolean }
   font-weight: 500;
   font-size: 15px;
   white-space: nowrap;
+  min-width: 0;
   color: ${({ disabled$, loading$ }) =>
     disabled$ || loading$ ? `var(${UI.COLOR_TEXT_OPACITY_50})` : `var(${UI.COLOR_TEXT})`};
 `

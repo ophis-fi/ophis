@@ -5,13 +5,16 @@ import { ExplorerDataType, getExplorerLink, shortenAddress, getIsNativeToken } f
 import { Media, ContextMenuTooltip, ContextMenuCopyButton, ContextMenuExternalLink, Opacity, UI } from '@cowprotocol/ui'
 
 import { t } from '@lingui/core/macro'
+import { Trans } from '@lingui/react/macro'
 import { useBridgeSupportedNetwork } from 'entities/bridgeProvider'
-import { Info } from 'react-feather'
+import { CheckCircle, Info } from 'react-feather'
 import styled from 'styled-components/macro'
 
 export type ClickableAddressProps = {
   address: string
   chainId: number
+  showAddress?: boolean
+  isContractVerified?: boolean
 }
 
 const Wrapper = styled.div<{ alwaysShow: boolean }>`
@@ -44,8 +47,36 @@ const AddressWrapper = styled.span`
   opacity: ${Opacity.full};
 `
 
+const ContractDetails = styled.div<{ $verified: boolean }>`
+  width: 240px;
+  padding: 8px 12px 10px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 4px 8px;
+  color: ${({ $verified }) => ($verified ? `var(${UI.COLOR_SUCCESS})` : `var(${UI.COLOR_TEXT_OPACITY_70})`)};
+
+  > svg {
+    margin-top: 1px;
+  }
+`
+
+const ContractStatus = styled.span`
+  font-size: 13px;
+  font-weight: 600;
+`
+
+const ContractAddress = styled.span`
+  grid-column: 1 / -1;
+  color: var(${UI.COLOR_TEXT_OPACITY_70});
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+`
+
 export function ClickableAddress(props: ClickableAddressProps): ReactNode {
-  const { address, chainId } = props
+  const { address, chainId, showAddress = true, isContractVerified = false } = props
 
   const wrapperRef = useRef<HTMLDivElement>(null)
   const isMobile = useMediaQuery(Media.upToMedium(false))
@@ -57,13 +88,24 @@ export function ClickableAddress(props: ClickableAddressProps): ReactNode {
 
   return (
     shouldShowAddress && (
-      <Wrapper alwaysShow={isMobile} ref={wrapperRef}>
-        <AddressWrapper>{shortAddress}</AddressWrapper>
+      <Wrapper alwaysShow={isMobile || !showAddress} ref={wrapperRef}>
+        {showAddress ? <AddressWrapper>{shortAddress}</AddressWrapper> : null}
         <ContextMenuTooltip
           content={
             <>
-              <ContextMenuCopyButton address={address} />
-              <ContextMenuExternalLink href={target} label={t`View details`} />
+              <ContractDetails $verified={isContractVerified}>
+                {isContractVerified ? <CheckCircle size={16} /> : <Info size={16} />}
+                <ContractStatus>
+                  {isContractVerified ? (
+                    <Trans>Verified against an Ophis token list</Trans>
+                  ) : (
+                    <Trans>Contract address</Trans>
+                  )}
+                </ContractStatus>
+                <ContractAddress>{address}</ContractAddress>
+              </ContractDetails>
+              <ContextMenuCopyButton address={address} label={t`Copy address`} />
+              <ContextMenuExternalLink href={target} label={t`View on explorer`} />
             </>
           }
           placement="bottom"

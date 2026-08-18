@@ -29,6 +29,8 @@ export function useSelectTokenContext(params?: UseSelectTokenContextParams): Sel
       unsupportedTokens: tokenData.unsupportedTokens,
       permitCompatibleTokens: tokenData.permitCompatibleTokens,
       tokenListTags: tokenData.tokenListTags,
+      verifiedTokenIds: tokenData.verifiedTokenIds,
+      tokenizedAssetProviderByTokenId: tokenData.tokenizedAssetProviderByTokenId,
       isWalletConnected: !!account,
     }),
     [
@@ -39,6 +41,8 @@ export function useSelectTokenContext(params?: UseSelectTokenContextParams): Sel
       tokenData.unsupportedTokens,
       tokenData.permitCompatibleTokens,
       tokenData.tokenListTags,
+      tokenData.verifiedTokenIds,
+      tokenData.tokenizedAssetProviderByTokenId,
       account,
     ],
   )

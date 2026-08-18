@@ -1,7 +1,7 @@
 import { ReactNode, useCallback } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
-import { getAddressKey } from '@cowprotocol/cow-sdk'
+import { getAddressKey, getTokenId } from '@cowprotocol/cow-sdk'
 import { getTokenPolicyDecision, TokenPolicyProfile } from '@cowprotocol/tokens'
 
 import { useSelectTokenWidgetState } from '../../hooks/useSelectTokenWidgetState'
@@ -26,6 +26,8 @@ export function TokenListItemContainer({
     onTokenListItemClick,
     tokenListTags,
     permitCompatibleTokens,
+    verifiedTokenIds,
+    tokenizedAssetProviderByTokenId,
     balancesState: { values: balances },
     isWalletConnected,
   } = context
@@ -33,6 +35,7 @@ export function TokenListItemContainer({
   const { onSelectToken, selectedToken } = useSelectTokenWidgetState()
 
   const addressKey = getAddressKey(token.address)
+  const tokenId = getTokenId(token)
   const tokenPolicyDecision = getTokenPolicyDecision(
     { chainId: token.chainId, address: token.address },
     TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
@@ -61,6 +64,8 @@ export function TokenListItemContainer({
       tokenListTags={tokenListTags}
       disabled={isDisabled}
       disabledReason={disabledReason || tokenPolicyDisabledReason}
+      isContractVerified={verifiedTokenIds.has(tokenId)}
+      tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
     />
   )
 }

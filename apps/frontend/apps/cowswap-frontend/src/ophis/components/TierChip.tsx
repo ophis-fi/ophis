@@ -45,9 +45,6 @@ export function TierChip({ wallet }: Props): ReactElement | null {
   const tier = data.tier.name
   // 'none' is the sub-$20k floor; show "Unranked" rather than the raw "none".
   const tierLabel = tier === 'none' ? 'unranked' : tier
-  const usd = data.volume_30d_usd.toLocaleString(undefined, { maximumFractionDigits: 0 })
-  const next = data.next_tier
-  const remaining = next ? data.usd_to_next_tier.toLocaleString(undefined, { maximumFractionDigits: 0 }) : null
 
   return (
     <a
@@ -55,18 +52,10 @@ export function TierChip({ wallet }: Props): ReactElement | null {
       href={`https://rebates.ophis.fi/tier/${encodeURIComponent(wallet.toLowerCase())}`}
       target="_blank"
       rel="noreferrer"
+      aria-label={`View ${tierLabel} rebate rank`}
+      title="View rebate rank details"
     >
       <span className={styles.tierName}>{tierLabel}</span>
-      <span className={styles.divider}>•</span>
-      <span className={styles.volume}>30d: ${usd}</span>
-      {next && remaining && (
-        <>
-          <span className={styles.divider}>•</span>
-          <span className={styles.nextTier}>
-            ${remaining} to {next.name}
-          </span>
-        </>
-      )}
     </a>
   )
 }

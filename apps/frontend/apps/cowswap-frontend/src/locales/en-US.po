@@ -429,7 +429,6 @@ msgstr "Surplus"
 msgid "Place multiple orders using the same balance"
 msgstr "Place multiple orders using the same balance"
 
-#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/ActivityDetails.tsx
 #: apps/cowswap-frontend/src/modules/accountProxy/pure/AccountCard/DefaultAccountContent.tsx
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowStepper/steps/Step2.tsx
@@ -1374,6 +1373,10 @@ msgstr "Approval amount insufficient!"
 #: apps/cowswap-frontend/src/modules/bridge/constants.ts
 msgid "Bridging feature is exclusively operated by the indicated third party. Please review their terms."
 msgstr "Bridging feature is exclusively operated by the indicated third party. Please review their terms."
+
+#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
+msgid "Copy address"
+msgstr "Copy address"
 
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowQuoteId/QuoteIdTooltipContent.tsx
 msgid "Refresh in:"
@@ -2843,6 +2846,10 @@ msgstr "Keep in mind a solver might already have included the order in a solutio
 msgid "Token"
 msgstr "Token"
 
+#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
+msgid "Contract address"
+msgstr "Contract address"
+
 #: apps/cowswap-frontend/src/modules/orders/updaters/OrdersNotificationsUpdater/handlers.tsx
 msgid "Order submitted"
 msgstr "Order submitted"
@@ -3481,10 +3488,6 @@ msgstr "off-chain"
 #: apps/cowswap-frontend/src/modules/trade/containers/TradeBasicConfirmDetails/index.tsx
 msgid "Price"
 msgstr "Price"
-
-#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenTags/index.tsx
-msgid "This token supports gas-free approvals."
-msgstr "This token supports gas-free approvals."
 
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/LimitOrdersWidget/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
@@ -5142,6 +5145,7 @@ msgstr "The Safe App License Fee incurred here is charged by the Safe Foundation
 msgid "at most"
 msgstr "at most"
 
+#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ContextMenu/OrderContextMenu.pure.tsx
 msgid "View on explorer"
 msgstr "View on explorer"
@@ -5189,6 +5193,10 @@ msgstr "Something went wrong. But don't worry! <0>Ophis solvers</0> are searchin
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/TwapConfirmDetails.tsx
 msgid "The first part of your TWAP order will become active as soon as you confirm the order below."
 msgstr "The first part of your TWAP order will become active as soon as you confirm the order below."
+
+#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenTags/index.tsx
+msgid "This token supports a wallet signature instead of a separate gas-paid approval transaction."
+msgstr "This token supports a wallet signature instead of a separate gas-paid approval transaction."
 
 #: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
 msgid "Total costs"
@@ -5344,6 +5352,10 @@ msgstr "Status"
 #: apps/cowswap-frontend/src/common/pure/CoWAmmBannerContent/PoolInfo/index.tsx
 msgid "higher"
 msgstr "higher"
+
+#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
+msgid "Verified against an Ophis token list"
+msgstr "Verified against an Ophis token list"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/RateInput/index.tsx
 msgid "When locked, the limit price stays fixed when changing the amounts. When unlocked, the limit price will update based on the amount changes."

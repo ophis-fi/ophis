@@ -39,7 +39,7 @@ export function FavoriteTokenItem({ token, selectTokenContext }: FavoriteTokenIt
       disabled={isSelected}
       onClick={handleClick}
     >
-      <TokenLogo token={token} size={24} />
+      <TokenLogo token={token} size={24} hideNetworkBadge />
       <TokenSymbol token={token} />
     </styledEl.TokenButton>
   )
