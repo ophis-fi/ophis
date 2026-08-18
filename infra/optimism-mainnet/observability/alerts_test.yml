@@ -69,14 +69,14 @@ tests:
         severity: critical
         chain: optimism
         upstream: validationcloud-op
-      exp_annotations:
-        summary: OP eRPC upstream validationcloud-op is failing on CREDENTIALS or BILLING
-        description: "Over 10% of the requests eRPC sent `validationcloud-op` in the\nlast 30 minutes\
-          \ came back as auth, billing or generic 4xx errors\n(ErrEndpointUnauthorized, ErrEndpointBillingIssue\
-          \ or\nErrEndpointClientSideException). The usual cause is a credential that\nis disabled, unpaid\
-          \ or out of plan quota — but CONFIRM IT from the\nerror body before acting, because ErrEndpointClientSideException\
-          \ is\neRPC's generic 4xx bucket and can also carry a malformed or\nunsupported request, which\
-          \ is a caller bug rather than lane death.\n\n⚠️ Do NOT grep the metrics for Unauthorized/BillingIssue\
+      exp_annotations: &credential_alert_annotations
+        summary: OP eRPC upstream validationcloud-op has auth/billing or elevated generic 4xx errors
+        description: "In the last 30 minutes, `validationcloud-op` returned more than\nthree explicit auth/billing\
+          \ errors (ErrEndpointUnauthorized or\nErrEndpointBillingIssue), OR more than three generic 4xx errors\n\
+          (ErrEndpointClientSideException) affecting over 10% of its requests.\nExplicit auth/billing errors are\
+          \ never normal and are intentionally\nnot ratio-gated: a credential or plan restriction may affect only\n\
+          some methods. For the generic class, CONFIRM the cause from the error\nbody before acting because malformed\
+          \ or unsupported requests are a\ncaller bug rather than lane death.\n\n⚠️ Do NOT grep the metrics for Unauthorized/BillingIssue\
           \ and conclude\nnothing is wrong. eRPC classifies a provider 401 as\nErrEndpointClientSideException,\
           \ its generic 4xx bucket — which is\nexactly why this rule matched an empty vector through the\
           \ whole\n2026-08-18 Validation Cloud outage until its selector was widened.\nRead the error\
@@ -635,6 +635,52 @@ tests:
   - eval_time: 60m
     alertname: OphisOpErpcUpstreamCredentialFailing
     exp_alerts: []
+  - eval_time: 60m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts: []
+- interval: 1m
+  name: 'credential-alert explicit-class guard: a high-volume lane returning 1% ErrEndpointUnauthorized
+    must page even though it is below both the 10% generic-4xx gate and the 95% effectively-dead fallback'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="validationcloud-op",error="ErrEndpointUnauthorized"}
+    values: 0+1x400
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: OphisOpErpcUpstreamCredentialFailing
+    exp_alerts: []
+  - eval_time: 60m
+    alertname: OphisOpErpcUpstreamCredentialFailing
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        upstream: validationcloud-op
+      exp_annotations: *credential_alert_annotations
+  - eval_time: 60m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts: []
+- interval: 1m
+  name: 'credential-alert explicit-class guard: a high-volume lane returning 1% ErrEndpointBillingIssue
+    must page even though it is below both the 10% generic-4xx gate and the 95% effectively-dead fallback'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="validationcloud-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="validationcloud-op",error="ErrEndpointBillingIssue"}
+    values: 0+1x400
+  alert_rule_test:
+  - eval_time: 5m
+    alertname: OphisOpErpcUpstreamCredentialFailing
+    exp_alerts: []
+  - eval_time: 60m
+    alertname: OphisOpErpcUpstreamCredentialFailing
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        upstream: validationcloud-op
+      exp_annotations: *credential_alert_annotations
   - eval_time: 60m
     alertname: OphisOpErpcUpstreamEffectivelyDead
     exp_alerts: []

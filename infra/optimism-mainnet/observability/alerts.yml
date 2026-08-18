@@ -595,46 +595,54 @@ groups:
       # ORIGINAL classes really are never-normal, but a generic 4xx bucket is
       # not, so a healthy high-traffic lane returning a handful of malformed or
       # unsupported requests could have paged CRITICAL with text telling the
-      # operator to replace the provider. A 10% ratio gate is ANDed on to close
-      # that. It costs nothing on a real credential death, which goes to ~100%
-      # immediately (validationcloud measured at 1.0 for the whole 2026-08-18
-      # outage), and the absolute `> 3` still suppresses a low-traffic lane
-      # where one bad request is a large fraction. Measured for calibration:
-      # across the full 15d retention window ErrEndpointClientSideException
-      # appears ONLY on the dead lane (109,764 on validationcloud, zero on
-      # publicnode and zan) — their errors land in ExecutionException,
-      # RequestTimeout and TransportFailure instead.
+      # operator to replace the provider. The rule therefore has two branches:
+      # the ORIGINAL, definitive Unauthorized/BillingIssue classes keep their
+      # count-only trigger, while the generic ClientSideException class must
+      # clear both the count and 10% ratio gates. This preserves detection of a
+      # credential or plan restriction that affects only some methods without
+      # paging on a trickle of caller-caused generic 4xx responses. Measured for
+      # calibration: across the full 15d retention window
+      # ErrEndpointClientSideException appears ONLY on the dead lane (109,764 on
+      # validationcloud, zero on publicnode and zan) — their errors land in
+      # ExecutionException, RequestTimeout and TransportFailure instead.
       - alert: OphisOpErpcUpstreamCredentialFailing
         expr: |
+          sum by (upstream) (
+            increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
+          ) > 3
+          or
           (
-            sum by (upstream) (
-              increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue|ErrEndpointClientSideException"}[30m])
-            ) > 3
-          )
-          and
-          (
-            sum by (upstream) (
-              rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue|ErrEndpointClientSideException"}[30m])
+            (
+              sum by (upstream) (
+                increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrEndpointClientSideException"}[30m])
+              ) > 3
             )
-            /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[30m])), 0.001)
-            > 0.1
+            and
+            (
+              sum by (upstream) (
+                rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrEndpointClientSideException"}[30m])
+              )
+              /
+              clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[30m])), 0.001)
+              > 0.1
+            )
           )
         for: 10m
         labels:
           severity: critical
           chain: optimism
         annotations:
-          summary: "OP eRPC upstream {{ $labels.upstream }} is failing on CREDENTIALS or BILLING"
+          summary: "OP eRPC upstream {{ $labels.upstream }} has auth/billing or elevated generic 4xx errors"
           description: |
-            Over 10% of the requests eRPC sent `{{ $labels.upstream }}` in the
-            last 30 minutes came back as auth, billing or generic 4xx errors
-            (ErrEndpointUnauthorized, ErrEndpointBillingIssue or
-            ErrEndpointClientSideException). The usual cause is a credential that
-            is disabled, unpaid or out of plan quota — but CONFIRM IT from the
-            error body before acting, because ErrEndpointClientSideException is
-            eRPC's generic 4xx bucket and can also carry a malformed or
-            unsupported request, which is a caller bug rather than lane death.
+            In the last 30 minutes, `{{ $labels.upstream }}` returned more than
+            three explicit auth/billing errors (ErrEndpointUnauthorized or
+            ErrEndpointBillingIssue), OR more than three generic 4xx errors
+            (ErrEndpointClientSideException) affecting over 10% of its requests.
+            Explicit auth/billing errors are never normal and are intentionally
+            not ratio-gated: a credential or plan restriction may affect only
+            some methods. For the generic class, CONFIRM the cause from the error
+            body before acting because malformed or unsupported requests are a
+            caller bug rather than lane death.
 
             ⚠️ Do NOT grep the metrics for Unauthorized/BillingIssue and conclude
             nothing is wrong. eRPC classifies a provider 401 as
