@@ -2,10 +2,10 @@ import { getTokenId, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { DEFAULT_TOKENS_LISTS, ListState } from '@cowprotocol/tokens'
 
 import {
+  collectConfiguredTokenLists,
   getConfiguredTokenListDisplayMetadata,
   getConfiguredTokenListDisplayMetadataForChain,
-  getConfiguredTokenListsQueryOptions,
-  fetchConfiguredTokenLists,
+  getConfiguredTokenListQueryOptions,
 } from './useConfiguredTokenListDisplayMetadata'
 
 const MAINNET_SOURCE = 'https://tokens.ophis.fi/default.json'
@@ -87,29 +87,47 @@ describe('configured token-list display metadata', () => {
     expect(result.verifiedTokenIds.has(getTokenId(MAINNET_TOKEN))).toBe(false)
   })
 
-  it('uses a shared query cache with an explicit six-hour freshness policy', () => {
-    const options = getConfiguredTokenListsQueryOptions(SupportedChainId.ARBITRUM_ONE)
+  it('gives each configured source an independent cache with an explicit six-hour freshness policy', () => {
+    const configuredList = DEFAULT_TOKENS_LISTS[SupportedChainId.ARBITRUM_ONE]?.[0]
+    expect(configuredList).toBeDefined()
+    if (!configuredList) return
+
+    const options = getConfiguredTokenListQueryOptions(SupportedChainId.ARBITRUM_ONE, configuredList)
 
     expect(options.queryKey).toEqual([
       'configured-token-list-display-metadata',
       SupportedChainId.ARBITRUM_ONE,
-      expect.arrayContaining([ARBITRUM_SOURCE]),
+      ARBITRUM_SOURCE,
     ])
-    expect(options.enabled).toBe(true)
     expect(options.staleTime).toBe(6 * 60 * 60 * 1_000)
     expect(options.refetchInterval).toBe(options.staleTime)
     expect(options.refetchOnWindowFocus).toBe(true)
   })
 
-  it('rejects a configured-list refresh when any source fails so the query can retry', async () => {
-    const configuredLists = [{ source: MAINNET_SOURCE }, { source: ARBITRUM_SOURCE }]
+  it('keeps healthy metadata while a failed source remains independently retryable', async () => {
+    const healthyConfig = { source: MAINNET_SOURCE }
+    const failingConfig = { source: ARBITRUM_SOURCE }
+    const healthyList = createList(MAINNET_SOURCE, MAINNET_TOKEN)
     const failure = new Error('temporary list failure')
     const loadTokenList = jest
-      .fn<Promise<ListState>, [(typeof configuredLists)[number]]>()
-      .mockResolvedValueOnce(createList(MAINNET_SOURCE, MAINNET_TOKEN))
+      .fn<Promise<ListState>, [typeof healthyConfig]>()
+      .mockResolvedValueOnce(healthyList)
       .mockRejectedValueOnce(failure)
+    const healthyOptions = getConfiguredTokenListQueryOptions(
+      SupportedChainId.MAINNET,
+      healthyConfig,
+      loadTokenList,
+    )
+    const failingOptions = getConfiguredTokenListQueryOptions(
+      SupportedChainId.MAINNET,
+      failingConfig,
+      loadTokenList,
+    )
 
-    await expect(fetchConfiguredTokenLists(configuredLists, loadTokenList)).rejects.toBe(failure)
+    await expect(healthyOptions.queryFn()).resolves.toBe(healthyList)
+    await expect(failingOptions.queryFn()).rejects.toBe(failure)
+    expect(healthyOptions.queryKey).not.toEqual(failingOptions.queryKey)
+    expect(collectConfiguredTokenLists([{ data: healthyList }, { data: undefined }])).toEqual([healthyList])
     expect(loadTokenList).toHaveBeenCalledTimes(2)
   })
 })

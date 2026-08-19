@@ -1,4 +1,4 @@
-import { type WritableAtom, useAtomValue } from 'jotai'
+import { atom, type Atom, type WritableAtom, useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 
 import { isSupportedChainId } from '@cowprotocol/common-utils'
@@ -77,47 +77,63 @@ export function getConfiguredTokenListDisplayMetadataForChain(
   return getConfiguredTokenListDisplayMetadata(tokenLists, getConfiguredSources(targetChainId))
 }
 
-type ConfiguredTokenListsQueryAtom = WritableAtom<AtomWithQueryResult<ListState[], Error>, [], void>
+type ConfiguredTokenListQueryAtom = WritableAtom<AtomWithQueryResult<ListState, Error>, [], void>
 
-interface ConfiguredTokenListsQueryOptions {
-  queryKey: readonly ['configured-token-list-display-metadata', number, readonly string[]]
-  enabled: boolean
-  queryFn: () => Promise<ListState[]>
+interface ConfiguredTokenListQueryOptions {
+  queryKey: readonly ['configured-token-list-display-metadata', number, string]
+  queryFn: () => Promise<ListState>
   staleTime: number
   refetchInterval: number
   refetchOnWindowFocus: true
 }
 
-export function fetchConfiguredTokenLists(
-  configuredLists: readonly ListSourceConfig[],
+const configuredTokenListQueryAtoms = new Map<string, ConfiguredTokenListQueryAtom>()
+
+export function getConfiguredTokenListQueryOptions(
+  targetChainId: number,
+  configuredList: ListSourceConfig,
   loadTokenList: typeof fetchTokenList = fetchTokenList,
-): Promise<ListState[]> {
-  return Promise.all(configuredLists.map(loadTokenList))
-}
-
-export function getConfiguredTokenListsQueryOptions(
-  targetChainId: number | undefined,
-): ConfiguredTokenListsQueryOptions {
-  const configuredLists = getConfiguredLists(targetChainId)
-  const configuredSources = configuredLists.map(({ source }) => source).sort()
-
+): ConfiguredTokenListQueryOptions {
   return {
-    queryKey: ['configured-token-list-display-metadata', targetChainId ?? 0, configuredSources],
-    enabled: configuredLists.length > 0,
-    queryFn: () => fetchConfiguredTokenLists(configuredLists),
+    queryKey: ['configured-token-list-display-metadata', targetChainId, configuredList.source],
+    queryFn: () => loadTokenList(configuredList),
     staleTime: CONFIGURED_LISTS_REFRESH_INTERVAL_MS,
     refetchInterval: CONFIGURED_LISTS_REFRESH_INTERVAL_MS,
     refetchOnWindowFocus: true,
   }
 }
 
-export function createConfiguredTokenListsQueryAtom(targetChainId: number | undefined): ConfiguredTokenListsQueryAtom {
-  return atomWithQuery(() => getConfiguredTokenListsQueryOptions(targetChainId))
+function getConfiguredTokenListQueryAtom(
+  targetChainId: number,
+  configuredList: ListSourceConfig,
+): ConfiguredTokenListQueryAtom {
+  const cacheKey = `${targetChainId}:${configuredList.source}`
+  const cachedAtom = configuredTokenListQueryAtoms.get(cacheKey)
+
+  if (cachedAtom) return cachedAtom
+
+  const queryAtom = atomWithQuery(() => getConfiguredTokenListQueryOptions(targetChainId, configuredList))
+  configuredTokenListQueryAtoms.set(cacheKey, queryAtom)
+
+  return queryAtom
+}
+
+export function collectConfiguredTokenLists(results: readonly { data?: ListState }[]): ListState[] {
+  return results.flatMap(({ data }) => (data ? [data] : []))
+}
+
+export function createConfiguredTokenListsQueryAtom(targetChainId: number | undefined): Atom<ListState[]> {
+  const configuredLists = getConfiguredLists(targetChainId)
+  const queryAtoms = targetChainId
+    ? configuredLists.map((configuredList) => getConfiguredTokenListQueryAtom(targetChainId, configuredList))
+    : []
+
+  return atom((get) => collectConfiguredTokenLists(queryAtoms.map((queryAtom) => get(queryAtom))))
 }
 
 export function useConfiguredTokenListDisplayMetadata(targetChainId?: number): ConfiguredTokenListDisplayMetadata {
   const configuredListsQueryAtom = useMemo(() => createConfiguredTokenListsQueryAtom(targetChainId), [targetChainId])
-  const { data: configuredLists = [] } = useAtomValue(configuredListsQueryAtom)
+  const configuredLists = useAtomValue(configuredListsQueryAtom)
 
   return useMemo(
     () => getConfiguredTokenListDisplayMetadataForChain(configuredLists, targetChainId),
