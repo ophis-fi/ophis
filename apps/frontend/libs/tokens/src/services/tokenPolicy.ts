@@ -18,10 +18,21 @@ export interface TokenPolicyAsset {
 export enum TokenPolicyProfile {
   ESTABLISHED_SETTLEMENT = 'established-settlement',
   RESTRICTED_EXECUTION = 'restricted-execution',
+  OTC_ESCROW = 'otc-escrow',
 }
 
 const APPROVED_ETHEREUM_ASSETS = new Set(
   [NATIVE_CURRENCY_ADDRESS, WETH_MAINNET.address, USDC_MAINNET.address, DAI.address].map(getAddressKey),
+)
+
+/**
+ * Escrow deposits cannot be paused or recovered by Ophis, so the OTC profile
+ * allowlists exact ERC-20 addresses only. The native sentinel is excluded:
+ * ETH reaches the escrow contract solely through its reviewed WETH
+ * convenience functions, never as a policy-approved order leg.
+ */
+const OTC_ESCROW_ETHEREUM_ASSETS = new Set(
+  [WETH_MAINNET.address, USDC_MAINNET.address, DAI.address].map(getAddressKey),
 )
 
 /**
@@ -47,7 +58,10 @@ export function getTokenPolicyDecision(asset: TokenPolicyAsset, profile: TokenPo
     return { allowed: false, reason: 'chain-not-reviewed' }
   }
 
-  return APPROVED_ETHEREUM_ASSETS.has(getAddressKey(asset.address))
+  const approvedAssets =
+    profile === TokenPolicyProfile.OTC_ESCROW ? OTC_ESCROW_ETHEREUM_ASSETS : APPROVED_ETHEREUM_ASSETS
+
+  return approvedAssets.has(getAddressKey(asset.address))
     ? { allowed: true, reason: 'approved' }
     : { allowed: false, reason: 'token-not-reviewed' }
 }
