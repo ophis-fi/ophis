@@ -87,6 +87,20 @@ jobs:
         working-directory: apps/frontend
         run: pnpm typecheck
 
+      # The frontend jest suite is not a repo-root CI gate (security.yml
+      # documents this), and tsconfig.app.json excludes *.test.ts — so without
+      # these steps the OTC read-only exit-gate tests (boundary/no-write-
+      # selector proof, fail-closed reader, reconciliation binding) would
+      # NEVER execute anywhere. Scoped to the OTC suites + token policy to
+      # keep the gate fast and deterministic.
+      - name: OTC read-only guard tests (jest, scoped)
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/(ophis/otc|pages/Otc)'
+
+      - name: token policy tests (jest, scoped)
+        working-directory: apps/frontend
+        run: pnpm exec nx run tokens:test --testPathPatterns tokenPolicy
+
       - name: production-build cowswap-frontend
         working-directory: apps/frontend
         run: pnpm build:cowswap

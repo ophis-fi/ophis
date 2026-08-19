@@ -1,0 +1,71 @@
+name: OTC mainnet canary
+
+# OTC Milestone A exit-gate guard (docs/development/plans/2026-08-18-ophis-otc.md).
+#
+# static: on PRs touching the OTC manifest, module, or this canary — runs the
+#   self-test (keccak vectors, fixture decode, manifest-drift gate between the
+#   canary's embedded pins and the frontend module, with a crafted-mutation
+#   check proving the gate can fail).
+# live: scheduled — verifies the pinned runtime code hash, weth() wiring, and
+#   nextOrderId() against Ethereum, and reconciles the newest subgraph rows
+#   against direct contract state (immutable fields exact; read-only RPC only).
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/otc-mainnet-canary.mjs'
+      - 'apps/frontend/apps/cowswap-frontend/src/ophis/otc/**'
+      - '.github/workflows/otc-mainnet-canary.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/otc-mainnet-canary.mjs'
+      - 'apps/frontend/apps/cowswap-frontend/src/ophis/otc/**'
+      - '.github/workflows/otc-mainnet-canary.yml'
+  schedule:
+    - cron: '52 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: otc canary self-test + manifest drift gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - run: node scripts/otc-mainnet-canary.mjs --self-test
+
+  live:
+    name: live escrow identity + index reconciliation
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - name: Run read-only OTC mainnet canary
+        env:
+          OTC_CANARY_RPC_URL: ${{ secrets.OTC_CANARY_RPC_URL }}
+        run: node scripts/otc-mainnet-canary.mjs
+
+      - name: Alert operations
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.OPHIS_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.OPHIS_TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
+            echo "Telegram alerting is not configured; relying on Actions notifications"
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 15 \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=WARNING: Ophis OTC mainnet canary failed (read-only surface). ${RUN_URL}" >/dev/null
