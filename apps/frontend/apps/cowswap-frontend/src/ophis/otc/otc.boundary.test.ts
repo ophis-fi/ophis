@@ -20,6 +20,11 @@ const FORBIDDEN_IMPORT_FRAGMENTS = [
   'signing',
   'useWalletProvider',
   'legacy/state',
+  // Token-activation machinery: production OTC code renders only its own
+  // curated metadata. (The policy drift-binding test imports this from a
+  // test file, which the production scan below excludes.)
+  '@cowprotocol/tokens',
+  'boostedTokens',
 ]
 
 // Independently pinned facts (verified 2026-08-19 via publicnode, drpc, and
@@ -31,7 +36,9 @@ const PINNED_DEPLOYMENT_BLOCK = 24_622_661n
 
 describe('Ophis OTC boundary', () => {
   it('does not import trading, token-activation, allowance, signing, or solver modules', () => {
-    const sourceFiles = readdirSync(__dirname).filter((file) => file.endsWith('.ts') || file.endsWith('.tsx'))
+    const sourceFiles = readdirSync(__dirname).filter(
+      (file) => (file.endsWith('.ts') || file.endsWith('.tsx')) && !file.includes('.test.'),
+    )
     const importPattern = /from\s+['"]([^'"]+)['"]/g
     const imports = sourceFiles.flatMap((file) => {
       const source = readFileSync(join(__dirname, file), 'utf8')
