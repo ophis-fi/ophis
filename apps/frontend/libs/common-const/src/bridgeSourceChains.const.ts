@@ -21,12 +21,38 @@ export function acrossInkLineaSourceIds(enabled: boolean): readonly number[] {
 }
 
 /**
- * The extra Across source chains the math-helper deploy unlocks; empty until the
- * flag flips. Single source of truth so BRIDGE_SOURCE_CHAIN_IDS (below) and
- * ACROSS_EXECUTABLE_SOURCE_IDS (ophisBridgeProviders.ts) can never disagree about
- * which chains are executable Across sources.
+ * Unichain (130) and Robinhood Chain (4663) as Across bridge SOURCES — the two
+ * Ophis sovereign chains. Their execution machinery is deployed: CoW Shed
+ * factory + implementation at the canonical addresses (2026-08-13), the
+ * settlement-bound HooksTrampoline (wired in the autopilot/orderbook `hooks`
+ * config), and the AcrossMathHelper on Unichain; Robinhood's math helper is the
+ * one remaining deploy (RPC outage 2026-08-13). Flip — set
+ * REACT_APP_ACROSS_UNI_ROBINHOOD_SOURCE=true in cloudflare-deploy.yml — only
+ * after the helper is live on BOTH chains and a real hook-based bridge FROM
+ * each chain has settled (our own driver executes the post-hooks there,
+ * unlike Ink/Linea where upstream CoW solvers do).
  */
-export const EXTRA_ACROSS_SOURCE_CHAIN_IDS: readonly number[] = acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED)
+export const ACROSS_UNI_ROBINHOOD_SOURCE_ENABLED = process.env.REACT_APP_ACROSS_UNI_ROBINHOOD_SOURCE === 'true'
+
+/**
+ * Pure gate, same shape as acrossInkLineaSourceIds. 130/4663 are not
+ * SupportedChainId members (custom bridge chains, see ophisBridgeChains.ts),
+ * so the ids are literals.
+ */
+export function acrossUniRobinhoodSourceIds(enabled: boolean): readonly number[] {
+  return enabled ? [130, 4663] : []
+}
+
+/**
+ * The extra Across source chains the per-chain deploys unlock; each group is
+ * empty until its flag flips. Single source of truth so BRIDGE_SOURCE_CHAIN_IDS
+ * (below) and ACROSS_EXECUTABLE_SOURCE_IDS (ophisBridgeProviders.ts) can never
+ * disagree about which chains are executable Across sources.
+ */
+export const EXTRA_ACROSS_SOURCE_CHAIN_IDS: readonly number[] = [
+  ...acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED),
+  ...acrossUniRobinhoodSourceIds(ACROSS_UNI_ROBINHOOD_SOURCE_ENABLED),
+]
 
 /**
  * Chains a cross-chain (bridge) order can be CREATED from — the sell side.
