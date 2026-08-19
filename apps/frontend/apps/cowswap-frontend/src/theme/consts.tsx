@@ -25,7 +25,7 @@ export const WIDGET_MAX_WIDTH = {
   limit: '1350px',
   content: '680px',
   tokenSelect: '590px',
-  tokenSelectSidebar: '700px',
+  tokenSelectSidebar: '732px',
 }
 
 const TextWrapper = styled(Text)<{ color: keyof Colors; override?: boolean }>`

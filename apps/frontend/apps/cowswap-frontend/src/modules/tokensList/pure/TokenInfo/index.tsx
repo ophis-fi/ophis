@@ -6,28 +6,53 @@ import { TokenName, TokenSymbol } from '@cowprotocol/ui'
 
 import { ClickableAddress } from 'common/pure/ClickableAddress'
 
+import { getTokenDisplayName } from './getTokenDisplayName.utils'
 import * as styledEl from './styled'
+
+import { TokenizedAssetProviderTag } from '../../types'
+import { TokenContractDetails } from '../TokenContractDetails/TokenContractDetails.pure'
 
 export interface TokenInfoProps {
   token: TokenWithLogo
   className?: string
   tags?: ReactNode
   showAddress?: boolean
+  showContractInfo?: boolean
+  hideNetworkBadge?: boolean
+  isContractListed?: boolean
+  tokenizedAssetProvider?: TokenizedAssetProviderTag
 }
 
 export function TokenInfo(props: TokenInfoProps): ReactNode {
-  const { token, className, tags, showAddress = true } = props
+  const {
+    token,
+    className,
+    tags,
+    showAddress = true,
+    showContractInfo = true,
+    hideNetworkBadge = false,
+    isContractListed = false,
+    tokenizedAssetProvider,
+  } = props
+  const displayName = getTokenDisplayName(token.name, tokenizedAssetProvider)
 
   return (
     <styledEl.Wrapper className={className}>
-      <TokenLogo token={token} sizeMobile={32} size={40} />
+      <TokenLogo token={token} sizeMobile={32} size={40} hideNetworkBadge={hideNetworkBadge} />
       <styledEl.TokenDetails>
         <styledEl.TokenSymbolWrapper>
           <TokenSymbol token={token} />
-          {showAddress ? <ClickableAddress address={token.address} chainId={token.chainId} /> : null}
+          {showContractInfo ? (
+            <ClickableAddress
+              address={token.address}
+              chainId={token.chainId}
+              showAddress={showAddress}
+              details={<TokenContractDetails address={token.address} isContractListed={isContractListed} />}
+            />
+          ) : null}
         </styledEl.TokenSymbolWrapper>
         <styledEl.TokenNameRow>
-          <TokenName token={token} />
+          <TokenName token={{ name: displayName }} />
           {tags}
         </styledEl.TokenNameRow>
       </styledEl.TokenDetails>

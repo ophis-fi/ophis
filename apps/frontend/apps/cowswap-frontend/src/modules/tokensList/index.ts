@@ -16,7 +16,7 @@ export { BlockedListSourcesUpdater } from './updaters/BlockedListSourcesUpdater'
 export { RecentTokensStorageUpdater } from './updaters/RecentTokensStorageUpdater'
 
 export { ImportTokenModal } from './pure/ImportTokenModal'
-export { AddIntermediateToken } from './pure/AddIntermediateToken'
+export { AddIntermediateToken } from './containers/AddIntermediateToken'
 export { AddIntermediateTokenModal } from './pure/AddIntermediateTokenModal'
 export { TokenListItem } from './pure/TokenListItem'
 

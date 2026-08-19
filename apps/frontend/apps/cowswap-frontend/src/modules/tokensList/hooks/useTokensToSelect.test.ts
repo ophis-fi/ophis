@@ -154,4 +154,36 @@ describe('useTokensToSelect', () => {
       sellChainId: SupportedChainId.ARBITRUM_ONE,
     })
   })
+
+  it('replaces a source-chain favorite with the matching target-chain token', () => {
+    const sharedAddress = '0x4200000000000000000000000000000000000006'
+    const optimismFavorite = {
+      ...mainnetToken,
+      address: sharedAddress,
+      chainId: SupportedChainId.OPTIMISM,
+      symbol: 'WETH',
+    } as TokenWithLogo
+    const baseBridgeToken = {
+      ...optimismFavorite,
+      chainId: SupportedChainId.BASE,
+    } as TokenWithLogo
+
+    mockUseFavoriteTokens.mockReturnValue([optimismFavorite])
+    mockUseBridgeSupportedTokens.mockReturnValue({
+      data: { tokens: [baseBridgeToken], isRouteAvailable: true },
+      isLoading: false,
+    } as ReturnType<typeof useBridgeSupportedTokens>)
+    mockUseSelectTokenWidgetState.mockReturnValue(
+      createWidgetState({
+        field: Field.OUTPUT,
+        selectedTargetChainId: SupportedChainId.BASE,
+        oppositeToken: mainnetToken,
+      }),
+    )
+
+    const { result } = renderHook(() => useTokensToSelect())
+
+    expect(result.current.favoriteTokens).toEqual([baseBridgeToken])
+    expect(result.current.favoriteTokens[0]).not.toBe(optimismFavorite)
+  })
 })

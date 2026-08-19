@@ -429,7 +429,6 @@ msgstr "Surplus"
 msgid "Place multiple orders using the same balance"
 msgstr "Place multiple orders using the same balance"
 
-#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/ActivityDetails.tsx
 #: apps/cowswap-frontend/src/modules/accountProxy/pure/AccountCard/DefaultAccountContent.tsx
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowStepper/steps/Step2.tsx
@@ -946,6 +945,10 @@ msgstr "EthFlow contract ({actual}) address don't match the expected address for
 msgid "Est. partial fill price"
 msgstr "Est. partial fill price"
 
+#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenContractDetails/TokenContractDetails.pure.tsx
+msgid "Listed by a configured token source"
+msgstr "Listed by a configured token source"
+
 #: apps/cowswap-frontend/src/modules/advancedOrders/pure/Settings/AdvancedOrdersSettings.tsx
 msgid "TWAP Settings"
 msgstr "TWAP Settings"
@@ -1374,6 +1377,10 @@ msgstr "Approval amount insufficient!"
 #: apps/cowswap-frontend/src/modules/bridge/constants.ts
 msgid "Bridging feature is exclusively operated by the indicated third party. Please review their terms."
 msgstr "Bridging feature is exclusively operated by the indicated third party. Please review their terms."
+
+#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
+msgid "Copy address"
+msgstr "Copy address"
 
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowQuoteId/QuoteIdTooltipContent.tsx
 msgid "Refresh in:"
@@ -2843,6 +2850,10 @@ msgstr "Keep in mind a solver might already have included the order in a solutio
 msgid "Token"
 msgstr "Token"
 
+#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenContractDetails/TokenContractDetails.pure.tsx
+msgid "Contract address"
+msgstr "Contract address"
+
 #: apps/cowswap-frontend/src/modules/orders/updaters/OrdersNotificationsUpdater/handlers.tsx
 msgid "Order submitted"
 msgstr "Order submitted"
@@ -3481,10 +3492,6 @@ msgstr "off-chain"
 #: apps/cowswap-frontend/src/modules/trade/containers/TradeBasicConfirmDetails/index.tsx
 msgid "Price"
 msgstr "Price"
-
-#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenTags/index.tsx
-msgid "This token supports gas-free approvals."
-msgstr "This token supports gas-free approvals."
 
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/LimitOrdersWidget/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
@@ -5142,6 +5149,7 @@ msgstr "The Safe App License Fee incurred here is charged by the Safe Foundation
 msgid "at most"
 msgstr "at most"
 
+#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ContextMenu/OrderContextMenu.pure.tsx
 msgid "View on explorer"
 msgstr "View on explorer"
@@ -5189,6 +5197,10 @@ msgstr "Something went wrong. But don't worry! <0>Ophis solvers</0> are searchin
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapConfirmModal/TwapConfirmDetails.tsx
 msgid "The first part of your TWAP order will become active as soon as you confirm the order below."
 msgstr "The first part of your TWAP order will become active as soon as you confirm the order below."
+
+#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenTags/index.tsx
+msgid "This token supports a wallet signature instead of a separate gas-paid approval transaction."
+msgstr "This token supports a wallet signature instead of a separate gas-paid approval transaction."
 
 #: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
 msgid "Total costs"
@@ -5274,6 +5286,10 @@ msgstr "Advanced users can create complex, conditional orders directly through O
 #: apps/cowswap-frontend/src/common/utils/tradeSettingsTooltips.tsx
 msgid "Either way, trades are protected from MEV, so your slippage can't be exploited!"
 msgstr "Either way, trades are protected from MEV, so your slippage can't be exploited!"
+
+#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
+msgid "View contract details"
+msgstr "View contract details"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/RateImpactIndicator/index.tsx
 msgid "Your order will execute when the market price is {displayedPercent}% better than the current market price."

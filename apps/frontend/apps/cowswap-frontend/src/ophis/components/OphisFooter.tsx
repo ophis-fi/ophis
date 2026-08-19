@@ -47,6 +47,34 @@ function CompactFooter({ borderless }: { borderless: boolean }): ReactNode {
   )
 }
 
+function ReachLinks(): ReactNode {
+  return (
+    <div>
+      <styledEl.ColTitle>Reach</styledEl.ColTitle>
+      <styledEl.ColList>
+        <li>
+          <styledEl.ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
+            GitHub
+          </styledEl.ExternalLink>
+        </li>
+        <li>
+          <styledEl.ExternalLink href="https://x.com/ophisfi" target="_blank" rel="noreferrer">
+            X / Twitter
+          </styledEl.ExternalLink>
+        </li>
+        <li>
+          <styledEl.ExternalLink href="https://t.me/ophisfi" target="_blank" rel="noreferrer">
+            Telegram
+          </styledEl.ExternalLink>
+        </li>
+        <li>
+          <styledEl.InternalLink to="/contact">Contact</styledEl.InternalLink>
+        </li>
+      </styledEl.ColList>
+    </div>
+  )
+}
+
 function FullFooter({ borderless }: { borderless: boolean }): ReactNode {
   return (
     <styledEl.Bar $borderless={borderless}>
@@ -124,19 +152,7 @@ function FullFooter({ borderless }: { borderless: boolean }): ReactNode {
           </styledEl.ColList>
         </div>
 
-        <div>
-          <styledEl.ColTitle>Reach</styledEl.ColTitle>
-          <styledEl.ColList>
-            <li>
-              <styledEl.ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
-                GitHub
-              </styledEl.ExternalLink>
-            </li>
-            <li>
-              <styledEl.InternalLink to="/contact">Contact</styledEl.InternalLink>
-            </li>
-          </styledEl.ColList>
-        </div>
+        <ReachLinks />
       </styledEl.Grid>
 
       <styledEl.BottomBar>

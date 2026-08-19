@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
+import { useChainsToSelect } from './useChainsToSelect'
 import { useSelectTokenWidgetState } from './useSelectTokenWidgetState'
 
 import { useTokenDataSources } from '../containers/SelectTokenWidget/hooks/useTokenDataSources'
@@ -14,9 +15,11 @@ interface UseSelectTokenContextParams {
 }
 
 export function useSelectTokenContext(params?: UseSelectTokenContextParams): SelectTokenContext {
-  const { account } = useWalletInfo()
+  const { account, chainId } = useWalletInfo()
   const widgetState = useSelectTokenWidgetState()
-  const tokenData = useTokenDataSources()
+  const chainsToSelect = useChainsToSelect()
+  const targetChainId = chainsToSelect?.defaultChainId ?? widgetState.selectedTargetChainId ?? chainId
+  const tokenData = useTokenDataSources(targetChainId)
 
   const handleSelectToken = useTokenSelectionHandler(widgetState.onSelectToken, widgetState)
 
@@ -29,6 +32,8 @@ export function useSelectTokenContext(params?: UseSelectTokenContextParams): Sel
       unsupportedTokens: tokenData.unsupportedTokens,
       permitCompatibleTokens: tokenData.permitCompatibleTokens,
       tokenListTags: tokenData.tokenListTags,
+      listedTokenIds: tokenData.listedTokenIds,
+      tokenizedAssetProviderByTokenId: tokenData.tokenizedAssetProviderByTokenId,
       isWalletConnected: !!account,
     }),
     [
@@ -39,6 +44,8 @@ export function useSelectTokenContext(params?: UseSelectTokenContextParams): Sel
       tokenData.unsupportedTokens,
       tokenData.permitCompatibleTokens,
       tokenData.tokenListTags,
+      tokenData.listedTokenIds,
+      tokenData.tokenizedAssetProviderByTokenId,
       account,
     ],
   )

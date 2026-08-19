@@ -75,13 +75,18 @@ export const ContextMenuTooltipButton = styled.div<{ disableHoverBackground?: bo
   &:active,
   &:focus {
     color: var(${UI.COLOR_TEXT});
-    outline: none;
     ${({ disableHoverBackground }) =>
       !disableHoverBackground &&
       `
       background: var(${UI.COLOR_TEXT_OPACITY_10});
       border-radius: 10px;
     `}
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(${UI.COLOR_PRIMARY});
+    outline-offset: 2px;
+    border-radius: 10px;
   }
 `
 

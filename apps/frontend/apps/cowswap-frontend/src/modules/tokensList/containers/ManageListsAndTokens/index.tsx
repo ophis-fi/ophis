@@ -2,7 +2,7 @@ import { ReactNode, useMemo, useState } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { isAddress, parseENSAddress, uriToHttp } from '@cowprotocol/common-utils'
-import { ListState, useSearchList, useSearchToken } from '@cowprotocol/tokens'
+import { ListState, TokenListTags, useSearchList, useSearchToken } from '@cowprotocol/tokens'
 import { ModalHeader } from '@cowprotocol/ui'
 
 import { msg } from '@lingui/core/macro'
@@ -10,12 +10,16 @@ import { Trans, useLingui } from '@lingui/react/macro'
 
 import * as styledEl from './styled'
 
+import { TokenizedAssetProviderTag } from '../../types'
 import { ManageLists } from '../ManageLists'
 import { ManageTokens } from '../ManageTokens'
 
 export interface ManageListsAndTokensProps {
   lists: ListState[]
   customTokens: TokenWithLogo[]
+  listedTokenIds: ReadonlySet<string>
+  tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
+  tokenListTags: TokenListTags
   onBack(): void
   onDismiss?(): void
 }
@@ -25,7 +29,8 @@ const listsInputPlaceholder = msg`https:// or ipfs:// or ENS name`
 
 export function ManageListsAndTokens(props: ManageListsAndTokensProps): ReactNode {
   const { i18n } = useLingui()
-  const { lists, customTokens, onBack, onDismiss } = props
+  const { lists, customTokens, listedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags, onBack, onDismiss } =
+    props
 
   const [currentTab, setCurrentTab] = useState<'tokens' | 'lists'>('lists')
   const [inputValue, setInputValue] = useState<string>('')
@@ -92,7 +97,13 @@ export function ManageListsAndTokens(props: ManageListsAndTokensProps): ReactNod
       {currentTab === 'lists' ? (
         <ManageLists listSearchResponse={listSearchResponse} lists={lists} isListUrlValid={isListUrlValid} />
       ) : (
-        <ManageTokens tokenSearchResponse={tokenSearchResponse} tokens={customTokens} />
+        <ManageTokens
+          tokenSearchResponse={tokenSearchResponse}
+          tokens={customTokens}
+          listedTokenIds={listedTokenIds}
+          tokenizedAssetProviderByTokenId={tokenizedAssetProviderByTokenId}
+          tokenListTags={tokenListTags}
+        />
       )}
     </styledEl.Wrapper>
   )

@@ -97,6 +97,7 @@ export type { TokenPolicyAsset, TokenPolicyDecision, TokenPolicyReason } from '.
 
 // Consts
 export { DEFAULT_TOKENS_LISTS } from './const/tokensLists'
+export { ONDO_TOKENS_LIST_SOURCE, XSTOCKS_TOKENS_LIST_SOURCE } from './const/tokensLists'
 export { RWA_CONSENT_HASH } from './updaters/RestrictedTokensListUpdater'
 export { useIsAnyOfTokensRWA } from './hooks/lists/useIsAnyOfTokensRWA'
 export { useFilterBlockedLists } from './hooks/lists/useFilterBlockedLists'

@@ -18,9 +18,10 @@ const CopyFeedbackText = styled.span<{ isCopied?: boolean }>`
 
 interface ContextMenuCopyButtonProps {
   address: string
+  label?: string
 }
 
-export function ContextMenuCopyButton({ address }: ContextMenuCopyButtonProps): ReactNode {
+export function ContextMenuCopyButton({ address, label }: ContextMenuCopyButtonProps): ReactNode {
   const [isCopied, setCopied] = useCopyClipboard()
 
   const handleCopyAddress = useCallback(
@@ -46,9 +47,7 @@ export function ContextMenuCopyButton({ address }: ContextMenuCopyButtonProps): 
       ) : (
         <>
           <Copy size={16} />
-          <span>
-            <Trans>Copy address</Trans>
-          </span>
+          <span>{label ?? <Trans>Copy address</Trans>}</span>
         </>
       )}
     </styledEl.ContextMenuItemButton>

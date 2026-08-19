@@ -10,7 +10,10 @@ import ICON_GAS_FREE from 'assets/icon/gas-free.svg'
 import SVG from 'react-inlinesvg'
 import { NavLink } from 'react-router'
 
+import { getTrustedTokenTags } from './getTrustedTokenTags.utils'
 import * as styledEl from './styled'
+
+import { TokenizedAssetProviderTag } from '../../types'
 
 // Programmatic tags that don't come from tokenlists
 const APP_TOKEN_TAGS: TokenListTags = {
@@ -23,7 +26,7 @@ const APP_TOKEN_TAGS: TokenListTags = {
   'gas-free': {
     name: msg`Gas-free`,
     icon: ICON_GAS_FREE,
-    description: msg`This token supports gas-free approvals.`,
+    description: msg`This token supports a wallet signature instead of a separate gas-paid approval transaction.`,
     id: '1',
     color: StatusColorVariant.Success,
   },
@@ -36,22 +39,24 @@ export function TokenTags({
   isPermitCompatible,
   tags = [],
   tokenListTags,
+  tokenizedAssetProvider,
 }: {
   isUnsupported: boolean
   isPermitCompatible?: boolean
   tags?: string[]
   tokenListTags: TokenListTags
+  tokenizedAssetProvider?: TokenizedAssetProviderTag
 }) {
   const tagsToShow = useMemo(() => {
     return isUnsupported
       ? [APP_TOKEN_TAGS.unsupported]
       : [
-          // Include valid tags from token.tags
-          ...tags.filter((tag) => tag in tokenListTags).map((tag) => tokenListTags[tag]),
+          // Provider tags are accepted only through validated configured-list metadata.
+          ...getTrustedTokenTags(tags, tokenListTags, tokenizedAssetProvider),
           // Add gas-free tag if applicable
           ...(isPermitCompatible ? [APP_TOKEN_TAGS['gas-free']] : []),
         ]
-  }, [isUnsupported, tags, tokenListTags, isPermitCompatible])
+  }, [isUnsupported, tags, tokenListTags, isPermitCompatible, tokenizedAssetProvider])
 
   if (tagsToShow.length === 0) return null
 

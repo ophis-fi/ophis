@@ -1,4 +1,4 @@
-import { MouseEvent, ReactNode, useRef, useState, useEffect } from 'react'
+import { KeyboardEvent, MouseEvent, ReactNode, useEffect, useRef, useState } from 'react'
 
 import * as styledEl from './styled'
 
@@ -10,6 +10,7 @@ interface ContextMenuTooltipProps {
   placement?: 'top' | 'bottom' | 'left' | 'right'
   containerRef?: React.RefObject<HTMLDivElement | null>
   disableHoverBackground?: boolean
+  ariaLabel?: string
 }
 
 export function ContextMenuTooltip({
@@ -18,6 +19,7 @@ export function ContextMenuTooltip({
   placement = 'bottom',
   containerRef,
   disableHoverBackground,
+  ariaLabel,
 }: ContextMenuTooltipProps): ReactNode {
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const defaultContainerRef = useRef<HTMLElement>(null)
@@ -26,6 +28,18 @@ export function ContextMenuTooltip({
   const handleClick = (event: MouseEvent<HTMLDivElement>): void => {
     event.stopPropagation?.()
     event.preventDefault?.()
+    setOpenTooltip((prev) => !prev)
+  }
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    // Tooltip content is rendered through a React portal, so keyboard events
+    // from its interactive controls still bubble through this trigger. Only
+    // toggle when the trigger itself owns the event.
+    if (event.target !== event.currentTarget) return
+    if (event.key !== 'Enter' && event.key !== ' ') return
+
+    event.stopPropagation()
+    event.preventDefault()
     setOpenTooltip((prev) => !prev)
   }
 
@@ -61,7 +75,16 @@ export function ContextMenuTooltip({
   }
 
   return (
-    <styledEl.ContextMenuTooltipButton onClick={handleClick} disableHoverBackground={disableHoverBackground}>
+    <styledEl.ContextMenuTooltipButton
+      role={ariaLabel ? 'button' : undefined}
+      tabIndex={ariaLabel ? 0 : undefined}
+      aria-label={ariaLabel}
+      aria-haspopup={ariaLabel ? 'menu' : undefined}
+      aria-expanded={ariaLabel ? openTooltip : undefined}
+      onClick={handleClick}
+      onKeyDown={ariaLabel ? handleKeyDown : undefined}
+      disableHoverBackground={disableHoverBackground}
+    >
       <Tooltip
         content={
           <styledEl.ContextMenuContent ref={contextMenuRef} onClick={handleTooltipClick}>

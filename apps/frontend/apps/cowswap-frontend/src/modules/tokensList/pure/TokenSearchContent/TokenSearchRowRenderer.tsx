@@ -1,5 +1,7 @@
 import { ReactNode } from 'react'
 
+import { getTokenId } from '@cowprotocol/cow-sdk'
+
 import { GuideBanner } from './GuideBanner'
 import { TokenSearchRowRendererProps } from './types'
 
@@ -34,6 +36,7 @@ export function TokenSearchRowRenderer({
       )
     }
     case 'import-token':
+      const tokenId = getTokenId(row.token)
       return (
         <ImportTokenItem
           token={row.token}
@@ -43,6 +46,9 @@ export function TokenSearchRowRenderer({
           isFirstInSection={row.isFirstInSection}
           isLastInSection={row.isLastInSection}
           disabledReason={row.disabledReason}
+          isContractListed={selectTokenContext.listedTokenIds.has(tokenId)}
+          tokenizedAssetProvider={selectTokenContext.tokenizedAssetProviderByTokenId.get(tokenId)}
+          tokenListTags={selectTokenContext.tokenListTags}
         />
       )
     default:

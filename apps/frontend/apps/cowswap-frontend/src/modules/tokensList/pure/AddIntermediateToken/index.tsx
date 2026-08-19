@@ -2,19 +2,31 @@ import { ReactNode, useCallback } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { getTokenId } from '@cowprotocol/cow-sdk'
-
-import { useAddTokenImportCallback } from 'modules/tokensList/hooks/useAddTokenImportCallback'
-import { ImportTokenItem } from 'modules/tokensList/pure/ImportTokenItem'
+import { TokenListTags } from '@cowprotocol/tokens'
 
 import * as styledEl from './styled'
 
+import { useAddTokenImportCallback } from '../../hooks/useAddTokenImportCallback'
+import { TokenizedAssetProviderTag } from '../../types'
+import { ImportTokenItem } from '../ImportTokenItem'
+
 interface AddIntermediateTokenProps {
   intermediateBuyToken: TokenWithLogo
+  isContractListed: boolean
+  tokenizedAssetProvider: TokenizedAssetProviderTag | undefined
+  tokenListTags: TokenListTags
   onImport: () => void
 }
 
-export function AddIntermediateToken({ intermediateBuyToken, onImport }: AddIntermediateTokenProps): ReactNode {
+export function AddIntermediateToken({
+  intermediateBuyToken,
+  isContractListed,
+  tokenizedAssetProvider,
+  tokenListTags,
+  onImport,
+}: AddIntermediateTokenProps): ReactNode {
   const addTokenImportCallback = useAddTokenImportCallback()
+  const tokenId = getTokenId(intermediateBuyToken)
 
   const handleImport = useCallback(
     (token: TokenWithLogo) => {
@@ -26,7 +38,14 @@ export function AddIntermediateToken({ intermediateBuyToken, onImport }: AddInte
 
   return (
     <styledEl.AddIntermediateTokenWrapper>
-      <ImportTokenItem key={getTokenId(intermediateBuyToken)} token={intermediateBuyToken} importToken={handleImport} />
+      <ImportTokenItem
+        key={tokenId}
+        token={intermediateBuyToken}
+        importToken={handleImport}
+        isContractListed={isContractListed}
+        tokenizedAssetProvider={tokenizedAssetProvider}
+        tokenListTags={tokenListTags}
+      />
     </styledEl.AddIntermediateTokenWrapper>
   )
 }

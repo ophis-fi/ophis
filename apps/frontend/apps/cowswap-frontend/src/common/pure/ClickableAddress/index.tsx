@@ -2,50 +2,23 @@ import { ReactNode, useRef } from 'react'
 
 import { useMediaQuery } from '@cowprotocol/common-hooks'
 import { ExplorerDataType, getExplorerLink, shortenAddress, getIsNativeToken } from '@cowprotocol/common-utils'
-import { Media, ContextMenuTooltip, ContextMenuCopyButton, ContextMenuExternalLink, Opacity, UI } from '@cowprotocol/ui'
+import { Media, ContextMenuTooltip, ContextMenuCopyButton, ContextMenuExternalLink } from '@cowprotocol/ui'
 
 import { t } from '@lingui/core/macro'
 import { useBridgeSupportedNetwork } from 'entities/bridgeProvider'
 import { Info } from 'react-feather'
-import styled from 'styled-components/macro'
+
+import * as styledEl from './ClickableAddress.styled'
 
 export type ClickableAddressProps = {
   address: string
   chainId: number
+  showAddress?: boolean
+  details: ReactNode
 }
 
-const Wrapper = styled.div<{ alwaysShow: boolean }>`
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-
-  &:hover {
-    > button {
-      opacity: ${Opacity.medium};
-    }
-  }
-
-  > button {
-    opacity: ${({ alwaysShow }) => (alwaysShow ? Opacity.medium : Opacity.none)};
-
-    &:hover {
-      opacity: ${Opacity.full};
-    }
-  }
-`
-
-const AddressWrapper = styled.span`
-  margin: 0;
-  line-height: 1;
-  font-size: 13px;
-  font-weight: 400;
-  color: var(${UI.COLOR_TEXT_OPACITY_50});
-  opacity: ${Opacity.full};
-`
-
 export function ClickableAddress(props: ClickableAddressProps): ReactNode {
-  const { address, chainId } = props
+  const { address, chainId, showAddress = true, details } = props
 
   const wrapperRef = useRef<HTMLDivElement>(null)
   const isMobile = useMediaQuery(Media.upToMedium(false))
@@ -57,13 +30,15 @@ export function ClickableAddress(props: ClickableAddressProps): ReactNode {
 
   return (
     shouldShowAddress && (
-      <Wrapper alwaysShow={isMobile} ref={wrapperRef}>
-        <AddressWrapper>{shortAddress}</AddressWrapper>
+      <styledEl.Wrapper $alwaysShow={isMobile || !showAddress} ref={wrapperRef}>
+        {showAddress ? <styledEl.AddressWrapper>{shortAddress}</styledEl.AddressWrapper> : null}
         <ContextMenuTooltip
+          ariaLabel={t`View contract details`}
           content={
             <>
-              <ContextMenuCopyButton address={address} />
-              <ContextMenuExternalLink href={target} label={t`View details`} />
+              {details}
+              <ContextMenuCopyButton address={address} label={t`Copy address`} />
+              <ContextMenuExternalLink href={target} label={t`View on explorer`} />
             </>
           }
           placement="bottom"
@@ -71,7 +46,7 @@ export function ClickableAddress(props: ClickableAddressProps): ReactNode {
         >
           <Info size={16} />
         </ContextMenuTooltip>
-      </Wrapper>
+      </styledEl.Wrapper>
     )
   )
 }

@@ -3,7 +3,13 @@ import { useMemo } from 'react'
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { ExplorerDataType, getExplorerLink } from '@cowprotocol/common-utils'
 import { getAddressKey, getTokenId } from '@cowprotocol/cow-sdk'
-import { TokenLogo, TokenSearchResponse, useRemoveUserToken, useResetUserTokens } from '@cowprotocol/tokens'
+import {
+  TokenListTags,
+  TokenLogo,
+  TokenSearchResponse,
+  useRemoveUserToken,
+  useResetUserTokens,
+} from '@cowprotocol/tokens'
 import { TokenSymbol } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
@@ -14,6 +20,7 @@ import * as styledEl from './styled'
 import { useAddTokenImportCallback } from '../../hooks/useAddTokenImportCallback'
 import { CommonListContainer } from '../../pure/commonElements'
 import { ImportTokenItem } from '../../pure/ImportTokenItem'
+import { TokenizedAssetProviderTag } from '../../types'
 
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -27,13 +34,16 @@ const tokensListToMap = (tokens: TokenWithLogo[]) => {
 export interface ManageTokensProps {
   tokens: TokenWithLogo[]
   tokenSearchResponse: TokenSearchResponse
+  listedTokenIds: ReadonlySet<string>
+  tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
+  tokenListTags: TokenListTags
 }
 
 // TODO: Break down this large function into smaller functions
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function ManageTokens(props: ManageTokensProps) {
-  const { tokens, tokenSearchResponse } = props
+  const { tokens, tokenSearchResponse, listedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags } = props
 
   const addTokenImportCallback = useAddTokenImportCallback()
   const removeTokenCallback = useRemoveUserToken()
@@ -56,11 +66,31 @@ export function ManageTokens(props: ManageTokensProps) {
       {(!!activeListsResult?.length || !!tokensToImport?.length) && (
         <styledEl.SearchResults>
           {activeListsResult?.map((token) => {
-            return <ImportTokenItem key={getTokenId(token)} token={token} existing={true} />
+            const tokenId = getTokenId(token)
+            return (
+              <ImportTokenItem
+                key={tokenId}
+                token={token}
+                existing={true}
+                isContractListed={listedTokenIds.has(tokenId)}
+                tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
+                tokenListTags={tokenListTags}
+              />
+            )
           })}
           {!activeListsResult?.length &&
             tokensToImport?.map((token) => {
-              return <ImportTokenItem key={getTokenId(token)} token={token} importToken={addTokenImportCallback} />
+              const tokenId = getTokenId(token)
+              return (
+                <ImportTokenItem
+                  key={tokenId}
+                  token={token}
+                  importToken={addTokenImportCallback}
+                  isContractListed={listedTokenIds.has(tokenId)}
+                  tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
+                  tokenListTags={tokenListTags}
+                />
+              )
             })}
         </styledEl.SearchResults>
       )}

@@ -17,6 +17,9 @@ const Fixtures = {
       <ManageListsAndTokens
         customTokens={customTokensMock}
         lists={listsMock}
+        listedTokenIds={new Set()}
+        tokenizedAssetProviderByTokenId={new Map()}
+        tokenListTags={{}}
         onBack={() => console.log('onBack')}
         onDismiss={() => console.log('onDismiss')}
       />

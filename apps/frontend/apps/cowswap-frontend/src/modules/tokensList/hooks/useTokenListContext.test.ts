@@ -108,6 +108,8 @@ describe('useTokenListContext', () => {
       unsupportedTokens: {},
       permitCompatibleTokens: {},
       tokenListTags: {},
+      listedTokenIds: new Set(),
+      tokenizedAssetProviderByTokenId: new Map(),
       isWalletConnected: false,
     })
     mockUseRecentTokenSection.mockReturnValue({

@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
+import { TokenListTags } from '@cowprotocol/tokens'
 import { HoverTooltip } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
@@ -8,8 +9,10 @@ import { CheckCircle } from 'react-feather'
 
 import * as styledEl from './styled'
 
+import { TokenizedAssetProviderTag } from '../../types'
 import { ImportButton } from '../commonElements'
 import { TokenInfo } from '../TokenInfo'
+import { TokenTags } from '../TokenTags'
 
 export interface ImportTokenItemProps {
   token: TokenWithLogo
@@ -20,14 +23,44 @@ export interface ImportTokenItemProps {
   isFirstInSection?: boolean
   isLastInSection?: boolean
   disabledReason?: string
+  isContractListed: boolean
+  tokenizedAssetProvider: TokenizedAssetProviderTag | undefined
+  tokenListTags: TokenListTags
 }
 
 export function ImportTokenItem(props: ImportTokenItemProps): ReactNode {
-  const { token, importToken, shadowed, existing, wrapperId, isFirstInSection, isLastInSection, disabledReason } = props
+  const {
+    token,
+    importToken,
+    shadowed,
+    existing,
+    wrapperId,
+    isFirstInSection,
+    isLastInSection,
+    disabledReason,
+    isContractListed,
+    tokenizedAssetProvider,
+    tokenListTags,
+  } = props
 
   const tokenInfo = (
     <div style={{ opacity: shadowed ? 0.6 : 1 }}>
-      <TokenInfo token={token} />
+      <TokenInfo
+        token={token}
+        showAddress={false}
+        hideNetworkBadge
+        isContractListed={isContractListed}
+        tokenizedAssetProvider={tokenizedAssetProvider}
+        tags={
+          tokenizedAssetProvider ? (
+            <TokenTags
+              isUnsupported={false}
+              tokenListTags={tokenListTags}
+              tokenizedAssetProvider={tokenizedAssetProvider}
+            />
+          ) : null
+        }
+      />
     </div>
   )
 
