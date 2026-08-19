@@ -62,18 +62,35 @@ describe('reconcileOtcOrders', () => {
 
   it.each<[OtcOrderField, Partial<OtcIndexedOrder>]>([
     ['maker', { maker: OTHER }],
-    ['active', { active: false }],
     ['tokenA', { tokenA: USDC }],
     ['amountA', { amountA: 999n }],
     ['tokenB', { tokenB: WETH }],
     ['amountB', { amountB: 999n }],
-  ])('detects a mutation of %s', (field, mutation) => {
+  ])('detects a mutation of the immutable field %s as corruption', (field, mutation) => {
     const report = reconcileOtcOrders([indexedOrder(1n, mutation)], snapshot([onchainOrder(1n)]))
     expect(report.verifiedIds).toEqual([])
+    expect(report.activeLagIds).toEqual([])
     expect(report.mismatches).toHaveLength(1)
     expect(report.mismatches[0].orderId).toBe(1n)
     expect(report.mismatches[0].field).toBe(field)
     expect(report.mismatches[0].indexed).not.toBe(report.mismatches[0].onchain)
+  })
+
+  it('reports an active-flag disagreement as index lag, never verified and never corruption', () => {
+    const report = reconcileOtcOrders([indexedOrder(1n, { active: false })], snapshot([onchainOrder(1n)]))
+    expect(report.verifiedIds).toEqual([])
+    expect(report.mismatches).toEqual([])
+    expect(report.activeLagIds).toEqual([1n])
+  })
+
+  it('reports an active disagreement combined with immutable corruption as corruption', () => {
+    const report = reconcileOtcOrders(
+      [indexedOrder(1n, { active: false, amountB: 999n })],
+      snapshot([onchainOrder(1n)]),
+    )
+    expect(report.verifiedIds).toEqual([])
+    expect(report.activeLagIds).toEqual([])
+    expect(report.mismatches.map((entry) => entry.field)).toEqual(['amountB'])
   })
 
   it('treats address-case differences as equal', () => {

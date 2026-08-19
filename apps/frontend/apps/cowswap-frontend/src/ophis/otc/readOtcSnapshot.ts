@@ -107,8 +107,9 @@ export interface OtcOrderReadResult {
 
 /**
  * Direct, fail-closed read of one order — the fresh re-read the detail view
- * performs so an indexed row is never presented as current state. Verifies
- * the pinned runtime code hash at the same block as the read.
+ * performs so an indexed row is never presented as current state. Enforces
+ * the SAME guards as the snapshot reader: pinned runtime code hash, weth()
+ * wiring, single-block pinning, and a post-read block-hash confirmation.
  */
 export async function readOtcOrder(
   client: OtcReaderClient,
@@ -119,6 +120,7 @@ export async function readOtcOrder(
   if (!block.hash) throw new Error('Ophis OTC block is not identifiable')
 
   await requirePinnedCode(client, manifest.contract.address, manifest.contract.runtimeCodeHash, block.number)
+  await requireWethWiring(client, manifest, block.number)
 
   const data = await callBounded(
     client,
@@ -132,6 +134,11 @@ export async function readOtcOrder(
   )
   const decoded: unknown = decodeFunctionResult({ abi: OTC_READ_ABI, functionName: 'getOrder', data })
   const orders = parseOtcOrders([decoded], [orderId])
+
+  const confirmedBlock = await client.getBlockByNumber(block.number)
+  if (confirmedBlock.number !== block.number || !confirmedBlock.hash || confirmedBlock.hash !== block.hash) {
+    throw new Error('Ophis OTC block changed')
+  }
 
   return { order: orders[0] ?? null, blockNumber: block.number }
 }

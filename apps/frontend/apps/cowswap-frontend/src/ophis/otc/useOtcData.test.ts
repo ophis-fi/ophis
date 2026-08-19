@@ -88,7 +88,7 @@ describe('loadOtcData', () => {
 
     expect(result.snapshot.nextOrderId).toBe(144n)
     expect(result.snapshot.orders).toHaveLength(144)
-    expect(result.degraded).toBe(false)
+    expect(result.degradedReason).toBeNull()
     expect(result.enrichment?.indexedBlock).toBe(25_787_578n)
     expect(result.enrichment?.byOrderId.get('143')?.createdAt).toBeGreaterThan(1_700_000_000)
     expect(result.indexLagBlocks).toBe(1n)
@@ -102,7 +102,7 @@ describe('loadOtcData', () => {
     const result = await loadOtcData(createMockClient(), { manifest: testManifest(), fetchImpl: failingFetch() })
 
     expect(result.snapshot.orders).toHaveLength(144)
-    expect(result.degraded).toBe(true)
+    expect(result.degradedReason).toBe('index-unavailable')
     expect(result.enrichment).toBeNull()
     expect(result.reconciliation).toBeNull()
     expect(result.indexLagBlocks).toBeNull()
@@ -113,7 +113,7 @@ describe('loadOtcData', () => {
       manifest: testManifest({ maxIndexLagBlocks: 0n }),
       fetchImpl: subgraphFetch(),
     })
-    expect(result.degraded).toBe(true)
+    expect(result.degradedReason).toBe('index-stale')
     expect(result.enrichment).not.toBeNull()
   })
 

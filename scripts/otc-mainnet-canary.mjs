@@ -154,10 +154,13 @@ const encodeGetOrdersCall = (orderIds) =>
 // --- manifest drift gate -----------------------------------------------------
 
 export function extractFrontendManifest(source) {
+  // Exactly-one-match extraction: zero matches means the field moved (the
+  // gate must fail closed), more than one means the regex could silently
+  // bind to the wrong occurrence (e.g. a commented-out copy).
   const grab = (pattern, name) => {
-    const match = source.match(pattern);
-    assert.ok(match, `frontend manifest field not found: ${name}`);
-    return match[1];
+    const matches = [...source.matchAll(new RegExp(pattern.source, `${pattern.flags}g`))];
+    assert.equal(matches.length, 1, `frontend manifest field not found exactly once: ${name} (${matches.length})`);
+    return matches[0][1];
   };
   return {
     contract: grab(/address:\s*'(0x[0-9a-fA-F]{40})'/, 'contract.address'),
@@ -273,29 +276,38 @@ async function live() {
 
   const data = await fetchSubgraphOrders(3);
   const indexedBlock = BigInt(data._meta.block.number);
-  const rows = data.orders;
-  assert.ok(rows.length > 0, 'subgraph returned no orders');
+  const allRows = data.orders;
+  assert.ok(allRows.length > 0, 'subgraph returned no orders');
 
-  const ids = rows.map((row) => BigInt(row.orderId));
-  const onchain = decodeOrdersResult(await ethCall(encodeGetOrdersCall(ids)), ids);
+  // The RPC's 'latest' can lag the indexer by a block or two. An indexed id
+  // >= this node's nextOrderId is index-vs-node skew, not corruption: skip
+  // it visibly instead of paging ops with a false drift alert.
+  const rows = allRows.filter((row) => BigInt(row.orderId) < nextOrderId);
+  const skewSkipped = allRows.length - rows.length;
+  if (skewSkipped > 0) {
+    console.log(`note: ${skewSkipped} indexed order(s) ahead of this RPC node's nextOrderId — skipped`);
+  }
 
   let activeDisagreements = 0;
-  for (const [index, row] of rows.entries()) {
-    const chain = onchain[index];
-    assert.ok(BigInt(row.orderId) < nextOrderId, `indexed id ${row.orderId} >= nextOrderId ${nextOrderId}`);
-    // Immutable per order id: any disagreement is real corruption, not a race.
-    assert.equal(row.maker.toLowerCase(), chain.maker, `order ${row.orderId}: maker drift`);
-    assert.equal(row.tokenA.id.toLowerCase(), chain.tokenA, `order ${row.orderId}: tokenA drift`);
-    assert.equal(row.tokenB.id.toLowerCase(), chain.tokenB, `order ${row.orderId}: tokenB drift`);
-    assert.equal(BigInt(row.amountA), chain.amountA, `order ${row.orderId}: amountA drift`);
-    assert.equal(BigInt(row.amountB), chain.amountB, `order ${row.orderId}: amountB drift`);
-    if (row.active !== chain.active) activeDisagreements += 1;
+  if (rows.length > 0) {
+    const ids = rows.map((row) => BigInt(row.orderId));
+    const onchain = decodeOrdersResult(await ethCall(encodeGetOrdersCall(ids)), ids);
+    for (const [index, row] of rows.entries()) {
+      const chain = onchain[index];
+      // Immutable per order id: any disagreement is real corruption, not a race.
+      assert.equal(row.maker.toLowerCase(), chain.maker, `order ${row.orderId}: maker drift`);
+      assert.equal(row.tokenA.id.toLowerCase(), chain.tokenA, `order ${row.orderId}: tokenA drift`);
+      assert.equal(row.tokenB.id.toLowerCase(), chain.tokenB, `order ${row.orderId}: tokenB drift`);
+      assert.equal(BigInt(row.amountA), chain.amountA, `order ${row.orderId}: amountA drift`);
+      assert.equal(BigInt(row.amountB), chain.amountB, `order ${row.orderId}: amountB drift`);
+      if (row.active !== chain.active) activeDisagreements += 1;
+    }
   }
 
   console.log(
     `otc canary live OK: code hash pinned, weth wired, nextOrderId=${nextOrderId}, ` +
       `${rows.length} newest orders reconciled (immutable fields exact; ` +
-      `${activeDisagreements} active-flag lag), index block ${indexedBlock}`,
+      `${activeDisagreements} active-flag lag; ${skewSkipped} skew-skipped), index block ${indexedBlock}`,
   );
 }
 

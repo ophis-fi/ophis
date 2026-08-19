@@ -109,6 +109,12 @@ export interface OtcReconciliationReport {
   notIndexed: bigint[]
   /** Indexed ids outside the snapshot's enumerated window; never verified. */
   unknownIds: bigint[]
+  /**
+   * Ids whose immutable terms match but whose active flag disagrees — normal
+   * index lag around fills/cancels, reported separately so lag is never
+   * presented as data corruption (and never verified either).
+   */
+  activeLagIds: bigint[]
 }
 
 export interface OtcEnrichment {
@@ -118,8 +124,11 @@ export interface OtcEnrichment {
 
 export type OtcDataStatus = 'loading' | 'ready' | 'degraded' | 'unavailable'
 
+export type OtcDegradedReason = 'index-unavailable' | 'index-stale'
+
 export interface OtcDataState {
   status: OtcDataStatus
+  degradedReason: OtcDegradedReason | null
   snapshot: OtcSnapshot | null
   enrichment: OtcEnrichment | null
   reconciliation: OtcReconciliationReport | null

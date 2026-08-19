@@ -2,14 +2,27 @@ import type { ReactNode } from 'react'
 
 import { Badge, Table, Tbody, Td, Th, Thead, Tr } from 'ophis/ds'
 import { formatOtcAmount, getOtcTokenMeta } from 'ophis/otc'
+import { Link } from 'react-router'
 
-import { Mono, RawNote, StatusStack } from './Otc.styled'
+import { CopyButton, Mono, RawNote, VisuallyHidden } from './Otc.styled'
 import { formatOtcAge } from './otcDisplay'
 
 import type { OtcDisplayRow, OtcResolution } from './otcDisplay'
 
+const ETHERSCAN = 'https://etherscan.io/address'
+
 function truncateAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`
+}
+
+/** Truncated display with the full address available to screen readers. */
+function AddressText({ address }: { address: string }): ReactNode {
+  return (
+    <Mono>
+      <span aria-hidden="true">{truncateAddress(address)}</span>
+      <VisuallyHidden>{address}</VisuallyHidden>
+    </Mono>
+  )
 }
 
 function AmountCell({ token, amount }: { token: string; amount: bigint }): ReactNode {
@@ -24,7 +37,7 @@ function AmountCell({ token, amount }: { token: string; amount: bigint }): React
   return (
     <span>
       <Mono>{amount.toString()}</Mono>
-      <RawNote>raw units</RawNote> <Mono aria-label={`Token address ${token}`}>{truncateAddress(token)}</Mono>
+      <RawNote>raw units</RawNote> <AddressText address={token} />
     </span>
   )
 }
@@ -38,12 +51,11 @@ const RESOLUTION_LABEL: Record<OtcResolution, string> = {
 
 function StatusCell({ row }: { row: OtcDisplayRow }): ReactNode {
   return (
-    <StatusStack>
-      <Badge tone={row.resolution === 'active' ? 'live' : 'draft'}>{RESOLUTION_LABEL[row.resolution]}</Badge>
-      {row.verified && <Badge tone="audit">Verified on-chain</Badge>}
-      {row.mismatch && <Badge tone="planned">Data mismatch</Badge>}
+    <span>
+      <Badge tone={row.resolution === 'active' ? 'live' : 'draft'}>{RESOLUTION_LABEL[row.resolution]}</Badge>{' '}
+      <Badge tone="audit">Escrowed</Badge> {row.mismatch && <Badge tone="planned">Index mismatch</Badge>}
       {!row.reviewed && <Badge tone="draft">Unreviewed token</Badge>}
-    </StatusStack>
+    </span>
   )
 }
 
@@ -58,11 +70,32 @@ function RateCell({ row }: { row: OtcDisplayRow }): ReactNode {
   )
 }
 
+function MakerCell({ maker }: { maker: string }): ReactNode {
+  return (
+    <span>
+      <AddressText address={maker} />
+      <CopyButton
+        type="button"
+        aria-label={`Copy maker address ${maker}`}
+        onClick={() => void navigator.clipboard?.writeText(maker)}
+      >
+        Copy
+      </CopyButton>{' '}
+      <a href={`${ETHERSCAN}/${maker}`} target="_blank" rel="noreferrer" aria-label={`Maker ${maker} on Etherscan`}>
+        ↗
+      </a>
+    </span>
+  )
+}
+
 function OtcOrderRow({ row, nowMs }: { row: OtcDisplayRow; nowMs: number }): ReactNode {
+  const orderId = row.order.orderId.toString()
   return (
     <Tr>
       <Td>
-        <Mono>#{row.order.orderId.toString()}</Mono>
+        <Link to={`/otc/${orderId}`} aria-label={`Order ${orderId} details`}>
+          <Mono>#{orderId}</Mono>
+        </Link>
       </Td>
       <Td>
         <AmountCell token={row.order.tokenA} amount={row.order.amountA} />
@@ -74,7 +107,7 @@ function OtcOrderRow({ row, nowMs }: { row: OtcDisplayRow; nowMs: number }): Rea
         <RateCell row={row} />
       </Td>
       <Td>
-        <Mono aria-label={`Maker address ${row.order.maker}`}>{truncateAddress(row.order.maker)}</Mono>
+        <MakerCell maker={row.order.maker} />
       </Td>
       <Td>{formatOtcAge(nowMs, row.createdAt)}</Td>
       <Td>

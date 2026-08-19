@@ -6,17 +6,18 @@ export type { OtcOrderReadResult } from './readOtcSnapshot'
 export { fetchOtcIndexedOrders, computeIndexLag } from './otcSubgraph'
 export type { OtcIndexedOrdersResult } from './otcSubgraph'
 export { reconcileOtcOrders } from './reconcileOtcOrders'
-export { getOtcTokenMeta, isOtcOrderDisplayReviewed, OTC_CURATED_TOKEN_COUNT } from './otcTokenMeta'
+export { getOtcTokenMeta, isOtcOrderDisplayReviewed, OTC_CURATED_TOKEN_COUNT, OTC_CURATED_TOKENS } from './otcTokenMeta'
 export type { OtcTokenMeta } from './otcTokenMeta'
 export { computeOtcRate, formatOtcAmount } from './otcAmounts'
 export type { OtcRate } from './otcAmounts'
-export { loadOtcData, useOtcData } from './useOtcData'
+export { loadOtcData, toOtcReaderClient, useOtcData, OTC_DATA_REFRESH_INTERVAL } from './useOtcData'
 export type { LoadedOtcData, LoadOtcDataOptions } from './useOtcData'
 export type {
   OtcBlock,
   OtcContractPin,
   OtcDataState,
   OtcDataStatus,
+  OtcDegradedReason,
   OtcEnrichment,
   OtcIndexedOrder,
   OtcManifest,

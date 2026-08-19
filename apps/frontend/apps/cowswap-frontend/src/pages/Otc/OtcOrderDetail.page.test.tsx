@@ -70,6 +70,16 @@ describe('OtcOrderDetailView', () => {
     expect(explorerLinks.some((href) => href === `https://etherscan.io/address/${MAKER}`)).toBe(true)
   })
 
+  it('shows the escrow badge only while the order is active', () => {
+    renderDetail()
+    expect(screen.getByText('Escrowed')).toBeTruthy()
+  })
+
+  it('hides the escrow badge for resolved orders', () => {
+    renderDetail({ order: order({ active: false }), indexed: null })
+    expect(screen.queryByText('Escrowed')).toBeNull()
+  })
+
   it('flags USDC escrow lock risks', () => {
     renderDetail()
     expect(screen.getByText(/upgradeable/)).toBeTruthy()

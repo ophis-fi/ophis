@@ -42,6 +42,8 @@ const CURATED_TOKENS: readonly OtcTokenMeta[] = [
   },
 ]
 
+export const OTC_CURATED_TOKENS: readonly OtcTokenMeta[] = CURATED_TOKENS
+
 export const OTC_CURATED_TOKEN_COUNT = CURATED_TOKENS.length
 
 const CURATED_BY_KEY = new Map(CURATED_TOKENS.map((token) => [getAddressKey(token.address), token]))

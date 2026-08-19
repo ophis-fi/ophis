@@ -6,7 +6,11 @@ import { join } from 'path'
 import { OTC_EVENT_ABI, OTC_READ_ABI } from './otc.abi'
 import { OPHIS_ETHEREUM_OTC_MANIFEST, OTC_KNOWN_WRITE_SELECTORS } from './otc.const'
 
-const FORBIDDEN_IMPORT_FRAGMENTS = [
+// Matched against module SPECIFIERS (the string after `from`) of production
+// files. Named exports do not appear in specifiers, so entries must be
+// package/path fragments — e.g. the signer-capable provider lib is
+// '@cowprotocol/wallet-provider', matched by 'wallet-provider'.
+const SHARED_FORBIDDEN_FRAGMENTS = [
   'modules/trade',
   'modules/swap',
   'modules/tokensList',
@@ -18,7 +22,7 @@ const FORBIDDEN_IMPORT_FRAGMENTS = [
   'permit',
   'solver',
   'signing',
-  'useWalletProvider',
+  'wallet-provider',
   'legacy/state',
   // Token-activation machinery: production OTC code renders only its own
   // curated metadata. (The policy drift-binding test imports this from a
@@ -26,6 +30,26 @@ const FORBIDDEN_IMPORT_FRAGMENTS = [
   '@cowprotocol/tokens',
   'boostedTokens',
 ]
+
+// The adapter module must not touch the wallet at all; the page family may
+// read the connected ACCOUNT via '@cowprotocol/wallet' (useWalletInfo) but
+// nothing signer-capable.
+const MODULE_FORBIDDEN_FRAGMENTS = [...SHARED_FORBIDDEN_FRAGMENTS, '@cowprotocol/wallet']
+const PAGES_FORBIDDEN_FRAGMENTS = SHARED_FORBIDDEN_FRAGMENTS
+
+const PAGES_DIR = join(__dirname, '..', '..', 'pages', 'Otc')
+
+function productionImports(directory: string): string[] {
+  const sourceFiles = readdirSync(directory).filter(
+    (file) => (file.endsWith('.ts') || file.endsWith('.tsx')) && !file.includes('.test.'),
+  )
+  expect(sourceFiles.length).toBeGreaterThan(0)
+  const importPattern = /from\s+['"]([^'"]+)['"]/g
+  return sourceFiles.flatMap((file) => {
+    const source = readFileSync(join(directory, file), 'utf8')
+    return Array.from(source.matchAll(importPattern), (match) => match[1] ?? '')
+  })
+}
 
 // Independently pinned facts (verified 2026-08-19 via publicnode, drpc, and
 // Sourcify exact_match). A drift here is a manifest edit that must not pass.
@@ -35,17 +59,16 @@ const PINNED_WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
 const PINNED_DEPLOYMENT_BLOCK = 24_622_661n
 
 describe('Ophis OTC boundary', () => {
-  it('does not import trading, token-activation, allowance, signing, or solver modules', () => {
-    const sourceFiles = readdirSync(__dirname).filter(
-      (file) => (file.endsWith('.ts') || file.endsWith('.tsx')) && !file.includes('.test.'),
-    )
-    const importPattern = /from\s+['"]([^'"]+)['"]/g
-    const imports = sourceFiles.flatMap((file) => {
-      const source = readFileSync(join(__dirname, file), 'utf8')
-      return Array.from(source.matchAll(importPattern), (match) => match[1] ?? '')
-    })
+  it('adapter module imports no trading, token-activation, allowance, signing, wallet, or solver modules', () => {
+    const imports = productionImports(__dirname)
+    for (const fragment of MODULE_FORBIDDEN_FRAGMENTS) {
+      expect(imports.filter((value) => value.includes(fragment))).toEqual([])
+    }
+  })
 
-    for (const fragment of FORBIDDEN_IMPORT_FRAGMENTS) {
+  it('page surface imports no trading, allowance, signing, or solver modules', () => {
+    const imports = productionImports(PAGES_DIR)
+    for (const fragment of PAGES_FORBIDDEN_FRAGMENTS) {
       expect(imports.filter((value) => value.includes(fragment))).toEqual([])
     }
   })

@@ -9,11 +9,17 @@
 import { useMemo, type ReactNode } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
-import { useWalletInfo } from '@cowprotocol/wallet'
 
-import ms from 'ms.macro'
 import { Badge, Callout, KeyValueList, PageShell, Section, TextLink } from 'ophis/ds'
-import { formatOtcAmount, getOtcTokenMeta, readOtcOrder, useOtcData, OPHIS_ETHEREUM_OTC_MANIFEST } from 'ophis/otc'
+import {
+  formatOtcAmount,
+  getOtcTokenMeta,
+  readOtcOrder,
+  toOtcReaderClient,
+  useOtcData,
+  OPHIS_ETHEREUM_OTC_MANIFEST,
+  OTC_DATA_REFRESH_INTERVAL,
+} from 'ophis/otc'
 import { Navigate, useParams } from 'react-router'
 import useSWR from 'swr'
 import { usePublicClient } from 'wagmi'
@@ -118,7 +124,7 @@ function DetailBody({
       <Section id="otc-order-terms" title="Terms">
         <BadgeRow>
           <Badge tone={order.active ? 'live' : 'draft'}>{order.active ? 'Active' : 'Inactive'}</Badge>
-          <Badge tone="audit">Escrowed</Badge>
+          {order.active && <Badge tone="audit">Escrowed</Badge>}
           {blockNumber && <span>Verified on-chain at block {blockNumber.toLocaleString('en-US')}</span>}
         </BadgeRow>
         <TokenLeg label="Maker sells" token={order.tokenA} amount={order.amountA} />
@@ -164,15 +170,6 @@ export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
   )
 }
 
-function toReaderClient(publicClient: NonNullable<ReturnType<typeof usePublicClient>>): OtcReaderClient {
-  return {
-    getLatestBlock: async () => publicClient.getBlock({ blockTag: 'latest' }),
-    getBlockByNumber: async (blockNumber) => publicClient.getBlock({ blockNumber }),
-    getCode: (address, blockNumber) => publicClient.getCode({ address, blockNumber }),
-    call: async (request) => publicClient.call(request),
-  }
-}
-
 export function OtcOrderDetailPage(): ReactNode {
   const enabled = useOtcPageEnabled()
   const params = useParams()
@@ -180,10 +177,9 @@ export function OtcOrderDetailPage(): ReactNode {
   const validId = /^\d{1,18}$/.test(rawOrderId)
   const orderId = validId ? BigInt(rawOrderId) : 0n
 
-  useWalletInfo() // keep hook order stable with the list page family
   const publicClient = usePublicClient({ chainId: SupportedChainId.MAINNET })
   const client = useMemo<OtcReaderClient | null>(
-    () => (publicClient ? toReaderClient(publicClient) : null),
+    () => (publicClient ? toOtcReaderClient(publicClient) : null),
     [publicClient],
   )
   const state = useOtcData(enabled && validId)
@@ -191,13 +187,16 @@ export function OtcOrderDetailPage(): ReactNode {
   const { data, error } = useSWR(
     enabled && validId && client ? ['ophis-otc-order', rawOrderId] : null,
     async () => (client ? readOtcOrder(client, orderId) : null),
-    { refreshInterval: ms`30s`, revalidateOnFocus: false },
+    { refreshInterval: OTC_DATA_REFRESH_INTERVAL, revalidateOnFocus: false },
   )
 
   if (!enabled) return <Navigate to={RoutesEnum.HOME} replace />
   if (!validId) return <Navigate to={RoutesEnum.OTC} replace />
 
   const indexed = state.enrichment?.byOrderId.get(orderId.toString()) ?? null
+  // Wall-clock read for the relative created-age line only.
+
+  const nowMs = Date.now()
 
   return (
     <OtcOrderDetailView
@@ -207,9 +206,7 @@ export function OtcOrderDetailPage(): ReactNode {
       order={data?.order ?? null}
       blockNumber={data?.blockNumber ?? null}
       indexed={indexed}
-      // Wall-clock read for the relative created-age line only.
-
-      nowMs={Date.now()}
+      nowMs={nowMs}
     />
   )
 }

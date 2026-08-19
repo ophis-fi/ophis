@@ -13,6 +13,7 @@ import { reconcileOtcOrders } from './reconcileOtcOrders'
 
 import type {
   OtcDataState,
+  OtcDegradedReason,
   OtcEnrichment,
   OtcManifest,
   OtcReaderClient,
@@ -20,15 +21,15 @@ import type {
   OtcSnapshot,
 } from './otc.types'
 
-const REFRESH_INTERVAL = ms`30s`
+export const OTC_DATA_REFRESH_INTERVAL = ms`30s`
 
 export interface LoadedOtcData {
   snapshot: OtcSnapshot
   enrichment: OtcEnrichment | null
   reconciliation: OtcReconciliationReport | null
   indexLagBlocks: bigint | null
-  /** True when the index is unavailable or stale; on-chain state is still authoritative. */
-  degraded: boolean
+  /** Set when the index is unavailable or stale; on-chain state stays authoritative. */
+  degradedReason: OtcDegradedReason | null
 }
 
 export interface LoadOtcDataOptions {
@@ -36,24 +37,48 @@ export interface LoadOtcDataOptions {
   fetchImpl?: typeof fetch
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('Ophis OTC read timed out')), timeoutMs)
+    promise.then(
+      (value) => {
+        clearTimeout(timeout)
+        resolve(value)
+      },
+      (error: unknown) => {
+        clearTimeout(timeout)
+        reject(error)
+      },
+    )
+  })
+}
+
 /**
- * Loads the on-chain snapshot (authority; a failure here throws so nothing
- * unverified is shown) and decorates it with subgraph enrichment when the
- * index is healthy. Index failure or excessive lag only degrades the result.
+ * Loads the on-chain snapshot (authority; a failure or timeout here throws so
+ * nothing unverified is shown) and decorates it with subgraph enrichment when
+ * the index is healthy. Index failure or excessive lag only degrades the
+ * result — with the reason kept distinct so the UI never claims data is
+ * hidden while stale data is being shown.
  */
 export async function loadOtcData(client: OtcReaderClient, options: LoadOtcDataOptions = {}): Promise<LoadedOtcData> {
   const manifest = options.manifest ?? OPHIS_ETHEREUM_OTC_MANIFEST
 
   const [snapshot, indexResult] = await Promise.all([
-    readOtcSnapshot(client, manifest),
-    fetchOtcIndexedOrders(options.fetchImpl ?? fetch).then(
+    withTimeout(readOtcSnapshot(client, manifest), manifest.readTimeoutMs),
+    fetchOtcIndexedOrders(options.fetchImpl ?? fetch, manifest).then(
       (value) => ({ ok: true as const, value }),
       () => ({ ok: false as const }),
     ),
   ])
 
   if (!indexResult.ok) {
-    return { snapshot, enrichment: null, reconciliation: null, indexLagBlocks: null, degraded: true }
+    return {
+      snapshot,
+      enrichment: null,
+      reconciliation: null,
+      indexLagBlocks: null,
+      degradedReason: 'index-unavailable',
+    }
   }
 
   const { orders, indexedBlock } = indexResult.value
@@ -69,11 +94,14 @@ export async function loadOtcData(client: OtcReaderClient, options: LoadOtcDataO
     enrichment,
     reconciliation,
     indexLagBlocks,
-    degraded: indexLagBlocks > manifest.maxIndexLagBlocks,
+    degradedReason: indexLagBlocks > manifest.maxIndexLagBlocks ? 'index-stale' : null,
   }
 }
 
-function toReaderClient(publicClient: NonNullable<ReturnType<typeof usePublicClient>>): OtcReaderClient {
+type WagmiPublicClient = NonNullable<ReturnType<typeof usePublicClient>>
+
+/** Wrap a viem PublicClient into the narrow, transaction-free reader interface. */
+export function toOtcReaderClient(publicClient: WagmiPublicClient): OtcReaderClient {
   return {
     getLatestBlock: async () => publicClient.getBlock({ blockTag: 'latest' }),
     getBlockByNumber: async (blockNumber) => publicClient.getBlock({ blockNumber }),
@@ -82,6 +110,14 @@ function toReaderClient(publicClient: NonNullable<ReturnType<typeof usePublicCli
   }
 }
 
+const EMPTY_STATE = {
+  snapshot: null,
+  enrichment: null,
+  reconciliation: null,
+  indexLagBlocks: null,
+  degradedReason: null,
+} as const
+
 /**
  * Ethereum-mainnet-pinned OTC data. Wallet-independent: reads go through the
  * configured network provider, never the connected wallet's chain.
@@ -89,7 +125,7 @@ function toReaderClient(publicClient: NonNullable<ReturnType<typeof usePublicCli
 export function useOtcData(enabled: boolean): OtcDataState {
   const publicClient = usePublicClient({ chainId: SupportedChainId.MAINNET })
   const client = useMemo<OtcReaderClient | null>(
-    () => (publicClient ? toReaderClient(publicClient) : null),
+    () => (publicClient ? toOtcReaderClient(publicClient) : null),
     [publicClient],
   )
 
@@ -97,24 +133,23 @@ export function useOtcData(enabled: boolean): OtcDataState {
     enabled && client ? ['ophis-otc-data'] : null,
     async () => (client ? loadOtcData(client) : null),
     {
-      refreshInterval: REFRESH_INTERVAL,
+      refreshInterval: OTC_DATA_REFRESH_INTERVAL,
       revalidateOnFocus: false,
-      revalidateIfStale: false,
       refreshWhenHidden: false,
       refreshWhenOffline: false,
-      isPaused: () => typeof document !== 'undefined' && !document.hasFocus(),
     },
   )
 
   if (error) {
-    return { status: 'unavailable', snapshot: null, enrichment: null, reconciliation: null, indexLagBlocks: null }
+    return { status: 'unavailable', ...EMPTY_STATE }
   }
   if (!data) {
-    return { status: 'loading', snapshot: null, enrichment: null, reconciliation: null, indexLagBlocks: null }
+    return { status: 'loading', ...EMPTY_STATE }
   }
 
   return {
-    status: data.degraded ? 'degraded' : 'ready',
+    status: data.degradedReason ? 'degraded' : 'ready',
+    degradedReason: data.degradedReason,
     snapshot: data.snapshot,
     enrichment: data.enrichment,
     reconciliation: data.reconciliation,

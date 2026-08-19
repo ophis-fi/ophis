@@ -27,8 +27,8 @@ function divideToDecimal(numerator: bigint, denominator: bigint): string | null 
 export interface OtcRate {
   /** Unit-normalized amount of tokenB per 1 tokenA, truncated to 8 fraction digits. */
   rate: string
-  /** Unit-normalized amount of tokenA per 1 tokenB, truncated to 8 fraction digits. */
-  inverseRate: string
+  /** Unit-normalized amount of tokenA per 1 tokenB; null when it truncates to zero. */
+  inverseRate: string | null
 }
 
 export function computeOtcRate(amountA: bigint, decimalsA: number, amountB: bigint, decimalsB: number): OtcRate | null {
@@ -37,8 +37,7 @@ export function computeOtcRate(amountA: bigint, decimalsA: number, amountB: bigi
   const unitScaleA = 10n ** BigInt(decimalsA)
   const unitScaleB = 10n ** BigInt(decimalsB)
   const rate = divideToDecimal(amountB * unitScaleA, amountA * unitScaleB)
-  const inverseRate = divideToDecimal(amountA * unitScaleB, amountB * unitScaleA)
-  if (rate === null || inverseRate === null) return null
+  if (rate === null) return null
 
-  return { rate, inverseRate }
+  return { rate, inverseRate: divideToDecimal(amountA * unitScaleB, amountB * unitScaleA) }
 }

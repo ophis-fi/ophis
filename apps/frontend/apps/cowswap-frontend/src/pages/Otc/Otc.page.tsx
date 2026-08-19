@@ -24,7 +24,8 @@ import { Navigate } from 'react-router'
 
 import { Routes as RoutesEnum } from 'common/constants/routes'
 
-import { BadgeRow, DisabledAction, FilterBar, FilterField, TabBar, TabButton } from './Otc.styled'
+import { BadgeRow, DisabledAction, TabBar, TabButton } from './Otc.styled'
+import { applyBrowseFilters, BrowseFilterBar, EMPTY_BROWSE_FILTERS, type BrowseFilters } from './OtcBrowseFilters'
 import { OtcDisclosure } from './OtcDisclosure'
 import { buildOtcDisplayRows, filterBrowseRows, filterMakerRows } from './otcDisplay'
 import { OtcOrdersTable } from './OtcOrdersTable'
@@ -41,76 +42,8 @@ const TABS: ReadonlyArray<{ id: OtcTab; label: string }> = [
   { id: 'create', label: 'Create' },
 ]
 
-interface BrowseFilters {
-  token: string
-  maker: string
-  orderId: string
-}
-
-function applyBrowseFilters(rows: OtcDisplayRow[], filters: BrowseFilters): OtcDisplayRow[] {
-  return rows.filter((row) => {
-    if (filters.orderId.trim() !== '' && row.order.orderId.toString() !== filters.orderId.trim()) return false
-    if (filters.maker.trim() !== '' && !row.order.maker.toLowerCase().includes(filters.maker.trim().toLowerCase())) {
-      return false
-    }
-    if (filters.token !== '') {
-      const needle = filters.token.toLowerCase()
-      if (row.order.tokenA.toLowerCase() !== needle && row.order.tokenB.toLowerCase() !== needle) return false
-    }
-    return true
-  })
-}
-
-function BrowseFilterBar({
-  filters,
-  onChange,
-}: {
-  filters: BrowseFilters
-  onChange: (filters: BrowseFilters) => void
-}): ReactNode {
-  return (
-    <FilterBar>
-      <FilterField>
-        <label htmlFor="otc-filter-token">Filter by token</label>
-        <select
-          id="otc-filter-token"
-          value={filters.token}
-          onChange={(event) => onChange({ ...filters, token: event.target.value })}
-        >
-          <option value="">All tokens</option>
-          <option value="0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2">WETH</option>
-          <option value="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48">USDC</option>
-          <option value="0x6B175474E89094C44Da98b954EedeAC495271d0F">DAI</option>
-        </select>
-      </FilterField>
-      <FilterField>
-        <label htmlFor="otc-filter-maker">Filter by maker address</label>
-        <input
-          id="otc-filter-maker"
-          type="text"
-          value={filters.maker}
-          onChange={(event) => onChange({ ...filters, maker: event.target.value })}
-          placeholder="0x…"
-          spellCheck={false}
-        />
-      </FilterField>
-      <FilterField>
-        <label htmlFor="otc-filter-order-id">Filter by order id</label>
-        <input
-          id="otc-filter-order-id"
-          type="text"
-          inputMode="numeric"
-          value={filters.orderId}
-          onChange={(event) => onChange({ ...filters, orderId: event.target.value })}
-          placeholder="e.g. 42"
-        />
-      </FilterField>
-    </FilterBar>
-  )
-}
-
 function BrowsePanel({ rows, nowMs }: { rows: OtcDisplayRow[]; nowMs: number }): ReactNode {
-  const [filters, setFilters] = useState<BrowseFilters>({ token: '', maker: '', orderId: '' })
+  const [filters, setFilters] = useState<BrowseFilters>(EMPTY_BROWSE_FILTERS)
   const filtered = applyBrowseFilters(rows, filters)
 
   return (
@@ -177,21 +110,25 @@ function CreatePanel(): ReactNode {
 }
 
 function OtcStateNotices({ state }: { state: OtcDataState }): ReactNode {
-  if (state.status === 'degraded') {
-    return (
-      <Callout tone="warning" title="Index data unavailable or stale">
-        <p>Ages and history are hidden. On-chain state below remains authoritative and current.</p>
-      </Callout>
-    )
-  }
-  if (state.snapshot?.truncated) {
-    return (
-      <Callout tone="info" title="Showing the most recent orders">
-        <p>Older orders beyond the latest {state.snapshot.orders.length} are not listed here.</p>
-      </Callout>
-    )
-  }
-  return null
+  return (
+    <div aria-live="polite">
+      {state.degradedReason === 'index-unavailable' && (
+        <Callout tone="warning" title="Index data unavailable">
+          <p>Ages and history are hidden. On-chain state below remains authoritative and current.</p>
+        </Callout>
+      )}
+      {state.degradedReason === 'index-stale' && (
+        <Callout tone="warning" title="Index data is stale">
+          <p>Ages and history may lag behind the chain. On-chain state below remains authoritative and current.</p>
+        </Callout>
+      )}
+      {state.snapshot?.truncated && (
+        <Callout tone="info" title="Showing the most recent orders">
+          <p>Older orders beyond the latest {state.snapshot.orders.length} are not listed here.</p>
+        </Callout>
+      )}
+    </div>
+  )
 }
 
 export interface OtcPageViewProps {
@@ -223,7 +160,7 @@ export function OtcPageView({ state, account, nowMs }: OtcPageViewProps): ReactN
 
       <OtcDisclosure />
 
-      {state.status === 'loading' && <p>Loading OTC orders from Ethereum...</p>}
+      {state.status === 'loading' && <p role="status">Loading OTC orders from Ethereum...</p>}
 
       {state.status === 'unavailable' && (
         <Callout tone="warning" title="OTC data unavailable">
@@ -236,7 +173,7 @@ export function OtcPageView({ state, account, nowMs }: OtcPageViewProps): ReactN
       {(state.status === 'ready' || state.status === 'degraded') && (
         <>
           <OtcStateNotices state={state} />
-          <TabBar role="tablist" aria-label="OTC views">
+          <TabBar role="group" aria-label="OTC views">
             {TABS.map((item) => (
               <TabButton
                 key={item.id}

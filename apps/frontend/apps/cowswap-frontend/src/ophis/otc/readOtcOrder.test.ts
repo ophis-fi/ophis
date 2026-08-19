@@ -1,4 +1,4 @@
-import { decodeFunctionData, encodeFunctionResult, keccak256, type Hex } from 'viem'
+import { decodeFunctionData, encodeFunctionResult, keccak256, type Address, type Hex } from 'viem'
 
 import { OTC_READ_ABI } from './otc.abi'
 import { OPHIS_ETHEREUM_OTC_MANIFEST } from './otc.const'
@@ -21,13 +21,30 @@ function testManifest(): OtcManifest {
   }
 }
 
-function createMockClient(existing: boolean): OtcReaderClient {
+interface MockOptions {
+  existing?: boolean
+  wethAddress?: Address
+  code?: Hex
+  reReadHash?: Hex
+}
+
+function createMockClient(options: MockOptions = {}): OtcReaderClient {
+  const existing = options.existing ?? true
   return {
     getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH }),
-    getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: BLOCK_HASH }),
-    getCode: async () => MOCK_CODE,
+    getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: options.reReadHash ?? BLOCK_HASH }),
+    getCode: async () => options.code ?? MOCK_CODE,
     call: async (request) => {
       const { functionName } = decodeFunctionData({ abi: OTC_READ_ABI, data: request.data })
+      if (functionName === 'weth') {
+        return {
+          data: encodeFunctionResult({
+            abi: OTC_READ_ABI,
+            functionName: 'weth',
+            result: options.wethAddress ?? OPHIS_ETHEREUM_OTC_MANIFEST.wethAddress,
+          }),
+        }
+      }
       if (functionName === 'getOrder') {
         return {
           data: encodeFunctionResult({
@@ -51,7 +68,7 @@ function createMockClient(existing: boolean): OtcReaderClient {
 
 describe('readOtcOrder', () => {
   it('reads a single order directly with code verification', async () => {
-    const result = await readOtcOrder(createMockClient(true), 42n, testManifest())
+    const result = await readOtcOrder(createMockClient(), 42n, testManifest())
     expect(result.blockNumber).toBe(200n)
     expect(result.order).toEqual({
       orderId: 42n,
@@ -65,14 +82,26 @@ describe('readOtcOrder', () => {
   })
 
   it('returns a null order for a non-existent id', async () => {
-    const result = await readOtcOrder(createMockClient(false), 42n, testManifest())
+    const result = await readOtcOrder(createMockClient({ existing: false }), 42n, testManifest())
     expect(result.order).toBeNull()
     expect(result.blockNumber).toBe(200n)
   })
 
   it('fails closed on a code hash mismatch', async () => {
-    const client = createMockClient(true)
-    client.getCode = async () => '0xdead'
-    await expect(readOtcOrder(client, 42n, testManifest())).rejects.toThrow('Ophis OTC source mismatch')
+    await expect(readOtcOrder(createMockClient({ code: '0xdead' }), 42n, testManifest())).rejects.toThrow(
+      'Ophis OTC source mismatch',
+    )
+  })
+
+  it('fails closed when weth() wiring disagrees with the manifest', async () => {
+    const client = createMockClient({ wethAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' })
+    await expect(readOtcOrder(client, 42n, testManifest())).rejects.toThrow('Ophis OTC wiring mismatch')
+  })
+
+  it('fails closed when the block hash changes under the read', async () => {
+    const client = createMockClient({
+      reReadHash: '0x2222222222222222222222222222222222222222222222222222222222222222',
+    })
+    await expect(readOtcOrder(client, 42n, testManifest())).rejects.toThrow('Ophis OTC block changed')
   })
 })

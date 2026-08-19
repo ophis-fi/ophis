@@ -1,3 +1,5 @@
+import { getAddressKey } from '@cowprotocol/cow-sdk'
+
 import {
   computeOtcRate,
   getOtcTokenMeta,
@@ -63,8 +65,8 @@ export function filterBrowseRows(rows: OtcDisplayRow[]): OtcDisplayRow[] {
 }
 
 export function filterMakerRows(rows: OtcDisplayRow[], account: string): OtcDisplayRow[] {
-  const needle = account.toLowerCase()
-  return rows.filter((row) => row.order.maker.toLowerCase() === needle)
+  const needle = getAddressKey(account)
+  return rows.filter((row) => getAddressKey(row.order.maker) === needle)
 }
 
 export function formatOtcAge(nowMs: number, createdAt: number | null): string {

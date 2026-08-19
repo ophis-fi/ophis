@@ -13,10 +13,10 @@ function ascending(a: bigint, b: bigint): number {
   return a < b ? -1 : a > b ? 1 : 0
 }
 
+/** Immutable per order id: any disagreement here is corruption, not lag. */
 function collectMismatches(indexed: OtcIndexedOrder, onchain: OtcOrder): OtcOrderMismatch[] {
   const comparisons: Array<[OtcOrderField, boolean, string, string]> = [
     ['maker', isAddressEqual(indexed.maker, onchain.maker), indexed.maker, onchain.maker],
-    ['active', indexed.active === onchain.active, String(indexed.active), String(onchain.active)],
     ['tokenA', isAddressEqual(indexed.tokenA, onchain.tokenA), indexed.tokenA, onchain.tokenA],
     ['amountA', indexed.amountA === onchain.amountA, indexed.amountA.toString(), onchain.amountA.toString()],
     ['tokenB', isAddressEqual(indexed.tokenB, onchain.tokenB), indexed.tokenB, onchain.tokenB],
@@ -51,6 +51,7 @@ export function reconcileOtcOrders(indexed: OtcIndexedOrder[], snapshot: OtcSnap
   const mismatches: OtcOrderMismatch[] = []
   const missingOnchain: bigint[] = []
   const unknownIds: bigint[] = []
+  const activeLagIds: bigint[] = []
   const indexedIds = new Set<string>()
 
   for (const row of indexed) {
@@ -68,10 +69,12 @@ export function reconcileOtcOrders(indexed: OtcIndexedOrder[], snapshot: OtcSnap
     }
 
     const rowMismatches = collectMismatches(row, onchain)
-    if (rowMismatches.length === 0) {
-      verifiedIds.push(row.orderId)
-    } else {
+    if (rowMismatches.length > 0) {
       mismatches.push(...rowMismatches)
+    } else if (row.active !== onchain.active) {
+      activeLagIds.push(row.orderId)
+    } else {
+      verifiedIds.push(row.orderId)
     }
   }
 
@@ -85,5 +88,6 @@ export function reconcileOtcOrders(indexed: OtcIndexedOrder[], snapshot: OtcSnap
     missingOnchain: missingOnchain.sort(ascending),
     notIndexed: notIndexed.sort(ascending),
     unknownIds: unknownIds.sort(ascending),
+    activeLagIds: activeLagIds.sort(ascending),
   }
 }

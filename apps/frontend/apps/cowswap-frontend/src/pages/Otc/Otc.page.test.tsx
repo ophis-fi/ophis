@@ -1,8 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 
 import { OtcPageView } from './Otc.page'
 
 import type { OtcDataState, OtcIndexedOrder, OtcOrder, OtcSnapshot } from 'ophis/otc'
+
+function renderView(ui: Parameters<typeof render>[0]): ReturnType<typeof render> {
+  return render(ui, { wrapper: MemoryRouter })
+}
 
 const MAKER = '0x9a50A078d80F36E38EDfAE85AfFa2B8aB458e2C9'
 const OTHER = '0x2eDecb91091324e0138EBBBaEd48ce1B2A050428'
@@ -39,7 +44,7 @@ function indexedRow(orderId: bigint, overrides: Partial<OtcIndexedOrder> = {}): 
 }
 
 function emptyState(status: OtcDataState['status']): OtcDataState {
-  return { status, snapshot: null, enrichment: null, reconciliation: null, indexLagBlocks: null }
+  return { status, degradedReason: null, snapshot: null, enrichment: null, reconciliation: null, indexLagBlocks: null }
 }
 
 function readyState(overrides: Partial<OtcDataState> = {}): OtcDataState {
@@ -65,6 +70,7 @@ function readyState(overrides: Partial<OtcDataState> = {}): OtcDataState {
   ]
   return {
     status: 'ready',
+    degradedReason: null,
     snapshot,
     enrichment: { byOrderId: new Map(indexed.map((row) => [row.orderId.toString(), row])), indexedBlock: 999n },
     reconciliation: {
@@ -73,6 +79,7 @@ function readyState(overrides: Partial<OtcDataState> = {}): OtcDataState {
       missingOnchain: [],
       notIndexed: [],
       unknownIds: [],
+      activeLagIds: [],
     },
     indexLagBlocks: 1n,
     ...overrides,
@@ -81,18 +88,20 @@ function readyState(overrides: Partial<OtcDataState> = {}): OtcDataState {
 
 describe('OtcPageView', () => {
   it('shows a loading state', () => {
-    render(<OtcPageView state={emptyState('loading')} account={undefined} nowMs={NOW_MS} />)
+    renderView(<OtcPageView state={emptyState('loading')} account={undefined} nowMs={NOW_MS} />)
     expect(screen.getByText(/Loading OTC orders/)).toBeTruthy()
   })
 
   it('fails closed visually when on-chain verification is unavailable', () => {
-    const { container } = render(<OtcPageView state={emptyState('unavailable')} account={undefined} nowMs={NOW_MS} />)
+    const { container } = renderView(
+      <OtcPageView state={emptyState('unavailable')} account={undefined} nowMs={NOW_MS} />,
+    )
     expect(screen.getByText(/on-chain verification failed/i)).toBeTruthy()
     expect(container.querySelector('table')).toBeNull()
   })
 
   it('renders active orders with verification, review, and rate information', () => {
-    render(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} />)
+    renderView(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} />)
 
     // browse shows the two active orders only
     expect(screen.getByText('#3')).toBeTruthy()
@@ -103,7 +112,7 @@ describe('OtcPageView', () => {
     // reviewed row: curated symbols + rate; verified badge present
     expect(screen.getAllByText(/1 WETH/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/4000 USDC/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Verified on-chain').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Escrowed').length).toBeGreaterThan(0)
 
     // unreviewed row: truncated address, no invented symbol, raw units label
     expect(screen.getByText(/0xE9b1\.\.\.64ED/)).toBeTruthy()
@@ -113,10 +122,16 @@ describe('OtcPageView', () => {
     // ethereum-only surface, age rendering
     expect(screen.getAllByText('Ethereum').length).toBeGreaterThan(0)
     expect(screen.getAllByText('3h ago').length).toBeGreaterThan(0)
+
+    // each row links to its detail route and offers copy + explorer actions
+    const detailLink = screen.getByRole('link', { name: 'Order 3 details' })
+    expect(detailLink.getAttribute('href')).toBe('/otc/3')
+    expect(screen.getAllByRole('button', { name: /Copy maker address 0x/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /on Etherscan$/ }).length).toBeGreaterThan(0)
   })
 
   it('exposes the full disclosure hierarchy', () => {
-    render(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} />)
+    renderView(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} />)
     expect(screen.getByText(/external immutable escrow contract/i)).toBeTruthy()
     expect(screen.getByText(/costs Ethereum gas/i)).toBeTruthy()
     expect(screen.getByText(/orders do not expire on-chain/i)).toBeTruthy()
@@ -126,7 +141,7 @@ describe('OtcPageView', () => {
   })
 
   it('keeps every transaction affordance unreachable', () => {
-    const { container } = render(<OtcPageView state={readyState()} account={MAKER} nowMs={NOW_MS} />)
+    const { container } = renderView(<OtcPageView state={readyState()} account={MAKER} nowMs={NOW_MS} />)
 
     fireEvent.click(screen.getByRole('button', { name: /Create/ }))
     const createButton = screen.getByRole('button', { name: 'Order creation is not yet enabled' })
@@ -139,7 +154,7 @@ describe('OtcPageView', () => {
   })
 
   it('shows the connected wallet orders including resolved ones under My orders', () => {
-    render(<OtcPageView state={readyState()} account={MAKER.toLowerCase()} nowMs={NOW_MS} />)
+    renderView(<OtcPageView state={readyState()} account={MAKER.toLowerCase()} nowMs={NOW_MS} />)
     fireEvent.click(screen.getByRole('button', { name: /My orders/ }))
 
     expect(screen.getByText('#3')).toBeTruthy()
@@ -150,26 +165,47 @@ describe('OtcPageView', () => {
   })
 
   it('asks for a wallet connection under My orders when disconnected', () => {
-    render(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} />)
+    renderView(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} />)
     fireEvent.click(screen.getByRole('button', { name: /My orders/ }))
     expect(screen.getByText(/Connect a wallet/)).toBeTruthy()
   })
 
-  it('surfaces index degradation without hiding on-chain state', () => {
-    render(
+  it('says index data is hidden only when it actually is (index unavailable)', () => {
+    renderView(
       <OtcPageView
-        state={readyState({ status: 'degraded', enrichment: null, reconciliation: null, indexLagBlocks: null })}
+        state={readyState({
+          status: 'degraded',
+          degradedReason: 'index-unavailable',
+          enrichment: null,
+          reconciliation: null,
+          indexLagBlocks: null,
+        })}
         account={undefined}
         nowMs={NOW_MS}
       />,
     )
-    expect(screen.getByText(/Index data unavailable or stale/)).toBeTruthy()
+    expect(screen.getByText('Index data unavailable')).toBeTruthy()
+    expect(screen.getByText(/Ages and history are hidden/)).toBeTruthy()
     expect(screen.getByText('#3')).toBeTruthy()
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
   })
 
+  it('says index data may lag when it is stale but still shown', () => {
+    renderView(
+      <OtcPageView
+        state={readyState({ status: 'degraded', degradedReason: 'index-stale', indexLagBlocks: 500n })}
+        account={undefined}
+        nowMs={NOW_MS}
+      />,
+    )
+    expect(screen.getByText('Index data is stale')).toBeTruthy()
+    expect(screen.getByText(/may lag behind the chain/)).toBeTruthy()
+    // stale enrichment is still rendered, honestly labeled
+    expect(screen.getAllByText('3h ago').length).toBeGreaterThan(0)
+  })
+
   it('filters browse rows by token, maker, and order id', () => {
-    render(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} />)
+    renderView(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} />)
 
     fireEvent.change(screen.getByLabelText('Filter by order id'), { target: { value: '2' } })
     expect(screen.getByText('#2')).toBeTruthy()

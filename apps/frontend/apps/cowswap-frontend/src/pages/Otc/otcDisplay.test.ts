@@ -64,6 +64,7 @@ function readyState(): OtcDataState {
   ]
   return {
     status: 'ready',
+    degradedReason: null,
     snapshot,
     enrichment: { byOrderId: new Map(indexed.map((row) => [row.orderId.toString(), row])), indexedBlock: 999n },
     reconciliation: {
@@ -72,6 +73,7 @@ function readyState(): OtcDataState {
       missingOnchain: [],
       notIndexed: [],
       unknownIds: [],
+      activeLagIds: [],
     },
     indexLagBlocks: 1n,
   }
@@ -109,6 +111,7 @@ describe('buildOtcDisplayRows', () => {
   it('returns no rows without a snapshot', () => {
     const state: OtcDataState = {
       status: 'unavailable',
+      degradedReason: null,
       snapshot: null,
       enrichment: null,
       reconciliation: null,

@@ -2,7 +2,7 @@ import { getAddress, type Address, type Hex } from 'viem'
 
 import { OPHIS_ETHEREUM_OTC_MANIFEST } from './otc.const'
 
-import type { OtcIndexedOrder } from './otc.types'
+import type { OtcIndexedOrder, OtcManifest } from './otc.types'
 
 const TX_HASH_PATTERN = /^0x[0-9a-f]{64}$/i
 const PAGE_SIZE = 1_000
@@ -128,8 +128,10 @@ function parseIndexedBlock(data: Record<string, unknown>): bigint {
  * verified. Malformed rows are dropped (and counted); a malformed envelope
  * throws so the UI can show the degraded state.
  */
-export async function fetchOtcIndexedOrders(fetchImpl: typeof fetch = fetch): Promise<OtcIndexedOrdersResult> {
-  const manifest = OPHIS_ETHEREUM_OTC_MANIFEST
+export async function fetchOtcIndexedOrders(
+  fetchImpl: typeof fetch = fetch,
+  manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
+): Promise<OtcIndexedOrdersResult> {
   const response = await fetchImpl(manifest.subgraphUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

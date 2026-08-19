@@ -38,4 +38,12 @@ describe('computeOtcRate', () => {
   it('returns null instead of rendering a truncated-to-zero rate', () => {
     expect(computeOtcRate(10n ** 30n, 18, 1n, 18)).toBeNull()
   })
+
+  it('keeps a representable forward rate when only the inverse truncates', () => {
+    // 1 wei of tokenA for 10^12 whole units of tokenB: forward rate is 10^30
+    // per unit, the inverse (10^-30) truncates to zero and must render as null.
+    const rate = computeOtcRate(1n, 18, 10n ** 30n, 18)
+    expect(rate?.rate).toBe('1000000000000000000000000000000')
+    expect(rate?.inverseRate).toBeNull()
+  })
 })
