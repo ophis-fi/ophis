@@ -12,7 +12,7 @@ export function ManageView(): ReactNode {
     <ManageListsAndTokens
       lists={state.lists}
       customTokens={state.customTokens}
-      verifiedTokenIds={state.verifiedTokenIds}
+      listedTokenIds={state.listedTokenIds}
       tokenizedAssetProviderByTokenId={state.tokenizedAssetProviderByTokenId}
       tokenListTags={state.tokenListTags}
       onBack={state.onBack}

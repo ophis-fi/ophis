@@ -2,25 +2,20 @@ import { getTokenDisplayName } from './getTokenDisplayName.utils'
 
 describe('getTokenDisplayName', () => {
   it.each([
-    ['American Airlines Group (Ondo Tokenized)', ['ondo'], 'American Airlines Group'],
-    ['Apple (Ondo Tokenized Stock)', ['ondo'], 'Apple'],
-    ['Apple xStock', ['xStocks'], 'Apple'],
-    ['Bank Of China xStock', ['xStocks'], 'Bank Of China'],
-  ])('removes duplicated provider wording from %s', (name, tags, expected) => {
-    expect(getTokenDisplayName(name, tags)).toBe(expected)
+    ['American Airlines Group (Ondo Tokenized)', 'ondo', 'American Airlines Group'],
+    ['Apple (Ondo Tokenized Stock)', 'ondo', 'Apple'],
+    ['Apple xStock', 'xStocks', 'Apple'],
+    ['Bank Of China xStock', 'xStocks', 'Bank Of China'],
+  ] as const)('removes duplicated provider wording from %s', (name, provider, expected) => {
+    expect(getTokenDisplayName(name, provider)).toBe(expected)
   })
 
-  it('does not alter similarly named assets without the provider tag', () => {
-    expect(getTokenDisplayName('Example xStock', [])).toBe('Example xStock')
-    expect(getTokenDisplayName('Example (Ondo Tokenized)', [])).toBe('Example (Ondo Tokenized)')
-  })
-
-  it('uses verified list membership when merged metadata lost the provider tag', () => {
-    expect(getTokenDisplayName('Apple (Ondo Tokenized Stock)', [], 'ondo')).toBe('Apple')
-    expect(getTokenDisplayName('Apple xStock', [], 'xStocks')).toBe('Apple')
+  it('does not trust raw provider-like names without validated provider metadata', () => {
+    expect(getTokenDisplayName('Example xStock', undefined)).toBe('Example xStock')
+    expect(getTokenDisplayName('Example (Ondo Tokenized)', undefined)).toBe('Example (Ondo Tokenized)')
   })
 
   it('handles missing token names', () => {
-    expect(getTokenDisplayName(undefined, [], undefined)).toBe('')
+    expect(getTokenDisplayName(undefined, undefined)).toBe('')
   })
 })

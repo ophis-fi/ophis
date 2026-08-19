@@ -34,7 +34,7 @@ const tokensListToMap = (tokens: TokenWithLogo[]) => {
 export interface ManageTokensProps {
   tokens: TokenWithLogo[]
   tokenSearchResponse: TokenSearchResponse
-  verifiedTokenIds: ReadonlySet<string>
+  listedTokenIds: ReadonlySet<string>
   tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
   tokenListTags: TokenListTags
 }
@@ -43,7 +43,7 @@ export interface ManageTokensProps {
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function ManageTokens(props: ManageTokensProps) {
-  const { tokens, tokenSearchResponse, verifiedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags } = props
+  const { tokens, tokenSearchResponse, listedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags } = props
 
   const addTokenImportCallback = useAddTokenImportCallback()
   const removeTokenCallback = useRemoveUserToken()
@@ -72,7 +72,7 @@ export function ManageTokens(props: ManageTokensProps) {
                 key={tokenId}
                 token={token}
                 existing={true}
-                isContractVerified={verifiedTokenIds.has(tokenId)}
+                isContractListed={listedTokenIds.has(tokenId)}
                 tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
                 tokenListTags={tokenListTags}
               />
@@ -86,7 +86,7 @@ export function ManageTokens(props: ManageTokensProps) {
                   key={tokenId}
                   token={token}
                   importToken={addTokenImportCallback}
-                  isContractVerified={verifiedTokenIds.has(tokenId)}
+                  isContractListed={listedTokenIds.has(tokenId)}
                   tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
                   tokenListTags={tokenListTags}
                 />

@@ -10,6 +10,7 @@ import ICON_GAS_FREE from 'assets/icon/gas-free.svg'
 import SVG from 'react-inlinesvg'
 import { NavLink } from 'react-router'
 
+import { getTrustedTokenTags } from './getTrustedTokenTags.utils'
 import * as styledEl from './styled'
 
 import { TokenizedAssetProviderTag } from '../../types'
@@ -47,13 +48,11 @@ export function TokenTags({
   tokenizedAssetProvider?: TokenizedAssetProviderTag
 }) {
   const tagsToShow = useMemo(() => {
-    const tokenTags = tokenizedAssetProvider ? [...new Set([...tags, tokenizedAssetProvider])] : tags
-
     return isUnsupported
       ? [APP_TOKEN_TAGS.unsupported]
       : [
-          // Include valid tags from token.tags
-          ...tokenTags.filter((tag) => tag in tokenListTags).map((tag) => tokenListTags[tag]),
+          // Provider tags are accepted only through validated configured-list metadata.
+          ...getTrustedTokenTags(tags, tokenListTags, tokenizedAssetProvider),
           // Add gas-free tag if applicable
           ...(isPermitCompatible ? [APP_TOKEN_TAGS['gas-free']] : []),
         ]

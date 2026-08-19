@@ -12,7 +12,7 @@ interface AddIntermediateTokenProps {
 }
 
 export function AddIntermediateToken({ intermediateBuyToken, onImport }: AddIntermediateTokenProps): ReactNode {
-  const { verifiedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags } = useConfiguredTokenListDisplayMetadata(
+  const { listedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags } = useConfiguredTokenListDisplayMetadata(
     intermediateBuyToken.chainId,
   )
   const tokenId = getTokenId(intermediateBuyToken)
@@ -20,7 +20,7 @@ export function AddIntermediateToken({ intermediateBuyToken, onImport }: AddInte
   return (
     <AddIntermediateTokenPure
       intermediateBuyToken={intermediateBuyToken}
-      isContractVerified={verifiedTokenIds.has(tokenId)}
+      isContractListed={listedTokenIds.has(tokenId)}
       tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
       tokenListTags={tokenListTags}
       onImport={onImport}

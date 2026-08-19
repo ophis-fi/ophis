@@ -19,7 +19,7 @@ export interface TokenInfoProps {
   showAddress?: boolean
   showContractInfo?: boolean
   hideNetworkBadge?: boolean
-  isContractVerified?: boolean
+  isContractListed?: boolean
   tokenizedAssetProvider?: TokenizedAssetProviderTag
 }
 
@@ -31,10 +31,10 @@ export function TokenInfo(props: TokenInfoProps): ReactNode {
     showAddress = true,
     showContractInfo = true,
     hideNetworkBadge = false,
-    isContractVerified = false,
+    isContractListed = false,
     tokenizedAssetProvider,
   } = props
-  const displayName = getTokenDisplayName(token.name, token.tags, tokenizedAssetProvider)
+  const displayName = getTokenDisplayName(token.name, tokenizedAssetProvider)
 
   return (
     <styledEl.Wrapper className={className}>
@@ -47,7 +47,7 @@ export function TokenInfo(props: TokenInfoProps): ReactNode {
               address={token.address}
               chainId={token.chainId}
               showAddress={showAddress}
-              details={<TokenContractDetails address={token.address} isContractVerified={isContractVerified} />}
+              details={<TokenContractDetails address={token.address} isContractListed={isContractListed} />}
             />
           ) : null}
         </styledEl.TokenSymbolWrapper>

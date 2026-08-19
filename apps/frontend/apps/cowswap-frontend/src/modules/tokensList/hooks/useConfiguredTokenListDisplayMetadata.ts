@@ -3,7 +3,16 @@ import { useMemo } from 'react'
 
 import { isSupportedChainId } from '@cowprotocol/common-utils'
 import { getTokenId } from '@cowprotocol/cow-sdk'
-import { DEFAULT_TOKENS_LISTS, fetchTokenList, ListSourceConfig, ListState, TokenListTags } from '@cowprotocol/tokens'
+import {
+  DEFAULT_TOKENS_LISTS,
+  fetchTokenList,
+  listsStatesByChainAtom,
+  ListSourceConfig,
+  ListState,
+  ONDO_TOKENS_LIST_SOURCE,
+  TokenListTags,
+  XSTOCKS_TOKENS_LIST_SOURCE,
+} from '@cowprotocol/tokens'
 import { StatusColorVariant } from '@cowprotocol/ui'
 
 import { atomWithQuery, type AtomWithQueryResult } from 'jotai-tanstack-query'
@@ -11,13 +20,18 @@ import { atomWithQuery, type AtomWithQueryResult } from 'jotai-tanstack-query'
 import { TokenizedAssetProviderTag } from '../types'
 
 export interface ConfiguredTokenListDisplayMetadata {
-  verifiedTokenIds: ReadonlySet<string>
+  listedTokenIds: ReadonlySet<string>
   tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
   tokenListTags: TokenListTags
 }
 
-const TOKENIZED_ASSET_PROVIDER_TAGS: readonly TokenizedAssetProviderTag[] = ['ondo', 'xStocks']
 const CONFIGURED_LISTS_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1_000
+const EMPTY_CONFIGURED_LISTS: readonly ListSourceConfig[] = []
+const EMPTY_PERSISTED_LISTS: Readonly<Record<string, ListState | 'deleted' | undefined>> = {}
+const TOKENIZED_ASSET_PROVIDER_BY_SOURCE = new Map<string, TokenizedAssetProviderTag>([
+  [ONDO_TOKENS_LIST_SOURCE, 'ondo'],
+  [XSTOCKS_TOKENS_LIST_SOURCE, 'xStocks'],
+])
 const ALL_CONFIGURED_TOKEN_LIST_SOURCES = new Set(
   Object.values(DEFAULT_TOKENS_LISTS).flatMap((lists) => lists?.map(({ source }) => source) ?? []),
 )
@@ -30,9 +44,41 @@ function getConfiguredSources(targetChainId: number | undefined): ReadonlySet<st
 }
 
 function getConfiguredLists(targetChainId: number | undefined): readonly ListSourceConfig[] {
-  if (!targetChainId || !isSupportedChainId(targetChainId)) return []
+  if (!targetChainId || !isSupportedChainId(targetChainId)) return EMPTY_CONFIGURED_LISTS
 
   return DEFAULT_TOKENS_LISTS[targetChainId] ?? []
+}
+
+function addProviderTagInfo(
+  tokenList: ListState,
+  providerTag: TokenizedAssetProviderTag | undefined,
+  tokenListTags: TokenListTags,
+): void {
+  if (!providerTag) return
+
+  const providerTagInfo = tokenList.list.tags?.[providerTag]
+  if (!providerTagInfo) return
+
+  tokenListTags[providerTag] = {
+    id: providerTag,
+    name: providerTagInfo.name,
+    description: providerTagInfo.description,
+    color: StatusColorVariant.Info,
+  }
+}
+
+function addTokenMetadata(
+  tokenList: ListState,
+  providerTag: TokenizedAssetProviderTag | undefined,
+  tokenIds: Set<string>,
+  providerByTokenId: Map<string, TokenizedAssetProviderTag>,
+): void {
+  for (const token of tokenList.list.tokens) {
+    const tokenId = getTokenId({ chainId: token.chainId, address: token.address })
+    tokenIds.add(tokenId)
+
+    if (providerTag && token.tags?.includes(providerTag)) providerByTokenId.set(tokenId, providerTag)
+  }
 }
 
 export function getConfiguredTokenListDisplayMetadata(
@@ -46,28 +92,12 @@ export function getConfiguredTokenListDisplayMetadata(
   for (const tokenList of tokenLists) {
     if (!configuredSources.has(tokenList.source)) continue
 
-    for (const tag of TOKENIZED_ASSET_PROVIDER_TAGS) {
-      const tagInfo = tokenList.list.tags?.[tag]
-      if (!tagInfo) continue
-
-      tokenListTags[tag] = {
-        id: tag,
-        name: tagInfo.name,
-        description: tagInfo.description,
-        color: StatusColorVariant.Info,
-      }
-    }
-
-    for (const token of tokenList.list.tokens) {
-      const tokenId = getTokenId({ chainId: token.chainId, address: token.address })
-      tokenIds.add(tokenId)
-
-      const providerTag = TOKENIZED_ASSET_PROVIDER_TAGS.find((tag) => token.tags?.includes(tag))
-      if (providerTag) providerByTokenId.set(tokenId, providerTag)
-    }
+    const providerTag = TOKENIZED_ASSET_PROVIDER_BY_SOURCE.get(tokenList.source)
+    addProviderTagInfo(tokenList, providerTag, tokenListTags)
+    addTokenMetadata(tokenList, providerTag, tokenIds, providerByTokenId)
   }
 
-  return { verifiedTokenIds: tokenIds, tokenizedAssetProviderByTokenId: providerByTokenId, tokenListTags }
+  return { listedTokenIds: tokenIds, tokenizedAssetProviderByTokenId: providerByTokenId, tokenListTags }
 }
 
 export function getConfiguredTokenListDisplayMetadataForChain(
@@ -122,6 +152,22 @@ export function collectConfiguredTokenLists(results: readonly { data?: ListState
   return results.flatMap(({ data }) => (data ? [data] : []))
 }
 
+export function mergeConfiguredTokenListsWithPersistedFallback(
+  queriedLists: readonly ListState[],
+  persistedLists: Readonly<Record<string, ListState | 'deleted' | undefined>>,
+  configuredLists: readonly ListSourceConfig[],
+): ListState[] {
+  const queriedListsBySource = new Map(queriedLists.map((list) => [list.source, list]))
+
+  return configuredLists.flatMap((configuredList) => {
+    const queriedList = queriedListsBySource.get(configuredList.source)
+    if (queriedList) return [queriedList]
+
+    const persistedList = persistedLists[configuredList.source]
+    return persistedList !== 'deleted' && persistedList?.source === configuredList.source ? [persistedList] : []
+  })
+}
+
 export function createConfiguredTokenListsQueryAtom(targetChainId: number | undefined): Atom<ListState[]> {
   const configuredLists = getConfiguredLists(targetChainId)
   const queryAtoms = targetChainId
@@ -133,10 +179,20 @@ export function createConfiguredTokenListsQueryAtom(targetChainId: number | unde
 
 export function useConfiguredTokenListDisplayMetadata(targetChainId?: number): ConfiguredTokenListDisplayMetadata {
   const configuredListsQueryAtom = useMemo(() => createConfiguredTokenListsQueryAtom(targetChainId), [targetChainId])
-  const configuredLists = useAtomValue(configuredListsQueryAtom)
+  const queriedLists = useAtomValue(configuredListsQueryAtom)
+  const listsStatesByChain = useAtomValue(listsStatesByChainAtom)
+  const configuredLists = getConfiguredLists(targetChainId)
+  const persistedLists =
+    targetChainId && isSupportedChainId(targetChainId)
+      ? (listsStatesByChain[targetChainId] ?? EMPTY_PERSISTED_LISTS)
+      : EMPTY_PERSISTED_LISTS
+  const availableLists = useMemo(
+    () => mergeConfiguredTokenListsWithPersistedFallback(queriedLists, persistedLists, configuredLists),
+    [queriedLists, persistedLists, configuredLists],
+  )
 
   return useMemo(
-    () => getConfiguredTokenListDisplayMetadataForChain(configuredLists, targetChainId),
-    [configuredLists, targetChainId],
+    () => getConfiguredTokenListDisplayMetadataForChain(availableLists, targetChainId),
+    [availableLists, targetChainId],
   )
 }

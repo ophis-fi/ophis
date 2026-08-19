@@ -945,6 +945,10 @@ msgstr "EthFlow contract ({actual}) address don't match the expected address for
 msgid "Est. partial fill price"
 msgstr "Est. partial fill price"
 
+#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenContractDetails/TokenContractDetails.pure.tsx
+msgid "Listed by a configured token source"
+msgstr "Listed by a configured token source"
+
 #: apps/cowswap-frontend/src/modules/advancedOrders/pure/Settings/AdvancedOrdersSettings.tsx
 msgid "TWAP Settings"
 msgstr "TWAP Settings"
@@ -5356,10 +5360,6 @@ msgstr "Status"
 #: apps/cowswap-frontend/src/common/pure/CoWAmmBannerContent/PoolInfo/index.tsx
 msgid "higher"
 msgstr "higher"
-
-#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenContractDetails/TokenContractDetails.pure.tsx
-msgid "Verified against an Ophis token list"
-msgstr "Verified against an Ophis token list"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/RateInput/index.tsx
 msgid "When locked, the limit price stays fixed when changing the amounts. When unlocked, the limit price will update based on the amount changes."

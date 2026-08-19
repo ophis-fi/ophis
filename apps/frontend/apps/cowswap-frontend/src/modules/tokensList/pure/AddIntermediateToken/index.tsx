@@ -12,7 +12,7 @@ import { ImportTokenItem } from '../ImportTokenItem'
 
 interface AddIntermediateTokenProps {
   intermediateBuyToken: TokenWithLogo
-  isContractVerified: boolean
+  isContractListed: boolean
   tokenizedAssetProvider: TokenizedAssetProviderTag | undefined
   tokenListTags: TokenListTags
   onImport: () => void
@@ -20,7 +20,7 @@ interface AddIntermediateTokenProps {
 
 export function AddIntermediateToken({
   intermediateBuyToken,
-  isContractVerified,
+  isContractListed,
   tokenizedAssetProvider,
   tokenListTags,
   onImport,
@@ -42,7 +42,7 @@ export function AddIntermediateToken({
         key={tokenId}
         token={intermediateBuyToken}
         importToken={handleImport}
-        isContractVerified={isContractVerified}
+        isContractListed={isContractListed}
         tokenizedAssetProvider={tokenizedAssetProvider}
         tokenListTags={tokenListTags}
       />

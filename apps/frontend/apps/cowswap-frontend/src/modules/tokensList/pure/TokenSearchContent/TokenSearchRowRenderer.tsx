@@ -46,7 +46,7 @@ export function TokenSearchRowRenderer({
           isFirstInSection={row.isFirstInSection}
           isLastInSection={row.isLastInSection}
           disabledReason={row.disabledReason}
-          isContractVerified={selectTokenContext.verifiedTokenIds.has(tokenId)}
+          isContractListed={selectTokenContext.listedTokenIds.has(tokenId)}
           tokenizedAssetProvider={selectTokenContext.tokenizedAssetProviderByTokenId.get(tokenId)}
           tokenListTags={selectTokenContext.tokenListTags}
         />

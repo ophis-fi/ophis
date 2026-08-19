@@ -22,7 +22,7 @@ export interface TokenDataSources {
   unsupportedTokens: ReturnType<typeof useUnsupportedTokens>
   permitCompatibleTokens: ReturnType<typeof usePermitCompatibleTokens>
   tokenListTags: ReturnType<typeof useTokenListsTags>
-  verifiedTokenIds: ReadonlySet<string>
+  listedTokenIds: ReadonlySet<string>
   tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
 }
 
@@ -34,7 +34,7 @@ export function useTokenDataSources(targetChainId?: number): TokenDataSources {
   const permitCompatibleTokens = usePermitCompatibleTokens()
   const currentChainTokenListTags = useTokenListsTags()
   const {
-    verifiedTokenIds,
+    listedTokenIds,
     tokenizedAssetProviderByTokenId,
     tokenListTags: targetChainTokenListTags,
   } = useConfiguredTokenListDisplayMetadata(targetChainId)
@@ -51,7 +51,7 @@ export function useTokenDataSources(targetChainId?: number): TokenDataSources {
       unsupportedTokens,
       permitCompatibleTokens,
       tokenListTags,
-      verifiedTokenIds,
+      listedTokenIds,
       tokenizedAssetProviderByTokenId,
     }),
     [
@@ -61,7 +61,7 @@ export function useTokenDataSources(targetChainId?: number): TokenDataSources {
       unsupportedTokens,
       permitCompatibleTokens,
       tokenListTags,
-      verifiedTokenIds,
+      listedTokenIds,
       tokenizedAssetProviderByTokenId,
     ],
   )

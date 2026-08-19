@@ -9,15 +9,12 @@ function stripSuffixes(name: string, suffixes: readonly RegExp[]): string {
 
 export function getTokenDisplayName(
   name: string | undefined,
-  tokenTags: readonly string[] | undefined,
   tokenizedAssetProvider: TokenizedAssetProviderTag | undefined,
 ): string {
   if (!name) return ''
 
-  const tags = new Set(tokenTags)
-
-  if (tokenizedAssetProvider === 'ondo' || tags.has('ondo')) return stripSuffixes(name, ONDO_SUFFIXES)
-  if (tokenizedAssetProvider === 'xStocks' || tags.has('xStocks')) return stripSuffixes(name, XSTOCKS_SUFFIXES)
+  if (tokenizedAssetProvider === 'ondo') return stripSuffixes(name, ONDO_SUFFIXES)
+  if (tokenizedAssetProvider === 'xStocks') return stripSuffixes(name, XSTOCKS_SUFFIXES)
 
   return name
 }

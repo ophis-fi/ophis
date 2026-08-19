@@ -7,15 +7,15 @@ import * as styledEl from './TokenContractDetails.styled'
 
 export interface TokenContractDetailsProps {
   address: string
-  isContractVerified: boolean
+  isContractListed: boolean
 }
 
-export function TokenContractDetails({ address, isContractVerified }: TokenContractDetailsProps): ReactNode {
+export function TokenContractDetails({ address, isContractListed }: TokenContractDetailsProps): ReactNode {
   return (
-    <styledEl.ContractDetails $verified={isContractVerified}>
-      {isContractVerified ? <CheckCircle size={16} /> : <Info size={16} />}
+    <styledEl.ContractDetails $listed={isContractListed}>
+      {isContractListed ? <CheckCircle size={16} /> : <Info size={16} />}
       <styledEl.ContractStatus>
-        {isContractVerified ? <Trans>Verified against an Ophis token list</Trans> : <Trans>Contract address</Trans>}
+        {isContractListed ? <Trans>Listed by a configured token source</Trans> : <Trans>Contract address</Trans>}
       </styledEl.ContractStatus>
       <styledEl.ContractAddress>{address}</styledEl.ContractAddress>
     </styledEl.ContractDetails>

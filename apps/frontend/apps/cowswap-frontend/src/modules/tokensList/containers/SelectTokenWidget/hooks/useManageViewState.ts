@@ -12,7 +12,7 @@ import { TokenizedAssetProviderTag } from '../../../types'
 export interface ManageViewState {
   lists: ListState[]
   customTokens: TokenWithLogo[]
-  verifiedTokenIds: ReadonlySet<string>
+  listedTokenIds: ReadonlySet<string>
   tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
   tokenListTags: TokenListTags
   onBack: () => void
@@ -31,7 +31,7 @@ export function useManageViewState(): ManageViewState | null {
     return {
       lists: tokenData.allTokenLists,
       customTokens: tokenData.userAddedTokens,
-      verifiedTokenIds: tokenData.verifiedTokenIds,
+      listedTokenIds: tokenData.listedTokenIds,
       tokenizedAssetProviderByTokenId: tokenData.tokenizedAssetProviderByTokenId,
       tokenListTags: tokenData.tokenListTags,
       onBack: closeManageWidget,
@@ -40,7 +40,7 @@ export function useManageViewState(): ManageViewState | null {
     isManageWidgetOpen,
     tokenData.allTokenLists,
     tokenData.userAddedTokens,
-    tokenData.verifiedTokenIds,
+    tokenData.listedTokenIds,
     tokenData.tokenizedAssetProviderByTokenId,
     tokenData.tokenListTags,
     closeManageWidget,

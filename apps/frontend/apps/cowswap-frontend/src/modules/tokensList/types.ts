@@ -6,7 +6,8 @@ import type { TokenListTags } from '@cowprotocol/tokens'
 import { PermitCompatibleTokens } from 'modules/permit'
 
 export type TokenSelectionHandler = (token: TokenWithLogo) => Promise<void> | void
-export type TokenizedAssetProviderTag = 'ondo' | 'xStocks'
+export const TOKENIZED_ASSET_PROVIDER_TAGS = ['ondo', 'xStocks'] as const
+export type TokenizedAssetProviderTag = (typeof TOKENIZED_ASSET_PROVIDER_TAGS)[number]
 
 export interface SelectTokenContext {
   balancesState: BalancesState
@@ -14,7 +15,7 @@ export interface SelectTokenContext {
   unsupportedTokens: { [tokenAddress: string]: { dateAdded: number } }
   permitCompatibleTokens: PermitCompatibleTokens
   tokenListTags: TokenListTags
-  verifiedTokenIds: ReadonlySet<string>
+  listedTokenIds: ReadonlySet<string>
   tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
   isWalletConnected: boolean
 }

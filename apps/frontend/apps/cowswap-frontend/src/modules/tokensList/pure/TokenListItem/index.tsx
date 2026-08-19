@@ -39,7 +39,7 @@ export interface TokenListItemProps {
   className?: string
   disabled?: boolean
   disabledReason?: string
-  isContractVerified?: boolean
+  isContractListed?: boolean
   tokenizedAssetProvider?: TokenizedAssetProviderTag
 }
 
@@ -103,7 +103,7 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
     className,
     disabled = false,
     disabledReason,
-    isContractVerified = false,
+    isContractListed = false,
     tokenizedAssetProvider,
   } = props
 
@@ -144,7 +144,7 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
           showAddress={false}
           showContractInfo={hasIntersected}
           hideNetworkBadge
-          isContractVerified={isContractVerified}
+          isContractListed={isContractListed}
           tokenizedAssetProvider={tokenizedAssetProvider}
           tags={
             hasIntersected ? (

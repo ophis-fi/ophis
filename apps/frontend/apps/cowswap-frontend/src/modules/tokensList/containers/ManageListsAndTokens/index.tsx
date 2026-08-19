@@ -17,7 +17,7 @@ import { ManageTokens } from '../ManageTokens'
 export interface ManageListsAndTokensProps {
   lists: ListState[]
   customTokens: TokenWithLogo[]
-  verifiedTokenIds: ReadonlySet<string>
+  listedTokenIds: ReadonlySet<string>
   tokenizedAssetProviderByTokenId: ReadonlyMap<string, TokenizedAssetProviderTag>
   tokenListTags: TokenListTags
   onBack(): void
@@ -29,7 +29,7 @@ const listsInputPlaceholder = msg`https:// or ipfs:// or ENS name`
 
 export function ManageListsAndTokens(props: ManageListsAndTokensProps): ReactNode {
   const { i18n } = useLingui()
-  const { lists, customTokens, verifiedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags, onBack, onDismiss } =
+  const { lists, customTokens, listedTokenIds, tokenizedAssetProviderByTokenId, tokenListTags, onBack, onDismiss } =
     props
 
   const [currentTab, setCurrentTab] = useState<'tokens' | 'lists'>('lists')
@@ -100,7 +100,7 @@ export function ManageListsAndTokens(props: ManageListsAndTokensProps): ReactNod
         <ManageTokens
           tokenSearchResponse={tokenSearchResponse}
           tokens={customTokens}
-          verifiedTokenIds={verifiedTokenIds}
+          listedTokenIds={listedTokenIds}
           tokenizedAssetProviderByTokenId={tokenizedAssetProviderByTokenId}
           tokenListTags={tokenListTags}
         />

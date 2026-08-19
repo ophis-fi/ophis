@@ -108,7 +108,7 @@ describe('useTokenListContext', () => {
       unsupportedTokens: {},
       permitCompatibleTokens: {},
       tokenListTags: {},
-      verifiedTokenIds: new Set(),
+      listedTokenIds: new Set(),
       tokenizedAssetProviderByTokenId: new Map(),
       isWalletConnected: false,
     })

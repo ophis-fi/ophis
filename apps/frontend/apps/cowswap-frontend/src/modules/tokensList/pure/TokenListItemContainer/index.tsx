@@ -26,7 +26,7 @@ export function TokenListItemContainer({
     onTokenListItemClick,
     tokenListTags,
     permitCompatibleTokens,
-    verifiedTokenIds,
+    listedTokenIds,
     tokenizedAssetProviderByTokenId,
     balancesState: { values: balances },
     isWalletConnected,
@@ -64,7 +64,7 @@ export function TokenListItemContainer({
       tokenListTags={tokenListTags}
       disabled={isDisabled}
       disabledReason={disabledReason || tokenPolicyDisabledReason}
-      isContractVerified={verifiedTokenIds.has(tokenId)}
+      isContractListed={listedTokenIds.has(tokenId)}
       tokenizedAssetProvider={tokenizedAssetProviderByTokenId.get(tokenId)}
     />
   )

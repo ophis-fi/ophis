@@ -2,13 +2,13 @@ import { UI } from '@cowprotocol/ui'
 
 import styled from 'styled-components/macro'
 
-export const ContractDetails = styled.div<{ $verified: boolean }>`
+export const ContractDetails = styled.div<{ $listed: boolean }>`
   width: 240px;
   padding: 8px 12px 10px;
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
   gap: 4px 8px;
-  color: ${({ $verified }) => ($verified ? `var(${UI.COLOR_SUCCESS})` : `var(${UI.COLOR_TEXT_OPACITY_70})`)};
+  color: ${({ $listed }) => ($listed ? `var(${UI.COLOR_SUCCESS})` : `var(${UI.COLOR_TEXT_OPACITY_70})`)};
 
   > svg {
     margin-top: 1px;
