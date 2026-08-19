@@ -327,14 +327,22 @@ groups:
                  host/tunnel down, 502 means the orderbook is not serving
                  (often bootstrap-looping on this very consensus failure).
 
-            Last resort ONLY if one upstream is confirmed bad and settlements
-            are needed NOW: remove that upstream from the upstreams list AND
-            lower agreementThreshold to 1 — both steps, in that order (NOT
-            audit-compliant — revert immediately after recovery). Each step
-            alone fails: threshold 1 with both upstreams still listed gives a
-            1-1 tie and disputeBehavior returnError rejects it; removal alone
-            leaves one participant below the threshold of 2 and
-            lowParticipantsBehavior returnError rejects that too.
+            Last resort ONLY when robinhood-official is the confirmed-bad
+            side and the self node is healthy (removing ophis-self-rbh can
+            never restore settlements — see the trace note below): in
+            configs/erpc.yaml.tmpl remove robinhood-official from the
+            upstreams list AND lower agreementThreshold to 1, then activate
+            with ./render-configs.sh followed by
+            docker compose up -d --force-recreate rpc-proxy — template edits
+            alone change nothing, the proxy reads rendered/erpc.yaml. Do NOT
+            use compose-up.sh here (it rebuilds the backend images). NOT
+            audit-compliant — revert immediately after recovery. Neither step
+            alone is enough: threshold 1 with both upstreams listed is
+            unreliable (it works only if the bad upstream fails outright; two
+            differing live replies form a 1-1 tie that disputeBehavior
+            returnError rejects), and removal alone leaves one participant
+            below the threshold of 2, which lowParticipantsBehavior
+            returnError rejects.
             Note ophis-self-rbh is the only upstream able to serve debug_*
             traces (the managed gateway does not expose them), so nothing in
             eRPC can restore settlements while the self node itself is behind.
