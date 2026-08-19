@@ -342,7 +342,10 @@ groups:
             differing live replies form a 1-1 tie that disputeBehavior
             returnError rejects), and removal alone leaves one participant
             below the threshold of 2, which lowParticipantsBehavior
-            returnError rejects.
+            returnError rejects. This lever restores protected READS only:
+            Nitro forwards eth_sendRawTransaction to the official gateway
+            regardless, so settlement broadcasts stay down for as long as
+            that gateway's transaction path is down.
             Note ophis-self-rbh is the only upstream able to serve debug_*
             traces (the managed gateway does not expose them), so nothing in
             eRPC can restore settlements while the self node itself is behind.
