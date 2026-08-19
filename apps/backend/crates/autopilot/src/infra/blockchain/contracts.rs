@@ -84,21 +84,29 @@ impl Contracts {
             .await
             .ok();
 
+        // Bootstrap RPC calls: retry with backoff so transient
+        // ErrConsensusLowParticipants events from the eRPC proxy don't
+        // crash-loop the container. See the `retry-helper` crate for
+        // rationale.
         let settlement_domain_separator = eth::DomainSeparator(
-            settlement
-                .domainSeparator()
-                .call()
-                .await
-                .expect("domain separator")
-                .0,
+            retry_helper::with_backoff(
+                "settlement.domainSeparator",
+                retry_helper::BackoffConfig::default(),
+                || async { settlement.domainSeparator().call().await },
+            )
+            .await
+            .expect("Couldn't get domain separator after retries")
+            .0,
         );
 
         let authenticator = GPv2AllowListAuthentication::Instance::new(
-            settlement
-                .authenticator()
-                .call()
-                .await
-                .expect("authenticator address"),
+            retry_helper::with_backoff(
+                "settlement.authenticator",
+                retry_helper::BackoffConfig::default(),
+                || async { settlement.authenticator().call().await },
+            )
+            .await
+            .expect("Couldn't get authenticator address after retries"),
             web3.provider.clone(),
         );
 
