@@ -92,14 +92,17 @@ jobs:
       # these steps the OTC read-only exit-gate tests (boundary/no-write-
       # selector proof, fail-closed reader, reconciliation binding) would
       # NEVER execute anywhere. Scoped to the OTC suites + token policy to
-      # keep the gate fast and deterministic.
+      # keep the gate fast and deterministic. --passWithNoTests=false makes a
+      # zero-match path filter FAIL instead of silently running no tests
+      # (jest.config's passWithNoTests: true would otherwise turn a renamed
+      # directory into a permanently green no-op gate).
       - name: OTC read-only guard tests (jest, scoped)
         working-directory: apps/frontend
-        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/(ophis/otc|pages/Otc)'
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/(ophis/otc|pages/Otc)' --passWithNoTests=false
 
       - name: token policy tests (jest, scoped)
         working-directory: apps/frontend
-        run: pnpm exec nx run tokens:test --testPathPatterns tokenPolicy
+        run: pnpm exec nx run tokens:test --testPathPatterns tokenPolicy --passWithNoTests=false
 
       - name: production-build cowswap-frontend
         working-directory: apps/frontend
