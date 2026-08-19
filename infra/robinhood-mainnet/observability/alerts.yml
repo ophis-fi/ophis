@@ -327,12 +327,16 @@ groups:
                  host/tunnel down, 502 means the orderbook is not serving
                  (often bootstrap-looping on this very consensus failure).
 
-            Last resort ONLY if both upstreams are healthy-but-disagreeing and
-            settlements are needed NOW: temporarily lower agreementThreshold
-            to 1 (NOT audit-compliant — revert immediately after recovery).
-            Note debug_* traces are pinned to ophis-self-rbh by the selection
-            policy, so no eRPC reconfiguration can restore settlements while
-            the self node itself is behind.
+            Last resort ONLY if one upstream is confirmed bad and settlements
+            are needed NOW: remove that upstream from the upstreams list so a
+            single participant remains (NOT audit-compliant — revert
+            immediately after recovery). Lowering agreementThreshold to 1 does
+            NOT work: with maxParticipants 2 and disputeBehavior returnError,
+            two differing replies form a 1-1 tie and still return a dispute
+            error.
+            Note ophis-self-rbh is the only upstream able to serve debug_*
+            traces (the managed gateway does not expose them), so nothing in
+            eRPC can restore settlements while the self node itself is behind.
 
       # ============================================================
       # Per-upstream staleness — pairs with task #119
