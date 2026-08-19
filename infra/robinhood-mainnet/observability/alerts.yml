@@ -246,10 +246,12 @@ groups:
         annotations:
           summary: "Robinhood eRPC low-participants > 5/s on {{ $labels.category }} for 10m"
           description: |
-            eRPC is failing consensus because fewer than 3 of 4 upstreams respond
-            within the retry budget for `{{ $labels.category }}` requests. Sustained
-            elevation indicates one or more Robinhood upstream(s) (robinhood-public /
-            publicnode-uni / ophis-self-uni) are slow or rate-limited.
+            eRPC is failing consensus because fewer than agreementThreshold (2)
+            of the 2 upstreams respond within the retry budget for
+            `{{ $labels.category }}` requests. Robinhood has exactly TWO
+            upstreams — ophis-self-rbh (Cadia Nitro node) and robinhood-official
+            (managed gateway) — so a single slow, rate-limited, or down
+            upstream is enough to trip this.
 
             Diagnose: `cast block-number --rpc-url <each upstream>` to find
             which one is unresponsive. Check rpc-proxy logs:
@@ -270,22 +272,24 @@ groups:
         annotations:
           summary: "Robinhood eRPC dispute rate > 5/s on {{ $labels.category }} for 15m"
           description: |
-            Upstream Robinhood providers are returning DIFFERENT responses for the
-            same request — fork-view-poisoning suspect OR natural tip drift. 3-of-4
-            consensus is failing because responses don't match.
+            The two Robinhood upstreams are returning DIFFERENT responses for
+            the same request — fork-view-poisoning suspect OR natural tip
+            drift. 2-of-2 consensus fails whenever the pair disagree.
 
-            Sustained > 2/s is unusual: it means either (a) one of the 4
-            upstreams is on a fork / lagging behind the others, OR (b) a
-            specific request pattern is triggering deterministic disagreement
-            (e.g., a `latest`-tag query that resolves to different blocks).
+            Sustained > 2/s means either (a) one of the two upstreams
+            (ophis-self-rbh or robinhood-official) is on a fork / lagging
+            behind the other, OR (b) a specific request pattern is triggering
+            deterministic disagreement (e.g., a `latest`-tag query that
+            resolves to different blocks).
 
-            On Robinhood's ~1s blocks, expect occasional disputes on tip queries
-            (more tip-drift than a 2s chain). Sustained elevation = investigate
-            which upstream is drifting:
+            On Robinhood's ~134ms blocks, expect occasional disputes on tip
+            queries. Sustained elevation = find which side is drifting.
+            From anywhere:
               cast block-number --rpc-url https://rpc.mainnet.chain.robinhood.com
-              cast block-number --rpc-url https://robinhood-rpc.publicnode.com
-              cast block-number --rpc-url http://ophis-rbh-node:8545
-            and compare. Provider > 5 blocks behind the median should be
+            On Cadia (tailscale ssh clement@cadia-wsl), the Nitro node:
+              cast block-number --rpc-url http://localhost:8547
+            https://robinhood-rpc.publicnode.com is an independent tie-breaker
+            reference (NOT an eRPC upstream). The lagging side should be
             sit-out-penalized by eRPC's punishMisbehavior — verify.
 
       - alert: OphisUniErpcConsensusFailureCritical
@@ -302,22 +306,33 @@ groups:
         annotations:
           summary: "Robinhood eRPC > 70% of consensus calls failing for 15m"
           description: |
-            More than half of all consensus operations on the Robinhood eRPC proxy
-            are failing. This is a real availability incident — driver / autopilot /
-            orderbook will stall, no new settlements can broadcast, in-flight
-            settlements will revert.
+            More than 70% of all consensus operations on the Robinhood eRPC
+            proxy are failing. This is a real availability incident — driver /
+            autopilot / orderbook will stall, no new settlements can broadcast,
+            in-flight settlements will revert.
 
-            Likely cause: 2 of 4 upstream Robinhood providers simultaneously
-            degraded (rate-limit, outage, or DNS). Tip-drift on ~1s blocks can
-            contribute extra disputes but should not push the overall failure
-            rate above 50%.
+            Robinhood consensus is 2-of-2 (ophis-self-rbh + robinhood-official,
+            agreementThreshold 2): EITHER upstream lagging or down is enough
+            to reach 100% failure. There is no third provider to hot-swap to.
 
-            Immediate actions:
-              1. Identify which upstreams are down via direct probe
-              2. Consider emergency hot-swap to a known-healthy provider
-                 (see project_ophis_roadmap.md section 3 reliability map)
-              3. Worst case: temporarily lower agreementThreshold to 1 (NOT
-                 audit-compliant — revert as soon as providers recover)
+            Likely causes, most common first:
+              1. ophis-self-rbh (Cadia Nitro) lagging or catching up after
+                 downtime — check OphisRbhErpcUpstreamBlockHeadLagging. A
+                 syncing node makes this alert EXPECTED; it resolves on its
+                 own at tip. Do NOT reconfigure mid-catch-up (2026-08-19).
+              2. robinhood-official degraded (rate-limit, outage, DNS) — probe:
+                 cast block-number --rpc-url https://rpc.mainnet.chain.robinhood.com
+              3. Cadia host trouble — rebates.ophis.fi/stats returning 200
+                 proves the host is up; robinhood-mainnet.ophis.fi 530 means
+                 host/tunnel down, 502 means the orderbook is not serving
+                 (often bootstrap-looping on this very consensus failure).
+
+            Last resort ONLY if both upstreams are healthy-but-disagreeing and
+            settlements are needed NOW: temporarily lower agreementThreshold
+            to 1 (NOT audit-compliant — revert immediately after recovery).
+            Note debug_* traces are pinned to ophis-self-rbh by the selection
+            policy, so no eRPC reconfiguration can restore settlements while
+            the self node itself is behind.
 
       # ============================================================
       # Per-upstream staleness — pairs with task #119
