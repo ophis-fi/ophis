@@ -1,0 +1,541 @@
+{
+  "recordedAt": "2026-08-19T07:12:00Z",
+  "endpoint": "https://api.goldsky.com/api/public/project_cmmkvehnce9da01u17d657vdt/subgraphs/Swapboard/1.0.0/gn",
+  "query": "{ _meta { block { number } } orders(first: 25, orderBy: orderId, orderDirection: desc) { id orderId maker active taker createdAt createdTx filledAt filledTx cancelledAt cancelledTx amountA amountB tokenA { id } tokenB { id } } }",
+  "response": {
+    "data": {
+      "orders": [
+        {
+          "id": "143",
+          "orderId": "143",
+          "maker": "0x9a50a078d80f36e38edfae85affa2b8ab458e2c9",
+          "active": true,
+          "taker": null,
+          "createdAt": "1787032619",
+          "createdTx": "0xc074a1fe94473a60a80df55e289fab2c3fbdbb47ccecf825488c7e47c6f4cad5",
+          "filledAt": null,
+          "filledTx": null,
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000000000000000",
+          "amountB": "1000000000000000000",
+          "tokenA": {
+            "id": "0xe9b1cfea55baa219e34301f2f31b9fd0921664ed"
+          },
+          "tokenB": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          }
+        },
+        {
+          "id": "142",
+          "orderId": "142",
+          "maker": "0x9a50a078d80f36e38edfae85affa2b8ab458e2c9",
+          "active": true,
+          "taker": null,
+          "createdAt": "1787027399",
+          "createdTx": "0x6843057a8dbdc93b39a9b49f5def126e1962ca8746b022e9021599a9a6ade5df",
+          "filledAt": null,
+          "filledTx": null,
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000000000000000",
+          "amountB": "100000000",
+          "tokenA": {
+            "id": "0xe9b1cfea55baa219e34301f2f31b9fd0921664ed"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "141",
+          "orderId": "141",
+          "maker": "0x83f633ece3fe71ada8616d3dfc02353e03c1c93b",
+          "active": false,
+          "taker": null,
+          "createdAt": "1786775483",
+          "createdTx": "0x00dbd5e27b0802111a3ddb57111aacd4e2e2df2e7e420baf4ca3f4d648430492",
+          "filledAt": null,
+          "filledTx": null,
+          "cancelledAt": "1786775519",
+          "cancelledTx": "0xd63ee8c2a5abba1faa42f91b603461e33d9f02faa4aa9b62ed7a6a0247a37c5e",
+          "amountA": "1023560527798015396948",
+          "amountB": "1023560055600000000000",
+          "tokenA": {
+            "id": "0xe9b1cfea55baa219e34301f2f31b9fd0921664ed"
+          },
+          "tokenB": {
+            "id": "0x00a6ba94bbb5474725515de88fe04f854f2dcb12"
+          }
+        },
+        {
+          "id": "140",
+          "orderId": "140",
+          "maker": "0x023688771e6b8a4099667dd0159eb59da9fe43b3",
+          "active": true,
+          "taker": null,
+          "createdAt": "1786639655",
+          "createdTx": "0x53983b43429f68880f6e8a5d0d9ef83bbfaa2e8660e248cd0430aba670eb37c4",
+          "filledAt": null,
+          "filledTx": null,
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000",
+          "amountB": "100000000",
+          "tokenA": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          },
+          "tokenB": {
+            "id": "0xa551285b49a29cbdbae7fc5c6a61fadc918ad224"
+          }
+        },
+        {
+          "id": "139",
+          "orderId": "139",
+          "maker": "0x4d68cf31d613070b18e406afd6a42719a62a0785",
+          "active": false,
+          "taker": "0x023688771e6b8a4099667dd0159eb59da9fe43b3",
+          "createdAt": "1786639367",
+          "createdTx": "0x414f702ea012cfc45e2c7a5134681f4df71c3436ca33770d6ff2f67bfae60bcc",
+          "filledAt": "1786639571",
+          "filledTx": "0x6c717a3d3601a6afaec37e9305bd9cd3653e1707f852c75b637f98fdefa6cc0f",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000",
+          "amountB": "100000000",
+          "tokenA": {
+            "id": "0xa551285b49a29cbdbae7fc5c6a61fadc918ad224"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "138",
+          "orderId": "138",
+          "maker": "0xfb3fa9cf7c5a05fad7dfc2c54dabb1d086147d5b",
+          "active": true,
+          "taker": null,
+          "createdAt": "1786101527",
+          "createdTx": "0xebed314d00f5ce09691444f91f0d88dc8d5edf37832690ca6c69a0faa3426468",
+          "filledAt": null,
+          "filledTx": null,
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "10000000000000000000",
+          "amountB": "100000000000000000000",
+          "tokenA": {
+            "id": "0x00a6ba94bbb5474725515de88fe04f854f2dcb12"
+          },
+          "tokenB": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          }
+        },
+        {
+          "id": "137",
+          "orderId": "137",
+          "maker": "0xcaef42d212f54c4f3de3fe28c1fd22b3d08fd66e",
+          "active": false,
+          "taker": "0x50f2d8da7f0349be9de72fbbd1bf1fc87e4a2b8b",
+          "createdAt": "1781672003",
+          "createdTx": "0x30c792d7ff182066bcf5e053ebf235d24f87c9c4613b5ceb1abe05ac57083267",
+          "filledAt": "1786779575",
+          "filledTx": "0xc8a070b09a5e26943396dfdcaa0271831a57c2503a4d7ca29cda41e3b38374a8",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "178000000000000000000",
+          "amountB": "5700000",
+          "tokenA": {
+            "id": "0xe9b1cfea55baa219e34301f2f31b9fd0921664ed"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "136",
+          "orderId": "136",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": "0xfdeea9a19618901311a2ab5b2bfd795c79527a7f",
+          "createdAt": "1780604855",
+          "createdTx": "0x93635c22caac66f52a488798edbd9a69e15aed356aab1d7e4073c23bcd56a741",
+          "filledAt": "1780618631",
+          "filledTx": "0x68b0d3173299ee2a3ab7663fd13ad2ce3a5ee0a3473871aed19c1fec8d6415be",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "179500000000",
+          "amountB": "100000000000000000000",
+          "tokenA": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          },
+          "tokenB": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          }
+        },
+        {
+          "id": "135",
+          "orderId": "135",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": "0x492d255234c83f2ddc5aa904d8a9db6743e9f046",
+          "createdAt": "1780505363",
+          "createdTx": "0xbced537cd1899ce97d136a181fbe2fe7920212528b54cd3fa1e918a494575286",
+          "filledAt": "1780513175",
+          "filledTx": "0x7e08bdc2e9ce39e80170e72426752d7cb3f44857662f1ff02a3f19749d2a9ff4",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000000000000000",
+          "amountB": "180000000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "134",
+          "orderId": "134",
+          "maker": "0x347ffc6db9acc54ac2019795173b9599e8b82bd9",
+          "active": false,
+          "taker": "0xfd2204757ab46355e60251386f823960acccefe7",
+          "createdAt": "1780444835",
+          "createdTx": "0xa48c069c4c7ad48aa448a9fd8ae070539e43794e7ee4227c0754ee7ed0082fe2",
+          "filledAt": "1780445039",
+          "filledTx": "0xdea43391e1488e608b26c1995839d584bb864dcd697dbb23932fa561cbd6e882",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "1000000000000000",
+          "amountB": "2000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "133",
+          "orderId": "133",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": "0x80bf7db69556d9521c03461978b8fc731dbbd4e4",
+          "createdAt": "1780442531",
+          "createdTx": "0xfdae0649631c5316ac9fbb8fdc54762cf00520476699dacabf701880a9cbbd3f",
+          "filledAt": "1780447583",
+          "filledTx": "0xc2abeb0714f2aaa5122352a06c91f655cb2a5e1665f40ec97b113486f3cf7bb6",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000000000000000",
+          "amountB": "180000000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "132",
+          "orderId": "132",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": null,
+          "createdAt": "1780442435",
+          "createdTx": "0xe14a27e75d8e92f23534d25e4b437cc9e8534591d3efb88cdf5d74af6d5836f0",
+          "filledAt": null,
+          "filledTx": null,
+          "cancelledAt": "1780442747",
+          "cancelledTx": "0x3297e267e0a3811ef4196bb342090955734bd090dffda386b094356277c32b43",
+          "amountA": "100000000000000000000",
+          "amountB": "2025000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "131",
+          "orderId": "131",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": "0xfdeea9a19618901311a2ab5b2bfd795c79527a7f",
+          "createdAt": "1780442387",
+          "createdTx": "0x74f8ee11c3703a63c02b13d2615cd6734ec3c916ba782190af884f20eaf80fd9",
+          "filledAt": "1785149879",
+          "filledTx": "0x790e281597135ec85b84a9ea6d1b1b47f9ea52142e899c6a17fa7f4f0fcbd684",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000000000000000",
+          "amountB": "195000000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "130",
+          "orderId": "130",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": true,
+          "taker": null,
+          "createdAt": "1780442339",
+          "createdTx": "0x6468ef6e201fe913f33d7f3e5e74fa4e532c0284792a18580d43812adf0d03e5",
+          "filledAt": null,
+          "filledTx": null,
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000000000000000",
+          "amountB": "205000000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "129",
+          "orderId": "129",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": "0xfdeea9a19618901311a2ab5b2bfd795c79527a7f",
+          "createdAt": "1780442303",
+          "createdTx": "0x12174d7206c665df25b52e8a58a96f864ebc0651a8dacab6772d89ca4aec47bc",
+          "filledAt": "1780486979",
+          "filledTx": "0xd4e535e7b777702d39f1a9b52bb83bf9a8f7ab728ca80ea62c625d8275164d1a",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000000000000000",
+          "amountB": "185000000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "128",
+          "orderId": "128",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": "0xfdeea9a19618901311a2ab5b2bfd795c79527a7f",
+          "createdAt": "1780442219",
+          "createdTx": "0xf059a4459ff21e26be790695add3958d7810a38b6843635fbb94c4a6dd09f504",
+          "filledAt": "1784124443",
+          "filledTx": "0xaf5b8ec7ab7cadfa74eb85206fad06f95a9576fef846be88d21b56de4cf9d986",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000000000000000",
+          "amountB": "190000000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "127",
+          "orderId": "127",
+          "maker": "0x70eab7ae0029584a479727d769df5d05f199f6a3",
+          "active": false,
+          "taker": null,
+          "createdAt": "1778604443",
+          "createdTx": "0x64e72e65b09e05df229245f186b390dd2a0c2e7f3ac8dbbdc922c62454b6e9ab",
+          "filledAt": null,
+          "filledTx": null,
+          "cancelledAt": "1778604863",
+          "cancelledTx": "0x800ad61bcaebf1cc770df8b3e224604717d0fabfc6deb1b93746595baa0292e5",
+          "amountA": "2000000000000000000000",
+          "amountB": "100000000000000000",
+          "tokenA": {
+            "id": "0xe9b1cfea55baa219e34301f2f31b9fd0921664ed"
+          },
+          "tokenB": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          }
+        },
+        {
+          "id": "126",
+          "orderId": "126",
+          "maker": "0x9a50a078d80f36e38edfae85affa2b8ab458e2c9",
+          "active": false,
+          "taker": "0xc1d6f3ac3dfd66bb264f732cb5581de3e232cc21",
+          "createdAt": "1778333111",
+          "createdTx": "0x01c7adfbbe26549488bf115128d3275c865b21a4fd6dd2b67b25a986bfa5df05",
+          "filledAt": "1787026511",
+          "filledTx": "0xdbe7bda7c47bd9252b8439e3b97572e9df1d13d918e244338c25cf35bfe71e8c",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "100000000000000000000",
+          "amountB": "100000000",
+          "tokenA": {
+            "id": "0xe9b1cfea55baa219e34301f2f31b9fd0921664ed"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "125",
+          "orderId": "125",
+          "maker": "0x8a15e0491658cc5dc4a59acc541ce6b932ffa30e",
+          "active": false,
+          "taker": "0x9a50a078d80f36e38edfae85affa2b8ab458e2c9",
+          "createdAt": "1778328719",
+          "createdTx": "0x2f50607c4fe9da8cad60ed2fa6df8c83ead86d9d9f4feed5928927933e6d238a",
+          "filledAt": "1778332355",
+          "filledTx": "0xe5b7ee02dd555d67f03b5e3012696e06b2efac331375b9ff38642b00d4f801b7",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "200000000000000000000",
+          "amountB": "13000000000000000",
+          "tokenA": {
+            "id": "0xe9b1cfea55baa219e34301f2f31b9fd0921664ed"
+          },
+          "tokenB": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          }
+        },
+        {
+          "id": "124",
+          "orderId": "124",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": true,
+          "taker": null,
+          "createdAt": "1777946939",
+          "createdTx": "0xc8cba314028e28119d2ce22d8b080c3cd935cdbb88a4ee7b1cbd9f8fdc6b04fe",
+          "filledAt": null,
+          "filledTx": null,
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "1000000000000000000",
+          "amountB": "2400000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "123",
+          "orderId": "123",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": true,
+          "taker": null,
+          "createdAt": "1777946831",
+          "createdTx": "0x3e9151a1b0e0bacc5225503b17bb0640385446995d426c3dc9a4336c1f676770",
+          "filledAt": null,
+          "filledTx": null,
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "1000000000000000000",
+          "amountB": "2390000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "122",
+          "orderId": "122",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": "0x0260cc172fb50392f5e25fdf1eb026b1ba3e6f61",
+          "createdAt": "1777946807",
+          "createdTx": "0x9e88bb07c9625a9eae467fd366e0562625ad8f7780df7003d630e32125d35f61",
+          "filledAt": "1777986731",
+          "filledTx": "0x16528621738a1c6a76676f6a2966928ac1afb8a395489f50d6ded80d9683bb3c",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "1000000000000000000",
+          "amountB": "2380000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "121",
+          "orderId": "121",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": "0x0260cc172fb50392f5e25fdf1eb026b1ba3e6f61",
+          "createdAt": "1777946783",
+          "createdTx": "0x239edf187981dc7333ee1967460e790719540d94cfdce7947cb6e1eafa01cbff",
+          "filledAt": "1777952651",
+          "filledTx": "0x88e69f0599bc835a40c3f27de53b5d3071845012b1983a506e9487583c186763",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "1000000000000000000",
+          "amountB": "2370000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "120",
+          "orderId": "120",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": "0x0260cc172fb50392f5e25fdf1eb026b1ba3e6f61",
+          "createdAt": "1777946747",
+          "createdTx": "0xe2f98ac0d4936f439660603db1f8c12365ea4c274fb5dfcd65aa5d0367e92288",
+          "filledAt": "1777952543",
+          "filledTx": "0xdcfb05e14e1b23f923f28368d5f259d76cc24865dfd52d9d03a2dfd223fb48ac",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "1000000000000000000",
+          "amountB": "2360000000",
+          "tokenA": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          },
+          "tokenB": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          }
+        },
+        {
+          "id": "119",
+          "orderId": "119",
+          "maker": "0x008b9fc5834a0fb1da0031bbcf8fd03c2ba9bd21",
+          "active": false,
+          "taker": "0x0260cc172fb50392f5e25fdf1eb026b1ba3e6f61",
+          "createdAt": "1777946711",
+          "createdTx": "0xa21a13cda85b1ae5db3f3bd7e86f773caae33543dfc4334eed7bdd1c14edf3e5",
+          "filledAt": "1778126999",
+          "filledTx": "0x1db4026cdadb6f0a4f521521f304117ecd72ba682b3cb9b5bc22f43be91637f9",
+          "cancelledAt": null,
+          "cancelledTx": null,
+          "amountA": "2350000000",
+          "amountB": "1000000000000000000",
+          "tokenA": {
+            "id": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+          },
+          "tokenB": {
+            "id": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+          }
+        }
+      ],
+      "_meta": {
+        "block": {
+          "number": 25787578
+        }
+      }
+    }
+  }
+}
