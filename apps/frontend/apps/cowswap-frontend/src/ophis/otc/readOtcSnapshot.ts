@@ -100,6 +100,42 @@ async function readOrderBatch(
   return parseOtcOrders(decoded, orderIds)
 }
 
+export interface OtcOrderReadResult {
+  order: OtcOrder | null
+  blockNumber: bigint
+}
+
+/**
+ * Direct, fail-closed read of one order — the fresh re-read the detail view
+ * performs so an indexed row is never presented as current state. Verifies
+ * the pinned runtime code hash at the same block as the read.
+ */
+export async function readOtcOrder(
+  client: OtcReaderClient,
+  orderId: bigint,
+  manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
+): Promise<OtcOrderReadResult> {
+  const block = await client.getLatestBlock()
+  if (!block.hash) throw new Error('Ophis OTC block is not identifiable')
+
+  await requirePinnedCode(client, manifest.contract.address, manifest.contract.runtimeCodeHash, block.number)
+
+  const data = await callBounded(
+    client,
+    {
+      to: manifest.contract.address,
+      data: encodeFunctionData({ abi: OTC_READ_ABI, functionName: 'getOrder', args: [orderId] }),
+      gas: SMALL_CALL_GAS,
+      blockNumber: block.number,
+    },
+    1_024,
+  )
+  const decoded: unknown = decodeFunctionResult({ abi: OTC_READ_ABI, functionName: 'getOrder', data })
+  const orders = parseOtcOrders([decoded], [orderId])
+
+  return { order: orders[0] ?? null, blockNumber: block.number }
+}
+
 /**
  * Single-block, fail-closed snapshot of the escrow contract's order state.
  * Verifies the pinned runtime code hash and weth() wiring before reading

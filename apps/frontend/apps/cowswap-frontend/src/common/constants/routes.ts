@@ -39,6 +39,15 @@ export const Routes = {
   CONTACT: '/contact',
   // Ophis: '/institutional' = pitch page for OTC desks, funds, treasuries.
   INSTITUTIONAL: '/institutional',
+  // Ophis: '/otc' = read-only fixed-price peer-to-peer order browser against
+  // the external immutable Swapboard escrow contract (Ethereum only). OTC
+  // Milestone B surface: flag-gated off in production (isOtcEnabled), no
+  // transaction selectors reachable. Spec: docs/development/plans/
+  // 2026-08-18-ophis-otc.md.
+  OTC: '/otc',
+  // Ophis: '/otc/:orderId' = single-order detail; performs a direct getOrder
+  // re-read against Ethereum before rendering terms.
+  OTC_ORDER: '/otc/:orderId',
   // Ophis: '/profile' = wallet-aware trader identity page (Phase C1).
   // Replaces the upstream `/profile → /account` redirect alias.
   PROFILE: '/profile',

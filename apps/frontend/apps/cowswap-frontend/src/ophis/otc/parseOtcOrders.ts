@@ -18,7 +18,14 @@ function rejected(): Error {
 function asRawOrderRow(value: unknown): RawOrderRow {
   if (Array.isArray(value)) {
     if (value.length !== 6) throw rejected()
-    return { maker: value[0], active: value[1], tokenA: value[2], amountA: value[3], tokenB: value[4], amountB: value[5] }
+    return {
+      maker: value[0],
+      active: value[1],
+      tokenA: value[2],
+      amountA: value[3],
+      tokenB: value[4],
+      amountB: value[5],
+    }
   }
 
   if (typeof value !== 'object' || value === null) throw rejected()

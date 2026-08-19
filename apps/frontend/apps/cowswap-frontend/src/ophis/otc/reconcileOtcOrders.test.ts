@@ -49,7 +49,10 @@ function snapshot(orders: OtcOrder[], overrides: Partial<OtcSnapshot> = {}): Otc
 
 describe('reconcileOtcOrders', () => {
   it('verifies orders whose indexed terms exactly match on-chain state', () => {
-    const report = reconcileOtcOrders([indexedOrder(1n), indexedOrder(0n)], snapshot([onchainOrder(1n), onchainOrder(0n)]))
+    const report = reconcileOtcOrders(
+      [indexedOrder(1n), indexedOrder(0n)],
+      snapshot([onchainOrder(1n), onchainOrder(0n)]),
+    )
     expect(report.verifiedIds).toEqual([0n, 1n])
     expect(report.mismatches).toEqual([])
     expect(report.missingOnchain).toEqual([])
@@ -83,7 +86,10 @@ describe('reconcileOtcOrders', () => {
   })
 
   it('reports indexed ids the chain does not have inside the enumerated window', () => {
-    const report = reconcileOtcOrders([indexedOrder(1n), indexedOrder(2n)], snapshot([onchainOrder(1n)], { nextOrderId: 3n }))
+    const report = reconcileOtcOrders(
+      [indexedOrder(1n), indexedOrder(2n)],
+      snapshot([onchainOrder(1n)], { nextOrderId: 3n }),
+    )
     expect(report.missingOnchain).toEqual([2n])
   })
 

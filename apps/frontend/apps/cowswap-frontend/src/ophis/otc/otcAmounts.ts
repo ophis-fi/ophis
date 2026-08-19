@@ -31,12 +31,7 @@ export interface OtcRate {
   inverseRate: string
 }
 
-export function computeOtcRate(
-  amountA: bigint,
-  decimalsA: number,
-  amountB: bigint,
-  decimalsB: number,
-): OtcRate | null {
+export function computeOtcRate(amountA: bigint, decimalsA: number, amountB: bigint, decimalsB: number): OtcRate | null {
   if (amountA <= 0n || amountB <= 0n) return null
 
   const unitScaleA = 10n ** BigInt(decimalsA)

@@ -1,7 +1,7 @@
+import { decodeFunctionData, encodeFunctionResult, keccak256, type Hex } from 'viem'
+
 import { readFileSync } from 'fs'
 import { join } from 'path'
-
-import { decodeFunctionData, encodeFunctionResult, keccak256, type Hex } from 'viem'
 
 import { OTC_READ_ABI } from './otc.abi'
 import { OPHIS_ETHEREUM_OTC_MANIFEST } from './otc.const'

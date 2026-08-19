@@ -1,7 +1,7 @@
+import { getAddress, toFunctionSelector, type AbiFunction } from 'viem'
+
 import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
-
-import { getAddress, toFunctionSelector, type AbiFunction } from 'viem'
 
 import { OTC_EVENT_ABI, OTC_READ_ABI } from './otc.abi'
 import { OPHIS_ETHEREUM_OTC_MANIFEST, OTC_KNOWN_WRITE_SELECTORS } from './otc.const'
@@ -60,9 +60,9 @@ describe('Ophis OTC boundary', () => {
 
   it('cannot encode any known write selector from the read ABI', () => {
     expect(OTC_KNOWN_WRITE_SELECTORS).toHaveLength(7)
-    const readSelectors = OTC_READ_ABI.filter(
-      (entry): entry is AbiFunction => entry.type === 'function',
-    ).map((fn) => toFunctionSelector(fn))
+    const readSelectors = OTC_READ_ABI.filter((entry): entry is AbiFunction => entry.type === 'function').map((fn) =>
+      toFunctionSelector(fn),
+    )
     for (const selector of readSelectors) {
       expect(OTC_KNOWN_WRITE_SELECTORS).not.toContain(selector)
     }

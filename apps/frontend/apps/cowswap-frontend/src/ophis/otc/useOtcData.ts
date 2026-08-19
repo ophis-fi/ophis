@@ -88,9 +88,10 @@ function toReaderClient(publicClient: NonNullable<ReturnType<typeof usePublicCli
  */
 export function useOtcData(enabled: boolean): OtcDataState {
   const publicClient = usePublicClient({ chainId: SupportedChainId.MAINNET })
-  const client = useMemo<OtcReaderClient | null>(() => (publicClient ? toReaderClient(publicClient) : null), [
-    publicClient,
-  ])
+  const client = useMemo<OtcReaderClient | null>(
+    () => (publicClient ? toReaderClient(publicClient) : null),
+    [publicClient],
+  )
 
   const { data, error } = useSWR(
     enabled && client ? ['ophis-otc-data'] : null,

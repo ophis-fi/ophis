@@ -31,9 +31,7 @@ const APPROVED_ETHEREUM_ASSETS = new Set(
  * ETH reaches the escrow contract solely through its reviewed WETH
  * convenience functions, never as a policy-approved order leg.
  */
-const OTC_ESCROW_ETHEREUM_ASSETS = new Set(
-  [WETH_MAINNET.address, USDC_MAINNET.address, DAI.address].map(getAddressKey),
-)
+const OTC_ESCROW_ETHEREUM_ASSETS = new Set([WETH_MAINNET.address, USDC_MAINNET.address, DAI.address].map(getAddressKey))
 
 /**
  * Existing settlement routes retain their established token support and

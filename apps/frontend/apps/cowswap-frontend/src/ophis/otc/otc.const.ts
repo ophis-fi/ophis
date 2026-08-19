@@ -1,5 +1,4 @@
 import type { OtcManifest } from './otc.types'
-
 import type { Hex } from 'viem'
 
 export const OTC_MAX_ENUMERATED_ORDERS = 1_000

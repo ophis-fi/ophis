@@ -1,7 +1,7 @@
+import { decodeFunctionResult } from 'viem'
+
 import { readFileSync } from 'fs'
 import { join } from 'path'
-
-import { decodeFunctionResult } from 'viem'
 
 import { OTC_READ_ABI } from './otc.abi'
 import { parseOtcOrders } from './parseOtcOrders'

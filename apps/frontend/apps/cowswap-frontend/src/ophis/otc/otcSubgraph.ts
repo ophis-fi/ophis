@@ -55,61 +55,59 @@ function parseTimestamp(value: unknown): number | null {
   return Number.isSafeInteger(parsed) ? parsed : null
 }
 
+function nestedId(value: unknown): unknown {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>).id : undefined
+}
+
+/** null-permitting: absent is valid; present-but-malformed is not. */
+function parseOptional<T>(raw: unknown, parser: (value: unknown) => T | null): { ok: boolean; value: T | null } {
+  if (raw == null) return { ok: true, value: null }
+  const parsed = parser(raw)
+  return { ok: parsed !== null, value: parsed }
+}
+
 function parseIndexedOrder(value: unknown): OtcIndexedOrder | null {
   if (typeof value !== 'object' || value === null) return null
   const row = value as Record<string, unknown>
-  const tokenA = typeof row.tokenA === 'object' && row.tokenA !== null ? (row.tokenA as Record<string, unknown>) : null
-  const tokenB = typeof row.tokenB === 'object' && row.tokenB !== null ? (row.tokenB as Record<string, unknown>) : null
+  if (typeof row.active !== 'boolean') return null
 
-  const orderId = parseAmount(row.orderId)
-  const maker = parseAddress(row.maker)
-  const tokenAAddress = parseAddress(tokenA?.id)
-  const tokenBAddress = parseAddress(tokenB?.id)
-  const amountA = parseAmount(row.amountA)
-  const amountB = parseAmount(row.amountB)
-  const createdAt = parseTimestamp(row.createdAt)
-  const createdTx = parseTxHash(row.createdTx)
-  if (
-    orderId === null ||
-    maker === null ||
-    typeof row.active !== 'boolean' ||
-    tokenAAddress === null ||
-    tokenBAddress === null ||
-    amountA === null ||
-    amountB === null ||
-    createdAt === null ||
-    createdTx === null
-  ) {
-    return null
+  const required = {
+    orderId: parseAmount(row.orderId),
+    maker: parseAddress(row.maker),
+    tokenA: parseAddress(nestedId(row.tokenA)),
+    amountA: parseAmount(row.amountA),
+    tokenB: parseAddress(nestedId(row.tokenB)),
+    amountB: parseAmount(row.amountB),
+    createdAt: parseTimestamp(row.createdAt),
+    createdTx: parseTxHash(row.createdTx),
   }
+  if (Object.values(required).some((field) => field === null)) return null
 
   // Resolution fields are optional but must be well-formed when present.
-  const taker = row.taker == null ? null : parseAddress(row.taker)
-  const filledAt = row.filledAt == null ? null : parseTimestamp(row.filledAt)
-  const filledTx = row.filledTx == null ? null : parseTxHash(row.filledTx)
-  const cancelledAt = row.cancelledAt == null ? null : parseTimestamp(row.cancelledAt)
-  const cancelledTx = row.cancelledTx == null ? null : parseTxHash(row.cancelledTx)
-  if (row.taker != null && taker === null) return null
-  if (row.filledAt != null && filledAt === null) return null
-  if (row.filledTx != null && filledTx === null) return null
-  if (row.cancelledAt != null && cancelledAt === null) return null
-  if (row.cancelledTx != null && cancelledTx === null) return null
+  const optional = {
+    taker: parseOptional(row.taker, parseAddress),
+    filledAt: parseOptional(row.filledAt, parseTimestamp),
+    filledTx: parseOptional(row.filledTx, parseTxHash),
+    cancelledAt: parseOptional(row.cancelledAt, parseTimestamp),
+    cancelledTx: parseOptional(row.cancelledTx, parseTxHash),
+  }
+  if (Object.values(optional).some((field) => !field.ok)) return null
 
   return {
-    orderId,
-    maker,
+    orderId: required.orderId as bigint,
+    maker: required.maker as Address,
     active: row.active,
-    tokenA: tokenAAddress,
-    amountA,
-    tokenB: tokenBAddress,
-    amountB,
-    createdAt,
-    createdTx,
-    taker,
-    filledAt,
-    filledTx,
-    cancelledAt,
-    cancelledTx,
+    tokenA: required.tokenA as Address,
+    amountA: required.amountA as bigint,
+    tokenB: required.tokenB as Address,
+    amountB: required.amountB as bigint,
+    createdAt: required.createdAt as number,
+    createdTx: required.createdTx as Hex,
+    taker: optional.taker.value,
+    filledAt: optional.filledAt.value,
+    filledTx: optional.filledTx.value,
+    cancelledAt: optional.cancelledAt.value,
+    cancelledTx: optional.cancelledTx.value,
   }
 }
 

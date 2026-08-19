@@ -57,7 +57,9 @@ describe('Ophis token policy', () => {
       ),
     ).toEqual({ allowed: false, reason: 'chain-not-reviewed' })
   })
+})
 
+describe('Ophis token policy — OTC escrow profile', () => {
   it.each([WETH_MAINNET.address, USDC_MAINNET.address, DAI.address])(
     'allows reviewed Ethereum escrow asset %s under the OTC escrow profile',
     (address) => {
@@ -86,7 +88,9 @@ describe('Ophis token policy', () => {
       getTokenPolicyDecision({ chainId: 10, address: WETH_MAINNET.address }, TokenPolicyProfile.OTC_ESCROW),
     ).toEqual({ allowed: false, reason: 'chain-not-reviewed' })
   })
+})
 
+describe('Ophis token policy — shared input handling', () => {
   it('rejects malformed policy inputs', () => {
     expect(
       getTokenPolicyDecision({ chainId: 1, address: 'not-an-address' }, TokenPolicyProfile.ESTABLISHED_SETTLEMENT),

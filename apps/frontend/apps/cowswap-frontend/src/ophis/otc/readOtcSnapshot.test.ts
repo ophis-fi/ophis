@@ -25,7 +25,14 @@ function testManifest(overrides: Partial<OtcManifest> = {}): OtcManifest {
   }
 }
 
-function orderTupleFor(orderId: bigint): { maker: Address; active: boolean; tokenA: Address; amountA: bigint; tokenB: Address; amountB: bigint } {
+function orderTupleFor(orderId: bigint): {
+  maker: Address
+  active: boolean
+  tokenA: Address
+  amountA: bigint
+  tokenB: Address
+  amountB: bigint
+} {
   return {
     maker: MAKER,
     active: orderId % 2n === 0n,
