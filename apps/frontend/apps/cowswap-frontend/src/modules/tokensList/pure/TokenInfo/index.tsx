@@ -10,6 +10,7 @@ import { getTokenDisplayName } from './getTokenDisplayName.utils'
 import * as styledEl from './styled'
 
 import { TokenizedAssetProviderTag } from '../../types'
+import { TokenContractDetails } from '../TokenContractDetails/TokenContractDetails.pure'
 
 export interface TokenInfoProps {
   token: TokenWithLogo
@@ -46,7 +47,7 @@ export function TokenInfo(props: TokenInfoProps): ReactNode {
               address={token.address}
               chainId={token.chainId}
               showAddress={showAddress}
-              isContractVerified={isContractVerified}
+              details={<TokenContractDetails address={token.address} isContractVerified={isContractVerified} />}
             />
           ) : null}
         </styledEl.TokenSymbolWrapper>

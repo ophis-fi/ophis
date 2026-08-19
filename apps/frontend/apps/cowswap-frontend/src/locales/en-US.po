@@ -2846,7 +2846,7 @@ msgstr "Keep in mind a solver might already have included the order in a solutio
 msgid "Token"
 msgstr "Token"
 
-#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
+#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenContractDetails/TokenContractDetails.pure.tsx
 msgid "Contract address"
 msgstr "Contract address"
 
@@ -5357,7 +5357,7 @@ msgstr "Status"
 msgid "higher"
 msgstr "higher"
 
-#: apps/cowswap-frontend/src/common/pure/ClickableAddress/index.tsx
+#: apps/cowswap-frontend/src/modules/tokensList/pure/TokenContractDetails/TokenContractDetails.pure.tsx
 msgid "Verified against an Ophis token list"
 msgstr "Verified against an Ophis token list"
 
