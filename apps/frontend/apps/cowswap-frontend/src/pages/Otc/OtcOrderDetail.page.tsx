@@ -86,6 +86,8 @@ interface OtcOrderDetailViewProps {
   orderId: bigint
   loading: boolean
   failed: boolean
+  /** The list hook detected this RPC node behind the network: warn before terms. */
+  nodeStale: boolean
   order: OtcOrder | null
   blockNumber: bigint | null
   indexed: OtcIndexedOrder | null
@@ -150,7 +152,7 @@ function DetailBody({
 }
 
 export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
-  const { orderId, loading, failed } = props
+  const { orderId, loading, failed, nodeStale } = props
 
   return (
     <PageShell
@@ -159,6 +161,14 @@ export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
       title={`Order #${orderId.toString()}`}
       lede="Read-only order detail, verified directly against Ethereum."
     >
+      {nodeStale && (
+        <Callout tone="warning" title="Network data may be outdated">
+          <p>
+            This RPC node appears to be behind the network. The order state below was verified on-chain but may not
+            reflect the latest blocks.
+          </p>
+        </Callout>
+      )}
       {loading && <p>Verifying order #{orderId.toString()} on Ethereum...</p>}
       {failed && (
         <Callout tone="warning" title="Order unavailable">
@@ -207,6 +217,7 @@ export function OtcOrderDetailPage(): ReactNode {
       orderId={orderId}
       loading={!data && !error}
       failed={Boolean(error)}
+      nodeStale={state.degradedReason === 'node-stale'}
       order={data?.order ?? null}
       blockNumber={data?.blockNumber ?? null}
       indexed={indexed}

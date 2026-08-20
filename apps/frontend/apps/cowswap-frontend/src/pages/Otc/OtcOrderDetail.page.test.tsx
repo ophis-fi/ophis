@@ -43,6 +43,7 @@ function renderDetail(props: Partial<Parameters<typeof OtcOrderDetailView>[0]> =
       orderId={130n}
       loading={false}
       failed={false}
+      nodeStale={false}
       order={order()}
       blockNumber={25_787_579n}
       indexed={indexed()}
@@ -68,6 +69,11 @@ describe('OtcOrderDetailView', () => {
     const explorerLinks = Array.from(container.querySelectorAll('a')).map((a) => a.getAttribute('href') ?? '')
     expect(explorerLinks.some((href) => href === `https://etherscan.io/address/${CONTRACT}`)).toBe(true)
     expect(explorerLinks.some((href) => href === `https://etherscan.io/address/${MAKER}`)).toBe(true)
+  })
+
+  it('warns on the detail view when the RPC node is behind the network', () => {
+    renderDetail({ nodeStale: true })
+    expect(screen.getByText('Network data may be outdated')).toBeTruthy()
   })
 
   it('shows the escrow badge only while the order is active', () => {

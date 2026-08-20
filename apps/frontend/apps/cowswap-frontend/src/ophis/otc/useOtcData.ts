@@ -108,12 +108,13 @@ export async function loadOtcData(client: OtcReaderClient, options: LoadOtcDataO
 
 /**
  * Degradation taxonomy, most severe first:
+ * - node-stale: the index checkpoint is materially AHEAD of this RPC node's
+ *   head — the node, not the index, is behind, so even 'on-chain' state may
+ *   be obsolete. Outranks index reasons: when the node itself is suspect, no
+ *   notice may claim on-chain state is current;
  * - index-corrupt: malformed rows dropped, interior coverage holes (an id
  *   missing from the index BETWEEN ids it does have), or a fresh index that
  *   is empty while the chain has orders;
- * - node-stale: the index checkpoint is materially AHEAD of this RPC node's
- *   head — the node, not the index, is behind, and 'current' chain state may
- *   be obsolete;
  * - index-stale: the index checkpoint lags the chain beyond the bound.
  */
 function resolveDegradedReason(input: {
@@ -126,19 +127,16 @@ function resolveDegradedReason(input: {
   indexLagBlocks: bigint
 }): OtcDegradedReason | null {
   const { manifest, snapshot, orders, droppedRows, indexedBlock, reconciliation, indexLagBlocks } = input
+  if (indexedBlock > snapshot.blockNumber + manifest.maxIndexLagBlocks) return 'node-stale'
   if (droppedRows > 0) return 'index-corrupt'
   if (orders.length === 0 && snapshot.orders.length > 0) return 'index-corrupt'
   if (hasInteriorHoles(orders, reconciliation)) return 'index-corrupt'
-  if (indexedBlock > snapshot.blockNumber + manifest.maxIndexLagBlocks) return 'node-stale'
   if (indexLagBlocks > manifest.maxIndexLagBlocks) return 'index-stale'
   return null
 }
 
 /** An id missing from the index BETWEEN ids it does have is a coverage hole. */
-function hasInteriorHoles(
-  orders: readonly { orderId: bigint }[],
-  reconciliation: OtcReconciliationReport,
-): boolean {
+function hasInteriorHoles(orders: readonly { orderId: bigint }[], reconciliation: OtcReconciliationReport): boolean {
   if (orders.length === 0) return false
   let min = orders[0].orderId
   let max = orders[0].orderId

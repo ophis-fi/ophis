@@ -286,9 +286,16 @@ async function live() {
   const indexedBlock = BigInt(data._meta.block.number);
   const headBlock = BigInt(await rpc('eth_blockNumber'));
   const indexLag = headBlock > indexedBlock ? headBlock - indexedBlock : 0n;
+  const nodeLag = indexedBlock > headBlock ? indexedBlock - headBlock : 0n;
   assert.ok(
     indexLag <= MAX_INDEX_LAG_BLOCKS,
     `index checkpoint stale: ${indexLag} blocks behind head (max ${MAX_INDEX_LAG_BLOCKS})`,
+  );
+  // Symmetric check: an RPC node materially behind the index checkpoint is a
+  // stale node — its 'current' contract state may be obsolete.
+  assert.ok(
+    nodeLag <= MAX_INDEX_LAG_BLOCKS,
+    `RPC node stale: ${nodeLag} blocks behind the index checkpoint (max ${MAX_INDEX_LAG_BLOCKS})`,
   );
   const allRows = data.orders;
   assert.ok(allRows.length > 0, 'subgraph returned no orders');

@@ -144,6 +144,25 @@ describe('loadOtcData', () => {
     expect(result.degradedReason).toBe('node-stale')
   })
 
+  it('lets node-stale outrank index corruption when both are detected', async () => {
+    const fixture = JSON.parse(
+      readFileSync(join(__dirname, '__fixtures__', 'subgraph-orders.json'), 'utf8'),
+    ) as SubgraphFixture
+    const body = fixture.response as { data: { orders: Record<string, unknown>[] } }
+    body.data.orders[0] = { ...body.data.orders[0], maker: 'not-an-address' }
+    const corruptFetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => body,
+    })) as unknown as typeof fetch
+
+    const result = await loadOtcData(createMockClient(25_787_078n), {
+      manifest: testManifest(),
+      fetchImpl: corruptFetch,
+    })
+    expect(result.degradedReason).toBe('node-stale')
+  })
+
   it('degrades as index-corrupt on an interior coverage hole', async () => {
     const fixture = JSON.parse(
       readFileSync(join(__dirname, '__fixtures__', 'subgraph-orders.json'), 'utf8'),
