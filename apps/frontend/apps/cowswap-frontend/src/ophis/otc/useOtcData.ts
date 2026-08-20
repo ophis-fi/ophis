@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useId, useMemo } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -89,12 +89,64 @@ export async function loadOtcData(client: OtcReaderClient, options: LoadOtcDataO
   const reconciliation = reconcileOtcOrders(orders, snapshot)
   const indexLagBlocks = computeIndexLag(indexedBlock, snapshot.blockNumber)
 
-  // Malformed rows were dropped and must not pass silently as 'ready';
-  // corruption outranks staleness in the reason taxonomy.
-  const degradedReason: OtcDegradedReason | null =
-    droppedRows > 0 ? 'index-corrupt' : indexLagBlocks > manifest.maxIndexLagBlocks ? 'index-stale' : null
+  return {
+    snapshot,
+    enrichment,
+    reconciliation,
+    indexLagBlocks,
+    degradedReason: resolveDegradedReason({
+      manifest,
+      snapshot,
+      orders,
+      droppedRows,
+      indexedBlock,
+      reconciliation,
+      indexLagBlocks,
+    }),
+  }
+}
 
-  return { snapshot, enrichment, reconciliation, indexLagBlocks, degradedReason }
+/**
+ * Degradation taxonomy, most severe first:
+ * - index-corrupt: malformed rows dropped, interior coverage holes (an id
+ *   missing from the index BETWEEN ids it does have), or a fresh index that
+ *   is empty while the chain has orders;
+ * - node-stale: the index checkpoint is materially AHEAD of this RPC node's
+ *   head — the node, not the index, is behind, and 'current' chain state may
+ *   be obsolete;
+ * - index-stale: the index checkpoint lags the chain beyond the bound.
+ */
+function resolveDegradedReason(input: {
+  manifest: OtcManifest
+  snapshot: OtcSnapshot
+  orders: readonly { orderId: bigint }[]
+  droppedRows: number
+  indexedBlock: bigint
+  reconciliation: OtcReconciliationReport
+  indexLagBlocks: bigint
+}): OtcDegradedReason | null {
+  const { manifest, snapshot, orders, droppedRows, indexedBlock, reconciliation, indexLagBlocks } = input
+  if (droppedRows > 0) return 'index-corrupt'
+  if (orders.length === 0 && snapshot.orders.length > 0) return 'index-corrupt'
+  if (hasInteriorHoles(orders, reconciliation)) return 'index-corrupt'
+  if (indexedBlock > snapshot.blockNumber + manifest.maxIndexLagBlocks) return 'node-stale'
+  if (indexLagBlocks > manifest.maxIndexLagBlocks) return 'index-stale'
+  return null
+}
+
+/** An id missing from the index BETWEEN ids it does have is a coverage hole. */
+function hasInteriorHoles(
+  orders: readonly { orderId: bigint }[],
+  reconciliation: OtcReconciliationReport,
+): boolean {
+  if (orders.length === 0) return false
+  let min = orders[0].orderId
+  let max = orders[0].orderId
+  for (const order of orders) {
+    if (order.orderId < min) min = order.orderId
+    if (order.orderId > max) max = order.orderId
+  }
+  return reconciliation.notIndexed.some((orderId) => orderId >= min && orderId <= max)
 }
 
 type WagmiPublicClient = NonNullable<ReturnType<typeof usePublicClient>>
@@ -129,8 +181,12 @@ export function useOtcData(enabled: boolean): OtcDataState {
     [publicClient],
   )
 
+  // Mount-unique key: a cached snapshot from a previous visit must never
+  // render as 'ready' — every mount starts at loading until its own
+  // verified round-trip completes (same rule as the detail page).
+  const mountId = useId()
   const { data, error } = useSWR(
-    enabled && client ? ['ophis-otc-data'] : null,
+    enabled && client ? ['ophis-otc-data', mountId] : null,
     async () => (client ? loadOtcData(client) : null),
     {
       refreshInterval: OTC_DATA_REFRESH_INTERVAL,

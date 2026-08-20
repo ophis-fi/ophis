@@ -41,10 +41,10 @@ function failingFetch(): typeof fetch {
   return jest.fn(async () => ({ ok: false, status: 502, json: async () => ({}) })) as unknown as typeof fetch
 }
 
-function createMockClient(): OtcReaderClient {
+function createMockClient(blockNumber: bigint = CHAIN_BLOCK): OtcReaderClient {
   return {
     getChainId: async () => 1,
-    getLatestBlock: async () => ({ number: CHAIN_BLOCK, hash: BLOCK_HASH }),
+    getLatestBlock: async () => ({ number: blockNumber, hash: BLOCK_HASH }),
     getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: BLOCK_HASH }),
     getCode: async () => MOCK_CODE,
     call: async (request) => {
@@ -133,6 +133,32 @@ describe('loadOtcData', () => {
     })
     expect(result.degradedReason).toBe('index-stale')
     expect(result.enrichment).not.toBeNull()
+  })
+
+  it('degrades as node-stale when the index checkpoint is far ahead of this node', async () => {
+    // fixture index block is 25_787_578; a node 500 blocks behind it
+    const result = await loadOtcData(createMockClient(25_787_078n), {
+      manifest: testManifest(),
+      fetchImpl: subgraphFetch(),
+    })
+    expect(result.degradedReason).toBe('node-stale')
+  })
+
+  it('degrades as index-corrupt on an interior coverage hole', async () => {
+    const fixture = JSON.parse(
+      readFileSync(join(__dirname, '__fixtures__', 'subgraph-orders.json'), 'utf8'),
+    ) as SubgraphFixture
+    const body = fixture.response as { data: { orders: Record<string, unknown>[] } }
+    // remove an interior id (between the newest and oldest the index has)
+    body.data.orders = body.data.orders.filter((row) => row.orderId !== '130')
+    const holeyFetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => body,
+    })) as unknown as typeof fetch
+
+    const result = await loadOtcData(createMockClient(), { manifest: testManifest(), fetchImpl: holeyFetch })
+    expect(result.degradedReason).toBe('index-corrupt')
   })
 
   it('throws when the on-chain read fails (nothing to show)', async () => {

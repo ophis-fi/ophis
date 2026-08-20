@@ -122,11 +122,18 @@ function OtcStateNotices({ state }: { state: OtcDataState }): ReactNode {
           <p>Ages and history may lag behind the chain. On-chain state below remains authoritative and current.</p>
         </Callout>
       )}
+      {state.degradedReason === 'node-stale' && (
+        <Callout tone="warning" title="Network data may be outdated">
+          <p>
+            This RPC node appears to be behind the network. Order states shown below were verified on-chain but may not
+            reflect the latest blocks. Refresh, or try again shortly.
+          </p>
+        </Callout>
+      )}
       {state.degradedReason === 'index-corrupt' && (
         <Callout tone="warning" title="Index data partially invalid">
           <p>
-            Malformed index rows were dropped and are not shown. On-chain state below remains authoritative and
-            current.
+            Malformed index rows were dropped and are not shown. On-chain state below remains authoritative and current.
           </p>
         </Callout>
       )}

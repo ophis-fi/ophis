@@ -125,7 +125,7 @@ export interface OtcEnrichment {
 
 export type OtcDataStatus = 'loading' | 'ready' | 'degraded' | 'unavailable'
 
-export type OtcDegradedReason = 'index-unavailable' | 'index-stale' | 'index-corrupt'
+export type OtcDegradedReason = 'index-unavailable' | 'index-stale' | 'index-corrupt' | 'node-stale'
 
 export interface OtcDataState {
   status: OtcDataStatus

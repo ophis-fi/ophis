@@ -36,6 +36,10 @@ const SELECTORS = { weth: '0x3fc8cef3', nextOrderId: '0x2a58b330', getOrders: '0
 // A subgraph whose checkpoint stops advancing would otherwise stay green
 // forever (immutable rows keep matching). ~1 hour of Ethereum blocks.
 const MAX_INDEX_LAG_BLOCKS = 300n;
+// Entity data can freeze while _meta keeps advancing; the newest indexed id
+// must track the contract's order counter (small allowance for node/index
+// skew around freshly created orders — order flow here is ~1/day).
+const MAX_ORDER_ID_SKEW = 3n;
 
 const FRONTEND_MANIFEST_PATH = 'apps/frontend/apps/cowswap-frontend/src/ophis/otc/otc.const.ts';
 
@@ -300,6 +304,12 @@ async function live() {
   // Zero reconcilable rows is a failure, not a pass: either the node is far
   // behind or the index has diverged. Silence must never look like success.
   assert.ok(rows.length > 0, `no indexed rows reconcilable against this RPC node (${skewSkipped} skew-skipped)`);
+
+  const newestIndexedId = BigInt(allRows[0].orderId);
+  assert.ok(
+    newestIndexedId + MAX_ORDER_ID_SKEW >= nextOrderId - 1n,
+    `index entities frozen: newest indexed id ${newestIndexedId} vs nextOrderId ${nextOrderId}`,
+  );
 
   let activeDisagreements = 0;
   {

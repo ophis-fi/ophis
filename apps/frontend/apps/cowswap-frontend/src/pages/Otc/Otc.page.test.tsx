@@ -221,6 +221,18 @@ describe('OtcPageView', () => {
     expect(screen.getByText('#3')).toBeTruthy()
   })
 
+  it('warns when the RPC node itself is behind the network', () => {
+    renderView(
+      <OtcPageView
+        state={readyState({ status: 'degraded', degradedReason: 'node-stale' })}
+        account={undefined}
+        nowMs={NOW_MS}
+      />,
+    )
+    expect(screen.getByText('Network data may be outdated')).toBeTruthy()
+    expect(screen.getByText('#3')).toBeTruthy()
+  })
+
   it('filters browse rows by token, maker, and order id', () => {
     renderView(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} />)
 
