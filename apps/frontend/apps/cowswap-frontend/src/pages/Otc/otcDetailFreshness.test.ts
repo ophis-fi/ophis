@@ -24,6 +24,12 @@ describe('assessDetailFreshness', () => {
     expect(assessDetailFreshness(state(), 1_050n, MAX_LAG)).toBe('fresh')
   })
 
+  it('cannot certify freshness from a checkpoint the detail read has outrun', () => {
+    // detail block 1061 proves the index checkpoint (1000) is > 60 blocks old
+    expect(assessDetailFreshness(state(), 1_061n, MAX_LAG)).toBe('unknown')
+    expect(assessDetailFreshness(state(), 1_060n, MAX_LAG)).toBe('fresh')
+  })
+
   it('cannot certify freshness from an index checkpoint that is itself stale', () => {
     const stale = state({ status: 'degraded', degradedReason: 'index-stale', indexLagBlocks: 500n })
     expect(assessDetailFreshness(stale, 1_010n, MAX_LAG)).toBe('unknown')
