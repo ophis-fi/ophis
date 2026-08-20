@@ -389,18 +389,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   app.options('*', async (_req, reply) => reply.code(204).send());
   registerTradeRewardRoutes(app);
 
-  // rebates.ophis.fi is the rebate-indexer API host (JSON endpoints + the
-  // per-wallet /tier HTML page). Google was crawling the bare host root and
-  // flagging it 404 (GSC, 2026-06). Fix: redirect the root to the public rebate
-  // explainer (so the flagged URL stops 404ing), and keep the API/tier sub-paths
-  // out of the index. robots ALLOWS exactly `/` (so crawlers can see+follow the
-  // 301) but disallows everything else; `Allow: /$` wins by longest-match over
-  // `Disallow: /` for the root only.
-  app.get('/', {
-    config: {
-      rateLimit: { max: 200, timeWindow: '1 minute' },
-    },
-  }, async (_req, reply) => reply.code(301).redirect('https://docs.ophis.fi/affiliate'));
+  // GET / is registered next to /stats below: the bare host root serves the
+  // same public stats surface on this host (no redirect, no 404).
 
   app.get('/robots.txt', {
     config: {
@@ -579,18 +569,26 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // Cumulative lifetime totals and configuration facts are not gameable, so
   // this is a safe public credibility/proof surface. JSON for API clients;
   // a styled page for a browser (same content-negotiation as /tier).
-  app.get('/stats', {
-    config: {
-      rateLimit: { max: 60, timeWindow: '1 minute' }, // public
-    },
-  }, async (req, reply) => {
+  // The aggregation is a full-table scan and this handler is mounted on TWO
+  // routes (/ and /stats), each with its own rate-limit bucket — without a
+  // snapshot one IP could drive 120 aggregations/minute at the bare root.
+  // 30s is far fresher than the page's own cache-control (300s).
+  let statsSnapshot: { at: number; data: Awaited<ReturnType<typeof computePublicStats>> } | null = null;
+  const STATS_SNAPSHOT_MS = 30_000;
+  const publicStatsHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     // Public production proof surface: restrict to the named mainnet chains so
     // testnet settlement dust (e.g. Sepolia 11155111) never inflates or clutters
     // the cumulative figures. A plain mutable copy for postgres-js array binding.
     const chainIds = [...PRODUCTION_CHAIN_IDS];
     // Aggregation (with the eth-flow-router exclusion on the distinct-trader count)
     // lives in computePublicStats so it is unit-testable against a real DB.
-    const data = await computePublicStats(sql, chainIds);
+    let data;
+    if (statsSnapshot && Date.now() - statsSnapshot.at < STATS_SNAPSHOT_MS) {
+      data = statsSnapshot.data;
+    } else {
+      data = await computePublicStats(sql, chainIds);
+      statsSnapshot = { at: Date.now(), data };
+    }
     const stats: PublicStats = {
       totalVolumeUsd: data.totalVolumeUsd,
       totalTrades: data.totalTrades,
@@ -617,7 +615,25 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // by trades still awaiting a price. Null until the first priced trade.
     const avgTradeUsd = data.avgTradeUsd;
     return { ok: true, ...stats, avgTradeUsd, execution: EXECUTION_FACTS };
-  });
+  };
+
+  app.get('/stats', {
+    config: {
+      rateLimit: { max: 60, timeWindow: '1 minute' }, // public
+    },
+  }, publicStatsHandler);
+
+  // The bare host root serves the SAME public stats surface on this host.
+  // History: the root 404'd (GSC flag, 2026-06), then 301'd to the docs
+  // (#566), which bounced visitors off-host and conflated the rebate program
+  // with the affiliate program; since 2026-08-20 the root must display the
+  // stats directly (operator decision). robots' `Allow: /$` keeps the root
+  // crawlable while API sub-paths stay out of the index.
+  app.get('/', {
+    config: {
+      rateLimit: { max: 60, timeWindow: '1 minute' }, // public
+    },
+  }, publicStatsHandler);
 
   // Public daily aggregates consumed by DefiLlama. This deliberately exposes
   // protocol-level totals only: no wallets, orders, referrals, current-cycle
