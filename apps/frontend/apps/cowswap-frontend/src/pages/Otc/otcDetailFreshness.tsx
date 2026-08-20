@@ -22,8 +22,10 @@ export function assessDetailFreshness(
   const indexedBlock = state.enrichment?.indexedBlock ?? null
   if (indexedBlock !== null && detailBlockNumber !== null) {
     if (indexedBlock > detailBlockNumber + maxIndexLagBlocks) return 'stale'
-    // An index checkpoint that is itself stale can prove a backend STALE
-    // (above) but cannot prove it fresh: the comparison loses power.
+    // A checkpoint the detail read has provably outrun — or one the list
+    // comparison already found stale — can prove a backend STALE (above) but
+    // cannot certify it fresh: the evidence itself is too old.
+    if (detailBlockNumber > indexedBlock + maxIndexLagBlocks) return 'unknown'
     return state.degradedReason === 'index-stale' ? 'unknown' : 'fresh'
   }
   if (state.degradedReason === 'node-stale') return 'stale'
