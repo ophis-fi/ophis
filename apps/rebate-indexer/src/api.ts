@@ -6,6 +6,7 @@ import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
+import { renderRootPage } from './root-page.js';
 import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
 import { isDefiLlamaBackfillComplete } from './defillamaBackfill.js';
 import { computeDefiLlamaDay, computePublicStats } from './stats.js';
@@ -390,17 +391,19 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   registerTradeRewardRoutes(app);
 
   // rebates.ophis.fi is the rebate-indexer API host (JSON endpoints + the
-  // per-wallet /tier HTML page). Google was crawling the bare host root and
-  // flagging it 404 (GSC, 2026-06). Fix: redirect the root to the public rebate
-  // explainer (so the flagged URL stops 404ing), and keep the API/tier sub-paths
-  // out of the index. robots ALLOWS exactly `/` (so crawlers can see+follow the
-  // 301) but disallows everything else; `Allow: /$` wins by longest-match over
-  // `Disallow: /` for the root only.
+  // per-wallet /tier HTML page). The bare root must answer 200 ON THIS HOST:
+  // Google flagged the old 404 (GSC, 2026-06), and the interim 301 to
+  // docs.ophis.fi/affiliate both bounced visitors off-host and conflated the
+  // rebate program with the affiliate program (removed 2026-08-20). The
+  // landing page is static and noindex, so robots' `Allow: /$` keeps the
+  // root crawlable while every API/tier sub-path stays out of the index
+  // (`Allow: /$` wins by longest-match over `Disallow: /` for the root only).
   app.get('/', {
     config: {
       rateLimit: { max: 200, timeWindow: '1 minute' },
     },
-  }, async (_req, reply) => reply.code(301).redirect('https://docs.ophis.fi/affiliate'));
+  }, async (_req, reply) =>
+    reply.type('text/html; charset=utf-8').send(renderRootPage()));
 
   app.get('/robots.txt', {
     config: {
