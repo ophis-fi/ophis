@@ -81,7 +81,7 @@ groups:
           chain: robinhood
         annotations:
           summary: "{{ $labels.instance }} disk {{ $labels.device }} >80% full"
-          description: "A Cadia WSL2 ext4 filesystem is over 80% used. The whole stack shares one rootfs vhdx — /var/lib/docker (Postgres + container logs + build cache) and both Nitro datadirs — so filling it to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 OP outage mode). Connect (`tailscale ssh clement@cadia-wsl`), run `df -h`. Reclaim in the order that cleared the 2026-08-20 page: `docker builder prune -af` (stale build cache, ~100GB that day), then `truncate -s 0` the biggest /var/lib/docker/containers/*/*-json.log (never rm). NEVER delete /home/clement/robinhood-nitro-data or /home/clement/robinhood-nitro-genesis-data — both are bind-mounted into running Nitro containers. /home/clement/nitro-download (~115GB consumed bringup snapshot) is safe to delete once the node is fully caught up."
+          description: "A Cadia WSL2 ext4 filesystem is over 80% used. The whole stack shares one rootfs vhdx — /var/lib/docker (Postgres + container logs + build cache) and both Nitro datadirs — so filling it to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 OP outage mode). Connect (`tailscale ssh clement@cadia-wsl`), run `df -h`. Reclaim in the order that cleared the 2026-08-20 page: `sudo docker builder prune -af` (stale build cache, ~100GB that day), then `sudo truncate -s 0` the biggest /var/lib/docker/containers/*/*-json.log (find them with `sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'`; never rm). NEVER delete /home/clement/robinhood-nitro-data or /home/clement/robinhood-nitro-genesis-data — both are bind-mounted into running Nitro containers. The consumed bringup snapshot in the DOWNLOAD_DIR staging dir (on Cadia /home/clement/nitro-download, ~115GB on this same rootfs; restore-snapshot.sh's default is /mnt/d/nitro-download) is safe to delete once the node is fully caught up."
       - alert: OphisUniHostDiskCritical
         expr: |
           max by (instance, device) (
@@ -96,7 +96,7 @@ groups:
           chain: robinhood
         annotations:
           summary: "{{ $labels.instance }} disk {{ $labels.device }} >90% full, Postgres ENOSPC imminent"
-          description: "A Cadia WSL2 ext4 filesystem is over 90% used. Postgres will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: `tailscale ssh clement@cadia-wsl`, then `docker builder prune -af` and truncate the largest /var/lib/docker/containers/*/*-json.log (never rm). NEVER delete the Nitro datadirs (/home/clement/robinhood-nitro-data, /home/clement/robinhood-nitro-genesis-data) — both are bind-mounted into running containers; deleting one forces a genesis re-sync."
+          description: "A Cadia WSL2 ext4 filesystem is over 90% used. Postgres will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: `tailscale ssh clement@cadia-wsl`, then `sudo docker builder prune -af` and `sudo truncate -s 0` the largest /var/lib/docker/containers/*/*-json.log (never rm). NEVER delete the Nitro datadirs (/home/clement/robinhood-nitro-data, /home/clement/robinhood-nitro-genesis-data) — both are bind-mounted into running containers; deleting one forces a genesis re-sync."
       - alert: OphisUniNodeExporterDown
         expr: up{job="node-exporter"} == 0
         for: 10m
