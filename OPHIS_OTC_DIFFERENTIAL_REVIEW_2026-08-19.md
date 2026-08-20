@@ -18,6 +18,18 @@ A five-lens adversarial review (correctness, security, spec-compliance, accessib
 | Contested (1-of-2) | 29 — 12 fixed, 17 triaged as documented deferrals or refuted on re-read |
 | Refuted outright | 2 |
 
+In addition, an independent external review (OpenAI Codex, gpt-5.6-sol at xhigh reasoning) was run pre-merge in five iterative rounds on 2026-08-20:
+
+| Codex round | Findings | Outcome |
+|---|---|---|
+| 1 | 5 (1×P1: missing eth_chainId guard) | all confirmed, all fixed |
+| 2 | 5 (1×P1: wagmi signer-API denylist gap → allowlist) | all confirmed, all fixed |
+| 3 | 4 (mount-fresh list key, node-stale detection, coverage holes, canary entity freeze) | all confirmed, all fixed |
+| 4 | 3 (node-stale ordering + detail propagation, canary symmetry) | all confirmed, all fixed |
+| 5 | 0 — **verdict: "patch is correct"** | clean |
+
+Cumulative: 17/17 external findings confirmed and fixed. Notable additions from these rounds: chain-id verification in both readers, a wagmi named-import ALLOWLIST (usePublicClient only) on top of recursive signer-API content scans, chain-authoritative status with index lifecycle claims explicitly labeled untrusted, a degradation taxonomy of node-stale > index-corrupt > index-stale surfaced on both views, mount-fresh SWR keys on both views, and canary checks for both lag directions plus frozen entity data.
+
 Open findings after fixes: **none at critical/high severity.** Remaining items are recorded deferrals (below), each either spec-optional, scheduled for a later milestone by the plan itself, or a deliberate convention match.
 
 ## What Changed (risk-ranked)
