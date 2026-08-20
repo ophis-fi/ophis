@@ -6,7 +6,6 @@ import { isIP } from 'node:net';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
-import { renderRootPage } from './root-page.js';
 import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
 import { isDefiLlamaBackfillComplete } from './defillamaBackfill.js';
 import { computeDefiLlamaDay, computePublicStats } from './stats.js';
@@ -390,20 +389,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   app.options('*', async (_req, reply) => reply.code(204).send());
   registerTradeRewardRoutes(app);
 
-  // rebates.ophis.fi is the rebate-indexer API host (JSON endpoints + the
-  // per-wallet /tier HTML page). The bare root must answer 200 ON THIS HOST:
-  // Google flagged the old 404 (GSC, 2026-06), and the interim 301 to
-  // docs.ophis.fi/affiliate both bounced visitors off-host and conflated the
-  // rebate program with the affiliate program (removed 2026-08-20). The
-  // landing page is static and noindex, so robots' `Allow: /$` keeps the
-  // root crawlable while every API/tier sub-path stays out of the index
-  // (`Allow: /$` wins by longest-match over `Disallow: /` for the root only).
-  app.get('/', {
-    config: {
-      rateLimit: { max: 200, timeWindow: '1 minute' },
-    },
-  }, async (_req, reply) =>
-    reply.type('text/html; charset=utf-8').send(renderRootPage()));
+  // GET / is registered next to /stats below: the bare host root serves the
+  // same public stats surface on this host (no redirect, no 404).
 
   app.get('/robots.txt', {
     config: {
@@ -582,11 +569,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // Cumulative lifetime totals and configuration facts are not gameable, so
   // this is a safe public credibility/proof surface. JSON for API clients;
   // a styled page for a browser (same content-negotiation as /tier).
-  app.get('/stats', {
-    config: {
-      rateLimit: { max: 60, timeWindow: '1 minute' }, // public
-    },
-  }, async (req, reply) => {
+  const publicStatsHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     // Public production proof surface: restrict to the named mainnet chains so
     // testnet settlement dust (e.g. Sepolia 11155111) never inflates or clutters
     // the cumulative figures. A plain mutable copy for postgres-js array binding.
@@ -620,7 +603,25 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // by trades still awaiting a price. Null until the first priced trade.
     const avgTradeUsd = data.avgTradeUsd;
     return { ok: true, ...stats, avgTradeUsd, execution: EXECUTION_FACTS };
-  });
+  };
+
+  app.get('/stats', {
+    config: {
+      rateLimit: { max: 60, timeWindow: '1 minute' }, // public
+    },
+  }, publicStatsHandler);
+
+  // The bare host root serves the SAME public stats surface on this host.
+  // History: the root 404'd (GSC flag, 2026-06), then 301'd to the docs
+  // (#566), which bounced visitors off-host and conflated the rebate program
+  // with the affiliate program; since 2026-08-20 the root must display the
+  // stats directly (operator decision). robots' `Allow: /$` keeps the root
+  // crawlable while API sub-paths stay out of the index.
+  app.get('/', {
+    config: {
+      rateLimit: { max: 60, timeWindow: '1 minute' }, // public
+    },
+  }, publicStatsHandler);
 
   // Public daily aggregates consumed by DefiLlama. This deliberately exposes
   // protocol-level totals only: no wallets, orders, referrals, current-cycle
