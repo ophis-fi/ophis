@@ -43,6 +43,7 @@ function failingFetch(): typeof fetch {
 
 function createMockClient(): OtcReaderClient {
   return {
+    getChainId: async () => 1,
     getLatestBlock: async () => ({ number: CHAIN_BLOCK, hash: BLOCK_HASH }),
     getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: BLOCK_HASH }),
     getCode: async () => MOCK_CODE,

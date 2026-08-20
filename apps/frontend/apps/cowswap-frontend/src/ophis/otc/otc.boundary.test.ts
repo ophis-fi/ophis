@@ -39,16 +39,37 @@ const PAGES_FORBIDDEN_FRAGMENTS = SHARED_FORBIDDEN_FRAGMENTS
 
 const PAGES_DIR = join(__dirname, '..', '..', 'pages', 'Otc')
 
+// Signer-capable APIs from otherwise-allowed packages (e.g. wagmi exports
+// both usePublicClient and useWriteContract), plus dynamic import() which
+// would evade the specifier scan entirely.
+const SIGNER_API_PATTERN =
+  /\b(useWriteContract|useSendTransaction|useSignMessage|useSignTypedData|useConnectorClient|getWalletClient|walletClient|writeContract|sendTransaction|sendRawTransaction|signTransaction|signTypedData|signMessage|prepareTransactionRequest|requestAddresses|watchAsset)\b|import\(/
+
+interface ProductionSource {
+  file: string
+  source: string
+}
+
+/** Recursive: a write path hidden in a nested directory must not escape the scan. */
+function productionSources(directory: string): ProductionSource[] {
+  const entries = readdirSync(directory, { withFileTypes: true })
+  const sources: ProductionSource[] = []
+  for (const entry of entries) {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) {
+      sources.push(...productionSources(path))
+    } else if ((entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) && !entry.name.includes('.test.')) {
+      sources.push({ file: path, source: readFileSync(path, 'utf8') })
+    }
+  }
+  return sources
+}
+
 function productionImports(directory: string): string[] {
-  const sourceFiles = readdirSync(directory).filter(
-    (file) => (file.endsWith('.ts') || file.endsWith('.tsx')) && !file.includes('.test.'),
-  )
-  expect(sourceFiles.length).toBeGreaterThan(0)
+  const sources = productionSources(directory)
+  expect(sources.length).toBeGreaterThan(0)
   const importPattern = /from\s+['"]([^'"]+)['"]/g
-  return sourceFiles.flatMap((file) => {
-    const source = readFileSync(join(directory, file), 'utf8')
-    return Array.from(source.matchAll(importPattern), (match) => match[1] ?? '')
-  })
+  return sources.flatMap(({ source }) => Array.from(source.matchAll(importPattern), (match) => match[1] ?? ''))
 }
 
 // Independently pinned facts (verified 2026-08-19 via publicnode, drpc, and
@@ -70,6 +91,15 @@ describe('Ophis OTC boundary', () => {
     const imports = productionImports(PAGES_DIR)
     for (const fragment of PAGES_FORBIDDEN_FRAGMENTS) {
       expect(imports.filter((value) => value.includes(fragment))).toEqual([])
+    }
+  })
+
+  it('references no signer-capable API and no dynamic import in any production source', () => {
+    for (const directory of [__dirname, PAGES_DIR]) {
+      for (const { file, source } of productionSources(directory)) {
+        const match = source.match(SIGNER_API_PATTERN)
+        expect(match ? `${file}: ${match[0]}` : null).toBeNull()
+      }
     }
   })
 

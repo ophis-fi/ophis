@@ -23,6 +23,11 @@ async function callBounded(client: OtcReaderClient, request: OtcReadCall, maxRet
   return response.data
 }
 
+async function requirePinnedChain(client: OtcReaderClient, manifest: OtcManifest): Promise<void> {
+  const chainId = await client.getChainId()
+  if (chainId !== manifest.chainId) throw new Error('Ophis OTC wrong chain')
+}
+
 async function requirePinnedCode(
   client: OtcReaderClient,
   address: Address,
@@ -108,7 +113,7 @@ export interface OtcOrderReadResult {
 /**
  * Direct, fail-closed read of one order — the fresh re-read the detail view
  * performs so an indexed row is never presented as current state. Enforces
- * the SAME guards as the snapshot reader: pinned runtime code hash, weth()
+ * the SAME guards as the snapshot reader: chain id, pinned runtime code hash, weth()
  * wiring, single-block pinning, and a post-read block-hash confirmation.
  */
 export async function readOtcOrder(
@@ -116,6 +121,7 @@ export async function readOtcOrder(
   orderId: bigint,
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
 ): Promise<OtcOrderReadResult> {
+  await requirePinnedChain(client, manifest)
   const block = await client.getLatestBlock()
   if (!block.hash) throw new Error('Ophis OTC block is not identifiable')
 
@@ -153,6 +159,7 @@ export async function readOtcSnapshot(
   client: OtcReaderClient,
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
 ): Promise<OtcSnapshot> {
+  await requirePinnedChain(client, manifest)
   const block = await client.getLatestBlock()
   if (!block.hash) throw new Error('Ophis OTC block is not identifiable')
 

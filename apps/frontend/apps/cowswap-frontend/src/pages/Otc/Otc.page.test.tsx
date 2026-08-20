@@ -162,6 +162,8 @@ describe('OtcPageView', () => {
     expect(screen.getByText('#0')).toBeTruthy()
     expect(screen.queryByText('#1')).toBeNull() // other maker
     expect(screen.getByText('Cancelled')).toBeTruthy()
+    // resolved rows are no longer escrowed: badge only on the two active rows
+    expect(screen.getAllByText('Escrowed')).toHaveLength(2)
   })
 
   it('asks for a wallet connection under My orders when disconnected', () => {

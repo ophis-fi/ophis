@@ -274,7 +274,7 @@ async function live() {
   const nextOrderId = decodeUintWord(word(await ethCall(SELECTORS.nextOrderId), 0));
   assert.ok(nextOrderId > 0n, 'nextOrderId() returned zero');
 
-  const data = await fetchSubgraphOrders(3);
+  const data = await fetchSubgraphOrders(5);
   const indexedBlock = BigInt(data._meta.block.number);
   const allRows = data.orders;
   assert.ok(allRows.length > 0, 'subgraph returned no orders');
@@ -287,9 +287,12 @@ async function live() {
   if (skewSkipped > 0) {
     console.log(`note: ${skewSkipped} indexed order(s) ahead of this RPC node's nextOrderId — skipped`);
   }
+  // Zero reconcilable rows is a failure, not a pass: either the node is far
+  // behind or the index has diverged. Silence must never look like success.
+  assert.ok(rows.length > 0, `no indexed rows reconcilable against this RPC node (${skewSkipped} skew-skipped)`);
 
   let activeDisagreements = 0;
-  if (rows.length > 0) {
+  {
     const ids = rows.map((row) => BigInt(row.orderId));
     const onchain = decodeOrdersResult(await ethCall(encodeGetOrdersCall(ids)), ids);
     for (const [index, row] of rows.entries()) {

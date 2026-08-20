@@ -108,6 +108,17 @@ describe('buildOtcDisplayRows', () => {
     expect(rows[0].verified).toBe(false)
   })
 
+  it('never labels an unverified inactive order as filled or cancelled', () => {
+    const state = readyState()
+    // Drop id 1 from the verified set: its index-claimed 'filled' must not render.
+    state.reconciliation = { ...state.reconciliation!, verifiedIds: [0n, 3n] }
+    const rows = buildOtcDisplayRows(state)
+    expect(rows[2].order.orderId).toBe(1n)
+    expect(rows[2].resolution).toBe('inactive')
+    // id 0 stays verified, so its cancelled label is trusted
+    expect(rows[3].resolution).toBe('cancelled')
+  })
+
   it('returns no rows without a snapshot', () => {
     const state: OtcDataState = {
       status: 'unavailable',

@@ -23,6 +23,7 @@ function testManifest(): OtcManifest {
 
 interface MockOptions {
   existing?: boolean
+  chainId?: number
   wethAddress?: Address
   code?: Hex
   reReadHash?: Hex
@@ -31,6 +32,7 @@ interface MockOptions {
 function createMockClient(options: MockOptions = {}): OtcReaderClient {
   const existing = options.existing ?? true
   return {
+    getChainId: async () => options.chainId ?? 1,
     getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH }),
     getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: options.reReadHash ?? BLOCK_HASH }),
     getCode: async () => options.code ?? MOCK_CODE,
@@ -85,6 +87,12 @@ describe('readOtcOrder', () => {
     const result = await readOtcOrder(createMockClient({ existing: false }), 42n, testManifest())
     expect(result.order).toBeNull()
     expect(result.blockNumber).toBe(200n)
+  })
+
+  it('fails closed when the RPC serves a different chain', async () => {
+    await expect(readOtcOrder(createMockClient({ chainId: 10 }), 42n, testManifest())).rejects.toThrow(
+      'Ophis OTC wrong chain',
+    )
   })
 
   it('fails closed on a code hash mismatch', async () => {

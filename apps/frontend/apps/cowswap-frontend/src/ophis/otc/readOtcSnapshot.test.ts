@@ -45,6 +45,7 @@ function orderTupleFor(orderId: bigint): {
 
 interface MockClientOptions {
   nextOrderId: bigint
+  chainId?: number
   wethAddress?: Address
   code?: Hex
   reReadHash?: Hex
@@ -60,6 +61,7 @@ function createMockClient(options: MockClientOptions): MockClient {
 
   return {
     calls,
+    getChainId: async () => options.chainId ?? 1,
     getLatestBlock: async () => ({ number: 100n, hash: BLOCK_HASH }),
     getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: options.reReadHash ?? BLOCK_HASH }),
     getCode: async () => options.code ?? MOCK_CODE,
@@ -125,6 +127,11 @@ describe('readOtcSnapshot', () => {
       .filter((decoded) => decoded.functionName === 'getOrders')
       .map((decoded) => (decoded.args as readonly [readonly bigint[]])[0].length)
     expect(batchSizes).toEqual([2, 1])
+  })
+
+  it('fails closed when the RPC serves a different chain', async () => {
+    const client = createMockClient({ nextOrderId: 3n, chainId: 10 })
+    await expect(readOtcSnapshot(client, testManifest())).rejects.toThrow('Ophis OTC wrong chain')
   })
 
   it('fails closed on a runtime code hash mismatch', async () => {

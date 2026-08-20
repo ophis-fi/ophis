@@ -103,6 +103,7 @@ type WagmiPublicClient = NonNullable<ReturnType<typeof usePublicClient>>
 /** Wrap a viem PublicClient into the narrow, transaction-free reader interface. */
 export function toOtcReaderClient(publicClient: WagmiPublicClient): OtcReaderClient {
   return {
+    getChainId: () => publicClient.getChainId(),
     getLatestBlock: async () => publicClient.getBlock({ blockTag: 'latest' }),
     getBlockByNumber: async (blockNumber) => publicClient.getBlock({ blockNumber }),
     getCode: (address, blockNumber) => publicClient.getCode({ address, blockNumber }),

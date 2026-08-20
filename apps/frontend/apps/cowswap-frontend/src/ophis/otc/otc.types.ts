@@ -38,6 +38,7 @@ export interface OtcReadCall {
 
 /** Narrow read-only adapter. It deliberately has no transaction methods. */
 export interface OtcReaderClient {
+  getChainId(): Promise<number>
   getLatestBlock(): Promise<OtcBlock>
   getBlockByNumber(blockNumber: bigint): Promise<OtcBlock>
   getCode(address: Address, blockNumber: bigint): Promise<Hex | undefined>

@@ -24,8 +24,15 @@ export interface OtcDisplayRow {
   rate: OtcRate | null
 }
 
-function resolveResolution(order: OtcOrder, state: OtcDataState): OtcResolution {
+/**
+ * Chain state decides active/inactive. The filled-vs-cancelled distinction is
+ * index-derived and unverifiable on-chain without event history, so it is
+ * shown ONLY for rows whose indexed copy reconciled exactly against the
+ * contract; anything else stays the chain-authoritative 'inactive'.
+ */
+function resolveResolution(order: OtcOrder, state: OtcDataState, verifiedIds: ReadonlySet<string>): OtcResolution {
   if (order.active) return 'active'
+  if (!verifiedIds.has(order.orderId.toString())) return 'inactive'
   const indexed = state.enrichment?.byOrderId.get(order.orderId.toString())
   if (indexed?.filledAt != null) return 'filled'
   if (indexed?.cancelledAt != null) return 'cancelled'
@@ -54,7 +61,7 @@ export function buildOtcDisplayRows(state: OtcDataState): OtcDisplayRow[] {
       verified: verifiedIds.has(key),
       mismatch: mismatchedIds.has(key),
       createdAt: state.enrichment?.byOrderId.get(key)?.createdAt ?? null,
-      resolution: resolveResolution(order, state),
+      resolution: resolveResolution(order, state, verifiedIds),
       rate: computeRowRate(order),
     }
   })
