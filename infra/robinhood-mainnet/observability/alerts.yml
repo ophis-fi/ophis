@@ -62,10 +62,11 @@ groups:
       # ENOSPC checkpoint crash-loop and 500ing /quote + /auction. The app-level
       # up{} alerts stayed green (healthchecks hit stateless routes), so disk
       # exhaustion was invisible. These alerts page BEFORE Postgres dies. This
-      # stack runs on the native-Linux VM (Docker on Linux, not Colima). The
-      # private VM IP belongs in docs/operations/*.private.md, not committed
-      # alerts. Filter fstype="ext4" so pseudo/overlay filesystems are ignored;
-      # max by(instance, device) dedupes the underlying device per scraped VM.
+      # stack runs inside the Cadia WSL2 distro (Docker on Linux inside WSL2;
+      # the distro's ext4 vhdx sits on the D: NVMe and appears as a single
+      # /dev/sdX rootfs, so /var/lib/docker AND both Nitro datadirs share one
+      # filesystem). Filter fstype="ext4" so pseudo/overlay filesystems are
+      # ignored; max by(instance, device) dedupes the device per scraped host.
       - alert: OphisUniHostDiskLow
         expr: |
           max by (instance, device) (
@@ -80,7 +81,7 @@ groups:
           chain: robinhood
         annotations:
           summary: "{{ $labels.instance }} disk {{ $labels.device }} >80% full"
-          description: "A VM ext4 filesystem is over 80% used. The docker data disk (/var/lib/docker: Postgres + container logs) filling to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 outage). SSH to the VM (`ssh -p 24005 root@<VM_IP>`) and run `df -h`; find the hogs with `sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'` and `truncate -s 0` them (never rm). See docs/operations/*.private.md for the private VM IP."
+          description: "A Cadia WSL2 ext4 filesystem is over 80% used. The whole stack shares one rootfs vhdx — /var/lib/docker (Postgres + container logs + build cache) and both Nitro datadirs — so filling it to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 OP outage mode). Connect (`tailscale ssh clement@cadia-wsl`), run `df -h`. Reclaim in the order that cleared the 2026-08-20 page: `sudo docker builder prune -af` (stale build cache, ~100GB that day), then `sudo truncate -s 0` the biggest /var/lib/docker/containers/*/*-json.log (find them with `sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'`; never rm). NEVER delete /home/clement/robinhood-nitro-data or /home/clement/robinhood-nitro-genesis-data — both are bind-mounted into running Nitro containers. The consumed bringup snapshot in the DOWNLOAD_DIR staging dir (on Cadia /home/clement/nitro-download, ~115GB on this same rootfs; restore-snapshot.sh's default is /mnt/d/nitro-download) is safe to delete once the node is fully caught up."
       - alert: OphisUniHostDiskCritical
         expr: |
           max by (instance, device) (
@@ -95,7 +96,7 @@ groups:
           chain: robinhood
         annotations:
           summary: "{{ $labels.instance }} disk {{ $labels.device }} >90% full, Postgres ENOSPC imminent"
-          description: "A VM ext4 filesystem is over 90% used. Postgres will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: SSH to the VM (`ssh -p 24005 root@<VM_IP>`) and truncate the largest /var/lib/docker/containers/*/*-json.log (eRPC rpc-proxy is the usual culprit; never rm). See docs/operations/*.private.md for the private VM IP. Runbook: infra/robinhood-mainnet/README.md, 'disk full -> Postgres crash-loop'."
+          description: "A Cadia WSL2 ext4 filesystem is over 90% used. Postgres will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: `tailscale ssh clement@cadia-wsl`, then `sudo docker builder prune -af` and `sudo truncate -s 0` the largest /var/lib/docker/containers/*/*-json.log (never rm). NEVER delete the Nitro datadirs (/home/clement/robinhood-nitro-data, /home/clement/robinhood-nitro-genesis-data) — both are bind-mounted into running containers; deleting one forces a genesis re-sync."
       - alert: OphisUniNodeExporterDown
         expr: up{job="node-exporter"} == 0
         for: 10m
@@ -104,7 +105,7 @@ groups:
           chain: robinhood
         annotations:
           summary: "node-exporter scrape failing for >10m, disk alerting is blind"
-          description: "Prometheus cannot reach node-exporter:9100 on {{ $labels.instance }}. The disk-exhaustion alerts (OphisUniHostDisk*) cannot fire while this is down. Check `docker compose ps node-exporter` on the VM."
+          description: "Prometheus cannot reach node-exporter:9100 on {{ $labels.instance }}. The disk-exhaustion alerts (OphisUniHostDisk*) cannot fire while this is down. On Cadia (`tailscale ssh clement@cadia-wsl`): check `docker compose ps node-exporter` in the robinhood-mainnet compose project."
 
   - name: ophis-uni-settlement-health
     interval: 30s
