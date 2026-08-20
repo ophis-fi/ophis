@@ -70,8 +70,14 @@ export function buildOtcDisplayRows(state: OtcDataState): OtcDisplayRow[] {
   })
 }
 
+/**
+ * Browse is the official liquidity surface: active orders whose BOTH legs are
+ * Ophis-curated (spec: "Browse: active allowlisted orders" — discovery-level
+ * policy enforcement). Unreviewed-token orders stay reachable read-only via
+ * My orders and direct detail links, never as browseable liquidity.
+ */
 export function filterBrowseRows(rows: OtcDisplayRow[]): OtcDisplayRow[] {
-  return rows.filter((row) => row.resolution === 'active')
+  return rows.filter((row) => row.resolution === 'active' && row.reviewed)
 }
 
 export function filterMakerRows(rows: OtcDisplayRow[], account: string): OtcDisplayRow[] {

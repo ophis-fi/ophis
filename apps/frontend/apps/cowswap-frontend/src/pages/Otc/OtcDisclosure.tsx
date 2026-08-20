@@ -16,7 +16,7 @@ export function OtcDisclosure(): ReactNode {
           and cannot pause.
         </li>
         <li>Creating and cancelling orders costs Ethereum gas; nothing on this surface is gas-free.</li>
-        <li>Orders do not expire on-chain. Only cancellation by the maker ends an order.</li>
+        <li>Orders do not expire on-chain. An order stays open until it is filled or the maker cancels it.</li>
         <li>Fills are all-or-nothing. Partial fills are not supported.</li>
         <li>Public transactions may be raced by other participants.</li>
         <li>Only Ophis-reviewed assets are supported in this interface. Unreviewed tokens are shown read-only.</li>

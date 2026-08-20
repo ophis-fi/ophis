@@ -134,9 +134,10 @@ describe('buildOtcDisplayRows', () => {
 })
 
 describe('filters', () => {
-  it('browse keeps only active orders', () => {
+  it('browse keeps only active ALLOWLISTED orders', () => {
+    // id 3 is active but carries an unreviewed token: excluded from Browse
     const rows = filterBrowseRows(buildOtcDisplayRows(readyState()))
-    expect(rows.map((row) => row.order.orderId)).toEqual([3n, 2n])
+    expect(rows.map((row) => row.order.orderId)).toEqual([2n])
   })
 
   it('maker view keeps all of the connected wallet orders, case-insensitively', () => {

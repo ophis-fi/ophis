@@ -212,10 +212,15 @@ export function OtcOrderDetailPage(): ReactNode {
 
   const nowMs = Date.now()
 
+  // The node-freshness assessment comes from the list hook; terms must not
+  // render before it resolves, or a stale node's order could appear verified
+  // for the interval before the warning arrives.
+  const freshnessPending = state.status === 'loading'
+
   return (
     <OtcOrderDetailView
       orderId={orderId}
-      loading={!data && !error}
+      loading={(!data && !error) || freshnessPending}
       failed={Boolean(error)}
       nodeStale={state.degradedReason === 'node-stale'}
       order={data?.order ?? null}

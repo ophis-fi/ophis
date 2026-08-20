@@ -51,6 +51,7 @@ function StatusCell({ row }: { row: OtcDisplayRow }): ReactNode {
   return (
     <span>
       <Badge tone={row.resolution === 'active' ? 'live' : 'draft'}>{RESOLUTION_LABEL[row.resolution]}</Badge>{' '}
+      {row.verified && <Badge tone="audit">Verified on-chain</Badge>}{' '}
       {row.resolution === 'active' && <Badge tone="audit">Escrowed</Badge>}{' '}
       {row.indexClaim && <RawNote>index: {row.indexClaim}</RawNote>}{' '}
       {row.mismatch && <Badge tone="planned">Index mismatch</Badge>}
