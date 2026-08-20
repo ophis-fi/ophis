@@ -82,12 +82,18 @@ function TokenLeg({ label, token, amount }: { label: string; token: string; amou
   )
 }
 
+export type OtcNodeFreshness = 'fresh' | 'stale' | 'unknown'
+
 interface OtcOrderDetailViewProps {
   orderId: bigint
   loading: boolean
   failed: boolean
-  /** The list hook detected this RPC node behind the network: warn before terms. */
-  nodeStale: boolean
+  /**
+   * Node-freshness assessment from the list hook: 'stale' = this RPC node is
+   * provably behind the network; 'unknown' = the assessment itself failed
+   * (snapshot or index unavailable) — never silently treated as fresh.
+   */
+  freshness: OtcNodeFreshness
   order: OtcOrder | null
   blockNumber: bigint | null
   indexed: OtcIndexedOrder | null
@@ -152,7 +158,7 @@ function DetailBody({
 }
 
 export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
-  const { orderId, loading, failed, nodeStale } = props
+  const { orderId, loading, failed, freshness } = props
 
   return (
     <PageShell
@@ -161,11 +167,19 @@ export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
       title={`Order #${orderId.toString()}`}
       lede="Read-only order detail, verified directly against Ethereum."
     >
-      {nodeStale && (
+      {freshness === 'stale' && (
         <Callout tone="warning" title="Network data may be outdated">
           <p>
             This RPC node appears to be behind the network. The order state below was verified on-chain but may not
             reflect the latest blocks.
+          </p>
+        </Callout>
+      )}
+      {freshness === 'unknown' && !loading && !failed && (
+        <Callout tone="warning" title="Freshness could not be assessed">
+          <p>
+            The independent freshness comparison is unavailable right now. The order below passed direct on-chain
+            verification at the shown block, but it may not reflect the latest network state.
           </p>
         </Callout>
       )}
@@ -216,15 +230,23 @@ export function OtcOrderDetailPage(): ReactNode {
   // render before it resolves, or a stale node's order could appear verified
   // for the interval before the warning arrives. A terminal failure of the
   // direct read outranks the pending freshness check: loading and failed are
-  // mutually exclusive.
+  // mutually exclusive. When the assessment itself fails (snapshot or index
+  // unavailable), freshness is UNKNOWN and the view must say so — never
+  // silently treated as fresh.
   const freshnessPending = state.status === 'loading'
+  const freshness: OtcNodeFreshness =
+    state.degradedReason === 'node-stale'
+      ? 'stale'
+      : state.status === 'unavailable' || state.degradedReason === 'index-unavailable'
+        ? 'unknown'
+        : 'fresh'
 
   return (
     <OtcOrderDetailView
       orderId={orderId}
       loading={!error && (!data || freshnessPending)}
       failed={Boolean(error)}
-      nodeStale={state.degradedReason === 'node-stale'}
+      freshness={freshness}
       order={data?.order ?? null}
       blockNumber={data?.blockNumber ?? null}
       indexed={indexed}
