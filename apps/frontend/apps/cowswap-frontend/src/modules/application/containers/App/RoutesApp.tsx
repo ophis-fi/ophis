@@ -55,6 +55,21 @@ const LeaderboardPage = lazy(() =>
     default: m.LeaderboardPage,
   })),
 )
+// OTC Milestone B (2026-08-19): read-only escrow-order browser + detail.
+// Flag-gated off in production (isOtcEnabled; the pages self-guard and
+// redirect home when disabled). No transaction selectors are reachable —
+// enforced by src/ophis/otc/otc.boundary.test.ts.
+// AGENTS.md-compliant lazy pattern — see ProfilePage above.
+const OtcPage = lazy(() =>
+  import(/* webpackChunkName: "ophis_otc" */ 'pages/Otc').then((m) => ({
+    default: m.OtcPage,
+  })),
+)
+const OtcOrderDetailPage = lazy(() =>
+  import(/* webpackChunkName: "ophis_otc" */ 'pages/Otc').then((m) => ({
+    default: m.OtcOrderDetailPage,
+  })),
+)
 // Phase A3 tail (2026-05-23): orientation/navigation hub page.
 // AGENTS.md-compliant lazy pattern — see ProfilePage above.
 const LearnPage = lazy(() =>
@@ -161,6 +176,9 @@ const lazyRoutes: LazyRouteProps[] = [
   // any in-app or bookmarked hit. `replace` keeps it out of history.
   { route: RoutesEnum.AFFILIATE, element: <Navigate to={RoutesEnum.PROFILE} replace /> },
   { route: RoutesEnum.LEADERBOARD, element: <LeaderboardPage /> },
+  // Read-only OTC surface (flag-gated; the pages redirect home when off).
+  { route: RoutesEnum.OTC, element: <OtcPage /> },
+  { route: RoutesEnum.OTC_ORDER, element: <OtcOrderDetailPage /> },
   { route: RoutesEnum.PARTNER, element: <PartnerPage /> },
   { route: RoutesEnum.REWARDS, element: <RewardsPage /> },
   // '/cash-prize' shipped briefly before the Rewards rename; keep old links alive.

@@ -57,7 +57,40 @@ describe('Ophis token policy', () => {
       ),
     ).toEqual({ allowed: false, reason: 'chain-not-reviewed' })
   })
+})
 
+describe('Ophis token policy — OTC escrow profile', () => {
+  it.each([WETH_MAINNET.address, USDC_MAINNET.address, DAI.address])(
+    'allows reviewed Ethereum escrow asset %s under the OTC escrow profile',
+    (address) => {
+      expect(
+        getTokenPolicyDecision({ chainId: SupportedChainId.MAINNET, address }, TokenPolicyProfile.OTC_ESCROW),
+      ).toEqual({ allowed: true, reason: 'approved' })
+    },
+  )
+
+  it('fails closed for the OTC escrow profile outside its exact allowlist', () => {
+    // Native ETH is exposed only through the escrow contract's reviewed WETH
+    // convenience functions, so the raw native sentinel is not escrow-approved.
+    expect(
+      getTokenPolicyDecision(
+        { chainId: SupportedChainId.MAINNET, address: NATIVE_CURRENCY_ADDRESS },
+        TokenPolicyProfile.OTC_ESCROW,
+      ),
+    ).toEqual({ allowed: false, reason: 'token-not-reviewed' })
+    expect(
+      getTokenPolicyDecision(
+        { chainId: SupportedChainId.MAINNET, address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' },
+        TokenPolicyProfile.OTC_ESCROW,
+      ),
+    ).toEqual({ allowed: false, reason: 'token-not-reviewed' })
+    expect(
+      getTokenPolicyDecision({ chainId: 10, address: WETH_MAINNET.address }, TokenPolicyProfile.OTC_ESCROW),
+    ).toEqual({ allowed: false, reason: 'chain-not-reviewed' })
+  })
+})
+
+describe('Ophis token policy — shared input handling', () => {
   it('rejects malformed policy inputs', () => {
     expect(
       getTokenPolicyDecision({ chainId: 1, address: 'not-an-address' }, TokenPolicyProfile.ESTABLISHED_SETTLEMENT),
