@@ -44,8 +44,6 @@ function AmountCell({ token, amount }: { token: string; amount: bigint }): React
 
 const RESOLUTION_LABEL: Record<OtcResolution, string> = {
   active: 'Active',
-  filled: 'Filled',
-  cancelled: 'Cancelled',
   inactive: 'Inactive',
 }
 
@@ -54,6 +52,7 @@ function StatusCell({ row }: { row: OtcDisplayRow }): ReactNode {
     <span>
       <Badge tone={row.resolution === 'active' ? 'live' : 'draft'}>{RESOLUTION_LABEL[row.resolution]}</Badge>{' '}
       {row.resolution === 'active' && <Badge tone="audit">Escrowed</Badge>}{' '}
+      {row.indexClaim && <RawNote>index: {row.indexClaim}</RawNote>}{' '}
       {row.mismatch && <Badge tone="planned">Index mismatch</Badge>}
       {!row.reviewed && <Badge tone="draft">Unreviewed token</Badge>}
     </span>

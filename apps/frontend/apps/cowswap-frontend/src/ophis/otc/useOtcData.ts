@@ -81,7 +81,7 @@ export async function loadOtcData(client: OtcReaderClient, options: LoadOtcDataO
     }
   }
 
-  const { orders, indexedBlock } = indexResult.value
+  const { orders, indexedBlock, droppedRows } = indexResult.value
   const enrichment: OtcEnrichment = {
     byOrderId: new Map(orders.map((order) => [order.orderId.toString(), order])),
     indexedBlock,
@@ -89,13 +89,12 @@ export async function loadOtcData(client: OtcReaderClient, options: LoadOtcDataO
   const reconciliation = reconcileOtcOrders(orders, snapshot)
   const indexLagBlocks = computeIndexLag(indexedBlock, snapshot.blockNumber)
 
-  return {
-    snapshot,
-    enrichment,
-    reconciliation,
-    indexLagBlocks,
-    degradedReason: indexLagBlocks > manifest.maxIndexLagBlocks ? 'index-stale' : null,
-  }
+  // Malformed rows were dropped and must not pass silently as 'ready';
+  // corruption outranks staleness in the reason taxonomy.
+  const degradedReason: OtcDegradedReason | null =
+    droppedRows > 0 ? 'index-corrupt' : indexLagBlocks > manifest.maxIndexLagBlocks ? 'index-stale' : null
+
+  return { snapshot, enrichment, reconciliation, indexLagBlocks, degradedReason }
 }
 
 type WagmiPublicClient = NonNullable<ReturnType<typeof usePublicClient>>

@@ -122,6 +122,14 @@ function OtcStateNotices({ state }: { state: OtcDataState }): ReactNode {
           <p>Ages and history may lag behind the chain. On-chain state below remains authoritative and current.</p>
         </Callout>
       )}
+      {state.degradedReason === 'index-corrupt' && (
+        <Callout tone="warning" title="Index data partially invalid">
+          <p>
+            Malformed index rows were dropped and are not shown. On-chain state below remains authoritative and
+            current.
+          </p>
+        </Callout>
+      )}
       {state.snapshot?.truncated && (
         <Callout tone="info" title="Showing the most recent orders">
           <p>Older orders beyond the latest {state.snapshot.orders.length} are not listed here.</p>

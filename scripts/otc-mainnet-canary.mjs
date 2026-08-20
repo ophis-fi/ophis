@@ -33,6 +33,10 @@ const SUBGRAPH_URL =
 
 const SELECTORS = { weth: '0x3fc8cef3', nextOrderId: '0x2a58b330', getOrders: '0x03652027' };
 
+// A subgraph whose checkpoint stops advancing would otherwise stay green
+// forever (immutable rows keep matching). ~1 hour of Ethereum blocks.
+const MAX_INDEX_LAG_BLOCKS = 300n;
+
 const FRONTEND_MANIFEST_PATH = 'apps/frontend/apps/cowswap-frontend/src/ophis/otc/otc.const.ts';
 
 const timeoutSignal = (ms = 15_000) => AbortSignal.timeout(ms);
@@ -276,6 +280,12 @@ async function live() {
 
   const data = await fetchSubgraphOrders(5);
   const indexedBlock = BigInt(data._meta.block.number);
+  const headBlock = BigInt(await rpc('eth_blockNumber'));
+  const indexLag = headBlock > indexedBlock ? headBlock - indexedBlock : 0n;
+  assert.ok(
+    indexLag <= MAX_INDEX_LAG_BLOCKS,
+    `index checkpoint stale: ${indexLag} blocks behind head (max ${MAX_INDEX_LAG_BLOCKS})`,
+  );
   const allRows = data.orders;
   assert.ok(allRows.length > 0, 'subgraph returned no orders');
 
@@ -310,7 +320,7 @@ async function live() {
   console.log(
     `otc canary live OK: code hash pinned, weth wired, nextOrderId=${nextOrderId}, ` +
       `${rows.length} newest orders reconciled (immutable fields exact; ` +
-      `${activeDisagreements} active-flag lag; ${skewSkipped} skew-skipped), index block ${indexedBlock}`,
+      `${activeDisagreements} active-flag lag; ${skewSkipped} skew-skipped), index block ${indexedBlock} (lag ${indexLag})`,
   );
 }
 

@@ -109,6 +109,23 @@ describe('loadOtcData', () => {
     expect(result.indexLagBlocks).toBeNull()
   })
 
+  it('degrades as index-corrupt when the subgraph returns malformed rows', async () => {
+    const fixture = JSON.parse(
+      readFileSync(join(__dirname, '__fixtures__', 'subgraph-orders.json'), 'utf8'),
+    ) as SubgraphFixture
+    const body = fixture.response as { data: { orders: Record<string, unknown>[] } }
+    body.data.orders[0] = { ...body.data.orders[0], maker: 'not-an-address' }
+    const corruptFetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => body,
+    })) as unknown as typeof fetch
+
+    const result = await loadOtcData(createMockClient(), { manifest: testManifest(), fetchImpl: corruptFetch })
+    expect(result.degradedReason).toBe('index-corrupt')
+    expect(result.enrichment).not.toBeNull()
+  })
+
   it('degrades when index lag exceeds the manifest bound', async () => {
     const result = await loadOtcData(createMockClient(), {
       manifest: testManifest({ maxIndexLagBlocks: 0n }),

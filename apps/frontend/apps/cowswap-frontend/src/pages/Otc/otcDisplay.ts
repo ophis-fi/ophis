@@ -9,7 +9,9 @@ import {
   OtcOrder,
 } from 'ophis/otc'
 
-export type OtcResolution = 'active' | 'filled' | 'cancelled' | 'inactive'
+export type OtcResolution = 'active' | 'inactive'
+
+export type OtcIndexClaim = 'filled' | 'cancelled' | null
 
 export interface OtcDisplayRow {
   order: OtcOrder
@@ -20,23 +22,23 @@ export interface OtcDisplayRow {
   /** Indexed terms DISAGREE with on-chain state. */
   mismatch: boolean
   createdAt: number | null
+  /** Chain-authoritative: the contract's active flag, nothing else. */
   resolution: OtcResolution
+  /**
+   * Index-derived lifecycle claim (filled vs cancelled). NOT verified
+   * on-chain — reconciliation covers terms and the active flag only — so the
+   * UI must always label it as an index claim, never as authoritative state.
+   */
+  indexClaim: OtcIndexClaim
   rate: OtcRate | null
 }
 
-/**
- * Chain state decides active/inactive. The filled-vs-cancelled distinction is
- * index-derived and unverifiable on-chain without event history, so it is
- * shown ONLY for rows whose indexed copy reconciled exactly against the
- * contract; anything else stays the chain-authoritative 'inactive'.
- */
-function resolveResolution(order: OtcOrder, state: OtcDataState, verifiedIds: ReadonlySet<string>): OtcResolution {
-  if (order.active) return 'active'
-  if (!verifiedIds.has(order.orderId.toString())) return 'inactive'
+function resolveIndexClaim(order: OtcOrder, state: OtcDataState): OtcIndexClaim {
+  if (order.active) return null
   const indexed = state.enrichment?.byOrderId.get(order.orderId.toString())
   if (indexed?.filledAt != null) return 'filled'
   if (indexed?.cancelledAt != null) return 'cancelled'
-  return 'inactive'
+  return null
 }
 
 function computeRowRate(order: OtcOrder): OtcRate | null {
@@ -61,7 +63,8 @@ export function buildOtcDisplayRows(state: OtcDataState): OtcDisplayRow[] {
       verified: verifiedIds.has(key),
       mismatch: mismatchedIds.has(key),
       createdAt: state.enrichment?.byOrderId.get(key)?.createdAt ?? null,
-      resolution: resolveResolution(order, state, verifiedIds),
+      resolution: order.active ? 'active' : 'inactive',
+      indexClaim: resolveIndexClaim(order, state),
       rate: computeRowRate(order),
     }
   })

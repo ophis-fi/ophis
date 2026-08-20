@@ -161,7 +161,10 @@ describe('OtcPageView', () => {
     expect(screen.getByText('#2')).toBeTruthy()
     expect(screen.getByText('#0')).toBeTruthy()
     expect(screen.queryByText('#1')).toBeNull() // other maker
-    expect(screen.getByText('Cancelled')).toBeTruthy()
+    // lifecycle is an explicitly-labeled index claim, never an authoritative badge
+    expect(screen.getByText('index: cancelled')).toBeTruthy()
+    expect(screen.queryByText('Cancelled')).toBeNull()
+    expect(screen.getAllByText('Inactive').length).toBeGreaterThan(0)
     // resolved rows are no longer escrowed: badge only on the two active rows
     expect(screen.getAllByText('Escrowed')).toHaveLength(2)
   })
@@ -204,6 +207,18 @@ describe('OtcPageView', () => {
     expect(screen.getByText(/may lag behind the chain/)).toBeTruthy()
     // stale enrichment is still rendered, honestly labeled
     expect(screen.getAllByText('3h ago').length).toBeGreaterThan(0)
+  })
+
+  it('flags partially invalid index data without hiding on-chain state', () => {
+    renderView(
+      <OtcPageView
+        state={readyState({ status: 'degraded', degradedReason: 'index-corrupt' })}
+        account={undefined}
+        nowMs={NOW_MS}
+      />,
+    )
+    expect(screen.getByText('Index data partially invalid')).toBeTruthy()
+    expect(screen.getByText('#3')).toBeTruthy()
   })
 
   it('filters browse rows by token, maker, and order id', () => {

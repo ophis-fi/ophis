@@ -95,8 +95,11 @@ describe('buildOtcDisplayRows', () => {
     expect(mismatched.mismatch).toBe(true)
     expect(mismatched.rate?.rate).toBe('4000')
 
-    expect(filled.resolution).toBe('filled')
-    expect(cancelled.resolution).toBe('cancelled')
+    // chain-authoritative status only; lifecycle survives as a labeled index claim
+    expect(filled.resolution).toBe('inactive')
+    expect(filled.indexClaim).toBe('filled')
+    expect(cancelled.resolution).toBe('inactive')
+    expect(cancelled.indexClaim).toBe('cancelled')
     expect(filled.createdAt).toBe(1_755_000_000)
   })
 
@@ -104,19 +107,17 @@ describe('buildOtcDisplayRows', () => {
     const state = { ...readyState(), enrichment: null, reconciliation: null, status: 'degraded' as const }
     const rows = buildOtcDisplayRows(state)
     expect(rows[2].resolution).toBe('inactive')
+    expect(rows[2].indexClaim).toBeNull()
     expect(rows[2].createdAt).toBeNull()
     expect(rows[0].verified).toBe(false)
   })
 
-  it('never labels an unverified inactive order as filled or cancelled', () => {
-    const state = readyState()
-    // Drop id 1 from the verified set: its index-claimed 'filled' must not render.
-    state.reconciliation = { ...state.reconciliation!, verifiedIds: [0n, 3n] }
-    const rows = buildOtcDisplayRows(state)
-    expect(rows[2].order.orderId).toBe(1n)
-    expect(rows[2].resolution).toBe('inactive')
-    // id 0 stays verified, so its cancelled label is trusted
-    expect(rows[3].resolution).toBe('cancelled')
+  it('never promotes an index lifecycle claim to authoritative status', () => {
+    const rows = buildOtcDisplayRows(readyState())
+    // every inactive row stays Inactive regardless of index claims
+    for (const row of rows.filter((r) => !r.order.active)) {
+      expect(row.resolution).toBe('inactive')
+    }
   })
 
   it('returns no rows without a snapshot', () => {

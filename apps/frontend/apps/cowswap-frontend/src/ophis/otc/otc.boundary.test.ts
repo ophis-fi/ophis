@@ -43,7 +43,26 @@ const PAGES_DIR = join(__dirname, '..', '..', 'pages', 'Otc')
 // both usePublicClient and useWriteContract), plus dynamic import() which
 // would evade the specifier scan entirely.
 const SIGNER_API_PATTERN =
-  /\b(useWriteContract|useSendTransaction|useSignMessage|useSignTypedData|useConnectorClient|getWalletClient|walletClient|writeContract|sendTransaction|sendRawTransaction|signTransaction|signTypedData|signMessage|prepareTransactionRequest|requestAddresses|watchAsset)\b|import\(/
+  /\b(useWriteContract|useSendTransaction|useSendTransactionSync|useSendCalls|useDeployContract|useSignMessage|useSignTypedData|useConnectorClient|useWalletClient|getWalletClient|walletClient|walletActions|writeContract|sendTransaction|sendRawTransaction|sendCalls|deployContract|signTransaction|signTypedData|signMessage|prepareTransactionRequest|requestAddresses|watchAsset)\b|import\(/
+
+// Denylists are inherently incomplete against a large package surface, so
+// wagmi — the one signer-capable package production OTC code may touch —
+// is additionally held to an ALLOWLIST: only these named imports may appear.
+const WAGMI_ALLOWED_IMPORTS = new Set(['usePublicClient'])
+
+function namedImportsFrom(source: string, specifier: string): string[] {
+  const pattern = new RegExp(`import\\s*(?:type\\s*)?{([^}]*)}\\s*from\\s*['"]${specifier}['"]`, 'g')
+  return Array.from(source.matchAll(pattern), (match) => match[1])
+    .flatMap((group) => group.split(','))
+    .map((name) =>
+      name
+        .replace(/\btype\b/, '')
+        .trim()
+        .split(/\s+as\s+/)[0]
+        .trim(),
+    )
+    .filter((name) => name.length > 0)
+}
 
 interface ProductionSource {
   file: string
@@ -99,6 +118,16 @@ describe('Ophis OTC boundary', () => {
       for (const { file, source } of productionSources(directory)) {
         const match = source.match(SIGNER_API_PATTERN)
         expect(match ? `${file}: ${match[0]}` : null).toBeNull()
+      }
+    }
+  })
+
+  it('imports nothing from wagmi outside the read-only allowlist', () => {
+    for (const directory of [__dirname, PAGES_DIR]) {
+      for (const { file, source } of productionSources(directory)) {
+        for (const name of namedImportsFrom(source, 'wagmi')) {
+          expect(WAGMI_ALLOWED_IMPORTS.has(name) ? null : `${file}: ${name}`).toBeNull()
+        }
       }
     }
   })

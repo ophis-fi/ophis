@@ -6,7 +6,7 @@
  * current state. When the indexed row disagrees with the chain, the page
  * demands a refresh instead of showing an actionable-looking order.
  */
-import { useMemo, type ReactNode } from 'react'
+import { useId, useMemo, type ReactNode } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -184,8 +184,12 @@ export function OtcOrderDetailPage(): ReactNode {
   )
   const state = useOtcData(enabled && validId)
 
+  // Mount-unique key: SWR must never serve a cached order from a previous
+  // visit as if it were the promised fresh direct read — every mount starts
+  // at loading until its own getOrder round-trip completes.
+  const mountId = useId()
   const { data, error } = useSWR(
-    enabled && validId && client ? ['ophis-otc-order', rawOrderId] : null,
+    enabled && validId && client ? ['ophis-otc-order', rawOrderId, mountId] : null,
     async () => (client ? readOtcOrder(client, orderId) : null),
     { refreshInterval: OTC_DATA_REFRESH_INTERVAL, revalidateOnFocus: false },
   )
