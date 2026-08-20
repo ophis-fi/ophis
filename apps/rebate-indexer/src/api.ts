@@ -569,6 +569,12 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // Cumulative lifetime totals and configuration facts are not gameable, so
   // this is a safe public credibility/proof surface. JSON for API clients;
   // a styled page for a browser (same content-negotiation as /tier).
+  // The aggregation is a full-table scan and this handler is mounted on TWO
+  // routes (/ and /stats), each with its own rate-limit bucket — without a
+  // snapshot one IP could drive 120 aggregations/minute at the bare root.
+  // 30s is far fresher than the page's own cache-control (300s).
+  let statsSnapshot: { at: number; data: Awaited<ReturnType<typeof computePublicStats>> } | null = null;
+  const STATS_SNAPSHOT_MS = 30_000;
   const publicStatsHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     // Public production proof surface: restrict to the named mainnet chains so
     // testnet settlement dust (e.g. Sepolia 11155111) never inflates or clutters
@@ -576,7 +582,13 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const chainIds = [...PRODUCTION_CHAIN_IDS];
     // Aggregation (with the eth-flow-router exclusion on the distinct-trader count)
     // lives in computePublicStats so it is unit-testable against a real DB.
-    const data = await computePublicStats(sql, chainIds);
+    let data;
+    if (statsSnapshot && Date.now() - statsSnapshot.at < STATS_SNAPSHOT_MS) {
+      data = statsSnapshot.data;
+    } else {
+      data = await computePublicStats(sql, chainIds);
+      statsSnapshot = { at: Date.now(), data };
+    }
     const stats: PublicStats = {
       totalVolumeUsd: data.totalVolumeUsd,
       totalTrades: data.totalTrades,
