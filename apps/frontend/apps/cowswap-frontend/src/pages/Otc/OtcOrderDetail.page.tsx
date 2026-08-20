@@ -27,6 +27,7 @@ import { usePublicClient } from 'wagmi'
 import { Routes as RoutesEnum } from 'common/constants/routes'
 
 import { BadgeRow, Mono, RawNote } from './Otc.styled'
+import { assessDetailFreshness, OtcFreshnessNotice, type OtcNodeFreshness } from './otcDetailFreshness'
 import { formatOtcAge } from './otcDisplay'
 import { useOtcPageEnabled } from './useOtcPageEnabled'
 
@@ -81,8 +82,6 @@ function TokenLeg({ label, token, amount }: { label: string; token: string; amou
     </div>
   )
 }
-
-export type OtcNodeFreshness = 'fresh' | 'stale' | 'unknown'
 
 interface OtcOrderDetailViewProps {
   orderId: bigint
@@ -167,22 +166,7 @@ export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
       title={`Order #${orderId.toString()}`}
       lede="Read-only order detail, verified directly against Ethereum."
     >
-      {freshness === 'stale' && (
-        <Callout tone="warning" title="Network data may be outdated">
-          <p>
-            This RPC node appears to be behind the network. The order state below was verified on-chain but may not
-            reflect the latest blocks.
-          </p>
-        </Callout>
-      )}
-      {freshness === 'unknown' && !loading && !failed && (
-        <Callout tone="warning" title="Freshness could not be assessed">
-          <p>
-            The independent freshness comparison is unavailable right now. The order below passed direct on-chain
-            verification at the shown block, but it may not reflect the latest network state.
-          </p>
-        </Callout>
-      )}
+      <OtcFreshnessNotice freshness={freshness} loading={loading} failed={failed} />
       {loading && <p>Verifying order #{orderId.toString()} on Ethereum...</p>}
       {failed && (
         <Callout tone="warning" title="Order unavailable">
@@ -226,20 +210,16 @@ export function OtcOrderDetailPage(): ReactNode {
 
   const nowMs = Date.now()
 
-  // The node-freshness assessment comes from the list hook; terms must not
-  // render before it resolves, or a stale node's order could appear verified
-  // for the interval before the warning arrives. A terminal failure of the
-  // direct read outranks the pending freshness check: loading and failed are
-  // mutually exclusive. When the assessment itself fails (snapshot or index
-  // unavailable), freshness is UNKNOWN and the view must say so — never
-  // silently treated as fresh.
+  // Freshness must describe the backend that served THIS read: compare the
+  // index checkpoint against the direct read's own block (see
+  // otcDetailFreshness). Terms never render before the assessment resolves,
+  // and a terminal failure of the direct read outranks the pending check.
   const freshnessPending = state.status === 'loading'
-  const freshness: OtcNodeFreshness =
-    state.degradedReason === 'node-stale'
-      ? 'stale'
-      : state.status === 'unavailable' || state.degradedReason === 'index-unavailable'
-        ? 'unknown'
-        : 'fresh'
+  const freshness: OtcNodeFreshness = assessDetailFreshness(
+    state,
+    data?.blockNumber ?? null,
+    OPHIS_ETHEREUM_OTC_MANIFEST.maxIndexLagBlocks,
+  )
 
   return (
     <OtcOrderDetailView

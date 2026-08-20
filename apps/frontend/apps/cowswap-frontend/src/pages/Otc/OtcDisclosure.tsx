@@ -24,9 +24,9 @@ export function OtcDisclosure(): ReactNode {
       <Accordion summary="More about these risks">
         <p>
           The escrow contract is immutable and has no owner: Ophis cannot pause it, recover deposits, or modify existing
-          orders. A maker&apos;s order stays fillable at its original price until the maker cancels it, no matter how
-          far the market moves. Order data shown here is verified directly against Ethereum before it is labeled
-          verified; index data alone is never treated as settlement authority.
+          orders. A maker&apos;s order stays fillable at its original price until it is filled or the maker cancels it,
+          no matter how far the market moves. Order data shown here is verified directly against Ethereum before it is
+          labeled verified; index data alone is never treated as settlement authority.
         </p>
       </Accordion>
     </Callout>
