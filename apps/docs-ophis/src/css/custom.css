@@ -170,7 +170,7 @@ h3,
 
 .audit-tool-card {
   display: grid;
-  grid-template-columns: 4.5rem minmax(0, 1fr);
+  grid-template-columns: 3.25rem minmax(0, 1fr);
   align-items: center;
   gap: 0.875rem;
   min-width: 0;
@@ -200,9 +200,9 @@ h3,
 .audit-tool-logo {
   display: grid;
   place-items: center;
-  width: 4.5rem;
-  height: 4.5rem;
-  padding: 0.5625rem;
+  width: 3.25rem;
+  height: 3.25rem;
+  padding: 0.4rem;
   overflow: hidden;
   background: #09090b;
   border: 1px solid rgba(255, 255, 255, 0.1);

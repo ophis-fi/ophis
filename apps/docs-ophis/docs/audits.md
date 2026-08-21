@@ -92,9 +92,9 @@ Ophis used the following open-source security skills, guidance, analysis tools,
 and formal-verification technology across applicable review scopes.
 
 <div className="audit-tool-grid">
-  <a className="audit-tool-card" href="https://github.com/pashov/skills">
+  <a className="audit-tool-card" href="https://www.pashov.com/">
     <span className="audit-tool-logo" aria-hidden="true">
-      <img src="/logos/audit/pashov.svg" alt="" width="64" height="56" loading="lazy" />
+      <img src="/logos/audit/pashov.svg" alt="" width="48" height="42" loading="lazy" />
     </span>
     <span>
       <strong>Pashov skills</strong>
@@ -103,7 +103,7 @@ and formal-verification technology across applicable review scopes.
   </a>
   <a className="audit-tool-card" href="https://ethskills.com">
     <span className="audit-tool-logo" aria-hidden="true">
-      <img src="/logos/audit/ethskills.svg" alt="" width="64" height="56" loading="lazy" />
+      <img src="/logos/audit/ethskills.svg" alt="" width="48" height="42" loading="lazy" />
     </span>
     <span>
       <strong>ETHSKILLS</strong>
@@ -112,7 +112,7 @@ and formal-verification technology across applicable review scopes.
   </a>
   <a className="audit-tool-card" href="https://www.trailofbits.com">
     <span className="audit-tool-logo" aria-hidden="true">
-      <img src="/logos/audit/trail-of-bits.svg" alt="" width="64" height="56" loading="lazy" />
+      <img src="/logos/audit/trail-of-bits.svg" alt="" width="48" height="42" loading="lazy" />
     </span>
     <span>
       <strong>Trail of Bits</strong>
@@ -121,7 +121,7 @@ and formal-verification technology across applicable review scopes.
   </a>
   <a className="audit-tool-card" href="https://veritylang.com">
     <span className="audit-tool-logo" aria-hidden="true">
-      <img src="/logos/audit/verity.svg" alt="" width="64" height="56" loading="lazy" />
+      <img src="/logos/audit/verity.svg" alt="" width="48" height="42" loading="lazy" />
     </span>
     <span>
       <strong>Verity Lang</strong>
@@ -129,15 +129,6 @@ and formal-verification technology across applicable review scopes.
     </span>
   </a>
 </div>
-
-:::caution[Methodology credit, not an external audit]
-
-These credits describe Ophis's use of tooling and methodology. They do not
-represent an independent audit, engagement, certification, or endorsement by
-Pashov Audit Group, ETHSKILLS contributors, Trail of Bits, or LFG Labs / Verity.
-Ophis has not yet engaged an external audit firm for the fork-specific pieces.
-
-:::
 
 Reproducible scope and results are recorded in the repository's
 [`audit/`](https://github.com/ophis-fi/ophis/tree/main/audit) and
