@@ -65,19 +65,18 @@ to or affiliate of Odos.
 
 ## Production status
 
-As verified against `https://compat.ophis.fi` and its orderbook dependencies on
-5 August 2026:
+The current worker configuration and `/healthz` response expose chains 10, 130
+and 4663. Each chain has an independent orderbook, so production configuration
+does not promise moment-to-moment availability. Check the per-chain runtime
+links in [Chains](#chains) before routing.
 
-- `/healthz` reports chains 10, 130 and 4663 as enabled.
-- A `POST /sor/quote/v3` request with `userAddr` was verified on chain 10. It
-  returned HTTP 200, a signed `pathId`, `ophis.assemblable: true`, the unsigned
-  order, and its EIP-712 signing envelope.
+- A `POST /sor/quote/v3` request with `userAddr` returns a signed `pathId`,
+  `ophis.assemblable: true`, the unsigned order, and its EIP-712 signing
+  envelope when that chain's orderbook is reachable and produces a quote.
 - Quote-only requests without `userAddr` remain supported and return
   `ophis.assemblable: false`.
-- **Chain 130 (Unichain) is not answering.** Its orderbook host is down, so
-  quotes for 130 return `UPSTREAM_UNAVAILABLE` (503). This is an outage, not a
-  removal: re-check rather than dropping 130 from your config. Chains 10 and
-  4663 are unaffected.
+- A transient orderbook failure returns `UPSTREAM_UNAVAILABLE` (503) with
+  `Retry-After`; it is an outage, not evidence that the chain was removed.
 - Integrator-priced `referralFee` is disabled in production and returns
   `PARTNER_FEE_UNAVAILABLE`.
 
@@ -393,7 +392,7 @@ dangerous one is 3000.
 | 4007 `SAME_INPUT_OUTPUT` | tokens identical | 4900 `INVALID_REQUEST` | same condition | Number changes |
 | 4011/4012/4018/4019 `*_TOKEN_AMOUNT` | bad amount | 4906 `INVALID_AMOUNT` | same condition | Number changes |
 | 4015 `INVALID_TOKEN_PROPORTIONS` (`0 < p < 1`) | proportions do not sum to 1 | **4901** `MULTI_TOKEN_UNSUPPORTED` | a partial share is a split intent | **Different code and class** |
-| 4015 `INVALID_TOKEN_PROPORTIONS` (`p <= 0`, `p > 1`, non-numeric) | same on Odos | 4900 `INVALID_REQUEST` | malformed, not unsupported | Number changes |
+| 4015 `INVALID_TOKEN_PROPORTIONS` (`p <= 0`, `p > 1`, non-numeric) | same on Odos                     | 4900 `INVALID_REQUEST`             | malformed, not unsupported                                                      | Number changes                             |
 | 4016 `TOKEN_ROUTING_UNAVAILABLE` | no route for the pair | 2000 `NO_ROUTE` | same meaning, different band | Band changes |
 | 4201 `USER_ADDR_REQ` on `/sor/quote/v3` | `userAddr` missing | **200 OK** | quote-only is a supported mode, not an error | **Delete the branch** |
 | 4201 `USER_ADDR_REQ` on `/sor/swap/v3` | `userAddr` missing | **4911** `NOT_ASSEMBLABLE` | needs an owner to draft an order for | Different code |
@@ -414,11 +413,11 @@ mean one thing each. The numbers collide across the two systems, and 3000 is a
 
 ## Chains
 
-| chainId | Network | Orderbook | Status |
+| chainId | Network | Orderbook | Runtime check |
 |---|---|---|---|
-| 10 | Optimism | `https://optimism-mainnet.ophis.fi` (Ophis-operated) | Answering |
-| 130 | Unichain | `https://unichain-mainnet.ophis.fi` (Ophis-operated) | **Host down, returns 503** |
-| 4663 | Robinhood Chain | `https://robinhood-mainnet.ophis.fi` (Ophis-operated) | Answering |
+| 10 | Optimism | `https://optimism-mainnet.ophis.fi` (Ophis-operated) | [Version endpoint](https://optimism-mainnet.ophis.fi/api/v1/version) |
+| 130 | Unichain | `https://unichain-mainnet.ophis.fi` (Ophis-operated) | [Version endpoint](https://unichain-mainnet.ophis.fi/api/v1/version) |
+| 4663 | Robinhood Chain | `https://robinhood-mainnet.ophis.fi` (Ophis-operated) | [Version endpoint](https://robinhood-mainnet.ophis.fi/api/v1/version) |
 
 Other chains return `UNSUPPORTED_CHAIN` (4903), including chains Ophis serves
 through CoW-hosted orderbooks. Only the Ophis-operated sovereign chains are

@@ -29,7 +29,7 @@ export interface CanonicalPage {
 export const CANONICAL_PAGES: CanonicalPage[] = [
   { path: '/pricing/', updated: new Date('2026-08-02') },
   { path: '/supported-chains/', updated: new Date('2026-08-02') },
-  { path: '/security/', updated: new Date('2026-08-02') },
+  { path: '/security/', updated: new Date('2026-08-21') },
   { path: '/learn/', updated: new Date('2026-08-03') },
   { path: '/learn/intent-based-dex-aggregator/', updated: new Date('2026-08-02') },
   { path: '/learn/mev-protected-swaps/', updated: new Date('2026-08-02') },

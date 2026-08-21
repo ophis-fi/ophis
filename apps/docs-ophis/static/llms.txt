@@ -22,7 +22,7 @@ Worked examples:
 - [Getting started](https://docs.ophis.fi/getting-started): the three-step flow, [Intent](https://docs.ophis.fi/getting-started#1--intent-parse-the-request), [Auction](https://docs.ophis.fi/getting-started#2--auction-solver-competition), [Settle](https://docs.ophis.fi/getting-started#3--settle-on-chain-mev-protected).
 - [Architecture](https://docs.ophis.fi/architecture)
 - [Fees & rebates](https://docs.ophis.fi/fees)
-- [Audits](https://docs.ophis.fi/audits): non-custodial [Custody](https://docs.ophis.fi/audits#custody) and [MEV protection by construction](https://docs.ophis.fi/audits#mev-protection-by-construction).
+- [Audits](https://docs.ophis.fi/audits): non-custodial [Custody](https://docs.ophis.fi/audits#custody), [MEV protection by construction](https://docs.ophis.fi/audits#mev-protection-by-construction), and methodology credits for Pashov skills, ETHSKILLS, Trail of Bits tooling, and Verity Lang. Tool use is not an independent audit or endorsement.
 - [Status](https://docs.ophis.fi/status)
 - [FAQ](https://docs.ophis.fi/faq)
 

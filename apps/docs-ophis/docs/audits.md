@@ -86,6 +86,66 @@ Two pieces are **Ophis-specific** (not stock CoW) and were reviewed in Ophis's
 own security audits: a hardened `GPv2AllowListAuthentication` (two-step manager
 transfer) and the partner-fee settlement-buffer handling.
 
+### Audit methodology and tools
+
+Ophis used the following open-source security skills, guidance, analysis tools,
+and formal-verification technology across applicable review scopes.
+
+<div className="audit-tool-grid">
+  <a className="audit-tool-card" href="https://github.com/pashov/skills">
+    <span className="audit-tool-logo" aria-hidden="true">
+      <img src="https://ophis.fi/logos/audit/pashov.svg" alt="" width="64" height="56" loading="lazy" />
+    </span>
+    <span>
+      <strong>Pashov skills</strong>
+      <small>Solidity audit-readiness, threat-model, invariant, and differential-review workflows.</small>
+    </span>
+  </a>
+  <a className="audit-tool-card" href="https://ethskills.com">
+    <span className="audit-tool-logo" aria-hidden="true">
+      <img src="https://ophis.fi/logos/audit/ethskills.svg" alt="" width="64" height="56" loading="lazy" />
+    </span>
+    <span>
+      <strong>ETHSKILLS</strong>
+      <small>Ethereum guidance for chain semantics, RPC behavior, contract calls, and signing.</small>
+    </span>
+  </a>
+  <a className="audit-tool-card" href="https://www.trailofbits.com">
+    <span className="audit-tool-logo" aria-hidden="true">
+      <img src="https://ophis.fi/logos/audit/trail-of-bits.svg" alt="" width="64" height="56" loading="lazy" />
+    </span>
+    <span>
+      <strong>Trail of Bits</strong>
+      <small>Slither static analysis, Echidna property fuzzing, and security-review checklists.</small>
+    </span>
+  </a>
+  <a className="audit-tool-card" href="https://veritylang.com">
+    <span className="audit-tool-logo" aria-hidden="true">
+      <img src="https://ophis.fi/logos/audit/verity.svg" alt="" width="64" height="56" loading="lazy" />
+    </span>
+    <span>
+      <strong>Verity Lang</strong>
+      <small>Lean 4 machine-checked proofs for Ophis access-control models.</small>
+    </span>
+  </a>
+</div>
+
+:::caution[Methodology credit, not an external audit]
+
+These credits describe Ophis's use of tooling and methodology. They do not
+represent an independent audit, engagement, certification, or endorsement by
+Pashov Audit Group, ETHSKILLS contributors, Trail of Bits, or LFG Labs / Verity.
+Ophis has not yet engaged an external audit firm for the fork-specific pieces.
+
+:::
+
+Reproducible scope and results are recorded in the repository's
+[`audit/`](https://github.com/ophis-fi/ophis/tree/main/audit) and
+[`docs/audits/`](https://github.com/ophis-fi/ophis/tree/main/docs/audits)
+reports. A tool or proof applies only to the scope named in its report; for
+example, an access-control proof does not prove unrelated Rust or TypeScript
+code.
+
 ### Native-ETH sells (EthFlow)
 
 Selling native ETH is placed as an **on-chain order** to the immutable

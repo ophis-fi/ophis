@@ -69,7 +69,6 @@ const socials = [
     <div class="footer-brand">
       <div class="logo">Ophis</div>
       <p>Intent-based DEX aggregator for the agent era.</p>
-      <p class="copyright">&copy; 2026 Ophis.</p>
     </div>
     {cols.map(col => (
       <div class="footer-col">
@@ -94,6 +93,10 @@ const socials = [
       </div>
     </div>
   </div>
+  <div class="footer-meta">
+    <p class="copyright">&copy; 2026 Ophis.</p>
+    <p class="made-in-luxembourg">Made in Luxembourg</p>
+  </div>
 </footer>
 
 <style>
@@ -109,7 +112,20 @@ const socials = [
   }
   .footer-brand .logo { font-weight: 700; color: var(--ophis-saffron-60); font-size: 18px; margin-bottom: 8px; }
   .footer-brand p { margin: 0 0 16px; }
-  .footer-brand .copyright { font-size: 11px; }
+  .footer-meta {
+    max-width: 1200px;
+    margin: 32px auto 0;
+    padding-top: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    color: var(--ophis-fg-faded);
+    border-top: 1px solid var(--ophis-border);
+    font-size: 11px;
+  }
+  .footer-meta p { margin: 0; }
+  .made-in-luxembourg { letter-spacing: 0.03em; }
   h3 { color: var(--ophis-fg); font-size: 13px; margin: 0 0 12px; font-weight: 600; }
   ul { list-style: none; padding: 0; margin: 0; }
   li { margin-bottom: 8px; }
@@ -119,5 +135,6 @@ const socials = [
   .socials a { display: inline-flex; }
   @media (max-width: 720px) {
     .footer-inner { grid-template-columns: 1fr 1fr; }
+    .footer-meta { align-items: flex-start; flex-direction: column; }
   }
 </style>

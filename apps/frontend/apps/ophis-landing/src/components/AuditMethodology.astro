@@ -1,0 +1,131 @@
+---
+const tools = [
+  {
+    name: 'Pashov skills',
+    href: 'https://github.com/pashov/skills',
+    logo: '/logos/audit/pashov.svg',
+    description: 'Solidity audit-readiness, threat-model, invariant, and differential-review workflows.',
+  },
+  {
+    name: 'ETHSKILLS',
+    href: 'https://ethskills.com',
+    logo: '/logos/audit/ethskills.svg',
+    description: 'Ethereum guidance for chain semantics, RPC behavior, contract calls, and signing.',
+  },
+  {
+    name: 'Trail of Bits',
+    href: 'https://www.trailofbits.com',
+    logo: '/logos/audit/trail-of-bits.svg',
+    description: 'Slither static analysis, Echidna property fuzzing, and security-review checklists.',
+  },
+  {
+    name: 'Verity Lang',
+    href: 'https://veritylang.com',
+    logo: '/logos/audit/verity.svg',
+    description: 'Lean 4 machine-checked proofs for Ophis access-control models.',
+  },
+]
+---
+
+<section class="audit-methodology" aria-labelledby="audit-methodology-heading">
+  <h2 id="audit-methodology-heading">Audit methodology and tools</h2>
+  <p>
+    Ophis used the following open-source security skills, guidance, analysis tools, and formal-verification
+    technology across applicable review scopes.
+  </p>
+  <div class="tool-grid">
+    {tools.map((tool) => (
+      <a class="tool-card" href={tool.href}>
+        <span class="logo-stage" aria-hidden="true">
+          <img src={tool.logo} alt="" width="64" height="56" loading="lazy" />
+        </span>
+        <span class="tool-copy">
+          <strong>{tool.name}</strong>
+          <span>{tool.description}</span>
+        </span>
+      </a>
+    ))}
+  </div>
+  <p class="methodology-note">
+    These credits describe Ophis's use of tooling and methodology. They do not represent an independent
+    audit, engagement, certification, or endorsement by Pashov Audit Group, ETHSKILLS contributors, Trail
+    of Bits, or LFG Labs / Verity. Ophis has not yet engaged an external audit firm for the fork-specific
+    pieces.
+  </p>
+</section>
+
+<style>
+  .audit-methodology { margin-top: 52px; }
+  .tool-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 24px 0;
+  }
+  .tool-card {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+    min-height: 104px;
+    padding: 14px;
+    color: var(--ophis-fg-muted);
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--ophis-border);
+    border-radius: 12px;
+    text-decoration: none;
+    transition: background-color 180ms ease, border-color 180ms ease;
+  }
+  .tool-card:hover {
+    color: var(--ophis-fg-muted);
+    background: rgba(255, 255, 255, 0.045);
+    border-color: rgba(242, 166, 62, 0.38);
+  }
+  .tool-card:focus-visible {
+    outline: 2px solid var(--ophis-saffron-60);
+    outline-offset: 3px;
+  }
+  .logo-stage {
+    display: grid;
+    place-items: center;
+    width: 72px;
+    height: 72px;
+    padding: 9px;
+    overflow: hidden;
+    background: #09090b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+  }
+  .logo-stage img {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .tool-copy { min-width: 0; }
+  .tool-copy strong {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--ophis-fg);
+    font-size: 15px;
+    line-height: 1.25;
+  }
+  .tool-copy > span {
+    display: block;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .methodology-note {
+    padding: 16px 18px;
+    color: var(--ophis-fg-faded);
+    background: rgba(242, 166, 62, 0.045);
+    border-left: 3px solid rgba(242, 166, 62, 0.55);
+    border-radius: 0 8px 8px 0;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  @media (max-width: 620px) {
+    .tool-grid { grid-template-columns: 1fr; }
+  }
+</style>

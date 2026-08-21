@@ -7,6 +7,7 @@
  * relationship. MEV claims keep the qualified wording from the homepage FAQ.
  */
 import ContentPage from '../layouts/ContentPage.astro'
+import AuditMethodology from '../components/AuditMethodology.astro'
 import { canonicalPage } from '../data/canonicalPages'
 import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../data/chains'
 
@@ -51,6 +52,8 @@ const FAQS = [
     batch auction. The settlement contract is CoW's audited GPv2 code, and the fork-specific pieces
     were reviewed in Ophis's own security audits. Details and links below.
   </p>
+
+  <AuditMethodology />
 
   {FAQS.map((f) => (
     <section>
