@@ -94,7 +94,7 @@ and formal-verification technology across applicable review scopes.
 <div className="audit-tool-grid">
   <a className="audit-tool-card" href="https://github.com/pashov/skills">
     <span className="audit-tool-logo" aria-hidden="true">
-      <img src="https://ophis.fi/logos/audit/pashov.svg" alt="" width="64" height="56" loading="lazy" />
+      <img src="/logos/audit/pashov.svg" alt="" width="64" height="56" loading="lazy" />
     </span>
     <span>
       <strong>Pashov skills</strong>
@@ -103,7 +103,7 @@ and formal-verification technology across applicable review scopes.
   </a>
   <a className="audit-tool-card" href="https://ethskills.com">
     <span className="audit-tool-logo" aria-hidden="true">
-      <img src="https://ophis.fi/logos/audit/ethskills.svg" alt="" width="64" height="56" loading="lazy" />
+      <img src="/logos/audit/ethskills.svg" alt="" width="64" height="56" loading="lazy" />
     </span>
     <span>
       <strong>ETHSKILLS</strong>
@@ -112,7 +112,7 @@ and formal-verification technology across applicable review scopes.
   </a>
   <a className="audit-tool-card" href="https://www.trailofbits.com">
     <span className="audit-tool-logo" aria-hidden="true">
-      <img src="https://ophis.fi/logos/audit/trail-of-bits.svg" alt="" width="64" height="56" loading="lazy" />
+      <img src="/logos/audit/trail-of-bits.svg" alt="" width="64" height="56" loading="lazy" />
     </span>
     <span>
       <strong>Trail of Bits</strong>
@@ -121,7 +121,7 @@ and formal-verification technology across applicable review scopes.
   </a>
   <a className="audit-tool-card" href="https://veritylang.com">
     <span className="audit-tool-logo" aria-hidden="true">
-      <img src="https://ophis.fi/logos/audit/verity.svg" alt="" width="64" height="56" loading="lazy" />
+      <img src="/logos/audit/verity.svg" alt="" width="64" height="56" loading="lazy" />
     </span>
     <span>
       <strong>Verity Lang</strong>
