@@ -27,9 +27,10 @@ test('security methodology stacks cleanly and stays accessible on mobile', async
   const cards = page.locator('.audit-methodology .tool-card')
   const firstCard = await cards.nth(0).boundingBox()
   const secondCard = await cards.nth(1).boundingBox()
-  expect(firstCard).not.toBeNull()
-  expect(secondCard).not.toBeNull()
-  expect(secondCard!.y).toBeGreaterThanOrEqual(firstCard!.y + firstCard!.height)
+  if (!firstCard || !secondCard) {
+    throw new Error('Expected both audit methodology cards to have layout boxes')
+  }
+  expect(secondCard.y).toBeGreaterThanOrEqual(firstCard.y + firstCard.height)
 
   const results = await new AxeBuilder({ page }).include('.audit-methodology').analyze()
   expect(results.violations).toEqual([])
