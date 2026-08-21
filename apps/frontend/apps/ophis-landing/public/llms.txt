@@ -34,7 +34,7 @@ curl -X POST https://swap.ophis.fi/api/intent \
 - [Learn guides](https://ophis.fi/learn/): evergreen explainers on intent-based trading and MEV protection (sandwich attacks, solvers, coincidence of wants, slippage vs signed limits, surplus, MEV blockers vs batch auctions), plus an agent-builder cluster: safe agent swaps, agent custody, the trading MCP server, API keys vs wallet signatures, and EIP-712 typed-data signing.
 - [Pricing](https://ophis.fi/pricing/): the canonical fee page: rates per path, all-in cost per chain, integrator terms, worked examples.
 - [Supported chains](https://ophis.fi/supported-chains/): the canonical chain list with chain IDs and the settlement mode per chain.
-- [Security](https://ophis.fi/security/): custody model, audits, agent-safety rules, vulnerability disclosure.
+- [Security](https://ophis.fi/security/): custody model, audits, agent-safety rules, vulnerability disclosure, and methodology credits for Pashov skills, ETHSKILLS, Trail of Bits tooling, and Verity Lang. Tool use is not an independent audit or endorsement.
 - [Docs](https://docs.ophis.fi/): protocol design, Intent API reference, SDK, security audits.
 - [SDK](https://github.com/ophis-fi/ophis/tree/main/packages/sdk): `@ophis/sdk`: agent-safety helpers for building bounded CoW orders on Ophis (correct per-chain settlement domain, flat volume partner fee, receiver pinning).
 

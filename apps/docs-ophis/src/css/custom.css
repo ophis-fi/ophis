@@ -158,3 +158,83 @@ h3,
   background-clip: text;
   color: transparent;
 }
+
+/* Audit-methodology cards on /audits. Logo stages stay dark in both themes so
+ * the official light/transparent assets retain their intended contrast. */
+.audit-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.audit-tool-card {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.875rem;
+  min-width: 0;
+  min-height: 6.5rem;
+  padding: 0.875rem;
+  color: var(--ifm-color-content-secondary);
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 0.75rem;
+  text-decoration: none;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+
+.audit-tool-card:hover {
+  color: var(--ifm-color-content-secondary);
+  border-color: var(--ifm-color-primary);
+  text-decoration: none;
+}
+
+.audit-tool-card:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 3px;
+}
+
+.audit-tool-logo {
+  display: grid;
+  place-items: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  padding: 0.5625rem;
+  overflow: hidden;
+  background: #09090b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.625rem;
+}
+
+.audit-tool-logo img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.audit-tool-card strong,
+.audit-tool-card small {
+  display: block;
+}
+
+.audit-tool-card strong {
+  margin-bottom: 0.3125rem;
+  color: var(--ifm-color-content);
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
+.audit-tool-card small {
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 700px) {
+  .audit-tool-grid {
+    grid-template-columns: 1fr;
+  }
+}
