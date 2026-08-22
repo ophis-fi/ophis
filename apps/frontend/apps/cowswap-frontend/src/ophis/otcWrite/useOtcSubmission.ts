@@ -1,15 +1,13 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import { withOtcTimeout } from 'ophis/otc'
-
+import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
+import { withOtcAllowanceRefreshTimeout } from './otcWriteTimeouts'
 import { submitOtcTransaction } from './prepareOtcTransaction'
 import { translateOtcWriteError } from './translateOtcWriteError'
 import { useOtcAllowanceCooldown } from './useOtcAllowanceCooldown'
 
 import type { OtcWalletSubmitter, OtcWriteClient, OtcWriteIntent, OtcWriteRuntimeAuthorization } from './otcWrite.types'
 import type { Address, Hex } from 'viem'
-
-const POST_RECEIPT_ALLOWANCE_TIMEOUT_MS = 5_000
 
 interface AllowanceRead {
   allowance: bigint
@@ -32,6 +30,7 @@ export interface OtcSubmissionState {
   pendingIntent: OtcWriteIntent['kind'] | 'switch' | null
   error: string | null
   successHash: Hex | null
+  uncertainHash: Hex | null
   recoveryRequired: boolean
   allowanceCooldown: boolean
   setError(error: string | null): void
@@ -43,11 +42,7 @@ async function hasRecoveryAllowance(
   execution: boolean,
   requiredAllowance: bigint | null | undefined,
 ): Promise<boolean> {
-  const refreshed = await withOtcTimeout(
-    refreshAllowance(),
-    POST_RECEIPT_ALLOWANCE_TIMEOUT_MS,
-    'Ophis OTC allowance refresh timed out',
-  ).catch(() => undefined)
+  const refreshed = await withOtcAllowanceRefreshTimeout(refreshAllowance).catch(() => undefined)
   if (!execution || requiredAllowance === null || requiredAllowance === undefined) return false
   // A failed re-read must not erase recovery state. Allowance polling keeps the
   // action unavailable until it succeeds; if it later observes a positive
@@ -57,7 +52,6 @@ async function hasRecoveryAllowance(
 
 interface OtcSubmissionSuccessResult {
   beginCooldown: boolean
-  clearRecovery: boolean
   confirmed: boolean
 }
 
@@ -71,16 +65,11 @@ async function settleSuccessfulSubmission(
   const refreshRequired = allowanceIntent || (requiredAllowance !== null && requiredAllowance !== undefined)
   if (!isCurrentContext()) return null
   if (refreshRequired) {
-    await withOtcTimeout(
-      refreshAllowance(),
-      POST_RECEIPT_ALLOWANCE_TIMEOUT_MS,
-      'Ophis OTC allowance refresh timed out',
-    ).catch(() => undefined)
+    await withOtcAllowanceRefreshTimeout(refreshAllowance).catch(() => undefined)
   }
   if (!isCurrentContext()) return null
   return {
     beginCooldown: refreshRequired,
-    clearRecovery: !allowanceIntent || intent.kind.startsWith('revoke-'),
     confirmed: !allowanceIntent,
   }
 }
@@ -108,7 +97,7 @@ function applySuccessfulSubmission(
 ): boolean {
   if (!result) return false
   setSuccessHash(transactionHash)
-  if (result.clearRecovery) setRecoveryRequired(false)
+  setRecoveryRequired(false)
   if (result.beginCooldown) beginAllowanceCooldown()
   if (result.confirmed) onConfirmed?.()
   return true
@@ -144,12 +133,31 @@ function submissionContextKey(
   return [resetKey, account ?? '', readFlag, writeFlag, isLocal, writeMode ?? ''].join('\u0000')
 }
 
+function captureSubmissionContext(contextGeneration: { current: number }): {
+  generation: number
+  isCurrentContext: () => boolean
+} {
+  const generation = contextGeneration.current
+  return { generation, isCurrentContext: () => contextGeneration.current === generation }
+}
+
+function applyUncertainSubmission(
+  caught: unknown,
+  isCurrentContext: () => boolean,
+  setUncertainHash: (hash: Hex) => void,
+): boolean {
+  if (!(caught instanceof OtcReceiptTrackingError)) return false
+  if (isCurrentContext()) setUncertainHash(caught.transactionHash)
+  return true
+}
+
 export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionState {
   const { writeClient, wallet, authorization, resetKey, account, requiredAllowance, refreshAllowance, onConfirmed } =
     options
   const [pendingIntent, setPendingIntent] = useState<OtcWriteIntent['kind'] | 'switch' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [successHash, setSuccessHash] = useState<Hex | null>(null)
+  const [uncertainHash, setUncertainHash] = useState<Hex | null>(null)
   const [recoveryRequired, setRecoveryRequired] = useState(false)
   const submissionContext = submissionContextKey(resetKey, account, authorization)
   const contextGeneration = useRef(0)
@@ -162,6 +170,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     setPendingIntent(null)
     setError(null)
     setSuccessHash(null)
+    setUncertainHash(null)
     setRecoveryRequired(false)
     return () => {
       contextGeneration.current += 1
@@ -171,8 +180,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
 
   const submit = useCallback(
     async (intent: OtcWriteIntent, execution: boolean) => {
-      const generation = contextGeneration.current
-      const isCurrentContext = (): boolean => contextGeneration.current === generation
+      const { generation, isCurrentContext } = captureSubmissionContext(contextGeneration)
       if (inFlightGeneration.current === generation) return
       if (!writeClient || !wallet) {
         setError('Wallet access is still loading. Try again in a moment.')
@@ -182,6 +190,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
       setPendingIntent(intent.kind)
       setError(null)
       setSuccessHash(null)
+      setUncertainHash(null)
       try {
         const receipt = await submitOtcTransaction(
           writeClient,
@@ -204,6 +213,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
         )
           return
       } catch (caught) {
+        if (applyUncertainSubmission(caught, isCurrentContext, setUncertainHash)) return
         const result = await settleFailedSubmission(
           caught,
           execution,
@@ -219,7 +229,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     [authorization, beginAllowanceCooldown, onConfirmed, refreshAllowance, requiredAllowance, wallet, writeClient],
   )
   return useMemo(
-    () => ({ pendingIntent, error, successHash, recoveryRequired, allowanceCooldown, setError, submit }),
-    [allowanceCooldown, error, pendingIntent, recoveryRequired, submit, successHash],
+    () => ({ pendingIntent, error, successHash, uncertainHash, recoveryRequired, allowanceCooldown, setError, submit }),
+    [allowanceCooldown, error, pendingIntent, recoveryRequired, submit, successHash, uncertainHash],
   )
 }

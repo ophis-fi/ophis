@@ -4,6 +4,7 @@ import { OPHIS_ETHEREUM_OTC_MANIFEST, readOtcOrder, verifyOtcContract } from 'op
 import { isAddressEqual, type Address, type Hex } from 'viem'
 
 import { buildOtcTransaction, OTC_FILL_DEADLINE_WINDOW_SECONDS } from './buildOtcTransaction'
+import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
 import { readOtcAllowanceAtBlock } from './readOtcAllowance'
 
 import type {
@@ -142,7 +143,12 @@ export async function submitOtcTransaction(
     prepared.preparedAtTimestamp,
     isCurrentContext,
   )
-  const receipt = await wallet.waitForTransactionReceipt(hash)
+  let receipt: OtcTransactionReceipt
+  try {
+    receipt = await wallet.waitForTransactionReceipt(hash)
+  } catch (caught) {
+    throw new OtcReceiptTrackingError(hash, caught)
+  }
   if (receipt.status !== 'success') throw new Error('Ophis OTC transaction reverted')
   return receipt
 }

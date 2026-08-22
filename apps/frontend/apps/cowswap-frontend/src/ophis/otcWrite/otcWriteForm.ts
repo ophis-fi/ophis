@@ -54,7 +54,7 @@ export interface OtcCreateFormValues {
 }
 
 export function parseOtcCreateDraft(values: OtcCreateFormValues): OtcCreateDraft | null {
-  if (values.tokenA.address === values.tokenB.address) return null
+  if (isAddressEqual(values.tokenA.address, values.tokenB.address)) return null
   const amountA = parseOtcHumanAmount(values.amountA, values.tokenA.decimals)
   const amountB = parseOtcHumanAmount(values.amountB, values.tokenB.decimals)
   if (amountA === null || amountB === null) return null

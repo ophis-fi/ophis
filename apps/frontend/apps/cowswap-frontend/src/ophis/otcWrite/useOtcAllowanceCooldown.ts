@@ -1,5 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
+import { withOtcAllowanceRefreshTimeout } from './otcWriteTimeouts'
+
 const ALLOWANCE_CONFIRMATION_COOLDOWN_MS = 4_000
 
 export function useOtcAllowanceCooldown(
@@ -23,7 +25,7 @@ export function useOtcAllowanceCooldown(
     setCooldown(true)
     if (cooldownRef.current) clearTimeout(cooldownRef.current)
     cooldownRef.current = setTimeout(() => {
-      void refreshAllowance()
+      void withOtcAllowanceRefreshTimeout(refreshAllowance)
         .catch(() => undefined)
         .finally(() => {
           if (generationRef.current === generation) setCooldown(false)

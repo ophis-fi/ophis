@@ -40,6 +40,13 @@ export function OtcActionControlView(props: OtcActionControlViewProps): ReactNod
           </Callout>
         </div>
       )}
+      {controller.uncertainHash && (
+        <div role="alert" aria-live="assertive" aria-atomic="true">
+          <Callout tone="warning" title="Confirmation unavailable">
+            <p>The transaction was submitted. Verify this hash before trying again: {controller.uncertainHash}</p>
+          </Callout>
+        </div>
+      )}
       <styledEl.PrimaryAction
         type="button"
         disabled={controller.model.disabled}

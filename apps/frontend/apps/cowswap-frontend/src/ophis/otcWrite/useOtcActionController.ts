@@ -45,6 +45,7 @@ export interface OtcActionController {
   model: OtcActionModel
   error: string | null
   successHash: Hex | null
+  uncertainHash: Hex | null
   allowance: bigint | null
   diagnostic: string | null
   runPrimary(): Promise<void>
@@ -105,6 +106,7 @@ export function useOtcActionController(
     requiredAllowance: definition.requiredAllowance ?? null,
     recoveryRequired: submission.recoveryRequired,
     allowanceCooldown: submission.allowanceCooldown,
+    receiptUncertain: submission.uncertainHash !== null,
     pendingIntent: submission.pendingIntent,
     executeLabel: definition.executeLabel,
     unavailableLabel: definition.unavailableLabel ?? 'Complete the order terms',
@@ -138,9 +140,10 @@ export function useOtcActionController(
     submission.error ??
     (network.allowanceResponse.error ? translateOtcWriteError(network.allowanceResponse.error) : null)
   const diagnostic = localDiagnostic(network.allowanceResponse.error)
+  const { successHash, uncertainHash } = submission
 
   return useMemo(
-    () => ({ model, error, successHash: submission.successHash, allowance, diagnostic, runPrimary }),
-    [allowance, diagnostic, error, model, runPrimary, submission.successHash],
+    () => ({ model, error, successHash, uncertainHash, allowance, diagnostic, runPrimary }),
+    [allowance, diagnostic, error, model, runPrimary, successHash, uncertainHash],
   )
 }

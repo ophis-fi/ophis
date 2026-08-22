@@ -31,6 +31,7 @@ describe('OtcActionControl screen-reader semantics', () => {
       model: { action: 'revoke', label: 'Revoke unused allowance', disabled: false, pending: false },
       error: 'The order changed before submission.',
       successHash: null,
+      uncertainHash: null,
       allowance: 2_000_000_000n,
       diagnostic: null,
       runPrimary: jest.fn(),
@@ -49,6 +50,7 @@ describe('OtcActionControl screen-reader semantics', () => {
       model: { action: 'execute', label: 'Fill entire order', disabled: false, pending: false },
       error: null,
       successHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      uncertainHash: null,
       allowance: null,
       diagnostic: null,
       runPrimary: jest.fn(),
@@ -68,6 +70,7 @@ describe('OtcActionControl screen-reader semantics', () => {
       model: { action: 'unavailable', label: 'Cancelling order...', disabled: true, pending: true },
       error: null,
       successHash: null,
+      uncertainHash: null,
       allowance: null,
       diagnostic: null,
       runPrimary: jest.fn(),
@@ -78,5 +81,26 @@ describe('OtcActionControl screen-reader semantics', () => {
     const button = screen.getByRole('button', { name: 'Cancelling order...' }) as HTMLButtonElement
     expect(button.disabled).toBe(true)
     expect(button.getAttribute('aria-busy')).toBe('true')
+  })
+
+  it('announces an uncertain submitted hash and keeps retry disabled', () => {
+    const hash = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    useControllerMock.mockReturnValue({
+      model: { action: 'unavailable', label: 'Verify submitted transaction', disabled: true, pending: false },
+      error: null,
+      successHash: null,
+      uncertainHash: hash,
+      allowance: 2_000_000_000n,
+      diagnostic: null,
+      runPrimary: jest.fn(),
+    })
+
+    render(<OtcActionControl definition={DEFINITION} onConfirmed={undefined} />)
+
+    expect((screen.getByRole('button', { name: 'Verify submitted transaction' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+    expect(announcementFor('Confirmation unavailable').getAttribute('aria-live')).toBe('assertive')
+    expect(screen.getByText(new RegExp(hash))).toBeTruthy()
   })
 })

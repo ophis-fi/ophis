@@ -14,6 +14,7 @@ export interface OtcActionFacts {
   requiredAllowance: bigint | null
   recoveryRequired: boolean
   allowanceCooldown: boolean
+  receiptUncertain: boolean
   pendingIntent: OtcWriteIntent['kind'] | 'switch' | null
   executeLabel: string
   unavailableLabel: string
@@ -70,6 +71,9 @@ function environmentModel(facts: OtcActionFacts): MaybeActionModel {
 }
 
 function readinessModel(facts: OtcActionFacts): MaybeActionModel {
+  if (facts.receiptUncertain) {
+    return { action: 'unavailable', label: 'Verify submitted transaction', disabled: true, pending: false }
+  }
   if (facts.allowanceFailed) {
     return { action: 'unavailable', label: 'Allowance unavailable', disabled: true, pending: false }
   }

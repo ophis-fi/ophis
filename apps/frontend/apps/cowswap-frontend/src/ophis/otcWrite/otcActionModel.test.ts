@@ -18,6 +18,7 @@ function facts(overrides: Partial<OtcActionFacts> = {}): OtcActionFacts {
     requiredAllowance: 10n,
     recoveryRequired: false,
     allowanceCooldown: false,
+    receiptUncertain: false,
     pendingIntent: null,
     executeLabel: 'Fill entire order',
     unavailableLabel: 'Order is inactive',
@@ -80,6 +81,12 @@ describe('deriveOtcActionModel', () => {
       pending: true,
     })
     expect(deriveOtcActionModel(facts({ allowanceCooldown: true })).label).toBe('Refreshing exact allowance...')
+    expect(deriveOtcActionModel(facts({ receiptUncertain: true }))).toEqual({
+      action: 'unavailable',
+      label: 'Verify submitted transaction',
+      disabled: true,
+      pending: false,
+    })
   })
 
   it('prioritizes safe revocation after a raced fill', () => {

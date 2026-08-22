@@ -24,5 +24,13 @@ describe('OTC write form parsing', () => {
       amountB: 8_000n * 10n ** 6n,
     })
     expect(parseOtcCreateDraft({ tokenA: weth, amountA: '2', tokenB: weth, amountB: '1' })).toBeNull()
+    expect(
+      parseOtcCreateDraft({
+        tokenA: weth,
+        amountA: '2',
+        tokenB: { ...weth, address: weth.address.toLowerCase() as typeof weth.address },
+        amountB: '1',
+      }),
+    ).toBeNull()
   })
 })

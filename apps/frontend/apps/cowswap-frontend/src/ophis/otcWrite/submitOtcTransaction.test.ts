@@ -1,3 +1,4 @@
+import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
 import { submitOtcTransaction } from './prepareOtcTransaction'
 import {
   MAKER,
@@ -150,5 +151,24 @@ describe('Milestone C wallet submission sink', () => {
         mockOtcManifest(),
       ),
     ).rejects.toThrow('Ophis OTC transaction reverted')
+  })
+
+  it('preserves the broadcast hash when receipt tracking fails', async () => {
+    const wallet: OtcWalletSubmitter = {
+      sendTransaction: async () => TX_HASH,
+      waitForTransactionReceipt: async () => {
+        throw new Error('receipt RPC unavailable')
+      },
+    }
+
+    await expect(
+      submitOtcTransaction(
+        mockOtcWriteClient(),
+        wallet,
+        { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
+        mockOtcAuthorization(),
+        mockOtcManifest(),
+      ),
+    ).rejects.toMatchObject<OtcReceiptTrackingError>({ transactionHash: TX_HASH })
   })
 })
