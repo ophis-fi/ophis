@@ -1,0 +1,61 @@
+name: OTC Milestone C merge gate
+
+# Bootstrap invariant: do not enforce this file until the commit introducing it
+# and its trusted parser is merged. After bootstrap, an organization ruleset
+# must require this workflow from ophis-fi/ophis, this path, and refs/heads/main.
+# Do not rely on the job-name status context: PR-controlled workflows can emit
+# duplicate check names. The protect-main ruleset must also require review-thread
+# resolution; a review with findings emits no clean result, and native thread
+# enforcement closes later inline-comment lifecycle races.
+
+on:
+  # pull_request_target loads this definition from the protected base. Required
+  # workflow rules also resolve this path from the protected source ref.
+  # Strict base freshness makes a base advance unmergeable until synchronize
+  # reruns this gate against the new full base SHA.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  codex-review:
+    name: OTC Milestone C / fresh Codex review
+    runs-on: ubuntu-latest
+    steps:
+      # Run the gate implementation from the trusted base commit. Otherwise a
+      # money-path PR could edit this script to approve itself.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Locate the trusted gate implementation
+        id: trusted-gate
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          if [[ -f scripts/require-otc-codex-review.mjs ]]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          elif [[ "$PR_NUMBER" == 1227 &&
+            "$BASE_SHA" == 0fa6948a681c07716adfeb9a20912a9f2895a38b ]]; then
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'One-time bootstrap PR: the trusted base predates the gate.'
+          else
+            echo 'The protected base is missing the required OTC gate parser.' >&2
+            exit 1
+          fi
+      - name: Mutation-test the review evidence parser
+        if: steps.trusted-gate.outputs.available == 'true'
+        run: node scripts/require-otc-codex-review.mjs --self-test
+      - name: Require clean Codex evidence for the current money-path head
+        if: steps.trusted-gate.outputs.available == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/require-otc-codex-review.mjs
