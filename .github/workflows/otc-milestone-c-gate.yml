@@ -56,12 +56,11 @@ jobs:
             exit 1
           }
           run_id="$(
-            gh api --method GET \
+            gh api --method GET --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/actions/workflows/otc-milestone-c-gate.yml/runs" \
-              -f head_sha="$head_sha" \
               -f per_page=100 \
-              | jq -r --argjson number "$PR_NUMBER" \
-                '[.workflow_runs[] | select(any(.pull_requests[]; .number == $number))][0].id // empty'
+              | jq -r --argjson number "$PR_NUMBER" --arg head "$head_sha" \
+                '[.[].workflow_runs[] | select(any(.pull_requests[]; .number == $number and .head.sha == $head))][0].id // empty'
           )"
           [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
             echo 'No gate run is attached to the current pull request head' >&2
