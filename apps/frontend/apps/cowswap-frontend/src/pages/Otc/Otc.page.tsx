@@ -1,11 +1,10 @@
 /**
- * OtcPage — read-only Ethereum OTC surface (OTC Milestone B).
+ * OtcPage — Ethereum OTC surface (Milestone B read-only; C fork writes).
  *
  * Browse and inspect fixed-price escrow orders on the external immutable
- * Swapboard contract. STRICTLY READ-ONLY: no transaction selector is
- * reachable from this page family (enforced by ophis/otc's boundary test and
- * the empty enabled-selector manifest pin). Write flows are a separate,
- * approval-gated milestone.
+ * Swapboard contract. Production remains strictly read-only. The optional
+ * Milestone C surface is mounted only when the separate local-fork write gate
+ * passes; all signer access stays isolated in ophis/otcWrite.
  *
  * Data flow: on-chain snapshot (settlement authority, fail-closed) +
  * subgraph enrichment (ages/history, optional). Rows are labeled
@@ -14,12 +13,13 @@
  * AGENTS.md compliance: named exports, page logic in *.page.tsx with a pure
  * view (OtcPageView) testable without hooks.
  */
-import { useState, type ReactNode } from 'react'
+import { useCallback, useState, type ReactNode } from 'react'
 
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Badge, Callout, PageShell, Section } from 'ophis/ds'
 import { useOtcData } from 'ophis/otc'
+import { OtcCreatePanel } from 'ophis/otcWrite'
 import { Navigate } from 'react-router'
 
 import { Routes as RoutesEnum } from 'common/constants/routes'
@@ -29,7 +29,8 @@ import { applyBrowseFilters, BrowseFilterBar, EMPTY_BROWSE_FILTERS, type BrowseF
 import { OtcDisclosure } from './OtcDisclosure'
 import { buildOtcDisplayRows, filterBrowseRows, filterMakerRows } from './otcDisplay'
 import { OtcOrdersTable } from './OtcOrdersTable'
-import { useOtcPageEnabled } from './useOtcPageEnabled'
+import { useOtcNow } from './useOtcNow'
+import { useOtcPageEnabled, useOtcWriteEnabled } from './useOtcPageEnabled'
 
 import type { OtcDisplayRow } from './otcDisplay'
 import type { OtcDataState } from 'ophis/otc'
@@ -93,13 +94,13 @@ function MyOrdersPanel({
   )
 }
 
-function CreatePanel(): ReactNode {
+function ReadOnlyCreatePanel(): ReactNode {
   return (
     <Section id="otc-create" title="Create">
       <Callout tone="info" title="Order creation is not enabled">
         <p>
-          Creating, filling, and cancelling orders through Ophis is a later, separately reviewed milestone. This preview
-          is read-only by construction: no transaction can be built or signed from this page.
+          Creating, filling, and cancelling orders are under isolated Milestone C development. This production page is
+          read-only: no transaction can be built or signed from it.
         </p>
       </Callout>
       <DisabledAction type="button" disabled aria-disabled="true">
@@ -150,22 +151,30 @@ export interface OtcPageViewProps {
   state: OtcDataState
   account: string | undefined
   nowMs: number
+  createPanel?: ReactNode
+  writeEnabled?: boolean
 }
 
-export function OtcPageView({ state, account, nowMs }: OtcPageViewProps): ReactNode {
-  const [tab, setTab] = useState<OtcTab>('browse')
+export function OtcPageView({ state, account, nowMs, createPanel, writeEnabled = false }: OtcPageViewProps): ReactNode {
+  const [tab, setTab] = useState<OtcTab>(writeEnabled ? 'create' : 'browse')
   const rows = buildOtcDisplayRows(state)
+  const dataReady = state.status === 'ready' || state.status === 'degraded'
+  const showTabs = dataReady || writeEnabled
 
   return (
     <PageShell
       width="wide"
       eyebrow="OTC"
       title="Fixed-price peer-to-peer orders."
-      lede="Browse escrowed OTC orders settled on an external immutable Ethereum contract. Read-only preview: order data is verified directly against Ethereum."
+      lede={
+        writeEnabled
+          ? 'Test exact ERC-20 escrow actions against a local Ethereum fork. Every order read is verified directly against the pinned contract.'
+          : 'Browse escrowed OTC orders settled on an external immutable Ethereum contract. This surface is read-only; order data is verified directly against Ethereum.'
+      }
     >
       <BadgeRow>
         <Badge tone="live">Ethereum</Badge>
-        <Badge tone="beta">Read-only preview</Badge>
+        <Badge tone="beta">{writeEnabled ? 'Local fork writes' : 'Read-only'}</Badge>
         {state.snapshot && (
           <span aria-label={`Verified at block ${state.snapshot.blockNumber.toString()}`}>
             Verified at block {state.snapshot.blockNumber.toString()}
@@ -185,9 +194,9 @@ export function OtcPageView({ state, account, nowMs }: OtcPageViewProps): ReactN
         </Callout>
       )}
 
-      {(state.status === 'ready' || state.status === 'degraded') && (
+      {showTabs && (
         <>
-          <OtcStateNotices state={state} />
+          {dataReady && <OtcStateNotices state={state} />}
           <TabBar role="group" aria-label="OTC views">
             {TABS.map((item) => (
               <TabButton
@@ -201,9 +210,9 @@ export function OtcPageView({ state, account, nowMs }: OtcPageViewProps): ReactN
               </TabButton>
             ))}
           </TabBar>
-          {tab === 'browse' && <BrowsePanel rows={filterBrowseRows(rows)} nowMs={nowMs} />}
-          {tab === 'mine' && <MyOrdersPanel rows={rows} account={account} nowMs={nowMs} />}
-          {tab === 'create' && <CreatePanel />}
+          {dataReady && tab === 'browse' && <BrowsePanel rows={filterBrowseRows(rows)} nowMs={nowMs} />}
+          {dataReady && tab === 'mine' && <MyOrdersPanel rows={rows} account={account} nowMs={nowMs} />}
+          {tab === 'create' && (createPanel ?? <ReadOnlyCreatePanel />)}
         </>
       )}
     </PageShell>
@@ -212,12 +221,22 @@ export function OtcPageView({ state, account, nowMs }: OtcPageViewProps): ReactN
 
 export function OtcPage(): ReactNode {
   const enabled = useOtcPageEnabled()
+  const writeEnabled = useOtcWriteEnabled()
   const { account } = useWalletInfo()
-  const state = useOtcData(enabled)
+  const [refreshSignal, setRefreshSignal] = useState(0)
+  const nowMs = useOtcNow()
+  const state = useOtcData(enabled, refreshSignal)
+  const refresh = useCallback(() => setRefreshSignal((current) => current + 1), [])
 
   if (!enabled) return <Navigate to={RoutesEnum.HOME} replace />
 
-  // Wall-clock read for relative order ages only; refreshed on re-render.
-  // eslint-disable-next-line react-hooks/purity
-  return <OtcPageView state={state} account={account} nowMs={Date.now()} />
+  return (
+    <OtcPageView
+      state={state}
+      account={account}
+      nowMs={nowMs}
+      writeEnabled={writeEnabled}
+      createPanel={writeEnabled ? <OtcCreatePanel onConfirmed={refresh} /> : undefined}
+    />
+  )
 }

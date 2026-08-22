@@ -38,11 +38,12 @@ jest.mock('common/constants/routes', () => ({
   Routes: {
     PLAY_COWRUNNER: '/play/cowrunner',
     PLAY_MEVSLICER: '/play/mevslicer',
+    OTC: '/otc',
   },
 }))
 
-function getMoreItemHrefs(isSolversEnabled: boolean): string[] {
-  const navItems = NAV_ITEMS(SupportedChainId.MAINNET, isSolversEnabled)
+function getMoreItemHrefs(isSolversEnabled: boolean, isOtcEnabled = true): string[] {
+  const navItems = NAV_ITEMS(SupportedChainId.MAINNET, isSolversEnabled, isOtcEnabled)
   const moreItem = navItems[navItems.length - 1]
 
   if (!moreItem?.children) {
@@ -59,5 +60,13 @@ describe('NAV_ITEMS', () => {
 
   it('shows solvers menu item when the solvers flag is enabled', () => {
     expect(getMoreItemHrefs(true)).toContain('https://explorer.cow.fi/solvers')
+  })
+
+  it('links the enabled OTC surface from the product menu', () => {
+    expect(getMoreItemHrefs(false)).toContain('/otc')
+  })
+
+  it('hides the OTC entry when the read feature is disabled', () => {
+    expect(getMoreItemHrefs(false, false)).not.toContain('/otc')
   })
 })

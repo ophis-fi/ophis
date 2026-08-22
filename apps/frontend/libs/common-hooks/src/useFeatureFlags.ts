@@ -27,7 +27,7 @@ export interface FeatureFlags {
  * `{ ...defaults, ...flags }`. So if we ever wire up LD with explicit
  * values (e.g. to A/B-test a provider), the LD value wins.
  */
-const defaults: Partial<FeatureFlags> = {
+export const DEFAULT_FEATURE_FLAGS: Readonly<Partial<FeatureFlags>> = {
   // Bridge providers — enable all three so users see EVM↔Solana via
   // NEAR Intents AND EVM↔EVM via Bungee/Across.
   isBungeeBridgeProviderEnabled: true,
@@ -38,9 +38,16 @@ const defaults: Partial<FeatureFlags> = {
   // useAvailableTargetChains + useSupportedTargetChains).
   isBtcBridgeEnabled: true,
   isSolBridgeEnabled: true,
+  // Ophis OTC Milestone B is the reviewed, read-only Ethereum surface. Its
+  // production route can be enabled independently from all transaction code.
+  isOtcEnabled: true,
+  // Milestone C has a second, fail-closed control. A remote flag alone is not
+  // sufficient to enable writes: useOtcWriteEnabled also requires the
+  // explicit `REACT_APP_OTC_WRITE_MODE=fork` build boundary.
+  isOtcWriteEnabled: false,
 }
 
 export function useFeatureFlags(): FeatureFlags {
   const flags = useFlags<FeatureFlags>()
-  return { ...defaults, ...flags }
+  return { ...DEFAULT_FEATURE_FLAGS, ...flags }
 }

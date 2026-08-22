@@ -1,0 +1,118 @@
+name: OTC Milestone C fork tests
+
+on:
+  pull_request:
+    paths:
+      - 'contracts/foundry.toml'
+      - 'contracts/test/otc-fork/OtcSwapboardEthereumFork.t.sol'
+      - 'apps/frontend/apps/cowswap-frontend/src/ophis/otc/**'
+      - 'apps/frontend/apps/cowswap-frontend/src/ophis/otcWrite/**'
+      - 'apps/frontend/apps/cowswap-frontend/src/pages/Otc/**'
+      - 'apps/frontend/libs/common-const/src/nativeAndWrappedTokens.ts'
+      - 'apps/frontend/libs/common-const/src/tokens.ts'
+      - 'apps/frontend/libs/common-const/src/index.ts'
+      - 'apps/frontend/libs/common-hooks/src/useFeatureFlags.ts'
+      - 'apps/frontend/libs/common-hooks/src/index.ts'
+      - 'apps/frontend/libs/common-utils/src/environments.ts'
+      - 'apps/frontend/libs/common-utils/src/index.ts'
+      - 'apps/frontend/libs/tokens/src/services/tokenPolicy.ts'
+      - 'apps/frontend/libs/tokens/src/services/tokenPolicy.spec.ts'
+      - 'apps/frontend/libs/tokens/src/index.ts'
+      - 'apps/frontend/libs/wallet/**'
+      - 'apps/frontend/libs/wallet-provider/**'
+      - 'apps/frontend/apps/cowswap-frontend-e2e/**'
+      - 'apps/frontend/pnpm-lock.yaml'
+      - 'apps/frontend/package.json'
+      - 'apps/frontend/tsconfig.base.json'
+      - 'apps/frontend/apps/cowswap-frontend/project.json'
+      - 'apps/frontend/apps/cowswap-frontend/tsconfig.app.json'
+      - 'apps/frontend/apps/cowswap-frontend-e2e/project.json'
+      - 'apps/frontend/apps/cowswap-frontend-e2e/tsconfig.json'
+      - 'apps/frontend/nx.json'
+      - '.github/workflows/otc-milestone-c-fork.yml'
+  schedule:
+    - cron: '37 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: otc-milestone-c-fork-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ethereum-fork:
+    name: ERC-20 create/fill/cancel invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Install pinned Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.5.1
+          cache: true
+      - name: Run pinned Ethereum fork suite
+        working-directory: contracts
+        env:
+          FOUNDRY_PROFILE: otc-fork
+          OPHIS_FORK_RPC_ETH: ${{ secrets.OTC_FORK_RPC_URL }}
+        run: |
+          test -n "$OPHIS_FORK_RPC_ETH" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
+          forge test --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol
+
+  injected-wallet-fork:
+    name: Injected wallet ERC-20 lifecycle and recovery
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Install pinned Foundry
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.5.1
+          cache: true
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+        with:
+          run_install: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/frontend/pnpm-lock.yaml
+      - name: Install cowswap dependencies
+        working-directory: apps/frontend
+        run: pnpm install --frozen-lockfile
+      - name: Run injected-wallet flow against a local mainnet fork
+        working-directory: apps/frontend
+        env:
+          OPHIS_FORK_RPC_ETH: ${{ secrets.OTC_FORK_RPC_URL }}
+          CYPRESS_OTC_FORK_RPC_URL: http://127.0.0.1:8545
+          REACT_APP_NETWORK_URL_1: http://localhost:8545
+          REACT_APP_OTC_WRITE_FLAG: 'true'
+          REACT_APP_OTC_WRITE_MODE: fork
+        run: |
+          test -n "$OPHIS_FORK_RPC_ETH" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
+          anvil --fork-url "$OPHIS_FORK_RPC_ETH" --no-rate-limit --chain-id 1 --host 127.0.0.1 --port 8545 > /tmp/otc-anvil.log 2>&1 &
+          anvil_pid=$!
+          pnpm start:cowswap > /tmp/otc-frontend.log 2>&1 &
+          frontend_pid=$!
+          trap 'kill "$frontend_pid" "$anvil_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..120}; do
+            if curl --fail --silent http://127.0.0.1:3000 >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 120 ]; then
+              cat /tmp/otc-anvil.log /tmp/otc-frontend.log
+              exit 1
+            fi
+            sleep 1
+          done
+          pnpm exec nx run cowswap-frontend-e2e:e2e --skip-nx-cache \
+            --spec apps/cowswap-frontend-e2e/src/e2e/otc-fork.test.ts \
+            --browser chrome
