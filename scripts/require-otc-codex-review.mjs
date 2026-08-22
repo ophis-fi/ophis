@@ -1,0 +1,778 @@
+#!/usr/bin/env node
+
+/**
+ * Fail-closed merge gate for Milestone C money-path changes.
+ *
+ * Codex records findings as line comments and a clean result as an
+ * authenticated issue comment naming the reviewed commit. A trusted dispatcher
+ * records exact requests and Codex review events as immutable Actions-authored
+ * checkpoints naming the full head and base SHAs. Contributor edits and
+ * deletions cannot erase those checkpoints. A clean result must follow the
+ * newest checkpoint. The repository ruleset independently requires every review
+ * thread to be resolved. Pushes and base edits invalidate earlier evidence.
+ * Mutable approvals are never evidence.
+ */
+
+const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
+const ACTIONS_LOGIN = 'github-actions[bot]';
+const GITHUB_API_ORIGIN = 'https://api.github.com';
+const TRUSTED_REQUEST_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+const SCOPED_PATHS = [
+  '.github/',
+  'apps/frontend/',
+  'contracts/foundry.toml',
+  'contracts/test/otc-fork/',
+  'functions/',
+  'OPHIS_OTC_DIFFERENTIAL_REVIEW_2026-08-19.md',
+  'OPHIS_OTC_MILESTONE_C_APPSEC_REVIEW_2026-08-21.md',
+  'OPHIS_OTC_MILESTONE_C_DIFFERENTIAL_REVIEW_2026-08-21.md',
+  'docs/development/plans/2026-08-18-ophis-otc.md',
+  'docs/development/specs/2026-08-18-ophis-otc-plan.md',
+  'docs/superpowers/plans/2026-08-19-ophis-otc-milestone-ab.md',
+  'docs/superpowers/plans/2026-08-21-ophis-otc-milestone-c.md',
+  'scripts/',
+];
+
+function isScopedPath(path) {
+  return SCOPED_PATHS.some(
+    (scope) => path === scope || (scope.endsWith('/') && path.startsWith(scope)),
+  );
+}
+
+function isScopedFile(file) {
+  return [file?.filename, file?.previous_filename].some(
+    (path) => typeof path === 'string' && isScopedPath(path),
+  );
+}
+
+function codexItems(items) {
+  return items.filter((item) => item?.user?.login === CODEX_LOGIN);
+}
+
+function reviewRequestBody(headSha, baseSha) {
+  return `@codex review\n\nHead: ${headSha}\nBase: ${baseSha}`;
+}
+
+function recordedReviewCheckpointBody(headSha, baseSha, source, sourceId, eventTime) {
+  return `OTC Codex review checkpoint recorded.\n\nHead: ${headSha}\nBase: ${baseSha}\nSource: ${source} ${sourceId}\nEvent run: 1\nEvent time: ${eventTime}`;
+}
+
+function recordedCheckpointMatch(comment, headSha, baseSha) {
+  if (comment?.user?.login !== ACTIONS_LOGIN) return undefined;
+  return String(comment.body ?? '')
+    .replaceAll('\r\n', '\n')
+    .trim()
+    .match(
+      new RegExp(
+        `^OTC Codex review checkpoint recorded\\.\\n\\nHead: ${headSha}\\nBase: ${baseSha}\\nSource: (?:request|issue_comment|review_comment|review|checkpoint):(?:created|edited|deleted|submitted|dismissed) [1-9][0-9]*\\nEvent run: [1-9][0-9]*\\nEvent time: ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z)$`,
+      ),
+    );
+}
+
+function isBoundRecordedCheckpoint(comment, headSha, baseSha) {
+  const match = recordedCheckpointMatch(comment, headSha, baseSha);
+  return Boolean(match && Number.isFinite(Date.parse(match[1])));
+}
+
+function isTrustedRequestCheckpoint(comment, headSha, baseSha) {
+  return (
+    isBoundRecordedCheckpoint(comment, headSha, baseSha) &&
+    /\nSource: request:(?:created|edited) [1-9][0-9]*\n/.test(
+      String(comment.body ?? '').replaceAll('\r\n', '\n'),
+    )
+  );
+}
+
+function recordedCheckpointTime(comment, headSha, baseSha) {
+  const match = recordedCheckpointMatch(comment, headSha, baseSha);
+  if (!match || !Number.isFinite(Date.parse(match[1]))) return undefined;
+  return match[1];
+}
+
+function isBoundCodexReviewCheckpoint(item, headSha) {
+  return (
+    item?.user?.login === CODEX_LOGIN &&
+    item?.commit_id === headSha &&
+    ['review', 'review_comment'].includes(item?.source) &&
+    Number.isSafeInteger(Number(item?.id)) &&
+    Number(item.id) > 0 &&
+    Number.isFinite(Date.parse(item?.updatedAt))
+  );
+}
+
+function isBoundReviewCheckpoint(item, headSha, baseSha) {
+  return (
+    isBoundRecordedCheckpoint(item, headSha, baseSha) || isBoundCodexReviewCheckpoint(item, headSha)
+  );
+}
+
+function cleanCommentHeadPrefix(comment) {
+  const match = String(comment?.body ?? '').match(
+    /^Codex Review: Didn't find any major issues\.[^\r\n]*\r?\n+\*\*Reviewed commit:\*\* `([0-9a-f]{10}|[0-9a-f]{40})`(?:\r?\n|$)/,
+  );
+  return match?.[1];
+}
+
+function hasFreshCleanEvidence(checkpoint, headSha) {
+  const updatedAt = Date.parse(checkpoint.updatedAt);
+  if (!Number.isFinite(updatedAt)) return false;
+  const freshCleanComment = codexItems(checkpoint.cleanComments ?? []).some((comment) => {
+    const displayedSha = cleanCommentHeadPrefix(comment);
+    const createdAt = Date.parse(comment.created_at);
+    return (
+      displayedSha &&
+      headSha.startsWith(displayedSha) &&
+      comment.resolved_commit_id === headSha &&
+      Number.isFinite(createdAt) &&
+      createdAt > updatedAt
+    );
+  });
+  return freshCleanComment;
+}
+
+function newestReviewCheckpoint(checkpoints) {
+  return checkpoints.reduce((newest, checkpoint) => {
+    if (!newest) return checkpoint;
+    const checkpointTime = Date.parse(checkpoint.updatedAt);
+    const newestTime = Date.parse(newest.updatedAt);
+    if (checkpointTime !== newestTime) return checkpointTime > newestTime ? checkpoint : newest;
+    return Number(checkpoint.id ?? 0) > Number(newest.id ?? 0) ? checkpoint : newest;
+  }, undefined);
+}
+
+export function assessCodexGate({ headSha, baseSha, changedFiles, files, reviewRequests }) {
+  if (changedFiles !== files.length) {
+    return {
+      required: true,
+      accepted: false,
+      reason: `GitHub reported ${changedFiles} changed files but exposed ${files.length}; refusing incomplete scope evidence.`,
+    };
+  }
+  if (!files.some(isScopedFile)) {
+    return { required: false, accepted: true, reason: 'No Milestone C money-path file changed.' };
+  }
+
+  const shortHead = headSha.slice(0, 10);
+  const boundCheckpoints = reviewRequests.filter((checkpoint) =>
+    isBoundReviewCheckpoint(checkpoint, headSha, baseSha),
+  );
+  const hasRecordedRequest = boundCheckpoints.some((checkpoint) =>
+    isTrustedRequestCheckpoint(checkpoint, headSha, baseSha),
+  );
+  const latestCheckpoint = newestReviewCheckpoint(boundCheckpoints);
+  const cleanEvidence =
+    hasRecordedRequest && latestCheckpoint
+      ? hasFreshCleanEvidence(latestCheckpoint, headSha)
+      : false;
+
+  if (cleanEvidence) {
+    return {
+      required: true,
+      accepted: true,
+      reason: `Fresh clean Codex evidence covers head ${shortHead}.`,
+    };
+  }
+
+  return {
+    required: true,
+    accepted: false,
+    reason: `No clean Codex review evidence covers head ${shortHead}. Comment "${reviewRequestBody(headSha, baseSha).replaceAll('\n', ' ')}", then rerun this job.`,
+  };
+}
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function assertThrows(callback, message) {
+  let threw = false;
+  try {
+    callback();
+  } catch {
+    threw = true;
+  }
+  assert(threw, message);
+}
+
+function selfTest() {
+  const base = {
+    headSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    baseSha: 'cccccccccccccccccccccccccccccccccccccccc',
+    changedFiles: 1,
+    files: [{ filename: 'apps/frontend/apps/cowswap-frontend/src/ophis/otcWrite/index.ts' }],
+    reviewRequests: [],
+  };
+  const recordedRequest = ({
+    headSha = base.headSha,
+    baseSha = base.baseSha,
+    source = 'request:created',
+    sourceId = 1,
+    updatedAt = '2026-08-20T12:00:00Z',
+    cleanComments = [],
+  } = {}) => ({
+    id: sourceId,
+    user: { login: ACTIONS_LOGIN },
+    body: recordedReviewCheckpointBody(headSha, baseSha, source, sourceId, updatedAt),
+    updatedAt,
+    cleanComments,
+  });
+  assert(!assessCodexGate(base).accepted, 'missing evidence must fail');
+  assert(
+    assessCodexGate({
+      ...base,
+      reviewRequests: [
+        {
+          ...recordedRequest(),
+          updatedAt: '2026-08-20T12:00:00Z',
+          reactions: [
+            { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T12:01:00Z' },
+          ],
+        },
+      ],
+    }).accepted === false,
+    'mutable reaction-only evidence must fail closed',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviews: [{ user: { login: CODEX_LOGIN }, state: 'APPROVED', commit_id: base.headSha }],
+      reviewRequests: [recordedRequest()],
+    }).accepted,
+    'mutable review approvals must not count as clean evidence',
+  );
+  const cleanComment = {
+    user: { login: CODEX_LOGIN },
+    body: `Codex Review: Didn't find any major issues. :+1:\n\n**Reviewed commit:** \`${base.headSha.slice(0, 10)}\`\n`,
+    created_at: '2026-08-20T12:01:00Z',
+    resolved_commit_id: base.headSha,
+  };
+  assert(
+    assessCodexGate({
+      ...base,
+      reviewRequests: [recordedRequest({ cleanComments: [cleanComment] })],
+    }).accepted,
+    'an authenticated clean comment naming the current head must pass',
+  );
+  assert(
+    assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({
+          cleanComments: [
+            {
+              ...cleanComment,
+              body: cleanComment.body.replace(':+1:', 'Swish!'),
+            },
+          ],
+        }),
+      ],
+    }).accepted,
+    'the non-authoritative clean-result flourish may vary',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({
+          cleanComments: [{ ...cleanComment, resolved_commit_id: 'b'.repeat(40) }],
+        }),
+      ],
+    }).accepted,
+    'a clean comment whose short SHA resolves to another commit must fail',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({
+          cleanComments: [{ ...cleanComment, user: { login: 'contributor' } }],
+        }),
+      ],
+    }).accepted,
+    'a contributor-authored clean comment must fail',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({
+          cleanComments: [
+            {
+              ...cleanComment,
+              body: cleanComment.body.replace(base.headSha.slice(0, 10), 'bbbbbbbbbb'),
+            },
+          ],
+        }),
+      ],
+    }).accepted,
+    'a clean comment naming another head must fail',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({ updatedAt: '2026-08-20T12:01:00Z', cleanComments: [cleanComment] }),
+      ],
+    }).accepted,
+    'a same-second clean comment must fail as ambiguous',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        {
+          ...recordedRequest({ cleanComments: [cleanComment] }),
+          user: { login: 'contributor' },
+        },
+      ],
+    }).accepted,
+    'a contributor-authored request marker must fail',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({ source: 'review:submitted', cleanComments: [cleanComment] }),
+      ],
+    }).accepted,
+    'a Codex lifecycle checkpoint without a trusted exact-request checkpoint must fail',
+  );
+  assert(
+    !assessCodexGate({ ...base, changedFiles: 3 }).accepted,
+    'an incomplete GitHub file list must fail closed',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({ sourceId: 1, cleanComments: [cleanComment] }),
+        recordedRequest({ sourceId: 2, updatedAt: '2026-08-20T12:02:00Z' }),
+      ],
+    }).accepted,
+    'a newer review checkpoint must supersede older clean evidence',
+  );
+  const codexFinding = {
+    id: 3,
+    user: { login: CODEX_LOGIN },
+    commit_id: base.headSha,
+    source: 'review_comment',
+    updatedAt: '2026-08-20T12:02:00Z',
+    cleanComments: [cleanComment],
+  };
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [recordedRequest({ cleanComments: [cleanComment] }), codexFinding],
+    }).accepted,
+    'a newer Codex finding must supersede older clean evidence even when its thread is resolved',
+  );
+  const laterCleanComment = { ...cleanComment, created_at: '2026-08-20T12:03:00Z' };
+  assert(
+    assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({ cleanComments: [cleanComment, laterCleanComment] }),
+        { ...codexFinding, cleanComments: [cleanComment, laterCleanComment] },
+      ],
+    }).accepted,
+    'a clean Codex result after the newest finding must pass',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [recordedRequest({ headSha: 'b'.repeat(40), cleanComments: [cleanComment] })],
+    }).accepted,
+    'clean evidence requested for an earlier head must fail after a push',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [recordedRequest({ baseSha: 'd'.repeat(40), cleanComments: [cleanComment] })],
+    }).accepted,
+    'clean evidence requested for an earlier base must fail after a base edit',
+  );
+  assert(
+    assessCodexGate({ ...base, files: [{ filename: 'README.md' }] }).accepted,
+    'unrelated PR must pass without requiring Codex',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      files: [
+        { filename: 'archive/retired-write-module.ts', previous_filename: base.files[0].filename },
+      ],
+    }).accepted,
+    'renaming a scoped file out of scope must still require Codex evidence',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      files: [{ filename: 'apps/frontend/libs/tokens/src/services/tokenPolicy.ts' }],
+    }).accepted,
+    'token policy changes must require Codex evidence',
+  );
+  for (const filename of [
+    '.github/workflows/frontend-ci.yml',
+    '.github/workflows/cloudflare-deploy.yml',
+    '.github/workflows/future-frontend-deploy.yml',
+    'apps/frontend/apps/cowswap-frontend-e2e/package.json',
+    'apps/frontend/apps/cowswap-frontend/package.json',
+    'apps/frontend/apps/cowswap-frontend/index.html',
+    'apps/frontend/apps/cowswap-frontend/.env',
+    'apps/frontend/apps/cowswap-frontend/.env.barn',
+    'apps/frontend/apps/cowswap-frontend/.env.barn.local',
+    'apps/frontend/apps/cowswap-frontend/.env.dev',
+    'apps/frontend/apps/cowswap-frontend/.env.dev.local',
+    'apps/frontend/apps/cowswap-frontend/.env.local',
+    'apps/frontend/apps/cowswap-frontend/.env.production',
+    'apps/frontend/apps/cowswap-frontend/.env.production.local',
+    'apps/frontend/apps/cowswap-frontend/.env.staging',
+    'apps/frontend/apps/cowswap-frontend/.env.staging.local',
+    'apps/frontend/apps/cowswap-frontend/patches/@ethersproject+providers+5.7.2.patch',
+    'apps/frontend/apps/cowswap-frontend/public/emergency.js',
+    'apps/frontend/apps/cowswap-frontend/public/seo-fallback.js',
+    'apps/frontend/apps/cowswap-frontend/src/main.tsx',
+    'apps/frontend/apps/cowswap-frontend/src/service-worker.ts',
+    'apps/frontend/apps/cowswap-frontend/src/serviceWorker/index.ts',
+    'apps/frontend/apps/cowswap-frontend/src/serviceWorkerRegistration.ts',
+    'apps/frontend/apps/cowswap-frontend/src/ophis/ds/index.ts',
+    'apps/frontend/apps/cowswap-frontend/tsconfig.app.json',
+    'apps/frontend/apps/cowswap-frontend/tsconfig.json',
+    'apps/frontend/apps/cowswap-frontend/vite.config.mts',
+    'apps/frontend/apps/cowswap-frontend/public/_headers',
+    'apps/frontend/lingui.config.ts',
+    'apps/frontend/apps/cowswap-frontend/src/modules/application/containers/App/RoutesApp.tsx',
+    'apps/frontend/apps/cowswap-frontend/src/common/constants/routes.ts',
+    'apps/frontend/libs/common-const/package.json',
+    'apps/frontend/libs/common-const/src/index.ts',
+    'apps/frontend/libs/common-hooks/package.json',
+    'apps/frontend/libs/common-hooks/src/index.ts',
+    'apps/frontend/libs/common-utils/package.json',
+    'apps/frontend/libs/common-utils/src/environments.ts',
+    'apps/frontend/libs/common-utils/src/index.ts',
+    'apps/frontend/libs/tokens/package.json',
+    'apps/frontend/libs/tokens/src/index.ts',
+    'apps/frontend/libs/wallet-provider/src/hooks/useWalletProvider.ts',
+    'apps/frontend/package.json',
+    'apps/frontend/pnpm-lock.yaml',
+    'apps/frontend/pnpm-workspace.yaml',
+    'apps/frontend/tools/getReactProcessEnv.ts',
+    'functions/_middleware.ts',
+    'scripts/otc-mainnet-canary.mjs',
+    'scripts/require-otc-codex-review.mjs',
+    'OPHIS_OTC_DIFFERENTIAL_REVIEW_2026-08-19.md',
+    'docs/development/plans/2026-08-18-ophis-otc.md',
+    'docs/development/specs/2026-08-18-ophis-otc-plan.md',
+    'docs/superpowers/plans/2026-08-19-ophis-otc-milestone-ab.md',
+  ]) {
+    assert(
+      !assessCodexGate({ ...base, files: [{ filename }] }).accepted,
+      `${filename} changes must require Codex evidence`,
+    );
+  }
+  assertThrows(
+    () =>
+      nextPageUrl(
+        '<https://example.invalid/repos/ophis-fi/ophis?page=2>; rel="next"',
+        '/repos/ophis-fi/ophis/',
+        '123',
+      ),
+    'pagination must stay on the GitHub API origin',
+  );
+  assert(
+    nextPageUrl(
+      '<https://api.github.com/repositories/123/pulls/1227/files?page=2>; rel="next"',
+      '/repos/ophis-fi/ophis/',
+      '123',
+    ).pathname === '/repositories/123/pulls/1227/files',
+    'canonical repository-id pagination must be accepted',
+  );
+  assertThrows(
+    () =>
+      nextPageUrl(
+        '<https://api.github.com/repositories/124/pulls/1227/files?page=2>; rel="next"',
+        '/repos/ophis-fi/ophis/',
+        '123',
+      ),
+    'canonical pagination for another repository must fail',
+  );
+  assertThrows(
+    () => requireApiSegment('ophis-fi/other', 'repository'),
+    'repository path segments must reject separators',
+  );
+  assertThrows(
+    () => requirePositiveInteger('../1227', 'pull request number'),
+    'numeric API path segments must reject traversal',
+  );
+  assert(
+    currentPullContext({
+      head: { sha: base.headSha },
+      base: { sha: base.baseSha, ref: 'main', repo: { default_branch: 'main' } },
+      changed_files: base.changedFiles,
+      draft: false,
+    }).baseSha === base.baseSha,
+    'current PR state must supply the reviewed base',
+  );
+  assertThrows(
+    () =>
+      currentPullContext({
+        head: { sha: base.headSha },
+        base: { sha: base.baseSha, ref: 'main', repo: { default_branch: 'main' } },
+        changed_files: base.changedFiles,
+        draft: 'false',
+      }),
+    'mutable PR state must be validated before use',
+  );
+  assert(
+    isTrustedReviewRequester({ author_association: 'MEMBER' }),
+    'repository members must be allowed to request a superseding review',
+  );
+  assert(
+    !isTrustedReviewRequester({ author_association: 'CONTRIBUTOR' }),
+    'untrusted commenters must not supersede accepted evidence',
+  );
+  assert(
+    baseIsIncludedInHead(
+      { status: 'ahead', merge_base_commit: { sha: base.baseSha } },
+      base.baseSha,
+    ),
+    'a reviewed head containing the exact base must pass topology validation',
+  );
+  assert(
+    !baseIsIncludedInHead(
+      { status: 'diverged', merge_base_commit: { sha: 'd'.repeat(40) } },
+      base.baseSha,
+    ),
+    'a head that omits the current base must fail topology validation',
+  );
+  process.stdout.write('OTC Codex review gate self-test passed\n');
+}
+
+function requireApiSegment(value, label) {
+  const segment = String(value);
+  if (!/^[A-Za-z0-9_.-]+$/.test(segment)) throw new Error(`Invalid GitHub ${label}`);
+  return segment;
+}
+
+function requirePositiveInteger(value, label) {
+  const integer = String(value);
+  if (!/^[1-9][0-9]*$/.test(integer)) throw new Error(`Invalid GitHub ${label}`);
+  return integer;
+}
+
+function currentPullContext(pull) {
+  const headSha = String(pull?.head?.sha ?? '');
+  const baseSha = String(pull?.base?.sha ?? '');
+  const baseRef = String(pull?.base?.ref ?? '');
+  const defaultBranch = String(pull?.base?.repo?.default_branch ?? '');
+  const changedFiles = pull?.changed_files;
+  const draft = pull?.draft;
+  if (!/^[0-9a-f]{40}$/.test(headSha)) throw new Error('Invalid current pull request head SHA');
+  if (!/^[0-9a-f]{40}$/.test(baseSha)) throw new Error('Invalid current pull request base SHA');
+  if (!Number.isSafeInteger(changedFiles) || changedFiles < 0)
+    throw new Error('Invalid current changed-file count');
+  if (typeof draft !== 'boolean') throw new Error('Invalid current pull request draft state');
+  if (!baseRef || !defaultBranch) throw new Error('Invalid current pull request base branch');
+  return { headSha, baseSha, baseRef, defaultBranch, changedFiles, draft };
+}
+
+function isTrustedReviewRequester(comment) {
+  return TRUSTED_REQUEST_ASSOCIATIONS.has(String(comment?.author_association ?? ''));
+}
+
+function baseIsIncludedInHead(comparison, baseSha) {
+  return (
+    ['ahead', 'identical'].includes(comparison?.status) &&
+    comparison?.merge_base_commit?.sha === baseSha
+  );
+}
+
+function githubApiUrl(segments) {
+  const url = new URL(GITHUB_API_ORIGIN);
+  url.pathname = segments.map((segment) => encodeURIComponent(segment)).join('/');
+  url.searchParams.set('per_page', '100');
+  return url;
+}
+
+function nextPageUrl(link, repositoryPath, repositoryId) {
+  const value = link
+    .split(',')
+    .map((part) => part.trim().match(/^<([^>]+)>; rel="next"$/)?.[1])
+    .find(Boolean);
+  if (!value) return undefined;
+  const url = new URL(value);
+  const canonicalRepositoryPath = `/repositories/${repositoryId}/`;
+  if (
+    url.origin !== GITHUB_API_ORIGIN ||
+    url.username ||
+    url.password ||
+    (!url.pathname.startsWith(repositoryPath) && !url.pathname.startsWith(canonicalRepositoryPath))
+  ) {
+    throw new Error('Refusing untrusted GitHub pagination URL');
+  }
+  return url;
+}
+
+async function api(segments, token, repositoryId) {
+  const items = [];
+  const repositoryPath = `/${segments
+    .slice(0, 3)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')}/`;
+  let url = githubApiUrl(segments);
+  while (url) {
+    const response = await fetch(url, {
+      redirect: 'error',
+      headers: {
+        accept: 'application/vnd.github+json',
+        authorization: `Bearer ${token}`,
+        'x-github-api-version': '2022-11-28',
+      },
+    });
+    if (!response.ok) throw new Error(`GitHub API ${response.status} for ${url.pathname}`);
+    const body = await response.json();
+    if (!Array.isArray(body)) return body;
+    items.push(...body);
+    url = nextPageUrl(response.headers.get('link') ?? '', repositoryPath, repositoryId);
+  }
+  return items;
+}
+
+async function resolveCleanCommentHeads(issueComments, headSha, prefix, token, repositoryId) {
+  return Promise.all(
+    issueComments.map(async (comment) => {
+      if (comment?.user?.login !== CODEX_LOGIN) return comment;
+      const shortSha = cleanCommentHeadPrefix(comment);
+      if (!shortSha || !headSha.startsWith(shortSha)) return comment;
+      const commit =
+        shortSha.length === 40
+          ? { sha: shortSha }
+          : await api([...prefix, 'commits', shortSha], token, repositoryId);
+      const resolvedSha = String(commit?.sha ?? '');
+      if (!/^[0-9a-f]{40}$/.test(resolvedSha)) {
+        throw new Error('Invalid commit resolved from Codex clean evidence');
+      }
+      return { ...comment, resolved_commit_id: resolvedSha };
+    }),
+  );
+}
+
+async function runLive() {
+  const repository = process.env.GITHUB_REPOSITORY ?? '';
+  const numberValue = process.env.PULL_REQUEST_NUMBER ?? '';
+  const token = process.env.GITHUB_TOKEN ?? '';
+  if (!repository || !numberValue || !token)
+    throw new Error('Missing GitHub Actions review-gate context');
+  const repositoryParts = repository.split('/');
+  if (repositoryParts.length !== 2) throw new Error('Invalid GitHub repository');
+  const [owner, name] = repositoryParts.map((part) => requireApiSegment(part, 'repository'));
+  const number = requirePositiveInteger(numberValue, 'pull request number');
+  const prefix = ['repos', owner, name];
+  const currentPull = await api([...prefix, 'pulls', number], token);
+  const repositoryId = requirePositiveInteger(currentPull?.base?.repo?.id, 'repository id');
+  const { headSha, baseSha, baseRef, defaultBranch, changedFiles, draft } =
+    currentPullContext(currentPull);
+  if (draft) {
+    process.stdout.write('Draft PR: Codex merge evidence will be required when marked ready.\n');
+    return;
+  }
+  if (baseRef !== defaultBranch) {
+    throw new Error('Codex merge gate only accepts pull requests targeting the default branch');
+  }
+  const comparison = await api(
+    [...prefix, 'compare', `${baseSha}...${headSha}`],
+    token,
+    repositoryId,
+  );
+  if (!baseIsIncludedInHead(comparison, baseSha)) {
+    throw new Error('Current base is not included in the pull request head; update the branch');
+  }
+
+  const files = await api([...prefix, 'pulls', number, 'files'], token, repositoryId);
+  const confirmedContext = currentPullContext(
+    await api([...prefix, 'pulls', number], token, repositoryId),
+  );
+  if (
+    confirmedContext.headSha !== headSha ||
+    confirmedContext.baseSha !== baseSha ||
+    confirmedContext.baseRef !== baseRef ||
+    confirmedContext.defaultBranch !== defaultBranch ||
+    confirmedContext.changedFiles !== changedFiles ||
+    confirmedContext.draft !== draft
+  ) {
+    throw new Error('Pull request state changed during gate evaluation; rerun against fresh state');
+  }
+
+  // Take an evidence snapshot before the last mutable PR-context check, then
+  // discard it. Only evidence fetched after that check is assessed.
+  await Promise.all([
+    api([...prefix, 'issues', number, 'comments'], token, repositoryId),
+    api([...prefix, 'pulls', number, 'comments'], token, repositoryId),
+    api([...prefix, 'pulls', number, 'reviews'], token, repositoryId),
+  ]);
+  const finalContext = currentPullContext(
+    await api([...prefix, 'pulls', number], token, repositoryId),
+  );
+  if (
+    finalContext.headSha !== headSha ||
+    finalContext.baseSha !== baseSha ||
+    finalContext.baseRef !== baseRef ||
+    finalContext.defaultBranch !== defaultBranch ||
+    finalContext.changedFiles !== changedFiles ||
+    finalContext.draft !== draft
+  ) {
+    throw new Error('Pull request state changed during gate evaluation; rerun against fresh state');
+  }
+  const [rawIssueComments, reviewComments, reviews] = await Promise.all([
+    api([...prefix, 'issues', number, 'comments'], token, repositoryId),
+    api([...prefix, 'pulls', number, 'comments'], token, repositoryId),
+    api([...prefix, 'pulls', number, 'reviews'], token, repositoryId),
+  ]);
+  const issueComments = await resolveCleanCommentHeads(
+    rawIssueComments,
+    headSha,
+    prefix,
+    token,
+    repositoryId,
+  );
+  const recordedCheckpoints = issueComments
+    .filter((comment) => isBoundRecordedCheckpoint(comment, headSha, baseSha))
+    .sort((left, right) => {
+      const timeOrder = String(right.created_at).localeCompare(String(left.created_at));
+      return timeOrder || Number(right.id) - Number(left.id);
+    });
+  const reviewRequests = recordedCheckpoints.map((comment) => ({
+    ...comment,
+    updatedAt: recordedCheckpointTime(comment, headSha, baseSha),
+    cleanComments: issueComments,
+  }));
+  reviewRequests.push(
+    ...reviewComments.map((comment) => ({
+      ...comment,
+      source: 'review_comment',
+      updatedAt: comment.updated_at,
+      cleanComments: issueComments,
+    })),
+    ...reviews.map((review) => ({
+      ...review,
+      source: 'review',
+      updatedAt: review.submitted_at,
+      cleanComments: issueComments,
+    })),
+  );
+  const result = assessCodexGate({
+    headSha,
+    baseSha,
+    changedFiles,
+    files,
+    reviewRequests,
+  });
+  process.stdout.write(`${result.reason}\n`);
+  if (!result.accepted) process.exitCode = 1;
+}
+
+if (process.argv.includes('--self-test')) {
+  selfTest();
+} else {
+  await runLive();
+}
