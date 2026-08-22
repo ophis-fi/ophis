@@ -3,6 +3,10 @@ name: OTC Milestone C review-gate dispatcher
 on:
   issue_comment:
     types: [created, edited, deleted]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
 
 permissions:
   actions: read
@@ -14,7 +18,7 @@ permissions:
 jobs:
   rerun-on-comment:
     if: >-
-      github.event.issue.pull_request != null &&
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
       (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
       (github.event.action != 'created' &&
       github.event.comment.user.login == 'github-actions[bot]' &&
@@ -22,7 +26,11 @@ jobs:
       startsWith(github.event.changes.body.from, 'OTC Codex review checkpoint recorded.'))) ||
       (github.event.action != 'deleted' &&
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
-      startsWith(github.event.comment.body, '@codex review')))
+      startsWith(github.event.comment.body, '@codex review')))) ||
+      (github.event_name == 'pull_request_review_comment' &&
+      github.event.comment.user.login == 'chatgpt-codex-connector[bot]') ||
+      (github.event_name == 'pull_request_review' &&
+      github.event.review.user.login == 'chatgpt-codex-connector[bot]')
     name: Re-evaluate the trusted PR-head gate
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -33,10 +41,9 @@ jobs:
       issues: write
       pull-requests: read
     steps:
-      # issue_comment workflows load from the protected default branch. Record
-      # exact requests and evidence mutations as Actions-authored checkpoints,
-      # then immediately rerequest the existing trusted check suite attached to
-      # this PR head. Check-suite rerequests have no workflow-run age limit.
+      # This observer is not the required workflow. Record exact requests and
+      # Codex lifecycle events as Actions-authored checkpoints, then immediately
+      # rerequest the trusted required check suite attached to this PR head.
       - name: Record the checkpoint and rerequest the trusted PR-head evaluator
         env:
           GH_TOKEN: ${{ github.token }}
@@ -45,14 +52,18 @@ jobs:
           CLEAN_PREFIX: "Codex Review: Didn't find any major issues."
           COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
           EVENT_ACTION: ${{ github.event.action }}
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
           GATE_JOB_NAME: OTC Milestone C / fresh Codex review
           GATE_WORKFLOW_PATH: .github/workflows/otc-milestone-c-gate.yml
-          PR_NUMBER: ${{ github.event.issue.number }}
-          SOURCE_BODY: ${{ github.event.comment.body }}
+          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          SOURCE_BODY: ${{ github.event.comment.body || github.event.review.body }}
           SOURCE_BODY_FROM: ${{ github.event.changes.body.from }}
-          SOURCE_ID: ${{ github.event.comment.id }}
-          SOURCE_UPDATED_AT: ${{ github.event.comment.updated_at }}
-          SOURCE_USER: ${{ github.event.comment.user.login }}
+          SOURCE_COMMIT: ${{ github.event.comment.commit_id || github.event.review.commit_id }}
+          SOURCE_ID: ${{ github.event.comment.id || github.event.review.id }}
+          SOURCE_KIND: ${{ github.event_name == 'pull_request_review' && 'review' || github.event_name == 'pull_request_review_comment' && 'review_comment' || 'issue_comment' }}
+          SOURCE_UPDATED_AT: ${{ github.event.comment.updated_at || github.event.review.submitted_at }}
+          SOURCE_USER: ${{ github.event.comment.user.login || github.event.review.user.login }}
         shell: bash
         run: |
           set -euo pipefail
@@ -72,10 +83,13 @@ jobs:
             echo 'Invalid dispatcher run number' >&2
             exit 1
           }
-          [[ "$EVENT_ACTION" =~ ^(created|edited|deleted)$ ]] || {
-            echo 'Invalid issue-comment event' >&2
-            exit 1
-          }
+          case "$EVENT_NAME:$EVENT_ACTION" in
+            issue_comment:created|issue_comment:edited|issue_comment:deleted|pull_request_review_comment:created|pull_request_review_comment:edited|pull_request_review_comment:deleted|pull_request_review:submitted|pull_request_review:edited|pull_request_review:dismissed) ;;
+            *)
+              echo 'Invalid review-evidence event' >&2
+              exit 1
+              ;;
+          esac
 
           pull_state="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
           head_sha="$(jq -r '.head.sha' <<<"$pull_state")"
@@ -94,6 +108,12 @@ jobs:
             echo 'The gate only evaluates pull requests targeting the default branch' >&2
             exit 1
           }
+          if [[ "$EVENT_NAME" != issue_comment ]] && {
+            [[ "$EVENT_BASE_SHA" != "$base_sha" ]] || [[ "$SOURCE_COMMIT" != "$head_sha" ]]
+          }; then
+            echo 'Historical review event does not checkpoint the current head and base.'
+            exit 0
+          fi
 
           normalized_body="$(
             jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' <<<"$SOURCE_BODY"
@@ -116,7 +136,11 @@ jobs:
           checkpoint=false
           checkpoint_source=''
           event_time="$SOURCE_UPDATED_AT"
-          if [[ "$SOURCE_USER" == "$CODEX_LOGIN" ]]; then
+          if [[ "$EVENT_NAME" != issue_comment ]]; then
+            relevant=true
+            checkpoint=true
+            checkpoint_source="$SOURCE_KIND:$EVENT_ACTION"
+          elif [[ "$SOURCE_USER" == "$CODEX_LOGIN" ]]; then
             relevant=true
             checkpoint=true
             checkpoint_source="issue_comment:$EVENT_ACTION"
@@ -140,7 +164,7 @@ jobs:
           }; then
             relevant=true
             checkpoint=true
-            checkpoint_source="issue_comment:$EVENT_ACTION"
+            checkpoint_source="request:$EVENT_ACTION"
           fi
           if [[ "$relevant" != true ]]; then
             echo 'Comment does not change OTC Codex evidence.'
@@ -148,7 +172,8 @@ jobs:
           fi
 
           if [[ "$checkpoint" == true ]]; then
-            if [[ "$EVENT_ACTION" == deleted ]]; then
+            if [[ "$EVENT_ACTION" == deleted || "$EVENT_ACTION" == dismissed ||
+              "$SOURCE_KIND:$EVENT_ACTION" == review:edited ]]; then
               event_time="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
             fi
             [[ "$event_time" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{3})?Z$ ]] || {

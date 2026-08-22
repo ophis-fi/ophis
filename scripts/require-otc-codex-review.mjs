@@ -64,7 +64,7 @@ function recordedCheckpointMatch(comment, headSha, baseSha) {
     .trim()
     .match(
       new RegExp(
-        `^OTC Codex review checkpoint recorded\\.\\n\\nHead: ${headSha}\\nBase: ${baseSha}\\nSource: (?:issue_comment|review_comment|review|checkpoint):(?:created|edited|deleted|submitted|dismissed) [1-9][0-9]*\\nEvent run: [1-9][0-9]*\\nEvent time: ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z)$`,
+        `^OTC Codex review checkpoint recorded\\.\\n\\nHead: ${headSha}\\nBase: ${baseSha}\\nSource: (?:request|issue_comment|review_comment|review|checkpoint):(?:created|edited|deleted|submitted|dismissed) [1-9][0-9]*\\nEvent run: [1-9][0-9]*\\nEvent time: ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z)$`,
       ),
     );
 }
@@ -72,6 +72,15 @@ function recordedCheckpointMatch(comment, headSha, baseSha) {
 function isBoundRecordedCheckpoint(comment, headSha, baseSha) {
   const match = recordedCheckpointMatch(comment, headSha, baseSha);
   return Boolean(match && Number.isFinite(Date.parse(match[1])));
+}
+
+function isTrustedRequestCheckpoint(comment, headSha, baseSha) {
+  return (
+    isBoundRecordedCheckpoint(comment, headSha, baseSha) &&
+    /\nSource: request:(?:created|edited) [1-9][0-9]*\n/.test(
+      String(comment.body ?? '').replaceAll('\r\n', '\n'),
+    )
+  );
 }
 
 function recordedCheckpointTime(comment, headSha, baseSha) {
@@ -148,7 +157,7 @@ export function assessCodexGate({ headSha, baseSha, changedFiles, files, reviewR
     isBoundReviewCheckpoint(checkpoint, headSha, baseSha),
   );
   const hasRecordedRequest = boundCheckpoints.some((checkpoint) =>
-    isBoundRecordedCheckpoint(checkpoint, headSha, baseSha),
+    isTrustedRequestCheckpoint(checkpoint, headSha, baseSha),
   );
   const latestCheckpoint = newestReviewCheckpoint(boundCheckpoints);
   const cleanEvidence =
@@ -196,7 +205,7 @@ function selfTest() {
   const recordedRequest = ({
     headSha = base.headSha,
     baseSha = base.baseSha,
-    source = 'issue_comment:created',
+    source = 'request:created',
     sourceId = 1,
     updatedAt = '2026-08-20T12:00:00Z',
     cleanComments = [],
@@ -318,6 +327,15 @@ function selfTest() {
       ],
     }).accepted,
     'a contributor-authored request marker must fail',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({ source: 'review:submitted', cleanComments: [cleanComment] }),
+      ],
+    }).accepted,
+    'a Codex lifecycle checkpoint without a trusted exact-request checkpoint must fail',
   );
   assert(
     !assessCodexGate({ ...base, changedFiles: 3 }).accepted,
