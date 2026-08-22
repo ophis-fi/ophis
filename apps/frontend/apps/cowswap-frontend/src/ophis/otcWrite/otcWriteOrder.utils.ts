@@ -28,13 +28,9 @@ export function isReviewedOtcOrder(order: OtcOrder): boolean {
   )
 }
 
-export function shouldMountOtcOrderAction(
-  writeEnabled: boolean,
-  order: OtcOrder | null,
-  account: string | undefined,
-): boolean {
+export function shouldMountOtcOrderAction(writeEnabled: boolean, order: OtcOrder | null): boolean {
   if (!writeEnabled || !order || !isReviewedOtcOrder(order)) return false
-  if (!order.active) return !account || !isAddressEqual(account, order.maker)
+  if (!order.active) return true
   // Active actions are enabled only after OtcActionControl verifies the local
   // fork, then the wallet sink re-reads and simulates the exact fork state.
   // Canonical-mainnet index freshness is not evidence about a fork timeline.

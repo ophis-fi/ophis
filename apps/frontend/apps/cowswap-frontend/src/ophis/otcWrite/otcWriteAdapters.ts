@@ -22,6 +22,7 @@ type WagmiPublicClient = NonNullable<ReturnType<typeof usePublicClient>>
 type WagmiWalletClient = WalletClient<Transport, Chain, Account>
 
 const LOCAL_FORK_CLIENT = /anvil|hardhat/i
+const OTC_RECEIPT_TIMEOUT_MS = 120_000
 
 function safeBlockNumber(blockNumber: bigint): number {
   const value = Number(blockNumber)
@@ -99,7 +100,11 @@ export function toOtcWalletSubmitter(
       })
     },
     waitForTransactionReceipt: async (hash) => {
-      const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 })
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash,
+        confirmations: 1,
+        timeout: OTC_RECEIPT_TIMEOUT_MS,
+      })
       return {
         transactionHash: receipt.transactionHash,
         status: receipt.status,
@@ -174,7 +179,7 @@ export function toOtcLegacyForkClients(
       return transaction.hash as Hex
     },
     waitForTransactionReceipt: async (hash) => {
-      const receipt = await provider.waitForTransaction(hash, 1)
+      const receipt = await provider.waitForTransaction(hash, 1, OTC_RECEIPT_TIMEOUT_MS)
       if (!receipt) throw new Error('Ophis OTC transaction receipt unavailable')
       return {
         transactionHash: receipt.transactionHash as Hex,

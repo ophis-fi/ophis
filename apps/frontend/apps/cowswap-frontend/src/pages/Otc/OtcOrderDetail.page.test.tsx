@@ -121,6 +121,16 @@ describe('OtcOrderDetailView', () => {
     expect(screen.getByText(/No order exists with id 130/)).toBeTruthy()
   })
 
+  it('keeps a wallet-fork action visible when the canonical order is missing', () => {
+    renderDetail({
+      order: null,
+      writeEnabled: true,
+      actionPanel: <button type="button">Fork order action</button>,
+    })
+    expect(screen.getByText(/No order exists with id 130/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Fork order action' })).toBeTruthy()
+  })
+
   it('exposes no enabled transaction affordance', () => {
     const { container } = renderDetail()
     const actionable = Array.from(container.querySelectorAll('button')).filter(
@@ -144,15 +154,13 @@ describe('OtcOrderDetailView', () => {
     expect(screen.queryByRole('button', { name: 'Guarded local fill' })).toBeNull()
   })
 
-  it('keeps only nonmaker allowance recovery mountable after the order becomes inactive', () => {
+  it('keeps resolved fork actions mounted for confirmation or allowance recovery', () => {
     const inactive = order({ active: false })
-    expect(shouldMountOtcOrderAction(true, inactive, '0x1111111111111111111111111111111111111111')).toBe(true)
-    expect(shouldMountOtcOrderAction(true, inactive, MAKER)).toBe(false)
-    expect(shouldMountOtcOrderAction(true, inactive, undefined)).toBe(true)
+    expect(shouldMountOtcOrderAction(true, inactive)).toBe(true)
   })
 
   it('does not use the canonical index checkpoint to gate active fork actions', () => {
-    expect(shouldMountOtcOrderAction(true, order(), undefined)).toBe(true)
+    expect(shouldMountOtcOrderAction(true, order())).toBe(true)
   })
 
   it('does not let index lag hide a supplied zero-only recovery action for an inactive order', () => {

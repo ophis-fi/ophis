@@ -2,7 +2,6 @@ import { WETH_MAINNET } from '@cowprotocol/common-const'
 
 import { renderHook } from '@testing-library/react'
 
-// eslint-disable-next-line import/no-internal-modules
 import { useUsdAmount } from 'modules/usdAmount'
 
 import { reviewedOtcToken } from './otcWriteForm'

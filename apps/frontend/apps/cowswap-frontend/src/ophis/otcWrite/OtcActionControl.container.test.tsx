@@ -45,9 +45,9 @@ describe('OtcActionControl screen-reader semantics', () => {
     expect(announcementFor('Transaction not completed').getAttribute('aria-atomic')).toBe('true')
   })
 
-  it('announces a confirmed fill politely and exposes the exact action name', () => {
+  it('announces a confirmed fill politely and keeps repeat submission disabled', () => {
     useControllerMock.mockReturnValue({
-      model: { action: 'execute', label: 'Fill entire order', disabled: false, pending: false },
+      model: { action: 'unavailable', label: 'Transaction confirmed', disabled: true, pending: false },
       error: null,
       successHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       uncertainHash: null,
@@ -58,8 +58,8 @@ describe('OtcActionControl screen-reader semantics', () => {
 
     render(<OtcActionControl definition={DEFINITION} onConfirmed={undefined} />)
 
-    expect((screen.getByRole('button', { name: 'Fill entire order' }) as HTMLButtonElement).disabled).toBe(false)
-    const confirmation = announcementFor('Transaction confirmed')
+    expect((screen.getByRole('button', { name: 'Transaction confirmed' }) as HTMLButtonElement).disabled).toBe(true)
+    const confirmation = screen.getByRole('status')
     expect(confirmation.getAttribute('role')).toBe('status')
     expect(confirmation.getAttribute('aria-live')).toBe('polite')
     expect(confirmation.getAttribute('aria-atomic')).toBe('true')

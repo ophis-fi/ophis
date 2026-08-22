@@ -106,6 +106,7 @@ export function useOtcActionController(
     requiredAllowance: definition.requiredAllowance ?? null,
     recoveryRequired: submission.recoveryRequired,
     allowanceCooldown: submission.allowanceCooldown,
+    receiptConfirmed: submission.terminalConfirmed,
     receiptUncertain: submission.uncertainHash !== null,
     pendingIntent: submission.pendingIntent,
     executeLabel: definition.executeLabel,

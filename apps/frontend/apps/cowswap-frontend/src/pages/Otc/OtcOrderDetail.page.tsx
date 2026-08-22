@@ -10,7 +10,6 @@ import { useAtomValue } from 'jotai'
 import { useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
-import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { atomWithQuery } from 'jotai-tanstack-query'
 import {
@@ -20,7 +19,7 @@ import {
   OPHIS_ETHEREUM_OTC_MANIFEST,
   OTC_DATA_REFRESH_INTERVAL,
 } from 'ophis/otc'
-import { OtcOrderActionPanel, shouldMountOtcOrderAction } from 'ophis/otcWrite'
+import { OtcOrderActionPanel } from 'ophis/otcWrite'
 import { Navigate, useParams } from 'react-router'
 import { usePublicClient } from 'wagmi'
 
@@ -31,25 +30,10 @@ import { OtcOrderDetailView } from './OtcOrderDetailView.pure'
 import { useOtcNow } from './useOtcNow'
 import { useOtcPageEnabled, useOtcWriteEnabled } from './useOtcPageEnabled'
 
-import type { OtcOrder, OtcReaderClient } from 'ophis/otc'
+import type { OtcReaderClient } from 'ophis/otc'
 
 function parseOtcOrderId(rawOrderId: string): bigint | null {
   return /^\d{1,18}$/.test(rawOrderId) ? BigInt(rawOrderId) : null
-}
-
-function GuardedOtcOrderActionPanel({
-  writeEnabled,
-  order,
-  onConfirmed,
-}: {
-  writeEnabled: boolean
-  order: OtcOrder | null
-  onConfirmed: () => void
-}): ReactNode {
-  const { account } = useWalletInfo()
-  if (!shouldMountOtcOrderAction(writeEnabled, order, account)) return null
-  if (!order) return null
-  return <OtcOrderActionPanel order={order} onConfirmed={onConfirmed} />
 }
 
 function VerifiedOtcOrderDetailPage({
@@ -116,7 +100,7 @@ function VerifiedOtcOrderDetailPage({
       indexed={indexed}
       nowMs={nowMs}
       writeEnabled={writeEnabled}
-      actionPanel={<GuardedOtcOrderActionPanel writeEnabled={writeEnabled} order={order} onConfirmed={refresh} />}
+      actionPanel={writeEnabled ? <OtcOrderActionPanel orderId={orderId} onConfirmed={refresh} /> : undefined}
     />
   )
 }

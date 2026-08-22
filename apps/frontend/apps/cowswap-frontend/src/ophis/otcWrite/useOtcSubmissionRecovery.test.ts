@@ -59,6 +59,7 @@ describe('useOtcSubmission recovery boundaries', () => {
     await act(() => result.current.submit({ kind: 'approve-fill', account: ACCOUNT, order }, false))
     expect(result.current.recoveryRequired).toBe(false)
     expect(result.current.successHash).toBe(HASH)
+    expect(result.current.terminalConfirmed).toBe(false)
   })
 
   it('clears cooldown after a delayed allowance refresh stalls', async () => {
@@ -90,6 +91,7 @@ describe('useOtcSubmission recovery boundaries', () => {
 
     expect(result.current.uncertainHash).toBe(HASH)
     expect(result.current.successHash).toBeNull()
+    expect(result.current.terminalConfirmed).toBe(false)
     expect(result.current.error).toBeNull()
     expect(result.current.pendingIntent).toBeNull()
     expect(refreshAllowance).not.toHaveBeenCalled()

@@ -64,8 +64,9 @@ function legacyProvider(
   version: string,
   chainId = 1,
   activeAccount = ACCOUNT,
-): { provider: LegacyProvider; sendTransaction: jest.Mock } {
+): { provider: LegacyProvider; sendTransaction: jest.Mock; waitForTransaction: jest.Mock } {
   const sendTransaction = jest.fn(async () => ({ hash: HASH }))
+  const waitForTransaction = jest.fn(async () => ({ transactionHash: HASH, status: 1, blockNumber: 12 }))
   const provider = {
     getNetwork: async () => ({ chainId }),
     send: async (method: string) => {
@@ -74,9 +75,9 @@ function legacyProvider(
     },
     listAccounts: async () => [activeAccount],
     getSigner: () => ({ getAddress: async () => ACCOUNT, sendTransaction }),
-    waitForTransaction: async () => ({ transactionHash: HASH, status: 1, blockNumber: 12 }),
+    waitForTransaction,
   } as unknown as LegacyProvider
-  return { provider, sendTransaction }
+  return { provider, sendTransaction, waitForTransaction }
 }
 
 describe('OTC wallet transport boundary', () => {
@@ -174,6 +175,7 @@ describe('OTC wallet transport boundary', () => {
       status: 'success',
       blockNumber: 12n,
     })
+    expect(anvil.waitForTransaction).toHaveBeenCalledWith(HASH, 1, 120_000)
   })
 
   forkIt('reads allowance through a real legacy provider on the browser fork', async () => {

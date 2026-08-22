@@ -118,7 +118,7 @@ function DetailBody({
         </p>
         {indexed && <p>Created {formatOtcAge(nowMs, indexed.createdAt)}</p>}
       </Section>
-      {(!changed || !order.active || writeEnabled) && actionPanel}
+      {!writeEnabled && (!changed || !order.active) && actionPanel}
       <Section id="otc-order-technical" title="Technical details">
         <KeyValueList items={technicalRows} />
         <p>
@@ -153,6 +153,7 @@ export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
         </Callout>
       )}
       {!loading && !failed && <DetailBody {...props} />}
+      {writeEnabled && props.actionPanel}
     </PageShell>
   )
 }

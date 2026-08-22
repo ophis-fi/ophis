@@ -14,6 +14,7 @@ export interface OtcActionFacts {
   requiredAllowance: bigint | null
   recoveryRequired: boolean
   allowanceCooldown: boolean
+  receiptConfirmed: boolean
   receiptUncertain: boolean
   pendingIntent: OtcWriteIntent['kind'] | 'switch' | null
   executeLabel: string
@@ -100,6 +101,9 @@ function revokeModel(facts: OtcActionFacts): MaybeActionModel {
 function transactionModel(facts: OtcActionFacts): OtcActionModel {
   const revoke = revokeModel(facts)
   if (revoke) return revoke
+  if (facts.receiptConfirmed) {
+    return { action: 'unavailable', label: 'Transaction confirmed', disabled: true, pending: false }
+  }
   if (!facts.ready) {
     return { action: 'unavailable', label: facts.unavailableLabel, disabled: true, pending: false }
   }

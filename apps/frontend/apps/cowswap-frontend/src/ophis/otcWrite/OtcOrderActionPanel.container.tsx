@@ -1,16 +1,20 @@
+import { useAtomValue } from 'jotai'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { useWalletInfo } from '@cowprotocol/wallet'
 
+import { atomWithQuery } from 'jotai-tanstack-query'
 import { Callout, Section } from 'ophis/ds'
-import { formatOtcAmount } from 'ophis/otc'
+import { formatOtcAmount, readOtcOrder } from 'ophis/otc'
 import { isAddressEqual } from 'viem'
+import { useWalletClient } from 'wagmi'
 
 import { OtcActionControl } from './OtcActionControl.container'
 import { OtcUsdValue } from './OtcUsdValue.pure'
 import * as styledEl from './OtcWrite.styled'
 import { reviewedOtcToken, type OtcReviewedToken } from './otcWriteForm'
-import { getOtcActionReviewKey } from './otcWriteOrder.utils'
+import { getOtcActionReviewKey, shouldMountOtcOrderAction } from './otcWriteOrder.utils'
+import { useOtcNetworkReads } from './useOtcNetworkReads'
 import { useOtcUsdAmount } from './useOtcUsdAmount'
 
 import type { OtcActionDefinition } from './useOtcActionController'
@@ -92,7 +96,7 @@ function OtcOrderTermsSummary({
   )
 }
 
-export function OtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; onConfirmed?: () => void }): ReactNode {
+function VerifiedOtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; onConfirmed?: () => void }): ReactNode {
   const { account } = useWalletInfo()
   const [reviewedKey, setReviewedKey] = useState<string | null>(null)
   const isMaker = !!account && isAddressEqual(account, order.maker)
@@ -104,7 +108,6 @@ export function OtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; o
     isMaker ? 'cancel' : 'fill',
     order.orderId,
     order.maker,
-    order.active,
     order.tokenA,
     order.amountA,
     order.tokenB,
@@ -155,4 +158,32 @@ export function OtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; o
       <OtcActionControl definition={definition} onConfirmed={onConfirmed} />
     </Section>
   )
+}
+
+export function OtcOrderActionPanel({
+  orderId,
+  onConfirmed,
+}: {
+  orderId: bigint
+  onConfirmed?: () => void
+}): ReactNode {
+  const { account, chainId } = useWalletInfo()
+  const { data: walletClient } = useWalletClient()
+  const network = useOtcNetworkReads(true, account, chainId, walletClient, null)
+  const forkOrderQueryAtom = useMemo(
+    () =>
+      atomWithQuery<Awaited<ReturnType<typeof readOtcOrder>> | null, Error>(() => ({
+        queryKey: ['ophis-otc-fork-order', network.transportId, account, orderId.toString()],
+        queryFn: async () => (network.writeClient ? readOtcOrder(network.writeClient, orderId) : null),
+        enabled: network.localForkResponse.data === true && !!account && !!network.writeClient,
+        refetchOnWindowFocus: false,
+      })),
+    [account, network.localForkResponse.data, network.transportId, network.writeClient, orderId],
+  )
+  const forkOrderQuery = useAtomValue(forkOrderQueryAtom)
+  const order = forkOrderQuery.data?.order ?? null
+
+  if (network.localForkResponse.data !== true || !shouldMountOtcOrderAction(true, order)) return null
+  if (!order) return null
+  return <VerifiedOtcOrderActionPanel order={order} onConfirmed={onConfirmed} />
 }

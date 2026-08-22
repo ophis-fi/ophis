@@ -4,8 +4,6 @@ import { DAI, USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, type Token } from '@cowprotocol/currency'
 
-// OTC containers own this price read; OtcUsdValue remains a data-free view.
-// eslint-disable-next-line import/no-internal-modules
 import { useUsdAmount } from 'modules/usdAmount'
 
 import type { OtcReviewedToken } from './otcWriteForm'

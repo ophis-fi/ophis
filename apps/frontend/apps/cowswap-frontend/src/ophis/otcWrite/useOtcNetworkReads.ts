@@ -25,6 +25,7 @@ type AllowanceRead = Awaited<ReturnType<typeof readOtcAllowance>>
 type WalletClientResult = Parameters<typeof toOtcForkClients>[0] | undefined
 
 export interface OtcNetworkReads {
+  transportId: number
   localForkResponse: OtcQueryResponse<boolean>
   writeClient: OtcWriteClient | null
   wallet: OtcWalletSubmitter | null
@@ -110,7 +111,7 @@ export function useOtcNetworkReads(
   const localForkResponse = useMemo(() => toOtcQueryResponse(localForkQuery), [localForkQuery])
   const allowanceResponse = useMemo(() => toOtcQueryResponse(allowanceQuery), [allowanceQuery])
   return useMemo(
-    () => ({ localForkResponse, writeClient, wallet, allowanceResponse }),
-    [allowanceResponse, localForkResponse, wallet, writeClient],
+    () => ({ transportId, localForkResponse, writeClient, wallet, allowanceResponse }),
+    [allowanceResponse, localForkResponse, transportId, wallet, writeClient],
   )
 }

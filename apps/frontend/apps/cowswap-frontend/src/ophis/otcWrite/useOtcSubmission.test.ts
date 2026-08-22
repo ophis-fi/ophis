@@ -117,6 +117,7 @@ describe('useOtcSubmission', () => {
 
     expect(submitMock.mock.calls[0][2]).toMatchObject({ kind: 'fill', deadline: 1n })
     expect(onConfirmed).toHaveBeenCalledTimes(1)
+    expect(result.current.terminalConfirmed).toBe(true)
   })
 
   it('admits only one submission while the current wallet request is in flight', async () => {

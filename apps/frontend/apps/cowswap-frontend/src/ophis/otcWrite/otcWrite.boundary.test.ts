@@ -18,6 +18,7 @@ const WRITE_FORBIDDEN_FRAGMENTS = [
 const SIGNER_API_PATTERN =
   /\b(useWriteContract|useSendTransaction|useSendTransactionSync|useSendCalls|useDeployContract|useSignMessage|useSignTypedData|useConnectorClient|useWalletClient|getWalletClient|walletClient|walletActions|writeContract|sendTransaction|sendRawTransaction|sendCalls|deployContract|signTransaction|signTypedData|signMessage|prepareTransactionRequest|requestAddresses|watchAsset)\b|import\(/g
 const WRITE_SIGNER_APIS = new Map<string, ReadonlySet<string>>([
+  ['OtcOrderActionPanel.container.tsx', new Set(['useWalletClient', 'walletClient'])],
   ['otcWrite.types.ts', new Set(['sendTransaction'])],
   ['otcWriteAdapters.ts', new Set(['sendTransaction', 'walletClient'])],
   ['prepareOtcTransaction.ts', new Set(['sendTransaction'])],
@@ -25,6 +26,7 @@ const WRITE_SIGNER_APIS = new Map<string, ReadonlySet<string>>([
   ['useOtcNetworkReads.ts', new Set(['walletClient'])],
 ])
 const WRITE_WAGMI_IMPORTS = new Map<string, ReadonlySet<string>>([
+  ['OtcOrderActionPanel.container.tsx', new Set(['useWalletClient'])],
   ['otcWriteAdapters.ts', new Set(['usePublicClient'])],
   ['useOtcActionController.ts', new Set(['useWalletClient'])],
 ])
@@ -110,7 +112,13 @@ describe('Ophis OTC write boundary', () => {
         .map(({ file, source }) => [basename(file), source.match(/\bsubmitOtcTransaction\s*\(/g)?.length ?? 0] as const)
         .filter(([, count]) => count > 0),
     )
-    expect(submissionCallerCounts).toEqual({ 'prepareOtcTransaction.ts': 1, 'useOtcSubmission.ts': 1 })
+    expect(submissionCallerCounts).toEqual({ 'prepareOtcTransaction.ts': 1, 'useOtcSubmitCallback.ts': 1 })
+  })
+
+  it('sources rendered action terms from the active wallet-fork reader', () => {
+    const source = readFileSync(join(WRITE_DIR, 'OtcOrderActionPanel.container.tsx'), 'utf8')
+    expect(source).toContain('readOtcOrder(network.writeClient, orderId)')
+    expect(source).toContain("queryKey: ['ophis-otc-fork-order', network.transportId, account")
   })
 
   it('allows only the token-policy assertion API at write sinks', () => {
