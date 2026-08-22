@@ -21,7 +21,6 @@ on:
 
 permissions:
   actions: read
-  checks: read
   contents: read
   issues: read
   pull-requests: read
@@ -56,7 +55,6 @@ jobs:
     timeout-minutes: 12
     permissions:
       actions: write
-      checks: read
       contents: read
       issues: read
       pull-requests: read
@@ -90,10 +88,10 @@ jobs:
             exit 1
           }
           details_url="$(
-            gh api --method GET "repos/$GITHUB_REPOSITORY/commits/$head_sha/check-runs" \
-              -f check_name="$GATE_JOB_NAME" -f filter=latest -f per_page=100 \
+            gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json statusCheckRollup \
               | jq -r --arg name "$GATE_JOB_NAME" \
-                '[.check_runs[] | select(.name == $name)][0].details_url // empty'
+                '[.statusCheckRollup[] | select(.name == $name and .detailsUrl != null)] |
+                sort_by(.startedAt) | reverse | .[0].detailsUrl // empty'
           )"
           expected_prefix="https://github.com/$GITHUB_REPOSITORY/actions/runs/"
           [[ "$details_url" == "$expected_prefix"* ]] || {
