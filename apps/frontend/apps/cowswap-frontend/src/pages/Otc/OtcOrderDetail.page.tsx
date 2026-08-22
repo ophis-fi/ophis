@@ -63,7 +63,6 @@ function VerifiedOtcOrderDetailPage({
 }): ReactNode {
   const [refreshSignal, setRefreshSignal] = useState(0)
   const nowMs = useOtcNow()
-  const refresh = useCallback(() => setRefreshSignal((current) => current + 1), [])
   const publicClient = usePublicClient({ chainId: SupportedChainId.MAINNET })
   const client = useMemo<OtcReaderClient | null>(
     () => (publicClient ? toOtcReaderClient(publicClient) : null),
@@ -78,16 +77,20 @@ function VerifiedOtcOrderDetailPage({
   const orderQueryAtom = useMemo(
     () =>
       atomWithQuery<Awaited<ReturnType<typeof readOtcOrder>> | null, Error>(() => ({
-        queryKey: ['ophis-otc-order', rawOrderId, mountId, refreshSignal],
+        queryKey: ['ophis-otc-order', rawOrderId, mountId],
         queryFn: async () => (client ? readOtcOrder(client, orderId) : null),
         enabled: !!client,
         refetchInterval: OTC_DATA_REFRESH_INTERVAL,
         refetchIntervalInBackground: false,
         refetchOnWindowFocus: false,
       })),
-    [client, mountId, orderId, rawOrderId, refreshSignal],
+    [client, mountId, orderId, rawOrderId],
   )
-  const { data, error } = useAtomValue(orderQueryAtom)
+  const { data, error, refetch } = useAtomValue(orderQueryAtom)
+  const refresh = useCallback(() => {
+    setRefreshSignal((current) => current + 1)
+    void refetch()
+  }, [refetch])
 
   const indexed = state.enrichment?.byOrderId.get(orderId.toString()) ?? null
   // Freshness must describe the backend that served THIS read: compare the

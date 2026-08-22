@@ -70,7 +70,7 @@ export function toOtcWalletSubmitter(
   publicClient: WagmiPublicClient,
 ): OtcWalletSubmitter {
   return {
-    sendTransaction: async (request, intent, nowSeconds) => {
+    sendTransaction: async (request, intent, nowSeconds, isCurrentContext = () => true) => {
       const checkedRequest = Object.freeze({ ...request })
       assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
       if (!(await verifyOtcLocalForkWallet(walletClient))) throw new Error('Ophis OTC local fork verification failed')
@@ -89,6 +89,7 @@ export function toOtcWalletSubmitter(
       ) {
         throw new Error('Ophis OTC wallet account changed')
       }
+      if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
       return walletClient.sendTransaction({
         account: walletClient.account,
         chain: mainnet,
@@ -153,7 +154,7 @@ export function toOtcLegacyForkClients(
     },
   }
   const wallet: OtcWalletSubmitter = {
-    sendTransaction: async (request, intent, nowSeconds) => {
+    sendTransaction: async (request, intent, nowSeconds, isCurrentContext = () => true) => {
       const checkedRequest = Object.freeze({ ...request })
       assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
       if (!isAddressEqual(account, checkedRequest.account)) throw new Error('Ophis OTC wallet account changed')
@@ -164,6 +165,7 @@ export function toOtcLegacyForkClients(
       if (!providerAccount || !isAddressEqual(providerAccount as Address, checkedRequest.account))
         throw new Error('Ophis OTC wallet account changed')
       const signer = provider.getSigner(providerAccount)
+      if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
       const transaction = await signer.sendTransaction({
         to: checkedRequest.to,
         data: checkedRequest.data,

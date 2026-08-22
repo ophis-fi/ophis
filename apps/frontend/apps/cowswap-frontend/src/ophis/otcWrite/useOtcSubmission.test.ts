@@ -61,6 +61,30 @@ describe('useOtcSubmission', () => {
     expect(refreshAllowance).toHaveBeenCalledTimes(1)
   })
 
+  it('publishes a confirmed hash when the post-receipt allowance refresh stalls', async () => {
+    jest.useFakeTimers()
+    try {
+      submitMock.mockResolvedValue({ transactionHash: HASH, status: 'success', blockNumber: 10n })
+      const refreshAllowance = jest.fn(() => new Promise<never>(() => undefined))
+      const { result, unmount } = renderHook(() => useOtcSubmission(options({ refreshAllowance })))
+      let submission!: Promise<void>
+
+      act(() => {
+        submission = result.current.submit({ kind: 'approve-fill', account: ACCOUNT, order }, false)
+      })
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(5_000)
+        await submission
+      })
+
+      expect(result.current.successHash).toBe(HASH)
+      expect(result.current.pendingIntent).toBeNull()
+      unmount()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('offers revocation after a raced fill leaves a nonzero allowance', async () => {
     submitMock.mockRejectedValue(new Error('Ophis OTC order not active'))
     const refreshAllowance = jest.fn().mockResolvedValue({ allowance: 2n })

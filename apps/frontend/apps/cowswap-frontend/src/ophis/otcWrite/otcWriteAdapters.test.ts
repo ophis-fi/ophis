@@ -132,6 +132,21 @@ describe('OTC wallet transport boundary', () => {
     expect(legacy.sendTransaction).not.toHaveBeenCalled()
   })
 
+  it('rechecks the action context at both final signer boundaries', async () => {
+    const anvil = wallet('anvil/v1.5.0')
+    const submitter = toOtcWalletSubmitter(anvil, publicClient())
+    const legacy = legacyProvider('anvil/v1.5.0')
+    const legacySubmitter = toOtcLegacyForkClients(legacy.provider, ACCOUNT).wallet
+    const { request, intent } = transaction()
+
+    await expect(submitter.sendTransaction(request, intent, NOW, () => false)).rejects.toThrow('action context changed')
+    await expect(legacySubmitter.sendTransaction(request, intent, NOW, () => false)).rejects.toThrow(
+      'action context changed',
+    )
+    expect(anvil.sendTransaction).not.toHaveBeenCalled()
+    expect(legacy.sendTransaction).not.toHaveBeenCalled()
+  })
+
   it('submits through a verified local fork and maps its receipt', async () => {
     const anvil = wallet('anvil/v1.5.0')
     const submitter = toOtcWalletSubmitter(anvil, publicClient())

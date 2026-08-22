@@ -32,11 +32,15 @@ function orderFromIntent(intent: OtcWriteIntent): OtcOrder | null {
   return intent.kind === 'approve-fill' || intent.kind === 'fill' || intent.kind === 'cancel' ? intent.order : null
 }
 
-function preflightAllowance(intent: OtcWriteIntent): { token: Address; amount: bigint } | null {
-  if (intent.kind === 'approve-create') return { token: intent.draft.tokenA, amount: 0n }
-  if (intent.kind === 'approve-fill') return { token: intent.order.tokenB, amount: 0n }
-  if (intent.kind === 'create') return { token: intent.draft.tokenA, amount: intent.draft.amountA }
-  if (intent.kind === 'fill') return { token: intent.order.tokenB, amount: intent.order.amountB }
+type AllowanceRequirement = { token: Address; exact: bigint } | { token: Address; positive: true }
+
+function preflightAllowance(intent: OtcWriteIntent): AllowanceRequirement | null {
+  if (intent.kind === 'approve-create') return { token: intent.draft.tokenA, exact: 0n }
+  if (intent.kind === 'approve-fill') return { token: intent.order.tokenB, exact: 0n }
+  if (intent.kind === 'create') return { token: intent.draft.tokenA, exact: intent.draft.amountA }
+  if (intent.kind === 'fill') return { token: intent.order.tokenB, exact: intent.order.amountB }
+  if (intent.kind === 'revoke-create') return { token: intent.draft.tokenA, positive: true }
+  if (intent.kind === 'revoke-fill') return { token: intent.order.tokenB, positive: true }
   return null
 }
 
@@ -102,7 +106,8 @@ export async function prepareOtcTransaction(
       blockNumber,
       manifest,
     )
-    if (allowance !== requiredAllowance.amount) throw new Error('Ophis OTC exact allowance required')
+    const accepted = 'exact' in requiredAllowance ? allowance === requiredAllowance.exact : allowance > 0n
+    if (!accepted) throw new Error('Ophis OTC exact allowance required')
   }
   await client.simulate(request, blockNumber)
   const confirmedBlock = await client.getBlockByNumber(blockNumber)
@@ -131,7 +136,12 @@ export async function submitOtcTransaction(
   const prepared = await prepareOtcTransaction(client, intent, manifest)
   assertRuntimeAuthorization(authorization)
   if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
-  const hash = await wallet.sendTransaction(prepared.request, prepared.intent, prepared.preparedAtTimestamp)
+  const hash = await wallet.sendTransaction(
+    prepared.request,
+    prepared.intent,
+    prepared.preparedAtTimestamp,
+    isCurrentContext,
+  )
   const receipt = await wallet.waitForTransactionReceipt(hash)
   if (receipt.status !== 'success') throw new Error('Ophis OTC transaction reverted')
   return receipt

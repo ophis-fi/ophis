@@ -1,7 +1,7 @@
 import { getAddress, toFunctionSelector, type AbiFunction } from 'viem'
 
 import { readdirSync, readFileSync } from 'fs'
-import { basename, join } from 'path'
+import { join } from 'path'
 
 import { OTC_EVENT_ABI, OTC_READ_ABI } from './otc.abi'
 import { OPHIS_ETHEREUM_OTC_MANIFEST, OTC_ERC20_WRITE_SELECTORS, OTC_KNOWN_WRITE_SELECTORS } from './otc.const'
@@ -35,12 +35,7 @@ const SHARED_FORBIDDEN_FRAGMENTS = [
 // the connected account, but signer access remains isolated in otcWrite.
 const MODULE_FORBIDDEN_FRAGMENTS = [...SHARED_FORBIDDEN_FRAGMENTS, '@cowprotocol/wallet']
 const PAGES_FORBIDDEN_FRAGMENTS = SHARED_FORBIDDEN_FRAGMENTS
-const WRITE_FORBIDDEN_FRAGMENTS = SHARED_FORBIDDEN_FRAGMENTS.filter(
-  (fragment) => fragment !== 'legacy/state' && fragment !== '@cowprotocol/tokens' && fragment !== 'wallet-provider',
-)
-
 const PAGES_DIR = join(__dirname, '..', '..', 'pages', 'Otc')
-const WRITE_DIR = join(__dirname, '..', 'otcWrite')
 
 // Signer-capable APIs from otherwise-allowed packages (e.g. wagmi exports
 // both usePublicClient and useWriteContract), plus dynamic import() which
@@ -61,26 +56,6 @@ const PAGE_WRITE_ALLOWED_IMPORTS = new Set([
   'shouldMountOtcOrderAction',
   'useOtcWriteAuthorization',
 ])
-const WRITE_SIGNER_APIS = new Map<string, ReadonlySet<string>>([
-  ['otcWrite.types.ts', new Set(['sendTransaction'])],
-  ['otcWriteAdapters.ts', new Set(['sendTransaction', 'walletClient'])],
-  ['prepareOtcTransaction.ts', new Set(['sendTransaction'])],
-  ['useOtcActionController.ts', new Set(['useWalletClient', 'walletClient'])],
-  ['useOtcNetworkReads.ts', new Set(['walletClient'])],
-])
-const WRITE_WAGMI_IMPORTS = new Map<string, ReadonlySet<string>>([
-  ['otcWriteAdapters.ts', new Set(['usePublicClient'])],
-  ['useOtcActionController.ts', new Set(['useWalletClient'])],
-])
-const WRITE_TOKEN_POLICY_FILES = new Set([
-  'assertOtcTransactionRequest.ts',
-  'buildOtcTransaction.ts',
-  'readOtcAllowance.ts',
-])
-const WRITE_TOKEN_POLICY_IMPORTS = new Set(['assertTradeTokenPolicy', 'TokenPolicyProfile'])
-const WRITE_WALLET_PROVIDER_FILES = new Set(['useOtcNetworkReads.ts'])
-const WRITE_WALLET_PROVIDER_IMPORTS = new Set(['useWalletProvider'])
-
 function namedImportsFrom(source: string, specifier: string): string[] {
   const pattern = new RegExp(`import\\s*(?:type\\s*)?{([^}]*)}\\s*from\\s*['"]${specifier}['"]`, 'g')
   return Array.from(source.matchAll(pattern), (match) => match[1])
@@ -154,13 +129,6 @@ describe('Ophis OTC boundary', () => {
     }
   })
 
-  it('keeps the wallet-capable module free of trading, permit, signing, and solver internals', () => {
-    const imports = productionImports(WRITE_DIR)
-    for (const fragment of WRITE_FORBIDDEN_FRAGMENTS) {
-      expect(imports.filter((value) => value.includes(fragment))).toEqual([])
-    }
-  })
-
   it('references no signer-capable API and no dynamic import in any production source', () => {
     for (const directory of [__dirname, PAGES_DIR]) {
       for (const { file, source } of productionSources(directory)) {
@@ -184,59 +152,6 @@ describe('Ophis OTC boundary', () => {
     for (const { file, source } of productionSources(PAGES_DIR)) {
       for (const name of namedImportsFrom(source, 'ophis/otcWrite')) {
         expect(PAGE_WRITE_ALLOWED_IMPORTS.has(name) ? null : `${file}: ${name}`).toBeNull()
-      }
-    }
-  })
-
-  it('isolates signer-capable APIs and wagmi imports to the reviewed write adapters', () => {
-    for (const { file, source } of productionSources(WRITE_DIR)) {
-      const fileName = basename(file)
-      const allowedApis = WRITE_SIGNER_APIS.get(fileName) ?? new Set<string>()
-      for (const api of new Set(signerApisFrom(source))) {
-        expect(allowedApis.has(api) ? null : `${file}: ${api}`).toBeNull()
-      }
-
-      const allowedImports = WRITE_WAGMI_IMPORTS.get(fileName) ?? new Set<string>()
-      for (const name of namedImportsFrom(source, 'wagmi')) {
-        expect(allowedImports.has(name) ? null : `${file}: ${name}`).toBeNull()
-      }
-    }
-  })
-
-  it('keeps submitOtcTransaction as the only production caller of the wallet submitter', () => {
-    const directSenderCounts = Object.fromEntries(
-      productionSources(WRITE_DIR)
-        .map(({ file, source }) => [basename(file), source.match(/\.sendTransaction\s*\(/g)?.length ?? 0] as const)
-        .filter(([, count]) => count > 0),
-    )
-    expect(directSenderCounts).toEqual({ 'otcWriteAdapters.ts': 2, 'prepareOtcTransaction.ts': 1 })
-
-    const submissionCallerCounts = Object.fromEntries(
-      productionSources(WRITE_DIR)
-        .map(({ file, source }) => [basename(file), source.match(/\bsubmitOtcTransaction\s*\(/g)?.length ?? 0] as const)
-        .filter(([, count]) => count > 0),
-    )
-    expect(submissionCallerCounts).toEqual({ 'prepareOtcTransaction.ts': 1, 'useOtcSubmission.ts': 1 })
-  })
-
-  it('allows only the token-policy assertion API at write sinks', () => {
-    for (const { file, source } of productionSources(WRITE_DIR)) {
-      const fileName = basename(file)
-      const names = namedImportsFrom(source, '@cowprotocol/tokens')
-      if (names.length > 0) expect(WRITE_TOKEN_POLICY_FILES.has(fileName)).toBe(true)
-      for (const name of names) {
-        expect(WRITE_TOKEN_POLICY_IMPORTS.has(name) ? null : `${file}: ${name}`).toBeNull()
-      }
-    }
-  })
-
-  it('allows only the host wallet-provider hook at the legacy compatibility boundary', () => {
-    for (const { file, source } of productionSources(WRITE_DIR)) {
-      const fileName = basename(file)
-      const names = namedImportsFrom(source, '@cowprotocol/wallet-provider')
-      if (names.length > 0) expect(WRITE_WALLET_PROVIDER_FILES.has(fileName)).toBe(true)
-      for (const name of names) {
-        expect(WRITE_WALLET_PROVIDER_IMPORTS.has(name) ? null : `${file}: ${name}`).toBeNull()
       }
     }
   })

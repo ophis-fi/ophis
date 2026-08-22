@@ -1,36 +1,19 @@
 import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 
 import { OTC_FILL_DEADLINE_WINDOW_SECONDS } from './buildOtcTransaction'
-import { prepareOtcTransaction, submitOtcTransaction } from './prepareOtcTransaction'
+import { prepareOtcTransaction } from './prepareOtcTransaction'
 import {
   MAKER,
-  mockOtcAuthorization,
   mockOtcManifest,
   mockOtcOrder,
   mockOtcWriteClient,
   NOW,
-  TX_HASH,
   type MockOtcPreflightState,
 } from './prepareOtcTransactionTest.utils'
 
-jest.mock('@cowprotocol/common-utils', () => ({
-  ...jest.requireActual('@cowprotocol/common-utils'),
-  isLocal: true,
-}))
-
-import type { OtcWalletSubmitter } from './otcWrite.types'
-
 const TAKER = '0x1111111111111111111111111111111111111111'
 
-describe('Milestone C preflight and submission', () => {
-  beforeAll(() => {
-    process.env.REACT_APP_OTC_WRITE_MODE = 'fork'
-  })
-
-  afterAll(() => {
-    delete process.env.REACT_APP_OTC_WRITE_MODE
-  })
-
+describe('Milestone C transaction preflight', () => {
   it('re-reads an order and simulates the exact fill before returning a request', async () => {
     const state: MockOtcPreflightState = { simulated: [] }
     const result = await prepareOtcTransaction(
@@ -145,127 +128,16 @@ describe('Milestone C preflight and submission', () => {
     expect(state.simulated).toEqual([result.request])
   })
 
-  it('never reaches the wallet unless every independent write boundary is enabled', async () => {
-    const wallet: OtcWalletSubmitter = {
-      sendTransaction: jest.fn(async () => TX_HASH),
-      waitForTransactionReceipt: jest.fn(async () => ({
-        transactionHash: TX_HASH,
-        status: 'success',
-        blockNumber: 201n,
-      })),
-    }
-    const intent = {
-      kind: 'cancel' as const,
-      account: MAKER,
-      order: mockOtcOrder(),
-    }
-    const denied = [
-      mockOtcAuthorization({ readFlag: false }),
-      mockOtcAuthorization({ writeFlag: false }),
-      mockOtcAuthorization({ isLocal: false }),
-      mockOtcAuthorization({ writeMode: 'production' }),
-    ]
-
-    for (const auth of denied) {
-      await expect(submitOtcTransaction(mockOtcWriteClient(), wallet, intent, auth, mockOtcManifest())).rejects.toThrow(
-        'Ophis OTC writes are disabled',
-      )
-    }
-    expect(wallet.sendTransaction).not.toHaveBeenCalled()
-  })
-
-  it('never reaches the wallet when the actual build mode is not fork, even if caller input matches it', async () => {
-    const wallet: OtcWalletSubmitter = {
-      sendTransaction: jest.fn(async () => TX_HASH),
-      waitForTransactionReceipt: jest.fn(async () => ({
-        transactionHash: TX_HASH,
-        status: 'success',
-        blockNumber: 201n,
-      })),
-    }
-
-    process.env.REACT_APP_OTC_WRITE_MODE = 'production'
-    try {
-      await expect(
-        submitOtcTransaction(
-          mockOtcWriteClient(),
-          wallet,
-          { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
-          mockOtcAuthorization({ writeMode: 'production' }),
-          mockOtcManifest(),
-        ),
-      ).rejects.toThrow('Ophis OTC writes are disabled')
-    } finally {
-      process.env.REACT_APP_OTC_WRITE_MODE = 'fork'
-    }
-
-    expect(wallet.sendTransaction).not.toHaveBeenCalled()
-  })
-
-  it('submits only after simulation and waits through receipt confirmation', async () => {
-    const calls: string[] = []
-    const writeClient = mockOtcWriteClient()
-    writeClient.simulate = async () => {
-      calls.push('simulate')
-    }
-    const wallet: OtcWalletSubmitter = {
-      sendTransaction: async () => {
-        calls.push('send')
-        return TX_HASH
-      },
-      waitForTransactionReceipt: async () => {
-        calls.push('receipt')
-        return { transactionHash: TX_HASH, status: 'success', blockNumber: 201n }
-      },
-    }
-
-    const receipt = await submitOtcTransaction(
-      writeClient,
-      wallet,
-      { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
-      mockOtcAuthorization(),
-      mockOtcManifest(),
-    )
-    expect(calls).toEqual(['simulate', 'send', 'receipt'])
-    expect(receipt.transactionHash).toBe(TX_HASH)
-  })
-
-  it('rechecks the action context after preflight and before opening the wallet', async () => {
-    const wallet: OtcWalletSubmitter = {
-      sendTransaction: jest.fn(async () => TX_HASH),
-      waitForTransactionReceipt: jest.fn(async () => ({
-        transactionHash: TX_HASH,
-        status: 'success',
-        blockNumber: 201n,
-      })),
-    }
-
+  it('rejects allowance revocation when the current fork allowance is already zero', async () => {
+    const inactive = mockOtcOrder({ active: false })
+    const state: MockOtcPreflightState = { current: inactive, simulated: [], allowance: 0n }
     await expect(
-      submitOtcTransaction(
-        mockOtcWriteClient(),
-        wallet,
-        { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
-        mockOtcAuthorization(),
-        mockOtcManifest(),
-        () => false,
-      ),
-    ).rejects.toThrow('Ophis OTC action context changed')
-    expect(wallet.sendTransaction).not.toHaveBeenCalled()
-  })
-
-  it('treats a reverted receipt as failure', async () => {
-    const wallet: OtcWalletSubmitter = {
-      sendTransaction: async () => TX_HASH,
-      waitForTransactionReceipt: async () => ({ transactionHash: TX_HASH, status: 'reverted', blockNumber: 201n }),
-    }
-    await expect(
-      submitOtcTransaction(
-        mockOtcWriteClient(),
-        wallet,
-        { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
-        mockOtcAuthorization(),
+      prepareOtcTransaction(
+        mockOtcWriteClient(state),
+        { kind: 'revoke-fill', account: TAKER, order: inactive },
         mockOtcManifest(),
       ),
-    ).rejects.toThrow('Ophis OTC transaction reverted')
+    ).rejects.toThrow('Ophis OTC exact allowance required')
+    expect(state.simulated).toEqual([])
   })
 })

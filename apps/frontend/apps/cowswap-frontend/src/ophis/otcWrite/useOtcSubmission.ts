@@ -1,11 +1,15 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
+import { withOtcTimeout } from 'ophis/otc'
+
 import { submitOtcTransaction } from './prepareOtcTransaction'
 import { translateOtcWriteError } from './translateOtcWriteError'
 import { useOtcAllowanceCooldown } from './useOtcAllowanceCooldown'
 
 import type { OtcWalletSubmitter, OtcWriteClient, OtcWriteIntent, OtcWriteRuntimeAuthorization } from './otcWrite.types'
 import type { Address, Hex } from 'viem'
+
+const POST_RECEIPT_ALLOWANCE_TIMEOUT_MS = 5_000
 
 interface AllowanceRead {
   allowance: bigint
@@ -39,7 +43,11 @@ async function hasRecoveryAllowance(
   execution: boolean,
   requiredAllowance: bigint | null | undefined,
 ): Promise<boolean> {
-  const refreshed = await refreshAllowance().catch(() => undefined)
+  const refreshed = await withOtcTimeout(
+    refreshAllowance(),
+    POST_RECEIPT_ALLOWANCE_TIMEOUT_MS,
+    'Ophis OTC allowance refresh timed out',
+  ).catch(() => undefined)
   if (!execution || requiredAllowance === null || requiredAllowance === undefined) return false
   // A failed re-read must not erase recovery state. Allowance polling keeps the
   // action unavailable until it succeeds; if it later observes a positive
@@ -62,7 +70,13 @@ async function settleSuccessfulSubmission(
   const allowanceIntent = /^(approve|revoke)-/.test(intent.kind)
   const refreshRequired = allowanceIntent || (requiredAllowance !== null && requiredAllowance !== undefined)
   if (!isCurrentContext()) return null
-  if (refreshRequired) await refreshAllowance().catch(() => undefined)
+  if (refreshRequired) {
+    await withOtcTimeout(
+      refreshAllowance(),
+      POST_RECEIPT_ALLOWANCE_TIMEOUT_MS,
+      'Ophis OTC allowance refresh timed out',
+    ).catch(() => undefined)
+  }
   if (!isCurrentContext()) return null
   return {
     beginCooldown: refreshRequired,

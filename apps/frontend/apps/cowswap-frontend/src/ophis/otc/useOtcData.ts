@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai'
-import { useId, useMemo } from 'react'
+import { useEffect, useId, useMemo, useRef } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -9,6 +9,7 @@ import { usePublicClient } from 'wagmi'
 
 import { OPHIS_ETHEREUM_OTC_MANIFEST } from './otc.const'
 import { computeIndexLag, fetchOtcIndexedOrders } from './otcSubgraph'
+import { withOtcTimeout } from './otcTimeout'
 import { readOtcSnapshot } from './readOtcSnapshot'
 import { reconcileOtcOrders } from './reconcileOtcOrders'
 
@@ -38,22 +39,6 @@ export interface LoadOtcDataOptions {
   fetchImpl?: typeof fetch
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Ophis OTC read timed out')), timeoutMs)
-    promise.then(
-      (value) => {
-        clearTimeout(timeout)
-        resolve(value)
-      },
-      (error: unknown) => {
-        clearTimeout(timeout)
-        reject(error)
-      },
-    )
-  })
-}
-
 /**
  * Loads the on-chain snapshot (authority; a failure or timeout here throws so
  * nothing unverified is shown) and decorates it with subgraph enrichment when
@@ -65,7 +50,7 @@ export async function loadOtcData(client: OtcReaderClient, options: LoadOtcDataO
   const manifest = options.manifest ?? OPHIS_ETHEREUM_OTC_MANIFEST
 
   const [snapshot, indexResult] = await Promise.all([
-    withTimeout(readOtcSnapshot(client, manifest), manifest.readTimeoutMs),
+    withOtcTimeout(readOtcSnapshot(client, manifest), manifest.readTimeoutMs, 'Ophis OTC read timed out'),
     fetchOtcIndexedOrders(options.fetchImpl ?? fetch, manifest).then(
       (value) => ({ ok: true as const, value }),
       () => ({ ok: false as const }),
@@ -187,30 +172,33 @@ export function useOtcData(enabled: boolean, refreshSignal = 0): OtcDataState {
   const dataQueryAtom = useMemo(
     () =>
       atomWithQuery<LoadedOtcData | null, Error>(() => ({
-        queryKey: ['ophis-otc-data', mountId, refreshSignal],
+        queryKey: ['ophis-otc-data', mountId],
         queryFn: async () => (client ? loadOtcData(client) : null),
         enabled: enabled && !!client,
         refetchInterval: OTC_DATA_REFRESH_INTERVAL,
         refetchIntervalInBackground: false,
         refetchOnWindowFocus: false,
       })),
-    [client, enabled, mountId, refreshSignal],
+    [client, enabled, mountId],
   )
-  const { data, error } = useAtomValue(dataQueryAtom)
+  const { data, error, refetch } = useAtomValue(dataQueryAtom)
+  const observedRefreshSignal = useRef(refreshSignal)
+  useEffect(() => {
+    if (observedRefreshSignal.current === refreshSignal) return
+    observedRefreshSignal.current = refreshSignal
+    void refetch()
+  }, [refetch, refreshSignal])
 
-  if (error) {
-    return { status: 'unavailable', ...EMPTY_STATE }
-  }
-  if (!data) {
-    return { status: 'loading', ...EMPTY_STATE }
-  }
-
-  return {
-    status: data.degradedReason ? 'degraded' : 'ready',
-    degradedReason: data.degradedReason,
-    snapshot: data.snapshot,
-    enrichment: data.enrichment,
-    reconciliation: data.reconciliation,
-    indexLagBlocks: data.indexLagBlocks,
-  }
+  return useMemo(() => {
+    if (error) return { status: 'unavailable', ...EMPTY_STATE }
+    if (!data) return { status: 'loading', ...EMPTY_STATE }
+    return {
+      status: data.degradedReason ? 'degraded' : 'ready',
+      degradedReason: data.degradedReason,
+      snapshot: data.snapshot,
+      enrichment: data.enrichment,
+      reconciliation: data.reconciliation,
+      indexLagBlocks: data.indexLagBlocks,
+    }
+  }, [data, error])
 }

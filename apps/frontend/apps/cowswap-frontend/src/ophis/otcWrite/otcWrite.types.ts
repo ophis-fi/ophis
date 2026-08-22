@@ -78,7 +78,12 @@ export interface OtcTransactionReceipt {
 }
 
 export interface OtcWalletSubmitter {
-  sendTransaction(request: OtcTransactionRequest, intent: OtcWriteIntent, nowSeconds: bigint): Promise<Hex>
+  sendTransaction(
+    request: OtcTransactionRequest,
+    intent: OtcWriteIntent,
+    nowSeconds: bigint,
+    isCurrentContext?: () => boolean,
+  ): Promise<Hex>
   waitForTransactionReceipt(hash: Hex): Promise<OtcTransactionReceipt>
 }
 
