@@ -91,7 +91,20 @@ jobs:
               "repos/$GITHUB_REPOSITORY/actions/workflows/otc-milestone-c-gate.yml/runs" \
               -f per_page=100 \
               | jq -r --argjson number "$PR_NUMBER" --arg head "$head_sha" \
-                '[.[].workflow_runs[] | select(any(.pull_requests[]; .number == $number and .head.sha == $head))][0].id // empty'
+                '[.[].workflow_runs[] | select(any(.pull_requests[]; .number == $number and .head.sha == $head))][].id' \
+              | while read -r candidate_id; do
+                  [[ "$candidate_id" =~ ^[1-9][0-9]*$ ]] || {
+                    echo 'Invalid candidate workflow run number' >&2
+                    exit 1
+                  }
+                  if gh api --method GET --paginate --slurp \
+                    "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_id/jobs" -f per_page=100 \
+                    | jq -e 'any(.[].jobs[]; .name == "OTC Milestone C / fresh Codex review")' \
+                      >/dev/null; then
+                    echo "$candidate_id"
+                    break
+                  fi
+                done
           )"
           [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
             echo 'No gate run is attached to the current pull request head' >&2

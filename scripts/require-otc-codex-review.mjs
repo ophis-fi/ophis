@@ -127,17 +127,6 @@ export function assessCodexGate({
   }
 
   const exactReviews = codexItems(reviews).filter((review) => review.commit_id === headSha);
-  const blockedReview = exactReviews.some((review) =>
-    ['CHANGES_REQUESTED', 'DISMISSED'].includes(String(review.state ?? '').toUpperCase()),
-  );
-  if (blockedReview) {
-    return {
-      required: true,
-      accepted: false,
-      reason: `Codex review state blocks head ${shortHead}; push fixes and request a fresh review.`,
-    };
-  }
-
   const latestRequest = newestReviewRequest(reviewRequests);
   const latestRequestTime = latestRequest
     ? String(latestRequest.body ?? '')
@@ -146,14 +135,32 @@ export function assessCodexGate({
       ? Date.parse(latestRequest.updatedAt)
       : Number.NaN
     : Number.NaN;
-  const approvedReview =
-    Number.isFinite(latestRequestTime) &&
-    exactReviews.some(
-      (review) =>
-        String(review.state ?? '').toUpperCase() === 'APPROVED' &&
-        Number.isFinite(Date.parse(review.submitted_at)) &&
-        Date.parse(review.submitted_at) > latestRequestTime,
-    );
+  const currentDecisions = Number.isFinite(latestRequestTime)
+    ? exactReviews.filter(
+        (review) =>
+          ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(
+            String(review.state ?? '').toUpperCase(),
+          ) &&
+          Number.isFinite(Date.parse(review.submitted_at)) &&
+          Date.parse(review.submitted_at) > latestRequestTime,
+      )
+    : [];
+  const newestDecision = currentDecisions.reduce((newest, review) => {
+    if (!newest) return review;
+    const timeOrder = Date.parse(review.submitted_at) - Date.parse(newest.submitted_at);
+    if (timeOrder !== 0) return timeOrder > 0 ? review : newest;
+    return Number(review.id ?? 0) > Number(newest.id ?? 0) ? review : newest;
+  }, undefined);
+  const decisionState = String(newestDecision?.state ?? '').toUpperCase();
+  if (['CHANGES_REQUESTED', 'DISMISSED'].includes(decisionState)) {
+    return {
+      required: true,
+      accepted: false,
+      reason: `Codex review state blocks head ${shortHead}; push fixes and request a fresh review.`,
+    };
+  }
+
+  const approvedReview = decisionState === 'APPROVED';
   const cleanEvidence = latestRequest
     ? hasBoundCleanEvidence(latestRequest, headSha, baseSha)
     : false;
@@ -403,6 +410,7 @@ function selfTest() {
         {
           user: { login: CODEX_LOGIN },
           state: 'APPROVED',
+          id: 2,
           commit_id: base.headSha,
           submitted_at: '2026-08-20T12:01:00Z',
           body: '',
@@ -418,6 +426,7 @@ function selfTest() {
         {
           user: { login: CODEX_LOGIN },
           state: 'APPROVED',
+          id: 2,
           commit_id: base.headSha,
           submitted_at: '2026-08-20T12:01:00Z',
           body: '',
@@ -440,6 +449,7 @@ function selfTest() {
         {
           user: { login: CODEX_LOGIN },
           state: 'APPROVED',
+          id: 2,
           commit_id: base.headSha,
           submitted_at: '2026-08-20T11:59:59Z',
           body: '',
@@ -454,6 +464,37 @@ function selfTest() {
       ],
     }).accepted,
     'an approval older than the newest exact request must fail',
+  );
+  assert(
+    assessCodexGate({
+      ...base,
+      reviews: [
+        {
+          user: { login: CODEX_LOGIN },
+          state: 'DISMISSED',
+          id: 1,
+          commit_id: base.headSha,
+          submitted_at: '2026-08-20T12:01:00Z',
+          body: '',
+        },
+        {
+          user: { login: CODEX_LOGIN },
+          state: 'APPROVED',
+          id: 2,
+          commit_id: base.headSha,
+          submitted_at: '2026-08-20T12:02:00Z',
+          body: '',
+        },
+      ],
+      reviewRequests: [
+        {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          cleanComments: [],
+        },
+      ],
+    }).accepted,
+    'a fresh approval must supersede an older dismissed decision',
   );
   assert(
     !assessCodexGate({
