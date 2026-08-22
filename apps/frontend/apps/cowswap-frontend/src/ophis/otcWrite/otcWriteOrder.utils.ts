@@ -28,6 +28,6 @@ export function shouldMountOtcOrderAction(
   account: string | undefined,
 ): boolean {
   if (!writeEnabled || !order || !isReviewedOtcOrder(order)) return false
-  if (!order.active) return !!account && !isAddressEqual(account, order.maker)
+  if (!order.active) return !account || !isAddressEqual(account, order.maker)
   return freshness === 'fresh' && indexedAgrees
 }

@@ -150,6 +150,16 @@ describe('OtcOrderDetailView', () => {
       shouldMountOtcOrderAction(true, 'unknown', inactive, false, '0x1111111111111111111111111111111111111111'),
     ).toBe(true)
     expect(shouldMountOtcOrderAction(true, 'unknown', inactive, false, MAKER)).toBe(false)
-    expect(shouldMountOtcOrderAction(true, 'unknown', inactive, false, undefined)).toBe(false)
+    expect(shouldMountOtcOrderAction(true, 'unknown', inactive, false, undefined)).toBe(true)
+  })
+
+  it('does not let index lag hide a supplied zero-only recovery action for an inactive order', () => {
+    renderDetail({
+      writeEnabled: true,
+      order: order({ active: false }),
+      indexed: indexed({ active: true }),
+      actionPanel: <button type="button">Revoke unused allowance</button>,
+    })
+    expect(screen.getByRole('button', { name: 'Revoke unused allowance' })).toBeTruthy()
   })
 })

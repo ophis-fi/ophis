@@ -149,7 +149,7 @@ function DetailBody({
         </p>
         {indexed && <p>Created {formatOtcAge(nowMs, indexed.createdAt)}</p>}
       </Section>
-      {!changed && actionPanel}
+      {(!changed || !order.active) && actionPanel}
       <Section id="otc-order-technical" title="Technical details">
         <KeyValueList items={technicalRows} />
         <p>
