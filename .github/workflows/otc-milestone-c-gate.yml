@@ -76,7 +76,9 @@ jobs:
           COMMENT_ACTION: ${{ github.event.action }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_BODY_FROM: ${{ github.event.changes.body.from }}
+          COMMENT_CREATED_AT: ${{ github.event.comment.created_at }}
           COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_UPDATED_AT: ${{ github.event.comment.updated_at }}
           COMMENT_USER: ${{ github.event.comment.user.login }}
           PR_NUMBER: ${{ github.event.issue.number }}
         shell: bash
@@ -152,10 +154,31 @@ jobs:
             current_clean=false
             current_marker=false
           fi
+
+          latest_request_updated="$(
+            gh api --method GET --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f per_page=100 \
+              | jq -r --arg request "$expected_request" \
+                '[.[][] | select(
+                  (.author_association == "OWNER" or .author_association == "MEMBER" or
+                    .author_association == "COLLABORATOR") and
+                  ((.body // "") | gsub("\r\n"; "\n") |
+                    gsub("^\\s+|\\s+$"; "")) == $request
+                )] | sort_by(.updated_at, .id) | last.updated_at // empty'
+          )"
+          request_relevant=true
+          clean_relevant=true
+          marker_relevant=true
+          if [[ -n "$latest_request_updated" ]]; then
+            [[ "$latest_request_updated" > "$COMMENT_UPDATED_AT" ]] && request_relevant=false
+            [[ "$latest_request_updated" > "$COMMENT_CREATED_AT" ]] && clean_relevant=false
+            [[ "$latest_request_updated" > "$COMMENT_CREATED_AT" ]] && marker_relevant=false
+          fi
           if [[ "$COMMENT_ACTION" != 'created' ]] && {
-            [[ "$COMMENT_USER" == "$CODEX_LOGIN" && "$was_clean" == true ]] ||
-              [[ "$COMMENT_USER" == "$ACTIONS_LOGIN" && "$was_marker" == true ]] ||
-              [[ "$COMMENT_USER" != "$CODEX_LOGIN" && "$was_request" == true && "$current_request" != true ]]
+            [[ "$COMMENT_USER" == "$CODEX_LOGIN" && "$was_clean" == true && "$clean_relevant" == true ]] ||
+              [[ "$COMMENT_USER" == "$ACTIONS_LOGIN" && "$was_marker" == true && "$marker_relevant" == true ]] ||
+              [[ "$COMMENT_USER" != "$CODEX_LOGIN" && "$was_request" == true &&
+                "$current_request" != true && "$request_relevant" == true ]]
           }; then
             marker="OTC Codex gate invalidated.
 
