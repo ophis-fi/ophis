@@ -59,14 +59,9 @@ contract OtcSwapboardEthereumForkTest is Test {
     ISwapboardV1Fork internal board;
 
     function setUp() public {
-        string memory rpc = vm.envOr("OPHIS_FORK_RPC_ETH", string(""));
-        if (bytes(rpc).length == 0) return;
+        string memory rpc = vm.envString("OPHIS_FORK_RPC_ETH");
         vm.createSelectFork(rpc);
         board = ISwapboardV1Fork(BOARD);
-    }
-
-    function _forked() internal view returns (bool) {
-        return address(board) != address(0);
     }
 
     function _createWethForUsdc(uint256 amountA, uint256 amountB) internal returns (uint256 orderId) {
@@ -84,7 +79,6 @@ contract OtcSwapboardEthereumForkTest is Test {
     }
 
     function test_pinned_identity_and_reviewed_tokens() public view {
-        if (!_forked()) return;
         assertEq(BOARD.codehash, RUNTIME_CODE_HASH);
         assertEq(board.weth(), WETH);
         assertGt(WETH.code.length, 0);
@@ -93,7 +87,6 @@ contract OtcSwapboardEthereumForkTest is Test {
     }
 
     function test_create_and_fill_with_exact_approvals_and_nonzero_deadline() public {
-        if (!_forked()) vm.skip(true);
         uint256 amountA = 2 ether;
         uint256 amountB = 8_000e6;
         uint256 makerUsdcBefore = IERC20OtcFork(USDC).balanceOf(MAKER);
@@ -119,7 +112,6 @@ contract OtcSwapboardEthereumForkTest is Test {
     }
 
     function test_create_and_cancel_returns_the_exact_escrow() public {
-        if (!_forked()) vm.skip(true);
         uint256 amountA = 1 ether;
         uint256 boardWethBefore = IERC20OtcFork(WETH).balanceOf(BOARD);
         uint256 orderId = _createWethForUsdc(amountA, 4_000e6);
@@ -133,7 +125,6 @@ contract OtcSwapboardEthereumForkTest is Test {
     }
 
     function test_expired_deadline_reverts_and_preserves_active_escrow() public {
-        if (!_forked()) vm.skip(true);
         uint256 amountB = 4_000e6;
         uint256 boardWethBefore = IERC20OtcFork(WETH).balanceOf(BOARD);
         uint256 orderId = _createWethForUsdc(1 ether, amountB);
@@ -152,7 +143,6 @@ contract OtcSwapboardEthereumForkTest is Test {
     }
 
     function test_only_one_competing_fill_can_settle() public {
-        if (!_forked()) vm.skip(true);
         uint256 amountB = 4_000e6;
         uint256 orderId = _createWethForUsdc(1 ether, amountB);
         _fundUsdc(TAKER, amountB);
@@ -173,7 +163,6 @@ contract OtcSwapboardEthereumForkTest is Test {
     }
 
     function test_fill_wins_over_late_cancel() public {
-        if (!_forked()) vm.skip(true);
         uint256 amountB = 4_000e6;
         uint256 orderId = _createWethForUsdc(1 ether, amountB);
         _fundUsdc(TAKER, amountB);
@@ -188,7 +177,6 @@ contract OtcSwapboardEthereumForkTest is Test {
     }
 
     function test_missing_approval_reverts_without_creating_an_order() public {
-        if (!_forked()) vm.skip(true);
         vm.deal(MAKER, 1 ether);
         vm.prank(MAKER);
         IWethOtcFork(WETH).deposit{value: 1 ether}();
