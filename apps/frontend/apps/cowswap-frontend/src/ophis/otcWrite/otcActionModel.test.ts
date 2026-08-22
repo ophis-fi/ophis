@@ -1,5 +1,7 @@
+import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
+
 import { deriveOtcActionModel } from './otcActionModel'
-import { getOtcActionReviewKey } from './otcWriteOrder.utils'
+import { getOtcActionReviewKey, isReviewedOtcOrder } from './otcWriteOrder.utils'
 
 import type { OtcActionFacts } from './otcActionModel'
 
@@ -37,6 +39,22 @@ describe('deriveOtcActionModel', () => {
     expect(getOtcActionReviewKey('0xaa00000000000000000000000000000000000000', ['fill', 7n, 10n])).toBe(reviewed)
     expect(getOtcActionReviewKey('0xbb00000000000000000000000000000000000000', ['fill', 7n, 10n])).not.toBe(reviewed)
     expect(getOtcActionReviewKey('0xaa00000000000000000000000000000000000000', ['cancel', 7n, 10n])).not.toBe(reviewed)
+  })
+
+  it('mounts write actions only for positive, distinct, reviewed order legs', () => {
+    const order = {
+      orderId: 7n,
+      maker: '0x1111111111111111111111111111111111111111' as const,
+      active: true,
+      tokenA: WETH_MAINNET.address,
+      amountA: 1n,
+      tokenB: USDC_MAINNET.address,
+      amountB: 2n,
+    }
+    expect(isReviewedOtcOrder(order)).toBe(true)
+    expect(isReviewedOtcOrder({ ...order, amountA: 0n })).toBe(false)
+    expect(isReviewedOtcOrder({ ...order, tokenB: WETH_MAINNET.address })).toBe(false)
+    expect(isReviewedOtcOrder({ ...order, tokenB: '0x000000000000040470635EB91b7CE4D132D616eD' })).toBe(false)
   })
 
   it('revokes every positive allowance that does not exactly match the action', () => {

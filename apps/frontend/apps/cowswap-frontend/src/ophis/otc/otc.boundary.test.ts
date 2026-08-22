@@ -46,7 +46,7 @@ const WRITE_DIR = join(__dirname, '..', 'otcWrite')
 // both usePublicClient and useWriteContract), plus dynamic import() which
 // would evade the specifier scan entirely.
 const SIGNER_API_PATTERN =
-  /\b(useWriteContract|useSendTransaction|useSendTransactionSync|useSendCalls|useDeployContract|useSignMessage|useSignTypedData|useConnectorClient|useWalletClient|getWalletClient|walletClient|walletActions|writeContract|sendTransaction|sendRawTransaction|sendCalls|deployContract|signTransaction|signTypedData|signMessage|prepareTransactionRequest|requestAddresses|watchAsset)\b|import\(/
+  /\b(useWriteContract|useSendTransaction|useSendTransactionSync|useSendCalls|useDeployContract|useSignMessage|useSignTypedData|useConnectorClient|useWalletClient|getWalletClient|walletClient|walletActions|writeContract|sendTransaction|sendRawTransaction|sendCalls|deployContract|signTransaction|signTypedData|signMessage|prepareTransactionRequest|requestAddresses|watchAsset)\b|import\(/g
 
 // Denylists are inherently incomplete against a large package surface, so
 // wagmi — the one signer-capable package production OTC code may touch —
@@ -60,12 +60,12 @@ const PAGE_WRITE_ALLOWED_IMPORTS = new Set([
   'resolveOtcWriteFlag',
   'useOtcWriteAuthorization',
 ])
-const WRITE_SIGNER_FILES = new Set([
-  'otcWrite.types.ts',
-  'otcWriteAdapters.ts',
-  'prepareOtcTransaction.ts',
-  'useOtcActionController.ts',
-  'useOtcNetworkReads.ts',
+const WRITE_SIGNER_APIS = new Map<string, ReadonlySet<string>>([
+  ['otcWrite.types.ts', new Set(['sendTransaction'])],
+  ['otcWriteAdapters.ts', new Set(['sendTransaction', 'walletClient'])],
+  ['prepareOtcTransaction.ts', new Set(['sendTransaction'])],
+  ['useOtcActionController.ts', new Set(['useWalletClient', 'walletClient'])],
+  ['useOtcNetworkReads.ts', new Set(['walletClient'])],
 ])
 const WRITE_WAGMI_IMPORTS = new Map<string, ReadonlySet<string>>([
   ['otcWriteAdapters.ts', new Set(['usePublicClient'])],
@@ -97,6 +97,10 @@ function namedImportsFrom(source: string, specifier: string): string[] {
 interface ProductionSource {
   file: string
   source: string
+}
+
+function signerApisFrom(source: string): string[] {
+  return source.match(SIGNER_API_PATTERN) ?? []
 }
 
 /** Recursive: a write path hidden in a nested directory must not escape the scan. */
@@ -153,8 +157,8 @@ describe('Ophis OTC boundary', () => {
   it('references no signer-capable API and no dynamic import in any production source', () => {
     for (const directory of [__dirname, PAGES_DIR]) {
       for (const { file, source } of productionSources(directory)) {
-        const match = source.match(SIGNER_API_PATTERN)
-        expect(match ? `${file}: ${match[0]}` : null).toBeNull()
+        const matches = signerApisFrom(source)
+        expect(matches.length > 0 ? `${file}: ${matches.join(', ')}` : null).toBeNull()
       }
     }
   })
@@ -180,10 +184,9 @@ describe('Ophis OTC boundary', () => {
   it('isolates signer-capable APIs and wagmi imports to the reviewed write adapters', () => {
     for (const { file, source } of productionSources(WRITE_DIR)) {
       const fileName = basename(file)
-      const match = source.match(SIGNER_API_PATTERN)
-      if (match) {
-        const allowed = match[0] !== 'import(' && WRITE_SIGNER_FILES.has(fileName)
-        expect(allowed ? null : `${file}: ${match[0]}`).toBeNull()
+      const allowedApis = WRITE_SIGNER_APIS.get(fileName) ?? new Set<string>()
+      for (const api of new Set(signerApisFrom(source))) {
+        expect(allowedApis.has(api) ? null : `${file}: ${api}`).toBeNull()
       }
 
       const allowedImports = WRITE_WAGMI_IMPORTS.get(fileName) ?? new Set<string>()
@@ -194,17 +197,19 @@ describe('Ophis OTC boundary', () => {
   })
 
   it('keeps submitOtcTransaction as the only production caller of the wallet submitter', () => {
-    const directSenders = productionSources(WRITE_DIR)
-      .filter(({ source }) => /\.sendTransaction\s*\(/.test(source))
-      .map(({ file }) => basename(file))
-      .sort()
-    expect(directSenders).toEqual(['otcWriteAdapters.ts', 'prepareOtcTransaction.ts'])
+    const directSenderCounts = Object.fromEntries(
+      productionSources(WRITE_DIR)
+        .map(({ file, source }) => [basename(file), source.match(/\.sendTransaction\s*\(/g)?.length ?? 0] as const)
+        .filter(([, count]) => count > 0),
+    )
+    expect(directSenderCounts).toEqual({ 'otcWriteAdapters.ts': 2, 'prepareOtcTransaction.ts': 1 })
 
-    const submissionCallers = productionSources(WRITE_DIR)
-      .filter(({ source }) => /\bsubmitOtcTransaction\s*\(/.test(source))
-      .map(({ file }) => basename(file))
-      .sort()
-    expect(submissionCallers).toEqual(['prepareOtcTransaction.ts', 'useOtcSubmission.ts'])
+    const submissionCallerCounts = Object.fromEntries(
+      productionSources(WRITE_DIR)
+        .map(({ file, source }) => [basename(file), source.match(/\bsubmitOtcTransaction\s*\(/g)?.length ?? 0] as const)
+        .filter(([, count]) => count > 0),
+    )
+    expect(submissionCallerCounts).toEqual({ 'prepareOtcTransaction.ts': 1, 'useOtcSubmission.ts': 1 })
   })
 
   it('allows only the token-policy assertion API at write sinks', () => {

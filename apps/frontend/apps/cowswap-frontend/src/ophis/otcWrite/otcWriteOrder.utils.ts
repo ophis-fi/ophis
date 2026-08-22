@@ -1,4 +1,5 @@
 import { getOtcTokenMeta } from 'ophis/otc'
+import { isAddressEqual } from 'viem'
 
 import type { OtcOrder } from 'ophis/otc'
 
@@ -10,5 +11,11 @@ export function getOtcActionReviewKey(account: string | undefined, parts: readon
 }
 
 export function isReviewedOtcOrder(order: OtcOrder): boolean {
-  return !!getOtcTokenMeta(order.tokenA) && !!getOtcTokenMeta(order.tokenB)
+  return (
+    order.amountA > 0n &&
+    order.amountB > 0n &&
+    !isAddressEqual(order.tokenA, order.tokenB) &&
+    !!getOtcTokenMeta(order.tokenA) &&
+    !!getOtcTokenMeta(order.tokenB)
+  )
 }

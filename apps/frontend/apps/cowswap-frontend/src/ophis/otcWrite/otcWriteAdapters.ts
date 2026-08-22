@@ -80,7 +80,13 @@ export function toOtcWalletSubmitter(
       ])
       if (walletChainId !== checkedRequest.chainId) throw new Error('Ophis OTC wallet is on the wrong chain')
       const walletAccount = walletAccounts[0]
-      if (!walletAccount || !isAddressEqual(walletAccount, checkedRequest.account)) {
+      const configuredAccount = walletClient.account?.address
+      if (
+        !walletAccount ||
+        !configuredAccount ||
+        !isAddressEqual(walletAccount, checkedRequest.account) ||
+        !isAddressEqual(configuredAccount, checkedRequest.account)
+      ) {
         throw new Error('Ophis OTC wallet account changed')
       }
       return walletClient.sendTransaction({
