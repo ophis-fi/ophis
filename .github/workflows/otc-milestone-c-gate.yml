@@ -4,7 +4,9 @@ on:
   # The workflow definition itself comes from the protected base branch. It
   # never checks out or executes PR-head code.
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  pull_request_review:
+    types: [submitted, dismissed]
 
 permissions:
   actions: read
@@ -32,4 +34,9 @@ jobs:
       - name: Require clean Codex evidence for the current money-path head
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PULL_REQUEST_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+          PULL_REQUEST_DRAFT: ${{ github.event.pull_request.draft }}
         run: node scripts/require-otc-codex-review.mjs
