@@ -1,0 +1,243 @@
+name: OTC Milestone C review-gate dispatcher
+
+on:
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  # Trusted evidence changes share one PR lane. Untrusted comments are isolated
+  # so they cannot cancel an authoritative dispatcher run.
+  group: >-
+    otc-codex-gate-${{ github.event.pull_request.number || github.event.issue.number }}-${{
+    github.event.comment.user.login != 'chatgpt-codex-connector[bot]' &&
+    !(github.event.action != 'created' &&
+    github.event.comment.user.login == 'github-actions[bot]' &&
+    (startsWith(github.event.comment.body, 'OTC Codex gate invalidated.') ||
+    startsWith(github.event.changes.body.from, 'OTC Codex gate invalidated.'))) &&
+    !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+    github.event.comment.id || 'authoritative' }}
+  cancel-in-progress: true
+
+jobs:
+  rerun-on-comment:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request != null &&
+      (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
+      (github.event.action != 'created' &&
+      github.event.comment.user.login == 'github-actions[bot]' &&
+      (startsWith(github.event.comment.body, 'OTC Codex gate invalidated.') ||
+      startsWith(github.event.changes.body.from, 'OTC Codex gate invalidated.'))) ||
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    name: Re-evaluate PR-head gate after conversation change
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      actions: write
+      checks: read
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      # issue_comment workflows run on the trusted default branch, not the PR
+      # head. Rerun the newest gate already attached to the live PR head so the
+      # required workflow becomes pending immediately and cannot stay stale-green.
+      - name: Rerun the current PR-head gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTIONS_LOGIN: github-actions[bot]
+          CODEX_LOGIN: chatgpt-codex-connector[bot]
+          CLEAN_PREFIX: "Codex Review: Didn't find any major issues. :+1:"
+          GATE_JOB_NAME: OTC Milestone C / fresh Codex review
+          GATE_WORKFLOW_PATH: .github/workflows/otc-milestone-c-gate.yml
+          COMMENT_ACTION: ${{ github.event.action }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_BODY_FROM: ${{ github.event.changes.body.from }}
+          COMMENT_CREATED_AT: ${{ github.event.comment.created_at }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_UPDATED_AT: ${{ github.event.comment.updated_at }}
+          COMMENT_USER: ${{ github.event.comment.user.login }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+            echo 'Invalid GitHub repository' >&2
+            exit 1
+          }
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'Invalid pull request number' >&2
+            exit 1
+          }
+          [[ "$COMMENT_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'Invalid issue comment number' >&2
+            exit 1
+          }
+          pull_state="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          head_sha="$(jq -r '.head.sha' <<<"$pull_state")"
+          base_sha="$(jq -r '.base.sha' <<<"$pull_state")"
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Invalid current pull request head' >&2
+            exit 1
+          }
+          [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Invalid current pull request base' >&2
+            exit 1
+          }
+
+          was_request=false
+          current_request=false
+          was_clean=false
+          current_clean=false
+          was_marker=false
+          current_marker=false
+          normalized_body="$(
+            jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' <<<"$COMMENT_BODY"
+          )
+          normalized_body_from="$(
+            jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' \
+              <<<"$COMMENT_BODY_FROM"
+          )"
+          expected_request="@codex review
+
+          Head: $head_sha
+          Base: $base_sha"
+          expected_marker_prefix="OTC Codex gate invalidated.
+
+          Head: $head_sha
+          Base: $base_sha
+          Source comment: "
+          short_head="${head_sha:0:10}"
+          [[ "$normalized_body" == "$expected_request" ]] && current_request=true
+          [[ "$normalized_body_from" == "$expected_request" ]] && was_request=true
+          if [[ "$COMMENT_BODY" == "$CLEAN_PREFIX"* ]] && {
+            [[ "$COMMENT_BODY" == *"**Reviewed commit:** \`$short_head\`"* ]] ||
+              [[ "$COMMENT_BODY" == *"**Reviewed commit:** \`$head_sha\`"* ]]
+          }; then
+            current_clean=true
+          fi
+          if [[ "$COMMENT_BODY_FROM" == "$CLEAN_PREFIX"* ]] && {
+            [[ "$COMMENT_BODY_FROM" == *"**Reviewed commit:** \`$short_head\`"* ]] ||
+              [[ "$COMMENT_BODY_FROM" == *"**Reviewed commit:** \`$head_sha\`"* ]]
+          }; then
+            was_clean=true
+          fi
+          [[ "$COMMENT_BODY" == "$expected_marker_prefix"* ]] && current_marker=true
+          [[ "$COMMENT_BODY_FROM" == "$expected_marker_prefix"* ]] && was_marker=true
+          if [[ "$COMMENT_ACTION" == 'deleted' ]]; then
+            was_request="$current_request"
+            was_clean="$current_clean"
+            was_marker="$current_marker"
+            current_request=false
+            current_clean=false
+            current_marker=false
+          fi
+
+          latest_request_record="$(
+            gh api --method GET --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f per_page=100 \
+              | jq -r --arg request "$expected_request" \
+                '[.[][] | select(
+                  (.author_association == "OWNER" or .author_association == "MEMBER" or
+                    .author_association == "COLLABORATOR") and
+                  ((.body // "") | gsub("\r\n"; "\n") |
+                    gsub("^\\s+|\\s+$"; "")) == $request
+                )] | sort_by(.updated_at, .id) | last |
+                if . == null then empty else [.updated_at, .id] | @tsv end'
+          )"
+          latest_request_updated=''
+          latest_request_id=''
+          if [[ -n "$latest_request_record" ]]; then
+            IFS=$'\t' read -r latest_request_updated latest_request_id \
+              <<<"$latest_request_record"
+            [[ "$latest_request_id" =~ ^[1-9][0-9]*$ ]] || {
+              echo 'Invalid latest review-request comment number' >&2
+              exit 1
+            }
+          fi
+          request_relevant=true
+          clean_relevant=true
+          marker_relevant=true
+          if [[ -n "$latest_request_updated" ]]; then
+            if [[ "$latest_request_updated" > "$COMMENT_UPDATED_AT" ]] || {
+              [[ "$latest_request_updated" == "$COMMENT_UPDATED_AT" ]] &&
+                ((latest_request_id > COMMENT_ID))
+            }; then
+              request_relevant=false
+            fi
+            if [[ "$latest_request_updated" > "$COMMENT_CREATED_AT" ]] || {
+              [[ "$latest_request_updated" == "$COMMENT_CREATED_AT" ]] &&
+                ((latest_request_id > COMMENT_ID))
+            }; then
+              clean_relevant=false
+              marker_relevant=false
+            fi
+          fi
+          if [[ "$COMMENT_ACTION" != 'created' ]] && {
+            [[ "$COMMENT_USER" == "$CODEX_LOGIN" && "$was_clean" == true && "$clean_relevant" == true ]] ||
+              [[ "$COMMENT_USER" == "$ACTIONS_LOGIN" && "$was_marker" == true && "$marker_relevant" == true ]] ||
+              [[ "$COMMENT_USER" != "$CODEX_LOGIN" && "$was_request" == true &&
+                "$current_request" != true && "$request_relevant" == true ]]
+          }; then
+            marker="OTC Codex gate invalidated.
+
+          Head: $head_sha
+          Base: $base_sha
+          Source comment: $COMMENT_ID"
+            gh api --silent --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              -f body="$marker"
+          fi
+          mapfile -t details_urls < <(
+            gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json statusCheckRollup \
+              | jq -r --arg name "$GATE_JOB_NAME" \
+                '[.statusCheckRollup[] | select(.name == $name and .detailsUrl != null)] |
+                sort_by(.startedAt) | reverse | .[:100] | .[].detailsUrl'
+          )"
+          expected_prefix="https://github.com/$GITHUB_REPOSITORY/actions/runs/"
+          run_id=''
+          for details_url in "${details_urls[@]}"; do
+            [[ "$details_url" == "$expected_prefix"* ]] || continue
+            run_path="${details_url#"$expected_prefix"}"
+            [[ "$run_path" =~ ^([1-9][0-9]*)/job/[1-9][0-9]*$ ]] || continue
+            candidate_run_id="${BASH_REMATCH[1]}"
+            if gate_run="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id" 2>/dev/null
+            )" && jq -e --arg repository "$GITHUB_REPOSITORY" \
+              --arg path "$GATE_WORKFLOW_PATH" '
+                .event == "pull_request_target" and
+                .path == $path and
+                .repository.full_name == $repository
+              ' <<<"$gate_run" >/dev/null; then
+              run_id="$candidate_run_id"
+              break
+            fi
+          done
+          [[ -n "$run_id" ]] || {
+            echo 'No trusted required-workflow gate is attached to the current head' >&2
+            exit 1
+          }
+          rerun_gate() {
+            local attempt error
+            for attempt in {1..60}; do
+              if error="$(gh api --silent --method POST \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" 2>&1)"; then
+                return 0
+              fi
+              if [[ "$error" == *'HTTP 409'* ]]; then
+                echo 'The current PR-head gate is busy; waiting to enqueue a fresh evaluation.'
+                sleep 10
+                continue
+              fi
+              echo "$error" >&2
+              return 1
+            done
+            echo 'Timed out waiting to enqueue a fresh PR-head gate evaluation.' >&2
+            return 1
+          }
+
+          rerun_gate
