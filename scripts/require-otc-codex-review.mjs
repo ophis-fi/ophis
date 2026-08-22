@@ -11,6 +11,7 @@
  */
 
 const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
+const ACTIONS_LOGIN = 'github-actions[bot]';
 const GITHUB_API_ORIGIN = 'https://api.github.com';
 const TRUSTED_REQUEST_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const SCOPED_PATHS = [
@@ -51,6 +52,17 @@ function reviewedCommentSha(comment) {
 
 function reviewRequestBody(headSha, baseSha) {
   return `@codex review\n\nHead: ${headSha}\nBase: ${baseSha}`;
+}
+
+function isBoundInvalidation(comment, headSha, baseSha) {
+  if (comment?.user?.login !== ACTIONS_LOGIN) return false;
+  return new RegExp(
+    `^OTC Codex gate invalidated\\.\\n\\nHead: ${headSha}\\nBase: ${baseSha}\\nSource comment: [1-9][0-9]*$`,
+  ).test(
+    String(comment.body ?? '')
+      .replaceAll('\r\n', '\n')
+      .trim(),
+  );
 }
 
 function cleanCommentHeadPrefix(comment) {
@@ -101,6 +113,7 @@ export function assessCodexGate({
   files,
   reviewComments,
   reviewRequests,
+  invalidatedAt,
 }) {
   if (changedFiles !== files.length) {
     return {
@@ -126,8 +139,11 @@ export function assessCodexGate({
   }
 
   const latestRequest = newestReviewRequest(reviewRequests);
+  const requestTime = Date.parse(latestRequest?.updatedAt);
+  const invalidationTime = Date.parse(invalidatedAt);
   const cleanEvidence = latestRequest
-    ? hasBoundCleanEvidence(latestRequest, headSha, baseSha)
+    ? (!Number.isFinite(invalidationTime) || requestTime > invalidationTime) &&
+      hasBoundCleanEvidence(latestRequest, headSha, baseSha)
     : false;
 
   if (cleanEvidence) {
@@ -321,6 +337,20 @@ function selfTest() {
       ],
     }).accepted,
     'a same-second clean comment must fail as ambiguous',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      invalidatedAt: '2026-08-20T12:02:00Z',
+      reviewRequests: [
+        {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          cleanComments: [cleanComment],
+        },
+      ],
+    }).accepted,
+    'deleting accepted evidence must require a newer exact request',
   );
   assert(
     !assessCodexGate({ ...base, changedFiles: 3 }).accepted,
@@ -661,6 +691,11 @@ async function runLive() {
     api([...prefix, 'issues', number, 'comments'], token),
   ]);
   const issueComments = await resolveCleanCommentHeads(rawIssueComments, headSha, prefix, token);
+  const invalidatedAt = issueComments
+    .filter((comment) => isBoundInvalidation(comment, headSha, baseSha))
+    .map((comment) => comment.created_at)
+    .sort()
+    .at(-1);
   const matchingRequests = issueComments
     .filter(
       (comment) =>
@@ -700,6 +735,7 @@ async function runLive() {
     files,
     reviewComments,
     reviewRequests,
+    invalidatedAt,
   });
   process.stdout.write(`${result.reason}\n`);
   if (!result.accepted) process.exitCode = 1;

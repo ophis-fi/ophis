@@ -52,7 +52,7 @@ jobs:
       actions: write
       checks: read
       contents: read
-      issues: read
+      issues: write
       pull-requests: read
     steps:
       # issue_comment workflows run on the trusted default branch, not the PR
@@ -61,8 +61,14 @@ jobs:
       - name: Rerun the current PR-head gate
         env:
           GH_TOKEN: ${{ github.token }}
+          CODEX_LOGIN: chatgpt-codex-connector[bot]
+          CLEAN_PREFIX: "Codex Review: Didn't find any major issues. :+1:"
           GATE_JOB_NAME: OTC Milestone C / fresh Codex review
+          COMMENT_ACTION: ${{ github.event.action }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_BODY_FROM: ${{ github.event.changes.body.from }}
           COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_USER: ${{ github.event.comment.user.login }}
           PR_NUMBER: ${{ github.event.issue.number }}
         shell: bash
         run: |
@@ -78,11 +84,44 @@ jobs:
             echo 'Invalid issue comment number' >&2
             exit 1
           }
-          head_sha="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          pull_state="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          head_sha="$(jq -r '.head.sha' <<<"$pull_state")"
+          base_sha="$(jq -r '.base.sha' <<<"$pull_state")"
           [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || {
             echo 'Invalid current pull request head' >&2
             exit 1
           }
+          [[ "$base_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Invalid current pull request base' >&2
+            exit 1
+          }
+
+          was_request=false
+          current_request=false
+          was_clean=false
+          current_clean=false
+          [[ "$COMMENT_BODY" == @codex\ review* ]] && current_request=true
+          [[ "$COMMENT_BODY_FROM" == @codex\ review* ]] && was_request=true
+          [[ "$COMMENT_BODY" == "$CLEAN_PREFIX"* ]] && current_clean=true
+          [[ "$COMMENT_BODY_FROM" == "$CLEAN_PREFIX"* ]] && was_clean=true
+          if [[ "$COMMENT_ACTION" == 'deleted' ]]; then
+            was_request="$current_request"
+            was_clean="$current_clean"
+            current_request=false
+            current_clean=false
+          fi
+          if [[ "$COMMENT_ACTION" != 'created' ]] && {
+            [[ "$COMMENT_USER" == "$CODEX_LOGIN" && "$was_clean" == true && "$current_clean" != true ]] ||
+              [[ "$COMMENT_USER" != "$CODEX_LOGIN" && "$was_request" == true && "$current_request" != true ]]
+          }; then
+            marker="OTC Codex gate invalidated.
+
+          Head: $head_sha
+          Base: $base_sha
+          Source comment: $COMMENT_ID"
+            gh api --silent --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+              -f body="$marker"
+          fi
           details_url="$(
             gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json statusCheckRollup \
               | jq -r --arg name "$GATE_JOB_NAME" \
