@@ -10,6 +10,7 @@ import { OtcActionControl } from './OtcActionControl.container'
 import { OtcUsdValue } from './OtcUsdValue.pure'
 import * as styledEl from './OtcWrite.styled'
 import { OTC_REVIEWED_TOKENS, parseOtcCreateDraft, reviewedOtcToken, type OtcReviewedToken } from './otcWriteForm'
+import { getOtcActionReviewKey } from './otcWriteOrder.utils'
 
 import type { OtcActionDefinition } from './useOtcActionController'
 import type { Address } from 'viem'
@@ -87,14 +88,15 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
   const [tokenBAddress, setTokenBAddress] = useState<Address>(USDC_MAINNET.address)
   const [amountA, setAmountA] = useState('')
   const [amountB, setAmountB] = useState('')
-  const [reviewed, setReviewed] = useState(false)
+  const [reviewedKey, setReviewedKey] = useState<string | null>(null)
   const tokenA = reviewedOtcToken(tokenAAddress) ?? OTC_REVIEWED_TOKENS[0]
   const tokenB = reviewedOtcToken(tokenBAddress) ?? OTC_REVIEWED_TOKENS[1]
   const draft = useMemo(
     () => parseOtcCreateDraft({ tokenA, amountA, tokenB, amountB }),
     [amountA, amountB, tokenA, tokenB],
   )
-  const resetKey = `${tokenA.address}:${amountA}:${tokenB.address}:${amountB}`
+  const resetKey = getOtcActionReviewKey(account, [tokenA.address, amountA.trim(), tokenB.address, amountB.trim()])
+  const reviewed = reviewedKey === resetKey
   const handleConfirmed = useCallback(() => {
     onConfirmed?.()
   }, [onConfirmed])
@@ -116,7 +118,6 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
   )
   const update = (setter: (value: string) => void, value: string): void => {
     setter(value)
-    setReviewed(false)
   }
 
   return (
@@ -146,8 +147,12 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
         <p>Orders do not expire automatically and fills are all-or-nothing.</p>
       </styledEl.WriteSummary>
       <styledEl.ReviewLabel>
-        <input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />I reviewed
-        both exact token amounts, the escrow risks, and the absence of automatic expiry.
+        <input
+          type="checkbox"
+          checked={reviewed}
+          onChange={(event) => setReviewedKey(event.target.checked ? resetKey : null)}
+        />
+        I reviewed both exact token amounts, the escrow risks, and the absence of automatic expiry.
       </styledEl.ReviewLabel>
       <OtcActionControl definition={definition} onConfirmed={handleConfirmed} />
     </Section>

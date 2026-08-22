@@ -1,4 +1,5 @@
 import { deriveOtcActionModel } from './otcActionModel'
+import { getOtcActionReviewKey } from './otcWriteOrder.utils'
 
 import type { OtcActionFacts } from './otcActionModel'
 
@@ -27,8 +28,23 @@ describe('deriveOtcActionModel', () => {
     expect(deriveOtcActionModel(facts({ correctChain: false })).action).toBe('switch')
     expect(deriveOtcActionModel(facts({ localForkVerified: null })).label).toBe('Verifying local fork...')
     expect(deriveOtcActionModel(facts({ localForkVerified: false })).label).toBe('Local Anvil fork required')
-    expect(deriveOtcActionModel(facts({ allowance: 9n })).action).toBe('approve')
+    expect(deriveOtcActionModel(facts({ allowance: 0n })).action).toBe('approve')
     expect(deriveOtcActionModel(facts()).action).toBe('execute')
+  })
+
+  it('binds review consent to the wallet account and exact action payload', () => {
+    const reviewed = getOtcActionReviewKey('0xAa00000000000000000000000000000000000000', ['fill', 7n, 10n])
+    expect(getOtcActionReviewKey('0xaa00000000000000000000000000000000000000', ['fill', 7n, 10n])).toBe(reviewed)
+    expect(getOtcActionReviewKey('0xbb00000000000000000000000000000000000000', ['fill', 7n, 10n])).not.toBe(reviewed)
+    expect(getOtcActionReviewKey('0xaa00000000000000000000000000000000000000', ['cancel', 7n, 10n])).not.toBe(reviewed)
+  })
+
+  it('revokes every positive allowance that does not exactly match the action', () => {
+    expect(deriveOtcActionModel(facts({ allowance: 9n }))).toMatchObject({
+      action: 'revoke',
+      label: 'Revoke mismatched allowance',
+    })
+    expect(deriveOtcActionModel(facts({ allowance: 11n })).action).toBe('revoke')
   })
 
   it('blocks approval and execution until exact terms are reviewed', () => {

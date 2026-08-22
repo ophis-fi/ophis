@@ -10,6 +10,7 @@ import { OtcActionControl } from './OtcActionControl.container'
 import { OtcUsdValue } from './OtcUsdValue.pure'
 import * as styledEl from './OtcWrite.styled'
 import { reviewedOtcToken, type OtcReviewedToken } from './otcWriteForm'
+import { getOtcActionReviewKey } from './otcWriteOrder.utils'
 
 import type { OtcActionDefinition } from './useOtcActionController'
 import type { OtcOrder } from 'ophis/otc'
@@ -20,6 +21,7 @@ function buildOrderActionDefinition(
   order: OtcOrder,
   isMaker: boolean,
   reviewed: boolean,
+  resetKey: string,
   paymentToken: OtcReviewedToken | null,
   receivedToken: OtcReviewedToken | null,
 ): OtcActionDefinition {
@@ -28,7 +30,7 @@ function buildOrderActionDefinition(
     executeLabel: isMaker ? 'Cancel order' : 'Fill entire order',
     ready: order.active && reviewedTerms,
     reviewed,
-    resetKey: `${order.orderId.toString()}:${order.active}:${account ?? ''}`,
+    resetKey,
     executeIntent: account
       ? isMaker
         ? { kind: 'cancel', account, order }
@@ -82,13 +84,24 @@ function OtcOrderTermsSummary({
 
 export function OtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; onConfirmed?: () => void }): ReactNode {
   const { account } = useWalletInfo()
-  const [reviewed, setReviewed] = useState(false)
+  const [reviewedKey, setReviewedKey] = useState<string | null>(null)
   const isMaker = !!account && isAddressEqual(account, order.maker)
   const paymentToken = reviewedOtcToken(order.tokenB)
   const receivedToken = reviewedOtcToken(order.tokenA)
+  const resetKey = getOtcActionReviewKey(account, [
+    isMaker ? 'cancel' : 'fill',
+    order.orderId,
+    order.maker,
+    order.active,
+    order.tokenA,
+    order.amountA,
+    order.tokenB,
+    order.amountB,
+  ])
+  const reviewed = reviewedKey === resetKey
   const definition = useMemo(
-    () => buildOrderActionDefinition(account, order, isMaker, reviewed, paymentToken, receivedToken),
-    [account, isMaker, order, paymentToken, receivedToken, reviewed],
+    () => buildOrderActionDefinition(account, order, isMaker, reviewed, resetKey, paymentToken, receivedToken),
+    [account, isMaker, order, paymentToken, receivedToken, resetKey, reviewed],
   )
 
   return (
@@ -98,7 +111,11 @@ export function OtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; o
       </Callout>
       <OtcOrderTermsSummary isMaker={isMaker} order={order} paymentToken={paymentToken} receivedToken={receivedToken} />
       <styledEl.ReviewLabel>
-        <input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} />
+        <input
+          type="checkbox"
+          checked={reviewed}
+          onChange={(event) => setReviewedKey(event.target.checked ? resetKey : null)}
+        />
         {isMaker
           ? 'I reviewed the exact order and understand cancellation costs Ethereum gas.'
           : 'I reviewed both exact token amounts, allowance, escrow risks, and race risk.'}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { OTC_FILL_DEADLINE_WINDOW_SECONDS } from './buildOtcTransaction'
 import { submitOtcTransaction } from './prepareOtcTransaction'
@@ -59,6 +59,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
   const [error, setError] = useState<string | null>(null)
   const [successHash, setSuccessHash] = useState<Hex | null>(null)
   const [recoveryRequired, setRecoveryRequired] = useState(false)
+  const inFlight = useRef(false)
   const [allowanceCooldown, beginAllowanceCooldown] = useOtcAllowanceCooldown(refreshAllowance)
 
   useEffect(() => {
@@ -69,10 +70,12 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
 
   const submit = useCallback(
     async (intent: OtcWriteIntent, execution: boolean) => {
+      if (inFlight.current) return
       if (!writeClient || !wallet) {
         setError('Wallet access is still loading. Try again in a moment.')
         return
       }
+      inFlight.current = true
       const nowSeconds = BigInt(Math.floor(Date.now() / 1_000))
       const currentIntent = withFreshDeadline(intent, nowSeconds)
       setPendingIntent(currentIntent.kind)
@@ -97,6 +100,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
         setError(translateOtcWriteError(caught))
         setRecoveryRequired(await hasRecoveryAllowance(refreshAllowance, execution, requiredAllowance))
       } finally {
+        inFlight.current = false
         setPendingIntent(null)
       }
     },

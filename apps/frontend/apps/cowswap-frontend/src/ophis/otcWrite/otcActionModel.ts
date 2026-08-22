@@ -86,6 +86,9 @@ function transactionModel(facts: OtcActionFacts): OtcActionModel {
   if (facts.recoveryRequired && (facts.allowance ?? 0n) > 0n) {
     return { action: 'revoke', label: 'Revoke unused allowance', disabled: false, pending: false }
   }
+  if (facts.requiredAllowance !== null && (facts.allowance ?? 0n) > 0n && facts.allowance !== facts.requiredAllowance) {
+    return { action: 'revoke', label: 'Revoke mismatched allowance', disabled: false, pending: false }
+  }
   if (!facts.reviewed) {
     return {
       action: 'unavailable',
@@ -94,7 +97,7 @@ function transactionModel(facts: OtcActionFacts): OtcActionModel {
       pending: false,
     }
   }
-  if (facts.requiredAllowance !== null && (facts.allowance ?? 0n) < facts.requiredAllowance) {
+  if (facts.requiredAllowance !== null && facts.allowance !== facts.requiredAllowance) {
     return { action: 'approve', label: 'Approve exact amount', disabled: false, pending: false }
   }
   return { action: 'execute', label: facts.executeLabel, disabled: false, pending: false }

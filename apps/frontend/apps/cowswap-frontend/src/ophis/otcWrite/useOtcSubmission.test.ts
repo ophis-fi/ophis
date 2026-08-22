@@ -96,4 +96,26 @@ describe('useOtcSubmission', () => {
     expect(onConfirmed).toHaveBeenCalledTimes(1)
     jest.restoreAllMocks()
   })
+
+  it('admits only one submission while the current wallet request is in flight', async () => {
+    let resolveSubmission!: (value: Awaited<ReturnType<typeof submitOtcTransaction>>) => void
+    submitMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSubmission = resolve
+        }),
+    )
+    const { result } = renderHook(() => useOtcSubmission(options({ requiredAllowance: null })))
+    const intent = { kind: 'cancel' as const, account: MAKER, order }
+    let submissions: Promise<void>[] = []
+
+    act(() => {
+      submissions = [result.current.submit(intent, false), result.current.submit(intent, false)]
+    })
+    expect(submitMock).toHaveBeenCalledTimes(1)
+
+    resolveSubmission({ transactionHash: HASH, status: 'success', blockNumber: 10n })
+    await act(async () => Promise.all(submissions))
+    expect(result.current.pendingIntent).toBeNull()
+  })
 })
