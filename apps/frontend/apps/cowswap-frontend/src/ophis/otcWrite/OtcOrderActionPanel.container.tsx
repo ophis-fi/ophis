@@ -160,6 +160,38 @@ function VerifiedOtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; 
   )
 }
 
+function UnverifiedOtcOrderActionPanel({
+  orderId,
+  onConfirmed,
+}: {
+  orderId: bigint
+  onConfirmed?: () => void
+}): ReactNode {
+  const definition = useMemo<OtcActionDefinition>(
+    () => ({
+      executeLabel: 'Order action',
+      unavailableLabel: 'Loading verified fork order...',
+      ready: false,
+      reviewed: false,
+      resetKey: `order:${orderId.toString()}:unverified`,
+      executeIntent: null,
+      approvalIntent: null,
+      revokeIntent: null,
+      allowanceToken: null,
+      requiredAllowance: null,
+    }),
+    [orderId],
+  )
+  return (
+    <Section id="otc-order-action" title="Order action on local fork">
+      <Callout tone="warning" title="Fork verification required">
+        <p>Connect a wallet and select a chain-id-1 local fork before the exact order terms can be loaded.</p>
+      </Callout>
+      <OtcActionControl definition={definition} onConfirmed={onConfirmed} />
+    </Section>
+  )
+}
+
 export function OtcOrderActionPanel({
   orderId,
   onConfirmed,
@@ -183,7 +215,8 @@ export function OtcOrderActionPanel({
   const forkOrderQuery = useAtomValue(forkOrderQueryAtom)
   const order = forkOrderQuery.data?.order ?? null
 
-  if (network.localForkResponse.data !== true || !shouldMountOtcOrderAction(true, order)) return null
-  if (!order) return null
+  if (network.localForkResponse.data !== true || !shouldMountOtcOrderAction(true, order) || !order) {
+    return <UnverifiedOtcOrderActionPanel orderId={orderId} onConfirmed={onConfirmed} />
+  }
   return <VerifiedOtcOrderActionPanel order={order} onConfirmed={onConfirmed} />
 }

@@ -1,4 +1,7 @@
+import { getDefaultStore } from 'jotai'
+
 import { act, renderHook } from '@testing-library/react'
+import { uncertainOtcTransactionsAtom } from 'entities/otc/uncertainOtcTransactionsAtom'
 
 import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
 import { submitOtcTransaction } from './prepareOtcTransaction'
@@ -42,7 +45,11 @@ function options(refreshAllowance: OtcSubmissionOptions['refreshAllowance']): Ot
 }
 
 describe('useOtcSubmission recovery boundaries', () => {
-  beforeEach(() => submitMock.mockReset())
+  beforeEach(() => {
+    submitMock.mockReset()
+    localStorage.removeItem('ophis-otc-uncertain-transactions:v1')
+    getDefaultStore().set(uncertainOtcTransactionsAtom, {})
+  })
 
   it('clears fail-safe recovery after a fresh approval confirms', async () => {
     const refreshAllowance = jest.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce({ allowance: 2n })
@@ -95,5 +102,44 @@ describe('useOtcSubmission recovery boundaries', () => {
     expect(result.current.error).toBeNull()
     expect(result.current.pendingIntent).toBeNull()
     expect(refreshAllowance).not.toHaveBeenCalled()
+  })
+
+  it('restores an uncertain broadcast for the same account and reviewed intent after remount', async () => {
+    submitMock.mockRejectedValue(new OtcReceiptTrackingError(HASH, new Error('receipt RPC unavailable')))
+    const first = renderHook(() => useOtcSubmission(options(jest.fn().mockResolvedValue({ allowance: 0n }))))
+
+    await act(() => first.result.current.submit({ kind: 'fill', account: ACCOUNT, order, deadline: 1n }, true))
+    first.unmount()
+
+    const second = renderHook(() => useOtcSubmission(options(jest.fn().mockResolvedValue({ allowance: 0n }))))
+    expect(second.result.current.uncertainHash).toBe(HASH)
+    expect(localStorage.getItem('ophis-otc-uncertain-transactions:v1')).toContain(HASH)
+  })
+
+  it('records a late uncertain result against the original intent after the action context changes', async () => {
+    let rejectSubmission!: (error: Error) => void
+    submitMock.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectSubmission = reject
+        }),
+    )
+    const refreshAllowance = jest.fn().mockResolvedValue({ allowance: 0n })
+    const { result, rerender } = renderHook(
+      ({ resetKey }: { resetKey: string }) => useOtcSubmission({ ...options(refreshAllowance), resetKey }),
+      { initialProps: { resetKey: 'order-7' } },
+    )
+
+    let submission!: Promise<void>
+    act(() => {
+      submission = result.current.submit({ kind: 'fill', account: ACCOUNT, order, deadline: 1n }, true)
+    })
+    rerender({ resetKey: 'order-8' })
+    rejectSubmission(new OtcReceiptTrackingError(HASH, new Error('receipt RPC unavailable')))
+    await act(async () => submission)
+
+    expect(result.current.uncertainHash).toBeNull()
+    rerender({ resetKey: 'order-7' })
+    expect(result.current.uncertainHash).toBe(HASH)
   })
 })

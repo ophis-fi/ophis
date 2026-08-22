@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { shouldMountOtcOrderAction } from 'ophis/otcWrite'
 
+import { renderView } from './Otc.page.test.utils'
 import { OtcOrderDetailView } from './OtcOrderDetailView.pure'
 
 import type { OtcIndexedOrder, OtcOrder } from 'ophis/otc'
@@ -38,8 +39,8 @@ function indexed(overrides: Partial<OtcIndexedOrder> = {}): OtcIndexedOrder {
   }
 }
 
-function renderDetail(props: Partial<Parameters<typeof OtcOrderDetailView>[0]> = {}): ReturnType<typeof render> {
-  return render(
+function renderDetail(props: Partial<Parameters<typeof OtcOrderDetailView>[0]> = {}): ReturnType<typeof renderView> {
+  return renderView(
     <OtcOrderDetailView
       orderId={130n}
       loading={false}

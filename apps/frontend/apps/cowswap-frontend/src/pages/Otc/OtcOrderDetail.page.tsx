@@ -25,7 +25,7 @@ import { usePublicClient } from 'wagmi'
 
 import { Routes as RoutesEnum } from 'common/constants/routes'
 
-import { assessDetailFreshness, type OtcNodeFreshness } from './otcDetailFreshness'
+import { assessDetailFreshness, type OtcNodeFreshness } from './otcDetailFreshness.utils'
 import { OtcOrderDetailView } from './OtcOrderDetailView.pure'
 import { useOtcNow } from './useOtcNow'
 import { useOtcPageEnabled, useOtcWriteEnabled } from './useOtcPageEnabled'

@@ -85,12 +85,17 @@ export function filterMakerRows(rows: OtcDisplayRow[], account: string): OtcDisp
   return rows.filter((row) => getAddressKey(row.order.maker) === needle)
 }
 
-export function formatOtcAge(nowMs: number, createdAt: number | null): string {
-  if (createdAt === null) return '—'
+export interface OtcAgeValue {
+  value: number
+  unit: 'minutes' | 'hours' | 'days'
+}
+
+export function getOtcAge(nowMs: number, createdAt: number | null): OtcAgeValue | null {
+  if (createdAt === null) return null
   const seconds = Math.max(0, Math.floor(nowMs / 1_000) - createdAt)
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 60) return { value: minutes, unit: 'minutes' }
   const hours = Math.floor(minutes / 60)
-  if (hours < 48) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
+  if (hours < 48) return { value: hours, unit: 'hours' }
+  return { value: Math.floor(hours / 24), unit: 'days' }
 }

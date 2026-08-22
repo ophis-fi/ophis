@@ -1,4 +1,4 @@
-import { assessDetailFreshness } from './otcDetailFreshness'
+import { assessDetailFreshness } from './otcDetailFreshness.utils'
 
 import type { OtcDataState } from 'ophis/otc'
 

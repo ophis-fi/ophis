@@ -27,7 +27,7 @@ interface OtcSubmitCallbackOptions {
   setPendingIntent: (intent: OtcWriteIntent['kind'] | null) => void
   setError: (error: string | null) => void
   setSuccess: (success: OtcSuccessfulTransaction | null) => void
-  setUncertainHash: (hash: Hex | null) => void
+  setUncertainHash: (hash: Hex) => void
   setRecoveryRequired: (required: boolean) => void
 }
 
@@ -89,11 +89,10 @@ function finishSubmission(
 
 function applyUncertainSubmission(
   caught: unknown,
-  isCurrentContext: () => boolean,
   setUncertainHash: OtcSubmitCallbackOptions['setUncertainHash'],
 ): boolean {
   if (!(caught instanceof OtcReceiptTrackingError)) return false
-  if (isCurrentContext()) setUncertainHash(caught.transactionHash)
+  setUncertainHash(caught.transactionHash)
   return true
 }
 
@@ -135,7 +134,6 @@ async function runOtcSubmission(
   options.setPendingIntent(intent.kind)
   options.setError(null)
   options.setSuccess(null)
-  options.setUncertainHash(null)
   try {
     const receipt = await submitOtcTransaction(
       options.writeClient,
@@ -148,7 +146,7 @@ async function runOtcSubmission(
     const result = await settleSuccessfulSubmission(intent, options, isCurrentContext)
     if (!applySuccessfulSubmission(result, receipt.transactionHash, options)) return
   } catch (caught) {
-    if (applyUncertainSubmission(caught, isCurrentContext, options.setUncertainHash)) return
+    if (applyUncertainSubmission(caught, options.setUncertainHash)) return
     const result = await settleFailedSubmission(caught, execution, options, isCurrentContext)
     if (!applyFailedSubmission(result, options)) return
   } finally {

@@ -1,4 +1,9 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useAtom } from 'jotai'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+
+import { getAddressKey } from '@cowprotocol/cow-sdk'
+
+import { recordUncertainOtcTransaction, uncertainOtcTransactionsAtom } from 'entities/otc/uncertainOtcTransactionsAtom'
 
 import { useOtcAllowanceCooldown } from './useOtcAllowanceCooldown'
 import { useOtcSubmitCallback, type OtcSuccessfulTransaction } from './useOtcSubmitCallback'
@@ -57,9 +62,18 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
   const [pendingIntent, setPendingIntent] = useState<OtcWriteIntent['kind'] | 'switch' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<OtcSuccessfulTransaction | null>(null)
-  const [uncertainHash, setUncertainHash] = useState<Hex | null>(null)
+  const [uncertainTransactions, setUncertainTransactions] = useAtom(uncertainOtcTransactionsAtom)
   const [recoveryRequired, setRecoveryRequired] = useState(false)
   const submissionContext = submissionContextKey(resetKey, account, authorization)
+  const uncertainKey = account ? `${getAddressKey(account)}\u0000${resetKey}` : null
+  const uncertainHash = uncertainKey ? (uncertainTransactions[uncertainKey]?.transactionHash ?? null) : null
+  const setUncertainHash = useCallback(
+    (transactionHash: Hex) => {
+      if (!uncertainKey) return
+      setUncertainTransactions((current) => recordUncertainOtcTransaction(current, uncertainKey, transactionHash))
+    },
+    [setUncertainTransactions, uncertainKey],
+  )
   const contextGeneration = useRef(0)
   const inFlightGeneration = useRef<number | null>(null)
   const [allowanceCooldown, beginAllowanceCooldown] = useOtcAllowanceCooldown(refreshAllowance, submissionContext)
@@ -70,7 +84,6 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     setPendingIntent(null)
     setError(null)
     setSuccess(null)
-    setUncertainHash(null)
     setRecoveryRequired(false)
     return () => {
       contextGeneration.current += 1

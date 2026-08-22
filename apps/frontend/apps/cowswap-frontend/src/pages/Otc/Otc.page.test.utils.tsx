@@ -1,5 +1,9 @@
+import { i18n } from '@lingui/core'
+import { I18nProvider } from '@lingui/react'
 import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
+
+import { messages as enMessages } from '../../locales/en-US.po'
 
 import type { OtcDataState, OtcIndexedOrder, OtcOrder, OtcSnapshot } from 'ophis/otc'
 
@@ -10,8 +14,14 @@ export const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const ZAMM = '0xE9b1cFEA55BAA219e34301f2F31b9FD0921664ED'
 export const NOW_MS = 1_755_010_800_000
 
+i18n.loadAndActivate({ locale: 'en-US', messages: enMessages })
+
 export function renderView(ui: Parameters<typeof render>[0]): ReturnType<typeof render> {
-  return render(ui, { wrapper: MemoryRouter })
+  return render(
+    <I18nProvider i18n={i18n}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </I18nProvider>,
+  )
 }
 
 function order(orderId: bigint, overrides: Partial<OtcOrder> = {}): OtcOrder {

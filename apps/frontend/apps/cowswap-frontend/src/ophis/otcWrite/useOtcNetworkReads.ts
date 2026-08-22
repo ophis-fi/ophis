@@ -1,6 +1,7 @@
 import { useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 
+import { withTimeout } from '@cowprotocol/common-utils'
 import { useWalletProvider } from '@cowprotocol/wallet-provider'
 
 import { atomWithQuery, type AtomWithQueryResult } from 'jotai-tanstack-query'
@@ -17,6 +18,7 @@ import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
 import type { Address } from 'viem'
 
 const ALLOWANCE_REFRESH_INTERVAL_MS = 5_000
+const LOCAL_FORK_VERIFICATION_TIMEOUT_MS = 10_000
 const OPHIS_ESCROW_KEY = 'swapboard-v1-mainnet'
 const WALLET_TRANSPORT_IDS = new WeakMap<object, number>()
 let nextWalletTransportId = 1
@@ -56,6 +58,10 @@ function toOtcQueryResponse<T>(result: AtomWithQueryResult<T, Error>): OtcQueryR
   }
 }
 
+export function withOtcForkVerificationTimeout(verification: Promise<boolean>): Promise<boolean> {
+  return withTimeout(verification, LOCAL_FORK_VERIFICATION_TIMEOUT_MS, 'Ophis OTC local fork verification timed out')
+}
+
 export function useOtcNetworkReads(
   enabled: boolean,
   account: Address | undefined,
@@ -82,8 +88,12 @@ export function useOtcNetworkReads(
           transportId,
         ],
         queryFn: async () => {
-          if (walletClient) return verifyOtcLocalForkWallet(walletClient)
-          return legacyProvider ? verifyOtcLocalForkProvider(legacyProvider) : false
+          const verification = walletClient
+            ? verifyOtcLocalForkWallet(walletClient)
+            : legacyProvider
+              ? verifyOtcLocalForkProvider(legacyProvider)
+              : Promise.resolve(false)
+          return withOtcForkVerificationTimeout(verification)
         },
         enabled: !!enabled && !!account && !!walletSource,
         refetchOnWindowFocus: false,

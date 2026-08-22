@@ -17,134 +17,31 @@ import { useCallback, useState, type ReactNode } from 'react'
 
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import { Badge, Callout, PageShell, Section } from 'ophis/ds'
+import { Trans, useLingui } from '@lingui/react/macro'
+import { Badge, Callout, PageShell } from 'ophis/ds'
 import { useOtcData } from 'ophis/otc'
 import { OtcCreatePanel } from 'ophis/otcWrite'
 import { Navigate } from 'react-router'
 
 import { Routes as RoutesEnum } from 'common/constants/routes'
 
-import { BadgeRow, DisabledAction, TabBar, TabButton } from './Otc.styled'
-import { applyBrowseFilters, BrowseFilterBar, EMPTY_BROWSE_FILTERS, type BrowseFilters } from './OtcBrowseFilters'
+import { BadgeRow, TabBar, TabButton } from './Otc.styled'
 import { OtcDisclosure } from './OtcDisclosure'
-import { buildOtcDisplayRows, filterBrowseRows, filterMakerRows } from './otcDisplay'
-import { OtcOrdersTable } from './OtcOrdersTable'
+import { buildOtcDisplayRows, filterBrowseRows } from './otcDisplay'
+import { BrowsePanel, MyOrdersPanel, OtcStateNotices, ReadOnlyCreatePanel } from './OtcPagePanels'
 import { useOtcNow } from './useOtcNow'
 import { useOtcPageEnabled, useOtcWriteEnabled } from './useOtcPageEnabled'
 
-import type { OtcDisplayRow } from './otcDisplay'
 import type { OtcDataState } from 'ophis/otc'
 
 type OtcTab = 'browse' | 'mine' | 'create'
 
-const TABS: ReadonlyArray<{ id: OtcTab; label: string }> = [
-  { id: 'browse', label: 'Browse' },
-  { id: 'mine', label: 'My orders' },
-  { id: 'create', label: 'Create' },
-]
+const TABS: readonly OtcTab[] = ['browse', 'mine', 'create']
 
-function BrowsePanel({ rows, nowMs }: { rows: OtcDisplayRow[]; nowMs: number }): ReactNode {
-  const [filters, setFilters] = useState<BrowseFilters>(EMPTY_BROWSE_FILTERS)
-  const filtered = applyBrowseFilters(rows, filters)
-
-  return (
-    <Section id="otc-browse" title="Active orders">
-      <BrowseFilterBar filters={filters} onChange={setFilters} />
-      {filtered.length === 0 ? (
-        <Callout tone="info" title="No active orders">
-          <p>No active orders match. Clear the filters or check back later.</p>
-        </Callout>
-      ) : (
-        <OtcOrdersTable rows={filtered} nowMs={nowMs} caption="Active OTC orders" />
-      )}
-    </Section>
-  )
-}
-
-function MyOrdersPanel({
-  rows,
-  account,
-  nowMs,
-}: {
-  rows: OtcDisplayRow[]
-  account: string | undefined
-  nowMs: number
-}): ReactNode {
-  if (!account) {
-    return (
-      <Section id="otc-mine" title="My orders">
-        <Callout tone="info" title="No wallet connected">
-          <p>Connect a wallet to see your orders. Viewing is read-only; connecting does not enable transactions.</p>
-        </Callout>
-      </Section>
-    )
-  }
-
-  const mine = filterMakerRows(rows, account)
-  return (
-    <Section id="otc-mine" title="My orders">
-      {mine.length === 0 ? (
-        <Callout tone="info" title="No orders for this wallet">
-          <p>This wallet has not created any OTC orders on the escrow contract.</p>
-        </Callout>
-      ) : (
-        <OtcOrdersTable rows={mine} nowMs={nowMs} caption="Orders created by the connected wallet" />
-      )}
-    </Section>
-  )
-}
-
-function ReadOnlyCreatePanel(): ReactNode {
-  return (
-    <Section id="otc-create" title="Create">
-      <Callout tone="info" title="Order creation is not enabled">
-        <p>
-          Creating, filling, and cancelling orders are under isolated Milestone C development. This production page is
-          read-only: no transaction can be built or signed from it.
-        </p>
-      </Callout>
-      <DisabledAction type="button" disabled aria-disabled="true">
-        Order creation is not yet enabled
-      </DisabledAction>
-    </Section>
-  )
-}
-
-function OtcStateNotices({ state }: { state: OtcDataState }): ReactNode {
-  return (
-    <div aria-live="polite">
-      {state.degradedReason === 'index-unavailable' && (
-        <Callout tone="warning" title="Index data unavailable">
-          <p>Ages and history are hidden. On-chain state below remains authoritative and current.</p>
-        </Callout>
-      )}
-      {state.degradedReason === 'index-stale' && (
-        <Callout tone="warning" title="Index data is stale">
-          <p>Ages and history may lag behind the chain. On-chain state below remains authoritative and current.</p>
-        </Callout>
-      )}
-      {state.degradedReason === 'node-stale' && (
-        <Callout tone="warning" title="Network data may be outdated">
-          <p>
-            This RPC node appears to be behind the network. Order states shown below were verified on-chain but may not
-            reflect the latest blocks. Refresh, or try again shortly.
-          </p>
-        </Callout>
-      )}
-      {state.degradedReason === 'index-corrupt' && (
-        <Callout tone="warning" title="Index data partially invalid">
-          <p>
-            Malformed index rows were dropped and are not shown. On-chain state below remains authoritative and current.
-          </p>
-        </Callout>
-      )}
-      {state.snapshot?.truncated && (
-        <Callout tone="info" title="Showing the most recent orders">
-          <p>Older orders beyond the latest {state.snapshot.orders.length} are not listed here.</p>
-        </Callout>
-      )}
-    </div>
-  )
+function OtcTabLabel({ tab }: { tab: OtcTab }): ReactNode {
+  if (tab === 'browse') return <Trans>Browse</Trans>
+  if (tab === 'mine') return <Trans>My orders</Trans>
+  return <Trans>Create</Trans>
 }
 
 export interface OtcPageViewProps {
@@ -156,40 +53,56 @@ export interface OtcPageViewProps {
 }
 
 export function OtcPageView({ state, account, nowMs, createPanel, writeEnabled = false }: OtcPageViewProps): ReactNode {
+  const { t } = useLingui()
   const [tab, setTab] = useState<OtcTab>(writeEnabled ? 'create' : 'browse')
   const rows = buildOtcDisplayRows(state)
   const dataReady = state.status === 'ready' || state.status === 'degraded'
   const showTabs = dataReady || writeEnabled
+  const verifiedBlock = state.snapshot?.blockNumber.toString() ?? null
 
   return (
     <PageShell
       width="wide"
       eyebrow="OTC"
-      title="Fixed-price peer-to-peer orders."
+      title={<Trans>Fixed-price peer-to-peer orders.</Trans>}
       lede={
-        writeEnabled
-          ? 'Test exact ERC-20 escrow actions against a local Ethereum fork. Every order read is verified directly against the pinned contract.'
-          : 'Browse escrowed OTC orders settled on an external immutable Ethereum contract. This surface is read-only; order data is verified directly against Ethereum.'
+        writeEnabled ? (
+          <Trans>
+            Test exact ERC-20 escrow actions against a local Ethereum fork. Every order read is verified directly
+            against the pinned contract.
+          </Trans>
+        ) : (
+          <Trans>
+            Browse escrowed OTC orders settled on an external immutable Ethereum contract. This surface is read-only;
+            order data is verified directly against Ethereum.
+          </Trans>
+        )
       }
     >
       <BadgeRow>
         <Badge tone="live">Ethereum</Badge>
-        <Badge tone="beta">{writeEnabled ? 'Local fork writes' : 'Read-only'}</Badge>
-        {state.snapshot && (
-          <span aria-label={`Verified at block ${state.snapshot.blockNumber.toString()}`}>
-            Verified at block {state.snapshot.blockNumber.toString()}
+        <Badge tone="beta">{writeEnabled ? <Trans>Local fork writes</Trans> : <Trans>Read-only</Trans>}</Badge>
+        {verifiedBlock && (
+          <span aria-label={t`Verified at block ${verifiedBlock}`}>
+            <Trans>Verified at block {verifiedBlock}</Trans>
           </span>
         )}
       </BadgeRow>
 
       <OtcDisclosure />
 
-      {state.status === 'loading' && <p role="status">Loading OTC orders from Ethereum...</p>}
+      {state.status === 'loading' && (
+        <p role="status">
+          <Trans>Loading OTC orders from Ethereum...</Trans>
+        </p>
+      )}
 
       {state.status === 'unavailable' && (
-        <Callout tone="warning" title="OTC data unavailable">
+        <Callout tone="warning" title={<Trans>OTC data unavailable</Trans>}>
           <p>
-            On-chain verification failed, so order data is hidden rather than shown unverified. Refresh to try again.
+            <Trans>
+              On-chain verification failed, so order data is hidden rather than shown unverified. Refresh to try again.
+            </Trans>
           </p>
         </Callout>
       )}
@@ -197,16 +110,16 @@ export function OtcPageView({ state, account, nowMs, createPanel, writeEnabled =
       {showTabs && (
         <>
           {dataReady && <OtcStateNotices state={state} />}
-          <TabBar role="group" aria-label="OTC views">
+          <TabBar role="group" aria-label={t`OTC views`}>
             {TABS.map((item) => (
               <TabButton
-                key={item.id}
+                key={item}
                 type="button"
-                $active={tab === item.id}
-                aria-pressed={tab === item.id}
-                onClick={() => setTab(item.id)}
+                $active={tab === item}
+                aria-pressed={tab === item}
+                onClick={() => setTab(item)}
               >
-                {item.label}
+                <OtcTabLabel tab={item} />
               </TabButton>
             ))}
           </TabBar>

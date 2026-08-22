@@ -1,4 +1,4 @@
-import { buildOtcDisplayRows, filterBrowseRows, filterMakerRows, formatOtcAge } from './otcDisplay'
+import { buildOtcDisplayRows, filterBrowseRows, filterMakerRows, getOtcAge } from './otcDisplay'
 
 import type { OtcDataState, OtcIndexedOrder, OtcOrder, OtcSnapshot } from 'ophis/otc'
 
@@ -146,13 +146,13 @@ describe('filters', () => {
   })
 })
 
-describe('formatOtcAge', () => {
+describe('getOtcAge', () => {
   const nowMs = 1_755_000_000_000 + 3 * 60 * 60 * 1_000 // three hours after createdAt
 
   it('renders relative ages and an em dash for unknown', () => {
-    expect(formatOtcAge(nowMs, 1_755_000_000)).toBe('3h ago')
-    expect(formatOtcAge(nowMs, 1_755_000_000 - 3 * 24 * 60 * 60)).toBe('3d ago')
-    expect(formatOtcAge(1_755_000_000_000 + 5 * 60_000, 1_755_000_000)).toBe('5m ago')
-    expect(formatOtcAge(nowMs, null)).toBe('—')
+    expect(getOtcAge(nowMs, 1_755_000_000)).toEqual({ value: 3, unit: 'hours' })
+    expect(getOtcAge(nowMs, 1_755_000_000 - 3 * 24 * 60 * 60)).toEqual({ value: 3, unit: 'days' })
+    expect(getOtcAge(1_755_000_000_000 + 5 * 60_000, 1_755_000_000)).toEqual({ value: 5, unit: 'minutes' })
+    expect(getOtcAge(nowMs, null)).toBeNull()
   })
 })

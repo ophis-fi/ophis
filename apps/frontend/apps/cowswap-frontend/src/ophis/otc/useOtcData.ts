@@ -1,6 +1,7 @@
 import { useAtomValue } from 'jotai'
 import { useEffect, useId, useMemo, useRef } from 'react'
 
+import { withTimeout } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { atomWithQuery } from 'jotai-tanstack-query'
@@ -9,7 +10,6 @@ import { usePublicClient } from 'wagmi'
 
 import { OPHIS_ETHEREUM_OTC_MANIFEST } from './otc.const'
 import { computeIndexLag, fetchOtcIndexedOrders } from './otcSubgraph'
-import { withOtcTimeout } from './otcTimeout'
 import { readOtcSnapshot } from './readOtcSnapshot'
 import { reconcileOtcOrders } from './reconcileOtcOrders'
 
@@ -50,7 +50,7 @@ export async function loadOtcData(client: OtcReaderClient, options: LoadOtcDataO
   const manifest = options.manifest ?? OPHIS_ETHEREUM_OTC_MANIFEST
 
   const [snapshot, indexResult] = await Promise.all([
-    withOtcTimeout(readOtcSnapshot(client, manifest), manifest.readTimeoutMs, 'Ophis OTC read timed out'),
+    withTimeout(readOtcSnapshot(client, manifest), manifest.readTimeoutMs, 'Ophis OTC read timed out'),
     fetchOtcIndexedOrders(options.fetchImpl ?? fetch, manifest).then(
       (value) => ({ ok: true as const, value }),
       () => ({ ok: false as const }),

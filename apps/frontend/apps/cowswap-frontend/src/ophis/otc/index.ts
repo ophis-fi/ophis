@@ -10,7 +10,6 @@ export { getOtcTokenMeta, isOtcOrderDisplayReviewed, OTC_CURATED_TOKEN_COUNT, OT
 export type { OtcTokenMeta } from './otcTokenMeta'
 export { computeOtcRate, formatOtcAmount } from './otcAmounts'
 export type { OtcRate } from './otcAmounts'
-export { withOtcTimeout } from './otcTimeout'
 export { loadOtcData, toOtcReaderClient, useOtcData, OTC_DATA_REFRESH_INTERVAL } from './useOtcData'
 export type { LoadedOtcData, LoadOtcDataOptions } from './useOtcData'
 export type {
