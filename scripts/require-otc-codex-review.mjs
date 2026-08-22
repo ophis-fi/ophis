@@ -71,10 +71,14 @@ function hasBoundCleanEvidence(request, headSha, baseSha) {
   const updatedAt = Date.parse(request.updatedAt);
   if (!Number.isFinite(updatedAt)) return false;
   const freshCleanComment = codexItems(request.cleanComments ?? []).some((comment) => {
-    const prefix = cleanCommentHeadPrefix(comment);
+    const displayedSha = cleanCommentHeadPrefix(comment);
     const createdAt = Date.parse(comment.created_at);
     return (
-      prefix && headSha.startsWith(prefix) && Number.isFinite(createdAt) && createdAt > updatedAt
+      displayedSha &&
+      headSha.startsWith(displayedSha) &&
+      comment.resolved_commit_id === headSha &&
+      Number.isFinite(createdAt) &&
+      createdAt > updatedAt
     );
   });
   return freshCleanComment;
@@ -134,11 +138,22 @@ export function assessCodexGate({
     };
   }
 
-  const approvedReview = exactReviews.some(
-    (review) => String(review.state ?? '').toUpperCase() === 'APPROVED',
-  );
-
   const latestRequest = newestReviewRequest(reviewRequests);
+  const latestRequestTime = latestRequest
+    ? String(latestRequest.body ?? '')
+        .replaceAll('\r\n', '\n')
+        .trim() === reviewRequestBody(headSha, baseSha)
+      ? Date.parse(latestRequest.updatedAt)
+      : Number.NaN
+    : Number.NaN;
+  const approvedReview =
+    Number.isFinite(latestRequestTime) &&
+    exactReviews.some(
+      (review) =>
+        String(review.state ?? '').toUpperCase() === 'APPROVED' &&
+        Number.isFinite(Date.parse(review.submitted_at)) &&
+        Date.parse(review.submitted_at) > latestRequestTime,
+    );
   const cleanEvidence = latestRequest
     ? hasBoundCleanEvidence(latestRequest, headSha, baseSha)
     : false;
@@ -196,6 +211,7 @@ function selfTest() {
               user: { login: CODEX_LOGIN },
               body: `Codex Review: Didn't find any major issues. :+1:\n\n**Reviewed commit:** \`${base.headSha.slice(0, 10)}\`\n`,
               created_at: '2026-08-20T12:01:00Z',
+              resolved_commit_id: base.headSha,
             },
           ],
         },
@@ -222,6 +238,7 @@ function selfTest() {
               user: { login: CODEX_LOGIN },
               body: `Codex Review: Didn't find any major issues. :+1:\n\n**Reviewed commit:** \`${base.headSha.slice(0, 10)}\`\n`,
               created_at: '2026-08-20T12:01:00Z',
+              resolved_commit_id: base.headSha,
             },
           ],
         },
@@ -248,6 +265,7 @@ function selfTest() {
     user: { login: CODEX_LOGIN },
     body: `Codex Review: Didn't find any major issues. :+1:\n\n**Reviewed commit:** \`${base.headSha.slice(0, 10)}\`\n`,
     created_at: '2026-08-20T12:01:00Z',
+    resolved_commit_id: base.headSha,
   };
   assert(
     assessCodexGate({
@@ -261,6 +279,19 @@ function selfTest() {
       ],
     }).accepted,
     'an authenticated clean comment naming the current head must pass',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          cleanComments: [{ ...cleanComment, resolved_commit_id: 'b'.repeat(40) }],
+        },
+      ],
+    }).accepted,
+    'a clean comment whose short SHA resolves to another commit must fail',
   );
   assert(
     !assessCodexGate({
@@ -366,13 +397,63 @@ function selfTest() {
     'a review of an earlier head must fail after a push',
   );
   assert(
+    !assessCodexGate({
+      ...base,
+      reviews: [
+        {
+          user: { login: CODEX_LOGIN },
+          state: 'APPROVED',
+          commit_id: base.headSha,
+          submitted_at: '2026-08-20T12:01:00Z',
+          body: '',
+        },
+      ],
+    }).accepted,
+    'an approval without an exact head-and-base request must fail',
+  );
+  assert(
     assessCodexGate({
       ...base,
       reviews: [
-        { user: { login: CODEX_LOGIN }, state: 'APPROVED', commit_id: base.headSha, body: '' },
+        {
+          user: { login: CODEX_LOGIN },
+          state: 'APPROVED',
+          commit_id: base.headSha,
+          submitted_at: '2026-08-20T12:01:00Z',
+          body: '',
+        },
+      ],
+      reviewRequests: [
+        {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          cleanComments: [],
+        },
       ],
     }).accepted,
-    'an exact-head approval must pass after live base-topology validation',
+    'an exact-head approval after the newest exact request must pass',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviews: [
+        {
+          user: { login: CODEX_LOGIN },
+          state: 'APPROVED',
+          commit_id: base.headSha,
+          submitted_at: '2026-08-20T11:59:59Z',
+          body: '',
+        },
+      ],
+      reviewRequests: [
+        {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          cleanComments: [],
+        },
+      ],
+    }).accepted,
+    'an approval older than the newest exact request must fail',
   );
   assert(
     !assessCodexGate({
@@ -626,6 +707,25 @@ async function api(segments, token) {
   return items;
 }
 
+async function resolveCleanCommentHeads(issueComments, headSha, prefix, token) {
+  return Promise.all(
+    issueComments.map(async (comment) => {
+      if (comment?.user?.login !== CODEX_LOGIN) return comment;
+      const shortSha = cleanCommentHeadPrefix(comment);
+      if (!shortSha || !headSha.startsWith(shortSha)) return comment;
+      const commit =
+        shortSha.length === 40
+          ? { sha: shortSha }
+          : await api([...prefix, 'commits', shortSha], token);
+      const resolvedSha = String(commit?.sha ?? '');
+      if (!/^[0-9a-f]{40}$/.test(resolvedSha)) {
+        throw new Error('Invalid commit resolved from Codex clean evidence');
+      }
+      return { ...comment, resolved_commit_id: resolvedSha };
+    }),
+  );
+}
+
 async function runLive() {
   const repository = process.env.GITHUB_REPOSITORY ?? '';
   const numberValue = process.env.PULL_REQUEST_NUMBER ?? '';
@@ -652,12 +752,32 @@ async function runLive() {
     throw new Error('Current base is not included in the pull request head; update the branch');
   }
 
-  const [files, reviews, reviewComments, issueComments] = await Promise.all([
+  const [files] = await Promise.all([
     api([...prefix, 'pulls', number, 'files'], token),
     api([...prefix, 'pulls', number, 'reviews'], token),
     api([...prefix, 'pulls', number, 'comments'], token),
     api([...prefix, 'issues', number, 'comments'], token),
   ]);
+  const confirmedContext = currentPullContext(await api([...prefix, 'pulls', number], token));
+  if (
+    confirmedContext.headSha !== headSha ||
+    confirmedContext.baseSha !== baseSha ||
+    confirmedContext.baseRef !== baseRef ||
+    confirmedContext.defaultBranch !== defaultBranch ||
+    confirmedContext.changedFiles !== changedFiles ||
+    confirmedContext.draft !== draft
+  ) {
+    throw new Error('Pull request state changed during gate evaluation; rerun against fresh state');
+  }
+
+  // Evidence can change without changing PR metadata. Fetch the mutable
+  // collections again after the first snapshot and assess only this fresh copy.
+  const [reviews, reviewComments, rawIssueComments] = await Promise.all([
+    api([...prefix, 'pulls', number, 'reviews'], token),
+    api([...prefix, 'pulls', number, 'comments'], token),
+    api([...prefix, 'issues', number, 'comments'], token),
+  ]);
+  const issueComments = await resolveCleanCommentHeads(rawIssueComments, headSha, prefix, token);
   const matchingRequests = issueComments
     .filter(
       (comment) =>
@@ -679,14 +799,14 @@ async function runLive() {
     updatedAt: comment.updated_at,
     cleanComments: issueComments,
   }));
-  const confirmedContext = currentPullContext(await api([...prefix, 'pulls', number], token));
+  const finalContext = currentPullContext(await api([...prefix, 'pulls', number], token));
   if (
-    confirmedContext.headSha !== headSha ||
-    confirmedContext.baseSha !== baseSha ||
-    confirmedContext.baseRef !== baseRef ||
-    confirmedContext.defaultBranch !== defaultBranch ||
-    confirmedContext.changedFiles !== changedFiles ||
-    confirmedContext.draft !== draft
+    finalContext.headSha !== headSha ||
+    finalContext.baseSha !== baseSha ||
+    finalContext.baseRef !== baseRef ||
+    finalContext.defaultBranch !== defaultBranch ||
+    finalContext.changedFiles !== changedFiles ||
+    finalContext.draft !== draft
   ) {
     throw new Error('Pull request state changed during gate evaluation; rerun against fresh state');
   }

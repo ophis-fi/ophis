@@ -26,7 +26,15 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: otc-codex-gate-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}-${{ github.event.comment.id || 'pr' }}
+  # All events that can change accepted evidence share one PR-head lane. An
+  # untrusted issue comment gets an isolated lane so it cannot cancel a valid
+  # evaluation without being eligible to enqueue a replacement.
+  group: >-
+    otc-codex-gate-${{ github.event.pull_request.number || github.event.issue.number }}-${{
+    github.event_name == 'issue_comment' &&
+    github.event.comment.user.login != 'chatgpt-codex-connector[bot]' &&
+    !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+    github.event.comment.id || 'authoritative' }}
   cancel-in-progress: true
 
 jobs:
