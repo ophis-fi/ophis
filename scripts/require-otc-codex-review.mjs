@@ -541,6 +541,20 @@ function selfTest() {
       }),
     'mutable PR state must be validated before use',
   );
+  assert(
+    baseIsIncludedInHead(
+      { status: 'ahead', merge_base_commit: { sha: base.baseSha } },
+      base.baseSha,
+    ),
+    'a reviewed head containing the exact base must pass topology validation',
+  );
+  assert(
+    !baseIsIncludedInHead(
+      { status: 'diverged', merge_base_commit: { sha: 'd'.repeat(40) } },
+      base.baseSha,
+    ),
+    'a head that omits the current base must fail topology validation',
+  );
   process.stdout.write('OTC Codex review gate self-test passed\n');
 }
 
@@ -567,6 +581,13 @@ function currentPullContext(pull) {
     throw new Error('Invalid current changed-file count');
   if (typeof draft !== 'boolean') throw new Error('Invalid current pull request draft state');
   return { headSha, baseSha, changedFiles, draft };
+}
+
+function baseIsIncludedInHead(comparison, baseSha) {
+  return (
+    ['ahead', 'identical'].includes(comparison?.status) &&
+    comparison?.merge_base_commit?.sha === baseSha
+  );
 }
 
 function githubApiUrl(segments) {
@@ -631,6 +652,10 @@ async function runLive() {
   if (draft) {
     process.stdout.write('Draft PR: Codex merge evidence will be required when marked ready.\n');
     return;
+  }
+  const comparison = await api([...prefix, 'compare', `${baseSha}...${headSha}`], token);
+  if (!baseIsIncludedInHead(comparison, baseSha)) {
+    throw new Error('Current base is not included in the pull request head; update the branch');
   }
 
   const [files, reviews, reviewComments, issueComments] = await Promise.all([
