@@ -10,6 +10,8 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, edited]
   pull_request_review:
     types: [submitted, dismissed]
+  issue_comment:
+    types: [created, edited, deleted]
 
 permissions:
   actions: read
@@ -18,11 +20,57 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: otc-codex-gate-${{ github.event.pull_request.number }}
+  group: otc-codex-gate-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
+  rerun-on-comment:
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request != null
+    name: Re-evaluate PR-head gate after conversation change
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      # issue_comment workflows run on the trusted default branch, not the PR
+      # head. Rerun the newest gate already attached to the live PR head so the
+      # required context becomes pending immediately and cannot stay stale-green.
+      - name: Rerun the current PR-head gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+            echo 'Invalid GitHub repository' >&2
+            exit 1
+          }
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'Invalid pull request number' >&2
+            exit 1
+          }
+          head_sha="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Invalid current pull request head' >&2
+            exit 1
+          }
+          run_id="$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/otc-milestone-c-gate.yml/runs" \
+              -f head_sha="$head_sha" \
+              -f per_page=100 \
+              | jq -r --argjson number "$PR_NUMBER" \
+                '[.workflow_runs[] | select(any(.pull_requests[]; .number == $number))][0].id // empty'
+          )"
+          [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'No gate run is attached to the current pull request head' >&2
+            exit 1
+          }
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun"
+
   codex-review:
+    if: github.event_name != 'issue_comment'
     name: OTC Milestone C / fresh Codex review
     runs-on: ubuntu-latest
     steps:
@@ -30,7 +78,7 @@ jobs:
       # money-path PR could edit this script to approve itself.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
       - name: Locate the trusted gate implementation
         id: trusted-gate
@@ -49,9 +97,5 @@ jobs:
         if: steps.trusted-gate.outputs.available == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
-          PULL_REQUEST_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PULL_REQUEST_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PULL_REQUEST_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
-          PULL_REQUEST_DRAFT: ${{ github.event.pull_request.draft }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         run: node scripts/require-otc-codex-review.mjs

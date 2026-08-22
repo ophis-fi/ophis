@@ -25,13 +25,17 @@ const SCOPED_PATHS = [
   'apps/frontend/libs/common-const/src/nativeAndWrappedTokens.ts',
   'apps/frontend/libs/common-const/src/tokens.ts',
   'apps/frontend/libs/common-const/src/index.ts',
+  'apps/frontend/libs/common-const/package.json',
   'apps/frontend/libs/common-hooks/src/useFeatureFlags.ts',
   'apps/frontend/libs/common-hooks/src/index.ts',
+  'apps/frontend/libs/common-hooks/package.json',
   'apps/frontend/libs/common-utils/src/environments.ts',
   'apps/frontend/libs/common-utils/src/index.ts',
+  'apps/frontend/libs/common-utils/package.json',
   'apps/frontend/libs/tokens/src/services/tokenPolicy.ts',
   'apps/frontend/libs/tokens/src/services/tokenPolicy.spec.ts',
   'apps/frontend/libs/tokens/src/index.ts',
+  'apps/frontend/libs/tokens/package.json',
   'apps/frontend/libs/wallet/',
   'apps/frontend/libs/wallet-provider/',
   'apps/frontend/nx.json',
@@ -404,10 +408,14 @@ function selfTest() {
     'apps/frontend/apps/cowswap-frontend/tsconfig.app.json',
     'apps/frontend/apps/cowswap-frontend/src/modules/application/containers/App/RoutesApp.tsx',
     'apps/frontend/apps/cowswap-frontend/src/common/constants/routes.ts',
+    'apps/frontend/libs/common-const/package.json',
     'apps/frontend/libs/common-const/src/index.ts',
+    'apps/frontend/libs/common-hooks/package.json',
     'apps/frontend/libs/common-hooks/src/index.ts',
+    'apps/frontend/libs/common-utils/package.json',
     'apps/frontend/libs/common-utils/src/environments.ts',
     'apps/frontend/libs/common-utils/src/index.ts',
+    'apps/frontend/libs/tokens/package.json',
     'apps/frontend/libs/tokens/src/index.ts',
     'apps/frontend/libs/wallet-provider/src/hooks/useWalletProvider.ts',
     'apps/frontend/package.json',
@@ -430,6 +438,25 @@ function selfTest() {
     () => requirePositiveInteger('../1227', 'pull request number'),
     'numeric API path segments must reject traversal',
   );
+  assert(
+    currentPullContext({
+      head: { sha: base.headSha },
+      base: { sha: base.baseSha },
+      changed_files: base.changedFiles,
+      draft: false,
+    }).baseSha === base.baseSha,
+    'current PR state must supply the reviewed base',
+  );
+  assertThrows(
+    () =>
+      currentPullContext({
+        head: { sha: base.headSha },
+        base: { sha: base.baseSha },
+        changed_files: base.changedFiles,
+        draft: 'false',
+      }),
+    'mutable PR state must be validated before use',
+  );
   process.stdout.write('OTC Codex review gate self-test passed\n');
 }
 
@@ -443,6 +470,19 @@ function requirePositiveInteger(value, label) {
   const integer = String(value);
   if (!/^[1-9][0-9]*$/.test(integer)) throw new Error(`Invalid GitHub ${label}`);
   return integer;
+}
+
+function currentPullContext(pull) {
+  const headSha = String(pull?.head?.sha ?? '');
+  const baseSha = String(pull?.base?.sha ?? '');
+  const changedFiles = pull?.changed_files;
+  const draft = pull?.draft;
+  if (!/^[0-9a-f]{40}$/.test(headSha)) throw new Error('Invalid current pull request head SHA');
+  if (!/^[0-9a-f]{40}$/.test(baseSha)) throw new Error('Invalid current pull request base SHA');
+  if (!Number.isSafeInteger(changedFiles) || changedFiles < 0)
+    throw new Error('Invalid current changed-file count');
+  if (typeof draft !== 'boolean') throw new Error('Invalid current pull request draft state');
+  return { headSha, baseSha, changedFiles, draft };
 }
 
 function githubApiUrl(segments) {
@@ -494,27 +534,21 @@ async function api(segments, token) {
 async function runLive() {
   const repository = process.env.GITHUB_REPOSITORY ?? '';
   const numberValue = process.env.PULL_REQUEST_NUMBER ?? '';
-  const headSha = process.env.PULL_REQUEST_HEAD_SHA ?? '';
-  const baseSha = process.env.PULL_REQUEST_BASE_SHA ?? '';
-  const changedFilesValue = process.env.PULL_REQUEST_CHANGED_FILES ?? '';
-  const draft = process.env.PULL_REQUEST_DRAFT ?? '';
   const token = process.env.GITHUB_TOKEN ?? '';
-  if (!repository || !numberValue || !headSha || !baseSha || !changedFilesValue || !draft || !token)
+  if (!repository || !numberValue || !token)
     throw new Error('Missing GitHub Actions review-gate context');
   const repositoryParts = repository.split('/');
   if (repositoryParts.length !== 2) throw new Error('Invalid GitHub repository');
   const [owner, name] = repositoryParts.map((part) => requireApiSegment(part, 'repository'));
   const number = requirePositiveInteger(numberValue, 'pull request number');
-  if (!/^[0-9a-f]{40}$/.test(headSha)) throw new Error('Invalid pull request head SHA');
-  if (!/^[0-9a-f]{40}$/.test(baseSha)) throw new Error('Invalid pull request base SHA');
-  if (!/^(0|[1-9][0-9]*)$/.test(changedFilesValue)) throw new Error('Invalid changed-file count');
-  if (!['true', 'false'].includes(draft)) throw new Error('Invalid pull request draft state');
-  if (draft === 'true') {
+  const prefix = ['repos', owner, name];
+  const currentPull = await api([...prefix, 'pulls', number], token);
+  const { headSha, baseSha, changedFiles, draft } = currentPullContext(currentPull);
+  if (draft) {
     process.stdout.write('Draft PR: Codex merge evidence will be required when marked ready.\n');
     return;
   }
 
-  const prefix = ['repos', owner, name];
   const [files, reviews, reviewComments, issueComments] = await Promise.all([
     api([...prefix, 'pulls', number, 'files'], token),
     api([...prefix, 'pulls', number, 'reviews'], token),
@@ -550,10 +584,19 @@ async function runLive() {
       ),
     })),
   );
+  const confirmedContext = currentPullContext(await api([...prefix, 'pulls', number], token));
+  if (
+    confirmedContext.headSha !== headSha ||
+    confirmedContext.baseSha !== baseSha ||
+    confirmedContext.changedFiles !== changedFiles ||
+    confirmedContext.draft !== draft
+  ) {
+    throw new Error('Pull request state changed during gate evaluation; rerun against fresh state');
+  }
   const result = assessCodexGate({
     headSha,
     baseSha,
-    changedFiles: Number(changedFilesValue),
+    changedFiles,
     files,
     reviews,
     reviewComments,
