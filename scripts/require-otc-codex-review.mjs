@@ -114,6 +114,7 @@ export function assessCodexGate({
   reviewComments,
   reviewRequests,
   invalidatedAt,
+  invalidationId,
 }) {
   if (changedFiles !== files.length) {
     return {
@@ -141,9 +142,19 @@ export function assessCodexGate({
   const latestRequest = newestReviewRequest(reviewRequests);
   const requestTime = Date.parse(latestRequest?.updatedAt);
   const invalidationTime = Date.parse(invalidatedAt);
+  const requestId = Number(latestRequest?.id);
+  const markerId = Number(invalidationId);
+  const requestFollowsInvalidation =
+    !Number.isFinite(invalidationTime) ||
+    (Number.isFinite(requestTime) &&
+      Number.isSafeInteger(requestId) &&
+      requestId > 0 &&
+      Number.isSafeInteger(markerId) &&
+      markerId > 0 &&
+      (requestTime > invalidationTime ||
+        (requestTime === invalidationTime && requestId > markerId)));
   const cleanEvidence = latestRequest
-    ? (!Number.isFinite(invalidationTime) || requestTime > invalidationTime) &&
-      hasBoundCleanEvidence(latestRequest, headSha, baseSha)
+    ? requestFollowsInvalidation && hasBoundCleanEvidence(latestRequest, headSha, baseSha)
     : false;
 
   if (cleanEvidence) {
@@ -342,8 +353,10 @@ function selfTest() {
     !assessCodexGate({
       ...base,
       invalidatedAt: '2026-08-20T12:02:00Z',
+      invalidationId: 2,
       reviewRequests: [
         {
+          id: 1,
           body: reviewRequestBody(base.headSha, base.baseSha),
           updatedAt: '2026-08-20T12:00:00Z',
           cleanComments: [cleanComment],
@@ -351,6 +364,38 @@ function selfTest() {
       ],
     }).accepted,
     'deleting accepted evidence must require a newer exact request',
+  );
+  assert(
+    assessCodexGate({
+      ...base,
+      invalidatedAt: '2026-08-20T12:00:00Z',
+      invalidationId: 1,
+      reviewRequests: [
+        {
+          id: 2,
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          cleanComments: [cleanComment],
+        },
+      ],
+    }).accepted,
+    'a same-second request with a larger ID must supersede an invalidation marker',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      invalidatedAt: '2026-08-20T12:00:00Z',
+      invalidationId: 3,
+      reviewRequests: [
+        {
+          id: 2,
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          cleanComments: [cleanComment],
+        },
+      ],
+    }).accepted,
+    'a same-second invalidation marker with a larger ID must remain blocking',
   );
   assert(
     !assessCodexGate({ ...base, changedFiles: 3 }).accepted,
@@ -731,10 +776,12 @@ async function runLive() {
     token,
     repositoryId,
   );
-  const invalidatedAt = issueComments
+  const latestInvalidation = issueComments
     .filter((comment) => isBoundInvalidation(comment, headSha, baseSha))
-    .map((comment) => comment.created_at)
-    .sort()
+    .sort((left, right) => {
+      const timeOrder = String(left.created_at).localeCompare(String(right.created_at));
+      return timeOrder || Number(left.id) - Number(right.id);
+    })
     .at(-1);
   const matchingRequests = issueComments
     .filter(
@@ -777,7 +824,8 @@ async function runLive() {
     files,
     reviewComments,
     reviewRequests,
-    invalidatedAt,
+    invalidatedAt: latestInvalidation?.created_at,
+    invalidationId: latestInvalidation?.id,
   });
   process.stdout.write(`${result.reason}\n`);
   if (!result.accepted) process.exitCode = 1;
