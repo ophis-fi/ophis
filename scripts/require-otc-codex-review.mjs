@@ -3,11 +3,11 @@
 /**
  * Fail-closed merge gate for Milestone C money-path changes.
  *
- * Codex records findings and blocking state in reviews, and a clean result as
- * either an approved review or an authenticated clean-result comment naming
- * the reviewed commit. Evidence must post after the newest explicit request
- * naming the full head and base SHAs, and no Codex line finding may target that
- * head. Pushes and base edits therefore invalidate earlier evidence.
+ * Codex records findings as line comments and a clean result as an
+ * authenticated issue comment naming the reviewed commit. Evidence must post
+ * after the newest explicit request naming the full head and base SHAs, and no
+ * Codex line finding may target that head. Pushes and base edits therefore
+ * invalidate earlier evidence. Mutable review approvals are never evidence.
  */
 
 const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
@@ -99,7 +99,6 @@ export function assessCodexGate({
   baseSha,
   changedFiles,
   files,
-  reviews,
   reviewComments,
   reviewRequests,
 }) {
@@ -126,46 +125,12 @@ export function assessCodexGate({
     };
   }
 
-  const exactReviews = codexItems(reviews).filter((review) => review.commit_id === headSha);
   const latestRequest = newestReviewRequest(reviewRequests);
-  const latestRequestTime = latestRequest
-    ? String(latestRequest.body ?? '')
-        .replaceAll('\r\n', '\n')
-        .trim() === reviewRequestBody(headSha, baseSha)
-      ? Date.parse(latestRequest.updatedAt)
-      : Number.NaN
-    : Number.NaN;
-  const currentDecisions = Number.isFinite(latestRequestTime)
-    ? exactReviews.filter(
-        (review) =>
-          ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(
-            String(review.state ?? '').toUpperCase(),
-          ) &&
-          Number.isFinite(Date.parse(review.submitted_at)) &&
-          Date.parse(review.submitted_at) > latestRequestTime,
-      )
-    : [];
-  const newestDecision = currentDecisions.reduce((newest, review) => {
-    if (!newest) return review;
-    const timeOrder = Date.parse(review.submitted_at) - Date.parse(newest.submitted_at);
-    if (timeOrder !== 0) return timeOrder > 0 ? review : newest;
-    return Number(review.id ?? 0) > Number(newest.id ?? 0) ? review : newest;
-  }, undefined);
-  const decisionState = String(newestDecision?.state ?? '').toUpperCase();
-  if (['CHANGES_REQUESTED', 'DISMISSED'].includes(decisionState)) {
-    return {
-      required: true,
-      accepted: false,
-      reason: `Codex review state blocks head ${shortHead}; push fixes and request a fresh review.`,
-    };
-  }
-
-  const approvedReview = decisionState === 'APPROVED';
   const cleanEvidence = latestRequest
     ? hasBoundCleanEvidence(latestRequest, headSha, baseSha)
     : false;
 
-  if (approvedReview || cleanEvidence) {
+  if (cleanEvidence) {
     return {
       required: true,
       accepted: true,
@@ -200,7 +165,6 @@ function selfTest() {
     baseSha: 'cccccccccccccccccccccccccccccccccccccccc',
     changedFiles: 1,
     files: [{ filename: 'apps/frontend/apps/cowswap-frontend/src/ophis/otcWrite/index.ts' }],
-    reviews: [],
     reviewComments: [],
     reviewRequests: [],
   };
@@ -267,6 +231,20 @@ function selfTest() {
       ],
     }).accepted === false,
     'mutable reaction-only evidence must fail closed',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviews: [{ user: { login: CODEX_LOGIN }, state: 'APPROVED', commit_id: base.headSha }],
+      reviewRequests: [
+        {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          cleanComments: [],
+        },
+      ],
+    }).accepted,
+    'mutable review approvals must not count as clean evidence',
   );
   const cleanComment = {
     user: { login: CODEX_LOGIN },
@@ -393,140 +371,6 @@ function selfTest() {
       ],
     }).accepted,
     'clean evidence requested for an earlier base must fail after a base edit',
-  );
-  assert(
-    !assessCodexGate({
-      ...base,
-      reviews: [
-        { user: { login: CODEX_LOGIN }, state: 'COMMENTED', commit_id: 'b'.repeat(40), body: '' },
-      ],
-    }).accepted,
-    'a review of an earlier head must fail after a push',
-  );
-  assert(
-    !assessCodexGate({
-      ...base,
-      reviews: [
-        {
-          user: { login: CODEX_LOGIN },
-          state: 'APPROVED',
-          id: 2,
-          commit_id: base.headSha,
-          submitted_at: '2026-08-20T12:01:00Z',
-          body: '',
-        },
-      ],
-    }).accepted,
-    'an approval without an exact head-and-base request must fail',
-  );
-  assert(
-    assessCodexGate({
-      ...base,
-      reviews: [
-        {
-          user: { login: CODEX_LOGIN },
-          state: 'APPROVED',
-          id: 2,
-          commit_id: base.headSha,
-          submitted_at: '2026-08-20T12:01:00Z',
-          body: '',
-        },
-      ],
-      reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [],
-        },
-      ],
-    }).accepted,
-    'an exact-head approval after the newest exact request must pass',
-  );
-  assert(
-    !assessCodexGate({
-      ...base,
-      reviews: [
-        {
-          user: { login: CODEX_LOGIN },
-          state: 'APPROVED',
-          id: 2,
-          commit_id: base.headSha,
-          submitted_at: '2026-08-20T11:59:59Z',
-          body: '',
-        },
-      ],
-      reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [],
-        },
-      ],
-    }).accepted,
-    'an approval older than the newest exact request must fail',
-  );
-  assert(
-    assessCodexGate({
-      ...base,
-      reviews: [
-        {
-          user: { login: CODEX_LOGIN },
-          state: 'DISMISSED',
-          id: 1,
-          commit_id: base.headSha,
-          submitted_at: '2026-08-20T12:01:00Z',
-          body: '',
-        },
-        {
-          user: { login: CODEX_LOGIN },
-          state: 'APPROVED',
-          id: 2,
-          commit_id: base.headSha,
-          submitted_at: '2026-08-20T12:02:00Z',
-          body: '',
-        },
-      ],
-      reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [],
-        },
-      ],
-    }).accepted,
-    'a fresh approval must supersede an older dismissed decision',
-  );
-  assert(
-    !assessCodexGate({
-      ...base,
-      reviews: [
-        { user: { login: CODEX_LOGIN }, state: 'COMMENTED', commit_id: base.headSha, body: '' },
-      ],
-    }).accepted,
-    'a comment-only review must not be treated as clean evidence',
-  );
-  assert(
-    !assessCodexGate({
-      ...base,
-      reviews: [
-        {
-          user: { login: CODEX_LOGIN },
-          state: 'CHANGES_REQUESTED',
-          commit_id: base.headSha,
-          body: '',
-        },
-      ],
-    }).accepted,
-    'an exact-head changes-requested review must fail',
-  );
-  assert(
-    !assessCodexGate({
-      ...base,
-      reviews: [
-        { user: { login: CODEX_LOGIN }, state: 'DISMISSED', commit_id: base.headSha, body: '' },
-      ],
-    }).accepted,
-    'an exact-head dismissed review must fail',
   );
   assert(
     assessCodexGate({ ...base, files: [{ filename: 'README.md' }] }).accepted,
@@ -795,7 +639,6 @@ async function runLive() {
 
   const [files] = await Promise.all([
     api([...prefix, 'pulls', number, 'files'], token),
-    api([...prefix, 'pulls', number, 'reviews'], token),
     api([...prefix, 'pulls', number, 'comments'], token),
     api([...prefix, 'issues', number, 'comments'], token),
   ]);
@@ -813,8 +656,7 @@ async function runLive() {
 
   // Evidence can change without changing PR metadata. Fetch the mutable
   // collections again after the first snapshot and assess only this fresh copy.
-  const [reviews, reviewComments, rawIssueComments] = await Promise.all([
-    api([...prefix, 'pulls', number, 'reviews'], token),
+  const [reviewComments, rawIssueComments] = await Promise.all([
     api([...prefix, 'pulls', number, 'comments'], token),
     api([...prefix, 'issues', number, 'comments'], token),
   ]);
@@ -856,7 +698,6 @@ async function runLive() {
     baseSha,
     changedFiles,
     files,
-    reviews,
     reviewComments,
     reviewRequests,
   });

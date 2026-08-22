@@ -12,10 +12,9 @@ on:
   # and reruns this gate against the new full base SHA.
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, edited]
-  pull_request_review:
-    types: [submitted, dismissed]
-  pull_request_review_comment:
-    types: [created, edited, deleted]
+  # Deliberately no pull_request_review(_comment) triggers: those use PR-controlled
+  # workflow YAML. A trusted exact request makes the gate red before Codex
+  # reviews; only an authenticated clean issue comment can make it green again.
   issue_comment:
     types: [created, edited, deleted]
 
@@ -27,16 +26,12 @@ permissions:
 
 concurrency:
   # All events that can change accepted evidence share one PR-head lane.
-  # Metadata edits and non-Codex comments/reviews get isolated lanes so they
+  # Metadata edits and untrusted issue comments get isolated lanes so they
   # cannot cancel an evidence evaluation.
   group: >-
     otc-codex-gate-${{ github.event.pull_request.number || github.event.issue.number }}-${{
     github.event_name == 'pull_request_target' &&
     github.event.action == 'edited' && github.event.changes.base == null &&
-    format('ignored-{0}', github.run_id) || github.event_name == 'pull_request_review' &&
-    github.event.review.user.login != 'chatgpt-codex-connector[bot]' &&
-    format('ignored-{0}', github.run_id) || github.event_name == 'pull_request_review_comment' &&
-    github.event.comment.user.login != 'chatgpt-codex-connector[bot]' &&
     format('ignored-{0}', github.run_id) || github.event_name == 'issue_comment' &&
     github.event.comment.user.login != 'chatgpt-codex-connector[bot]' &&
     !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
@@ -55,6 +50,7 @@ jobs:
     timeout-minutes: 12
     permissions:
       actions: write
+      checks: read
       contents: read
       issues: read
       pull-requests: read
@@ -126,36 +122,23 @@ jobs:
           rerun_gate
 
   codex-review:
-    if: github.event_name != 'issue_comment'
+    if: >-
+      github.event_name != 'issue_comment' &&
+      (github.event_name != 'pull_request_target' || github.event.action != 'edited' ||
+      github.event.changes.base != null)
     name: >-
       ${{ (github.event_name == 'pull_request_target' && github.event.action == 'edited' &&
-      github.event.changes.base == null || github.event_name == 'pull_request_review' &&
-      github.event.review.user.login != 'chatgpt-codex-connector[bot]' ||
-      github.event_name == 'pull_request_review_comment' &&
-      github.event.comment.user.login != 'chatgpt-codex-connector[bot]') &&
-      'OTC Milestone C / irrelevant event ignored' ||
+      github.event.changes.base == null) && 'OTC Milestone C / metadata edit ignored' ||
       'OTC Milestone C / fresh Codex review' }}
     runs-on: ubuntu-latest
-    env:
-      IRRELEVANT_EVENT: >-
-        ${{ (github.event_name == 'pull_request_target' && github.event.action == 'edited' &&
-        github.event.changes.base == null || github.event_name == 'pull_request_review' &&
-        github.event.review.user.login != 'chatgpt-codex-connector[bot]' ||
-        github.event_name == 'pull_request_review_comment' &&
-        github.event.comment.user.login != 'chatgpt-codex-connector[bot]') && 'true' || 'false' }}
     steps:
-      - name: Ignore event that cannot change Codex evidence
-        if: env.IRRELEVANT_EVENT == 'true'
-        run: echo 'This event cannot change accepted Codex evidence.'
       # Run the gate implementation from the trusted base commit. Otherwise a
       # money-path PR could edit this script to approve itself.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        if: env.IRRELEVANT_EVENT != 'true'
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
       - name: Locate the trusted gate implementation
-        if: env.IRRELEVANT_EVENT != 'true'
         id: trusted-gate
         shell: bash
         run: |
