@@ -20,7 +20,7 @@ export function OtcActionControlView(props: OtcActionControlViewProps): ReactNod
     <>
       {controller.model.action === 'revoke' && (
         <div role="alert" aria-live="assertive" aria-atomic="true">
-          <Callout tone="warning" title="Unused token allowance remains">
+          <Callout tone="warning" title="Token allowance must be cleared">
             <p>Revoke the current escrow allowance before approving or executing with an exact amount.</p>
           </Callout>
         </div>

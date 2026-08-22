@@ -20,6 +20,7 @@ export const TWO_THOUSAND_USDC = 2_000_000_000n
 
 const WETH_DEPOSIT = '0xd0e30db0'
 const BALANCE_SLOT_CANDIDATES = 24
+const MAX_PREWARMED_ORDERS = 1_000n
 const FORK_RPC_URL = Cypress.env('OTC_FORK_RPC_URL') as string
 const balanceSlots = new Map<Address, number>()
 let rpcId = 0
@@ -68,7 +69,10 @@ async function sendUnlocked(from: Address, to: Address, data: Hex, value?: bigin
   const hash = await rpc<Hex>('eth_sendTransaction', [request])
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const receipt = await rpc<Record<string, unknown> | null>('eth_getTransactionReceipt', [hash])
-    if (receipt) return
+    if (receipt) {
+      if (typeof receipt.status === 'string' && BigInt(receipt.status) === 1n) return
+      throw new Error(`Fork fixture transaction reverted: ${hash}`)
+    }
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
   throw new Error(`Timed out waiting for fork fixture transaction ${hash}`)
@@ -118,7 +122,9 @@ export async function prewarmOtcFork(account: Address): Promise<void> {
   await rpc<Hex>('eth_getCode', [OTC_ESCROW, 'latest'])
   await call(OTC_ESCROW, OTC_INTERFACE, 'weth')
   const nextOrderId = await getNextOtcOrderId()
-  const orderIds = Array.from({ length: Number(nextOrderId) }, (_, orderId) => BigInt(orderId))
+  const orderCount = nextOrderId < MAX_PREWARMED_ORDERS ? nextOrderId : MAX_PREWARMED_ORDERS
+  const firstOrderId = nextOrderId - orderCount
+  const orderIds = Array.from({ length: Number(orderCount) }, (_, offset) => firstOrderId + BigInt(offset))
   for (let offset = 0; offset < orderIds.length; offset += 64) {
     await call(OTC_ESCROW, OTC_INTERFACE, 'getOrders', [orderIds.slice(offset, offset + 64)])
   }
@@ -156,6 +162,10 @@ export async function fillOtcOrderDirectly(filler: Address, orderId: bigint): Pr
     OTC_ESCROW,
     OTC_INTERFACE.encodeFunctionData('fillOrder', [orderId, BigInt(block.timestamp) + 180n]) as Hex,
   )
+}
+
+export async function setOtcAllowance(owner: Address, amount: bigint): Promise<void> {
+  await sendUnlocked(owner, USDC, ERC20_INTERFACE.encodeFunctionData('approve', [OTC_ESCROW, amount]) as Hex)
 }
 
 export async function readOtcAllowance(owner: Address): Promise<bigint> {

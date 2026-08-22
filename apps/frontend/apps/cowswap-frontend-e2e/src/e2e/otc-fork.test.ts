@@ -10,6 +10,7 @@ import {
   prewarmOtcFork,
   readOtcAllowance,
   setForkTokenBalance,
+  setOtcAllowance,
   TWO_THOUSAND_USDC,
   USDC,
   type Address,
@@ -112,6 +113,7 @@ function visitForkOrder(orderId: bigint): void {
 forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
   let createOrderId = 0n
   let cancelOrderId = 0n
+  let mismatchedAllowanceOrderId = 0n
   let fillOrderId = 0n
   let racedOrderId = 0n
 
@@ -121,6 +123,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
       await setForkTokenBalance(USDC, FORK_RACER, TWO_THOUSAND_USDC)
       await depositForkWeth(TEST_ACCOUNT)
       cancelOrderId = await createWethForUsdcOrder(TEST_ACCOUNT)
+      mismatchedAllowanceOrderId = await createWethForUsdcOrder(FORK_MAKER)
       fillOrderId = await createWethForUsdcOrder(FORK_MAKER)
       racedOrderId = await createWethForUsdcOrder(FORK_MAKER)
       createOrderId = await getNextOtcOrderId()
@@ -176,6 +179,20 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     })
   })
 
+  it('clears a mismatched USDC allowance before offering exact approval', () => {
+    cy.then(() => setOtcAllowance(TEST_ACCOUNT, TWO_THOUSAND_USDC + 1n))
+    visitForkOrder(mismatchedAllowanceOrderId)
+    connectForkWallet('#otc-order-action')
+    cy.contains('label', 'I reviewed both exact token amounts').find('input').check()
+    reachPrimaryAction('#otc-order-action', 'Revoke mismatched allowance')
+    assertAccessibleAnnouncement('alert', 'Token allowance must be cleared')
+    assertAccessibleButton('Revoke mismatched allowance')
+    primaryButton('#otc-order-action').should('be.enabled').click()
+    assertAccessibleAnnouncement('status', 'Local fork confirmation:')
+    cy.then(async () => expect(await readOtcAllowance(TEST_ACCOUNT)).to.equal(0n))
+    reachPrimaryAction('#otc-order-action', 'Approve exact amount')
+  })
+
   it('revokes exact leftover allowance after losing a fill race', () => {
     visitForkOrder(racedOrderId)
     connectForkWallet('#otc-order-action')
@@ -187,7 +204,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     cy.then({ timeout: 60_000 }, () => fillOtcOrderDirectly(FORK_RACER, racedOrderId))
     primaryButton('#otc-order-action').should('have.text', 'Fill entire order').click()
     assertAccessibleAnnouncement('alert', 'Transaction not completed')
-    assertAccessibleAnnouncement('alert', 'Unused token allowance remains')
+    assertAccessibleAnnouncement('alert', 'Token allowance must be cleared')
     cy.contains('button', 'Revoke unused allowance', { timeout: FORK_UI_TIMEOUT }).should('be.enabled')
     assertAccessibleButton('Revoke unused allowance')
     captureGateEvidence('recovery-required')

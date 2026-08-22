@@ -40,7 +40,7 @@ describe('OtcActionControl screen-reader semantics', () => {
 
     expect((screen.getByRole('button', { name: 'Revoke unused allowance' }) as HTMLButtonElement).disabled).toBe(false)
     expect(screen.getAllByRole('alert')).toHaveLength(2)
-    expect(announcementFor('Unused token allowance remains').getAttribute('aria-live')).toBe('assertive')
+    expect(announcementFor('Token allowance must be cleared').getAttribute('aria-live')).toBe('assertive')
     expect(announcementFor('Transaction not completed').getAttribute('aria-atomic')).toBe('true')
   })
 
