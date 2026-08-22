@@ -39,7 +39,9 @@ jobs:
       checks: write
       contents: read
       issues: write
-      pull-requests: read
+      # Checkpoints are PR conversation comments. Make both permission routes
+      # for that REST resource explicit for the installation token.
+      pull-requests: write
     steps:
       # This observer is not the required workflow. Record exact requests and
       # Codex lifecycle events as Actions-authored checkpoints, then immediately
@@ -202,6 +204,9 @@ jobs:
             if ((marker_count == 0)); then
               gh api --silent --method POST \
                 "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$marker"
+              echo "Recorded immutable review checkpoint for source $SOURCE_ID."
+            else
+              echo "Review checkpoint for source $SOURCE_ID is already recorded."
             fi
           fi
 
@@ -257,6 +262,7 @@ jobs:
 
           # Rerequest immediately even if this suite is already running. GitHub
           # queues the rerequest without exposing a stale-success polling gap.
+          echo "Rerequesting trusted check suite $suite_id for head $head_sha."
           gh api --silent --method POST \
             "repos/$GITHUB_REPOSITORY/check-suites/$suite_id/rerequest"
           echo "Rerequested trusted check suite $suite_id for head $head_sha."
