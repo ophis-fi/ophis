@@ -108,6 +108,7 @@ async function readOrderBatch(
 export interface OtcOrderReadResult {
   order: OtcOrder | null
   blockNumber: bigint
+  blockHash: Hex
 }
 
 export interface OtcVerifiedContract {
@@ -171,7 +172,7 @@ export async function readOtcOrder(
     throw new Error('Ophis OTC block changed')
   }
 
-  return { order: orders[0] ?? null, blockNumber: block.number }
+  return { order: orders[0] ?? null, blockNumber: block.number, blockHash: block.hash }
 }
 
 /**

@@ -3,6 +3,8 @@ import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 import { OPHIS_ETHEREUM_OTC_MANIFEST, OTC_READ_ABI } from 'ophis/otc'
 import { decodeFunctionData, encodeFunctionResult, keccak256, type Hex } from 'viem'
 
+import { OTC_ALLOWANCE_ABI } from './otcWrite.abi'
+
 import type { OtcTransactionRequest, OtcWriteClient, OtcWriteRuntimeAuthorization } from './otcWrite.types'
 import type { OtcManifest, OtcOrder } from 'ophis/otc'
 
@@ -16,6 +18,8 @@ export const NOW = 1_755_792_000n
 export interface MockOtcPreflightState {
   current?: OtcOrder
   simulated?: OtcTransactionRequest[]
+  allowance?: bigint
+  finalBlockHash?: Hex
 }
 
 export function mockOtcManifest(): OtcManifest {
@@ -40,12 +44,27 @@ export function mockOtcOrder(overrides: Partial<OtcOrder> = {}): OtcOrder {
 
 export function mockOtcWriteClient(state: MockOtcPreflightState = {}): OtcWriteClient {
   const current = state.current ?? mockOtcOrder()
+  let blockReads = 0
   return {
     getChainId: async () => 1,
     getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH }),
-    getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: BLOCK_HASH }),
+    getBlockByNumber: async (blockNumber) => {
+      blockReads += 1
+      return { number: blockNumber, hash: blockReads > 1 ? (state.finalBlockHash ?? BLOCK_HASH) : BLOCK_HASH }
+    },
     getCode: async () => MOCK_CODE,
     call: async (request) => {
+      if (request.to !== OPHIS_ETHEREUM_OTC_MANIFEST.contract.address) {
+        const decoded = decodeFunctionData({ abi: OTC_ALLOWANCE_ABI, data: request.data })
+        if (decoded.functionName !== 'allowance') throw new Error(`unexpected token call: ${decoded.functionName}`)
+        return {
+          data: encodeFunctionResult({
+            abi: OTC_ALLOWANCE_ABI,
+            functionName: 'allowance',
+            result: state.allowance ?? current.amountB,
+          }),
+        }
+      }
       const decoded = decodeFunctionData({ abi: OTC_READ_ABI, data: request.data })
       if (decoded.functionName === 'weth') {
         return {

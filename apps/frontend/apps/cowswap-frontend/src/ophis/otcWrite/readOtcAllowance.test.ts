@@ -20,11 +20,15 @@ function manifest(): OtcManifest {
   }
 }
 
-function client(result = 42n): OtcWriteClient {
+function client(result = 42n, finalBlockHash: Hex = BLOCK_HASH): OtcWriteClient {
+  let blockReads = 0
   return {
     getChainId: async () => 1,
     getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH }),
-    getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: BLOCK_HASH }),
+    getBlockByNumber: async (blockNumber) => {
+      blockReads += 1
+      return { number: blockNumber, hash: blockReads > 1 ? finalBlockHash : BLOCK_HASH }
+    },
     getCode: async () => MOCK_CODE,
     call: async (request) => {
       if (request.to === OPHIS_ETHEREUM_OTC_MANIFEST.contract.address) {
@@ -73,5 +77,16 @@ describe('readOtcAllowance', () => {
     await expect(readOtcAllowance(writeClient, USDC_MAINNET.address, OWNER, manifest())).rejects.toThrow(
       'Ophis OTC allowance read rejected',
     )
+  })
+
+  it('rejects a block identity change during the allowance read', async () => {
+    await expect(
+      readOtcAllowance(
+        client(42n, '0x2222222222222222222222222222222222222222222222222222222222222222'),
+        USDC_MAINNET.address,
+        OWNER,
+        manifest(),
+      ),
+    ).rejects.toThrow('Ophis OTC block changed')
   })
 })

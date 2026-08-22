@@ -14,6 +14,8 @@ import {
 import { mainnet } from 'viem/chains'
 import { usePublicClient } from 'wagmi'
 
+import { assertOtcTransactionRequest } from './assertOtcTransactionRequest'
+
 import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
 
 type WagmiPublicClient = NonNullable<ReturnType<typeof usePublicClient>>
@@ -69,19 +71,21 @@ export function toOtcWalletSubmitter(
 ): OtcWalletSubmitter {
   return {
     sendTransaction: async (request) => {
+      const checkedRequest = Object.freeze({ ...request })
+      assertOtcTransactionRequest(checkedRequest)
       const walletChainId = await walletClient.getChainId()
       const walletAccount = walletClient.account?.address
-      if (walletChainId !== request.chainId) throw new Error('Ophis OTC wallet is on the wrong chain')
+      if (walletChainId !== checkedRequest.chainId) throw new Error('Ophis OTC wallet is on the wrong chain')
       if (!(await verifyOtcLocalForkWallet(walletClient))) throw new Error('Ophis OTC local fork verification failed')
-      if (!walletAccount || !isAddressEqual(walletAccount, request.account)) {
+      if (!walletAccount || !isAddressEqual(walletAccount, checkedRequest.account)) {
         throw new Error('Ophis OTC wallet account changed')
       }
       return walletClient.sendTransaction({
         account: walletClient.account,
         chain: mainnet,
-        to: request.to,
-        data: request.data,
-        value: request.value,
+        to: checkedRequest.to,
+        data: checkedRequest.data,
+        value: checkedRequest.value,
       })
     },
     waitForTransactionReceipt: async (hash) => {
@@ -141,14 +145,20 @@ export function toOtcLegacyForkClients(
   }
   const wallet: OtcWalletSubmitter = {
     sendTransaction: async (request) => {
-      if ((await provider.getNetwork()).chainId !== request.chainId)
+      const checkedRequest = Object.freeze({ ...request })
+      assertOtcTransactionRequest(checkedRequest)
+      if ((await provider.getNetwork()).chainId !== checkedRequest.chainId)
         throw new Error('Ophis OTC wallet is on the wrong chain')
       if (!(await verifyOtcLocalForkProvider(provider))) throw new Error('Ophis OTC local fork verification failed')
       const signer = provider.getSigner(account)
       const signerAddress = await signer.getAddress()
-      if (!isAddressEqual(signerAddress as Address, request.account))
+      if (!isAddressEqual(signerAddress as Address, checkedRequest.account))
         throw new Error('Ophis OTC wallet account changed')
-      const transaction = await signer.sendTransaction({ to: request.to, data: request.data, value: request.value })
+      const transaction = await signer.sendTransaction({
+        to: checkedRequest.to,
+        data: checkedRequest.data,
+        value: checkedRequest.value,
+      })
       return transaction.hash as Hex
     },
     waitForTransactionReceipt: async (hash) => {

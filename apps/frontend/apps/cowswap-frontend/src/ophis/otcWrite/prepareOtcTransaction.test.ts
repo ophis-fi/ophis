@@ -60,7 +60,7 @@ describe('Milestone C preflight and submission', () => {
   })
 
   it('verifies source identity and simulates create without enumerating orders', async () => {
-    const state: MockOtcPreflightState = { simulated: [] }
+    const state: MockOtcPreflightState = { simulated: [], allowance: 1n }
     const result = await prepareOtcTransaction(
       mockOtcWriteClient(state),
       {
@@ -72,6 +72,36 @@ describe('Milestone C preflight and submission', () => {
       mockOtcManifest(),
     )
     expect(state.simulated).toEqual([result.request])
+  })
+
+  it('rejects execution unless the allowance equals the exact transfer amount', async () => {
+    const expected = mockOtcOrder()
+    const state: MockOtcPreflightState = { simulated: [], allowance: expected.amountB + 1n }
+    await expect(
+      prepareOtcTransaction(
+        mockOtcWriteClient(state),
+        { kind: 'fill', account: TAKER, order: expected, deadline: NOW + 180n },
+        NOW,
+        mockOtcManifest(),
+      ),
+    ).rejects.toThrow('Ophis OTC exact allowance required')
+    expect(state.simulated).toEqual([])
+  })
+
+  it('rejects a block identity change after final simulation', async () => {
+    const state: MockOtcPreflightState = {
+      simulated: [],
+      finalBlockHash: '0x2222222222222222222222222222222222222222222222222222222222222222',
+    }
+    await expect(
+      prepareOtcTransaction(
+        mockOtcWriteClient(state),
+        { kind: 'fill', account: TAKER, order: mockOtcOrder(), deadline: NOW + 180n },
+        NOW,
+        mockOtcManifest(),
+      ),
+    ).rejects.toThrow('Ophis OTC block changed')
+    expect(state.simulated).toHaveLength(1)
   })
 
   it('allows safe allowance revocation after a raced fill made the order inactive', async () => {

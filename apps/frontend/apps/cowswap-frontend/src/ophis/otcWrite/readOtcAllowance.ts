@@ -16,6 +16,34 @@ export interface OtcAllowanceRead {
   blockNumber: bigint
 }
 
+export async function readOtcAllowanceAtBlock(
+  client: OtcWriteClient,
+  token: Address,
+  owner: Address,
+  blockNumber: bigint,
+  manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
+): Promise<bigint> {
+  assertTradeTokenPolicy(
+    { chainId: manifest.chainId, address: token },
+    { chainId: manifest.chainId, address: token },
+    TokenPolicyProfile.OTC_ESCROW,
+  )
+  const response = await client.call({
+    to: token,
+    data: encodeFunctionData({
+      abi: OTC_ALLOWANCE_ABI,
+      functionName: 'allowance',
+      args: [owner, manifest.contract.address],
+    }),
+    gas: ALLOWANCE_CALL_GAS,
+    blockNumber,
+  })
+  if (!response.data || (response.data.length - 2) / 2 !== UINT256_RETURN_BYTES) {
+    throw new Error('Ophis OTC allowance read rejected')
+  }
+  return decodeFunctionResult({ abi: OTC_ALLOWANCE_ABI, functionName: 'allowance', data: response.data })
+}
+
 /**
  * Revalidates the pinned escrow source, then reads one reviewed token's
  * allowance at that exact block. This is the sole allowance authority for the
@@ -33,21 +61,17 @@ export async function readOtcAllowance(
     TokenPolicyProfile.OTC_ESCROW,
   )
   const verified = await verifyOtcContract(client, manifest)
-  const response = await client.call({
-    to: token,
-    data: encodeFunctionData({
-      abi: OTC_ALLOWANCE_ABI,
-      functionName: 'allowance',
-      args: [owner, manifest.contract.address],
-    }),
-    gas: ALLOWANCE_CALL_GAS,
-    blockNumber: verified.blockNumber,
-  })
-  if (!response.data || (response.data.length - 2) / 2 !== UINT256_RETURN_BYTES) {
-    throw new Error('Ophis OTC allowance read rejected')
+  const allowance = await readOtcAllowanceAtBlock(client, token, owner, verified.blockNumber, manifest)
+  const confirmedBlock = await client.getBlockByNumber(verified.blockNumber)
+  if (
+    confirmedBlock.number !== verified.blockNumber ||
+    !confirmedBlock.hash ||
+    confirmedBlock.hash !== verified.blockHash
+  ) {
+    throw new Error('Ophis OTC block changed')
   }
   return {
-    allowance: decodeFunctionResult({ abi: OTC_ALLOWANCE_ABI, functionName: 'allowance', data: response.data }),
+    allowance,
     blockNumber: verified.blockNumber,
   }
 }

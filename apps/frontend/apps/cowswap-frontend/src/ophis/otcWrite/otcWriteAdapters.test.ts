@@ -6,13 +6,14 @@ import {
   verifyOtcLocalForkProvider,
   verifyOtcLocalForkWallet,
 } from './otcWriteAdapters'
+import { buildOtcCancelTransaction } from './buildOtcTransaction'
 import { readOtcAllowance } from './readOtcAllowance'
 
 import type { OtcTransactionRequest } from './otcWrite.types'
+import type { OtcOrder } from 'ophis/otc'
 import type { Hex } from 'viem'
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111'
-const TO = '0x2222222222222222222222222222222222222222'
 const TOKEN_WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' // gitleaks:allow — public mainnet address
 const HASH: Hex = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 const forkIt = process.env.OTC_BROWSER_FORK_RPC ? it : it.skip
@@ -40,7 +41,16 @@ function publicClient(): Public {
 }
 
 function request(): OtcTransactionRequest {
-  return { kind: 'cancel', chainId: 1, account: ACCOUNT, to: TO, data: '0x514fcac7', value: 0n }
+  const order: OtcOrder = {
+    orderId: 7n,
+    maker: ACCOUNT,
+    active: true,
+    tokenA: TOKEN_WETH,
+    amountA: 1n,
+    tokenB: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    amountB: 2n,
+  }
+  return buildOtcCancelTransaction({ kind: 'cancel', account: ACCOUNT, order })
 }
 
 function legacyProvider(version: string, chainId = 1): { provider: LegacyProvider; sendTransaction: jest.Mock } {
@@ -70,6 +80,14 @@ describe('OTC wallet transport boundary', () => {
     const submitter = toOtcWalletSubmitter(realMainnet, publicClient())
     await expect(submitter.sendTransaction(request())).rejects.toThrow('Ophis OTC local fork verification failed')
     expect(realMainnet.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it('revalidates target, selector, and zero value at the final wallet boundary', async () => {
+    const anvil = wallet('anvil/v1.5.0')
+    const submitter = toOtcWalletSubmitter(anvil, publicClient())
+    const invalid = { ...request(), value: 1n } as unknown as OtcTransactionRequest
+    await expect(submitter.sendTransaction(invalid)).rejects.toThrow('native value is disabled')
+    expect(anvil.sendTransaction).not.toHaveBeenCalled()
   })
 
   it('submits through a verified local fork and maps its receipt', async () => {

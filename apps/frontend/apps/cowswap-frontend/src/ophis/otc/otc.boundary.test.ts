@@ -71,7 +71,11 @@ const WRITE_WAGMI_IMPORTS = new Map<string, ReadonlySet<string>>([
   ['otcWriteAdapters.ts', new Set(['usePublicClient'])],
   ['useOtcActionController.ts', new Set(['useWalletClient'])],
 ])
-const WRITE_TOKEN_POLICY_FILES = new Set(['buildOtcTransaction.ts', 'readOtcAllowance.ts'])
+const WRITE_TOKEN_POLICY_FILES = new Set([
+  'assertOtcTransactionRequest.ts',
+  'buildOtcTransaction.ts',
+  'readOtcAllowance.ts',
+])
 const WRITE_TOKEN_POLICY_IMPORTS = new Set(['assertTradeTokenPolicy', 'TokenPolicyProfile'])
 const WRITE_WALLET_PROVIDER_FILES = new Set(['useOtcNetworkReads.ts'])
 const WRITE_WALLET_PROVIDER_IMPORTS = new Set(['useWalletProvider'])
@@ -187,6 +191,20 @@ describe('Ophis OTC boundary', () => {
         expect(allowedImports.has(name) ? null : `${file}: ${name}`).toBeNull()
       }
     }
+  })
+
+  it('keeps submitOtcTransaction as the only production caller of the wallet submitter', () => {
+    const directSenders = productionSources(WRITE_DIR)
+      .filter(({ source }) => /\.sendTransaction\s*\(/.test(source))
+      .map(({ file }) => basename(file))
+      .sort()
+    expect(directSenders).toEqual(['otcWriteAdapters.ts', 'prepareOtcTransaction.ts'])
+
+    const submissionCallers = productionSources(WRITE_DIR)
+      .filter(({ source }) => /\bsubmitOtcTransaction\s*\(/.test(source))
+      .map(({ file }) => basename(file))
+      .sort()
+    expect(submissionCallers).toEqual(['prepareOtcTransaction.ts', 'useOtcSubmission.ts'])
   })
 
   it('allows only the token-policy assertion API at write sinks', () => {

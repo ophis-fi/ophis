@@ -1,9 +1,10 @@
 import { isLocal as runtimeIsLocal } from '@cowprotocol/common-utils'
 
 import { OPHIS_ETHEREUM_OTC_MANIFEST, readOtcOrder, verifyOtcContract } from 'ophis/otc'
-import { isAddressEqual } from 'viem'
+import { isAddressEqual, type Address, type Hex } from 'viem'
 
 import { buildOtcTransaction } from './buildOtcTransaction'
+import { readOtcAllowanceAtBlock } from './readOtcAllowance'
 
 import type {
   OtcTransactionReceipt,
@@ -31,6 +32,12 @@ function orderFromIntent(intent: OtcWriteIntent): OtcOrder | null {
   return intent.kind === 'approve-fill' || intent.kind === 'fill' || intent.kind === 'cancel' ? intent.order : null
 }
 
+function executionAllowance(intent: OtcWriteIntent): { token: Address; amount: bigint } | null {
+  if (intent.kind === 'create') return { token: intent.draft.tokenA, amount: intent.draft.amountA }
+  if (intent.kind === 'fill') return { token: intent.order.tokenB, amount: intent.order.amountB }
+  return null
+}
+
 function assertRuntimeAuthorization(authorization: OtcWriteRuntimeAuthorization): void {
   const runtimeWriteMode = process.env.REACT_APP_OTC_WRITE_MODE
   const enabled =
@@ -55,6 +62,7 @@ export async function prepareOtcTransaction(
 ): Promise<PreparedOtcTransaction> {
   const expectedOrder = orderFromIntent(intent)
   let blockNumber: bigint
+  let blockHash: Hex
 
   if (expectedOrder) {
     const current = await readOtcOrder(client, expectedOrder.orderId, manifest)
@@ -62,12 +70,30 @@ export async function prepareOtcTransaction(
       throw new Error('Ophis OTC order changed before submission')
     }
     blockNumber = current.blockNumber
+    blockHash = current.blockHash
   } else {
-    blockNumber = (await verifyOtcContract(client, manifest)).blockNumber
+    const verified = await verifyOtcContract(client, manifest)
+    blockNumber = verified.blockNumber
+    blockHash = verified.blockHash
   }
 
   const request = buildOtcTransaction(intent, nowSeconds)
+  const requiredAllowance = executionAllowance(intent)
+  if (requiredAllowance) {
+    const allowance = await readOtcAllowanceAtBlock(
+      client,
+      requiredAllowance.token,
+      intent.account,
+      blockNumber,
+      manifest,
+    )
+    if (allowance !== requiredAllowance.amount) throw new Error('Ophis OTC exact allowance required')
+  }
   await client.simulate(request, blockNumber)
+  const confirmedBlock = await client.getBlockByNumber(blockNumber)
+  if (confirmedBlock.number !== blockNumber || !confirmedBlock.hash || confirmedBlock.hash !== blockHash) {
+    throw new Error('Ophis OTC block changed')
+  }
   return { request, simulatedAtBlock: blockNumber }
 }
 
