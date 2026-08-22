@@ -3,6 +3,10 @@ name: OTC Milestone C review-gate dispatcher
 on:
   issue_comment:
     types: [created, edited, deleted]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
 
 permissions:
   actions: read
@@ -14,57 +18,58 @@ concurrency:
   # Trusted evidence changes share one PR lane. Untrusted comments are isolated
   # so they cannot cancel an authoritative dispatcher run.
   group: >-
-    otc-codex-gate-${{ github.event.pull_request.number || github.event.issue.number }}-${{
-    github.event.comment.user.login != 'chatgpt-codex-connector[bot]' &&
-    !(github.event.action != 'created' &&
-    github.event.comment.user.login == 'github-actions[bot]' &&
-    (startsWith(github.event.comment.body, 'OTC Codex gate invalidated.') ||
-    startsWith(github.event.changes.body.from, 'OTC Codex gate invalidated.'))) &&
-    !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
-    github.event.comment.id || 'authoritative' }}
-  cancel-in-progress: true
+    otc-codex-gate-${{ github.event.issue.number || github.event.pull_request.number }}-${{
+    ((github.event_name == 'issue_comment' &&
+    (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
+    contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) ||
+    (github.event_name == 'pull_request_review_comment' &&
+    github.event.comment.user.login == 'chatgpt-codex-connector[bot]') ||
+    (github.event_name == 'pull_request_review' &&
+    github.event.review.user.login == 'chatgpt-codex-connector[bot]')) &&
+    'authoritative' || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
   rerun-on-comment:
     if: >-
-      github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request != null &&
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
       (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
-      (github.event.action != 'created' &&
-      github.event.comment.user.login == 'github-actions[bot]' &&
-      (startsWith(github.event.comment.body, 'OTC Codex gate invalidated.') ||
-      startsWith(github.event.changes.body.from, 'OTC Codex gate invalidated.'))) ||
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
-    name: Re-evaluate PR-head gate after conversation change
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) ||
+      (github.event_name == 'pull_request_review_comment' &&
+      github.event.comment.user.login == 'chatgpt-codex-connector[bot]') ||
+      (github.event_name == 'pull_request_review' &&
+      github.event.review.user.login == 'chatgpt-codex-connector[bot]')
+    name: Re-evaluate the trusted PR-head gate
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
       actions: write
       contents: read
       issues: write
-      pull-requests: write
+      pull-requests: read
     steps:
-      # issue_comment workflows run on the trusted default branch. Create an
-      # unresolved native review thread before evaluating evidence, then dispatch
-      # a fresh trusted evaluator. The evaluator resolves only locks no newer than
-      # this one and only after its live parser succeeds.
-      - name: Lock merging and dispatch a fresh trusted gate
+      # Conversation-event workflows load from the protected default branch.
+      # Record exact requests and Codex review events in Actions-authored immutable
+      # checkpoints, then rerun the existing trusted evaluator attached to this
+      # PR head. Never dispatch the evaluator on the default-branch SHA.
+      - name: Record the checkpoint and rerun the trusted PR-head evaluator
         env:
           GH_TOKEN: ${{ github.token }}
           ACTIONS_LOGIN: github-actions[bot]
           CODEX_LOGIN: chatgpt-codex-connector[bot]
           CLEAN_PREFIX: "Codex Review: Didn't find any major issues. :+1:"
-          GATE_WORKFLOW_ID: otc-milestone-c-gate.yml
-          COMMENT_ACTION: ${{ github.event.action }}
-          COMMENT_BODY: ${{ github.event.comment.body }}
-          COMMENT_BODY_FROM: ${{ github.event.changes.body.from }}
-          COMMENT_CREATED_AT: ${{ github.event.comment.created_at }}
-          COMMENT_ID: ${{ github.event.comment.id }}
-          COMMENT_UPDATED_AT: ${{ github.event.comment.updated_at }}
-          COMMENT_USER: ${{ github.event.comment.user.login }}
-          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_NAME: ${{ github.event_name }}
+          GATE_JOB_NAME: OTC Milestone C / fresh Codex review
+          GATE_WORKFLOW_PATH: .github/workflows/otc-milestone-c-gate.yml
+          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          SOURCE_BODY: ${{ github.event.comment.body || github.event.review.body }}
+          SOURCE_ID: ${{ github.event.comment.id || github.event.review.id }}
+          SOURCE_USER: ${{ github.event.comment.user.login || github.event.review.user.login }}
         shell: bash
         run: |
+          set -euo pipefail
           [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
             echo 'Invalid GitHub repository' >&2
             exit 1
@@ -73,13 +78,31 @@ jobs:
             echo 'Invalid pull request number' >&2
             exit 1
           }
-          [[ "$COMMENT_ID" =~ ^[1-9][0-9]*$ ]] || {
-            echo 'Invalid issue comment number' >&2
+          [[ "$SOURCE_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'Invalid review-event source number' >&2
             exit 1
           }
+          case "$EVENT_NAME:$EVENT_ACTION" in
+            issue_comment:created|issue_comment:edited|issue_comment:deleted)
+              source_kind=issue_comment
+              ;;
+            pull_request_review_comment:created|pull_request_review_comment:edited|pull_request_review_comment:deleted)
+              source_kind=review_comment
+              ;;
+            pull_request_review:submitted|pull_request_review:edited|pull_request_review:dismissed)
+              source_kind=review
+              ;;
+            *)
+              echo 'Invalid review-evidence event' >&2
+              exit 1
+              ;;
+          esac
+
           pull_state="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
           head_sha="$(jq -r '.head.sha' <<<"$pull_state")"
           base_sha="$(jq -r '.base.sha' <<<"$pull_state")"
+          default_branch="$(jq -r '.base.repo.default_branch' <<<"$pull_state")"
+          base_ref="$(jq -r '.base.ref' <<<"$pull_state")"
           [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || {
             echo 'Invalid current pull request head' >&2
             exit 1
@@ -88,139 +111,126 @@ jobs:
             echo 'Invalid current pull request base' >&2
             exit 1
           }
-          default_branch="$(jq -r '.base.repo.default_branch' <<<"$pull_state")"
-          base_ref="$(jq -r '.base.ref' <<<"$pull_state")"
           [[ -n "$default_branch" && "$base_ref" == "$default_branch" ]] || {
             echo 'The gate only evaluates pull requests targeting the default branch' >&2
             exit 1
           }
-          lock_path="$(
-            gh api --method GET "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
-              -f per_page=1 --jq '.[0].filename // empty'
-          )"
-          [[ -n "$lock_path" && "$lock_path" != *$'\n'* ]] || {
-            echo 'Cannot attach the native gate lock to a changed file' >&2
-            exit 1
-          }
-          lock_body="OTC Codex gate pending.
 
-          Head: $head_sha
-          Base: $base_sha
-          Source issue comment: $COMMENT_ID"
-          lock_comment_id="$(
-            gh api --method POST "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments" \
-              -f body="$lock_body" -f commit_id="$head_sha" -f path="$lock_path" \
-              -f subject_type=file --jq '.id'
-          )"
-          [[ "$lock_comment_id" =~ ^[1-9][0-9]*$ ]] || {
-            echo 'Invalid native gate-lock comment number' >&2
-            exit 1
-          }
-
-          was_request=false
-          current_request=false
-          was_clean=false
-          current_clean=false
-          was_marker=false
-          current_marker=false
           normalized_body="$(
-            jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' <<<"$COMMENT_BODY"
-          )"
-          normalized_body_from="$(
-            jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' \
-              <<<"$COMMENT_BODY_FROM"
+            jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' <<<"$SOURCE_BODY"
           )"
           expected_request="@codex review
 
           Head: $head_sha
           Base: $base_sha"
-          expected_marker_prefix="OTC Codex gate invalidated.
+          short_head="${head_sha:0:10}"
+          relevant=false
+          checkpoint=false
+          if [[ "$EVENT_NAME" == issue_comment && "$SOURCE_USER" == "$CODEX_LOGIN" ]]; then
+            relevant=true
+            checkpoint=true
+            if [[ "$EVENT_ACTION" != deleted && "$SOURCE_BODY" == "$CLEAN_PREFIX"* ]] && {
+              [[ "$SOURCE_BODY" == *"**Reviewed commit:** \`$short_head\`"* ]] ||
+                [[ "$SOURCE_BODY" == *"**Reviewed commit:** \`$head_sha\`"* ]]
+            }; then
+              checkpoint=false
+            fi
+          elif [[ "$EVENT_NAME" == issue_comment && "$EVENT_ACTION" != deleted &&
+            "$normalized_body" == "$expected_request" ]] && {
+            [[ "$COMMENT_ASSOCIATION" == OWNER ]] ||
+              [[ "$COMMENT_ASSOCIATION" == MEMBER ]] ||
+              [[ "$COMMENT_ASSOCIATION" == COLLABORATOR ]]
+          }; then
+            relevant=true
+            checkpoint=true
+          elif [[ "$SOURCE_USER" == "$CODEX_LOGIN" ]]; then
+            relevant=true
+            checkpoint=true
+          fi
+          if [[ "$checkpoint" == true ]]; then
+            marker="OTC Codex review checkpoint recorded.
 
           Head: $head_sha
           Base: $base_sha
-          Source comment: "
-          short_head="${head_sha:0:10}"
-          [[ "$normalized_body" == "$expected_request" ]] && current_request=true
-          [[ "$normalized_body_from" == "$expected_request" ]] && was_request=true
-          if [[ "$COMMENT_BODY" == "$CLEAN_PREFIX"* ]] && {
-            [[ "$COMMENT_BODY" == *"**Reviewed commit:** \`$short_head\`"* ]] ||
-              [[ "$COMMENT_BODY" == *"**Reviewed commit:** \`$head_sha\`"* ]]
-          }; then
-            current_clean=true
-          fi
-          if [[ "$COMMENT_BODY_FROM" == "$CLEAN_PREFIX"* ]] && {
-            [[ "$COMMENT_BODY_FROM" == *"**Reviewed commit:** \`$short_head\`"* ]] ||
-              [[ "$COMMENT_BODY_FROM" == *"**Reviewed commit:** \`$head_sha\`"* ]]
-          }; then
-            was_clean=true
-          fi
-          [[ "$COMMENT_BODY" == "$expected_marker_prefix"* ]] && current_marker=true
-          [[ "$COMMENT_BODY_FROM" == "$expected_marker_prefix"* ]] && was_marker=true
-          if [[ "$COMMENT_ACTION" == 'deleted' ]]; then
-            was_request="$current_request"
-            was_clean="$current_clean"
-            was_marker="$current_marker"
-            current_request=false
-            current_clean=false
-            current_marker=false
-          fi
-
-          latest_request_record="$(
-            gh api --method GET --paginate --slurp \
-              "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f per_page=100 \
-              | jq -r --arg request "$expected_request" \
-                '[.[][] | select(
-                  (.author_association == "OWNER" or .author_association == "MEMBER" or
-                    .author_association == "COLLABORATOR") and
-                  ((.body // "") | gsub("\r\n"; "\n") |
-                    gsub("^\\s+|\\s+$"; "")) == $request
-                )] | sort_by(.updated_at, .id) | last |
-                if . == null then empty else [.updated_at, .id] | @tsv end'
-          )"
-          latest_request_updated=''
-          latest_request_id=''
-          if [[ -n "$latest_request_record" ]]; then
-            IFS=$'\t' read -r latest_request_updated latest_request_id \
-              <<<"$latest_request_record"
-            [[ "$latest_request_id" =~ ^[1-9][0-9]*$ ]] || {
-              echo 'Invalid latest review-request comment number' >&2
+          Source: $source_kind:$EVENT_ACTION $SOURCE_ID"
+            marker_count="$(
+              gh api --method GET --paginate --slurp \
+                "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f per_page=100 |
+                jq --arg actions "$ACTIONS_LOGIN" --arg marker "$marker" \
+                  '[.[][] | select(.user.login == $actions and
+                    ((.body // "") | gsub("\r\n"; "\n") |
+                      gsub("^\\s+|\\s+$"; "")) == $marker)] | length'
+            )"
+            [[ "$marker_count" =~ ^[0-9]+$ ]] || {
+              echo 'Invalid recorded-request marker count' >&2
               exit 1
             }
-          fi
-          request_relevant=true
-          clean_relevant=true
-          marker_relevant=true
-          if [[ -n "$latest_request_updated" ]]; then
-            if [[ "$latest_request_updated" > "$COMMENT_UPDATED_AT" ]] || {
-              [[ "$latest_request_updated" == "$COMMENT_UPDATED_AT" ]] &&
-                ((latest_request_id > COMMENT_ID))
-            }; then
-              request_relevant=false
-            fi
-            if [[ "$latest_request_updated" > "$COMMENT_CREATED_AT" ]] || {
-              [[ "$latest_request_updated" == "$COMMENT_CREATED_AT" ]] &&
-                ((latest_request_id > COMMENT_ID))
-            }; then
-              clean_relevant=false
-              marker_relevant=false
+            if ((marker_count == 0)); then
+              gh api --silent --method POST \
+                "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$marker"
             fi
           fi
-          if [[ "$COMMENT_ACTION" != 'created' ]] && {
-            [[ "$COMMENT_USER" == "$CODEX_LOGIN" && "$was_clean" == true && "$clean_relevant" == true ]] ||
-              [[ "$COMMENT_USER" == "$ACTIONS_LOGIN" && "$was_marker" == true && "$marker_relevant" == true ]] ||
-              [[ "$COMMENT_USER" != "$CODEX_LOGIN" && "$was_request" == true &&
-                "$current_request" != true && "$request_relevant" == true ]]
-          }; then
-            marker="OTC Codex gate invalidated.
+          if [[ "$relevant" != true ]]; then
+            echo 'Comment does not change OTC Codex evidence.'
+            exit 0
+          fi
 
-          Head: $head_sha
-          Base: $base_sha
-          Source comment: $COMMENT_ID"
-            gh api --silent --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-              -f body="$marker"
-          fi
+          latest_pull="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          [[ "$(jq -r '.head.sha' <<<"$latest_pull")" == "$head_sha" &&
+            "$(jq -r '.base.sha' <<<"$latest_pull")" == "$base_sha" ]] || {
+            echo 'Pull request changed while recording review evidence' >&2
+            exit 1
+          }
+
+          check_runs="$(
+            gh api --method GET --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/commits/$head_sha/check-runs" \
+              -f check_name="$GATE_JOB_NAME" -f filter=all -f per_page=100
+          )"
+          run_ids=()
+          while IFS= read -r candidate_run_id; do
+            run_ids+=("$candidate_run_id")
+          done < <(
+            jq -r --arg repo "$GITHUB_REPOSITORY" --arg head "$head_sha" '
+              [.[].check_runs[] |
+                select(.app.slug == "github-actions" and .head_sha == $head) |
+                select(.details_url | startswith("https://github.com/" + $repo + "/actions/runs/")) |
+                . + {run_id: (.details_url |
+                  capture("/actions/runs/(?<run>[1-9][0-9]*)/job/[1-9][0-9]*$").run |
+                  tonumber)}] |
+              sort_by(.started_at, .id) | reverse | .[].run_id
+            ' <<<"$check_runs"
+          )
+          run_id=''
+          for candidate in "${run_ids[@]}"; do
+            [[ "$candidate" =~ ^[1-9][0-9]*$ ]] || continue
+            run_state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate")"
+            if jq -e --arg repo "$GITHUB_REPOSITORY" --arg head "$head_sha" \
+              --arg path "$GATE_WORKFLOW_PATH" --argjson id "$candidate" '
+                .id == $id and .event == "pull_request_target" and
+                .head_sha == $head and .path == $path and
+                .repository.full_name == $repo
+              ' <<<"$run_state" >/dev/null; then
+              run_id="$candidate"
+              break
+            fi
+          done
+          [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'No trusted PR-head evaluator run is available to rerun' >&2
+            exit 1
+          }
+
+          for _ in {1..108}; do
+            run_status="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status'
+            )"
+            [[ "$run_status" == completed ]] && break
+            sleep 5
+          done
+          [[ "$run_status" == completed ]] || {
+            echo 'Timed out waiting for the current evaluator run' >&2
+            exit 1
+          }
           gh api --silent --method POST \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/$GATE_WORKFLOW_ID/dispatches" \
-            -f ref="$default_branch" \
-            -f "inputs[pull_request_number]=$PR_NUMBER" \
-            -f "inputs[lock_comment_id]=$lock_comment_id"
+            "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun"
+          echo "Rerequested trusted evaluator run $run_id for head $head_sha."

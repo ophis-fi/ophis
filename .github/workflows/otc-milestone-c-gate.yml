@@ -15,22 +15,12 @@ on:
   # reruns this gate against the new full base SHA.
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, edited]
-  workflow_dispatch:
-    inputs:
-      pull_request_number:
-        description: Pull request to evaluate from the protected default branch
-        required: true
-        type: string
-      lock_comment_id:
-        description: Newest native gate-lock review comment this run may resolve
-        required: true
-        type: string
 
 permissions:
   actions: read
   contents: read
   issues: read
-  pull-requests: write
+  pull-requests: read
 
 jobs:
   codex-review:
@@ -62,76 +52,5 @@ jobs:
         if: steps.trusted-gate.outputs.available == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          PULL_REQUEST_NUMBER: >-
-            ${{ github.event.pull_request.number || inputs.pull_request_number }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
         run: node scripts/require-otc-codex-review.mjs
-      - name: Resolve superseded native gate locks
-        if: github.event_name == 'workflow_dispatch' && success()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          LOCK_COMMENT_ID: ${{ inputs.lock_comment_id }}
-          PR_NUMBER: ${{ inputs.pull_request_number }}
-        shell: bash
-        run: |
-          [[ "$GITHUB_REPOSITORY" =~ ^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$ ]] || {
-            echo 'Invalid GitHub repository' >&2
-            exit 1
-          }
-          owner="${BASH_REMATCH[1]}"
-          name="${BASH_REMATCH[2]}"
-          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
-            echo 'Invalid pull request number' >&2
-            exit 1
-          }
-          [[ "$LOCK_COMMENT_ID" =~ ^[1-9][0-9]*$ ]] || {
-            echo 'Invalid native gate-lock comment number' >&2
-            exit 1
-          }
-          cursor=null
-          while :; do
-            response="$(
-              gh api graphql -F owner="$owner" -F name="$name" \
-                -F number="$PR_NUMBER" -F cursor="$cursor" \
-                -f query='query($owner:String!,$name:String!,$number:Int!,$cursor:String){
-                  repository(owner:$owner,name:$name){pullRequest(number:$number){
-                    reviewThreads(first:100,after:$cursor){
-                      nodes{id isResolved comments(first:20){
-                        nodes{databaseId body author{login}}
-                      }}
-                      pageInfo{hasNextPage endCursor}
-                    }
-                  }}
-                }'
-            )"
-            mapfile -t thread_ids < <(
-              jq -r --argjson cutoff "$LOCK_COMMENT_ID" '
-                .data.repository.pullRequest.reviewThreads.nodes[] |
-                select(.isResolved == false) |
-                select(any(.comments.nodes[];
-                  ((.author.login == "github-actions" or
-                    .author.login == "github-actions[bot]") and
-                  .databaseId <= $cutoff and
-                  (.body | startswith("OTC Codex gate pending.\n\nHead: "))))) |
-                .id
-              ' <<<"$response"
-            )
-            for thread_id in "${thread_ids[@]}"; do
-              gh api graphql -F thread="$thread_id" \
-                -f query='mutation($thread:ID!){
-                  resolveReviewThread(input:{threadId:$thread}){thread{id isResolved}}
-                }' >/dev/null
-            done
-            has_next="$(
-              jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' \
-                <<<"$response"
-            )"
-            [[ "$has_next" == true ]] || break
-            cursor="$(
-              jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor // empty' \
-                <<<"$response"
-            )"
-            [[ -n "$cursor" ]] || {
-              echo 'Missing review-thread pagination cursor' >&2
-              exit 1
-            }
-          done

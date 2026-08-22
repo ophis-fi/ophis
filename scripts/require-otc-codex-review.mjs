@@ -4,11 +4,13 @@
  * Fail-closed merge gate for Milestone C money-path changes.
  *
  * Codex records findings as line comments and a clean result as an
- * authenticated issue comment naming the reviewed commit. Evidence must post
- * after the newest explicit request naming the full head and base SHAs. A
- * finding produces no clean result, while the repository ruleset independently
- * requires every review thread to be resolved. Pushes and base edits therefore
- * invalidate earlier evidence. Mutable review approvals are never evidence.
+ * authenticated issue comment naming the reviewed commit. A trusted dispatcher
+ * records exact requests and Codex review events as immutable Actions-authored
+ * checkpoints naming the full head and base SHAs. Contributor edits and
+ * deletions cannot erase those checkpoints. A clean result must follow the
+ * newest checkpoint. The repository ruleset independently requires every review
+ * thread to be resolved. Pushes and base edits invalidate earlier evidence.
+ * Mutable approvals are never evidence.
  */
 
 const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
@@ -51,10 +53,14 @@ function reviewRequestBody(headSha, baseSha) {
   return `@codex review\n\nHead: ${headSha}\nBase: ${baseSha}`;
 }
 
-function isBoundInvalidation(comment, headSha, baseSha) {
+function recordedReviewCheckpointBody(headSha, baseSha, source, sourceId) {
+  return `OTC Codex review checkpoint recorded.\n\nHead: ${headSha}\nBase: ${baseSha}\nSource: ${source} ${sourceId}`;
+}
+
+function isBoundRecordedCheckpoint(comment, headSha, baseSha) {
   if (comment?.user?.login !== ACTIONS_LOGIN) return false;
   return new RegExp(
-    `^OTC Codex gate invalidated\\.\\n\\nHead: ${headSha}\\nBase: ${baseSha}\\nSource comment: [1-9][0-9]*$`,
+    `^OTC Codex review checkpoint recorded\\.\\n\\nHead: ${headSha}\\nBase: ${baseSha}\\nSource: (?:issue_comment|review_comment|review):(created|edited|deleted|submitted|dismissed) [1-9][0-9]*$`,
   ).test(
     String(comment.body ?? '')
       .replaceAll('\r\n', '\n')
@@ -70,13 +76,7 @@ function cleanCommentHeadPrefix(comment) {
 }
 
 function hasBoundCleanEvidence(request, headSha, baseSha) {
-  if (
-    String(request?.body ?? '')
-      .replaceAll('\r\n', '\n')
-      .trim() !== reviewRequestBody(headSha, baseSha)
-  ) {
-    return false;
-  }
+  if (!isBoundRecordedCheckpoint(request, headSha, baseSha)) return false;
   const updatedAt = Date.parse(request.updatedAt);
   if (!Number.isFinite(updatedAt)) return false;
   const freshCleanComment = codexItems(request.cleanComments ?? []).some((comment) => {
@@ -93,25 +93,17 @@ function hasBoundCleanEvidence(request, headSha, baseSha) {
   return freshCleanComment;
 }
 
-function newestReviewRequest(requests) {
-  return requests.reduce((newest, request) => {
-    if (!newest) return request;
-    const requestTime = Date.parse(request.updatedAt);
+function newestReviewCheckpoint(checkpoints) {
+  return checkpoints.reduce((newest, checkpoint) => {
+    if (!newest) return checkpoint;
+    const checkpointTime = Date.parse(checkpoint.updatedAt);
     const newestTime = Date.parse(newest.updatedAt);
-    if (requestTime !== newestTime) return requestTime > newestTime ? request : newest;
-    return Number(request.id ?? 0) > Number(newest.id ?? 0) ? request : newest;
+    if (checkpointTime !== newestTime) return checkpointTime > newestTime ? checkpoint : newest;
+    return Number(checkpoint.id ?? 0) > Number(newest.id ?? 0) ? checkpoint : newest;
   }, undefined);
 }
 
-export function assessCodexGate({
-  headSha,
-  baseSha,
-  changedFiles,
-  files,
-  reviewRequests,
-  invalidatedAt,
-  invalidationId,
-}) {
+export function assessCodexGate({ headSha, baseSha, changedFiles, files, reviewRequests }) {
   if (changedFiles !== files.length) {
     return {
       required: true,
@@ -124,22 +116,9 @@ export function assessCodexGate({
   }
 
   const shortHead = headSha.slice(0, 10);
-  const latestRequest = newestReviewRequest(reviewRequests);
-  const requestTime = Date.parse(latestRequest?.updatedAt);
-  const invalidationTime = Date.parse(invalidatedAt);
-  const requestId = Number(latestRequest?.id);
-  const markerId = Number(invalidationId);
-  const requestFollowsInvalidation =
-    !Number.isFinite(invalidationTime) ||
-    (Number.isFinite(requestTime) &&
-      Number.isSafeInteger(requestId) &&
-      requestId > 0 &&
-      Number.isSafeInteger(markerId) &&
-      markerId > 0 &&
-      (requestTime > invalidationTime ||
-        (requestTime === invalidationTime && requestId > markerId)));
-  const cleanEvidence = latestRequest
-    ? requestFollowsInvalidation && hasBoundCleanEvidence(latestRequest, headSha, baseSha)
+  const latestCheckpoint = newestReviewCheckpoint(reviewRequests);
+  const cleanEvidence = latestCheckpoint
+    ? hasBoundCleanEvidence(latestCheckpoint, headSha, baseSha)
     : false;
 
   if (cleanEvidence) {
@@ -179,13 +158,27 @@ function selfTest() {
     files: [{ filename: 'apps/frontend/apps/cowswap-frontend/src/ophis/otcWrite/index.ts' }],
     reviewRequests: [],
   };
+  const recordedRequest = ({
+    headSha = base.headSha,
+    baseSha = base.baseSha,
+    source = 'issue_comment:created',
+    sourceId = 1,
+    updatedAt = '2026-08-20T12:00:00Z',
+    cleanComments = [],
+  } = {}) => ({
+    id: sourceId,
+    user: { login: ACTIONS_LOGIN },
+    body: recordedReviewCheckpointBody(headSha, baseSha, source, sourceId),
+    updatedAt,
+    cleanComments,
+  });
   assert(!assessCodexGate(base).accepted, 'missing evidence must fail');
   assert(
     assessCodexGate({
       ...base,
       reviewRequests: [
         {
-          body: reviewRequestBody(base.headSha, base.baseSha),
+          ...recordedRequest(),
           updatedAt: '2026-08-20T12:00:00Z',
           reactions: [
             { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T12:01:00Z' },
@@ -199,13 +192,7 @@ function selfTest() {
     !assessCodexGate({
       ...base,
       reviews: [{ user: { login: CODEX_LOGIN }, state: 'APPROVED', commit_id: base.headSha }],
-      reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [],
-        },
-      ],
+      reviewRequests: [recordedRequest()],
     }).accepted,
     'mutable review approvals must not count as clean evidence',
   );
@@ -218,13 +205,7 @@ function selfTest() {
   assert(
     assessCodexGate({
       ...base,
-      reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [cleanComment],
-        },
-      ],
+      reviewRequests: [recordedRequest({ cleanComments: [cleanComment] })],
     }).accepted,
     'an authenticated clean comment naming the current head must pass',
   );
@@ -232,11 +213,9 @@ function selfTest() {
     !assessCodexGate({
       ...base,
       reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
+        recordedRequest({
           cleanComments: [{ ...cleanComment, resolved_commit_id: 'b'.repeat(40) }],
-        },
+        }),
       ],
     }).accepted,
     'a clean comment whose short SHA resolves to another commit must fail',
@@ -245,11 +224,9 @@ function selfTest() {
     !assessCodexGate({
       ...base,
       reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
+        recordedRequest({
           cleanComments: [{ ...cleanComment, user: { login: 'contributor' } }],
-        },
+        }),
       ],
     }).accepted,
     'a contributor-authored clean comment must fail',
@@ -258,16 +235,14 @@ function selfTest() {
     !assessCodexGate({
       ...base,
       reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
+        recordedRequest({
           cleanComments: [
             {
               ...cleanComment,
               body: cleanComment.body.replace(base.headSha.slice(0, 10), 'bbbbbbbbbb'),
             },
           ],
-        },
+        }),
       ],
     }).accepted,
     'a clean comment naming another head must fail',
@@ -276,11 +251,7 @@ function selfTest() {
     !assessCodexGate({
       ...base,
       reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:01:00Z',
-          cleanComments: [cleanComment],
-        },
+        recordedRequest({ updatedAt: '2026-08-20T12:01:00Z', cleanComments: [cleanComment] }),
       ],
     }).accepted,
     'a same-second clean comment must fail as ambiguous',
@@ -288,50 +259,14 @@ function selfTest() {
   assert(
     !assessCodexGate({
       ...base,
-      invalidatedAt: '2026-08-20T12:02:00Z',
-      invalidationId: 2,
       reviewRequests: [
         {
-          id: 1,
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [cleanComment],
+          ...recordedRequest({ cleanComments: [cleanComment] }),
+          user: { login: 'contributor' },
         },
       ],
     }).accepted,
-    'deleting accepted evidence must require a newer exact request',
-  );
-  assert(
-    assessCodexGate({
-      ...base,
-      invalidatedAt: '2026-08-20T12:00:00Z',
-      invalidationId: 1,
-      reviewRequests: [
-        {
-          id: 2,
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [cleanComment],
-        },
-      ],
-    }).accepted,
-    'a same-second request with a larger ID must supersede an invalidation marker',
-  );
-  assert(
-    !assessCodexGate({
-      ...base,
-      invalidatedAt: '2026-08-20T12:00:00Z',
-      invalidationId: 3,
-      reviewRequests: [
-        {
-          id: 2,
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [cleanComment],
-        },
-      ],
-    }).accepted,
-    'a same-second invalidation marker with a larger ID must remain blocking',
+    'a contributor-authored request marker must fail',
   );
   assert(
     !assessCodexGate({ ...base, changedFiles: 3 }).accepted,
@@ -341,45 +276,23 @@ function selfTest() {
     !assessCodexGate({
       ...base,
       reviewRequests: [
-        {
-          id: 1,
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [cleanComment],
-        },
-        {
-          id: 2,
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:02:00Z',
-          cleanComments: [],
-        },
+        recordedRequest({ sourceId: 1, cleanComments: [cleanComment] }),
+        recordedRequest({ sourceId: 2, updatedAt: '2026-08-20T12:02:00Z' }),
       ],
     }).accepted,
-    'an older approved request must not override a newer request',
+    'a newer review checkpoint must supersede older clean evidence',
   );
   assert(
     !assessCodexGate({
       ...base,
-      reviewRequests: [
-        {
-          body: reviewRequestBody('b'.repeat(40), base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [cleanComment],
-        },
-      ],
+      reviewRequests: [recordedRequest({ headSha: 'b'.repeat(40), cleanComments: [cleanComment] })],
     }).accepted,
     'clean evidence requested for an earlier head must fail after a push',
   );
   assert(
     !assessCodexGate({
       ...base,
-      reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, 'd'.repeat(40)),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [cleanComment],
-        },
-      ],
+      reviewRequests: [recordedRequest({ baseSha: 'd'.repeat(40), cleanComments: [cleanComment] })],
     }).accepted,
     'clean evidence requested for an earlier base must fail after a base edit',
   );
@@ -695,48 +608,9 @@ async function runLive() {
     throw new Error('Pull request state changed during gate evaluation; rerun against fresh state');
   }
 
-  // Evidence can change without changing PR metadata. Fetch the mutable
-  // collections again after the first snapshot and assess only this fresh copy.
-  const rawIssueComments = await api(
-    [...prefix, 'issues', number, 'comments'],
-    token,
-    repositoryId,
-  );
-  const issueComments = await resolveCleanCommentHeads(
-    rawIssueComments,
-    headSha,
-    prefix,
-    token,
-    repositoryId,
-  );
-  const latestInvalidation = issueComments
-    .filter((comment) => isBoundInvalidation(comment, headSha, baseSha))
-    .sort((left, right) => {
-      const timeOrder = String(left.created_at).localeCompare(String(right.created_at));
-      return timeOrder || Number(left.id) - Number(right.id);
-    })
-    .at(-1);
-  const matchingRequests = issueComments
-    .filter(
-      (comment) =>
-        isTrustedReviewRequester(comment) &&
-        /^@codex review(?:\s|$)/.test(
-          String(comment.body ?? '')
-            .replaceAll('\r\n', '\n')
-            .trim(),
-        ),
-    )
-    .sort((left, right) => {
-      const timeOrder = String(right.updated_at).localeCompare(String(left.updated_at));
-      return timeOrder || Number(right.id) - Number(left.id);
-    })
-    .slice(0, 1);
-  const reviewRequests = matchingRequests.map((comment) => ({
-    id: comment.id,
-    body: comment.body,
-    updatedAt: comment.updated_at,
-    cleanComments: issueComments,
-  }));
+  // Take an evidence snapshot before the last mutable PR-context check, then
+  // discard it. Only evidence fetched after that check is assessed.
+  await api([...prefix, 'issues', number, 'comments'], token, repositoryId);
   const finalContext = currentPullContext(
     await api([...prefix, 'pulls', number], token, repositoryId),
   );
@@ -750,14 +624,36 @@ async function runLive() {
   ) {
     throw new Error('Pull request state changed during gate evaluation; rerun against fresh state');
   }
+  const rawIssueComments = await api(
+    [...prefix, 'issues', number, 'comments'],
+    token,
+    repositoryId,
+  );
+  const issueComments = await resolveCleanCommentHeads(
+    rawIssueComments,
+    headSha,
+    prefix,
+    token,
+    repositoryId,
+  );
+  const matchingRequests = issueComments
+    .filter((comment) => isBoundRecordedCheckpoint(comment, headSha, baseSha))
+    .sort((left, right) => {
+      const timeOrder = String(right.created_at).localeCompare(String(left.created_at));
+      return timeOrder || Number(right.id) - Number(left.id);
+    })
+    .slice(0, 1);
+  const reviewRequests = matchingRequests.map((comment) => ({
+    ...comment,
+    updatedAt: comment.created_at,
+    cleanComments: issueComments,
+  }));
   const result = assessCodexGate({
     headSha,
     baseSha,
     changedFiles,
     files,
     reviewRequests,
-    invalidatedAt: latestInvalidation?.created_at,
-    invalidationId: latestInvalidation?.id,
   });
   process.stdout.write(`${result.reason}\n`);
   if (!result.accepted) process.exitCode = 1;
