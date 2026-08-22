@@ -40,22 +40,21 @@ jobs:
     timeout-minutes: 12
     permissions:
       actions: write
-      checks: read
       contents: read
       issues: write
-      pull-requests: read
+      pull-requests: write
     steps:
-      # issue_comment workflows run on the trusted default branch, not the PR
-      # head. Rerun the newest gate already attached to the live PR head so the
-      # required workflow becomes pending immediately and cannot stay stale-green.
-      - name: Rerun the current PR-head gate
+      # issue_comment workflows run on the trusted default branch. Create an
+      # unresolved native review thread before evaluating evidence, then dispatch
+      # a fresh trusted evaluator. The evaluator resolves only locks no newer than
+      # this one and only after its live parser succeeds.
+      - name: Lock merging and dispatch a fresh trusted gate
         env:
           GH_TOKEN: ${{ github.token }}
           ACTIONS_LOGIN: github-actions[bot]
           CODEX_LOGIN: chatgpt-codex-connector[bot]
           CLEAN_PREFIX: "Codex Review: Didn't find any major issues. :+1:"
-          GATE_JOB_NAME: OTC Milestone C / fresh Codex review
-          GATE_WORKFLOW_PATH: .github/workflows/otc-milestone-c-gate.yml
+          GATE_WORKFLOW_ID: otc-milestone-c-gate.yml
           COMMENT_ACTION: ${{ github.event.action }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_BODY_FROM: ${{ github.event.changes.body.from }}
@@ -89,6 +88,34 @@ jobs:
             echo 'Invalid current pull request base' >&2
             exit 1
           }
+          default_branch="$(jq -r '.base.repo.default_branch' <<<"$pull_state")"
+          base_ref="$(jq -r '.base.ref' <<<"$pull_state")"
+          [[ -n "$default_branch" && "$base_ref" == "$default_branch" ]] || {
+            echo 'The gate only evaluates pull requests targeting the default branch' >&2
+            exit 1
+          }
+          lock_path="$(
+            gh api --method GET "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
+              -f per_page=1 --jq '.[0].filename // empty'
+          )"
+          [[ -n "$lock_path" && "$lock_path" != *$'\n'* ]] || {
+            echo 'Cannot attach the native gate lock to a changed file' >&2
+            exit 1
+          }
+          lock_body="OTC Codex gate pending.
+
+          Head: $head_sha
+          Base: $base_sha
+          Source issue comment: $COMMENT_ID"
+          lock_comment_id="$(
+            gh api --method POST "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/comments" \
+              -f body="$lock_body" -f commit_id="$head_sha" -f path="$lock_path" \
+              -f subject_type=file --jq '.id'
+          )"
+          [[ "$lock_comment_id" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'Invalid native gate-lock comment number' >&2
+            exit 1
+          }
 
           was_request=false
           current_request=false
@@ -98,7 +125,7 @@ jobs:
           current_marker=false
           normalized_body="$(
             jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' <<<"$COMMENT_BODY"
-          )
+          )"
           normalized_body_from="$(
             jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' \
               <<<"$COMMENT_BODY_FROM"
@@ -192,52 +219,8 @@ jobs:
             gh api --silent --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
               -f body="$marker"
           fi
-          mapfile -t details_urls < <(
-            gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json statusCheckRollup \
-              | jq -r --arg name "$GATE_JOB_NAME" \
-                '[.statusCheckRollup[] | select(.name == $name and .detailsUrl != null)] |
-                sort_by(.startedAt) | reverse | .[:100] | .[].detailsUrl'
-          )"
-          expected_prefix="https://github.com/$GITHUB_REPOSITORY/actions/runs/"
-          run_id=''
-          for details_url in "${details_urls[@]}"; do
-            [[ "$details_url" == "$expected_prefix"* ]] || continue
-            run_path="${details_url#"$expected_prefix"}"
-            [[ "$run_path" =~ ^([1-9][0-9]*)/job/[1-9][0-9]*$ ]] || continue
-            candidate_run_id="${BASH_REMATCH[1]}"
-            if gate_run="$(
-              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id" 2>/dev/null
-            )" && jq -e --arg repository "$GITHUB_REPOSITORY" \
-              --arg path "$GATE_WORKFLOW_PATH" '
-                .event == "pull_request_target" and
-                .path == $path and
-                .repository.full_name == $repository
-              ' <<<"$gate_run" >/dev/null; then
-              run_id="$candidate_run_id"
-              break
-            fi
-          done
-          [[ -n "$run_id" ]] || {
-            echo 'No trusted required-workflow gate is attached to the current head' >&2
-            exit 1
-          }
-          rerun_gate() {
-            local attempt error
-            for attempt in {1..60}; do
-              if error="$(gh api --silent --method POST \
-                "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" 2>&1)"; then
-                return 0
-              fi
-              if [[ "$error" == *'HTTP 409'* ]]; then
-                echo 'The current PR-head gate is busy; waiting to enqueue a fresh evaluation.'
-                sleep 10
-                continue
-              fi
-              echo "$error" >&2
-              return 1
-            done
-            echo 'Timed out waiting to enqueue a fresh PR-head gate evaluation.' >&2
-            return 1
-          }
-
-          rerun_gate
+          gh api --silent --method POST \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/$GATE_WORKFLOW_ID/dispatches" \
+            -f ref="$default_branch" \
+            -f "inputs[pull_request_number]=$PR_NUMBER" \
+            -f "inputs[lock_comment_id]=$lock_comment_id"
