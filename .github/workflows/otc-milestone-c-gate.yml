@@ -45,6 +45,7 @@ jobs:
           EVENT_ACTION: ${{ github.event.action }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SOURCE_COMMIT: ${{ github.event.comment.commit_id || github.event.review.commit_id }}
+          SOURCE_EVENT_TIME: ${{ github.event.comment.updated_at || github.event.review.submitted_at }}
           SOURCE_ID: ${{ github.event.comment.id || github.event.review.id }}
           SOURCE_KIND: ${{ github.event_name == 'pull_request_review' && 'review' || 'review_comment' }}
         shell: bash
@@ -77,12 +78,21 @@ jobs:
             echo 'Historical Codex review event does not checkpoint the current head.'
             exit 0
           fi
+          event_time="$SOURCE_EVENT_TIME"
+          if [[ "$EVENT_ACTION" == deleted || "$EVENT_ACTION" == dismissed ]]; then
+            event_time="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          fi
+          [[ "$event_time" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{3})?Z$ ]] || {
+            echo 'Invalid Codex review-event time' >&2
+            exit 1
+          }
           marker="OTC Codex review checkpoint recorded.
 
           Head: $head_sha
           Base: $base_sha
           Source: $SOURCE_KIND:$EVENT_ACTION $SOURCE_ID
-          Event run: $GITHUB_RUN_ID"
+          Event run: $GITHUB_RUN_ID
+          Event time: $event_time"
           gh api --silent --method POST \
             "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$marker"
       # Run the gate implementation from the trusted base commit. Otherwise a
@@ -93,13 +103,20 @@ jobs:
           persist-credentials: false
       - name: Locate the trusted gate implementation
         id: trusted-gate
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           if [[ -f scripts/require-otc-codex-review.mjs ]]; then
             echo 'available=true' >> "$GITHUB_OUTPUT"
-          else
+          elif [[ "$PR_NUMBER" == 1227 &&
+            "$BASE_SHA" == 0fa6948a681c07716adfeb9a20912a9f2895a38b ]]; then
             echo 'available=false' >> "$GITHUB_OUTPUT"
-            echo 'Bootstrap PR: the trusted base does not contain the gate yet.'
+            echo 'One-time bootstrap PR: the trusted base predates the gate.'
+          else
+            echo 'The protected base is missing the required OTC gate parser.' >&2
+            exit 1
           fi
       - name: Mutation-test the review evidence parser
         if: steps.trusted-gate.outputs.available == 'true'

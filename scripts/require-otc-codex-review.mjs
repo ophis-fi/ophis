@@ -53,19 +53,31 @@ function reviewRequestBody(headSha, baseSha) {
   return `@codex review\n\nHead: ${headSha}\nBase: ${baseSha}`;
 }
 
-function recordedReviewCheckpointBody(headSha, baseSha, source, sourceId) {
-  return `OTC Codex review checkpoint recorded.\n\nHead: ${headSha}\nBase: ${baseSha}\nSource: ${source} ${sourceId}\nEvent run: 1`;
+function recordedReviewCheckpointBody(headSha, baseSha, source, sourceId, eventTime) {
+  return `OTC Codex review checkpoint recorded.\n\nHead: ${headSha}\nBase: ${baseSha}\nSource: ${source} ${sourceId}\nEvent run: 1\nEvent time: ${eventTime}`;
+}
+
+function recordedCheckpointMatch(comment, headSha, baseSha) {
+  if (comment?.user?.login !== ACTIONS_LOGIN) return undefined;
+  return String(comment.body ?? '')
+    .replaceAll('\r\n', '\n')
+    .trim()
+    .match(
+      new RegExp(
+        `^OTC Codex review checkpoint recorded\\.\\n\\nHead: ${headSha}\\nBase: ${baseSha}\\nSource: (?:issue_comment|review_comment|review|checkpoint):(?:created|edited|deleted|submitted|dismissed) [1-9][0-9]*\\nEvent run: [1-9][0-9]*\\nEvent time: ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{3})?Z)$`,
+      ),
+    );
 }
 
 function isBoundRecordedCheckpoint(comment, headSha, baseSha) {
-  if (comment?.user?.login !== ACTIONS_LOGIN) return false;
-  return new RegExp(
-    `^OTC Codex review checkpoint recorded\\.\\n\\nHead: ${headSha}\\nBase: ${baseSha}\\nSource: (?:issue_comment|review_comment|review|checkpoint):(created|edited|deleted|submitted|dismissed) [1-9][0-9]*\\nEvent run: [1-9][0-9]*$`,
-  ).test(
-    String(comment.body ?? '')
-      .replaceAll('\r\n', '\n')
-      .trim(),
-  );
+  const match = recordedCheckpointMatch(comment, headSha, baseSha);
+  return Boolean(match && Number.isFinite(Date.parse(match[1])));
+}
+
+function recordedCheckpointTime(comment, headSha, baseSha) {
+  const match = recordedCheckpointMatch(comment, headSha, baseSha);
+  if (!match || !Number.isFinite(Date.parse(match[1]))) return undefined;
+  return match[1];
 }
 
 function isBoundCodexReviewCheckpoint(item, headSha) {
@@ -191,7 +203,7 @@ function selfTest() {
   } = {}) => ({
     id: sourceId,
     user: { login: ACTIONS_LOGIN },
-    body: recordedReviewCheckpointBody(headSha, baseSha, source, sourceId),
+    body: recordedReviewCheckpointBody(headSha, baseSha, source, sourceId, updatedAt),
     updatedAt,
     cleanComments,
   });
@@ -713,7 +725,7 @@ async function runLive() {
     });
   const reviewRequests = recordedCheckpoints.map((comment) => ({
     ...comment,
-    updatedAt: comment.created_at,
+    updatedAt: recordedCheckpointTime(comment, headSha, baseSha),
     cleanComments: issueComments,
   }));
   reviewRequests.push(

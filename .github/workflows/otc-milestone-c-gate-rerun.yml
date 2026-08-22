@@ -51,6 +51,7 @@ jobs:
           SOURCE_BODY: ${{ github.event.comment.body }}
           SOURCE_BODY_FROM: ${{ github.event.changes.body.from }}
           SOURCE_ID: ${{ github.event.comment.id }}
+          SOURCE_UPDATED_AT: ${{ github.event.comment.updated_at }}
           SOURCE_USER: ${{ github.event.comment.user.login }}
         shell: bash
         run: |
@@ -114,6 +115,7 @@ jobs:
           relevant=false
           checkpoint=false
           checkpoint_source=''
+          event_time="$SOURCE_UPDATED_AT"
           if [[ "$SOURCE_USER" == "$CODEX_LOGIN" ]]; then
             relevant=true
             checkpoint=true
@@ -146,12 +148,20 @@ jobs:
           fi
 
           if [[ "$checkpoint" == true ]]; then
+            if [[ "$EVENT_ACTION" == deleted ]]; then
+              event_time="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+            fi
+            [[ "$event_time" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{3})?Z$ ]] || {
+              echo 'Invalid checkpoint event time' >&2
+              exit 1
+            }
             marker="OTC Codex review checkpoint recorded.
 
           Head: $head_sha
           Base: $base_sha
           Source: $checkpoint_source $SOURCE_ID
-          Event run: $GITHUB_RUN_ID"
+          Event run: $GITHUB_RUN_ID
+          Event time: $event_time"
             marker_count="$(
               gh api --method GET --paginate --slurp \
                 "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f per_page=100 |
@@ -220,23 +230,8 @@ jobs:
             exit 1
           }
 
-          run_status="$(
-            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status'
-          )"
-          if [[ "$run_status" != completed ]]; then
-            echo "Evaluator run $run_id is already $run_status; its PR-head check is blocking."
-            for _ in {1..108}; do
-              sleep 5
-              run_status="$(
-                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status'
-              )"
-              [[ "$run_status" == completed ]] && break
-            done
-          fi
-          [[ "$run_status" == completed ]] || {
-            echo 'Timed out waiting for the blocking evaluator run' >&2
-            exit 1
-          }
+          # Rerequest immediately even if this suite is already running. GitHub
+          # queues the rerequest without exposing a stale-success polling gap.
           gh api --silent --method POST \
             "repos/$GITHUB_REPOSITORY/check-suites/$suite_id/rerequest"
           echo "Rerequested trusted check suite $suite_id for head $head_sha."
