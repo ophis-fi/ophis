@@ -1,23 +1,31 @@
-function errorCode(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null) return undefined
-  const direct = Reflect.get(error, 'code')
-  if (typeof direct === 'number') return direct
-  return errorCode(Reflect.get(error, 'cause'))
+const MAX_ERROR_DEPTH = 8
+const MAX_ERROR_TEXT = 4_000
+
+function safeProperty(error: object, key: string): unknown {
+  try {
+    return Reflect.get(error, key)
+  } catch {
+    return undefined
+  }
 }
 
-function errorText(error: unknown): string {
-  if (typeof error === 'string') return error
-  if (error instanceof Error) {
-    const cause = errorText(error.cause)
-    return `${error.name} ${error.message} ${cause}`.trim()
-  }
-  if (typeof error === 'object' && error !== null) {
-    return ['name', 'message', 'shortMessage', 'details']
-      .map((key) => Reflect.get(error, key))
-      .filter((value): value is string => typeof value === 'string')
-      .join(' ')
-  }
-  return ''
+function errorCode(error: unknown, seen = new WeakSet<object>(), depth = 0): number | undefined {
+  if (typeof error !== 'object' || error === null || seen.has(error) || depth >= MAX_ERROR_DEPTH) return undefined
+  seen.add(error)
+  const direct = safeProperty(error, 'code')
+  if (typeof direct === 'number') return direct
+  return errorCode(safeProperty(error, 'cause'), seen, depth + 1)
+}
+
+function errorText(error: unknown, seen = new WeakSet<object>(), depth = 0): string {
+  if (typeof error === 'string') return error.slice(0, MAX_ERROR_TEXT)
+  if (typeof error !== 'object' || error === null || seen.has(error) || depth >= MAX_ERROR_DEPTH) return ''
+  seen.add(error)
+  const fields = ['name', 'message', 'shortMessage', 'details']
+    .map((key) => safeProperty(error, key))
+    .filter((value): value is string => typeof value === 'string')
+  const cause = errorText(safeProperty(error, 'cause'), seen, depth + 1)
+  return [...fields, cause].join(' ').trim().slice(0, MAX_ERROR_TEXT)
 }
 
 interface OtcErrorRule {

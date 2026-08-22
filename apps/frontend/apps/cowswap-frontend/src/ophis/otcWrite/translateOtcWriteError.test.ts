@@ -19,4 +19,19 @@ describe('translateOtcWriteError', () => {
       'The transaction could not be completed. No unconfirmed action will be retried automatically.',
     )
   })
+
+  it('remains total for cyclic causes and hostile provider properties', () => {
+    const cyclic: { message: string; cause?: unknown } = { message: 'OrderNotActive' }
+    cyclic.cause = cyclic
+    expect(translateOtcWriteError(cyclic)).toMatch(/filled, cancelled, or changed/)
+
+    const hostile = Object.defineProperty({}, 'message', {
+      get: () => {
+        throw new Error('provider getter failed')
+      },
+    })
+    expect(translateOtcWriteError(hostile)).toBe(
+      'The transaction could not be completed. No unconfirmed action will be retried automatically.',
+    )
+  })
 })
