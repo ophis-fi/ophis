@@ -22,6 +22,7 @@ import type { OtcOrder } from 'ophis/otc'
 export const OTC_FILL_DEADLINE_WINDOW_SECONDS = 180n
 export const OTC_MAX_FILL_DEADLINE_SECONDS = 300n
 export const OTC_APPROVE_SELECTOR = '0x095ea7b3'
+const UINT256_MAX = 2n ** 256n - 1n
 
 function fail(reason: string): never {
   throw new Error(`Ophis OTC write rejected: ${reason}`)
@@ -35,8 +36,9 @@ function requireAccount(account: Address): Address {
   }
 }
 
-function assertPositive(value: bigint): void {
+function assertAmount(value: bigint): void {
   if (value <= 0n) fail('amount must be positive')
+  if (value > UINT256_MAX) fail('amount exceeds uint256')
 }
 
 function assertEscrowPolicy(tokenA: Address, tokenB: Address): void {
@@ -48,15 +50,15 @@ function assertEscrowPolicy(tokenA: Address, tokenB: Address): void {
 }
 
 function assertDraft(draft: OtcCreateDraft): void {
-  assertPositive(draft.amountA)
-  assertPositive(draft.amountB)
+  assertAmount(draft.amountA)
+  assertAmount(draft.amountB)
   if (isAddressEqual(draft.tokenA, draft.tokenB)) fail('token pair must differ')
   assertEscrowPolicy(draft.tokenA, draft.tokenB)
 }
 
 function assertOrderTerms(order: OtcOrder): void {
-  assertPositive(order.amountA)
-  assertPositive(order.amountB)
+  assertAmount(order.amountA)
+  assertAmount(order.amountB)
   if (isAddressEqual(order.tokenA, order.tokenB)) fail('token pair must differ')
   assertEscrowPolicy(order.tokenA, order.tokenB)
 }
@@ -110,7 +112,7 @@ function approvalRequest(
 /** Write sink 1/5: exact approval for the maker's escrow leg. */
 export function buildOtcCreateApproval(intent: OtcApproveCreateIntent): OtcTransactionRequest {
   assertDraft(intent.draft)
-  assertPositive(intent.draft.amountA)
+  assertAmount(intent.draft.amountA)
   return approvalRequest(intent.kind, intent.account, intent.draft.tokenA, intent.draft.amountA)
 }
 
@@ -131,7 +133,7 @@ export function buildOtcCreateTransaction(intent: OtcCreateIntent): OtcTransacti
 /** Write sink 3/5: exact approval for the taker's payment leg. */
 export function buildOtcFillApproval(intent: OtcApproveFillIntent): OtcTransactionRequest {
   assertOrder(intent.order)
-  assertPositive(intent.order.amountB)
+  assertAmount(intent.order.amountB)
   return approvalRequest(intent.kind, intent.account, intent.order.tokenB, intent.order.amountB)
 }
 

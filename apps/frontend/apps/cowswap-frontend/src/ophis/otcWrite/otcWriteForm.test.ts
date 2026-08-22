@@ -10,6 +10,11 @@ describe('OTC write form parsing', () => {
     expect(parseOtcHumanAmount(value, 6)).toBeNull()
   })
 
+  it('rejects values that cannot fit into contract calldata without parsing unbounded input', () => {
+    expect(parseOtcHumanAmount('1'.repeat(81), 0)).toBeNull()
+    expect(parseOtcHumanAmount((2n ** 256n).toString(), 0)).toBeNull()
+  })
+
   it('builds only a positive distinct reviewed pair', () => {
     const [weth, usdc] = OTC_REVIEWED_TOKENS
     expect(parseOtcCreateDraft({ tokenA: weth, amountA: '2', tokenB: usdc, amountB: '8000' })).toEqual({

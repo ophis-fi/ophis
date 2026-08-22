@@ -22,15 +22,25 @@ export function reviewedOtcToken(address: Address): OtcReviewedToken | null {
 }
 
 const HUMAN_AMOUNT = /^(?:0|[1-9]\d*)(?:\.\d+)?$/
+const MAX_HUMAN_AMOUNT_LENGTH = 80
+const UINT256_MAX = 2n ** 256n - 1n
+
+function hasValidPrecision(normalized: string, decimals: number): boolean {
+  if (!Number.isInteger(decimals)) return false
+  if (decimals < 0) return false
+  const fraction = normalized.split('.')[1]
+  return (fraction?.length ?? 0) <= decimals
+}
 
 export function parseOtcHumanAmount(value: string, decimals: number): bigint | null {
   const normalized = value.trim()
+  if (normalized.length > MAX_HUMAN_AMOUNT_LENGTH) return null
   if (!HUMAN_AMOUNT.test(normalized)) return null
-  const fraction = normalized.split('.')[1]
-  if (!Number.isInteger(decimals) || decimals < 0 || (fraction?.length ?? 0) > decimals) return null
+  if (!hasValidPrecision(normalized, decimals)) return null
   try {
     const amount = parseUnits(normalized, decimals)
-    return amount > 0n ? amount : null
+    if (amount <= 0n || amount > UINT256_MAX) return null
+    return amount
   } catch {
     return null
   }

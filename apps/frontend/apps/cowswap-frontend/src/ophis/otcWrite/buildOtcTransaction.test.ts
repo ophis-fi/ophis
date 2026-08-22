@@ -148,6 +148,9 @@ describe('Milestone C transaction builders', () => {
     expect(() =>
       buildOtcFillApproval({ kind: 'approve-fill', account: TAKER, order: order({ active: false }) }),
     ).toThrow(/order is inactive/)
+    expect(() =>
+      buildOtcCreateTransaction({ kind: 'create', account: MAKER, draft: draft({ amountA: 2n ** 256n }) }),
+    ).toThrow(/amount exceeds uint256/)
   })
 
   it('requires a short, nonzero future fill deadline', () => {
