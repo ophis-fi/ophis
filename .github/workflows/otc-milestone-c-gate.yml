@@ -1,0 +1,35 @@
+name: OTC Milestone C merge gate
+
+on:
+  # The workflow definition itself comes from the protected base branch. It
+  # never checks out or executes PR-head code.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: otc-codex-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  codex-review:
+    name: OTC Milestone C / fresh Codex review
+    runs-on: ubuntu-latest
+    steps:
+      # Run the gate implementation from the trusted base commit. Otherwise a
+      # money-path PR could edit this script to approve itself.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Mutation-test the review evidence parser
+        run: node scripts/require-otc-codex-review.mjs --self-test
+      - name: Require clean Codex evidence for the current money-path head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/require-otc-codex-review.mjs
