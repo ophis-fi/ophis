@@ -23,12 +23,13 @@ type Wallet = Parameters<typeof verifyOtcLocalForkWallet>[0]
 type Public = Parameters<typeof toOtcWalletSubmitter>[1]
 type LegacyProvider = Parameters<typeof verifyOtcLocalForkProvider>[0]
 
-function wallet(version: string, chainId = 1): Wallet {
+function wallet(version: string, chainId = 1, activeAccount = ACCOUNT): Wallet {
   return {
     account: { address: ACCOUNT },
     getChainId: async () => chainId,
     request: async ({ method }: { method: string }) => {
       if (method === 'web3_clientVersion') return version
+      if (method === 'eth_accounts') return [activeAccount]
       throw new Error(`unexpected ${method}`)
     },
     sendTransaction: jest.fn(async () => HASH),
@@ -59,7 +60,11 @@ function transaction(): { intent: OtcCancelIntent; request: OtcTransactionReques
   return { intent, request: buildOtcCancelTransaction(intent) }
 }
 
-function legacyProvider(version: string, chainId = 1): { provider: LegacyProvider; sendTransaction: jest.Mock } {
+function legacyProvider(
+  version: string,
+  chainId = 1,
+  activeAccount = ACCOUNT,
+): { provider: LegacyProvider; sendTransaction: jest.Mock } {
   const sendTransaction = jest.fn(async () => ({ hash: HASH }))
   const provider = {
     getNetwork: async () => ({ chainId }),
@@ -67,6 +72,7 @@ function legacyProvider(version: string, chainId = 1): { provider: LegacyProvide
       if (method === 'web3_clientVersion') return version
       throw new Error(`unexpected ${method}`)
     },
+    listAccounts: async () => [activeAccount],
     getSigner: () => ({ getAddress: async () => ACCOUNT, sendTransaction }),
     waitForTransaction: async () => ({ transactionHash: HASH, status: 1, blockNumber: 12 }),
   } as unknown as LegacyProvider
@@ -110,6 +116,20 @@ describe('OTC wallet transport boundary', () => {
       'request differs from reviewed intent',
     )
     expect(anvil.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects account drift reported by the wallet after fork verification', async () => {
+    const changedAccount = '0x2222222222222222222222222222222222222222'
+    const anvil = wallet('anvil/v1.5.0', 1, changedAccount)
+    const submitter = toOtcWalletSubmitter(anvil, publicClient())
+    const legacy = legacyProvider('anvil/v1.5.0', 1, changedAccount)
+    const legacySubmitter = toOtcLegacyForkClients(legacy.provider, ACCOUNT).wallet
+    const { request, intent } = transaction()
+
+    await expect(submitter.sendTransaction(request, intent, NOW)).rejects.toThrow('wallet account changed')
+    await expect(legacySubmitter.sendTransaction(request, intent, NOW)).rejects.toThrow('wallet account changed')
+    expect(anvil.sendTransaction).not.toHaveBeenCalled()
+    expect(legacy.sendTransaction).not.toHaveBeenCalled()
   })
 
   it('submits through a verified local fork and maps its receipt', async () => {

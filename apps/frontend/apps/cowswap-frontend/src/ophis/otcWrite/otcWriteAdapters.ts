@@ -73,10 +73,13 @@ export function toOtcWalletSubmitter(
     sendTransaction: async (request, intent, nowSeconds) => {
       const checkedRequest = Object.freeze({ ...request })
       assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
-      const walletChainId = await walletClient.getChainId()
-      const walletAccount = walletClient.account?.address
-      if (walletChainId !== checkedRequest.chainId) throw new Error('Ophis OTC wallet is on the wrong chain')
       if (!(await verifyOtcLocalForkWallet(walletClient))) throw new Error('Ophis OTC local fork verification failed')
+      const [walletChainId, walletAccounts] = await Promise.all([
+        walletClient.getChainId(),
+        walletClient.request({ method: 'eth_accounts' }),
+      ])
+      if (walletChainId !== checkedRequest.chainId) throw new Error('Ophis OTC wallet is on the wrong chain')
+      const walletAccount = walletAccounts[0]
       if (!walletAccount || !isAddressEqual(walletAccount, checkedRequest.account)) {
         throw new Error('Ophis OTC wallet account changed')
       }
@@ -147,13 +150,14 @@ export function toOtcLegacyForkClients(
     sendTransaction: async (request, intent, nowSeconds) => {
       const checkedRequest = Object.freeze({ ...request })
       assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
-      if ((await provider.getNetwork()).chainId !== checkedRequest.chainId)
-        throw new Error('Ophis OTC wallet is on the wrong chain')
+      if (!isAddressEqual(account, checkedRequest.account)) throw new Error('Ophis OTC wallet account changed')
       if (!(await verifyOtcLocalForkProvider(provider))) throw new Error('Ophis OTC local fork verification failed')
-      const signer = provider.getSigner(account)
-      const signerAddress = await signer.getAddress()
-      if (!isAddressEqual(signerAddress as Address, checkedRequest.account))
+      const [network, providerAccounts] = await Promise.all([provider.getNetwork(), provider.listAccounts()])
+      if (network.chainId !== checkedRequest.chainId) throw new Error('Ophis OTC wallet is on the wrong chain')
+      const providerAccount = providerAccounts[0]
+      if (!providerAccount || !isAddressEqual(providerAccount as Address, checkedRequest.account))
         throw new Error('Ophis OTC wallet account changed')
+      const signer = provider.getSigner(providerAccount)
       const transaction = await signer.sendTransaction({
         to: checkedRequest.to,
         data: checkedRequest.data,
