@@ -111,7 +111,7 @@ export async function submitOtcTransaction(
 ): Promise<OtcTransactionReceipt> {
   assertRuntimeAuthorization(authorization)
   const prepared = await prepareOtcTransaction(client, intent, nowSeconds, manifest)
-  const hash = await wallet.sendTransaction(prepared.request)
+  const hash = await wallet.sendTransaction(prepared.request, intent, nowSeconds)
   const receipt = await wallet.waitForTransactionReceipt(hash)
   if (receipt.status !== 'success') throw new Error('Ophis OTC transaction reverted')
   return receipt

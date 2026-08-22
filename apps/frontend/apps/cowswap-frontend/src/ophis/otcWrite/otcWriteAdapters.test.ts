@@ -1,21 +1,22 @@
 import { JsonRpcProvider } from '@ethersproject/providers'
 
+import { buildOtcCancelTransaction, buildOtcFillApproval } from './buildOtcTransaction'
 import {
   toOtcLegacyForkClients,
   toOtcWalletSubmitter,
   verifyOtcLocalForkProvider,
   verifyOtcLocalForkWallet,
 } from './otcWriteAdapters'
-import { buildOtcCancelTransaction } from './buildOtcTransaction'
 import { readOtcAllowance } from './readOtcAllowance'
 
-import type { OtcTransactionRequest } from './otcWrite.types'
+import type { OtcCancelIntent, OtcTransactionRequest } from './otcWrite.types'
 import type { OtcOrder } from 'ophis/otc'
 import type { Hex } from 'viem'
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111'
 const TOKEN_WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' // gitleaks:allow — public mainnet address
 const HASH: Hex = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const NOW = 1_800_000_000n
 const forkIt = process.env.OTC_BROWSER_FORK_RPC ? it : it.skip
 
 type Wallet = Parameters<typeof verifyOtcLocalForkWallet>[0]
@@ -40,8 +41,8 @@ function publicClient(): Public {
   } as unknown as Public
 }
 
-function request(): OtcTransactionRequest {
-  const order: OtcOrder = {
+function order(overrides: Partial<OtcOrder> = {}): OtcOrder {
+  return {
     orderId: 7n,
     maker: ACCOUNT,
     active: true,
@@ -49,8 +50,13 @@ function request(): OtcTransactionRequest {
     amountA: 1n,
     tokenB: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
     amountB: 2n,
+    ...overrides,
   }
-  return buildOtcCancelTransaction({ kind: 'cancel', account: ACCOUNT, order })
+}
+
+function transaction(): { intent: OtcCancelIntent; request: OtcTransactionRequest } {
+  const intent: OtcCancelIntent = { kind: 'cancel', account: ACCOUNT, order: order() }
+  return { intent, request: buildOtcCancelTransaction(intent) }
 }
 
 function legacyProvider(version: string, chainId = 1): { provider: LegacyProvider; sendTransaction: jest.Mock } {
@@ -78,22 +84,39 @@ describe('OTC wallet transport boundary', () => {
   it('blocks a real-mainnet client before its send method is called', async () => {
     const realMainnet = wallet('Geth/v1.16.2')
     const submitter = toOtcWalletSubmitter(realMainnet, publicClient())
-    await expect(submitter.sendTransaction(request())).rejects.toThrow('Ophis OTC local fork verification failed')
+    const { request, intent } = transaction()
+    await expect(submitter.sendTransaction(request, intent, NOW)).rejects.toThrow(
+      'Ophis OTC local fork verification failed',
+    )
     expect(realMainnet.sendTransaction).not.toHaveBeenCalled()
   })
 
   it('revalidates target, selector, and zero value at the final wallet boundary', async () => {
     const anvil = wallet('anvil/v1.5.0')
     const submitter = toOtcWalletSubmitter(anvil, publicClient())
-    const invalid = { ...request(), value: 1n } as unknown as OtcTransactionRequest
-    await expect(submitter.sendTransaction(invalid)).rejects.toThrow('native value is disabled')
+    const { request, intent } = transaction()
+    const invalid = { ...request, value: 1n } as unknown as OtcTransactionRequest
+    await expect(submitter.sendTransaction(invalid, intent, NOW)).rejects.toThrow('native value is disabled')
+    expect(anvil.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it('rejects an otherwise valid approval when it differs from the reviewed intent', async () => {
+    const anvil = wallet('anvil/v1.5.0')
+    const submitter = toOtcWalletSubmitter(anvil, publicClient())
+    const intent = { kind: 'approve-fill' as const, account: ACCOUNT, order: order() }
+    const altered = buildOtcFillApproval({ ...intent, order: order({ amountB: 3n }) })
+
+    await expect(submitter.sendTransaction(altered, intent, NOW)).rejects.toThrow(
+      'request differs from reviewed intent',
+    )
     expect(anvil.sendTransaction).not.toHaveBeenCalled()
   })
 
   it('submits through a verified local fork and maps its receipt', async () => {
     const anvil = wallet('anvil/v1.5.0')
     const submitter = toOtcWalletSubmitter(anvil, publicClient())
-    await expect(submitter.sendTransaction(request())).resolves.toBe(HASH)
+    const { request, intent } = transaction()
+    await expect(submitter.sendTransaction(request, intent, NOW)).resolves.toBe(HASH)
     await expect(submitter.waitForTransactionReceipt(HASH)).resolves.toEqual({
       transactionHash: HASH,
       status: 'success',
@@ -108,7 +131,8 @@ describe('OTC wallet transport boundary', () => {
     await expect(verifyOtcLocalForkProvider(anvil.provider)).resolves.toBe(true)
     await expect(verifyOtcLocalForkProvider(geth.provider)).resolves.toBe(false)
     const clients = toOtcLegacyForkClients(anvil.provider, ACCOUNT)
-    await expect(clients.wallet.sendTransaction(request())).resolves.toBe(HASH)
+    const { request, intent } = transaction()
+    await expect(clients.wallet.sendTransaction(request, intent, NOW)).resolves.toBe(HASH)
     expect(anvil.sendTransaction).toHaveBeenCalledTimes(1)
     await expect(clients.wallet.waitForTransactionReceipt(HASH)).resolves.toEqual({
       transactionHash: HASH,

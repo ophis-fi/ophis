@@ -70,9 +70,9 @@ export function toOtcWalletSubmitter(
   publicClient: WagmiPublicClient,
 ): OtcWalletSubmitter {
   return {
-    sendTransaction: async (request) => {
+    sendTransaction: async (request, intent, nowSeconds) => {
       const checkedRequest = Object.freeze({ ...request })
-      assertOtcTransactionRequest(checkedRequest)
+      assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
       const walletChainId = await walletClient.getChainId()
       const walletAccount = walletClient.account?.address
       if (walletChainId !== checkedRequest.chainId) throw new Error('Ophis OTC wallet is on the wrong chain')
@@ -144,9 +144,9 @@ export function toOtcLegacyForkClients(
     },
   }
   const wallet: OtcWalletSubmitter = {
-    sendTransaction: async (request) => {
+    sendTransaction: async (request, intent, nowSeconds) => {
       const checkedRequest = Object.freeze({ ...request })
-      assertOtcTransactionRequest(checkedRequest)
+      assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
       if ((await provider.getNetwork()).chainId !== checkedRequest.chainId)
         throw new Error('Ophis OTC wallet is on the wrong chain')
       if (!(await verifyOtcLocalForkProvider(provider))) throw new Error('Ophis OTC local fork verification failed')
