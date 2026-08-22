@@ -152,6 +152,35 @@ describe('OtcPageView', () => {
     expect(actionable).toEqual([])
   })
 
+  it('mounts a write panel only when the guarded controller supplies one', () => {
+    renderView(
+      <OtcPageView
+        state={readyState()}
+        account={MAKER}
+        nowMs={NOW_MS}
+        writeEnabled
+        createPanel={<button type="button">Guarded local create</button>}
+      />,
+    )
+    expect(screen.getByText('Local fork writes')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Create/ }))
+    expect(screen.getByRole('button', { name: 'Guarded local create' })).toBeTruthy()
+  })
+
+  it('keeps fork create available while list verification is unavailable', () => {
+    renderView(
+      <OtcPageView
+        state={emptyState('unavailable')}
+        account={MAKER}
+        nowMs={NOW_MS}
+        writeEnabled
+        createPanel={<button type="button">Guarded local create</button>}
+      />,
+    )
+    expect(screen.getByText(/on-chain verification failed/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Guarded local create' })).toBeTruthy()
+  })
+
   it('shows the connected wallet orders including resolved ones under My orders', () => {
     renderView(<OtcPageView state={readyState()} account={MAKER.toLowerCase()} nowMs={NOW_MS} />)
     fireEvent.click(screen.getByRole('button', { name: /My orders/ }))

@@ -6,7 +6,7 @@
  * current state. When the indexed row disagrees with the chain, the page
  * demands a refresh instead of showing an actionable-looking order.
  */
-import { useId, useMemo, type ReactNode } from 'react'
+import { useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -20,6 +20,7 @@ import {
   OPHIS_ETHEREUM_OTC_MANIFEST,
   OTC_DATA_REFRESH_INTERVAL,
 } from 'ophis/otc'
+import { isReviewedOtcOrder, OtcOrderActionPanel } from 'ophis/otcWrite'
 import { Navigate, useParams } from 'react-router'
 import useSWR from 'swr'
 import { usePublicClient } from 'wagmi'
@@ -29,14 +30,14 @@ import { Routes as RoutesEnum } from 'common/constants/routes'
 import { BadgeRow, Mono, RawNote } from './Otc.styled'
 import { assessDetailFreshness, OtcFreshnessNotice, type OtcNodeFreshness } from './otcDetailFreshness'
 import { formatOtcAge } from './otcDisplay'
-import { useOtcPageEnabled } from './useOtcPageEnabled'
+import { useOtcPageEnabled, useOtcWriteEnabled } from './useOtcPageEnabled'
 
 import type { KeyValueRow } from 'ophis/ds'
 import type { OtcIndexedOrder, OtcOrder, OtcReaderClient } from 'ophis/otc'
 
 const ETHERSCAN = 'https://etherscan.io/address'
 
-function indexedDisagrees(indexed: OtcIndexedOrder, order: OtcOrder): boolean {
+export function indexedDisagrees(indexed: OtcIndexedOrder, order: OtcOrder): boolean {
   return (
     indexed.maker.toLowerCase() !== order.maker.toLowerCase() ||
     indexed.active !== order.active ||
@@ -97,6 +98,8 @@ interface OtcOrderDetailViewProps {
   blockNumber: bigint | null
   indexed: OtcIndexedOrder | null
   nowMs: number
+  actionPanel?: ReactNode
+  writeEnabled?: boolean
 }
 
 function DetailBody({
@@ -105,6 +108,7 @@ function DetailBody({
   blockNumber,
   indexed,
   nowMs,
+  actionPanel,
 }: Omit<OtcOrderDetailViewProps, 'loading' | 'failed'>): ReactNode {
   if (!order) {
     return (
@@ -144,6 +148,7 @@ function DetailBody({
         </p>
         {indexed && <p>Created {formatOtcAge(nowMs, indexed.createdAt)}</p>}
       </Section>
+      {!changed && actionPanel}
       <Section id="otc-order-technical" title="Technical details">
         <KeyValueList items={technicalRows} />
         <p>
@@ -157,14 +162,18 @@ function DetailBody({
 }
 
 export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
-  const { orderId, loading, failed, freshness } = props
+  const { orderId, loading, failed, freshness, writeEnabled = false } = props
 
   return (
     <PageShell
       width="narrow"
       eyebrow="OTC"
       title={`Order #${orderId.toString()}`}
-      lede="Read-only order detail, verified directly against Ethereum."
+      lede={
+        writeEnabled
+          ? 'Fork-only action detail, freshly verified against the pinned escrow contract.'
+          : 'Read-only order detail, verified directly against Ethereum.'
+      }
     >
       <OtcFreshnessNotice freshness={freshness} loading={loading} failed={failed} />
       {loading && <p>Verifying order #{orderId.toString()} on Ethereum...</p>}
@@ -178,38 +187,61 @@ export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
   )
 }
 
-export function OtcOrderDetailPage(): ReactNode {
-  const enabled = useOtcPageEnabled()
-  const params = useParams()
-  const rawOrderId = params.orderId ?? ''
-  const validId = /^\d{1,18}$/.test(rawOrderId)
-  const orderId = validId ? BigInt(rawOrderId) : 0n
+function parseOtcOrderId(rawOrderId: string): bigint | null {
+  return /^\d{1,18}$/.test(rawOrderId) ? BigInt(rawOrderId) : null
+}
 
+function GuardedOtcOrderActionPanel({
+  writeEnabled,
+  freshness,
+  order,
+  indexed,
+  onConfirmed,
+}: {
+  writeEnabled: boolean
+  freshness: OtcNodeFreshness
+  order: OtcOrder | null
+  indexed: OtcIndexedOrder | null
+  onConfirmed: () => void
+}): ReactNode {
+  if (!writeEnabled) return null
+  if (freshness !== 'fresh') return null
+  if (!order?.active) return null
+  if (!isReviewedOtcOrder(order)) return null
+  if (indexed && indexedDisagrees(indexed, order)) return null
+  return <OtcOrderActionPanel order={order} onConfirmed={onConfirmed} />
+}
+
+function VerifiedOtcOrderDetailPage({
+  rawOrderId,
+  orderId,
+  writeEnabled,
+}: {
+  rawOrderId: string
+  orderId: bigint
+  writeEnabled: boolean
+}): ReactNode {
+  const [refreshSignal, setRefreshSignal] = useState(0)
+  const [nowMs] = useState(() => Date.now())
+  const refresh = useCallback(() => setRefreshSignal((current) => current + 1), [])
   const publicClient = usePublicClient({ chainId: SupportedChainId.MAINNET })
   const client = useMemo<OtcReaderClient | null>(
     () => (publicClient ? toOtcReaderClient(publicClient) : null),
     [publicClient],
   )
-  const state = useOtcData(enabled && validId)
+  const state = useOtcData(true, refreshSignal)
 
   // Mount-unique key: SWR must never serve a cached order from a previous
   // visit as if it were the promised fresh direct read — every mount starts
   // at loading until its own getOrder round-trip completes.
   const mountId = useId()
   const { data, error } = useSWR(
-    enabled && validId && client ? ['ophis-otc-order', rawOrderId, mountId] : null,
+    client ? ['ophis-otc-order', rawOrderId, mountId, refreshSignal] : null,
     async () => (client ? readOtcOrder(client, orderId) : null),
     { refreshInterval: OTC_DATA_REFRESH_INTERVAL, revalidateOnFocus: false },
   )
 
-  if (!enabled) return <Navigate to={RoutesEnum.HOME} replace />
-  if (!validId) return <Navigate to={RoutesEnum.OTC} replace />
-
   const indexed = state.enrichment?.byOrderId.get(orderId.toString()) ?? null
-  // Wall-clock read for the relative created-age line only.
-
-  const nowMs = Date.now()
-
   // Freshness must describe the backend that served THIS read: compare the
   // index checkpoint against the direct read's own block (see
   // otcDetailFreshness). Terms never render before the assessment resolves,
@@ -220,6 +252,7 @@ export function OtcOrderDetailPage(): ReactNode {
     data?.blockNumber ?? null,
     OPHIS_ETHEREUM_OTC_MANIFEST.maxIndexLagBlocks,
   )
+  const order = data?.order ?? null
 
   return (
     <OtcOrderDetailView
@@ -227,10 +260,31 @@ export function OtcOrderDetailPage(): ReactNode {
       loading={!error && (!data || freshnessPending)}
       failed={Boolean(error)}
       freshness={freshness}
-      order={data?.order ?? null}
+      order={order}
       blockNumber={data?.blockNumber ?? null}
       indexed={indexed}
       nowMs={nowMs}
+      writeEnabled={writeEnabled}
+      actionPanel={
+        <GuardedOtcOrderActionPanel
+          writeEnabled={writeEnabled}
+          freshness={freshness}
+          order={order}
+          indexed={indexed}
+          onConfirmed={refresh}
+        />
+      }
     />
   )
+}
+
+export function OtcOrderDetailPage(): ReactNode {
+  const enabled = useOtcPageEnabled()
+  const writeEnabled = useOtcWriteEnabled()
+  const rawOrderId = useParams().orderId ?? ''
+  const orderId = parseOtcOrderId(rawOrderId)
+
+  if (!enabled) return <Navigate to={RoutesEnum.HOME} replace />
+  if (orderId === null) return <Navigate to={RoutesEnum.OTC} replace />
+  return <VerifiedOtcOrderDetailPage rawOrderId={rawOrderId} orderId={orderId} writeEnabled={writeEnabled} />
 }

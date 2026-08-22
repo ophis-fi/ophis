@@ -127,4 +127,19 @@ describe('OtcOrderDetailView', () => {
     )
     expect(actionable).toEqual([])
   })
+
+  it('renders a guarded local action only when supplied by the controller', () => {
+    renderDetail({ writeEnabled: true, actionPanel: <button type="button">Guarded local fill</button> })
+    expect(screen.getByRole('button', { name: 'Guarded local fill' })).toBeTruthy()
+    expect(screen.getByText(/Fork-only action detail/)).toBeTruthy()
+  })
+
+  it('suppresses a supplied action when indexed terms disagree', () => {
+    renderDetail({
+      writeEnabled: true,
+      indexed: indexed({ amountB: 999n }),
+      actionPanel: <button type="button">Guarded local fill</button>,
+    })
+    expect(screen.queryByRole('button', { name: 'Guarded local fill' })).toBeNull()
+  })
 })

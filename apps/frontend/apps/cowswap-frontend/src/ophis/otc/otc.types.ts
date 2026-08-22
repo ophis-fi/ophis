@@ -20,7 +20,7 @@ export interface OtcManifest {
   subgraphTimeoutMs: number
   maxIndexLagBlocks: bigint
   tokenPolicyProfile: 'otc-escrow'
-  /** Milestones A/B are read-only: this list is pinned empty. */
+  /** Reviewed contract selectors enabled for the current milestone. */
   enabledTransactionSelectors: readonly Hex[]
 }
 

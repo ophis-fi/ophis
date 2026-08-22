@@ -172,7 +172,7 @@ const EMPTY_STATE = {
  * Ethereum-mainnet-pinned OTC data. Wallet-independent: reads go through the
  * configured network provider, never the connected wallet's chain.
  */
-export function useOtcData(enabled: boolean): OtcDataState {
+export function useOtcData(enabled: boolean, refreshSignal = 0): OtcDataState {
   const publicClient = usePublicClient({ chainId: SupportedChainId.MAINNET })
   const client = useMemo<OtcReaderClient | null>(
     () => (publicClient ? toOtcReaderClient(publicClient) : null),
@@ -184,7 +184,7 @@ export function useOtcData(enabled: boolean): OtcDataState {
   // verified round-trip completes (same rule as the detail page).
   const mountId = useId()
   const { data, error } = useSWR(
-    enabled && client ? ['ophis-otc-data', mountId] : null,
+    enabled && client ? ['ophis-otc-data', mountId, refreshSignal] : null,
     async () => (client ? loadOtcData(client) : null),
     {
       refreshInterval: OTC_DATA_REFRESH_INTERVAL,
