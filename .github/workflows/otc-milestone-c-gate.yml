@@ -155,7 +155,7 @@ jobs:
             current_marker=false
           fi
 
-          latest_request_updated="$(
+          latest_request_record="$(
             gh api --method GET --paginate --slurp \
               "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f per_page=100 \
               | jq -r --arg request "$expected_request" \
@@ -164,15 +164,36 @@ jobs:
                     .author_association == "COLLABORATOR") and
                   ((.body // "") | gsub("\r\n"; "\n") |
                     gsub("^\\s+|\\s+$"; "")) == $request
-                )] | sort_by(.updated_at, .id) | last.updated_at // empty'
+                )] | sort_by(.updated_at, .id) | last |
+                if . == null then empty else [.updated_at, .id] | @tsv end'
           )"
+          latest_request_updated=''
+          latest_request_id=''
+          if [[ -n "$latest_request_record" ]]; then
+            IFS=$'\t' read -r latest_request_updated latest_request_id \
+              <<<"$latest_request_record"
+            [[ "$latest_request_id" =~ ^[1-9][0-9]*$ ]] || {
+              echo 'Invalid latest review-request comment number' >&2
+              exit 1
+            }
+          fi
           request_relevant=true
           clean_relevant=true
           marker_relevant=true
           if [[ -n "$latest_request_updated" ]]; then
-            [[ "$latest_request_updated" > "$COMMENT_UPDATED_AT" ]] && request_relevant=false
-            [[ "$latest_request_updated" > "$COMMENT_CREATED_AT" ]] && clean_relevant=false
-            [[ "$latest_request_updated" > "$COMMENT_CREATED_AT" ]] && marker_relevant=false
+            if [[ "$latest_request_updated" > "$COMMENT_UPDATED_AT" ]] || {
+              [[ "$latest_request_updated" == "$COMMENT_UPDATED_AT" ]] &&
+                ((latest_request_id > COMMENT_ID))
+            }; then
+              request_relevant=false
+            fi
+            if [[ "$latest_request_updated" > "$COMMENT_CREATED_AT" ]] || {
+              [[ "$latest_request_updated" == "$COMMENT_CREATED_AT" ]] &&
+                ((latest_request_id > COMMENT_ID))
+            }; then
+              clean_relevant=false
+              marker_relevant=false
+            fi
           fi
           if [[ "$COMMENT_ACTION" != 'created' ]] && {
             [[ "$COMMENT_USER" == "$CODEX_LOGIN" && "$was_clean" == true && "$clean_relevant" == true ]] ||
