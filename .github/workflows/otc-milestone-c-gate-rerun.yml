@@ -3,10 +3,6 @@ name: OTC Milestone C review-gate dispatcher
 on:
   issue_comment:
     types: [created, edited, deleted]
-  pull_request_review:
-    types: [submitted, edited, dismissed]
-  pull_request_review_comment:
-    types: [created, edited, deleted]
 
 permissions:
   actions: read
@@ -18,27 +14,18 @@ concurrency:
   # Trusted evidence changes share one PR lane. Untrusted comments are isolated
   # so they cannot cancel an authoritative dispatcher run.
   group: >-
-    otc-codex-gate-${{ github.event.issue.number || github.event.pull_request.number }}-${{
-    ((github.event_name == 'issue_comment' &&
+    otc-codex-gate-${{ github.event.issue.number }}-${{
     (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
-    contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) ||
-    (github.event_name == 'pull_request_review_comment' &&
-    github.event.comment.user.login == 'chatgpt-codex-connector[bot]') ||
-    (github.event_name == 'pull_request_review' &&
-    github.event.review.user.login == 'chatgpt-codex-connector[bot]')) &&
+    contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) &&
     'authoritative' || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   rerun-on-comment:
     if: >-
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
+      github.event.issue.pull_request != null &&
       (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))) ||
-      (github.event_name == 'pull_request_review_comment' &&
-      github.event.comment.user.login == 'chatgpt-codex-connector[bot]') ||
-      (github.event_name == 'pull_request_review' &&
-      github.event.review.user.login == 'chatgpt-codex-connector[bot]')
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     name: Re-evaluate the trusted PR-head gate
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -48,8 +35,8 @@ jobs:
       issues: write
       pull-requests: read
     steps:
-      # Conversation-event workflows load from the protected default branch.
-      # Record exact requests and Codex review events in Actions-authored immutable
+      # issue_comment workflows load from the protected default branch. Record
+      # exact requests and Codex issue-comment events in Actions-authored immutable
       # checkpoints, then rerun the existing trusted evaluator attached to this
       # PR head. Never dispatch the evaluator on the default-branch SHA.
       - name: Record the checkpoint and rerun the trusted PR-head evaluator
@@ -63,10 +50,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           GATE_JOB_NAME: OTC Milestone C / fresh Codex review
           GATE_WORKFLOW_PATH: .github/workflows/otc-milestone-c-gate.yml
-          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
-          SOURCE_BODY: ${{ github.event.comment.body || github.event.review.body }}
-          SOURCE_ID: ${{ github.event.comment.id || github.event.review.id }}
-          SOURCE_USER: ${{ github.event.comment.user.login || github.event.review.user.login }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          SOURCE_BODY: ${{ github.event.comment.body }}
+          SOURCE_ID: ${{ github.event.comment.id }}
+          SOURCE_USER: ${{ github.event.comment.user.login }}
         shell: bash
         run: |
           set -euo pipefail
@@ -82,21 +69,12 @@ jobs:
             echo 'Invalid review-event source number' >&2
             exit 1
           }
-          case "$EVENT_NAME:$EVENT_ACTION" in
-            issue_comment:created|issue_comment:edited|issue_comment:deleted)
-              source_kind=issue_comment
-              ;;
-            pull_request_review_comment:created|pull_request_review_comment:edited|pull_request_review_comment:deleted)
-              source_kind=review_comment
-              ;;
-            pull_request_review:submitted|pull_request_review:edited|pull_request_review:dismissed)
-              source_kind=review
-              ;;
-            *)
-              echo 'Invalid review-evidence event' >&2
-              exit 1
-              ;;
-          esac
+          [[ "$EVENT_NAME" == issue_comment &&
+            "$EVENT_ACTION" =~ ^(created|edited|deleted)$ ]] || {
+            echo 'Invalid review-evidence event' >&2
+            exit 1
+          }
+          source_kind=issue_comment
 
           pull_state="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
           head_sha="$(jq -r '.head.sha' <<<"$pull_state")"
@@ -141,9 +119,6 @@ jobs:
               [[ "$COMMENT_ASSOCIATION" == MEMBER ]] ||
               [[ "$COMMENT_ASSOCIATION" == COLLABORATOR ]]
           }; then
-            relevant=true
-            checkpoint=true
-          elif [[ "$SOURCE_USER" == "$CODEX_LOGIN" ]]; then
             relevant=true
             checkpoint=true
           fi

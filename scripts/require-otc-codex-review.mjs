@@ -68,6 +68,23 @@ function isBoundRecordedCheckpoint(comment, headSha, baseSha) {
   );
 }
 
+function isBoundCodexReviewCheckpoint(item, headSha) {
+  return (
+    item?.user?.login === CODEX_LOGIN &&
+    item?.commit_id === headSha &&
+    ['review', 'review_comment'].includes(item?.source) &&
+    Number.isSafeInteger(Number(item?.id)) &&
+    Number(item.id) > 0 &&
+    Number.isFinite(Date.parse(item?.updatedAt))
+  );
+}
+
+function isBoundReviewCheckpoint(item, headSha, baseSha) {
+  return (
+    isBoundRecordedCheckpoint(item, headSha, baseSha) || isBoundCodexReviewCheckpoint(item, headSha)
+  );
+}
+
 function cleanCommentHeadPrefix(comment) {
   const match = String(comment?.body ?? '').match(
     /^Codex Review: Didn't find any major issues\. :\+1:\s*\n+\*\*Reviewed commit:\*\* `([0-9a-f]{10}|[0-9a-f]{40})`(?:\n|$)/,
@@ -75,11 +92,10 @@ function cleanCommentHeadPrefix(comment) {
   return match?.[1];
 }
 
-function hasBoundCleanEvidence(request, headSha, baseSha) {
-  if (!isBoundRecordedCheckpoint(request, headSha, baseSha)) return false;
-  const updatedAt = Date.parse(request.updatedAt);
+function hasFreshCleanEvidence(checkpoint, headSha) {
+  const updatedAt = Date.parse(checkpoint.updatedAt);
   if (!Number.isFinite(updatedAt)) return false;
-  const freshCleanComment = codexItems(request.cleanComments ?? []).some((comment) => {
+  const freshCleanComment = codexItems(checkpoint.cleanComments ?? []).some((comment) => {
     const displayedSha = cleanCommentHeadPrefix(comment);
     const createdAt = Date.parse(comment.created_at);
     return (
@@ -116,10 +132,17 @@ export function assessCodexGate({ headSha, baseSha, changedFiles, files, reviewR
   }
 
   const shortHead = headSha.slice(0, 10);
-  const latestCheckpoint = newestReviewCheckpoint(reviewRequests);
-  const cleanEvidence = latestCheckpoint
-    ? hasBoundCleanEvidence(latestCheckpoint, headSha, baseSha)
-    : false;
+  const boundCheckpoints = reviewRequests.filter((checkpoint) =>
+    isBoundReviewCheckpoint(checkpoint, headSha, baseSha),
+  );
+  const hasRecordedRequest = boundCheckpoints.some((checkpoint) =>
+    isBoundRecordedCheckpoint(checkpoint, headSha, baseSha),
+  );
+  const latestCheckpoint = newestReviewCheckpoint(boundCheckpoints);
+  const cleanEvidence =
+    hasRecordedRequest && latestCheckpoint
+      ? hasFreshCleanEvidence(latestCheckpoint, headSha)
+      : false;
 
   if (cleanEvidence) {
     return {
@@ -281,6 +304,32 @@ function selfTest() {
       ],
     }).accepted,
     'a newer review checkpoint must supersede older clean evidence',
+  );
+  const codexFinding = {
+    id: 3,
+    user: { login: CODEX_LOGIN },
+    commit_id: base.headSha,
+    source: 'review_comment',
+    updatedAt: '2026-08-20T12:02:00Z',
+    cleanComments: [cleanComment],
+  };
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [recordedRequest({ cleanComments: [cleanComment] }), codexFinding],
+    }).accepted,
+    'a newer Codex finding must supersede older clean evidence even when its thread is resolved',
+  );
+  const laterCleanComment = { ...cleanComment, created_at: '2026-08-20T12:03:00Z' };
+  assert(
+    assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({ cleanComments: [cleanComment, laterCleanComment] }),
+        { ...codexFinding, cleanComments: [cleanComment, laterCleanComment] },
+      ],
+    }).accepted,
+    'a clean Codex result after the newest finding must pass',
   );
   assert(
     !assessCodexGate({
@@ -610,7 +659,11 @@ async function runLive() {
 
   // Take an evidence snapshot before the last mutable PR-context check, then
   // discard it. Only evidence fetched after that check is assessed.
-  await api([...prefix, 'issues', number, 'comments'], token, repositoryId);
+  await Promise.all([
+    api([...prefix, 'issues', number, 'comments'], token, repositoryId),
+    api([...prefix, 'pulls', number, 'comments'], token, repositoryId),
+    api([...prefix, 'pulls', number, 'reviews'], token, repositoryId),
+  ]);
   const finalContext = currentPullContext(
     await api([...prefix, 'pulls', number], token, repositoryId),
   );
@@ -624,11 +677,11 @@ async function runLive() {
   ) {
     throw new Error('Pull request state changed during gate evaluation; rerun against fresh state');
   }
-  const rawIssueComments = await api(
-    [...prefix, 'issues', number, 'comments'],
-    token,
-    repositoryId,
-  );
+  const [rawIssueComments, reviewComments, reviews] = await Promise.all([
+    api([...prefix, 'issues', number, 'comments'], token, repositoryId),
+    api([...prefix, 'pulls', number, 'comments'], token, repositoryId),
+    api([...prefix, 'pulls', number, 'reviews'], token, repositoryId),
+  ]);
   const issueComments = await resolveCleanCommentHeads(
     rawIssueComments,
     headSha,
@@ -636,18 +689,31 @@ async function runLive() {
     token,
     repositoryId,
   );
-  const matchingRequests = issueComments
+  const recordedCheckpoints = issueComments
     .filter((comment) => isBoundRecordedCheckpoint(comment, headSha, baseSha))
     .sort((left, right) => {
       const timeOrder = String(right.created_at).localeCompare(String(left.created_at));
       return timeOrder || Number(right.id) - Number(left.id);
-    })
-    .slice(0, 1);
-  const reviewRequests = matchingRequests.map((comment) => ({
+    });
+  const reviewRequests = recordedCheckpoints.map((comment) => ({
     ...comment,
     updatedAt: comment.created_at,
     cleanComments: issueComments,
   }));
+  reviewRequests.push(
+    ...reviewComments.map((comment) => ({
+      ...comment,
+      source: 'review_comment',
+      updatedAt: comment.created_at,
+      cleanComments: issueComments,
+    })),
+    ...reviews.map((review) => ({
+      ...review,
+      source: 'review',
+      updatedAt: review.submitted_at,
+      cleanComments: issueComments,
+    })),
+  );
   const result = assessCodexGate({
     headSha,
     baseSha,
