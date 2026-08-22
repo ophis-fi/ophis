@@ -88,6 +88,11 @@ jobs:
       - name: Install cowswap dependencies
         working-directory: apps/frontend
         run: pnpm install --frozen-lockfile
+      - name: Install the pinned Cypress binary
+        working-directory: apps/frontend/apps/cowswap-frontend-e2e
+        run: |
+          pnpm exec cypress install
+          pnpm exec cypress verify
       - name: Run injected-wallet flow against a local mainnet fork
         working-directory: apps/frontend
         env:
@@ -100,9 +105,22 @@ jobs:
           test -n "$OPHIS_FORK_RPC_ETH" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
           anvil --fork-url "$OPHIS_FORK_RPC_ETH" --no-rate-limit --chain-id 1 --host 127.0.0.1 --port 8545 > /tmp/otc-anvil.log 2>&1 &
           anvil_pid=$!
+          trap 'kill "$anvil_pid" 2>/dev/null || true; [[ -z "${frontend_pid:-}" ]] || kill "$frontend_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..60}; do
+            if [[ "$(curl --fail --silent --show-error http://127.0.0.1:8545 \
+              -H 'content-type: application/json' \
+              --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' |
+              jq -r '.result // empty')" == 0x1 ]]; then
+              break
+            fi
+            if ! kill -0 "$anvil_pid" 2>/dev/null || [[ "$attempt" -eq 60 ]]; then
+              cat /tmp/otc-anvil.log
+              exit 1
+            fi
+            sleep 1
+          done
           pnpm start:cowswap > /tmp/otc-frontend.log 2>&1 &
           frontend_pid=$!
-          trap 'kill "$frontend_pid" "$anvil_pid" 2>/dev/null || true' EXIT
           for attempt in {1..120}; do
             if curl --fail --silent http://127.0.0.1:3000 >/dev/null; then
               break
