@@ -34,7 +34,10 @@ concurrency:
     github.event.action == 'edited' && github.event.changes.base == null &&
     format('ignored-{0}', github.run_id) || github.event_name == 'issue_comment' &&
     github.event.comment.user.login != 'chatgpt-codex-connector[bot]' &&
-    github.event.comment.user.login != 'github-actions[bot]' &&
+    !(github.event.action != 'created' &&
+    github.event.comment.user.login == 'github-actions[bot]' &&
+    (startsWith(github.event.comment.body, 'OTC Codex gate invalidated.') ||
+    startsWith(github.event.changes.body.from, 'OTC Codex gate invalidated.'))) &&
     !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
     github.event.comment.id || 'authoritative' }}
   cancel-in-progress: true
