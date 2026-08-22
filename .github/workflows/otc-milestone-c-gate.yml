@@ -23,17 +23,68 @@ on:
 permissions:
   actions: read
   contents: read
-  issues: read
+  issues: write
   pull-requests: read
 
 jobs:
   codex-review:
     if: >-
-      github.event_name != 'pull_request_target' ||
-      github.event.action != 'edited' || github.event.changes.base != null
+      (github.event_name == 'pull_request_target' &&
+      (github.event.action != 'edited' || github.event.changes.base != null)) ||
+      (github.event_name == 'pull_request_review_comment' &&
+      github.event.comment.user.login == 'chatgpt-codex-connector[bot]') ||
+      (github.event_name == 'pull_request_review' &&
+      github.event.review.user.login == 'chatgpt-codex-connector[bot]')
     name: OTC Milestone C / fresh Codex review
     runs-on: ubuntu-latest
     steps:
+      - name: Persist the Codex review event
+        if: github.event_name != 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_ACTION: ${{ github.event.action }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SOURCE_COMMIT: ${{ github.event.comment.commit_id || github.event.review.commit_id }}
+          SOURCE_ID: ${{ github.event.comment.id || github.event.review.id }}
+          SOURCE_KIND: ${{ github.event_name == 'pull_request_review' && 'review' || 'review_comment' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+            echo 'Invalid GitHub repository' >&2
+            exit 1
+          }
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ && "$SOURCE_ID" =~ ^[1-9][0-9]*$ &&
+            "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'Invalid review-event context' >&2
+            exit 1
+          }
+          case "$SOURCE_KIND:$EVENT_ACTION" in
+            review:submitted|review:edited|review:dismissed|review_comment:created|review_comment:edited|review_comment:deleted) ;;
+            *)
+              echo 'Invalid Codex review event' >&2
+              exit 1
+              ;;
+          esac
+          pull_state="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
+          head_sha="$(jq -r '.head.sha' <<<"$pull_state")"
+          base_sha="$(jq -r '.base.sha' <<<"$pull_state")"
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ && "$base_sha" =~ ^[0-9a-f]{40}$ ]] || {
+            echo 'Invalid pull request commit context' >&2
+            exit 1
+          }
+          if [[ "$SOURCE_COMMIT" != "$head_sha" ]]; then
+            echo 'Historical Codex review event does not checkpoint the current head.'
+            exit 0
+          fi
+          marker="OTC Codex review checkpoint recorded.
+
+          Head: $head_sha
+          Base: $base_sha
+          Source: $SOURCE_KIND:$EVENT_ACTION $SOURCE_ID
+          Event run: $GITHUB_RUN_ID"
+          gh api --silent --method POST \
+            "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$marker"
       # Run the gate implementation from the trusted base commit. Otherwise a
       # money-path PR could edit this script to approve itself.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

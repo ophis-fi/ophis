@@ -54,13 +54,13 @@ function reviewRequestBody(headSha, baseSha) {
 }
 
 function recordedReviewCheckpointBody(headSha, baseSha, source, sourceId) {
-  return `OTC Codex review checkpoint recorded.\n\nHead: ${headSha}\nBase: ${baseSha}\nSource: ${source} ${sourceId}`;
+  return `OTC Codex review checkpoint recorded.\n\nHead: ${headSha}\nBase: ${baseSha}\nSource: ${source} ${sourceId}\nEvent run: 1`;
 }
 
 function isBoundRecordedCheckpoint(comment, headSha, baseSha) {
   if (comment?.user?.login !== ACTIONS_LOGIN) return false;
   return new RegExp(
-    `^OTC Codex review checkpoint recorded\\.\\n\\nHead: ${headSha}\\nBase: ${baseSha}\\nSource: (?:issue_comment|review_comment|review):(created|edited|deleted|submitted|dismissed) [1-9][0-9]*$`,
+    `^OTC Codex review checkpoint recorded\\.\\n\\nHead: ${headSha}\\nBase: ${baseSha}\\nSource: (?:issue_comment|review_comment|review|checkpoint):(created|edited|deleted|submitted|dismissed) [1-9][0-9]*\\nEvent run: [1-9][0-9]*$`,
   ).test(
     String(comment.body ?? '')
       .replaceAll('\r\n', '\n')
@@ -720,7 +720,7 @@ async function runLive() {
     ...reviewComments.map((comment) => ({
       ...comment,
       source: 'review_comment',
-      updatedAt: comment.created_at,
+      updatedAt: comment.updated_at,
       cleanComments: issueComments,
     })),
     ...reviews.map((review) => ({

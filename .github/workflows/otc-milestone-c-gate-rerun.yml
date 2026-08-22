@@ -6,40 +6,38 @@ on:
 
 permissions:
   actions: read
+  checks: read
   contents: read
   issues: read
   pull-requests: read
-
-concurrency:
-  # Trusted evidence changes share one PR lane. Untrusted comments are isolated
-  # so they cannot cancel an authoritative dispatcher run.
-  group: >-
-    otc-codex-gate-${{ github.event.issue.number }}-${{
-    (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
-    contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) &&
-    'authoritative' || github.run_id }}
-  cancel-in-progress: false
 
 jobs:
   rerun-on-comment:
     if: >-
       github.event.issue.pull_request != null &&
       (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+      (github.event.action != 'created' &&
+      github.event.comment.user.login == 'github-actions[bot]' &&
+      (startsWith(github.event.comment.body, 'OTC Codex review checkpoint recorded.') ||
+      startsWith(github.event.changes.body.from, 'OTC Codex review checkpoint recorded.'))) ||
+      (github.event.action != 'deleted' &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+      startsWith(github.event.comment.body, '@codex review')))
     name: Re-evaluate the trusted PR-head gate
     runs-on: ubuntu-latest
     timeout-minutes: 12
     permissions:
-      actions: write
+      actions: read
+      checks: write
       contents: read
       issues: write
       pull-requests: read
     steps:
       # issue_comment workflows load from the protected default branch. Record
-      # exact requests and Codex issue-comment events in Actions-authored immutable
-      # checkpoints, then rerun the existing trusted evaluator attached to this
-      # PR head. Never dispatch the evaluator on the default-branch SHA.
-      - name: Record the checkpoint and rerun the trusted PR-head evaluator
+      # exact requests and evidence mutations as Actions-authored checkpoints,
+      # then immediately rerequest the existing trusted check suite attached to
+      # this PR head. Check-suite rerequests have no workflow-run age limit.
+      - name: Record the checkpoint and rerequest the trusted PR-head evaluator
         env:
           GH_TOKEN: ${{ github.token }}
           ACTIONS_LOGIN: github-actions[bot]
@@ -47,11 +45,11 @@ jobs:
           CLEAN_PREFIX: "Codex Review: Didn't find any major issues."
           COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
           EVENT_ACTION: ${{ github.event.action }}
-          EVENT_NAME: ${{ github.event_name }}
           GATE_JOB_NAME: OTC Milestone C / fresh Codex review
           GATE_WORKFLOW_PATH: .github/workflows/otc-milestone-c-gate.yml
           PR_NUMBER: ${{ github.event.issue.number }}
           SOURCE_BODY: ${{ github.event.comment.body }}
+          SOURCE_BODY_FROM: ${{ github.event.changes.body.from }}
           SOURCE_ID: ${{ github.event.comment.id }}
           SOURCE_USER: ${{ github.event.comment.user.login }}
         shell: bash
@@ -69,12 +67,14 @@ jobs:
             echo 'Invalid review-event source number' >&2
             exit 1
           }
-          [[ "$EVENT_NAME" == issue_comment &&
-            "$EVENT_ACTION" =~ ^(created|edited|deleted)$ ]] || {
-            echo 'Invalid review-evidence event' >&2
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'Invalid dispatcher run number' >&2
             exit 1
           }
-          source_kind=issue_comment
+          [[ "$EVENT_ACTION" =~ ^(created|edited|deleted)$ ]] || {
+            echo 'Invalid issue-comment event' >&2
+            exit 1
+          }
 
           pull_state="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
           head_sha="$(jq -r '.head.sha' <<<"$pull_state")"
@@ -97,37 +97,61 @@ jobs:
           normalized_body="$(
             jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' <<<"$SOURCE_BODY"
           )"
+          normalized_body_from="$(
+            jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' \
+              <<<"$SOURCE_BODY_FROM"
+          )"
           expected_request="@codex review
 
           Head: $head_sha
           Base: $base_sha"
+          checkpoint_prefix="OTC Codex review checkpoint recorded.
+
+          Head: $head_sha
+          Base: $base_sha
+          Source: "
           short_head="${head_sha:0:10}"
           relevant=false
           checkpoint=false
-          if [[ "$EVENT_NAME" == issue_comment && "$SOURCE_USER" == "$CODEX_LOGIN" ]]; then
+          checkpoint_source=''
+          if [[ "$SOURCE_USER" == "$CODEX_LOGIN" ]]; then
             relevant=true
             checkpoint=true
+            checkpoint_source="issue_comment:$EVENT_ACTION"
             if [[ "$EVENT_ACTION" != deleted && "$SOURCE_BODY" == "$CLEAN_PREFIX"* ]] && {
               [[ "$SOURCE_BODY" == *"**Reviewed commit:** \`$short_head\`"* ]] ||
                 [[ "$SOURCE_BODY" == *"**Reviewed commit:** \`$head_sha\`"* ]]
             }; then
               checkpoint=false
             fi
-          elif [[ "$EVENT_NAME" == issue_comment && "$EVENT_ACTION" != deleted &&
-            "$normalized_body" == "$expected_request" ]] && {
+          elif [[ "$SOURCE_USER" == "$ACTIONS_LOGIN" && "$EVENT_ACTION" != created ]] && {
+            [[ "$normalized_body" == "$checkpoint_prefix"* ]] ||
+              [[ "$normalized_body_from" == "$checkpoint_prefix"* ]]
+          }; then
+            relevant=true
+            checkpoint=true
+            checkpoint_source="checkpoint:$EVENT_ACTION"
+          elif [[ "$EVENT_ACTION" != deleted && "$normalized_body" == "$expected_request" ]] && {
             [[ "$COMMENT_ASSOCIATION" == OWNER ]] ||
               [[ "$COMMENT_ASSOCIATION" == MEMBER ]] ||
               [[ "$COMMENT_ASSOCIATION" == COLLABORATOR ]]
           }; then
             relevant=true
             checkpoint=true
+            checkpoint_source="issue_comment:$EVENT_ACTION"
           fi
+          if [[ "$relevant" != true ]]; then
+            echo 'Comment does not change OTC Codex evidence.'
+            exit 0
+          fi
+
           if [[ "$checkpoint" == true ]]; then
             marker="OTC Codex review checkpoint recorded.
 
           Head: $head_sha
           Base: $base_sha
-          Source: $source_kind:$EVENT_ACTION $SOURCE_ID"
+          Source: $checkpoint_source $SOURCE_ID
+          Event run: $GITHUB_RUN_ID"
             marker_count="$(
               gh api --method GET --paginate --slurp \
                 "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f per_page=100 |
@@ -137,17 +161,13 @@ jobs:
                       gsub("^\\s+|\\s+$"; "")) == $marker)] | length'
             )"
             [[ "$marker_count" =~ ^[0-9]+$ ]] || {
-              echo 'Invalid recorded-request marker count' >&2
+              echo 'Invalid review-checkpoint marker count' >&2
               exit 1
             }
             if ((marker_count == 0)); then
               gh api --silent --method POST \
                 "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$marker"
             fi
-          fi
-          if [[ "$relevant" != true ]]; then
-            echo 'Comment does not change OTC Codex evidence.'
-            exit 0
           fi
 
           latest_pull="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER")"
@@ -162,9 +182,9 @@ jobs:
               "repos/$GITHUB_REPOSITORY/commits/$head_sha/check-runs" \
               -f check_name="$GATE_JOB_NAME" -f filter=all -f per_page=100
           )"
-          run_ids=()
-          while IFS= read -r candidate_run_id; do
-            run_ids+=("$candidate_run_id")
+          candidates=()
+          while IFS= read -r candidate; do
+            candidates+=("$candidate")
           done < <(
             jq -r --arg repo "$GITHUB_REPOSITORY" --arg head "$head_sha" '
               [.[].check_runs[] |
@@ -173,39 +193,50 @@ jobs:
                 . + {run_id: (.details_url |
                   capture("/actions/runs/(?<run>[1-9][0-9]*)/job/[1-9][0-9]*$").run |
                   tonumber)}] |
-              sort_by(.started_at, .id) | reverse | .[].run_id
+              sort_by(.started_at, .id) | reverse |
+              .[] | [.run_id, .check_suite.id] | @tsv
             ' <<<"$check_runs"
           )
           run_id=''
-          for candidate in "${run_ids[@]}"; do
-            [[ "$candidate" =~ ^[1-9][0-9]*$ ]] || continue
-            run_state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate")"
+          suite_id=''
+          for candidate in "${candidates[@]}"; do
+            IFS=$'\t' read -r candidate_run candidate_suite <<<"$candidate"
+            [[ "$candidate_run" =~ ^[1-9][0-9]*$ &&
+              "$candidate_suite" =~ ^[1-9][0-9]*$ ]] || continue
+            run_state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run")"
             if jq -e --arg repo "$GITHUB_REPOSITORY" --arg head "$head_sha" \
-              --arg path "$GATE_WORKFLOW_PATH" --argjson id "$candidate" '
+              --arg path "$GATE_WORKFLOW_PATH" --argjson id "$candidate_run" '
                 .id == $id and .event == "pull_request_target" and
                 .head_sha == $head and .path == $path and
                 .repository.full_name == $repo
               ' <<<"$run_state" >/dev/null; then
-              run_id="$candidate"
+              run_id="$candidate_run"
+              suite_id="$candidate_suite"
               break
             fi
           done
-          [[ "$run_id" =~ ^[1-9][0-9]*$ ]] || {
-            echo 'No trusted PR-head evaluator run is available to rerun' >&2
+          [[ "$run_id" =~ ^[1-9][0-9]*$ && "$suite_id" =~ ^[1-9][0-9]*$ ]] || {
+            echo 'No trusted PR-head evaluator check suite is available to rerequest' >&2
             exit 1
           }
 
-          for _ in {1..108}; do
-            run_status="$(
-              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status'
-            )"
-            [[ "$run_status" == completed ]] && break
-            sleep 5
-          done
+          run_status="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status'
+          )"
+          if [[ "$run_status" != completed ]]; then
+            echo "Evaluator run $run_id is already $run_status; its PR-head check is blocking."
+            for _ in {1..108}; do
+              sleep 5
+              run_status="$(
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.status'
+              )"
+              [[ "$run_status" == completed ]] && break
+            done
+          fi
           [[ "$run_status" == completed ]] || {
-            echo 'Timed out waiting for the current evaluator run' >&2
+            echo 'Timed out waiting for the blocking evaluator run' >&2
             exit 1
           }
           gh api --silent --method POST \
-            "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun"
-          echo "Rerequested trusted evaluator run $run_id for head $head_sha."
+            "repos/$GITHUB_REPOSITORY/check-suites/$suite_id/rerequest"
+          echo "Rerequested trusted check suite $suite_id for head $head_sha."
