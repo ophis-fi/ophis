@@ -27,6 +27,8 @@ export interface OtcManifest {
 export interface OtcBlock {
   number: bigint
   hash: Hex | null
+  /** Authoritative EVM block timestamp in Unix seconds. */
+  timestamp: bigint
 }
 
 export interface OtcReadCall {

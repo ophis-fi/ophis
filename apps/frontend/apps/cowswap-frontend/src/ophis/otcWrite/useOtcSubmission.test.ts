@@ -84,17 +84,15 @@ describe('useOtcSubmission', () => {
     expect(refreshAllowance).toHaveBeenCalledTimes(1)
   })
 
-  it('replaces the placeholder fill deadline immediately before preflight', async () => {
-    jest.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000)
+  it('delegates the placeholder fill deadline to verified-block preflight', async () => {
     submitMock.mockResolvedValue({ transactionHash: HASH, status: 'success', blockNumber: 10n })
     const onConfirmed = jest.fn()
     const { result } = renderHook(() => useOtcSubmission(options({ onConfirmed })))
 
     await act(() => result.current.submit({ kind: 'fill', account: ACCOUNT, order, deadline: 1n }, true))
 
-    expect(submitMock.mock.calls[0][2]).toMatchObject({ kind: 'fill', deadline: 1_800_000_180n })
+    expect(submitMock.mock.calls[0][2]).toMatchObject({ kind: 'fill', deadline: 1n })
     expect(onConfirmed).toHaveBeenCalledTimes(1)
-    jest.restoreAllMocks()
   })
 
   it('admits only one submission while the current wallet request is in flight', async () => {
@@ -117,5 +115,64 @@ describe('useOtcSubmission', () => {
     resolveSubmission({ transactionHash: HASH, status: 'success', blockNumber: 10n })
     await act(async () => Promise.all(submissions))
     expect(result.current.pendingIntent).toBeNull()
+  })
+
+  it('discards a completed submission after the action context changes', async () => {
+    let resolveSubmission!: (value: Awaited<ReturnType<typeof submitOtcTransaction>>) => void
+    submitMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSubmission = resolve
+        }),
+    )
+    const oldConfirmed = jest.fn()
+    const newConfirmed = jest.fn()
+    const { result, rerender } = renderHook(
+      ({ hookOptions }: { hookOptions: OtcSubmissionOptions }) => useOtcSubmission(hookOptions),
+      { initialProps: { hookOptions: options({ onConfirmed: oldConfirmed }) } },
+    )
+
+    let submission!: Promise<void>
+    act(() => {
+      submission = result.current.submit({ kind: 'cancel', account: MAKER, order }, true)
+    })
+    rerender({ hookOptions: options({ resetKey: 'order-8', onConfirmed: newConfirmed }) })
+    resolveSubmission({ transactionHash: HASH, status: 'success', blockNumber: 10n })
+    await act(async () => submission)
+
+    expect(result.current.pendingIntent).toBeNull()
+    expect(result.current.successHash).toBeNull()
+    expect(result.current.error).toBeNull()
+    expect(result.current.recoveryRequired).toBe(false)
+    expect(result.current.allowanceCooldown).toBe(false)
+    expect(oldConfirmed).not.toHaveBeenCalled()
+    expect(newConfirmed).not.toHaveBeenCalled()
+  })
+
+  it('discards a failed submission and its recovery read after the action context changes', async () => {
+    let rejectSubmission!: (error: Error) => void
+    submitMock.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectSubmission = reject
+        }),
+    )
+    const refreshAllowance = jest.fn().mockResolvedValue({ allowance: 2n })
+    const { result, rerender } = renderHook(
+      ({ hookOptions }: { hookOptions: OtcSubmissionOptions }) => useOtcSubmission(hookOptions),
+      { initialProps: { hookOptions: options({ refreshAllowance }) } },
+    )
+
+    let submission!: Promise<void>
+    act(() => {
+      submission = result.current.submit({ kind: 'fill', account: ACCOUNT, order, deadline: 1n }, true)
+    })
+    rerender({ hookOptions: options({ resetKey: 'order-8', refreshAllowance }) })
+    rejectSubmission(new Error('Ophis OTC order not active'))
+    await act(async () => submission)
+
+    expect(result.current.error).toBeNull()
+    expect(result.current.recoveryRequired).toBe(false)
+    expect(refreshAllowance).not.toHaveBeenCalled()
   })
 })

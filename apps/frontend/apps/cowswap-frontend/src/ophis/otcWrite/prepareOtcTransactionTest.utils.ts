@@ -19,6 +19,7 @@ export interface MockOtcPreflightState {
   current?: OtcOrder
   simulated?: OtcTransactionRequest[]
   allowance?: bigint
+  blockTimestamp?: bigint
   finalBlockHash?: Hex
 }
 
@@ -47,10 +48,14 @@ export function mockOtcWriteClient(state: MockOtcPreflightState = {}): OtcWriteC
   let blockReads = 0
   return {
     getChainId: async () => 1,
-    getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH }),
+    getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH, timestamp: state.blockTimestamp ?? NOW }),
     getBlockByNumber: async (blockNumber) => {
       blockReads += 1
-      return { number: blockNumber, hash: blockReads > 1 ? (state.finalBlockHash ?? BLOCK_HASH) : BLOCK_HASH }
+      return {
+        number: blockNumber,
+        hash: blockReads > 2 ? (state.finalBlockHash ?? BLOCK_HASH) : BLOCK_HASH,
+        timestamp: state.blockTimestamp ?? NOW,
+      }
     },
     getCode: async () => MOCK_CODE,
     call: async (request) => {

@@ -91,5 +91,7 @@ export interface OtcWriteRuntimeAuthorization {
 
 export interface PreparedOtcTransaction {
   request: OtcTransactionRequest
+  intent: OtcWriteIntent
+  preparedAtTimestamp: bigint
   simulatedAtBlock: bigint
 }

@@ -132,11 +132,11 @@ export function toOtcLegacyForkClients(
     getChainId: async () => (await provider.getNetwork()).chainId,
     getLatestBlock: async () => {
       const block = await provider.getBlock('latest')
-      return { number: BigInt(block.number), hash: block.hash as Hex | null }
+      return { number: BigInt(block.number), hash: block.hash as Hex | null, timestamp: BigInt(block.timestamp) }
     },
     getBlockByNumber: async (blockNumber) => {
       const block = await provider.getBlock(safeBlockNumber(blockNumber))
-      return { number: BigInt(block.number), hash: block.hash as Hex | null }
+      return { number: BigInt(block.number), hash: block.hash as Hex | null, timestamp: BigInt(block.timestamp) }
     },
     getCode: async (address, blockNumber) => provider.getCode(address, safeBlockNumber(blockNumber)) as Promise<Hex>,
     call: async (request) => ({

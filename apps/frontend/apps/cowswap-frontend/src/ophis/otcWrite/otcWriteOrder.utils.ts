@@ -1,13 +1,21 @@
+import { getAddressKey } from '@cowprotocol/cow-sdk'
+
 import { getOtcTokenMeta } from 'ophis/otc'
 import { isAddressEqual } from 'viem'
 
 import type { OtcOrder } from 'ophis/otc'
 
 type OtcReviewKeyPart = string | number | bigint | boolean
+const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/
+
+function normalizeReviewKeyPart(part: OtcReviewKeyPart): string {
+  const value = String(part)
+  return ADDRESS_PATTERN.test(value) ? getAddressKey(value) : value
+}
 
 /** A checked review is valid only for one wallet account and one exact action payload. */
 export function getOtcActionReviewKey(account: string | undefined, parts: readonly OtcReviewKeyPart[]): string {
-  return [account?.toLowerCase() ?? 'disconnected', ...parts.map((part) => String(part).toLowerCase())].join(':')
+  return [account ? getAddressKey(account) : 'disconnected', ...parts.map(normalizeReviewKeyPart)].join(':')
 }
 
 export function isReviewedOtcOrder(order: OtcOrder): boolean {

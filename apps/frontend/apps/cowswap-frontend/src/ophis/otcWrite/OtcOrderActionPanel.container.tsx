@@ -11,6 +11,7 @@ import { OtcUsdValue } from './OtcUsdValue.pure'
 import * as styledEl from './OtcWrite.styled'
 import { reviewedOtcToken, type OtcReviewedToken } from './otcWriteForm'
 import { getOtcActionReviewKey } from './otcWriteOrder.utils'
+import { useOtcUsdAmount } from './useOtcUsdAmount'
 
 import type { OtcActionDefinition } from './useOtcActionController'
 import type { OtcOrder } from 'ophis/otc'
@@ -51,11 +52,19 @@ function OtcOrderTermsSummary({
   order,
   paymentToken,
   receivedToken,
+  paymentUsdValue,
+  paymentUsdLoading,
+  receivedUsdValue,
+  receivedUsdLoading,
 }: {
   isMaker: boolean
   order: OtcOrder
   paymentToken: OtcReviewedToken | null
   receivedToken: OtcReviewedToken | null
+  paymentUsdValue: string | null
+  paymentUsdLoading: boolean
+  receivedUsdValue: string | null
+  receivedUsdLoading: boolean
 }): ReactNode {
   if (!paymentToken || !receivedToken) return null
   if (isMaker) {
@@ -73,11 +82,11 @@ function OtcOrderTermsSummary({
       <p>
         Pay {formatOtcAmount(order.amountB, paymentToken.decimals)} {paymentToken.symbol}.
       </p>
-      <OtcUsdValue token={paymentToken} amount={order.amountB} />
+      <OtcUsdValue amount={order.amountB} value={paymentUsdValue} isLoading={paymentUsdLoading} />
       <p>
         Receive {formatOtcAmount(order.amountA, receivedToken.decimals)} {receivedToken.symbol}.
       </p>
-      <OtcUsdValue token={receivedToken} amount={order.amountA} />
+      <OtcUsdValue amount={order.amountA} value={receivedUsdValue} isLoading={receivedUsdLoading} />
       <p>The fill uses a fresh three-minute deadline and may lose an Ethereum race.</p>
     </styledEl.WriteSummary>
   )
@@ -89,6 +98,8 @@ export function OtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; o
   const isMaker = !!account && isAddressEqual(account, order.maker)
   const paymentToken = reviewedOtcToken(order.tokenB)
   const receivedToken = reviewedOtcToken(order.tokenA)
+  const paymentUsd = useOtcUsdAmount(isMaker ? null : paymentToken, isMaker ? null : order.amountB)
+  const receivedUsd = useOtcUsdAmount(isMaker ? null : receivedToken, isMaker ? null : order.amountA)
   const resetKey = getOtcActionReviewKey(account, [
     isMaker ? 'cancel' : 'fill',
     order.orderId,
@@ -119,7 +130,16 @@ export function OtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; o
             : 'This order is inactive. Only a positive existing escrow allowance can be revoked.'}
         </p>
       </Callout>
-      <OtcOrderTermsSummary isMaker={isMaker} order={order} paymentToken={paymentToken} receivedToken={receivedToken} />
+      <OtcOrderTermsSummary
+        isMaker={isMaker}
+        order={order}
+        paymentToken={paymentToken}
+        receivedToken={receivedToken}
+        paymentUsdValue={paymentUsd.value}
+        paymentUsdLoading={paymentUsd.isLoading}
+        receivedUsdValue={receivedUsd.value}
+        receivedUsdLoading={receivedUsd.isLoading}
+      />
       {order.active && (
         <styledEl.ReviewLabel>
           <input

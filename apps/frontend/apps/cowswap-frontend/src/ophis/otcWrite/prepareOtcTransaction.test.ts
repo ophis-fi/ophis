@@ -1,5 +1,6 @@
 import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 
+import { OTC_FILL_DEADLINE_WINDOW_SECONDS } from './buildOtcTransaction'
 import { prepareOtcTransaction, submitOtcTransaction } from './prepareOtcTransaction'
 import {
   MAKER,
@@ -35,12 +36,22 @@ describe('Milestone C preflight and submission', () => {
     const result = await prepareOtcTransaction(
       mockOtcWriteClient(state),
       { kind: 'fill', account: TAKER, order: mockOtcOrder(), deadline: NOW + 180n },
-      NOW,
       mockOtcManifest(),
     )
 
     expect(result.simulatedAtBlock).toBe(200n)
+    expect(result.preparedAtTimestamp).toBe(NOW)
     expect(state.simulated).toEqual([result.request])
+  })
+
+  it('derives a short fill deadline from the verified fork block timestamp', async () => {
+    const result = await prepareOtcTransaction(
+      mockOtcWriteClient({ blockTimestamp: NOW, simulated: [] }),
+      { kind: 'fill', account: TAKER, order: mockOtcOrder(), deadline: 1n },
+      mockOtcManifest(),
+    )
+
+    expect(result.intent).toMatchObject({ kind: 'fill', deadline: NOW + OTC_FILL_DEADLINE_WINDOW_SECONDS })
   })
 
   it('rejects a raced or changed order before simulation', async () => {
@@ -52,7 +63,6 @@ describe('Milestone C preflight and submission', () => {
       prepareOtcTransaction(
         mockOtcWriteClient(state),
         { kind: 'fill', account: TAKER, order: mockOtcOrder(), deadline: NOW + 180n },
-        NOW,
         mockOtcManifest(),
       ),
     ).rejects.toThrow('Ophis OTC order changed before submission')
@@ -68,7 +78,6 @@ describe('Milestone C preflight and submission', () => {
         account: MAKER,
         draft: { tokenA: WETH_MAINNET.address, amountA: 1n, tokenB: USDC_MAINNET.address, amountB: 2n },
       },
-      NOW,
       mockOtcManifest(),
     )
     expect(state.simulated).toEqual([result.request])
@@ -81,11 +90,31 @@ describe('Milestone C preflight and submission', () => {
       prepareOtcTransaction(
         mockOtcWriteClient(state),
         { kind: 'fill', account: TAKER, order: expected, deadline: NOW + 180n },
-        NOW,
         mockOtcManifest(),
       ),
     ).rejects.toThrow('Ophis OTC exact allowance required')
     expect(state.simulated).toEqual([])
+  })
+
+  it('rechecks that allowance is zero immediately before an approval', async () => {
+    const expected = mockOtcOrder()
+    const positive: MockOtcPreflightState = { simulated: [], allowance: 1n }
+    await expect(
+      prepareOtcTransaction(
+        mockOtcWriteClient(positive),
+        { kind: 'approve-fill', account: TAKER, order: expected },
+        mockOtcManifest(),
+      ),
+    ).rejects.toThrow('Ophis OTC exact allowance required')
+    expect(positive.simulated).toEqual([])
+
+    const zero: MockOtcPreflightState = { simulated: [], allowance: 0n }
+    const approved = await prepareOtcTransaction(
+      mockOtcWriteClient(zero),
+      { kind: 'approve-fill', account: TAKER, order: expected },
+      mockOtcManifest(),
+    )
+    expect(zero.simulated).toEqual([approved.request])
   })
 
   it('rejects a block identity change after final simulation', async () => {
@@ -97,7 +126,6 @@ describe('Milestone C preflight and submission', () => {
       prepareOtcTransaction(
         mockOtcWriteClient(state),
         { kind: 'fill', account: TAKER, order: mockOtcOrder(), deadline: NOW + 180n },
-        NOW,
         mockOtcManifest(),
       ),
     ).rejects.toThrow('Ophis OTC block changed')
@@ -110,7 +138,6 @@ describe('Milestone C preflight and submission', () => {
     const result = await prepareOtcTransaction(
       mockOtcWriteClient(state),
       { kind: 'revoke-fill', account: TAKER, order: stale },
-      NOW,
       mockOtcManifest(),
     )
 
@@ -140,9 +167,9 @@ describe('Milestone C preflight and submission', () => {
     ]
 
     for (const auth of denied) {
-      await expect(
-        submitOtcTransaction(mockOtcWriteClient(), wallet, intent, auth, NOW, mockOtcManifest()),
-      ).rejects.toThrow('Ophis OTC writes are disabled')
+      await expect(submitOtcTransaction(mockOtcWriteClient(), wallet, intent, auth, mockOtcManifest())).rejects.toThrow(
+        'Ophis OTC writes are disabled',
+      )
     }
     expect(wallet.sendTransaction).not.toHaveBeenCalled()
   })
@@ -165,7 +192,6 @@ describe('Milestone C preflight and submission', () => {
           wallet,
           { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
           mockOtcAuthorization({ writeMode: 'production' }),
-          NOW,
           mockOtcManifest(),
         ),
       ).rejects.toThrow('Ophis OTC writes are disabled')
@@ -198,7 +224,6 @@ describe('Milestone C preflight and submission', () => {
       wallet,
       { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
       mockOtcAuthorization(),
-      NOW,
       mockOtcManifest(),
     )
     expect(calls).toEqual(['simulate', 'send', 'receipt'])
@@ -216,7 +241,6 @@ describe('Milestone C preflight and submission', () => {
         wallet,
         { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
         mockOtcAuthorization(),
-        NOW,
         mockOtcManifest(),
       ),
     ).rejects.toThrow('Ophis OTC transaction reverted')

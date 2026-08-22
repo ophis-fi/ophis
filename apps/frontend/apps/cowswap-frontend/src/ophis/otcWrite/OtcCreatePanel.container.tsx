@@ -11,6 +11,7 @@ import { OtcUsdValue } from './OtcUsdValue.pure'
 import * as styledEl from './OtcWrite.styled'
 import { OTC_REVIEWED_TOKENS, parseOtcCreateDraft, reviewedOtcToken, type OtcReviewedToken } from './otcWriteForm'
 import { getOtcActionReviewKey } from './otcWriteOrder.utils'
+import { useOtcUsdAmount } from './useOtcUsdAmount'
 
 import type { OtcActionDefinition } from './useOtcActionController'
 import type { Address } from 'viem'
@@ -26,6 +27,10 @@ interface OtcCreateFieldsProps {
   onAmountB(value: string): void
   parsedAmountA: bigint | null
   parsedAmountB: bigint | null
+  usdValueA: string | null
+  usdValueB: string | null
+  usdLoadingA: boolean
+  usdLoadingB: boolean
 }
 
 function OtcCreateFields(props: OtcCreateFieldsProps): ReactNode {
@@ -53,7 +58,7 @@ function OtcCreateFields(props: OtcCreateFieldsProps): ReactNode {
           value={amountA}
           onChange={(event) => props.onAmountA(event.target.value)}
         />
-        <OtcUsdValue token={tokenA} amount={parsedAmountA} />
+        <OtcUsdValue amount={parsedAmountA} value={props.usdValueA} isLoading={props.usdLoadingA} />
       </styledEl.WriteField>
       <styledEl.WriteField>
         Maker requests
@@ -76,7 +81,7 @@ function OtcCreateFields(props: OtcCreateFieldsProps): ReactNode {
           value={amountB}
           onChange={(event) => props.onAmountB(event.target.value)}
         />
-        <OtcUsdValue token={tokenB} amount={parsedAmountB} />
+        <OtcUsdValue amount={parsedAmountB} value={props.usdValueB} isLoading={props.usdLoadingB} />
       </styledEl.WriteField>
     </styledEl.WriteGrid>
   )
@@ -95,6 +100,10 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
     () => parseOtcCreateDraft({ tokenA, amountA, tokenB, amountB }),
     [amountA, amountB, tokenA, tokenB],
   )
+  const parsedAmountA = draft?.amountA ?? null
+  const parsedAmountB = draft?.amountB ?? null
+  const usdAmountA = useOtcUsdAmount(tokenA, parsedAmountA)
+  const usdAmountB = useOtcUsdAmount(tokenB, parsedAmountB)
   const resetKey = getOtcActionReviewKey(account, [tokenA.address, amountA.trim(), tokenB.address, amountB.trim()])
   const reviewed = reviewedKey === resetKey
   const handleConfirmed = useCallback(() => {
@@ -137,8 +146,12 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
         onTokenB={(value) => update((address) => setTokenBAddress(address as Address), value)}
         onAmountA={(value) => update(setAmountA, value)}
         onAmountB={(value) => update(setAmountB, value)}
-        parsedAmountA={draft?.amountA ?? null}
-        parsedAmountB={draft?.amountB ?? null}
+        parsedAmountA={parsedAmountA}
+        parsedAmountB={parsedAmountB}
+        usdValueA={usdAmountA.value}
+        usdValueB={usdAmountB.value}
+        usdLoadingA={usdAmountA.isLoading}
+        usdLoadingB={usdAmountB.isLoading}
       />
       <styledEl.WriteSummary>
         <Badge tone="audit">Exact approval only</Badge>

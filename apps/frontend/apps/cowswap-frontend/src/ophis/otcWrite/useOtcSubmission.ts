@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import { OTC_FILL_DEADLINE_WINDOW_SECONDS } from './buildOtcTransaction'
 import { submitOtcTransaction } from './prepareOtcTransaction'
 import { translateOtcWriteError } from './translateOtcWriteError'
 import { useOtcAllowanceCooldown } from './useOtcAllowanceCooldown'
@@ -35,10 +34,6 @@ export interface OtcSubmissionState {
   submit(intent: OtcWriteIntent, execution: boolean): Promise<void>
 }
 
-function withFreshDeadline(intent: OtcWriteIntent, nowSeconds: bigint): OtcWriteIntent {
-  return intent.kind === 'fill' ? { ...intent, deadline: nowSeconds + OTC_FILL_DEADLINE_WINDOW_SECONDS } : intent
-}
-
 async function hasRecoveryAllowance(
   refreshAllowance: RefreshOtcAllowance,
   execution: boolean,
@@ -52,6 +47,80 @@ async function hasRecoveryAllowance(
   return refreshed ? refreshed.allowance > 0n : true
 }
 
+interface OtcSubmissionSuccessResult {
+  beginCooldown: boolean
+  clearRecovery: boolean
+  confirmed: boolean
+}
+
+async function settleSuccessfulSubmission(
+  intent: OtcWriteIntent,
+  requiredAllowance: bigint | null | undefined,
+  refreshAllowance: RefreshOtcAllowance,
+  isCurrentContext: () => boolean,
+): Promise<OtcSubmissionSuccessResult | null> {
+  const allowanceIntent = /^(approve|revoke)-/.test(intent.kind)
+  const refreshRequired = allowanceIntent || (requiredAllowance !== null && requiredAllowance !== undefined)
+  if (!isCurrentContext()) return null
+  if (refreshRequired) await refreshAllowance().catch(() => undefined)
+  if (!isCurrentContext()) return null
+  return {
+    beginCooldown: refreshRequired,
+    clearRecovery: !allowanceIntent || intent.kind.startsWith('revoke-'),
+    confirmed: !allowanceIntent,
+  }
+}
+
+async function settleFailedSubmission(
+  caught: unknown,
+  execution: boolean,
+  requiredAllowance: bigint | null | undefined,
+  refreshAllowance: RefreshOtcAllowance,
+  isCurrentContext: () => boolean,
+): Promise<{ error: string; recoveryRequired: boolean } | null> {
+  if (!isCurrentContext()) return null
+  const recoveryRequired = await hasRecoveryAllowance(refreshAllowance, execution, requiredAllowance)
+  if (!isCurrentContext()) return null
+  return { error: translateOtcWriteError(caught), recoveryRequired }
+}
+
+function applySuccessfulSubmission(
+  result: OtcSubmissionSuccessResult | null,
+  transactionHash: Hex,
+  setSuccessHash: (hash: Hex) => void,
+  setRecoveryRequired: (required: boolean) => void,
+  beginAllowanceCooldown: () => void,
+  onConfirmed: (() => void) | undefined,
+): boolean {
+  if (!result) return false
+  setSuccessHash(transactionHash)
+  if (result.clearRecovery) setRecoveryRequired(false)
+  if (result.beginCooldown) beginAllowanceCooldown()
+  if (result.confirmed) onConfirmed?.()
+  return true
+}
+
+function applyFailedSubmission(
+  result: { error: string; recoveryRequired: boolean } | null,
+  setError: (error: string) => void,
+  setRecoveryRequired: (required: boolean) => void,
+): boolean {
+  if (!result) return false
+  setError(result.error)
+  setRecoveryRequired(result.recoveryRequired)
+  return true
+}
+
+function finishSubmission(
+  inFlightGeneration: { current: number | null },
+  generation: number,
+  isCurrentContext: () => boolean,
+  setPendingIntent: (intent: null) => void,
+): void {
+  if (inFlightGeneration.current === generation) inFlightGeneration.current = null
+  if (isCurrentContext()) setPendingIntent(null)
+}
+
 export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionState {
   const { writeClient, wallet, authorization, resetKey, account, requiredAllowance, refreshAllowance, onConfirmed } =
     options
@@ -59,49 +128,58 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
   const [error, setError] = useState<string | null>(null)
   const [successHash, setSuccessHash] = useState<Hex | null>(null)
   const [recoveryRequired, setRecoveryRequired] = useState(false)
-  const inFlight = useRef(false)
-  const [allowanceCooldown, beginAllowanceCooldown] = useOtcAllowanceCooldown(refreshAllowance)
+  const submissionContext = `${resetKey}\u0000${account ?? ''}`
+  const contextGeneration = useRef(0)
+  const inFlightGeneration = useRef<number | null>(null)
+  const [allowanceCooldown, beginAllowanceCooldown] = useOtcAllowanceCooldown(refreshAllowance, submissionContext)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    contextGeneration.current += 1
+    inFlightGeneration.current = null
+    setPendingIntent(null)
     setError(null)
     setSuccessHash(null)
     setRecoveryRequired(false)
-  }, [resetKey, account])
+  }, [submissionContext])
 
   const submit = useCallback(
     async (intent: OtcWriteIntent, execution: boolean) => {
-      if (inFlight.current) return
+      const generation = contextGeneration.current
+      const isCurrentContext = (): boolean => contextGeneration.current === generation
+      if (inFlightGeneration.current === generation) return
       if (!writeClient || !wallet) {
         setError('Wallet access is still loading. Try again in a moment.')
         return
       }
-      inFlight.current = true
-      const nowSeconds = BigInt(Math.floor(Date.now() / 1_000))
-      const currentIntent = withFreshDeadline(intent, nowSeconds)
-      setPendingIntent(currentIntent.kind)
+      inFlightGeneration.current = generation
+      setPendingIntent(intent.kind)
       setError(null)
       setSuccessHash(null)
       try {
-        const receipt = await submitOtcTransaction(writeClient, wallet, currentIntent, authorization, nowSeconds)
-        setSuccessHash(receipt.transactionHash)
-        if (/^(approve|revoke)-/.test(currentIntent.kind)) {
-          await refreshAllowance().catch(() => undefined)
-          if (currentIntent.kind.startsWith('revoke-')) setRecoveryRequired(false)
-          beginAllowanceCooldown()
-        } else {
-          setRecoveryRequired(false)
-          if (requiredAllowance !== null && requiredAllowance !== undefined) {
-            await refreshAllowance().catch(() => undefined)
-            beginAllowanceCooldown()
-          }
-          onConfirmed?.()
-        }
+        const receipt = await submitOtcTransaction(writeClient, wallet, intent, authorization)
+        const result = await settleSuccessfulSubmission(intent, requiredAllowance, refreshAllowance, isCurrentContext)
+        if (
+          !applySuccessfulSubmission(
+            result,
+            receipt.transactionHash,
+            setSuccessHash,
+            setRecoveryRequired,
+            beginAllowanceCooldown,
+            onConfirmed,
+          )
+        )
+          return
       } catch (caught) {
-        setError(translateOtcWriteError(caught))
-        setRecoveryRequired(await hasRecoveryAllowance(refreshAllowance, execution, requiredAllowance))
+        const result = await settleFailedSubmission(
+          caught,
+          execution,
+          requiredAllowance,
+          refreshAllowance,
+          isCurrentContext,
+        )
+        if (!applyFailedSubmission(result, setError, setRecoveryRequired)) return
       } finally {
-        inFlight.current = false
-        setPendingIntent(null)
+        finishSubmission(inFlightGeneration, generation, isCurrentContext, setPendingIntent)
       }
     },
     [authorization, beginAllowanceCooldown, onConfirmed, refreshAllowance, requiredAllowance, wallet, writeClient],

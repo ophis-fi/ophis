@@ -2,7 +2,7 @@
  * Updates cy.visit() to include an injected window.ethereum provider.
  */
 import { Eip1193Bridge } from '@ethersproject/experimental/lib/eip1193-bridge'
-import { JsonRpcProvider } from '@ethersproject/providers'
+import { JsonRpcProvider, type TransactionRequest } from '@ethersproject/providers'
 import { Wallet } from '@ethersproject/wallet'
 
 const OTC_FORK_RPC_URL = Cypress.env('OTC_FORK_RPC_URL') as string | undefined
@@ -46,6 +46,13 @@ assert(
 // address of the above key
 export const TEST_ADDRESS_NEVER_USE = new Wallet(INTEGRATION_TEST_PRIVATE_KEY).address
 
+/** Submit through the configured key so custom fork accounts need not be RPC-unlocked. */
+export async function sendSignedForkTransaction(request: TransactionRequest): Promise<string> {
+  if (!IS_OTC_FORK) throw new Error('Signed fork transactions require OTC_FORK_RPC_URL')
+  const transaction = await signer.sendTransaction(request)
+  return transaction.hash
+}
+
 // Redefined bridge to fix a supper annoying issue making some contract calls to fail
 //  See https://github.com/ethers-io/ethers.js/issues/1683
 class CustomizedBridge extends Eip1193Bridge {
@@ -66,7 +73,6 @@ class CustomizedBridge extends Eip1193Bridge {
   // TODO: Replace any with proper type definitions
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, complexity, @typescript-eslint/no-explicit-any
   async send(...args: any[]) {
-    console.debug('send called', ...args)
     const isCallbackForm = typeof args[0] === 'object' && typeof args[1] === 'function'
     let callback
     let method
@@ -105,17 +111,17 @@ class CustomizedBridge extends Eip1193Bridge {
         }
       }
       let result
-      // For sending a transaction if we call send it will error
-      // as it wants gasLimit in sendTransaction but hexlify sets the property gas
-      // to gasLimit which makes sensd transaction error.
-      // This have taken the code from the super method for sendTransaction and altered
-      // it slightly to make it work with the gas limit issues.
       if (IS_OTC_FORK && method === 'eth_call') {
         result = await provider.send(method, params)
       } else if (params && params.length && params[0].from && method === 'eth_sendTransaction') {
         if (IS_OTC_FORK) {
-          const req = { ...params[0], from: TEST_ADDRESS_NEVER_USE }
-          result = await provider.send('eth_sendTransaction', [req])
+          const req = { ...params[0] }
+          delete req.from
+          if (req.gas) {
+            req.gasLimit = req.gas
+            delete req.gas
+          }
+          result = await sendSignedForkTransaction(req)
           if (isCallbackForm) {
             callback(null, { result })
           } else {

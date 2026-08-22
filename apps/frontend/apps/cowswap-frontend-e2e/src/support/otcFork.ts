@@ -2,6 +2,8 @@ import { defaultAbiCoder, Interface } from '@ethersproject/abi'
 import { hexlify, hexZeroPad } from '@ethersproject/bytes'
 import { keccak256 } from '@ethersproject/keccak256'
 
+import { sendSignedForkTransaction, TEST_ADDRESS_NEVER_USE } from './ethereum'
+
 export type Address = `0x${string}`
 type Hex = `0x${string}`
 
@@ -65,8 +67,13 @@ async function call(
 }
 
 async function sendUnlocked(from: Address, to: Address, data: Hex, value?: bigint): Promise<void> {
-  const request = { from, to, data, ...(value === undefined ? {} : { value: hexlify(value) }) }
-  const hash = await rpc<Hex>('eth_sendTransaction', [request])
+  const transaction = { to, data, ...(value === undefined ? {} : { value }) }
+  const hash =
+    from === TEST_ADDRESS_NEVER_USE
+      ? await sendSignedForkTransaction(transaction)
+      : await rpc<Hex>('eth_sendTransaction', [
+          { from, to, data, ...(value === undefined ? {} : { value: hexlify(value) }) },
+        ])
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const receipt = await rpc<Record<string, unknown> | null>('eth_getTransactionReceipt', [hash])
     if (receipt) {
@@ -115,6 +122,10 @@ export async function setForkTokenBalance(token: Address, account: Address, amou
 export async function getNextOtcOrderId(): Promise<bigint> {
   const data = await call(OTC_ESCROW, OTC_INTERFACE, 'nextOrderId')
   return BigInt(OTC_INTERFACE.decodeFunctionResult('nextOrderId', data)[0].toString())
+}
+
+export async function fundForkGas(account: Address): Promise<void> {
+  await rpc<null>('anvil_setBalance', [account, hexlify(100n * 10n ** 18n)])
 }
 
 /** Warm Anvil's remote storage cache; the app still repeats every verified read itself. */

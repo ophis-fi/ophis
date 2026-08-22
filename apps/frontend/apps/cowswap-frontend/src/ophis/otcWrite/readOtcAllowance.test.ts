@@ -24,10 +24,10 @@ function client(result = 42n, finalBlockHash: Hex = BLOCK_HASH): OtcWriteClient 
   let blockReads = 0
   return {
     getChainId: async () => 1,
-    getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH }),
+    getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH, timestamp: 1_755_792_000n }),
     getBlockByNumber: async (blockNumber) => {
       blockReads += 1
-      return { number: blockNumber, hash: blockReads > 1 ? finalBlockHash : BLOCK_HASH }
+      return { number: blockNumber, hash: blockReads > 1 ? finalBlockHash : BLOCK_HASH, timestamp: 1_755_792_000n }
     },
     getCode: async () => MOCK_CODE,
     call: async (request) => {

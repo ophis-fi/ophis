@@ -38,6 +38,7 @@ jest.mock('common/constants/routes', () => ({
   Routes: {
     PLAY_COWRUNNER: '/play/cowrunner',
     PLAY_MEVSLICER: '/play/mevslicer',
+    OTC: '/otc',
   },
 }))
 
@@ -59,5 +60,9 @@ describe('NAV_ITEMS', () => {
 
   it('shows solvers menu item when the solvers flag is enabled', () => {
     expect(getMoreItemHrefs(true)).toContain('https://explorer.cow.fi/solvers')
+  })
+
+  it('links the enabled OTC surface from the product menu', () => {
+    expect(getMoreItemHrefs(false)).toContain('/otc')
   })
 })

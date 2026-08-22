@@ -80,6 +80,10 @@ const MORE_ITEM = (isSolversEnabled: boolean): UntranslatedMenuItem => ({
       href: Routes.PLAY_MEVSLICER,
       label: msg`MEV Slicer`,
     },
+    {
+      href: Routes.OTC,
+      label: msg`OTC`,
+    },
   ],
 })
 

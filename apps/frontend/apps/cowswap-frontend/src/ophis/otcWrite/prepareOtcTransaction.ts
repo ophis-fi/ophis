@@ -3,7 +3,7 @@ import { isLocal as runtimeIsLocal } from '@cowprotocol/common-utils'
 import { OPHIS_ETHEREUM_OTC_MANIFEST, readOtcOrder, verifyOtcContract } from 'ophis/otc'
 import { isAddressEqual, type Address, type Hex } from 'viem'
 
-import { buildOtcTransaction } from './buildOtcTransaction'
+import { buildOtcTransaction, OTC_FILL_DEADLINE_WINDOW_SECONDS } from './buildOtcTransaction'
 import { readOtcAllowanceAtBlock } from './readOtcAllowance'
 
 import type {
@@ -32,10 +32,22 @@ function orderFromIntent(intent: OtcWriteIntent): OtcOrder | null {
   return intent.kind === 'approve-fill' || intent.kind === 'fill' || intent.kind === 'cancel' ? intent.order : null
 }
 
-function executionAllowance(intent: OtcWriteIntent): { token: Address; amount: bigint } | null {
+function preflightAllowance(intent: OtcWriteIntent): { token: Address; amount: bigint } | null {
+  if (intent.kind === 'approve-create') return { token: intent.draft.tokenA, amount: 0n }
+  if (intent.kind === 'approve-fill') return { token: intent.order.tokenB, amount: 0n }
   if (intent.kind === 'create') return { token: intent.draft.tokenA, amount: intent.draft.amountA }
   if (intent.kind === 'fill') return { token: intent.order.tokenB, amount: intent.order.amountB }
   return null
+}
+
+function withVerifiedDeadline(intent: OtcWriteIntent, blockTimestamp: bigint): OtcWriteIntent {
+  return intent.kind === 'fill' ? { ...intent, deadline: blockTimestamp + OTC_FILL_DEADLINE_WINDOW_SECONDS } : intent
+}
+
+function assertBlockIdentity(blockNumber: bigint, blockHash: Hex, block: { number: bigint; hash: Hex | null }): void {
+  if (block.number !== blockNumber || !block.hash || block.hash !== blockHash) {
+    throw new Error('Ophis OTC block changed')
+  }
 }
 
 function assertRuntimeAuthorization(authorization: OtcWriteRuntimeAuthorization): void {
@@ -57,7 +69,6 @@ function assertRuntimeAuthorization(authorization: OtcWriteRuntimeAuthorization)
 export async function prepareOtcTransaction(
   client: OtcWriteClient,
   intent: OtcWriteIntent,
-  nowSeconds: bigint,
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
 ): Promise<PreparedOtcTransaction> {
   const expectedOrder = orderFromIntent(intent)
@@ -77,13 +88,17 @@ export async function prepareOtcTransaction(
     blockHash = verified.blockHash
   }
 
-  const request = buildOtcTransaction(intent, nowSeconds)
-  const requiredAllowance = executionAllowance(intent)
+  const verifiedBlock = await client.getBlockByNumber(blockNumber)
+  assertBlockIdentity(blockNumber, blockHash, verifiedBlock)
+  if (verifiedBlock.timestamp < 0n) throw new Error('Ophis OTC block timestamp rejected')
+  const preparedIntent = withVerifiedDeadline(intent, verifiedBlock.timestamp)
+  const request = buildOtcTransaction(preparedIntent, verifiedBlock.timestamp)
+  const requiredAllowance = preflightAllowance(preparedIntent)
   if (requiredAllowance) {
     const allowance = await readOtcAllowanceAtBlock(
       client,
       requiredAllowance.token,
-      intent.account,
+      preparedIntent.account,
       blockNumber,
       manifest,
     )
@@ -91,10 +106,13 @@ export async function prepareOtcTransaction(
   }
   await client.simulate(request, blockNumber)
   const confirmedBlock = await client.getBlockByNumber(blockNumber)
-  if (confirmedBlock.number !== blockNumber || !confirmedBlock.hash || confirmedBlock.hash !== blockHash) {
-    throw new Error('Ophis OTC block changed')
+  assertBlockIdentity(blockNumber, blockHash, confirmedBlock)
+  return {
+    request,
+    intent: preparedIntent,
+    preparedAtTimestamp: verifiedBlock.timestamp,
+    simulatedAtBlock: blockNumber,
   }
-  return { request, simulatedAtBlock: blockNumber }
 }
 
 /**
@@ -106,12 +124,11 @@ export async function submitOtcTransaction(
   wallet: OtcWalletSubmitter,
   intent: OtcWriteIntent,
   authorization: OtcWriteRuntimeAuthorization,
-  nowSeconds: bigint,
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
 ): Promise<OtcTransactionReceipt> {
   assertRuntimeAuthorization(authorization)
-  const prepared = await prepareOtcTransaction(client, intent, nowSeconds, manifest)
-  const hash = await wallet.sendTransaction(prepared.request, intent, nowSeconds)
+  const prepared = await prepareOtcTransaction(client, intent, manifest)
+  const hash = await wallet.sendTransaction(prepared.request, prepared.intent, prepared.preparedAtTimestamp)
   const receipt = await wallet.waitForTransactionReceipt(hash)
   if (receipt.status !== 'success') throw new Error('Ophis OTC transaction reverted')
   return receipt

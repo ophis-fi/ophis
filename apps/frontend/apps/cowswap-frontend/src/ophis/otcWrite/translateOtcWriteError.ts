@@ -39,7 +39,10 @@ const OTC_ERROR_RULES: readonly OtcErrorRule[] = [
     message: 'Transaction rejected in your wallet. No funds moved.',
   },
   { pattern: /insufficient funds/, message: 'This wallet does not have enough ETH to pay Ethereum gas.' },
-  { pattern: /wrong chain/, message: 'Switch the connected wallet to Ethereum and try again.' },
+  {
+    pattern: /wrong chain/,
+    message: 'Connect the wallet to the configured local Anvil or Hardhat mainnet fork and try again.',
+  },
   {
     pattern: /local fork verification/,
     message: 'The wallet RPC is not a local Anvil or Hardhat fork. Real-mainnet submission is blocked.',

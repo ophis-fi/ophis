@@ -29,6 +29,7 @@ import { applyBrowseFilters, BrowseFilterBar, EMPTY_BROWSE_FILTERS, type BrowseF
 import { OtcDisclosure } from './OtcDisclosure'
 import { buildOtcDisplayRows, filterBrowseRows, filterMakerRows } from './otcDisplay'
 import { OtcOrdersTable } from './OtcOrdersTable'
+import { useOtcNow } from './useOtcNow'
 import { useOtcPageEnabled, useOtcWriteEnabled } from './useOtcPageEnabled'
 
 import type { OtcDisplayRow } from './otcDisplay'
@@ -223,7 +224,7 @@ export function OtcPage(): ReactNode {
   const writeEnabled = useOtcWriteEnabled()
   const { account } = useWalletInfo()
   const [refreshSignal, setRefreshSignal] = useState(0)
-  const [nowMs] = useState(() => Date.now())
+  const nowMs = useOtcNow()
   const state = useOtcData(enabled, refreshSignal)
   const refresh = useCallback(() => setRefreshSignal((current) => current + 1), [])
 

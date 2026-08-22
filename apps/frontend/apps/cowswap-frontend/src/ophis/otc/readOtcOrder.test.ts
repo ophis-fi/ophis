@@ -33,8 +33,12 @@ function createMockClient(options: MockOptions = {}): OtcReaderClient {
   const existing = options.existing ?? true
   return {
     getChainId: async () => options.chainId ?? 1,
-    getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH }),
-    getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: options.reReadHash ?? BLOCK_HASH }),
+    getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH, timestamp: 1_755_792_000n }),
+    getBlockByNumber: async (blockNumber) => ({
+      number: blockNumber,
+      hash: options.reReadHash ?? BLOCK_HASH,
+      timestamp: 1_755_792_000n,
+    }),
     getCode: async () => options.code ?? MOCK_CODE,
     call: async (request) => {
       const { functionName } = decodeFunctionData({ abi: OTC_READ_ABI, data: request.data })

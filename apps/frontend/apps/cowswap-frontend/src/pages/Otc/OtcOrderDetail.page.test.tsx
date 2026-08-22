@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { shouldMountOtcOrderAction } from 'ophis/otcWrite'
 
-import { OtcOrderDetailView } from './OtcOrderDetail.page'
+import { OtcOrderDetailView } from './OtcOrderDetailView.pure'
 
 import type { OtcIndexedOrder, OtcOrder } from 'ophis/otc'
 
