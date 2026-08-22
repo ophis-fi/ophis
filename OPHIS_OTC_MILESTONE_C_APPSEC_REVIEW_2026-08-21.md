@@ -4,12 +4,12 @@
 
 **Baseline:** `0fa6948a` (`origin/main`)
 
-**Review target:** committed Milestone C implementation stack through `3407d89d`
+**Review target:** committed Milestone C stack through `44a44f79`
 **Recommendation:** **Conditional approval for local-mainnet-fork development only. Production writes and deployment remain unauthorized.**
 
 ## Result
 
-No unresolved critical or high-severity vulnerability was identified in the Milestone C diff. One medium-severity CI integrity finding was fixed during this review: the injected-wallet job still supplied an anonymous public-RPC fallback, making its subsequent secret-presence assertion ineffective. Both fork jobs now consume only `secrets.OTC_FORK_RPC_URL`; a missing secret fails closed.
+No unresolved critical or high-severity vulnerability was identified in the Milestone C diff. Two medium-severity CI integrity findings were fixed during this review: the injected-wallet job supplied an anonymous public-RPC fallback, and the Foundry suite treated a missing RPC as skipped tests while still exiting successfully. Both fork jobs now consume only `secrets.OTC_FORK_RPC_URL` and explicitly reject an empty value before starting the test suite.
 
 The application-security review does not satisfy the independent final Codex review, required-check ruleset, or configured fork-RPC secret.
 
@@ -51,7 +51,7 @@ Authentication, cookies, database queries, server-side CORS, and SSRF endpoints 
 
 **Status:** Fixed
 
-The injected-wallet workflow set `OPHIS_FORK_RPC_ETH` to `secrets.OTC_FORK_RPC_URL || <public endpoint>`, then asserted only that the resulting value was nonempty. A missing repository secret therefore produced nondeterministic public-RPC evidence instead of failing closed. The fallback is removed; both jobs now require the repository secret.
+The injected-wallet workflow set `OPHIS_FORK_RPC_ETH` to `secrets.OTC_FORK_RPC_URL || <public endpoint>`, then asserted only that the resulting value was nonempty. A missing repository secret therefore produced nondeterministic public-RPC evidence instead of failing closed. The fallback is removed so only the configured secret can supply fork evidence.
 
 ### APPSEC-C-02 — Dynamic transaction state lacked explicit announcement roles
 
@@ -69,6 +69,14 @@ Visible failure, residual-allowance recovery, and confirmation callouts did not 
 
 Clean-slice review found that local-client verification and allowance polling used a new SWR hook despite the frontend's Jotai query requirement. The hook now creates memoized `jotai-tanstack-query` atoms, remains disabled until every authorization/input prerequisite exists, refetches allowance every five seconds, and preserves the explicit post-confirmation refresh used by recovery logic.
 
+### APPSEC-C-04 — Missing fork secret produced a false-green Foundry job
+
+**Severity:** Medium
+
+**Status:** Fixed
+
+The first live CI probe exposed that the Foundry test contract called `vm.skip` when `OPHIS_FORK_RPC_ETH` was empty. Six fork-dependent tests skipped and one static identity test passed, so the job exited successfully without exercising the fork. The workflow now asserts that the secret-derived environment variable is nonempty before invoking Forge. Draft PR #1228 run `32565727585` proves both the Foundry and injected-wallet jobs fail at this explicit guard when the secret is unavailable.
+
 ## Dependency and secret evidence
 
 - `pnpm audit --prod` reports zero critical and one high advisory in the existing repository graph: `@trezor/blockchain-link → socks-proxy-agent@6.1.1 → socks@2.7.1 → ip@2.0.1`. The root already overrides `ip` to `^2.0.1`; Milestone C neither introduces nor calls this Trezor proxy path. This inherited repository finding should remain tracked separately.
@@ -84,6 +92,7 @@ Clean-slice review found that local-client verification and allowance polling us
 - E2E source lint and changed-file formatting: pass.
 - Existing Milestone C evidence remains 7/7 Foundry fork invariants and 5/5 injected-wallet lifecycle scenarios.
 - A repeat anonymous-public-RPC browser run on 2026-08-21 degraded during transaction waits and was stopped; it is not accepted as new gate evidence. This validates the decision to require `OTC_FORK_RPC_URL` rather than treating public infrastructure as authoritative CI.
+- Draft PR #1228 run `32565727585` confirms the repository currently supplies no usable `OTC_FORK_RPC_URL` to either job and that both jobs now fail closed with the same explicit prerequisite error.
 
 ## Residual gates
 

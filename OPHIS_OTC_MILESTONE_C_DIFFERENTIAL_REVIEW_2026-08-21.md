@@ -4,7 +4,7 @@
 
 **Baseline:** `0fa6948a` (`origin/main`)
 
-**Review target:** 13 dependency-ordered commits on `feat/otc-erc20-milestone-c` through `3407d89d`
+**Review target:** 14 functional slices plus release evidence on `feat/otc-erc20-milestone-c` through `44a44f79`
 **Recommendation:** **Conditional approval for local-fork Milestone C development only. Production writes and deployment remain unauthorized.**
 
 ## Executive summary
@@ -31,14 +31,14 @@ Relevant history was traced through `103882c0` (A+B merge), the five pre-merge O
 
 ## Risk-ranked change map
 
-| Area                             |     Risk | Review result                                                                                                                                                                                                     |
-| -------------------------------- | -------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Request builders and wallet sink | Critical | One dispatch function reaches one submit function. Every builder revalidates policy/amounts/account, contract calls enforce the three-selector allowlist, and every request has `value: 0n`.                      |
-| Preflight and transport adapters |     High | Same wallet transport is extended for verified reads, exact simulation, send, and receipt. Chain 1, Anvil/Hardhat identity, runtime hash, WETH wiring, account, order terms, and receipt status fail closed.      |
-| Allowance lifecycle              |     High | Exact approvals only. On confirmed approval, the UI re-reads and observes a four-second cooldown. Failed/raced execution preserves recovery state and offers a zero-only revoke.                                  |
-| Runtime authorization            |     High | Read flag, separate write flag, local-host classification, explicit `fork` build mode, chain 1, and local-client identity are conjunctive. Production defaults write false and does not set fork mode.            |
-| Detail/action UI                 |   Medium | Actions mount only for a fresh direct read, reviewed token pair, active order, and no index disagreement. Cancellation is maker-only; fills are all-or-nothing with a fresh three-minute deadline.                |
-| Fork and merge gates             |   Medium | Seven Foundry invariants and five browser lifecycle scenarios. Browser CI requires a configured fork-RPC secret. The Codex workflow and parser both run from the protected base; evidence is tied to the PR head. |
+| Area                             |     Risk | Review result                                                                                                                                                                                                              |
+| -------------------------------- | -------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Request builders and wallet sink | Critical | One dispatch function reaches one submit function. Every builder revalidates policy/amounts/account, contract calls enforce the three-selector allowlist, and every request has `value: 0n`.                               |
+| Preflight and transport adapters |     High | Same wallet transport is extended for verified reads, exact simulation, send, and receipt. Chain 1, Anvil/Hardhat identity, runtime hash, WETH wiring, account, order terms, and receipt status fail closed.               |
+| Allowance lifecycle              |     High | Exact approvals only. On confirmed approval, the UI re-reads and observes a four-second cooldown. Failed/raced execution preserves recovery state and offers a zero-only revoke.                                           |
+| Runtime authorization            |     High | Read flag, separate write flag, local-host classification, explicit `fork` build mode, chain 1, and local-client identity are conjunctive. Production defaults write false and does not set fork mode.                     |
+| Detail/action UI                 |   Medium | Actions mount only for a fresh direct read, reviewed token pair, active order, and no index disagreement. Cancellation is maker-only; fills are all-or-nothing with a fresh three-minute deadline.                         |
+| Fork and merge gates             |   Medium | Seven Foundry invariants and five browser lifecycle scenarios. Both fork jobs explicitly require a configured fork-RPC secret. The Codex workflow and parser run from the protected base; evidence is tied to the PR head. |
 
 ## Security invariants
 
@@ -69,6 +69,7 @@ Relevant history was traced through `103882c0` (A+B merge), the five pre-merge O
 - **Medium — lifecycle browser coverage.** The create-only test was expanded to maker cancellation, exact-approval fill, competing-fill failure, exact leftover revocation, and durable on-chain/UI assertions.
 - **Low — external fork flakiness.** Throttled public RPC cold starts are not accepted as merge evidence. The browser job requires `OTC_FORK_RPC_URL`, disables Nx result reuse, and uses a fresh Anvil process with local rate limiting disabled.
 - **Medium — ineffective required-secret assertion.** The injected-wallet workflow's remaining anonymous public-RPC fallback made its nonempty assertion vacuous. The fallback is removed; both fork jobs now fail closed without `OTC_FORK_RPC_URL`.
+- **Medium — false-green skipped fork suite.** A live draft-PR probe showed the Foundry contract skipped six fork cases and passed one static case when its RPC variable was empty, allowing that job to exit successfully. The workflow now rejects an empty secret before Forge starts; probe run `32565727585` confirms both fork jobs fail closed on the missing prerequisite.
 - **Low — dynamic announcement semantics.** Failure/recovery callouts now use atomic assertive alerts, while confirmations and allowance refreshes use atomic polite status regions. Unit rendering covers fill/revoke/cancel accessible names and pending state.
 - **Low — prohibited new SWR fetch path.** Clean-slice review found the new wallet/fork reads used deprecated SWR. They now use memoized `jotai-tanstack-query` atoms with fail-closed enablement, five-second allowance refetching, and explicit confirmed-transaction refresh.
 
@@ -82,7 +83,8 @@ Relevant history was traced through `103882c0` (A+B merge), the five pre-merge O
 - Scoped application-security review, changed-scope Gitleaks, and 3/3 screen-reader semantic rendering checks pass. `OPHIS_OTC_MILESTONE_C_APPSEC_REVIEW_2026-08-21.md` records the inherited dependency advisory and remaining external gates.
 - Deterministic Cosmos fill/cancel/recovery fixtures pass fixture-scoped axe WCAG A/AA scans with zero violations. Inspected 1200 × 800 screenshots show no clipping, overflow, label ambiguity, or unreadable warning hierarchy; the live fork spec retains Chromium accessibility-tree assertions.
 - Codex parser self-test, workflow YAML parsing, and diff whitespace checks pass.
-- Every implementation slice is below 400 changed lines and was validated cleanly against its immediate predecessor; TypeScript and its nearest tests/lint pass at each boundary.
+- Draft PR #1228 run `32565727585` confirms no usable `OTC_FORK_RPC_URL` reaches either fork job and proves both explicit missing-secret guards fail closed.
+- Every functional slice is below 400 changed lines and was validated cleanly against its immediate predecessor; TypeScript and its nearest tests/lint pass at each boundary.
 
 ## Open gates and residual risk
 
