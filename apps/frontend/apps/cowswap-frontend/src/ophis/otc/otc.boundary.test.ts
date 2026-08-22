@@ -1,10 +1,10 @@
 import { getAddress, toFunctionSelector, type AbiFunction } from 'viem'
 
 import { readdirSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { basename, join } from 'path'
 
 import { OTC_EVENT_ABI, OTC_READ_ABI } from './otc.abi'
-import { OPHIS_ETHEREUM_OTC_MANIFEST, OTC_KNOWN_WRITE_SELECTORS } from './otc.const'
+import { OPHIS_ETHEREUM_OTC_MANIFEST, OTC_ERC20_WRITE_SELECTORS, OTC_KNOWN_WRITE_SELECTORS } from './otc.const'
 
 // Matched against module SPECIFIERS (the string after `from`) of production
 // files. Named exports do not appear in specifiers, so entries must be
@@ -31,13 +31,16 @@ const SHARED_FORBIDDEN_FRAGMENTS = [
   'boostedTokens',
 ]
 
-// The adapter module must not touch the wallet at all; the page family may
-// read the connected ACCOUNT via '@cowprotocol/wallet' (useWalletInfo) but
-// nothing signer-capable.
+// The read adapter must not touch the wallet at all. The page family may read
+// the connected account, but signer access remains isolated in otcWrite.
 const MODULE_FORBIDDEN_FRAGMENTS = [...SHARED_FORBIDDEN_FRAGMENTS, '@cowprotocol/wallet']
 const PAGES_FORBIDDEN_FRAGMENTS = SHARED_FORBIDDEN_FRAGMENTS
+const WRITE_FORBIDDEN_FRAGMENTS = SHARED_FORBIDDEN_FRAGMENTS.filter(
+  (fragment) => fragment !== 'legacy/state' && fragment !== '@cowprotocol/tokens' && fragment !== 'wallet-provider',
+)
 
 const PAGES_DIR = join(__dirname, '..', '..', 'pages', 'Otc')
+const WRITE_DIR = join(__dirname, '..', 'otcWrite')
 
 // Signer-capable APIs from otherwise-allowed packages (e.g. wagmi exports
 // both usePublicClient and useWriteContract), plus dynamic import() which
@@ -49,6 +52,29 @@ const SIGNER_API_PATTERN =
 // wagmi — the one signer-capable package production OTC code may touch —
 // is additionally held to an ALLOWLIST: only these named imports may appear.
 const WAGMI_ALLOWED_IMPORTS = new Set(['usePublicClient'])
+const PAGE_WRITE_ALLOWED_IMPORTS = new Set([
+  'OtcCreatePanel',
+  'OtcOrderActionPanel',
+  'isReviewedOtcOrder',
+  'resolveOtcWriteAuthorization',
+  'resolveOtcWriteFlag',
+  'useOtcWriteAuthorization',
+])
+const WRITE_SIGNER_FILES = new Set([
+  'otcWrite.types.ts',
+  'otcWriteAdapters.ts',
+  'prepareOtcTransaction.ts',
+  'useOtcActionController.ts',
+  'useOtcNetworkReads.ts',
+])
+const WRITE_WAGMI_IMPORTS = new Map<string, ReadonlySet<string>>([
+  ['otcWriteAdapters.ts', new Set(['usePublicClient'])],
+  ['useOtcActionController.ts', new Set(['useWalletClient'])],
+])
+const WRITE_TOKEN_POLICY_FILES = new Set(['buildOtcTransaction.ts', 'readOtcAllowance.ts'])
+const WRITE_TOKEN_POLICY_IMPORTS = new Set(['assertTradeTokenPolicy', 'TokenPolicyProfile'])
+const WRITE_WALLET_PROVIDER_FILES = new Set(['useOtcNetworkReads.ts'])
+const WRITE_WALLET_PROVIDER_IMPORTS = new Set(['useWalletProvider'])
 
 function namedImportsFrom(source: string, specifier: string): string[] {
   const pattern = new RegExp(`import\\s*(?:type\\s*)?{([^}]*)}\\s*from\\s*['"]${specifier}['"]`, 'g')
@@ -113,6 +139,13 @@ describe('Ophis OTC boundary', () => {
     }
   })
 
+  it('keeps the wallet-capable module free of trading, permit, signing, and solver internals', () => {
+    const imports = productionImports(WRITE_DIR)
+    for (const fragment of WRITE_FORBIDDEN_FRAGMENTS) {
+      expect(imports.filter((value) => value.includes(fragment))).toEqual([])
+    }
+  })
+
   it('references no signer-capable API and no dynamic import in any production source', () => {
     for (const directory of [__dirname, PAGES_DIR]) {
       for (const { file, source } of productionSources(directory)) {
@@ -128,6 +161,52 @@ describe('Ophis OTC boundary', () => {
         for (const name of namedImportsFrom(source, 'wagmi')) {
           expect(WAGMI_ALLOWED_IMPORTS.has(name) ? null : `${file}: ${name}`).toBeNull()
         }
+      }
+    }
+  })
+
+  it('lets pages reach only the guarded write surface and authorization boundary', () => {
+    for (const { file, source } of productionSources(PAGES_DIR)) {
+      for (const name of namedImportsFrom(source, 'ophis/otcWrite')) {
+        expect(PAGE_WRITE_ALLOWED_IMPORTS.has(name) ? null : `${file}: ${name}`).toBeNull()
+      }
+    }
+  })
+
+  it('isolates signer-capable APIs and wagmi imports to the reviewed write adapters', () => {
+    for (const { file, source } of productionSources(WRITE_DIR)) {
+      const fileName = basename(file)
+      const match = source.match(SIGNER_API_PATTERN)
+      if (match) {
+        const allowed = match[0] !== 'import(' && WRITE_SIGNER_FILES.has(fileName)
+        expect(allowed ? null : `${file}: ${match[0]}`).toBeNull()
+      }
+
+      const allowedImports = WRITE_WAGMI_IMPORTS.get(fileName) ?? new Set<string>()
+      for (const name of namedImportsFrom(source, 'wagmi')) {
+        expect(allowedImports.has(name) ? null : `${file}: ${name}`).toBeNull()
+      }
+    }
+  })
+
+  it('allows only the token-policy assertion API at write sinks', () => {
+    for (const { file, source } of productionSources(WRITE_DIR)) {
+      const fileName = basename(file)
+      const names = namedImportsFrom(source, '@cowprotocol/tokens')
+      if (names.length > 0) expect(WRITE_TOKEN_POLICY_FILES.has(fileName)).toBe(true)
+      for (const name of names) {
+        expect(WRITE_TOKEN_POLICY_IMPORTS.has(name) ? null : `${file}: ${name}`).toBeNull()
+      }
+    }
+  })
+
+  it('allows only the host wallet-provider hook at the legacy compatibility boundary', () => {
+    for (const { file, source } of productionSources(WRITE_DIR)) {
+      const fileName = basename(file)
+      const names = namedImportsFrom(source, '@cowprotocol/wallet-provider')
+      if (names.length > 0) expect(WRITE_WALLET_PROVIDER_FILES.has(fileName)).toBe(true)
+      for (const name of names) {
+        expect(WRITE_WALLET_PROVIDER_IMPORTS.has(name) ? null : `${file}: ${name}`).toBeNull()
       }
     }
   })
@@ -167,8 +246,13 @@ describe('Ophis OTC boundary', () => {
     })
   })
 
-  it('pins the enabled transaction selector list to empty for milestones A/B', () => {
-    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).toEqual([])
+  it('enables exactly the three ERC-20 selectors for Milestone C', () => {
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).toEqual(OTC_ERC20_WRITE_SELECTORS)
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).toEqual(['0xfc05ca31', '0xc37dfc5b', '0x514fcac7'])
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).not.toContain('0x97bfdd2f')
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).not.toContain('0x9fe63676')
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).not.toContain('0x21dd76f9')
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).not.toContain('0xb50430d8')
   })
 
   it('pins the independently verified contract identity', () => {
