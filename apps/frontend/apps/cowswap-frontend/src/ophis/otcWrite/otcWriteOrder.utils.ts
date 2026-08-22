@@ -30,12 +30,13 @@ export function isReviewedOtcOrder(order: OtcOrder): boolean {
 
 export function shouldMountOtcOrderAction(
   writeEnabled: boolean,
-  freshness: 'fresh' | 'stale' | 'unknown',
   order: OtcOrder | null,
-  indexedAgrees: boolean,
   account: string | undefined,
 ): boolean {
   if (!writeEnabled || !order || !isReviewedOtcOrder(order)) return false
   if (!order.active) return !account || !isAddressEqual(account, order.maker)
-  return freshness === 'fresh' && indexedAgrees
+  // Active actions are enabled only after OtcActionControl verifies the local
+  // fork, then the wallet sink re-reads and simulates the exact fork state.
+  // Canonical-mainnet index freshness is not evidence about a fork timeline.
+  return true
 }

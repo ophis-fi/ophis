@@ -3,14 +3,16 @@
  *
  * Opening a detail view performs a DIRECT getOrder read against Ethereum
  * (with the pinned code-hash check) — indexed data is never presented as
- * current state. When the indexed row disagrees with the chain, the page
- * demands a refresh instead of showing an actionable-looking order.
+ * current state. An indexed-row disagreement remains visible, but fork-only
+ * actions rely on their separate local-fork verification and exact preflight.
  */
+import { useAtomValue } from 'jotai'
 import { useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
+import { atomWithQuery } from 'jotai-tanstack-query'
 import {
   readOtcOrder,
   toOtcReaderClient,
@@ -20,18 +22,16 @@ import {
 } from 'ophis/otc'
 import { OtcOrderActionPanel, shouldMountOtcOrderAction } from 'ophis/otcWrite'
 import { Navigate, useParams } from 'react-router'
-import useSWR from 'swr'
 import { usePublicClient } from 'wagmi'
 
 import { Routes as RoutesEnum } from 'common/constants/routes'
 
 import { assessDetailFreshness, type OtcNodeFreshness } from './otcDetailFreshness'
-import { indexedOtcOrderDisagrees } from './otcOrderDetail.utils'
 import { OtcOrderDetailView } from './OtcOrderDetailView.pure'
 import { useOtcNow } from './useOtcNow'
 import { useOtcPageEnabled, useOtcWriteEnabled } from './useOtcPageEnabled'
 
-import type { OtcIndexedOrder, OtcOrder, OtcReaderClient } from 'ophis/otc'
+import type { OtcOrder, OtcReaderClient } from 'ophis/otc'
 
 function parseOtcOrderId(rawOrderId: string): bigint | null {
   return /^\d{1,18}$/.test(rawOrderId) ? BigInt(rawOrderId) : null
@@ -39,20 +39,15 @@ function parseOtcOrderId(rawOrderId: string): bigint | null {
 
 function GuardedOtcOrderActionPanel({
   writeEnabled,
-  freshness,
   order,
-  indexed,
   onConfirmed,
 }: {
   writeEnabled: boolean
-  freshness: OtcNodeFreshness
   order: OtcOrder | null
-  indexed: OtcIndexedOrder | null
   onConfirmed: () => void
 }): ReactNode {
   const { account } = useWalletInfo()
-  const indexedAgrees = !order || !indexed || !indexedOtcOrderDisagrees(indexed, order)
-  if (!shouldMountOtcOrderAction(writeEnabled, freshness, order, indexedAgrees, account)) return null
+  if (!shouldMountOtcOrderAction(writeEnabled, order, account)) return null
   if (!order) return null
   return <OtcOrderActionPanel order={order} onConfirmed={onConfirmed} />
 }
@@ -76,15 +71,23 @@ function VerifiedOtcOrderDetailPage({
   )
   const state = useOtcData(true, refreshSignal)
 
-  // Mount-unique key: SWR must never serve a cached order from a previous
+  // Mount-unique key: the query cache must never serve an order from a previous
   // visit as if it were the promised fresh direct read — every mount starts
   // at loading until its own getOrder round-trip completes.
   const mountId = useId()
-  const { data, error } = useSWR(
-    client ? ['ophis-otc-order', rawOrderId, mountId, refreshSignal] : null,
-    async () => (client ? readOtcOrder(client, orderId) : null),
-    { refreshInterval: OTC_DATA_REFRESH_INTERVAL, revalidateOnFocus: false },
+  const orderQueryAtom = useMemo(
+    () =>
+      atomWithQuery<Awaited<ReturnType<typeof readOtcOrder>> | null, Error>(() => ({
+        queryKey: ['ophis-otc-order', rawOrderId, mountId, refreshSignal],
+        queryFn: async () => (client ? readOtcOrder(client, orderId) : null),
+        enabled: !!client,
+        refetchInterval: OTC_DATA_REFRESH_INTERVAL,
+        refetchIntervalInBackground: false,
+        refetchOnWindowFocus: false,
+      })),
+    [client, mountId, orderId, rawOrderId, refreshSignal],
   )
+  const { data, error } = useAtomValue(orderQueryAtom)
 
   const indexed = state.enrichment?.byOrderId.get(orderId.toString()) ?? null
   // Freshness must describe the backend that served THIS read: compare the
@@ -110,15 +113,7 @@ function VerifiedOtcOrderDetailPage({
       indexed={indexed}
       nowMs={nowMs}
       writeEnabled={writeEnabled}
-      actionPanel={
-        <GuardedOtcOrderActionPanel
-          writeEnabled={writeEnabled}
-          freshness={freshness}
-          order={order}
-          indexed={indexed}
-          onConfirmed={refresh}
-        />
-      }
+      actionPanel={<GuardedOtcOrderActionPanel writeEnabled={writeEnabled} order={order} onConfirmed={refresh} />}
     />
   )
 }

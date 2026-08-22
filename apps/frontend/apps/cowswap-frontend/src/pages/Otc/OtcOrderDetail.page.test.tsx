@@ -135,9 +135,9 @@ describe('OtcOrderDetailView', () => {
     expect(screen.getByText(/Fork-only action detail/)).toBeTruthy()
   })
 
-  it('suppresses a supplied action when indexed terms disagree', () => {
+  it('suppresses a read-only supplied action when indexed terms disagree', () => {
     renderDetail({
-      writeEnabled: true,
+      writeEnabled: false,
       indexed: indexed({ amountB: 999n }),
       actionPanel: <button type="button">Guarded local fill</button>,
     })
@@ -146,11 +146,13 @@ describe('OtcOrderDetailView', () => {
 
   it('keeps only nonmaker allowance recovery mountable after the order becomes inactive', () => {
     const inactive = order({ active: false })
-    expect(
-      shouldMountOtcOrderAction(true, 'unknown', inactive, false, '0x1111111111111111111111111111111111111111'),
-    ).toBe(true)
-    expect(shouldMountOtcOrderAction(true, 'unknown', inactive, false, MAKER)).toBe(false)
-    expect(shouldMountOtcOrderAction(true, 'unknown', inactive, false, undefined)).toBe(true)
+    expect(shouldMountOtcOrderAction(true, inactive, '0x1111111111111111111111111111111111111111')).toBe(true)
+    expect(shouldMountOtcOrderAction(true, inactive, MAKER)).toBe(false)
+    expect(shouldMountOtcOrderAction(true, inactive, undefined)).toBe(true)
+  })
+
+  it('does not use the canonical index checkpoint to gate active fork actions', () => {
+    expect(shouldMountOtcOrderAction(true, order(), undefined)).toBe(true)
   })
 
   it('does not let index lag hide a supplied zero-only recovery action for an inactive order', () => {
@@ -161,5 +163,14 @@ describe('OtcOrderDetailView', () => {
       actionPanel: <button type="button">Revoke unused allowance</button>,
     })
     expect(screen.getByRole('button', { name: 'Revoke unused allowance' })).toBeTruthy()
+  })
+
+  it('does not let canonical index disagreement hide a fork-verified active action', () => {
+    renderDetail({
+      writeEnabled: true,
+      indexed: indexed({ amountB: 999n }),
+      actionPanel: <button type="button">Guarded local fill</button>,
+    })
+    expect(screen.getByRole('button', { name: 'Guarded local fill' })).toBeTruthy()
   })
 })

@@ -42,8 +42,8 @@ jest.mock('common/constants/routes', () => ({
   },
 }))
 
-function getMoreItemHrefs(isSolversEnabled: boolean): string[] {
-  const navItems = NAV_ITEMS(SupportedChainId.MAINNET, isSolversEnabled)
+function getMoreItemHrefs(isSolversEnabled: boolean, isOtcEnabled = true): string[] {
+  const navItems = NAV_ITEMS(SupportedChainId.MAINNET, isSolversEnabled, isOtcEnabled)
   const moreItem = navItems[navItems.length - 1]
 
   if (!moreItem?.children) {
@@ -64,5 +64,9 @@ describe('NAV_ITEMS', () => {
 
   it('links the enabled OTC surface from the product menu', () => {
     expect(getMoreItemHrefs(false)).toContain('/otc')
+  })
+
+  it('hides the OTC entry when the read feature is disabled', () => {
+    expect(getMoreItemHrefs(false, false)).not.toContain('/otc')
   })
 })

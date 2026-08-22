@@ -175,4 +175,32 @@ describe('useOtcSubmission', () => {
     expect(result.current.recoveryRequired).toBe(false)
     expect(refreshAllowance).not.toHaveBeenCalled()
   })
+
+  it('invalidates the wallet-bound context check on rerender and unmount', async () => {
+    let isCurrentContext: (() => boolean) | undefined
+    submitMock.mockImplementation(async (_client, _wallet, _intent, _authorization, _manifest, contextCheck) => {
+      isCurrentContext = contextCheck
+      throw new Error('Ophis OTC action context changed')
+    })
+    const { result, rerender, unmount } = renderHook(
+      ({ hookOptions }: { hookOptions: OtcSubmissionOptions }) => useOtcSubmission(hookOptions),
+      { initialProps: { hookOptions: options() } },
+    )
+
+    await act(() => result.current.submit({ kind: 'cancel', account: MAKER, order }, true))
+    expect(isCurrentContext?.()).toBe(true)
+
+    rerender({ hookOptions: options({ authorization: { ...options().authorization, writeFlag: false } }) })
+    expect(isCurrentContext?.()).toBe(false)
+
+    let mountedContext: (() => boolean) | undefined
+    submitMock.mockImplementation(async (_client, _wallet, _intent, _authorization, _manifest, contextCheck) => {
+      mountedContext = contextCheck
+      return { transactionHash: HASH, status: 'success', blockNumber: 10n }
+    })
+    await act(() => result.current.submit({ kind: 'cancel', account: MAKER, order }, true))
+    expect(mountedContext?.()).toBe(true)
+    unmount()
+    expect(mountedContext?.()).toBe(false)
+  })
 })

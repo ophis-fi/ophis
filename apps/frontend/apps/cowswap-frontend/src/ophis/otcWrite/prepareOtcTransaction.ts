@@ -125,9 +125,12 @@ export async function submitOtcTransaction(
   intent: OtcWriteIntent,
   authorization: OtcWriteRuntimeAuthorization,
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
+  isCurrentContext: () => boolean = () => true,
 ): Promise<OtcTransactionReceipt> {
   assertRuntimeAuthorization(authorization)
   const prepared = await prepareOtcTransaction(client, intent, manifest)
+  assertRuntimeAuthorization(authorization)
+  if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
   const hash = await wallet.sendTransaction(prepared.request, prepared.intent, prepared.preparedAtTimestamp)
   const receipt = await wallet.waitForTransactionReceipt(hash)
   if (receipt.status !== 'success') throw new Error('Ophis OTC transaction reverted')

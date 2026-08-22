@@ -121,6 +121,15 @@ function finishSubmission(
   if (isCurrentContext()) setPendingIntent(null)
 }
 
+function submissionContextKey(
+  resetKey: string,
+  account: Address | undefined,
+  authorization: OtcWriteRuntimeAuthorization,
+): string {
+  const { readFlag, writeFlag, isLocal, writeMode } = authorization
+  return [resetKey, account ?? '', readFlag, writeFlag, isLocal, writeMode ?? ''].join('\u0000')
+}
+
 export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionState {
   const { writeClient, wallet, authorization, resetKey, account, requiredAllowance, refreshAllowance, onConfirmed } =
     options
@@ -128,7 +137,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
   const [error, setError] = useState<string | null>(null)
   const [successHash, setSuccessHash] = useState<Hex | null>(null)
   const [recoveryRequired, setRecoveryRequired] = useState(false)
-  const submissionContext = `${resetKey}\u0000${account ?? ''}`
+  const submissionContext = submissionContextKey(resetKey, account, authorization)
   const contextGeneration = useRef(0)
   const inFlightGeneration = useRef<number | null>(null)
   const [allowanceCooldown, beginAllowanceCooldown] = useOtcAllowanceCooldown(refreshAllowance, submissionContext)
@@ -140,7 +149,11 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     setError(null)
     setSuccessHash(null)
     setRecoveryRequired(false)
-  }, [submissionContext])
+    return () => {
+      contextGeneration.current += 1
+      inFlightGeneration.current = null
+    }
+  }, [submissionContext, wallet, writeClient])
 
   const submit = useCallback(
     async (intent: OtcWriteIntent, execution: boolean) => {
@@ -156,7 +169,14 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
       setError(null)
       setSuccessHash(null)
       try {
-        const receipt = await submitOtcTransaction(writeClient, wallet, intent, authorization)
+        const receipt = await submitOtcTransaction(
+          writeClient,
+          wallet,
+          intent,
+          authorization,
+          undefined,
+          isCurrentContext,
+        )
         const result = await settleSuccessfulSubmission(intent, requiredAllowance, refreshAllowance, isCurrentContext)
         if (
           !applySuccessfulSubmission(

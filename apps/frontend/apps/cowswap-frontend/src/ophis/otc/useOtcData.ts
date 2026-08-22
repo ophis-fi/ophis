@@ -1,9 +1,10 @@
+import { useAtomValue } from 'jotai'
 import { useId, useMemo } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
+import { atomWithQuery } from 'jotai-tanstack-query'
 import ms from 'ms.macro'
-import useSWR from 'swr'
 import { usePublicClient } from 'wagmi'
 
 import { OPHIS_ETHEREUM_OTC_MANIFEST } from './otc.const'
@@ -183,16 +184,19 @@ export function useOtcData(enabled: boolean, refreshSignal = 0): OtcDataState {
   // render as 'ready' — every mount starts at loading until its own
   // verified round-trip completes (same rule as the detail page).
   const mountId = useId()
-  const { data, error } = useSWR(
-    enabled && client ? ['ophis-otc-data', mountId, refreshSignal] : null,
-    async () => (client ? loadOtcData(client) : null),
-    {
-      refreshInterval: OTC_DATA_REFRESH_INTERVAL,
-      revalidateOnFocus: false,
-      refreshWhenHidden: false,
-      refreshWhenOffline: false,
-    },
+  const dataQueryAtom = useMemo(
+    () =>
+      atomWithQuery<LoadedOtcData | null, Error>(() => ({
+        queryKey: ['ophis-otc-data', mountId, refreshSignal],
+        queryFn: async () => (client ? loadOtcData(client) : null),
+        enabled: enabled && !!client,
+        refetchInterval: OTC_DATA_REFRESH_INTERVAL,
+        refetchIntervalInBackground: false,
+        refetchOnWindowFocus: false,
+      })),
+    [client, enabled, mountId, refreshSignal],
   )
+  const { data, error } = useAtomValue(dataQueryAtom)
 
   if (error) {
     return { status: 'unavailable', ...EMPTY_STATE }

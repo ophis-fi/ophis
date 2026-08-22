@@ -148,6 +148,12 @@ describe('Ophis OTC boundary', () => {
     }
   })
 
+  it('keeps touched OTC reads on Jotai Query instead of SWR', () => {
+    for (const directory of [__dirname, PAGES_DIR]) {
+      expect(productionImports(directory).filter((value) => value === 'swr')).toEqual([])
+    }
+  })
+
   it('keeps the wallet-capable module free of trading, permit, signing, and solver internals', () => {
     const imports = productionImports(WRITE_DIR)
     for (const fragment of WRITE_FORBIDDEN_FRAGMENTS) {

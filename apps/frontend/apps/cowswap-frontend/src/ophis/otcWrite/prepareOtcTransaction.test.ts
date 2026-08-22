@@ -230,6 +230,29 @@ describe('Milestone C preflight and submission', () => {
     expect(receipt.transactionHash).toBe(TX_HASH)
   })
 
+  it('rechecks the action context after preflight and before opening the wallet', async () => {
+    const wallet: OtcWalletSubmitter = {
+      sendTransaction: jest.fn(async () => TX_HASH),
+      waitForTransactionReceipt: jest.fn(async () => ({
+        transactionHash: TX_HASH,
+        status: 'success',
+        blockNumber: 201n,
+      })),
+    }
+
+    await expect(
+      submitOtcTransaction(
+        mockOtcWriteClient(),
+        wallet,
+        { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
+        mockOtcAuthorization(),
+        mockOtcManifest(),
+        () => false,
+      ),
+    ).rejects.toThrow('Ophis OTC action context changed')
+    expect(wallet.sendTransaction).not.toHaveBeenCalled()
+  })
+
   it('treats a reverted receipt as failure', async () => {
     const wallet: OtcWalletSubmitter = {
       sendTransaction: async () => TX_HASH,

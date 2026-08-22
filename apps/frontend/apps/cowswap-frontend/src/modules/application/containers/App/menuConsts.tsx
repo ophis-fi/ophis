@@ -64,7 +64,7 @@ const LEARN_ITEM = {
   ],
 }
 
-const MORE_ITEM = (isSolversEnabled: boolean): UntranslatedMenuItem => ({
+const MORE_ITEM = (isSolversEnabled: boolean, isOtcEnabled: boolean): UntranslatedMenuItem => ({
   label: msg`More`,
   children: [
     ...(isSolversEnabled
@@ -80,14 +80,11 @@ const MORE_ITEM = (isSolversEnabled: boolean): UntranslatedMenuItem => ({
       href: Routes.PLAY_MEVSLICER,
       label: msg`MEV Slicer`,
     },
-    {
-      href: Routes.OTC,
-      label: msg`OTC`,
-    },
+    ...(isOtcEnabled ? [{ href: Routes.OTC, label: msg`OTC` }] : []),
   ],
 })
 
-export const NAV_ITEMS = (chainId: SupportedChainId, isSolversEnabled: boolean): MenuItem[] => {
+export const NAV_ITEMS = (chainId: SupportedChainId, isSolversEnabled: boolean, isOtcEnabled: boolean): MenuItem[] => {
   const _ACCOUNT_ITEM = ACCOUNT_ITEM(chainId)
   const accountItem: MenuItem = {
     label: i18n._(_ACCOUNT_ITEM.label),
@@ -108,7 +105,7 @@ export const NAV_ITEMS = (chainId: SupportedChainId, isSolversEnabled: boolean):
     })),
   }
 
-  const moreItemConfig = MORE_ITEM(isSolversEnabled)
+  const moreItemConfig = MORE_ITEM(isSolversEnabled, isOtcEnabled)
   const moreItem: MenuItem = {
     label: i18n._(moreItemConfig.label),
     children: moreItemConfig.children.map(({ href, label, external }) => ({

@@ -70,6 +70,7 @@ function DetailBody({
   indexed,
   nowMs,
   actionPanel,
+  writeEnabled,
 }: Omit<OtcOrderDetailViewProps, 'loading' | 'failed'>): ReactNode {
   if (!order) {
     return (
@@ -89,8 +90,16 @@ function DetailBody({
   return (
     <>
       {changed && (
-        <Callout tone="warning" title="Order data changed — refresh required">
-          <p>The indexed copy of this order disagrees with current on-chain state. Refresh before relying on it.</p>
+        <Callout
+          tone="warning"
+          title={writeEnabled ? 'Canonical index differs' : 'Order data changed — refresh required'}
+        >
+          <p>
+            The indexed copy of this order disagrees with current on-chain state.{' '}
+            {writeEnabled
+              ? 'Fork actions ignore this checkpoint and re-read exact fork state before opening the wallet.'
+              : 'Refresh before relying on it.'}
+          </p>
         </Callout>
       )}
       <Section id="otc-order-terms" title="Terms">
@@ -109,7 +118,7 @@ function DetailBody({
         </p>
         {indexed && <p>Created {formatOtcAge(nowMs, indexed.createdAt)}</p>}
       </Section>
-      {(!changed || !order.active) && actionPanel}
+      {(!changed || !order.active || writeEnabled) && actionPanel}
       <Section id="otc-order-technical" title="Technical details">
         <KeyValueList items={technicalRows} />
         <p>
