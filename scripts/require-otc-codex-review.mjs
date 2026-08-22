@@ -12,6 +12,7 @@
 
 const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
 const GITHUB_API_ORIGIN = 'https://api.github.com';
+const TRUSTED_REQUEST_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const SCOPED_PATHS = [
   '.github/',
   'apps/frontend/',
@@ -525,7 +526,7 @@ function selfTest() {
   assert(
     currentPullContext({
       head: { sha: base.headSha },
-      base: { sha: base.baseSha },
+      base: { sha: base.baseSha, ref: 'main', repo: { default_branch: 'main' } },
       changed_files: base.changedFiles,
       draft: false,
     }).baseSha === base.baseSha,
@@ -535,11 +536,19 @@ function selfTest() {
     () =>
       currentPullContext({
         head: { sha: base.headSha },
-        base: { sha: base.baseSha },
+        base: { sha: base.baseSha, ref: 'main', repo: { default_branch: 'main' } },
         changed_files: base.changedFiles,
         draft: 'false',
       }),
     'mutable PR state must be validated before use',
+  );
+  assert(
+    isTrustedReviewRequester({ author_association: 'MEMBER' }),
+    'repository members must be allowed to request a superseding review',
+  );
+  assert(
+    !isTrustedReviewRequester({ author_association: 'CONTRIBUTOR' }),
+    'untrusted commenters must not supersede accepted evidence',
   );
   assert(
     baseIsIncludedInHead(
@@ -573,6 +582,8 @@ function requirePositiveInteger(value, label) {
 function currentPullContext(pull) {
   const headSha = String(pull?.head?.sha ?? '');
   const baseSha = String(pull?.base?.sha ?? '');
+  const baseRef = String(pull?.base?.ref ?? '');
+  const defaultBranch = String(pull?.base?.repo?.default_branch ?? '');
   const changedFiles = pull?.changed_files;
   const draft = pull?.draft;
   if (!/^[0-9a-f]{40}$/.test(headSha)) throw new Error('Invalid current pull request head SHA');
@@ -580,7 +591,12 @@ function currentPullContext(pull) {
   if (!Number.isSafeInteger(changedFiles) || changedFiles < 0)
     throw new Error('Invalid current changed-file count');
   if (typeof draft !== 'boolean') throw new Error('Invalid current pull request draft state');
-  return { headSha, baseSha, changedFiles, draft };
+  if (!baseRef || !defaultBranch) throw new Error('Invalid current pull request base branch');
+  return { headSha, baseSha, baseRef, defaultBranch, changedFiles, draft };
+}
+
+function isTrustedReviewRequester(comment) {
+  return TRUSTED_REQUEST_ASSOCIATIONS.has(String(comment?.author_association ?? ''));
 }
 
 function baseIsIncludedInHead(comparison, baseSha) {
@@ -648,10 +664,14 @@ async function runLive() {
   const number = requirePositiveInteger(numberValue, 'pull request number');
   const prefix = ['repos', owner, name];
   const currentPull = await api([...prefix, 'pulls', number], token);
-  const { headSha, baseSha, changedFiles, draft } = currentPullContext(currentPull);
+  const { headSha, baseSha, baseRef, defaultBranch, changedFiles, draft } =
+    currentPullContext(currentPull);
   if (draft) {
     process.stdout.write('Draft PR: Codex merge evidence will be required when marked ready.\n');
     return;
+  }
+  if (baseRef !== defaultBranch) {
+    throw new Error('Codex merge gate only accepts pull requests targeting the default branch');
   }
   const comparison = await api([...prefix, 'compare', `${baseSha}...${headSha}`], token);
   if (!baseIsIncludedInHead(comparison, baseSha)) {
@@ -665,12 +685,14 @@ async function runLive() {
     api([...prefix, 'issues', number, 'comments'], token),
   ]);
   const matchingRequests = issueComments
-    .filter((comment) =>
-      /^@codex review(?:\s|$)/.test(
-        String(comment.body ?? '')
-          .replaceAll('\r\n', '\n')
-          .trim(),
-      ),
+    .filter(
+      (comment) =>
+        isTrustedReviewRequester(comment) &&
+        /^@codex review(?:\s|$)/.test(
+          String(comment.body ?? '')
+            .replaceAll('\r\n', '\n')
+            .trim(),
+        ),
     )
     .sort((left, right) => {
       const timeOrder = String(right.updated_at).localeCompare(String(left.updated_at));
@@ -699,6 +721,8 @@ async function runLive() {
   if (
     confirmedContext.headSha !== headSha ||
     confirmedContext.baseSha !== baseSha ||
+    confirmedContext.baseRef !== baseRef ||
+    confirmedContext.defaultBranch !== defaultBranch ||
     confirmedContext.changedFiles !== changedFiles ||
     confirmedContext.draft !== draft
   ) {
