@@ -41,7 +41,9 @@ jobs:
         env:
           FOUNDRY_PROFILE: otc-fork
           OPHIS_FORK_RPC_ETH: ${{ secrets.OTC_FORK_RPC_URL }}
-        run: forge test --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol
+        run: |
+          test -n "$OPHIS_FORK_RPC_ETH" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
+          forge test --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol
 
   injected-wallet-fork:
     name: Injected wallet ERC-20 lifecycle and recovery
