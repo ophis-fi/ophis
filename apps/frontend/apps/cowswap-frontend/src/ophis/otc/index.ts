@@ -1,4 +1,4 @@
-export { OPHIS_ETHEREUM_OTC_MANIFEST, OTC_KNOWN_WRITE_SELECTORS } from './otc.const'
+export { OPHIS_ETHEREUM_OTC_MANIFEST, OTC_ERC20_WRITE_SELECTORS, OTC_KNOWN_WRITE_SELECTORS } from './otc.const'
 export { OTC_READ_ABI, OTC_EVENT_ABI } from './otc.abi'
 export { parseOtcOrders } from './parseOtcOrders'
 export { readOtcSnapshot, readOtcOrder, verifyOtcContract } from './readOtcSnapshot'
