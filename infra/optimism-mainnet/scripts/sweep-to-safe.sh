@@ -159,6 +159,19 @@ for i in "${!TOKEN_LIST[@]}"; do
   fi
   [[ "$bal" =~ ^[0-9]+$ ]] || { echo "ERROR: non-numeric balance for $token: $bal" >&2; exit 6; }
   if python3 -c "import sys; sys.exit(0 if int(sys.argv[1]) >= int(sys.argv[2]) else 1)" "$bal" "$min_units"; then
+    # Sweep allowlist preflight (non-native only; native ETH targets the fee
+    # Safe and needs no entry). A non-allowlisted token would revert on-chain
+    # with "OFL: sweep token not allowed" AFTER leaking the sweep into the
+    # mempool, so abort read-only here with an actionable message instead.
+    if [[ "$(lc "$token")" != "$(lc "$NATIVE")" ]]; then
+      ALLOWED="$(cast call "$FEE_LIQUIDATOR" "sweepTokenAllowed(address)(bool)" "$token" --rpc-url "$RPC")" \
+        || { echo "ERROR: cast call sweepTokenAllowed() failed for $token" >&2; exit 6; }
+      [[ "$ALLOWED" == "true" ]] || {
+        echo "ABORT: $token is not on the sweep allowlist. Have the owner Safe run" >&2
+        echo "       setSweepToken($token, true) first (see the runbook §7)." >&2
+        exit 6
+      }
+    fi
     echo "    $token balance $bal >= $min_units (sweep full balance)"
     SWEEP_TOKENS+=("$token")
   else
