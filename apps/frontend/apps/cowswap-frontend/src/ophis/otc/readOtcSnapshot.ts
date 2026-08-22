@@ -110,6 +110,31 @@ export interface OtcOrderReadResult {
   blockNumber: bigint
 }
 
+export interface OtcVerifiedContract {
+  blockNumber: bigint
+  blockHash: Hex
+}
+
+/** Verify chain, runtime bytecode, WETH wiring, and block identity without enumerating orders. */
+export async function verifyOtcContract(
+  client: OtcReaderClient,
+  manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
+): Promise<OtcVerifiedContract> {
+  await requirePinnedChain(client, manifest)
+  const block = await client.getLatestBlock()
+  if (!block.hash) throw new Error('Ophis OTC block is not identifiable')
+
+  await requirePinnedCode(client, manifest.contract.address, manifest.contract.runtimeCodeHash, block.number)
+  await requireWethWiring(client, manifest, block.number)
+
+  const confirmedBlock = await client.getBlockByNumber(block.number)
+  if (confirmedBlock.number !== block.number || !confirmedBlock.hash || confirmedBlock.hash !== block.hash) {
+    throw new Error('Ophis OTC block changed')
+  }
+
+  return { blockNumber: block.number, blockHash: block.hash }
+}
+
 /**
  * Direct, fail-closed read of one order — the fresh re-read the detail view
  * performs so an indexed row is never presented as current state. Enforces
