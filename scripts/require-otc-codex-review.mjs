@@ -21,14 +21,24 @@ const SCOPED_PATHS = [
   'apps/frontend/apps/cowswap-frontend/src/pages/Otc/',
   'apps/frontend/libs/common-const/src/nativeAndWrappedTokens.ts',
   'apps/frontend/libs/common-const/src/tokens.ts',
+  'apps/frontend/libs/common-const/src/index.ts',
   'apps/frontend/libs/common-hooks/src/useFeatureFlags.ts',
+  'apps/frontend/libs/common-hooks/src/index.ts',
   'apps/frontend/libs/common-utils/src/environments.ts',
+  'apps/frontend/libs/common-utils/src/index.ts',
   'apps/frontend/libs/tokens/src/services/tokenPolicy.ts',
   'apps/frontend/libs/tokens/src/services/tokenPolicy.spec.ts',
+  'apps/frontend/libs/tokens/src/index.ts',
   'apps/frontend/libs/wallet/',
   'apps/frontend/libs/wallet-provider/',
   'apps/frontend/nx.json',
+  'apps/frontend/package.json',
   'apps/frontend/pnpm-lock.yaml',
+  'apps/frontend/tsconfig.base.json',
+  'apps/frontend/apps/cowswap-frontend/project.json',
+  'apps/frontend/apps/cowswap-frontend/tsconfig.app.json',
+  'apps/frontend/apps/cowswap-frontend-e2e/project.json',
+  'apps/frontend/apps/cowswap-frontend-e2e/tsconfig.json',
   'contracts/foundry.toml',
   'contracts/test/otc-fork/',
   'OPHIS_OTC_MILESTONE_C_APPSEC_REVIEW_2026-08-21.md',
@@ -50,11 +60,19 @@ function codexItems(items) {
 export function assessCodexGate({
   headSha,
   gateCreatedAt,
+  changedFiles,
   files,
   reviews,
   reviewComments,
   issueReactions,
 }) {
+  if (changedFiles !== files.length) {
+    return {
+      required: true,
+      accepted: false,
+      reason: `GitHub reported ${changedFiles} changed files but exposed ${files.length}; refusing incomplete scope evidence.`,
+    };
+  }
   if (!files.some(({ filename }) => isScopedPath(filename))) {
     return { required: false, accepted: true, reason: 'No Milestone C money-path file changed.' };
   }
@@ -114,6 +132,7 @@ function selfTest() {
   const base = {
     headSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     gateCreatedAt: '2026-08-20T12:00:00Z',
+    changedFiles: 1,
     files: [{ filename: 'apps/frontend/apps/cowswap-frontend/src/ophis/otcWrite/index.ts' }],
     reviews: [],
     reviewComments: [],
@@ -138,6 +157,10 @@ function selfTest() {
       ],
     }).accepted,
     'fresh Codex +1 must pass',
+  );
+  assert(
+    !assessCodexGate({ ...base, changedFiles: 3 }).accepted,
+    'an incomplete GitHub file list must fail closed',
   );
   assert(
     !assessCodexGate({
@@ -212,8 +235,14 @@ function selfTest() {
   for (const filename of [
     '.github/workflows/frontend-ci.yml',
     'apps/frontend/apps/cowswap-frontend-e2e/package.json',
+    'apps/frontend/apps/cowswap-frontend/tsconfig.app.json',
+    'apps/frontend/libs/common-const/src/index.ts',
+    'apps/frontend/libs/common-hooks/src/index.ts',
     'apps/frontend/libs/common-utils/src/environments.ts',
+    'apps/frontend/libs/common-utils/src/index.ts',
+    'apps/frontend/libs/tokens/src/index.ts',
     'apps/frontend/libs/wallet-provider/src/hooks/useWalletProvider.ts',
+    'apps/frontend/package.json',
     'apps/frontend/pnpm-lock.yaml',
   ]) {
     assert(
@@ -277,6 +306,7 @@ async function runLive() {
   const result = assessCodexGate({
     headSha: pull.head.sha,
     gateCreatedAt: workflowRun.created_at,
+    changedFiles: pull.changed_files,
     files,
     reviews,
     reviewComments,
