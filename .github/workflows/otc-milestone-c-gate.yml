@@ -111,6 +111,13 @@ jobs:
           current_clean=false
           was_marker=false
           current_marker=false
+          normalized_body="$(
+            jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' <<<"$COMMENT_BODY"
+          )"
+          normalized_body_from="$(
+            jq -Rrs 'gsub("\r\n"; "\n") | gsub("^\\s+|\\s+$"; "")' \
+              <<<"$COMMENT_BODY_FROM"
+          )"
           expected_request="@codex review
 
           Head: $head_sha
@@ -121,8 +128,8 @@ jobs:
           Base: $base_sha
           Source comment: "
           short_head="${head_sha:0:10}"
-          [[ "$COMMENT_BODY" == "$expected_request" ]] && current_request=true
-          [[ "$COMMENT_BODY_FROM" == "$expected_request" ]] && was_request=true
+          [[ "$normalized_body" == "$expected_request" ]] && current_request=true
+          [[ "$normalized_body_from" == "$expected_request" ]] && was_request=true
           if [[ "$COMMENT_BODY" == "$CLEAN_PREFIX"* ]] && {
             [[ "$COMMENT_BODY" == *"**Reviewed commit:** \`$short_head\`"* ]] ||
               [[ "$COMMENT_BODY" == *"**Reviewed commit:** \`$head_sha\`"* ]]
@@ -146,8 +153,8 @@ jobs:
             current_marker=false
           fi
           if [[ "$COMMENT_ACTION" != 'created' ]] && {
-            [[ "$COMMENT_USER" == "$CODEX_LOGIN" && "$was_clean" == true && "$current_clean" != true ]] ||
-              [[ "$COMMENT_USER" == "$ACTIONS_LOGIN" && "$was_marker" == true && "$current_marker" != true ]] ||
+            [[ "$COMMENT_USER" == "$CODEX_LOGIN" && "$was_clean" == true ]] ||
+              [[ "$COMMENT_USER" == "$ACTIONS_LOGIN" && "$was_marker" == true ]] ||
               [[ "$COMMENT_USER" != "$CODEX_LOGIN" && "$was_request" == true && "$current_request" != true ]]
           }; then
             marker="OTC Codex gate invalidated.
