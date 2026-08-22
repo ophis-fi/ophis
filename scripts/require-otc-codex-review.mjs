@@ -21,7 +21,7 @@ const SCOPED_PATHS = [
   'OPHIS_OTC_MILESTONE_C_APPSEC_REVIEW_2026-08-21.md',
   'OPHIS_OTC_MILESTONE_C_DIFFERENTIAL_REVIEW_2026-08-21.md',
   'docs/superpowers/plans/2026-08-21-ophis-otc-milestone-c.md',
-  'scripts/require-otc-codex-review.mjs',
+  'scripts/',
 ];
 
 function isScopedPath(path) {
@@ -419,6 +419,8 @@ function selfTest() {
     'apps/frontend/pnpm-workspace.yaml',
     'apps/frontend/tools/getReactProcessEnv.ts',
     'functions/_middleware.ts',
+    'scripts/otc-mainnet-canary.mjs',
+    'scripts/require-otc-codex-review.mjs',
   ]) {
     assert(
       !assessCodexGate({ ...base, files: [{ filename }] }).accepted,

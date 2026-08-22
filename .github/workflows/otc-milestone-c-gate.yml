@@ -1,5 +1,9 @@
 name: OTC Milestone C merge gate
 
+# Bootstrap invariant: do not add this workflow's required-check context to the
+# main ruleset until the commit introducing this file and its trusted parser is
+# merged. The rollout procedure verifies that absence before bootstrap merge.
+
 on:
   # The workflow definition itself comes from the protected base branch. It
   # never checks out or executes PR-head code.
