@@ -34,6 +34,7 @@ concurrency:
     github.event.action == 'edited' && github.event.changes.base == null &&
     format('ignored-{0}', github.run_id) || github.event_name == 'issue_comment' &&
     github.event.comment.user.login != 'chatgpt-codex-connector[bot]' &&
+    github.event.comment.user.login != 'github-actions[bot]' &&
     !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
     github.event.comment.id || 'authoritative' }}
   cancel-in-progress: true
@@ -44,6 +45,10 @@ jobs:
       github.event_name == 'issue_comment' &&
       github.event.issue.pull_request != null &&
       (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
+      (github.event.action != 'created' &&
+      github.event.comment.user.login == 'github-actions[bot]' &&
+      (startsWith(github.event.comment.body, 'OTC Codex gate invalidated.') ||
+      startsWith(github.event.changes.body.from, 'OTC Codex gate invalidated.'))) ||
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     name: Re-evaluate PR-head gate after conversation change
     runs-on: ubuntu-latest
@@ -61,6 +66,7 @@ jobs:
       - name: Rerun the current PR-head gate
         env:
           GH_TOKEN: ${{ github.token }}
+          ACTIONS_LOGIN: github-actions[bot]
           CODEX_LOGIN: chatgpt-codex-connector[bot]
           CLEAN_PREFIX: "Codex Review: Didn't find any major issues. :+1:"
           GATE_JOB_NAME: OTC Milestone C / fresh Codex review
@@ -100,18 +106,45 @@ jobs:
           current_request=false
           was_clean=false
           current_clean=false
-          [[ "$COMMENT_BODY" == @codex\ review* ]] && current_request=true
-          [[ "$COMMENT_BODY_FROM" == @codex\ review* ]] && was_request=true
-          [[ "$COMMENT_BODY" == "$CLEAN_PREFIX"* ]] && current_clean=true
-          [[ "$COMMENT_BODY_FROM" == "$CLEAN_PREFIX"* ]] && was_clean=true
+          was_marker=false
+          current_marker=false
+          expected_request="@codex review
+
+          Head: $head_sha
+          Base: $base_sha"
+          expected_marker_prefix="OTC Codex gate invalidated.
+
+          Head: $head_sha
+          Base: $base_sha
+          Source comment: "
+          short_head="${head_sha:0:10}"
+          [[ "$COMMENT_BODY" == "$expected_request" ]] && current_request=true
+          [[ "$COMMENT_BODY_FROM" == "$expected_request" ]] && was_request=true
+          if [[ "$COMMENT_BODY" == "$CLEAN_PREFIX"* ]] && {
+            [[ "$COMMENT_BODY" == *"**Reviewed commit:** \`$short_head\`"* ]] ||
+              [[ "$COMMENT_BODY" == *"**Reviewed commit:** \`$head_sha\`"* ]]
+          }; then
+            current_clean=true
+          fi
+          if [[ "$COMMENT_BODY_FROM" == "$CLEAN_PREFIX"* ]] && {
+            [[ "$COMMENT_BODY_FROM" == *"**Reviewed commit:** \`$short_head\`"* ]] ||
+              [[ "$COMMENT_BODY_FROM" == *"**Reviewed commit:** \`$head_sha\`"* ]]
+          }; then
+            was_clean=true
+          fi
+          [[ "$COMMENT_BODY" == "$expected_marker_prefix"* ]] && current_marker=true
+          [[ "$COMMENT_BODY_FROM" == "$expected_marker_prefix"* ]] && was_marker=true
           if [[ "$COMMENT_ACTION" == 'deleted' ]]; then
             was_request="$current_request"
             was_clean="$current_clean"
+            was_marker="$current_marker"
             current_request=false
             current_clean=false
+            current_marker=false
           fi
           if [[ "$COMMENT_ACTION" != 'created' ]] && {
             [[ "$COMMENT_USER" == "$CODEX_LOGIN" && "$was_clean" == true && "$current_clean" != true ]] ||
+              [[ "$COMMENT_USER" == "$ACTIONS_LOGIN" && "$was_marker" == true && "$current_marker" != true ]] ||
               [[ "$COMMENT_USER" != "$CODEX_LOGIN" && "$was_request" == true && "$current_request" != true ]]
           }; then
             marker="OTC Codex gate invalidated.

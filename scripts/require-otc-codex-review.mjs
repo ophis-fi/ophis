@@ -482,8 +482,30 @@ function selfTest() {
     );
   }
   assertThrows(
-    () => nextPageUrl('<https://example.invalid/repos/ophis-fi/ophis?page=2>; rel="next"'),
+    () =>
+      nextPageUrl(
+        '<https://example.invalid/repos/ophis-fi/ophis?page=2>; rel="next"',
+        '/repos/ophis-fi/ophis/',
+        '123',
+      ),
     'pagination must stay on the GitHub API origin',
+  );
+  assert(
+    nextPageUrl(
+      '<https://api.github.com/repositories/123/pulls/1227/files?page=2>; rel="next"',
+      '/repos/ophis-fi/ophis/',
+      '123',
+    ).pathname === '/repositories/123/pulls/1227/files',
+    'canonical repository-id pagination must be accepted',
+  );
+  assertThrows(
+    () =>
+      nextPageUrl(
+        '<https://api.github.com/repositories/124/pulls/1227/files?page=2>; rel="next"',
+        '/repos/ophis-fi/ophis/',
+        '123',
+      ),
+    'canonical pagination for another repository must fail',
   );
   assertThrows(
     () => requireApiSegment('ophis-fi/other', 'repository'),
@@ -583,26 +605,31 @@ function githubApiUrl(segments) {
   return url;
 }
 
-function nextPageUrl(link) {
+function nextPageUrl(link, repositoryPath, repositoryId) {
   const value = link
     .split(',')
     .map((part) => part.trim().match(/^<([^>]+)>; rel="next"$/)?.[1])
     .find(Boolean);
   if (!value) return undefined;
   const url = new URL(value);
+  const canonicalRepositoryPath = `/repositories/${repositoryId}/`;
   if (
     url.origin !== GITHUB_API_ORIGIN ||
     url.username ||
     url.password ||
-    !url.pathname.startsWith('/repos/')
+    (!url.pathname.startsWith(repositoryPath) && !url.pathname.startsWith(canonicalRepositoryPath))
   ) {
     throw new Error('Refusing untrusted GitHub pagination URL');
   }
   return url;
 }
 
-async function api(segments, token) {
+async function api(segments, token, repositoryId) {
   const items = [];
+  const repositoryPath = `/${segments
+    .slice(0, 3)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')}/`;
   let url = githubApiUrl(segments);
   while (url) {
     const response = await fetch(url, {
@@ -617,12 +644,12 @@ async function api(segments, token) {
     const body = await response.json();
     if (!Array.isArray(body)) return body;
     items.push(...body);
-    url = nextPageUrl(response.headers.get('link') ?? '');
+    url = nextPageUrl(response.headers.get('link') ?? '', repositoryPath, repositoryId);
   }
   return items;
 }
 
-async function resolveCleanCommentHeads(issueComments, headSha, prefix, token) {
+async function resolveCleanCommentHeads(issueComments, headSha, prefix, token, repositoryId) {
   return Promise.all(
     issueComments.map(async (comment) => {
       if (comment?.user?.login !== CODEX_LOGIN) return comment;
@@ -631,7 +658,7 @@ async function resolveCleanCommentHeads(issueComments, headSha, prefix, token) {
       const commit =
         shortSha.length === 40
           ? { sha: shortSha }
-          : await api([...prefix, 'commits', shortSha], token);
+          : await api([...prefix, 'commits', shortSha], token, repositoryId);
       const resolvedSha = String(commit?.sha ?? '');
       if (!/^[0-9a-f]{40}$/.test(resolvedSha)) {
         throw new Error('Invalid commit resolved from Codex clean evidence');
@@ -653,6 +680,7 @@ async function runLive() {
   const number = requirePositiveInteger(numberValue, 'pull request number');
   const prefix = ['repos', owner, name];
   const currentPull = await api([...prefix, 'pulls', number], token);
+  const repositoryId = requirePositiveInteger(currentPull?.base?.repo?.id, 'repository id');
   const { headSha, baseSha, baseRef, defaultBranch, changedFiles, draft } =
     currentPullContext(currentPull);
   if (draft) {
@@ -662,17 +690,23 @@ async function runLive() {
   if (baseRef !== defaultBranch) {
     throw new Error('Codex merge gate only accepts pull requests targeting the default branch');
   }
-  const comparison = await api([...prefix, 'compare', `${baseSha}...${headSha}`], token);
+  const comparison = await api(
+    [...prefix, 'compare', `${baseSha}...${headSha}`],
+    token,
+    repositoryId,
+  );
   if (!baseIsIncludedInHead(comparison, baseSha)) {
     throw new Error('Current base is not included in the pull request head; update the branch');
   }
 
   const [files] = await Promise.all([
-    api([...prefix, 'pulls', number, 'files'], token),
-    api([...prefix, 'pulls', number, 'comments'], token),
-    api([...prefix, 'issues', number, 'comments'], token),
+    api([...prefix, 'pulls', number, 'files'], token, repositoryId),
+    api([...prefix, 'pulls', number, 'comments'], token, repositoryId),
+    api([...prefix, 'issues', number, 'comments'], token, repositoryId),
   ]);
-  const confirmedContext = currentPullContext(await api([...prefix, 'pulls', number], token));
+  const confirmedContext = currentPullContext(
+    await api([...prefix, 'pulls', number], token, repositoryId),
+  );
   if (
     confirmedContext.headSha !== headSha ||
     confirmedContext.baseSha !== baseSha ||
@@ -687,10 +721,16 @@ async function runLive() {
   // Evidence can change without changing PR metadata. Fetch the mutable
   // collections again after the first snapshot and assess only this fresh copy.
   const [reviewComments, rawIssueComments] = await Promise.all([
-    api([...prefix, 'pulls', number, 'comments'], token),
-    api([...prefix, 'issues', number, 'comments'], token),
+    api([...prefix, 'pulls', number, 'comments'], token, repositoryId),
+    api([...prefix, 'issues', number, 'comments'], token, repositoryId),
   ]);
-  const issueComments = await resolveCleanCommentHeads(rawIssueComments, headSha, prefix, token);
+  const issueComments = await resolveCleanCommentHeads(
+    rawIssueComments,
+    headSha,
+    prefix,
+    token,
+    repositoryId,
+  );
   const invalidatedAt = issueComments
     .filter((comment) => isBoundInvalidation(comment, headSha, baseSha))
     .map((comment) => comment.created_at)
@@ -717,7 +757,9 @@ async function runLive() {
     updatedAt: comment.updated_at,
     cleanComments: issueComments,
   }));
-  const finalContext = currentPullContext(await api([...prefix, 'pulls', number], token));
+  const finalContext = currentPullContext(
+    await api([...prefix, 'pulls', number], token, repositoryId),
+  );
   if (
     finalContext.headSha !== headSha ||
     finalContext.baseSha !== baseSha ||
