@@ -87,7 +87,7 @@ function isBoundReviewCheckpoint(item, headSha, baseSha) {
 
 function cleanCommentHeadPrefix(comment) {
   const match = String(comment?.body ?? '').match(
-    /^Codex Review: Didn't find any major issues\. :\+1:\s*\n+\*\*Reviewed commit:\*\* `([0-9a-f]{10}|[0-9a-f]{40})`(?:\n|$)/,
+    /^Codex Review: Didn't find any major issues\.[^\r\n]*\r?\n+\*\*Reviewed commit:\*\* `([0-9a-f]{10}|[0-9a-f]{40})`(?:\r?\n|$)/,
   );
   return match?.[1];
 }
@@ -231,6 +231,22 @@ function selfTest() {
       reviewRequests: [recordedRequest({ cleanComments: [cleanComment] })],
     }).accepted,
     'an authenticated clean comment naming the current head must pass',
+  );
+  assert(
+    assessCodexGate({
+      ...base,
+      reviewRequests: [
+        recordedRequest({
+          cleanComments: [
+            {
+              ...cleanComment,
+              body: cleanComment.body.replace(':+1:', 'Swish!'),
+            },
+          ],
+        }),
+      ],
+    }).accepted,
+    'the non-authoritative clean-result flourish may vary',
   );
   assert(
     !assessCodexGate({

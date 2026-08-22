@@ -44,7 +44,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ACTIONS_LOGIN: github-actions[bot]
           CODEX_LOGIN: chatgpt-codex-connector[bot]
-          CLEAN_PREFIX: "Codex Review: Didn't find any major issues. :+1:"
+          CLEAN_PREFIX: "Codex Review: Didn't find any major issues."
           COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
           EVENT_ACTION: ${{ github.event.action }}
           EVENT_NAME: ${{ github.event_name }}
