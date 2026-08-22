@@ -19,9 +19,14 @@ const SCOPED_PATHS = [
   'apps/frontend/apps/cowswap-frontend/src/ophis/otcWrite/',
   'apps/frontend/apps/cowswap-frontend/src/ophis/otc/',
   'apps/frontend/apps/cowswap-frontend/src/pages/Otc/',
+  'apps/frontend/libs/common-const/src/nativeAndWrappedTokens.ts',
+  'apps/frontend/libs/common-const/src/tokens.ts',
   'apps/frontend/libs/common-hooks/src/useFeatureFlags.ts',
+  'apps/frontend/libs/common-utils/src/environments.ts',
   'apps/frontend/libs/tokens/src/services/tokenPolicy.ts',
   'apps/frontend/libs/tokens/src/services/tokenPolicy.spec.ts',
+  'apps/frontend/libs/wallet/',
+  'apps/frontend/libs/wallet-provider/',
   'apps/frontend/nx.json',
   'apps/frontend/pnpm-lock.yaml',
   'contracts/foundry.toml',
@@ -207,6 +212,8 @@ function selfTest() {
   for (const filename of [
     '.github/workflows/frontend-ci.yml',
     'apps/frontend/apps/cowswap-frontend-e2e/package.json',
+    'apps/frontend/libs/common-utils/src/environments.ts',
+    'apps/frontend/libs/wallet-provider/src/hooks/useWalletProvider.ts',
     'apps/frontend/pnpm-lock.yaml',
   ]) {
     assert(
