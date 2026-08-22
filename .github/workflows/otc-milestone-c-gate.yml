@@ -4,7 +4,9 @@ name: OTC Milestone C merge gate
 # and its trusted parser is merged. After bootstrap, an organization ruleset
 # must require this workflow from ophis-fi/ophis, this path, and refs/heads/main.
 # Do not rely on the job-name status context: PR-controlled workflows can emit
-# duplicate check names.
+# duplicate check names. The protect-main ruleset must also require review-thread
+# resolution; a review with findings emits no clean result, and native thread
+# enforcement closes later inline-comment lifecycle races.
 
 on:
   # pull_request_target loads this definition from the protected base. Required

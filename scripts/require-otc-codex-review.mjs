@@ -5,8 +5,9 @@
  *
  * Codex records findings as line comments and a clean result as an
  * authenticated issue comment naming the reviewed commit. Evidence must post
- * after the newest explicit request naming the full head and base SHAs, and no
- * Codex line finding may target that head. Pushes and base edits therefore
+ * after the newest explicit request naming the full head and base SHAs. A
+ * finding produces no clean result, while the repository ruleset independently
+ * requires every review thread to be resolved. Pushes and base edits therefore
  * invalidate earlier evidence. Mutable review approvals are never evidence.
  */
 
@@ -44,10 +45,6 @@ function isScopedFile(file) {
 
 function codexItems(items) {
   return items.filter((item) => item?.user?.login === CODEX_LOGIN);
-}
-
-function reviewedCommentSha(comment) {
-  return comment.original_commit_id ?? comment.commit_id;
 }
 
 function reviewRequestBody(headSha, baseSha) {
@@ -111,7 +108,6 @@ export function assessCodexGate({
   baseSha,
   changedFiles,
   files,
-  reviewComments,
   reviewRequests,
   invalidatedAt,
   invalidationId,
@@ -128,17 +124,6 @@ export function assessCodexGate({
   }
 
   const shortHead = headSha.slice(0, 10);
-  const findings = codexItems(reviewComments).filter(
-    (comment) => reviewedCommentSha(comment) === headSha,
-  );
-  if (findings.length > 0) {
-    return {
-      required: true,
-      accepted: false,
-      reason: `Codex left ${findings.length} finding(s) on head ${shortHead}; push fixes and request a fresh review.`,
-    };
-  }
-
   const latestRequest = newestReviewRequest(reviewRequests);
   const requestTime = Date.parse(latestRequest?.updatedAt);
   const invalidationTime = Date.parse(invalidatedAt);
@@ -192,58 +177,9 @@ function selfTest() {
     baseSha: 'cccccccccccccccccccccccccccccccccccccccc',
     changedFiles: 1,
     files: [{ filename: 'apps/frontend/apps/cowswap-frontend/src/ophis/otcWrite/index.ts' }],
-    reviewComments: [],
     reviewRequests: [],
   };
   assert(!assessCodexGate(base).accepted, 'missing evidence must fail');
-  assert(
-    assessCodexGate({
-      ...base,
-      reviewComments: [{ user: { login: CODEX_LOGIN }, commit_id: base.headSha }],
-      reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [
-            {
-              user: { login: CODEX_LOGIN },
-              body: `Codex Review: Didn't find any major issues. :+1:\n\n**Reviewed commit:** \`${base.headSha.slice(0, 10)}\`\n`,
-              created_at: '2026-08-20T12:01:00Z',
-              resolved_commit_id: base.headSha,
-            },
-          ],
-        },
-      ],
-    }).accepted === false,
-    'head findings must override clean evidence',
-  );
-  assert(
-    assessCodexGate({
-      ...base,
-      reviewComments: [
-        {
-          user: { login: CODEX_LOGIN },
-          commit_id: base.headSha,
-          original_commit_id: 'b'.repeat(40),
-        },
-      ],
-      reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          cleanComments: [
-            {
-              user: { login: CODEX_LOGIN },
-              body: `Codex Review: Didn't find any major issues. :+1:\n\n**Reviewed commit:** \`${base.headSha.slice(0, 10)}\`\n`,
-              created_at: '2026-08-20T12:01:00Z',
-              resolved_commit_id: base.headSha,
-            },
-          ],
-        },
-      ],
-    }).accepted,
-    'a rebased line comment from an earlier head must not block the current head',
-  );
   assert(
     assessCodexGate({
       ...base,
@@ -744,11 +680,7 @@ async function runLive() {
     throw new Error('Current base is not included in the pull request head; update the branch');
   }
 
-  const [files] = await Promise.all([
-    api([...prefix, 'pulls', number, 'files'], token, repositoryId),
-    api([...prefix, 'pulls', number, 'comments'], token, repositoryId),
-    api([...prefix, 'issues', number, 'comments'], token, repositoryId),
-  ]);
+  const files = await api([...prefix, 'pulls', number, 'files'], token, repositoryId);
   const confirmedContext = currentPullContext(
     await api([...prefix, 'pulls', number], token, repositoryId),
   );
@@ -765,10 +697,11 @@ async function runLive() {
 
   // Evidence can change without changing PR metadata. Fetch the mutable
   // collections again after the first snapshot and assess only this fresh copy.
-  const [reviewComments, rawIssueComments] = await Promise.all([
-    api([...prefix, 'pulls', number, 'comments'], token, repositoryId),
-    api([...prefix, 'issues', number, 'comments'], token, repositoryId),
-  ]);
+  const rawIssueComments = await api(
+    [...prefix, 'issues', number, 'comments'],
+    token,
+    repositoryId,
+  );
   const issueComments = await resolveCleanCommentHeads(
     rawIssueComments,
     headSha,
@@ -822,7 +755,6 @@ async function runLive() {
     baseSha,
     changedFiles,
     files,
-    reviewComments,
     reviewRequests,
     invalidatedAt: latestInvalidation?.created_at,
     invalidationId: latestInvalidation?.id,
