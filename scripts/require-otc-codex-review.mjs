@@ -4,10 +4,10 @@
  * Fail-closed merge gate for Milestone C money-path changes.
  *
  * Codex records findings and blocking state in reviews, and a clean result as
- * a +1 reaction on an explicit review-request comment that names the full head
- * and base SHAs. The reaction must post after the request's latest edit, and no
- * Codex line finding may target that head. Pushes and base edits therefore
- * invalidate earlier evidence without relying on ambiguous issue reactions.
+ * either a +1 reaction or an authenticated clean-result comment naming the
+ * reviewed commit. Evidence must post after the newest explicit request naming
+ * the full head and base SHAs, and no Codex line finding may target that head.
+ * Pushes and base edits therefore invalidate earlier evidence.
  */
 
 const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
@@ -48,7 +48,14 @@ function reviewRequestBody(headSha, baseSha) {
   return `@codex review\n\nHead: ${headSha}\nBase: ${baseSha}`;
 }
 
-function hasBoundThumb(request, headSha, baseSha) {
+function cleanCommentHeadPrefix(comment) {
+  const match = String(comment?.body ?? '').match(
+    /^Codex Review: Didn't find any major issues\. :\+1:\s*\n+\*\*Reviewed commit:\*\* `([0-9a-f]{10}|[0-9a-f]{40})`(?:\n|$)/,
+  );
+  return match?.[1];
+}
+
+function hasBoundCleanEvidence(request, headSha, baseSha) {
   if (
     String(request?.body ?? '')
       .replaceAll('\r\n', '\n')
@@ -58,12 +65,20 @@ function hasBoundThumb(request, headSha, baseSha) {
   }
   const updatedAt = Date.parse(request.updatedAt);
   if (!Number.isFinite(updatedAt)) return false;
-  return codexItems(request.reactions ?? []).some(
+  const freshThumb = codexItems(request.reactions ?? []).some(
     (reaction) =>
       reaction.content === '+1' &&
       Number.isFinite(Date.parse(reaction.created_at)) &&
       Date.parse(reaction.created_at) > updatedAt,
   );
+  const freshCleanComment = codexItems(request.cleanComments ?? []).some((comment) => {
+    const prefix = cleanCommentHeadPrefix(comment);
+    const createdAt = Date.parse(comment.created_at);
+    return (
+      prefix && headSha.startsWith(prefix) && Number.isFinite(createdAt) && createdAt > updatedAt
+    );
+  });
+  return freshThumb || freshCleanComment;
 }
 
 function newestReviewRequest(requests) {
@@ -121,9 +136,11 @@ export function assessCodexGate({
   }
 
   const latestRequest = newestReviewRequest(reviewRequests);
-  const freshThumb = latestRequest ? hasBoundThumb(latestRequest, headSha, baseSha) : false;
+  const cleanEvidence = latestRequest
+    ? hasBoundCleanEvidence(latestRequest, headSha, baseSha)
+    : false;
 
-  if (freshThumb) {
+  if (cleanEvidence) {
     return {
       required: true,
       accepted: true,
@@ -215,6 +232,72 @@ function selfTest() {
       ],
     }).accepted,
     'a Codex +1 bound to the exact head must pass',
+  );
+  const cleanComment = {
+    user: { login: CODEX_LOGIN },
+    body: `Codex Review: Didn't find any major issues. :+1:\n\n**Reviewed commit:** \`${base.headSha.slice(0, 10)}\`\n`,
+    created_at: '2026-08-20T12:01:00Z',
+  };
+  assert(
+    assessCodexGate({
+      ...base,
+      reviewRequests: [
+        {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          reactions: [],
+          cleanComments: [cleanComment],
+        },
+      ],
+    }).accepted,
+    'an authenticated clean comment naming the current head must pass',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          reactions: [],
+          cleanComments: [{ ...cleanComment, user: { login: 'contributor' } }],
+        },
+      ],
+    }).accepted,
+    'a contributor-authored clean comment must fail',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          reactions: [],
+          cleanComments: [
+            {
+              ...cleanComment,
+              body: cleanComment.body.replace(base.headSha.slice(0, 10), 'bbbbbbbbbb'),
+            },
+          ],
+        },
+      ],
+    }).accepted,
+    'a clean comment naming another head must fail',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:01:00Z',
+          reactions: [],
+          cleanComments: [cleanComment],
+        },
+      ],
+    }).accepted,
+    'a same-second clean comment must fail as ambiguous',
   );
   assert(
     !assessCodexGate({ ...base, changedFiles: 3 }).accepted,
@@ -557,11 +640,12 @@ async function runLive() {
     api([...prefix, 'issues', number, 'comments'], token),
   ]);
   const matchingRequests = issueComments
-    .filter(
-      (comment) =>
+    .filter((comment) =>
+      /^@codex review(?:\s|$)/.test(
         String(comment.body ?? '')
           .replaceAll('\r\n', '\n')
-          .trim() === reviewRequestBody(headSha, baseSha),
+          .trim(),
+      ),
     )
     .sort((left, right) => {
       const timeOrder = String(right.updated_at).localeCompare(String(left.updated_at));
@@ -573,6 +657,7 @@ async function runLive() {
       id: comment.id,
       body: comment.body,
       updatedAt: comment.updated_at,
+      cleanComments: issueComments,
       reactions: await api(
         [
           ...prefix,
