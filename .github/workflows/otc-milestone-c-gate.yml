@@ -31,7 +31,9 @@ concurrency:
   # evaluation without being eligible to enqueue a replacement.
   group: >-
     otc-codex-gate-${{ github.event.pull_request.number || github.event.issue.number }}-${{
-    github.event_name == 'issue_comment' &&
+    github.event_name == 'pull_request_target' &&
+    github.event.action == 'edited' && github.event.changes.base == null &&
+    format('metadata-{0}', github.run_id) || github.event_name == 'issue_comment' &&
     github.event.comment.user.login != 'chatgpt-codex-connector[bot]' &&
     !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
     github.event.comment.id || 'authoritative' }}
@@ -113,8 +115,14 @@ jobs:
           rerun_gate
 
   codex-review:
-    if: github.event_name != 'issue_comment'
-    name: OTC Milestone C / fresh Codex review
+    if: >-
+      github.event_name != 'issue_comment' &&
+      (github.event_name != 'pull_request_target' || github.event.action != 'edited' ||
+      github.event.changes.base != null)
+    name: >-
+      ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' &&
+      github.event.changes.base == null && 'OTC Milestone C / metadata edit ignored' ||
+      'OTC Milestone C / fresh Codex review' }}
     runs-on: ubuntu-latest
     steps:
       # Run the gate implementation from the trusted base commit. Otherwise a
