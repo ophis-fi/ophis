@@ -1,0 +1,82 @@
+import { render, screen } from '@testing-library/react'
+
+import { OtcActionControl } from './OtcActionControl.container'
+import { useOtcActionController, type OtcActionDefinition } from './useOtcActionController'
+
+jest.mock('./useOtcActionController', () => ({
+  useOtcActionController: jest.fn(),
+}))
+
+const useControllerMock = useOtcActionController as jest.MockedFunction<typeof useOtcActionController>
+
+const DEFINITION: OtcActionDefinition = {
+  executeLabel: 'Fill entire order',
+  ready: true,
+  reviewed: true,
+  resetKey: 'order-7',
+  executeIntent: null,
+  requiredAllowance: null,
+}
+
+function announcementFor(text: string): HTMLElement {
+  const content = screen.getByText(text)
+  const announcement = content.closest('[role]')
+  if (!(announcement instanceof HTMLElement)) throw new Error(`Missing announcement region for ${text}`)
+  return announcement
+}
+
+describe('OtcActionControl screen-reader semantics', () => {
+  it('announces failed execution and leftover-allowance recovery assertively', () => {
+    useControllerMock.mockReturnValue({
+      model: { action: 'revoke', label: 'Revoke unused allowance', disabled: false, pending: false },
+      error: 'The order changed before submission.',
+      successHash: null,
+      allowance: 2_000_000_000n,
+      diagnostic: null,
+      runPrimary: jest.fn(),
+    })
+
+    render(<OtcActionControl definition={DEFINITION} onConfirmed={undefined} />)
+
+    expect((screen.getByRole('button', { name: 'Revoke unused allowance' }) as HTMLButtonElement).disabled).toBe(false)
+    expect(screen.getAllByRole('alert')).toHaveLength(2)
+    expect(announcementFor('Unused token allowance remains').getAttribute('aria-live')).toBe('assertive')
+    expect(announcementFor('Transaction not completed').getAttribute('aria-atomic')).toBe('true')
+  })
+
+  it('announces a confirmed fill politely and exposes the exact action name', () => {
+    useControllerMock.mockReturnValue({
+      model: { action: 'execute', label: 'Fill entire order', disabled: false, pending: false },
+      error: null,
+      successHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      allowance: null,
+      diagnostic: null,
+      runPrimary: jest.fn(),
+    })
+
+    render(<OtcActionControl definition={DEFINITION} onConfirmed={undefined} />)
+
+    expect((screen.getByRole('button', { name: 'Fill entire order' }) as HTMLButtonElement).disabled).toBe(false)
+    const confirmation = announcementFor('Transaction confirmed')
+    expect(confirmation.getAttribute('role')).toBe('status')
+    expect(confirmation.getAttribute('aria-live')).toBe('polite')
+    expect(confirmation.getAttribute('aria-atomic')).toBe('true')
+  })
+
+  it('marks cancellation progress as busy without dropping its accessible name', () => {
+    useControllerMock.mockReturnValue({
+      model: { action: 'unavailable', label: 'Cancelling order...', disabled: true, pending: true },
+      error: null,
+      successHash: null,
+      allowance: null,
+      diagnostic: null,
+      runPrimary: jest.fn(),
+    })
+
+    render(<OtcActionControl definition={DEFINITION} onConfirmed={undefined} />)
+
+    const button = screen.getByRole('button', { name: 'Cancelling order...' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    expect(button.getAttribute('aria-busy')).toBe('true')
+  })
+})
