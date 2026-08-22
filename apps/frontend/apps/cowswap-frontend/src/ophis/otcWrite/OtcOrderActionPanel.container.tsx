@@ -28,6 +28,7 @@ function buildOrderActionDefinition(
   const reviewedTerms = !!paymentToken && !!receivedToken
   return {
     executeLabel: isMaker ? 'Cancel order' : 'Fill entire order',
+    unavailableLabel: order.active ? 'Order terms unavailable' : 'Order is inactive',
     ready: order.active && reviewedTerms,
     reviewed,
     resetKey,
@@ -105,21 +106,32 @@ export function OtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; o
   )
 
   return (
-    <Section id="otc-order-action" title={isMaker ? 'Cancel order on local fork' : 'Fill order on local fork'}>
+    <Section
+      id="otc-order-action"
+      title={
+        !order.active ? 'Recover token allowance' : isMaker ? 'Cancel order on local fork' : 'Fill order on local fork'
+      }
+    >
       <Callout tone="warning" title="Fork-only transaction mode">
-        <p>Preflight re-reads these exact terms and simulates the call before your wallet is asked to submit.</p>
+        <p>
+          {order.active
+            ? 'Preflight re-reads these exact terms and simulates the call before your wallet is asked to submit.'
+            : 'This order is inactive. Only a positive existing escrow allowance can be revoked.'}
+        </p>
       </Callout>
       <OtcOrderTermsSummary isMaker={isMaker} order={order} paymentToken={paymentToken} receivedToken={receivedToken} />
-      <styledEl.ReviewLabel>
-        <input
-          type="checkbox"
-          checked={reviewed}
-          onChange={(event) => setReviewedKey(event.target.checked ? resetKey : null)}
-        />
-        {isMaker
-          ? 'I reviewed the exact order and understand cancellation costs Ethereum gas.'
-          : 'I reviewed both exact token amounts, allowance, escrow risks, and race risk.'}
-      </styledEl.ReviewLabel>
+      {order.active && (
+        <styledEl.ReviewLabel>
+          <input
+            type="checkbox"
+            checked={reviewed}
+            onChange={(event) => setReviewedKey(event.target.checked ? resetKey : null)}
+          />
+          {isMaker
+            ? 'I reviewed the exact order and understand cancellation costs Ethereum gas.'
+            : 'I reviewed both exact token amounts, allowance, escrow risks, and race risk.'}
+        </styledEl.ReviewLabel>
+      )}
       <OtcActionControl definition={definition} onConfirmed={onConfirmed} />
     </Section>
   )

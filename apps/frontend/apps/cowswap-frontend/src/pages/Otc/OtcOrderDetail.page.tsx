@@ -9,6 +9,7 @@
 import { useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Badge, Callout, KeyValueList, PageShell, Section, TextLink } from 'ophis/ds'
 import {
@@ -20,7 +21,7 @@ import {
   OPHIS_ETHEREUM_OTC_MANIFEST,
   OTC_DATA_REFRESH_INTERVAL,
 } from 'ophis/otc'
-import { isReviewedOtcOrder, OtcOrderActionPanel } from 'ophis/otcWrite'
+import { OtcOrderActionPanel, shouldMountOtcOrderAction } from 'ophis/otcWrite'
 import { Navigate, useParams } from 'react-router'
 import useSWR from 'swr'
 import { usePublicClient } from 'wagmi'
@@ -204,11 +205,10 @@ function GuardedOtcOrderActionPanel({
   indexed: OtcIndexedOrder | null
   onConfirmed: () => void
 }): ReactNode {
-  if (!writeEnabled) return null
-  if (freshness !== 'fresh') return null
-  if (!order?.active) return null
-  if (!isReviewedOtcOrder(order)) return null
-  if (indexed && indexedDisagrees(indexed, order)) return null
+  const { account } = useWalletInfo()
+  const indexedAgrees = !order || !indexed || !indexedDisagrees(indexed, order)
+  if (!shouldMountOtcOrderAction(writeEnabled, freshness, order, indexedAgrees, account)) return null
+  if (!order) return null
   return <OtcOrderActionPanel order={order} onConfirmed={onConfirmed} />
 }
 

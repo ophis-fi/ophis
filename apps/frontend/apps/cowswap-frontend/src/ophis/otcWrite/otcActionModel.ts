@@ -16,6 +16,7 @@ export interface OtcActionFacts {
   allowanceCooldown: boolean
   pendingIntent: OtcWriteIntent['kind'] | 'switch' | null
   executeLabel: string
+  unavailableLabel: string
 }
 
 export interface OtcActionModel {
@@ -69,7 +70,6 @@ function environmentModel(facts: OtcActionFacts): MaybeActionModel {
 }
 
 function readinessModel(facts: OtcActionFacts): MaybeActionModel {
-  if (!facts.ready) return { action: 'unavailable', label: 'Complete the order terms', disabled: true, pending: false }
   if (facts.allowanceFailed) {
     return { action: 'unavailable', label: 'Allowance unavailable', disabled: true, pending: false }
   }
@@ -82,12 +82,22 @@ function readinessModel(facts: OtcActionFacts): MaybeActionModel {
   return null
 }
 
-function transactionModel(facts: OtcActionFacts): OtcActionModel {
-  if (facts.recoveryRequired && (facts.allowance ?? 0n) > 0n) {
+function revokeModel(facts: OtcActionFacts): MaybeActionModel {
+  const positiveAllowance = (facts.allowance ?? 0n) > 0n
+  if (positiveAllowance && (facts.recoveryRequired || !facts.ready)) {
     return { action: 'revoke', label: 'Revoke unused allowance', disabled: false, pending: false }
   }
-  if (facts.requiredAllowance !== null && (facts.allowance ?? 0n) > 0n && facts.allowance !== facts.requiredAllowance) {
+  if (facts.requiredAllowance !== null && positiveAllowance && facts.allowance !== facts.requiredAllowance) {
     return { action: 'revoke', label: 'Revoke mismatched allowance', disabled: false, pending: false }
+  }
+  return null
+}
+
+function transactionModel(facts: OtcActionFacts): OtcActionModel {
+  const revoke = revokeModel(facts)
+  if (revoke) return revoke
+  if (!facts.ready) {
+    return { action: 'unavailable', label: facts.unavailableLabel, disabled: true, pending: false }
   }
   if (!facts.reviewed) {
     return {

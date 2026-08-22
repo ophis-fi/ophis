@@ -20,6 +20,7 @@ function facts(overrides: Partial<OtcActionFacts> = {}): OtcActionFacts {
     allowanceCooldown: false,
     pendingIntent: null,
     executeLabel: 'Fill entire order',
+    unavailableLabel: 'Order is inactive',
     ...overrides,
   }
 }
@@ -87,6 +88,17 @@ describe('deriveOtcActionModel', () => {
       label: 'Revoke unused allowance',
       disabled: false,
       pending: false,
+    })
+  })
+
+  it('keeps zero-only recovery available after the direct read observes an inactive order', () => {
+    expect(deriveOtcActionModel(facts({ ready: false, allowance: 10n }))).toMatchObject({
+      action: 'revoke',
+      label: 'Revoke unused allowance',
+    })
+    expect(deriveOtcActionModel(facts({ ready: false, allowance: 0n }))).toMatchObject({
+      action: 'unavailable',
+      label: 'Order is inactive',
     })
   })
 })

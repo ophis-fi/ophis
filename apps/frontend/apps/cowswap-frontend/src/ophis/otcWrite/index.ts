@@ -34,7 +34,7 @@ export {
 export { useOtcActionController } from './useOtcActionController'
 export { OtcCreatePanel } from './OtcCreatePanel.container'
 export { OtcOrderActionPanel } from './OtcOrderActionPanel.container'
-export { isReviewedOtcOrder } from './otcWriteOrder.utils'
+export { isReviewedOtcOrder, shouldMountOtcOrderAction } from './otcWriteOrder.utils'
 export type { OtcActionDefinition, OtcActionController } from './useOtcActionController'
 export type { OtcActionFacts, OtcActionModel, OtcPrimaryAction } from './otcActionModel'
 export type { OtcCreateFormValues, OtcReviewedToken } from './otcWriteForm'

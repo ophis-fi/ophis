@@ -58,6 +58,7 @@ const PAGE_WRITE_ALLOWED_IMPORTS = new Set([
   'isReviewedOtcOrder',
   'resolveOtcWriteAuthorization',
   'resolveOtcWriteFlag',
+  'shouldMountOtcOrderAction',
   'useOtcWriteAuthorization',
 ])
 const WRITE_SIGNER_APIS = new Map<string, ReadonlySet<string>>([

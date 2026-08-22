@@ -28,6 +28,7 @@ type RevokeIntent = OtcRevokeCreateIntent | OtcRevokeFillIntent
 
 export interface OtcActionDefinition {
   executeLabel: string
+  unavailableLabel?: string
   ready: boolean
   reviewed: boolean
   resetKey: string
@@ -106,6 +107,7 @@ export function useOtcActionController(
     allowanceCooldown: submission.allowanceCooldown,
     pendingIntent: submission.pendingIntent,
     executeLabel: definition.executeLabel,
+    unavailableLabel: definition.unavailableLabel ?? 'Complete the order terms',
   })
 
   const runPrimary = useCallback(async () => {

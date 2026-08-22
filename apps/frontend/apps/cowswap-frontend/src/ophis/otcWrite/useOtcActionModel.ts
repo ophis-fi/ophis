@@ -17,6 +17,7 @@ export function useOtcActionModel(facts: OtcActionFacts): OtcActionModel {
     allowanceCooldown,
     pendingIntent,
     executeLabel,
+    unavailableLabel,
   } = facts
   return useMemo(
     () =>
@@ -34,6 +35,7 @@ export function useOtcActionModel(facts: OtcActionFacts): OtcActionModel {
         allowanceCooldown,
         pendingIntent,
         executeLabel,
+        unavailableLabel,
       }),
     [
       allowance,
@@ -49,6 +51,7 @@ export function useOtcActionModel(facts: OtcActionFacts): OtcActionModel {
       recoveryRequired,
       requiredAllowance,
       reviewed,
+      unavailableLabel,
     ],
   )
 }

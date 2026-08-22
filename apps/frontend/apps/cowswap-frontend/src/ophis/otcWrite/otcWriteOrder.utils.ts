@@ -19,3 +19,15 @@ export function isReviewedOtcOrder(order: OtcOrder): boolean {
     !!getOtcTokenMeta(order.tokenB)
   )
 }
+
+export function shouldMountOtcOrderAction(
+  writeEnabled: boolean,
+  freshness: 'fresh' | 'stale' | 'unknown',
+  order: OtcOrder | null,
+  indexedAgrees: boolean,
+  account: string | undefined,
+): boolean {
+  if (!writeEnabled || !order || !isReviewedOtcOrder(order)) return false
+  if (!order.active) return !!account && !isAddressEqual(account, order.maker)
+  return freshness === 'fresh' && indexedAgrees
+}

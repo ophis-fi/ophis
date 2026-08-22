@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { shouldMountOtcOrderAction } from 'ophis/otcWrite'
 
 import { OtcOrderDetailView } from './OtcOrderDetail.page'
 
@@ -141,5 +142,14 @@ describe('OtcOrderDetailView', () => {
       actionPanel: <button type="button">Guarded local fill</button>,
     })
     expect(screen.queryByRole('button', { name: 'Guarded local fill' })).toBeNull()
+  })
+
+  it('keeps only nonmaker allowance recovery mountable after the order becomes inactive', () => {
+    const inactive = order({ active: false })
+    expect(
+      shouldMountOtcOrderAction(true, 'unknown', inactive, false, '0x1111111111111111111111111111111111111111'),
+    ).toBe(true)
+    expect(shouldMountOtcOrderAction(true, 'unknown', inactive, false, MAKER)).toBe(false)
+    expect(shouldMountOtcOrderAction(true, 'unknown', inactive, false, undefined)).toBe(false)
   })
 })
