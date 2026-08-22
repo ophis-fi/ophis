@@ -3,6 +3,9 @@ name: OTC Milestone C merge gate
 on:
   # The workflow definition itself comes from the protected base branch. It
   # never checks out or executes PR-head code.
+  # The required-check ruleset uses strict base freshness. A base advance makes
+  # the PR unmergeable until its branch is updated; that update emits synchronize
+  # and reruns this gate against the new full base SHA.
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, edited]
   pull_request_review:
@@ -29,9 +32,21 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
+      - name: Locate the trusted gate implementation
+        id: trusted-gate
+        shell: bash
+        run: |
+          if [[ -f scripts/require-otc-codex-review.mjs ]]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'Bootstrap PR: the trusted base does not contain the gate yet.'
+          fi
       - name: Mutation-test the review evidence parser
+        if: steps.trusted-gate.outputs.available == 'true'
         run: node scripts/require-otc-codex-review.mjs --self-test
       - name: Require clean Codex evidence for the current money-path head
+        if: steps.trusted-gate.outputs.available == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}

@@ -20,6 +20,8 @@ const SCOPED_PATHS = [
   'apps/frontend/apps/cowswap-frontend/src/ophis/otcWrite/',
   'apps/frontend/apps/cowswap-frontend/src/ophis/otc/',
   'apps/frontend/apps/cowswap-frontend/src/pages/Otc/',
+  'apps/frontend/apps/cowswap-frontend/src/modules/application/containers/App/RoutesApp.tsx',
+  'apps/frontend/apps/cowswap-frontend/src/common/constants/routes.ts',
   'apps/frontend/libs/common-const/src/nativeAndWrappedTokens.ts',
   'apps/frontend/libs/common-const/src/tokens.ts',
   'apps/frontend/libs/common-const/src/index.ts',
@@ -86,8 +88,18 @@ function hasBoundThumb(request, headSha, baseSha) {
     (reaction) =>
       reaction.content === '+1' &&
       Number.isFinite(Date.parse(reaction.created_at)) &&
-      Date.parse(reaction.created_at) >= updatedAt,
+      Date.parse(reaction.created_at) > updatedAt,
   );
+}
+
+function newestReviewRequest(requests) {
+  return requests.reduce((newest, request) => {
+    if (!newest) return request;
+    const requestTime = Date.parse(request.updatedAt);
+    const newestTime = Date.parse(newest.updatedAt);
+    if (requestTime !== newestTime) return requestTime > newestTime ? request : newest;
+    return Number(request.id ?? 0) > Number(newest.id ?? 0) ? request : newest;
+  }, undefined);
 }
 
 export function assessCodexGate({
@@ -134,7 +146,8 @@ export function assessCodexGate({
     };
   }
 
-  const freshThumb = reviewRequests.some((request) => hasBoundThumb(request, headSha, baseSha));
+  const latestRequest = newestReviewRequest(reviewRequests);
+  const freshThumb = latestRequest ? hasBoundThumb(latestRequest, headSha, baseSha) : false;
 
   if (freshThumb) {
     return {
@@ -253,6 +266,43 @@ function selfTest() {
       ...base,
       reviewRequests: [
         {
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          reactions: [
+            { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T12:00:00Z' },
+          ],
+        },
+      ],
+    }).accepted,
+    'a same-second reaction must fail as ambiguous',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        {
+          id: 1,
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:00:00Z',
+          reactions: [
+            { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T12:01:00Z' },
+          ],
+        },
+        {
+          id: 2,
+          body: reviewRequestBody(base.headSha, base.baseSha),
+          updatedAt: '2026-08-20T12:02:00Z',
+          reactions: [],
+        },
+      ],
+    }).accepted,
+    'an older approved request must not override a newer request',
+  );
+  assert(
+    !assessCodexGate({
+      ...base,
+      reviewRequests: [
+        {
           body: reviewRequestBody('b'.repeat(40), base.baseSha),
           updatedAt: '2026-08-20T12:00:00Z',
           reactions: [
@@ -352,6 +402,8 @@ function selfTest() {
     '.github/workflows/frontend-ci.yml',
     'apps/frontend/apps/cowswap-frontend-e2e/package.json',
     'apps/frontend/apps/cowswap-frontend/tsconfig.app.json',
+    'apps/frontend/apps/cowswap-frontend/src/modules/application/containers/App/RoutesApp.tsx',
+    'apps/frontend/apps/cowswap-frontend/src/common/constants/routes.ts',
     'apps/frontend/libs/common-const/src/index.ts',
     'apps/frontend/libs/common-hooks/src/index.ts',
     'apps/frontend/libs/common-utils/src/environments.ts',
@@ -469,14 +521,21 @@ async function runLive() {
     api([...prefix, 'pulls', number, 'comments'], token),
     api([...prefix, 'issues', number, 'comments'], token),
   ]);
-  const matchingRequests = issueComments.filter(
-    (comment) =>
-      String(comment.body ?? '')
-        .replaceAll('\r\n', '\n')
-        .trim() === reviewRequestBody(headSha, baseSha),
-  );
+  const matchingRequests = issueComments
+    .filter(
+      (comment) =>
+        String(comment.body ?? '')
+          .replaceAll('\r\n', '\n')
+          .trim() === reviewRequestBody(headSha, baseSha),
+    )
+    .sort((left, right) => {
+      const timeOrder = String(right.updated_at).localeCompare(String(left.updated_at));
+      return timeOrder || Number(right.id) - Number(left.id);
+    })
+    .slice(0, 1);
   const reviewRequests = await Promise.all(
     matchingRequests.map(async (comment) => ({
+      id: comment.id,
       body: comment.body,
       updatedAt: comment.updated_at,
       reactions: await api(
