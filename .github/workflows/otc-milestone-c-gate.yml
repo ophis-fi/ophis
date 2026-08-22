@@ -14,6 +14,8 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, edited]
   pull_request_review:
     types: [submitted, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
   issue_comment:
     types: [created, edited, deleted]
 
@@ -36,7 +38,7 @@ jobs:
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     name: Re-evaluate PR-head gate after conversation change
     runs-on: ubuntu-latest
-    timeout-minutes: 14
+    timeout-minutes: 12
     permissions:
       actions: write
       contents: read
@@ -49,12 +51,7 @@ jobs:
       - name: Rerun the current PR-head gate
         env:
           GH_TOKEN: ${{ github.token }}
-          CODEX_LOGIN: chatgpt-codex-connector[bot]
-          CLEAN_PREFIX: "Codex Review: Didn't find any major issues. :+1:"
-          COMMENT_ACTION: ${{ github.event.action }}
-          COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_ID: ${{ github.event.comment.id }}
-          COMMENT_UPDATED_AT: ${{ github.event.comment.updated_at }}
           PR_NUMBER: ${{ github.event.issue.number }}
         shell: bash
         run: |
@@ -87,53 +84,25 @@ jobs:
             exit 1
           }
           rerun_gate() {
-            local error
-            if ! error="$(gh api --silent --method POST \
-              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" 2>&1)"; then
-              if [[ "$error" == *'HTTP 409'* ]]; then
-                echo 'The current PR-head gate is already queued or running.'
+            local attempt error
+            for attempt in {1..60}; do
+              if error="$(gh api --silent --method POST \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/rerun" 2>&1)"; then
                 return 0
+              fi
+              if [[ "$error" == *'HTTP 409'* ]]; then
+                echo 'The current PR-head gate is busy; waiting to enqueue a fresh evaluation.'
+                sleep 10
+                continue
               fi
               echo "$error" >&2
               return 1
-            fi
+            done
+            echo 'Timed out waiting to enqueue a fresh PR-head gate evaluation.' >&2
+            return 1
           }
 
           rerun_gate
-          if [[ "$COMMENT_ACTION" == 'deleted' || "$COMMENT_BODY" != @codex\ review* ]]; then
-            exit 0
-          fi
-
-          # GitHub Actions has no reaction trigger. Keep this trusted request
-          # worker alive long enough to observe the connector's reaction-only
-          # clean path, then rerun the same check attached to the PR head.
-          for _attempt in {1..48}; do
-            if gh api \
-              "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions?per_page=100" \
-              | jq -e --arg login "$CODEX_LOGIN" --arg updated "$COMMENT_UPDATED_AT" \
-                'any(.[]; .user.login == $login and .content == "+1" and .created_at > $updated)' \
-                >/dev/null; then
-              echo 'Fresh Codex reaction observed; rerunning the PR-head gate.'
-              rerun_gate
-              exit 0
-            fi
-            if gh api --method GET "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-              -f per_page=100 \
-              -f since="$COMMENT_UPDATED_AT" \
-              | jq -e --arg login "$CODEX_LOGIN" --arg updated "$COMMENT_UPDATED_AT" \
-                --arg short_head "${head_sha:0:10}" \
-                --arg clean_prefix "$CLEAN_PREFIX" \
-                'any(.[]; .user.login == $login and .created_at > $updated and
-                  (.body | startswith($clean_prefix)) and
-                  (.body | contains("**Reviewed commit:** `" + $short_head + "`")))' \
-                >/dev/null; then
-              echo 'Clean Codex comment observed; rerunning the PR-head gate.'
-              rerun_gate
-              exit 0
-            fi
-            sleep 15
-          done
-          echo 'No clean reaction or comment appeared before the bounded poll deadline.'
 
   codex-review:
     if: github.event_name != 'issue_comment'

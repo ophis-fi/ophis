@@ -4,10 +4,10 @@
  * Fail-closed merge gate for Milestone C money-path changes.
  *
  * Codex records findings and blocking state in reviews, and a clean result as
- * either a +1 reaction or an authenticated clean-result comment naming the
- * reviewed commit. Evidence must post after the newest explicit request naming
- * the full head and base SHAs, and no Codex line finding may target that head.
- * Pushes and base edits therefore invalidate earlier evidence.
+ * either an approved review or an authenticated clean-result comment naming
+ * the reviewed commit. Evidence must post after the newest explicit request
+ * naming the full head and base SHAs, and no Codex line finding may target that
+ * head. Pushes and base edits therefore invalidate earlier evidence.
  */
 
 const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
@@ -19,8 +19,12 @@ const SCOPED_PATHS = [
   'contracts/foundry.toml',
   'contracts/test/otc-fork/',
   'functions/',
+  'OPHIS_OTC_DIFFERENTIAL_REVIEW_2026-08-19.md',
   'OPHIS_OTC_MILESTONE_C_APPSEC_REVIEW_2026-08-21.md',
   'OPHIS_OTC_MILESTONE_C_DIFFERENTIAL_REVIEW_2026-08-21.md',
+  'docs/development/plans/2026-08-18-ophis-otc.md',
+  'docs/development/specs/2026-08-18-ophis-otc-plan.md',
+  'docs/superpowers/plans/2026-08-19-ophis-otc-milestone-ab.md',
   'docs/superpowers/plans/2026-08-21-ophis-otc-milestone-c.md',
   'scripts/',
 ];
@@ -66,12 +70,6 @@ function hasBoundCleanEvidence(request, headSha, baseSha) {
   }
   const updatedAt = Date.parse(request.updatedAt);
   if (!Number.isFinite(updatedAt)) return false;
-  const freshThumb = codexItems(request.reactions ?? []).some(
-    (reaction) =>
-      reaction.content === '+1' &&
-      Number.isFinite(Date.parse(reaction.created_at)) &&
-      Date.parse(reaction.created_at) > updatedAt,
-  );
   const freshCleanComment = codexItems(request.cleanComments ?? []).some((comment) => {
     const prefix = cleanCommentHeadPrefix(comment);
     const createdAt = Date.parse(comment.created_at);
@@ -79,7 +77,7 @@ function hasBoundCleanEvidence(request, headSha, baseSha) {
       prefix && headSha.startsWith(prefix) && Number.isFinite(createdAt) && createdAt > updatedAt
     );
   });
-  return freshThumb || freshCleanComment;
+  return freshCleanComment;
 }
 
 function newestReviewRequest(requests) {
@@ -136,12 +134,16 @@ export function assessCodexGate({
     };
   }
 
+  const approvedReview = exactReviews.some(
+    (review) => String(review.state ?? '').toUpperCase() === 'APPROVED',
+  );
+
   const latestRequest = newestReviewRequest(reviewRequests);
   const cleanEvidence = latestRequest
     ? hasBoundCleanEvidence(latestRequest, headSha, baseSha)
     : false;
 
-  if (cleanEvidence) {
+  if (approvedReview || cleanEvidence) {
     return {
       required: true,
       accepted: true,
@@ -189,13 +191,17 @@ function selfTest() {
         {
           body: reviewRequestBody(base.headSha, base.baseSha),
           updatedAt: '2026-08-20T12:00:00Z',
-          reactions: [
-            { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T12:01:00Z' },
+          cleanComments: [
+            {
+              user: { login: CODEX_LOGIN },
+              body: `Codex Review: Didn't find any major issues. :+1:\n\n**Reviewed commit:** \`${base.headSha.slice(0, 10)}\`\n`,
+              created_at: '2026-08-20T12:01:00Z',
+            },
           ],
         },
       ],
     }).accepted === false,
-    'head findings must override a reaction',
+    'head findings must override clean evidence',
   );
   assert(
     assessCodexGate({
@@ -211,8 +217,12 @@ function selfTest() {
         {
           body: reviewRequestBody(base.headSha, base.baseSha),
           updatedAt: '2026-08-20T12:00:00Z',
-          reactions: [
-            { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T12:01:00Z' },
+          cleanComments: [
+            {
+              user: { login: CODEX_LOGIN },
+              body: `Codex Review: Didn't find any major issues. :+1:\n\n**Reviewed commit:** \`${base.headSha.slice(0, 10)}\`\n`,
+              created_at: '2026-08-20T12:01:00Z',
+            },
           ],
         },
       ],
@@ -231,8 +241,8 @@ function selfTest() {
           ],
         },
       ],
-    }).accepted,
-    'a Codex +1 bound to the exact head must pass',
+    }).accepted === false,
+    'mutable reaction-only evidence must fail closed',
   );
   const cleanComment = {
     user: { login: CODEX_LOGIN },
@@ -246,7 +256,6 @@ function selfTest() {
         {
           body: reviewRequestBody(base.headSha, base.baseSha),
           updatedAt: '2026-08-20T12:00:00Z',
-          reactions: [],
           cleanComments: [cleanComment],
         },
       ],
@@ -260,7 +269,6 @@ function selfTest() {
         {
           body: reviewRequestBody(base.headSha, base.baseSha),
           updatedAt: '2026-08-20T12:00:00Z',
-          reactions: [],
           cleanComments: [{ ...cleanComment, user: { login: 'contributor' } }],
         },
       ],
@@ -274,7 +282,6 @@ function selfTest() {
         {
           body: reviewRequestBody(base.headSha, base.baseSha),
           updatedAt: '2026-08-20T12:00:00Z',
-          reactions: [],
           cleanComments: [
             {
               ...cleanComment,
@@ -293,7 +300,6 @@ function selfTest() {
         {
           body: reviewRequestBody(base.headSha, base.baseSha),
           updatedAt: '2026-08-20T12:01:00Z',
-          reactions: [],
           cleanComments: [cleanComment],
         },
       ],
@@ -309,48 +315,16 @@ function selfTest() {
       ...base,
       reviewRequests: [
         {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          reactions: [
-            { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T11:59:59Z' },
-          ],
-        },
-      ],
-    }).accepted,
-    'a reaction older than the exact-head request edit must fail',
-  );
-  assert(
-    !assessCodexGate({
-      ...base,
-      reviewRequests: [
-        {
-          body: reviewRequestBody(base.headSha, base.baseSha),
-          updatedAt: '2026-08-20T12:00:00Z',
-          reactions: [
-            { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T12:00:00Z' },
-          ],
-        },
-      ],
-    }).accepted,
-    'a same-second reaction must fail as ambiguous',
-  );
-  assert(
-    !assessCodexGate({
-      ...base,
-      reviewRequests: [
-        {
           id: 1,
           body: reviewRequestBody(base.headSha, base.baseSha),
           updatedAt: '2026-08-20T12:00:00Z',
-          reactions: [
-            { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T12:01:00Z' },
-          ],
+          cleanComments: [cleanComment],
         },
         {
           id: 2,
           body: reviewRequestBody(base.headSha, base.baseSha),
           updatedAt: '2026-08-20T12:02:00Z',
-          reactions: [],
+          cleanComments: [],
         },
       ],
     }).accepted,
@@ -363,13 +337,11 @@ function selfTest() {
         {
           body: reviewRequestBody('b'.repeat(40), base.baseSha),
           updatedAt: '2026-08-20T12:00:00Z',
-          reactions: [
-            { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T12:01:00Z' },
-          ],
+          cleanComments: [cleanComment],
         },
       ],
     }).accepted,
-    'a reaction bound to an earlier head must fail after a push',
+    'clean evidence requested for an earlier head must fail after a push',
   );
   assert(
     !assessCodexGate({
@@ -378,13 +350,11 @@ function selfTest() {
         {
           body: reviewRequestBody(base.headSha, 'd'.repeat(40)),
           updatedAt: '2026-08-20T12:00:00Z',
-          reactions: [
-            { user: { login: CODEX_LOGIN }, content: '+1', created_at: '2026-08-20T12:01:00Z' },
-          ],
+          cleanComments: [cleanComment],
         },
       ],
     }).accepted,
-    'a reaction bound to an earlier base must fail after a base edit',
+    'clean evidence requested for an earlier base must fail after a base edit',
   );
   assert(
     !assessCodexGate({
@@ -396,13 +366,13 @@ function selfTest() {
     'a review of an earlier head must fail after a push',
   );
   assert(
-    !assessCodexGate({
+    assessCodexGate({
       ...base,
       reviews: [
         { user: { login: CODEX_LOGIN }, state: 'APPROVED', commit_id: base.headSha, body: '' },
       ],
     }).accepted,
-    'an approval without exact head-and-base reaction evidence must fail',
+    'an exact-head approval must pass after live base-topology validation',
   );
   assert(
     !assessCodexGate({
@@ -505,6 +475,10 @@ function selfTest() {
     'functions/_middleware.ts',
     'scripts/otc-mainnet-canary.mjs',
     'scripts/require-otc-codex-review.mjs',
+    'OPHIS_OTC_DIFFERENTIAL_REVIEW_2026-08-19.md',
+    'docs/development/plans/2026-08-18-ophis-otc.md',
+    'docs/development/specs/2026-08-18-ophis-otc-plan.md',
+    'docs/superpowers/plans/2026-08-19-ophis-otc-milestone-ab.md',
   ]) {
     assert(
       !assessCodexGate({ ...base, files: [{ filename }] }).accepted,
@@ -699,24 +673,12 @@ async function runLive() {
       return timeOrder || Number(right.id) - Number(left.id);
     })
     .slice(0, 1);
-  const reviewRequests = await Promise.all(
-    matchingRequests.map(async (comment) => ({
-      id: comment.id,
-      body: comment.body,
-      updatedAt: comment.updated_at,
-      cleanComments: issueComments,
-      reactions: await api(
-        [
-          ...prefix,
-          'issues',
-          'comments',
-          requirePositiveInteger(comment.id, 'comment id'),
-          'reactions',
-        ],
-        token,
-      ),
-    })),
-  );
+  const reviewRequests = matchingRequests.map((comment) => ({
+    id: comment.id,
+    body: comment.body,
+    updatedAt: comment.updated_at,
+    cleanComments: issueComments,
+  }));
   const confirmedContext = currentPullContext(await api([...prefix, 'pulls', number], token));
   if (
     confirmedContext.headSha !== headSha ||
