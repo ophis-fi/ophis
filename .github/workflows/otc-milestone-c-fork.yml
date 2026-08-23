@@ -29,6 +29,7 @@ on:
       - 'apps/frontend/apps/cowswap-frontend-e2e/project.json'
       - 'apps/frontend/apps/cowswap-frontend-e2e/tsconfig.json'
       - 'apps/frontend/nx.json'
+      - '.github/scripts/otc-rpc-serial-proxy.mjs'
       - '.github/workflows/otc-milestone-c-fork.yml'
   schedule:
     - cron: '37 6 * * *'
@@ -59,10 +60,21 @@ jobs:
         working-directory: contracts
         env:
           FOUNDRY_PROFILE: otc-fork
-          OPHIS_FORK_RPC_ETH: ${{ secrets.OTC_FORK_RPC_URL }}
+          OTC_RPC_UPSTREAM_URL: ${{ secrets.OTC_FORK_RPC_URL }}
         run: |
-          test -n "$OPHIS_FORK_RPC_ETH" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
-          forge test --fork-url "$OPHIS_FORK_RPC_ETH" \
+          test -n "$OTC_RPC_UPSTREAM_URL" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
+          node ../.github/scripts/otc-rpc-serial-proxy.mjs > /tmp/otc-rpc-proxy.log 2>&1 &
+          proxy_pid=$!
+          trap 'kill "$proxy_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:9545/health >/dev/null && break
+            if ! kill -0 "$proxy_pid" 2>/dev/null || [[ "$attempt" -eq 30 ]]; then
+              cat /tmp/otc-rpc-proxy.log
+              exit 1
+            fi
+            sleep 1
+          done
+          forge test --fork-url http://127.0.0.1:9545 \
             --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol \
             --compute-units-per-second 50 \
             --fork-retry-backoff 1000 --fork-retries 10
@@ -101,7 +113,7 @@ jobs:
       - name: Run injected-wallet flow against a local mainnet fork
         working-directory: apps/frontend
         env:
-          OPHIS_FORK_RPC_ETH: ${{ secrets.OTC_FORK_RPC_URL }}
+          OTC_RPC_UPSTREAM_URL: ${{ secrets.OTC_FORK_RPC_URL }}
           CYPRESS_OTC_FORK_RPC_URL: http://127.0.0.1:8545
           # Routine host hydration is not fork evidence. The injected wallet,
           # fixtures, action terms, preflight, sends, and receipts stay on Anvil.
@@ -109,13 +121,23 @@ jobs:
           REACT_APP_OTC_WRITE_FLAG: 'true'
           REACT_APP_OTC_WRITE_MODE: fork
         run: |
-          test -n "$OPHIS_FORK_RPC_ETH" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
-          anvil --fork-url "$OPHIS_FORK_RPC_ETH" --accounts 0 --auto-impersonate \
+          test -n "$OTC_RPC_UPSTREAM_URL" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
+          node ../../.github/scripts/otc-rpc-serial-proxy.mjs > /tmp/otc-rpc-proxy.log 2>&1 &
+          proxy_pid=$!
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:9545/health >/dev/null && break
+            if ! kill -0 "$proxy_pid" 2>/dev/null || [[ "$attempt" -eq 30 ]]; then
+              cat /tmp/otc-rpc-proxy.log
+              exit 1
+            fi
+            sleep 1
+          done
+          anvil --fork-url http://127.0.0.1:9545 --accounts 0 --auto-impersonate \
             --compute-units-per-second 50 \
             --fork-retry-backoff 1000 --retries 10 \
             --chain-id 1 --host 127.0.0.1 --port 8545 > /tmp/otc-anvil.log 2>&1 &
           anvil_pid=$!
-          trap 'kill "$anvil_pid" 2>/dev/null || true; [[ -z "${frontend_pid:-}" ]] || kill "$frontend_pid" 2>/dev/null || true' EXIT
+          trap 'kill "$proxy_pid" "$anvil_pid" 2>/dev/null || true; [[ -z "${frontend_pid:-}" ]] || kill "$frontend_pid" 2>/dev/null || true' EXIT
           for attempt in {1..60}; do
             if [[ "$(curl --fail --silent --show-error http://127.0.0.1:8545 \
               -H 'content-type: application/json' \
