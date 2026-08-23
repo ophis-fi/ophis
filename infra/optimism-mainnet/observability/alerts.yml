@@ -139,6 +139,74 @@ groups:
   - name: ophis-op-settlement-health
     interval: 30s
     rules:
+      - alert: OphisOpAutopilotSettlementIndexerStalled
+        # THE 2026-08-23 BLIND SPOT. The autopilot's settlement-event indexer
+        # wedged at block 155950754 for 4+ hours and NOTHING here paged about it.
+        # What eventually paged was OphisOpErpcUpstreamCredentialFailing on
+        # publicnode-op — a symptom one layer down, an hour late, naming the wrong
+        # subject. Chain of causation that day:
+        #   publicnode's free tier serves eth_getLogs only within ~128 blocks of
+        #   head (deeper -> jsonrpc -32602 "Archive requests require a personal
+        #   token"), validationcloud had been HTTP 401 since 08-18, so archive
+        #   eth_getLogs had exactly ONE capable lane (zan) — below
+        #   agreementThreshold:2 -> ErrConsensusDispute -> returnError. Once the
+        #   indexer fell past that ~128-block line it could never catch up: a trap
+        #   door, not a transient. It re-requested one 500-block window ~3.5x/sec
+        #   for four hours while /quote stayed green the whole time.
+        #
+        # This alert watches the OUTCOME (is settlement indexing advancing?)
+        # rather than any particular lane's health, so it fires for ANY cause:
+        # lane death, archive gating, quorum loss, a wedged DB, an eRPC bug.
+        #
+        # Threshold, measured on this stack's own 7d TSDB (2026-08-23):
+        #   p50 lag = 0 blocks, p95 = 2 blocks. Steady state is level with head.
+        #   300 blocks is ~150x p95 and ~10 min of OP's 2s blocks, comfortably
+        #   past publicnode's ~128-block archive gate, so a normal brief catch-up
+        #   cannot reach it. Replayed against 08-23: crosses 300 at 16:25:18Z,
+        #   fires 16:40Z — ~1h BEFORE the credential alert actually paged.
+        # `for: 15m` (not 5m) because a driver/autopilot restart legitimately
+        # replays a short backlog; 15m of no forward progress is not that.
+        expr: |
+          (
+            gp_v2_autopilot_autopilot_maintenance_last_seen_block
+            - gp_v2_autopilot_autopilot_maintenance_last_updated_block
+          ) > 300
+        for: 15m
+        labels:
+          severity: critical
+          chain: optimism
+        annotations:
+          summary: "OP autopilot settlement indexer stalled {{ $value | printf \"%.0f\" }} blocks behind head"
+          description: |
+            `last_updated_block` has not caught up to `last_seen_block` for 15
+            minutes. Settlements landing on-chain are NOT being indexed: order
+            status, rebates and the stats page all stall behind this, and the
+            autopilot's own view stops advancing.
+
+            Quoting can look perfectly healthy while this is broken — /quote
+            reads at tip, this indexes history. Do not use /quote to clear it.
+
+            FIRST, get the block range it is stuck on:
+              docker logs optimism-mainnet-autopilot-1 --tail 50 \
+                | grep -o "unable to get logs for blocks range [0-9-]*" | sort -u
+
+            THEN ask why that range cannot be served. The usual cause is that
+            fewer than agreementThreshold:2 upstreams can serve eth_getLogs AT
+            THAT DEPTH — which is NOT the same question as whether the lanes are
+            up. publicnode is archive-gated at ~128 blocks, so it votes on
+            tip-adjacent getLogs and abstains on everything older:
+              curl -s localhost:9091/api/v1/query --data-urlencode \
+                'query=sum by (upstream,error) (rate(erpc_upstream_request_errors_total{network="evm:10"}[15m]))'
+
+            Confirm by probing a lane DIRECTLY at the stuck depth, not at tip:
+            a tip-only probe reports a lane healthy when it cannot serve a single
+            historic window.
+
+            Fix the lane math (restore a second archive-capable, non-Cloudflare
+            upstream — see configs/erpc.yaml.tmpl); the indexer then catches up
+            on its own. Do NOT recreate the driver to "unstick" it: that costs
+            minutes of cold NoSolutions and does not touch the cause.
+
       - alert: OphisOpNoSettlements1h
         # IntCounterVec `settlements{solver, result}` is monotonic. We want
         # to alert when `result="success"` hasn't incremented in 1h despite
@@ -385,7 +453,7 @@ groups:
             eRPC is failing consensus because fewer than 2 of 3 upstreams respond
             within the retry budget for `{{ $labels.category }}` requests. Sustained
             elevation indicates one or more OP upstream(s) (publicnode / zan /
-            validationcloud) are slow or unavailable.
+            official-op) are slow or unavailable.
 
             ⚠️ 2026-08-09 lesson: this alert only trips at >5/s, which assumes
             steady driver/orderbook polling. A LOW-TRAFFIC stack with one live
@@ -512,7 +580,7 @@ groups:
         # Pin alerts to admitted voters. Prometheus retains retired-upstream
         # series after a hot-swap; without this allowlist the removed lane can
         # page again from historical samples even though eRPC no longer uses it.
-        expr: erpc_upstream_block_head_lag{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"} > 5
+        expr: erpc_upstream_block_head_lag{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op"} > 5
         for: 15m
         labels:
           severity: warning
@@ -608,22 +676,22 @@ groups:
       - alert: OphisOpErpcUpstreamCredentialFailing
         expr: |
           sum by (upstream) (
-            increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
+            increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
           ) > 3
           or
           (
             (
               sum by (upstream) (
-                increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrEndpointClientSideException"}[30m])
+                increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error="ErrEndpointClientSideException"}[30m])
               ) > 3
             )
             and
             (
               sum by (upstream) (
-                rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrEndpointClientSideException"}[30m])
+                rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error="ErrEndpointClientSideException"}[30m])
               )
               /
-              clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[30m])), 0.001)
+              clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op"}[30m])), 0.001)
               > 0.1
             )
           )
@@ -674,9 +742,9 @@ groups:
       - alert: OphisOpErpcUpstreamRateLimitedDead
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrEndpointCapacityExceeded"}[15m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error="ErrEndpointCapacityExceeded"}[15m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[15m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op"}[15m])), 0.001)
           ) > 0.9
         for: 30m
         labels:
@@ -736,9 +804,9 @@ groups:
       - alert: OphisOpErpcUpstreamEffectivelyDead
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error!="ErrUpstreamBlockUnavailable"}[15m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error!="ErrUpstreamBlockUnavailable"}[15m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[15m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op"}[15m])), 0.001)
           ) > 0.95
         for: 10m
         labels:
@@ -789,9 +857,9 @@ groups:
       - alert: OphisOpErpcUpstreamPhantomParticipant
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrUpstreamBlockUnavailable"}[30m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error="ErrUpstreamBlockUnavailable"}[30m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[30m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op"}[30m])), 0.001)
           ) > 0.6
         for: 2h
         labels:

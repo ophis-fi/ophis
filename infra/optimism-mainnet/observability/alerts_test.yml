@@ -332,7 +332,7 @@ tests:
 
           elevation indicates one or more OP upstream(s) (publicnode / zan /
 
-          validationcloud) are slow or unavailable.
+          official-op) are slow or unavailable.
 
 
           ⚠️ 2026-08-09 lesson: this alert only trips at >5/s, which assumes
@@ -683,4 +683,84 @@ tests:
       exp_annotations: *credential_alert_annotations
   - eval_time: 60m
     alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts: []
+
+- interval: 1m
+  name: '2026-08-23 replay: settlement indexer wedged behind publicnode''s ~128-block
+    archive gate — last_seen advances with head, last_updated frozen'
+  input_series:
+  # OP mines ~30 blocks/min (2s blocks), so `last_seen` climbs 30/interval while
+  # `last_updated` does not move at all: the exact shape observed on 08-23, where
+  # the indexer re-requested one 500-block window ~3.5x/sec for four hours.
+  - series: gp_v2_autopilot_autopilot_maintenance_last_seen_block{instance="autopilot:9589",job="autopilot"}
+    values: 155950000+30x400
+  - series: gp_v2_autopilot_autopilot_maintenance_last_updated_block{instance="autopilot:9589",job="autopilot"}
+    values: 155950000+0x400
+  alert_rule_test:
+  # lag crosses 300 at t=10m (30 blocks/min), so the 15m hold expires at t=25m.
+  # At 20m the threshold is long breached but the hold is NOT elapsed: must be silent.
+  - eval_time: 20m
+    alertname: OphisOpAutopilotSettlementIndexerStalled
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisOpAutopilotSettlementIndexerStalled
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        instance: autopilot:9589
+        job: autopilot
+      exp_annotations:
+        summary: OP autopilot settlement indexer stalled 900 blocks behind head
+        description: |
+          `last_updated_block` has not caught up to `last_seen_block` for 15
+          minutes. Settlements landing on-chain are NOT being indexed: order
+          status, rebates and the stats page all stall behind this, and the
+          autopilot's own view stops advancing.
+
+          Quoting can look perfectly healthy while this is broken — /quote
+          reads at tip, this indexes history. Do not use /quote to clear it.
+
+          FIRST, get the block range it is stuck on:
+            docker logs optimism-mainnet-autopilot-1 --tail 50 \
+              | grep -o "unable to get logs for blocks range [0-9-]*" | sort -u
+
+          THEN ask why that range cannot be served. The usual cause is that
+          fewer than agreementThreshold:2 upstreams can serve eth_getLogs AT
+          THAT DEPTH — which is NOT the same question as whether the lanes are
+          up. publicnode is archive-gated at ~128 blocks, so it votes on
+          tip-adjacent getLogs and abstains on everything older:
+            curl -s localhost:9091/api/v1/query --data-urlencode \
+              'query=sum by (upstream,error) (rate(erpc_upstream_request_errors_total{network="evm:10"}[15m]))'
+
+          Confirm by probing a lane DIRECTLY at the stuck depth, not at tip:
+          a tip-only probe reports a lane healthy when it cannot serve a single
+          historic window.
+
+          Fix the lane math (restore a second archive-capable, non-Cloudflare
+          upstream — see configs/erpc.yaml.tmpl); the indexer then catches up
+          on its own. Do NOT recreate the driver to "unstick" it: that costs
+          minutes of cold NoSolutions and does not touch the cause.
+
+- interval: 1m
+  name: 'settlement indexer healthy: last_updated tracks last_seen, and a brief
+    catch-up spike shorter than the hold stays silent'
+  input_series:
+  - series: gp_v2_autopilot_autopilot_maintenance_last_seen_block{instance="autopilot:9589",job="autopilot"}
+    values: 155950000+30x400
+  # Flat for 12 minutes (a restart replaying a short backlog: lag peaks at 360,
+  # i.e. ABOVE the 300 threshold) then fully caught up. Two minutes over threshold
+  # is far short of `for: 15m`, so this must never page — this is the case that
+  # would make the alert noisy on every autopilot restart if the hold were dropped.
+  - series: gp_v2_autopilot_autopilot_maintenance_last_updated_block{instance="autopilot:9589",job="autopilot"}
+    values: 155950000+0x12 155950390+30x388
+  alert_rule_test:
+  - eval_time: 12m
+    alertname: OphisOpAutopilotSettlementIndexerStalled
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisOpAutopilotSettlementIndexerStalled
+    exp_alerts: []
+  - eval_time: 6h
+    alertname: OphisOpAutopilotSettlementIndexerStalled
     exp_alerts: []
