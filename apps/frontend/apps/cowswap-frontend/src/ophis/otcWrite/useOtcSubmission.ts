@@ -3,12 +3,22 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 
-import { recordUncertainOtcTransaction, uncertainOtcTransactionsAtom } from 'entities/otc/uncertainOtcTransactionsAtom'
+import {
+  recordUncertainOtcTransaction,
+  removeUncertainOtcTransaction,
+  uncertainOtcTransactionsAtom,
+} from 'entities/otc'
 
 import { useOtcAllowanceCooldown } from './useOtcAllowanceCooldown'
 import { useOtcSubmitCallback, type OtcSuccessfulTransaction } from './useOtcSubmitCallback'
 
-import type { OtcWalletSubmitter, OtcWriteClient, OtcWriteIntent, OtcWriteRuntimeAuthorization } from './otcWrite.types'
+import type {
+  OtcConfirmedCallback,
+  OtcWalletSubmitter,
+  OtcWriteClient,
+  OtcWriteIntent,
+  OtcWriteRuntimeAuthorization,
+} from './otcWrite.types'
 import type { Address, Hex } from 'viem'
 
 interface AllowanceRead {
@@ -25,7 +35,7 @@ export interface OtcSubmissionOptions {
   account: Address | undefined
   requiredAllowance: bigint | null | undefined
   refreshAllowance: RefreshOtcAllowance
-  onConfirmed: (() => void) | undefined
+  onConfirmed: OtcConfirmedCallback | undefined
 }
 
 export interface OtcSubmissionState {
@@ -36,6 +46,7 @@ export interface OtcSubmissionState {
   uncertainHash: Hex | null
   recoveryRequired: boolean
   allowanceCooldown: boolean
+  clearUncertainTransaction(): void
   setError(error: string | null): void
   submit(intent: OtcWriteIntent, execution: boolean): Promise<void>
 }
@@ -74,6 +85,10 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     },
     [setUncertainTransactions, uncertainKey],
   )
+  const clearUncertainTransaction = useCallback(() => {
+    if (!uncertainKey) return
+    setUncertainTransactions((current) => removeUncertainOtcTransaction(current, uncertainKey))
+  }, [setUncertainTransactions, uncertainKey])
   const contextGeneration = useRef(0)
   const inFlightGeneration = useRef<number | null>(null)
   const [allowanceCooldown, beginAllowanceCooldown] = useOtcAllowanceCooldown(refreshAllowance, submissionContext)
@@ -117,9 +132,20 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
       uncertainHash,
       recoveryRequired,
       allowanceCooldown,
+      clearUncertainTransaction,
       setError,
       submit,
     }),
-    [allowanceCooldown, error, pendingIntent, recoveryRequired, submit, successHash, terminalConfirmed, uncertainHash],
+    [
+      allowanceCooldown,
+      clearUncertainTransaction,
+      error,
+      pendingIntent,
+      recoveryRequired,
+      submit,
+      successHash,
+      terminalConfirmed,
+      uncertainHash,
+    ],
   )
 }

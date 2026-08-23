@@ -42,6 +42,7 @@ const Fixtures = {
         uncertainHash: null,
         allowance: 2_000_000_000n,
         diagnostic: null,
+        clearUncertainTransaction: () => undefined,
         runPrimary: noop,
       }}
     />
@@ -57,6 +58,7 @@ const Fixtures = {
         uncertainHash: null,
         allowance: null,
         diagnostic: null,
+        clearUncertainTransaction: () => undefined,
         runPrimary: noop,
       }}
     />
@@ -72,6 +74,7 @@ const Fixtures = {
         uncertainHash: null,
         allowance: 2_000_000_000n,
         diagnostic: null,
+        clearUncertainTransaction: () => undefined,
         runPrimary: noop,
       }}
     />

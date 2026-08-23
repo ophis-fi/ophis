@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 
 import { OtcActionControl } from './OtcActionControl.container'
 import { useOtcActionController, type OtcActionDefinition } from './useOtcActionController'
@@ -34,6 +34,7 @@ describe('OtcActionControl screen-reader semantics', () => {
       uncertainHash: null,
       allowance: 2_000_000_000n,
       diagnostic: null,
+      clearUncertainTransaction: jest.fn(),
       runPrimary: jest.fn(),
     })
 
@@ -53,6 +54,7 @@ describe('OtcActionControl screen-reader semantics', () => {
       uncertainHash: null,
       allowance: null,
       diagnostic: null,
+      clearUncertainTransaction: jest.fn(),
       runPrimary: jest.fn(),
     })
 
@@ -73,6 +75,7 @@ describe('OtcActionControl screen-reader semantics', () => {
       uncertainHash: null,
       allowance: null,
       diagnostic: null,
+      clearUncertainTransaction: jest.fn(),
       runPrimary: jest.fn(),
     })
 
@@ -85,6 +88,7 @@ describe('OtcActionControl screen-reader semantics', () => {
 
   it('announces an uncertain submitted hash and keeps retry disabled', () => {
     const hash = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    const clearUncertainTransaction = jest.fn()
     useControllerMock.mockReturnValue({
       model: { action: 'unavailable', label: 'Verify submitted transaction', disabled: true, pending: false },
       error: null,
@@ -92,6 +96,7 @@ describe('OtcActionControl screen-reader semantics', () => {
       uncertainHash: hash,
       allowance: 2_000_000_000n,
       diagnostic: null,
+      clearUncertainTransaction,
       runPrimary: jest.fn(),
     })
 
@@ -102,5 +107,11 @@ describe('OtcActionControl screen-reader semantics', () => {
     )
     expect(announcementFor('Confirmation unavailable').getAttribute('aria-live')).toBe('assertive')
     expect(screen.getByText(new RegExp(hash))).toBeTruthy()
+    const clearButton = screen.getByRole('button', { name: 'Clear this lock and allow a fresh preflight' })
+    expect((clearButton as HTMLButtonElement).disabled).toBe(true)
+    act(() => screen.getByRole('checkbox', { name: 'I verified this hash was dropped and never mined.' }).click())
+    expect((clearButton as HTMLButtonElement).disabled).toBe(false)
+    act(() => clearButton.click())
+    expect(clearUncertainTransaction).toHaveBeenCalledTimes(1)
   })
 })

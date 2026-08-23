@@ -116,7 +116,7 @@ describe('useOtcSubmission', () => {
     await act(() => result.current.submit({ kind: 'fill', account: ACCOUNT, order, deadline: 1n }, true))
 
     expect(submitMock.mock.calls[0][2]).toMatchObject({ kind: 'fill', deadline: 1n })
-    expect(onConfirmed).toHaveBeenCalledTimes(1)
+    expect(onConfirmed).toHaveBeenCalledWith(HASH)
     expect(result.current.terminalConfirmed).toBe(true)
   })
 

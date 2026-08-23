@@ -1,6 +1,6 @@
 # Ophis OTC Milestone C — Application Security Review
 
-**Date:** 2026-08-21; revalidated 2026-08-22
+**Date:** 2026-08-21; revalidated 2026-08-23
 
 **Baseline:** `0fa6948a` (`origin/main`)
 
@@ -9,9 +9,9 @@
 
 ## Result
 
-No unresolved product-security finding was identified in the reviewed Milestone C code. Eleven findings were fixed: two high, six medium, and three low. The high findings concerned residual oversized allowances and the final wallet request not being canonically bound to the reviewed intent. Medium findings covered CI integrity, wallet/provider time-of-check/time-of-use drift, duplicate or stale consent, inactive-order recovery, and incomplete gate dependency scope. The remaining low findings covered accessibility, query abstraction, and bounded input/error handling.
+No unresolved product-security finding was identified in the locally validated Milestone C diff. Eleven formal findings were fixed: two high, six medium, and three low. Seven later blocking review findings were also fixed. They covered uncertain-broadcast recovery, canonical address comparison, persistence naming, query retry, bounded preflight, entity boundaries, and post-confirmation direct-read refresh.
 
-The application-security review does not satisfy the independent final Codex review, required-check ruleset, or configured fork-RPC secret.
+The application-security review does not satisfy the independent final Codex review, required-check ruleset, or exact-final-head fork CI evidence. The fork-RPC repository secret was configured on 2026-08-23.
 
 ## Scope and threat model
 
@@ -29,17 +29,17 @@ The primary abuse cases are production flag bypass, malicious token/order substi
 
 ## Controls verified
 
-| Control                         | Result                                                                                                                                                                                                                                         |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Access and environment boundary | Write authorization requires the B read flag, separate C write flag, local host, explicit `fork` build mode, chain id 1, and Anvil/Hardhat client identity. Authorization is rechecked inside the only submission sink.                        |
-| Contract and calldata integrity | Runtime hash and WETH wiring are pinned. Only the three ERC-20 selectors are enabled. All request types fix `value` to zero; native wrappers remain absent.                                                                                    |
-| Input and token policy          | Every approval, create, fill, cancel, and zero-only recovery builder validates both token legs against `OTC_ESCROW`, with positive/distinct amount, activity, maker, and deadline checks where applicable.                                     |
-| Freshness and race handling     | Pre-submit reads compare every order field, simulation uses the exact calldata at the verified block, and block identity is confirmed after the final allowance/simulation reads. Raced or externally filled orders retain zero-only recovery. |
-| Wallet binding                  | The adapter rechecks chain, local-client identity, active RPC account, and configured wallet-client account immediately before send. The sink rebuilds the canonical request from the reviewed intent and requires a successful receipt.       |
-| Injection and XSS               | No `dangerouslySetInnerHTML`, dynamic code evaluation, cookie write, or raw DOM HTML sink exists in the reviewed path. User/RPC error strings render as React text; local diagnostics are suppressed in production.                            |
-| Secrets                         | The repository-configured Gitleaks scan passes across all branch commits. Its contextual raw-EVM-private-key rule still scans operational configuration while excluding documented fixture/artifact paths.                                     |
-| Supply-chain integrity          | GitHub actions are commit-pinned and the lockfile is committed. The new direct `@ethersproject/keccak256@5.7.0` entry reuses an existing locked resolution.                                                                                    |
-| Merge evidence                  | `pull_request_target` loads the protected-base workflow, which executes the trusted-base parser without checking out PR-head code and requires evidence for the current head. After bootstrap, a money-path PR cannot weaken its judge.        |
+| Control                         | Result                                                                                                                                                                                                                                                |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Access and environment boundary | Write authorization requires the B read flag, separate C write flag, local host, explicit `fork` build mode, chain id 1, and Anvil/Hardhat client identity. Authorization is rechecked inside the only submission sink.                               |
+| Contract and calldata integrity | Runtime hash and WETH wiring are pinned. Only the three ERC-20 selectors are enabled. All request types fix `value` to zero; native wrappers remain absent.                                                                                           |
+| Input and token policy          | Every approval, create, fill, cancel, and zero-only recovery builder validates both token legs against `OTC_ESCROW`, with positive/distinct amount, activity, maker, and deadline checks where applicable.                                            |
+| Freshness and race handling     | Pre-submit reads compare every order field, simulation uses the exact calldata at the verified block, and block identity is confirmed after the final allowance/simulation reads. Raced or externally filled orders retain zero-only recovery.        |
+| Wallet binding                  | The adapter rechecks chain, local-client identity, active RPC account, and configured wallet-client account immediately before send. The sink rebuilds the canonical request from the reviewed intent and requires a successful receipt.              |
+| Injection and XSS               | No `dangerouslySetInnerHTML`, dynamic code evaluation, cookie write, or raw DOM HTML sink exists in the reviewed path. User/RPC error strings render as React text; local diagnostics are suppressed in production.                                   |
+| Secrets                         | The repository-configured Gitleaks scan passes across all branch commits. Its contextual raw-EVM-private-key rule still scans operational configuration while excluding documented fixture/artifact paths.                                            |
+| Supply-chain integrity          | GitHub actions are commit-pinned and the lockfile is committed. The new direct `@ethersproject/keccak256@5.7.0` entry reuses an existing locked resolution.                                                                                           |
+| Merge evidence                  | `pull_request_target` loads the protected-base workflow, which executes the trusted-base parser without checking out PR-head code and requires evidence for the current head. Ruleset enforcement of that evaluator remains an explicit release gate. |
 
 Authentication, cookies, database queries, server-side CORS, and SSRF endpoints are not introduced by this client-only feature. RPC URLs remain build/CI configuration rather than user-controlled outbound targets.
 
@@ -59,7 +59,7 @@ The injected-wallet workflow set `OPHIS_FORK_RPC_ETH` to `secrets.OTC_FORK_RPC_U
 
 **Status:** Fixed
 
-Visible failure, residual-allowance recovery, and confirmation callouts did not themselves guarantee screen-reader announcements. Failure/recovery now use atomic assertive alerts; confirmations and allowance changes use atomic polite status regions. Unit rendering verifies fill/revoke/cancel names, busy state, and announcement roles. Deterministic Cosmos fixtures for fill-ready, cancel-pending, and recovery-required states pass fixture-scoped axe WCAG A/AA scans with zero violations and have inspected screenshots. The fork browser suite retains live Chromium accessibility-tree assertions for configured-secret CI.
+Visible failure, residual-allowance recovery, and confirmation callouts did not themselves guarantee screen-reader announcements. Failure/recovery now use atomic assertive alerts; confirmations and allowance changes use atomic polite status regions. Unit rendering verifies fill/revoke/cancel names, busy state, and announcement roles. Deterministic Cosmos fixtures for fill-ready, cancel-pending, and recovery-required states pass fixture-scoped axe WCAG A/AA scans with zero violations and have inspected screenshots. The fork browser suite verifies native controls, accessible names, live-region roles, `aria-live`, `aria-atomic`, and the absence of hidden or inert ancestors against the rendered DOM.
 
 ### APPSEC-C-03 — New network reads bypassed the required query abstraction
 
@@ -119,6 +119,15 @@ Fork workflow paths now include token/common re-export indexes plus frontend pac
 
 The form and builders reject values outside `uint256` and cap decimal input length. Error translation uses bounded, cycle-safe reflection and tolerates throwing getters so a malicious provider error cannot bypass recovery rendering.
 
+### Post-review blocking findings — recovery, identity, and freshness
+
+**Status:** Fixed
+
+- Broadcast-uncertain records can be cleared only after the user explicitly acknowledges that the exact hash was independently verified as dropped and never mined. The removal is bound to the exact account and action payload.
+- Token filtering uses the canonical address helpers; uncertain-transaction persistence follows the required `camelCaseBase:v0` convention; OTC entities expose a public barrel instead of deep imports.
+- The entire preflight is bounded to 30 seconds, and a late underlying read or simulation cannot reach the wallet sink after timeout.
+- Fork-order query errors render a fail-closed retry state instead of an indefinite loading label. Confirmed actions refetch the direct order before exposing another action.
+
 ## Dependency and secret evidence
 
 - `pnpm audit --prod` reports zero critical/high/moderate and one low advisory in `elliptic@6.6.1` (`GHSA-848j-6mx2-7j84`), for which the advisory lists no patched version. An audit of `origin/main` returns the identical result, so Milestone C introduces no dependency-audit regression.
@@ -135,14 +144,15 @@ The form and builders reject values outside `uint256` and cap decimal input leng
 - Deterministic fill/cancel/recovery Cosmos fixtures: zero axe WCAG A/AA violations in each; 1200 × 800 screenshots inspected with no clipping, overflow, ambiguous action label, or unreadable warning hierarchy.
 - E2E source lint and changed-file formatting: pass.
 - Production frontend build, frontend/E2E TypeScript, E2E source lint, Foundry formatting/build, workflow YAML, diff whitespace, and trusted-base parser self-tests pass at `3ae7a1ba`.
-- Historical configured-fork evidence remains 7/7 Foundry invariants and 5/5 earlier injected-wallet lifecycle scenarios. The current browser suite has six scenarios, including mismatched-allowance clearing and reload-persistent recovery, but has not been rerun with a configured secret at the current head.
+- Historical configured-fork evidence remains 7/7 Foundry invariants and 5/5 earlier injected-wallet lifecycle scenarios. The current browser suite has six scenarios, including mismatched-allowance clearing and reload-persistent recovery; exact-final-head configured-secret evidence remains required.
 - A repeat anonymous-public-RPC browser run on 2026-08-21 degraded during transaction waits and was stopped; it is not accepted as new gate evidence. This validates the decision to require `OTC_FORK_RPC_URL` rather than treating public infrastructure as authoritative CI.
-- Draft PR #1228 confirms the repository currently supplies no usable `OTC_FORK_RPC_URL` to either job. Locally, the exact isolated Foundry profile exits 1 with one failed setup and zero skipped tests when the variable is absent.
+- Draft PR #1228 proved both jobs fail closed when `OTC_FORK_RPC_URL` is absent. The secret is now configured; the final feature-head run is the authoritative positive evidence.
+- Post-review remediation passes 197/197 frontend Jest suites (1,501 tests passed and one intentionally skipped), frontend TypeScript, full frontend lint with no errors, changed-file formatting, and the focused 50-test review-fix matrix.
 
 ## Residual gates
 
-- Configure the real `OTC_FORK_RPC_URL` Actions secret, then rerun the live fork lifecycle and its Chromium accessibility-tree assertions as CI evidence.
-- Obtain a clean Codex review for bootstrap PR #1227 head `728f9bf5` after the current review-quota error, merge it, then add `OTC Milestone C / fresh Codex review` to active ruleset `17378394`.
+- Require the live final-head fork lifecycle, including its rendered-DOM accessibility assertions, as CI evidence; `OTC_FORK_RPC_URL` is configured.
+- Configure enforceable required checks for the trusted Codex evaluator, frontend CI, and both fork jobs in active ruleset `17378394`; bootstrap PR #1227 is merged.
 - Obtain fresh independent Codex evidence for the final feature head; earlier-head reviews do not satisfy this gate.
 - Keep EIP-5792 disabled until atomic capability validation plus Safe and malformed-capability E2E are complete.
 - Any production write flag, fork build-mode change, deployment, or mainnet transaction needs a separate owner decision.

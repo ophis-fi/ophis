@@ -77,6 +77,8 @@ export interface OtcTransactionReceipt {
   blockNumber: bigint
 }
 
+export type OtcConfirmedCallback = (transactionHash: Hex) => void
+
 export interface OtcWalletSubmitter {
   sendTransaction(
     request: OtcTransactionRequest,

@@ -1,7 +1,7 @@
 import { getDefaultStore } from 'jotai'
 
 import { act, renderHook } from '@testing-library/react'
-import { uncertainOtcTransactionsAtom } from 'entities/otc/uncertainOtcTransactionsAtom'
+import { uncertainOtcTransactionsAtom } from 'entities/otc'
 
 import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
 import { submitOtcTransaction } from './prepareOtcTransaction'
@@ -20,6 +20,7 @@ const TOKEN_B = '0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48' // gitleaks:allow â
 const HASH = `0x${'cd'.repeat(32)}` as const
 const writeClient = {} as OtcReaderClient as OtcWriteClient
 const wallet = {} as OtcWalletSubmitter
+const STORAGE_KEY = 'ophisOtcUncertainTransactions:v0'
 
 const order: OtcOrder = {
   orderId: 7n,
@@ -47,7 +48,7 @@ function options(refreshAllowance: OtcSubmissionOptions['refreshAllowance']): Ot
 describe('useOtcSubmission recovery boundaries', () => {
   beforeEach(() => {
     submitMock.mockReset()
-    localStorage.removeItem('ophis-otc-uncertain-transactions:v1')
+    localStorage.removeItem(STORAGE_KEY)
     getDefaultStore().set(uncertainOtcTransactionsAtom, {})
   })
 
@@ -113,7 +114,20 @@ describe('useOtcSubmission recovery boundaries', () => {
 
     const second = renderHook(() => useOtcSubmission(options(jest.fn().mockResolvedValue({ allowance: 0n }))))
     expect(second.result.current.uncertainHash).toBe(HASH)
-    expect(localStorage.getItem('ophis-otc-uncertain-transactions:v1')).toContain(HASH)
+    expect(localStorage.getItem(STORAGE_KEY)).toContain(HASH)
+  })
+
+  it('allows a retry only after the user clears the exact uncertain action lock', async () => {
+    submitMock.mockRejectedValueOnce(new OtcReceiptTrackingError(HASH, new Error('receipt RPC unavailable')))
+    const { result } = renderHook(() => useOtcSubmission(options(jest.fn().mockResolvedValue({ allowance: 0n }))))
+
+    await act(() => result.current.submit({ kind: 'fill', account: ACCOUNT, order, deadline: 1n }, true))
+    expect(result.current.uncertainHash).toBe(HASH)
+
+    act(() => result.current.clearUncertainTransaction())
+
+    expect(result.current.uncertainHash).toBeNull()
+    expect(localStorage.getItem(STORAGE_KEY)).not.toContain(HASH)
   })
 
   it('records a late uncertain result against the original intent after the action context changes', async () => {

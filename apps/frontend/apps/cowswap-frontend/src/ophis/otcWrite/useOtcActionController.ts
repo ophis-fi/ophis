@@ -17,6 +17,7 @@ import type { OtcActionModel } from './otcActionModel'
 import type {
   OtcApproveCreateIntent,
   OtcApproveFillIntent,
+  OtcConfirmedCallback,
   OtcRevokeCreateIntent,
   OtcRevokeFillIntent,
   OtcWriteIntent,
@@ -48,6 +49,7 @@ export interface OtcActionController {
   uncertainHash: Hex | null
   allowance: bigint | null
   diagnostic: string | null
+  clearUncertainTransaction(): void
   runPrimary(): Promise<void>
 }
 
@@ -69,7 +71,7 @@ function localDiagnostic(error: unknown): string | null {
 
 export function useOtcActionController(
   definition: OtcActionDefinition,
-  onConfirmed: (() => void) | undefined,
+  onConfirmed: OtcConfirmedCallback | undefined,
 ): OtcActionController {
   const { account, chainId } = useWalletInfo()
   const connectWallet = useToggleWalletModal()
@@ -141,10 +143,10 @@ export function useOtcActionController(
     submission.error ??
     (network.allowanceResponse.error ? translateOtcWriteError(network.allowanceResponse.error) : null)
   const diagnostic = localDiagnostic(network.allowanceResponse.error)
-  const { successHash, uncertainHash } = submission
+  const { clearUncertainTransaction, successHash, uncertainHash } = submission
 
   return useMemo(
-    () => ({ model, error, successHash, uncertainHash, allowance, diagnostic, runPrimary }),
-    [allowance, diagnostic, error, model, runPrimary, successHash, uncertainHash],
+    () => ({ model, error, successHash, uncertainHash, allowance, diagnostic, clearUncertainTransaction, runPrimary }),
+    [allowance, clearUncertainTransaction, diagnostic, error, model, runPrimary, successHash, uncertainHash],
   )
 }

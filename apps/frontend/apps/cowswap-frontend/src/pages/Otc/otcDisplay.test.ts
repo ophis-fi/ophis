@@ -1,3 +1,4 @@
+import { applyBrowseFilters } from './otcBrowseFilters.utils'
 import { buildOtcDisplayRows, filterBrowseRows, filterMakerRows, getOtcAge } from './otcDisplay'
 
 import type { OtcDataState, OtcIndexedOrder, OtcOrder, OtcSnapshot } from 'ophis/otc'
@@ -143,6 +144,13 @@ describe('filters', () => {
   it('maker view keeps all of the connected wallet orders, case-insensitively', () => {
     const rows = filterMakerRows(buildOtcDisplayRows(readyState()), MAKER.toLowerCase())
     expect(rows.map((row) => row.order.orderId)).toEqual([3n, 2n, 0n])
+  })
+
+  it('uses canonical address equality for an exact token filter', () => {
+    const rows = buildOtcDisplayRows(readyState())
+    const filtered = applyBrowseFilters(rows, { token: USDC.toLowerCase(), maker: '', orderId: '' })
+
+    expect(filtered.map((row) => row.order.orderId)).toEqual([2n, 1n, 0n])
   })
 })
 

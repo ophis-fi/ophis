@@ -5,7 +5,13 @@ import { withOtcAllowanceRefreshTimeout } from './otcWriteTimeouts'
 import { submitOtcTransaction } from './prepareOtcTransaction'
 import { translateOtcWriteError } from './translateOtcWriteError'
 
-import type { OtcWalletSubmitter, OtcWriteClient, OtcWriteIntent, OtcWriteRuntimeAuthorization } from './otcWrite.types'
+import type {
+  OtcConfirmedCallback,
+  OtcWalletSubmitter,
+  OtcWriteClient,
+  OtcWriteIntent,
+  OtcWriteRuntimeAuthorization,
+} from './otcWrite.types'
 import type { RefreshOtcAllowance } from './useOtcSubmission'
 import type { Hex } from 'viem'
 
@@ -23,7 +29,7 @@ interface OtcSubmitCallbackOptions {
   contextGeneration: { current: number }
   inFlightGeneration: { current: number | null }
   beginAllowanceCooldown: () => void
-  onConfirmed: (() => void) | undefined
+  onConfirmed: OtcConfirmedCallback | undefined
   setPendingIntent: (intent: OtcWriteIntent['kind'] | null) => void
   setError: (error: string | null) => void
   setSuccess: (success: OtcSuccessfulTransaction | null) => void
@@ -105,7 +111,7 @@ function applySuccessfulSubmission(
   options.setSuccess({ transactionHash, terminal: result.confirmed })
   options.setRecoveryRequired(false)
   if (result.beginCooldown) options.beginAllowanceCooldown()
-  if (result.confirmed) options.onConfirmed?.()
+  if (result.confirmed) options.onConfirmed?.(transactionHash)
   return true
 }
 

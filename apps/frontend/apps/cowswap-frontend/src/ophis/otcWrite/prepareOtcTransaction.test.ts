@@ -14,6 +14,25 @@ import {
 const TAKER = '0x1111111111111111111111111111111111111111'
 
 describe('Milestone C transaction preflight', () => {
+  it('fails a stalled preflight closed within the bounded timeout', async () => {
+    jest.useFakeTimers()
+    try {
+      const client = mockOtcWriteClient()
+      client.getLatestBlock = () => new Promise(() => undefined)
+      const preflight = prepareOtcTransaction(
+        client,
+        { kind: 'fill', account: TAKER, order: mockOtcOrder(), deadline: NOW + 180n },
+        mockOtcManifest(),
+      )
+      const rejection = expect(preflight).rejects.toThrow('Ophis OTC transaction preflight timed out')
+
+      await jest.advanceTimersByTimeAsync(30_000)
+      await rejection
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('re-reads an order and simulates the exact fill before returning a request', async () => {
     const state: MockOtcPreflightState = { simulated: [] }
     const result = await prepareOtcTransaction(

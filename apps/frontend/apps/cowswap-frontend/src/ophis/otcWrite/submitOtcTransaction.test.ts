@@ -106,6 +106,43 @@ describe('Milestone C wallet submission sink', () => {
     expect(receipt.transactionHash).toBe(TX_HASH)
   })
 
+  it('never submits when a timed-out preflight resolves later', async () => {
+    jest.useFakeTimers()
+    try {
+      let resolveSimulation: (() => void) | undefined
+      const writeClient = mockOtcWriteClient()
+      writeClient.simulate = () =>
+        new Promise((resolve) => {
+          resolveSimulation = resolve
+        })
+      const wallet: OtcWalletSubmitter = {
+        sendTransaction: jest.fn(async () => TX_HASH),
+        waitForTransactionReceipt: jest.fn(async () => ({
+          transactionHash: TX_HASH,
+          status: 'success',
+          blockNumber: 201n,
+        })),
+      }
+      const submission = submitOtcTransaction(
+        writeClient,
+        wallet,
+        { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
+        mockOtcAuthorization(),
+        mockOtcManifest(),
+      )
+      const rejection = expect(submission).rejects.toThrow('Ophis OTC transaction preflight timed out')
+
+      await jest.advanceTimersByTimeAsync(30_000)
+      await rejection
+      resolveSimulation?.()
+      await Promise.resolve()
+
+      expect(wallet.sendTransaction).not.toHaveBeenCalled()
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('propagates the current-context guard through the wallet sink', async () => {
     const sendTransaction: OtcWalletSubmitter['sendTransaction'] = jest.fn(
       async (_request, _intent, _nowSeconds, isCurrentContext) => {

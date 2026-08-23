@@ -8,8 +8,9 @@ export function assertAccessibleButton(name: string): void {
     })
 }
 
-export function assertAccessibleAnnouncement(role: 'alert' | 'status', text: string): void {
-  cy.contains(`[role="${role}"][aria-live]`, text)
+export function assertAccessibleAnnouncement(role: 'alert' | 'status', text: string, timeout?: number): void {
+  const options = timeout === undefined ? {} : { timeout }
+  cy.contains(`[role="${role}"][aria-live]`, text, options)
     .should('be.visible')
     .and('have.attr', 'aria-atomic', 'true')
     .then(($announcement) => {

@@ -119,7 +119,8 @@ describe('Ophis OTC write boundary', () => {
     const source = readFileSync(join(WRITE_DIR, 'OtcOrderActionPanel.container.tsx'), 'utf8')
     expect(source).toContain('readOtcOrder(network.writeClient, orderId)')
     expect(source).toContain("queryKey: ['ophis-otc-fork-order', network.transportId, account")
-    expect(source).toContain('return <UnverifiedOtcOrderActionPanel orderId={orderId}')
+    expect(source).toContain('forkOrderQuery.error !== null')
+    expect(source).toContain('void refetchForkOrder()')
   })
 
   it('allows only the token-policy assertion API at write sinks', () => {

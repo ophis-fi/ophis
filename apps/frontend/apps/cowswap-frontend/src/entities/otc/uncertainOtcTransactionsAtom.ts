@@ -4,7 +4,7 @@ import { getJotaiIsolatedStorage, withStorageGuard } from '@cowprotocol/core'
 
 import type { Hex } from 'viem'
 
-const STORAGE_KEY = 'ophis-otc-uncertain-transactions:v1'
+const STORAGE_KEY = 'ophisOtcUncertainTransactions:v0'
 
 export interface UncertainOtcTransaction {
   transactionHash: Hex
@@ -46,4 +46,14 @@ export function recordUncertainOtcTransaction(
   recordedAt = Date.now(),
 ): UncertainOtcTransactions {
   return { ...transactions, [key]: { transactionHash, recordedAt } }
+}
+
+export function removeUncertainOtcTransaction(
+  transactions: UncertainOtcTransactions,
+  key: string,
+): UncertainOtcTransactions {
+  if (!(key in transactions)) return transactions
+  const next = { ...transactions }
+  delete next[key]
+  return next
 }

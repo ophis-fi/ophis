@@ -1,25 +1,27 @@
 import { useAtomValue } from 'jotai'
-import { useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 
+import { LinkStyledButton } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { atomWithQuery } from 'jotai-tanstack-query'
 import { Callout, Section } from 'ophis/ds'
-import { formatOtcAmount, readOtcOrder } from 'ophis/otc'
+import { readOtcOrder } from 'ophis/otc'
 import { isAddressEqual } from 'viem'
 import { useWalletClient } from 'wagmi'
 
 import { OtcActionControl } from './OtcActionControl.container'
-import { OtcUsdValue } from './OtcUsdValue.pure'
+import { OtcOrderTermsSummary } from './OtcOrderTermsSummary.pure'
 import * as styledEl from './OtcWrite.styled'
 import { reviewedOtcToken, type OtcReviewedToken } from './otcWriteForm'
 import { getOtcActionReviewKey, shouldMountOtcOrderAction } from './otcWriteOrder.utils'
 import { useOtcNetworkReads } from './useOtcNetworkReads'
 import { useOtcUsdAmount } from './useOtcUsdAmount'
 
+import type { OtcConfirmedCallback } from './otcWrite.types'
 import type { OtcActionDefinition } from './useOtcActionController'
 import type { OtcOrder } from 'ophis/otc'
-import type { Address } from 'viem'
+import type { Address, Hex } from 'viem'
 
 function buildOrderActionDefinition(
   account: Address | undefined,
@@ -51,52 +53,13 @@ function buildOrderActionDefinition(
   }
 }
 
-function OtcOrderTermsSummary({
-  isMaker,
+function VerifiedOtcOrderActionPanel({
   order,
-  paymentToken,
-  receivedToken,
-  paymentUsdValue,
-  paymentUsdLoading,
-  receivedUsdValue,
-  receivedUsdLoading,
+  onConfirmed,
 }: {
-  isMaker: boolean
   order: OtcOrder
-  paymentToken: OtcReviewedToken | null
-  receivedToken: OtcReviewedToken | null
-  paymentUsdValue: string | null
-  paymentUsdLoading: boolean
-  receivedUsdValue: string | null
-  receivedUsdLoading: boolean
+  onConfirmed?: OtcConfirmedCallback
 }): ReactNode {
-  if (!paymentToken || !receivedToken) return null
-  if (isMaker) {
-    return (
-      <styledEl.WriteSummary>
-        <p>
-          Cancellation returns {formatOtcAmount(order.amountA, receivedToken.decimals)} {receivedToken.symbol} from
-          escrow.
-        </p>
-      </styledEl.WriteSummary>
-    )
-  }
-  return (
-    <styledEl.WriteSummary>
-      <p>
-        Pay {formatOtcAmount(order.amountB, paymentToken.decimals)} {paymentToken.symbol}.
-      </p>
-      <OtcUsdValue amount={order.amountB} value={paymentUsdValue} isLoading={paymentUsdLoading} />
-      <p>
-        Receive {formatOtcAmount(order.amountA, receivedToken.decimals)} {receivedToken.symbol}.
-      </p>
-      <OtcUsdValue amount={order.amountA} value={receivedUsdValue} isLoading={receivedUsdLoading} />
-      <p>The fill uses a fresh three-minute deadline and may lose an Ethereum race.</p>
-    </styledEl.WriteSummary>
-  )
-}
-
-function VerifiedOtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; onConfirmed?: () => void }): ReactNode {
   const { account } = useWalletInfo()
   const [reviewedKey, setReviewedKey] = useState<string | null>(null)
   const isMaker = !!account && isAddressEqual(account, order.maker)
@@ -163,14 +126,20 @@ function VerifiedOtcOrderActionPanel({ order, onConfirmed }: { order: OtcOrder; 
 function UnverifiedOtcOrderActionPanel({
   orderId,
   onConfirmed,
+  confirmedHash,
+  orderUnavailable,
+  retryOrder,
 }: {
   orderId: bigint
-  onConfirmed?: () => void
+  onConfirmed?: OtcConfirmedCallback
+  confirmedHash: Hex | null
+  orderUnavailable: boolean
+  retryOrder(): void
 }): ReactNode {
   const definition = useMemo<OtcActionDefinition>(
     () => ({
       executeLabel: 'Order action',
-      unavailableLabel: 'Loading verified fork order...',
+      unavailableLabel: orderUnavailable ? 'Fork order unavailable' : 'Loading verified fork order...',
       ready: false,
       reviewed: false,
       resetKey: `order:${orderId.toString()}:unverified`,
@@ -180,13 +149,32 @@ function UnverifiedOtcOrderActionPanel({
       allowanceToken: null,
       requiredAllowance: null,
     }),
-    [orderId],
+    [orderId, orderUnavailable],
   )
   return (
     <Section id="otc-order-action" title="Order action on local fork">
-      <Callout tone="warning" title="Fork verification required">
-        <p>Connect a wallet and select a chain-id-1 local fork before the exact order terms can be loaded.</p>
-      </Callout>
+      {!orderUnavailable && (
+        <Callout tone="warning" title="Fork verification required">
+          <p>Connect a wallet and select a chain-id-1 local fork before the exact order terms can be loaded.</p>
+        </Callout>
+      )}
+      {orderUnavailable && (
+        <div role="alert" aria-live="assertive" aria-atomic="true">
+          <Callout tone="warning" title="Fork order unavailable">
+            <p>The verified local-fork order read failed. Check Anvil, then retry this exact order.</p>
+            <LinkStyledButton type="button" onClick={retryOrder}>
+              Retry fork order
+            </LinkStyledButton>
+          </Callout>
+        </div>
+      )}
+      {confirmedHash && (
+        <div role="status" aria-live="polite" aria-atomic="true">
+          <Callout tone="success" title="Transaction confirmed">
+            <p>Local fork confirmation: {confirmedHash}</p>
+          </Callout>
+        </div>
+      )}
       <OtcActionControl definition={definition} onConfirmed={onConfirmed} />
     </Section>
   )
@@ -199,6 +187,7 @@ export function OtcOrderActionPanel({
   orderId: bigint
   onConfirmed?: () => void
 }): ReactNode {
+  const [confirmedHash, setConfirmedHash] = useState<Hex | null>(null)
   const { account, chainId } = useWalletInfo()
   const { data: walletClient } = useWalletClient()
   const network = useOtcNetworkReads(true, account, chainId, walletClient, null)
@@ -214,9 +203,30 @@ export function OtcOrderActionPanel({
   )
   const forkOrderQuery = useAtomValue(forkOrderQueryAtom)
   const order = forkOrderQuery.data?.order ?? null
+  const refetchForkOrder = forkOrderQuery.refetch
+  const retryOrder = useCallback(() => {
+    void refetchForkOrder()
+  }, [refetchForkOrder])
+  const handleConfirmed = useCallback(
+    (transactionHash: Hex) => {
+      setConfirmedHash(transactionHash)
+      void refetchForkOrder()
+      onConfirmed?.()
+    },
+    [onConfirmed, refetchForkOrder],
+  )
+  const orderUnavailable = network.localForkResponse.data === true && forkOrderQuery.error !== null
 
   if (network.localForkResponse.data !== true || !shouldMountOtcOrderAction(true, order) || !order) {
-    return <UnverifiedOtcOrderActionPanel orderId={orderId} onConfirmed={onConfirmed} />
+    return (
+      <UnverifiedOtcOrderActionPanel
+        orderId={orderId}
+        onConfirmed={onConfirmed}
+        confirmedHash={confirmedHash}
+        orderUnavailable={orderUnavailable}
+        retryOrder={retryOrder}
+      />
+    )
   }
-  return <VerifiedOtcOrderActionPanel order={order} onConfirmed={onConfirmed} />
+  return <VerifiedOtcOrderActionPanel order={order} onConfirmed={handleConfirmed} />
 }

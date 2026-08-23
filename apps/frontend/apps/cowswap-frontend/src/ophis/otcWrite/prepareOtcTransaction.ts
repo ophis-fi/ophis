@@ -5,6 +5,7 @@ import { isAddressEqual, type Address, type Hex } from 'viem'
 
 import { buildOtcTransaction, OTC_FILL_DEADLINE_WINDOW_SECONDS } from './buildOtcTransaction'
 import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
+import { withOtcPreflightTimeout } from './otcWriteTimeouts'
 import { readOtcAllowanceAtBlock } from './readOtcAllowance'
 
 import type {
@@ -71,7 +72,7 @@ function assertRuntimeAuthorization(authorization: OtcWriteRuntimeAuthorization)
  * Re-verifies the deployed source, re-reads order terms where applicable, and
  * simulates the exact calldata at that verified block. No wallet call occurs.
  */
-export async function prepareOtcTransaction(
+async function runOtcTransactionPreflight(
   client: OtcWriteClient,
   intent: OtcWriteIntent,
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
@@ -119,6 +120,14 @@ export async function prepareOtcTransaction(
     preparedAtTimestamp: verifiedBlock.timestamp,
     simulatedAtBlock: blockNumber,
   }
+}
+
+export function prepareOtcTransaction(
+  client: OtcWriteClient,
+  intent: OtcWriteIntent,
+  manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
+): Promise<PreparedOtcTransaction> {
+  return withOtcPreflightTimeout(runOtcTransactionPreflight(client, intent, manifest))
 }
 
 /**

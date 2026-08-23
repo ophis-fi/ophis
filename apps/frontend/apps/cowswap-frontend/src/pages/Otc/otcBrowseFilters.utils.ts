@@ -1,3 +1,5 @@
+import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
+
 import type { OtcDisplayRow } from './otcDisplay'
 
 export interface BrowseFilters {
@@ -11,12 +13,13 @@ export const EMPTY_BROWSE_FILTERS: BrowseFilters = { token: '', maker: '', order
 export function applyBrowseFilters(rows: OtcDisplayRow[], filters: BrowseFilters): OtcDisplayRow[] {
   return rows.filter((row) => {
     if (filters.orderId.trim() !== '' && row.order.orderId.toString() !== filters.orderId.trim()) return false
-    if (filters.maker.trim() !== '' && !row.order.maker.toLowerCase().includes(filters.maker.trim().toLowerCase())) {
+    if (filters.maker.trim() !== '' && !getAddressKey(row.order.maker).includes(filters.maker.trim().toLowerCase())) {
       return false
     }
     if (filters.token !== '') {
-      const needle = filters.token.toLowerCase()
-      if (row.order.tokenA.toLowerCase() !== needle && row.order.tokenB.toLowerCase() !== needle) return false
+      if (!areAddressesEqual(row.order.tokenA, filters.token) && !areAddressesEqual(row.order.tokenB, filters.token)) {
+        return false
+      }
     }
     return true
   })

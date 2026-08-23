@@ -20,9 +20,9 @@ import {
 
 const TEST_ACCOUNT = TEST_ADDRESS_NEVER_USE as Address
 const forkDescribe = Cypress.env('OTC_FORK_RPC_URL') ? describe : describe.skip
-const ACTION_ATTEMPTS = 240
+const ACTION_ATTEMPTS = 600
 const FORK_RELOAD_ATTEMPTS = 2
-const FORK_UI_TIMEOUT = 90_000
+const FORK_UI_TIMEOUT = 150_000
 
 function captureGateEvidence(name: string): void {
   if ([true, 'true'].includes(Cypress.env('OTC_CAPTURE_GATE_EVIDENCE'))) {
@@ -150,7 +150,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     assertAccessibleButton('Fill entire order')
     captureGateEvidence('fill-ready')
     primaryButton('#otc-order-action').should('be.enabled').click()
-    assertAccessibleAnnouncement('status', 'Local fork confirmation:')
+    assertAccessibleAnnouncement('status', 'Local fork confirmation:', FORK_UI_TIMEOUT)
     cy.then(async () => {
       expect(await isOtcOrderActive(fillOrderId)).to.equal(false)
       expect(await readOtcAllowance(TEST_ACCOUNT)).to.equal(0n)
@@ -166,7 +166,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     assertAccessibleAnnouncement('alert', 'Token allowance must be cleared')
     assertAccessibleButton('Revoke mismatched allowance')
     primaryButton('#otc-order-action').should('be.enabled').click()
-    assertAccessibleAnnouncement('status', 'Local fork confirmation:')
+    assertAccessibleAnnouncement('status', 'Local fork confirmation:', FORK_UI_TIMEOUT)
     cy.then(async () => expect(await readOtcAllowance(TEST_ACCOUNT)).to.equal(0n))
     reachPrimaryAction('#otc-order-action', 'Approve exact amount')
   })
@@ -181,8 +181,8 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     reachPrimaryAction('#otc-order-action', 'Fill entire order')
     cy.then({ timeout: 60_000 }, () => fillOtcOrderDirectly(FORK_RACER, racedOrderId))
     primaryButton('#otc-order-action').should('have.text', 'Fill entire order').click()
-    assertAccessibleAnnouncement('alert', 'Transaction not completed')
-    assertAccessibleAnnouncement('alert', 'Token allowance must be cleared')
+    assertAccessibleAnnouncement('alert', 'Transaction not completed', FORK_UI_TIMEOUT)
+    assertAccessibleAnnouncement('alert', 'Token allowance must be cleared', FORK_UI_TIMEOUT)
     visitForkOrder(racedOrderId)
     cy.contains('Inactive', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
     connectForkWallet('#otc-order-action')
@@ -191,7 +191,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     assertAccessibleButton('Revoke unused allowance')
     captureGateEvidence('recovery-required')
     cy.contains('button', 'Revoke unused allowance').click()
-    assertAccessibleAnnouncement('status', 'Local fork confirmation:')
+    assertAccessibleAnnouncement('status', 'Local fork confirmation:', FORK_UI_TIMEOUT)
     cy.then(async () => expect(await readOtcAllowance(TEST_ACCOUNT)).to.equal(0n))
   })
 

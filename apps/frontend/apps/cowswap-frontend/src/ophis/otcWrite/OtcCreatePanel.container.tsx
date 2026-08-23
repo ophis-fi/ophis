@@ -14,7 +14,7 @@ import { getOtcActionReviewKey } from './otcWriteOrder.utils'
 import { useOtcUsdAmount } from './useOtcUsdAmount'
 
 import type { OtcActionDefinition } from './useOtcActionController'
-import type { Address } from 'viem'
+import type { Address, Hex } from 'viem'
 
 interface OtcCreateFieldsProps {
   tokenA: OtcReviewedToken
@@ -106,9 +106,12 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
   const usdAmountB = useOtcUsdAmount(tokenB, parsedAmountB)
   const resetKey = getOtcActionReviewKey(account, [tokenA.address, amountA.trim(), tokenB.address, amountB.trim()])
   const reviewed = reviewedKey === resetKey
-  const handleConfirmed = useCallback(() => {
-    onConfirmed?.()
-  }, [onConfirmed])
+  const handleConfirmed = useCallback(
+    (_transactionHash: Hex) => {
+      onConfirmed?.()
+    },
+    [onConfirmed],
+  )
   const definition = useMemo<OtcActionDefinition>(
     () => ({
       executeLabel: 'Create escrow order',
