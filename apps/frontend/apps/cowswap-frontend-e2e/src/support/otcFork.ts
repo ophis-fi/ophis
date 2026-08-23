@@ -12,6 +12,11 @@ interface RpcResponse<T> {
   error?: { message?: string }
 }
 
+interface RpcBlock {
+  number: Hex
+  timestamp: Hex
+}
+
 export const OTC_ESCROW: Address = '0x000000fF3D7A2d373615141d7489Ca66683DbecF'
 export const WETH: Address = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
 export const USDC: Address = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
@@ -21,6 +26,7 @@ export const ONE_WETH = 1_000_000_000_000_000_000n
 export const TWO_THOUSAND_USDC = 2_000_000_000n
 
 const WETH_DEPOSIT = '0xd0e30db0'
+const PINNED_READ_GAS = '0xea60'
 const BALANCE_SLOT_CANDIDATES = 24
 const MAX_PREWARMED_ORDERS = 1_000n
 const FORK_RPC_URL = Cypress.env('OTC_FORK_RPC_URL') as string
@@ -64,6 +70,22 @@ async function call(
 ): Promise<Hex> {
   const data = contractInterface.encodeFunctionData(functionName, args)
   return rpc<Hex>('eth_call', [{ to, data }, 'latest'])
+}
+
+async function pinnedCall(
+  to: Address,
+  contractInterface: Interface,
+  functionName: string,
+  args: readonly unknown[],
+  blockNumber: Hex,
+): Promise<Hex> {
+  const data = contractInterface.encodeFunctionData(functionName, args)
+  return rpc<Hex>('eth_call', [{ to, data, gas: PINNED_READ_GAS }, blockNumber])
+}
+
+async function prewarmOtcIdentity(blockNumber: Hex): Promise<void> {
+  await rpc<Hex>('eth_getCode', [OTC_ESCROW, blockNumber])
+  await pinnedCall(OTC_ESCROW, OTC_INTERFACE, 'weth', [], blockNumber)
 }
 
 async function sendUnlocked(from: Address, to: Address, data: Hex, value?: bigint): Promise<void> {
@@ -130,8 +152,8 @@ export async function fundForkGas(account: Address): Promise<void> {
 
 /** Warm Anvil's remote storage cache; the app still repeats every verified read itself. */
 export async function prewarmOtcFork(account: Address): Promise<void> {
-  await rpc<Hex>('eth_getCode', [OTC_ESCROW, 'latest'])
-  await call(OTC_ESCROW, OTC_INTERFACE, 'weth')
+  const block = await rpc<RpcBlock>('eth_getBlockByNumber', ['latest', false])
+  await prewarmOtcIdentity(block.number)
   const nextOrderId = await getNextOtcOrderId()
   const orderCount = nextOrderId < MAX_PREWARMED_ORDERS ? nextOrderId : MAX_PREWARMED_ORDERS
   const firstOrderId = nextOrderId - orderCount
@@ -139,10 +161,18 @@ export async function prewarmOtcFork(account: Address): Promise<void> {
   for (let offset = 0; offset < orderIds.length; offset += 64) {
     await call(OTC_ESCROW, OTC_INTERFACE, 'getOrders', [orderIds.slice(offset, offset + 64)])
   }
-  await Promise.all([
-    call(WETH, ERC20_INTERFACE, 'allowance', [account, OTC_ESCROW]),
-    call(USDC, ERC20_INTERFACE, 'allowance', [account, OTC_ESCROW]),
-  ])
+  await pinnedCall(WETH, ERC20_INTERFACE, 'allowance', [account, OTC_ESCROW], block.number)
+  await pinnedCall(USDC, ERC20_INTERFACE, 'allowance', [account, OTC_ESCROW], block.number)
+  await rpc<RpcBlock>('eth_getBlockByNumber', [block.number, false])
+}
+
+/** Prewarm the exact direct-read shape without substituting for the app's verification. */
+export async function prewarmOtcForkOrder(account: Address, orderId: bigint): Promise<void> {
+  const block = await rpc<RpcBlock>('eth_getBlockByNumber', ['latest', false])
+  await prewarmOtcIdentity(block.number)
+  await pinnedCall(OTC_ESCROW, OTC_INTERFACE, 'getOrder', [orderId], block.number)
+  await pinnedCall(USDC, ERC20_INTERFACE, 'allowance', [account, OTC_ESCROW], block.number)
+  await rpc<RpcBlock>('eth_getBlockByNumber', [block.number, false])
 }
 
 export async function depositForkWeth(account: Address): Promise<void> {
@@ -167,7 +197,7 @@ export async function fillOtcOrderDirectly(filler: Address, orderId: bigint): Pr
     USDC,
     ERC20_INTERFACE.encodeFunctionData('approve', [OTC_ESCROW, TWO_THOUSAND_USDC]) as Hex,
   )
-  const block = await rpc<{ timestamp: Hex }>('eth_getBlockByNumber', ['latest', false])
+  const block = await rpc<RpcBlock>('eth_getBlockByNumber', ['latest', false])
   await sendUnlocked(
     filler,
     OTC_ESCROW,

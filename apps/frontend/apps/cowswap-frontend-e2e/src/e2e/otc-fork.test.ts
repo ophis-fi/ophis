@@ -10,6 +10,7 @@ import {
   getNextOtcOrderId,
   isOtcOrderActive,
   prewarmOtcFork,
+  prewarmOtcForkOrder,
   readOtcAllowance,
   setForkTokenBalance,
   setOtcAllowance,
@@ -181,7 +182,10 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     primaryButton('#otc-order-action').should('be.enabled').click()
     cy.contains('Local fork confirmation:', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
     reachPrimaryAction('#otc-order-action', 'Fill entire order')
-    cy.then({ timeout: 60_000 }, () => fillOtcOrderDirectly(FORK_RACER, racedOrderId))
+    cy.then({ timeout: FORK_UI_TIMEOUT }, async () => {
+      await fillOtcOrderDirectly(FORK_RACER, racedOrderId)
+      await prewarmOtcForkOrder(TEST_ACCOUNT, racedOrderId)
+    })
     primaryButton('#otc-order-action').should('have.text', 'Fill entire order').click()
     assertAccessibleAnnouncement('alert', 'Transaction not completed', FORK_UI_TIMEOUT)
     assertAccessibleAnnouncement('alert', 'Token allowance must be cleared', FORK_UI_TIMEOUT)
