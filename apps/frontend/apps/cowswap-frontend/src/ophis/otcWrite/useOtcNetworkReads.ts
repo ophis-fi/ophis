@@ -18,6 +18,7 @@ import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
 import type { Address } from 'viem'
 
 const ALLOWANCE_REFRESH_INTERVAL_MS = 5_000
+const ALLOWANCE_READ_TIMEOUT_MS = 30_000
 const LOCAL_FORK_VERIFICATION_ATTEMPTS = 10
 const LOCAL_FORK_VERIFICATION_RETRY_MS = 750
 const LOCAL_FORK_VERIFICATION_TIMEOUT_MS = 10_000
@@ -62,6 +63,10 @@ function toOtcQueryResponse<T>(result: AtomWithQueryResult<T, Error>): OtcQueryR
 
 export function withOtcForkVerificationTimeout(verification: Promise<boolean>): Promise<boolean> {
   return withTimeout(verification, LOCAL_FORK_VERIFICATION_TIMEOUT_MS, 'Ophis OTC local fork verification timed out')
+}
+
+export function withOtcAllowanceReadTimeout(read: Promise<AllowanceRead>): Promise<AllowanceRead> {
+  return withTimeout(read, ALLOWANCE_READ_TIMEOUT_MS, 'Ophis OTC allowance read timed out')
 }
 
 export async function retryOtcForkVerification(verify: () => Promise<boolean>): Promise<boolean> {
@@ -120,16 +125,16 @@ export function useOtcNetworkReads(
   const allowanceQueryAtom = useMemo(
     () =>
       atomWithQuery<AllowanceRead | null, Error>(() => ({
-        queryKey: ['ophis-otc-allowance', account, allowanceToken, OPHIS_ESCROW_KEY, transportId],
+        queryKey: ['ophis-otc-allowance', account, allowanceToken, OPHIS_ESCROW_KEY, chainId, transportId],
         queryFn: async () => {
           if (!account || !allowanceToken || !writeClient) return null
-          return readOtcAllowance(writeClient, allowanceToken, account)
+          return withOtcAllowanceReadTimeout(readOtcAllowance(writeClient, allowanceToken, account))
         },
-        enabled: !!enabled && localForkQuery.data === true && !!account && !!allowanceToken && !!writeClient,
+        enabled: !!enabled && chainId === 1 && !!account && !!allowanceToken && !!writeClient,
         refetchInterval: ALLOWANCE_REFRESH_INTERVAL_MS,
         refetchOnWindowFocus: false,
       })),
-    [account, allowanceToken, enabled, localForkQuery.data, transportId, writeClient],
+    [account, allowanceToken, chainId, enabled, transportId, writeClient],
   )
   const allowanceQuery = useAtomValue(allowanceQueryAtom)
   const localForkResponse = useMemo(() => toOtcQueryResponse(localForkQuery), [localForkQuery])
