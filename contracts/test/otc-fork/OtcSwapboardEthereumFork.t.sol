@@ -43,7 +43,7 @@ interface ISwapboardV1Fork {
 /// archive-RPC launch dependency. Native-ETH selectors are deliberately absent.
 ///
 /// Run:
-/// OPHIS_FORK_RPC_ETH=https://ethereum-rpc.publicnode.com forge test \
+/// forge test --fork-url "$OPHIS_FORK_RPC_ETH" \
 ///   --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol
 contract OtcSwapboardEthereumForkTest is Test {
     address internal constant BOARD = 0x000000fF3D7A2d373615141d7489Ca66683DbecF;
@@ -59,8 +59,6 @@ contract OtcSwapboardEthereumForkTest is Test {
     ISwapboardV1Fork internal board;
 
     function setUp() public {
-        string memory rpc = vm.envString("OPHIS_FORK_RPC_ETH");
-        vm.createSelectFork(rpc);
         board = ISwapboardV1Fork(BOARD);
     }
 
