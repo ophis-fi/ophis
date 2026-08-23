@@ -103,7 +103,8 @@ jobs:
           REACT_APP_OTC_WRITE_MODE: fork
         run: |
           test -n "$OPHIS_FORK_RPC_ETH" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
-          anvil --fork-url "$OPHIS_FORK_RPC_ETH" --no-rate-limit --chain-id 1 --host 127.0.0.1 --port 8545 > /tmp/otc-anvil.log 2>&1 &
+          anvil --fork-url "$OPHIS_FORK_RPC_ETH" --fork-retry-backoff 1000 --retries 10 \
+            --chain-id 1 --host 127.0.0.1 --port 8545 > /tmp/otc-anvil.log 2>&1 &
           anvil_pid=$!
           trap 'kill "$anvil_pid" 2>/dev/null || true; [[ -z "${frontend_pid:-}" ]] || kill "$frontend_pid" 2>/dev/null || true' EXIT
           for attempt in {1..60}; do
