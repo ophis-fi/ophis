@@ -1,3 +1,4 @@
+import { assertAccessibleAnnouncement, assertAccessibleButton } from '../support/accessibility'
 import { TEST_ADDRESS_NEVER_USE } from '../support/ethereum'
 import {
   createWethForUsdcOrder,
@@ -20,40 +21,8 @@ import {
 const TEST_ACCOUNT = TEST_ADDRESS_NEVER_USE as Address
 const forkDescribe = Cypress.env('OTC_FORK_RPC_URL') ? describe : describe.skip
 const ACTION_ATTEMPTS = 240
+const FORK_RELOAD_ATTEMPTS = 2
 const FORK_UI_TIMEOUT = 90_000
-
-interface ChromeAccessibilityNode {
-  ignored?: boolean
-  role?: { value?: unknown }
-  name?: { value?: unknown }
-}
-
-function assertAccessibleButton(name: string): void {
-  cy.then(() =>
-    Cypress.automation('remote:debugger:protocol', {
-      command: 'Accessibility.getFullAXTree',
-      params: {},
-    }),
-  ).then((result: { nodes?: ChromeAccessibilityNode[] }) => {
-    const button = result.nodes?.find(
-      (node) => !node.ignored && node.role?.value === 'button' && node.name?.value === name,
-    )
-    expect(button, `accessible button named "${name}"`).to.exist
-  })
-}
-
-function assertAccessibleAnnouncement(role: 'alert' | 'status', text: string): void {
-  cy.contains(`[role="${role}"]`, text).should('be.visible')
-  cy.then(() =>
-    Cypress.automation('remote:debugger:protocol', {
-      command: 'Accessibility.getFullAXTree',
-      params: {},
-    }),
-  ).then((result: { nodes?: ChromeAccessibilityNode[] }) => {
-    const region = result.nodes?.find((node) => !node.ignored && node.role?.value === role)
-    expect(region, `accessible ${role} announcement`).to.exist
-  })
-}
 
 function captureGateEvidence(name: string): void {
   if ([true, 'true'].includes(Cypress.env('OTC_CAPTURE_GATE_EVIDENCE'))) {
@@ -65,18 +34,24 @@ function primaryButton(panel: string): Cypress.Chainable<JQuery<HTMLElement>> {
   return cy.get(`${panel} button`).first()
 }
 
-function connectForkWallet(panel: string, attempt = 0): void {
+function connectForkWallet(panel: string, attempt = 0, reloads = 0): void {
   if (attempt >= ACTION_ATTEMPTS) throw new Error('OTC wallet did not reach a connected state')
   primaryButton(panel).then(($button) => {
     const label = $button.text().trim()
     if (label === 'Connect wallet') {
       cy.wrap($button).click()
       cy.contains('Injected').click()
-      cy.wait(250).then(() => connectForkWallet(panel, attempt + 1))
+      cy.wait(250).then(() => connectForkWallet(panel, attempt + 1, reloads))
       return
     }
     if (/Verifying|Checking|Wallet access/.test(label)) {
-      cy.wait(250).then(() => connectForkWallet(panel, attempt + 1))
+      cy.wait(250).then(() => connectForkWallet(panel, attempt + 1, reloads))
+      return
+    }
+    if (label === 'Local Anvil fork required') {
+      if (reloads >= FORK_RELOAD_ATTEMPTS) throw new Error('Injected wallet did not verify as the local Anvil fork')
+      cy.reload()
+      cy.wait(500).then(() => connectForkWallet(panel, 0, reloads + 1))
     }
   })
 }
@@ -136,6 +111,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
   it('approves the exact WETH amount and creates an ERC-20 escrow order', () => {
     cy.visit('/#/otc')
     cy.contains('Local fork writes', { timeout: 30_000 }).should('be.visible')
+    connectForkWallet('#otc-create')
     cy.get('[aria-label="Maker escrow amount"]').type('1')
     cy.get('[aria-label="Requested amount"]').type('2000')
     cy.contains('label', 'I reviewed both exact token amounts').find('input').check()
