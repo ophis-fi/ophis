@@ -132,6 +132,12 @@ jobs:
             fi
             sleep 1
           done
-          pnpm exec nx run cowswap-frontend-e2e:e2e --skip-nx-cache \
+          if ! pnpm exec nx run cowswap-frontend-e2e:e2e --skip-nx-cache \
             --spec apps/cowswap-frontend-e2e/src/e2e/otc-fork.test.ts \
-            --browser chrome
+            --browser chrome; then
+            for log in /tmp/otc-anvil.log /tmp/otc-frontend.log; do
+              echo "Redacted diagnostic tail: $log"
+              tail -n 200 "$log" | sed -E 's#https?://[^[:space:]]+#<redacted-url>#g'
+            done
+            exit 1
+          fi

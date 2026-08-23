@@ -119,7 +119,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
   let racedOrderId = 0n
 
   before(() => {
-    cy.then({ timeout: 120_000 }, async () => {
+    cy.then({ timeout: 300_000 }, async () => {
       await fundForkGas(TEST_ACCOUNT)
       await setForkTokenBalance(USDC, TEST_ACCOUNT, TWO_THOUSAND_USDC * 3n)
       await setForkTokenBalance(USDC, FORK_RACER, TWO_THOUSAND_USDC)
