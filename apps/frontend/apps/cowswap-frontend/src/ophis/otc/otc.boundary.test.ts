@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 import { OTC_EVENT_ABI, OTC_READ_ABI } from './otc.abi'
-import { OPHIS_ETHEREUM_OTC_MANIFEST, OTC_KNOWN_WRITE_SELECTORS } from './otc.const'
+import { OPHIS_ETHEREUM_OTC_MANIFEST, OTC_ERC20_WRITE_SELECTORS, OTC_KNOWN_WRITE_SELECTORS } from './otc.const'
 
 // Matched against module SPECIFIERS (the string after `from`) of production
 // files. Named exports do not appear in specifiers, so entries must be
@@ -31,25 +31,31 @@ const SHARED_FORBIDDEN_FRAGMENTS = [
   'boostedTokens',
 ]
 
-// The adapter module must not touch the wallet at all; the page family may
-// read the connected ACCOUNT via '@cowprotocol/wallet' (useWalletInfo) but
-// nothing signer-capable.
+// The read adapter must not touch the wallet at all. The page family may read
+// the connected account, but signer access remains isolated in otcWrite.
 const MODULE_FORBIDDEN_FRAGMENTS = [...SHARED_FORBIDDEN_FRAGMENTS, '@cowprotocol/wallet']
 const PAGES_FORBIDDEN_FRAGMENTS = SHARED_FORBIDDEN_FRAGMENTS
-
 const PAGES_DIR = join(__dirname, '..', '..', 'pages', 'Otc')
 
 // Signer-capable APIs from otherwise-allowed packages (e.g. wagmi exports
 // both usePublicClient and useWriteContract), plus dynamic import() which
 // would evade the specifier scan entirely.
 const SIGNER_API_PATTERN =
-  /\b(useWriteContract|useSendTransaction|useSendTransactionSync|useSendCalls|useDeployContract|useSignMessage|useSignTypedData|useConnectorClient|useWalletClient|getWalletClient|walletClient|walletActions|writeContract|sendTransaction|sendRawTransaction|sendCalls|deployContract|signTransaction|signTypedData|signMessage|prepareTransactionRequest|requestAddresses|watchAsset)\b|import\(/
+  /\b(useWriteContract|useSendTransaction|useSendTransactionSync|useSendCalls|useDeployContract|useSignMessage|useSignTypedData|useConnectorClient|useWalletClient|getWalletClient|walletClient|walletActions|writeContract|sendTransaction|sendRawTransaction|sendCalls|deployContract|signTransaction|signTypedData|signMessage|prepareTransactionRequest|requestAddresses|watchAsset)\b|import\(/g
 
 // Denylists are inherently incomplete against a large package surface, so
 // wagmi — the one signer-capable package production OTC code may touch —
 // is additionally held to an ALLOWLIST: only these named imports may appear.
 const WAGMI_ALLOWED_IMPORTS = new Set(['usePublicClient'])
-
+const PAGE_WRITE_ALLOWED_IMPORTS = new Set([
+  'OtcCreatePanel',
+  'OtcOrderActionPanel',
+  'isReviewedOtcOrder',
+  'resolveOtcWriteAuthorization',
+  'resolveOtcWriteFlag',
+  'shouldMountOtcOrderAction',
+  'useOtcWriteAuthorization',
+])
 function namedImportsFrom(source: string, specifier: string): string[] {
   const pattern = new RegExp(`import\\s*(?:type\\s*)?{([^}]*)}\\s*from\\s*['"]${specifier}['"]`, 'g')
   return Array.from(source.matchAll(pattern), (match) => match[1])
@@ -67,6 +73,10 @@ function namedImportsFrom(source: string, specifier: string): string[] {
 interface ProductionSource {
   file: string
   source: string
+}
+
+function signerApisFrom(source: string): string[] {
+  return source.match(SIGNER_API_PATTERN) ?? []
 }
 
 /** Recursive: a write path hidden in a nested directory must not escape the scan. */
@@ -113,11 +123,17 @@ describe('Ophis OTC boundary', () => {
     }
   })
 
+  it('keeps touched OTC reads on Jotai Query instead of SWR', () => {
+    for (const directory of [__dirname, PAGES_DIR]) {
+      expect(productionImports(directory).filter((value) => value === 'swr')).toEqual([])
+    }
+  })
+
   it('references no signer-capable API and no dynamic import in any production source', () => {
     for (const directory of [__dirname, PAGES_DIR]) {
       for (const { file, source } of productionSources(directory)) {
-        const match = source.match(SIGNER_API_PATTERN)
-        expect(match ? `${file}: ${match[0]}` : null).toBeNull()
+        const matches = signerApisFrom(source)
+        expect(matches.length > 0 ? `${file}: ${matches.join(', ')}` : null).toBeNull()
       }
     }
   })
@@ -128,6 +144,14 @@ describe('Ophis OTC boundary', () => {
         for (const name of namedImportsFrom(source, 'wagmi')) {
           expect(WAGMI_ALLOWED_IMPORTS.has(name) ? null : `${file}: ${name}`).toBeNull()
         }
+      }
+    }
+  })
+
+  it('lets pages reach only the guarded write surface and authorization boundary', () => {
+    for (const { file, source } of productionSources(PAGES_DIR)) {
+      for (const name of namedImportsFrom(source, 'ophis/otcWrite')) {
+        expect(PAGE_WRITE_ALLOWED_IMPORTS.has(name) ? null : `${file}: ${name}`).toBeNull()
       }
     }
   })
@@ -167,8 +191,13 @@ describe('Ophis OTC boundary', () => {
     })
   })
 
-  it('pins the enabled transaction selector list to empty for milestones A/B', () => {
-    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).toEqual([])
+  it('enables exactly the three ERC-20 selectors for Milestone C', () => {
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).toEqual(OTC_ERC20_WRITE_SELECTORS)
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).toEqual(['0xfc05ca31', '0xc37dfc5b', '0x514fcac7'])
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).not.toContain('0x97bfdd2f')
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).not.toContain('0x9fe63676')
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).not.toContain('0x21dd76f9')
+    expect(OPHIS_ETHEREUM_OTC_MANIFEST.enabledTransactionSelectors).not.toContain('0xb50430d8')
   })
 
   it('pins the independently verified contract identity', () => {

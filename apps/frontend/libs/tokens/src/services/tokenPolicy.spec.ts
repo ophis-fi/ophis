@@ -3,6 +3,12 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { assertTradeTokenPolicy, getTokenPolicyDecision, TokenPolicyProfile } from './tokenPolicy'
 
+const PINNED_OTC_ASSETS = [
+  '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+  '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  '0x6B175474E89094C44Da98b954EedeAC495271d0F',
+] as const
+
 describe('Ophis token policy', () => {
   it('preserves valid tokens on established settlement chains', () => {
     expect(
@@ -60,14 +66,15 @@ describe('Ophis token policy', () => {
 })
 
 describe('Ophis token policy — OTC escrow profile', () => {
-  it.each([WETH_MAINNET.address, USDC_MAINNET.address, DAI.address])(
-    'allows reviewed Ethereum escrow asset %s under the OTC escrow profile',
-    (address) => {
-      expect(
-        getTokenPolicyDecision({ chainId: SupportedChainId.MAINNET, address }, TokenPolicyProfile.OTC_ESCROW),
-      ).toEqual({ allowed: true, reason: 'approved' })
-    },
-  )
+  it('pins the shared constants to the independently reviewed escrow addresses', () => {
+    expect([WETH_MAINNET.address, USDC_MAINNET.address, DAI.address]).toEqual(PINNED_OTC_ASSETS)
+  })
+
+  it.each(PINNED_OTC_ASSETS)('allows reviewed Ethereum escrow asset %s under the OTC escrow profile', (address) => {
+    expect(
+      getTokenPolicyDecision({ chainId: SupportedChainId.MAINNET, address }, TokenPolicyProfile.OTC_ESCROW),
+    ).toEqual({ allowed: true, reason: 'approved' })
+  })
 
   it('fails closed for the OTC escrow profile outside its exact allowlist', () => {
     // Native ETH is exposed only through the escrow contract's reviewed WETH

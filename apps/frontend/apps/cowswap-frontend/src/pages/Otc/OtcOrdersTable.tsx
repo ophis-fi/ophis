@@ -1,13 +1,14 @@
 import type { ReactNode } from 'react'
 
+import { Trans, useLingui } from '@lingui/react/macro'
 import { Badge, Table, Tbody, Td, Th, Thead, Tr } from 'ophis/ds'
 import { formatOtcAmount, getOtcTokenMeta } from 'ophis/otc'
 import { Link } from 'react-router'
 
 import { CopyButton, Mono, RawNote, VisuallyHidden } from './Otc.styled'
-import { formatOtcAge } from './otcDisplay'
+import { OtcAge } from './OtcAge'
 
-import type { OtcDisplayRow, OtcResolution } from './otcDisplay'
+import type { OtcDisplayRow } from './otcDisplay'
 
 const ETHERSCAN = 'https://etherscan.io/address'
 
@@ -37,52 +38,79 @@ function AmountCell({ token, amount }: { token: string; amount: bigint }): React
   return (
     <span>
       <Mono>{amount.toString()}</Mono>
-      <RawNote>raw units</RawNote> <AddressText address={token} />
+      <RawNote>
+        <Trans>raw units</Trans>
+      </RawNote>{' '}
+      <AddressText address={token} />
     </span>
   )
-}
-
-const RESOLUTION_LABEL: Record<OtcResolution, string> = {
-  active: 'Active',
-  inactive: 'Inactive',
 }
 
 function StatusCell({ row }: { row: OtcDisplayRow }): ReactNode {
   return (
     <span>
-      <Badge tone={row.resolution === 'active' ? 'live' : 'draft'}>{RESOLUTION_LABEL[row.resolution]}</Badge>{' '}
-      {row.verified && <Badge tone="audit">Verified on-chain</Badge>}{' '}
-      {row.resolution === 'active' && <Badge tone="audit">Escrowed</Badge>}{' '}
-      {row.indexClaim && <RawNote>index: {row.indexClaim}</RawNote>}{' '}
-      {row.mismatch && <Badge tone="planned">Index mismatch</Badge>}
-      {!row.reviewed && <Badge tone="draft">Unreviewed token</Badge>}
+      <Badge tone={row.resolution === 'active' ? 'live' : 'draft'}>
+        {row.resolution === 'active' ? <Trans>Active</Trans> : <Trans>Inactive</Trans>}
+      </Badge>{' '}
+      {row.verified && (
+        <Badge tone="audit">
+          <Trans>Verified on-chain</Trans>
+        </Badge>
+      )}{' '}
+      {row.resolution === 'active' && (
+        <Badge tone="audit">
+          <Trans>Escrowed</Trans>
+        </Badge>
+      )}{' '}
+      {row.indexClaim === 'filled' && (
+        <RawNote>
+          <Trans>index: filled</Trans>
+        </RawNote>
+      )}{' '}
+      {row.indexClaim === 'cancelled' && (
+        <RawNote>
+          <Trans>index: cancelled</Trans>
+        </RawNote>
+      )}{' '}
+      {row.mismatch && (
+        <Badge tone="planned">
+          <Trans>Index mismatch</Trans>
+        </Badge>
+      )}
+      {!row.reviewed && (
+        <Badge tone="draft">
+          <Trans>Unreviewed token</Trans>
+        </Badge>
+      )}
     </span>
   )
 }
 
 function RateCell({ row }: { row: OtcDisplayRow }): ReactNode {
-  if (!row.rate) return <span aria-label="Rate unavailable">—</span>
+  const { t } = useLingui()
+  if (!row.rate) return <span aria-label={t`Rate unavailable`}>—</span>
   const metaA = getOtcTokenMeta(row.order.tokenA)
   const metaB = getOtcTokenMeta(row.order.tokenB)
   return (
     <Mono>
-      {row.rate.rate} {metaB?.symbol} per {metaA?.symbol}
+      {row.rate.rate} {metaB?.symbol} <Trans>per</Trans> {metaA?.symbol}
     </Mono>
   )
 }
 
 function MakerCell({ maker }: { maker: string }): ReactNode {
+  const { t } = useLingui()
   return (
     <span>
       <AddressText address={maker} />
       <CopyButton
         type="button"
-        aria-label={`Copy maker address ${maker}`}
+        aria-label={t`Copy maker address ${maker}`}
         onClick={() => void navigator.clipboard?.writeText(maker)}
       >
-        Copy
+        <Trans>Copy</Trans>
       </CopyButton>{' '}
-      <a href={`${ETHERSCAN}/${maker}`} target="_blank" rel="noreferrer" aria-label={`Maker ${maker} on Etherscan`}>
+      <a href={`${ETHERSCAN}/${maker}`} target="_blank" rel="noreferrer" aria-label={t`Maker ${maker} on Etherscan`}>
         ↗
       </a>
     </span>
@@ -91,10 +119,11 @@ function MakerCell({ maker }: { maker: string }): ReactNode {
 
 function OtcOrderRow({ row, nowMs }: { row: OtcDisplayRow; nowMs: number }): ReactNode {
   const orderId = row.order.orderId.toString()
+  const { t } = useLingui()
   return (
     <Tr>
       <Td>
-        <Link to={`/otc/${orderId}`} aria-label={`Order ${orderId} details`}>
+        <Link to={`/otc/${orderId}`} aria-label={t`Order ${orderId} details`}>
           <Mono>#{orderId}</Mono>
         </Link>
       </Td>
@@ -110,7 +139,9 @@ function OtcOrderRow({ row, nowMs }: { row: OtcDisplayRow; nowMs: number }): Rea
       <Td>
         <MakerCell maker={row.order.maker} />
       </Td>
-      <Td>{formatOtcAge(nowMs, row.createdAt)}</Td>
+      <Td>
+        <OtcAge nowMs={nowMs} createdAt={row.createdAt} />
+      </Td>
       <Td>
         <StatusCell row={row} />
       </Td>
@@ -121,7 +152,7 @@ function OtcOrderRow({ row, nowMs }: { row: OtcDisplayRow; nowMs: number }): Rea
 interface OtcOrdersTableProps {
   rows: OtcDisplayRow[]
   nowMs: number
-  caption: string
+  caption: ReactNode
 }
 
 export function OtcOrdersTable({ rows, nowMs, caption }: OtcOrdersTableProps): ReactNode {
@@ -129,13 +160,27 @@ export function OtcOrdersTable({ rows, nowMs, caption }: OtcOrdersTableProps): R
     <Table caption={caption}>
       <Thead>
         <Tr>
-          <Th>Order</Th>
-          <Th>Sells</Th>
-          <Th>Wants</Th>
-          <Th>Rate</Th>
-          <Th>Maker</Th>
-          <Th>Age</Th>
-          <Th>Status</Th>
+          <Th>
+            <Trans>Order</Trans>
+          </Th>
+          <Th>
+            <Trans>Sells</Trans>
+          </Th>
+          <Th>
+            <Trans>Wants</Trans>
+          </Th>
+          <Th>
+            <Trans>Rate</Trans>
+          </Th>
+          <Th>
+            <Trans>Maker</Trans>
+          </Th>
+          <Th>
+            <Trans>Age</Trans>
+          </Th>
+          <Th>
+            <Trans>Status</Trans>
+          </Th>
         </Tr>
       </Thead>
       <Tbody>
