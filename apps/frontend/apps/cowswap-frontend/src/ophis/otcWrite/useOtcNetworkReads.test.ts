@@ -1,4 +1,4 @@
-import { getOtcWalletTransportId, withOtcForkVerificationTimeout } from './useOtcNetworkReads'
+import { getOtcWalletTransportId, retryOtcForkVerification, withOtcForkVerificationTimeout } from './useOtcNetworkReads'
 
 describe('getOtcWalletTransportId', () => {
   it('is stable per transport and partitions distinct fork providers', () => {
@@ -20,6 +20,23 @@ describe('withOtcForkVerificationTimeout', () => {
 
       await jest.advanceTimersByTimeAsync(10_000)
       await rejection
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+})
+
+describe('retryOtcForkVerification', () => {
+  it('accepts only after a real fork verification succeeds', async () => {
+    jest.useFakeTimers()
+    try {
+      const verify = jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+      const result = retryOtcForkVerification(verify)
+
+      await jest.advanceTimersByTimeAsync(750)
+
+      await expect(result).resolves.toBe(true)
+      expect(verify).toHaveBeenCalledTimes(2)
     } finally {
       jest.useRealTimers()
     }

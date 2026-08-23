@@ -1,36 +1,20 @@
-interface ChromeAccessibilityNode {
-  ignored?: boolean
-  role?: { value?: unknown }
-  name?: { value?: unknown }
-}
-
-const AX_ATTEMPTS = 40
-
-function assertAccessibilityNode(
-  description: string,
-  matches: (node: ChromeAccessibilityNode) => boolean,
-  attempt = 0,
-): void {
-  cy.then(() =>
-    Cypress.automation('remote:debugger:protocol', {
-      command: 'Accessibility.getFullAXTree',
-      params: {},
-    }),
-  ).then((result: { nodes?: ChromeAccessibilityNode[] }) => {
-    if (result.nodes?.some((node) => !node.ignored && matches(node))) return
-    if (attempt >= AX_ATTEMPTS) throw new Error(`Missing accessible ${description}`)
-    cy.wait(250).then(() => assertAccessibilityNode(description, matches, attempt + 1))
-  })
-}
-
 export function assertAccessibleButton(name: string): void {
-  assertAccessibilityNode(
-    `button named "${name}"`,
-    (node) => node.role?.value === 'button' && node.name?.value === name,
-  )
+  cy.contains('button', name)
+    .should('be.visible')
+    .and('not.have.attr', 'aria-hidden', 'true')
+    .then(($button) => {
+      expect($button.closest('[aria-hidden="true"], [inert]')).to.have.length(0)
+      expect(($button.attr('aria-label') ?? $button.text()).trim()).to.equal(name)
+    })
 }
 
 export function assertAccessibleAnnouncement(role: 'alert' | 'status', text: string): void {
-  cy.contains(`[role="${role}"]`, text).should('be.visible')
-  assertAccessibilityNode(`${role} announcement`, (node) => node.role?.value === role)
+  cy.contains(`[role="${role}"][aria-live]`, text)
+    .should('be.visible')
+    .and('have.attr', 'aria-atomic', 'true')
+    .then(($announcement) => {
+      const expectedLive = role === 'alert' ? 'assertive' : 'polite'
+      expect($announcement.attr('aria-live')).to.equal(expectedLive)
+      expect($announcement.closest('[aria-hidden="true"], [inert]')).to.have.length(0)
+    })
 }

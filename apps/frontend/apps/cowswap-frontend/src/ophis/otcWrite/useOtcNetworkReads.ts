@@ -18,6 +18,8 @@ import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
 import type { Address } from 'viem'
 
 const ALLOWANCE_REFRESH_INTERVAL_MS = 5_000
+const LOCAL_FORK_VERIFICATION_ATTEMPTS = 10
+const LOCAL_FORK_VERIFICATION_RETRY_MS = 750
 const LOCAL_FORK_VERIFICATION_TIMEOUT_MS = 10_000
 const OPHIS_ESCROW_KEY = 'swapboard-v1-mainnet'
 const WALLET_TRANSPORT_IDS = new WeakMap<object, number>()
@@ -62,6 +64,16 @@ export function withOtcForkVerificationTimeout(verification: Promise<boolean>): 
   return withTimeout(verification, LOCAL_FORK_VERIFICATION_TIMEOUT_MS, 'Ophis OTC local fork verification timed out')
 }
 
+export async function retryOtcForkVerification(verify: () => Promise<boolean>): Promise<boolean> {
+  for (let attempt = 1; attempt <= LOCAL_FORK_VERIFICATION_ATTEMPTS; attempt += 1) {
+    if (await verify()) return true
+    if (attempt < LOCAL_FORK_VERIFICATION_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, LOCAL_FORK_VERIFICATION_RETRY_MS))
+    }
+  }
+  return false
+}
+
 export function useOtcNetworkReads(
   enabled: boolean,
   account: Address | undefined,
@@ -88,11 +100,13 @@ export function useOtcNetworkReads(
           transportId,
         ],
         queryFn: async () => {
-          const verification = walletClient
-            ? verifyOtcLocalForkWallet(walletClient)
-            : legacyProvider
-              ? verifyOtcLocalForkProvider(legacyProvider)
-              : Promise.resolve(false)
+          const verification = retryOtcForkVerification(() =>
+            walletClient
+              ? verifyOtcLocalForkWallet(walletClient)
+              : legacyProvider
+                ? verifyOtcLocalForkProvider(legacyProvider)
+                : Promise.resolve(false),
+          )
           return withOtcForkVerificationTimeout(verification)
         },
         enabled: !!enabled && !!account && !!walletSource,

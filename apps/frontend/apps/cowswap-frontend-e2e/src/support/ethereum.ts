@@ -111,8 +111,11 @@ class CustomizedBridge extends Eip1193Bridge {
         }
       }
       let result
-      if (IS_OTC_FORK && method === 'eth_call') {
-        result = await provider.send(method, params)
+      if (IS_OTC_FORK && (method === 'eth_call' || method === 'web3_clientVersion')) {
+        // Keep both fork-sensitive reads on the exact Anvil transport. The
+        // client-version response is the application's fail-closed proof that
+        // this injected wallet is not connected to public Ethereum.
+        result = await provider.send(method, params ?? [])
       } else if (params && params.length && params[0].from && method === 'eth_sendTransaction') {
         if (IS_OTC_FORK) {
           const req = { ...params[0] }
