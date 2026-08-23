@@ -106,7 +106,7 @@ jobs:
         run: |
           test -n "$OPHIS_FORK_RPC_ETH" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
           anvil --fork-url "$OPHIS_FORK_RPC_ETH" --accounts 0 --auto-impersonate \
-            --compute-units-per-second 500 \
+            --no-rate-limit \
             --fork-retry-backoff 1000 --retries 10 \
             --chain-id 1 --host 127.0.0.1 --port 8545 > /tmp/otc-anvil.log 2>&1 &
           anvil_pid=$!
