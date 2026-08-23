@@ -764,3 +764,78 @@ tests:
   - eval_time: 6h
     alertname: OphisOpAutopilotSettlementIndexerStalled
     exp_alerts: []
+
+# ── The point of unpinning: a lane nobody listed still gets watched ──
+# Before 2026-08-23 these rules hard-coded upstream=~"publicnode-op|zan-op|...".
+# Swapping a lane then silently un-monitored it unless someone remembered to edit
+# 11 selectors by hand. This case uses an id that appears in NO list anywhere and
+# asserts it still pages. Re-pin the selectors and this test fails.
+- interval: 1m
+  name: 'unpinned selectors: an upstream id that appears in no allowlist is still watched'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="some-future-lane-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="some-future-lane-op",error="ErrEndpointClientSideException"}
+    values: 0+100x400
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        upstream: some-future-lane-op
+      exp_annotations:
+        summary: OP eRPC upstream some-future-lane-op is failing ~everything
+        description: |-
+          some-future-lane-op has failed over 95% of the requests eRPC sent it for 10 minutes, excluding block-availability short-circuits. Expired key, exhausted quota, revoked account or provider outage — the lane is contributing nothing to the quorum. With agreementThreshold:2 across 3 lanes it hides behind the other two until a second lane blips, then everything fails closed at once. eRPC will NOT shed it on its own: the per-upstream circuit breaker does not open on 4xx, which it classifies as a client-side exception. Diagnose with docker logs optimism-mainnet-rpc-proxy-1 --tail 200, grepping the upstream id, then probe the provider directly for the raw HTTP status and body. Remedy: renew or replace the credential, or remove the lane from the rendered erpc.yaml and restart rpc-proxy (eRPC does not hot-reload). Keep at least one non-Cloudflare lane so the CDN-diversity invariant in configs/erpc.yaml.tmpl still holds, and verify any replacement with eth_getTransactionReceipt THROUGH the proxy, not just /quote.
+
+# ── The floor that unpinning makes necessary ──
+# Unpinned rules match EVERY upstream in the TSDB, including retired lanes
+# (alchemy-op, ophis-self-op, tenderly-op, validationcloud-op are all still in
+# the 15d window). A lane eRPC has stopped routing to has a collapsing request
+# rate against a still-decaying error rate, and clamp_min(...,0.001) turns that
+# into a nonsense ratio — validationcloud-op was observed FIRING at "234%" on
+# 2026-08-23, which is not a ratio a real lane can produce. The live-traffic
+# floor makes a lane with no meaningful traffic unable to page at all.
+- interval: 1m
+  name: 'traffic floor: a lane eRPC has stopped routing to cannot page even at 100% errors'
+  input_series:
+  # 1 req/min = 0.0167 req/s, below the 0.05 req/s floor. 100% of them fail.
+  - series: erpc_upstream_request_total{network="evm:10",upstream="retired-lane-op"}
+    values: 0+1x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="retired-lane-op",error="ErrEndpointClientSideException"}
+    values: 0+1x400
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts: []
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamCredentialFailing
+    exp_alerts: []
+  - eval_time: 3h
+    alertname: OphisOpErpcUpstreamPhantomParticipant
+    exp_alerts: []
+
+# Boundary guard on that floor: a REAL lane dying at low volume must still page.
+# validationcloud-op sat at 0.3-4.2 req/s through its 08-18 death, so the floor
+# has to stay far below that. 6 req/min = 0.1 req/s clears it.
+- interval: 1m
+  name: 'traffic floor is not set so high it silences a genuinely dying low-volume lane'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="low-volume-op"}
+    values: 0+6x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="low-volume-op",error="ErrEndpointClientSideException"}
+    values: 0+6x400
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        upstream: low-volume-op
+      exp_annotations:
+        summary: OP eRPC upstream low-volume-op is failing ~everything
+        description: |-
+          low-volume-op has failed over 95% of the requests eRPC sent it for 10 minutes, excluding block-availability short-circuits. Expired key, exhausted quota, revoked account or provider outage — the lane is contributing nothing to the quorum. With agreementThreshold:2 across 3 lanes it hides behind the other two until a second lane blips, then everything fails closed at once. eRPC will NOT shed it on its own: the per-upstream circuit breaker does not open on 4xx, which it classifies as a client-side exception. Diagnose with docker logs optimism-mainnet-rpc-proxy-1 --tail 200, grepping the upstream id, then probe the provider directly for the raw HTTP status and body. Remedy: renew or replace the credential, or remove the lane from the rendered erpc.yaml and restart rpc-proxy (eRPC does not hot-reload). Keep at least one non-Cloudflare lane so the CDN-diversity invariant in configs/erpc.yaml.tmpl still holds, and verify any replacement with eth_getTransactionReceipt THROUGH the proxy, not just /quote.

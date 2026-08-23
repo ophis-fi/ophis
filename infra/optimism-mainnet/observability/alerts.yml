@@ -423,6 +423,44 @@ groups:
       # settlements not observed on-chain; left as a roadmap item.
 
   - name: ophis-op-erpc-consensus
+    # ── NO UPSTREAM ALLOWLIST IN THIS GROUP. THIS IS DELIBERATE. ──
+    # Every per-upstream rule below selects on network="evm:10" ONLY. Do not
+    # "tidy" them by adding upstream=~"lane-a|lane-b|..." back.
+    #
+    # They used to carry that allowlist, duplicated across 11 selectors. It made
+    # swapping a lane a silent monitoring regression: the new lane was invisible
+    # to every one of these rules until someone remembered to hand-edit all 11.
+    # That is the same defect shape as the 2026-08-18 incident, where
+    # OphisOpErpcUpstreamCredentialFailing matched an error label eRPC never
+    # emits and so watched an empty vector through a five-day lane death. Both
+    # times the alert existed, was well written, and could not fire.
+    # Unpinned 2026-08-23 while swapping validationcloud-op -> official-op.
+    #
+    # Nothing is lost by unpinning: assert-erpc-failclosed.py CI-enforces
+    # EXPECTED_UPSTREAMS = 3 and pins the three hostnames, so the upstream set
+    # cannot drift without a guard failure and a deliberate edit. The allowlist
+    # here was never the control; it was a second copy of the control that
+    # rotted independently of it.
+    #
+    # THE COST OF UNPINNING, AND ITS FIX: these rules now match every upstream
+    # in the TSDB, retired lanes included (alchemy-op, ophis-self-op,
+    # tenderly-op and validationcloud-op are all still inside the 15d window).
+    # A lane eRPC has stopped routing to has a collapsing request rate against a
+    # still-decaying error rate, and clamp_min(...,0.001) turns that into a
+    # nonsense figure — validationcloud-op was observed FIRING at a "234% error
+    # ratio" on 2026-08-23, hours after it left the config. Every ratio rule
+    # below therefore carries a live-traffic floor:
+    #
+    #     and sum by (upstream) (rate(erpc_upstream_request_total{...}[15m])) > 0.05
+    #
+    # 0.05 req/s is ~1/6th of the lowest rate a genuinely dying lane has been
+    # observed at (validationcloud held 0.3-4.2 req/s throughout its 08-18
+    # death, and eRPC keeps routing to a 4xx lane because its circuit breaker
+    # does not open on client-side exceptions). A lane below that floor is one
+    # eRPC is no longer sending work to, which is not a lane that can be
+    # "failing". Both halves are mutation-tested in alerts_test.yml: re-pin the
+    # selectors and the unknown-lane case fails; drop the floor and the
+    # retired-lane case starts paging.
     interval: 30s
     rules:
       # Codex Cyber post-merge recommendation (2026-05-18): track consensus
@@ -580,7 +618,7 @@ groups:
         # Pin alerts to admitted voters. Prometheus retains retired-upstream
         # series after a hot-swap; without this allowlist the removed lane can
         # page again from historical samples even though eRPC no longer uses it.
-        expr: erpc_upstream_block_head_lag{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op"} > 5
+        expr: erpc_upstream_block_head_lag{network="evm:10"} > 5
         for: 15m
         labels:
           severity: warning
@@ -675,26 +713,30 @@ groups:
       # ExecutionException, RequestTimeout and TransportFailure instead.
       - alert: OphisOpErpcUpstreamCredentialFailing
         expr: |
+          (
           sum by (upstream) (
-            increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
+            increase(erpc_upstream_request_errors_total{network="evm:10",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
           ) > 3
           or
           (
             (
               sum by (upstream) (
-                increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error="ErrEndpointClientSideException"}[30m])
+                increase(erpc_upstream_request_errors_total{network="evm:10",error="ErrEndpointClientSideException"}[30m])
               ) > 3
             )
             and
             (
               sum by (upstream) (
-                rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error="ErrEndpointClientSideException"}[30m])
+                rate(erpc_upstream_request_errors_total{network="evm:10",error="ErrEndpointClientSideException"}[30m])
               )
               /
-              clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op"}[30m])), 0.001)
+              clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[30m])), 0.001)
               > 0.1
             )
           )
+          )
+          and
+          sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[15m])) > 0.05
         for: 10m
         labels:
           severity: critical
@@ -742,10 +784,12 @@ groups:
       - alert: OphisOpErpcUpstreamRateLimitedDead
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error="ErrEndpointCapacityExceeded"}[15m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",error="ErrEndpointCapacityExceeded"}[15m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op"}[15m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[15m])), 0.001)
           ) > 0.9
+          and
+          sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[15m])) > 0.05
         for: 30m
         labels:
           severity: warning
@@ -804,10 +848,12 @@ groups:
       - alert: OphisOpErpcUpstreamEffectivelyDead
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error!="ErrUpstreamBlockUnavailable"}[15m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",error!="ErrUpstreamBlockUnavailable"}[15m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op"}[15m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[15m])), 0.001)
           ) > 0.95
+          and
+          sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[15m])) > 0.05
         for: 10m
         labels:
           severity: critical
@@ -857,10 +903,12 @@ groups:
       - alert: OphisOpErpcUpstreamPhantomParticipant
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op",error="ErrUpstreamBlockUnavailable"}[30m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",error="ErrUpstreamBlockUnavailable"}[30m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|official-op|validationcloud-op"}[30m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[30m])), 0.001)
           ) > 0.6
+          and
+          sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[15m])) > 0.05
         for: 2h
         labels:
           severity: warning
