@@ -62,7 +62,10 @@ jobs:
           OPHIS_FORK_RPC_ETH: ${{ secrets.OTC_FORK_RPC_URL }}
         run: |
           test -n "$OPHIS_FORK_RPC_ETH" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
-          forge test --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol
+          forge test --fork-url "$OPHIS_FORK_RPC_ETH" \
+            --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol \
+            --compute-units-per-second 50 \
+            --fork-retry-backoff 1000 --fork-retries 10
 
   injected-wallet-fork:
     name: Injected wallet ERC-20 lifecycle and recovery
@@ -100,13 +103,15 @@ jobs:
         env:
           OPHIS_FORK_RPC_ETH: ${{ secrets.OTC_FORK_RPC_URL }}
           CYPRESS_OTC_FORK_RPC_URL: http://127.0.0.1:8545
-          REACT_APP_NETWORK_URL_1: http://localhost:8545
+          # Routine host hydration is not fork evidence. The injected wallet,
+          # fixtures, action terms, preflight, sends, and receipts stay on Anvil.
+          REACT_APP_NETWORK_URL_1: https://ethereum-rpc.publicnode.com
           REACT_APP_OTC_WRITE_FLAG: 'true'
           REACT_APP_OTC_WRITE_MODE: fork
         run: |
           test -n "$OPHIS_FORK_RPC_ETH" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
           anvil --fork-url "$OPHIS_FORK_RPC_ETH" --accounts 0 --auto-impersonate \
-            --compute-units-per-second 500 \
+            --compute-units-per-second 50 \
             --fork-retry-backoff 1000 --retries 10 \
             --chain-id 1 --host 127.0.0.1 --port 8545 > /tmp/otc-anvil.log 2>&1 &
           anvil_pid=$!

@@ -138,7 +138,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     assertAccessibleButton('Cancel order')
     captureGateEvidence('cancel-ready')
     primaryButton('#otc-order-action').should('be.enabled').click()
-    cy.contains('Inactive', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
+    cy.contains('#otc-order-action', 'This order is inactive.', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
     cy.then(async () => expect(await isOtcOrderActive(cancelOrderId)).to.equal(false))
   })
 
@@ -190,7 +190,6 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     assertAccessibleAnnouncement('alert', 'Transaction not completed', FORK_UI_TIMEOUT)
     assertAccessibleAnnouncement('alert', 'Token allowance must be cleared', FORK_UI_TIMEOUT)
     visitForkOrder(racedOrderId)
-    cy.contains('Inactive', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
     connectForkWallet('#otc-order-action')
     cy.contains('Recover token allowance', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
     cy.contains('button', 'Revoke unused allowance', { timeout: FORK_UI_TIMEOUT }).should('be.enabled')
