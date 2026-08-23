@@ -121,12 +121,12 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
       executeIntent: account && draft ? { kind: 'create', account, draft } : null,
       approvalIntent: account && draft ? { kind: 'approve-create', account, draft } : null,
       revokeIntent: account && draft ? { kind: 'revoke-create', account, draft } : null,
-      allowanceToken: draft?.tokenA ?? null,
+      allowanceToken: tokenA.address,
       allowanceTokenDecimals: tokenA.decimals,
       allowanceTokenSymbol: tokenA.symbol,
       requiredAllowance: draft?.amountA ?? null,
     }),
-    [account, draft, resetKey, reviewed, tokenA.decimals, tokenA.symbol],
+    [account, draft, resetKey, reviewed, tokenA.address, tokenA.decimals, tokenA.symbol],
   )
   const update = (setter: (value: string) => void, value: string): void => {
     setter(value)

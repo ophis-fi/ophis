@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai'
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 
 import { LinkStyledButton } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
@@ -22,6 +22,8 @@ import type { OtcConfirmedCallback } from './otcWrite.types'
 import type { OtcActionDefinition } from './useOtcActionController'
 import type { OtcOrder } from 'ophis/otc'
 import type { Address, Hex } from 'viem'
+
+const ORDER_REFRESH_INTERVAL_MS = 5_000
 
 function buildOrderActionDefinition(
   account: Address | undefined,
@@ -187,6 +189,7 @@ export function OtcOrderActionPanel({
   orderId: bigint
   onConfirmed?: () => void
 }): ReactNode {
+  const mountId = useId()
   const [confirmedHash, setConfirmedHash] = useState<Hex | null>(null)
   const { account, chainId } = useWalletInfo()
   const { data: walletClient } = useWalletClient()
@@ -194,12 +197,13 @@ export function OtcOrderActionPanel({
   const forkOrderQueryAtom = useMemo(
     () =>
       atomWithQuery<Awaited<ReturnType<typeof readOtcOrder>> | null, Error>(() => ({
-        queryKey: ['ophis-otc-fork-order', network.transportId, account, orderId.toString()],
+        queryKey: ['ophis-otc-fork-order', network.transportId, account, orderId.toString(), mountId],
         queryFn: async () => (network.writeClient ? readOtcOrder(network.writeClient, orderId) : null),
         enabled: network.localForkResponse.data === true && !!account && !!network.writeClient,
+        refetchInterval: ORDER_REFRESH_INTERVAL_MS,
         refetchOnWindowFocus: false,
       })),
-    [account, network.localForkResponse.data, network.transportId, network.writeClient, orderId],
+    [account, mountId, network.localForkResponse.data, network.transportId, network.writeClient, orderId],
   )
   const forkOrderQuery = useAtomValue(forkOrderQueryAtom)
   const order = forkOrderQuery.data?.order ?? null

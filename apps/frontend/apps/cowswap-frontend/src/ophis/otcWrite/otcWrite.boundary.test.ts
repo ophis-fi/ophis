@@ -118,9 +118,18 @@ describe('Ophis OTC write boundary', () => {
   it('sources rendered action terms from the active wallet-fork reader', () => {
     const source = readFileSync(join(WRITE_DIR, 'OtcOrderActionPanel.container.tsx'), 'utf8')
     expect(source).toContain('readOtcOrder(network.writeClient, orderId)')
-    expect(source).toContain("queryKey: ['ophis-otc-fork-order', network.transportId, account")
+    expect(source).toContain(
+      "queryKey: ['ophis-otc-fork-order', network.transportId, account, orderId.toString(), mountId]",
+    )
+    expect(source).toContain('refetchInterval: ORDER_REFRESH_INTERVAL_MS')
     expect(source).toContain('forkOrderQuery.error !== null')
     expect(source).toContain('void refetchForkOrder()')
+  })
+
+  it('starts the selected create-token allowance read before draft amounts become valid', () => {
+    const source = readFileSync(join(WRITE_DIR, 'OtcCreatePanel.container.tsx'), 'utf8')
+    expect(source).toContain('allowanceToken: tokenA.address')
+    expect(source).not.toContain('allowanceToken: draft?.tokenA ?? null')
   })
 
   it('allows only the token-policy assertion API at write sinks', () => {

@@ -100,8 +100,7 @@ jobs:
         env:
           OPHIS_FORK_RPC_ETH: ${{ secrets.OTC_FORK_RPC_URL }}
           CYPRESS_OTC_FORK_RPC_URL: http://127.0.0.1:8545
-          # Keep routine host-app reads off the transaction-authority fork.
-          REACT_APP_NETWORK_URL_1: https://ethereum-rpc.publicnode.com
+          REACT_APP_NETWORK_URL_1: http://localhost:8545
           REACT_APP_OTC_WRITE_FLAG: 'true'
           REACT_APP_OTC_WRITE_MODE: fork
         run: |
