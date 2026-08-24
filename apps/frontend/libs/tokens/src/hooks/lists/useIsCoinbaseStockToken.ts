@@ -12,8 +12,8 @@ import { listsStatesMapAtom } from '../../state/tokenLists/tokenListsStateAtom'
  * can show the B20 asset panel without waiting on the metadata endpoint.
  */
 export function useIsCoinbaseStockToken(token: Nullish<{ address: string }>): boolean {
-  const listStatesMapAtom = useAtomValue(listsStatesMapAtom)
-  const listState = listStatesMapAtom[COINBASE_TOKENIZED_STOCKS_LIST_SOURCE]
+  const listStatesMap = useAtomValue(listsStatesMapAtom)
+  const listState = listStatesMap[COINBASE_TOKENIZED_STOCKS_LIST_SOURCE]
 
   return useMemo(() => {
     if (!listState || !token) return false
