@@ -1,0 +1,135 @@
+{
+  "name": "Coinbase Tokenized Stocks",
+  "timestamp": "2026-08-24T18:30:00.000Z",
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "logoURI": "https://metadata.coinbase.com/equity_icons/fe40327c3d69c3c210e6d2b0819e69514f5be58dff6605507583170b7bb14790.png",
+  "keywords": ["coinbase", "tokenized stocks", "b20", "base", "rwa"],
+  "tags": {
+    "coinbase": {
+      "name": "Coinbase stock",
+      "description": "Coinbase B20 token on Base backed by the underlying share in regulated custody. One token equals the current multiplier in shares. Only for eligible persons outside the U.S."
+    }
+  },
+  "tokens": [
+    {
+      "chainId": 8453,
+      "address": "0xb200000000000000000000C2e324d24d7eEcd1fb",
+      "name": "Apple Inc.",
+      "symbol": "AAPLc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/873819f4b14efe44b94abecbc8e8864d2998163abd0ca55b449ee6eb07d0d94c.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xb200000000000000000000d9192b6B456483C2E8",
+      "name": "Amazon.com Inc.",
+      "symbol": "AMZNc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/06d3c2cac2c89e3a8bc4b2fe40ff259f104b55244321dea400e44b22f215896b.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xb200000000000000000000c85a31389D71F3ecfb",
+      "name": "Coinbase Global Inc.",
+      "symbol": "COINc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/fe40327c3d69c3c210e6d2b0819e69514f5be58dff6605507583170b7bb14790.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xB20000000000000000000019f6E7C675b73C2e4D",
+      "name": "Circle Internet Group Inc.",
+      "symbol": "CRCLc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/f217835f2637739f460cc9335a59ec96011c1b9510a40cee3243aeef50eb7a45.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xb2000000000000000000002D0BA3164cc74f58B7",
+      "name": "Alphabet Inc.",
+      "symbol": "GOOGLc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/0e80e31df40f7c42b49a3c7f6d23c6351625d73f235aeb69006ddee9221702b0.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xB2000000000000000000004AFF16039bA04bdFBc",
+      "name": "Intel Corporation",
+      "symbol": "INTCc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/cc2d84b704e34b83b5fc1f3b0e89c67e5ccc9142e666a50a5cbde261cf09e2aa.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xb2000000000000000000008bC8786B856E61707C",
+      "name": "Meta Platforms Inc.",
+      "symbol": "METAc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/1cedbfb3caee9498470945ff5041715b8c90921d904b3567a43bc4df82069e66.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xB200000000000000000000Ab99cFa739E253872B",
+      "name": "Microsoft Corporation",
+      "symbol": "MSFTc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/e90930ade985016f48816c6bd9fd1e8274b28507f4833881b3a16c77c2a3e2e7.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xb2000000000000000000004884b426556b92883d",
+      "name": "Strategy Inc.",
+      "symbol": "MSTRc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/496024423dd795f8b547ffa0668f12a1e6bf09af247534754546a1a6661c7969.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xb20000000000000000000078ee7ce2fE4908108C",
+      "name": "NVIDIA Corporation",
+      "symbol": "NVDAc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/1fee9b7a44e800d438dd9d96c3283e05784c925c2c871a48ff735950740b551a.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xb200000000000000000000397293Cb8cda9a10c5",
+      "name": "Sandisk Corporation",
+      "symbol": "SNDKc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/495de6bc9902690826d533b9506494890f59d611d10f04231c00936f659bb0cb.png",
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xb2000000000000000000007b9fcbd005511aCBd5",
+      "name": "Space Exploration Technologies Corp.",
+      "symbol": "SPCXc",
+      "decimals": 8,
+      "tags": ["coinbase"]
+    },
+    {
+      "chainId": 8453,
+      "address": "0xb2000000000000000000001e800a7f5189430cD0",
+      "name": "Tesla Inc.",
+      "symbol": "TSLAc",
+      "decimals": 8,
+      "logoURI": "https://metadata.coinbase.com/equity_icons/a3b67028295d0e9fa3182c867b8a9afed5ebcbd8c012de3a46e160ae5e490980.png",
+      "tags": ["coinbase"]
+    }
+  ]
+}

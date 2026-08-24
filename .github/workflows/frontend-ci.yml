@@ -128,6 +128,19 @@ jobs:
         working-directory: apps/frontend
         run: pnpm exec nx run tokens:test --testPathPatterns tokenPolicy --passWithNoTests=false
 
+      # Coinbase tokenized stocks on Base: the shipped token list is validated
+      # here with the SAME ajv schema the runtime loader applies (a schema miss
+      # fails silently in production: the list never loads), plus the Base
+      # list-config guard and the trusted provider-tag test. Without these
+      # steps none of those suites would run anywhere in CI.
+      - name: Coinbase tokenized-stocks listing tests (jest, scoped)
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/(ophis/components/CoinbaseStockContext|modules/tokensList/hooks/useConfiguredTokenListDisplayMetadata)' --passWithNoTests=false
+
+      - name: Base default token-list config tests (jest, scoped)
+        working-directory: apps/frontend
+        run: pnpm exec nx run tokens:test --testPathPatterns 'const/tokensLists' --passWithNoTests=false
+
       - name: production-build cowswap-frontend
         working-directory: apps/frontend
         run: pnpm build:cowswap

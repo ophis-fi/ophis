@@ -6,7 +6,7 @@ import type { TokenListTags } from '@cowprotocol/tokens'
 import { PermitCompatibleTokens } from 'modules/permit'
 
 export type TokenSelectionHandler = (token: TokenWithLogo) => Promise<void> | void
-export const TOKENIZED_ASSET_PROVIDER_TAGS = ['ondo', 'xStocks'] as const
+export const TOKENIZED_ASSET_PROVIDER_TAGS = ['ondo', 'xStocks', 'coinbase'] as const
 export type TokenizedAssetProviderTag = (typeof TOKENIZED_ASSET_PROVIDER_TAGS)[number]
 
 export interface SelectTokenContext {

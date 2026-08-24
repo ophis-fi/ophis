@@ -87,6 +87,11 @@
   ],
   "8453": [
     {
+      "priority": 0,
+      "enabledByDefault": true,
+      "source": "https://swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json"
+    },
+    {
       "priority": 1,
       "enabledByDefault": true,
       "source": "https://files.cow.fi/tokens/CowSwap.json"

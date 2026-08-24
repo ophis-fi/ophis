@@ -87,6 +87,15 @@
 /logos/*
   Cache-Control: public, max-age=2592000, immutable
 
+# Self-hosted token lists (Uniswap tokenlist schema), registered as list
+# sources in libs/tokens tokensList.json. Same-origin for swap.ophis.fi, but
+# preview hosts (*.pages.dev) and any third-party consumer fetch cross-origin,
+# so allow that like every public token-list CDN does. Short cache: a list
+# edit (new stock minted, symbol renamed) must propagate within minutes.
+/token-lists/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=300, s-maxage=300, stale-while-revalidate=3600
+
 # HTML / index — no-cache so deploys propagate immediately.
 /
   Cache-Control: no-cache, no-store, must-revalidate
