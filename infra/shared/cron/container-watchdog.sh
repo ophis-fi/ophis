@@ -62,6 +62,8 @@ DOCKER_BIN="${WATCHDOG_DOCKER_BIN:-docker}"
 THRESHOLD_S="${WATCHDOG_THRESHOLD_S:-600}"
 COOLDOWN_S="${WATCHDOG_COOLDOWN_S:-1800}"
 DRY_RUN="${WATCHDOG_DRY_RUN:-0}"
+# Injected so the lock branch is testable on hosts without flock(1) (macOS).
+FLOCK_BIN="${WATCHDOG_FLOCK_BIN:-flock}"
 
 # Stateless services safe to bounce. Chain nodes and databases are NOT here.
 ALLOW="${WATCHDOG_ALLOW:-driver|autopilot|orderbook|rpc-proxy|solver}"
@@ -119,9 +121,21 @@ notify() {
 # restart the container, and their read-modify-write of the state file would
 # clobber each other. flock makes the whole pass mutually exclusive.
 if [ "${WATCHDOG_SKIP_LOCK:-0}" != "1" ]; then
-  if command -v flock >/dev/null 2>&1; then
-    exec 9>"$LOCK_FILE" 2>/dev/null || true
-    if ! flock -n 9 2>/dev/null; then
+  if command -v "$FLOCK_BIN" >/dev/null 2>&1; then
+    # ⚠️ These two failures MUST NOT be conflated (Codex review, 2026-08-24).
+    # The first version was `exec 9>"$LOCK_FILE" 2>/dev/null || true`, which
+    # swallowed a failure to OPEN the lock (missing/unwritable STATE_DIR). fd 9
+    # then stayed closed, `flock -n 9` returned nonzero, and that was reported as
+    # ordinary contention -- so every cron pass exited 0 having inspected nothing
+    # and notified no one. A broken state directory silently disabled the
+    # watchdog entirely: the same inert-but-healthy-looking failure this script
+    # exists to prevent, reintroduced by its own locking fix.
+    if ! exec 9>"$LOCK_FILE"; then
+      log "FATAL: cannot open lock file ${LOCK_FILE} — state directory missing or unwritable"
+      notify "Watchdog on $(hostname) cannot open its lock file at ${LOCK_FILE}. It is protecting nothing. Check that ${STATE_DIR} exists and is writable."
+      exit 1
+    fi
+    if ! "$FLOCK_BIN" -n 9 2>/dev/null; then
       log "another watchdog pass holds the lock; exiting without acting"
       exit 0
     fi
@@ -133,25 +147,38 @@ if [ "${WATCHDOG_SKIP_LOCK:-0}" != "1" ]; then
   fi
 fi
 
-# state line format: <container> <first_unhealthy_epoch> <last_restart_epoch>
+# A failed state write makes every timing decision untrustworthy for the rest of
+# the pass, so once it happens we stop taking irreversible actions rather than
+# acting on a timer we could not update (Codex review, 2026-08-24).
+STATE_DEGRADED=0
+
+# state line format:
+#   <container> <first_unhealthy_epoch> <last_restart_epoch> <container_id>
+# The container ID is field 4. Compose reuses the NAME when it recreates a
+# service, so a name-only key lets a brand-new container inherit its
+# predecessor's accumulated unhealthy time and get restarted seconds after it
+# starts -- while it is merely still warming up. Comparing the ID detects the
+# replacement and restarts the timer. Records written before this field existed
+# read back as empty and are treated as "unknown", which re-arms rather than
+# assuming continuity.
 get_field() { # container, field-index(2|3)
   awk -v c="$1" -v f="$2" '$1==c {print $f; found=1} END{if(!found) print ""}' "$STATE_FILE"
 }
 # Returns nonzero if the state could not be persisted. Callers that are about to
 # take an irreversible action MUST check this (FAIL-CLOSED).
-set_state() { # container, first_unhealthy, last_restart
+set_state() { # container, first_unhealthy, last_restart, container_id
   local tmp; tmp="$(mktemp)" || return 1
   awk -v c="$1" '$1!=c' "$STATE_FILE" > "$tmp" 2>/dev/null || true
-  echo "$1 $2 $3" >> "$tmp" || { rm -f "$tmp"; return 1; }
+  echo "$1 $2 $3 ${4:-}" >> "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$STATE_FILE" || { rm -f "$tmp"; return 1; }
   # Prove it landed. A full or read-only filesystem can fail late enough that
   # mv reports success and the record still is not readable back.
   [ "$(get_field "$1" 3)" = "$3" ] || return 1
   return 0
 }
-clear_unhealthy() { # container — keep last_restart, reset the unhealthy timer
+clear_unhealthy() { # container, container_id — keep last_restart, reset timer
   local last; last="$(get_field "$1" 3)"; [ -z "$last" ] && last=0
-  set_state "$1" 0 "$last"
+  set_state "$1" 0 "$last" "$2"
 }
 
 # Health SIDECARS monitor another container and cannot fix it by restarting.
@@ -175,7 +202,7 @@ restart_target() {
 # rows and the script logged "watchdog pass complete, 0 restart(s)" and exited 0.
 # The watchdog could be entirely inert while looking perfectly healthy — the
 # exact class of silent-guard failure it exists to prevent.
-INVENTORY="$("$DOCKER_BIN" ps --format '{{.Names}}\t{{.Status}}' 2>&1)"
+INVENTORY="$("$DOCKER_BIN" ps --format '{{.ID}}\t{{.Names}}\t{{.Status}}' 2>&1)"
 INV_RC=$?
 if [ "$INV_RC" -ne 0 ]; then
   log "FATAL: cannot enumerate containers (docker ps exited ${INV_RC}): ${INVENTORY}"
@@ -186,14 +213,22 @@ fi
 NOW="$(now_s)"
 restarted=0
 
-while IFS=$'\t' read -r name status; do
+while IFS=$'\t' read -r cid name status; do
   [ -z "$name" ] && continue
 
   if [[ "$status" != *"(unhealthy)"* ]]; then
     prev="$(get_field "$name" 2)"
     if [ -n "$prev" ] && [ "$prev" != "0" ]; then
       log "recovered: $name (clearing unhealthy timer)"
-      clear_unhealthy "$name" || log "WARN: could not clear state for $name"
+      if ! clear_unhealthy "$name" "$cid"; then
+        # FAIL-CLOSED. A stale first_unhealthy left behind here would be
+        # inherited by the NEXT unhealthy episode, which could then be restarted
+        # before serving the full threshold. Refuse to act on timers we could
+        # not update.
+        log "FATAL: could not clear recovery state for $name — timers are now untrustworthy, refusing further restarts this pass"
+        notify "Watchdog on $(hostname) could not clear recovery state for ${name}. Refusing to restart anything this pass because its timers can no longer be trusted. Check ${STATE_DIR}."
+        STATE_DEGRADED=1
+      fi
     fi
     continue
   fi
@@ -211,12 +246,24 @@ while IFS=$'\t' read -r name status; do
 
   first="$(get_field "$name" 2)"
   last_restart="$(get_field "$name" 3)"
+  known_id="$(get_field "$name" 4)"
   [ -z "$first" ] && first=0
   [ -z "$last_restart" ] && last_restart=0
 
+  # Compose reuses the NAME on recreate. If the ID moved (or we never recorded
+  # one), this is a different container and must serve the threshold from
+  # scratch -- otherwise a freshly started replacement inherits its
+  # predecessor's accumulated time and gets restarted while it is still warming
+  # up, which is precisely the flap the threshold exists to prevent.
+  if [ "$first" != "0" ] && [ "$known_id" != "$cid" ]; then
+    log "container replaced: $name (id ${known_id:-none} -> ${cid}); restarting the ${THRESHOLD_S}s timer"
+    set_state "$name" "$NOW" "$last_restart" "$cid" || log "WARN: could not record replacement for $name"
+    continue
+  fi
+
   if [ "$first" = "0" ]; then
     log "now unhealthy: $name (starting ${THRESHOLD_S}s timer)"
-    set_state "$name" "$NOW" "$last_restart" || log "WARN: could not record unhealthy start for $name"
+    set_state "$name" "$NOW" "$last_restart" "$cid" || log "WARN: could not record unhealthy start for $name"
     continue
   fi
 
@@ -232,6 +279,11 @@ while IFS=$'\t' read -r name status; do
     continue
   fi
 
+  if [ "$STATE_DEGRADED" = "1" ]; then
+    log "state is degraded this pass; NOT restarting $target"
+    continue
+  fi
+
   if [ "$DRY_RUN" = "1" ]; then
     log "DRY_RUN: would restart $target (reported by $name, unhealthy ${unhealthy_for}s)"
     continue
@@ -243,7 +295,7 @@ while IFS=$'\t' read -r name status; do
   # would restart the same container again — an unbounded restart loop caused by
   # a full disk. Writing first makes the worst case a restart we recorded but
   # did not perform, which the next pass simply retries after the cooldown.
-  if ! set_state "$name" 0 "$NOW"; then
+  if ! set_state "$name" 0 "$NOW" "$cid"; then
     log "FATAL: cannot persist cooldown for $name — refusing to restart (a restart we cannot record becomes a restart loop)"
     notify "Watchdog on $(hostname) could NOT write its state file, so it refused to restart ${target} after ${unhealthy_for}s unhealthy. Check disk and permissions on ${STATE_DIR}. Needs a human."
     continue

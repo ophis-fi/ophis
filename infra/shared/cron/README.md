@@ -191,6 +191,9 @@ sidecar cannot smuggle a denied container past the veto.
 | `docker ps` fails (daemon down, no permission, not on PATH) | Logs FATAL, notifies, **exits nonzero**. Never reports a clean pass while blind |
 | Cooldown state cannot be written | **Refuses to restart** and notifies. A restart that cannot be recorded becomes a restart loop on every cron tick |
 | Another pass is already running | Exits without acting (flock). macOS has no `flock(1)`; there it warns that the pass is unserialised |
+| The lock file cannot be **opened** | Logs FATAL, notifies, **exits nonzero**. Distinct from contention: a missing or unwritable `WATCHDOG_STATE_DIR` must not be mistaken for "another pass is running", which would silently disable the watchdog |
+| Recovery state cannot be cleared | Refuses to restart **anything** for the rest of the pass and notifies. A stale timer left behind would shorten the next episode's threshold |
+| Compose recreated the container | The stored container ID no longer matches, so the timer **re-arms**. A replacement that is merely still starting must not inherit its predecessor's accumulated unhealthy time |
 
 ## Install — Cadia / any Linux host
 

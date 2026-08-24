@@ -29,10 +29,14 @@ ck(){ if [[ "$2" == "$3" ]]; then echo "  PASS  $1"; pass=$((pass+1));
 
 # --- fake docker -------------------------------------------------------------
 # `ps` echoes $WORK/table; `restart <name>` appends to $WORK/restarts.
+# `ps` emits <id>\t<name>\t<status>. Fixtures may give only <name>\t<status>,
+# in which case a STABLE synthetic id is derived from the name -- so a container
+# keeps its identity across passes unless a fixture deliberately supplies a
+# different id to simulate a Compose recreate.
 cat > "$WORK/docker" <<'FAKE'
 #!/usr/bin/env bash
 case "$1" in
-  ps)      cat "$FAKE_TABLE" ;;
+  ps)      awk -F'\t' 'NF==2{print "id-"$1"\t"$1"\t"$2} NF>=3{print}' "$FAKE_TABLE" ;;
   restart) echo "$2" >> "$FAKE_RESTARTS"; exit "${FAKE_RESTART_RC:-0}" ;;
   *)       exit 0 ;;
 esac
@@ -190,6 +194,69 @@ out="$(run 1700)"
 chmod 700 "$WORK/state"
 ck "unwritable state REFUSES to restart"                "$(restarts)" ""
 ck "  and says so loudly"                               "$(grep -c 'FATAL: cannot persist cooldown' <<<"$out")" "1"
+
+# ── Codex re-review 2026-08-24: a lock we cannot OPEN is not "contention" ──
+# The first locking fix used `exec 9>"$LOCK" 2>/dev/null || true`, which
+# swallowed a failed open. fd 9 stayed closed, flock then returned nonzero, and
+# that was reported as another pass holding the lock -- so a missing or
+# unwritable state directory made every cron pass exit 0 having done nothing.
+# A fake flock is injected because macOS has no flock(1); without the seam this
+# branch would be untested on the machine it was written on.
+cat > "$WORK/flock-ok" <<'FAKE'
+#!/usr/bin/env bash
+exit 0
+FAKE
+chmod +x "$WORK/flock-ok"
+printf 'x' > "$WORK/regularfile"
+out="$(WATCHDOG_DOCKER_BIN="$WORK/docker" WATCHDOG_STATE_DIR="$WORK/regularfile/sub" \
+      WATCHDOG_FLOCK_BIN="$WORK/flock-ok" WATCHDOG_NOW_S=1000 WATCHDOG_NOTIFY=0 \
+      FAKE_TABLE="$WORK/table" FAKE_RESTARTS="$WORK/restarts" bash "$SRC" 2>&1)"
+rc=$?
+ck "unopenable lock exits NONZERO"                  "$rc" "1"
+ck "unopenable lock is FATAL, not 'contention'"     "$(grep -c 'FATAL: cannot open lock file' <<<"$out")" "1"
+ck "  and does not claim a completed pass"          "$(completed "$out")" "0"
+
+# Genuine contention still exits 0 quietly.
+cat > "$WORK/flock-busy" <<'FAKE'
+#!/usr/bin/env bash
+exit 1
+FAKE
+chmod +x "$WORK/flock-busy"
+reset
+printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+out="$(WATCHDOG_DOCKER_BIN="$WORK/docker" WATCHDOG_STATE_DIR="$WORK/state" \
+      WATCHDOG_FLOCK_BIN="$WORK/flock-busy" WATCHDOG_NOW_S=1000 WATCHDOG_NOTIFY=0 \
+      FAKE_TABLE="$WORK/table" FAKE_RESTARTS="$WORK/restarts" bash "$SRC" 2>&1)"
+rc=$?
+ck "genuine lock contention exits 0"                "$rc" "0"
+ck "  and reports contention, not a fatal"          "$(grep -c 'another watchdog pass holds the lock' <<<"$out")" "1"
+
+# ── Codex re-review 2026-08-24: Compose recreate must re-arm the timer ──
+# Compose reuses the service NAME. Without an identity check a brand-new
+# container inherits its predecessor's accumulated unhealthy time and is
+# restarted on its FIRST observation, while it is merely still starting.
+reset
+printf 'id-old\trobinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+run 1000 >/dev/null            # timer starts at 1000 against id-old
+printf 'id-new\trobinhood-mainnet-driver-1\tUp 3 seconds (unhealthy)\n' > "$WORK/table"
+out="$(run 1700)"              # 700s later, but this is a DIFFERENT container
+ck "recreated container does NOT inherit the timer" "$(restarts)" ""
+ck "  and the replacement is logged"                "$(grep -c 'container replaced' <<<"$out")" "1"
+out="$(run 2450)"              # 750s after the replacement was first seen
+ck "  it restarts once IT has served the threshold" "$(restarts)" "robinhood-mainnet-driver-1"
+
+# ── Codex re-review 2026-08-24: unclearable recovery state fails closed ──
+# A stale first_unhealthy left behind on a healthy observation would be
+# inherited by the next unhealthy episode and shorten its threshold.
+reset
+printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\nrobinhood-mainnet-orderbook-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+run 1000 >/dev/null
+printf 'robinhood-mainnet-driver-1\tUp 1 hour (healthy)\nrobinhood-mainnet-orderbook-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+chmod 500 "$WORK/state"
+out="$(run 1700)"
+chmod 700 "$WORK/state"
+ck "unclearable recovery blocks restarts this pass" "$(restarts)" ""
+ck "  and says the timers are untrustworthy"        "$(grep -c 'refusing further restarts this pass' <<<"$out")" "1"
 
 echo
 echo "  $pass passed, $fail failed"

@@ -251,10 +251,19 @@ jobs:
           check "DENY veto removed"       's|if ! \[\[ "$target" =~ $ALLOW \]\] \|\| \[\[ "$target" =~ $DENY \]\]; then|if ! [[ "$target" =~ $ALLOW ]]; then|'
           check "sustained threshold removed" 's|if \[ "$unhealthy_for" -lt "$THRESHOLD_S" \]; then|if false; then|'
           check "restart cooldown removed"    's|if \[ "$last_restart" != "0" \] \&\& \[ "$since_restart" -lt "$COOLDOWN_S" \]; then|if false; then|'
-          check "recovery timer reset removed" 's|      clear_unhealthy "$name"|      : # mutated|'
+          check "recovery timer reset removed" 's|      if ! clear_unhealthy "$name" "$cid"; then|      if false; then|'
           check "health-sidecar mapping removed"  's|    \*-health-\[0-9\]\*) echo "${1%-health-\*}-${1##\*-health-}" ;;|    *-health-[0-9]*) echo "$1" ;;|'
           check "inventory failure check removed" 's|if \[ "$INV_RC" -ne 0 \]; then|if false; then|'
-          check "cooldown fail-closed removed"    's|if ! set_state "$name" 0 "$NOW"; then|if false; then|'
+          check "cooldown fail-closed removed"    's|  if ! set_state "$name" 0 "$NOW" "$cid"; then|  if false; then|'
+          check "lock-open failure swallowed"     's|    if ! exec 9>"$LOCK_FILE"; then|    if ! exec 9>"$LOCK_FILE" 2>/dev/null \&\& false; then|'
+          check "container-replacement re-arm removed" 's|  if \[ "$first" != "0" \] \&\& \[ "$known_id" != "$cid" \]; then|  if false; then|'
+          # NOTE: the STATE_DEGRADED restart block is deliberately NOT mutated here.
+          # It is defence-in-depth that overlaps the cooldown fail-closed guard:
+          # every scenario that sets STATE_DEGRADED (a failed state write) also
+          # makes the later set_state fail, so that guard blocks the restart
+          # first and removing the degraded check changes no observable
+          # behaviour. Rather than ship a mutation that can never fail -- the
+          # precise thing this job exists to prevent -- the gap is recorded.
           bash infra/shared/cron/container-watchdog.test.sh >/dev/null 2>&1 || { echo "restore failed"; exit 1; }
           [ "$fails" -eq 0 ] || { echo "$fails mutation(s) survived"; exit 1; }
           echo "all mutations caught"
