@@ -33,10 +33,24 @@ x-backend-build-args: &backend-build-args
 # All HTTP/RPC ports bind to 127.0.0.1 only. External access is via
 # Cloudflare Tunnel, never direct port exposure.
 
+# Log rotation. Added 2026-08-24 after the Robinhood outage, where
+# robinhood-nitro-nitro-1's json-file log had grown to 182MB with no rotation
+# configured anywhere in any stack. `docker logs --tail 8` then HANGS, so the
+# node's logs were unreadable during the incident that needed them most, and the
+# empty output read as "the node is silent" when it was in fact logging fine.
+# Docker's default is unbounded; this caps every service at 300MB total.
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+
 services:
   # Jaeger all-in-one — OTLP/gRPC collector + UI + in-memory storage.
   # Ports offset from OP stack (OP uses 16686/4317) to coexist.
   jaeger:
+    logging: *default-logging
     image: jaegertracing/all-in-one:1.76.0
     restart: always
     mem_limit: 512m
@@ -55,6 +69,7 @@ services:
   # eRPC multi-provider proxy for Unichain mainnet (chain 130).
   # 3 upstreams with 2-of-3 consensus on critical reads.
   rpc-proxy:
+    logging: *default-logging
     image: ${ERPC_IMAGE:?ERPC_IMAGE must be pinned as ghcr.io/erpc/erpc:<version>@sha256:<digest>}
     restart: always
     mem_limit: 512m
@@ -72,6 +87,7 @@ services:
       - "127.0.0.1:4002:4000"  # offset from OP (4001) and HL (4000)
 
   rpc-proxy-health:
+    logging: *default-logging
     image: busybox:stable-musl
     restart: always
     depends_on:
@@ -85,6 +101,7 @@ services:
       start_period: 10s
 
   db:
+    logging: *default-logging
     image: postgres:16
     restart: always
     mem_limit: 2g
@@ -129,6 +146,7 @@ services:
       retries: 5
 
   migrations:
+    logging: *default-logging
     image: backend-migrations:latest
     build:
       context: ../../apps/backend
@@ -141,6 +159,7 @@ services:
       FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
 
   orderbook:
+    logging: *default-logging
     extra_hosts:
       - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-orderbook:latest
@@ -175,6 +194,7 @@ services:
       start_period: 60s
 
   autopilot:
+    logging: *default-logging
     extra_hosts:
       - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-autopilot:latest
@@ -202,6 +222,7 @@ services:
     command: ["--config", "/autopilot.toml"]
 
   driver:
+    logging: *default-logging
     image: local-driver:latest
     build:
       context: ../../apps/backend
@@ -246,6 +267,7 @@ services:
       start_period: 60s
 
   baseline:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -275,6 +297,7 @@ services:
   # output reports the reconstructed slippage floor (the #726 fix). Covers all
   # Unichain DEXes (incl. Uniswap V4).
   okx-solver:
+    logging: *default-logging
     extra_hosts:
       - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
@@ -300,6 +323,7 @@ services:
       start_period: 30s
 
   kyberswap-solver:
+    logging: *default-logging
     extra_hosts:
       - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
@@ -329,6 +353,7 @@ services:
   # route's router == the allowlisted Augustus V6.2 0x6a000f20…001068, and
   # VELORA_SUPPORTED_CHAINS includes 130). Second independent solver lane.
   velora-solver:
+    logging: *default-logging
     extra_hosts:
       - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
@@ -358,6 +383,7 @@ services:
   # allowlisted in both the solver and driver allowlists). Keyless. Reports
   # data.minOutAmount (the guaranteed floor) as the SELL output. Fourth lane.
   openocean-solver:
+    logging: *default-logging
     extra_hosts:
       - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
@@ -388,6 +414,7 @@ services:
   # driver allowlists). Keyless (public widget key). Reports
   # data.minReturnAmount (the guaranteed floor) as the SELL output. Fifth lane.
   dodo-solver:
+    logging: *default-logging
     extra_hosts:
       - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
@@ -417,6 +444,7 @@ services:
   # layers; SELL output = estimate.toAmountMin (guaranteed floor). Same-chain
   # only (rejects bridge routes). Keyless. Seventh lane.
   lifi-solver:
+    logging: *default-logging
     extra_hosts:
       - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
@@ -446,6 +474,7 @@ services:
   # SELL output = minAmountOut (guaranteed floor). KEYED (free Bearer key in
   # .env; fail-fasts on empty key). Eighth lane.
   enso-solver:
+    logging: *default-logging
     extra_hosts:
       - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
     image: local-baseline:latest
@@ -471,6 +500,7 @@ services:
       start_period: 30s
 
   prometheus:
+    logging: *default-logging
     profiles: ["observability"]
     image: prom/prometheus:v3.0.1
     restart: always
@@ -500,6 +530,7 @@ services:
       start_period: 15s
 
   alertmanager:
+    logging: *default-logging
     profiles: ["observability"]
     image: prom/alertmanager:v0.27.0
     restart: always
@@ -523,6 +554,7 @@ services:
       start_period: 15s
 
   node-exporter:
+    logging: *default-logging
     profiles: ["observability"]
     image: prom/node-exporter:v1.8.2
     restart: always
@@ -548,6 +580,7 @@ services:
   # from a dedicated low-value EOA (keychain ophis-refunder-pk), NOT the
   # settlement submitter, to avoid nonce contention. See docs runbook.
   refunder:
+    logging: *default-logging
     image: local-refunder:latest
     build:
       context: ../../apps/backend

@@ -7,8 +7,22 @@
 # This service never reads the Titan snapshot. Its empty datadir is initialized
 # from the published Robinhood genesis and all L2 state is executed from L1 DA.
 
+# Log rotation. Added 2026-08-24 after the Robinhood outage, where
+# robinhood-nitro-nitro-1's json-file log had grown to 182MB with no rotation
+# configured anywhere in any stack. `docker logs --tail 8` then HANGS, so the
+# node's logs were unreadable during the incident that needed them most, and the
+# empty output read as "the node is silent" when it was in fact logging fine.
+# Docker's default is unbounded; this caps every service at 300MB total.
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+
 services:
   l1-execution-proxy:
+    logging: *default-logging
     profiles: ["genesis-verify"]
     build:
       context: .
@@ -31,6 +45,7 @@ services:
       start_period: 10s
 
   nitro-genesis:
+    logging: *default-logging
     profiles: ["genesis-verify"]
     image: offchainlabs/nitro-node:v3.11.2-3599aca
     restart: always
