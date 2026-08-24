@@ -7,8 +7,16 @@ import {
   decodeStockAssets,
   formatWad,
   parseStockList,
+  readLimitedBody,
   rpcResultsById,
 } from '../../functions/api/base/tokenized-stocks.ts';
+
+test('readLimitedBody caps how much of a remote RPC body is buffered before parsing', async () => {
+  assert.equal(await readLimitedBody(new Response('{"ok":true}'), 1_000), '{"ok":true}');
+  assert.equal(await readLimitedBody(new Response(null), 1_000), '');
+  await assert.rejects(() => readLimitedBody(new Response('x'.repeat(2_001)), 2_000), /too large/i);
+  assert.equal(await readLimitedBody(new Response('x'.repeat(2_000)), 2_000), 'x'.repeat(2_000));
+});
 
 const LIST_PATH =
   'apps/frontend/apps/cowswap-frontend/public/token-lists/coinbase-tokenized-stocks.json';

@@ -12,6 +12,11 @@
  * here before it reaches an RPC. Reads fail closed: a malformed list, an RPC
  * error, or an undecodable word yields a 502, never a half-populated payload.
  *
+ * Successful snapshots are stored in the Cache API under a canonical key (a
+ * Cache-Control header alone does not populate the Pages edge cache for a
+ * generated response), so one RPC batch serves every client for the cache
+ * window instead of every browser refresh fanning out 39 eth_calls.
+ *
  * Reference: https://docs.base.org/base-chain/asset-issuance/tokenized-stocks-on-base
  */
 
@@ -25,9 +30,11 @@ const BASE_RPCS = [
 // No stale-while-revalidate: this payload is presented as contract-verified pause and
 // multiplier state, so a failed revalidation must surface as a 502 (which the panel shows as
 // "unavailable") rather than an hour of an old snapshot served as a fresh 200.
-const CACHE_CONTROL = 'public, max-age=60, s-maxage=300';
+const CACHE_SECONDS = 300;
+const CACHE_CONTROL = `public, max-age=60, s-maxage=${CACHE_SECONDS}`;
 const RPC_TIMEOUT_MS = 4_000;
 const MAX_LIST_BYTES = 200_000;
+const MAX_RPC_RESPONSE_BYTES = 262_144;
 const MAX_TOKENS = 64;
 const MAX_TEXT_LENGTH = 100;
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -71,6 +78,10 @@ interface JsonRpcResponse {
 
 interface Env {
   ASSETS: Fetcher;
+}
+
+interface CloudflareCacheStorage extends CacheStorage {
+  default: Cache;
 }
 
 function text(value: unknown, field: string): string {
@@ -191,17 +202,36 @@ export function decodeStockAssets(
   });
 }
 
+/** Buffers at most `maxBytes` of a remote body; a larger (or lying) body is rejected, not parsed. */
+export async function readLimitedBody(response: Response, maxBytes: number): Promise<string> {
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes)
+    throw new Error('Remote response is too large');
+  if (!response.body) return '';
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let body = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) return body + decoder.decode();
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw new Error('Remote response is too large');
+    }
+    body += decoder.decode(value, { stream: true });
+  }
+}
+
 async function readStockList(env: Env, request: Request): Promise<StockListEntry[]> {
   const response = await env.ASSETS.fetch(
     new Request(new URL(LIST_PATH, request.url), { method: 'GET' }),
   );
   if (!response.ok) throw new Error(`Stock list asset returned ${response.status}`);
-  const contentLength = Number(response.headers.get('content-length'));
-  if (Number.isFinite(contentLength) && contentLength > MAX_LIST_BYTES)
-    throw new Error('Stock list is too large');
-  const body = await response.text();
-  if (body.length > MAX_LIST_BYTES) throw new Error('Stock list is too large');
-  return parseStockList(JSON.parse(body));
+  return parseStockList(JSON.parse(await readLimitedBody(response, MAX_LIST_BYTES)));
 }
 
 async function callBatch(
@@ -216,7 +246,7 @@ async function callBatch(
   });
   if (!response.ok) throw new Error(`Base RPC returned ${response.status}`);
   return rpcResultsById(
-    await response.json(),
+    JSON.parse(await readLimitedBody(response, MAX_RPC_RESPONSE_BYTES)),
     batch.map((request) => request.id),
   );
 }
@@ -245,13 +275,54 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
+function edgeCache(): Cache | undefined {
+  // Some Pages direct-upload runtimes omit the Cache API global; the live path must still work.
+  return typeof caches === 'undefined' ? undefined : (caches as CloudflareCacheStorage).default;
+}
+
+function cacheKey(request: Request): Request {
+  const url = new URL(request.url);
+  url.search = '';
+  return new Request(url, { method: 'GET' });
+}
+
+async function safeCacheMatch(
+  cache: Cache | undefined,
+  key: Request,
+): Promise<Response | undefined> {
+  if (!cache) return undefined;
+  try {
+    return (await cache.match(key)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function safeCachePut(
+  cache: Cache | undefined,
+  key: Request,
+  response: Response,
+): Promise<void> {
+  if (!cache) return;
+  try {
+    await cache.put(key, response);
+  } catch {
+    // The live response remains valid even when an edge cannot persist it.
+  }
+}
+
+export const onRequest: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   if (request.method !== 'GET') {
     return new Response('Method not allowed', {
       status: 405,
       headers: { allow: 'GET', 'cache-control': 'no-store' },
     });
   }
+
+  const cache = edgeCache();
+  const key = cacheKey(request);
+  const cached = await safeCacheMatch(cache, key);
+  if (cached) return cached;
 
   let entries: StockListEntry[];
   try {
@@ -261,7 +332,9 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   try {
-    return json({ chainId: CHAIN_ID, assets: await readAssets(entries) });
+    const response = json({ chainId: CHAIN_ID, assets: await readAssets(entries) });
+    waitUntil(safeCachePut(cache, key, response.clone()));
+    return response;
   } catch {
     return json({ error: 'Base RPC unavailable for tokenized stock metadata' }, 502);
   }

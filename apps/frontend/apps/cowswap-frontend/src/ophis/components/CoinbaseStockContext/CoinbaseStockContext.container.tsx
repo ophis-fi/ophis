@@ -3,6 +3,7 @@ import { ReactNode, useMemo } from 'react'
 
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
+import { listsStatesMapAtom } from '@cowprotocol/tokens'
 
 import { Trans } from '@lingui/react/macro'
 
@@ -13,6 +14,7 @@ import {
   COINBASE_TOKENIZED_STOCKS_DOCS,
   formatMultiplierLabel,
   isCoinbaseStockAddress,
+  isInLoadedCoinbaseList,
   isUnitMultiplier,
   needsAttention,
   scaleByMultiplier,
@@ -171,10 +173,18 @@ export function CoinbaseStockContext({
 }: CoinbaseStockContextProps): ReactNode {
   const sellStock = baseToken(sellToken)
   const buyStock = baseToken(buyToken)
-  // Membership is a static address check against the bundled list, so it holds however the
-  // token got into the pair (default list, curated-only mode, bridge output, pasted address).
-  const sellIsStock = isCoinbaseStockAddress(sellStock?.chainId, tokenAddress(sellStock))
-  const buyIsStock = isCoinbaseStockAddress(buyStock?.chainId, tokenAddress(buyStock))
+  const listStates = useAtomValue(listsStatesMapAtom)
+  // Membership = the bundled list (holds however the token entered the pair: curated-only
+  // mode, bridge output, pasted address) OR the official list as currently loaded (catches a
+  // stock added by a deployment newer than this bundle).
+  const sellAddress = tokenAddress(sellStock)
+  const buyAddress = tokenAddress(buyStock)
+  const sellIsStock =
+    isCoinbaseStockAddress(sellStock?.chainId, sellAddress) ||
+    isInLoadedCoinbaseList(listStates, sellStock?.chainId, sellAddress)
+  const buyIsStock =
+    isCoinbaseStockAddress(buyStock?.chainId, buyAddress) ||
+    isInLoadedCoinbaseList(listStates, buyStock?.chainId, buyAddress)
   const onBase =
     chainId === BASE_CHAIN_ID || sellToken?.chainId === BASE_CHAIN_ID || buyToken?.chainId === BASE_CHAIN_ID
 

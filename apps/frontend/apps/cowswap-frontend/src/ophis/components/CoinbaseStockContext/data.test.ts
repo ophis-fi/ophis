@@ -1,7 +1,10 @@
+import { COINBASE_TOKENIZED_STOCKS_LIST_SOURCE } from '@cowprotocol/tokens'
+
 import {
   findCoinbaseStockAsset,
   formatMultiplierLabel,
   isCoinbaseStockAddress,
+  isInLoadedCoinbaseList,
   isUnitMultiplier,
   needsAttention,
   parseCoinbaseStockAssets,
@@ -35,6 +38,31 @@ describe('isCoinbaseStockAddress', () => {
     expect(isCoinbaseStockAddress(1, AAPLC)).toBe(false)
     expect(isCoinbaseStockAddress(8453, '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913')).toBe(false)
     expect(isCoinbaseStockAddress(8453, undefined)).toBe(false)
+  })
+})
+
+describe('isInLoadedCoinbaseList', () => {
+  const NEW_STOCK = '0xb2000000000000000000000000000000000000AA'
+  const listStates = {
+    [COINBASE_TOKENIZED_STOCKS_LIST_SOURCE]: {
+      source: COINBASE_TOKENIZED_STOCKS_LIST_SOURCE,
+      list: { tokens: [{ chainId: 8453, address: NEW_STOCK, symbol: 'NEWc', name: 'New Inc.', decimals: 8 }] },
+    },
+    'https://example.invalid/other.json': {
+      source: 'https://example.invalid/other.json',
+      list: { tokens: [{ chainId: 8453, address: AAPLC, symbol: 'AAPLC', name: 'Apple', decimals: 8 }] },
+    },
+  }
+
+  it('sees a stock added to the refreshed official list even when the bundle predates it', () => {
+    expect(isInLoadedCoinbaseList(listStates, 8453, NEW_STOCK.toLowerCase())).toBe(true)
+  })
+
+  it('only trusts the official Coinbase list source, on Base, when it is loaded', () => {
+    expect(isInLoadedCoinbaseList(listStates, 8453, AAPLC)).toBe(false)
+    expect(isInLoadedCoinbaseList(listStates, 1, NEW_STOCK)).toBe(false)
+    expect(isInLoadedCoinbaseList({}, 8453, NEW_STOCK)).toBe(false)
+    expect(isInLoadedCoinbaseList(listStates, 8453, undefined)).toBe(false)
   })
 })
 

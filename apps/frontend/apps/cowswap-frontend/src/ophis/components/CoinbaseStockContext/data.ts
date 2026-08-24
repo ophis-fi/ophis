@@ -1,4 +1,5 @@
-import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
+import { COINBASE_TOKENIZED_STOCKS_LIST_SOURCE } from '@cowprotocol/tokens'
 
 import shippedList from '../../../../public/token-lists/coinbase-tokenized-stocks.json'
 
@@ -11,12 +12,33 @@ export const COINBASE_TOKENIZED_STOCKS_DOCS = 'https://docs.base.org/base-chain/
 // not depend on which token lists a visitor currently has loaded (curated-only mode for U.S.
 // visitors, a bridge whose source chain is not Base, a pasted address): the eligibility panel
 // must reach exactly those visitors too.
-const COINBASE_STOCK_ADDRESSES: ReadonlySet<string> = new Set(
-  shippedList.tokens.filter((token) => token.chainId === BASE_CHAIN_ID).map((token) => token.address.toLowerCase()),
+const COINBASE_STOCK_ADDRESS_KEYS: ReadonlySet<string> = new Set(
+  shippedList.tokens.filter((token) => token.chainId === BASE_CHAIN_ID).map((token) => getAddressKey(token.address)),
 )
 
 export function isCoinbaseStockAddress(chainId: number | undefined, address: string | undefined): boolean {
-  return chainId === BASE_CHAIN_ID && !!address && COINBASE_STOCK_ADDRESSES.has(address.toLowerCase())
+  return chainId === BASE_CHAIN_ID && !!address && COINBASE_STOCK_ADDRESS_KEYS.has(getAddressKey(address))
+}
+
+interface LoadedListLike {
+  source?: string
+  list: { tokens: ReadonlyArray<{ chainId: number; address: string }> }
+}
+
+/**
+ * Membership according to the official Coinbase list as currently LOADED (it refreshes at
+ * runtime), so a stock added by a later deployment is recognised in a tab whose bundle predates
+ * it. Only the configured official source counts; any other list carrying the address does not.
+ */
+export function isInLoadedCoinbaseList(
+  listStates: Readonly<Record<string, LoadedListLike | undefined>>,
+  chainId: number | undefined,
+  address: string | undefined,
+): boolean {
+  if (chainId !== BASE_CHAIN_ID || !address) return false
+  const tokens = listStates[COINBASE_TOKENIZED_STOCKS_LIST_SOURCE]?.list.tokens ?? []
+
+  return tokens.some((token) => token.chainId === BASE_CHAIN_ID && areAddressesEqual(token.address, address))
 }
 
 const ONE_18 = 10n ** 18n
