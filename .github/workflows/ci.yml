@@ -273,7 +273,7 @@ jobs:
           check "timer-arm failure silenced"      's|      log "FATAL: cannot arm the timer for $name|      : # mutated|'
           check "autopilot re-added to allowlist" 's|ALLOW="${WATCHDOG_ALLOW:-driver\|orderbook\|rpc-proxy\|solver}"|ALLOW="${WATCHDOG_ALLOW:-driver\|autopilot\|orderbook\|rpc-proxy\|solver}"|'
           check "degraded pass exits 0 again"     '/watchdog pass complete but DEGRADED/{n;s/exit 1/exit 0/;}'
-          check "flock error read as contention"  's|    if \[ "$lock_rc" -eq 1 \]; then|    if [ "$lock_rc" -ne 0 ]; then|'
+          check "flock error read as contention"  's|    if \[ "$lock_rc" -eq 99 \]; then|    if [ "$lock_rc" -ne 0 ]; then|'
           # Linux-only discriminator: macOS mktemp ignores TMPDIR, so this
           # mutation survives on a Mac and is caught here. That is why the check
           # lives in CI rather than being trusted from a local run.

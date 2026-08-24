@@ -231,9 +231,10 @@ ck "unopenable lock is FATAL, not 'contention'"     "$(grep -c 'FATAL: cannot op
 ck "  and does not claim a completed pass"          "$(completed "$out")" "0"
 
 # Genuine contention still exits 0 quietly.
+# Contention is now signalled by the code we pass via -E, not by a bare 1.
 cat > "$WORK/flock-busy" <<'FAKE'
 #!/usr/bin/env bash
-exit 1
+exit 99
 FAKE
 chmod +x "$WORK/flock-busy"
 reset
@@ -368,6 +369,19 @@ out="$(WATCHDOG_DOCKER_BIN="$WORK/docker" WATCHDOG_STATE_DIR="$WORK/state" \
       FAKE_TABLE="$WORK/table" FAKE_RESTARTS="$WORK/restarts" bash "$SRC" 2>&1)"
 rc=$?
 ck "flock error (rc=64) exits NONZERO"            "$rc" "1"
+# A bare 1 is NOT contention any more: util-linux returns it for assorted
+# failures, which is why contention gets its own code via -E.
+cat > "$WORK/flock-one" <<'FAKE'
+#!/usr/bin/env bash
+exit 1
+FAKE
+chmod +x "$WORK/flock-one"
+out1="$(WATCHDOG_DOCKER_BIN="$WORK/docker" WATCHDOG_STATE_DIR="$WORK/state" \
+       WATCHDOG_FLOCK_BIN="$WORK/flock-one" WATCHDOG_NOW_S=1000 WATCHDOG_NOTIFY=0 \
+       FAKE_TABLE="$WORK/table" FAKE_RESTARTS="$WORK/restarts" bash "$SRC" 2>&1)"
+rc1=$?
+ck "bare rc=1 is an ERROR, not contention"       "$rc1" "1"
+ck "  and is not reported as contention"         "$(grep -c 'another watchdog pass holds the lock' <<<"$out1")" "0"
 ck "  and is NOT reported as contention"          "$(grep -c 'another watchdog pass holds the lock' <<<"$out")" "0"
 ck "  it is reported as a lock FAILURE"           "$(grep -c 'FATAL: flock failed with status 64' <<<"$out")" "1"
 

@@ -154,14 +154,20 @@ if [ "${WATCHDOG_SKIP_LOCK:-0}" != "1" ]; then
       notify "Watchdog on $(hostname) cannot open its lock file at ${LOCK_FILE}. It is protecting nothing. Check that ${STATE_DIR} exists and is writable."
       exit 1
     fi
-    # flock(1) exits 1 when -n fails to ACQUIRE. Any other nonzero status is an
-    # operational error -- locking unsupported on the filesystem, a bad fd, the
-    # binary missing. Reporting those as "another pass is running" and exiting 0
+    # CONTENTION IS ASSIGNED ITS OWN EXIT CODE, rather than inferred.
+    # An earlier fix here treated status 1 as contention and everything else as
+    # an error, but 1 is not distinctive: util-linux flock also returns it for
+    # assorted failures (and 65 for a bad file descriptor). util-linux provides
+    # `-E, --conflict-exit-code <number>` precisely so the conflict case can be
+    # recognised unambiguously, so we claim 99 for it. Anything else nonzero --
+    # locking unsupported on the filesystem, a bad fd, a flock too old to know
+    # -E (it would fail with a usage error) -- is an operational failure and is
+    # fatal. Reporting any of those as "another pass is running" and exiting 0
     # would silently disable the watchdog on every tick, which is the same
     # failure the open-vs-contention split above exists to prevent, one layer
     # deeper (Codex review, 2026-08-24).
-    "$FLOCK_BIN" -n 9 2>/dev/null; lock_rc=$?
-    if [ "$lock_rc" -eq 1 ]; then
+    "$FLOCK_BIN" -n -E 99 9 2>/dev/null; lock_rc=$?
+    if [ "$lock_rc" -eq 99 ]; then
       log "another watchdog pass holds the lock; exiting without acting"
       exit 0
     elif [ "$lock_rc" -ne 0 ]; then
