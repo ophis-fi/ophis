@@ -11,7 +11,7 @@
   "tags": {
     "coinbase": {
       "name": "Coinbase stock",
-      "description": "B20 token on Base issued by Coinbase, backed 1:1 by the underlying share. Redeemable per the current corporate action multiplier. For persons outside the U.S. in eligible jurisdictions."
+      "description": "Coinbase B20 token on Base backed by the underlying share in regulated custody. One token equals the current multiplier in shares. Only for eligible persons outside the U.S."
     }
   },
   "tokens": [

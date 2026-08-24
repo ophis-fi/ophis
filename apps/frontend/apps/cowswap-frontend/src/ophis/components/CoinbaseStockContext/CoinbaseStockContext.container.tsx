@@ -21,14 +21,31 @@ import {
 
 const COINBASE_MARK = <styledEl.Mark aria-hidden="true">B20</styledEl.Mark>
 
+function baseToken(currency: Currency | null): Currency | null {
+  return currency?.isToken && currency.chainId === BASE_CHAIN_ID ? currency : null
+}
+
 function tokenAddress(currency: Currency | null): string | undefined {
-  return currency?.chainId === BASE_CHAIN_ID && currency.isToken ? currency.address : undefined
+  const token = baseToken(currency)
+  return token?.isToken ? token.address : undefined
 }
 
 function shareEquivalent(balance: CurrencyAmount<Currency> | null, multiplier: string): string | undefined {
   if (!balance || balance.currency.chainId !== BASE_CHAIN_ID || isUnitMultiplier(multiplier)) return undefined
   const shareRaw = scaleByMultiplier(BigInt(balance.quotient.toString()), multiplier)
   return CurrencyAmount.fromRawAmount(balance.currency, shareRaw.toString()).toSignificant(6)
+}
+
+function EligibilityNote(): ReactNode {
+  return (
+    <Trans>
+      Coinbase tokenized stocks are only available to persons in eligible jurisdictions outside the U.S. This panel is
+      informational and does not change your order.{' '}
+      <a href={COINBASE_TOKENIZED_STOCKS_DOCS} target="_blank" rel="noopener noreferrer">
+        How B20 stocks work ↗
+      </a>
+    </Trans>
+  )
 }
 
 export interface CoinbaseStockContextProps {
@@ -38,12 +55,13 @@ export interface CoinbaseStockContextProps {
   sellBalance: CurrencyAmount<Currency> | null
 }
 
-function CoinbaseStockContextContent({
-  sellToken,
-  buyToken,
-  sellBalance,
-}: Omit<CoinbaseStockContextProps, 'chainId'>): ReactNode {
-  const { data: assets = [], isError } = useAtomValue(coinbaseStockAssetsQueryAtom)
+interface ContentProps extends Omit<CoinbaseStockContextProps, 'chainId'> {
+  /** Symbols of the pair's Coinbase stocks, known from the token list before any metadata loads. */
+  listedSymbols: string
+}
+
+function CoinbaseStockContextContent({ sellToken, buyToken, sellBalance, listedSymbols }: ContentProps): ReactNode {
+  const { data: assets = [], isError, isPending } = useAtomValue(coinbaseStockAssetsQueryAtom)
   const sellAddress = tokenAddress(sellToken)
   const buyAddress = tokenAddress(buyToken)
   const selectedAssets = useMemo(
@@ -57,23 +75,38 @@ function CoinbaseStockContextContent({
         {COINBASE_MARK}
         <styledEl.Content>
           <strong>
-            <Trans>Coinbase tokenized stock metadata is temporarily unavailable</Trans>
+            <Trans>{listedSymbols} · Coinbase tokenized stock metadata is temporarily unavailable</Trans>
           </strong>
           <p>
             <Trans>
               Ophis could not verify the corporate-action multiplier or transfer status. Quotes remain available, but
-              confirm the token status before trading.{' '}
-              <a href={COINBASE_TOKENIZED_STOCKS_DOCS} target="_blank" rel="noopener noreferrer">
-                Read the Base documentation ↗
-              </a>
-            </Trans>
+              confirm the token status before trading.
+            </Trans>{' '}
+            <EligibilityNote />
           </p>
         </styledEl.Content>
       </styledEl.Panel>
     )
   }
 
-  if (selectedAssets.length === 0) return null
+  // Membership is already known from the token list, so the panel occupies its slot from the
+  // first paint (no layout jump when the metadata query lands) and simply fills in the details.
+  if (selectedAssets.length === 0) {
+    return (
+      <styledEl.Panel $attention={false}>
+        {COINBASE_MARK}
+        <styledEl.Content>
+          <strong>
+            <Trans>{listedSymbols} · Coinbase tokenized stock on Base</Trans>
+          </strong>
+          <p>
+            <Trans>Coinbase B20 token backed by the underlying share held in regulated custody.</Trans>{' '}
+            {isPending ? <Trans>Reading the corporate-action multiplier from Base.</Trans> : null} <EligibilityNote />
+          </p>
+        </styledEl.Content>
+      </styledEl.Panel>
+    )
+  }
 
   const attention = selectedAssets.some(needsAttention)
   const selectedSymbols = selectedAssets.map((asset) => asset.symbol).join(', ')
@@ -96,7 +129,10 @@ function CoinbaseStockContextContent({
           {unissuedSymbols ? <Trans> · {unissuedSymbols} not issued yet</Trans> : null}
         </strong>
         <p>
-          <Trans>B20 token backed 1:1 by the underlying share; metadata read from the Base contracts.</Trans>
+          <Trans>
+            Coinbase B20 token backed by the underlying share held in regulated custody; multiplier and pause status
+            read from the Base contracts.
+          </Trans>
           {selectedAssets.map((asset) => {
             const symbol = asset.symbol
             const multiplier = formatMultiplierLabel(asset.multiplier)
@@ -117,13 +153,7 @@ function CoinbaseStockContextContent({
               </styledEl.AssetDetail>
             )
           })}
-          <Trans>
-            Coinbase tokenized stocks are available to persons in eligible jurisdictions outside the U.S. The executable
-            price is always the Ophis solver quote.{' '}
-            <a href={COINBASE_TOKENIZED_STOCKS_DOCS} target="_blank" rel="noopener noreferrer">
-              How B20 stocks work ↗
-            </a>
-          </Trans>
+          <EligibilityNote />
         </p>
       </styledEl.Content>
     </styledEl.Panel>
@@ -136,16 +166,27 @@ export function CoinbaseStockContext({
   buyToken,
   sellBalance,
 }: CoinbaseStockContextProps): ReactNode {
-  const sellIsStock = useIsCoinbaseStockToken(
-    sellToken?.isToken && sellToken.chainId === BASE_CHAIN_ID ? sellToken : null,
-  )
-  const buyIsStock = useIsCoinbaseStockToken(buyToken?.isToken && buyToken.chainId === BASE_CHAIN_ID ? buyToken : null)
+  const sellStock = baseToken(sellToken)
+  const buyStock = baseToken(buyToken)
+  const sellIsStock = useIsCoinbaseStockToken(sellStock?.isToken ? sellStock : null)
+  const buyIsStock = useIsCoinbaseStockToken(buyStock?.isToken ? buyStock : null)
   const onBase =
     chainId === BASE_CHAIN_ID || sellToken?.chainId === BASE_CHAIN_ID || buyToken?.chainId === BASE_CHAIN_ID
 
+  if (!onBase || (!sellIsStock && !buyIsStock)) return null
+
+  const listedSymbols = [sellIsStock ? sellStock?.symbol : undefined, buyIsStock ? buyStock?.symbol : undefined]
+    .filter((symbol, index, all): symbol is string => Boolean(symbol) && all.indexOf(symbol) === index)
+    .join(', ')
+
   // Membership comes from the shipped token list, so the panel (and its metadata query)
   // only exists while a Coinbase stock is actually in the pair, never for every Base swap.
-  return onBase && (sellIsStock || buyIsStock) ? (
-    <CoinbaseStockContextContent sellToken={sellToken} buyToken={buyToken} sellBalance={sellBalance} />
-  ) : null
+  return (
+    <CoinbaseStockContextContent
+      sellToken={sellToken}
+      buyToken={buyToken}
+      sellBalance={sellBalance}
+      listedSymbols={listedSymbols}
+    />
+  )
 }

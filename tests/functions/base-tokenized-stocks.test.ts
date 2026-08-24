@@ -150,6 +150,81 @@ test('decodeStockAssets projects on-chain words into the asset payload', () => {
   ]);
 });
 
+test('decodeStockAssets reports transfersPaused only for the TRANSFER pausable feature', () => {
+  const entries = ['A', 'B', 'C', 'D'].map((symbol, index) => ({
+    address: `0xb2${index.toString().padStart(38, '0')}`,
+    symbol,
+    name: symbol,
+  }));
+  const results = new Map<number, unknown>();
+  const pausedByToken = [
+    enumArrayResult([1n]), // MINT only -> transfers still open
+    enumArrayResult([0n]), // TRANSFER only
+    enumArrayResult([2n, 0n]), // BURN + TRANSFER
+    enumArrayResult([3n, 2n]), // SEIZE + BURN
+  ];
+  pausedByToken.forEach((paused, index) => {
+    results.set(index * 3 + 1, uintResult(WAD));
+    results.set(index * 3 + 2, paused);
+    results.set(index * 3 + 3, uintResult(1n));
+  });
+
+  assert.deepEqual(
+    decodeStockAssets(entries, results).map((asset) => asset.transfersPaused),
+    [false, true, true, false],
+  );
+});
+
+test('the fail-closed decoders bind on every shape check, not just the regex', () => {
+  const entries = [{ address: AAPLC, symbol: 'AAPLc', name: 'Apple Inc.' }];
+  const good = (): Map<number, unknown> =>
+    new Map<number, unknown>([
+      [1, uintResult(WAD)],
+      [2, enumArrayResult([])],
+      [3, uintResult(1n)],
+    ]);
+  // dynamic-array head with a wrong offset
+  assert.throws(
+    () =>
+      decodeStockAssets(entries, new Map([...good(), [2, `0x${uintWord(64n)}${uintWord(0n)}`]])),
+    /array/i,
+  );
+  // declared length 3 but a single element follows
+  assert.throws(
+    () =>
+      decodeStockAssets(
+        entries,
+        new Map([...good(), [2, `0x${uintWord(32n)}${uintWord(3n)}${uintWord(0n)}`]]),
+      ),
+    /array/i,
+  );
+  // an id the batch never asked for
+  assert.throws(
+    () =>
+      rpcResultsById(
+        [
+          { id: 1, result: '0x' },
+          { id: 2, result: '0x' },
+          { id: 3, result: '0x' },
+        ],
+        [1, 2],
+      ),
+    /invalid response/i,
+  );
+  // more tokens than the function is willing to fan out to
+  assert.throws(
+    () =>
+      parseStockList(
+        list(
+          Array.from({ length: 65 }, (_, i) =>
+            token({ address: `0xb2${i.toString().padStart(38, '0')}` }),
+          ),
+        ),
+      ),
+    /too large/i,
+  );
+});
+
 test('decodeStockAssets rejects a zero multiplier or a malformed word instead of shipping it', () => {
   const entries = [{ address: AAPLC, symbol: 'AAPLc', name: 'Apple Inc.' }];
   const good = (): Map<number, unknown> =>
