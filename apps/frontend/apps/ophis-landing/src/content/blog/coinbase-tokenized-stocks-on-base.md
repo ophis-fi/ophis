@@ -1,6 +1,6 @@
 ---
 title: "Coinbase tokenized stocks on Base: swap AAPLc, NVDAc and more on Ophis"
-description: "Coinbase's B20 tokenized stocks are live on Base and listed on Ophis: official token list, a stock panel that reads the corporate-action multiplier and pause state from the chain, gasless MEV-protected settlement."
+description: "Coinbase's B20 tokenized stocks are live on Base and listed on Ophis: official token list, a stock panel with the corporate-action multiplier and pause state read from the chain, gasless MEV-protected settlement."
 pubDate: 2026-08-24
 author: Ophis
 tags: [base, tokenized-stocks, coinbase, b20, dex-aggregator, swaps]
@@ -9,7 +9,7 @@ cover: ./coinbase-tokenized-stocks-on-base.cover.jpg
 coverAlt: "Ophis emblem next to a Base blue tile labelled B20, with the AAPLc, NVDAc, METAc and GOOGLc tickers as chips"
 ---
 
-Coinbase launched tokenized stocks on Base on 2026-08-24, and they are listed on Ophis from day one. Open [swap.ophis.fi/#/8453/swap/USDC/AAPLc](https://swap.ophis.fi/#/8453/swap/USDC/AAPLc), connect a wallet, and sign an EIP-712 order: no settlement transaction to broadcast, no gas to pay on an ERC-20 sell, and a signed limit price that is the worst execution you can receive. The tokens are Base-native B20 assets issued by Coinbase, and each one is backed by the underlying share held in regulated custody. Ophis ships its own token list for them, shows a stock panel that reads the corporate-action multiplier and pause state straight from the Base contracts, and routes the order through CoW Protocol's batch auction on Base.
+Coinbase launched tokenized stocks on Base on 2026-08-24, and they are listed on Ophis from day one. Open [swap.ophis.fi/#/8453/swap/USDC/AAPLc](https://swap.ophis.fi/#/8453/swap/USDC/AAPLc), connect a wallet, and sign an EIP-712 order: no settlement transaction to broadcast, no gas to pay on an ERC-20 sell, and a signed limit price that is the worst execution you can receive. The tokens are Base-native B20 assets issued by Coinbase, and each one is backed by the underlying share held in regulated custody. Ophis ships its own token list for them, shows a stock panel next to the quote with the corporate-action multiplier and pause state read from the Base contracts, and routes the order through CoW Protocol's batch auction on Base.
 
 Two sentences of context. Base is chain id 8453, an OP-Stack L2 operated by Coinbase, and one of the 13 EVM chains [Ophis](https://ophis.fi/) supports. Ophis is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top; on Base it settles through CoW Protocol's hosted orderbook and solver network, so the stock tokens inherit the same MEV protection as every other token on the chain.
 
@@ -19,9 +19,9 @@ Two sentences of context. Base is chain id 8453, an OP-Stack L2 operated by Coin
 
 2. **Connect your wallet.** Ophis is self-custodial. It never holds your funds, and nothing moves without a signature from your wallet (EIP-712 for regular accounts, ERC-1271 for smart-contract accounts).
 
-3. **Pick the stock from the list, or type it.** The Base token selector carries every Coinbase stock with its on-chain symbol, the issuer's logo, and a "Coinbase stock" badge. Search by ticker or company name. Ophis never asks you to paste a contract address for these tokens, which is the point: a token that merely calls itself AAPL is not on that list.
+3. **Pick the stock from the list, or type it.** The Base token selector carries every Coinbase stock with its on-chain symbol, the issuer's logo where Coinbase has published one, and a "Coinbase stock" badge. Search by ticker or company name. Ophis never asks you to paste a contract address for these tokens, which is the point: a token that merely calls itself AAPL is not on that list.
 
-4. **Read the stock panel.** As soon as a Coinbase stock is on either side of the pair, the swap form shows a panel specific to it: the corporate-action multiplier, whether transfers are paused on chain, whether Coinbase has minted supply yet, and the issuer's eligibility statement. More on what each of those means below.
+4. **Read the stock panel.** As soon as a Coinbase stock is on either side of the pair, the swap form shows a panel specific to it: the corporate-action multiplier, whether transfers are paused on chain, whether Coinbase has minted supply yet, and the issuer's eligibility statement. The panel is advisory: it sits next to the quote and says so when its data is unavailable, and it never blocks or alters an order. More on what each of those means below.
 
 5. **Review the quote and sign.** The quote carries a hard limit price, and that limit is what you sign: the worst execution you can receive. Your wallet shows typed data, not a transaction. Orders are gasless, and the fee comes out of the traded amount rather than being billed separately.
 
@@ -50,7 +50,7 @@ One detail is invisible in the app but worth knowing: these tokens have no bytec
 
 ### The thirteen tokens
 
-Thirteen stocks are deployed. Four had supply minted on launch day; the rest exist on chain with zero supply and become tradable the moment Coinbase mints. Ophis lists all thirteen so nothing needs a redeploy when that happens.
+Thirteen stocks are deployed. Four had supply minted on launch day; the rest exist on chain with zero supply. Ophis lists all thirteen, so once Coinbase mints one and a DEX pool holds usable liquidity for it, solvers can quote it without Ophis shipping anything new.
 
 | Token | Company | Address on Base |
 | --- | --- | --- |
@@ -76,9 +76,9 @@ A B20 stock token carries a multiplier. When the underlying pays a dividend or s
 
 On launch day every multiplier reads exactly 1, so the distinction never surfaces. It will. Read the value on the panel rather than assuming it is 1, especially before comparing a token's DEX price to the equity's quote.
 
-## What Ophis checks before you sign
+## What Ophis shows next to the quote
 
-Ophis added a Base-specific verification path in front of the quote, the same way it did for stock tokens on Robinhood Chain.
+Ophis added a Base-specific stock panel beside the quote, the same way it did for stock tokens on Robinhood Chain. It informs the trade; it does not gate it.
 
 **It confirms the token is one Coinbase issued.** The token list Ophis ships for Base was built from the addresses in Base's own documentation, and each entry's name, symbol, decimals and logo were read from the token's on-chain `name()`, `symbol()`, `decimals()` and `contractURI()` rather than typed by hand. That list wins over every other list Ophis loads on Base, so a search for "AAPL" surfaces `AAPLc` with Apple's logo, and the "Coinbase stock" badge is only ever attached through that list. A user-added list cannot spoof it.
 
@@ -86,7 +86,7 @@ Ophis added a Base-specific verification path in front of the quote, the same wa
 
 **It surfaces pauses and unissued supply.** B20 lets the issuer pause transfers per feature. The panel calls `pausedFeatures()` and switches to an attention state if transfers are paused for a token in your pair. It also reads `totalSupply()`: a token that Coinbase has listed but not yet minted shows as "not issued yet", with a note that quotes will return no liquidity until supply exists. That is the state the nine unminted tickers are in at the time of writing.
 
-**It fails visibly, not silently.** The panel's data comes from a same-origin endpoint, [swap.ophis.fi/api/base/tokenized-stocks](https://swap.ophis.fi/api/base/tokenized-stocks), that batches the three views for all thirteen tokens against Base and caches the result at the edge for five minutes. Every value is re-validated before it is served, a failed read is a 502 rather than a partial payload, and there is no stale-while-revalidate window, so an old snapshot is never served as a fresh one. If the endpoint cannot be reached, or a background refresh fails, the panel says the metadata is temporarily unavailable and leaves quoting available so you can decide. Whatever the panel reports, the executable price is always the solver quote.
+**It fails visibly, not silently.** The panel's data comes from a same-origin endpoint, [swap.ophis.fi/api/base/tokenized-stocks](https://swap.ophis.fi/api/base/tokenized-stocks), that batches the three views for all thirteen tokens against Base and caches the result at the edge for five minutes. Every value is re-validated before it is served, a failed read is a 502 rather than a partial payload, and there is no stale-while-revalidate window, so an old snapshot is never served as a fresh one. If the endpoint cannot be reached, or a background refresh fails, the panel says the metadata is temporarily unavailable and leaves quoting and signing available so you can decide; it does not hold your order until a read succeeds. Whatever the panel reports, the executable price is always the solver quote.
 
 **It states the issuer's eligibility.** Coinbase tokenized stocks are only available to persons in eligible jurisdictions outside the U.S. The panel carries that statement on every stock pair. Ophis is a non-custodial interface: it does not hold the tokens, mint them, or redeem them.
 
@@ -94,7 +94,7 @@ Ophis added a Base-specific verification path in front of the quote, the same wa
 
 Base is one of the ten chains where Ophis settles through CoW Protocol's hosted stack rather than its own. Every trade pays the 1 bp Ophis base fee, and Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps; the trader receives the remainder and everything above the cap. CoW Protocol charges its own upstream volume fee on hosted chains, 0.02% on volatile pairs and 0.003% on correlated ones, which Ophis does not receive. A stock-token swap against USDC is a volatile pair, so the all-in fixed cost is 0.03%. The [fee docs](https://docs.ophis.fi/fees) carry the full breakdown per chain type.
 
-Volume then earns part of the Ophis fee back, on rolling 30-day volume:
+Rolling 30-day volume then places you in a rebate tier. The percentage is a weight, not a refund of your own fee: each month, a pool of 21.25% of the WETH fees Ophis collected is split across eligible wallets in proportion to their 30-day volume multiplied by their tier weight.
 
 | Tier | 30-day volume | Rebate |
 | --- | --- | --- |
@@ -104,7 +104,7 @@ Volume then earns part of the Ophis fee back, on rolling 30-day volume:
 | Palladium | $500,000+ | 35% |
 | Platinum | $1,000,000+ | 50% |
 
-Rebates are paid monthly in WETH from the fee Safe, out of a pool of 21.25% of collected WETH fees, split by tier-weighted 30-day volume. Your tier and progress show on the swap page.
+Rebates are paid monthly in WETH from the fee Safe. What a wallet receives depends on the pool and on every other eligible wallet's weighted volume that month. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) carry the full mechanics.
 
 ## Coinbase stocks on Base and Robinhood stock tokens: two different products
 
@@ -127,7 +127,7 @@ Everything the app uses is public and keyless.
 
 - **Token list.** [swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json](https://swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json) is a standard Uniswap-schema list with CORS enabled, so any interface can load it. Identify tokens by address; B20 names and symbols are mutable on chain.
 - **Metadata endpoint.** [swap.ophis.fi/api/base/tokenized-stocks](https://swap.ophis.fi/api/base/tokenized-stocks) returns, per token, the multiplier as an 18-decimal string, whether supply is issued, and whether transfers are paused.
-- **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated. `resolve_token` refuses look-alike symbols, `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
+- **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated. `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. One caveat today: on Base, `resolve_token` consults CoW's default list, not the Coinbase list, so pass these tokens by address from the list above rather than by symbol until the resolver is extended. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
 - **SDK.** `@ophis/sdk` resolves the orderbook URL and the EIP-712 signing domain per chain; on Base that is CoW Protocol's canonical settlement domain.
 - **Widget.** `@ophis/widget-react` embeds the swap form directly. See the [widget docs](https://docs.ophis.fi/widget).
 
@@ -139,11 +139,11 @@ Yes. Ophis lists all thirteen Coinbase tokenized stocks on Base, with AAPLc, GOO
 
 ### Do I need ETH on Base to pay gas?
 
-No. Orders are gasless: you sign an EIP-712 typed-data message rather than broadcasting a transaction, the winning solver pays the settlement gas, and the Ophis fee is deducted from the traded amount rather than charged separately. You need a small amount of ETH on Base for a one-time on-chain approval the first time you sell a given token, unless the token supports a gas-free permit signature, which the minted Coinbase stocks do.
+Not for the order itself. Orders are gasless: you sign an EIP-712 typed-data message rather than broadcasting a transaction, the winning solver pays the settlement gas, and the Ophis fee is deducted from the traded amount rather than charged separately. Selling a token for the first time normally needs a one-time on-chain approval, which costs a small amount of ETH on Base. Regular wallets can replace that approval with a gas-free permit signature on tokens that support it, and the minted Coinbase stocks do; smart-contract accounts still send the approval transaction.
 
 ### Why does a stock show "not issued yet" or return no liquidity?
 
-Coinbase deployed thirteen tokens but minted supply for four on launch day. A token with zero supply has no pools to trade in, so a quote returns no liquidity and the Ophis panel labels it as not issued yet. Ophis lists the token anyway so it becomes tradable the moment Coinbase mints, without waiting for a new release.
+Coinbase deployed thirteen tokens but minted supply for four on launch day. A token with zero supply has no pools to trade in, so a quote returns no liquidity and the Ophis panel labels it as not issued yet. Ophis lists the token anyway: once Coinbase mints supply and a DEX pool holds usable liquidity for it, solvers can quote it without waiting for a new Ophis release. Minting alone does not create liquidity.
 
 ### What does the corporate-action multiplier mean?
 
@@ -155,8 +155,8 @@ No. Coinbase tokenized stocks are B20 tokens on Base issued by Coinbase; Robinho
 
 ### How much does a tokenized stock swap cost on Ophis?
 
-On Base, Ophis charges a 1 bp base fee plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume. CoW Protocol adds its own upstream volume fee of 0.02% on volatile pairs, so the all-in fixed cost of a stock-token swap against USDC is 0.03%. Rolling 30-day volume earns 10% to 50% of the Ophis fee back through the rebate tiers.
+On Base, Ophis charges a 1 bp base fee plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume. CoW Protocol adds its own upstream volume fee of 0.02% on volatile pairs, so the all-in fixed cost of a stock-token swap against USDC is 0.03%. Rolling 30-day volume places you in a rebate tier whose weight sets your share of a monthly pool of 21.25% of collected WETH fees.
 
 ## Start swapping
 
-Open [swap.ophis.fi/#/8453/swap/USDC/AAPLc](https://swap.ophis.fi/#/8453/swap/USDC/AAPLc), connect a wallet, and sign your first Coinbase stock order on Base. ERC-20 settlement is gasless, the signed limit is enforced, and the stock panel reads the multiplier and pause state from the chain before you sign. If you are integrating rather than trading, start from the [getting-started guide](https://docs.ophis.fi/getting-started) and load the Coinbase token list from its public URL.
+Open [swap.ophis.fi/#/8453/swap/USDC/AAPLc](https://swap.ophis.fi/#/8453/swap/USDC/AAPLc), connect a wallet, and sign your first Coinbase stock order on Base. ERC-20 settlement is gasless, the signed limit is enforced, and the stock panel shows the multiplier and pause state read from the chain next to your quote. If you are integrating rather than trading, start from the [getting-started guide](https://docs.ophis.fi/getting-started) and load the Coinbase token list from its public URL.
