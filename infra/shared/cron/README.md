@@ -128,3 +128,84 @@ launchctl load ~/Library/LaunchAgents/ai.ophis.settlement-anomaly-watch.plist`.
 Smoke-test (no Telegram, temp state): `STATE_DIR=/tmp/swtest
 TELEGRAM_BOT_TOKEN_FILE=/tmp/none FIRST_RUN_LOOKBACK=2000
 bash ../optimism-mainnet/scripts/settlement-anomaly-watch.sh`.
+
+---
+
+# Container watchdog (`container-watchdog.sh`)
+
+Restarts containers that have been **unhealthy** for a sustained period.
+
+## Why
+
+Docker does not restart an unhealthy container. `restart: always` fires on
+process **exit**, not on a failing `HEALTHCHECK`. A container can therefore sit
+`Up 46 hours (unhealthy)` indefinitely.
+
+On 2026-08-23 the Robinhood driver did exactly that for eight hours. Its
+healthcheck was correct and specific the entire time:
+
+```
+driver healthz reporting unhealthy
+failures=["latest block was observed 331s ago, exceeds threshold 30s"]
+```
+
+Detection worked. Nothing consumed the signal. No quotes, no settlements, eight
+hours. This script is the missing consumer.
+
+## Why not an autoheal sidecar
+
+The usual answer mounts `/var/run/docker.sock` into a third-party container.
+Write access to that socket is root-equivalent on the host — it can launch a
+privileged container that mounts `/`. These hosts hold settlement submitter
+keys, so that is not an acceptable trade for a convenience feature. This runs on
+the host from cron: no socket is exposed to any container, and no new image
+enters the trust boundary.
+
+## Safety properties (each pinned by `container-watchdog.test.sh`)
+
+| Property | Behaviour |
+|---|---|
+| Allowlist only | Restarts only names matching `WATCHDOG_ALLOW`. Default: `driver\|autopilot\|orderbook\|rpc-proxy\|solver` |
+| Deny veto | `WATCHDOG_DENY` always wins — databases, chain nodes, observability. Protects against a later widened allowlist |
+| Sustained only | Must be unhealthy for `WATCHDOG_THRESHOLD_S` (default 600s). Deploy flaps and slow starts do not trigger |
+| Cooldown | At most one restart per container per `WATCHDOG_COOLDOWN_S` (default 1800s). A restart that does not fix the fault needs a human, not a loop |
+| Recovery resets | A container reporting healthy clears its timer, so the next episode serves the full threshold |
+
+**Never add a database or a chain node to the allowlist.** Restarting postgres
+mid-write, or nitro (which then re-syncs for a long time), converts a
+degradation into a worse outage.
+
+## Install — Cadia / any Linux host
+
+```bash
+sudo install -m 0755 container-watchdog.sh /usr/local/bin/container-watchdog.sh
+( crontab -l 2>/dev/null; echo "*/2 * * * * /usr/local/bin/container-watchdog.sh >> ~/.local/state/ophis/watchdog/watchdog.log 2>&1" ) | crontab -
+```
+
+## Install — Mac mini (launchd)
+
+Use a `StartInterval` of 120 in a plist alongside the others in this directory.
+`docker` must be on the plist's `PATH` (launchd does not inherit a login shell),
+and note that **launchd sets no `$HOME`** — set `WATCHDOG_STATE_DIR` explicitly.
+
+## Verify before trusting it
+
+```bash
+WATCHDOG_DRY_RUN=1 ./container-watchdog.sh    # logs decisions, restarts nothing
+./container-watchdog.test.sh                  # 17 cases, no daemon needed
+```
+
+CI runs the suite **and** deletes each safety property in turn to confirm the
+suite goes red (`infra-shell-tests` in ci.yml). A watchdog that can restart a
+database is worse than no watchdog, so "the tests pass" is not sufficient
+evidence on its own — the mutations are what make it evidence.
+
+## Tuning
+
+| Env | Default | Meaning |
+|---|---|---|
+| `WATCHDOG_THRESHOLD_S` | 600 | Continuous unhealthy time before restart |
+| `WATCHDOG_COOLDOWN_S` | 1800 | Minimum gap between restarts of one container |
+| `WATCHDOG_ALLOW` / `WATCHDOG_DENY` | see above | Name regexes |
+| `WATCHDOG_DRY_RUN` | 0 | `1` logs decisions without acting |
+| `WATCHDOG_NOTIFY` | 1 | `0` disables Telegram (the test suite sets this) |

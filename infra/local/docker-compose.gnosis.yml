@@ -2,8 +2,22 @@
 # Ophis Stage-2 stack — real Gnosis mainnet (no anvil). Requires GNOSIS_RPC_URL in .env.
 # Boot: docker compose -f infra/local/docker-compose.gnosis.yml --env-file infra/local/.env up -d
 
+# Log rotation. Added 2026-08-24 after the Robinhood outage, where
+# robinhood-nitro-nitro-1's json-file log had grown to 182MB with no rotation
+# configured anywhere in any stack. `docker logs --tail 8` then HANGS, so the
+# node's logs were unreadable during the incident that needed them most, and the
+# empty output read as "the node is silent" when it was in fact logging fine.
+# Docker's default is unbounded; this caps every service at 300MB total.
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+
 services:
   db:
+    logging: *default-logging
     image: postgres:16
     restart: always
     environment:
@@ -21,6 +35,7 @@ services:
       retries: 5
 
   migrations:
+    logging: *default-logging
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -35,6 +50,7 @@ services:
     # (COPY database/ /flyway/ in the Dockerfile migrations stage)
 
   orderbook:
+    logging: *default-logging
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -56,6 +72,7 @@ services:
       - "127.0.0.1:8080:80"
 
   autopilot:
+    logging: *default-logging
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -77,6 +94,7 @@ services:
     command: ["--config", "/autopilot.toml"]
 
   driver:
+    logging: *default-logging
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -95,6 +113,7 @@ services:
       - "127.0.0.1:8081:80"
 
   baseline:
+    logging: *default-logging
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile

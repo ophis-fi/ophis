@@ -206,6 +206,56 @@ jobs:
       - name: assert Robinhood eRPC template stays 2-of-3-across-3 fail-closed
         run: python3 infra/robinhood-mainnet/assert-erpc-failclosed.py infra/robinhood-mainnet/configs/erpc.yaml.tmpl
 
+  infra-shell-tests:
+    name: Infra shell scripts — unit + mutation tests
+    runs-on: ubuntu-latest
+    # WHY THIS JOB EXISTS: infra/ carries shell scripts that take DESTRUCTIVE
+    # actions (container-watchdog.sh restarts running containers) and until now
+    # nothing ran their test suites in CI. A watchdog whose allowlist silently
+    # stopped working would happily bounce a database, and the only thing
+    # standing between that and production is a test nobody executes.
+    #
+    # The suites are self-contained: they inject a fake `docker`, an injected
+    # clock, and set WATCHDOG_NOTIFY=0 so no Telegram is ever sent. No daemon,
+    # no network, no real container is touched.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: container-watchdog
+        run: |
+          echo "::group::container-watchdog.test.sh"
+          bash infra/shared/cron/container-watchdog.test.sh
+          echo "::endgroup::"
+      - name: mutation check — the suite must FAIL when a safety property is removed
+        # A green suite proves nothing unless removing a guard turns it red.
+        # Each mutation below deletes one safety property; every one must break
+        # the suite. If any mutation still passes, that property is untested and
+        # this job fails loudly rather than reporting a vacuous green.
+        run: |
+          set -u
+          cp infra/shared/cron/container-watchdog.sh /tmp/wd.orig
+          fails=0
+          # NOTE: no `sed -i`. BSD sed (macOS) needs `-i ''` and GNU sed (CI)
+          # must NOT have it, so an in-place edit is not portable and this block
+          # could not be verified on the machine it was written on. Redirecting
+          # through a temp file behaves identically everywhere.
+          check() { # name, sed-expression
+            sed "$2" /tmp/wd.orig > infra/shared/cron/container-watchdog.sh
+            if bash infra/shared/cron/container-watchdog.test.sh >/dev/null 2>&1; then
+              echo "MUTATION SURVIVED (property is untested): $1"; fails=$((fails+1))
+            else
+              echo "caught: $1"
+            fi
+            cp /tmp/wd.orig infra/shared/cron/container-watchdog.sh
+          }
+          check "allowlist/deny removed"  's|if ! \[\[ "$name" =~ $ALLOW \]\] \|\| \[\[ "$name" =~ $DENY \]\]; then|if false; then|'
+          check "DENY veto removed"       's|if ! \[\[ "$name" =~ $ALLOW \]\] \|\| \[\[ "$name" =~ $DENY \]\]; then|if ! [[ "$name" =~ $ALLOW ]]; then|'
+          check "sustained threshold removed" 's|if \[ "$unhealthy_for" -lt "$THRESHOLD_S" \]; then|if false; then|'
+          check "restart cooldown removed"    's|if \[ "$last_restart" != "0" \] \&\& \[ "$since_restart" -lt "$COOLDOWN_S" \]; then|if false; then|'
+          check "recovery timer reset removed" 's|      clear_unhealthy "$name"|      : # mutated|'
+          bash infra/shared/cron/container-watchdog.test.sh >/dev/null 2>&1 || { echo "restore failed"; exit 1; }
+          [ "$fails" -eq 0 ] || { echo "$fails mutation(s) survived"; exit 1; }
+          echo "all mutations caught"
+
   prometheus-alert-rules:
     name: Prometheus alert rules — lint + mutation tests
     runs-on: ubuntu-latest

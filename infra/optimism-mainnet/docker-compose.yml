@@ -29,6 +29,19 @@ x-backend-build-args: &backend-build-args
 # All HTTP/RPC ports bind to 127.0.0.1 only. External access is via
 # Cloudflare Tunnel, never direct port exposure.
 
+# Log rotation. Added 2026-08-24 after the Robinhood outage, where
+# robinhood-nitro-nitro-1's json-file log had grown to 182MB with no rotation
+# configured anywhere in any stack. `docker logs --tail 8` then HANGS, so the
+# node's logs were unreadable during the incident that needed them most, and the
+# empty output read as "the node is silent" when it was in fact logging fine.
+# Docker's default is unbounded; this caps every service at 300MB total.
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+
 services:
   # Jaeger all-in-one — OTLP/gRPC collector + UI + in-memory storage in
   # a single distroless image (~120 MB). Phase 4 audit M-6 (Sprint 6).
@@ -47,6 +60,7 @@ services:
   # for current "debug a specific incident" use; if we need long-term
   # trace retention later, swap to badger-backed (~/.local/state/...).
   jaeger:
+    logging: *default-logging
     image: jaegertracing/all-in-one:1.76.0
     restart: always
     mem_limit: 512m
@@ -74,6 +88,7 @@ services:
   #
   # Cloned from infra/hyperevm-mainnet (Phase 4 audit M-2, 2026-05-19).
   rpc-proxy:
+    logging: *default-logging
     image: ${ERPC_IMAGE:?ERPC_IMAGE must be pinned as ghcr.io/erpc/erpc:<version>@sha256:<digest>}
     restart: always
     mem_limit: 512m
@@ -93,6 +108,7 @@ services:
   # depend_on this so they don't try to talk to eRPC before it's serving
   # (which would log connection-refused errors and trigger retry storms).
   rpc-proxy-health:
+    logging: *default-logging
     image: busybox:stable-musl
     restart: always
     depends_on:
@@ -106,6 +122,7 @@ services:
       start_period: 10s
 
   db:
+    logging: *default-logging
     image: postgres:16
     restart: always
     mem_limit: 2g
@@ -124,6 +141,7 @@ services:
       retries: 5
 
   migrations:
+    logging: *default-logging
     image: backend-migrations:latest
     build:
       context: ../../apps/backend
@@ -136,6 +154,7 @@ services:
       FLYWAY_URL: jdbc:postgresql://db/${POSTGRES_DB}?user=${POSTGRES_USER}&password=${POSTGRES_PASSWORD}
 
   orderbook:
+    logging: *default-logging
     image: local-orderbook:latest
     build:
       context: ../../apps/backend
@@ -194,6 +213,7 @@ services:
       start_period: 60s
 
   autopilot:
+    logging: *default-logging
     image: local-autopilot:latest
     build:
       context: ../../apps/backend
@@ -235,6 +255,7 @@ services:
     # Prometheus /metrics endpoint that the binary always exposes.
 
   driver:
+    logging: *default-logging
     image: local-driver:latest
     build:
       context: ../../apps/backend
@@ -312,6 +333,7 @@ services:
       start_period: 60s
 
   baseline:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -340,6 +362,7 @@ services:
   # MUST run ./render-configs.sh before `docker compose up` so rendered/okx.toml
   # exists with secrets substituted.
   okx-solver:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -366,6 +389,7 @@ services:
   # Free public API, no key required; configs/kyberswap.toml is checked-in
   # as-is (no template rendering needed).
   kyberswap-solver:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -394,6 +418,7 @@ services:
   # dex::velora::VELORA_ROUTER_ALLOWLIST). Free public tier; partner-id
   # "ophis" routes our volume against any future Pro API key.
   velora-solver:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -417,6 +442,7 @@ services:
       start_period: 30s
 
   enso-solver:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -440,6 +466,7 @@ services:
       start_period: 30s
 
   lifi-solver:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -463,6 +490,7 @@ services:
       start_period: 30s
 
   openocean-solver:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -486,6 +514,7 @@ services:
       start_period: 30s
 
   dodo-solver:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -509,6 +538,7 @@ services:
       start_period: 30s
 
   curve-solver:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -534,6 +564,7 @@ services:
       start_period: 30s
 
   woofi-solver:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -559,6 +590,7 @@ services:
       start_period: 30s
 
   uniswap-v4-solver:
+    logging: *default-logging
     image: local-baseline:latest
     build:
       context: ../../apps/backend
@@ -595,6 +627,7 @@ services:
   # docker compose up` (handled by compose-up.sh wrapper) to enable
   # the alerts stack.
   prometheus:
+    logging: *default-logging
     profiles: ["observability"]
     image: prom/prometheus:v3.0.1
     restart: always
@@ -635,6 +668,7 @@ services:
   # render-configs.sh. Host port 9094 (HL stack uses 9093). Profile-
   # gated like prometheus (sharp-edges HIGH-2).
   alertmanager:
+    logging: *default-logging
     profiles: ["observability"]
     image: prom/alertmanager:v0.27.0
     restart: always
@@ -666,6 +700,7 @@ services:
   # share at /Users/scep is ignored. No shell in the scratch image, so liveness
   # is the prometheus up{job="node-exporter"} metric (see OphisOpNodeExporterDown).
   node-exporter:
+    logging: *default-logging
     profiles: ["observability"]
     image: prom/node-exporter:v1.8.2
     restart: always
@@ -692,6 +727,7 @@ services:
   # from a dedicated low-value EOA (keychain ophis-refunder-pk), NOT the
   # settlement submitter, to avoid nonce contention. See docs runbook.
   refunder:
+    logging: *default-logging
     image: local-refunder:latest
     build:
       context: ../../apps/backend
