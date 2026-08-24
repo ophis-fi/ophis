@@ -50,15 +50,21 @@
 # **Threat model — 2-of-3 over 3 distinct failure domains, with the hard
 # invariant that AT MOST ONE upstream is Cloudflare-fronted (now publicnode):**
 #
-#  - Cloudflare compromise → only publicnode is hijacked. ZAN and Validation
-#    Cloud return the real answer → dispute → returnError →
+#  - Cloudflare compromise → only publicnode is hijacked. ZAN and official-op
+#    return the real answer → dispute → returnError →
 #    driver does NOT settle against forged state.
-#  - ZAN OR Validation Cloud is compromised → the other two form quorum on the real
+#  - ZAN OR official-op is compromised → the other two form quorum on the real
 #    answer → safe. NO 2-upstream subset shares one CDN/DNS, so a single-provider
 #    compromise can never satisfy quorum alone. (This property survived the
-#    2026-07-30 keyed withdrawal, the 2026-08-09 tenderly retirement AND the
-#    2026-08-15 owned-node retirement: zan.top and istio-fronted Validation Cloud
-#    each introduce a distinct non-CF failure domain.)
+#    2026-07-30 keyed withdrawal, the 2026-08-09 tenderly retirement, the
+#    2026-08-15 owned-node retirement AND the 2026-08-23 validationcloud
+#    retirement: zan.top (no CDN) and GCP-fronted mainnet.optimism.io each
+#    introduce a distinct non-CF failure domain.)
+#    ⚠️ official-op is operated by OP Labs, i.e. the CHAIN OPERATOR itself. That
+#    is a genuinely independent domain from Allnodes and Ant Digital and keeps
+#    the ≤1-CF invariant, but note it is not independent of the sequencer: an OP
+#    Labs compromise that forged chain state would be forging its own chain.
+#    The property this quorum defends is CDN/DNS interception, not that.
 #  - ⚠️ THE PRECONDITION for the line above: that claim holds ONLY where all three
 #    lanes can actually ANSWER the method. It is not automatic — it is a property
 #    to re-check whenever a lane changes. Review finding 2026-07-30 (P1): while zan
@@ -75,8 +81,12 @@
 #    single-compromise protection is GONE for that method — either add a capable
 #    lane or force that method to disputeBehavior:returnError.
 #    Still true today for eth_getTransactionReceipt (publicnode is archive-gated,
-#    so only ZAN + Validation Cloud serve it) — which is why the receipt rule below is
+#    so only ZAN + official-op serve it) — which is why the receipt rule below is
 #    already disputeBehavior:returnError, i.e. fail-closed rather than tie-broken.
+#    ⚠️ And, since 2026-08-23, ALSO TRUE for eth_getLogs BEYOND ~128 BLOCKS: the
+#    same archive gate applies, so deep getLogs is likewise a 2-lane method — but
+#    it matches a preferBlockHeadLeader rule rather than returnError. That
+#    mismatch is the open item written up beside the coverage table below.
 #  - Two independent failure domains compromised at once: nation-state class,
 #    out of scope.
 #  - All three returning the same answer IS the canonical chain state
