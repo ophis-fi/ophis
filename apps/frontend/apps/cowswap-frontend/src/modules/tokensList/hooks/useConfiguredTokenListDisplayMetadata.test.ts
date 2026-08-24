@@ -1,5 +1,6 @@
 import { getTokenId, SupportedChainId } from '@cowprotocol/cow-sdk'
 import {
+  COINBASE_TOKENIZED_STOCKS_LIST_SOURCE,
   DEFAULT_TOKENS_LISTS,
   ListState,
   ONDO_TOKENS_LIST_SOURCE,
@@ -43,10 +44,18 @@ const USER_TOKEN = {
   name: 'User token xStock',
   tags: ['xStocks'],
 }
+const BASE_STOCK_TOKEN = {
+  chainId: SupportedChainId.BASE,
+  address: '0xb200000000000000000000C2e324d24d7eEcd1fb',
+  decimals: 8,
+  symbol: 'AAPLc',
+  name: 'Apple Inc.',
+  tags: ['coinbase'],
+}
 
 function createList(
   source: string,
-  token: typeof MAINNET_TOKEN | typeof ARBITRUM_TOKEN | typeof USER_TOKEN,
+  token: typeof MAINNET_TOKEN | typeof ARBITRUM_TOKEN | typeof USER_TOKEN | typeof BASE_STOCK_TOKEN,
 ): ListState {
   return {
     source,
@@ -58,6 +67,7 @@ function createList(
       tags: {
         ondo: { name: 'Tokenized by Ondo', description: 'Issued by Ondo' },
         xStocks: { name: 'xStock', description: 'Issued by xStocks' },
+        coinbase: { name: 'Coinbase tokenized stock', description: 'B20 token on Base issued by Coinbase' },
       },
     },
   }
@@ -93,6 +103,25 @@ describe('configured token-list display metadata', () => {
     expect(result.tokenizedAssetProviderByTokenId.get(getTokenId(ARBITRUM_TOKEN))).toBe('xStocks')
     expect(result.tokenListTags.xStocks?.name).toBe('xStock')
     expect(result.listedTokenIds.has(getTokenId(MAINNET_TOKEN))).toBe(false)
+  })
+
+  it('trusts the Coinbase provider tag only through the configured Base stock list', () => {
+    const configured = getConfiguredTokenListDisplayMetadataForChain(
+      [createList(COINBASE_TOKENIZED_STOCKS_LIST_SOURCE, BASE_STOCK_TOKEN)],
+      SupportedChainId.BASE,
+    )
+    const stockTokenId = getTokenId(BASE_STOCK_TOKEN)
+
+    expect(configured.listedTokenIds.has(stockTokenId)).toBe(true)
+    expect(configured.tokenizedAssetProviderByTokenId.get(stockTokenId)).toBe('coinbase')
+    expect(configured.tokenListTags.coinbase?.name).toBe('Coinbase tokenized stock')
+
+    const spoofed = getConfiguredTokenListDisplayMetadata(
+      [createList(SPOOFED_PROVIDER_SOURCE, BASE_STOCK_TOKEN)],
+      new Set([SPOOFED_PROVIDER_SOURCE]),
+    )
+    expect(spoofed.tokenizedAssetProviderByTokenId.has(stockTokenId)).toBe(false)
+    expect(spoofed.tokenListTags.coinbase).toBeUndefined()
   })
 
   it('accepts provider identity only from the matching official provider source', () => {

@@ -40,6 +40,7 @@ export { useResetUserTokens } from './hooks/tokens/userAdded/useResetUserTokens'
 export { useRemoveList } from './hooks/lists/useRemoveList'
 export { useToggleList } from './hooks/lists/useToggleList'
 export { useIsXstockToken } from './hooks/lists/useIsXstockToken'
+export { useIsCoinbaseStockToken } from './hooks/lists/useIsCoinbaseStockToken'
 export { useListsEnabledState } from './hooks/lists/useListsEnabledState'
 export { useAddUnsupportedToken } from './hooks/tokens/unsupported/useAddUnsupportedToken'
 export { useRemoveUnsupportedToken } from './hooks/tokens/unsupported/useRemoveUnsupportedToken'
@@ -86,6 +87,7 @@ export { getChainCurrencySymbols } from './utils/getChainCurrencySymbols'
 
 // Services
 export { fetchTokenList } from './services/fetchTokenList'
+export { validateTokenList } from './utils/validateTokenList'
 export {
   assertTradeTokenPolicy,
   getCurrencyTokenPolicyDecision,
@@ -97,7 +99,11 @@ export type { TokenPolicyAsset, TokenPolicyDecision, TokenPolicyReason } from '.
 
 // Consts
 export { DEFAULT_TOKENS_LISTS } from './const/tokensLists'
-export { ONDO_TOKENS_LIST_SOURCE, XSTOCKS_TOKENS_LIST_SOURCE } from './const/tokensLists'
+export {
+  COINBASE_TOKENIZED_STOCKS_LIST_SOURCE,
+  ONDO_TOKENS_LIST_SOURCE,
+  XSTOCKS_TOKENS_LIST_SOURCE,
+} from './const/tokensLists'
 export { RWA_CONSENT_HASH } from './updaters/RestrictedTokensListUpdater'
 export { useIsAnyOfTokensRWA } from './hooks/lists/useIsAnyOfTokensRWA'
 export { useFilterBlockedLists } from './hooks/lists/useFilterBlockedLists'
