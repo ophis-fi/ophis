@@ -66,7 +66,21 @@ DRY_RUN="${WATCHDOG_DRY_RUN:-0}"
 FLOCK_BIN="${WATCHDOG_FLOCK_BIN:-flock}"
 
 # Stateless services safe to bounce. Chain nodes and databases are NOT here.
-ALLOW="${WATCHDOG_ALLOW:-driver|autopilot|orderbook|rpc-proxy|solver}"
+#
+# ⚠️ `autopilot` is DELIBERATELY ABSENT (Codex review, 2026-08-24). This watchdog
+# can only ever act on containers whose docker status says `(unhealthy)`, and
+# the autopilot service declares NO healthcheck in optimism-mainnet,
+# robinhood-mainnet or unichain-mainnet -- verified in all three compose files.
+# A stalled autopilot stays plain `Up`, so `restart: always` does nothing and so
+# would this. Listing it would advertise cover for a core auction/settlement
+# component that does not exist, which is worse than the gap itself.
+# TO ACTUALLY COVER IT: give the autopilot a healthcheck in those stacks, then
+# add it here. Until then the gap is stated rather than papered over.
+#
+# `rpc-proxy` likewise has no healthcheck, but its `rpc-proxy-health` SIDECAR
+# does, and restart_target() maps the sidecar onto it -- so the proxy IS covered.
+# `driver`, `orderbook` and the solvers all declare their own healthchecks.
+ALLOW="${WATCHDOG_ALLOW:-driver|orderbook|rpc-proxy|solver}"
 # Explicit veto that wins over ALLOW, so a broad ALLOW pattern can never reach a
 # stateful service by accident. Under the DEFAULT allowlist this is redundant --
 # neither the databases nor the chain nodes match it anyway. DENY earns its keep
@@ -172,6 +186,12 @@ get_field() { # container, field-index(2|3)
 # Returns nonzero if the state could not be persisted. Callers that are about to
 # take an irreversible action MUST check this (FAIL-CLOSED).
 set_state() { # container, first_unhealthy, last_restart, container_id
+  # Test seam. chmod-based simulation is useless under root (root bypasses the
+  # discretionary permission bits), which made the fail-closed tests pass for
+  # the wrong reason on an unprivileged host and FAIL outright in a root
+  # container. Injecting the failure makes those cases deterministic under any
+  # uid (Codex review, 2026-08-24).
+  [ "${WATCHDOG_SIMULATE_STATE_FAIL:-0}" = "1" ] && return 1
   local tmp; tmp="$(mktemp)" || return 1
   # ⚠️ The awk status is CHECKED, not discarded (Codex review, 2026-08-24).
   # It previously ended in `|| true`: if the state file became unreadable while
@@ -287,15 +307,30 @@ while IFS=$'\t' read -r cid name status; do
   # scratch -- otherwise a freshly started replacement inherits its
   # predecessor's accumulated time and gets restarted while it is still warming
   # up, which is precisely the flap the threshold exists to prevent.
+  # FAIL-CLOSED, both branches. A failure to ARM the timer used to log WARN and
+  # continue, and the pass still ended "watchdog pass complete" with exit 0. But
+  # `first` stays 0 forever, so on EVERY later pass this same branch is retaken:
+  # the threshold is never reached, the container is never restarted, and nobody
+  # is told. A watchdog that can never act is the failure mode this whole script
+  # exists to remove, so it must be as loud as an unrecordable cooldown
+  # (Codex review, 2026-08-24).
   if [ "$first" != "0" ] && [ "$known_id" != "$track_id" ]; then
     log "container replaced: $name (restart target id ${known_id:-none} -> ${track_id}); restarting the ${THRESHOLD_S}s timer"
-    set_state "$name" "$NOW" "$last_restart" "$track_id" || log "WARN: could not record replacement for $name"
+    if ! set_state "$name" "$NOW" "$last_restart" "$track_id"; then
+      log "FATAL: cannot arm the timer for $name — it can never reach the restart threshold"
+      notify "Watchdog on $(hostname) cannot write its state, so ${name} can never reach its restart threshold. It is unhealthy and unprotected. Check ${STATE_DIR}."
+      STATE_DEGRADED=1
+    fi
     continue
   fi
 
   if [ "$first" = "0" ]; then
     log "now unhealthy: $name (starting ${THRESHOLD_S}s timer)"
-    set_state "$name" "$NOW" "$last_restart" "$track_id" || log "WARN: could not record unhealthy start for $name"
+    if ! set_state "$name" "$NOW" "$last_restart" "$track_id"; then
+      log "FATAL: cannot arm the timer for $name — it can never reach the restart threshold"
+      notify "Watchdog on $(hostname) cannot write its state, so ${name} can never reach its restart threshold. It is unhealthy and unprotected. Check ${STATE_DIR}."
+      STATE_DEGRADED=1
+    fi
     continue
   fi
 

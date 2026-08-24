@@ -260,6 +260,8 @@ jobs:
           check "unreadable-state guard removed"  's|  if ! awk -v c="$1" .\$1!=c. "$STATE_FILE" > "$tmp" 2>/dev/null; then|  if awk -v c="$1" "\$1!=c" "$STATE_FILE" > "$tmp" 2>/dev/null; false; then|'
           check "local-chain deny removed"        's/|-chain-|/|/'
           check "sidecar target-id tracking removed" 's|    track_id="$(id_of "$target")"|    track_id="$cid"|'
+          check "timer-arm failure silenced"      's|      log "FATAL: cannot arm the timer for $name|      : # mutated|'
+          check "autopilot re-added to allowlist" 's|ALLOW="${WATCHDOG_ALLOW:-driver\|orderbook\|rpc-proxy\|solver}"|ALLOW="${WATCHDOG_ALLOW:-driver\|autopilot\|orderbook\|rpc-proxy\|solver}"|'
           # NOTE: the STATE_DEGRADED restart block is deliberately NOT mutated here.
           # It is defence-in-depth that overlaps the cooldown fail-closed guard:
           # every scenario that sets STATE_DEGRADED (a failed state write) also

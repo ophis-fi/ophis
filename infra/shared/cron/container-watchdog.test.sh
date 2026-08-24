@@ -43,16 +43,27 @@ esac
 FAKE
 chmod +x "$WORK/docker"
 
+# ⚠️ WATCHDOG_ALLOW is forwarded ONLY when the caller set it. An earlier version
+# always passed a hardcoded default, which meant the script's OWN default
+# allowlist was never exercised -- so changing it (e.g. re-adding `autopilot`)
+# could not fail any test. Mutation testing caught that: the "autopilot re-added
+# to allowlist" mutation survived because the harness was overriding the very
+# value under test.
 run(){ # run <now> ; table + state dir already prepared by caller
-  WATCHDOG_DOCKER_BIN="$WORK/docker" \
-  WATCHDOG_STATE_DIR="$WORK/state" \
-  WATCHDOG_NOW_S="$1" \
-  WATCHDOG_NOTIFY=0 \
-  WATCHDOG_ALLOW="${WATCHDOG_ALLOW:-driver|autopilot|orderbook|rpc-proxy|solver}" \
-  FAKE_TABLE="$WORK/table" \
-  FAKE_RESTARTS="$WORK/restarts" \
-  FAKE_RESTART_RC="${FAKE_RESTART_RC:-0}" \
-  bash "$SRC" 2>&1
+  local extra=()
+  [ -n "${WATCHDOG_ALLOW:-}" ] && extra+=("WATCHDOG_ALLOW=$WATCHDOG_ALLOW")
+  [ -n "${WATCHDOG_DENY:-}" ] && extra+=("WATCHDOG_DENY=$WATCHDOG_DENY")
+  env \
+    WATCHDOG_DOCKER_BIN="$WORK/docker" \
+    WATCHDOG_STATE_DIR="$WORK/state" \
+    WATCHDOG_NOW_S="$1" \
+    WATCHDOG_NOTIFY=0 \
+    WATCHDOG_SIMULATE_STATE_FAIL="${WATCHDOG_SIMULATE_STATE_FAIL:-0}" \
+    FAKE_TABLE="$WORK/table" \
+    FAKE_RESTARTS="$WORK/restarts" \
+    FAKE_RESTART_RC="${FAKE_RESTART_RC:-0}" \
+    ${extra[@]+"${extra[@]}"} \
+    bash "$SRC" 2>&1
 }
 reset(){ rm -rf "$WORK/state" "$WORK/restarts"; mkdir -p "$WORK/state"; : > "$WORK/restarts"; }
 restarts(){ tr -d ' \n' < "$WORK/restarts"; }
@@ -186,12 +197,15 @@ ck "docker ps failure does NOT claim a clean pass"      "$(completed "$out")" "0
 # ── Codex review 2026-08-24: unrecordable cooldown must block the restart ──
 # If the cooldown cannot be persisted, a restart would repeat every cron tick
 # forever. Refusing to restart is the safe failure: the next pass retries.
+# ⚠️ The failure is INJECTED, not simulated with chmod. Root bypasses the
+# discretionary permission bits, so chmod 500 leaves the directory writable for
+# root: on an unprivileged host these cases passed for the wrong reason, and in
+# a root container they failed outright. Injection is deterministic under any
+# uid (Codex review, 2026-08-24).
 reset
 printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
 run 1000 >/dev/null
-chmod 500 "$WORK/state"                     # state dir now unwritable
-out="$(run 1700)"
-chmod 700 "$WORK/state"
+out="$(WATCHDOG_SIMULATE_STATE_FAIL=1 run 1700)"
 ck "unwritable state REFUSES to restart"                "$(restarts)" ""
 ck "  and says so loudly"                               "$(grep -c 'FATAL: cannot persist cooldown' <<<"$out")" "1"
 
@@ -252,9 +266,7 @@ reset
 printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\nrobinhood-mainnet-orderbook-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
 run 1000 >/dev/null
 printf 'robinhood-mainnet-driver-1\tUp 1 hour (healthy)\nrobinhood-mainnet-orderbook-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
-chmod 500 "$WORK/state"
-out="$(run 1700)"
-chmod 700 "$WORK/state"
+out="$(WATCHDOG_SIMULATE_STATE_FAIL=1 run 1700)"
 ck "unclearable recovery blocks restarts this pass" "$(restarts)" ""
 ck "  and says the timers are untrustworthy"        "$(grep -c 'refusing further restarts this pass' <<<"$out")" "1"
 
@@ -267,9 +279,13 @@ reset
 printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\nrobinhood-mainnet-orderbook-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
 run 1000 >/dev/null                                   # both timers recorded
 before=$(wc -l < "$WORK/state/unhealthy-state" | tr -d ' ')
-chmod 000 "$WORK/state/unhealthy-state"               # readable dir, unreadable file
+# A DIRECTORY where the state file belongs makes awk's read fail for root too,
+# unlike chmod 000. That is what exercises the read guard specifically.
+mv "$WORK/state/unhealthy-state" "$WORK/state/real-state"
+mkdir -p "$WORK/state/unhealthy-state"
 out="$(run 1700)"
-chmod 644 "$WORK/state/unhealthy-state"
+rm -rf "$WORK/state/unhealthy-state"   # set_state's mktemp may have landed inside it
+mv "$WORK/state/real-state" "$WORK/state/unhealthy-state"
 after=$(wc -l < "$WORK/state/unhealthy-state" | tr -d ' ')
 ck "unreadable state file is NOT silently rewritten"  "$after" "$before"
 ck "  and no restart happens on unreadable state"     "$(restarts)" ""
@@ -298,6 +314,31 @@ ck "proxy replaced under a stable sidecar: timer re-arms" "$(restarts)" ""
 ck "  and the replacement is noticed"                    "$(grep -c 'container replaced' <<<"$out")" "1"
 out="$(run 2450)"
 ck "  restarts only after the NEW proxy serves the threshold" "$(restarts)" "optimism-mainnet-rpc-proxy-1"
+
+# ── Codex round 4: failing to ARM the timer must be as loud as a failed cooldown ──
+# Previously a WARN, and the pass still ended "watchdog pass complete" exit 0.
+# But `first` stays 0, so every later pass retakes the same branch: the container
+# never reaches the threshold, is never restarted, and nobody is told. A watchdog
+# that can never act is precisely the failure this script exists to remove.
+reset
+printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+out="$(WATCHDOG_SIMULATE_STATE_FAIL=1 run 1000)"
+ck "un-armable timer is FATAL, not a WARN"        "$(grep -c 'FATAL: cannot arm the timer' <<<"$out")" "1"
+ck "  and no restart is attempted"                "$(restarts)" ""
+# ...and it must still be un-armed on the next pass, i.e. it never silently
+# accumulates credit it did not earn.
+out="$(WATCHDOG_SIMULATE_STATE_FAIL=1 run 9000)"
+ck "  still refuses hours later (never armed)"    "$(restarts)" ""
+
+# ── Codex round 4: autopilot must NOT be allowlisted ──
+# It declares no healthcheck in optimism-mainnet, robinhood-mainnet or
+# unichain-mainnet, so it can never report "(unhealthy)" and this watchdog can
+# never help it. Listing it would advertise cover that does not exist. If a
+# healthcheck is added to those stacks, add it here and delete this case.
+reset
+printf 'robinhood-mainnet-autopilot-1\tUp 2 days (unhealthy)\nrobinhood-mainnet-driver-1\tUp 2 days (unhealthy)\n' > "$WORK/table"
+run 1000 >/dev/null; out="$(run 1700)"
+ck "autopilot NOT restarted (no healthcheck exists)" "$(restarts)" "robinhood-mainnet-driver-1"
 
 echo
 echo "  $pass passed, $fail failed"
