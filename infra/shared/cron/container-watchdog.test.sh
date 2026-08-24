@@ -138,6 +138,59 @@ run 1000 >/dev/null; out="$(run 1700)"
 got="$(sort "$WORK/restarts" | tr -d ' \n')"
 ck "both allowlisted restarted, db untouched" "$got" "robinhood-mainnet-driver-1robinhood-mainnet-orderbook-1"
 
+
+# ── Codex review 2026-08-24: the health-sidecar indirection ──
+# In every stack `rpc-proxy` declares NO healthcheck; only `rpc-proxy-health`
+# does. So an eRPC outage surfaces as the SIDECAR going unhealthy. Restarting
+# the sidecar bounces a BusyBox probe loop and leaves the broken proxy running,
+# while burning the cooldown against the wrong name. The restart must land on
+# the proxy.
+reset
+printf 'optimism-mainnet-rpc-proxy-health-1\tUp 13 days (unhealthy)\n' > "$WORK/table"
+run 1000 >/dev/null; out="$(run 1700)"
+ck "health sidecar restarts the PROXY, not the sidecar" "$(restarts)" "optimism-mainnet-rpc-proxy-1"
+ck "  (run completed)"                                  "$(completed "$out")" "1"
+
+# The sidecar mapping must not become a way around DENY: a hypothetical
+# `<db>-health` sidecar maps to a database, and the database must still win.
+reset
+printf 'robinhood-mainnet-db-health-1\tUp 3 days (unhealthy)\n' > "$WORK/table"
+WATCHDOG_ALLOW='.*' run 1000 >/dev/null
+out="$(WATCHDOG_ALLOW='.*' run 99000)"
+ck "sidecar cannot smuggle a db past DENY"              "$(restarts)" ""
+
+# ── Codex review 2026-08-24: inventory failure must be LOUD ──
+# Previously `done < <(docker ps ...)` discarded the exit status, so a dead
+# daemon / missing permission / docker-not-on-PATH produced zero rows and a
+# cheerful "0 restart(s)" exit 0. The watchdog would be inert and look healthy.
+reset
+printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+cat > "$WORK/docker-broken" <<'FAKE'
+#!/usr/bin/env bash
+echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock." >&2
+exit 1
+FAKE
+chmod +x "$WORK/docker-broken"
+out="$(WATCHDOG_DOCKER_BIN="$WORK/docker-broken" WATCHDOG_STATE_DIR="$WORK/state" \
+       WATCHDOG_NOW_S=1000 WATCHDOG_NOTIFY=0 FAKE_TABLE="$WORK/table" \
+       FAKE_RESTARTS="$WORK/restarts" bash "$SRC" 2>&1)"
+rc=$?
+ck "docker ps failure exits NONZERO"                    "$rc" "1"
+ck "docker ps failure is logged FATAL"                  "$(grep -c 'FATAL: cannot enumerate containers' <<<"$out")" "1"
+ck "docker ps failure does NOT claim a clean pass"      "$(completed "$out")" "0"
+
+# ── Codex review 2026-08-24: unrecordable cooldown must block the restart ──
+# If the cooldown cannot be persisted, a restart would repeat every cron tick
+# forever. Refusing to restart is the safe failure: the next pass retries.
+reset
+printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+run 1000 >/dev/null
+chmod 500 "$WORK/state"                     # state dir now unwritable
+out="$(run 1700)"
+chmod 700 "$WORK/state"
+ck "unwritable state REFUSES to restart"                "$(restarts)" ""
+ck "  and says so loudly"                               "$(grep -c 'FATAL: cannot persist cooldown' <<<"$out")" "1"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ] || exit 1

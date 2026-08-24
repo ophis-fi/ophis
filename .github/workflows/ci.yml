@@ -247,11 +247,14 @@ jobs:
             fi
             cp /tmp/wd.orig infra/shared/cron/container-watchdog.sh
           }
-          check "allowlist/deny removed"  's|if ! \[\[ "$name" =~ $ALLOW \]\] \|\| \[\[ "$name" =~ $DENY \]\]; then|if false; then|'
-          check "DENY veto removed"       's|if ! \[\[ "$name" =~ $ALLOW \]\] \|\| \[\[ "$name" =~ $DENY \]\]; then|if ! [[ "$name" =~ $ALLOW ]]; then|'
+          check "allowlist/deny removed"  's|if ! \[\[ "$target" =~ $ALLOW \]\] \|\| \[\[ "$target" =~ $DENY \]\]; then|if false; then|'
+          check "DENY veto removed"       's|if ! \[\[ "$target" =~ $ALLOW \]\] \|\| \[\[ "$target" =~ $DENY \]\]; then|if ! [[ "$target" =~ $ALLOW ]]; then|'
           check "sustained threshold removed" 's|if \[ "$unhealthy_for" -lt "$THRESHOLD_S" \]; then|if false; then|'
           check "restart cooldown removed"    's|if \[ "$last_restart" != "0" \] \&\& \[ "$since_restart" -lt "$COOLDOWN_S" \]; then|if false; then|'
           check "recovery timer reset removed" 's|      clear_unhealthy "$name"|      : # mutated|'
+          check "health-sidecar mapping removed"  's|    \*-health-\[0-9\]\*) echo "${1%-health-\*}-${1##\*-health-}" ;;|    *-health-[0-9]*) echo "$1" ;;|'
+          check "inventory failure check removed" 's|if \[ "$INV_RC" -ne 0 \]; then|if false; then|'
+          check "cooldown fail-closed removed"    's|if ! set_state "$name" 0 "$NOW"; then|if false; then|'
           bash infra/shared/cron/container-watchdog.test.sh >/dev/null 2>&1 || { echo "restore failed"; exit 1; }
           [ "$fails" -eq 0 ] || { echo "$fails mutation(s) survived"; exit 1; }
           echo "all mutations caught"

@@ -175,18 +175,71 @@ enters the trust boundary.
 mid-write, or nitro (which then re-syncs for a long time), converts a
 degradation into a worse outage.
 
+### Health sidecars
+
+`rpc-proxy` declares **no healthcheck** in any stack; only its `rpc-proxy-health`
+sidecar does. An eRPC outage therefore surfaces as the *sidecar* going unhealthy.
+Restarting the sidecar would bounce a BusyBox probe loop and leave the broken
+proxy running, so `<name>-health-N` is mapped to `<name>-N` and the restart lands
+on the proxy. The allow/deny decision is made on the **mapped target**, so a
+sidecar cannot smuggle a denied container past the veto.
+
+### Fail-closed behaviours
+
+| Situation | Behaviour |
+|---|---|
+| `docker ps` fails (daemon down, no permission, not on PATH) | Logs FATAL, notifies, **exits nonzero**. Never reports a clean pass while blind |
+| Cooldown state cannot be written | **Refuses to restart** and notifies. A restart that cannot be recorded becomes a restart loop on every cron tick |
+| Another pass is already running | Exits without acting (flock). macOS has no `flock(1)`; there it warns that the pass is unserialised |
+
 ## Install — Cadia / any Linux host
 
 ```bash
 sudo install -m 0755 container-watchdog.sh /usr/local/bin/container-watchdog.sh
-( crontab -l 2>/dev/null; echo "*/2 * * * * /usr/local/bin/container-watchdog.sh >> ~/.local/state/ophis/watchdog/watchdog.log 2>&1" ) | crontab -
+
+# The log directory MUST exist first. cron's shell opens the redirect BEFORE
+# running the script, so without this the redirect fails, the script never
+# executes, and it is the script that would have created the directory --
+# leaving the watchdog permanently inactive with no obvious symptom.
+mkdir -p ~/.local/state/ophis/watchdog
+
+# Telegram credential. `security` is macOS-only, so on Linux point the watchdog
+# at the token file the deploy already uses (see DEPLOY-RUNBOOK.md). Without
+# this the watchdog still works but restarts happen SILENTLY.
+( crontab -l 2>/dev/null; \
+  echo "*/2 * * * * WATCHDOG_TG_TOKEN_FILE=/srv/ophis/secrets/telegram-token /usr/local/bin/container-watchdog.sh >> ~/.local/state/ophis/watchdog/watchdog.log 2>&1" \
+) | crontab -
+```
+
+Confirm it is actually running after installation -- a watchdog nobody verified
+is the same as no watchdog:
+
+```bash
+sleep 150 && tail -3 ~/.local/state/ophis/watchdog/watchdog.log
+# expect a "watchdog pass complete" line with a recent timestamp
 ```
 
 ## Install — Mac mini (launchd)
 
 Use a `StartInterval` of 120 in a plist alongside the others in this directory.
-`docker` must be on the plist's `PATH` (launchd does not inherit a login shell),
-and note that **launchd sets no `$HOME`** — set `WATCHDOG_STATE_DIR` explicitly.
+Two environment traps, both of which have bitten this repo before:
+
+1. **launchd sets no `$HOME`.** Set `WATCHDOG_STATE_DIR` explicitly, or the state
+   file lands somewhere unintended.
+2. **`docker` needs both PATH and its context.** launchd does not inherit a login
+   shell, and on the Colima setup the active docker context lives under
+   `$HOME/.docker`. With the wrong (or absent) `$HOME`, `docker ps` cannot reach
+   the daemon at all. Verified while writing this: running with a scratch `$HOME`
+   produces
+
+   ```
+   FATAL: cannot enumerate containers (docker ps exited 1): failed to connect
+   to the docker API at unix:///var/run/docker.sock
+   ```
+
+   which is the fail-closed path doing its job — nonzero exit plus a Telegram,
+   rather than a silent "0 restart(s)". Set `HOME` and `PATH` in the plist and
+   confirm the log shows `watchdog pass complete` before trusting it.
 
 ## Verify before trusting it
 
@@ -209,3 +262,6 @@ evidence on its own — the mutations are what make it evidence.
 | `WATCHDOG_ALLOW` / `WATCHDOG_DENY` | see above | Name regexes |
 | `WATCHDOG_DRY_RUN` | 0 | `1` logs decisions without acting |
 | `WATCHDOG_NOTIFY` | 1 | `0` disables Telegram (the test suite sets this) |
+| `WATCHDOG_TG_TOKEN` | - | Bot token, highest precedence |
+| `WATCHDOG_TG_TOKEN_FILE` | - | Path to a token file. **Required on Linux** -- `security` is macOS-only |
+| `WATCHDOG_SKIP_LOCK` | 0 | `1` skips flock serialisation (tests only) |
