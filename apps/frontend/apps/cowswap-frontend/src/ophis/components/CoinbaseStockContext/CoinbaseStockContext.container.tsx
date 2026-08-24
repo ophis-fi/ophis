@@ -69,7 +69,10 @@ function CoinbaseStockContextContent({ sellToken, buyToken, sellBalance, listedS
     [assets, sellAddress, buyAddress],
   )
 
-  if (isError && assets.length === 0) {
+  // Any query error, including a failed background refetch that leaves cached `assets` in
+  // place, means the multiplier / pause values on screen can no longer be called current.
+  // Say so instead of presenting retained data as verified (Codex P2 on PR #1237).
+  if (isError) {
     return (
       <styledEl.Panel $attention>
         {COINBASE_MARK}
