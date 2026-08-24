@@ -100,6 +100,16 @@ jobs:
         working-directory: apps/frontend
         run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/(ophis/otc|pages/Otc)' --passWithNoTests=false
 
+      # The partner-fee guard (src/ophis/partnerFee*) proves the sdk-trading patch is
+      # actually applied to the install this build uses. Unpatched, `mergeAppDataDoc`
+      # CONCATENATES our CIP-75 fee pair every time a trade flow hands the SDK the same
+      # appData doc back as an override, and the protocol charges every duplicate.
+      # Nothing else would run these: the frontend jest suite is not a repo-root gate,
+      # and a dropped patch is otherwise silent until it shows up in settlement fees.
+      - name: partner-fee appData guard tests (jest, scoped)
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/ophis/partnerFee' --passWithNoTests=false
+
       - name: token policy tests (jest, scoped)
         working-directory: apps/frontend
         run: pnpm exec nx run tokens:test --testPathPatterns tokenPolicy --passWithNoTests=false

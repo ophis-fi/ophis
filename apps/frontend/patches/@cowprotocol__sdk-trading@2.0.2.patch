@@ -1,5 +1,5 @@
 diff --git a/dist/index.js b/dist/index.js
-index 6a95e9f..b3d676c 100644
+index 6a95e9f..d215857 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -64,7 +64,7 @@ var import_sdk_order_book = require("@cowprotocol/sdk-order-book");
@@ -11,8 +11,22 @@ index 6a95e9f..b3d676c 100644
  var SIGN_SCHEME_MAP = {
    [import_sdk_order_book.EcdsaSigningScheme.EIP712]: import_sdk_order_book.SigningScheme.EIP712,
    [import_sdk_order_book.EcdsaSigningScheme.ETHSIGN]: import_sdk_order_book.SigningScheme.ETHSIGN
+@@ -623,7 +623,12 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
+     metadata: {
+       ..._doc.metadata,
+       ...appDataOverride.metadata?.hooks ? { hooks: {} } : {},
+-      ...appDataOverride.metadata?.userConsents ? { userConsents: [] } : {}
++      ...appDataOverride.metadata?.userConsents ? { userConsents: [] } : {},
++      // Ophis: deepmerge CONCATENATES arrays, so merging an override that carries the
++      // same `partnerFee` the target already has DUPLICATES every fee policy (and the
++      // protocol charges each duplicate). Reset it here exactly like hooks/userConsents
++      // above, so an override that supplies partnerFee REPLACES it instead of appending.
++      ...appDataOverride.metadata?.partnerFee ? { partnerFee: [] } : {}
+     }
+   };
+   const appData = appDataOverride ? (0, import_deepmerge.default)(doc, appDataOverride) : doc;
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 3e0c67f..fed19a5 100644
+index 3e0c67f..29078c7 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -6,7 +6,7 @@ import { EcdsaSigningScheme, SigningScheme } from "@cowprotocol/sdk-order-book";
@@ -24,3 +38,17 @@ index 3e0c67f..fed19a5 100644
  var SIGN_SCHEME_MAP = {
    [EcdsaSigningScheme.EIP712]: SigningScheme.EIP712,
    [EcdsaSigningScheme.ETHSIGN]: SigningScheme.ETHSIGN
+@@ -587,7 +587,12 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
+     metadata: {
+       ..._doc.metadata,
+       ...appDataOverride.metadata?.hooks ? { hooks: {} } : {},
+-      ...appDataOverride.metadata?.userConsents ? { userConsents: [] } : {}
++      ...appDataOverride.metadata?.userConsents ? { userConsents: [] } : {},
++      // Ophis: deepmerge CONCATENATES arrays, so merging an override that carries the
++      // same `partnerFee` the target already has DUPLICATES every fee policy (and the
++      // protocol charges each duplicate). Reset it here exactly like hooks/userConsents
++      // above, so an override that supplies partnerFee REPLACES it instead of appending.
++      ...appDataOverride.metadata?.partnerFee ? { partnerFee: [] } : {}
+     }
+   };
+   const appData = appDataOverride ? deepmerge(doc, appDataOverride) : doc;
