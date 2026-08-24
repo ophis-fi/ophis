@@ -699,6 +699,31 @@ projects:
       # wrong count here invites exactly the 2-lane preferBlockHeadLeader hole
       # this file's safety argument exists to prevent).
       #
+      # ⚠️ OPEN, NOT FIXED IN THIS CHANGE — deep eth_getLogs is a THIN QUORUM
+      # WITH A LEADER TIE-BREAK (Codex review, 2026-08-24). Documenting the
+      # archive gate above makes an existing hole explicit rather than creating
+      # one: at depth publicnode cannot participate, so eth_getLogs has exactly
+      # TWO responders, and the Block B rule that matches it uses
+      # disputeBehavior:preferBlockHeadLeader. With two responders a leader
+      # tie-break is attacker-selectable — a compromised lane that advertises the
+      # freshest head has its forged log response chosen with no second agreeing
+      # voter. That is precisely the failure this file's own receipt rule is
+      # returnError to avoid, and the argument is written out a few lines below.
+      #
+      # It is NOT fixed here because the fix is a real availability/security
+      # trade, not a typo:
+      #   - returnError for eth_getLogs fails closed at depth (correct) but also
+      #     fails closed on ordinary near-tip drift, which is exactly what #476
+      #     introduced preferBlockHeadLeader to stop. eRPC cannot match on block
+      #     depth, so the two cases cannot be given different behaviour.
+      #   - a third archive-capable non-Cloudflare lane removes the problem
+      #     entirely, and none exists today (see the 2026-08-23 survey: blastapi/
+      #     llamarpc/meowrpc/histori are NXDOMAIN, blockpi/drpc/1rpc/omnia are
+      #     Cloudflare-fronted and would break the <=1-CF invariant).
+      # Decide deliberately. Do not flip the dispute behaviour casually in an
+      # incident: it changes the fork-poisoning threat model this file exists to
+      # defend, and that model was reviewed.
+      #
       # AND MEASURE eth_getLogs AT DEPTH, NOT JUST AT TIP. A tip-only probe reports
       # 3 of 3 for a lane that cannot serve a single historic window. That single
       # missing row is the whole 2026-08-23 incident: the table said eth_getLogs was
