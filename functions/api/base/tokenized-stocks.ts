@@ -22,7 +22,10 @@ const BASE_RPCS = [
   'https://mainnet.base.org',
   'https://base.drpc.org',
 ];
-const CACHE_CONTROL = 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600';
+// No stale-while-revalidate: this payload is presented as contract-verified pause and
+// multiplier state, so a failed revalidation must surface as a 502 (which the panel shows as
+// "unavailable") rather than an hour of an old snapshot served as a fresh 200.
+const CACHE_CONTROL = 'public, max-age=60, s-maxage=300';
 const RPC_TIMEOUT_MS = 4_000;
 const MAX_LIST_BYTES = 200_000;
 const MAX_TOKENS = 64;

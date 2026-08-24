@@ -3,7 +3,6 @@ import { ReactNode, useMemo } from 'react'
 
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
-import { useIsCoinbaseStockToken } from '@cowprotocol/tokens'
 
 import { Trans } from '@lingui/react/macro'
 
@@ -13,6 +12,7 @@ import {
   BASE_CHAIN_ID,
   COINBASE_TOKENIZED_STOCKS_DOCS,
   formatMultiplierLabel,
+  isCoinbaseStockAddress,
   isUnitMultiplier,
   needsAttention,
   scaleByMultiplier,
@@ -171,8 +171,10 @@ export function CoinbaseStockContext({
 }: CoinbaseStockContextProps): ReactNode {
   const sellStock = baseToken(sellToken)
   const buyStock = baseToken(buyToken)
-  const sellIsStock = useIsCoinbaseStockToken(sellStock?.isToken ? sellStock : null)
-  const buyIsStock = useIsCoinbaseStockToken(buyStock?.isToken ? buyStock : null)
+  // Membership is a static address check against the bundled list, so it holds however the
+  // token got into the pair (default list, curated-only mode, bridge output, pasted address).
+  const sellIsStock = isCoinbaseStockAddress(sellStock?.chainId, tokenAddress(sellStock))
+  const buyIsStock = isCoinbaseStockAddress(buyStock?.chainId, tokenAddress(buyStock))
   const onBase =
     chainId === BASE_CHAIN_ID || sellToken?.chainId === BASE_CHAIN_ID || buyToken?.chainId === BASE_CHAIN_ID
 
@@ -182,8 +184,8 @@ export function CoinbaseStockContext({
     .filter((symbol, index, all): symbol is string => Boolean(symbol) && all.indexOf(symbol) === index)
     .join(', ')
 
-  // Membership comes from the shipped token list, so the panel (and its metadata query)
-  // only exists while a Coinbase stock is actually in the pair, never for every Base swap.
+  // The panel (and its metadata query) only exists while a Coinbase stock is actually in the
+  // pair, never for every Base swap.
   return (
     <CoinbaseStockContextContent
       sellToken={sellToken}

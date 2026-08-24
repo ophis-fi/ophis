@@ -1,9 +1,23 @@
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
+import shippedList from '../../../../public/token-lists/coinbase-tokenized-stocks.json'
+
 import type { CoinbaseStockAsset, CoinbaseStockAssetsResponse } from './types'
 
 export const BASE_CHAIN_ID = 8453
 export const COINBASE_TOKENIZED_STOCKS_DOCS = 'https://docs.base.org/base-chain/asset-issuance/tokenized-stocks-on-base'
+
+// The same file that is served at /token-lists/ for the selector, bundled so membership does
+// not depend on which token lists a visitor currently has loaded (curated-only mode for U.S.
+// visitors, a bridge whose source chain is not Base, a pasted address): the eligibility panel
+// must reach exactly those visitors too.
+const COINBASE_STOCK_ADDRESSES: ReadonlySet<string> = new Set(
+  shippedList.tokens.filter((token) => token.chainId === BASE_CHAIN_ID).map((token) => token.address.toLowerCase()),
+)
+
+export function isCoinbaseStockAddress(chainId: number | undefined, address: string | undefined): boolean {
+  return chainId === BASE_CHAIN_ID && !!address && COINBASE_STOCK_ADDRESSES.has(address.toLowerCase())
+}
 
 const ONE_18 = 10n ** 18n
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/

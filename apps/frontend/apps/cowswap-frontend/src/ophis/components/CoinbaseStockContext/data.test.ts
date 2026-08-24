@@ -1,6 +1,7 @@
 import {
   findCoinbaseStockAsset,
   formatMultiplierLabel,
+  isCoinbaseStockAddress,
   isUnitMultiplier,
   needsAttention,
   parseCoinbaseStockAssets,
@@ -22,6 +23,20 @@ const aapl: CoinbaseStockAsset = {
   transfersPaused: false,
 }
 const tsla: CoinbaseStockAsset = { ...aapl, address: TSLAC, symbol: 'TSLAc', name: 'Tesla Inc.', issued: false }
+
+describe('isCoinbaseStockAddress', () => {
+  it('recognises every shipped stock by address on Base, independent of any loaded token list', () => {
+    expect(isCoinbaseStockAddress(8453, AAPLC)).toBe(true)
+    expect(isCoinbaseStockAddress(8453, AAPLC.toLowerCase())).toBe(true)
+    expect(isCoinbaseStockAddress(8453, TSLAC)).toBe(true)
+  })
+
+  it('ignores other chains, other tokens, and undefined', () => {
+    expect(isCoinbaseStockAddress(1, AAPLC)).toBe(false)
+    expect(isCoinbaseStockAddress(8453, '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913')).toBe(false)
+    expect(isCoinbaseStockAddress(8453, undefined)).toBe(false)
+  })
+})
 
 describe('findCoinbaseStockAsset', () => {
   it('matches by address regardless of checksum casing and ignores unknown addresses', () => {
