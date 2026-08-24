@@ -220,6 +220,16 @@ jobs:
     # no network, no real container is touched.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: shellcheck
+        # A 300-line bash script that restarts production containers deserves a
+        # linter. Severity `style` is the strictest setting; both files are clean
+        # at it today, so any new finding is a regression rather than a backlog.
+        run: |
+          echo "::group::shellcheck"
+          docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:v0.11.0 \
+            -S style /mnt/infra/shared/cron/container-watchdog.sh \
+                     /mnt/infra/shared/cron/container-watchdog.test.sh
+          echo "::endgroup::"
       - name: container-watchdog
         run: |
           echo "::group::container-watchdog.test.sh"
