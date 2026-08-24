@@ -165,7 +165,7 @@ enters the trust boundary.
 
 | Property | Behaviour |
 |---|---|
-| Allowlist only | Restarts only names matching `WATCHDOG_ALLOW`. Default: `driver\|autopilot\|orderbook\|rpc-proxy\|solver` |
+| Allowlist only | Restarts only names matching `WATCHDOG_ALLOW`. Default: `driver\|orderbook\|rpc-proxy\|solver`. **`autopilot` is deliberately absent** — it declares no healthcheck in any stack, so it can never report unhealthy and this watchdog can never help it. Give it a healthcheck first, then add it here |
 | Deny veto | `WATCHDOG_DENY` always wins — databases, chain nodes, observability. Protects against a later widened allowlist |
 | Sustained only | Must be unhealthy for `WATCHDOG_THRESHOLD_S` (default 600s). Deploy flaps and slow starts do not trigger |
 | Cooldown | At most one restart per container per `WATCHDOG_COOLDOWN_S` (default 1800s). A restart that does not fix the fault needs a human, not a loop |

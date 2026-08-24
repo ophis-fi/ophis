@@ -154,9 +154,20 @@ if [ "${WATCHDOG_SKIP_LOCK:-0}" != "1" ]; then
       notify "Watchdog on $(hostname) cannot open its lock file at ${LOCK_FILE}. It is protecting nothing. Check that ${STATE_DIR} exists and is writable."
       exit 1
     fi
-    if ! "$FLOCK_BIN" -n 9 2>/dev/null; then
+    # flock(1) exits 1 when -n fails to ACQUIRE. Any other nonzero status is an
+    # operational error -- locking unsupported on the filesystem, a bad fd, the
+    # binary missing. Reporting those as "another pass is running" and exiting 0
+    # would silently disable the watchdog on every tick, which is the same
+    # failure the open-vs-contention split above exists to prevent, one layer
+    # deeper (Codex review, 2026-08-24).
+    "$FLOCK_BIN" -n 9 2>/dev/null; lock_rc=$?
+    if [ "$lock_rc" -eq 1 ]; then
       log "another watchdog pass holds the lock; exiting without acting"
       exit 0
+    elif [ "$lock_rc" -ne 0 ]; then
+      log "FATAL: flock failed with status ${lock_rc} (not contention) — locking may be unsupported on ${STATE_DIR}"
+      notify "Watchdog on $(hostname) could not lock: flock exited ${lock_rc}, which is not contention. It is protecting nothing. Check ${STATE_DIR}."
+      exit 1
     fi
   else
     # macOS has no flock(1). Not fatal — an unserialised watchdog still beats
@@ -192,7 +203,13 @@ set_state() { # container, first_unhealthy, last_restart, container_id
   # container. Injecting the failure makes those cases deterministic under any
   # uid (Codex review, 2026-08-24).
   [ "${WATCHDOG_SIMULATE_STATE_FAIL:-0}" = "1" ] && return 1
-  local tmp; tmp="$(mktemp)" || return 1
+  # ⚠️ The temp file MUST live in STATE_DIR (Codex review, 2026-08-24). Bare
+  # `mktemp` uses /tmp, and on Linux /tmp is commonly tmpfs while the state dir
+  # is on disk -- different filesystems, so the `mv` below silently degrades
+  # from an atomic rename into copy-then-unlink. A crash or a full disk mid-copy
+  # then leaves a truncated state file: lost cooldowns, and containers eligible
+  # for restart again immediately. Same filesystem keeps the rename atomic.
+  local tmp; tmp="$(mktemp "${STATE_DIR}/.state.XXXXXX" 2>/dev/null)" || return 1
   # ⚠️ The awk status is CHECKED, not discarded (Codex review, 2026-08-24).
   # It previously ended in `|| true`: if the state file became unreadable while
   # its directory stayed writable, awk produced nothing, the temp file ended up
@@ -379,5 +396,13 @@ while IFS=$'\t' read -r cid name status; do
   fi
 done <<< "$INVENTORY"
 
+if [ "$STATE_DEGRADED" = "1" ]; then
+  # The pass ran, but its timing decisions were made against state it could not
+  # update. Reporting exit 0 would let cron and any wrapper treat a watchdog
+  # that is no longer protecting anything as a healthy one (Codex review,
+  # 2026-08-24).
+  log "watchdog pass complete but DEGRADED (state could not be written), ${restarted} restart(s)"
+  exit 1
+fi
 log "watchdog pass complete, ${restarted} restart(s)"
 exit 0

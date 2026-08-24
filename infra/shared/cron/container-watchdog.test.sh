@@ -340,6 +340,64 @@ printf 'robinhood-mainnet-autopilot-1\tUp 2 days (unhealthy)\nrobinhood-mainnet-
 run 1000 >/dev/null; out="$(run 1700)"
 ck "autopilot NOT restarted (no healthcheck exists)" "$(restarts)" "robinhood-mainnet-driver-1"
 
+# ── Codex round 5: a degraded pass must not report success ──
+# It ran, but every timing decision was made against state it could not update.
+# Exiting 0 lets cron and any wrapper treat a watchdog that is protecting
+# nothing as healthy.
+reset
+printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+WATCHDOG_SIMULATE_STATE_FAIL=1 run 1000 >/dev/null 2>&1
+rc=$?
+ck "degraded pass exits NONZERO"                  "$rc" "1"
+out="$(WATCHDOG_SIMULATE_STATE_FAIL=1 run 1000)"
+ck "  and says DEGRADED, not a clean completion"  "$(grep -c 'DEGRADED' <<<"$out")" "1"
+
+# ── Codex round 5: an operational flock error is not contention ──
+# flock -n exits 1 when it cannot ACQUIRE. Any other status is an error
+# (unsupported filesystem, bad fd, missing binary). Treating those as "another
+# pass is running" silently disables the watchdog on every tick.
+cat > "$WORK/flock-broken" <<'FAKE'
+#!/usr/bin/env bash
+exit 64
+FAKE
+chmod +x "$WORK/flock-broken"
+reset
+printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+out="$(WATCHDOG_DOCKER_BIN="$WORK/docker" WATCHDOG_STATE_DIR="$WORK/state" \
+      WATCHDOG_FLOCK_BIN="$WORK/flock-broken" WATCHDOG_NOW_S=1000 WATCHDOG_NOTIFY=0 \
+      FAKE_TABLE="$WORK/table" FAKE_RESTARTS="$WORK/restarts" bash "$SRC" 2>&1)"
+rc=$?
+ck "flock error (rc=64) exits NONZERO"            "$rc" "1"
+ck "  and is NOT reported as contention"          "$(grep -c 'another watchdog pass holds the lock' <<<"$out")" "0"
+ck "  it is reported as a lock FAILURE"           "$(grep -c 'FATAL: flock failed with status 64' <<<"$out")" "1"
+
+# ── Codex round 5: the state temp file must share the state dir's filesystem ──
+# Bare mktemp uses /tmp; on Linux that is commonly tmpfs while the state dir is
+# on disk, so `mv` degrades from an atomic rename to copy-then-unlink and a
+# crash mid-copy truncates the state file.
+# Behavioural discriminator rather than a grep of the source: point TMPDIR at a
+# path that does not exist. A bare `mktemp` honours TMPDIR and fails there; one
+# that names STATE_DIR explicitly ignores it and succeeds. So state writes still
+# working under a broken TMPDIR proves the temp file shares the state dir's
+# filesystem, which is what makes the later `mv` an atomic rename.
+#
+# ⚠️ PLATFORM CAVEAT, verified 2026-08-24: this case only DISCRIMINATES on Linux.
+# macOS mktemp ignores TMPDIR entirely (it uses /var/folders/...), so on a Mac
+# the mutated and unmutated scripts both pass and the "temp file back on /tmp"
+# mutation appears to survive. On Linux -- which is where CI runs, and where the
+# bug actually bites because /tmp is commonly tmpfs while the state dir is on
+# disk -- the mutated script fails this case. Confirmed by running this suite in
+# an alpine container: 53/53 unmutated, 51/53 with bare mktemp.
+# If you are running locally on a Mac and see that mutation survive, that is
+# expected; check it in CI or in a Linux container before assuming a gap.
+reset
+printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+TMPDIR=/nonexistent/definitely run 1000 >/dev/null
+ck "state is written even with TMPDIR broken"     "$(awk '$1=="robinhood-mainnet-driver-1"{print $2}' "$WORK/state/unhealthy-state")" "1000"
+TMPDIR=/nonexistent/definitely run 1700 >/dev/null
+ck "  and the restart still fires from that state" "$(restarts)" "robinhood-mainnet-driver-1"
+ck "  no stray temp files left behind"            "$(find "$WORK/state" -name '.state.*' | wc -l | tr -d ' ')" "0"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ] || exit 1
