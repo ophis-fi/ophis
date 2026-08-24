@@ -258,6 +258,47 @@ chmod 700 "$WORK/state"
 ck "unclearable recovery blocks restarts this pass" "$(restarts)" ""
 ck "  and says the timers are untrustworthy"        "$(grep -c 'refusing further restarts this pass' <<<"$out")" "1"
 
+# ── Codex round 3, 2026-08-24: an unreadable state file must not be rewritten ──
+# `awk ... || true` used to discard the read error, so the temp file held ONLY
+# the container being written and the mv + read-back both succeeded -- erasing
+# every OTHER container's cooldown and timer with no error anywhere. Those
+# containers could then be restarted again immediately.
+reset
+printf 'robinhood-mainnet-driver-1\tUp 1 hour (unhealthy)\nrobinhood-mainnet-orderbook-1\tUp 1 hour (unhealthy)\n' > "$WORK/table"
+run 1000 >/dev/null                                   # both timers recorded
+before=$(wc -l < "$WORK/state/unhealthy-state" | tr -d ' ')
+chmod 000 "$WORK/state/unhealthy-state"               # readable dir, unreadable file
+out="$(run 1700)"
+chmod 644 "$WORK/state/unhealthy-state"
+after=$(wc -l < "$WORK/state/unhealthy-state" | tr -d ' ')
+ck "unreadable state file is NOT silently rewritten"  "$after" "$before"
+ck "  and no restart happens on unreadable state"     "$(restarts)" ""
+
+# ── Codex round 3: the local Anvil chain is behind the deny veto ──
+# infra/local/docker-compose.fork.yml defines `chain` WITH a healthcheck, so
+# `local-chain-1` is restartable under a widened allowlist. Restarting a dev
+# chain discards its state.
+reset
+printf 'local-chain-1\tUp 2 hours (unhealthy)\nunichain-mainnet-driver-1\tUp 2 hours (unhealthy)\n' > "$WORK/table"
+WATCHDOG_ALLOW='.*' run 1000 >/dev/null
+out="$(WATCHDOG_ALLOW='.*' run 99000)"
+ck "local-chain denied, unichain driver still eligible" "$(restarts)" "unichain-mainnet-driver-1"
+
+# ── Codex round 3: a sidecar must track the TARGET's identity ──
+# compose-up.sh force-recreates rpc-proxy while leaving rpc-proxy-health running,
+# so the sidecar keeps its own ID across a proxy replacement. Keying on the
+# sidecar would carry an expired timer onto a brand-new proxy.
+reset
+printf 'sc-1\toptimism-mainnet-rpc-proxy-health-1\tUp 13 days (unhealthy)\nprox-old\toptimism-mainnet-rpc-proxy-1\tUp 13 days (healthy)\n' > "$WORK/table"
+run 1000 >/dev/null                                   # timer armed against prox-old
+# proxy recreated (new id), sidecar untouched (same id)
+printf 'sc-1\toptimism-mainnet-rpc-proxy-health-1\tUp 13 days (unhealthy)\nprox-new\toptimism-mainnet-rpc-proxy-1\tUp 2 seconds (healthy)\n' > "$WORK/table"
+out="$(run 1700)"
+ck "proxy replaced under a stable sidecar: timer re-arms" "$(restarts)" ""
+ck "  and the replacement is noticed"                    "$(grep -c 'container replaced' <<<"$out")" "1"
+out="$(run 2450)"
+ck "  restarts only after the NEW proxy serves the threshold" "$(restarts)" "optimism-mainnet-rpc-proxy-1"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ] || exit 1

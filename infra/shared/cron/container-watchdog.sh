@@ -72,7 +72,12 @@ ALLOW="${WATCHDOG_ALLOW:-driver|autopilot|orderbook|rpc-proxy|solver}"
 # neither the databases nor the chain nodes match it anyway. DENY earns its keep
 # only when someone widens ALLOW later, which is the realistic operator error and
 # the case container-watchdog.test.sh pins (with ALLOW='.*').
-DENY="${WATCHDOG_DENY:--db-|postgres|-pg-|nitro|jaeger|prometheus|alertmanager}"
+# `-chain-` (with both hyphens) matches the local Anvil node `local-chain-1`,
+# which HAS a healthcheck, without matching `unichain-mainnet-*` -- there the
+# preceding character is `i`, not `-`, so the Unichain driver/orderbook stay
+# eligible. Restarting a dev chain discards its state, which is the same class
+# of harm as bouncing a real node (Codex review, 2026-08-24).
+DENY="${WATCHDOG_DENY:--db-|postgres|-pg-|nitro|-chain-|jaeger|prometheus|alertmanager}"
 
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 touch "$STATE_FILE" 2>/dev/null || true
@@ -168,7 +173,16 @@ get_field() { # container, field-index(2|3)
 # take an irreversible action MUST check this (FAIL-CLOSED).
 set_state() { # container, first_unhealthy, last_restart, container_id
   local tmp; tmp="$(mktemp)" || return 1
-  awk -v c="$1" '$1!=c' "$STATE_FILE" > "$tmp" 2>/dev/null || true
+  # ⚠️ The awk status is CHECKED, not discarded (Codex review, 2026-08-24).
+  # It previously ended in `|| true`: if the state file became unreadable while
+  # its directory stayed writable, awk produced nothing, the temp file ended up
+  # holding ONLY the current container, and the mv + single-record read-back
+  # both succeeded -- silently erasing every OTHER container's cooldown and
+  # unhealthy timer. Those containers could then be restarted again immediately,
+  # cooldown and threshold both lost, with no error anywhere.
+  if ! awk -v c="$1" '$1!=c' "$STATE_FILE" > "$tmp" 2>/dev/null; then
+    rm -f "$tmp"; return 1
+  fi
   echo "$1 $2 $3 ${4:-}" >> "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$STATE_FILE" || { rm -f "$tmp"; return 1; }
   # Prove it landed. A full or read-only filesystem can fail late enough that
@@ -213,6 +227,13 @@ fi
 NOW="$(now_s)"
 restarted=0
 
+# name -> container id, for the whole inventory. Needed because a health sidecar
+# reports on a DIFFERENT container than the one we restart, and it is that other
+# container's identity that decides whether the timer should re-arm.
+declare_ids() { awk -F'\t' 'NF>=3 {print $2" "$1}' <<< "$INVENTORY"; }
+IDS="$(declare_ids)"
+id_of() { awk -v n="$1" '$1==n {print $2; found=1} END{if(!found) print ""}' <<< "$IDS"; }
+
 while IFS=$'\t' read -r cid name status; do
   [ -z "$name" ] && continue
 
@@ -247,6 +268,17 @@ while IFS=$'\t' read -r cid name status; do
   first="$(get_field "$name" 2)"
   last_restart="$(get_field "$name" 3)"
   known_id="$(get_field "$name" 4)"
+  # ⚠️ Track the identity of the container we would RESTART, not the one that
+  # reported (Codex review, 2026-08-24). compose-up.sh force-recreates
+  # `rpc-proxy` while leaving `rpc-proxy-health` running, so a sidecar keeps its
+  # own ID across a proxy replacement. Keying on the sidecar's ID would carry an
+  # expired timer straight onto a brand-new proxy and restart it while it is
+  # still warming up -- exactly the case the threshold exists to prevent.
+  track_id="$cid"
+  if [ "$target" != "$name" ]; then
+    track_id="$(id_of "$target")"
+    [ -z "$track_id" ] && track_id="missing:$target"
+  fi
   [ -z "$first" ] && first=0
   [ -z "$last_restart" ] && last_restart=0
 
@@ -255,15 +287,15 @@ while IFS=$'\t' read -r cid name status; do
   # scratch -- otherwise a freshly started replacement inherits its
   # predecessor's accumulated time and gets restarted while it is still warming
   # up, which is precisely the flap the threshold exists to prevent.
-  if [ "$first" != "0" ] && [ "$known_id" != "$cid" ]; then
-    log "container replaced: $name (id ${known_id:-none} -> ${cid}); restarting the ${THRESHOLD_S}s timer"
-    set_state "$name" "$NOW" "$last_restart" "$cid" || log "WARN: could not record replacement for $name"
+  if [ "$first" != "0" ] && [ "$known_id" != "$track_id" ]; then
+    log "container replaced: $name (restart target id ${known_id:-none} -> ${track_id}); restarting the ${THRESHOLD_S}s timer"
+    set_state "$name" "$NOW" "$last_restart" "$track_id" || log "WARN: could not record replacement for $name"
     continue
   fi
 
   if [ "$first" = "0" ]; then
     log "now unhealthy: $name (starting ${THRESHOLD_S}s timer)"
-    set_state "$name" "$NOW" "$last_restart" "$cid" || log "WARN: could not record unhealthy start for $name"
+    set_state "$name" "$NOW" "$last_restart" "$track_id" || log "WARN: could not record unhealthy start for $name"
     continue
   fi
 
@@ -295,7 +327,7 @@ while IFS=$'\t' read -r cid name status; do
   # would restart the same container again — an unbounded restart loop caused by
   # a full disk. Writing first makes the worst case a restart we recorded but
   # did not perform, which the next pass simply retries after the cooldown.
-  if ! set_state "$name" 0 "$NOW" "$cid"; then
+  if ! set_state "$name" 0 "$NOW" "$track_id"; then
     log "FATAL: cannot persist cooldown for $name — refusing to restart (a restart we cannot record becomes a restart loop)"
     notify "Watchdog on $(hostname) could NOT write its state file, so it refused to restart ${target} after ${unhealthy_for}s unhealthy. Check disk and permissions on ${STATE_DIR}. Needs a human."
     continue

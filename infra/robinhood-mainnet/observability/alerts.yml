@@ -502,6 +502,19 @@ groups:
             Robinhood blocks (approximately ten seconds) behind the freshest
             observed head for 15 minutes.
 
+            ⚠️ READ THE UPSTREAM LABEL BEFORE ACTING. This rule covers BOTH
+            lanes and they are not equivalent. On 2026-08-23 it fired naming
+            robinhood-official — which was merely publishing a few seconds late
+            and harmed nothing — for eight hours, while the condition that
+            actually stopped quoting and settlement had no rule at all.
+
+              robinhood-official lagging -> INFORMATIONAL. It is the independent
+                read voter; sub-ten-second publication delay is its normal
+                behaviour and this warning alone is not an incident.
+              ophis-self-rbh lagging     -> see OphisRbhSelfNodeLagBlocksSettlement
+                and OphisRbhSelfNodeCannotServeState, both critical. If those are
+                silent, settlements are not blocked by lag.
+
             For ophis-self-rbh, connect to Cadia over Tailscale and check the
             Nitro node on port 8547:
               tailscale ssh clement@cadia-wsl \

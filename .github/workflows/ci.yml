@@ -254,9 +254,12 @@ jobs:
           check "recovery timer reset removed" 's|      if ! clear_unhealthy "$name" "$cid"; then|      if false; then|'
           check "health-sidecar mapping removed"  's|    \*-health-\[0-9\]\*) echo "${1%-health-\*}-${1##\*-health-}" ;;|    *-health-[0-9]*) echo "$1" ;;|'
           check "inventory failure check removed" 's|if \[ "$INV_RC" -ne 0 \]; then|if false; then|'
-          check "cooldown fail-closed removed"    's|  if ! set_state "$name" 0 "$NOW" "$cid"; then|  if false; then|'
+          check "cooldown fail-closed removed"    's|  if ! set_state "$name" 0 "$NOW" "$track_id"; then|  if false; then|'
           check "lock-open failure swallowed"     's|    if ! exec 9>"$LOCK_FILE"; then|    if ! exec 9>"$LOCK_FILE" 2>/dev/null \&\& false; then|'
-          check "container-replacement re-arm removed" 's|  if \[ "$first" != "0" \] \&\& \[ "$known_id" != "$cid" \]; then|  if false; then|'
+          check "container-replacement re-arm removed" 's|  if \[ "$first" != "0" \] \&\& \[ "$known_id" != "$track_id" \]; then|  if false; then|'
+          check "unreadable-state guard removed"  's|  if ! awk -v c="$1" .\$1!=c. "$STATE_FILE" > "$tmp" 2>/dev/null; then|  if awk -v c="$1" "\$1!=c" "$STATE_FILE" > "$tmp" 2>/dev/null; false; then|'
+          check "local-chain deny removed"        's/|-chain-|/|/'
+          check "sidecar target-id tracking removed" 's|    track_id="$(id_of "$target")"|    track_id="$cid"|'
           # NOTE: the STATE_DEGRADED restart block is deliberately NOT mutated here.
           # It is defence-in-depth that overlaps the cooldown fail-closed guard:
           # every scenario that sets STATE_DEGRADED (a failed state write) also

@@ -209,8 +209,19 @@ mkdir -p ~/.local/state/ophis/watchdog
 # Telegram credential. `security` is macOS-only, so on Linux point the watchdog
 # at the token file the deploy already uses (see DEPLOY-RUNBOOK.md). Without
 # this the watchdog still works but restarts happen SILENTLY.
+# ⚠️ The token path is RELATIVE TO YOUR CHECKOUT. DEPLOY-WSL.md creates it with
+# `mkdir -p secrets && ... > secrets/telegram-token` from inside
+# infra/robinhood-mainnet/, so the absolute path is
+#   <checkout>/infra/robinhood-mainnet/secrets/telegram-token
+# Substitute your real checkout root below and CONFIRM the file is readable by
+# the cron user before relying on it -- an unreadable token means every restart
+# and every fatal failure happens silently.
+OPHIS_CHECKOUT=/home/clement/ophis          # <-- verify this on the host
+TOKEN="$OPHIS_CHECKOUT/infra/robinhood-mainnet/secrets/telegram-token"
+test -r "$TOKEN" || echo "WARNING: $TOKEN not readable by $(whoami) — notifications will be silent"
+
 ( crontab -l 2>/dev/null; \
-  echo "*/2 * * * * WATCHDOG_TG_TOKEN_FILE=/srv/ophis/secrets/telegram-token /usr/local/bin/container-watchdog.sh >> ~/.local/state/ophis/watchdog/watchdog.log 2>&1" \
+  echo "*/2 * * * * WATCHDOG_TG_TOKEN_FILE=$TOKEN /usr/local/bin/container-watchdog.sh >> ~/.local/state/ophis/watchdog/watchdog.log 2>&1" \
 ) | crontab -
 ```
 

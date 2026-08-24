@@ -113,8 +113,16 @@ tests:
 # voter and publishes a few seconds late by design. Neither new rule may fire on
 # it. Without this case the new rules would be no better than the one they
 # supplement, since the 08-23 false page was exactly this shape.
+# ⚠️ NAME CORRECTED (Codex round 3). This previously claimed the gateway lagging
+# "must NOT page" while asserting only the two NEW rules -- and the pre-existing
+# OphisRbhErpcUpstreamBlockHeadLagging (>75 blocks for 15m) fires happily on this
+# very input. So the test was green while the exact false page it claimed to
+# prevent still happened. The legacy warning is now asserted explicitly: it DOES
+# fire, and that is the honest state of the stack. What the new rules add is that
+# nothing CRITICAL fires for a lagging gateway, so the operator is not told
+# settlements are at risk when they are not.
 - interval: 1m
-  name: 'gateway lagging alone must NOT page (this was the 08-23 false subject)'
+  name: 'gateway lagging alone raises only the legacy WARNING, never a critical'
   input_series:
   - series: erpc_upstream_block_head_lag{network="evm:4663",upstream="robinhood-official"}
     values: 5000x60
@@ -129,6 +137,51 @@ tests:
   - eval_time: 30m
     alertname: OphisRbhSelfNodeCannotServeState
     exp_alerts: []
+  # The legacy rule DOES fire here. Asserting it documents reality instead of
+  # letting a green suite imply the gateway no longer pages at all.
+  - eval_time: 30m
+    alertname: OphisRbhErpcUpstreamBlockHeadLagging
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: robinhood
+        upstream: robinhood-official
+        network: evm:4663
+      exp_annotations:
+        summary: Robinhood eRPC upstream robinhood-official >75 blocks behind for 15m
+        description: |
+          The robinhood-official upstream has remained more than 75
+          Robinhood blocks (approximately ten seconds) behind the freshest
+          observed head for 15 minutes.
+
+          ⚠️ READ THE UPSTREAM LABEL BEFORE ACTING. This rule covers BOTH
+          lanes and they are not equivalent. On 2026-08-23 it fired naming
+          robinhood-official — which was merely publishing a few seconds late
+          and harmed nothing — for eight hours, while the condition that
+          actually stopped quoting and settlement had no rule at all.
+
+            robinhood-official lagging -> INFORMATIONAL. It is the independent
+              read voter; sub-ten-second publication delay is its normal
+              behaviour and this warning alone is not an incident.
+            ophis-self-rbh lagging     -> see OphisRbhSelfNodeLagBlocksSettlement
+              and OphisRbhSelfNodeCannotServeState, both critical. If those are
+              silent, settlements are not blocked by lag.
+
+          For ophis-self-rbh, connect to Cadia over Tailscale and check the
+          Nitro node on port 8547:
+            tailscale ssh clement@cadia-wsl \
+              'curl -s -H content-type:application/json \
+                -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"params\":[],\"id\":1}" \
+                http://localhost:8547'
+          Healthy is {"result":false}. Also inspect the sequencer-feed and
+          parent-chain errors in `docker logs robinhood-nitro-nitro-1`.
+
+          For robinhood-official, compare eth_blockNumber directly with
+          Cadia. The public endpoint is the independent read voter and Nitro
+          transaction-forwarding target; do not remove or replace it merely
+          for normal sub-ten-second publication delay. Escalate or hot-swap
+          only when this alert is sustained and protected-read availability
+          is measurably degraded.
 
 # ── Healthy control ──
 # Normal operation measured 2026-08-24: the self node sits within ~10 blocks of
