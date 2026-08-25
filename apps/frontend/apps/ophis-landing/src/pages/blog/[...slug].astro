@@ -145,7 +145,7 @@ const breadcrumbLd = {
 }
 ---
 <Base
-  title={`${post.data.title} | Ophis`}
+  title={/\bOphis\b/.test(post.data.title) ? post.data.title : `${post.data.title} | Ophis`}
   description={post.data.description}
   canonical={url}
   ogType="article"
@@ -169,10 +169,20 @@ const breadcrumbLd = {
       <header class="post-header">
         <div class="post-meta">
           <span>By {authorName}</span>
-          <span class="dot" aria-hidden="true">·</span>
-          <time datetime={post.data.pubDate.toISOString()}>{fmtDate(post.data.pubDate)}</time>
-          <span class="dot" aria-hidden="true">·</span>
-          <span>{readingMin} min read</span>
+          <span class="meta-item">
+            <span class="dot" aria-hidden="true">·</span>
+            <time datetime={post.data.pubDate.toISOString()}>{fmtDate(post.data.pubDate)}</time>
+          </span>
+          {post.data.updatedDate && (
+            <span class="meta-item">
+              <span class="dot" aria-hidden="true">·</span>
+              <span>Updated <time datetime={post.data.updatedDate.toISOString()}>{fmtDate(post.data.updatedDate)}</time></span>
+            </span>
+          )}
+          <span class="meta-item">
+            <span class="dot" aria-hidden="true">·</span>
+            <span>{readingMin} min read</span>
+          </span>
         </div>
         <h1>{post.data.title}</h1>
         <p class="lede">{post.data.description}</p>
@@ -231,12 +241,18 @@ const breadcrumbLd = {
   }
   .post-meta {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
+    gap: 4px 10px;
     font-size: 13px;
     color: var(--ophis-fg-faded);
     margin-bottom: 18px;
   }
+  /* Each separator is grouped with the value that follows it, so a line break can
+     only fall between groups: no split dates and no orphaned dot at a line end.
+     The row itself wraps at narrow widths now that it can carry an "Updated" date. */
+  .post-meta > * { white-space: nowrap; }
+  .post-meta .meta-item { display: inline-flex; align-items: center; gap: 10px; }
   .post-meta time { font-variant-numeric: tabular-nums; }
   .post-header h1 {
     font-size: clamp(30px, 5.2vw, 46px);
