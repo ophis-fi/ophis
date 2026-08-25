@@ -2,6 +2,7 @@
 title: "Coinbase tokenized stocks on Base: swap AAPLc, NVDAc and more on Ophis"
 description: "Coinbase's B20 tokenized stocks are live on Base and listed on Ophis: official token list, a stock panel with the corporate-action multiplier and pause state read from the chain, gasless MEV-protected settlement."
 pubDate: 2026-08-24
+updatedDate: 2026-08-25
 author: Ophis
 tags: [base, tokenized-stocks, coinbase, b20, dex-aggregator, swaps]
 draft: false
@@ -127,7 +128,7 @@ Everything the app uses is public and keyless.
 
 - **Token list.** [swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json](https://swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json) is a standard Uniswap-schema list with CORS enabled, so any interface can load it. Identify tokens by address; B20 names and symbols are mutable on chain.
 - **Metadata endpoint.** [swap.ophis.fi/api/base/tokenized-stocks](https://swap.ophis.fi/api/base/tokenized-stocks) returns, per token, the multiplier as an 18-decimal string, whether supply is issued, and whether transfers are paused.
-- **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated. `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. One caveat today: on Base, `resolve_token` consults CoW's default list, not the Coinbase list, so pass these tokens by address from the list above rather than by symbol until the resolver is extended. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
+- **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated. On Base, `resolve_token` consults the Coinbase stock list first, then CoW's list, so `AAPLc` or `NVDAc` resolves to the same canonical address the selector shows, with decimals and the list it came from; a symbol that is not on a trusted list returns no canonical rather than a guess. `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
 - **SDK.** `@ophis/sdk` resolves the orderbook URL and the EIP-712 signing domain per chain; on Base that is CoW Protocol's canonical settlement domain.
 - **Widget.** `@ophis/widget-react` embeds the swap form directly. See the [widget docs](https://docs.ophis.fi/widget).
 
