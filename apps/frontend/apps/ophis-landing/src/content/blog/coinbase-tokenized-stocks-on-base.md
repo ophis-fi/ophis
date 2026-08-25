@@ -1,6 +1,6 @@
 ---
-title: "Coinbase tokenized stocks on Base: swap AAPLc, NVDAc and more on Ophis"
-description: "Coinbase's B20 tokenized stocks are live on Base and listed on Ophis: official token list, a stock panel with the corporate-action multiplier and pause state read from the chain, gasless MEV-protected settlement."
+title: "Coinbase tokenized stocks on Base: swap AAPLc, NVDAc on Ophis"
+description: "Coinbase tokenized stocks are live on Base and listed on Ophis. Swap AAPLc, NVDAc, METAc and GOOGLc gasless and MEV-protected, multiplier read on chain."
 pubDate: 2026-08-24
 updatedDate: 2026-08-25
 author: Ophis
@@ -10,7 +10,7 @@ cover: ./coinbase-tokenized-stocks-on-base.cover.jpg
 coverAlt: "Ophis emblem next to a Base blue tile labelled B20, with the AAPLc, NVDAc, METAc and GOOGLc tickers as chips"
 ---
 
-Coinbase launched tokenized stocks on Base on 2026-08-24, and they are listed on Ophis from day one. Open [swap.ophis.fi/#/8453/swap/USDC/AAPLc](https://swap.ophis.fi/#/8453/swap/USDC/AAPLc), connect a wallet, and sign an EIP-712 order: no settlement transaction to broadcast, no settlement gas to pay, and a signed limit price that is the worst execution you can receive. The tokens are Base-native B20 assets issued by Coinbase, and each one is backed by the underlying share held in regulated custody. Ophis ships its own token list for them, shows a stock panel next to the quote with the corporate-action multiplier and pause state read from the Base contracts, and routes the order through CoW Protocol's batch auction on Base.
+Coinbase launched tokenized stocks on Base on 2026-08-24, and they are listed on Ophis from day one. Open [swap.ophis.fi/#/8453/swap/USDC/AAPLc](https://swap.ophis.fi/#/8453/swap/USDC/AAPLc), connect a wallet, and sign an EIP-712 order: no settlement transaction to broadcast, no settlement gas to pay, and a signed limit price that is the worst execution you can receive. The tokens are Base-native B20 assets issued by Coinbase; per [Coinbase's own description](https://www.base.org/stocks), each token is a beneficial claim on a real share, backed 1:1 and held in regulated, bankruptcy-remote custody separate from Coinbase. Ophis ships its own token list for them, shows a stock panel next to the quote with the corporate-action multiplier and pause state read from the Base contracts, and routes the order through CoW Protocol's batch auction on Base.
 
 Two sentences of context. Base is chain id 8453, an OP-Stack L2 operated by Coinbase, and one of the 13 EVM chains [Ophis](https://ophis.fi/) supports. Ophis is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top; on Base it settles through CoW Protocol's hosted orderbook and solver network, so the stock tokens inherit the same MEV protection as every other token on the chain.
 
@@ -39,7 +39,7 @@ Coinbase issues these tokens under [B20](https://docs.base.org/base-chain/specs/
 | Chain | Base (chain id 8453) |
 | Standard | B20, an ERC-20 extension implemented as a Base-native precompile |
 | Issuer | Coinbase |
-| Backing | The underlying share, held in regulated custody |
+| Backing | Per Coinbase: a 1:1 claim on a real share, held in regulated, bankruptcy-remote custody separate from Coinbase ([source](https://www.base.org/stocks)) |
 | Decimals | 8 |
 | Symbols | The ticker plus a lowercase `c`: `AAPLc`, `NVDAc`, `METAc`, `GOOGLc` |
 | Secondary trading | Permissionless, 24/7 on Base DEXs |

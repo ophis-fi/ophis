@@ -145,7 +145,7 @@ const breadcrumbLd = {
 }
 ---
 <Base
-  title={`${post.data.title} | Ophis`}
+  title={/\bOphis\b/.test(post.data.title) ? post.data.title : `${post.data.title} | Ophis`}
   description={post.data.description}
   canonical={url}
   ogType="article"
@@ -171,6 +171,12 @@ const breadcrumbLd = {
           <span>By {authorName}</span>
           <span class="dot" aria-hidden="true">·</span>
           <time datetime={post.data.pubDate.toISOString()}>{fmtDate(post.data.pubDate)}</time>
+          {post.data.updatedDate && (
+            <>
+              <span class="dot" aria-hidden="true">·</span>
+              <span>Updated <time datetime={post.data.updatedDate.toISOString()}>{fmtDate(post.data.updatedDate)}</time></span>
+            </>
+          )}
           <span class="dot" aria-hidden="true">·</span>
           <span>{readingMin} min read</span>
         </div>
