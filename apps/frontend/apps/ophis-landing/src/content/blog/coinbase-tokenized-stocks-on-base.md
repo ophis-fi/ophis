@@ -7,7 +7,7 @@ author: Ophis
 tags: [base, tokenized-stocks, coinbase, b20, dex-aggregator, swaps]
 draft: false
 cover: ./coinbase-tokenized-stocks-on-base.cover.jpg
-coverAlt: "Ophis emblem next to a Base blue tile labelled B20, with the AAPLc, NVDAc, METAc and GOOGLc tickers as chips"
+coverAlt: "Ophis emblem at the centre of an orbit ring of nodes, with the Base logo as the featured node"
 ---
 
 Coinbase launched tokenized stocks on Base on 2026-08-24, and they are listed on Ophis from day one. Open [swap.ophis.fi/#/8453/swap/USDC/AAPLc](https://swap.ophis.fi/#/8453/swap/USDC/AAPLc), connect a wallet, and sign an EIP-712 order: no settlement transaction to broadcast, no settlement gas to pay, and a signed limit price that is the worst execution you can receive. The tokens are Base-native B20 assets issued by Coinbase; per [Coinbase's own description](https://www.base.org/stocks), each token is a beneficial claim on a real share, backed 1:1 and held in regulated, bankruptcy-remote custody separate from Coinbase. Ophis ships its own token list for them, shows a stock panel next to the quote with the corporate-action multiplier and pause state read from the Base contracts, and routes the order through CoW Protocol's batch auction on Base.
