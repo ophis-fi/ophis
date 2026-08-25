@@ -237,12 +237,16 @@ const breadcrumbLd = {
   }
   .post-meta {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
+    gap: 4px 10px;
     font-size: 13px;
     color: var(--ophis-fg-faded);
     margin-bottom: 18px;
   }
+  /* Each item wraps as a unit (a date never splits across lines); the row itself
+     wraps at narrow widths now that it can carry an "Updated" date. */
+  .post-meta > * { white-space: nowrap; }
   .post-meta time { font-variant-numeric: tabular-nums; }
   .post-header h1 {
     font-size: clamp(30px, 5.2vw, 46px);
