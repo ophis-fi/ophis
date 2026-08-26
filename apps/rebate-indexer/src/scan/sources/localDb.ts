@@ -54,7 +54,10 @@ export function buildLocalQuery(t0Iso: string): string {
         limit 1
       ) stl on true
     where coalesce(stl.settled_at, o.creation_timestamp) >= '${t0Iso}'::timestamptz
-      and lower(convert_from(a.full_app_data,'UTF8')::jsonb->>'appCode') in ('ophis','greg')
+      and (
+        lower(convert_from(a.full_app_data,'UTF8')::jsonb->>'appCode') in ('ophis','greg')
+        or lower(convert_from(a.full_app_data,'UTF8')::jsonb#>>'{metadata,widget,appCode}') in ('ophis','greg')
+      )
     group by o.uid, o.creation_timestamp, o.owner, o.receiver, o.sell_token, o.buy_token, a.full_app_data
     order by max(coalesce(stl.settled_at, o.creation_timestamp)) desc;`;
 }

@@ -33,12 +33,14 @@ describe('parseLocalRows', () => {
 });
 
 describe('buildLocalQuery', () => {
-  it('filters by window and Ophis appCode (case-insensitively)', () => {
+  it('filters by window and top-level or widget Ophis appCode (case-insensitively)', () => {
     const q = buildLocalQuery('2026-06-17T00:00:00Z');
     expect(q).toContain("2026-06-17T00:00:00Z");
-    // appCode is lower()-ed before the membership check so a capitalised "Ophis"
-    // on-chain appCode is still selected.
+    // Both attribution locations are lower()-ed before the membership check so
+    // a capitalised "Ophis" appCode is still selected. Widget orders use the
+    // host dapp at the top level and Ophis under metadata.widget.appCode.
     expect(q).toMatch(/lower\(.*->>'appCode'\)\s*in\s*\('ophis','greg'\)/i);
+    expect(q).toMatch(/lower\(.*#>>'\{metadata,widget,appCode\}'\)\s*in\s*\('ophis','greg'\)/i);
   });
   it('maps each trade to exactly ONE settlement via a LATERAL sub-select (no fan-out)', () => {
     const q = buildLocalQuery('2026-06-17T00:00:00Z');
