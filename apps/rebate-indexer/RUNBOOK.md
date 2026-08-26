@@ -49,15 +49,18 @@ independent scanner disagrees with the indexed totals.
 ### 3. DefiLlama endpoint stays at 503
 **Detect:** `/defillama?date=YYYY-MM-DD` returns `DefiLlama settlement history
 backfill in progress` after the main stats recovery.
-1. Inspect queue and price gates:
+1. Inspect the owner queue and every production-fill completeness gate:
    `SELECT count(*) FROM defillama_backfill_wallets;` and
-   `SELECT chain_id,count(*) FROM defillama_fills WHERE fee_verified AND value_usd IS NULL GROUP BY chain_id;`.
-2. Check the matching owner/chain fetch or pricing error in indexer logs.
-3. Fix the chain-specific RPC/orderbook/price namespace issue. Do not manually
+   `SELECT chain_id,count(*) FROM defillama_fills WHERE chain_id IN (1,10,56,100,130,137,4663,8453,9745,42161,43114,57073,59144) AND (NOT fee_verified OR assessed_fee_bps IS NULL OR value_usd IS NULL OR transaction_hash IS NULL OR user_address IS NULL) GROUP BY chain_id;`.
+2. Inspect aggregate-to-fill audit gaps:
+   `SELECT t.chain_id,count(*) FROM trades t WHERE t.chain_id IN (1,10,56,100,130,137,4663,8453,9745,42161,43114,57073,59144) AND t.fee_verified AND (t.defillama_expected_fill_count IS NULL OR t.defillama_expected_fill_count <> (SELECT count(*) FROM defillama_fills f WHERE f.chain_id=t.chain_id AND f.trade_uid=t.trade_uid)) GROUP BY t.chain_id;`.
+3. Check the matching exact-UID orderbook, settlement RPC, attribution, assessment,
+   or pricing error in indexer logs.
+4. Fix the chain-specific RPC/orderbook/price namespace issue. Do not manually
    set `defillama_reporting_state.completed_at`; the endpoint is intentionally
-   fail-closed until both gates drain.
-4. Restart for a retry and confirm the queue and unpriced verified-fill count are
-   both zero before testing the endpoint again.
+   fail-closed until every gate drains.
+5. Restart for a retry and confirm both queries return zero rows before testing
+   the endpoint again.
 
 ### 4. Pricer behind (high `value_usd IS NULL` count)
 **Detect:** Wallet volumes in `/tier/:wallet` look low; users report missing rebates.

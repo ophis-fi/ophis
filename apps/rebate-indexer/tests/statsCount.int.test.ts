@@ -11,6 +11,7 @@ let container: StartedPostgreSqlContainer;
 let sql: any;
 let computePublicStats: typeof import('../src/stats.js')['computePublicStats'];
 let computeDefiLlamaDay: typeof import('../src/stats.js')['computeDefiLlamaDay'];
+let computeDefiLlamaDayUsers: typeof import('../src/stats.js')['computeDefiLlamaDayUsers'];
 
 const W = (h: string) => h.replace(/^0x/, '').padStart(40, '0');
 const UID = (h: string) => h.padStart(112, '0');
@@ -54,7 +55,7 @@ beforeAll(async () => {
   ({ sql } = await import('../src/db/index.js'));
   const { runMigrations } = await import('../src/db/migrate.js');
   await runMigrations();
-  ({ computePublicStats, computeDefiLlamaDay } = await import('../src/stats.js'));
+  ({ computePublicStats, computeDefiLlamaDay, computeDefiLlamaDayUsers } = await import('../src/stats.js'));
   await ins('01', 100, HUMAN_A, '100'); // human A, Gnosis
   await ins('02', 100, HUMAN_A, '50'); // human A again (same person, 2 trades)
   await ins('03', 1, HUMAN_B, '19000'); // human B, Ethereum
@@ -121,6 +122,24 @@ describe('computeDefiLlamaDay', () => {
     `;
     const [optimism] = await computeDefiLlamaDay(sql, metricDay.slice(0, 10), [10], [10, 130, 4663], 7500);
     expect(optimism).toMatchObject({ trades: 2, transactions: 1, users: 1, volumeUsd: 30 });
+  });
+
+  it('deduplicates the same active wallet across chains in protocol totals', async () => {
+    const metricDay = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+    await sql`
+      INSERT INTO defillama_fills (
+        chain_id, block_number, log_index, trade_uid, transaction_hash, user_address,
+        settlement_timestamp, sell_token, sell_amount, volume_fee_bps,
+        assessed_fee_bps, fee_verified, value_usd, priced_at)
+      VALUES
+        (1, 18, ${fillLogIndex++}, decode(${UID('e3')}, 'hex'), decode(${'ab'.repeat(32)}, 'hex'),
+         decode(${W(HUMAN_A)}, 'hex'), ${metricDay}, decode(${W('5e11')}, 'hex'), 1, 1, 1, true, 10, ${RECENT}),
+        (100, 19, ${fillLogIndex++}, decode(${UID('e4')}, 'hex'), decode(${'cd'.repeat(32)}, 'hex'),
+         decode(${W(HUMAN_A)}, 'hex'), ${metricDay}, decode(${W('5e11')}, 'hex'), 1, 1, 1, true, 20, ${RECENT})
+    `;
+    const chains = await computeDefiLlamaDay(sql, metricDay.slice(0, 10), [1, 100], [10, 130, 4663], 7500);
+    expect(chains.reduce((sum, row) => sum + row.users, 0)).toBe(2);
+    expect(await computeDefiLlamaDayUsers(sql, metricDay.slice(0, 10), [1, 100])).toBe(1);
   });
 
   it('preserves explicit zero fees and retains the full fee on sovereign chains', async () => {
