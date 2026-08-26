@@ -4,6 +4,7 @@ import { SETTLE_FN } from '../src/cow/settleAbi.js';
 import { resolveAppData } from '../src/cow/appDataResolver.js';
 import {
   decodeWindow,
+  advertisedLogRangeLimit,
   settleDecoderChains,
   isRangeError,
   isDiscoveryOnly,
@@ -169,6 +170,8 @@ describe('settleDecoderChains / isRangeError', () => {
     expect(isRangeError(new Error('query returned more than 10000 results'))).toBe(true);
     expect(isRangeError(new Error('-32602 invalid params'))).toBe(true);
     expect(isRangeError(new Error('eth_getLogs is limited to a 10,000 range (-32614)'))).toBe(true);
+    expect(advertisedLogRangeLimit(new Error('eth_getLogs is limited to a 10,000 range'))).toBe(10_000n);
+    expect(advertisedLogRangeLimit(new Error('block range too large'))).toBeNull();
     expect(isRangeError(new Error('nonce too low'))).toBe(false);
   });
 });

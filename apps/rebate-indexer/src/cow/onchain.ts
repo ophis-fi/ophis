@@ -123,7 +123,16 @@ export function settleDecoderChains(): number[] {
     .filter((n) => Number.isInteger(n) && n > 0);
 }
 
-/** A provider "block range too large / too many results" error -> halve + retry. */
+/** Provider-advertised maximum block span, when the error exposes one. */
+export function advertisedLogRangeLimit(err: unknown): bigint | null {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  const match = msg.match(/limited to (?:a |an )?([\d,]+) (?:block )?range/);
+  if (!match) return null;
+  const limit = BigInt(match[1]!.replaceAll(',', ''));
+  return limit > 0n ? limit : null;
+}
+
+/** A provider "block range too large / too many results" error -> shrink + retry. */
 export function isRangeError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return (
@@ -131,7 +140,7 @@ export function isRangeError(err: unknown): boolean {
     msg.includes('-32614') ||
     msg.includes('block range') ||
     msg.includes('range too large') ||
-    /limited to (?:a |an )?[\d,]+ (?:block )?range/.test(msg) ||
+    advertisedLogRangeLimit(err) !== null ||
     msg.includes('10000 results') ||
     msg.includes('query returned more than') ||
     msg.includes('response size') ||

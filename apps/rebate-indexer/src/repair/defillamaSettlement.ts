@@ -5,7 +5,7 @@ import { decodeFunctionData } from 'viem';
 import { SETTLE_FN, TRADE_EVENT, settlementAddressFor } from '../cow/settleAbi.js';
 import { getOrder, listTrades } from '../cow/client.js';
 import { resolveAppData } from '../cow/appDataResolver.js';
-import { isRangeError } from '../cow/onchain.js';
+import { advertisedLogRangeLimit, isRangeError } from '../cow/onchain.js';
 import {
   attributeOrder,
   DECODER_ETHFLOW_OWNERS,
@@ -206,7 +206,8 @@ async function onchainSourcesForUids(
       rateLimitRetries = 0;
     } catch (err) {
       if (isRangeError(err) && window > 1n) {
-        window >>= 1n;
+        const advertised = advertisedLogRangeLimit(err);
+        window = advertised !== null && advertised < window ? advertised : window >> 1n;
         continue;
       }
       if (isRateLimitError(err) && rateLimitRetries < ONCHAIN_RATE_LIMIT_RETRIES) {
@@ -298,6 +299,17 @@ async function onchainSourcesForUids(
           : 1,
     );
   }
+  log.info(
+    {
+      chainId,
+      uids: orderUids.length,
+      requests,
+      startBlock: startRaw,
+      safeHead: safeHead.toString(),
+      window: window.toString(),
+    },
+    'on-chain settlement history scan complete',
+  );
   return { sources: found, safeHead };
 }
 
@@ -530,68 +542,73 @@ async function repairDefiLlamaSettlementIdentityBatch(
     }
   }
 
-  for (const [chainId, uids] of onchainUidsByChain) {
-    try {
-      const onchain = await onchainSourcesForUids(chainId, uids);
-      for (const uid of uids) {
-        const key = `${chainId}:${uid.toLowerCase()}`;
-        const merged = new Map<string, SettlementSource>();
-        // API rows win for the same settlement because they carry exact executed
-        // fee-policy metadata; immutable on-chain rows add pruned settlements.
-        for (const source of sourcesByUid.get(key) ?? []) {
-          merged.set(settlementKey(source.blockNumber, source.logIndex), source);
-        }
-        const chainSources = onchain.sources.get(uid.toLowerCase()) ?? [];
-        const onchainSettlements = new Set(
-          chainSources.map((source) => settlementKey(source.blockNumber, source.logIndex)),
-        );
-        const apiHistoryValidated = [...merged.values()].every(
-          (source) =>
-            source.blockNumber > onchain.safeHead ||
-            onchainSettlements.has(settlementKey(source.blockNumber, source.logIndex)),
-        );
-        onchainValidationByUid.set(
-          key,
-          apiHistoryValidated &&
-            (chainSources.length > 0 ||
-              [...merged.values()].every((source) => source.blockNumber > onchain.safeHead)),
-        );
-        for (const source of chainSources) {
-          const settlement = settlementKey(source.blockNumber, source.logIndex);
-          const apiSource = merged.get(settlement);
-          if (apiSource) {
-            merged.set(settlement, {
-              ...apiSource,
-              feeAmount: source.feeAmount,
-              side: source.side,
-              appDataHash: source.appDataHash,
-              receiver: source.receiver,
-            });
-          } else {
-            merged.set(settlement, source);
+  await Promise.all(
+    [...onchainUidsByChain].map(async ([chainId, uids]) => {
+      try {
+        const onchain = await onchainSourcesForUids(chainId, uids);
+        for (const uid of uids) {
+          const key = `${chainId}:${uid.toLowerCase()}`;
+          const merged = new Map<string, SettlementSource>();
+          // API rows win for the same settlement because they carry exact executed
+          // fee-policy metadata; immutable on-chain rows add pruned settlements.
+          for (const source of sourcesByUid.get(key) ?? []) {
+            merged.set(settlementKey(source.blockNumber, source.logIndex), source);
+          }
+          const chainSources = onchain.sources.get(uid.toLowerCase()) ?? [];
+          const onchainSettlements = new Set(
+            chainSources.map((source) => settlementKey(source.blockNumber, source.logIndex)),
+          );
+          const apiHistoryValidated = [...merged.values()].every(
+            (source) =>
+              source.blockNumber > onchain.safeHead ||
+              onchainSettlements.has(settlementKey(source.blockNumber, source.logIndex)),
+          );
+          onchainValidationByUid.set(
+            key,
+            apiHistoryValidated &&
+              (chainSources.length > 0 ||
+                [...merged.values()].every((source) => source.blockNumber > onchain.safeHead)),
+          );
+          for (const source of chainSources) {
+            const settlement = settlementKey(source.blockNumber, source.logIndex);
+            const apiSource = merged.get(settlement);
+            if (apiSource) {
+              merged.set(settlement, {
+                ...apiSource,
+                feeAmount: source.feeAmount,
+                side: source.side,
+                appDataHash: source.appDataHash,
+                receiver: source.receiver,
+              });
+            } else {
+              merged.set(settlement, source);
+            }
+          }
+          if (merged.size > 0) {
+            sourcesByUid.set(
+              key,
+              [...merged.values()].sort((a, b) =>
+                a.blockNumber === b.blockNumber
+                  ? a.logIndex - b.logIndex
+                  : a.blockNumber < b.blockNumber
+                    ? -1
+                    : 1,
+              ),
+            );
           }
         }
-        if (merged.size > 0) {
-          sourcesByUid.set(
-            key,
-            [...merged.values()].sort((a, b) =>
-              a.blockNumber === b.blockNumber
-                ? a.logIndex - b.logIndex
-                : a.blockNumber < b.blockNumber
-                  ? -1
-                  : 1,
-            ),
-          );
+      } catch (err) {
+        failedBlocks++;
+        for (const uid of uids) {
+          onchainValidationByUid.set(`${chainId}:${uid.toLowerCase()}`, false);
         }
+        log.warn(
+          { err, chainId, uids: uids.length },
+          'on-chain settlement history fallback failed',
+        );
       }
-    } catch (err) {
-      failedBlocks++;
-      for (const uid of uids) {
-        onchainValidationByUid.set(`${chainId}:${uid.toLowerCase()}`, false);
-      }
-      log.warn({ err, chainId, uids: uids.length }, 'on-chain settlement history fallback failed');
-    }
-  }
+    }),
+  );
 
   const timestampsByBlock = new Map<string, Date>();
   const resolvedMetaByHash = new Map<string, unknown | null>();
