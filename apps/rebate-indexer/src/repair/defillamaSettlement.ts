@@ -5,14 +5,16 @@ import { decodeFunctionData } from 'viem';
 import { SETTLE_FN, TRADE_EVENT, settlementAddressFor } from '../cow/settleAbi.js';
 import { getOrder, listTrades } from '../cow/client.js';
 import { resolveAppData } from '../cow/appDataResolver.js';
+import { isRangeError } from '../cow/onchain.js';
 import {
   attributeOrder,
   DECODER_ETHFLOW_OWNERS,
   readAssessedOphisFeeBps,
   upsertDefillamaFills,
+  verifiedHostedZeroAssessment,
   type PendingDefiLlamaFill,
 } from '../fetcher.js';
-import { affiliateFeeBpsForOrderCreatedAt, SOVEREIGN_CHAIN_IDS } from '../affiliate/rates.js';
+import { affiliateFeeBpsForOrderCreatedAt } from '../affiliate/rates.js';
 import { logger } from '../logger.js';
 import { PRODUCTION_CHAIN_IDS } from '../stats-page.js';
 import { OPHIS_SAFE_ADDRESS } from '../safe/addresses.js';
@@ -156,18 +158,6 @@ function sourceFromLog(
   };
 }
 
-function isRangeError(err: unknown): boolean {
-  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return (
-    message.includes('-32602') ||
-    message.includes('block range') ||
-    message.includes('range too large') ||
-    message.includes('query returned more than') ||
-    message.includes('response size') ||
-    message.includes('limit exceeded')
-  );
-}
-
 function isRateLimitError(err: unknown): boolean {
   const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return (
@@ -309,14 +299,6 @@ async function onchainSourcesForUids(
     );
   }
   return { sources: found, safeHead };
-}
-
-function verifiedHostedZeroAssessment(chainId: number, volumeFeeBps: number | null): string | null {
-  // A verified zero means attribution examined the appData and found no settled
-  // Ophis appData fee. That proves exact zero only on hosted chains: sovereign
-  // market orders can prepend an operated price-improvement policy independently.
-  if (volumeFeeBps === 0 && !SOVEREIGN_CHAIN_IDS.has(chainId)) return '0.00000000';
-  return null;
 }
 
 /** Read one unambiguous legacy Ophis flat policy from hash-verified appData.
@@ -683,6 +665,11 @@ async function repairDefiLlamaSettlementIdentityBatch(
               } catch {
                 resolved = null;
               }
+            } else {
+              log.warn(
+                { chainId: row.chain_id, uid, appDataHash: hash },
+                'settlement appData unavailable from content-addressed resolver',
+              );
             }
             resolvedMetaByHash.set(hash, resolved);
           }

@@ -449,6 +449,15 @@ export function readAssessedOphisFeeBps(
   return `${scaledBps / scale}.${(scaledBps % scale).toString().padStart(8, '0')}`;
 }
 
+/** A verified appData zero is exact on hosted chains. Sovereign backends can
+ * prepend Ophis price improvement independently, so their zero stays pending. */
+export function verifiedHostedZeroAssessment(
+  chainId: number,
+  verifiedVolumeFeeBps: number | null,
+): string | null {
+  return verifiedVolumeFeeBps === 0 && !SOVEREIGN_CHAIN_IDS.has(chainId) ? '0.00000000' : null;
+}
+
 function isAppCodeOfInterest(code: string | undefined): code is AppCode {
   return code !== undefined && (APP_CODES as readonly string[]).includes(code);
 }
@@ -804,6 +813,8 @@ export async function fetchChainTrades(
         if (fill) {
           const createdAt = new Date(order.creationDate);
           fill.volumeFeeBps = affiliateFeeBpsForOrderCreatedAt(fill.volumeFeeBps, createdAt);
+          const assessedFeeBps = readAssessedOphisFeeBps(chainId, order.class, meta, t)
+            ?? verifiedHostedZeroAssessment(chainId, fill.volumeFeeBps);
           fillSink.push({
             ...fillKey,
             transactionHash: t.txHash as `0x${string}`,
@@ -814,7 +825,7 @@ export async function fetchChainTrades(
             buyToken: fill.buyToken,
             buyAmount: fill.buyAmount,
             volumeFeeBps: fill.volumeFeeBps,
-            assessedFeeBps: readAssessedOphisFeeBps(chainId, order.class, meta, t),
+            assessedFeeBps,
             feeVerified: true,
           });
         }

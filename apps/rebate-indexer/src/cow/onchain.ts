@@ -128,8 +128,10 @@ export function isRangeError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return (
     msg.includes('-32602') ||
+    msg.includes('-32614') ||
     msg.includes('block range') ||
     msg.includes('range too large') ||
+    /limited to (?:a |an )?[\d,]+ (?:block )?range/.test(msg) ||
     msg.includes('10000 results') ||
     msg.includes('query returned more than') ||
     msg.includes('response size') ||
