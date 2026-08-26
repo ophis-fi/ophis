@@ -9,7 +9,7 @@ import {
   upsertDefillamaFills,
   type PendingDefiLlamaFill,
 } from '../fetcher.js';
-import { affiliateFeeBpsForOrderCreatedAt } from '../affiliate/rates.js';
+import { affiliateFeeBpsForOrderCreatedAt, SOVEREIGN_CHAIN_IDS } from '../affiliate/rates.js';
 import { logger } from '../logger.js';
 import { PRODUCTION_CHAIN_IDS } from '../stats-page.js';
 import type { CowTrade } from '../cow/types.js';
@@ -187,7 +187,15 @@ async function onchainSourcesForUids(
   return found;
 }
 
-function legacyFlatAssessment(volumeFeeBps: number | null, settledAt: Date): string | null {
+function verifiedAggregateAssessment(
+  chainId: number,
+  volumeFeeBps: number | null,
+  settledAt: Date,
+): string | null {
+  // A verified zero means attribution examined the appData and found no settled
+  // Ophis appData fee. That proves exact zero only on hosted chains: sovereign
+  // market orders can prepend an operated price-improvement policy independently.
+  if (volumeFeeBps === 0 && !SOVEREIGN_CHAIN_IDS.has(chainId)) return '0.00000000';
   if (volumeFeeBps === null || settledAt >= LEGACY_FLAT_FEE_CUTOFF) return null;
   return `${volumeFeeBps}.00000000`;
 }
@@ -480,7 +488,7 @@ export async function repairDefiLlamaSettlementIdentity(): Promise<RepairResult>
           : null;
         const assessedFeeBps = exactAssessment
           ?? existing?.assessed_fee_bps
-          ?? legacyFlatAssessment(row.volume_fee_bps, settlementTimestamp);
+          ?? verifiedAggregateAssessment(row.chain_id, row.volume_fee_bps, settlementTimestamp);
         if (!userAddress) complete = false;
         if (assessedFeeBps === null) complete = false;
         if (!userAddress) continue;
