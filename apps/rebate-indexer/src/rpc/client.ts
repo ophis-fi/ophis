@@ -20,7 +20,7 @@ const DRPC_NETWORK: Record<number, string> = {
 };
 
 // chainId -> a known keyless ARCHIVE RPC used as the fallback when none is set. The
-// sovereign chains (OP 10, Unichain 130) get a keyless default so the settle decoder
+// sovereign chains (OP 10, Unichain 130, Robinhood 4663) get a keyless default so the settle decoder
 // resolves a client with no per-chain env (override with SETTLE_RPC_URL_<id> for a
 // keyed endpoint). MUST be archive: the decoder's historical backfill does getLogs on
 // old blocks, which publicnode's keyless tier REJECTS ("Archive requests require a
