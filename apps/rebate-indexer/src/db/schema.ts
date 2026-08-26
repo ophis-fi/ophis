@@ -13,6 +13,7 @@ import {
   primaryKey,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 // uint256 stored as NUMERIC(78) — drizzle exposes string at the TS layer;
 // we convert to bigint at use-site to stay lossless.
@@ -110,6 +111,13 @@ export const trades = pgTable(
     // the backfill stamps it so every row is scanned at most once and the queue drains.
     ownFeeScannedAt: timestamp('own_fee_scanned_at', { withTimezone: true }),
 
+    // Exact-UID reporting audit (migration 0039). Aggregate trades store one
+    // order total, while defillama_fills stores every settlement event. Readiness
+    // requires the persisted expected count to match the fill ledger so one fill
+    // cannot make a multi-fill order look complete.
+    defillamaExpectedFillCount: integer('defillama_expected_fill_count'),
+    defillamaRepairCheckedAt: timestamp('defillama_repair_checked_at', { withTimezone: true }),
+
     valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
     pricedAt: timestamp('priced_at', { withTimezone: true }),
 
@@ -118,6 +126,9 @@ export const trades = pgTable(
   (t) => ({
     walletTimeIdx: index('trades_wallet_time_idx').on(t.wallet, t.blockTimestamp),
     unpricedIdx: index('trades_unpriced_idx').on(t.pricedAt),
+    defillamaRepairIdx: index('trades_defillama_repair_pending_idx')
+      .on(t.defillamaRepairCheckedAt, t.chainId)
+      .where(sql`${t.feeVerified} = true`),
   }),
 );
 

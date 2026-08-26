@@ -8,7 +8,7 @@ import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
 import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
 import { isDefiLlamaBackfillComplete } from './defillamaBackfill.js';
-import { computeDefiLlamaDay, computePublicStats } from './stats.js';
+import { computeDefiLlamaDay, computeDefiLlamaDayUsers, computePublicStats } from './stats.js';
 import { assessPublicDataFreshness, readPublicDataFreshness, type PublicDataFreshness } from './freshness.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
@@ -686,7 +686,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       [...SOVEREIGN_CHAIN_IDS],
       10_000 - COW_TAKE_BPS,
     );
-    const totals = chains.reduce(
+    const protocolUsers = await computeDefiLlamaDayUsers(sql, date, [...PRODUCTION_CHAIN_IDS]);
+    const additiveTotals = chains.reduce(
       (sum, chain) => ({
         volumeUsd: sum.volumeUsd + chain.volumeUsd,
         feesUsd: sum.feesUsd + chain.feesUsd,
@@ -694,7 +695,6 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         supplySideRevenueUsd: sum.supplySideRevenueUsd + chain.supplySideRevenueUsd,
         trades: sum.trades + chain.trades,
         transactions: sum.transactions + chain.transactions,
-        users: sum.users + chain.users,
       }),
       {
         volumeUsd: 0,
@@ -703,9 +703,9 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         supplySideRevenueUsd: 0,
         trades: 0,
         transactions: 0,
-        users: 0,
       },
     );
+    const totals = { ...additiveTotals, users: protocolUsers };
 
     return reply
       .header('cache-control', 'public, max-age=300')

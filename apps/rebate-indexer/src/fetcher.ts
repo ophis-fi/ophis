@@ -99,7 +99,11 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
       ],
       set: {
         transactionHash: dsql`COALESCE(${schema.defillamaFills.transactionHash}, excluded.transaction_hash)`,
-        userAddress: dsql`COALESCE(${schema.defillamaFills.userAddress}, excluded.user_address)`,
+        // A verified API/exact-UID write is authoritative for user attribution
+        // and may correct a legacy eth-flow router copied into this field.
+        userAddress: dsql`CASE WHEN excluded.fee_verified
+          THEN excluded.user_address
+          ELSE COALESCE(${schema.defillamaFills.userAddress}, excluded.user_address) END`,
         volumeFeeBps: dsql`CASE WHEN excluded.fee_verified
           THEN excluded.volume_fee_bps ELSE ${schema.defillamaFills.volumeFeeBps} END`,
         assessedFeeBps: dsql`COALESCE(excluded.assessed_fee_bps, ${schema.defillamaFills.assessedFeeBps})`,
@@ -108,7 +112,9 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
       setWhere: dsql`(${schema.defillamaFills.feeVerified} = false AND excluded.fee_verified = true)
                      OR (${schema.defillamaFills.assessedFeeBps} IS NULL AND excluded.assessed_fee_bps IS NOT NULL)
                      OR ${schema.defillamaFills.transactionHash} IS NULL
-                     OR ${schema.defillamaFills.userAddress} IS NULL`,
+                     OR ${schema.defillamaFills.userAddress} IS NULL
+                     OR (excluded.fee_verified = true
+                       AND ${schema.defillamaFills.userAddress} IS DISTINCT FROM excluded.user_address)`,
     });
 }
 
