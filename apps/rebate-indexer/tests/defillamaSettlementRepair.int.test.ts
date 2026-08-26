@@ -44,7 +44,7 @@ vi.mock('../src/rpc/client.js', () => ({
     }),
     getBlockNumber: vi.fn(async () => 400n),
     getBlock: vi.fn(async ({ blockNumber }: { blockNumber: bigint }) => ({
-      timestamp: 1_786_000_000n + blockNumber,
+      timestamp: blockNumber >= 350n ? 1_787_000_000n + blockNumber : 1_786_000_000n + blockNumber,
     })),
   }),
 }));
@@ -59,6 +59,8 @@ const PARTIAL_UID = UID('a1');
 const IMPROVEMENT_UID = UID('a2');
 const TESTNET_UID = UID('a3');
 const FALLBACK_UID = UID('a4');
+const ZERO_UID = UID('a5');
+const SOVEREIGN_ZERO_UID = UID('a6');
 const OWNER = `0x${'12'.repeat(20)}`;
 const SELL = `0x${'34'.repeat(20)}`;
 const BUY = `0x${'56'.repeat(20)}`;
@@ -135,8 +137,14 @@ beforeAll(async () => {
     apiTrade(PARTIAL_UID, 200, 7, 600n, 2_500n),
   ];
   const improvementTrades = [apiTrade(IMPROVEMENT_UID, 300, 9, 500n, 5_000n, true)];
+  const zeroTrades = [apiTrade(ZERO_UID, 350, 4, 200n, 800n)];
+  zeroTrades[0]!.executedProtocolFees = [];
+  const sovereignZeroTrades = [apiTrade(SOVEREIGN_ZERO_UID, 360, 5, 200n, 800n)];
+  sovereignZeroTrades[0]!.executedProtocolFees = [];
   API_TRADES.set(`1:${PARTIAL_UID}`, partialTrades);
   API_TRADES.set(`1:${IMPROVEMENT_UID}`, improvementTrades);
+  API_TRADES.set(`56:${ZERO_UID}`, zeroTrades);
+  API_TRADES.set(`10:${SOVEREIGN_ZERO_UID}`, sovereignZeroTrades);
   ORDERS.set(`1:${PARTIAL_UID}`, {
     uid: PARTIAL_UID, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
     sellAmount: '1000', buyAmount: '4000', appData: `0x${'00'.repeat(32)}`,
@@ -147,13 +155,28 @@ beforeAll(async () => {
     sellAmount: '500', buyAmount: '5000', appData: `0x${'00'.repeat(32)}`,
     fullAppData: improvementMeta, creationDate: '2026-08-01T00:00:00.000Z', class: 'market', status: 'fulfilled',
   });
-  for (const trade of [...partialTrades, ...improvementTrades]) {
-    BLOCK_LOGS.set(`1:${trade.blockNumber}`, [tradeLog(trade)]);
+  ORDERS.set(`56:${ZERO_UID}`, {
+    uid: ZERO_UID, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
+    sellAmount: '200', buyAmount: '800', appData: `0x${'00'.repeat(32)}`,
+    fullAppData: JSON.stringify({ appCode: 'ophis', metadata: {} }),
+    creationDate: '2026-08-20T00:00:00.000Z', class: 'market', status: 'fulfilled',
+  });
+  ORDERS.set(`10:${SOVEREIGN_ZERO_UID}`, {
+    uid: SOVEREIGN_ZERO_UID, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
+    sellAmount: '200', buyAmount: '800', appData: `0x${'00'.repeat(32)}`,
+    fullAppData: JSON.stringify({ appCode: 'ophis', metadata: {} }),
+    creationDate: '2026-08-20T00:00:00.000Z', class: 'market', status: 'fulfilled',
+  });
+  for (const trade of [...partialTrades, ...improvementTrades, ...zeroTrades, ...sovereignZeroTrades]) {
+    const chainId = trade === zeroTrades[0] ? 56 : trade === sovereignZeroTrades[0] ? 10 : 1;
+    BLOCK_LOGS.set(`${chainId}:${trade.blockNumber}`, [tradeLog(trade)]);
   }
 
   await insertAggregate(PARTIAL_UID, 1, 1_000n, 4_000n, 1);
   await insertAggregate(IMPROVEMENT_UID, 1, 500n, 5_000n, null);
   await insertAggregate(TESTNET_UID, 11155111, 1n, 1n, 1);
+  await insertAggregate(ZERO_UID, 56, 200n, 800n, 0);
+  await insertAggregate(SOVEREIGN_ZERO_UID, 10, 200n, 800n, 0);
 
   // Simulate a retired sovereign orderbook: neither exact-UID trades nor order
   // metadata remains, but both immutable settlement events are on-chain. The
@@ -214,6 +237,8 @@ describe('repairDefiLlamaSettlementIdentity', () => {
     expect(audits.find((row) => row.uid === PARTIAL_UID.slice(2))).toMatchObject({ expected: 2, checked: true });
     expect(audits.find((row) => row.uid === IMPROVEMENT_UID.slice(2))).toMatchObject({ expected: 1, checked: true });
     expect(audits.find((row) => row.uid === FALLBACK_UID.slice(2))).toMatchObject({ expected: 2, checked: true });
+    expect(audits.find((row) => row.uid === ZERO_UID.slice(2))).toMatchObject({ expected: 1, checked: true });
+    expect(audits.find((row) => row.uid === SOVEREIGN_ZERO_UID.slice(2))).toMatchObject({ expected: null, checked: false });
     expect(audits.find((row) => row.uid === TESTNET_UID.slice(2))).toMatchObject({ expected: null, checked: false });
 
     const fallback = await sql`
@@ -224,6 +249,18 @@ describe('repairDefiLlamaSettlementIdentity', () => {
       ORDER BY block_number` as Array<{ block: string; assessed: string | null; verified: boolean }>;
     expect(fallback.map((row) => row.block)).toEqual(['120', '180']);
     expect(fallback.every((row) => row.verified && row.assessed === '10.00000000')).toBe(true);
+
+    const [zero] = await sql<{ assessed: string | null; verified: boolean }[]>`
+      SELECT assessed_fee_bps::text AS assessed, fee_verified AS verified
+      FROM defillama_fills
+      WHERE chain_id = 56 AND trade_uid = decode(${ZERO_UID.slice(2)}, 'hex')`;
+    expect(zero).toMatchObject({ assessed: '0.00000000', verified: true });
+
+    const [sovereignZero] = await sql<{ assessed: string | null; verified: boolean }[]>`
+      SELECT assessed_fee_bps::text AS assessed, fee_verified AS verified
+      FROM defillama_fills
+      WHERE chain_id = 10 AND trade_uid = decode(${SOVEREIGN_ZERO_UID.slice(2)}, 'hex')`;
+    expect(sovereignZero).toMatchObject({ assessed: null, verified: false });
 
     const [testnetFill] = await sql<{ count: string }[]>`
       SELECT COUNT(*)::text AS count FROM defillama_fills
