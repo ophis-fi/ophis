@@ -30,6 +30,8 @@ export interface DefiLlamaChainDay {
   revenueUsd: number;
   supplySideRevenueUsd: number;
   trades: number;
+  transactions: number;
+  users: number;
 }
 
 /** Daily, chain-level accounting for DefiLlama from settled, USD-priced trades. */
@@ -51,6 +53,8 @@ export async function computeDefiLlamaDay(
     fees_usd: string;
     revenue_usd: string;
     trades: string;
+    transactions: string;
+    users: string;
   }[]>`
     SELECT
       chain_id,
@@ -61,7 +65,9 @@ export async function computeDefiLlamaDay(
         value_usd * COALESCE(assessed_fee_bps, volume_fee_bps) / 10000
         * CASE WHEN chain_id = ANY(${sovereignChainIds}) THEN 1 ELSE ${hostedKeepBps}::numeric / 10000 END
       ) FILTER (WHERE COALESCE(assessed_fee_bps, volume_fee_bps) IS NOT NULL), 0)::text AS revenue_usd,
-      COUNT(*)::text AS trades
+      COUNT(*)::text AS trades,
+      COUNT(DISTINCT transaction_hash)::text AS transactions,
+      COUNT(DISTINCT user_address)::text AS users
     FROM defillama_fills
     WHERE chain_id = ANY(${chainIds})
       AND settlement_timestamp >= ${start}
@@ -82,6 +88,8 @@ export async function computeDefiLlamaDay(
       revenueUsd,
       supplySideRevenueUsd: feesUsd - revenueUsd,
       trades: Number(row.trades),
+      transactions: Number(row.transactions),
+      users: Number(row.users),
     };
   });
 }
