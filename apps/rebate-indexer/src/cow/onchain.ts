@@ -327,6 +327,8 @@ export async function decodeWindow(
             blockNumber: lg.blockNumber,
             logIndex: lg.logIndex,
             tradeUid: ev.orderUid as `0x${string}`,
+            transactionHash: txHash,
+            userAddress: trade.wallet,
             settlementTimestamp: ts,
             sellToken: ev.sellToken,
             sellAmount: ev.sellAmount,

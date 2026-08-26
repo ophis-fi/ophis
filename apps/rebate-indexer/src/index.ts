@@ -7,6 +7,7 @@ import { runScorer } from './scorer.js';
 import { logger } from './logger.js';
 import { completeDefiLlamaBackfillIfReady } from './defillamaBackfill.js';
 import { repairRouterTrades } from './repair/routerTrades.js';
+import { repairDefiLlamaSettlementIdentity } from './repair/defillamaSettlement.js';
 import { runScheduledTradeRewards, startTradeRewardsScheduler } from './tradeRewards/scheduler.js';
 
 async function main() {
@@ -61,6 +62,18 @@ async function main() {
         } catch (err) {
           logger.error({ err }, 'startup router repair failed (pipeline continues)');
         }
+        try {
+          const reportingRepair = await repairDefiLlamaSettlementIdentity();
+          logger.info(reportingRepair, 'startup DefiLlama settlement repair complete');
+        } catch (err) {
+          logger.error({ err }, 'startup DefiLlama settlement repair failed (reporting remains fail-closed)');
+        }
+        // Newly reconstructed fills need pricing before readiness can reopen.
+        const repairedPrices = await runPricer();
+        priced = {
+          priced: priced.priced + repairedPrices.priced,
+          failed: priced.failed + repairedPrices.failed,
+        };
         await completeDefiLlamaBackfillIfReady();
         const scored = await runScorer();
         logger.info({ inserted, priced, scored }, 'initial backfill complete');

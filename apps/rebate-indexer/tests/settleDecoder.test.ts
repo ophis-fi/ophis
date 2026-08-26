@@ -338,6 +338,8 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     expect(fills).toHaveLength(1);
     const f = fills[0]!;
     expect(f.tradeUid).toBe(uid(2));
+    expect(f.transactionHash).toBe(logs[0]!.transactionHash);
+    expect(f.userAddress).toBe(TRADER);
     expect(f.chainId).toBe(8453);
     expect(f.blockNumber).toBe(100n);
     expect(f.logIndex).toBe(7);

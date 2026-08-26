@@ -20,6 +20,8 @@ const fill = (over: Partial<PendingDefiLlamaFill>): PendingDefiLlamaFill => ({
   blockNumber: 42n,
   logIndex: 3,
   tradeUid: UID,
+  transactionHash: `0x${'33'.repeat(32)}`,
+  userAddress: `0x${'44'.repeat(20)}`,
   settlementTimestamp: new Date('2026-08-01T12:00:00Z'),
   sellToken: `0x${'11'.repeat(20)}`,
   sellAmount: 1_000n,

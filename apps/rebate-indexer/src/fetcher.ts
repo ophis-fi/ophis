@@ -46,6 +46,9 @@ export interface PendingDefiLlamaFill {
   blockNumber: bigint;
   logIndex: number;
   tradeUid: `0x${string}`;
+  transactionHash: `0x${string}`;
+  /** Actual trader; for eth-flow this is the receiver, never the router owner. */
+  userAddress: `0x${string}`;
   settlementTimestamp: Date;
   sellToken: `0x${string}`;
   sellAmount: bigint;
@@ -95,12 +98,17 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
         schema.defillamaFills.tradeUid,
       ],
       set: {
-        volumeFeeBps: dsql`excluded.volume_fee_bps`,
+        transactionHash: dsql`COALESCE(${schema.defillamaFills.transactionHash}, excluded.transaction_hash)`,
+        userAddress: dsql`COALESCE(${schema.defillamaFills.userAddress}, excluded.user_address)`,
+        volumeFeeBps: dsql`CASE WHEN excluded.fee_verified
+          THEN excluded.volume_fee_bps ELSE ${schema.defillamaFills.volumeFeeBps} END`,
         assessedFeeBps: dsql`COALESCE(excluded.assessed_fee_bps, ${schema.defillamaFills.assessedFeeBps})`,
-        feeVerified: dsql`excluded.fee_verified`,
+        feeVerified: dsql`${schema.defillamaFills.feeVerified} OR excluded.fee_verified`,
       },
       setWhere: dsql`(${schema.defillamaFills.feeVerified} = false AND excluded.fee_verified = true)
-                     OR (${schema.defillamaFills.assessedFeeBps} IS NULL AND excluded.assessed_fee_bps IS NOT NULL)`,
+                     OR (${schema.defillamaFills.assessedFeeBps} IS NULL AND excluded.assessed_fee_bps IS NOT NULL)
+                     OR ${schema.defillamaFills.transactionHash} IS NULL
+                     OR ${schema.defillamaFills.userAddress} IS NULL`,
     });
 }
 
@@ -783,6 +791,8 @@ export async function fetchChainTrades(
           fill.volumeFeeBps = affiliateFeeBpsForOrderCreatedAt(fill.volumeFeeBps, createdAt);
           fillSink.push({
             ...fillKey,
+            transactionHash: t.txHash as `0x${string}`,
+            userAddress: fill.wallet,
             settlementTimestamp,
             sellToken: fill.sellToken,
             sellAmount: fill.sellAmount,
@@ -973,6 +983,8 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
               AND trade_uid = decode(${fill.tradeUid.slice(2)}, 'hex')
               AND fee_verified = true
               AND assessed_fee_bps IS NOT NULL
+              AND transaction_hash IS NOT NULL
+              AND user_address IS NOT NULL
           ) AS present
         `;
         return row?.present === true;

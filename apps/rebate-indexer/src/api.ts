@@ -693,8 +693,18 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         revenueUsd: sum.revenueUsd + chain.revenueUsd,
         supplySideRevenueUsd: sum.supplySideRevenueUsd + chain.supplySideRevenueUsd,
         trades: sum.trades + chain.trades,
+        transactions: sum.transactions + chain.transactions,
+        users: sum.users + chain.users,
       }),
-      { volumeUsd: 0, feesUsd: 0, revenueUsd: 0, supplySideRevenueUsd: 0, trades: 0 },
+      {
+        volumeUsd: 0,
+        feesUsd: 0,
+        revenueUsd: 0,
+        supplySideRevenueUsd: 0,
+        trades: 0,
+        transactions: 0,
+        users: 0,
+      },
     );
 
     return reply

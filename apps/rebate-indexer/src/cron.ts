@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { runFetcher, pruneStaleWallets, withPipelineLock } from './fetcher.js';
 import { repairRouterTrades } from './repair/routerTrades.js';
+import { repairDefiLlamaSettlementIdentity } from './repair/defillamaSettlement.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { runBatcher, isFirstOfMonth } from './batcher.js';
@@ -103,6 +104,18 @@ async function runPipelineSteps(): Promise<void> {
     }
   } catch (err) {
     log.error({ err }, 'router repair failed (pipeline continues)');
+  }
+
+  // Recover DefiLlama settlement transaction/user identity from immutable Trade
+  // logs and reconstruct any verified aggregate trade that predates the fill
+  // ledger. This is reporting-only and never changes rebate accrual fields.
+  try {
+    const reportingRepair = await repairDefiLlamaSettlementIdentity();
+    if (reportingRepair.identities > 0 || reportingRepair.fills > 0 || reportingRepair.fees > 0 || reportingRepair.failedBlocks > 0) {
+      log.info(reportingRepair, 'DefiLlama settlement repair complete');
+    }
+  } catch (err) {
+    log.error({ err }, 'DefiLlama settlement repair failed (reporting remains fail-closed)');
   }
 
   const priced = await runPricer();

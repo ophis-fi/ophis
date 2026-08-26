@@ -75,14 +75,20 @@ async function fetchJson<T>(url: string, schema: z.ZodSchema<T>, init?: RequestI
 export interface ListTradesParams {
   readonly chainId: number;
   readonly owner?: `0x${string}`;
+  /** Exact order lookup. The CoW API requires exactly one of owner/orderUid. */
+  readonly orderUid?: `0x${string}`;
   readonly offset?: number;
   readonly limit?: number;                                            // CoW max is 1000
 }
 
 export async function listTrades(p: ListTradesParams): Promise<CowTrade[]> {
+  if (Boolean(p.owner) === Boolean(p.orderUid)) {
+    throw new Error('listTrades requires exactly one of owner or orderUid');
+  }
   const base = orderbookBase(p.chainId);
   const q = new URLSearchParams();
   if (p.owner) q.set('owner', p.owner);
+  if (p.orderUid) q.set('orderUid', p.orderUid);
   q.set('offset', String(p.offset ?? 0));
   q.set('limit', String(p.limit ?? 1000));
   // v2 (paginated). v1 is deprecated AND unpaginated — it ignores offset/limit

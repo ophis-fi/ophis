@@ -131,6 +131,11 @@ export const defillamaFills = pgTable(
     blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
     logIndex: integer('log_index').notNull(),
     tradeUid: bytea('trade_uid').notNull(),
+    // Immutable settlement identity used by DefiLlama's daily transaction and
+    // active-user metrics. Nullable only while migration backfill is converging;
+    // the public endpoint fails closed if a verified row is missing either field.
+    transactionHash: bytea('transaction_hash'),
+    userAddress: bytea('user_address'),
     settlementTimestamp: timestamp('settlement_timestamp', { withTimezone: true }).notNull(),
     sellToken: bytea('sell_token').notNull(),
     sellAmount: uint256('sell_amount').notNull(),
@@ -149,6 +154,8 @@ export const defillamaFills = pgTable(
     pk: primaryKey({ columns: [t.chainId, t.blockNumber, t.logIndex, t.tradeUid] }),
     unpricedIdx: index('defillama_fills_unpriced_idx').on(t.chainId, t.blockNumber, t.logIndex),
     dailyIdx: index('defillama_fills_daily_idx').on(t.settlementTimestamp, t.chainId),
+    txIdx: index('defillama_fills_tx_idx').on(t.transactionHash),
+    userIdx: index('defillama_fills_user_idx').on(t.userAddress),
   }),
 );
 
