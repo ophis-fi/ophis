@@ -99,6 +99,11 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
       ],
       set: {
         transactionHash: dsql`COALESCE(${schema.defillamaFills.transactionHash}, excluded.transaction_hash)`,
+        // Early reporting rows predate the per-fill buy side. The exact-UID/on-chain
+        // source can complete those nullable legacy columns without rewriting an
+        // already-persisted immutable value.
+        buyToken: dsql`COALESCE(${schema.defillamaFills.buyToken}, excluded.buy_token)`,
+        buyAmount: dsql`COALESCE(${schema.defillamaFills.buyAmount}, excluded.buy_amount)`,
         // A verified API/exact-UID write is authoritative for user attribution
         // and may correct a legacy eth-flow router copied into this field.
         userAddress: dsql`CASE WHEN excluded.fee_verified
@@ -113,6 +118,8 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
                      OR (${schema.defillamaFills.assessedFeeBps} IS NULL AND excluded.assessed_fee_bps IS NOT NULL)
                      OR ${schema.defillamaFills.transactionHash} IS NULL
                      OR ${schema.defillamaFills.userAddress} IS NULL
+                     OR ${schema.defillamaFills.buyToken} IS NULL
+                     OR ${schema.defillamaFills.buyAmount} IS NULL
                      OR (excluded.fee_verified = true
                        AND ${schema.defillamaFills.userAddress} IS DISTINCT FROM excluded.user_address)`,
     });

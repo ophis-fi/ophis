@@ -35,8 +35,14 @@ vi.mock('../src/cow/client.js', () => ({
 
 vi.mock('../src/rpc/client.js', () => ({
   getRpcClient: (chainId: number) => ({
-    getLogs: vi.fn(async ({ fromBlock }: { fromBlock: bigint }) =>
-      BLOCK_LOGS.get(`${chainId}:${fromBlock.toString()}`) ?? []),
+    getLogs: vi.fn(async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+      const rows: unknown[] = [];
+      for (let block = fromBlock; block <= toBlock; block++) {
+        rows.push(...(BLOCK_LOGS.get(`${chainId}:${block.toString()}`) ?? []));
+      }
+      return rows;
+    }),
+    getBlockNumber: vi.fn(async () => 400n),
     getBlock: vi.fn(async ({ blockNumber }: { blockNumber: bigint }) => ({
       timestamp: 1_786_000_000n + blockNumber,
     })),
@@ -52,6 +58,7 @@ const UID = (suffix: string) => `0x${suffix.padStart(112, '0')}`;
 const PARTIAL_UID = UID('a1');
 const IMPROVEMENT_UID = UID('a2');
 const TESTNET_UID = UID('a3');
+const FALLBACK_UID = UID('a4');
 const OWNER = `0x${'12'.repeat(20)}`;
 const SELL = `0x${'34'.repeat(20)}`;
 const BUY = `0x${'56'.repeat(20)}`;
@@ -90,6 +97,7 @@ function apiTrade(uid: string, blockNumber: number, logIndex: number, sell: bigi
 function tradeLog(trade: ApiTrade) {
   return {
     args: {
+      owner: trade.owner,
       sellToken: SELL,
       buyToken: BUY,
       sellAmount: BigInt(trade.sellAmount),
@@ -147,6 +155,19 @@ beforeAll(async () => {
   await insertAggregate(IMPROVEMENT_UID, 1, 500n, 5_000n, null);
   await insertAggregate(TESTNET_UID, 11155111, 1n, 1n, 1);
 
+  // Simulate a retired sovereign orderbook: neither exact-UID trades nor order
+  // metadata remains, but both immutable settlement events are on-chain. The
+  // verified aggregate's pre-policy flat rate and user remain authoritative.
+  process.env.SETTLE_SCAN_START_BLOCK_130 = '100';
+  const fallbackTrades = [
+    apiTrade(FALLBACK_UID, 120, 2, 300n, 1_200n),
+    apiTrade(FALLBACK_UID, 180, 8, 700n, 2_800n),
+  ];
+  for (const trade of fallbackTrades) {
+    BLOCK_LOGS.set(`130:${trade.blockNumber}`, [tradeLog(trade)]);
+  }
+  await insertAggregate(FALLBACK_UID, 130, 1_000n, 4_000n, 10);
+
   // Seed only the first partial fill. The regression is that this row must not
   // make the UID appear complete and suppress the settlement in block 200.
   const first = partialTrades[0]!;
@@ -192,7 +213,17 @@ describe('repairDefiLlamaSettlementIdentity', () => {
       FROM trades ORDER BY chain_id, trade_uid` as Array<{ uid: string; expected: number | null; checked: boolean }>;
     expect(audits.find((row) => row.uid === PARTIAL_UID.slice(2))).toMatchObject({ expected: 2, checked: true });
     expect(audits.find((row) => row.uid === IMPROVEMENT_UID.slice(2))).toMatchObject({ expected: 1, checked: true });
+    expect(audits.find((row) => row.uid === FALLBACK_UID.slice(2))).toMatchObject({ expected: 2, checked: true });
     expect(audits.find((row) => row.uid === TESTNET_UID.slice(2))).toMatchObject({ expected: null, checked: false });
+
+    const fallback = await sql`
+      SELECT block_number::text AS block, assessed_fee_bps::text AS assessed,
+             fee_verified AS verified
+      FROM defillama_fills
+      WHERE chain_id = 130 AND trade_uid = decode(${FALLBACK_UID.slice(2)}, 'hex')
+      ORDER BY block_number` as Array<{ block: string; assessed: string | null; verified: boolean }>;
+    expect(fallback.map((row) => row.block)).toEqual(['120', '180']);
+    expect(fallback.every((row) => row.verified && row.assessed === '10.00000000')).toBe(true);
 
     const [testnetFill] = await sql<{ count: string }[]>`
       SELECT COUNT(*)::text AS count FROM defillama_fills
