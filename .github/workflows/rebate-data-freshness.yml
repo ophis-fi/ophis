@@ -1,0 +1,72 @@
+name: Rebate public-data freshness
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17,47 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rebate-public-data-freshness
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require a fresh published snapshot
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 --retry 2 \
+            https://rebates.ophis.fi/health > health.json
+          curl --fail --silent --show-error --max-time 20 --retry 2 \
+            -H 'accept: application/json' https://rebates.ophis.fi/stats > stats.json
+          curl --fail --silent --show-error --max-time 20 --retry 2 \
+            'https://rebates.ophis.fi/leaderboard?limit=1' > leaderboard.json
+          jq . health.json
+          jq -e '
+            .ok == true and
+            .data_fresh == true and
+            .data_status == "fresh" and
+            (.data_as_of | type == "string") and
+            .failed_batches == 0
+          ' health.json >/dev/null
+          jq -e '
+            .ok == true and
+            .dataFresh == true and
+            .dataStatus == "fresh" and
+            (.dataAsOf | type == "string") and
+            (.totalTrades | type == "number") and
+            (.distinctTraders | type == "number") and
+            (.totalVolumeUsd | type == "number")
+          ' stats.json >/dev/null
+          jq -e '
+            .dataFresh == true and
+            .dataStatus == "fresh" and
+            (.dataAsOf | type == "string") and
+            (.entries | type == "array")
+          ' leaderboard.json >/dev/null
+
+      - name: Alert operations
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.OPHIS_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.OPHIS_TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
+            echo "Telegram alerting is not configured; relying on Actions notifications"
+            exit 0
+          fi
+          detail="health endpoint unavailable"
+          if [[ -s health.json ]]; then
+            detail="$(jq -c '{data_status,data_as_of,data_stale_reason,last_pipeline_run_at,failed_batches}' health.json 2>/dev/null || echo 'invalid health JSON')"
+          fi
+          curl --fail --silent --show-error --max-time 15 \
+            -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=CRITICAL: Ophis rebate public data is stale or unhealthy. ${detail} ${RUN_URL}" >/dev/null

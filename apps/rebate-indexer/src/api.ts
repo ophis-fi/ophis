@@ -9,6 +9,7 @@ import { renderTierPage } from './tier-page.js';
 import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
 import { isDefiLlamaBackfillComplete } from './defillamaBackfill.js';
 import { computeDefiLlamaDay, computePublicStats } from './stats.js';
+import { assessPublicDataFreshness, readPublicDataFreshness, type PublicDataFreshness } from './freshness.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
 import { logger } from './logger.js';
@@ -439,6 +440,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       last_batcher_run_at: string | null;
       trade_rewards_last_attempt_at: string | null;
       trade_rewards_last_success_at: string | null;
+      last_public_data_refresh_at: string | null;
     }[]>`
       SELECT
         (SELECT MAX(fetched_at)::text FROM trades) AS last_fetch,
@@ -446,7 +448,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         (SELECT MAX(ran_at)::text FROM pipeline_runs) AS last_pipeline_run_at,
         (SELECT MAX(ran_at)::text FROM pipeline_runs WHERE first_of_month) AS last_batcher_run_at,
         (SELECT last_attempt_at::text FROM trade_reward_scheduler_state WHERE singleton = TRUE) AS trade_rewards_last_attempt_at,
-        (SELECT last_success_at::text FROM trade_reward_scheduler_state WHERE singleton = TRUE) AS trade_rewards_last_success_at
+        (SELECT last_success_at::text FROM trade_reward_scheduler_state WHERE singleton = TRUE) AS trade_rewards_last_success_at,
+        (SELECT refreshed_at::text FROM public_data_refresh_state WHERE singleton = TRUE) AS last_public_data_refresh_at
     `;
     // pending_batches = in-flight (computing/proposing/proposed) — expected to be
     // transient. failed_batches = cycles that did NOT pay out (execution reverted,
@@ -467,6 +470,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const last_batcher_run_at = healthRows[0]?.last_batcher_run_at ?? null;
     const trade_rewards_last_attempt_at = healthRows[0]?.trade_rewards_last_attempt_at ?? null;
     const trade_rewards_last_success_at = healthRows[0]?.trade_rewards_last_success_at ?? null;
+    const last_public_data_refresh_at = healthRows[0]?.last_public_data_refresh_at ?? null;
+    const freshness = assessPublicDataFreshness(last_public_data_refresh_at);
     const pending = batchCountRows[0]?.pending ?? '0';
     const failed = batchCountRows[0]?.failed ?? '0';
     return {
@@ -477,6 +482,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       last_batcher_run_at,
       trade_rewards_last_attempt_at,
       trade_rewards_last_success_at,
+      last_public_data_refresh_at,
+      data_as_of: freshness.dataAsOf,
+      data_fresh: freshness.dataFresh,
+      data_status: freshness.dataStatus,
+      data_stale_reason: freshness.dataStaleReason,
       pending_batches: parseInt(pending, 10),
       failed_batches: parseInt(failed, 10),
     };
@@ -573,7 +583,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // routes (/ and /stats), each with its own rate-limit bucket — without a
   // snapshot one IP could drive 120 aggregations/minute at the bare root.
   // 30s is far fresher than the page's own cache-control (300s).
-  let statsSnapshot: { at: number; data: Awaited<ReturnType<typeof computePublicStats>> } | null = null;
+  let statsSnapshot: {
+    at: number;
+    data: Awaited<ReturnType<typeof computePublicStats>>;
+    freshness: PublicDataFreshness;
+  } | null = null;
   const STATS_SNAPSHOT_MS = 30_000;
   const publicStatsHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     // Public production proof surface: restrict to the named mainnet chains so
@@ -583,11 +597,16 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // Aggregation (with the eth-flow-router exclusion on the distinct-trader count)
     // lives in computePublicStats so it is unit-testable against a real DB.
     let data;
+    let freshness;
     if (statsSnapshot && Date.now() - statsSnapshot.at < STATS_SNAPSHOT_MS) {
       data = statsSnapshot.data;
+      freshness = statsSnapshot.freshness;
     } else {
-      data = await computePublicStats(sql, chainIds);
-      statsSnapshot = { at: Date.now(), data };
+      [data, freshness] = await Promise.all([
+        computePublicStats(sql, chainIds),
+        readPublicDataFreshness(sql),
+      ]);
+      statsSnapshot = { at: Date.now(), data, freshness };
     }
     const stats: PublicStats = {
       totalVolumeUsd: data.totalVolumeUsd,
@@ -596,6 +615,10 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       chainsActive: data.chainsActive,
       byChain: data.byChain,
       generatedAt: new Date().toISOString(),
+      dataAsOf: freshness.dataAsOf,
+      dataFresh: freshness.dataFresh,
+      dataStatus: freshness.dataStatus,
+      dataStaleReason: freshness.dataStaleReason,
     };
 
     reply.header('vary', 'Origin, Accept');

@@ -232,6 +232,13 @@ export const pipelineRuns = pgTable('pipeline_runs', {
   firstOfMonth: boolean('first_of_month').notNull().default(false),
 });
 
+// Singleton publication heartbeat (migration 0037). Updated only after the
+// scorer has successfully refreshed the public `wallets` materialized view.
+export const publicDataRefreshState = pgTable('public_data_refresh_state', {
+  singleton: boolean('singleton').primaryKey().default(true),
+  refreshedAt: timestamp('refreshed_at', { withTimezone: true }),
+});
+
 // `wallets` is a MATERIALIZED VIEW (not modelled as a drizzle table) —
 // created by the raw SQL migration 0000_init.sql. Query via `sql\`SELECT … FROM wallets\``.
 

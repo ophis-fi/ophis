@@ -12,6 +12,10 @@ const sample: PublicStats = {
     { chainId: 1, volumeUsd: 0, trades: 21 },
   ],
   generatedAt: '2026-06-21T15:00:00.000Z',
+  dataAsOf: '2026-06-21T14:58:00.000Z',
+  dataFresh: true,
+  dataStatus: 'fresh',
+  dataStaleReason: null,
 };
 
 describe('renderStatsPage', () => {
@@ -23,11 +27,34 @@ describe('renderStatsPage', () => {
     expect(html).toContain('Optimism');
     expect(html).toContain('Base');
     expect(html).toContain('Ethereum');
-    expect(html).toContain('Updated 2026-06-21 15:00 UTC');
+    expect(html).toContain('Data as of 2026-06-21 14:58 UTC');
   });
 
   it('shows a placeholder when no volume is indexed yet', () => {
     expect(renderStatsPage({ ...sample, byChain: [] })).toContain('No settled volume indexed yet');
+  });
+
+  it('warns visibly when the public snapshot is stale', () => {
+    const html = renderStatsPage({
+      ...sample,
+      dataFresh: false,
+      dataStatus: 'degraded',
+      dataStaleReason: 'refresh_overdue',
+    });
+    expect(html).toContain('Data refresh delayed.');
+    expect(html).toContain('last successful publication at 2026-06-21 14:58 UTC');
+  });
+
+  it('does not present response generation time as publication time before the first refresh', () => {
+    const html = renderStatsPage({
+      ...sample,
+      dataAsOf: null,
+      dataFresh: false,
+      dataStatus: 'degraded',
+      dataStaleReason: 'never_refreshed',
+    });
+    expect(html).toContain('Data publication time unavailable');
+    expect(html).not.toContain('Data as of 2026-06-21 15:00 UTC');
   });
 
   it('maps an unknown chain id to a generic label', () => {
