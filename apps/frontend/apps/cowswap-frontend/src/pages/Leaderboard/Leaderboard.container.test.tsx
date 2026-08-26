@@ -42,6 +42,10 @@ describe('LeaderboardPage', () => {
       const mine = !!self && self.toLowerCase() === SELF.toLowerCase()
       return Promise.resolve({
         updatedAt: '2026-06-12T00:00:00Z',
+        dataAsOf: '2026-06-12T00:00:00Z',
+        dataFresh: true,
+        dataStatus: 'fresh',
+        dataStaleReason: null,
         total: 3,
         entries: [
           entry(1, '0xaaaa...bbbb', 500_000),
@@ -59,6 +63,24 @@ describe('LeaderboardPage', () => {
 
     expect(await screen.findByText(SELF_SHORT)).toBeTruthy()
     expect(screen.queryByText(SELF)).toBeNull()
+  })
+
+  it('warns when the backend reports a stale leaderboard publication', async () => {
+    getLeaderboardMock.mockResolvedValue({
+      updatedAt: '2026-06-12T00:00:00Z',
+      dataAsOf: '2026-06-11T00:00:00Z',
+      dataFresh: false,
+      dataStatus: 'degraded',
+      dataStaleReason: 'refresh_overdue',
+      total: 1,
+      entries: [entry(1, SELF_SHORT, 150_000)],
+    })
+    useWalletInfoMock.mockReturnValue({ account: undefined, chainId: 1 })
+
+    render(<LeaderboardPage />)
+
+    expect(await screen.findByText('Leaderboard data is delayed')).toBeTruthy()
+    expect(screen.getByText(/last successful indexer publication/i)).toBeTruthy()
   })
 
   it('highlights the connected wallet by the backend isSelf flag', async () => {

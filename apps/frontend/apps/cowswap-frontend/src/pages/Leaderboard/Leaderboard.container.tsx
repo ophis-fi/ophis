@@ -41,9 +41,40 @@ function formatUsd(value: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
 }
 
+function formatDataAsOf(value: string | null | undefined): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) ? date.toLocaleString() : null
+}
+
 interface RowProps {
   entry: LeaderboardEntry
   isSelf: boolean
+}
+
+interface LoadedLeaderboard {
+  entries: LeaderboardEntry[]
+  account: string | undefined
+  dataFresh: boolean | undefined
+  dataAsOf: string | null | undefined
+}
+
+interface FreshnessWarningProps {
+  dataFresh: boolean | undefined
+  dataAsOf: string | null | undefined
+}
+
+function LeaderboardFreshnessWarning({ dataFresh, dataAsOf }: FreshnessWarningProps): ReactNode {
+  if (dataFresh !== false) return null
+  const formatted = formatDataAsOf(dataAsOf)
+  return (
+    <Callout tone="warning" title="Leaderboard data is delayed">
+      <p>
+        These rankings show the last successful indexer publication
+        {formatted ? ` from ${formatted}` : ''}. Settled trades will appear after indexing catches up.
+      </p>
+    </Callout>
+  )
 }
 
 function LeaderboardRow({ entry, isSelf }: RowProps): ReactNode {
@@ -83,7 +114,7 @@ export function LeaderboardPage(): ReactNode {
   // the currently-connected account: during an account-change refetch the public
   // list keeps showing (no flicker), but no stale row is marked "you", and a slow
   // or failed refetch can't leave a previous wallet highlighted.
-  const [data, setData] = useState<{ entries: LeaderboardEntry[]; account: string | undefined } | null>(null)
+  const [data, setData] = useState<LoadedLeaderboard | null>(null)
   const [loadError, setLoadError] = useState(false)
 
   // Refetch when the connected account changes: with a wallet connected we pass
@@ -94,7 +125,9 @@ export function LeaderboardPage(): ReactNode {
     setLoadError(false)
     getLeaderboard(100, account)
       .then((res) => {
-        if (!signal.cancelled) setData({ entries: res.entries, account })
+        if (!signal.cancelled) {
+          setData({ entries: res.entries, account, dataFresh: res.dataFresh, dataAsOf: res.dataAsOf })
+        }
       })
       .catch(() => {
         if (!signal.cancelled) setLoadError(true)
@@ -116,7 +149,6 @@ export function LeaderboardPage(): ReactNode {
     () => (selfResolved && data ? data.entries.find((e) => e.isSelf) : undefined),
     [selfResolved, data],
   )
-
   return (
     <PageShell
       width="wide"
@@ -124,6 +156,7 @@ export function LeaderboardPage(): ReactNode {
       title="Top traders by 30-day volume."
       lede="Ranked by rolling 30-day volume on Ophis. Volume sets your rebate tier and your share of the monthly WETH rebate pool."
     >
+      <LeaderboardFreshnessWarning dataFresh={data?.dataFresh} dataAsOf={data?.dataAsOf} />
       {selfEntry && (
         <Section id="your-rank" title="Your rank">
           <Table caption="Your leaderboard position">

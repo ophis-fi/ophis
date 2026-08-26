@@ -24,13 +24,19 @@ export function parseAppData(fullAppData: string | null | undefined): AppDataInf
   // is canonical lower-case. We lower-case the on-chain value before the
   // membership check and store the canonical lower-case code, so real Ophis
   // fills are recognised (and not negative-cached as non-Ophis).
-  const rawCode = (meta as { appCode?: unknown }).appCode;
-  const normCode = typeof rawCode === 'string' ? rawCode.toLowerCase() : null;
-  const appCode = normCode !== null && (APP_CODES as readonly string[]).includes(normCode)
-    ? (normCode as AppCode)
-    : null;
-
   const metadata = (meta as { metadata?: Record<string, unknown> }).metadata ?? {};
+  // Widget integrations promote the host dapp's appCode to the top level and
+  // place Ophis under metadata.widget.appCode. Match the production fetcher's
+  // attribution rule exactly; checking only the top-level value made the audit
+  // scanner confidently negative-cache real Ophis settlements as non-Ophis.
+  const rawTopCode = (meta as { appCode?: unknown }).appCode;
+  const rawWidgetCode = (metadata as { widget?: { appCode?: unknown } }).widget?.appCode;
+  const normaliseCode = (value: unknown): AppCode | null => {
+    const code = typeof value === 'string' ? value.toLowerCase() : null;
+    return code !== null && (APP_CODES as readonly string[]).includes(code) ? (code as AppCode) : null;
+  };
+  const appCode = normaliseCode(rawTopCode) ?? normaliseCode(rawWidgetCode);
+
   let refCode: string | null = null;
   const rawRef = (metadata as { ophisReferrer?: { code?: unknown } }).ophisReferrer?.code;
   if (typeof rawRef === 'string') {

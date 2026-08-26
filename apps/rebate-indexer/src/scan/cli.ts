@@ -1,9 +1,9 @@
 import { createPublicClient, http } from 'viem';
 import { redactSecrets } from './redact.js';
-import { selectChains, resolveRpcUrl } from './chains.js';
+import { selectChains, resolveBlockRpcUrl, resolveRpcUrl } from './chains.js';
 import { parseSince } from './window.js';
 import { loadCache } from './cache.js';
-import { loadAlchemyEnv, loadTelegramEnv } from './secrets.js';
+import { loadTelegramEnv } from './secrets.js';
 import { getOrder } from '../cow/client.js';
 import { scanHostedChain, type LogClient } from './sources/onchain.js';
 import { scanLocalDbChain } from './sources/localDb.js';
@@ -37,20 +37,35 @@ async function main(): Promise<void> {
   const metaCache = new Map<string, { symbol: string | null; decimals: number | null }>();
   const refPriceCache = new Map<number, number>();
 
-  // Only fetch the Alchemy key if at least one rpc chain is selected.
-  const needsRpc = chains.some((c) => c.kind === 'rpc');
-  const alchemyKey = needsRpc ? await loadAlchemyEnv() : '';
+  // Alchemy is optional and used only when explicitly supplied. Each chain has
+  // a keyless default plus SCAN_RPC_<NAME> override, so quota exhaustion at one
+  // provider can no longer degrade the independent reconciliation by default.
+  const alchemyKey = process.env.ALCHEMY_API_KEY ?? '';
   const clients = new Map<number, ReturnType<typeof createPublicClient>>();
+  const blockClients = new Map<number, ReturnType<typeof createPublicClient>>();
+  const rpcTransport = (url: string) => http(url, { timeout: 30_000 });
   const clientFor = (cfg: ChainConfig) => {
     let c = clients.get(cfg.chainId);
-    if (!c) { c = createPublicClient({ transport: http(resolveRpcUrl(cfg, alchemyKey)) }); clients.set(cfg.chainId, c); }
+    if (!c) {
+      c = createPublicClient({ transport: rpcTransport(resolveRpcUrl(cfg, alchemyKey)) });
+      clients.set(cfg.chainId, c);
+    }
+    return c;
+  };
+  const blockClientFor = (cfg: ChainConfig) => {
+    let c = blockClients.get(cfg.chainId);
+    if (!c) {
+      c = createPublicClient({ transport: rpcTransport(resolveBlockRpcUrl(cfg, alchemyKey)) });
+      blockClients.set(cfg.chainId, c);
+    }
     return c;
   };
 
   const scanChain = (cfg: ChainConfig): Promise<ScanResult> => {
     if (cfg.kind === 'local-db') return scanLocalDbChain(cfg, t0Iso);
     const client = clientFor(cfg) as unknown as LogClient;
-    return scanHostedChain(cfg, t0Sec, { client, getOrder, cache });
+    const blockClient = blockClientFor(cfg) as unknown as LogClient;
+    return scanHostedChain(cfg, t0Sec, { client, blockClient, getOrder, cache });
   };
 
   const enrich = (swap: Swap): Promise<Swap> => {

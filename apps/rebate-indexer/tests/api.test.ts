@@ -85,6 +85,12 @@ test('/stats returns public cumulative JSON for an API client', async () => {
   // Lifetime average trade size: null until the first trade (mocked db = empty).
   expect(body).toHaveProperty('avgTradeUsd');
   expect(body.avgTradeUsd).toBeNull();
+  expect(body).toMatchObject({
+    dataAsOf: null,
+    dataFresh: false,
+    dataStatus: 'degraded',
+    dataStaleReason: 'never_refreshed',
+  });
   // Static execution-model facts (configuration only, no indexed data).
   expect(body.execution).toEqual({
     mevProtection: 'batch-auction',
@@ -192,6 +198,13 @@ test('/health exposes the fetcher + pipeline liveness fields', async () => {
   expect(body).toHaveProperty('last_fetch_attempt');
   expect(body).toHaveProperty('last_pipeline_run_at');
   expect(body).toHaveProperty('last_batcher_run_at');
+  expect(body).toMatchObject({
+    last_public_data_refresh_at: null,
+    data_as_of: null,
+    data_fresh: false,
+    data_status: 'degraded',
+    data_stale_reason: 'never_refreshed',
+  });
   expect(body).toHaveProperty('pending_batches');
 });
 
