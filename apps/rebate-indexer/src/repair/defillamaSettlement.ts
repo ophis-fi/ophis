@@ -1,8 +1,10 @@
 import { sql } from '../db/index.js';
 import { getRpcClient } from '../rpc/client.js';
+import { setTimeout as delay } from 'node:timers/promises';
 import { decodeFunctionData } from 'viem';
 import { SETTLE_FN, TRADE_EVENT, settlementAddressFor } from '../cow/settleAbi.js';
 import { getOrder, listTrades } from '../cow/client.js';
+import { resolveAppData } from '../cow/appDataResolver.js';
 import {
   attributeOrder,
   DECODER_ETHFLOW_OWNERS,
@@ -13,6 +15,7 @@ import {
 import { affiliateFeeBpsForOrderCreatedAt, SOVEREIGN_CHAIN_IDS } from '../affiliate/rates.js';
 import { logger } from '../logger.js';
 import { PRODUCTION_CHAIN_IDS } from '../stats-page.js';
+import { OPHIS_SAFE_ADDRESS } from '../safe/addresses.js';
 import type { CowTrade } from '../cow/types.js';
 
 const log = logger.child({ module: 'repair-defillama-settlement' });
@@ -23,11 +26,17 @@ const MAX_API_PAGES = 100;
 // with a wide archive window and halve on provider limits. Starting at the
 // decoder's 2,000-block discovery window would require thousands of RPC calls.
 const ONCHAIN_SCAN_WINDOW = 50_000n;
+const ONCHAIN_SCAN_DELAY_MS = 250;
+const ONCHAIN_RATE_LIMIT_RETRIES = 5;
 // The operated-chain improvement policy was deployed on 2026-08-11. Before this
-// conservative boundary, an unclamped verified aggregate rate can reconstruct a
-// legacy flat policy's integer execution. The nominal rate is never reported.
+// conservative boundary, a settlement with one Ophis flat appData policy has no
+// separate operator policy and can be reproduced from immutable settlement data.
 const LEGACY_FLAT_FEE_CUTOFF = new Date('2026-08-10T00:00:00.000Z');
+// Historical sovereign backends used the autopilot's default max-partner-fee of
+// 1%. Raw appData above this was capped before integer fee assessment.
+const LEGACY_MAX_PARTNER_FEE_BPS = 100;
 const ROUTER_WALLETS: readonly string[] = Object.freeze([...DECODER_ETHFLOW_OWNERS]);
+const OPHIS_SAFE = OPHIS_SAFE_ADDRESS.toLowerCase();
 
 interface TradeEventLog {
   args: {
@@ -52,6 +61,8 @@ interface SettlementSource {
   buyAmount: bigint;
   feeAmount: bigint | null;
   side: 'sell' | 'buy' | null;
+  appDataHash: `0x${string}` | null;
+  receiver: `0x${string}` | null;
   tradeUid: `0x${string}`;
   transactionHash: `0x${string}`;
   blockNumber: bigint;
@@ -68,6 +79,11 @@ interface RepairResult {
 
 interface BatchRepairResult extends RepairResult {
   audits: number;
+}
+
+interface OnchainScanResult {
+  sources: Map<string, SettlementSource[]>;
+  safeHead: bigint;
 }
 
 async function blockTradeLogs(chainId: number, blockNumber: bigint): Promise<TradeEventLog[]> {
@@ -110,6 +126,8 @@ function sourceFromApi(trade: CowTrade): SettlementSource {
     buyAmount: BigInt(trade.buyAmount),
     feeAmount: null,
     side: null,
+    appDataHash: null,
+    receiver: null,
     tradeUid: trade.orderUid as `0x${string}`,
     transactionHash: trade.txHash as `0x${string}`,
     blockNumber: BigInt(trade.blockNumber),
@@ -118,7 +136,10 @@ function sourceFromApi(trade: CowTrade): SettlementSource {
   };
 }
 
-function sourceFromLog(event: TradeEventLog, side: SettlementSource['side']): SettlementSource {
+function sourceFromLog(
+  event: TradeEventLog,
+  decoded: Pick<SettlementSource, 'side' | 'appDataHash' | 'receiver'>,
+): SettlementSource {
   return {
     owner: event.args.owner,
     sellToken: event.args.sellToken,
@@ -126,7 +147,7 @@ function sourceFromLog(event: TradeEventLog, side: SettlementSource['side']): Se
     sellAmount: event.args.sellAmount,
     buyAmount: event.args.buyAmount,
     feeAmount: event.args.feeAmount,
-    side,
+    ...decoded,
     tradeUid: event.args.orderUid,
     transactionHash: event.transactionHash,
     blockNumber: event.blockNumber,
@@ -137,12 +158,25 @@ function sourceFromLog(event: TradeEventLog, side: SettlementSource['side']): Se
 
 function isRangeError(err: unknown): boolean {
   const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return message.includes('-32602')
-    || message.includes('block range')
-    || message.includes('range too large')
-    || message.includes('query returned more than')
-    || message.includes('response size')
-    || message.includes('limit exceeded');
+  return (
+    message.includes('-32602') ||
+    message.includes('block range') ||
+    message.includes('range too large') ||
+    message.includes('query returned more than') ||
+    message.includes('response size') ||
+    message.includes('limit exceeded')
+  );
+}
+
+function isRateLimitError(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    message.includes('rate limit') ||
+    message.includes('requests per second') ||
+    message.includes('capacity') ||
+    message.includes('too many requests') ||
+    message.includes('429')
+  );
 }
 
 /**
@@ -154,7 +188,7 @@ function isRangeError(err: unknown): boolean {
 async function onchainSourcesForUids(
   chainId: number,
   orderUids: readonly `0x${string}`[],
-): Promise<Map<string, SettlementSource[]>> {
+): Promise<OnchainScanResult> {
   const startRaw = process.env[`SETTLE_SCAN_START_BLOCK_${chainId}`];
   if (!startRaw) {
     throw new Error(`no SETTLE_SCAN_START_BLOCK_${chainId} for on-chain exact-UID fallback`);
@@ -165,19 +199,29 @@ async function onchainSourcesForUids(
   let window = ONCHAIN_SCAN_WINDOW;
   const wanted = new Set(orderUids.map((uid) => uid.toLowerCase()));
   const found = new Map<string, SettlementSource[]>();
+  let requests = 0;
+  let rateLimitRetries = 0;
   while (from <= safeHead) {
     const to = from + window - 1n > safeHead ? safeHead : from + window - 1n;
     let logs: TradeEventLog[];
     try {
+      if (requests > 0) await delay(ONCHAIN_SCAN_DELAY_MS);
       logs = (await client.getLogs({
         address: settlementAddressFor(chainId),
         event: TRADE_EVENT,
         fromBlock: from,
         toBlock: to,
       })) as unknown as TradeEventLog[];
+      requests++;
+      rateLimitRetries = 0;
     } catch (err) {
       if (isRangeError(err) && window > 1n) {
         window >>= 1n;
+        continue;
+      }
+      if (isRateLimitError(err) && rateLimitRetries < ONCHAIN_RATE_LIMIT_RETRIES) {
+        rateLimitRetries++;
+        await delay(500 * 2 ** (rateLimitRetries - 1));
         continue;
       }
       throw err;
@@ -192,30 +236,47 @@ async function onchainSourcesForUids(
     for (const [txHash, transactionLogs] of byTransaction) {
       if (!transactionLogs.some((event) => wanted.has(event.args.orderUid.toLowerCase()))) continue;
       transactionLogs.sort((a, b) => a.logIndex - b.logIndex);
-      let sides: Array<SettlementSource['side']> = transactionLogs.map(() => null);
+      let decodedTrades: Array<Pick<SettlementSource, 'side' | 'appDataHash' | 'receiver'>> =
+        transactionLogs.map(() => ({ side: null, appDataHash: null, receiver: null }));
       try {
         const transaction = await client.getTransaction({ hash: txHash as `0x${string}` });
         const decoded = decodeFunctionData({ abi: [SETTLE_FN], data: transaction.input });
         const args = decoded.args as unknown as readonly [
           readonly `0x${string}`[],
           readonly bigint[],
-          readonly { sellTokenIndex: bigint; buyTokenIndex: bigint; flags: bigint }[],
+          readonly {
+            sellTokenIndex: bigint;
+            buyTokenIndex: bigint;
+            flags: bigint;
+            appData: `0x${string}`;
+            receiver: `0x${string}`;
+          }[],
           unknown,
         ];
         const tokens = args[0];
         const calldataTrades = args[2];
         if (calldataTrades.length !== transactionLogs.length) {
-          throw new Error(`settle calldata has ${calldataTrades.length} trades for ${transactionLogs.length} Trade logs`);
+          throw new Error(
+            `settle calldata has ${calldataTrades.length} trades for ${transactionLogs.length} Trade logs`,
+          );
         }
-        sides = calldataTrades.map((trade, index) => {
+        decodedTrades = calldataTrades.map((trade, index) => {
           const event = transactionLogs[index]!;
           const sellToken = tokens[Number(trade.sellTokenIndex)];
           const buyToken = tokens[Number(trade.buyTokenIndex)];
-          if (sellToken?.toLowerCase() !== event.args.sellToken.toLowerCase()
-            || buyToken?.toLowerCase() !== event.args.buyToken.toLowerCase()) {
-            throw new Error(`settle calldata token indexes disagree at Trade log ${event.logIndex}`);
+          if (
+            sellToken?.toLowerCase() !== event.args.sellToken.toLowerCase() ||
+            buyToken?.toLowerCase() !== event.args.buyToken.toLowerCase()
+          ) {
+            throw new Error(
+              `settle calldata token indexes disagree at Trade log ${event.logIndex}`,
+            );
           }
-          return (trade.flags & 1n) === 0n ? 'sell' : 'buy';
+          return {
+            side: (trade.flags & 1n) === 0n ? 'sell' : 'buy',
+            appDataHash: trade.appData,
+            receiver: trade.receiver,
+          };
         });
       } catch (err) {
         // The settlement identity is still immutable and useful. Leave its side
@@ -227,18 +288,27 @@ async function onchainSourcesForUids(
         const uid = event.args.orderUid.toLowerCase();
         if (!wanted.has(uid)) continue;
         const rows = found.get(uid) ?? [];
-        rows.push(sourceFromLog(event, sides[index] ?? null));
+        rows.push(
+          sourceFromLog(
+            event,
+            decodedTrades[index] ?? { side: null, appDataHash: null, receiver: null },
+          ),
+        );
         found.set(uid, rows);
       }
     }
     from = to + 1n;
   }
   for (const rows of found.values()) {
-    rows.sort((a, b) => a.blockNumber === b.blockNumber
-      ? a.logIndex - b.logIndex
-      : a.blockNumber < b.blockNumber ? -1 : 1);
+    rows.sort((a, b) =>
+      a.blockNumber === b.blockNumber
+        ? a.logIndex - b.logIndex
+        : a.blockNumber < b.blockNumber
+          ? -1
+          : 1,
+    );
   }
-  return found;
+  return { sources: found, safeHead };
 }
 
 function verifiedHostedZeroAssessment(chainId: number, volumeFeeBps: number | null): string | null {
@@ -249,27 +319,58 @@ function verifiedHostedZeroAssessment(chainId: number, volumeFeeBps: number | nu
   return null;
 }
 
-/** Reconstruct the backend's integer flat-volume fee for immutable legacy
- * settlements. The nominal policy rate itself is never reported: integer token
- * rounding can make the effective executed rate differ materially on small fills.
- * A clamped aggregate cannot prove a policy above the clamp, so the 10 bps ceiling
- * remains pending unless the exact-UID API supplies executedProtocolFees. */
+/** Read one unambiguous legacy Ophis flat policy from hash-verified appData.
+ * Multiple partner policies remain pending because their reverse-order fee
+ * application requires execution metadata no longer retained by a pruned API. */
+function singleLegacyOphisFlatPolicyBps(meta: unknown): number | null {
+  const raw = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
+  const fees = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  if (fees.length !== 1) return null;
+  const fee = fees[0] as {
+    recipient?: unknown;
+    volumeBps?: unknown;
+    bps?: unknown;
+    surplusBps?: unknown;
+    priceImprovementBps?: unknown;
+    maxVolumeBps?: unknown;
+  };
+  if (
+    typeof fee.recipient !== 'string' ||
+    fee.recipient.toLowerCase() !== OPHIS_SAFE ||
+    fee.surplusBps !== undefined ||
+    fee.priceImprovementBps !== undefined ||
+    fee.maxVolumeBps !== undefined ||
+    (fee.volumeBps !== undefined && fee.bps !== undefined)
+  )
+    return null;
+  const bps = fee.volumeBps !== undefined ? fee.volumeBps : fee.bps;
+  return typeof bps === 'number' && Number.isInteger(bps) && bps > 0 && bps < 10_000
+    ? Math.min(bps, LEGACY_MAX_PARTNER_FEE_BPS)
+    : null;
+}
+
+/** Reproduce the historical backend's integer flat-volume assessment from the
+ * executed settlement amounts. This intentionally does not use Trade.feeAmount:
+ * that field is the unrelated sell-token network fee. */
 function legacyExecutedAssessment(
   source: SettlementSource,
-  volumeFeeBps: number | null,
+  policyBps: number | null,
   settledAt: Date,
 ): string | null {
-  if (volumeFeeBps === null || volumeFeeBps <= 0
-    || volumeFeeBps >= 10 || settledAt >= LEGACY_FLAT_FEE_CUTOFF
-    || source.side === null) return null;
-  const factor = volumeFeeBps / 10_000;
+  if (policyBps === null || settledAt >= LEGACY_FLAT_FEE_CUTOFF || source.side === null)
+    return null;
+  const factor = policyBps / 10_000;
   const adjusted = source.side === 'sell' ? factor / (1 - factor) : factor / (1 + factor);
+  // Mirrors backend number::U256Ext::checked_mul_f64 (1e18 scaling + truncation).
   const scaledFactor = BigInt(Math.trunc(adjusted * 1e18));
   const executed = source.side === 'sell' ? source.buyAmount : source.sellAmount;
-  const assessed = executed * scaledFactor / 1_000_000_000_000_000_000n;
-  const grossVolume = source.side === 'sell'
-    ? source.buyAmount + assessed
-    : source.feeAmount === null ? 0n : source.sellAmount - source.feeAmount;
+  const assessed = (executed * scaledFactor) / 1_000_000_000_000_000_000n;
+  const grossVolume =
+    source.side === 'sell'
+      ? source.buyAmount + assessed
+      : source.feeAmount === null
+        ? 0n
+        : source.sellAmount - source.feeAmount;
   if (grossVolume <= 0n) return null;
   const scale = 100_000_000n;
   const scaledBps = (assessed * 10_000n * scale + grossVolume / 2n) / grossVolume;
@@ -299,13 +400,15 @@ async function repairDefiLlamaSettlementIdentityBatch(
   repairRunStartedAt: Date,
   repairLimit: number,
 ): Promise<BatchRepairResult> {
-  const identityRows = await sql<{
-    chain_id: number;
-    block_number: string;
-    log_index: number;
-    trade_uid: string;
-    user_address: string | null;
-  }[]>`
+  const identityRows = await sql<
+    {
+      chain_id: number;
+      block_number: string;
+      log_index: number;
+      trade_uid: string;
+      user_address: string | null;
+    }[]
+  >`
     SELECT f.chain_id, f.block_number::text, f.log_index,
            '0x' || encode(f.trade_uid, 'hex') AS trade_uid,
            CASE
@@ -322,13 +425,15 @@ async function repairDefiLlamaSettlementIdentityBatch(
     LIMIT ${repairLimit}
   `;
 
-  const auditRows = await sql<{
-    chain_id: number;
-    trade_uid: string;
-    user_address: string | null;
-    volume_fee_bps: number | null;
-    aggregate_fee_verified: boolean;
-  }[]>`
+  const auditRows = await sql<
+    {
+      chain_id: number;
+      trade_uid: string;
+      user_address: string | null;
+      volume_fee_bps: number | null;
+      aggregate_fee_verified: boolean;
+    }[]
+  >`
     SELECT t.chain_id, '0x' || encode(t.trade_uid, 'hex') AS trade_uid,
            CASE
              WHEN ('0x' || encode(t.wallet, 'hex')) = ANY(${ROUTER_WALLETS}) THEN NULL
@@ -381,14 +486,20 @@ async function repairDefiLlamaSettlementIdentityBatch(
       logs = await blockTradeLogs(group.chainId, group.blockNumber);
     } catch (err) {
       failedBlocks++;
-      log.warn({ err, chainId: group.chainId, blockNumber: group.blockNumber }, 'settlement identity block read failed');
+      log.warn(
+        { err, chainId: group.chainId, blockNumber: group.blockNumber },
+        'settlement identity block read failed',
+      );
       continue;
     }
 
     for (const row of identityRows) {
       if (`${row.chain_id}:${row.block_number}` !== key) continue;
-      const match = logs.find((event) =>
-        event.logIndex === row.log_index && event.args.orderUid.toLowerCase() === row.trade_uid.toLowerCase());
+      const match = logs.find(
+        (event) =>
+          event.logIndex === row.log_index &&
+          event.args.orderUid.toLowerCase() === row.trade_uid.toLowerCase(),
+      );
       if (!match) continue;
       if (row.user_address) {
         await sql`
@@ -412,7 +523,6 @@ async function repairDefiLlamaSettlementIdentityBatch(
       }
       identities++;
     }
-
   }
 
   // The exact-UID feed is the normal authoritative settlement source. A configured
@@ -420,6 +530,7 @@ async function repairDefiLlamaSettlementIdentityBatch(
   // order can straddle an orderbook pruning boundary.
   const sourcesByUid = new Map<string, SettlementSource[]>();
   const onchainUidsByChain = new Map<number, `0x${string}`[]>();
+  const onchainValidationByUid = new Map<string, boolean>();
   for (const row of auditRows) {
     const uid = row.trade_uid as `0x${string}`;
     if (process.env[`SETTLE_SCAN_START_BLOCK_${row.chain_id}`]) {
@@ -448,7 +559,22 @@ async function repairDefiLlamaSettlementIdentityBatch(
         for (const source of sourcesByUid.get(key) ?? []) {
           merged.set(settlementKey(source.blockNumber, source.logIndex), source);
         }
-        for (const source of onchain.get(uid.toLowerCase()) ?? []) {
+        const chainSources = onchain.sources.get(uid.toLowerCase()) ?? [];
+        const onchainSettlements = new Set(
+          chainSources.map((source) => settlementKey(source.blockNumber, source.logIndex)),
+        );
+        const apiHistoryValidated = [...merged.values()].every(
+          (source) =>
+            source.blockNumber > onchain.safeHead ||
+            onchainSettlements.has(settlementKey(source.blockNumber, source.logIndex)),
+        );
+        onchainValidationByUid.set(
+          key,
+          apiHistoryValidated &&
+            (chainSources.length > 0 ||
+              [...merged.values()].every((source) => source.blockNumber > onchain.safeHead)),
+        );
+        for (const source of chainSources) {
           const settlement = settlementKey(source.blockNumber, source.logIndex);
           const apiSource = merged.get(settlement);
           if (apiSource) {
@@ -456,24 +582,37 @@ async function repairDefiLlamaSettlementIdentityBatch(
               ...apiSource,
               feeAmount: source.feeAmount,
               side: source.side,
+              appDataHash: source.appDataHash,
+              receiver: source.receiver,
             });
           } else {
             merged.set(settlement, source);
           }
         }
         if (merged.size > 0) {
-          sourcesByUid.set(key, [...merged.values()].sort((a, b) => a.blockNumber === b.blockNumber
-            ? a.logIndex - b.logIndex
-            : a.blockNumber < b.blockNumber ? -1 : 1));
+          sourcesByUid.set(
+            key,
+            [...merged.values()].sort((a, b) =>
+              a.blockNumber === b.blockNumber
+                ? a.logIndex - b.logIndex
+                : a.blockNumber < b.blockNumber
+                  ? -1
+                  : 1,
+            ),
+          );
         }
       }
     } catch (err) {
       failedBlocks++;
+      for (const uid of uids) {
+        onchainValidationByUid.set(`${chainId}:${uid.toLowerCase()}`, false);
+      }
       log.warn({ err, chainId, uids: uids.length }, 'on-chain settlement history fallback failed');
     }
   }
 
   const timestampsByBlock = new Map<string, Date>();
+  const resolvedMetaByHash = new Map<string, unknown | null>();
   const completedAudits: Array<{ chainId: number; uid: `0x${string}`; fills: number }> = [];
 
   for (const row of auditRows) {
@@ -481,19 +620,21 @@ async function repairDefiLlamaSettlementIdentityBatch(
     const sources = sourcesByUid.get(`${row.chain_id}:${uid.toLowerCase()}`);
     if (!sources?.length) continue;
     try {
-      const existingRows = await sql<{
-        block_number: string;
-        log_index: number;
-        transaction_hash: string | null;
-        user_address: string | null;
-        settlement_timestamp: Date | string;
-        sell_token: string;
-        sell_amount: string;
-        buy_token: string | null;
-        buy_amount: string | null;
-        volume_fee_bps: number | null;
-        assessed_fee_bps: string | null;
-      }[]>`
+      const existingRows = await sql<
+        {
+          block_number: string;
+          log_index: number;
+          transaction_hash: string | null;
+          user_address: string | null;
+          settlement_timestamp: Date | string;
+          sell_token: string;
+          sell_amount: string;
+          buy_token: string | null;
+          buy_amount: string | null;
+          volume_fee_bps: number | null;
+          assessed_fee_bps: string | null;
+        }[]
+      >`
         SELECT block_number::text, log_index,
                CASE WHEN transaction_hash IS NULL THEN NULL
                  ELSE '0x' || encode(transaction_hash, 'hex') END AS transaction_hash,
@@ -511,23 +652,53 @@ async function repairDefiLlamaSettlementIdentityBatch(
         WHERE chain_id = ${row.chain_id}
           AND trade_uid = decode(${uid.slice(2)}, 'hex')
       `;
-      const existingBySettlement = new Map(existingRows.map((fill) =>
-        [settlementKey(fill.block_number, fill.log_index), fill]));
+      const existingBySettlement = new Map(
+        existingRows.map((fill) => [settlementKey(fill.block_number, fill.log_index), fill]),
+      );
 
       let order: Awaited<ReturnType<typeof getOrder>> | null = null;
       let meta: unknown = null;
       try {
         order = await getOrder(row.chain_id, uid);
-        meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
+        meta = order.fullAppData ? JSON.parse(order.fullAppData) : null;
       } catch (err) {
         // Old sovereign orderbooks can retain neither the trade nor the order.
-        // The immutable source + verified aggregate still suffice for legacy flat
-        // policies, but post-policy fills remain incomplete and fail readiness.
+        // The calldata appData hash can still recover a content-addressed document.
         log.warn({ err, chainId: row.chain_id, uid }, 'settlement order metadata unavailable');
+      }
+      if (meta === null) {
+        const hashes = new Set(
+          sources.flatMap((source) =>
+            source.appDataHash ? [source.appDataHash.toLowerCase() as `0x${string}`] : [],
+          ),
+        );
+        if (hashes.size === 1) {
+          const hash = [...hashes][0]!;
+          if (!resolvedMetaByHash.has(hash)) {
+            const fullAppData = await resolveAppData(row.chain_id, hash);
+            let resolved: unknown = null;
+            if (fullAppData !== null) {
+              try {
+                resolved = JSON.parse(fullAppData);
+              } catch {
+                resolved = null;
+              }
+            }
+            resolvedMetaByHash.set(hash, resolved);
+          }
+          meta = resolvedMetaByHash.get(hash) ?? null;
+        } else if (hashes.size > 1) {
+          log.error(
+            { chainId: row.chain_id, uid, hashes: hashes.size },
+            'settlement UID has conflicting appData hashes',
+          );
+        }
       }
 
       const reconstructed: PendingDefiLlamaFill[] = [];
-      let complete = existingRows.length <= sources.length;
+      let complete =
+        existingRows.length <= sources.length &&
+        onchainValidationByUid.get(`${row.chain_id}:${uid.toLowerCase()}`) !== false;
       for (const source of sources) {
         const blockNumber = source.blockNumber;
         const key = `${row.chain_id}:${blockNumber}`;
@@ -535,25 +706,30 @@ async function repairDefiLlamaSettlementIdentityBatch(
 
         // An existing immutable row must agree with the authoritative source. Do
         // not silently rewrite a conflicting transaction, token, or amount.
-        if (existing && (
-          (existing.transaction_hash !== null
-            && existing.transaction_hash.toLowerCase() !== source.transactionHash.toLowerCase())
-          || existing.sell_token.toLowerCase() !== source.sellToken.toLowerCase()
-          || BigInt(existing.sell_amount) !== source.sellAmount
-          || (existing.buy_token !== null
-            && existing.buy_token.toLowerCase() !== source.buyToken.toLowerCase())
-          || (existing.buy_amount !== null && BigInt(existing.buy_amount) !== source.buyAmount)
-        )) {
+        if (
+          existing &&
+          ((existing.transaction_hash !== null &&
+            existing.transaction_hash.toLowerCase() !== source.transactionHash.toLowerCase()) ||
+            existing.sell_token.toLowerCase() !== source.sellToken.toLowerCase() ||
+            BigInt(existing.sell_amount) !== source.sellAmount ||
+            (existing.buy_token !== null &&
+              existing.buy_token.toLowerCase() !== source.buyToken.toLowerCase()) ||
+            (existing.buy_amount !== null && BigInt(existing.buy_amount) !== source.buyAmount))
+        ) {
           complete = false;
-          log.error({ chainId: row.chain_id, uid, blockNumber, logIndex: source.logIndex }, 'settlement source conflicts with persisted fill');
+          log.error(
+            { chainId: row.chain_id, uid, blockNumber, logIndex: source.logIndex },
+            'settlement source conflicts with persisted fill',
+          );
           continue;
         }
 
         let settlementTimestamp = timestampsByBlock.get(key);
         if (!settlementTimestamp && existing?.settlement_timestamp) {
-          settlementTimestamp = existing.settlement_timestamp instanceof Date
-            ? existing.settlement_timestamp
-            : new Date(existing.settlement_timestamp);
+          settlementTimestamp =
+            existing.settlement_timestamp instanceof Date
+              ? existing.settlement_timestamp
+              : new Date(existing.settlement_timestamp);
         }
         if (!settlementTimestamp) {
           try {
@@ -563,26 +739,33 @@ async function repairDefiLlamaSettlementIdentityBatch(
           } catch (err) {
             failedBlocks++;
             complete = false;
-            log.warn({ err, chainId: row.chain_id, blockNumber }, 'settlement audit block read failed');
+            log.warn(
+              { err, chainId: row.chain_id, blockNumber },
+              'settlement audit block read failed',
+            );
             continue;
           }
         }
 
         let attributed: ReturnType<typeof attributeOrder> = null;
-        if (order && meta !== null) {
-          attributed = attributeOrder(meta, {
-            owner: source.owner,
-            receiver: order.receiver,
-            sellToken: source.sellToken,
-            buyToken: source.buyToken,
-            executedSell: source.sellAmount,
-            executedBuy: source.buyAmount,
-            tradeUid: uid,
-            chainId: row.chain_id,
-            blockNumber,
-            blockTimestamp: settlementTimestamp,
-          }, DECODER_ETHFLOW_OWNERS);
-          if (attributed) {
+        if (meta !== null) {
+          attributed = attributeOrder(
+            meta,
+            {
+              owner: source.owner,
+              receiver: order?.receiver ?? source.receiver,
+              sellToken: source.sellToken,
+              buyToken: source.buyToken,
+              executedSell: source.sellAmount,
+              executedBuy: source.buyAmount,
+              tradeUid: uid,
+              chainId: row.chain_id,
+              blockNumber,
+              blockTimestamp: settlementTimestamp,
+            },
+            DECODER_ETHFLOW_OWNERS,
+          );
+          if (attributed && order) {
             attributed.volumeFeeBps = affiliateFeeBpsForOrderCreatedAt(
               attributed.volumeFeeBps,
               new Date(order.creationDate),
@@ -590,20 +773,24 @@ async function repairDefiLlamaSettlementIdentityBatch(
           }
         }
 
-        const userAddress = usableUserAddress(attributed?.wallet)
-          ?? usableUserAddress(existing?.user_address)
-          ?? usableUserAddress(row.user_address)
-          ?? usableUserAddress(source.owner);
-        const exactAssessment = source.apiTrade && order && meta !== null
-          ? readAssessedOphisFeeBps(row.chain_id, order.class, meta, source.apiTrade)
-          : null;
+        const userAddress =
+          usableUserAddress(attributed?.wallet) ??
+          usableUserAddress(existing?.user_address) ??
+          usableUserAddress(row.user_address) ??
+          usableUserAddress(source.owner);
+        const exactAssessment =
+          source.apiTrade && order && meta !== null
+            ? readAssessedOphisFeeBps(row.chain_id, order.class, meta, source.apiTrade)
+            : null;
+        const legacyPolicyBps = meta === null ? null : singleLegacyOphisFlatPolicyBps(meta);
         const legacyAssessment = row.aggregate_fee_verified
-          ? legacyExecutedAssessment(source, row.volume_fee_bps, settlementTimestamp)
+          ? legacyExecutedAssessment(source, legacyPolicyBps, settlementTimestamp)
           : null;
-        const assessedFeeBps = exactAssessment
-          ?? existing?.assessed_fee_bps
-          ?? legacyAssessment
-          ?? (row.aggregate_fee_verified
+        const assessedFeeBps =
+          exactAssessment ??
+          existing?.assessed_fee_bps ??
+          legacyAssessment ??
+          (row.aggregate_fee_verified
             ? verifiedHostedZeroAssessment(row.chain_id, row.volume_fee_bps)
             : null);
         if (!userAddress) complete = false;
@@ -641,8 +828,9 @@ async function repairDefiLlamaSettlementIdentityBatch(
   // Stamp every attempted UID so an unrepairable first page cannot starve the
   // rest of the queue. Only a complete reconstruction receives an expected
   // count; incomplete attempts remain fail-closed and retry next invocation.
-  const completedByUid = new Map(completedAudits.map((audit) =>
-    [`${audit.chainId}:${audit.uid.toLowerCase()}`, audit.fills]));
+  const completedByUid = new Map(
+    completedAudits.map((audit) => [`${audit.chainId}:${audit.uid.toLowerCase()}`, audit.fills]),
+  );
   for (const row of auditRows) {
     const uid = row.trade_uid as `0x${string}`;
     const expected = completedByUid.get(`${row.chain_id}:${uid.toLowerCase()}`);
@@ -669,18 +857,20 @@ async function repairDefiLlamaSettlementIdentityBatch(
   // order-UID trade lookup, which supplies the actually executed fee policies.
   // This is independent of owner tracking and therefore also handles contract
   // owners and the shared eth-flow router on hosted chains.
-  const unverified = await sql<{
-    chain_id: number;
-    block_number: string;
-    log_index: number;
-    trade_uid: string;
-    transaction_hash: string;
-    settlement_timestamp: Date;
-    sell_token: string;
-    sell_amount: string;
-    buy_token: string;
-    buy_amount: string;
-  }[]>`
+  const unverified = await sql<
+    {
+      chain_id: number;
+      block_number: string;
+      log_index: number;
+      trade_uid: string;
+      transaction_hash: string;
+      settlement_timestamp: Date;
+      sell_token: string;
+      sell_amount: string;
+      buy_token: string;
+      buy_amount: string;
+    }[]
+  >`
     SELECT chain_id, block_number::text, log_index,
            '0x' || encode(trade_uid, 'hex') AS trade_uid,
            '0x' || encode(transaction_hash, 'hex') AS transaction_hash,
@@ -704,10 +894,12 @@ async function repairDefiLlamaSettlementIdentityBatch(
     const uid = row.trade_uid as `0x${string}`;
     try {
       const apiTrades = await allTradesForUid(row.chain_id, uid);
-      const apiTrade = apiTrades.find((candidate) =>
-        candidate.orderUid.toLowerCase() === uid.toLowerCase()
-        && candidate.blockNumber === Number(row.block_number)
-        && candidate.logIndex === row.log_index);
+      const apiTrade = apiTrades.find(
+        (candidate) =>
+          candidate.orderUid.toLowerCase() === uid.toLowerCase() &&
+          candidate.blockNumber === Number(row.block_number) &&
+          candidate.logIndex === row.log_index,
+      );
       if (!apiTrade) continue;
       const order = await getOrder(row.chain_id, uid);
       let meta: unknown;
@@ -716,18 +908,22 @@ async function repairDefiLlamaSettlementIdentityBatch(
       } catch {
         continue;
       }
-      const attributed = attributeOrder(meta, {
-        owner: apiTrade.owner,
-        receiver: order.receiver,
-        sellToken: row.sell_token as `0x${string}`,
-        buyToken: row.buy_token as `0x${string}`,
-        executedSell: BigInt(row.sell_amount),
-        executedBuy: BigInt(row.buy_amount),
-        tradeUid: uid,
-        chainId: row.chain_id,
-        blockNumber: BigInt(row.block_number),
-        blockTimestamp: row.settlement_timestamp,
-      }, DECODER_ETHFLOW_OWNERS);
+      const attributed = attributeOrder(
+        meta,
+        {
+          owner: apiTrade.owner,
+          receiver: order.receiver,
+          sellToken: row.sell_token as `0x${string}`,
+          buyToken: row.buy_token as `0x${string}`,
+          executedSell: BigInt(row.sell_amount),
+          executedBuy: BigInt(row.buy_amount),
+          tradeUid: uid,
+          chainId: row.chain_id,
+          blockNumber: BigInt(row.block_number),
+          blockTimestamp: row.settlement_timestamp,
+        },
+        DECODER_ETHFLOW_OWNERS,
+      );
       if (!attributed) continue;
       attributed.volumeFeeBps = affiliateFeeBpsForOrderCreatedAt(
         attributed.volumeFeeBps,
@@ -735,22 +931,24 @@ async function repairDefiLlamaSettlementIdentityBatch(
       );
       const assessedFeeBps = readAssessedOphisFeeBps(row.chain_id, order.class, meta, apiTrade);
       if (assessedFeeBps === null) continue;
-      await upsertDefillamaFills([{
-        chainId: row.chain_id,
-        blockNumber: BigInt(row.block_number),
-        logIndex: row.log_index,
-        tradeUid: uid,
-        transactionHash: row.transaction_hash as `0x${string}`,
-        userAddress: attributed.wallet,
-        settlementTimestamp: row.settlement_timestamp,
-        sellToken: row.sell_token as `0x${string}`,
-        sellAmount: BigInt(row.sell_amount),
-        buyToken: row.buy_token as `0x${string}`,
-        buyAmount: BigInt(row.buy_amount),
-        volumeFeeBps: attributed.volumeFeeBps,
-        assessedFeeBps,
-        feeVerified: true,
-      }]);
+      await upsertDefillamaFills([
+        {
+          chainId: row.chain_id,
+          blockNumber: BigInt(row.block_number),
+          logIndex: row.log_index,
+          tradeUid: uid,
+          transactionHash: row.transaction_hash as `0x${string}`,
+          userAddress: attributed.wallet,
+          settlementTimestamp: row.settlement_timestamp,
+          sellToken: row.sell_token as `0x${string}`,
+          sellAmount: BigInt(row.sell_amount),
+          buyToken: row.buy_token as `0x${string}`,
+          buyAmount: BigInt(row.buy_amount),
+          volumeFeeBps: attributed.volumeFeeBps,
+          assessedFeeBps,
+          feeVerified: true,
+        },
+      ]);
       fees++;
     } catch (err) {
       log.warn({ err, chainId: row.chain_id, uid }, 'reporting fee verification failed');
