@@ -116,6 +116,8 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
       },
       setWhere: dsql`(${schema.defillamaFills.feeVerified} = false AND excluded.fee_verified = true)
                      OR (${schema.defillamaFills.assessedFeeBps} IS NULL AND excluded.assessed_fee_bps IS NOT NULL)
+                     OR (excluded.fee_verified = true AND excluded.assessed_fee_bps IS NOT NULL
+                       AND ${schema.defillamaFills.assessedFeeBps} IS DISTINCT FROM excluded.assessed_fee_bps)
                      OR ${schema.defillamaFills.transactionHash} IS NULL
                      OR ${schema.defillamaFills.userAddress} IS NULL
                      OR ${schema.defillamaFills.buyToken} IS NULL

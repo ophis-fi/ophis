@@ -6,6 +6,12 @@ const ROUTER_WALLETS: readonly string[] = Object.freeze([...DECODER_ETHFLOW_OWNE
 
 async function reportingIsReady(): Promise<boolean> {
   const [row] = await sql<{ ready: boolean }[]>`
+    WITH fill_counts AS (
+      SELECT chain_id, trade_uid, COUNT(*)::int AS fill_count
+      FROM defillama_fills
+      WHERE chain_id = ANY(${[...PRODUCTION_CHAIN_IDS]})
+      GROUP BY chain_id, trade_uid
+    )
     SELECT
       NOT EXISTS (SELECT 1 FROM defillama_backfill_wallets)
       AND NOT EXISTS (
@@ -21,14 +27,16 @@ async function reportingIsReady(): Promise<boolean> {
       AND NOT EXISTS (
         SELECT 1
         FROM trades t
+        LEFT JOIN fill_counts f
+          ON f.chain_id = t.chain_id AND f.trade_uid = t.trade_uid
         WHERE t.chain_id = ANY(${[...PRODUCTION_CHAIN_IDS]})
-          AND t.fee_verified = true
+          -- Decoder discoveries deliberately leave the aggregate unverified.
+          -- Once even one reporting fill exists, that UID still needs an exact
+          -- completeness count so a missing older partial fill cannot disappear.
+          AND (t.fee_verified = true OR COALESCE(f.fill_count, 0) > 0)
           AND (
             t.defillama_expected_fill_count IS NULL
-            OR t.defillama_expected_fill_count <> (
-              SELECT COUNT(*)::int FROM defillama_fills f
-              WHERE f.chain_id = t.chain_id AND f.trade_uid = t.trade_uid
-            )
+            OR t.defillama_expected_fill_count <> COALESCE(f.fill_count, 0)
           )
       ) AS ready
   `;

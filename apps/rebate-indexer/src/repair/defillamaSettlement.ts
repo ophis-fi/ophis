@@ -1,6 +1,7 @@
 import { sql } from '../db/index.js';
 import { getRpcClient } from '../rpc/client.js';
-import { TRADE_EVENT, settlementAddressFor } from '../cow/settleAbi.js';
+import { decodeFunctionData } from 'viem';
+import { SETTLE_FN, TRADE_EVENT, settlementAddressFor } from '../cow/settleAbi.js';
 import { getOrder, listTrades } from '../cow/client.js';
 import {
   attributeOrder,
@@ -18,12 +19,13 @@ const log = logger.child({ module: 'repair-defillama-settlement' });
 const REPAIR_LIMIT = 500;
 const API_PAGE_SIZE = 1_000;
 const MAX_API_PAGES = 100;
-const ONCHAIN_SCAN_WINDOW = 2_000n;
-// The operated-chain improvement policy was deployed on 2026-08-11. Keep the
-// boundary a full day earlier: every fill before it had only its persisted flat
-// Ophis rate, so that rate is an exact reporting assessment even if the retired
-// orderbook no longer retains executedProtocolFees. Never use this fallback for
-// newer fills, surplus policies, or price-improvement policies.
+// Completeness scans filter one settlement address and a small UID set, so begin
+// with a wide archive window and halve on provider limits. Starting at the
+// decoder's 2,000-block discovery window would require thousands of RPC calls.
+const ONCHAIN_SCAN_WINDOW = 50_000n;
+// The operated-chain improvement policy was deployed on 2026-08-11. Before this
+// conservative boundary, an unclamped verified aggregate rate can reconstruct a
+// legacy flat policy's integer execution. The nominal rate is never reported.
 const LEGACY_FLAT_FEE_CUTOFF = new Date('2026-08-10T00:00:00.000Z');
 const ROUTER_WALLETS: readonly string[] = Object.freeze([...DECODER_ETHFLOW_OWNERS]);
 
@@ -34,6 +36,7 @@ interface TradeEventLog {
     buyToken: `0x${string}`;
     sellAmount: bigint;
     buyAmount: bigint;
+    feeAmount: bigint;
     orderUid: `0x${string}`;
   };
   transactionHash: `0x${string}`;
@@ -47,6 +50,8 @@ interface SettlementSource {
   buyToken: `0x${string}`;
   sellAmount: bigint;
   buyAmount: bigint;
+  feeAmount: bigint | null;
+  side: 'sell' | 'buy' | null;
   tradeUid: `0x${string}`;
   transactionHash: `0x${string}`;
   blockNumber: bigint;
@@ -59,6 +64,10 @@ interface RepairResult {
   fills: number;
   fees: number;
   failedBlocks: number;
+}
+
+interface BatchRepairResult extends RepairResult {
+  audits: number;
 }
 
 async function blockTradeLogs(chainId: number, blockNumber: bigint): Promise<TradeEventLog[]> {
@@ -99,6 +108,8 @@ function sourceFromApi(trade: CowTrade): SettlementSource {
     buyToken: trade.buyToken as `0x${string}`,
     sellAmount: BigInt(trade.sellAmount),
     buyAmount: BigInt(trade.buyAmount),
+    feeAmount: null,
+    side: null,
     tradeUid: trade.orderUid as `0x${string}`,
     transactionHash: trade.txHash as `0x${string}`,
     blockNumber: BigInt(trade.blockNumber),
@@ -107,13 +118,15 @@ function sourceFromApi(trade: CowTrade): SettlementSource {
   };
 }
 
-function sourceFromLog(event: TradeEventLog): SettlementSource {
+function sourceFromLog(event: TradeEventLog, side: SettlementSource['side']): SettlementSource {
   return {
     owner: event.args.owner,
     sellToken: event.args.sellToken,
     buyToken: event.args.buyToken,
     sellAmount: event.args.sellAmount,
     buyAmount: event.args.buyAmount,
+    feeAmount: event.args.feeAmount,
+    side,
     tradeUid: event.args.orderUid,
     transactionHash: event.transactionHash,
     blockNumber: event.blockNumber,
@@ -134,9 +147,9 @@ function isRangeError(err: unknown): boolean {
 
 /**
  * Sovereign orderbooks can be replaced or pruned while settlement logs remain
- * immutable. When an exact-UID API lookup returns no rows, scan the configured
- * decoder history once for every affected UID on that chain. The scan is shared
- * across UIDs, so six missing orders cost one chain pass rather than six passes.
+ * immutable. Scan the configured decoder history for every audited UID on that
+ * chain, even when the API returns a non-empty subset: a partially filled order
+ * can straddle an orderbook pruning boundary. The scan is shared across UIDs.
  */
 async function onchainSourcesForUids(
   chainId: number,
@@ -169,15 +182,56 @@ async function onchainSourcesForUids(
       }
       throw err;
     }
+    const byTransaction = new Map<string, TradeEventLog[]>();
     for (const event of logs) {
-      const uid = event.args.orderUid.toLowerCase();
-      if (!wanted.has(uid)) continue;
-      const rows = found.get(uid) ?? [];
-      rows.push(sourceFromLog(event));
-      found.set(uid, rows);
+      const txHash = event.transactionHash.toLowerCase();
+      const rows = byTransaction.get(txHash) ?? [];
+      rows.push(event);
+      byTransaction.set(txHash, rows);
+    }
+    for (const [txHash, transactionLogs] of byTransaction) {
+      if (!transactionLogs.some((event) => wanted.has(event.args.orderUid.toLowerCase()))) continue;
+      transactionLogs.sort((a, b) => a.logIndex - b.logIndex);
+      let sides: Array<SettlementSource['side']> = transactionLogs.map(() => null);
+      try {
+        const transaction = await client.getTransaction({ hash: txHash as `0x${string}` });
+        const decoded = decodeFunctionData({ abi: [SETTLE_FN], data: transaction.input });
+        const args = decoded.args as unknown as readonly [
+          readonly `0x${string}`[],
+          readonly bigint[],
+          readonly { sellTokenIndex: bigint; buyTokenIndex: bigint; flags: bigint }[],
+          unknown,
+        ];
+        const tokens = args[0];
+        const calldataTrades = args[2];
+        if (calldataTrades.length !== transactionLogs.length) {
+          throw new Error(`settle calldata has ${calldataTrades.length} trades for ${transactionLogs.length} Trade logs`);
+        }
+        sides = calldataTrades.map((trade, index) => {
+          const event = transactionLogs[index]!;
+          const sellToken = tokens[Number(trade.sellTokenIndex)];
+          const buyToken = tokens[Number(trade.buyTokenIndex)];
+          if (sellToken?.toLowerCase() !== event.args.sellToken.toLowerCase()
+            || buyToken?.toLowerCase() !== event.args.buyToken.toLowerCase()) {
+            throw new Error(`settle calldata token indexes disagree at Trade log ${event.logIndex}`);
+          }
+          return (trade.flags & 1n) === 0n ? 'sell' : 'buy';
+        });
+      } catch (err) {
+        // The settlement identity is still immutable and useful. Leave its side
+        // unknown so legacy fees remain pending rather than guessing from policy.
+        log.warn({ err, chainId, txHash }, 'settlement calldata decode failed');
+      }
+      for (let index = 0; index < transactionLogs.length; index++) {
+        const event = transactionLogs[index]!;
+        const uid = event.args.orderUid.toLowerCase();
+        if (!wanted.has(uid)) continue;
+        const rows = found.get(uid) ?? [];
+        rows.push(sourceFromLog(event, sides[index] ?? null));
+        found.set(uid, rows);
+      }
     }
     from = to + 1n;
-    if (window < ONCHAIN_SCAN_WINDOW) window = ONCHAIN_SCAN_WINDOW;
   }
   for (const rows of found.values()) {
     rows.sort((a, b) => a.blockNumber === b.blockNumber
@@ -187,17 +241,40 @@ async function onchainSourcesForUids(
   return found;
 }
 
-function verifiedAggregateAssessment(
-  chainId: number,
-  volumeFeeBps: number | null,
-  settledAt: Date,
-): string | null {
+function verifiedHostedZeroAssessment(chainId: number, volumeFeeBps: number | null): string | null {
   // A verified zero means attribution examined the appData and found no settled
   // Ophis appData fee. That proves exact zero only on hosted chains: sovereign
   // market orders can prepend an operated price-improvement policy independently.
   if (volumeFeeBps === 0 && !SOVEREIGN_CHAIN_IDS.has(chainId)) return '0.00000000';
-  if (volumeFeeBps === null || settledAt >= LEGACY_FLAT_FEE_CUTOFF) return null;
-  return `${volumeFeeBps}.00000000`;
+  return null;
+}
+
+/** Reconstruct the backend's integer flat-volume fee for immutable legacy
+ * settlements. The nominal policy rate itself is never reported: integer token
+ * rounding can make the effective executed rate differ materially on small fills.
+ * A clamped aggregate cannot prove a policy above the clamp, so the 10 bps ceiling
+ * remains pending unless the exact-UID API supplies executedProtocolFees. */
+function legacyExecutedAssessment(
+  source: SettlementSource,
+  volumeFeeBps: number | null,
+  settledAt: Date,
+): string | null {
+  if (volumeFeeBps === null || volumeFeeBps <= 0
+    || volumeFeeBps >= 10 || settledAt >= LEGACY_FLAT_FEE_CUTOFF
+    || source.side === null) return null;
+  const factor = volumeFeeBps / 10_000;
+  const adjusted = source.side === 'sell' ? factor / (1 - factor) : factor / (1 + factor);
+  const scaledFactor = BigInt(Math.trunc(adjusted * 1e18));
+  const executed = source.side === 'sell' ? source.buyAmount : source.sellAmount;
+  const assessed = executed * scaledFactor / 1_000_000_000_000_000_000n;
+  const grossVolume = source.side === 'sell'
+    ? source.buyAmount + assessed
+    : source.feeAmount === null ? 0n : source.sellAmount - source.feeAmount;
+  if (grossVolume <= 0n) return null;
+  const scale = 100_000_000n;
+  const scaledBps = (assessed * 10_000n * scale + grossVolume / 2n) / grossVolume;
+  if (scaledBps > 10_001_000_000n) return null;
+  return `${scaledBps / scale}.${(scaledBps % scale).toString().padStart(8, '0')}`;
 }
 
 function settlementKey(blockNumber: bigint | string, logIndex: number): string {
@@ -214,10 +291,14 @@ function usableUserAddress(address: string | null | undefined): `0x${string}` | 
  * Repair immutable settlement identity from the exact-UID trade feed, falling back
  * to one complete GPv2Settlement history scan when a retired sovereign orderbook no
  * longer retains the UID. Existing fills are cross-checked rather than overwritten.
- * Every verified production aggregate is audited and all of that UID's settlements
- * are reconstructed before its expected fill count is marked complete.
+ * Every verified production aggregate, plus every decoder aggregate with a known
+ * reporting fill, is audited. All of a UID's settlements are reconstructed before
+ * its expected fill count is marked complete.
  */
-export async function repairDefiLlamaSettlementIdentity(): Promise<RepairResult> {
+async function repairDefiLlamaSettlementIdentityBatch(
+  repairRunStartedAt: Date,
+  repairLimit: number,
+): Promise<BatchRepairResult> {
   const identityRows = await sql<{
     chain_id: number;
     block_number: string;
@@ -238,7 +319,7 @@ export async function repairDefiLlamaSettlementIdentity(): Promise<RepairResult>
     WHERE f.chain_id = ANY(${[...PRODUCTION_CHAIN_IDS]})
       AND (f.transaction_hash IS NULL OR f.user_address IS NULL)
     ORDER BY f.chain_id, f.block_number, f.log_index
-    LIMIT ${REPAIR_LIMIT}
+    LIMIT ${repairLimit}
   `;
 
   const auditRows = await sql<{
@@ -246,13 +327,15 @@ export async function repairDefiLlamaSettlementIdentity(): Promise<RepairResult>
     trade_uid: string;
     user_address: string | null;
     volume_fee_bps: number | null;
+    aggregate_fee_verified: boolean;
   }[]>`
     SELECT t.chain_id, '0x' || encode(t.trade_uid, 'hex') AS trade_uid,
            CASE
              WHEN ('0x' || encode(t.wallet, 'hex')) = ANY(${ROUTER_WALLETS}) THEN NULL
              ELSE '0x' || encode(t.wallet, 'hex')
            END AS user_address,
-           t.volume_fee_bps
+           t.volume_fee_bps,
+           t.fee_verified AS aggregate_fee_verified
     FROM trades t
     LEFT JOIN LATERAL (
       SELECT COUNT(*)::int AS fill_count,
@@ -265,16 +348,21 @@ export async function repairDefiLlamaSettlementIdentity(): Promise<RepairResult>
       FROM defillama_fills f
       WHERE f.chain_id = t.chain_id AND f.trade_uid = t.trade_uid
     ) state ON true
-    WHERE t.fee_verified = true
-      AND t.chain_id = ANY(${[...PRODUCTION_CHAIN_IDS]})
+    WHERE t.chain_id = ANY(${[...PRODUCTION_CHAIN_IDS]})
+      AND (t.fee_verified = true OR state.fill_count > 0)
       AND (
         t.defillama_repair_checked_at IS NULL
+        OR t.defillama_repair_checked_at < now() - INTERVAL '7 days'
         OR t.defillama_expected_fill_count IS NULL
         OR t.defillama_expected_fill_count <> state.fill_count
         OR state.incomplete
       )
+      -- A failed UID is checkpointed too. It remains fail-closed and is retried
+      -- next invocation, but cannot sort first forever and starve later batches.
+      AND (t.defillama_repair_checked_at IS NULL
+        OR t.defillama_repair_checked_at < ${repairRunStartedAt.toISOString()}::timestamptz)
     ORDER BY t.defillama_repair_checked_at ASC NULLS FIRST, t.chain_id, t.trade_uid
-    LIMIT ${REPAIR_LIMIT}
+    LIMIT ${repairLimit}
   `;
 
   type Group = { chainId: number; blockNumber: bigint };
@@ -327,34 +415,57 @@ export async function repairDefiLlamaSettlementIdentity(): Promise<RepairResult>
 
   }
 
-  // The exact-UID feed is the normal authoritative settlement source and returns
-  // every partial fill without requiring an archive RPC. Some retired sovereign
-  // orderbooks no longer retain old UIDs; scan their configured on-chain history
-  // once per chain when (and only when) the exact feed has no rows.
+  // The exact-UID feed is the normal authoritative settlement source. A configured
+  // on-chain history supplements it even when it returns rows: a partially filled
+  // order can straddle an orderbook pruning boundary.
   const sourcesByUid = new Map<string, SettlementSource[]>();
-  const apiMissesByChain = new Map<number, `0x${string}`[]>();
+  const onchainUidsByChain = new Map<number, `0x${string}`[]>();
   for (const row of auditRows) {
     const uid = row.trade_uid as `0x${string}`;
+    if (process.env[`SETTLE_SCAN_START_BLOCK_${row.chain_id}`]) {
+      const uids = onchainUidsByChain.get(row.chain_id) ?? [];
+      uids.push(uid);
+      onchainUidsByChain.set(row.chain_id, uids);
+    }
     try {
       const apiTrades = await allTradesForUid(row.chain_id, uid);
       if (apiTrades.length > 0) {
         sourcesByUid.set(`${row.chain_id}:${uid.toLowerCase()}`, apiTrades.map(sourceFromApi));
-      } else {
-        const misses = apiMissesByChain.get(row.chain_id) ?? [];
-        misses.push(uid);
-        apiMissesByChain.set(row.chain_id, misses);
       }
     } catch (err) {
       log.warn({ err, chainId: row.chain_id, uid }, 'exact-UID settlement source lookup failed');
     }
   }
 
-  for (const [chainId, uids] of apiMissesByChain) {
+  for (const [chainId, uids] of onchainUidsByChain) {
     try {
       const onchain = await onchainSourcesForUids(chainId, uids);
       for (const uid of uids) {
-        const sources = onchain.get(uid.toLowerCase());
-        if (sources?.length) sourcesByUid.set(`${chainId}:${uid.toLowerCase()}`, sources);
+        const key = `${chainId}:${uid.toLowerCase()}`;
+        const merged = new Map<string, SettlementSource>();
+        // API rows win for the same settlement because they carry exact executed
+        // fee-policy metadata; immutable on-chain rows add pruned settlements.
+        for (const source of sourcesByUid.get(key) ?? []) {
+          merged.set(settlementKey(source.blockNumber, source.logIndex), source);
+        }
+        for (const source of onchain.get(uid.toLowerCase()) ?? []) {
+          const settlement = settlementKey(source.blockNumber, source.logIndex);
+          const apiSource = merged.get(settlement);
+          if (apiSource) {
+            merged.set(settlement, {
+              ...apiSource,
+              feeAmount: source.feeAmount,
+              side: source.side,
+            });
+          } else {
+            merged.set(settlement, source);
+          }
+        }
+        if (merged.size > 0) {
+          sourcesByUid.set(key, [...merged.values()].sort((a, b) => a.blockNumber === b.blockNumber
+            ? a.logIndex - b.logIndex
+            : a.blockNumber < b.blockNumber ? -1 : 1));
+        }
       }
     } catch (err) {
       failedBlocks++;
@@ -486,9 +597,15 @@ export async function repairDefiLlamaSettlementIdentity(): Promise<RepairResult>
         const exactAssessment = source.apiTrade && order && meta !== null
           ? readAssessedOphisFeeBps(row.chain_id, order.class, meta, source.apiTrade)
           : null;
+        const legacyAssessment = row.aggregate_fee_verified
+          ? legacyExecutedAssessment(source, row.volume_fee_bps, settlementTimestamp)
+          : null;
         const assessedFeeBps = exactAssessment
           ?? existing?.assessed_fee_bps
-          ?? verifiedAggregateAssessment(row.chain_id, row.volume_fee_bps, settlementTimestamp);
+          ?? legacyAssessment
+          ?? (row.aggregate_fee_verified
+            ? verifiedHostedZeroAssessment(row.chain_id, row.volume_fee_bps)
+            : null);
         if (!userAddress) complete = false;
         if (assessedFeeBps === null) complete = false;
         if (!userAddress) continue;
@@ -521,17 +638,30 @@ export async function repairDefiLlamaSettlementIdentity(): Promise<RepairResult>
 
   await upsertDefillamaFills(pending);
 
-  // Stamp completeness only after every immutable event was reconstructed and
-  // persisted with an exact executed assessment. A failed/partial audit remains
-  // NULL or stale and therefore keeps readiness closed or is retried next run.
-  for (const audit of completedAudits) {
-    await sql`
-      UPDATE trades
-      SET defillama_expected_fill_count = ${audit.fills},
-          defillama_repair_checked_at = now()
-      WHERE chain_id = ${audit.chainId}
-        AND trade_uid = decode(${audit.uid.slice(2)}, 'hex')
-    `;
+  // Stamp every attempted UID so an unrepairable first page cannot starve the
+  // rest of the queue. Only a complete reconstruction receives an expected
+  // count; incomplete attempts remain fail-closed and retry next invocation.
+  const completedByUid = new Map(completedAudits.map((audit) =>
+    [`${audit.chainId}:${audit.uid.toLowerCase()}`, audit.fills]));
+  for (const row of auditRows) {
+    const uid = row.trade_uid as `0x${string}`;
+    const expected = completedByUid.get(`${row.chain_id}:${uid.toLowerCase()}`);
+    if (expected === undefined) {
+      await sql`
+        UPDATE trades
+        SET defillama_repair_checked_at = now()
+        WHERE chain_id = ${row.chain_id}
+          AND trade_uid = decode(${uid.slice(2)}, 'hex')
+      `;
+    } else {
+      await sql`
+        UPDATE trades
+        SET defillama_expected_fill_count = ${expected},
+            defillama_repair_checked_at = now()
+        WHERE chain_id = ${row.chain_id}
+          AND trade_uid = decode(${uid.slice(2)}, 'hex')
+      `;
+    }
   }
 
   // Decoder discovery is exhaustive but deliberately unverified for the rebate
@@ -566,7 +696,7 @@ export async function repairDefiLlamaSettlementIdentity(): Promise<RepairResult>
       AND buy_token IS NOT NULL
       AND buy_amount IS NOT NULL
     ORDER BY settlement_timestamp, chain_id, block_number, log_index
-    LIMIT ${REPAIR_LIMIT}
+    LIMIT ${repairLimit}
   `;
 
   let fees = 0;
@@ -627,5 +757,26 @@ export async function repairDefiLlamaSettlementIdentity(): Promise<RepairResult>
     }
   }
 
-  return { identities, fills: pending.length, fees, failedBlocks };
+  return { identities, fills: pending.length, fees, failedBlocks, audits: auditRows.length };
+}
+
+/** Drain every audit row that was pending at invocation start. Failed UIDs are
+ * checkpointed by the batch worker, so they cannot monopolize the first page. */
+export async function repairDefiLlamaSettlementIdentity(
+  options: { repairLimit?: number } = {},
+): Promise<RepairResult> {
+  const repairLimit = options.repairLimit ?? REPAIR_LIMIT;
+  if (!Number.isInteger(repairLimit) || repairLimit <= 0) {
+    throw new Error('repairLimit must be a positive integer');
+  }
+  const repairRunStartedAt = new Date();
+  const total: RepairResult = { identities: 0, fills: 0, fees: 0, failedBlocks: 0 };
+  while (true) {
+    const batch = await repairDefiLlamaSettlementIdentityBatch(repairRunStartedAt, repairLimit);
+    total.identities += batch.identities;
+    total.fills += batch.fills;
+    total.fees += batch.fees;
+    total.failedBlocks += batch.failedBlocks;
+    if (batch.audits < repairLimit) return total;
+  }
 }

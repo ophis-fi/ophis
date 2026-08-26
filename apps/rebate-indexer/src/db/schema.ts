@@ -127,8 +127,7 @@ export const trades = pgTable(
     walletTimeIdx: index('trades_wallet_time_idx').on(t.wallet, t.blockTimestamp),
     unpricedIdx: index('trades_unpriced_idx').on(t.pricedAt),
     defillamaRepairIdx: index('trades_defillama_repair_pending_idx')
-      .on(t.defillamaRepairCheckedAt, t.chainId)
-      .where(sql`${t.feeVerified} = true`),
+      .on(t.defillamaRepairCheckedAt, t.chainId),
   }),
 );
 
@@ -165,6 +164,7 @@ export const defillamaFills = pgTable(
     pk: primaryKey({ columns: [t.chainId, t.blockNumber, t.logIndex, t.tradeUid] }),
     unpricedIdx: index('defillama_fills_unpriced_idx').on(t.chainId, t.blockNumber, t.logIndex),
     dailyIdx: index('defillama_fills_daily_idx').on(t.settlementTimestamp, t.chainId),
+    chainUidIdx: index('defillama_fills_chain_uid_idx').on(t.chainId, t.tradeUid),
     txIdx: index('defillama_fills_tx_idx').on(t.transactionHash),
     userIdx: index('defillama_fills_user_idx').on(t.userAddress),
   }),
