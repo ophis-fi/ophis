@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { encodeFunctionData } from 'viem';
+import { encodeFunctionData, keccak256, stringToHex } from 'viem';
 import { startPg, stopPg } from './fixtures/pgContainer.js';
 import { SETTLE_FN } from '../src/cow/settleAbi.js';
 
@@ -21,14 +21,18 @@ const API_TRADES = new Map<string, ApiTrade[]>();
 const ORDERS = new Map<string, Record<string, unknown>>();
 const BLOCK_LOGS = new Map<string, unknown[]>();
 const TX_INPUTS = new Map<string, `0x${string}`>();
+const APP_DATA_DOCS = new Map<string, string>();
+const FAILED_SCAN_CHAINS = new Set<number>();
 
 vi.mock('../src/cow/client.js', () => ({
   SUPPORTED_CHAIN_IDS: [1, 11155111],
-  listTrades: vi.fn(async (p: { chainId: number; orderUid: string; offset?: number; limit?: number }) => {
-    const rows = API_TRADES.get(`${p.chainId}:${p.orderUid}`) ?? [];
-    const offset = p.offset ?? 0;
-    return rows.slice(offset, offset + (p.limit ?? 1_000));
-  }),
+  listTrades: vi.fn(
+    async (p: { chainId: number; orderUid: string; offset?: number; limit?: number }) => {
+      const rows = API_TRADES.get(`${p.chainId}:${p.orderUid}`) ?? [];
+      const offset = p.offset ?? 0;
+      return rows.slice(offset, offset + (p.limit ?? 1_000));
+    },
+  ),
   getOrder: vi.fn(async (chainId: number, uid: string) => {
     const order = ORDERS.get(`${chainId}:${uid}`);
     if (!order) throw new Error('order not found (mock)');
@@ -39,6 +43,7 @@ vi.mock('../src/cow/client.js', () => ({
 vi.mock('../src/rpc/client.js', () => ({
   getRpcClient: (chainId: number) => ({
     getLogs: vi.fn(async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+      if (FAILED_SCAN_CHAINS.has(chainId)) throw new Error('archive unavailable (mock)');
       const rows: unknown[] = [];
       for (let block = fromBlock; block <= toBlock; block++) {
         rows.push(...(BLOCK_LOGS.get(`${chainId}:${block.toString()}`) ?? []));
@@ -55,10 +60,15 @@ vi.mock('../src/rpc/client.js', () => ({
   }),
 }));
 
+vi.mock('../src/cow/appDataResolver.js', () => ({
+  resolveAppData: vi.fn(
+    async (_chainId: number, hash: string) => APP_DATA_DOCS.get(hash.toLowerCase()) ?? null,
+  ),
+}));
+
 let container: StartedPostgreSqlContainer;
 let sql: any;
-let repairDefiLlamaSettlementIdentity:
-  typeof import('../src/repair/defillamaSettlement.js')['repairDefiLlamaSettlementIdentity'];
+let repairDefiLlamaSettlementIdentity: (typeof import('../src/repair/defillamaSettlement.js'))['repairDefiLlamaSettlementIdentity'];
 
 const UID = (suffix: string) => `0x${suffix.padStart(112, '0')}`;
 const PARTIAL_UID = UID('a1');
@@ -72,6 +82,7 @@ const FAILED_UID = UID('b1');
 const DRAINED_UID_1 = UID('b2');
 const DRAINED_UID_2 = UID('b3');
 const DECODER_UID = UID('b4');
+const SCAN_FAILURE_UID = UID('b5');
 const OWNER = `0x${'12'.repeat(20)}`;
 const SELL = `0x${'34'.repeat(20)}`;
 const BUY = `0x${'56'.repeat(20)}`;
@@ -83,10 +94,25 @@ const volumeMeta = JSON.stringify({
 });
 const improvementMeta = JSON.stringify({
   appCode: 'ophis',
-  metadata: { partnerFee: [{ recipient: OPHIS_SAFE, priceImprovementBps: 8_000, maxVolumeBps: 99 }] },
+  metadata: {
+    partnerFee: [{ recipient: OPHIS_SAFE, priceImprovementBps: 8_000, maxVolumeBps: 99 }],
+  },
 });
+const legacyRawMeta = JSON.stringify({
+  appCode: 'ophis',
+  metadata: { partnerFee: [{ recipient: OPHIS_SAFE, volumeBps: 250 }] },
+});
+const VOLUME_META_HASH = keccak256(stringToHex(volumeMeta));
+const LEGACY_RAW_META_HASH = keccak256(stringToHex(legacyRawMeta));
 
-function apiTrade(uid: string, blockNumber: number, logIndex: number, sell: bigint, buy: bigint, improvement = false): ApiTrade {
+function apiTrade(
+  uid: string,
+  blockNumber: number,
+  logIndex: number,
+  sell: bigint,
+  buy: bigint,
+  improvement = false,
+): ApiTrade {
   return {
     blockNumber,
     logIndex,
@@ -97,17 +123,19 @@ function apiTrade(uid: string, blockNumber: number, logIndex: number, sell: bigi
     sellAmount: sell.toString(),
     buyAmount: buy.toString(),
     txHash: `0x${blockNumber.toString(16).padStart(64, '0')}`,
-    executedProtocolFees: [{
-      amount: improvement ? '5' : '1',
-      token: BUY,
-      policy: improvement
-        ? { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } }
-        : { volume: { factor: 0.0001 } },
-    }],
+    executedProtocolFees: [
+      {
+        amount: improvement ? '5' : '1',
+        token: BUY,
+        policy: improvement
+          ? { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } }
+          : { volume: { factor: 0.0001 } },
+      },
+    ],
   };
 }
 
-function tradeLog(trade: ApiTrade) {
+function tradeLog(trade: ApiTrade, feeAmount = 0n) {
   return {
     args: {
       owner: trade.owner,
@@ -115,7 +143,7 @@ function tradeLog(trade: ApiTrade) {
       buyToken: BUY,
       sellAmount: BigInt(trade.sellAmount),
       buyAmount: BigInt(trade.buyAmount),
-      feeAmount: 0n,
+      feeAmount,
       orderUid: trade.orderUid,
     },
     transactionHash: trade.txHash,
@@ -124,26 +152,32 @@ function tradeLog(trade: ApiTrade) {
   };
 }
 
-function settlementInput(trade: ApiTrade, side: 'sell' | 'buy' = 'sell'): `0x${string}` {
+function settlementInput(
+  trade: ApiTrade,
+  side: 'sell' | 'buy' = 'sell',
+  appDataHash: `0x${string}` = VOLUME_META_HASH,
+): `0x${string}` {
   return encodeFunctionData({
     abi: [SETTLE_FN],
     functionName: 'settle',
     args: [
       [SELL, BUY],
       [1n, 1n],
-      [{
-        sellTokenIndex: 0n,
-        buyTokenIndex: 1n,
-        receiver: OWNER,
-        sellAmount: BigInt(trade.sellAmount),
-        buyAmount: BigInt(trade.buyAmount),
-        validTo: 0,
-        appData: `0x${'00'.repeat(32)}`,
-        feeAmount: 0n,
-        flags: side === 'sell' ? 0n : 1n,
-        executedAmount: BigInt(trade.sellAmount),
-        signature: '0x',
-      }],
+      [
+        {
+          sellTokenIndex: 0n,
+          buyTokenIndex: 1n,
+          receiver: OWNER,
+          sellAmount: BigInt(trade.sellAmount),
+          buyAmount: BigInt(trade.buyAmount),
+          validTo: 0,
+          appData: appDataHash,
+          feeAmount: 0n,
+          flags: side === 'sell' ? 0n : 1n,
+          executedAmount: BigInt(trade.sellAmount),
+          signature: '0x',
+        },
+      ],
       [[], [], []],
     ],
   });
@@ -175,6 +209,8 @@ beforeAll(async () => {
   ({ sql } = await import('../src/db/index.js'));
   const { runMigrations } = await import('../src/db/migrate.js');
   await runMigrations();
+  APP_DATA_DOCS.set(VOLUME_META_HASH.toLowerCase(), volumeMeta);
+  APP_DATA_DOCS.set(LEGACY_RAW_META_HASH.toLowerCase(), legacyRawMeta);
 
   const partialTrades = [
     apiTrade(PARTIAL_UID, 100, 3, 400n, 1_500n),
@@ -190,28 +226,67 @@ beforeAll(async () => {
   API_TRADES.set(`56:${ZERO_UID}`, zeroTrades);
   API_TRADES.set(`10:${SOVEREIGN_ZERO_UID}`, sovereignZeroTrades);
   ORDERS.set(`1:${PARTIAL_UID}`, {
-    uid: PARTIAL_UID, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
-    sellAmount: '1000', buyAmount: '4000', appData: `0x${'00'.repeat(32)}`,
-    fullAppData: volumeMeta, creationDate: '2026-08-01T00:00:00.000Z', class: 'market', status: 'fulfilled',
+    uid: PARTIAL_UID,
+    owner: OWNER,
+    receiver: null,
+    sellToken: SELL,
+    buyToken: BUY,
+    sellAmount: '1000',
+    buyAmount: '4000',
+    appData: `0x${'00'.repeat(32)}`,
+    fullAppData: volumeMeta,
+    creationDate: '2026-08-01T00:00:00.000Z',
+    class: 'market',
+    status: 'fulfilled',
   });
   ORDERS.set(`1:${IMPROVEMENT_UID}`, {
-    uid: IMPROVEMENT_UID, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
-    sellAmount: '500', buyAmount: '5000', appData: `0x${'00'.repeat(32)}`,
-    fullAppData: improvementMeta, creationDate: '2026-08-01T00:00:00.000Z', class: 'market', status: 'fulfilled',
+    uid: IMPROVEMENT_UID,
+    owner: OWNER,
+    receiver: null,
+    sellToken: SELL,
+    buyToken: BUY,
+    sellAmount: '500',
+    buyAmount: '5000',
+    appData: `0x${'00'.repeat(32)}`,
+    fullAppData: improvementMeta,
+    creationDate: '2026-08-01T00:00:00.000Z',
+    class: 'market',
+    status: 'fulfilled',
   });
   ORDERS.set(`56:${ZERO_UID}`, {
-    uid: ZERO_UID, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
-    sellAmount: '200', buyAmount: '800', appData: `0x${'00'.repeat(32)}`,
+    uid: ZERO_UID,
+    owner: OWNER,
+    receiver: null,
+    sellToken: SELL,
+    buyToken: BUY,
+    sellAmount: '200',
+    buyAmount: '800',
+    appData: `0x${'00'.repeat(32)}`,
     fullAppData: JSON.stringify({ appCode: 'ophis', metadata: {} }),
-    creationDate: '2026-08-20T00:00:00.000Z', class: 'market', status: 'fulfilled',
+    creationDate: '2026-08-20T00:00:00.000Z',
+    class: 'market',
+    status: 'fulfilled',
   });
   ORDERS.set(`10:${SOVEREIGN_ZERO_UID}`, {
-    uid: SOVEREIGN_ZERO_UID, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
-    sellAmount: '200', buyAmount: '800', appData: `0x${'00'.repeat(32)}`,
+    uid: SOVEREIGN_ZERO_UID,
+    owner: OWNER,
+    receiver: null,
+    sellToken: SELL,
+    buyToken: BUY,
+    sellAmount: '200',
+    buyAmount: '800',
+    appData: `0x${'00'.repeat(32)}`,
     fullAppData: JSON.stringify({ appCode: 'ophis', metadata: {} }),
-    creationDate: '2026-08-20T00:00:00.000Z', class: 'market', status: 'fulfilled',
+    creationDate: '2026-08-20T00:00:00.000Z',
+    class: 'market',
+    status: 'fulfilled',
   });
-  for (const trade of [...partialTrades, ...improvementTrades, ...zeroTrades, ...sovereignZeroTrades]) {
+  for (const trade of [
+    ...partialTrades,
+    ...improvementTrades,
+    ...zeroTrades,
+    ...sovereignZeroTrades,
+  ]) {
     const chainId = trade === zeroTrades[0] ? 56 : trade === sovereignZeroTrades[0] ? 10 : 1;
     BLOCK_LOGS.set(`${chainId}:${trade.blockNumber}`, [tradeLog(trade)]);
   }
@@ -232,9 +307,12 @@ beforeAll(async () => {
   ];
   for (const trade of fallbackTrades) {
     BLOCK_LOGS.set(`130:${trade.blockNumber}`, [tradeLog(trade)]);
-    TX_INPUTS.set(trade.txHash, settlementInput(trade));
+    TX_INPUTS.set(trade.txHash, settlementInput(trade, 'sell', LEGACY_RAW_META_HASH));
   }
-  await insertAggregate(FALLBACK_UID, 130, 1_000n, 4_000n, 9);
+  // The aggregate is clamped to 10 bps and appData names a raw 250-bps policy.
+  // The legacy backend capped that policy to 100 bps before applying integer
+  // rounding to each immutable executed settlement amount.
+  await insertAggregate(FALLBACK_UID, 130, 1_000n, 4_000n, 10);
 
   // Seed only the first partial fill. The regression is that this row must not
   // make the UID appear complete and suppress the settlement in block 200.
@@ -262,40 +340,72 @@ describe('repairDefiLlamaSettlementIdentity', () => {
   it('audits every exact-UID settlement block, including null flat-rate policies', async () => {
     await repairDefiLlamaSettlementIdentity();
 
-    const partial = await sql`
+    const partial = (await sql`
       SELECT block_number::text AS block, assessed_fee_bps::text AS assessed, fee_verified AS verified
       FROM defillama_fills WHERE chain_id = 1 AND trade_uid = decode(${PARTIAL_UID.slice(2)}, 'hex')
-      ORDER BY block_number` as Array<{ block: string; assessed: string | null; verified: boolean }>;
+      ORDER BY block_number`) as Array<{
+      block: string;
+      assessed: string | null;
+      verified: boolean;
+    }>;
     expect(partial.map((row) => row.block)).toEqual(['100', '200']);
     expect(partial.every((row) => row.verified && row.assessed !== null)).toBe(true);
 
-    const [improvement] = await sql<{ volume: number | null; assessed: string | null; verified: boolean }[]>`
+    const [improvement] = await sql<
+      { volume: number | null; assessed: string | null; verified: boolean }[]
+    >`
       SELECT volume_fee_bps AS volume, assessed_fee_bps::text AS assessed, fee_verified AS verified
       FROM defillama_fills WHERE chain_id = 1 AND trade_uid = decode(${IMPROVEMENT_UID.slice(2)}, 'hex')`;
     expect(improvement).toMatchObject({ volume: null, verified: true });
     expect(improvement!.assessed).not.toBeNull();
 
-    const audits = await sql`
+    const audits = (await sql`
       SELECT encode(trade_uid, 'hex') AS uid, defillama_expected_fill_count AS expected,
              defillama_repair_checked_at IS NOT NULL AS checked
-      FROM trades ORDER BY chain_id, trade_uid` as Array<{ uid: string; expected: number | null; checked: boolean }>;
-    expect(audits.find((row) => row.uid === PARTIAL_UID.slice(2))).toMatchObject({ expected: 2, checked: true });
-    expect(audits.find((row) => row.uid === IMPROVEMENT_UID.slice(2))).toMatchObject({ expected: 1, checked: true });
-    expect(audits.find((row) => row.uid === FALLBACK_UID.slice(2))).toMatchObject({ expected: 2, checked: true });
-    expect(audits.find((row) => row.uid === ZERO_UID.slice(2))).toMatchObject({ expected: 1, checked: true });
-    expect(audits.find((row) => row.uid === SOVEREIGN_ZERO_UID.slice(2))).toMatchObject({ expected: null, checked: true });
-    expect(audits.find((row) => row.uid === TESTNET_UID.slice(2))).toMatchObject({ expected: null, checked: false });
+      FROM trades ORDER BY chain_id, trade_uid`) as Array<{
+      uid: string;
+      expected: number | null;
+      checked: boolean;
+    }>;
+    expect(audits.find((row) => row.uid === PARTIAL_UID.slice(2))).toMatchObject({
+      expected: 2,
+      checked: true,
+    });
+    expect(audits.find((row) => row.uid === IMPROVEMENT_UID.slice(2))).toMatchObject({
+      expected: 1,
+      checked: true,
+    });
+    expect(audits.find((row) => row.uid === FALLBACK_UID.slice(2))).toMatchObject({
+      expected: 2,
+      checked: true,
+    });
+    expect(audits.find((row) => row.uid === ZERO_UID.slice(2))).toMatchObject({
+      expected: 1,
+      checked: true,
+    });
+    expect(audits.find((row) => row.uid === SOVEREIGN_ZERO_UID.slice(2))).toMatchObject({
+      expected: null,
+      checked: true,
+    });
+    expect(audits.find((row) => row.uid === TESTNET_UID.slice(2))).toMatchObject({
+      expected: null,
+      checked: false,
+    });
 
-    const fallback = await sql`
+    const fallback = (await sql`
       SELECT block_number::text AS block, assessed_fee_bps::text AS assessed,
              fee_verified AS verified
       FROM defillama_fills
       WHERE chain_id = 130 AND trade_uid = decode(${FALLBACK_UID.slice(2)}, 'hex')
-      ORDER BY block_number` as Array<{ block: string; assessed: string | null; verified: boolean }>;
+      ORDER BY block_number`) as Array<{
+      block: string;
+      assessed: string | null;
+      verified: boolean;
+    }>;
     expect(fallback.map((row) => row.block)).toEqual(['120', '180']);
     expect(fallback).toEqual([
-      { block: '120', assessed: '8.32639467', verified: true },
-      { block: '180', assessed: '7.13775874', verified: true },
+      { block: '120', assessed: '99.00990099', verified: true },
+      { block: '180', assessed: '99.00990099', verified: true },
     ]);
 
     const [zero] = await sql<{ assessed: string | null; verified: boolean }[]>`
@@ -321,9 +431,18 @@ describe('repairDefiLlamaSettlementIdentity', () => {
     const retained = apiTrade(PARTIAL_API_UID, 240, 6, 700n, 28_000n);
     API_TRADES.set(`130:${PARTIAL_API_UID}`, [retained]);
     ORDERS.set(`130:${PARTIAL_API_UID}`, {
-      uid: PARTIAL_API_UID, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
-      sellAmount: '1000', buyAmount: '40000', appData: `0x${'00'.repeat(32)}`,
-      fullAppData: volumeMeta, creationDate: '2026-08-01T00:00:00.000Z', class: 'market', status: 'fulfilled',
+      uid: PARTIAL_API_UID,
+      owner: OWNER,
+      receiver: null,
+      sellToken: SELL,
+      buyToken: BUY,
+      sellAmount: '1000',
+      buyAmount: '40000',
+      appData: `0x${'00'.repeat(32)}`,
+      fullAppData: volumeMeta,
+      creationDate: '2026-08-01T00:00:00.000Z',
+      class: 'market',
+      status: 'fulfilled',
     });
     for (const trade of [archived, retained]) {
       BLOCK_LOGS.set(`130:${trade.blockNumber}`, [tradeLog(trade)]);
@@ -337,9 +456,18 @@ describe('repairDefiLlamaSettlementIdentity', () => {
     ];
     API_TRADES.set(`1:${DECODER_UID}`, decoderTrades);
     ORDERS.set(`1:${DECODER_UID}`, {
-      uid: DECODER_UID, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
-      sellAmount: '1000', buyAmount: '4000', appData: `0x${'00'.repeat(32)}`,
-      fullAppData: volumeMeta, creationDate: '2026-08-01T00:00:00.000Z', class: 'market', status: 'fulfilled',
+      uid: DECODER_UID,
+      owner: OWNER,
+      receiver: null,
+      sellToken: SELL,
+      buyToken: BUY,
+      sellAmount: '1000',
+      buyAmount: '4000',
+      appData: `0x${'00'.repeat(32)}`,
+      fullAppData: volumeMeta,
+      creationDate: '2026-08-01T00:00:00.000Z',
+      class: 'market',
+      status: 'fulfilled',
     });
     await insertAggregate(DECODER_UID, 1, 1_000n, 4_000n, 0, false);
     const known = decoderTrades[1]!;
@@ -354,13 +482,25 @@ describe('repairDefiLlamaSettlementIdentity', () => {
         '2026-08-01T00:00:00.000Z', decode(${SELL.slice(2)}, 'hex'), ${known.sellAmount},
         decode(${BUY.slice(2)}, 'hex'), ${known.buyAmount}, 0, NULL, false)`;
 
-    for (const [uid, block] of [[DRAINED_UID_1, 310], [DRAINED_UID_2, 320]] as const) {
+    for (const [uid, block] of [
+      [DRAINED_UID_1, 310],
+      [DRAINED_UID_2, 320],
+    ] as const) {
       const trade = apiTrade(uid, block, 1, 100n, 1_000n);
       API_TRADES.set(`56:${uid}`, [trade]);
       ORDERS.set(`56:${uid}`, {
-        uid, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
-        sellAmount: '100', buyAmount: '1000', appData: `0x${'00'.repeat(32)}`,
-        fullAppData: volumeMeta, creationDate: '2026-08-01T00:00:00.000Z', class: 'market', status: 'fulfilled',
+        uid,
+        owner: OWNER,
+        receiver: null,
+        sellToken: SELL,
+        buyToken: BUY,
+        sellAmount: '100',
+        buyAmount: '1000',
+        appData: `0x${'00'.repeat(32)}`,
+        fullAppData: volumeMeta,
+        creationDate: '2026-08-01T00:00:00.000Z',
+        class: 'market',
+        status: 'fulfilled',
       });
       await insertAggregate(uid, 56, 100n, 1_000n, 1);
     }
@@ -375,7 +515,9 @@ describe('repairDefiLlamaSettlementIdentity', () => {
       WHERE t.chain_id = 130 AND t.trade_uid = decode(${PARTIAL_API_UID.slice(2)}, 'hex')`;
     expect(partialApi).toEqual({ count: '2', expected: 2 });
 
-    const [decoder] = await sql<{ count: string; expected: number | null; aggregate_verified: boolean }[]>`
+    const [decoder] = await sql<
+      { count: string; expected: number | null; aggregate_verified: boolean }[]
+    >`
       SELECT COUNT(f.*)::text AS count, MAX(t.defillama_expected_fill_count) AS expected,
              BOOL_OR(t.fee_verified) AS aggregate_verified
       FROM trades t LEFT JOIN defillama_fills f
@@ -397,5 +539,42 @@ describe('repairDefiLlamaSettlementIdentity', () => {
       { uid: DRAINED_UID_1.slice(2), expected: 1, checked: true },
       { uid: DRAINED_UID_2.slice(2), expected: 1, checked: true },
     ]);
+  });
+
+  it('keeps API settlements fail-closed when configured on-chain validation fails', async () => {
+    process.env.SETTLE_SCAN_START_BLOCK_4663 = '100';
+    const trade = apiTrade(SCAN_FAILURE_UID, 330, 3, 100n, 1_000n);
+    API_TRADES.set(`4663:${SCAN_FAILURE_UID}`, [trade]);
+    ORDERS.set(`4663:${SCAN_FAILURE_UID}`, {
+      uid: SCAN_FAILURE_UID,
+      owner: OWNER,
+      receiver: null,
+      sellToken: SELL,
+      buyToken: BUY,
+      sellAmount: '100',
+      buyAmount: '1000',
+      appData: VOLUME_META_HASH,
+      fullAppData: volumeMeta,
+      creationDate: '2026-08-01T00:00:00.000Z',
+      class: 'market',
+      status: 'fulfilled',
+    });
+    await insertAggregate(SCAN_FAILURE_UID, 4663, 100n, 1_000n, 1);
+    FAILED_SCAN_CHAINS.add(4663);
+    try {
+      await repairDefiLlamaSettlementIdentity();
+    } finally {
+      FAILED_SCAN_CHAINS.delete(4663);
+    }
+
+    const [audit] = await sql<{ expected: number | null; checked: boolean; fills: string }[]>`
+      SELECT t.defillama_expected_fill_count AS expected,
+             t.defillama_repair_checked_at IS NOT NULL AS checked,
+             COUNT(f.*)::text AS fills
+      FROM trades t LEFT JOIN defillama_fills f
+        ON f.chain_id = t.chain_id AND f.trade_uid = t.trade_uid
+      WHERE t.chain_id = 4663 AND t.trade_uid = decode(${SCAN_FAILURE_UID.slice(2)}, 'hex')
+      GROUP BY t.defillama_expected_fill_count, t.defillama_repair_checked_at`;
+    expect(audit).toEqual({ expected: null, checked: true, fills: '1' });
   });
 });
