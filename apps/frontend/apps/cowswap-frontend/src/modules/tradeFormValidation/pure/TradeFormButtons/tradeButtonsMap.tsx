@@ -45,6 +45,31 @@ function getQuoteErrorTexts(): Record<QuoteApiErrorCodes, string> {
   }
 }
 
+/**
+ * Button label for a BRIDGE quote rejected with SameBuyAndSellToken.
+ *
+ * A bridge order is "swap the sell token into an intermediate on the source
+ * chain, then bridge that intermediate". When the only available intermediate IS
+ * the sell token, the swap leg becomes sellToken -> sellToken and the orderbook
+ * rejects the quote before any bridging is attempted.
+ *
+ * Two shapes, and they need different copy:
+ *  - the user picked visibly identical assets (ETH -> ETH): "Not yet supported"
+ *    reads correctly, and the tooltip explains that bridging without swapping
+ *    is not implemented.
+ *  - the user picked visibly DIFFERENT assets (ETH on Robinhood -> WETH on
+ *    Unichain, which share an address on the source chain, or USDG -> USDC where
+ *    USDG is the only intermediate). Here "Not yet supported" is confusing since
+ *    the two sides look different, which is why this previously fell back to
+ *    "No routes found". But that reads as "this corridor is dead" and sends
+ *    people hunting for a different NETWORK, when the corridor is fine and the
+ *    fix is to pick a different destination TOKEN. Say that instead; the tooltip
+ *    still carries the underlying reason.
+ */
+export function getBridgeSameTokenErrorText(areSwapAssetsDifferent: boolean): string {
+  return areSwapAssetsDifferent ? t`Try a different destination token` : t`Not yet supported`
+}
+
 export function getBridgeQuoteErrorTexts(): Record<BridgeQuoteErrors, string> {
   const DEFAULT_QUOTE_ERROR = getDefaultQuoteError()
 
@@ -164,7 +189,11 @@ export const tradeButtonsMap: Record<TradeFormValidation, ButtonErrorConfig | Bu
     const bridgeQuoteErrorTexts = getBridgeQuoteErrorTexts()
 
     const errorTooltipContentForBridges: Partial<Record<QuoteApiErrorCodes, string>> = {
-      [QuoteApiErrorCodes.SameBuyAndSellToken]: t`Bridging without swapping is not yet supported. Let us know if you want this feature!`,
+      // Covers both shapes described on getBridgeSameTokenErrorText: the asset
+      // being bridged would have to cross unchanged (no swap leg), which is not
+      // supported. Naming the intermediate is what makes the "different tokens
+      // but same error" case comprehensible.
+      [QuoteApiErrorCodes.SameBuyAndSellToken]: t`This route would bridge your sell token across unchanged, with no swap on the source chain, which is not supported yet. Choosing a different token on the destination network avoids it. Let us know if you want this feature!`,
     }
 
     const { quote } = props
@@ -189,9 +218,7 @@ export const tradeButtonsMap: Record<TradeFormValidation, ButtonErrorConfig | Bu
               props.derivedState.inputCurrency?.symbol?.toLowerCase() !==
               props.derivedState.outputCurrency?.symbol?.toLowerCase()
 
-            if (areSwapAssetsDifferent) {
-              return bridgeQuoteErrorTexts[BridgeQuoteErrors.NO_ROUTES]
-            }
+            return getBridgeSameTokenErrorText(areSwapAssetsDifferent)
           }
 
           return bridgeQuoteErrorText
