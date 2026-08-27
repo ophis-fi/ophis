@@ -15,12 +15,23 @@
 // Exit 0 = all deps present on all requested chains; 1 = a dep is codeless;
 // 2 = bad usage. Any invalid or unknown chain fails the whole invocation.
 //
-// SCOPE: only chains whose FULL source path is ready are listed here. Contract
-// presence is necessary but NOT sufficient for the SOVEREIGN chains (Unichain
-// 130, Robinhood 4663): those also require Ophis's own driver to execute the
-// post-hook on the sovereign settlement, plus an E2E proof — none of which is
-// on-chain-checkable here. They are deliberately absent until that work lands
-// (see bridgeSourceChains.const.ts); this script must never green-light them.
+// SCOPE: only chains whose FULL source path is ready are listed here; an unknown
+// chain is rejected (fail closed).
+//
+// Contract presence alone is NOT sufficient for a SOVEREIGN chain (Ophis runs its
+// own settlement + driver there, so OUR driver must execute the post-hook rather
+// than upstream CoW's). A sovereign row therefore also carries `orderbookApi`,
+// and this script performs two extra checks that presence cannot give:
+//   1. the deployed HooksTrampoline's settlement() actually returns THAT chain's
+//      settlement — a trampoline is settlement-bound, so a canonical/foreign one
+//      would silently never be callable by our settlement;
+//   2. the LIVE orderbook advertises the same trampoline + settlement it is
+//      running with (/api/v1/info/contracts), catching config drift between the
+//      deployed contracts and the running services.
+// Even then, the flag must not be flipped until a real bridge FROM the chain has
+// produced a SpokePool FundsDeposited event: the trampoline discards each hook's
+// success flag, so a broken post-hook is invisible on-chain (2026-08-13).
+// Unichain 130 stays absent until its own readiness is done.
 
 // Chain-independent deps (same CREATE2 address on every chain).
 const CHAIN_INDEPENDENT = {
@@ -52,7 +63,23 @@ const PER_CHAIN = {
     spokePool: '0x7E63A5f1a8F0B4d0934B2f2327DAED3F6bb2ee75',
     mathHelper: '0xEdE97D044d4C8aAA682968bee10284521B9f311a',
   },
+  4663: {
+    name: 'Robinhood Chain',
+    // SOVEREIGN: Ophis settlement + Ophis-bound trampoline, and our own driver
+    // executes the post-hook. `sovereign` turns on the binding + live-config
+    // checks below.
+    sovereign: true,
+    rpc: 'https://rpc.mainnet.chain.robinhood.com',
+    orderbookApi: 'https://robinhood-mainnet.ophis.fi',
+    settlement: '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD',
+    hooksTrampoline: '0x68593257dfD7F392AbfbB410b212Be0b6242aC0E',
+    spokePool: '0xD29C85F15DF544bA632C9E25829fd29d767d7978',
+    mathHelper: '0xEdE97D044d4C8aAA682968bee10284521B9f311a',
+  },
 }
+
+// keccak256("settlement()")[0:4] — the HooksTrampoline's bound-settlement getter.
+const SETTLEMENT_SELECTOR = '0x51160630'
 
 const RPC_TIMEOUT_MS = 10_000
 
@@ -73,6 +100,89 @@ async function getCode(rpc, address) {
   } finally {
     clearTimeout(timer)
   }
+}
+
+// Generic JSON-RPC POST with the same timeout + fail-closed contract as getCode.
+async function rpcCall(rpc, method, params) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), RPC_TIMEOUT_MS)
+  try {
+    const res = await fetch(rpc, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'ophis-across-source-preflight' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      signal: controller.signal,
+    })
+    if (!res.ok) throw new Error(`RPC ${res.status}`)
+    const json = await res.json()
+    if (json.error) throw new Error(json.error.message)
+    return json.result
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+const sameAddress = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase()
+
+// The orderbook's /info/contracts returns some entries as bare address strings
+// and others as { address, abi } objects — normalize before comparing.
+const toAddress = (v) => (typeof v === 'string' ? v : v && typeof v === 'object' ? v.address : undefined)
+
+// SOVEREIGN-only checks. Presence proves code exists; these prove it is the RIGHT
+// code, wired to the services that must drive it.
+async function checkSovereign(chain) {
+  const lines = []
+  let ok = true
+
+  // 1. The trampoline is settlement-bound: settlement() must return THIS chain's
+  //    settlement, or our settlement could never call it.
+  try {
+    const raw = await rpcCall(chain.rpc, 'eth_call', [{ to: chain.hooksTrampoline, data: SETTLEMENT_SELECTOR }, 'latest'])
+    const bound = raw && raw.length >= 66 ? `0x${raw.slice(-40)}` : undefined
+    const good = sameAddress(bound, chain.settlement)
+    lines.push(`  ${chain.name} trampoline.settlement() -> ${bound ?? 'unreadable'}: ${good ? 'ok (bound to this chain)' : 'MISMATCH (expected ' + chain.settlement + ')'}`)
+    if (!good) ok = false
+  } catch (e) {
+    lines.push(`  ${chain.name} trampoline.settlement(): RPC ERROR (${e.message}) — treat as MISSING`)
+    ok = false
+  }
+
+  // 2. The LIVE orderbook must be running with the same trampoline + settlement.
+  //    Contracts can be perfect while the service points somewhere else.
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), RPC_TIMEOUT_MS)
+    let info
+    try {
+      const res = await fetch(`${chain.orderbookApi}/api/v1/info/contracts`, {
+        headers: { 'User-Agent': 'ophis-across-source-preflight' },
+        signal: controller.signal,
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      info = await res.json()
+    } finally {
+      clearTimeout(timer)
+    }
+    const checks = [
+      ['hooksTrampoline', toAddress(info?.hooksTrampoline), chain.hooksTrampoline],
+      ['settlement', toAddress(info?.settlement), chain.settlement],
+    ]
+    for (const [label, live, expected] of checks) {
+      const good = sameAddress(live, expected)
+      lines.push(`  ${chain.name} orderbook ${label} -> ${live ?? 'absent'}: ${good ? 'ok (matches deployed)' : 'MISMATCH (expected ' + expected + ')'}`)
+      if (!good) ok = false
+    }
+    const chainOk = Number(info?.chainId) === Number(chain.chainId ?? info?.chainId)
+    if (!chainOk) {
+      lines.push(`  ${chain.name} orderbook chainId -> ${info?.chainId}: MISMATCH`)
+      ok = false
+    }
+  } catch (e) {
+    lines.push(`  ${chain.name} orderbook /info/contracts: ERROR (${e.message}) — cannot confirm the running config`)
+    ok = false
+  }
+
+  return { ok, lines }
 }
 
 async function checkChain(chainId) {
@@ -104,6 +214,16 @@ async function checkChain(chainId) {
     lines.push(`  ${chain.name} ${label} ${address}: ${has ? 'ok' : 'MISSING (no code)'}`)
     if (!has) ok = false
   }
+
+  // Sovereign chains need more than presence: the trampoline must be bound to
+  // this chain's settlement, and the running services must be configured with
+  // the same addresses we just verified.
+  if (chain.sovereign) {
+    const sov = await checkSovereign({ ...chain, chainId })
+    lines.push(...sov.lines)
+    if (!sov.ok) ok = false
+  }
+
   return { chainId, ok, lines }
 }
 
