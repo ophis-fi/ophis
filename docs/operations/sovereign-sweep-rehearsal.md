@@ -104,6 +104,13 @@ those moves worthless tokens and costs gas. Never resolve USDG by symbol.
 
 ## Step 2: Unichain
 
+Preflight this chain first — the checks are per chain and step 0 only covered
+Robinhood:
+
+```bash
+./infra/shared/scripts/sweep-preflight.sh unichain
+```
+
 ```bash
 # USDC (6dp, live 0.140666) floor 0.1; WETH (18dp, live 0.0000581522) floor 0.00001
 export TOKENS=0x078D782b760474a361dDA0AF3839290b0EF57AD6,0x4200000000000000000000000000000000000006
@@ -130,6 +137,14 @@ USDT and native ETH as well, so the hourly watch flags USDT as "not covered by
 the chain's sweep configuration" until either the sweep default or the override
 picks it up.
 
+Preflight Optimism before any of it, with the liquidator and the intended ops
+key supplied so the solver, ops-key and immutable-pin checks can all run:
+
+```bash
+FEE_LIQUIDATOR=0x... BROADCASTER=0x... \
+  ./infra/shared/scripts/sweep-preflight.sh optimism
+```
+
 For reference, OP's thresholds at current balances would be:
 
 ```bash
@@ -140,11 +155,21 @@ export MIN_BASE_UNITS=100000,10000,10000000000000
 
 ## Verification after each sweep
 
-1. `./infra/shared/scripts/sweep-preflight.sh <chain>` — buffer line should now
-   read near zero.
-2. Fee Safe balance on that chain should be up by the swept amount.
-3. The hourly `settlement-buffer-watch` job should go quiet on that chain. If it
-   keeps alerting, the sweep did not land, whatever the transaction receipt said.
+Record the buffer and the fee Safe balance **before** broadcasting, then:
+
+1. `./infra/shared/scripts/sweep-preflight.sh <chain>` — the buffer line should
+   have dropped by the amount swept.
+2. The fee Safe balance on that chain should be **up by that same amount**. This
+   is the check that actually proves the sweep worked, so do it explicitly rather
+   than inferring it.
+3. The `Swept` event should be in the transaction receipt.
+
+Do **not** use the hourly `settlement-buffer-watch` job as the verification for
+these rehearsals. Every balance here is below the watcher's thresholds on
+purpose — only the manual overrides lower them — so the watcher is already quiet
+before the sweep and stays quiet whether the sweep moved everything, moved
+nothing, or reverted. It would corroborate a failed rehearsal. The watcher is
+only a valid post-check for a condition it was actively alerting on beforehand.
 
 ## What this does not fix
 

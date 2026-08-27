@@ -105,7 +105,16 @@ for entry in "${CHAINS[@]}"; do
   # Safe here would then certify a sweep to an unrecoverable destination.
   dest="$FEE_SAFE"
   dest_var="OPHIS_FEE_RECIPIENT_SAFE_$(tr '[:lower:]' '[:upper:]' <<<"$label")"
+  # Exported variable first, then the chain's .env - the same two sources, in the
+  # same order, that the sweep script itself resolves from. Checking only the
+  # exported one would silently validate the canonical Safe while a non-canonical
+  # destination sat in .env waiting to receive the funds.
   configured="${!dest_var:-}"
+  env_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/infra/$chain_dir/.env"
+  if [[ -z "$configured" && -f "$env_file" ]]; then
+    configured="$(grep -E "^${dest_var}=" "$env_file" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\042\047 ' || true)"
+    [[ -n "$configured" ]] && dest_var="$dest_var (from $chain_dir/.env)"
+  fi
   if [[ -n "$configured" ]]; then
     dest="$configured"
   fi
@@ -216,13 +225,38 @@ for entry in "${CHAINS[@]}"; do
         if liq_eoa=$(cast call "$solver_subject" "liquidator()(address)" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}'); then
           if [[ "$liq_eoa" == "0x0000000000000000000000000000000000000000" ]]; then
             bad "FeeLiquidator liquidator() is address(0) - the ops-key path is PAUSED"
-          elif [[ -n "${BROADCASTER:-}" && "$(tr '[:upper:]' '[:lower:]' <<<"$liq_eoa")" != "$(tr '[:upper:]' '[:lower:]' <<<"$BROADCASTER")" ]]; then
+          elif [[ -z "${BROADCASTER:-}" ]]; then
+            # Non-zero is not the same as correct. Without an expected address this
+            # cannot tell a live ops key from one rotated away, so it must not PASS.
+            unknown "FeeLiquidator ops key is $liq_eoa but no BROADCASTER was given to compare against"
+          elif [[ "$(tr '[:upper:]' '[:lower:]' <<<"$liq_eoa")" != "$(tr '[:upper:]' '[:lower:]' <<<"$BROADCASTER")" ]]; then
             bad "FeeLiquidator liquidator() is $liq_eoa, not the intended broadcaster $BROADCASTER"
           else
             ok "FeeLiquidator ops key is $liq_eoa"
           fi
         else
           unknown "FeeLiquidator liquidator() unreadable"
+        fi
+        # The immutables decide WHICH contract is swept and WHERE the funds go. The
+        # production runner treats both as mandatory, so a preflight that skipped
+        # them would green-light a run it must then abort.
+        if liq_settlement=$(cast call "$solver_subject" "settlement()(address)" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}'); then
+          if [[ "$(tr '[:upper:]' '[:lower:]' <<<"$liq_settlement")" == "$(tr '[:upper:]' '[:lower:]' <<<"$settlement")" ]]; then
+            ok "FeeLiquidator settlement() pins $settlement"
+          else
+            bad "FeeLiquidator settlement() is $liq_settlement, expected $settlement"
+          fi
+        else
+          unknown "FeeLiquidator settlement() unreadable"
+        fi
+        if liq_safe=$(cast call "$solver_subject" "feeSafe()(address)" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}'); then
+          if [[ "$(tr '[:upper:]' '[:lower:]' <<<"$liq_safe")" == "$(tr '[:upper:]' '[:lower:]' <<<"$FEE_SAFE")" ]]; then
+            ok "FeeLiquidator feeSafe() pins the canonical fee Safe"
+          else
+            bad "FeeLiquidator feeSafe() is $liq_safe, expected $FEE_SAFE"
+          fi
+        else
+          unknown "FeeLiquidator feeSafe() unreadable"
         fi
       fi
     else
