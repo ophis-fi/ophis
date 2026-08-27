@@ -1,6 +1,6 @@
 import { BridgeQuoteErrors } from '@cowprotocol/sdk-bridging'
 
-import { getBridgeQuoteErrorTexts } from './tradeButtonsMap'
+import { getBridgeQuoteErrorTexts, getBridgeSameTokenErrorText } from './tradeButtonsMap'
 
 // The NEAR Intents deposit-address attestation provably works (it recovers the expected
 // on-chain attestor); QUOTE_DOES_NOT_MATCH_DEPOSIT_ADDRESS in practice is a transient
@@ -20,5 +20,32 @@ describe('getBridgeQuoteErrorTexts > QUOTE_DOES_NOT_MATCH_DEPOSIT_ADDRESS', () =
     const texts = getBridgeQuoteErrorTexts()
 
     expect(texts[BridgeQuoteErrors.QUOTE_DOES_NOT_MATCH_DEPOSIT_ADDRESS]).toBe(texts[BridgeQuoteErrors.API_ERROR])
+  })
+})
+
+// Robinhood 4663 bridge testing, 2026-08-27: selling ETH there to receive WETH on
+// Unichain failed with SameBuyAndSellToken (native ETH and WETH share one address
+// on 4663, so the only intermediate WAS the sell token). The button read
+// "No routes found", which reads as "this corridor is dead" — it sent us hunting
+// for a different NETWORK when every network behaved the same way and the actual
+// fix was to pick a different destination TOKEN (ETH -> USDC bridged fine).
+describe('getBridgeSameTokenErrorText', () => {
+  it('tells the user to change the destination TOKEN when the two sides look different', () => {
+    const text = getBridgeSameTokenErrorText(true)
+
+    expect(text.toLowerCase()).toContain('token')
+    // The old copy; it misdirects to the network picker.
+    expect(text.toLowerCase()).not.toContain('no routes')
+  })
+
+  it('keeps the plain "not yet supported" copy when the user picked the same asset on both sides', () => {
+    expect(getBridgeSameTokenErrorText(false).toLowerCase()).toContain('not yet supported')
+  })
+
+  it('never reuses the generic NO_ROUTES copy for this error', () => {
+    const noRoutes = getBridgeQuoteErrorTexts()[BridgeQuoteErrors.NO_ROUTES]
+
+    expect(getBridgeSameTokenErrorText(true)).not.toBe(noRoutes)
+    expect(getBridgeSameTokenErrorText(false)).not.toBe(noRoutes)
   })
 })

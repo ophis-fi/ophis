@@ -2267,10 +2267,6 @@ msgstr "No order history"
 msgid "On Ophis, you can set limit orders for balances you don't have yet."
 msgstr "On Ophis, you can set limit orders for balances you don't have yet."
 
-#: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
-msgid "Bridging without swapping is not yet supported. Let us know if you want this feature!"
-msgstr "Bridging without swapping is not yet supported. Let us know if you want this feature!"
-
 #: apps/cowswap-frontend/src/modules/wallet/pure/Web3StatusInner/index.tsx
 msgid "{pendingCount} Pending"
 msgstr "{pendingCount} Pending"
@@ -4648,6 +4644,10 @@ msgstr "Confirm swap"
 msgid "Part of a {twapOrderN}-part TWAP order split"
 msgstr "Part of a {twapOrderN}-part TWAP order split"
 
+#: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
+msgid "This route would bridge your sell token across unchanged, with no swap on the source chain, which is not supported yet. Choosing a different token on the destination network avoids it. Let us know if you want this feature!"
+msgstr "This route would bridge your sell token across unchanged, with no swap on the source chain, which is not supported yet. Choosing a different token on the destination network avoids it. Let us know if you want this feature!"
+
 #: apps/cowswap-frontend/src/modules/bridge/pure/StopStatus/index.tsx
 msgid "Bridged via"
 msgstr "Bridged via"
@@ -5257,6 +5257,7 @@ msgid "Advanced"
 msgstr "Advanced"
 
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
+#: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Not yet supported"
 msgstr "Not yet supported"
 
@@ -5546,6 +5547,10 @@ msgstr "Cancelling {ordersCount} orders"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
 msgid "Cancelled"
 msgstr "Cancelled"
+
+#: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
+msgid "Try a different destination token"
+msgstr "Try a different destination token"
 
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
 msgid "one batched signature"
