@@ -307,8 +307,15 @@ for entry in "${CHAINS[@]}"; do
   # ceremony that cannot run.
   if [[ "$label" == "robinhood" && -n "${OPHIS_NONCE_RPC:-}" ]]; then
     if nonce_chain=$(cast chain-id --rpc-url "$OPHIS_NONCE_RPC" 2>/dev/null); then
-      if [[ "$nonce_chain" == "4663" ]]; then ok "nonce RPC reachable and on chain 4663"
-      else bad "OPHIS_NONCE_RPC reports chain id $nonce_chain, expected 4663"; fi
+      if [[ "$nonce_chain" != "4663" ]]; then
+        bad "OPHIS_NONCE_RPC reports chain id $nonce_chain, expected 4663"
+      elif cast nonce "$FEE_SAFE" --rpc-url "$OPHIS_NONCE_RPC" >/dev/null 2>&1; then
+        # chain-id alone is not enough: the guard calls eth_getTransactionCount, and
+        # an endpoint can answer chain-id while refusing or not serving that method.
+        ok "nonce RPC reachable, on chain 4663, and serving eth_getTransactionCount"
+      else
+        bad "OPHIS_NONCE_RPC cannot serve eth_getTransactionCount - the idle-driver guard would abort"
+      fi
     else
       bad "OPHIS_NONCE_RPC is unreachable - the sweep's idle-driver guard would abort"
     fi
@@ -358,8 +365,14 @@ for entry in "${CHAINS[@]}"; do
         else
           # status ok is a claim; a numeric raw is the evidence. The watcher checks
           # this, and a preflight that skipped it would verify a buffer it never read.
-          nonnum="$(jq -r '[.balances[] | select((.raw // "") | test("^[0-9]+$") | not) | .symbol] | join(",")' <<<"$out" 2>/dev/null)"
-          [[ -n "$nonnum" ]] && unknown "buffer rows with a non-numeric balance: $nonnum - UNKNOWN, not zero"
+          # tostring first: a raw emitted as a JSON number (or null) makes test()
+          # throw, jq exits non-zero, and an empty result would read as "all rows
+          # fine" - the failure mode being checked for, hidden by the check itself.
+          if ! nonnum="$(jq -er '[.balances[] | select(((.raw // "") | tostring) | test("^[0-9]+$") | not) | .symbol] | join(",")' <<<"$out" 2>/dev/null)"; then
+            unknown "could not evaluate buffer balances - UNKNOWN, not zero"
+          elif [[ -n "$nonnum" ]]; then
+            unknown "buffer rows with a non-numeric balance: $nonnum - UNKNOWN, not zero"
+          fi
         fi
       fi
     else
