@@ -311,7 +311,11 @@ job is the missing scheduling and alerting.
    unrecognised token in the buffer is exactly how value goes unnoticed, so it
    surfaces as "not covered" rather than being skipped.
 3. A probe that **failed, exited non-zero, emitted unparseable output, returned
-   a report missing `probe_failures` or `balances`, or measured zero tokens**.
+   a report missing `probe_failures` or `balances`, measured zero tokens, or
+   returned an INCOMPLETE report missing any of the symbols that chain is
+   expected to measure**. Non-empty is not the same as complete: a probe
+   returning only a healthy USDC row while WETH, native ETH and USDT vanish is
+   still reported health that was never measured.
    An unreachable RPC is never read as an empty buffer, and syntactically valid
    JSON is not by itself a measurement: `{}` parses, and would otherwise sail
    through as a clean pass. A monitor reporting health it did not measure is
@@ -367,7 +371,7 @@ crashed; treat that as an outage of the monitor, not as a clean result.
 bash infra/shared/cron/settlement-buffer-watch.test.sh
 ```
 
-39 deterministic cases. No real RPC and no real Telegram (`BUFFER_NOTIFY=0`
+43 deterministic cases. No real RPC and no real Telegram (`BUFFER_NOTIFY=0`
 everywhere except the delivery-failure case, which points the token file at a
 path that does not exist and so fails before any network call), injected clock
 for the 24h repeat window, and per-chain probes faked through `OPHIS_REPO`.

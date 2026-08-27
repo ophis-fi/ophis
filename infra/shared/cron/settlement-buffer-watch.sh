@@ -82,6 +82,18 @@ CHAINS=(
 # nameref. macOS ships bash 3.2 and namerefs are 4.3+, so the array-per-chain form
 # fails on the Mac mini this cron actually runs on while passing in CI on bash 5 -
 # the worst possible split, since CI would have certified it green.
+# Every symbol each chain's probe is expected to report. A report that is merely
+# NON-EMPTY is not a complete measurement: an optimism probe returning only a
+# successful USDC row passes a length>0 check while WETH, native ETH and USDT
+# silently vanish - the same "reported health it did not measure" failure the
+# zero-row guard was added for, one layer up. Keep in sync with each probe's
+# TOKENS array (plus the native row where the probe emits one).
+EXPECTED_SYMBOLS=(
+  "optimism:USDC WETH USDCe DAI WBTC USDT ETH"
+  "unichain:WETH USDC"
+  "robinhood:WETH USDG"
+)
+
 THRESHOLDS=(
   "optimism:USDC:10000000"
   "optimism:WETH:3000000000000000"
@@ -201,6 +213,28 @@ for entry in "${CHAINS[@]}"; do
     log "chain=$label probe returned no balance rows"
     continue
   fi
+  # A partial report is not a measurement either. Name the symbols that went
+  # missing rather than quietly monitoring whatever subset happened to arrive.
+  expected=""
+  # Deliberately NOT `entry`: that is the enclosing CHAINS loop's index variable,
+  # and clobbering it here works only by accident of the outer `for` reassigning it.
+  for exp_entry in "${EXPECTED_SYMBOLS[@]}"; do
+    IFS=: read -r exp_chain exp_syms <<< "$exp_entry"
+    [[ "$exp_chain" == "$label" ]] && expected="$exp_syms"
+  done
+  if [[ -n "$expected" ]]; then
+    got_syms="$(jq -r '.balances[].symbol' <<<"$report" | sort -u)"
+    missing=""
+    for want in $expected; do
+      grep -qx -- "$want" <<<"$got_syms" || missing="$missing $want"
+    done
+    if [[ -n "$missing" ]]; then
+      FINDINGS+=("$label: probe report is MISSING expected symbol(s):${missing} - those balances are UNKNOWN, not zero")
+      KEYS+=("$label/probe-incomplete")
+      log "chain=$label probe report incomplete, missing:${missing}"
+      continue
+    fi
+  fi
 
   failures="$(jq -r '.probe_failures // 0' <<<"$report")"
   if [[ "$failures" != "0" ]]; then
@@ -259,7 +293,13 @@ if [[ "$should_alert" == "1" ]]; then
   # unconditionally muted a live condition for 24h on the strength of a page that
   # may never have been sent - a silent alert is the failure mode, not the fix.
   if alert "$body"; then
-    printf '%s\t%s' "$NOW_S" "$STATE_KEY" > "$STATE_FILE"
+    # Create the parent first: on a fresh install nothing has made the configured
+    # directory, the redirect fails silently (no `set -e`), no state is written, and
+    # the job pages every hour forever instead of once a day.
+    mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || log "WARN: cannot create state dir for $STATE_FILE"
+    if ! printf '%s\t%s' "$NOW_S" "$STATE_KEY" > "$STATE_FILE" 2>/dev/null; then
+      log "WARN: could not persist suppression state to $STATE_FILE; will re-page next run"
+    fi
   else
     log "alert delivery FAILED; not recording suppression state, will retry next run"
   fi

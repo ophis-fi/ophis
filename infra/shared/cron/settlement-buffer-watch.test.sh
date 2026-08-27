@@ -49,14 +49,32 @@ make_repo() {
 }
 
 # A probe report. bal_specs are "symbol:raw:status" triples.
+#
+# Pads to the chain's FULL expected symbol set with zero rows, because the watcher
+# now rejects an incomplete report - a partial one is not a measurement. Tests that
+# want a deliberately incomplete report build the JSON by hand instead.
+expected_for() {
+  case "$1" in
+    0xOP)  echo "USDC WETH USDCe DAI WBTC USDT ETH" ;;
+    0xUNI) echo "WETH USDC" ;;
+    0xRBH) echo "WETH USDG" ;;
+    *)     echo "" ;;
+  esac
+}
 report() {
   local settlement="$1"; shift
   local failures="$1"; shift
-  local rows="" sym raw status
+  local rows="" sym raw status given=""
   for spec in "$@"; do
     IFS=: read -r sym raw status <<< "$spec"
+    given="$given $sym"
     [[ -n "$rows" ]] && rows="$rows,"
     rows="$rows{\"symbol\":\"$sym\",\"token\":\"0xtok\",\"raw\":\"$raw\",\"hr\":\"0\",\"status\":\"${status:-ok}\"}"
+  done
+  for want in $(expected_for "$settlement"); do
+    grep -qw -- "$want" <<<"$given" && continue
+    [[ -n "$rows" ]] && rows="$rows,"
+    rows="$rows{\"symbol\":\"$want\",\"token\":\"0xtok\",\"raw\":\"0\",\"hr\":\"0\",\"status\":\"ok\"}"
   done
   echo "{\"ts\":\"2026-08-27T00:00:00Z\",\"settlement\":\"$settlement\",\"safe\":\"0xsafe\",\"liquidator\":{\"address\":null,\"status\":\"unset\"},\"probe_failures\":$failures,\"balances\":[$rows]}"
 }
@@ -251,25 +269,36 @@ ckc "a probe emitting {} is rejected, not read as a clean buffer" "$out14" "ALER
 rm -rf "$W14"
 
 W15="$(mktemp -d)"
+# Raw JSON, not report(): report() pads to the chain's full expected symbol set,
+# which is the opposite of what this case needs.
+empty_rows='{"ts":"t","settlement":"0xOP","safe":"0xsafe","probe_failures":0,"balances":[]}'
 make_repo "$W15" \
-  "optimism-mainnet|$(report 0xOP 0)|0" \
+  "optimism-mainnet|$empty_rows|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
   "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
 out15="$(run_watch "$W15")"
 ckc "a report with zero balance rows measured nothing and is rejected" "$out15" "ALERT:"
 rm -rf "$W15"
 
-# --- 13b. a report with rows but no probe_failures field --------------------
-# Distinct from the {} case: this one HAS balances, so the zero-rows check does
-# not catch it. Without schema validation, `.probe_failures // 0` would default a
-# missing field to "no failures" and the chain would pass as measured.
+# --- 13b. a COMPLETE report that still omits probe_failures -----------------
+# Deliberately carries every expected optimism symbol, so neither the zero-row nor
+# the missing-symbol guard fires. Only schema validation catches it. Without that,
+# `.probe_failures // 0` would default a missing field to "no failures" and the
+# chain would pass as fully measured.
 W15b="$(mktemp -d)"
+rows=""
+for sym in USDC WETH USDCe DAI WBTC USDT ETH; do
+  [[ -n "$rows" ]] && rows="$rows,"
+  rows="$rows{\"symbol\":\"$sym\",\"token\":\"0xtok\",\"raw\":\"1\",\"hr\":\"0\",\"status\":\"ok\"}"
+done
+no_pf="{\"ts\":\"t\",\"settlement\":\"0xOP\",\"safe\":\"0xsafe\",\"balances\":[$rows]}"
 make_repo "$W15b" \
-  "optimism-mainnet|{\"balances\":[{\"symbol\":\"USDC\",\"raw\":\"1\",\"status\":\"ok\"}]}|0" \
+  "optimism-mainnet|$no_pf|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
   "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
 out15b="$(run_watch "$W15b")"
-ckc "a report missing probe_failures is rejected, not defaulted to healthy" "$out15b" "ALERT:"
+ckc "a complete report missing probe_failures is still rejected" "$out15b" "ALERT:"
+ckc "and says the schema is wrong, not that a symbol is missing" "$out15b" "missing probe_failures or balances"
 rm -rf "$W15b"
 
 # --- 14. a page that was never delivered must not mute the condition ---------
@@ -324,6 +353,23 @@ out18="$(env -u HOME OPHIS_REPO="$W18" BUFFER_NOTIFY=0 BUFFER_NOW_S=1000000 bash
 ckc "completes a pass with HOME unset" "$out18" "pass complete"
 ckn "and does not die on an unbound variable" "$out18" "unbound variable"
 rm -rf "$W18"
+
+# --- 17. a PARTIAL report is not a measurement ------------------------------
+# Non-empty is not the same as complete. An optimism probe returning only a
+# successful USDC row would otherwise pass, while WETH, native ETH and USDT
+# silently disappear - reported health that was never measured, one layer up
+# from the zero-row case.
+W19="$(mktemp -d)"
+partial='{"ts":"t","settlement":"0xOP","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"USDC","token":"0xtok","raw":"1","hr":"0","status":"ok"}]}'
+make_repo "$W19" \
+  "optimism-mainnet|$partial|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out19="$(run_watch "$W19")"
+ckc "a report missing expected symbols alerts" "$out19" "ALERT:"
+ckc "and names what went missing" "$out19" "MISSING"
+ckc "specifically the dropped WETH row" "$out19" "WETH"
+rm -rf "$W19"
 
 echo
 echo "passed=$pass failed=$fail"

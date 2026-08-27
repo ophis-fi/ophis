@@ -86,16 +86,50 @@ for entry in "${CHAINS[@]}"; do
   IFS='|' read -r label settlement rpc_default chain_dir <<< "$entry"
   [[ "$WANT" != "all" && "$WANT" != "$label" ]] && continue
 
+  # OPHIS_RPC (generic) is honoured ONLY when a single chain was requested. In
+  # all-chain mode a shell that already exports it for one network would otherwise
+  # send all three checks to that one endpoint, and two healthy deployments would be
+  # reported as failed. Per-chain OPHIS_RPC_<CHAIN> always wins.
   rpc_var="OPHIS_RPC_$(tr '[:lower:]' '[:upper:]' <<<"$label")"
-  rpc="${!rpc_var:-${OPHIS_RPC:-$rpc_default}}"
+  if [[ -n "${!rpc_var:-}" ]]; then
+    rpc="${!rpc_var}"
+  elif [[ "$WANT" != "all" && -n "${OPHIS_RPC:-}" ]]; then
+    rpc="$OPHIS_RPC"
+  else
+    rpc="$rpc_default"
+  fi
+
+  # The destination the sweep will ACTUALLY use. robinhood's sweep-to-safe.sh takes
+  # OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD and only checks that it has code, so a typo
+  # naming any other deployed contract passes there. Validating only the hardcoded
+  # Safe here would then certify a sweep to an unrecoverable destination.
+  dest="$FEE_SAFE"
+  dest_var="OPHIS_FEE_RECIPIENT_SAFE_$(tr '[:lower:]' '[:upper:]' <<<"$label")"
+  configured="${!dest_var:-}"
+  if [[ -n "$configured" ]]; then
+    dest="$configured"
+  fi
 
   echo
   echo "=== $label ($settlement) via $rpc"
+  if [[ "$(tr '[:upper:]' '[:lower:]' <<<"$dest")" != "$(tr '[:upper:]' '[:lower:]' <<<"$FEE_SAFE")" ]]; then
+    bad "$dest_var points at $dest, NOT the canonical fee Safe $FEE_SAFE - the sweep would send there"
+  fi
 
   # --- reachability. Everything below is meaningless without it, so a dead RPC
   #     marks the chain UNKNOWN rather than letting later checks read as PASS.
   if ! chainid=$(cast chain-id --rpc-url "$rpc" 2>/dev/null); then
     unknown "$label: RPC unreachable - every check on this chain is UNVERIFIED"
+    continue
+  fi
+  case "$label" in
+    optimism)  want_chainid=10 ;;
+    unichain)  want_chainid=130 ;;
+    robinhood) want_chainid=4663 ;;
+    *)         want_chainid="" ;;
+  esac
+  if [[ -n "$want_chainid" && "$chainid" != "$want_chainid" ]]; then
+    bad "RPC for $label reports chain id $chainid, expected $want_chainid - this endpoint is the WRONG CHAIN"
     continue
   fi
   ok "RPC reachable (chain id $chainid)"
@@ -110,21 +144,21 @@ for entry in "${CHAINS[@]}"; do
 
   # --- recipient Safe has code. The Robinhood blocker: a sweep to an address
   #     with no contract is unrecoverable, so this gates the whole ceremony.
-  if code=$(cast code "$FEE_SAFE" --rpc-url "$rpc" 2>/dev/null); then
+  if code=$(cast code "$dest" --rpc-url "$rpc" 2>/dev/null); then
     if [[ -n "$code" && "$code" != "0x" ]]; then
       ok "fee Safe has code (sweep destination is live)"
-      if ver=$(cast call "$FEE_SAFE" "VERSION()(string)" --rpc-url "$rpc" 2>/dev/null); then
+      if ver=$(cast call "$dest" "VERSION()(string)" --rpc-url "$rpc" 2>/dev/null); then
         ok "fee Safe VERSION $ver"
       else
         unknown "fee Safe VERSION unreadable - is this actually a Safe?"
       fi
-      if thr=$(cast call "$FEE_SAFE" "getThreshold()(uint256)" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}'); then
+      if thr=$(cast call "$dest" "getThreshold()(uint256)" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}'); then
         if [[ "$thr" == "2" ]]; then ok "fee Safe threshold 2"
         else bad "fee Safe threshold is $thr, expected 2"; fi
       else
         unknown "fee Safe threshold unreadable"
       fi
-      if owners=$(cast call "$FEE_SAFE" "getOwners()(address[])" --rpc-url "$rpc" 2>/dev/null); then
+      if owners=$(cast call "$dest" "getOwners()(address[])" --rpc-url "$rpc" 2>/dev/null); then
         got="$(printf '%s' "$owners" | norm_owners)"
         if [[ "$got" == "$EXPECTED_PARTNER_OWNERS_SORTED" ]]; then
           ok "fee Safe owners match the expected 2-of-3 set"
@@ -173,6 +207,24 @@ for entry in "${CHAINS[@]}"; do
        && is_solver=$(cast call "$auth" "isSolver(address)(bool)" "$solver_subject" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}'); then
       if [[ "$is_solver" == "true" ]]; then ok "$solver_what $solver_subject is an allowlisted solver"
       else bad "$solver_what $solver_subject is NOT a solver - settle() would revert after broadcast"; fi
+      # Solver membership alone is not enough on the OP v2 path: the sweep is sent by
+      # the ops EOA the contract names, and liquidator() can be paused to zero or
+      # rotated. sweep-to-safe.sh treats that as its own precondition (it aborts on
+      # address(0)), so a preflight that skipped it would green-light a sweep that
+      # cannot be sent.
+      if [[ "$label" == "optimism" ]]; then
+        if liq_eoa=$(cast call "$solver_subject" "liquidator()(address)" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}'); then
+          if [[ "$liq_eoa" == "0x0000000000000000000000000000000000000000" ]]; then
+            bad "FeeLiquidator liquidator() is address(0) - the ops-key path is PAUSED"
+          elif [[ -n "${BROADCASTER:-}" && "$(tr '[:upper:]' '[:lower:]' <<<"$liq_eoa")" != "$(tr '[:upper:]' '[:lower:]' <<<"$BROADCASTER")" ]]; then
+            bad "FeeLiquidator liquidator() is $liq_eoa, not the intended broadcaster $BROADCASTER"
+          else
+            ok "FeeLiquidator ops key is $liq_eoa"
+          fi
+        else
+          unknown "FeeLiquidator liquidator() unreadable"
+        fi
+      fi
     else
       unknown "solver status unreadable for $solver_subject"
     fi

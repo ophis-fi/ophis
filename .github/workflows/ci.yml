@@ -347,8 +347,16 @@ jobs:
             's|  (( age < REPEAT_S )) \&\& should_alert=0|  should_alert=0|'
           check "report schema validation removed" \
             's@  if ! jq -e .has("probe_failures") and (.balances | type == "array"). <<<"$report" >/dev/null 2>&1; then@  if false; then@'
-          check "a report with zero balance rows counts as measured" \
-            's@^  if \[\[ "$(jq -r ..balances | length. <<<"$report")" == "0" \]\]; then@  if false; then@'
+          # NOTE: the zero-balance-rows branch is deliberately NOT mutated here. The
+          # expected-symbol check that follows it subsumes every case a test can
+          # construct: a report with no rows is also a report missing every expected
+          # symbol, so removing the zero-row branch changes no observable behaviour.
+          # It is kept as defence for a chain added without an EXPECTED_SYMBOLS entry.
+          # Rather than ship a mutation that can never fail - the precise thing this
+          # job exists to prevent - the gap is recorded, exactly as the watchdog block
+          # above does for its STATE_DEGRADED restart.
+          check "expected-symbol completeness check removed" \
+            's|    if \[\[ -n "$missing" \]\]; then|    if false; then|'
           check "suppression state recorded even when the page was never delivered" \
             's@  if alert "$body"; then@  alert "$body"; if true; then@'
           bash infra/shared/cron/settlement-buffer-watch.test.sh >/dev/null 2>&1 || { echo "restore failed"; exit 1; }
