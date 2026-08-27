@@ -230,7 +230,10 @@ for entry in "${CHAINS[@]}"; do
     done
     if [[ -n "$missing" ]]; then
       FINDINGS+=("$label: probe report is MISSING expected symbol(s):${missing} - those balances are UNKNOWN, not zero")
-      KEYS+=("$label/probe-incomplete")
+      # The missing set is part of the identity of the incident: losing a different
+      # token tomorrow is a NEW condition, and a shared key would suppress it for 24h
+      # behind today's page.
+      KEYS+=("$label/probe-incomplete/$(tr ' ' ',' <<<"${missing# }")")
       log "chain=$label probe report incomplete, missing:${missing}"
       continue
     fi
@@ -244,7 +247,21 @@ for entry in "${CHAINS[@]}"; do
 
   while IFS=$'\t' read -r sym rawbal status; do
     [[ -z "$sym" ]] && continue
-    [[ "$status" != "ok" ]] && continue   # already counted via probe_failures
+    # A row is only trustworthy if it says so AND carries a numeric balance. Skipping
+    # a non-ok row on the assumption probe_failures already counted it is exactly the
+    # gap: a probe can emit status "error" (or omit status entirely) while reporting
+    # probe_failures 0, and the chain would then reach a clean pass with that balance
+    # never measured.
+    if [[ "$status" != "ok" ]]; then
+      FINDINGS+=("$label: $sym row has status '${status:-<missing>}' - that balance is UNKNOWN, not zero")
+      KEYS+=("$label/$sym/bad-status")
+      continue
+    fi
+    if ! [[ "$rawbal" =~ ^[0-9]+$ ]]; then
+      FINDINGS+=("$label: $sym row has a non-numeric balance '${rawbal:-<missing>}' - UNKNOWN, not zero")
+      KEYS+=("$label/$sym/bad-balance")
+      continue
+    fi
     if ! thr="$(threshold_for "$label" "$sym")"; then
       # Only report a token the sweep cannot move if there is actually something
       # there; a zero balance in an unconfigured token is not news.

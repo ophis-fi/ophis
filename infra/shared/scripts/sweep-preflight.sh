@@ -43,6 +43,19 @@ FEE_SAFE="0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
 # three addresses, and sweeping into it is unrecoverable.
 EXPECTED_PARTNER_OWNERS_SORTED='0x0494f503912c101bfd76b88e4f5d8a33de284d1a 0x746ad9c63cca6d3a8588731d60fb87deab4da46a 0xbec5b03ffdcac50071693e87bfdb88baa6710199'
 
+# Resolve a config value the way the sweep runners do: exported variable first,
+# then the chain's .env. A preflight that reads only the exported form validates
+# the canonical addresses while a different one sits in .env waiting to be used.
+resolve_cfg() { # $1=var name  $2=chain dir
+  local v="${!1:-}"
+  if [[ -z "$v" ]]; then
+    local f
+    f="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/infra/$2/.env"
+    [[ -f "$f" ]] && v="$(grep -E "^$1=" "$f" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\042\047 ' || true)"
+  fi
+  printf '%s' "$v"
+}
+
 norm_owners() { # normalise a cast address[] into a sorted lowercase space-joined list
   tr -d '[]' | tr ',' '\n' | tr '[:upper:]' '[:lower:]' \
     | sed 's/[^0-9a-fx]//g' | grep -E '^0x[0-9a-f]{40}$' | sort -u | tr '\n' ' ' | sed 's/ *$//'
@@ -109,14 +122,28 @@ for entry in "${CHAINS[@]}"; do
   # same order, that the sweep script itself resolves from. Checking only the
   # exported one would silently validate the canonical Safe while a non-canonical
   # destination sat in .env waiting to receive the funds.
-  configured="${!dest_var:-}"
-  env_file="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/infra/$chain_dir/.env"
-  if [[ -z "$configured" && -f "$env_file" ]]; then
-    configured="$(grep -E "^${dest_var}=" "$env_file" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\042\047 ' || true)"
-    [[ -n "$configured" ]] && dest_var="$dest_var (from $chain_dir/.env)"
+  configured="$(resolve_cfg "$dest_var" "$chain_dir")"
+  # The v1 chains shell out to forge, which reads a BARE `SAFE` as the recipient.
+  # The unichain wrapper never sets it, so an ambient SAFE in the operator's shell
+  # silently becomes the sweep destination.
+  if [[ -z "$configured" && -n "${SAFE:-}" ]]; then
+    configured="$SAFE"; dest_var="SAFE (ambient, consumed by the forge script)"
   fi
   if [[ -n "$configured" ]]; then
     dest="$configured"
+  fi
+
+  # Settlement can be redirected too: robinhood reads OPHIS_SETTLEMENT_ROBINHOOD
+  # (env or .env), unichain honours a bare exported SETTLEMENT. Checking the pinned
+  # address while the sweep acts on another contract verifies the wrong deployment.
+  case "$label" in
+    robinhood) cfg_settlement="$(resolve_cfg OPHIS_SETTLEMENT_ROBINHOOD "$chain_dir")" ;;
+    unichain)  cfg_settlement="${SETTLEMENT:-}" ;;
+    *)         cfg_settlement="" ;;
+  esac
+  if [[ -n "$cfg_settlement" && "$(tr '[:upper:]' '[:lower:]' <<<"$cfg_settlement")" != "$(tr '[:upper:]' '[:lower:]' <<<"$settlement")" ]]; then
+    bad "configured Settlement for $label is $cfg_settlement, not the canonical $settlement - the sweep would act on that contract"
+    settlement="$cfg_settlement"
   fi
 
   echo
@@ -206,8 +233,15 @@ for entry in "${CHAINS[@]}"; do
       robinhood) default_submitter="0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665" ;;
       *)         default_submitter="" ;;
     esac
+    # Each runner has its OWN override, and a configured replacement key can be
+    # non-allowlisted while the pinned default passes - so resolve the same way.
+    case "$label" in
+      unichain)  runner_submitter="${OPHIS_SUBMITTER_EOA:-}" ;;
+      robinhood) runner_submitter="$(resolve_cfg ROBINHOOD_SUBMITTER_ADDR "$chain_dir")" ;;
+      *)         runner_submitter="" ;;
+    esac
     override_var="BROADCASTER_$(tr '[:lower:]' '[:upper:]' <<<"$label")"
-    solver_subject="${!override_var:-${BROADCASTER:-$default_submitter}}"
+    solver_subject="${!override_var:-${BROADCASTER:-${runner_submitter:-$default_submitter}}}"
     solver_what="submitter EOA"
     solver_hint="export ${override_var}=0x... (each v1 chain pins its own sole submitter)"
   fi
@@ -292,6 +326,20 @@ for entry in "${CHAINS[@]}"; do
         unknown "buffer probe reported $pf token failure(s) - those balances are UNKNOWN, not zero"
       elif [[ -n "$bad_rows" ]]; then
         unknown "buffer rows not ok: $bad_rows - those balances are UNKNOWN, not zero"
+      else
+        # Same completeness rule the watcher enforces: a non-empty report is not a
+        # complete one, and a preflight that exits 0 on a partial read has certified
+        # balances it never saw.
+        case "$label" in
+          optimism)  want_syms="USDC WETH USDCe DAI WBTC USDT ETH" ;;
+          unichain)  want_syms="WETH USDC" ;;
+          robinhood) want_syms="WETH USDG" ;;
+          *)         want_syms="" ;;
+        esac
+        got_syms="$(jq -r '.balances[].symbol' <<<"$out" 2>/dev/null | sort -u)"
+        miss=""
+        for w in $want_syms; do grep -qx -- "$w" <<<"$got_syms" || miss="$miss $w"; done
+        [[ -n "$miss" ]] && unknown "buffer report is missing expected symbol(s):$miss - those balances were never measured"
       fi
     else
       unknown "buffer probe failed - current buffer UNKNOWN"

@@ -371,6 +371,46 @@ ckc "and names what went missing" "$out19" "MISSING"
 ckc "specifically the dropped WETH row" "$out19" "WETH"
 rm -rf "$W19"
 
+# --- 18. an error row with probe_failures 0 must not be skipped -------------
+# The probe contract does not guarantee the two agree. Skipping a non-ok row
+# because "probe_failures already counted it" lets a chain reach a clean pass with
+# that balance never measured.
+W20="$(mktemp -d)"
+make_repo "$W20" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:0:error")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out20="$(run_watch "$W20")"
+ckc "an error row alerts even when probe_failures says zero" "$out20" "ALERT:"
+ckc "and says the balance is unknown rather than zero" "$out20" "UNKNOWN, not zero"
+rm -rf "$W20"
+
+# --- 19. a non-numeric balance is not a balance -----------------------------
+W21="$(mktemp -d)"
+make_repo "$W21" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:notanumber:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out21="$(run_watch "$W21")"
+ckc "a non-numeric raw balance alerts" "$out21" "ALERT:"
+rm -rf "$W21"
+
+# --- 20. losing a DIFFERENT symbol is a new incident ------------------------
+# Both incidents previously shared one suppression key, so the second newly
+# unmeasured balance was silenced for 24h behind the first page.
+W22="$(mktemp -d)"
+miss_weth='{"ts":"t","settlement":"0xOP","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"USDC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDT","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"ETH","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
+miss_usdc='{"ts":"t","settlement":"0xOP","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"WETH","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDT","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"ETH","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
+make_repo "$W22" \
+  "optimism-mainnet|$miss_weth|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+NOW=1000000 run_watch "$W22" >/dev/null
+make_repo "$W22" "optimism-mainnet|$miss_usdc|0"
+out22="$(NOW=1000600 run_watch "$W22")"
+ckc "losing a different symbol pages immediately, inside the repeat window" "$out22" "ALERT:"
+rm -rf "$W22"
+
 echo
 echo "passed=$pass failed=$fail"
 [[ $fail -eq 0 ]]
