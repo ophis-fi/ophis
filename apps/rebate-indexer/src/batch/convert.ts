@@ -272,9 +272,21 @@ async function pendingApprovalTokens(apiKit: SafeApiKit, safe: `0x${string}`): P
     const results = pending.results ?? [];
     for (const tx of results) {
       if (!tx.data) continue;
+      // Inner calls of a MultiSend...
       const calls = decodeMultiSendCalldata(tx.data as `0x${string}`);
       for (const t of vaultRelayerApprovalTokens(calls)) approvals.add(t);
       for (const t of nativeWrapTargets(calls)) wraps.add(t);
+      // ...AND the transaction's own top-level call. An owner can queue a direct
+      // `WXDAI.deposit()` by hand rather than through a MultiSend; decoding that as
+      // multiSend(bytes) yields no inner calls, so the wrapper would be missing from
+      // `wraps` and we would queue a second full-balance wrap behind it.
+      const top: InnerCall = {
+        to: tx.to as `0x${string}`,
+        value: BigInt(tx.value ?? 0),
+        data: tx.data as `0x${string}`,
+      };
+      for (const t of vaultRelayerApprovalTokens([top])) approvals.add(t);
+      for (const t of nativeWrapTargets([top])) wraps.add(t);
     }
     return { ok: true, count: results.length, approvals, wraps };
   } catch (err) {

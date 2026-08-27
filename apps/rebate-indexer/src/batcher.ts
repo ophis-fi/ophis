@@ -185,6 +185,27 @@ async function maybeConvertFeesToWeth(
 }
 
 /**
+ * Bootstrap the fee conversion with NO payout above it. Called at the very END of the
+ * nightly pipeline, after every other proposal has been queued.
+ *
+ * Why it exists: the pool reads WETH, CoW pays partner fees in the chain's native
+ * coin, so the pool is 0, so there is no payout, so the payout-gated conversion never
+ * runs, so the pool stays 0. Forever. No rebate has ever paid for exactly this reason.
+ *
+ * Why it runs LAST: convertFeesToWeth refuses to propose in bootstrap mode unless the
+ * Safe queue is readable and empty. That gate is only meaningful once everything else
+ * this cycle intends to queue has been queued — checked mid-pipeline it would happily
+ * take a nonce and then have the affiliate and partner-fee payouts stack on top of it,
+ * which is precisely the Codex #474 hazard of an unsigned tx blocking real payouts.
+ *
+ * On a night when anything else is queued this is a no-op, and it simply tries again
+ * the next night. NEVER throws.
+ */
+export async function bootstrapFeeConversion(deps: BatcherDeps, now: Date = new Date()): Promise<void> {
+  await maybeConvertFeesToWeth(deps, now, null, { bootstrap: true });
+}
+
+/**
  * Parse the optional first-cycle accrual seed REBATE_FEE_BASIS_WEI (direct mode only,
  * consulted ONLY when no accounted direct cycle exists yet). Returns the seed, or
  * undefined when unset/empty or an explicit 0 (0 would rebate the ENTIRE balance —
@@ -605,11 +626,13 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     // native xDAI; so the pool is 0, so we land HERE, so no conversion ever runs, so
     // the pool stays 0. Forever. No rebate has ever paid for exactly this reason.
     //
-    // The BOOTSTRAP breaks the cycle while keeping #474's guarantee: it proposes only
-    // when the Safe queue is readable AND empty (canBootstrapPropose), so it takes the
-    // immediate next nonce with nothing queued behind it — and the payout it could
-    // theoretically block cannot exist until this conversion succeeds.
-    await maybeConvertFeesToWeth(deps, now, null, { bootstrap: true });
+    // The BOOTSTRAP that breaks the cycle does NOT run here. Checking the queue is
+    // empty at THIS point protects nothing: runNightlyPipeline goes on to propose the
+    // affiliate payout and the nightly partner-fee payout at later nonces, so a
+    // bootstrap taking a nonce here would sit BELOW them and block both if left
+    // unsigned — the #474 hazard, re-entered through a different door. It runs at the
+    // very END of the pipeline instead (bootstrapFeeConversion), where the empty-queue
+    // gate observes the cycle's true final state.
     return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
@@ -633,9 +656,7 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       .set({ status: 'no_recipients', ...(directMode ? { feeBasisWethWei: nonPartnerBalance } : {}) })
       .where(eq(schema.rebateBatches.id, batchId));
     log.info({ batchId, walletCount: wallets.length, directMode }, 'no qualifying recipients (all tracked wallets below the entry floor)');
-    // Same bootstrap as the zero-pool path above: value can be stranded in native or
-    // in trade tokens regardless of whether any wallet qualified for a rebate.
-    await maybeConvertFeesToWeth(deps, now, null, { bootstrap: true });
+    // Bootstrap runs at the end of the pipeline, not here — see the zero-pool path.
     return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 

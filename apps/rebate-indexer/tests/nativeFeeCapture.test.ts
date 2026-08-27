@@ -209,3 +209,13 @@ describe('canBootstrapPropose (breaks the zero-pool deadlock, safely)', () => {
     expect(canBootstrapPropose(queue({ ok: false, count: 0 }))).toBe(false);
   });
 });
+
+describe('nativeWrapTargets on a DIRECT (non-MultiSend) pending tx', () => {
+  it('detects a hand-queued deposit() that is not wrapped in a MultiSend', () => {
+    // An owner can queue WXDAI.deposit() directly from the Safe UI. Decoding that
+    // as multiSend(bytes) yields no inner calls, so the wrapper would be absent
+    // from the pending set and we would stack a second full-balance wrap behind it.
+    const direct = { to: WXDAI, value: 6_000n, data: buildNativeWrapCall(1n, 1n, WXDAI)[0]!.data };
+    expect(nativeWrapTargets([direct])).toEqual([WXDAI.toLowerCase()]);
+  });
+});
