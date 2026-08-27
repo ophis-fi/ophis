@@ -15,6 +15,9 @@ import {
   QuoteBridgeRequest,
 } from '@cowprotocol/sdk-bridging'
 
+import { readFileSync } from 'fs'
+import { join } from 'path'
+
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
 import {
   ACROSS_EXECUTABLE_SOURCE_IDS,
@@ -277,14 +280,7 @@ describe('ophisBridgeProviders', () => {
     // getUnsignedBridgeCall throws "Spoke pool/Math contract address not found"
     // at signing time — after the user has already been shown a quote.
     it('registers the SpokePool and math helper for 4663 in the sdk-bridging patch', () => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { readFileSync } = require('fs')
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { join } = require('path')
-      const patch = readFileSync(
-        join(__dirname, '../../../../patches/@cowprotocol__sdk-bridging@4.0.2.patch'),
-        'utf8',
-      )
+      const patch = readFileSync(join(__dirname, '../../../../patches/@cowprotocol__sdk-bridging@4.0.2.patch'), 'utf8')
       expect(patch).toContain('4663: "0xD29C85F15DF544bA632C9E25829fd29d767d7978"')
       expect(patch).toContain('4663: "0xEdE97D044d4C8aAA682968bee10284521B9f311a"')
       // Post-trade bridge tracking is gated on isSupportedChain(), which is
