@@ -253,6 +253,17 @@ for entry in "${CHAINS[@]}"; do
     KEYS+=("$label/probe-failures")
   fi
 
+  # Validate row shape with jq FIRST. The loop below reads a @tsv stream, and @tsv
+  # ERRORS on a row whose raw is an object or array - the producer exits non-zero,
+  # the loop simply sees fewer lines, and its exit status is not the shell's. The
+  # malformed row would vanish and the chain would still finish as measured.
+  if ! jq -e '.balances | all(((.symbol|type)=="string") and (((.raw|type)=="string") or ((.raw|type)=="number")))' <<<"$report" >/dev/null 2>&1; then
+    FINDINGS+=("$label: probe report has malformed balance row(s) - buffer state UNKNOWN")
+    KEYS+=("$label/probe-malformed-row")
+    log "chain=$label probe report has malformed rows"
+    continue
+  fi
+
   while IFS=$'\t' read -r sym rawbal status; do
     [[ -z "$sym" ]] && continue
     # A row is only trustworthy if it says so AND carries a numeric balance. Skipping

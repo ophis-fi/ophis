@@ -305,19 +305,23 @@ for entry in "${CHAINS[@]}"; do
   # guard and requires it to report 4663. An unreachable or wrong-chain nonce RPC
   # aborts the sweep immediately, so a preflight that ignored it would green-light a
   # ceremony that cannot run.
-  if [[ "$label" == "robinhood" && -n "${OPHIS_NONCE_RPC:-}" ]]; then
-    if nonce_chain=$(cast chain-id --rpc-url "$OPHIS_NONCE_RPC" 2>/dev/null); then
+  # The runner DEFAULTS its nonce endpoint to the transaction RPC, so check the
+  # effective one rather than only an explicit override: an endpoint can serve
+  # chain-id, code and call while rejecting eth_getTransactionCount.
+  if [[ "$label" == "robinhood" ]]; then
+    nonce_rpc="${OPHIS_NONCE_RPC:-$rpc}"
+    if nonce_chain=$(cast chain-id --rpc-url "$nonce_rpc" 2>/dev/null); then
       if [[ "$nonce_chain" != "4663" ]]; then
-        bad "OPHIS_NONCE_RPC reports chain id $nonce_chain, expected 4663"
-      elif cast nonce "$FEE_SAFE" --rpc-url "$OPHIS_NONCE_RPC" >/dev/null 2>&1; then
+        bad "nonce RPC reports chain id $nonce_chain, expected 4663"
+      elif cast nonce "$FEE_SAFE" --rpc-url "$nonce_rpc" >/dev/null 2>&1; then
         # chain-id alone is not enough: the guard calls eth_getTransactionCount, and
         # an endpoint can answer chain-id while refusing or not serving that method.
         ok "nonce RPC reachable, on chain 4663, and serving eth_getTransactionCount"
       else
-        bad "OPHIS_NONCE_RPC cannot serve eth_getTransactionCount - the idle-driver guard would abort"
+        bad "nonce RPC cannot serve eth_getTransactionCount - the idle-driver guard would abort"
       fi
     else
-      bad "OPHIS_NONCE_RPC is unreachable - the sweep's idle-driver guard would abort"
+      bad "nonce RPC is unreachable - the sweep's idle-driver guard would abort"
     fi
   fi
 

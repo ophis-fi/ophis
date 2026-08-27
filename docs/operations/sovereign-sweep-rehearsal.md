@@ -158,7 +158,10 @@ export MIN_BASE_UNITS=100000,10000,10000000000000
 Record the buffer and the fee Safe balance **before** broadcasting, then:
 
 1. `./infra/shared/scripts/sweep-preflight.sh <chain>` — the buffer line should
-   have dropped by the amount swept.
+   have dropped by the amount swept. For Optimism, repeat the same assignments as
+   the pre-sweep run (`FEE_LIQUIDATOR=0x... BROADCASTER=0x... ./…preflight.sh
+   optimism`); they were command-local, so without them the solver check comes
+   back UNKNOWN and the preflight exits 2 rather than verifying the rehearsal.
 2. The fee Safe balance on that chain should be **up by that same amount**. This
    is the check that actually proves the sweep worked, so do it explicitly rather
    than inferring it.

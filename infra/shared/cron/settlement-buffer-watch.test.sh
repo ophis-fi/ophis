@@ -425,6 +425,22 @@ out23="$(BUFFER_NOTIFY=1 TELEGRAM_BOT_TOKEN_FILE=/nonexistent OPHIS_REPO="$W23" 
 ckc "still reports the unrecognised token" "$out23" "PWN"
 rm -rf "$W23"
 
+# --- 22. a row jq cannot serialize must not vanish --------------------------
+# The reader loop consumes a @tsv stream, and @tsv ERRORS on a row whose raw is an
+# object or array: the producer exits non-zero, the loop just sees fewer lines, and
+# its status is not the shell's. The malformed row would disappear and the chain
+# would still finish as measured.
+W24="$(mktemp -d)"
+weird='{"ts":"t","settlement":"0xRBH","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"WETH","token":"0xt","raw":{"oops":1},"hr":"0","status":"ok"},{"symbol":"USDG","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
+make_repo "$W24" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$weird|0"
+out24="$(run_watch "$W24")"
+ckc "a row with a non-scalar balance alerts" "$out24" "ALERT:"
+ckc "and is called out as malformed" "$out24" "malformed"
+rm -rf "$W24"
+
 echo
 echo "passed=$pass failed=$fail"
 [[ $fail -eq 0 ]]
