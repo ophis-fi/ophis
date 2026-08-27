@@ -28,7 +28,7 @@ first time, against real money, on the day Robinhood volume steps up.
 | Chain | Settlement | Buffer | Sweep path | Ceremony needed |
 |---|---|---|---|---|
 | Robinhood 4663 | `0x886d9fd3…57cD` | USDG 1.106040, WETH 0.0000390808 | v1 forge script | **none** |
-| Unichain 130 | `0x108A6787…F714E` | USDC 0.140666, WETH 0.0000581522 | v1 forge script | **none** |
+| Unichain 130 | `0x108A6787…F714E` | USDC 0.140666, WETH 0.0000581522 | v1 forge script | **solver grant** (see below) |
 | Optimism 10 | `0x310784c7…B859` | USDC 0.354188, USDT 0.032961, WETH 0.0000440679 | v2 liquidator | deploy + 24h Timelock |
 
 Two corrections to what was previously recorded:
@@ -42,6 +42,23 @@ Two corrections to what was previously recorded:
   would look like a successful no-op. The overrides below are what make the
   rehearsal actually move value.
 
+## ⚠️ Unichain is blocked today
+
+The preflight found it: on chain 130 the pinned submitter
+`0x7A956C269a12f1B897367663b536EB5dd29f3fBb` is **not currently an allowlisted
+solver**. `isSolver` on the authenticator `0x1002E12f2e7f848b20fe572F92133E467a5D010C`
+returns false (verified 2026-08-27 with a successful call, not an RPC error), so a
+Unichain sweep would revert with "GPv2: not a solver" **after** broadcasting,
+leaking the sweep into a public mempool for nothing.
+
+That EOA did settle successfully six times, most recently **2026-07-18**, so the
+allowlist changed at some point after that. The cause was not established here:
+a full allowlist event scan needs an archive endpoint the free RPC tier refuses.
+
+Consequence for this plan: Unichain needs an allowlist grant (an owner Safe or
+timelock action, see `allowlist-governance-runbook.md`) before its sweep can run.
+Robinhood is unaffected and its submitter checks out.
+
 ## Order: Robinhood, then Unichain, then Optimism
 
 Robinhood first because it is the cheapest rehearsal that proves the most:
@@ -51,7 +68,9 @@ Robinhood first because it is the cheapest rehearsal that proves the most:
 - the v1 path, whose driver-submitter EOA is already allowlisted as a solver
   (Safe vote 2026-05-20), so there is nothing to grant
 
-Unichain is the same path and confirms it generalises. Optimism last, because it
+Unichain is the same path and would confirm it generalises, but see the blocker
+above: it needs a solver grant first, so in practice it may land after Optimism.
+Optimism last of the original three, because it
 is the only one that needs the `OphisFeeLiquidator` deployed and Timelock-granted,
 and there is no reason to spend four owner ceremonies before the mechanism has
 been shown to work twice.
