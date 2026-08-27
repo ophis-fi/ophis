@@ -55,11 +55,11 @@ REPEAT_S="${BUFFER_REPEAT_S:-86400}"
 TELEGRAM_BOT_TOKEN_FILE="${TELEGRAM_BOT_TOKEN_FILE:-/Users/scep/greg/infra/optimism-mainnet/observability-rendered/telegram-token}"
 TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-735726338}"
 
-# chain-dir:label
+# chain-dir:label:expected-settlement
 CHAINS=(
-  "optimism-mainnet:optimism"
-  "unichain-mainnet:unichain"
-  "robinhood-mainnet:robinhood"
+  "optimism-mainnet:optimism:0x310784c7fce12d578da6f53460777bac9718b859"
+  "unichain-mainnet:unichain:0x108a678716e5e1776036ef044cab7064226f714e"
+  "robinhood-mainnet:robinhood:0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd"
 )
 
 # Per-chain sweep coverage: "symbol:min-base-units", mirroring each chain's OWN
@@ -94,14 +94,22 @@ EXPECTED_SYMBOLS=(
   "robinhood:WETH USDG"
 )
 
+# chain:symbol:token-address:min-base-units
+#
+# Matched on the token ADDRESS, not the symbol. Robinhood Chain carries five
+# 18-decimal USDG impersonators, each with a round 1,000,000,000 supply, sitting in
+# the same Settlement contract as the real 6-decimal USDG - so symbol matching would
+# happily apply the real token's threshold to a worthless one, and alert that a
+# sweep is warranted for tokens that would move nothing. Address is the identity;
+# the symbol is a label its deployer chose.
 THRESHOLDS=(
-  "optimism:USDC:10000000"
-  "optimism:WETH:3000000000000000"
-  "optimism:ETH:3000000000000000"
-  "unichain:WETH:1000000000000000"
-  "unichain:USDC:10000000"
-  "robinhood:USDG:10000000"
-  "robinhood:WETH:3000000000000000"
+  "optimism:USDC:0x0b2c639c533813f4aa9d7837caf62653d097ff85:10000000"
+  "optimism:WETH:0x4200000000000000000000000000000000000006:3000000000000000"
+  "optimism:ETH:native:3000000000000000"
+  "unichain:WETH:0x4200000000000000000000000000000000000006:1000000000000000"
+  "unichain:USDC:0x078d782b760474a361dda0af3839290b0ef57ad6:10000000"
+  "robinhood:USDG:0x5fc5360d0400a0fd4f2af552add042d716f1d168:10000000"
+  "robinhood:WETH:0x0bd7d308f8e1639fab988df18a8011f41eacad73:3000000000000000"
 )
 
 # Format an epoch as UTC. BSD date (the Mac mini, where this runs) wants -r; GNU
@@ -160,11 +168,14 @@ alert() {
 
 # Resolve a chain's threshold for a symbol. Returns 1 when the chain's sweep
 # configuration does not cover that token at all.
-threshold_for() {
-  local label="$1" sym="$2" entry c t v
+threshold_for() { # chain, symbol, token-address
+  local label="$1" addr="$3" entry c a v
+  addr="$(tr '[:upper:]' '[:lower:]' <<<"$addr")"
   for entry in "${THRESHOLDS[@]}"; do
-    IFS=: read -r c t v <<< "$entry"
-    if [[ "$c" == "$label" && "$t" == "$sym" ]]; then echo "$v"; return 0; fi
+    # The symbol column is read into `_`: it documents the row for a human but is
+    # deliberately NOT part of the match, because the address is the identity.
+    IFS=: read -r c _ a v <<< "$entry"
+    if [[ "$c" == "$label" && "$a" == "$addr" ]]; then echo "$v"; return 0; fi
   done
   return 1
 }
@@ -180,7 +191,7 @@ FINDINGS=()   # human-readable lines
 KEYS=()       # stable identity of the condition, for repeat-suppression
 
 for entry in "${CHAINS[@]}"; do
-  IFS=: read -r dir label <<< "$entry"
+  IFS=: read -r dir label want_settlement <<< "$entry"
   probe="$OPHIS_REPO/infra/$dir/scripts/check-settlement-buffer.sh"
 
   if [[ ! -x "$probe" ]]; then
@@ -247,6 +258,18 @@ for entry in "${CHAINS[@]}"; do
     fi
   fi
 
+  # The report names the contract it measured. A probe pointed at the wrong
+  # Settlement (a copy-paste in its config, an inherited SETTLEMENT in the
+  # environment) would otherwise be monitored happily while the real buffer went
+  # unwatched - measuring something, just not the thing.
+  got_settlement="$(jq -r '.settlement // ""' <<<"$report" | tr '[:upper:]' '[:lower:]')"
+  if [[ -n "$want_settlement" && "$got_settlement" != "$want_settlement" ]]; then
+    FINDINGS+=("$label: probe measured Settlement $got_settlement, expected $want_settlement - the wrong contract is being watched")
+    KEYS+=("$label/wrong-settlement")
+    log "chain=$label probe measured the wrong settlement"
+    continue
+  fi
+
   failures="$(jq -r '.probe_failures // 0' <<<"$report")"
   if [[ "$failures" != "0" ]]; then
     FINDINGS+=("$label: $failures token probe(s) errored - those balances are UNKNOWN, not zero")
@@ -257,14 +280,14 @@ for entry in "${CHAINS[@]}"; do
   # ERRORS on a row whose raw is an object or array - the producer exits non-zero,
   # the loop simply sees fewer lines, and its exit status is not the shell's. The
   # malformed row would vanish and the chain would still finish as measured.
-  if ! jq -e '.balances | all(((.symbol|type)=="string") and (((.raw|type)=="string") or ((.raw|type)=="number")))' <<<"$report" >/dev/null 2>&1; then
+  if ! jq -e '.balances | all(((.symbol|type)=="string") and (((.raw|type)=="string") or ((.raw|type)=="number")) and (((.status|type)=="string") or (.status==null)) and (((.token|type)=="string") or (.token==null)))' <<<"$report" >/dev/null 2>&1; then
     FINDINGS+=("$label: probe report has malformed balance row(s) - buffer state UNKNOWN")
     KEYS+=("$label/probe-malformed-row")
     log "chain=$label probe report has malformed rows"
     continue
   fi
 
-  while IFS=$'\t' read -r sym rawbal status; do
+  while IFS=$'\t' read -r sym rawbal status tokaddr; do
     [[ -z "$sym" ]] && continue
     # A row is only trustworthy if it says so AND carries a numeric balance. Skipping
     # a non-ok row on the assumption probe_failures already counted it is exactly the
@@ -281,12 +304,12 @@ for entry in "${CHAINS[@]}"; do
       KEYS+=("$label/$sym/bad-balance")
       continue
     fi
-    if ! thr="$(threshold_for "$label" "$sym")"; then
+    if ! thr="$(threshold_for "$label" "$sym" "$tokaddr")"; then
       # Only report a token the sweep cannot move if there is actually something
       # there; a zero balance in an unconfigured token is not news.
       if gte "$rawbal" "1"; then
-        FINDINGS+=("$label: $sym $rawbal base units is not covered by the chain's sweep configuration")
-        KEYS+=("$label/$sym/uncovered")
+        FINDINGS+=("$label: $sym ($tokaddr) $rawbal base units is not covered by the chain's sweep configuration")
+        KEYS+=("$label/$tokaddr/uncovered")
       fi
       continue
     fi
@@ -294,7 +317,7 @@ for entry in "${CHAINS[@]}"; do
       FINDINGS+=("$label: $sym $rawbal base units is at or above the $thr sweep threshold")
       KEYS+=("$label/$sym/sweepable")
     fi
-  done < <(jq -r '.balances[]? | [.symbol, .raw, .status] | @tsv' <<<"$report")
+  done < <(jq -r '.balances[]? | [.symbol, (.raw|tostring), (.status // ""), (.token // "")] | @tsv' <<<"$report")
 
   log "chain=$label measured"
 done

@@ -330,6 +330,12 @@ Thresholds are **per chain and per token**, mirroring each chain's own
 | unichain | WETH 1e15, USDC 1e7 |
 | robinhood | USDG 1e7, WETH 3e15 |
 
+Matched on the token **address**, never the symbol. Robinhood Chain carries five
+18-decimal USDG impersonators in the same Settlement contract as the real
+6-decimal USDG, so symbol matching would apply the real token threshold to a
+worthless one. The report is also checked to name the Settlement it was supposed
+to measure: measuring something is not the same as measuring the right thing.
+
 Per chain because they genuinely differ: unichain defaults WETH to 1e15 while
 the other two use 3e15, so one shared table left a unichain balance between the
 two sweepable by the stock script and invisible here. Per token because a single
@@ -371,7 +377,7 @@ crashed; treat that as an outage of the monitor, not as a clean result.
 bash infra/shared/cron/settlement-buffer-watch.test.sh
 ```
 
-53 deterministic cases. No real RPC and no real Telegram (`BUFFER_NOTIFY=0`
+58 deterministic cases. No real RPC and no real Telegram (`BUFFER_NOTIFY=0`
 everywhere except the delivery-failure case, which points the token file at a
 path that does not exist and so fails before any network call), injected clock
 for the 24h repeat window, and per-chain probes faked through `OPHIS_REPO`.

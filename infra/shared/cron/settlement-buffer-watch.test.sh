@@ -53,6 +53,30 @@ make_repo() {
 # Pads to the chain's FULL expected symbol set with zero rows, because the watcher
 # now rejects an incomplete report - a partial one is not a measurement. Tests that
 # want a deliberately incomplete report build the JSON by hand instead.
+# Real token addresses: the watcher matches on ADDRESS, not symbol, so a fixture
+# with a placeholder address is indistinguishable from an impersonator.
+settlement_addr() { # fixture label -> the real Settlement that chain's probe reports
+  case "$1" in
+    0xOP)  echo "0x310784c7fce12d578da6f53460777bac9718b859" ;;
+    0xUNI) echo "0x108a678716e5e1776036ef044cab7064226f714e" ;;
+    0xRBH) echo "0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd" ;;
+    *)     echo "$1" ;;
+  esac
+}
+
+addr_for() { # settlement, symbol
+  case "$1:$2" in
+    0xOP:USDC)  echo "0x0b2c639c533813f4aa9d7837caf62653d097ff85" ;;
+    0xOP:WETH)  echo "0x4200000000000000000000000000000000000006" ;;
+    0xOP:ETH)   echo "native" ;;
+    0xUNI:WETH) echo "0x4200000000000000000000000000000000000006" ;;
+    0xUNI:USDC) echo "0x078d782b760474a361dda0af3839290b0ef57ad6" ;;
+    0xRBH:USDG) echo "0x5fc5360d0400a0fd4f2af552add042d716f1d168" ;;
+    0xRBH:WETH) echo "0x0bd7d308f8e1639fab988df18a8011f41eacad73" ;;
+    *)          echo "0xunconfigured" ;;
+  esac
+}
+
 expected_for() {
   case "$1" in
     0xOP)  echo "USDC WETH USDCe DAI WBTC USDT ETH" ;;
@@ -69,14 +93,14 @@ report() {
     IFS=: read -r sym raw status <<< "$spec"
     given="$given $sym"
     [[ -n "$rows" ]] && rows="$rows,"
-    rows="$rows{\"symbol\":\"$sym\",\"token\":\"0xtok\",\"raw\":\"$raw\",\"hr\":\"0\",\"status\":\"${status:-ok}\"}"
+    rows="$rows{\"symbol\":\"$sym\",\"token\":\"$(addr_for "$settlement" "$sym")\",\"raw\":\"$raw\",\"hr\":\"0\",\"status\":\"${status:-ok}\"}"
   done
   for want in $(expected_for "$settlement"); do
     grep -qw -- "$want" <<<"$given" && continue
     [[ -n "$rows" ]] && rows="$rows,"
-    rows="$rows{\"symbol\":\"$want\",\"token\":\"0xtok\",\"raw\":\"0\",\"hr\":\"0\",\"status\":\"ok\"}"
+    rows="$rows{\"symbol\":\"$want\",\"token\":\"$(addr_for "$settlement" "$want")\",\"raw\":\"0\",\"hr\":\"0\",\"status\":\"ok\"}"
   done
-  echo "{\"ts\":\"2026-08-27T00:00:00Z\",\"settlement\":\"$settlement\",\"safe\":\"0xsafe\",\"liquidator\":{\"address\":null,\"status\":\"unset\"},\"probe_failures\":$failures,\"balances\":[$rows]}"
+  echo "{\"ts\":\"2026-08-27T00:00:00Z\",\"settlement\":\"$(settlement_addr "$settlement")\",\"safe\":\"0xsafe\",\"liquidator\":{\"address\":null,\"status\":\"unset\"},\"probe_failures\":$failures,\"balances\":[$rows]}"
 }
 
 run_watch() {
@@ -271,7 +295,7 @@ rm -rf "$W14"
 W15="$(mktemp -d)"
 # Raw JSON, not report(): report() pads to the chain's full expected symbol set,
 # which is the opposite of what this case needs.
-empty_rows='{"ts":"t","settlement":"0xOP","safe":"0xsafe","probe_failures":0,"balances":[]}'
+empty_rows='{"ts":"t","settlement":"0x310784c7fce12d578da6f53460777bac9718b859","safe":"0xsafe","probe_failures":0,"balances":[]}'
 make_repo "$W15" \
   "optimism-mainnet|$empty_rows|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
@@ -360,7 +384,7 @@ rm -rf "$W18"
 # silently disappear - reported health that was never measured, one layer up
 # from the zero-row case.
 W19="$(mktemp -d)"
-partial='{"ts":"t","settlement":"0xOP","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"USDC","token":"0xtok","raw":"1","hr":"0","status":"ok"}]}'
+partial='{"ts":"t","settlement":"0x310784c7fce12d578da6f53460777bac9718b859","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"USDC","token":"0xtok","raw":"1","hr":"0","status":"ok"}]}'
 make_repo "$W19" \
   "optimism-mainnet|$partial|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
@@ -399,8 +423,8 @@ rm -rf "$W21"
 # Both incidents previously shared one suppression key, so the second newly
 # unmeasured balance was silenced for 24h behind the first page.
 W22="$(mktemp -d)"
-miss_weth='{"ts":"t","settlement":"0xOP","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"USDC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDT","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"ETH","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
-miss_usdc='{"ts":"t","settlement":"0xOP","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"WETH","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDT","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"ETH","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
+miss_weth='{"ts":"t","settlement":"0x310784c7fce12d578da6f53460777bac9718b859","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"USDC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDT","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"ETH","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
+miss_usdc='{"ts":"t","settlement":"0x310784c7fce12d578da6f53460777bac9718b859","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"WETH","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDT","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"ETH","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
 make_repo "$W22" \
   "optimism-mainnet|$miss_weth|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
@@ -416,7 +440,7 @@ rm -rf "$W22"
 # an airdropped token with markup in its symbol would make Telegram REJECT the
 # request - and the one condition the page exists to report is the one lost.
 W23="$(mktemp -d)"
-pwn='{"ts":"t","settlement":"0xRBH","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"<b>PWN</b>","token":"0xt","raw":"50000000","hr":"0","status":"ok"},{"symbol":"WETH","token":"0xt","raw":"0","hr":"0","status":"ok"},{"symbol":"USDG","token":"0xt","raw":"0","hr":"0","status":"ok"}]}'
+pwn='{"ts":"t","settlement":"0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"<b>PWN</b>","token":"0xt","raw":"50000000","hr":"0","status":"ok"},{"symbol":"WETH","token":"0xt","raw":"0","hr":"0","status":"ok"},{"symbol":"USDG","token":"0xt","raw":"0","hr":"0","status":"ok"}]}'
 make_repo "$W23" \
   "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
@@ -431,7 +455,7 @@ rm -rf "$W23"
 # its status is not the shell's. The malformed row would disappear and the chain
 # would still finish as measured.
 W24="$(mktemp -d)"
-weird='{"ts":"t","settlement":"0xRBH","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"WETH","token":"0xt","raw":{"oops":1},"hr":"0","status":"ok"},{"symbol":"USDG","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
+weird='{"ts":"t","settlement":"0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"WETH","token":"0xt","raw":{"oops":1},"hr":"0","status":"ok"},{"symbol":"USDG","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
 make_repo "$W24" \
   "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
@@ -457,6 +481,39 @@ ckc "completes a pass despite a corrupt state file" "$out25" "pass complete"
 ckn "and does not die on an unbound variable" "$out25" "unbound variable"
 ckc "and still delivers the alert it was suppressing" "$out25" "ALERT:"
 rm -rf "$W25"
+
+# --- 24. an impersonating token must not inherit the real one's threshold ---
+# Robinhood Chain carries five 18-decimal USDG impersonators in the same
+# Settlement contract as the real 6-decimal USDG. Matching on symbol would apply
+# the real token's threshold to a worthless one and page for a sweep that would
+# move nothing.
+W26="$(mktemp -d)"
+fake='{"ts":"t","settlement":"0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"USDG","token":"0x1383b43aed527485f191b60060f5b5471f71b1ca","raw":"6250000000000000000","hr":"0","status":"ok"},{"symbol":"USDG","token":"0x5fc5360d0400a0fd4f2af552add042d716f1d168","raw":"1","hr":"0","status":"ok"},{"symbol":"WETH","token":"0x0bd7d308f8e1639fab988df18a8011f41eacad73","raw":"0","hr":"0","status":"ok"}]}'
+make_repo "$W26" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$fake|0"
+out26="$(run_watch "$W26")"
+alert26="$(grep -F 'ALERT:' <<<"$out26")"
+ckc "the impersonator is reported as not covered, not as a sweepable USDG" "$alert26" "not covered"
+ckc "and is identified by its address, since the symbol is a lie" "$alert26" "0x1383b43aed527485f191b60060f5b5471f71b1ca"
+ckn "the real USDG at 1 base unit is still below threshold and not reported" "$alert26" "sweep threshold"
+rm -rf "$W26"
+
+# --- 25. a probe pointed at the wrong Settlement -----------------------------
+# Measuring something is not the same as measuring the right thing: a probe with
+# an inherited or mistyped SETTLEMENT would be monitored happily while the real
+# buffer went unwatched.
+W27="$(mktemp -d)"
+wrong='{"ts":"t","settlement":"0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"USDG","token":"0x5fc5360d0400a0fd4f2af552add042d716f1d168","raw":"1","hr":"0","status":"ok"},{"symbol":"WETH","token":"0x0bd7d308f8e1639fab988df18a8011f41eacad73","raw":"0","hr":"0","status":"ok"}]}'
+make_repo "$W27" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$wrong|0"
+out27="$(run_watch "$W27")"
+ckc "a report for the wrong Settlement alerts" "$out27" "ALERT:"
+ckc "and says which contract was actually measured" "$out27" "wrong contract"
+rm -rf "$W27"
 
 echo
 echo "passed=$pass failed=$fail"

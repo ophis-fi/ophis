@@ -342,7 +342,7 @@ jobs:
           check "per-token probe errors ignored" \
             's|  if \[\[ "$failures" != "0" \]\]; then|  if false; then|'
           check "a token outside the sweep config is silently skipped" \
-            's|        FINDINGS+=("$label: $sym $rawbal base units is not covered by the chain.s sweep configuration")|        :|'
+            's|        FINDINGS+=("$label: $sym ($tokaddr) $rawbal base units is not covered by the chain.s sweep configuration")|        :|'
           check "repeat suppression never expires (alert fades out)" \
             's|  (( age < REPEAT_S )) \&\& should_alert=0|  should_alert=0|'
           check "report schema validation removed" \
