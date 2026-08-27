@@ -123,15 +123,23 @@ for entry in "${CHAINS[@]}"; do
   # exported one would silently validate the canonical Safe while a non-canonical
   # destination sat in .env waiting to receive the funds.
   configured="$(resolve_cfg "$dest_var" "$chain_dir")"
-  # ONLY unichain. Its wrapper never sets SAFE, so forge reads whatever is ambient
-  # in the operator's shell. robinhood overwrites SAFE from its own resolved value
-  # and the optimism v2 path does not shell out to forge at all, so flagging an
-  # ambient SAFE there would fail a healthy deployment for a variable nothing reads.
-  if [[ "$label" == "unichain" && -z "$configured" && -n "${SAFE:-}" ]]; then
+  # ONLY unichain, and there it WINS outright. Its wrapper never reads
+  # OPHIS_FEE_RECIPIENT_SAFE_UNICHAIN at all; forge reads the ambient SAFE. So when
+  # both are set, the OPHIS_* one is decoration and SAFE is the real destination -
+  # preferring the former would validate an address the sweep will not use.
+  # robinhood overwrites SAFE from its own resolved value and the optimism v2 path
+  # never shells out to forge, so flagging an ambient SAFE there would fail a
+  # healthy deployment over a variable nothing reads.
+  if [[ "$label" == "unichain" && -n "${SAFE:-}" ]]; then
     configured="$SAFE"; dest_var="SAFE (ambient, consumed by the forge script)"
   fi
   if [[ -n "$configured" ]]; then
     dest="$configured"
+  elif [[ "$label" == "robinhood" ]]; then
+    # The Robinhood runner deliberately has NO default and exits at its
+    # required-address check. Substituting the canonical Safe here would certify a
+    # sweep that cannot even start.
+    unknown "OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD is unset in both the environment and .env - the runner has no default and will refuse to start"
   fi
 
   # Settlement can be redirected too: robinhood reads OPHIS_SETTLEMENT_ROBINHOOD
@@ -338,7 +346,14 @@ for entry in "${CHAINS[@]}"; do
   repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
   probe="$repo_root/infra/$chain_dir/scripts/check-settlement-buffer.sh"
   if [[ -x "$probe" ]]; then
-    if out=$(OPHIS_RPC="$rpc" "$probe" 2>/dev/null); then
+    # Pin the probe to the SAME contract resolved above. Without this it inherits an
+    # ambient SETTLEMENT and the before/after buffer figures could describe an
+    # unrelated deployment while every other check passed.
+    if out=$(OPHIS_RPC="$rpc" SETTLEMENT="$settlement" "$probe" 2>/dev/null); then
+      probe_settlement="$(jq -r '.settlement // ""' <<<"$out" 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+      if [[ -n "$probe_settlement" && "$probe_settlement" != "$(tr '[:upper:]' '[:lower:]' <<<"$settlement")" ]]; then
+        bad "buffer probe measured Settlement $probe_settlement, not the $label contract $settlement"
+      fi
       echo "  ----     buffer: $(jq -c '[.balances[] | {(.symbol): .hr}]' <<<"$out" 2>/dev/null || echo "unparseable")"
       # The probes deliberately exit 0 on a per-token cast failure, recording it in
       # probe_failures and setting that row to status "error" with a displayed

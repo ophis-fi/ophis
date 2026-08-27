@@ -78,6 +78,9 @@ been shown to work twice.
 ## Step 0: preflight (read-only, no keys)
 
 ```bash
+# Pin the destination first: the Robinhood runner has no default and refuses to
+# start without it, so the preflight reports UNKNOWN (exit 2) if it is unset.
+export OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
 ./infra/shared/scripts/sweep-preflight.sh robinhood
 ```
 
