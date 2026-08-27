@@ -59,9 +59,13 @@ been shown to work twice.
 ## Step 0: preflight (read-only, no keys)
 
 ```bash
-BROADCASTER=<the driver-submitter EOA> \
-  ./infra/shared/scripts/sweep-preflight.sh robinhood
+./infra/shared/scripts/sweep-preflight.sh robinhood
 ```
+
+Each v1 chain's own pinned submitter is the default, so no environment is needed
+for a routine check. Override with `BROADCASTER_ROBINHOOD` / `BROADCASTER_UNICHAIN`
+when deliberately checking a different key, and set `FEE_LIQUIDATOR` before the
+Optimism run.
 
 Exits 0 only when every precondition PASSED. Exit 2 means at least one check
 came back UNKNOWN, which is not a green light: an unverified precondition is

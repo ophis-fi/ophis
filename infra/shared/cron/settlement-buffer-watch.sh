@@ -40,7 +40,11 @@ if [[ "${-}" == *x* ]]; then
 fi
 
 OPHIS_REPO="${OPHIS_REPO:-/Users/scep/greg}"
-STATE_FILE="${BUFFER_STATE_FILE:-$HOME/.ophis-settlement-buffer-watch.state}"
+# ${HOME:-...} not $HOME: under `set -u` an unset HOME aborts the script on this
+# very line, before a single probe, log or alert runs - a monitor that is installed,
+# enabled, and completely inert. launchd jobs are not guaranteed a HOME, so the
+# plist also pins BUFFER_STATE_FILE explicitly; this default is the backstop.
+STATE_FILE="${BUFFER_STATE_FILE:-${HOME:-/var/tmp}/.ophis-settlement-buffer-watch.state}"
 LOG_FILE="${BUFFER_LOG_FILE:-}"
 NOTIFY="${BUFFER_NOTIFY:-1}"
 NOW_S="${BUFFER_NOW_S:-$(date -u +%s)}"
@@ -88,6 +92,16 @@ THRESHOLDS=(
   "robinhood:WETH:3000000000000000"
 )
 
+# Format an epoch as UTC. BSD date (the Mac mini, where this runs) wants -r; GNU
+# date (CI, where the suite runs) wants -d @, and reads -r as "this FILE's mtime" -
+# so a BSD-only call does not error on Linux, it silently stamps a different time.
+# Try both, then fall back to now.
+fmt_ts() {
+  date -u -r "$1" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+    || date -u -d "@$1" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+    || date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
 log() {
   local line
   line="[$(fmt_ts "$NOW_S")] $*"
@@ -116,7 +130,7 @@ alert() {
     "https://api.telegram.org/bot${token}/sendMessage" \
     -d "chat_id=${TELEGRAM_CHAT_ID}" \
     -d "parse_mode=HTML" \
-    --data-urlencode "text=<b>Ophis settlement buffer</b>%0A${msg}" \
+    --data-urlencode "$(printf 'text=<b>Ophis settlement buffer</b>\n%s' "$msg")" \
     >/dev/null 2>&1; then
     return 0
   fi
@@ -237,7 +251,10 @@ if [[ "$STATE_KEY" == "$prev_key" ]]; then
 fi
 
 if [[ "$should_alert" == "1" ]]; then
-  body="$(printf '%s%%0A' "${FINDINGS[@]}")"
+  # Real newlines, not literal %0A: --data-urlencode encodes the body once, so a
+  # pre-encoded %0A arrives at Telegram as the visible text "%0A" and a multi-chain
+  # incident lands as one unreadable line.
+  body="$(printf '%s\n' "${FINDINGS[@]}")"
   # Record the suppression state ONLY on confirmed delivery. Writing it
   # unconditionally muted a live condition for 24h on the strength of a page that
   # may never have been sent - a silent alert is the failure mode, not the fix.

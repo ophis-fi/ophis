@@ -293,6 +293,38 @@ undeliv2="$(NOW=1000600 run_watch_undeliverable "$W16")"
 ckc "so the very next run tries again instead of going quiet for 24h" "$undeliv2" "ALERT:"
 rm -rf "$W16"
 
+# --- 15. the log must carry a real timestamp --------------------------------
+# A bulk edit once deleted fmt_ts while leaving every call to it. `set -e` is off,
+# so the script kept running, wrote "fmt_ts: command not found" to stderr, and
+# stamped every line "[]". Nothing failed. Assert the stamp itself.
+W17="$(mktemp -d)"
+make_repo "$W17" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out17="$(NOW=1756000000 run_watch "$W17")"
+if grep -qE '^\[20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\] ' <<<"$out17"; then
+  echo "  PASS  log lines carry a real ISO timestamp"; pass=$((pass+1))
+else
+  echo "  FAIL  log lines carry a real ISO timestamp: got '$(head -1 <<<"$out17")'"; fail=$((fail+1))
+fi
+ckn "and no shell error leaks into the output" "$out17" "command not found"
+rm -rf "$W17"
+
+# --- 16. survives launchd's environment (no HOME) ----------------------------
+# launchd does not guarantee HOME. Under `set -u` a HOME-derived default aborts on
+# the assignment line itself, before any probe, log or alert - a monitor that is
+# installed, enabled and completely inert, with nothing in its own log to say so.
+W18="$(mktemp -d)"
+make_repo "$W18" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out18="$(env -u HOME OPHIS_REPO="$W18" BUFFER_NOTIFY=0 BUFFER_NOW_S=1000000 bash "$SRC" 2>&1)"
+ckc "completes a pass with HOME unset" "$out18" "pass complete"
+ckn "and does not die on an unbound variable" "$out18" "unbound variable"
+rm -rf "$W18"
+
 echo
 echo "passed=$pass failed=$fail"
 [[ $fail -eq 0 ]]

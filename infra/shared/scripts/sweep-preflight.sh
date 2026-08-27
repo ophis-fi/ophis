@@ -148,14 +148,25 @@ for entry in "${CHAINS[@]}"; do
   # ops EOA authorised to call it; on the v1 chains the broadcaster EOA signs
   # settle() itself. Checking the EOA on OP would report FAIL for a correctly
   # configured deployment and block the very ceremony this preflight exists to clear.
+  # The v1 chains do NOT share a submitter - each settlement-anomaly-watch.sh pins
+  # its own sole authorized EOA - so a single BROADCASTER cannot be correct for both
+  # and the all-chain run would report a healthy deployment as FAILED on one of them.
+  # Default to each chain's pinned submitter; BROADCASTER (or the per-chain override)
+  # still wins when an operator is deliberately checking a different key.
   if [[ "$label" == "optimism" ]]; then
     solver_subject="${FEE_LIQUIDATOR:-}"
     solver_what="FeeLiquidator contract"
     solver_hint="export FEE_LIQUIDATOR=0x... (the v2 path allowlists the CONTRACT, not the ops EOA)"
   else
-    solver_subject="${BROADCASTER:-}"
-    solver_what="broadcaster EOA"
-    solver_hint="export BROADCASTER=0x... to cover it"
+    case "$label" in
+      unichain)  default_submitter="0x7A956C269a12f1B897367663b536EB5dd29f3fBb" ;;
+      robinhood) default_submitter="0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665" ;;
+      *)         default_submitter="" ;;
+    esac
+    override_var="BROADCASTER_$(tr '[:lower:]' '[:upper:]' <<<"$label")"
+    solver_subject="${!override_var:-${BROADCASTER:-$default_submitter}}"
+    solver_what="submitter EOA"
+    solver_hint="export ${override_var}=0x... (each v1 chain pins its own sole submitter)"
   fi
   if [[ -n "$solver_subject" ]]; then
     if auth=$(cast call "$settlement" "authenticator()(address)" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}') \
@@ -183,8 +194,14 @@ for entry in "${CHAINS[@]}"; do
       # did not measure.
       pf="$(jq -r '.probe_failures // "null"' <<<"$out" 2>/dev/null)"
       bad_rows="$(jq -r '[.balances[]? | select(.status != "ok") | .symbol] | join(",")' <<<"$out" 2>/dev/null)"
+      rows="$(jq -r '.balances | length' <<<"$out" 2>/dev/null || echo 0)"
       if [[ "$pf" == "null" ]]; then
         unknown "buffer report missing probe_failures - buffer UNVERIFIED"
+      elif [[ "$rows" == "0" ]]; then
+        # Same rule the watcher enforces: a report with no rows measured nothing.
+        # Reachable today when a probe emits its skipped report for an unset
+        # SETTLEMENT, which would otherwise exit 0 having verified no balance at all.
+        unknown "buffer report contains ZERO balance rows - nothing was measured"
       elif [[ "$pf" != "0" ]]; then
         unknown "buffer probe reported $pf token failure(s) - those balances are UNKNOWN, not zero"
       elif [[ -n "$bad_rows" ]]; then

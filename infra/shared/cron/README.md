@@ -367,7 +367,7 @@ crashed; treat that as an outage of the monitor, not as a clean result.
 bash infra/shared/cron/settlement-buffer-watch.test.sh
 ```
 
-35 deterministic cases. No real RPC and no real Telegram (`BUFFER_NOTIFY=0`
+39 deterministic cases. No real RPC and no real Telegram (`BUFFER_NOTIFY=0`
 everywhere except the delivery-failure case, which points the token file at a
 path that does not exist and so fails before any network call), injected clock
 for the 24h repeat window, and per-chain probes faked through `OPHIS_REPO`.
@@ -391,5 +391,5 @@ that is not listed there is a suite CI never runs.
 |---|---|---|
 | `BUFFER_REPEAT_S` | `86400` | Re-page interval for an unchanged condition. A newly-crossed chain always pages immediately, inside the window. |
 | `BUFFER_NOTIFY` | `1` | Set `0` to log without sending Telegram. |
-| `BUFFER_STATE_FILE` | `~/.ophis-settlement-buffer-watch.state` | Repeat-suppression state. Deleted on a clean pass so the next real finding pages at once. |
+| `BUFFER_STATE_FILE` | pinned in the plist | Repeat-suppression state. Deleted on a clean pass so the next real finding pages at once. Pinned explicitly because launchd does not guarantee `HOME` and the script runs under `set -u`, so a `HOME`-derived default would abort on the assignment itself and leave the monitor installed, enabled and inert. |
 | `OPHIS_REPO` | `/Users/scep/greg` | Where the per-chain probes are resolved from. |

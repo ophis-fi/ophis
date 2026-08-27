@@ -34,6 +34,11 @@
     <string>/Users/scep/greg</string>
     <key>BUFFER_LOG_FILE</key>
     <string>/Users/scep/Library/Logs/ophis-settlement-buffer-watch.log</string>
+    <!-- Pinned explicitly. launchd does not guarantee HOME, and the script runs
+         under `set -u`, so a HOME-derived default would abort on the assignment
+         itself - leaving a monitor that is installed, enabled and totally inert. -->
+    <key>BUFFER_STATE_FILE</key>
+    <string>/Users/scep/Library/Application Support/ophis/settlement-buffer-watch.state</string>
   </dict>
 </dict>
 </plist>
