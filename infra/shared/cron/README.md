@@ -371,7 +371,7 @@ crashed; treat that as an outage of the monitor, not as a clean result.
 bash infra/shared/cron/settlement-buffer-watch.test.sh
 ```
 
-50 deterministic cases. No real RPC and no real Telegram (`BUFFER_NOTIFY=0`
+53 deterministic cases. No real RPC and no real Telegram (`BUFFER_NOTIFY=0`
 everywhere except the delivery-failure case, which points the token file at a
 path that does not exist and so fails before any network call), injected clock
 for the 24h repeat window, and per-chain probes faked through `OPHIS_REPO`.

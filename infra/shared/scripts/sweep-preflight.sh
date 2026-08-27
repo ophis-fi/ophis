@@ -226,6 +226,7 @@ for entry in "${CHAINS[@]}"; do
   # still wins when an operator is deliberately checking a different key.
   if [[ "$label" == "optimism" ]]; then
     solver_subject="${FEE_LIQUIDATOR:-}"
+    op_ops_key="${BROADCASTER_OPTIMISM:-${BROADCASTER:-}}"
     solver_what="FeeLiquidator contract"
     solver_hint="export FEE_LIQUIDATOR=0x... (the v2 path allowlists the CONTRACT, not the ops EOA)"
   else
@@ -242,7 +243,12 @@ for entry in "${CHAINS[@]}"; do
       *)         runner_submitter="" ;;
     esac
     override_var="BROADCASTER_$(tr '[:lower:]' '[:upper:]' <<<"$label")"
-    solver_subject="${!override_var:-${BROADCASTER:-${runner_submitter:-$default_submitter}}}"
+    # The generic BROADCASTER is honoured only for a single-chain invocation. In
+    # all-chain mode it is almost always the Optimism ops EOA supplied for the
+    # liquidator check, and applying it to the v1 chains - which use their own
+    # pinned submitters - would report two healthy deployments as failed.
+    generic="" ; [[ "$WANT" != "all" ]] && generic="${BROADCASTER:-}"
+    solver_subject="${!override_var:-${generic:-${runner_submitter:-$default_submitter}}}"
     solver_what="submitter EOA"
     solver_hint="export ${override_var}=0x... (each v1 chain pins its own sole submitter)"
   fi
@@ -260,12 +266,12 @@ for entry in "${CHAINS[@]}"; do
         if liq_eoa=$(cast call "$solver_subject" "liquidator()(address)" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}'); then
           if [[ "$liq_eoa" == "0x0000000000000000000000000000000000000000" ]]; then
             bad "FeeLiquidator liquidator() is address(0) - the ops-key path is PAUSED"
-          elif [[ -z "${BROADCASTER:-}" ]]; then
+          elif [[ -z "$op_ops_key" ]]; then
             # Non-zero is not the same as correct. Without an expected address this
             # cannot tell a live ops key from one rotated away, so it must not PASS.
-            unknown "FeeLiquidator ops key is $liq_eoa but no BROADCASTER was given to compare against"
-          elif [[ "$(tr '[:upper:]' '[:lower:]' <<<"$liq_eoa")" != "$(tr '[:upper:]' '[:lower:]' <<<"$BROADCASTER")" ]]; then
-            bad "FeeLiquidator liquidator() is $liq_eoa, not the intended broadcaster $BROADCASTER"
+            unknown "FeeLiquidator ops key is $liq_eoa but no BROADCASTER_OPTIMISM/BROADCASTER was given to compare against"
+          elif [[ "$(tr '[:upper:]' '[:lower:]' <<<"$liq_eoa")" != "$(tr '[:upper:]' '[:lower:]' <<<"$op_ops_key")" ]]; then
+            bad "FeeLiquidator liquidator() is $liq_eoa, not the intended ops key $op_ops_key"
           else
             ok "FeeLiquidator ops key is $liq_eoa"
           fi

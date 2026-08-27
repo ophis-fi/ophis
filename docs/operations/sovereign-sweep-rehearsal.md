@@ -146,9 +146,11 @@ five pending rows in `fee-treasury-ops-runbook.md` §10 are, in order: Sepolia
 rehearsal §4, mainnet deploy §5, Timelock schedule §6, Timelock execute §6
 (24h later), first sweep §7.
 
-Do not start this until steps 1 and 2 have both landed. If OP needs sweeping
-before then, the v1 forge script remains the documented disaster-recovery
-fallback, at the cost of using the driver-submitter key.
+Gate this on the **Robinhood** rehearsal only. Unichain is blocked on a solver
+grant that has nothing to do with the Optimism deployment, and waiting for it
+would stall Optimism indefinitely for no reason. If OP needs sweeping before the
+liquidator ceremony, the v1 forge script remains the documented
+disaster-recovery fallback, at the cost of using the driver-submitter key.
 
 Note USDT is **not** in the OP sweep's default token list (USDC, WETH, native
 ETH), so the override below deliberately adds it. The OP buffer probe now reports

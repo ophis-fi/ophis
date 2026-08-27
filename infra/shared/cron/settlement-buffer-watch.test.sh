@@ -441,6 +441,23 @@ ckc "a row with a non-scalar balance alerts" "$out24" "ALERT:"
 ckc "and is called out as malformed" "$out24" "malformed"
 rm -rf "$W24"
 
+# --- 23. a corrupt state file must not wedge every future run ---------------
+# A non-decimal timestamp is evaluated as an ARITHMETIC EXPRESSION, so a stored
+# `x` resolves an unset variable and aborts under `set -u`. The bad file stays
+# put, so every hourly run after that crashes before alerting: a monitor silenced
+# by its own state, with nothing in its log to say why.
+W25="$(mktemp -d)"
+make_repo "$W25" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:$ABOVE_USDC:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+printf 'x\tstale-key' > "$W25/state"
+out25="$(run_watch "$W25")"
+ckc "completes a pass despite a corrupt state file" "$out25" "pass complete"
+ckn "and does not die on an unbound variable" "$out25" "unbound variable"
+ckc "and still delivers the alert it was suppressing" "$out25" "ALERT:"
+rm -rf "$W25"
+
 echo
 echo "passed=$pass failed=$fail"
 [[ $fail -eq 0 ]]

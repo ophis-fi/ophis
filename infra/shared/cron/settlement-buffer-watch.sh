@@ -313,6 +313,12 @@ prev_key=""; prev_at=0
 if [[ -f "$STATE_FILE" ]]; then
   IFS=$'\t' read -r prev_at prev_key < "$STATE_FILE" 2>/dev/null || true
 fi
+# A non-decimal timestamp would be evaluated as an arithmetic EXPRESSION below, so
+# a stored value like `x` resolves an unset variable and, under `set -u`, aborts the
+# run. The bad file stays put, so every hourly run after that crashes before
+# alerting - a monitor silenced by its own state. Treat anything unparseable as
+# "no previous state".
+[[ "$prev_at" =~ ^[0-9]+$ ]] || { prev_at=0; prev_key=""; }
 
 should_alert=1
 if [[ "$STATE_KEY" == "$prev_key" ]]; then
@@ -333,7 +339,9 @@ if [[ "$should_alert" == "1" ]]; then
     # directory, the redirect fails silently (no `set -e`), no state is written, and
     # the job pages every hour forever instead of once a day.
     mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || log "WARN: cannot create state dir for $STATE_FILE"
-    if ! printf '%s\t%s' "$NOW_S" "$STATE_KEY" > "$STATE_FILE" 2>/dev/null; then
+    # Write via a temp file and rename: a run interrupted mid-write would otherwise
+    # leave a truncated state file, which is the malformed-timestamp case above.
+    if ! { printf '%s\t%s' "$NOW_S" "$STATE_KEY" > "$STATE_FILE.tmp" 2>/dev/null && mv -f "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null; }; then
       log "WARN: could not persist suppression state to $STATE_FILE; will re-page next run"
     fi
   else
