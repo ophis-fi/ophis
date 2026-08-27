@@ -5,6 +5,7 @@ import {
   OPHIS_SAFE_ADDRESS,
   multiSendCallOnlyAddress,
   WETH_BY_CHAIN,
+  WRAPPED_NATIVE_BY_CHAIN,
   GPV2_SETTLEMENT,
   GPV2_VAULT_RELAYER,
 } from '../safe/addresses.js';
@@ -18,6 +19,7 @@ const log = logger.child({ module: 'convert' });
 const ERC20_APPROVE = parseAbi(['function approve(address spender, uint256 amount)']);
 const ERC20_ALLOWANCE = parseAbi(['function allowance(address owner, address spender) view returns (uint256)']);
 const SETTLEMENT_PRESIGN = parseAbi(['function setPreSignature(bytes orderUid, bool signed)']);
+const WRAPPED_NATIVE_DEPOSIT = parseAbi(['function deposit() payable']);
 
 // Default 2% slippage floor on the conversion buy amount. Fee tokens aren't
 // time-sensitive, so a generous floor maximizes fill probability; the quote is
@@ -58,6 +60,66 @@ export interface ConvertResult {
   readonly safeTxHash: `0x${string}` | null;
 }
 
+/**
+ * Queue `deposit()` on the chain's native-coin wrapper, forwarding the whole native
+ * balance as msg.value. Pure; unit-tested.
+ *
+ * CoW pays partner fees out of its Solver Rewards Safe in the chain's NATIVE coin,
+ * not in the trade's surplus ERC20 that #360 was designed around. Native is not an
+ * ERC20, so it is invisible to both the WETH pool read and the token probe, and it
+ * accrued untouched (2026-08-27 audit). Wrapping puts it back on the ERC20 rails the
+ * rest of this pipeline already understands.
+ *
+ * Below `minWrapWei` we queue nothing: a wrap costs gas and an owner signature, so
+ * dust is left to accumulate until it is worth a transaction.
+ *
+ * The Safe pays no gas from its own balance (execTransaction is funded by the
+ * executing owner), so there is no reserve to hold back — the full balance wraps.
+ */
+export function buildNativeWrapCall(
+  nativeWei: bigint,
+  minWrapWei: bigint,
+  wrappedNative: `0x${string}`,
+): InnerCall[] {
+  if (nativeWei <= 0n || nativeWei < minWrapWei) return [];
+  return [
+    {
+      to: wrappedNative,
+      value: nativeWei,
+      data: encodeFunctionData({ abi: WRAPPED_NATIVE_DEPOSIT, functionName: 'deposit' }),
+    },
+  ];
+}
+
+/**
+ * Per-chain native-wrap floor, in wei of that chain's NATIVE coin.
+ *
+ * Per chain because the coins are not comparable: 1 xDAI is ~$1 while 1 ETH is
+ * ~$2,500, so one shared wei threshold is either meaningless on Gnosis or absurd on
+ * the OP-stack chains. These land around $1 on Gnosis and around $7 on OP-stack,
+ * the same magnitude as the settlement sweep script's WETH threshold.
+ */
+const MIN_WRAP_NATIVE_WEI_BY_CHAIN: Readonly<Record<number, bigint>> = {
+  100: 1_000_000_000_000_000_000n, // 1 xDAI
+  10: 3_000_000_000_000_000n, // 0.003 ETH
+  130: 3_000_000_000_000_000n, // 0.003 ETH
+};
+
+/**
+ * Resolve the native wrap for a chain: the wrapper address and floor, or [] when the
+ * chain has neither configured. Pure; unit-tested.
+ *
+ * Degrades to [] rather than throwing on an unconfigured chain — this runs on the
+ * payout path, and an unmapped chain must mean "do nothing", never "take the batcher
+ * down".
+ */
+export function buildNativeWrapForChain(chainId: number, nativeWei: bigint): InnerCall[] {
+  const wrapped = WRAPPED_NATIVE_BY_CHAIN[chainId];
+  const floor = MIN_WRAP_NATIVE_WEI_BY_CHAIN[chainId];
+  if (!wrapped || floor === undefined) return [];
+  return buildNativeWrapCall(nativeWei, floor, wrapped);
+}
+
 /** Apply a slippage floor (bps) to a quoted buy amount. Pure; unit-tested. */
 export function applySlippageFloor(buyAmount: bigint, slippageBps: number): bigint {
   if (slippageBps < 0 || slippageBps >= 10_000) {
@@ -96,6 +158,30 @@ export function buildVaultRelayerApprovalCalls(
  * duplicate while a prior approval awaits signatures — the approval bootstrap places
  * no CoW order, so getOpenOrders alone can't see it (#360 idempotency, Codex #474).
  */
+/**
+ * The wrapper addresses (lowercased, de-duplicated) that the given inner calls send a
+ * native-coin `deposit()` to. Pure; unit-tested.
+ *
+ * Same idempotency need the VaultRelayer approvals have (Codex #474), and sharper
+ * here: a wrap forwards the Safe's WHOLE native balance as msg.value. Queue a second
+ * one while the first sits unsigned and, once the first executes, the second reverts
+ * on insufficient balance — taking every other inner call in that multisend down with
+ * it. Detecting a pending wrap is what keeps that batch from being poisoned.
+ */
+export function nativeWrapTargets(calls: readonly InnerCall[]): string[] {
+  const targets = new Set<string>();
+  for (const call of calls) {
+    try {
+      if (decodeFunctionData({ abi: WRAPPED_NATIVE_DEPOSIT, data: call.data }).functionName === 'deposit') {
+        targets.add(call.to.toLowerCase());
+      }
+    } catch {
+      // not a deposit() / undecodable inner call — ignore
+    }
+  }
+  return [...targets];
+}
+
 export function vaultRelayerApprovalTokens(calls: readonly InnerCall[]): string[] {
   const vr = GPV2_VAULT_RELAYER.toLowerCase();
   const tokens = new Set<string>();
@@ -121,20 +207,24 @@ export function vaultRelayerApprovalTokens(calls: readonly InnerCall[]): string[
  * failure just disables this layer (the per-token on-chain allowance check still
  * caps the worst case at one redundant approve).
  */
-async function pendingApprovalTokens(apiKit: SafeApiKit, safe: `0x${string}`): Promise<Set<string>> {
-  const tokens = new Set<string>();
+async function pendingApprovalTokens(
+  apiKit: SafeApiKit,
+  safe: `0x${string}`,
+): Promise<{ approvals: Set<string>; wraps: Set<string> }> {
+  const approvals = new Set<string>();
+  const wraps = new Set<string>();
   try {
     const pending = await apiKit.getPendingTransactions(safe);
     for (const tx of pending.results ?? []) {
       if (!tx.data) continue;
-      for (const t of vaultRelayerApprovalTokens(decodeMultiSendCalldata(tx.data as `0x${string}`))) {
-        tokens.add(t);
-      }
+      const calls = decodeMultiSendCalldata(tx.data as `0x${string}`);
+      for (const t of vaultRelayerApprovalTokens(calls)) approvals.add(t);
+      for (const t of nativeWrapTargets(calls)) wraps.add(t);
     }
   } catch (err) {
     log.warn({ err }, 'could not list pending Safe txs; proceeding without pending-approval idempotency');
   }
-  return tokens;
+  return { approvals, wraps };
 }
 
 /**
@@ -164,7 +254,18 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
   }
   const slippageBps = deps.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   const balances = await getNonWethTokenBalances({ chainId: deps.chainId, safe: OPHIS_SAFE_ADDRESS, weth });
-  if (balances.length === 0) return none;
+
+  // Native coin: read on-chain, NOT from the Safe API token rows (which report it as
+  // a `tokenAddress: null` row getNonWethTokenBalances drops). This is the asset CoW
+  // actually pays partner fees in, so it must be able to drive a cycle on its own —
+  // the old `balances.length === 0` early return is exactly what left a native-only
+  // Safe untouched (2026-08-27 audit: the Gnosis Safe held 100% of realized revenue
+  // and this function returned immediately, every cycle).
+  const nativeWei = await createPublicClient({ transport: http(deps.rpcUrl) }).getBalance({
+    address: OPHIS_SAFE_ADDRESS,
+  });
+  const wrapCalls = buildNativeWrapForChain(deps.chainId, nativeWei);
+  if (balances.length === 0 && wrapCalls.length === 0) return none;
 
   const apiKit = new SafeApiKit({ chainId: BigInt(deps.chainId) });
 
@@ -181,10 +282,28 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
   } catch (err) {
     log.warn({ err }, 'could not list open orders; proceeding without the open-order idempotency filter');
   }
-  for (const t of await pendingApprovalTokens(apiKit, OPHIS_SAFE_ADDRESS)) handled.add(t);
+  const pending = await pendingApprovalTokens(apiKit, OPHIS_SAFE_ADDRESS);
+  for (const t of pending.approvals) handled.add(t);
 
   const publicClient = createPublicClient({ transport: http(deps.rpcUrl) });
-  const inner: InnerCall[] = [];
+  // Drop the wrap if one is already queued and unsigned: it would forward the same
+  // native balance a second time and revert the whole batch once the first executes.
+  const wrapPending = wrapCalls.length > 0 && pending.wraps.has(wrapCalls[0]!.to.toLowerCase());
+  const queuedWraps = wrapPending ? [] : wrapCalls;
+  // Wrap FIRST. It has no dependency on anything below it, and putting it at the head
+  // means a batch that is otherwise all approvals still leads with the call that moves
+  // real value. The wrapped balance is picked up as an ordinary non-WETH ERC20 next
+  // cycle: on Gnosis it then needs the WXDAI -> WETH leg, on the OP-stack chains the
+  // wrapper already IS the pool token and the pool sees it immediately.
+  const inner: InnerCall[] = [...queuedWraps];
+  if (wrapPending) {
+    log.info({ chainId: deps.chainId, wrapper: wrapCalls[0]!.to }, 'native wrap already pending in the Safe queue; not re-queuing');
+  } else if (queuedWraps.length > 0) {
+    log.info(
+      { chainId: deps.chainId, nativeWei: nativeWei.toString(), wrapped: queuedWraps[0]!.to },
+      'queued native-coin wrap (CoW pays partner fees in the native coin)',
+    );
+  }
   let skipped = 0;
   let orderCount = 0;
   let approveCount = 0;

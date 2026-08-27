@@ -4,12 +4,12 @@ import { computeShares, type EligibleWallet } from './batch/computeShares.js';
 import { computeDirectRebates } from './batch/computeDirectRebates.js';
 import { buildEthCallSimulator, isolateBadRecipients, type Transfer } from './batch/dryRun.js';
 import { proposeRebateBatch } from './batch/propose.js';
-import { convertFeesToWeth } from './batch/convert.js';
+import { convertFeesToWeth, buildNativeWrapForChain } from './batch/convert.js';
 import { waitForExecution } from './batch/poll.js';
 import { assignTier, POOL_SPLIT_BPS } from './tiers.js';
-import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from './safe/addresses.js';
+import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN, NATIVE_SYMBOL_BY_CHAIN } from './safe/addresses.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
-import { getNonWethTokenBalances } from './safe/balances.js';
+import { getNonWethTokenBalances, formatStrandedDetail } from './safe/balances.js';
 import { outstandingPartnerLiabilityWei } from './partnerFees/liability.js';
 import { alerts } from './telegram/alerter.js';
 import { createPublicClient, http, parseAbi } from 'viem';
@@ -281,22 +281,34 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   //     the payout that follows.
   try {
     const stranded = await getNonWethTokenBalances({ chainId: deps.chainId, safe: OPHIS_SAFE_ADDRESS, weth });
-    if (stranded.length > 0) {
-      // Cap the listed tokens so a dust/spam-flooded Safe can't produce a
-      // message Telegram rejects; HTML-escape the (attacker-controllable) token
-      // metadata since notify() sends with parse_mode 'HTML'.
-      const shown = stranded
-        .slice(0, MAX_ALERT_TOKENS)
-        .map((t) => `${escapeHtml(t.symbol)} ${t.balance} (${escapeHtml(t.tokenAddress)})`)
-        .join(', ');
-      const detail = stranded.length > MAX_ALERT_TOKENS ? `${shown}, +${stranded.length - MAX_ALERT_TOKENS} more` : shown;
-      log.warn({ strandedCount: stranded.length, stranded, poolWei: pool.toString() }, 'non-WETH value in Safe, not covered by WETH-only pool');
+    // The NATIVE coin is the half this probe was blind to. The Safe API reports it
+    // as a `tokenAddress: null` row that getNonWethTokenBalances skips, so a Safe
+    // holding nothing but native value produced an EMPTY stranded list and total
+    // silence — which is precisely the live Gnosis condition the 2026-08-27 audit
+    // found. Read it on-chain rather than from the Safe API: same source of truth
+    // as the WETH pool read above, and it cannot be missed by an indexing lag.
+    const nativeWei = await client.getBalance({ address: OPHIS_SAFE_ADDRESS });
+    const nativeSymbol = NATIVE_SYMBOL_BY_CHAIN[deps.chainId] ?? 'native';
+    // Report native only once it is ACTIONABLE, reusing the very function the
+    // conversion uses to decide whether to wrap. Two reasons to share it rather than
+    // test `> 0n` here: sub-threshold dust is permanent on these Safes, and an alert
+    // that fires every cycle forever gets muted, which lands us back in exactly the
+    // silence this fixes. And because the alarm and the action read the same
+    // threshold, they cannot drift apart into "alerting about something nothing acts
+    // on" or the reverse.
+    const nativeActionable = buildNativeWrapForChain(deps.chainId, nativeWei).length > 0;
+    if (stranded.length > 0 || nativeActionable) {
+      const detail = formatStrandedDetail(stranded, nativeActionable ? nativeWei : 0n, nativeSymbol, MAX_ALERT_TOKENS);
+      log.warn(
+        { strandedCount: stranded.length, stranded, nativeWei: nativeWei.toString(), poolWei: pool.toString() },
+        'value in Safe not covered by the WETH-only pool',
+      );
       // Fire-and-forget: a (bounded) Telegram send must not delay the payout.
       void alerts
         .alert(
           'batcher',
-          `Safe holds non-WETH value NOT included in the WETH-only rebate pool: ${detail}. ` +
-            `Partner fees may accrue in trade tokens (Issue #360); ` +
+          `Safe holds value NOT included in the WETH-only rebate pool: ${detail}. ` +
+            `Partner fees arrive as the chain's native coin or a trade token (Issue #360); ` +
             (pool === 0n
               ? `the pool is 0 WETH so rebates will NOT pay this cycle until handled.`
               : `the WETH payout proceeds but this value is excluded and will accrue until converted/handled.`),
