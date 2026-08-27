@@ -88,6 +88,11 @@ interface OnchainScanResult {
   safeHead: bigint;
 }
 
+interface PreparedOnchainAudit {
+  byChain: ReadonlyMap<number, OnchainScanResult | null>;
+  failedScans: number;
+}
+
 async function blockTradeLogs(chainId: number, blockNumber: bigint): Promise<TradeEventLog[]> {
   return (await getRpcClient(chainId).getLogs({
     address: settlementAddressFor(chainId),
@@ -205,14 +210,21 @@ async function onchainSourcesForUids(
       requests++;
       rateLimitRetries = 0;
     } catch (err) {
+      // Some providers describe throttling as "rate limit exceeded", which also
+      // matches the generic range-error text "limit exceeded". Never shrink the
+      // archive window for throttling: doing so can permanently degrade the rest
+      // of the scan to one-block requests.
+      if (isRateLimitError(err)) {
+        if (rateLimitRetries < ONCHAIN_RATE_LIMIT_RETRIES) {
+          rateLimitRetries++;
+          await delay(500 * 2 ** (rateLimitRetries - 1));
+          continue;
+        }
+        throw err;
+      }
       if (isRangeError(err) && window > 1n) {
         const advertised = advertisedLogRangeLimit(err);
         window = advertised !== null && advertised < window ? advertised : window >> 1n;
-        continue;
-      }
-      if (isRateLimitError(err) && rateLimitRetries < ONCHAIN_RATE_LIMIT_RETRIES) {
-        rateLimitRetries++;
-        await delay(500 * 2 ** (rateLimitRetries - 1));
         continue;
       }
       throw err;
@@ -313,6 +325,66 @@ async function onchainSourcesForUids(
   return { sources: found, safeHead };
 }
 
+/** Snapshot every sovereign UID pending at invocation start and scan each chain
+ * exactly once. Database batching must not multiply the O(chain history) RPC
+ * work: every batch reuses this immutable invocation-scoped result. A failed
+ * chain is represented by null so every affected UID remains fail-closed. */
+async function prepareOnchainAudit(repairRunStartedAt: Date): Promise<PreparedOnchainAudit> {
+  const rows = await sql<{ chain_id: number; trade_uid: string }[]>`
+    SELECT t.chain_id, '0x' || encode(t.trade_uid, 'hex') AS trade_uid
+    FROM trades t
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS fill_count,
+             COALESCE(BOOL_OR(
+               f.fee_verified = false
+               OR f.assessed_fee_bps IS NULL
+               OR f.transaction_hash IS NULL
+               OR f.user_address IS NULL
+             ), false) AS incomplete
+      FROM defillama_fills f
+      WHERE f.chain_id = t.chain_id AND f.trade_uid = t.trade_uid
+    ) state ON true
+    WHERE t.chain_id = ANY(${[...PRODUCTION_CHAIN_IDS]})
+      AND (t.fee_verified = true OR state.fill_count > 0)
+      AND (
+        t.defillama_repair_checked_at IS NULL
+        OR t.defillama_repair_checked_at < now() - INTERVAL '7 days'
+        OR t.defillama_expected_fill_count IS NULL
+        OR t.defillama_expected_fill_count <> state.fill_count
+        OR state.incomplete
+      )
+      AND (t.defillama_repair_checked_at IS NULL
+        OR t.defillama_repair_checked_at < ${repairRunStartedAt.toISOString()}::timestamptz)
+  `;
+
+  const uidsByChain = new Map<number, Set<`0x${string}`>>();
+  for (const row of rows) {
+    if (!process.env[`SETTLE_SCAN_START_BLOCK_${row.chain_id}`]) continue;
+    const uids = uidsByChain.get(row.chain_id) ?? new Set<`0x${string}`>();
+    uids.add(row.trade_uid as `0x${string}`);
+    uidsByChain.set(row.chain_id, uids);
+  }
+
+  const byChain = new Map<number, OnchainScanResult | null>();
+  let failedScans = 0;
+  await Promise.all(
+    [...uidsByChain].map(async ([chainId, uidSet]) => {
+      const uids = [...uidSet];
+      try {
+        byChain.set(chainId, await onchainSourcesForUids(chainId, uids));
+      } catch (err) {
+        failedScans++;
+        byChain.set(chainId, null);
+        log.warn(
+          { err, chainId, uids: uids.length },
+          'on-chain settlement history fallback failed',
+        );
+      }
+    }),
+  );
+  return { byChain, failedScans };
+}
+
 /** Read one unambiguous legacy Ophis flat policy from hash-verified appData.
  * Multiple partner policies remain pending because their reverse-order fee
  * application requires execution metadata no longer retained by a pruned API. */
@@ -344,8 +416,9 @@ function singleLegacyOphisFlatPolicyBps(meta: unknown): number | null {
 }
 
 /** Reproduce the historical backend's integer flat-volume assessment from the
- * executed settlement amounts. This intentionally does not use Trade.feeAmount:
- * that field is the unrelated sell-token network fee. */
+ * executed settlement amounts. Trade.feeAmount is the unrelated sell-token
+ * network fee: exclude it from a buy order's protocol-fee base, but never report
+ * it as Ophis revenue. */
 function legacyExecutedAssessment(
   source: SettlementSource,
   policyBps: number | null,
@@ -357,7 +430,13 @@ function legacyExecutedAssessment(
   const adjusted = source.side === 'sell' ? factor / (1 - factor) : factor / (1 + factor);
   // Mirrors backend number::U256Ext::checked_mul_f64 (1e18 scaling + truncation).
   const scaledFactor = BigInt(Math.trunc(adjusted * 1e18));
-  const executed = source.side === 'sell' ? source.buyAmount : source.sellAmount;
+  const executed =
+    source.side === 'sell'
+      ? source.buyAmount
+      : source.feeAmount === null
+        ? 0n
+        : source.sellAmount - source.feeAmount;
+  if (executed <= 0n) return null;
   const assessed = (executed * scaledFactor) / 1_000_000_000_000_000_000n;
   const grossVolume =
     source.side === 'sell'
@@ -393,6 +472,7 @@ function usableUserAddress(address: string | null | undefined): `0x${string}` | 
 async function repairDefiLlamaSettlementIdentityBatch(
   repairRunStartedAt: Date,
   repairLimit: number,
+  preparedOnchain: PreparedOnchainAudit['byChain'],
 ): Promise<BatchRepairResult> {
   const identityRows = await sql<
     {
@@ -523,15 +603,9 @@ async function repairDefiLlamaSettlementIdentityBatch(
   // on-chain history supplements it even when it returns rows: a partially filled
   // order can straddle an orderbook pruning boundary.
   const sourcesByUid = new Map<string, SettlementSource[]>();
-  const onchainUidsByChain = new Map<number, `0x${string}`[]>();
   const onchainValidationByUid = new Map<string, boolean>();
   for (const row of auditRows) {
     const uid = row.trade_uid as `0x${string}`;
-    if (process.env[`SETTLE_SCAN_START_BLOCK_${row.chain_id}`]) {
-      const uids = onchainUidsByChain.get(row.chain_id) ?? [];
-      uids.push(uid);
-      onchainUidsByChain.set(row.chain_id, uids);
-    }
     try {
       const apiTrades = await allTradesForUid(row.chain_id, uid);
       if (apiTrades.length > 0) {
@@ -542,73 +616,68 @@ async function repairDefiLlamaSettlementIdentityBatch(
     }
   }
 
-  await Promise.all(
-    [...onchainUidsByChain].map(async ([chainId, uids]) => {
-      try {
-        const onchain = await onchainSourcesForUids(chainId, uids);
-        for (const uid of uids) {
-          const key = `${chainId}:${uid.toLowerCase()}`;
-          const merged = new Map<string, SettlementSource>();
-          // API rows win for the same settlement because they carry exact executed
-          // fee-policy metadata; immutable on-chain rows add pruned settlements.
-          for (const source of sourcesByUid.get(key) ?? []) {
-            merged.set(settlementKey(source.blockNumber, source.logIndex), source);
-          }
-          const chainSources = onchain.sources.get(uid.toLowerCase()) ?? [];
-          const onchainSettlements = new Set(
-            chainSources.map((source) => settlementKey(source.blockNumber, source.logIndex)),
-          );
-          const apiHistoryValidated = [...merged.values()].every(
-            (source) =>
-              source.blockNumber > onchain.safeHead ||
-              onchainSettlements.has(settlementKey(source.blockNumber, source.logIndex)),
-          );
-          onchainValidationByUid.set(
-            key,
-            apiHistoryValidated &&
-              (chainSources.length > 0 ||
-                [...merged.values()].every((source) => source.blockNumber > onchain.safeHead)),
-          );
-          for (const source of chainSources) {
-            const settlement = settlementKey(source.blockNumber, source.logIndex);
-            const apiSource = merged.get(settlement);
-            if (apiSource) {
-              merged.set(settlement, {
-                ...apiSource,
-                feeAmount: source.feeAmount,
-                side: source.side,
-                appDataHash: source.appDataHash,
-                receiver: source.receiver,
-              });
-            } else {
-              merged.set(settlement, source);
-            }
-          }
-          if (merged.size > 0) {
-            sourcesByUid.set(
-              key,
-              [...merged.values()].sort((a, b) =>
-                a.blockNumber === b.blockNumber
-                  ? a.logIndex - b.logIndex
-                  : a.blockNumber < b.blockNumber
-                    ? -1
-                    : 1,
-              ),
-            );
-          }
-        }
-      } catch (err) {
-        failedBlocks++;
-        for (const uid of uids) {
-          onchainValidationByUid.set(`${chainId}:${uid.toLowerCase()}`, false);
-        }
-        log.warn(
-          { err, chainId, uids: uids.length },
-          'on-chain settlement history fallback failed',
-        );
+  for (const row of auditRows) {
+    if (!process.env[`SETTLE_SCAN_START_BLOCK_${row.chain_id}`]) continue;
+    const uid = row.trade_uid as `0x${string}`;
+    const key = `${row.chain_id}:${uid.toLowerCase()}`;
+    const onchain = preparedOnchain.get(row.chain_id);
+    if (!onchain) {
+      // Never retain or reconstruct an API subset after the archive source that
+      // validates its completeness failed. The expected count is cleared below.
+      onchainValidationByUid.set(key, false);
+      sourcesByUid.delete(key);
+      continue;
+    }
+
+    const merged = new Map<string, SettlementSource>();
+    // API rows win for the same settlement because they carry exact executed
+    // fee-policy metadata; immutable on-chain rows add pruned settlements.
+    for (const source of sourcesByUid.get(key) ?? []) {
+      merged.set(settlementKey(source.blockNumber, source.logIndex), source);
+    }
+    const chainSources = onchain.sources.get(uid.toLowerCase()) ?? [];
+    const onchainSettlements = new Set(
+      chainSources.map((source) => settlementKey(source.blockNumber, source.logIndex)),
+    );
+    const apiHistoryValidated = [...merged.values()].every(
+      (source) =>
+        source.blockNumber > onchain.safeHead ||
+        onchainSettlements.has(settlementKey(source.blockNumber, source.logIndex)),
+    );
+    onchainValidationByUid.set(
+      key,
+      apiHistoryValidated &&
+        (chainSources.length > 0 ||
+          [...merged.values()].every((source) => source.blockNumber > onchain.safeHead)),
+    );
+    for (const source of chainSources) {
+      const settlement = settlementKey(source.blockNumber, source.logIndex);
+      const apiSource = merged.get(settlement);
+      if (apiSource) {
+        merged.set(settlement, {
+          ...apiSource,
+          feeAmount: source.feeAmount,
+          side: source.side,
+          appDataHash: source.appDataHash,
+          receiver: source.receiver,
+        });
+      } else {
+        merged.set(settlement, source);
       }
-    }),
-  );
+    }
+    if (merged.size > 0) {
+      sourcesByUid.set(
+        key,
+        [...merged.values()].sort((a, b) =>
+          a.blockNumber === b.blockNumber
+            ? a.logIndex - b.logIndex
+            : a.blockNumber < b.blockNumber
+              ? -1
+              : 1,
+        ),
+      );
+    }
+  }
 
   const timestampsByBlock = new Map<string, Date>();
   const resolvedMetaByHash = new Map<string, unknown | null>();
@@ -841,7 +910,8 @@ async function repairDefiLlamaSettlementIdentityBatch(
     if (expected === undefined) {
       await sql`
         UPDATE trades
-        SET defillama_repair_checked_at = now()
+        SET defillama_expected_fill_count = NULL,
+            defillama_repair_checked_at = now()
         WHERE chain_id = ${row.chain_id}
           AND trade_uid = decode(${uid.slice(2)}, 'hex')
       `;
@@ -962,7 +1032,8 @@ async function repairDefiLlamaSettlementIdentityBatch(
   return { identities, fills: pending.length, fees, failedBlocks, audits: auditRows.length };
 }
 
-/** Drain every audit row that was pending at invocation start. Failed UIDs are
+/** Drain every audit row that was pending at invocation start. Sovereign archive
+ * history is scanned once and shared across all database batches. Failed UIDs are
  * checkpointed by the batch worker, so they cannot monopolize the first page. */
 export async function repairDefiLlamaSettlementIdentity(
   options: { repairLimit?: number } = {},
@@ -972,9 +1043,19 @@ export async function repairDefiLlamaSettlementIdentity(
     throw new Error('repairLimit must be a positive integer');
   }
   const repairRunStartedAt = new Date();
-  const total: RepairResult = { identities: 0, fills: 0, fees: 0, failedBlocks: 0 };
+  const preparedOnchain = await prepareOnchainAudit(repairRunStartedAt);
+  const total: RepairResult = {
+    identities: 0,
+    fills: 0,
+    fees: 0,
+    failedBlocks: preparedOnchain.failedScans,
+  };
   while (true) {
-    const batch = await repairDefiLlamaSettlementIdentityBatch(repairRunStartedAt, repairLimit);
+    const batch = await repairDefiLlamaSettlementIdentityBatch(
+      repairRunStartedAt,
+      repairLimit,
+      preparedOnchain.byChain,
+    );
     total.identities += batch.identities;
     total.fills += batch.fills;
     total.fees += batch.fees;
