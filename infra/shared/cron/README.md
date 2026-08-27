@@ -279,3 +279,95 @@ evidence on its own — the mutations are what make it evidence.
 | `WATCHDOG_TG_TOKEN` | - | Bot token, highest precedence |
 | `WATCHDOG_TG_TOKEN_FILE` | - | Path to a token file. **Required on Linux** -- `security` is macOS-only |
 | `WATCHDOG_SKIP_LOCK` | 0 | `1` skips flock serialisation (tests only) |
+
+---
+
+# Sovereign settlement-buffer watch (hourly cron)
+
+Measures the CIP-75 fee buffer inside the three sovereign Settlement contracts
+and pages when a sweep would actually move something.
+
+## Why
+
+On Optimism, Unichain and Robinhood Chain the partner fee reduces the user's
+executed buy amount but never transfers to the recipient Safe. It accrues inside
+Settlement, and per `contracts/script/SweepSettlementBuffer.s.sol` an unswept
+buffer is recycled into future traders' price improvement, which is functionally
+zero Ophis revenue.
+
+Each chain already had a `check-settlement-buffer.sh` probe. None of them was
+ever scheduled, so the buffers went unmeasured from launch until the 2026-08-27
+on-chain fee audit went looking and found $1.99 sitting across the three. This
+job is the missing scheduling and alerting.
+
+## What it alerts on
+
+1. A token at or above its **sweep** threshold, meaning a sweep run now would
+   actually move it. Deliberately not `> 0`: the sweep script skips
+   sub-threshold tokens, so paging below it would report something no runbook
+   can act on, hourly, forever. An alert that fires forever gets muted, and a
+   muted alert is the same silence this job exists to end.
+2. A token with **no configured threshold**. An unrecognised token in the buffer
+   is exactly how value goes unnoticed, so it surfaces rather than defaulting.
+3. A probe that **failed, exited non-zero, or emitted unparseable output**. An
+   unreachable RPC is never read as an empty buffer: a monitor reporting health
+   it did not measure is worse than no monitor.
+
+Thresholds mirror `SweepSettlementBuffer.s.sol`'s per-token base-unit defaults,
+so this alarm and that action cannot drift apart. They are per token because one
+shared wei threshold is decimals-blind: at 1e15 base units, USDC (6 decimals)
+would need $1B in the buffer before anyone was told. That is the HIGH-1 lesson
+from the 2026-05-22 audit, re-applied here.
+
+No price feed by design. Base-unit thresholds need no oracle, cannot go stale,
+and cannot fail closed in a cron on a Mac mini.
+
+## Installation (one-time, on Mac mini)
+
+```bash
+cp infra/shared/cron/ai.ophis.settlement-buffer-watch.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.ophis.settlement-buffer-watch.plist
+launchctl list | grep ai.ophis.settlement-buffer-watch
+```
+
+## Smoke test
+
+```bash
+launchctl kickstart -k gui/$(id -u)/ai.ophis.settlement-buffer-watch
+sleep 10
+tail -20 ~/Library/Logs/ophis-settlement-buffer-watch.log
+```
+
+Expected on a healthy pass: one `chain=<label> measured` line per chain, then
+either `all sovereign buffers below their sweep thresholds; pass complete` or a
+`pass complete (N finding(s))`. A run that ends without a `pass complete` line
+crashed; treat that as an outage of the monitor, not as a clean result.
+
+## Tests
+
+```bash
+bash infra/shared/cron/settlement-buffer-watch.test.sh
+```
+
+23 deterministic cases. No real RPC, no real Telegram (`BUFFER_NOTIFY=0` in
+every case), injected clock for the 24h repeat window, and per-chain probes
+faked through `OPHIS_REPO`. Every negative case asserts both that no alert fired
+and that the pass completed, because a crash and a quiet pass are otherwise
+indistinguishable.
+
+Verified by mutation, not just by being green:
+
+| Mutation | Result |
+|---|---|
+| Alert on any balance, ignoring thresholds | 4 tests fail |
+| Treat a probe that exits non-zero as clean | 1 test fails |
+| Restore | 23 pass |
+
+## Tuning
+
+| Env | Default | Meaning |
+|---|---|---|
+| `BUFFER_REPEAT_S` | `86400` | Re-page interval for an unchanged condition. A newly-crossed chain always pages immediately, inside the window. |
+| `BUFFER_NOTIFY` | `1` | Set `0` to log without sending Telegram. |
+| `BUFFER_STATE_FILE` | `~/.ophis-settlement-buffer-watch.state` | Repeat-suppression state. Deleted on a clean pass so the next real finding pages at once. |
+| `OPHIS_REPO` | `/Users/scep/greg` | Where the per-chain probes are resolved from. |
