@@ -126,9 +126,17 @@ log() {
 # repeat-suppression state from this, so a failed send is retried next run rather
 # than muting a live condition for 24h on the strength of a page nobody received.
 # NOTIFY=0 is log-only mode, where the log IS the delivery.
+# Telegram sends with parse_mode=HTML, so anything angle-bracketed in the body is
+# parsed as markup. Two ways that bites: an ERC20 `symbol` is attacker-controllable
+# (airdrop a token whose symbol contains markup), and our own diagnostics say things
+# like <missing>. Either makes Telegram REJECT the request, so the one condition the
+# message exists to report is the one that never gets delivered.
+html_escape() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+
 alert() {
   local msg="$1"
   log "ALERT: $msg"
+  msg="$(printf '%s' "$msg" | html_escape)"
   [[ "$NOTIFY" == "1" ]] || return 0
   local token
   if ! token="$(< "$TELEGRAM_BOT_TOKEN_FILE")" 2>/dev/null || [[ -z "$token" ]]; then

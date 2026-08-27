@@ -411,6 +411,20 @@ out22="$(NOW=1000600 run_watch "$W22")"
 ckc "losing a different symbol pages immediately, inside the repeat window" "$out22" "ALERT:"
 rm -rf "$W22"
 
+# --- 21. attacker-controlled symbols must not break the page ----------------
+# alert() sends parse_mode=HTML. An ERC20 symbol is whatever its deployer chose, so
+# an airdropped token with markup in its symbol would make Telegram REJECT the
+# request - and the one condition the page exists to report is the one lost.
+W23="$(mktemp -d)"
+pwn='{"ts":"t","settlement":"0xRBH","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"<b>PWN</b>","token":"0xt","raw":"50000000","hr":"0","status":"ok"},{"symbol":"WETH","token":"0xt","raw":"0","hr":"0","status":"ok"},{"symbol":"USDG","token":"0xt","raw":"0","hr":"0","status":"ok"}]}'
+make_repo "$W23" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$pwn|0"
+out23="$(BUFFER_NOTIFY=1 TELEGRAM_BOT_TOKEN_FILE=/nonexistent OPHIS_REPO="$W23" BUFFER_STATE_FILE="$W23/state" BUFFER_NOW_S=1000000 bash "$SRC" 2>&1)"
+ckc "still reports the unrecognised token" "$out23" "PWN"
+rm -rf "$W23"
+
 echo
 echo "passed=$pass failed=$fail"
 [[ $fail -eq 0 ]]

@@ -123,10 +123,11 @@ for entry in "${CHAINS[@]}"; do
   # exported one would silently validate the canonical Safe while a non-canonical
   # destination sat in .env waiting to receive the funds.
   configured="$(resolve_cfg "$dest_var" "$chain_dir")"
-  # The v1 chains shell out to forge, which reads a BARE `SAFE` as the recipient.
-  # The unichain wrapper never sets it, so an ambient SAFE in the operator's shell
-  # silently becomes the sweep destination.
-  if [[ -z "$configured" && -n "${SAFE:-}" ]]; then
+  # ONLY unichain. Its wrapper never sets SAFE, so forge reads whatever is ambient
+  # in the operator's shell. robinhood overwrites SAFE from its own resolved value
+  # and the optimism v2 path does not shell out to forge at all, so flagging an
+  # ambient SAFE there would fail a healthy deployment for a variable nothing reads.
+  if [[ "$label" == "unichain" && -z "$configured" && -n "${SAFE:-}" ]]; then
     configured="$SAFE"; dest_var="SAFE (ambient, consumed by the forge script)"
   fi
   if [[ -n "$configured" ]]; then
@@ -300,6 +301,19 @@ for entry in "${CHAINS[@]}"; do
     unknown "solver allowlist NOT checked on $label - $solver_hint"
   fi
 
+  # Robinhood's broadcast path uses a SEPARATE nonce endpoint for its idle-driver
+  # guard and requires it to report 4663. An unreachable or wrong-chain nonce RPC
+  # aborts the sweep immediately, so a preflight that ignored it would green-light a
+  # ceremony that cannot run.
+  if [[ "$label" == "robinhood" && -n "${OPHIS_NONCE_RPC:-}" ]]; then
+    if nonce_chain=$(cast chain-id --rpc-url "$OPHIS_NONCE_RPC" 2>/dev/null); then
+      if [[ "$nonce_chain" == "4663" ]]; then ok "nonce RPC reachable and on chain 4663"
+      else bad "OPHIS_NONCE_RPC reports chain id $nonce_chain, expected 4663"; fi
+    else
+      bad "OPHIS_NONCE_RPC is unreachable - the sweep's idle-driver guard would abort"
+    fi
+  fi
+
   # --- is there anything worth sweeping. Advisory, so it never FAILs: an empty
   #     buffer is a fine state, just not one worth a ceremony.
   repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
@@ -339,7 +353,14 @@ for entry in "${CHAINS[@]}"; do
         got_syms="$(jq -r '.balances[].symbol' <<<"$out" 2>/dev/null | sort -u)"
         miss=""
         for w in $want_syms; do grep -qx -- "$w" <<<"$got_syms" || miss="$miss $w"; done
-        [[ -n "$miss" ]] && unknown "buffer report is missing expected symbol(s):$miss - those balances were never measured"
+        if [[ -n "$miss" ]]; then
+          unknown "buffer report is missing expected symbol(s):$miss - those balances were never measured"
+        else
+          # status ok is a claim; a numeric raw is the evidence. The watcher checks
+          # this, and a preflight that skipped it would verify a buffer it never read.
+          nonnum="$(jq -r '[.balances[] | select((.raw // "") | test("^[0-9]+$") | not) | .symbol] | join(",")' <<<"$out" 2>/dev/null)"
+          [[ -n "$nonnum" ]] && unknown "buffer rows with a non-numeric balance: $nonnum - UNKNOWN, not zero"
+        fi
       fi
     else
       unknown "buffer probe failed - current buffer UNKNOWN"
