@@ -73,8 +73,19 @@ THRESHOLDS=(
   "DAI:10000000000000000000"
 )
 
+# Format an epoch as UTC. BSD date (the Mac mini, where this runs) wants -r;
+# GNU date (CI, where the suite runs) wants -d @, and reads -r as "read this
+# FILE's mtime" - so a BSD-only call does not error on Linux, it silently
+# timestamps with something else. Try both, then fall back to now.
+fmt_ts() {
+  date -u -r "$1" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+    || date -u -d "@$1" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+    || date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
 log() {
-  local line="[$(date -u -r "$NOW_S" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ")] $*"
+  local line
+  line="[$(fmt_ts "$NOW_S")] $*"
   echo "$line"
   [[ -n "$LOG_FILE" ]] && echo "$line" >> "$LOG_FILE"
   return 0

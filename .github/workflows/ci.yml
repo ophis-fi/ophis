@@ -228,12 +228,23 @@ jobs:
           echo "::group::shellcheck"
           docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:v0.11.0 \
             -S style /mnt/infra/shared/cron/container-watchdog.sh \
-                     /mnt/infra/shared/cron/container-watchdog.test.sh
+                     /mnt/infra/shared/cron/container-watchdog.test.sh \
+                     /mnt/infra/shared/cron/settlement-buffer-watch.sh \
+                     /mnt/infra/shared/cron/settlement-buffer-watch.test.sh \
+                     /mnt/infra/shared/scripts/sweep-preflight.sh
           echo "::endgroup::"
       - name: container-watchdog
         run: |
           echo "::group::container-watchdog.test.sh"
           bash infra/shared/cron/container-watchdog.test.sh
+          echo "::endgroup::"
+      - name: settlement-buffer-watch
+        # This job hardcodes its suites rather than globbing *.test.sh, so a new
+        # suite that is not listed here is a suite CI never runs -- written,
+        # green locally, and binding nothing. Add the line when you add the file.
+        run: |
+          echo "::group::settlement-buffer-watch.test.sh"
+          bash infra/shared/cron/settlement-buffer-watch.test.sh
           echo "::endgroup::"
       - name: mutation check — the suite must FAIL when a safety property is removed
         # A green suite proves nothing unless removing a guard turns it red.
@@ -286,6 +297,44 @@ jobs:
           # behaviour. Rather than ship a mutation that can never fail -- the
           # precise thing this job exists to prevent -- the gap is recorded.
           bash infra/shared/cron/container-watchdog.test.sh >/dev/null 2>&1 || { echo "restore failed"; exit 1; }
+          [ "$fails" -eq 0 ] || { echo "$fails mutation(s) survived"; exit 1; }
+          echo "all mutations caught"
+      - name: mutation check — settlement-buffer-watch
+        # Same contract as the watchdog block above: the buffer watch is the only
+        # thing that will ever tell us a sovereign fee buffer is worth sweeping,
+        # and it replaced three months of nobody looking. A green suite proves
+        # nothing unless removing a property turns it red.
+        run: |
+          set -u
+          SRC=infra/shared/cron/settlement-buffer-watch.sh
+          cp "$SRC" /tmp/sbw.orig
+          fails=0
+          # No `sed -i`: BSD needs -i '' and GNU must not have it, so an in-place
+          # edit could not be verified on the machine this was written on.
+          check() { # name, sed-expression
+            sed "$2" /tmp/sbw.orig > "$SRC"
+            if bash infra/shared/cron/settlement-buffer-watch.test.sh >/dev/null 2>&1; then
+              echo "MUTATION SURVIVED (property is untested): $1"; fails=$((fails+1))
+            else
+              echo "caught: $1"
+            fi
+            cp /tmp/sbw.orig "$SRC"
+          }
+          check "sweep threshold ignored (alerts on any dust, forever)" \
+            's|    if gte "$rawbal" "$thr"; then|    if true; then|'
+          check "sweepable buffer no longer alerts at all" \
+            's|    if gte "$rawbal" "$thr"; then|    if false; then|'
+          check "a probe that exits non-zero is read as clean" \
+            's|    FINDINGS+=("$label: probe FAILED (exit non-zero) - buffer state UNKNOWN, not clean")|    :|'
+          check "unparseable probe output is read as clean" \
+            's|    FINDINGS+=("$label: probe output was not a JSON report - buffer state UNKNOWN")|    :|'
+          check "per-token probe errors ignored" \
+            's|  if \[\[ "$failures" != "0" \]\]; then|  if false; then|'
+          check "unknown token silently skipped" \
+            's|      FINDINGS+=("$label: $sym $rawbal base units has NO configured sweep threshold")|      :|'
+          check "repeat suppression never expires (alert fades out)" \
+            's|  (( age < REPEAT_S )) \&\& should_alert=0|  should_alert=0|'
+          bash infra/shared/cron/settlement-buffer-watch.test.sh >/dev/null 2>&1 || { echo "restore failed"; exit 1; }
           [ "$fails" -eq 0 ] || { echo "$fails mutation(s) survived"; exit 1; }
           echo "all mutations caught"
 
