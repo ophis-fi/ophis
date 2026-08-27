@@ -24,6 +24,7 @@ const TX_INPUTS = new Map<string, `0x${string}`>();
 const APP_DATA_DOCS = new Map<string, string>();
 const FAILED_SCAN_CHAINS = new Set<number>();
 const RATE_LIMIT_ONCE_CHAINS = new Set<number>();
+const OVERLAPPING_RANGE_LIMITS = new Map<number, bigint>();
 const BLOCK_HEADS = new Map<number, bigint>();
 const GET_LOG_RANGES: Array<{ chainId: number; fromBlock: bigint; toBlock: bigint }> = [];
 
@@ -47,7 +48,13 @@ vi.mock('../src/rpc/client.js', () => ({
   getRpcClient: (chainId: number) => ({
     getLogs: vi.fn(async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
       GET_LOG_RANGES.push({ chainId, fromBlock, toBlock });
-      if (RATE_LIMIT_ONCE_CHAINS.delete(chainId)) throw new Error('rate limit exceeded (mock)');
+      if (RATE_LIMIT_ONCE_CHAINS.delete(chainId)) {
+        throw new Error('429 rate limit exceeded: response size temporarily unavailable (mock)');
+      }
+      const overlappingRangeLimit = OVERLAPPING_RANGE_LIMITS.get(chainId);
+      if (overlappingRangeLimit !== undefined && toBlock - fromBlock + 1n > overlappingRangeLimit) {
+        throw new Error('response size exceeds capacity (mock)');
+      }
       if (FAILED_SCAN_CHAINS.has(chainId)) throw new Error('archive unavailable (mock)');
       const rows: unknown[] = [];
       for (const [key, logs] of BLOCK_LOGS) {
@@ -95,6 +102,7 @@ const SCAN_FAILURE_UID = UID('b5');
 const BUY_NETWORK_UID = UID('b6');
 const STACKED_POLICY_UID = UID('b7');
 const RATE_LIMIT_UID = UID('b8');
+const OVERLAPPING_RANGE_UID = UID('b9');
 const OWNER = `0x${'12'.repeat(20)}`;
 const SELL = `0x${'34'.repeat(20)}`;
 const BUY = `0x${'56'.repeat(20)}`;
@@ -699,6 +707,52 @@ describe('repairDefiLlamaSettlementIdentity', () => {
       FROM trades t LEFT JOIN defillama_fills f
         ON f.chain_id = t.chain_id AND f.trade_uid = t.trade_uid
       WHERE t.chain_id = 4663 AND t.trade_uid = decode(${RATE_LIMIT_UID.slice(2)}, 'hex')
+      GROUP BY t.defillama_expected_fill_count`;
+    expect(audit).toEqual({ expected: 1, fills: '1' });
+  });
+
+  it('shrinks for explicit response-size errors that also mention capacity', async () => {
+    process.env.SETTLE_SCAN_START_BLOCK_4663 = '100';
+    BLOCK_HEADS.set(4663, 30_008n);
+    const trade = apiTrade(OVERLAPPING_RANGE_UID, 20_000, 5, 100n, 1_000n);
+    API_TRADES.set(`4663:${OVERLAPPING_RANGE_UID}`, [trade]);
+    ORDERS.set(`4663:${OVERLAPPING_RANGE_UID}`, {
+      uid: OVERLAPPING_RANGE_UID,
+      owner: OWNER,
+      receiver: null,
+      sellToken: SELL,
+      buyToken: BUY,
+      sellAmount: '100',
+      buyAmount: '1000',
+      appData: VOLUME_META_HASH,
+      fullAppData: volumeMeta,
+      creationDate: '2026-08-01T00:00:00.000Z',
+      class: 'limit',
+      status: 'fulfilled',
+    });
+    BLOCK_LOGS.set('4663:20000', [tradeLog(trade)]);
+    TX_INPUTS.set(trade.txHash, settlementInput(trade));
+    await insertAggregate(OVERLAPPING_RANGE_UID, 4663, 100n, 1_000n, 1);
+
+    const callsBefore = GET_LOG_RANGES.length;
+    OVERLAPPING_RANGE_LIMITS.set(4663, 25_000n);
+    try {
+      await repairDefiLlamaSettlementIdentity();
+    } finally {
+      OVERLAPPING_RANGE_LIMITS.delete(4663);
+      BLOCK_HEADS.delete(4663);
+      delete process.env.SETTLE_SCAN_START_BLOCK_4663;
+    }
+
+    const calls = GET_LOG_RANGES.slice(callsBefore).filter(({ chainId }) => chainId === 4663);
+    expect(calls[0]).toEqual({ chainId: 4663, fromBlock: 100n, toBlock: 30_000n });
+    expect(calls[1]).toEqual({ chainId: 4663, fromBlock: 100n, toBlock: 25_099n });
+
+    const [audit] = await sql<{ expected: number | null; fills: string }[]>`
+      SELECT t.defillama_expected_fill_count AS expected, COUNT(f.*)::text AS fills
+      FROM trades t LEFT JOIN defillama_fills f
+        ON f.chain_id = t.chain_id AND f.trade_uid = t.trade_uid
+      WHERE t.chain_id = 4663 AND t.trade_uid = decode(${OVERLAPPING_RANGE_UID.slice(2)}, 'hex')
       GROUP BY t.defillama_expected_fill_count`;
     expect(audit).toEqual({ expected: 1, fills: '1' });
   });
