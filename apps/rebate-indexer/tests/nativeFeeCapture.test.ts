@@ -4,6 +4,8 @@ import {
   buildNativeWrapCall,
   buildNativeWrapForChain,
   nativeWrapTargets,
+  shouldQueueWrap,
+  canBootstrapPropose,
   buildVaultRelayerApprovalCalls,
 } from '../src/batch/convert.js';
 import {
@@ -159,5 +161,51 @@ describe('nativeWrapTargets (pending-wrap idempotency)', () => {
 
   it('survives undecodable calldata without throwing', () => {
     expect(nativeWrapTargets([{ to: WXDAI, value: 0n, data: '0xdeadbeef' }])).toEqual([]);
+  });
+});
+
+const queue = (o: Partial<{ ok: boolean; count: number; wraps: string[] }> = {}) => ({
+  ok: o.ok ?? true,
+  count: o.count ?? 0,
+  approvals: new Set<string>(),
+  wraps: new Set<string>(o.wraps ?? []),
+});
+
+describe('shouldQueueWrap (fails closed on an unreadable queue)', () => {
+  const calls = buildNativeWrapCall(5n, 1n, WXDAI);
+
+  it('queues when the queue is readable and holds no wrap', () => {
+    expect(shouldQueueWrap(calls, queue())).toBe(true);
+  });
+
+  it('does not queue when a wrap for the same wrapper is already pending', () => {
+    expect(shouldQueueWrap(calls, queue({ wraps: [WXDAI.toLowerCase()] }))).toBe(false);
+  });
+
+  it('does NOT queue when the queue could not be read', () => {
+    // The failure that matters: an unreadable queue previously looked identical to
+    // an empty one, so a second wrap of the SAME full native balance went out and
+    // reverted the entire multisend once the first executed.
+    expect(shouldQueueWrap(calls, queue({ ok: false }))).toBe(false);
+  });
+
+  it('queues nothing when there is no wrap to begin with', () => {
+    expect(shouldQueueWrap([], queue())).toBe(false);
+  });
+});
+
+describe('canBootstrapPropose (breaks the zero-pool deadlock, safely)', () => {
+  it('allows a bootstrap when the queue is readable and empty', () => {
+    // Without this the Gnosis case never converts: pool 0 -> no payout -> no
+    // conversion -> pool 0, which is why no rebate has ever paid.
+    expect(canBootstrapPropose(queue({ count: 0 }))).toBe(true);
+  });
+
+  it('refuses when anything is already queued, so nothing can be blocked behind it', () => {
+    expect(canBootstrapPropose(queue({ count: 1 }))).toBe(false);
+  });
+
+  it('refuses when the queue could not be read', () => {
+    expect(canBootstrapPropose(queue({ ok: false, count: 0 }))).toBe(false);
   });
 });

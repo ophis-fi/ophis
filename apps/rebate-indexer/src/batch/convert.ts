@@ -6,6 +6,7 @@ import {
   multiSendCallOnlyAddress,
   WETH_BY_CHAIN,
   WRAPPED_NATIVE_BY_CHAIN,
+  safeTxServiceUrl,
   GPV2_SETTLEMENT,
   GPV2_VAULT_RELAYER,
 } from '../safe/addresses.js';
@@ -50,6 +51,13 @@ export interface ConvertDeps {
    * which would invalidate it). Falls back to getNextNonce only if unset. (Codex #474)
    */
   readonly nonce?: number;
+  /**
+   * Bootstrap mode: this conversion is being proposed with NO payout above it,
+   * from the batcher's no-payout path. Only legal when the Safe's pending queue is
+   * readable and empty (see canBootstrapPropose) - without that gate this would
+   * reintroduce the Codex #474 hazard of an unsigned tx blocking a later payout.
+   */
+  readonly bootstrap?: boolean;
 }
 
 export interface ConvertResult {
@@ -58,6 +66,11 @@ export interface ConvertResult {
   readonly approveCount: number; // VaultRelayer approvals queued (order placed next cycle)
   readonly skipped: number;
   readonly safeTxHash: `0x${string}` | null;
+  // Native wei this proposal wraps, 0n when it wraps nothing. Reported because a
+  // wrap-only proposal has zero orders and zero approvals, and describing a
+  // transaction that moves the Safe's ENTIRE native balance as "0 orders + 0
+  // approvals" to the humans deciding whether to sign it is worse than useless.
+  readonly nativeWrappedWei: bigint;
 }
 
 /**
@@ -118,6 +131,50 @@ export function buildNativeWrapForChain(chainId: number, nativeWei: bigint): Inn
   const floor = MIN_WRAP_NATIVE_WEI_BY_CHAIN[chainId];
   if (!wrapped || floor === undefined) return [];
   return buildNativeWrapCall(nativeWei, floor, wrapped);
+}
+
+/** What the Safe's pending-transaction queue told us, including whether we could read it. */
+export interface PendingQueue {
+  readonly ok: boolean; // false = the queue could not be read; treat as "unknown", not "empty"
+  readonly count: number;
+  readonly approvals: Set<string>;
+  readonly wraps: Set<string>;
+}
+
+/**
+ * Whether a native wrap may be queued this cycle. Pure; unit-tested.
+ *
+ * Fails CLOSED on an unreadable queue. A wrap forwards the Safe's entire native
+ * balance, so a duplicate does not merely waste gas: once the first executes, the
+ * second reverts for insufficient balance and takes every other inner call in its
+ * multisend down with it. "We could not check" must therefore behave like "one is
+ * already pending", not like "none is pending".
+ */
+export function shouldQueueWrap(wrapCalls: readonly InnerCall[], pending: PendingQueue): boolean {
+  if (wrapCalls.length === 0) return false;
+  if (!pending.ok) return false;
+  return !pending.wraps.has(wrapCalls[0]!.to.toLowerCase());
+}
+
+/**
+ * Whether a BOOTSTRAP conversion (one proposed with no payout above it) may be
+ * proposed. Pure; unit-tested.
+ *
+ * Codex #474 established that a standalone conversion occupies a nonce with no
+ * payout above it and can block the next cycle's payout if it is left unsigned,
+ * which is why conversions normally run only after a successful payout. On Gnosis
+ * that rule deadlocks the system: the pool reads WETH, the fees arrive as native
+ * xDAI, so the pool is 0, so there is no payout, so no conversion ever runs, so the
+ * pool stays 0 - forever. Nothing converts the fees because nothing was converted.
+ *
+ * The bootstrap breaks the cycle under the narrowest condition that keeps #474's
+ * guarantee intact: propose ONLY when the queue was readable and completely empty.
+ * The conversion then takes the immediate next nonce with nothing queued behind it,
+ * and the payout it could theoretically block is one that cannot exist until this
+ * very conversion succeeds.
+ */
+export function canBootstrapPropose(pending: PendingQueue): boolean {
+  return pending.ok && pending.count === 0;
 }
 
 /** Apply a slippage floor (bps) to a quoted buy amount. Pure; unit-tested. */
@@ -207,24 +264,29 @@ export function vaultRelayerApprovalTokens(calls: readonly InnerCall[]): string[
  * failure just disables this layer (the per-token on-chain allowance check still
  * caps the worst case at one redundant approve).
  */
-async function pendingApprovalTokens(
-  apiKit: SafeApiKit,
-  safe: `0x${string}`,
-): Promise<{ approvals: Set<string>; wraps: Set<string> }> {
+async function pendingApprovalTokens(apiKit: SafeApiKit, safe: `0x${string}`): Promise<PendingQueue> {
   const approvals = new Set<string>();
   const wraps = new Set<string>();
   try {
     const pending = await apiKit.getPendingTransactions(safe);
-    for (const tx of pending.results ?? []) {
+    const results = pending.results ?? [];
+    for (const tx of results) {
       if (!tx.data) continue;
       const calls = decodeMultiSendCalldata(tx.data as `0x${string}`);
       for (const t of vaultRelayerApprovalTokens(calls)) approvals.add(t);
       for (const t of nativeWrapTargets(calls)) wraps.add(t);
     }
+    return { ok: true, count: results.length, approvals, wraps };
   } catch (err) {
-    log.warn({ err }, 'could not list pending Safe txs; proceeding without pending-approval idempotency');
+    // `ok: false` is load-bearing, not cosmetic. The approval path can safely
+    // degrade to a redundant approve, but the WRAP path cannot: a wrap forwards
+    // the Safe's entire native balance, so proposing a second one because we
+    // could not see the first reverts the whole multisend once the first
+    // executes. An unreadable queue therefore means "do not wrap", never
+    // "nothing is pending".
+    log.warn({ err }, 'could not list pending Safe txs; approval idempotency degraded and native wrapping suppressed');
+    return { ok: false, count: 0, approvals, wraps };
   }
-  return { approvals, wraps };
 }
 
 /**
@@ -246,7 +308,7 @@ async function pendingApprovalTokens(
  * REBATE_CONVERT_ENABLED + proposeEnabled.
  */
 export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResult> {
-  const none: ConvertResult = { proposed: false, orderCount: 0, approveCount: 0, skipped: 0, safeTxHash: null };
+  const none: ConvertResult = { proposed: false, orderCount: 0, approveCount: 0, skipped: 0, safeTxHash: null, nativeWrappedWei: 0n };
   const weth = WETH_BY_CHAIN[deps.chainId];
   if (!weth) {
     log.warn({ chainId: deps.chainId }, 'no WETH configured; skipping conversion');
@@ -261,13 +323,26 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
   // the old `balances.length === 0` early return is exactly what left a native-only
   // Safe untouched (2026-08-27 audit: the Gnosis Safe held 100% of realized revenue
   // and this function returned immediately, every cycle).
-  const nativeWei = await createPublicClient({ transport: http(deps.rpcUrl) }).getBalance({
-    address: OPHIS_SAFE_ADDRESS,
-  });
+  // Isolated try/catch: this read is ADDITIVE to the pre-existing ERC20 path. If it
+  // escaped, a transient native-balance RPC hiccup would abort the whole conversion
+  // and regress #360 for tokens that were read successfully. Degrade to 0n (no wrap
+  // this cycle) rather than losing the ERC20 leg.
+  let nativeWei = 0n;
+  try {
+    nativeWei = await createPublicClient({ transport: http(deps.rpcUrl) }).getBalance({
+      address: OPHIS_SAFE_ADDRESS,
+    });
+  } catch (err) {
+    log.warn({ err }, 'native balance read failed; skipping the wrap this cycle (ERC20 conversion proceeds)');
+  }
   const wrapCalls = buildNativeWrapForChain(deps.chainId, nativeWei);
   if (balances.length === 0 && wrapCalls.length === 0) return none;
 
-  const apiKit = new SafeApiKit({ chainId: BigInt(deps.chainId) });
+  // api-kit v2.5 has no built-in Unichain (130) entry and THROWS without an explicit
+  // txServiceUrl, which would have made every chain-130 conversion fail as soon as
+  // this file started handling 130. propose.ts and poll.ts already do this.
+  const txServiceUrl = safeTxServiceUrl(deps.chainId);
+  const apiKit = new SafeApiKit({ chainId: BigInt(deps.chainId), ...(txServiceUrl ? { txServiceUrl } : {}) });
 
   // Idempotency — skip any token already being handled, from EITHER source:
   //  (a) a LIVE CoW sell order (open / presignaturePending) from a prior cycle; or
@@ -285,11 +360,19 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
   const pending = await pendingApprovalTokens(apiKit, OPHIS_SAFE_ADDRESS);
   for (const t of pending.approvals) handled.add(t);
 
+  // A bootstrap proposal has no payout above it, so it may only go out when the
+  // queue is readable AND empty. Bail before doing any CoW work we would discard.
+  if (deps.bootstrap && !canBootstrapPropose(pending)) {
+    log.info(
+      { chainId: deps.chainId, queueOk: pending.ok, queueCount: pending.count },
+      'bootstrap conversion skipped: the Safe queue is non-empty or unreadable',
+    );
+    return none;
+  }
+
   const publicClient = createPublicClient({ transport: http(deps.rpcUrl) });
-  // Drop the wrap if one is already queued and unsigned: it would forward the same
-  // native balance a second time and revert the whole batch once the first executes.
-  const wrapPending = wrapCalls.length > 0 && pending.wraps.has(wrapCalls[0]!.to.toLowerCase());
-  const queuedWraps = wrapPending ? [] : wrapCalls;
+  const queuedWraps = shouldQueueWrap(wrapCalls, pending) ? wrapCalls : [];
+  const wrapPending = wrapCalls.length > 0 && queuedWraps.length === 0;
   // Wrap FIRST. It has no dependency on anything below it, and putting it at the head
   // means a batch that is otherwise all approvals still leads with the call that moves
   // real value. The wrapped balance is picked up as an ordinary non-WETH ERC20 next
@@ -297,7 +380,12 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
   // wrapper already IS the pool token and the pool sees it immediately.
   const inner: InnerCall[] = [...queuedWraps];
   if (wrapPending) {
-    log.info({ chainId: deps.chainId, wrapper: wrapCalls[0]!.to }, 'native wrap already pending in the Safe queue; not re-queuing');
+    log.info(
+      { chainId: deps.chainId, wrapper: wrapCalls[0]!.to, queueOk: pending.ok },
+      pending.ok
+        ? 'native wrap already pending in the Safe queue; not re-queuing'
+        : 'Safe queue unreadable; suppressing the native wrap rather than risking a duplicate',
+    );
   } else if (queuedWraps.length > 0) {
     log.info(
       { chainId: deps.chainId, nativeWei: nativeWei.toString(), wrapped: queuedWraps[0]!.to },
@@ -418,5 +506,12 @@ export async function convertFeesToWeth(deps: ConvertDeps): Promise<ConvertResul
     senderSignature: sig.data,
   });
   log.info({ safeTxHash, orderCount, approveCount, skipped, nonce }, 'proposed fee-conversion Safe tx');
-  return { proposed: true, orderCount, approveCount, skipped, safeTxHash };
+  return {
+    proposed: true,
+    orderCount,
+    approveCount,
+    skipped,
+    safeTxHash,
+    nativeWrappedWei: queuedWraps.length > 0 ? nativeWei : 0n,
+  };
 }

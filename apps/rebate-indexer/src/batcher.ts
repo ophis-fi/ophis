@@ -140,7 +140,12 @@ function resolveConvertMode(): boolean {
  * REBATE_CONVERT_ENABLED + proposeEnabled (gated, byte-inert until the operator
  * enables it after reviewing the flow on Gnosis with a small balance).
  */
-async function maybeConvertFeesToWeth(deps: BatcherDeps, now: Date, afterNonce: number): Promise<void> {
+async function maybeConvertFeesToWeth(
+  deps: BatcherDeps,
+  now: Date,
+  afterNonce: number | null,
+  opts: { bootstrap?: boolean } = {},
+): Promise<void> {
   if (!deps.proposeEnabled || !resolveConvertMode()) return;
   const ac = new AbortController();
   try {
@@ -151,7 +156,8 @@ async function maybeConvertFeesToWeth(deps: BatcherDeps, now: Date, afterNonce: 
         proposerPrivateKey: deps.proposerPrivateKey,
         nowSeconds: Math.floor(now.getTime() / 1000),
         signal: ac.signal,
-        nonce: afterNonce,
+        ...(afterNonce === null ? {} : { nonce: afterNonce }),
+        ...(opts.bootstrap ? { bootstrap: true } : {}),
       }),
       CONVERSION_TIMEOUT_MS,
       'fee conversion (#360)',
@@ -163,7 +169,11 @@ async function maybeConvertFeesToWeth(deps: BatcherDeps, now: Date, afterNonce: 
         .alert(
           'batcher',
           `Proposed a fee-conversion Safe tx (#360): ${conv.orderCount} sell order(s) + ` +
-            `${conv.approveCount} VaultRelayer approval(s) (safeTxHash ${conv.safeTxHash}). ` +
+            `${conv.approveCount} VaultRelayer approval(s)` +
+            (conv.nativeWrappedWei > 0n
+              ? ` + wraps the Safe's ENTIRE native balance of ${conv.nativeWrappedWei.toString()} wei`
+              : '') +
+            ` (safeTxHash ${conv.safeTxHash}). ` +
             `Sign + execute it; approved tokens get their sell order next cycle, and converted ` +
             `WETH rebates the cycle after.`,
         )
@@ -287,7 +297,16 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
     // silence — which is precisely the live Gnosis condition the 2026-08-27 audit
     // found. Read it on-chain rather than from the Safe API: same source of truth
     // as the WETH pool read above, and it cannot be missed by an indexing lag.
-    const nativeWei = await client.getBalance({ address: OPHIS_SAFE_ADDRESS });
+    // Its OWN try/catch, deliberately. This read is ADDITIVE to the pre-existing
+    // #360 probe; letting it escape to the outer catch would throw away an
+    // already-collected ERC20 stranding report over a transient RPC blip, turning a
+    // new feature into a regression of the guard it is extending.
+    let nativeWei = 0n;
+    try {
+      nativeWei = await client.getBalance({ address: OPHIS_SAFE_ADDRESS });
+    } catch (err) {
+      log.warn({ err }, 'native balance read failed; reporting ERC20 stranding only this cycle');
+    }
     const nativeSymbol = NATIVE_SYMBOL_BY_CHAIN[deps.chainId] ?? 'native';
     // Report native only once it is ACTIONABLE, reusing the very function the
     // conversion uses to decide whether to wrap. Two reasons to share it rather than
@@ -578,9 +597,19 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       { batchId, directMode, reason: directMode ? 'no new fees' : pool === 0n ? 'zero pool' : 'no wallets' },
       'no recipients',
     );
-    // No payout this cycle → NO fee conversion: a standalone conversion here would
-    // occupy a nonce with no payout above it and could block the next cycle's payout
-    // if left unsigned. Stranded fees still surface via the step-1b alert. (Codex #474)
+    // No payout this cycle. Codex #474 established that a standalone conversion here
+    // occupies a nonce with no payout above it and can block the next cycle's payout
+    // if left unsigned — so this stayed a hard "no conversion".
+    //
+    // That rule deadlocks Gnosis. The pool reads WETH; CoW pays partner fees in
+    // native xDAI; so the pool is 0, so we land HERE, so no conversion ever runs, so
+    // the pool stays 0. Forever. No rebate has ever paid for exactly this reason.
+    //
+    // The BOOTSTRAP breaks the cycle while keeping #474's guarantee: it proposes only
+    // when the Safe queue is readable AND empty (canBootstrapPropose), so it takes the
+    // immediate next nonce with nothing queued behind it — and the payout it could
+    // theoretically block cannot exist until this conversion succeeds.
+    await maybeConvertFeesToWeth(deps, now, null, { bootstrap: true });
     return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
@@ -604,7 +633,9 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       .set({ status: 'no_recipients', ...(directMode ? { feeBasisWethWei: nonPartnerBalance } : {}) })
       .where(eq(schema.rebateBatches.id, batchId));
     log.info({ batchId, walletCount: wallets.length, directMode }, 'no qualifying recipients (all tracked wallets below the entry floor)');
-    // No payout this cycle → NO fee conversion (see the no_recipients path above). (Codex #474)
+    // Same bootstrap as the zero-pool path above: value can be stranded in native or
+    // in trade tokens regardless of whether any wallet qualified for a rebate.
+    await maybeConvertFeesToWeth(deps, now, null, { bootstrap: true });
     return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
