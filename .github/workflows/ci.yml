@@ -311,9 +311,20 @@ jobs:
           fails=0
           # No `sed -i`: BSD needs -i '' and GNU must not have it, so an in-place
           # edit could not be verified on the machine this was written on.
+          # Two guards on the harness itself, both of which caught a real mistake
+          # while this was being written:
+          #   - a sed whose pattern never matches leaves the file untouched, the
+          #     suite passes, and it reads as "SURVIVED" for the wrong reason;
+          #   - a sed that ERRORS (e.g. an unescaped delimiter inside a jq filter)
+          #     writes an empty file, the suite fails, and it reads as "caught"
+          #     while having tested nothing at all. `bash -n` catches that one.
           check() { # name, sed-expression
             sed "$2" /tmp/sbw.orig > "$SRC"
-            if bash infra/shared/cron/settlement-buffer-watch.test.sh >/dev/null 2>&1; then
+            if diff -q /tmp/sbw.orig "$SRC" >/dev/null; then
+              echo "HARNESS BUG: mutation never applied (pattern did not match): $1"; fails=$((fails+1))
+            elif ! bash -n "$SRC" 2>/dev/null; then
+              echo "HARNESS BUG: mutation produced an unparseable script: $1"; fails=$((fails+1))
+            elif bash infra/shared/cron/settlement-buffer-watch.test.sh >/dev/null 2>&1; then
               echo "MUTATION SURVIVED (property is untested): $1"; fails=$((fails+1))
             else
               echo "caught: $1"
@@ -330,10 +341,16 @@ jobs:
             's|    FINDINGS+=("$label: probe output was not a JSON report - buffer state UNKNOWN")|    :|'
           check "per-token probe errors ignored" \
             's|  if \[\[ "$failures" != "0" \]\]; then|  if false; then|'
-          check "unknown token silently skipped" \
-            's|      FINDINGS+=("$label: $sym $rawbal base units has NO configured sweep threshold")|      :|'
+          check "a token outside the sweep config is silently skipped" \
+            's|        FINDINGS+=("$label: $sym $rawbal base units is not covered by the chain.s sweep configuration")|        :|'
           check "repeat suppression never expires (alert fades out)" \
             's|  (( age < REPEAT_S )) \&\& should_alert=0|  should_alert=0|'
+          check "report schema validation removed" \
+            's@  if ! jq -e .has("probe_failures") and (.balances | type == "array"). <<<"$report" >/dev/null 2>&1; then@  if false; then@'
+          check "a report with zero balance rows counts as measured" \
+            's@^  if \[\[ "$(jq -r ..balances | length. <<<"$report")" == "0" \]\]; then@  if false; then@'
+          check "suppression state recorded even when the page was never delivered" \
+            's@  if alert "$body"; then@  alert "$body"; if true; then@'
           bash infra/shared/cron/settlement-buffer-watch.test.sh >/dev/null 2>&1 || { echo "restore failed"; exit 1; }
           [ "$fails" -eq 0 ] || { echo "$fails mutation(s) survived"; exit 1; }
           echo "all mutations caught"

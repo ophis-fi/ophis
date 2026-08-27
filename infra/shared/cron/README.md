@@ -307,17 +307,35 @@ job is the missing scheduling and alerting.
    sub-threshold tokens, so paging below it would report something no runbook
    can act on, hourly, forever. An alert that fires forever gets muted, and a
    muted alert is the same silence this job exists to end.
-2. A token with **no configured threshold**. An unrecognised token in the buffer
-   is exactly how value goes unnoticed, so it surfaces rather than defaulting.
-3. A probe that **failed, exited non-zero, or emitted unparseable output**. An
-   unreachable RPC is never read as an empty buffer: a monitor reporting health
-   it did not measure is worse than no monitor.
+2. A token the chain's sweep configuration **does not cover** at all. An
+   unrecognised token in the buffer is exactly how value goes unnoticed, so it
+   surfaces as "not covered" rather than being skipped.
+3. A probe that **failed, exited non-zero, emitted unparseable output, returned
+   a report missing `probe_failures` or `balances`, or measured zero tokens**.
+   An unreachable RPC is never read as an empty buffer, and syntactically valid
+   JSON is not by itself a measurement: `{}` parses, and would otherwise sail
+   through as a clean pass. A monitor reporting health it did not measure is
+   worse than no monitor.
 
-Thresholds mirror `SweepSettlementBuffer.s.sol`'s per-token base-unit defaults,
-so this alarm and that action cannot drift apart. They are per token because one
-shared wei threshold is decimals-blind: at 1e15 base units, USDC (6 decimals)
-would need $1B in the buffer before anyone was told. That is the HIGH-1 lesson
-from the 2026-05-22 audit, re-applied here.
+Thresholds are **per chain and per token**, mirroring each chain's own
+`sweep-to-safe.sh` defaults, so this alarm and that action cannot drift apart:
+
+| Chain | Covered by its sweep |
+|---|---|
+| optimism | USDC 1e7, WETH 3e15, native ETH 3e15 |
+| unichain | WETH 1e15, USDC 1e7 |
+| robinhood | USDG 1e7, WETH 3e15 |
+
+Per chain because they genuinely differ: unichain defaults WETH to 1e15 while
+the other two use 3e15, so one shared table left a unichain balance between the
+two sweepable by the stock script and invisible here. Per token because a single
+wei threshold is decimals-blind: at 1e15 base units USDC (6 decimals) would need
+$1B in the buffer before anyone was told, which is the HIGH-1 lesson from the
+2026-05-22 audit re-applied.
+
+An alert is only recorded as "seen" once Telegram delivery is **confirmed**. A
+failed send is retried on the next run rather than muting a live condition for
+24h on the strength of a page nobody received.
 
 No price feed by design. Base-unit thresholds need no oracle, cannot go stale,
 and cannot fail closed in a cron on a Mac mini.
@@ -349,19 +367,23 @@ crashed; treat that as an outage of the monitor, not as a clean result.
 bash infra/shared/cron/settlement-buffer-watch.test.sh
 ```
 
-23 deterministic cases. No real RPC, no real Telegram (`BUFFER_NOTIFY=0` in
-every case), injected clock for the 24h repeat window, and per-chain probes
-faked through `OPHIS_REPO`. Every negative case asserts both that no alert fired
-and that the pass completed, because a crash and a quiet pass are otherwise
-indistinguishable.
+35 deterministic cases. No real RPC and no real Telegram (`BUFFER_NOTIFY=0`
+everywhere except the delivery-failure case, which points the token file at a
+path that does not exist and so fails before any network call), injected clock
+for the 24h repeat window, and per-chain probes faked through `OPHIS_REPO`.
+Every negative case asserts both that no alert fired and that the pass
+completed, because a crash and a quiet pass are otherwise indistinguishable.
 
-Verified by mutation, not just by being green:
+CI runs the suite and then ten mutations, each of which must turn it red
+(`.github/workflows/ci.yml`, job `infra-shell-tests`). The mutation harness
+guards itself too: a pattern that never matches, or one that produces an
+unparseable script, is reported as a harness bug rather than counted as a pass.
+Both of those fired while this was being written - a sed with an unescaped
+delimiter inside a jq filter emptied the file, the suite failed, and it read as
+"caught" while having tested nothing.
 
-| Mutation | Result |
-|---|---|
-| Alert on any balance, ignoring thresholds | 4 tests fail |
-| Treat a probe that exits non-zero as clean | 1 test fails |
-| Restore | 23 pass |
+Note the job hardcodes its suites rather than globbing `*.test.sh`. A new suite
+that is not listed there is a suite CI never runs.
 
 ## Tuning
 

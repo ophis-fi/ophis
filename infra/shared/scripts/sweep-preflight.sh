@@ -37,6 +37,16 @@ if [[ "${-}" == *x* ]]; then
 fi
 
 FEE_SAFE="0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
+# Same expected set the weekly safe-drift-check enforces, kept lowercase+sorted so
+# the comparison is order- and case-insensitive. Printing the owners without
+# checking them is not verification: a rotated or compromised Safe still prints
+# three addresses, and sweeping into it is unrecoverable.
+EXPECTED_PARTNER_OWNERS_SORTED='0x0494f503912c101bfd76b88e4f5d8a33de284d1a 0x746ad9c63cca6d3a8588731d60fb87deab4da46a 0xbec5b03ffdcac50071693e87bfdb88baa6710199'
+
+norm_owners() { # normalise a cast address[] into a sorted lowercase space-joined list
+  tr -d '[]' | tr ',' '\n' | tr '[:upper:]' '[:lower:]' \
+    | sed 's/[^0-9a-fx]//g' | grep -E '^0x[0-9a-f]{40}$' | sort -u | tr '\n' ' ' | sed 's/ *$//'
+}
 
 # label|settlement|default-rpc|chain-dir
 # Pipe-delimited, not colon: the RPC URLs contain colons and a colon split would
@@ -49,6 +59,21 @@ CHAINS=(
 
 WANT="${1:-all}"
 PASSES=0; FAILS=0; UNKNOWNS=0
+
+# A mistyped chain would otherwise skip every iteration and exit 0 with
+# "0 passed, 0 failed" - which the rehearsal reads as "all preconditions met".
+# `sweep-preflight.sh robinhod` must never green-light a ceremony.
+if [[ "$WANT" != "all" ]]; then
+  known=0
+  for entry in "${CHAINS[@]}"; do
+    IFS='|' read -r l _ _ _ <<< "$entry"
+    [[ "$l" == "$WANT" ]] && known=1
+  done
+  if [[ "$known" != "1" ]]; then
+    echo "ERROR: unknown chain '$WANT'. Known: all, optimism, unichain, robinhood" >&2
+    exit 3
+  fi
+fi
 
 ok()      { echo "  PASS     $1"; PASSES=$((PASSES+1)); }
 bad()     { echo "  FAIL     $1"; FAILS=$((FAILS+1)); }
@@ -100,7 +125,12 @@ for entry in "${CHAINS[@]}"; do
         unknown "fee Safe threshold unreadable"
       fi
       if owners=$(cast call "$FEE_SAFE" "getOwners()(address[])" --rpc-url "$rpc" 2>/dev/null); then
-        ok "fee Safe owners $owners"
+        got="$(printf '%s' "$owners" | norm_owners)"
+        if [[ "$got" == "$EXPECTED_PARTNER_OWNERS_SORTED" ]]; then
+          ok "fee Safe owners match the expected 2-of-3 set"
+        else
+          bad "fee Safe owners DIFFER from expected. got: [$got] expected: [$EXPECTED_PARTNER_OWNERS_SORTED]"
+        fi
       else
         unknown "fee Safe owners unreadable"
       fi
@@ -113,16 +143,30 @@ for entry in "${CHAINS[@]}"; do
 
   # --- broadcaster allowlisted as a solver. settle() reverts without it, and it
   #     reverts AFTER the broadcast, which leaks the sweep into a public mempool.
-  if [[ -n "${BROADCASTER:-}" ]]; then
+  # WHICH identity must be the solver differs by sweep path. On the OP v2 path the
+  # allowlisted solver is the FeeLiquidator CONTRACT and BROADCASTER is merely the
+  # ops EOA authorised to call it; on the v1 chains the broadcaster EOA signs
+  # settle() itself. Checking the EOA on OP would report FAIL for a correctly
+  # configured deployment and block the very ceremony this preflight exists to clear.
+  if [[ "$label" == "optimism" ]]; then
+    solver_subject="${FEE_LIQUIDATOR:-}"
+    solver_what="FeeLiquidator contract"
+    solver_hint="export FEE_LIQUIDATOR=0x... (the v2 path allowlists the CONTRACT, not the ops EOA)"
+  else
+    solver_subject="${BROADCASTER:-}"
+    solver_what="broadcaster EOA"
+    solver_hint="export BROADCASTER=0x... to cover it"
+  fi
+  if [[ -n "$solver_subject" ]]; then
     if auth=$(cast call "$settlement" "authenticator()(address)" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}') \
-       && is_solver=$(cast call "$auth" "isSolver(address)(bool)" "$BROADCASTER" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}'); then
-      if [[ "$is_solver" == "true" ]]; then ok "broadcaster $BROADCASTER is an allowlisted solver"
-      else bad "broadcaster $BROADCASTER is NOT a solver - settle() would revert after broadcast"; fi
+       && is_solver=$(cast call "$auth" "isSolver(address)(bool)" "$solver_subject" --rpc-url "$rpc" 2>/dev/null | awk '{print $1}'); then
+      if [[ "$is_solver" == "true" ]]; then ok "$solver_what $solver_subject is an allowlisted solver"
+      else bad "$solver_what $solver_subject is NOT a solver - settle() would revert after broadcast"; fi
     else
-      unknown "solver status unreadable for $BROADCASTER"
+      unknown "solver status unreadable for $solver_subject"
     fi
   else
-    unknown "BROADCASTER unset - solver allowlist NOT checked (export BROADCASTER=0x... to cover it)"
+    unknown "solver allowlist NOT checked on $label - $solver_hint"
   fi
 
   # --- is there anything worth sweeping. Advisory, so it never FAILs: an empty
@@ -132,6 +176,20 @@ for entry in "${CHAINS[@]}"; do
   if [[ -x "$probe" ]]; then
     if out=$(OPHIS_RPC="$rpc" "$probe" 2>/dev/null); then
       echo "  ----     buffer: $(jq -c '[.balances[] | {(.symbol): .hr}]' <<<"$out" 2>/dev/null || echo "unparseable")"
+      # The probes deliberately exit 0 on a per-token cast failure, recording it in
+      # probe_failures and setting that row to status "error" with a displayed
+      # balance of 0. Trusting the exit code alone would print "0" for a token we
+      # never actually read and still exit 0 - a preflight certifying a balance it
+      # did not measure.
+      pf="$(jq -r '.probe_failures // "null"' <<<"$out" 2>/dev/null)"
+      bad_rows="$(jq -r '[.balances[]? | select(.status != "ok") | .symbol] | join(",")' <<<"$out" 2>/dev/null)"
+      if [[ "$pf" == "null" ]]; then
+        unknown "buffer report missing probe_failures - buffer UNVERIFIED"
+      elif [[ "$pf" != "0" ]]; then
+        unknown "buffer probe reported $pf token failure(s) - those balances are UNKNOWN, not zero"
+      elif [[ -n "$bad_rows" ]]; then
+        unknown "buffer rows not ok: $bad_rows - those balances are UNKNOWN, not zero"
+      fi
     else
       unknown "buffer probe failed - current buffer UNKNOWN"
     fi

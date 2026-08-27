@@ -58,30 +58,35 @@ CHAINS=(
   "robinhood-mainnet:robinhood"
 )
 
-# symbol:min-base-units — mirrors the sweep script's defaults.
-#   6-decimal stables at 1e7  = $10
-#   18-decimal WETH  at 3e15  = ~$7 (the sweep script's DEFAULT_MIN_WETH_BASE_UNITS)
-#   8-decimal WBTC   at 1e4   = ~$10
-#   18-decimal DAI   at 1e19  = $10   (exceeds int64, so all compares go through bc)
+# Per-chain sweep coverage: "symbol:min-base-units", mirroring each chain's OWN
+# sweep-to-safe.sh defaults. PER CHAIN because they genuinely differ - unichain
+# defaults WETH to 1e15 while optimism and robinhood default it to 3e15, so a
+# single shared table left a unichain balance between the two sweepable by the
+# stock script and invisible to this monitor. That is precisely the alarm/action
+# drift this job claims cannot happen.
+#
+# A symbol a chain's probe reports but this table does NOT list is value the stock
+# sweep would not move. It is reported as "not covered", because a token nobody
+# configured is exactly how a balance grows unnoticed - which is the whole reason
+# this file exists.
+#
+# Sources: infra/<chain>/scripts/sweep-to-safe.sh
+#   optimism  TOKEN_LIST=(USDC WETH native)  MIN_LIST=(1e7 3e15 3e15)
+#   unichain  TOKENS=(WETH USDC)             MIN_BASE_UNITS=(1e15 1e7)
+#   robinhood TOKENS=(USDG WETH)             MIN_BASE_UNITS=(1e7 3e15)
+# One flat chain:symbol:min-base-units list rather than a per-chain array plus a
+# nameref. macOS ships bash 3.2 and namerefs are 4.3+, so the array-per-chain form
+# fails on the Mac mini this cron actually runs on while passing in CI on bash 5 -
+# the worst possible split, since CI would have certified it green.
 THRESHOLDS=(
-  "USDC:10000000"
-  "USDCe:10000000"
-  "USDT:10000000"
-  "USDG:10000000"
-  "WETH:3000000000000000"
-  "WBTC:10000"
-  "DAI:10000000000000000000"
+  "optimism:USDC:10000000"
+  "optimism:WETH:3000000000000000"
+  "optimism:ETH:3000000000000000"
+  "unichain:WETH:1000000000000000"
+  "unichain:USDC:10000000"
+  "robinhood:USDG:10000000"
+  "robinhood:WETH:3000000000000000"
 )
-
-# Format an epoch as UTC. BSD date (the Mac mini, where this runs) wants -r;
-# GNU date (CI, where the suite runs) wants -d @, and reads -r as "read this
-# FILE's mtime" - so a BSD-only call does not error on Linux, it silently
-# timestamps with something else. Try both, then fall back to now.
-fmt_ts() {
-  date -u -r "$1" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
-    || date -u -d "@$1" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
-    || date -u +"%Y-%m-%dT%H:%M:%SZ"
-}
 
 log() {
   local line
@@ -91,26 +96,41 @@ log() {
   return 0
 }
 
+# Returns 0 only when the page was actually DELIVERED. The caller records the
+# repeat-suppression state from this, so a failed send is retried next run rather
+# than muting a live condition for 24h on the strength of a page nobody received.
+# NOTIFY=0 is log-only mode, where the log IS the delivery.
 alert() {
   local msg="$1"
   log "ALERT: $msg"
   [[ "$NOTIFY" == "1" ]] || return 0
   local token
-  token="$(< "$TELEGRAM_BOT_TOKEN_FILE")" 2>/dev/null || { log "WARN: no telegram token"; return 0; }
-  curl -sm 10 -X POST \
+  if ! token="$(< "$TELEGRAM_BOT_TOKEN_FILE")" 2>/dev/null || [[ -z "$token" ]]; then
+    log "WARN: no telegram token; alert NOT delivered"
+    return 1
+  fi
+  # --fail is what makes an HTTP error (a revoked token returns 401 with a JSON
+  # body) an actual failure. Without it curl exits 0 on any response it received,
+  # so a dead bot token would look like successful delivery forever.
+  if curl -sm 10 --fail -X POST \
     "https://api.telegram.org/bot${token}/sendMessage" \
     -d "chat_id=${TELEGRAM_CHAT_ID}" \
     -d "parse_mode=HTML" \
     --data-urlencode "text=<b>Ophis settlement buffer</b>%0A${msg}" \
-    >/dev/null 2>&1 || log "WARN: telegram send failed"
-  return 0
+    >/dev/null 2>&1; then
+    return 0
+  fi
+  log "WARN: telegram send failed; alert NOT delivered"
+  return 1
 }
 
+# Resolve a chain's threshold for a symbol. Returns 1 when the chain's sweep
+# configuration does not cover that token at all.
 threshold_for() {
-  local sym="$1" entry s v
+  local label="$1" sym="$2" entry c t v
   for entry in "${THRESHOLDS[@]}"; do
-    IFS=: read -r s v <<< "$entry"
-    if [[ "$s" == "$sym" ]]; then echo "$v"; return 0; fi
+    IFS=: read -r c t v <<< "$entry"
+    if [[ "$c" == "$label" && "$t" == "$sym" ]]; then echo "$v"; return 0; fi
   done
   return 1
 }
@@ -151,6 +171,23 @@ for entry in "${CHAINS[@]}"; do
     continue
   fi
 
+  # Syntactic JSON is not a report. `{}` parses fine, then probe_failures defaults
+  # to 0 and balances defaults to no rows, and the chain sails through as "measured"
+  # with a clean pass - recreating the silent-monitoring failure this job exists to
+  # end. Require the shape, and require that it actually measured something.
+  if ! jq -e 'has("probe_failures") and (.balances | type == "array")' <<<"$report" >/dev/null 2>&1; then
+    FINDINGS+=("$label: probe report is missing probe_failures or balances - buffer state UNKNOWN")
+    KEYS+=("$label/probe-schema")
+    log "chain=$label probe report failed schema validation"
+    continue
+  fi
+  if [[ "$(jq -r '.balances | length' <<<"$report")" == "0" ]]; then
+    FINDINGS+=("$label: probe returned ZERO balance rows - it measured nothing, buffer state UNKNOWN")
+    KEYS+=("$label/probe-empty")
+    log "chain=$label probe returned no balance rows"
+    continue
+  fi
+
   failures="$(jq -r '.probe_failures // 0' <<<"$report")"
   if [[ "$failures" != "0" ]]; then
     FINDINGS+=("$label: $failures token probe(s) errored - those balances are UNKNOWN, not zero")
@@ -160,9 +197,13 @@ for entry in "${CHAINS[@]}"; do
   while IFS=$'\t' read -r sym rawbal status; do
     [[ -z "$sym" ]] && continue
     [[ "$status" != "ok" ]] && continue   # already counted via probe_failures
-    if ! thr="$(threshold_for "$sym")"; then
-      FINDINGS+=("$label: $sym $rawbal base units has NO configured sweep threshold")
-      KEYS+=("$label/$sym/unknown")
+    if ! thr="$(threshold_for "$label" "$sym")"; then
+      # Only report a token the sweep cannot move if there is actually something
+      # there; a zero balance in an unconfigured token is not news.
+      if gte "$rawbal" "1"; then
+        FINDINGS+=("$label: $sym $rawbal base units is not covered by the chain's sweep configuration")
+        KEYS+=("$label/$sym/uncovered")
+      fi
       continue
     fi
     if gte "$rawbal" "$thr"; then
@@ -197,8 +238,14 @@ fi
 
 if [[ "$should_alert" == "1" ]]; then
   body="$(printf '%s%%0A' "${FINDINGS[@]}")"
-  alert "$body"
-  printf '%s\t%s' "$NOW_S" "$STATE_KEY" > "$STATE_FILE"
+  # Record the suppression state ONLY on confirmed delivery. Writing it
+  # unconditionally muted a live condition for 24h on the strength of a page that
+  # may never have been sent - a silent alert is the failure mode, not the fix.
+  if alert "$body"; then
+    printf '%s\t%s' "$NOW_S" "$STATE_KEY" > "$STATE_FILE"
+  else
+    log "alert delivery FAILED; not recording suppression state, will retry next run"
+  fi
 else
   log "condition unchanged and inside the ${REPEAT_S}s repeat window; alert suppressed"
 fi

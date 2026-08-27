@@ -65,10 +65,16 @@ BROADCASTER=<the driver-submitter EOA> \
 
 Exits 0 only when every precondition PASSED. Exit 2 means at least one check
 came back UNKNOWN, which is not a green light: an unverified precondition is
-treated the same as a failed one. Confirm in particular that the fee Safe has
-code and that the broadcaster is an allowlisted solver, because `settle()`
-reverts *after* the broadcast otherwise, leaking sweep intent into a public
-mempool for nothing.
+treated the same as a failed one. A mistyped chain name exits 3 rather than
+reporting a vacuous "0 passed, 0 failed".
+
+Confirm in particular that the fee Safe has code, that its owners match the
+expected 2-of-3 set, and that the right identity is an allowlisted solver -
+`settle()` reverts *after* the broadcast otherwise, leaking sweep intent into a
+public mempool for nothing. Which identity that is differs by path: on the v1
+chains it is the broadcaster EOA (`BROADCASTER`), on the OP v2 path it is the
+FeeLiquidator **contract** (`FEE_LIQUIDATOR`), with the ops EOA merely
+authorised to call it.
 
 ## Step 1: Robinhood dry run, then broadcast
 
@@ -113,6 +119,12 @@ rehearsal §4, mainnet deploy §5, Timelock schedule §6, Timelock execute §6
 Do not start this until steps 1 and 2 have both landed. If OP needs sweeping
 before then, the v1 forge script remains the documented disaster-recovery
 fallback, at the cost of using the driver-submitter key.
+
+Note USDT is **not** in the OP sweep's default token list (USDC, WETH, native
+ETH), so the override below deliberately adds it. The OP buffer probe now reports
+USDT and native ETH as well, so the hourly watch flags USDT as "not covered by
+the chain's sweep configuration" until either the sweep default or the override
+picks it up.
 
 For reference, OP's thresholds at current balances would be:
 

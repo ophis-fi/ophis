@@ -202,6 +202,97 @@ ckc "a token with no configured threshold still surfaces" "$out10" "ALERT:"
 ckc "and is named" "$out10" "MYSTERY"
 rm -rf "$W10"
 
+# --- 11. thresholds are PER CHAIN, mirroring each sweep script ---------------
+# unichain sweep-to-safe.sh defaults WETH to 1e15; optimism's defaults it to
+# 3e15. A single shared table meant a Unichain balance between the two was
+# sweepable by the stock script while the monitor reported clean - the exact
+# alarm/action drift this job claims cannot happen.
+W11="$(mktemp -d)"
+make_repo "$W11" \
+  "optimism-mainnet|$(report 0xOP 0 "WETH:2000000000000000:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out11="$(run_watch "$W11")"
+ckn "0.002 WETH on optimism is below ITS 3e15 sweep floor, so no alert" "$out11" "ALERT:"
+rm -rf "$W11"
+
+W12="$(mktemp -d)"
+make_repo "$W12" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "WETH:2000000000000000:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out12="$(run_watch "$W12")"
+ckc "the SAME 0.002 WETH on unichain IS above its 1e15 sweep floor, so it alerts" "$out12" "ALERT:"
+ckc "and names unichain" "$out12" "unichain"
+rm -rf "$W12"
+
+# --- 12. a token the chain's sweep does not cover must surface ---------------
+# Optimism holds USDT but the OP sweep's default token list is USDC/WETH/native.
+# Treating it as "no threshold, ignore" is how a balance grows unnoticed forever.
+W13="$(mktemp -d)"
+make_repo "$W13" \
+  "optimism-mainnet|$(report 0xOP 0 "USDT:50000000:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out13="$(run_watch "$W13")"
+ckc "a token outside the chain's sweep configuration alerts" "$out13" "ALERT:"
+ckc "and is named" "$out13" "USDT"
+ckc "and says the sweep does not cover it" "$out13" "not covered"
+rm -rf "$W13"
+
+# --- 13. a structurally valid but EMPTY report is not a measurement ----------
+W14="$(mktemp -d)"
+make_repo "$W14" \
+  "optimism-mainnet|{}|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out14="$(run_watch "$W14")"
+ckc "a probe emitting {} is rejected, not read as a clean buffer" "$out14" "ALERT:"
+rm -rf "$W14"
+
+W15="$(mktemp -d)"
+make_repo "$W15" \
+  "optimism-mainnet|$(report 0xOP 0)|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out15="$(run_watch "$W15")"
+ckc "a report with zero balance rows measured nothing and is rejected" "$out15" "ALERT:"
+rm -rf "$W15"
+
+# --- 13b. a report with rows but no probe_failures field --------------------
+# Distinct from the {} case: this one HAS balances, so the zero-rows check does
+# not catch it. Without schema validation, `.probe_failures // 0` would default a
+# missing field to "no failures" and the chain would pass as measured.
+W15b="$(mktemp -d)"
+make_repo "$W15b" \
+  "optimism-mainnet|{\"balances\":[{\"symbol\":\"USDC\",\"raw\":\"1\",\"status\":\"ok\"}]}|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out15b="$(run_watch "$W15b")"
+ckc "a report missing probe_failures is rejected, not defaulted to healthy" "$out15b" "ALERT:"
+rm -rf "$W15b"
+
+# --- 14. a page that was never delivered must not mute the condition ---------
+# NOTIFY=1 with a missing token file: alert() fails WITHOUT touching the network.
+# Previously the state file was written regardless, so a send failure silenced a
+# live sweepable buffer for 24h on the strength of a page nobody received.
+W16="$(mktemp -d)"
+make_repo "$W16" \
+  "optimism-mainnet|$(report 0xOP 0 "USDC:$ABOVE_USDC:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+run_watch_undeliverable() {
+  OPHIS_REPO="$1" BUFFER_NOTIFY=1 BUFFER_STATE_FILE="$1/state" \
+    TELEGRAM_BOT_TOKEN_FILE="$1/no-such-token-file" \
+    BUFFER_NOW_S="${NOW:-1000000}" bash "$SRC" 2>&1
+}
+undeliv1="$(NOW=1000000 run_watch_undeliverable "$W16")"
+ckc "reports the delivery failure rather than claiming it paged" "$undeliv1" "NOT delivered"
+ckn "and does not record suppression state" "$undeliv1" "suppressed"
+undeliv2="$(NOW=1000600 run_watch_undeliverable "$W16")"
+ckc "so the very next run tries again instead of going quiet for 24h" "$undeliv2" "ALERT:"
+rm -rf "$W16"
+
 echo
 echo "passed=$pass failed=$fail"
 [[ $fail -eq 0 ]]
