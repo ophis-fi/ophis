@@ -1,6 +1,8 @@
 import {
   ACROSS_INK_LINEA_SOURCE_ENABLED,
+  ACROSS_ROBINHOOD_SOURCE_ENABLED,
   acrossInkLineaSourceIds,
+  acrossRobinhoodSourceIds,
   BRIDGE_SOURCE_CHAIN_IDS,
   EXTRA_ACROSS_SOURCE_CHAIN_IDS,
 } from '@cowprotocol/common-const'
@@ -12,6 +14,9 @@ import {
   NearIntentsBridgeProvider,
   QuoteBridgeRequest,
 } from '@cowprotocol/sdk-bridging'
+
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
 import {
@@ -226,15 +231,30 @@ describe('ophisBridgeProviders', () => {
       expect(new Set(BRIDGE_SOURCE_CHAIN_IDS)).toEqual(expected)
     })
 
-    it('keeps Ink and Linea OFF by default (flag unset in the build)', () => {
+    it('keeps every flagged source OFF by default (flags unset in the build)', () => {
       expect(ACROSS_INK_LINEA_SOURCE_ENABLED).toBe(false)
+      expect(ACROSS_ROBINHOOD_SOURCE_ENABLED).toBe(false)
       expect(EXTRA_ACROSS_SOURCE_CHAIN_IDS).toEqual([])
-      expect(BRIDGE_SOURCE_CHAIN_IDS.has(57073)).toBe(false)
-      expect(BRIDGE_SOURCE_CHAIN_IDS.has(59144)).toBe(false)
       // The executable set and the source set derive from the same const, so
-      // they agree on Ink/Linea in every flag state.
-      expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(57073)).toBe(false)
-      expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(59144)).toBe(false)
+      // they agree on every flagged chain in every flag state.
+      for (const id of [57073, 59144, 4663]) {
+        expect(BRIDGE_SOURCE_CHAIN_IDS.has(id)).toBe(false)
+        expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(id)).toBe(false)
+      }
+    })
+
+    it('adds exactly Robinhood Chain (4663) when its own gate is enabled', () => {
+      expect(acrossRobinhoodSourceIds(true)).toEqual([4663])
+      expect(acrossRobinhoodSourceIds(false)).toEqual([])
+    })
+
+    it('keeps the two source flags independent (per-chain readiness)', () => {
+      // Robinhood must be enablable WITHOUT enabling Ink/Linea and vice versa: a
+      // combined flag would force turning on a chain that is not ready in order
+      // to turn on one that is (the reason #1194's shared flag was split).
+      expect([...acrossInkLineaSourceIds(true)]).not.toContain(4663)
+      expect([...acrossRobinhoodSourceIds(true)]).not.toContain(57073)
+      expect([...acrossRobinhoodSourceIds(true)]).not.toContain(59144)
     })
 
     it('adds exactly Ink (57073) and Linea (59144) when the flag gate is enabled', () => {
@@ -244,7 +264,29 @@ describe('ophisBridgeProviders', () => {
       // deterministically and without re-evaluating the module under a mutated env.
       expect([...acrossInkLineaSourceIds(true)].sort((a, b) => a - b)).toEqual([57073, 59144])
       expect(acrossInkLineaSourceIds(false)).toEqual([])
-      expect(EXTRA_ACROSS_SOURCE_CHAIN_IDS).toEqual(acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED))
+    })
+
+    it('EXTRA_ACROSS_SOURCE_CHAIN_IDS is exactly the concat of the per-chain gates', () => {
+      expect(EXTRA_ACROSS_SOURCE_CHAIN_IDS).toEqual([
+        ...acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED),
+        ...acrossRobinhoodSourceIds(ACROSS_ROBINHOOD_SOURCE_ENABLED),
+      ])
+    })
+  })
+
+  describe('Robinhood 4663 source prerequisites (sovereign)', () => {
+    // 4663 is not a SupportedChainId member, so the SDK resolves it only through
+    // our sdk-bridging patch. If either registry entry goes missing,
+    // getUnsignedBridgeCall throws "Spoke pool/Math contract address not found"
+    // at signing time — after the user has already been shown a quote.
+    it('registers the SpokePool and math helper for 4663 in the sdk-bridging patch', () => {
+      const patch = readFileSync(join(__dirname, '../../../../patches/@cowprotocol__sdk-bridging@4.0.2.patch'), 'utf8')
+      expect(patch).toContain('4663: "0xD29C85F15DF544bA632C9E25829fd29d767d7978"')
+      expect(patch).toContain('4663: "0xEdE97D044d4C8aAA682968bee10284521B9f311a"')
+      // Post-trade bridge tracking is gated on isSupportedChain(), which is
+      // permanently false for 4663; without this widening EVERY Robinhood bridge
+      // order throws BridgeOrderParsingError once its trade settles.
+      expect(patch).toContain('!ACROSS_SPOOK_CONTRACT_ADDRESSES[chainId]')
     })
   })
 })

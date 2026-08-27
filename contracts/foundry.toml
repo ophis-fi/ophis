@@ -43,7 +43,9 @@ fs_permissions = [
   { access = "read", path = "./networks.json"},
   { access = "read", path = "./out"},
   # CoW Shed redeploy artifacts (DeployCowShed.s.sol / DeployCowShed.t.sol)
-  { access = "read", path = "./script/cowshed"}
+  { access = "read", path = "./script/cowshed"},
+  # weiroll VM redeploy artifact (DeployWeirollVM.s.sol / DeployWeirollVM.t.sol)
+  { access = "read", path = "./script/weiroll"}
 ]
 
 [fmt]
