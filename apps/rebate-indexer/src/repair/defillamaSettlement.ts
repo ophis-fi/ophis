@@ -163,14 +163,35 @@ function sourceFromLog(
   };
 }
 
-function isRateLimitError(err: unknown): boolean {
+function isStrongRateLimitError(err: unknown): boolean {
   const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return (
     message.includes('rate limit') ||
     message.includes('requests per second') ||
-    message.includes('capacity') ||
     message.includes('too many requests') ||
     message.includes('429')
+  );
+}
+
+function isRateLimitError(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return isStrongRateLimitError(err) || message.includes('capacity');
+}
+
+/** Range signatures that are specific enough to outrank broad throttling words
+ * such as "capacity". The generic "limit exceeded" signature is deliberately
+ * omitted: "rate limit exceeded" must still back off without shrinking. */
+function isExplicitRangeError(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    message.includes('-32602') ||
+    message.includes('-32614') ||
+    message.includes('block range') ||
+    message.includes('range too large') ||
+    advertisedLogRangeLimit(err) !== null ||
+    message.includes('10000 results') ||
+    message.includes('query returned more than') ||
+    message.includes('response size')
   );
 }
 
@@ -210,10 +231,17 @@ async function onchainSourcesForUids(
       requests++;
       rateLimitRetries = 0;
     } catch (err) {
-      // Some providers describe throttling as "rate limit exceeded", which also
-      // matches the generic range-error text "limit exceeded". Never shrink the
-      // archive window for throttling: doing so can permanently degrade the rest
-      // of the scan to one-block requests.
+      // Strong throttling markers (429, "rate limit") always back off. Otherwise,
+      // concrete response-size/range errors outrank broad words such as "capacity".
+      // The generic "limit exceeded" signature remains the final range fallback.
+      if (isExplicitRangeError(err) && !isStrongRateLimitError(err)) {
+        if (window > 1n) {
+          const advertised = advertisedLogRangeLimit(err);
+          window = advertised !== null && advertised < window ? advertised : window >> 1n;
+          continue;
+        }
+        throw err;
+      }
       if (isRateLimitError(err)) {
         if (rateLimitRetries < ONCHAIN_RATE_LIMIT_RETRIES) {
           rateLimitRetries++;
