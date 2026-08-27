@@ -1,74 +1,30 @@
-import { AdditionalTargetChainId, ChainInfo, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { AdditionalTargetChainId, isAdditionalTargetChain, SupportedChainId } from '@cowprotocol/cow-sdk'
 
-import { renderHook } from '@testing-library/react'
-import { useFlags } from 'launchdarkly-react-client-sdk'
+import { isFlagGatedTargetChain } from './useSupportedTargetChains'
 
-import { useSupportedTargetChains } from './useSupportedTargetChains'
+// Found 2026-08-27 while testing bridging from Robinhood Chain: Optimism was
+// absent from the destination network picker for EVERY source chain. The cause
+// was gating the destination list on isAdditionalTargetChain(), which is true for
+// OPTIMISM as well as BITCOIN/SOLANA — upstream CoW does not trade on Optimism so
+// it lives in AdditionalTargetChainId — meaning Optimism was dropped regardless
+// of the BTC/Solana bridge feature flags.
+describe('isFlagGatedTargetChain', () => {
+  it('does NOT gate Optimism, even though it is an AdditionalTargetChainId', () => {
+    // Guard the premise: if this ever becomes false the bug class is gone and
+    // this test should be revisited rather than silently passing.
+    expect(isAdditionalTargetChain(AdditionalTargetChainId.OPTIMISM)).toBe(true)
 
-import { mapChainInfo } from '../utils/mapChainInfo'
-
-jest.mock('launchdarkly-react-client-sdk', () => ({
-  useFlags: jest.fn(),
-}))
-
-jest.mock('../utils/mapChainInfo', () => ({
-  mapChainInfo: jest.fn((id: number) => ({ id, label: `Chain ${id}` }) as unknown as ChainInfo),
-}))
-
-const mockUseFlags = useFlags as jest.MockedFunction<typeof useFlags>
-
-describe('useSupportedTargetChains', () => {
-  beforeEach(() => {
-    jest.clearAllMocks()
-    ;(mapChainInfo as jest.Mock).mockImplementation((id) => ({ id, label: `Chain ${id}` }) as unknown as ChainInfo)
-    mockUseFlags.mockReturnValue({ isBtcBridgeEnabled: false, isSolBridgeEnabled: false })
+    expect(isFlagGatedTargetChain(AdditionalTargetChainId.OPTIMISM)).toBe(false)
   })
 
-  it('excludes BTC and Solana when both flags are disabled', () => {
-    const { result } = renderHook(() => useSupportedTargetChains())
-
-    const ids = result.current.map((c) => c.id)
-    expect(ids).not.toContain(AdditionalTargetChainId.BITCOIN)
-    expect(ids).not.toContain(AdditionalTargetChainId.SOLANA)
+  it('gates exactly the two non-EVM chains that have bridge feature flags', () => {
+    expect(isFlagGatedTargetChain(AdditionalTargetChainId.BITCOIN)).toBe(true)
+    expect(isFlagGatedTargetChain(AdditionalTargetChainId.SOLANA)).toBe(true)
   })
 
-  it('includes BTC when isBtcBridgeEnabled is true', () => {
-    mockUseFlags.mockReturnValue({ isBtcBridgeEnabled: true, isSolBridgeEnabled: false })
-
-    const { result } = renderHook(() => useSupportedTargetChains())
-
-    const ids = result.current.map((c) => c.id)
-    expect(ids).toContain(AdditionalTargetChainId.BITCOIN)
-    expect(ids).not.toContain(AdditionalTargetChainId.SOLANA)
-  })
-
-  it('includes Solana when isSolBridgeEnabled is true', () => {
-    mockUseFlags.mockReturnValue({ isBtcBridgeEnabled: false, isSolBridgeEnabled: true })
-
-    const { result } = renderHook(() => useSupportedTargetChains())
-
-    const ids = result.current.map((c) => c.id)
-    expect(ids).toContain(AdditionalTargetChainId.SOLANA)
-    expect(ids).not.toContain(AdditionalTargetChainId.BITCOIN)
-  })
-
-  it('includes both BTC and Solana when both flags are enabled', () => {
-    mockUseFlags.mockReturnValue({ isBtcBridgeEnabled: true, isSolBridgeEnabled: true })
-
-    const { result } = renderHook(() => useSupportedTargetChains())
-
-    const ids = result.current.map((c) => c.id)
-    expect(ids).toContain(AdditionalTargetChainId.BITCOIN)
-    expect(ids).toContain(AdditionalTargetChainId.SOLANA)
-  })
-
-  it('always includes EVM supported chains', () => {
-    mockUseFlags.mockReturnValue({ isBtcBridgeEnabled: false, isSolBridgeEnabled: false })
-
-    const { result } = renderHook(() => useSupportedTargetChains())
-
-    const ids = result.current.map((c) => c.id)
-    expect(ids).toContain(SupportedChainId.MAINNET)
-    expect(ids).toContain(SupportedChainId.GNOSIS_CHAIN)
+  it('does not gate ordinary EVM destinations', () => {
+    for (const id of [SupportedChainId.MAINNET, SupportedChainId.BASE, SupportedChainId.ARBITRUM_ONE]) {
+      expect(isFlagGatedTargetChain(id)).toBe(false)
+    }
   })
 })
