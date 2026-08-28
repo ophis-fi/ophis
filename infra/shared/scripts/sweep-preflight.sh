@@ -90,6 +90,14 @@ redact_url() {
   sed -E -e 's#(://)[^@/]*@#\1#' -e 's#(://[^/?#]+).*#\1#' <<<"$1"
 }
 
+# Same job, but for URLs EMBEDDED in arbitrary text. The delegated runner's own
+# error lines come from forge and cast, which quote the full request URL - query
+# string and all - so echoing them verbatim would defeat the redaction above by
+# the back door. Collapses every http(s) URL in the text to scheme://host.
+redact_text() {
+  sed -E -e 's#(https?://)[^[:space:]]*@#\1#g' -e 's#(https?://[^/[:space:]]+)[^[:space:]]*#\1#g'
+}
+
 # Shape-check BROADCASTER once, before anything can skip past it. It is meant to
 # be the PUBLIC ops EOA; a 64-hex value is almost certainly a pasted private key,
 # and every later branch that mentions it would put that secret in the ceremony
@@ -129,7 +137,7 @@ for label in "${CHAINS[@]}"; do
   if out="$(env -u PRIVATE_KEY -u PK "$runner" 2>&1)"; then
     ok "$label: sweep dry-run accepted its configuration"
   else
-    reason="$(grep -iE 'ERROR|ABORT' <<<"$out" | tail -1)"
+    reason="$(grep -iE 'ERROR|ABORT' <<<"$out" | tail -1 | redact_text)"
     bad "$label: sweep dry-run REFUSED to run - ${reason:-see runner output}"
   fi
 
