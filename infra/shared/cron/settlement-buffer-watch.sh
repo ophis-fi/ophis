@@ -220,10 +220,17 @@ for entry in "${CHAINS[@]}"; do
   # that cries wolf gets muted, which is the failure it exists to prevent. Set
   # OPHIS_RPC_OPTIMISM / OPHIS_RPC_UNICHAIN / OPHIS_RPC_ROBINHOOD to whatever that
   # host can actually reach; unset means keep the probe's own default.
+  # A chain with no per-chain override must fall back to the PROBE's own default,
+  # not to a generic OPHIS_RPC the operator happens to have exported. Inheriting
+  # that would silently point several chains at one endpoint - and the probe reads
+  # ${OPHIS_RPC:-<its default>}, so it cannot tell the difference. Unset it.
   rpc_var="OPHIS_RPC_$(tr '[:lower:]' '[:upper:]' <<<"$label")"
-  probe_env=()
-  [[ -n "${!rpc_var:-}" ]] && probe_env=(OPHIS_RPC="${!rpc_var}")
-  if ! raw_out="$(env "${probe_env[@]+"${probe_env[@]}"}" "$probe" 2>&1)"; then
+  if [[ -n "${!rpc_var:-}" ]]; then
+    probe_env=(env "OPHIS_RPC=${!rpc_var}")
+  else
+    probe_env=(env -u OPHIS_RPC)
+  fi
+  if ! raw_out="$("${probe_env[@]}" "$probe" 2>&1)"; then
     FINDINGS+=("$label: probe FAILED (exit non-zero) - buffer state UNKNOWN, not clean")
     KEYS+=("$label/probe-exit")
     log "chain=$label probe exited non-zero"

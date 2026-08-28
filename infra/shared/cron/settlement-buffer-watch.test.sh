@@ -561,6 +561,13 @@ out28="$(OPHIS_REPO="$W28" OPHIS_RPC_ROBINHOOD="https://rbh.example" BUFFER_NOTI
   BUFFER_STATE_FILE="$W28/state" BUFFER_NOW_S=1000000 bash "$SRC" 2>&1)"
 ckc "the override reaches that chain's probe" "$out28" "RPCWAS-https://rbh.example"
 ckc "a chain with no override keeps the probe's own default" "$out28" "RPCWAS-unset"
+# ...even when the operator's shell exports the probes' generic OPHIS_RPC. Letting
+# that through would point every unconfigured chain at one endpoint, and the probe
+# reads ${OPHIS_RPC:-default} so it could not tell.
+out28b="$(OPHIS_REPO="$W28" OPHIS_RPC="https://generic.example" OPHIS_RPC_ROBINHOOD="https://rbh.example" \
+  BUFFER_NOTIFY=0 BUFFER_STATE_FILE="$W28/state2" BUFFER_NOW_S=1000000 bash "$SRC" 2>&1)"
+ckc "the per-chain override still wins over a generic OPHIS_RPC" "$out28b" "RPCWAS-https://rbh.example"
+ckn "and a generic OPHIS_RPC does not leak into unconfigured chains" "$out28b" "RPCWAS-https://generic.example"
 rm -rf "$W28"
 
 echo
