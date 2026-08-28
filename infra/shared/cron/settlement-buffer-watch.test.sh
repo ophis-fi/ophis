@@ -529,6 +529,40 @@ ckc "a report for the wrong Settlement alerts" "$out27" "ALERT:"
 ckc "and says which contract was actually measured" "$out27" "wrong contract"
 rm -rf "$W27"
 
+# --- 26. per-chain RPC override reaches the probe ---------------------------
+# The three local proxies are not on one host: the Mac mini reaches OP's but not
+# Unichain's or Robinhood's. Without this the job pages hourly about two chains
+# it cannot reach, and an alert that always fires gets muted.
+#
+# Each fake probe reports a valid report for its own chain plus ONE uncovered
+# token whose SYMBOL is the RPC it was handed, so the resulting "not covered"
+# finding carries the endpoint and the assertion can read it.
+W28="$(mktemp -d)"
+mk_rpc_probe() { # dir, settlement, chain-id, covered-rows
+  # Body written via an UNQUOTED heredoc so $2/$3/$4 land now while
+  # ${OPHIS_RPC} stays for runtime; the rows carry their own quotes, which a
+  # heredoc passes through untouched (an echo "..." string does not).
+  mkdir -p "$W28/infra/$1/scripts"
+  {
+    echo '#!/usr/bin/env bash'
+    echo "cat <<JSON"
+    echo "{\"settlement\":\"$2\",\"chain_id\":\"$3\",\"probe_failures\":0,\"balances\":[$4,{\"symbol\":\"RPCWAS-\${OPHIS_RPC:-unset}\",\"token\":\"0xdead0000000000000000000000000000000000ff\",\"raw\":\"1\",\"hr\":\"0\",\"status\":\"ok\"}]}"
+    echo "JSON"
+  } > "$W28/infra/$1/scripts/check-settlement-buffer.sh"
+  chmod +x "$W28/infra/$1/scripts/check-settlement-buffer.sh"
+}
+OProws='{"symbol":"USDC","token":"0x0b2c639c533813f4aa9d7837caf62653d097ff85","raw":"0","hr":"0","status":"ok"},{"symbol":"WETH","token":"0x4200000000000000000000000000000000000006","raw":"0","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0x7f5c764cbc14f9669b88837ca1490cca17c31607","raw":"0","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xda10009cbd5d07dd0cecc66161fc93d7c9000da1","raw":"0","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0x68f180fcce6836688e9084f035309e29bf0a2095","raw":"0","hr":"0","status":"ok"},{"symbol":"USDT","token":"0x94b008aa00579c1307b0ef2c499ad98a8ce58e58","raw":"0","hr":"0","status":"ok"},{"symbol":"ETH","token":"native","raw":"0","hr":"0","status":"ok"}'
+UNIrows='{"symbol":"WETH","token":"0x4200000000000000000000000000000000000006","raw":"0","hr":"0","status":"ok"},{"symbol":"USDC","token":"0x078d782b760474a361dda0af3839290b0ef57ad6","raw":"0","hr":"0","status":"ok"},{"symbol":"ETH","token":"native","raw":"0","hr":"0","status":"ok"}'
+RBHrows='{"symbol":"WETH","token":"0x0bd7d308f8e1639fab988df18a8011f41eacad73","raw":"0","hr":"0","status":"ok"},{"symbol":"USDG","token":"0x5fc5360d0400a0fd4f2af552add042d716f1d168","raw":"0","hr":"0","status":"ok"},{"symbol":"ETH","token":"native","raw":"0","hr":"0","status":"ok"}'
+mk_rpc_probe optimism-mainnet  0x310784c7fce12d578da6f53460777bac9718b859 10   "$OProws"
+mk_rpc_probe unichain-mainnet  0x108a678716e5e1776036ef044cab7064226f714e 130  "$UNIrows"
+mk_rpc_probe robinhood-mainnet 0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd 4663 "$RBHrows"
+out28="$(OPHIS_REPO="$W28" OPHIS_RPC_ROBINHOOD="https://rbh.example" BUFFER_NOTIFY=0 \
+  BUFFER_STATE_FILE="$W28/state" BUFFER_NOW_S=1000000 bash "$SRC" 2>&1)"
+ckc "the override reaches that chain's probe" "$out28" "RPCWAS-https://rbh.example"
+ckc "a chain with no override keeps the probe's own default" "$out28" "RPCWAS-unset"
+rm -rf "$W28"
+
 echo
 echo "passed=$pass failed=$fail"
 [[ $fail -eq 0 ]]
