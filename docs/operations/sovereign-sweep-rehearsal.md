@@ -4,8 +4,9 @@
 Agents prepare payloads and verify preconditions; humans sign.
 
 Companion to `fee-treasury-ops-runbook.md` (the OP liquidator ceremony). This
-document covers what can be rehearsed *now*, on the two chains that need no
-ceremony at all, and the order to do it in.
+document covers what can be rehearsed *now* and in what order. Only **Robinhood**
+needs no ceremony; Unichain is blocked on an `addSolver` grant through its 24h
+Timelock (see below), and Optimism needs the liquidator deployed and granted.
 
 ## Why now, when the amount is trivial
 
@@ -91,11 +92,19 @@ configuration against the wrong endpoint.
 ```bash
 # The preflight runs the chain's OWN sweep-to-safe.sh in dry-run, so give it the
 # exact environment the sweep will be run with. It never loads a key.
-OPHIS_RPC=<the Robinhood RPC the sweep will use> \
-OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD=0x858f0F5eE954846D47155F5203c04aF1819eCeF8 \
-ROBINHOOD_SUBMITTER_ADDR=0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665 \
-OPHIS_SETTLEMENT_ROBINHOOD=0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD \
-  ./infra/shared/scripts/sweep-preflight.sh robinhood
+# Define the environment ONCE and use the same array for the preflight and the
+# sweep. Preflighting a different environment than the one you then broadcast
+# with checks a configuration nobody runs - and because every live balance is
+# below the stock thresholds, a preflight without the overrides gets a clean
+# no-op from the runner instead of simulating the sweep you actually intend.
+RBH_ENV=(OPHIS_RPC=<the Robinhood RPC the sweep will use>
+         OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
+         ROBINHOOD_SUBMITTER_ADDR=0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665
+         OPHIS_SETTLEMENT_ROBINHOOD=0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD
+         TOKENS=0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168,0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73
+         MIN_BASE_UNITS=1000000,10000000000000)
+
+env "${RBH_ENV[@]}" ./infra/shared/scripts/sweep-preflight.sh robinhood
 ```
 
 Exit 0 only when everything PASSED; exit 2 means something came back UNKNOWN,
@@ -120,13 +129,6 @@ the 1e15 unknown-token default).
 
 ```bash
 # USDG (6dp, live 1.106040) floor 1 USDG; WETH (18dp, live 0.0000390808) floor 0.00001
-RBH_ENV=(TOKENS=0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168,0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73
-         MIN_BASE_UNITS=1000000,10000000000000
-         OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
-         ROBINHOOD_SUBMITTER_ADDR=0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665
-         OPHIS_SETTLEMENT_ROBINHOOD=0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD
-         OPHIS_RPC=<the Robinhood RPC>)
-
 env "${RBH_ENV[@]}" ./infra/robinhood-mainnet/scripts/sweep-to-safe.sh              # dry run first
 env "${RBH_ENV[@]}" ./infra/robinhood-mainnet/scripts/sweep-to-safe.sh --broadcast  # operator only
 ```
@@ -143,20 +145,17 @@ Robinhood:
 
 ```bash
 # Unichain reads a bare SAFE and OPHIS_SUBMITTER_EOA; set them before preflighting.
-OPHIS_RPC=<the Unichain RPC the sweep will use> \
-SAFE=0x858f0F5eE954846D47155F5203c04aF1819eCeF8 \
-OPHIS_SUBMITTER_EOA=0x7A956C269a12f1B897367663b536EB5dd29f3fBb \
-  ./infra/shared/scripts/sweep-preflight.sh unichain
+UNI_ENV=(OPHIS_RPC=<the Unichain RPC the sweep will use>
+         SAFE=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
+         OPHIS_SUBMITTER_EOA=0x7A956C269a12f1B897367663b536EB5dd29f3fBb
+         TOKENS=0x078D782b760474a361dDA0AF3839290b0EF57AD6,0x4200000000000000000000000000000000000006
+         MIN_BASE_UNITS=100000,10000000000000)
+
+env "${UNI_ENV[@]}" ./infra/shared/scripts/sweep-preflight.sh unichain
 ```
 
 ```bash
 # USDC (6dp, live 0.140666) floor 0.1; WETH (18dp, live 0.0000581522) floor 0.00001
-UNI_ENV=(TOKENS=0x078D782b760474a361dDA0AF3839290b0EF57AD6,0x4200000000000000000000000000000000000006
-         MIN_BASE_UNITS=100000,10000000000000
-         SAFE=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
-         OPHIS_SUBMITTER_EOA=0x7A956C269a12f1B897367663b536EB5dd29f3fBb
-         OPHIS_RPC=<the Unichain RPC>)
-
 env "${UNI_ENV[@]}" ./infra/unichain-mainnet/scripts/sweep-to-safe.sh
 env "${UNI_ENV[@]}" ./infra/unichain-mainnet/scripts/sweep-to-safe.sh --broadcast
 ```
@@ -185,9 +184,17 @@ liquidator's getters are unreadable, and before the Timelock executes its solver
 check necessarily fails.
 
 ```bash
-FEE_LIQUIDATOR=0x... BROADCASTER=0x<fee-ops EOA ADDRESS, never the key> \
-OPHIS_RPC=<the same Optimism RPC used in OP_ENV below> \
-  ./infra/shared/scripts/sweep-preflight.sh optimism
+# The trailing 0x000...0 is the runner's NATIVE marker: it only sweeps the
+# Settlement's native ETH when that marker is in TOKENS. Overriding TOKENS
+# replaces the whole default list, so dropping it would silently leave every ETH
+# refund behind while moving the three ERC20s.
+OP_ENV=(FEE_LIQUIDATOR=$LIQ
+        BROADCASTER=0x<fee-ops EOA ADDRESS, never the key>
+        OPHIS_RPC=<the Optimism RPC>
+        TOKENS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85,0x94b008aA00579c1307B0EF2c499aD98a8ce58e58,0x4200000000000000000000000000000000000006,0x0000000000000000000000000000000000000000
+        MIN_BASE_UNITS=100000,10000,10000000000000,3000000000000000)
+
+env "${OP_ENV[@]}" ./infra/shared/scripts/sweep-preflight.sh optimism
 ```
 
 `BROADCASTER` is the **public address** of the fee-ops EOA, never its private
@@ -205,10 +212,7 @@ exit successfully having moved nothing and silently skipped USDT.
 
 ```bash
 # USDC 0.354188 floor 0.1 | USDT 0.032961 floor 0.01 | WETH 0.0000440679 floor 0.00001
-OP_ENV=(FEE_LIQUIDATOR=$LIQ
-        OPHIS_RPC=<the Optimism RPC>
-        TOKENS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85,0x94b008aA00579c1307B0EF2c499aD98a8ce58e58,0x4200000000000000000000000000000000000006
-        MIN_BASE_UNITS=100000,10000,10000000000000)
+
 
 env "${OP_ENV[@]}" ./infra/optimism-mainnet/scripts/sweep-to-safe.sh              # dry run
 env "${OP_ENV[@]}" ./infra/optimism-mainnet/scripts/sweep-to-safe.sh --broadcast  # operator only

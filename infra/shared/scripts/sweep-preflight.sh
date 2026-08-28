@@ -137,6 +137,16 @@ for label in "${CHAINS[@]}"; do
   # --broadcast, but the forge script it invokes reads PRIVATE_KEY from the
   # environment to derive a broadcaster, so a key sitting in the operator's shell
   # would be read during what is advertised as a key-free preflight.
+  #
+  # Unsetting is NOT sufficient on its own: the runners cd into contracts/, and
+  # forge loads that project's .env, which can repopulate PRIVATE_KEY behind our
+  # back. We cannot stop forge doing that from here, so detect the condition and
+  # refuse rather than run a "key-free" preflight that quietly reads a secret -
+  # and possibly passes on a key the real broadcast will not even use.
+  if [[ -f "$REPO_ROOT/contracts/.env" ]] && grep -qE '^[[:space:]]*PRIVATE_KEY=' "$REPO_ROOT/contracts/.env" 2>/dev/null; then
+    bad "$label: contracts/.env defines PRIVATE_KEY - forge would load it during the dry-run. Remove it before preflighting; this check is advertised as key-free."
+    continue
+  fi
   if out="$(env -u PRIVATE_KEY -u PK "$runner" 2>&1)"; then
     ok "$label: sweep dry-run accepted its configuration"
   else
