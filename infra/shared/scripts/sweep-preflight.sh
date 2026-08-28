@@ -82,6 +82,25 @@ if [[ "$WANT" != "all" ]] && ! printf '%s\n' "${CHAINS[@]}" | grep -qx -- "$WANT
   exit 3
 fi
 
+# RPC URLs routinely carry a provider credential (a dkey= query param, a token in
+# the path, userinfo before the @). Preflight output lives in terminal scrollback
+# and ceremony logs, so an ordinary connectivity failure must not put that
+# credential there. Print scheme://host and nothing else.
+redact_url() {
+  sed -E -e 's#(://)[^@/]*@#\1#' -e 's#(://[^/?#]+).*#\1#' <<<"$1"
+}
+
+# Shape-check BROADCASTER once, before anything can skip past it. It is meant to
+# be the PUBLIC ops EOA; a 64-hex value is almost certainly a pasted private key,
+# and every later branch that mentions it would put that secret in the ceremony
+# log. Refuse up front and never echo the value. (An earlier version validated
+# this deep inside the Optimism branch, behind a `continue` that skipped it.)
+if [[ -n "${BROADCASTER:-}" && ! "$BROADCASTER" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+  echo "ERROR: BROADCASTER is not a 20-byte address (value withheld)." >&2
+  echo "       Pass the fee-ops EOA ADDRESS, never a private key." >&2
+  exit 3
+fi
+
 PASSES=0; FAILS=0; UNKNOWNS=0
 ok()      { echo "  PASS     $1"; PASSES=$((PASSES+1)); }
 bad()     { echo "  FAIL     $1"; FAILS=$((FAILS+1)); }
@@ -126,7 +145,7 @@ for label in "${CHAINS[@]}"; do
   case "$label" in optimism) want_id=10 ;; unichain) want_id=130 ;; robinhood) want_id=4663 ;; esac
   got_id="$(cast chain-id --rpc-url "$eff_rpc" 2>/dev/null)"
   if [[ "$got_id" != "$want_id" ]]; then
-    bad "$label: RPC $eff_rpc reports chain id ${got_id:-unreachable}, expected $want_id"
+    bad "$label: RPC $(redact_url "$eff_rpc") reports chain id ${got_id:-unreachable}, expected $want_id"
     continue
   fi
   case "$label" in
@@ -164,7 +183,7 @@ for label in "${CHAINS[@]}"; do
     elif [[ "$(tr '[:upper:]' '[:lower:]' <<<"$liq_eoa")" == "$(tr '[:upper:]' '[:lower:]' <<<"$BROADCASTER")" ]]; then
       ok "optimism: liquidator() is the intended ops key"
     else
-      bad "optimism: liquidator() is $liq_eoa, not the intended ops key $BROADCASTER"
+      bad "optimism: liquidator() is $liq_eoa, not the intended ops EOA $BROADCASTER"
     fi
   fi
 

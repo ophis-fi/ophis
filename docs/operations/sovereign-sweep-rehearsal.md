@@ -77,15 +77,19 @@ been shown to work twice.
 
 ## Step 0: preflight (read-only, no keys)
 
+Every command below sets its environment **command-locally**. Nothing is
+exported: run these steps in one shell with `export` and each chain's RPC and
+token overrides bleed into the next, which then preflights the wrong chain's
+configuration against the wrong endpoint.
+
 ```bash
 # The preflight runs the chain's OWN sweep-to-safe.sh in dry-run, so give it the
 # exact environment the sweep will be run with. It never loads a key.
-export OPHIS_RPC=<the RPC the sweep will use>
-export OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
-export ROBINHOOD_SUBMITTER_ADDR=0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665
-export OPHIS_SETTLEMENT_ROBINHOOD=0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD
-
-./infra/shared/scripts/sweep-preflight.sh robinhood
+OPHIS_RPC=<the Robinhood RPC the sweep will use> \
+OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD=0x858f0F5eE954846D47155F5203c04aF1819eCeF8 \
+ROBINHOOD_SUBMITTER_ADDR=0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665 \
+OPHIS_SETTLEMENT_ROBINHOOD=0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD \
+  ./infra/shared/scripts/sweep-preflight.sh robinhood
 ```
 
 Exit 0 only when everything PASSED; exit 2 means something came back UNKNOWN,
@@ -108,12 +112,13 @@ the 1e15 unknown-token default).
 
 ```bash
 # USDG (6dp, live 1.106040) floor 1 USDG; WETH (18dp, live 0.0000390808) floor 0.00001
-export TOKENS=0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168,0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73
-export MIN_BASE_UNITS=1000000,10000000000000
-export OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
+RBH_ENV=(TOKENS=0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168,0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73
+         MIN_BASE_UNITS=1000000,10000000000000
+         OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
+         OPHIS_RPC=<the Robinhood RPC>)
 
-./infra/robinhood-mainnet/scripts/sweep-to-safe.sh              # dry run first
-./infra/robinhood-mainnet/scripts/sweep-to-safe.sh --broadcast  # operator only
+env "${RBH_ENV[@]}" ./infra/robinhood-mainnet/scripts/sweep-to-safe.sh              # dry run first
+env "${RBH_ENV[@]}" ./infra/robinhood-mainnet/scripts/sweep-to-safe.sh --broadcast  # operator only
 ```
 
 Note `0x5fc5360d…d168` is the **6-decimal** USDG, the real one. Robinhood Chain
@@ -128,20 +133,21 @@ Robinhood:
 
 ```bash
 # Unichain reads a bare SAFE and OPHIS_SUBMITTER_EOA; set them before preflighting.
-export OPHIS_RPC=<the Unichain RPC the sweep will use>
-export SAFE=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
-export OPHIS_SUBMITTER_EOA=0x7A956C269a12f1B897367663b536EB5dd29f3fBb
-
-./infra/shared/scripts/sweep-preflight.sh unichain
+OPHIS_RPC=<the Unichain RPC the sweep will use> \
+SAFE=0x858f0F5eE954846D47155F5203c04aF1819eCeF8 \
+OPHIS_SUBMITTER_EOA=0x7A956C269a12f1B897367663b536EB5dd29f3fBb \
+  ./infra/shared/scripts/sweep-preflight.sh unichain
 ```
 
 ```bash
 # USDC (6dp, live 0.140666) floor 0.1; WETH (18dp, live 0.0000581522) floor 0.00001
-export TOKENS=0x078D782b760474a361dDA0AF3839290b0EF57AD6,0x4200000000000000000000000000000000000006
-export MIN_BASE_UNITS=100000,10000000000000
+UNI_ENV=(TOKENS=0x078D782b760474a361dDA0AF3839290b0EF57AD6,0x4200000000000000000000000000000000000006
+         MIN_BASE_UNITS=100000,10000000000000
+         SAFE=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
+         OPHIS_RPC=<the Unichain RPC>)
 
-./infra/unichain-mainnet/scripts/sweep-to-safe.sh
-./infra/unichain-mainnet/scripts/sweep-to-safe.sh --broadcast
+env "${UNI_ENV[@]}" ./infra/unichain-mainnet/scripts/sweep-to-safe.sh
+env "${UNI_ENV[@]}" ./infra/unichain-mainnet/scripts/sweep-to-safe.sh --broadcast
 ```
 
 ## Step 3: Optimism (the ceremony)
@@ -169,19 +175,22 @@ liquidator's getters are unreadable, and before the Timelock executes its solver
 check necessarily fails.
 
 ```bash
-FEE_LIQUIDATOR=0x... BROADCASTER=<the fee-ops key> \
+FEE_LIQUIDATOR=0x... BROADCASTER=0x<fee-ops EOA ADDRESS, never the key> \
   ./infra/shared/scripts/sweep-preflight.sh optimism
 ```
 
-BROADCASTER is what the ops-key check compares `liquidator()` against; without it
-that check reports UNKNOWN and the preflight exits 2.
+`BROADCASTER` is the **public address** of the fee-ops EOA, never its private
+key: it is only compared against what `liquidator()` returns. The preflight
+refuses anything that is not a 20-byte address and withholds the value from its
+own output, so a mis-paste cannot reach the ceremony log. Without it the ops-key
+check reports UNKNOWN and the preflight exits 2.
 
 For reference, OP's thresholds at current balances would be:
 
 ```bash
 # USDC 0.354188 floor 0.1 | USDT 0.032961 floor 0.01 | WETH 0.0000440679 floor 0.00001
-export TOKENS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85,0x94b008aA00579c1307B0EF2c499aD98a8ce58e58,0x4200000000000000000000000000000000000006
-export MIN_BASE_UNITS=100000,10000,10000000000000
+TOKENS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85,0x94b008aA00579c1307B0EF2c499aD98a8ce58e58,0x4200000000000000000000000000000000000006
+MIN_BASE_UNITS=100000,10000,10000000000000
 ```
 
 ## Verification after each sweep

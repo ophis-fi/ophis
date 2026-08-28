@@ -267,16 +267,25 @@ suite goes red (`infra-shell-tests` in ci.yml). A watchdog that can restart a
 database is worse than no watchdog, so "the tests pass" is not sufficient
 evidence on its own — the mutations are what make it evidence.
 
-## Deliberate non-goal: token discovery
+## Known gap: tokens outside each probe's fixed list
 
 The watcher only sees tokens each chain's probe queries, and those probes carry a
-fixed address list. A fee token nobody has added to a probe is therefore invisible
-here. That is a known ceiling, not an oversight: discovering arbitrary balances
-would mean scanning Transfer logs per chain, which needs archive access the free
-RPC tiers refuse and turns a cron into an indexer. The buffer only receives what
-our own settlements route through it, so the address list changes when we add a
-market - and that is the moment to extend the probe. Revisit if a token ever
-shows up in a settlement that no probe covers.
+fixed address list. A fee accruing in any other token is invisible here, and the
+"not covered" branch does not help: it only reports extra rows a probe already
+emitted.
+
+An earlier version of this note claimed the list only changes when we add a
+market. **That is wrong on Robinhood Chain**, whose own solver config records that
+`launch tokens are permissionless` (`infra/robinhood-mainnet/configs/pons.toml.tmpl`).
+Surplus is denominated in the buy token for a sell order and the sell token for a
+buy order, so a trade in any permissionlessly-listed token accrues fee value in a
+token no probe covers, and every hourly run still reports clean.
+
+Not closed here, and not by scanning all Transfer logs either - that needs archive
+access the free RPC tiers refuse and turns a cron into an indexer. The bounded
+version is the one to build when this matters: read the Settlement's own `Trade`
+events over a recent block window, collect the sell/buy token addresses, and flag
+any that the chain's probe does not query. Recent-window only, so no archive.
 
 ## Tuning
 
