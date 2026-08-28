@@ -33,6 +33,10 @@ TOKENS=(
   "0x7F5c764cBc14f9669B88837ca1490cCa17c31607:USDCe:6"
   "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1:DAI:18"
   "0x68f180fcCe6836688e9084f035309E29Bf0A2095:WBTC:8"
+  # USDT was missing while a real USDT balance sat in the buffer (2026-08-27
+  # audit found 0.032961). An asset nobody probes is an asset that can grow
+  # indefinitely while every monitoring run reports a clean pass.
+  "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58:USDT:6"
 )
 
 command -v cast >/dev/null 2>&1 || { echo "ERROR: cast (foundry) required" >&2; exit 3; }
@@ -73,6 +77,28 @@ for entry in "${TOKENS[@]}"; do
     '. + [{symbol: $sym, token: $token, raw: $raw, hr: $hr, status: $status}]')
 done
 
+# Native ETH. The sweep's default TOKEN_LIST includes native (its HIGH-3 fix:
+# Settlement has an open receive() and accrues ETH from sequencer-fee refunds and
+# direct-buy 0xEee orders), so omitting it here would leave one of the three assets
+# the sweep actually moves invisible to monitoring. Same never-silently-zero rule
+# as the ERC20 probes: an RPC failure is status "error", never a fake 0.
+if native_out=$(cast balance "$SETTLEMENT" --rpc-url "$RPC" 2>&1); then
+  native_bal=$(echo "$native_out" | awk '{print $1}')
+  [[ -z "$native_bal" ]] && native_bal=0
+  native_status="ok"
+else
+  native_bal=0
+  native_status="error"
+  PROBE_FAILURES=$((PROBE_FAILURES + 1))
+fi
+if [[ "$native_bal" == "0" ]]; then native_hr="0"; else native_hr=$(echo "scale=6; $native_bal / (10 ^ 18)" | bc -l); fi
+RESULTS_JSON=$(echo "$RESULTS_JSON" | jq \
+  --arg sym "ETH" --arg token "native" --arg raw "$native_bal" --arg hr "$native_hr" --arg status "$native_status" \
+  '. + [{symbol: $sym, token: $token, raw: $raw, hr: $hr, status: $status}]')
+
+# The chain the balances actually came from (see the v1 probes for why).
+CHAIN_ID=$(cast chain-id --rpc-url "$RPC" 2>/dev/null || echo "unknown")
+
 # Fee-ops liquidator probe: solver status, current ops key, and the age of
 # the last successful sweep (lastSweepAt is set on-chain by every sweep).
 # Same never-silently-zero rule as the balance probes: RPC failure surfaces
@@ -105,6 +131,7 @@ cat <<EOF
 {
   "ts": "$TS",
   "settlement": "$SETTLEMENT",
+  "chain_id": "$CHAIN_ID",
   "safe": "$SAFE",
   "liquidator": $LIQ_JSON,
   "probe_failures": $PROBE_FAILURES,

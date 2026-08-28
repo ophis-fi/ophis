@@ -72,10 +72,35 @@ for entry in "${TOKENS[@]}"; do
     '. + [{symbol: $sym, token: $token, raw: $raw, hr: $hr, status: $status}]')
 done
 
+# Native ETH. The shared SweepSettlementBuffer.s.sol sweeps the Settlement's
+# native balance at MIN_ETH_WEI (3e15) INDEPENDENTLY of the TOKENS list, so a
+# probe that reports only ERC20s leaves an asset the stock sweep would move
+# completely unmonitored. Same never-silently-zero rule as the ERC20 probes.
+if native_out=$(cast balance "$SETTLEMENT" --rpc-url "$RPC" 2>&1); then
+  native_bal=$(echo "$native_out" | awk '{print $1}')
+  [[ -z "$native_bal" ]] && native_bal=0
+  native_status="ok"
+else
+  native_bal=0
+  native_status="error"
+  PROBE_FAILURES=$((PROBE_FAILURES + 1))
+fi
+if [[ "$native_bal" == "0" ]]; then native_hr="0"; else native_hr=$(echo "scale=6; $native_bal / (10 ^ 18)" | bc -l); fi
+RESULTS_JSON=$(echo "$RESULTS_JSON" | jq \
+  --arg sym "ETH" --arg token "native" --arg raw "$native_bal" --arg hr "$native_hr" --arg status "$native_status" \
+  '. + [{symbol: $sym, token: $token, raw: $raw, hr: $hr, status: $status}]')
+
+# The chain the balances actually came from. A miswired local proxy pointing at a
+# fork or another network answers balanceOf happily, and the Settlement address in
+# this report is a static label - so without this the watcher would validate the
+# label rather than the network that supplied the numbers.
+CHAIN_ID=$(cast chain-id --rpc-url "$RPC" 2>/dev/null || echo "unknown")
+
 cat <<EOF
 {
   "ts": "$TS",
   "settlement": "$SETTLEMENT",
+  "chain_id": "$CHAIN_ID",
   "safe": "$SAFE",
   "probe_failures": $PROBE_FAILURES,
   "balances": $RESULTS_JSON
