@@ -429,4 +429,5 @@ that is not listed there is a suite CI never runs.
 | `BUFFER_REPEAT_S` | `86400` | Re-page interval for an unchanged condition. A newly-crossed chain always pages immediately, inside the window. |
 | `BUFFER_NOTIFY` | `1` | Set `0` to log without sending Telegram. |
 | `BUFFER_STATE_FILE` | pinned in the plist | Repeat-suppression state. Deleted on a clean pass so the next real finding pages at once. Pinned explicitly because launchd does not guarantee `HOME` and the script runs under `set -u`, so a `HOME`-derived default would abort on the assignment itself and leave the monitor installed, enabled and inert. |
-| `OPHIS_REPO` | `/Users/scep/greg` | Where the per-chain probes are resolved from. |
+| `OPHIS_REPO` | `/Users/scep/greg` | Where the per-chain probes are resolved from. Must be a checkout that actually has them. |
+| `OPHIS_RPC_<CHAIN>` | probe default | Per-chain RPC, e.g. `OPHIS_RPC_ROBINHOOD`. Each probe defaults to a localhost proxy, but those proxies are not all on one host: the Mac mini reaches OP's on :4001 while the Unichain and Robinhood ones run on Cadia. Without an override there, the job pages hourly about two chains it cannot reach. |
