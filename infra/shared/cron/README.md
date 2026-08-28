@@ -267,6 +267,17 @@ suite goes red (`infra-shell-tests` in ci.yml). A watchdog that can restart a
 database is worse than no watchdog, so "the tests pass" is not sufficient
 evidence on its own — the mutations are what make it evidence.
 
+## Deliberate non-goal: token discovery
+
+The watcher only sees tokens each chain's probe queries, and those probes carry a
+fixed address list. A fee token nobody has added to a probe is therefore invisible
+here. That is a known ceiling, not an oversight: discovering arbitrary balances
+would mean scanning Transfer logs per chain, which needs archive access the free
+RPC tiers refuse and turns a cron into an indexer. The buffer only receives what
+our own settlements route through it, so the address list changes when we add a
+market - and that is the moment to extend the probe. Revisit if a token ever
+shows up in a settlement that no probe covers.
+
 ## Tuning
 
 | Env | Default | Meaning |

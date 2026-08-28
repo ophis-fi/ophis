@@ -163,12 +163,18 @@ USDT and native ETH as well, so the hourly watch flags USDT as "not covered by
 the chain's sweep configuration" until either the sweep default or the override
 picks it up.
 
-Preflight Optimism before any of it, with the liquidator and the intended ops
-key supplied so the solver, ops-key and immutable-pin checks can all run:
+Preflight Optimism **after** the deploy and the Timelock execute, immediately
+before the first sweep. Run earlier it cannot pass: before deployment the
+liquidator's getters are unreadable, and before the Timelock executes its solver
+check necessarily fails.
 
 ```bash
-FEE_LIQUIDATOR=0x... ./infra/shared/scripts/sweep-preflight.sh optimism
+FEE_LIQUIDATOR=0x... BROADCASTER=<the fee-ops key> \
+  ./infra/shared/scripts/sweep-preflight.sh optimism
 ```
+
+BROADCASTER is what the ops-key check compares `liquidator()` against; without it
+that check reports UNKNOWN and the preflight exits 2.
 
 For reference, OP's thresholds at current balances would be:
 

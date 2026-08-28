@@ -120,6 +120,15 @@ for label in "${CHAINS[@]}"; do
   #    script consumes, optimism from the liquidator's immutable feeSafe.
   eff_rpc="${OPHIS_RPC:-$(default_rpc "$label")}"
   rpc_args=(--rpc-url "$eff_rpc")
+  # Confirm the endpoint is the chain we think it is before trusting anything read
+  # through it. A wrong-chain RPC answers every call below happily, just about a
+  # different deployment.
+  case "$label" in optimism) want_id=10 ;; unichain) want_id=130 ;; robinhood) want_id=4663 ;; esac
+  got_id="$(cast chain-id --rpc-url "$eff_rpc" 2>/dev/null)"
+  if [[ "$got_id" != "$want_id" ]]; then
+    bad "$label: RPC $eff_rpc reports chain id ${got_id:-unreachable}, expected $want_id"
+    continue
+  fi
   case "$label" in
     robinhood) dest="$(cfg OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD "$(chain_dir "$label")")" ;;
     unichain)  dest="${SAFE:-$FEE_SAFE}" ;;
