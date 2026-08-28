@@ -4,7 +4,7 @@ import { repairRouterTrades } from './repair/routerTrades.js';
 import { repairDefiLlamaSettlementIdentity } from './repair/defillamaSettlement.js';
 import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
-import { runBatcher, isFirstOfMonth } from './batcher.js';
+import { runBatcher, isFirstOfMonth, bootstrapFeeConversion } from './batcher.js';
 import { reconcileBatches } from './batch/reconcile.js';
 import { deliverMonthlyReport } from './affiliate/deliverReport.js';
 import { runAffiliatePayout, reconcileAffiliateBatches } from './affiliate/payout.js';
@@ -357,6 +357,38 @@ async function runPipelineSteps(): Promise<void> {
         await proposePartnerFeeBatches({ rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled: resolveBatcherProposeEnabled() });
       } catch (err) {
         log.error({ err }, 'partner-fee proposal failed (non-fatal; retried next night)');
+      }
+    }
+  }
+
+  // Fee-conversion BOOTSTRAP — last, deliberately.
+  //
+  // The rebate pool reads the Safe's WETH balance on Gnosis, but CoW pays partner
+  // fees out in the chain's NATIVE coin, so the pool reads 0, so no payout is
+  // proposed, so the payout-gated #360 conversion never runs, so the pool stays 0.
+  // No rebate has ever paid because of that loop. bootstrapFeeConversion breaks it
+  // by proposing a conversion with no payout above it.
+  //
+  // It runs HERE, after every other proposal, because its safety gate is "the Safe
+  // queue is empty". Checked earlier that gate is worthless: the affiliate payout and
+  // the partner-fee proposal above would stack on top of the nonce it took, and an
+  // unsigned bootstrap would block both — the Codex #474 hazard by another route. On
+  // any night something else is queued this is a no-op and retries tomorrow.
+  //
+  // Gated by REBATE_CONVERT_ENABLED (default OFF) inside maybeConvertFeesToWeth, so
+  // this is byte-inert until an operator turns it on. Never throws.
+  {
+    const proposerKey = process.env.SAFE_PROPOSER_PRIVATE_KEY;
+    if (proposerKey) {
+      try {
+        await bootstrapFeeConversion({
+          chainId: 100,
+          rpcUrl: gnosisRpc(),
+          proposerPrivateKey: proposerKey as `0x${string}`,
+          proposeEnabled: resolveBatcherProposeEnabled(),
+        });
+      } catch (err) {
+        log.error({ err }, 'fee-conversion bootstrap failed (non-fatal; retried next night)');
       }
     }
   }

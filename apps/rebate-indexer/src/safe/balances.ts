@@ -96,3 +96,39 @@ export async function getNonWethTokenBalances(args: {
   }
   return out;
 }
+
+/** Telegram alerts send with parse_mode 'HTML', and token metadata is attacker-controlled. */
+const escapeHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * Render the stranded-value line for the batcher alert, covering BOTH the non-WETH
+ * ERC20s and the chain's native coin.
+ *
+ * The native half is the point. `getNonWethTokenBalances` walks the Safe API's token
+ * rows and skips `tokenAddress === null`, which is how that API reports the native
+ * coin — so the #360 alarm, built to catch exactly this class of stranding, could not
+ * fire on the one asset the fees actually arrived in. The 2026-08-27 audit found the
+ * Gnosis Safe holding every xDAI CoW had ever paid while the probe reported nothing.
+ *
+ * Returns '' when the Safe holds neither, so the caller stays silent.
+ */
+export function formatStrandedDetail(
+  tokens: readonly TokenBalance[],
+  nativeWei: bigint,
+  nativeSymbol: string,
+  maxTokens: number,
+): string {
+  const parts: string[] = [];
+  if (tokens.length > 0) {
+    // Cap the listed tokens so a dust/spam-flooded Safe can't produce a message
+    // Telegram rejects. The native line is appended AFTER the cap and is never
+    // one of the entries dropped.
+    const shown = tokens
+      .slice(0, maxTokens)
+      .map((t) => `${escapeHtml(t.symbol)} ${t.balance} (${escapeHtml(t.tokenAddress)})`)
+      .join(', ');
+    parts.push(tokens.length > maxTokens ? `${shown}, +${tokens.length - maxTokens} more` : shown);
+  }
+  if (nativeWei > 0n) parts.push(`${escapeHtml(nativeSymbol)} ${nativeWei.toString()} (native)`);
+  return parts.join(', ');
+}
