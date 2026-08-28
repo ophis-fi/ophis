@@ -96,6 +96,9 @@ RESULTS_JSON=$(echo "$RESULTS_JSON" | jq \
   --arg sym "ETH" --arg token "native" --arg raw "$native_bal" --arg hr "$native_hr" --arg status "$native_status" \
   '. + [{symbol: $sym, token: $token, raw: $raw, hr: $hr, status: $status}]')
 
+# The chain the balances actually came from (see the v1 probes for why).
+CHAIN_ID=$(cast chain-id --rpc-url "$RPC" 2>/dev/null || echo "unknown")
+
 # Fee-ops liquidator probe: solver status, current ops key, and the age of
 # the last successful sweep (lastSweepAt is set on-chain by every sweep).
 # Same never-silently-zero rule as the balance probes: RPC failure surfaces
@@ -128,6 +131,7 @@ cat <<EOF
 {
   "ts": "$TS",
   "settlement": "$SETTLEMENT",
+  "chain_id": "$CHAIN_ID",
   "safe": "$SAFE",
   "liquidator": $LIQ_JSON,
   "probe_failures": $PROBE_FAILURES,

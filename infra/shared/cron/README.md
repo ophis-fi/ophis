@@ -347,8 +347,15 @@ Thresholds are **per chain and per token**, mirroring each chain's own
 | Chain | Covered by its sweep |
 |---|---|
 | optimism | USDC 1e7, WETH 3e15, native ETH 3e15 |
-| unichain | WETH 1e15, USDC 1e7 |
-| robinhood | USDG 1e7, WETH 3e15 |
+| unichain | WETH 1e15, USDC 1e7, native ETH 3e15 |
+| robinhood | USDG 1e7, WETH 3e15, native ETH 3e15 |
+
+Native ETH appears on every chain because the shared `SweepSettlementBuffer.s.sol`
+sweeps the Settlement's native balance at `MIN_ETH_WEI` regardless of the TOKENS
+list. Each probe also reports the chain id it read the balances from, and a report
+naming the wrong network is rejected: the Settlement address in a report is a
+static label, so a miswired proxy pointed at a fork would otherwise have its zero
+balances accepted as a clean pass.
 
 Matched on the token **address**, never the symbol. Robinhood Chain carries five
 18-decimal USDG impersonators in the same Settlement contract as the real

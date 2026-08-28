@@ -78,6 +78,10 @@ CHAINS=(
 #   optimism  TOKEN_LIST=(USDC WETH native)  MIN_LIST=(1e7 3e15 3e15)
 #   unichain  TOKENS=(WETH USDC)             MIN_BASE_UNITS=(1e15 1e7)
 #   robinhood TOKENS=(USDG WETH)             MIN_BASE_UNITS=(1e7 3e15)
+# Native ETH is listed for EVERY chain at MIN_ETH_WEI (3e15): the shared
+# SweepSettlementBuffer.s.sol sweeps the Settlement's native balance regardless of
+# the TOKENS list, so leaving it out left an asset the stock sweep moves entirely
+# unmonitored on the two v1 chains.
 # One flat chain:symbol:min-base-units list rather than a per-chain array plus a
 # nameref. macOS ships bash 3.2 and namerefs are 4.3+, so the array-per-chain form
 # fails on the Mac mini this cron actually runs on while passing in CI on bash 5 -
@@ -95,8 +99,8 @@ CHAINS=(
 # real asset was never measured. Keyed by address, that cannot happen.
 EXPECTED_ADDRS=(
   "optimism:0x0b2c639c533813f4aa9d7837caf62653d097ff85 0x4200000000000000000000000000000000000006 0x7f5c764cbc14f9669b88837ca1490cca17c31607 0xda10009cbd5d07dd0cecc66161fc93d7c9000da1 0x68f180fcce6836688e9084f035309e29bf0a2095 0x94b008aa00579c1307b0ef2c499ad98a8ce58e58 native"
-  "unichain:0x4200000000000000000000000000000000000006 0x078d782b760474a361dda0af3839290b0ef57ad6"
-  "robinhood:0x0bd7d308f8e1639fab988df18a8011f41eacad73 0x5fc5360d0400a0fd4f2af552add042d716f1d168"
+  "unichain:0x4200000000000000000000000000000000000006 0x078d782b760474a361dda0af3839290b0ef57ad6 native"
+  "robinhood:0x0bd7d308f8e1639fab988df18a8011f41eacad73 0x5fc5360d0400a0fd4f2af552add042d716f1d168 native"
 )
 
 # chain:symbol:token-address:min-base-units
@@ -112,9 +116,11 @@ THRESHOLDS=(
   "optimism:WETH:0x4200000000000000000000000000000000000006:3000000000000000"
   "optimism:ETH:native:3000000000000000"
   "unichain:WETH:0x4200000000000000000000000000000000000006:1000000000000000"
+  "unichain:ETH:native:3000000000000000"
   "unichain:USDC:0x078d782b760474a361dda0af3839290b0ef57ad6:10000000"
   "robinhood:USDG:0x5fc5360d0400a0fd4f2af552add042d716f1d168:10000000"
   "robinhood:WETH:0x0bd7d308f8e1639fab988df18a8011f41eacad73:3000000000000000"
+  "robinhood:ETH:native:3000000000000000"
 )
 
 # Format an epoch as UTC. BSD date (the Mac mini, where this runs) wants -r; GNU
@@ -267,6 +273,18 @@ for entry in "${CHAINS[@]}"; do
   # Settlement (a copy-paste in its config, an inherited SETTLEMENT in the
   # environment) would otherwise be monitored happily while the real buffer went
   # unwatched - measuring something, just not the thing.
+  # The Settlement in the report is a static label the probe echoes. A miswired
+  # local proxy pointed at a fork answers balanceOf happily, so the label alone
+  # would validate the wrong network's zero balances as a clean pass.
+  case "$label" in optimism) want_chain=10 ;; unichain) want_chain=130 ;; robinhood) want_chain=4663 ;; *) want_chain="" ;; esac
+  got_chain="$(jq -r '.chain_id // ""' <<<"$report")"
+  if [[ -n "$want_chain" && "$got_chain" != "$want_chain" ]]; then
+    FINDINGS+=("$label: probe reported chain id '${got_chain:-<missing>}', expected $want_chain - the balances came from the wrong network")
+    KEYS+=("$label/wrong-chain")
+    log "chain=$label probe reported the wrong chain id"
+    continue
+  fi
+
   got_settlement="$(jq -r '.settlement // ""' <<<"$report" | tr '[:upper:]' '[:lower:]')"
   if [[ -n "$want_settlement" && "$got_settlement" != "$want_settlement" ]]; then
     FINDINGS+=("$label: probe measured Settlement $got_settlement, expected $want_settlement - the wrong contract is being watched")
@@ -340,9 +358,17 @@ if [[ ${#FINDINGS[@]} -eq 0 ]]; then
   # being suppressed by a stale window.
   # A failed clear leaves stale suppression behind, so the NEXT real finding is
   # silently held for up to 24h against a condition that no longer exists.
-  rm -f "$STATE_FILE" 2>/dev/null || log "WARN: could not clear $STATE_FILE; a stale key may suppress the next finding"
-  log "all sovereign buffers below their sweep thresholds; pass complete"
-  exit 0
+  if rm -f "$STATE_FILE" 2>/dev/null; then
+    log "all sovereign buffers below their sweep thresholds; pass complete"
+    exit 0
+  fi
+  # Do NOT report a clean pass here. The stale key and timestamp survive, so if
+  # the same condition recurs inside the repeat window it is suppressed even
+  # though the buffer recovered in between - a page silently swallowed by state
+  # this run failed to clear.
+  alert "could not clear the suppression state at $STATE_FILE; a stale key may swallow the next page" || true
+  log "pass complete but DEGRADED: suppression state not cleared"
+  exit 1
 fi
 
 prev_key=""; prev_at=0
