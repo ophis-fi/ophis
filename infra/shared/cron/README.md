@@ -380,6 +380,10 @@ and cannot fail closed in a cron on a Mac mini.
 ## Installation (one-time, on Mac mini)
 
 ```bash
+# The plist ships with the endpoints and repo path that actually work on the Mac
+# mini. Check them before copying: OPHIS_REPO must be a checkout that HAS the
+# scripts (not a stale feature branch), and the two per-chain RPCs exist because
+# only OP's proxy is reachable from this host - :4002 and :4003 live on Cadia.
 cp infra/shared/cron/ai.ophis.settlement-buffer-watch.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.ophis.settlement-buffer-watch.plist
 launchctl list | grep ai.ophis.settlement-buffer-watch
