@@ -68,6 +68,10 @@ addr_for() { # settlement, symbol
   case "$1:$2" in
     0xOP:USDC)  echo "0x0b2c639c533813f4aa9d7837caf62653d097ff85" ;;
     0xOP:WETH)  echo "0x4200000000000000000000000000000000000006" ;;
+    0xOP:USDCe) echo "0x7f5c764cbc14f9669b88837ca1490cca17c31607" ;;
+    0xOP:DAI)   echo "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1" ;;
+    0xOP:WBTC)  echo "0x68f180fcce6836688e9084f035309e29bf0a2095" ;;
+    0xOP:USDT)  echo "0x94b008aa00579c1307b0ef2c499ad98a8ce58e58" ;;
     0xOP:ETH)   echo "native" ;;
     0xUNI:WETH) echo "0x4200000000000000000000000000000000000006" ;;
     0xUNI:USDC) echo "0x078d782b760474a361dda0af3839290b0ef57ad6" ;;
@@ -392,7 +396,7 @@ make_repo "$W19" \
 out19="$(run_watch "$W19")"
 ckc "a report missing expected symbols alerts" "$out19" "ALERT:"
 ckc "and names what went missing" "$out19" "MISSING"
-ckc "specifically the dropped WETH row" "$out19" "WETH"
+ckc "specifically the dropped WETH row, named by address" "$out19" "0x4200000000000000000000000000000000000006"
 rm -rf "$W19"
 
 # --- 18. an error row with probe_failures 0 must not be skipped -------------
@@ -423,8 +427,8 @@ rm -rf "$W21"
 # Both incidents previously shared one suppression key, so the second newly
 # unmeasured balance was silenced for 24h behind the first page.
 W22="$(mktemp -d)"
-miss_weth='{"ts":"t","settlement":"0x310784c7fce12d578da6f53460777bac9718b859","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"USDC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDT","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"ETH","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
-miss_usdc='{"ts":"t","settlement":"0x310784c7fce12d578da6f53460777bac9718b859","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"WETH","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"USDT","token":"0xt","raw":"1","hr":"0","status":"ok"},{"symbol":"ETH","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
+miss_weth='{"ts":"t","settlement":"0x310784c7fce12d578da6f53460777bac9718b859","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"USDC","token":"0x0b2c639c533813f4aa9d7837caf62653d097ff85","raw":"1","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0x7f5c764cbc14f9669b88837ca1490cca17c31607","raw":"1","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xda10009cbd5d07dd0cecc66161fc93d7c9000da1","raw":"1","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0x68f180fcce6836688e9084f035309e29bf0a2095","raw":"1","hr":"0","status":"ok"},{"symbol":"USDT","token":"0x94b008aa00579c1307b0ef2c499ad98a8ce58e58","raw":"1","hr":"0","status":"ok"},{"symbol":"ETH","token":"native","raw":"1","hr":"0","status":"ok"}]}'
+miss_usdc='{"ts":"t","settlement":"0x310784c7fce12d578da6f53460777bac9718b859","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"WETH","token":"0x4200000000000000000000000000000000000006","raw":"1","hr":"0","status":"ok"},{"symbol":"USDCe","token":"0x7f5c764cbc14f9669b88837ca1490cca17c31607","raw":"1","hr":"0","status":"ok"},{"symbol":"DAI","token":"0xda10009cbd5d07dd0cecc66161fc93d7c9000da1","raw":"1","hr":"0","status":"ok"},{"symbol":"WBTC","token":"0x68f180fcce6836688e9084f035309e29bf0a2095","raw":"1","hr":"0","status":"ok"},{"symbol":"USDT","token":"0x94b008aa00579c1307b0ef2c499ad98a8ce58e58","raw":"1","hr":"0","status":"ok"},{"symbol":"ETH","token":"native","raw":"1","hr":"0","status":"ok"}]}'
 make_repo "$W22" \
   "optimism-mainnet|$miss_weth|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
@@ -440,7 +444,7 @@ rm -rf "$W22"
 # an airdropped token with markup in its symbol would make Telegram REJECT the
 # request - and the one condition the page exists to report is the one lost.
 W23="$(mktemp -d)"
-pwn='{"ts":"t","settlement":"0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"<b>PWN</b>","token":"0xt","raw":"50000000","hr":"0","status":"ok"},{"symbol":"WETH","token":"0xt","raw":"0","hr":"0","status":"ok"},{"symbol":"USDG","token":"0xt","raw":"0","hr":"0","status":"ok"}]}'
+pwn='{"ts":"t","settlement":"0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"<b>PWN</b>","token":"0xt","raw":"50000000","hr":"0","status":"ok"},{"symbol":"WETH","token":"0x0bd7d308f8e1639fab988df18a8011f41eacad73","raw":"0","hr":"0","status":"ok"},{"symbol":"USDG","token":"0x5fc5360d0400a0fd4f2af552add042d716f1d168","raw":"0","hr":"0","status":"ok"}]}'
 make_repo "$W23" \
   "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
@@ -455,7 +459,7 @@ rm -rf "$W23"
 # its status is not the shell's. The malformed row would disappear and the chain
 # would still finish as measured.
 W24="$(mktemp -d)"
-weird='{"ts":"t","settlement":"0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"WETH","token":"0xt","raw":{"oops":1},"hr":"0","status":"ok"},{"symbol":"USDG","token":"0xt","raw":"1","hr":"0","status":"ok"}]}'
+weird='{"ts":"t","settlement":"0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd","safe":"0xsafe","probe_failures":0,"balances":[{"symbol":"WETH","token":"0x0bd7d308f8e1639fab988df18a8011f41eacad73","raw":{"oops":1},"hr":"0","status":"ok"},{"symbol":"USDG","token":"0x5fc5360d0400a0fd4f2af552add042d716f1d168","raw":"1","hr":"0","status":"ok"}]}'
 make_repo "$W24" \
   "optimism-mainnet|$(report 0xOP 0 "USDC:1:ok")|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \

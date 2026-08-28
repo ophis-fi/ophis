@@ -78,29 +78,26 @@ been shown to work twice.
 ## Step 0: preflight (read-only, no keys)
 
 ```bash
-# Pin the destination first: the Robinhood runner has no default and refuses to
-# start without it, so the preflight reports UNKNOWN (exit 2) if it is unset.
+# The preflight runs the chain's OWN sweep-to-safe.sh in dry-run, so give it the
+# exact environment the sweep will be run with. It never loads a key.
+export OPHIS_RPC=<the RPC the sweep will use>
 export OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
+export ROBINHOOD_SUBMITTER_ADDR=0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665
+export OPHIS_SETTLEMENT_ROBINHOOD=0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD
+
 ./infra/shared/scripts/sweep-preflight.sh robinhood
 ```
 
-Each v1 chain's own pinned submitter is the default, so no environment is needed
-for a routine check. Override with `BROADCASTER_ROBINHOOD` / `BROADCASTER_UNICHAIN`
-when deliberately checking a different key, and set `FEE_LIQUIDATOR` before the
-Optimism run.
+Exit 0 only when everything PASSED; exit 2 means something came back UNKNOWN,
+which is not a green light either, and a mistyped chain name exits 3.
 
-Exits 0 only when every precondition PASSED. Exit 2 means at least one check
-came back UNKNOWN, which is not a green light: an unverified precondition is
-treated the same as a failed one. A mistyped chain name exits 3 rather than
-reporting a vacuous "0 passed, 0 failed".
-
-Confirm in particular that the fee Safe has code, that its owners match the
-expected 2-of-3 set, and that the right identity is an allowlisted solver -
-`settle()` reverts *after* the broadcast otherwise, leaking sweep intent into a
-public mempool for nothing. Which identity that is differs by path: on the v1
-chains it is the broadcaster EOA (`BROADCASTER`), on the OP v2 path it is the
-FeeLiquidator **contract** (`FEE_LIQUIDATOR`), with the ops EOA merely
-authorised to call it.
+It reports two things. First, whether the runner's own dry-run accepted its
+configuration — that covers the RPC and its chain id, the submitter, the
+Settlement, the destination and its on-chain code, the nonce guard and the
+thresholds, in the runner's own words. Second, the one check no runner performs:
+the destination Safe's **owners and threshold**. Every runner verifies the
+destination has code; none verifies who controls it, and a rotated Safe still
+has code.
 
 ## Step 1: Robinhood dry run, then broadcast
 
@@ -130,7 +127,7 @@ Preflight this chain first — the checks are per chain and step 0 only covered
 Robinhood:
 
 ```bash
-./infra/shared/scripts/sweep-preflight.sh unichain
+./infra/shared/scripts/sweep-preflight.sh unichain   # same env, unichain values
 ```
 
 ```bash
@@ -165,8 +162,7 @@ Preflight Optimism before any of it, with the liquidator and the intended ops
 key supplied so the solver, ops-key and immutable-pin checks can all run:
 
 ```bash
-FEE_LIQUIDATOR=0x... BROADCASTER=0x... \
-  ./infra/shared/scripts/sweep-preflight.sh optimism
+FEE_LIQUIDATOR=0x... ./infra/shared/scripts/sweep-preflight.sh optimism
 ```
 
 For reference, OP's thresholds at current balances would be:
@@ -181,11 +177,9 @@ export MIN_BASE_UNITS=100000,10000,10000000000000
 
 Record the buffer and the fee Safe balance **before** broadcasting, then:
 
-1. `./infra/shared/scripts/sweep-preflight.sh <chain>` — the buffer line should
-   have dropped by the amount swept. For Optimism, repeat the same assignments as
-   the pre-sweep run (`FEE_LIQUIDATOR=0x... BROADCASTER=0x... ./…preflight.sh
-   optimism`); they were command-local, so without them the solver check comes
-   back UNKNOWN and the preflight exits 2 rather than verifying the rehearsal.
+1. Re-run the chain's sweep dry-run — it prints the per-token balances it would
+   move, which should now be below threshold. Use the same environment as the
+   pre-sweep run; command-local assignments do not survive into this step.
 2. The fee Safe balance on that chain should be **up by that same amount**. This
    is the check that actually proves the sweep worked, so do it explicitly rather
    than inferring it.

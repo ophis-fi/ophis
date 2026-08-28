@@ -88,10 +88,15 @@ CHAINS=(
 # silently vanish - the same "reported health it did not measure" failure the
 # zero-row guard was added for, one layer up. Keep in sync with each probe's
 # TOKENS array (plus the native row where the probe emits one).
-EXPECTED_SYMBOLS=(
-  "optimism:USDC WETH USDCe DAI WBTC USDT ETH"
-  "unichain:WETH USDC"
-  "robinhood:WETH USDG"
+# Expected token ADDRESSES per chain, not symbols. An impersonator carrying a
+# canonical symbol and a zero balance would satisfy a symbol-keyed completeness
+# check, then fail the address-keyed threshold lookup and fall into the uncovered
+# branch - which stays silent at zero balance. Net effect: a clean pass while the
+# real asset was never measured. Keyed by address, that cannot happen.
+EXPECTED_ADDRS=(
+  "optimism:0x0b2c639c533813f4aa9d7837caf62653d097ff85 0x4200000000000000000000000000000000000006 0x7f5c764cbc14f9669b88837ca1490cca17c31607 0xda10009cbd5d07dd0cecc66161fc93d7c9000da1 0x68f180fcce6836688e9084f035309e29bf0a2095 0x94b008aa00579c1307b0ef2c499ad98a8ce58e58 native"
+  "unichain:0x4200000000000000000000000000000000000006 0x078d782b760474a361dda0af3839290b0ef57ad6"
+  "robinhood:0x0bd7d308f8e1639fab988df18a8011f41eacad73 0x5fc5360d0400a0fd4f2af552add042d716f1d168"
 )
 
 # chain:symbol:token-address:min-base-units
@@ -237,18 +242,18 @@ for entry in "${CHAINS[@]}"; do
   expected=""
   # Deliberately NOT `entry`: that is the enclosing CHAINS loop's index variable,
   # and clobbering it here works only by accident of the outer `for` reassigning it.
-  for exp_entry in "${EXPECTED_SYMBOLS[@]}"; do
+  for exp_entry in "${EXPECTED_ADDRS[@]}"; do
     IFS=: read -r exp_chain exp_syms <<< "$exp_entry"
     [[ "$exp_chain" == "$label" ]] && expected="$exp_syms"
   done
   if [[ -n "$expected" ]]; then
-    got_syms="$(jq -r '.balances[].symbol' <<<"$report" | sort -u)"
+    got_syms="$(jq -r '.balances[].token // ""' <<<"$report" | tr '[:upper:]' '[:lower:]' | sort -u)"
     missing=""
     for want in $expected; do
       grep -qx -- "$want" <<<"$got_syms" || missing="$missing $want"
     done
     if [[ -n "$missing" ]]; then
-      FINDINGS+=("$label: probe report is MISSING expected symbol(s):${missing} - those balances are UNKNOWN, not zero")
+      FINDINGS+=("$label: probe report is MISSING expected token(s):${missing} - those balances are UNKNOWN, not zero")
       # The missing set is part of the identity of the incident: losing a different
       # token tomorrow is a NEW condition, and a shared key would suppress it for 24h
       # behind today's page.
