@@ -389,6 +389,13 @@ owner-gated: the hot key never touches an attacker-controllable destination.
 
 ## Related documents
 
+- `sovereign-sweep-rehearsal.md` (what to rehearse BEFORE this ceremony:
+  Robinhood needs no ceremony at all, Unichain needs a solver grant first, and
+  every current buffer sits 30x-100x below the default thresholds, so a stock
+  sweep today moves nothing and looks like a clean no-op)
+- `../../infra/shared/scripts/sweep-preflight.sh` (read-only precondition check:
+  runs each chain's own sweep dry-run and verifies the destination Safe's owners,
+  which no runner does)
 - `allowlist-governance-runbook.md` (timelock + guardian mechanics, deploy record)
 - `fee-recipient-rotation.md` (rotation now REQUIRES a liquidator redeploy;
   see its step list)
