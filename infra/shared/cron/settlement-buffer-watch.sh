@@ -213,7 +213,17 @@ for entry in "${CHAINS[@]}"; do
 
   # A probe that dies must not be indistinguishable from a clean chain, and it
   # must not stop the other two from being measured.
-  if ! raw_out="$("$probe" 2>&1)"; then
+  # Per-chain RPC. Each probe defaults to a localhost proxy, but those proxies do
+  # not all live on the same host: the Mac mini reaches OP's on :4001 while the
+  # Unichain and Robinhood ones run on Cadia. Without an override this job pages
+  # hourly with probe failures for two chains it simply cannot reach - a monitor
+  # that cries wolf gets muted, which is the failure it exists to prevent. Set
+  # OPHIS_RPC_OPTIMISM / OPHIS_RPC_UNICHAIN / OPHIS_RPC_ROBINHOOD to whatever that
+  # host can actually reach; unset means keep the probe's own default.
+  rpc_var="OPHIS_RPC_$(tr '[:lower:]' '[:upper:]' <<<"$label")"
+  probe_env=()
+  [[ -n "${!rpc_var:-}" ]] && probe_env=(OPHIS_RPC="${!rpc_var}")
+  if ! raw_out="$(env "${probe_env[@]+"${probe_env[@]}"}" "$probe" 2>&1)"; then
     FINDINGS+=("$label: probe FAILED (exit non-zero) - buffer state UNKNOWN, not clean")
     KEYS+=("$label/probe-exit")
     log "chain=$label probe exited non-zero"
