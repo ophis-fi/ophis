@@ -228,7 +228,8 @@ jobs:
           echo "::group::shellcheck"
           docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:v0.11.0 \
             -S style /mnt/infra/shared/cron/container-watchdog.sh \
-                     /mnt/infra/shared/cron/container-watchdog.test.sh
+                     /mnt/infra/shared/cron/container-watchdog.test.sh \
+                     /mnt/infra/shared/scripts/sweep-preflight.sh
           echo "::endgroup::"
       - name: container-watchdog
         run: |
