@@ -95,7 +95,10 @@ redact_url() {
 # string and all - so echoing them verbatim would defeat the redaction above by
 # the back door. Collapses every http(s) URL in the text to scheme://host.
 redact_text() {
-  sed -E -e 's#(https?://)[^[:space:]]*@#\1#g' -e 's#(https?://[^/[:space:]]+)[^[:space:]]*#\1#g'
+  # The host class must exclude ? and # as redact_url's does. Allowing them meant a
+  # URL with a credential in the query and NO path - https://rpc.example?dkey=SECRET -
+  # matched the whole thing as "host" and survived redaction intact.
+  sed -E -e 's#(https?://)[^[:space:]]*@#\1#g' -e 's#(https?://[^/?\#[:space:]]+)[^[:space:]]*#\1#g'
 }
 
 # Shape-check BROADCASTER once, before anything can skip past it. It is meant to
@@ -158,9 +161,15 @@ for label in "${CHAINS[@]}"; do
   fi
   # unichain's wrapper exports SETTLEMENT only when unset, so an ambient value
   # redirects the sweep to another contract while every check here still passes.
-  if [[ "$label" == "unichain" && -n "${SETTLEMENT:-}" ]] \
-     && [[ "$(tr '[:upper:]' '[:lower:]' <<<"$SETTLEMENT")" != "0x108a678716e5e1776036ef044cab7064226f714e" ]]; then
-    bad "unichain: ambient SETTLEMENT is $SETTLEMENT, not the canonical 0x108A678716e5E1776036eF044CAB7064226F714E - the sweep would act on it"
+  if [[ "$label" == "unichain" && -n "${SETTLEMENT:-}" ]]; then
+    if [[ ! "$SETTLEMENT" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+      # Same rule as BROADCASTER: only echo a value once it is known to be a public
+      # 20-byte address. An operator who pastes a key into SETTLEMENT would
+      # otherwise have it written straight into the ceremony log.
+      bad "unichain: ambient SETTLEMENT is not a 20-byte address (value withheld)"
+    elif [[ "$(tr '[:upper:]' '[:lower:]' <<<"$SETTLEMENT")" != "0x108a678716e5e1776036ef044cab7064226f714e" ]]; then
+      bad "unichain: ambient SETTLEMENT is $SETTLEMENT, not the canonical 0x108A678716e5E1776036eF044CAB7064226F714E - the sweep would act on it"
+    fi
   fi
 
   case "$label" in

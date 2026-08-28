@@ -186,6 +186,7 @@ check necessarily fails.
 
 ```bash
 FEE_LIQUIDATOR=0x... BROADCASTER=0x<fee-ops EOA ADDRESS, never the key> \
+OPHIS_RPC=<the same Optimism RPC used in OP_ENV below> \
   ./infra/shared/scripts/sweep-preflight.sh optimism
 ```
 
