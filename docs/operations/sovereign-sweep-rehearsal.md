@@ -127,7 +127,12 @@ Preflight this chain first — the checks are per chain and step 0 only covered
 Robinhood:
 
 ```bash
-./infra/shared/scripts/sweep-preflight.sh unichain   # same env, unichain values
+# Unichain reads a bare SAFE and OPHIS_SUBMITTER_EOA; set them before preflighting.
+export OPHIS_RPC=<the Unichain RPC the sweep will use>
+export SAFE=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
+export OPHIS_SUBMITTER_EOA=0x7A956C269a12f1B897367663b536EB5dd29f3fBb
+
+./infra/shared/scripts/sweep-preflight.sh unichain
 ```
 
 ```bash

@@ -103,7 +103,11 @@ for label in "${CHAINS[@]}"; do
   fi
 
   # 1. The runner's own dry-run IS the configuration preflight.
-  if out="$("$runner" 2>&1)"; then
+  # Strip any ambient key before delegating. The runner only loads a PK under
+  # --broadcast, but the forge script it invokes reads PRIVATE_KEY from the
+  # environment to derive a broadcaster, so a key sitting in the operator's shell
+  # would be read during what is advertised as a key-free preflight.
+  if out="$(env -u PRIVATE_KEY -u PK "$runner" 2>&1)"; then
     ok "$label: sweep dry-run accepted its configuration"
   else
     reason="$(grep -iE 'ERROR|ABORT' <<<"$out" | tail -1)"
@@ -139,6 +143,20 @@ for label in "${CHAINS[@]}"; do
     [[ "$thr" == "2" ]] || bad "$label: destination threshold is $thr, expected 2"
   else
     unknown "$label: destination $dest owners unreadable - UNVERIFIED"
+  fi
+
+  # The runner aborts when liquidator() is address(0), but never checks it is the
+  # key you meant. Without an expected value this cannot tell a live ops key from
+  # a rotated one, so it reports UNKNOWN rather than passing.
+  if [[ "$label" == "optimism" && -n "${FEE_LIQUIDATOR:-}" ]]; then
+    liq_eoa="$(cast call "$FEE_LIQUIDATOR" "liquidator()(address)" "${rpc_args[@]}" 2>/dev/null | awk '{print $1}')"
+    if [[ -z "${BROADCASTER:-}" ]]; then
+      unknown "optimism: liquidator() is ${liq_eoa:-unreadable} but no BROADCASTER was given to compare against"
+    elif [[ "$(tr '[:upper:]' '[:lower:]' <<<"$liq_eoa")" == "$(tr '[:upper:]' '[:lower:]' <<<"$BROADCASTER")" ]]; then
+      ok "optimism: liquidator() is the intended ops key"
+    else
+      bad "optimism: liquidator() is $liq_eoa, not the intended ops key $BROADCASTER"
+    fi
   fi
 
   # 3. The nonce guards live inside each runner's --broadcast branch, so the

@@ -319,7 +319,10 @@ jobs:
           #     writes an empty file, the suite fails, and it reads as "caught"
           #     while having tested nothing at all. `bash -n` catches that one.
           check() { # name, sed-expression
-            sed "$2" /tmp/sbw.orig > "$SRC"
+            if ! sed "$2" /tmp/sbw.orig > "$SRC"; then
+              echo "HARNESS BUG: sed itself failed (bad expression): $1"; fails=$((fails+1))
+              cp /tmp/sbw.orig "$SRC"; return
+            fi
             if diff -q /tmp/sbw.orig "$SRC" >/dev/null; then
               echo "HARNESS BUG: mutation never applied (pattern did not match): $1"; fails=$((fails+1))
             elif ! bash -n "$SRC" 2>/dev/null; then
