@@ -4,12 +4,12 @@ import { computeShares, type EligibleWallet } from './batch/computeShares.js';
 import { computeDirectRebates } from './batch/computeDirectRebates.js';
 import { buildEthCallSimulator, isolateBadRecipients, type Transfer } from './batch/dryRun.js';
 import { proposeRebateBatch } from './batch/propose.js';
-import { convertFeesToWeth } from './batch/convert.js';
+import { convertFeesToWeth, buildNativeWrapForChain } from './batch/convert.js';
 import { waitForExecution } from './batch/poll.js';
 import { assignTier, POOL_SPLIT_BPS } from './tiers.js';
-import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from './safe/addresses.js';
+import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN, NATIVE_SYMBOL_BY_CHAIN } from './safe/addresses.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
-import { getNonWethTokenBalances } from './safe/balances.js';
+import { getNonWethTokenBalances, formatStrandedDetail } from './safe/balances.js';
 import { outstandingPartnerLiabilityWei } from './partnerFees/liability.js';
 import { alerts } from './telegram/alerter.js';
 import { createPublicClient, http, parseAbi } from 'viem';
@@ -140,7 +140,12 @@ function resolveConvertMode(): boolean {
  * REBATE_CONVERT_ENABLED + proposeEnabled (gated, byte-inert until the operator
  * enables it after reviewing the flow on Gnosis with a small balance).
  */
-async function maybeConvertFeesToWeth(deps: BatcherDeps, now: Date, afterNonce: number): Promise<void> {
+async function maybeConvertFeesToWeth(
+  deps: BatcherDeps,
+  now: Date,
+  afterNonce: number | null,
+  opts: { bootstrap?: boolean } = {},
+): Promise<void> {
   if (!deps.proposeEnabled || !resolveConvertMode()) return;
   const ac = new AbortController();
   try {
@@ -151,7 +156,8 @@ async function maybeConvertFeesToWeth(deps: BatcherDeps, now: Date, afterNonce: 
         proposerPrivateKey: deps.proposerPrivateKey,
         nowSeconds: Math.floor(now.getTime() / 1000),
         signal: ac.signal,
-        nonce: afterNonce,
+        ...(afterNonce === null ? {} : { nonce: afterNonce }),
+        ...(opts.bootstrap ? { bootstrap: true } : {}),
       }),
       CONVERSION_TIMEOUT_MS,
       'fee conversion (#360)',
@@ -163,7 +169,11 @@ async function maybeConvertFeesToWeth(deps: BatcherDeps, now: Date, afterNonce: 
         .alert(
           'batcher',
           `Proposed a fee-conversion Safe tx (#360): ${conv.orderCount} sell order(s) + ` +
-            `${conv.approveCount} VaultRelayer approval(s) (safeTxHash ${conv.safeTxHash}). ` +
+            `${conv.approveCount} VaultRelayer approval(s)` +
+            (conv.nativeWrappedWei > 0n
+              ? ` + wraps the Safe's ENTIRE native balance of ${conv.nativeWrappedWei.toString()} wei`
+              : '') +
+            ` (safeTxHash ${conv.safeTxHash}). ` +
             `Sign + execute it; approved tokens get their sell order next cycle, and converted ` +
             `WETH rebates the cycle after.`,
         )
@@ -172,6 +182,27 @@ async function maybeConvertFeesToWeth(deps: BatcherDeps, now: Date, afterNonce: 
   } catch (err) {
     log.warn({ err }, 'fee conversion (#360) failed or aborted (ignored — payout proceeds)');
   }
+}
+
+/**
+ * Bootstrap the fee conversion with NO payout above it. Called at the very END of the
+ * nightly pipeline, after every other proposal has been queued.
+ *
+ * Why it exists: the pool reads WETH, CoW pays partner fees in the chain's native
+ * coin, so the pool is 0, so there is no payout, so the payout-gated conversion never
+ * runs, so the pool stays 0. Forever. No rebate has ever paid for exactly this reason.
+ *
+ * Why it runs LAST: convertFeesToWeth refuses to propose in bootstrap mode unless the
+ * Safe queue is readable and empty. That gate is only meaningful once everything else
+ * this cycle intends to queue has been queued — checked mid-pipeline it would happily
+ * take a nonce and then have the affiliate and partner-fee payouts stack on top of it,
+ * which is precisely the Codex #474 hazard of an unsigned tx blocking real payouts.
+ *
+ * On a night when anything else is queued this is a no-op, and it simply tries again
+ * the next night. NEVER throws.
+ */
+export async function bootstrapFeeConversion(deps: BatcherDeps, now: Date = new Date()): Promise<void> {
+  await maybeConvertFeesToWeth(deps, now, null, { bootstrap: true });
 }
 
 /**
@@ -281,22 +312,43 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
   //     the payout that follows.
   try {
     const stranded = await getNonWethTokenBalances({ chainId: deps.chainId, safe: OPHIS_SAFE_ADDRESS, weth });
-    if (stranded.length > 0) {
-      // Cap the listed tokens so a dust/spam-flooded Safe can't produce a
-      // message Telegram rejects; HTML-escape the (attacker-controllable) token
-      // metadata since notify() sends with parse_mode 'HTML'.
-      const shown = stranded
-        .slice(0, MAX_ALERT_TOKENS)
-        .map((t) => `${escapeHtml(t.symbol)} ${t.balance} (${escapeHtml(t.tokenAddress)})`)
-        .join(', ');
-      const detail = stranded.length > MAX_ALERT_TOKENS ? `${shown}, +${stranded.length - MAX_ALERT_TOKENS} more` : shown;
-      log.warn({ strandedCount: stranded.length, stranded, poolWei: pool.toString() }, 'non-WETH value in Safe, not covered by WETH-only pool');
+    // The NATIVE coin is the half this probe was blind to. The Safe API reports it
+    // as a `tokenAddress: null` row that getNonWethTokenBalances skips, so a Safe
+    // holding nothing but native value produced an EMPTY stranded list and total
+    // silence — which is precisely the live Gnosis condition the 2026-08-27 audit
+    // found. Read it on-chain rather than from the Safe API: same source of truth
+    // as the WETH pool read above, and it cannot be missed by an indexing lag.
+    // Its OWN try/catch, deliberately. This read is ADDITIVE to the pre-existing
+    // #360 probe; letting it escape to the outer catch would throw away an
+    // already-collected ERC20 stranding report over a transient RPC blip, turning a
+    // new feature into a regression of the guard it is extending.
+    let nativeWei = 0n;
+    try {
+      nativeWei = await client.getBalance({ address: OPHIS_SAFE_ADDRESS });
+    } catch (err) {
+      log.warn({ err }, 'native balance read failed; reporting ERC20 stranding only this cycle');
+    }
+    const nativeSymbol = NATIVE_SYMBOL_BY_CHAIN[deps.chainId] ?? 'native';
+    // Report native only once it is ACTIONABLE, reusing the very function the
+    // conversion uses to decide whether to wrap. Two reasons to share it rather than
+    // test `> 0n` here: sub-threshold dust is permanent on these Safes, and an alert
+    // that fires every cycle forever gets muted, which lands us back in exactly the
+    // silence this fixes. And because the alarm and the action read the same
+    // threshold, they cannot drift apart into "alerting about something nothing acts
+    // on" or the reverse.
+    const nativeActionable = buildNativeWrapForChain(deps.chainId, nativeWei).length > 0;
+    if (stranded.length > 0 || nativeActionable) {
+      const detail = formatStrandedDetail(stranded, nativeActionable ? nativeWei : 0n, nativeSymbol, MAX_ALERT_TOKENS);
+      log.warn(
+        { strandedCount: stranded.length, stranded, nativeWei: nativeWei.toString(), poolWei: pool.toString() },
+        'value in Safe not covered by the WETH-only pool',
+      );
       // Fire-and-forget: a (bounded) Telegram send must not delay the payout.
       void alerts
         .alert(
           'batcher',
-          `Safe holds non-WETH value NOT included in the WETH-only rebate pool: ${detail}. ` +
-            `Partner fees may accrue in trade tokens (Issue #360); ` +
+          `Safe holds value NOT included in the WETH-only rebate pool: ${detail}. ` +
+            `Partner fees arrive as the chain's native coin or a trade token (Issue #360); ` +
             (pool === 0n
               ? `the pool is 0 WETH so rebates will NOT pay this cycle until handled.`
               : `the WETH payout proceeds but this value is excluded and will accrue until converted/handled.`),
@@ -566,9 +618,21 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       { batchId, directMode, reason: directMode ? 'no new fees' : pool === 0n ? 'zero pool' : 'no wallets' },
       'no recipients',
     );
-    // No payout this cycle → NO fee conversion: a standalone conversion here would
-    // occupy a nonce with no payout above it and could block the next cycle's payout
-    // if left unsigned. Stranded fees still surface via the step-1b alert. (Codex #474)
+    // No payout this cycle. Codex #474 established that a standalone conversion here
+    // occupies a nonce with no payout above it and can block the next cycle's payout
+    // if left unsigned — so this stayed a hard "no conversion".
+    //
+    // That rule deadlocks Gnosis. The pool reads WETH; CoW pays partner fees in
+    // native xDAI; so the pool is 0, so we land HERE, so no conversion ever runs, so
+    // the pool stays 0. Forever. No rebate has ever paid for exactly this reason.
+    //
+    // The BOOTSTRAP that breaks the cycle does NOT run here. Checking the queue is
+    // empty at THIS point protects nothing: runNightlyPipeline goes on to propose the
+    // affiliate payout and the nightly partner-fee payout at later nonces, so a
+    // bootstrap taking a nonce here would sit BELOW them and block both if left
+    // unsigned — the #474 hazard, re-entered through a different door. It runs at the
+    // very END of the pipeline instead (bootstrapFeeConversion), where the empty-queue
+    // gate observes the cycle's true final state.
     return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
@@ -592,7 +656,7 @@ async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherRe
       .set({ status: 'no_recipients', ...(directMode ? { feeBasisWethWei: nonPartnerBalance } : {}) })
       .where(eq(schema.rebateBatches.id, batchId));
     log.info({ batchId, walletCount: wallets.length, directMode }, 'no qualifying recipients (all tracked wallets below the entry floor)');
-    // No payout this cycle → NO fee conversion (see the no_recipients path above). (Codex #474)
+    // Bootstrap runs at the end of the pipeline, not here — see the zero-pool path.
     return { batchId, status: 'no_recipients', safeTxHash: null, recipientCount: 0, poolWei: distributable };
   }
 
