@@ -230,8 +230,7 @@ jobs:
             -S style /mnt/infra/shared/cron/container-watchdog.sh \
                      /mnt/infra/shared/cron/container-watchdog.test.sh \
                      /mnt/infra/shared/cron/settlement-buffer-watch.sh \
-                     /mnt/infra/shared/cron/settlement-buffer-watch.test.sh \
-                     /mnt/infra/shared/scripts/sweep-preflight.sh
+                     /mnt/infra/shared/cron/settlement-buffer-watch.test.sh
           echo "::endgroup::"
       - name: container-watchdog
         run: |

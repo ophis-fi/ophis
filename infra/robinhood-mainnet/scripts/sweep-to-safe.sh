@@ -125,7 +125,7 @@ SWEEP_MIN_BASE_UNITS="${MIN_BASE_UNITS:-1e7,3e15}"
 # defaulting would have moved real revenue to an address nobody controlled, with
 # no revert and no recovery. As of the 2026-08-27 audit that Safe IS deployed on
 # 4663 (VERSION 1.4.1, threshold 2, the expected 3 owners; re-verify with
-# infra/shared/scripts/sweep-preflight.sh robinhood).
+# `cast call <safe> "getOwners()(address[])"` before any sweep).
 #
 # The requirement to pin it explicitly is kept anyway. A silent-success failure
 # mode with no recovery path does not get a convenience default just because the
