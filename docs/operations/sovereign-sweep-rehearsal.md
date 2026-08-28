@@ -48,16 +48,22 @@ The preflight found it: on chain 130 the pinned submitter
 `0x7A956C269a12f1B897367663b536EB5dd29f3fBb` is **not currently an allowlisted
 solver**. `isSolver` on the authenticator `0x1002E12f2e7f848b20fe572F92133E467a5D010C`
 returns false (verified 2026-08-27 with a successful call, not an RPC error), so a
-Unichain sweep would revert with "GPv2: not a solver" **after** broadcasting,
-leaking the sweep into a public mempool for nothing.
+Unichain sweep cannot run. It fails **locally**, not on-chain:
+`SweepSettlementBuffer.s.sol` requires `auth.isSolver(broadcaster)` before it
+reaches `vm.startBroadcast`, so nothing is built, signed or submitted. Treat it
+as an ordinary precondition failure, not a leaked transaction or an incident.
 
 That EOA did settle successfully six times, most recently **2026-07-18**, so the
 allowlist changed at some point after that. The cause was not established here:
 a full allowlist event scan needs an archive endpoint the free RPC tier refuses.
 
-Consequence for this plan: Unichain needs an allowlist grant (an owner Safe or
-timelock action, see `allowlist-governance-runbook.md`) before its sweep can run.
-Robinhood is unaffected and its submitter checks out.
+Consequence for this plan: Unichain needs an `addSolver` grant before its sweep
+can run, and there is **no owner-Safe shortcut on chain 130**. Its AllowList
+manager is the Guardian and the proxy owner is a 24h TimelockController, so
+`addSolver` is callable only through that Timelock's schedule / wait / execute
+flow. Follow `../../infra/unichain-mainnet/deploy/timelock-governance-runbook.md`,
+not the OP-mainnet `allowlist-governance-runbook.md`, whose addresses are
+OP-specific. Robinhood is unaffected and its submitter checks out.
 
 ## Order: Robinhood, then Unichain, then Optimism
 
@@ -97,8 +103,10 @@ which is not a green light either, and a mistyped chain name exits 3.
 
 It reports two things. First, whether the runner's own dry-run accepted its
 configuration — that covers the RPC and its chain id, the submitter, the
-Settlement, the destination and its on-chain code, the nonce guard and the
-thresholds, in the runner's own words. Second, the one check no runner performs:
+Settlement, the destination and its on-chain code, and the thresholds, in the
+runner's own words. It does **not** cover the runners' submitter-nonce guards:
+those sit inside their `--broadcast` branch, so a dry-run never reaches them and
+a broadcast can still abort there. Second, the one check no runner performs:
 the destination Safe's **owners and threshold**. Every runner verifies the
 destination has code; none verifies who controls it, and a rotated Safe still
 has code.
@@ -146,6 +154,7 @@ OPHIS_SUBMITTER_EOA=0x7A956C269a12f1B897367663b536EB5dd29f3fBb \
 UNI_ENV=(TOKENS=0x078D782b760474a361dDA0AF3839290b0EF57AD6,0x4200000000000000000000000000000000000006
          MIN_BASE_UNITS=100000,10000000000000
          SAFE=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
+         OPHIS_SUBMITTER_EOA=0x7A956C269a12f1B897367663b536EB5dd29f3fBb
          OPHIS_RPC=<the Unichain RPC>)
 
 env "${UNI_ENV[@]}" ./infra/unichain-mainnet/scripts/sweep-to-safe.sh
@@ -166,10 +175,9 @@ liquidator ceremony, the v1 forge script remains the documented
 disaster-recovery fallback, at the cost of using the driver-submitter key.
 
 Note USDT is **not** in the OP sweep's default token list (USDC, WETH, native
-ETH), so the override below deliberately adds it. The OP buffer probe now reports
-USDT and native ETH as well, so the hourly watch flags USDT as "not covered by
-the chain's sweep configuration" until either the sweep default or the override
-picks it up.
+ETH), so the override below deliberately adds it. Whether any hourly monitor
+reports that USDT balance depends on that monitor's own probe coverage, which is
+outside this document.
 
 Preflight Optimism **after** the deploy and the Timelock execute, immediately
 before the first sweep. Run earlier it cannot pass: before deployment the
@@ -189,10 +197,20 @@ check reports UNKNOWN and the preflight exits 2.
 
 For reference, OP's thresholds at current balances would be:
 
+These must be attached to the runner invocation, not left as bare assignments:
+the runbook's routine command passes only `FEE_LIQUIDATOR`, and with the stock
+defaults every current OP balance is below threshold, so the "first sweep" would
+exit successfully having moved nothing and silently skipped USDT.
+
 ```bash
 # USDC 0.354188 floor 0.1 | USDT 0.032961 floor 0.01 | WETH 0.0000440679 floor 0.00001
-TOKENS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85,0x94b008aA00579c1307B0EF2c499aD98a8ce58e58,0x4200000000000000000000000000000000000006
-MIN_BASE_UNITS=100000,10000,10000000000000
+OP_ENV=(FEE_LIQUIDATOR=$LIQ
+        OPHIS_RPC=<the Optimism RPC>
+        TOKENS=0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85,0x94b008aA00579c1307B0EF2c499aD98a8ce58e58,0x4200000000000000000000000000000000000006
+        MIN_BASE_UNITS=100000,10000,10000000000000)
+
+env "${OP_ENV[@]}" ./infra/optimism-mainnet/scripts/sweep-to-safe.sh              # dry run
+env "${OP_ENV[@]}" ./infra/optimism-mainnet/scripts/sweep-to-safe.sh --broadcast  # operator only
 ```
 
 ## Verification after each sweep
