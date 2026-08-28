@@ -293,7 +293,13 @@ for entry in "${CHAINS[@]}"; do
   fi
 
   while IFS=$'\t' read -r sym rawbal status tokaddr; do
-    [[ -z "$sym" ]] && continue
+    if [[ -z "$sym" ]]; then
+      # An empty symbol passes the shape guard (it is still a string) but names
+      # nothing, so silently skipping it drops a real balance row from the pass.
+      FINDINGS+=("$label: a balance row has an EMPTY symbol (token ${tokaddr:-unknown}) - that balance is UNKNOWN, not zero")
+      KEYS+=("$label/${tokaddr:-unknown}/empty-symbol")
+      continue
+    fi
     # A row is only trustworthy if it says so AND carries a numeric balance. Skipping
     # a non-ok row on the assumption probe_failures already counted it is exactly the
     # gap: a probe can emit status "error" (or omit status entirely) while reporting
