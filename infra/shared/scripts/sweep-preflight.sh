@@ -15,7 +15,9 @@
 # The dry-run is safe: it never loads a key (the PK is read only under
 # --broadcast), never broadcasts, and validates RPC shape and chain id, forge
 # availability, the submitter, the Settlement, the destination and its on-chain
-# code, the nonce guard, and the per-token thresholds - aborting on any of them.
+# code, and the per-token thresholds - aborting on any of them. It does NOT cover
+# the nonce guards: those sit inside each runner's --broadcast branch, so the
+# dry-run never reaches them and this script exercises them separately.
 #
 # The one thing no runner checks: they verify the destination has CODE, never
 # WHO controls it. A rotated or compromised Safe still has code, and a sweep
@@ -44,6 +46,26 @@ FEE_SAFE="0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
 EXPECTED_OWNERS='0x0494f503912c101bfd76b88e4f5d8a33de284d1a 0x746ad9c63cca6d3a8588731d60fb87deab4da46a 0xbec5b03ffdcac50071693e87bfdb88baa6710199'
 
 CHAINS=(optimism unichain robinhood)
+# The same defaults each runner falls back to when OPHIS_RPC is unset. Without
+# these, a dry-run could succeed against localhost:400X while the owner check
+# below silently used cast's own default endpoint - a different chain entirely.
+default_rpc() {
+  case "$1" in
+    optimism)  echo "http://localhost:4001/main/evm/10" ;;
+    unichain)  echo "http://localhost:4002/main/evm/130" ;;
+    robinhood) echo "http://localhost:4003/main/evm/4663" ;;
+  esac
+}
+# Env first, then the chain's .env - the runners' own precedence. Resolving only
+# the exported form would force UNKNOWN for a destination the runner reads happily.
+cfg() { # var, chain-dir
+  local v="${!1:-}" f
+  if [[ -z "$v" ]]; then
+    f="$REPO_ROOT/infra/$2/.env"
+    [[ -f "$f" ]] && v="$(grep -E "^$1=" "$f" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\042\047 ' || true)"
+  fi
+  printf '%s' "$v"
+}
 chain_dir() {
   case "$1" in
     optimism)  echo optimism-mainnet ;;
@@ -92,9 +114,10 @@ for label in "${CHAINS[@]}"; do
   #    chain's sweep resolves it: robinhood from its own variable (it has no
   #    default and refuses without it), unichain from the ambient SAFE the forge
   #    script consumes, optimism from the liquidator's immutable feeSafe.
-  rpc_args=(); [[ -n "${OPHIS_RPC:-}" ]] && rpc_args=(--rpc-url "$OPHIS_RPC")
+  eff_rpc="${OPHIS_RPC:-$(default_rpc "$label")}"
+  rpc_args=(--rpc-url "$eff_rpc")
   case "$label" in
-    robinhood) dest="${OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD:-}" ;;
+    robinhood) dest="$(cfg OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD "$(chain_dir "$label")")" ;;
     unichain)  dest="${SAFE:-$FEE_SAFE}" ;;
     optimism)  dest="$(cast call "${FEE_LIQUIDATOR:-0x}" "feeSafe()(address)" "${rpc_args[@]}" 2>/dev/null | awk '{print $1}')" ;;
   esac
@@ -116,6 +139,19 @@ for label in "${CHAINS[@]}"; do
     [[ "$thr" == "2" ]] || bad "$label: destination threshold is $thr, expected 2"
   else
     unknown "$label: destination $dest owners unreadable - UNVERIFIED"
+  fi
+
+  # 3. The nonce guards live inside each runner's --broadcast branch, so the
+  #    dry-run never reaches them. An endpoint that serves every call above while
+  #    rejecting eth_getTransactionCount would pass here and abort at broadcast.
+  if [[ "$label" != "optimism" ]]; then
+    nonce_rpc="$eff_rpc"
+    [[ "$label" == "robinhood" && -n "${OPHIS_NONCE_RPC:-}" ]] && nonce_rpc="$OPHIS_NONCE_RPC"
+    if cast nonce "$dest" --rpc-url "$nonce_rpc" >/dev/null 2>&1; then
+      ok "$label: nonce endpoint serves eth_getTransactionCount"
+    else
+      bad "$label: nonce endpoint cannot serve eth_getTransactionCount - the broadcast guard would abort"
+    fi
   fi
 done
 
