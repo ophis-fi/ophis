@@ -338,7 +338,9 @@ STATE_KEY="$(printf '%s\n' "${KEYS[@]+"${KEYS[@]}"}" | sort | tr '\n' ',')"
 if [[ ${#FINDINGS[@]} -eq 0 ]]; then
   # Clear the state so the next real finding pages immediately rather than
   # being suppressed by a stale window.
-  rm -f "$STATE_FILE"
+  # A failed clear leaves stale suppression behind, so the NEXT real finding is
+  # silently held for up to 24h against a condition that no longer exists.
+  rm -f "$STATE_FILE" 2>/dev/null || log "WARN: could not clear $STATE_FILE; a stale key may suppress the next finding"
   log "all sovereign buffers below their sweep thresholds; pass complete"
   exit 0
 fi

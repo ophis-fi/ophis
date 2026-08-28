@@ -148,6 +148,13 @@ for label in "${CHAINS[@]}"; do
     bad "$label: RPC $(redact_url "$eff_rpc") reports chain id ${got_id:-unreachable}, expected $want_id"
     continue
   fi
+  # unichain's wrapper exports SETTLEMENT only when unset, so an ambient value
+  # redirects the sweep to another contract while every check here still passes.
+  if [[ "$label" == "unichain" && -n "${SETTLEMENT:-}" ]] \
+     && [[ "$(tr '[:upper:]' '[:lower:]' <<<"$SETTLEMENT")" != "0x108a678716e5e1776036ef044cab7064226f714e" ]]; then
+    bad "unichain: ambient SETTLEMENT is $SETTLEMENT, not the canonical 0x108A678716e5E1776036eF044CAB7064226F714E - the sweep would act on it"
+  fi
+
   case "$label" in
     robinhood) dest="$(cfg OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD "$(chain_dir "$label")")" ;;
     unichain)  dest="${SAFE:-$FEE_SAFE}" ;;
@@ -193,8 +200,13 @@ for label in "${CHAINS[@]}"; do
   if [[ "$label" != "optimism" ]]; then
     nonce_rpc="$eff_rpc"
     [[ "$label" == "robinhood" && -n "${OPHIS_NONCE_RPC:-}" ]] && nonce_rpc="$OPHIS_NONCE_RPC"
-    if cast nonce "$dest" --rpc-url "$nonce_rpc" >/dev/null 2>&1; then
-      ok "$label: nonce endpoint serves eth_getTransactionCount"
+    nonce_id="$(cast chain-id --rpc-url "$nonce_rpc" 2>/dev/null)"
+    if [[ "$nonce_id" != "$want_id" ]]; then
+      # A separate nonce endpoint on another chain reads a different account's
+      # nonce, so the idle-driver guard compares numbers from two networks.
+      bad "$label: nonce RPC $(redact_url "$nonce_rpc") reports chain id ${nonce_id:-unreachable}, expected $want_id"
+    elif cast nonce "$dest" --rpc-url "$nonce_rpc" >/dev/null 2>&1; then
+      ok "$label: nonce endpoint on chain $want_id serves eth_getTransactionCount"
     else
       bad "$label: nonce endpoint cannot serve eth_getTransactionCount - the broadcast guard would abort"
     fi
