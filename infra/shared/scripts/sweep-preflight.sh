@@ -75,7 +75,7 @@ chain_dir() {
 }
 
 WANT="${1:-all}"
-if [[ "$WANT" != "all" ]] && ! printf '%s\n' "${CHAINS[@]}" | grep -qx -- "$WANT"; then
+if [[ "$WANT" != "all" ]] && ! printf '%s\n' "${CHAINS[@]}" | grep -qxF -- "$WANT"; then
   # A mistyped chain must not reach "0 passed, 0 failed" and exit 0, which the
   # rehearsal reads as "every precondition met".
   echo "ERROR: unknown chain '$WANT'. Known: all ${CHAINS[*]}" >&2
@@ -106,7 +106,8 @@ redact_text() {
 # and every later branch that mentions it would put that secret in the ceremony
 # log. Refuse up front and never echo the value. (An earlier version validated
 # this deep inside the Optimism branch, behind a `continue` that skipped it.)
-if [[ -n "${BROADCASTER:-}" && ! "$BROADCASTER" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+if [[ ( "$WANT" == "all" || "$WANT" == "optimism" ) \
+      && -n "${BROADCASTER:-}" && ! "$BROADCASTER" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
   echo "ERROR: BROADCASTER is not a 20-byte address (value withheld)." >&2
   echo "       Pass the fee-ops EOA ADDRESS, never a private key." >&2
   exit 3
@@ -143,7 +144,9 @@ for label in "${CHAINS[@]}"; do
   # back. We cannot stop forge doing that from here, so detect the condition and
   # refuse rather than run a "key-free" preflight that quietly reads a secret -
   # and possibly passes on a key the real broadcast will not even use.
-  if [[ -f "$REPO_ROOT/contracts/.env" ]] && grep -qE '^[[:space:]]*PRIVATE_KEY=' "$REPO_ROOT/contracts/.env" 2>/dev/null; then
+  if [[ "$label" != "optimism" ]] \
+     && [[ -f "$REPO_ROOT/contracts/.env" ]] \
+     && grep -qE '^[[:space:]]*PRIVATE_KEY=' "$REPO_ROOT/contracts/.env" 2>/dev/null; then
     bad "$label: contracts/.env defines PRIVATE_KEY - forge would load it during the dry-run. Remove it before preflighting; this check is advertised as key-free."
     continue
   fi
@@ -160,6 +163,7 @@ for label in "${CHAINS[@]}"; do
   #    script consumes, optimism from the liquidator's immutable feeSafe.
   eff_rpc="${OPHIS_RPC:-$(default_rpc "$label")}"
   rpc_args=(--rpc-url "$eff_rpc")
+  dest_src="shell/default"
   # Confirm the endpoint is the chain we think it is before trusting anything read
   # through it. A wrong-chain RPC answers every call below happily, just about a
   # different deployment.
@@ -184,7 +188,18 @@ for label in "${CHAINS[@]}"; do
 
   case "$label" in
     robinhood) dest="$(cfg OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD "$(chain_dir "$label")")" ;;
-    unichain)  dest="${SAFE:-$FEE_SAFE}" ;;
+    unichain)
+      # Forge resolves SAFE via vm.envOr, and it loads contracts/.env - so a SAFE
+      # defined only there reaches the sweep while this check would otherwise
+      # verify the hard-coded Safe's owners. Same precedence forge sees: shell,
+      # then contracts/.env, then the script's own default.
+      dest="${SAFE:-}"
+      if [[ -z "$dest" && -f "$REPO_ROOT/contracts/.env" ]]; then
+        dest="$(grep -E '^[[:space:]]*SAFE=' "$REPO_ROOT/contracts/.env" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '\042\047 ' || true)"
+        [[ -n "$dest" ]] && dest_src="contracts/.env"
+      fi
+      dest="${dest:-$FEE_SAFE}"
+      ;;
     optimism)  dest="$(cast call "${FEE_LIQUIDATOR:-0x}" "feeSafe()(address)" "${rpc_args[@]}" 2>/dev/null | awk '{print $1}')" ;;
   esac
 
@@ -198,13 +213,13 @@ for label in "${CHAINS[@]}"; do
     got="$(tr -d '[]' <<<"$owners" | tr ',' '\n' | tr '[:upper:]' '[:lower:]' \
            | grep -oE '0x[0-9a-f]{40}' | sort -u | tr '\n' ' ' | sed 's/ *$//')"
     if [[ "$got" == "$EXPECTED_OWNERS" ]]; then
-      ok "$label: destination $dest is the expected 2-of-3 Safe"
+      ok "$label: destination $dest (from $dest_src) is the expected 2-of-3 Safe"
     else
-      bad "$label: destination $dest owners DIFFER from expected: [$got]"
+      bad "$label: destination $dest (from $dest_src) owners DIFFER from expected: [$got]"
     fi
     [[ "$thr" == "2" ]] || bad "$label: destination threshold is $thr, expected 2"
   else
-    unknown "$label: destination $dest owners unreadable - UNVERIFIED"
+    unknown "$label: destination $dest (from $dest_src) owners unreadable - UNVERIFIED"
   fi
 
   # The runner aborts when liquidator() is address(0), but never checks it is the
