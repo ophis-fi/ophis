@@ -267,6 +267,26 @@ suite goes red (`infra-shell-tests` in ci.yml). A watchdog that can restart a
 database is worse than no watchdog, so "the tests pass" is not sufficient
 evidence on its own — the mutations are what make it evidence.
 
+## Known gap: tokens outside each probe's fixed list
+
+The watcher only sees tokens each chain's probe queries, and those probes carry a
+fixed address list. A fee accruing in any other token is invisible here, and the
+"not covered" branch does not help: it only reports extra rows a probe already
+emitted.
+
+An earlier version of this note claimed the list only changes when we add a
+market. **That is wrong on Robinhood Chain**, whose own solver config records that
+`launch tokens are permissionless` (`infra/robinhood-mainnet/configs/pons.toml.tmpl`).
+Surplus is denominated in the buy token for a sell order and the sell token for a
+buy order, so a trade in any permissionlessly-listed token accrues fee value in a
+token no probe covers, and every hourly run still reports clean.
+
+Not closed here, and not by scanning all Transfer logs either - that needs archive
+access the free RPC tiers refuse and turns a cron into an indexer. The bounded
+version is the one to build when this matters: read the Settlement's own `Trade`
+events over a recent block window, collect the sell/buy token addresses, and flag
+any that the chain's probe does not query. Recent-window only, so no archive.
+
 ## Tuning
 
 | Env | Default | Meaning |
@@ -279,3 +299,134 @@ evidence on its own — the mutations are what make it evidence.
 | `WATCHDOG_TG_TOKEN` | - | Bot token, highest precedence |
 | `WATCHDOG_TG_TOKEN_FILE` | - | Path to a token file. **Required on Linux** -- `security` is macOS-only |
 | `WATCHDOG_SKIP_LOCK` | 0 | `1` skips flock serialisation (tests only) |
+
+---
+
+# Sovereign settlement-buffer watch (hourly cron)
+
+Measures the CIP-75 fee buffer inside the three sovereign Settlement contracts
+and pages when a sweep would actually move something.
+
+## Why
+
+On Optimism, Unichain and Robinhood Chain the partner fee reduces the user's
+executed buy amount but never transfers to the recipient Safe. It accrues inside
+Settlement, and per `contracts/script/SweepSettlementBuffer.s.sol` an unswept
+buffer is recycled into future traders' price improvement, which is functionally
+zero Ophis revenue.
+
+Each chain already had a `check-settlement-buffer.sh` probe. None of them was
+ever scheduled, so the buffers went unmeasured from launch until the 2026-08-27
+on-chain fee audit went looking and found $1.99 sitting across the three. This
+job is the missing scheduling and alerting.
+
+## What it alerts on
+
+1. A token at or above its **sweep** threshold, meaning a sweep run now would
+   actually move it. Deliberately not `> 0`: the sweep script skips
+   sub-threshold tokens, so paging below it would report something no runbook
+   can act on, hourly, forever. An alert that fires forever gets muted, and a
+   muted alert is the same silence this job exists to end.
+2. A token the chain's sweep configuration **does not cover** at all. An
+   unrecognised token in the buffer is exactly how value goes unnoticed, so it
+   surfaces as "not covered" rather than being skipped.
+3. A probe that **failed, exited non-zero, emitted unparseable output, returned
+   a report missing `probe_failures` or `balances`, measured zero tokens, or
+   returned an INCOMPLETE report missing any of the symbols that chain is
+   expected to measure**. Non-empty is not the same as complete: a probe
+   returning only a healthy USDC row while WETH, native ETH and USDT vanish is
+   still reported health that was never measured.
+   An unreachable RPC is never read as an empty buffer, and syntactically valid
+   JSON is not by itself a measurement: `{}` parses, and would otherwise sail
+   through as a clean pass. A monitor reporting health it did not measure is
+   worse than no monitor.
+
+Thresholds are **per chain and per token**, mirroring each chain's own
+`sweep-to-safe.sh` defaults, so this alarm and that action cannot drift apart:
+
+| Chain | Covered by its sweep |
+|---|---|
+| optimism | USDC 1e7, WETH 3e15, native ETH 3e15 |
+| unichain | WETH 1e15, USDC 1e7, native ETH 3e15 |
+| robinhood | USDG 1e7, WETH 3e15, native ETH 3e15 |
+
+Native ETH appears on every chain because the shared `SweepSettlementBuffer.s.sol`
+sweeps the Settlement's native balance at `MIN_ETH_WEI` regardless of the TOKENS
+list. Each probe also reports the chain id it read the balances from, and a report
+naming the wrong network is rejected: the Settlement address in a report is a
+static label, so a miswired proxy pointed at a fork would otherwise have its zero
+balances accepted as a clean pass.
+
+Matched on the token **address**, never the symbol. Robinhood Chain carries five
+18-decimal USDG impersonators in the same Settlement contract as the real
+6-decimal USDG, so symbol matching would apply the real token threshold to a
+worthless one. The report is also checked to name the Settlement it was supposed
+to measure: measuring something is not the same as measuring the right thing.
+
+Per chain because they genuinely differ: unichain defaults WETH to 1e15 while
+the other two use 3e15, so one shared table left a unichain balance between the
+two sweepable by the stock script and invisible here. Per token because a single
+wei threshold is decimals-blind: at 1e15 base units USDC (6 decimals) would need
+$1B in the buffer before anyone was told, which is the HIGH-1 lesson from the
+2026-05-22 audit re-applied.
+
+An alert is only recorded as "seen" once Telegram delivery is **confirmed**. A
+failed send is retried on the next run rather than muting a live condition for
+24h on the strength of a page nobody received.
+
+No price feed by design. Base-unit thresholds need no oracle, cannot go stale,
+and cannot fail closed in a cron on a Mac mini.
+
+## Installation (one-time, on Mac mini)
+
+```bash
+cp infra/shared/cron/ai.ophis.settlement-buffer-watch.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ai.ophis.settlement-buffer-watch.plist
+launchctl list | grep ai.ophis.settlement-buffer-watch
+```
+
+## Smoke test
+
+```bash
+launchctl kickstart -k gui/$(id -u)/ai.ophis.settlement-buffer-watch
+sleep 10
+tail -20 ~/Library/Logs/ophis-settlement-buffer-watch.log
+```
+
+Expected on a healthy pass: one `chain=<label> measured` line per chain, then
+either `all sovereign buffers below their sweep thresholds; pass complete` or a
+`pass complete (N finding(s))`. A run that ends without a `pass complete` line
+crashed; treat that as an outage of the monitor, not as a clean result.
+
+## Tests
+
+```bash
+bash infra/shared/cron/settlement-buffer-watch.test.sh
+```
+
+58 deterministic cases. No real RPC and no real Telegram (`BUFFER_NOTIFY=0`
+everywhere except the delivery-failure case, which points the token file at a
+path that does not exist and so fails before any network call), injected clock
+for the 24h repeat window, and per-chain probes faked through `OPHIS_REPO`.
+Every negative case asserts both that no alert fired and that the pass
+completed, because a crash and a quiet pass are otherwise indistinguishable.
+
+CI runs the suite and then ten mutations, each of which must turn it red
+(`.github/workflows/ci.yml`, job `infra-shell-tests`). The mutation harness
+guards itself too: a pattern that never matches, or one that produces an
+unparseable script, is reported as a harness bug rather than counted as a pass.
+Both of those fired while this was being written - a sed with an unescaped
+delimiter inside a jq filter emptied the file, the suite failed, and it read as
+"caught" while having tested nothing.
+
+Note the job hardcodes its suites rather than globbing `*.test.sh`. A new suite
+that is not listed there is a suite CI never runs.
+
+## Tuning
+
+| Env | Default | Meaning |
+|---|---|---|
+| `BUFFER_REPEAT_S` | `86400` | Re-page interval for an unchanged condition. A newly-crossed chain always pages immediately, inside the window. |
+| `BUFFER_NOTIFY` | `1` | Set `0` to log without sending Telegram. |
+| `BUFFER_STATE_FILE` | pinned in the plist | Repeat-suppression state. Deleted on a clean pass so the next real finding pages at once. Pinned explicitly because launchd does not guarantee `HOME` and the script runs under `set -u`, so a `HOME`-derived default would abort on the assignment itself and leave the monitor installed, enabled and inert. |
+| `OPHIS_REPO` | `/Users/scep/greg` | Where the per-chain probes are resolved from. |

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.ophis.settlement-buffer-watch</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/scep/greg/infra/shared/cron/settlement-buffer-watch.sh</string>
+  </array>
+
+  <!-- Hourly. Fee buffers accrue per trade, not per block, so a minute-grain
+       poll would add RPC load for no earlier signal. The script suppresses a
+       repeat page for 24h, so the alert cadence is set by BUFFER_REPEAT_S, not
+       by this interval. -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/scep/Library/Logs/ophis-settlement-buffer-watch.launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/scep/Library/Logs/ophis-settlement-buffer-watch.launchd.err</string>
+
+  <!-- foundry's cast (the per-chain probes) + homebrew jq/bc/curl. -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/scep/.foundry/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>OPHIS_REPO</key>
+    <string>/Users/scep/greg</string>
+    <key>BUFFER_LOG_FILE</key>
+    <string>/Users/scep/Library/Logs/ophis-settlement-buffer-watch.log</string>
+    <!-- Pinned explicitly. launchd does not guarantee HOME, and the script runs
+         under `set -u`, so a HOME-derived default would abort on the assignment
+         itself - leaving a monitor that is installed, enabled and totally inert. -->
+    <key>BUFFER_STATE_FILE</key>
+    <string>/Users/scep/Library/Application Support/ophis/settlement-buffer-watch.state</string>
+  </dict>
+</dict>
+</plist>

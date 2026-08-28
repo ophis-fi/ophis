@@ -389,6 +389,13 @@ owner-gated: the hot key never touches an attacker-controllable destination.
 
 ## Related documents
 
+- **Unichain needs a solver grant before its sweep can run.** As of 2026-08-27 the
+  pinned submitter `0x7A956C269a12f1B897367663b536EB5dd29f3fBb` returns false from
+  `isSolver` on the chain-130 authenticator `0x1002E12f2e7f848b20fe572F92133E467a5D010C`,
+  so `settle()` would revert AFTER broadcast. It settled six times, last on
+  2026-07-18, so the allowlist changed after that. Grant it via
+  `allowlist-governance-runbook.md` before scheduling the Unichain sweep; Optimism
+  and Robinhood are unaffected.
 - `allowlist-governance-runbook.md` (timelock + guardian mechanics, deploy record)
 - `fee-recipient-rotation.md` (rotation now REQUIRES a liquidator redeploy;
   see its step list)
