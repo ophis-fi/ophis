@@ -87,6 +87,14 @@ validate_rendered_erpc() {
     echo "ERROR: the upstream endpoint above contains '//' mid-path — empty substitution." >&2
     bad=1
   fi
+  # QUERY-PARAM keys (blockdaemon: ...?apiKey=${BLOCKDAEMON_OP_KEY}) do NOT end in
+  # '/' and do NOT produce '//' when they substitute empty, so the two checks above
+  # are blind to them: '...native?apiKey=' renders clean and installs a SILENTLY
+  # KEYLESS lane. Catch an empty value on any query parameter.
+  if grep -nE '^[[:space:]]*endpoint:[[:space:]]*https?://[^[:space:]]*[?&][A-Za-z0-9_.-]+=([&[:space:]]|$)' "$f" >&2; then
+    echo "ERROR: the upstream endpoint above has an EMPTY query-param value — a key substituted EMPTY." >&2
+    bad=1
+  fi
   return $(( bad * 16 ))
 }
 
@@ -190,6 +198,23 @@ if [[ -z "${ZAN_API_KEY:-}" ]]; then
   echo "       UNREGISTERED endpoint, which rejects eth_call/eth_getLogs/eth_estimateGas" >&2
   echo "       and leaves those methods on a 2-lane quorum with no single-provider-" >&2
   echo "       compromise protection. Set ZAN_API_KEY in .env (see .env.example)." >&2
+  exit 15
+fi
+
+# ── Blockdaemon key: NEVER render an empty one ───────────────────────────────
+# blockdaemon-op took over the single Cloudflare slot from publicnode on
+# 2026-08-29 and is the ONLY full-archive lane, so it is the deciding vote on
+# eth_getTransactionReceipt and deep eth_getLogs. Its key rides in a QUERY PARAM,
+# so an empty substitution renders '...native?apiKey=' — which the '/'-suffix and
+# '//' checks in validate_rendered_erpc cannot see (they only catch path-style
+# keys). An unauthenticated blockdaemon URL is rejected by the provider, so the
+# archive bucket would drop back to the 2-capable-lane state that broke receipts
+# on 2026-08-29. Fail closed here as well as in the rendered-file check.
+if [[ -z "${BLOCKDAEMON_OP_KEY:-}" ]]; then
+  echo "ERROR: BLOCKDAEMON_OP_KEY is unset/empty." >&2
+  echo "       Refusing to render: the blockdaemon upstream would render keyless," >&2
+  echo "       losing the only full-archive lane and leaving eth_getTransactionReceipt" >&2
+  echo "       and deep eth_getLogs on a 2-lane quorum. Set it in .env (.env.example)." >&2
   exit 15
 fi
 

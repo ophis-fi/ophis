@@ -28,7 +28,7 @@
 # registered account) plus two free lanes. Full per-upstream rationale and the
 # measured per-method coverage live in the `upstreams:` block below.
 #
-#   publicnode-op       optimism-rpc.publicnode.com   Allnodes
+#   blockdaemon-op      svc.blockdaemon.com           Blockdaemon (keyed, FULL ARCHIVE)
 #                                                      CDN: Cloudflare (the ONE permitted)
 #                                                      auth: NONE (free public tier)
 #                                                      gap: no eth_getTransactionReceipt
@@ -48,9 +48,9 @@
 #                                                      08-18). Swap for a KEYED archive lane.
 #
 # **Threat model — 2-of-3 over 3 distinct failure domains, with the hard
-# invariant that AT MOST ONE upstream is Cloudflare-fronted (now publicnode):**
+# invariant that AT MOST ONE upstream is Cloudflare-fronted (now blockdaemon):**
 #
-#  - Cloudflare compromise → only publicnode is hijacked. ZAN and official-op
+#  - Cloudflare compromise → only blockdaemon is hijacked. ZAN and official-op
 #    return the real answer → dispute → returnError →
 #    driver does NOT settle against forged state.
 #  - ZAN OR official-op is compromised → the other two form quorum on the real
@@ -295,7 +295,7 @@ projects:
             consensus:
               maxParticipants: 3
               # 2-of-3 across fully-independent failure domains:
-              # - publicnode-op (Allnodes; CF DNS)
+              # - blockdaemon-op (Blockdaemon; CF DNS)
               # - zan-op (Ant Digital Technologies; non-CF)
               # - ophis-self-op (Ophis-owned Aleph op-reth; tailnet-only)
               agreementThreshold: 2
@@ -490,14 +490,48 @@ projects:
       #
       # Hosts are literal so the CI guard can pin the failure domains. The only
       # endpoint credential is ZAN_API_KEY; erpc.yaml remains RAM-disk rendered.
-      - id: publicnode-op
-        # Cloudflare-fronted (Allnodes) — the ONE permitted CF lane here.
-        # Fastest of the three (median 54ms) and the most reliable for the pricing
-        # path. Measured 2026-07-30: 12/12 burst, eth_call / eth_getLogs /
-        # eth_estimateGas / eth_feeHistory all OK.
-        # Cannot serve eth_getTransactionReceipt without a personal token. ZAN
-        # and the owned node are the two receipt-capable voters.
-        endpoint: https://optimism-rpc.publicnode.com
+      - id: blockdaemon-op
+        # Cloudflare-fronted (svc.blockdaemon.com -> cname.zuplo.app -> 104.18.x)
+        # — the ONE permitted CF lane here. It REPLACES publicnode-op (2026-08-29),
+        # taking over the single CF slot rather than adding a second one, so the
+        # "at most one Cloudflare-fronted upstream" invariant is unchanged.
+        #
+        # WHY THE SWAP: publicnode's free tier could not serve
+        # eth_getTransactionReceipt OR archive eth_getLogs at all ("Archive
+        # requests require a personal token", jsonrpc -32602), so it never voted
+        # on the two settlement-authoritative buckets. That left receipts and
+        # deep getLogs with exactly TWO capable lanes (zan + official-op) against
+        # agreementThreshold:2 — a 2-of-2 with zero margin wearing a 2-of-3 badge.
+        # On 2026-08-29 zan exhausted its monthly ZAN credit package (HTTP 429,
+        # -32005 "credit consumption has reached the maximum of the package") and
+        # the receipt path went to ONE capable lane: measured 10/10
+        # eth_getTransactionReceipt THROUGH THE PROXY returning "not enough
+        # agreement among responses". Fail-closed and correct, but the capability
+        # was gone. blockdaemon is a FULL ARCHIVE node, so this bucket now has
+        # three capable voters and survives losing any one of them.
+        #
+        # Measured 2026-08-29 (direct, this host):
+        #   eth_getTransactionReceipt (head-60) ......... OK
+        #   eth_call    @ head-200 / -20k / -200k / -2M .. OK / OK / OK / OK
+        #   eth_getLogs @ head-200 / -20k / -200k / -2M .. OK / OK / OK / OK
+        #   SUSTAINED VET (the 2026-08-23 lesson — never a burst): 644/644 = 100%
+        #   over 200s at ~3.2 req/s of UNCACHEABLE eth_blockNumber /
+        #   eth_getBlockByNumber("latest"), zero non-200 in ANY 30s bucket,
+        #   p50 171ms / p95 209ms / p99 370ms. No token-bucket drain.
+        # The 2026-07-30 "blockdaemon 429" note that retired this lane did NOT
+        # reproduce: that measurement was taken while it absorbed the whole
+        # stack's ~40 req/s during a degraded window, not a consensus lane's ~4.
+        #
+        # Host is LITERAL so the CI guard's urlsplit can pin the failure domain;
+        # only ${BLOCKDAEMON_OP_KEY} resolves from .env via render-configs.sh
+        # envsubst — NEVER committed. erpc.yaml is in PK_BEARING_NAMES, so the
+        # rendered file carrying this key lands on the RAM-disk, not the SSD.
+        #
+        # NOTE: the driver's [[submission.mempool]] in driver.toml.tmpl still
+        # lists optimism-rpc.publicnode.com directly. That list is NOT routed
+        # through eRPC, so dropping publicnode as an upstream does not touch the
+        # submission path or the `pending`-tag reasoning in Block B.
+        endpoint: https://svc.blockdaemon.com/optimism/mainnet/native?apiKey=${BLOCKDAEMON_OP_KEY}
         failsafe:
           # BUDGET INVARIANT (2026-08-15, CI-enforced by assert-erpc-failclosed):
           # one lane's worst-case serial budget (attempts x timeout + backoff)
@@ -687,7 +721,7 @@ projects:
               successThresholdCount: 2
               successThresholdCapacity: 4
 
-      # ─── Consensus set (2026-08-23): publicnode + zan + official-op ───
+      # ─── Consensus set (2026-08-29): blockdaemon + zan + official-op ───
       # 2-of-3, agreementThreshold=2, maxParticipants=3 — UNCHANGED. This incident
       # swapped only the dead validationcloud lane; no consensus parameter was
       # touched and every rule remains fail-closed. Exactly one
@@ -701,8 +735,8 @@ projects:
       #   eth_getCode / eth_getStorageAt / eth_getBalance / txCount .... 3 of 3 lanes
       #   eth_feeHistory / eth_getTransactionByHash .................... 3 of 3 lanes
       #   eth_getLogs, WITHIN ~128 blocks of head ...................... 3 of 3 lanes
-      #   eth_getLogs, DEEPER than ~128 blocks ....... 2 of 3 (publicnode archive-gated)
-      #   eth_getTransactionReceipt .................. 2 of 3 (publicnode archive-gated)
+      #   eth_getLogs, DEEPER than ~128 blocks ....... 3 of 3 (blockdaemon is full archive)
+      #   eth_getTransactionReceipt .................. 3 of 3 (blockdaemon is full archive)
       #
       # RE-MEASURE THIS TABLE whenever a lane's credentials or tier change (the
       # 2026-07-30 review caught a stale table understating zan's coverage — a
