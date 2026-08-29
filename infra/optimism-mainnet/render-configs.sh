@@ -201,6 +201,19 @@ if [[ -z "${ZAN_API_KEY:-}" ]]; then
   exit 15
 fi
 
+# ── Tenderly key: NEVER render an empty one ──────────────────────────────────
+# tenderly-op replaced official-op on 2026-08-29 and carries a PATH-style key.
+# An empty substitution yields https://optimism.gateway.tenderly.co/ , which is
+# the KEYLESS gateway: a 20 req/s bucket instead of 400, and it silently drops
+# this lane's archive guarantees. validate_rendered_erpc catches the trailing
+# slash, but fail fast here too so the operator sees it before the render runs.
+if [[ -z "${TENDERLY_OP_KEY:-}" ]]; then
+  echo "ERROR: TENDERLY_OP_KEY is unset/empty." >&2
+  echo "       Refusing to render: the tenderly upstream would fall back to the" >&2
+  echo "       KEYLESS gateway (20 req/s, no archive guarantee). Set it in .env." >&2
+  exit 15
+fi
+
 # ── Blockdaemon key: NEVER render an empty one ───────────────────────────────
 # blockdaemon-op took over the single Cloudflare slot from publicnode on
 # 2026-08-29 and is the ONLY full-archive lane, so it is the deciding vote on
@@ -549,7 +562,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   #
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax, defensive against future config additions.
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${ZAN_API_KEY}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${TENDERLY_OP_KEY} ${ZAN_API_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.

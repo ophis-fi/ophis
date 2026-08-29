@@ -235,12 +235,12 @@ if [[ -f "$R/render-configs.sh" ]]; then
   # read, so these invocations are real and need no privileges.
   runrender(){ ( cd "$SB" && bash ./render-configs.sh >"$SB/out.log" 2>&1 ); echo $?; }
 
-  printf 'POSTGRES_USER=x\nBLOCKDAEMON_OP_KEY=bd\n' > "$SB/.env"   # neither zan name
+  printf 'POSTGRES_USER=x\nBLOCKDAEMON_OP_KEY=bd\nTENDERLY_OP_KEY=td\n' > "$SB/.env"   # neither zan name
   rc="$(runrender)"
   ck "no zan key at all -> exits 15" "$rc" "15"
   ck "and says why" "$(grep -c 'Refusing to render' "$SB/out.log")" "1"
 
-  printf 'POSTGRES_USER=x\nBLOCKDAEMON_OP_KEY=bd\nZAN_OP_KEY=legacy-value\n' > "$SB/.env"  # legacy name only
+  printf 'POSTGRES_USER=x\nBLOCKDAEMON_OP_KEY=bd\nTENDERLY_OP_KEY=td\nZAN_OP_KEY=legacy-value\n' > "$SB/.env"  # legacy name only
   rc="$(runrender)"
   ck "legacy name migrates instead of exiting 15" "$([ "$rc" != "15" ] && echo migrated || echo refused)" "migrated"
   ck "and warns to rename it" "$(grep -c 'Migrating to ZAN_API_KEY' "$SB/out.log")" "1"
@@ -259,7 +259,7 @@ if [[ -f "$R/render-configs.sh" ]]; then
   # lane, so an empty key there costs eth_getTransactionReceipt + deep eth_getLogs
   # their 3rd voter. Its key rides in a QUERY PARAM, which the trailing-'/' and
   # '//' checks above cannot see — hence its own guard, and hence these tests.
-  printf 'POSTGRES_USER=x\nZAN_API_KEY=z\n' > "$SB/.env"           # no blockdaemon key
+  printf 'POSTGRES_USER=x\nZAN_API_KEY=z\nTENDERLY_OP_KEY=td\n' > "$SB/.env"   # no blockdaemon key
   rc="$(runrender)"
   ck "no blockdaemon key -> exits 15" "$rc" "15"
   ck "and names BLOCKDAEMON_OP_KEY" "$(grep -c 'BLOCKDAEMON_OP_KEY is unset/empty' "$SB/out.log")" "1"
@@ -272,6 +272,17 @@ if [[ -f "$R/render-configs.sh" ]]; then
 
   printf 'upstreams:\n  - id: blockdaemon-op\n    endpoint: https://svc.blockdaemon.com/optimism/mainnet/native?apiKey=&z=1\n' > "$SB/bdempty2.yaml"
   ( cd "$SB" && bash ./render-configs.sh --check-rendered "$SB/bdempty2.yaml" >/dev/null 2>&1 ); ck "EMPTY query-param key before & is rejected with 16" "$?" "16"
+
+  # tenderly-op replaced official-op on 2026-08-29. Its key is PATH-style, so an
+  # empty one degrades to the KEYLESS gateway (20 req/s instead of 400, archive
+  # guarantee gone) rather than erroring -- fail fast on it too.
+  printf 'POSTGRES_USER=x\nZAN_API_KEY=z\nBLOCKDAEMON_OP_KEY=bd\n' > "$SB/.env"   # no tenderly key
+  rc="$(runrender)"
+  ck "no tenderly key -> exits 15" "$rc" "15"
+  ck "and names TENDERLY_OP_KEY" "$(grep -c 'TENDERLY_OP_KEY is unset/empty' "$SB/out.log")" "1"
+
+  printf 'upstreams:\n  - id: tenderly-op\n    endpoint: https://optimism.gateway.tenderly.co/\n' > "$SB/tdempty.yaml"
+  ( cd "$SB" && bash ./render-configs.sh --check-rendered "$SB/tdempty.yaml" >/dev/null 2>&1 ); ck "keyless tenderly fallback is rejected with 16" "$?" "16"
 else
   echo "  SKIP  render-configs.sh not found next to this suite"
 fi
