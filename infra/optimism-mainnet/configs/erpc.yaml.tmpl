@@ -270,12 +270,24 @@ projects:
           # return two state snapshots; only the behind-tip one gets
           # routed-around. Drift IS real on this bucket.
           # `eth_getTransactionCount` is deliberately NOT in Block A:
-          # the `pending` block tag is mempool-dependent, and the
-          # driver's submission mempool is pinned to publicnode-op
-          # alone — the self-hosted op-node will not see pending txs
-          # before the sequencer gossips them back, so EIP-7702
-          # delegation-setup ceremonies (90s of pending-tag polling)
-          # would cordon self-hosted within seconds of every boot.
+          # the `pending` block tag is MEMPOOL-DEPENDENT, so a lane that
+          # never received the tx reports the OLD nonce. Historically the
+          # driver's submission mempool overlapped this quorum on
+          # publicnode-op + official-op; a lane outside that overlap (then
+          # the self-hosted op-node) would not see pending txs before the
+          # sequencer gossiped them back, so EIP-7702 delegation-setup
+          # ceremonies (90s of pending-tag polling) cordoned it within
+          # seconds of every boot.
+          # ⚠️ 2026-08-29: the overlap is now tenderly-op + blockdaemon-op
+          # (blockdaemon was ADDED to driver.toml.tmpl [[submission.mempool]]
+          # for exactly this reason — see the coupling note there). zan-op is
+          # NOT a submission target, so it is the lane expected to lag on
+          # `pending`. Two of three overlapping is a MITIGATION, not a
+          # guarantee: if either overlapping lane also lags it can agree with
+          # zan and carry a stale 2-of-3 nonce. That residual risk is inherent
+          # to consensus over a mempool-dependent tag and is why this method
+          # sits here at disputeThreshold 100 rather than in Block A.
+          # RE-CHECK THE OVERLAP whenever a read lane or a mempool changes.
           # Moved to Block B where threshold:100 absorbs that burst.
           #
           # threshold:60 catches hostile sustained divergence ~1.7× faster
@@ -300,8 +312,9 @@ projects:
           # simultaneously; estimateGas has provider-implementation
           # variance; feeHistory percentiles differ slightly between
           # providers; getTransactionCount with `pending` tag is
-          # mempool-dependent and only the publicnode-op mempool is
-          # authoritative for our submission path). threshold:100
+          # mempool-dependent, and only the lanes that are ALSO submission
+          # targets — tenderly-op and blockdaemon-op since 2026-08-29 — see
+          # our own pending txs at all). threshold:100
           # absorbs this baseline drift while still catching sustained
           # malicious answers — each forged dispute still triggers
           # consensus failure → returnError → driver fails closed at
