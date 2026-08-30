@@ -211,7 +211,17 @@ gas-price-cap = "5000000000"
 #
 #   read lanes:  blockdaemon-op | zan-op | tenderly-op
 #   submission:  publicnode | official | tenderly | blockdaemon
-#   overlap:     tenderly + blockdaemon = 2 of 3 read lanes  -> fresh nonce wins
+#   overlap:     tenderly + blockdaemon = 2 of 3 read lanes
+#
+# ⚠️ 2-of-3 overlap is a MITIGATION, NOT A GUARANTEE, and never was. Fresh wins
+# only if BOTH overlapping lanes have actually reflected the tx; if either lags,
+# it can agree with a lane that never saw it and carry a stale 2-of-3.
+# disputeBehavior:preferBlockHeadLeader does not help — it only breaks ties among
+# DISAGREEING responses, and two stale responses do not disagree. This residual
+# risk is inherent to consensus over a mempool-dependent `pending` tag and is why
+# eth_getTransactionCount sits in Block B at disputeThreshold 100 rather than
+# Block A. The overlap restores the property this config had BEFORE the
+# 2026-08-29 lane swaps; it does not create a new one.
 #
 # blockdaemon was ADDED here for exactly that reason. Before the 2026-08-29 lane
 # swap the overlap was publicnode + official (also 2 of 3); swapping both lanes
