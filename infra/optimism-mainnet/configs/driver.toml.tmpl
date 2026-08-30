@@ -187,7 +187,7 @@ gas-price-cap = "5000000000"
 #
 #   With self-hosted removed from submission, an attacker must compromise
 #   >=2 of the 4 distinct corporate operators below (PublicNode, OP
-#   Foundation gateway, Tenderly, Blockdaemon) to reliably win the
+#   Foundation gateway, Tenderly, dRPC) to reliably win the
 #   front-run race on a
 #   given tx. That is the canonical CoW threat-model floor — anything
 #   below it is gravy.
@@ -209,9 +209,9 @@ gas-price-cap = "5000000000"
 # nonce. So the number of read lanes that are ALSO submission targets decides
 # whether consensus returns the fresh pending nonce or a stale one.
 #
-#   read lanes:  blockdaemon-op | zan-op | tenderly-op
-#   submission:  publicnode | official | tenderly | blockdaemon
-#   overlap:     tenderly + blockdaemon = 2 of 3 read lanes
+#   read lanes:  drpc-op | zan-op | tenderly-op
+#   submission:  publicnode | official | tenderly | drpc
+#   overlap:     tenderly + drpc = 2 of 3 read lanes
 #
 # ⚠️ 2-of-3 overlap is a MITIGATION, NOT A GUARANTEE, and never was. Fresh wins
 # only if BOTH overlapping lanes have actually reflected the tx; if either lags,
@@ -223,11 +223,14 @@ gas-price-cap = "5000000000"
 # Block A. The overlap restores the property this config had BEFORE the
 # 2026-08-29 lane swaps; it does not create a new one.
 #
-# blockdaemon was ADDED here for exactly that reason. Before the 2026-08-29 lane
-# swap the overlap was publicnode + official (also 2 of 3); swapping both lanes
-# without adding blockdaemon would have dropped it to tenderly alone, letting
-# blockdaemon + zan form a 2-of-3 majority on the STALE nonce and reuse it on the
+# The CF-slot lane is listed here for exactly that reason. Before the 2026-08-29
+# swap the overlap was publicnode + official (also 2 of 3); swapping both read
+# lanes without adding the CF lane here would drop it to tenderly alone, letting
+# the other two form a 2-of-3 majority on the STALE nonce and reuse it on the
 # settlement submission path. Caught by Codex review of PR #1268.
+# 2026-08-30: blockdaemon -> drpc here, in lockstep with the read-lane swap. THIS
+# ENTRY MUST TRACK THE CF READ LANE. If they drift, the overlap silently drops to
+# 1 and the stale-nonce bug returns with no test to catch it.
 # If you change a read lane, re-check this overlap.
 [[submission.mempool]]
 url = "https://optimism-rpc.publicnode.com"
@@ -239,7 +242,7 @@ url = "https://mainnet.optimism.io"
 url = "https://optimism.gateway.tenderly.co"
 
 [[submission.mempool]]
-url = "https://svc.blockdaemon.com/optimism/mainnet/native?apiKey=${BLOCKDAEMON_OP_KEY}"
+url = "https://lb.drpc.org/ogrpc?network=optimism&dkey=${DRPC_API_KEY}"
 
 [liquidity]
 base-tokens = [

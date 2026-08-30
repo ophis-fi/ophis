@@ -69,7 +69,7 @@ EXPECTED_UPSTREAMS = 3
 # once it fell past publicnode's ~128-block archive gate. Replaced by official-op
 # (mainnet.optimism.io): non-CF, archive-capable, no quota to exhaust.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
-    "svc.blockdaemon.com",
+    "lb.drpc.org",
     "api.zan.top",
     "optimism.gateway.tenderly.co",
 })

@@ -223,10 +223,10 @@ fi
 # keys). An unauthenticated blockdaemon URL is rejected by the provider, so the
 # archive bucket would drop back to the 2-capable-lane state that broke receipts
 # on 2026-08-29. Fail closed here as well as in the rendered-file check.
-if [[ -z "${BLOCKDAEMON_OP_KEY:-}" ]]; then
-  echo "ERROR: BLOCKDAEMON_OP_KEY is unset/empty." >&2
-  echo "       Refusing to render: the blockdaemon upstream would render keyless," >&2
-  echo "       losing the only full-archive lane and leaving eth_getTransactionReceipt" >&2
+if [[ -z "${DRPC_API_KEY:-}" ]]; then
+  echo "ERROR: DRPC_API_KEY is unset/empty." >&2
+  echo "       Refusing to render: the drpc upstream would render keyless," >&2
+  echo "       losing the Cloudflare-slot archive lane and leaving eth_getTransactionReceipt" >&2
   echo "       and deep eth_getLogs on a 2-lane quorum. Set it in .env (.env.example)." >&2
   exit 15
 fi
@@ -562,7 +562,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   #
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax, defensive against future config additions.
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${TENDERLY_OP_KEY} ${ZAN_API_KEY}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${DRPC_API_KEY} ${TENDERLY_OP_KEY} ${ZAN_API_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.
