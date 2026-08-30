@@ -47,24 +47,35 @@
 # registered account) plus two free lanes. Full per-upstream rationale and the
 # measured per-method coverage live in the `upstreams:` block below.
 #
-#   blockdaemon-op      svc.blockdaemon.com           Blockdaemon (keyed, FULL ARCHIVE)
+#   blockdaemon-op      svc.blockdaemon.com           Blockdaemon (FULL ARCHIVE)
 #                                                      CDN: Cloudflare (the ONE permitted)
-#                                                      auth: NONE (free public tier)
-#                                                      gap: no eth_getTransactionReceipt
-#                                                           (archive-gated)
+#                                                      auth: KEYED (${BLOCKDAEMON_OP_KEY},
+#                                                           QUERY PARAM ?apiKey=)
+#                                                      serves ALL protected methods, INCLUDING
+#                                                      eth_getTransactionReceipt and archive
+#                                                      eth_call/eth_getLogs measured OK at
+#                                                      2,000,000 blocks behind head (2026-08-29)
+#                                                      sustained 644/644 = 100% @ ~3.2 req/s,
+#                                                      p50 171ms / p95 209ms
 #   zan-op              api.zan.top                   ZAN (Ant Digital Technologies)
 #                                                      CDN: none detected (NON-Cloudflare)
 #                                                      auth: KEYED (${ZAN_API_KEY}, URL path)
 #                                                      serves ALL protected methods
-#   tenderly-op         optimism.gateway.tenderly.co  Tenderly (keyed, FULL ARCHIVE)
+#   tenderly-op         optimism.gateway.tenderly.co  Tenderly (FULL ARCHIVE)
 #                                                      CDN: none (GCP LB, `via: 1.1 google`) — NON-Cloudflare
-#                                                      auth: NONE (free public tier)
+#                                                      ⚠️ SAME Google AS396982 as the retired
+#                                                           official-op. Replacement, NEVER an
+#                                                           addition alongside it.
+#                                                      auth: KEYED (${TENDERLY_OP_KEY}, URL path)
 #                                                      serves ALL protected methods, INCLUDING
-#                                                      archive eth_getLogs + receipts
-#                                                      ⚠️ RATE LIMITED: ~50% HTTP 429 at ~4 req/s.
-#                                                      Degraded stopgap admitted 2026-08-23 to
-#                                                      replace validationcloud-op (HTTP 401 since
-#                                                      08-18). Swap for a KEYED archive lane.
+#                                                      eth_getTransactionReceipt and archive
+#                                                      eth_call/eth_getLogs measured OK at
+#                                                      2,000,000 blocks behind head (2026-08-29)
+#                                                      sustained 160/160 = 100% @ 4 req/s,
+#                                                      p50 56ms but p95 1061ms / max 2065ms —
+#                                                      slowest tail of the three, still well
+#                                                      inside this lane's 4s timeout.
+#                                                      keyed x-tdly-limit is 400 req/s (keyless 20)
 #
 # **Threat model — 2-of-3 over 3 distinct failure domains, with the hard
 # invariant that AT MOST ONE upstream is Cloudflare-fronted (now blockdaemon):**
@@ -102,11 +113,16 @@
 #    lanes that can actually serve it. If the count equals agreementThreshold, the
 #    single-compromise protection is GONE for that method — either add a capable
 #    lane or force that method to disputeBehavior:returnError.
-#    Still true today for eth_getTransactionReceipt (publicnode is archive-gated,
-#    HISTORICAL (pre-2026-08-29, when publicnode held the CF slot and could serve
-#    neither receipts nor archive, so only ZAN + official-op served them) — which
-#    is why the receipt rule below is
-#    already disputeBehavior:returnError, i.e. fail-closed rather than tie-broken.
+#    HISTORICAL (pre-2026-08-29): publicnode held the CF slot and could serve
+#    neither receipts nor archive, so eth_getTransactionReceipt had only ZAN +
+#    official-op — exactly 2 capable lanes against agreementThreshold 2, i.e. the
+#    single-compromise protection was already gone for that method, which is why
+#    the receipt rule below is disputeBehavior:returnError (fail-closed rather
+#    than tie-broken). On 2026-08-29 zan hit its credit cap and that method went
+#    to ONE capable lane: 10/10 "not enough agreement" through the proxy.
+#    RESOLVED as of the 2026-08-29 rebuild: blockdaemon and tenderly are BOTH full
+#    archive, so receipts and deep getLogs now have THREE capable lanes and keep a
+#    real 2-of-3 majority even with one lane down. The returnError posture stays.
 #    ⚠️ And, since 2026-08-23, ALSO TRUE for eth_getLogs BEYOND ~128 BLOCKS: the
 #    same archive gate applies, so deep getLogs is likewise a 2-lane method — but
 #    it matches a preferBlockHeadLeader rule rather than returnError. That
