@@ -1,6 +1,25 @@
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape: 2-of-3 across PublicNode + ZAN + Ophis-owned Aleph op-reth.**
+# **Current shape (2026-08-29): 2-of-3 across Blockdaemon + ZAN + Tenderly.**
+#
+# ⚠️ READ THIS BEFORE TOUCHING A LANE. Until 2026-08-29 this header claimed
+# "PublicNode + ZAN + Ophis-owned Aleph op-reth" — and the owned op-reth had been
+# GONE since 2026-07-17 (the Aleph VM died and was never rebuilt). The stale line
+# is not trivia: it is WHY this config drifted into a fragile state unnoticed.
+# The 2-of-3 model was DESIGNED around an unmetered node we own as one of the
+# three lanes. When that node died it was quietly replaced by a third RENTED lane,
+# so all three votes now depend on somebody else's quota. On 2026-08-29 zan hit
+# its monthly credit cap and eth_getTransactionReceipt went below quorum
+# (measured 10/10 "not enough agreement among responses" through the proxy).
+#
+# Optimism is the ONLY sovereign chain in this repo with no owned node:
+#   unichain-mainnet  -> ophis-self-uni (http://ophis-uni-node:8545)   OWNED
+#   robinhood-mainnet -> ophis-self-rbh (http://ophis-rbh-node:8547)   OWNED
+#   optimism-mainnet  -> three rented lanes                            NONE
+# That is the whole reason this chain, and only this chain, keeps having
+# credit-exhaustion outages. Rebuilding an OP node is the durable fix; every
+# lane swap in the history below is a workaround for not having one.
+# KEEP THIS BLOCK CURRENT when a lane changes.
 #
 # Iteration history:
 #  - #130 deploy: tried publicnode + official-op + ankr-op. official-op
