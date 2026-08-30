@@ -186,8 +186,9 @@ gas-price-cap = "5000000000"
 #   keeping self-hosted in eRPC consensus leaks nothing).
 #
 #   With self-hosted removed from submission, an attacker must compromise
-#   ≥2 of the 3 distinct corporate operators below (PublicNode, OP
-#   Foundation gateway, Tenderly) to reliably win the front-run race on a
+#   >=2 of the 4 distinct corporate operators below (PublicNode, OP
+#   Foundation gateway, Tenderly, Blockdaemon) to reliably win the
+#   front-run race on a
 #   given tx. That is the canonical CoW threat-model floor — anything
 #   below it is gravy.
 #
@@ -200,6 +201,24 @@ gas-price-cap = "5000000000"
 # If self-hosted ever needs to be re-added here (e.g. emergency fallback
 # during a multi-relay outage), revisit the audit memo: this omission is
 # a deliberate trust-surface choice, not a config drop.
+#
+# ⚠️ PENDING-NONCE COUPLING (2026-08-29) — keep this list overlapping the eRPC
+# read lanes by AT LEAST 2. `eth_getTransactionCount` is a Block B consensus
+# method (agreementThreshold 2) in configs/erpc.yaml.tmpl, and the `pending` tag
+# is MEMPOOL-DEPENDENT: a read lane that never received the tx reports the OLD
+# nonce. So the number of read lanes that are ALSO submission targets decides
+# whether consensus returns the fresh pending nonce or a stale one.
+#
+#   read lanes:  blockdaemon-op | zan-op | tenderly-op
+#   submission:  publicnode | official | tenderly | blockdaemon
+#   overlap:     tenderly + blockdaemon = 2 of 3 read lanes  -> fresh nonce wins
+#
+# blockdaemon was ADDED here for exactly that reason. Before the 2026-08-29 lane
+# swap the overlap was publicnode + official (also 2 of 3); swapping both lanes
+# without adding blockdaemon would have dropped it to tenderly alone, letting
+# blockdaemon + zan form a 2-of-3 majority on the STALE nonce and reuse it on the
+# settlement submission path. Caught by Codex review of PR #1268.
+# If you change a read lane, re-check this overlap.
 [[submission.mempool]]
 url = "https://optimism-rpc.publicnode.com"
 
@@ -208,6 +227,9 @@ url = "https://mainnet.optimism.io"
 
 [[submission.mempool]]
 url = "https://optimism.gateway.tenderly.co"
+
+[[submission.mempool]]
+url = "https://svc.blockdaemon.com/optimism/mainnet/native?apiKey=${BLOCKDAEMON_OP_KEY}"
 
 [liquidity]
 base-tokens = [
