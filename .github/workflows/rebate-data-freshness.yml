@@ -66,11 +66,21 @@ jobs:
           OFFSET=7200          # 02:00 UTC
           GRACE=7200           # 2h for the run itself to finish
           BOUNDARY=$(( ( (NOW - OFFSET) / 86400 ) * 86400 + OFFSET ))
-          if [ "$NOW" -ge $(( BOUNDARY + GRACE )) ] && [ "$PIPE_TS" -lt "$BOUNDARY" ]; then
-            echo "::error::nightly pipeline has not completed for the $(date -u -d "@$BOUNDARY" +%Y-%m-%dT%H:%M:%SZ) boundary (last run: $PIPE_RUN). The scheduler is not running even though public data may look fresh."
+          # ALWAYS enforce a boundary -- never skip the comparison. Inside the
+          # 02:00-04:00 grace window today's run may legitimately still be in
+          # flight, but YESTERDAY's must already be done. Skipping entirely there
+          # would let an arbitrarily stale heartbeat pass for two hours a day and
+          # make the monitor FLAP: red at 01:47, green at 02:17, red again at 04:17.
+          if [ "$NOW" -ge $(( BOUNDARY + GRACE )) ]; then
+            REQUIRED=$BOUNDARY
+          else
+            REQUIRED=$(( BOUNDARY - 86400 ))
+          fi
+          if [ "$PIPE_TS" -lt "$REQUIRED" ]; then
+            echo "::error::nightly pipeline has not completed for the $(date -u -d "@$REQUIRED" +%Y-%m-%dT%H:%M:%SZ) boundary (last run: $PIPE_RUN). The scheduler is not running even though public data may look fresh."
             exit 1
           fi
-          echo "nightly heartbeat ok: last_pipeline_run_at=$PIPE_RUN (boundary $(date -u -d "@$BOUNDARY" +%Y-%m-%dT%H:%M:%SZ))"
+          echo "nightly heartbeat ok: last_pipeline_run_at=$PIPE_RUN (required boundary $(date -u -d "@$REQUIRED" +%Y-%m-%dT%H:%M:%SZ))"
           jq -e '
             .ok == true and
             .dataFresh == true and
