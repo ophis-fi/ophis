@@ -49,15 +49,28 @@ jobs:
           # Presence alone is not enough: once ANY nightly has completed, a
           # type-only check would accept that timestamp forever while nightly
           # execution silently stopped and container recreates kept data_fresh
-          # green -- exactly the mask this assertion exists to remove. Require it
-          # to be RECENT. 26h gives the 02:00 UTC run a 2h grace window.
+          # green -- exactly the mask this assertion exists to remove.
+          #
+          # Nor is elapsed age enough. An age check SLIDES with the last run: if a
+          # catch-up run lands at 01:50, the 02:00 boundary hours later can be missed
+          # while the age stays under the window, letting almost TWO boundaries pass
+          # unnoticed. Anchor to the BOUNDARY instead: once the grace window for the
+          # latest expected 02:00 UTC run has elapsed, that run must have completed.
+          #
+          # This deliberately RE-IMPLEMENTS lastNightlyBoundary() from cron.ts in
+          # shell rather than importing it. A checker that shares an implementation
+          # with the thing it checks cannot fail on a bug in it -- two independent
+          # implementations of one spec is the point.
           PIPE_TS="$(date -u -d "$PIPE_RUN" +%s)" || { echo "::error::unparseable last_pipeline_run_at: $PIPE_RUN"; exit 1; }
-          AGE=$(( $(date -u +%s) - PIPE_TS ))
-          if [ "$AGE" -ge 93600 ]; then
-            echo "::error::nightly pipeline last completed ${AGE}s ago (>26h): $PIPE_RUN. The scheduler is not running even though public data may look fresh."
+          NOW=$(date -u +%s)
+          OFFSET=7200          # 02:00 UTC
+          GRACE=7200           # 2h for the run itself to finish
+          BOUNDARY=$(( ( (NOW - OFFSET) / 86400 ) * 86400 + OFFSET ))
+          if [ "$NOW" -ge $(( BOUNDARY + GRACE )) ] && [ "$PIPE_TS" -lt "$BOUNDARY" ]; then
+            echo "::error::nightly pipeline has not completed for the $(date -u -d "@$BOUNDARY" +%Y-%m-%dT%H:%M:%SZ) boundary (last run: $PIPE_RUN). The scheduler is not running even though public data may look fresh."
             exit 1
           fi
-          echo "nightly heartbeat ok: last_pipeline_run_at=$PIPE_RUN (${AGE}s ago)"
+          echo "nightly heartbeat ok: last_pipeline_run_at=$PIPE_RUN (boundary $(date -u -d "@$BOUNDARY" +%Y-%m-%dT%H:%M:%SZ))"
           jq -e '
             .ok == true and
             .dataFresh == true and
