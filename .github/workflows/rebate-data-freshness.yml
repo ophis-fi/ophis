@@ -41,8 +41,23 @@ jobs:
           # kept data_fresh green, so this monitor stayed silent through the entire bug.
           # Only the nightly path writes pipeline_runs (migration 0003), so asserting it
           # cannot be satisfied by a redeploy.
-          jq -e '.last_pipeline_run_at | type == "string"' health.json >/dev/null \
-            || { echo "::error::last_pipeline_run_at is null -- the nightly pipeline has not completed. data_fresh may be masked by a deploy-time startup backfill."; exit 1; }
+          PIPE_RUN="$(jq -r '.last_pipeline_run_at // empty' health.json)"
+          if [ -z "$PIPE_RUN" ]; then
+            echo "::error::last_pipeline_run_at is null -- the nightly pipeline has never completed. data_fresh may be masked by a deploy-time startup backfill."
+            exit 1
+          fi
+          # Presence alone is not enough: once ANY nightly has completed, a
+          # type-only check would accept that timestamp forever while nightly
+          # execution silently stopped and container recreates kept data_fresh
+          # green -- exactly the mask this assertion exists to remove. Require it
+          # to be RECENT. 26h gives the 02:00 UTC run a 2h grace window.
+          PIPE_TS="$(date -u -d "$PIPE_RUN" +%s)" || { echo "::error::unparseable last_pipeline_run_at: $PIPE_RUN"; exit 1; }
+          AGE=$(( $(date -u +%s) - PIPE_TS ))
+          if [ "$AGE" -ge 93600 ]; then
+            echo "::error::nightly pipeline last completed ${AGE}s ago (>26h): $PIPE_RUN. The scheduler is not running even though public data may look fresh."
+            exit 1
+          fi
+          echo "nightly heartbeat ok: last_pipeline_run_at=$PIPE_RUN (${AGE}s ago)"
           jq -e '
             .ok == true and
             .dataFresh == true and

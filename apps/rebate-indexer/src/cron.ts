@@ -460,6 +460,7 @@ const NIGHTLY_RETRY_MS = 60 * 60 * 1_000;
 // because `due` is not re-checked once the lock is acquired. Do not "harden" this
 // into a lock — it would duplicate the advisory lock and add a second thing to wedge.
 let lastNightlyAttempt = 0;
+let nightlyInFlight = false;
 
 /**
  * Decide whether the nightly pipeline is due, from the DURABLE completion record
@@ -481,6 +482,12 @@ let lastNightlyAttempt = 0;
  * always better than being skipped for a daily job.
  */
 async function nightlyTick(): Promise<void> {
+  // A real nightly run can exceed NIGHTLY_RETRY_MS (the 1st-of-month cycle does
+  // Safe proposals and reconciliation). Without this flag the elapsed-time guard
+  // would let a second tick start while the first is still running; it would then
+  // lose NIGHTLY_PENDING_LOCK_KEY in withPipelineLock, log 'another nightly
+  // pipeline run is already pending', and return false for no reason. Skip instead.
+  if (nightlyInFlight) return;
   if (Date.now() - lastNightlyAttempt < NIGHTLY_RETRY_MS) return;
   const [row] = await sql<{ due: boolean }[]>`
     SELECT COALESCE(MAX(ran_at), '-infinity'::timestamptz) < ${lastNightlyBoundary(Date.now())} AS due
@@ -488,7 +495,12 @@ async function nightlyTick(): Promise<void> {
   `;
   if (row?.due !== true) return;
   lastNightlyAttempt = Date.now();
-  await runNightlyPipeline().catch(() => { /* already logged + alerted */ });
+  nightlyInFlight = true;
+  try {
+    await runNightlyPipeline().catch(() => { /* already logged + alerted */ });
+  } finally {
+    nightlyInFlight = false;
+  }
 }
 
 export function startCron(): void {
