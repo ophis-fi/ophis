@@ -437,6 +437,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       last_fetch: string | null;
       last_fetch_attempt: string | null;
       last_pipeline_run_at: string | null;
+      last_pipeline_boundary: string | null;
       last_batcher_run_at: string | null;
       trade_rewards_last_attempt_at: string | null;
       trade_rewards_last_success_at: string | null;
@@ -446,6 +447,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         (SELECT MAX(fetched_at)::text FROM trades) AS last_fetch,
         (SELECT MAX(last_attempt_at)::text FROM tracked_wallets) AS last_fetch_attempt,
         (SELECT MAX(ran_at)::text FROM pipeline_runs) AS last_pipeline_run_at,
+        -- The nightly BOUNDARY most recently serviced. last_pipeline_run_at is a
+        -- COMPLETION stamp, so a run crossing 02:00 reports a time past a boundary it
+        -- never serviced; a monitor comparing that to the boundary is fooled exactly
+        -- like the scheduler was (migration 0043). Assert on this instead.
+        (SELECT MAX(serviced_boundary)::text FROM pipeline_runs) AS last_pipeline_boundary,
         (SELECT MAX(ran_at)::text FROM pipeline_runs WHERE first_of_month) AS last_batcher_run_at,
         (SELECT last_attempt_at::text FROM trade_reward_scheduler_state WHERE singleton = TRUE) AS trade_rewards_last_attempt_at,
         (SELECT last_success_at::text FROM trade_reward_scheduler_state WHERE singleton = TRUE) AS trade_rewards_last_success_at,
@@ -467,6 +473,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const last_fetch = healthRows[0]?.last_fetch ?? null;
     const last_fetch_attempt = healthRows[0]?.last_fetch_attempt ?? null;
     const last_pipeline_run_at = healthRows[0]?.last_pipeline_run_at ?? null;
+    const last_pipeline_boundary = healthRows[0]?.last_pipeline_boundary ?? null;
     const last_batcher_run_at = healthRows[0]?.last_batcher_run_at ?? null;
     const trade_rewards_last_attempt_at = healthRows[0]?.trade_rewards_last_attempt_at ?? null;
     const trade_rewards_last_success_at = healthRows[0]?.trade_rewards_last_success_at ?? null;
@@ -479,6 +486,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       last_fetch,
       last_fetch_attempt,
       last_pipeline_run_at,
+      last_pipeline_boundary,
       last_batcher_run_at,
       trade_rewards_last_attempt_at,
       trade_rewards_last_success_at,

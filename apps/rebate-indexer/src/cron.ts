@@ -79,7 +79,7 @@ async function batcherRanThisMonth(): Promise<boolean> {
 // The actual pipeline steps. Always invoked via runNightlyPipeline (under the
 // pipeline advisory lock); never call this directly or you reintroduce the race
 // with the startup backfill.
-async function runPipelineSteps(): Promise<void> {
+async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
   const { inserted } = await runFetcher();
   log.info({ inserted }, 'fetcher complete');
 
@@ -398,10 +398,18 @@ async function runPipelineSteps(): Promise<void> {
   // admin-gated /status and a redeploy can't clobber it. The first_of_month
   // column is set ONLY when the batcher STEP actually ran (batcherRan), so
   // /health.last_batcher_run_at reflects real batcher executions, not skips.
-  await sql`INSERT INTO pipeline_runs (first_of_month) VALUES (${batcherRan})`;
+  // serviced_boundary records WHICH nightly this run was for, taken at tick time.
+  // Inferring it from ran_at (the completion stamp) lets a run that crosses 02:00
+  // satisfy two boundaries and silently skip a day -- see migration 0043.
+  await sql`INSERT INTO pipeline_runs (first_of_month, serviced_boundary) VALUES (${batcherRan}, ${servicedBoundary})`;
 }
 
-export async function runNightlyPipeline(): Promise<void> {
+export async function runNightlyPipeline(
+  // Defaults to the current boundary so manual/CLI/test invocations stay ergonomic.
+  // nightlyTick ALWAYS passes it explicitly, computed once at tick time — that is
+  // what stops a run crossing 02:00 from being recorded against the wrong boundary.
+  servicedBoundary: Date = lastNightlyBoundary(Date.now()),
+): Promise<void> {
   const t0 = Date.now();
   log.info('pipeline start');
 
@@ -418,7 +426,7 @@ export async function runNightlyPipeline(): Promise<void> {
     // same "the nightly run did not happen" condition the pre-wait code alerted
     // on, and on the 1st it defers the monthly Safe proposal. Dropping the alert
     // along with the skip path would make the one case we cannot fix silent.
-    const ran = await withPipelineLock(runPipelineSteps, { wait: true });
+    const ran = await withPipelineLock(() => runPipelineSteps(servicedBoundary), { wait: true });
     if (!ran) {
       log.error('nightly pipeline did not run — waited out the pipeline lock');
       const monthly = isFirstOfMonth()
@@ -489,15 +497,19 @@ async function nightlyTick(): Promise<void> {
   // pipeline run is already pending', and return false for no reason. Skip instead.
   if (nightlyInFlight) return;
   if (Date.now() - lastNightlyAttempt < NIGHTLY_RETRY_MS) return;
+  // Compute the boundary ONCE and carry it through the whole invocation, so the run
+  // is recorded against the boundary it was started for rather than whenever it
+  // happened to finish.
+  const boundary = lastNightlyBoundary(Date.now());
   const [row] = await sql<{ due: boolean }[]>`
-    SELECT COALESCE(MAX(ran_at), '-infinity'::timestamptz) < ${lastNightlyBoundary(Date.now())} AS due
+    SELECT COALESCE(MAX(serviced_boundary), '-infinity'::timestamptz) < ${boundary} AS due
     FROM pipeline_runs
   `;
   if (row?.due !== true) return;
   lastNightlyAttempt = Date.now();
   nightlyInFlight = true;
   try {
-    await runNightlyPipeline().catch(() => { /* already logged + alerted */ });
+    await runNightlyPipeline(boundary).catch(() => { /* already logged + alerted */ });
   } finally {
     nightlyInFlight = false;
   }

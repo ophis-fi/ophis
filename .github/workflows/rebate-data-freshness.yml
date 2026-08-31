@@ -41,9 +41,15 @@ jobs:
           # kept data_fresh green, so this monitor stayed silent through the entire bug.
           # Only the nightly path writes pipeline_runs (migration 0003), so asserting it
           # cannot be satisfied by a redeploy.
-          PIPE_RUN="$(jq -r '.last_pipeline_run_at // empty' health.json)"
+          # Assert on the SERVICED BOUNDARY, not the completion stamp. A run that
+          # starts 01:50 and ends 02:30 stamps last_pipeline_run_at past today's
+          # boundary while having serviced yesterday's -- comparing the completion
+          # time to a boundary would be fooled exactly as the scheduler was.
+          # Fall back to last_pipeline_run_at so this still works against an older
+          # deployment that predates the field.
+          PIPE_RUN="$(jq -r '.last_pipeline_boundary // .last_pipeline_run_at // empty' health.json)"
           if [ -z "$PIPE_RUN" ]; then
-            echo "::error::last_pipeline_run_at is null -- the nightly pipeline has never completed. data_fresh may be masked by a deploy-time startup backfill."
+            echo "::error::no serviced nightly boundary -- the nightly pipeline has never completed. data_fresh may be masked by a deploy-time startup backfill."
             exit 1
           fi
           # Presence alone is not enough: once ANY nightly has completed, a
