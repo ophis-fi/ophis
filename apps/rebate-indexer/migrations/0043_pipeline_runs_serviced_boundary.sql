@@ -20,6 +20,9 @@ ALTER TABLE pipeline_runs ADD COLUMN IF NOT EXISTS serviced_boundary TIMESTAMPTZ
 -- column is meaningful for history too. (In production this table is empty -- the
 -- nightly had never completed once -- so this is a no-op there.)
 UPDATE pipeline_runs
-   SET serviced_boundary = date_trunc('day', ran_at AT TIME ZONE 'UTC' - interval '2 hours')
-                           + interval '2 hours'
+   -- Explicitly back to timestamptz AS UTC. Without the trailing AT TIME ZONE the
+   -- resulting timestamp is interpreted in the SESSION timezone on assignment, so the
+   -- backfill would differ between operators. (No-op in production: the table is empty.)
+   SET serviced_boundary = (date_trunc('day', (ran_at AT TIME ZONE 'UTC') - interval '2 hours')
+                            + interval '2 hours') AT TIME ZONE 'UTC'
  WHERE serviced_boundary IS NULL;

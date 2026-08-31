@@ -500,7 +500,17 @@ const NIGHTLY_RETRY_MS = 60 * 60 * 1_000;
 // because `due` is not re-checked once the lock is acquired. Do not "harden" this
 // into a lock — it would duplicate the advisory lock and add a second thing to wedge.
 let lastNightlyAttempt = 0;
-let nightlyInFlight = false;
+// Timestamp, NOT a boolean. A boolean in-flight flag is unbounded: runNightlyPipeline
+// has no overall timeout and the Safe SDK (@safe-global/api-kit -> node-fetch@2) issues
+// requests with no timeout at all, so one wedged Safe/DB/RPC call would pin the flag and
+// suppress EVERY future tick until someone restarted the container -- reintroducing, in a
+// new shape, the exact "the nightly silently never runs again" bug this file exists to fix.
+// Bounded instead: after NIGHTLY_MAX_RUNTIME_MS we stop suppressing and say so loudly.
+// This is safe because the flag was never the mutex -- the pg advisory lock in
+// withPipelineLock is, and its wait is bounded, so a genuinely wedged holder produces a
+// LOUD "did not run" alert rather than silence.
+let nightlyStartedAt = 0; // 0 = no run in flight
+const NIGHTLY_MAX_RUNTIME_MS = 6 * 60 * 60 * 1_000;
 
 /**
  * Decide whether the nightly pipeline is due, from the DURABLE completion record
@@ -527,7 +537,15 @@ async function nightlyTick(): Promise<void> {
   // would let a second tick start while the first is still running; it would then
   // lose NIGHTLY_PENDING_LOCK_KEY in withPipelineLock, log 'another nightly
   // pipeline run is already pending', and return false for no reason. Skip instead.
-  if (nightlyInFlight) return;
+  if (nightlyStartedAt) {
+    const running = Date.now() - nightlyStartedAt;
+    if (running < NIGHTLY_MAX_RUNTIME_MS) return;
+    log.error(
+      { runningMs: running, maxMs: NIGHTLY_MAX_RUNTIME_MS },
+      'previous nightly run has been in flight past the max runtime - it is presumed wedged (the Safe SDK has no request timeout). Releasing the in-flight guard so ticks resume; the pipeline advisory lock still prevents true concurrency and will alert if the old run still holds it.',
+    );
+    nightlyStartedAt = 0;
+  }
   if (Date.now() - lastNightlyAttempt < NIGHTLY_RETRY_MS) return;
   // Compute the boundary ONCE and carry it through the whole invocation, so the run
   // is recorded against the boundary it was started for rather than whenever it
@@ -539,11 +557,11 @@ async function nightlyTick(): Promise<void> {
   `;
   if (row?.due !== true) return;
   lastNightlyAttempt = Date.now();
-  nightlyInFlight = true;
+  nightlyStartedAt = Date.now();
   try {
     await runNightlyPipeline(boundary).catch(() => { /* already logged + alerted */ });
   } finally {
-    nightlyInFlight = false;
+    nightlyStartedAt = 0;
   }
 }
 

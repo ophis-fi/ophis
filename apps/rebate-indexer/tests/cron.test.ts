@@ -152,6 +152,18 @@ describe('every cycle-selecting monthly helper is given the serviced boundary', 
     expect(src).toMatch(/runBatcher\([^;]*?\}\s*,\s*servicedBoundary\s*\)/s);
   });
 
+  it('the in-flight guard is TIME-BOUNDED, not a bare boolean', () => {
+    // A boolean in-flight flag is unbounded: runNightlyPipeline has no overall timeout
+    // and the Safe SDK issues requests with none, so one wedged call would pin the flag
+    // and suppress every future tick until restart -- the same "nightly silently never
+    // runs again" failure this whole file exists to fix, in a new shape.
+    expect(src).toMatch(/NIGHTLY_MAX_RUNTIME_MS/);
+    expect(src).toMatch(/nightlyStartedAt\s*=\s*Date\.now\(\)/);
+    // the suppression must be conditional on ELAPSED time, never an unconditional return
+    expect(src).toMatch(/if\s*\(\s*running\s*<\s*NIGHTLY_MAX_RUNTIME_MS\s*\)\s*return/);
+    expect(src).not.toMatch(/if\s*\(\s*nightlyInFlight\s*\)\s*return/);
+  });
+
   it('batcherRanThisMonth matches on serviced_boundary, not the ran_at completion stamp', () => {
     expect(src).toMatch(/serviced_boundary\s*>=\s*date_trunc\('month'/);
     expect(src).toMatch(/serviced_boundary\s*<\s*date_trunc\('month'/); // upper bound
