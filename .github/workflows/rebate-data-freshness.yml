@@ -34,6 +34,15 @@ jobs:
             (.data_as_of | type == "string") and
             .failed_batches == 0
           ' health.json >/dev/null
+          # last_pipeline_run_at is the MUTATION-PROOF half of this monitor.
+          # data_fresh alone can be forged by the startup backfill that runs on every
+          # container recreate: from 2026-08-28 to 08-31 the nightly pipeline never ran
+          # ONCE (node-cron skipped every 02:00 on a suspending WSL2 host) while deploys
+          # kept data_fresh green, so this monitor stayed silent through the entire bug.
+          # Only the nightly path writes pipeline_runs (migration 0003), so asserting it
+          # cannot be satisfied by a redeploy.
+          jq -e '.last_pipeline_run_at | type == "string"' health.json >/dev/null \
+            || { echo "::error::last_pipeline_run_at is null -- the nightly pipeline has not completed. data_fresh may be masked by a deploy-time startup backfill."; exit 1; }
           jq -e '
             .ok == true and
             .dataFresh == true and

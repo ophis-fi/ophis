@@ -452,6 +452,13 @@ export function lastNightlyBoundary(nowMs: number): Date {
 
 const NIGHTLY_POLL_MS = 10 * 60 * 1_000;
 const NIGHTLY_RETRY_MS = 60 * 60 * 1_000;
+// RETRY THROTTLE ONLY — deliberately not a mutex. It is a plain module-level
+// timestamp, so two ticks could in principle read it before either writes. That is
+// fine: mutual exclusion is enforced where it matters, by the pg ADVISORY LOCK in
+// withPipelineLock (which the startup backfill in index.ts also takes), so pipeline
+// STEPS can never interleave. The worst case here is one redundant sequential run,
+// because `due` is not re-checked once the lock is acquired. Do not "harden" this
+// into a lock — it would duplicate the advisory lock and add a second thing to wedge.
 let lastNightlyAttempt = 0;
 
 /**
