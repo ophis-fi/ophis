@@ -46,3 +46,38 @@ describe('resolveBatcherProposeEnabled — default-ON, fail-loud money-path flag
     }
   });
 });
+
+describe('lastNightlyBoundary — the durable-record scheduler replacing node-cron', () => {
+  let lastNightlyBoundary: (nowMs: number) => Date;
+  beforeAll(async () => {
+    ({ lastNightlyBoundary } = await import('../src/cron.js'));
+  });
+
+  // node-cron@4 arms a timer for the target instant and SKIPS the job if the timer
+  // lands outside the target second, logging "missed execution". On Cadia
+  // (Windows 11 + WSL2, which suspends) that skipped every night: measured on the
+  // host 2026-08-31, `grep -c 'pipeline start'` was 0 across 35h of uptime. The
+  // replacement asks "is a run due?" from pipeline_runs instead of trusting a timer,
+  // so being late is survivable and being suspended is survivable.
+
+  it('returns the most recent 02:00 UTC boundary at or before now', () => {
+    expect(lastNightlyBoundary(Date.parse('2026-08-31T19:00:00Z')).toISOString())
+      .toBe('2026-08-31T02:00:00.000Z');
+  });
+
+  it('rolls back to the PREVIOUS day just before 02:00', () => {
+    expect(lastNightlyBoundary(Date.parse('2026-08-31T01:59:59Z')).toISOString())
+      .toBe('2026-08-30T02:00:00.000Z');
+  });
+
+  it('is inclusive exactly at the boundary', () => {
+    expect(lastNightlyBoundary(Date.parse('2026-08-31T02:00:00Z')).toISOString())
+      .toBe('2026-08-31T02:00:00.000Z');
+  });
+
+  it('still names a due boundary after a multi-day suspend — the case node-cron dropped', () => {
+    // Host asleep across 2026-08-29..08-31; on resume the poll must still see a run as due.
+    expect(lastNightlyBoundary(Date.parse('2026-08-31T09:02:00Z')).toISOString())
+      .toBe('2026-08-31T02:00:00.000Z');
+  });
+});

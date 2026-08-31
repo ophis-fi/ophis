@@ -1,4 +1,3 @@
-import cron from 'node-cron';
 import { runFetcher, pruneStaleWallets, withPipelineLock } from './fetcher.js';
 import { repairRouterTrades } from './repair/routerTrades.js';
 import { repairDefiLlamaSettlementIdentity } from './repair/defillamaSettlement.js';
@@ -441,10 +440,57 @@ export async function runNightlyPipeline(): Promise<void> {
   log.info({ ms: Date.now() - t0 }, 'pipeline complete');
 }
 
+/**
+ * Most recent 02:00 UTC boundary at or before `nowMs`.
+ * Pure — testable without a clock or a database.
+ */
+export function lastNightlyBoundary(nowMs: number): Date {
+  const DAY = 86_400_000;
+  const OFFSET = 2 * 3_600_000; // 02:00 UTC
+  return new Date(Math.floor((nowMs - OFFSET) / DAY) * DAY + OFFSET);
+}
+
+const NIGHTLY_POLL_MS = 10 * 60 * 1_000;
+const NIGHTLY_RETRY_MS = 60 * 60 * 1_000;
+let lastNightlyAttempt = 0;
+
+/**
+ * Decide whether the nightly pipeline is due, from the DURABLE completion record
+ * rather than from a timer having fired at the right instant.
+ *
+ * WHY NOT node-cron (removed 2026-08-31): node-cron@4 arms a timer for the target
+ * instant and, if that timer lands outside the target SECOND, it logs
+ * "missed execution at ..." and DOES NOT RUN THE JOB. Cadia is Windows 11 + WSL2 and
+ * suspends, so the timer thaws minutes-to-hours late and every night was skipped.
+ * PROVEN on the host 2026-08-31: `grep -c 'pipeline start'` returned 0 across 35h of
+ * uptime, alongside
+ *   [NODE-CRON] [WARN] missed execution at Mon Aug 31 2026 02:00:00 GMT+0000!
+ * so `pipeline_runs` was empty and /health.last_pipeline_run_at had been null since the
+ * table was added. The ONLY thing refreshing public data was the startup backfill that
+ * runs on each container recreate, i.e. every deploy — which masked it for weeks.
+ *
+ * A poll fixes the whole class, not just the suspend case: it is equally correct if the
+ * process was down at 02:00, if the lock was held, or if a run threw. Being late is
+ * always better than being skipped for a daily job.
+ */
+async function nightlyTick(): Promise<void> {
+  if (Date.now() - lastNightlyAttempt < NIGHTLY_RETRY_MS) return;
+  const [row] = await sql<{ due: boolean }[]>`
+    SELECT COALESCE(MAX(ran_at), '-infinity'::timestamptz) < ${lastNightlyBoundary(Date.now())} AS due
+    FROM pipeline_runs
+  `;
+  if (row?.due !== true) return;
+  lastNightlyAttempt = Date.now();
+  await runNightlyPipeline().catch(() => { /* already logged + alerted */ });
+}
+
 export function startCron(): void {
-  // 02:00 UTC daily. node-cron uses the host TZ — explicitly force UTC.
-  cron.schedule('0 2 * * *', () => {
-    runNightlyPipeline().catch(() => { /* already logged + alerted */ });
-  }, { timezone: 'UTC' });
-  log.info('cron scheduled: 02:00 UTC daily');
+  // Poll, do not schedule. See nightlyTick.
+  setInterval(() => {
+    void nightlyTick().catch((err) => log.error({ err }, 'nightly tick failed'));
+  }, NIGHTLY_POLL_MS).unref?.();
+  // Run one tick promptly so a deploy that lands after a missed 02:00 catches up
+  // immediately instead of waiting out the first poll interval.
+  void nightlyTick().catch((err) => log.error({ err }, 'nightly tick failed'));
+  log.info({ pollMinutes: NIGHTLY_POLL_MS / 60_000 }, 'nightly pipeline: polling for a due run after 02:00 UTC');
 }
