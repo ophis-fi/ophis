@@ -64,9 +64,14 @@ export function resolveBatcherProposeEnabled(): boolean {
  * first_of_month=true pipeline_runs row ONLY when runBatcher actually executed (any result),
  * never on a skip/fail-closed cycle -- which is exactly what makes it a retry gate.
  */
-async function batcherRanThisMonth(): Promise<boolean> {
+async function batcherRanThisMonth(servicedBoundary: Date): Promise<boolean> {
+  // Scoped to the SERVICED boundary's month, not wall-clock now(). At 01:50 on the
+  // 1st a catch-up run services the PREVIOUS month's final boundary; asking about
+  // now()'s month would find no first_of_month row yet and wrongly report the
+  // monthly step as "missing", dragging the irreversible payout section into a run
+  // that belongs to last month. See the monthlyDue note below.
   const [row] = await sql<{ ok: boolean }[]>`
-    SELECT EXISTS(SELECT 1 FROM pipeline_runs WHERE first_of_month AND ran_at >= date_trunc('month', now())) AS ok
+    SELECT EXISTS(SELECT 1 FROM pipeline_runs WHERE first_of_month AND ran_at >= date_trunc('month', ${servicedBoundary}::timestamptz)) AS ok
   `;
   return row?.ok ?? false;
 }
@@ -228,9 +233,17 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
   // the next night instead of silently deferring the whole shared-Safe cycle a month. Every
   // step inside is cycle-idempotent: accruals re-run while 'computed', runBatcher resumes or
   // aborts an already-proposed cycle, and proposals fire at most once per batch.
-  const monthlyDue = isFirstOfMonth() || !(await batcherRanThisMonth());
+  // ⚠️ MONEY PATH — both operands MUST derive from servicedBoundary, never the wall
+  // clock. The monthly section accrues and PROPOSES Safe batches and is deliberately
+  // irreversible (runBatcher aborts an already-proposed cycle rather than recomputing
+  // it). Since 2026-08-31 the scheduler polls, so a catch-up run can execute at, say,
+  // 01:50 on the 1st while servicing the PREVIOUS day's boundary. Gating on
+  // wall-clock isFirstOfMonth() there would propose the new month's cycle before its
+  // boundary and before the fetcher ingested the final pre-boundary data — and it
+  // could not be undone. Gate on the boundary the run is actually servicing.
+  const monthlyDue = isFirstOfMonth(servicedBoundary) || !(await batcherRanThisMonth(servicedBoundary));
   if (monthlyDue) {
-    if (!isFirstOfMonth()) log.warn('monthly batcher step missing for this month; running CATCH-UP monthly section tonight');
+    if (!isFirstOfMonth(servicedBoundary)) log.warn('monthly batcher step missing for this month; running CATCH-UP monthly section tonight');
     log.info('first-of-month: running batcher');
     // Sovereign own-fee ACCRUAL (phase A). Runs FIRST, flag-INDEPENDENT and proposer-key
     // -INDEPENDENT: it records the owed ledger to a 'computed' batch per sovereign chain
@@ -285,11 +298,11 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
           rpcUrl: gnosisRpc(),
           proposerPrivateKey: proposerKey as `0x${string}`,
           proposeEnabled,
-        });
+        }, servicedBoundary); // cycleMonthKey from the SERVICED boundary, not wall clock
         batcherRan = true; // batcher executed (any result: proposed / no_recipients / dry-run)
         if (result.status === 'proposed') {
           await alerts.batchReady({
-            cycle: new Date().toISOString().slice(0, 7),
+            cycle: servicedBoundary.toISOString().slice(0, 7),
             pool: (Number(result.poolWei) / 1e18).toFixed(5),
             count: result.recipientCount,
             safeQueueUrl: 'https://app.safe.global/transactions/queue?safe=gno:0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
@@ -429,7 +442,7 @@ export async function runNightlyPipeline(
     const ran = await withPipelineLock(() => runPipelineSteps(servicedBoundary), { wait: true });
     if (!ran) {
       log.error('nightly pipeline did not run — waited out the pipeline lock');
-      const monthly = isFirstOfMonth()
+      const monthly = isFirstOfMonth(servicedBoundary)
         ? ' This is the 1st: the monthly rebate batch may be deferred — verify the Safe queue or re-trigger.'
         : '';
       // A manual re-trigger is safe and recovers a stuck cycle: runBatcher RESUMES

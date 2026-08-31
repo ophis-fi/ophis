@@ -81,3 +81,37 @@ describe('lastNightlyBoundary — the durable-record scheduler replacing node-cr
       .toBe('2026-08-31T02:00:00.000Z');
   });
 });
+
+describe('monthly gate follows the SERVICED boundary, not the wall clock', () => {
+  let lastNightlyBoundary: (nowMs: number) => Date;
+  let isFirstOfMonth: (now?: Date) => boolean;
+  beforeAll(async () => {
+    ({ lastNightlyBoundary } = await import('../src/cron.js'));
+    ({ isFirstOfMonth } = await import('../src/batcher.js'));
+  });
+
+  // The monthly section accrues and PROPOSES Safe batches and is irreversible
+  // (runBatcher aborts an already-proposed cycle rather than recomputing it).
+  // Since the scheduler polls, a catch-up run can execute at 01:50 on the 1st while
+  // servicing the PREVIOUS day's boundary. Gating on wall-clock isFirstOfMonth()
+  // there would propose the new month's cycle before its boundary and before the
+  // fetcher ingested the final pre-boundary data.
+
+  it('does NOT treat a 01:50 catch-up on the 1st as first-of-month', () => {
+    const now = Date.parse('2026-09-01T01:50:00Z');
+    expect(isFirstOfMonth(new Date(now))).toBe(true);              // wall clock says yes
+    const boundary = lastNightlyBoundary(now);
+    expect(boundary.toISOString()).toBe('2026-08-31T02:00:00.000Z'); // ...but we service Aug 31
+    expect(isFirstOfMonth(boundary)).toBe(false);                   // so the gate says NO
+  });
+
+  it('DOES treat the run after 02:00 on the 1st as first-of-month', () => {
+    const boundary = lastNightlyBoundary(Date.parse('2026-09-01T02:30:00Z'));
+    expect(boundary.toISOString()).toBe('2026-09-01T02:00:00.000Z');
+    expect(isFirstOfMonth(boundary)).toBe(true);
+  });
+
+  it('an ordinary mid-month catch-up is still not first-of-month', () => {
+    expect(isFirstOfMonth(lastNightlyBoundary(Date.parse('2026-09-15T01:50:00Z')))).toBe(false);
+  });
+});
