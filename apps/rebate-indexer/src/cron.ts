@@ -1,4 +1,3 @@
-import cron from 'node-cron';
 import { runFetcher, pruneStaleWallets, withPipelineLock } from './fetcher.js';
 import { repairRouterTrades } from './repair/routerTrades.js';
 import { repairDefiLlamaSettlementIdentity } from './repair/defillamaSettlement.js';
@@ -65,9 +64,25 @@ export function resolveBatcherProposeEnabled(): boolean {
  * first_of_month=true pipeline_runs row ONLY when runBatcher actually executed (any result),
  * never on a skip/fail-closed cycle -- which is exactly what makes it a retry gate.
  */
-async function batcherRanThisMonth(): Promise<boolean> {
+async function batcherRanThisMonth(servicedBoundary: Date): Promise<boolean> {
+  // Scoped to the SERVICED boundary's month, not wall-clock now(). At 01:50 on the
+  // 1st a catch-up run services the PREVIOUS month's final boundary; asking about
+  // now()'s month would find no first_of_month row yet and wrongly report the
+  // monthly step as "missing", dragging the irreversible payout section into a run
+  // that belongs to last month. See the monthlyDue note below.
+  // Match on serviced_boundary WITHIN the month, not on ran_at, and bound it at both
+  // ends. ran_at is a completion stamp with no upper bound, so a September monthly
+  // run that catches up shortly before 02:00 on October 1 lands a first_of_month row
+  // stamped in October while having serviced September 30. If October's own attempt
+  // then fails, the October 2 catch-up would read that September row as proof that
+  // October's batcher ran and skip the monthly section for the rest of the month.
   const [row] = await sql<{ ok: boolean }[]>`
-    SELECT EXISTS(SELECT 1 FROM pipeline_runs WHERE first_of_month AND ran_at >= date_trunc('month', now())) AS ok
+    SELECT EXISTS(
+      SELECT 1 FROM pipeline_runs
+       WHERE first_of_month
+         AND serviced_boundary >= date_trunc('month', ${servicedBoundary}::timestamptz)
+         AND serviced_boundary <  date_trunc('month', ${servicedBoundary}::timestamptz) + interval '1 month'
+    ) AS ok
   `;
   return row?.ok ?? false;
 }
@@ -80,7 +95,7 @@ async function batcherRanThisMonth(): Promise<boolean> {
 // The actual pipeline steps. Always invoked via runNightlyPipeline (under the
 // pipeline advisory lock); never call this directly or you reintroduce the race
 // with the startup backfill.
-async function runPipelineSteps(): Promise<void> {
+async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
   const { inserted } = await runFetcher();
   log.info({ inserted }, 'fetcher complete');
 
@@ -229,9 +244,25 @@ async function runPipelineSteps(): Promise<void> {
   // the next night instead of silently deferring the whole shared-Safe cycle a month. Every
   // step inside is cycle-idempotent: accruals re-run while 'computed', runBatcher resumes or
   // aborts an already-proposed cycle, and proposals fire at most once per batch.
-  const monthlyDue = isFirstOfMonth() || !(await batcherRanThisMonth());
+  // ⚠️ MONEY PATH — both operands MUST derive from servicedBoundary, never the wall
+  // clock. The monthly section accrues and PROPOSES Safe batches and is deliberately
+  // irreversible (runBatcher aborts an already-proposed cycle rather than recomputing
+  // it). Since 2026-08-31 the scheduler polls, so a catch-up run can execute at, say,
+  // 01:50 on the 1st while servicing the PREVIOUS day's boundary. Gating on
+  // wall-clock isFirstOfMonth() there would propose the new month's cycle before its
+  // boundary and before the fetcher ingested the final pre-boundary data — and it
+  // could not be undone. Gate on the boundary the run is actually servicing.
+  // ⚠️ EVERY helper inside this block that selects a CYCLE must be given
+  // servicedBoundary as its `now`. They all default to the wall clock, and the
+  // catch-up operand can make monthlyDue true while servicing a boundary in a
+  // DIFFERENT month -- which is live right now, since pipeline_runs is empty in
+  // production. Mixing them means runBatcher settles August while accrueOwnFee /
+  // accruePartnerFees / runAffiliatePayout / deliverMonthlyReport settle September.
+  // proposeOwnFeeBatches and proposePartnerFeeBatches are exempt: they act on
+  // already-computed batch rows by state, and select no cycle.
+  const monthlyDue = isFirstOfMonth(servicedBoundary) || !(await batcherRanThisMonth(servicedBoundary));
   if (monthlyDue) {
-    if (!isFirstOfMonth()) log.warn('monthly batcher step missing for this month; running CATCH-UP monthly section tonight');
+    if (!isFirstOfMonth(servicedBoundary)) log.warn('monthly batcher step missing for this month; running CATCH-UP monthly section tonight');
     log.info('first-of-month: running batcher');
     // Sovereign own-fee ACCRUAL (phase A). Runs FIRST, flag-INDEPENDENT and proposer-key
     // -INDEPENDENT: it records the owed ledger to a 'computed' batch per sovereign chain
@@ -242,7 +273,7 @@ async function runPipelineSteps(): Promise<void> {
     // blocks the rest of the cycle.
     for (const chainId of SOVEREIGN_OWN_FEE_CHAINS) {
       try {
-        await accrueOwnFee({ chainId });
+        await accrueOwnFee({ chainId, now: servicedBoundary });
       } catch (err) {
         log.error({ err, chainId }, 'own-fee accrual failed (non-fatal to the rest of the cycle)');
       }
@@ -265,7 +296,7 @@ async function runPipelineSteps(): Promise<void> {
       await alerts.alert('partner-fee', 'Partner-fee feed fetch/pricing INCOMPLETE on the 1st. FAIL-CLOSED: the rebate batcher AND affiliate payout are SKIPPED this cycle (the partner liability could under-count missing/unpriced trades). Fix the feed/pricer and re-trigger the pipeline.').catch(() => {});
     }
     try {
-      await accruePartnerFees({});
+      await accruePartnerFees({ now: servicedBoundary });
     } catch (err) {
       partnerAccrualOk = false;
       log.error({ err }, 'partner-fee accrual FAILED; fail-closed: SKIPPING the rebate batcher + affiliate payout this cycle (shared Safe must not be distributed against a stale/absent partner liability)');
@@ -286,11 +317,11 @@ async function runPipelineSteps(): Promise<void> {
           rpcUrl: gnosisRpc(),
           proposerPrivateKey: proposerKey as `0x${string}`,
           proposeEnabled,
-        });
+        }, servicedBoundary); // cycleMonthKey from the SERVICED boundary, not wall clock
         batcherRan = true; // batcher executed (any result: proposed / no_recipients / dry-run)
         if (result.status === 'proposed') {
           await alerts.batchReady({
-            cycle: new Date().toISOString().slice(0, 7),
+            cycle: servicedBoundary.toISOString().slice(0, 7),
             pool: (Number(result.poolWei) / 1e18).toFixed(5),
             count: result.recipientCount,
             safeQueueUrl: 'https://app.safe.global/transactions/queue?safe=gno:0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
@@ -304,7 +335,7 @@ async function runPipelineSteps(): Promise<void> {
         // payout failure never blocks the report or the heartbeat.
         if (resolveAffiliatePayoutEnabled()) {
           try {
-            await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
+            await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled, now: servicedBoundary });
           } catch (err) {
             log.error({ err }, 'affiliate payout failed (non-fatal to the rest of the cycle)');
           }
@@ -333,7 +364,7 @@ async function runPipelineSteps(): Promise<void> {
     // Monthly settlement report — runs AFTER the batcher + affiliate payout so it
     // reflects this cycle's numbers. Self-contained + fire-and-forget (alerts on
     // failure, never throws), so a report hiccup can never block the heartbeat below.
-    await deliverMonthlyReport({ rpcUrl: gnosisRpc() });
+    await deliverMonthlyReport({ rpcUrl: gnosisRpc(), now: servicedBoundary });
   }
 
   // Partner-fee PROPOSAL (partner-fees Phase B) — NIGHTLY, not first-of-month-only. Needs
@@ -399,10 +430,18 @@ async function runPipelineSteps(): Promise<void> {
   // admin-gated /status and a redeploy can't clobber it. The first_of_month
   // column is set ONLY when the batcher STEP actually ran (batcherRan), so
   // /health.last_batcher_run_at reflects real batcher executions, not skips.
-  await sql`INSERT INTO pipeline_runs (first_of_month) VALUES (${batcherRan})`;
+  // serviced_boundary records WHICH nightly this run was for, taken at tick time.
+  // Inferring it from ran_at (the completion stamp) lets a run that crosses 02:00
+  // satisfy two boundaries and silently skip a day -- see migration 0043.
+  await sql`INSERT INTO pipeline_runs (first_of_month, serviced_boundary) VALUES (${batcherRan}, ${servicedBoundary})`;
 }
 
-export async function runNightlyPipeline(): Promise<void> {
+export async function runNightlyPipeline(
+  // Defaults to the current boundary so manual/CLI/test invocations stay ergonomic.
+  // nightlyTick ALWAYS passes it explicitly, computed once at tick time — that is
+  // what stops a run crossing 02:00 from being recorded against the wrong boundary.
+  servicedBoundary: Date = lastNightlyBoundary(Date.now()),
+): Promise<void> {
   const t0 = Date.now();
   log.info('pipeline start');
 
@@ -419,10 +458,10 @@ export async function runNightlyPipeline(): Promise<void> {
     // same "the nightly run did not happen" condition the pre-wait code alerted
     // on, and on the 1st it defers the monthly Safe proposal. Dropping the alert
     // along with the skip path would make the one case we cannot fix silent.
-    const ran = await withPipelineLock(runPipelineSteps, { wait: true });
+    const ran = await withPipelineLock(() => runPipelineSteps(servicedBoundary), { wait: true });
     if (!ran) {
       log.error('nightly pipeline did not run — waited out the pipeline lock');
-      const monthly = isFirstOfMonth()
+      const monthly = isFirstOfMonth(servicedBoundary)
         ? ' This is the 1st: the monthly rebate batch may be deferred — verify the Safe queue or re-trigger.'
         : '';
       // A manual re-trigger is safe and recovers a stuck cycle: runBatcher RESUMES
@@ -441,10 +480,98 @@ export async function runNightlyPipeline(): Promise<void> {
   log.info({ ms: Date.now() - t0 }, 'pipeline complete');
 }
 
+/**
+ * Most recent 02:00 UTC boundary at or before `nowMs`.
+ * Pure — testable without a clock or a database.
+ */
+export function lastNightlyBoundary(nowMs: number): Date {
+  const DAY = 86_400_000;
+  const OFFSET = 2 * 3_600_000; // 02:00 UTC
+  return new Date(Math.floor((nowMs - OFFSET) / DAY) * DAY + OFFSET);
+}
+
+const NIGHTLY_POLL_MS = 10 * 60 * 1_000;
+const NIGHTLY_RETRY_MS = 60 * 60 * 1_000;
+// RETRY THROTTLE ONLY — deliberately not a mutex. It is a plain module-level
+// timestamp, so two ticks could in principle read it before either writes. That is
+// fine: mutual exclusion is enforced where it matters, by the pg ADVISORY LOCK in
+// withPipelineLock (which the startup backfill in index.ts also takes), so pipeline
+// STEPS can never interleave. The worst case here is one redundant sequential run,
+// because `due` is not re-checked once the lock is acquired. Do not "harden" this
+// into a lock — it would duplicate the advisory lock and add a second thing to wedge.
+let lastNightlyAttempt = 0;
+// Timestamp, NOT a boolean. A boolean in-flight flag is unbounded: runNightlyPipeline
+// has no overall timeout and the Safe SDK (@safe-global/api-kit -> node-fetch@2) issues
+// requests with no timeout at all, so one wedged Safe/DB/RPC call would pin the flag and
+// suppress EVERY future tick until someone restarted the container -- reintroducing, in a
+// new shape, the exact "the nightly silently never runs again" bug this file exists to fix.
+// Bounded instead: after NIGHTLY_MAX_RUNTIME_MS we stop suppressing and say so loudly.
+// This is safe because the flag was never the mutex -- the pg advisory lock in
+// withPipelineLock is, and its wait is bounded, so a genuinely wedged holder produces a
+// LOUD "did not run" alert rather than silence.
+let nightlyStartedAt = 0; // 0 = no run in flight
+const NIGHTLY_MAX_RUNTIME_MS = 6 * 60 * 60 * 1_000;
+
+/**
+ * Decide whether the nightly pipeline is due, from the DURABLE completion record
+ * rather than from a timer having fired at the right instant.
+ *
+ * WHY NOT node-cron (removed 2026-08-31): node-cron@4 arms a timer for the target
+ * instant and, if that timer lands outside the target SECOND, it logs
+ * "missed execution at ..." and DOES NOT RUN THE JOB. Cadia is Windows 11 + WSL2 and
+ * suspends, so the timer thaws minutes-to-hours late and every night was skipped.
+ * PROVEN on the host 2026-08-31: `grep -c 'pipeline start'` returned 0 across 35h of
+ * uptime, alongside
+ *   [NODE-CRON] [WARN] missed execution at Mon Aug 31 2026 02:00:00 GMT+0000!
+ * so `pipeline_runs` was empty and /health.last_pipeline_run_at had been null since the
+ * table was added. The ONLY thing refreshing public data was the startup backfill that
+ * runs on each container recreate, i.e. every deploy — which masked it for weeks.
+ *
+ * A poll fixes the whole class, not just the suspend case: it is equally correct if the
+ * process was down at 02:00, if the lock was held, or if a run threw. Being late is
+ * always better than being skipped for a daily job.
+ */
+async function nightlyTick(): Promise<void> {
+  // A real nightly run can exceed NIGHTLY_RETRY_MS (the 1st-of-month cycle does
+  // Safe proposals and reconciliation). Without this flag the elapsed-time guard
+  // would let a second tick start while the first is still running; it would then
+  // lose NIGHTLY_PENDING_LOCK_KEY in withPipelineLock, log 'another nightly
+  // pipeline run is already pending', and return false for no reason. Skip instead.
+  if (nightlyStartedAt) {
+    const running = Date.now() - nightlyStartedAt;
+    if (running < NIGHTLY_MAX_RUNTIME_MS) return;
+    log.error(
+      { runningMs: running, maxMs: NIGHTLY_MAX_RUNTIME_MS },
+      'previous nightly run has been in flight past the max runtime - it is presumed wedged (the Safe SDK has no request timeout). Releasing the in-flight guard so ticks resume; the pipeline advisory lock still prevents true concurrency and will alert if the old run still holds it.',
+    );
+    nightlyStartedAt = 0;
+  }
+  if (Date.now() - lastNightlyAttempt < NIGHTLY_RETRY_MS) return;
+  // Compute the boundary ONCE and carry it through the whole invocation, so the run
+  // is recorded against the boundary it was started for rather than whenever it
+  // happened to finish.
+  const boundary = lastNightlyBoundary(Date.now());
+  const [row] = await sql<{ due: boolean }[]>`
+    SELECT COALESCE(MAX(serviced_boundary), '-infinity'::timestamptz) < ${boundary} AS due
+    FROM pipeline_runs
+  `;
+  if (row?.due !== true) return;
+  lastNightlyAttempt = Date.now();
+  nightlyStartedAt = Date.now();
+  try {
+    await runNightlyPipeline(boundary).catch(() => { /* already logged + alerted */ });
+  } finally {
+    nightlyStartedAt = 0;
+  }
+}
+
 export function startCron(): void {
-  // 02:00 UTC daily. node-cron uses the host TZ — explicitly force UTC.
-  cron.schedule('0 2 * * *', () => {
-    runNightlyPipeline().catch(() => { /* already logged + alerted */ });
-  }, { timezone: 'UTC' });
-  log.info('cron scheduled: 02:00 UTC daily');
+  // Poll, do not schedule. See nightlyTick.
+  setInterval(() => {
+    void nightlyTick().catch((err) => log.error({ err }, 'nightly tick failed'));
+  }, NIGHTLY_POLL_MS).unref?.();
+  // Run one tick promptly so a deploy that lands after a missed 02:00 catches up
+  // immediately instead of waiting out the first poll interval.
+  void nightlyTick().catch((err) => log.error({ err }, 'nightly tick failed'));
+  log.info({ pollMinutes: NIGHTLY_POLL_MS / 60_000 }, 'nightly pipeline: polling for a due run after 02:00 UTC');
 }

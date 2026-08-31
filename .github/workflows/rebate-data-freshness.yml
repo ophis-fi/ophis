@@ -34,6 +34,59 @@ jobs:
             (.data_as_of | type == "string") and
             .failed_batches == 0
           ' health.json >/dev/null
+          # last_pipeline_run_at is the MUTATION-PROOF half of this monitor.
+          # data_fresh alone can be forged by the startup backfill that runs on every
+          # container recreate: from 2026-08-28 to 08-31 the nightly pipeline never ran
+          # ONCE (node-cron skipped every 02:00 on a suspending WSL2 host) while deploys
+          # kept data_fresh green, so this monitor stayed silent through the entire bug.
+          # Only the nightly path writes pipeline_runs (migration 0003), so asserting it
+          # cannot be satisfied by a redeploy.
+          # Assert on the SERVICED BOUNDARY, not the completion stamp. A run that
+          # starts 01:50 and ends 02:30 stamps last_pipeline_run_at past today's
+          # boundary while having serviced yesterday's -- comparing the completion
+          # time to a boundary would be fooled exactly as the scheduler was.
+          # Fall back to last_pipeline_run_at so this still works against an older
+          # deployment that predates the field.
+          PIPE_RUN="$(jq -r '.last_pipeline_boundary // .last_pipeline_run_at // empty' health.json)"
+          if [ -z "$PIPE_RUN" ]; then
+            echo "::error::no serviced nightly boundary -- the nightly pipeline has never completed. data_fresh may be masked by a deploy-time startup backfill."
+            exit 1
+          fi
+          # Presence alone is not enough: once ANY nightly has completed, a
+          # type-only check would accept that timestamp forever while nightly
+          # execution silently stopped and container recreates kept data_fresh
+          # green -- exactly the mask this assertion exists to remove.
+          #
+          # Nor is elapsed age enough. An age check SLIDES with the last run: if a
+          # catch-up run lands at 01:50, the 02:00 boundary hours later can be missed
+          # while the age stays under the window, letting almost TWO boundaries pass
+          # unnoticed. Anchor to the BOUNDARY instead: once the grace window for the
+          # latest expected 02:00 UTC run has elapsed, that run must have completed.
+          #
+          # This deliberately RE-IMPLEMENTS lastNightlyBoundary() from cron.ts in
+          # shell rather than importing it. A checker that shares an implementation
+          # with the thing it checks cannot fail on a bug in it -- two independent
+          # implementations of one spec is the point.
+          PIPE_TS="$(date -u -d "$PIPE_RUN" +%s)" || { echo "::error::unparseable last_pipeline_run_at: $PIPE_RUN"; exit 1; }
+          NOW=$(date -u +%s)
+          OFFSET=7200          # 02:00 UTC
+          GRACE=7200           # 2h for the run itself to finish
+          BOUNDARY=$(( ( (NOW - OFFSET) / 86400 ) * 86400 + OFFSET ))
+          # ALWAYS enforce a boundary -- never skip the comparison. Inside the
+          # 02:00-04:00 grace window today's run may legitimately still be in
+          # flight, but YESTERDAY's must already be done. Skipping entirely there
+          # would let an arbitrarily stale heartbeat pass for two hours a day and
+          # make the monitor FLAP: red at 01:47, green at 02:17, red again at 04:17.
+          if [ "$NOW" -ge $(( BOUNDARY + GRACE )) ]; then
+            REQUIRED=$BOUNDARY
+          else
+            REQUIRED=$(( BOUNDARY - 86400 ))
+          fi
+          if [ "$PIPE_TS" -lt "$REQUIRED" ]; then
+            echo "::error::nightly pipeline has not completed for the $(date -u -d "@$REQUIRED" +%Y-%m-%dT%H:%M:%SZ) boundary (last run: $PIPE_RUN). The scheduler is not running even though public data may look fresh."
+            exit 1
+          fi
+          echo "nightly heartbeat ok: last_pipeline_run_at=$PIPE_RUN (required boundary $(date -u -d "@$REQUIRED" +%Y-%m-%dT%H:%M:%SZ))"
           jq -e '
             .ok == true and
             .dataFresh == true and

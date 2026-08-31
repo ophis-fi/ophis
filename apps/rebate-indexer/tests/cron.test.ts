@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // cron.ts transitively imports db/index.ts, which THROWS at import time unless
 // DATABASE_URL is set. postgres.js connects LAZILY (on first query), so a dummy URL
@@ -44,5 +46,126 @@ describe('resolveBatcherProposeEnabled — default-ON, fail-loud money-path flag
       process.env.BATCHER_PROPOSE_ENABLED = v;
       expect(() => resolveBatcherProposeEnabled(), `value "${v}" must throw`).toThrow(/BATCHER_PROPOSE_ENABLED/);
     }
+  });
+});
+
+describe('lastNightlyBoundary — the durable-record scheduler replacing node-cron', () => {
+  let lastNightlyBoundary: (nowMs: number) => Date;
+  beforeAll(async () => {
+    ({ lastNightlyBoundary } = await import('../src/cron.js'));
+  });
+
+  // node-cron@4 arms a timer for the target instant and SKIPS the job if the timer
+  // lands outside the target second, logging "missed execution". On Cadia
+  // (Windows 11 + WSL2, which suspends) that skipped every night: measured on the
+  // host 2026-08-31, `grep -c 'pipeline start'` was 0 across 35h of uptime. The
+  // replacement asks "is a run due?" from pipeline_runs instead of trusting a timer,
+  // so being late is survivable and being suspended is survivable.
+
+  it('returns the most recent 02:00 UTC boundary at or before now', () => {
+    expect(lastNightlyBoundary(Date.parse('2026-08-31T19:00:00Z')).toISOString())
+      .toBe('2026-08-31T02:00:00.000Z');
+  });
+
+  it('rolls back to the PREVIOUS day just before 02:00', () => {
+    expect(lastNightlyBoundary(Date.parse('2026-08-31T01:59:59Z')).toISOString())
+      .toBe('2026-08-30T02:00:00.000Z');
+  });
+
+  it('is inclusive exactly at the boundary', () => {
+    expect(lastNightlyBoundary(Date.parse('2026-08-31T02:00:00Z')).toISOString())
+      .toBe('2026-08-31T02:00:00.000Z');
+  });
+
+  it('still names a due boundary after a multi-day suspend — the case node-cron dropped', () => {
+    // Host asleep across 2026-08-29..08-31; on resume the poll must still see a run as due.
+    expect(lastNightlyBoundary(Date.parse('2026-08-31T09:02:00Z')).toISOString())
+      .toBe('2026-08-31T02:00:00.000Z');
+  });
+});
+
+describe('monthly gate follows the SERVICED boundary, not the wall clock', () => {
+  let lastNightlyBoundary: (nowMs: number) => Date;
+  let isFirstOfMonth: (now?: Date) => boolean;
+  beforeAll(async () => {
+    ({ lastNightlyBoundary } = await import('../src/cron.js'));
+    ({ isFirstOfMonth } = await import('../src/batcher.js'));
+  });
+
+  // The monthly section accrues and PROPOSES Safe batches and is irreversible
+  // (runBatcher aborts an already-proposed cycle rather than recomputing it).
+  // Since the scheduler polls, a catch-up run can execute at 01:50 on the 1st while
+  // servicing the PREVIOUS day's boundary. Gating on wall-clock isFirstOfMonth()
+  // there would propose the new month's cycle before its boundary and before the
+  // fetcher ingested the final pre-boundary data.
+
+  it('does NOT treat a 01:50 catch-up on the 1st as first-of-month', () => {
+    const now = Date.parse('2026-09-01T01:50:00Z');
+    expect(isFirstOfMonth(new Date(now))).toBe(true);              // wall clock says yes
+    const boundary = lastNightlyBoundary(now);
+    expect(boundary.toISOString()).toBe('2026-08-31T02:00:00.000Z'); // ...but we service Aug 31
+    expect(isFirstOfMonth(boundary)).toBe(false);                   // so the gate says NO
+  });
+
+  it('DOES treat the run after 02:00 on the 1st as first-of-month', () => {
+    const boundary = lastNightlyBoundary(Date.parse('2026-09-01T02:30:00Z'));
+    expect(boundary.toISOString()).toBe('2026-09-01T02:00:00.000Z');
+    expect(isFirstOfMonth(boundary)).toBe(true);
+  });
+
+  it('an ordinary mid-month catch-up is still not first-of-month', () => {
+    expect(isFirstOfMonth(lastNightlyBoundary(Date.parse('2026-09-15T01:50:00Z')))).toBe(false);
+  });
+});
+
+describe('every cycle-selecting monthly helper is given the serviced boundary', () => {
+  // A SOURCE-LEVEL invariant, deliberately. The unit tests above cover the pure
+  // boundary maths, but the money-path bug was that helpers inside the monthly block
+  // silently DEFAULT to the wall clock: runBatcher would settle August while
+  // accrueOwnFee/accruePartnerFees/runAffiliatePayout/deliverMonthlyReport settled
+  // September, whenever the catch-up operand fired across a month edge. Nothing
+  // type-checks that, because `now` is optional on every one of them. So assert it here.
+  //
+  // proposeOwnFeeBatches / proposePartnerFeeBatches are EXEMPT: they act on
+  // already-computed batch rows by state and select no cycle.
+  const CYCLE_SELECTING = [
+    'accrueOwnFee',
+    'accruePartnerFees',
+    'runAffiliatePayout',
+    'deliverMonthlyReport',
+  ];
+
+  const src = readFileSync(
+    fileURLToPath(new URL('../src/cron.ts', import.meta.url)),
+    'utf8',
+  );
+
+  it.each(CYCLE_SELECTING)('%s is called with now: servicedBoundary', (fn) => {
+    const calls = [...src.matchAll(new RegExp(`\\b${fn}\\(([^;]*?)\\)\\s*;`, 'gs'))];
+    expect(calls.length).toBeGreaterThan(0);
+    for (const [, args] of calls) {
+      expect(args).toContain('now: servicedBoundary');
+    }
+  });
+
+  it('runBatcher receives the serviced boundary as its cycle clock', () => {
+    expect(src).toMatch(/runBatcher\([^;]*?\}\s*,\s*servicedBoundary\s*\)/s);
+  });
+
+  it('the in-flight guard is TIME-BOUNDED, not a bare boolean', () => {
+    // A boolean in-flight flag is unbounded: runNightlyPipeline has no overall timeout
+    // and the Safe SDK issues requests with none, so one wedged call would pin the flag
+    // and suppress every future tick until restart -- the same "nightly silently never
+    // runs again" failure this whole file exists to fix, in a new shape.
+    expect(src).toMatch(/NIGHTLY_MAX_RUNTIME_MS/);
+    expect(src).toMatch(/nightlyStartedAt\s*=\s*Date\.now\(\)/);
+    // the suppression must be conditional on ELAPSED time, never an unconditional return
+    expect(src).toMatch(/if\s*\(\s*running\s*<\s*NIGHTLY_MAX_RUNTIME_MS\s*\)\s*return/);
+    expect(src).not.toMatch(/if\s*\(\s*nightlyInFlight\s*\)\s*return/);
+  });
+
+  it('batcherRanThisMonth matches on serviced_boundary, not the ran_at completion stamp', () => {
+    expect(src).toMatch(/serviced_boundary\s*>=\s*date_trunc\('month'/);
+    expect(src).toMatch(/serviced_boundary\s*<\s*date_trunc\('month'/); // upper bound
   });
 });
