@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // cron.ts transitively imports db/index.ts, which THROWS at import time unless
 // DATABASE_URL is set. postgres.js connects LAZILY (on first query), so a dummy URL
@@ -113,5 +115,45 @@ describe('monthly gate follows the SERVICED boundary, not the wall clock', () =>
 
   it('an ordinary mid-month catch-up is still not first-of-month', () => {
     expect(isFirstOfMonth(lastNightlyBoundary(Date.parse('2026-09-15T01:50:00Z')))).toBe(false);
+  });
+});
+
+describe('every cycle-selecting monthly helper is given the serviced boundary', () => {
+  // A SOURCE-LEVEL invariant, deliberately. The unit tests above cover the pure
+  // boundary maths, but the money-path bug was that helpers inside the monthly block
+  // silently DEFAULT to the wall clock: runBatcher would settle August while
+  // accrueOwnFee/accruePartnerFees/runAffiliatePayout/deliverMonthlyReport settled
+  // September, whenever the catch-up operand fired across a month edge. Nothing
+  // type-checks that, because `now` is optional on every one of them. So assert it here.
+  //
+  // proposeOwnFeeBatches / proposePartnerFeeBatches are EXEMPT: they act on
+  // already-computed batch rows by state and select no cycle.
+  const CYCLE_SELECTING = [
+    'accrueOwnFee',
+    'accruePartnerFees',
+    'runAffiliatePayout',
+    'deliverMonthlyReport',
+  ];
+
+  const src = readFileSync(
+    fileURLToPath(new URL('../src/cron.ts', import.meta.url)),
+    'utf8',
+  );
+
+  it.each(CYCLE_SELECTING)('%s is called with now: servicedBoundary', (fn) => {
+    const calls = [...src.matchAll(new RegExp(`\\b${fn}\\(([^;]*?)\\)\\s*;`, 'gs'))];
+    expect(calls.length).toBeGreaterThan(0);
+    for (const [, args] of calls) {
+      expect(args).toContain('now: servicedBoundary');
+    }
+  });
+
+  it('runBatcher receives the serviced boundary as its cycle clock', () => {
+    expect(src).toMatch(/runBatcher\([^;]*?\}\s*,\s*servicedBoundary\s*\)/s);
+  });
+
+  it('batcherRanThisMonth matches on serviced_boundary, not the ran_at completion stamp', () => {
+    expect(src).toMatch(/serviced_boundary\s*>=\s*date_trunc\('month'/);
+    expect(src).toMatch(/serviced_boundary\s*<\s*date_trunc\('month'/); // upper bound
   });
 });

@@ -70,8 +70,19 @@ async function batcherRanThisMonth(servicedBoundary: Date): Promise<boolean> {
   // now()'s month would find no first_of_month row yet and wrongly report the
   // monthly step as "missing", dragging the irreversible payout section into a run
   // that belongs to last month. See the monthlyDue note below.
+  // Match on serviced_boundary WITHIN the month, not on ran_at, and bound it at both
+  // ends. ran_at is a completion stamp with no upper bound, so a September monthly
+  // run that catches up shortly before 02:00 on October 1 lands a first_of_month row
+  // stamped in October while having serviced September 30. If October's own attempt
+  // then fails, the October 2 catch-up would read that September row as proof that
+  // October's batcher ran and skip the monthly section for the rest of the month.
   const [row] = await sql<{ ok: boolean }[]>`
-    SELECT EXISTS(SELECT 1 FROM pipeline_runs WHERE first_of_month AND ran_at >= date_trunc('month', ${servicedBoundary}::timestamptz)) AS ok
+    SELECT EXISTS(
+      SELECT 1 FROM pipeline_runs
+       WHERE first_of_month
+         AND serviced_boundary >= date_trunc('month', ${servicedBoundary}::timestamptz)
+         AND serviced_boundary <  date_trunc('month', ${servicedBoundary}::timestamptz) + interval '1 month'
+    ) AS ok
   `;
   return row?.ok ?? false;
 }
@@ -241,6 +252,14 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
   // wall-clock isFirstOfMonth() there would propose the new month's cycle before its
   // boundary and before the fetcher ingested the final pre-boundary data — and it
   // could not be undone. Gate on the boundary the run is actually servicing.
+  // ⚠️ EVERY helper inside this block that selects a CYCLE must be given
+  // servicedBoundary as its `now`. They all default to the wall clock, and the
+  // catch-up operand can make monthlyDue true while servicing a boundary in a
+  // DIFFERENT month -- which is live right now, since pipeline_runs is empty in
+  // production. Mixing them means runBatcher settles August while accrueOwnFee /
+  // accruePartnerFees / runAffiliatePayout / deliverMonthlyReport settle September.
+  // proposeOwnFeeBatches and proposePartnerFeeBatches are exempt: they act on
+  // already-computed batch rows by state, and select no cycle.
   const monthlyDue = isFirstOfMonth(servicedBoundary) || !(await batcherRanThisMonth(servicedBoundary));
   if (monthlyDue) {
     if (!isFirstOfMonth(servicedBoundary)) log.warn('monthly batcher step missing for this month; running CATCH-UP monthly section tonight');
@@ -254,7 +273,7 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
     // blocks the rest of the cycle.
     for (const chainId of SOVEREIGN_OWN_FEE_CHAINS) {
       try {
-        await accrueOwnFee({ chainId });
+        await accrueOwnFee({ chainId, now: servicedBoundary });
       } catch (err) {
         log.error({ err, chainId }, 'own-fee accrual failed (non-fatal to the rest of the cycle)');
       }
@@ -277,7 +296,7 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
       await alerts.alert('partner-fee', 'Partner-fee feed fetch/pricing INCOMPLETE on the 1st. FAIL-CLOSED: the rebate batcher AND affiliate payout are SKIPPED this cycle (the partner liability could under-count missing/unpriced trades). Fix the feed/pricer and re-trigger the pipeline.').catch(() => {});
     }
     try {
-      await accruePartnerFees({});
+      await accruePartnerFees({ now: servicedBoundary });
     } catch (err) {
       partnerAccrualOk = false;
       log.error({ err }, 'partner-fee accrual FAILED; fail-closed: SKIPPING the rebate batcher + affiliate payout this cycle (shared Safe must not be distributed against a stale/absent partner liability)');
@@ -316,7 +335,7 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
         // payout failure never blocks the report or the heartbeat.
         if (resolveAffiliatePayoutEnabled()) {
           try {
-            await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled });
+            await runAffiliatePayout({ chainId: 100, rpcUrl: gnosisRpc(), proposerPrivateKey: proposerKey as `0x${string}`, proposeEnabled, now: servicedBoundary });
           } catch (err) {
             log.error({ err }, 'affiliate payout failed (non-fatal to the rest of the cycle)');
           }
@@ -345,7 +364,7 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
     // Monthly settlement report — runs AFTER the batcher + affiliate payout so it
     // reflects this cycle's numbers. Self-contained + fire-and-forget (alerts on
     // failure, never throws), so a report hiccup can never block the heartbeat below.
-    await deliverMonthlyReport({ rpcUrl: gnosisRpc() });
+    await deliverMonthlyReport({ rpcUrl: gnosisRpc(), now: servicedBoundary });
   }
 
   // Partner-fee PROPOSAL (partner-fees Phase B) — NIGHTLY, not first-of-month-only. Needs
