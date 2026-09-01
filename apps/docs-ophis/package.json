@@ -67,7 +67,8 @@
       "undici": "^7.29.0",
       "webpack-dev-server": "^5.2.6",
       "websocket-driver": ">=0.7.5 <0.8.0",
-      "nanoid@<3.3.17": "^3.3.17"
+      "nanoid@<3.3.17": "^3.3.17",
+      "browserslist": ">=4.28.7"
     },
     "patchedDependencies": {
       "gray-matter@4.0.3": "patches/gray-matter@4.0.3.patch"
