@@ -80,8 +80,8 @@ async function batcherRanThisMonth(servicedBoundary: Date): Promise<boolean> {
     SELECT EXISTS(
       SELECT 1 FROM pipeline_runs
        WHERE first_of_month
-         AND serviced_boundary >= date_trunc('month', ${servicedBoundary}::timestamptz)
-         AND serviced_boundary <  date_trunc('month', ${servicedBoundary}::timestamptz) + interval '1 month'
+         AND serviced_boundary >= date_trunc('month', ${servicedBoundary.toISOString()}::timestamptz)
+         AND serviced_boundary <  date_trunc('month', ${servicedBoundary.toISOString()}::timestamptz) + interval '1 month'
     ) AS ok
   `;
   return row?.ok ?? false;
@@ -433,7 +433,7 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
   // serviced_boundary records WHICH nightly this run was for, taken at tick time.
   // Inferring it from ran_at (the completion stamp) lets a run that crosses 02:00
   // satisfy two boundaries and silently skip a day -- see migration 0043.
-  await sql`INSERT INTO pipeline_runs (first_of_month, serviced_boundary) VALUES (${batcherRan}, ${servicedBoundary})`;
+  await sql`INSERT INTO pipeline_runs (first_of_month, serviced_boundary) VALUES (${batcherRan}, ${servicedBoundary.toISOString()}::timestamptz)`;
 }
 
 export async function runNightlyPipeline(
@@ -551,8 +551,17 @@ async function nightlyTick(): Promise<void> {
   // is recorded against the boundary it was started for rather than whenever it
   // happened to finish.
   const boundary = lastNightlyBoundary(Date.now());
+  // ⚠️ .toISOString() + an EXPLICIT ::timestamptz cast on every boundary parameter.
+  // Binding a raw Date here threw on EVERY tick in production (2026-08-31 18:35 deploy):
+  //   TypeError [ERR_INVALID_ARG_TYPE]: The "string" argument must be of type string
+  //   ... Received an instance of Date   at Buffer.byteLength -> postgres/src/bytes.js
+  // postgres.js resolved this parameter's type as text (the comparison gives PG nothing
+  // to infer timestamptz from), then tried to serialise a Date as a string and crashed
+  // at Bind. The tick threw, was swallowed by its .catch, and the nightly never ran --
+  // silently, for 3h20m, exactly the failure this whole change exists to remove.
+  // An ISO string with an explicit cast is unambiguous to both the driver and PG.
   const [row] = await sql<{ due: boolean }[]>`
-    SELECT COALESCE(MAX(serviced_boundary), '-infinity'::timestamptz) < ${boundary} AS due
+    SELECT COALESCE(MAX(serviced_boundary), '-infinity'::timestamptz) < ${boundary.toISOString()}::timestamptz AS due
     FROM pipeline_runs
   `;
   if (row?.due !== true) return;
