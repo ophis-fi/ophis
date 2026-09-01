@@ -182,7 +182,11 @@ describe('every cycle-selecting monthly helper is given the serviced boundary', 
   });
 
   it('batcherRanThisMonth matches on serviced_boundary, not the ran_at completion stamp', () => {
-    expect(src).toMatch(/serviced_boundary\s*>=\s*date_trunc\('month'/);
-    expect(src).toMatch(/serviced_boundary\s*<\s*date_trunc\('month'/); // upper bound
+    // Both sides UTC-pinned: date_trunc('month', <timestamptz>) uses the SESSION
+    // timezone, and a 02:00 UTC boundary lands in the PREVIOUS month under a negative
+    // offset (measured: America/New_York puts 2026-09-01T02:00Z in August).
+    expect(src).toMatch(/\(serviced_boundary AT TIME ZONE 'UTC'\)\s*>=\s*date_trunc\('month'/);
+    expect(src).toMatch(/\(serviced_boundary AT TIME ZONE 'UTC'\)\s*<\s*date_trunc\('month'/); // upper bound
+    expect(src).toMatch(/date_trunc\('month', \$\{servicedBoundary\.toISOString\(\)\}::timestamptz AT TIME ZONE 'UTC'\)/);
   });
 });
