@@ -15,6 +15,18 @@ import postgres from 'postgres';
  *      'HTTP 409 removal already in progress' / 'no such container'. stopPg()
  *      swallows that so a cleanup race never reds an otherwise-green suite.
  */
+/**
+ * RUNNING THESE LOCALLY ON THE MAC MINI: testcontainers needs DOCKER_HOST pointed at
+ * Colima, because Docker Desktop's default /var/run/docker.sock does not exist here.
+ * Without it every *.int.test.ts file fails at PostgreSqlContainer.start and it looks
+ * like 14 broken suites rather than one missing variable:
+ *
+ *   DOCKER_HOST="unix://$HOME/.colima/default/docker.sock" \
+ *   TESTCONTAINERS_RYUK_DISABLED=true pnpm --filter @ophis/rebate-indexer test
+ *
+ * With it set, the full suite is green (685 passed, 2026-09-01). CI on ubuntu-latest
+ * has a normal docker.sock and needs neither variable.
+ */
 export async function startPg(): Promise<{ container: StartedPostgreSqlContainer; connectionUri: string }> {
   const container = await new PostgreSqlContainer('postgres:16-alpine').withStartupTimeout(120_000).start();
   // Force IPv4: "localhost" can resolve to ::1 where the mapped container port is not
