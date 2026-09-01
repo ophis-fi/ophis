@@ -172,7 +172,7 @@ describe('every cycle-selecting monthly helper is given the serviced boundary', 
     // test covers nightlyTick. This is the cheap guard that does run everywhere.
     const bindings = [...src.matchAll(/\$\{\s*(boundary|servicedBoundary)([^}]*)\}/g)];
     expect(bindings.length).toBeGreaterThan(0);
-    for (const [whole, name, suffix] of bindings) {
+    for (const [whole, , suffix] of bindings) {
       expect(suffix, `raw Date bound into SQL: ${whole}`).toContain('.toISOString()');
     }
     // and each such binding must carry an explicit ::timestamptz so PG cannot guess wrong
