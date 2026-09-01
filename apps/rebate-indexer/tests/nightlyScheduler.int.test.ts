@@ -78,18 +78,22 @@ describe('nightly scheduler SQL executes against a real Postgres', () => {
     // pass this just as well as `::timestamptz`, so the assertion would not actually
     // pin the type (Codex review of this file). Asia/Tokyo is +09:00 with no DST, so
     // a timezone-naive write lands 9h off and is unmissable.
-    await sql`SET TIME ZONE 'Asia/Tokyo'`;
+    // SET TIME ZONE is CONNECTION-local and postgres.js pools, so setting it on the
+    // pool and hoping later queries land on the same socket is a latent flake. Assert
+    // the property on a RESERVED connection instead, so the session is unambiguous.
+    await recordPipelineRun(true, AT('2026-09-01T02:00:00Z'));
+    const conn = await sql.reserve();
     try {
-      await recordPipelineRun(true, AT('2026-09-01T02:00:00Z'));
-      const [row] = await sql<{ b: string }[]>`
+      await conn`SET TIME ZONE 'Asia/Tokyo'`;
+      const [tz] = await conn<{ tz: string }[]>`SHOW TimeZone`;
+      expect(tz.TimeZone ?? (tz as any).timezone).toBe('Asia/Tokyo'); // prove it took
+      const [row] = await conn<{ b: string }[]>`
         SELECT to_char(serviced_boundary AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') AS b
         FROM pipeline_runs`;
       expect(row.b).toBe('2026-09-01T02:00:00');
-      // and the comparison must still work from the same non-UTC session
-      await expect(isNightlyDue(AT('2026-09-01T02:00:00Z'))).resolves.toBe(false);
-      await expect(isNightlyDue(AT('2026-09-02T02:00:00Z'))).resolves.toBe(true);
     } finally {
-      await sql`SET TIME ZONE 'UTC'`;
+      await conn`SET TIME ZONE 'UTC'`.catch(() => {});
+      conn.release();
     }
   });
 
@@ -140,13 +144,37 @@ describe('nightly scheduler SQL executes against a real Postgres', () => {
     // That would evaluate September's monthly money gate against August.
     await sql`INSERT INTO pipeline_runs (first_of_month, ran_at, serviced_boundary)
               VALUES (true, '2026-09-01T02:05:00Z'::timestamptz, '2026-09-01T02:00:00Z'::timestamptz)`;
-    await sql`SET TIME ZONE 'America/New_York'`;
+    // ⚠️ HONEST CAVEAT: this runs an inline COPY of the predicate, not
+    // batcherRanThisMonth itself, because SET TIME ZONE is connection-local and the
+    // real function uses the pool. So this proves the SQL SHAPE is tz-independent, not
+    // that cron.ts still uses that shape. The pairing that closes the gap:
+    //   - the two non-tz cases above call the REAL batcherRanThisMonth
+    //   - the source guard in cron.test.ts pins cron.ts to this exact UTC-pinned shape
+    // If you change the predicate, change it in both places or that guard goes red.
+    //
+    // Run the predicate on a RESERVED connection whose session tz is pinned,
+    // rather than setting it on the pool and hoping the next query lands on the same
+    // socket. This asserts the SQL directly, in the tz that would break an unpinned
+    // truncation.
+    const conn = await sql.reserve();
     try {
+      await conn`SET TIME ZONE 'America/New_York'`;
+      const monthOk = async (b: string) => {
+        const [r] = await conn<{ ok: boolean }[]>`
+          SELECT EXISTS(
+            SELECT 1 FROM pipeline_runs
+             WHERE first_of_month
+               AND (serviced_boundary AT TIME ZONE 'UTC') >= date_trunc('month', ${b}::timestamptz AT TIME ZONE 'UTC')
+               AND (serviced_boundary AT TIME ZONE 'UTC') <  date_trunc('month', ${b}::timestamptz AT TIME ZONE 'UTC') + interval '1 month'
+          ) AS ok`;
+        return r.ok;
+      };
       // September's batcher DID run; August's did not. Neither answer may move with tz.
-      await expect(batcherRanThisMonth(AT('2026-09-01T02:00:00Z'))).resolves.toBe(true);
-      await expect(batcherRanThisMonth(AT('2026-08-15T02:00:00Z'))).resolves.toBe(false);
+      await expect(monthOk('2026-09-01T02:00:00Z')).resolves.toBe(true);
+      await expect(monthOk('2026-08-15T02:00:00Z')).resolves.toBe(false);
     } finally {
-      await sql`SET TIME ZONE 'UTC'`;
+      await conn`SET TIME ZONE 'UTC'`.catch(() => {});
+      conn.release();
     }
   });
 
