@@ -64,7 +64,7 @@ export function resolveBatcherProposeEnabled(): boolean {
  * first_of_month=true pipeline_runs row ONLY when runBatcher actually executed (any result),
  * never on a skip/fail-closed cycle -- which is exactly what makes it a retry gate.
  */
-async function batcherRanThisMonth(servicedBoundary: Date): Promise<boolean> {
+export async function batcherRanThisMonth(servicedBoundary: Date): Promise<boolean> {
   // Scoped to the SERVICED boundary's month, not wall-clock now(). At 01:50 on the
   // 1st a catch-up run services the PREVIOUS month's final boundary; asking about
   // now()'s month would find no first_of_month row yet and wrongly report the
@@ -433,6 +433,16 @@ async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
   // serviced_boundary records WHICH nightly this run was for, taken at tick time.
   // Inferring it from ran_at (the completion stamp) lets a run that crosses 02:00
   // satisfy two boundaries and silently skip a day -- see migration 0043.
+  await recordPipelineRun(batcherRan, servicedBoundary);
+}
+
+/**
+ * Write the nightly heartbeat row. Exported as a SEAM so an integration test can
+ * execute the real INSERT against Postgres -- binding a Date here (rather than an
+ * ISO string) is what broke production on 2026-08-31, and no unit test can catch it
+ * because nothing else executes this SQL.
+ */
+export async function recordPipelineRun(batcherRan: boolean, servicedBoundary: Date): Promise<void> {
   await sql`INSERT INTO pipeline_runs (first_of_month, serviced_boundary) VALUES (${batcherRan}, ${servicedBoundary.toISOString()}::timestamptz)`;
 }
 
@@ -513,6 +523,19 @@ let nightlyStartedAt = 0; // 0 = no run in flight
 const NIGHTLY_MAX_RUNTIME_MS = 6 * 60 * 60 * 1_000;
 
 /**
+ * Is a nightly run due for `boundary`? Reads the DURABLE completion record.
+ * Exported as a SEAM so an integration test can execute the real query -- see
+ * recordPipelineRun for why that matters.
+ */
+export async function isNightlyDue(boundary: Date): Promise<boolean> {
+  const [row] = await sql<{ due: boolean }[]>`
+    SELECT COALESCE(MAX(serviced_boundary), '-infinity'::timestamptz) < ${boundary.toISOString()}::timestamptz AS due
+    FROM pipeline_runs
+  `;
+  return row?.due === true;
+}
+
+/**
  * Decide whether the nightly pipeline is due, from the DURABLE completion record
  * rather than from a timer having fired at the right instant.
  *
@@ -560,11 +583,7 @@ async function nightlyTick(): Promise<void> {
   // at Bind. The tick threw, was swallowed by its .catch, and the nightly never ran --
   // silently, for 3h20m, exactly the failure this whole change exists to remove.
   // An ISO string with an explicit cast is unambiguous to both the driver and PG.
-  const [row] = await sql<{ due: boolean }[]>`
-    SELECT COALESCE(MAX(serviced_boundary), '-infinity'::timestamptz) < ${boundary.toISOString()}::timestamptz AS due
-    FROM pipeline_runs
-  `;
-  if (row?.due !== true) return;
+  if (!(await isNightlyDue(boundary))) return;
   lastNightlyAttempt = Date.now();
   nightlyStartedAt = Date.now();
   try {
