@@ -164,6 +164,23 @@ describe('every cycle-selecting monthly helper is given the serviced boundary', 
     expect(src).not.toMatch(/if\s*\(\s*nightlyInFlight\s*\)\s*return/);
   });
 
+  it('every boundary bound into SQL is an ISO string with an explicit cast, never a raw Date', () => {
+    // Binding a raw Date threw on EVERY tick in production after the 2026-08-31 18:35
+    // deploy -- postgres.js resolved the parameter as text and crashed in Buffer.byteLength
+    // at Bind. The tick's .catch swallowed it, so the nightly silently never ran for 3h20m.
+    // No unit test caught it because none of them EXECUTE this SQL, and no integration
+    // test covers nightlyTick. This is the cheap guard that does run everywhere.
+    const bindings = [...src.matchAll(/\$\{\s*(boundary|servicedBoundary)([^}]*)\}/g)];
+    expect(bindings.length).toBeGreaterThan(0);
+    for (const [whole, , suffix] of bindings) {
+      expect(suffix, `raw Date bound into SQL: ${whole}`).toContain('.toISOString()');
+    }
+    // and each such binding must carry an explicit ::timestamptz so PG cannot guess wrong
+    for (const m of src.matchAll(/\$\{\s*(?:boundary|servicedBoundary)\.toISOString\(\)\s*\}([^\n]*)/g)) {
+      expect(m[1], `missing ::timestamptz cast after: ${m[0].slice(0, 60)}`).toMatch(/^::timestamptz/);
+    }
+  });
+
   it('batcherRanThisMonth matches on serviced_boundary, not the ran_at completion stamp', () => {
     expect(src).toMatch(/serviced_boundary\s*>=\s*date_trunc\('month'/);
     expect(src).toMatch(/serviced_boundary\s*<\s*date_trunc\('month'/); // upper bound
