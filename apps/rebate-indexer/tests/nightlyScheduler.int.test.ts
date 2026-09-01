@@ -73,12 +73,39 @@ describe('nightly scheduler SQL executes against a real Postgres', () => {
     await expect(isNightlyDue(AT('2026-09-02T02:00:00Z'))).resolves.toBe(true);
   });
 
-  it('stores the boundary as the exact UTC instant, not a session-timezone reading', async () => {
-    await recordPipelineRun(true, AT('2026-09-01T02:00:00Z'));
-    const [row] = await sql<{ b: string }[]>`
-      SELECT to_char(serviced_boundary AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') AS b
-      FROM pipeline_runs`;
-    expect(row.b).toBe('2026-09-01T02:00:00');
+  it('stores the boundary as the exact UTC instant under a NON-UTC session timezone', async () => {
+    // Deliberately non-UTC. Under Postgres's default UTC, a `::timestamp` cast would
+    // pass this just as well as `::timestamptz`, so the assertion would not actually
+    // pin the type (Codex review of this file). Asia/Tokyo is +09:00 with no DST, so
+    // a timezone-naive write lands 9h off and is unmissable.
+    await sql`SET TIME ZONE 'Asia/Tokyo'`;
+    try {
+      await recordPipelineRun(true, AT('2026-09-01T02:00:00Z'));
+      const [row] = await sql<{ b: string }[]>`
+        SELECT to_char(serviced_boundary AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') AS b
+        FROM pipeline_runs`;
+      expect(row.b).toBe('2026-09-01T02:00:00');
+      // and the comparison must still work from the same non-UTC session
+      await expect(isNightlyDue(AT('2026-09-01T02:00:00Z'))).resolves.toBe(false);
+      await expect(isNightlyDue(AT('2026-09-02T02:00:00Z'))).resolves.toBe(true);
+    } finally {
+      await sql`SET TIME ZONE 'UTC'`;
+    }
+  });
+
+  it('the due-check reads the LATEST serviced boundary, not the earliest', async () => {
+    // With a single row MAX and MIN are indistinguishable; two rows pin it.
+    await recordPipelineRun(false, AT('2026-09-01T02:00:00Z'));
+    await recordPipelineRun(false, AT('2026-09-03T02:00:00Z'));
+    await expect(isNightlyDue(AT('2026-09-03T02:00:00Z'))).resolves.toBe(false);
+    await expect(isNightlyDue(AT('2026-09-04T02:00:00Z'))).resolves.toBe(true);
+  });
+
+  it('serviced_boundary is timezone-AWARE in the schema, not a naive timestamp', async () => {
+    const [col] = await sql<{ data_type: string }[]>`
+      SELECT data_type FROM information_schema.columns
+       WHERE table_name = 'pipeline_runs' AND column_name = 'serviced_boundary'`;
+    expect(col.data_type).toBe('timestamp with time zone');
   });
 
   it('batcherRanThisMonth is bounded to the serviced month at BOTH ends', async () => {
@@ -102,6 +129,25 @@ describe('nightly scheduler SQL executes against a real Postgres', () => {
               VALUES (true, '2026-10-01T02:05:00Z'::timestamptz, '2026-10-01T02:00:00Z'::timestamptz)`;
     await expect(batcherRanThisMonth(AT('2026-10-05T02:00:00Z'))).resolves.toBe(true);
     await expect(batcherRanThisMonth(AT('2026-09-15T02:00:00Z'))).resolves.toBe(false);
+  });
+
+  it('the month window is UTC-pinned, not session-timezone dependent', async () => {
+    // date_trunc('month', <timestamptz>) uses the SESSION timezone. Our boundaries are
+    // 02:00 UTC, which under a negative offset is the previous day locally, so an
+    // unpinned truncation puts a 1st-of-September boundary in AUGUST's window:
+    //   SET TIME ZONE 'America/New_York';
+    //   date_trunc('month','2026-09-01T02:00:00Z'::timestamptz) -> 2026-08-01
+    // That would evaluate September's monthly money gate against August.
+    await sql`INSERT INTO pipeline_runs (first_of_month, ran_at, serviced_boundary)
+              VALUES (true, '2026-09-01T02:05:00Z'::timestamptz, '2026-09-01T02:00:00Z'::timestamptz)`;
+    await sql`SET TIME ZONE 'America/New_York'`;
+    try {
+      // September's batcher DID run; August's did not. Neither answer may move with tz.
+      await expect(batcherRanThisMonth(AT('2026-09-01T02:00:00Z'))).resolves.toBe(true);
+      await expect(batcherRanThisMonth(AT('2026-08-15T02:00:00Z'))).resolves.toBe(false);
+    } finally {
+      await sql`SET TIME ZONE 'UTC'`;
+    }
   });
 
   it('only first_of_month rows count as a completed batcher step', async () => {

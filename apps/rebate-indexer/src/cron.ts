@@ -76,12 +76,21 @@ export async function batcherRanThisMonth(servicedBoundary: Date): Promise<boole
   // stamped in October while having serviced September 30. If October's own attempt
   // then fails, the October 2 catch-up would read that September row as proof that
   // October's batcher ran and skip the monthly section for the rest of the month.
+  //
+  // ⚠️ Both sides are pinned to UTC wall time. date_trunc('month', <timestamptz>) uses
+  // the SESSION timezone, and our boundaries are 02:00 UTC -- which under a negative
+  // offset is the PREVIOUS day locally. Measured on postgres:16-alpine:
+  //     SET TIME ZONE 'America/New_York';
+  //     date_trunc('month','2026-09-01T02:00:00Z'::timestamptz)  ->  2026-08-01
+  // i.e. the September gate would silently be evaluated against AUGUST, on the money
+  // path. The container default is UTC today, so this is latent rather than live --
+  // but a PGTZ env var or an image change would flip it with no other symptom.
   const [row] = await sql<{ ok: boolean }[]>`
     SELECT EXISTS(
       SELECT 1 FROM pipeline_runs
        WHERE first_of_month
-         AND serviced_boundary >= date_trunc('month', ${servicedBoundary.toISOString()}::timestamptz)
-         AND serviced_boundary <  date_trunc('month', ${servicedBoundary.toISOString()}::timestamptz) + interval '1 month'
+         AND (serviced_boundary AT TIME ZONE 'UTC') >= date_trunc('month', ${servicedBoundary.toISOString()}::timestamptz AT TIME ZONE 'UTC')
+         AND (serviced_boundary AT TIME ZONE 'UTC') <  date_trunc('month', ${servicedBoundary.toISOString()}::timestamptz AT TIME ZONE 'UTC') + interval '1 month'
     ) AS ok
   `;
   return row?.ok ?? false;
