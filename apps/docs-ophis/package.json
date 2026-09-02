@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Ophis documentation portal (docs.ophis.fi). Docusaurus 3. Self-contained app, deliberately excluded from the root pnpm workspace like apps/frontend.",
-  "packageManager": "pnpm@9.12.0",
+  "packageManager": "pnpm@9.12.0+sha512.4abf725084d7bcbafbd728bfc7bee61f2f791f977fd87542b3579dcb23504d170d46337945e4c66485cd12d588a0c0e570ed9c477e7ccdd8507cf05f3f92eaca",
   "scripts": {
     "docusaurus": "docusaurus",
     "start": "docusaurus start",
@@ -55,7 +55,7 @@
       "body-parser@<1.20.6": "^1.20.6",
       "browserslist": ">=4.28.7",
       "brace-expansion@<1.1.17": ">=1.1.17 <2.0.0",
-      "fast-uri@<3.1.5": "^3.1.5",
+      "fast-uri@<3.1.6": "^3.1.6",
       "http-proxy-middleware@<3.0.6": "3.0.7",
       "joi": "17.13.4",
       "js-yaml": "^4.3.1",
