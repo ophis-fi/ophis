@@ -29,10 +29,8 @@ from pathlib import Path
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - CI bootstrap
-    import subprocess
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pyyaml"], check=True)
-    import yaml
+except ImportError:  # pragma: no cover
+    sys.exit("PyYAML is required. CI installs it explicitly; locally: pip install pyyaml")
 
 # Telegram Bot API "Formatting options", HTML style.
 ALLOWED = {
@@ -44,8 +42,12 @@ TEMPLATE = re.compile(r"\{\{(.*?)\}\}", re.S)
 # Anything shaped like an entity ("&word;" / "&#123;") must be one Telegram knows.
 ENTITY = re.compile(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);")
 ENTITY_OK = {"lt", "gt", "amp", "quot"}
-# A dotted root (".Foo") is Alertmanager context, absent when Prometheus renders.
-DOTTED_ROOT = re.compile(r"(?:^|[\s(|])\.[A-Za-z]")
+# Prometheus renders annotations with these four fields in scope; $labels, $value,
+# $externalLabels and $externalURL are aliases for them. Any OTHER dotted root
+# (.Annotations, .State, .CommonLabels) is Alertmanager-side and fails at
+# notification time after parsing cleanly.
+DOTTED_ROOT = re.compile(r"(?:^|[\s(|])\.([A-Za-z][A-Za-z0-9_]*)")
+PROM_FIELDS = {"Labels", "Value", "ExternalLabels", "ExternalURL"}
 
 
 def html_problems(text):
@@ -81,8 +83,10 @@ def html_problems(text):
 
 def template_problems(text):
     for m in TEMPLATE.finditer(text):
-        if DOTTED_ROOT.search(m.group(1)):
-            yield f"template {m.group(0)!r} uses Alertmanager-only context; Prometheus has $labels/$value only"
+        for root in DOTTED_ROOT.findall(m.group(1)):
+            if root not in PROM_FIELDS:
+                yield (f"template {m.group(0)!r} references .{root}, which Prometheus does not "
+                       f"provide; it has only {', '.join('.' + f for f in sorted(PROM_FIELDS))}")
 
 
 def offenders(doc):
@@ -109,13 +113,14 @@ def self_test():
         ("line one<br>line two", "<br> is not a Telegram tag"),
         ("hard&nbsp;space", "unsupported named entity"),
         ("saw {{ .Annotations.description }}", "Alertmanager-only template"),
-        ("state {{ .State.Status }} now", "dotted root template"),
+        ("state {{ .State.Status }} now", "Alertmanager-only dotted root"),
     ]
     cases_good = [
         "wsl --manage Ubuntu-24.04 --resize 1845GB",
         "<b>bold</b> and <code>x</code> nested fine",
         '<span class="tg-spoiler">hidden</span>',
         "{{ $labels.instance }} disk {{ $value | humanize }} full",
+        "{{ .Labels.instance }} at {{ .Value }} on {{ .ExternalURL }}",
         "consensus over 80% and > 5/s and R&D and &amp; and &#8212;",
     ]
     for text, why in cases_bad:
