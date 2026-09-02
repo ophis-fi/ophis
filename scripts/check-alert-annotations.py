@@ -42,6 +42,8 @@ TEMPLATE = re.compile(r"\{\{(.*?)\}\}", re.S)
 # Anything shaped like an entity ("&word;" / "&#123;") must be one Telegram knows.
 ENTITY = re.compile(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);")
 ENTITY_OK = {"lt", "gt", "amp", "quot"}
+# Telegram accepts <span> only with exactly class="tg-spoiler".
+SPOILER_ATTR = re.compile(r"""\bclass\s*=\s*(?P<q>["'])tg-spoiler(?P=q)""")
 # Prometheus renders annotations with these four fields in scope; $labels, $value,
 # $externalLabels and $externalURL are aliases for them. Any OTHER dotted root
 # (.Annotations, .State, .CommonLabels) is Alertmanager-side and fails at
@@ -50,13 +52,23 @@ DOTTED_ROOT = re.compile(r"(?:^|[\s(|])\.([A-Za-z][A-Za-z0-9_]*)")
 PROM_FIELDS = {"Labels", "Value", "ExternalLabels", "ExternalURL"}
 
 
-def html_problems(text):
+def mask_templates(text):
+    """Blank out {{ ... }} actions, keeping length so offsets stay valid.
+
+    Go consumes these before the message is built, so "{{ if eq $x \"<a>\" }}"
+    never reaches Telegram and must not be scanned as HTML.
+    """
+    return TEMPLATE.sub(lambda m: " " * len(m.group(0)), text)
+
+
+def html_problems(raw):
     """Yield every reason Telegram would reject this string."""
+    text = mask_templates(raw)
     stack, pos = [], 0
     for m in TAG.finditer(text):
         # Any "<" not starting a well-formed tag is fatal on its own.
         for stray in re.finditer(r"<", text[pos:m.start()]):
-            yield f"unescaped {text[pos + stray.start():pos + stray.start() + 12]!r}"
+            yield f"unescaped {raw[pos + stray.start():pos + stray.start() + 12]!r}"
         pos = m.end()
         closing, name, attrs = m.group(1), m.group(2).lower(), m.group(3)
         if name not in ALLOWED:
@@ -68,11 +80,11 @@ def html_problems(text):
                 stack.pop()
         else:
             # Telegram accepts <span> only as a spoiler; the class is required.
-            if name == "span" and "tg-spoiler" not in attrs:
+            if name == "span" and not SPOILER_ATTR.search(attrs):
                 yield f"span without class=\"tg-spoiler\" {m.group(0)!r}"
             stack.append(name)
     for stray in re.finditer(r"<", text[pos:]):
-        yield f"unescaped {text[pos + stray.start():pos + stray.start() + 12]!r}"
+        yield f"unescaped {raw[pos + stray.start():pos + stray.start() + 12]!r}"
     for name in stack:
         yield f"unclosed <{name}>"
     for e in ENTITY.finditer(text):
@@ -81,8 +93,14 @@ def html_problems(text):
             yield f"unsupported entity {e.group(0)!r}; Telegram knows only &lt; &gt; &amp; &quot; and numeric"
 
 
+DOT_ALIAS = re.compile(r"(?::=|\b(?:range|with)\b)\s*\.\s*(?:\}\}|\||$)")
+
+
 def template_problems(text):
     for m in TEMPLATE.finditer(text):
+        if DOT_ALIAS.search(m.group(1)):
+            yield (f"template {m.group(0)!r} aliases the template root; that hides which "
+                   f"fields are used and can smuggle Alertmanager-only ones past this check")
         for root in DOTTED_ROOT.findall(m.group(1)):
             if root not in PROM_FIELDS:
                 yield (f"template {m.group(0)!r} references .{root}, which Prometheus does not "
@@ -93,7 +111,15 @@ def offenders(doc):
     for group in (doc or {}).get("groups") or []:
         for rule in group.get("rules") or []:
             name = rule.get("alert") or rule.get("record") or "(unnamed)"
-            for key, value in (rule.get("annotations") or {}).items():
+            annotations = rule.get("annotations") or {}
+            if "alert" in rule:
+                # Both receivers render summary AND description unconditionally; a
+                # missing key becomes the literal "<no value>", which is itself an
+                # unescaped "<" and kills the whole message.
+                for required in ("summary", "description"):
+                    if not str(annotations.get(required, "")).strip():
+                        yield name, required, "missing; the receiver renders it as \"<no value>\", which Telegram rejects"
+            for key, value in annotations.items():
                 text = str(value)
                 for problem in list(html_problems(text)) + list(template_problems(text)):
                     yield name, key, problem
@@ -101,7 +127,7 @@ def offenders(doc):
 
 def self_test():
     def one(desc):
-        return {"groups": [{"rules": [{"alert": "A", "annotations": {"description": desc}}]}]}
+        return {"groups": [{"rules": [{"alert": "A", "annotations": {"summary": "ok", "description": desc}}]}]}
     cases_bad = [
         ("wsl --manage <distro> --resize", "angle-bracket placeholder"),
         ("cast --rpc-url <each upstream>", "multi-word placeholder"),
@@ -112,6 +138,9 @@ def self_test():
         ("<script>x</script>", "disallowed tag"),
         ("line one<br>line two", "<br> is not a Telegram tag"),
         ("hard&nbsp;space", "unsupported named entity"),
+        ('<span class="not-tg-spoiler">x</span>', "spoiler class must match exactly"),
+        ('<span data-x="tg-spoiler">x</span>', "tg-spoiler in the wrong attribute"),
+        ("{{ $x := . }}{{ $x.Annotations.description }}", "aliased template root"),
         ("saw {{ .Annotations.description }}", "Alertmanager-only template"),
         ("state {{ .State.Status }} now", "Alertmanager-only dotted root"),
     ]
@@ -121,12 +150,24 @@ def self_test():
         '<span class="tg-spoiler">hidden</span>',
         "{{ $labels.instance }} disk {{ $value | humanize }} full",
         "{{ .Labels.instance }} at {{ .Value }} on {{ .ExternalURL }}",
+        '{{ if eq $labels.state "<unknown>" }}missing{{ end }} then plain text',
         "consensus over 80% and > 5/s and R&D and &amp; and &#8212;",
     ]
     for text, why in cases_bad:
         assert list(offenders(one(text))), f"must catch: {why}"
     for text in cases_good:
         assert not list(offenders(one(text))), f"must accept: {text!r}"
+    # A missing key renders as the literal "<no value>" and kills the message.
+    assert list(offenders({"groups": [{"rules": [
+        {"alert": "A", "annotations": {"description": "no summary here"}}]}]})), \
+        "must catch a missing summary"
+    assert list(offenders({"groups": [{"rules": [
+        {"alert": "A", "annotations": {"summary": "no description here"}}]}]})), \
+        "must catch a missing description"
+    # Recording rules render through no receiver, so they need neither.
+    assert not list(offenders({"groups": [{"rules": [
+        {"record": "r", "expr": "up"}]}]})), "must not demand annotations on recording rules"
+    print("self-test: +3 completeness assertions hold")
     print(f"self-test: {len(cases_bad)} rejections + {len(cases_good)} acceptances all hold")
 
 
