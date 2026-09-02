@@ -400,3 +400,13 @@ jobs:
             echo "no alerts_test.yml found anywhere — the guard would be vacuous" >&2
             exit 1
           fi
+
+      # WHY: promtool validates that an annotation PARSES, never that it can be
+      # DELIVERED. Both Alertmanager receivers use parse_mode HTML, so an angle
+      # bracket placeholder makes Telegram reject the whole message and the
+      # operator hears nothing. On 2026-09-02 five annotations across all three
+      # chains were in that state, both Cadia disk alerts among them.
+      - name: alert annotations must be deliverable, not just valid
+        run: |
+          python3 scripts/check-alert-annotations.py --self-test
+          python3 scripts/check-alert-annotations.py
