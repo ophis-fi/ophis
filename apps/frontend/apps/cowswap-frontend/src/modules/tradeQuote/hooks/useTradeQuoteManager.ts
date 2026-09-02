@@ -4,6 +4,8 @@ import { useMemo, useRef } from 'react'
 import { PriceQuality, QuoteAndPost, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { BridgeQuoteResults, QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 
+import { trackGa4Event } from 'ophis/analytics/track'
+
 import { QuoteApiError, QuoteApiErrorCodes } from 'api/cowProtocol/errors/QuoteError'
 
 import { useProcessUnsupportedTokenError } from './useProcessUnsupportedTokenError'
@@ -16,6 +18,8 @@ export interface TradeQuoteManager {
   setLoading(hasParamsChanged: boolean, quoteParams: QuoteBridgeRequest): void
 
   reset(): void
+
+  resetTracking(): void
 
   onError(
     error: TradeQuoteState['error'],
@@ -36,6 +40,7 @@ export function useTradeQuoteManager(sellTokenAddress: SellTokenAddress | undefi
   const update = useSetAtom(updateTradeQuoteAtom)
   const processUnsupportedTokenError = useProcessUnsupportedTokenError()
   const lastQuoteParamsRef = useRef<QuoteBridgeRequest | null>(null)
+  const lastTrackedQuoteParamsRef = useRef<QuoteBridgeRequest | null>(null)
 
   return useMemo((): TradeQuoteManager | null => {
     if (!sellTokenAddress) return null
@@ -52,6 +57,10 @@ export function useTradeQuoteManager(sellTokenAddress: SellTokenAddress | undefi
     const reset = (): void => {
       lastQuoteParamsRef.current = null
       update(sellTokenAddress, { quote: null, isLoading: false })
+    }
+
+    const resetTracking = (): void => {
+      lastTrackedQuoteParamsRef.current = null
     }
 
     const onError = (
@@ -89,6 +98,16 @@ export function useTradeQuoteManager(sellTokenAddress: SellTokenAddress | undefi
 
       const isOptimalQuote = fetchParams.priceQuality === PriceQuality.OPTIMAL
 
+      if (isOptimalQuote && isStaleQuote(lastTrackedQuoteParamsRef.current, quoteParams)) {
+        lastTrackedQuoteParamsRef.current = quoteParams
+        trackGa4Event('quote_received', {
+          sourceChainId: quoteParams.sellTokenChainId,
+          destinationChainId: quoteParams.buyTokenChainId,
+          isBridge: quoteParams.sellTokenChainId !== quoteParams.buyTokenChainId,
+          orderKind: quoteParams.kind,
+        })
+      }
+
       update(sellTokenAddress, {
         quote,
         bridgeQuote,
@@ -102,6 +121,7 @@ export function useTradeQuoteManager(sellTokenAddress: SellTokenAddress | undefi
     return {
       setLoading,
       reset,
+      resetTracking,
       onError,
       onResponse,
     }
@@ -113,9 +133,13 @@ function isStaleQuote(lastQuoteParams: QuoteBridgeRequest | null, quoteParams: Q
   // don't, then that's because reset was called, so we ignore all quotes until setLoading re-sets lastQuoteParams.
   if (!lastQuoteParams) return true
 
-  // Typically, amount will be the param that changes most often, so we check that first. Otherwise, we check all the other ones:
-  return (
-    lastQuoteParams.amount !== quoteParams.amount ||
-    Object.entries(lastQuoteParams).some(([key, value]) => value !== quoteParams[key as keyof QuoteBridgeRequest])
+  // Typically, amount changes most often, so check it first. Then compare the
+  // union of keys so adding or removing an optional request parameter also
+  // produces a distinct analytics input state.
+  if (lastQuoteParams.amount !== quoteParams.amount) return true
+
+  const keys = new Set([...Object.keys(lastQuoteParams), ...Object.keys(quoteParams)])
+  return [...keys].some(
+    (key) => lastQuoteParams[key as keyof QuoteBridgeRequest] !== quoteParams[key as keyof QuoteBridgeRequest],
   )
 }
