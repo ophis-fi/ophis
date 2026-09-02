@@ -26,9 +26,19 @@ const PAGES = [
     h1: 'Tokenized markets need precise execution',
   },
   {
+    route: '/ai-agent-crypto-swap-api',
+    canonical: 'https://ophis.fi/ai-agent-crypto-swap-api/',
+    h1: 'A bounded swap path for AI agents',
+  },
+  {
     route: '/swap/robinhood-chain',
     canonical: 'https://ophis.fi/swap/robinhood-chain/',
     h1: 'Swap on Robinhood Chain',
+  },
+  {
+    route: '/migrate/odos-api',
+    canonical: 'https://ophis.fi/migrate/odos-api/',
+    h1: 'Migrating an Odos API integration',
   },
   {
     route: '/learn/intent-based-dex-aggregator',

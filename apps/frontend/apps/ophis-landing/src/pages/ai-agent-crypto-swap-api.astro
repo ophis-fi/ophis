@@ -1,0 +1,90 @@
+---
+import ContentPage from '../layouts/ContentPage.astro'
+import { canonicalPage } from '../data/canonicalPages'
+
+const { updated } = canonicalPage('/ai-agent-crypto-swap-api/')
+const FAQS = [
+  {
+    q: 'Does Ophis provide a crypto swap API for AI agents?',
+    a: 'Yes, through three surfaces. The hosted MCP server covers token resolution, quoting, bounded-order construction, validation, and signed-order submission. The public Intent API parses natural-language swap requests but does not execute them. The @ophis/sdk provides chain-aware helpers for custom integrations.',
+  },
+  {
+    q: 'Does an Ophis agent integration require an API key?',
+    a: 'No. The hosted MCP server and public Intent API are keyless. Rate limits and endpoint-specific controls still apply, and the agent or user keeps custody of the signing key.',
+  },
+  {
+    q: 'Can Ophis sign a trade for my agent?',
+    a: 'No. Ophis never holds the agent key and never signs an order. The integration builds a bounded EIP-712 order with a hard limit price; the agent or its wallet signs locally, then submits the signed order.',
+  },
+]
+---
+
+<ContentPage
+  title="AI agent crypto swap API, MCP server and SDK | Ophis"
+  description="Integrate MEV-protected crypto swaps into an AI agent through the keyless Ophis MCP server, public Intent API, or @ophis/sdk."
+  path="/ai-agent-crypto-swap-api/"
+  heading="A bounded swap path for AI agents"
+  lede="Parse an instruction, resolve canonical tokens, fetch a quote, build a bounded order, and submit it after local signing. Use MCP for the full tool path, the Intent API for parsing, or the SDK for direct control."
+  updated={updated}
+  faqs={FAQS}
+>
+  <h2>Choose the smallest integration surface</h2>
+  <table>
+    <thead>
+      <tr><th scope="col">Surface</th><th scope="col">Use it for</th><th scope="col">Auth</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><a href="https://docs.ophis.fi/ai-agents">Hosted MCP server</a></td>
+        <td>Resolve, quote, build, validate, submit, and inspect chains</td>
+        <td>No API key</td>
+      </tr>
+      <tr>
+        <td><a href="https://docs.ophis.fi/intent-api">Intent API</a></td>
+        <td>Turn natural language into structured swap entities</td>
+        <td>No API key</td>
+      </tr>
+      <tr>
+        <td><a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a></td>
+        <td>Build a custom chain-aware signing and orderbook flow</td>
+        <td>No Ophis key</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Connect an MCP-capable agent</h2>
+  <p>
+    Point a streamable-HTTP MCP client at <code>https://mcp.ophis.fi/mcp</code>. The server exposes
+    tools for token resolution, quotes, bounded-order construction, validation, submission, chain
+    discovery, balances, portfolios, gas, charts, and execution-quality estimates.
+  </p>
+  <p>
+    The safe sequence is explicit: resolve the canonical token, request a quote, build an order with
+    the receiver pinned to the owner, validate the settlement domain, sign locally, then submit. The
+    signature is the trust boundary.
+  </p>
+
+  <h2>Use the Intent API for natural-language parsing</h2>
+  <p>
+    Send <code>POST https://ophis.fi/api/intent</code> with a short instruction such as
+    <code>{`{"text":"swap 100 USDC for ETH on Base"}`}</code>. The response identifies the amount,
+    sell token, buy token, and chain. It does not fetch an executable quote or place a trade; use MCP,
+    the SDK, or the per-chain orderbook flow for execution.
+  </p>
+
+  <h2>What makes the flow agent-safe?</h2>
+  <ul>
+    <li>The agent signs a typed, bounded order rather than an arbitrary transaction.</li>
+    <li>The signed limit defines the worst acceptable execution.</li>
+    <li>The receiver can be pinned to the owner to prevent output redirection.</li>
+    <li>The SDK resolves non-canonical settlement domains on Ophis-operated chains.</li>
+    <li>Ophis never receives or stores the signing key.</li>
+  </ul>
+
+  {FAQS.map((faq) => (
+    <section>
+      <h2>{faq.q}</h2>
+      <p>{faq.a}</p>
+    </section>
+  ))}
+</ContentPage>
