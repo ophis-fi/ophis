@@ -13,10 +13,15 @@ export function emitFulfilledOrderEvent(
   order: EnrichedOrder,
   bridgeOrder?: BridgeOrderDataSerialized,
 ): void {
-  trackGa4Event('order_filled', {
-    chainId,
-    isBridge: !!bridgeOrder,
-  })
+  // A fulfilled source-chain order is not a completed bridge: the bridge can
+  // still refund or expire. Cross-chain completion is emitted only from the
+  // bridging-success lifecycle event after BridgeStatus.EXECUTED.
+  if (!bridgeOrder) {
+    trackGa4Event('order_filled', {
+      chainId,
+      isBridge: false,
+    })
+  }
 
   const payload = {
     chainId,

@@ -63,6 +63,9 @@ export function useTradeQuotePolling(quotePollingParams: TradeQuotePollingParame
 
     if (!isWindowVisible || !document.hasFocus() || !amountStr) {
       tradeQuoteManager.reset()
+      if (!amountStr) {
+        tradeQuoteManager.resetTracking()
+      }
       setTradeQuotePolling(0)
     }
   }, [isWindowVisible, tradeQuoteManager, isConfirmOpen, amountStr, setTradeQuotePolling])

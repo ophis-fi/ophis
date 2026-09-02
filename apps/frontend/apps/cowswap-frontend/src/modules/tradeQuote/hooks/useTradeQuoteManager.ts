@@ -19,6 +19,8 @@ export interface TradeQuoteManager {
 
   reset(): void
 
+  resetTracking(): void
+
   onError(
     error: TradeQuoteState['error'],
     chainId: SupportedChainId,
@@ -54,8 +56,11 @@ export function useTradeQuoteManager(sellTokenAddress: SellTokenAddress | undefi
 
     const reset = (): void => {
       lastQuoteParamsRef.current = null
-      lastTrackedQuoteParamsRef.current = null
       update(sellTokenAddress, { quote: null, isLoading: false })
+    }
+
+    const resetTracking = (): void => {
+      lastTrackedQuoteParamsRef.current = null
     }
 
     const onError = (
@@ -116,6 +121,7 @@ export function useTradeQuoteManager(sellTokenAddress: SellTokenAddress | undefi
     return {
       setLoading,
       reset,
+      resetTracking,
       onError,
       onResponse,
     }
@@ -127,9 +133,13 @@ function isStaleQuote(lastQuoteParams: QuoteBridgeRequest | null, quoteParams: Q
   // don't, then that's because reset was called, so we ignore all quotes until setLoading re-sets lastQuoteParams.
   if (!lastQuoteParams) return true
 
-  // Typically, amount will be the param that changes most often, so we check that first. Otherwise, we check all the other ones:
-  return (
-    lastQuoteParams.amount !== quoteParams.amount ||
-    Object.entries(lastQuoteParams).some(([key, value]) => value !== quoteParams[key as keyof QuoteBridgeRequest])
+  // Typically, amount changes most often, so check it first. Then compare the
+  // union of keys so adding or removing an optional request parameter also
+  // produces a distinct analytics input state.
+  if (lastQuoteParams.amount !== quoteParams.amount) return true
+
+  const keys = new Set([...Object.keys(lastQuoteParams), ...Object.keys(quoteParams)])
+  return [...keys].some(
+    (key) => lastQuoteParams[key as keyof QuoteBridgeRequest] !== quoteParams[key as keyof QuoteBridgeRequest],
   )
 }

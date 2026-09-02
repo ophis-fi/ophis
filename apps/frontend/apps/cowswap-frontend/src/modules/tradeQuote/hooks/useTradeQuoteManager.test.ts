@@ -80,7 +80,7 @@ describe('useTradeQuoteManager GA4 events', () => {
     expect(trackGa4Event).not.toHaveBeenCalled()
   })
 
-  it('tracks the same input state again after the manager is reset', () => {
+  it('does not retrack the same input state after a quote-state-only reset', () => {
     const { result } = renderHook(() => useTradeQuoteManager('0x0000000000000000000000000000000000000001'))
     const manager = result.current
     if (!manager) throw new Error('Expected a quote manager')
@@ -94,6 +94,43 @@ describe('useTradeQuoteManager GA4 events', () => {
       manager.onResponse(quote, null, optimalFetchParams, params)
     })
 
+    expect(trackGa4Event).toHaveBeenCalledTimes(1)
+  })
+
+  it('tracks the same input state again after analytics tracking is reset', () => {
+    const { result } = renderHook(() => useTradeQuoteManager('0x0000000000000000000000000000000000000001'))
+    const manager = result.current
+    if (!manager) throw new Error('Expected a quote manager')
+
+    const params = quoteParams('100')
+    act(() => {
+      manager.setLoading(true, params)
+      manager.onResponse(quote, null, optimalFetchParams, params)
+      manager.reset()
+      manager.resetTracking()
+      manager.setLoading(true, params)
+      manager.onResponse(quote, null, optimalFetchParams, params)
+    })
+
     expect(trackGa4Event).toHaveBeenCalledTimes(2)
+  })
+
+  it('tracks input states that add or remove an optional quote parameter', () => {
+    const { result } = renderHook(() => useTradeQuoteManager('0x0000000000000000000000000000000000000001'))
+    const manager = result.current
+    if (!manager) throw new Error('Expected a quote manager')
+
+    const baseParams = quoteParams('100')
+    const customSlippageParams = { ...baseParams, swapSlippageBps: 50 }
+    act(() => {
+      manager.setLoading(true, baseParams)
+      manager.onResponse(quote, null, optimalFetchParams, baseParams)
+      manager.setLoading(true, customSlippageParams)
+      manager.onResponse(quote, null, optimalFetchParams, customSlippageParams)
+      manager.setLoading(true, baseParams)
+      manager.onResponse(quote, null, optimalFetchParams, baseParams)
+    })
+
+    expect(trackGa4Event).toHaveBeenCalledTimes(3)
   })
 })

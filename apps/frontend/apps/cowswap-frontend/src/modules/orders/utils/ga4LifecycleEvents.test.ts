@@ -1,9 +1,11 @@
 import { OrderKind, SupportedChainId, type EnrichedOrder } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Token } from '@cowprotocol/currency'
-import { UiOrderType } from '@cowprotocol/types'
+import { type OnBridgingSuccessPayload } from '@cowprotocol/events'
+import { type BridgeOrderDataSerialized, UiOrderType } from '@cowprotocol/types'
 
 import { trackGa4Event } from 'ophis/analytics/track'
 
+import { emitBridgingSuccessEvent } from './emitBridgingSuccessEvent'
 import { emitFulfilledOrderEvent } from './emitFulfilledOrderEvent'
 import { emitPostedOrderEvent } from './emitPostedOrderEvent'
 
@@ -67,6 +69,31 @@ describe('GA4 order lifecycle events', () => {
     expect(trackGa4Event).toHaveBeenCalledWith('order_filled', {
       chainId: SupportedChainId.MAINNET,
       isBridge: false,
+    })
+  })
+
+  it('does not count a bridge source-order fill as completed', () => {
+    emitFulfilledOrderEvent(
+      SupportedChainId.MAINNET,
+      { uid: 'private-order-uid' } as EnrichedOrder,
+      {} as BridgeOrderDataSerialized,
+    )
+
+    expect(trackGa4Event).not.toHaveBeenCalled()
+  })
+
+  it('tracks bridge fulfillment only from the executed bridging-success event', () => {
+    emitBridgingSuccessEvent({
+      bridgingParams: {
+        sourceChainId: SupportedChainId.MAINNET,
+        destinationChainId: SupportedChainId.BASE,
+      },
+    } as OnBridgingSuccessPayload)
+
+    expect(trackGa4Event).toHaveBeenCalledWith('order_filled', {
+      chainId: SupportedChainId.MAINNET,
+      destinationChainId: SupportedChainId.BASE,
+      isBridge: true,
     })
   })
 })

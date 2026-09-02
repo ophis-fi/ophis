@@ -219,10 +219,10 @@ hash-router query parameters are discarded before dispatch.
 | `trade_click` | A visitor follows any `swap.ophis.fi` link | Landing |
 | `integration_click` | A visitor follows an Ophis docs, MCP, business, SDK, or repository link | Landing |
 | `wallet_connect` | The app transitions to a connected wallet | Swap |
-| `quote_received` | A new input state receives its first optimal quote; polling refreshes are deduplicated | Swap |
+| `quote_received` | A new input state receives its first optimal quote; polling and visibility refreshes are deduplicated | Swap |
 | `swap_initiated` | The user starts the trade flow | Swap |
 | `order_submitted` | The posted-order event fires after successful creation; source/destination chain and bridge status are retained | Swap |
-| `order_filled` | The order-status updater observes fulfillment | Swap |
+| `order_filled` | A same-chain order fulfills, or a bridge reaches destination execution (source fill alone is excluded) | Swap |
 
 **GA4 key-event classification is property state, not website code.** On
 2026-09-02, `order_submitted` and `order_filled` were created in the Ophis GA4
