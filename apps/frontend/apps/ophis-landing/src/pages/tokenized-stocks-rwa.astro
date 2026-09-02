@@ -1,0 +1,89 @@
+---
+import ContentPage from '../layouts/ContentPage.astro'
+import { canonicalPage } from '../data/canonicalPages'
+
+const { updated } = canonicalPage('/tokenized-stocks-rwa/')
+const FAQS = [
+  {
+    q: 'Can I trade tokenized stocks and real-world assets on Ophis?',
+    a: 'Ophis can request quotes for supported tokenized assets on its supported EVM chains. Live availability depends on token policy and executable liquidity. Robinhood Chain Stock Tokens and Coinbase Tokenized Stocks on Base are different products with different legal rights, eligibility rules, registries, and canonical contracts.',
+  },
+  {
+    q: 'Are Robinhood Stock Tokens shares in the underlying companies?',
+    a: 'No. Robinhood describes its Stock Tokens as tokenized debt securities that provide economic exposure to an underlying stock or ETF without granting legal or beneficial rights in that underlying security. They are restricted by jurisdiction and eligibility.',
+  },
+  {
+    q: 'How does Ophis check a Robinhood Chain Stock Token?',
+    a: 'Before signing, Ophis checks the asset against Robinhood Chain canonical metadata, shows the corporate-action multiplier, reports pending multiplier changes, and surfaces trading-session restrictions when that metadata is available. If verification data cannot be fetched, Ophis says so instead of presenting the asset as verified.',
+  },
+]
+---
+
+<ContentPage
+  title="Tokenized stocks, Stock Tokens and RWA swaps | Ophis"
+  description="Explore Robinhood Chain Stock Tokens, Coinbase Tokenized Stocks on Base, and supported tokenized real-world assets with Ophis."
+  path="/tokenized-stocks-rwa/"
+  heading="Tokenized markets need precise execution"
+  lede="Explore supported Stock Tokens, tokenized stocks, and real-world assets without treating unlike products as interchangeable. Ophis verifies what it can, then lets the live quote decide whether a route exists."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    “Tokenized stocks” and “RWA” cover products with very different claims, issuers, restrictions,
+    and corporate-action mechanics. The contract address and issuer documentation matter as much as
+    the ticker. Ophis is built to make those checks visible before an order is signed.
+  </p>
+
+  <h2>Robinhood Chain Stock Tokens</h2>
+  <p>
+    Robinhood officially calls these assets <strong>Stock Tokens</strong>. They are tokenized debt
+    securities linked to stocks and ETFs, not ownership of the underlying shares. Ophis supports
+    Robinhood Chain and adds canonical-asset, multiplier, corporate-action, and trading-restriction
+    context before signing. Review <a href="https://robinhood.com/rhj/stocktokens/">Robinhood's
+    official Stock Token disclosures</a> for current product terms and eligibility restrictions.
+  </p>
+  <p>
+    If you are looking for equity-linked assets on Robinhood Chain, use the product's approved
+    <strong> Stock Token</strong> terminology, confirm eligibility, and match the contract against
+    Robinhood's live registry. Then
+    <a href="https://swap.ophis.fi/#/4663/swap">open the Robinhood Chain swap</a> to check liquidity.
+  </p>
+  <p>
+    Ophis is an independent protocol and is not affiliated with, endorsed by, or officially
+    connected with Robinhood Markets, Inc.
+  </p>
+
+  <h2>Coinbase Tokenized Stocks on Base</h2>
+  <p>
+    Coinbase Tokenized Stocks are issued as B20 tokens on Base and are described by Base as claims on
+    shares held in regulated custody for eligible users outside the United States. See
+    <a href="https://blog.base.org/tokenized-stocks">Base's first-party product overview</a> for the
+    issuer and eligibility disclosures. Ophis supports
+    Base, but support for the network is not a promise that every B20 asset has an executable Ophis
+    route. Match the issuer contract and request a live quote in the
+    <a href="https://swap.ophis.fi/#/8453/swap">Base market</a>.
+  </p>
+
+  <h2>RWAs on Avalanche and other networks</h2>
+  <p>
+    Avalanche's official integration directory includes tokenized funds, credit products, and
+    stablecoins from institutional and regional issuers. Ophis supports Avalanche for same-chain
+    swaps, subject to its token policy and live route availability. The same rule applies across the
+    network: verify the asset, review its legal structure, and treat a failed quote as unavailable.
+  </p>
+
+  <h2>For agents trading tokenized assets</h2>
+  <p>
+    An agent should resolve the canonical token, fetch a quote, pin the receiver to the owner, and
+    sign against the correct per-chain settlement domain. The
+    <a href="/ai-agent-crypto-swap-api/">Ophis agent integration</a> exposes that flow through MCP and
+    the SDK without giving Ophis custody of the key.
+  </p>
+
+  {FAQS.map((faq) => (
+    <section>
+      <h2>{faq.q}</h2>
+      <p>{faq.a}</p>
+    </section>
+  ))}
+</ContentPage>

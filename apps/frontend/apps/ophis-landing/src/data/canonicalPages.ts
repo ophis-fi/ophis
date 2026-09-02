@@ -9,6 +9,9 @@ export interface CanonicalPage {
     | '/pricing/'
     | '/supported-chains/'
     | '/security/'
+    | '/stablecoin-swaps/'
+    | '/tokenized-stocks-rwa/'
+    | '/swap/robinhood-chain/'
     | '/learn/'
     | '/learn/intent-based-dex-aggregator/'
     | '/learn/mev-protected-swaps/'
@@ -30,6 +33,9 @@ export const CANONICAL_PAGES: CanonicalPage[] = [
   { path: '/pricing/', updated: new Date('2026-08-02') },
   { path: '/supported-chains/', updated: new Date('2026-08-02') },
   { path: '/security/', updated: new Date('2026-08-21') },
+  { path: '/stablecoin-swaps/', updated: new Date('2026-09-02') },
+  { path: '/tokenized-stocks-rwa/', updated: new Date('2026-09-02') },
+  { path: '/swap/robinhood-chain/', updated: new Date('2026-09-02') },
   { path: '/learn/', updated: new Date('2026-08-03') },
   { path: '/learn/intent-based-dex-aggregator/', updated: new Date('2026-08-02') },
   { path: '/learn/mev-protected-swaps/', updated: new Date('2026-08-02') },

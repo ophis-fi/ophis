@@ -1,0 +1,80 @@
+---
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/swap/robinhood-chain/')
+const FAQS = [
+  {
+    q: 'Is Ophis live on Robinhood Chain?',
+    a: 'Yes. Ophis operates a Robinhood Chain orderbook and settlement deployment. Open the chain-specific swap, connect a compatible wallet, select canonical assets, review the live quote, and sign the bounded order.',
+  },
+  {
+    q: 'Can I trade Robinhood Chain Stock Tokens on Ophis?',
+    a: 'Ophis can quote supported Robinhood Chain Stock Tokens when the asset passes policy checks and executable liquidity exists. Before signing, verify eligibility and review the canonical-asset, multiplier, corporate-action, and trading-restriction context shown by Ophis.',
+  },
+  {
+    q: 'How are Robinhood Chain swaps settled?',
+    a: 'Orders are signed offchain with a hard limit and settled through an Ophis-operated GPv2Settlement batch auction. The design mitigates front-running and sandwich attacks, but no mechanism is an absolute guarantee against every adversarial condition.',
+  },
+]
+---
+
+<ContentPage
+  title="Swap on Robinhood Chain with MEV protection | Ophis"
+  description="Trade supported assets and Stock Tokens on Robinhood Chain through Ophis with canonical-asset checks, signed limits, and batch-auction settlement."
+  path="/swap/robinhood-chain/"
+  heading="Swap on Robinhood Chain"
+  lede="Open the live Robinhood Chain market with canonical-asset checks, a hard signed limit, and MEV-protected batch settlement."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    <a href="https://swap.ophis.fi/#/4663/swap"><strong>Open the Robinhood Chain swap →</strong></a>
+  </p>
+  <p>
+    Ophis is an independent protocol and is not affiliated with, endorsed by, or officially
+    connected with Robinhood Markets, Inc. Eligibility and jurisdictional restrictions can apply
+    to Stock Tokens; review <a href="https://robinhood.com/rhj/stocktokens/">Robinhood's current
+    disclosures</a> before interacting with them.
+  </p>
+
+  <h2>What Ophis checks before you sign</h2>
+  <ul>
+    <li>The selected Stock Token matches Robinhood Chain canonical metadata.</li>
+    <li>The current corporate-action multiplier and any pending multiplier change are visible.</li>
+    <li>Market, extended-hours, or overnight trading restrictions are surfaced when available.</li>
+    <li>The settlement domain resolves to the Ophis deployment for chain <code>4663</code>.</li>
+    <li>Your order carries a hard minimum output rather than an unbounded market instruction.</li>
+  </ul>
+  <p>
+    If canonical metadata cannot be fetched, Ophis reports that the asset is not verified. A familiar
+    ticker is not enough: always match the contract address against Robinhood Chain's live registry.
+  </p>
+
+  <h2>For stablecoins and Stock Tokens</h2>
+  <p>
+    Robinhood Chain pairs USDG with its onchain Stock Token economy. Ophis can request same-chain
+    routes for supported pairs; the app's live quote is the source of truth for current liquidity.
+    Read the broader <a href="/stablecoin-swaps/">stablecoin swap guide</a> or the
+    <a href="/tokenized-stocks-rwa/">tokenized-asset market page</a> for product distinctions and
+    network comparisons.
+  </p>
+
+  <h2>Integrate Robinhood Chain</h2>
+  <p>
+    Agents and applications should resolve the chain-specific orderbook, settlement contract, vault
+    relayer, and EIP-712 domain through the <a href="/ai-agent-crypto-swap-api/">Ophis MCP server or
+    SDK</a>. Do not assume a canonical CoW settlement address on an Ophis-operated network.
+  </p>
+  <p>
+    For deployment architecture, solver lanes, contract addresses, and the full launch history, read
+    <a href="/blog/swap-on-robinhood-chain/">the Robinhood Chain engineering guide</a>.
+  </p>
+
+  {FAQS.map((faq) => (
+    <section>
+      <h2>{faq.q}</h2>
+      <p>{faq.a}</p>
+    </section>
+  ))}
+</ContentPage>

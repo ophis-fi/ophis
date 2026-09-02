@@ -1,5 +1,5 @@
 ---
-title: "Ophis on Robinhood Chain: gasless, MEV-protected stock-token swaps"
+title: "Ophis on Robinhood Chain: gasless, MEV-protected Stock Token swaps"
 description: "Ophis runs a sovereign deployment on Robinhood Chain (chain 4663): its own GPv2Settlement, orderbook, and solver lanes, with chain-aware pricing."
 pubDate: 2026-07-31
 author: Ophis
@@ -9,9 +9,11 @@ cover: ./swap-on-robinhood-chain.cover.jpg
 coverAlt: "Ophis emblem ringed by supported chains with the Robinhood feather as the featured node"
 ---
 
-Ophis is live on Robinhood Chain. Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign an EIP-712 order: for an ERC-20 sell you do not broadcast the settlement transaction or pay its gas (selling native ETH is the exception covered below). Solver lanes route the pair and the winning settlement lands through Ophis's `GPv2Settlement` at `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`. Pricing is a 1 bp base plus capped reference-quote-improvement capture. Robinhood Chain is the third network where Ophis runs its own orderbook and settlement contracts rather than routing through CoW Protocol's hosted stack, and the first where the tradable universe is mostly tokenized equities.
+Ophis is live on Robinhood Chain. Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign an EIP-712 order: for an ERC-20 sell you do not broadcast the settlement transaction or pay its gas (selling native ETH is the exception covered below). Solver lanes route the pair and the winning settlement lands through Ophis's `GPv2Settlement` at `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`. Pricing is a 1 bp base plus capped reference-quote-improvement capture. Robinhood Chain is the third network where Ophis runs its own orderbook and settlement contracts rather than routing through CoW Protocol's hosted stack, and the first where the tradable universe is mostly Stock Tokens and other tokenized real-world assets.
 
 Two sentences of context. Robinhood Chain is chain id 4663, an Arbitrum Orbit L2, and it is one of the 13 EVM chains [Ophis](https://ophis.fi/) supports. Ophis is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top, and on Robinhood Chain it runs a sovereign deployment whose specifics are the subject of the rest of this post.
+
+Ophis is an independent protocol and is not affiliated with, endorsed by, or officially connected with Robinhood Markets, Inc. Stock Token eligibility and jurisdictional restrictions apply; review [Robinhood's current disclosures](https://robinhood.com/rhj/stocktokens/) before interacting with them.
 
 ## Swap on Robinhood Chain, step by step
 
@@ -73,7 +75,7 @@ A sovereign deployment is only as good as the liquidity its solvers can reach. R
 
 - **LI.FI.** A same-chain aggregator lane. One chain-specific catch: on 4663 the LI.FI router is `0xB477751B76CF82d00a686A1232f5fCD772414Af3`, not the LiFiDiamond address used elsewhere. It has to be allowlisted in both the solver and the driver, or every quote fails the same-chain safety check.
 - **KyberSwap.** A second independent aggregator lane whose route builder reaches the deployed Robinhood DEX liquidity. The solver and driver pin its router through a static allowlist.
-- **Direct Uniswap V4.** The newest lane, and the only one that depends on no external route API at all. It reads quotes from Uniswap's canonical V4Quoter through the sovereign eRPC proxy, and it executes through `OphisUniswapV4Adapter` at `0x8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae`. It is deliberately narrow: it bids only on the pair it serves, so on any other pair, stock tokens included, the field is whichever aggregator lanes can actually return a route.
+- **Direct Uniswap V4.** The newest lane, and the only one that depends on no external route API at all. It reads quotes from Uniswap's canonical V4Quoter through the sovereign eRPC proxy, and it executes through `OphisUniswapV4Adapter` at `0x8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae`. It is deliberately narrow: it bids only on the pair it serves, so on any other pair, Stock Tokens included, the field is whichever aggregator lanes can actually return a route.
 
 That narrowness is the point, because the adapter is where the security posture of the lane lives. It is immutable and pair-specific: it serves the canonical native ETH/USDG V4 pool and nothing else. It cannot route arbitrary tokens, cannot call arbitrary hooks, cannot be repointed at a different pool, and cannot send output anywhere except the Ophis settlement contract. Ophis orders trade wrapped tokens while the V4 pool is native, so the adapter performs the wrap and unwrap atomically around the swap.
 
@@ -81,13 +83,13 @@ One Arbitrum-specific quirk surfaced while making that lane safe to simulate. Ro
 
 All three lanes run under the same bounds: 1% relative slippage and an absolute cap of 0.04 ETH, tightened from the 10% default because this chain's trades are small and loose bounds are what MEV feeds on.
 
-## Stock tokens: what Ophis checks before you sign
+## Stock Tokens: what Ophis checks before you sign
 
-Most chains list tokens. Robinhood Chain mostly lists tokenized equities. The exact set is a live, changing registry, so rather than quote a number that will be stale by the time you read this, here is the floor the stack is built to expect: Ophis's daily canary fails if the registry returns fewer than 80 assets, or if the default token list exposes fewer than 80 of them on chain 4663. For the current list, read `swap.ophis.fi/api/robinhood/assets` directly. These instruments behave in ways an ERC-20 router has no concept of, so Ophis added a Robinhood-specific verification path in front of the quote.
+Most chains list tokens. Robinhood Chain mostly lists Stock Tokens and other tokenized real-world assets. The exact set is a live, changing registry, so rather than quote a number that will be stale by the time you read this, here is the floor the stack is built to expect: Ophis's daily canary fails if the registry returns fewer than 80 assets, or if the default token list exposes fewer than 80 of them on chain 4663. For the current list, read `swap.ophis.fi/api/robinhood/assets` directly. These instruments behave in ways an ERC-20 router has no concept of, so Ophis added a Robinhood-specific verification path in front of the quote.
 
-**It confirms the token is the canonical deployment.** The panel matches the selected token address against Robinhood's own published registry, scoped to chain id 4663. A token that merely calls itself AAPL does not match. This is the same anti-spoofing principle the `resolve_token` MCP tool applies, which matters more here than usual: a fake tokenized Apple share is a far more convincing lure than a fake memecoin.
+**It confirms the token is the canonical deployment.** The panel matches the selected token address against Robinhood's own published registry, scoped to chain id 4663. A token that merely calls itself AAPL does not match. This is the same anti-spoofing principle the `resolve_token` MCP tool applies, which matters more here than usual: a fake equity-linked token is a far more convincing lure than a fake memecoin.
 
-**It reads the corporate-action multiplier.** A stock token's on-chain balance is not necessarily one-for-one with underlying shares. Each asset carries a multiplier, and the panel uses it to show what your balance represents. Most assets sit at exactly 1, so the distinction never surfaces, but not all of them do, and which ones changes over time. The mechanic is worth understanding before it matters to you: at a multiplier of 4, a balance of 10 tokens is shown as representing about 40 underlying shares. Read the current value per asset rather than assuming it is 1. When Robinhood publishes a multiplier change ahead of its effective time, the panel says a change is pending instead of quietly repricing after the fact.
+**It reads the corporate-action multiplier.** A Stock Token's on-chain balance is not necessarily one-for-one with underlying shares. Each asset carries a multiplier, and the panel uses it to show what your balance represents. Most assets sit at exactly 1, so the distinction never surfaces, but not all of them do, and which ones changes over time. The mechanic is worth understanding before it matters to you: at a multiplier of 4, a balance of 10 tokens is shown as representing about 40 underlying shares. Read the current value per asset rather than assuming it is 1. When Robinhood publishes a multiplier change ahead of its effective time, the panel says a change is pending instead of quietly repricing after the fact.
 
 **It surfaces trading restrictions.** Each asset publishes a trading status per session, across market, extended, and overnight hours, and separately for whole and fractional quantities. If any of them is anything other than tradable, or if the asset itself is not active, the panel switches to an attention state naming the affected symbol.
 
@@ -144,7 +146,7 @@ Yes. Ophis deployed its core sovereign contracts on Robinhood Chain (chain 4663)
 
 No. Orders are gasless: you sign an EIP-712 typed-data message rather than broadcasting a transaction, the winning solver pays the settlement gas, and the Ophis fee is deducted from the traded amount rather than charged separately. You do need a small amount of ETH for a one-time on-chain approval the first time you sell a given token, and for wrapping if you choose to wrap manually.
 
-### Can I swap tokenized stocks on Robinhood Chain?
+### Can I swap Stock Tokens on Robinhood Chain?
 
 Yes, and Ophis adds checks specific to them. Before you sign, it verifies the token is the canonical deployment listed in Robinhood's official registry for chain 4663, reports the asset's corporate-action multiplier so you can see how the balance maps to underlying shares, flags any pending multiplier change, and warns when an asset carries a trading restriction in market, extended, or overnight sessions. The registry is live and its contents change, so read `swap.ophis.fi/api/robinhood/assets` for the current set. If that metadata cannot be fetched, Ophis says so rather than presenting the trade as verified.
 
@@ -166,4 +168,4 @@ Selling native ETH differs, because placing that order is itself an on-chain Eth
 
 ## Start swapping
 
-Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign your first Robinhood Chain order. ERC-20 settlement is gasless, the signed limit is enforced, and stock-token checks run before signing. If you are integrating rather than trading, start from the [getting-started guide](https://docs.ophis.fi/getting-started) and resolve the chain's settlement domain and fee through the SDK.
+Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign your first Robinhood Chain order. ERC-20 settlement is gasless, the signed limit is enforced, and Stock Token checks run before signing. If you are integrating rather than trading, start from the [getting-started guide](https://docs.ophis.fi/getting-started) and resolve the chain's settlement domain and fee through the SDK.
