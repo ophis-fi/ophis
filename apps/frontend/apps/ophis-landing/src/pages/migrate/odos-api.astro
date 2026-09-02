@@ -1,0 +1,70 @@
+---
+import ContentPage from '../../layouts/ContentPage.astro'
+import { canonicalPage } from '../../data/canonicalPages'
+
+const { updated } = canonicalPage('/migrate/odos-api/')
+const FAQS = [
+  {
+    q: 'Is Ophis a drop-in replacement for the full Odos API?',
+    a: 'No. Ophis provides a narrow Odos v3 quote-shape compatibility layer for one ERC-20 input, one ERC-20 output, EOA signing, and Ophis-operated chains. It returns a signable intent rather than executable router calldata.',
+  },
+  {
+    q: 'Can a Safe or smart account use the Odos compatibility layer?',
+    a: 'No. The compatibility surface accepts EIP-712 and ethsign from an EOA; it does not expose contract-validated signing schemes. Safe, smart-account, vault, MPC-with-contract-validation, and DAO integrations should use the Ophis SDK path instead.',
+  },
+  {
+    q: 'Does the compatibility API support Base or Avalanche?',
+    a: 'No. The compatibility surface is limited to Ophis-operated chains. Integrations that need Base, Avalanche, Ink, Ethereum, Arbitrum, or another CoW-hosted chain should use the Ophis SDK and per-chain orderbook flow.',
+  },
+]
+---
+
+<ContentPage
+  title="Migrate an Odos API integration to Ophis | Compatibility guide"
+  description="Check whether the narrow Odos v3 quote-shape compatibility layer fits your integration, or move to the Ophis SDK for broader chain and signer support."
+  path="/migrate/odos-api/"
+  heading="Migrating an Odos API integration"
+  lede="Ophis offers a narrow quote-shape compatibility layer, not a drop-in replacement for a router. Check the boundaries before changing a base URL."
+  updated={updated}
+  faqs={FAQS}
+>
+  <h2>Use the compatibility layer only when all of this is true</h2>
+  <ul>
+    <li>You send one ERC-20 input and request one ERC-20 output.</li>
+    <li>An EOA signs the resulting order with EIP-712 or <code>ethsign</code>.</li>
+    <li>You trade on an enabled Ophis-operated chain.</li>
+    <li>You can settle asynchronously through an intent rather than receive router calldata.</li>
+    <li>You do not require native ETH, zaps, baskets, or the wider Odos endpoint surface.</li>
+  </ul>
+  <p>
+    If every condition holds, review the current production status and field mapping in the
+    <a href="https://docs.ophis.fi/migrating-from-odos">complete Odos compatibility reference</a>.
+    The detailed page documents live endpoints, limits, pricing, error classes, and settlement
+    polling.
+  </p>
+
+  <h2>Use the SDK for broader integrations</h2>
+  <p>
+    Use the <a href="https://docs.ophis.fi/partners">partner SDK path</a> when you need a Safe, smart
+    account, vault, hosted chain, or direct control over the signing and orderbook flow. The SDK
+    resolves the correct domain and host across supported chains, including Base, Avalanche, and Ink.
+  </p>
+
+  <h2>The settlement-model difference</h2>
+  <p>
+    A router API typically returns calldata for an atomic transaction. Ophis returns a bounded,
+    signable order that solvers compete to settle later. There is no transaction object to compose
+    inside another contract call. That is an architectural boundary, not a missing response field.
+  </p>
+  <p>
+    The trade-off is a gasless user order with a hard signed limit and batch-auction MEV protection.
+    Your integration must follow order status until the order fills, expires, or is cancelled.
+  </p>
+
+  {FAQS.map((faq) => (
+    <section>
+      <h2>{faq.q}</h2>
+      <p>{faq.a}</p>
+    </section>
+  ))}
+</ContentPage>
