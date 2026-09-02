@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
-"""Reject alert annotations Telegram cannot render.
+"""Reject alert annotations Prometheus or Telegram cannot deliver.
 
-WHY THIS EXISTS: alertmanager.yml.tmpl sends both receivers with
-`parse_mode: HTML` and interpolates {{ .Annotations.description }} raw. Telegram
-rejects a message containing an unsupported tag, so a placeholder written in
-angle brackets -- `<distro>`, `<each upstream>` -- does not render as literal
-text: it makes the ENTIRE notification fail to send. The alert still fires, the
-operator is simply never told. On 2026-09-02 five annotations across all three
-chains were in that state, including both Cadia disk alerts -- the only warning
-for a filesystem with roughly three weeks of runway.
+WHY THIS EXISTS: promtool validates that an annotation PARSES. It never checks
+that the resulting notification can be SENT. Two ways that fails here:
 
-Backticks do not help; Telegram parses HTML before any Markdown convention.
-Write the real value, or spell the placeholder without angle brackets.
+1. Telegram. alertmanager.yml.tmpl uses parse_mode HTML and interpolates
+   {{ .Annotations.description }} raw, so an unescaped "<" is not literal text:
+   Telegram tries to parse a tag, fails, and rejects the ENTIRE message. The
+   alert fires and the operator is never told. On 2026-09-02 eight annotations
+   across all three chains were in that state -- "<distro>", "<each upstream>",
+   and "<1s of solve-time" -- including both Cadia disk alerts, the only warning
+   for a filesystem with weeks of runway. Backticks do not help; HTML is parsed
+   first. Write the real value, or say it without angle brackets.
+
+2. Prometheus templating. Annotations are Go templates with only $labels,
+   $value, $externalLabels and $externalURL in scope. A dotted field such as
+   .Annotations.description or .State.Status is Alertmanager-side data: it
+   parses fine and fails at notification time.
+
+A bare ">" or "&" is left alone deliberately -- Telegram tolerates both, and
+this corpus has 77 legitimate ">" characters ("over 80%", "> 5/s").
 """
 import re
 import sys
@@ -24,52 +32,104 @@ except ImportError:  # pragma: no cover - CI bootstrap
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "pyyaml"], check=True)
     import yaml
 
-# Tags Telegram's HTML parse mode accepts (Bot API "Formatting options").
+# Telegram Bot API "Formatting options", HTML style.
 ALLOWED = {
     "b", "strong", "i", "em", "u", "ins", "s", "strike", "del",
     "span", "tg-spoiler", "a", "tg-emoji", "code", "pre", "blockquote",
 }
-TAG = re.compile(r"<(/?)([A-Za-z0-9_-]+)([^>]*)>")
+VOID = {"br"}
+TAG = re.compile(r"<(/?)([A-Za-z][A-Za-z0-9_-]*)((?:\"[^\"]*\"|[^>\"])*)>")
+TEMPLATE = re.compile(r"\{\{(.*?)\}\}", re.S)
+# A dotted root (".Foo") is Alertmanager context, absent when Prometheus renders.
+DOTTED_ROOT = re.compile(r"(?:^|[\s(|])\.[A-Za-z]")
+
+
+def html_problems(text):
+    """Yield every reason Telegram would reject this string."""
+    stack, pos = [], 0
+    for m in TAG.finditer(text):
+        # Any "<" not starting a well-formed tag is fatal on its own.
+        for stray in re.finditer(r"<", text[pos:m.start()]):
+            yield f"unescaped {text[pos + stray.start():pos + stray.start() + 12]!r}"
+        pos = m.end()
+        closing, name, attrs = m.group(1), m.group(2).lower(), m.group(3)
+        if name not in ALLOWED and name not in VOID:
+            yield f"unsupported tag {m.group(0)!r}"
+        elif name in VOID:
+            pass
+        elif closing:
+            if not stack or stack[-1] != name:
+                yield f"unbalanced closing {m.group(0)!r}"
+            else:
+                stack.pop()
+        else:
+            # Telegram accepts <span> only as a spoiler; the class is required.
+            if name == "span" and "tg-spoiler" not in attrs:
+                yield f"span without class=\"tg-spoiler\" {m.group(0)!r}"
+            stack.append(name)
+    for stray in re.finditer(r"<", text[pos:]):
+        yield f"unescaped {text[pos + stray.start():pos + stray.start() + 12]!r}"
+    for name in stack:
+        yield f"unclosed <{name}>"
+
+
+def template_problems(text):
+    for m in TEMPLATE.finditer(text):
+        if DOTTED_ROOT.search(m.group(1)):
+            yield f"template {m.group(0)!r} uses Alertmanager-only context; Prometheus has $labels/$value only"
 
 
 def offenders(doc):
-    """Yield (alert, annotation_key, offending_text) for every unrenderable tag."""
     for group in (doc or {}).get("groups") or []:
         for rule in group.get("rules") or []:
-            name = rule.get("alert") or rule.get("record") or "<unnamed>"
+            name = rule.get("alert") or rule.get("record") or "(unnamed)"
             for key, value in (rule.get("annotations") or {}).items():
-                for m in TAG.finditer(str(value)):
-                    if m.group(2).lower() not in ALLOWED:
-                        yield name, key, m.group(0)
+                text = str(value)
+                for problem in list(html_problems(text)) + list(template_problems(text)):
+                    yield name, key, problem
 
 
 def self_test():
-    bad = {"groups": [{"rules": [{"alert": "A", "annotations": {"description": "run wsl --manage <distro> --resize"}}]}]}
-    good = {"groups": [{"rules": [{"alert": "A", "annotations": {"description": "run wsl --manage Ubuntu-24.04 --resize 1845GB"}}]}]}
-    allowed_html = {"groups": [{"rules": [{"alert": "A", "annotations": {"description": "<b>bold</b> and <code>x</code>"}}]}]}
-    templated = {"groups": [{"rules": [{"alert": "A", "annotations": {"summary": "{{ $labels.instance }} disk full"}}]}]}
-    assert list(offenders(bad)), "must catch an angle-bracket placeholder"
-    assert not list(offenders(good)), "must accept a concrete value"
-    assert not list(offenders(allowed_html)), "must accept Telegram's own tags"
-    assert not list(offenders(templated)), "must not trip on Prometheus templating"
-    assert list(offenders({"groups": [{"rules": [{"alert": "B", "annotations": {"d": "a <each upstream> b"}}]}]})), \
-        "must catch a multi-word placeholder"
-    print("self-test: 5/5 assertions hold")
+    def one(desc):
+        return {"groups": [{"rules": [{"alert": "A", "annotations": {"description": desc}}]}]}
+    cases_bad = [
+        ("wsl --manage <distro> --resize", "angle-bracket placeholder"),
+        ("cast --rpc-url <each upstream>", "multi-word placeholder"),
+        ("responses <1s of solve-time", "bare < before a digit"),
+        ("<b>unclosed bold", "unclosed allowed tag"),
+        ("</b>stray close", "unbalanced closing tag"),
+        ("<span>no spoiler class</span>", "span without tg-spoiler"),
+        ("<script>x</script>", "disallowed tag"),
+        ("saw {{ .Annotations.description }}", "Alertmanager-only template"),
+        ("state {{ .State.Status }} now", "dotted root template"),
+    ]
+    cases_good = [
+        "wsl --manage Ubuntu-24.04 --resize 1845GB",
+        "<b>bold</b> and <code>x</code> and <br> void",
+        '<span class="tg-spoiler">hidden</span>',
+        "{{ $labels.instance }} disk {{ $value | humanize }} full",
+        "consensus over 80% and > 5/s and R&D",
+    ]
+    for text, why in cases_bad:
+        assert list(offenders(one(text))), f"must catch: {why}"
+    for text in cases_good:
+        assert not list(offenders(one(text))), f"must accept: {text!r}"
+    print(f"self-test: {len(cases_bad)} rejections + {len(cases_good)} acceptances all hold")
 
 
 def main():
     if "--self-test" in sys.argv:
-        return self_test() or 0
+        self_test()
+        return 0
     failures = 0
     for path in sorted(Path("infra").glob("*/observability/alerts.yml")):
-        doc = yaml.safe_load(path.read_text())
-        for name, key, text in offenders(doc):
-            print(f"{path}: {name} [{key}] contains {text!r} — Telegram will reject the whole message", file=sys.stderr)
+        for name, key, problem in offenders(yaml.safe_load(path.read_text())):
+            print(f"{path}: {name} [{key}] — {problem}", file=sys.stderr)
             failures += 1
     if failures:
-        print(f"\n{failures} unrenderable annotation(s). Write the real value, or drop the angle brackets.", file=sys.stderr)
+        print(f"\n{failures} undeliverable annotation(s); the notification would fail, not degrade.", file=sys.stderr)
         return 1
-    print("all alert annotations are Telegram-renderable")
+    print("all alert annotations are deliverable")
     return 0
 
 
