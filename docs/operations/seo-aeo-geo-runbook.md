@@ -210,7 +210,9 @@ https://challenges.cloudflare.com https://www.googletagmanager.com` (still **no
 
 The landing and swap app now emit one privacy-safe funnel into the shared GA4
 property. No wallet address, order UID, transaction hash, token address, amount,
-email, or free-form intent text is sent.
+email, or free-form intent text is sent. Swap custom events explicitly override
+GA4's automatic `page_location`: token addresses are replaced with `0x_addr` and
+hash-router query parameters are discarded before dispatch.
 
 | Event | Emitted when | Surface |
 | --- | --- | --- |
@@ -219,7 +221,7 @@ email, or free-form intent text is sent.
 | `wallet_connect` | The app transitions to a connected wallet | Swap |
 | `quote_received` | A new input state receives its first optimal quote; polling refreshes are deduplicated | Swap |
 | `swap_initiated` | The user starts the trade flow | Swap |
-| `order_submitted` | The posted-order event fires after successful creation | Swap |
+| `order_submitted` | The posted-order event fires after successful creation; source/destination chain and bridge status are retained | Swap |
 | `order_filled` | The order-status updater observes fulfillment | Swap |
 
 **GA4 key-event classification is property state, not website code.** On

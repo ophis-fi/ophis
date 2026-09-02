@@ -24,6 +24,7 @@
  * localStorage and re-applied on return, overriding the regional default.
  */
 import { mountConsentBanner } from './consentBanner'
+import { getSanitizedPageLocation, getSanitizedPagePath } from './track'
 
 const GA4_MEASUREMENT_ID = 'G-NG9YX5G9CM'
 const GA4_HOST = 'swap.ophis.fi'
@@ -142,23 +143,17 @@ export function initGa4(): void {
   mountConsentBanner()
 }
 
-// Collapse 0x-addresses (wallet/token/proxy) to a placeholder so page paths
-// aggregate by route template and no address is ever sent to GA4.
-function sanitizePath(pathAndHash: string): string {
-  return pathAndHash.replace(/0x[a-fA-F0-9]{40}/g, '0x_addr')
-}
-
 // Fire a PII-safe GA4 page_view on init and on every SPA route change.
 // HashRouter route changes emit `hashchange`; back/forward emit `popstate`.
 function trackSpaPageViews(gtag: (...args: unknown[]) => void): void {
   let lastPath = ''
   const send = (): void => {
-    const path = sanitizePath(location.pathname + location.hash)
+    const path = getSanitizedPagePath(location)
     if (path === lastPath) return
     lastPath = path
     gtag('event', 'page_view', {
       page_path: path,
-      page_location: location.origin + path,
+      page_location: getSanitizedPageLocation(location),
       page_title: document.title,
     })
   }

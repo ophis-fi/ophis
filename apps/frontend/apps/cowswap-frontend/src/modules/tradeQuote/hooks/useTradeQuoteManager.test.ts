@@ -79,4 +79,21 @@ describe('useTradeQuoteManager GA4 events', () => {
 
     expect(trackGa4Event).not.toHaveBeenCalled()
   })
+
+  it('tracks the same input state again after the manager is reset', () => {
+    const { result } = renderHook(() => useTradeQuoteManager('0x0000000000000000000000000000000000000001'))
+    const manager = result.current
+    if (!manager) throw new Error('Expected a quote manager')
+
+    const params = quoteParams('100')
+    act(() => {
+      manager.setLoading(true, params)
+      manager.onResponse(quote, null, optimalFetchParams, params)
+      manager.reset()
+      manager.setLoading(true, params)
+      manager.onResponse(quote, null, optimalFetchParams, params)
+    })
+
+    expect(trackGa4Event).toHaveBeenCalledTimes(2)
+  })
 })

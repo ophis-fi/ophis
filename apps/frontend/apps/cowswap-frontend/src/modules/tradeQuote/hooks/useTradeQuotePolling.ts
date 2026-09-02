@@ -48,7 +48,7 @@ export function useTradeQuotePolling(quotePollingParams: TradeQuotePollingParame
   // eslint-disable-next-line react-hooks/refs
   isOnlineRef.current = isOnline
 
-  const pollQuote = usePollQuoteCallback(quotePollingParams, quoteParamsState, currentAmountRef)
+  const pollQuote = usePollQuoteCallback(quotePollingParams, quoteParamsState, currentAmountRef, tradeQuoteManager)
   const pollQuoteRef = useRef(pollQuote)
   // eslint-disable-next-line react-hooks/refs
   pollQuoteRef.current = pollQuote

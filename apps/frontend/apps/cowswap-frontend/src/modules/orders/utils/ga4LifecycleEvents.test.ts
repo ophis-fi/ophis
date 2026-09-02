@@ -14,6 +14,7 @@ jest.mock('../events/orderStatusEventEmitter', () => ({ ORDER_STATUS_EVENT_EMITT
 const OWNER = '0x0000000000000000000000000000000000000003'
 const inputToken = new Token(SupportedChainId.MAINNET, '0x0000000000000000000000000000000000000001', 6, 'IN')
 const outputToken = new Token(SupportedChainId.MAINNET, '0x0000000000000000000000000000000000000002', 18, 'OUT')
+const bridgeOutputToken = new Token(SupportedChainId.BASE, '0x0000000000000000000000000000000000000002', 18, 'OUT')
 
 describe('GA4 order lifecycle events', () => {
   beforeEach(() => jest.clearAllMocks())
@@ -32,6 +33,29 @@ describe('GA4 order lifecycle events', () => {
 
     expect(trackGa4Event).toHaveBeenCalledWith('order_submitted', {
       chainId: SupportedChainId.MAINNET,
+      destinationChainId: SupportedChainId.MAINNET,
+      isBridge: false,
+      orderType: UiOrderType.SWAP,
+      isEthFlow: false,
+    })
+  })
+
+  it('preserves privacy-safe bridge classification on submission', () => {
+    emitPostedOrderEvent({
+      chainId: SupportedChainId.MAINNET,
+      id: 'private-order-uid',
+      owner: OWNER,
+      kind: OrderKind.SELL,
+      uiOrderType: UiOrderType.SWAP,
+      receiver: null,
+      inputAmount: CurrencyAmount.fromRawAmount(inputToken, 1_000_000),
+      outputAmount: CurrencyAmount.fromRawAmount(bridgeOutputToken, 1),
+    })
+
+    expect(trackGa4Event).toHaveBeenCalledWith('order_submitted', {
+      chainId: SupportedChainId.MAINNET,
+      destinationChainId: SupportedChainId.BASE,
+      isBridge: true,
       orderType: UiOrderType.SWAP,
       isEthFlow: false,
     })

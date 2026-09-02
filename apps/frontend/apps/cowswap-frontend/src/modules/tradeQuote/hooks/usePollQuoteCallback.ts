@@ -2,14 +2,13 @@ import { useAtomValue } from 'jotai'
 import { useCallback, RefObject, useRef } from 'react'
 
 import { useIsOnline, useIsWindowVisible, usePrevious } from '@cowprotocol/common-hooks'
-import { getCurrencyAddress } from '@cowprotocol/common-utils'
 import { useAreUnsupportedTokens } from '@cowprotocol/tokens'
 
 import { useGetCorrelatedTokensByChainId } from 'entities/correlatedTokens'
 
 import { QuoteParams } from './useQuoteParams'
 import { useTradeQuote } from './useTradeQuote'
-import { useTradeQuoteManager } from './useTradeQuoteManager'
+import { TradeQuoteManager } from './useTradeQuoteManager'
 
 import { doQuotePolling, QuoteUpdateContext } from '../services/doQuotePolling'
 import { fetchAndProcessQuote } from '../services/fetchAndProcessQuote'
@@ -20,6 +19,7 @@ export function usePollQuoteCallback(
   quotePollingParams: TradeQuotePollingParameters,
   quoteParamsState: QuoteParams | undefined,
   currentAmountRef: RefObject<string | null>,
+  tradeQuoteManager: TradeQuoteManager | null,
 ): (hasParamsChanged: boolean, forceUpdate?: boolean) => boolean {
   const { fastQuote } = useAtomValue(tradeQuoteInputAtom)
   const getCorrelatedTokensByChainId = useGetCorrelatedTokensByChainId()
@@ -28,10 +28,9 @@ export function usePollQuoteCallback(
   // eslint-disable-next-line react-hooks/refs
   tradeQuoteRef.current = tradeQuote
 
-  const { quoteParams, appData, inputCurrency, hasSmartSlippage } = quoteParamsState || {}
+  const { quoteParams, appData, hasSmartSlippage } = quoteParamsState || {}
   const hasSmartSlippagePrev = usePrevious(hasSmartSlippage)
 
-  const tradeQuoteManager = useTradeQuoteManager(inputCurrency && getCurrencyAddress(inputCurrency))
   const getIsUnsupportedTokens = useAreUnsupportedTokens()
 
   const isWindowVisible = useIsWindowVisible()
