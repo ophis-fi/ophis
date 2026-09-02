@@ -57,6 +57,7 @@ overrides:
   bn.js: ^5.2.3
   vite: ^7.3.5
   esbuild: ^0.28.1
+  browserslist: '>=4.28.7 <5'
   brace-expansion@>=5.0.0 <5.0.9: '>=5.0.9'
   nanoid@>=3.0.0 <3.3.18: '>=3.3.18 <4.0.0'
   http-proxy-middleware@>=3.0.4 <3.0.7: 3.0.7
@@ -101,7 +102,6 @@ overrides:
   '@rjsf/core>nanoid': 3.3.18
   cypress: '>=15.16.0 <16'
   puppeteer-core>@puppeteer/browsers: '>=3.0.2 <4'
-  browserslist: '>=4.28.7 <5'
 
 patchedDependencies:
   '@cowprotocol/sdk-bridging@4.0.2':
@@ -10051,8 +10051,8 @@ packages:
     engines: {node: '>=0.12.18'}
     hasBin: true
 
-  electron-to-chromium@1.5.414:
-    resolution: {integrity: sha512-aYlviXiaXBbzvKgyALpcMmqa3Np3sDr0XnZbEG62n2UpZFbEcjQ4EEMOLGzVPhwVnwTz0lvKY+GcARbunuHekw==}
+  electron-to-chromium@1.5.415:
+    resolution: {integrity: sha512-958V+Kbhtgz+SxXeEVKBjrlKRBIDAYvUJfwhjxMZ5S6ut9jAl7l9ZKBkBrvjyjZE36PabLUo2L8kEeV5O4vgJg==}
 
   elliptic@6.6.1:
     resolution: {integrity: sha512-RaddvvMatK2LJHqFJ+YA4WysVN5Ita9E35botqIYspQ4TkRAlCicdzKOjlyv/1Za5RyTNn7di//eEV0uTAfe3g==}
@@ -16502,7 +16502,7 @@ packages:
     resolution: {integrity: sha512-ZZ61DsRsOnakl74HAmp3oSN4aXUmEWXf+i/yv0h7tIBfICc3VdrFErQKUUKPgu3AMsTUMbcongALEN4l6GSUrQ==}
     hasBin: true
     peerDependencies:
-      browserslist: '>=4.28.7'
+      browserslist: '>=4.28.7 <5'
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
@@ -26607,7 +26607,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.11.19
       caniuse-lite: 1.0.30001810
-      electron-to-chromium: 1.5.414
+      electron-to-chromium: 1.5.415
       node-releases: 2.0.53
       update-browserslist-db: 1.3.1(browserslist@4.28.8)
 
@@ -27913,7 +27913,7 @@ snapshots:
 
   ejs@5.0.1: {}
 
-  electron-to-chromium@1.5.414: {}
+  electron-to-chromium@1.5.415: {}
 
   elliptic@6.6.1:
     dependencies:
