@@ -29,6 +29,8 @@ export function emitPostedOrderEvent(params: PendingOrderNotificationParams): vo
 
   trackGa4Event('order_submitted', {
     chainId,
+    destinationChainId: outputAmount.currency.chainId,
+    isBridge: chainId !== outputAmount.currency.chainId,
     orderType: uiOrderType,
     isEthFlow: !!isEthFlow,
   })
