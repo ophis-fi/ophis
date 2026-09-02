@@ -2,6 +2,7 @@ import { EnrichedOrder, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { CowWidgetEvents } from '@cowprotocol/events'
 import { BridgeOrderDataSerialized } from '@cowprotocol/types'
 
+import { trackGa4Event } from 'ophis/analytics/track'
 import { WIDGET_EVENT_EMITTER } from 'widgetEventEmitter'
 
 import { OrderStatusEvents } from '../events/events'
@@ -12,6 +13,11 @@ export function emitFulfilledOrderEvent(
   order: EnrichedOrder,
   bridgeOrder?: BridgeOrderDataSerialized,
 ): void {
+  trackGa4Event('order_filled', {
+    chainId,
+    isBridge: !!bridgeOrder,
+  })
+
   const payload = {
     chainId,
     order,

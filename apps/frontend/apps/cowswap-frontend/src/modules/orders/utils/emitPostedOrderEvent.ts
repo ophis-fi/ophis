@@ -4,6 +4,7 @@ import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { CowWidgetEvents, OnPostedOrderPayload } from '@cowprotocol/events'
 import { TokenInfo, UiOrderType } from '@cowprotocol/types'
 
+import { trackGa4Event } from 'ophis/analytics/track'
 import { Nullish } from 'types'
 import { WIDGET_EVENT_EMITTER } from 'widgetEventEmitter'
 
@@ -25,6 +26,12 @@ interface PendingOrderNotificationParams {
 
 export function emitPostedOrderEvent(params: PendingOrderNotificationParams): void {
   const { chainId, id, receiver, owner, uiOrderType, orderCreationHash, inputAmount, outputAmount, isEthFlow } = params
+
+  trackGa4Event('order_submitted', {
+    chainId,
+    orderType: uiOrderType,
+    isEthFlow: !!isEthFlow,
+  })
 
   const postedOrderPayload: OnPostedOrderPayload = {
     orderUid: id,

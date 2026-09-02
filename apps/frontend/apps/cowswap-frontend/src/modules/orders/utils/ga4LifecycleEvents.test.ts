@@ -1,0 +1,48 @@
+import { OrderKind, SupportedChainId, type EnrichedOrder } from '@cowprotocol/cow-sdk'
+import { CurrencyAmount, Token } from '@cowprotocol/currency'
+import { UiOrderType } from '@cowprotocol/types'
+
+import { trackGa4Event } from 'ophis/analytics/track'
+
+import { emitFulfilledOrderEvent } from './emitFulfilledOrderEvent'
+import { emitPostedOrderEvent } from './emitPostedOrderEvent'
+
+jest.mock('ophis/analytics/track', () => ({ trackGa4Event: jest.fn() }))
+jest.mock('widgetEventEmitter', () => ({ WIDGET_EVENT_EMITTER: { emit: jest.fn() } }))
+jest.mock('../events/orderStatusEventEmitter', () => ({ ORDER_STATUS_EVENT_EMITTER: { emit: jest.fn() } }))
+
+const OWNER = '0x0000000000000000000000000000000000000003'
+const inputToken = new Token(SupportedChainId.MAINNET, '0x0000000000000000000000000000000000000001', 6, 'IN')
+const outputToken = new Token(SupportedChainId.MAINNET, '0x0000000000000000000000000000000000000002', 18, 'OUT')
+
+describe('GA4 order lifecycle events', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('tracks a submitted order without identifiers or amounts', () => {
+    emitPostedOrderEvent({
+      chainId: SupportedChainId.MAINNET,
+      id: 'private-order-uid',
+      owner: OWNER,
+      kind: OrderKind.SELL,
+      uiOrderType: UiOrderType.SWAP,
+      receiver: null,
+      inputAmount: CurrencyAmount.fromRawAmount(inputToken, 1_000_000),
+      outputAmount: CurrencyAmount.fromRawAmount(outputToken, 1),
+    })
+
+    expect(trackGa4Event).toHaveBeenCalledWith('order_submitted', {
+      chainId: SupportedChainId.MAINNET,
+      orderType: UiOrderType.SWAP,
+      isEthFlow: false,
+    })
+  })
+
+  it('tracks fulfillment without the order UID', () => {
+    emitFulfilledOrderEvent(SupportedChainId.MAINNET, { uid: 'private-order-uid' } as EnrichedOrder)
+
+    expect(trackGa4Event).toHaveBeenCalledWith('order_filled', {
+      chainId: SupportedChainId.MAINNET,
+      isBridge: false,
+    })
+  })
+})

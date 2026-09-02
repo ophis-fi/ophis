@@ -4,6 +4,8 @@ import { useMemo, useRef } from 'react'
 import { PriceQuality, QuoteAndPost, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { BridgeQuoteResults, QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 
+import { trackGa4Event } from 'ophis/analytics/track'
+
 import { QuoteApiError, QuoteApiErrorCodes } from 'api/cowProtocol/errors/QuoteError'
 
 import { useProcessUnsupportedTokenError } from './useProcessUnsupportedTokenError'
@@ -36,6 +38,7 @@ export function useTradeQuoteManager(sellTokenAddress: SellTokenAddress | undefi
   const update = useSetAtom(updateTradeQuoteAtom)
   const processUnsupportedTokenError = useProcessUnsupportedTokenError()
   const lastQuoteParamsRef = useRef<QuoteBridgeRequest | null>(null)
+  const lastTrackedQuoteParamsRef = useRef<QuoteBridgeRequest | null>(null)
 
   return useMemo((): TradeQuoteManager | null => {
     if (!sellTokenAddress) return null
@@ -51,6 +54,7 @@ export function useTradeQuoteManager(sellTokenAddress: SellTokenAddress | undefi
 
     const reset = (): void => {
       lastQuoteParamsRef.current = null
+      lastTrackedQuoteParamsRef.current = null
       update(sellTokenAddress, { quote: null, isLoading: false })
     }
 
@@ -88,6 +92,16 @@ export function useTradeQuoteManager(sellTokenAddress: SellTokenAddress | undefi
       }
 
       const isOptimalQuote = fetchParams.priceQuality === PriceQuality.OPTIMAL
+
+      if (isOptimalQuote && isStaleQuote(lastTrackedQuoteParamsRef.current, quoteParams)) {
+        lastTrackedQuoteParamsRef.current = quoteParams
+        trackGa4Event('quote_received', {
+          sourceChainId: quoteParams.sellTokenChainId,
+          destinationChainId: quoteParams.buyTokenChainId,
+          isBridge: quoteParams.sellTokenChainId !== quoteParams.buyTokenChainId,
+          orderKind: quoteParams.kind,
+        })
+      }
 
       update(sellTokenAddress, {
         quote,

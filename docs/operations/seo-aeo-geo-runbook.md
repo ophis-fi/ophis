@@ -206,6 +206,35 @@ https://challenges.cloudflare.com https://www.googletagmanager.com` (still **no
   update `public/_headers` `script-src` (the landing CSP pins per-script
   sha256 hashes, so a new inline script needs its hash added).
 
+### Acquisition funnel events (wired 2026-09-02)
+
+The landing and swap app now emit one privacy-safe funnel into the shared GA4
+property. No wallet address, order UID, transaction hash, token address, amount,
+email, or free-form intent text is sent.
+
+| Event | Emitted when | Surface |
+| --- | --- | --- |
+| `trade_click` | A visitor follows any `swap.ophis.fi` link | Landing |
+| `integration_click` | A visitor follows an Ophis docs, MCP, business, SDK, or repository link | Landing |
+| `wallet_connect` | The app transitions to a connected wallet | Swap |
+| `quote_received` | A new input state receives its first optimal quote; polling refreshes are deduplicated | Swap |
+| `swap_initiated` | The user starts the trade flow | Swap |
+| `order_submitted` | The posted-order event fires after successful creation | Swap |
+| `order_filled` | The order-status updater observes fulfillment | Swap |
+
+**GA4 key-event classification is property state, not website code.** On
+2026-09-02, `order_submitted` and `order_filled` were created in the Ophis GA4
+property (`properties/540148539`) with **Once per event** counting and verified
+through the Analytics Admin API. Optionally add `wallet_connect` as a secondary
+key event with **Once per session** counting. Do not mark `trade_click`,
+`integration_click`, `quote_received`, or `swap_initiated` as key events; they
+are diagnostic funnel steps rather than completed business outcomes.
+
+This can also be automated through `properties.keyEvents.create` in the Google
+Analytics Admin API, but it requires the numeric GA4 property ID and an OAuth
+principal with the `analytics.edit` scope. The measurement ID alone is not
+enough.
+
 ## Follow-ups (no operator input needed, scoped separately)
 
 - **Swap per-route canonical + meta.** The swap is a client-rendered SPA; a

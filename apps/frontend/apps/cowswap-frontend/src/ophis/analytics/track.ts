@@ -8,5 +8,9 @@
 export function trackGa4Event(name: string, params?: Record<string, unknown>): void {
   if (typeof window === 'undefined') return
   const w = window as unknown as { gtag?: (...args: unknown[]) => void }
-  w.gtag?.('event', name, params)
+  try {
+    w.gtag?.('event', name, params)
+  } catch {
+    // Analytics is best-effort and must never interrupt quoting or order state.
+  }
 }
