@@ -48,17 +48,46 @@ SPOILER_ATTR = re.compile(r"""\bclass\s*=\s*(?P<q>["'])tg-spoiler(?P=q)""")
 # $externalLabels and $externalURL are aliases for them. Any OTHER dotted root
 # (.Annotations, .State, .CommonLabels) is Alertmanager-side and fails at
 # notification time after parsing cleanly.
-DOTTED_ROOT = re.compile(r"(?:^|[\s(|])\.([A-Za-z][A-Za-z0-9_]*)")
+DOTTED_ROOT = re.compile(r"(?:^|[^\w.])\.([A-Za-z][A-Za-z0-9_]*)")
 PROM_FIELDS = {"Labels", "Value", "ExternalLabels", "ExternalURL"}
+
+
+# An action that emits nothing: a control keyword, or a bare assignment.
+CONTROL_ACTION = re.compile(
+    r"^\s*(?:if|else|end|range|with|block|define|template|break|continue)\b"
+    r"|^\s*\$[A-Za-z0-9_]*\s*:?=(?!.*\|)"
+)
+STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"|`([^`]*)`')
+
+
+def is_control(action):
+    return bool(CONTROL_ACTION.search(action))
 
 
 def mask_templates(text):
     """Blank out {{ ... }} actions, keeping length so offsets stay valid.
 
-    Go consumes these before the message is built, so "{{ if eq $x \"<a>\" }}"
-    never reaches Telegram and must not be scanned as HTML.
+    Go consumes the ACTION SYNTAX before the message is built, so a comparison
+    operand in "{{ if eq $x \"<a>\" }}" never reaches Telegram. What an OUTPUT
+    action emits does reach it, and is checked separately by literal_problems.
     """
     return TEMPLATE.sub(lambda m: " " * len(m.group(0)), text)
+
+
+def literal_problems(text):
+    """Static text an OUTPUT action renders into the message.
+
+    '{{ "<bad>" }}' and '{{ printf "<%s>" $labels.kind }}' both put angle
+    brackets in front of Telegram; control actions and assignments do not.
+    """
+    for m in TEMPLATE.finditer(text):
+        action = m.group(1)
+        if is_control(action):
+            continue
+        for lit in STRING_LITERAL.finditer(action):
+            value = lit.group(1) if lit.group(1) is not None else lit.group(2)
+            for problem in html_problems(value):
+                yield f"output action {m.group(0)!r} emits {value!r}: {problem}"
 
 
 def html_problems(raw):
@@ -121,7 +150,9 @@ def offenders(doc):
                         yield name, required, "missing; the receiver renders it as \"<no value>\", which Telegram rejects"
             for key, value in annotations.items():
                 text = str(value)
-                for problem in list(html_problems(text)) + list(template_problems(text)):
+                checks = (list(html_problems(text)) + list(template_problems(text))
+                          + list(literal_problems(text)))
+                for problem in checks:
                     yield name, key, problem
 
 
@@ -141,6 +172,9 @@ def self_test():
         ('<span class="not-tg-spoiler">x</span>', "spoiler class must match exactly"),
         ('<span data-x="tg-spoiler">x</span>', "tg-spoiler in the wrong attribute"),
         ("{{ $x := . }}{{ $x.Annotations.description }}", "aliased template root"),
+        ("{{$x:=.Annotations}}{{$x.description}}", "compact assignment from a forbidden root"),
+        ('{{ "<bad>" }}', "output action emitting a literal tag"),
+        ('{{ printf "<%s>" $labels.kind }}', "output action emitting literal angle brackets"),
         ("saw {{ .Annotations.description }}", "Alertmanager-only template"),
         ("state {{ .State.Status }} now", "Alertmanager-only dotted root"),
     ]
@@ -151,6 +185,7 @@ def self_test():
         "{{ $labels.instance }} disk {{ $value | humanize }} full",
         "{{ .Labels.instance }} at {{ .Value }} on {{ .ExternalURL }}",
         '{{ if eq $labels.state "<unknown>" }}missing{{ end }} then plain text',
+        '{{ $value | printf "%.0f" }} requests',
         "consensus over 80% and > 5/s and R&D and &amp; and &#8212;",
     ]
     for text, why in cases_bad:
