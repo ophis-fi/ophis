@@ -18,7 +18,9 @@ that the resulting notification can be SENT. Two ways that fails here:
    .Annotations.description or .State.Status is Alertmanager-side data: it
    parses fine and fails at notification time.
 
-A bare ">" or "&" is left alone deliberately -- Telegram tolerates both, and
+A bare ">" is left alone deliberately, and so is a bare "&" that does not form
+an entity ("R&D"); what is rejected is an entity-shaped token Telegram lacks,
+such as "&nbsp;". Otherwise this -- Telegram tolerates both, and
 this corpus has 77 legitimate ">" characters ("over 80%", "> 5/s").
 """
 import re
@@ -37,9 +39,11 @@ ALLOWED = {
     "b", "strong", "i", "em", "u", "ins", "s", "strike", "del",
     "span", "tg-spoiler", "a", "tg-emoji", "code", "pre", "blockquote",
 }
-VOID = {"br"}
 TAG = re.compile(r"<(/?)([A-Za-z][A-Za-z0-9_-]*)((?:\"[^\"]*\"|[^>\"])*)>")
 TEMPLATE = re.compile(r"\{\{(.*?)\}\}", re.S)
+# Anything shaped like an entity ("&word;" / "&#123;") must be one Telegram knows.
+ENTITY = re.compile(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);")
+ENTITY_OK = {"lt", "gt", "amp", "quot"}
 # A dotted root (".Foo") is Alertmanager context, absent when Prometheus renders.
 DOTTED_ROOT = re.compile(r"(?:^|[\s(|])\.[A-Za-z]")
 
@@ -53,10 +57,8 @@ def html_problems(text):
             yield f"unescaped {text[pos + stray.start():pos + stray.start() + 12]!r}"
         pos = m.end()
         closing, name, attrs = m.group(1), m.group(2).lower(), m.group(3)
-        if name not in ALLOWED and name not in VOID:
+        if name not in ALLOWED:
             yield f"unsupported tag {m.group(0)!r}"
-        elif name in VOID:
-            pass
         elif closing:
             if not stack or stack[-1] != name:
                 yield f"unbalanced closing {m.group(0)!r}"
@@ -71,6 +73,10 @@ def html_problems(text):
         yield f"unescaped {text[pos + stray.start():pos + stray.start() + 12]!r}"
     for name in stack:
         yield f"unclosed <{name}>"
+    for e in ENTITY.finditer(text):
+        body = e.group(1)
+        if not body.startswith("#") and body not in ENTITY_OK:
+            yield f"unsupported entity {e.group(0)!r}; Telegram knows only &lt; &gt; &amp; &quot; and numeric"
 
 
 def template_problems(text):
@@ -100,15 +106,17 @@ def self_test():
         ("</b>stray close", "unbalanced closing tag"),
         ("<span>no spoiler class</span>", "span without tg-spoiler"),
         ("<script>x</script>", "disallowed tag"),
+        ("line one<br>line two", "<br> is not a Telegram tag"),
+        ("hard&nbsp;space", "unsupported named entity"),
         ("saw {{ .Annotations.description }}", "Alertmanager-only template"),
         ("state {{ .State.Status }} now", "dotted root template"),
     ]
     cases_good = [
         "wsl --manage Ubuntu-24.04 --resize 1845GB",
-        "<b>bold</b> and <code>x</code> and <br> void",
+        "<b>bold</b> and <code>x</code> nested fine",
         '<span class="tg-spoiler">hidden</span>',
         "{{ $labels.instance }} disk {{ $value | humanize }} full",
-        "consensus over 80% and > 5/s and R&D",
+        "consensus over 80% and > 5/s and R&D and &amp; and &#8212;",
     ]
     for text, why in cases_bad:
         assert list(offenders(one(text))), f"must catch: {why}"
