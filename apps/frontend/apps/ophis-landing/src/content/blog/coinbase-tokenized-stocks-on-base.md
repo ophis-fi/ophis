@@ -107,11 +107,11 @@ Rolling 30-day volume then places you in a rebate tier. The percentage is a weig
 
 Rebates are paid monthly in WETH from the fee Safe. What a wallet receives depends on the pool and on every other eligible wallet's weighted volume that month. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) carry the full mechanics.
 
-## Coinbase stocks on Base and Robinhood stock tokens: two different products
+## Coinbase stocks on Base and Robinhood Stock Tokens: two different products
 
-Ophis now lists tokenized equities from two issuers on two chains, and they are not interchangeable.
+Ophis now lists two different kinds of equity-linked token from two issuers on two chains, and they are not interchangeable.
 
-| | Coinbase tokenized stocks | Robinhood Stock Tokens |
+| | Coinbase Tokenized Stocks | Robinhood Stock Tokens |
 | --- | --- | --- |
 | Chain | Base (8453) | Robinhood Chain (4663) |
 | Standard | B20, Base-native precompile | ERC-20 with an issuer registry |
@@ -120,7 +120,7 @@ Ophis now lists tokenized equities from two issuers on two chains, and they are 
 | Trading hours | 24/7 on Base DEXs | Per session, with restrictions published per asset |
 | Ophis fee | 1 bp base plus capped improvement, plus CoW's upstream fee | 1 bp base plus capped improvement, no upstream fee |
 
-An `AAPLc` on Base and an `AAPL` stock token on Robinhood Chain both track Apple, but they are different tokens from different issuers with different redemption terms. Ophis does not bridge one into the other. If you want the Robinhood side, read [how Ophis runs on Robinhood Chain](/blog/swap-on-robinhood-chain/).
+An `AAPLc` on Base and an `AAPL` Stock Token on Robinhood Chain both track Apple, but they are different tokens from different issuers with different redemption terms. Ophis does not bridge one into the other. If you want the Robinhood side, read [how Ophis runs on Robinhood Chain](/blog/swap-on-robinhood-chain/). Ophis is an independent protocol and is not affiliated with, endorsed by, or officially connected with Robinhood Markets, Inc.
 
 ## Building with these tokens
 
@@ -150,7 +150,7 @@ Coinbase deployed thirteen tokens but minted supply for four on launch day. A to
 
 One B20 token does not permanently equal one share. When the underlying pays a dividend or splits, Coinbase updates the token's multiplier instead of changing balances, so a multiplier of 1.02 means one token is redeemable for 1.02 shares. Ophis reads the multiplier from the token contract on Base and shows it on the swap form, along with the share equivalent of the balance you are selling.
 
-### Are these the same as the stock tokens on Robinhood Chain?
+### Are these the same as the Stock Tokens on Robinhood Chain?
 
 No. Coinbase tokenized stocks are B20 tokens on Base issued by Coinbase; Robinhood Stock Tokens are ERC-20s on Robinhood Chain issued by Robinhood. They track the same companies but have different issuers, redemption terms, trading hours and settlement paths, and Ophis does not convert one into the other.
 

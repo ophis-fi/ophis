@@ -1,0 +1,76 @@
+---
+import ContentPage from '../layouts/ContentPage.astro'
+import { canonicalPage } from '../data/canonicalPages'
+
+const { updated } = canonicalPage('/stablecoin-swaps/')
+const FAQS = [
+  {
+    q: 'Which networks can I use for stablecoin swaps on Ophis?',
+    a: 'Ophis supports same-chain swaps on Base, Avalanche, Ink, Robinhood Chain, and its other supported EVM networks. The token selector and live quote are the source of truth for a specific stablecoin pair because token policy, liquidity, and route availability can change.',
+  },
+  {
+    q: 'Does Ophis guarantee a stablecoin quote?',
+    a: 'No. Ophis requests competitive routes and shows a quote only when the selected assets pass token policy and executable liquidity exists. Always verify the token contract, quoted amount, signed limit, and destination before signing.',
+  },
+  {
+    q: 'What does Ophis charge on stablecoin pairs?',
+    a: 'Every supported chain pays a 1 bp Ophis base fee. On same-chain stablecoin pairs, Ophis retains 50% of reference-quote improvement, capped at 20 bps of volume. CoW-hosted chains can also apply upstream protocol fees.',
+  },
+]
+---
+
+<ContentPage
+  title="Stablecoin swaps on Base, Avalanche, Ink and Robinhood | Ophis"
+  description="Compare MEV-protected stablecoin swap routes on Base, Avalanche, Ink, Robinhood Chain, and the other EVM networks supported by Ophis."
+  path="/stablecoin-swaps/"
+  heading="Stablecoin swaps across onchain markets"
+  lede="Route supported stablecoin pairs through intent-based, MEV-protected batch auctions on Base, Avalanche, Ink, Robinhood Chain, and the rest of the Ophis network."
+  updated={updated}
+  faqs={FAQS}
+>
+  <p>
+    Stablecoin trading is not one market. Liquidity, canonical contracts, and execution quality vary
+    by network. Ophis lets you choose the chain and pair, review a live quote with a hard signed
+    limit, and settle without broadcasting the order into a public mempool.
+  </p>
+
+  <h2>Open a stablecoin market</h2>
+  <ul>
+    <li><a href="https://swap.ophis.fi/#/8453/swap">Swap stablecoins on Base</a></li>
+    <li><a href="https://swap.ophis.fi/#/43114/swap">Swap stablecoins on Avalanche</a></li>
+    <li><a href="https://swap.ophis.fi/#/57073/swap">Swap stablecoins on Ink</a></li>
+    <li><a href="https://swap.ophis.fi/#/4663/swap">Swap stablecoins on Robinhood Chain</a></li>
+  </ul>
+  <p>
+    A network being supported does not mean every token or pair has a route. Select the canonical
+    asset in the app and use the live quote as the availability check.
+  </p>
+
+  <h2>Why use intents for stablecoin swaps?</h2>
+  <p>
+    You sign the minimum amount you will accept. Solvers compete to fill the order through a batch
+    auction, and the order cannot settle below that signed limit. This design mitigates front-running
+    and sandwich attacks while allowing a better execution price to flow through to the result.
+  </p>
+  <p>
+    Stable pairs also use Ophis's stable-specific improvement policy: a 1 bp base plus 50% of
+    reference-quote improvement, capped at 20 bps of volume. See the
+    <a href="/pricing/">pricing page</a> for the complete hosted-chain and operated-chain policy.
+  </p>
+
+  <h2>What each network brings</h2>
+  <p>
+    <strong>Base</strong> combines active stablecoin markets with a growing tokenized-asset economy.
+    <strong> Avalanche</strong> hosts stablecoins in multiple currencies alongside institutional
+    real-world assets. <strong>Ink</strong>, Kraken's DeFi-focused L2, lists assets including USDC.e,
+    USDT0, crvUSD, and frxUSD in its official token directory. <strong>Robinhood Chain</strong> uses
+    USDG as a core dollar asset alongside its Stock Token markets.
+  </p>
+
+  {FAQS.map((faq) => (
+    <section>
+      <h2>{faq.q}</h2>
+      <p>{faq.a}</p>
+    </section>
+  ))}
+</ContentPage>
