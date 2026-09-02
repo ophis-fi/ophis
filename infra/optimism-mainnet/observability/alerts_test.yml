@@ -350,9 +350,9 @@ tests:
           regardless of whether this alert fired.
 
 
-          Diagnose: `cast block-number --rpc-url <each upstream>` to find
+          Diagnose: run `cast block-number --rpc-url URL` against each upstream
 
-          which one is unresponsive. Check rpc-proxy logs:
+          in turn to find which one is unresponsive. Check rpc-proxy logs:
 
           `docker logs optimism-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
 

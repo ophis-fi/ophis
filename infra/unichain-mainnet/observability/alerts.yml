@@ -250,8 +250,8 @@ groups:
             elevation indicates one or more Unichain upstream(s) (unichain-public /
             publicnode-uni / ophis-self-uni) are slow or rate-limited.
 
-            Diagnose: `cast block-number --rpc-url URL, once per upstream,` to find
-            which one is unresponsive. Check rpc-proxy logs:
+            Diagnose: run `cast block-number --rpc-url URL` against each upstream
+            in turn to find which one is unresponsive. Check rpc-proxy logs:
             `docker logs unichain-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
 
             Threshold history: 5/s ≈ 100% failure on `eth_call` consensus path

@@ -546,8 +546,8 @@ groups:
             `docker logs optimism-mainnet-autopilot-1 | grep 'no solutions'`
             regardless of whether this alert fired.
 
-            Diagnose: `cast block-number --rpc-url URL, once per upstream,` to find
-            which one is unresponsive. Check rpc-proxy logs:
+            Diagnose: run `cast block-number --rpc-url URL` against each upstream
+            in turn to find which one is unresponsive. Check rpc-proxy logs:
             `docker logs optimism-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
 
             Threshold history: 5/s ≈ 100% failure on `eth_call` consensus path
