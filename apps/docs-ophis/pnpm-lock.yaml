@@ -8,7 +8,7 @@ overrides:
   nanoid@>=3.0.0 <3.3.18: '>=3.3.18 <4.0.0'
   '@babel/core': ^7.29.6
   body-parser@<1.20.6: ^1.20.6
-  browserslist: '>=4.28.7'
+  browserslist: '>=4.28.7 <5'
   brace-expansion@<1.1.17: '>=1.1.17 <2.0.0'
   fast-uri@<3.1.6: ^3.1.6
   http-proxy-middleware@<3.0.6: 3.0.7
@@ -5446,7 +5446,7 @@ packages:
     resolution: {integrity: sha512-UQ+MSxlhRm1bzjhU+DcuXfjFO1FzNtqhK5+9Yvlp90ItDLk5vT932A0rFu619nf7RVS+Y/VeaUW1jaRDqZ8VJw==}
     hasBin: true
     peerDependencies:
-      browserslist: '>=4.28.7'
+      browserslist: '>=4.28.7 <5'
 
   update-notifier@6.0.2:
     resolution: {integrity: sha512-EDxhTEVPZZRLWYcJ4ZXjGFN0oP7qYvbXWzEgRm/Yql4dHX5wDbvh89YHP6PK1lzZJYrMtXUuZZz8XGK+U6U1og==}
