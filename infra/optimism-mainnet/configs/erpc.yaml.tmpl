@@ -47,24 +47,41 @@
 # registered account) plus two free lanes. Full per-upstream rationale and the
 # measured per-method coverage live in the `upstreams:` block below.
 #
-#   blockdaemon-op      svc.blockdaemon.com           Blockdaemon (keyed, FULL ARCHIVE)
+#   blockdaemon-op      svc.blockdaemon.com           Blockdaemon (FULL ARCHIVE)
 #                                                      CDN: Cloudflare (the ONE permitted)
-#                                                      auth: NONE (free public tier)
-#                                                      gap: no eth_getTransactionReceipt
-#                                                           (archive-gated)
+#                                                      auth: KEYED (${BLOCKDAEMON_OP_KEY},
+#                                                           QUERY PARAM ?apiKey=)
+#                                                      serves ALL protected methods. Measured
+#                                                      2026-08-29, AT THESE DEPTHS ONLY:
+#                                                        eth_getTransactionReceipt: OK at
+#                                                          head-60. NOT tested deeper — do not
+#                                                          assume old-receipt backfill works.
+#                                                        eth_call + eth_getLogs: OK at head
+#                                                          -200 / -20k / -200k / -2,000,000
+#                                                      sustained 644/644 = 100% @ ~3.2 req/s,
+#                                                      p50 171ms / p95 209ms
 #   zan-op              api.zan.top                   ZAN (Ant Digital Technologies)
 #                                                      CDN: none detected (NON-Cloudflare)
 #                                                      auth: KEYED (${ZAN_API_KEY}, URL path)
 #                                                      serves ALL protected methods
-#   tenderly-op         optimism.gateway.tenderly.co  Tenderly (keyed, FULL ARCHIVE)
+#   tenderly-op         optimism.gateway.tenderly.co  Tenderly (FULL ARCHIVE)
 #                                                      CDN: none (GCP LB, `via: 1.1 google`) — NON-Cloudflare
-#                                                      auth: NONE (free public tier)
-#                                                      serves ALL protected methods, INCLUDING
-#                                                      archive eth_getLogs + receipts
-#                                                      ⚠️ RATE LIMITED: ~50% HTTP 429 at ~4 req/s.
-#                                                      Degraded stopgap admitted 2026-08-23 to
-#                                                      replace validationcloud-op (HTTP 401 since
-#                                                      08-18). Swap for a KEYED archive lane.
+#                                                      ⚠️ SAME Google AS396982 as the retired
+#                                                           official-op. Replacement, NEVER an
+#                                                           addition alongside it.
+#                                                      auth: KEYED (${TENDERLY_OP_KEY}, URL path)
+#                                                      serves ALL protected methods. Measured
+#                                                      2026-08-29, AT THESE DEPTHS ONLY:
+#                                                        eth_getTransactionReceipt: OK at
+#                                                          head-60. NOT tested deeper — do not
+#                                                          assume old-receipt backfill works.
+#                                                        eth_call + eth_getLogs: OK at head
+#                                                          -200 / -20k / -200k / -2,000,000
+#                                                      sustained 160/160 = 100% @ 4 req/s,
+#                                                      p50 56ms but p95 1061ms / max 2065ms —
+#                                                      slowest tail of the three, still well
+#                                                      inside this lane's 4s timeout.
+#                                                      keyed x-tdly-limit is 400 req/s (keyless 20)
 #
 # **Threat model — 2-of-3 over 3 distinct failure domains, with the hard
 # invariant that AT MOST ONE upstream is Cloudflare-fronted (now blockdaemon):**
@@ -102,15 +119,22 @@
 #    lanes that can actually serve it. If the count equals agreementThreshold, the
 #    single-compromise protection is GONE for that method — either add a capable
 #    lane or force that method to disputeBehavior:returnError.
-#    Still true today for eth_getTransactionReceipt (publicnode is archive-gated,
-#    HISTORICAL (pre-2026-08-29, when publicnode held the CF slot and could serve
-#    neither receipts nor archive, so only ZAN + official-op served them) — which
-#    is why the receipt rule below is
-#    already disputeBehavior:returnError, i.e. fail-closed rather than tie-broken.
-#    ⚠️ And, since 2026-08-23, ALSO TRUE for eth_getLogs BEYOND ~128 BLOCKS: the
-#    same archive gate applies, so deep getLogs is likewise a 2-lane method — but
-#    it matches a preferBlockHeadLeader rule rather than returnError. That
-#    mismatch is the open item written up beside the coverage table below.
+#    HISTORICAL (pre-2026-08-29): publicnode held the CF slot and could serve
+#    neither receipts nor archive, so eth_getTransactionReceipt had only ZAN +
+#    official-op — exactly 2 capable lanes against agreementThreshold 2, i.e. the
+#    single-compromise protection was already gone for that method, which is why
+#    the receipt rule below is disputeBehavior:returnError (fail-closed rather
+#    than tie-broken). On 2026-08-29 zan hit its credit cap and that method went
+#    to ONE capable lane: 10/10 "not enough agreement" through the proxy.
+#    RESOLVED as of the 2026-08-29 rebuild: blockdaemon and tenderly are BOTH full
+#    archive, so receipts and deep getLogs now have THREE capable lanes and keep a
+#    real 2-of-3 majority even with one lane down. The returnError posture stays.
+#    RESOLVED 2026-08-29 for eth_getLogs BEYOND ~128 BLOCKS too. It was a 2-lane
+#    method while publicnode held the CF slot (archive-gated), matching a
+#    preferBlockHeadLeader rule rather than returnError — the open item written up
+#    beside the coverage table. blockdaemon and tenderly are both full archive, so
+#    deep getLogs now has 3 capable lanes and a real 2-of-3 majority; the
+#    preferBlockHeadLeader/returnError mismatch is no longer load-bearing.
 #  - Two independent failure domains compromised at once: nation-state class,
 #    out of scope.
 #  - All three returning the same answer IS the canonical chain state
@@ -254,12 +278,24 @@ projects:
           # return two state snapshots; only the behind-tip one gets
           # routed-around. Drift IS real on this bucket.
           # `eth_getTransactionCount` is deliberately NOT in Block A:
-          # the `pending` block tag is mempool-dependent, and the
-          # driver's submission mempool is pinned to publicnode-op
-          # alone — the self-hosted op-node will not see pending txs
-          # before the sequencer gossips them back, so EIP-7702
-          # delegation-setup ceremonies (90s of pending-tag polling)
-          # would cordon self-hosted within seconds of every boot.
+          # the `pending` block tag is MEMPOOL-DEPENDENT, so a lane that
+          # never received the tx reports the OLD nonce. Historically the
+          # driver's submission mempool overlapped this quorum on
+          # publicnode-op + official-op; a lane outside that overlap (then
+          # the self-hosted op-node) would not see pending txs before the
+          # sequencer gossiped them back, so EIP-7702 delegation-setup
+          # ceremonies (90s of pending-tag polling) cordoned it within
+          # seconds of every boot.
+          # ⚠️ 2026-08-29: the overlap is now tenderly-op + blockdaemon-op
+          # (blockdaemon was ADDED to driver.toml.tmpl [[submission.mempool]]
+          # for exactly this reason — see the coupling note there). zan-op is
+          # NOT a submission target, so it is the lane expected to lag on
+          # `pending`. Two of three overlapping is a MITIGATION, not a
+          # guarantee: if either overlapping lane also lags it can agree with
+          # zan and carry a stale 2-of-3 nonce. That residual risk is inherent
+          # to consensus over a mempool-dependent tag and is why this method
+          # sits here at disputeThreshold 100 rather than in Block A.
+          # RE-CHECK THE OVERLAP whenever a read lane or a mempool changes.
           # Moved to Block B where threshold:100 absorbs that burst.
           #
           # threshold:60 catches hostile sustained divergence ~1.7× faster
@@ -284,8 +320,9 @@ projects:
           # simultaneously; estimateGas has provider-implementation
           # variance; feeHistory percentiles differ slightly between
           # providers; getTransactionCount with `pending` tag is
-          # mempool-dependent and only the publicnode-op mempool is
-          # authoritative for our submission path). threshold:100
+          # mempool-dependent, and only the lanes that are ALSO submission
+          # targets — tenderly-op and blockdaemon-op since 2026-08-29 — see
+          # our own pending txs at all). threshold:100
           # absorbs this baseline drift while still catching sustained
           # malicious answers — each forged dispute still triggers
           # consensus failure → returnError → driver fails closed at
@@ -715,8 +752,13 @@ projects:
           # one lane's worst-case serial budget (attempts x timeout + backoff)
           # MUST stay under the 12s network budget, or a single wedged lane
           # starves every request before failover — the 08-14 outage. 4s x 2
-          # + 1s backoff = 9s < 12s, and 4s is ~37x this lane's measured p95
-          # (109ms). Shape is deliberately identical to the lane it replaces.
+          # + 1s backoff = 9s < 12s. ⚠️ HEADROOM IS MUCH TIGHTER ON THIS LANE than
+          # on the others: tenderly's measured p95 is 1061ms (max 2065ms) on
+          # 2026-08-29, so 4s is ~3.8x p95, NOT the ~37x the retired official-op's
+          # 109ms gave. Still safely inside the timeout, but if tenderly's tail
+          # grows this is the first lane to start timing out — watch
+          # erpc_upstream_request_duration_seconds before widening anything.
+          # Shape is deliberately identical to the lane it replaces.
           - matchMethod: "*"
             timeout:
               duration: 4s
@@ -775,10 +817,14 @@ projects:
       #     fails closed on ordinary near-tip drift, which is exactly what #476
       #     introduced preferBlockHeadLeader to stop. eRPC cannot match on block
       #     depth, so the two cases cannot be given different behaviour.
-      #   - a third archive-capable non-Cloudflare lane removes the problem
-      #     entirely, and none exists today (see the 2026-08-23 survey: blastapi/
-      #     llamarpc/meowrpc/histori are NXDOMAIN, blockpi/drpc/1rpc/omnia are
-      #     Cloudflare-fronted and would break the <=1-CF invariant).
+      #   - a third archive-capable lane removes the problem entirely. RESOLVED
+      #     2026-08-29: blockdaemon (full archive) took the single CF slot from
+      #     publicnode and tenderly (full archive, keyed) took official-op's, so
+      #     all three lanes are archive-capable and this open item is closed.
+      #     Historical survey (2026-08-23), still useful when re-vetting:
+      #     blastapi/llamarpc/meowrpc/histori NXDOMAIN; blockpi/drpc/1rpc/omnia
+      #     Cloudflare-fronted, so they may only ever REPLACE the CF lane, never
+      #     join it.
       # Decide deliberately. Do not flip the dispute behaviour casually in an
       # incident: it changes the fork-poisoning threat model this file exists to
       # defend, and that model was reviewed.
@@ -789,38 +835,54 @@ projects:
       # 3-of-3, the truth was 2-of-3, and validationcloud's death on 08-18 took it
       # to 1-of-3 — below threshold — without changing a number anyone was reading.
       #
-      # eth_getTransactionReceipt is the only remaining thin method, and it is the
-      # reason its rule is disputeBehavior:returnError rather than
-      # preferBlockHeadLeader — with two responders a leader tie-break is
-      # attacker-selectable, so it must fail closed instead. The RECEIPT rule needs
-      # BOTH zan and tenderly to answer and agree; if either is unavailable,
-      # lowParticipantsBehavior:returnError makes it fail CLOSED (safe — the driver
-      # refuses to conclude Executed/Reverted rather than guessing) while
-      # settlement indexing stalls until it recovers.
+      # eth_getTransactionReceipt WAS the thin method — 2 capable lanes against
+      # agreementThreshold 2 — which is why its rule is disputeBehavior:returnError
+      # rather than preferBlockHeadLeader: with only two responders a leader
+      # tie-break is attacker-selectable, so it must fail closed instead. On
+      # 2026-08-29 zan hit its credit cap, that method dropped to ONE capable lane
+      # and returned 10/10 "not enough agreement among responses" through the proxy.
+      # RESOLVED by the same-day rebuild: blockdaemon, zan and tenderly are ALL
+      # receipt-capable, so any TWO of the three now satisfy the rule and a single
+      # lane loss no longer stalls settlement indexing. KEEP returnError anyway —
+      # it is the correct posture if the count ever falls back to two.
       #
-      # AVAILABILITY PROPERTY: ZAN plus tenderly satisfy threshold 2 for
-      # every protected method AT EVERY DEPTH, so PublicNode tip-lag and its
-      # ~128-block archive gate both degrade nothing, and the
-      # quorum depends on neither Alchemy's monthly allowance nor a self-hosted VM.
+      # AVAILABILITY PROPERTY (2026-08-29): ALL THREE lanes — blockdaemon, zan and
+      # tenderly — satisfy every protected method AT EVERY DEPTH, so ANY TWO form
+      # quorum and no single lane loss degrades a method. This is the first time
+      # that has been true; publicnode's ~128-block archive gate and official-op's
+      # rate limiting each previously made the effective count 2, not 3.
       # Under the single-keyed 07-30 set, quorum required at least one of two
       # rate-capped free lanes to answer — which is what failed under auction load
       # three times. Verify receipts THROUGH THE PROXY, not just /quote: with
       # agreementThreshold:2 a dead 3rd lane hides behind the other two satisfying
       # quorum (/quote stayed 10/10 green while receipts were 0/12 on 07-30).
       #
-      # tenderly is NOT a fallback quorum member: in a fixed 3-lane set any
-      # swapped-in lane is load-bearing by construction, and tenderly's hard
-      # x-tdly-limit:20 cap is the named cause of three outages (07-23, 07-30,
-      # 08-09). Keep it only as a keyless DIAGNOSTIC probe endpoint. If a keyed
-      # lane dies mid-cycle, re-vet a replacement against the full bar:
+      # ⚠️ SUPERSEDED 2026-08-29 — DO NOT ACT ON THE PARAGRAPH THIS REPLACES.
+      # It read "tenderly is NOT a fallback quorum member ... keep it only as a
+      # keyless DIAGNOSTIC probe endpoint", because tenderly's x-tdly-limit:20 was
+      # the named cause of three outages (07-23, 07-30, 08-09). That cap is the
+      # KEYLESS one. tenderly-op now runs on a KEYED gateway whose limit is
+      # x-tdly-limit:400 req/s — 20x higher — and a consensus lane draws ~4 req/s,
+      # about 1% of it. Measured 2026-08-29: 160/160 sustained, 0 failures. The
+      # three historical outages happened when the KEYLESS endpoint carried the
+      # whole stack's ~40 req/s, not a lane's share on a keyed one.
+      # Retiring this lane during a capacity incident for a limit that does not
+      # apply to it would remove a healthy quorum member. Check
+      # `curl -sI` for the x-tdly-limit actually in force before concluding.
+      # If a keyed lane dies mid-cycle, re-vet a replacement against the full bar:
       # non-Cloudflare, receipt-capable, all 10 protected methods, sustained
       # burst through the proxy — not just a low-rate hand probe.
-      # drpc / 1rpc / meowrpc / omnia / blockdaemon(2026-08-09) are disqualified as
-      # ADDITIONAL lanes: all are Cloudflare-fronted, so pairing any of them with
-      # publicnode would create the 2-CF quorum that defeats the fork-poisoning
-      # threat model. tenderly-op (optimism.gateway.tenderly.co) is the admitted 3rd lane as
-      # of 2026-08-23: non-Cloudflare (GCP LB), archive-capable on BOTH eth_getLogs
-      # and receipts, 200/200 eth_call at 151 req/s, p95 109ms.
+      # drpc / 1rpc / meowrpc / omnia are disqualified as ADDITIONAL lanes: all are
+      # Cloudflare-fronted, so adding any of them ALONGSIDE the CF lane creates the
+      # 2-CF quorum that defeats the fork-poisoning threat model. They may only ever
+      # REPLACE it. ⚠️ That is the distinction blockdaemon was wrongly retired on in
+      # 2026-08-09 — it is Cloudflare-fronted and so was disqualified NEXT TO
+      # publicnode, but it is perfectly valid INSTEAD OF it, which is what it now is.
+      # The same rule applies to Google: tenderly-op replaced official-op rather than
+      # joining it, because both are AS396982.
+      # (The "200/200 eth_call at 151 req/s, p95 109ms" figure previously recorded
+      # here was official-op's BURST measurement and is retired with that lane — see
+      # the 2026-08-23 lesson below on why a burst proves nothing.)
       #
       # A SELF-HOSTED lane is still the structurally right answer to free-tier quota
       # exposure, but 2026-08-15 proved it cannot be admitted as a bare upstream: a
