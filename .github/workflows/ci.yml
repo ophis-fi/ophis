@@ -400,3 +400,18 @@ jobs:
             echo "no alerts_test.yml found anywhere — the guard would be vacuous" >&2
             exit 1
           fi
+
+      # WHY: promtool validates that an annotation PARSES, never that it can be
+      # DELIVERED. Both Alertmanager receivers use parse_mode HTML, so an angle
+      # bracket placeholder makes Telegram reject the whole message and the
+      # operator hears nothing. On 2026-09-02 five annotations across all three
+      # chains were in that state, both Cadia disk alerts among them.
+      # Jobs do not share environments; the erpc-consensus-guard job installs this
+      # separately for the same reason. The checker must NOT self-install: a
+      # PEP 668 runner rejects an unqualified pip install outright.
+      - name: install pyyaml
+        run: python3 -m pip install --quiet --break-system-packages pyyaml
+      - name: alert annotations must be deliverable, not just valid
+        run: |
+          python3 scripts/check-alert-annotations.py --self-test
+          python3 scripts/check-alert-annotations.py

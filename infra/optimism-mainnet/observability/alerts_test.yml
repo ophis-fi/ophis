@@ -350,9 +350,9 @@ tests:
           regardless of whether this alert fired.
 
 
-          Diagnose: `cast block-number --rpc-url <each upstream>` to find
+          Diagnose: set UPSTREAM to each endpoint listed in the rendered erpc.yaml and run
 
-          which one is unresponsive. Check rpc-proxy logs:
+          `cast block-number --rpc-url "$UPSTREAM"` to find which one is unresponsive. Check rpc-proxy logs:
 
           `docker logs optimism-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
 
