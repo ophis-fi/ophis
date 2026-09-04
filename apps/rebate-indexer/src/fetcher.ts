@@ -967,7 +967,26 @@ export async function withPipelineLock(
   }
 }
 
-export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: number; owners: number }> {
+export interface RunFetcherOptions {
+  /**
+   * How stale a tracked wallet must be before it is re-fetched. Defaults to the
+   * historical 6 hours, which is right for the 02:00 nightly.
+   *
+   * The intraday refresh passes its own cadence here. Without it, an hourly tick
+   * re-prices and re-scores the SAME trade set five times out of six and records
+   * each of those as a completed refresh boundary, so an ordinary new CoW trade
+   * could still take ~6h to appear on /stats — the tick would look healthy while
+   * delivering almost none of the freshness it advertises.
+   */
+  staleAfterMs?: number;
+}
+
+const DEFAULT_FETCH_STALE_AFTER_MS = 6 * 60 * 60 * 1_000;
+
+export async function runFetcher(
+  _deps?: FetcherDeps,
+  opts: RunFetcherOptions = {},
+): Promise<{ inserted: number; owners: number }> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
   const { db, sql, schema } = await import('./db/index.js');
 
@@ -1024,11 +1043,16 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.
+    // Clamp: never below a minute (a runaway caller must not turn this into a
+    // hot loop against the CoW API) and never above a day.
+    const staleAfterSecs = Math.floor(
+      Math.min(Math.max(opts.staleAfterMs ?? DEFAULT_FETCH_STALE_AFTER_MS, 60_000), 86_400_000) / 1_000,
+    );
     const ownerRows = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
       WHERE last_fetched IS NULL
-         OR last_fetched < now() - INTERVAL '6 hours'
+         OR last_fetched < now() - make_interval(secs => ${staleAfterSecs})
          OR wallet IN (SELECT wallet FROM defillama_backfill_wallets)
       -- proven wallets first; then least-recently-fetched (never-fetched first);
       -- then OLDEST registration. The first_seen tiebreaker makes never-fetched

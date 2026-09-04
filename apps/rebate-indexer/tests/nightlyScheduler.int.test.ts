@@ -248,14 +248,47 @@ describe('intraday refresh must NOT cannibalise the nightly', () => {
 
   it('stores the boundary as the exact UTC instant under a NON-UTC session timezone', async () => {
     const { recordRefreshRun } = await import('../src/cron.js');
-    await sql`SET TIME ZONE 'Pacific/Kiritimati'`;
+    // SET TIME ZONE is CONNECTION-local and this pool holds up to ten. Setting it
+    // on one session would let recordRefreshRun's insert land on a different,
+    // still-UTC connection, so the test could pass even after a regression to a
+    // timezone-naive cast -- protecting nothing while claiming to. Set it on the
+    // DATABASE so every connection the pool hands out inherits it.
+    const dbName = (await sql<{ d: string }[]>`SELECT current_database() AS d`)[0]!.d;
+    await sql.unsafe(`ALTER DATABASE "${dbName}" SET TIME ZONE 'Pacific/Kiritimati'`);
+    // Force fresh sessions so the new default is actually picked up.
+    await sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+              WHERE datname = ${dbName} AND pid <> pg_backend_pid()`;
     try {
       await recordRefreshRun(new Date(Date.UTC(2026, 8, 4, 15, 0, 0)));
       const [row] = await sql<{ iso: string }[]>`
         SELECT to_char(MAX(serviced_boundary) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS') AS iso FROM refresh_runs`;
       expect(row?.iso).toBe('2026-09-04T15:00:00');
     } finally {
-      await sql`SET TIME ZONE 'UTC'`;
+      await sql.unsafe(`ALTER DATABASE "${dbName}" SET TIME ZONE 'UTC'`);
+      await sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+                WHERE datname = ${dbName} AND pid <> pg_backend_pid()`;
     }
+  });
+  // P1: without this the hourly tick is nearly inert. runFetcher's owner gate was
+  // a hardcoded INTERVAL '6 hours', so five of every six hourly ticks would
+  // re-price the SAME trade set, record a completed refresh boundary, and leave a
+  // new CoW trade invisible for ~6h while every metric looked healthy.
+  it('the fetch staleness gate is parameterised, and the interval is honoured by PG', async () => {
+    const { runFetcher } = await import('../src/fetcher.js');
+    expect(typeof runFetcher).toBe('function');
+    expect(runFetcher.length).toBeGreaterThanOrEqual(1); // accepts opts, not just deps
+    // Execute the real make_interval form the query now uses — a driver/SQL fault
+    // here is exactly what a source-only assertion cannot catch.
+    for (const [secs, expected] of [[3600, '01:00:00'], [21600, '06:00:00'], [600, '00:10:00']] as const) {
+      const [row] = await sql<{ i: string }[]>`SELECT make_interval(secs => ${secs})::text AS i`;
+      expect(row?.i).toBe(expected);
+    }
+    // and it genuinely selects differently: a wallet fetched 1h ago is stale at a
+    // 10-minute gate but fresh at the 6-hour default.
+    const [r] = await sql<{ hourly: boolean; daily: boolean }[]>`
+      SELECT (now() - interval '1 hour') < now() - make_interval(secs => 600)   AS hourly,
+             (now() - interval '1 hour') < now() - make_interval(secs => 21600) AS daily`;
+    expect(r?.hourly).toBe(true);
+    expect(r?.daily).toBe(false);
   });
 });

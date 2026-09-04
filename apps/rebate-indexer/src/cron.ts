@@ -658,15 +658,18 @@ export async function recordRefreshRun(servicedBoundary: Date): Promise<void> {
  * runScorer is what stamps public_data_refresh_state, so it is what actually
  * makes /stats and /leaderboard report dataFresh.
  */
-export async function runRefreshSteps(): Promise<void> {
-  const { inserted } = await runFetcher();
+export async function runRefreshSteps(staleAfterMs: number): Promise<void> {
+  // Pass the cadence through: the fetcher's default 6h gate would otherwise make
+  // five of every six hourly ticks a no-op re-score. See RunFetcherOptions.
+  const { inserted } = await runFetcher(undefined, { staleAfterMs });
   const priced = await runPricer();
   const scored = await runScorer();
   log.info({ inserted, priced, scored }, 'intraday refresh complete');
 }
 
 let refreshStartedAt = 0; // 0 = no refresh in flight
-const REFRESH_MAX_RUNTIME_MS = 60 * 60 * 1_000;
+// Below the nightly's bounded lock wait, so a wedged refresh cannot outlive it.
+const REFRESH_MAX_RUNTIME_MS = 20 * 60 * 1_000;
 
 async function refreshTick(): Promise<void> {
   // Bounded in-flight guard, same reasoning as nightlyTick: a boolean would be
@@ -676,15 +679,27 @@ async function refreshTick(): Promise<void> {
     log.error({ runningMs: Date.now() - refreshStartedAt }, 'intraday refresh presumed wedged; releasing the in-flight guard');
     refreshStartedAt = 0;
   }
-  const boundary = lastRefreshBoundary(Date.now(), refreshIntervalMs());
+  const intervalMs = refreshIntervalMs();
+  const boundary = lastRefreshBoundary(Date.now(), intervalMs);
   if (!(await isRefreshDue(boundary))) return;
+  // NEVER compete with a due nightly. withPipelineLock's non-waiting path only
+  // defers once the nightly has taken NIGHTLY_PENDING_LOCK_KEY, so a refresh
+  // that grabs the pipeline lock microseconds earlier still wins — and the
+  // nightly then burns its bounded wait and gives up, skipping the batcher,
+  // accrual, reconciliation and the monthly report. Yield the whole window
+  // instead: the nightly runs the same fetch/price/score itself, so nothing is
+  // lost by sitting this one out.
+  if (await isNightlyDue(lastNightlyBoundary(Date.now()))) {
+    log.info('intraday refresh deferred: a nightly run is due');
+    return;
+  }
   // The nightly owns the pipeline lock. Do NOT wait for it: a refresh that
   // queues behind a long nightly would pile up ticks for no benefit, and the
   // nightly runs the same fetch/price/score itself. Skip and retry next tick.
   refreshStartedAt = Date.now();
   try {
     const ran = await withPipelineLock(async () => {
-      await runRefreshSteps();
+      await runRefreshSteps(intervalMs);
       await recordRefreshRun(boundary);
     });
     if (!ran) log.info('intraday refresh skipped: pipeline busy (nightly holds the lock)');
@@ -711,6 +726,13 @@ export function startCron(): void {
   setInterval(() => {
     void refreshTick().catch((err) => log.error({ err }, 'refresh tick failed'));
   }, NIGHTLY_POLL_MS).unref?.();
-  void refreshTick().catch((err) => log.error({ err }, 'refresh tick failed'));
-  log.info({ refreshMinutes: refreshIntervalMs() / 60_000 }, 'intraday refresh: polling for a due fetch/price/score');
+  // Deliberately NO immediate tick here. startCron() is called at index.ts:16,
+  // BEFORE the one-shot startup backfill, and both take the pipeline lock in
+  // non-waiting mode. On a fresh deploy refresh_runs is empty, so a refresh is
+  // necessarily due and could win that race; the startup backfill would then see
+  // a busy lock and skip PERMANENTLY, losing its DefiLlama queue drain,
+  // readiness completion and repair passes until the next nightly. The first
+  // refresh happens within one poll interval instead.
+  log.info({ refreshMinutes: refreshIntervalMs() / 60_000, firstTickWithinMinutes: NIGHTLY_POLL_MS / 60_000 },
+    'intraday refresh: polling for a due fetch/price/score');
 }
