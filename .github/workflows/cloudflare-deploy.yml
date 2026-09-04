@@ -88,7 +88,9 @@ jobs:
             # Pinned exact (was @formspree/cli@latest): this step carries the
             # Formspree deploy key, so a floating tag must not pull a compromised
             # future release. Bump deliberately.
-            npx --yes @formspree/cli@0.9.6 deploy -k "$FORMSPREE_DEPLOY_KEY"
+            # Formspree is optional and must not hold the production Pages
+            # deployment indefinitely when its CLI or API stalls.
+            timeout --kill-after=15s 2m npx --yes @formspree/cli@0.9.6 deploy -k "$FORMSPREE_DEPLOY_KEY"
           else
             echo "FORMSPREE_DEPLOY_KEY not set; skipping Formspree form deploy."
           fi
