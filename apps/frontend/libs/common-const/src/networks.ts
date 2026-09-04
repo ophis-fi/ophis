@@ -69,6 +69,24 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
 //
 // BNB is deliberately left on publicnode: bsc-dataseed is pruned and no
 // keyless archive endpoint could be verified. It carries the same gate.
+//
+// Chain 10 is NOT mainnet.optimism.io, despite it being first-party and full
+// archive. Our own operational record rejected that endpoint: erpc.yaml.tmpl
+// records official-op as "chronically rate-limited from this host", measured
+// 2026-08-29 at a sustained 4 req/s of uncacheable calls giving 12/160 = 7.5%
+// HTTP 429. A frontend session issues concurrent balance/multicall/SDK reads,
+// so making it the SOLE default would trade an archive error for intermittent
+// ones. optimism.drpc.org matched it on every measure taken here — head-1000 /
+// head-100000 / head-2000000 all served, and 48/48 under an 8-concurrent burst
+// (mainnet.optimism.io also passed that burst; the 7.5% figure is SUSTAINED
+// load, which a browser does not generate, but there is no reason to pick the
+// endpoint carrying the adverse record when an equal one exists).
+//
+// KNOWN TRADE-OFF, recorded deliberately: this makes dRPC the default for four
+// frontend chains while it is also a keyed lane in the OP eRPC stack. The
+// frontend uses dRPC's keyless public endpoints from users' own IPs, so no
+// quota is shared with our server-side lane, but a dRPC outage would touch
+// both. Accepted because no other keyless endpoint met archive depth here.
 const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: boolean }> = {
   [SupportedChainId.MAINNET]: { url: `https://eth.drpc.org`, usesInfura: false },
   [SupportedChainId.BNB]: { url: `https://bsc-rpc.publicnode.com`, usesInfura: false },
@@ -88,7 +106,7 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [SupportedChainId.LINEA]: { url: `https://rpc.linea.build`, usesInfura: false },
   [SupportedChainId.SEPOLIA]: { url: `https://ethereum-sepolia-rpc.publicnode.com`, usesInfura: false },
   // Ophis fork: OP mainnet default public RPC
-  [10 as unknown as SupportedChainId]: { url: `https://mainnet.optimism.io`, usesInfura: false },
+  [10 as unknown as SupportedChainId]: { url: `https://optimism.drpc.org`, usesInfura: false },
   // Ophis fork: Unichain default public RPC
   [130 as unknown as SupportedChainId]: { url: `https://mainnet.unichain.org`, usesInfura: false },
   // Robinhood's official keyless public RPC.
