@@ -38,6 +38,9 @@ const defaults: Partial<FeatureFlags> = {
   // useAvailableTargetChains + useSupportedTargetChains).
   isBtcBridgeEnabled: true,
   isSolBridgeEnabled: true,
+  // Ophis OTC Milestone B is the reviewed, read-only Ethereum surface.
+  // Transaction actions remain separately gated and absent from this release.
+  isOtcEnabled: true,
 }
 
 export function useFeatureFlags(): FeatureFlags {
