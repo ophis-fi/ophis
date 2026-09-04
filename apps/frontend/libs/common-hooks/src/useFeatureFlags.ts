@@ -26,6 +26,7 @@ export interface FeatureFlags {
  * LD-supplied flags still override these defaults via spread order:
  * `{ ...defaults, ...flags }`. So if we ever wire up LD with explicit
  * values (e.g. to A/B-test a provider), the LD value wins.
+ * The OTC deployment kill switch below is the sole final-authority exception.
  */
 const defaults: Partial<FeatureFlags> = {
   // Bridge providers — enable all three so users see EVM↔Solana via
@@ -45,5 +46,14 @@ const defaults: Partial<FeatureFlags> = {
 
 export function useFeatureFlags(): FeatureFlags {
   const flags = useFlags<FeatureFlags>()
-  return { ...defaults, ...flags }
+  const isOtcEnabled =
+    process.env.REACT_APP_OTC_ENABLED === 'false' ? false : (flags.isOtcEnabled ?? defaults.isOtcEnabled)
+
+  return {
+    ...defaults,
+    ...flags,
+    // Deployment control is the final authority so an emergency rollback
+    // cannot be overridden by a stale or future remote flag value.
+    isOtcEnabled,
+  }
 }

@@ -15,6 +15,7 @@ const mockUseFlags = useFlags as jest.MockedFunction<typeof useFlags>
 
 describe('useOtcPageEnabled', () => {
   beforeEach(() => {
+    delete process.env.REACT_APP_OTC_ENABLED
     mockUseFlags.mockReturnValue({})
   })
 
@@ -26,6 +27,15 @@ describe('useOtcPageEnabled', () => {
 
   it('lets an explicit remote flag disable the OTC surface', () => {
     mockUseFlags.mockReturnValue({ isOtcEnabled: false })
+
+    const { result } = renderHook(() => useOtcPageEnabled())
+
+    expect(result.current).toBe(false)
+  })
+
+  it('lets the deployment kill switch override a remote enablement', () => {
+    process.env.REACT_APP_OTC_ENABLED = 'false'
+    mockUseFlags.mockReturnValue({ isOtcEnabled: true })
 
     const { result } = renderHook(() => useOtcPageEnabled())
 
