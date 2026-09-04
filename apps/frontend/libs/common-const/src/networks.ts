@@ -43,16 +43,41 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
 // tracked every visitor's IP + swap intent) to publicnode endpoints.
 // If REACT_APP_INFURA_KEY is set at deploy time, Infura is still
 // attempted first for compatibility — see usesInfura branch in
-// getRpcUrl(). publicnode is a non-tracking fallback that needs no key.
+// getRpcUrl(). The replacements below are still keyless and still avoid
+// a shared tracked API key — that part of F1 stands.
+//
+// 2026-09-04: moved OFF publicnode (Allnodes) on every chain where a
+// keyless replacement with real archive depth was verified. Allnodes'
+// free endpoints are archive-gated ~128 blocks from head and answer
+// anything deeper with jsonrpc -32602 "Archive requests require a
+// personal token". Measured that day, head-128 already failed on
+// ethereum, base, bnb, optimism AND arbitrum. On Arbitrum's ~0.25s
+// blocks that is 30 SECONDS of history.
+//
+// This is not only our own reads: getRpcUrls() in
+// libs/wallet/src/web3-react/utils/switchChain.ts hands these URLs to
+// the user's wallet via wallet_addEthereumChain, so MetaMask inherits
+// the same gate and surfaces the Allnodes error to the user directly.
+// Same root cause as the 2026-08-23 OP settlement-indexer outage, which
+// is documented in docs/operations/op-erpc-runbook.md.
+//
+// Each replacement was probed at head-1000 and head-100000 before being
+// used here; base / optimism / avalanche also served head-2000000.
+// arb1.arbitrum.io was REJECTED: it load-balances across nodes with
+// different retention and answered -5000 ok, -20000 limited, -50000 ok
+// in one pass, so its depth is not dependable.
+//
+// BNB is deliberately left on publicnode: bsc-dataseed is pruned and no
+// keyless archive endpoint could be verified. It carries the same gate.
 const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: boolean }> = {
-  [SupportedChainId.MAINNET]: { url: `https://ethereum-rpc.publicnode.com`, usesInfura: false },
+  [SupportedChainId.MAINNET]: { url: `https://eth.drpc.org`, usesInfura: false },
   [SupportedChainId.BNB]: { url: `https://bsc-rpc.publicnode.com`, usesInfura: false },
   [SupportedChainId.GNOSIS_CHAIN]: { url: `https://rpc.gnosis.gateway.fm`, usesInfura: false },
-  [SupportedChainId.POLYGON]: { url: `https://polygon-bor-rpc.publicnode.com`, usesInfura: false },
-  [SupportedChainId.BASE]: { url: `https://base-rpc.publicnode.com`, usesInfura: false },
+  [SupportedChainId.POLYGON]: { url: `https://polygon.drpc.org`, usesInfura: false },
+  [SupportedChainId.BASE]: { url: `https://mainnet.base.org`, usesInfura: false },
   [SupportedChainId.PLASMA]: { url: `https://rpc.plasma.to`, usesInfura: false },
-  [SupportedChainId.ARBITRUM_ONE]: { url: `https://arbitrum-one-rpc.publicnode.com`, usesInfura: false },
-  [SupportedChainId.AVALANCHE]: { url: `https://avalanche-c-chain-rpc.publicnode.com`, usesInfura: false },
+  [SupportedChainId.ARBITRUM_ONE]: { url: `https://arbitrum.drpc.org`, usesInfura: false },
+  [SupportedChainId.AVALANCHE]: { url: `https://api.avax.network/ext/bc/C/rpc`, usesInfura: false },
   // Ink: kept upstream's `rpc-ten.inkonchain.com`. Sharp-edges audit M2
   // (2026-05-20) claimed this was non-archive but empirical testing
   // contradicted: returns 2009 logs over last 100 blocks, 1191 logs
@@ -63,7 +88,7 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [SupportedChainId.LINEA]: { url: `https://rpc.linea.build`, usesInfura: false },
   [SupportedChainId.SEPOLIA]: { url: `https://ethereum-sepolia-rpc.publicnode.com`, usesInfura: false },
   // Ophis fork: OP mainnet default public RPC
-  [10 as unknown as SupportedChainId]: { url: `https://optimism-rpc.publicnode.com`, usesInfura: false },
+  [10 as unknown as SupportedChainId]: { url: `https://mainnet.optimism.io`, usesInfura: false },
   // Ophis fork: Unichain default public RPC
   [130 as unknown as SupportedChainId]: { url: `https://mainnet.unichain.org`, usesInfura: false },
   // Robinhood's official keyless public RPC.
