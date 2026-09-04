@@ -8,6 +8,8 @@
  */
 import { ReactNode } from 'react'
 
+import { useFeatureFlags } from '@cowprotocol/common-hooks'
+
 import { Link } from 'react-router'
 import styled from 'styled-components/macro'
 
@@ -143,8 +145,31 @@ const Right = styled.div`
   gap: 14px;
 `
 
+const OtcNavLink = styled(Link)`
+  padding: 8px 4px;
+  color: #f5efe6;
+  font:
+    600 14px/1 'Geist',
+    var(--cow-font-family-primary, system-ui);
+  text-decoration: none;
+  transition: color 140ms ease-out;
+
+  &:hover,
+  &:focus-visible {
+    color: #f2a63e;
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(242, 166, 62, 0.55);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+`
+
 export function OphisHeader({ children, transparent = false }: Props): ReactNode {
   const scrolled = useScrollClass(40)
+  const { isOtcEnabled } = useFeatureFlags()
+
   return (
     <HeaderStack $transparent={transparent}>
       <Announcement href="/#/4663/swap" aria-label="Robinhood Chain is live on Ophis. Trade now">
@@ -158,7 +183,10 @@ export function OphisHeader({ children, transparent = false }: Props): ReactNode
             ophis<WordmarkAccent>.</WordmarkAccent>
           </WordmarkText>
         </Wordmark>
-        <Right>{children}</Right>
+        <Right>
+          {isOtcEnabled ? <OtcNavLink to="/otc">OTC</OtcNavLink> : null}
+          {children}
+        </Right>
       </Bar>
     </HeaderStack>
   )
