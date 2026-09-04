@@ -54,6 +54,7 @@
 #   1 — .env missing
 #   2 — running under set -x (PK would leak in trace)
 #   4 — .env still has legacy OPHIS_DRIVER_SUBMITTER_KEY line
+#  14 — ERPC_IMAGE in .env disagrees with the pin tracked in .env.example
 #   5 — PK file at /Users/ophis-driver/.config/submitter.key is malformed
 
 set -euo pipefail
@@ -169,6 +170,40 @@ set -a
 # shellcheck disable=SC1091
 source .env
 set +a
+
+# ── eRPC image pin: the live .env must match the pin tracked in git ──────────
+# ERPC_IMAGE lives only in .env, which is gitignored, so until 2026-09-04
+# nothing in the repo recorded which eRPC actually ran. That gap is not
+# cosmetic. 0.0.64 carries an implicit cached-head availability gate that
+# rejects an upstream BEFORE forwarding whenever its polled head trails the
+# network-known highest. Measured with all three lanes on the IDENTICAL block
+# it produced tenderly 0% / drpc 32% / zan 90% ErrUpstreamBlockUnavailable and
+# silently cut the 2-of-3 quorum to ONE lane on the settlement-gating path,
+# while erpc_consensus_errors_total stayed at zero. Upstream removed the gate
+# in d655d63 (#934), first shipped in 0.1.2.
+#
+# Recording the pin in .env.example is not enough by itself: Compose reads
+# .env, and docker-compose.yml only asserts ERPC_IMAGE is NON-EMPTY. Editing
+# .env back to 0.0.64 would leave the checkout clean and start the vulnerable
+# image with no warning — the exact silent rollback the record is meant to stop.
+# So compare them and fail closed. Deliberately no override flag: if you are
+# moving the pin on purpose, move it in .env.example in the same change so git
+# keeps the record.
+EXPECTED_ERPC_IMAGE="$(sed -n 's/^ERPC_IMAGE=//p' .env.example | head -1)"
+if [[ -z "$EXPECTED_ERPC_IMAGE" ]]; then
+  echo "ERROR: .env.example has no ERPC_IMAGE= line to check against." >&2
+  echo "       The tracked pin is the only record of which eRPC we run." >&2
+  exit 14
+fi
+if [[ "${ERPC_IMAGE:-}" != "$EXPECTED_ERPC_IMAGE" ]]; then
+  echo "ERROR: ERPC_IMAGE in .env does not match the pin tracked in .env.example." >&2
+  echo "         .env:         ${ERPC_IMAGE:-<unset>}" >&2
+  echo "         .env.example: $EXPECTED_ERPC_IMAGE" >&2
+  echo "       Refusing to render. Anything below 0.1.2 reintroduces the block-" >&2
+  echo "       availability gate that thins the settlement quorum to one lane." >&2
+  echo "       If this change is intentional, update .env.example too." >&2
+  exit 14
+fi
 
 # ── ZAN key: migrate the legacy name, and NEVER render an empty one ──────────
 # ZAN_OP_KEY was renamed to ZAN_API_KEY on 2026-07-30 (the credential is
