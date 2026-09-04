@@ -479,8 +479,33 @@ projects:
         # NOTE: measured polling ran at ~2s despite the 5s setting, so this poller
         # is substantially request-driven and the interval is an upper bound, not
         # a guarantee. Treat any saving here as a bonus and verify it empirically.
-        statePollerInterval: 10s
-        statePollerDebounce: 1s
+        # 2026-09-04: 10s -> 2s, debounce 1s -> 200ms. The 10s value was a cost
+        # saving whose stated check was `erpc_consensus_errors_total{error=
+        # "dispute"}`; that counter reads 0 and CANNOT move, because eRPC counts
+        # an ERRORED upstream as a collected participant, so lowParticipants
+        # never fires and every shortfall is resolved by preferBlockHeadLeader
+        # instead of erroring. The harm shows only in
+        # erpc_consensus_agreement_count_bucket, which nothing watched.
+        #
+        # Measured 2026-09-04 with all three lanes at the IDENTICAL head block
+        # (zero drift, so nothing was actually lagging):
+        #   tenderly-op  7.40 req/s   0.00% ErrUpstreamBlockUnavailable
+        #   drpc-op      3.11 req/s  31.86%
+        #   zan-op       2.23 req/s  89.89%
+        # Rejection tracked traffic share, not lateness: `enforceHighestBlock`
+        # excludes any upstream behind the network-known highest, the poller is
+        # request-driven, so the busiest lane defines the tip and can never fail
+        # its own check while the quiet lanes are excluded on ~every new block.
+        # 10s on a 2s chain is a 5-block blind spot for a lane nobody is calling.
+        # Result: 740 of 13,126 consensus ops/hour resolved on <=1 agreeing lane
+        # and were served as authoritative.
+        #
+        # eRPC's own guidance for fast chains is a tight debounce (200-500ms).
+        # Cost: each lane is polled at least every 2s (~0.5 req/s, eth_blockNumber,
+        # cheap) instead of every 10s. Watch zan's monthly credit line -- its real
+        # cap is 150M/mo and it has hit exactly 100% before.
+        statePollerInterval: 2s
+        statePollerDebounce: 200ms
 
     upstreams:
       # ─── Owned-node consensus set (2026-08-11 incident) ───

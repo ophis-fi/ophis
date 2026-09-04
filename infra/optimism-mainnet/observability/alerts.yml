@@ -553,6 +553,61 @@ groups:
             Threshold history: 5/s ≈ 100% failure on `eth_call` consensus path
             (driver/orderbook poll ~5/s steady state).
 
+      # WHY THIS EXISTS: OphisOpErpcConsensusLowParticipantsHigh above watches
+      # erpc_consensus_errors_total{error="low_participants"}, and that counter
+      # CANNOT move. eRPC counts an ERRORED upstream as a collected participant,
+      # so lowParticipantsBehavior:returnError never triggers; a shortfall is
+      # classified as a dispute and resolved by preferBlockHeadLeader, which
+      # serves the lone valid answer. Measured over 24h on 2026-09-04:
+      #   low_participants  0
+      #   dispute           0
+      #   ops resolved on <=1 agreeing lane   17,144 of 315,129  (5.4%)
+      # Two alerts read zero all day while one in eighteen settlement-gating
+      # reads was trusted to a single provider. The agreement histogram is the
+      # only place the shortfall is visible, so alert on that instead.
+      # Expected to sit near zero once the state-poller freshness race is fixed;
+      # if it climbs again, a lane is being excluded, not disagreeing.
+      - alert: OphisOpErpcConsensusThinMargin
+        expr: |
+          (
+            sum(rate(erpc_consensus_agreement_count_bucket{network="evm:10", le="1.0"}[15m]))
+            /
+            sum(rate(erpc_consensus_agreement_count_count{network="evm:10"}[15m]))
+          ) > 0.01
+          and
+          sum(rate(erpc_consensus_agreement_count_count{network="evm:10"}[15m])) > 0.05
+        for: 15m
+        labels:
+          severity: warning
+          chain: optimism
+        annotations:
+          summary: "OP eRPC consensus resolving on a single agreeing lane"
+          description: |
+            More than 1% of OP consensus operations are resolving with at most ONE
+            agreeing upstream, and are being served as authoritative anyway. The
+            configured quorum is 2-of-3; the real agreement margin right now is 1.
+
+            This does NOT show up in erpc_consensus_errors_total. An errored
+            upstream still counts as a collected participant, so lowParticipants
+            never fires and the shortfall is resolved by preferBlockHeadLeader
+            picking the lone valid answer. Both of those counters can read zero
+            while this is happening.
+
+            Diagnose by asking whether lanes are DISAGREEING or being EXCLUDED:
+            compare erpc_upstream_request_errors_total by error label per upstream.
+            ErrUpstreamBlockUnavailable means excluded on freshness, not wrong:
+            enforceHighestBlock drops any upstream behind the network-known
+            highest, the state poller is request-driven, so the busiest lane
+            defines the tip and the quiet lanes are excluded on every new block.
+            Check statePollerInterval against the chain block time before
+            suspecting a provider. ErrEndpointCapacityExceeded instead means a
+            provider is rate-limiting us and the lane needs its share reduced.
+
+            Integrity issue, not availability: quotes and settlement keep working,
+            they are just trusting one provider. Do NOT tighten disputeBehavior to
+            returnError while this is elevated, or every one of these becomes a
+            hard failure and the driver pauses. Fix the exclusion first, confirm
+            this alert clears, then tighten.
       - alert: OphisOpErpcConsensusDisputeHigh
         expr: |
           sum by (category) (
