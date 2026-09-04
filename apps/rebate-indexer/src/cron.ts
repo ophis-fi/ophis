@@ -602,6 +602,99 @@ async function nightlyTick(): Promise<void> {
   }
 }
 
+/**
+ * Intraday refresh cadence, in minutes. Default 60.
+ *
+ * The nightly pipeline stays at 02:00 UTC and is untouched: it owns registry
+ * maintenance, repairs, partner fees, reconciliation, accrual, the batcher and
+ * the monthly report. This lighter tick exists only so the PUBLIC surface
+ * (stats, leaderboard) stops being up to 24h behind.
+ *
+ * COST NOTE before lowering this: runFetcher pages the CoW API per (chain,
+ * owner) with FETCHER_MAX_OWNERS_PER_RUN = 500, so with 13 production chains
+ * and ~29 tracked wallets one pass is roughly 380 API calls. At 60 minutes
+ * that is ~9k calls/day. Raising the cadence multiplies that linearly.
+ */
+export function refreshIntervalMs(): number {
+  const raw = process.env['REBATES_REFRESH_MINUTES'];
+  const mins = raw === undefined ? 60 : Number(raw);
+  // Reject junk and anything under 10 minutes: the poll loop itself ticks every
+  // 10, so a smaller boundary would be unreachable and would just look broken.
+  if (!Number.isFinite(mins) || mins < 10 || mins > 24 * 60) return 60 * 60_000;
+  return Math.floor(mins) * 60_000;
+}
+
+/**
+ * Most recent refresh boundary at or before `nowMs`, for a given interval.
+ * Pure — testable without a clock or a database, exactly like lastNightlyBoundary.
+ */
+export function lastRefreshBoundary(nowMs: number, intervalMs: number): Date {
+  return new Date(Math.floor(nowMs / intervalMs) * intervalMs);
+}
+
+/** Is an intraday refresh due? Reads the DURABLE record, never a timer. */
+export async function isRefreshDue(boundary: Date): Promise<boolean> {
+  const [row] = await sql<{ due: boolean }[]>`
+    SELECT COALESCE(MAX(serviced_boundary), '-infinity'::timestamptz) < ${boundary.toISOString()}::timestamptz AS due
+    FROM refresh_runs
+  `;
+  return row?.due === true;
+}
+
+export async function recordRefreshRun(servicedBoundary: Date): Promise<void> {
+  await sql`INSERT INTO refresh_runs (serviced_boundary) VALUES (${servicedBoundary.toISOString()}::timestamptz)`;
+}
+
+/**
+ * The light path: bring the PUBLIC surface up to date and nothing else.
+ *
+ * Deliberately excludes every step runPipelineSteps marks nightly-only --
+ * pruneStaleWallets ("Registry maintenance — nightly only"), the repairs,
+ * DefiLlama backfill completion, partner fees, reconciliation, accrual, the
+ * batcher, payouts and the monthly report. Those are money-path and
+ * month-boundary sensitive; running them 24x more often is not "fresher data",
+ * it is a different program.
+ *
+ * runScorer is what stamps public_data_refresh_state, so it is what actually
+ * makes /stats and /leaderboard report dataFresh.
+ */
+export async function runRefreshSteps(): Promise<void> {
+  const { inserted } = await runFetcher();
+  const priced = await runPricer();
+  const scored = await runScorer();
+  log.info({ inserted, priced, scored }, 'intraday refresh complete');
+}
+
+let refreshStartedAt = 0; // 0 = no refresh in flight
+const REFRESH_MAX_RUNTIME_MS = 60 * 60 * 1_000;
+
+async function refreshTick(): Promise<void> {
+  // Bounded in-flight guard, same reasoning as nightlyTick: a boolean would be
+  // pinned forever by one wedged call and silently suppress every later tick.
+  if (refreshStartedAt) {
+    if (Date.now() - refreshStartedAt < REFRESH_MAX_RUNTIME_MS) return;
+    log.error({ runningMs: Date.now() - refreshStartedAt }, 'intraday refresh presumed wedged; releasing the in-flight guard');
+    refreshStartedAt = 0;
+  }
+  const boundary = lastRefreshBoundary(Date.now(), refreshIntervalMs());
+  if (!(await isRefreshDue(boundary))) return;
+  // The nightly owns the pipeline lock. Do NOT wait for it: a refresh that
+  // queues behind a long nightly would pile up ticks for no benefit, and the
+  // nightly runs the same fetch/price/score itself. Skip and retry next tick.
+  refreshStartedAt = Date.now();
+  try {
+    const ran = await withPipelineLock(async () => {
+      await runRefreshSteps();
+      await recordRefreshRun(boundary);
+    });
+    if (!ran) log.info('intraday refresh skipped: pipeline busy (nightly holds the lock)');
+  } catch (err: any) {
+    log.error({ err: err?.message ?? err }, 'intraday refresh failed');
+  } finally {
+    refreshStartedAt = 0;
+  }
+}
+
 export function startCron(): void {
   // Poll, do not schedule. See nightlyTick.
   setInterval(() => {
@@ -611,4 +704,13 @@ export function startCron(): void {
   // immediately instead of waiting out the first poll interval.
   void nightlyTick().catch((err) => log.error({ err }, 'nightly tick failed'));
   log.info({ pollMinutes: NIGHTLY_POLL_MS / 60_000 }, 'nightly pipeline: polling for a due run after 02:00 UTC');
+
+  // Intraday public-data refresh. Same poll-do-not-schedule shape as the
+  // nightly, for the same reason (node-cron@4 silently skipped 02:00 whenever
+  // this WSL2 host suspended), and against its OWN durable boundary record.
+  setInterval(() => {
+    void refreshTick().catch((err) => log.error({ err }, 'refresh tick failed'));
+  }, NIGHTLY_POLL_MS).unref?.();
+  void refreshTick().catch((err) => log.error({ err }, 'refresh tick failed'));
+  log.info({ refreshMinutes: refreshIntervalMs() / 60_000 }, 'intraday refresh: polling for a due fetch/price/score');
 }

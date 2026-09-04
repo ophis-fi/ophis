@@ -190,3 +190,47 @@ describe('every cycle-selecting monthly helper is given the serviced boundary', 
     expect(src).toMatch(/date_trunc\('month', \$\{servicedBoundary\.toISOString\(\)\}::timestamptz AT TIME ZONE 'UTC'\)/);
   });
 });
+
+describe('intraday refresh cadence — boundary math and env guard', () => {
+  let lastRefreshBoundary: (nowMs: number, intervalMs: number) => Date;
+  let refreshIntervalMs: () => number;
+  beforeAll(async () => {
+    ({ lastRefreshBoundary, refreshIntervalMs } = await import('../src/cron.js'));
+  });
+  afterEach(() => {
+    delete process.env.REBATES_REFRESH_MINUTES;
+  });
+
+  const HOUR = 3_600_000;
+
+  it('floors to the interval, and is idempotent inside one window', () => {
+    const at = Date.UTC(2026, 8, 4, 13, 47, 12);
+    const b = lastRefreshBoundary(at, HOUR);
+    expect(b.toISOString()).toBe('2026-09-04T13:00:00.000Z');
+    // anywhere later in the same hour maps to the SAME boundary, so a tick that
+    // already ran is not due again — this is what stops a poll loop re-running.
+    expect(lastRefreshBoundary(at + 12 * 60_000, HOUR).getTime()).toBe(b.getTime());
+  });
+
+  it('advances exactly once per interval', () => {
+    const a = lastRefreshBoundary(Date.UTC(2026, 8, 4, 13, 59, 59), HOUR);
+    const b = lastRefreshBoundary(Date.UTC(2026, 8, 4, 14, 0, 0), HOUR);
+    expect(b.getTime() - a.getTime()).toBe(HOUR);
+  });
+
+  it('defaults to 60 minutes', () => {
+    expect(refreshIntervalMs()).toBe(60 * 60_000);
+  });
+
+  it('honours a valid override', () => {
+    process.env.REBATES_REFRESH_MINUTES = '180';
+    expect(refreshIntervalMs()).toBe(180 * 60_000);
+  });
+
+  it('falls back to 60 on junk, and on anything the 10-minute poll cannot reach', () => {
+    for (const bad of ['', 'abc', '0', '-5', '9', '1441', 'NaN']) {
+      process.env.REBATES_REFRESH_MINUTES = bad;
+      expect(refreshIntervalMs(), `input ${JSON.stringify(bad)}`).toBe(60 * 60_000);
+    }
+  });
+});
