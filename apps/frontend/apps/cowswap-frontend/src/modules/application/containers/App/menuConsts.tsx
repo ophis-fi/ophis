@@ -83,7 +83,7 @@ const MORE_ITEM = (isSolversEnabled: boolean): UntranslatedMenuItem => ({
   ],
 })
 
-export const NAV_ITEMS = (chainId: SupportedChainId, isSolversEnabled: boolean): MenuItem[] => {
+export const NAV_ITEMS = (chainId: SupportedChainId, isSolversEnabled: boolean, isOtcEnabled: boolean): MenuItem[] => {
   const _ACCOUNT_ITEM = ACCOUNT_ITEM(chainId)
   const accountItem: MenuItem = {
     label: i18n._(_ACCOUNT_ITEM.label),
@@ -114,7 +114,12 @@ export const NAV_ITEMS = (chainId: SupportedChainId, isSolversEnabled: boolean):
     })),
   }
 
-  return [accountItem, learnItem, moreItem]
+  const otcItem: MenuItem = {
+    href: Routes.OTC,
+    label: i18n._(msg`OTC`),
+  }
+
+  return [...(isOtcEnabled ? [otcItem] : []), accountItem, learnItem, moreItem]
 }
 
 export const ADDITIONAL_FOOTER_CONTENT = (

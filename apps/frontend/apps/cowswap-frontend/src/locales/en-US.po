@@ -928,6 +928,10 @@ msgstr "Page not found"
 msgid "Solvers"
 msgstr "Solvers"
 
+#: apps/cowswap-frontend/src/modules/application/containers/App/menuConsts.tsx
+msgid "OTC"
+msgstr "OTC"
+
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Content/NoOrders/OrdersTableNoOrdersContent.utils.tsx
 msgid "your orders"
 msgstr "your orders"
