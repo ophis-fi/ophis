@@ -722,8 +722,9 @@ async function refreshTick(): Promise<void> {
   // Re-sample the clock. `now` was taken before two awaits (isRefreshDue and
   // isNightlyDue); if the database was slow, minutes may have passed and the
   // quiet-window decision above could already be stale.
-  if (isInsideNightlyQuietWindow(Date.now())) {
-    log.info('intraday refresh deferred: quiet window opened while checking');
+  const settled = Date.now();
+  if (isInsideNightlyQuietWindow(settled) || (await isNightlyDue(lastNightlyBoundary(settled)))) {
+    log.info('intraday refresh deferred: the nightly became due, or the quiet window opened, while checking');
     return;
   }
   refreshStartedAt = Date.now();
