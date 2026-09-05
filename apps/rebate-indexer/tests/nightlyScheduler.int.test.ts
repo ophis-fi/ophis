@@ -269,26 +269,40 @@ describe('intraday refresh must NOT cannibalise the nightly', () => {
                 WHERE datname = ${dbName} AND pid <> pg_backend_pid()`;
     }
   });
-  // P1: without this the hourly tick is nearly inert. runFetcher's owner gate was
-  // a hardcoded INTERVAL '6 hours', so five of every six hourly ticks would
-  // re-price the SAME trade set, record a completed refresh boundary, and leave a
-  // new CoW trade invisible for ~6h while every metric looked healthy.
-  it('the fetch staleness gate is parameterised, and the interval is honoured by PG', async () => {
+  // P1: without a parameterised gate the hourly tick is nearly inert. And the
+  // FIRST attempt at that parameter -- a relative "older than one hour" window --
+  // was still wrong: it fetches each wallet only every OTHER tick.
+  it('boundary-relative eligibility fetches a wallet ONCE PER BOUNDARY, not every other one', async () => {
+    // 13:00 boundary. A wallet last fetched at 12:05 must be eligible.
+    const [rel] = await sql<{ eligible: boolean }[]>`
+      SELECT (TIMESTAMPTZ '2026-09-04 12:05:00+00'
+              < TIMESTAMPTZ '2026-09-04 13:00:00+00' - interval '1 hour') AS eligible`;
+    expect(rel?.eligible).toBe(false);   // the OLD relative form: skipped -> ~2h stale
+
+    const [abs] = await sql<{ eligible: boolean }[]>`
+      SELECT (TIMESTAMPTZ '2026-09-04 12:05:00+00'
+              < TIMESTAMPTZ '2026-09-04 13:00:00+00') AS eligible`;
+    expect(abs?.eligible).toBe(true);    // boundary-relative: fetched, as intended
+
+    // and the on-the-nose case the strict comparison used to drop
+    const [nose] = await sql<{ rel: boolean; abs: boolean }[]>`
+      SELECT (TIMESTAMPTZ '2026-09-04 12:00:00+00' < TIMESTAMPTZ '2026-09-04 13:00:00+00' - interval '1 hour') AS rel,
+             (TIMESTAMPTZ '2026-09-04 12:00:00+00' < TIMESTAMPTZ '2026-09-04 13:00:00+00') AS abs`;
+    expect(nose?.rel).toBe(false);
+    expect(nose?.abs).toBe(true);
+  });
+
+  it('runFetcher takes an absolute cutoff and PG accepts the bound form', async () => {
     const { runFetcher } = await import('../src/fetcher.js');
-    expect(typeof runFetcher).toBe('function');
-    expect(runFetcher.length).toBeGreaterThanOrEqual(1); // accepts opts, not just deps
-    // Execute the real make_interval form the query now uses — a driver/SQL fault
-    // here is exactly what a source-only assertion cannot catch.
-    for (const [secs, expected] of [[3600, '01:00:00'], [21600, '06:00:00'], [600, '00:10:00']] as const) {
-      const [row] = await sql<{ i: string }[]>`SELECT make_interval(secs => ${secs})::text AS i`;
-      expect(row?.i).toBe(expected);
-    }
-    // and it genuinely selects differently: a wallet fetched 1h ago is stale at a
-    // 10-minute gate but fresh at the 6-hour default.
-    const [r] = await sql<{ hourly: boolean; daily: boolean }[]>`
-      SELECT (now() - interval '1 hour') < now() - make_interval(secs => 600)   AS hourly,
-             (now() - interval '1 hour') < now() - make_interval(secs => 21600) AS daily`;
-    expect(r?.hourly).toBe(true);
-    expect(r?.daily).toBe(false);
+    expect(runFetcher.length).toBeGreaterThanOrEqual(1);
+    // Execute the real comparison shape, with a Date serialised the way the
+    // production call does it -- the 2026-08-31 outage was exactly a Date that
+    // postgres.js could not bind.
+    const cutoff = new Date(Date.UTC(2026, 8, 4, 13, 0, 0)).toISOString();
+    const [row] = await sql<{ before: boolean; after: boolean }[]>`
+      SELECT (TIMESTAMPTZ '2026-09-04 12:05:00+00' < ${cutoff}::timestamptz) AS before,
+             (TIMESTAMPTZ '2026-09-04 13:05:00+00' < ${cutoff}::timestamptz) AS after`;
+    expect(row?.before).toBe(true);
+    expect(row?.after).toBe(false);
   });
 });

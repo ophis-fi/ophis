@@ -969,16 +969,23 @@ export async function withPipelineLock(
 
 export interface RunFetcherOptions {
   /**
-   * How stale a tracked wallet must be before it is re-fetched. Defaults to the
-   * historical 6 hours, which is right for the 02:00 nightly.
+   * ABSOLUTE cutoff: re-fetch a tracked wallet whose last_fetched precedes this
+   * instant. Defaults to now minus 6 hours, the historical behaviour, which is
+   * right for the 02:00 nightly.
    *
-   * The intraday refresh passes its own cadence here. Without it, an hourly tick
-   * re-prices and re-scores the SAME trade set five times out of six and records
-   * each of those as a completed refresh boundary, so an ordinary new CoW trade
-   * could still take ~6h to appear on /stats — the tick would look healthy while
-   * delivering almost none of the freshness it advertises.
+   * WHY ABSOLUTE AND NOT A RELATIVE WINDOW. The first version of this took a
+   * duration and compared `last_fetched < now() - interval`. With an hourly
+   * cadence that fetches each wallet only every OTHER tick: a wallet fetched at
+   * 12:05 is still not stale when the 13:00 tick asks for "older than one hour"
+   * (12:05 is after 12:00), yet that tick records 13:00 as a completed boundary
+   * and no later poll retries inside it — so the wallet waits until ~14:00 and a
+   * trade can hide for nearly two hours. Boundary-exact comparison also breaks on
+   * the nose: a fetch at exactly 12:00 fails a strict `< 12:00` at the 13:00 tick.
+   *
+   * Passing the refresh BOUNDARY itself fixes both: anything not fetched since
+   * this boundary opened is eligible, once per boundary, exactly as intended.
    */
-  staleAfterMs?: number;
+  staleBefore?: Date;
 }
 
 const DEFAULT_FETCH_STALE_AFTER_MS = 6 * 60 * 60 * 1_000;
@@ -1043,16 +1050,18 @@ export async function runFetcher(
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.
-    // Clamp: never below a minute (a runaway caller must not turn this into a
-    // hot loop against the CoW API) and never above a day.
-    const staleAfterSecs = Math.floor(
-      Math.min(Math.max(opts.staleAfterMs ?? DEFAULT_FETCH_STALE_AFTER_MS, 60_000), 86_400_000) / 1_000,
-    );
+    // Clamp the cutoff into [now-1day, now-1min]: a runaway caller must not turn
+    // this into a hot loop against the CoW API, nor silently disable re-fetching.
+    const nowMs = Date.now();
+    const requested = (opts.staleBefore ?? new Date(nowMs - DEFAULT_FETCH_STALE_AFTER_MS)).getTime();
+    const staleBeforeIso = new Date(
+      Math.min(Math.max(requested, nowMs - 86_400_000), nowMs - 60_000),
+    ).toISOString();
     const ownerRows = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
       WHERE last_fetched IS NULL
-         OR last_fetched < now() - make_interval(secs => ${staleAfterSecs})
+         OR last_fetched < ${staleBeforeIso}::timestamptz
          OR wallet IN (SELECT wallet FROM defillama_backfill_wallets)
       -- proven wallets first; then least-recently-fetched (never-fetched first);
       -- then OLDEST registration. The first_seen tiebreaker makes never-fetched

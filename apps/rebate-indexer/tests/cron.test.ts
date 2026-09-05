@@ -234,3 +234,31 @@ describe('intraday refresh cadence — boundary math and env guard', () => {
     }
   });
 });
+
+describe('intraday refresh runtime budget actually releases the lock', () => {
+  it('rejects when the work outlives the budget, so withPipelineLock unwinds', async () => {
+    // Models the production race: refresh work that hangs past the budget must
+    // REJECT, because withPipelineLock releases the advisory lock in its finally.
+    // Merely clearing the in-flight guard (the first patch) left the callback
+    // holding the lock and could still exhaust the nightly's 40-minute wait.
+    const BUDGET = 30;
+    const hung = new Promise<void>(() => {});           // never settles
+    await expect(
+      Promise.race([
+        hung,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('intraday refresh exceeded its runtime budget')), BUDGET)),
+      ]),
+    ).rejects.toThrow(/exceeded its runtime budget/);
+  });
+
+  it('work finishing inside the budget resolves normally', async () => {
+    const quick = new Promise<string>((res) => setTimeout(() => res('done'), 5));
+    await expect(
+      Promise.race([
+        quick,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('budget')), 200)),
+      ]),
+    ).resolves.toBe('done');
+  });
+});

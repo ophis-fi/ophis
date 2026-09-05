@@ -658,10 +658,10 @@ export async function recordRefreshRun(servicedBoundary: Date): Promise<void> {
  * runScorer is what stamps public_data_refresh_state, so it is what actually
  * makes /stats and /leaderboard report dataFresh.
  */
-export async function runRefreshSteps(staleAfterMs: number): Promise<void> {
-  // Pass the cadence through: the fetcher's default 6h gate would otherwise make
-  // five of every six hourly ticks a no-op re-score. See RunFetcherOptions.
-  const { inserted } = await runFetcher(undefined, { staleAfterMs });
+export async function runRefreshSteps(staleBefore: Date): Promise<void> {
+  // Pass the BOUNDARY, not a duration: see RunFetcherOptions for why a relative
+  // window makes an hourly cadence fetch each wallet only every other tick.
+  const { inserted } = await runFetcher(undefined, { staleBefore });
   const priced = await runPricer();
   const scored = await runScorer();
   log.info({ inserted, priced, scored }, 'intraday refresh complete');
@@ -699,7 +699,20 @@ async function refreshTick(): Promise<void> {
   refreshStartedAt = Date.now();
   try {
     const ran = await withPipelineLock(async () => {
-      await runRefreshSteps(intervalMs);
+          // Bound the WORK, not just the guard. Lowering refreshStartedAt alone did
+      // nothing: the callback kept holding the pipeline advisory lock, so a
+      // refresh whose CoW call hung could still exhaust the nightly's 40-minute
+      // PIPELINE_LOCK_WAIT_MS and defer accrual, reconciliation and the batcher.
+      // Rejecting here unwinds into withPipelineLock's finally, which releases
+      // the lock — the orphaned request may run on, but it no longer blocks the
+      // money path.
+      await Promise.race([
+        runRefreshSteps(boundary),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('intraday refresh exceeded its runtime budget; releasing the pipeline lock')),
+            REFRESH_MAX_RUNTIME_MS).unref?.(),
+        ),
+      ]);
       await recordRefreshRun(boundary);
     });
     if (!ran) log.info('intraday refresh skipped: pipeline busy (nightly holds the lock)');
