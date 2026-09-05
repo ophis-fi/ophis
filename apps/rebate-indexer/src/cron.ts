@@ -105,7 +105,14 @@ export async function batcherRanThisMonth(servicedBoundary: Date): Promise<boole
 // pipeline advisory lock); never call this directly or you reintroduce the race
 // with the startup backfill.
 async function runPipelineSteps(servicedBoundary: Date): Promise<void> {
-  const { inserted } = await runFetcher();
+  // BOUNDARY-COMPLETE, not "stale by 6 hours". Once an intraday refresh exists,
+  // the 01:00 tick has just stamped last_fetched on every wallet, so the old
+  // 6-hour default would make the nightly SKIP them — and any trade settling
+  // between that refresh and 02:00 would be missing when the first-of-month
+  // batcher reads the wallets view and computes an IRREVERSIBLE payout. The
+  // 02:xx refresh would ingest it only afterwards. Passing `now` (clamped to
+  // now-1min inside runFetcher) makes every wallet eligible exactly once here.
+  const { inserted } = await runFetcher(undefined, { staleBefore: new Date() });
   log.info({ inserted }, 'fetcher complete');
 
   // Registry maintenance — nightly only (never inside runFetcher / the replay
@@ -668,8 +675,27 @@ export async function runRefreshSteps(staleBefore: Date): Promise<void> {
 }
 
 let refreshStartedAt = 0; // 0 = no refresh in flight
-// Below the nightly's bounded lock wait, so a wedged refresh cannot outlive it.
+// Observability bound only — it releases the in-flight FLAG so ticks resume, it
+// does not cancel work. Deliberately NOT a Promise.race: rejecting early would
+// release the PIPELINE lock while runFetcher still held FETCHER_LOCK_KEY, and
+// the nightly would then acquire the pipeline lock, call runFetcher, get a
+// silent `{ inserted: 0 }` (fetcher.ts logs "already running; skipping") and run
+// first-of-month money steps on incomplete trades. An overlapping refresh is
+// prevented by construction below instead, which is why this can stay a flag.
 const REFRESH_MAX_RUNTIME_MS = 20 * 60 * 1_000;
+// A refresh must never still be running when the nightly comes due. Skip any
+// tick inside this window before the next 02:00 boundary.
+const REFRESH_QUIET_BEFORE_NIGHTLY_MS = 60 * 60 * 1_000;
+
+/**
+ * Is `nowMs` close enough to the next 02:00 boundary that a refresh started now
+ * could still be running when the nightly comes due? Pure — testable without a
+ * clock or a database, like lastNightlyBoundary.
+ */
+export function isInsideNightlyQuietWindow(nowMs: number): boolean {
+  const nextNightly = lastNightlyBoundary(nowMs).getTime() + 86_400_000;
+  return nextNightly - nowMs <= REFRESH_QUIET_BEFORE_NIGHTLY_MS;
+}
 
 async function refreshTick(): Promise<void> {
   // Bounded in-flight guard, same reasoning as nightlyTick: a boolean would be
@@ -689,8 +715,20 @@ async function refreshTick(): Promise<void> {
   // accrual, reconciliation and the monthly report. Yield the whole window
   // instead: the nightly runs the same fetch/price/score itself, so nothing is
   // lost by sitting this one out.
-  if (await isNightlyDue(lastNightlyBoundary(Date.now()))) {
+  const now = Date.now();
+  if (await isNightlyDue(lastNightlyBoundary(now))) {
     log.info('intraday refresh deferred: a nightly run is due');
+    return;
+  }
+  // Quiet window. Without it a refresh started at 01:5x is still inside runFetcher
+  // when 02:00 arrives, and the only ways out are both bad: hold the pipeline lock
+  // and burn the nightly's 40-minute wait, or drop it early and leave an orphan
+  // holding FETCHER_LOCK_KEY so the nightly's own fetch silently returns zero.
+  // Not overlapping in the first place removes the choice.
+  if (isInsideNightlyQuietWindow(now)) {
+    const nextNightly = lastNightlyBoundary(now).getTime() + 86_400_000;
+    log.info({ minutesToNightly: Math.round((nextNightly - now) / 60_000) },
+      'intraday refresh deferred: inside the quiet window before the nightly');
     return;
   }
   // The nightly owns the pipeline lock. Do NOT wait for it: a refresh that
@@ -699,20 +737,7 @@ async function refreshTick(): Promise<void> {
   refreshStartedAt = Date.now();
   try {
     const ran = await withPipelineLock(async () => {
-          // Bound the WORK, not just the guard. Lowering refreshStartedAt alone did
-      // nothing: the callback kept holding the pipeline advisory lock, so a
-      // refresh whose CoW call hung could still exhaust the nightly's 40-minute
-      // PIPELINE_LOCK_WAIT_MS and defer accrual, reconciliation and the batcher.
-      // Rejecting here unwinds into withPipelineLock's finally, which releases
-      // the lock — the orphaned request may run on, but it no longer blocks the
-      // money path.
-      await Promise.race([
-        runRefreshSteps(boundary),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('intraday refresh exceeded its runtime budget; releasing the pipeline lock')),
-            REFRESH_MAX_RUNTIME_MS).unref?.(),
-        ),
-      ]);
+          await runRefreshSteps(boundary);
       await recordRefreshRun(boundary);
     });
     if (!ran) log.info('intraday refresh skipped: pipeline busy (nightly holds the lock)');

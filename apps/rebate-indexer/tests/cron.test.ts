@@ -235,30 +235,34 @@ describe('intraday refresh cadence — boundary math and env guard', () => {
   });
 });
 
-describe('intraday refresh runtime budget actually releases the lock', () => {
-  it('rejects when the work outlives the budget, so withPipelineLock unwinds', async () => {
-    // Models the production race: refresh work that hangs past the budget must
-    // REJECT, because withPipelineLock releases the advisory lock in its finally.
-    // Merely clearing the in-flight guard (the first patch) left the callback
-    // holding the lock and could still exhaust the nightly's 40-minute wait.
-    const BUDGET = 30;
-    const hung = new Promise<void>(() => {});           // never settles
-    await expect(
-      Promise.race([
-        hung,
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('intraday refresh exceeded its runtime budget')), BUDGET)),
-      ]),
-    ).rejects.toThrow(/exceeded its runtime budget/);
+describe('the refresh never overlaps the nightly', () => {
+  let isInsideNightlyQuietWindow: (nowMs: number) => boolean;
+  beforeAll(async () => {
+    ({ isInsideNightlyQuietWindow } = await import('../src/cron.js'));
   });
 
-  it('work finishing inside the budget resolves normally', async () => {
-    const quick = new Promise<string>((res) => setTimeout(() => res('done'), 5));
-    await expect(
-      Promise.race([
-        quick,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('budget')), 200)),
-      ]),
-    ).resolves.toBe('done');
+  // WHY A QUIET WINDOW RATHER THAN A TIMEOUT. The earlier patch raced the refresh
+  // against a 20-minute budget and rejected, which released the PIPELINE lock
+  // while runFetcher still held FETCHER_LOCK_KEY. The nightly would then take the
+  // pipeline lock, call runFetcher, receive a silent { inserted: 0 } ("fetcher
+  // already running; skipping") and run first-of-month money steps on incomplete
+  // trades. Not overlapping at all removes that choice entirely.
+  it('defers inside the hour before 02:00 UTC', () => {
+    for (const [h, m] of [[1, 5], [1, 30], [1, 59]] as const) {
+      expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, h, m)), `${h}:${m}`).toBe(true);
+    }
+  });
+
+  it('allows refreshes well clear of the boundary', () => {
+    for (const [h, m] of [[2, 5], [6, 0], [12, 0], [23, 0], [0, 59]] as const) {
+      expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, h, m)), `${h}:${m}`).toBe(false);
+    }
+  });
+
+  it('the window is exactly one hour wide and closes at the boundary', () => {
+    expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 0, 59, 59))).toBe(false);
+    expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 1, 0, 0))).toBe(true);
+    // immediately after 02:00 the next boundary is ~24h away, so refreshes resume
+    expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 2, 0, 1))).toBe(false);
   });
 });

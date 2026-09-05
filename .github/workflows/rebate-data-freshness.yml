@@ -87,6 +87,32 @@ jobs:
             exit 1
           fi
           echo "nightly heartbeat ok: last_pipeline_run_at=$PIPE_RUN (required boundary $(date -u -d "@$REQUIRED" +%Y-%m-%dT%H:%M:%SZ))"
+
+          # INTRADAY REFRESH HEARTBEAT.
+          #
+          # Every other predicate here can be satisfied by the NIGHTLY alone:
+          # data_fresh comes from the scorer timestamp the nightly stamps daily,
+          # and the check above reads only the nightly boundary. So if the hourly
+          # refresh tick dies while the nightly keeps running, this monitor stays
+          # green forever and the freshness feature is silently dead. Exposing
+          # last_refresh_boundary on /health was not enough on its own -- nothing
+          # read it. This is the predicate that makes it observable.
+          #
+          # 6h, not the configured cadence: the workflow cannot see
+          # REBATES_REFRESH_MINUTES, and 6h still catches a dead scheduler within
+          # one working morning while tolerating any sane interval up to ~4h.
+          REFRESH_BOUNDARY="$(jq -r '.last_refresh_boundary // empty' health.json)"
+          if [ -z "$REFRESH_BOUNDARY" ]; then
+            echo "::error::no serviced intraday refresh boundary -- the hourly refresh has never completed. The nightly may still be masking this: data_fresh and the nightly heartbeat above can both be green while /stats is up to 24h behind."
+            exit 1
+          fi
+          REFRESH_TS="$(date -u -d "$REFRESH_BOUNDARY" +%s)" || { echo "::error::unparseable last_refresh_boundary: $REFRESH_BOUNDARY"; exit 1; }
+          REFRESH_MAX_AGE=$(( 6 * 3600 ))
+          if [ "$(( NOW - REFRESH_TS ))" -ge "$REFRESH_MAX_AGE" ]; then
+            echo "::error::intraday refresh has not completed since $REFRESH_BOUNDARY ($(( (NOW - REFRESH_TS) / 3600 ))h ago). The hourly scheduler has stopped; public data is falling back to the nightly cadence."
+            exit 1
+          fi
+          echo "intraday refresh heartbeat ok: last_refresh_boundary=$REFRESH_BOUNDARY ($(( (NOW - REFRESH_TS) / 60 ))m ago)"
           jq -e '
             .ok == true and
             .dataFresh == true and
