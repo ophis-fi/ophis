@@ -187,8 +187,13 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
       await prewarmOtcForkOrder(TEST_ACCOUNT, racedOrderId)
     })
     primaryButton('#otc-order-action').should('have.text', 'Fill entire order').click()
-    assertAccessibleAnnouncement('alert', 'Transaction not completed', FORK_UI_TIMEOUT)
+    // Polling may replace the transient failure message with the inactive-order
+    // view. Both must preserve the unused allowance and expose recovery.
     assertAccessibleAnnouncement('alert', 'Token allowance must be cleared', FORK_UI_TIMEOUT)
+    cy.then(async () => {
+      expect(await isOtcOrderActive(racedOrderId)).to.equal(false)
+      expect(await readOtcAllowance(TEST_ACCOUNT)).to.equal(TWO_THOUSAND_USDC)
+    })
     visitForkOrder(racedOrderId)
     connectForkWallet('#otc-order-action')
     cy.contains('Recover token allowance', { timeout: FORK_UI_TIMEOUT }).should('be.visible')

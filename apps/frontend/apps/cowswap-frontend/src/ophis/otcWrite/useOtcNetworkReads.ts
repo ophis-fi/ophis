@@ -7,6 +7,8 @@ import { useWalletProvider } from '@cowprotocol/wallet-provider'
 import { atomWithQuery, type AtomWithQueryResult } from 'jotai-tanstack-query'
 
 import {
+  getOtcProviderForkId,
+  getOtcWalletForkId,
   toOtcForkClients,
   toOtcLegacyForkClients,
   verifyOtcLocalForkProvider,
@@ -15,7 +17,7 @@ import {
 import { readOtcAllowance } from './readOtcAllowance'
 
 import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
-import type { Address } from 'viem'
+import type { Address, Hex } from 'viem'
 
 const ALLOWANCE_REFRESH_INTERVAL_MS = 5_000
 const ALLOWANCE_READ_TIMEOUT_MS = 30_000
@@ -31,7 +33,7 @@ type WalletClientResult = Parameters<typeof toOtcForkClients>[0] | undefined
 
 export interface OtcNetworkReads {
   transportId: number
-  localForkResponse: OtcQueryResponse<boolean>
+  localForkResponse: OtcQueryResponse<Hex | null>
   writeClient: OtcWriteClient | null
   wallet: OtcWalletSubmitter | null
   allowanceResponse: OtcQueryResponse<AllowanceRead | null>
@@ -57,11 +59,15 @@ function toOtcQueryResponse<T>(result: AtomWithQueryResult<T, Error>): OtcQueryR
   return {
     data: result.data,
     error: result.error,
-    mutate: async () => (await result.refetch()).data,
+    mutate: async () => {
+      const refreshed = await result.refetch()
+      if (refreshed.error) throw refreshed.error
+      return refreshed.data
+    },
   }
 }
 
-export function withOtcForkVerificationTimeout(verification: Promise<boolean>): Promise<boolean> {
+export function withOtcForkVerificationTimeout<T>(verification: Promise<T>): Promise<T> {
   return withTimeout(verification, LOCAL_FORK_VERIFICATION_TIMEOUT_MS, 'Ophis OTC local fork verification timed out')
 }
 
@@ -87,16 +93,11 @@ export function useOtcNetworkReads(
   allowanceToken: Address | null,
 ): OtcNetworkReads {
   const legacyProvider = useWalletProvider()
-  const clients = useMemo(() => {
-    if (walletClient) return toOtcForkClients(walletClient)
-    if (legacyProvider && account) return toOtcLegacyForkClients(legacyProvider, account)
-    return null
-  }, [account, legacyProvider, walletClient])
   const walletSource = walletClient ?? legacyProvider
   const transportId = getOtcWalletTransportId(walletSource)
   const localForkQueryAtom = useMemo(
     () =>
-      atomWithQuery<boolean, Error>(() => ({
+      atomWithQuery<Hex | null, Error>(() => ({
         queryKey: [
           'ophis-otc-local-fork',
           account,
@@ -112,20 +113,34 @@ export function useOtcNetworkReads(
                 ? verifyOtcLocalForkProvider(legacyProvider)
                 : Promise.resolve(false),
           )
-          return withOtcForkVerificationTimeout(verification)
+          return withOtcForkVerificationTimeout(
+            verification.then((verified) => {
+              if (!verified) return null
+              if (walletClient) return getOtcWalletForkId(walletClient)
+              if (legacyProvider) return getOtcProviderForkId(legacyProvider)
+              return null
+            }),
+          )
         },
         enabled: !!enabled && !!account && !!walletSource,
         refetchOnWindowFocus: false,
+        refetchInterval: ALLOWANCE_REFRESH_INTERVAL_MS,
       })),
     [account, chainId, enabled, legacyProvider, transportId, walletClient, walletSource],
   )
   const localForkQuery = useAtomValue(localForkQueryAtom)
+  const forkId = localForkQuery.data ?? undefined
+  const clients = useMemo(() => {
+    if (walletClient) return toOtcForkClients(walletClient, forkId)
+    if (legacyProvider && account) return toOtcLegacyForkClients(legacyProvider, account, forkId)
+    return null
+  }, [account, forkId, legacyProvider, walletClient])
   const writeClient = clients?.writeClient ?? null
   const wallet = clients?.wallet ?? null
   const allowanceQueryAtom = useMemo(
     () =>
       atomWithQuery<AllowanceRead | null, Error>(() => ({
-        queryKey: ['ophis-otc-allowance', account, allowanceToken, OPHIS_ESCROW_KEY, chainId, transportId],
+        queryKey: ['ophis-otc-allowance', account, allowanceToken, OPHIS_ESCROW_KEY, chainId, transportId, forkId],
         queryFn: async () => {
           if (!account || !allowanceToken || !writeClient) return null
           return withOtcAllowanceReadTimeout(readOtcAllowance(writeClient, allowanceToken, account))
@@ -134,7 +149,7 @@ export function useOtcNetworkReads(
         refetchInterval: ALLOWANCE_REFRESH_INTERVAL_MS,
         refetchOnWindowFocus: false,
       })),
-    [account, allowanceToken, chainId, enabled, transportId, writeClient],
+    [account, allowanceToken, chainId, enabled, forkId, transportId, writeClient],
   )
   const allowanceQuery = useAtomValue(allowanceQueryAtom)
   const localForkResponse = useMemo(() => toOtcQueryResponse(localForkQuery), [localForkQuery])

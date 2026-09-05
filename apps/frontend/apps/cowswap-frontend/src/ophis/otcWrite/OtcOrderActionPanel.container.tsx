@@ -199,7 +199,7 @@ export function OtcOrderActionPanel({
       atomWithQuery<Awaited<ReturnType<typeof readOtcOrder>> | null, Error>(() => ({
         queryKey: ['ophis-otc-fork-order', network.transportId, account, orderId.toString(), mountId],
         queryFn: async () => (network.writeClient ? readOtcOrder(network.writeClient, orderId) : null),
-        enabled: network.localForkResponse.data === true && !!account && !!network.writeClient,
+        enabled: !!network.localForkResponse.data && !!account && !!network.writeClient,
         refetchInterval: ORDER_REFRESH_INTERVAL_MS,
         refetchOnWindowFocus: false,
       })),
@@ -219,9 +219,9 @@ export function OtcOrderActionPanel({
     },
     [onConfirmed, refetchForkOrder],
   )
-  const orderUnavailable = network.localForkResponse.data === true && forkOrderQuery.error !== null
+  const orderUnavailable = !!network.localForkResponse.data && forkOrderQuery.error !== null
 
-  if (network.localForkResponse.data !== true || !shouldMountOtcOrderAction(true, order) || !order) {
+  if (!network.localForkResponse.data || !shouldMountOtcOrderAction(true, order) || !order) {
     return (
       <UnverifiedOtcOrderActionPanel
         orderId={orderId}

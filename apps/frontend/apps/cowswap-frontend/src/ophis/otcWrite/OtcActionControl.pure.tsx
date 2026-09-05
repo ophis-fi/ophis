@@ -34,7 +34,7 @@ function UncertainTransactionRecovery({
             checked={verifiedDropped}
             onChange={(event) => setVerifiedDropped(event.target.checked)}
           />{' '}
-          I verified this hash was dropped and never mined.
+          I verified this transaction and its replacements were never mined on this fork.
         </label>
         <p>
           <LinkStyledButton type="button" disabled={!verifiedDropped} onClick={clearUncertainTransaction}>

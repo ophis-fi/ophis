@@ -19,6 +19,7 @@
 ## Final review fixes — 2026-09-06
 
 - Independent Codex review of `dcc07014` reproduced four medium-priority recovery/receipt defects. All four are fixed: persist the transaction hash immediately after broadcast, reject replacement receipts, key create recovery by parsed amounts, and allow zero-approval revocation without valid create amounts.
+- Follow-up GitHub review fixes bind persisted locks and signing/receipt checks to the stable fork instance, accept only identical repriced transactions as replacements, and preserve memoized hook references. The controller test verifies cross-fork recovery isolation.
 - The pending receipt UI does not offer manual lock removal while the original submission is being tracked. A late confirmation clears only its own hash, preserving any newer recovery record.
 - Focused regressions and the wider OTC/navigation suites pass. Final source review, CI run links, and merge/deployment outcomes are recorded on PR #1229; a green draft bypass never counts as review approval.
 - Detailed scope, findings, scan limitations, and release checks: [final security review](../../audit/otc-milestone-c-final-review-2026-09-06.md).

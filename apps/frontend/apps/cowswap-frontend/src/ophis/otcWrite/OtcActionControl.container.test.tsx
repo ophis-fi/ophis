@@ -110,7 +110,7 @@ describe('OtcActionControl screen-reader semantics', () => {
     expect(screen.getByText(new RegExp(hash))).toBeTruthy()
     const clearButton = screen.getByRole('button', { name: 'Clear this lock and allow a fresh preflight' })
     expect((clearButton as HTMLButtonElement).disabled).toBe(true)
-    act(() => screen.getByRole('checkbox', { name: 'I verified this hash was dropped and never mined.' }).click())
+    act(() => screen.getByRole('checkbox', { name: 'I verified this transaction and its replacements were never mined on this fork.' }).click())
     expect((clearButton as HTMLButtonElement).disabled).toBe(false)
     act(() => clearButton.click())
     expect(clearUncertainTransaction).toHaveBeenCalledTimes(1)

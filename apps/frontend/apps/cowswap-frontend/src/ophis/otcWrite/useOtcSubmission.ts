@@ -1,5 +1,5 @@
 import { useAtom } from 'jotai'
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 
@@ -67,31 +67,45 @@ function successfulTransactionState(success: OtcSuccessfulTransaction | null): {
   return { successHash: success?.transactionHash ?? null, terminalConfirmed: success?.terminal ?? false }
 }
 
+interface OtcUncertainState {
+  uncertainHash: Hex | null
+  setUncertainHash(hash: Hex): void
+  clearSubmittedTransaction(hash?: Hex): void
+  clearUncertainTransaction(): void
+}
+
+function useOtcUncertainTransaction(uncertainKey: string | null): OtcUncertainState {
+  const [transactions, setTransactions] = useAtom(uncertainOtcTransactionsAtom)
+  const uncertainHash = uncertainKey ? (transactions[uncertainKey]?.transactionHash ?? null) : null
+  const setUncertainHash = useCallback(
+    (hash: Hex) => {
+      if (uncertainKey) setTransactions((current) => recordUncertainOtcTransaction(current, uncertainKey, hash))
+    },
+    [setTransactions, uncertainKey],
+  )
+  const clearSubmittedTransaction = useCallback(
+    (expectedHash?: Hex) => {
+      if (uncertainKey) setTransactions((current) => removeUncertainOtcTransaction(current, uncertainKey, expectedHash))
+    },
+    [setTransactions, uncertainKey],
+  )
+  const clearUncertainTransaction = useCallback(() => clearSubmittedTransaction(), [clearSubmittedTransaction])
+  return useMemo(
+    () => ({ uncertainHash, setUncertainHash, clearSubmittedTransaction, clearUncertainTransaction }),
+    [clearSubmittedTransaction, clearUncertainTransaction, setUncertainHash, uncertainHash],
+  )
+}
+
 export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionState {
   const { writeClient, wallet, authorization, resetKey, account, requiredAllowance, refreshAllowance, onConfirmed } =
     options
   const [pendingIntent, setPendingIntent] = useState<OtcWriteIntent['kind'] | 'switch' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<OtcSuccessfulTransaction | null>(null)
-  const [uncertainTransactions, setUncertainTransactions] = useAtom(uncertainOtcTransactionsAtom)
   const [recoveryRequired, setRecoveryRequired] = useState(false)
   const submissionContext = submissionContextKey(resetKey, account, authorization)
   const uncertainKey = account ? `${getAddressKey(account)}\u0000${resetKey}` : null
-  const uncertainHash = uncertainKey ? (uncertainTransactions[uncertainKey]?.transactionHash ?? null) : null
-  const setUncertainHash = useCallback(
-    (transactionHash: Hex) => {
-      if (!uncertainKey) return
-      setUncertainTransactions((current) => recordUncertainOtcTransaction(current, uncertainKey, transactionHash))
-    },
-    [setUncertainTransactions, uncertainKey],
-  )
-  const clearUncertainTransaction = useCallback(
-    (expectedHash?: Hex) => {
-      if (!uncertainKey) return
-      setUncertainTransactions((current) => removeUncertainOtcTransaction(current, uncertainKey, expectedHash))
-    },
-    [setUncertainTransactions, uncertainKey],
-  )
+  const uncertainty = useOtcUncertainTransaction(uncertainKey)
   const contextGeneration = useRef(0)
   const inFlightGeneration = useRef<number | null>(null)
   const [allowanceCooldown, beginAllowanceCooldown] = useOtcAllowanceCooldown(refreshAllowance, submissionContext)
@@ -122,21 +136,22 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     setPendingIntent,
     setError,
     setSuccess,
-    setUncertainHash,
-    clearSubmittedTransaction: clearUncertainTransaction,
+    setUncertainHash: uncertainty.setUncertainHash,
+    clearSubmittedTransaction: uncertainty.clearSubmittedTransaction,
     setRecoveryRequired,
   })
-  const { successHash, terminalConfirmed } = successfulTransactionState(success)
-  return {
-    pendingIntent,
-    error,
-    successHash,
-    terminalConfirmed,
-    uncertainHash,
-    recoveryRequired,
-    allowanceCooldown,
-    clearUncertainTransaction: () => clearUncertainTransaction(),
-    setError,
-    submit,
-  }
+  return useMemo(
+    () => ({
+      pendingIntent,
+      error,
+      ...successfulTransactionState(success),
+      uncertainHash: uncertainty.uncertainHash,
+      recoveryRequired,
+      allowanceCooldown,
+      clearUncertainTransaction: uncertainty.clearUncertainTransaction,
+      setError,
+      submit,
+    }),
+    [allowanceCooldown, error, pendingIntent, recoveryRequired, submit, success, uncertainty],
+  )
 }

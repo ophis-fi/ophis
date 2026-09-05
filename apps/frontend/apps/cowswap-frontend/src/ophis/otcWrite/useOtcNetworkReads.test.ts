@@ -3,7 +3,7 @@ import { createElement, type ReactNode } from 'react'
 
 import { act, renderHook, waitFor } from '@testing-library/react'
 
-import { toOtcForkClients, verifyOtcLocalForkWallet } from './otcWriteAdapters'
+import { getOtcWalletForkId, toOtcForkClients, verifyOtcLocalForkWallet } from './otcWriteAdapters'
 import { readOtcAllowance } from './readOtcAllowance'
 import {
   getOtcWalletTransportId,
@@ -16,6 +16,8 @@ import {
 jest.mock('@cowprotocol/wallet-provider', () => ({ useWalletProvider: jest.fn(() => undefined) }))
 jest.mock('./readOtcAllowance', () => ({ readOtcAllowance: jest.fn() }))
 jest.mock('./otcWriteAdapters', () => ({
+  getOtcWalletForkId: jest.fn(),
+  getOtcProviderForkId: jest.fn(),
   toOtcForkClients: jest.fn(),
   toOtcLegacyForkClients: jest.fn(),
   verifyOtcLocalForkProvider: jest.fn(),
@@ -23,6 +25,7 @@ jest.mock('./otcWriteAdapters', () => ({
 }))
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111'
+const FORK_ID = `0x${'aa'.repeat(32)}` as const
 const TOKEN = '0x2222222222222222222222222222222222222222'
 
 interface HookProps {
@@ -48,6 +51,7 @@ describe('useOtcNetworkReads', () => {
   it('starts the read-only allowance query without waiting for fork verification to settle', async () => {
     const walletClient = {} as Parameters<typeof toOtcForkClients>[0]
     jest.mocked(toOtcForkClients).mockReturnValue({ writeClient: {} as never, wallet: {} as never })
+    jest.mocked(getOtcWalletForkId).mockResolvedValue(FORK_ID)
     jest.mocked(readOtcAllowance).mockResolvedValue({ allowance: 0n, blockNumber: 1n })
     let finishVerification: ((verified: boolean) => void) | undefined
     jest.mocked(verifyOtcLocalForkWallet).mockImplementation(
@@ -68,7 +72,7 @@ describe('useOtcNetworkReads', () => {
     expect(result.current.localForkResponse.data).toBeUndefined()
     await waitFor(() => expect(finishVerification).toBeDefined())
     await act(async () => finishVerification?.(true))
-    await waitFor(() => expect(result.current.localForkResponse.data).toBe(true))
+    await waitFor(() => expect(result.current.localForkResponse.data).toBe(FORK_ID))
   })
 })
 

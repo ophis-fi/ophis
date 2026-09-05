@@ -10,8 +10,8 @@ import { useToggleWalletModal } from 'legacy/state/application/hooks'
 import { useOtcWriteAuthorization } from './otcWriteAuthorization'
 import { translateOtcWriteError } from './translateOtcWriteError'
 import { useOtcActionModel } from './useOtcActionModel'
-import { useOtcNetworkReads } from './useOtcNetworkReads'
-import { useOtcSubmission } from './useOtcSubmission'
+import { useOtcNetworkReads, type OtcNetworkReads } from './useOtcNetworkReads'
+import { useOtcSubmission, type OtcSubmissionState } from './useOtcSubmission'
 
 import type { OtcActionModel } from './otcActionModel'
 import type {
@@ -56,17 +56,34 @@ export interface OtcActionController {
 function localForkStatus(
   account: Address | undefined,
   chainId: number,
-  data: boolean | undefined,
+  data: Hex | null | undefined,
   error: unknown,
 ): boolean | null {
   if (!account || chainId !== SupportedChainId.MAINNET) return null
   if (error) return false
-  return data ?? null
+  return data === undefined ? null : data !== null
 }
 
 function localDiagnostic(error: unknown): string | null {
   if (process.env.NODE_ENV === 'production' || !(error instanceof Error)) return null
   return error.message.slice(0, 240)
+}
+
+function useOtcRecoveryClear(
+  submission: OtcSubmissionState,
+  localForkResponse: OtcNetworkReads['localForkResponse'],
+): () => Promise<void> {
+  const { clearUncertainTransaction, setError } = submission
+  return useCallback(async () => {
+    try {
+      const originalForkId = localForkResponse.data
+      const currentForkId = await localForkResponse.mutate()
+      if (!originalForkId || currentForkId !== originalForkId) throw new Error('Ophis OTC local fork changed')
+      clearUncertainTransaction()
+    } catch (caught) {
+      setError(translateOtcWriteError(caught))
+    }
+  }, [clearUncertainTransaction, localForkResponse, setError])
 }
 
 export function useOtcActionController(
@@ -83,7 +100,7 @@ export function useOtcActionController(
     writeClient: network.writeClient,
     wallet: network.wallet,
     authorization,
-    resetKey: definition.resetKey,
+    resetKey: `${network.localForkResponse.data ?? 'unverified'}\u0000${definition.resetKey}`,
     account,
     requiredAllowance: definition.requiredAllowance,
     refreshAllowance,
@@ -143,7 +160,8 @@ export function useOtcActionController(
     submission.error ??
     (network.allowanceResponse.error ? translateOtcWriteError(network.allowanceResponse.error) : null)
   const diagnostic = localDiagnostic(network.allowanceResponse.error)
-  const { clearUncertainTransaction, successHash, uncertainHash } = submission
+  const { successHash, uncertainHash } = submission
+  const clearUncertainTransaction = useOtcRecoveryClear(submission, network.localForkResponse)
 
   return useMemo(
     () => ({ model, error, successHash, uncertainHash, allowance, diagnostic, clearUncertainTransaction, runPrimary }),
