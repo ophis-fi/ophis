@@ -16,14 +16,14 @@ import { mainnet } from 'viem/chains'
 import { usePublicClient } from 'wagmi'
 
 import { assertOtcTransactionRequest } from './assertOtcTransactionRequest'
+import { OTC_RECEIPT_TIMEOUT_MS, waitForOtcReceipt } from './otcReceiptTracking.utils'
 
-import type { OtcTransactionReceipt, OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
+import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
 
 type WagmiPublicClient = NonNullable<ReturnType<typeof usePublicClient>>
 type WagmiWalletClient = WalletClient<Transport, Chain, Account>
 
 const LOCAL_FORK_CLIENT = /anvil|hardhat/i
-const OTC_RECEIPT_TIMEOUT_MS = 120_000
 const OTC_FORK_ID_TIMEOUT_MS = 10_000
 
 function parseForkId(metadata: unknown): Hex {
@@ -64,25 +64,6 @@ export async function getOtcProviderForkId(provider: Web3Provider): Promise<Hex>
 
 async function assertForkIdentity(readId: () => Promise<Hex>, expectedId?: Hex): Promise<void> {
   if (expectedId && (await readId()) !== expectedId) throw new Error('Ophis OTC local fork changed')
-}
-
-async function waitForOtcReceipt(publicClient: WagmiPublicClient, hash: Hex): Promise<OtcTransactionReceipt> {
-  let confirmedHash = hash
-  const receipt = await publicClient.waitForTransactionReceipt({
-    hash,
-    confirmations: 1,
-    timeout: OTC_RECEIPT_TIMEOUT_MS,
-    onReplaced: ({ reason, replacedTransaction, transaction }) => {
-      if (reason === 'repriced' && replacedTransaction.hash === confirmedHash) confirmedHash = transaction.hash
-    },
-  })
-  if (receipt.transactionHash !== confirmedHash) throw new Error('Ophis OTC transaction was replaced')
-  return {
-    transactionHash: receipt.transactionHash,
-    status: receipt.status,
-    blockNumber: receipt.blockNumber,
-    ...(confirmedHash !== hash ? { replacedTransactionHash: hash } : {}),
-  }
 }
 
 function safeBlockNumber(blockNumber: bigint): number {

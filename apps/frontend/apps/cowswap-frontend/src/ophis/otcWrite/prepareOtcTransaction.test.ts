@@ -18,7 +18,7 @@ describe('Milestone C transaction preflight', () => {
     jest.useFakeTimers()
     try {
       const client = mockOtcWriteClient()
-      client.getLatestBlock = () => new Promise(() => undefined)
+      client.simulate = () => new Promise(() => undefined)
       const preflight = prepareOtcTransaction(
         client,
         { kind: 'fill', account: TAKER, order: mockOtcOrder(), deadline: NOW + 180n },

@@ -1,3 +1,5 @@
+import { withTimeout } from '@cowprotocol/common-utils'
+
 import { decodeFunctionResult, encodeFunctionData, isAddressEqual, keccak256, type Address, type Hex } from 'viem'
 
 import { OTC_READ_ABI } from './otc.abi'
@@ -142,10 +144,22 @@ export async function verifyOtcContract(
  * the SAME guards as the snapshot reader: chain id, pinned runtime code hash, weth()
  * wiring, single-block pinning, and a post-read block-hash confirmation.
  */
-export async function readOtcOrder(
+export function readOtcOrder(
   client: OtcReaderClient,
   orderId: bigint,
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
+): Promise<OtcOrderReadResult> {
+  return withTimeout(
+    readVerifiedOtcOrder(client, orderId, manifest),
+    manifest.readTimeoutMs,
+    'Ophis OTC order read timed out',
+  )
+}
+
+async function readVerifiedOtcOrder(
+  client: OtcReaderClient,
+  orderId: bigint,
+  manifest: OtcManifest,
 ): Promise<OtcOrderReadResult> {
   await requirePinnedChain(client, manifest)
   const block = await client.getLatestBlock()

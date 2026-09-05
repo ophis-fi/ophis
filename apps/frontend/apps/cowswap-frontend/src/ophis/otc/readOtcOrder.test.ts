@@ -73,6 +73,20 @@ function createMockClient(options: MockOptions = {}): OtcReaderClient {
 }
 
 describe('readOtcOrder', () => {
+  it('rejects a stalled RPC within the manifest deadline', async () => {
+    jest.useFakeTimers()
+    try {
+      const client = createMockClient()
+      client.getCode = () => new Promise<never>(() => undefined)
+      const manifest = testManifest()
+      const rejection = expect(readOtcOrder(client, 42n, manifest)).rejects.toThrow('Ophis OTC order read timed out')
+      await jest.advanceTimersByTimeAsync(manifest.readTimeoutMs)
+      await rejection
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('reads a single order directly with code verification', async () => {
     const result = await readOtcOrder(createMockClient(), 42n, testManifest())
     expect(result.blockNumber).toBe(200n)

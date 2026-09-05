@@ -118,8 +118,8 @@ describe('Ophis OTC write boundary', () => {
   it('sources rendered action terms from the active wallet-fork reader', () => {
     const source = readFileSync(join(WRITE_DIR, 'OtcOrderActionPanel.container.tsx'), 'utf8')
     expect(source).toContain('readOtcOrder(network.writeClient, orderId)')
-    expect(source).toContain(
-      "queryKey: ['ophis-otc-fork-order', network.transportId, account, orderId.toString(), mountId]",
+    expect(source).toMatch(
+      /queryKey:\s*\[\s*'ophis-otc-fork-order',\s*network\.transportId,\s*network\.localForkResponse\.data,\s*account,\s*orderId\.toString\(\),\s*mountId,?\s*\]/,
     )
     expect(source).toContain('refetchInterval: ORDER_REFRESH_INTERVAL_MS')
     expect(source).toContain('forkOrderQuery.error !== null')

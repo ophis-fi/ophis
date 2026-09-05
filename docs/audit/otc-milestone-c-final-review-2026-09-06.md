@@ -1,6 +1,6 @@
 # OTC Milestone C final review — 2026-09-06
 
-Scope: PR #1229 against main `8a80365fb383dcb11cf572e9ac46945e98380ef0`.
+Scope: PR #1229 against main `4bcd7ab5acdabe1865ed0a55bb03f0b74d79664d`.
 This review covers ERC-20 execution on local Ethereum forks. Production writes
 remain disabled. Milestone B's completed review does not approve C.
 
@@ -34,9 +34,16 @@ and persisted locks are partitioned by the original Anvil/Hardhat instance ID.
 The node's `hardhat_metadata` response supplies that identity (verified against
 Anvil 1.5.1); it survives browser reloads and distinguishes separate fork runs.
 Identity is rechecked before signing, around receipt tracking, and before clearing
-a lock. Metadata reads have a ten-second timeout. A controller regression proves
+a lock. Metadata reads have a ten-second timeout. Fork order caches include the instance ID. A controller regression proves
 that checking or clearing on fork B cannot remove fork A's recovery record. Review fixes do not
 enable additional selectors, native ETH, batching, or production wallet actions.
+
+GitHub review of `ba5852cb` also identified an unbounded order query and an
+adapter above the repository's source-size limit. The shared `readOtcOrder`
+now applies the existing manifest deadline with `withTimeout`, covering both
+public detail and wallet-fork callers. A stalled-RPC regression verifies rejection.
+Receipt tracking moved unchanged into `otcReceiptTracking.utils.ts`; the adapter
+and shared reader remain below 250 lines.
 
 ## Static analysis
 
@@ -74,7 +81,11 @@ RPC failure still fails the job. Runtime and block identity checks are unchanged
 Local OTC/navigation tests pass 36 suites and 239 tests (one explicitly optional Jest fork case skipped). Frontend typecheck, scoped lint/formatting, and gate self-tests pass. Final-head CI and authenticated Codex evidence on
 [PR #1229](https://github.com/ophis-fi/ophis/pull/1229) are required before merge;
 this document does not substitute for those checks. Local fork runs passed all seven contract cases and all six browser scenarios
-without skips. The latest browser run passed in 1 minute 33 seconds. A Linux CI
+without skips. CI run `33997158758` passed all seven contract cases and all six browser scenarios.
+A diagnostic local rerun passed all six in 1 minute 33 seconds after an earlier
+run failed to observe the fill-approval confirmation. That intermittent failure
+did not reproduce. After the order timeout and adapter extraction, all six local
+browser scenarios passed again in 1 minute 39 seconds. Final-head CI remains mandatory. An earlier Linux CI
 run passed five scenarios; its race assertion expected a transient error after
 polling had already replaced that state. The revised check requires the raced
 order to be inactive, the exact unused allowance to remain, an accessible recovery
