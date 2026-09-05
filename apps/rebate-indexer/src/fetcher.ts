@@ -677,51 +677,19 @@ export function attributeOrder(
  * so sub-minute skew is irrelevant. This also removes a per-chain RPC dependency
  * and a latent bug (the old lookup queried Gnosis for EVERY chain's block number).
  */
-/** Deadline sentinel. A DISTINCT type so the per-owner catch marks the owner
- *  failed -- which is exactly right: the cursor must not advance and the run
- *  must not look complete. */
-export class FetchDeadlineExceeded extends Error {
-  constructor(chainId: number, owner: string) {
-    super(`fetch deadline exceeded for owner ${owner} on chain ${chainId}`);
-    this.name = 'FetchDeadlineExceeded';
-  }
-}
-
 export async function fetchChainTrades(
   chainId: number,
   owner: `0x${string}`,
   deps: FetcherDeps,
-  // Checked BETWEEN PAGES. Bounding only between OWNERS assumed a worst case of
-  // 14 chains x the 10s request timeout, about 140s -- but /tier can enrol an
-  // arbitrary high-volume CoW wallet, and one owner then paginates 1,000-row
-  // pages with a getOrder per incomplete trade. That single owner could hold the
-  // pipeline lock far past the budget and cross the 02:00 nightly boundary.
-  deadlineMs?: number,
 ): Promise<PendingTrade[]> {
   const out: PendingTrade[] = [];
   const seen = new Set<string>(); // collapse multiple fills of the same order within this run
   let offset = 0;
   while (true) {
-    if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
-      // THROW, do not break. Returning normally made the caller treat a
-      // truncated owner as complete: it stamped last_fetched, dropped the
-      // DefiLlama backfill entry, and the retry then EXCLUDED the owner because
-      // its new last_fetched was later than staleBefore -- so the boundary could
-      // be recorded with the omitted pages permanently absent. The existing
-      // per-owner catch already does the right thing with a throw: ownerOk goes
-      // false, only last_attempt_at advances, and the backfill entry is kept.
-      throw new FetchDeadlineExceeded(chainId, owner);
-    }
     const page = await listTrades({ chainId, owner, offset, limit: PAGE_SIZE });
     if (page.length === 0) break;
 
     for (const t of page) {
-      // Per PAGE was not enough: a page holds up to 1,000 entries and each can
-      // sequentially await getOrder plus a settlement lookup, so one page can
-      // overrun the budget by hours while holding the pipeline lock.
-      if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
-        throw new FetchDeadlineExceeded(chainId, owner);
-      }
       // The rebate ledger collapses an order's fills into one total, while the
       // DefiLlama ledger preserves every fill. `firstForOrder` controls only the
       // former; never skip a later API trade row before reporting it.
@@ -1014,20 +982,6 @@ export interface RunFetcherOptions {
    * anything not fetched since it opened eligible, once per boundary.
    */
   staleBefore?: Date;
-  /**
-   * Wall-clock epoch ms after which the owner loop stops starting new work.
-   *
-   * The quiet window bounds when a refresh may START; it bounds nothing about
-   * how long one RUNS. With ~29 tracked wallets and 14 sequential chain requests
-   * each, an orderbook outage reaching the existing 10s request timeout is
-   * roughly 68 minutes -- past the 60-minute window and into the nightly, whose
-   * bounded lock wait then expires and delays the monthly payout path.
-   *
-   * Checked BETWEEN OWNERS, which is cooperative and safe (no half-written
-   * owner) and bounds the run to this deadline plus one owner's worst case,
-   * about 140 seconds.
-   */
-  deadlineMs?: number;
 }
 
 const DEFAULT_FETCH_STALE_AFTER_MS = 6 * 60 * 60 * 1_000;
@@ -1112,22 +1066,7 @@ export async function runFetcher(
       -- registered before the flood (they'd otherwise tie on last_fetched=NULL).
       ORDER BY (wallet IN (SELECT wallet FROM defillama_backfill_wallets)) DESC,
                (wallet IN (SELECT wallet FROM trades)) DESC,
-               -- RETRY ORDERING. Attempt age is the PRIMARY key, not a
-               -- tie-breaker: a failing owner keeps its old last_fetched (only
-               -- last_attempt_at moves, see the two UPDATEs below), so ordering
-               -- by last_fetched first means Postgres never reaches the tie-break
-               -- when failing owners have DISTINCT last_fetched -- the normal
-               -- case -- and the same prefix is re-selected every budget-limited
-               -- tick while everything behind it starves.
-               --
-               -- COALESCE keeps the spam protection that a
-               -- bare last_attempt_at NULLS FIRST would have destroyed: a
-               -- never-attempted wallet falls back to its REGISTRATION age, so a
-               -- freshly enrolled row sorts LAST rather than leapfrogging an
-               -- older wallet whose first attempt failed. Public enrolment allows
-               -- thousands of unattempted rows against a 500 cap, so that
-               -- regression would have starved legitimate wallets outright.
-               COALESCE(last_attempt_at, first_seen) ASC,
+               last_fetched ASC NULLS FIRST,
                first_seen ASC
       LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
     `;
@@ -1156,7 +1095,6 @@ export async function runFetcher(
     //     correctly via the on-chain settle() decoder (full DECODER set).
     const owners = ownerRows.filter((o) => !DECODER_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
-    let processedOwners = 0;
     // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
     // FEE arms: only a verified API write moves volume_fee_bps / fee_verified;
     // the final arm also repairs post-cutover rows previously persisted above 1 bp.
@@ -1253,18 +1191,12 @@ export async function runFetcher(
       await upsertDefillamaFills(pendingDefillamaFills.splice(0));
     };
     for (const { wallet } of owners) {
-      if (opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs) {
-        log.warn({ processed: processedOwners, of: owners.length },
-          'fetcher stopped at its deadline so the refresh cannot cross the nightly boundary');
-        break;
-      }
-      processedOwners++;
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
       let reportingOk = true;
       for (const chainId of SUPPORTED_CHAIN_IDS) {
         try {
-          const rows = await fetchChainTrades(chainId, owner, dbDeps, opts.deadlineMs);
+          const rows = await fetchChainTrades(chainId, owner, dbDeps);
           inserted += await upsertTrades(rows);
           await flushDefillamaFills();
         } catch (err) {
@@ -1296,17 +1228,11 @@ export async function runFetcher(
     // owner on its own chain; fetchChainTrades attributes each trade to its
     // receiver. Fixed addresses (one per override chain), so no tracked-wallet
     // budget cost, and they are never added to tracked_wallets (fetched directly).
-    // The owner loop's break does not end runFetcher: the eth-flow and settle-
-    // decoder passes follow. Guard them on the same deadline or a refresh that
-    // stopped fetching owners at its budget would carry straight on and still
-    // hold the pipeline lock past 02:00.
-    const pastDeadline = () => opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs;
     for (const [chainIdStr, ethFlowOwner] of Object.entries(OPHIS_ETHFLOW_OWNER_BY_CHAIN)) {
-      if (pastDeadline()) { log.warn('deadline reached; skipping remaining eth-flow fetches'); break; }
       const chainId = Number(chainIdStr);
       if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
       try {
-        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps, opts.deadlineMs);
+        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
         inserted += await upsertTrades(rows);
         await flushDefillamaFills();
       } catch (err) {
@@ -1322,9 +1248,6 @@ export async function runFetcher(
     // the same upsertTrades (PK-idempotent on trade_uid, so it can never double-count
     // a trade the API fetcher already wrote).
     if (process.env.SETTLE_DECODER_CHAINS) {
-      if (pastDeadline()) {
-        log.warn('deadline reached; skipping the settle-decoder pass');
-      } else
       try {
         const { runSettleDecoder } = await import('./cow/onchain.js');
         inserted += await runSettleDecoder({

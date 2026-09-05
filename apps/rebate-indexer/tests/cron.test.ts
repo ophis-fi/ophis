@@ -247,57 +247,53 @@ describe('the refresh never overlaps the nightly', () => {
   // pipeline lock, call runFetcher, receive a silent { inserted: 0 } ("fetcher
   // already running; skipping") and run first-of-month money steps on incomplete
   // trades. Not overlapping at all removes that choice entirely.
-  it('defers inside the hour before 02:00 UTC', () => {
-    for (const [h, m] of [[1, 5], [1, 30], [1, 59]] as const) {
+  it('defers inside the two hours before 02:00 UTC', () => {
+    for (const [h, m] of [[0, 5], [1, 5], [1, 30], [1, 59]] as const) {
       expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, h, m)), `${h}:${m}`).toBe(true);
     }
   });
 
   it('allows refreshes well clear of the boundary', () => {
-    for (const [h, m] of [[2, 5], [6, 0], [12, 0], [23, 0], [0, 59]] as const) {
+    for (const [h, m] of [[2, 5], [6, 0], [12, 0], [23, 0], [23, 59]] as const) {
       expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, h, m)), `${h}:${m}`).toBe(false);
     }
   });
 
-  it('the window is exactly one hour wide and closes at the boundary', () => {
-    expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 0, 59, 59))).toBe(false);
-    expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 1, 0, 0))).toBe(true);
+  it('the window is exactly two hours wide and closes at the boundary', () => {
+    expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 3, 23, 59, 59))).toBe(false);
+    expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 0, 0, 0))).toBe(true);
     // immediately after 02:00 the next boundary is ~24h away, so refreshes resume
     expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 2, 0, 1))).toBe(false);
   });
 });
 
-describe('the refresh budget makes the quiet window hold', () => {
+describe('the quiet window is wider than the worst-case run', () => {
   let isInsideNightlyQuietWindow: (nowMs: number) => boolean;
   beforeAll(async () => {
     ({ isInsideNightlyQuietWindow } = await import('../src/cron.js'));
   });
 
-  // The window alone was NOT sufficient, and the arithmetic is why: ~29 tracked
-  // wallets x 14 sequential chain requests x the existing 10s request timeout is
-  // about 68 minutes during an orderbook outage — past the 60-minute window and
-  // into the nightly, whose bounded lock wait then expires.
-  it('an unbounded worst-case fetch would have crossed the boundary', () => {
-    const worstCaseMs = 29 * 14 * 10_000;
-    expect(worstCaseMs).toBeGreaterThan(60 * 60_000); // ~68min > the 60min window
+  // The window must exceed the worst case, because there is deliberately NO
+  // truncation: ~29 wallets x 14 sequential chain requests x the 10s request
+  // timeout is about 68 minutes during a sustained orderbook outage.
+  const WORST_CASE_MS = 29 * 14 * 10_000;
+
+  it('a 60-minute window did NOT cover the worst case — which is why truncation existed', () => {
+    expect(WORST_CASE_MS).toBeGreaterThan(60 * 60_000);
   });
 
-  it('the bounded worst case cannot reach 02:00 even from the latest legal start', () => {
-    const BUDGET_MS = 20 * 60_000;
-    const ONE_OWNER_WORST_MS = 14 * 10_000; // 14 chains at the 10s request timeout
-    // Latest a refresh may start: one ms before the quiet window opens.
-    const latestStart = Date.UTC(2026, 8, 4, 1, 0, 0) - 1;
+  it('a 2-hour window does cover it, from the latest legal start', () => {
+    const latestStart = Date.UTC(2026, 8, 4, 0, 0, 0) - 1; // 1ms before the window opens
     expect(isInsideNightlyQuietWindow(latestStart)).toBe(false);
-    expect(latestStart + BUDGET_MS + ONE_OWNER_WORST_MS)
-      .toBeLessThan(Date.UTC(2026, 8, 4, 2, 0, 0));
+    expect(latestStart + WORST_CASE_MS).toBeLessThan(Date.UTC(2026, 8, 4, 2, 0, 0));
   });
 
-  it('a run that hits the budget does not claim its boundary', () => {
-    // runRefreshSteps returns completed:false past the deadline and refreshTick
-    // only records on completed — so the boundary stays due and is retried.
-    const completed = (now: number, deadline: number) => now < deadline;
-    expect(completed(100, 200)).toBe(true);
-    expect(completed(200, 200)).toBe(false);
-    expect(completed(999, 200)).toBe(false);
+  it('defers across the whole two hours before 02:00, and resumes after', () => {
+    for (const [h, m] of [[0, 0], [0, 30], [1, 0], [1, 59]] as const) {
+      expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, h, m)), `${h}:${m}`).toBe(true);
+    }
+    for (const [h, m] of [[2, 1], [6, 0], [23, 59]] as const) {
+      expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, h, m)), `${h}:${m}`).toBe(false);
+    }
   });
 });
