@@ -719,6 +719,13 @@ async function refreshTick(): Promise<void> {
     log.info('intraday refresh deferred: inside the quiet window before the nightly');
     return;
   }
+  // Re-sample the clock. `now` was taken before two awaits (isRefreshDue and
+  // isNightlyDue); if the database was slow, minutes may have passed and the
+  // quiet-window decision above could already be stale.
+  if (isInsideNightlyQuietWindow(Date.now())) {
+    log.info('intraday refresh deferred: quiet window opened while checking');
+    return;
+  }
   refreshStartedAt = Date.now();
   try {
     const ran = await withPipelineLock(async () => {
