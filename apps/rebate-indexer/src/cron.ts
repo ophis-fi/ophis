@@ -660,14 +660,30 @@ export async function recordRefreshRun(servicedBoundary: Date): Promise<void> {
  * runScorer stamps public_data_refresh_state, so it is what actually makes
  * /stats and /leaderboard report dataFresh.
  */
-export async function runRefreshSteps(staleBefore: Date): Promise<void> {
-  const { inserted } = await runFetcher(undefined, { staleBefore });
+export async function runRefreshSteps(
+  staleBefore: Date,
+  deadlineMs: number,
+): Promise<{ completed: boolean }> {
+  const { inserted } = await runFetcher(undefined, { staleBefore, deadlineMs });
+  // Re-check before the remaining steps. The fetch is bounded between owners,
+  // but the pricer paginates a backlog and the scorer refreshes a matview, so
+  // starting them past the budget would put the whole refresh back on course to
+  // cross 02:00 while holding the pipeline lock.
+  if (Date.now() >= deadlineMs) {
+    log.error({ inserted }, 'intraday refresh hit its budget; skipping price/score and NOT recording the boundary');
+    return { completed: false };
+  }
   const priced = await runPricer();
   const scored = await runScorer();
   log.info({ inserted, priced, scored }, 'intraday refresh complete');
+  return { completed: true };
 }
 
 let refreshStartedAt = 0; // 0 = no refresh in flight
+// Enforced COOPERATIVELY inside runFetcher (it stops between owners) and again
+// before price/score -- NOT by racing a timeout, which would release the PIPELINE
+// lock while FETCHER_LOCK_KEY was still held and make the nightly's own fetch
+// return a silent zero before first-of-month money steps.
 const REFRESH_MAX_RUNTIME_MS = 20 * 60 * 1_000;
 // A refresh must never still be running when the nightly comes due.
 const REFRESH_QUIET_BEFORE_NIGHTLY_MS = 60 * 60 * 1_000;
@@ -706,8 +722,12 @@ async function refreshTick(): Promise<void> {
   refreshStartedAt = Date.now();
   try {
     const ran = await withPipelineLock(async () => {
-      await runRefreshSteps(boundary);
-      await recordRefreshRun(boundary);
+      // 20-minute budget inside a 60-minute window: worst case is the budget
+      // plus one owner's chain sweep (~140s), so a refresh cannot reach 02:00.
+      const { completed } = await runRefreshSteps(boundary, Date.now() + REFRESH_MAX_RUNTIME_MS);
+      // Do not claim a boundary the run did not finish -- it stays due and the
+      // next tick retries it.
+      if (completed) await recordRefreshRun(boundary);
     });
     if (!ran) log.info('intraday refresh skipped: pipeline busy');
   } catch (err: any) {

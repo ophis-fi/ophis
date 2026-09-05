@@ -982,6 +982,20 @@ export interface RunFetcherOptions {
    * anything not fetched since it opened eligible, once per boundary.
    */
   staleBefore?: Date;
+  /**
+   * Wall-clock epoch ms after which the owner loop stops starting new work.
+   *
+   * The quiet window bounds when a refresh may START; it bounds nothing about
+   * how long one RUNS. With ~29 tracked wallets and 14 sequential chain requests
+   * each, an orderbook outage reaching the existing 10s request timeout is
+   * roughly 68 minutes -- past the 60-minute window and into the nightly, whose
+   * bounded lock wait then expires and delays the monthly payout path.
+   *
+   * Checked BETWEEN OWNERS, which is cooperative and safe (no half-written
+   * owner) and bounds the run to this deadline plus one owner's worst case,
+   * about 140 seconds.
+   */
+  deadlineMs?: number;
 }
 
 const DEFAULT_FETCH_STALE_AFTER_MS = 6 * 60 * 60 * 1_000;
@@ -1084,6 +1098,7 @@ export async function runFetcher(
     //     correctly via the on-chain settle() decoder (full DECODER set).
     const owners = ownerRows.filter((o) => !DECODER_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
+    let processedOwners = 0;
     // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
     // FEE arms: only a verified API write moves volume_fee_bps / fee_verified;
     // the final arm also repairs post-cutover rows previously persisted above 1 bp.
@@ -1180,6 +1195,12 @@ export async function runFetcher(
       await upsertDefillamaFills(pendingDefillamaFills.splice(0));
     };
     for (const { wallet } of owners) {
+      if (opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs) {
+        log.warn({ processed: processedOwners, of: owners.length },
+          'fetcher stopped at its deadline so the refresh cannot cross the nightly boundary');
+        break;
+      }
+      processedOwners++;
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
       let reportingOk = true;

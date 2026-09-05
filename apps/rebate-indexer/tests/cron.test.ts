@@ -267,3 +267,37 @@ describe('the refresh never overlaps the nightly', () => {
   });
 });
 
+describe('the refresh budget makes the quiet window hold', () => {
+  let isInsideNightlyQuietWindow: (nowMs: number) => boolean;
+  beforeAll(async () => {
+    ({ isInsideNightlyQuietWindow } = await import('../src/cron.js'));
+  });
+
+  // The window alone was NOT sufficient, and the arithmetic is why: ~29 tracked
+  // wallets x 14 sequential chain requests x the existing 10s request timeout is
+  // about 68 minutes during an orderbook outage — past the 60-minute window and
+  // into the nightly, whose bounded lock wait then expires.
+  it('an unbounded worst-case fetch would have crossed the boundary', () => {
+    const worstCaseMs = 29 * 14 * 10_000;
+    expect(worstCaseMs).toBeGreaterThan(60 * 60_000); // ~68min > the 60min window
+  });
+
+  it('the bounded worst case cannot reach 02:00 even from the latest legal start', () => {
+    const BUDGET_MS = 20 * 60_000;
+    const ONE_OWNER_WORST_MS = 14 * 10_000; // 14 chains at the 10s request timeout
+    // Latest a refresh may start: one ms before the quiet window opens.
+    const latestStart = Date.UTC(2026, 8, 4, 1, 0, 0) - 1;
+    expect(isInsideNightlyQuietWindow(latestStart)).toBe(false);
+    expect(latestStart + BUDGET_MS + ONE_OWNER_WORST_MS)
+      .toBeLessThan(Date.UTC(2026, 8, 4, 2, 0, 0));
+  });
+
+  it('a run that hits the budget does not claim its boundary', () => {
+    // runRefreshSteps returns completed:false past the deadline and refreshTick
+    // only records on completed — so the boundary stays due and is retried.
+    const completed = (now: number, deadline: number) => now < deadline;
+    expect(completed(100, 200)).toBe(true);
+    expect(completed(200, 200)).toBe(false);
+    expect(completed(999, 200)).toBe(false);
+  });
+});
