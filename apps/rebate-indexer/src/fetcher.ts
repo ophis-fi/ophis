@@ -677,15 +677,38 @@ export function attributeOrder(
  * so sub-minute skew is irrelevant. This also removes a per-chain RPC dependency
  * and a latent bug (the old lookup queried Gnosis for EVERY chain's block number).
  */
+/**
+ * Thrown when the page loop hits its deadline. A DISTINCT type so the existing
+ * per-owner catch marks the owner failed -- which is exactly right: the owner's
+ * cursor must not advance and the run must report incomplete coverage.
+ */
+export class FetchDeadlineExceeded extends Error {
+  constructor(chainId: number, owner: string) {
+    super(`fetch deadline exceeded for owner ${owner} on chain ${chainId}`);
+    this.name = 'FetchDeadlineExceeded';
+  }
+}
+
 export async function fetchChainTrades(
   chainId: number,
   owner: `0x${string}`,
   deps: FetcherDeps,
+  // Optional wall-clock stop. Checked BETWEEN PAGES, not only between owners: a
+  // wallet with a long history, or one whose requests keep consuming the 10s
+  // request timeout, can otherwise keep the whole refresh inside a single owner
+  // well past its budget and overlap the 02:00 nightly. Stopping between pages
+  // is safe -- each page is upserted whole -- and the partial result surfaces as
+  // incomplete coverage upstream rather than a silently short run.
+  deadlineMs?: number,
 ): Promise<PendingTrade[]> {
   const out: PendingTrade[] = [];
   const seen = new Set<string>(); // collapse multiple fills of the same order within this run
   let offset = 0;
   while (true) {
+    if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+      log.warn({ chainId, owner, fetched: out.length }, 'page loop stopped at the deadline; owner is incomplete');
+      throw new FetchDeadlineExceeded(chainId, owner);
+    }
     const page = await listTrades({ chainId, owner, offset, limit: PAGE_SIZE });
     if (page.length === 0) break;
 
@@ -967,7 +990,53 @@ export async function withPipelineLock(
   }
 }
 
-export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: number; owners: number }> {
+export interface RunFetcherOptions {
+  /**
+   * ABSOLUTE cutoff: re-fetch a tracked wallet whose last_fetched precedes this
+   * instant. Defaults to now minus 6 hours, the historical behaviour, which is
+   * right for the 02:00 nightly.
+   *
+   * WHY ABSOLUTE AND NOT A RELATIVE WINDOW. The first version of this took a
+   * duration and compared `last_fetched < now() - interval`. With an hourly
+   * cadence that fetches each wallet only every OTHER tick: a wallet fetched at
+   * 12:05 is still not stale when the 13:00 tick asks for "older than one hour"
+   * (12:05 is after 12:00), yet that tick records 13:00 as a completed boundary
+   * and no later poll retries inside it — so the wallet waits until ~14:00 and a
+   * trade can hide for nearly two hours. Boundary-exact comparison also breaks on
+   * the nose: a fetch at exactly 12:00 fails a strict `< 12:00` at the 13:00 tick.
+   *
+   * Passing the refresh BOUNDARY itself fixes both: anything not fetched since
+   * this boundary opened is eligible, once per boundary, exactly as intended.
+   */
+  staleBefore?: Date;
+  /**
+   * Wall-clock epoch ms after which the owner loop stops starting new work.
+   *
+   * The intraday refresh sets this so it cannot still be inside runFetcher when
+   * the nightly comes due. A quiet window alone does not bound anything: the
+   * per-owner CoW calls are sequential and unbounded, so a slow run started at
+   * 00:59 can hold the pipeline advisory lock past 02:00 and burn the nightly's
+   * 40-minute wait. Stopping between owners is cooperative and safe -- it never
+   * abandons a half-written owner -- and the run reports itself truncated.
+   */
+  deadlineMs?: number;
+}
+
+const DEFAULT_FETCH_STALE_AFTER_MS = 6 * 60 * 60 * 1_000;
+
+export interface RunFetcherResult {
+  inserted: number;
+  owners: number;
+  /** Owners whose fetch failed on at least one chain. */
+  failedOwners: number;
+  /** True if the deadline stopped the loop before every selected owner ran. */
+  truncated: boolean;
+}
+
+export async function runFetcher(
+  _deps?: FetcherDeps,
+  opts: RunFetcherOptions = {},
+): Promise<RunFetcherResult> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
   const { db, sql, schema } = await import('./db/index.js');
 
@@ -987,7 +1056,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     locked = lockRow?.locked === true;
     if (!locked) {
       log.info('fetcher already running (advisory lock held); skipping');
-      return { inserted: 0, owners: 0 };
+      return { inserted: 0, owners: 0, failedOwners: 0, truncated: false };
     }
 
     const pendingDefillamaFills: PendingDefiLlamaFill[] = [];
@@ -1024,11 +1093,20 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.
-    const ownerRows = await sql<{ wallet: string }[]>`
+    // Lower clamp only. The upper bound is `now`, NOT now-1min: the nightly
+    // deliberately passes `now` to force a boundary-complete fetch, and a
+    // one-minute haircut would silently exclude any wallet a startup backfill
+    // touched just before 02:00 — the exact trade that must not be missing when
+    // the first-of-month batcher computes an irreversible payout. Hot-looping is
+    // prevented by the due-boundary logic, not by shaving the cutoff.
+    const nowMs = Date.now();
+    const requested = (opts.staleBefore ?? new Date(nowMs - DEFAULT_FETCH_STALE_AFTER_MS)).getTime();
+    const staleBeforeIso = new Date(Math.min(Math.max(requested, nowMs - 86_400_000), nowMs)).toISOString();
+    const ownerRowsRaw = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
       WHERE last_fetched IS NULL
-         OR last_fetched < now() - INTERVAL '6 hours'
+         OR last_fetched < ${staleBeforeIso}::timestamptz
          OR wallet IN (SELECT wallet FROM defillama_backfill_wallets)
       -- proven wallets first; then least-recently-fetched (never-fetched first);
       -- then OLDEST registration. The first_seen tiebreaker makes never-fetched
@@ -1038,8 +1116,15 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
                (wallet IN (SELECT wallet FROM trades)) DESC,
                last_fetched ASC NULLS FIRST,
                first_seen ASC
-      LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
+      -- +1 probe row: if the cap itself left eligible wallets behind, coverage is
+      -- INCOMPLETE and the caller must not record the boundary as serviced. Without
+      -- this, truncated stays false (it only tracks the runtime deadline) and the
+      -- heartbeat would claim a complete refresh while wallets waited a full
+      -- interval.
+      LIMIT ${FETCHER_MAX_OWNERS_PER_RUN + 1}
     `;
+    const cappedByLimit = ownerRowsRaw.length > FETCHER_MAX_OWNERS_PER_RUN;
+    const ownerRows = ownerRowsRaw.slice(0, FETCHER_MAX_OWNERS_PER_RUN);
     // Drop EVERY eth-flow contract enrolled as a tracked wallet (the /tier
     // endpoint now rejects them, but historical enrollments may persist):
     //   - Ophis-dedicated routers are fetched separately as synthetic owners
@@ -1054,6 +1139,8 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     //     correctly via the on-chain settle() decoder (full DECODER set).
     const owners = ownerRows.filter((o) => !DECODER_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
+    let processedOwners = 0;
+    let syntheticFailures = 0;
     // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
     // FEE arms: only a verified API write moves volume_fee_bps / fee_verified;
     // the final arm also repairs post-cutover rows previously persisted above 1 bp.
@@ -1149,24 +1236,41 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       if (pendingDefillamaFills.length === 0) return;
       await upsertDefillamaFills(pendingDefillamaFills.splice(0));
     };
+    let failedOwners = 0;
+    let truncated = cappedByLimit;
     for (const { wallet } of owners) {
+      if (opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs) {
+        truncated = true;
+        log.warn({ remaining: owners.length - processedOwners }, 'fetcher stopped at its deadline; run is incomplete');
+        break;
+      }
+      processedOwners++;
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
+      let productionOk = true;
       let reportingOk = true;
       for (const chainId of SUPPORTED_CHAIN_IDS) {
         try {
-          const rows = await fetchChainTrades(chainId, owner, dbDeps);
+          const rows = await fetchChainTrades(chainId, owner, dbDeps, opts.deadlineMs);
           inserted += await upsertTrades(rows);
           await flushDefillamaFills();
         } catch (err) {
           ownerOk = false; // a transient CoW failure must not silently advance the cursor
           if (DEFILLAMA_CHAIN_IDS.has(chainId)) reportingOk = false;
+          // Track PRODUCTION coverage separately from the all-chain cursor.
+          // ownerOk covers every SUPPORTED_CHAIN_IDS entry including Sepolia, but
+          // /stats and /leaderboard exclude Sepolia via PRODUCTION_CHAIN_IDS — so
+          // counting a staging outage against the public refresh gate would keep
+          // every intraday attempt "incomplete" and eventually page operations
+          // while all production chains refreshed perfectly normally.
+          if (DEFILLAMA_CHAIN_IDS.has(chainId)) productionOk = false;
           log.error({ err, chainId, owner }, 'owner/chain fetch failed'); // single failure does not abort others
         }
       }
       // The one-time reporting queue tracks production chains only. A Sepolia
       // orderbook outage must not hold the public mainnet history closed forever.
       // Conversely, any production-chain failure keeps this wallet queued for retry.
+      if (!productionOk) failedOwners++;
       if (reportingOk) {
         await sql`DELETE FROM defillama_backfill_wallets WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
       }
@@ -1191,10 +1295,15 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       const chainId = Number(chainIdStr);
       if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
       try {
-        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
+        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps, opts.deadlineMs);
         inserted += await upsertTrades(rows);
         await flushDefillamaFills();
       } catch (err) {
+        // Dedicated Ophis eth-flow routers are a SYNTHETIC source with no tracked
+        // owner behind them, so a failure here never touched failedOwners. Left
+        // uncounted it would let the boundary be recorded and the heartbeat stay
+        // green while native-ETH trades went unrefreshed.
+        if (DEFILLAMA_CHAIN_IDS.has(chainId)) syntheticFailures++;
         log.error({ err, chainId, ethFlowOwner }, 'eth-flow owner fetch failed');
       }
     }
@@ -1209,7 +1318,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     if (process.env.SETTLE_DECODER_CHAINS) {
       try {
         const { runSettleDecoder } = await import('./cow/onchain.js');
-        inserted += await runSettleDecoder({
+        const dec = await runSettleDecoder({
           sql: sql as unknown as Parameters<typeof runSettleDecoder>[0]['sql'],
           upsertTrades,
           // Settlement-fill persistence for decoder-discovered trades: the only
@@ -1223,7 +1332,18 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
             await flushDefillamaFills();
           },
         });
+        inserted += dec.inserted;
+        // Per-chain decoder failures are caught INSIDE runSettleDecoder and used to
+        // resolve normally, so the outer catch never saw them. Count them here or
+        // a decoder-only chain outage records the boundary with those native-ETH /
+        // EIP-1271 trades unrefreshed.
+        syntheticFailures += dec.failedChains;
       } catch (err) {
+        // Counts toward incompleteness: for hosted-chain native-ETH and EIP-1271
+        // trades the decoder is the ONLY source, so a silent failure here would
+        // let the boundary be recorded and the heartbeat stay green while those
+        // trades were never refreshed.
+        syntheticFailures++;
         log.error({ err }, 'settle-decoder pass failed');
       }
     }
@@ -1233,7 +1353,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // would delete aged, not-yet-refetched wallets before later iterations reach
     // them, silently rebuilding an incomplete ledger.
     log.info({ owners: owners.length, inserted }, 'fetcher complete');
-    return { inserted, owners: owners.length };
+    return { inserted, owners: owners.length, failedOwners: failedOwners + syntheticFailures, truncated };
   } finally {
     // Always runs — even if the lock acquire or unlock throws — so a transient
     // error can't leak the reserved connection. Unlock on the SAME connection

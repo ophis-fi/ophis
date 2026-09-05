@@ -36,6 +36,11 @@ services:
       API_PORT: 8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BATCHER_PROPOSE_ENABLED: ${BATCHER_PROPOSE_ENABLED:-true}
+      # Intraday public-data refresh cadence in minutes (default 60, clamped
+      # [10,1440] in cron.ts). Without this pass-through the knob is inert:
+      # compose maps environment explicitly, so a host .env never reaches the
+      # process and production would be stuck at 60 no matter what is set.
+      REBATES_REFRESH_MINUTES: ${REBATES_REFRESH_MINUTES:-60}
       REBATE_INDEXER_ADMIN_TOKEN: ${REBATE_INDEXER_ADMIN_TOKEN}
       # Money-path mode flags (audit 2026-06-09): without these pass-throughs a
       # .env flip silently no-ops — the container never saw the variables at all.

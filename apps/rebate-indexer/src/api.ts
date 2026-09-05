@@ -12,6 +12,7 @@ import { computeDefiLlamaDay, computeDefiLlamaDayUsers, computePublicStats } fro
 import { assessPublicDataFreshness, readPublicDataFreshness, type PublicDataFreshness } from './freshness.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
+import { refreshIntervalMs } from './cron.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import { findReward } from './rewards.js';
@@ -442,6 +443,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       trade_rewards_last_attempt_at: string | null;
       trade_rewards_last_success_at: string | null;
       last_public_data_refresh_at: string | null;
+      last_refresh_boundary: string | null;
     }[]>`
       SELECT
         (SELECT MAX(fetched_at)::text FROM trades) AS last_fetch,
@@ -455,7 +457,13 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         (SELECT MAX(ran_at)::text FROM pipeline_runs WHERE first_of_month) AS last_batcher_run_at,
         (SELECT last_attempt_at::text FROM trade_reward_scheduler_state WHERE singleton = TRUE) AS trade_rewards_last_attempt_at,
         (SELECT last_success_at::text FROM trade_reward_scheduler_state WHERE singleton = TRUE) AS trade_rewards_last_success_at,
-        (SELECT refreshed_at::text FROM public_data_refresh_state WHERE singleton = TRUE) AS last_public_data_refresh_at
+        (SELECT refreshed_at::text FROM public_data_refresh_state WHERE singleton = TRUE) AS last_public_data_refresh_at,
+        -- Intraday refresh liveness. WITHOUT this nothing reads refresh_runs, so
+        -- if the hourly tick dies while the nightly keeps scoring once a day every
+        -- monitor stays green forever: dataFresh uses a 26h threshold and the
+        -- scheduled workflow checks only the nightly boundary. Exposing the
+        -- serviced boundary is what makes the new cadence observable at all.
+        (SELECT MAX(serviced_boundary)::text FROM refresh_runs) AS last_refresh_boundary
     `;
     // pending_batches = in-flight (computing/proposing/proposed) — expected to be
     // transient. failed_batches = cycles that did NOT pay out (execution reverted,
@@ -478,6 +486,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const trade_rewards_last_attempt_at = healthRows[0]?.trade_rewards_last_attempt_at ?? null;
     const trade_rewards_last_success_at = healthRows[0]?.trade_rewards_last_success_at ?? null;
     const last_public_data_refresh_at = healthRows[0]?.last_public_data_refresh_at ?? null;
+    const last_refresh_boundary = healthRows[0]?.last_refresh_boundary ?? null;
     const freshness = assessPublicDataFreshness(last_public_data_refresh_at);
     const pending = batchCountRows[0]?.pending ?? '0';
     const failed = batchCountRows[0]?.failed ?? '0';
@@ -491,6 +500,13 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       trade_rewards_last_attempt_at,
       trade_rewards_last_success_at,
       last_public_data_refresh_at,
+      last_refresh_boundary,
+      // Publish the EFFECTIVE cadence so the monitor can derive its own grace
+      // period. A hardcoded threshold there is wrong in both directions:
+      // refreshIntervalMs accepts up to 1440 minutes, so a legitimately slower
+      // cadence would be reported dead for most of every interval, while a
+      // 10-minute cadence would go unmonitored for hours.
+      refresh_interval_minutes: refreshIntervalMs() / 60_000,
       data_as_of: freshness.dataAsOf,
       data_fresh: freshness.dataFresh,
       data_status: freshness.dataStatus,

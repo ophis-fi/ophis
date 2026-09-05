@@ -152,7 +152,11 @@ describe('B1 money-path safety gate', () => {
       throw new Error('upsert must not be called while the decoder is hard-disabled');
     });
     const n = await runSettleDecoder({ sql: (async () => []) as never, upsertTrades });
-    expect(n).toBe(0);
+    // runSettleDecoder now returns { inserted, failedChains } so a decoder-only
+    // chain outage can reach the intraday refresh's coverage gate. The disabled
+    // path must still write nothing AND report no failure.
+    expect(n.inserted).toBe(0);
+    expect(n.failedChains).toBe(0);
     expect(upsertTrades).not.toHaveBeenCalled();
     if (prev === undefined) delete process.env.SETTLE_DECODER_CHAINS;
     else process.env.SETTLE_DECODER_CHAINS = prev;

@@ -455,9 +455,18 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
  * lock so cursor bookkeeping + upserts share one critical section. Per-chain errors
  * are logged and isolated (one bad chain never blocks the others).
  */
-export async function runSettleDecoder(deps: SettleDecoderDeps): Promise<number> {
+export interface SettleDecoderResult {
+  inserted: number;
+  /** Chains whose scan threw. The caller must treat >0 as INCOMPLETE coverage:
+   *  for hosted-chain native-ETH and EIP-1271 trades this decoder is the only
+   *  source, so swallowing these silently let the refresh boundary be recorded
+   *  while those trades went unrefreshed. */
+  failedChains: number;
+}
+
+export async function runSettleDecoder(deps: SettleDecoderDeps): Promise<SettleDecoderResult> {
   const chains = settleDecoderChains();
-  if (chains.length === 0) return 0;
+  if (chains.length === 0) return { inserted: 0, failedChains: 0 };
   const discoveryOnly = isDiscoveryOnly();
   // Money-path safety gate. The FEE-CREDITING decoder stays HARD-DISABLED until on-chain
   // fee verification exists (FEE_VERIFICATION_IMPLEMENTED) — that path credits
@@ -470,20 +479,22 @@ export async function runSettleDecoder(deps: SettleDecoderDeps): Promise<number>
       { chains },
       'settle-decoder: HARD-DISABLED pending on-chain fee verification (ToB B1); not writing. Set SETTLE_DECODER_DISCOVERY_ONLY=true for catalog-only. See DECODER-BUILD-SPEC.md',
     );
-    return 0;
+    return { inserted: 0, failedChains: 0 };
   }
   if (discoveryOnly) {
     log.info({ chains }, 'settle-decoder: DISCOVERY-ONLY — cataloging trades at volume_fee_bps=0 (no rebate credit)');
   }
   let inserted = 0;
+  let failedChains = 0;
   for (const chainId of chains) {
     try {
       const n = await scanChain(chainId, deps, discoveryOnly);
       if (n > 0) log.info({ chainId, inserted: n }, 'settle-decoder: chain scan complete');
       inserted += n;
     } catch (err) {
+      failedChains++;
       log.error({ err, chainId }, 'settle-decoder: chain scan failed');
     }
   }
-  return inserted;
+  return { inserted, failedChains };
 }

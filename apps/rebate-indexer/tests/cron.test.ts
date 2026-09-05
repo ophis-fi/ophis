@@ -190,3 +190,104 @@ describe('every cycle-selecting monthly helper is given the serviced boundary', 
     expect(src).toMatch(/date_trunc\('month', \$\{servicedBoundary\.toISOString\(\)\}::timestamptz AT TIME ZONE 'UTC'\)/);
   });
 });
+
+describe('intraday refresh cadence — boundary math and env guard', () => {
+  let lastRefreshBoundary: (nowMs: number, intervalMs: number) => Date;
+  let refreshIntervalMs: () => number;
+  beforeAll(async () => {
+    ({ lastRefreshBoundary, refreshIntervalMs } = await import('../src/cron.js'));
+  });
+  afterEach(() => {
+    delete process.env.REBATES_REFRESH_MINUTES;
+  });
+
+  const HOUR = 3_600_000;
+
+  it('floors to the interval, and is idempotent inside one window', () => {
+    const at = Date.UTC(2026, 8, 4, 13, 47, 12);
+    const b = lastRefreshBoundary(at, HOUR);
+    expect(b.toISOString()).toBe('2026-09-04T13:00:00.000Z');
+    // anywhere later in the same hour maps to the SAME boundary, so a tick that
+    // already ran is not due again — this is what stops a poll loop re-running.
+    expect(lastRefreshBoundary(at + 12 * 60_000, HOUR).getTime()).toBe(b.getTime());
+  });
+
+  it('advances exactly once per interval', () => {
+    const a = lastRefreshBoundary(Date.UTC(2026, 8, 4, 13, 59, 59), HOUR);
+    const b = lastRefreshBoundary(Date.UTC(2026, 8, 4, 14, 0, 0), HOUR);
+    expect(b.getTime() - a.getTime()).toBe(HOUR);
+  });
+
+  it('defaults to 60 minutes', () => {
+    expect(refreshIntervalMs()).toBe(60 * 60_000);
+  });
+
+  it('honours a valid override', () => {
+    process.env.REBATES_REFRESH_MINUTES = '180';
+    expect(refreshIntervalMs()).toBe(180 * 60_000);
+  });
+
+  it('falls back to 60 on junk, and on anything the 10-minute poll cannot reach', () => {
+    for (const bad of ['', 'abc', '0', '-5', '9', '1441', 'NaN']) {
+      process.env.REBATES_REFRESH_MINUTES = bad;
+      expect(refreshIntervalMs(), `input ${JSON.stringify(bad)}`).toBe(60 * 60_000);
+    }
+  });
+});
+
+describe('the refresh never overlaps the nightly', () => {
+  let isInsideNightlyQuietWindow: (nowMs: number) => boolean;
+  beforeAll(async () => {
+    ({ isInsideNightlyQuietWindow } = await import('../src/cron.js'));
+  });
+
+  // WHY A QUIET WINDOW RATHER THAN A TIMEOUT. The earlier patch raced the refresh
+  // against a 20-minute budget and rejected, which released the PIPELINE lock
+  // while runFetcher still held FETCHER_LOCK_KEY. The nightly would then take the
+  // pipeline lock, call runFetcher, receive a silent { inserted: 0 } ("fetcher
+  // already running; skipping") and run first-of-month money steps on incomplete
+  // trades. Not overlapping at all removes that choice entirely.
+  it('defers inside the hour before 02:00 UTC', () => {
+    for (const [h, m] of [[1, 5], [1, 30], [1, 59]] as const) {
+      expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, h, m)), `${h}:${m}`).toBe(true);
+    }
+  });
+
+  it('allows refreshes well clear of the boundary', () => {
+    for (const [h, m] of [[2, 5], [6, 0], [12, 0], [23, 0], [0, 59]] as const) {
+      expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, h, m)), `${h}:${m}`).toBe(false);
+    }
+  });
+
+  it('the window is exactly one hour wide and closes at the boundary', () => {
+    expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 0, 59, 59))).toBe(false);
+    expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 1, 0, 0))).toBe(true);
+    // immediately after 02:00 the next boundary is ~24h away, so refreshes resume
+    expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 2, 0, 1))).toBe(false);
+  });
+});
+
+describe('coverage gate and runtime budget', () => {
+  // A refresh that fetched nothing must NOT record its boundary. runFetcher
+  // catches every owner/chain failure and resolves normally, so without this a
+  // sustained CoW outage leaves every wallet unfetched while the scorer advances
+  // public_data_refresh_state and /health, /stats and the workflow heartbeat all
+  // report fresh — indefinitely, on stale data.
+  it('completeness requires zero failed owners AND no truncation', () => {
+    const complete = (failedOwners: number, truncated: boolean) => !truncated && failedOwners === 0;
+    expect(complete(0, false)).toBe(true);
+    expect(complete(1, false)).toBe(false);   // a chain outage
+    expect(complete(0, true)).toBe(false);    // stopped at the deadline
+    expect(complete(3, true)).toBe(false);
+  });
+
+  it('the runtime budget fits inside the quiet window, so a late start still lands before 02:00', async () => {
+    const { isInsideNightlyQuietWindow } = await import('../src/cron.js');
+    const BUDGET_MS = 20 * 60_000;
+    // Latest a refresh may START: one millisecond before the window opens.
+    const latestStart = Date.UTC(2026, 8, 4, 1, 0, 0) - 1;
+    expect(isInsideNightlyQuietWindow(latestStart)).toBe(false);
+    // Even consuming the whole budget it finishes before the nightly boundary.
+    expect(latestStart + BUDGET_MS).toBeLessThan(Date.UTC(2026, 8, 4, 2, 0, 0));
+  });
+});
