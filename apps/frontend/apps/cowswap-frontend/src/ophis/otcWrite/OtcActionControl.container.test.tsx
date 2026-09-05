@@ -72,7 +72,7 @@ describe('OtcActionControl screen-reader semantics', () => {
       model: { action: 'unavailable', label: 'Cancelling order...', disabled: true, pending: true },
       error: null,
       successHash: null,
-      uncertainHash: null,
+      uncertainHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       allowance: null,
       diagnostic: null,
       clearUncertainTransaction: jest.fn(),
@@ -84,6 +84,7 @@ describe('OtcActionControl screen-reader semantics', () => {
     const button = screen.getByRole('button', { name: 'Cancelling order...' }) as HTMLButtonElement
     expect(button.disabled).toBe(true)
     expect(button.getAttribute('aria-busy')).toBe('true')
+    expect(screen.queryByText('Confirmation unavailable')).toBeNull()
   })
 
   it('announces an uncertain submitted hash and keeps retry disabled', () => {

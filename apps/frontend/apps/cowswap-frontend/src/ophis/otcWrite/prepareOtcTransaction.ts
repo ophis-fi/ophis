@@ -141,6 +141,7 @@ export async function submitOtcTransaction(
   authorization: OtcWriteRuntimeAuthorization,
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
   isCurrentContext: () => boolean = () => true,
+  onBroadcast: (hash: Hex) => void = () => undefined,
 ): Promise<OtcTransactionReceipt> {
   assertRuntimeAuthorization(authorization)
   const prepared = await prepareOtcTransaction(client, intent, manifest)
@@ -154,7 +155,11 @@ export async function submitOtcTransaction(
   )
   let receipt: OtcTransactionReceipt
   try {
+    onBroadcast(hash)
     receipt = await wallet.waitForTransactionReceipt(hash)
+    if (receipt.transactionHash.toLowerCase() !== hash.toLowerCase()) {
+      throw new Error('Ophis OTC transaction was replaced')
+    }
   } catch (caught) {
     throw new OtcReceiptTrackingError(hash, caught)
   }

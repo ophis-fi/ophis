@@ -51,8 +51,10 @@ export function recordUncertainOtcTransaction(
 export function removeUncertainOtcTransaction(
   transactions: UncertainOtcTransactions,
   key: string,
+  expectedHash?: Hex,
 ): UncertainOtcTransactions {
   if (!(key in transactions)) return transactions
+  if (expectedHash && transactions[key].transactionHash !== expectedHash) return transactions
   const next = { ...transactions }
   delete next[key]
   return next

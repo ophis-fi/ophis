@@ -101,8 +101,10 @@ describe('Milestone C wallet submission sink', () => {
       { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
       mockOtcAuthorization(),
       mockOtcManifest(),
+      undefined,
+      () => calls.push('broadcast'),
     )
-    expect(calls).toEqual(['simulate', 'send', 'receipt'])
+    expect(calls).toEqual(['simulate', 'send', 'broadcast', 'receipt'])
     expect(receipt.transactionHash).toBe(TX_HASH)
   })
 
@@ -196,6 +198,27 @@ describe('Milestone C wallet submission sink', () => {
       waitForTransactionReceipt: async () => {
         throw new Error('receipt RPC unavailable')
       },
+    }
+
+    await expect(
+      submitOtcTransaction(
+        mockOtcWriteClient(),
+        wallet,
+        { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
+        mockOtcAuthorization(),
+        mockOtcManifest(),
+      ),
+    ).rejects.toMatchObject<OtcReceiptTrackingError>({ transactionHash: TX_HASH })
+  })
+
+  it('keeps the original hash locked when a successful replacement receipt is returned', async () => {
+    const wallet: OtcWalletSubmitter = {
+      sendTransaction: async () => TX_HASH,
+      waitForTransactionReceipt: async () => ({
+        transactionHash: `0x${'ab'.repeat(32)}`,
+        status: 'success',
+        blockNumber: 201n,
+      }),
     }
 
     await expect(

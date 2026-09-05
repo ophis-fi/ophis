@@ -3,7 +3,7 @@ set -euo pipefail
 
 requires_fork() {
   [[ "${1:-}" == workflow_dispatch ]] || ! git diff --quiet HEAD^1 HEAD -- \
-    apps/frontend .github scripts contracts/foundry.toml contracts/test/otc-fork
+    apps/frontend .github scripts contracts .gitmodules
 }
 
 if [[ "${1:-}" == --self-test ]]; then
@@ -17,7 +17,7 @@ if [[ "${1:-}" == --self-test ]]; then
   git commit --quiet --allow-empty -m unchanged
   if requires_fork pull_request; then exit 1; fi
   requires_fork workflow_dispatch
-  for path in apps/frontend/example .github/example scripts/example contracts/foundry.toml contracts/test/otc-fork/example; do
+  for path in apps/frontend/example .github/example scripts/example contracts/foundry.toml contracts/test/otc-fork/example contracts/lib/example .gitmodules; do
     mkdir -p "$(dirname "$path")"
     touch "$path"
     git add "$path"

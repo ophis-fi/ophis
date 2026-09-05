@@ -29,7 +29,7 @@ export interface OtcApproveFillIntent extends OtcWriteIntentBase {
 
 export interface OtcRevokeCreateIntent extends OtcWriteIntentBase {
   kind: 'revoke-create'
-  draft: OtcCreateDraft
+  draft: Pick<OtcCreateDraft, 'tokenA' | 'tokenB'>
 }
 
 export interface OtcRevokeFillIntent extends OtcWriteIntentBase {

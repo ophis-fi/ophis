@@ -13,8 +13,15 @@
 - On code commit `69c737b2`, the PublicNode-backed local Anvil browser suite passed all six scenarios with zero skips in 1 minute 50 seconds: exact approval/create, cancel, full fill, mismatched allowance clearing, raced-fill/reload/revoke, and 390 px keyboard/overflow checks. Inspected the captured cancel, fill, and recovery screenshots. Local logs are `/private/tmp/ophis-otc-c-public-fork.log` and `/private/tmp/ophis-otc-c-browser-fork.log`; screenshots are under `apps/frontend/dist/cypress/apps/cowswap-frontend-e2e/screenshots/otc-fork.test.ts/otc-milestone-c/`. Both test servers stopped after the run.
 - All GitHub checks on `69c737b2` passed, except the intentionally skipped scheduled-only live canary. No authenticated fork workflow was triggered. The Codex check is green because this PR is draft; it is not fresh review approval.
 - Milestone B's separate security review is complete: no exploitable B-specific findings, zero Semgrep/Gitleaks findings, and 19 focused tests passed. Solidity-specific Pashov/Fizz and Verity verification were inapplicable to B's zero-Solidity delta; that review does not approve C.
-- Current merge protection requires the Codex check from GitHub Actions and strict branch freshness. Frontend and fork checks are not currently required by ruleset `17378394`; the old organization required-workflow prerequisite has not been installed.
+- Ruleset `17378394` now requires the frontend build/tests, OTC scope, contract fork, browser fork, and fresh Codex review checks from GitHub Actions, with strict branch freshness. This uses native repository status checks; workflow changes themselves remain inside the trusted Codex review scope. The separate scope check is required because GitHub treats conditionally skipped jobs as successful.
 - Remaining release evidence: final-commit contract and browser fork suites using the pinned keyless endpoint, enforceable required checks, and fresh Codex review. Production write enablement still requires separate approval.
+
+## Final review fixes — 2026-09-06
+
+- Independent Codex review of `dcc07014` reproduced four medium-priority recovery/receipt defects. All four are fixed: persist the transaction hash immediately after broadcast, reject replacement receipts, key create recovery by parsed amounts, and allow zero-approval revocation without valid create amounts.
+- The pending receipt UI does not offer manual lock removal while the original submission is being tracked. A late confirmation clears only its own hash, preserving any newer recovery record.
+- Focused regressions and the wider OTC/navigation suites pass. Final source review, CI run links, and merge/deployment outcomes are recorded on PR #1229; a green draft bypass never counts as review approval.
+- Detailed scope, findings, scan limitations, and release checks: [final security review](../../audit/otc-milestone-c-final-review-2026-09-06.md).
 
 ## Seven-step kickoff gate
 
@@ -23,8 +30,8 @@
 - [x] **3. Flip only the ERC-20 selector allowlist and bind policy at every sink.** Enable exactly `createOrder`, `fillOrder`, and `cancelOrder`; leave all four native-ETH selectors disabled. Every exact approval and contract-call builder validates both legs against `OTC_ESCROW`, rejects native/unknown assets, uses zero `value`, and has mutation-style negative tests.
 - [x] **4. Make preflight and submission fail closed.** Use exact approvals, bounded positive amounts, distinct tokens, active-order checks, maker-only cancellation, and a short future fill deadline. Immediately before the only wallet sink: verify chain/code/WETH and active account, re-read claimed terms, confirm final block identity, simulate exact calldata, reconstruct the reviewed request, and require a successful receipt.
 - [x] **5. Establish the fork suite.** Add an isolated Foundry profile and bytecode-pinned latest-state Ethereum suite covering runtime/WETH identity, exact-approval create/fill, cancel/refund, expired deadline, competing fills, fill/cancel race, and missing approval. CI explicitly pins PublicNode without using the historical repository RPC secret; RPC failure fails the suites rather than skipping them; an exact-final-head run remains a Step 7 release gate.
-- [ ] **6. Require a fresh Codex gate for every merge slice.** Bootstrap PR #1227 merged as `46dcf596`, landing the trusted-base, mutation-tested parser: money-path PRs require evidence for the current head, and incomplete changed-file scope fails closed. The Codex check is required in ruleset `17378394`; frontend and fork jobs still need enforceable required-check configuration before the feature PR can merge.
-- [ ] **7. Finish C before exposing a production wallet affordance.** The local-fork-only implementation is underway; production writes stay off until every remaining sub-gate and explicit owner approval are recorded.
+- [x] **6. Require a fresh Codex gate for every merge slice.** Bootstrap PR #1227 merged as `46dcf596`, landing the trusted-base, mutation-tested parser: money-path PRs require evidence for the current head, and incomplete changed-file scope fails closed. Ruleset `17378394` now also requires frontend, scope, contract fork, and browser fork checks from GitHub Actions; final-head review evidence remains required before merge.
+- [ ] **7. Finish C before exposing a production wallet affordance.** The local-fork-only implementation and final review fixes are implemented; production writes stay off until every remaining sub-gate and explicit owner approval are recorded.
   - [x] Create/fill/cancel UI uses a single primary action with independent confirmation-bound pending states.
   - [x] Allowance reads refresh after confirmation, lock through a four-second cache cooldown, and expose safe exact-allowance revocation after a failed or raced execution.
   - [x] Error translation covers user rejection, simulation/revert, wrong chain/account, source mismatch, expiry, inactive/raced orders, receipt failure, and transport failure.
@@ -38,7 +45,7 @@
 
 ## Merge slicing
 
-The implementation is committed as 27 functional slices plus three evidence commits, each below 400 changed lines and validated against its immediate predecessor. Later slices close exact-allowance, canonical-intent, active-account, block-identity, duplicate-submit, inactive-recovery, transitive-scope, uint256, and hostile-provider-error findings. Bootstrap PR #1227 is separate and must land first. No deploy follows automatically.
+The implementation is committed as 27 functional slices plus three evidence commits, each below 400 changed lines and validated against its immediate predecessor. Later slices close exact-allowance, canonical-intent, active-account, block-identity, duplicate-submit, inactive-recovery, transitive-scope, uint256, and hostile-provider-error findings. Bootstrap PR #1227 is separate and must land first. Merging triggers the existing Cloudflare deployment; production writes remain disabled by the local-host and explicit-fork build boundary.
 
 ## Kickoff evidence
 

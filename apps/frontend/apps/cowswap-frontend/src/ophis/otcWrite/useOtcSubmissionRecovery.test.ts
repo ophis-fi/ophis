@@ -7,7 +7,7 @@ import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
 import { submitOtcTransaction } from './prepareOtcTransaction'
 import { useOtcSubmission, type OtcSubmissionOptions } from './useOtcSubmission'
 
-import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
+import type { OtcTransactionReceipt, OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
 import type { OtcOrder, OtcReaderClient } from 'ophis/otc'
 
 jest.mock('./prepareOtcTransaction', () => ({ submitOtcTransaction: jest.fn() }))
@@ -115,6 +115,35 @@ describe('useOtcSubmission recovery boundaries', () => {
     const second = renderHook(() => useOtcSubmission(options(jest.fn().mockResolvedValue({ allowance: 0n }))))
     expect(second.result.current.uncertainHash).toBe(HASH)
     expect(localStorage.getItem(STORAGE_KEY)).toContain(HASH)
+  })
+
+  it('persists the broadcast before confirmation and clears it only after a known receipt', async () => {
+    let resolveReceipt: (receipt: OtcTransactionReceipt) => void = () => {
+      throw new Error('Receipt wait was not started')
+    }
+    submitMock.mockImplementation((_client, _wallet, _intent, _authorization, _manifest, _context, onBroadcast) => {
+      onBroadcast?.(HASH)
+      return new Promise((resolve) => {
+        resolveReceipt = resolve
+      })
+    })
+    const refreshAllowance = jest.fn().mockResolvedValue({ allowance: 0n })
+    const first = renderHook(() => useOtcSubmission(options(refreshAllowance)))
+    let submission: Promise<void> = Promise.resolve()
+    act(() => {
+      submission = first.result.current.submit({ kind: 'fill', account: ACCOUNT, order, deadline: 1n }, true)
+    })
+    expect(localStorage.getItem(STORAGE_KEY)).toContain(HASH)
+    first.unmount()
+    const second = renderHook(() => useOtcSubmission(options(refreshAllowance)))
+    expect(second.result.current.uncertainHash).toBe(HASH)
+
+    await act(async () => {
+      resolveReceipt({ transactionHash: HASH, status: 'success', blockNumber: 10n })
+      await submission
+    })
+    expect(second.result.current.uncertainHash).toBeNull()
+    expect(localStorage.getItem(STORAGE_KEY)).not.toContain(HASH)
   })
 
   it('allows a retry only after the user clears the exact uncertain action lock', async () => {

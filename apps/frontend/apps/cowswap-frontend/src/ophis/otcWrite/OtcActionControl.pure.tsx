@@ -73,7 +73,7 @@ export function OtcActionControlView(props: OtcActionControlViewProps): ReactNod
           </Callout>
         </div>
       )}
-      {controller.uncertainHash && (
+      {controller.uncertainHash && !controller.model.pending && (
         <UncertainTransactionRecovery
           key={controller.uncertainHash}
           transactionHash={controller.uncertainHash}

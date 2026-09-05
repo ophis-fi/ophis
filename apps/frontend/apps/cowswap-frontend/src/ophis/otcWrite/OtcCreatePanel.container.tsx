@@ -104,7 +104,12 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
   const parsedAmountB = draft?.amountB ?? null
   const usdAmountA = useOtcUsdAmount(tokenA, parsedAmountA)
   const usdAmountB = useOtcUsdAmount(tokenB, parsedAmountB)
-  const resetKey = getOtcActionReviewKey(account, [tokenA.address, amountA.trim(), tokenB.address, amountB.trim()])
+  const resetKey = getOtcActionReviewKey(account, [
+    tokenA.address,
+    draft?.amountA ?? amountA.trim(),
+    tokenB.address,
+    draft?.amountB ?? amountB.trim(),
+  ])
   const reviewed = reviewedKey === resetKey
   const handleConfirmed = useCallback(
     (_transactionHash: Hex) => {
@@ -120,13 +125,15 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
       resetKey,
       executeIntent: account && draft ? { kind: 'create', account, draft } : null,
       approvalIntent: account && draft ? { kind: 'approve-create', account, draft } : null,
-      revokeIntent: account && draft ? { kind: 'revoke-create', account, draft } : null,
+      revokeIntent: account
+        ? { kind: 'revoke-create', account, draft: { tokenA: tokenA.address, tokenB: tokenB.address } }
+        : null,
       allowanceToken: tokenA.address,
       allowanceTokenDecimals: tokenA.decimals,
       allowanceTokenSymbol: tokenA.symbol,
       requiredAllowance: draft?.amountA ?? null,
     }),
-    [account, draft, resetKey, reviewed, tokenA.address, tokenA.decimals, tokenA.symbol],
+    [account, draft, resetKey, reviewed, tokenA.address, tokenA.decimals, tokenA.symbol, tokenB.address],
   )
   const update = (setter: (value: string) => void, value: string): void => {
     setter(value)

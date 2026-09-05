@@ -139,7 +139,9 @@ export function buildOtcFillApproval(intent: OtcApproveFillIntent): OtcTransacti
 
 /** Recovery sink 1/2: clear a maker allowance left after failed creation. */
 export function buildOtcRevokeCreateApproval(intent: OtcRevokeCreateIntent): OtcTransactionRequest {
-  assertDraft(intent.draft)
+  // Clearing an allowance must work even when the create form has no valid amounts.
+  if (isAddressEqual(intent.draft.tokenA, intent.draft.tokenB)) fail('token pair must differ')
+  assertEscrowPolicy(intent.draft.tokenA, intent.draft.tokenB)
   return approvalRequest(intent.kind, intent.account, intent.draft.tokenA, 0n)
 }
 

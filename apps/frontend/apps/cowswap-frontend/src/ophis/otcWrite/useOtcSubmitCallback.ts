@@ -34,6 +34,7 @@ interface OtcSubmitCallbackOptions {
   setError: (error: string | null) => void
   setSuccess: (success: OtcSuccessfulTransaction | null) => void
   setUncertainHash: (hash: Hex) => void
+  clearSubmittedTransaction: (hash: Hex) => void
   setRecoveryRequired: (required: boolean) => void
 }
 
@@ -140,6 +141,7 @@ async function runOtcSubmission(
   options.setPendingIntent(intent.kind)
   options.setError(null)
   options.setSuccess(null)
+  let broadcastHash: Hex | null = null
   try {
     const receipt = await submitOtcTransaction(
       options.writeClient,
@@ -148,11 +150,17 @@ async function runOtcSubmission(
       options.authorization,
       undefined,
       isCurrentContext,
+      (hash) => {
+        broadcastHash = hash
+        options.setUncertainHash(hash)
+      },
     )
+    if (broadcastHash) options.clearSubmittedTransaction(broadcastHash)
     const result = await settleSuccessfulSubmission(intent, options, isCurrentContext)
     if (!applySuccessfulSubmission(result, receipt.transactionHash, options)) return
   } catch (caught) {
     if (applyUncertainSubmission(caught, options.setUncertainHash)) return
+    if (broadcastHash) options.clearSubmittedTransaction(broadcastHash)
     const result = await settleFailedSubmission(caught, execution, options, isCurrentContext)
     if (!applyFailedSubmission(result, options)) return
   } finally {

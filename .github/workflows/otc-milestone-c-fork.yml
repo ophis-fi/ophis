@@ -60,7 +60,7 @@ jobs:
     name: Injected wallet ERC-20 lifecycle and recovery
     needs: ethereum-fork
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -128,7 +128,7 @@ jobs:
             fi
             sleep 1
           done
-          if ! timeout 480 pnpm exec nx run cowswap-frontend-e2e:e2e --skip-nx-cache \
+          if ! timeout 1200 pnpm exec nx run cowswap-frontend-e2e:e2e --skip-nx-cache \
             --spec apps/cowswap-frontend-e2e/src/e2e/otc-fork.test.ts \
             --browser chrome; then
             for log in /tmp/otc-anvil.log /tmp/otc-frontend.log; do

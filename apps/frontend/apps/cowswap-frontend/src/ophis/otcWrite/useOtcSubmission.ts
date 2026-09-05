@@ -1,5 +1,5 @@
 import { useAtom } from 'jotai'
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 
@@ -85,10 +85,13 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     },
     [setUncertainTransactions, uncertainKey],
   )
-  const clearUncertainTransaction = useCallback(() => {
-    if (!uncertainKey) return
-    setUncertainTransactions((current) => removeUncertainOtcTransaction(current, uncertainKey))
-  }, [setUncertainTransactions, uncertainKey])
+  const clearUncertainTransaction = useCallback(
+    (expectedHash?: Hex) => {
+      if (!uncertainKey) return
+      setUncertainTransactions((current) => removeUncertainOtcTransaction(current, uncertainKey, expectedHash))
+    },
+    [setUncertainTransactions, uncertainKey],
+  )
   const contextGeneration = useRef(0)
   const inFlightGeneration = useRef<number | null>(null)
   const [allowanceCooldown, beginAllowanceCooldown] = useOtcAllowanceCooldown(refreshAllowance, submissionContext)
@@ -120,32 +123,20 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     setError,
     setSuccess,
     setUncertainHash,
+    clearSubmittedTransaction: clearUncertainTransaction,
     setRecoveryRequired,
   })
   const { successHash, terminalConfirmed } = successfulTransactionState(success)
-  return useMemo(
-    () => ({
-      pendingIntent,
-      error,
-      successHash,
-      terminalConfirmed,
-      uncertainHash,
-      recoveryRequired,
-      allowanceCooldown,
-      clearUncertainTransaction,
-      setError,
-      submit,
-    }),
-    [
-      allowanceCooldown,
-      clearUncertainTransaction,
-      error,
-      pendingIntent,
-      recoveryRequired,
-      submit,
-      successHash,
-      terminalConfirmed,
-      uncertainHash,
-    ],
-  )
+  return {
+    pendingIntent,
+    error,
+    successHash,
+    terminalConfirmed,
+    uncertainHash,
+    recoveryRequired,
+    allowanceCooldown,
+    clearUncertainTransaction: () => clearUncertainTransaction(),
+    setError,
+    submit,
+  }
 }
