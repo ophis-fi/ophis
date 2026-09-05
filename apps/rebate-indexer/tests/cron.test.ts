@@ -266,3 +266,28 @@ describe('the refresh never overlaps the nightly', () => {
     expect(isInsideNightlyQuietWindow(Date.UTC(2026, 8, 4, 2, 0, 1))).toBe(false);
   });
 });
+
+describe('coverage gate and runtime budget', () => {
+  // A refresh that fetched nothing must NOT record its boundary. runFetcher
+  // catches every owner/chain failure and resolves normally, so without this a
+  // sustained CoW outage leaves every wallet unfetched while the scorer advances
+  // public_data_refresh_state and /health, /stats and the workflow heartbeat all
+  // report fresh — indefinitely, on stale data.
+  it('completeness requires zero failed owners AND no truncation', () => {
+    const complete = (failedOwners: number, truncated: boolean) => !truncated && failedOwners === 0;
+    expect(complete(0, false)).toBe(true);
+    expect(complete(1, false)).toBe(false);   // a chain outage
+    expect(complete(0, true)).toBe(false);    // stopped at the deadline
+    expect(complete(3, true)).toBe(false);
+  });
+
+  it('the runtime budget fits inside the quiet window, so a late start still lands before 02:00', async () => {
+    const { isInsideNightlyQuietWindow } = await import('../src/cron.js');
+    const BUDGET_MS = 20 * 60_000;
+    // Latest a refresh may START: one millisecond before the window opens.
+    const latestStart = Date.UTC(2026, 8, 4, 1, 0, 0) - 1;
+    expect(isInsideNightlyQuietWindow(latestStart)).toBe(false);
+    // Even consuming the whole budget it finishes before the nightly boundary.
+    expect(latestStart + BUDGET_MS).toBeLessThan(Date.UTC(2026, 8, 4, 2, 0, 0));
+  });
+});

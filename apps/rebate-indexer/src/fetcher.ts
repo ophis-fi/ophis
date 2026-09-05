@@ -986,14 +986,34 @@ export interface RunFetcherOptions {
    * this boundary opened is eligible, once per boundary, exactly as intended.
    */
   staleBefore?: Date;
+  /**
+   * Wall-clock epoch ms after which the owner loop stops starting new work.
+   *
+   * The intraday refresh sets this so it cannot still be inside runFetcher when
+   * the nightly comes due. A quiet window alone does not bound anything: the
+   * per-owner CoW calls are sequential and unbounded, so a slow run started at
+   * 00:59 can hold the pipeline advisory lock past 02:00 and burn the nightly's
+   * 40-minute wait. Stopping between owners is cooperative and safe -- it never
+   * abandons a half-written owner -- and the run reports itself truncated.
+   */
+  deadlineMs?: number;
 }
 
 const DEFAULT_FETCH_STALE_AFTER_MS = 6 * 60 * 60 * 1_000;
 
+export interface RunFetcherResult {
+  inserted: number;
+  owners: number;
+  /** Owners whose fetch failed on at least one chain. */
+  failedOwners: number;
+  /** True if the deadline stopped the loop before every selected owner ran. */
+  truncated: boolean;
+}
+
 export async function runFetcher(
   _deps?: FetcherDeps,
   opts: RunFetcherOptions = {},
-): Promise<{ inserted: number; owners: number }> {
+): Promise<RunFetcherResult> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
   const { db, sql, schema } = await import('./db/index.js');
 
@@ -1013,7 +1033,7 @@ export async function runFetcher(
     locked = lockRow?.locked === true;
     if (!locked) {
       log.info('fetcher already running (advisory lock held); skipping');
-      return { inserted: 0, owners: 0 };
+      return { inserted: 0, owners: 0, failedOwners: 0, truncated: false };
     }
 
     const pendingDefillamaFills: PendingDefiLlamaFill[] = [];
@@ -1050,13 +1070,15 @@ export async function runFetcher(
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.
-    // Clamp the cutoff into [now-1day, now-1min]: a runaway caller must not turn
-    // this into a hot loop against the CoW API, nor silently disable re-fetching.
+    // Lower clamp only. The upper bound is `now`, NOT now-1min: the nightly
+    // deliberately passes `now` to force a boundary-complete fetch, and a
+    // one-minute haircut would silently exclude any wallet a startup backfill
+    // touched just before 02:00 — the exact trade that must not be missing when
+    // the first-of-month batcher computes an irreversible payout. Hot-looping is
+    // prevented by the due-boundary logic, not by shaving the cutoff.
     const nowMs = Date.now();
     const requested = (opts.staleBefore ?? new Date(nowMs - DEFAULT_FETCH_STALE_AFTER_MS)).getTime();
-    const staleBeforeIso = new Date(
-      Math.min(Math.max(requested, nowMs - 86_400_000), nowMs - 60_000),
-    ).toISOString();
+    const staleBeforeIso = new Date(Math.min(Math.max(requested, nowMs - 86_400_000), nowMs)).toISOString();
     const ownerRows = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
@@ -1087,6 +1109,7 @@ export async function runFetcher(
     //     correctly via the on-chain settle() decoder (full DECODER set).
     const owners = ownerRows.filter((o) => !DECODER_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
+    let processedOwners = 0;
     // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
     // FEE arms: only a verified API write moves volume_fee_bps / fee_verified;
     // the final arm also repairs post-cutover rows previously persisted above 1 bp.
@@ -1182,7 +1205,15 @@ export async function runFetcher(
       if (pendingDefillamaFills.length === 0) return;
       await upsertDefillamaFills(pendingDefillamaFills.splice(0));
     };
+    let failedOwners = 0;
+    let truncated = false;
     for (const { wallet } of owners) {
+      if (opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs) {
+        truncated = true;
+        log.warn({ remaining: owners.length - processedOwners }, 'fetcher stopped at its deadline; run is incomplete');
+        break;
+      }
+      processedOwners++;
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
       let reportingOk = true;
@@ -1200,6 +1231,7 @@ export async function runFetcher(
       // The one-time reporting queue tracks production chains only. A Sepolia
       // orderbook outage must not hold the public mainnet history closed forever.
       // Conversely, any production-chain failure keeps this wallet queued for retry.
+      if (!ownerOk) failedOwners++;
       if (reportingOk) {
         await sql`DELETE FROM defillama_backfill_wallets WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
       }
@@ -1266,7 +1298,7 @@ export async function runFetcher(
     // would delete aged, not-yet-refetched wallets before later iterations reach
     // them, silently rebuilding an incomplete ledger.
     log.info({ owners: owners.length, inserted }, 'fetcher complete');
-    return { inserted, owners: owners.length };
+    return { inserted, owners: owners.length, failedOwners, truncated };
   } finally {
     // Always runs — even if the lock acquire or unlock throws — so a transient
     // error can't leak the reserved connection. Unlock on the SAME connection

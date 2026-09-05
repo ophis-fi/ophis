@@ -665,23 +665,44 @@ export async function recordRefreshRun(servicedBoundary: Date): Promise<void> {
  * runScorer is what stamps public_data_refresh_state, so it is what actually
  * makes /stats and /leaderboard report dataFresh.
  */
-export async function runRefreshSteps(staleBefore: Date): Promise<void> {
+export async function runRefreshSteps(
+  staleBefore: Date,
+  deadlineMs: number,
+): Promise<{ complete: boolean }> {
   // Pass the BOUNDARY, not a duration: see RunFetcherOptions for why a relative
   // window makes an hourly cadence fetch each wallet only every other tick.
-  const { inserted } = await runFetcher(undefined, { staleBefore });
+  const { inserted, owners, failedOwners, truncated } = await runFetcher(undefined, {
+    staleBefore,
+    deadlineMs,
+  });
   const priced = await runPricer();
   const scored = await runScorer();
-  log.info({ inserted, priced, scored }, 'intraday refresh complete');
+  // COVERAGE GATE. runFetcher catches every owner/chain failure and resolves
+  // normally, so a sustained CoW or sovereign-orderbook outage would otherwise
+  // leave every wallet unfetched while the scorer advanced
+  // public_data_refresh_state and this boundary was recorded serviced -- /health,
+  // /stats and the workflow heartbeat would all report fresh, indefinitely,
+  // on stale data. Withhold the completion record instead, so the boundary stays
+  // due and the heartbeat ages until someone looks.
+  const complete = !truncated && failedOwners === 0;
+  if (!complete) {
+    log.error({ inserted, owners, failedOwners, truncated },
+      'intraday refresh INCOMPLETE; not recording the boundary so the heartbeat ages');
+  } else {
+    log.info({ inserted, owners, priced, scored }, 'intraday refresh complete');
+  }
+  return { complete };
 }
 
 let refreshStartedAt = 0; // 0 = no refresh in flight
-// Observability bound only — it releases the in-flight FLAG so ticks resume, it
-// does not cancel work. Deliberately NOT a Promise.race: rejecting early would
+// Runtime budget. Enforced COOPERATIVELY inside runFetcher (it stops between
+// owners at this deadline), NOT by racing a timeout: rejecting early would
 // release the PIPELINE lock while runFetcher still held FETCHER_LOCK_KEY, and
-// the nightly would then acquire the pipeline lock, call runFetcher, get a
-// silent `{ inserted: 0 }` (fetcher.ts logs "already running; skipping") and run
-// first-of-month money steps on incomplete trades. An overlapping refresh is
-// prevented by construction below instead, which is why this can stay a flag.
+// the nightly would then take the pipeline lock, call runFetcher, get a silent
+// `{ inserted: 0 }` (fetcher.ts logs "already running; skipping") and run
+// first-of-month money steps on incomplete trades. 20 minutes sits inside the
+// 60-minute quiet window, so a refresh started at the last possible moment
+// still finishes before 02:00.
 const REFRESH_MAX_RUNTIME_MS = 20 * 60 * 1_000;
 // A refresh must never still be running when the nightly comes due. Skip any
 // tick inside this window before the next 02:00 boundary.
@@ -737,8 +758,12 @@ async function refreshTick(): Promise<void> {
   refreshStartedAt = Date.now();
   try {
     const ran = await withPipelineLock(async () => {
-          await runRefreshSteps(boundary);
-      await recordRefreshRun(boundary);
+          // Deadline keeps the run inside the quiet window: a refresh may start at
+      // most REFRESH_QUIET_BEFORE_NIGHTLY_MS before 02:00, so bounding the work
+      // below that is what actually guarantees no overlap. The window alone
+      // bounds when a refresh STARTS, never how long it runs.
+      const { complete } = await runRefreshSteps(boundary, Date.now() + REFRESH_MAX_RUNTIME_MS);
+      if (complete) await recordRefreshRun(boundary);
     });
     if (!ran) log.info('intraday refresh skipped: pipeline busy (nightly holds the lock)');
   } catch (err: any) {
