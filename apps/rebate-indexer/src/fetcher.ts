@@ -677,6 +677,16 @@ export function attributeOrder(
  * so sub-minute skew is irrelevant. This also removes a per-chain RPC dependency
  * and a latent bug (the old lookup queried Gnosis for EVERY chain's block number).
  */
+/** Deadline sentinel. A DISTINCT type so the per-owner catch marks the owner
+ *  failed -- which is exactly right: the cursor must not advance and the run
+ *  must not look complete. */
+export class FetchDeadlineExceeded extends Error {
+  constructor(chainId: number, owner: string) {
+    super(`fetch deadline exceeded for owner ${owner} on chain ${chainId}`);
+    this.name = 'FetchDeadlineExceeded';
+  }
+}
+
 export async function fetchChainTrades(
   chainId: number,
   owner: `0x${string}`,
@@ -693,13 +703,25 @@ export async function fetchChainTrades(
   let offset = 0;
   while (true) {
     if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
-      log.warn({ chainId, owner, fetched: out.length }, 'page loop stopped at the deadline; this owner is incomplete');
-      break;
+      // THROW, do not break. Returning normally made the caller treat a
+      // truncated owner as complete: it stamped last_fetched, dropped the
+      // DefiLlama backfill entry, and the retry then EXCLUDED the owner because
+      // its new last_fetched was later than staleBefore -- so the boundary could
+      // be recorded with the omitted pages permanently absent. The existing
+      // per-owner catch already does the right thing with a throw: ownerOk goes
+      // false, only last_attempt_at advances, and the backfill entry is kept.
+      throw new FetchDeadlineExceeded(chainId, owner);
     }
     const page = await listTrades({ chainId, owner, offset, limit: PAGE_SIZE });
     if (page.length === 0) break;
 
     for (const t of page) {
+      // Per PAGE was not enough: a page holds up to 1,000 entries and each can
+      // sequentially await getOrder plus a settlement lookup, so one page can
+      // overrun the budget by hours while holding the pipeline lock.
+      if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+        throw new FetchDeadlineExceeded(chainId, owner);
+      }
       // The rebate ledger collapses an order's fills into one total, while the
       // DefiLlama ledger preserves every fill. `firstForOrder` controls only the
       // former; never skip a later API trade row before reporting it.
@@ -1090,16 +1112,22 @@ export async function runFetcher(
       -- registered before the flood (they'd otherwise tie on last_fetched=NULL).
       ORDER BY (wallet IN (SELECT wallet FROM defillama_backfill_wallets)) DESC,
                (wallet IN (SELECT wallet FROM trades)) DESC,
-               last_fetched ASC NULLS FIRST,
-               -- ROTATION under a budget-limited run. A FAILED owner keeps its old
-               -- last_fetched (only last_attempt_at moves -- see the two UPDATEs
-               -- below), so ordering by last_fetched alone re-selects the SAME
-               -- failing prefix every tick: it consumes the whole deadline again
-               -- and owners later in the ordering never get fetched at all.
-               -- last_attempt_at is already maintained on EVERY attempt, so
-               -- breaking the tie with it lets a budget-limited retry continue
-               -- past owners already tried for this boundary.
-               last_attempt_at ASC NULLS FIRST,
+               -- RETRY ORDERING. Attempt age is the PRIMARY key, not a
+               -- tie-breaker: a failing owner keeps its old last_fetched (only
+               -- last_attempt_at moves, see the two UPDATEs below), so ordering
+               -- by last_fetched first means Postgres never reaches the tie-break
+               -- when failing owners have DISTINCT last_fetched -- the normal
+               -- case -- and the same prefix is re-selected every budget-limited
+               -- tick while everything behind it starves.
+               --
+               -- COALESCE keeps the spam protection that a
+               -- bare last_attempt_at NULLS FIRST would have destroyed: a
+               -- never-attempted wallet falls back to its REGISTRATION age, so a
+               -- freshly enrolled row sorts LAST rather than leapfrogging an
+               -- older wallet whose first attempt failed. Public enrolment allows
+               -- thousands of unattempted rows against a 500 cap, so that
+               -- regression would have starved legitimate wallets outright.
+               COALESCE(last_attempt_at, first_seen) ASC,
                first_seen ASC
       LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
     `;

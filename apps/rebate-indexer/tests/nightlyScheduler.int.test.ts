@@ -292,29 +292,54 @@ describe('intraday refresh must NOT cannibalise the nightly', () => {
     expect(nose?.abs).toBe(true);
   });
 
-  // The rotation claim, executed rather than argued. I rebutted this finding on
-  // the SUCCESS path -- a fetched owner gets last_fetched = now() and sorts to the
-  // back -- and was wrong, because a FAILED owner updates only last_attempt_at.
-  // Ordering by last_fetched alone therefore re-selects the same failing prefix
-  // forever and starves everything behind it.
-  it('a failing prefix rotates once last_attempt_at joins the ordering', async () => {
-    await sql`CREATE TEMP TABLE rot (wallet text, last_fetched timestamptz, last_attempt_at timestamptz)`;
-    // Two owners that keep FAILING: last_fetched stays old, last_attempt_at moves.
+  // ROTATION, tested against the scenario that actually fails.
+  //
+  // My first attempt at this ordering put last_attempt_at BENEATH last_fetched
+  // and I "proved" it with three rows sharing one last_fetched value -- the only
+  // case where a tie-breaker is ever consulted. In production, previously
+  // successful owners have DISTINCT last_fetched, so Postgres never reached the
+  // tie-break and the same failing prefix was re-selected forever.
+  it('rotates when failing owners have DISTINCT last_fetched (the real case)', async () => {
+    await sql`CREATE TEMP TABLE rot (w text, last_fetched timestamptz, last_attempt_at timestamptz, first_seen timestamptz)`;
+    // Three owners that succeeded at different times and are now all FAILING:
+    // last_fetched is frozen and distinct; last_attempt_at moves on every attempt.
     await sql`INSERT INTO rot VALUES
-      ('a', TIMESTAMPTZ '2026-01-01', TIMESTAMPTZ '2026-09-05 12:00+00'),
-      ('b', TIMESTAMPTZ '2026-01-01', TIMESTAMPTZ '2026-09-05 12:05+00'),
-      ('c', TIMESTAMPTZ '2026-01-01', NULL)`;
-    const oldOrder = await sql<{ wallet: string }[]>`
-      SELECT wallet FROM rot ORDER BY last_fetched ASC NULLS FIRST, wallet ASC`;
-    // Old ordering cannot distinguish them: 'a' and 'b' keep winning by name.
-    expect(oldOrder.map((r) => r.wallet)).toEqual(['a', 'b', 'c']);
+      ('oldest',  TIMESTAMPTZ '2026-01-01', TIMESTAMPTZ '2026-09-05 12:00+00', TIMESTAMPTZ '2025-01-01'),
+      ('middle',  TIMESTAMPTZ '2026-02-01', TIMESTAMPTZ '2026-09-05 11:00+00', TIMESTAMPTZ '2025-01-02'),
+      ('newest',  TIMESTAMPTZ '2026-03-01', TIMESTAMPTZ '2026-09-05 10:00+00', TIMESTAMPTZ '2025-01-03')`;
 
-    const newOrder = await sql<{ wallet: string }[]>`
-      SELECT wallet FROM rot
-      ORDER BY last_fetched ASC NULLS FIRST, last_attempt_at ASC NULLS FIRST, wallet ASC`;
-    // New ordering puts the never-attempted owner FIRST, then the least recently
-    // attempted -- so a budget-limited retry advances instead of looping.
-    expect(newOrder.map((r) => r.wallet)).toEqual(['c', 'a', 'b']);
+    // OLD: last_fetched first. 'oldest' is always picked first, every tick,
+    // forever -- and under a budget that truncates, the rest never run.
+    const broken = await sql<{ w: string }[]>`
+      SELECT w FROM rot ORDER BY last_fetched ASC NULLS FIRST, last_attempt_at ASC NULLS FIRST`;
+    expect(broken.map((r: { w: string }) => r.w)).toEqual(['oldest', 'middle', 'newest']);
+
+    // NEW: attempt age is primary, so the LEAST recently attempted goes first and
+    // the prefix advances between ticks.
+    const fixed = await sql<{ w: string }[]>`
+      SELECT w FROM rot ORDER BY COALESCE(last_attempt_at, first_seen) ASC, first_seen ASC`;
+    expect(fixed.map((r: { w: string }) => r.w)).toEqual(['newest', 'middle', 'oldest']);
     await sql`DROP TABLE rot`;
+  });
+
+  // And the regression a bare `last_attempt_at ASC NULLS FIRST` would have caused.
+  it('a freshly enrolled never-attempted wallet cannot leapfrog an older failed one', async () => {
+    await sql`CREATE TEMP TABLE spam (w text, last_fetched timestamptz, last_attempt_at timestamptz, first_seen timestamptz)`;
+    await sql`INSERT INTO spam VALUES
+      ('legit_failed', NULL, TIMESTAMPTZ '2026-09-05 09:00+00', TIMESTAMPTZ '2026-01-01'),
+      ('fresh_spam',   NULL, NULL,                              TIMESTAMPTZ '2026-09-05 23:00+00')`;
+
+    // A bare NULLS FIRST on attempt time puts the brand-new row FIRST -- with
+    // thousands of unattempted enrolments against a 500 cap that starves the
+    // legitimate wallet outright.
+    const regression = await sql<{ w: string }[]>`
+      SELECT w FROM spam ORDER BY last_attempt_at ASC NULLS FIRST, first_seen ASC`;
+    expect(regression.map((r: { w: string }) => r.w)).toEqual(['fresh_spam', 'legit_failed']);
+
+    // COALESCE falls back to registration age, so the newcomer sorts LAST.
+    const fixed = await sql<{ w: string }[]>`
+      SELECT w FROM spam ORDER BY COALESCE(last_attempt_at, first_seen) ASC, first_seen ASC`;
+    expect(fixed.map((r: { w: string }) => r.w)).toEqual(['legit_failed', 'fresh_spam']);
+    await sql`DROP TABLE spam`;
   });
 });
