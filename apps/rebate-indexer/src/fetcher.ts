@@ -1084,6 +1084,17 @@ export async function runFetcher(
                first_seen ASC
       LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
     `;
+    // The cap is a real bound on coverage, and making the nightly fetch
+    // boundary-complete makes it bind SOONER (every wallet is now eligible, not
+    // just those stale by 6h). At 29 tracked wallets against a cap of 500 there
+    // is a 17x margin, but if that is ever exhausted the first-of-month batcher
+    // would compute an irreversible payout from an incomplete fetch. Say so
+    // loudly rather than truncating in silence.
+    if (ownerRows.length >= FETCHER_MAX_OWNERS_PER_RUN) {
+      log.error({ cap: FETCHER_MAX_OWNERS_PER_RUN, selected: ownerRows.length },
+        'fetcher hit FETCHER_MAX_OWNERS_PER_RUN: eligible wallets were left unfetched this run. Raise the cap before the next first-of-month batcher run.');
+    }
+
     // Drop EVERY eth-flow contract enrolled as a tracked wallet (the /tier
     // endpoint now rejects them, but historical enrollments may persist):
     //   - Ophis-dedicated routers are fetched separately as synthetic owners
