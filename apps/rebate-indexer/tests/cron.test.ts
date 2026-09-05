@@ -310,3 +310,31 @@ describe('the in-flight guard sits above the legitimate worst case', () => {
     expect(20 * 60_000).toBeLessThan(WORST_CASE_MS);   // why the old value was wrong
   });
 });
+
+describe('the no-truncation design fails SAFE when it outgrows its window', () => {
+  let refreshFitsInsideWindow: (n: number) => Promise<boolean>;
+  beforeAll(async () => {
+    ({ refreshFitsInsideWindow } = await import('../src/cron.js'));
+  });
+
+  // "The window is wider than the worst case" is only true for a GIVEN owner
+  // count. At 140s each, two hours fits ~51. We run 29; /tier accepts public
+  // enrolment and the selection cap is 500 — so the property this feature's
+  // safety rests on can be invalidated silently just by wallets being added.
+  it('fits at the current fleet size, and at the exact boundary', async () => {
+    expect(await refreshFitsInsideWindow(29)).toBe(true);   // today
+    expect(await refreshFitsInsideWindow(51)).toBe(true);   // 51 * 140s = 7140s <= 7200s
+  });
+
+  it('refuses to start once the eligible set cannot finish in time', async () => {
+    expect(await refreshFitsInsideWindow(52)).toBe(false);  // 7280s > 7200s
+    expect(await refreshFitsInsideWindow(500)).toBe(false); // the selection cap
+  });
+
+  it('degrades to the nightly rather than risking the money path', async () => {
+    // Skipping is the SAFE outcome: it is exactly the pre-existing behaviour.
+    // Starting a run that could hold the pipeline lock at 02:00 would defer the
+    // first-of-month steps, which is strictly worse than stale public data.
+    expect(await refreshFitsInsideWindow(120)).toBe(false);
+  });
+});

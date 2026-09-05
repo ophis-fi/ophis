@@ -707,6 +707,43 @@ export function isInsideNightlyQuietWindow(nowMs: number): boolean {
   return nextNightly - nowMs <= REFRESH_QUIET_BEFORE_NIGHTLY_MS;
 }
 
+/**
+ * Worst-case seconds one owner can take: every supported chain, each hitting the
+ * existing 10s request timeout during an orderbook outage.
+ */
+const WORST_CASE_MS_PER_OWNER = 14 * 10_000;
+
+/**
+ * Can the eligible set finish inside the quiet window?
+ *
+ * The window replaced a runtime budget precisely because truncating a run kept
+ * producing worse bugs. But "the window is wider than the worst case" is only
+ * true for a GIVEN NUMBER OF OWNERS: at 140s each, two hours fits about 51. We
+ * run 29 today, /tier accepts public enrolment, and FETCHER_MAX_OWNERS_PER_RUN
+ * is 500 -- so the property this feature's safety rests on can be invalidated
+ * silently just by wallets being added, with nothing to notice.
+ *
+ * Fail SAFE rather than fail late: if the eligible set no longer fits, skip the
+ * intraday refresh entirely. That degrades to exactly the pre-existing behaviour
+ * -- the nightly, which is the completeness guarantee -- instead of starting a
+ * run that could still hold the pipeline lock at 02:00 and defer the
+ * first-of-month money steps. And say so loudly, because a silent degradation
+ * here is indistinguishable from working.
+ */
+export async function refreshFitsInsideWindow(eligibleOwners: number): Promise<boolean> {
+  return eligibleOwners * WORST_CASE_MS_PER_OWNER <= REFRESH_QUIET_BEFORE_NIGHTLY_MS;
+}
+
+async function countEligibleOwners(staleBefore: Date): Promise<number> {
+  const [row] = await sql<{ n: number }[]>`
+    SELECT COUNT(*)::int AS n FROM tracked_wallets
+    WHERE last_fetched IS NULL
+       OR last_fetched < ${staleBefore.toISOString()}::timestamptz
+       OR wallet IN (SELECT wallet FROM defillama_backfill_wallets)
+  `;
+  return row?.n ?? 0;
+}
+
 async function refreshTick(): Promise<void> {
   if (refreshStartedAt) {
     if (Date.now() - refreshStartedAt < REFRESH_MAX_RUNTIME_MS) return;
@@ -735,6 +772,17 @@ async function refreshTick(): Promise<void> {
   const settled = Date.now();
   if (isInsideNightlyQuietWindow(settled) || (await isNightlyDue(lastNightlyBoundary(settled)))) {
     log.info('intraday refresh deferred: the nightly became due, or the quiet window opened, while checking');
+    return;
+  }
+  // Capacity check. See refreshFitsInsideWindow: the no-truncation design is
+  // only safe while the eligible set can finish inside the quiet window.
+  const eligible = await countEligibleOwners(boundary);
+  if (!(await refreshFitsInsideWindow(eligible))) {
+    log.error(
+      { eligible, fitsAtMost: Math.floor(REFRESH_QUIET_BEFORE_NIGHTLY_MS / WORST_CASE_MS_PER_OWNER),
+        windowMinutes: REFRESH_QUIET_BEFORE_NIGHTLY_MS / 60_000 },
+      'intraday refresh SKIPPED: the eligible wallet set can no longer finish inside the quiet window, so a run could hold the pipeline lock past 02:00 and defer the nightly money path. Widen REFRESH_QUIET_BEFORE_NIGHTLY_MS or reduce the eligible set. Public data falls back to the nightly cadence until then.',
+    );
     return;
   }
   refreshStartedAt = Date.now();
