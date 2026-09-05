@@ -1,9 +1,11 @@
-import { useId, useMemo } from 'react'
+import { useAtomValue } from 'jotai'
+import { useEffect, useId, useMemo, useRef } from 'react'
 
+import { withTimeout } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
+import { atomWithQuery } from 'jotai-tanstack-query'
 import ms from 'ms.macro'
-import useSWR from 'swr'
 import { usePublicClient } from 'wagmi'
 
 import { OPHIS_ETHEREUM_OTC_MANIFEST } from './otc.const'
@@ -37,22 +39,6 @@ export interface LoadOtcDataOptions {
   fetchImpl?: typeof fetch
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Ophis OTC read timed out')), timeoutMs)
-    promise.then(
-      (value) => {
-        clearTimeout(timeout)
-        resolve(value)
-      },
-      (error: unknown) => {
-        clearTimeout(timeout)
-        reject(error)
-      },
-    )
-  })
-}
-
 /**
  * Loads the on-chain snapshot (authority; a failure or timeout here throws so
  * nothing unverified is shown) and decorates it with subgraph enrichment when
@@ -64,7 +50,7 @@ export async function loadOtcData(client: OtcReaderClient, options: LoadOtcDataO
   const manifest = options.manifest ?? OPHIS_ETHEREUM_OTC_MANIFEST
 
   const [snapshot, indexResult] = await Promise.all([
-    withTimeout(readOtcSnapshot(client, manifest), manifest.readTimeoutMs),
+    withTimeout(readOtcSnapshot(client, manifest), manifest.readTimeoutMs, 'Ophis OTC read timed out'),
     fetchOtcIndexedOrders(options.fetchImpl ?? fetch, manifest).then(
       (value) => ({ ok: true as const, value }),
       () => ({ ok: false as const }),
@@ -172,7 +158,7 @@ const EMPTY_STATE = {
  * Ethereum-mainnet-pinned OTC data. Wallet-independent: reads go through the
  * configured network provider, never the connected wallet's chain.
  */
-export function useOtcData(enabled: boolean): OtcDataState {
+export function useOtcData(enabled: boolean, refreshSignal = 0): OtcDataState {
   const publicClient = usePublicClient({ chainId: SupportedChainId.MAINNET })
   const client = useMemo<OtcReaderClient | null>(
     () => (publicClient ? toOtcReaderClient(publicClient) : null),
@@ -183,30 +169,36 @@ export function useOtcData(enabled: boolean): OtcDataState {
   // render as 'ready' — every mount starts at loading until its own
   // verified round-trip completes (same rule as the detail page).
   const mountId = useId()
-  const { data, error } = useSWR(
-    enabled && client ? ['ophis-otc-data', mountId] : null,
-    async () => (client ? loadOtcData(client) : null),
-    {
-      refreshInterval: OTC_DATA_REFRESH_INTERVAL,
-      revalidateOnFocus: false,
-      refreshWhenHidden: false,
-      refreshWhenOffline: false,
-    },
+  const dataQueryAtom = useMemo(
+    () =>
+      atomWithQuery<LoadedOtcData | null, Error>(() => ({
+        queryKey: ['ophis-otc-data', mountId],
+        queryFn: async () => (client ? loadOtcData(client) : null),
+        enabled: enabled && !!client,
+        refetchInterval: OTC_DATA_REFRESH_INTERVAL,
+        refetchIntervalInBackground: false,
+        refetchOnWindowFocus: false,
+      })),
+    [client, enabled, mountId],
   )
+  const { data, error, refetch } = useAtomValue(dataQueryAtom)
+  const observedRefreshSignal = useRef(refreshSignal)
+  useEffect(() => {
+    if (observedRefreshSignal.current === refreshSignal) return
+    observedRefreshSignal.current = refreshSignal
+    void refetch()
+  }, [refetch, refreshSignal])
 
-  if (error) {
-    return { status: 'unavailable', ...EMPTY_STATE }
-  }
-  if (!data) {
-    return { status: 'loading', ...EMPTY_STATE }
-  }
-
-  return {
-    status: data.degradedReason ? 'degraded' : 'ready',
-    degradedReason: data.degradedReason,
-    snapshot: data.snapshot,
-    enrichment: data.enrichment,
-    reconciliation: data.reconciliation,
-    indexLagBlocks: data.indexLagBlocks,
-  }
+  return useMemo(() => {
+    if (error) return { status: 'unavailable', ...EMPTY_STATE }
+    if (!data) return { status: 'loading', ...EMPTY_STATE }
+    return {
+      status: data.degradedReason ? 'degraded' : 'ready',
+      degradedReason: data.degradedReason,
+      snapshot: data.snapshot,
+      enrichment: data.enrichment,
+      reconciliation: data.reconciliation,
+      indexLagBlocks: data.indexLagBlocks,
+    }
+  }, [data, error])
 }

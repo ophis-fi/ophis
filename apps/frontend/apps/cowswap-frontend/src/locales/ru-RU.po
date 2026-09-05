@@ -6122,3 +6122,409 @@ msgstr "Узнать больше"
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/HighFeeWarning/highFeeWarningHelpers.ts
 msgid "Swap and bridge costs are at least {formattedFeePercentage}% of the swap amount"
 msgstr "Затраты на замену и мост составляют не менее {formattedFeePercentage}% от суммы замены"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Test exact ERC-20 escrow actions against a local Ethereum fork. Every order read is verified directly against the pinned contract."
+msgstr "Тестируйте точные операции эскроу ERC-20 в локальном форке Ethereum. Каждое чтение ордера проверяется напрямую по закреплённому контракту."
+
+#. placeholder {recentOrderCount}: recentOrderCount
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Older orders beyond the latest {recentOrderCount} are not listed here."
+msgstr "Более старые ордера, не входящие в последние {recentOrderCount}, здесь не показаны."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcAge.tsx
+msgid "{minutes}m ago"
+msgstr "{minutes} мин назад"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Index mismatch"
+msgstr "Расхождение с индексом"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Sells"
+msgstr "Продаёт"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Loading OTC orders from Ethereum..."
+msgstr "Загрузка OTC-ордеров из Ethereum..."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "OTC data unavailable"
+msgstr "Данные OTC недоступны"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Index data partially invalid"
+msgstr "Данные индекса частично некорректны"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Creating, filling, and cancelling orders are under isolated Milestone C development. This production page is read-only: no transaction can be built or signed from it."
+msgstr "Создание, исполнение и отмена ордеров разрабатываются изолированно в рамках этапа C. Эта рабочая страница доступна только для чтения: здесь нельзя сформировать или подписать транзакцию."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Maker wants"
+msgstr "Мейкер хочет получить"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Verified on-chain"
+msgstr "Проверено в блокчейне"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Technical details"
+msgstr "Технические сведения"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "This wallet has not created any OTC orders on the escrow contract."
+msgstr "Этот кошелёк не создавал OTC-ордеров в эскроу-контракте."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "raw units"
+msgstr "минимальные единицы"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Read-only"
+msgstr "Только чтение"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Active OTC orders"
+msgstr "Активные OTC-ордера"
+
+#: apps/cowswap-frontend/src/pages/Otc/otcDetailFreshness.tsx
+msgid "The backend that served this order appears to be behind the network. The order state below was verified on-chain but may not reflect the latest blocks."
+msgstr "Бэкенд, предоставивший этот ордер, похоже, отстаёт от сети. Состояние ордера ниже проверено в блокчейне, но может не отражать последние блоки."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Read-only order detail, verified directly against Ethereum."
+msgstr "Сведения об ордере только для чтения, проверенные напрямую в Ethereum."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "index: cancelled"
+msgstr "индекс: отменён"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcBrowseFilters.tsx
+msgid "Filter by order id"
+msgstr "Фильтр по id ордера"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "index: filled"
+msgstr "индекс: исполнен"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcBrowseFilters.tsx
+msgid "e.g. 42"
+msgstr "например, 42"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Refresh before relying on it."
+msgstr "Обновите данные, прежде чем полагаться на них."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Orders do not expire on-chain. An order stays open until it is filled or the maker cancels it."
+msgstr "У ордеров нет срока действия в блокчейне. Ордер остаётся открытым, пока не будет исполнен или отменён мейкером."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Rate unavailable"
+msgstr "Курс недоступен"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "No orders for this wallet"
+msgstr "Для этого кошелька нет ордеров"
+
+#: apps/cowswap-frontend/src/pages/Otc/otcDetailFreshness.tsx
+msgid "The independent freshness comparison is unavailable right now. The order below passed direct on-chain verification at the shown block, but it may not reflect the latest network state."
+msgstr "Независимая проверка актуальности сейчас недоступна. Ордер ниже прошёл прямую проверку в блокчейне на указанном блоке, но может не отражать последнее состояние сети."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "On-chain verification failed, so this order is hidden rather than shown unverified. Refresh to retry."
+msgstr "Проверка в блокчейне не выполнена, поэтому ордер скрыт, а не показан непроверенным. Обновите страницу, чтобы повторить попытку."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcBrowseFilters.tsx
+msgid "Filter by token"
+msgstr "Фильтр по токену"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "OTC views"
+msgstr "Представления OTC"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Assets in these orders are deposited into an external immutable escrow contract that Ophis does not operate and cannot pause."
+msgstr "Активы этих ордеров помещаются во внешний неизменяемый эскроу-контракт, которым Ophis не управляет и который не может приостановить."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "On-chain verification failed, so order data is hidden rather than shown unverified. Refresh to try again."
+msgstr "Проверка в блокчейне не выполнена, поэтому данные ордеров скрыты, а не показаны непроверенными. Обновите страницу, чтобы повторить попытку."
+
+#. placeholder {verifiedBlock}: verifiedBlock
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Verified at block {verifiedBlock}"
+msgstr "Проверено на блоке {verifiedBlock}"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Canonical index differs"
+msgstr "Канонический индекс отличается"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Order creation is not enabled"
+msgstr "Создание ордеров не включено"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order #{orderIdText}"
+msgstr "Ордер №{orderIdText}"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcAge.tsx
+msgid "{days}d ago"
+msgstr "{days} дн. назад"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "No wallet connected"
+msgstr "Кошелёк не подключён"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Active orders"
+msgstr "Активные ордера"
+
+#: apps/cowswap-frontend/src/pages/Otc/otcDetailFreshness.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Network data may be outdated"
+msgstr "Данные сети могут быть устаревшими"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Inactive"
+msgstr "Неактивен"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Browse"
+msgstr "Обзор"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order data changed — refresh required"
+msgstr "Данные ордера изменились — требуется обновление"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "No active orders match. Clear the filters or check back later."
+msgstr "Подходящих активных ордеров нет. Сбросьте фильтры или зайдите позже."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Age"
+msgstr "Возраст"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Showing the most recent orders"
+msgstr "Показаны последние ордера"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Only Ophis-reviewed assets are supported in this interface. Unreviewed tokens are shown read-only."
+msgstr "В этом интерфейсе поддерживаются только активы, проверенные Ophis. Непроверенные токены показываются только для чтения."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Escrow contract"
+msgstr "Эскроу-контракт"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Malformed index rows were dropped and are not shown. On-chain state below remains authoritative and current."
+msgstr "Некорректные строки индекса отброшены и не показаны. Состояние в блокчейне ниже остаётся достоверным и актуальным."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Maker:"
+msgstr "Мейкер:"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Local fork writes"
+msgstr "Запись в локальный форк"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "More about these risks"
+msgstr "Подробнее об этих рисках"
+
+#. placeholder {verifiedBlock}: verifiedBlock
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Verified on-chain at block {verifiedBlock}"
+msgstr "Проверено в блокчейне на блоке {verifiedBlock}"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order id"
+msgstr "Id ордера"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Unreviewed token"
+msgstr "Непроверенный токен"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Ages and history are hidden. On-chain state below remains authoritative and current."
+msgstr "Возраст и история скрыты. Состояние в блокчейне ниже остаётся достоверным и актуальным."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "The escrow contract is immutable and has no owner: Ophis cannot pause it, recover deposits, or modify existing orders. A maker's order stays fillable at its original price until it is filled or the maker cancels it, no matter how far the market moves. Order data shown here is verified directly against Ethereum before it is labeled verified; index data alone is never treated as settlement authority."
+msgstr "Эскроу-контракт неизменяем и не имеет владельца: Ophis не может приостановить его, вернуть депозиты или изменить существующие ордера. Ордер мейкера можно исполнить по исходной цене, пока он не исполнен или не отменён мейкером, независимо от движения рынка. Показанные здесь данные ордеров проверяются напрямую в Ethereum до присвоения отметки о проверке; одни только данные индекса никогда не считаются источником истины для расчётов."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "per"
+msgstr "за"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "The indexed copy of this order disagrees with current on-chain state."
+msgstr "Индексированная копия этого ордера не совпадает с текущим состоянием в блокчейне."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "My orders"
+msgstr "Мои ордера"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Fixed-price peer-to-peer orders."
+msgstr "Одноранговые ордера с фиксированной ценой."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order unavailable"
+msgstr "Ордер недоступен"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Index data unavailable"
+msgstr "Данные индекса недоступны"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Order {orderId} details"
+msgstr "Сведения об ордере {orderId}"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Ages and history may lag behind the chain. On-chain state below remains authoritative and current."
+msgstr "Возраст и история могут отставать от блокчейна. Состояние в блокчейне ниже остаётся достоверным и актуальным."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "No active orders"
+msgstr "Нет активных ордеров"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Verifying order #{orderIdText} on Ethereum..."
+msgstr "Проверка ордера №{orderIdText} в Ethereum..."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Create"
+msgstr "Создать"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Creating and cancelling orders costs Ethereum gas; nothing on this surface is gas-free."
+msgstr "Создание и отмена ордеров требует газа Ethereum; ни одна операция в этом интерфейсе не обходится без газа."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Copy"
+msgstr "Копировать"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Escrowed"
+msgstr "В эскроу"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "This RPC node appears to be behind the network. Order states shown below were verified on-chain but may not reflect the latest blocks. Refresh, or try again shortly."
+msgstr "Этот RPC-узел, похоже, отстаёт от сети. Показанные ниже состояния ордеров проверены в блокчейне, но могут не отражать последние блоки. Обновите страницу или повторите попытку позже."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcBrowseFilters.tsx
+msgid "Filter by maker address"
+msgstr "Фильтр по адресу мейкера"
+
+#. placeholder {orderIdText}: orderIdText
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "No order exists with id {orderIdText} on the escrow contract."
+msgstr "В эскроу-контракте нет ордера с id {orderIdText}."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Fork-only action detail, freshly verified against the pinned escrow contract."
+msgstr "Сведения об операции только для форка, заново проверенные по закреплённому эскроу-контракту."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Wants"
+msgstr "Хочет получить"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Maker"
+msgstr "Мейкер"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Maker {maker} on Etherscan"
+msgstr "Мейкер {maker} в Etherscan"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcAge.tsx
+msgid "{hours}h ago"
+msgstr "{hours} ч назад"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Order creation is not yet enabled"
+msgstr "Создание ордеров пока не включено"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Public transactions may be raced by other participants."
+msgstr "Другие участники могут опередить публичные транзакции."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "View on Etherscan"
+msgstr "Посмотреть в Etherscan"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order not found"
+msgstr "Ордер не найден"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Escrowed peer-to-peer orders — read the terms before interacting"
+msgstr "Одноранговые ордера с эскроу — прочитайте условия перед взаимодействием"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Fork actions ignore this checkpoint and re-read exact fork state before opening the wallet."
+msgstr "Операции в форке игнорируют эту контрольную точку и повторно считывают точное состояние форка перед открытием кошелька."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Copy maker address {maker}"
+msgstr "Копировать адрес мейкера {maker}"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Maker sells"
+msgstr "Мейкер продаёт"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Fills are all-or-nothing. Partial fills are not supported."
+msgstr "Исполнение выполняется только целиком. Частичное исполнение не поддерживается."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Escrow contract on Etherscan"
+msgstr "Эскроу-контракт в Etherscan"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Connect a wallet to see your orders. Viewing is read-only; connecting does not enable transactions."
+msgstr "Подключите кошелёк, чтобы увидеть свои ордера. Просмотр доступен только для чтения; подключение не включает транзакции."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Index data is stale"
+msgstr "Данные индекса устарели"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Verified at block"
+msgstr "Проверено на блоке"
+
+#: apps/cowswap-frontend/src/pages/Otc/otcDetailFreshness.tsx
+msgid "Freshness could not be assessed"
+msgstr "Не удалось оценить актуальность"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Escrow lock risk:"
+msgstr "Риск блокировки в эскроу:"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Browse escrowed OTC orders settled on an external immutable Ethereum contract. This surface is read-only; order data is verified directly against Ethereum."
+msgstr "Просматривайте OTC-ордера с эскроу, расчёты по которым выполняются внешним неизменяемым контрактом Ethereum. Этот интерфейс доступен только для чтения; данные ордеров проверяются напрямую в Ethereum."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Orders created by the connected wallet"
+msgstr "Ордера, созданные подключённым кошельком"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "blacklistable"
+msgstr "с чёрным списком"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "upgradeable"
+msgstr "обновляемый"

@@ -62,8 +62,12 @@ function createMockClient(options: MockClientOptions): MockClient {
   return {
     calls,
     getChainId: async () => options.chainId ?? 1,
-    getLatestBlock: async () => ({ number: 100n, hash: BLOCK_HASH }),
-    getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: options.reReadHash ?? BLOCK_HASH }),
+    getLatestBlock: async () => ({ number: 100n, hash: BLOCK_HASH, timestamp: 1_755_792_000n }),
+    getBlockByNumber: async (blockNumber) => ({
+      number: blockNumber,
+      hash: options.reReadHash ?? BLOCK_HASH,
+      timestamp: 1_755_792_000n,
+    }),
     getCode: async () => options.code ?? MOCK_CODE,
     call: async (request) => {
       calls.push(request)

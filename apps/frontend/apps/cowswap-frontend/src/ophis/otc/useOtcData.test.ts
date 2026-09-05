@@ -44,8 +44,8 @@ function failingFetch(): typeof fetch {
 function createMockClient(blockNumber: bigint = CHAIN_BLOCK): OtcReaderClient {
   return {
     getChainId: async () => 1,
-    getLatestBlock: async () => ({ number: blockNumber, hash: BLOCK_HASH }),
-    getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: BLOCK_HASH }),
+    getLatestBlock: async () => ({ number: blockNumber, hash: BLOCK_HASH, timestamp: 1_755_792_000n }),
+    getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: BLOCK_HASH, timestamp: 1_755_792_000n }),
     getCode: async () => MOCK_CODE,
     call: async (request) => {
       const { functionName, args } = decodeFunctionData({ abi: OTC_READ_ABI, data: request.data })

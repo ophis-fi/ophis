@@ -33,8 +33,12 @@ function createMockClient(options: MockOptions = {}): OtcReaderClient {
   const existing = options.existing ?? true
   return {
     getChainId: async () => options.chainId ?? 1,
-    getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH }),
-    getBlockByNumber: async (blockNumber) => ({ number: blockNumber, hash: options.reReadHash ?? BLOCK_HASH }),
+    getLatestBlock: async () => ({ number: 200n, hash: BLOCK_HASH, timestamp: 1_755_792_000n }),
+    getBlockByNumber: async (blockNumber) => ({
+      number: blockNumber,
+      hash: options.reReadHash ?? BLOCK_HASH,
+      timestamp: 1_755_792_000n,
+    }),
     getCode: async () => options.code ?? MOCK_CODE,
     call: async (request) => {
       const { functionName } = decodeFunctionData({ abi: OTC_READ_ABI, data: request.data })
@@ -69,9 +73,24 @@ function createMockClient(options: MockOptions = {}): OtcReaderClient {
 }
 
 describe('readOtcOrder', () => {
+  it('rejects a stalled RPC within the manifest deadline', async () => {
+    jest.useFakeTimers()
+    try {
+      const client = createMockClient()
+      client.getCode = () => new Promise<never>(() => undefined)
+      const manifest = testManifest()
+      const rejection = expect(readOtcOrder(client, 42n, manifest)).rejects.toThrow('Ophis OTC order read timed out')
+      await jest.advanceTimersByTimeAsync(manifest.readTimeoutMs)
+      await rejection
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('reads a single order directly with code verification', async () => {
     const result = await readOtcOrder(createMockClient(), 42n, testManifest())
     expect(result.blockNumber).toBe(200n)
+    expect(result.blockHash).toBe(BLOCK_HASH)
     expect(result.order).toEqual({
       orderId: 42n,
       maker: MAKER,
@@ -87,6 +106,7 @@ describe('readOtcOrder', () => {
     const result = await readOtcOrder(createMockClient({ existing: false }), 42n, testManifest())
     expect(result.order).toBeNull()
     expect(result.blockNumber).toBe(200n)
+    expect(result.blockHash).toBe(BLOCK_HASH)
   })
 
   it('fails closed when the RPC serves a different chain', async () => {

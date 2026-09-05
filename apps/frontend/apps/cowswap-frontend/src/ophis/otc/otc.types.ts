@@ -20,13 +20,15 @@ export interface OtcManifest {
   subgraphTimeoutMs: number
   maxIndexLagBlocks: bigint
   tokenPolicyProfile: 'otc-escrow'
-  /** Milestones A/B are read-only: this list is pinned empty. */
+  /** Reviewed contract selectors enabled for the current milestone. */
   enabledTransactionSelectors: readonly Hex[]
 }
 
 export interface OtcBlock {
   number: bigint
   hash: Hex | null
+  /** Authoritative EVM block timestamp in Unix seconds. */
+  timestamp: bigint
 }
 
 export interface OtcReadCall {

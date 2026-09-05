@@ -1,3 +1,5 @@
+import { withTimeout } from '@cowprotocol/common-utils'
+
 import { decodeFunctionResult, encodeFunctionData, isAddressEqual, keccak256, type Address, type Hex } from 'viem'
 
 import { OTC_READ_ABI } from './otc.abi'
@@ -108,6 +110,32 @@ async function readOrderBatch(
 export interface OtcOrderReadResult {
   order: OtcOrder | null
   blockNumber: bigint
+  blockHash: Hex
+}
+
+export interface OtcVerifiedContract {
+  blockNumber: bigint
+  blockHash: Hex
+}
+
+/** Verify chain, runtime bytecode, WETH wiring, and block identity without enumerating orders. */
+export async function verifyOtcContract(
+  client: OtcReaderClient,
+  manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
+): Promise<OtcVerifiedContract> {
+  await requirePinnedChain(client, manifest)
+  const block = await client.getLatestBlock()
+  if (!block.hash) throw new Error('Ophis OTC block is not identifiable')
+
+  await requirePinnedCode(client, manifest.contract.address, manifest.contract.runtimeCodeHash, block.number)
+  await requireWethWiring(client, manifest, block.number)
+
+  const confirmedBlock = await client.getBlockByNumber(block.number)
+  if (confirmedBlock.number !== block.number || !confirmedBlock.hash || confirmedBlock.hash !== block.hash) {
+    throw new Error('Ophis OTC block changed')
+  }
+
+  return { blockNumber: block.number, blockHash: block.hash }
 }
 
 /**
@@ -116,10 +144,22 @@ export interface OtcOrderReadResult {
  * the SAME guards as the snapshot reader: chain id, pinned runtime code hash, weth()
  * wiring, single-block pinning, and a post-read block-hash confirmation.
  */
-export async function readOtcOrder(
+export function readOtcOrder(
   client: OtcReaderClient,
   orderId: bigint,
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
+): Promise<OtcOrderReadResult> {
+  return withTimeout(
+    readVerifiedOtcOrder(client, orderId, manifest),
+    manifest.readTimeoutMs,
+    'Ophis OTC order read timed out',
+  )
+}
+
+async function readVerifiedOtcOrder(
+  client: OtcReaderClient,
+  orderId: bigint,
+  manifest: OtcManifest,
 ): Promise<OtcOrderReadResult> {
   await requirePinnedChain(client, manifest)
   const block = await client.getLatestBlock()
@@ -146,7 +186,7 @@ export async function readOtcOrder(
     throw new Error('Ophis OTC block changed')
   }
 
-  return { order: orders[0] ?? null, blockNumber: block.number }
+  return { order: orders[0] ?? null, blockNumber: block.number, blockHash: block.hash }
 }
 
 /**

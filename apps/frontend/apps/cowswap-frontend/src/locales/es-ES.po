@@ -622,7 +622,7 @@ msgstr "El intento de conexión falló. Por favor, haga clic en intentarlo de nu
 
 #: apps/cowswap-frontend/src/modules/affiliate/pure/shared/AffiliateTermsFaqLinks.pure.tsx
 msgid "Terms"
-msgstr ""
+msgstr "Términos"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
 msgid "Scheduled"
@@ -6122,3 +6122,409 @@ msgstr "Aprende más"
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/HighFeeWarning/highFeeWarningHelpers.ts
 msgid "Swap and bridge costs are at least {formattedFeePercentage}% of the swap amount"
 msgstr "Los costos de intercambio y puente son por lo menos {formattedFeePercentage}% del monto de intercambio"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Test exact ERC-20 escrow actions against a local Ethereum fork. Every order read is verified directly against the pinned contract."
+msgstr "Prueba acciones exactas de custodia ERC-20 en un fork local de Ethereum. Cada lectura de orden se verifica directamente con el contrato fijado."
+
+#. placeholder {recentOrderCount}: recentOrderCount
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Older orders beyond the latest {recentOrderCount} are not listed here."
+msgstr "Las órdenes anteriores a las últimas {recentOrderCount} no aparecen aquí."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcAge.tsx
+msgid "{minutes}m ago"
+msgstr "hace {minutes} min"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Index mismatch"
+msgstr "Discrepancia con el índice"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Sells"
+msgstr "Vende"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Loading OTC orders from Ethereum..."
+msgstr "Cargando órdenes OTC desde Ethereum..."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "OTC data unavailable"
+msgstr "Datos OTC no disponibles"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Index data partially invalid"
+msgstr "Datos del índice parcialmente inválidos"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Creating, filling, and cancelling orders are under isolated Milestone C development. This production page is read-only: no transaction can be built or signed from it."
+msgstr "La creación, ejecución y cancelación de órdenes se desarrolla de forma aislada en el Hito C. Esta página de producción es de solo lectura: desde ella no se puede crear ni firmar ninguna transacción."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Maker wants"
+msgstr "El creador solicita"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Verified on-chain"
+msgstr "Verificada en la cadena"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Technical details"
+msgstr "Detalles técnicos"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "This wallet has not created any OTC orders on the escrow contract."
+msgstr "Esta cartera no ha creado ninguna orden OTC en el contrato de custodia."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "raw units"
+msgstr "unidades sin procesar"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Read-only"
+msgstr "Solo lectura"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Active OTC orders"
+msgstr "Órdenes OTC activas"
+
+#: apps/cowswap-frontend/src/pages/Otc/otcDetailFreshness.tsx
+msgid "The backend that served this order appears to be behind the network. The order state below was verified on-chain but may not reflect the latest blocks."
+msgstr "El backend que proporcionó esta orden parece estar retrasado respecto a la red. El estado de la orden se verificó en la cadena, pero puede no reflejar los bloques más recientes."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Read-only order detail, verified directly against Ethereum."
+msgstr "Detalle de la orden en modo de solo lectura, verificado directamente con Ethereum."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "index: cancelled"
+msgstr "índice: cancelada"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcBrowseFilters.tsx
+msgid "Filter by order id"
+msgstr "Filtrar por id de orden"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "index: filled"
+msgstr "índice: ejecutada"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcBrowseFilters.tsx
+msgid "e.g. 42"
+msgstr "p. ej., 42"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Refresh before relying on it."
+msgstr "Actualiza antes de confiar en ella."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Orders do not expire on-chain. An order stays open until it is filled or the maker cancels it."
+msgstr "Las órdenes no caducan en la cadena. Una orden permanece abierta hasta que se ejecuta o su creador la cancela."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Rate unavailable"
+msgstr "Tipo no disponible"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "No orders for this wallet"
+msgstr "No hay órdenes para esta cartera"
+
+#: apps/cowswap-frontend/src/pages/Otc/otcDetailFreshness.tsx
+msgid "The independent freshness comparison is unavailable right now. The order below passed direct on-chain verification at the shown block, but it may not reflect the latest network state."
+msgstr "La comparación independiente de actualidad no está disponible en este momento. La orden siguiente superó la verificación directa en la cadena en el bloque mostrado, pero puede no reflejar el estado más reciente de la red."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "On-chain verification failed, so this order is hidden rather than shown unverified. Refresh to retry."
+msgstr "La verificación en la cadena falló, por lo que esta orden se oculta en lugar de mostrarse sin verificar. Actualiza para volver a intentarlo."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcBrowseFilters.tsx
+msgid "Filter by token"
+msgstr "Filtrar por token"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "OTC views"
+msgstr "Vistas OTC"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Assets in these orders are deposited into an external immutable escrow contract that Ophis does not operate and cannot pause."
+msgstr "Los activos de estas órdenes se depositan en un contrato de custodia externo e inmutable que Ophis no opera ni puede pausar."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "On-chain verification failed, so order data is hidden rather than shown unverified. Refresh to try again."
+msgstr "La verificación en la cadena falló, por lo que los datos de las órdenes se ocultan en lugar de mostrarse sin verificar. Actualiza para volver a intentarlo."
+
+#. placeholder {verifiedBlock}: verifiedBlock
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Verified at block {verifiedBlock}"
+msgstr "Verificada en el bloque {verifiedBlock}"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Canonical index differs"
+msgstr "El índice canónico difiere"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Order creation is not enabled"
+msgstr "La creación de órdenes no está habilitada"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order #{orderIdText}"
+msgstr "Orden #{orderIdText}"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcAge.tsx
+msgid "{days}d ago"
+msgstr "hace {days} d"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "No wallet connected"
+msgstr "No hay ninguna cartera conectada"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Active orders"
+msgstr "Órdenes activas"
+
+#: apps/cowswap-frontend/src/pages/Otc/otcDetailFreshness.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Network data may be outdated"
+msgstr "Los datos de red pueden estar desactualizados"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Inactive"
+msgstr "Inactiva"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Browse"
+msgstr "Explorar"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order data changed — refresh required"
+msgstr "Los datos de la orden cambiaron — es necesario actualizar"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "No active orders match. Clear the filters or check back later."
+msgstr "Ninguna orden activa coincide. Borra los filtros o vuelve más tarde."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Age"
+msgstr "Antigüedad"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Showing the most recent orders"
+msgstr "Mostrando las órdenes más recientes"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Only Ophis-reviewed assets are supported in this interface. Unreviewed tokens are shown read-only."
+msgstr "Esta interfaz solo admite activos revisados por Ophis. Los tokens no revisados se muestran en modo de solo lectura."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Escrow contract"
+msgstr "Contrato de custodia"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Malformed index rows were dropped and are not shown. On-chain state below remains authoritative and current."
+msgstr "Las filas mal formadas del índice se descartaron y no se muestran. El estado en la cadena que aparece a continuación sigue siendo la fuente autoritativa y está actualizado."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Maker:"
+msgstr "Creador:"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Local fork writes"
+msgstr "Escrituras en fork local"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "More about these risks"
+msgstr "Más información sobre estos riesgos"
+
+#. placeholder {verifiedBlock}: verifiedBlock
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Verified on-chain at block {verifiedBlock}"
+msgstr "Verificada en la cadena en el bloque {verifiedBlock}"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order id"
+msgstr "Id de orden"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Unreviewed token"
+msgstr "Token no revisado"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Ages and history are hidden. On-chain state below remains authoritative and current."
+msgstr "La antigüedad y el historial están ocultos. El estado en la cadena que aparece a continuación sigue siendo la fuente autoritativa y está actualizado."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "The escrow contract is immutable and has no owner: Ophis cannot pause it, recover deposits, or modify existing orders. A maker's order stays fillable at its original price until it is filled or the maker cancels it, no matter how far the market moves. Order data shown here is verified directly against Ethereum before it is labeled verified; index data alone is never treated as settlement authority."
+msgstr "El contrato de custodia es inmutable y no tiene propietario: Ophis no puede pausarlo, recuperar depósitos ni modificar órdenes existentes. La orden de un creador puede ejecutarse a su precio original hasta que se ejecute o el creador la cancele, sin importar cuánto se mueva el mercado. Los datos de las órdenes se verifican directamente con Ethereum antes de etiquetarse como verificados; los datos del índice por sí solos nunca se consideran la autoridad de liquidación."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "per"
+msgstr "por"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "The indexed copy of this order disagrees with current on-chain state."
+msgstr "La copia indexada de esta orden no coincide con el estado actual en la cadena."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "My orders"
+msgstr "Mis órdenes"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Fixed-price peer-to-peer orders."
+msgstr "Órdenes entre pares a precio fijo."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order unavailable"
+msgstr "Orden no disponible"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Index data unavailable"
+msgstr "Datos del índice no disponibles"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Order {orderId} details"
+msgstr "Detalles de la orden {orderId}"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Ages and history may lag behind the chain. On-chain state below remains authoritative and current."
+msgstr "La antigüedad y el historial pueden ir por detrás de la cadena. El estado en la cadena que aparece a continuación sigue siendo la fuente autoritativa y está actualizado."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "No active orders"
+msgstr "No hay órdenes activas"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Verifying order #{orderIdText} on Ethereum..."
+msgstr "Verificando la orden #{orderIdText} en Ethereum..."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Create"
+msgstr "Crear"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Creating and cancelling orders costs Ethereum gas; nothing on this surface is gas-free."
+msgstr "Crear y cancelar órdenes consume gas de Ethereum; nada en esta interfaz está libre de gas."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Copy"
+msgstr "Copiar"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Escrowed"
+msgstr "En custodia"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "This RPC node appears to be behind the network. Order states shown below were verified on-chain but may not reflect the latest blocks. Refresh, or try again shortly."
+msgstr "Este nodo RPC parece estar retrasado respecto a la red. Los estados de las órdenes que aparecen a continuación se verificaron en la cadena, pero pueden no reflejar los bloques más recientes. Actualiza o vuelve a intentarlo en breve."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcBrowseFilters.tsx
+msgid "Filter by maker address"
+msgstr "Filtrar por dirección del creador"
+
+#. placeholder {orderIdText}: orderIdText
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "No order exists with id {orderIdText} on the escrow contract."
+msgstr "No existe ninguna orden con el id {orderIdText} en el contrato de custodia."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Fork-only action detail, freshly verified against the pinned escrow contract."
+msgstr "Detalle de acción exclusivo para fork, recién verificado con el contrato de custodia fijado."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Wants"
+msgstr "Solicita"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Maker"
+msgstr "Creador"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Maker {maker} on Etherscan"
+msgstr "Creador {maker} en Etherscan"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcAge.tsx
+msgid "{hours}h ago"
+msgstr "hace {hours} h"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Order creation is not yet enabled"
+msgstr "La creación de órdenes aún no está habilitada"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Public transactions may be raced by other participants."
+msgstr "Otros participantes pueden adelantarse a las transacciones públicas."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "View on Etherscan"
+msgstr "Ver en Etherscan"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order not found"
+msgstr "Orden no encontrada"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Escrowed peer-to-peer orders — read the terms before interacting"
+msgstr "Órdenes entre pares en custodia — lee los términos antes de interactuar"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Fork actions ignore this checkpoint and re-read exact fork state before opening the wallet."
+msgstr "Las acciones del fork ignoran este punto de control y vuelven a leer el estado exacto del fork antes de abrir la cartera."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrdersTable.tsx
+msgid "Copy maker address {maker}"
+msgstr "Copiar la dirección del creador {maker}"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Maker sells"
+msgstr "El creador vende"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
+msgid "Fills are all-or-nothing. Partial fills are not supported."
+msgstr "Las ejecuciones son totales o nulas. No se admiten ejecuciones parciales."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Escrow contract on Etherscan"
+msgstr "Contrato de custodia en Etherscan"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Connect a wallet to see your orders. Viewing is read-only; connecting does not enable transactions."
+msgstr "Conecta una cartera para ver tus órdenes. La visualización es de solo lectura; conectarla no habilita transacciones."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Index data is stale"
+msgstr "Los datos del índice están desactualizados"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Verified at block"
+msgstr "Verificada en el bloque"
+
+#: apps/cowswap-frontend/src/pages/Otc/otcDetailFreshness.tsx
+msgid "Freshness could not be assessed"
+msgstr "No se pudo evaluar la actualidad"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Escrow lock risk:"
+msgstr "Riesgo de bloqueo en custodia:"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Browse escrowed OTC orders settled on an external immutable Ethereum contract. This surface is read-only; order data is verified directly against Ethereum."
+msgstr "Explora órdenes OTC en custodia liquidadas mediante un contrato externo e inmutable de Ethereum. Esta interfaz es de solo lectura; los datos de las órdenes se verifican directamente con Ethereum."
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
+msgid "Orders created by the connected wallet"
+msgstr "Órdenes creadas por la cartera conectada"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "blacklistable"
+msgstr "con lista de bloqueo"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "upgradeable"
+msgstr "actualizable"

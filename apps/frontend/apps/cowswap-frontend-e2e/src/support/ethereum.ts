@@ -2,14 +2,27 @@
  * Updates cy.visit() to include an injected window.ethereum provider.
  */
 import { Eip1193Bridge } from '@ethersproject/experimental/lib/eip1193-bridge'
-import { JsonRpcProvider } from '@ethersproject/providers'
+import { JsonRpcProvider, type TransactionRequest } from '@ethersproject/providers'
 import { Wallet } from '@ethersproject/wallet'
 
-const CHAIN_ID = 11155111
-const CHAIN_NAME = 'sepolia'
+const OTC_FORK_RPC_URL = Cypress.env('OTC_FORK_RPC_URL') as string | undefined
+const IS_OTC_FORK = typeof OTC_FORK_RPC_URL === 'string' && OTC_FORK_RPC_URL.length > 0
+const CHAIN_ID = IS_OTC_FORK ? 1 : 11155111
+const CHAIN_NAME = IS_OTC_FORK ? 'mainnet-fork' : 'sepolia'
+// Foundry's public local-development key; never funded or used off the disposable fork.
+const ANVIL_DEFAULT_PRIVATE_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80' // gitleaks:allow
 
-const INTEGRATION_TEST_PRIVATE_KEY = Cypress.env('INTEGRATION_TEST_PRIVATE_KEY')
-assert(INTEGRATION_TEST_PRIVATE_KEY, 'INTEGRATION_TEST_PRIVATE_KEY env missing')
+const configuredPrivateKey =
+  (Cypress.env('OTC_FORK_PRIVATE_KEY') as string | undefined) ||
+  (Cypress.env('INTEGRATION_TEST_PRIVATE_KEY') as string | undefined) ||
+  (IS_OTC_FORK ? ANVIL_DEFAULT_PRIVATE_KEY : undefined)
+
+function requirePrivateKey(value: string | undefined): string {
+  if (!value) throw new Error('INTEGRATION_TEST_PRIVATE_KEY env missing')
+  return value
+}
+
+const INTEGRATION_TEST_PRIVATE_KEY = requirePrivateKey(configuredPrivateKey)
 
 const INTEGRATION_TESTS_INFURA_KEY = Cypress.env('INTEGRATION_TESTS_INFURA_KEY')
 const INTEGRATION_TESTS_ALCHEMY_KEY = Cypress.env('INTEGRATION_TESTS_ALCHEMY_KEY')
@@ -17,6 +30,7 @@ const INTEGRATION_TESTS_ALCHEMY_KEY = Cypress.env('INTEGRATION_TESTS_ALCHEMY_KEY
 const NETWORK_URL = Cypress.env('REACT_APP_NETWORK_URL_' + CHAIN_ID)
 
 const PROVIDER_URL =
+  OTC_FORK_RPC_URL ||
   NETWORK_URL ||
   (INTEGRATION_TESTS_ALCHEMY_KEY
     ? `https://eth-${CHAIN_NAME}.g.alchemy.com/v2/${INTEGRATION_TESTS_ALCHEMY_KEY}`
@@ -31,6 +45,13 @@ assert(
 
 // address of the above key
 export const TEST_ADDRESS_NEVER_USE = new Wallet(INTEGRATION_TEST_PRIVATE_KEY).address
+
+/** Submit through the configured key so custom fork accounts need not be RPC-unlocked. */
+export async function sendSignedForkTransaction(request: TransactionRequest): Promise<string> {
+  if (!IS_OTC_FORK) throw new Error('Signed fork transactions require OTC_FORK_RPC_URL')
+  const transaction = await signer.sendTransaction(request)
+  return transaction.hash
+}
 
 // Redefined bridge to fix a supper annoying issue making some contract calls to fail
 //  See https://github.com/ethers-io/ethers.js/issues/1683
@@ -52,7 +73,6 @@ class CustomizedBridge extends Eip1193Bridge {
   // TODO: Replace any with proper type definitions
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, complexity, @typescript-eslint/no-explicit-any
   async send(...args: any[]) {
-    console.debug('send called', ...args)
     const isCallbackForm = typeof args[0] === 'object' && typeof args[1] === 'function'
     let callback
     let method
@@ -81,16 +101,35 @@ class CustomizedBridge extends Eip1193Bridge {
       }
     }
     try {
-      // If from is present on eth_call it errors, removing it makes the library set
-      // from as the connected wallet which works fine
-      if (params && params.length && params[0].from && method === 'eth_call') delete params[0].from
+      // Eip1193Bridge re-hexlifies calls with ethers' transaction shape. The
+      // browser RPC shape uses `gas`, so normalize it back to `gasLimit` first.
+      if (!IS_OTC_FORK && params && params.length && method === 'eth_call') {
+        if (params[0].from) delete params[0].from
+        if (params[0].gas) {
+          params[0].gasLimit = params[0].gas
+          delete params[0].gas
+        }
+      }
       let result
-      // For sending a transaction if we call send it will error
-      // as it wants gasLimit in sendTransaction but hexlify sets the property gas
-      // to gasLimit which makes sensd transaction error.
-      // This have taken the code from the super method for sendTransaction and altered
-      // it slightly to make it work with the gas limit issues.
-      if (params && params.length && params[0].from && method === 'eth_sendTransaction') {
+      if (IS_OTC_FORK && ['eth_call', 'web3_clientVersion', 'hardhat_metadata'].includes(method)) {
+        // Keep calls and fork identity on the exact Anvil transport.
+        result = await provider.send(method, params ?? [])
+      } else if (params && params.length && params[0].from && method === 'eth_sendTransaction') {
+        if (IS_OTC_FORK) {
+          const req = { ...params[0] }
+          delete req.from
+          if (req.gas) {
+            req.gasLimit = req.gas
+            delete req.gas
+          }
+          result = await sendSignedForkTransaction(req)
+          if (isCallbackForm) {
+            callback(null, { result })
+          } else {
+            return result
+          }
+          return
+        }
         // Hexlify will not take gas, must be gasLimit, set this property to be gasLimit
         params[0].gasLimit = params[0].gas
         delete params[0].gas

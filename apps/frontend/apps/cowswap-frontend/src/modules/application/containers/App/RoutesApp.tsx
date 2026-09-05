@@ -56,9 +56,9 @@ const LeaderboardPage = lazy(() =>
   })),
 )
 // OTC Milestone B (2026-08-19): read-only escrow-order browser + detail.
-// Flag-gated off in production (isOtcEnabled; the pages self-guard and
-// redirect home when disabled). No transaction selectors are reachable —
-// enforced by src/ophis/otc/otc.boundary.test.ts.
+// Enabled read-only in production (isOtcEnabled; the pages self-guard so the
+// flag remains an immediate rollback). Milestone C wallet writes require a
+// separate local-fork flag and are not mounted on these pages.
 // AGENTS.md-compliant lazy pattern — see ProfilePage above.
 const OtcPage = lazy(() =>
   import(/* webpackChunkName: "ophis_otc" */ 'pages/Otc').then((m) => ({
@@ -176,7 +176,7 @@ const lazyRoutes: LazyRouteProps[] = [
   // any in-app or bookmarked hit. `replace` keeps it out of history.
   { route: RoutesEnum.AFFILIATE, element: <Navigate to={RoutesEnum.PROFILE} replace /> },
   { route: RoutesEnum.LEADERBOARD, element: <LeaderboardPage /> },
-  // Read-only OTC surface (flag-gated; the pages redirect home when off).
+  // Read-only OTC surface (enabled for B; pages still redirect when rolled back).
   { route: RoutesEnum.OTC, element: <OtcPage /> },
   { route: RoutesEnum.OTC_ORDER, element: <OtcOrderDetailPage /> },
   { route: RoutesEnum.PARTNER, element: <PartnerPage /> },

@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
+import { shouldMountOtcOrderAction } from 'ophis/otcWrite'
 
-import { OtcOrderDetailView } from './OtcOrderDetail.page'
+import { renderView } from './Otc.page.test.utils'
+import { OtcOrderDetailView } from './OtcOrderDetailView.pure'
 
 import type { OtcIndexedOrder, OtcOrder } from 'ophis/otc'
 
@@ -37,8 +39,8 @@ function indexed(overrides: Partial<OtcIndexedOrder> = {}): OtcIndexedOrder {
   }
 }
 
-function renderDetail(props: Partial<Parameters<typeof OtcOrderDetailView>[0]> = {}): ReturnType<typeof render> {
-  return render(
+function renderDetail(props: Partial<Parameters<typeof OtcOrderDetailView>[0]> = {}): ReturnType<typeof renderView> {
+  return renderView(
     <OtcOrderDetailView
       orderId={130n}
       loading={false}
@@ -120,11 +122,64 @@ describe('OtcOrderDetailView', () => {
     expect(screen.getByText(/No order exists with id 130/)).toBeTruthy()
   })
 
+  it('keeps a wallet-fork action visible when the canonical order is missing', () => {
+    renderDetail({
+      order: null,
+      writeEnabled: true,
+      actionPanel: <button type="button">Fork order action</button>,
+    })
+    expect(screen.getByText(/No order exists with id 130/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Fork order action' })).toBeTruthy()
+  })
+
   it('exposes no enabled transaction affordance', () => {
     const { container } = renderDetail()
     const actionable = Array.from(container.querySelectorAll('button')).filter(
       (button) => /fill|cancel|approve|sign|submit|create/i.test(button.textContent ?? '') && !button.disabled,
     )
     expect(actionable).toEqual([])
+  })
+
+  it('renders a guarded local action only when supplied by the controller', () => {
+    renderDetail({ writeEnabled: true, actionPanel: <button type="button">Guarded local fill</button> })
+    expect(screen.getByRole('button', { name: 'Guarded local fill' })).toBeTruthy()
+    expect(screen.getByText(/Fork-only action detail/)).toBeTruthy()
+  })
+
+  it('suppresses a read-only supplied action when indexed terms disagree', () => {
+    renderDetail({
+      writeEnabled: false,
+      indexed: indexed({ amountB: 999n }),
+      actionPanel: <button type="button">Guarded local fill</button>,
+    })
+    expect(screen.queryByRole('button', { name: 'Guarded local fill' })).toBeNull()
+  })
+
+  it('keeps resolved fork actions mounted for confirmation or allowance recovery', () => {
+    const inactive = order({ active: false })
+    expect(shouldMountOtcOrderAction(true, inactive)).toBe(true)
+  })
+
+  it('does not use the canonical index checkpoint to gate active fork actions', () => {
+    expect(shouldMountOtcOrderAction(true, order())).toBe(true)
+  })
+
+  it('does not let index lag hide a supplied zero-only recovery action for an inactive order', () => {
+    renderDetail({
+      writeEnabled: true,
+      order: order({ active: false }),
+      indexed: indexed({ active: true }),
+      actionPanel: <button type="button">Revoke unused allowance</button>,
+    })
+    expect(screen.getByRole('button', { name: 'Revoke unused allowance' })).toBeTruthy()
+  })
+
+  it('does not let canonical index disagreement hide a fork-verified active action', () => {
+    renderDetail({
+      writeEnabled: true,
+      indexed: indexed({ amountB: 999n }),
+      actionPanel: <button type="button">Guarded local fill</button>,
+    })
+    expect(screen.getByRole('button', { name: 'Guarded local fill' })).toBeTruthy()
   })
 })

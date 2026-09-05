@@ -249,7 +249,10 @@ module.exports = [
       'import/no-internal-modules': [
         'warn',
         {
-          forbid: ['modules/*/**'],
+          // Module barrels are public application APIs; require at least one
+          // path segment beyond the module name before classifying an import
+          // as an internal reach-through.
+          forbid: ['modules/*/*', 'modules/*/*/**'],
         },
       ],
       'no-restricted-globals': [

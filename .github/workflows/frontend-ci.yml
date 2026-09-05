@@ -31,18 +31,15 @@ name: frontend CI
 # SWC, Vite, and plugin path before merge; Cloudflare injects production values
 # later without changing that toolchain.
 #
-# COST: path-scoped to apps/frontend/**, so PRs that do not touch the frontend
-# skip it entirely. pnpm's store is cached via setup-node.
+# This check runs on every PR so branch protection never waits for a
+# path-filtered workflow that cannot report a result. pnpm's store is cached.
 
 on:
   pull_request:
-    paths:
-      - "apps/frontend/**"
-      - ".github/workflows/frontend-ci.yml"
   push:
     branches: [main]
     paths:
-      - "apps/frontend/**"
+      - 'apps/frontend/**'
   workflow_dispatch:
 
 permissions:
@@ -89,14 +86,15 @@ jobs:
 
       # The frontend jest suite is not a repo-root CI gate (security.yml
       # documents this), and tsconfig.app.json excludes *.test.ts — so without
-      # these steps the OTC read-only exit-gate tests (boundary/no-write-
-      # selector proof, fail-closed reader, reconciliation binding) would
+      # these steps the OTC exit-gate tests (read boundary, exact Milestone C
+      # selector allowlist, write-sink policy, fail-closed reader/preflight,
+      # reconciliation binding) would
       # NEVER execute anywhere. Scoped to the OTC suites + token policy to
       # keep the gate fast and deterministic. --passWithNoTests=false makes a
       # zero-match path filter FAIL instead of silently running no tests
       # (jest.config's passWithNoTests: true would otherwise turn a renamed
       # directory into a permanently green no-op gate).
-      - name: OTC read-only guard tests (jest, scoped)
+      - name: OTC guard tests (jest, scoped)
         working-directory: apps/frontend
         run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/(ophis/otc|pages/Otc)' --passWithNoTests=false
 

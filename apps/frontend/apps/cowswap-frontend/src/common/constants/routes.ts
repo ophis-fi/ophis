@@ -41,8 +41,9 @@ export const Routes = {
   INSTITUTIONAL: '/institutional',
   // Ophis: '/otc' = read-only fixed-price peer-to-peer order browser against
   // the external immutable Swapboard escrow contract (Ethereum only). OTC
-  // Milestone B surface: flag-gated off in production (isOtcEnabled), no
-  // transaction selectors reachable. Spec: docs/development/plans/
+  // Milestone B surface: enabled read-only in production (isOtcEnabled), with
+  // every Milestone C write behind an independent local-fork flag. Spec:
+  // docs/development/plans/
   // 2026-08-18-ophis-otc.md.
   OTC: '/otc',
   // Ophis: '/otc/:orderId' = single-order detail; performs a direct getOrder

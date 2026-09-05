@@ -28,7 +28,7 @@ export interface FeatureFlags {
  * values (e.g. to A/B-test a provider), the LD value wins.
  * The OTC deployment kill switch below is the sole final-authority exception.
  */
-const defaults: Partial<FeatureFlags> = {
+export const DEFAULT_FEATURE_FLAGS: Readonly<Partial<FeatureFlags>> = {
   // Bridge providers — enable all three so users see EVM↔Solana via
   // NEAR Intents AND EVM↔EVM via Bungee/Across.
   isBungeeBridgeProviderEnabled: true,
@@ -39,18 +39,22 @@ const defaults: Partial<FeatureFlags> = {
   // useAvailableTargetChains + useSupportedTargetChains).
   isBtcBridgeEnabled: true,
   isSolBridgeEnabled: true,
-  // Ophis OTC Milestone B is the reviewed, read-only Ethereum surface.
-  // Transaction actions remain separately gated and absent from this release.
+  // Ophis OTC Milestone B is the reviewed, read-only Ethereum surface. Its
+  // production route can be enabled independently from all transaction code.
   isOtcEnabled: true,
+  // Milestone C has a second, fail-closed control. A remote flag alone is not
+  // sufficient to enable writes: useOtcWriteEnabled also requires the
+  // explicit `REACT_APP_OTC_WRITE_MODE=fork` build boundary.
+  isOtcWriteEnabled: false,
 }
 
 export function useFeatureFlags(): FeatureFlags {
   const flags = useFlags<FeatureFlags>()
   const isOtcEnabled =
-    process.env.REACT_APP_OTC_ENABLED === 'false' ? false : (flags.isOtcEnabled ?? defaults.isOtcEnabled)
+    process.env.REACT_APP_OTC_ENABLED === 'false' ? false : (flags.isOtcEnabled ?? DEFAULT_FEATURE_FLAGS.isOtcEnabled)
 
   return {
-    ...defaults,
+    ...DEFAULT_FEATURE_FLAGS,
     ...flags,
     // Deployment control is the final authority so an emergency rollback
     // cannot be overridden by a stale or future remote flag value.
