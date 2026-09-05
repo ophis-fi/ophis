@@ -677,15 +677,38 @@ export function attributeOrder(
  * so sub-minute skew is irrelevant. This also removes a per-chain RPC dependency
  * and a latent bug (the old lookup queried Gnosis for EVERY chain's block number).
  */
+/**
+ * Thrown when the page loop hits its deadline. A DISTINCT type so the existing
+ * per-owner catch marks the owner failed -- which is exactly right: the owner's
+ * cursor must not advance and the run must report incomplete coverage.
+ */
+export class FetchDeadlineExceeded extends Error {
+  constructor(chainId: number, owner: string) {
+    super(`fetch deadline exceeded for owner ${owner} on chain ${chainId}`);
+    this.name = 'FetchDeadlineExceeded';
+  }
+}
+
 export async function fetchChainTrades(
   chainId: number,
   owner: `0x${string}`,
   deps: FetcherDeps,
+  // Optional wall-clock stop. Checked BETWEEN PAGES, not only between owners: a
+  // wallet with a long history, or one whose requests keep consuming the 10s
+  // request timeout, can otherwise keep the whole refresh inside a single owner
+  // well past its budget and overlap the 02:00 nightly. Stopping between pages
+  // is safe -- each page is upserted whole -- and the partial result surfaces as
+  // incomplete coverage upstream rather than a silently short run.
+  deadlineMs?: number,
 ): Promise<PendingTrade[]> {
   const out: PendingTrade[] = [];
   const seen = new Set<string>(); // collapse multiple fills of the same order within this run
   let offset = 0;
   while (true) {
+    if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+      log.warn({ chainId, owner, fetched: out.length }, 'page loop stopped at the deadline; owner is incomplete');
+      throw new FetchDeadlineExceeded(chainId, owner);
+    }
     const page = await listTrades({ chainId, owner, offset, limit: PAGE_SIZE });
     if (page.length === 0) break;
 
@@ -1079,7 +1102,7 @@ export async function runFetcher(
     const nowMs = Date.now();
     const requested = (opts.staleBefore ?? new Date(nowMs - DEFAULT_FETCH_STALE_AFTER_MS)).getTime();
     const staleBeforeIso = new Date(Math.min(Math.max(requested, nowMs - 86_400_000), nowMs)).toISOString();
-    const ownerRows = await sql<{ wallet: string }[]>`
+    const ownerRowsRaw = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
       WHERE last_fetched IS NULL
@@ -1093,8 +1116,15 @@ export async function runFetcher(
                (wallet IN (SELECT wallet FROM trades)) DESC,
                last_fetched ASC NULLS FIRST,
                first_seen ASC
-      LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
+      -- +1 probe row: if the cap itself left eligible wallets behind, coverage is
+      -- INCOMPLETE and the caller must not record the boundary as serviced. Without
+      -- this, truncated stays false (it only tracks the runtime deadline) and the
+      -- heartbeat would claim a complete refresh while wallets waited a full
+      -- interval.
+      LIMIT ${FETCHER_MAX_OWNERS_PER_RUN + 1}
     `;
+    const cappedByLimit = ownerRowsRaw.length > FETCHER_MAX_OWNERS_PER_RUN;
+    const ownerRows = ownerRowsRaw.slice(0, FETCHER_MAX_OWNERS_PER_RUN);
     // Drop EVERY eth-flow contract enrolled as a tracked wallet (the /tier
     // endpoint now rejects them, but historical enrollments may persist):
     //   - Ophis-dedicated routers are fetched separately as synthetic owners
@@ -1110,6 +1140,7 @@ export async function runFetcher(
     const owners = ownerRows.filter((o) => !DECODER_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
     let processedOwners = 0;
+    let syntheticFailures = 0;
     // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
     // FEE arms: only a verified API write moves volume_fee_bps / fee_verified;
     // the final arm also repairs post-cutover rows previously persisted above 1 bp.
@@ -1206,7 +1237,7 @@ export async function runFetcher(
       await upsertDefillamaFills(pendingDefillamaFills.splice(0));
     };
     let failedOwners = 0;
-    let truncated = false;
+    let truncated = cappedByLimit;
     for (const { wallet } of owners) {
       if (opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs) {
         truncated = true;
@@ -1216,6 +1247,7 @@ export async function runFetcher(
       processedOwners++;
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
+      let productionOk = true;
       let reportingOk = true;
       for (const chainId of SUPPORTED_CHAIN_IDS) {
         try {
@@ -1225,13 +1257,20 @@ export async function runFetcher(
         } catch (err) {
           ownerOk = false; // a transient CoW failure must not silently advance the cursor
           if (DEFILLAMA_CHAIN_IDS.has(chainId)) reportingOk = false;
+          // Track PRODUCTION coverage separately from the all-chain cursor.
+          // ownerOk covers every SUPPORTED_CHAIN_IDS entry including Sepolia, but
+          // /stats and /leaderboard exclude Sepolia via PRODUCTION_CHAIN_IDS — so
+          // counting a staging outage against the public refresh gate would keep
+          // every intraday attempt "incomplete" and eventually page operations
+          // while all production chains refreshed perfectly normally.
+          if (DEFILLAMA_CHAIN_IDS.has(chainId)) productionOk = false;
           log.error({ err, chainId, owner }, 'owner/chain fetch failed'); // single failure does not abort others
         }
       }
       // The one-time reporting queue tracks production chains only. A Sepolia
       // orderbook outage must not hold the public mainnet history closed forever.
       // Conversely, any production-chain failure keeps this wallet queued for retry.
-      if (!ownerOk) failedOwners++;
+      if (!productionOk) failedOwners++;
       if (reportingOk) {
         await sql`DELETE FROM defillama_backfill_wallets WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
       }
@@ -1256,10 +1295,15 @@ export async function runFetcher(
       const chainId = Number(chainIdStr);
       if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
       try {
-        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
+        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps, opts.deadlineMs);
         inserted += await upsertTrades(rows);
         await flushDefillamaFills();
       } catch (err) {
+        // Dedicated Ophis eth-flow routers are a SYNTHETIC source with no tracked
+        // owner behind them, so a failure here never touched failedOwners. Left
+        // uncounted it would let the boundary be recorded and the heartbeat stay
+        // green while native-ETH trades went unrefreshed.
+        if (DEFILLAMA_CHAIN_IDS.has(chainId)) syntheticFailures++;
         log.error({ err, chainId, ethFlowOwner }, 'eth-flow owner fetch failed');
       }
     }
@@ -1289,6 +1333,11 @@ export async function runFetcher(
           },
         });
       } catch (err) {
+        // Counts toward incompleteness: for hosted-chain native-ETH and EIP-1271
+        // trades the decoder is the ONLY source, so a silent failure here would
+        // let the boundary be recorded and the heartbeat stay green while those
+        // trades were never refreshed.
+        syntheticFailures++;
         log.error({ err }, 'settle-decoder pass failed');
       }
     }
@@ -1298,7 +1347,7 @@ export async function runFetcher(
     // would delete aged, not-yet-refetched wallets before later iterations reach
     // them, silently rebuilding an incomplete ledger.
     log.info({ owners: owners.length, inserted }, 'fetcher complete');
-    return { inserted, owners: owners.length, failedOwners, truncated };
+    return { inserted, owners: owners.length, failedOwners: failedOwners + syntheticFailures, truncated };
   } finally {
     // Always runs — even if the lock acquire or unlock throws — so a transient
     // error can't leak the reserved connection. Unlock on the SAME connection
