@@ -98,21 +98,28 @@ jobs:
           # last_refresh_boundary on /health was not enough on its own -- nothing
           # read it. This is the predicate that makes it observable.
           #
-          # 6h, not the configured cadence: the workflow cannot see
-          # REBATES_REFRESH_MINUTES, and 6h still catches a dead scheduler within
-          # one working morning while tolerating any sane interval up to ~4h.
+          # Threshold DERIVED from the cadence the indexer reports, not hardcoded.
+          # refreshIntervalMs accepts up to 1440 minutes, so a fixed 6h would call
+          # a healthy slower cadence dead for most of every interval, and would
+          # leave a 10-minute cadence unmonitored for hours. Grace = one full
+          # interval on top, which absorbs the 10-minute poll granularity and a
+          # run in flight. Falls back to 6h if the field is missing (older image).
           REFRESH_BOUNDARY="$(jq -r '.last_refresh_boundary // empty' health.json)"
           if [ -z "$REFRESH_BOUNDARY" ]; then
             echo "::error::no serviced intraday refresh boundary -- the hourly refresh has never completed. The nightly may still be masking this: data_fresh and the nightly heartbeat above can both be green while /stats is up to 24h behind."
             exit 1
           fi
           REFRESH_TS="$(date -u -d "$REFRESH_BOUNDARY" +%s)" || { echo "::error::unparseable last_refresh_boundary: $REFRESH_BOUNDARY"; exit 1; }
-          REFRESH_MAX_AGE=$(( 6 * 3600 ))
+          REFRESH_MINS="$(jq -r '.refresh_interval_minutes // empty' health.json)"
+          case "$REFRESH_MINS" in
+            ''|*[!0-9.]*) REFRESH_MAX_AGE=$(( 6 * 3600 ));;
+            *) REFRESH_MAX_AGE=$(( ${REFRESH_MINS%.*} * 60 * 2 + 1800 ));;
+          esac
           if [ "$(( NOW - REFRESH_TS ))" -ge "$REFRESH_MAX_AGE" ]; then
             echo "::error::intraday refresh has not completed since $REFRESH_BOUNDARY ($(( (NOW - REFRESH_TS) / 3600 ))h ago). The hourly scheduler has stopped; public data is falling back to the nightly cadence."
             exit 1
           fi
-          echo "intraday refresh heartbeat ok: last_refresh_boundary=$REFRESH_BOUNDARY ($(( (NOW - REFRESH_TS) / 60 ))m ago)"
+          echo "intraday refresh heartbeat ok: last_refresh_boundary=$REFRESH_BOUNDARY ($(( (NOW - REFRESH_TS) / 60 ))m ago, allowed $(( REFRESH_MAX_AGE / 60 ))m for a ${REFRESH_MINS:-unknown}m cadence)"
           jq -e '
             .ok == true and
             .dataFresh == true and

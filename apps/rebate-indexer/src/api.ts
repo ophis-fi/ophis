@@ -12,6 +12,7 @@ import { computeDefiLlamaDay, computeDefiLlamaDayUsers, computePublicStats } fro
 import { assessPublicDataFreshness, readPublicDataFreshness, type PublicDataFreshness } from './freshness.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
+import { refreshIntervalMs } from './cron.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
 import { findReward } from './rewards.js';
@@ -500,6 +501,12 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       trade_rewards_last_success_at,
       last_public_data_refresh_at,
       last_refresh_boundary,
+      // Publish the EFFECTIVE cadence so the monitor can derive its own grace
+      // period. A hardcoded threshold there is wrong in both directions:
+      // refreshIntervalMs accepts up to 1440 minutes, so a legitimately slower
+      // cadence would be reported dead for most of every interval, while a
+      // 10-minute cadence would go unmonitored for hours.
+      refresh_interval_minutes: refreshIntervalMs() / 60_000,
       data_as_of: freshness.dataAsOf,
       data_fresh: freshness.dataFresh,
       data_status: freshness.dataStatus,
