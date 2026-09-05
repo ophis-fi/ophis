@@ -31,14 +31,11 @@ name: frontend CI
 # SWC, Vite, and plugin path before merge; Cloudflare injects production values
 # later without changing that toolchain.
 #
-# COST: path-scoped to apps/frontend/**, so PRs that do not touch the frontend
-# skip it entirely. pnpm's store is cached via setup-node.
+# This check runs on every PR so branch protection never waits for a
+# path-filtered workflow that cannot report a result. pnpm's store is cached.
 
 on:
   pull_request:
-    paths:
-      - 'apps/frontend/**'
-      - '.github/workflows/frontend-ci.yml'
   push:
     branches: [main]
     paths:

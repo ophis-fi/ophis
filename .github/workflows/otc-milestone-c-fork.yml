@@ -1,8 +1,8 @@
 name: OTC Milestone C fork tests
 
 on:
-  # Fork evidence remains required before merge. Run only after explicit
-  # authorization to use RPC credits, never on a PR update or a daily schedule.
+  # No provider secrets or scheduled runs: use the pinned keyless endpoint.
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -13,9 +13,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: OTC fork scope
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.scope.outputs.required }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          bash .github/scripts/otc-fork-scope.sh --self-test
+          bash .github/scripts/otc-fork-scope.sh "$EVENT_NAME" >> "$GITHUB_OUTPUT"
+
   ethereum-fork:
     name: ERC-20 create/fill/cancel invariants
+    needs: scope
+    if: needs.scope.outputs.required == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -30,31 +50,17 @@ jobs:
         working-directory: contracts
         env:
           FOUNDRY_PROFILE: otc-fork
-          OTC_RPC_UPSTREAM_URL: ${{ secrets.OTC_FORK_RPC_URL }}
+          OTC_FORK_RPC_URL: https://ethereum-rpc.publicnode.com
         run: |
-          test -n "$OTC_RPC_UPSTREAM_URL" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
-          node ../.github/scripts/otc-rpc-serial-proxy.mjs > /tmp/otc-rpc-proxy.log 2>&1 &
-          proxy_pid=$!
-          trap 'kill "$proxy_pid" 2>/dev/null || true' EXIT
-          for attempt in {1..30}; do
-            curl --fail --silent http://127.0.0.1:9545/health >/dev/null && break
-            if ! kill -0 "$proxy_pid" 2>/dev/null || [[ "$attempt" -eq 30 ]]; then
-              cat /tmp/otc-rpc-proxy.log
-              exit 1
-            fi
-            sleep 1
-          done
-          forge test --fork-url http://127.0.0.1:9545 \
+          timeout 120 forge test --fork-url "$OTC_FORK_RPC_URL" \
             --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol \
-            --threads 1 \
-            --compute-units-per-second 50 \
-            --fork-retry-backoff 1000 --fork-retries 10
+            --threads 1 --fork-retries 0
 
   injected-wallet-fork:
     name: Injected wallet ERC-20 lifecycle and recovery
     needs: ethereum-fork
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -84,7 +90,7 @@ jobs:
       - name: Run injected-wallet flow against a local mainnet fork
         working-directory: apps/frontend
         env:
-          OTC_RPC_UPSTREAM_URL: ${{ secrets.OTC_FORK_RPC_URL }}
+          OTC_FORK_RPC_URL: https://ethereum-rpc.publicnode.com
           CYPRESS_OTC_FORK_RPC_URL: http://127.0.0.1:8545
           # Routine host hydration is not fork evidence. The injected wallet,
           # fixtures, action terms, preflight, sends, and receipts stay on Anvil.
@@ -92,23 +98,11 @@ jobs:
           REACT_APP_OTC_WRITE_FLAG: 'true'
           REACT_APP_OTC_WRITE_MODE: fork
         run: |
-          test -n "$OTC_RPC_UPSTREAM_URL" || { echo 'OTC_FORK_RPC_URL repository secret is required'; exit 1; }
-          node ../../.github/scripts/otc-rpc-serial-proxy.mjs > /tmp/otc-rpc-proxy.log 2>&1 &
-          proxy_pid=$!
-          for attempt in {1..30}; do
-            curl --fail --silent http://127.0.0.1:9545/health >/dev/null && break
-            if ! kill -0 "$proxy_pid" 2>/dev/null || [[ "$attempt" -eq 30 ]]; then
-              cat /tmp/otc-rpc-proxy.log
-              exit 1
-            fi
-            sleep 1
-          done
-          anvil --fork-url http://127.0.0.1:9545 --accounts 0 --auto-impersonate \
-            --compute-units-per-second 50 \
-            --fork-retry-backoff 1000 --retries 10 \
+          anvil --fork-url "$OTC_FORK_RPC_URL" --accounts 0 --auto-impersonate \
+            --retries 0 \
             --chain-id 1 --host 127.0.0.1 --port 8545 > /tmp/otc-anvil.log 2>&1 &
           anvil_pid=$!
-          trap 'kill "$proxy_pid" "$anvil_pid" 2>/dev/null || true; [[ -z "${frontend_pid:-}" ]] || kill "$frontend_pid" 2>/dev/null || true' EXIT
+          trap 'kill "$anvil_pid" 2>/dev/null || true; [[ -z "${frontend_pid:-}" ]] || kill "$frontend_pid" 2>/dev/null || true' EXIT
           for attempt in {1..60}; do
             if [[ "$(curl --fail --silent --show-error http://127.0.0.1:8545 \
               -H 'content-type: application/json' \
@@ -134,7 +128,7 @@ jobs:
             fi
             sleep 1
           done
-          if ! pnpm exec nx run cowswap-frontend-e2e:e2e --skip-nx-cache \
+          if ! timeout 480 pnpm exec nx run cowswap-frontend-e2e:e2e --skip-nx-cache \
             --spec apps/cowswap-frontend-e2e/src/e2e/otc-fork.test.ts \
             --browser chrome; then
             for log in /tmp/otc-anvil.log /tmp/otc-frontend.log; do
