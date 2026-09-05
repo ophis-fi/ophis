@@ -197,7 +197,14 @@ export function OtcOrderActionPanel({
   const forkOrderQueryAtom = useMemo(
     () =>
       atomWithQuery<Awaited<ReturnType<typeof readOtcOrder>> | null, Error>(() => ({
-        queryKey: ['ophis-otc-fork-order', network.transportId, account, orderId.toString(), mountId],
+        queryKey: [
+          'ophis-otc-fork-order',
+          network.transportId,
+          network.localForkResponse.data,
+          account,
+          orderId.toString(),
+          mountId,
+        ],
         queryFn: async () => (network.writeClient ? readOtcOrder(network.writeClient, orderId) : null),
         enabled: !!network.localForkResponse.data && !!account && !!network.writeClient,
         refetchInterval: ORDER_REFRESH_INTERVAL_MS,
