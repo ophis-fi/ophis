@@ -52,6 +52,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await sql`DELETE FROM pipeline_runs`;
+  await sql`DELETE FROM refresh_runs`;
 });
 
 describe('nightly scheduler SQL executes against a real Postgres', () => {
@@ -200,4 +201,95 @@ describe('nightly scheduler SQL executes against a real Postgres', () => {
     await recordPipelineRun(false, b);
     await expect(isNightlyDue(b)).resolves.toBe(false);
   });
+});
+
+describe('intraday refresh must NOT cannibalise the nightly', () => {
+  it('migration 0044 applied refresh_runs as its OWN table', async () => {
+    const [row] = await sql<{ n: string }[]>`
+      SELECT COUNT(*)::text AS n FROM information_schema.columns
+      WHERE table_name = 'refresh_runs' AND column_name = 'serviced_boundary'`;
+    expect(row?.n).toBe('1');
+  });
+
+  // THE BUG THIS FILE EXISTS TO PREVENT, in its newest shape.
+  //
+  // isNightlyDue() asks MAX(serviced_boundary) < :boundary FROM pipeline_runs.
+  // If the hourly refresh recorded itself THERE, MAX would advance past 02:00
+  // every single hour and the nightly would report "not due" forever: no
+  // batcher, no accrual, no reconciliation, no monthly report -- while /health
+  // still said fresh, because the refresh really is refreshing. Silent, and
+  // invisible on every dashboard we have.
+  it('a refresh recorded for a LATER instant leaves the nightly still due', async () => {
+    const { isNightlyDue, recordRefreshRun, isRefreshDue, lastNightlyBoundary } =
+      await import('../src/cron.js');
+    const nightly = lastNightlyBoundary(Date.UTC(2026, 8, 4, 13, 0, 0)); // 2026-09-04T02:00Z
+    // hourly refreshes all day, every one of them AFTER the nightly boundary
+    for (const h of [3, 6, 9, 12]) {
+      await recordRefreshRun(new Date(Date.UTC(2026, 8, 4, h, 0, 0)));
+    }
+    expect(await isNightlyDue(nightly)).toBe(true);   // <- the whole point
+    expect(await isRefreshDue(new Date(Date.UTC(2026, 8, 4, 12, 0, 0)))).toBe(false);
+    expect(await isRefreshDue(new Date(Date.UTC(2026, 8, 4, 13, 0, 0)))).toBe(true);
+  });
+
+  it('and the reverse: a nightly run does not satisfy the refresh cadence', async () => {
+    const { recordPipelineRun, isRefreshDue } = await import('../src/cron.js');
+    await recordPipelineRun(false, new Date(Date.UTC(2026, 8, 4, 2, 0, 0)));
+    expect(await isRefreshDue(new Date(Date.UTC(2026, 8, 4, 3, 0, 0)))).toBe(true);
+  });
+
+  it('recordRefreshRun round-trips a Date through the real driver (the 08-31 fault class)', async () => {
+    const { recordRefreshRun, isRefreshDue } = await import('../src/cron.js');
+    const b = new Date(Date.UTC(2026, 8, 4, 14, 0, 0));
+    await recordRefreshRun(b);                       // a raw Date, as the tick passes it
+    expect(await isRefreshDue(b)).toBe(false);
+    expect(await isRefreshDue(new Date(b.getTime() + 3_600_000))).toBe(true);
+  });
+
+  it('stores the boundary as the exact UTC instant under a NON-UTC session timezone', async () => {
+    const { recordRefreshRun } = await import('../src/cron.js');
+    // SET TIME ZONE is CONNECTION-local and this pool holds up to ten. Setting it
+    // on one session would let recordRefreshRun's insert land on a different,
+    // still-UTC connection, so the test could pass even after a regression to a
+    // timezone-naive cast -- protecting nothing while claiming to. Set it on the
+    // DATABASE so every connection the pool hands out inherits it.
+    const dbName = (await sql<{ d: string }[]>`SELECT current_database() AS d`)[0]!.d;
+    await sql.unsafe(`ALTER DATABASE "${dbName}" SET TIME ZONE 'Pacific/Kiritimati'`);
+    // Force fresh sessions so the new default is actually picked up.
+    await sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+              WHERE datname = ${dbName} AND pid <> pg_backend_pid()`;
+    try {
+      await recordRefreshRun(new Date(Date.UTC(2026, 8, 4, 15, 0, 0)));
+      const [row] = await sql<{ iso: string }[]>`
+        SELECT to_char(MAX(serviced_boundary) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS') AS iso FROM refresh_runs`;
+      expect(row?.iso).toBe('2026-09-04T15:00:00');
+    } finally {
+      await sql.unsafe(`ALTER DATABASE "${dbName}" SET TIME ZONE 'UTC'`);
+      await sql`SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+                WHERE datname = ${dbName} AND pid <> pg_backend_pid()`;
+    }
+  });
+  // P1: without a parameterised gate the hourly tick is nearly inert. And the
+  // FIRST attempt at that parameter -- a relative "older than one hour" window --
+  // was still wrong: it fetches each wallet only every OTHER tick.
+  it('boundary-relative eligibility fetches a wallet ONCE PER BOUNDARY, not every other one', async () => {
+    // 13:00 boundary. A wallet last fetched at 12:05 must be eligible.
+    const [rel] = await sql<{ eligible: boolean }[]>`
+      SELECT (TIMESTAMPTZ '2026-09-04 12:05:00+00'
+              < TIMESTAMPTZ '2026-09-04 13:00:00+00' - interval '1 hour') AS eligible`;
+    expect(rel?.eligible).toBe(false);   // the OLD relative form: skipped -> ~2h stale
+
+    const [abs] = await sql<{ eligible: boolean }[]>`
+      SELECT (TIMESTAMPTZ '2026-09-04 12:05:00+00'
+              < TIMESTAMPTZ '2026-09-04 13:00:00+00') AS eligible`;
+    expect(abs?.eligible).toBe(true);    // boundary-relative: fetched, as intended
+
+    // and the on-the-nose case the strict comparison used to drop
+    const [nose] = await sql<{ rel: boolean; abs: boolean }[]>`
+      SELECT (TIMESTAMPTZ '2026-09-04 12:00:00+00' < TIMESTAMPTZ '2026-09-04 13:00:00+00' - interval '1 hour') AS rel,
+             (TIMESTAMPTZ '2026-09-04 12:00:00+00' < TIMESTAMPTZ '2026-09-04 13:00:00+00') AS abs`;
+    expect(nose?.rel).toBe(false);
+    expect(nose?.abs).toBe(true);
+  });
+
 });

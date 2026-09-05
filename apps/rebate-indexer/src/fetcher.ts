@@ -967,7 +967,29 @@ export async function withPipelineLock(
   }
 }
 
-export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: number; owners: number }> {
+export interface RunFetcherOptions {
+  /**
+   * ABSOLUTE cutoff: re-fetch a tracked wallet whose last_fetched precedes this
+   * instant. Defaults to now minus 6 hours -- the historical behaviour, right for
+   * the 02:00 nightly.
+   *
+   * ABSOLUTE, not a relative window, and this matters. Comparing
+   * `last_fetched < now() - interval` fetches each wallet only every OTHER tick
+   * on an hourly cadence: a wallet fetched at 12:05 is not "older than one hour"
+   * when the 13:00 tick asks, yet that tick records 13:00 as serviced and no
+   * later poll retries inside it, so the wallet waits until ~14:00. A fetch at
+   * exactly 12:00 also fails a strict `< 12:00`. Passing the BOUNDARY makes
+   * anything not fetched since it opened eligible, once per boundary.
+   */
+  staleBefore?: Date;
+}
+
+const DEFAULT_FETCH_STALE_AFTER_MS = 6 * 60 * 60 * 1_000;
+
+export async function runFetcher(
+  _deps?: FetcherDeps,
+  opts: RunFetcherOptions = {},
+): Promise<{ inserted: number; owners: number }> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
   const { db, sql, schema } = await import('./db/index.js');
 
@@ -1024,11 +1046,19 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.
+    // Lower clamp only. The upper bound is `now`: the nightly deliberately passes
+    // `now` for a boundary-complete fetch, and shaving even a minute off would
+    // exclude a wallet a startup backfill touched just before 02:00 -- exactly the
+    // trade that must not be missing when the first-of-month batcher computes an
+    // irreversible payout.
+    const nowMs = Date.now();
+    const requested = (opts.staleBefore ?? new Date(nowMs - DEFAULT_FETCH_STALE_AFTER_MS)).getTime();
+    const staleBeforeIso = new Date(Math.min(Math.max(requested, nowMs - 86_400_000), nowMs)).toISOString();
     const ownerRows = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
       WHERE last_fetched IS NULL
-         OR last_fetched < now() - INTERVAL '6 hours'
+         OR last_fetched < ${staleBeforeIso}::timestamptz
          OR wallet IN (SELECT wallet FROM defillama_backfill_wallets)
       -- proven wallets first; then least-recently-fetched (never-fetched first);
       -- then OLDEST registration. The first_seen tiebreaker makes never-fetched
