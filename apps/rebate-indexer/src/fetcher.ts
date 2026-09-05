@@ -967,7 +967,43 @@ export async function withPipelineLock(
   }
 }
 
-export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: number; owners: number }> {
+export interface RunFetcherOptions {
+  /**
+   * ABSOLUTE cutoff: re-fetch a tracked wallet whose last_fetched precedes this
+   * instant. Defaults to now minus 6 hours -- the historical behaviour, right for
+   * the 02:00 nightly.
+   *
+   * ABSOLUTE, not a relative window, and this matters. Comparing
+   * `last_fetched < now() - interval` fetches each wallet only every OTHER tick
+   * on an hourly cadence: a wallet fetched at 12:05 is not "older than one hour"
+   * when the 13:00 tick asks, yet that tick records 13:00 as serviced and no
+   * later poll retries inside it, so the wallet waits until ~14:00. A fetch at
+   * exactly 12:00 also fails a strict `< 12:00`. Passing the BOUNDARY makes
+   * anything not fetched since it opened eligible, once per boundary.
+   */
+  staleBefore?: Date;
+  /**
+   * Wall-clock epoch ms after which the owner loop stops starting new work.
+   *
+   * The quiet window bounds when a refresh may START; it bounds nothing about
+   * how long one RUNS. With ~29 tracked wallets and 14 sequential chain requests
+   * each, an orderbook outage reaching the existing 10s request timeout is
+   * roughly 68 minutes -- past the 60-minute window and into the nightly, whose
+   * bounded lock wait then expires and delays the monthly payout path.
+   *
+   * Checked BETWEEN OWNERS, which is cooperative and safe (no half-written
+   * owner) and bounds the run to this deadline plus one owner's worst case,
+   * about 140 seconds.
+   */
+  deadlineMs?: number;
+}
+
+const DEFAULT_FETCH_STALE_AFTER_MS = 6 * 60 * 60 * 1_000;
+
+export async function runFetcher(
+  _deps?: FetcherDeps,
+  opts: RunFetcherOptions = {},
+): Promise<{ inserted: number; owners: number }> {
   // Import real db lazily so this module can be loaded without DATABASE_URL set.
   const { db, sql, schema } = await import('./db/index.js');
 
@@ -1024,11 +1060,19 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
     // can never starve them, then oldest-fetched. Junk is evicted below.
+    // Lower clamp only. The upper bound is `now`: the nightly deliberately passes
+    // `now` for a boundary-complete fetch, and shaving even a minute off would
+    // exclude a wallet a startup backfill touched just before 02:00 -- exactly the
+    // trade that must not be missing when the first-of-month batcher computes an
+    // irreversible payout.
+    const nowMs = Date.now();
+    const requested = (opts.staleBefore ?? new Date(nowMs - DEFAULT_FETCH_STALE_AFTER_MS)).getTime();
+    const staleBeforeIso = new Date(Math.min(Math.max(requested, nowMs - 86_400_000), nowMs)).toISOString();
     const ownerRows = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
       WHERE last_fetched IS NULL
-         OR last_fetched < now() - INTERVAL '6 hours'
+         OR last_fetched < ${staleBeforeIso}::timestamptz
          OR wallet IN (SELECT wallet FROM defillama_backfill_wallets)
       -- proven wallets first; then least-recently-fetched (never-fetched first);
       -- then OLDEST registration. The first_seen tiebreaker makes never-fetched
@@ -1040,6 +1084,17 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
                first_seen ASC
       LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
     `;
+    // The cap is a real bound on coverage, and making the nightly fetch
+    // boundary-complete makes it bind SOONER (every wallet is now eligible, not
+    // just those stale by 6h). At 29 tracked wallets against a cap of 500 there
+    // is a 17x margin, but if that is ever exhausted the first-of-month batcher
+    // would compute an irreversible payout from an incomplete fetch. Say so
+    // loudly rather than truncating in silence.
+    if (ownerRows.length >= FETCHER_MAX_OWNERS_PER_RUN) {
+      log.error({ cap: FETCHER_MAX_OWNERS_PER_RUN, selected: ownerRows.length },
+        'fetcher hit FETCHER_MAX_OWNERS_PER_RUN: eligible wallets were left unfetched this run. Raise the cap before the next first-of-month batcher run.');
+    }
+
     // Drop EVERY eth-flow contract enrolled as a tracked wallet (the /tier
     // endpoint now rejects them, but historical enrollments may persist):
     //   - Ophis-dedicated routers are fetched separately as synthetic owners
@@ -1054,6 +1109,7 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     //     correctly via the on-chain settle() decoder (full DECODER set).
     const owners = ownerRows.filter((o) => !DECODER_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
+    let processedOwners = 0;
     // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
     // FEE arms: only a verified API write moves volume_fee_bps / fee_verified;
     // the final arm also repairs post-cutover rows previously persisted above 1 bp.
@@ -1150,6 +1206,12 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
       await upsertDefillamaFills(pendingDefillamaFills.splice(0));
     };
     for (const { wallet } of owners) {
+      if (opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs) {
+        log.warn({ processed: processedOwners, of: owners.length },
+          'fetcher stopped at its deadline so the refresh cannot cross the nightly boundary');
+        break;
+      }
+      processedOwners++;
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
       let reportingOk = true;
@@ -1187,7 +1249,13 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // owner on its own chain; fetchChainTrades attributes each trade to its
     // receiver. Fixed addresses (one per override chain), so no tracked-wallet
     // budget cost, and they are never added to tracked_wallets (fetched directly).
+    // The owner loop's break does not end runFetcher: the eth-flow and settle-
+    // decoder passes follow. Guard them on the same deadline or a refresh that
+    // stopped fetching owners at its budget would carry straight on and still
+    // hold the pipeline lock past 02:00.
+    const pastDeadline = () => opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs;
     for (const [chainIdStr, ethFlowOwner] of Object.entries(OPHIS_ETHFLOW_OWNER_BY_CHAIN)) {
+      if (pastDeadline()) { log.warn('deadline reached; skipping remaining eth-flow fetches'); break; }
       const chainId = Number(chainIdStr);
       if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
       try {
@@ -1207,6 +1275,9 @@ export async function runFetcher(_deps?: FetcherDeps): Promise<{ inserted: numbe
     // the same upsertTrades (PK-idempotent on trade_uid, so it can never double-count
     // a trade the API fetcher already wrote).
     if (process.env.SETTLE_DECODER_CHAINS) {
+      if (pastDeadline()) {
+        log.warn('deadline reached; skipping the settle-decoder pass');
+      } else
       try {
         const { runSettleDecoder } = await import('./cow/onchain.js');
         inserted += await runSettleDecoder({
