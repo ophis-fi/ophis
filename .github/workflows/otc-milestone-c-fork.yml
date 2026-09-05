@@ -1,38 +1,8 @@
 name: OTC Milestone C fork tests
 
 on:
-  pull_request:
-    paths:
-      - 'contracts/foundry.toml'
-      - 'contracts/test/otc-fork/OtcSwapboardEthereumFork.t.sol'
-      - 'apps/frontend/apps/cowswap-frontend/src/ophis/otc/**'
-      - 'apps/frontend/apps/cowswap-frontend/src/ophis/otcWrite/**'
-      - 'apps/frontend/apps/cowswap-frontend/src/pages/Otc/**'
-      - 'apps/frontend/libs/common-const/src/nativeAndWrappedTokens.ts'
-      - 'apps/frontend/libs/common-const/src/tokens.ts'
-      - 'apps/frontend/libs/common-const/src/index.ts'
-      - 'apps/frontend/libs/common-hooks/src/useFeatureFlags.ts'
-      - 'apps/frontend/libs/common-hooks/src/index.ts'
-      - 'apps/frontend/libs/common-utils/src/environments.ts'
-      - 'apps/frontend/libs/common-utils/src/index.ts'
-      - 'apps/frontend/libs/tokens/src/services/tokenPolicy.ts'
-      - 'apps/frontend/libs/tokens/src/services/tokenPolicy.spec.ts'
-      - 'apps/frontend/libs/tokens/src/index.ts'
-      - 'apps/frontend/libs/wallet/**'
-      - 'apps/frontend/libs/wallet-provider/**'
-      - 'apps/frontend/apps/cowswap-frontend-e2e/**'
-      - 'apps/frontend/pnpm-lock.yaml'
-      - 'apps/frontend/package.json'
-      - 'apps/frontend/tsconfig.base.json'
-      - 'apps/frontend/apps/cowswap-frontend/project.json'
-      - 'apps/frontend/apps/cowswap-frontend/tsconfig.app.json'
-      - 'apps/frontend/apps/cowswap-frontend-e2e/project.json'
-      - 'apps/frontend/apps/cowswap-frontend-e2e/tsconfig.json'
-      - 'apps/frontend/nx.json'
-      - '.github/scripts/otc-rpc-serial-proxy.mjs'
-      - '.github/workflows/otc-milestone-c-fork.yml'
-  schedule:
-    - cron: '37 6 * * *'
+  # Fork evidence remains required before merge. Run only after explicit
+  # authorization to use RPC credits, never on a PR update or a daily schedule.
   workflow_dispatch:
 
 permissions:
@@ -76,6 +46,7 @@ jobs:
           done
           forge test --fork-url http://127.0.0.1:9545 \
             --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol \
+            --threads 1 \
             --compute-units-per-second 50 \
             --fork-retry-backoff 1000 --fork-retries 10
 
