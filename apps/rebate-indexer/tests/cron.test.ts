@@ -297,3 +297,16 @@ describe('the quiet window is wider than the worst-case run', () => {
     }
   });
 });
+
+describe('the in-flight guard sits above the legitimate worst case', () => {
+  // It exists to catch a WEDGED run, so tripping on a healthy-but-slow one is a
+  // false positive: it logs "presumed wedged" and lets a second tick start.
+  it('90 minutes clears the ~68-minute worst case and stays inside the window', () => {
+    const GUARD_MS = 90 * 60_000;
+    const WORST_CASE_MS = 29 * 14 * 10_000; // ~68 min
+    const WINDOW_MS = 2 * 60 * 60_000;
+    expect(GUARD_MS).toBeGreaterThan(WORST_CASE_MS);   // no false "wedged"
+    expect(GUARD_MS).toBeLessThan(WINDOW_MS);          // still catches a real wedge
+    expect(20 * 60_000).toBeLessThan(WORST_CASE_MS);   // why the old value was wrong
+  });
+});

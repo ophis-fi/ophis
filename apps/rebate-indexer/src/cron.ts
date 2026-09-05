@@ -672,7 +672,14 @@ let refreshStartedAt = 0; // 0 = no refresh in flight
 // before price/score -- NOT by racing a timeout, which would release the PIPELINE
 // lock while FETCHER_LOCK_KEY was still held and make the nightly's own fetch
 // return a silent zero before first-of-month money steps.
-const REFRESH_MAX_RUNTIME_MS = 20 * 60 * 1_000;
+// In-flight guard only: it releases the FLAG so ticks resume, it never cancels
+// work. Must sit ABOVE the legitimate worst case, not below it. At 20 minutes —
+// the value that made sense when a budget truncated runs — a genuine 68-minute
+// outage run would trip it every time, logging "presumed wedged" and letting a
+// second tick start against a first that is working perfectly well. 90 minutes
+// clears the ~68-minute worst case and still catches a real wedge well inside
+// the two-hour quiet window.
+const REFRESH_MAX_RUNTIME_MS = 90 * 60 * 1_000;
 // A refresh must never still be running when the nightly comes due, and the way
 // to guarantee that is to make the window WIDER THAN THE WORST-CASE RUN rather
 // than to truncate mid-run.
