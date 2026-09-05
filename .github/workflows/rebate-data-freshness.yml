@@ -112,13 +112,15 @@ jobs:
           REFRESH_TS="$(date -u -d "$REFRESH_BOUNDARY" +%s)" || { echo "::error::unparseable last_refresh_boundary: $REFRESH_BOUNDARY"; exit 1; }
           REFRESH_MINS="$(jq -r '.refresh_interval_minutes // empty' health.json)"
           case "$REFRESH_MINS" in
-            ''|*[!0-9.]*) REFRESH_MAX_AGE=$(( 6 * 3600 + 3600 + 1800 ));;
+            ''|*[!0-9.]*) REFRESH_MAX_AGE=$(( 6 * 3600 + 3600 + 7200 ));;
             # + 3600 for the scheduler's MANDATORY quiet hour before 02:00 (it
             # performs no refresh then, so at 01:47 the newest possible boundary
-            # is 00:5x) and + 1800 for a nightly holding the pipeline lock.
-            # Without those two terms a 10-minute cadence allows 50m and this
-            # check fails EVERY NIGHT against a perfectly healthy scheduler.
-            *) REFRESH_MAX_AGE=$(( ${REFRESH_MINS%.*} * 60 * 2 + 3600 + 1800 ));;
+            # is 00:5x) and + 7200 to MATCH THE NIGHTLY GRACE the check above
+            # already allows. 1800 was not enough: a nightly legitimately running
+            # past 30 minutes holds the pipeline lock, the refresh correctly
+            # defers, and a 10-minute cadence would then fail the 02:47 run — and
+            # the default cadence the 03:47 one — against a healthy scheduler.
+            *) REFRESH_MAX_AGE=$(( ${REFRESH_MINS%.*} * 60 * 2 + 3600 + 7200 ));;
           esac
           if [ "$(( NOW - REFRESH_TS ))" -ge "$REFRESH_MAX_AGE" ]; then
             echo "::error::intraday refresh has not completed since $REFRESH_BOUNDARY ($(( (NOW - REFRESH_TS) / 3600 ))h ago). The hourly scheduler has stopped; public data is falling back to the nightly cadence."

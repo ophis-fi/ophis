@@ -1251,7 +1251,7 @@ export async function runFetcher(
       let reportingOk = true;
       for (const chainId of SUPPORTED_CHAIN_IDS) {
         try {
-          const rows = await fetchChainTrades(chainId, owner, dbDeps);
+          const rows = await fetchChainTrades(chainId, owner, dbDeps, opts.deadlineMs);
           inserted += await upsertTrades(rows);
           await flushDefillamaFills();
         } catch (err) {
@@ -1318,7 +1318,7 @@ export async function runFetcher(
     if (process.env.SETTLE_DECODER_CHAINS) {
       try {
         const { runSettleDecoder } = await import('./cow/onchain.js');
-        inserted += await runSettleDecoder({
+        const dec = await runSettleDecoder({
           sql: sql as unknown as Parameters<typeof runSettleDecoder>[0]['sql'],
           upsertTrades,
           // Settlement-fill persistence for decoder-discovered trades: the only
@@ -1332,6 +1332,12 @@ export async function runFetcher(
             await flushDefillamaFills();
           },
         });
+        inserted += dec.inserted;
+        // Per-chain decoder failures are caught INSIDE runSettleDecoder and used to
+        // resolve normally, so the outer catch never saw them. Count them here or
+        // a decoder-only chain outage records the boundary with those native-ETH /
+        // EIP-1271 trades unrefreshed.
+        syntheticFailures += dec.failedChains;
       } catch (err) {
         // Counts toward incompleteness: for hosted-chain native-ETH and EIP-1271
         // trades the decoder is the ONLY source, so a silent failure here would

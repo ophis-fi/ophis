@@ -684,9 +684,14 @@ export async function runRefreshSteps(
   // /stats and the workflow heartbeat would all report fresh, indefinitely,
   // on stale data. Withhold the completion record instead, so the boundary stays
   // due and the heartbeat ages until someone looks.
-  const complete = !truncated && failedOwners === 0;
+  // Pricing counts too: runPricer catches each failure and returns priced.failed,
+  // and the wallets matview EXCLUDES value_usd IS NULL rows — so during a
+  // sustained CoW native-price outage the trades would be fetched but invisible
+  // on /stats and /leaderboard while the scorer stamped them fresh and every
+  // boundary recorded clean.
+  const complete = !truncated && failedOwners === 0 && priced.failed === 0;
   if (!complete) {
-    log.error({ inserted, owners, failedOwners, truncated },
+    log.error({ inserted, owners, failedOwners, truncated, pricingFailed: priced.failed },
       'intraday refresh INCOMPLETE; not recording the boundary so the heartbeat ages');
   } else {
     log.info({ inserted, owners, priced, scored }, 'intraday refresh complete');
