@@ -681,11 +681,21 @@ export async function fetchChainTrades(
   chainId: number,
   owner: `0x${string}`,
   deps: FetcherDeps,
+  // Checked BETWEEN PAGES. Bounding only between OWNERS assumed a worst case of
+  // 14 chains x the 10s request timeout, about 140s -- but /tier can enrol an
+  // arbitrary high-volume CoW wallet, and one owner then paginates 1,000-row
+  // pages with a getOrder per incomplete trade. That single owner could hold the
+  // pipeline lock far past the budget and cross the 02:00 nightly boundary.
+  deadlineMs?: number,
 ): Promise<PendingTrade[]> {
   const out: PendingTrade[] = [];
   const seen = new Set<string>(); // collapse multiple fills of the same order within this run
   let offset = 0;
   while (true) {
+    if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+      log.warn({ chainId, owner, fetched: out.length }, 'page loop stopped at the deadline; this owner is incomplete');
+      break;
+    }
     const page = await listTrades({ chainId, owner, offset, limit: PAGE_SIZE });
     if (page.length === 0) break;
 
@@ -1081,6 +1091,15 @@ export async function runFetcher(
       ORDER BY (wallet IN (SELECT wallet FROM defillama_backfill_wallets)) DESC,
                (wallet IN (SELECT wallet FROM trades)) DESC,
                last_fetched ASC NULLS FIRST,
+               -- ROTATION under a budget-limited run. A FAILED owner keeps its old
+               -- last_fetched (only last_attempt_at moves -- see the two UPDATEs
+               -- below), so ordering by last_fetched alone re-selects the SAME
+               -- failing prefix every tick: it consumes the whole deadline again
+               -- and owners later in the ordering never get fetched at all.
+               -- last_attempt_at is already maintained on EVERY attempt, so
+               -- breaking the tie with it lets a budget-limited retry continue
+               -- past owners already tried for this boundary.
+               last_attempt_at ASC NULLS FIRST,
                first_seen ASC
       LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
     `;
@@ -1217,7 +1236,7 @@ export async function runFetcher(
       let reportingOk = true;
       for (const chainId of SUPPORTED_CHAIN_IDS) {
         try {
-          const rows = await fetchChainTrades(chainId, owner, dbDeps);
+          const rows = await fetchChainTrades(chainId, owner, dbDeps, opts.deadlineMs);
           inserted += await upsertTrades(rows);
           await flushDefillamaFills();
         } catch (err) {
@@ -1259,7 +1278,7 @@ export async function runFetcher(
       const chainId = Number(chainIdStr);
       if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
       try {
-        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
+        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps, opts.deadlineMs);
         inserted += await upsertTrades(rows);
         await flushDefillamaFills();
       } catch (err) {

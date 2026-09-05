@@ -292,4 +292,29 @@ describe('intraday refresh must NOT cannibalise the nightly', () => {
     expect(nose?.abs).toBe(true);
   });
 
+  // The rotation claim, executed rather than argued. I rebutted this finding on
+  // the SUCCESS path -- a fetched owner gets last_fetched = now() and sorts to the
+  // back -- and was wrong, because a FAILED owner updates only last_attempt_at.
+  // Ordering by last_fetched alone therefore re-selects the same failing prefix
+  // forever and starves everything behind it.
+  it('a failing prefix rotates once last_attempt_at joins the ordering', async () => {
+    await sql`CREATE TEMP TABLE rot (wallet text, last_fetched timestamptz, last_attempt_at timestamptz)`;
+    // Two owners that keep FAILING: last_fetched stays old, last_attempt_at moves.
+    await sql`INSERT INTO rot VALUES
+      ('a', TIMESTAMPTZ '2026-01-01', TIMESTAMPTZ '2026-09-05 12:00+00'),
+      ('b', TIMESTAMPTZ '2026-01-01', TIMESTAMPTZ '2026-09-05 12:05+00'),
+      ('c', TIMESTAMPTZ '2026-01-01', NULL)`;
+    const oldOrder = await sql<{ wallet: string }[]>`
+      SELECT wallet FROM rot ORDER BY last_fetched ASC NULLS FIRST, wallet ASC`;
+    // Old ordering cannot distinguish them: 'a' and 'b' keep winning by name.
+    expect(oldOrder.map((r) => r.wallet)).toEqual(['a', 'b', 'c']);
+
+    const newOrder = await sql<{ wallet: string }[]>`
+      SELECT wallet FROM rot
+      ORDER BY last_fetched ASC NULLS FIRST, last_attempt_at ASC NULLS FIRST, wallet ASC`;
+    // New ordering puts the never-attempted owner FIRST, then the least recently
+    // attempted -- so a budget-limited retry advances instead of looping.
+    expect(newOrder.map((r) => r.wallet)).toEqual(['c', 'a', 'b']);
+    await sql`DROP TABLE rot`;
+  });
 });
