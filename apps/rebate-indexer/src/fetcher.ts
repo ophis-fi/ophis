@@ -1238,7 +1238,13 @@ export async function runFetcher(
     // owner on its own chain; fetchChainTrades attributes each trade to its
     // receiver. Fixed addresses (one per override chain), so no tracked-wallet
     // budget cost, and they are never added to tracked_wallets (fetched directly).
+    // The owner loop's break does not end runFetcher: the eth-flow and settle-
+    // decoder passes follow. Guard them on the same deadline or a refresh that
+    // stopped fetching owners at its budget would carry straight on and still
+    // hold the pipeline lock past 02:00.
+    const pastDeadline = () => opts.deadlineMs !== undefined && Date.now() >= opts.deadlineMs;
     for (const [chainIdStr, ethFlowOwner] of Object.entries(OPHIS_ETHFLOW_OWNER_BY_CHAIN)) {
+      if (pastDeadline()) { log.warn('deadline reached; skipping remaining eth-flow fetches'); break; }
       const chainId = Number(chainIdStr);
       if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
       try {
@@ -1258,6 +1264,9 @@ export async function runFetcher(
     // the same upsertTrades (PK-idempotent on trade_uid, so it can never double-count
     // a trade the API fetcher already wrote).
     if (process.env.SETTLE_DECODER_CHAINS) {
+      if (pastDeadline()) {
+        log.warn('deadline reached; skipping the settle-decoder pass');
+      } else
       try {
         const { runSettleDecoder } = await import('./cow/onchain.js');
         inserted += await runSettleDecoder({
