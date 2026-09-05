@@ -26,6 +26,7 @@ const proposePartnerFeeBatches = vi.fn(async () => ({ checked: 0, proposed: 0, b
 const accruePartnerFees = vi.fn(async () => ({ status: 'computed', batchId: 1 }));
 
 vi.mock('../../src/fetcher.js', () => ({
+  DECODER_ETHFLOW_OWNERS: new Set<string>(),
   runFetcher: vi.fn(async () => ({ inserted: 0, owners: 0 })),
   pruneStaleWallets: vi.fn(async () => ({ pruned: 0 })),
   withPipelineLock: vi.fn(async (fn: () => Promise<void>) => { await fn(); return true; }),

@@ -738,8 +738,61 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
       calledUrl = String(url)
       return jsonResponse({ tokens: [] })
     }) as unknown as typeof fetch
-    await resolveToken({ chainId: 8453, symbol: 'USDC' }, spy)
+    await resolveToken({ chainId: 137, symbol: 'USDC' }, spy)
     expect(calledUrl).toBe('https://files.cow.fi/tokens/CowSwap.json')
+  })
+
+  const COINBASE_STOCKS_LIST_URL = 'https://swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json'
+  const AAPLC_BASE = '0xb200000000000000000000C2e324d24d7eEcd1fb'
+
+  it('on Base consults the Ophis-hosted Coinbase stock list first, then the CoW list (static URLs only)', async () => {
+    const calledUrls: string[] = []
+    const spy = (async (url: string) => {
+      calledUrls.push(String(url))
+      return jsonResponse({ tokens: [] })
+    }) as unknown as typeof fetch
+    await resolveToken({ chainId: 8453, symbol: 'AAPLc' }, spy)
+    expect(calledUrls).toEqual([COINBASE_STOCKS_LIST_URL, 'https://files.cow.fi/tokens/CowSwap.json'])
+  })
+
+  it('keeps the Coinbase stock list URL identical to the swap UI constant (cross-workspace drift guard)', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const frontendConst = readFileSync(
+      resolve(__dirname, '../../frontend/libs/tokens/src/const/tokensLists.ts'),
+      'utf8',
+    )
+    expect(frontendConst).toContain(`COINBASE_TOKENIZED_STOCKS_LIST_SOURCE = '${COINBASE_STOCKS_LIST_URL}'`)
+  })
+
+  it('resolves a Coinbase tokenized stock on Base from the Coinbase list (by exact symbol, checksummed)', async () => {
+    const mock = (async (url: string) => {
+      if (String(url) === COINBASE_STOCKS_LIST_URL) {
+        return jsonResponse({
+          tokens: [{ chainId: 8453, address: AAPLC_BASE.toLowerCase(), symbol: 'AAPLc', decimals: 8, name: 'Apple Inc.' }],
+        })
+      }
+      if (String(url).includes('CowSwap')) return jsonResponse({ tokens: [] })
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+    const res = await resolveToken({ chainId: 8453, symbol: 'aaplc' }, mock)
+    expect(res.found).toBe(true)
+    expect(res.ambiguous).toBe(false)
+    expect(res.canonical?.address).toBe(AAPLC_BASE)
+    expect(res.canonical?.decimals).toBe(8)
+    expect(res.canonical?.source).toBe(COINBASE_STOCKS_LIST_URL)
+  })
+
+  it('fails closed on Base when the Coinbase stock list is unavailable, even if the CoW list loads', async () => {
+    const mock = (async (url: string) => {
+      if (String(url) === COINBASE_STOCKS_LIST_URL) return jsonResponse({}, 503)
+      if (String(url).includes('CowSwap')) return jsonResponse({ tokens: [] })
+      throw new Error(`unexpected url ${url}`)
+    }) as unknown as typeof fetch
+    const res = await resolveToken({ chainId: 8453, symbol: 'AAPLc' }, mock)
+    expect(res.found).toBe(false)
+    expect(res.canonical).toBeNull()
+    expect(res.note).toMatch(/temporarily unavailable/i)
   })
 
   it('consults the Optimism list first then the CoW list (priority order, ambiguity across lists)', async () => {

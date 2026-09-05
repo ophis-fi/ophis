@@ -81,7 +81,7 @@ groups:
           chain: robinhood
         annotations:
           summary: "{{ $labels.instance }} disk {{ $labels.device }} >80% full"
-          description: "A Cadia WSL2 ext4 filesystem is over 80% used. The whole stack shares one rootfs vhdx — /var/lib/docker (Postgres + container logs + build cache) and both Nitro datadirs — so filling it to 100% wedges Postgres in an ENOSPC crash-loop and 500s /quote + /auction (the 2026-06-15 OP outage mode). Connect (`tailscale ssh clement@cadia-wsl`), run `df -h`. Reclaim in the order that cleared the 2026-08-20 page: `sudo docker builder prune -af` (stale build cache, ~100GB that day), then `sudo truncate -s 0` the biggest /var/lib/docker/containers/*/*-json.log (find them with `sudo sh -c 'du -h /var/lib/docker/containers/*/*-json.log | sort -rh | head'`; never rm). NEVER delete /home/clement/robinhood-nitro-data or /home/clement/robinhood-nitro-genesis-data — both are bind-mounted into running Nitro containers. The consumed bringup snapshot in the DOWNLOAD_DIR staging dir (on Cadia /home/clement/nitro-download, ~115GB on this same rootfs; restore-snapshot.sh's default is /mnt/d/nitro-download) is safe to delete once the node is fully caught up."
+          description: "A Cadia WSL2 ext4 filesystem is over 80% used. The whole stack shares one rootfs vhdx — /var/lib/docker (Postgres + container logs) and both Nitro datadirs — so 100% full wedges Postgres in an ENOSPC crash-loop, 500s /quote + /auction for 4663 (the 2026-06-15 OP outage mode), and takes the rebate indexer down with it. DO NOT START BY PRUNING: that lever is spent. It freed ~97G on 2026-08-20 only because ~100GB of stale build cache happened to exist; the identical commands on 2026-09-01 freed 11G — about 18 hours. WHERE THE SPACE ACTUALLY IS, measured 2026-09-02: robinhood-nitro-data 524G is the live node, keep it; robinhood-nitro-genesis-data 571G belongs to the genesis-verify profile node, whose container robinhood-nitro-nitro-genesis-1 exited cleanly (code 0) on 2026-08-21 and has not written a file since. Those two are ~98% of the disk; everything else totals ~21G. BIGGEST LEVER, free and no downtime, frees 571G (~45 days at the current 12.6 G/day): retire the genesis verifier. ORDER MATTERS — that container carries restart: always, so a Docker or WSL restart (including the resize below) relaunches it, Docker recreates the bind source as an empty directory, and it begins re-deriving from genesis and refilling the disk. So retire the container FIRST and chain the delete to it, as ONE command, so the data can never be removed on its own: sudo docker rm -f robinhood-nitro-nitro-genesis-1 && sudo rm -rf /home/clement/robinhood-nitro-genesis-data . The -f matters: if a Docker or WSL restart has already relaunched it, plain docker rm REFUSES a running container, and deleting a datadir out from under a running node is worse than doing nothing. Before doing either, read infra/robinhood-mainnet/nitro/GENESIS-VERIFY.md and confirm its promotion gates were met — that node re-executes the chain from genesis over days, so this is one-way. SECOND LEVER, needs a full stack restart: /dev/sdd is not a disk, it is a capped vhdx at /mnt/d/wsl/nitro/ext4.vhdx. In Windows PowerShell run: wsl --shutdown , then wsl --manage Ubuntu-24.04 --resize 1845GB , then wsl -d Ubuntu-24.04 . Then inside Linux resolve the root device again rather than trusting the old name — WSL assigns /dev/sdX in attach order and it can move across a shutdown: sudo resize2fs $(findmnt -no SOURCE /) . That buys ~300G (~24 days) and no more — D: is 1945GB total with 746G free and the vhdx grows into it, so a larger cap can fill the host volume and take Windows down too. Get-VHD is NOT available on this box (no Hyper-V module); wsl --manage is the tool. Do NOT move a Nitro datadir onto /mnt/d: that path is 9p and far too slow for a chain datadir. STOPGAP, hours not days: sudo docker builder prune -af, then empty the single largest container log with sudo sh -c 'truncate -s 0 $(du -a /var/lib/docker/containers/*/*-json.log | sort -rn | head -1 | cut -f2)' — truncate, never rm: the file is held open and rm would not return the space."
       - alert: OphisUniHostDiskCritical
         expr: |
           max by (instance, device) (
@@ -96,7 +96,7 @@ groups:
           chain: robinhood
         annotations:
           summary: "{{ $labels.instance }} disk {{ $labels.device }} >90% full, Postgres ENOSPC imminent"
-          description: "A Cadia WSL2 ext4 filesystem is over 90% used. Postgres will hit ENOSPC and crash-loop, taking the orderbook down. Free space NOW: `tailscale ssh clement@cadia-wsl`, then `sudo docker builder prune -af` and `sudo truncate -s 0` the largest /var/lib/docker/containers/*/*-json.log (never rm). NEVER delete the Nitro datadirs (/home/clement/robinhood-nitro-data, /home/clement/robinhood-nitro-genesis-data) — both are bind-mounted into running containers; deleting one forces a genesis re-sync."
+          description: "A Cadia WSL2 ext4 filesystem is over 90% used. Postgres will hit ENOSPC and crash-loop, taking the orderbook down. Pruning will NOT save you: that lever is spent (11G on 2026-09-01 versus ~97G on 2026-08-20) and two Nitro datadirs are ~98% of the disk. FASTEST REAL FIX, no downtime, frees 571G (~45 days): robinhood-nitro-genesis-data belongs to robinhood-nitro-nitro-genesis-1, the genesis-verify node, which exited cleanly (code 0) on 2026-08-21 and has written nothing since. ORDER MATTERS — it carries restart: always, so any Docker or WSL restart relaunches it against a recreated empty directory and it refills the disk. Retire it FIRST and chain the delete so it cannot run alone: sudo docker rm -f robinhood-nitro-nitro-genesis-1 && sudo rm -rf /home/clement/robinhood-nitro-genesis-data . The -f matters: if a restart already relaunched it, plain docker rm refuses, and deleting a datadir under a running node is worse than doing nothing. One-way, and gated on the promotion checks in infra/robinhood-mainnet/nitro/GENESIS-VERIFY.md — that node re-derives state from genesis over days. NEVER delete /home/clement/robinhood-nitro-data — that is the live node serving 4663. IF YOU GROW INSTEAD: /dev/sdd is a capped vhdx at /mnt/d/wsl/nitro/ext4.vhdx. In Windows PowerShell: wsl --shutdown , then wsl --manage Ubuntu-24.04 --resize 1845GB , then wsl -d Ubuntu-24.04 . Then in Linux: sudo resize2fs $(findmnt -no SOURCE /) — resolve it, do not reuse /dev/sdd, WSL can reassign it across a shutdown. Worth ~300G (~24 days) only — D: is 1945GB total with 746G free and the vhdx grows into it. For minutes of air while you decide: sudo docker builder prune -af, then sudo sh -c 'truncate -s 0 $(du -a /var/lib/docker/containers/*/*-json.log | sort -rn | head -1 | cut -f2)' — never rm."
       - alert: OphisUniNodeExporterDown
         expr: up{job="node-exporter"} == 0
         for: 10m
@@ -254,8 +254,8 @@ groups:
             (managed gateway) — so a single slow, rate-limited, or down
             upstream is enough to trip this.
 
-            Diagnose: `cast block-number --rpc-url <each upstream>` to find
-            which one is unresponsive. Check rpc-proxy logs:
+            Diagnose: set UPSTREAM to each endpoint listed in the rendered erpc.yaml and run
+            `cast block-number --rpc-url "$UPSTREAM"` to find which one is unresponsive. Check rpc-proxy logs:
             `docker logs robinhood-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
 
             Threshold history: 5/s ≈ 100% failure on `eth_call` consensus path
@@ -402,6 +402,93 @@ groups:
       # permanent false positive. Seventy-five blocks is roughly ten seconds:
       # high enough to ignore normal gateway publication delay, but low enough
       # to warn well before a sustained stale voter affects availability.
+      # ── Added 2026-08-24 after the 8h outage of 2026-08-23 ──
+      # The existing BlockHeadLagging rule below covers BOTH upstreams with one
+      # message, and that is what made it useless on 08-23: it fired naming
+      # `robinhood-official` (which was merely publishing a few seconds late and
+      # harmed nothing) while the condition that actually mattered — our own node
+      # unable to serve current state — had no rule at all. The two lanes are not
+      # interchangeable, so they do not deserve one shared alert:
+      #
+      #   robinhood-official behind  -> cosmetic. It is the independent read
+      #                                 voter; sub-ten-second publication delay
+      #                                 is its normal behaviour.
+      #   ophis-self-rbh behind      -> FATAL. It is the only lane that serves
+      #                                 debug_* traces, and with a 2-of-2 quorum
+      #                                 a stale self node fails every protected
+      #                                 read. Settlements stop.
+      - alert: OphisRbhSelfNodeLagBlocksSettlement
+        expr: erpc_upstream_block_head_lag{network="evm:4663",upstream="ophis-self-rbh"} > 600
+        for: 10m
+        labels:
+          severity: critical
+          chain: robinhood
+        annotations:
+          summary: "Robinhood self node {{ $value | printf \"%.0f\" }} blocks behind — settlements are blocked"
+          description: |
+            ophis-self-rbh has been more than 600 blocks (about a minute at this
+            chain's ~101ms blocks) behind the freshest head for 10 minutes.
+
+            This is NOT the same event as robinhood-official lagging. Consensus
+            here is 2-of-2, so a stale self node fails EVERY protected read:
+            quoting dies, no settlement can broadcast, and the driver goes
+            unhealthy. On 2026-08-23 this state lasted eight hours and the only
+            alert that fired named the other upstream.
+
+            Threshold rationale: measured 2026-08-24, the self node normally sits
+            within ~10 blocks of the gateway and is often slightly AHEAD of it.
+            During the incident it sat 3,600-4,200 blocks behind. 600 blocks is
+            far above normal jitter and far below the failure regime.
+
+            WHY IT FALLS BEHIND: this node's measured execution ceiling is about
+            27M gas/s. When Robinhood load exceeds that (48 txs/block at 6.2M gas
+            = 62M gas/s on 08-23, versus a normal 9.7M) it cannot keep up, and it
+            CANNOT self-recover until load drops. Block rate is a constant ~10/s;
+            it is block CONTENT that varies. Check current load before assuming a
+            fault:
+              cast block latest --rpc-url https://rpc.mainnet.chain.robinhood.com
+
+            If load is normal and it is still behind, then it is a real fault:
+              ssh -p 22 clement@100.85.130.25   (Tailscale SSH; needs a browser
+              check, and MagicDNS does not resolve from the Mac, so use the IP)
+              curl -s -H content-type:application/json -d \
+                '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
+                http://localhost:8547
+            ⚠️ eth_syncing returns FALSE while thousands of blocks behind — it is
+            not a usable health signal here. Compare eth_blockNumber against the
+            public gateway instead.
+
+      # The precise signature of "our node has the chain head but cannot serve
+      # state for it". eRPC reports -32014 as ErrEndpointMissingData. On 08-23
+      # this was the actual error behind eight hours of ErrConsensusLowParticipants,
+      # and nothing alerted on it; the operator saw only a generic consensus alert.
+      - alert: OphisRbhSelfNodeCannotServeState
+        expr: |
+          sum(rate(erpc_upstream_request_errors_total{network="evm:4663",upstream="ophis-self-rbh",error="ErrEndpointMissingData"}[10m])) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          chain: robinhood
+        annotations:
+          summary: "Robinhood self node is returning MissingData — it cannot serve current state"
+          description: |
+            ophis-self-rbh is answering protected reads with -32014
+            ErrEndpointMissingData. It has the chain head but not the state for
+            the block being asked about, which happens when it has fallen behind
+            far enough that requested blocks are still in its future.
+
+            With agreementThreshold 2 over exactly 2 upstreams, this fails every
+            protected read on its own — no dispute is needed, the request simply
+            has too few participants.
+
+            This usually accompanies OphisRbhSelfNodeLagBlocksSettlement. If it
+            fires ALONE, suspect state pruning rather than lag: neither upstream
+            is an archive node, so a query for a block older than the node's
+            retention fails the same way. That was the second half of the 08-23
+            incident — the driver had frozen on a block 7.4 hours in the past and
+            re-requested it forever, which no lane could ever serve and which
+            opened the other lane's circuit breaker.
+
       - alert: OphisRbhErpcUpstreamBlockHeadLagging
         expr: erpc_upstream_block_head_lag{network="evm:4663"} > 75
         for: 15m
@@ -414,6 +501,19 @@ groups:
             The {{ $labels.upstream }} upstream has remained more than 75
             Robinhood blocks (approximately ten seconds) behind the freshest
             observed head for 15 minutes.
+
+            ⚠️ READ THE UPSTREAM LABEL BEFORE ACTING. This rule covers BOTH
+            lanes and they are not equivalent. On 2026-08-23 it fired naming
+            robinhood-official — which was merely publishing a few seconds late
+            and harmed nothing — for eight hours, while the condition that
+            actually stopped quoting and settlement had no rule at all.
+
+              robinhood-official lagging -> INFORMATIONAL. It is the independent
+                read voter; sub-ten-second publication delay is its normal
+                behaviour and this warning alone is not an incident.
+              ophis-self-rbh lagging     -> see OphisRbhSelfNodeLagBlocksSettlement
+                and OphisRbhSelfNodeCannotServeState, both critical. If those are
+                silent, settlements are not blocked by lag.
 
             For ophis-self-rbh, connect to Cadia over Tailscale and check the
             Nitro node on port 8547:
@@ -453,7 +553,7 @@ groups:
           severity: warning
           chain: robinhood
         annotations:
-          summary: "Robinhood solvers receiving <1s of solve-time budget at p99"
+          summary: "Robinhood solvers receiving under 1s of solve-time budget at p99"
           description: "By the time solvers are dispatched, less than 1s remains on the 20s solve-deadline at p99. Upstream RPC + preprocessing is eating the budget. Solvers will quote stale or skip auctions."
 
   - name: ophis-uni-chain-health

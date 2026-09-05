@@ -41,6 +41,11 @@ export interface ChainConfig {
   kind: ChainKind;
   dbContainer?: string;      // local-db chains
   alchemySubdomain?: string; // rpc chains
+  defaultRpcUrl?: string;    // public, keyless fallback; SCAN_RPC_<NAME> overrides it
+  defaultBlockRpcUrl?: string; // optional header/archive fallback; SCAN_BLOCK_RPC_<NAME> overrides it
+  scanLogChunk?: number;       // provider-safe eth_getLogs block span
+  scanLogConcurrency?: number; // bounded parallel ranges for high-block-rate chains
+  scanClassifyConcurrency?: number; // bounded CoW order/appData resolution
 }
 
 export interface ScanResult {

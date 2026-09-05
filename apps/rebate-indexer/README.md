@@ -46,16 +46,22 @@ Report every Ophis swap in a time window across chains, independent of the rebat
 wallet allowlist. Read-only: it never touches the rebate DB.
 
 ```bash
-# OP (local orderbook DB) + hosted majors via Alchemy, last 48h, also DM Clement:
+# All 13 production chains, last 48h, also DM Clement:
 pnpm scan --since 48h --telegram
 
 # one chain, custom window, custom artifact path:
 pnpm scan --since 2d --chains ethereum --json /tmp/eth.json
+
+# override a public endpoint (or set ALCHEMY_API_KEY for supported chains):
+SCAN_RPC_ETHEREUM=https://example-rpc.invalid pnpm scan --since 2d --chains ethereum
 ```
 
 Discovery is on-chain (`getLogs(Trade)` on the CoW Settlement contract) plus per-order
 appData resolution via CoW's API, keeping `appCode in {ophis, greg}`. Self-hosted
 Optimism reads its local orderbook Postgres directly (run on the Mac mini where Docker
-lives). Secrets (`alchemy-api-key`, `ophis-telegram-bot`) come from the macOS Keychain.
-The JSON artifact and the orderUid cache default to `~/.ophis/` (out of repo). Design:
+lives). RPC chains use keyless public endpoints by default; `SCAN_RPC_<CHAIN>` overrides
+one endpoint, while `SCAN_BLOCK_RPC_<CHAIN>` can separately override historical block
+headers when a log provider does not serve them. An explicitly set `ALCHEMY_API_KEY`
+takes precedence over the public fallback on supported chains. The optional `ophis-telegram-bot` secret comes from the
+macOS Keychain. The JSON artifact and the orderUid cache default to `~/.ophis/` (out of repo). Design:
 `docs/development/specs/2026-06-19-onchain-appdata-swap-scan-design.md`.

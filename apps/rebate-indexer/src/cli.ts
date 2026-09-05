@@ -45,6 +45,9 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
     const { repairRouterTrades } = await import('./repair/routerTrades.js');
     const result = await repairRouterTrades();
     log.info(result, 'repair-router-trades complete');
+    // Queue cleanup can make the fail-closed DefiLlama gate ready immediately.
+    // Do not require an operator to wait for (or manually emulate) nightly cron.
+    await completeDefiLlamaBackfillIfReady();
     // Unconditional: a PRIOR partially-failed invocation (rows updated, then the
     // cleanup or scorer threw) leaves the matview stale while a retry reports
     // repaired = 0, so gating the refresh on this run's count would skip it.

@@ -389,6 +389,26 @@ owner-gated: the hot key never touches an attacker-controllable destination.
 
 ## Related documents
 
+- **Unichain needs an `addSolver` grant before its sweep can run.** As of
+  2026-08-27 the pinned submitter `0x7A956C269a12f1B897367663b536EB5dd29f3fBb`
+  returns false from `isSolver` on the chain-130 authenticator
+  `0x1002E12f2e7f848b20fe572F92133E467a5D010C`. It settled six times, last on
+  2026-07-18, so the allowlist changed after that. The sweep fails **locally**,
+  not on-chain: `SweepSettlementBuffer.s.sol` requires `isSolver(broadcaster)`
+  before it reaches `vm.startBroadcast`, so nothing is built, signed or
+  submitted. There is **no owner-Safe shortcut on chain 130** - its AllowList
+  manager is the Guardian and the proxy owner is a 24h TimelockController, so
+  `addSolver` goes through that Timelock's schedule / wait / execute flow. Use
+  `../../infra/unichain-mainnet/deploy/timelock-governance-runbook.md`, NOT the
+  OP-mainnet `allowlist-governance-runbook.md`, whose addresses are OP-specific.
+  Optimism and Robinhood are unaffected.
+- `sovereign-sweep-rehearsal.md` (what to rehearse BEFORE this ceremony:
+  Robinhood needs no ceremony at all, Unichain needs the grant above first, and
+  every current buffer sits 30x-100x below the default thresholds, so a stock
+  sweep today moves nothing and looks like a clean no-op)
+- `../../infra/shared/scripts/sweep-preflight.sh` (read-only precondition check:
+  runs each chain's own sweep dry-run and verifies the destination Safe's owners,
+  which no runner does)
 - `allowlist-governance-runbook.md` (timelock + guardian mechanics, deploy record)
 - `fee-recipient-rotation.md` (rotation now REQUIRES a liquidator redeploy;
   see its step list)

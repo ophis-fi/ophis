@@ -21,33 +21,67 @@ Last-resort operator handbook. If a scenario isn't here, open an incident note a
 
 ## Incident scenarios
 
-### 1. Fetcher stuck (no new trades for >24h)
-**Detect:** `/status` shows stale `last_fetch`, or `🚨 fetcher failed 3 consecutive runs` Telegram alert.
-1. Check CoW API health: `curl -sS https://api.cow.fi/xdai/api/v1/version | jq`.
-2. Restart container: `docker compose restart indexer`.
-3. Trigger a one-off run: `docker compose exec indexer pnpm cli replay-pricer --since=$(date -u -d '2 days ago' +%F)`.
-4. CoW retains full trade history — no data is lost while we're stuck.
+### 1. Public stats or leaderboard stale
+**Detect:** `/health` returns `data_fresh=false`, `data_status=degraded`, or the
+scheduled `Rebate public-data freshness` workflow alerts. `data_as_of` is the
+last completed scorer publication; unlike `last_fetch`, it advances even during
+a legitimate quiet period with no new trades.
+1. Check the durable heartbeats:
+   `curl -fsS https://rebates.ophis.fi/health | jq '{data_status,data_as_of,data_stale_reason,last_fetch_attempt,last_pipeline_run_at}'`.
+2. Inspect `docker compose ps` and `docker compose logs --since=30h indexer`.
+3. Restart container: `docker compose restart indexer`. Startup runs fetch,
+   pricing, and scorer recovery without waiting for the 02:00 UTC tick.
+4. Confirm `data_fresh=true`, then compare `/stats` and `/leaderboard` before and
+   after recovery. Record trade, trader, volume, and per-chain deltas.
 
-### 2. Pricer behind (high `value_usd IS NULL` count)
+### 2. Fetcher running but trades may be missing
+**Detect:** `/health` is fresh but a user reports a missing trade, or the
+independent scanner disagrees with the indexed totals.
+1. Run all-chain reconciliation from the repo machine:
+   `pnpm --dir apps/rebate-indexer scan --since 7d`. Use
+   `SCAN_RPC_<CHAIN>` to override a degraded public RPC.
+2. Require every chain's coverage status to be `ok`; a degraded chain is an
+   incomplete audit, not evidence of zero missing trades.
+3. Inspect unresolved settlement fills and compare order UIDs with `trades`.
+4. Restart the indexer for an owner/API backfill, then rerun the same scanner
+   window and retain both JSON artifacts as incident evidence.
+
+### 3. DefiLlama endpoint stays at 503
+**Detect:** `/defillama?date=YYYY-MM-DD` returns `DefiLlama settlement history
+backfill in progress` after the main stats recovery.
+1. Inspect the owner queue and every production-fill completeness gate:
+   `SELECT count(*) FROM defillama_backfill_wallets;` and
+   `SELECT chain_id,count(*) FROM defillama_fills WHERE chain_id IN (1,10,56,100,130,137,4663,8453,9745,42161,43114,57073,59144) AND (NOT fee_verified OR assessed_fee_bps IS NULL OR value_usd IS NULL OR transaction_hash IS NULL OR user_address IS NULL) GROUP BY chain_id;`.
+2. Inspect aggregate-to-fill audit gaps:
+   `SELECT t.chain_id,count(*) FROM trades t WHERE t.chain_id IN (1,10,56,100,130,137,4663,8453,9745,42161,43114,57073,59144) AND t.fee_verified AND (t.defillama_expected_fill_count IS NULL OR t.defillama_expected_fill_count <> (SELECT count(*) FROM defillama_fills f WHERE f.chain_id=t.chain_id AND f.trade_uid=t.trade_uid)) GROUP BY t.chain_id;`.
+3. Check the matching exact-UID orderbook, settlement RPC, attribution, assessment,
+   or pricing error in indexer logs.
+4. Fix the chain-specific RPC/orderbook/price namespace issue. Do not manually
+   set `defillama_reporting_state.completed_at`; the endpoint is intentionally
+   fail-closed until every gate drains.
+5. Restart for a retry and confirm both queries return zero rows before testing
+   the endpoint again.
+
+### 4. Pricer behind (high `value_usd IS NULL` count)
 **Detect:** Wallet volumes in `/tier/:wallet` look low; users report missing rebates.
 1. Inspect: `docker compose exec pg psql -U rebates -c "SELECT COUNT(*) FROM trades WHERE value_usd IS NULL;"`.
 2. Backfill: `docker compose exec indexer pnpm cli replay-pricer --since=2026-05-01`.
 3. The `wallets` materialized view auto-excludes unpriced trades, so once pricing catches up, tiers self-correct on next nightly refresh.
 
-### 3. Batch never mined
+### 5. Batch never mined
 **Detect:** `rebate_batches.status = 'proposed'` for >24h on the 1st of the month.
 1. Open Safe queue; check whether the tx is signed but not executed (gas spike, nonce conflict).
 2. If signed-and-stuck: re-execute from Safe UI with higher gas.
 3. The indexer's `waitForExecution` poller auto-detects success once mined; no manual DB update needed.
 
-### 4. Wrong tier paid out
+### 6. Wrong tier paid out
 **Detect:** User reports a discrepancy; you confirm via `/batches/:id`.
 1. Batch is final on-chain — no recall.
 2. Compute the delta: `docker compose exec indexer pnpm cli diff-rebate --batch-id=N`.
 3. Manually queue a corrective WETH transfer via Safe UI.
 4. Open an incident note in `docs/development/incidents/YYYY-MM-DD-tier-correction.md` describing the cause + fix.
 
-### 5. Proposer key compromised
+### 7. Proposer key compromised
 **Detect:** Junk batches appearing in Safe queue; logs show proposals you didn't make.
 1. Don't panic — the proposer key has NO execution authority.
 2. **Reject all suspicious proposals in Safe UI** (does not cost gas; the queue entry stays as a record).

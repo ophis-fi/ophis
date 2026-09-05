@@ -19,7 +19,9 @@ jobs:
   rerun-on-comment:
     if: >-
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
-      (github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
+      ((github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
+      !startsWith(github.event.comment.body, '<!-- codex-pull-request-review-summary -->') &&
+      !startsWith(github.event.changes.body.from, '<!-- codex-pull-request-review-summary -->')) ||
       (github.event.action != 'created' &&
       github.event.comment.user.login == 'github-actions[bot]' &&
       (startsWith(github.event.comment.body, 'OTC Codex review checkpoint recorded.') ||
@@ -51,6 +53,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ACTIONS_LOGIN: github-actions[bot]
           CODEX_LOGIN: chatgpt-codex-connector[bot]
+          CODEX_SUMMARY_PREFIX: "<!-- codex-pull-request-review-summary -->"
           CLEAN_PREFIX: "Codex Review: Didn't find any major issues."
           COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
           EVENT_ACTION: ${{ github.event.action }}
@@ -143,6 +146,15 @@ jobs:
             checkpoint=true
             checkpoint_source="$SOURCE_KIND:$EVENT_ACTION"
           elif [[ "$SOURCE_USER" == "$CODEX_LOGIN" ]]; then
+            # Codex mutates one status-only summary comment as reviews start and
+            # finish. It is not review evidence: the clean result and each
+            # finding have their own events. Check both bodies so editing or
+            # deleting the summary cannot invalidate a completed clean review.
+            if [[ "$normalized_body" == "$CODEX_SUMMARY_PREFIX"* ]] ||
+              [[ "$normalized_body_from" == "$CODEX_SUMMARY_PREFIX"* ]]; then
+              echo 'Codex status-summary change does not alter review evidence.'
+              exit 0
+            fi
             relevant=true
             checkpoint=true
             checkpoint_source="issue_comment:$EVENT_ACTION"

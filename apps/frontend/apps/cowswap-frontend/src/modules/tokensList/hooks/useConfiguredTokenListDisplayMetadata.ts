@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { isSupportedChainId } from '@cowprotocol/common-utils'
 import { getTokenId } from '@cowprotocol/cow-sdk'
 import {
+  COINBASE_TOKENIZED_STOCKS_LIST_SOURCE,
   DEFAULT_TOKENS_LISTS,
   fetchTokenList,
   listsStatesByChainAtom,
@@ -31,6 +32,7 @@ const EMPTY_PERSISTED_LISTS: Readonly<Record<string, ListState | 'deleted' | und
 const TOKENIZED_ASSET_PROVIDER_BY_SOURCE = new Map<string, TokenizedAssetProviderTag>([
   [ONDO_TOKENS_LIST_SOURCE, 'ondo'],
   [XSTOCKS_TOKENS_LIST_SOURCE, 'xStocks'],
+  [COINBASE_TOKENIZED_STOCKS_LIST_SOURCE, 'coinbase'],
 ])
 const ALL_CONFIGURED_TOKEN_LIST_SOURCES = new Set(
   Object.values(DEFAULT_TOKENS_LISTS).flatMap((lists) => lists?.map(({ source }) => source) ?? []),

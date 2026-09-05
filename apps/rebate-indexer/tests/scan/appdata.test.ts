@@ -22,6 +22,13 @@ describe('parseAppData', () => {
     expect(parseAppData('{"appCode":"Greg"}').appCode).toBe('greg');
     expect(parseAppData('{"appCode":"NotOphis"}').appCode).toBeNull();
   });
+  it('recognises widget-routed Ophis orders when the host owns top-level appCode', () => {
+    const appData = JSON.stringify({
+      appCode: 'mtpelerin',
+      metadata: { widget: { appCode: 'Ophis', environment: 'production' } },
+    });
+    expect(parseAppData(appData).appCode).toBe('ophis');
+  });
   it('keeps a grammar-valid referral code, drops a bad one', () => {
     expect(parseAppData('{"appCode":"ophis","metadata":{"ophisReferrer":{"code":"Friend_01"}}}').refCode).toBe('friend_01');
     expect(parseAppData('{"appCode":"ophis","metadata":{"ophisReferrer":{"code":"a"}}}').refCode).toBeNull();

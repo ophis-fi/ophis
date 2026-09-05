@@ -124,11 +124,21 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
         await tx`SELECT pg_advisory_xact_lock(hashtext(${TRADE_REWARDS_CAMPAIGN_ID}))`;
         const updated = await tx`
           UPDATE trades SET wallet = decode(${receiver.slice(2)}, 'hex')
-          WHERE trade_uid = ${r.trade_uid}
+          WHERE trade_uid = ${r.trade_uid} AND chain_id = ${r.chain_id}
             AND NOT EXISTS (
               SELECT 1 FROM trade_reward_tickets WHERE qualifying_trade_uid = ${r.trade_uid}
             )
         `;
+        if (updated.count > 0) {
+          // Keep reporting identity synchronized with the aggregate ledger. In
+          // particular, overwrite a router copied by migration 0038 rather than
+          // preserving it forever through the fill upsert's null-only repair.
+          await tx`
+            UPDATE defillama_fills
+            SET user_address = decode(${receiver.slice(2)}, 'hex')
+            WHERE chain_id = ${r.chain_id} AND trade_uid = ${r.trade_uid}
+          `;
+        }
         return updated.count > 0;
       });
       if (!repairedThis) {

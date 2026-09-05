@@ -64,7 +64,7 @@ const LEARN_ITEM = {
   ],
 }
 
-const MORE_ITEM = (isSolversEnabled: boolean, isOtcEnabled: boolean): UntranslatedMenuItem => ({
+const MORE_ITEM = (isSolversEnabled: boolean): UntranslatedMenuItem => ({
   label: msg`More`,
   children: [
     ...(isSolversEnabled
@@ -80,7 +80,6 @@ const MORE_ITEM = (isSolversEnabled: boolean, isOtcEnabled: boolean): Untranslat
       href: Routes.PLAY_MEVSLICER,
       label: msg`MEV Slicer`,
     },
-    ...(isOtcEnabled ? [{ href: Routes.OTC, label: msg`OTC` }] : []),
   ],
 })
 
@@ -105,7 +104,7 @@ export const NAV_ITEMS = (chainId: SupportedChainId, isSolversEnabled: boolean, 
     })),
   }
 
-  const moreItemConfig = MORE_ITEM(isSolversEnabled, isOtcEnabled)
+  const moreItemConfig = MORE_ITEM(isSolversEnabled)
   const moreItem: MenuItem = {
     label: i18n._(moreItemConfig.label),
     children: moreItemConfig.children.map(({ href, label, external }) => ({
@@ -115,7 +114,12 @@ export const NAV_ITEMS = (chainId: SupportedChainId, isSolversEnabled: boolean, 
     })),
   }
 
-  return [accountItem, learnItem, moreItem]
+  const otcItem: MenuItem = {
+    href: Routes.OTC,
+    label: i18n._(msg`OTC`),
+  }
+
+  return [...(isOtcEnabled ? [otcItem] : []), accountItem, learnItem, moreItem]
 }
 
 export const ADDITIONAL_FOOTER_CONTENT = (

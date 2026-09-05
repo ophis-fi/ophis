@@ -101,9 +101,46 @@ jobs:
         working-directory: apps/frontend
         run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/(ophis/otc|pages/Otc)' --passWithNoTests=false
 
+      # The partner-fee guard (src/ophis/partnerFee*) proves the sdk-trading patch is
+      # actually applied to the install this build uses. Unpatched, `mergeAppDataDoc`
+      # CONCATENATES our CIP-75 fee pair every time a trade flow hands the SDK the same
+      # appData doc back as an override, and the protocol charges every duplicate.
+      # Nothing else would run these: the frontend jest suite is not a repo-root gate,
+      # and a dropped patch is otherwise silent until it shows up in settlement fees.
+      - name: partner-fee appData guard tests (jest, scoped)
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/ophis/partnerFee' --passWithNoTests=false
+
+      # ...and type-check that guard. `pnpm typecheck` above runs tsconfig.app.json,
+      # which EXCLUDES *.test.ts, and the Nx jest target transforms tests with
+      # babel-jest, which strips TypeScript without checking it. So the guard's
+      # SDK-derived annotations (Parameters<typeof mergeAppDataDoc>) - the whole point
+      # of not using `any` there - were compiled by nothing, and an SDK signature change
+      # or an invalid fixture would have sailed through. Scoped to the guard file
+      # because the full spec project carries ~290 pre-existing errors (missing vite
+      # asset typings), so a project-wide spec typecheck could never gate anything.
+      # Verified by mutation: a string `slippageBips` and a string `volumeBps` each
+      # make this step exit 2.
+      - name: partner-fee appData guard typecheck (tsc, scoped)
+        working-directory: apps/frontend
+        run: pnpm exec tsc -p apps/cowswap-frontend/tsconfig.guard.json
+
       - name: token policy tests (jest, scoped)
         working-directory: apps/frontend
         run: pnpm exec nx run tokens:test --testPathPatterns tokenPolicy --passWithNoTests=false
+
+      # Coinbase tokenized stocks on Base: the shipped token list is validated
+      # here with the SAME ajv schema the runtime loader applies (a schema miss
+      # fails silently in production: the list never loads), plus the Base
+      # list-config guard and the trusted provider-tag test. Without these
+      # steps none of those suites would run anywhere in CI.
+      - name: Coinbase tokenized-stocks listing tests (jest, scoped)
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/(ophis/components/CoinbaseStockContext|modules/tokensList/hooks/useConfiguredTokenListDisplayMetadata)' --passWithNoTests=false
+
+      - name: Base default token-list config tests (jest, scoped)
+        working-directory: apps/frontend
+        run: pnpm exec nx run tokens:test --testPathPatterns 'const/tokensLists' --passWithNoTests=false
 
       - name: production-build cowswap-frontend
         working-directory: apps/frontend

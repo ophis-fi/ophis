@@ -332,7 +332,7 @@ tests:
 
           elevation indicates one or more OP upstream(s) (publicnode / zan /
 
-          validationcloud) are slow or unavailable.
+          official-op) are slow or unavailable.
 
 
           ⚠️ 2026-08-09 lesson: this alert only trips at >5/s, which assumes
@@ -350,9 +350,9 @@ tests:
           regardless of whether this alert fired.
 
 
-          Diagnose: `cast block-number --rpc-url <each upstream>` to find
+          Diagnose: set UPSTREAM to each endpoint listed in the rendered erpc.yaml and run
 
-          which one is unresponsive. Check rpc-proxy logs:
+          `cast block-number --rpc-url "$UPSTREAM"` to find which one is unresponsive. Check rpc-proxy logs:
 
           `docker logs optimism-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
 
@@ -683,4 +683,277 @@ tests:
       exp_annotations: *credential_alert_annotations
   - eval_time: 60m
     alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts: []
+
+- interval: 1m
+  name: '2026-08-23 replay: settlement indexer wedged behind publicnode''s ~128-block
+    archive gate — last_seen advances with head, last_updated frozen'
+  input_series:
+  # OP mines ~30 blocks/min (2s blocks), so `last_seen` climbs 30/interval while
+  # `last_updated` does not move at all: the exact shape observed on 08-23, where
+  # the indexer re-requested one 500-block window ~3.5x/sec for four hours.
+  - series: gp_v2_autopilot_last_block_number{instance="autopilot:9589",job="autopilot"}
+    values: 155950000+30x400
+  - series: gp_v2_autopilot_autopilot_maintenance_last_updated_block{instance="autopilot:9589",job="autopilot"}
+    values: 155950000+0x400
+  alert_rule_test:
+  # lag crosses 300 at t=10m (30 blocks/min), so the 15m hold expires at t=25m.
+  # At 20m the threshold is long breached but the hold is NOT elapsed: must be silent.
+  - eval_time: 20m
+    alertname: OphisOpAutopilotMaintenanceStalled
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisOpAutopilotMaintenanceStalled
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        instance: autopilot:9589
+        job: autopilot
+      exp_annotations:
+        summary: OP autopilot essential maintenance stalled 900 blocks behind head
+        description: |
+          `last_updated_block` has not caught up to the chain head for 15
+          minutes, so autopilot essential maintenance is not completing.
+
+          THAT IS THREE INDEXERS, NOT ONE. run_essential_maintenance is a
+          try_join! over the settlement indexer, the CoW AMM indexers and the
+          ethflow order indexers; it advances the gauge only when ALL of them
+          succeed, so ANY one of them failing raises this page. Identify which
+          before concluding settlements are affected:
+            docker logs optimism-mainnet-autopilot-1 --tail 100 \
+              | grep -iE "settlement_indexer|cow_amm_indexer|ethflow_order_indexer"
+
+          If it IS the settlement indexer, settlements landing on-chain are not
+          being indexed: order status, rebates and the stats page all stall
+          behind it, and the autopilot's own view stops advancing.
+
+          Quoting can look perfectly healthy while this is broken — /quote
+          reads at tip, this indexes history. Do not use /quote to clear it.
+
+          FIRST, get the block range it is stuck on:
+            docker logs optimism-mainnet-autopilot-1 --tail 50 \
+              | grep -o "unable to get logs for blocks range [0-9-]*" | sort -u
+
+          THEN ask why that range cannot be served. The usual cause is that
+          fewer than agreementThreshold:2 upstreams can serve eth_getLogs AT
+          THAT DEPTH — which is NOT the same question as whether the lanes are
+          up. publicnode is archive-gated at ~128 blocks, so it votes on
+          tip-adjacent getLogs and abstains on everything older:
+            curl -s localhost:9091/api/v1/query --data-urlencode \
+              'query=sum by (upstream,error) (rate(erpc_upstream_request_errors_total{network="evm:10"}[15m]))'
+
+          Confirm by probing a lane DIRECTLY at the stuck depth, not at tip:
+          a tip-only probe reports a lane healthy when it cannot serve a single
+          historic window.
+
+          Fix the lane math (restore a second archive-capable, non-Cloudflare
+          upstream — see configs/erpc.yaml.tmpl); the indexer then catches up
+          on its own. Do NOT recreate the driver to "unstick" it: that costs
+          minutes of cold NoSolutions and does not touch the cause.
+
+- interval: 1m
+  name: 'settlement indexer healthy: last_updated tracks last_seen, and a brief
+    catch-up spike shorter than the hold stays silent'
+  input_series:
+  - series: gp_v2_autopilot_last_block_number{instance="autopilot:9589",job="autopilot"}
+    values: 155950000+30x400
+  # Flat for 12 minutes (a restart replaying a short backlog: lag peaks at 360,
+  # i.e. ABOVE the 300 threshold) then fully caught up. Two minutes over threshold
+  # is far short of `for: 15m`, so this must never page — this is the case that
+  # would make the alert noisy on every autopilot restart if the hold were dropped.
+  - series: gp_v2_autopilot_autopilot_maintenance_last_updated_block{instance="autopilot:9589",job="autopilot"}
+    values: 155950000+0x12 155950390+30x388
+  alert_rule_test:
+  - eval_time: 12m
+    alertname: OphisOpAutopilotMaintenanceStalled
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisOpAutopilotMaintenanceStalled
+    exp_alerts: []
+  - eval_time: 6h
+    alertname: OphisOpAutopilotMaintenanceStalled
+    exp_alerts: []
+
+# ── The point of unpinning: a lane nobody listed still gets watched ──
+# Before 2026-08-23 these rules hard-coded upstream=~"publicnode-op|zan-op|...".
+# Swapping a lane then silently un-monitored it unless someone remembered to edit
+# 11 selectors by hand. This case uses an id that appears in NO list anywhere and
+# asserts it still pages. Re-pin the selectors and this test fails.
+- interval: 1m
+  name: 'unpinned selectors: an upstream id that appears in no allowlist is still watched'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="some-future-lane-op"}
+    values: 0+100x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="some-future-lane-op",error="ErrEndpointClientSideException"}
+    values: 0+100x400
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        upstream: some-future-lane-op
+      exp_annotations:
+        summary: OP eRPC upstream some-future-lane-op is failing ~everything
+        description: |-
+          some-future-lane-op has failed over 95% of the requests eRPC sent it for 10 minutes, excluding block-availability short-circuits. Expired key, exhausted quota, revoked account or provider outage — the lane is contributing nothing to the quorum. With agreementThreshold:2 across 3 lanes it hides behind the other two until a second lane blips, then everything fails closed at once. eRPC will NOT shed it on its own: the per-upstream circuit breaker does not open on 4xx, which it classifies as a client-side exception. Diagnose with docker logs optimism-mainnet-rpc-proxy-1 --tail 200, grepping the upstream id, then probe the provider directly for the raw HTTP status and body. Remedy: renew or replace the credential, or remove the lane from the rendered erpc.yaml and restart rpc-proxy (eRPC does not hot-reload). Keep at least one non-Cloudflare lane so the CDN-diversity invariant in configs/erpc.yaml.tmpl still holds, and verify any replacement with eth_getTransactionReceipt THROUGH the proxy, not just /quote.
+
+# ── The floor that unpinning makes necessary ──
+# Unpinned rules match EVERY upstream in the TSDB, retired lanes included
+# (alchemy-op, ophis-self-op, tenderly-op and validationcloud-op are all still
+# inside the 15d window). A lane eRPC has stopped routing to has a collapsing
+# request rate against a still-decaying error rate, and clamp_min(...,0.001)
+# turns that into a nonsense figure -- validationcloud-op was observed FIRING at
+# a "234% error ratio" on 2026-08-23, hours after it left the config.
+#
+# ⚠️ The original case here modelled "retired" as merely LOW traffic (1 req/min)
+# and asserted silence. Codex review showed that is the wrong model and the
+# wrong direction of failure: a lane still being sent one request a minute is
+# ALIVE and failing, and must page. Worse, a circuit-broken lane's traffic
+# collapses the same way while it remains configured and unusable, so a floor
+# tuned to silence low traffic would have silenced exactly the alert that
+# matters. Retirement is now modelled as the series STOPPING (below), and the
+# breaker case asserts the opposite of silence.
+
+# Boundary guard on that floor: a REAL lane dying at low volume must still page.
+# validationcloud-op sat at 0.3-4.2 req/s through its 08-18 death, so the floor
+# has to stay far below that. 6 req/min = 0.1 req/s clears it.
+- interval: 1m
+  name: 'traffic floor is not set so high it silences a genuinely dying low-volume lane'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="low-volume-op"}
+    values: 0+6x400
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="low-volume-op",error="ErrEndpointClientSideException"}
+    values: 0+6x400
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        upstream: low-volume-op
+      exp_annotations:
+        summary: OP eRPC upstream low-volume-op is failing ~everything
+        description: |-
+          low-volume-op has failed over 95% of the requests eRPC sent it for 10 minutes, excluding block-availability short-circuits. Expired key, exhausted quota, revoked account or provider outage — the lane is contributing nothing to the quorum. With agreementThreshold:2 across 3 lanes it hides behind the other two until a second lane blips, then everything fails closed at once. eRPC will NOT shed it on its own: the per-upstream circuit breaker does not open on 4xx, which it classifies as a client-side exception. Diagnose with docker logs optimism-mainnet-rpc-proxy-1 --tail 200, grepping the upstream id, then probe the provider directly for the raw HTTP status and body. Remedy: renew or replace the credential, or remove the lane from the rendered erpc.yaml and restart rpc-proxy (eRPC does not hot-reload). Keep at least one non-Cloudflare lane so the CDN-diversity invariant in configs/erpc.yaml.tmpl still holds, and verify any replacement with eth_getTransactionReceipt THROUGH the proxy, not just /quote.
+
+# ── Codex review 2026-08-24: the HANG case ──
+# This is the case the original expression provably could NOT catch, and the
+# reason the head operand changed. index_until_block sets last_seen_block and
+# then awaits run_essential_maintenance; the loop cannot iterate until that
+# await returns. So when maintenance HANGS rather than erroring, last_seen_block
+# is frozen at the same block as last_updated_block + 1 forever, and the old
+# `last_seen - last_updated` subtraction sits at 1 permanently while settlement
+# indexing is dead. Only an independently-advancing head exposes it.
+# Revert the expr to last_seen_block and this case fails.
+- interval: 1m
+  name: 'maintenance HANGS (not errors): frozen maintenance gauges, head still advancing'
+  input_series:
+  # The block stream keeps producing regardless of the maintenance task.
+  - series: gp_v2_autopilot_last_block_number{instance="autopilot:9589",job="autopilot"}
+    values: 155950000+30x120
+  # Both maintenance gauges are stuck: the task never returned from its await.
+  - series: gp_v2_autopilot_autopilot_maintenance_last_seen_block{instance="autopilot:9589",job="autopilot"}
+    values: 155950030x120
+  - series: gp_v2_autopilot_autopilot_maintenance_last_updated_block{instance="autopilot:9589",job="autopilot"}
+    values: 155950000x120
+  alert_rule_test:
+  - eval_time: 40m
+    alertname: OphisOpAutopilotMaintenanceStalled
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        instance: autopilot:9589
+        job: autopilot
+      exp_annotations:
+        summary: OP autopilot essential maintenance stalled 1200 blocks behind head
+        description: |
+          `last_updated_block` has not caught up to the chain head for 15
+          minutes, so autopilot essential maintenance is not completing.
+
+          THAT IS THREE INDEXERS, NOT ONE. run_essential_maintenance is a
+          try_join! over the settlement indexer, the CoW AMM indexers and the
+          ethflow order indexers; it advances the gauge only when ALL of them
+          succeed, so ANY one of them failing raises this page. Identify which
+          before concluding settlements are affected:
+            docker logs optimism-mainnet-autopilot-1 --tail 100 \
+              | grep -iE "settlement_indexer|cow_amm_indexer|ethflow_order_indexer"
+
+          If it IS the settlement indexer, settlements landing on-chain are not
+          being indexed: order status, rebates and the stats page all stall
+          behind it, and the autopilot's own view stops advancing.
+
+          Quoting can look perfectly healthy while this is broken — /quote
+          reads at tip, this indexes history. Do not use /quote to clear it.
+
+          FIRST, get the block range it is stuck on:
+            docker logs optimism-mainnet-autopilot-1 --tail 50 \
+              | grep -o "unable to get logs for blocks range [0-9-]*" | sort -u
+
+          THEN ask why that range cannot be served. The usual cause is that
+          fewer than agreementThreshold:2 upstreams can serve eth_getLogs AT
+          THAT DEPTH — which is NOT the same question as whether the lanes are
+          up. publicnode is archive-gated at ~128 blocks, so it votes on
+          tip-adjacent getLogs and abstains on everything older:
+            curl -s localhost:9091/api/v1/query --data-urlencode \
+              'query=sum by (upstream,error) (rate(erpc_upstream_request_errors_total{network="evm:10"}[15m]))'
+
+          Confirm by probing a lane DIRECTLY at the stuck depth, not at tip:
+          a tip-only probe reports a lane healthy when it cannot serve a single
+          historic window.
+
+          Fix the lane math (restore a second archive-capable, non-Cloudflare
+          upstream — see configs/erpc.yaml.tmpl); the indexer then catches up
+          on its own. Do NOT recreate the driver to "unstick" it: that costs
+          minutes of cold NoSolutions and does not touch the cause.
+
+# ── Codex review 2026-08-24: a circuit-broken lane must stay above the floor ──
+# When a breaker opens, eRPC stops routing and only half-opens every 30s, so the
+# lane's request rate collapses while it is still configured and unusable. Under
+# the original [15m] > 0.05 floor the dead-lane alerts would have reset before
+# their own `for:` elapsed. Over [1h] the pre-ejection traffic keeps it above the
+# floor long enough to page. Restore the 15m/0.05 floor and this case fails.
+- interval: 1m
+  name: 'breaker-ejected lane still pages: traffic collapses but the lane is live'
+  input_series:
+  # Busy, then the breaker opens at t=20m and routing nearly stops (half-open
+  # probes only) -- but the lane remains configured and completely unusable.
+  - series: erpc_upstream_request_total{network="evm:10",upstream="ejected-op"}
+    values: 0+600x20 12000+2x100
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="ejected-op",error="ErrEndpointClientSideException"}
+    values: 0+600x20 12000+2x100
+  alert_rule_test:
+  - eval_time: 75m
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: optimism
+        upstream: ejected-op
+      exp_annotations:
+        summary: OP eRPC upstream ejected-op is failing ~everything
+        description: |-
+          ejected-op has failed over 95% of the requests eRPC sent it for 10 minutes, excluding block-availability short-circuits. Expired key, exhausted quota, revoked account or provider outage — the lane is contributing nothing to the quorum. With agreementThreshold:2 across 3 lanes it hides behind the other two until a second lane blips, then everything fails closed at once. eRPC will NOT shed it on its own: the per-upstream circuit breaker does not open on 4xx, which it classifies as a client-side exception. Diagnose with docker logs optimism-mainnet-rpc-proxy-1 --tail 200, grepping the upstream id, then probe the provider directly for the raw HTTP status and body. Remedy: renew or replace the credential, or remove the lane from the rendered erpc.yaml and restart rpc-proxy (eRPC does not hot-reload). Keep at least one non-Cloudflare lane so the CDN-diversity invariant in configs/erpc.yaml.tmpl still holds, and verify any replacement with eth_getTransactionReceipt THROUGH the proxy, not just /quote.
+
+# A lane genuinely REMOVED from the config stops emitting entirely, so both
+# rates decay to zero and it drops below the floor. This is the case the floor
+# exists for: validationcloud-op was observed firing at a "234% error ratio"
+# hours after it left the config.
+- interval: 1m
+  name: 'retired lane (series stops entirely) falls below the floor and goes quiet'
+  input_series:
+  - series: erpc_upstream_request_total{network="evm:10",upstream="retired-op"}
+    values: 0+600x20
+  - series: erpc_upstream_request_errors_total{network="evm:10",upstream="retired-op",error="ErrEndpointClientSideException"}
+    values: 0+600x20
+  alert_rule_test:
+  - eval_time: 3h
+    alertname: OphisOpErpcUpstreamEffectivelyDead
+    exp_alerts: []
+  - eval_time: 3h
+    alertname: OphisOpErpcUpstreamCredentialFailing
     exp_alerts: []

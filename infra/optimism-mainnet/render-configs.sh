@@ -54,6 +54,7 @@
 #   1 — .env missing
 #   2 — running under set -x (PK would leak in trace)
 #   4 — .env still has legacy OPHIS_DRIVER_SUBMITTER_KEY line
+#  14 — ERPC_IMAGE in .env disagrees with the pin tracked in .env.example
 #   5 — PK file at /Users/ophis-driver/.config/submitter.key is malformed
 
 set -euo pipefail
@@ -85,6 +86,14 @@ validate_rendered_erpc() {
   fi
   if grep -nE '^[[:space:]]*endpoint:[[:space:]]*https?://[^[:space:]]*//' "$f" >&2; then
     echo "ERROR: the upstream endpoint above contains '//' mid-path — empty substitution." >&2
+    bad=1
+  fi
+  # QUERY-PARAM keys (blockdaemon: ...?apiKey=${BLOCKDAEMON_OP_KEY}) do NOT end in
+  # '/' and do NOT produce '//' when they substitute empty, so the two checks above
+  # are blind to them: '...native?apiKey=' renders clean and installs a SILENTLY
+  # KEYLESS lane. Catch an empty value on any query parameter.
+  if grep -nE '^[[:space:]]*endpoint:[[:space:]]*https?://[^[:space:]]*[?&][A-Za-z0-9_.-]+=([&[:space:]]|$)' "$f" >&2; then
+    echo "ERROR: the upstream endpoint above has an EMPTY query-param value — a key substituted EMPTY." >&2
     bad=1
   fi
   return $(( bad * 16 ))
@@ -162,6 +171,40 @@ set -a
 source .env
 set +a
 
+# ── eRPC image pin: the live .env must match the pin tracked in git ──────────
+# ERPC_IMAGE lives only in .env, which is gitignored, so until 2026-09-04
+# nothing in the repo recorded which eRPC actually ran. That gap is not
+# cosmetic. 0.0.64 carries an implicit cached-head availability gate that
+# rejects an upstream BEFORE forwarding whenever its polled head trails the
+# network-known highest. Measured with all three lanes on the IDENTICAL block
+# it produced tenderly 0% / drpc 32% / zan 90% ErrUpstreamBlockUnavailable and
+# silently cut the 2-of-3 quorum to ONE lane on the settlement-gating path,
+# while erpc_consensus_errors_total stayed at zero. Upstream removed the gate
+# in d655d63 (#934), first shipped in 0.1.2.
+#
+# Recording the pin in .env.example is not enough by itself: Compose reads
+# .env, and docker-compose.yml only asserts ERPC_IMAGE is NON-EMPTY. Editing
+# .env back to 0.0.64 would leave the checkout clean and start the vulnerable
+# image with no warning — the exact silent rollback the record is meant to stop.
+# So compare them and fail closed. Deliberately no override flag: if you are
+# moving the pin on purpose, move it in .env.example in the same change so git
+# keeps the record.
+EXPECTED_ERPC_IMAGE="$(sed -n 's/^ERPC_IMAGE=//p' .env.example | head -1)"
+if [[ -z "$EXPECTED_ERPC_IMAGE" ]]; then
+  echo "ERROR: .env.example has no ERPC_IMAGE= line to check against." >&2
+  echo "       The tracked pin is the only record of which eRPC we run." >&2
+  exit 14
+fi
+if [[ "${ERPC_IMAGE:-}" != "$EXPECTED_ERPC_IMAGE" ]]; then
+  echo "ERROR: ERPC_IMAGE in .env does not match the pin tracked in .env.example." >&2
+  echo "         .env:         ${ERPC_IMAGE:-<unset>}" >&2
+  echo "         .env.example: $EXPECTED_ERPC_IMAGE" >&2
+  echo "       Refusing to render. Anything below 0.1.2 reintroduces the block-" >&2
+  echo "       availability gate that thins the settlement quorum to one lane." >&2
+  echo "       If this change is intentional, update .env.example too." >&2
+  exit 14
+fi
+
 # ── ZAN key: migrate the legacy name, and NEVER render an empty one ──────────
 # ZAN_OP_KEY was renamed to ZAN_API_KEY on 2026-07-30 (the credential is
 # account-wide, not OP-specific). A .env that predates the rename — a DR host, or
@@ -190,6 +233,36 @@ if [[ -z "${ZAN_API_KEY:-}" ]]; then
   echo "       UNREGISTERED endpoint, which rejects eth_call/eth_getLogs/eth_estimateGas" >&2
   echo "       and leaves those methods on a 2-lane quorum with no single-provider-" >&2
   echo "       compromise protection. Set ZAN_API_KEY in .env (see .env.example)." >&2
+  exit 15
+fi
+
+# ── Tenderly key: NEVER render an empty one ──────────────────────────────────
+# tenderly-op replaced official-op on 2026-08-29 and carries a PATH-style key.
+# An empty substitution yields https://optimism.gateway.tenderly.co/ , which is
+# the KEYLESS gateway: a 20 req/s bucket instead of 400, and it silently drops
+# this lane's archive guarantees. validate_rendered_erpc catches the trailing
+# slash, but fail fast here too so the operator sees it before the render runs.
+if [[ -z "${TENDERLY_OP_KEY:-}" ]]; then
+  echo "ERROR: TENDERLY_OP_KEY is unset/empty." >&2
+  echo "       Refusing to render: the tenderly upstream would fall back to the" >&2
+  echo "       KEYLESS gateway (20 req/s, no archive guarantee). Set it in .env." >&2
+  exit 15
+fi
+
+# ── Blockdaemon key: NEVER render an empty one ───────────────────────────────
+# blockdaemon-op took over the single Cloudflare slot from publicnode on
+# 2026-08-29 and is the ONLY full-archive lane, so it is the deciding vote on
+# eth_getTransactionReceipt and deep eth_getLogs. Its key rides in a QUERY PARAM,
+# so an empty substitution renders '...native?apiKey=' — which the '/'-suffix and
+# '//' checks in validate_rendered_erpc cannot see (they only catch path-style
+# keys). An unauthenticated blockdaemon URL is rejected by the provider, so the
+# archive bucket would drop back to the 2-capable-lane state that broke receipts
+# on 2026-08-29. Fail closed here as well as in the rendered-file check.
+if [[ -z "${DRPC_API_KEY:-}" ]]; then
+  echo "ERROR: DRPC_API_KEY is unset/empty." >&2
+  echo "       Refusing to render: the drpc upstream would render keyless," >&2
+  echo "       losing the Cloudflare-slot archive lane and leaving eth_getTransactionReceipt" >&2
+  echo "       and deep eth_getLogs on a 2-lane quorum. Set it in .env (.env.example)." >&2
   exit 15
 fi
 
@@ -524,7 +597,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   #
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax, defensive against future config additions.
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${ZAN_API_KEY}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${DRPC_API_KEY} ${TENDERLY_OP_KEY} ${ZAN_API_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.

@@ -88,7 +88,9 @@ jobs:
             # Pinned exact (was @formspree/cli@latest): this step carries the
             # Formspree deploy key, so a floating tag must not pull a compromised
             # future release. Bump deliberately.
-            npx --yes @formspree/cli@0.9.6 deploy -k "$FORMSPREE_DEPLOY_KEY"
+            # Formspree is optional and must not hold the production Pages
+            # deployment indefinitely when its CLI or API stalls.
+            timeout --kill-after=15s 2m npx --yes @formspree/cli@0.9.6 deploy -k "$FORMSPREE_DEPLOY_KEY"
           else
             echo "FORMSPREE_DEPLOY_KEY not set; skipping Formspree form deploy."
           fi
@@ -150,6 +152,10 @@ jobs:
           # Without this, production runs as "local" env and defaults to
           # staging endpoints.
           REACT_APP_DOMAIN_REGEX_PRODUCTION: ^(ophis\.fi|.*\.ophis\.fi)$
+          # Milestone B read-only OTC deployment control. Set the repository
+          # variable to exactly 'false' and rerun this workflow for an emergency
+          # rollback; transaction actions remain independently disabled.
+          REACT_APP_OTC_ENABLED: ${{ vars.REACT_APP_OTC_ENABLED }}
           # Ophis Bungee affiliate ID (public attribution, bridge rev-share to
           # the Ophis Safe). The dedicated API key (BUNGEE_API) is intentionally
           # NOT built into the bundle (Bungee requires it server-side); it is a
@@ -165,19 +171,31 @@ jobs:
           # baked into amountOut — set the secret to remove it. Empty -> keyless
           # (bridgingSdk.ts maps empty to undefined so no blank Bearer header).
           REACT_APP_NEAR_API_KEY: ${{ secrets.REACT_APP_NEAR_API_KEY }}
-          # Ink (57073) + Linea (59144) as Across bridge SOURCES — DISABLED
-          # 2026-08-13 (incident). The Across deposit post-hook DELEGATECALLs the
-          # weiroll VM 0x9585c3062Df1C247d5E373Cfca9167F7dC2b5963, which has NO
-          # CODE on Ink/Linea/Unichain (present only on mainnet/arb/base). A
-          # delegatecall to a codeless target returns success with empty data and
-          # allowFailure:false cannot fire, so a bridge FROM these chains would
-          # settle the swap and silently skip the deposit — stranding the
-          # intermediate token in the user's CoW Shed. The AcrossMathHelper +
-          # CoW Shed deploys are necessary but NOT sufficient: the weiroll VM is
-          # the missing third chain-local dependency. Do NOT re-enable until the
-          # weiroll VM is deployed on each source chain AND a code-presence
-          # preflight covers SpokePool + CoW Shed + weiroll VM + math helper.
-          # Unset -> sources stay off (bridgeSourceChains.const.ts).
+          # Robinhood Chain (4663) as an Across bridge SOURCE — ENABLED
+          # 2026-08-27, after a live end-to-end bridge proved the corridor.
+          # 4663 is sovereign, so OUR driver executes the post-hook; that is what
+          # had never been proven. It now is, on-chain:
+          #   settlement tx 0x0644fe5b43e4b0de3b31e1e947c9bb96f030422f452e768357d3a4fda22efd23
+          #   emitted the SpokePool FundsDeposited (destChain 130, depositId 122616)
+          #   IN THE SAME TRANSACTION, from the user's CoW Shed proxy, and 7.436
+          #   USDC was delivered on Unichain.
+          # Same-transaction correlation is the required evidence, not a green UI:
+          # the HooksTrampoline discards each hook's success flag, so a hook that
+          # reverts (or delegatecalls a codeless address — the 2026-08-13 incident)
+          # still leaves the settlement successful with the deposit silently
+          # skipped. Re-check with `pnpm across-source-preflight 4663` (10/10) if
+          # any of the on-chain pieces are ever redeployed.
+          REACT_APP_ACROSS_ROBINHOOD_SOURCE: 'true'
+          # Ink (57073) + Linea (59144) as Across bridge SOURCES — still DISABLED,
+          # but the 2026-08-13 blocker is GONE: the weiroll VM
+          # 0x9585c3062Df1C247d5E373Cfca9167F7dC2b5963 was deployed on both chains
+          # (and Unichain + Robinhood) that day, and `pnpm across-source-preflight
+          # 57073 59144` now passes. What is still missing is only the same live
+          # E2E proof Robinhood just got — one real bridge FROM each chain showing
+          # a SpokePool FundsDeposited in the settlement tx. Ink/Linea ride
+          # upstream CoW solvers rather than our driver, so that proof does not
+          # carry over from 4663. Unset -> sources stay off
+          # (bridgeSourceChains.const.ts).
           # REACT_APP_ACROSS_INK_LINEA_SOURCE: 'true'
           # Cloudflare Turnstile site key for the /contact form widget. PUBLIC
           # value (rendered to the browser as a `sitekey` attr) — safe to

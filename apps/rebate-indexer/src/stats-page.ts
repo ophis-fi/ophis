@@ -29,6 +29,12 @@ export interface PublicStats {
   chainsActive: number;
   byChain: { chainId: number; volumeUsd: number; trades: number }[];
   generatedAt: string; // ISO
+  /** Last completed scorer publication. Unlike generatedAt, this cannot be
+   * refreshed merely by serving another HTTP response. */
+  dataAsOf: string | null;
+  dataFresh: boolean;
+  dataStatus: 'fresh' | 'degraded';
+  dataStaleReason: string | null;
 }
 
 export const CHAIN_NAME: Record<number, string> = {
@@ -100,7 +106,12 @@ export function renderStatsPage(s: PublicStats): string {
       return `<tr><td>${esc(name)}</td><td class="num">${fmtUsd(c.volumeUsd)}</td><td class="num">${fmtInt(c.trades)}</td></tr>`;
     })
     .join('');
-  const updated = esc(s.generatedAt.slice(0, 16).replace('T', ' ')) + ' UTC';
+  const updated = s.dataAsOf
+    ? esc(s.dataAsOf.slice(0, 16).replace('T', ' ')) + ' UTC'
+    : null;
+  const freshnessWarning = s.dataFresh
+    ? ''
+    : `<div class="warning"><strong>Data refresh delayed.</strong> These figures show the last successful publication${updated ? ` at ${updated}` : ''}. On-chain settlements remain final while indexing catches up.</div>`;
   const operatedSolverSummary = EXECUTION_FACTS.solverCompetition.sovereignChains
     .map(({ chainId, solvers }) => `${CHAIN_NAME[chainId] ?? `Chain ${chainId}`}: ${solvers}`)
     .join(', ');
@@ -136,11 +147,14 @@ th{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#9b93b5;fo
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 .note{color:#9b93b5;font-size:13px;margin-top:24px;line-height:1.6}
 .note a{color:#f2a63e}
+.warning{background:#2a1705;border:1px solid #754719;border-radius:12px;color:#efc78f;font-size:13px;margin-bottom:24px;padding:12px 14px}
+.warning strong{color:#ffd79d}
 .foot{margin-top:28px;padding-top:16px;border-top:1px solid #221b3d;color:#9b93b5;font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
 .foot a{color:#f2a63e;text-decoration:none}
 </style></head>
 <body><div class="wrap">
 <div class="brand"><span class="dot"></span><span>Ophis</span></div>
+${freshnessWarning}
 <h1>Every trade settles MEV-protected, at your signed price or better.</h1>
 <p class="lede">Ophis is an intent-based venue on CoW Protocol's batch auction with a uniform clearing price. The guarantees below hold for every single trade, regardless of size or volume.</p>
 <ul class="gl">
@@ -164,6 +178,6 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
   <div class="card"><div class="n">${fmtInt(s.chainsActive)}</div><div class="l">Chains active</div></div>
 </div>
 <p class="note">MEV-protected and gasless across 13 EVM chains with Solana and Bitcoin destinations. On Ophis-operated chains, the trader keeps the remainder after Ophis's capped capture and all improvement above its cap. On hosted chains, the trader receives the net remainder after both Ophis's policy and CoW Protocol's separate upstream policy. Figures are cumulative settled volume priced in USD at index time, refreshed continuously. Reproduce them from on-chain settlement: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
-<div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; swap.ophis.fi</span><span>Updated ${updated}</span></div>
+<div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; swap.ophis.fi</span><span>${updated ? `Data as of ${updated}` : 'Data publication time unavailable'}</span></div>
 </div></body></html>`;
 }

@@ -6,6 +6,8 @@ import { runPricer } from './pricer.js';
 import { runScorer } from './scorer.js';
 import { logger } from './logger.js';
 import { completeDefiLlamaBackfillIfReady } from './defillamaBackfill.js';
+import { repairRouterTrades } from './repair/routerTrades.js';
+import { repairDefiLlamaSettlementIdentity } from './repair/defillamaSettlement.js';
 import { runScheduledTradeRewards, startTradeRewardsScheduler } from './tradeRewards/scheduler.js';
 
 async function main() {
@@ -46,6 +48,33 @@ async function main() {
           if (fetched.owners < FETCHER_MAX_OWNERS_PER_RUN) break;
           if (i === 99) logger.error('DefiLlama startup backfill hit guard limit');
         }
+        // A migration can requeue eth-flow routers. runFetcher intentionally
+        // filters every router out before its owner loop, so those queue rows can
+        // never delete themselves and the DefiLlama readiness gate stays closed.
+        // The nightly pipeline already performs this repair; startup must do the
+        // same so a recovery deploy converges immediately instead of waiting for
+        // the next 02:00 UTC tick.
+        try {
+          const routerRepair = await repairRouterTrades();
+          if (routerRepair.scanned > 0 || routerRepair.dequeued > 0) {
+            logger.info(routerRepair, 'startup router repair complete');
+          }
+        } catch (err) {
+          logger.error({ err }, 'startup router repair failed (pipeline continues)');
+        }
+        try {
+          const reportingRepair = await repairDefiLlamaSettlementIdentity();
+          logger.info(reportingRepair, 'startup DefiLlama settlement repair complete');
+        } catch (err) {
+          logger.error({ err }, 'startup DefiLlama settlement repair failed (reporting remains fail-closed)');
+        }
+        // Newly reconstructed fills need pricing before readiness can reopen.
+        const repairedPrices = await runPricer();
+        priced = {
+          priced: priced.priced + repairedPrices.priced,
+          failed: priced.failed + repairedPrices.failed,
+        };
+        await completeDefiLlamaBackfillIfReady();
         const scored = await runScorer();
         logger.info({ inserted, priced, scored }, 'initial backfill complete');
       });

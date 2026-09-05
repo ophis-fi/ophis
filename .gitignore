@@ -70,3 +70,7 @@ integrations/**/package-lock.json
 # Static-analysis scan output (semgrep skill default dir). Scan artifacts are
 # per-run and machine-local; 65 of them were committed by accident once.
 static_analysis_semgrep*/
+
+# Python bytecode (a stray .pyc reached a commit on 2026-09-02 via git add -A)
+__pycache__/
+*.pyc

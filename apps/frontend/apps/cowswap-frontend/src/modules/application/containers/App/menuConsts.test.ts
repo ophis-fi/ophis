@@ -36,14 +36,14 @@ jest.mock('./menuConsts.utils', () => ({
 
 jest.mock('common/constants/routes', () => ({
   Routes: {
+    OTC: '/otc',
     PLAY_COWRUNNER: '/play/cowrunner',
     PLAY_MEVSLICER: '/play/mevslicer',
-    OTC: '/otc',
   },
 }))
 
-function getMoreItemHrefs(isSolversEnabled: boolean, isOtcEnabled = true): string[] {
-  const navItems = NAV_ITEMS(SupportedChainId.MAINNET, isSolversEnabled, isOtcEnabled)
+function getMoreItemHrefs(isSolversEnabled: boolean): string[] {
+  const navItems = NAV_ITEMS(SupportedChainId.MAINNET, isSolversEnabled, false)
   const moreItem = navItems[navItems.length - 1]
 
   if (!moreItem?.children) {
@@ -54,19 +54,23 @@ function getMoreItemHrefs(isSolversEnabled: boolean, isOtcEnabled = true): strin
 }
 
 describe('NAV_ITEMS', () => {
+  it('shows OTC as a direct navigation entry when enabled', () => {
+    const navItems = NAV_ITEMS(SupportedChainId.MAINNET, false, true)
+
+    expect(navItems).toContainEqual(expect.objectContaining({ href: '/otc' }))
+  })
+
+  it('hides OTC navigation when its kill switch is disabled', () => {
+    const navItems = NAV_ITEMS(SupportedChainId.MAINNET, false, false)
+
+    expect(navItems).not.toContainEqual(expect.objectContaining({ href: '/otc' }))
+  })
+
   it('hides solvers menu item when the solvers flag is disabled', () => {
     expect(getMoreItemHrefs(false)).not.toContain('https://explorer.cow.fi/solvers')
   })
 
   it('shows solvers menu item when the solvers flag is enabled', () => {
     expect(getMoreItemHrefs(true)).toContain('https://explorer.cow.fi/solvers')
-  })
-
-  it('links the enabled OTC surface from the product menu', () => {
-    expect(getMoreItemHrefs(false)).toContain('/otc')
-  })
-
-  it('hides the OTC entry when the read feature is disabled', () => {
-    expect(getMoreItemHrefs(false, false)).not.toContain('/otc')
   })
 })

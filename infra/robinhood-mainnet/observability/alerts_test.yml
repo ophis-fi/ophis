@@ -1,0 +1,221 @@
+# promtool unit tests for the Robinhood alert rules.
+#
+# WHY THIS FILE EXISTS AT ALL: until 2026-08-24 there was none. ci.yml loops over
+# optimism-mainnet, unichain-mainnet and robinhood-mainnet and runs
+# `promtool test rules` only where a test file is present, so every Robinhood
+# alert had shipped without anyone ever proving it could fire. That is the same
+# defect that made OphisOpErpcUpstreamCredentialFailing inert through a five-day
+# lane death on 2026-08-18, and it showed up again on 2026-08-23: an eight-hour
+# outage during which the only alert that fired named the wrong upstream.
+#
+# COVERAGE IS PARTIAL AND DELIBERATELY SO. This file pins the two rules added on
+# 2026-08-24 plus the discrimination the old shared rule could not make. The
+# other ~20 Robinhood alerts remain untested — creating this file switches the
+# CI job on for this chain, and they should be backfilled. Do not read a green
+# run as "Robinhood alerts are tested".
+#
+# Run: promtool test rules infra/robinhood-mainnet/observability/alerts_test.yml
+
+rule_files:
+- alerts.yml
+evaluation_interval: 1m
+tests:
+
+# ── The 2026-08-23 replay ──
+# Self node 3,800 blocks behind while the gateway is healthy. The pre-existing
+# shared rule fired for robinhood-official and said the lag was "approximately
+# ten seconds"; the actual condition was our own node being ~6 minutes behind and
+# unable to serve state. Both new rules must fire, and they must name the SELF node.
+- interval: 1m
+  name: '2026-08-23 replay: self node far behind, gateway healthy'
+  input_series:
+  - series: erpc_upstream_block_head_lag{network="evm:4663",upstream="ophis-self-rbh"}
+    values: 3800x60
+  - series: erpc_upstream_block_head_lag{network="evm:4663",upstream="robinhood-official"}
+    values: 4x60
+  - series: erpc_upstream_request_errors_total{network="evm:4663",upstream="ophis-self-rbh",error="ErrEndpointMissingData"}
+    values: 0+10x60
+  alert_rule_test:
+  # `for: 10m` must be respected — at 5m the threshold is breached but the hold is not.
+  - eval_time: 5m
+    alertname: OphisRbhSelfNodeLagBlocksSettlement
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: OphisRbhSelfNodeLagBlocksSettlement
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: robinhood
+        upstream: ophis-self-rbh
+        network: evm:4663
+      exp_annotations:
+        summary: Robinhood self node 3800 blocks behind — settlements are blocked
+        description: |
+          ophis-self-rbh has been more than 600 blocks (about a minute at this
+          chain's ~101ms blocks) behind the freshest head for 10 minutes.
+
+          This is NOT the same event as robinhood-official lagging. Consensus
+          here is 2-of-2, so a stale self node fails EVERY protected read:
+          quoting dies, no settlement can broadcast, and the driver goes
+          unhealthy. On 2026-08-23 this state lasted eight hours and the only
+          alert that fired named the other upstream.
+
+          Threshold rationale: measured 2026-08-24, the self node normally sits
+          within ~10 blocks of the gateway and is often slightly AHEAD of it.
+          During the incident it sat 3,600-4,200 blocks behind. 600 blocks is
+          far above normal jitter and far below the failure regime.
+
+          WHY IT FALLS BEHIND: this node's measured execution ceiling is about
+          27M gas/s. When Robinhood load exceeds that (48 txs/block at 6.2M gas
+          = 62M gas/s on 08-23, versus a normal 9.7M) it cannot keep up, and it
+          CANNOT self-recover until load drops. Block rate is a constant ~10/s;
+          it is block CONTENT that varies. Check current load before assuming a
+          fault:
+            cast block latest --rpc-url https://rpc.mainnet.chain.robinhood.com
+
+          If load is normal and it is still behind, then it is a real fault:
+            ssh -p 22 clement@100.85.130.25   (Tailscale SSH; needs a browser
+            check, and MagicDNS does not resolve from the Mac, so use the IP)
+            curl -s -H content-type:application/json -d \
+              '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
+              http://localhost:8547
+          ⚠️ eth_syncing returns FALSE while thousands of blocks behind — it is
+          not a usable health signal here. Compare eth_blockNumber against the
+          public gateway instead.
+  - eval_time: 20m
+    alertname: OphisRbhSelfNodeCannotServeState
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        chain: robinhood
+      exp_annotations:
+        summary: Robinhood self node is returning MissingData — it cannot serve current state
+        description: |
+          ophis-self-rbh is answering protected reads with -32014
+          ErrEndpointMissingData. It has the chain head but not the state for
+          the block being asked about, which happens when it has fallen behind
+          far enough that requested blocks are still in its future.
+
+          With agreementThreshold 2 over exactly 2 upstreams, this fails every
+          protected read on its own — no dispute is needed, the request simply
+          has too few participants.
+
+          This usually accompanies OphisRbhSelfNodeLagBlocksSettlement. If it
+          fires ALONE, suspect state pruning rather than lag: neither upstream
+          is an archive node, so a query for a block older than the node's
+          retention fails the same way. That was the second half of the 08-23
+          incident — the driver had frozen on a block 7.4 hours in the past and
+          re-requested it forever, which no lane could ever serve and which
+          opened the other lane's circuit breaker.
+
+# ── The discrimination the old rule could not make ──
+# The gateway lagging is NORMAL and harms nothing; it is the independent read
+# voter and publishes a few seconds late by design. Neither new rule may fire on
+# it. Without this case the new rules would be no better than the one they
+# supplement, since the 08-23 false page was exactly this shape.
+# ⚠️ NAME CORRECTED (Codex round 3). This previously claimed the gateway lagging
+# "must NOT page" while asserting only the two NEW rules -- and the pre-existing
+# OphisRbhErpcUpstreamBlockHeadLagging (>75 blocks for 15m) fires happily on this
+# very input. So the test was green while the exact false page it claimed to
+# prevent still happened. The legacy warning is now asserted explicitly: it DOES
+# fire, and that is the honest state of the stack. What the new rules add is that
+# nothing CRITICAL fires for a lagging gateway, so the operator is not told
+# settlements are at risk when they are not.
+- interval: 1m
+  name: 'gateway lagging alone raises only the legacy WARNING, never a critical'
+  input_series:
+  - series: erpc_upstream_block_head_lag{network="evm:4663",upstream="robinhood-official"}
+    values: 5000x60
+  - series: erpc_upstream_block_head_lag{network="evm:4663",upstream="ophis-self-rbh"}
+    values: 3x60
+  - series: erpc_upstream_request_errors_total{network="evm:4663",upstream="robinhood-official",error="ErrEndpointMissingData"}
+    values: 0+10x60
+  alert_rule_test:
+  - eval_time: 30m
+    alertname: OphisRbhSelfNodeLagBlocksSettlement
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisRbhSelfNodeCannotServeState
+    exp_alerts: []
+  # The legacy rule DOES fire here. Asserting it documents reality instead of
+  # letting a green suite imply the gateway no longer pages at all.
+  - eval_time: 30m
+    alertname: OphisRbhErpcUpstreamBlockHeadLagging
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        chain: robinhood
+        upstream: robinhood-official
+        network: evm:4663
+      exp_annotations:
+        summary: Robinhood eRPC upstream robinhood-official >75 blocks behind for 15m
+        description: |
+          The robinhood-official upstream has remained more than 75
+          Robinhood blocks (approximately ten seconds) behind the freshest
+          observed head for 15 minutes.
+
+          ⚠️ READ THE UPSTREAM LABEL BEFORE ACTING. This rule covers BOTH
+          lanes and they are not equivalent. On 2026-08-23 it fired naming
+          robinhood-official — which was merely publishing a few seconds late
+          and harmed nothing — for eight hours, while the condition that
+          actually stopped quoting and settlement had no rule at all.
+
+            robinhood-official lagging -> INFORMATIONAL. It is the independent
+              read voter; sub-ten-second publication delay is its normal
+              behaviour and this warning alone is not an incident.
+            ophis-self-rbh lagging     -> see OphisRbhSelfNodeLagBlocksSettlement
+              and OphisRbhSelfNodeCannotServeState, both critical. If those are
+              silent, settlements are not blocked by lag.
+
+          For ophis-self-rbh, connect to Cadia over Tailscale and check the
+          Nitro node on port 8547:
+            tailscale ssh clement@cadia-wsl \
+              'curl -s -H content-type:application/json \
+                -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"params\":[],\"id\":1}" \
+                http://localhost:8547'
+          Healthy is {"result":false}. Also inspect the sequencer-feed and
+          parent-chain errors in `docker logs robinhood-nitro-nitro-1`.
+
+          For robinhood-official, compare eth_blockNumber directly with
+          Cadia. The public endpoint is the independent read voter and Nitro
+          transaction-forwarding target; do not remove or replace it merely
+          for normal sub-ten-second publication delay. Escalate or hot-swap
+          only when this alert is sustained and protected-read availability
+          is measurably degraded.
+
+# ── Healthy control ──
+# Normal operation measured 2026-08-24: the self node sits within ~10 blocks of
+# the gateway and is frequently slightly AHEAD of it. Nothing may page.
+- interval: 1m
+  name: 'healthy: self node level with the gateway, no MissingData'
+  input_series:
+  - series: erpc_upstream_block_head_lag{network="evm:4663",upstream="ophis-self-rbh"}
+    values: 6x60
+  - series: erpc_upstream_block_head_lag{network="evm:4663",upstream="robinhood-official"}
+    values: 9x60
+  alert_rule_test:
+  - eval_time: 30m
+    alertname: OphisRbhSelfNodeLagBlocksSettlement
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisRbhSelfNodeCannotServeState
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisRbhErpcUpstreamBlockHeadLagging
+    exp_alerts: []
+
+# ── A brief catch-up burst must not page ──
+# A node that dips behind and recovers inside the hold window is not an incident.
+# Without the `for: 10m` this would page on every transient.
+- interval: 1m
+  name: 'transient lag shorter than the hold window stays silent'
+  input_series:
+  - series: erpc_upstream_block_head_lag{network="evm:4663",upstream="ophis-self-rbh"}
+    values: 5x5 3000x6 5x49
+  alert_rule_test:
+  - eval_time: 12m
+    alertname: OphisRbhSelfNodeLagBlocksSettlement
+    exp_alerts: []
+  - eval_time: 30m
+    alertname: OphisRbhSelfNodeLagBlocksSettlement
+    exp_alerts: []

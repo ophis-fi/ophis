@@ -39,6 +39,41 @@ export const WETH_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = {
   130: WETH_OP_STACK, // Unichain
 };
 
+/** Wrapped xDAI on Gnosis Chain. NOT the same token as WETH_GNOSIS. */
+export const WXDAI_GNOSIS: `0x${string}` = '0xe91D153E0b41518A2Ce8Dd3D7944Fa863463a97d';
+
+/**
+ * chainId -> the ERC20 wrapper for that chain's NATIVE coin.
+ *
+ * Why this exists (2026-08-27 fee audit): CoW does not transfer partner fees per
+ * settlement. Its Solver Rewards Safe pays them out in batches, in the chain's
+ * NATIVE coin - so 100% of realized Gnosis revenue (6.34 xDAI) landed as native
+ * xDAI, which is not an ERC20, has no `balanceOf`, and is reported by the Safe API
+ * as a `tokenAddress: null` row that the #360 probe skips. The WETH-only pool read
+ * therefore returned 0 every cycle and no rebate has ever paid.
+ *
+ * Gnosis is the load-bearing case and it is DELIBERATELY not `WETH_BY_CHAIN[100]`:
+ * the pool is denominated in BRIDGED Ethereum WETH, while wrapping xDAI yields
+ * WXDAI. Wrapping alone does NOT make the pool see the money - the wrapped balance
+ * still goes through the existing #360 WXDAI -> WETH conversion, which is exactly
+ * what that pipeline is for.
+ *
+ * On the OP-stack chains the wrapper IS the pool token, so a wrap is immediately
+ * counted with no conversion leg. Same call, one less hop.
+ */
+export const WRAPPED_NATIVE_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = {
+  100: WXDAI_GNOSIS,
+  10: WETH_OP_STACK, // native ETH -> WETH, which IS the pool token here
+  130: WETH_OP_STACK,
+};
+
+/** chainId -> native coin ticker, for operator-readable alert text. */
+export const NATIVE_SYMBOL_BY_CHAIN: Readonly<Record<number, string>> = {
+  100: 'xDAI',
+  10: 'ETH',
+  130: 'ETH',
+};
+
 /**
  * Explicit Safe Transaction Service base URL for chains @safe-global/api-kit does NOT
  * ship a built-in URL for. The api-kit's TRANSACTION_SERVICE_URLS table (v2.5) covers

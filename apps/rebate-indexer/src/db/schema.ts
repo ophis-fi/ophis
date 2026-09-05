@@ -13,6 +13,7 @@ import {
   primaryKey,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 // uint256 stored as NUMERIC(78) — drizzle exposes string at the TS layer;
 // we convert to bigint at use-site to stay lossless.
@@ -110,6 +111,13 @@ export const trades = pgTable(
     // the backfill stamps it so every row is scanned at most once and the queue drains.
     ownFeeScannedAt: timestamp('own_fee_scanned_at', { withTimezone: true }),
 
+    // Exact-UID reporting audit (migration 0039). Aggregate trades store one
+    // order total, while defillama_fills stores every settlement event. Readiness
+    // requires the persisted expected count to match the fill ledger so one fill
+    // cannot make a multi-fill order look complete.
+    defillamaExpectedFillCount: integer('defillama_expected_fill_count'),
+    defillamaRepairCheckedAt: timestamp('defillama_repair_checked_at', { withTimezone: true }),
+
     valueUsd: numeric('value_usd', { precision: 20, scale: 4 }),
     pricedAt: timestamp('priced_at', { withTimezone: true }),
 
@@ -118,6 +126,8 @@ export const trades = pgTable(
   (t) => ({
     walletTimeIdx: index('trades_wallet_time_idx').on(t.wallet, t.blockTimestamp),
     unpricedIdx: index('trades_unpriced_idx').on(t.pricedAt),
+    defillamaRepairIdx: index('trades_defillama_repair_pending_idx')
+      .on(t.defillamaRepairCheckedAt, t.chainId),
   }),
 );
 
@@ -131,6 +141,11 @@ export const defillamaFills = pgTable(
     blockNumber: bigint('block_number', { mode: 'bigint' }).notNull(),
     logIndex: integer('log_index').notNull(),
     tradeUid: bytea('trade_uid').notNull(),
+    // Immutable settlement identity used by DefiLlama's daily transaction and
+    // active-user metrics. Nullable only while migration backfill is converging;
+    // the public endpoint fails closed if a verified row is missing either field.
+    transactionHash: bytea('transaction_hash'),
+    userAddress: bytea('user_address'),
     settlementTimestamp: timestamp('settlement_timestamp', { withTimezone: true }).notNull(),
     sellToken: bytea('sell_token').notNull(),
     sellAmount: uint256('sell_amount').notNull(),
@@ -149,6 +164,9 @@ export const defillamaFills = pgTable(
     pk: primaryKey({ columns: [t.chainId, t.blockNumber, t.logIndex, t.tradeUid] }),
     unpricedIdx: index('defillama_fills_unpriced_idx').on(t.chainId, t.blockNumber, t.logIndex),
     dailyIdx: index('defillama_fills_daily_idx').on(t.settlementTimestamp, t.chainId),
+    chainUidIdx: index('defillama_fills_chain_uid_idx').on(t.chainId, t.tradeUid),
+    txIdx: index('defillama_fills_tx_idx').on(t.transactionHash),
+    userIdx: index('defillama_fills_user_idx').on(t.userAddress),
   }),
 );
 
@@ -230,6 +248,13 @@ export const pipelineRuns = pgTable('pipeline_runs', {
   // (e.g. missing proposer key) leaves this false so /health.last_batcher_run_at
   // never falsely claims the batcher ticked.
   firstOfMonth: boolean('first_of_month').notNull().default(false),
+});
+
+// Singleton publication heartbeat (migration 0037). Updated only after the
+// scorer has successfully refreshed the public `wallets` materialized view.
+export const publicDataRefreshState = pgTable('public_data_refresh_state', {
+  singleton: boolean('singleton').primaryKey().default(true),
+  refreshedAt: timestamp('refreshed_at', { withTimezone: true }),
 });
 
 // `wallets` is a MATERIALIZED VIEW (not modelled as a drizzle table) —

@@ -15,7 +15,8 @@ import { GPV2_SETTLEMENT } from '../safe/addresses.js';
 export { GPV2_SETTLEMENT } from '../safe/addresses.js';
 
 /**
- * Sovereign Ophis GPv2Settlement deployments. Optimism (10) and Unichain (130) run
+ * Sovereign Ophis GPv2Settlement deployments. Optimism (10), Unichain (130), and
+ * Robinhood Chain (4663) run
  * their OWN settlement contracts (independent CoW-protocol instances), NOT the
  * canonical CREATE2 GPV2_SETTLEMENT that every hosted CoW chain shares. The on-chain
  * decoder must getLogs against THIS address on those chains or it scans the wrong
@@ -25,6 +26,7 @@ export { GPV2_SETTLEMENT } from '../safe/addresses.js';
 export const SOVEREIGN_SETTLEMENT: Readonly<Record<number, `0x${string}`>> = Object.freeze({
   10: '0x310784c7FCE12d578dA6f53460777bAc9718B859', // Optimism
   130: '0x108A678716e5E1776036eF044CAB7064226F714E', // Unichain
+  4663: '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD', // Robinhood Chain
 });
 
 /** The GPv2Settlement contract whose Trade events the decoder scans on `chainId`:

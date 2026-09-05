@@ -1337,6 +1337,10 @@ export async function expectedSurplus(
 // the fetch URL (no SSRF). Every field of every list entry is untrusted and validated.
 const COW_TOKEN_LIST_URL = 'https://files.cow.fi/tokens/CowSwap.json'
 const OPTIMISM_TOKEN_LIST_URL = 'https://static.optimism.io/optimism.tokenlist.json'
+// Coinbase's tokenized stocks on Base (B20). Served by the swap UI from its own origin and
+// registered there as the priority-0 Base list; must stay byte-identical to
+// COINBASE_TOKENIZED_STOCKS_LIST_SOURCE in apps/frontend/libs/tokens (tests read that file).
+const COINBASE_TOKENIZED_STOCKS_LIST_URL = 'https://swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json'
 const TOKEN_LIST_TIMEOUT_MS = 10_000
 const MAX_TOKEN_DECIMALS = 36
 const TOKEN_LIST_CACHE_MS = 10 * 60 * 1000
@@ -1385,6 +1389,9 @@ function tokenListUrlsForChain(chainId: number): string[] {
   // Optimism's swap-UI priority-1 is the Optimism official list; the CoW list is
   // also consulted (it carries cross-chain majors), at lower priority.
   if (chainId === 10) return [OPTIMISM_TOKEN_LIST_URL, COW_TOKEN_LIST_URL]
+  // Base: the Ophis-hosted Coinbase stock list leads (AAPLc, NVDAc, ...), exactly as in the
+  // swap UI, so an agent resolves the same canonical address a user sees in the selector.
+  if (chainId === 8453) return [COINBASE_TOKENIZED_STOCKS_LIST_URL, COW_TOKEN_LIST_URL]
   return [COW_TOKEN_LIST_URL]
 }
 

@@ -134,6 +134,11 @@ export interface LeaderboardEntry {
 /** GET /leaderboard?limit=N (PUBLIC, sorted by volume30dUsd desc) */
 export interface LeaderboardResponse {
   updatedAt: string
+  /** Last completed indexer publication. Optional during backend/frontend deploy skew. */
+  dataAsOf?: string | null
+  dataFresh?: boolean
+  dataStatus?: 'fresh' | 'degraded'
+  dataStaleReason?: string | null
   total: number
   entries: LeaderboardEntry[]
 }

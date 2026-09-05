@@ -250,8 +250,8 @@ groups:
             elevation indicates one or more Unichain upstream(s) (unichain-public /
             publicnode-uni / ophis-self-uni) are slow or rate-limited.
 
-            Diagnose: `cast block-number --rpc-url <each upstream>` to find
-            which one is unresponsive. Check rpc-proxy logs:
+            Diagnose: set UPSTREAM to each endpoint listed in the rendered erpc.yaml and run
+            `cast block-number --rpc-url "$UPSTREAM"` to find which one is unresponsive. Check rpc-proxy logs:
             `docker logs unichain-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
 
             Threshold history: 5/s ≈ 100% failure on `eth_call` consensus path
@@ -415,7 +415,7 @@ groups:
           severity: warning
           chain: unichain
         annotations:
-          summary: "Unichain solvers receiving <1s of solve-time budget at p99"
+          summary: "Unichain solvers receiving under 1s of solve-time budget at p99"
           description: "By the time solvers are dispatched, less than 1s remains on the 20s solve-deadline at p99. Upstream RPC + preprocessing is eating the budget. Solvers will quote stale or skip auctions."
 
   - name: ophis-uni-chain-health

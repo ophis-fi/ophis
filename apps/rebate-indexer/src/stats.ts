@@ -30,6 +30,32 @@ export interface DefiLlamaChainDay {
   revenueUsd: number;
   supplySideRevenueUsd: number;
   trades: number;
+  transactions: number;
+  users: number;
+}
+
+/** Protocol-wide active users. Unlike per-chain counts, wallet distinctness is
+ * evaluated across the complete selected chain set and is therefore not additive. */
+export async function computeDefiLlamaDayUsers(
+  sql: Sql,
+  date: string,
+  chainIds: number[],
+): Promise<number> {
+  const start = `${date}T00:00:00.000Z`;
+  const endDate = new Date(start);
+  endDate.setUTCDate(endDate.getUTCDate() + 1);
+  const [row] = await sql<{ users: string }[]>`
+    SELECT COUNT(DISTINCT user_address) FILTER (
+      WHERE ('0x' || encode(user_address, 'hex')) <> ALL(${ROUTER_WALLETS})
+    )::text AS users
+    FROM defillama_fills
+    WHERE chain_id = ANY(${chainIds})
+      AND settlement_timestamp >= ${start}
+      AND settlement_timestamp < ${endDate.toISOString()}
+      AND value_usd IS NOT NULL
+      AND fee_verified = true
+  `;
+  return Number(row?.users ?? '0');
 }
 
 /** Daily, chain-level accounting for DefiLlama from settled, USD-priced trades. */
@@ -51,6 +77,8 @@ export async function computeDefiLlamaDay(
     fees_usd: string;
     revenue_usd: string;
     trades: string;
+    transactions: string;
+    users: string;
   }[]>`
     SELECT
       chain_id,
@@ -61,7 +89,11 @@ export async function computeDefiLlamaDay(
         value_usd * COALESCE(assessed_fee_bps, volume_fee_bps) / 10000
         * CASE WHEN chain_id = ANY(${sovereignChainIds}) THEN 1 ELSE ${hostedKeepBps}::numeric / 10000 END
       ) FILTER (WHERE COALESCE(assessed_fee_bps, volume_fee_bps) IS NOT NULL), 0)::text AS revenue_usd,
-      COUNT(*)::text AS trades
+      COUNT(*)::text AS trades,
+      COUNT(DISTINCT transaction_hash)::text AS transactions,
+      COUNT(DISTINCT user_address) FILTER (
+        WHERE ('0x' || encode(user_address, 'hex')) <> ALL(${ROUTER_WALLETS})
+      )::text AS users
     FROM defillama_fills
     WHERE chain_id = ANY(${chainIds})
       AND settlement_timestamp >= ${start}
@@ -82,6 +114,8 @@ export async function computeDefiLlamaDay(
       revenueUsd,
       supplySideRevenueUsd: feesUsd - revenueUsd,
       trades: Number(row.trades),
+      transactions: Number(row.transactions),
+      users: Number(row.users),
     };
   });
 }

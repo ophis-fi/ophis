@@ -5,6 +5,7 @@ import type { ChainConfig, ScanCache, ScanResult, Swap } from '../types.js';
 import { parseAppData } from '../appdata.js';
 import { redactSecrets } from '../redact.js';
 import { blockAtTimestamp, type BlockClient } from '../window.js';
+import { settlementAddressFor } from '../../cow/settleAbi.js';
 
 export const SETTLEMENT_ADDRESS = '0x9008D19f58AAbD9eD0D60971565AA8510560ab41' as const;
 export const TRADE_EVENT = parseAbiItem(
@@ -79,7 +80,29 @@ export async function classifyFills(
   fills: RawFill[],
   t0Sec: number,
   deps: ClassifyDeps,
+  concurrency = 1,
 ): Promise<{ swaps: Swap[]; ophisFound: number; unresolved: number }> {
+  if (concurrency > 1 && fills.length > 1) {
+    const results: Array<{ swaps: Swap[]; ophisFound: number; unresolved: number }> = new Array(fills.length);
+    let next = 0;
+    const workers = Array.from({ length: Math.min(Math.floor(concurrency), fills.length) }, async () => {
+      while (true) {
+        const index = next++;
+        const fill = fills[index];
+        if (!fill) return;
+        results[index] = await classifyFills(chainId, chainName, [fill], t0Sec, deps, 1);
+      }
+    });
+    const outcomes = await Promise.allSettled(workers);
+    const failed = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
+    if (failed) throw failed.reason;
+    return {
+      swaps: results.flatMap((result) => result.swaps),
+      ophisFound: results.reduce((sum, result) => sum + result.ophisFound, 0),
+      unresolved: results.reduce((sum, result) => sum + result.unresolved, 0),
+    };
+  }
+
   const swaps: Swap[] = [];
   let unresolved = 0;
 
@@ -190,18 +213,70 @@ export async function collectTradeLogs(
   fromBlock: bigint,
   toBlock: bigint,
   chunk: bigint = DEFAULT_CHUNK,
+  settlementAddress: `0x${string}` = SETTLEMENT_ADDRESS,
+  concurrency = 1,
+  rateLimitDelayMs = 1_000,
 ): Promise<DecodedTradeLog[]> {
+  if (concurrency > 1 && fromBlock <= toBlock) {
+    const ranges: Array<{ from: bigint; to: bigint }> = [];
+    for (let start = fromBlock; start <= toBlock; start += chunk) {
+      ranges.push({ from: start, to: start + chunk - 1n > toBlock ? toBlock : start + chunk - 1n });
+    }
+    const results: DecodedTradeLog[][] = new Array(ranges.length);
+    let next = 0;
+    const workers = Array.from({ length: Math.min(Math.floor(concurrency), ranges.length) }, async () => {
+      while (true) {
+        const index = next++;
+        const range = ranges[index];
+        if (!range) return;
+        // Each worker retains the ordinary adaptive-halving behavior within its
+        // assigned range, so a provider result cap still converges safely.
+        results[index] = await collectTradeLogs(
+          client,
+          range.from,
+          range.to,
+          chunk,
+          settlementAddress,
+          1,
+          rateLimitDelayMs,
+        );
+      }
+    });
+    // Let every in-flight request settle before surfacing a worker failure. This
+    // avoids leaving background RPC promises alive after the chain has already
+    // been reported degraded and the cache/artifact writer starts.
+    const outcomes = await Promise.allSettled(workers);
+    const failed = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
+    if (failed) throw failed.reason;
+    return results.flat();
+  }
+
   const out: DecodedTradeLog[] = [];
   let start = fromBlock;
   let size = chunk;
+  let rateLimitRetries = 0;
   while (start <= toBlock) {
     const end = start + size - 1n > toBlock ? toBlock : start + size - 1n;
     try {
-      const logs = await client.getLogs({ address: SETTLEMENT_ADDRESS, event: TRADE_EVENT, fromBlock: start, toBlock: end });
+      const logs = await client.getLogs({ address: settlementAddress, event: TRADE_EVENT, fromBlock: start, toBlock: end });
       out.push(...logs);
       start = end + 1n;
-      if (size < chunk) size = chunk; // recover chunk size after a successful smaller window
+      rateLimitRetries = 0;
+      // Keep a successful reduced size for the rest of this provider scan. Some
+      // public RPCs enforce a hard historical-range limit; jumping straight back
+      // to `chunk` after every 100-block success repeated the entire failing
+      // 2000 -> 1000 -> ... backoff ladder thousands of times on Polygon.
     } catch (err) {
+      const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      const isProviderThrottle = /rate.?limit|too many requests|\b429\b/.test(message)
+        || (/free plan/.test(message) && /timeout|took too long/.test(message));
+      if (isProviderThrottle && rateLimitRetries < 6) {
+        const waitMs = Math.min(rateLimitDelayMs * (2 ** rateLimitRetries), 30_000);
+        rateLimitRetries += 1;
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
+      }
+      rateLimitRetries = 0;
       if (size <= MIN_CHUNK) throw err; // genuinely failing, not a range/size limit
       size = size / 2n > MIN_CHUNK ? size / 2n : MIN_CHUNK;
     }
@@ -227,20 +302,33 @@ export function makeBlockTimestampResolver(client: BlockClient): (blockNumber: b
 export async function scanHostedChain(
   cfg: ChainConfig,
   t0Sec: number,
-  deps: { client: LogClient } & Omit<ClassifyDeps, 'getBlockTimestamp'>,
+  deps: { client: LogClient; blockClient?: BlockClient } & Omit<ClassifyDeps, 'getBlockTimestamp'>,
 ): Promise<ScanResult> {
   const base: ScanResult['coverage'] = {
     chainId: cfg.chainId, chainName: cfg.name, status: 'ok', fillsScanned: 0, ophisFound: 0, unresolved: 0,
   };
   try {
-    const fromBlock = await blockAtTimestamp(deps.client, t0Sec);
-    const head = await deps.client.getBlockNumber();
+    const blockClient = deps.blockClient ?? deps.client;
+    const fromBlock = await blockAtTimestamp(blockClient, t0Sec);
+    const head = await blockClient.getBlockNumber();
     if (fromBlock > head) return { swaps: [], coverage: base };
-    const logs = await collectTradeLogs(deps.client, fromBlock, head);
+    const logs = await collectTradeLogs(
+      deps.client,
+      fromBlock,
+      head,
+      BigInt(cfg.scanLogChunk ?? Number(DEFAULT_CHUNK)),
+      settlementAddressFor(cfg.chainId),
+      cfg.scanLogConcurrency ?? 1,
+    );
     const fills = fillsFromLogs(logs);
-    const getBlockTimestamp = makeBlockTimestampResolver(deps.client);
+    const getBlockTimestamp = makeBlockTimestampResolver(blockClient);
     const { swaps, ophisFound, unresolved } = await classifyFills(
-      cfg.chainId, cfg.name, fills, t0Sec, { ...deps, getBlockTimestamp },
+      cfg.chainId,
+      cfg.name,
+      fills,
+      t0Sec,
+      { ...deps, getBlockTimestamp },
+      cfg.scanClassifyConcurrency ?? 1,
     );
     return { swaps, coverage: { ...base, fillsScanned: fills.length, ophisFound, unresolved } };
   } catch (err) {

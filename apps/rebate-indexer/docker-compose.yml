@@ -36,6 +36,11 @@ services:
       API_PORT: 8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
       BATCHER_PROPOSE_ENABLED: ${BATCHER_PROPOSE_ENABLED:-true}
+      # Intraday public-data refresh cadence in minutes (default 60, clamped
+      # [10,1440] in cron.ts). Without this pass-through the knob is inert:
+      # compose maps environment explicitly, so a host .env never reaches the
+      # process and production would be stuck at 60 no matter what is set.
+      REBATES_REFRESH_MINUTES: ${REBATES_REFRESH_MINUTES:-60}
       REBATE_INDEXER_ADMIN_TOKEN: ${REBATE_INDEXER_ADMIN_TOKEN}
       # Money-path mode flags (audit 2026-06-09): without these pass-throughs a
       # .env flip silently no-ops — the container never saw the variables at all.
@@ -61,8 +66,8 @@ services:
       # Affiliate payout proposal gate (default OFF — the deploy is inert until
       # flipped; the monthly report still shows affiliate owed regardless).
       AFFILIATE_PAYOUT_ENABLED: ${AFFILIATE_PAYOUT_ENABLED:-false}
-      # On-chain settle() decoder in DISCOVERY-ONLY mode on the sovereign chains
-      # (OP 10, Unichain 130), so traders who settled on our self-hosted backends
+      # On-chain settle() decoder in DISCOVERY-ONLY mode on the configured sovereign
+      # chains (OP 10, Unichain 130), so traders who settled on our self-hosted backends
       # but never entered tracked_wallets are cataloged into `trades` and counted on
       # /stats. Discovery rows force volume_fee_bps=0 / fee_verified=false, so they
       # credit ZERO rebate and are excluded from every money path (the fee-crediting
@@ -75,8 +80,16 @@ services:
       SETTLE_DECODER_DISCOVERY_ONLY: ${SETTLE_DECODER_DISCOVERY_ONLY:-true}
       SETTLE_SCAN_START_BLOCK_10: ${SETTLE_SCAN_START_BLOCK_10:-151586936}
       SETTLE_SCAN_START_BLOCK_130: ${SETTLE_SCAN_START_BLOCK_130:-51998330}
+      # Robinhood is not in the discovery decoder default yet, but the exact-UID
+      # DefiLlama audit uses the same archive scan when its orderbook lacks history.
+      SETTLE_SCAN_START_BLOCK_4663: ${SETTLE_SCAN_START_BLOCK_4663:-22558475}
+      # Keyed archive RPC used by all supported dRPC networks. Without this
+      # passthrough, a host-level DRPC_API_KEY is invisible inside the container
+      # and historical scans always fall back to rate-limited public endpoints.
+      DRPC_API_KEY: ${DRPC_API_KEY:-}
       SETTLE_RPC_URL_10: ${SETTLE_RPC_URL_10:-}
       SETTLE_RPC_URL_130: ${SETTLE_RPC_URL_130:-}
+      SETTLE_RPC_URL_4663: ${SETTLE_RPC_URL_4663:-}
       # Finite Robinhood Chain reward campaign. Keep disabled until the contract
       # is deployed, verified, funded with at least 150 USDG, and the immutable
       # allocation commitment has been recorded.

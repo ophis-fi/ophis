@@ -206,6 +206,166 @@ jobs:
       - name: assert Robinhood eRPC template stays 2-of-3-across-3 fail-closed
         run: python3 infra/robinhood-mainnet/assert-erpc-failclosed.py infra/robinhood-mainnet/configs/erpc.yaml.tmpl
 
+  infra-shell-tests:
+    name: Infra shell scripts — unit + mutation tests
+    runs-on: ubuntu-latest
+    # WHY THIS JOB EXISTS: infra/ carries shell scripts that take DESTRUCTIVE
+    # actions (container-watchdog.sh restarts running containers) and until now
+    # nothing ran their test suites in CI. A watchdog whose allowlist silently
+    # stopped working would happily bounce a database, and the only thing
+    # standing between that and production is a test nobody executes.
+    #
+    # The suites are self-contained: they inject a fake `docker`, an injected
+    # clock, and set WATCHDOG_NOTIFY=0 so no Telegram is ever sent. No daemon,
+    # no network, no real container is touched.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: shellcheck
+        # A 300-line bash script that restarts production containers deserves a
+        # linter. Severity `style` is the strictest setting; both files are clean
+        # at it today, so any new finding is a regression rather than a backlog.
+        run: |
+          echo "::group::shellcheck"
+          docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:v0.11.0 \
+            -S style /mnt/infra/shared/cron/container-watchdog.sh \
+                     /mnt/infra/shared/cron/container-watchdog.test.sh \
+                     /mnt/infra/shared/cron/settlement-buffer-watch.sh \
+                     /mnt/infra/shared/cron/settlement-buffer-watch.test.sh \
+                     /mnt/infra/shared/scripts/sweep-preflight.sh
+          echo "::endgroup::"
+      - name: container-watchdog
+        run: |
+          echo "::group::container-watchdog.test.sh"
+          bash infra/shared/cron/container-watchdog.test.sh
+          echo "::endgroup::"
+      - name: settlement-buffer-watch
+        # This job hardcodes its suites rather than globbing *.test.sh, so a new
+        # suite that is not listed here is a suite CI never runs -- written,
+        # green locally, and binding nothing. Add the line when you add the file.
+        run: |
+          echo "::group::settlement-buffer-watch.test.sh"
+          bash infra/shared/cron/settlement-buffer-watch.test.sh
+          echo "::endgroup::"
+      - name: mutation check — the suite must FAIL when a safety property is removed
+        # A green suite proves nothing unless removing a guard turns it red.
+        # Each mutation below deletes one safety property; every one must break
+        # the suite. If any mutation still passes, that property is untested and
+        # this job fails loudly rather than reporting a vacuous green.
+        run: |
+          set -u
+          cp infra/shared/cron/container-watchdog.sh /tmp/wd.orig
+          fails=0
+          # NOTE: no `sed -i`. BSD sed (macOS) needs `-i ''` and GNU sed (CI)
+          # must NOT have it, so an in-place edit is not portable and this block
+          # could not be verified on the machine it was written on. Redirecting
+          # through a temp file behaves identically everywhere.
+          check() { # name, sed-expression
+            sed "$2" /tmp/wd.orig > infra/shared/cron/container-watchdog.sh
+            if bash infra/shared/cron/container-watchdog.test.sh >/dev/null 2>&1; then
+              echo "MUTATION SURVIVED (property is untested): $1"; fails=$((fails+1))
+            else
+              echo "caught: $1"
+            fi
+            cp /tmp/wd.orig infra/shared/cron/container-watchdog.sh
+          }
+          check "allowlist/deny removed"  's|if ! \[\[ "$target" =~ $ALLOW \]\] \|\| \[\[ "$target" =~ $DENY \]\]; then|if false; then|'
+          check "DENY veto removed"       's|if ! \[\[ "$target" =~ $ALLOW \]\] \|\| \[\[ "$target" =~ $DENY \]\]; then|if ! [[ "$target" =~ $ALLOW ]]; then|'
+          check "sustained threshold removed" 's|if \[ "$unhealthy_for" -lt "$THRESHOLD_S" \]; then|if false; then|'
+          check "restart cooldown removed"    's|if \[ "$last_restart" != "0" \] \&\& \[ "$since_restart" -lt "$COOLDOWN_S" \]; then|if false; then|'
+          check "recovery timer reset removed" 's|      if ! clear_unhealthy "$name" "$cid"; then|      if false; then|'
+          check "health-sidecar mapping removed"  's|    \*-health-\[0-9\]\*) echo "${1%-health-\*}-${1##\*-health-}" ;;|    *-health-[0-9]*) echo "$1" ;;|'
+          check "inventory failure check removed" 's|if \[ "$INV_RC" -ne 0 \]; then|if false; then|'
+          check "cooldown fail-closed removed"    's|  if ! set_state "$name" 0 "$NOW" "$track_id"; then|  if false; then|'
+          check "lock-open failure swallowed"     's|    if ! exec 9>"$LOCK_FILE"; then|    if ! exec 9>"$LOCK_FILE" 2>/dev/null \&\& false; then|'
+          check "container-replacement re-arm removed" 's|  if \[ "$first" != "0" \] \&\& \[ "$known_id" != "$track_id" \]; then|  if false; then|'
+          check "unreadable-state guard removed"  's|  if ! awk -v c="$1" .\$1!=c. "$STATE_FILE" > "$tmp" 2>/dev/null; then|  if awk -v c="$1" "\$1!=c" "$STATE_FILE" > "$tmp" 2>/dev/null; false; then|'
+          check "local-chain deny removed"        's/|-chain-|/|/'
+          check "sidecar target-id tracking removed" 's|    track_id="$(id_of "$target")"|    track_id="$cid"|'
+          check "timer-arm failure silenced"      's|      log "FATAL: cannot arm the timer for $name|      : # mutated|'
+          check "autopilot re-added to allowlist" 's|ALLOW="${WATCHDOG_ALLOW:-driver\|orderbook\|rpc-proxy\|solver}"|ALLOW="${WATCHDOG_ALLOW:-driver\|autopilot\|orderbook\|rpc-proxy\|solver}"|'
+          check "degraded pass exits 0 again"     '/watchdog pass complete but DEGRADED/{n;s/exit 1/exit 0/;}'
+          check "flock error read as contention"  's|    if \[ "$lock_rc" -eq 99 \]; then|    if [ "$lock_rc" -ne 0 ]; then|'
+          # Linux-only discriminator: macOS mktemp ignores TMPDIR, so this
+          # mutation survives on a Mac and is caught here. That is why the check
+          # lives in CI rather than being trusted from a local run.
+          check "temp file back on /tmp"          's|mktemp "${STATE_DIR}/.state.XXXXXX" 2>/dev/null|mktemp|'
+          # NOTE: the STATE_DEGRADED restart block is deliberately NOT mutated here.
+          # It is defence-in-depth that overlaps the cooldown fail-closed guard:
+          # every scenario that sets STATE_DEGRADED (a failed state write) also
+          # makes the later set_state fail, so that guard blocks the restart
+          # first and removing the degraded check changes no observable
+          # behaviour. Rather than ship a mutation that can never fail -- the
+          # precise thing this job exists to prevent -- the gap is recorded.
+          bash infra/shared/cron/container-watchdog.test.sh >/dev/null 2>&1 || { echo "restore failed"; exit 1; }
+          [ "$fails" -eq 0 ] || { echo "$fails mutation(s) survived"; exit 1; }
+          echo "all mutations caught"
+      - name: mutation check — settlement-buffer-watch
+        # Same contract as the watchdog block above: the buffer watch is the only
+        # thing that will ever tell us a sovereign fee buffer is worth sweeping,
+        # and it replaced three months of nobody looking. A green suite proves
+        # nothing unless removing a property turns it red.
+        run: |
+          set -u
+          SRC=infra/shared/cron/settlement-buffer-watch.sh
+          cp "$SRC" /tmp/sbw.orig
+          fails=0
+          # No `sed -i`: BSD needs -i '' and GNU must not have it, so an in-place
+          # edit could not be verified on the machine this was written on.
+          # Two guards on the harness itself, both of which caught a real mistake
+          # while this was being written:
+          #   - a sed whose pattern never matches leaves the file untouched, the
+          #     suite passes, and it reads as "SURVIVED" for the wrong reason;
+          #   - a sed that ERRORS (e.g. an unescaped delimiter inside a jq filter)
+          #     writes an empty file, the suite fails, and it reads as "caught"
+          #     while having tested nothing at all. `bash -n` catches that one.
+          check() { # name, sed-expression
+            if ! sed "$2" /tmp/sbw.orig > "$SRC"; then
+              echo "HARNESS BUG: sed itself failed (bad expression): $1"; fails=$((fails+1))
+              cp /tmp/sbw.orig "$SRC"; return
+            fi
+            if diff -q /tmp/sbw.orig "$SRC" >/dev/null; then
+              echo "HARNESS BUG: mutation never applied (pattern did not match): $1"; fails=$((fails+1))
+            elif ! bash -n "$SRC" 2>/dev/null; then
+              echo "HARNESS BUG: mutation produced an unparseable script: $1"; fails=$((fails+1))
+            elif bash infra/shared/cron/settlement-buffer-watch.test.sh >/dev/null 2>&1; then
+              echo "MUTATION SURVIVED (property is untested): $1"; fails=$((fails+1))
+            else
+              echo "caught: $1"
+            fi
+            cp /tmp/sbw.orig "$SRC"
+          }
+          check "sweep threshold ignored (alerts on any dust, forever)" \
+            's|    if gte "$rawbal" "$thr"; then|    if true; then|'
+          check "sweepable buffer no longer alerts at all" \
+            's|    if gte "$rawbal" "$thr"; then|    if false; then|'
+          check "a probe that exits non-zero is read as clean" \
+            's|    FINDINGS+=("$label: probe FAILED (exit non-zero) - buffer state UNKNOWN, not clean")|    :|'
+          check "unparseable probe output is read as clean" \
+            's|    FINDINGS+=("$label: probe output was not a JSON report - buffer state UNKNOWN")|    :|'
+          check "per-token probe errors ignored" \
+            's|  if \[\[ "$failures" != "0" \]\]; then|  if false; then|'
+          check "a token outside the sweep config is silently skipped" \
+            's|        FINDINGS+=("$label: $sym ($tokaddr) $rawbal base units is not covered by the chain.s sweep configuration")|        :|'
+          check "repeat suppression never expires (alert fades out)" \
+            's|  (( age < REPEAT_S )) \&\& should_alert=0|  should_alert=0|'
+          check "report schema validation removed" \
+            's@  if ! jq -e .has("probe_failures") and (.balances | type == "array"). <<<"$report" >/dev/null 2>&1; then@  if false; then@'
+          # NOTE: the zero-balance-rows branch is deliberately NOT mutated here. The
+          # expected-symbol check that follows it subsumes every case a test can
+          # construct: a report with no rows is also a report missing every expected
+          # symbol, so removing the zero-row branch changes no observable behaviour.
+          # It is kept as defence for a chain added without an EXPECTED_SYMBOLS entry.
+          # Rather than ship a mutation that can never fail - the precise thing this
+          # job exists to prevent - the gap is recorded, exactly as the watchdog block
+          # above does for its STATE_DEGRADED restart.
+          check "expected-symbol completeness check removed" \
+            's|    if \[\[ -n "$missing" \]\]; then|    if false; then|'
+          check "suppression state recorded even when the page was never delivered" \
+            's@  if alert "$body"; then@  alert "$body"; if true; then@'
+          bash infra/shared/cron/settlement-buffer-watch.test.sh >/dev/null 2>&1 || { echo "restore failed"; exit 1; }
+          [ "$fails" -eq 0 ] || { echo "$fails mutation(s) survived"; exit 1; }
+          echo "all mutations caught"
+
   prometheus-alert-rules:
     name: Prometheus alert rules — lint + mutation tests
     runs-on: ubuntu-latest
@@ -240,3 +400,18 @@ jobs:
             echo "no alerts_test.yml found anywhere — the guard would be vacuous" >&2
             exit 1
           fi
+
+      # WHY: promtool validates that an annotation PARSES, never that it can be
+      # DELIVERED. Both Alertmanager receivers use parse_mode HTML, so an angle
+      # bracket placeholder makes Telegram reject the whole message and the
+      # operator hears nothing. On 2026-09-02 five annotations across all three
+      # chains were in that state, both Cadia disk alerts among them.
+      # Jobs do not share environments; the erpc-consensus-guard job installs this
+      # separately for the same reason. The checker must NOT self-install: a
+      # PEP 668 runner rejects an unqualified pip install outright.
+      - name: install pyyaml
+        run: python3 -m pip install --quiet --break-system-packages pyyaml
+      - name: alert annotations must be deliverable, not just valid
+        run: |
+          python3 scripts/check-alert-annotations.py --self-test
+          python3 scripts/check-alert-annotations.py

@@ -1,5 +1,6 @@
 import { TIERS, assignTier, type Tier } from './tiers.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
+import { readPublicDataFreshness, type PublicDataFreshness } from './freshness.js';
 
 /**
  * eth-flow ROUTER contracts. A native-ETH order settles with owner = one of these,
@@ -74,6 +75,10 @@ export function markSelf(
 
 export interface LeaderboardResponse {
   updatedAt: string;
+  dataAsOf: string | null;
+  dataFresh: boolean;
+  dataStatus: 'fresh' | 'degraded';
+  dataStaleReason: string | null;
   total: number;
   entries: LeaderboardEntry[];
 }
@@ -132,7 +137,12 @@ export function computeTierProgress(
  * small first request can't pin a truncated result, nor a large one over-serve).
  */
 const MAX_LEADERBOARD = 100;
-let leaderboardCache: { entries: CachedLeaderboardEntry[]; updatedAt: string; expiresAt: number } | null = null;
+let leaderboardCache: {
+  entries: CachedLeaderboardEntry[];
+  freshness: PublicDataFreshness;
+  updatedAt: string;
+  expiresAt: number;
+} | null = null;
 
 /**
  * Fetch leaderboard entries from the database.
@@ -238,16 +248,29 @@ async function fetchLeaderboardEntries(limit: number): Promise<CachedLeaderboard
 export async function getLeaderboard(limit: number, self?: string): Promise<LeaderboardResponse> {
   const now = Date.now();
   if (!leaderboardCache || leaderboardCache.expiresAt <= now) {
-    const entries = await fetchLeaderboardEntries(MAX_LEADERBOARD);
+    const { sql } = await import('./db/index.js');
+    const [entries, freshness] = await Promise.all([
+      fetchLeaderboardEntries(MAX_LEADERBOARD),
+      readPublicDataFreshness(sql, now),
+    ]);
     leaderboardCache = {
       entries,
+      freshness,
       updatedAt: new Date().toISOString(),
       expiresAt: now + 60_000, // 60 seconds
     };
   }
 
   const entries = markSelf(leaderboardCache.entries.slice(0, limit), self ?? null);
-  return { updatedAt: leaderboardCache.updatedAt, total: entries.length, entries };
+  return {
+    updatedAt: leaderboardCache.updatedAt,
+    dataAsOf: leaderboardCache.freshness.dataAsOf,
+    dataFresh: leaderboardCache.freshness.dataFresh,
+    dataStatus: leaderboardCache.freshness.dataStatus,
+    dataStaleReason: leaderboardCache.freshness.dataStaleReason,
+    total: entries.length,
+    entries,
+  };
 }
 
 /**

@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fillsFromLogs, classifyFills, type DecodedTradeLog } from '../../src/scan/sources/onchain.js';
+import { fillsFromLogs, classifyFills, scanHostedChain, type DecodedTradeLog } from '../../src/scan/sources/onchain.js';
 import { collectTradeLogs, type LogClient } from '../../src/scan/sources/onchain.js';
 import { CowOrder } from '../../src/cow/types.js';
 
@@ -76,6 +76,33 @@ describe('classifyFills', () => {
     expect(out.swaps[0]!.tsUtc).toBe(new Date(settledInWindow * 1000).toISOString());
     // negative-cached the non-Ophis uid (its appData is a parseable object)
     expect(cache.get('0xuid2')).toBe('none');
+  });
+
+  it('resolves appData with bounded concurrency when configured', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const cache = new Map<string, any>();
+    const deps = {
+      getOrder: async () => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        active -= 1;
+        return nonOphis;
+      },
+      cache: { get: (u: string) => cache.get(u), set: (u: string, v: any) => cache.set(u, v), save: async () => {} },
+      getBlockTimestamp: okBlockTs,
+    };
+    const out = await classifyFills(
+      1,
+      'ethereum',
+      fillsFromLogs([log('0xuid1'), log('0xuid2'), log('0xuid3')]),
+      t0,
+      deps,
+      2,
+    );
+    expect(maxActive).toBe(2);
+    expect(out).toMatchObject({ swaps: [], ophisFound: 0, unresolved: 0 });
   });
 
   it('recognises a capitalised "Ophis" appCode (case-insensitive)', async () => {
@@ -181,6 +208,21 @@ describe('classifyFills', () => {
 });
 
 describe('collectTradeLogs', () => {
+  it('queries the configured sovereign settlement address', async () => {
+    const addresses: string[] = [];
+    const client = {
+      getBlockNumber: async () => 0n,
+      getBlock: async () => ({ timestamp: 0n }),
+      getLogs: async ({ address }: { address: string }) => {
+        addresses.push(address);
+        return [];
+      },
+    } as unknown as LogClient;
+    const sovereign = '0x108A678716e5E1776036eF044CAB7064226F714E';
+    await collectTradeLogs(client, 0n, 0n, 2000n, sovereign);
+    expect(addresses).toEqual([sovereign]);
+  });
+
   it('chunks the block range and concatenates', async () => {
     const calls: Array<[bigint, bigint]> = [];
     const client = {
@@ -195,20 +237,84 @@ describe('collectTradeLogs', () => {
     expect(calls).toEqual([[0n, 1999n], [2000n, 3999n], [4000n, 4500n]]);
   });
 
+  it('runs configured log ranges with bounded concurrency', async () => {
+    let active = 0;
+    let maxActive = 0;
+    let calls = 0;
+    const client = {
+      getBlockNumber: async () => 0n,
+      getBlock: async () => ({ timestamp: 0n }),
+      getLogs: async () => {
+        calls += 1;
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        active -= 1;
+        return [];
+      },
+    } as unknown as LogClient;
+    await collectTradeLogs(client, 0n, 5_999n, 2_000n, undefined, 2);
+    expect(calls).toBe(3);
+    expect(maxActive).toBe(2);
+  });
+
+  it('backs off a rate limit without shrinking or advancing the range', async () => {
+    const calls: Array<[bigint, bigint]> = [];
+    const client = {
+      getBlockNumber: async () => 0n,
+      getBlock: async () => ({ timestamp: 0n }),
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        calls.push([fromBlock, toBlock]);
+        if (calls.length === 1) throw new Error('429: free plan rate limit');
+        if (calls.length === 2) throw new Error('Request timeout on the free plan');
+        return [];
+      },
+    } as unknown as LogClient;
+    await collectTradeLogs(client, 0n, 1_999n, 2_000n, undefined, 1, 0);
+    expect(calls).toEqual([[0n, 1_999n], [0n, 1_999n], [0n, 1_999n]]);
+  });
+
   it('halves the chunk and retries on a getLogs error, then completes', async () => {
     let attempts = 0;
+    let successful = 0;
     const client = {
       getBlockNumber: async () => 1000n,
       getBlock: async () => ({ timestamp: 0n }),
       getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
         attempts += 1;
         if (toBlock - fromBlock > 500n) throw new Error('query returned more than 10000 results');
+        successful += 1;
         return [];
       },
     } as unknown as LogClient;
-    // chunk 2000 over [0,1000]: fail[0,1999] -> fail[0,999] -> ok[0,499] -> ok[500,1000] = 4 attempts.
+    // Once 500 works, retain it instead of retrying the known-bad 2000-block
+    // request after every successful range.
     const result = await collectTradeLogs(client, 0n, 1000n, 2000n);
-    expect(attempts).toBeGreaterThanOrEqual(3); // backed off below the 500-span limit before succeeding
+    expect(attempts).toBe(5);                  // 2 failures, then 3 successful reduced chunks
+    expect(successful).toBe(3);
     expect(result).toBeInstanceOf(Array);       // terminated successfully (did not throw)
+  });
+});
+
+describe('scanHostedChain', () => {
+  it('uses the separate block client for historical header lookups', async () => {
+    let logCalls = 0;
+    const logClient = {
+      getLogs: async () => { logCalls += 1; return []; },
+      getBlockNumber: async () => { throw new Error('log endpoint cannot read historical headers'); },
+      getBlock: async () => { throw new Error('log endpoint cannot read historical headers'); },
+    } as unknown as LogClient;
+    const blockClient = {
+      getBlockNumber: async () => 10n,
+      getBlock: async () => ({ timestamp: 0n }),
+    };
+    const cache = new Map() as never;
+    const result = await scanHostedChain(
+      { chainId: 1, name: 'ethereum', kind: 'rpc' },
+      0,
+      { client: logClient, blockClient, cache, getOrder: async () => { throw new Error('no logs'); } },
+    );
+    expect(result.coverage.status).toBe('ok');
+    expect(logCalls).toBe(1);
   });
 });

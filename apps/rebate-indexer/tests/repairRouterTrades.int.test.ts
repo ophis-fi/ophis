@@ -75,6 +75,15 @@ beforeAll(async () => {
   // u1: the repairable case. Receiver deliberately CHECKSUM-cased to pin the
   // lowercase normalization (attributeOrder lowercases the same way).
   await insTrade('01', PROD_ROUTER);
+  await sql`
+    INSERT INTO defillama_fills (
+      chain_id, block_number, log_index, trade_uid, transaction_hash, user_address,
+      settlement_timestamp, sell_token, sell_amount, buy_token, buy_amount,
+      volume_fee_bps, assessed_fee_bps, fee_verified, value_usd, priced_at)
+    VALUES (
+      1, 1, 1, decode(${UID('01')}, 'hex'), decode(${'11'.repeat(32)}, 'hex'),
+      decode(${PROD_ROUTER}, 'hex'), ${AT}, decode(${W('5e11')}, 'hex'), 1,
+      decode(${W('b111')}, 'hex'), 1, 1, 1, true, 10, ${AT})`;
   ORDERS.set(`0x${UID('01')}`, { owner: `0x${PROD_ROUTER}`, receiver: `0x${HUMAN_X.toUpperCase()}` });
   // u2: receiver is ANOTHER router -> never re-attribute to a router.
   await insTrade('02', PROD_ROUTER);
@@ -127,6 +136,10 @@ describe('repairRouterTrades', () => {
 
     // u1 now belongs to the real trader, lowercased.
     expect(await walletOf('01')).toBe(HUMAN_X);
+    const [fill] = await sql<{ w: string }[]>`
+      SELECT encode(user_address, 'hex') AS w FROM defillama_fills
+      WHERE chain_id = 1 AND trade_uid = decode(${UID('01')}, 'hex')`;
+    expect(fill!.w).toBe(HUMAN_X);
     // Every guarded case is untouched, including the ticketed trade u8.
     for (const uid of ['02', '03', '04', '05', '06', '08']) {
       expect(await walletOf(uid)).toBe(PROD_ROUTER);

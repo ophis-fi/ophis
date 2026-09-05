@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { CowTrade } from '../src/cow/types.js';
 import {
+  listTrades,
   nativePrice,
   orderbookBase,
   SUPPORTED_CHAIN_IDS,
@@ -59,5 +60,26 @@ describe('nativePrice', () => {
     const ri = init as RequestInit | undefined;
     expect(ri?.body).toBeUndefined();
     expect(ri?.method ?? 'GET').toBe('GET');
+  });
+});
+
+describe('listTrades', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('uses the API orderUid spelling for an exact settlement lookup', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    const orderUid = `0x${'ab'.repeat(56)}` as `0x${string}`;
+    await listTrades({ chainId: 1, orderUid });
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain(`orderUid=${orderUid}`);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).not.toContain('order_uid=');
+  });
+
+  it('fails locally unless exactly one supported filter is provided', async () => {
+    const owner = `0x${'12'.repeat(20)}` as `0x${string}`;
+    const orderUid = `0x${'34'.repeat(56)}` as `0x${string}`;
+    await expect(listTrades({ chainId: 1 })).rejects.toThrow(/exactly one/);
+    await expect(listTrades({ chainId: 1, owner, orderUid })).rejects.toThrow(/exactly one/);
   });
 });

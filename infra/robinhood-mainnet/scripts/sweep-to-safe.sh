@@ -117,11 +117,20 @@ SWEEP_TOKENS="${TOKENS:-0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168,0x0Bd7D308f8E
 # MED, PR #223) so a 6-decimal token can never inherit the 1e15 unknown default.
 SWEEP_MIN_BASE_UNITS="${MIN_BASE_UNITS:-1e7,3e15}"
 
-# Destination Safe. NO default: the OP fee-recipient Safe 0x858f0F5e…CeF8 has
-# NO CODE on 4663. An ERC-20 transfer to a codeless address SUCCEEDS silently,
-# so defaulting here would move real fee revenue to an address nobody controls,
-# with no revert and no recovery. Fail closed until a Safe is actually deployed
-# on 4663 and pinned in .env.
+# Destination Safe. Still NO default, and the no-default rule stays even though
+# the original reason for it has since been resolved.
+#
+# History: this defaulted to nothing because the fee Safe 0x858f0F5e…CeF8 had NO
+# CODE on 4663, and an ERC-20 transfer to a codeless address SUCCEEDS silently —
+# defaulting would have moved real revenue to an address nobody controlled, with
+# no revert and no recovery. As of the 2026-08-27 audit that Safe IS deployed on
+# 4663 (VERSION 1.4.1, threshold 2, the expected 3 owners; re-verify with
+# `cast call <safe> "getOwners()(address[])"` before any sweep).
+#
+# The requirement to pin it explicitly is kept anyway. A silent-success failure
+# mode with no recovery path does not get a convenience default just because the
+# address happens to be populated today, and an operator who has to name the
+# destination is an operator who has looked at it.
 SWEEP_SAFE="${OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD:-$(read_env OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD)}"
 [[ "$SWEEP_SAFE" =~ ^0x[0-9a-fA-F]{40}$ ]] || {
   echo "ERROR: OPHIS_FEE_RECIPIENT_SAFE_ROBINHOOD is not set." >&2

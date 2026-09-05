@@ -48,21 +48,30 @@ EXPECTED_UPSTREAMS = 3
 # quota and was verified against every protected method before admission.
 #
 # The "≤1 Cloudflare-fronted upstream per quorum" property is PRESERVED:
-# publicnode is the one CF lane, while zan and validationcloud (istio-envoy) are
-# non-CF failure domains, so a single CDN compromise cannot forge 2-of-3.
+# publicnode is the one CF lane, while zan (no CDN) and official-op (GCP LB,
+# `via: 1.1 google`) are non-CF failure domains, so a single CDN compromise
+# cannot forge 2-of-3.
 #
-# Thin-method note: publicnode is archive-gated so it cannot serve
-# eth_getTransactionReceipt — receipts run 2-of-3 on zan+validationcloud, which is
-# why the template's receipt rule is disputeBehavior:returnError (fail closed).
+# Thin-method note: publicnode's free tier is archive-gated, so it can serve
+# NEITHER eth_getTransactionReceipt NOR eth_getLogs deeper than ~128 blocks from
+# head. Both therefore run 2-of-3 on zan+official-op, which is why the template's
+# receipt rule is disputeBehavior:returnError (fail closed).
 # This guard's consensus-parameter assertions are unchanged.
 #
 # 2026-08-15: the self-hosted lane 100.90.108.54 was retired after its Aleph VM
 # died with its host and blocked the whole network policy for 23h (a dead lane at
 # routing priority 1 outlasts the 12s network budget). Replaced by validationcloud.
+#
+# 2026-08-23: validationcloud-op was retired after returning HTTP 401 from 08-18
+# (its third credential/quota death: 07-30, 08-18, this one). With it gone, the
+# only lane that could serve archive eth_getLogs was zan — 1 of 3, BELOW
+# agreementThreshold — so the autopilot's settlement indexer wedged permanently
+# once it fell past publicnode's ~128-block archive gate. Replaced by official-op
+# (mainnet.optimism.io): non-CF, archive-capable, no quota to exhaust.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
-    "optimism-rpc.publicnode.com",
+    "lb.drpc.org",
     "api.zan.top",
-    "mainnet.optimism.validationcloud.io",
+    "optimism.gateway.tenderly.co",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus

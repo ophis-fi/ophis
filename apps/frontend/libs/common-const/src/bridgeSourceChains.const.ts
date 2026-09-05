@@ -21,12 +21,49 @@ export function acrossInkLineaSourceIds(enabled: boolean): readonly number[] {
 }
 
 /**
- * The extra Across source chains the math-helper deploy unlocks; empty until the
- * flag flips. Single source of truth so BRIDGE_SOURCE_CHAIN_IDS (below) and
- * ACROSS_EXECUTABLE_SOURCE_IDS (ophisBridgeProviders.ts) can never disagree about
- * which chains are executable Across sources.
+ * Robinhood Chain (4663) as an Across bridge SOURCE. Kept as its OWN flag rather
+ * than sharing one with other chains: readiness is per-chain, and a combined flag
+ * would force enabling a chain that is not ready in order to enable one that is.
+ *
+ * 4663 is SOVEREIGN — Ophis runs its own settlement, autopilot, orderbook and
+ * driver there, so unlike Ink/Linea (where upstream CoW solvers execute the
+ * post-hook) OUR driver must. All of that is in place and verified on-chain
+ * (2026-08-27): the Across SpokePool, the AcrossMathHelper, the CoW Shed factory
+ * + implementation and the weiroll VM all have code on 4663 (the last two
+ * byte-identical to mainnet by codehash), and the settlement-bound HooksTrampoline
+ * 0x68593257…aC0E — the value the live orderbook advertises at
+ * /api/v1/info/contracts — reports the Ophis 4663 settlement from settlement().
+ *
+ * Flip — set REACT_APP_ACROSS_ROBINHOOD_SOURCE=true in cloudflare-deploy.yml —
+ * only after `pnpm across-source-preflight 4663` passes AND a real bridge FROM
+ * 4663 has settled with a SpokePool FundsDeposited event. That last condition is
+ * not ceremony: the HooksTrampoline discards the success flag of each hook call,
+ * so a post-hook that reverts (or delegatecalls a codeless address, the
+ * 2026-08-13 incident) still leaves the settlement successful while the deposit
+ * never happens and the funds sit in the user's CoW Shed. Only the deposit event
+ * proves the corridor.
  */
-export const EXTRA_ACROSS_SOURCE_CHAIN_IDS: readonly number[] = acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED)
+export const ACROSS_ROBINHOOD_SOURCE_ENABLED = process.env.REACT_APP_ACROSS_ROBINHOOD_SOURCE === 'true'
+
+/**
+ * Pure gate, same shape as acrossInkLineaSourceIds. 4663 is not a
+ * SupportedChainId member (it is a custom bridge chain, see ophisBridgeChains.ts),
+ * so the id is a literal.
+ */
+export function acrossRobinhoodSourceIds(enabled: boolean): readonly number[] {
+  return enabled ? [4663] : []
+}
+
+/**
+ * The extra Across source chains our own deploys unlock; each group is empty
+ * until its own flag flips. Single source of truth so BRIDGE_SOURCE_CHAIN_IDS
+ * (below) and ACROSS_EXECUTABLE_SOURCE_IDS (ophisBridgeProviders.ts) can never
+ * disagree about which chains are executable Across sources.
+ */
+export const EXTRA_ACROSS_SOURCE_CHAIN_IDS: readonly number[] = [
+  ...acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED),
+  ...acrossRobinhoodSourceIds(ACROSS_ROBINHOOD_SOURCE_ENABLED),
+]
 
 /**
  * Chains a cross-chain (bridge) order can be CREATED from — the sell side.

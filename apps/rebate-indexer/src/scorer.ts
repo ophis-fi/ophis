@@ -26,6 +26,14 @@ export async function runScorer(): Promise<{ wallet_count: number }> {
   }
   const rows = await sql<{ count: number }[]>`SELECT COUNT(*)::int AS count FROM wallets`;
   const count = rows[0]!.count;
+  // Stamp publication only AFTER the materialized view refresh and its read both
+  // succeed. This is the public-data heartbeat consumed by /health, /stats, and
+  // /leaderboard; an HTTP-live process with a frozen view can no longer look fresh.
+  await sql`
+    UPDATE public_data_refresh_state
+    SET refreshed_at = now()
+    WHERE singleton = TRUE
+  `;
   log.info({ wallet_count: count, ms: Date.now() - t0 }, 'wallets refreshed');
   return { wallet_count: count };
 }

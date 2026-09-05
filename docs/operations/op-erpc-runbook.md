@@ -11,9 +11,9 @@ upstreams**:
 
 | Upstream | Endpoint | Failure domain | Notes |
 |---|---|---|---|
-| `publicnode-op` | `https://optimism-rpc.publicnode.com` | Allnodes | CDN: Cloudflare — **the ONE permitted CF lane**; auth: none (free tier); gap: archive-gated `eth_getTransactionReceipt` (serves recent receipts fine) |
+| `publicnode-op` | `https://optimism-rpc.publicnode.com` | Allnodes | CDN: Cloudflare — **the ONE permitted CF lane**; auth: none (free tier); **archive-gated at ~128 blocks from head — this gap covers `eth_getLogs` AS WELL AS `eth_getTransactionReceipt`.** Deeper reads return jsonrpc `-32602` "Archive requests require a personal token", which eRPC buckets as the GENERIC `ErrEndpointClientSideException`, not an auth error. Cause of the 2026-08-23 settlement-indexer outage |
 | `zan-op` | `api.zan.top` | ZAN (Ant Digital) | CDN: none detected (non-CF); auth: keyed (`${ZAN_API_KEY}`); serves all protected methods; **slow: p50 ~1.1s, p95 ~4.6s against its own 4s timeout** |
-| `validationcloud-op` | `mainnet.optimism.validationcloud.io` | Validation Cloud | CDN: none (istio-envoy), non-CF; auth: keyed (`${VALIDATIONCLOUD_OP_KEY}`); **free tier = 50M compute units/calendar month, which this stack burns in ~2.5 days** |
+| `official-op` | `https://mainnet.optimism.io` | OP Labs | CDN: none (GCP LB, `via: 1.1 google`), non-CF; auth: none (free tier); archive-capable on BOTH `eth_getLogs` and receipts. **⚠️ DEGRADED STOPGAP: ~50% HTTP 429 (per-IP rate limit) even at ~4 req/s.** Admitted 2026-08-23 to replace `validationcloud-op` (HTTP 401 since 08-18, quota resets ~09-01). Replace with a keyed archive lane |
 
 The lane set is rebuilt often — six times in six weeks to 2026-08-18, and
 every rebuild but one was forced by a provider running out of quota or

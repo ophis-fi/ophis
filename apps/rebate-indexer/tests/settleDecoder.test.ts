@@ -2,8 +2,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { encodeFunctionData, keccak256, stringToHex, type PublicClient } from 'viem';
 import { SETTLE_FN } from '../src/cow/settleAbi.js';
 import { resolveAppData } from '../src/cow/appDataResolver.js';
+import { resolveLegacyAppData } from '../src/cow/legacyAppDataRegistry.js';
 import {
   decodeWindow,
+  advertisedLogRangeLimit,
   settleDecoderChains,
   isRangeError,
   isDiscoveryOnly,
@@ -11,7 +13,11 @@ import {
   FEE_VERIFICATION_IMPLEMENTED,
   type OrderTotals,
 } from '../src/cow/onchain.js';
-import { attributeOrder, DECODER_ETHFLOW_OWNERS, type PendingDefiLlamaFill } from '../src/fetcher.js';
+import {
+  attributeOrder,
+  DECODER_ETHFLOW_OWNERS,
+  type PendingDefiLlamaFill,
+} from '../src/fetcher.js';
 import { OPHIS_SAFE_ADDRESS } from '../src/safe/addresses.js';
 
 const OPHIS = OPHIS_SAFE_ADDRESS.toLowerCase();
@@ -23,11 +29,17 @@ const TRADER = '0xbbbb000000000000000000000000000000000002' as const;
 const OTHER = '0xcccc000000000000000000000000000000000003' as const;
 
 const ophisDoc = (extra: Record<string, unknown> = {}) =>
-  JSON.stringify({ appCode: 'ophis', metadata: { partnerFee: { volumeBps: 10, recipient: OPHIS }, ...extra } });
+  JSON.stringify({
+    appCode: 'ophis',
+    metadata: { partnerFee: { volumeBps: 10, recipient: OPHIS }, ...extra },
+  });
 // A VALID surplus/PriceImprovement Ophis fee — readVolumeFeeBps returns null for it
 // (the volume indexer can't price it); the DECODER must credit 0, not retail.
 const surplusDoc = () =>
-  JSON.stringify({ appCode: 'ophis', metadata: { partnerFee: { surplusBps: 10, maxVolumeBps: 100, recipient: OPHIS } } });
+  JSON.stringify({
+    appCode: 'ophis',
+    metadata: { partnerFee: { surplusBps: 10, maxVolumeBps: 100, recipient: OPHIS } },
+  });
 const nonOphisDoc = () => JSON.stringify({ appCode: 'someoneelse', metadata: {} });
 const hashOf = (doc: string) => keccak256(stringToHex(doc));
 
@@ -47,7 +59,11 @@ function stubAppDataApi(docsByHash: Record<string, string>) {
       const hash = url.split('/').pop() ?? '';
       const doc = docsByHash[hash];
       if (!doc) return { ok: false, status: 404 } as Response;
-      return { ok: true, status: 200, json: async () => ({ fullAppData: doc }) } as unknown as Response;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ fullAppData: doc }),
+      } as unknown as Response;
     }),
   );
 }
@@ -84,7 +100,10 @@ const mkTrade = (o: Partial<TupleTrade>): TupleTrade => ({
   ...o,
 });
 
-function encodeSettle(tokens: readonly `0x${string}`[], trades: readonly TupleTrade[]): `0x${string}` {
+function encodeSettle(
+  tokens: readonly `0x${string}`[],
+  trades: readonly TupleTrade[],
+): `0x${string}` {
   return encodeFunctionData({
     abi: [SETTLE_FN],
     functionName: 'settle',
@@ -168,11 +187,37 @@ describe('settleDecoderChains / isRangeError', () => {
     expect(isRangeError(new Error('block range too large'))).toBe(true);
     expect(isRangeError(new Error('query returned more than 10000 results'))).toBe(true);
     expect(isRangeError(new Error('-32602 invalid params'))).toBe(true);
+    expect(isRangeError(new Error('eth_getLogs is limited to a 10,000 range (-32614)'))).toBe(true);
+    expect(advertisedLogRangeLimit(new Error('eth_getLogs is limited to a 10,000 range'))).toBe(
+      10_000n,
+    );
+    expect(advertisedLogRangeLimit(new Error('block range too large'))).toBeNull();
     expect(isRangeError(new Error('nonce too low'))).toBe(false);
   });
 });
 
 describe('resolveAppData (re-hash guard)', () => {
+  it('keeps every archived Unichain document byte-exact and network-independent', async () => {
+    const hashes = [
+      '0xcf377e8e104f5a12a0b11771e467c497c62f6788c3c7b4167a61896f186e6357',
+      '0x59791ede6cd961a808541931e6b05c8a3739d707fd22b8046f8e43a0de0672c3',
+      '0x5d2026c9ec667c94ef9dc9de6362201dfb3ec5296f2c10067d6a540b70737f8b',
+      '0xa0e9a38f70a8146ba526d84e4d84afbf129ea50ba15fe77c7d86725bb28d4351',
+      '0x913f246c50916c50f49d521400ed2ee17d40a4031ff133dc041f9c19b2645e03',
+    ] as const;
+    const fetchMock = vi.fn(async () => {
+      throw new Error('archive lookup must not use the network');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    for (const hash of hashes) {
+      const doc = resolveLegacyAppData(hash);
+      expect(doc).not.toBeNull();
+      expect(hashOf(doc!)).toBe(hash);
+      expect(await resolveAppData(130, hash)).toBe(doc);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('returns the doc when keccak matches the requested hash', async () => {
     const doc = ophisDoc();
     const h = hashOf(doc);
@@ -189,8 +234,29 @@ describe('resolveAppData (re-hash guard)', () => {
     stubAppDataApi({}); // any hash -> 404
     expect(await resolveAppData(8453, hashOf(ophisDoc()))).toBeNull();
   });
+  it('uses another hash-verified sovereign content store after a native 404', async () => {
+    const doc = ophisDoc({ quote: { slippageBips: 123 } });
+    const h = hashOf(doc);
+    const fetchMock = vi.fn(async (url: string) =>
+      url.startsWith('https://optimism-mainnet.ophis.fi/')
+        ? ({
+            ok: true,
+            status: 200,
+            json: async () => ({ fullAppData: doc }),
+          } as unknown as Response)
+        : ({ ok: false, status: 404 } as Response),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await resolveAppData(130, h)).toBe(doc);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('unichain-mainnet.ophis.fi');
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('optimism-mainnet.ophis.fi');
+  });
   it('throws on a transient 500 (caller must not advance the cursor)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500 }) as Response));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 500 }) as Response),
+    );
     await expect(resolveAppData(8453, hashOf(ophisDoc()))).rejects.toThrow('app_data 500');
   });
 });
@@ -215,11 +281,19 @@ describe('attributeOrder with DECODER_ETHFLOW_OWNERS (shared eth-flow coverage)'
     expect(t?.wallet).toBe(TRADER);
   });
   it('attributes a normal EOA order to its owner', () => {
-    const t = attributeOrder(JSON.parse(ophisDoc()), { ...base, owner: EOA, receiver: EOA }, DECODER_ETHFLOW_OWNERS);
+    const t = attributeOrder(
+      JSON.parse(ophisDoc()),
+      { ...base, owner: EOA, receiver: EOA },
+      DECODER_ETHFLOW_OWNERS,
+    );
     expect(t?.wallet).toBe(EOA);
   });
   it('drops a non-Ophis order', () => {
-    const t = attributeOrder(JSON.parse(nonOphisDoc()), { ...base, owner: EOA, receiver: EOA }, DECODER_ETHFLOW_OWNERS);
+    const t = attributeOrder(
+      JSON.parse(nonOphisDoc()),
+      { ...base, owner: EOA, receiver: EOA },
+      DECODER_ETHFLOW_OWNERS,
+    );
     expect(t).toBeNull();
   });
   it('drops a shared eth-flow order whose receiver is the router itself', () => {
@@ -249,9 +323,33 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     const calldata = encodeSettle([T0, T1], trades);
 
     const logs = [
-      mkLog({ owner: EOA, sellToken: T0, buyToken: T1, sellAmount: 1_000n, buyAmount: 2_000n, orderUid: uid(1), logIndex: 0 }),
-      mkLog({ owner: SHARED_ETHFLOW, sellToken: T0, buyToken: T1, sellAmount: 5_000n, buyAmount: 9_000n, orderUid: uid(2), logIndex: 1 }),
-      mkLog({ owner: OTHER, sellToken: T1, buyToken: T0, sellAmount: 7_000n, buyAmount: 3_000n, orderUid: uid(3), logIndex: 2 }),
+      mkLog({
+        owner: EOA,
+        sellToken: T0,
+        buyToken: T1,
+        sellAmount: 1_000n,
+        buyAmount: 2_000n,
+        orderUid: uid(1),
+        logIndex: 0,
+      }),
+      mkLog({
+        owner: SHARED_ETHFLOW,
+        sellToken: T0,
+        buyToken: T1,
+        sellAmount: 5_000n,
+        buyAmount: 9_000n,
+        orderUid: uid(2),
+        logIndex: 1,
+      }),
+      mkLog({
+        owner: OTHER,
+        sellToken: T1,
+        buyToken: T0,
+        sellAmount: 7_000n,
+        buyAmount: 3_000n,
+        orderUid: uid(3),
+        logIndex: 2,
+      }),
     ];
 
     const rows = await decodeWindow(
@@ -274,11 +372,30 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     const hA = hashOf(docA);
     stubAppDataApi({ [hA]: docA });
     // trade 0 claims sellTokenIndex 0 (=T0) but the log says the sell token is T1 -> mismatch -> drop.
-    const trades = [mkTrade({ appData: hA, receiver: EOA }), mkTrade({ appData: hA, receiver: TRADER })];
+    const trades = [
+      mkTrade({ appData: hA, receiver: EOA }),
+      mkTrade({ appData: hA, receiver: TRADER }),
+    ];
     const calldata = encodeSettle([T0, T1], trades);
     const logs = [
-      mkLog({ owner: EOA, sellToken: T1, buyToken: T0, sellAmount: 1n, buyAmount: 2n, orderUid: uid(1), logIndex: 0 }), // mismatched
-      mkLog({ owner: SHARED_ETHFLOW, sellToken: T0, buyToken: T1, sellAmount: 3n, buyAmount: 4n, orderUid: uid(2), logIndex: 1 }), // aligned
+      mkLog({
+        owner: EOA,
+        sellToken: T1,
+        buyToken: T0,
+        sellAmount: 1n,
+        buyAmount: 2n,
+        orderUid: uid(1),
+        logIndex: 0,
+      }), // mismatched
+      mkLog({
+        owner: SHARED_ETHFLOW,
+        sellToken: T0,
+        buyToken: T1,
+        sellAmount: 3n,
+        buyAmount: 4n,
+        orderUid: uid(2),
+        logIndex: 1,
+      }), // aligned
     ];
     const rows = await decodeWindow(8453, mockClient(calldata), logs as never, totalsFn());
     expect(rows).toHaveLength(1);
@@ -291,7 +408,17 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     const h = hashOf(doc);
     stubAppDataApi({ [h]: doc });
     const calldata = encodeSettle([T0, T1], [mkTrade({ appData: h, receiver: EOA })]);
-    const logs = [mkLog({ owner: EOA, sellToken: T0, buyToken: T1, sellAmount: 1_000n, buyAmount: 2_000n, orderUid: uid(1), logIndex: 0 })];
+    const logs = [
+      mkLog({
+        owner: EOA,
+        sellToken: T0,
+        buyToken: T1,
+        sellAmount: 1_000n,
+        buyAmount: 2_000n,
+        orderUid: uid(1),
+        logIndex: 0,
+      }),
+    ];
     const rows = await decodeWindow(8453, mockClient(calldata), logs as never, totalsFn());
     expect(rows).toHaveLength(1);
     expect(rows[0]?.volumeFeeBps).toBe(0); // NOT null (null would COALESCE to retail in accrual)
@@ -302,7 +429,17 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     const hA = hashOf(docA);
     stubAppDataApi({ [hA]: docA });
     const calldata = encodeSettle([T0, T1], [mkTrade({ appData: hA, receiver: EOA })]);
-    const logs = [mkLog({ owner: EOA, sellToken: T0, buyToken: T1, sellAmount: 1_000n, buyAmount: 2_000n, orderUid: uid(1), logIndex: 0 })];
+    const logs = [
+      mkLog({
+        owner: EOA,
+        sellToken: T0,
+        buyToken: T1,
+        sellAmount: 1_000n,
+        buyAmount: 2_000n,
+        orderUid: uid(1),
+        logIndex: 0,
+      }),
+    ];
     // normal mode: the real Ophis fee, marked verified (API-attribution default)
     const normal = await decodeWindow(8453, mockClient(calldata), logs as never, totalsFn());
     expect(normal[0]?.volumeFeeBps).toBe(10);
@@ -320,7 +457,15 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     stubAppDataApi({ [hA]: docA });
     const calldata = encodeSettle([T0, T1], [mkTrade({ appData: hA, receiver: TRADER })]);
     const logs = [
-      mkLog({ owner: SHARED_ETHFLOW, sellToken: T0, buyToken: T1, sellAmount: 5_000n, buyAmount: 9_000n, orderUid: uid(2), logIndex: 7 }),
+      mkLog({
+        owner: SHARED_ETHFLOW,
+        sellToken: T0,
+        buyToken: T1,
+        sellAmount: 5_000n,
+        buyAmount: 9_000n,
+        orderUid: uid(2),
+        logIndex: 7,
+      }),
     ];
     const fills: PendingDefiLlamaFill[] = [];
     const rows = await decodeWindow(
@@ -338,6 +483,8 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     expect(fills).toHaveLength(1);
     const f = fills[0]!;
     expect(f.tradeUid).toBe(uid(2));
+    expect(f.transactionHash).toBe(logs[0]!.transactionHash);
+    expect(f.userAddress).toBe(TRADER);
     expect(f.chainId).toBe(8453);
     expect(f.blockNumber).toBe(100n);
     expect(f.logIndex).toBe(7);
@@ -363,8 +510,20 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
       }),
       getBlock: vi.fn(async () => ({ timestamp: 1_700_000_000n })),
     } as unknown as PublicClient;
-    const logs = [mkLog({ owner: EOA, sellToken: T0, buyToken: T1, sellAmount: 1n, buyAmount: 2n, orderUid: uid(1), logIndex: 0 })];
-    await expect(decodeWindow(8453, badClient, logs as never, totalsFn())).rejects.toThrow('rpc 503');
+    const logs = [
+      mkLog({
+        owner: EOA,
+        sellToken: T0,
+        buyToken: T1,
+        sellAmount: 1n,
+        buyAmount: 2n,
+        orderUid: uid(1),
+        logIndex: 0,
+      }),
+    ];
+    await expect(decodeWindow(8453, badClient, logs as never, totalsFn())).rejects.toThrow(
+      'rpc 503',
+    );
   });
 
   it('aborts the window (throws) on a transient getOrder failure (Codex #2/#3)', async () => {
@@ -372,10 +531,22 @@ describe('decodeWindow (decode -> align -> attribute, end to end, no DB)', () =>
     const h = hashOf(doc);
     stubAppDataApi({ [h]: doc });
     const calldata = encodeSettle([T0, T1], [mkTrade({ appData: h, receiver: EOA })]);
-    const logs = [mkLog({ owner: EOA, sellToken: T0, buyToken: T1, sellAmount: 1_000n, buyAmount: 2_000n, orderUid: uid(1), logIndex: 0 })];
+    const logs = [
+      mkLog({
+        owner: EOA,
+        sellToken: T0,
+        buyToken: T1,
+        sellAmount: 1_000n,
+        buyAmount: 2_000n,
+        orderUid: uid(1),
+        logIndex: 0,
+      }),
+    ];
     const failingTotals = async () => {
       throw new Error('order 500');
     };
-    await expect(decodeWindow(8453, mockClient(calldata), logs as never, failingTotals)).rejects.toThrow('order 500');
+    await expect(
+      decodeWindow(8453, mockClient(calldata), logs as never, failingTotals),
+    ).rejects.toThrow('order 500');
   });
 });

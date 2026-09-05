@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>BUFFER_LOG_FILE</key>
+		<string>/Users/scep/Library/Logs/ophis-settlement-buffer-watch.log</string>
+		<key>BUFFER_STATE_FILE</key>
+		<string>/Users/scep/Library/Application Support/ophis/settlement-buffer-watch.state</string>
+		<key>OPHIS_REPO</key>
+		<string>/Users/scep/greg-wt/cron-main</string>
+		<key>OPHIS_RPC_ROBINHOOD</key>
+		<string>https://rpc.mainnet.chain.robinhood.com</string>
+		<key>OPHIS_RPC_UNICHAIN</key>
+		<string>https://mainnet.unichain.org</string>
+		<key>PATH</key>
+		<string>/Users/scep/.foundry/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+	</dict>
+	<key>Label</key>
+	<string>ai.ophis.settlement-buffer-watch</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/scep/greg-wt/cron-main/infra/shared/cron/settlement-buffer-watch.sh</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/Users/scep/Library/Logs/ophis-settlement-buffer-watch.launchd.err</string>
+	<key>StandardOutPath</key>
+	<string>/Users/scep/Library/Logs/ophis-settlement-buffer-watch.launchd.out</string>
+	<key>StartInterval</key>
+	<integer>3600</integer>
+</dict>
+</plist>

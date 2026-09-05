@@ -186,8 +186,9 @@ gas-price-cap = "5000000000"
 #   keeping self-hosted in eRPC consensus leaks nothing).
 #
 #   With self-hosted removed from submission, an attacker must compromise
-#   ≥2 of the 3 distinct corporate operators below (PublicNode, OP
-#   Foundation gateway, Tenderly) to reliably win the front-run race on a
+#   >=2 of the 4 distinct corporate operators below (PublicNode, OP
+#   Foundation gateway, Tenderly, dRPC) to reliably win the
+#   front-run race on a
 #   given tx. That is the canonical CoW threat-model floor — anything
 #   below it is gravy.
 #
@@ -200,6 +201,37 @@ gas-price-cap = "5000000000"
 # If self-hosted ever needs to be re-added here (e.g. emergency fallback
 # during a multi-relay outage), revisit the audit memo: this omission is
 # a deliberate trust-surface choice, not a config drop.
+#
+# ⚠️ PENDING-NONCE COUPLING (2026-08-29) — keep this list overlapping the eRPC
+# read lanes by AT LEAST 2. `eth_getTransactionCount` is a Block B consensus
+# method (agreementThreshold 2) in configs/erpc.yaml.tmpl, and the `pending` tag
+# is MEMPOOL-DEPENDENT: a read lane that never received the tx reports the OLD
+# nonce. So the number of read lanes that are ALSO submission targets decides
+# whether consensus returns the fresh pending nonce or a stale one.
+#
+#   read lanes:  drpc-op | zan-op | tenderly-op
+#   submission:  publicnode | official | tenderly | drpc
+#   overlap:     tenderly + drpc = 2 of 3 read lanes
+#
+# ⚠️ 2-of-3 overlap is a MITIGATION, NOT A GUARANTEE, and never was. Fresh wins
+# only if BOTH overlapping lanes have actually reflected the tx; if either lags,
+# it can agree with a lane that never saw it and carry a stale 2-of-3.
+# disputeBehavior:preferBlockHeadLeader does not help — it only breaks ties among
+# DISAGREEING responses, and two stale responses do not disagree. This residual
+# risk is inherent to consensus over a mempool-dependent `pending` tag and is why
+# eth_getTransactionCount sits in Block B at disputeThreshold 100 rather than
+# Block A. The overlap restores the property this config had BEFORE the
+# 2026-08-29 lane swaps; it does not create a new one.
+#
+# The CF-slot lane is listed here for exactly that reason. Before the 2026-08-29
+# swap the overlap was publicnode + official (also 2 of 3); swapping both read
+# lanes without adding the CF lane here would drop it to tenderly alone, letting
+# the other two form a 2-of-3 majority on the STALE nonce and reuse it on the
+# settlement submission path. Caught by Codex review of PR #1268.
+# 2026-08-30: blockdaemon -> drpc here, in lockstep with the read-lane swap. THIS
+# ENTRY MUST TRACK THE CF READ LANE. If they drift, the overlap silently drops to
+# 1 and the stale-nonce bug returns with no test to catch it.
+# If you change a read lane, re-check this overlap.
 [[submission.mempool]]
 url = "https://optimism-rpc.publicnode.com"
 
@@ -208,6 +240,9 @@ url = "https://mainnet.optimism.io"
 
 [[submission.mempool]]
 url = "https://optimism.gateway.tenderly.co"
+
+[[submission.mempool]]
+url = "https://lb.drpc.org/ogrpc?network=optimism&dkey=${DRPC_API_KEY}"
 
 [liquidity]
 base-tokens = [

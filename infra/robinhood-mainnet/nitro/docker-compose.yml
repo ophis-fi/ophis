@@ -12,8 +12,22 @@
 
 name: robinhood-nitro
 
+# Log rotation. Added 2026-08-24 after the Robinhood outage, where
+# robinhood-nitro-nitro-1's json-file log had grown to 182MB with no rotation
+# configured anywhere in any stack. `docker logs --tail 8` then HANGS, so the
+# node's logs were unreadable during the incident that needed them most, and the
+# empty output read as "the node is silent" when it was in fact logging fine.
+# Docker's default is unbounded; this caps every service at 300MB total.
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "3"
+
+
 services:
   blob-archive:
+    logging: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.blob-archive
@@ -35,6 +49,7 @@ services:
       start_period: 10s
 
   nitro:
+    logging: *default-logging
     # Fully-qualified tag as published by the Robinhood run-a-full-node docs
     # (verified 2026-07-21). v3.11 alone is a MOVING alias - never deploy it.
     # Re-check the docs before deploy; they may bump this.

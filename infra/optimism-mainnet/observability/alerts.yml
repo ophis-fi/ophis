@@ -139,6 +139,111 @@ groups:
   - name: ophis-op-settlement-health
     interval: 30s
     rules:
+      - alert: OphisOpAutopilotMaintenanceStalled
+        # ⚠️ TWO CORRECTIONS FROM CODEX REVIEW, both verified in the autopilot
+        # source before being accepted (maintenance.rs:167-198):
+        #
+        # 1. THE HEAD OPERAND WAS WRONG. This first used
+        #    `..._maintenance_last_seen_block` as the head. But index_until_block
+        #    sets last_seen_block IMMEDIATELY BEFORE awaiting
+        #    run_essential_maintenance, and the surrounding loop cannot iterate
+        #    until that await returns. So if maintenance HANGS (a wedged DB query,
+        #    an RPC that never resolves) last_seen_block freezes too, the
+        #    subtraction stays at ~1, and this alert never fires — while claiming
+        #    in its own description to cover exactly that case. It only worked on
+        #    08-23 because maintenance was RETURNING AN ERROR, which lets the loop
+        #    keep iterating. `gp_v2_autopilot_last_block_number` is set by the
+        #    block stream itself (ethrpc/src/block_stream.rs), so it advances
+        #    whether maintenance errors, hangs, or succeeds. Verified live: same
+        #    label set (instance, job), so the subtraction matches.
+        #
+        # 2. IT IS NOT SETTLEMENT-SPECIFIC, so it is no longer named as if it is.
+        #    last_updated_block advances only after run_essential_maintenance
+        #    succeeds, and that is a tokio::try_join! over THREE indexers:
+        #    settlement, CoW AMM, and ethflow. try_join! fails if any one fails,
+        #    so a broken ethflow indexer would have raised a critical page saying
+        #    settlements, rebates and stats were stale when they were current, and
+        #    sent the operator hunting an archive-RPC quorum problem that did not
+        #    exist. The alert now says which three things it covers and tells you
+        #    to identify the failing one first.
+        #
+        # THE 2026-08-23 BLIND SPOT. The autopilot's settlement-event indexer
+        # wedged at block 155950754 for 4+ hours and NOTHING here paged about it.
+        # What eventually paged was OphisOpErpcUpstreamCredentialFailing on
+        # publicnode-op — a symptom one layer down, an hour late, naming the wrong
+        # subject. Chain of causation that day:
+        #   publicnode's free tier serves eth_getLogs only within ~128 blocks of
+        #   head (deeper -> jsonrpc -32602 "Archive requests require a personal
+        #   token"), validationcloud had been HTTP 401 since 08-18, so archive
+        #   eth_getLogs had exactly ONE capable lane (zan) — below
+        #   agreementThreshold:2 -> ErrConsensusDispute -> returnError. Once the
+        #   indexer fell past that ~128-block line it could never catch up: a trap
+        #   door, not a transient. It re-requested one 500-block window ~3.5x/sec
+        #   for four hours while /quote stayed green the whole time.
+        #
+        # This alert watches the OUTCOME (is settlement indexing advancing?)
+        # rather than any particular lane's health, so it fires for ANY cause:
+        # lane death, archive gating, quorum loss, a wedged DB, an eRPC bug.
+        #
+        # Threshold, measured on this stack's own 7d TSDB (2026-08-23):
+        #   p50 lag = 0 blocks, p95 = 2 blocks. Steady state is level with head.
+        #   300 blocks is ~150x p95 and ~10 min of OP's 2s blocks, comfortably
+        #   past publicnode's ~128-block archive gate, so a normal brief catch-up
+        #   cannot reach it. Replayed against 08-23: crosses 300 at 16:25:18Z,
+        #   fires 16:40Z — ~1h BEFORE the credential alert actually paged.
+        # `for: 15m` (not 5m) because a driver/autopilot restart legitimately
+        # replays a short backlog; 15m of no forward progress is not that.
+        expr: |
+          (
+            gp_v2_autopilot_last_block_number
+            - gp_v2_autopilot_autopilot_maintenance_last_updated_block
+          ) > 300
+        for: 15m
+        labels:
+          severity: critical
+          chain: optimism
+        annotations:
+          summary: "OP autopilot essential maintenance stalled {{ $value | printf \"%.0f\" }} blocks behind head"
+          description: |
+            `last_updated_block` has not caught up to the chain head for 15
+            minutes, so autopilot essential maintenance is not completing.
+
+            THAT IS THREE INDEXERS, NOT ONE. run_essential_maintenance is a
+            try_join! over the settlement indexer, the CoW AMM indexers and the
+            ethflow order indexers; it advances the gauge only when ALL of them
+            succeed, so ANY one of them failing raises this page. Identify which
+            before concluding settlements are affected:
+              docker logs optimism-mainnet-autopilot-1 --tail 100 \
+                | grep -iE "settlement_indexer|cow_amm_indexer|ethflow_order_indexer"
+
+            If it IS the settlement indexer, settlements landing on-chain are not
+            being indexed: order status, rebates and the stats page all stall
+            behind it, and the autopilot's own view stops advancing.
+
+            Quoting can look perfectly healthy while this is broken — /quote
+            reads at tip, this indexes history. Do not use /quote to clear it.
+
+            FIRST, get the block range it is stuck on:
+              docker logs optimism-mainnet-autopilot-1 --tail 50 \
+                | grep -o "unable to get logs for blocks range [0-9-]*" | sort -u
+
+            THEN ask why that range cannot be served. The usual cause is that
+            fewer than agreementThreshold:2 upstreams can serve eth_getLogs AT
+            THAT DEPTH — which is NOT the same question as whether the lanes are
+            up. publicnode is archive-gated at ~128 blocks, so it votes on
+            tip-adjacent getLogs and abstains on everything older:
+              curl -s localhost:9091/api/v1/query --data-urlencode \
+                'query=sum by (upstream,error) (rate(erpc_upstream_request_errors_total{network="evm:10"}[15m]))'
+
+            Confirm by probing a lane DIRECTLY at the stuck depth, not at tip:
+            a tip-only probe reports a lane healthy when it cannot serve a single
+            historic window.
+
+            Fix the lane math (restore a second archive-capable, non-Cloudflare
+            upstream — see configs/erpc.yaml.tmpl); the indexer then catches up
+            on its own. Do NOT recreate the driver to "unstick" it: that costs
+            minutes of cold NoSolutions and does not touch the cause.
+
       - alert: OphisOpNoSettlements1h
         # IntCounterVec `settlements{solver, result}` is monotonic. We want
         # to alert when `result="success"` hasn't incremented in 1h despite
@@ -355,6 +460,52 @@ groups:
       # settlements not observed on-chain; left as a roadmap item.
 
   - name: ophis-op-erpc-consensus
+    # ── NO UPSTREAM ALLOWLIST IN THIS GROUP. THIS IS DELIBERATE. ──
+    # Every per-upstream rule below selects on network="evm:10" ONLY. Do not
+    # "tidy" them by adding upstream=~"lane-a|lane-b|..." back.
+    #
+    # They used to carry that allowlist, duplicated across 11 selectors. It made
+    # swapping a lane a silent monitoring regression: the new lane was invisible
+    # to every one of these rules until someone remembered to hand-edit all 11.
+    # That is the same defect shape as the 2026-08-18 incident, where
+    # OphisOpErpcUpstreamCredentialFailing matched an error label eRPC never
+    # emits and so watched an empty vector through a five-day lane death. Both
+    # times the alert existed, was well written, and could not fire.
+    # Unpinned 2026-08-23 while swapping validationcloud-op -> official-op.
+    #
+    # Nothing is lost by unpinning: assert-erpc-failclosed.py CI-enforces
+    # EXPECTED_UPSTREAMS = 3 and pins the three hostnames, so the upstream set
+    # cannot drift without a guard failure and a deliberate edit. The allowlist
+    # here was never the control; it was a second copy of the control that
+    # rotted independently of it.
+    #
+    # THE COST OF UNPINNING, AND ITS FIX: these rules now match every upstream
+    # in the TSDB, retired lanes included (alchemy-op, ophis-self-op,
+    # tenderly-op and validationcloud-op are all still inside the 15d window).
+    # A lane eRPC has stopped routing to has a collapsing request rate against a
+    # still-decaying error rate, and clamp_min(...,0.001) turns that into a
+    # nonsense figure — validationcloud-op was observed FIRING at a "234% error
+    # ratio" on 2026-08-23, hours after it left the config. Every ratio rule
+    # below therefore carries a live-traffic floor:
+    #
+    #     and sum by (upstream) (rate(erpc_upstream_request_total{...}[1h])) > 0.005
+    #
+    # ⚠️ THE WINDOW IS 1h AND THE FLOOR IS DELIBERATELY TINY (Codex review,
+    # 2026-08-24). The first version used [15m] > 0.05 and that was wrong in the
+    # dangerous direction: when a lane's circuit breaker opens, eRPC stops
+    # routing to it and only half-opens every 30s, so its request rate collapses
+    # far below 0.05 req/s while the lane is still CONFIGURED and completely
+    # unusable. A 15m window would have let the very alerts that exist to catch
+    # a dead lane reset themselves before their own `for:` elapsed — the exact
+    # failure that hid robinhood-official's stuck breaker for eight hours on
+    # 08-23. Over an hour, a breaker-ejected lane still carries the traffic it
+    # served before ejection, so it stays above the floor long enough to page;
+    # a lane genuinely removed from the config decays to zero and drops out.
+    # The cost is that a retired lane can page for up to an hour after removal,
+    # which is the right way round: a false page about a lane that just left
+    # beats silence about a lane that is still admitted and broken.
+    # All of this is mutation-tested in alerts_test.yml: re-pin the selectors and
+    # the unknown-lane case fails; drop the floor and the retired-lane case pages.
     interval: 30s
     rules:
       # Codex Cyber post-merge recommendation (2026-05-18): track consensus
@@ -385,7 +536,7 @@ groups:
             eRPC is failing consensus because fewer than 2 of 3 upstreams respond
             within the retry budget for `{{ $labels.category }}` requests. Sustained
             elevation indicates one or more OP upstream(s) (publicnode / zan /
-            validationcloud) are slow or unavailable.
+            official-op) are slow or unavailable.
 
             ⚠️ 2026-08-09 lesson: this alert only trips at >5/s, which assumes
             steady driver/orderbook polling. A LOW-TRAFFIC stack with one live
@@ -395,8 +546,8 @@ groups:
             `docker logs optimism-mainnet-autopilot-1 | grep 'no solutions'`
             regardless of whether this alert fired.
 
-            Diagnose: `cast block-number --rpc-url <each upstream>` to find
-            which one is unresponsive. Check rpc-proxy logs:
+            Diagnose: set UPSTREAM to each endpoint listed in the rendered erpc.yaml and run
+            `cast block-number --rpc-url "$UPSTREAM"` to find which one is unresponsive. Check rpc-proxy logs:
             `docker logs optimism-mainnet-rpc-proxy-1 --tail 50 | grep low_participants`
 
             Threshold history: 5/s ≈ 100% failure on `eth_call` consensus path
@@ -512,7 +663,7 @@ groups:
         # Pin alerts to admitted voters. Prometheus retains retired-upstream
         # series after a hot-swap; without this allowlist the removed lane can
         # page again from historical samples even though eRPC no longer uses it.
-        expr: erpc_upstream_block_head_lag{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"} > 5
+        expr: erpc_upstream_block_head_lag{network="evm:10"} > 5
         for: 15m
         labels:
           severity: warning
@@ -607,26 +758,30 @@ groups:
       # ExecutionException, RequestTimeout and TransportFailure instead.
       - alert: OphisOpErpcUpstreamCredentialFailing
         expr: |
+          (
           sum by (upstream) (
-            increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
+            increase(erpc_upstream_request_errors_total{network="evm:10",error=~"ErrEndpointUnauthorized|ErrEndpointBillingIssue"}[30m])
           ) > 3
           or
           (
             (
               sum by (upstream) (
-                increase(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrEndpointClientSideException"}[30m])
+                increase(erpc_upstream_request_errors_total{network="evm:10",error="ErrEndpointClientSideException"}[30m])
               ) > 3
             )
             and
             (
               sum by (upstream) (
-                rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrEndpointClientSideException"}[30m])
+                rate(erpc_upstream_request_errors_total{network="evm:10",error="ErrEndpointClientSideException"}[30m])
               )
               /
-              clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[30m])), 0.001)
+              clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[30m])), 0.001)
               > 0.1
             )
           )
+          )
+          and
+          sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[1h])) > 0.005
         for: 10m
         labels:
           severity: critical
@@ -674,10 +829,12 @@ groups:
       - alert: OphisOpErpcUpstreamRateLimitedDead
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrEndpointCapacityExceeded"}[15m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",error="ErrEndpointCapacityExceeded"}[15m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[15m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[15m])), 0.001)
           ) > 0.9
+          and
+          sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[1h])) > 0.005
         for: 30m
         labels:
           severity: warning
@@ -736,10 +893,12 @@ groups:
       - alert: OphisOpErpcUpstreamEffectivelyDead
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error!="ErrUpstreamBlockUnavailable"}[15m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",error!="ErrUpstreamBlockUnavailable"}[15m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[15m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[15m])), 0.001)
           ) > 0.95
+          and
+          sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[1h])) > 0.005
         for: 10m
         labels:
           severity: critical
@@ -789,10 +948,12 @@ groups:
       - alert: OphisOpErpcUpstreamPhantomParticipant
         expr: |
           (
-            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op",error="ErrUpstreamBlockUnavailable"}[30m]))
+            sum by (upstream) (rate(erpc_upstream_request_errors_total{network="evm:10",error="ErrUpstreamBlockUnavailable"}[30m]))
             /
-            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10",upstream=~"publicnode-op|zan-op|validationcloud-op"}[30m])), 0.001)
+            clamp_min(sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[30m])), 0.001)
           ) > 0.6
+          and
+          sum by (upstream) (rate(erpc_upstream_request_total{network="evm:10"}[1h])) > 0.005
         for: 2h
         labels:
           severity: warning
@@ -880,7 +1041,7 @@ groups:
           severity: warning
           chain: optimism
         annotations:
-          summary: "OP solvers receiving <1s of solve-time budget at p99"
+          summary: "OP solvers receiving under 1s of solve-time budget at p99"
           description: "By the time solvers are dispatched, less than 1s remains on the 20s solve-deadline at p99. Upstream RPC + preprocessing is eating the budget. Solvers will quote stale or skip auctions."
 
   - name: ophis-op-chain-health

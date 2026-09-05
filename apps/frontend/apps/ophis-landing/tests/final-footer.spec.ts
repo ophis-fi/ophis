@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test'
 
-test('final CTA shows new multi-chain headline + Trade CTA', async ({ page }) => {
+test('final CTA presents the trade and integration paths', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('.final h2')).toContainText('Trade anywhere')
-  await expect(page.locator('.final h2')).toContainText('Settle in one batch')
-  await expect(page.locator('.final p')).toContainText('13 EVM production deployments')
-  await expect(page.locator('.final p')).toContainText('Check live status before routing')
-  await expect(page.locator('.final .cta-primary')).toContainText(/Trade/)
+  await expect(page.locator('.final h2')).toContainText('One intent')
+  await expect(page.locator('.final h2')).toContainText('A better way to settle')
+  await expect(page.locator('.final p')).toContainText('supported stablecoins and tokenized assets')
+  await expect(page.locator('.final .cta-primary')).toHaveAttribute('href', 'https://swap.ophis.fi/')
+  await expect(page.locator('.final .cta-secondary')).toHaveAttribute('href', '/ai-agent-crypto-swap-api/')
 })
 
 test('footer has 4 columns + nav-back-to-top link', async ({ page }) => {

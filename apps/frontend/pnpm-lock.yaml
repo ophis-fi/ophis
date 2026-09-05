@@ -37,7 +37,7 @@ overrides:
   tiny-secp256k1: ^1.1.7
   secp256k1: ^4.0.4
   socket.io-parser: ^4.2.7
-  fast-uri: ^3.1.5
+  fast-uri: ^3.1.6
   ip-address: ^10.2.1
   koa: ^3.1.2
   handlebars: ^4.7.9
@@ -57,6 +57,7 @@ overrides:
   bn.js: ^5.2.3
   vite: ^7.3.5
   esbuild: ^0.28.1
+  browserslist: '>=4.28.7 <5'
   brace-expansion@>=5.0.0 <5.0.9: '>=5.0.9'
   nanoid@>=3.0.0 <3.3.18: '>=3.3.18 <4.0.0'
   http-proxy-middleware@>=3.0.4 <3.0.7: 3.0.7
@@ -68,7 +69,7 @@ overrides:
   mdast-util-to-hast: ^13.2.1
   js-yaml: ^4.3.1
   nx: 22.7.8
-  jsondiffpatch: ^0.7.2
+  jsondiffpatch: ^0.7.6
   prismjs: ^1.30.0
   tough-cookie: ^4.1.3
   color-string: ^1.5.5
@@ -93,7 +94,7 @@ overrides:
   sharp: ^0.35.0
   tmp: ^0.2.6
   '@xhmikosr/decompress': ^10.2.1
-  next: '>=15.5.21 <16'
+  next: '>=15.5.24 <16'
   nanoid@<3.3.17: ^3.3.17
   less: 4.8.1
   body-parser@<1.20.6: 1.20.6
@@ -104,13 +105,13 @@ overrides:
 
 patchedDependencies:
   '@cowprotocol/sdk-bridging@4.0.2':
-    hash: 13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45
+    hash: b1635235a05596ecac780a499242b6a4fa1acc2fdc16d85bd901152b402d0f0c
     path: patches/@cowprotocol__sdk-bridging@4.0.2.patch
   '@cowprotocol/sdk-config@2.0.0':
     hash: ac25da38b76409daf7426b66ef468aea2de15fb9ced88cbda364376a16723a92
     path: patches/@cowprotocol__sdk-config@2.0.0.patch
   '@cowprotocol/sdk-trading@2.0.2':
-    hash: 3a320fee20fcf0c53329d988dae64788b2671ce219c912cb21787384a4a83fd4
+    hash: 45ecc715edc7157a72b7e8943b7c81fbd1c6df81769a44701529d09a47142f48
     path: patches/@cowprotocol__sdk-trading@2.0.2.patch
   eslint-plugin-import@2.32.0:
     hash: 2b2144212b828d6473494229619a5c1e31775a88e8446d61a471f54a238c8fc4
@@ -166,8 +167,8 @@ importers:
         specifier: ^16.4.5
         version: 16.4.7
       next:
-        specifier: '>=15.5.21 <16'
-        version: 15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
+        specifier: '>=15.5.24 <16'
+        version: 15.5.24(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
       styled-jsx:
         specifier: 5.1.2
         version: 5.1.2(@babel/core@7.29.7)(babel-plugin-macros@3.1.0)(react@19.1.2)
@@ -219,10 +220,10 @@ importers:
         version: 22.7.8(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17))(nx@22.7.8(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17)))
       '@nx/next':
         specifier: 22.7.8
-        version: 22.7.8(288508cd2d0521b1e71c54037a90af5a)
+        version: 22.7.8(55e783b35c305d4c1787e84db920c871)
       '@nx/react':
         specifier: 22.7.8
-        version: 22.7.8(fa370485136d0930921df50b70b680d1)
+        version: 22.7.8(c54940f0bd2552dcbf89e43bc922b471)
       '@nx/vite':
         specifier: 22.7.8
         version: 22.7.8(@babel/traverse@7.29.7)(@nx/eslint@22.7.8(b338b129f38aa3b5a2cf3120f11fe631))(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17))(nx@22.7.8(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17)))(typescript@5.9.3)(vite@7.3.5(@types/node@24.7.1)(jiti@2.6.1)(less@4.8.1)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.49.2)(yaml@1.10.3))(vitest@4.1.7)
@@ -372,7 +373,7 @@ importers:
         version: 16.2.7
       next-sitemap:
         specifier: ^4.2.3
-        version: 4.2.3(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))
+        version: 4.2.3(next@15.5.24(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))
       node-stdlib-browser:
         specifier: ^1.2.0
         version: 1.3.1
@@ -498,7 +499,7 @@ importers:
         version: link:../../libs/permit-utils
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=b1635235a05596ecac780a499242b6a4fa1acc2fdc16d85bd901152b402d0f0c)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-contracts-ts':
         specifier: 3.0.1
         version: 3.0.1
@@ -513,7 +514,7 @@ importers:
         version: 3.0.0(encoding@0.1.13)
       '@cowprotocol/sdk-trading':
         specifier: 2.0.2
-        version: 2.0.2(patch_hash=3a320fee20fcf0c53329d988dae64788b2671ce219c912cb21787384a4a83fd4)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 2.0.2(patch_hash=45ecc715edc7157a72b7e8943b7c81fbd1c6df81769a44701529d09a47142f48)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-viem-adapter':
         specifier: 0.3.18
         version: 0.3.18(viem@2.45.0(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@4.4.3))
@@ -893,7 +894,7 @@ importers:
         version: link:../../libs/hook-dapp-lib
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=b1635235a05596ecac780a499242b6a4fa1acc2fdc16d85bd901152b402d0f0c)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-contracts-ts':
         specifier: 3.0.1
         version: 3.0.1
@@ -1586,7 +1587,7 @@ importers:
         version: 9.0.2(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=b1635235a05596ecac780a499242b6a4fa1acc2fdc16d85bd901152b402d0f0c)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/types':
         specifier: workspace:*
         version: link:../types
@@ -1836,7 +1837,7 @@ importers:
         version: link:../currency
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=b1635235a05596ecac780a499242b6a4fa1acc2fdc16d85bd901152b402d0f0c)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       eventemitter3:
         specifier: ^4.0.0
         version: 4.0.7
@@ -1898,8 +1899,8 @@ importers:
         specifier: 2.16.2
         version: 2.16.2(@babel/core@7.29.7)(@babel/template@7.29.7)(@types/react@19.1.3)(react@19.1.2)
       next:
-        specifier: '>=15.5.21 <16'
-        version: 15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
+        specifier: '>=15.5.24 <16'
+        version: 15.5.24(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
       polished:
         specifier: ^4.0.5
         version: 4.2.2
@@ -4934,8 +4935,8 @@ packages:
   '@next/env@13.5.7':
     resolution: {integrity: sha512-uVuRqoj28Ys/AI/5gVEgRAISd0KWI0HRjOO1CTpNgmX3ZsHb5mdn14Y59yk0IxizXdo7ZjsI2S7qbWnO+GNBcA==}
 
-  '@next/env@15.5.21':
-    resolution: {integrity: sha512-hjJI/GfrjWHgNguRIBzItjRRu0m3Nrz17GhxsjuHfjIvg9hyg3239REd2dpI+bpMTFuVrVprHzEQ19m++cDtbw==}
+  '@next/env@15.5.24':
+    resolution: {integrity: sha512-mBDF7T0XKZjs9SpUAl0buizVO+O02ULjOvWX8o/AZo/5AGw/UAS1Zzcylmd4pqbftzmKQi+L/nB4jgBYKEAl5Q==}
 
   '@next/eslint-plugin-next@16.1.5':
     resolution: {integrity: sha512-gUWcEsOl+1W7XakmouClcJ0TNFCkblvDUho31wulbDY9na0C6mGtBTSXGRU5GXJY65GjGj0zNaCD/GaBp888Mg==}
@@ -4943,54 +4944,54 @@ packages:
   '@next/eslint-plugin-next@16.1.6':
     resolution: {integrity: sha512-/Qq3PTagA6+nYVfryAtQ7/9FEr/6YVyvOtl6rZnGsbReGLf0jZU6gkpr1FuChAQpvV46a78p4cmHOVP8mbfSMQ==}
 
-  '@next/swc-darwin-arm64@15.5.21':
-    resolution: {integrity: sha512-ZfjqPEdi6TRC/fWx7UDbwb1fbVgyh2uD5tVTRKIDZDlYM+UNuE/LafDG2fwuAoZilADpABh46OY/F5qf9JjqLQ==}
+  '@next/swc-darwin-arm64@15.5.24':
+    resolution: {integrity: sha512-AGdNLvxZNY6eR2iSnV+6wUa8CiHTMr4F7g3uHH7fT4ICIJBE00R9u4tzN/Vuwsw0cOi8MTD2HJcTCb6siMH88Q==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [darwin]
 
-  '@next/swc-darwin-x64@15.5.21':
-    resolution: {integrity: sha512-TlCf1NpxgQLzTrexuev75xwmNCJMd1/qkJpTVP1GRRcih93hlIBn1P72hkh8T0gnRFr6BmWksQtbyG3jT6jnww==}
+  '@next/swc-darwin-x64@15.5.24':
+    resolution: {integrity: sha512-9HrQajBMmGcrrrvDfRimiCrbAPh3E6uHJmwBovYr6Yrmi9p9PZqI876BrXX280wICh3o2XwUlp4blkB0NNBqFg==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [darwin]
 
-  '@next/swc-linux-arm64-gnu@15.5.21':
-    resolution: {integrity: sha512-LXRsq1p+HvHSi7ygwNcSEEcK0zuo5jS75ZlqFHtOH+LF7qntXAJVJxah+1Pi/GyBm7EpkwU7m4EgbvIKrMqm9A==}
+  '@next/swc-linux-arm64-gnu@15.5.24':
+    resolution: {integrity: sha512-rl9LSfE75si0WT3cDgdUC1XYCKS+TgxC+/IjitmeycrAG18X/plIP1/vy8dd/HPycYcIvE688PD7FuvEAiEAew==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@next/swc-linux-arm64-musl@15.5.21':
-    resolution: {integrity: sha512-hyGixhFxpDKjqoev6l4KlcRBlt9AXWrGhDZwmwg49sMJM5tnKQPSi+SEj9+e5n+l/bthRGZUdh59GKIs6lQPRw==}
+  '@next/swc-linux-arm64-musl@15.5.24':
+    resolution: {integrity: sha512-TlNAnpsjxSF3aAUtqnfmtXXf8m9sIDBlmF3c7bTAlnshUYu2U0OxN2uf5d0gcFwqHVEdivJNBcCaqNOwPGNimw==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@next/swc-linux-x64-gnu@15.5.21':
-    resolution: {integrity: sha512-qfE+YfOba6S2+13e8qn1/UozDVNZ2clBlrs8UtDoax4s8ediu6sq93z66OEHUYlb69Tffh5JTNkgtsAKiSuugg==}
+  '@next/swc-linux-x64-gnu@15.5.24':
+    resolution: {integrity: sha512-7dwtlhr0SLndqTG1z9ncRkbJswDZiKWlxzFyXDvJ2RDZRDRHp8zyMJ4D9UH/FgnQeXxxB6gZy2pMcIUoNKQ4pA==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@next/swc-linux-x64-musl@15.5.21':
-    resolution: {integrity: sha512-BXLGG+EvIwp/Rrgl6HY8sqvD6BOUOIRz8/naDbeLNX7mlA5H2XRcL6MW/0IGnJISfj5BA9gNhFyJj5yOoiIDJQ==}
+  '@next/swc-linux-x64-musl@15.5.24':
+    resolution: {integrity: sha512-kGZxM+WhkYs0276lFrMkj7PRtXT3Btp6cwvfSO/cCVLxJJttB5Ccnl2niaCgUja8HgSbEVnMHpg3FJWoOJ9e/g==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@next/swc-win32-arm64-msvc@15.5.21':
-    resolution: {integrity: sha512-tNGNOlT0Wn7E4IMsSnufjXN/l2L2/AGdLLpa2vzS89SYCBuihgLn3ngLsIrvndAnWo9nAkus+4gZHTI/Ijx9HA==}
+  '@next/swc-win32-arm64-msvc@15.5.24':
+    resolution: {integrity: sha512-jBDDkZ/qKAqkWivWDMkJSXUzbzV0QKRBKJjEHUAvSB97Hzw7NLzJ6yV56Lts/wjir7s4P31GYgpbS6ZL+hasAA==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [win32]
 
-  '@next/swc-win32-x64-msvc@15.5.21':
-    resolution: {integrity: sha512-DmIdWmC9p4rdNIiQqo8ap0+Cnj6kKtTZnuSCxoYydSc8sgpDgAg9wFhxplunak9imLV0pTvc5WVCOHwm5eHLtQ==}
+  '@next/swc-win32-x64-msvc@15.5.24':
+    resolution: {integrity: sha512-JqtwjvvorjacQ0spgjmUJoxySoYgPwdT1sFdQ0/zmW4iMlP2hjYlCoJIyS7o6Epb4Fug8eco3HXFoBDUCDeH7Q==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
@@ -5115,7 +5116,7 @@ packages:
   '@nx/next@22.7.8':
     resolution: {integrity: sha512-6JGSjAD9G8Xbm4K36YNbfuDfgKVDqdeNBIipt2mCcZNIy78VZrGFGar1MNBNkqrMLx1uw5JOC2UF63FRzrmntQ==}
     peerDependencies:
-      next: '>=15.5.21 <16'
+      next: '>=15.5.24 <16'
 
   '@nx/nx-darwin-arm64@22.7.8':
     resolution: {integrity: sha512-IM1geDyWPFsS565de9dByYNZ5I3j8FQZvNUp9LIYw1dNu70sCWbAT0glw0anholOwlAb7JWEscoUeV7ouRBW0A==}
@@ -8708,8 +8709,8 @@ packages:
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
-  baseline-browser-mapping@2.10.30:
-    resolution: {integrity: sha512-xjOFN16Ha1+Rz4nFYKqHU/LSB+gx/Vi3yQLX7r7sAW+Wa+8hhF2h4pvqTrTMc8+WcDBEunnUurr46Jvv0jk3Vg==}
+  baseline-browser-mapping@2.11.19:
+    resolution: {integrity: sha512-Grytf1xOxOEMTGRwx6rLGKkTabd4vMg3VrKdj/7joCmV0qgh4QwMMO6xh34YEXQqirAuUdgQGa5orJQQ+69RBw==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -8847,8 +8848,8 @@ packages:
   browserify-zlib@0.2.0:
     resolution: {integrity: sha512-Z942RysHXmJrhqk88FmKBVq/v5tqmSkDz7p54G/MGyjMnCFFnC79XWNbg+Vta8W6Wb2qtSZTSxIGkJrRpCFEiA==}
 
-  browserslist@4.28.2:
-    resolution: {integrity: sha512-48xSriZYYg+8qXna9kwqjIVzuQxi+KYWp2+5nCYnYKPTr0LvD89Jqk2Or5ogxz0NUMfIjhh2lIUX/LyX9B4oIg==}
+  browserslist@4.28.8:
+    resolution: {integrity: sha512-V2NpofLblG64mfOtSgDhOJESZEGogzDMBv/q+W6oc4LXWP/q75eOXoOaaOu1EOadB9U4Bwx/e0yzbvwKH8zalA==}
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
     hasBin: true
 
@@ -8992,6 +8993,9 @@ packages:
 
   caniuse-lite@1.0.30001793:
     resolution: {integrity: sha512-iwSsYWaCOoh26cV8NwNRViHlrfUvYsHDfRVcbtmw0Kg6PJIZZXwMkj1442FYLBGkeUf1juAsU3DTfxW579mrPA==}
+
+  caniuse-lite@1.0.30001810:
+    resolution: {integrity: sha512-TITQPUkaz+aVk5GL6NhOdwk1aEaNTSDPsGFWrTuhKGtjTF70jL/Oht2W4c6rXUe5fu7Ie19VIahAXHIIiWWNeg==}
 
   canvg@3.0.11:
     resolution: {integrity: sha512-5ON+q7jCTgMp9cjpu4Jo6XbvfYwSB2Ow3kzHKfIyJfaCAOHLbdKPQqGKgfED/R5B+3TFFfe8pegYA+b423SRyA==}
@@ -10050,8 +10054,8 @@ packages:
     engines: {node: '>=0.12.18'}
     hasBin: true
 
-  electron-to-chromium@1.5.358:
-    resolution: {integrity: sha512-EO7tKm3QxRqTs1lSuPXzl6yRAwznehp0AH9OoMOIC+4mQzTFday8FJCO5KU6J/TFSQXEOahNq4vTKpz1jmCVOA==}
+  electron-to-chromium@1.5.415:
+    resolution: {integrity: sha512-958V+Kbhtgz+SxXeEVKBjrlKRBIDAYvUJfwhjxMZ5S6ut9jAl7l9ZKBkBrvjyjZE36PabLUo2L8kEeV5O4vgJg==}
 
   elliptic@6.6.1:
     resolution: {integrity: sha512-RaddvvMatK2LJHqFJ+YA4WysVN5Ita9E35botqIYspQ4TkRAlCicdzKOjlyv/1Za5RyTNn7di//eEV0uTAfe3g==}
@@ -10658,8 +10662,8 @@ packages:
   fast-string-width@3.0.2:
     resolution: {integrity: sha512-gX8LrtNEI5hq8DVUfRQMbr5lpaS4nMIWV+7XEbXk2b8kiQIizgnlr12B4dA3ZEx3308ze0O4Q1R+cHts8kyUJg==}
 
-  fast-uri@3.1.5:
-    resolution: {integrity: sha512-gHwA1O9LDIcKunMKhObS/HimwtehO1nPUECKAu5TpKgaO19fcWEl4bliWe1jWxVFvIXztJjjQ4L8XQ1EU9f7Jw==}
+  fast-uri@3.1.6:
+    resolution: {integrity: sha512-7Ical1vFEMr0onbVzEDIreM22I4khW+fzyQPwvAFWBp1iwdshSZRsL4jjRvPG9JP1uiqMHRto+YU6R2/CzDz5Q==}
 
   fast-wrap-ansi@0.2.2:
     resolution: {integrity: sha512-7F2Fl+TjRSenLqlU3UjSH0iyqopqoZIu7eZVpEirP2g1GtWa2G/ecEmBdgz31+Mxr+ELclgg6sokpSFIQiZ02Q==}
@@ -12252,8 +12256,8 @@ packages:
   jsonc-parser@3.3.1:
     resolution: {integrity: sha512-HUgH65KyejrUFPvHFPbqOY0rsFip3Bo5wb4ngvdi1EpCYWUQDC5V+Y7mZws+DLkr4M//zQJoanu1SP+87Dv1oQ==}
 
-  jsondiffpatch@0.7.3:
-    resolution: {integrity: sha512-zd4dqFiXSYyant2WgSXAZ9+yYqilNVvragVNkNRn2IFZKgjyULNrKRznqN4Zon0MkLueCg+3QaPVCnDAVP20OQ==}
+  jsondiffpatch@0.7.6:
+    resolution: {integrity: sha512-zE9+AXFq+MkTolDor2Cw1nJzLC0aleqPkYf52Kb4Kn4mJcka/gFHpGI2JBVEJCfWOvBl0OoxZS+wuLdislQcqg==}
     engines: {node: ^18.0.0 || >=20.0.0}
     hasBin: true
 
@@ -13200,13 +13204,13 @@ packages:
     engines: {node: '>=14.18'}
     hasBin: true
     peerDependencies:
-      next: '>=15.5.21 <16'
+      next: '>=15.5.24 <16'
 
   next-tick@1.1.0:
     resolution: {integrity: sha512-CXdUiJembsNjuToQvxayPZF9Vqht7hewsvy2sOWafLvi2awflj9mOC6bHIg50orX8IJvWKY9wYQ/zB2kogPslQ==}
 
-  next@15.5.21:
-    resolution: {integrity: sha512-/TsdBtkWLhkl+NVL3Uqws2UphNd6IPzOtzSk1fHaf+0P7GQKLZDUytyhns/Ykbzdy9+YRjwG7ONvrHaaTDdFqQ==}
+  next@15.5.24:
+    resolution: {integrity: sha512-Y+xn8EQCoC3ZbsFPyzE+tE8XOdrWeUdUF7NeXbmg9DsgAxl5UYxlsrvgVESHTyTGigoTa1bCUrxn70F5bqt0Gw==}
     engines: {node: ^18.18.0 || ^19.8.0 || >= 20.0.0}
     hasBin: true
     peerDependencies:
@@ -13279,8 +13283,9 @@ packages:
   node-mock-http@1.0.4:
     resolution: {integrity: sha512-8DY+kFsDkNXy1sJglUfuODx1/opAGJGyrTuFqEoN90oRc2Vk0ZbD4K2qmKXBBEhZQzdKHIVfEJpDU8Ak2NJEvQ==}
 
-  node-releases@2.0.44:
-    resolution: {integrity: sha512-5WUyunoPMsvvEhS8AxHtRzP+oA8UCkJ7YRxatWKjngndhDGLiqEVAQKWjFAiAiuL8zMRGzGSJxFnLetoa43qGQ==}
+  node-releases@2.0.53:
+    resolution: {integrity: sha512-D9UOmYG3UH1V+ENW56t5QXBwJw1YEY18ruVeus89Rw+SyIgjPkCO84bRzO3uNIYosJbNwiabWVn48o3uJLjxFQ==}
+    engines: {node: '>=18'}
 
   node-schedule@2.1.1:
     resolution: {integrity: sha512-OXdegQq03OmXEjt2hZP33W2YPs/E5BcFQks46+G2gAxs4gHOIVD1u7EqlYLYSKsaIpyKCK9Gbk0ta1/gjRSMRQ==}
@@ -16496,11 +16501,11 @@ packages:
     resolution: {integrity: sha512-1uEe95xksV1O0CYKXo8vQvN1JEbtJp7lb7C5U9HMsIp6IVwntkH/oNUzyVNQSd4S1sYk2FpSSW44FqMc8qee5w==}
     engines: {node: '>=4'}
 
-  update-browserslist-db@1.2.3:
-    resolution: {integrity: sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==}
+  update-browserslist-db@1.3.1:
+    resolution: {integrity: sha512-ZZ61DsRsOnakl74HAmp3oSN4aXUmEWXf+i/yv0h7tIBfICc3VdrFErQKUUKPgu3AMsTUMbcongALEN4l6GSUrQ==}
     hasBin: true
     peerDependencies:
-      browserslist: '>= 4.21.0'
+      browserslist: '>=4.28.7 <5'
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
@@ -17904,7 +17909,7 @@ snapshots:
     dependencies:
       '@babel/compat-data': 7.29.7
       '@babel/helper-validator-option': 7.29.7
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       lru-cache: 5.1.1
       semver: 6.3.1
 
@@ -19035,7 +19040,7 @@ snapshots:
       '@cowprotocol/sdk-contracts-ts': 3.0.1
       '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
       '@cowprotocol/sdk-order-signing': 1.0.1(encoding@0.1.13)
-      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=3a320fee20fcf0c53329d988dae64788b2671ce219c912cb21787384a4a83fd4)(ajv@6.15.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=45ecc715edc7157a72b7e8943b7c81fbd1c6df81769a44701529d09a47142f48)(ajv@6.15.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       cross-fetch: 4.0.0(encoding@0.1.13)
     optionalDependencies:
       '@openzeppelin/merkle-tree': 1.0.8
@@ -19053,7 +19058,7 @@ snapshots:
       '@cowprotocol/sdk-contracts-ts': 3.0.1
       '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
       '@cowprotocol/sdk-order-signing': 1.0.1(encoding@0.1.13)
-      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=3a320fee20fcf0c53329d988dae64788b2671ce219c912cb21787384a4a83fd4)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=45ecc715edc7157a72b7e8943b7c81fbd1c6df81769a44701529d09a47142f48)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       cross-fetch: 4.0.0(encoding@0.1.13)
     optionalDependencies:
       '@openzeppelin/merkle-tree': 1.0.8
@@ -19081,7 +19086,7 @@ snapshots:
       json-stringify-deterministic: 1.0.12
       multiformats: 9.9.0
 
-  '@cowprotocol/sdk-bridging@4.0.2(patch_hash=13cc858b744cd9e118b17a91a22edc8c69ca136f00685408403c8563aca88e45)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+  '@cowprotocol/sdk-bridging@4.0.2(patch_hash=b1635235a05596ecac780a499242b6a4fa1acc2fdc16d85bd901152b402d0f0c)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
     dependencies:
       '@cowprotocol/sdk-app-data': 5.0.0(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-common': 0.10.2
@@ -19089,7 +19094,7 @@ snapshots:
       '@cowprotocol/sdk-contracts-ts': 3.0.1
       '@cowprotocol/sdk-cow-shed': 0.3.8
       '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
-      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=3a320fee20fcf0c53329d988dae64788b2671ce219c912cb21787384a4a83fd4)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=45ecc715edc7157a72b7e8943b7c81fbd1c6df81769a44701529d09a47142f48)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-weiroll': 0.1.30
       '@defuse-protocol/one-click-sdk-typescript': 0.1.1-0.2
       json-stable-stringify: 1.3.0
@@ -19164,7 +19169,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@cowprotocol/sdk-trading@2.0.2(patch_hash=3a320fee20fcf0c53329d988dae64788b2671ce219c912cb21787384a4a83fd4)(ajv@6.15.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+  '@cowprotocol/sdk-trading@2.0.2(patch_hash=45ecc715edc7157a72b7e8943b7c81fbd1c6df81769a44701529d09a47142f48)(ajv@6.15.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
     dependencies:
       '@cowprotocol/sdk-app-data': 5.0.0(ajv@6.15.0)(cross-fetch@4.0.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-common': 0.10.2
@@ -19180,7 +19185,7 @@ snapshots:
       - ipfs-only-hash
       - multiformats
 
-  '@cowprotocol/sdk-trading@2.0.2(patch_hash=3a320fee20fcf0c53329d988dae64788b2671ce219c912cb21787384a4a83fd4)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+  '@cowprotocol/sdk-trading@2.0.2(patch_hash=45ecc715edc7157a72b7e8943b7c81fbd1c6df81769a44701529d09a47142f48)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
     dependencies:
       '@cowprotocol/sdk-app-data': 5.0.0(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-common': 0.10.2
@@ -21248,7 +21253,7 @@ snapshots:
       - utf-8-validate
       - vue-tsc
 
-  '@module-federation/node@2.7.28(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))':
+  '@module-federation/node@2.7.28(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(next@15.5.24(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))':
     dependencies:
       '@module-federation/enhanced': 0.23.0(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))
       '@module-federation/runtime': 0.23.0
@@ -21258,7 +21263,7 @@ snapshots:
       node-fetch: 2.7.0(encoding@0.1.13)
       webpack: 5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23)
     optionalDependencies:
-      next: 15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
+      next: 15.5.24(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
       react: 19.1.2
       react-dom: 19.1.2(react@19.1.2)
     transitivePeerDependencies:
@@ -21530,7 +21535,7 @@ snapshots:
 
   '@next/env@13.5.7': {}
 
-  '@next/env@15.5.21': {}
+  '@next/env@15.5.24': {}
 
   '@next/eslint-plugin-next@16.1.5':
     dependencies:
@@ -21540,28 +21545,28 @@ snapshots:
     dependencies:
       fast-glob: 3.3.1
 
-  '@next/swc-darwin-arm64@15.5.21':
+  '@next/swc-darwin-arm64@15.5.24':
     optional: true
 
-  '@next/swc-darwin-x64@15.5.21':
+  '@next/swc-darwin-x64@15.5.24':
     optional: true
 
-  '@next/swc-linux-arm64-gnu@15.5.21':
+  '@next/swc-linux-arm64-gnu@15.5.24':
     optional: true
 
-  '@next/swc-linux-arm64-musl@15.5.21':
+  '@next/swc-linux-arm64-musl@15.5.24':
     optional: true
 
-  '@next/swc-linux-x64-gnu@15.5.21':
+  '@next/swc-linux-x64-gnu@15.5.24':
     optional: true
 
-  '@next/swc-linux-x64-musl@15.5.21':
+  '@next/swc-linux-x64-musl@15.5.24':
     optional: true
 
-  '@next/swc-win32-arm64-msvc@15.5.21':
+  '@next/swc-win32-arm64-msvc@15.5.24':
     optional: true
 
-  '@next/swc-win32-x64-msvc@15.5.21':
+  '@next/swc-win32-x64-msvc@15.5.24':
     optional: true
 
   '@noble/ciphers@1.2.1': {}
@@ -21771,10 +21776,10 @@ snapshots:
       - nx
       - supports-color
 
-  '@nx/module-federation@22.7.8(870e87b179e330d2a1d1c4fd200b23c0)':
+  '@nx/module-federation@22.7.8(9d9679860bb34596853acad1fb4faa56)':
     dependencies:
       '@module-federation/enhanced': 2.8.1(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))
-      '@module-federation/node': 2.7.28(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))
+      '@module-federation/node': 2.7.28(@rspack/core@1.6.8(@swc/helpers@0.5.17))(bufferutil@4.0.8)(next@15.5.24(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0))(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(typescript@5.9.3)(utf-8-validate@5.0.10)(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))
       '@module-federation/sdk': 2.8.1
       '@nx/devkit': 22.7.8(nx@22.7.8(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17)))
       '@nx/js': 22.7.8(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17))(nx@22.7.8(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17)))
@@ -21820,20 +21825,20 @@ snapshots:
       - vue-tsc
       - webpack-cli
 
-  '@nx/next@22.7.8(288508cd2d0521b1e71c54037a90af5a)':
+  '@nx/next@22.7.8(55e783b35c305d4c1787e84db920c871)':
     dependencies:
       '@babel/plugin-proposal-decorators': 7.23.7(@babel/core@7.29.7)
       '@nx/devkit': 22.7.8(nx@22.7.8(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17)))
       '@nx/eslint': 22.7.8(b338b129f38aa3b5a2cf3120f11fe631)
       '@nx/js': 22.7.8(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17))(nx@22.7.8(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17)))
-      '@nx/react': 22.7.8(fa370485136d0930921df50b70b680d1)
+      '@nx/react': 22.7.8(c54940f0bd2552dcbf89e43bc922b471)
       '@nx/web': 22.7.8(5e1495fd96cff5c2713e37858cf8352c)
       '@nx/webpack': 22.7.8(@babel/traverse@7.29.7)(@rspack/core@1.6.8(@swc/helpers@0.5.17))(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17))(bufferutil@4.0.8)(html-webpack-plugin@5.5.3(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23)))(lightningcss@1.32.0)(nx@22.7.8(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17)))(typescript@5.9.3)(utf-8-validate@5.0.10)
       '@phenomnomnominal/tsquery': 6.2.0(typescript@5.9.3)
       '@svgr/webpack': 8.1.0
       copy-webpack-plugin: 14.0.0(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))
       ignore: 7.0.5
-      next: 15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
+      next: 15.5.24(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
       semver: 7.8.5
       tslib: 2.8.1
       webpack-merge: 5.10.0
@@ -21910,12 +21915,12 @@ snapshots:
   '@nx/nx-win32-x64-msvc@22.7.8':
     optional: true
 
-  '@nx/react@22.7.8(fa370485136d0930921df50b70b680d1)':
+  '@nx/react@22.7.8(c54940f0bd2552dcbf89e43bc922b471)':
     dependencies:
       '@nx/devkit': 22.7.8(nx@22.7.8(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17)))
       '@nx/eslint': 22.7.8(b338b129f38aa3b5a2cf3120f11fe631)
       '@nx/js': 22.7.8(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17))(nx@22.7.8(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17)))
-      '@nx/module-federation': 22.7.8(870e87b179e330d2a1d1c4fd200b23c0)
+      '@nx/module-federation': 22.7.8(9d9679860bb34596853acad1fb4faa56)
       '@nx/rollup': 22.7.8(@babel/core@7.29.7)(@babel/traverse@7.29.7)(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17))(@types/babel__core@7.20.5)(nx@22.7.8(@swc-node/register@1.11.1(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)(@swc/core@1.15.47(@swc/helpers@0.5.17))(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.15.47(@swc/helpers@0.5.17)))(typescript@5.9.3)
       '@nx/web': 22.7.8(5e1495fd96cff5c2713e37858cf8352c)
       '@phenomnomnominal/tsquery': 6.2.0(typescript@5.9.3)
@@ -22073,7 +22078,7 @@ snapshots:
       ajv: 8.20.0
       autoprefixer: 10.4.19(postcss@8.5.23)
       babel-loader: 9.1.3(@babel/core@7.29.7)(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       copy-webpack-plugin: 14.0.0(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))
       css-loader: 6.11.0(@rspack/core@1.6.8(@swc/helpers@0.5.17))(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))
       css-minimizer-webpack-plugin: 8.0.0(lightningcss@1.32.0)(webpack@5.106.2(@swc/core@1.15.47(@swc/helpers@0.5.17))(lightningcss@1.32.0)(postcss@8.5.23))
@@ -25910,7 +25915,7 @@ snapshots:
   ajv@8.20.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.5
+      fast-uri: 3.1.6
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -26193,7 +26198,7 @@ snapshots:
 
   autoprefixer@10.4.19(postcss@8.5.23):
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       caniuse-lite: 1.0.30001793
       fraction.js: 4.3.7
       normalize-range: 0.1.2
@@ -26428,7 +26433,7 @@ snapshots:
 
   base64-js@1.5.1: {}
 
-  baseline-browser-mapping@2.10.30: {}
+  baseline-browser-mapping@2.11.19: {}
 
   basic-auth@2.0.1:
     dependencies:
@@ -26601,13 +26606,13 @@ snapshots:
     dependencies:
       pako: 1.0.11
 
-  browserslist@4.28.2:
+  browserslist@4.28.8:
     dependencies:
-      baseline-browser-mapping: 2.10.30
-      caniuse-lite: 1.0.30001793
-      electron-to-chromium: 1.5.358
-      node-releases: 2.0.44
-      update-browserslist-db: 1.2.3(browserslist@4.28.2)
+      baseline-browser-mapping: 2.11.19
+      caniuse-lite: 1.0.30001810
+      electron-to-chromium: 1.5.415
+      node-releases: 2.0.53
+      update-browserslist-db: 1.3.1(browserslist@4.28.8)
 
   bs-logger@0.2.6:
     dependencies:
@@ -26760,12 +26765,14 @@ snapshots:
 
   caniuse-api@3.0.0:
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       caniuse-lite: 1.0.30001793
       lodash.memoize: 4.1.2
       lodash.uniq: 4.5.0
 
   caniuse-lite@1.0.30001793: {}
+
+  caniuse-lite@1.0.30001810: {}
 
   canvg@3.0.11:
     dependencies:
@@ -27217,7 +27224,7 @@ snapshots:
 
   core-js-compat@3.49.0:
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
 
   core-js-pure@3.35.0: {}
 
@@ -27440,7 +27447,7 @@ snapshots:
 
   cssnano-preset-default@7.0.17(postcss@8.5.23):
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       css-declaration-sorter: 7.2.0(postcss@8.5.23)
       cssnano-utils: 5.0.3(postcss@8.5.23)
       postcss: 8.5.23
@@ -27909,7 +27916,7 @@ snapshots:
 
   ejs@5.0.1: {}
 
-  electron-to-chromium@1.5.358: {}
+  electron-to-chromium@1.5.415: {}
 
   elliptic@6.6.1:
     dependencies:
@@ -28852,7 +28859,7 @@ snapshots:
     dependencies:
       fast-string-truncated-width: 3.0.3
 
-  fast-uri@3.1.5: {}
+  fast-uri@3.1.6: {}
 
   fast-wrap-ansi@0.2.2:
     dependencies:
@@ -30630,7 +30637,7 @@ snapshots:
       '@mantine/prism': 6.0.22(@mantine/core@6.0.22(@emotion/react@11.14.0(@types/react@19.1.3)(react@19.1.2))(@mantine/hooks@6.0.22(react@19.1.2))(@types/react@19.1.3)(react-dom@19.1.2(react@19.1.2))(react@19.1.2))(@mantine/hooks@6.0.22(react@19.1.2))(react-dom@19.1.2(react@19.1.2))(react@19.1.2)
       '@redux-devtools/extension': 3.3.0(redux@4.2.1)
       javascript-stringify: 2.1.0
-      jsondiffpatch: 0.7.3
+      jsondiffpatch: 0.7.6
       react: 19.1.2
       react-error-boundary: 4.1.2(react@19.1.2)
       react-json-tree: 0.18.0(@types/react@19.1.3)(react@19.1.2)
@@ -30795,7 +30802,7 @@ snapshots:
 
   jsonc-parser@3.3.1: {}
 
-  jsondiffpatch@0.7.3:
+  jsondiffpatch@0.7.6:
     dependencies:
       '@dmsnell/diff-match-patch': 1.1.0
 
@@ -31887,19 +31894,19 @@ snapshots:
 
   netmask@2.1.1: {}
 
-  next-sitemap@4.2.3(next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)):
+  next-sitemap@4.2.3(next@15.5.24(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)):
     dependencies:
       '@corex/deepmerge': 4.0.43
       '@next/env': 13.5.7
       fast-glob: 3.3.3
       minimist: 1.2.8
-      next: 15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
+      next: 15.5.24(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0)
 
   next-tick@1.1.0: {}
 
-  next@15.5.21(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0):
+  next@15.5.24(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.7.1)(babel-plugin-macros@3.1.0)(react-dom@19.1.2(react@19.1.2))(react@19.1.2)(sass@1.88.0):
     dependencies:
-      '@next/env': 15.5.21
+      '@next/env': 15.5.24
       '@swc/helpers': 0.5.15
       caniuse-lite: 1.0.30001793
       postcss: 8.5.23
@@ -31907,14 +31914,14 @@ snapshots:
       react-dom: 19.1.2(react@19.1.2)
       styled-jsx: 5.1.6(@babel/core@7.29.7)(babel-plugin-macros@3.1.0)(react@19.1.2)
     optionalDependencies:
-      '@next/swc-darwin-arm64': 15.5.21
-      '@next/swc-darwin-x64': 15.5.21
-      '@next/swc-linux-arm64-gnu': 15.5.21
-      '@next/swc-linux-arm64-musl': 15.5.21
-      '@next/swc-linux-x64-gnu': 15.5.21
-      '@next/swc-linux-x64-musl': 15.5.21
-      '@next/swc-win32-arm64-msvc': 15.5.21
-      '@next/swc-win32-x64-msvc': 15.5.21
+      '@next/swc-darwin-arm64': 15.5.24
+      '@next/swc-darwin-x64': 15.5.24
+      '@next/swc-linux-arm64-gnu': 15.5.24
+      '@next/swc-linux-arm64-musl': 15.5.24
+      '@next/swc-linux-x64-gnu': 15.5.24
+      '@next/swc-linux-x64-musl': 15.5.24
+      '@next/swc-win32-arm64-msvc': 15.5.24
+      '@next/swc-win32-x64-msvc': 15.5.24
       '@playwright/test': 1.60.0
       sass: 1.88.0
       sharp: 0.35.3(@types/node@24.7.1)
@@ -31968,7 +31975,7 @@ snapshots:
 
   node-mock-http@1.0.4: {}
 
-  node-releases@2.0.44: {}
+  node-releases@2.0.53: {}
 
   node-schedule@2.1.1:
     dependencies:
@@ -32739,14 +32746,14 @@ snapshots:
   postcss-colormin@7.0.10(postcss@8.5.23):
     dependencies:
       '@colordx/core': 5.5.0
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       caniuse-api: 3.0.0
       postcss: 8.5.23
       postcss-value-parser: 4.2.0
 
   postcss-convert-values@7.0.12(postcss@8.5.23):
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       postcss: 8.5.23
       postcss-value-parser: 4.2.0
 
@@ -32794,7 +32801,7 @@ snapshots:
 
   postcss-merge-rules@7.0.11(postcss@8.5.23):
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       caniuse-api: 3.0.0
       cssnano-utils: 5.0.3(postcss@8.5.23)
       postcss: 8.5.23
@@ -32814,14 +32821,14 @@ snapshots:
 
   postcss-minify-params@7.0.9(postcss@8.5.23):
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       cssnano-utils: 5.0.3(postcss@8.5.23)
       postcss: 8.5.23
       postcss-value-parser: 4.2.0
 
   postcss-minify-selectors@7.1.2(postcss@8.5.23):
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       caniuse-api: 3.0.0
       cssesc: 3.0.0
       postcss: 8.5.23
@@ -32891,7 +32898,7 @@ snapshots:
 
   postcss-normalize-unicode@7.0.9(postcss@8.5.23):
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       postcss: 8.5.23
       postcss-value-parser: 4.2.0
 
@@ -32913,7 +32920,7 @@ snapshots:
 
   postcss-reduce-initial@7.0.9(postcss@8.5.23):
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       caniuse-api: 3.0.0
       postcss: 8.5.23
 
@@ -35006,7 +35013,7 @@ snapshots:
 
   stylehacks@7.0.11(postcss@8.5.23):
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       postcss: 8.5.23
       postcss-selector-parser: 7.1.4
 
@@ -35771,9 +35778,9 @@ snapshots:
 
   upath@2.0.1: {}
 
-  update-browserslist-db@1.2.3(browserslist@4.28.2):
+  update-browserslist-db@1.3.1(browserslist@4.28.8):
     dependencies:
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       escalade: 3.2.0
       picocolors: 1.1.1
 
@@ -36643,7 +36650,7 @@ snapshots:
       '@webassemblyjs/wasm-parser': 1.14.1
       acorn: 8.17.0
       acorn-import-phases: 1.0.4(acorn@8.17.0)
-      browserslist: 4.28.2
+      browserslist: 4.28.8
       chrome-trace-event: 1.0.3
       enhanced-resolve: 5.21.3
       es-module-lexer: 2.1.0

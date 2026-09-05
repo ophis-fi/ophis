@@ -20,6 +20,8 @@ const fill = (over: Partial<PendingDefiLlamaFill>): PendingDefiLlamaFill => ({
   blockNumber: 42n,
   logIndex: 3,
   tradeUid: UID,
+  transactionHash: `0x${'33'.repeat(32)}`,
+  userAddress: `0x${'44'.repeat(20)}`,
   settlementTimestamp: new Date('2026-08-01T12:00:00Z'),
   sellToken: `0x${'11'.repeat(20)}`,
   sellAmount: 1_000n,
@@ -32,9 +34,10 @@ const fill = (over: Partial<PendingDefiLlamaFill>): PendingDefiLlamaFill => ({
 });
 
 async function readRow() {
-  const [row] = await sql<{ bps: number | null; assessed: string | null; verified: boolean; sell: string }[]>`
+  const [row] = await sql<{ bps: number | null; assessed: string | null; verified: boolean; sell: string; user: string }[]>`
     SELECT volume_fee_bps AS bps, assessed_fee_bps::text AS assessed,
-           fee_verified AS verified, sell_amount::text AS sell
+           fee_verified AS verified, sell_amount::text AS sell,
+           encode(user_address, 'hex') AS user
     FROM defillama_fills
     WHERE chain_id = 100 AND block_number = 42 AND log_index = 3
       AND trade_uid = decode(${UID.slice(2)}, 'hex')`;
@@ -94,6 +97,19 @@ describe('upsertDefillamaFills', () => {
         AND trade_uid = decode(${UID.slice(2)}, 'hex')`;
     // The verified in-batch copy won over the provisional one.
     expect(row).toMatchObject({ bps: 1, verified: true });
+  });
+
+  it('lets a verified enrichment correct an already non-null user identity', async () => {
+    const wrongUser = `0x${'55'.repeat(20)}` as `0x${string}`;
+    await upsertDefillamaFills([fill({ blockNumber: 79n, logIndex: 10, userAddress: wrongUser,
+      assessedFeeBps: '1.00000000', feeVerified: true })]);
+    await upsertDefillamaFills([fill({ blockNumber: 79n, logIndex: 10,
+      assessedFeeBps: '1.00000000', feeVerified: true })]);
+    const [row] = await sql<{ user: string }[]>`
+      SELECT encode(user_address, 'hex') AS user FROM defillama_fills
+      WHERE chain_id = 100 AND block_number = 79 AND log_index = 10
+        AND trade_uid = decode(${UID.slice(2)}, 'hex')`;
+    expect(row!.user).toBe('44'.repeat(20));
   });
 
   it('accepts the compounded canonical maximum but rejects values above 100.01 bps', async () => {

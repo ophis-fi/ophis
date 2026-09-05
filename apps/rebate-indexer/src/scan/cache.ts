@@ -11,7 +11,9 @@ import type { CachedClass, ScanCache } from './types.js';
 // either read its contents or redirect our write (CodeQL: "Insecure creation of
 // file in the os temp dir"). ~/.ophis is created with restrictive perms below.
 export function defaultCachePath(): string {
-  return join(homedir(), '.ophis', 'scan-cache.json');
+  // v2 invalidates negative classifications written by the pre-widget-aware
+  // parser, which mislabeled real widget-routed Ophis orders as `none`.
+  return join(homedir(), '.ophis', 'scan-cache-v2.json');
 }
 
 export async function loadCache(path: string = defaultCachePath()): Promise<ScanCache> {

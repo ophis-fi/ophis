@@ -9,7 +9,7 @@ vi.mock('../src/db/index.js', () => ({
     if (text.includes('SELECT (EXISTS (SELECT 1 FROM existing) OR EXISTS (SELECT 1 FROM inserted)) AS accepted')) {
       return [{ accepted: process.env.REBATE_ENROLLMENT_QUEUE_MAX !== '0' }];
     }
-    if (text.includes('completed_at IS NOT NULL AS ready')) {
+    if (text.includes('AS ready') && text.includes('defillama_backfill_wallets')) {
       return [{ ready: process.env.TEST_DEFILLAMA_BACKFILL_PENDING !== '1' }];
     }
     return [];
@@ -85,6 +85,12 @@ test('/stats returns public cumulative JSON for an API client', async () => {
   // Lifetime average trade size: null until the first trade (mocked db = empty).
   expect(body).toHaveProperty('avgTradeUsd');
   expect(body.avgTradeUsd).toBeNull();
+  expect(body).toMatchObject({
+    dataAsOf: null,
+    dataFresh: false,
+    dataStatus: 'degraded',
+    dataStaleReason: 'never_refreshed',
+  });
   // Static execution-model facts (configuration only, no indexed data).
   expect(body.execution).toEqual({
     mevProtection: 'batch-auction',
@@ -125,7 +131,15 @@ test('/defillama returns bounded daily protocol aggregates only', async () => {
   expect(JSON.parse(res.body)).toEqual({
     ok: true,
     date: '2026-08-03',
-    totals: { volumeUsd: 0, feesUsd: 0, revenueUsd: 0, supplySideRevenueUsd: 0, trades: 0 },
+    totals: {
+      volumeUsd: 0,
+      feesUsd: 0,
+      revenueUsd: 0,
+      supplySideRevenueUsd: 0,
+      trades: 0,
+      transactions: 0,
+      users: 0,
+    },
     chains: [],
   });
   expect(res.body.toLowerCase()).not.toMatch(/wallet|order|referral|payout/);
@@ -192,6 +206,13 @@ test('/health exposes the fetcher + pipeline liveness fields', async () => {
   expect(body).toHaveProperty('last_fetch_attempt');
   expect(body).toHaveProperty('last_pipeline_run_at');
   expect(body).toHaveProperty('last_batcher_run_at');
+  expect(body).toMatchObject({
+    last_public_data_refresh_at: null,
+    data_as_of: null,
+    data_fresh: false,
+    data_status: 'degraded',
+    data_stale_reason: 'never_refreshed',
+  });
   expect(body).toHaveProperty('pending_batches');
 });
 

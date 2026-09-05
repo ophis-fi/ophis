@@ -16,6 +16,31 @@ const PAGES = [
   { route: '/supported-chains', canonical: 'https://ophis.fi/supported-chains/', h1: 'Supported chains' },
   { route: '/security', canonical: 'https://ophis.fi/security/', h1: 'Security' },
   {
+    route: '/stablecoin-swaps',
+    canonical: 'https://ophis.fi/stablecoin-swaps/',
+    h1: 'Stablecoin swaps across onchain markets',
+  },
+  {
+    route: '/tokenized-stocks-rwa',
+    canonical: 'https://ophis.fi/tokenized-stocks-rwa/',
+    h1: 'Tokenized markets need precise execution',
+  },
+  {
+    route: '/ai-agent-crypto-swap-api',
+    canonical: 'https://ophis.fi/ai-agent-crypto-swap-api/',
+    h1: 'A bounded swap path for AI agents',
+  },
+  {
+    route: '/swap/robinhood-chain',
+    canonical: 'https://ophis.fi/swap/robinhood-chain/',
+    h1: 'Swap on Robinhood Chain',
+  },
+  {
+    route: '/migrate/odos-api',
+    canonical: 'https://ophis.fi/migrate/odos-api/',
+    h1: 'Migrating an Odos API integration',
+  },
+  {
     route: '/learn/intent-based-dex-aggregator',
     canonical: 'https://ophis.fi/learn/intent-based-dex-aggregator/',
     h1: 'What is an intent-based DEX aggregator?',

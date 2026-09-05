@@ -1,6 +1,25 @@
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape: 2-of-3 across PublicNode + ZAN + Ophis-owned Aleph op-reth.**
+# **Current shape (2026-08-29): 2-of-3 across Blockdaemon + ZAN + Tenderly.**
+#
+# ⚠️ READ THIS BEFORE TOUCHING A LANE. Until 2026-08-29 this header claimed
+# "PublicNode + ZAN + Ophis-owned Aleph op-reth" — and the owned op-reth had been
+# GONE since 2026-07-17 (the Aleph VM died and was never rebuilt). The stale line
+# is not trivia: it is WHY this config drifted into a fragile state unnoticed.
+# The 2-of-3 model was DESIGNED around an unmetered node we own as one of the
+# three lanes. When that node died it was quietly replaced by a third RENTED lane,
+# so all three votes now depend on somebody else's quota. On 2026-08-29 zan hit
+# its monthly credit cap and eth_getTransactionReceipt went below quorum
+# (measured 10/10 "not enough agreement among responses" through the proxy).
+#
+# Optimism is the ONLY sovereign chain in this repo with no owned node:
+#   unichain-mainnet  -> ophis-self-uni (http://ophis-uni-node:8545)   OWNED
+#   robinhood-mainnet -> ophis-self-rbh (http://ophis-rbh-node:8547)   OWNED
+#   optimism-mainnet  -> three rented lanes                            NONE
+# That is the whole reason this chain, and only this chain, keeps having
+# credit-exhaustion outages. Rebuilding an OP node is the durable fix; every
+# lane swap in the history below is a workaround for not having one.
+# KEEP THIS BLOCK CURRENT when a lane changes.
 #
 # Iteration history:
 #  - #130 deploy: tried publicnode + official-op + ankr-op. official-op
@@ -28,7 +47,7 @@
 # registered account) plus two free lanes. Full per-upstream rationale and the
 # measured per-method coverage live in the `upstreams:` block below.
 #
-#   publicnode-op       optimism-rpc.publicnode.com   Allnodes
+#   blockdaemon-op      svc.blockdaemon.com           Blockdaemon (keyed, FULL ARCHIVE)
 #                                                      CDN: Cloudflare (the ONE permitted)
 #                                                      auth: NONE (free public tier)
 #                                                      gap: no eth_getTransactionReceipt
@@ -37,24 +56,37 @@
 #                                                      CDN: none detected (NON-Cloudflare)
 #                                                      auth: KEYED (${ZAN_API_KEY}, URL path)
 #                                                      serves ALL protected methods
-#   validationcloud-op  mainnet.optimism.validationcloud.io
-#                                                      Validation Cloud
-#                                                      CDN: none (server: istio-envoy) — NON-Cloudflare
-#                                                      auth: KEYED (${VALIDATIONCLOUD_OP_KEY}, URL path)
-#                                                      serves ALL protected methods
+#   tenderly-op         optimism.gateway.tenderly.co  Tenderly (keyed, FULL ARCHIVE)
+#                                                      CDN: none (GCP LB, `via: 1.1 google`) — NON-Cloudflare
+#                                                      auth: NONE (free public tier)
+#                                                      serves ALL protected methods, INCLUDING
+#                                                      archive eth_getLogs + receipts
+#                                                      ⚠️ RATE LIMITED: ~50% HTTP 429 at ~4 req/s.
+#                                                      Degraded stopgap admitted 2026-08-23 to
+#                                                      replace validationcloud-op (HTTP 401 since
+#                                                      08-18). Swap for a KEYED archive lane.
 #
 # **Threat model — 2-of-3 over 3 distinct failure domains, with the hard
-# invariant that AT MOST ONE upstream is Cloudflare-fronted (now publicnode):**
+# invariant that AT MOST ONE upstream is Cloudflare-fronted (now blockdaemon):**
 #
-#  - Cloudflare compromise → only publicnode is hijacked. ZAN and Validation
-#    Cloud return the real answer → dispute → returnError →
+#  - Cloudflare compromise → only blockdaemon is hijacked. ZAN and tenderly
+#    return the real answer → dispute → returnError →
 #    driver does NOT settle against forged state.
-#  - ZAN OR Validation Cloud is compromised → the other two form quorum on the real
+#  - ZAN OR tenderly is compromised → the other two form quorum on the real
 #    answer → safe. NO 2-upstream subset shares one CDN/DNS, so a single-provider
 #    compromise can never satisfy quorum alone. (This property survived the
-#    2026-07-30 keyed withdrawal, the 2026-08-09 tenderly retirement AND the
-#    2026-08-15 owned-node retirement: zan.top and istio-fronted Validation Cloud
-#    each introduce a distinct non-CF failure domain.)
+#    2026-07-30 keyed withdrawal, the 2026-08-09 tenderly retirement, the
+#    2026-08-15 owned-node retirement AND the 2026-08-23 validationcloud
+#    retirement: zan.top (no CDN) and GCP-fronted mainnet.optimism.io each
+#    introduce a distinct non-CF failure domain.)
+#    ⚠️ tenderly-op is Google-fronted (AS396982), the SAME failure domain the
+#    retired official-op sat in — which is exactly why it replaced it rather than
+#    joining it. Never run both. Historical note on the retired lane: official-op
+#    was operated by OP Labs, i.e. the CHAIN OPERATOR itself. That
+#    is a genuinely independent domain from Allnodes and Ant Digital and keeps
+#    the ≤1-CF invariant, but note it is not independent of the sequencer: an OP
+#    Labs compromise that forged chain state would be forging its own chain.
+#    The property this quorum defends is CDN/DNS interception, not that.
 #  - ⚠️ THE PRECONDITION for the line above: that claim holds ONLY where all three
 #    lanes can actually ANSWER the method. It is not automatic — it is a property
 #    to re-check whenever a lane changes. Review finding 2026-07-30 (P1): while zan
@@ -71,8 +103,14 @@
 #    single-compromise protection is GONE for that method — either add a capable
 #    lane or force that method to disputeBehavior:returnError.
 #    Still true today for eth_getTransactionReceipt (publicnode is archive-gated,
-#    so only ZAN + Validation Cloud serve it) — which is why the receipt rule below is
+#    HISTORICAL (pre-2026-08-29, when publicnode held the CF slot and could serve
+#    neither receipts nor archive, so only ZAN + official-op served them) — which
+#    is why the receipt rule below is
 #    already disputeBehavior:returnError, i.e. fail-closed rather than tie-broken.
+#    ⚠️ And, since 2026-08-23, ALSO TRUE for eth_getLogs BEYOND ~128 BLOCKS: the
+#    same archive gate applies, so deep getLogs is likewise a 2-lane method — but
+#    it matches a preferBlockHeadLeader rule rather than returnError. That
+#    mismatch is the open item written up beside the coverage table below.
 #  - Two independent failure domains compromised at once: nation-state class,
 #    out of scope.
 #  - All three returning the same answer IS the canonical chain state
@@ -281,7 +319,7 @@ projects:
             consensus:
               maxParticipants: 3
               # 2-of-3 across fully-independent failure domains:
-              # - publicnode-op (Allnodes; CF DNS)
+              # - blockdaemon-op (Blockdaemon; CF DNS)
               # - zan-op (Ant Digital Technologies; non-CF)
               # - ophis-self-op (Ophis-owned Aleph op-reth; tailnet-only)
               agreementThreshold: 2
@@ -476,14 +514,51 @@ projects:
       #
       # Hosts are literal so the CI guard can pin the failure domains. The only
       # endpoint credential is ZAN_API_KEY; erpc.yaml remains RAM-disk rendered.
-      - id: publicnode-op
-        # Cloudflare-fronted (Allnodes) — the ONE permitted CF lane here.
-        # Fastest of the three (median 54ms) and the most reliable for the pricing
-        # path. Measured 2026-07-30: 12/12 burst, eth_call / eth_getLogs /
-        # eth_estimateGas / eth_feeHistory all OK.
-        # Cannot serve eth_getTransactionReceipt without a personal token. ZAN
-        # and the owned node are the two receipt-capable voters.
-        endpoint: https://optimism-rpc.publicnode.com
+      - id: drpc-op
+        # Cloudflare-fronted (lb.drpc.org -> 104.18.x, AS13335, server: cloudflare,
+        # cf-ray present) — the ONE permitted CF lane. It REPLACES blockdaemon-op
+        # (2026-08-30), which is also Cloudflare, so the swap is domain-NEUTRAL and
+        # the quorum still spans Cloudflare / Alibaba(zan) / Google(tenderly).
+        #
+        # WHY: blockdaemon's free tier is EXHAUSTED — direct probe returns
+        # HTTP 429 {"title":"Quota limit exceeded"} on every request, and it had
+        # already been degrading (measured 2026-08-29 on the receipt path: 6%
+        # rejected at 1 req/s, 13% at 2, 21% at 4 — no clean operating point).
+        # It lasted ONE DAY in the quorum.
+        #
+        # ⚠️ THE MEASUREMENT THAT MATTERS, and how it was nearly got wrong twice:
+        # A first probe of drpc at 8 req/s returned 75% HTTP 429 and looked like a
+        # hard rejection. That was SELF-INFLICTED: dRPC's free tier caps
+        # THROUGHPUT (120k CU/min per IP), not volume, and the burst had drained
+        # the day's budget — dRPC's own dashboard read "Limited by RPS today: 75%"
+        # while the MONTHLY quota showed 210M CU untouched (100% remaining).
+        # After a cooldown, at the rate a lane in this quorum actually carries:
+        #   360s @ 3 req/s, production method mix (67% ARCHIVE eth_getLogs, 25%
+        #   eth_getBlockByNumber, 8% eth_call/eth_getTransactionReceipt, params
+        #   varied every request so nothing is cache-served):
+        #     633/633 = 100%. ZERO failures in ANY 60s bucket. No JSON-RPC error
+        #     bodies. p50 201ms / p95 234ms / p99 277ms / max 439ms. Flat curve.
+        # LESSON, now twice-learned: measure at the rate THIS QUORUM imposes
+        # (~2.5-3 req/s per lane), with the REAL method mix, for MINUTES — and do
+        # not let an over-rate probe poison the very budget you are measuring.
+        #
+        # HEADROOM (the reason this should outlast every predecessor): dRPC free is
+        # 210M CU per 30 days at a flat ~20 CU/request. This stack sends ~5.5M
+        # requests/30d to one lane => ~110M CU = ~52% of the allowance. That is the
+        # first lane with real margin. For contrast ZAN's 150M was consumed to
+        # EXACTLY 100% by this same load, which is why it dies every cycle.
+        # Watch it: if the monthly CU trend exceeds ~60%, the lane is on borrowed
+        # time and needs replacing BEFORE it caps, not after.
+        #
+        # Host is LITERAL so the CI guard's urlsplit can pin the failure domain;
+        # only ${DRPC_API_KEY} resolves from .env via render-configs.sh envsubst —
+        # NEVER committed. erpc.yaml is in PK_BEARING_NAMES, so the rendered file
+        # carrying this key lands on the RAM-disk, not the SSD.
+        #
+        # The key rides in a QUERY PARAM (?dkey=), the same shape blockdaemon used,
+        # so validate_rendered_erpc's empty-query-param rule already covers an
+        # empty substitution. render-configs.sh also fails fast on the unset var.
+        endpoint: https://lb.drpc.org/ogrpc?network=optimism&dkey=${DRPC_API_KEY}
         failsafe:
           # BUDGET INVARIANT (2026-08-15, CI-enforced by assert-erpc-failclosed):
           # one lane's worst-case serial budget (attempts x timeout + backoff)
@@ -589,39 +664,59 @@ projects:
               successThresholdCount: 2
               successThresholdCapacity: 4
 
-      - id: validationcloud-op
-        # KEYED and NON-Cloudflare (server: istio-envoy, no cf-ray) — with zan this
-        # keeps the ≤1-CF invariant intact and gives receipts a 3rd capable lane.
+      - id: tenderly-op
+        # Google-fronted (GCE/envoy, `via: 1.1 google`, AS396982) — it REPLACES
+        # official-op (mainnet.optimism.io, ALSO AS396982 Google, `via: 1.1 google`)
+        # on 2026-08-29. Both sit in the SAME failure domain, so this swap is
+        # domain-NEUTRAL: the quorum still spans exactly three independent domains
+        # (Cloudflare=blockdaemon, Alibaba=zan, Google=tenderly) and no 2-upstream
+        # subset shares a CDN/DNS operator.
         #
-        # Measured 2026-08-15 on this key: ALL TEN guard-protected methods OK
-        # (eth_call, eth_getLogs, eth_estimateGas, eth_getBalance, eth_getCode,
-        # eth_getStorageAt, eth_feeHistory, eth_getTransactionCount,
-        # eth_getTransactionByHash, eth_getTransactionReceipt), 20/20 on an unpaced
-        # eth_call burst, chainId 0xa, head level with publicnode.
+        # ⚠️ For the same reason tenderly may NEVER be added ALONGSIDE official-op:
+        # two Google-fronted lanes would let a single provider satisfy
+        # agreementThreshold:2, which is the Cloudflare attack with a different
+        # logo. It is a REPLACEMENT, never an addition.
         #
-        # THIS SUPERSEDES ophis-self-op (Ophis-owned op-reth on an Aleph VM at
-        # 100.90.108.54, admitted 2026-08-11 by #1166). That VM died with its host on
-        # 2026-08-14 19:09 UTC and took OP solving down for 23h: eRPC kept it at
-        # routing priority 1, and its per-upstream budget (8s timeout x 3 attempts)
-        # exceeds the 12s network-level failsafe, so tip-following reads
-        # (eth_blockNumber / eth_getBlockByNumber latest) died with
-        # ErrFailsafeTimeoutExceeded BEFORE failover could reach a healthy lane.
-        # Re-admit an owned node only behind a liveness gate that ejects it faster
-        # than the network budget (see the deploy checklist), never as a bare lane.
+        # WHY THE SWAP: official-op is chronically rate-limited from this host and
+        # archive-gated. Measured 2026-08-29 at a sustained 4 req/s of uncacheable
+        # calls: 12/160 = 7.5% HTTP 429 (matches the ~10% ErrUpstreamBlockUnavailable
+        # in Prometheus). tenderly on the KEYED gateway returned 0/160 failures over
+        # the same run, and unlike official-op it is a FULL ARCHIVE node.
         #
-        # The 2026-08-09 note "validationcloud: client still disabled" is STALE — the
-        # account was re-enabled; re-verified above before this lane was re-admitted.
-        endpoint: https://mainnet.optimism.validationcloud.io/v1/${VALIDATIONCLOUD_OP_KEY}
+        # Measured 2026-08-29 (direct, keyed endpoint):
+        #   eth_getTransactionReceipt (head-60) ......... OK
+        #   eth_call    @ -200 / -20k / -200k / -2M ..... OK / OK / OK / OK
+        #   eth_getLogs @ -200 / -20k / -200k / -2M ..... OK / OK / OK / OK
+        #   sustained 4 req/s x 160 sequential: 160/160 OK, p50 56ms, p95 1061ms,
+        #   p99 2058ms, max 2065ms — the tail is REAL and reproducible, but it
+        #   stays under this lane's 4s timeout, and the 12s network budget is
+        #   unaffected (4s x 2 attempts + 1s backoff = 9s < 12s, unchanged).
+        #   x-tdly-limit on the keyed gateway is 400 req/s (keyless is 20), so a
+        #   consensus lane's ~4 req/s uses ~1% of it. The three historical
+        #   tenderly rate-limit outages happened when it carried the WHOLE stack's
+        #   ~40 req/s on the keyless tier, not a lane's share on a keyed one.
+        #
+        # With blockdaemon and zan this makes ALL THREE lanes full-archive and
+        # receipt-capable for the first time: eth_getTransactionReceipt and deep
+        # eth_getLogs go from 2 capable voters to 3, so losing any single lane —
+        # including zan to its monthly credit cap — no longer breaks receipts.
+        #
+        # Host is LITERAL so the CI guard's urlsplit can pin the failure domain;
+        # only ${TENDERLY_OP_KEY} resolves from .env via render-configs.sh envsubst
+        # — NEVER committed. erpc.yaml is in PK_BEARING_NAMES, so the rendered file
+        # carrying this key lands on the RAM-disk, not the SSD.
+        #
+        # NOTE: driver.toml.tmpl [[submission.mempool]] still lists
+        # mainnet.optimism.io directly. That list is NOT routed through eRPC, so
+        # dropping official-op as an upstream leaves submission untouched.
+        endpoint: https://optimism.gateway.tenderly.co/${TENDERLY_OP_KEY}
         failsafe:
           # BUDGET INVARIANT (2026-08-15, CI-enforced by assert-erpc-failclosed):
           # one lane's worst-case serial budget (attempts x timeout + backoff)
           # MUST stay under the 12s network budget, or a single wedged lane
           # starves every request before failover — the 08-14 outage. 4s x 2
-          # + 1s backoff = 9s < 12s, and 4s is still ~40-80x each lane's
-          # measured median. The circuitBreaker ejects a lane that returns
-          # clean errors in bulk (the 429-storm pattern of 07-23/08-09);
-          # a silently HANGING lane is covered by the catch-all hedge instead
-          # (hedge-cancelled attempts may not record breaker outcomes).
+          # + 1s backoff = 9s < 12s, and 4s is ~37x this lane's measured p95
+          # (109ms). Shape is deliberately identical to the lane it replaces.
           - matchMethod: "*"
             timeout:
               duration: 4s
@@ -638,35 +733,74 @@ projects:
               successThresholdCount: 2
               successThresholdCapacity: 4
 
-      # ─── Consensus set (2026-08-15): publicnode + zan + validationcloud ───
+      # ─── Consensus set (2026-08-29): blockdaemon + zan + tenderly ───
       # 2-of-3, agreementThreshold=2, maxParticipants=3 — UNCHANGED. This incident
-      # swapped only the dead owned-node lane; no consensus parameter was
+      # swapped only the dead validationcloud lane; no consensus parameter was
       # touched and every rule remains fail-closed. Exactly one
       # CF-fronted upstream (publicnode) → a single-CDN compromise still can't
       # poison a full quorum.
       #
-      # Per-method quorum margin, measured 2026-08-15 on validationcloud:
-      #   eth_call / eth_getLogs / eth_estimateGas ..................... 3 of 3 lanes
+      # Per-method quorum margin. ⚠️ RE-MEASURE: the 2026-08-23 numbers below were
+      # taken on official-op + publicnode, BOTH of which were replaced 2026-08-29.
+      # All three lanes are now full-archive, so the historic-depth rows understate
+      # today's margin.
+      # NOTE THE DEPTH SPLIT — the pre-08-23 version of this table collapsed it
+      # and that is precisely what hid the outage for five days:
+      #   eth_call / eth_estimateGas ................................... 3 of 3 lanes
       #   eth_getCode / eth_getStorageAt / eth_getBalance / txCount .... 3 of 3 lanes
       #   eth_feeHistory / eth_getTransactionByHash .................... 3 of 3 lanes
-      #   eth_getTransactionReceipt ................... 2 of 3 (publicnode archive-gated)
+      #   eth_getLogs, WITHIN ~128 blocks of head ...................... 3 of 3 lanes
+      #   eth_getLogs, DEEPER than ~128 blocks ....... 3 of 3 (blockdaemon is full archive)
+      #   eth_getTransactionReceipt .................. 3 of 3 (blockdaemon is full archive)
       #
       # RE-MEASURE THIS TABLE whenever a lane's credentials or tier change (the
       # 2026-07-30 review caught a stale table understating zan's coverage — a
       # wrong count here invites exactly the 2-lane preferBlockHeadLeader hole
       # this file's safety argument exists to prevent).
       #
+      # ⚠️ OPEN, NOT FIXED IN THIS CHANGE — deep eth_getLogs is a THIN QUORUM
+      # WITH A LEADER TIE-BREAK (Codex review, 2026-08-24). Documenting the
+      # archive gate above makes an existing hole explicit rather than creating
+      # one: at depth publicnode cannot participate, so eth_getLogs has exactly
+      # TWO responders, and the Block B rule that matches it uses
+      # disputeBehavior:preferBlockHeadLeader. With two responders a leader
+      # tie-break is attacker-selectable — a compromised lane that advertises the
+      # freshest head has its forged log response chosen with no second agreeing
+      # voter. That is precisely the failure this file's own receipt rule is
+      # returnError to avoid, and the argument is written out a few lines below.
+      #
+      # It is NOT fixed here because the fix is a real availability/security
+      # trade, not a typo:
+      #   - returnError for eth_getLogs fails closed at depth (correct) but also
+      #     fails closed on ordinary near-tip drift, which is exactly what #476
+      #     introduced preferBlockHeadLeader to stop. eRPC cannot match on block
+      #     depth, so the two cases cannot be given different behaviour.
+      #   - a third archive-capable non-Cloudflare lane removes the problem
+      #     entirely, and none exists today (see the 2026-08-23 survey: blastapi/
+      #     llamarpc/meowrpc/histori are NXDOMAIN, blockpi/drpc/1rpc/omnia are
+      #     Cloudflare-fronted and would break the <=1-CF invariant).
+      # Decide deliberately. Do not flip the dispute behaviour casually in an
+      # incident: it changes the fork-poisoning threat model this file exists to
+      # defend, and that model was reviewed.
+      #
+      # AND MEASURE eth_getLogs AT DEPTH, NOT JUST AT TIP. A tip-only probe reports
+      # 3 of 3 for a lane that cannot serve a single historic window. That single
+      # missing row is the whole 2026-08-23 incident: the table said eth_getLogs was
+      # 3-of-3, the truth was 2-of-3, and validationcloud's death on 08-18 took it
+      # to 1-of-3 — below threshold — without changing a number anyone was reading.
+      #
       # eth_getTransactionReceipt is the only remaining thin method, and it is the
       # reason its rule is disputeBehavior:returnError rather than
       # preferBlockHeadLeader — with two responders a leader tie-break is
       # attacker-selectable, so it must fail closed instead. The RECEIPT rule needs
-      # BOTH zan and validationcloud to answer and agree; if either is unavailable,
+      # BOTH zan and tenderly to answer and agree; if either is unavailable,
       # lowParticipantsBehavior:returnError makes it fail CLOSED (safe — the driver
       # refuses to conclude Executed/Reverted rather than guessing) while
       # settlement indexing stalls until it recovers.
       #
-      # AVAILABILITY PROPERTY: ZAN plus validationcloud satisfy threshold 2 for
-      # every protected method, so PublicNode tip-lag degrades nothing and the
+      # AVAILABILITY PROPERTY: ZAN plus tenderly satisfy threshold 2 for
+      # every protected method AT EVERY DEPTH, so PublicNode tip-lag and its
+      # ~128-block archive gate both degrade nothing, and the
       # quorum depends on neither Alchemy's monthly allowance nor a self-hosted VM.
       # Under the single-keyed 07-30 set, quorum required at least one of two
       # rate-capped free lanes to answer — which is what failed under auction load
@@ -684,8 +818,9 @@ projects:
       # drpc / 1rpc / meowrpc / omnia / blockdaemon(2026-08-09) are disqualified as
       # ADDITIONAL lanes: all are Cloudflare-fronted, so pairing any of them with
       # publicnode would create the 2-CF quorum that defeats the fork-poisoning
-      # threat model. validationcloud's client was re-enabled and it is the
-      # admitted 3rd lane as of 2026-08-15 (11/11 methods, 20/20 burst, istio-envoy).
+      # threat model. tenderly-op (optimism.gateway.tenderly.co) is the admitted 3rd lane as
+      # of 2026-08-23: non-Cloudflare (GCP LB), archive-capable on BOTH eth_getLogs
+      # and receipts, 200/200 eth_call at 151 req/s, p95 109ms.
       #
       # A SELF-HOSTED lane is still the structurally right answer to free-tier quota
       # exposure, but 2026-08-15 proved it cannot be admitted as a bare upstream: a

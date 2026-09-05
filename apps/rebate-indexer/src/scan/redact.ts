@@ -17,5 +17,12 @@ export function redactSecrets(s: string): string {
     const v = process.env[name];
     if (v && v.length >= 8) out = out.split(v).join('***');
   }
+  // Per-chain overrides can contain provider tokens in arbitrary URL shapes.
+  // Hide the complete configured URL rather than trying to enumerate providers.
+  for (const [name, value] of Object.entries(process.env)) {
+    if ((name.startsWith('SCAN_RPC_') || name.startsWith('SCAN_BLOCK_RPC_')) && value) {
+      out = out.split(value).join('[configured RPC]');
+    }
+  }
   return out;
 }

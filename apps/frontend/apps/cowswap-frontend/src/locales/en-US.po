@@ -477,6 +477,10 @@ msgstr "The total surplus Ophis has generated for you in {nativeSymbol} across a
 msgid "This percentage only applies to dips; if prices are better than this percentage, Ophis will still execute your order."
 msgstr "This percentage only applies to dips; if prices are better than this percentage, Ophis will still execute your order."
 
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid " · transfers paused for {pausedSymbols}"
+msgstr " · transfers paused for {pausedSymbols}"
+
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapFormWarnings/warnings/SwapPriceDifferenceWarning.tsx
 msgid "Considering current network costs (<0><1/></0> per chunk), you could save more by reducing the number of parts or switch to a {swapOrderLink}."
 msgstr "Considering current network costs (<0><1/></0> per chunk), you could save more by reducing the number of parts or switch to a {swapOrderLink}."
@@ -929,6 +933,10 @@ msgstr "Confirm"
 msgid "This token gets the maximum Ophis rebate: a reduced {OPHIS_BOOSTED_VOLUME_BPS} bp fee on this swap, applied automatically regardless of your volume tier."
 msgstr "This token gets the maximum Ophis rebate: a reduced {OPHIS_BOOSTED_VOLUME_BPS} bp fee on this swap, applied automatically regardless of your volume tier."
 
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid "Coinbase tokenized stocks are only available to persons in eligible jurisdictions outside the U.S. This panel is informational and does not change your order. <0>How B20 stocks work ↗</0>"
+msgstr "Coinbase tokenized stocks are only available to persons in eligible jurisdictions outside the U.S. This panel is informational and does not change your order. <0>How B20 stocks work ↗</0>"
+
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Unsupported token"
@@ -1169,6 +1177,10 @@ msgstr "Create Order"
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/LimitOrdersWidget/index.tsx
 msgid "Want to try out limit orders?"
 msgstr "Want to try out limit orders?"
+
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid "Coinbase B20 token backed by the underlying share held in regulated custody; multiplier and pause status read from the Base contracts."
+msgstr "Coinbase B20 token backed by the underlying share held in regulated custody; multiplier and pause status read from the Base contracts."
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/HookDappDetails/index.tsx
 msgid "smart contracts (e.g. Safe)"
@@ -1700,6 +1712,7 @@ msgstr "Filled orders"
 msgid "Volume (24h)"
 msgstr "Volume (24h)"
 
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
 #: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
 msgid " Your displayed balance represents about {equivalent} underlying shares."
 msgstr " Your displayed balance represents about {equivalent} underlying shares."
@@ -2084,6 +2097,10 @@ msgstr "Pre"
 msgid "(v)COW token holders are eligible for a fee discount"
 msgstr "(v)COW token holders are eligible for a fee discount"
 
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid "Reading the corporate-action multiplier from Base."
+msgstr "Reading the corporate-action multiplier from Base."
+
 #: apps/cowswap-frontend/src/modules/wallet/pure/PendingView/index.tsx
 msgid "Error connecting"
 msgstr "Error connecting"
@@ -2414,10 +2431,6 @@ msgstr "No order history"
 msgid "On Ophis, you can set limit orders for balances you don't have yet."
 msgstr "On Ophis, you can set limit orders for balances you don't have yet."
 
-#: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
-msgid "Bridging without swapping is not yet supported. Let us know if you want this feature!"
-msgstr "Bridging without swapping is not yet supported. Let us know if you want this feature!"
-
 #: apps/cowswap-frontend/src/modules/wallet/pure/Web3StatusInner/index.tsx
 msgid "{pendingCount} Pending"
 msgstr "{pendingCount} Pending"
@@ -2480,6 +2493,7 @@ msgstr "Maximize your yield on existing LP positions"
 msgid "Active orders"
 msgstr "Active orders"
 
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
 #: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
 msgid "{symbol}: corporate-action multiplier {multiplier}×."
 msgstr "{symbol}: corporate-action multiplier {multiplier}×."
@@ -2935,6 +2949,10 @@ msgstr "Not connected"
 msgid "Order presigned"
 msgstr "Order presigned"
 
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid "{listedSymbols} · Coinbase tokenized stock on Base"
+msgstr "{listedSymbols} · Coinbase tokenized stock on Base"
+
 #: apps/cowswap-frontend/src/common/hooks/useConfirmPriceImpactWithoutFee.ts
 #: apps/cowswap-frontend/src/common/hooks/useConfirmPriceImpactWithoutFee.ts
 msgid "This swap has a price impact of at least {pct}%."
@@ -3138,6 +3156,10 @@ msgstr "Hook Store"
 msgid "Approve spending <0/> <1/> on Ophis"
 msgstr "Approve spending <0/> <1/> on Ophis"
 
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid " Coinbase has not minted supply yet, so quotes return no liquidity until it does."
+msgstr " Coinbase has not minted supply yet, so quotes return no liquidity until it does."
+
 #: apps/cowswap-frontend/src/modules/tokensList/pure/LpTokenLists/index.tsx
 #: apps/cowswap-frontend/src/modules/yield/pure/TargetPoolPreviewInfo.tsx
 msgid "Details"
@@ -3234,6 +3256,10 @@ msgstr "Recoverable value"
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/RateInput/HeadingText.tsx
 msgid "is worth"
 msgstr "is worth"
+
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid "Ophis could not verify the corporate-action multiplier or transfer status. Quotes remain available, but confirm the token status before trading."
+msgstr "Ophis could not verify the corporate-action multiplier or transfer status. Quotes remain available, but confirm the token status before trading."
 
 #: apps/cowswap-frontend/src/modules/accountProxy/pure/AccountCard/DefaultAccountContent.tsx
 msgid "View account"
@@ -3512,6 +3538,10 @@ msgstr "Token symbol, address"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 msgid "Order Receipt"
 msgstr "Order Receipt"
+
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid "{listedSymbols} · Coinbase tokenized stock metadata is temporarily unavailable"
+msgstr "{listedSymbols} · Coinbase tokenized stock metadata is temporarily unavailable"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "Transaction completed!"
@@ -3862,6 +3892,10 @@ msgstr "This is the recommended slippage tolerance based on current gas prices &
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/fields/OrderTypeField.tsx
 msgid "buy"
 msgstr "buy"
+
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid "{selectedSymbols} · Coinbase tokenized stock on Base"
+msgstr "{selectedSymbols} · Coinbase tokenized stock on Base"
 
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketWidget/BasketWidget.pure.tsx
 msgid "Add sell token ({sellCount}/{MAX_BASKET_SELL_TOKENS})"
@@ -4715,6 +4749,10 @@ msgstr "on {chainLabel}"
 msgid "Invalid price. Try increasing input/output amount."
 msgstr "Invalid price. Try increasing input/output amount."
 
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid " · {unissuedSymbols} not issued yet"
+msgstr " · {unissuedSymbols} not issued yet"
+
 #: apps/cowswap-frontend/src/common/constants/routes.ts
 msgid "New"
 msgstr "New"
@@ -4932,6 +4970,10 @@ msgstr "Confirm swap"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 msgid "Part of a {twapOrderN}-part TWAP order split"
 msgstr "Part of a {twapOrderN}-part TWAP order split"
+
+#: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
+msgid "This route would bridge your sell token across unchanged, with no swap on the source chain, which is not supported yet. Choosing a different token on the destination network avoids it. Let us know if you want this feature!"
+msgstr "This route would bridge your sell token across unchanged, with no swap on the source chain, which is not supported yet. Choosing a different token on the destination network avoids it. Let us know if you want this feature!"
 
 #: apps/cowswap-frontend/src/modules/bridge/pure/StopStatus/index.tsx
 msgid "Bridged via"
@@ -5579,6 +5621,7 @@ msgid "Advanced"
 msgstr "Advanced"
 
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
+#: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Not yet supported"
 msgstr "Not yet supported"
 
@@ -5680,6 +5723,10 @@ msgstr "Cancel order"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 msgid "Your order was created on this date & time. It will remain open until it expires or is filled."
 msgstr "Your order was created on this date & time. It will remain open until it expires or is filled."
+
+#: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
+msgid "Coinbase B20 token backed by the underlying share held in regulated custody."
+msgstr "Coinbase B20 token backed by the underlying share held in regulated custody."
 
 #: apps/cowswap-frontend/src/common/hooks/useConfirmPriceImpactWithoutFee.ts
 #: apps/cowswap-frontend/src/modules/trade/hooks/useGetConfirmButtonLabel.ts
@@ -5889,6 +5936,10 @@ msgstr "Cancelling {ordersCount} orders"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
 msgid "Cancelled"
 msgstr "Cancelled"
+
+#: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
+msgid "Try a different destination token"
+msgstr "Try a different destination token"
 
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
 msgid "one batched signature"

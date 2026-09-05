@@ -136,6 +136,33 @@ describe('fetcher.fetchChainTrades', () => {
     ]);
   });
 
+  it('persists an explicit assessed zero for verified zero-fee hosted fills', async () => {
+    const uid = '0x' + '6a'.repeat(56);
+    const owner = '0xa'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue(orderWithAppData(uid, owner, { appCode: 'ophis', metadata: {} }));
+    const defillamaFills: import('../src/fetcher.js').PendingDefiLlamaFill[] = [];
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+
+    await fetchChainTrades(100, owner as `0x${string}`, {
+      defillamaFills,
+      hasDefiLlamaFill: async () => false,
+      getSettlementTimestamp: async () => new Date('2026-08-26T22:32:23Z'),
+    });
+
+    expect(defillamaFills).toMatchObject([
+      { volumeFeeBps: 0, assessedFeeBps: '0.00000000', feeVerified: true },
+    ]);
+  });
+
+  it('keeps verified zero-base sovereign fills pending for improvement assessment', async () => {
+    const { verifiedHostedZeroAssessment } = await import('../src/fetcher.js');
+    expect(verifiedHostedZeroAssessment(100, 0)).toBe('0.00000000');
+    expect(verifiedHostedZeroAssessment(10, 0)).toBeNull();
+    expect(verifiedHostedZeroAssessment(130, 0)).toBeNull();
+    expect(verifiedHostedZeroAssessment(4663, 0)).toBeNull();
+  });
+
   it('records a settled reporting fill while its partially-fillable order remains open', async () => {
     const uid = '0x' + '0d'.repeat(56);
     const owner = '0xa'.padEnd(42, '0');
