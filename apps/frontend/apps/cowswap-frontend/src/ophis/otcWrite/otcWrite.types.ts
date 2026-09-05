@@ -73,6 +73,8 @@ export interface OtcWriteClient extends OtcReaderClient {
 
 export interface OtcTransactionReceipt {
   transactionHash: Hex
+  /** Present only after the adapter verifies an identical transaction was repriced. */
+  replacedTransactionHash?: Hex
   status: 'success' | 'reverted'
   blockNumber: bigint
 }

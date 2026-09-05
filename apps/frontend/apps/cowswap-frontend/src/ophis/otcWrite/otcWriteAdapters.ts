@@ -1,3 +1,4 @@
+import { withTimeout } from '@cowprotocol/common-utils'
 import type { Web3Provider } from '@ethersproject/providers'
 
 import { toOtcReaderClient } from 'ophis/otc'
@@ -16,13 +17,73 @@ import { usePublicClient } from 'wagmi'
 
 import { assertOtcTransactionRequest } from './assertOtcTransactionRequest'
 
-import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
+import type { OtcTransactionReceipt, OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
 
 type WagmiPublicClient = NonNullable<ReturnType<typeof usePublicClient>>
 type WagmiWalletClient = WalletClient<Transport, Chain, Account>
 
 const LOCAL_FORK_CLIENT = /anvil|hardhat/i
 const OTC_RECEIPT_TIMEOUT_MS = 120_000
+const OTC_FORK_ID_TIMEOUT_MS = 10_000
+
+function parseForkId(metadata: unknown): Hex {
+  if (!metadata || typeof metadata !== 'object') throw new Error('Ophis OTC fork identity unavailable')
+  const { instanceId, chainId, clientVersion } = metadata as Record<string, unknown>
+  if (
+    chainId !== 1 ||
+    typeof clientVersion !== 'string' ||
+    !LOCAL_FORK_CLIENT.test(clientVersion) ||
+    typeof instanceId !== 'string' ||
+    !/^0x[0-9a-fA-F]{64}$/.test(instanceId)
+  ) {
+    throw new Error('Ophis OTC fork identity unavailable')
+  }
+  return instanceId.toLowerCase() as Hex
+}
+
+export async function getOtcWalletForkId(walletClient: WagmiWalletClient): Promise<Hex> {
+  const request = walletClient.request as unknown as (request: { method: 'hardhat_metadata' }) => Promise<unknown>
+  return parseForkId(
+    await withTimeout(
+      request({ method: 'hardhat_metadata' }),
+      OTC_FORK_ID_TIMEOUT_MS,
+      'Ophis OTC fork identity timed out',
+    ),
+  )
+}
+
+export async function getOtcProviderForkId(provider: Web3Provider): Promise<Hex> {
+  return parseForkId(
+    await withTimeout(
+      provider.send('hardhat_metadata', []),
+      OTC_FORK_ID_TIMEOUT_MS,
+      'Ophis OTC fork identity timed out',
+    ),
+  )
+}
+
+async function assertForkIdentity(readId: () => Promise<Hex>, expectedId?: Hex): Promise<void> {
+  if (expectedId && (await readId()) !== expectedId) throw new Error('Ophis OTC local fork changed')
+}
+
+async function waitForOtcReceipt(publicClient: WagmiPublicClient, hash: Hex): Promise<OtcTransactionReceipt> {
+  let confirmedHash = hash
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash,
+    confirmations: 1,
+    timeout: OTC_RECEIPT_TIMEOUT_MS,
+    onReplaced: ({ reason, replacedTransaction, transaction }) => {
+      if (reason === 'repriced' && replacedTransaction.hash === confirmedHash) confirmedHash = transaction.hash
+    },
+  })
+  if (receipt.transactionHash !== confirmedHash) throw new Error('Ophis OTC transaction was replaced')
+  return {
+    transactionHash: receipt.transactionHash,
+    status: receipt.status,
+    blockNumber: receipt.blockNumber,
+    ...(confirmedHash !== hash ? { replacedTransactionHash: hash } : {}),
+  }
+}
 
 function safeBlockNumber(blockNumber: bigint): number {
   const value = Number(blockNumber)
@@ -69,6 +130,7 @@ export function toOtcWriteClient(publicClient: WagmiPublicClient): OtcWriteClien
 export function toOtcWalletSubmitter(
   walletClient: WagmiWalletClient,
   publicClient: WagmiPublicClient,
+  expectedForkId?: Hex,
 ): OtcWalletSubmitter {
   return {
     sendTransaction: async (request, intent, nowSeconds, isCurrentContext = () => true) => {
@@ -90,6 +152,7 @@ export function toOtcWalletSubmitter(
       ) {
         throw new Error('Ophis OTC wallet account changed')
       }
+      await assertForkIdentity(() => getOtcWalletForkId(walletClient), expectedForkId)
       if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
       return walletClient.sendTransaction({
         account: walletClient.account,
@@ -100,22 +163,19 @@ export function toOtcWalletSubmitter(
       })
     },
     waitForTransactionReceipt: async (hash) => {
-      const receipt = await publicClient.waitForTransactionReceipt({
-        hash,
-        confirmations: 1,
-        timeout: OTC_RECEIPT_TIMEOUT_MS,
-      })
-      return {
-        transactionHash: receipt.transactionHash,
-        status: receipt.status,
-        blockNumber: receipt.blockNumber,
-      }
+      await assertForkIdentity(() => getOtcWalletForkId(walletClient), expectedForkId)
+      const receipt = await waitForOtcReceipt(publicClient, hash)
+      await assertForkIdentity(() => getOtcWalletForkId(walletClient), expectedForkId)
+      return receipt
     },
   }
 }
 
 /** Build both adapters over the wallet's own transport so preflight and send cannot target different RPCs. */
-export function toOtcForkClients(walletClient: WagmiWalletClient): {
+export function toOtcForkClients(
+  walletClient: WagmiWalletClient,
+  expectedForkId?: Hex,
+): {
   writeClient: OtcWriteClient
   wallet: OtcWalletSubmitter
 } {
@@ -125,7 +185,7 @@ export function toOtcForkClients(walletClient: WagmiWalletClient): {
   const publicClient = connectedPublicClient as unknown as WagmiPublicClient
   return {
     writeClient: toOtcWriteClient(publicClient),
-    wallet: toOtcWalletSubmitter(walletClient, publicClient),
+    wallet: toOtcWalletSubmitter(walletClient, publicClient, expectedForkId),
   }
 }
 
@@ -133,6 +193,7 @@ export function toOtcForkClients(walletClient: WagmiWalletClient): {
 export function toOtcLegacyForkClients(
   provider: Web3Provider,
   account: Address,
+  expectedForkId?: Hex,
 ): { writeClient: OtcWriteClient; wallet: OtcWalletSubmitter } {
   const writeClient: OtcWriteClient = {
     getChainId: async () => (await provider.getNetwork()).chainId,
@@ -170,6 +231,7 @@ export function toOtcLegacyForkClients(
       if (!providerAccount || !isAddressEqual(providerAccount as Address, checkedRequest.account))
         throw new Error('Ophis OTC wallet account changed')
       const signer = provider.getSigner(providerAccount)
+      await assertForkIdentity(() => getOtcProviderForkId(provider), expectedForkId)
       if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
       const transaction = await signer.sendTransaction({
         to: checkedRequest.to,
@@ -179,7 +241,9 @@ export function toOtcLegacyForkClients(
       return transaction.hash as Hex
     },
     waitForTransactionReceipt: async (hash) => {
+      await assertForkIdentity(() => getOtcProviderForkId(provider), expectedForkId)
       const receipt = await provider.waitForTransaction(hash, 1, OTC_RECEIPT_TIMEOUT_MS)
+      await assertForkIdentity(() => getOtcProviderForkId(provider), expectedForkId)
       if (!receipt) throw new Error('Ophis OTC transaction receipt unavailable')
       return {
         transactionHash: receipt.transactionHash as Hex,

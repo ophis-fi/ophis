@@ -157,7 +157,7 @@ export async function submitOtcTransaction(
   try {
     onBroadcast(hash)
     receipt = await wallet.waitForTransactionReceipt(hash)
-    if (receipt.transactionHash.toLowerCase() !== hash.toLowerCase()) {
+    if ((receipt.replacedTransactionHash ?? receipt.transactionHash).toLowerCase() !== hash.toLowerCase()) {
       throw new Error('Ophis OTC transaction was replaced')
     }
   } catch (caught) {

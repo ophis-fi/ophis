@@ -2,6 +2,8 @@ import { JsonRpcProvider } from '@ethersproject/providers'
 
 import { buildOtcCancelTransaction, buildOtcFillApproval } from './buildOtcTransaction'
 import {
+  getOtcProviderForkId,
+  getOtcWalletForkId,
   toOtcLegacyForkClients,
   toOtcWalletSubmitter,
   verifyOtcLocalForkProvider,
@@ -16,6 +18,7 @@ import type { Hex } from 'viem'
 const ACCOUNT = '0x1111111111111111111111111111111111111111'
 const TOKEN_WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' // gitleaks:allow — public mainnet address
 const HASH: Hex = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+const FORK_ID: Hex = `0x${'ab'.repeat(32)}`
 const NOW = 1_800_000_000n
 const forkIt = process.env.OTC_BROWSER_FORK_RPC ? it : it.skip
 
@@ -29,6 +32,7 @@ function wallet(version: string, chainId = 1, activeAccount = ACCOUNT): Wallet {
     getChainId: async () => chainId,
     request: async ({ method }: { method: string }) => {
       if (method === 'web3_clientVersion') return version
+      if (method === 'hardhat_metadata') return { instanceId: FORK_ID, chainId, clientVersion: version }
       if (method === 'eth_accounts') return [activeAccount]
       throw new Error(`unexpected ${method}`)
     },
@@ -71,6 +75,7 @@ function legacyProvider(
     getNetwork: async () => ({ chainId }),
     send: async (method: string) => {
       if (method === 'web3_clientVersion') return version
+      if (method === 'hardhat_metadata') return { instanceId: FORK_ID, chainId, clientVersion: version }
       throw new Error(`unexpected ${method}`)
     },
     listAccounts: async () => [activeAccount],
@@ -87,6 +92,51 @@ describe('OTC wallet transport boundary', () => {
     await expect(verifyOtcLocalForkWallet(wallet('Geth/v1.16.2'))).resolves.toBe(false)
     await expect(verifyOtcLocalForkWallet(wallet('anvil/v1.5.0', 31337))).resolves.toBe(false)
   })
+
+  it('uses a stable node instance ID and rejects a different fork before either signer', async () => {
+    const anvil = wallet('anvil/v1.5.1')
+    const legacy = legacyProvider('anvil/v1.5.1')
+    await expect(getOtcWalletForkId(anvil)).resolves.toBe(FORK_ID)
+    await expect(getOtcProviderForkId(legacy.provider)).resolves.toBe(FORK_ID)
+    await expect(getOtcWalletForkId(wallet('Geth/v1.16.2'))).rejects.toThrow('fork identity unavailable')
+    const otherFork: Hex = `0x${'cd'.repeat(32)}`
+    const { request, intent } = transaction()
+    await expect(
+      toOtcWalletSubmitter(anvil, publicClient(), otherFork).sendTransaction(request, intent, NOW),
+    ).rejects.toThrow('local fork changed')
+    await expect(
+      toOtcLegacyForkClients(legacy.provider, ACCOUNT, otherFork).wallet.sendTransaction(request, intent, NOW),
+    ).rejects.toThrow('local fork changed')
+    expect(anvil.sendTransaction).not.toHaveBeenCalled()
+    expect(legacy.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it.each(['repriced', 'cancelled', 'replaced'] as const)(
+    'accepts only an identical repriced receipt: %s',
+    async (reason) => {
+      const replacementHash: Hex = `0x${'cd'.repeat(32)}`
+      const client = publicClient()
+      client.waitForTransactionReceipt = jest.fn(async ({ onReplaced }) => {
+        onReplaced?.({
+          reason,
+          replacedTransaction: { hash: HASH },
+          transaction: { hash: replacementHash },
+        } as Parameters<NonNullable<typeof onReplaced>>[0])
+        return { transactionHash: replacementHash, status: 'success', blockNumber: 12n } as Awaited<
+          ReturnType<Public['waitForTransactionReceipt']>
+        >
+      })
+      const receipt = toOtcWalletSubmitter(wallet('anvil/v1.5.1'), client).waitForTransactionReceipt(HASH)
+      if (reason === 'repriced') {
+        await expect(receipt).resolves.toMatchObject({
+          transactionHash: replacementHash,
+          replacedTransactionHash: HASH,
+        })
+      } else {
+        await expect(receipt).rejects.toThrow('transaction was replaced')
+      }
+    },
+  )
 
   it('blocks a real-mainnet client before its send method is called', async () => {
     const realMainnet = wallet('Geth/v1.16.2')
