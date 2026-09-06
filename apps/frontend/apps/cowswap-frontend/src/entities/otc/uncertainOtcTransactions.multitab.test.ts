@@ -13,13 +13,13 @@ const HASH_A = `0x${'ab'.repeat(32)}` as const
 const HASH_B = `0x${'cd'.repeat(32)}` as const
 
 function dispatchStorageChange(): void {
-  window.dispatchEvent(
-    new StorageEvent('storage', {
-      key: STORAGE_KEY,
-      newValue: localStorage.getItem(STORAGE_KEY),
-      storageArea: localStorage,
-    }),
-  )
+  const event = new Event('storage')
+  Object.defineProperties(event, {
+    key: { value: STORAGE_KEY },
+    newValue: { value: localStorage.getItem(STORAGE_KEY) },
+    storageArea: { value: localStorage },
+  })
+  window.dispatchEvent(event)
 }
 
 describe('uncertain OTC transaction locks across browser tabs', () => {
