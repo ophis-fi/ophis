@@ -1,4 +1,4 @@
-import { getAddress, type Address, type Hex } from 'viem'
+import { getAddress, maxUint256, type Address, type Hex } from 'viem'
 
 import { OPHIS_ETHEREUM_OTC_MANIFEST } from './otc.const'
 
@@ -6,6 +6,7 @@ import type { OtcIndexedOrder, OtcManifest } from './otc.types'
 
 const TX_HASH_PATTERN = /^0x[0-9a-f]{64}$/i
 const PAGE_SIZE = 1_000
+const MAX_UINT256_DECIMAL_LENGTH = maxUint256.toString().length
 
 const ORDERS_QUERY = `{
   _meta { block { number } }
@@ -45,8 +46,9 @@ function parseTxHash(value: unknown): Hex | null {
 }
 
 function parseAmount(value: unknown): bigint | null {
-  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null
-  return BigInt(value)
+  if (typeof value !== 'string' || value.length > MAX_UINT256_DECIMAL_LENGTH || !/^\d+$/.test(value)) return null
+  const amount = BigInt(value)
+  return amount <= maxUint256 ? amount : null
 }
 
 function parseTimestamp(value: unknown): number | null {
@@ -145,20 +147,27 @@ export async function fetchOtcIndexedOrders(
 
   const data = body.data as Record<string, unknown>
   const indexedBlock = parseIndexedBlock(data)
-  if (!Array.isArray(data.orders)) throw responseRejected()
+  return { ...parseIndexedPage(data.orders), indexedBlock }
+}
+
+function parseIndexedPage(rows: unknown): Pick<OtcIndexedOrdersResult, 'orders' | 'droppedRows'> {
+  if (!Array.isArray(rows) || rows.length > PAGE_SIZE) throw responseRejected()
 
   const orders: OtcIndexedOrder[] = []
+  const orderIds = new Set<bigint>()
   let droppedRows = 0
-  for (const row of data.orders) {
+  for (const row of rows) {
     const parsed = parseIndexedOrder(row)
     if (parsed) {
+      if (orderIds.has(parsed.orderId)) throw responseRejected()
+      orderIds.add(parsed.orderId)
       orders.push(parsed)
     } else {
       droppedRows += 1
     }
   }
 
-  return { orders, indexedBlock, droppedRows }
+  return { orders, droppedRows }
 }
 
 export function computeIndexLag(indexedBlock: bigint, chainBlock: bigint): bigint {

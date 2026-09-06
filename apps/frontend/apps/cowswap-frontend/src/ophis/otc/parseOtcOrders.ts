@@ -1,4 +1,4 @@
-import { getAddress, isAddressEqual, zeroAddress, type Address } from 'viem'
+import { getAddress, isAddressEqual, maxUint256, zeroAddress, type Address } from 'viem'
 
 import type { OtcOrder } from './otc.types'
 
@@ -50,7 +50,7 @@ function asChecksummedAddress(value: unknown): Address {
 }
 
 function asAmount(value: unknown): bigint {
-  if (typeof value !== 'bigint' || value < 0n) throw rejected()
+  if (typeof value !== 'bigint' || value < 0n || value > maxUint256) throw rejected()
   return value
 }
 
