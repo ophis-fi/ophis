@@ -2,6 +2,7 @@ import { getDefaultStore } from 'jotai'
 
 import { act, renderHook } from '@testing-library/react'
 import { uncertainOtcTransactionsAtom } from 'entities/otc'
+import { installOtcWebLocksMock } from 'entities/otc/otcWebLocks.test.utils'
 
 import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
 import { submitOtcTransaction } from './prepareOtcTransaction'
@@ -47,6 +48,7 @@ function options(refreshAllowance: OtcSubmissionOptions['refreshAllowance']): Ot
 
 describe('useOtcSubmission recovery boundaries', () => {
   beforeEach(() => {
+    installOtcWebLocksMock()
     submitMock.mockReset()
     localStorage.removeItem(STORAGE_KEY)
     getDefaultStore().set(uncertainOtcTransactionsAtom, {})
@@ -153,7 +155,7 @@ describe('useOtcSubmission recovery boundaries', () => {
     await act(() => result.current.submit({ kind: 'fill', account: ACCOUNT, order, deadline: 1n }, true))
     expect(result.current.uncertainHash).toBe(HASH)
 
-    act(() => result.current.clearUncertainTransaction())
+    await act(() => result.current.clearUncertainTransaction(async () => undefined))
 
     expect(result.current.uncertainHash).toBeNull()
     expect(localStorage.getItem(STORAGE_KEY)).not.toContain(HASH)

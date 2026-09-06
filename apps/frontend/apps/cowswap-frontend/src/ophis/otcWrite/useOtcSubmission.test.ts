@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react'
+import { installOtcWebLocksMock } from 'entities/otc/otcWebLocks.test.utils'
 
 import { submitOtcTransaction } from './prepareOtcTransaction'
 import { useOtcSubmission, type OtcSubmissionOptions } from './useOtcSubmission'
@@ -45,6 +46,7 @@ function options(overrides: Partial<OtcSubmissionOptions> = {}): OtcSubmissionOp
 
 describe('useOtcSubmission', () => {
   beforeEach(() => {
+    installOtcWebLocksMock()
     submitMock.mockReset()
   })
 

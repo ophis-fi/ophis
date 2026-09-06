@@ -1,4 +1,5 @@
 export {
+  coordinatedOtcTransactionAtom,
   recordUncertainOtcTransaction,
   removeUncertainOtcTransaction,
   uncertainOtcTransactionsAtom,
