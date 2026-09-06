@@ -25,6 +25,11 @@ const ACTION_ATTEMPTS = 600
 const FORK_RELOAD_ATTEMPTS = 2
 const FORK_UI_TIMEOUT = 150_000
 
+Cypress.on('fail', (error) => {
+  error.message += `\nOTC panel: ${Cypress.$('#otc-order-action, #otc-create').text()}`
+  throw error
+})
+
 function captureGateEvidence(name: string): void {
   if ([true, 'true'].includes(Cypress.env('OTC_CAPTURE_GATE_EVIDENCE'))) {
     cy.screenshot(`otc-milestone-c/${name}`, { capture: 'viewport' })

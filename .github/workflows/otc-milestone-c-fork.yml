@@ -92,6 +92,8 @@ jobs:
         env:
           OTC_FORK_RPC_URL: https://ethereum-rpc.publicnode.com
           CYPRESS_OTC_FORK_RPC_URL: http://127.0.0.1:8545
+          CYPRESS_SCREENSHOT_ON_RUN_FAILURE: 'true'
+          CYPRESS_SCREENSHOTS_FOLDER: /tmp/otc-screenshots
           # Routine host hydration is not fork evidence. The injected wallet,
           # fixtures, action terms, preflight, sends, and receipts stay on Anvil.
           REACT_APP_NETWORK_URL_1: https://ethereum-rpc.publicnode.com
@@ -137,3 +139,11 @@ jobs:
             done
             exit 1
           fi
+      - name: Preserve failed fork-browser screenshots
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: otc-fork-browser-failure
+          path: /tmp/otc-screenshots
+          if-no-files-found: ignore
+          retention-days: 7

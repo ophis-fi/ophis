@@ -80,6 +80,8 @@ The contract has no administrator, proxy or upgrade entry point. Exact token-A d
 
 The first Echidna stateful attempt only exercised invariant getters. A second filter-only run selected zero properties. Both were discarded as inadequate evidence; only the final run with mutation coverage and six selected properties counts above.
 
+The parser PR's initial browser CI run passed two scenarios and failed four before verified order terms appeared. Its logs did not establish the cause. The gate now preserves failure screenshots and panel text; assertions and timeouts are unchanged. The PR must pass this gate before merge.
+
 ## Static findings triage
 
 - Slither: one low-severity native-create reentrancy pattern is protected by the transient reentrancy guard and immutable WETH; native paths are not enabled here. Three timestamp findings are intentional deadline comparisons. Two assembly findings are checked native transfers; the remaining findings concern pragma constraints and immutable naming. None establishes an exploit in the allowed ERC-20 path.
