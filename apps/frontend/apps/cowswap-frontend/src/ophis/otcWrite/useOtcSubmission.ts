@@ -1,9 +1,10 @@
-import { useAtom } from 'jotai'
+import { useAtom, useSetAtom } from 'jotai'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 
 import {
+  coordinatedOtcTransactionAtom,
   recordUncertainOtcTransaction,
   removeUncertainOtcTransaction,
   uncertainOtcTransactionsAtom,
@@ -46,7 +47,7 @@ export interface OtcSubmissionState {
   uncertainHash: Hex | null
   recoveryRequired: boolean
   allowanceCooldown: boolean
-  clearUncertainTransaction(): void
+  clearUncertainTransaction(verifyOrigin: () => Promise<void>): Promise<void>
   setError(error: string | null): void
   submit(intent: OtcWriteIntent, execution: boolean): Promise<void>
 }
@@ -71,11 +72,13 @@ interface OtcUncertainState {
   uncertainHash: Hex | null
   setUncertainHash(hash: Hex): void
   clearSubmittedTransaction(hash?: Hex): void
-  clearUncertainTransaction(): void
+  clearUncertainTransaction(verifyOrigin: () => Promise<void>): Promise<void>
+  withTransactionLock(operation: () => Promise<void>): Promise<void>
 }
 
 function useOtcUncertainTransaction(uncertainKey: string | null): OtcUncertainState {
   const [transactions, setTransactions] = useAtom(uncertainOtcTransactionsAtom)
+  const coordinateTransaction = useSetAtom(coordinatedOtcTransactionAtom)
   const uncertainHash = uncertainKey ? (transactions[uncertainKey]?.transactionHash ?? null) : null
   const setUncertainHash = useCallback(
     (hash: Hex) => {
@@ -89,10 +92,33 @@ function useOtcUncertainTransaction(uncertainKey: string | null): OtcUncertainSt
     },
     [setTransactions, uncertainKey],
   )
-  const clearUncertainTransaction = useCallback(() => clearSubmittedTransaction(), [clearSubmittedTransaction])
+  const clearUncertainTransaction = useCallback(
+    (verifyOrigin: () => Promise<void>) =>
+      coordinateTransaction(async () => {
+        if (!uncertainHash) return
+        await verifyOrigin()
+        clearSubmittedTransaction(uncertainHash)
+      }),
+    [clearSubmittedTransaction, coordinateTransaction, uncertainHash],
+  )
+  const withTransactionLock = useCallback(
+    (operation: () => Promise<void>) =>
+      coordinateTransaction(async (current) => {
+        if (!uncertainKey) throw new Error('Ophis OTC wallet account unavailable')
+        if (current[uncertainKey]) throw new Error('Ophis OTC transaction confirmation unavailable')
+        await operation()
+      }),
+    [coordinateTransaction, uncertainKey],
+  )
   return useMemo(
-    () => ({ uncertainHash, setUncertainHash, clearSubmittedTransaction, clearUncertainTransaction }),
-    [clearSubmittedTransaction, clearUncertainTransaction, setUncertainHash, uncertainHash],
+    () => ({
+      uncertainHash,
+      setUncertainHash,
+      clearSubmittedTransaction,
+      clearUncertainTransaction,
+      withTransactionLock,
+    }),
+    [clearSubmittedTransaction, clearUncertainTransaction, setUncertainHash, uncertainHash, withTransactionLock],
   )
 }
 
@@ -139,6 +165,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     setUncertainHash: uncertainty.setUncertainHash,
     clearSubmittedTransaction: uncertainty.clearSubmittedTransaction,
     setRecoveryRequired,
+    withTransactionLock: uncertainty.withTransactionLock,
   })
   return useMemo(
     () => ({

@@ -1,6 +1,7 @@
-import { atomWithStorage } from 'jotai/utils'
+import { atom } from 'jotai'
+import { atomWithStorage, createJSONStorage } from 'jotai/utils'
 
-import { getJotaiIsolatedStorage, withStorageGuard } from '@cowprotocol/core'
+import { withStorageGuard } from '@cowprotocol/core'
 
 import type { Hex } from 'viem'
 
@@ -29,15 +30,32 @@ function isUncertainOtcTransactions(value: unknown): value is UncertainOtcTransa
   })
 }
 
+const sharedStorage = createJSONStorage<UncertainOtcTransactions>(() => localStorage)
 const guardedStorage = withStorageGuard<UncertainOtcTransactions>(
-  getJotaiIsolatedStorage<UncertainOtcTransactions>(),
+  sharedStorage,
   isUncertainOtcTransactions,
   STORAGE_KEY,
 )
+guardedStorage.subscribe = (key, callback, initial) =>
+  sharedStorage.subscribe?.(key, () => callback(guardedStorage.getItem(key, initial)), initial) ?? (() => undefined)
 
 export const uncertainOtcTransactionsAtom = atomWithStorage<UncertainOtcTransactions>(STORAGE_KEY, {}, guardedStorage, {
   getOnInit: true,
 })
+
+export const coordinatedOtcTransactionAtom = atom(
+  null,
+  async (_get, set, operation: (transactions: UncertainOtcTransactions) => Promise<void>): Promise<void> => {
+    if (!navigator.locks) throw new Error('Ophis OTC browser transaction coordination unavailable')
+    // ponytail: serialize all fork OTC actions per origin; use per-intent locks if concurrent desk throughput matters.
+    await navigator.locks.request(STORAGE_KEY, { ifAvailable: true }, async (lock) => {
+      if (!lock) throw new Error('Ophis OTC transaction is already active in another tab')
+      const transactions = guardedStorage.getItem(STORAGE_KEY, {})
+      set(uncertainOtcTransactionsAtom, transactions)
+      await operation(transactions)
+    })
+  },
+)
 
 export function recordUncertainOtcTransaction(
   transactions: UncertainOtcTransactions,

@@ -35,6 +35,14 @@ interface OtcErrorRule {
 
 const OTC_ERROR_RULES: readonly OtcErrorRule[] = [
   {
+    pattern: /already active in another tab/,
+    message: 'An OTC action is pending in another tab. Wait for it to finish.',
+  },
+  {
+    pattern: /browser transaction coordination unavailable/,
+    message: 'This browser cannot coordinate OTC actions across tabs. Use a browser with Web Locks support.',
+  },
+  {
     pattern: /user rejected|user denied/,
     message: 'Transaction rejected in your wallet. No funds moved.',
   },

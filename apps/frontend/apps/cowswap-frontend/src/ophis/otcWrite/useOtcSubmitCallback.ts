@@ -36,6 +36,7 @@ interface OtcSubmitCallbackOptions {
   setUncertainHash: (hash: Hex) => void
   clearSubmittedTransaction: (hash: Hex) => void
   setRecoveryRequired: (required: boolean) => void
+  withTransactionLock: (operation: () => Promise<void>) => Promise<void>
 }
 
 async function hasRecoveryAllowance(
@@ -130,14 +131,12 @@ async function runOtcSubmission(
   options: OtcSubmitCallbackOptions,
   intent: OtcWriteIntent,
   execution: boolean,
+  isCurrentContext: () => boolean,
 ): Promise<void> {
-  const { generation, isCurrentContext } = captureSubmissionContext(options.contextGeneration)
-  if (options.inFlightGeneration.current === generation) return
   if (!options.writeClient || !options.wallet) {
     options.setError('Wallet access is still loading. Try again in a moment.')
     return
   }
-  options.inFlightGeneration.current = generation
   options.setPendingIntent(intent.kind)
   options.setError(null)
   options.setSuccess(null)
@@ -163,6 +162,24 @@ async function runOtcSubmission(
     if (broadcastHash) options.clearSubmittedTransaction(broadcastHash)
     const result = await settleFailedSubmission(caught, execution, options, isCurrentContext)
     if (!applyFailedSubmission(result, options)) return
+  }
+}
+
+async function runCoordinatedOtcSubmission(
+  options: OtcSubmitCallbackOptions,
+  intent: OtcWriteIntent,
+  execution: boolean,
+): Promise<void> {
+  const { generation, isCurrentContext } = captureSubmissionContext(options.contextGeneration)
+  if (options.inFlightGeneration.current === generation) return
+  options.inFlightGeneration.current = generation
+  try {
+    await options.withTransactionLock(async () => {
+      if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
+      await runOtcSubmission(options, intent, execution, isCurrentContext)
+    })
+  } catch (caught) {
+    if (isCurrentContext()) options.setError(translateOtcWriteError(caught))
   } finally {
     finishSubmission(options, generation, isCurrentContext)
   }
@@ -175,5 +192,5 @@ export function useOtcSubmitCallback(
   useLayoutEffect(() => {
     optionsRef.current = options
   }, [options])
-  return useCallback((intent, execution) => runOtcSubmission(optionsRef.current, intent, execution), [])
+  return useCallback((intent, execution) => runCoordinatedOtcSubmission(optionsRef.current, intent, execution), [])
 }

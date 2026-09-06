@@ -2,6 +2,7 @@ import { getDefaultStore } from 'jotai'
 
 import { act, renderHook } from '@testing-library/react'
 import { uncertainOtcTransactionsAtom } from 'entities/otc'
+import { installOtcWebLocksMock } from 'entities/otc/otcWebLocks.test.utils'
 
 import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
 import { submitOtcTransaction } from './prepareOtcTransaction'
@@ -20,6 +21,8 @@ jest.mock('./otcWriteAuthorization', () => ({
 }))
 jest.mock('./useOtcNetworkReads', () => ({ useOtcNetworkReads: jest.fn() }))
 jest.mock('./prepareOtcTransaction', () => ({ submitOtcTransaction: jest.fn() }))
+
+beforeEach(installOtcWebLocksMock)
 
 it('isolates recovery by stable fork ID and verifies the origin again before clearing', async () => {
   getDefaultStore().set(uncertainOtcTransactionsAtom, {})

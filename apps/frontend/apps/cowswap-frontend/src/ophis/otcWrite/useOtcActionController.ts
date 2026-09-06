@@ -76,10 +76,11 @@ function useOtcRecoveryClear(
   const { clearUncertainTransaction, setError } = submission
   return useCallback(async () => {
     try {
-      const originalForkId = localForkResponse.data
-      const currentForkId = await localForkResponse.mutate()
-      if (!originalForkId || currentForkId !== originalForkId) throw new Error('Ophis OTC local fork changed')
-      clearUncertainTransaction()
+      await clearUncertainTransaction(async () => {
+        const originalForkId = localForkResponse.data
+        const currentForkId = await localForkResponse.mutate()
+        if (!originalForkId || currentForkId !== originalForkId) throw new Error('Ophis OTC local fork changed')
+      })
     } catch (caught) {
       setError(translateOtcWriteError(caught))
     }
