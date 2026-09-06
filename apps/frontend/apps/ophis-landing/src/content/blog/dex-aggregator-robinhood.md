@@ -79,7 +79,7 @@ Use a wallet that supports the network and contains the asset you want to sell. 
 
 ### 3. Choose your tokens and amount
 
-Select what you want to sell and receive, then enter the amount. You can also describe a supported trade in plain language and review the form Ophis prepares.
+Select what you want to sell and receive, then enter the amount.
 
 ### 4. Review the quote
 
@@ -103,7 +103,7 @@ Supported signed token swaps have their settlement gas handled by the solver. Ho
 
 “Gasless swap” therefore describes how settlement is handled. It does not mean that trading has no costs or that you will never need a gas balance. Read the [gasless swaps guide](https://ophis.fi/blog/gasless-swaps-how-intents-work/) for the practical distinctions.
 
-## Frequently asked questions
+## FAQ
 
 ### Is Ophis an official Robinhood product?
 

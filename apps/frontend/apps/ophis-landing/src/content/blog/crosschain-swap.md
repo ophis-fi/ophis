@@ -65,13 +65,13 @@ If Robinhood Chain is your destination, the [Ophis Robinhood Chain swap guide](h
 
 **Network support does not mean every route is available in both directions.** Your starting network, destination, token pair, and amount all affect whether a quote can be offered. Use the app's available options and live quote to check your particular swap.
 
-**[Check your crosschain swap route on Ophis](https://swap.ophis.fi/).**
+**[Check your crosschain swap route on Ophis](https://swap.ophis.fi/#/1/swap/_/_).**
 
 ## How to make a crosschain swap with Ophis
 
 ### 1. Connect the wallet holding your funds
 
-Open [the Ophis swap app](https://swap.ophis.fi/) and connect a compatible wallet. Confirm which network currently holds the asset you want to sell.
+Open [the Ophis swap app](https://swap.ophis.fi/#/1/swap/_/_) and connect a compatible wallet. Confirm which network currently holds the asset you want to sell.
 
 ### 2. Choose the starting token and network
 
@@ -129,7 +129,7 @@ You provide a destination address you control and sign from your EVM wallet. Rec
 
 Bitcoin and Solana are destinations in this Ophis flow, rather than starting networks. Delivery is a separate stage and is not instant. The [native Bitcoin guide](https://docs.ophis.fi/agent-btc-cookbook/) explains that distinction.
 
-## Frequently asked questions
+## FAQ
 
 ### What is a crosschain swap?
 
@@ -159,4 +159,4 @@ You cannot complete the selected swap without an executable route. Check another
 
 Start with three details: the asset you have, the network it is on, and what you want to receive. Ophis helps you check the available route and review the result before signing.
 
-**[Open Ophis and check your crosschain swap quote](https://swap.ophis.fi/).**
+**[Open Ophis and check your crosschain swap quote](https://swap.ophis.fi/#/1/swap/_/_).**
