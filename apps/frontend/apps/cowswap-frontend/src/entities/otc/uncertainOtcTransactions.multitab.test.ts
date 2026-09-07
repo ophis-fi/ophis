@@ -25,6 +25,7 @@ function dispatchStorageChange(): void {
 describe('uncertain OTC transaction locks across browser tabs', () => {
   beforeEach(() => {
     localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem('ophisOtcUncertainTransactions:v0')
     installOtcWebLocksMock()
   })
 

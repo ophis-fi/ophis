@@ -3,6 +3,8 @@ import { atomWithStorage, createJSONStorage } from 'jotai/utils'
 
 import { withStorageGuard } from '@cowprotocol/core'
 
+import { migrateUncertainOtcStorage } from './state/migrations/uncertainOtcTransactionsV1'
+
 import type { Hex } from 'viem'
 
 const LEGACY_STORAGE_KEY = 'ophisOtcUncertainTransactions:v0'
@@ -62,17 +64,10 @@ function isSubmissionProof(value: unknown): value is OtcSubmissionProof {
 }
 
 const sharedStorage = createJSONStorage<UncertainOtcTransactions>(() => localStorage)
-const guardedStorage = withStorageGuard<UncertainOtcTransactions>(
-  sharedStorage,
-  isUncertainOtcTransactions,
-  STORAGE_KEY,
+const guardedStorage = migrateUncertainOtcStorage(
+  withStorageGuard<UncertainOtcTransactions>(sharedStorage, isUncertainOtcTransactions, STORAGE_KEY),
+  LEGACY_STORAGE_KEY,
 )
-// Fall back to known legacy hashes only until v1 is first written. A persisted empty v1 map
-// is authoritative, so cleared legacy locks never reappear. Old bundles cannot overwrite v1.
-const readCurrentStorage = guardedStorage.getItem
-guardedStorage.getItem = (key, initial) => readCurrentStorage(key, readCurrentStorage(LEGACY_STORAGE_KEY, initial))
-guardedStorage.subscribe = (key, callback, initial) =>
-  sharedStorage.subscribe?.(key, () => callback(guardedStorage.getItem(key, initial)), initial) ?? (() => undefined)
 
 export const uncertainOtcTransactionsAtom = atomWithStorage<UncertainOtcTransactions>(STORAGE_KEY, {}, guardedStorage, {
   getOnInit: true,
@@ -96,7 +91,7 @@ export const coordinatedOtcTransactionAtom = atom(
 export function recordUncertainOtcTransaction(
   transactions: UncertainOtcTransactions,
   key: string,
-  transactionHash: Hex | null,
+  transactionHash: Hex,
   recordedAt = Date.now(),
   proof?: OtcSubmissionProof,
 ): UncertainOtcTransactions {
