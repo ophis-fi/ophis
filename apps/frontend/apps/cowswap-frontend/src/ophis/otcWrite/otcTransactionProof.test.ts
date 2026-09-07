@@ -1,5 +1,5 @@
 import { buildOtcCancelTransaction } from './buildOtcTransaction'
-import { otcRequestHash, verifyOtcTransactionProof } from './otcTransactionProof'
+import { otcRequestHash, readOtcSubmissionProof, verifyOtcTransactionProof } from './otcTransactionProof'
 import { MAKER, mockOtcOrder, TX_HASH } from './prepareOtcTransactionTest.utils'
 
 import type { PublicClient } from 'viem'
@@ -8,7 +8,11 @@ const request = buildOtcCancelTransaction({ kind: 'cancel', account: MAKER, orde
 const proof = { requestHash: otcRequestHash(request), nonce: 5 }
 const transaction = { hash: TX_HASH, from: MAKER, to: request.to, input: request.data, value: 0n, nonce: 5 }
 
-it('accepts the exact reviewed transaction and nonce', async () => {
+it('captures the independently read nonce for the signer and exact reviewed calldata', async () => {
+  const getTransactionCount = jest.fn(async () => 5)
+  const client = { getTransactionCount } as unknown as PublicClient
+  await expect(readOtcSubmissionProof(client, request, async () => 5)).resolves.toEqual(proof)
+  expect(getTransactionCount).toHaveBeenCalledWith({ address: MAKER, blockTag: 'pending' })
   await expect(
     verifyOtcTransactionProof({ getTransaction: async () => transaction } as never, TX_HASH, proof),
   ).resolves.toBeUndefined()
@@ -31,14 +35,28 @@ it.each([
   await expect(verifyOtcTransactionProof(client, TX_HASH, proof)).rejects.toThrow('differs from reviewed intent')
 })
 
-it('bounds post-receipt transaction reads', async () => {
+it.each([-1, NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+  'rejects an invalid nonce %s before signing',
+  async (nonce) => {
+    const client = { getTransactionCount: async () => nonce } as unknown as PublicClient
+    await expect(readOtcSubmissionProof(client, request, async () => 5)).rejects.toThrow('nonce unavailable')
+  },
+)
+
+it.each([false, true])('bounds nonce and post-receipt reads (wallet stalls=%s)', async (walletStalls) => {
   jest.useFakeTimers()
   try {
     const stalled = (): Promise<never> => new Promise<never>(() => undefined)
-    const client = { getTransaction: stalled } as unknown as PublicClient
+    const client = {
+      getTransactionCount: walletStalls ? async () => 5 : stalled,
+      getTransaction: stalled,
+    } as unknown as PublicClient
+    const nonce = expect(
+      readOtcSubmissionProof(client, request, walletStalls ? stalled : async () => 5),
+    ).rejects.toThrow('nonce read timed out')
     const receipt = expect(verifyOtcTransactionProof(client, TX_HASH, proof)).rejects.toThrow('verification timed out')
     await jest.advanceTimersByTimeAsync(8_000)
-    await receipt
+    await Promise.all([nonce, receipt])
   } finally {
     jest.useRealTimers()
   }

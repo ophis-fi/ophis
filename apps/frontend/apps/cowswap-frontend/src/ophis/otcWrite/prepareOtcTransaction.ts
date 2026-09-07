@@ -16,6 +16,7 @@ import type {
   OtcWriteRuntimeAuthorization,
   PreparedOtcTransaction,
 } from './otcWrite.types'
+import type { OtcSubmissionProof } from 'entities/otc'
 import type { OtcManifest, OtcOrder } from 'ophis/otc'
 
 function sameOrder(expected: OtcOrder, current: OtcOrder): boolean {
@@ -142,21 +143,29 @@ export async function submitOtcTransaction(
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
   isCurrentContext: () => boolean = () => true,
   onBroadcast: (hash: Hex) => void = () => undefined,
+  onSignatureRequested: (proof: OtcSubmissionProof) => void = () => {
+    throw new Error('Ophis OTC signature persistence unavailable')
+  },
 ): Promise<OtcTransactionReceipt> {
   assertRuntimeAuthorization(authorization)
   const prepared = await prepareOtcTransaction(client, intent, manifest)
   assertRuntimeAuthorization(authorization)
   if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
+  let submissionProof: OtcSubmissionProof | undefined
   const hash = await wallet.sendTransaction(
     prepared.request,
     prepared.intent,
     prepared.preparedAtTimestamp,
     isCurrentContext,
+    (proof) => {
+      submissionProof = proof
+      if (proof) onSignatureRequested(proof)
+    },
   )
   let receipt: OtcTransactionReceipt
   try {
     onBroadcast(hash)
-    receipt = await wallet.waitForTransactionReceipt(hash)
+    receipt = await wallet.waitForTransactionReceipt(hash, submissionProof)
     if ((receipt.replacedTransactionHash ?? receipt.transactionHash).toLowerCase() !== hash.toLowerCase()) {
       throw new Error('Ophis OTC transaction was replaced')
     }

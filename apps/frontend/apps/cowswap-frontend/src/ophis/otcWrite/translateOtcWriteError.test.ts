@@ -4,10 +4,7 @@ describe('translateOtcWriteError', () => {
   it.each([
     [{ code: 4001 }, 'Transaction rejected in your wallet. No funds moved.'],
     [new Error('insufficient funds for gas'), 'This wallet does not have enough ETH to pay Ethereum gas.'],
-    [
-      new Error('wrong chain'),
-      'Connect the wallet to the configured local Anvil or Hardhat mainnet fork and try again.',
-    ],
+    [new Error('wrong chain'), 'Select the network required by this OTC mode in your wallet and try again.'],
     [new Error('DeadlineExpired'), 'The fill deadline expired. Refresh the order and try again.'],
     [
       new Error('OrderNotActive'),

@@ -51,7 +51,9 @@ describe('getOtcWalletTransportId', () => {
 describe('useOtcNetworkReads', () => {
   it('starts the read-only allowance query without waiting for fork verification to settle', async () => {
     const walletClient = {} as Parameters<typeof toOtcForkClients>[0]
-    jest.mocked(toOtcForkClients).mockReturnValue({ writeClient: {} as never, wallet: {} as never })
+    jest
+      .mocked(toOtcForkClients)
+      .mockReturnValue({ writeClient: {} as never, connectedReader: {} as never, wallet: {} as never })
     jest.mocked(getOtcWalletForkId).mockResolvedValue(FORK_ID)
     jest.mocked(readOtcAllowance).mockResolvedValue({ allowance: 0n, blockNumber: 1n })
     let finishVerification: ((verified: boolean) => void) | undefined
