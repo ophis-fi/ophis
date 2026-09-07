@@ -1,4 +1,6 @@
-import { isAddressEqual, maxUint256, type Address } from 'viem'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+
+import { maxUint256, type Address } from 'viem'
 
 import { OTC_CANARY_POLICY } from './otcCanary.const'
 
@@ -18,7 +20,7 @@ export interface OtcCanaryPolicy {
 }
 
 export function isOtcCanaryAccount(account: Address | undefined, policy: OtcCanaryPolicy = OTC_CANARY_POLICY): boolean {
-  return !!account && policy.accounts.some((allowed) => isAddressEqual(allowed, account))
+  return !!account && policy.accounts.some((allowed) => areAddressesEqual(allowed, account))
 }
 
 function validLimit(amount: bigint): boolean {
@@ -42,11 +44,11 @@ export function getOtcCanaryRestriction(
 function pairRestriction(terms: OtcCreateDraft, policy: OtcCanaryPolicy): string | null {
   const pair = policy.pairs.find(
     (candidate) =>
-      (isAddressEqual(candidate.tokenA, terms.tokenA) && isAddressEqual(candidate.tokenB, terms.tokenB)) ||
-      (isAddressEqual(candidate.tokenA, terms.tokenB) && isAddressEqual(candidate.tokenB, terms.tokenA)),
+      (areAddressesEqual(candidate.tokenA, terms.tokenA) && areAddressesEqual(candidate.tokenB, terms.tokenB)) ||
+      (areAddressesEqual(candidate.tokenA, terms.tokenB) && areAddressesEqual(candidate.tokenB, terms.tokenA)),
   )
   if (!pair) return 'This token pair is not in the OTC canary.'
-  const forward = isAddressEqual(pair.tokenA, terms.tokenA)
+  const forward = areAddressesEqual(pair.tokenA, terms.tokenA)
   const maxA = forward ? pair.maxAmountA : pair.maxAmountB
   const maxB = forward ? pair.maxAmountB : pair.maxAmountA
   if (!validLimit(maxA) || !validLimit(maxB) || terms.amountA > maxA || terms.amountB > maxB) {
