@@ -20,6 +20,7 @@ const SIGNER_API_PATTERN =
 const WRITE_SIGNER_APIS = new Map<string, ReadonlySet<string>>([
   ['OtcOrderActionPanel.container.tsx', new Set(['useWalletClient', 'walletClient'])],
   ['otcWrite.types.ts', new Set(['sendTransaction'])],
+  ['useOtcNetworkSwitch.ts', new Set(['walletClient'])],
   ['otcForkIdentity.ts', new Set(['walletClient'])],
   ['otcWriteAdapters.ts', new Set(['sendTransaction', 'walletClient'])],
   ['prepareOtcTransaction.ts', new Set(['sendTransaction'])],

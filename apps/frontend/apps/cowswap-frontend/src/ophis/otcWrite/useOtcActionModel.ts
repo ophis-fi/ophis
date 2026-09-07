@@ -5,9 +5,11 @@ import { deriveOtcActionModel, type OtcActionFacts, type OtcActionModel } from '
 export function useOtcActionModel(facts: OtcActionFacts): OtcActionModel {
   const {
     enabled,
+    canary,
+    walletAdmitted,
     connected,
     correctChain,
-    localForkVerified,
+    networkVerified,
     ready,
     reviewed,
     allowance,
@@ -25,9 +27,11 @@ export function useOtcActionModel(facts: OtcActionFacts): OtcActionModel {
     () =>
       deriveOtcActionModel({
         enabled,
+        canary,
+        walletAdmitted,
         connected,
         correctChain,
-        localForkVerified,
+        networkVerified,
         ready,
         reviewed,
         allowance,
@@ -48,8 +52,10 @@ export function useOtcActionModel(facts: OtcActionFacts): OtcActionModel {
       connected,
       correctChain,
       enabled,
+      canary,
+      walletAdmitted,
       executeLabel,
-      localForkVerified,
+      networkVerified,
       pendingIntent,
       ready,
       receiptConfirmed,
