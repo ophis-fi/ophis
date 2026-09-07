@@ -134,6 +134,21 @@ export function prepareOtcTransaction(
   return withOtcPreflightTimeout(runOtcTransactionPreflight(client, intent, manifest))
 }
 
+function assertCanaryProof(
+  canary: boolean,
+  proof: OtcSubmissionProof | undefined,
+  prepared: PreparedOtcTransaction,
+): void {
+  if (!canary) return
+  if (
+    !proof ||
+    proof.requestHash !== otcRequestHash(prepared.request) ||
+    !Number.isSafeInteger(proof.nonce) ||
+    proof.nonce < 0
+  )
+    throw new Error('Ophis OTC transaction proof unavailable')
+}
+
 /**
  * The only wallet-submission sink. Authorization is checked again immediately
  * before fresh preflight, exact simulation, submission, and receipt tracking.
@@ -169,8 +184,7 @@ export async function submitOtcTransaction(
     prepared.preparedAtTimestamp,
     isStillAuthorized,
     (proof) => {
-      if (authorization.writeMode === 'canary' && (!proof || proof.requestHash !== otcRequestHash(prepared.request)))
-        throw new Error('Ophis OTC transaction proof unavailable')
+      assertCanaryProof(authorization.writeMode === 'canary', proof, prepared)
       submissionProof = proof
       if (proof) onSignatureRequested(proof)
     },
@@ -179,6 +193,7 @@ export async function submitOtcTransaction(
   let receipt: OtcTransactionReceipt
   try {
     onBroadcast(hash)
+    assertCanaryProof(authorization.writeMode === 'canary', submissionProof, prepared)
     receipt = await wallet.waitForTransactionReceipt(hash, submissionProof)
     assertOtcReceipt(hash, receipt)
   } catch (caught) {

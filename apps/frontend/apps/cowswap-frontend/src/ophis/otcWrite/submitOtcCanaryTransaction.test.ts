@@ -127,6 +127,52 @@ describe('canary submission admission at the shared write sink', () => {
     },
   )
 
+  it('preserves the broadcast hash as uncertain when the adapter skipped proof capture', async () => {
+    const submitter = wallet()
+    submitter.sendTransaction.mockResolvedValue(TX_HASH)
+    const onBroadcast = jest.fn()
+    await expect(
+      submitOtcTransaction(
+        mockOtcWriteClient({ allowance: order.amountA }),
+        submitter,
+        intent,
+        auth,
+        mockOtcManifest(),
+        undefined,
+        onBroadcast,
+        jest.fn(),
+      ),
+    ).rejects.toMatchObject({ transactionHash: TX_HASH })
+    expect(onBroadcast).toHaveBeenCalledWith(TX_HASH)
+    expect(submitter.waitForTransactionReceipt).not.toHaveBeenCalled()
+  })
+
+  it.each([-1, NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid proof nonce %s before persistence',
+    async (nonce) => {
+      const submitter = wallet()
+      submitter.sendTransaction.mockImplementation(async (request, _intent, _time, _current, onPrompt) => {
+        onPrompt?.({ requestHash: otcRequestHash(request), nonce })
+        return TX_HASH
+      })
+      const onPrompt = jest.fn()
+      await expect(
+        submitOtcTransaction(
+          mockOtcWriteClient({ allowance: order.amountA }),
+          submitter,
+          intent,
+          auth,
+          mockOtcManifest(),
+          undefined,
+          undefined,
+          onPrompt,
+        ),
+      ).rejects.toThrow('proof unavailable')
+      expect(onPrompt).not.toHaveBeenCalled()
+      expect(submitter.waitForTransactionReceipt).not.toHaveBeenCalled()
+    },
+  )
+
   it('rechecks expiration after simulation, before contacting the wallet', async () => {
     const client = mockOtcWriteClient({ allowance: order.amountA })
     client.simulate = async () => {
