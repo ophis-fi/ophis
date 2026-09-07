@@ -1,6 +1,6 @@
 # Ophis OTC — Milestone C kickoff checklist
 
-**Status:** Fork-only Milestone C completed and merged in #1229 on 2026-09-06; recovery/parser/test hardening followed in #1307–#1309. Milestone B read-only is enabled. Milestone C writes remain local-mainnet-fork only; no production write deployment or mainnet transaction is authorized.
+**Status:** Started on 2026-08-21. Milestone B read-only is enabled. Milestone C writes remain local-mainnet-fork only; no production write deployment or mainnet transaction is authorized.
 
 **Baseline:** Milestones A+B landed in `103882c0`, were hardened through `f55dbb27`, and Milestone C was rebased onto protected `main` at `0fa6948a`. Contract authority remains Ethereum `0x000000fF3D7A2d373615141d7489Ca66683DbecF`, runtime hash `0x8d9ad2a9d3b3d47aaa832ecc21de8775509764409ab07cdf097640396d10eda1`, canonical WETH `0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2`, and pinned upstream commit `7042b1b82defec0eecc4fce668df0fa815e8cc47`.
 
@@ -14,7 +14,7 @@
 - All GitHub checks on `69c737b2` passed, except the intentionally skipped scheduled-only live canary. No authenticated fork workflow was triggered. The Codex check is green because this PR is draft; it is not fresh review approval.
 - Milestone B's separate security review is complete: no exploitable B-specific findings, zero Semgrep/Gitleaks findings, and 19 focused tests passed. Solidity-specific Pashov/Fizz and Verity verification were inapplicable to B's zero-Solidity delta; that review does not approve C.
 - Ruleset `17378394` now requires the frontend build/tests, OTC scope, contract fork, browser fork, and fresh Codex review checks from GitHub Actions, with strict branch freshness. This uses native repository status checks; workflow changes themselves remain inside the trusted Codex review scope. The separate scope check is required because GitHub treats conditionally skipped jobs as successful.
-- Release evidence completed on merged PR #1229 and follow-ups #1307–#1309: required contract/browser fork suites and fresh exact-head Codex review. Production write enablement still requires separate approval.
+- Remaining release evidence: final-commit contract and browser fork suites using the pinned keyless endpoint, enforceable required checks, and fresh Codex review. Production write enablement still requires separate approval.
 
 ## Final review fixes — 2026-09-06
 
@@ -32,17 +32,17 @@
 - [x] **4. Make preflight and submission fail closed.** Use exact approvals, bounded positive amounts, distinct tokens, active-order checks, maker-only cancellation, and a short future fill deadline. Immediately before the only wallet sink: verify chain/code/WETH and active account, re-read claimed terms, confirm final block identity, simulate exact calldata, reconstruct the reviewed request, and require a successful receipt.
 - [x] **5. Establish the fork suite.** Add an isolated Foundry profile and bytecode-pinned latest-state Ethereum suite covering runtime/WETH identity, exact-approval create/fill, cancel/refund, expired deadline, competing fills, fill/cancel race, and missing approval. CI explicitly pins PublicNode without using the historical repository RPC secret; RPC failure fails the suites rather than skipping them; an exact-final-head run remains a Step 7 release gate.
 - [x] **6. Require a fresh Codex gate for every merge slice.** Bootstrap PR #1227 merged as `46dcf596`, landing the trusted-base, mutation-tested parser: money-path PRs require evidence for the current head, and incomplete changed-file scope fails closed. Ruleset `17378394` now also requires frontend, scope, contract fork, and browser fork checks from GitHub Actions; final-head review evidence remains required before merge.
-- [x] **7. Complete the fork-only ERC-20 release.** Merged and deployed with production writes off. Mainnet activation is a separate canary gate; deferred batching is not part of this release.
+- [ ] **7. Finish C before exposing a production wallet affordance.** The local-fork-only implementation and final review fixes are implemented; production writes stay off until every remaining sub-gate and explicit owner approval are recorded.
   - [x] Create/fill/cancel UI uses a single primary action with independent confirmation-bound pending states.
   - [x] Allowance reads refresh after confirmation, lock through a four-second cache cooldown, and expose safe exact-allowance revocation after a failed or raced execution.
   - [x] Error translation covers user rejection, simulation/revert, wrong chain/account, source mismatch, expiry, inactive/raced orders, receipt failure, and transport failure.
-  - [x] Run exact-final-head configured fork evidence for all seven contract invariants and the six browser scenarios: create, cancel, fill, mismatched-allowance clearing, raced-fill/reload/revoke, and keyboard/overflow. Completed on #1229 and #1307–#1309; #1309 fork run `34040350583` passed all seven contract and six browser cases.
+  - [ ] Run exact-final-head configured fork evidence for all seven contract invariants and the six browser scenarios: create, cancel, fill, mismatched-allowance clearing, raced-fill/reload/revoke, and keyboard/overflow. `OTC_FORK_RPC_URL` is configured for both jobs; the required final-head run follows the remaining review-fix commit.
   - [ ] Enable EIP-5792 only after wallet capability validation proves approval and escrow execute atomically; add Safe and malformed-capability E2E first. This is intentionally deferred and non-blocking for the current non-batched ERC-20 release; the adapter does not batch.
   - [x] Verify keyboard focus and absence of horizontal overflow for the create form at a 390 px browser viewport.
   - [x] Complete screen-reader and visual verification for fill/cancel/recovery states. Screen-reader semantics pass 3/3 unit-rendering checks; deterministic Cosmos fixtures pass fixture-scoped axe WCAG A/AA scans with zero violations, and inspected screenshots preserve clear fill, cancel-pending, and recovery hierarchy without clipping or overflow. The fork E2E verifies native buttons, accessible names, live-region roles, `aria-live`, `aria-atomic`, and the absence of hidden or inert ancestors against the rendered DOM.
   - [x] Complete and persist the differential security review through code head `3ae7a1ba`.
   - [x] Complete and persist the scoped application-security review through code head `3ae7a1ba`.
-  - [x] Complete the final fresh-Codex review gate against the final committed head. #1309 exact head `9384328dea0cae33a1701d6b5e8dcca2a3219c35` received clean review `5560023897`; deployed by run `34040653480`.
+  - [ ] Complete the final fresh-Codex review gate against the final committed head.
 
 ## Merge slicing
 
@@ -62,7 +62,3 @@ The implementation is committed as 27 functional slices plus three evidence comm
 ## Non-negotiable boundary
 
 Milestone B exposure is reversible through its read flag. Milestone C authorization is separate and conjunctive. A selector entry, feature flag, successful simulation, passing test, or security review is never by itself deployment approval.
-
-## Subsequent canary preparation
-
-See [2026-09-07 canary plan](../../development/plans/2026-09-07-ophis-otc-canary.md). Obsolete secret-backed draft #1228 is closed; #1229 superseded it. The [expanded security review](../../audit/otc-expanded-security-review-2026-09-06.md) supersedes the historical dependency and scan counts above. No complete Verity/Pashov approval or production write authorization is implied.

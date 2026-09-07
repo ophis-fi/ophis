@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core'
+import { I18nProvider } from '@lingui/react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { readOtcOrder } from 'ophis/otc'
 
@@ -46,7 +48,11 @@ afterEach(() => {
 })
 
 it('shows a failed order read immediately and waits for an explicit retry', async () => {
-  render(<OtcOrderActionPanel orderId={7n} />)
+  render(
+    <I18nProvider i18n={i18n}>
+      <OtcOrderActionPanel orderId={7n} />
+    </I18nProvider>,
+  )
   const retry = await screen.findByRole('button', { name: 'Retry order' })
   await act(async () => jest.advanceTimersByTime(20_000))
   expect(read).toHaveBeenCalledTimes(1)
@@ -60,7 +66,11 @@ it('replaces previously verified terms with recovery when a refresh fails', asyn
     blockNumber: 1n,
     blockHash: TX_HASH,
   })
-  render(<OtcOrderActionPanel orderId={8n} />)
+  render(
+    <I18nProvider i18n={i18n}>
+      <OtcOrderActionPanel orderId={8n} />
+    </I18nProvider>,
+  )
   await screen.findByText('Cancel order')
   fireEvent.click(screen.getByRole('checkbox'))
   expect(screen.getByRole('button', { name: 'Submit reviewed order' }).hasAttribute('disabled')).toBe(false)
@@ -78,7 +88,11 @@ it('keeps an active action control mounted when a background order read fails', 
     blockNumber: 1n,
     blockHash: TX_HASH,
   })
-  render(<OtcOrderActionPanel orderId={9n} />)
+  render(
+    <I18nProvider i18n={i18n}>
+      <OtcOrderActionPanel orderId={9n} />
+    </I18nProvider>,
+  )
   fireEvent.click(await screen.findByRole('checkbox'))
   fireEvent.click(screen.getByRole('button', { name: 'Submit reviewed order' }))
   await act(async () => jest.advanceTimersByTime(5_000))

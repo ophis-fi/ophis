@@ -6538,9 +6538,34 @@ msgid "Order actions use fresh verification against the pinned escrow contract."
 msgstr "Las acciones sobre órdenes requieren una nueva verificación en el contrato de depósito en garantía fijado."
 
 #: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
 msgid "Restricted Ethereum canary"
 msgstr "Prueba restringida en Ethereum"
 
 #: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
 msgid "Wallet actions re-read the current order and verify the network before opening the wallet."
 msgstr "Las acciones de la cartera vuelven a consultar la orden actual y verifican la red antes de abrir la cartera."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "Fork-only transaction mode"
+msgstr "Modo de transacción exclusivo del fork local"
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "Limits apply through this interface. They do not cap your total escrow exposure or protect an order from market moves."
+msgstr "Los límites se aplican a través de esta interfaz. No limitan tu exposición total en custodia ni protegen una orden frente a los movimientos del mercado."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "New approval and trade requests close at {expiresAt}. Existing orders remain active until filled or cancelled. Wallet prompts already opened can still execute later."
+msgstr "Las nuevas solicitudes de autorización y negociación se cierran el {expiresAt}. Las órdenes existentes siguen activas hasta que se ejecutan o cancelan. Las solicitudes ya abiertas en la cartera pueden ejecutarse más tarde."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "Per-order maximum: {amountA} and {amountB}, in either direction."
+msgstr "Máximo por orden: {amountA} y {amountB}, en cualquier dirección."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "These transactions use real Ethereum assets and cost gas. Only admitted wallets and reviewed pairs can trade within the limits below. Cancellation and allowance revocation remain available after trading closes."
+msgstr "Estas transacciones usan activos reales de Ethereum y consumen gas. Solo las carteras admitidas y los pares revisados pueden operar dentro de los límites indicados a continuación. La cancelación y la revocación de autorizaciones siguen disponibles después del cierre de la negociación."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "These wallet prompts use your local Ethereum fork. Every action re-reads the pinned escrow and simulates the exact transaction."
+msgstr "Estas solicitudes de la cartera usan tu fork local de Ethereum. Cada acción vuelve a consultar el contrato de custodia fijado y simula la transacción exacta."
