@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from 'react'
 
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useWalletClient } from 'wagmi'
@@ -9,7 +8,7 @@ import { useToggleWalletModal } from 'legacy/state/application/hooks'
 
 import { useOtcWriteAuthorization } from './otcWriteAuthorization'
 import { translateOtcWriteError } from './translateOtcWriteError'
-import { useOtcActionModel } from './useOtcActionModel'
+import { useOtcControllerModel } from './useOtcControllerModel'
 import { useOtcNetworkReads, type OtcNetworkReads } from './useOtcNetworkReads'
 import { useOtcSubmission, type OtcSubmissionState } from './useOtcSubmission'
 
@@ -43,25 +42,16 @@ export interface OtcActionDefinition {
 }
 
 export interface OtcActionController {
+  canary?: boolean
   model: OtcActionModel
   error: string | null
   successHash: Hex | null
   uncertainHash: Hex | null
+  signatureUncertain?: boolean
   allowance: bigint | null
   diagnostic: string | null
-  clearUncertainTransaction(): void
+  clearUncertainTransaction(hash?: Hex): void
   runPrimary(): Promise<void>
-}
-
-function localForkStatus(
-  account: Address | undefined,
-  chainId: number,
-  data: Hex | null | undefined,
-  error: unknown,
-): boolean | null {
-  if (!account || chainId !== SupportedChainId.MAINNET) return null
-  if (error) return false
-  return data === undefined ? null : data !== null
 }
 
 function localDiagnostic(error: unknown): string | null {
@@ -108,30 +98,7 @@ export function useOtcActionController(
     onConfirmed,
   })
   const allowance = network.allowanceResponse.data?.allowance ?? null
-  const localForkVerified = localForkStatus(
-    account,
-    chainId,
-    network.localForkResponse.data,
-    network.localForkResponse.error,
-  )
-  const model = useOtcActionModel({
-    enabled,
-    connected: !!account,
-    correctChain: chainId === SupportedChainId.MAINNET,
-    localForkVerified,
-    ready: definition.ready,
-    reviewed: definition.reviewed,
-    allowance,
-    allowanceFailed: !!network.allowanceResponse.error,
-    requiredAllowance: definition.requiredAllowance ?? null,
-    recoveryRequired: submission.recoveryRequired,
-    allowanceCooldown: submission.allowanceCooldown,
-    receiptConfirmed: submission.terminalConfirmed,
-    receiptUncertain: submission.uncertainHash !== null,
-    pendingIntent: submission.pendingIntent,
-    executeLabel: definition.executeLabel,
-    unavailableLabel: definition.unavailableLabel ?? 'Complete the order terms',
-  })
+  const model = useOtcControllerModel({ definition, network, submission, enabled, account, chainId })
 
   const runPrimary = useCallback(async () => {
     switch (model.action) {
