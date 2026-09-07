@@ -13,6 +13,8 @@ A fresh frontend reviewer found concrete duplicate-submission paths during devel
 | Finding | Correction and regression evidence |
 |---|---|
 | Wallet block headers alone do not authenticate settlement `eth_call` results | Independent Ethereum client supplies order/allowance reads, simulation, nonce, transaction identity and receipts. Both legacy and Wagmi adapters are tested. |
+| Canonical pending nonce can lag transactions known only to the wallet RPC | Require bounded wallet/canonical pending-nonce agreement before supplying an explicit nonce. Both signer paths reject lower and higher wallet nonces; stalled nonce reads fail within eight seconds. |
+| A preflight block timestamp can outlive the canary cutoff during asynchronous checks | Recheck wall-clock expiry immediately before each signer call. Both adapter regressions advance the clock to the cutoff during nonce reads and verify that neither a marker nor a signing request occurs. |
 | Lost send response leaves no durable hash lock | Persist a nullable uncertainty marker immediately before the actual signer call. Storage failures stop signing. All post-prompt hashless errors, including 4001, retain the marker. |
 | A malformed returned hash can corrupt uncertainty state | Validate a full 32-byte hash before replacing the nullable marker; invalid provider output stays locked. |
 | Legacy bundles reject the new nullable schema and can erase shared state | A dated owning-module migration mirrors known hashes into v0 and rereads both keys under the original Web Lock and on either storage event. A newer legacy hash replaces stale v1 state; nullable v1 records remain protected. Old fork-only bundles cannot perform canary writes. Valid legacy removals resolve known fork locks without proof; missing/corrupt legacy snapshots cannot unlock v1. Nullable and canonical-proof locks remain authoritative in v1. |
@@ -23,7 +25,7 @@ A fresh frontend reviewer found concrete duplicate-submission paths during devel
 
 ## Verification
 
-- Focused Jest run: 49 suites, 388 tests pass; one optional live-network test skipped.
+- Focused Jest run: 49 suites, 395 tests pass; one optional live-network test skipped.
 - Fresh reviewer independently ran six focused suites / 57 tests: all passed; no additional concrete findings in the final bounded review.
 - Scoped ESLint and TypeScript application check pass; no touched non-generated TypeScript source exceeds 250 lines.
 - Production build passes. The build emits a PWA precache/glob warning; successful compilation is not proof of offline caching. The same zero-precache/glob warning was present in PR #1311 before the larger candidate changes; offline caching was not tested.
@@ -44,6 +46,6 @@ The previous [expanded audit](otc-expanded-security-review-2026-09-06.md) retain
 
 The final migration follow-up review found no further concrete lock-loss path after correcting legacy-only clear resurrection. Targeted checks cover stale A→B replacement, dual-key subscriptions, ignored stale event payloads, nullable-marker preservation, and cleanup. GitHub fork-browser runs intermittently stayed in the order-loading panel. Bounded diagnostics remain in the injected test provider for future failures.
 
-The assembled candidate at `1eac2f9beecda0446110a85ac1916df6401581ae` passed the final six-flow canary rehearsal in 1m48s after the deletion-propagation fix. Its production build passed; the pre-existing PWA/glob warning remains outside this feature and offline use is not claimed. Policy injection was restricted to the disposable rehearsal checkout.
+The assembled candidate at `58464b1bf5075e57f8c727b358875c306fc263fd` passed the six-flow canary rehearsal in 1m37s after the nonce-agreement and signing-cutoff fixes. Its production build passed; the pre-existing PWA/glob warning remains outside this feature and offline use is not claimed. Policy injection was restricted to the disposable rehearsal checkout.
 
 A subsequent fork-mode local run traced a failed USDC approval simulation to PublicNode HTTP429 responses. Background wallet balance multicalls were hydrating hundreds of unrelated tokens through Anvil. Restricting only the two default host token-list fixtures to WETH/USDC yielded six passing browser flows in 1m30s with no upstream429 errors. All OTC reads, simulations, sends and receipts still execute on the local fork. This establishes the cause of that simulation failure; it does not retrospectively prove the cause of every earlier CI timeout. Evidence is retained under `order-read-recovery/`.
