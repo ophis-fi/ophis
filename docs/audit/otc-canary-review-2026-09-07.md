@@ -12,6 +12,7 @@ A fresh frontend reviewer found concrete duplicate-submission paths during devel
 
 | Finding | Correction and regression evidence |
 |---|---|
+| Optional admission can leave the canary action enabled before admission is known | Model inputs require explicit canary/admission fields and admit only `walletAdmitted === true`. False and unknown values stay blocked. Network-switch rejections/failures use switch-specific wording and the shared rejection classifier. Three regressions failed before the fixes and pass afterward. |
 | Wallet block headers alone do not authenticate settlement `eth_call` results | Independent Ethereum client supplies order/allowance reads, simulation, nonce, transaction identity and receipts. Both legacy and Wagmi adapters are tested. |
 | Canonical pending nonce can lag transactions known only to the wallet RPC | Require bounded wallet/canonical pending-nonce agreement before supplying an explicit nonce. Both signer paths reject lower and higher wallet nonces; stalled nonce reads fail within eight seconds. |
 | A preflight block timestamp can outlive the canary cutoff during asynchronous checks | Recheck wall-clock expiry immediately before each signer call. Both adapter regressions advance the clock to the cutoff during nonce reads and verify that neither a marker nor a signing request occurs. |
@@ -29,7 +30,7 @@ A fresh frontend reviewer found concrete duplicate-submission paths during devel
 
 ## Verification
 
-- Focused Jest run: 49 suites, 407 tests pass; one optional live-network test skipped.
+- Focused Jest run: 49 suites, 410 tests pass; one optional live-network test skipped.
 - Fresh reviewer independently ran five adapter/proof suites / 65 tests after the nonce and cutoff fixes: all passed, with one optional network test skipped. Subsequent bounded reviews passed 67 submission/recovery tests and six recovery-control UI tests. These reviews do not replace each PR’s exact-head GitHub review.
 - Scoped ESLint and TypeScript application check pass; no touched non-generated TypeScript source exceeds 250 lines.
 - Production build passes. The build emits a PWA precache/glob warning; successful compilation is not proof of offline caching. The same zero-precache/glob warning was present in PR #1311 before the larger candidate changes; offline caching was not tested.
@@ -50,6 +51,6 @@ The previous [expanded audit](otc-expanded-security-review-2026-09-06.md) retain
 
 The final migration follow-up review found no further concrete lock-loss path after correcting legacy-only clear resurrection. Targeted checks cover stale A→B replacement, dual-key subscriptions, ignored stale event payloads, nullable-marker preservation, and cleanup. GitHub fork-browser runs intermittently stayed in the order-loading panel. Bounded diagnostics remain in the injected test provider for future failures.
 
-The assembled candidate at `34e81dbd3097cc46f782f9946b8014482187ab2c` passed the six-flow canary rehearsal in 1m35s after the nonce-agreement, signing-cutoff, required-persistence, captured-proof and wallet-switch context fixes. Its production build and fresh Semgrep scan passed; the pre-existing PWA/glob warning remains outside this feature and offline use is not claimed. Policy injection was restricted to the disposable rehearsal checkout.
+The assembled candidate at `1c4ffecbb403dede0e253fac236246c02eff7c1f` passed the six-flow canary rehearsal in 1m35s after the nonce-agreement, signing-cutoff, required-persistence, captured-proof, wallet-switch context and explicit-admission fixes. Its production build and fresh Semgrep scan passed; the pre-existing PWA/glob warning remains outside this feature and offline use is not claimed. Policy injection was restricted to the disposable rehearsal checkout.
 
 A subsequent fork-mode local run traced a failed USDC approval simulation to PublicNode HTTP429 responses. Background wallet balance multicalls were hydrating hundreds of unrelated tokens through Anvil. Restricting only the two default host token-list fixtures to WETH/USDC yielded six passing browser flows in 1m30s with no upstream429 errors. All OTC reads, simulations, sends and receipts still execute on the local fork. This establishes the cause of that simulation failure; it does not retrospectively prove the cause of every earlier CI timeout. Evidence is retained under `order-read-recovery/`.

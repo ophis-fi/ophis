@@ -18,7 +18,7 @@ Baseline: main `6b4341d1`, including the reviewed and deployed Milestone C/recov
 - [x] Mainnet network/receipt adapters and negative tests.
 - [x] Canary submission and restored-receipt regression tests.
 - [x] Canary UI and production-disabled regression checks.
-- [x] Final local verification: 49 suites / 407 tests pass, one optional network test skipped; typecheck, scoped lint and production build pass; six canary-mode browser flows pass on local Anvil. Semgrep: 125 rules / 46 files, zero findings. See `../../audit/otc-canary-review-2026-09-07.md` for findings, limitations and evidence.
+- [x] Final local verification: 49 suites / 410 tests pass, one optional network test skipped; typecheck, scoped lint and production build pass; six canary-mode browser flows pass on local Anvil. Semgrep: 125 rules / 46 files, zero findings. See `../../audit/otc-canary-review-2026-09-07.md` for findings, limitations and evidence.
 - [ ] Scoped security review and fresh review of each merge slice; preserve the 400-line PR limit.
 - [x] Record monitoring/rollback procedure and operator activation checklist in `../otc-canary-runbook.md`.
 - [ ] Witness production flag propagation and rollback on the approved activation release.
