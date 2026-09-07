@@ -21,12 +21,13 @@ A fresh frontend reviewer found concrete duplicate-submission paths during devel
 | Legacy bundles reject the new nullable schema and can erase shared state | A dated owning-module migration mirrors known hashes into v0 and rereads both keys under the original Web Lock and on either storage event. A newer legacy hash replaces stale v1 state; nullable v1 records remain protected. Old fork-only bundles cannot perform canary writes. Valid legacy removals resolve known fork locks without proof; missing/corrupt legacy snapshots cannot unlock v1. Nullable and canonical-proof locks remain authoritative in v1. |
 | Unrelated or prior identical receipts can settle an uncertain attempt | Persist the exact reviewed request fingerprint and canonical pending nonce; include that nonce in both actual signer requests. Canonical receipt verification requires exact nonce equality plus sender, target, calldata and zero value. Tests reject both lower and higher nonces. |
 | Stale recovery of attempt A can delete newer hashless attempt B | Every attempt receives a random 128-bit ID, preserved when its hash arrives. Compare the complete captured record under the browser lock before receipt verification and again before removal. Regression uses identical hash/null, timestamp and proof with distinct IDs. |
+| An unresolved switch can strand a newly connected wallet and later overwrite its error | Reset switching on wallet/authorization context changes and unmount, and ignore stale request results. Four regressions cover Wagmi replacement, legacy replacement, context-only change and unmount; the independent follow-up passed all eight switch cases. |
 | Canary network-switch action did not request Ethereum | Reuse the connected Wagmi or legacy network-switch API, with pending/error handling. Four switch tests pass. |
 | Trading-expiry text implied pending prompts or orders expired | Notice explicitly separates new UI requests from already-issued wallet prompts and existing escrow orders. |
 
 ## Verification
 
-- Focused Jest run: 49 suites, 395 tests pass; one optional live-network test skipped.
+- Focused Jest run: 49 suites, 399 tests pass; one optional live-network test skipped.
 - Fresh reviewer independently ran five adapter/proof suites / 65 tests after the nonce and cutoff fixes: all passed, with one optional network test skipped. Subsequent bounded reviews passed 67 submission/recovery tests and six recovery-control UI tests. These reviews do not replace each PR’s exact-head GitHub review.
 - Scoped ESLint and TypeScript application check pass; no touched non-generated TypeScript source exceeds 250 lines.
 - Production build passes. The build emits a PWA precache/glob warning; successful compilation is not proof of offline caching. The same zero-precache/glob warning was present in PR #1311 before the larger candidate changes; offline caching was not tested.
