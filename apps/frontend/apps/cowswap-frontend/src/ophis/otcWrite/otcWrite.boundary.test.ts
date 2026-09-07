@@ -122,7 +122,6 @@ describe('Ophis OTC write boundary', () => {
     expect(source).toMatch(
       /queryKey:\s*\[\s*'ophis-otc-fork-order',\s*network\.transportId,\s*network\.localForkResponse\.data,\s*account,\s*orderId\.toString\(\),\s*mountId,?\s*\]/,
     )
-    expect(source).toContain('refetchInterval: ORDER_REFRESH_INTERVAL_MS')
     expect(source).toContain('forkOrderQuery.error !== null')
     expect(source).toContain('void refetchForkOrder()')
   })

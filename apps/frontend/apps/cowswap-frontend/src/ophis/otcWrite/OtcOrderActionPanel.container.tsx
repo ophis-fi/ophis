@@ -1,13 +1,13 @@
 import { useAtomValue } from 'jotai'
 import { useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { LinkStyledButton } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { atomWithQuery } from 'jotai-tanstack-query'
 import { Callout, Section } from 'ophis/ds'
 import { readOtcOrder } from 'ophis/otc'
-import { isAddressEqual } from 'viem'
 import { useWalletClient } from 'wagmi'
 
 import { OtcActionControl } from './OtcActionControl.container'
@@ -64,7 +64,7 @@ function VerifiedOtcOrderActionPanel({
 }): ReactNode {
   const { account } = useWalletInfo()
   const [reviewedKey, setReviewedKey] = useState<string | null>(null)
-  const isMaker = !!account && isAddressEqual(account, order.maker)
+  const isMaker = !!account && areAddressesEqual(account, order.maker)
   const paymentToken = reviewedOtcToken(order.tokenB)
   const receivedToken = reviewedOtcToken(order.tokenA)
   const paymentUsd = useOtcUsdAmount(isMaker ? null : paymentToken, isMaker ? null : order.amountB)
@@ -207,7 +207,8 @@ export function OtcOrderActionPanel({
         ],
         queryFn: async () => (network.writeClient ? readOtcOrder(network.writeClient, orderId) : null),
         enabled: !!network.localForkResponse.data && !!account && !!network.writeClient,
-        refetchInterval: ORDER_REFRESH_INTERVAL_MS,
+        retry: false,
+        refetchInterval: (query) => (query.state.error ? false : ORDER_REFRESH_INTERVAL_MS),
         refetchOnWindowFocus: false,
       })),
     [account, mountId, network.localForkResponse.data, network.transportId, network.writeClient, orderId],
@@ -228,7 +229,7 @@ export function OtcOrderActionPanel({
   )
   const orderUnavailable = !!network.localForkResponse.data && forkOrderQuery.error !== null
 
-  if (!network.localForkResponse.data || !shouldMountOtcOrderAction(true, order) || !order) {
+  if (orderUnavailable || !network.localForkResponse.data || !shouldMountOtcOrderAction(true, order) || !order) {
     return (
       <UnverifiedOtcOrderActionPanel
         orderId={orderId}

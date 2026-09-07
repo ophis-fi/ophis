@@ -1,5 +1,5 @@
 import { assertAccessibleAnnouncement, assertAccessibleButton } from '../support/accessibility'
-import { TEST_ADDRESS_NEVER_USE } from '../support/ethereum'
+import { getForkReadTrace, TEST_ADDRESS_NEVER_USE } from '../support/ethereum'
 import {
   createWethForUsdcOrder,
   depositForkWeth,
@@ -27,6 +27,8 @@ const FORK_UI_TIMEOUT = 150_000
 
 Cypress.on('fail', (error) => {
   error.message += `\nOTC panel: ${Cypress.$('#otc-order-action, #otc-create').text()}`
+  error.message += `\nPage: ${Cypress.$('body').text().slice(0, 1200)}`
+  error.message += `\nFork reads:\n${getForkReadTrace()}`
   throw error
 })
 
