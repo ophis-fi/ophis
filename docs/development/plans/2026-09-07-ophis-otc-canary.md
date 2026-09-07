@@ -1,6 +1,6 @@
 # Ophis OTC — restricted ERC-20 canary preparation
 
-Status: implementation in progress. Production writes remain disabled. The owner's instruction to continue development does not enable mainnet transactions.
+Status: implementation reviewed and merged through PR #1320; final interface/documentation release prepared. Production writes remain disabled. The owner's instruction to continue development does not enable mainnet transactions.
 
 Baseline: main `6b4341d1`, including the reviewed and deployed Milestone C/recovery/parser fixes and StorageEvent cleanup. No new contract, native ETH selector, or batching is needed for this slice.
 
@@ -19,7 +19,7 @@ Baseline: main `6b4341d1`, including the reviewed and deployed Milestone C/recov
 - [x] Canary submission and restored-receipt regression tests.
 - [x] Canary UI and production-disabled regression checks.
 - [x] Final local verification: 49 suites / 410 tests pass, one optional network test skipped; typecheck, scoped lint and production build pass; six canary-mode browser flows pass on local Anvil. Semgrep: 125 rules / 46 files, zero findings. See `../../audit/otc-canary-review-2026-09-07.md` for findings, limitations and evidence.
-- [ ] Scoped security review and fresh review of each merge slice; preserve the 400-line PR limit.
+- [x] Scoped security review and fresh review of implementation slices #1311–#1320, each within 400 changed lines. Final interface/documentation release is subject to the same gate.
 - [x] Record monitoring/rollback procedure and operator activation checklist in `../otc-canary-runbook.md`.
 - [ ] Witness production flag propagation and rollback on the approved activation release.
 - [x] Reconcile completed Milestone C checklist entries and close the obsolete secret-backed draft PR #1228.

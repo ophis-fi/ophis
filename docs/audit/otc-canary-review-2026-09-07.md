@@ -1,10 +1,10 @@
 # OTC canary preparation review — 2026-09-07
 
-Status: reviewed local candidate, staged release work in progress. This report does not approve production activation or funded transactions. The checked-in policy has no admitted accounts or pairs and expires at zero. All browser/contract writes used local Anvil only, with keyless PublicNode upstream and zero RPC retries.
+Status: implementation slices reviewed and merged; final interface/documentation release prepared. This report does not approve production activation or funded transactions. The checked-in policy has no admitted accounts or pairs and expires at zero. All browser/contract writes used local Anvil only, with keyless PublicNode upstream and zero RPC retries.
 
 ## Scope and conclusions
 
-This review covers the ERC-20 canary frontend, wallet adapters, transaction uncertainty persistence/recovery, and network/policy boundaries added after `5dd6283c786a272818dbe5937c21746501e2cedc`. No Solidity changes were made. The initial empty-policy slice is PR [#1311](https://github.com/ophis-fi/ophis/pull/1311); the remaining candidate must be split into sequential PRs of at most 400 changed lines, with fresh exact-head review and passing CI on each.
+This review covers the ERC-20 canary frontend, wallet adapters, transaction uncertainty persistence/recovery, and network/policy boundaries added after `5dd6283c786a272818dbe5937c21746501e2cedc`. No Solidity changes were made. Implementation shipped in sequential PRs of at most 400 changed lines, each with fresh exact-head review and passing CI. The final interface/documentation PR uses the same merge gate.
 
 A fresh frontend reviewer found concrete duplicate-submission paths during development. The final bounded re-review found no further concrete findings in the reviewed delta after the fixes below. That conclusion is not a claim that every security skill, specialist contract audit or production scenario has been completed.
 
@@ -39,7 +39,22 @@ A fresh frontend reviewer found concrete duplicate-submission paths during devel
 - Semgrep OSS scan: `p/security-audit`, `p/typescript`, `p/react`, `p/secrets`; 125 applicable rules on 46 non-test source files, zero findings and zero reported errors, approximately 100% parsed. Tests/fixtures are excluded. New untracked sources are included with `--no-git-ignore`.
 - Read-only canary script self-test and live identity/index health check passed earlier in this preparation; neither sends transactions nor constitutes wallet monitoring.
 
-Evidence logs, Semgrep JSON, local rehearsal scripts/screenshots and candidate source snapshot are retained outside the repository under `/Users/scep/ophis-audit-evidence/2026-09-07/`. Final release commit/deployment evidence must be added when the slices merge.
+Evidence logs, Semgrep JSON, local rehearsal scripts/screenshots and candidate source snapshot are retained outside the repository under `/Users/scep/ophis-audit-evidence/2026-09-07/`. Merged implementation releases are listed below. Final served-asset provenance and disconnected production QA are retained with the deployment evidence.
+
+## Reviewed implementation releases
+
+| PR | Change | Squash commit | Deployment |
+|---|---|---|---|
+| [#1311](https://github.com/ophis-fi/ophis/pull/1311) | Empty admission policy | [`8326e84d85`](https://github.com/ophis-fi/ophis/commit/8326e84d858333e8df6418efae1b1054b2b207af) | [Workflow run](https://github.com/ophis-fi/ophis/actions/runs/34109213594) |
+| [#1312](https://github.com/ophis-fi/ophis/pull/1312) | Fork identity | [`ea8c3b0ce0`](https://github.com/ophis-fi/ophis/commit/ea8c3b0ce0b435e25e43f697b9d64da0debef2ae) | [Workflow run](https://github.com/ophis-fi/ophis/actions/runs/34110020205) |
+| [#1314](https://github.com/ophis-fi/ophis/pull/1314) | Bounded order reads and retained submission state | [`8840a19c47`](https://github.com/ophis-fi/ophis/commit/8840a19c47bba61aa8390ea3f801e30c3f06029a) | [Workflow run](https://github.com/ophis-fi/ophis/actions/runs/34119578251) |
+| [#1313](https://github.com/ophis-fi/ophis/pull/1313) | Attempt proof and storage migration | [`bd2e34c71f`](https://github.com/ophis-fi/ophis/commit/bd2e34c71f3d7f89f8bfc9063256a5d883103b37) | [Workflow run](https://github.com/ophis-fi/ophis/actions/runs/34120234853) |
+| [#1315](https://github.com/ophis-fi/ophis/pull/1315) | Canonical adapters and signing guards | [`2d255e2943`](https://github.com/ophis-fi/ophis/commit/2d255e29437f2c9e11439a90c296bf612f41474e) | [Workflow run](https://github.com/ophis-fi/ophis/actions/runs/34124376803) |
+| [#1316](https://github.com/ophis-fi/ophis/pull/1316) | Captured-proof validation | [`1af20c9583`](https://github.com/ophis-fi/ophis/commit/1af20c958335a582b5f972ab8724492cebe25cf6) | [Workflow run](https://github.com/ophis-fi/ophis/actions/runs/34126991247) |
+| [#1317](https://github.com/ophis-fi/ophis/pull/1317) | Recovery controls | [`05580201d3`](https://github.com/ophis-fi/ophis/commit/05580201d3cf09cc63cce00d24b4ed2a4abf08fb) | [Workflow run](https://github.com/ophis-fi/ophis/actions/runs/34148843974) |
+| [#1318](https://github.com/ophis-fi/ophis/pull/1318) | Durable signature recovery | [`0d38f10500`](https://github.com/ophis-fi/ophis/commit/0d38f105002cf529efe2a0e2522dc03cbeddb7a5) | [Workflow run](https://github.com/ophis-fi/ophis/actions/runs/34150515917) |
+| [#1319](https://github.com/ophis-fi/ophis/pull/1319) | Explicit admission and network switching | [`f92d7d9bdb`](https://github.com/ophis-fi/ophis/commit/f92d7d9bdb94ab51bbf02f8a25692612637988a9) | [Workflow run](https://github.com/ophis-fi/ophis/actions/runs/34152118966) |
+| [#1320](https://github.com/ophis-fi/ophis/pull/1320) | Canonical network and recovery integration | [`cecdabb32b`](https://github.com/ophis-fi/ophis/commit/cecdabb32ba61e480a6ccfc08ff90cbdd06da5a1) | [Workflow run](https://github.com/ophis-fi/ophis/actions/runs/34152696404) |
 
 ## Remaining constraints
 
