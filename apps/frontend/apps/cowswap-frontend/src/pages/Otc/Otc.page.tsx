@@ -1,10 +1,9 @@
 /**
- * OtcPage — Ethereum OTC surface (Milestone B read-only; C fork writes).
+ * OtcPage — Ethereum OTC surface with separately gated wallet actions.
  *
  * Browse and inspect fixed-price escrow orders on the external immutable
- * Swapboard contract. Production remains strictly read-only. The optional
- * Milestone C surface is mounted only when the separate local-fork write gate
- * passes; all signer access stays isolated in ophis/otcWrite.
+ * Swapboard contract. Production defaults to read-only. Wallet actions mount
+ * only when the fork or restricted canary write gate passes; all signer access stays isolated in ophis/otcWrite.
  *
  * Data flow: on-chain snapshot (settlement authority, fail-closed) +
  * subgraph enrichment (ages/history, optional). Rows are labeled
@@ -50,9 +49,48 @@ export interface OtcPageViewProps {
   nowMs: number
   createPanel?: ReactNode
   writeEnabled?: boolean
+  canary?: boolean
 }
 
-export function OtcPageView({ state, account, nowMs, createPanel, writeEnabled = false }: OtcPageViewProps): ReactNode {
+function OtcLede({ writeEnabled, canary }: { writeEnabled: boolean; canary: boolean }): ReactNode {
+  return writeEnabled && canary ? (
+    <Trans>
+      Create, fill, and cancel exact ERC-20 orders in the restricted Ethereum canary. Transactions use real assets and
+      cost gas.
+    </Trans>
+  ) : writeEnabled ? (
+    <Trans>
+      Test exact ERC-20 escrow actions against a local Ethereum fork. Every order read is verified directly against the
+      pinned contract.
+    </Trans>
+  ) : (
+    <Trans>
+      Browse escrowed OTC orders settled on an external immutable Ethereum contract. This surface is read-only; order
+      data is verified directly against Ethereum.
+    </Trans>
+  )
+}
+
+function OtcModeLabel({ writeEnabled, canary }: { writeEnabled: boolean; canary: boolean }): ReactNode {
+  return writeEnabled ? (
+    canary ? (
+      <Trans>Restricted Ethereum canary</Trans>
+    ) : (
+      <Trans>Local fork writes</Trans>
+    )
+  ) : (
+    <Trans>Read-only</Trans>
+  )
+}
+
+export function OtcPageView({
+  state,
+  account,
+  nowMs,
+  createPanel,
+  writeEnabled = false,
+  canary = false,
+}: OtcPageViewProps): ReactNode {
   const { t } = useLingui()
   const [tab, setTab] = useState<OtcTab>(writeEnabled ? 'create' : 'browse')
   const rows = buildOtcDisplayRows(state)
@@ -65,23 +103,13 @@ export function OtcPageView({ state, account, nowMs, createPanel, writeEnabled =
       width="wide"
       eyebrow="OTC"
       title={<Trans>Fixed-price peer-to-peer orders.</Trans>}
-      lede={
-        writeEnabled ? (
-          <Trans>
-            Test exact ERC-20 escrow actions against a local Ethereum fork. Every order read is verified directly
-            against the pinned contract.
-          </Trans>
-        ) : (
-          <Trans>
-            Browse escrowed OTC orders settled on an external immutable Ethereum contract. This surface is read-only;
-            order data is verified directly against Ethereum.
-          </Trans>
-        )
-      }
+      lede={<OtcLede writeEnabled={writeEnabled} canary={canary} />}
     >
       <BadgeRow>
         <Badge tone="live">Ethereum</Badge>
-        <Badge tone="beta">{writeEnabled ? <Trans>Local fork writes</Trans> : <Trans>Read-only</Trans>}</Badge>
+        <Badge tone="beta">
+          <OtcModeLabel writeEnabled={writeEnabled} canary={canary} />
+        </Badge>
         {verifiedBlock && (
           <span aria-label={t`Verified at block ${verifiedBlock}`}>
             <Trans>Verified at block {verifiedBlock}</Trans>
@@ -149,6 +177,7 @@ export function OtcPage(): ReactNode {
       account={account}
       nowMs={nowMs}
       writeEnabled={writeEnabled}
+      canary={process.env.REACT_APP_OTC_WRITE_MODE === 'canary'}
       createPanel={writeEnabled ? <OtcCreatePanel onConfirmed={refresh} /> : undefined}
     />
   )

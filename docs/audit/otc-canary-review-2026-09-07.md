@@ -1,0 +1,47 @@
+# OTC canary preparation review — 2026-09-07
+
+Status: reviewed local candidate, staged release work in progress. This report does not approve production activation or funded transactions. The checked-in policy has no admitted accounts or pairs and expires at zero. All browser/contract writes used local Anvil only, with keyless PublicNode upstream and zero RPC retries.
+
+## Scope and conclusions
+
+This review covers the ERC-20 canary frontend, wallet adapters, transaction uncertainty persistence/recovery, and network/policy boundaries added after `5dd6283c786a272818dbe5937c21746501e2cedc`. No Solidity changes were made. The initial empty-policy slice is PR [#1311](https://github.com/ophis-fi/ophis/pull/1311); the remaining candidate must be split into sequential PRs of at most 400 changed lines, with fresh exact-head review and passing CI on each.
+
+A fresh frontend reviewer found concrete duplicate-submission paths during development. The final bounded re-review found no further concrete findings in the reviewed delta after the fixes below. That conclusion is not a claim that every security skill, specialist contract audit or production scenario has been completed.
+
+## Findings corrected before release
+
+| Finding | Correction and regression evidence |
+|---|---|
+| Wallet block headers alone do not authenticate settlement `eth_call` results | Independent Ethereum client supplies order/allowance reads, simulation, nonce, transaction identity and receipts. Both legacy and Wagmi adapters are tested. |
+| Lost send response leaves no durable hash lock | Persist a nullable uncertainty marker immediately before the actual signer call. Storage failures stop signing. All post-prompt hashless errors, including 4001, retain the marker. |
+| A malformed returned hash can corrupt uncertainty state | Validate a full 32-byte hash before replacing the nullable marker; invalid provider output stays locked. |
+| Legacy bundles reject the new nullable schema and can erase shared state | A dated owning-module migration mirrors known hashes into v0 and rereads both keys under the original Web Lock and on either storage event. A newer legacy hash replaces stale v1 state; nullable v1 records remain protected. Old fork-only bundles cannot perform canary writes. Valid legacy removals resolve known fork locks without proof; missing/corrupt legacy snapshots cannot unlock v1. Nullable and canonical-proof locks remain authoritative in v1. |
+| Unrelated or prior identical receipts can settle an uncertain attempt | Persist the exact reviewed request fingerprint and canonical pending nonce; include that nonce in both actual signer requests. Canonical receipt verification requires exact nonce equality plus sender, target, calldata and zero value. Tests reject both lower and higher nonces. |
+| Stale recovery of attempt A can delete newer hashless attempt B | Every attempt receives a random 128-bit ID, preserved when its hash arrives. Compare the complete captured record under the browser lock before receipt verification and again before removal. Regression uses identical hash/null, timestamp and proof with distinct IDs. |
+| Canary network-switch action did not request Ethereum | Reuse the connected Wagmi or legacy network-switch API, with pending/error handling. Four switch tests pass. |
+| Trading-expiry text implied pending prompts or orders expired | Notice explicitly separates new UI requests from already-issued wallet prompts and existing escrow orders. |
+
+## Verification
+
+- Focused Jest run: 48 suites, 385 tests pass; one optional live-network test skipped.
+- Fresh reviewer independently ran six focused suites / 57 tests: all passed; no additional concrete findings in the final bounded review.
+- Scoped ESLint and TypeScript application check pass; no touched non-generated TypeScript source exceeds 250 lines.
+- Production build passes. The build emits a PWA precache/glob warning; successful compilation is not proof of offline caching. The same zero-precache/glob warning was present in PR #1311 before the larger candidate changes; offline caching was not tested.
+- Seven deployed-contract ERC-20 fork invariants pass. No new contract deployment or funded Ethereum transaction was performed.
+- Six injected-wallet lifecycle/recovery/accessibility flows pass in local canary mode in an isolated checkout. Its temporary public Anvil test-account policy and independent reader point only to local Anvil; they are not copied into production configuration. The first attempt failed two fork-only text expectations; selecting the correct canary notice made all six pass without relaxing assertions or timeouts.
+- Semgrep OSS scan: `p/security-audit`, `p/typescript`, `p/react`, `p/secrets`; 125 applicable rules on 45 non-test source files, zero findings and zero reported errors, approximately 100% parsed. Tests/fixtures are excluded. New untracked sources are included with `--no-git-ignore`.
+- Read-only canary script self-test and live identity/index health check passed earlier in this preparation; neither sends transactions nor constitutes wallet monitoring.
+
+Evidence logs, Semgrep JSON, local rehearsal scripts/screenshots and candidate source snapshot are retained outside the repository under `/Users/scep/ophis-audit-evidence/2026-09-07/`. Final release commit/deployment evidence must be added when the slices merge.
+
+## Remaining constraints
+
+The trusted canonical RPC, trusted wallet honoring the requested nonce, and one-confirmation model remain assumptions. Do not edit the nonce or run competing transactions through another client. Browser locks do not coordinate devices/origins or survive deliberate storage deletion. An actually rejected prompt without a provable mined hash stays locked conservatively. Recovered approvals are terminal in the current view; reload and review fresh allowance before continuing.
+
+The policy PR's initial CI fork browser run passed create/mobile but failed four order-detail flows while loading verified fork orders. Saved screenshots and a method-only Anvil tail do not establish the cause. The unused policy diff does not change that runtime path; a single rerun passed, and PR #1311 merged after all checks passed. PR #1312 also passed its browser job. No claim of an RPC transient or resolved root cause is made.
+
+The previous [expanded audit](otc-expanded-security-review-2026-09-06.md) retains its specialist-review and dependency limitations. Full Verity/Pashov/Fizz contract reviews are not claimed here. Required activation inputs and witnessed production flag/rollback checks remain in the [operator runbook](../development/otc-canary-runbook.md). Native ETH and Safe/EIP-5792 batching remain deferred.
+
+The final migration follow-up review found no further concrete lock-loss path after correcting legacy-only clear resurrection. Targeted checks cover stale A→B replacement, dual-key subscriptions, ignored stale event payloads, nullable-marker preservation, and cleanup. GitHub fork-browser runs intermittently stayed in the order-loading panel; the diagnostic head passed all six flows, but the earlier failure cause remains unconfirmed. Test-only query snapshots are retained for subsequent failures.
+
+The assembled candidate at `1eac2f9beecda0446110a85ac1916df6401581ae` passed the final six-flow canary rehearsal in 1m48s after the deletion-propagation fix. Its production build passed; the pre-existing PWA/glob warning remains outside this feature and offline use is not claimed. Policy injection was restricted to the disposable rehearsal checkout.

@@ -143,7 +143,7 @@ describe('OtcOrderDetailView', () => {
   it('renders a guarded local action only when supplied by the controller', () => {
     renderDetail({ writeEnabled: true, actionPanel: <button type="button">Guarded local fill</button> })
     expect(screen.getByRole('button', { name: 'Guarded local fill' })).toBeTruthy()
-    expect(screen.getByText(/Fork-only action detail/)).toBeTruthy()
+    expect(screen.getByText(/Order actions use fresh verification/)).toBeTruthy()
   })
 
   it('suppresses a read-only supplied action when indexed terms disagree', () => {

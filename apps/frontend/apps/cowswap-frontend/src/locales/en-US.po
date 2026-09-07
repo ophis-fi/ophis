@@ -693,6 +693,10 @@ msgstr "Pre Hooks"
 msgid "Maybe next time"
 msgstr "Maybe next time"
 
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Create, fill, and cancel exact ERC-20 orders in the restricted Ethereum canary. Transactions use real assets and cost gas."
+msgstr "Create, fill, and cancel exact ERC-20 orders in the restricted Ethereum canary. Transactions use real assets and cost gas."
+
 #: apps/cowswap-frontend/src/modules/tokensList/pure/LpTokenLists/index.tsx
 msgid "Can't find the pool you're looking for?"
 msgstr "Can't find the pool you're looking for?"
@@ -806,6 +810,10 @@ msgstr "icon"
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/Header.tsx
 msgid "Manage token lists"
 msgstr "Manage token lists"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Order actions use fresh verification against the pinned escrow contract."
+msgstr "Order actions use fresh verification against the pinned escrow contract."
 
 #: apps/cowswap-frontend/src/modules/wallet/containers/AccountSelectorModal/index.tsx
 msgid "Select {walletName} Account"
@@ -2791,6 +2799,10 @@ msgstr "Your swap expires and will not execute if it is pending for longer than 
 msgid "{currencyNameCapitalized} orders can, in rare cases, be frontrun due to their on-chain component. For more robust MEV protection, consider wrapping your {currencyName} before trading."
 msgstr "{currencyNameCapitalized} orders can, in rare cases, be frontrun due to their on-chain component. For more robust MEV protection, consider wrapping your {currencyName} before trading."
 
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Restricted Ethereum canary"
+msgstr "Restricted Ethereum canary"
+
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
 msgid "Transaction Confirmed"
 msgstr "Transaction Confirmed"
@@ -3217,6 +3229,10 @@ msgstr "Limit Order"
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Row/WarningEstimatedPrice/OrderRowWarningEstimatedPrice.pure.tsx
 msgid "Insufficient allowance"
 msgstr "Insufficient allowance"
+
+#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
+msgid "Wallet actions re-read the current order and verify the network before opening the wallet."
+msgstr "Wallet actions re-read the current order and verify the network before opening the wallet."
 
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowQuoteId/QuoteVerificationIndicator.tsx
 msgid "Unverified"
@@ -4871,10 +4887,6 @@ msgstr "<0/><1/>Consider waiting for lower network costs.<2/><3/>You may still m
 msgid "Swapping on"
 msgstr "Swapping on"
 
-#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
-msgid "Fork-only action detail, freshly verified against the pinned escrow contract."
-msgstr "Fork-only action detail, freshly verified against the pinned escrow contract."
-
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/fields/OrderTypeField.tsx
 msgid "(Fill or Kill)"
 msgstr "(Fill or Kill)"
@@ -5776,10 +5788,6 @@ msgstr "Status"
 #: apps/cowswap-frontend/src/common/pure/CoWAmmBannerContent/PoolInfo/index.tsx
 msgid "higher"
 msgstr "higher"
-
-#: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
-msgid "Fork actions ignore this checkpoint and re-read exact fork state before opening the wallet."
-msgstr "Fork actions ignore this checkpoint and re-read exact fork state before opening the wallet."
 
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/RateInput/index.tsx
 msgid "When locked, the limit price stays fixed when changing the amounts. When unlocked, the limit price will update based on the amount changes."

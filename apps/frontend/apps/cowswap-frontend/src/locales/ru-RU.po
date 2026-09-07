@@ -6528,3 +6528,19 @@ msgstr "с чёрным списком"
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "upgradeable"
 msgstr "обновляемый"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Create, fill, and cancel exact ERC-20 orders in the restricted Ethereum canary. Transactions use real assets and cost gas."
+msgstr "Создавайте, исполняйте и отменяйте точные ордера ERC-20 в ограниченном тестовом запуске на Ethereum. Транзакции используют реальные активы и требуют оплаты газа."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Order actions use fresh verification against the pinned escrow contract."
+msgstr "Действия с ордерами требуют новой проверки по закреплённому контракту эскроу."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Restricted Ethereum canary"
+msgstr "Ограниченный тестовый запуск на Ethereum"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Wallet actions re-read the current order and verify the network before opening the wallet."
+msgstr "Перед открытием кошелька текущее состояние ордера считывается заново и проверяется сеть."

@@ -3,13 +3,14 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import { Badge, Callout, Section } from 'ophis/ds'
+import { Badge, Section } from 'ophis/ds'
 import { formatOtcAmount } from 'ophis/otc'
 
 import { OtcActionControl } from './OtcActionControl.container'
 import { OtcUsdValue } from './OtcUsdValue.pure'
 import * as styledEl from './OtcWrite.styled'
 import { OTC_REVIEWED_TOKENS, parseOtcCreateDraft, reviewedOtcToken, type OtcReviewedToken } from './otcWriteForm'
+import { OtcWriteNotice } from './OtcWriteNotice.pure'
 import { getOtcActionReviewKey } from './otcWriteOrder.utils'
 import { useOtcUsdAmount } from './useOtcUsdAmount'
 
@@ -140,13 +141,8 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
   }
 
   return (
-    <Section id="otc-create" title="Create on local Ethereum fork">
-      <Callout tone="warning" title="Fork-only transaction mode">
-        <p>
-          These wallet prompts target the pinned Ethereum escrow through your configured local fork. Production writes
-          remain disabled.
-        </p>
-      </Callout>
+    <Section id="otc-create" title="Create escrow order">
+      <OtcWriteNotice />
       <OtcCreateFields
         tokenA={tokenA}
         tokenB={tokenB}
