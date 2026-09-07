@@ -17,6 +17,7 @@ A fresh frontend reviewer found concrete duplicate-submission paths during devel
 | A preflight block timestamp can outlive the canary cutoff during asynchronous checks | Recheck wall-clock expiry immediately before each signer call. Both adapter regressions advance the clock to the cutoff during nonce reads and verify that neither a marker nor a signing request occurs. |
 | Adapter proof handoff was deferred past the adapter precursor | The shared sink now forwards proof to pre-sign persistence and receipt tracking, and rejects proof-bearing signing if no persistence callback was supplied. The regression verifies that the missing-callback path never sends. |
 | An adapter can return a hash without invoking proof capture | Revalidate the captured fingerprint and safe nonce before receipt tracking, after recording the broadcast hash. Missing proof becomes a hash-bearing tracking error; the full writer retains that uncertainty. The independent follow-up passed 48 focused tests. |
+| Recovery controller can accidentally reuse the fork verifier in canary mode | Ship canary recovery controls together with canonical network verification. Two controller regressions reconcile both stored and supplied hashes through the canonical network callback. Recovery fixtures use SDK account normalization and guarded nullable values. |
 | Lost send response leaves no durable hash lock | Persist a nullable uncertainty marker immediately before the actual signer call. Storage failures stop signing. All post-prompt hashless errors, including 4001, retain the marker. |
 | A malformed returned hash can corrupt uncertainty state | Validate a full 32-byte hash before replacing the nullable marker; invalid provider output stays locked. |
 | Legacy bundles reject the new nullable schema and can erase shared state | A dated owning-module migration mirrors known hashes into v0 and rereads both keys under the original Web Lock and on either storage event. A newer legacy hash replaces stale v1 state; nullable v1 records remain protected. Old fork-only bundles cannot perform canary writes. Valid legacy removals resolve known fork locks without proof; missing/corrupt legacy snapshots cannot unlock v1. Nullable and canonical-proof locks remain authoritative in v1. |
@@ -28,7 +29,7 @@ A fresh frontend reviewer found concrete duplicate-submission paths during devel
 
 ## Verification
 
-- Focused Jest run: 49 suites, 405 tests pass; one optional live-network test skipped.
+- Focused Jest run: 49 suites, 407 tests pass; one optional live-network test skipped.
 - Fresh reviewer independently ran five adapter/proof suites / 65 tests after the nonce and cutoff fixes: all passed, with one optional network test skipped. Subsequent bounded reviews passed 67 submission/recovery tests and six recovery-control UI tests. These reviews do not replace each PR’s exact-head GitHub review.
 - Scoped ESLint and TypeScript application check pass; no touched non-generated TypeScript source exceeds 250 lines.
 - Production build passes. The build emits a PWA precache/glob warning; successful compilation is not proof of offline caching. The same zero-precache/glob warning was present in PR #1311 before the larger candidate changes; offline caching was not tested.
