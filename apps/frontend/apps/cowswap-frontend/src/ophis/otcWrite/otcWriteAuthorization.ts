@@ -3,6 +3,8 @@ import { useMemo } from 'react'
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { isLocal } from '@cowprotocol/common-utils'
 
+import { OTC_CANARY_POLICY } from './otcCanary.const'
+
 import type { OtcWriteRuntimeAuthorization } from './otcWrite.types'
 
 interface OtcWriteFlags {
@@ -34,8 +36,8 @@ export function resolveOtcWriteAuthorization(
     enabled:
       authorization.readFlag === true &&
       authorization.writeFlag === true &&
-      authorization.isLocal &&
-      authorization.writeMode === 'fork',
+      ((authorization.isLocal && authorization.writeMode === 'fork') ||
+        (authorization.writeMode === 'canary' && OTC_CANARY_POLICY.accounts.length > 0)),
     authorization,
   }
 }

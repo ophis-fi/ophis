@@ -7,6 +7,7 @@ import { translateOtcWriteError } from './translateOtcWriteError'
 
 import type {
   OtcConfirmedCallback,
+  OtcPendingIntent,
   OtcWalletSubmitter,
   OtcWriteClient,
   OtcWriteIntent,
@@ -20,7 +21,7 @@ export interface OtcSuccessfulTransaction {
   terminal: boolean
 }
 
-interface OtcSubmitCallbackOptions {
+export interface OtcSubmitCallbackOptions {
   writeClient: OtcWriteClient | null
   wallet: OtcWalletSubmitter | null
   authorization: OtcWriteRuntimeAuthorization
@@ -30,7 +31,7 @@ interface OtcSubmitCallbackOptions {
   inFlightGeneration: { current: number | null }
   beginAllowanceCooldown: () => void
   onConfirmed: OtcConfirmedCallback | undefined
-  setPendingIntent: (intent: OtcWriteIntent['kind'] | null) => void
+  setPendingIntent: (intent: OtcPendingIntent | null) => void
   setError: (error: string | null) => void
   setSuccess: (success: OtcSuccessfulTransaction | null) => void
   setUncertainHash: (hash: Hex) => void
@@ -86,7 +87,7 @@ function captureSubmissionContext(contextGeneration: { current: number }): {
   return { generation, isCurrentContext: () => contextGeneration.current === generation }
 }
 
-function finishSubmission(
+export function finishSubmission(
   options: Pick<OtcSubmitCallbackOptions, 'inFlightGeneration' | 'setPendingIntent'>,
   generation: number,
   isCurrentContext: () => boolean,

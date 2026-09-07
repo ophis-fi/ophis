@@ -15,6 +15,7 @@ import { useOtcSubmitCallback, type OtcSuccessfulTransaction } from './useOtcSub
 
 import type {
   OtcConfirmedCallback,
+  OtcPendingIntent,
   OtcWalletSubmitter,
   OtcWriteClient,
   OtcWriteIntent,
@@ -40,7 +41,7 @@ export interface OtcSubmissionOptions {
 }
 
 export interface OtcSubmissionState {
-  pendingIntent: OtcWriteIntent['kind'] | 'switch' | null
+  pendingIntent: OtcPendingIntent | null
   error: string | null
   successHash: Hex | null
   terminalConfirmed: boolean
@@ -125,7 +126,7 @@ function useOtcUncertainTransaction(uncertainKey: string | null): OtcUncertainSt
 export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionState {
   const { writeClient, wallet, authorization, resetKey, account, requiredAllowance, refreshAllowance, onConfirmed } =
     options
-  const [pendingIntent, setPendingIntent] = useState<OtcWriteIntent['kind'] | 'switch' | null>(null)
+  const [pendingIntent, setPendingIntent] = useState<OtcPendingIntent | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<OtcSuccessfulTransaction | null>(null)
   const [recoveryRequired, setRecoveryRequired] = useState(false)

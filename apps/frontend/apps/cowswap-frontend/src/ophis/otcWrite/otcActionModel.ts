@@ -1,4 +1,4 @@
-import type { OtcWriteIntent } from './otcWrite.types'
+import type { OtcPendingIntent } from './otcWrite.types'
 
 export type OtcPrimaryAction = 'connect' | 'switch' | 'approve' | 'execute' | 'revoke' | 'unavailable'
 
@@ -16,7 +16,7 @@ export interface OtcActionFacts {
   allowanceCooldown: boolean
   receiptConfirmed: boolean
   receiptUncertain: boolean
-  pendingIntent: OtcWriteIntent['kind'] | 'switch' | null
+  pendingIntent: OtcPendingIntent | null
   executeLabel: string
   unavailableLabel: string
 }
@@ -32,6 +32,8 @@ type MaybeActionModel = OtcActionModel | null
 
 function pendingLabel(intent: OtcActionFacts['pendingIntent']): string {
   switch (intent) {
+    case 'reconcile':
+      return 'Checking Ethereum confirmation...'
     case 'switch':
       return 'Switching network...'
     case 'approve-create':
