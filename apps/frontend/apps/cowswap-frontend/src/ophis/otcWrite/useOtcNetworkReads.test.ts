@@ -16,14 +16,17 @@ import {
 
 jest.mock('@cowprotocol/wallet-provider', () => ({ useWalletProvider: jest.fn(() => undefined) }))
 jest.mock('./readOtcAllowance', () => ({ readOtcAllowance: jest.fn() }))
+jest.mock('wagmi', () => ({ usePublicClient: jest.fn() }))
+jest.mock('./otcWriteAdapters', () => ({
+  toOtcForkClients: jest.fn(),
+  toOtcLegacyForkClients: jest.fn(),
+}))
 jest.mock('./otcForkIdentity', () => ({
   getOtcWalletForkId: jest.fn(),
   getOtcProviderForkId: jest.fn(),
   verifyOtcLocalForkProvider: jest.fn(),
   verifyOtcLocalForkWallet: jest.fn(),
 }))
-
-jest.mock('./otcWriteAdapters', () => ({ toOtcForkClients: jest.fn(), toOtcLegacyForkClients: jest.fn() }))
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111'
 const FORK_ID = `0x${'aa'.repeat(32)}` as const
@@ -49,6 +52,20 @@ describe('getOtcWalletTransportId', () => {
 })
 
 describe('useOtcNetworkReads', () => {
+  it('fails closed when canary mode has no independent mainnet client', () => {
+    const walletClient = {} as Parameters<typeof toOtcForkClients>[0]
+    process.env.REACT_APP_OTC_WRITE_MODE = 'canary'
+    try {
+      const { result } = renderHook(() => useOtcNetworkReads(false, ACCOUNT, 1, walletClient, TOKEN), {
+        wrapper: Wrapper,
+      })
+      expect(result.current.writeClient).toBeNull()
+      expect(result.current.wallet).toBeNull()
+    } finally {
+      delete process.env.REACT_APP_OTC_WRITE_MODE
+    }
+  })
+
   it('starts the read-only allowance query without waiting for fork verification to settle', async () => {
     const walletClient = {} as Parameters<typeof toOtcForkClients>[0]
     jest
@@ -72,10 +89,10 @@ describe('useOtcNetworkReads', () => {
     expect(readOtcAllowance).not.toHaveBeenCalled()
     rerender({ account: ACCOUNT })
     await waitFor(() => expect(readOtcAllowance).toHaveBeenCalledTimes(1))
-    expect(result.current.localForkResponse.data).toBeUndefined()
+    expect(result.current.networkResponse.data).toBeUndefined()
     await waitFor(() => expect(finishVerification).toBeDefined())
     await act(async () => finishVerification?.(true))
-    await waitFor(() => expect(result.current.localForkResponse.data).toBe(FORK_ID))
+    await waitFor(() => expect(result.current.networkResponse.data).toBe(FORK_ID))
   })
 })
 

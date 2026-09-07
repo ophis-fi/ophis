@@ -33,7 +33,7 @@ beforeEach(() => {
   read.mockReset().mockRejectedValue(new Error('Ophis OTC order read timed out'))
   jest.mocked(useOtcNetworkReads).mockReturnValue({
     transportId: 1,
-    localForkResponse: { data: `0x${'aa'.repeat(32)}`, error: null, mutate: jest.fn() },
+    networkResponse: { data: `0x${'aa'.repeat(32)}`, error: null, mutate: jest.fn() },
     writeClient: mockOtcWriteClient(),
     wallet: null,
     allowanceResponse: { data: null, error: null, mutate: jest.fn() },
@@ -61,7 +61,7 @@ it('replaces previously verified terms with recovery when a refresh fails', asyn
     blockHash: TX_HASH,
   })
   render(<OtcOrderActionPanel orderId={8n} />)
-  await screen.findByText('Cancel order on local fork')
+  await screen.findByText('Cancel order')
   fireEvent.click(screen.getByRole('checkbox'))
   expect(screen.getByRole('button', { name: 'Submit reviewed order' }).hasAttribute('disabled')).toBe(false)
   await act(async () => jest.advanceTimersByTime(5_000))

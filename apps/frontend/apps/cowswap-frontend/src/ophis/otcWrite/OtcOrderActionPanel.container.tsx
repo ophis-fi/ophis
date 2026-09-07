@@ -14,6 +14,7 @@ import { OtcOrderReadError } from './OtcOrderReadError.pure'
 import { OtcOrderTermsSummary } from './OtcOrderTermsSummary.pure'
 import * as styledEl from './OtcWrite.styled'
 import { reviewedOtcToken, type OtcReviewedToken } from './otcWriteForm'
+import { OtcWriteNotice } from './OtcWriteNotice.pure'
 import { getOtcActionReviewKey, shouldMountOtcOrderAction } from './otcWriteOrder.utils'
 import { useOtcNetworkReads } from './useOtcNetworkReads'
 import { useOtcUsdAmount } from './useOtcUsdAmount'
@@ -91,17 +92,10 @@ function VerifiedOtcOrderActionPanel({
   return (
     <Section
       id="otc-order-action"
-      title={
-        !order.active ? 'Recover token allowance' : isMaker ? 'Cancel order on local fork' : 'Fill order on local fork'
-      }
+      title={!order.active ? 'Recover token allowance' : isMaker ? 'Cancel order' : 'Fill order'}
     >
-      <Callout tone="warning" title="Fork-only transaction mode">
-        <p>
-          {order.active
-            ? 'Preflight re-reads these exact terms and simulates the call before your wallet is asked to submit.'
-            : 'This order is inactive. Only a positive existing escrow allowance can be revoked.'}
-        </p>
-      </Callout>
+      <OtcWriteNotice />
+      {!order.active && <p>This order is inactive. Only a positive existing escrow allowance can be revoked.</p>}
       {orderUnavailable && <OtcOrderReadError retryOrder={retryOrder} />}
       {!orderUnavailable && (
         <OtcOrderTermsSummary
@@ -148,7 +142,7 @@ function UnverifiedOtcOrderActionPanel({
   const definition = useMemo<OtcActionDefinition>(
     () => ({
       executeLabel: 'Order action',
-      unavailableLabel: orderUnavailable ? 'Fork order unavailable' : 'Loading verified fork order...',
+      unavailableLabel: orderUnavailable ? 'Verified order unavailable' : 'Loading verified order...',
       ready: false,
       reviewed: false,
       resetKey: `order:${orderId.toString()}:unverified`,
@@ -161,17 +155,17 @@ function UnverifiedOtcOrderActionPanel({
     [orderId, orderUnavailable],
   )
   return (
-    <Section id="otc-order-action" title="Order action on local fork">
+    <Section id="otc-order-action" title="Order action">
       {!orderUnavailable && (
-        <Callout tone="warning" title="Fork verification required">
-          <p>Connect a wallet and select a chain-id-1 local fork before the exact order terms can be loaded.</p>
+        <Callout tone="warning" title="Wallet network verification required">
+          <p>Connect a wallet and select the required network before the exact order terms can be loaded.</p>
         </Callout>
       )}
       {orderUnavailable && <OtcOrderReadError retryOrder={retryOrder} />}
       {confirmedHash && (
         <div role="status" aria-live="polite" aria-atomic="true">
           <Callout tone="success" title="Transaction confirmed">
-            <p>Local fork confirmation: {confirmedHash}</p>
+            <p>Transaction confirmation: {confirmedHash}</p>
           </Callout>
         </div>
       )}
@@ -198,18 +192,18 @@ export function OtcOrderActionPanel({
         queryKey: [
           'ophis-otc-fork-order',
           network.transportId,
-          network.localForkResponse.data,
+          network.networkResponse.data,
           account,
           orderId.toString(),
           mountId,
         ],
         queryFn: async () => (network.writeClient ? readOtcOrder(network.writeClient, orderId) : null),
-        enabled: !!network.localForkResponse.data && !!account && !!network.writeClient,
+        enabled: !!network.networkResponse.data && !!account && !!network.writeClient,
         retry: false,
         refetchInterval: (query) => (query.state.error ? false : ORDER_REFRESH_INTERVAL_MS),
         refetchOnWindowFocus: false,
       })),
-    [account, mountId, network.localForkResponse.data, network.transportId, network.writeClient, orderId],
+    [account, mountId, network.networkResponse.data, network.transportId, network.writeClient, orderId],
   )
   const forkOrderQuery = useAtomValue(forkOrderQueryAtom)
   const order = forkOrderQuery.data?.order ?? null
@@ -225,9 +219,9 @@ export function OtcOrderActionPanel({
     },
     [onConfirmed, refetchForkOrder],
   )
-  const orderUnavailable = !!network.localForkResponse.data && forkOrderQuery.error !== null
+  const orderUnavailable = !!network.networkResponse.data && forkOrderQuery.error !== null
 
-  if (!network.localForkResponse.data || !shouldMountOtcOrderAction(true, order) || !order) {
+  if (!network.networkResponse.data || !shouldMountOtcOrderAction(true, order) || !order) {
     return (
       <UnverifiedOtcOrderActionPanel
         orderId={orderId}
