@@ -4,5 +4,6 @@ export {
   removeUncertainOtcTransaction,
   uncertainOtcTransactionsAtom,
   type UncertainOtcTransaction,
+  type OtcSubmissionProof,
   type UncertainOtcTransactions,
 } from './uncertainOtcTransactionsAtom'

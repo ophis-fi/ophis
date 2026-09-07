@@ -1,3 +1,4 @@
+import type { OtcSubmissionProof } from 'entities/otc'
 import type { OtcOrder, OtcReaderClient } from 'ophis/otc'
 import type { Address, Hex } from 'viem'
 
@@ -87,9 +88,13 @@ export interface OtcWalletSubmitter {
     intent: OtcWriteIntent,
     nowSeconds: bigint,
     isCurrentContext?: () => boolean,
+    onSignatureRequested?: (proof?: OtcSubmissionProof) => void,
   ): Promise<Hex>
-  waitForTransactionReceipt(hash: Hex): Promise<OtcTransactionReceipt>
+  waitForTransactionReceipt(hash: Hex, proof?: OtcSubmissionProof): Promise<OtcTransactionReceipt>
 }
+
+export type OtcNetworkId = Hex | 'ethereum-mainnet'
+export type OtcPendingIntent = OtcWriteIntent['kind'] | 'switch' | 'reconcile'
 
 export interface OtcWriteRuntimeAuthorization {
   isLocal: boolean

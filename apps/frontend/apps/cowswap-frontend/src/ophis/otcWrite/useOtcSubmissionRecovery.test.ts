@@ -21,7 +21,7 @@ const TOKEN_B = '0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48' // gitleaks:allow â
 const HASH = `0x${'cd'.repeat(32)}` as const
 const writeClient = {} as OtcReaderClient as OtcWriteClient
 const wallet = {} as OtcWalletSubmitter
-const STORAGE_KEY = 'ophisOtcUncertainTransactions:v0'
+const STORAGE_KEY = 'ophisOtcUncertainTransactions:v1'
 
 const order: OtcOrder = {
   orderId: 7n,
