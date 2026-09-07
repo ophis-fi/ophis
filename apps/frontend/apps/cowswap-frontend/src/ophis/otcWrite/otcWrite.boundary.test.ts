@@ -25,10 +25,12 @@ const WRITE_SIGNER_APIS = new Map<string, ReadonlySet<string>>([
   ['prepareOtcTransaction.ts', new Set(['sendTransaction'])],
   ['useOtcActionController.ts', new Set(['useWalletClient', 'walletClient'])],
   ['useOtcNetworkReads.ts', new Set(['walletClient'])],
+  ['useOtcBaseClients.ts', new Set(['walletClient'])],
 ])
 const WRITE_WAGMI_IMPORTS = new Map<string, ReadonlySet<string>>([
   ['OtcOrderActionPanel.container.tsx', new Set(['useWalletClient'])],
   ['otcWriteAdapters.ts', new Set(['usePublicClient'])],
+  ['useOtcBaseClients.ts', new Set(['usePublicClient'])],
   ['useOtcActionController.ts', new Set(['useWalletClient'])],
 ])
 const WRITE_TOKEN_POLICY_FILES = new Set([
@@ -37,7 +39,7 @@ const WRITE_TOKEN_POLICY_FILES = new Set([
   'readOtcAllowance.ts',
 ])
 const WRITE_TOKEN_POLICY_IMPORTS = new Set(['assertTradeTokenPolicy', 'TokenPolicyProfile'])
-const WRITE_WALLET_PROVIDER_FILES = new Set(['useOtcNetworkReads.ts'])
+const WRITE_WALLET_PROVIDER_FILES = new Set(['useOtcNetworkReads.ts', 'useOtcBaseClients.ts'])
 const WRITE_WALLET_PROVIDER_IMPORTS = new Set(['useWalletProvider'])
 
 interface ProductionSource {

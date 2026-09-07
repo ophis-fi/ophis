@@ -1,5 +1,7 @@
 import { getDefaultStore } from 'jotai'
 
+import { getAddressKey } from '@cowprotocol/cow-sdk'
+
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { recordUncertainOtcTransaction, uncertainOtcTransactionsAtom } from 'entities/otc'
 import { installOtcWebLocksMock } from 'entities/otc/otcWebLocks.test.utils'
@@ -11,12 +13,12 @@ import type { OtcTransactionReceipt } from './otcWrite.types'
 import type { OtcSubmissionOptions } from './useOtcSubmission'
 
 const RESET_KEY = 'ethereum-mainnet\u0000create-reviewed'
-const KEY = `${MAKER.toLowerCase()}\u0000${RESET_KEY}`
+const KEY = `${getAddressKey(MAKER)}\u0000${RESET_KEY}`
 const OTHER_HASH = `0x${'cc'.repeat(32)}` as const
 const receipt: OtcTransactionReceipt = { transactionHash: TX_HASH, status: 'success', blockNumber: 201n }
 const store = getDefaultStore()
 
-function options(): OtcSubmissionOptions {
+function options(): OtcSubmissionOptions & { wallet: NonNullable<OtcSubmissionOptions['wallet']> } {
   return {
     account: MAKER,
     resetKey: RESET_KEY,
@@ -43,7 +45,7 @@ describe('canary receipt recovery', () => {
     'retains the lock for %s despite an origin acknowledgment',
     async (failure) => {
       const config = options()
-      const wait = jest.mocked(config.wallet!.waitForTransactionReceipt)
+      const wait = jest.mocked(config.wallet.waitForTransactionReceipt)
       if (failure === 'missing') wait.mockRejectedValue(new Error('receipt unavailable'))
       if (failure === 'unproven replacement') wait.mockResolvedValue({ ...receipt, transactionHash: OTHER_HASH })
       if (failure === 'invalid status') wait.mockResolvedValue({ ...receipt, status: 'unknown' as never })
@@ -60,7 +62,7 @@ describe('canary receipt recovery', () => {
     async (repriced) => {
       const config = options()
       jest
-        .mocked(config.wallet!.waitForTransactionReceipt)
+        .mocked(config.wallet.waitForTransactionReceipt)
         .mockResolvedValue(
           repriced ? { ...receipt, transactionHash: OTHER_HASH, replacedTransactionHash: TX_HASH } : receipt,
         )
@@ -83,7 +85,7 @@ describe('canary receipt recovery', () => {
     const { result } = renderHook(() => useOtcSubmission(config))
     expect(result.current.signatureUncertain).toBe(true)
     await act(() => result.current.clearUncertainTransaction(async () => undefined, TX_HASH))
-    expect(config.wallet!.waitForTransactionReceipt).toHaveBeenCalledWith(TX_HASH, proof)
+    expect(config.wallet.waitForTransactionReceipt).toHaveBeenCalledWith(TX_HASH, proof)
     expect(result.current.signatureUncertain).toBe(false)
     expect(result.current.terminalConfirmed).toBe(true)
   })
@@ -95,7 +97,7 @@ describe('canary receipt recovery', () => {
     )
     const config = options()
     jest
-      .mocked(config.wallet!.waitForTransactionReceipt)
+      .mocked(config.wallet.waitForTransactionReceipt)
       .mockRejectedValue(new Error('confirmed transaction differs from reviewed intent'))
     const { result } = renderHook(() => useOtcSubmission(config))
     await act(() => result.current.clearUncertainTransaction(async () => undefined, OTHER_HASH))
@@ -115,7 +117,7 @@ describe('canary receipt recovery', () => {
     expect(second[KEY].attemptId).not.toBe(first[KEY].attemptId)
     localStorage.setItem('ophisOtcUncertainTransactions:v1', JSON.stringify(second))
     await act(() => result.current.clearUncertainTransaction(async () => undefined, TX_HASH))
-    expect(config.wallet!.waitForTransactionReceipt).not.toHaveBeenCalled()
+    expect(config.wallet.waitForTransactionReceipt).not.toHaveBeenCalled()
     expect(config.onConfirmed).not.toHaveBeenCalled()
     expect(store.get(uncertainOtcTransactionsAtom)[KEY]).toEqual(second[KEY])
     expect(result.current.signatureUncertain).toBe(true)
@@ -123,7 +125,7 @@ describe('canary receipt recovery', () => {
 
   it('permits allowance recovery after a known revert', async () => {
     const config = options()
-    jest.mocked(config.wallet!.waitForTransactionReceipt).mockResolvedValue({ ...receipt, status: 'reverted' })
+    jest.mocked(config.wallet.waitForTransactionReceipt).mockResolvedValue({ ...receipt, status: 'reverted' })
     const { result } = renderHook(() => useOtcSubmission(config))
     await act(() => result.current.clearUncertainTransaction(async () => undefined))
     expect(result.current.uncertainHash).toBeNull()
@@ -135,15 +137,15 @@ describe('canary receipt recovery', () => {
 
   it('retains the original lock when the wallet changes during receipt tracking', async () => {
     const config = options()
-    let confirm!: (receipt: OtcTransactionReceipt) => void
-    jest.mocked(config.wallet!.waitForTransactionReceipt).mockImplementation(
+    let confirm: ((receipt: OtcTransactionReceipt) => void) | undefined
+    jest.mocked(config.wallet.waitForTransactionReceipt).mockImplementation(
       () =>
         new Promise((resolve) => {
           confirm = resolve
         }),
     )
     const { result, rerender } = renderHook((props) => useOtcSubmission(props), { initialProps: config })
-    let recovery!: Promise<void>
+    let recovery: Promise<void> | undefined
     act(() => {
       recovery = result.current.clearUncertainTransaction(async () => undefined)
     })
@@ -151,6 +153,7 @@ describe('canary receipt recovery', () => {
     expect(result.current.pendingIntent).toBe('reconcile')
     rerender({ ...config, wallet: options().wallet })
     await act(async () => {
+      if (!confirm) throw new Error('Receipt tracking did not start')
       confirm(receipt)
       await recovery
     })

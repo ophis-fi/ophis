@@ -62,22 +62,19 @@ function localDiagnostic(error: unknown): string | null {
 function useOtcRecoveryClear(
   submission: OtcSubmissionState,
   localForkResponse: OtcNetworkReads['localForkResponse'],
-): (hash?: Hex) => Promise<void> {
+): () => Promise<void> {
   const { clearUncertainTransaction, setError } = submission
-  return useCallback(
-    async (hash?: Hex) => {
-      try {
-        await clearUncertainTransaction(async () => {
-          const originalForkId = localForkResponse.data
-          const currentForkId = await localForkResponse.mutate()
-          if (!originalForkId || currentForkId !== originalForkId) throw new Error('Ophis OTC local fork changed')
-        }, hash)
-      } catch (caught) {
-        setError(translateOtcWriteError(caught))
-      }
-    },
-    [clearUncertainTransaction, localForkResponse, setError],
-  )
+  return useCallback(async () => {
+    try {
+      await clearUncertainTransaction(async () => {
+        const originalForkId = localForkResponse.data
+        const currentForkId = await localForkResponse.mutate()
+        if (!originalForkId || currentForkId !== originalForkId) throw new Error('Ophis OTC local fork changed')
+      })
+    } catch (caught) {
+      setError(translateOtcWriteError(caught))
+    }
+  }, [clearUncertainTransaction, localForkResponse, setError])
 }
 
 export function useOtcActionController(
@@ -87,7 +84,6 @@ export function useOtcActionController(
   const { account, chainId } = useWalletInfo()
   const connectWallet = useToggleWalletModal()
   const { enabled, authorization } = useOtcWriteAuthorization()
-  const canary = authorization.writeMode === 'canary'
   const { data: walletClient } = useWalletClient()
   const network = useOtcNetworkReads(enabled, account, chainId, walletClient, definition.allowanceToken ?? null)
   const refreshAllowance = useCallback(() => network.allowanceResponse.mutate(), [network.allowanceResponse])
@@ -132,33 +128,11 @@ export function useOtcActionController(
     submission.error ??
     (network.allowanceResponse.error ? translateOtcWriteError(network.allowanceResponse.error) : null)
   const diagnostic = localDiagnostic(network.allowanceResponse.error)
-  const { successHash, uncertainHash, signatureUncertain } = submission
+  const { successHash, uncertainHash } = submission
   const clearUncertainTransaction = useOtcRecoveryClear(submission, network.localForkResponse)
 
   return useMemo(
-    () => ({
-      model,
-      canary,
-      error,
-      successHash,
-      uncertainHash,
-      signatureUncertain,
-      allowance,
-      diagnostic,
-      clearUncertainTransaction,
-      runPrimary,
-    }),
-    [
-      allowance,
-      canary,
-      clearUncertainTransaction,
-      diagnostic,
-      error,
-      model,
-      runPrimary,
-      signatureUncertain,
-      successHash,
-      uncertainHash,
-    ],
+    () => ({ model, error, successHash, uncertainHash, allowance, diagnostic, clearUncertainTransaction, runPrimary }),
+    [allowance, clearUncertainTransaction, diagnostic, error, model, runPrimary, successHash, uncertainHash],
   )
 }
