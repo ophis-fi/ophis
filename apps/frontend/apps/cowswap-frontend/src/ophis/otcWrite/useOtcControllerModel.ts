@@ -56,7 +56,7 @@ export function useOtcControllerModel({
     recoveryRequired: submission.recoveryRequired,
     allowanceCooldown: submission.allowanceCooldown,
     receiptConfirmed: submission.terminalConfirmed,
-    receiptUncertain: submission.uncertainHash !== null,
+    receiptUncertain: submission.uncertainHash !== null || submission.signatureUncertain,
     pendingIntent: submission.pendingIntent,
     executeLabel: definition.executeLabel,
     unavailableLabel: definition.unavailableLabel ?? 'Complete the order terms',

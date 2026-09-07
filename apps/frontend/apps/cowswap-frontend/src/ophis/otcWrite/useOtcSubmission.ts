@@ -11,6 +11,7 @@ import {
 } from 'entities/otc'
 
 import { useOtcAllowanceCooldown } from './useOtcAllowanceCooldown'
+import { useOtcRecoveryCallback } from './useOtcRecoveryCallback'
 import { useOtcSubmitCallback, type OtcSuccessfulTransaction } from './useOtcSubmitCallback'
 
 import type {
@@ -21,6 +22,7 @@ import type {
   OtcWriteIntent,
   OtcWriteRuntimeAuthorization,
 } from './otcWrite.types'
+import type { OtcSubmissionProof } from 'entities/otc'
 import type { Address, Hex } from 'viem'
 
 interface AllowanceRead {
@@ -46,9 +48,10 @@ export interface OtcSubmissionState {
   successHash: Hex | null
   terminalConfirmed: boolean
   uncertainHash: Hex | null
+  signatureUncertain: boolean
   recoveryRequired: boolean
   allowanceCooldown: boolean
-  clearUncertainTransaction(verifyOrigin: () => Promise<void>): Promise<void>
+  clearUncertainTransaction(verifyOrigin: () => Promise<void>, hash?: Hex): Promise<void>
   setError(error: string | null): void
   submit(intent: OtcWriteIntent, execution: boolean): Promise<void>
 }
@@ -70,9 +73,11 @@ function successfulTransactionState(success: OtcSuccessfulTransaction | null): {
 }
 
 interface OtcUncertainState {
+  proof: OtcSubmissionProof | undefined
   uncertainHash: Hex | null
-  setUncertainHash(hash: Hex): void
-  clearSubmittedTransaction(hash?: Hex): void
+  signatureUncertain: boolean
+  setUncertainHash(hash: Hex | null, proof?: OtcSubmissionProof): void
+  clearSubmittedTransaction(hash?: Hex | null): void
   clearUncertainTransaction(verifyOrigin: () => Promise<void>): Promise<void>
   withTransactionLock(operation: () => Promise<void>): Promise<void>
 }
@@ -81,26 +86,35 @@ function useOtcUncertainTransaction(uncertainKey: string | null): OtcUncertainSt
   const [transactions, setTransactions] = useAtom(uncertainOtcTransactionsAtom)
   const coordinateTransaction = useSetAtom(coordinatedOtcTransactionAtom)
   const uncertainHash = uncertainKey ? (transactions[uncertainKey]?.transactionHash ?? null) : null
+  const record = uncertainKey ? transactions[uncertainKey] : undefined
+  const proof = record?.proof
+  const attemptIdentity = JSON.stringify(record)
+  const signatureUncertain = !!uncertainKey && transactions[uncertainKey]?.transactionHash === null
   const setUncertainHash = useCallback(
-    (hash: Hex) => {
-      if (uncertainKey) setTransactions((current) => recordUncertainOtcTransaction(current, uncertainKey, hash))
+    (hash: Hex | null, proof?: OtcSubmissionProof) => {
+      if (uncertainKey)
+        setTransactions((current) => recordUncertainOtcTransaction(current, uncertainKey, hash, undefined, proof))
     },
     [setTransactions, uncertainKey],
   )
   const clearSubmittedTransaction = useCallback(
-    (expectedHash?: Hex) => {
+    (expectedHash?: Hex | null) => {
       if (uncertainKey) setTransactions((current) => removeUncertainOtcTransaction(current, uncertainKey, expectedHash))
     },
     [setTransactions, uncertainKey],
   )
   const clearUncertainTransaction = useCallback(
     (verifyOrigin: () => Promise<void>) =>
-      coordinateTransaction(async () => {
-        if (!uncertainHash) return
+      coordinateTransaction(async (current) => {
+        if (!uncertainKey || !attemptIdentity || JSON.stringify(current[uncertainKey]) !== attemptIdentity) return
         await verifyOrigin()
-        clearSubmittedTransaction(uncertainHash)
+        setTransactions((latest) =>
+          JSON.stringify(latest[uncertainKey]) === attemptIdentity
+            ? removeUncertainOtcTransaction(latest, uncertainKey, uncertainHash, current[uncertainKey].attemptId)
+            : latest,
+        )
       }),
-    [clearSubmittedTransaction, coordinateTransaction, uncertainHash],
+    [attemptIdentity, coordinateTransaction, setTransactions, uncertainHash, uncertainKey],
   )
   const withTransactionLock = useCallback(
     (operation: () => Promise<void>) =>
@@ -114,18 +128,27 @@ function useOtcUncertainTransaction(uncertainKey: string | null): OtcUncertainSt
   return useMemo(
     () => ({
       uncertainHash,
+      proof,
+      signatureUncertain,
       setUncertainHash,
       clearSubmittedTransaction,
       clearUncertainTransaction,
       withTransactionLock,
     }),
-    [clearSubmittedTransaction, clearUncertainTransaction, setUncertainHash, uncertainHash, withTransactionLock],
+    [
+      clearSubmittedTransaction,
+      clearUncertainTransaction,
+      setUncertainHash,
+      uncertainHash,
+      proof,
+      signatureUncertain,
+      withTransactionLock,
+    ],
   )
 }
 
 export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionState {
-  const { writeClient, wallet, authorization, resetKey, account, requiredAllowance, refreshAllowance, onConfirmed } =
-    options
+  const { writeClient, wallet, authorization, resetKey, account, refreshAllowance, onConfirmed } = options
   const [pendingIntent, setPendingIntent] = useState<OtcPendingIntent | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<OtcSuccessfulTransaction | null>(null)
@@ -151,11 +174,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
   }, [submissionContext, wallet, writeClient])
 
   const submit = useOtcSubmitCallback({
-    writeClient,
-    wallet,
-    authorization,
-    requiredAllowance,
-    refreshAllowance,
+    ...options,
     contextGeneration,
     inFlightGeneration,
     beginAllowanceCooldown,
@@ -168,18 +187,43 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     setRecoveryRequired,
     withTransactionLock: uncertainty.withTransactionLock,
   })
+  const clearUncertainTransaction = useOtcRecoveryCallback({
+    canary: authorization.writeMode === 'canary',
+    wallet,
+    uncertainHash: uncertainty.uncertainHash,
+    proof: uncertainty.proof,
+    clearRecordedTransaction: uncertainty.clearUncertainTransaction,
+    contextGeneration,
+    inFlightGeneration,
+    setPendingIntent,
+    setError,
+    setSuccess,
+    setRecoveryRequired,
+    onConfirmed,
+    beginAllowanceCooldown,
+  })
   return useMemo(
     () => ({
       pendingIntent,
       error,
       ...successfulTransactionState(success),
       uncertainHash: uncertainty.uncertainHash,
+      signatureUncertain: uncertainty.signatureUncertain,
       recoveryRequired,
       allowanceCooldown,
-      clearUncertainTransaction: uncertainty.clearUncertainTransaction,
+      clearUncertainTransaction,
       setError,
       submit,
     }),
-    [allowanceCooldown, error, pendingIntent, recoveryRequired, submit, success, uncertainty],
+    [
+      allowanceCooldown,
+      clearUncertainTransaction,
+      error,
+      pendingIntent,
+      recoveryRequired,
+      submit,
+      success,
+      uncertainty,
+    ],
   )
 }

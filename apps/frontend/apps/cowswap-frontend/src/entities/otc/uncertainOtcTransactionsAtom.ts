@@ -91,7 +91,7 @@ export const coordinatedOtcTransactionAtom = atom(
 export function recordUncertainOtcTransaction(
   transactions: UncertainOtcTransactions,
   key: string,
-  transactionHash: Hex,
+  transactionHash: Hex | null,
   recordedAt = Date.now(),
   proof?: OtcSubmissionProof,
 ): UncertainOtcTransactions {
