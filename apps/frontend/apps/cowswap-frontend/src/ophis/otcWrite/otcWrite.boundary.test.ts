@@ -19,18 +19,19 @@ const SIGNER_API_PATTERN =
   /\b(useWriteContract|useSendTransaction|useSendTransactionSync|useSendCalls|useDeployContract|useSignMessage|useSignTypedData|useConnectorClient|useWalletClient|getWalletClient|walletClient|walletActions|writeContract|sendTransaction|sendRawTransaction|sendCalls|deployContract|signTransaction|signTypedData|signMessage|prepareTransactionRequest|requestAddresses|watchAsset)\b|import\(/g
 const WRITE_SIGNER_APIS = new Map<string, ReadonlySet<string>>([
   ['OtcOrderActionPanel.container.tsx', new Set(['useWalletClient', 'walletClient'])],
-  ['otcWrite.types.ts', new Set(['sendTransaction'])],
-  ['useOtcNetworkSwitch.ts', new Set(['walletClient'])],
   ['otcForkIdentity.ts', new Set(['walletClient'])],
+  ['otcWrite.types.ts', new Set(['sendTransaction'])],
   ['otcWriteAdapters.ts', new Set(['sendTransaction', 'walletClient'])],
   ['prepareOtcTransaction.ts', new Set(['sendTransaction'])],
   ['useOtcActionController.ts', new Set(['useWalletClient', 'walletClient'])],
   ['useOtcNetworkReads.ts', new Set(['walletClient'])],
   ['useOtcBaseClients.ts', new Set(['walletClient'])],
+  ['useOtcNetworkSwitch.ts', new Set(['walletClient'])],
 ])
 const WRITE_WAGMI_IMPORTS = new Map<string, ReadonlySet<string>>([
   ['OtcOrderActionPanel.container.tsx', new Set(['useWalletClient'])],
   ['otcWriteAdapters.ts', new Set(['usePublicClient'])],
+  ['useOtcNetworkReads.ts', new Set(['usePublicClient'])],
   ['useOtcBaseClients.ts', new Set(['usePublicClient'])],
   ['useOtcActionController.ts', new Set(['useWalletClient'])],
 ])
@@ -123,7 +124,7 @@ describe('Ophis OTC write boundary', () => {
     const source = readFileSync(join(WRITE_DIR, 'OtcOrderActionPanel.container.tsx'), 'utf8')
     expect(source).toContain('readOtcOrder(network.writeClient, orderId)')
     expect(source).toMatch(
-      /queryKey:\s*\[\s*'ophis-otc-fork-order',\s*network\.transportId,\s*network\.localForkResponse\.data,\s*account,\s*orderId\.toString\(\),\s*mountId,?\s*\]/,
+      /queryKey:\s*\[\s*'ophis-otc-fork-order',\s*network\.transportId,\s*network\.networkResponse\.data,\s*account,\s*orderId\.toString\(\),\s*mountId,?\s*\]/,
     )
     expect(source).toContain('forkOrderQuery.error !== null')
     expect(source).toContain('void refetchForkOrder()')

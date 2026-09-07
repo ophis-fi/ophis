@@ -10,7 +10,10 @@ import { MAKER as mockMaker, mockOtcOrder, TX_HASH } from './prepareOtcTransacti
 import { useOtcActionController, type OtcActionDefinition } from './useOtcActionController'
 import { useOtcNetworkReads, type OtcNetworkReads } from './useOtcNetworkReads'
 
-jest.mock('@cowprotocol/wallet', () => ({ useWalletInfo: () => ({ account: mockMaker, chainId: 1 }) }))
+jest.mock('@cowprotocol/wallet', () => ({
+  useSwitchNetwork: () => jest.fn(),
+  useWalletInfo: () => ({ account: mockMaker, chainId: 1 }),
+}))
 jest.mock('wagmi', () => ({ useWalletClient: () => ({ data: undefined }) }))
 jest.mock('legacy/state/application/hooks', () => ({ useToggleWalletModal: () => jest.fn() }))
 jest.mock('./otcWriteAuthorization', () => ({
@@ -33,7 +36,7 @@ it('isolates recovery by stable fork ID and verifies the origin again before cle
     transportId: 1,
     writeClient: {} as OtcNetworkReads['writeClient'],
     wallet: {} as OtcNetworkReads['wallet'],
-    localForkResponse: { data: forkA, error: null, mutate },
+    networkResponse: { data: forkA, error: null, mutate },
     allowanceResponse: { data: undefined, error: null, mutate: jest.fn() },
   }
   jest.mocked(useOtcNetworkReads).mockReturnValue(network)
@@ -48,10 +51,10 @@ it('isolates recovery by stable fork ID and verifies the origin again before cle
   const { result, rerender } = renderHook(() => useOtcActionController(definition, undefined))
   await act(() => result.current.runPrimary())
   expect(result.current.uncertainHash).toBe(TX_HASH)
-  network.localForkResponse = { ...network.localForkResponse, data: forkB }
+  network.networkResponse = { ...network.networkResponse, data: forkB }
   rerender()
   expect(result.current.uncertainHash).toBeNull()
-  network.localForkResponse = { ...network.localForkResponse, data: forkA }
+  network.networkResponse = { ...network.networkResponse, data: forkA }
   rerender()
   expect(result.current.uncertainHash).toBe(TX_HASH)
   await act(async () => result.current.clearUncertainTransaction())
