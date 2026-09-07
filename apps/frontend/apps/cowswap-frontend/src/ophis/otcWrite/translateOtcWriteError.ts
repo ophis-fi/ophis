@@ -49,7 +49,7 @@ const OTC_ERROR_RULES: readonly OtcErrorRule[] = [
   { pattern: /insufficient funds/, message: 'This wallet does not have enough ETH to pay Ethereum gas.' },
   {
     pattern: /wrong chain/,
-    message: 'Connect the wallet to the configured local Anvil or Hardhat mainnet fork and try again.',
+    message: 'Select the network required by this OTC mode in your wallet and try again.',
   },
   {
     pattern: /local fork verification/,

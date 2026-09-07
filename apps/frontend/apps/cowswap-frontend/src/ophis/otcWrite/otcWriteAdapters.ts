@@ -15,6 +15,7 @@ import { mainnet } from 'viem/chains'
 import { usePublicClient } from 'wagmi'
 
 import { assertOtcTransactionRequest } from './assertOtcTransactionRequest'
+import { assertOtcCanaryIntent } from './otcCanaryPolicy'
 import {
   assertForkIdentity,
   getOtcProviderForkId,
@@ -23,6 +24,8 @@ import {
   verifyOtcLocalForkWallet,
 } from './otcForkIdentity'
 import { OTC_RECEIPT_TIMEOUT_MS, waitForOtcReceipt } from './otcReceiptTracking.utils'
+import { readOtcSubmissionProof } from './otcTransactionProof'
+import { verifyOtcCanaryNetwork } from './verifyOtcCanaryNetwork'
 
 import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
 
@@ -59,52 +62,66 @@ export function toOtcWalletSubmitter(
   walletClient: WagmiWalletClient,
   publicClient: WagmiPublicClient,
   expectedForkId?: Hex,
+  canaryClient?: WagmiPublicClient,
 ): OtcWalletSubmitter {
   return {
-    sendTransaction: async (request, intent, nowSeconds, isCurrentContext = () => true) => {
+    sendTransaction: async (
+      request,
+      intent,
+      nowSeconds,
+      isCurrentContext = () => true,
+      onSignatureRequested = () => undefined,
+    ) => {
       const checkedRequest = Object.freeze({ ...request })
       assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
-      if (!(await verifyOtcLocalForkWallet(walletClient))) throw new Error('Ophis OTC local fork verification failed')
+      if (canaryClient) {
+        await verifyOtcCanaryNetwork(toOtcReaderClient(publicClient), toOtcReaderClient(canaryClient))
+        assertOtcCanaryIntent(intent, nowSeconds)
+      } else if (!(await verifyOtcLocalForkWallet(walletClient))) {
+        throw new Error('Ophis OTC local fork verification failed')
+      }
       const [walletChainId, walletAccounts] = await Promise.all([
         walletClient.getChainId(),
         walletClient.request({ method: 'eth_accounts' }),
       ])
       if (walletChainId !== checkedRequest.chainId) throw new Error('Ophis OTC wallet is on the wrong chain')
-      const walletAccount = walletAccounts[0]
-      const configuredAccount = walletClient.account?.address
       if (
-        !walletAccount ||
-        !configuredAccount ||
-        !areAddressesEqual(walletAccount, checkedRequest.account) ||
-        !areAddressesEqual(configuredAccount, checkedRequest.account)
-      ) {
+        ![walletAccounts[0], walletClient.account?.address].every(
+          (candidate) => !!candidate && areAddressesEqual(candidate, checkedRequest.account),
+        )
+      )
         throw new Error('Ophis OTC wallet account changed')
-      }
       await assertForkIdentity(() => getOtcWalletForkId(walletClient), expectedForkId)
+      const proof = await readOtcSubmissionProof(canaryClient, checkedRequest)
       if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
+      onSignatureRequested(proof)
       return walletClient.sendTransaction({
         account: walletClient.account,
         chain: mainnet,
         to: checkedRequest.to,
         data: checkedRequest.data,
         value: checkedRequest.value,
+        nonce: proof?.nonce,
       })
     },
-    waitForTransactionReceipt: async (hash) => {
+    waitForTransactionReceipt: async (hash, proof) => {
+      if (canaryClient && !proof) throw new Error('Ophis OTC transaction proof unavailable')
       await assertForkIdentity(() => getOtcWalletForkId(walletClient), expectedForkId)
-      const receipt = await waitForOtcReceipt(publicClient, hash)
+      const receipt = await waitForOtcReceipt(canaryClient ?? publicClient, hash, proof)
       await assertForkIdentity(() => getOtcWalletForkId(walletClient), expectedForkId)
       return receipt
     },
   }
 }
 
-/** Build both adapters over the wallet's own transport so preflight and send cannot target different RPCs. */
+/** Fork state stays on its wallet transport; canary state and simulation come from independent Ethereum reads. */
 export function toOtcForkClients(
   walletClient: WagmiWalletClient,
   expectedForkId?: Hex,
+  canaryClient?: WagmiPublicClient,
 ): {
   writeClient: OtcWriteClient
+  connectedReader: OtcWriteClient
   wallet: OtcWalletSubmitter
 } {
   const connectedPublicClient = walletClient.extend(publicActions)
@@ -112,18 +129,14 @@ export function toOtcForkClients(
   // its intersection type is wider because it also retains wallet actions.
   const publicClient = connectedPublicClient as unknown as WagmiPublicClient
   return {
-    writeClient: toOtcWriteClient(publicClient),
-    wallet: toOtcWalletSubmitter(walletClient, publicClient, expectedForkId),
+    writeClient: toOtcWriteClient(canaryClient ?? publicClient),
+    connectedReader: toOtcWriteClient(publicClient),
+    wallet: toOtcWalletSubmitter(walletClient, publicClient, expectedForkId, canaryClient),
   }
 }
 
-/** Legacy web3-react adapter; kept narrow while the host app completes its Wagmi migration. */
-export function toOtcLegacyForkClients(
-  provider: Web3Provider,
-  account: Address,
-  expectedForkId?: Hex,
-): { writeClient: OtcWriteClient; wallet: OtcWalletSubmitter } {
-  const writeClient: OtcWriteClient = {
+function toOtcLegacyWriteClient(provider: Web3Provider): OtcWriteClient {
+  return {
     getChainId: async () => (await provider.getNetwork()).chainId,
     getLatestBlock: async () => {
       const block = await provider.getBlock('latest')
@@ -147,28 +160,56 @@ export function toOtcLegacyForkClients(
       )
     },
   }
+}
+
+/** Legacy web3-react adapter; kept narrow while the host app completes its Wagmi migration. */
+export function toOtcLegacyForkClients(
+  provider: Web3Provider,
+  account: Address,
+  expectedForkId?: Hex,
+  canaryClient?: WagmiPublicClient,
+): { writeClient: OtcWriteClient; connectedReader: OtcWriteClient; wallet: OtcWalletSubmitter } {
+  const connectedReader = toOtcLegacyWriteClient(provider)
   const wallet: OtcWalletSubmitter = {
-    sendTransaction: async (request, intent, nowSeconds, isCurrentContext = () => true) => {
+    sendTransaction: async (
+      request,
+      intent,
+      nowSeconds,
+      isCurrentContext = () => true,
+      onSignatureRequested = () => undefined,
+    ) => {
       const checkedRequest = Object.freeze({ ...request })
       assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
-      if (!areAddressesEqual(account, checkedRequest.account)) throw new Error('Ophis OTC wallet account changed')
-      if (!(await verifyOtcLocalForkProvider(provider))) throw new Error('Ophis OTC local fork verification failed')
+      if (canaryClient) {
+        await verifyOtcCanaryNetwork(connectedReader, toOtcReaderClient(canaryClient))
+        assertOtcCanaryIntent(intent, nowSeconds)
+      } else if (!(await verifyOtcLocalForkProvider(provider))) {
+        throw new Error('Ophis OTC local fork verification failed')
+      }
       const [network, providerAccounts] = await Promise.all([provider.getNetwork(), provider.listAccounts()])
       if (network.chainId !== checkedRequest.chainId) throw new Error('Ophis OTC wallet is on the wrong chain')
-      const providerAccount = providerAccounts[0]
-      if (!providerAccount || !areAddressesEqual(providerAccount as Address, checkedRequest.account))
+      if (
+        ![account, providerAccounts[0]].every(
+          (candidate) => !!candidate && areAddressesEqual(candidate, checkedRequest.account),
+        )
+      )
         throw new Error('Ophis OTC wallet account changed')
-      const signer = provider.getSigner(providerAccount)
+      const signer = provider.getSigner(checkedRequest.account)
       await assertForkIdentity(() => getOtcProviderForkId(provider), expectedForkId)
+      const proof = await readOtcSubmissionProof(canaryClient, checkedRequest)
       if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
+      onSignatureRequested(proof)
       const transaction = await signer.sendTransaction({
         to: checkedRequest.to,
         data: checkedRequest.data,
         value: checkedRequest.value,
+        nonce: proof?.nonce,
       })
       return transaction.hash as Hex
     },
-    waitForTransactionReceipt: async (hash) => {
+    waitForTransactionReceipt: async (hash, proof) => {
+      if (canaryClient && !proof) throw new Error('Ophis OTC transaction proof unavailable')
+      if (canaryClient) return waitForOtcReceipt(canaryClient, hash, proof)
       await assertForkIdentity(() => getOtcProviderForkId(provider), expectedForkId)
       const receipt = await provider.waitForTransaction(hash, 1, OTC_RECEIPT_TIMEOUT_MS)
       await assertForkIdentity(() => getOtcProviderForkId(provider), expectedForkId)
@@ -180,5 +221,5 @@ export function toOtcLegacyForkClients(
       }
     },
   }
-  return { writeClient, wallet }
+  return { writeClient: canaryClient ? toOtcWriteClient(canaryClient) : connectedReader, connectedReader, wallet }
 }
