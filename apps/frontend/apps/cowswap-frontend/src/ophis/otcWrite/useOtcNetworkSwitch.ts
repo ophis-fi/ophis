@@ -1,8 +1,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
+import { isRejectRequestProviderError } from '@cowprotocol/common-utils'
 import { useSwitchNetwork } from '@cowprotocol/wallet'
-
-import { translateOtcWriteError } from './translateOtcWriteError'
 
 import type { toOtcForkClients } from './otcWriteAdapters'
 
@@ -41,7 +40,12 @@ export function useOtcNetworkSwitch(
       if (walletClient) await walletClient.switchChain({ id: 1 })
       else await switchLegacyNetwork(1)
     } catch (error) {
-      if (contextGeneration.current === generation) setError(translateOtcWriteError(error))
+      if (contextGeneration.current === generation)
+        setError(
+          isRejectRequestProviderError(error)
+            ? 'Network switch rejected in your wallet.'
+            : 'Could not switch to Ethereum. Try again in your wallet.',
+        )
     } finally {
       if (contextGeneration.current === generation) {
         inFlight.current = false

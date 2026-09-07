@@ -1,5 +1,7 @@
 import { getDefaultStore } from 'jotai'
 
+import { getAddressKey } from '@cowprotocol/cow-sdk'
+
 import { act, renderHook } from '@testing-library/react'
 import { uncertainOtcTransactionsAtom } from 'entities/otc'
 import { installOtcWebLocksMock } from 'entities/otc/otcWebLocks.test.utils'
@@ -13,7 +15,7 @@ import type { OtcSubmissionOptions } from './useOtcSubmission'
 jest.mock('./prepareOtcTransaction', () => ({ submitOtcTransaction: jest.fn() }))
 const submit = jest.mocked(submitOtcTransaction)
 const INTENT = { kind: 'create' as const, account: MAKER, draft: mockOtcOrder() }
-const KEY = `${MAKER.toLowerCase()}\u0000ethereum-mainnet\u0000reviewed-create`
+const KEY = `${getAddressKey(MAKER)}\u0000ethereum-mainnet\u0000reviewed-create`
 const STORAGE_KEY = 'ophisOtcUncertainTransactions:v1'
 
 function options(): OtcSubmissionOptions {
@@ -39,7 +41,7 @@ beforeEach(() => {
 it('retains a durable no-hash lock for a send response lost after possible broadcast', async () => {
   submit.mockImplementation(async (_c, _w, _i, _a, _m, _ctx, _broadcast, onPrompt) => {
     onPrompt?.({ requestHash: TX_HASH, nonce: 3 })
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)[KEY].transactionHash).toBeNull()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')?.[KEY]?.transactionHash).toBeNull()
     throw new Error('RPC disconnected after broadcast')
   })
   const config = options()
@@ -56,8 +58,8 @@ it('retains a durable no-hash lock for a send response lost after possible broad
 })
 
 it('persists uncertainty before a wallet prompt, including remount before its response', async () => {
-  let resolve!: (receipt: Awaited<ReturnType<typeof submitOtcTransaction>>) => void
-  let broadcast!: (hash: typeof TX_HASH) => void
+  let resolve: ((receipt: Awaited<ReturnType<typeof submitOtcTransaction>>) => void) | undefined
+  let broadcast: ((hash: typeof TX_HASH) => void) | undefined
   submit.mockImplementation((_c, _w, _i, _a, _m, _ctx, onBroadcast, onPrompt) => {
     onPrompt?.({ requestHash: TX_HASH, nonce: 3 })
     broadcast = (hash) => onBroadcast?.(hash)
@@ -67,7 +69,7 @@ it('persists uncertainty before a wallet prompt, including remount before its re
   })
   const config = options()
   const first = renderHook(() => useOtcSubmission(config))
-  let pending!: Promise<void>
+  let pending: Promise<void> | undefined
   act(() => {
     pending = first.result.current.submit(INTENT, true)
   })
@@ -76,10 +78,11 @@ it('persists uncertainty before a wallet prompt, including remount before its re
   expect(second.result.current.signatureUncertain).toBe(true)
   await act(() => second.result.current.submit(INTENT, true))
   expect(submit).toHaveBeenCalledTimes(1)
-  act(() => broadcast(TX_HASH))
+  act(() => broadcast?.(TX_HASH))
   expect(second.result.current.signatureUncertain).toBe(false)
   expect(second.result.current.uncertainHash).toBe(TX_HASH)
   await act(async () => {
+    if (!resolve) throw new Error('Submission did not start')
     resolve({ transactionHash: TX_HASH, status: 'success', blockNumber: 201n })
     await pending
   })

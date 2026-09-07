@@ -7,8 +7,8 @@ export interface OtcActionFacts {
   connected: boolean
   correctChain: boolean
   networkVerified: boolean | null
-  canary?: boolean
-  walletAdmitted?: boolean
+  canary: boolean
+  walletAdmitted: boolean | undefined
   ready: boolean
   reviewed: boolean
   allowance: bigint | null
@@ -60,10 +60,14 @@ function pendingModel(facts: OtcActionFacts): MaybeActionModel {
   return { action: 'unavailable', label: pendingLabel(facts.pendingIntent), disabled: true, pending: true }
 }
 
+function lacksCanaryAdmission({ canary, walletAdmitted }: OtcActionFacts): boolean {
+  return canary && walletAdmitted !== true
+}
+
 function environmentModel(facts: OtcActionFacts): MaybeActionModel {
   if (!facts.enabled) return { action: 'unavailable', label: 'OTC writes disabled', disabled: true, pending: false }
   if (!facts.connected) return { action: 'connect', label: 'Connect wallet', disabled: false, pending: false }
-  if (facts.walletAdmitted === false) {
+  if (lacksCanaryAdmission(facts)) {
     return { action: 'unavailable', label: 'This wallet is not in the OTC canary.', disabled: true, pending: false }
   }
   if (!facts.correctChain) {

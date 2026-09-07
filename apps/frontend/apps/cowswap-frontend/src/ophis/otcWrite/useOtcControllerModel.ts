@@ -45,6 +45,8 @@ export function useOtcControllerModel({
   )
   return useOtcActionModel({
     enabled,
+    canary: false,
+    walletAdmitted: undefined,
     connected: !!account,
     correctChain: chainId === SupportedChainId.MAINNET,
     networkVerified,

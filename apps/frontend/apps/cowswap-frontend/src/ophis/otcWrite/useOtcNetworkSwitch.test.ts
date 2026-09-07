@@ -57,13 +57,16 @@ it('keeps fork selection manual and never switches a fork user to real Ethereum'
   expect(error).toHaveBeenCalledWith(expect.stringContaining('Anvil fork'))
 })
 
-it('surfaces wallet rejection and releases the pending state for another deliberate attempt', async () => {
-  switchLegacy.mockRejectedValue(new Error('user rejected'))
+it.each([
+  [{ code: 4001 }, 'Network switch rejected in your wallet.'],
+  [new Error('network unavailable'), 'Could not switch to Ethereum. Try again in your wallet.'],
+])('describes network-switch failure accurately: %s', async (failure, message) => {
+  switchLegacy.mockRejectedValue(failure)
   const error = jest.fn()
   const { result } = renderHook(() => useOtcNetworkSwitch(true, undefined, error, 'context'))
   await act(() => result.current.switchToEthereum())
   expect(result.current.switching).toBe(false)
-  expect(error).toHaveBeenLastCalledWith(expect.any(String))
+  expect(error).toHaveBeenLastCalledWith(message)
 })
 
 it.each(['wagmi', 'legacy', 'context'])(
