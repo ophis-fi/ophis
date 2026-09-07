@@ -60,6 +60,10 @@ class CustomizedBridge extends Eip1193Bridge {
 
   chainId = CHAIN_ID
 
+  getForkReadTrace(): string {
+    return forkReadTrace.join('\n')
+  }
+
   // TODO: Add proper return type annotation
   // TODO: Replace any with proper type definitions
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, @typescript-eslint/no-explicit-any
@@ -166,5 +170,30 @@ class CustomizedBridge extends Eip1193Bridge {
 
 const provider = new JsonRpcProvider(PROVIDER_URL, CHAIN_ID)
 const signer = new Wallet(INTEGRATION_TEST_PRIVATE_KEY, provider)
+
+const forkReadTrace: string[] = []
+if (IS_OTC_FORK) {
+  provider.on(
+    'debug',
+    (event: {
+      action: string
+      request: { id: number; method: string; params: unknown[] }
+      response?: unknown
+      error?: { code?: string }
+    }) => {
+      if (!['eth_call', 'eth_chainId', 'eth_getBlockByNumber', 'eth_getCode'].includes(event.request.method)) return
+      forkReadTrace.push(
+        JSON.stringify({
+          time: Date.now(),
+          action: event.action,
+          request: event.request,
+          response: event.response,
+          errorCode: event.error?.code,
+        }).slice(0, 800),
+      )
+      if (forkReadTrace.length > 16) forkReadTrace.shift()
+    },
+  )
+}
 
 export const injected = new CustomizedBridge(signer, provider)

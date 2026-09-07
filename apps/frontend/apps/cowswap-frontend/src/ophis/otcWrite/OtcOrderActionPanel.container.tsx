@@ -1,16 +1,16 @@
 import { useAtomValue } from 'jotai'
 import { useCallback, useId, useMemo, useState, type ReactNode } from 'react'
 
-import { LinkStyledButton } from '@cowprotocol/ui'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { atomWithQuery } from 'jotai-tanstack-query'
 import { Callout, Section } from 'ophis/ds'
 import { readOtcOrder } from 'ophis/otc'
-import { isAddressEqual } from 'viem'
 import { useWalletClient } from 'wagmi'
 
 import { OtcActionControl } from './OtcActionControl.container'
+import { OtcOrderReadError } from './OtcOrderReadError.pure'
 import { OtcOrderTermsSummary } from './OtcOrderTermsSummary.pure'
 import * as styledEl from './OtcWrite.styled'
 import { reviewedOtcToken, type OtcReviewedToken } from './otcWriteForm'
@@ -58,13 +58,17 @@ function buildOrderActionDefinition(
 function VerifiedOtcOrderActionPanel({
   order,
   onConfirmed,
+  orderUnavailable,
+  retryOrder,
 }: {
   order: OtcOrder
   onConfirmed?: OtcConfirmedCallback
+  orderUnavailable: boolean
+  retryOrder(): void
 }): ReactNode {
   const { account } = useWalletInfo()
   const [reviewedKey, setReviewedKey] = useState<string | null>(null)
-  const isMaker = !!account && isAddressEqual(account, order.maker)
+  const isMaker = !!account && areAddressesEqual(account, order.maker)
   const paymentToken = reviewedOtcToken(order.tokenB)
   const receivedToken = reviewedOtcToken(order.tokenA)
   const paymentUsd = useOtcUsdAmount(isMaker ? null : paymentToken, isMaker ? null : order.amountB)
@@ -78,7 +82,7 @@ function VerifiedOtcOrderActionPanel({
     order.tokenB,
     order.amountB,
   ])
-  const reviewed = reviewedKey === resetKey
+  const reviewed = !orderUnavailable && reviewedKey === resetKey
   const definition = useMemo(
     () => buildOrderActionDefinition(account, order, isMaker, reviewed, resetKey, paymentToken, receivedToken),
     [account, isMaker, order, paymentToken, receivedToken, resetKey, reviewed],
@@ -98,17 +102,20 @@ function VerifiedOtcOrderActionPanel({
             : 'This order is inactive. Only a positive existing escrow allowance can be revoked.'}
         </p>
       </Callout>
-      <OtcOrderTermsSummary
-        isMaker={isMaker}
-        order={order}
-        paymentToken={paymentToken}
-        receivedToken={receivedToken}
-        paymentUsdValue={paymentUsd.value}
-        paymentUsdLoading={paymentUsd.isLoading}
-        receivedUsdValue={receivedUsd.value}
-        receivedUsdLoading={receivedUsd.isLoading}
-      />
-      {order.active && (
+      {orderUnavailable && <OtcOrderReadError retryOrder={retryOrder} />}
+      {!orderUnavailable && (
+        <OtcOrderTermsSummary
+          isMaker={isMaker}
+          order={order}
+          paymentToken={paymentToken}
+          receivedToken={receivedToken}
+          paymentUsdValue={paymentUsd.value}
+          paymentUsdLoading={paymentUsd.isLoading}
+          receivedUsdValue={receivedUsd.value}
+          receivedUsdLoading={receivedUsd.isLoading}
+        />
+      )}
+      {order.active && !orderUnavailable && (
         <styledEl.ReviewLabel>
           <input
             type="checkbox"
@@ -160,16 +167,7 @@ function UnverifiedOtcOrderActionPanel({
           <p>Connect a wallet and select a chain-id-1 local fork before the exact order terms can be loaded.</p>
         </Callout>
       )}
-      {orderUnavailable && (
-        <div role="alert" aria-live="assertive" aria-atomic="true">
-          <Callout tone="warning" title="Fork order unavailable">
-            <p>The verified local-fork order read failed. Check Anvil, then retry this exact order.</p>
-            <LinkStyledButton type="button" onClick={retryOrder}>
-              Retry fork order
-            </LinkStyledButton>
-          </Callout>
-        </div>
-      )}
+      {orderUnavailable && <OtcOrderReadError retryOrder={retryOrder} />}
       {confirmedHash && (
         <div role="status" aria-live="polite" aria-atomic="true">
           <Callout tone="success" title="Transaction confirmed">
@@ -207,7 +205,8 @@ export function OtcOrderActionPanel({
         ],
         queryFn: async () => (network.writeClient ? readOtcOrder(network.writeClient, orderId) : null),
         enabled: !!network.localForkResponse.data && !!account && !!network.writeClient,
-        refetchInterval: ORDER_REFRESH_INTERVAL_MS,
+        retry: false,
+        refetchInterval: (query) => (query.state.error ? false : ORDER_REFRESH_INTERVAL_MS),
         refetchOnWindowFocus: false,
       })),
     [account, mountId, network.localForkResponse.data, network.transportId, network.writeClient, orderId],
@@ -239,5 +238,12 @@ export function OtcOrderActionPanel({
       />
     )
   }
-  return <VerifiedOtcOrderActionPanel order={order} onConfirmed={handleConfirmed} />
+  return (
+    <VerifiedOtcOrderActionPanel
+      order={order}
+      onConfirmed={handleConfirmed}
+      orderUnavailable={orderUnavailable}
+      retryOrder={retryOrder}
+    />
+  )
 }
