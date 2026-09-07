@@ -81,6 +81,7 @@ describe('Milestone C wallet submission sink', () => {
   it('submits only after simulation and waits through receipt confirmation', async () => {
     const calls: string[] = []
     const proof = { requestHash: TX_HASH, nonce: 3 }
+    const intent = { kind: 'cancel' as const, account: MAKER, order: mockOtcOrder() }
     const writeClient = mockOtcWriteClient()
     writeClient.simulate = async () => {
       calls.push('simulate')
@@ -97,11 +98,10 @@ describe('Milestone C wallet submission sink', () => {
         return { transactionHash: TX_HASH, status: 'success', blockNumber: 201n }
       },
     }
-
     const receipt = await submitOtcTransaction(
       writeClient,
       wallet,
-      { kind: 'cancel', account: MAKER, order: mockOtcOrder() },
+      intent,
       mockOtcAuthorization(),
       mockOtcManifest(),
       undefined,
@@ -113,6 +113,11 @@ describe('Milestone C wallet submission sink', () => {
     )
     expect(calls).toEqual(['simulate', 'mark', 'send', 'broadcast', 'receipt'])
     expect(receipt.transactionHash).toBe(TX_HASH)
+    calls.length = 0
+    await expect(
+      submitOtcTransaction(writeClient, wallet, intent, mockOtcAuthorization(), mockOtcManifest()),
+    ).rejects.toThrow('signature persistence unavailable')
+    expect(calls).toEqual(['simulate'])
   })
 
   it('never submits when a timed-out preflight resolves later', async () => {

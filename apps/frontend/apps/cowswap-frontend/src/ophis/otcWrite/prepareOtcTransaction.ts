@@ -143,7 +143,9 @@ export async function submitOtcTransaction(
   manifest: OtcManifest = OPHIS_ETHEREUM_OTC_MANIFEST,
   isCurrentContext: () => boolean = () => true,
   onBroadcast: (hash: Hex) => void = () => undefined,
-  onSignatureRequested: (proof: OtcSubmissionProof) => void = () => undefined,
+  onSignatureRequested: (proof: OtcSubmissionProof) => void = () => {
+    throw new Error('Ophis OTC signature persistence unavailable')
+  },
 ): Promise<OtcTransactionReceipt> {
   assertRuntimeAuthorization(authorization)
   const prepared = await prepareOtcTransaction(client, intent, manifest)
