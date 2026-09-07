@@ -14,6 +14,7 @@ import type {
   OtcWriteRuntimeAuthorization,
 } from './otcWrite.types'
 import type { RefreshOtcAllowance } from './useOtcSubmission'
+import type { OtcSubmissionProof } from 'entities/otc'
 import type { Hex } from 'viem'
 
 export interface OtcSuccessfulTransaction {
@@ -34,8 +35,8 @@ export interface OtcSubmitCallbackOptions {
   setPendingIntent: (intent: OtcPendingIntent | null) => void
   setError: (error: string | null) => void
   setSuccess: (success: OtcSuccessfulTransaction | null) => void
-  setUncertainHash: (hash: Hex) => void
-  clearSubmittedTransaction: (hash: Hex) => void
+  setUncertainHash: (hash: Hex | null, proof?: OtcSubmissionProof) => void
+  clearSubmittedTransaction: (hash: Hex | null) => void
   setRecoveryRequired: (required: boolean) => void
   withTransactionLock: (operation: () => Promise<void>) => Promise<void>
 }
@@ -128,6 +129,21 @@ function applyFailedSubmission(
   return true
 }
 
+function retainUnknownSignature(
+  signatureRequested: boolean,
+  broadcastHash: Hex | null,
+  options: OtcSubmitCallbackOptions,
+  isCurrentContext: () => boolean,
+): boolean {
+  if (!signatureRequested || broadcastHash) return false
+  // Hashless outcomes stay locked until a mined transaction matches the persisted nonce and intent.
+  if (isCurrentContext())
+    options.setError(
+      'The wallet did not return a transaction hash. The outcome is unknown; this action remains locked.',
+    )
+  return true
+}
+
 async function runOtcSubmission(
   options: OtcSubmitCallbackOptions,
   intent: OtcWriteIntent,
@@ -142,6 +158,7 @@ async function runOtcSubmission(
   options.setError(null)
   options.setSuccess(null)
   let broadcastHash: Hex | null = null
+  let signatureRequested = false
   try {
     const receipt = await submitOtcTransaction(
       options.writeClient,
@@ -154,13 +171,18 @@ async function runOtcSubmission(
         broadcastHash = hash
         options.setUncertainHash(hash)
       },
+      (proof) => {
+        options.setUncertainHash(null, proof)
+        signatureRequested = true
+      },
     )
     if (broadcastHash) options.clearSubmittedTransaction(broadcastHash)
     const result = await settleSuccessfulSubmission(intent, options, isCurrentContext)
-    if (!applySuccessfulSubmission(result, receipt.transactionHash, options)) return
+    applySuccessfulSubmission(result, receipt.transactionHash, options)
   } catch (caught) {
     if (applyUncertainSubmission(caught, options.setUncertainHash)) return
-    if (broadcastHash) options.clearSubmittedTransaction(broadcastHash)
+    if (retainUnknownSignature(signatureRequested, broadcastHash, options, isCurrentContext)) return
+    if (broadcastHash || signatureRequested) options.clearSubmittedTransaction(broadcastHash)
     const result = await settleFailedSubmission(caught, execution, options, isCurrentContext)
     if (!applyFailedSubmission(result, options)) return
   }
