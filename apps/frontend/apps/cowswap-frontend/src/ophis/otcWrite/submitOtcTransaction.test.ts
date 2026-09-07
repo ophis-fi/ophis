@@ -80,16 +80,19 @@ describe('Milestone C wallet submission sink', () => {
 
   it('submits only after simulation and waits through receipt confirmation', async () => {
     const calls: string[] = []
+    const proof = { requestHash: TX_HASH, nonce: 3 }
     const writeClient = mockOtcWriteClient()
     writeClient.simulate = async () => {
       calls.push('simulate')
     }
     const wallet: OtcWalletSubmitter = {
-      sendTransaction: async () => {
+      sendTransaction: async (_request, _intent, _time, _current, onPrompt) => {
+        onPrompt?.(proof)
         calls.push('send')
         return TX_HASH
       },
-      waitForTransactionReceipt: async () => {
+      waitForTransactionReceipt: async (_hash, receivedProof) => {
+        expect(receivedProof).toEqual(proof)
         calls.push('receipt')
         return { transactionHash: TX_HASH, status: 'success', blockNumber: 201n }
       },
@@ -103,8 +106,12 @@ describe('Milestone C wallet submission sink', () => {
       mockOtcManifest(),
       undefined,
       () => calls.push('broadcast'),
+      (receivedProof) => {
+        expect(receivedProof).toEqual(proof)
+        calls.push('mark')
+      },
     )
-    expect(calls).toEqual(['simulate', 'send', 'broadcast', 'receipt'])
+    expect(calls).toEqual(['simulate', 'mark', 'send', 'broadcast', 'receipt'])
     expect(receipt.transactionHash).toBe(TX_HASH)
   })
 
