@@ -48,6 +48,21 @@ const OTC_INTERFACE = new Interface([
   'function getOrder(uint256 orderId) view returns (tuple(address maker, bool active, address tokenA, uint256 amountA, address tokenB, uint256 amountB) order)',
 ])
 
+/** Keep unrelated host balance hydration from exhausting the keyless fork upstream. */
+export function stubOtcHostTokenLists(): void {
+  cy.intercept(/https:\/\/files\.cow\.fi\/(?:tokens\/CowSwap|token-lists\/CoinGecko\.1)\.json$/, {
+    body: {
+      name: 'OTC fork tokens',
+      timestamp: '2026-09-07T00:00:00.000Z',
+      version: { major: 1, minor: 0, patch: 0 },
+      tokens: [
+        { chainId: 1, address: WETH, decimals: 18, name: 'Wrapped Ether', symbol: 'WETH' },
+        { chainId: 1, address: USDC, decimals: 6, name: 'USD Coin', symbol: 'USDC' },
+      ],
+    },
+  })
+}
+
 async function rpc<T>(method: string, params: readonly unknown[]): Promise<T> {
   const response = await fetch(FORK_RPC_URL, {
     method: 'POST',

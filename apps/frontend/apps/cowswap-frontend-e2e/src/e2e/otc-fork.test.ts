@@ -1,5 +1,5 @@
 import { assertAccessibleAnnouncement, assertAccessibleButton } from '../support/accessibility'
-import { getForkReadTrace, TEST_ADDRESS_NEVER_USE } from '../support/ethereum'
+import { TEST_ADDRESS_NEVER_USE } from '../support/ethereum'
 import {
   createWethForUsdcOrder,
   depositForkWeth,
@@ -14,6 +14,7 @@ import {
   readOtcAllowance,
   setForkTokenBalance,
   setOtcAllowance,
+  stubOtcHostTokenLists,
   TWO_THOUSAND_USDC,
   USDC,
   type Address,
@@ -26,9 +27,10 @@ const FORK_RELOAD_ATTEMPTS = 2
 const FORK_UI_TIMEOUT = 150_000
 
 Cypress.on('fail', (error) => {
+  const win = Cypress.$('body')[0]?.ownerDocument.defaultView as Cypress.ApplicationWindow | null | undefined
   error.message += `\nOTC panel: ${Cypress.$('#otc-order-action, #otc-create').text()}`
   error.message += `\nPage: ${Cypress.$('body').text().slice(0, 1200)}`
-  error.message += `\nFork reads:\n${getForkReadTrace()}`
+  error.message += `\nFork reads:\n${win?.ethereum?.getForkReadTrace?.() ?? 'unavailable'}`
   throw error
 })
 
@@ -100,6 +102,8 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
   let mismatchedAllowanceOrderId = 0n
   let fillOrderId = 0n
   let racedOrderId = 0n
+
+  beforeEach(stubOtcHostTokenLists)
 
   before(() => {
     cy.then({ timeout: 300_000 }, async () => {

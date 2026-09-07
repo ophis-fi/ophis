@@ -60,6 +60,10 @@ class CustomizedBridge extends Eip1193Bridge {
 
   chainId = CHAIN_ID
 
+  getForkReadTrace(): string {
+    return forkReadTrace.join('\n')
+  }
+
   // TODO: Add proper return type annotation
   // TODO: Replace any with proper type definitions
   // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, @typescript-eslint/no-explicit-any
@@ -190,10 +194,6 @@ if (IS_OTC_FORK) {
       if (forkReadTrace.length > 16) forkReadTrace.shift()
     },
   )
-}
-
-export function getForkReadTrace(): string {
-  return forkReadTrace.join('\n')
 }
 
 export const injected = new CustomizedBridge(signer, provider)
