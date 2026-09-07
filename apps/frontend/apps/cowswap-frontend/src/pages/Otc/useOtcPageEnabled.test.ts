@@ -77,6 +77,8 @@ describe('OTC feature boundaries', () => {
 
     expect(isOtcWriteEnabled(flags, true, undefined)).toBe(false)
     expect(isOtcWriteEnabled(flags, true, 'production')).toBe(false)
+    expect(isOtcWriteEnabled(flags, false, 'canary', 'true')).toBe(false)
+    expect(isOtcWriteEnabled(flags, true, 'canary', 'true')).toBe(false)
     expect(isOtcWriteEnabled({ isOtcEnabled: true }, true, 'fork')).toBe(false)
     expect(isOtcWriteEnabled(flags, true, 'fork')).toBe(true)
   })

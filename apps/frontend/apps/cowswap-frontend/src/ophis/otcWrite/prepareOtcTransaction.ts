@@ -1,10 +1,14 @@
 import { isLocal as runtimeIsLocal } from '@cowprotocol/common-utils'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
 import { OPHIS_ETHEREUM_OTC_MANIFEST, readOtcOrder, verifyOtcContract } from 'ophis/otc'
-import { isAddressEqual, type Address, type Hex } from 'viem'
+import { type Address, type Hex } from 'viem'
 
 import { buildOtcTransaction, OTC_FILL_DEADLINE_WINDOW_SECONDS } from './buildOtcTransaction'
+import { assertOtcCanaryIntent } from './otcCanaryPolicy'
+import { assertOtcReceipt } from './otcReceiptTracking.utils'
 import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
+import { assertOtcTransactionHash, otcRequestHash } from './otcTransactionProof'
 import { withOtcPreflightTimeout } from './otcWriteTimeouts'
 import { readOtcAllowanceAtBlock } from './readOtcAllowance'
 
@@ -22,11 +26,11 @@ import type { OtcManifest, OtcOrder } from 'ophis/otc'
 function sameOrder(expected: OtcOrder, current: OtcOrder): boolean {
   return (
     expected.orderId === current.orderId &&
-    isAddressEqual(expected.maker, current.maker) &&
+    areAddressesEqual(expected.maker, current.maker) &&
     expected.active === current.active &&
-    isAddressEqual(expected.tokenA, current.tokenA) &&
+    areAddressesEqual(expected.tokenA, current.tokenA) &&
     expected.amountA === current.amountA &&
-    isAddressEqual(expected.tokenB, current.tokenB) &&
+    areAddressesEqual(expected.tokenB, current.tokenB) &&
     expected.amountB === current.amountB
   )
 }
@@ -64,8 +68,7 @@ function assertRuntimeAuthorization(authorization: OtcWriteRuntimeAuthorization)
     authorization.writeFlag === true &&
     authorization.isLocal === runtimeIsLocal &&
     authorization.writeMode === runtimeWriteMode &&
-    runtimeIsLocal &&
-    runtimeWriteMode === 'fork'
+    ((runtimeIsLocal && runtimeWriteMode === 'fork') || runtimeWriteMode === 'canary')
   if (!enabled) throw new Error('Ophis OTC writes are disabled')
 }
 
@@ -148,27 +151,36 @@ export async function submitOtcTransaction(
   },
 ): Promise<OtcTransactionReceipt> {
   assertRuntimeAuthorization(authorization)
+  if (authorization.writeMode === 'canary') assertOtcCanaryIntent(intent, BigInt(Math.floor(Date.now() / 1_000)))
   const prepared = await prepareOtcTransaction(client, intent, manifest)
-  assertRuntimeAuthorization(authorization)
-  if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
+  const isStillAuthorized = (): boolean => {
+    assertRuntimeAuthorization(authorization)
+    if (authorization.writeMode === 'canary') {
+      assertOtcCanaryIntent(prepared.intent, prepared.preparedAtTimestamp)
+      assertOtcCanaryIntent(prepared.intent, BigInt(Math.floor(Date.now() / 1_000)))
+    }
+    return isCurrentContext()
+  }
+  if (!isStillAuthorized()) throw new Error('Ophis OTC action context changed')
   let submissionProof: OtcSubmissionProof | undefined
   const hash = await wallet.sendTransaction(
     prepared.request,
     prepared.intent,
     prepared.preparedAtTimestamp,
-    isCurrentContext,
+    isStillAuthorized,
     (proof) => {
+      if (authorization.writeMode === 'canary' && (!proof || proof.requestHash !== otcRequestHash(prepared.request)))
+        throw new Error('Ophis OTC transaction proof unavailable')
       submissionProof = proof
       if (proof) onSignatureRequested(proof)
     },
   )
+  assertOtcTransactionHash(hash)
   let receipt: OtcTransactionReceipt
   try {
     onBroadcast(hash)
     receipt = await wallet.waitForTransactionReceipt(hash, submissionProof)
-    if ((receipt.replacedTransactionHash ?? receipt.transactionHash).toLowerCase() !== hash.toLowerCase()) {
-      throw new Error('Ophis OTC transaction was replaced')
-    }
+    assertOtcReceipt(hash, receipt)
   } catch (caught) {
     throw new OtcReceiptTrackingError(hash, caught)
   }
