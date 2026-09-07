@@ -185,7 +185,7 @@ function DetailBody({
           <p>
             <Trans>The indexed copy of this order disagrees with current on-chain state.</Trans>{' '}
             {writeEnabled ? (
-              <Trans>Fork actions ignore this checkpoint and re-read exact fork state before opening the wallet.</Trans>
+              <Trans>Wallet actions re-read the current order and verify the network before opening the wallet.</Trans>
             ) : (
               <Trans>Refresh before relying on it.</Trans>
             )}
@@ -210,7 +210,7 @@ export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
       title={<Trans>Order #{orderIdText}</Trans>}
       lede={
         writeEnabled ? (
-          <Trans>Fork-only action detail, freshly verified against the pinned escrow contract.</Trans>
+          <Trans>Order actions use fresh verification against the pinned escrow contract.</Trans>
         ) : (
           <Trans>Read-only order detail, verified directly against Ethereum.</Trans>
         )

@@ -6528,3 +6528,44 @@ msgstr "с чёрным списком"
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "upgradeable"
 msgstr "обновляемый"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Create, fill, and cancel exact ERC-20 orders in the restricted Ethereum canary. Transactions use real assets and cost gas."
+msgstr "Создавайте, исполняйте и отменяйте точные ордера ERC-20 в ограниченном тестовом запуске на Ethereum. Транзакции используют реальные активы и требуют оплаты газа."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Order actions use fresh verification against the pinned escrow contract."
+msgstr "Действия с ордерами требуют новой проверки по закреплённому контракту эскроу."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "Restricted Ethereum canary"
+msgstr "Ограниченный тестовый запуск на Ethereum"
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Wallet actions re-read the current order and verify the network before opening the wallet."
+msgstr "Перед открытием кошелька текущее состояние ордера считывается заново и проверяется сеть."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "Fork-only transaction mode"
+msgstr "Режим транзакций только в локальном форке"
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "Limits apply through this interface. They do not cap your total escrow exposure or protect an order from market moves."
+msgstr "Ограничения действуют через этот интерфейс. Они не ограничивают общий объём ваших активов в эскроу и не защищают ордер от рыночных колебаний."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "New approval and trade requests close at {expiresAt}. Existing orders remain active until filled or cancelled. Wallet prompts already opened can still execute later."
+msgstr "Новые запросы на разрешение и торговые операции принимаются до {expiresAt}. Существующие ордера остаются активными до исполнения или отмены. Уже открытые запросы в кошельке могут быть выполнены позже."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "Per-order maximum: {amountA} and {amountB}, in either direction."
+msgstr "Максимум на ордер: {amountA} и {amountB}, в любом направлении."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "These transactions use real Ethereum assets and cost gas. Only admitted wallets and reviewed pairs can trade within the limits below. Cancellation and allowance revocation remain available after trading closes."
+msgstr "Эти транзакции используют реальные активы Ethereum и требуют оплаты газа. Торговать в указанных ниже пределах могут только допущенные кошельки и проверенные пары. Отмена ордеров и отзыв разрешений остаются доступны после закрытия торгов."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "These wallet prompts use your local Ethereum fork. Every action re-reads the pinned escrow and simulates the exact transaction."
+msgstr "Эти запросы кошелька используют ваш локальный форк Ethereum. Перед каждым действием заново считывается состояние фиксированного контракта эскроу и моделируется точная транзакция."

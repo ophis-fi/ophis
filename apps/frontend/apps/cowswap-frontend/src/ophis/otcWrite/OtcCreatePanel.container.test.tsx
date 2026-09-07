@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core'
+import { I18nProvider } from '@lingui/react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { decodeFunctionData } from 'viem'
 
@@ -15,7 +17,11 @@ jest.mock('./OtcActionControl.container', () => ({ OtcActionControl: jest.fn(() 
 const controlMock = jest.mocked(OtcActionControl)
 
 it('can revoke from an empty form and keeps recovery bound to equivalent parsed amounts', () => {
-  render(<OtcCreatePanel />)
+  render(
+    <I18nProvider i18n={i18n}>
+      <OtcCreatePanel />
+    </I18nProvider>,
+  )
   const emptyDefinition = controlMock.mock.calls.at(-1)?.[0].definition
   expect(emptyDefinition?.executeIntent).toBeNull()
   const revoke = emptyDefinition?.revokeIntent
