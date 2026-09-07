@@ -1,3 +1,4 @@
+export { verifyOtcLocalForkProvider, verifyOtcLocalForkWallet } from './otcForkIdentity'
 export { OTC_ALLOWANCE_ABI, OTC_APPROVE_ABI, OTC_ERC20_WRITE_ABI } from './otcWrite.abi'
 export {
   buildOtcCancelTransaction,
@@ -14,14 +15,7 @@ export {
 } from './buildOtcTransaction'
 export { prepareOtcTransaction, submitOtcTransaction } from './prepareOtcTransaction'
 export { readOtcAllowance } from './readOtcAllowance'
-export {
-  toOtcForkClients,
-  toOtcLegacyForkClients,
-  toOtcWalletSubmitter,
-  toOtcWriteClient,
-  verifyOtcLocalForkProvider,
-  verifyOtcLocalForkWallet,
-} from './otcWriteAdapters'
+export { toOtcForkClients, toOtcLegacyForkClients, toOtcWalletSubmitter, toOtcWriteClient } from './otcWriteAdapters'
 export { translateOtcWriteError } from './translateOtcWriteError'
 export { deriveOtcActionModel } from './otcActionModel'
 export { OTC_REVIEWED_TOKENS, parseOtcCreateDraft, parseOtcHumanAmount, reviewedOtcToken } from './otcWriteForm'

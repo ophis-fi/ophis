@@ -9,11 +9,10 @@ import { atomWithQuery, type AtomWithQueryResult } from 'jotai-tanstack-query'
 import {
   getOtcProviderForkId,
   getOtcWalletForkId,
-  toOtcForkClients,
-  toOtcLegacyForkClients,
   verifyOtcLocalForkProvider,
   verifyOtcLocalForkWallet,
-} from './otcWriteAdapters'
+} from './otcForkIdentity'
+import { toOtcForkClients, toOtcLegacyForkClients } from './otcWriteAdapters'
 import { readOtcAllowance } from './readOtcAllowance'
 
 import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
