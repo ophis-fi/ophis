@@ -1,4 +1,4 @@
-import { buildOtcCancelTransaction } from './buildOtcTransaction'
+import { buildOtcCancelTransaction, buildOtcCreateTransaction } from './buildOtcTransaction'
 import { OTC_CANARY_POLICY } from './otcCanary.const'
 import { otcRequestHash } from './otcTransactionProof'
 import { toOtcForkClients, toOtcLegacyForkClients, toOtcWalletSubmitter } from './otcWriteAdapters'
@@ -65,6 +65,7 @@ function fixture(legacy: boolean): {
   const provider = {
     getNetwork: async () => ({ chainId: await connected.getChainId() }),
     getBlock: () => connected.getBlock(),
+    getTransactionCount: () => connected.getTransactionCount({ address: MAKER, blockTag: 'pending' }),
     listAccounts: async () => [MAKER],
     getSigner: () => ({ sendTransaction: send }),
     waitForTransaction: connected.waitForTransactionReceipt,
@@ -76,7 +77,7 @@ function fixture(legacy: boolean): {
 describe.each([false, true])('canonical canary adapter (legacy=%s)', (legacy) => {
   beforeEach(() => {
     jest.useFakeTimers({ now: Number(NOW) * 1_000 })
-    Object.assign(OTC_CANARY_POLICY, { accounts: [MAKER] })
+    Object.assign(OTC_CANARY_POLICY, { accounts: [MAKER], pairs: [], expiresAt: 0n })
   })
   afterEach(() => jest.useRealTimers())
 
@@ -91,6 +92,37 @@ describe.each([false, true])('canonical canary adapter (legacy=%s)', (legacy) =>
       expect.objectContaining({ hash: TX_HASH, timeout: 120_000 }),
     )
     expect(connected.waitForTransactionReceipt).not.toHaveBeenCalled()
+  })
+
+  it.each([2, 4])('rejects a wallet pending nonce of %s when the canonical nonce is three', async (nonce) => {
+    const { connected, send, submitter } = fixture(legacy)
+    jest.mocked(connected.getTransactionCount).mockResolvedValue(nonce)
+    const onSignatureRequested = jest.fn()
+    await expect(submitter.sendTransaction(REQUEST, INTENT, NOW, () => true, onSignatureRequested)).rejects.toThrow(
+      'nonce differs',
+    )
+    expect(onSignatureRequested).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('rechecks the canary cutoff after asynchronous nonce reads and before signing', async () => {
+    const { canonical, send, submitter } = fixture(legacy)
+    const draft = mockOtcOrder()
+    const intent = { kind: 'create' as const, account: MAKER, draft }
+    Object.assign(OTC_CANARY_POLICY, {
+      pairs: [{ ...draft, maxAmountA: draft.amountA, maxAmountB: draft.amountB }],
+      expiresAt: NOW + 1n,
+    })
+    jest.mocked(canonical.getTransactionCount).mockImplementation(async () => {
+      jest.setSystemTime(Number(NOW + 1n) * 1_000)
+      return 3
+    })
+    const onSignatureRequested = jest.fn()
+    await expect(
+      submitter.sendTransaction(buildOtcCreateTransaction(intent), intent, NOW, () => true, onSignatureRequested),
+    ).rejects.toThrow('trading window is closed')
+    expect(onSignatureRequested).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
   })
 
   it('reads settlement terms and simulates through the independent reader, never the wallet RPC', async () => {

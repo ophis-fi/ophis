@@ -27,7 +27,7 @@ import { OTC_RECEIPT_TIMEOUT_MS, waitForOtcReceipt } from './otcReceiptTracking.
 import { readOtcSubmissionProof } from './otcTransactionProof'
 import { verifyOtcCanaryNetwork } from './verifyOtcCanaryNetwork'
 
-import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
+import type { OtcWalletSubmitter, OtcWriteClient, OtcWriteIntent } from './otcWrite.types'
 
 type WagmiPublicClient = NonNullable<ReturnType<typeof usePublicClient>>
 type WagmiWalletClient = WalletClient<Transport, Chain, Account>
@@ -36,6 +36,11 @@ function safeBlockNumber(blockNumber: bigint): number {
   const value = Number(blockNumber)
   if (!Number.isSafeInteger(value) || value < 0) throw new Error('Ophis OTC block number is unsafe')
   return value
+}
+
+function assertOtcSigningContext(intent: OtcWriteIntent, canary: boolean, isCurrentContext: () => boolean): void {
+  if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
+  if (canary) assertOtcCanaryIntent(intent, BigInt(Math.floor(Date.now() / 1_000)))
 }
 
 /** Extends the already-pinned reader adapter with exact eth_call simulation. */
@@ -92,8 +97,10 @@ export function toOtcWalletSubmitter(
       )
         throw new Error('Ophis OTC wallet account changed')
       await assertForkIdentity(() => getOtcWalletForkId(walletClient), expectedForkId)
-      const proof = await readOtcSubmissionProof(canaryClient, checkedRequest)
-      if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
+      const proof = await readOtcSubmissionProof(canaryClient, checkedRequest, () =>
+        publicClient.getTransactionCount({ address: checkedRequest.account, blockTag: 'pending' }),
+      )
+      assertOtcSigningContext(intent, !!canaryClient, isCurrentContext)
       onSignatureRequested(proof)
       return walletClient.sendTransaction({
         account: walletClient.account,
@@ -196,8 +203,10 @@ export function toOtcLegacyForkClients(
         throw new Error('Ophis OTC wallet account changed')
       const signer = provider.getSigner(checkedRequest.account)
       await assertForkIdentity(() => getOtcProviderForkId(provider), expectedForkId)
-      const proof = await readOtcSubmissionProof(canaryClient, checkedRequest)
-      if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
+      const proof = await readOtcSubmissionProof(canaryClient, checkedRequest, () =>
+        provider.getTransactionCount(checkedRequest.account, 'pending'),
+      )
+      assertOtcSigningContext(intent, !!canaryClient, isCurrentContext)
       onSignatureRequested(proof)
       const transaction = await signer.sendTransaction({
         to: checkedRequest.to,
