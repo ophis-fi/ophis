@@ -3,7 +3,8 @@ import { createElement, type ReactNode } from 'react'
 
 import { act, renderHook, waitFor } from '@testing-library/react'
 
-import { getOtcWalletForkId, toOtcForkClients, verifyOtcLocalForkWallet } from './otcWriteAdapters'
+import { getOtcWalletForkId, verifyOtcLocalForkWallet } from './otcForkIdentity'
+import { toOtcForkClients } from './otcWriteAdapters'
 import { readOtcAllowance } from './readOtcAllowance'
 import {
   getOtcWalletTransportId,
@@ -15,14 +16,14 @@ import {
 
 jest.mock('@cowprotocol/wallet-provider', () => ({ useWalletProvider: jest.fn(() => undefined) }))
 jest.mock('./readOtcAllowance', () => ({ readOtcAllowance: jest.fn() }))
-jest.mock('./otcWriteAdapters', () => ({
+jest.mock('./otcForkIdentity', () => ({
   getOtcWalletForkId: jest.fn(),
   getOtcProviderForkId: jest.fn(),
-  toOtcForkClients: jest.fn(),
-  toOtcLegacyForkClients: jest.fn(),
   verifyOtcLocalForkProvider: jest.fn(),
   verifyOtcLocalForkWallet: jest.fn(),
 }))
+
+jest.mock('./otcWriteAdapters', () => ({ toOtcForkClients: jest.fn(), toOtcLegacyForkClients: jest.fn() }))
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111'
 const FORK_ID = `0x${'aa'.repeat(32)}` as const

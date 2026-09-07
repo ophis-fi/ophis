@@ -4,11 +4,10 @@ import { buildOtcCancelTransaction, buildOtcFillApproval } from './buildOtcTrans
 import {
   getOtcProviderForkId,
   getOtcWalletForkId,
-  toOtcLegacyForkClients,
-  toOtcWalletSubmitter,
   verifyOtcLocalForkProvider,
   verifyOtcLocalForkWallet,
-} from './otcWriteAdapters'
+} from './otcForkIdentity'
+import { toOtcLegacyForkClients, toOtcWalletSubmitter } from './otcWriteAdapters'
 import { readOtcAllowance } from './readOtcAllowance'
 
 import type { OtcCancelIntent, OtcTransactionRequest } from './otcWrite.types'

@@ -1,9 +1,8 @@
-import { withTimeout } from '@cowprotocol/common-utils'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import type { Web3Provider } from '@ethersproject/providers'
 
 import { toOtcReaderClient } from 'ophis/otc'
 import {
-  isAddressEqual,
   publicActions,
   type Account,
   type Address,
@@ -16,6 +15,13 @@ import { mainnet } from 'viem/chains'
 import { usePublicClient } from 'wagmi'
 
 import { assertOtcTransactionRequest } from './assertOtcTransactionRequest'
+import {
+  assertForkIdentity,
+  getOtcProviderForkId,
+  getOtcWalletForkId,
+  verifyOtcLocalForkProvider,
+  verifyOtcLocalForkWallet,
+} from './otcForkIdentity'
 import { OTC_RECEIPT_TIMEOUT_MS, waitForOtcReceipt } from './otcReceiptTracking.utils'
 
 import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
@@ -23,69 +29,10 @@ import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
 type WagmiPublicClient = NonNullable<ReturnType<typeof usePublicClient>>
 type WagmiWalletClient = WalletClient<Transport, Chain, Account>
 
-const LOCAL_FORK_CLIENT = /anvil|hardhat/i
-const OTC_FORK_ID_TIMEOUT_MS = 10_000
-
-function parseForkId(metadata: unknown): Hex {
-  if (!metadata || typeof metadata !== 'object') throw new Error('Ophis OTC fork identity unavailable')
-  const { instanceId, chainId, clientVersion } = metadata as Record<string, unknown>
-  if (
-    chainId !== 1 ||
-    typeof clientVersion !== 'string' ||
-    !LOCAL_FORK_CLIENT.test(clientVersion) ||
-    typeof instanceId !== 'string' ||
-    !/^0x[0-9a-fA-F]{64}$/.test(instanceId)
-  ) {
-    throw new Error('Ophis OTC fork identity unavailable')
-  }
-  return instanceId.toLowerCase() as Hex
-}
-
-export async function getOtcWalletForkId(walletClient: WagmiWalletClient): Promise<Hex> {
-  const request = walletClient.request as unknown as (request: { method: 'hardhat_metadata' }) => Promise<unknown>
-  return parseForkId(
-    await withTimeout(
-      request({ method: 'hardhat_metadata' }),
-      OTC_FORK_ID_TIMEOUT_MS,
-      'Ophis OTC fork identity timed out',
-    ),
-  )
-}
-
-export async function getOtcProviderForkId(provider: Web3Provider): Promise<Hex> {
-  return parseForkId(
-    await withTimeout(
-      provider.send('hardhat_metadata', []),
-      OTC_FORK_ID_TIMEOUT_MS,
-      'Ophis OTC fork identity timed out',
-    ),
-  )
-}
-
-async function assertForkIdentity(readId: () => Promise<Hex>, expectedId?: Hex): Promise<void> {
-  if (expectedId && (await readId()) !== expectedId) throw new Error('Ophis OTC local fork changed')
-}
-
 function safeBlockNumber(blockNumber: bigint): number {
   const value = Number(blockNumber)
   if (!Number.isSafeInteger(value) || value < 0) throw new Error('Ophis OTC block number is unsafe')
   return value
-}
-
-export async function verifyOtcLocalForkWallet(walletClient: WagmiWalletClient): Promise<boolean> {
-  const requestClientVersion = walletClient.request as unknown as (request: {
-    method: 'web3_clientVersion'
-  }) => Promise<unknown>
-  const [chainId, clientVersion] = await Promise.all([
-    walletClient.getChainId(),
-    requestClientVersion({ method: 'web3_clientVersion' }),
-  ])
-  return chainId === 1 && typeof clientVersion === 'string' && LOCAL_FORK_CLIENT.test(clientVersion)
-}
-
-export async function verifyOtcLocalForkProvider(provider: Web3Provider): Promise<boolean> {
-  const [network, clientVersion] = await Promise.all([provider.getNetwork(), provider.send('web3_clientVersion', [])])
-  return network.chainId === 1 && typeof clientVersion === 'string' && LOCAL_FORK_CLIENT.test(clientVersion)
 }
 
 /** Extends the already-pinned reader adapter with exact eth_call simulation. */
@@ -128,8 +75,8 @@ export function toOtcWalletSubmitter(
       if (
         !walletAccount ||
         !configuredAccount ||
-        !isAddressEqual(walletAccount, checkedRequest.account) ||
-        !isAddressEqual(configuredAccount, checkedRequest.account)
+        !areAddressesEqual(walletAccount, checkedRequest.account) ||
+        !areAddressesEqual(configuredAccount, checkedRequest.account)
       ) {
         throw new Error('Ophis OTC wallet account changed')
       }
@@ -204,12 +151,12 @@ export function toOtcLegacyForkClients(
     sendTransaction: async (request, intent, nowSeconds, isCurrentContext = () => true) => {
       const checkedRequest = Object.freeze({ ...request })
       assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
-      if (!isAddressEqual(account, checkedRequest.account)) throw new Error('Ophis OTC wallet account changed')
+      if (!areAddressesEqual(account, checkedRequest.account)) throw new Error('Ophis OTC wallet account changed')
       if (!(await verifyOtcLocalForkProvider(provider))) throw new Error('Ophis OTC local fork verification failed')
       const [network, providerAccounts] = await Promise.all([provider.getNetwork(), provider.listAccounts()])
       if (network.chainId !== checkedRequest.chainId) throw new Error('Ophis OTC wallet is on the wrong chain')
       const providerAccount = providerAccounts[0]
-      if (!providerAccount || !isAddressEqual(providerAccount as Address, checkedRequest.account))
+      if (!providerAccount || !areAddressesEqual(providerAccount as Address, checkedRequest.account))
         throw new Error('Ophis OTC wallet account changed')
       const signer = provider.getSigner(providerAccount)
       await assertForkIdentity(() => getOtcProviderForkId(provider), expectedForkId)
