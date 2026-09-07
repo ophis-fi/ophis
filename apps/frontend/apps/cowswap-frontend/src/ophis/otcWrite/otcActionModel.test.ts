@@ -10,7 +10,7 @@ function facts(overrides: Partial<OtcActionFacts> = {}): OtcActionFacts {
     enabled: true,
     connected: true,
     correctChain: true,
-    localForkVerified: true,
+    networkVerified: true,
     ready: true,
     reviewed: true,
     allowance: 10n,
@@ -31,8 +31,8 @@ describe('deriveOtcActionModel', () => {
   it('uses one primary action through connect, fork verification, approval, and execution', () => {
     expect(deriveOtcActionModel(facts({ connected: false })).action).toBe('connect')
     expect(deriveOtcActionModel(facts({ correctChain: false })).action).toBe('switch')
-    expect(deriveOtcActionModel(facts({ localForkVerified: null })).label).toBe('Verifying local fork...')
-    expect(deriveOtcActionModel(facts({ localForkVerified: false })).label).toBe('Local Anvil fork required')
+    expect(deriveOtcActionModel(facts({ networkVerified: null })).label).toBe('Verifying local fork...')
+    expect(deriveOtcActionModel(facts({ networkVerified: false })).label).toBe('Local Anvil fork required')
     expect(deriveOtcActionModel(facts({ allowance: 0n })).action).toBe('approve')
     expect(deriveOtcActionModel(facts()).action).toBe('execute')
   })

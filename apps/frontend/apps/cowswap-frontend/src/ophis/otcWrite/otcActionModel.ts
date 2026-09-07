@@ -6,7 +6,9 @@ export interface OtcActionFacts {
   enabled: boolean
   connected: boolean
   correctChain: boolean
-  localForkVerified: boolean | null
+  networkVerified: boolean | null
+  canary?: boolean
+  walletAdmitted?: boolean
   ready: boolean
   reviewed: boolean
   allowance: bigint | null
@@ -33,7 +35,7 @@ type MaybeActionModel = OtcActionModel | null
 function pendingLabel(intent: OtcActionFacts['pendingIntent']): string {
   switch (intent) {
     case 'reconcile':
-      return 'Checking Ethereum confirmation...'
+      return 'Checking transaction confirmation...'
     case 'switch':
       return 'Switching network...'
     case 'approve-create':
@@ -59,16 +61,34 @@ function pendingModel(facts: OtcActionFacts): MaybeActionModel {
 }
 
 function environmentModel(facts: OtcActionFacts): MaybeActionModel {
-  if (!facts.enabled) return { action: 'unavailable', label: 'Fork writes disabled', disabled: true, pending: false }
+  if (!facts.enabled) return { action: 'unavailable', label: 'OTC writes disabled', disabled: true, pending: false }
   if (!facts.connected) return { action: 'connect', label: 'Connect wallet', disabled: false, pending: false }
+  if (facts.walletAdmitted === false) {
+    return { action: 'unavailable', label: 'This wallet is not in the OTC canary.', disabled: true, pending: false }
+  }
   if (!facts.correctChain) {
-    return { action: 'switch', label: 'Select chain-id-1 local fork', disabled: false, pending: false }
+    return {
+      action: 'switch',
+      label: facts.canary ? 'Switch to Ethereum' : 'Select chain-id-1 local fork',
+      disabled: false,
+      pending: false,
+    }
   }
-  if (facts.localForkVerified === null) {
-    return { action: 'unavailable', label: 'Verifying local fork...', disabled: true, pending: true }
+  if (facts.networkVerified === null) {
+    return {
+      action: 'unavailable',
+      label: facts.canary ? 'Verifying Ethereum...' : 'Verifying local fork...',
+      disabled: true,
+      pending: true,
+    }
   }
-  if (!facts.localForkVerified) {
-    return { action: 'unavailable', label: 'Local Anvil fork required', disabled: true, pending: false }
+  if (!facts.networkVerified) {
+    return {
+      action: 'unavailable',
+      label: facts.canary ? 'Ethereum verification unavailable' : 'Local Anvil fork required',
+      disabled: true,
+      pending: false,
+    }
   }
   return null
 }

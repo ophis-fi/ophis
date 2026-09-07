@@ -37,7 +37,7 @@ export function useOtcControllerModel({
   chainId,
 }: ControllerModelOptions): OtcActionModel {
   const allowance = network.allowanceResponse.data?.allowance ?? null
-  const localForkVerified = localForkStatus(
+  const networkVerified = localForkStatus(
     account,
     chainId,
     network.localForkResponse.data,
@@ -47,7 +47,7 @@ export function useOtcControllerModel({
     enabled,
     connected: !!account,
     correctChain: chainId === SupportedChainId.MAINNET,
-    localForkVerified,
+    networkVerified,
     ready: definition.ready,
     reviewed: definition.reviewed,
     allowance,
