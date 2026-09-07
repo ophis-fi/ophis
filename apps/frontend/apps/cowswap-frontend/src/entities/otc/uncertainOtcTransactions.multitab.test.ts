@@ -8,7 +8,7 @@ import {
   uncertainOtcTransactionsAtom,
 } from './uncertainOtcTransactionsAtom'
 
-const STORAGE_KEY = 'ophisOtcUncertainTransactions:v0'
+const STORAGE_KEY = 'ophisOtcUncertainTransactions:v1'
 const HASH_A = `0x${'ab'.repeat(32)}` as const
 const HASH_B = `0x${'cd'.repeat(32)}` as const
 
@@ -25,6 +25,7 @@ function dispatchStorageChange(): void {
 describe('uncertain OTC transaction locks across browser tabs', () => {
   beforeEach(() => {
     localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem('ophisOtcUncertainTransactions:v0')
     installOtcWebLocksMock()
   })
 
