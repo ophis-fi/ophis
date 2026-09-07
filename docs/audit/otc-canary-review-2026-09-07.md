@@ -1,6 +1,6 @@
 # OTC canary preparation review — 2026-09-07
 
-Status: implementation slices reviewed and merged; final interface/documentation release prepared. This report does not approve production activation or funded transactions. The checked-in policy has no admitted accounts or pairs and expires at zero. All browser/contract writes used local Anvil only, with keyless PublicNode upstream and zero RPC retries.
+Status: reviewed default-off canary preparation. This report does not approve production activation or funded transactions. The checked-in policy has no admitted accounts or pairs and expires at zero. All browser/contract writes used local Anvil only, with keyless PublicNode upstream and zero RPC retries.
 
 ## Scope and conclusions
 

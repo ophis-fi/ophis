@@ -1,6 +1,6 @@
 # Ophis OTC — restricted ERC-20 canary preparation
 
-Status: implementation reviewed and merged through PR #1320; final interface/documentation release prepared. Production writes remain disabled. The owner's instruction to continue development does not enable mainnet transactions.
+Status: reviewed canary preparation; production activation remains a separate release. Production writes remain disabled. The owner's instruction to continue development does not enable mainnet transactions.
 
 Baseline: main `6b4341d1`, including the reviewed and deployed Milestone C/recovery/parser fixes and StorageEvent cleanup. No new contract, native ETH selector, or batching is needed for this slice.
 
