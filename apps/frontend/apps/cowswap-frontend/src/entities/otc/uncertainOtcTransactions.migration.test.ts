@@ -32,7 +32,7 @@ it('migrates known legacy locks without letting old-bundle writes erase a new no
   localStorage.setItem(LEGACY, '{}')
   const reopened = createStore()
   await reopened.set(coordinatedOtcTransactionAtom, async (current) => {
-    expect(current['fork:order'].transactionHash).toBe(HASH)
+    expect(current['fork:order']).toBeUndefined()
     expect(current['ethereum:create']).toMatchObject({ transactionHash: null, proof })
   })
 })
@@ -77,4 +77,20 @@ it('does not clear a newer legacy hash through a stale v1 record', async () => {
   })
   expect(JSON.parse(localStorage.getItem(LEGACY) ?? '{}')['fork:order'].transactionHash).toBe(otherHash)
   expect(store.get(uncertainOtcTransactionsAtom)['fork:order'].transactionHash).toBe(otherHash)
+})
+
+it.each([null, 'invalid json', '{"broken":true}'])('keeps known v1 locks when legacy storage is %s', async (value) => {
+  localStorage.setItem(CURRENT, JSON.stringify(recordUncertainOtcTransaction({}, 'fork:order', HASH)))
+  if (value !== null) localStorage.setItem(LEGACY, value)
+  await createStore().set(coordinatedOtcTransactionAtom, async (current) => {
+    expect(current['fork:order'].transactionHash).toBe(HASH)
+  })
+})
+
+it('preserves canonical-proof locks when a legacy snapshot omits them', async () => {
+  localStorage.setItem(CURRENT, JSON.stringify(recordUncertainOtcTransaction({}, 'ethereum:create', HASH, 1, proof)))
+  localStorage.setItem(LEGACY, '{}')
+  await createStore().set(coordinatedOtcTransactionAtom, async (current) => {
+    expect(current['ethereum:create']).toMatchObject({ transactionHash: HASH, proof })
+  })
 })

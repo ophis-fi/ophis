@@ -11,10 +11,12 @@ export function migrateUncertainOtcStorage(
     getItem: (key, initial) => {
       const legacy = storage.getItem(legacyKey, initial)
       const current = { ...legacy, ...storage.getItem(key, initial) }
-      for (const [context, attempt] of Object.entries(legacy)) {
-        // A legacy tab may resolve A and broadcast B while v1 still contains A.
-        if (current[context].transactionHash !== null && current[context].transactionHash !== attempt.transactionHash)
-          current[context] = attempt
+      for (const [context, attempt] of Object.entries(current)) {
+        // Only a valid legacy snapshot can resolve fork locks. Missing/corrupt
+        // storage cannot unlock; canonical-proof and hashless records stay in v1.
+        if (legacy === initial || attempt.transactionHash === null || attempt.proof) continue
+        if (!legacy[context]) delete current[context]
+        else if (attempt.transactionHash !== legacy[context].transactionHash) current[context] = legacy[context]
       }
       return current
     },
