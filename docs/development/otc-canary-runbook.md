@@ -2,12 +2,16 @@
 
 Status: preparation only, 2026-09-07. Mainnet writes remain disabled. No wallet or pair is admitted by the checked-in policy. This runbook does not authorize activation or a mainnet transaction.
 
+The current Cloudflare workflow does not supply `REACT_APP_LAUNCH_DARKLY_KEY`. `WithLDProvider` therefore skips LaunchDarkly and `useFeatureFlags` falls back to the compiled `isOtcWriteEnabled=false`. There is no verified remote write switch in this release. Do not activate by changing that compiled default to true.
+
 ## Activation record — complete in the separately approved release
 
 | Required field | Value |
 |---|---|
 | Final reviewed commit and deployment | Pending |
 | Owner's explicit mainnet-write approval | Pending |
+| Live flag provider and production build wiring | Missing; separately reviewed implementation required |
+| Witnessed flag-off, provider-failure and existing/fresh-tab tests | Pending; activation blocked until demonstrated |
 | Frontend/QA and final security/manifest approvals | Pending; see expanded audit limitations |
 | Admitted wallet addresses (checksum), responsible operator | Pending; no test wallets |
 | Token pair addresses and each leg's maximum, in raw units and display units | Pending; approved ERC-20 policy only |
@@ -17,7 +21,7 @@ Status: preparation only, 2026-09-07. Mainnet writes remain disabled. No wallet 
 | Previous read-only release SHA/deployment and rollback operator | Pending |
 | Rollback rehearsal evidence on the release candidate | Pending |
 
-Populate `ophis/otcWrite/otcCanary.const.ts` only in that reviewed release. Both `isOtcEnabled` and `isOtcWriteEnabled` must be literal `true`, and the build must explicitly use `REACT_APP_OTC_WRITE_MODE=canary`. The local write-flag override does not enable production. Leave the remote write flag off while deploying/verifying the candidate. Do not populate accounts, change production flags, or sign a funded transaction during preparation.
+Populate `ophis/otcWrite/otcCanary.const.ts` only in that reviewed release. Both `isOtcEnabled` and `isOtcWriteEnabled` must be literal `true`, and the build must explicitly use `REACT_APP_OTC_WRITE_MODE=canary`. The local write-flag override does not enable production. First wire and verify a real runtime flag provider in the activation release, including its production build configuration. Keep the compiled write default false and demonstrate safe behavior when the provider is unavailable or its cached values are stale. Keep the verified runtime write flag off while deploying/verifying the candidate. Do not populate accounts, change production flags, or sign a funded transaction during preparation.
 
 Verify the immutable Ethereum manifest independently against the exact reviewed commit. The existing `scripts/otc-mainnet-canary.mjs --self-test` checks manifest drift; its no-argument mode checks live identity and index reconciliation using public read-only endpoints. The deployed contract cannot be paused or upgraded by Ophis. No contract deployment is involved.
 
@@ -43,11 +47,12 @@ Stop new activity immediately on one unexpected target/value/amount, unlisted wa
 
 ## Stop and rollback
 
-1. For a hard stop, set remote `isOtcWriteEnabled=false`. Confirm propagation in an existing tab and a fresh tab: no new wallet prompt can start. `REACT_APP_OTC_ENABLED=false` is a deployment-level route kill switch if the entire OTC surface must disappear.
-2. A hard stop also removes UI cancellation/revocation. For an orderly wind-down without a suspected signing defect, leave wallet admission in place and close the trading window; verify new approval/create/fill are blocked while cancel/revoke work. Changing the static expiry requires a reviewed deployment. Never remove an account as a substitute for allowance cleanup.
-3. Warn the operator that a flag cannot withdraw a wallet prompt already issued, cancel a signed transaction, undo a mined escrow, or revoke allowance. Reject outstanding wallet prompts where possible. Record and reconcile every in-flight hash and replacement before any follow-up action.
-4. Redeploy the recorded read-only release through the normal reviewed deployment path. Verify its commit/build identity, `/otc` read-only behavior, and a fresh-tab absence of wallet actions. Do not clear local uncertainty records as part of rollback.
-5. Independently reconcile active orders and remaining allowance. Decide on maker cancellation/zero-approval revocation with the wallet owner; no automatic mainnet unwind is authorized by this runbook. Preserve receipts and incident evidence before reopening.
+1. Stop operator activity and reject outstanding wallet prompts where possible. A flag or deployment cannot cancel a signed transaction, undo a mined escrow, or revoke allowance. Record and reconcile all in-flight hashes and replacements before further action.
+2. Only after the activation release has wired and witnessed a live flag provider, set its `isOtcWriteEnabled=false` and verify propagation in an existing tab and a fresh tab. This remote control is not available in the current deployment. Do not claim a hard stop from editing an unwired flag dashboard.
+3. The currently wired fallback is the repository variable `REACT_APP_OTC_ENABLED`: set it to the literal `false` and run the existing **Deploy to Cloudflare Pages** workflow on `main`. Its build passes this variable to the feature hook, where false overrides other read flags and removes the OTC route. Wait for successful deployment, verify the served build identity, and reload or close existing tabs. This is a deployment control, not an instantaneous update to already-loaded bundles; it does not stop direct contract calls.
+4. A hard stop removes UI cancellation/revocation too. For an orderly wind-down after activation without a suspected signing defect, keep wallet admission and the verified write provider available but close the static trading window through a reviewed deployment. Verify approval/create/fill are blocked while cancel/revoke work. Removing an account does not clean up its allowance.
+5. Restore the recorded read-only release through the reviewed deployment path when appropriate. Verify `/otc` behavior and the absence of signing actions in both refreshed and fresh tabs. Never clear local uncertainty records as part of rollback. The immutable escrow has no Ophis pause or upgrade control.
+6. Independently reconcile active orders and residual allowance with the wallet owner. No automatic mainnet unwind is authorized. Preserve receipts and incident evidence before reopening; activation remains blocked without the required flag-provider and rollback demonstrations.
 
 ## Rehearsal without real funds
 

@@ -21,7 +21,7 @@ Baseline: main `6b4341d1`, including the reviewed and deployed Milestone C/recov
 - [x] Final local verification: 49 suites / 410 tests pass, one optional network test skipped; typecheck, scoped lint and production build pass; six canary-mode browser flows pass on local Anvil. Semgrep: 125 rules / 46 files, zero findings. See `../../audit/otc-canary-review-2026-09-07.md` for findings, limitations and evidence.
 - [x] Scoped security review and fresh review of implementation slices #1311–#1320, each within 400 changed lines. Final interface/documentation release is subject to the same gate.
 - [x] Record monitoring/rollback procedure and operator activation checklist in `../otc-canary-runbook.md`.
-- [ ] Witness production flag propagation and rollback on the approved activation release.
+- [ ] Wire and verify a runtime write-flag provider in the approved activation release; the current workflow has none. Witness flag-off/provider-failure behavior and deployment rollback in existing and fresh tabs before activation.
 - [x] Reconcile completed Milestone C checklist entries and close the obsolete secret-backed draft PR #1228.
 
 ## Activation remains a separate reviewed release
