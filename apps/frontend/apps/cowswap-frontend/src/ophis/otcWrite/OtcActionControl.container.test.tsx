@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 
 import { OtcActionControl } from './OtcActionControl.container'
 import { useOtcActionController, type OtcActionDefinition } from './useOtcActionController'
@@ -87,6 +87,53 @@ describe('OtcActionControl screen-reader semantics', () => {
     expect(screen.queryByText('Confirmation unavailable')).toBeNull()
   })
 
+  it('requires a complete hash for unknown-send reconciliation and keeps direct retry disabled', () => {
+    const reconcile = jest.fn()
+    useControllerMock.mockReturnValue({
+      canary: true,
+      signatureUncertain: true,
+      model: { action: 'unavailable', label: 'Verify submitted transaction', disabled: true, pending: false },
+      error: null,
+      successHash: null,
+      uncertainHash: null,
+      allowance: null,
+      diagnostic: null,
+      clearUncertainTransaction: reconcile,
+      runPrimary: jest.fn(),
+    })
+    render(<OtcActionControl definition={DEFINITION} onConfirmed={undefined} />)
+    const button = screen.getByRole('button', { name: 'Check this transaction on Ethereum' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    const hash = `0x${'aa'.repeat(32)}`
+    fireEvent.change(screen.getByLabelText('Transaction hash from wallet activity'), { target: { value: hash } })
+    expect(button.disabled).toBe(false)
+    act(() => button.click())
+    expect(reconcile).toHaveBeenCalledWith(hash)
+    expect((screen.getByRole('button', { name: 'Verify submitted transaction' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    )
+  })
+
+  it('offers receipt reconciliation without a manual lock-clear checkbox in the canary', () => {
+    const clearUncertainTransaction = jest.fn()
+    useControllerMock.mockReturnValue({
+      canary: true,
+      model: { action: 'unavailable', label: 'Verify submitted transaction', disabled: true, pending: false },
+      error: null,
+      successHash: null,
+      uncertainHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      allowance: null,
+      diagnostic: null,
+      clearUncertainTransaction,
+      runPrimary: jest.fn(),
+    })
+    render(<OtcActionControl definition={DEFINITION} onConfirmed={undefined} />)
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Clear this lock and allow a fresh preflight' })).toBeNull()
+    act(() => screen.getByRole('button', { name: 'Check Ethereum confirmation' }).click())
+    expect(clearUncertainTransaction).toHaveBeenCalledTimes(1)
+  })
+
   it('announces an uncertain submitted hash and keeps retry disabled', () => {
     const hash = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
     const clearUncertainTransaction = jest.fn()
@@ -110,7 +157,13 @@ describe('OtcActionControl screen-reader semantics', () => {
     expect(screen.getByText(new RegExp(hash))).toBeTruthy()
     const clearButton = screen.getByRole('button', { name: 'Clear this lock and allow a fresh preflight' })
     expect((clearButton as HTMLButtonElement).disabled).toBe(true)
-    act(() => screen.getByRole('checkbox', { name: 'I verified this transaction and its replacements were never mined on this fork.' }).click())
+    act(() =>
+      screen
+        .getByRole('checkbox', {
+          name: 'I verified this transaction and its replacements were never mined on this fork.',
+        })
+        .click(),
+    )
     expect((clearButton as HTMLButtonElement).disabled).toBe(false)
     act(() => clearButton.click())
     expect(clearUncertainTransaction).toHaveBeenCalledTimes(1)

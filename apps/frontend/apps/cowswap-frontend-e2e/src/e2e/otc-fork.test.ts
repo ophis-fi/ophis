@@ -20,6 +20,7 @@ import {
   type Address,
 } from '../support/otcFork'
 
+const WRITE_NOTICE = Cypress.env('OTC_CANARY_REHEARSAL') ? 'Restricted Ethereum canary' : 'Local fork writes'
 const TEST_ACCOUNT = TEST_ADDRESS_NEVER_USE as Address
 const forkDescribe = Cypress.env('OTC_FORK_RPC_URL') ? describe : describe.skip
 const ACTION_ATTEMPTS = 600
@@ -124,7 +125,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
 
   it('approves the exact WETH amount and creates an ERC-20 escrow order', () => {
     cy.visit('/#/otc')
-    cy.contains('Local fork writes', { timeout: 30_000 }).should('be.visible')
+    cy.contains(WRITE_NOTICE, { timeout: 30_000 }).should('be.visible')
     connectForkWallet('#otc-create')
     cy.get('[aria-label="Maker escrow amount"]').type('1')
     cy.get('[aria-label="Requested amount"]').type('2000')
@@ -132,9 +133,9 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
 
     reachPrimaryAction('#otc-create', 'Approve exact amount')
     primaryButton('#otc-create').should('be.enabled').click()
-    cy.contains('Local fork confirmation:', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
+    cy.contains('Transaction confirmation:', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
     cy.contains('button', 'Create escrow order', { timeout: FORK_UI_TIMEOUT }).should('be.enabled').click()
-    cy.contains('Local fork confirmation:', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
+    cy.contains('Transaction confirmation:', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
     cy.contains('1 WETH').should('be.visible')
     cy.contains('2000 USDC').should('be.visible')
     cy.then(async () => expect(await isOtcOrderActive(createOrderId)).to.equal(true))
@@ -143,7 +144,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
   it('cancels a freshly verified maker order and waits for confirmation', () => {
     visitForkOrder(cancelOrderId)
     connectForkWallet('#otc-order-action')
-    cy.contains('Cancel order on local fork', { timeout: 30_000 }).should('be.visible')
+    cy.contains('Cancel order', { timeout: 30_000 }).should('be.visible')
     cy.contains('label', 'I reviewed the exact order').find('input').check()
     reachPrimaryAction('#otc-order-action', 'Cancel order')
     assertAccessibleButton('Cancel order')
@@ -159,12 +160,12 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     cy.contains('label', 'I reviewed both exact token amounts').find('input').check()
     reachPrimaryAction('#otc-order-action', 'Approve exact amount')
     primaryButton('#otc-order-action').should('be.enabled').click()
-    cy.contains('Local fork confirmation:', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
+    cy.contains('Transaction confirmation:', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
     reachPrimaryAction('#otc-order-action', 'Fill entire order')
     assertAccessibleButton('Fill entire order')
     captureGateEvidence('fill-ready')
     primaryButton('#otc-order-action').should('be.enabled').click()
-    assertAccessibleAnnouncement('status', 'Local fork confirmation:', FORK_UI_TIMEOUT)
+    assertAccessibleAnnouncement('status', 'Transaction confirmation:', FORK_UI_TIMEOUT)
     cy.then(async () => {
       expect(await isOtcOrderActive(fillOrderId)).to.equal(false)
       expect(await readOtcAllowance(TEST_ACCOUNT)).to.equal(0n)
@@ -180,7 +181,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     assertAccessibleAnnouncement('alert', 'Token allowance must be cleared')
     assertAccessibleButton('Revoke mismatched allowance')
     primaryButton('#otc-order-action').should('be.enabled').click()
-    assertAccessibleAnnouncement('status', 'Local fork confirmation:', FORK_UI_TIMEOUT)
+    assertAccessibleAnnouncement('status', 'Transaction confirmation:', FORK_UI_TIMEOUT)
     cy.then(async () => expect(await readOtcAllowance(TEST_ACCOUNT)).to.equal(0n))
     reachPrimaryAction('#otc-order-action', 'Approve exact amount')
   })
@@ -191,7 +192,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     cy.contains('label', 'I reviewed both exact token amounts').find('input').check()
     reachPrimaryAction('#otc-order-action', 'Approve exact amount')
     primaryButton('#otc-order-action').should('be.enabled').click()
-    cy.contains('Local fork confirmation:', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
+    cy.contains('Transaction confirmation:', { timeout: FORK_UI_TIMEOUT }).should('be.visible')
     reachPrimaryAction('#otc-order-action', 'Fill entire order')
     cy.then({ timeout: FORK_UI_TIMEOUT }, async () => {
       await fillOtcOrderDirectly(FORK_RACER, racedOrderId)
@@ -212,14 +213,14 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
     assertAccessibleButton('Revoke unused allowance')
     captureGateEvidence('recovery-required')
     cy.contains('button', 'Revoke unused allowance').click()
-    assertAccessibleAnnouncement('status', 'Local fork confirmation:', FORK_UI_TIMEOUT)
+    assertAccessibleAnnouncement('status', 'Transaction confirmation:', FORK_UI_TIMEOUT)
     cy.then(async () => expect(await readOtcAllowance(TEST_ACCOUNT)).to.equal(0n))
   })
 
   it('keeps the fork form keyboard-usable without narrow-screen overflow', () => {
     cy.viewport(390, 844)
     cy.visit('/#/otc')
-    cy.contains('Local fork writes', { timeout: 30_000 }).should('be.visible')
+    cy.contains(WRITE_NOTICE, { timeout: 30_000 }).should('be.visible')
     cy.get('#otc-create').should('be.visible')
     cy.get('[aria-label="Maker escrow amount"]').focus().should('have.focus')
     cy.get('[aria-label="Requested amount"]').focus().should('have.focus')
