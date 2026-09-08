@@ -129,6 +129,18 @@ beforeAll(async () => {
   // old receiver-only policy. Not router-walleted: selected by uid shape, credited to the payer.
   await insTrade(ETHFLOW_UID('10'), DEPOSIT);
   ORDERS.set(`0x${ETHFLOW_UID('10')}`, { owner: `0x${PROD_ROUTER}`, receiver: `0x${DEPOSIT}`, onchainUser: `0x${HUMAN_Y}` });
+  // u11: a correctly credited eth-flow row that legitimately backs a reward ticket.
+  // Selected by uid shape every night; identity is resolved FIRST so it counts as
+  // `unchanged` and never trips the operator warning reserved for misattributed tickets.
+  await insTrade(ETHFLOW_UID('11'), HUMAN_X);
+  ORDERS.set(`0x${ETHFLOW_UID('11')}`, { owner: `0x${PROD_ROUTER}`, receiver: `0x${HUMAN_X}`, onchainUser: `0x${HUMAN_X}` });
+  await sql`
+    INSERT INTO trade_reward_tickets (
+      wallet, ticket_id, amount_usdg, qualifying_trade_uid, qualifying_chain_id,
+      qualifying_value_usd, assignment_signature, signer_epoch)
+    VALUES (
+      decode(${HUMAN_X}, 'hex'), 2, 1000000, decode(${ETHFLOW_UID('11')}, 'hex'), 1,
+      100, decode(${'cd'.repeat(65)}, 'hex'), 1)`;
 
   // Queues: router + human in both tables; only the router rows may be deleted.
   await sql`INSERT INTO tracked_wallets (wallet) VALUES
@@ -145,7 +157,7 @@ afterAll(async () => {
 describe('repairRouterTrades', () => {
   it('re-attributes only the repairable row and cleans the router out of both queues', async () => {
     const result = await repairRouterTrades();
-    expect(result).toEqual({ scanned: 9, repaired: 3, skipped: 6, unchanged: 0, dequeued: 2 });
+    expect(result).toEqual({ scanned: 10, repaired: 3, skipped: 6, unchanged: 1, dequeued: 2 });
 
     // u1 now belongs to the real trader, lowercased.
     expect(await walletOf('01')).toBe(HUMAN_X);
@@ -153,6 +165,8 @@ describe('repairRouterTrades', () => {
     expect(await walletOf('09')).toBe(HUMAN_X);
     // u10 was deposit-credited: selected by its eth-flow uid, moved to the payer.
     expect(await walletOf(ETHFLOW_UID('10'))).toBe(HUMAN_Y);
+    // u11 was already right and keeps its ticket untouched.
+    expect(await walletOf(ETHFLOW_UID('11'))).toBe(HUMAN_X);
     const [fill] = await sql<{ w: string }[]>`
       SELECT encode(user_address, 'hex') AS w FROM defillama_fills
       WHERE chain_id = 1 AND trade_uid = decode(${UID('01')}, 'hex')`;
@@ -185,7 +199,7 @@ describe('repairRouterTrades', () => {
     const again = await repairRouterTrades();
     // The 6 guarded rows are re-scanned (still router-walleted) and re-skipped; u10
     // is re-checked by uid shape and found correct; the queue deletes match no rows.
-    expect(again).toEqual({ scanned: 7, repaired: 0, skipped: 6, unchanged: 1, dequeued: 0 });
+    expect(again).toEqual({ scanned: 8, repaired: 0, skipped: 6, unchanged: 2, dequeued: 0 });
     expect(await walletOf('01')).toBe(HUMAN_X);
   });
 

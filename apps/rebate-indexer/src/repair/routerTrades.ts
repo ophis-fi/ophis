@@ -19,7 +19,7 @@ export interface RouterRepairResult {
   scanned: number;
   /** Rows re-attributed to the order's trader (onchainUser, receiver as fallback). */
   repaired: number;
-  /** Rows left untouched (no usable trader, order fetch failed, not an eth-flow order, ticketed). */
+  /** Rows left untouched (no usable trader, order fetch failed, not an eth-flow order, or ticketed AND misattributed). */
   skipped: number;
   /** eth-flow rows already credited to the right trader (re-checked every run). */
   unchanged: number;
@@ -88,23 +88,6 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
     const uid = `0x${r.trade_uid.toString('hex')}` as `0x${string}`;
     const storedWallet = `0x${r.wallet_hex}`;
     try {
-      // A trade that already backs a reward ticket must NOT change owner. The
-      // ticket's assignment_signature signs the WALLET, tickets are one-per-wallet
-      // (PK) and one-per-trade (UNIQUE qualifying_trade_uid), so re-pointing the
-      // trade would leave a ticket the receiver can never claim AND make the
-      // re-attributed trade look candidate-eligible again: reserveTicket would
-      // then hit the qualifying_trade_uid UNIQUE constraint, and since
-      // candidateTrades orders deterministically, that poisoned candidate would
-      // abort every scheduler run at the same spot. Leave the row router-walleted
-      // (every public surface and the payout gate already exclude it) and warn:
-      // an operator must decide (block the wallet / void the ticket) first.
-      const ticketed = await sql`
-        SELECT 1 FROM trade_reward_tickets WHERE qualifying_trade_uid = ${r.trade_uid}`;
-      if (ticketed.length > 0) {
-        skipped++;
-        log.warn({ uid, chainId: r.chain_id }, 'router repair: trade backs a reward ticket; operator must resolve before re-attribution');
-        continue;
-      }
       const order = await getOrder(r.chain_id, uid);
       const owner = order.owner.toLowerCase();
       // Sanity: only an eth-flow order (owner = a router) is this module's business.
@@ -122,6 +105,26 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
       }
       if (trader === storedWallet) {
         unchanged++;
+        continue;
+      }
+      // Identity resolved and it WOULD change: only now does a ticket matter. A
+      // trade that already backs a reward ticket must NOT change owner. The
+      // ticket's assignment_signature signs the WALLET, tickets are one-per-wallet
+      // (PK) and one-per-trade (UNIQUE qualifying_trade_uid), so re-pointing the
+      // trade would leave a ticket the receiver can never claim AND make the
+      // re-attributed trade look candidate-eligible again: reserveTicket would
+      // then hit the qualifying_trade_uid UNIQUE constraint, and since
+      // candidateTrades orders deterministically, that poisoned candidate would
+      // abort every scheduler run at the same spot. Leave the row as it is and
+      // warn: an operator must decide (block the wallet / void the ticket) first.
+      // Checking identity FIRST keeps every correctly credited, legitimately
+      // ticketed eth-flow row (the common case) in `unchanged`, so this warning
+      // only ever names a row that actually needs an operator.
+      const ticketed = await sql`
+        SELECT 1 FROM trade_reward_tickets WHERE qualifying_trade_uid = ${r.trade_uid}`;
+      if (ticketed.length > 0) {
+        skipped++;
+        log.warn({ uid, chainId: r.chain_id, storedWallet, trader }, 'router repair: trade backs a reward ticket; operator must resolve before re-attribution');
         continue;
       }
       // SERIALIZED re-check + rewrite: the pre-check above is advisory (it
