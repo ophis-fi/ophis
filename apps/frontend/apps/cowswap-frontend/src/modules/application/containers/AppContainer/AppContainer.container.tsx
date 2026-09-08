@@ -19,9 +19,10 @@ import styled from 'styled-components/macro'
 
 import { URLWarning } from 'legacy/components/Header/URLWarning'
 
-import { OrdersPanel } from 'modules/account'
+import { OrdersPanel, useToggleAccountModal } from 'modules/account'
 import { useInjectedWidgetMetaData } from 'modules/injectedWidget'
 import { useInitializeUtm } from 'modules/utm'
+import { Web3Status } from 'modules/wallet'
 
 import { InvalidLocalTimeWarning } from 'common/containers/InvalidLocalTimeWarning'
 import { useCustomTheme } from 'common/hooks/useCustomTheme'
@@ -86,7 +87,7 @@ const OpenTradeCTA = styled(Link)`
 `
 
 // Trade route detection — pathname patterns the upstream cowswap
-// modes use: /:chainId/(swap|limit|advanced|yield|otc)/... — note `hooks`
+// modes use: /:chainId/(swap|limit|advanced|yield)/... — note `hooks`
 // is `/swap/hooks` (matched via `swap`), not a top-level segment.
 // `(?:/|$)` boundary prevents accidental matches like `/swapfoo` or
 // `/advanced-orders`.
@@ -94,7 +95,7 @@ const OpenTradeCTA = styled(Link)`
 // Used to decide whether the header right-slot renders the
 // network+wallet controls (trade routes) or the Open Trade CTA (info
 // routes like /about, /tiers, /legal, etc.).
-const TRADE_ROUTE_REGEX = /^\/(?:\d+\/)?(?:swap|limit|advanced|yield|otc)(?:\/|$)/
+const TRADE_ROUTE_REGEX = /^\/(?:\d+\/)?(?:swap|limit|advanced|yield)(?:\/|$)/
 
 function useIsTradeRoute(): boolean {
   const { pathname } = useLocation()
@@ -141,6 +142,9 @@ function useSubdomainRedirect(): void {
 export function AppContainer({ children }: AppContainerProps): ReactNode {
   useSubdomainRedirect()
   const isTradeRoute = useIsTradeRoute()
+  const { pathname } = useLocation()
+  const isOtcRoute = /^\/otc(?:\/|$)/.test(pathname)
+  const toggleAccountModal = useToggleAccountModal()
   const { chainId, account } = useWalletInfo()
   const { walletName } = useWalletDetails()
   const cowAnalytics = useCowAnalytics()
@@ -160,7 +164,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
   useOphisWalletFlag(!!account)
   useInitializeUtm()
   const isInjectedWidgetMode = isInjectedWidget()
-  const isStandaloneLanding = useLocation().pathname === '/' && !isInjectedWidgetMode
+  const isStandaloneLanding = pathname === '/' && !isInjectedWidgetMode
   const [pageBackgroundVariant, setPageBackgroundVariant] = useState<PageBackgroundVariant>('default')
   const [pageScene, setPageScene] = useState<ReactNode | null>(null)
 
@@ -211,7 +215,13 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
         <OrdersPanel />
 
         <OphisHeader>
-          {isTradeRoute ? <NetworkAndAccountControls /> : <OpenTradeCTA to="/1/swap/_/_">Open Trade →</OpenTradeCTA>}
+          {isTradeRoute ? (
+            <NetworkAndAccountControls />
+          ) : isOtcRoute ? (
+            <Web3Status hideConnectButton={!account} onClick={account ? toggleAccountModal : undefined} />
+          ) : (
+            <OpenTradeCTA to="/1/swap/_/_">Open Trade →</OpenTradeCTA>
+          )}
         </OphisHeader>
 
         <OphisBodyWrapper>
