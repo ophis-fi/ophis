@@ -321,6 +321,30 @@ describe('fetcher.fetchChainTrades', () => {
     expect(defillamaFills).toMatchObject([{ userAddress: user }]);
   });
 
+  it('credits an eth-flow trade to onchainUser (the payer), not the receiver, when they differ', async () => {
+    // A native-ETH sell routed to a bridge (e.g. NEAR intents) has receiver = the
+    // bridge DEPOSIT address; CoW's onchainUser is the EOA that paid. Production
+    // 2026-08-26: a $1,404 mainnet order was credited to the deposit address, which
+    // then ranked #3 on the leaderboard and was issued the trade-reward ticket.
+    const CANONICAL = '0xba3cb449bd2b4adddbc894d8697f5170800eadec';
+    const uid = '0x' + 'e6'.repeat(56);
+    const payer = '0xd'.padEnd(42, '0');
+    const deposit = '0xe'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, CANONICAL)]);
+    handlers.order.mockImplementation(() => ({ ...orderWithReceiver(uid, CANONICAL, deposit, 'ophis'), onchainUser: payer }));
+    const defillamaFills: import('../src/fetcher.js').PendingDefiLlamaFill[] = [];
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, payer as `0x${string}`, {
+      defillamaFills,
+      hasDefiLlamaFill: async () => false,
+      getSettlementTimestamp: async () => new Date('2026-08-26T18:11:47Z'),
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.wallet).toBe(payer);
+    expect(defillamaFills).toMatchObject([{ userAddress: payer }]);
+  });
+
   it('recognizes a widget order via metadata.widget.appCode and attributes the top-level appCode as the integrator referral', async () => {
     // Widget embeds promote the integrator's appCode to the top level and demote 'ophis' to
     // metadata.widget.appCode. The order must still be recognized, and the integrator earns via

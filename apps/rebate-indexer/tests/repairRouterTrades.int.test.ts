@@ -10,7 +10,7 @@ import { startPg, stopPg } from './fixtures/pgContainer.js';
 // real (testcontainer), so the SQL predicates and BYTEA round-trips are exercised.
 
 // uid (0x-prefixed, 112 hex) -> mocked order. Populated per scenario in beforeAll.
-const ORDERS = new Map<string, { owner: string; receiver: string | null | undefined }>();
+const ORDERS = new Map<string, { owner: string; receiver: string | null | undefined; onchainUser?: string | null }>();
 
 vi.mock('../src/cow/client.js', () => ({
   // fetcher.ts (imported for DECODER_ETHFLOW_OWNERS) statically imports these
@@ -25,6 +25,7 @@ vi.mock('../src/cow/client.js', () => ({
       uid,
       owner: o.owner,
       receiver: o.receiver,
+      onchainUser: o.onchainUser,
       sellToken: `0x${'11'.repeat(20)}`,
       buyToken: `0x${'22'.repeat(20)}`,
       sellAmount: '1',
@@ -45,7 +46,11 @@ const PROD_ROUTER = 'ba3cb449bd2b4adddbc894d8697f5170800eadec'; // canonical CoW
 const BARN_ROUTER = 'b37add6ac288bd3825a901cba6ec65a89f31b8cc'; // canonical CoW eth-flow barn
 const HUMAN_X = 'aaaa00000000000000000000000000000000aaaa';
 const HUMAN_Y = 'bbbb00000000000000000000000000000000bbbb';
+const DEPOSIT = 'cccc00000000000000000000000000000000cccc'; // a bridge deposit address (eth-flow receiver)
 const AT = '2026-08-01T12:00:00.000Z';
+// A real eth-flow uid embeds the ROUTER as the order owner (bytes 33..52) and
+// validTo = 0xffffffff; the repair selects eth-flow rows by that shape.
+const ETHFLOW_UID = (digest: string) => digest.padStart(64, '0') + PROD_ROUTER + 'ffffffff';
 
 async function insTrade(uid: string, wallet: string) {
   await sql`
@@ -116,6 +121,14 @@ beforeAll(async () => {
     VALUES (
       decode(${PROD_ROUTER}, 'hex'), 1, 1000000, decode(${UID('08')}, 'hex'), 1,
       100, decode(${'ab'.repeat(65)}, 'hex'), 1)`;
+  // u9: router-walleted, and the order's receiver differs from onchainUser (a
+  // native-ETH sell bridged to a deposit address). The PAYER is the trader.
+  await insTrade('09', PROD_ROUTER);
+  ORDERS.set(`0x${UID('09')}`, { owner: `0x${PROD_ROUTER}`, receiver: `0x${DEPOSIT}`, onchainUser: `0x${HUMAN_X}` });
+  // u10: an eth-flow row already re-pointed to its RECEIVER (a bridge deposit) by the
+  // old receiver-only policy. Not router-walleted: selected by uid shape, credited to the payer.
+  await insTrade(ETHFLOW_UID('10'), DEPOSIT);
+  ORDERS.set(`0x${ETHFLOW_UID('10')}`, { owner: `0x${PROD_ROUTER}`, receiver: `0x${DEPOSIT}`, onchainUser: `0x${HUMAN_Y}` });
 
   // Queues: router + human in both tables; only the router rows may be deleted.
   await sql`INSERT INTO tracked_wallets (wallet) VALUES
@@ -132,10 +145,14 @@ afterAll(async () => {
 describe('repairRouterTrades', () => {
   it('re-attributes only the repairable row and cleans the router out of both queues', async () => {
     const result = await repairRouterTrades();
-    expect(result).toEqual({ scanned: 7, repaired: 1, skipped: 6, dequeued: 2 });
+    expect(result).toEqual({ scanned: 9, repaired: 3, skipped: 6, unchanged: 0, dequeued: 2 });
 
     // u1 now belongs to the real trader, lowercased.
     expect(await walletOf('01')).toBe(HUMAN_X);
+    // u9: the payer (onchainUser), never the bridge deposit the tokens went to.
+    expect(await walletOf('09')).toBe(HUMAN_X);
+    // u10 was deposit-credited: selected by its eth-flow uid, moved to the payer.
+    expect(await walletOf(ETHFLOW_UID('10'))).toBe(HUMAN_Y);
     const [fill] = await sql<{ w: string }[]>`
       SELECT encode(user_address, 'hex') AS w FROM defillama_fills
       WHERE chain_id = 1 AND trade_uid = decode(${UID('01')}, 'hex')`;
@@ -166,9 +183,10 @@ describe('repairRouterTrades', () => {
 
   it('is idempotent: a second run repairs nothing and dequeues nothing', async () => {
     const again = await repairRouterTrades();
-    // The 6 guarded rows are re-scanned (still router-walleted) and re-skipped;
-    // nothing changes and the queue deletes match no rows.
-    expect(again).toEqual({ scanned: 6, repaired: 0, skipped: 6, dequeued: 0 });
+    // The 6 guarded rows are re-scanned (still router-walleted) and re-skipped; u10
+    // is re-checked by uid shape and found correct; the queue deletes match no rows.
+    expect(again).toEqual({ scanned: 7, repaired: 0, skipped: 6, unchanged: 1, dequeued: 0 });
     expect(await walletOf('01')).toBe(HUMAN_X);
   });
+
 });

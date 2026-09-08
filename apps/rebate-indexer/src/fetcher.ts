@@ -518,6 +518,32 @@ export const DECODER_ETHFLOW_OWNERS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The trader behind an eth-flow order (owner = an eth-flow contract). Prefer
+ * `onchainUser` — CoW's record of the address that called the contract and PAID
+ * the native ETH (msg.sender; a Safe or forwarder counts and is correctly
+ * credited) — over `receiver`, which is only where the bought tokens go: for a
+ * bridge order that is the bridge's deposit address (2026-08-26: a $1,404 NEAR
+ * intents order was credited to the deposit, which then ranked #3 and was issued
+ * the reward ticket). Falls back to `receiver` when the source has no onchainUser
+ * (the on-chain decoder; historical API payloads). Never credits the zero
+ * address, the eth-flow contract itself, or another router: null = skip, never
+ * guess. Shared by attributeOrder and repair/routerTrades so both arms agree.
+ */
+export function ethFlowTrader(
+  ctx: { owner: string; receiver?: string | null; onchainUser?: string | null },
+  ethFlowOwners: ReadonlySet<string> = DECODER_ETHFLOW_OWNERS,
+): `0x${string}` | null {
+  const owner = ctx.owner.toLowerCase();
+  for (const raw of [ctx.onchainUser, ctx.receiver]) {
+    const a = raw?.trim().toLowerCase();
+    if (!a || !/^0x[0-9a-f]{40}$/.test(a) || /^0x0{40}$/.test(a)) continue;
+    if (a === owner || ethFlowOwners.has(a)) continue;
+    return a as `0x${string}`;
+  }
+  return null;
+}
+
+/**
  * PURE per-trade attribution: given a parsed appData document and the settled-trade
  * context, classify it as an Ophis trade and build the PendingTrade row, or return
  * null to drop it. This is the SINGLE money-path that BOTH the CoW-API fetcher and
@@ -531,7 +557,7 @@ export const DECODER_ETHFLOW_OWNERS: ReadonlySet<string> = new Set([
  * Trade event is terminal by construction, so there is no status check here.
  *
  * `ethFlowOwners` is the set of addresses that, when they are the order `owner`, mean
- * an eth-flow order whose real trader is `receiver`. Defaults to DECODER_ETHFLOW_OWNERS
+ * an eth-flow order whose real trader is the payer (ethFlowTrader). Defaults to DECODER_ETHFLOW_OWNERS
  * (Ophis-dedicated UNION shared canonical CoW) for every caller: the API fetcher meets
  * the shared contract as the payload owner of a tracked wallet's own eth-flow trades,
  * the decoder meets it when it discovers a hosted-chain native-ETH settlement blind.
@@ -541,6 +567,8 @@ export function attributeOrder(
   ctx: {
     owner: string;
     receiver: string | null | undefined;
+    /** eth-flow only: the EOA that placed (and paid for) the order. See ethFlowTrader. */
+    onchainUser?: string | null;
     sellToken: `0x${string}`;
     buyToken: `0x${string}`;
     executedSell: bigint;
@@ -630,14 +658,13 @@ export function attributeOrder(
   if (ctx.executedSell === 0n) return null; // no settled volume (defensive)
 
   // eth-flow orders settle with owner = the eth-flow contract, NOT the trader.
-  // Attribute to the order `receiver` (the real trader). Skip rather than mis-credit
-  // an eth-flow order with no usable receiver, and never attribute back to a router.
+  // Attribute to the payer (onchainUser, receiver as fallback — see ethFlowTrader).
+  // Skip rather than mis-credit when neither is usable; never credit a router.
   let wallet: `0x${string}`;
   if (ethFlowOwners.has(ctx.owner.toLowerCase())) {
-    const receiver = ctx.receiver?.trim().toLowerCase();
-    if (!receiver || !/^0x[0-9a-f]{40}$/.test(receiver) || /^0x0{40}$/.test(receiver)) return null;
-    if (receiver === ctx.owner.toLowerCase() || ethFlowOwners.has(receiver)) return null;
-    wallet = receiver as `0x${string}`;
+    const trader = ethFlowTrader(ctx, ethFlowOwners);
+    if (!trader) return null;
+    wallet = trader;
   } else {
     wallet = ctx.owner as `0x${string}`;
   }
@@ -780,6 +807,7 @@ export async function fetchChainTrades(
         const trade = attributeOrder(meta, {
           owner: t.owner,
           receiver: order.receiver,
+          onchainUser: order.onchainUser,
           sellToken: t.sellToken as `0x${string}`,
           buyToken: t.buyToken as `0x${string}`,
           executedSell: BigInt(execSell),
@@ -807,6 +835,7 @@ export async function fetchChainTrades(
         const fill = attributeOrder(meta, {
           owner: t.owner,
           receiver: order.receiver,
+          onchainUser: order.onchainUser,
           sellToken: t.sellToken as `0x${string}`,
           buyToken: t.buyToken as `0x${string}`,
           executedSell: BigInt(t.sellAmount),
@@ -1181,6 +1210,13 @@ export async function runFetcher(
         .onConflictDoUpdate({
           target: schema.trades.tradeUid,
           set: {
+            // Identity follows the fee upgrade of a decoder DISCOVERY row: the
+            // decoder credits `receiver` (settle() calldata has no onchainUser),
+            // the API row for the same uid credits the payer. Only this arm may
+            // move `wallet` -- a fee_verified=false row is never ticketable
+            // (tradeRewards/service.ts filters fee_verified = true), so the flip
+            // cannot strand a signed ticket; every other conflict leaves it alone.
+            wallet: dsql`CASE WHEN (${schema.trades.feeVerified} = false AND excluded.fee_verified = true) THEN excluded.wallet ELSE ${schema.trades.wallet} END`,
             volumeFeeBps: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) THEN excluded.volume_fee_bps ELSE ${schema.trades.volumeFeeBps} END`,
             feeVerified: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) THEN excluded.fee_verified ELSE ${schema.trades.feeVerified} END`,
             undecodedFeeFallbackBps: dsql`CASE WHEN (${POLICY_MARKER_FILL_ARM}) THEN excluded.undecoded_fee_fallback_bps ELSE ${schema.trades.undecodedFeeFallbackBps} END`,

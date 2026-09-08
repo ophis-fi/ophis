@@ -288,6 +288,9 @@ export async function decodeWindow(
         meta,
         {
           owner: ev.owner,
+          // settle() calldata carries no onchainUser, so an eth-flow order here
+          // falls back to receiver (ethFlowTrader). API-sourced rows for the same
+          // uid win at insert; the receiver-only identity is a discovery-row limit.
           receiver: ct.receiver,
           sellToken: ev.sellToken,
           buyToken: ev.buyToken,
