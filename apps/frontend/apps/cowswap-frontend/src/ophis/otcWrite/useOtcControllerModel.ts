@@ -76,9 +76,10 @@ function isWalletAdmitted(
   account: Address | undefined,
 ): boolean {
   return (
-    type === AccountType.EOA &&
-    wallet.isSmartContractWallet === false &&
-    !wallet.isSafeApp &&
-    (mode !== 'canary' || isOtcCanaryAccount(account))
+    !isOtcMainnetMode(mode) ||
+    (type === AccountType.EOA &&
+      wallet.isSmartContractWallet === false &&
+      !wallet.isSafeApp &&
+      (mode !== 'canary' || isOtcCanaryAccount(account)))
   )
 }
