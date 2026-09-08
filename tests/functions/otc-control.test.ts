@@ -7,6 +7,7 @@ const nonce = 'a'.repeat(32);
 const token = 'b'.repeat(64);
 const url = `https://swap.ophis.fi/api/otc-control?nonce=${nonce}`;
 const active = () => ({ enabled: true, expiresAt: Date.now() + 60_000 });
+const publicControl = { enabled: true, mode: 'public', expiresAt: null };
 async function read(value: unknown, request = new Request(url)): Promise<Response> {
   return handleControl(request, { read: async () => value, write: async () => {} }, token);
 }
@@ -26,9 +27,18 @@ test('permission requires literal true and an expiry within 24 hours, without ca
     { enabled: true, expiresAt: Date.now() + 172_800_000 },
     { enabled: true, expiresAt: Infinity },
     { enabled: true, expiresAt: '9999999999999' },
+    { enabled: true, expiresAt: null },
+    { ...active(), mode: 'unknown' },
+    { ...publicControl, enabled: 'true' },
+    { ...publicControl, expiresAt: Date.now() + 172_800_000 },
+    { enabled: true, mode: 'public' },
   ]) {
     assert.equal((await (await read(value)).json()).enabled, false);
   }
+});
+
+test('only an explicit public control enables service without a trial expiry', async () => {
+  assert.deepEqual(await (await read(publicControl)).json(), { enabled: true, nonce });
 });
 
 test('authenticated updates persist before responding and subsequent readers observe shutdown', async () => {
@@ -39,7 +49,7 @@ test('authenticated updates persist before responding and subsequent readers obs
       value = next;
     },
   };
-  for (const next of [active(), { enabled: false }]) {
+  for (const next of [active(), publicControl, { enabled: false }]) {
     const body = JSON.stringify(next);
     const request = new Request(url, {
       method: 'POST',
@@ -66,6 +76,7 @@ test('bad authentication, oversized bodies and invalid expiry cannot mutate the 
   for (const [authorization, payload, size, status] of [
     ['', body, body.length, 403],
     [`Bearer ${'c'.repeat(64)}`, body, body.length, 403],
+    ['', JSON.stringify(publicControl), 100, 403],
     [`Bearer ${token}`, body, 1_025, 413],
     [
       `Bearer ${token}`,
@@ -100,23 +111,28 @@ test('storage failures, preview origins and malformed requests cannot enable wri
   assert.deepEqual(await response.json(), { enabled: false, nonce });
 });
 
-test('a lost enablement response attempts to restore disabled state', () => {
-  const mock = `globalThis.fetch = async (_url, options) => {
+for (const mode of ['on', 'public'])
+  test(`a lost ${mode} response attempts to restore disabled state`, () => {
+    const mock = `globalThis.fetch = async (_url, options) => {
     const value = JSON.parse(options.body); console.log(value.enabled);
     if (value.enabled) throw new Error('response lost after commit');
     return new Response('{}');
   };`;
-  const preload = 'data:text/javascript,' + encodeURIComponent(mock);
-  const expiry = new Date(Date.now() + 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
-  const result = spawnSync(
-    process.execPath,
-    ['--import', preload, 'scripts/otc-runtime-control.mjs', 'on'],
-    {
-      env: { ...process.env, OTC_CONTROL_TOKEN: token, OTC_ENABLED_UNTIL: expiry },
-      encoding: 'utf8',
-      timeout: 10_000,
-    },
-  );
-  assert.equal(result.status, 1);
-  assert.deepEqual(result.stdout.trim().split('\n'), ['true', 'false']);
-});
+    const preload = 'data:text/javascript,' + encodeURIComponent(mock);
+    const expiry = new Date(Date.now() + 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const result = spawnSync(
+      process.execPath,
+      ['--import', preload, 'scripts/otc-runtime-control.mjs', mode],
+      {
+        env: {
+          ...process.env,
+          OTC_CONTROL_TOKEN: token,
+          OTC_ENABLED_UNTIL: mode === 'on' ? expiry : '',
+        },
+        encoding: 'utf8',
+        timeout: 10_000,
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.deepEqual(result.stdout.trim().split('\n'), ['true', 'false']);
+  });

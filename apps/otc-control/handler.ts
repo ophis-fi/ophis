@@ -1,16 +1,23 @@
 import { timingSafeEqual } from 'node:crypto';
 
+export type OtcControlValue =
+  | { enabled: boolean; expiresAt: number; mode?: never }
+  | { enabled: true; mode: 'public'; expiresAt: null };
+
 export interface ControlStorage {
   read(): Promise<unknown>;
-  write(value: { enabled: boolean; expiresAt: number }): Promise<void>;
+  write(value: OtcControlValue): Promise<void>;
 }
 
-function enabled(value: unknown): value is { enabled: true; expiresAt: number } {
+function enabled(value: unknown): value is OtcControlValue {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const control = value as Record<string, unknown>;
+  if (control.enabled !== true) return false;
+  // Public service is explicitly persistent; expiring trial controls keep their 24-hour bound.
+  if (control.mode === 'public') return control.expiresAt === null;
   const now = Date.now();
   return (
-    control.enabled === true &&
+    control.mode === undefined &&
     typeof control.expiresAt === 'number' &&
     Number.isSafeInteger(control.expiresAt) &&
     control.expiresAt > now &&

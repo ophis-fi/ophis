@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'init: provision disabled control; off: stop new signing; on: enable until expiry'
+        description: 'init: deploy disabled; off: stop signing; on: timed trial; public: enable until stopped'
         type: choice
-        options: ['off', 'init', 'on']
+        options: ['off', 'init', 'on', 'public']
         default: 'off'
         required: true
       expires_at:
