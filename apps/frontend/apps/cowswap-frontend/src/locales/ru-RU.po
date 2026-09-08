@@ -6569,3 +6569,19 @@ msgstr "Эти транзакции используют реальные акт
 #: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
 msgid "These wallet prompts use your local Ethereum fork. Every action re-reads the pinned escrow and simulates the exact transaction."
 msgstr "Эти запросы кошелька используют ваш локальный форк Ethereum. Перед каждым действием заново считывается состояние фиксированного контракта эскроу и моделируется точная транзакция."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "Ethereum transactions"
+msgstr "Транзакции в Ethereum"
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "These transactions use real Ethereum assets and cost gas. Review both token amounts before approving or signing. Anyone can fill an open order in full; orders stay active until filled or cancelled by the maker."
+msgstr "Эти транзакции используют реальные активы Ethereum и требуют оплаты газа. Проверьте суммы обоих токенов перед одобрением или подписанием. Любой может исполнить открытый ордер целиком; ордер остаётся активным до исполнения или отмены создателем."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Connect your wallet to create, fill, or cancel fixed-price ERC-20 orders on Ethereum."
+msgstr "Подключите кошелёк, чтобы создавать, исполнять или отменять ордера ERC-20 с фиксированной ценой в Ethereum."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Public Ethereum trading"
+msgstr "Открытая торговля в Ethereum"

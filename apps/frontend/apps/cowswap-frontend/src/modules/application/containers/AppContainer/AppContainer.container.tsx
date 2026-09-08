@@ -86,7 +86,7 @@ const OpenTradeCTA = styled(Link)`
 `
 
 // Trade route detection — pathname patterns the upstream cowswap
-// modes use: /:chainId/(swap|limit|advanced|yield)/... — note `hooks`
+// modes use: /:chainId/(swap|limit|advanced|yield|otc)/... — note `hooks`
 // is `/swap/hooks` (matched via `swap`), not a top-level segment.
 // `(?:/|$)` boundary prevents accidental matches like `/swapfoo` or
 // `/advanced-orders`.
@@ -94,7 +94,7 @@ const OpenTradeCTA = styled(Link)`
 // Used to decide whether the header right-slot renders the
 // network+wallet controls (trade routes) or the Open Trade CTA (info
 // routes like /about, /tiers, /legal, etc.).
-const TRADE_ROUTE_REGEX = /^\/(?:\d+\/)?(?:swap|limit|advanced|yield)(?:\/|$)/
+const TRADE_ROUTE_REGEX = /^\/(?:\d+\/)?(?:swap|limit|advanced|yield|otc)(?:\/|$)/
 
 function useIsTradeRoute(): boolean {
   const { pathname } = useLocation()
