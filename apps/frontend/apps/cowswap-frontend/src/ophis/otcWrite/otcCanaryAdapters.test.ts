@@ -1,5 +1,6 @@
 import { buildOtcCancelTransaction, buildOtcCreateTransaction } from './buildOtcTransaction'
 import { OTC_CANARY_POLICY } from './otcCanary.const'
+import { readOtcRuntimeControl } from './otcRuntimeControl'
 import { otcRequestHash } from './otcTransactionProof'
 import { toOtcForkClients, toOtcLegacyForkClients, toOtcWalletSubmitter } from './otcWriteAdapters'
 import { MAKER, mockOtcOrder, NOW, TX_HASH } from './prepareOtcTransactionTest.utils'
@@ -9,6 +10,8 @@ import type { OtcWalletSubmitter, OtcWriteClient } from './otcWrite.types'
 type Public = Parameters<typeof toOtcWalletSubmitter>[1]
 type Wallet = Parameters<typeof toOtcWalletSubmitter>[0]
 type Legacy = Parameters<typeof toOtcLegacyForkClients>[0]
+
+const originalFetch = global.fetch
 
 jest.mock('./otcCanary.const', () => ({ OTC_CANARY_POLICY: { accounts: [], pairs: [], expiresAt: 0n } }))
 const HEAD = { number: 200n, hash: `0x${'bb'.repeat(32)}` as const, timestamp: NOW }
@@ -76,10 +79,38 @@ function fixture(legacy: boolean): {
 
 describe.each([false, true])('canonical canary adapter (legacy=%s)', (legacy) => {
   beforeEach(() => {
+    global.fetch = jest.fn(
+      async (url) =>
+        ({
+          ok: true,
+          json: async () => ({
+            enabled: true,
+            nonce: new URL(String(url), 'https://swap.ophis.fi').searchParams.get('nonce'),
+          }),
+        }) as Response,
+    )
     jest.useFakeTimers({ now: Number(NOW) * 1_000 })
     Object.assign(OTC_CANARY_POLICY, { accounts: [MAKER], pairs: [], expiresAt: 0n })
   })
-  afterEach(() => jest.useRealTimers())
+  afterEach(() => {
+    global.fetch = originalFetch
+    jest.useRealTimers()
+  })
+
+  it('checks the live control before recording a marker or invoking either signer', async () => {
+    await expect(readOtcRuntimeControl()).resolves.toBe(true)
+    const { canonical, send, submitter } = fixture(legacy)
+    jest.mocked(canonical.getTransactionCount).mockImplementation(async () => {
+      global.fetch = jest.fn(async () => ({ ok: false }) as Response)
+      return 3
+    })
+    const persist = jest.fn()
+    await expect(submitter.sendTransaction(REQUEST, INTENT, NOW, () => true, persist)).rejects.toThrow(
+      'writes are disabled',
+    )
+    expect(persist).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
+  })
 
   it('submits on matching Ethereum state and obtains confirmation only from the independent reader', async () => {
     const { connected, canonical, send, submitter } = fixture(legacy)

@@ -104,7 +104,14 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
   let fillOrderId = 0n
   let racedOrderId = 0n
 
-  beforeEach(stubOtcHostTokenLists)
+  beforeEach(() => {
+    stubOtcHostTokenLists()
+    if (Cypress.env('OTC_CANARY_REHEARSAL')) {
+      cy.intercept('GET', '/api/otc-control?*', (request) => {
+        request.reply({ enabled: true, nonce: new URL(request.url).searchParams.get('nonce') })
+      })
+    }
+  })
 
   before(() => {
     cy.then({ timeout: 300_000 }, async () => {

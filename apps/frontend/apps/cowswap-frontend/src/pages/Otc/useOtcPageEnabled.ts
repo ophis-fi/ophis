@@ -40,5 +40,6 @@ export function useOtcPageEnabled(): boolean {
 }
 
 export function useOtcWriteEnabled(): boolean {
-  return useOtcWriteAuthorization().enabled
+  // A runtime pause disables new actions while mounted controllers keep tracking existing attempts.
+  return useOtcWriteAuthorization().configured
 }

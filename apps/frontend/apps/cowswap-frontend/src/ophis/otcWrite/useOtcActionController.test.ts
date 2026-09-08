@@ -23,6 +23,7 @@ jest.mock('legacy/state/application/hooks', () => ({ useToggleWalletModal: () =>
 jest.mock('./otcWriteAuthorization', () => ({
   useOtcWriteAuthorization: () => ({
     enabled: true,
+    configured: true,
     authorization: { readFlag: true, writeFlag: true, isLocal: true, writeMode: mockWriteMode },
   }),
 }))
