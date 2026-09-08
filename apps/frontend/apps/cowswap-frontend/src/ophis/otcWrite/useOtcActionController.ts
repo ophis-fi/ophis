@@ -89,12 +89,12 @@ export function useOtcActionController(
 ): OtcActionController {
   const { account, chainId } = useWalletInfo()
   const connectWallet = useToggleWalletModal()
-  const { enabled, authorization } = useOtcWriteAuthorization()
+  const { enabled, configured, authorization } = useOtcWriteAuthorization()
   const canary = authorization.writeMode === 'canary'
   const walletAdmitted = !canary || isOtcCanaryAccount(account)
   const { data: walletClient } = useWalletClient()
   const allowanceToken = definition.allowanceToken ?? null
-  const network = useOtcNetworkReads(enabled && walletAdmitted, account, chainId, walletClient, allowanceToken)
+  const network = useOtcNetworkReads(configured && walletAdmitted, account, chainId, walletClient, allowanceToken)
   const refreshAllowance = useCallback(() => network.allowanceResponse.mutate(), [network.allowanceResponse])
   const submission = useOtcSubmission({
     writeClient: network.writeClient,

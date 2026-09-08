@@ -38,6 +38,35 @@ beforeEach(() => {
   getDefaultStore().set(uncertainOtcTransactionsAtom, {})
 })
 
+it('keeps tracking a broadcast canary transaction when runtime permission is withdrawn', async () => {
+  let confirm: ((receipt: Awaited<ReturnType<typeof submitOtcTransaction>>) => void) | undefined
+  submit.mockImplementation((_c, _w, _i, _a, _m, _ctx, broadcast, prompt) => {
+    prompt?.({ requestHash: TX_HASH, nonce: 3 })
+    broadcast?.(TX_HASH)
+    return new Promise((resolve) => {
+      confirm = resolve
+    })
+  })
+  const config = options()
+  const { result, rerender } = renderHook((current) => useOtcSubmission(current), { initialProps: config })
+  let pending: Promise<void> | undefined
+  act(() => {
+    pending = result.current.submit(INTENT, true)
+  })
+  expect(result.current.pendingIntent).toBe('create')
+  rerender({ ...config, authorization: { ...config.authorization, writeFlag: false } })
+  expect(result.current.pendingIntent).toBe('create')
+  expect(result.current.uncertainHash).toBe(TX_HASH)
+  await act(async () => {
+    if (!confirm) throw new Error('Submission did not start')
+    confirm({ transactionHash: TX_HASH, status: 'success', blockNumber: 201n })
+    await pending
+  })
+  expect(result.current.successHash).toBe(TX_HASH)
+  expect(result.current.terminalConfirmed).toBe(true)
+  expect(result.current.uncertainHash).toBeNull()
+})
+
 it('retains a durable no-hash lock for a send response lost after possible broadcast', async () => {
   submit.mockImplementation(async (_c, _w, _i, _a, _m, _ctx, _broadcast, onPrompt) => {
     onPrompt?.({ requestHash: TX_HASH, nonce: 3 })

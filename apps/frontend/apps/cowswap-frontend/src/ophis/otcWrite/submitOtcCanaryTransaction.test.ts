@@ -14,6 +14,8 @@ import {
 import type { OtcWriteIntent, OtcWalletSubmitter } from './otcWrite.types'
 
 jest.mock('@cowprotocol/common-utils', () => ({ ...jest.requireActual('@cowprotocol/common-utils'), isLocal: false }))
+const originalFetch = global.fetch
+
 jest.mock('./otcCanary.const', () => ({ OTC_CANARY_POLICY: { accounts: [], pairs: [], expiresAt: 0n } }))
 
 const order = mockOtcOrder()
@@ -38,6 +40,16 @@ function wallet(): jest.Mocked<OtcWalletSubmitter> {
 
 describe('canary submission admission at the shared write sink', () => {
   beforeEach(() => {
+    global.fetch = jest.fn(
+      async (url) =>
+        ({
+          ok: true,
+          json: async () => ({
+            enabled: true,
+            nonce: new URL(String(url), 'https://swap.ophis.fi').searchParams.get('nonce'),
+          }),
+        }) as Response,
+    )
     jest.useFakeTimers({ now: Number(NOW) * 1_000 })
     process.env.REACT_APP_OTC_WRITE_MODE = 'canary'
     policy.accounts = [MAKER]
@@ -47,6 +59,7 @@ describe('canary submission admission at the shared write sink', () => {
     policy.expiresAt = NOW + 60n
   })
   afterEach(() => {
+    global.fetch = originalFetch
     jest.useRealTimers()
     delete process.env.REACT_APP_OTC_WRITE_MODE
   })
@@ -69,6 +82,22 @@ describe('canary submission admission at the shared write sink', () => {
       expect(submitter.sendTransaction).not.toHaveBeenCalled()
     },
   )
+
+  it.each([false, true])('blocks runtime shutdown (after preflight: %s)', async (afterPreflight) => {
+    const client = mockOtcWriteClient({ allowance: order.amountA })
+    const pause = (): void => {
+      global.fetch = jest.fn(async () => ({ ok: false }) as Response)
+    }
+    if (afterPreflight) jest.spyOn(client, 'simulate').mockImplementation(async () => pause())
+    else pause()
+    const read = jest.spyOn(client, 'getChainId')
+    const submitter = wallet()
+    await expect(submitOtcTransaction(client, submitter, intent, auth, mockOtcManifest())).rejects.toThrow(
+      'writes are disabled',
+    )
+    if (!afterPreflight) expect(read).not.toHaveBeenCalled()
+    expect(submitter.sendTransaction).not.toHaveBeenCalled()
+  })
 
   it('executes the exact admitted intent only after preflight and a known receipt', async () => {
     const client = mockOtcWriteClient({ allowance: order.amountA })

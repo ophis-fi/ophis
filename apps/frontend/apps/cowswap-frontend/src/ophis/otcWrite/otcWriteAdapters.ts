@@ -24,6 +24,7 @@ import {
   verifyOtcLocalForkWallet,
 } from './otcForkIdentity'
 import { OTC_RECEIPT_TIMEOUT_MS, waitForOtcReceipt } from './otcReceiptTracking.utils'
+import { assertOtcRuntimeControl } from './otcRuntimeControl'
 import { readOtcSubmissionProof } from './otcTransactionProof'
 import { verifyOtcCanaryNetwork } from './verifyOtcCanaryNetwork'
 
@@ -100,6 +101,7 @@ export function toOtcWalletSubmitter(
       const proof = await readOtcSubmissionProof(canaryClient, checkedRequest, () =>
         publicClient.getTransactionCount({ address: checkedRequest.account, blockTag: 'pending' }),
       )
+      if (canaryClient) await assertOtcRuntimeControl()
       assertOtcSigningContext(intent, !!canaryClient, isCurrentContext)
       onSignatureRequested(proof)
       return walletClient.sendTransaction({
@@ -206,6 +208,7 @@ export function toOtcLegacyForkClients(
       const proof = await readOtcSubmissionProof(canaryClient, checkedRequest, () =>
         provider.getTransactionCount(checkedRequest.account, 'pending'),
       )
+      if (canaryClient) await assertOtcRuntimeControl()
       assertOtcSigningContext(intent, !!canaryClient, isCurrentContext)
       onSignatureRequested(proof)
       const transaction = await signer.sendTransaction({

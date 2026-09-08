@@ -62,7 +62,15 @@ function submissionContextKey(
   authorization: OtcWriteRuntimeAuthorization,
 ): string {
   const { readFlag, writeFlag, isLocal, writeMode } = authorization
-  return [resetKey, account ?? '', readFlag, writeFlag, isLocal, writeMode ?? ''].join('\u0000')
+  // Canary pauses block the fresh signing checks; they must not discard a broadcast attempt's receipt UI.
+  return [
+    resetKey,
+    account ?? '',
+    readFlag,
+    writeMode === 'canary' ? 'runtime' : writeFlag,
+    isLocal,
+    writeMode ?? '',
+  ].join('\u0000')
 }
 
 function successfulTransactionState(success: OtcSuccessfulTransaction | null): {

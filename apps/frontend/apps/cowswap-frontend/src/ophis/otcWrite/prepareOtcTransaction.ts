@@ -8,6 +8,7 @@ import { buildOtcTransaction, OTC_FILL_DEADLINE_WINDOW_SECONDS } from './buildOt
 import { assertOtcCanaryIntent } from './otcCanaryPolicy'
 import { assertOtcReceipt } from './otcReceiptTracking.utils'
 import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
+import { assertOtcRuntimeControl } from './otcRuntimeControl'
 import { assertOtcTransactionHash, otcRequestHash } from './otcTransactionProof'
 import { withOtcPreflightTimeout } from './otcWriteTimeouts'
 import { readOtcAllowanceAtBlock } from './readOtcAllowance'
@@ -166,7 +167,10 @@ export async function submitOtcTransaction(
   },
 ): Promise<OtcTransactionReceipt> {
   assertRuntimeAuthorization(authorization)
-  if (authorization.writeMode === 'canary') assertOtcCanaryIntent(intent, BigInt(Math.floor(Date.now() / 1_000)))
+  if (authorization.writeMode === 'canary') {
+    assertOtcCanaryIntent(intent, BigInt(Math.floor(Date.now() / 1_000)))
+    await assertOtcRuntimeControl()
+  }
   const prepared = await prepareOtcTransaction(client, intent, manifest)
   const isStillAuthorized = (): boolean => {
     assertRuntimeAuthorization(authorization)
@@ -176,6 +180,7 @@ export async function submitOtcTransaction(
     }
     return isCurrentContext()
   }
+  if (authorization.writeMode === 'canary') await assertOtcRuntimeControl()
   if (!isStillAuthorized()) throw new Error('Ophis OTC action context changed')
   let submissionProof: OtcSubmissionProof | undefined
   const hash = await wallet.sendTransaction(

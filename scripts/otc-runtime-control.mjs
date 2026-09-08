@@ -45,7 +45,12 @@ async function initialize() {
       'npx',
       ['--yes', 'wrangler@4.100.0', 'deploy', '--config', configFile, '--secrets-file', file],
       {
-        env: { ...process.env, CLOUDFLARE_API_TOKEN: token },
+        env: {
+          ...process.env,
+          CLOUDFLARE_API_TOKEN: token,
+          npm_config_offline: 'true',
+          npm_config_ignore_scripts: 'true',
+        },
         stdio: 'inherit',
         timeout: 120_000,
       },
