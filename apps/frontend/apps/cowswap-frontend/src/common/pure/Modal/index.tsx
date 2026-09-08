@@ -18,6 +18,7 @@ export { ContentWrapper, HeaderRow, HoverText, StyledDialogContent, StyledDialog
 
 interface ModalProps {
   isOpen: boolean
+  focusLock?: boolean
   onDismiss: Command
   minHeight?: number | false
   maxHeight?: number
@@ -36,6 +37,7 @@ interface ModalProps {
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function Modal({
   isOpen,
+  focusLock = true,
   onDismiss,
   minHeight = false,
   maxHeight = 90,
@@ -83,7 +85,7 @@ export function Modal({
               style={props}
               onDismiss={onDismissCallback}
               initialFocusRef={initialFocusRef}
-              dangerouslyBypassFocusLock={true}
+              dangerouslyBypassFocusLock={!focusLock}
             >
               <StyledDialogContent
                 {...(isMobile

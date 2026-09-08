@@ -1,8 +1,8 @@
 # Restricted ERC-20 OTC canary
 
-Status: runtime activation infrastructure, 2026-09-08. No wallet or pair is admitted by the checked-in policy. Live trading requires the operator-supplied admission policy and expiry; provisioning and control rehearsals do not sign mainnet transactions.
+Historical restricted-trial procedure. The public release uses [public Ethereum OTC trading](otc-public-trading.md); this wallet admission policy applies only when explicitly building canary mode. The checked-in trial policy remains empty.
 
-Canary signing uses the same-origin `/api/otc-control` endpoint backed by a Durable Object, independently of LaunchDarkly. The production build selects canary mode. Follow the [runtime control procedure](otc-runtime-control.md) to initialize, verify, enable or stop it. Keep the compiled write default false.
+Canary signing uses the same-origin `/api/otc-control` endpoint backed by a Durable Object, independently of LaunchDarkly. A restricted-trial build explicitly selects canary mode. Follow the [runtime control procedure](otc-runtime-control.md) to initialize, verify, enable or stop it. Keep the compiled write default false.
 
 ## Activation record — complete in the separately approved release
 
