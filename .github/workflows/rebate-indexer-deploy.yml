@@ -1,4 +1,4 @@
-name: Ophis Robinhood health repair
+name: Ophis Robinhood health verification
 on:
   workflow_dispatch:
 permissions:
@@ -13,23 +13,13 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-        with:
-          ref: 14b213b2ef6042467cb2ed2496107feb28e81cb0
-          path: build-base
-      - name: Build and test the deployed revision plus the health fix
-        run: |
-          git -C build-base apply --check "$GITHUB_WORKSPACE/infra/shared/scripts/robinhood-healthz.patch"
-          git -C build-base apply "$GITHUB_WORKSPACE/infra/shared/scripts/robinhood-healthz.patch"
-          python3 infra/shared/scripts/incident-build.py
-          docker build --progress=plain --target driver -t local-driver:healthfix-20260908 build-base/apps/backend
       - name: Connect to Tailscale (ephemeral CI node)
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8  # v4.1.2
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           tags: tag:ci
 
-      - name: Install tested driver on Cadia
+      - name: Verify driver health remains stable on Cadia
         env:
           SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
           SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
@@ -41,14 +31,7 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/ssh/deploy_key"
           printf '%s\n' "$SSH_HOST_KEY" > "$RUNNER_TEMP/ssh/known_hosts"
           chmod 600 "$RUNNER_TEMP/ssh/deploy_key" "$RUNNER_TEMP/ssh/known_hosts"
-          docker save local-driver:healthfix-20260908 | gzip | ssh -i "$RUNNER_TEMP/ssh/deploy_key" -p "$SSH_PORT" \
-            -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" "$SSH_USER@$SSH_HOST" 'gunzip | docker load'
-          ssh -i "$RUNNER_TEMP/ssh/deploy_key" -p "$SSH_PORT" \
-            -o ConnectTimeout=10 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" "$SSH_USER@$SSH_HOST" \
-            'cat > /tmp/robinhood-healthz-20260908.patch' < infra/shared/scripts/robinhood-healthz.patch
           ssh -i "$RUNNER_TEMP/ssh/deploy_key" -p "$SSH_PORT" \
             -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" "$SSH_USER@$SSH_HOST" \
-            'bash -s' < infra/shared/scripts/incident-deploy.sh
+            'bash -s' < infra/shared/scripts/incident-probe.sh
