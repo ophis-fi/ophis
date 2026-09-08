@@ -2,7 +2,7 @@
 
 Status: runtime activation infrastructure, 2026-09-08. No wallet or pair is admitted by the checked-in policy. Live trading requires the operator-supplied admission policy and expiry; provisioning and control rehearsals do not sign mainnet transactions.
 
-Canary signing uses the same-origin `/api/otc-control` endpoint backed by private R2, independently of LaunchDarkly. The production build selects canary mode. Follow the [runtime control procedure](otc-runtime-control.md) to initialize, verify, enable or stop it. Keep the compiled write default false.
+Canary signing uses the same-origin `/api/otc-control` endpoint backed by a Durable Object, independently of LaunchDarkly. The production build selects canary mode. Follow the [runtime control procedure](otc-runtime-control.md) to initialize, verify, enable or stop it. Keep the compiled write default false.
 
 ## Activation record — complete in the separately approved release
 
@@ -10,7 +10,7 @@ Canary signing uses the same-origin `/api/otc-control` endpoint backed by privat
 |---|---|
 | Final reviewed commit and deployment | Pending |
 | Owner's explicit mainnet-write approval | Pending |
-| Live flag provider and production build wiring | Private R2 control and canary build mode; verify the deployed endpoint before activation |
+| Live flag provider and production build wiring | Durable Object control and canary build mode; verify the deployed endpoint before activation |
 | Witnessed flag-off, provider-failure and existing/fresh-tab tests | Pending; activation blocked until demonstrated |
 | Frontend/QA and final security/manifest approvals | Pending; see expanded audit limitations |
 | Admitted wallet addresses (checksum), responsible operator | Pending; no test wallets |

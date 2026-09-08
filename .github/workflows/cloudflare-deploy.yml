@@ -156,7 +156,7 @@ jobs:
           # variable to exactly 'false' and rerun this workflow for an emergency
           # rollback; transaction actions remain independently disabled.
           REACT_APP_OTC_ENABLED: ${{ vars.REACT_APP_OTC_ENABLED }}
-          # Signing additionally requires the live R2 control and a nonempty reviewed admission policy.
+          # Signing additionally requires the live runtime control and a nonempty reviewed admission policy.
           REACT_APP_OTC_WRITE_MODE: canary
           # Ophis Bungee affiliate ID (public attribution, bridge rev-share to
           # the Ophis Safe). The dedicated API key (BUNGEE_API) is intentionally
