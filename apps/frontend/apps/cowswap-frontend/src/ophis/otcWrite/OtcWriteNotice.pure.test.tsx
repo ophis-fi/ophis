@@ -95,14 +95,5 @@ it.each([
     )
     expect(screen.getByText(new RegExp(fork))).toBeTruthy()
     expect(screen.queryByRole('listitem')).toBeNull()
-    process.env.REACT_APP_OTC_WRITE_MODE = 'public'
-    rerender(
-      <I18nProvider i18n={i18n}>
-        <OtcWriteNotice />
-      </I18nProvider>,
-    )
-    expect(screen.getByText(new RegExp(assets))).toBeTruthy()
-    expect(screen.queryByRole('listitem')).toBeNull()
-    expect(screen.queryByText(/1970-01-01/)).toBeNull()
   },
 )

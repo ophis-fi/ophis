@@ -15,7 +15,7 @@ import {
   verifyOtcLocalForkWallet,
 } from './otcForkIdentity'
 import { toOtcForkClients, toOtcLegacyForkClients } from './otcWriteAdapters'
-import { isOtcMainnetMode } from './otcWriteMode'
+import { isOtcMainnetMode } from './otcWriteMode.utils'
 import { readOtcAllowance } from './readOtcAllowance'
 import { useOtcBaseClients } from './useOtcBaseClients'
 import { verifyOtcCanaryNetwork } from './verifyOtcCanaryNetwork'

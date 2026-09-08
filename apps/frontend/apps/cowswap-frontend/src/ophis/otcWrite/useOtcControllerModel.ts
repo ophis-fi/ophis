@@ -1,7 +1,9 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { AccountType } from '@cowprotocol/types'
+import { useAccountType, useWalletDetails } from '@cowprotocol/wallet'
 
 import { getOtcCanaryRestriction, isOtcCanaryAccount } from './otcCanaryPolicy'
-import { isOtcMainnetMode } from './otcWriteMode'
+import { isOtcMainnetMode } from './otcWriteMode.utils'
 import { useOtcActionModel } from './useOtcActionModel'
 
 import type { OtcActionModel } from './otcActionModel'
@@ -35,7 +37,7 @@ interface ControllerModelOptions {
 
 export function useOtcControllerModel(options: ControllerModelOptions): OtcActionModel {
   const { definition, network, submission, enabled, account, chainId, writeMode, switching } = options
-  const walletAdmitted = writeMode !== 'canary' || isOtcCanaryAccount(account)
+  const walletAdmitted = isWalletAdmitted(useAccountType(), useWalletDetails(), writeMode, account)
   const allowance = network.allowanceResponse.data?.allowance ?? null
   const restriction = canaryRestriction(writeMode === 'canary', definition)
   const networkVerified = networkStatus(account, chainId, network.networkResponse.data, network.networkResponse.error)
@@ -65,4 +67,18 @@ function canaryRestriction(mainnet: boolean, definition: OtcActionDefinition): s
   return mainnet && definition.executeIntent
     ? getOtcCanaryRestriction(definition.executeIntent, BigInt(Math.floor(Date.now() / 1_000)))
     : null
+}
+
+function isWalletAdmitted(
+  type: AccountType | undefined,
+  wallet: ReturnType<typeof useWalletDetails>,
+  mode: string | undefined,
+  account: Address | undefined,
+): boolean {
+  return (
+    type === AccountType.EOA &&
+    wallet.isSmartContractWallet === false &&
+    !wallet.isSafeApp &&
+    (mode !== 'canary' || isOtcCanaryAccount(account))
+  )
 }

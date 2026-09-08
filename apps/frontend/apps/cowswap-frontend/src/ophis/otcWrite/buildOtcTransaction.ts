@@ -1,8 +1,7 @@
-import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 
 import { OPHIS_ETHEREUM_OTC_MANIFEST } from 'ophis/otc'
-import { encodeFunctionData, getAddress, type Address, type Hex } from 'viem'
+import { encodeFunctionData, getAddress, isAddressEqual, type Address, type Hex } from 'viem'
 
 import { OTC_APPROVE_ABI, OTC_ERC20_WRITE_ABI } from './otcWrite.abi'
 
@@ -53,14 +52,14 @@ function assertEscrowPolicy(tokenA: Address, tokenB: Address): void {
 function assertDraft(draft: OtcCreateDraft): void {
   assertAmount(draft.amountA)
   assertAmount(draft.amountB)
-  if (areAddressesEqual(draft.tokenA, draft.tokenB)) fail('token pair must differ')
+  if (isAddressEqual(draft.tokenA, draft.tokenB)) fail('token pair must differ')
   assertEscrowPolicy(draft.tokenA, draft.tokenB)
 }
 
 function assertOrderTerms(order: OtcOrder): void {
   assertAmount(order.amountA)
   assertAmount(order.amountB)
-  if (areAddressesEqual(order.tokenA, order.tokenB)) fail('token pair must differ')
+  if (isAddressEqual(order.tokenA, order.tokenB)) fail('token pair must differ')
   assertEscrowPolicy(order.tokenA, order.tokenB)
 }
 
@@ -141,7 +140,7 @@ export function buildOtcFillApproval(intent: OtcApproveFillIntent): OtcTransacti
 /** Recovery sink 1/2: clear a maker allowance left after failed creation. */
 export function buildOtcRevokeCreateApproval(intent: OtcRevokeCreateIntent): OtcTransactionRequest {
   // Clearing an allowance must work even when the create form has no valid amounts.
-  if (areAddressesEqual(intent.draft.tokenA, intent.draft.tokenB)) fail('token pair must differ')
+  if (isAddressEqual(intent.draft.tokenA, intent.draft.tokenB)) fail('token pair must differ')
   assertEscrowPolicy(intent.draft.tokenA, intent.draft.tokenB)
   return approvalRequest(intent.kind, intent.account, intent.draft.tokenA, 0n)
 }
@@ -173,7 +172,7 @@ export function buildOtcFillTransaction(intent: OtcFillIntent, nowSeconds: bigin
 /** Write sink 5/5: maker-only cancellation after policy and active-state checks. */
 export function buildOtcCancelTransaction(intent: OtcCancelIntent): OtcTransactionRequest {
   assertOrder(intent.order)
-  if (!areAddressesEqual(intent.account, intent.order.maker)) fail('only the maker may cancel')
+  if (!isAddressEqual(intent.account, intent.order.maker)) fail('only the maker may cancel')
   return contractRequest(
     intent.kind,
     intent.account,

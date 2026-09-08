@@ -4,7 +4,7 @@ import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { isLocal } from '@cowprotocol/common-utils'
 
 import { OTC_CANARY_POLICY } from './otcCanary.const'
-import { isOtcMainnetMode } from './otcWriteMode'
+import { isOtcMainnetMode } from './otcWriteMode.utils'
 import { useOtcRuntimeControl } from './useOtcRuntimeControl'
 
 import type { OtcWriteRuntimeAuthorization } from './otcWrite.types'

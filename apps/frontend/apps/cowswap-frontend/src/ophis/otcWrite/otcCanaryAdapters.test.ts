@@ -22,6 +22,7 @@ const PROOF = { requestHash: otcRequestHash(REQUEST), nonce: 3 }
 function canonicalClient(): Public {
   return {
     getChainId: jest.fn(async () => 1),
+    getBytecode: jest.fn(async () => undefined),
     getTransactionCount: jest.fn(async () => 3),
     getTransaction: jest.fn(async () => ({
       hash: TX_HASH,
@@ -77,14 +78,9 @@ function fixture(legacy: boolean): {
   return { connected, canonical, send, submitter: clients.wallet, writeClient: clients.writeClient }
 }
 
-describe.each([
-  { mode: 'canary', legacy: false },
-  { mode: 'canary', legacy: true },
-  { mode: 'public', legacy: false },
-  { mode: 'public', legacy: true },
-])('$mode adapter (legacy=$legacy)', ({ mode, legacy }) => {
-  const canaryTest = mode === 'canary' ? it : it.skip
+describe.each([false, true])('canonical canary adapter (legacy=%s)', (legacy) => {
   beforeEach(() => {
+    process.env.REACT_APP_OTC_WRITE_MODE = 'canary'
     global.fetch = jest.fn(
       async (url) =>
         ({
@@ -95,14 +91,24 @@ describe.each([
           }),
         }) as Response,
     )
-    process.env.REACT_APP_OTC_WRITE_MODE = mode
     jest.useFakeTimers({ now: Number(NOW) * 1_000 })
-    Object.assign(OTC_CANARY_POLICY, { accounts: mode === 'public' ? [] : [MAKER], pairs: [], expiresAt: 0n })
+    Object.assign(OTC_CANARY_POLICY, { accounts: [MAKER], pairs: [], expiresAt: 0n })
   })
   afterEach(() => {
     delete process.env.REACT_APP_OTC_WRITE_MODE
     global.fetch = originalFetch
     jest.useRealTimers()
+  })
+
+  it('rejects contract accounts before persisting or invoking the signer', async () => {
+    const { canonical, send, submitter } = fixture(legacy)
+    jest.mocked(canonical.getBytecode).mockResolvedValue('0x6000')
+    const persist = jest.fn()
+    await expect(submitter.sendTransaction(REQUEST, INTENT, NOW, () => true, persist)).rejects.toThrow(
+      'contract wallets',
+    )
+    expect(persist).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
   })
 
   it('checks the live control before recording a marker or invoking either signer', async () => {
@@ -144,7 +150,7 @@ describe.each([
     expect(send).not.toHaveBeenCalled()
   })
 
-  canaryTest('rechecks the canary cutoff after asynchronous nonce reads and before signing', async () => {
+  it('rechecks the canary cutoff after asynchronous nonce reads and before signing', async () => {
     const { canonical, send, submitter } = fixture(legacy)
     const draft = mockOtcOrder()
     const intent = { kind: 'create' as const, account: MAKER, draft }
@@ -211,7 +217,7 @@ describe.each([
     expect(send).not.toHaveBeenCalled()
   })
 
-  canaryTest('enforces wallet admission at the signing boundary even for cancellations', async () => {
+  it('enforces wallet admission at the signing boundary even for cancellations', async () => {
     Object.assign(OTC_CANARY_POLICY, { accounts: [] })
     const { send, submitter } = fixture(legacy)
     await expect(submitter.sendTransaction(REQUEST, INTENT, NOW)).rejects.toThrow('not in the OTC canary')

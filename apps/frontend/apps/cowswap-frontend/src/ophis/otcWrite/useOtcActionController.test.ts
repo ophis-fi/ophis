@@ -1,6 +1,7 @@
 import { getDefaultStore } from 'jotai'
 
 import { getAddressKey } from '@cowprotocol/cow-sdk'
+import { AccountType } from '@cowprotocol/types'
 
 import { act, renderHook } from '@testing-library/react'
 import { recordUncertainOtcTransaction, uncertainOtcTransactionsAtom } from 'entities/otc'
@@ -12,9 +13,15 @@ import { MAKER as mockMaker, mockOtcOrder, TX_HASH } from './prepareOtcTransacti
 import { useOtcActionController, type OtcActionDefinition } from './useOtcActionController'
 import { useOtcNetworkReads, type OtcNetworkReads } from './useOtcNetworkReads'
 
+let mockAccountType: AccountType | undefined = AccountType.EOA
+let mockContractWallet: boolean | undefined = false
+let mockSafeApp = false
+
 let mockWriteMode: 'fork' | 'canary' | 'public' = 'fork'
 
 jest.mock('@cowprotocol/wallet', () => ({
+  useAccountType: () => mockAccountType,
+  useWalletDetails: () => ({ isSmartContractWallet: mockContractWallet, isSafeApp: mockSafeApp }),
   useSwitchNetwork: () => jest.fn(),
   useWalletInfo: () => ({ account: mockMaker, chainId: 1 }),
 }))
@@ -33,6 +40,9 @@ jest.mock('./prepareOtcTransaction', () => ({ submitOtcTransaction: jest.fn() })
 beforeEach(() => {
   installOtcWebLocksMock()
   mockWriteMode = 'fork'
+  mockAccountType = AccountType.EOA
+  mockContractWallet = false
+  mockSafeApp = false
 })
 
 it('isolates recovery by stable fork ID and verifies the origin again before clearing', async () => {
@@ -72,15 +82,10 @@ it('isolates recovery by stable fork ID and verifies the origin again before cle
   expect(result.current.uncertainHash).toBeNull()
 })
 
-it.each([
-  { mode: 'canary' as const, hash: null },
-  { mode: 'canary' as const, hash: TX_HASH },
-  { mode: 'public' as const, hash: null },
-  { mode: 'public' as const, hash: TX_HASH },
-])(
-  'reconciles a $mode attempt ($hash) through the actual action controller with canonical network verification',
-  async ({ mode, hash }) => {
-    mockWriteMode = mode
+it.each([null, TX_HASH])(
+  'reconciles a canary attempt (%s) through the controller with canonical verification',
+  async (hash) => {
+    mockWriteMode = 'canary'
     const proof = { requestHash: TX_HASH, nonce: 3 }
     const key = `${getAddressKey(mockMaker)}\u0000ethereum-mainnet\u0000order-7`
     getDefaultStore().set(uncertainOtcTransactionsAtom, recordUncertainOtcTransaction({}, key, hash, undefined, proof))
@@ -113,3 +118,39 @@ it.each([
     expect(getDefaultStore().get(uncertainOtcTransactionsAtom)[key]).toBeUndefined()
   },
 )
+
+it.each([
+  { type: AccountType.SMART_CONTRACT, contract: true, safe: false },
+  { type: undefined, contract: false, safe: false },
+  { type: AccountType.EOA, contract: false, safe: true },
+])('blocks public actions for unsupported or unknown wallet classification: %s', async ({ type, contract, safe }) => {
+  mockWriteMode = 'public'
+  mockAccountType = type
+  mockContractWallet = contract
+  mockSafeApp = safe
+  const send = jest.mocked(submitOtcTransaction)
+  send.mockClear()
+  jest.mocked(useOtcNetworkReads).mockReturnValue({
+    transportId: 1,
+    writeClient: null,
+    wallet: null,
+    networkResponse: { data: 'ethereum-mainnet', error: null, mutate: jest.fn() },
+    allowanceResponse: { data: undefined, error: null, mutate: jest.fn() },
+  })
+  const { result } = renderHook(() =>
+    useOtcActionController(
+      {
+        executeLabel: 'Cancel order',
+        ready: true,
+        reviewed: true,
+        resetKey: 'unsupported',
+        executeIntent: { kind: 'cancel', account: mockMaker, order: mockOtcOrder() },
+      },
+      undefined,
+    ),
+  )
+  expect(result.current.model.disabled).toBe(true)
+  expect(result.current.model.label).toContain('not supported or admitted')
+  await act(() => result.current.runPrimary())
+  expect(send).not.toHaveBeenCalled()
+})

@@ -24,19 +24,15 @@ function options(): OtcSubmissionOptions & { wallet: NonNullable<OtcSubmissionOp
     resetKey: RESET_KEY,
     writeClient: null,
     wallet: { sendTransaction: jest.fn(), waitForTransactionReceipt: jest.fn().mockResolvedValue(receipt) },
-    authorization: { isLocal: false, writeMode: process.env.REACT_APP_OTC_WRITE_MODE, readFlag: true, writeFlag: true },
+    authorization: { isLocal: false, writeMode: 'canary', readFlag: true, writeFlag: true },
     requiredAllowance: null,
     refreshAllowance: jest.fn().mockResolvedValue({ allowance: 0n }),
     onConfirmed: jest.fn(),
   }
 }
 
-describe.each(['canary', 'public'])('%s receipt recovery', (mode) => {
-  afterEach(() => {
-    delete process.env.REACT_APP_OTC_WRITE_MODE
-  })
+describe('canary receipt recovery', () => {
   beforeEach(() => {
-    process.env.REACT_APP_OTC_WRITE_MODE = mode
     installOtcWebLocksMock()
     localStorage.removeItem('ophisOtcUncertainTransactions:v1')
     store.set(

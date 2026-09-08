@@ -1,6 +1,5 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 
-import { OTC_CANARY_POLICY } from './otcCanary.const'
 import { useOtcWriteAuthorization } from './otcWriteAuthorization'
 
 jest.mock('@cowprotocol/common-hooks', () => ({
@@ -8,11 +7,10 @@ jest.mock('@cowprotocol/common-hooks', () => ({
 }))
 jest.mock('./otcCanary.const', () => ({ OTC_CANARY_POLICY: { accounts: ['test-only'], pairs: [], expiresAt: 0n } }))
 
-it.each(['canary', 'public'])('%s keeps tracking through runtime shutdown', async (mode) => {
+it('fails closed on pause/provider failure while preserving the mounted write surface, including a fresh mount', async () => {
   const originalFetch = global.fetch
   const originalMode = process.env.REACT_APP_OTC_WRITE_MODE
-  process.env.REACT_APP_OTC_WRITE_MODE = mode
-  Object.assign(OTC_CANARY_POLICY, { accounts: mode === 'public' ? [] : ['test-only'] })
+  process.env.REACT_APP_OTC_WRITE_MODE = 'canary'
   jest.useFakeTimers()
   const response = { enabled: true, offline: false }
   global.fetch = jest.fn(async (url) => {

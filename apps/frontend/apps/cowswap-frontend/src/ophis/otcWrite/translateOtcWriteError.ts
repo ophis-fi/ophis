@@ -35,6 +35,10 @@ interface OtcErrorRule {
 
 const OTC_ERROR_RULES: readonly OtcErrorRule[] = [
   {
+    pattern: /requires a prior confirmed Ethereum transaction/i,
+    message: 'Use a standard Ethereum wallet with at least one confirmed outgoing transaction.',
+  },
+  {
     pattern: /already active in another tab/,
     message: 'An OTC action is pending in another tab. Wait for it to finish.',
   },
@@ -45,6 +49,10 @@ const OTC_ERROR_RULES: readonly OtcErrorRule[] = [
   {
     pattern: /user rejected|user denied/,
     message: 'Transaction rejected in your wallet. No funds moved.',
+  },
+  {
+    pattern: /contract wallets are not supported/,
+    message: 'Use a standard Ethereum wallet; contract wallets are not supported.',
   },
   { pattern: /insufficient funds/, message: 'This wallet does not have enough ETH to pay Ethereum gas.' },
   {

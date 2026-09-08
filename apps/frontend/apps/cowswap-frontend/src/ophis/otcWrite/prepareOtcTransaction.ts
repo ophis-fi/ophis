@@ -10,7 +10,7 @@ import { assertOtcReceipt } from './otcReceiptTracking.utils'
 import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
 import { assertOtcRuntimeControl } from './otcRuntimeControl'
 import { assertOtcTransactionHash, otcRequestHash } from './otcTransactionProof'
-import { isOtcMainnetMode } from './otcWriteMode'
+import { isOtcMainnetMode } from './otcWriteMode.utils'
 import { withOtcPreflightTimeout } from './otcWriteTimeouts'
 import { readOtcAllowanceAtBlock } from './readOtcAllowance'
 

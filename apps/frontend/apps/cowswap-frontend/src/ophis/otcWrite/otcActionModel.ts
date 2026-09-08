@@ -68,7 +68,7 @@ function environmentModel(facts: OtcActionFacts): MaybeActionModel {
   if (!facts.enabled) return { action: 'unavailable', label: 'OTC writes disabled', disabled: true, pending: false }
   if (!facts.connected) return { action: 'connect', label: 'Connect wallet', disabled: false, pending: false }
   if (lacksWalletAdmission(facts)) {
-    return { action: 'unavailable', label: 'This wallet is not in the OTC canary.', disabled: true, pending: false }
+    return { action: 'unavailable', label: 'This wallet is not supported or admitted for OTC trading.', disabled: true, pending: false }
   }
   if (!facts.correctChain) {
     return {

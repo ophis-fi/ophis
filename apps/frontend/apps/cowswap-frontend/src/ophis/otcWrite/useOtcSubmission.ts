@@ -10,7 +10,7 @@ import {
   uncertainOtcTransactionsAtom,
 } from 'entities/otc'
 
-import { isOtcMainnetMode } from './otcWriteMode'
+import { isOtcMainnetMode } from './otcWriteMode.utils'
 import { useOtcAllowanceCooldown } from './useOtcAllowanceCooldown'
 import { useOtcRecoveryCallback } from './useOtcRecoveryCallback'
 import { useOtcSubmitCallback, type OtcSuccessfulTransaction } from './useOtcSubmitCallback'

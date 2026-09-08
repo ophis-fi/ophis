@@ -5,7 +5,7 @@ import type { useWalletProvider } from '@cowprotocol/wallet-provider'
 import { usePublicClient } from 'wagmi'
 
 import { toOtcForkClients, toOtcLegacyForkClients } from './otcWriteAdapters'
-import { isOtcMainnetMode } from './otcWriteMode'
+import { isOtcMainnetMode } from './otcWriteMode.utils'
 
 import type { Address } from 'viem'
 

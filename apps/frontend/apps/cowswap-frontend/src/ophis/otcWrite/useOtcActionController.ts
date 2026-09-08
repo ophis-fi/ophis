@@ -9,7 +9,7 @@ import { useToggleWalletModal } from 'legacy/state/application/hooks'
 
 import { isOtcCanaryAccount } from './otcCanaryPolicy'
 import { useOtcWriteAuthorization } from './otcWriteAuthorization'
-import { isOtcMainnetMode } from './otcWriteMode'
+import { isOtcMainnetMode } from './otcWriteMode.utils'
 import { translateOtcWriteError } from './translateOtcWriteError'
 import { useOtcControllerModel } from './useOtcControllerModel'
 import { useOtcNetworkReads, type OtcNetworkReads } from './useOtcNetworkReads'
