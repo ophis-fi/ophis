@@ -1,4 +1,4 @@
-name: rebate-indexer deploy
+name: Ophis infra diagnostics
 
 on:
   push:
@@ -26,6 +26,7 @@ permissions:
 
 jobs:
   deploy:
+    timeout-minutes: 8
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -41,7 +42,7 @@ jobs:
           authkey: ${{ secrets.TS_AUTHKEY }}
           tags: tag:ci
 
-      - name: rsync source to Cadia
+      - name: Diagnose Ophis Robinhood alerts (read-only)
         env:
           SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
           SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
@@ -49,123 +50,11 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.CADIA_REBATES_SSH_PRIVATE_KEY }}
           SSH_HOST_KEY: ${{ secrets.CADIA_REBATES_SSH_HOST_KEY }}
         run: |
-          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PORT" ] ||
-             [ -z "$SSH_PRIVATE_KEY" ] || [ -z "$SSH_HOST_KEY" ]; then
-            echo "::error::CADIA_REBATES_SSH_* production secrets must be set."
-            exit 1
-          fi
           install -m 700 -d "$RUNNER_TEMP/ssh"
           printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/ssh/deploy_key"
           printf '%s\n' "$SSH_HOST_KEY" > "$RUNNER_TEMP/ssh/known_hosts"
           chmod 600 "$RUNNER_TEMP/ssh/deploy_key" "$RUNNER_TEMP/ssh/known_hosts"
-          SSH_COMMAND="ssh -i $RUNNER_TEMP/ssh/deploy_key -p $SSH_PORT -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts"
-          # The VM builds the image locally — no GHCR push needed. We rsync
-          # the minimal source subset (excluding workspace siblings the
-          # indexer doesn't import + node_modules + the VM's .env file).
-          #
-          # Runtime secrets and data dirs (secrets/pg_data/caddy_data/caddy_config)
-          # are --exclude'd below so `--delete` (not --delete-excluded) can never
-          # wipe key material or DB/proxy state. Today the data dirs are Docker
-          # named volumes outside /srv/ophis (absent from the dest tree anyway);
-          # the excludes are belt-and-suspenders if the layout ever moves them
-          # under the rsync root. (#216)
-          # NB: comments must NOT appear between \-continued lines — a comment
-          # after a trailing \ ends the command early (Codex #471 P1).
-          rsync -az --delete \
-            -e "$SSH_COMMAND" \
-            --exclude="node_modules" \
-            --exclude="dist" \
-            --exclude=".turbo" \
-            --exclude=".wrangler" \
-            --exclude=".git" \
-            --exclude=".gitmodules" \
-            --exclude="apps/frontend" \
-            --exclude="apps/backend" \
-            --exclude="contracts" \
-            --exclude="infra" \
-            --exclude="docs" \
-            --exclude="*.log" \
-            --exclude="apps/rebate-indexer/.env" \
-            --exclude="apps/rebate-indexer/secrets" \
-            --exclude="apps/rebate-indexer/pg_data" \
-            --exclude="apps/rebate-indexer/caddy_data" \
-            --exclude="apps/rebate-indexer/caddy_config" \
-            ./ "$SSH_USER@$SSH_HOST:/srv/ophis/"
-
-      - name: build + restart on Cadia
-        env:
-          SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
-          SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
-          SSH_PORT: ${{ secrets.CADIA_REBATES_SSH_PORT }}
-        run: |
           ssh -i "$RUNNER_TEMP/ssh/deploy_key" -p "$SSH_PORT" \
             -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" \
-            "$SSH_USER@$SSH_HOST" \
-            "set -e
-             cd /srv/ophis/apps/rebate-indexer
-             docker compose up -d --build
-             # up -d does NOT recreate caddy when only its bind-mounted Caddyfile
-             # changed (bind mounts are outside the compose config hash), so pick
-             # up Caddyfile edits explicitly. VALIDATE first, then reload; set -e
-             # fails the deploy on a bad config. Do NOT fall back to 'restart
-             # caddy' on failure -- that would relaunch caddy into a crash-loop
-             # with port 80 down while the indexer :8080 check below still passes,
-             # letting the deploy go green with public traffic broken (Codex).
-             # A graceful reload keeps serving the old config if the new one is
-             # rejected, so a validation failure never drops the listener.
-             docker compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-             docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
-             docker compose ps
-             # Require the indexer, Caddy, and the Cloudflare replica to be up.
-             # Initial indexing can legitimately take more than 30 seconds after
-             # a container replacement; keep the gate strict but allow 90 seconds.
-             for i in {1..30}; do
-               if curl -fsS http://localhost:8080/health >/dev/null &&
-                  curl -fsS http://localhost:80/health >/dev/null &&
-                  test \"\$(docker inspect -f '{{.State.Running}}' rebate-indexer-cloudflared-1)\" = true; then
-                 echo 'origin health ok (indexer + caddy + cloudflared)'
-                 exit 0
-               fi
-               sleep 3
-             done
-             echo 'health check failed after 90s'
-             docker compose logs indexer | tail -30
-             docker compose logs caddy | tail -30
-             docker compose logs cloudflared | tail -30
-             exit 1"
-          # This catches a connected tunnel with a missing/bad ingress rule—the
-          # exact failure mode that local origin probes cannot see.
-          for i in {1..30}; do
-            if curl -fsS https://rebates.ophis.fi/health >/dev/null; then
-              echo "public health ok"
-              exit 0
-            fi
-            sleep 3
-          done
-          echo "::error::public rebate health failed after 90s after Cadia deploy"
-          exit 1
-
-      - name: verify prepared reward runtime (read-only)
-        if: ${{ inputs.verify_rewards_disabled }}
-        env:
-          SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
-          SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
-          SSH_PORT: ${{ secrets.CADIA_REBATES_SSH_PORT }}
-        run: |
-          ssh -i "$RUNNER_TEMP/ssh/deploy_key" -p "$SSH_PORT" \
-            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            -o "UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts" \
-            "$SSH_USER@$SSH_HOST" \
-            "set -e
-             cd /srv/ophis/apps/rebate-indexer
-             for secret in trade-rewards-allocation-seed rewards-signer-private-key rewards-relayer-private-key; do
-               test -s \"secrets/\$secret\"
-               test \"\$(stat -c %a \"secrets/\$secret\")\" = 600
-             done
-             docker compose exec -T indexer sh -c 'test \"\$TRADE_REWARDS_ENABLED\" = false'
-             test \"\$(docker compose exec -T pg psql -U rebates -Atc \"SELECT count(*) FROM __migrations WHERE filename = '0028_trade_rewards_simplify_eligibility.sql'\")\" = 1
-             test \"\$(docker compose exec -T pg psql -U rebates -Atc 'SELECT count(*) FROM trade_reward_tickets')\" = 0
-             test \"\$(docker compose exec -T pg psql -U rebates -Atc \"SELECT count(*) FROM information_schema.columns WHERE table_name = 'trade_reward_tickets' AND column_name LIKE 'wallet_age_%'\")\" = 0
-             test \"\$(docker compose exec -T pg psql -U rebates -Atc \"SELECT count(*) FROM pg_class WHERE oid = to_regclass('public.trade_reward_wallet_blocks')\")\" = 1
-             echo 'reward runtime verified: disabled, zero tickets, migration applied, protected files present'"
+            "$SSH_USER@$SSH_HOST" 'bash -s' < infra/shared/scripts/incident-probe.sh
