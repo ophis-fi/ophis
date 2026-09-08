@@ -274,6 +274,16 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows).toHaveLength(0); // no usable receiver -> skipped, the contract is never credited
   });
 
+  it('skips an eth-flow trade whose receiver is the zero address (same guard as repair/routerTrades)', async () => {
+    const uid = '0x' + 'e5'.repeat(56);
+    handlers.trades.mockReturnValue([sampleTrade(uid, OP_ETHFLOW)]);
+    handlers.order.mockImplementation(() => orderWithReceiver(uid, OP_ETHFLOW, '0x' + '00'.repeat(20), 'ophis'));
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, OP_ETHFLOW as `0x${string}`, {});
+    expect(rows).toHaveLength(0);
+  });
+
   it('skips an eth-flow trade whose receiver is itself an eth-flow contract (never re-credits the router)', async () => {
     const uid = '0x' + 'e3'.repeat(56);
     handlers.trades.mockReturnValue([sampleTrade(uid, OP_ETHFLOW)]);
@@ -283,6 +293,32 @@ describe('fetcher.fetchChainTrades', () => {
     const { fetchChainTrades } = await import('../src/fetcher.js');
     const rows = await fetchChainTrades(100, OP_ETHFLOW as `0x${string}`, {});
     expect(rows).toHaveLength(0);
+  });
+
+  it('attributes a shared canonical CoW eth-flow trade listed under the trader to the receiver at insert time', async () => {
+    // CoW's GET /trades?owner=W lists eth-flow orders by their on-chain SENDER W, with the
+    // payload owner = the SHARED canonical router. The API path therefore does see the
+    // canonical contract as an owner; with the narrow Ophis-only owner set these rows were
+    // stored with wallet = the router until the nightly repair (2026-09-08: three live rows,
+    // $5.8k, credited to a contract for up to 24h). Rebate row AND DefiLlama fill must both
+    // carry the receiver from the first insert.
+    const CANONICAL = '0xba3cb449bd2b4adddbc894d8697f5170800eadec';
+    const uid = '0x' + 'e4'.repeat(56);
+    const user = '0xd'.padEnd(42, '0');
+    handlers.trades.mockReturnValue([sampleTrade(uid, CANONICAL)]);
+    handlers.order.mockImplementation(() => orderWithReceiver(uid, CANONICAL, user, 'ophis'));
+    const defillamaFills: import('../src/fetcher.js').PendingDefiLlamaFill[] = [];
+
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    const rows = await fetchChainTrades(100, user as `0x${string}`, {
+      defillamaFills,
+      hasDefiLlamaFill: async () => false,
+      getSettlementTimestamp: async () => new Date('2026-09-08T10:04:16Z'),
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.wallet).toBe(user);
+    expect(rows[0]!.wallet).not.toBe(CANONICAL);
+    expect(defillamaFills).toMatchObject([{ userAddress: user }]);
   });
 
   it('recognizes a widget order via metadata.widget.appCode and attributes the top-level appCode as the integrator referral', async () => {

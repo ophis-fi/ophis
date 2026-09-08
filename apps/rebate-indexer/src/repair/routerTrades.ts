@@ -31,15 +31,17 @@ export interface RouterRepairResult {
  * Re-attribute trades that were mis-stored with wallet = an eth-flow ROUTER
  * contract to the real trader, and remove the routers from the fetch queues.
  *
- * WHY the rows exist: the owner-scoped API fetch processes tracked wallets, and
- * the canonical CoW eth-flow router (0xba3c...adec) was enrolled as one via the
- * public /tier endpoint. attributeOrder receives only the NARROW Ophis eth-flow
- * set on the API path (it cannot enumerate the shared canonical contract as an
- * owner without pulling all of CoW's eth-flow traffic), so an Ophis order whose
- * owner was the canonical router fell through the eth-flow branch and stored
- * wallet = owner = the router. The real trader is the order's `receiver`, which
- * the CoW orderbook still serves for every historical order, so the repair
- * re-fetches each mis-stored order once and rewrites the wallet.
+ * WHY the rows existed: CoW's GET /trades?owner=W lists W's eth-flow orders by
+ * their on-chain sender with the payload owner = the canonical CoW router
+ * (0xba3c...adec), and until 2026-09-08 attributeOrder's API path used only the
+ * NARROW Ophis-dedicated owner set, so every hosted-chain native-ETH sell of a
+ * tracked wallet fell through the eth-flow branch and stored wallet = owner =
+ * the router until this repair ran (earlier, the router itself had also been
+ * enrolled via /tier). attributeOrder now defaults to the full set and credits
+ * the receiver at insert; this module stays as the backstop for rows written
+ * before that and for anything that slips past. The real trader is the order's
+ * `receiver`, which the CoW orderbook still serves for every historical order,
+ * so the repair re-fetches each mis-stored order once and rewrites the wallet.
  *
  * Receiver guard mirrors attributeOrder byte-for-byte (valid 40-hex, not the
  * owner, never another router) plus an explicit zero-address reject: a row with
