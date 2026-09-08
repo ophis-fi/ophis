@@ -59,7 +59,7 @@ describe('resolveOphisPartnerFee', () => {
       // Order is load-bearing: CoW consumes its 100 bps aggregate budget in array
       // order (PI cap counted up front) and the SDK's min-buy math reads the first
       // Volume entry. Host first keeps the host whole and the order fillable.
-      expect(resolveOphisPartnerFee(OPHIS_SHAPE, HOST_FEE, HOSTED)).toEqual([HOST_FEE, ...OPHIS_SHAPE])
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, HOST_FEE, HOSTED, false, true)).toEqual([HOST_FEE, ...OPHIS_SHAPE])
     })
 
     it('stacks on the stable-pair variant too (swap happens before the stack)', () => {
@@ -69,31 +69,40 @@ describe('resolveOphisPartnerFee', () => {
       ]
       // The chain gate swaps by reference equality against the module constant, so
       // pass the stable shape in directly to pin that the stack is built after it.
-      expect(resolveOphisPartnerFee(STABLE_SHAPE, HOST_FEE, HOSTED, true)).toEqual([HOST_FEE, ...STABLE_SHAPE])
+      expect(resolveOphisPartnerFee(STABLE_SHAPE, HOST_FEE, HOSTED, true, true)).toEqual([HOST_FEE, ...STABLE_SHAPE])
     })
 
     it('never appends the Ophis base a second time when it arrives on the volumeFee pipeline', () => {
       // Flat-fee flag on, no host override: volumeFee IS the Ophis 1 bp base,
       // which the Ophis shape already contains (#1236 duplicated-partnerFee class).
       const ophisBase = { volumeBps: 1, recipient: OPHIS_SAFE }
-      expect(resolveOphisPartnerFee(OPHIS_SHAPE, ophisBase, HOSTED)).toBe(OPHIS_SHAPE)
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, ophisBase, HOSTED, false, true)).toBe(OPHIS_SHAPE)
       // Recipient casing must not defeat the guard.
-      expect(resolveOphisPartnerFee(OPHIS_SHAPE, { ...ophisBase, recipient: OPHIS_SAFE.toLowerCase() }, HOSTED)).toBe(
-        OPHIS_SHAPE,
-      )
+      expect(
+        resolveOphisPartnerFee(OPHIS_SHAPE, { ...ophisBase, recipient: OPHIS_SAFE.toLowerCase() }, HOSTED, false, true),
+      ).toBe(OPHIS_SHAPE)
     })
 
     it('ignores a zero or malformed host fee', () => {
-      expect(resolveOphisPartnerFee(OPHIS_SHAPE, { ...HOST_FEE, volumeBps: 0 }, HOSTED)).toBe(OPHIS_SHAPE)
-      expect(resolveOphisPartnerFee(OPHIS_SHAPE, { volumeBps: 50 }, HOSTED)).toBe(OPHIS_SHAPE)
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, { ...HOST_FEE, volumeBps: 0 }, HOSTED, false, true)).toBe(OPHIS_SHAPE)
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, { volumeBps: 50 }, HOSTED, false, true)).toBe(OPHIS_SHAPE)
     })
 
     it('still yields only the pipeline fee on a Volume-only chain (PI shape suppressed there)', () => {
       // Unchanged behaviour: the sovereign backend enforces its recipient
       // allowlist at ingress, so a foreign host fee is rejected there anyway.
       for (const chainId of VOLUME_ONLY) {
-        expect(resolveOphisPartnerFee(OPHIS_SHAPE, HOST_FEE, chainId)).toBe(HOST_FEE)
+        expect(resolveOphisPartnerFee(OPHIS_SHAPE, HOST_FEE, chainId, false, true)).toBe(HOST_FEE)
       }
+    })
+
+    it('never stacks a non-Ophis pipeline fee that is NOT a host override (the Safe App licence fee)', () => {
+      // Flat flag off + running inside Safe: the pipeline yields the Safe licence fee
+      // (non-Ophis recipient, no widget). Provenance says no host override, so the
+      // Ophis shape wins exactly as before this change.
+      const SAFE_LICENCE_FEE = { volumeBps: 10, recipient: '0x1111111111111111111111111111111111111111' }
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, SAFE_LICENCE_FEE, HOSTED, false, false)).toBe(OPHIS_SHAPE)
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, SAFE_LICENCE_FEE, HOSTED)).toBe(OPHIS_SHAPE)
     })
   })
 

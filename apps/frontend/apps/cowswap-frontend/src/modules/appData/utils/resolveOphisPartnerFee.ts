@@ -1,3 +1,5 @@
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+
 import { OPHIS_PARTNER_FEE_RECIPIENT, ophisAppDataPartnerFeeForChain } from 'ophis/partnerFeeDefault'
 
 import { shouldEmitOphisPartnerFee } from '../updater/shouldEmitOphisPartnerFee'
@@ -16,7 +18,7 @@ function isThirdPartyVolumeFee(fee: unknown): fee is { volumeBps: number; recipi
     typeof volumeBps === 'number' &&
     volumeBps > 0 &&
     typeof recipient === 'string' &&
-    recipient.toLowerCase() !== OPHIS_PARTNER_FEE_RECIPIENT.toLowerCase()
+    !areAddressesEqual(recipient, OPHIS_PARTNER_FEE_RECIPIENT)
   )
 }
 
@@ -42,8 +44,9 @@ function isThirdPartyVolumeFee(fee: unknown): fee is { volumeBps: number; recipi
  *      rather than a silent downgrade.
  *   3. Falling back to `volumeFee` picks up that pipeline, which is also the
  *      path a widget consumer's own volumeBps override arrives on.
- *   4. On a chain where the Ophis shape IS emitted, a third-party volumeFee (a
- *      host widget's own fee) is APPENDED to it, never substituted for it: the
+ *   4. On a chain where the Ophis shape IS emitted, and ONLY when the host of an
+ *      injected widget supplied its own `partnerFee` (`hostOverride`), that fee is
+ *      STACKED with the Ophis entries, never substituted for them: the
  *      embedder charges its users whatever it likes and Ophis still earns the
  *      1 bp base plus capped improvement on the same order. The rebate indexer
  *      already reads the stacked shape (Ophis entry + integrator own-fee entry).
@@ -56,6 +59,7 @@ export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   volumeFee: TVolumeFee | undefined,
   chainId: number | undefined,
   isStablePair = false,
+  hostOverride = false,
 ): TWidgetFee | TVolumeFee | undefined {
   // Two type parameters, not one: the widget fee is a price-improvement shape
   // and the volume fee is a Volume shape, so collapsing them to a single `T`
@@ -77,7 +81,10 @@ export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   //    and the PI were already unaccounted for on every Ophis order).
   // The result is the Ophis shape (an array of entries) plus one Volume entry, hence
   // the TWidgetFee cast.
-  if (Array.isArray(ophis) && isThirdPartyVolumeFee(volumeFee)) {
+  // `hostOverride` is the provenance gate: the volumeFee pipeline also carries the
+  // Safe App licence fee (non-Ophis recipient, no widget), which must keep today's
+  // behaviour (the Ophis shape wins) rather than be mistaken for a host fee.
+  if (hostOverride && Array.isArray(ophis) && isThirdPartyVolumeFee(volumeFee)) {
     return [volumeFee, ...ophis] as unknown as TWidgetFee
   }
   return ophis

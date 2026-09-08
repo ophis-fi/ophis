@@ -9,7 +9,7 @@ import { affiliateTraderSavedCodeAtom } from 'modules/affiliate'
 import { AppDataInfo, buildAppData, resolveOphisPartnerFee } from 'modules/appData'
 import { useAppCode, useAppDataHooks } from 'modules/appData/hooks'
 import { useRwaConsentForAppData } from 'modules/appData/hooks/useRwaConsentForAppData'
-import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
+import { injectedWidgetAppDataPartnerFeeAtom, injectedWidgetHasPartnerFeeOverrideAtom } from 'modules/injectedWidget'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
 import { useUtm } from 'modules/utm'
 import { isStableStablePair } from 'modules/volumeFee'
@@ -57,6 +57,7 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
 
   const resolveLegPartnerFee = useBasketLegPartnerFee()
   const widgetPartnerFee = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
+  const hostOverride = useAtomValue(injectedWidgetHasPartnerFeeOverrideAtom)
 
   return useCallback(
     async (leg, marker: OphisBasketTag): Promise<AppDataInfo> => {
@@ -69,6 +70,7 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
         resolveLegPartnerFee(leg),
         chainId,
         isStableStablePair({ chainId, sellTokenAddress: leg.sellToken, buyTokenAddress: leg.buyToken }),
+        hostOverride,
       )
 
       return buildAppData({

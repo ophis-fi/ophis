@@ -2,7 +2,11 @@ import { createStore } from 'jotai'
 
 import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
 
-import { injectedWidgetAppDataPartnerFeeAtom, injectedWidgetParamsAtom } from './injectedWidgetParamsAtom'
+import {
+  injectedWidgetAppDataPartnerFeeAtom,
+  injectedWidgetHasPartnerFeeOverrideAtom,
+  injectedWidgetParamsAtom,
+} from './injectedWidgetParamsAtom'
 
 describe('injectedWidgetAppDataPartnerFeeAtom', () => {
   it('applies the complete default policy when no widget override is present', () => {
@@ -28,5 +32,17 @@ describe('injectedWidgetAppDataPartnerFeeAtom', () => {
       errors: {},
     })
     expect(store.get(injectedWidgetAppDataPartnerFeeAtom)).toBe(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE)
+  })
+})
+
+describe('injectedWidgetHasPartnerFeeOverrideAtom', () => {
+  it('is false without a host partnerFee and true with one', () => {
+    const store = createStore()
+    expect(store.get(injectedWidgetHasPartnerFeeOverrideAtom)).toBe(false)
+    store.set(injectedWidgetParamsAtom, {
+      params: { partnerFee: { bps: 50, recipient: '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4' } },
+      errors: {},
+    })
+    expect(store.get(injectedWidgetHasPartnerFeeOverrideAtom)).toBe(true)
   })
 })

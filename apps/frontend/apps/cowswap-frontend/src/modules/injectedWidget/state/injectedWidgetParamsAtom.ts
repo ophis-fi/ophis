@@ -29,3 +29,14 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => {
  * to itself) routed $11.5k through the widget at 0 bps to Ophis.
  */
 export const injectedWidgetAppDataPartnerFeeAtom = atom(() => OPHIS_DEFAULT_APP_DATA_PARTNER_FEE)
+
+/**
+ * True when the HOST of an injected widget supplied its own `partnerFee`. This
+ * is the provenance resolveOphisPartnerFee needs before stacking a third-party
+ * Volume fee on the Ophis policy: the volumeFee pipeline also carries the Safe
+ * App licence fee (a non-Ophis recipient, no widget involved), which must keep
+ * today's behaviour and never be treated as a host override.
+ */
+export const injectedWidgetHasPartnerFeeOverrideAtom = atom((get) =>
+  Boolean(get(injectedWidgetParamsAtom).params.partnerFee),
+)

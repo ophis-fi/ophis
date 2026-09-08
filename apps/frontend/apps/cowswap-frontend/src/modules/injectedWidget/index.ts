@@ -4,7 +4,11 @@ export { useInjectedWidgetParams, useWidgetPartnerFee } from './hooks/useInjecte
 export { useInjectedWidgetDeadline } from './hooks/useInjectedWidgetDeadline'
 export { useInjectedWidgetMetaData } from './hooks/useInjectedWidgetMetaData'
 export { useInjectedWidgetPalette } from './hooks/useInjectedWidgetPalette'
-export { injectedWidgetAppDataPartnerFeeAtom, injectedWidgetPartnerFeeAtom } from './state/injectedWidgetParamsAtom'
+export {
+  injectedWidgetAppDataPartnerFeeAtom,
+  injectedWidgetHasPartnerFeeOverrideAtom,
+  injectedWidgetPartnerFeeAtom,
+} from './state/injectedWidgetParamsAtom'
 export { WidgetMarkdownContent } from './pure/WidgetMarkdownContent'
 
 export { callWidgetHook } from './services/callWidgetHook'
