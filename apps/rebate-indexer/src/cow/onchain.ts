@@ -3,9 +3,11 @@
  * settlements straight from the chain (allowlist-free getLogs on the immutable
  * GPv2Settlement Trade event), instead of the owner-scoped CoW orderbook API.
  *
- * Why it exists: the API fetcher finds trades by `owner`, so it MISSES native-ETH
- * (eth-flow, owner = a router contract) and contract-owner / EIP-1271 orders on
- * hosted chains. The decoder sees every settlement and recovers each trade's
+ * Why it exists: the API fetcher finds trades by `owner` of TRACKED wallets only
+ * (CoW lists a tracked wallet's own eth-flow orders under their on-chain sender),
+ * so it MISSES every untracked trader, including native-ETH (eth-flow, owner = a
+ * router contract) and contract-owner / EIP-1271 orders on hosted chains. The
+ * decoder sees every settlement and recovers each trade's
  * appData hash from settle() calldata, then attributes it through the SAME
  * `attributeOrder` money-path the API fetcher uses, so guards are identical.
  *
@@ -32,9 +34,10 @@ export interface SettleDecoderDeps {
   upsertTrades: (rows: PendingTrade[]) => Promise<number>;
   /**
    * Optional settlement-fill persistence (defillama_fills). The decoder is the
-   * ONLY source that ever sees hosted-chain native-ETH (shared eth-flow) fills:
-   * the owner-scoped API fetch structurally cannot list them without enumerating
-   * the shared router's entire CoW traffic. Persisting each Trade event here
+   * ONLY source that sees UNTRACKED wallets' hosted-chain native-ETH (shared
+   * eth-flow) fills: the owner-scoped API fetch lists a tracked wallet's own ones
+   * under their on-chain sender, and cannot enumerate the shared router's entire
+   * CoW traffic for anyone else. Persisting each Trade event here
    * preserves the per-fill data (block, logIndex, per-fill amounts, settlement
    * time) that cannot be reconstructed later without a chain re-scan. Fee fields
    * mirror the trade row's post-gate values, so in DISCOVERY mode the fills are
@@ -285,6 +288,9 @@ export async function decodeWindow(
         meta,
         {
           owner: ev.owner,
+          // settle() calldata carries no onchainUser, so an eth-flow order here
+          // falls back to receiver (ethFlowTrader). API-sourced rows for the same
+          // uid win at insert; the receiver-only identity is a discovery-row limit.
           receiver: ct.receiver,
           sellToken: ev.sellToken,
           buyToken: ev.buyToken,
