@@ -1,0 +1,31 @@
+diff --git a/apps/backend/crates/driver/src/infra/api/routes/healthz.rs b/apps/backend/crates/driver/src/infra/api/routes/healthz.rs
+index b6d5777e48..76528e14aa 100644
+--- a/apps/backend/crates/driver/src/infra/api/routes/healthz.rs
++++ b/apps/backend/crates/driver/src/infra/api/routes/healthz.rs
+@@ -54,11 +54,26 @@ fn min_balance_for(chain: Chain) -> u128 {
+         // headroom even at the high end (the 0.01 ETH default would false-alarm
+         // a healthily-funded submitter on this chain's cheap gas).
+         Chain::Unichain => 2_000_000_000_000_000, // 0.002 ETH
++        // Robinhood — at the sampled 0.26 gwei, 1M gas costs 0.00026 ETH.
++        // 0.002 ETH leaves ~7 settlements of headroom. The generic 0.01 ETH
++        // floor caused watchdog restart loops at a funded 0.009985 ETH.
++        Chain::Robinhood => 2_000_000_000_000_000, // 0.002 ETH
+         // Anything else (Sepolia, Goerli, Base, Arbitrum, etc.): default.
+         _ => DEFAULT_MIN_BALANCE_WEI,
+     }
+ }
+ 
++#[test]
++fn robinhood_balance_floor_preserves_settlement_headroom() {
++    let floor = min_balance_for(Chain::Robinhood);
++    let incident_balance = 9_985_267_395_762_000;
++    let settlement_cost = 1_000_000 * 260_000_000u128;
++    assert!(floor >= 5 * settlement_cost);
++    assert!(floor <= incident_balance);
++    assert_eq!(floor, 2_000_000_000_000_000);
++    assert_eq!(min_balance_for(Chain::Optimism), 10_000_000_000_000_000);
++}
++
+ #[derive(Clone)]
+ pub(in crate::infra::api) struct HealthcheckState {
+     pub eth: Ethereum,
