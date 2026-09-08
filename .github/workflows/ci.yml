@@ -40,12 +40,14 @@ jobs:
       # twelve days (esbuild emits undeclared identifiers as global refs rather
       # than erroring). This is the only typecheck they get.
       - run: pnpm typecheck:functions
+      - run: pnpm exec tsc -p apps/otc-control --noEmit
       # Hard gate (no `|| echo` fallback): the /api/intent recognition +
       # injection-safety validators are now the SOLE filter between the LLM and
       # the swap UI (the fixed token allow-list was removed), so a regression
       # here is a prompt-injection risk. Runs on Node's built-in test runner via
       # type-stripping — zero extra deps.
       - run: pnpm test:functions
+      - run: node scripts/otc-runtime-control.mjs --self-test
       # Public chain counts, sovereign orderbooks, and settlement addresses are
       # repeated across the SDK, frontend, and docs. Keep those user-facing
       # promises pinned to the canonical implementation.
