@@ -12,7 +12,7 @@ import { MAKER as mockMaker, mockOtcOrder, TX_HASH } from './prepareOtcTransacti
 import { useOtcActionController, type OtcActionDefinition } from './useOtcActionController'
 import { useOtcNetworkReads, type OtcNetworkReads } from './useOtcNetworkReads'
 
-let mockWriteMode: 'fork' | 'canary' = 'fork'
+let mockWriteMode: 'fork' | 'canary' | 'public' = 'fork'
 
 jest.mock('@cowprotocol/wallet', () => ({
   useSwitchNetwork: () => jest.fn(),
@@ -72,10 +72,15 @@ it('isolates recovery by stable fork ID and verifies the origin again before cle
   expect(result.current.uncertainHash).toBeNull()
 })
 
-it.each([null, TX_HASH])(
-  'reconciles a canary attempt (%s) through the controller with canonical verification',
-  async (hash) => {
-    mockWriteMode = 'canary'
+it.each([
+  { mode: 'canary' as const, hash: null },
+  { mode: 'canary' as const, hash: TX_HASH },
+  { mode: 'public' as const, hash: null },
+  { mode: 'public' as const, hash: TX_HASH },
+])(
+  'reconciles a $mode attempt ($hash) through the actual action controller with canonical network verification',
+  async ({ mode, hash }) => {
+    mockWriteMode = mode
     const proof = { requestHash: TX_HASH, nonce: 3 }
     const key = `${getAddressKey(mockMaker)}\u0000ethereum-mainnet\u0000order-7`
     getDefaultStore().set(uncertainOtcTransactionsAtom, recordUncertainOtcTransaction({}, key, hash, undefined, proof))
@@ -98,7 +103,7 @@ it.each([null, TX_HASH])(
       executeIntent: null,
     }
     const { result } = renderHook(() => useOtcActionController(definition, undefined))
-    expect(result.current.canary).toBe(true)
+    expect(result.current.mainnet).toBe(true)
     expect(result.current.signatureUncertain).toBe(hash === null)
     await act(async () => result.current.clearUncertainTransaction(TX_HASH))
     expect(mutate).toHaveBeenCalledTimes(2)

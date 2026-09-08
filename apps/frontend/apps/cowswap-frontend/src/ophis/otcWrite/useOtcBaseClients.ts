@@ -5,6 +5,7 @@ import type { useWalletProvider } from '@cowprotocol/wallet-provider'
 import { usePublicClient } from 'wagmi'
 
 import { toOtcForkClients, toOtcLegacyForkClients } from './otcWriteAdapters'
+import { isOtcMainnetMode } from './otcWriteMode'
 
 import type { Address } from 'viem'
 
@@ -16,7 +17,7 @@ export function useOtcBaseClients(
   legacyProvider: ReturnType<typeof useWalletProvider>,
 ): { canaryClient: ReturnType<typeof usePublicClient>; baseClients: ReturnType<typeof toOtcForkClients> | null } {
   const publicClient = usePublicClient({ chainId: 1 })
-  const canaryMode = process.env.REACT_APP_OTC_WRITE_MODE === 'canary'
+  const canaryMode = isOtcMainnetMode(process.env.REACT_APP_OTC_WRITE_MODE)
   const canaryClient = canaryMode ? publicClient : undefined
   const baseClients = useMemo(() => {
     if (canaryMode && !canaryClient) return null

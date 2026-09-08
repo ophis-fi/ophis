@@ -15,6 +15,7 @@ import {
   verifyOtcLocalForkWallet,
 } from './otcForkIdentity'
 import { toOtcForkClients, toOtcLegacyForkClients } from './otcWriteAdapters'
+import { isOtcMainnetMode } from './otcWriteMode'
 import { readOtcAllowance } from './readOtcAllowance'
 import { useOtcBaseClients } from './useOtcBaseClients'
 import { verifyOtcCanaryNetwork } from './verifyOtcCanaryNetwork'
@@ -120,7 +121,7 @@ export function useOtcNetworkReads(
   allowanceToken: Address | null,
 ): OtcNetworkReads {
   const legacyProvider = useWalletProvider()
-  const canaryMode = process.env.REACT_APP_OTC_WRITE_MODE === 'canary'
+  const canaryMode = isOtcMainnetMode(process.env.REACT_APP_OTC_WRITE_MODE)
   const { canaryClient, baseClients } = useOtcBaseClients(account, walletClient, legacyProvider)
   const walletSource = walletClient ?? legacyProvider
   const transportId = getOtcWalletTransportId(walletSource)

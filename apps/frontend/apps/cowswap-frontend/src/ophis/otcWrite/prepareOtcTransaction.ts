@@ -5,11 +5,12 @@ import { OPHIS_ETHEREUM_OTC_MANIFEST, readOtcOrder, verifyOtcContract } from 'op
 import { type Address, type Hex } from 'viem'
 
 import { buildOtcTransaction, OTC_FILL_DEADLINE_WINDOW_SECONDS } from './buildOtcTransaction'
-import { assertOtcCanaryIntent } from './otcCanaryPolicy'
+import { assertOtcWritePolicy } from './otcCanaryPolicy'
 import { assertOtcReceipt } from './otcReceiptTracking.utils'
 import { OtcReceiptTrackingError } from './otcReceiptTrackingError'
 import { assertOtcRuntimeControl } from './otcRuntimeControl'
 import { assertOtcTransactionHash, otcRequestHash } from './otcTransactionProof'
+import { isOtcMainnetMode } from './otcWriteMode'
 import { withOtcPreflightTimeout } from './otcWriteTimeouts'
 import { readOtcAllowanceAtBlock } from './readOtcAllowance'
 
@@ -69,7 +70,7 @@ function assertRuntimeAuthorization(authorization: OtcWriteRuntimeAuthorization)
     authorization.writeFlag === true &&
     authorization.isLocal === runtimeIsLocal &&
     authorization.writeMode === runtimeWriteMode &&
-    ((runtimeIsLocal && runtimeWriteMode === 'fork') || runtimeWriteMode === 'canary')
+    ((runtimeIsLocal && runtimeWriteMode === 'fork') || isOtcMainnetMode(runtimeWriteMode))
   if (!enabled) throw new Error('Ophis OTC writes are disabled')
 }
 
@@ -135,12 +136,12 @@ export function prepareOtcTransaction(
   return withOtcPreflightTimeout(runOtcTransactionPreflight(client, intent, manifest))
 }
 
-function assertCanaryProof(
-  canary: boolean,
+function assertMainnetProof(
+  mainnet: boolean,
   proof: OtcSubmissionProof | undefined,
   prepared: PreparedOtcTransaction,
 ): void {
-  if (!canary) return
+  if (!mainnet) return
   if (
     !proof ||
     proof.requestHash !== otcRequestHash(prepared.request) ||
@@ -167,20 +168,20 @@ export async function submitOtcTransaction(
   },
 ): Promise<OtcTransactionReceipt> {
   assertRuntimeAuthorization(authorization)
-  if (authorization.writeMode === 'canary') {
-    assertOtcCanaryIntent(intent, BigInt(Math.floor(Date.now() / 1_000)))
+  if (isOtcMainnetMode(authorization.writeMode)) {
+    assertOtcWritePolicy(intent, BigInt(Math.floor(Date.now() / 1_000)), authorization.writeMode)
     await assertOtcRuntimeControl()
   }
   const prepared = await prepareOtcTransaction(client, intent, manifest)
   const isStillAuthorized = (): boolean => {
     assertRuntimeAuthorization(authorization)
-    if (authorization.writeMode === 'canary') {
-      assertOtcCanaryIntent(prepared.intent, prepared.preparedAtTimestamp)
-      assertOtcCanaryIntent(prepared.intent, BigInt(Math.floor(Date.now() / 1_000)))
+    if (isOtcMainnetMode(authorization.writeMode)) {
+      assertOtcWritePolicy(prepared.intent, prepared.preparedAtTimestamp, authorization.writeMode)
+      assertOtcWritePolicy(prepared.intent, BigInt(Math.floor(Date.now() / 1_000)), authorization.writeMode)
     }
     return isCurrentContext()
   }
-  if (authorization.writeMode === 'canary') await assertOtcRuntimeControl()
+  if (isOtcMainnetMode(authorization.writeMode)) await assertOtcRuntimeControl()
   if (!isStillAuthorized()) throw new Error('Ophis OTC action context changed')
   let submissionProof: OtcSubmissionProof | undefined
   const hash = await wallet.sendTransaction(
@@ -189,7 +190,7 @@ export async function submitOtcTransaction(
     prepared.preparedAtTimestamp,
     isStillAuthorized,
     (proof) => {
-      assertCanaryProof(authorization.writeMode === 'canary', proof, prepared)
+      assertMainnetProof(isOtcMainnetMode(authorization.writeMode), proof, prepared)
       submissionProof = proof
       if (proof) onSignatureRequested(proof)
     },
@@ -198,7 +199,7 @@ export async function submitOtcTransaction(
   let receipt: OtcTransactionReceipt
   try {
     onBroadcast(hash)
-    assertCanaryProof(authorization.writeMode === 'canary', submissionProof, prepared)
+    assertMainnetProof(isOtcMainnetMode(authorization.writeMode), submissionProof, prepared)
     receipt = await wallet.waitForTransactionReceipt(hash, submissionProof)
     assertOtcReceipt(hash, receipt)
   } catch (caught) {

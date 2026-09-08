@@ -21,7 +21,7 @@ type RecoveryOptions = Pick<
   | 'onConfirmed'
   | 'beginAllowanceCooldown'
 > & {
-  canary: boolean
+  mainnet: boolean
   uncertainHash: Hex | null
   proof: OtcSubmissionProof | undefined
   clearRecordedTransaction(verify: () => Promise<void>): Promise<void>
@@ -33,7 +33,7 @@ async function reconcile(
   suppliedHash?: Hex,
 ): Promise<void> {
   const {
-    canary,
+    mainnet,
     wallet,
     uncertainHash,
     proof,
@@ -43,7 +43,7 @@ async function reconcile(
     setPendingIntent,
     setError,
   } = options
-  if (!canary) return uncertainHash ? clearRecordedTransaction(verifyOrigin) : undefined
+  if (!mainnet) return uncertainHash ? clearRecordedTransaction(verifyOrigin) : undefined
   const hash = uncertainHash ?? suppliedHash
   const generation = contextGeneration.current
   if (!wallet || !hash || inFlightGeneration.current === generation) return

@@ -1,6 +1,7 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { getOtcCanaryRestriction, isOtcCanaryAccount } from './otcCanaryPolicy'
+import { isOtcMainnetMode } from './otcWriteMode'
 import { useOtcActionModel } from './useOtcActionModel'
 
 import type { OtcActionModel } from './otcActionModel'
@@ -28,19 +29,19 @@ interface ControllerModelOptions {
   enabled: boolean
   account: Address | undefined
   chainId: number
-  canary: boolean
+  writeMode: string | undefined
   switching: boolean
 }
 
 export function useOtcControllerModel(options: ControllerModelOptions): OtcActionModel {
-  const { definition, network, submission, enabled, account, chainId, canary, switching } = options
-  const walletAdmitted = !canary || isOtcCanaryAccount(account)
+  const { definition, network, submission, enabled, account, chainId, writeMode, switching } = options
+  const walletAdmitted = writeMode !== 'canary' || isOtcCanaryAccount(account)
   const allowance = network.allowanceResponse.data?.allowance ?? null
-  const restriction = canaryRestriction(canary, definition)
+  const restriction = canaryRestriction(writeMode === 'canary', definition)
   const networkVerified = networkStatus(account, chainId, network.networkResponse.data, network.networkResponse.error)
   return useOtcActionModel({
     enabled,
-    canary,
+    mainnet: isOtcMainnetMode(writeMode),
     walletAdmitted,
     connected: !!account,
     correctChain: chainId === SupportedChainId.MAINNET,
@@ -60,8 +61,8 @@ export function useOtcControllerModel(options: ControllerModelOptions): OtcActio
   })
 }
 
-function canaryRestriction(canary: boolean, definition: OtcActionDefinition): string | null {
-  return canary && definition.executeIntent
+function canaryRestriction(mainnet: boolean, definition: OtcActionDefinition): string | null {
+  return mainnet && definition.executeIntent
     ? getOtcCanaryRestriction(definition.executeIntent, BigInt(Math.floor(Date.now() / 1_000)))
     : null
 }

@@ -10,6 +10,7 @@ import {
   uncertainOtcTransactionsAtom,
 } from 'entities/otc'
 
+import { isOtcMainnetMode } from './otcWriteMode'
 import { useOtcAllowanceCooldown } from './useOtcAllowanceCooldown'
 import { useOtcRecoveryCallback } from './useOtcRecoveryCallback'
 import { useOtcSubmitCallback, type OtcSuccessfulTransaction } from './useOtcSubmitCallback'
@@ -67,7 +68,7 @@ function submissionContextKey(
     resetKey,
     account ?? '',
     readFlag,
-    writeMode === 'canary' ? 'runtime' : writeFlag,
+    isOtcMainnetMode(writeMode) ? 'runtime' : writeFlag,
     isLocal,
     writeMode ?? '',
   ].join('\u0000')
@@ -196,7 +197,7 @@ export function useOtcSubmission(options: OtcSubmissionOptions): OtcSubmissionSt
     withTransactionLock: uncertainty.withTransactionLock,
   })
   const clearUncertainTransaction = useOtcRecoveryCallback({
-    canary: authorization.writeMode === 'canary',
+    mainnet: isOtcMainnetMode(authorization.writeMode),
     wallet,
     uncertainHash: uncertainty.uncertainHash,
     proof: uncertainty.proof,

@@ -4,6 +4,7 @@ import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { isLocal } from '@cowprotocol/common-utils'
 
 import { OTC_CANARY_POLICY } from './otcCanary.const'
+import { isOtcMainnetMode } from './otcWriteMode'
 import { useOtcRuntimeControl } from './useOtcRuntimeControl'
 
 import type { OtcWriteRuntimeAuthorization } from './otcWrite.types'
@@ -37,11 +38,12 @@ export function resolveOtcWriteAuthorization(
   const configured =
     authorization.readFlag === true &&
     ((authorization.isLocal && authorization.writeMode === 'fork') ||
+      authorization.writeMode === 'public' ||
       (authorization.writeMode === 'canary' && OTC_CANARY_POLICY.accounts.length > 0))
   const enabled = configured && authorization.writeFlag === true
   return {
     enabled,
-    configured: authorization.writeMode === 'canary' ? configured : enabled,
+    configured: isOtcMainnetMode(authorization.writeMode) ? configured : enabled,
     authorization,
   }
 }
@@ -52,10 +54,11 @@ export function useOtcWriteAuthorization(): OtcWriteAuthorizationState {
   const localWriteFlag = process.env.REACT_APP_OTC_WRITE_FLAG
   const writeMode = process.env.REACT_APP_OTC_WRITE_MODE
   const runtimeFlag = useOtcRuntimeControl(
-    writeMode === 'canary' && readFlag === true && OTC_CANARY_POLICY.accounts.length > 0,
+    readFlag === true && (writeMode === 'public' || (writeMode === 'canary' && OTC_CANARY_POLICY.accounts.length > 0)),
   )
-  const writeFlag =
-    writeMode === 'canary' ? runtimeFlag : resolveOtcWriteFlag(flags.isOtcWriteEnabled, isLocal, localWriteFlag)
+  const writeFlag = isOtcMainnetMode(writeMode)
+    ? runtimeFlag
+    : resolveOtcWriteFlag(flags.isOtcWriteEnabled, isLocal, localWriteFlag)
   return useMemo(
     () => resolveOtcWriteAuthorization({ isOtcEnabled: readFlag, isOtcWriteEnabled: writeFlag }, isLocal, writeMode),
     [readFlag, writeFlag, writeMode],
