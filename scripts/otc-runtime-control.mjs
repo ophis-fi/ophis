@@ -84,7 +84,7 @@ async function writeControl(value) {
   if (!response.ok) throw new Error(`Could not write OTC runtime control (${response.status})`);
 }
 
-async function verifyControl(enabled) {
+async function verifyControl(value) {
   const nonce = randomBytes(16).toString('hex');
   const response = await fetch(`https://swap.ophis.fi/api/otc-control?nonce=${nonce}`, {
     cache: 'no-store',
@@ -93,7 +93,8 @@ async function verifyControl(enabled) {
   const result = await response.json();
   assert.equal(response.status, 200);
   assert.equal(result.nonce, nonce);
-  assert.equal(result.enabled, enabled);
+  assert.equal(result.enabled, value.enabled);
+  assert.equal(result.mode, value.enabled ? (value.mode ?? 'canary') : null);
   assert.match(response.headers.get('cache-control') ?? '', /no-store/);
 }
 
@@ -118,7 +119,7 @@ if (process.argv[2] === '--self-test') {
   if (mode === 'init') await initialize();
   try {
     await writeControl(value);
-    await verifyControl(value.enabled);
+    await verifyControl(value);
   } catch (error) {
     if (value.enabled) await writeControl({ enabled: false, expiresAt: 0 });
     throw error;

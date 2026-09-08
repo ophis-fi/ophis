@@ -15,12 +15,11 @@ import type { OtcWriteIntent, OtcWalletSubmitter } from './otcWrite.types'
 
 jest.mock('@cowprotocol/common-utils', () => ({ ...jest.requireActual('@cowprotocol/common-utils'), isLocal: false }))
 const originalFetch = global.fetch
-
 jest.mock('./otcCanary.const', () => ({ OTC_CANARY_POLICY: { accounts: [], pairs: [], expiresAt: 0n } }))
 
 const order = mockOtcOrder()
 const intent: OtcWriteIntent = { kind: 'create', account: MAKER, draft: order }
-const auth = mockOtcAuthorization({ isLocal: false, writeMode: 'canary' })
+const auth = mockOtcAuthorization({ isLocal: false })
 const policy = OTC_CANARY_POLICY as { accounts: string[]; pairs: unknown[]; expiresAt: bigint }
 
 function wallet(): jest.Mocked<OtcWalletSubmitter> {
@@ -38,7 +37,8 @@ function wallet(): jest.Mocked<OtcWalletSubmitter> {
   }
 }
 
-describe('canary submission admission at the shared write sink', () => {
+describe.each(['canary', 'public'])('%s submission at the shared write sink', (mode) => {
+  const canaryTest = mode === 'canary' ? it : it.skip
   beforeEach(() => {
     global.fetch = jest.fn(
       async (url) =>
@@ -46,17 +46,17 @@ describe('canary submission admission at the shared write sink', () => {
           ok: true,
           json: async () => ({
             enabled: true,
+            mode,
             nonce: new URL(String(url), 'https://swap.ophis.fi').searchParams.get('nonce'),
           }),
         }) as Response,
     )
     jest.useFakeTimers({ now: Number(NOW) * 1_000 })
-    process.env.REACT_APP_OTC_WRITE_MODE = 'canary'
-    policy.accounts = [MAKER]
-    policy.pairs = [
-      { tokenA: order.tokenA, tokenB: order.tokenB, maxAmountA: order.amountA, maxAmountB: order.amountB },
-    ]
-    policy.expiresAt = NOW + 60n
+    process.env.REACT_APP_OTC_WRITE_MODE = mode
+    auth.writeMode = mode
+    policy.accounts = mode === 'public' ? [] : [MAKER]
+    policy.pairs = mode === 'public' ? [] : [{ ...order, maxAmountA: order.amountA, maxAmountB: order.amountB }]
+    policy.expiresAt = mode === 'public' ? 0n : NOW + 60n
   })
   afterEach(() => {
     global.fetch = originalFetch
@@ -64,7 +64,7 @@ describe('canary submission admission at the shared write sink', () => {
     delete process.env.REACT_APP_OTC_WRITE_MODE
   })
 
-  it.each(['empty', 'cap', 'expiry', 'read flag', 'write flag'])(
+  it.each(mode === 'canary' ? ['empty', 'cap', 'expiry', 'read flag', 'write flag'] : ['read flag', 'write flag'])(
     'blocks %s before any RPC or signature',
     async (reason) => {
       if (reason === 'empty') policy.accounts = []
@@ -202,7 +202,7 @@ describe('canary submission admission at the shared write sink', () => {
     },
   )
 
-  it('rechecks expiration after simulation, before contacting the wallet', async () => {
+  canaryTest('rechecks expiration after simulation, before contacting the wallet', async () => {
     const client = mockOtcWriteClient({ allowance: order.amountA })
     client.simulate = async () => {
       jest.setSystemTime(Number(policy.expiresAt) * 1_000)
@@ -212,7 +212,7 @@ describe('canary submission admission at the shared write sink', () => {
     expect(submitter.sendTransaction).not.toHaveBeenCalled()
   })
 
-  it('passes a live policy check to the adapter for its final post-RPC signature guard', async () => {
+  canaryTest('passes a live policy check to the adapter for its final post-RPC signature guard', async () => {
     const submitter = wallet()
     submitter.sendTransaction.mockImplementation(async (_request, _intent, _timestamp, current) => {
       jest.setSystemTime(Number(policy.expiresAt) * 1_000)

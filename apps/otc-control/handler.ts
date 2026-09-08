@@ -33,8 +33,8 @@ export async function handleControl(
   const url = new URL(request.url);
   const nonce = url.searchParams.get('nonce');
   const headers = { 'cache-control': 'no-store, max-age=0', 'cdn-cache-control': 'no-store' };
-  const reply = (active: boolean, status = 200) =>
-    Response.json({ enabled: active, nonce }, { status, headers });
+  const reply = (active: boolean, status = 200, mode: 'public' | 'canary' | null = null) =>
+    Response.json({ enabled: active, mode, nonce }, { status, headers });
   if (url.origin !== 'https://swap.ophis.fi' || url.pathname !== '/api/otc-control')
     return reply(false, 404);
   if (!nonce || !/^[a-f0-9]{32}$/.test(nonce)) return reply(false, 400);
@@ -57,7 +57,10 @@ export async function handleControl(
         await storage.write({ enabled: false, expiresAt: 0 });
       else return reply(false, 400);
     } else if (request.method !== 'GET') return reply(false, 405);
-    return reply(enabled(await storage.read()));
+    const value = await storage.read();
+    return enabled(value)
+      ? reply(true, 200, value.mode === 'public' ? 'public' : 'canary')
+      : reply(false);
   } catch {
     return reply(false, 503);
   }

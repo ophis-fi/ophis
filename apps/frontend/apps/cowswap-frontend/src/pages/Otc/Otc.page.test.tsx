@@ -176,3 +176,18 @@ describe('OtcPageView', () => {
     expect(screen.queryByText('#2')).toBeNull()
   })
 })
+
+it('shows public trading without trial enrollment or fork labels', () => {
+  const originalMode = process.env.REACT_APP_OTC_WRITE_MODE
+  process.env.REACT_APP_OTC_WRITE_MODE = 'public'
+  try {
+    renderView(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} writeEnabled />)
+    expect(screen.getByText('Public Ethereum trading')).toBeTruthy()
+    expect(screen.getByText(/Connect your wallet to create, fill, or cancel/)).toBeTruthy()
+    expect(screen.queryByText('Restricted Ethereum canary')).toBeNull()
+    expect(screen.queryByText('Local fork writes')).toBeNull()
+  } finally {
+    if (originalMode === undefined) delete process.env.REACT_APP_OTC_WRITE_MODE
+    else process.env.REACT_APP_OTC_WRITE_MODE = originalMode
+  }
+})

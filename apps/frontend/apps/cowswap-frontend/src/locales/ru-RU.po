@@ -6585,3 +6585,6 @@ msgstr "Подключите кошелёк, чтобы создавать, ис
 #: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
 msgid "Public Ethereum trading"
 msgstr "Открытая торговля в Ethereum"
+
+msgid "Use a standard Ethereum wallet with at least one confirmed outgoing transaction. Contract wallets are not supported."
+msgstr "Используйте обычный кошелёк Ethereum с хотя бы одной подтверждённой исходящей транзакцией. Контрактные кошельки не поддерживаются."

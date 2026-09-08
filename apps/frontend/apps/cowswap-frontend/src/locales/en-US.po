@@ -6429,3 +6429,6 @@ msgstr "Connect your wallet to create, fill, or cancel fixed-price ERC-20 orders
 #: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
 msgid "Public Ethereum trading"
 msgstr "Public Ethereum trading"
+
+msgid "Use a standard Ethereum wallet with at least one confirmed outgoing transaction. Contract wallets are not supported."
+msgstr "Use a standard Ethereum wallet with at least one confirmed outgoing transaction. Contract wallets are not supported."

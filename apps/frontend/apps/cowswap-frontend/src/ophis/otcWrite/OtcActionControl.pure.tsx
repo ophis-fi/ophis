@@ -90,7 +90,7 @@ function UnknownSubmissionRecovery({ reconcile }: { reconcile(hash?: Hex): void 
         </p>
         <p>
           Only a mined transaction matching the reviewed action can resolve this warning. A missing or unrelated receipt
-          leaves the action locked; contact the canary operator if no hash is available.
+          leaves the action locked. Check your wallet activity for the hash before continuing.
         </p>
       </Callout>
     </div>
