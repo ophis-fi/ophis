@@ -46,6 +46,7 @@ jobs:
       # here is a prompt-injection risk. Runs on Node's built-in test runner via
       # type-stripping — zero extra deps.
       - run: pnpm test:functions
+      - run: node scripts/otc-runtime-control.mjs --self-test
       # Public chain counts, sovereign orderbooks, and settlement addresses are
       # repeated across the SDK, frontend, and docs. Keep those user-facing
       # promises pinned to the canonical implementation.
