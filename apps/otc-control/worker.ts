@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { handleControl } from './handler';
+import { handleControl, type OtcControlValue } from './handler';
 
 interface Env {
   CONTROL: DurableObjectNamespace<OtcControl>;
@@ -10,7 +10,7 @@ export class OtcControl extends DurableObject<Env> {
   async read(): Promise<unknown> {
     return this.ctx.storage.get('control');
   }
-  async write(value: { enabled: boolean; expiresAt: number }): Promise<void> {
+  async write(value: OtcControlValue): Promise<void> {
     await this.ctx.storage.put('control', value);
   }
 }

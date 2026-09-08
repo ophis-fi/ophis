@@ -7,7 +7,12 @@ import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 function controlValue(mode, expiry, now = Date.now()) {
-  if (!['init', 'off', 'on'].includes(mode)) throw new Error('Expected init, off or on');
+  if (!['init', 'off', 'on', 'public'].includes(mode))
+    throw new Error('Expected init, off, on or public');
+  if (mode === 'public') {
+    if (expiry) throw new Error('Public control does not accept a trial expiry');
+    return { enabled: true, mode: 'public', expiresAt: null };
+  }
   if (mode !== 'on') return { enabled: false, expiresAt: 0 };
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(expiry ?? ''))
     throw new Error('UTC expiry required');
@@ -100,6 +105,8 @@ if (process.argv[2] === '--self-test') {
   const now = Date.parse('2026-09-08T00:00:00Z');
   assert.deepEqual(controlValue('off'), { enabled: false, expiresAt: 0 });
   assert.deepEqual(controlValue('init'), { enabled: false, expiresAt: 0 });
+  assert.deepEqual(controlValue('public'), { enabled: true, mode: 'public', expiresAt: null });
+  assert.throws(() => controlValue('public', '2026-09-08T01:00:00Z'));
   assert.equal(controlValue('on', '2026-09-08T01:00:00Z', now).enabled, true);
   for (const expiry of [undefined, '', 'tomorrow', '2026-09-08T00:00:00Z', '2026-09-10T00:00:00Z'])
     assert.throws(() => controlValue('on', expiry, now));
