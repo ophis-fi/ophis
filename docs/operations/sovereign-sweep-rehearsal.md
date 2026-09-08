@@ -173,10 +173,9 @@ would stall Optimism indefinitely for no reason. If OP needs sweeping before the
 liquidator ceremony, the v1 forge script remains the documented
 disaster-recovery fallback, at the cost of using the driver-submitter key.
 
-Note USDT is **not** in the OP sweep's default token list (USDC, WETH, native
-ETH), so the override below deliberately adds it. Whether any hourly monitor
-reports that USDT balance depends on that monitor's own probe coverage, which is
-outside this document.
+The OP sweep defaults include USDC, USDT, WETH and native ETH. USDT uses a
+10 USDT floor (10,000,000 base units), shared with the hourly buffer monitor.
+The rehearsal override below lowers the thresholds to exercise the dust balances.
 
 Preflight Optimism **after** the deploy and the Timelock execute, immediately
 before the first sweep. Run earlier it cannot pass: before deployment the

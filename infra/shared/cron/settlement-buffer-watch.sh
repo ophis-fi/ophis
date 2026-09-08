@@ -75,7 +75,7 @@ CHAINS=(
 # this file exists.
 #
 # Sources: infra/<chain>/scripts/sweep-to-safe.sh
-#   optimism  TOKEN_LIST=(USDC WETH native)  MIN_LIST=(1e7 3e15 3e15)
+#   optimism  TOKEN_LIST=(USDC USDT WETH native) MIN_LIST=(1e7 1e7 3e15 3e15)
 #   unichain  TOKENS=(WETH USDC)             MIN_BASE_UNITS=(1e15 1e7)
 #   robinhood TOKENS=(USDG WETH)             MIN_BASE_UNITS=(1e7 3e15)
 # Native ETH is listed for EVERY chain at MIN_ETH_WEI (3e15): the shared
@@ -113,6 +113,7 @@ EXPECTED_ADDRS=(
 # the symbol is a label its deployer chose.
 THRESHOLDS=(
   "optimism:USDC:0x0b2c639c533813f4aa9d7837caf62653d097ff85:10000000"
+  "optimism:USDT:0x94b008aa00579c1307b0ef2c499ad98a8ce58e58:10000000"
   "optimism:WETH:0x4200000000000000000000000000000000000006:3000000000000000"
   "optimism:ETH:native:3000000000000000"
   "unichain:WETH:0x4200000000000000000000000000000000000006:1000000000000000"
