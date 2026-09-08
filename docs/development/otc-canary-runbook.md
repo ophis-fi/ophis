@@ -1,8 +1,8 @@
 # Restricted ERC-20 OTC canary
 
-Status: preparation only, 2026-09-07. Mainnet writes remain disabled. No wallet or pair is admitted by the checked-in policy. This runbook does not authorize activation or a mainnet transaction.
+Status: runtime activation infrastructure, 2026-09-08. No wallet or pair is admitted by the checked-in policy. Live trading requires the operator-supplied admission policy and expiry; provisioning and control rehearsals do not sign mainnet transactions.
 
-The current Cloudflare workflow does not supply `REACT_APP_LAUNCH_DARKLY_KEY`. `WithLDProvider` therefore skips LaunchDarkly and `useFeatureFlags` falls back to the compiled `isOtcWriteEnabled=false`. There is no verified remote write switch in this release. Do not activate by changing that compiled default to true.
+Canary signing uses the same-origin `/api/otc-control` endpoint backed by private R2, independently of LaunchDarkly. The production build selects canary mode. Follow the [runtime control procedure](otc-runtime-control.md) to initialize, verify, enable or stop it. Keep the compiled write default false.
 
 ## Activation record — complete in the separately approved release
 
@@ -10,7 +10,7 @@ The current Cloudflare workflow does not supply `REACT_APP_LAUNCH_DARKLY_KEY`. `
 |---|---|
 | Final reviewed commit and deployment | Pending |
 | Owner's explicit mainnet-write approval | Pending |
-| Live flag provider and production build wiring | Missing; separately reviewed implementation required |
+| Live flag provider and production build wiring | Private R2 control and canary build mode; verify the deployed endpoint before activation |
 | Witnessed flag-off, provider-failure and existing/fresh-tab tests | Pending; activation blocked until demonstrated |
 | Frontend/QA and final security/manifest approvals | Pending; see expanded audit limitations |
 | Admitted wallet addresses (checksum), responsible operator | Pending; no test wallets |
@@ -21,7 +21,7 @@ The current Cloudflare workflow does not supply `REACT_APP_LAUNCH_DARKLY_KEY`. `
 | Previous read-only release SHA/deployment and rollback operator | Pending |
 | Rollback rehearsal evidence on the release candidate | Pending |
 
-Populate `ophis/otcWrite/otcCanary.const.ts` only in that reviewed release. Both `isOtcEnabled` and `isOtcWriteEnabled` must be literal `true`, and the build must explicitly use `REACT_APP_OTC_WRITE_MODE=canary`. The local write-flag override does not enable production. First wire and verify a real runtime flag provider in the activation release, including its production build configuration. Keep the compiled write default false and demonstrate safe behavior when the provider is unavailable or its cached values are stale. Keep the verified runtime write flag off while deploying/verifying the candidate. Do not populate accounts, change production flags, or sign a funded transaction during preparation.
+Populate `ophis/otcWrite/otcCanary.const.ts` with the approved live wallets, token pairs, per-leg limits and expiry in a reviewed release. The read flag and nonce-bound runtime permission must both be literal `true`. Keep the runtime control off while deploying/verifying that policy. The local write override and compiled write default cannot enable canary mode. Before live trading, verify control shutdown and provider-failure behavior in existing and fresh tabs. Control-only on/off rehearsals may run with the empty policy; never admit public test wallets in production.
 
 Verify the immutable Ethereum manifest independently against the exact reviewed commit. The existing `scripts/otc-mainnet-canary.mjs --self-test` checks manifest drift; its no-argument mode checks live identity and index reconciliation using public read-only endpoints. The deployed contract cannot be paused or upgraded by Ophis. No contract deployment is involved.
 
@@ -48,7 +48,7 @@ Stop new activity immediately on one unexpected target/value/amount, unlisted wa
 ## Stop and rollback
 
 1. Stop operator activity and reject outstanding wallet prompts where possible. A flag or deployment cannot cancel a signed transaction, undo a mined escrow, or revoke allowance. Record and reconcile all in-flight hashes and replacements before further action.
-2. Only after the activation release has wired and witnessed a live flag provider, set its `isOtcWriteEnabled=false` and verify propagation in an existing tab and a fresh tab. This remote control is not available in the current deployment. Do not claim a hard stop from editing an unwired flag dashboard.
+2. Run `gh workflow run otc-runtime-control.yml --ref main -f mode=off` and wait for successful public-endpoint verification. Confirm disabled actions in existing and fresh tabs. The UI polls every five seconds and new signatures require a fresh control read; receipt/recovery tracking remains mounted. A provider failure blocks signing. Already-issued wallet prompts can still execute.
 3. The currently wired fallback is the repository variable `REACT_APP_OTC_ENABLED`: set it to the literal `false` and run the existing **Deploy to Cloudflare Pages** workflow on `main`. Its build passes this variable to the feature hook, where false overrides other read flags and removes the OTC route. Wait for successful deployment, verify the served build identity, and reload or close existing tabs. This is a deployment control, not an instantaneous update to already-loaded bundles; it does not stop direct contract calls.
 4. A hard stop removes UI cancellation/revocation too. For an orderly wind-down after activation without a suspected signing defect, keep wallet admission and the verified write provider available but close the static trading window through a reviewed deployment. Verify approval/create/fill are blocked while cancel/revoke work. Removing an account does not clean up its allowance.
 5. Restore the recorded read-only release through the reviewed deployment path when appropriate. Verify `/otc` behavior and the absence of signing actions in both refreshed and fresh tabs. Never clear local uncertainty records as part of rollback. The immutable escrow has no Ophis pause or upgrade control.
@@ -58,6 +58,6 @@ Stop new activity immediately on one unexpected target/value/amount, unlisted wa
 
 The runnable offline rehearsal is the existing feature-boundary tests plus `submitOtcCanaryTransaction.test.ts`: both flags off deny before RPC/signature; empty policy denies; expiry before and after simulation blocks entries; expiry at the adapter's final guard blocks signing; cancellation remains available after window closure. `useOtcCanaryRecovery.test.ts` proves missing/replaced/invalid receipts and context drift retain locks, and a known receipt is reconciled across wallet transports. These tests exercise mocked policy and receipts, not production flag delivery.
 
-The actual deployed-contract fork suite and six injected-wallet browser scenarios use only local Anvil writes with a keyless PublicNode upstream and zero RPC retries. They validate shared ERC-20/receipt/recovery plumbing; they do not authorize funded Ethereum transactions. A local rehearsal on 2026-09-07 also exercised all six flows in canary mode using an isolated, temporary public test-account policy and a separate reader configured only for local Anvil (6/6 passed). The first attempt exposed two fork-only text expectations; updating those isolated expectations to the canary notice made the full run pass. This is not evidence of production flag propagation: a witnessed production flag/rollback drill remains required before activation. Never put a public test account in the production policy to run that rehearsal.
+The actual deployed-contract fork suite and six injected-wallet browser scenarios use only local Anvil writes with a keyless PublicNode upstream and zero RPC retries. They validate shared ERC-20/receipt/recovery plumbing; they do not authorize funded Ethereum transactions. A local rehearsal on 2026-09-07 also exercised all six flows in canary mode using an isolated, temporary public test-account policy and a separate reader configured only for local Anvil (6/6 passed). The first attempt exposed two fork-only text expectations; updating those isolated expectations to the canary notice made the full run pass. The runtime-control browser scenario additionally checks shutdown, reload and provider failure with nonce-aware control stubs. This is not evidence of production flag propagation: a witnessed production control/rollback drill remains required before live trading. Never put a public test account in the production policy to run that rehearsal.
 
 See [canary work/evidence](plans/2026-09-07-ophis-otc-canary.md) and [expanded review and limitations](../audit/otc-expanded-security-review-2026-09-06.md). Native ETH wrappers and Safe/EIP-5792 batching remain deferred.
