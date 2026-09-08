@@ -43,7 +43,7 @@
       "form-data": "^2.5.6",
       "protobufjs": "^7.6.5",
       "dompurify": "^3.4.13",
-      "astro": "^7.1.0",
+      "astro": "^7.2.8",
       "launch-editor": "^2.14.1",
       "@babel/core": "^7.29.6",
       "cipher-base": "^1.0.5",

@@ -855,6 +855,7 @@ async function repairDefiLlamaSettlementIdentityBatch(
             {
               owner: source.owner,
               receiver: order?.receiver ?? source.receiver,
+              onchainUser: order?.onchainUser,
               sellToken: source.sellToken,
               buyToken: source.buyToken,
               executedSell: source.sellAmount,
@@ -1015,6 +1016,7 @@ async function repairDefiLlamaSettlementIdentityBatch(
         {
           owner: apiTrade.owner,
           receiver: order.receiver,
+          onchainUser: order.onchainUser,
           sellToken: row.sell_token as `0x${string}`,
           buyToken: row.buy_token as `0x${string}`,
           executedSell: BigInt(row.sell_amount),

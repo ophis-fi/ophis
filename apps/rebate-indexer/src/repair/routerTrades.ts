@@ -1,6 +1,6 @@
 import { sql } from '../db/index.js';
 import { getOrder } from '../cow/client.js';
-import { DECODER_ETHFLOW_OWNERS } from '../fetcher.js';
+import { DECODER_ETHFLOW_OWNERS, ethFlowTrader } from '../fetcher.js';
 import { TRADE_REWARDS_CAMPAIGN_ID } from '../tradeRewards/config.js';
 import { logger } from '../logger.js';
 
@@ -14,37 +14,43 @@ const log = logger.child({ module: 'repair-router-trades' });
  */
 const ROUTER_WALLETS: readonly string[] = Object.freeze([...DECODER_ETHFLOW_OWNERS]);
 
-const ZERO_ADDRESS = `0x${'00'.repeat(20)}`;
-
 export interface RouterRepairResult {
-  /** trades rows found with wallet = an eth-flow router. */
+  /** trades rows in scope: wallet = a router, or an eth-flow uid (owner bytes name a router). */
   scanned: number;
-  /** Rows re-attributed to the order's receiver (the real trader). */
+  /** Rows re-attributed to the order's trader (onchainUser, receiver as fallback). */
   repaired: number;
-  /** Rows left untouched (no usable receiver, order fetch failed, owner mismatch). */
+  /** Rows left untouched (no usable trader, order fetch failed, not an eth-flow order, ticketed). */
   skipped: number;
+  /** eth-flow rows already credited to the right trader (re-checked every run). */
+  unchanged: number;
   /** Router rows removed from tracked_wallets + defillama_backfill_wallets. */
   dequeued: number;
 }
+
 
 /**
  * Re-attribute trades that were mis-stored with wallet = an eth-flow ROUTER
  * contract to the real trader, and remove the routers from the fetch queues.
  *
- * WHY the rows exist: the owner-scoped API fetch processes tracked wallets, and
- * the canonical CoW eth-flow router (0xba3c...adec) was enrolled as one via the
- * public /tier endpoint. attributeOrder receives only the NARROW Ophis eth-flow
- * set on the API path (it cannot enumerate the shared canonical contract as an
- * owner without pulling all of CoW's eth-flow traffic), so an Ophis order whose
- * owner was the canonical router fell through the eth-flow branch and stored
- * wallet = owner = the router. The real trader is the order's `receiver`, which
- * the CoW orderbook still serves for every historical order, so the repair
- * re-fetches each mis-stored order once and rewrites the wallet.
+ * WHY the rows existed: CoW's GET /trades?owner=W lists W's eth-flow orders by
+ * their on-chain sender with the payload owner = the canonical CoW router
+ * (0xba3c...adec), and until 2026-09-08 attributeOrder's API path used only the
+ * NARROW Ophis-dedicated owner set, so every hosted-chain native-ETH sell of a
+ * tracked wallet fell through the eth-flow branch and stored wallet = owner =
+ * the router until this repair ran (earlier, the router itself had also been
+ * enrolled via /tier). attributeOrder now defaults to the full set and credits
+ * the receiver at insert; this module stays as the backstop for rows written
+ * before that and for anything that slips past; the CoW orderbook still serves
+ * every historical order, so each row is re-fetched and its wallet rewritten.
  *
- * Receiver guard mirrors attributeOrder byte-for-byte (valid 40-hex, not the
- * owner, never another router) plus an explicit zero-address reject: a row with
- * no usable receiver is SKIPPED, never guessed. Skipped rows stay excluded from
- * every public surface and from the payout gate, so leaving them is safe.
+ * Identity comes from the SAME helper attributeOrder uses (ethFlowTrader: the
+ * payer `onchainUser`, receiver as fallback; valid 40-hex, not zero, not the
+ * owner, never a router), so insert and repair cannot disagree. A row with no
+ * usable trader is SKIPPED, never guessed. A skipped ROUTER-walleted row stays
+ * excluded from every public surface and from the payout gate, so leaving it is
+ * safe; a skipped deposit-credited row (ticketed) is NOT
+ * excluded anywhere -- it keeps ranking and holding its ticket until an operator
+ * reconciles the ticket, which is why the skip is logged at warn.
  *
  * The queue cleanup runs even when no trade rows remain: a router sitting in
  * defillama_backfill_wallets can never drain once the fetcher stops processing
@@ -53,22 +59,31 @@ export interface RouterRepairResult {
  * gate closed forever. Deleting the routers from both tables unsticks the gate
  * and stops the nightly re-fetch that kept re-inserting mis-stored rows.
  *
- * Idempotent: after a full repair, scanned = 0 and both deletes match nothing.
+ * Idempotent: after a full repair, repaired = 0 (eth-flow rows are re-checked and
+ * counted `unchanged`) and both deletes match nothing.
  * Per-row failures (CoW outage, pruned order) are logged and retried on the next
  * nightly run. Callers that need the change reflected in rebate ranking must
  * refresh the `wallets` matview afterwards (the nightly cron's scorer step does;
  * the CLI command runs the scorer itself).
  */
 export async function repairRouterTrades(): Promise<RouterRepairResult> {
+  // An order uid is digest(32) ‖ owner(20) ‖ validTo(4); bytes 33..52 name the
+  // owner, which for an eth-flow order is the router. Selecting by that shape (not
+  // only by wallet = router) re-checks every eth-flow row's identity nightly, so a
+  // row the old receiver-only policy credited to a bridge deposit gets moved to the
+  // payer too. Cost: one getOrder per eth-flow row, a few dozen on this ledger.
+  // ponytail: unconditional rescan; add a repaired_at stamp if eth-flow rows reach thousands.
   const rows = await sql<{ trade_uid: Buffer; chain_id: number; wallet_hex: string }[]>`
     SELECT trade_uid, chain_id, encode(wallet, 'hex') AS wallet_hex
     FROM trades
     WHERE ('0x' || encode(wallet, 'hex')) = ANY(${ROUTER_WALLETS})
+       OR ('0x' || encode(substring(trade_uid from 33 for 20), 'hex')) = ANY(${ROUTER_WALLETS})
     ORDER BY trade_uid
   `;
 
   let repaired = 0;
   let skipped = 0;
+  let unchanged = 0;
   for (const r of rows) {
     const uid = `0x${r.trade_uid.toString('hex')}` as `0x${string}`;
     const storedWallet = `0x${r.wallet_hex}`;
@@ -92,23 +107,21 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
       }
       const order = await getOrder(r.chain_id, uid);
       const owner = order.owner.toLowerCase();
-      // Sanity: the mis-store recorded the order OWNER. If CoW reports a different
-      // owner for this uid, the row is not the failure mode this repair targets.
-      if (owner !== storedWallet) {
+      // Sanity: only an eth-flow order (owner = a router) is this module's business.
+      // A stored router wallet with a non-router CoW owner is some other failure.
+      if (!DECODER_ETHFLOW_OWNERS.has(owner)) {
         skipped++;
-        log.warn({ uid, chainId: r.chain_id, storedWallet, owner }, 'router repair: owner mismatch; skipping');
+        log.warn({ uid, chainId: r.chain_id, storedWallet, owner }, 'router repair: order owner is not an eth-flow router; skipping');
         continue;
       }
-      const receiver = order.receiver?.trim().toLowerCase();
-      if (
-        !receiver ||
-        !/^0x[0-9a-f]{40}$/.test(receiver) ||
-        receiver === ZERO_ADDRESS ||
-        receiver === owner ||
-        DECODER_ETHFLOW_OWNERS.has(receiver)
-      ) {
+      const trader = ethFlowTrader(order);
+      if (!trader) {
         skipped++;
-        log.warn({ uid, chainId: r.chain_id, receiver: receiver ?? null }, 'router repair: no usable receiver; skipping');
+        log.warn({ uid, chainId: r.chain_id, receiver: order.receiver ?? null, onchainUser: order.onchainUser ?? null }, 'router repair: no usable trader; skipping');
+        continue;
+      }
+      if (trader === storedWallet) {
+        unchanged++;
         continue;
       }
       // SERIALIZED re-check + rewrite: the pre-check above is advisory (it
@@ -123,7 +136,7 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
       const repairedThis = await sql.begin(async (tx) => {
         await tx`SELECT pg_advisory_xact_lock(hashtext(${TRADE_REWARDS_CAMPAIGN_ID}))`;
         const updated = await tx`
-          UPDATE trades SET wallet = decode(${receiver.slice(2)}, 'hex')
+          UPDATE trades SET wallet = decode(${trader.slice(2)}, 'hex')
           WHERE trade_uid = ${r.trade_uid} AND chain_id = ${r.chain_id}
             AND NOT EXISTS (
               SELECT 1 FROM trade_reward_tickets WHERE qualifying_trade_uid = ${r.trade_uid}
@@ -135,7 +148,7 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
           // preserving it forever through the fill upsert's null-only repair.
           await tx`
             UPDATE defillama_fills
-            SET user_address = decode(${receiver.slice(2)}, 'hex')
+            SET user_address = decode(${trader.slice(2)}, 'hex')
             WHERE chain_id = ${r.chain_id} AND trade_uid = ${r.trade_uid}
           `;
         }
@@ -147,7 +160,7 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
         continue;
       }
       repaired++;
-      log.info({ uid, chainId: r.chain_id, from: storedWallet, to: receiver }, 'router repair: trade re-attributed');
+      log.info({ uid, chainId: r.chain_id, from: storedWallet, to: trader }, 'router repair: trade re-attributed');
     } catch (err) {
       skipped++;
       log.warn({ err, uid, chainId: r.chain_id }, 'router repair: order fetch failed; will retry next run');
@@ -168,7 +181,7 @@ export async function repairRouterTrades(): Promise<RouterRepairResult> {
   `;
   const dequeued = (dq?.tracked ?? 0) + (dq?.backfill ?? 0);
 
-  const result = { scanned: rows.length, repaired, skipped, dequeued };
+  const result = { scanned: rows.length, repaired, skipped, unchanged, dequeued };
   if (rows.length > 0 || dequeued > 0) {
     log.info(result, 'router repair complete');
   }

@@ -51,6 +51,10 @@ export const CowOrder = z.object({
   // so this MUST be declared for the fetcher to read it (else native-ETH rebates
   // attribute to the router).
   receiver: z.string().nullable().optional(),
+  // eth-flow only: the address that called the eth-flow contract (msg.sender,
+  // CoW's onchain_placed_orders.sender), i.e. the trader who PAID. `receiver` is
+  // where the bought tokens go, which for a bridge order is the deposit address.
+  onchainUser: z.string().nullable().optional(),
   creationDate: z.string(),                                           // ISO 8601 (informational)
   class: z.enum(['market', 'limit', 'liquidity']).optional(),          // operator fee applicability
   status: z.string().optional(),                                      // 'fulfilled' | 'open' | 'cancelled' | 'expired' | ...

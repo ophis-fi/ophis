@@ -238,10 +238,10 @@ function enrollmentQueueMax(): number {
 
 async function admitTrackedWallet(rawWallet: `0x${string}`): Promise<boolean> {
   // eth-flow ROUTER contracts are never enrollable: enrolling the shared
-  // canonical CoW router is exactly how its whole eth-flow traffic got fetched
-  // owner-scoped and Ophis orders were mis-stored with wallet = the router
-  // (repaired by repair/routerTrades.ts). A router is a contract, not a rebate
-  // participant, so the generic enrollment-denied response is accurate here.
+  // canonical CoW router fetches its whole eth-flow traffic owner-scoped (it
+  // happened once, 2026-08; repaired by repair/routerTrades.ts). A router is a
+  // contract, not a rebate participant, so the generic enrollment-denied
+  // response is accurate here.
   if (DECODER_ETHFLOW_OWNERS.has(rawWallet.toLowerCase())) return false;
   const maxQueued = enrollmentQueueMax();
   const rows = await sql<{ accepted: boolean }[]>`
