@@ -7,7 +7,7 @@ export interface OtcActionFacts {
   connected: boolean
   correctChain: boolean
   networkVerified: boolean | null
-  canary: boolean
+  mainnet: boolean
   walletAdmitted: boolean | undefined
   ready: boolean
   reviewed: boolean
@@ -60,20 +60,20 @@ function pendingModel(facts: OtcActionFacts): MaybeActionModel {
   return { action: 'unavailable', label: pendingLabel(facts.pendingIntent), disabled: true, pending: true }
 }
 
-function lacksCanaryAdmission({ canary, walletAdmitted }: OtcActionFacts): boolean {
-  return canary && walletAdmitted !== true
+function lacksWalletAdmission({ mainnet, walletAdmitted }: OtcActionFacts): boolean {
+  return mainnet && walletAdmitted !== true
 }
 
 function environmentModel(facts: OtcActionFacts): MaybeActionModel {
   if (!facts.enabled) return { action: 'unavailable', label: 'OTC writes disabled', disabled: true, pending: false }
   if (!facts.connected) return { action: 'connect', label: 'Connect wallet', disabled: false, pending: false }
-  if (lacksCanaryAdmission(facts)) {
-    return { action: 'unavailable', label: 'This wallet is not in the OTC canary.', disabled: true, pending: false }
+  if (lacksWalletAdmission(facts)) {
+    return { action: 'unavailable', label: 'This wallet is not supported or admitted for OTC trading.', disabled: true, pending: false }
   }
   if (!facts.correctChain) {
     return {
       action: 'switch',
-      label: facts.canary ? 'Switch to Ethereum' : 'Select chain-id-1 local fork',
+      label: facts.mainnet ? 'Switch to Ethereum' : 'Select chain-id-1 local fork',
       disabled: false,
       pending: false,
     }
@@ -81,7 +81,7 @@ function environmentModel(facts: OtcActionFacts): MaybeActionModel {
   if (facts.networkVerified === null) {
     return {
       action: 'unavailable',
-      label: facts.canary ? 'Verifying Ethereum...' : 'Verifying local fork...',
+      label: facts.mainnet ? 'Verifying Ethereum...' : 'Verifying local fork...',
       disabled: true,
       pending: true,
     }
@@ -89,7 +89,7 @@ function environmentModel(facts: OtcActionFacts): MaybeActionModel {
   if (!facts.networkVerified) {
     return {
       action: 'unavailable',
-      label: facts.canary ? 'Ethereum verification unavailable' : 'Local Anvil fork required',
+      label: facts.mainnet ? 'Ethereum verification unavailable' : 'Local Anvil fork required',
       disabled: true,
       pending: false,
     }

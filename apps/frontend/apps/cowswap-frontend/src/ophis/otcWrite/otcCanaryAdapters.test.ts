@@ -22,6 +22,7 @@ const PROOF = { requestHash: otcRequestHash(REQUEST), nonce: 3 }
 function canonicalClient(): Public {
   return {
     getChainId: jest.fn(async () => 1),
+    getBytecode: jest.fn(async () => undefined),
     getTransactionCount: jest.fn(async () => 3),
     getTransaction: jest.fn(async () => ({
       hash: TX_HASH,
@@ -79,6 +80,7 @@ function fixture(legacy: boolean): {
 
 describe.each([false, true])('canonical canary adapter (legacy=%s)', (legacy) => {
   beforeEach(() => {
+    process.env.REACT_APP_OTC_WRITE_MODE = 'canary'
     global.fetch = jest.fn(
       async (url) =>
         ({
@@ -93,8 +95,20 @@ describe.each([false, true])('canonical canary adapter (legacy=%s)', (legacy) =>
     Object.assign(OTC_CANARY_POLICY, { accounts: [MAKER], pairs: [], expiresAt: 0n })
   })
   afterEach(() => {
+    delete process.env.REACT_APP_OTC_WRITE_MODE
     global.fetch = originalFetch
     jest.useRealTimers()
+  })
+
+  it('rejects contract accounts before persisting or invoking the signer', async () => {
+    const { canonical, send, submitter } = fixture(legacy)
+    jest.mocked(canonical.getBytecode).mockResolvedValue('0x6000')
+    const persist = jest.fn()
+    await expect(submitter.sendTransaction(REQUEST, INTENT, NOW, () => true, persist)).rejects.toThrow(
+      'contract wallets',
+    )
+    expect(persist).not.toHaveBeenCalled()
+    expect(send).not.toHaveBeenCalled()
   })
 
   it('checks the live control before recording a marker or invoking either signer', async () => {

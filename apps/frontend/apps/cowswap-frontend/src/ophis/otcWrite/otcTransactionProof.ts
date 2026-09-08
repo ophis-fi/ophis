@@ -28,12 +28,20 @@ export async function readOtcSubmissionProof(
   readWalletNonce: () => Promise<number>,
 ): Promise<OtcSubmissionProof | undefined> {
   if (!client) return undefined
-  const [nonce, walletNonce] = await withTimeout(
-    Promise.all([client.getTransactionCount({ address: request.account, blockTag: 'pending' }), readWalletNonce()]),
+  const [nonce, walletNonce, code, confirmedNonce] = await withTimeout(
+    Promise.all([
+      client.getTransactionCount({ address: request.account, blockTag: 'pending' }),
+      readWalletNonce(),
+      client.getBytecode({ address: request.account, blockTag: 'pending' }),
+      client.getTransactionCount({ address: request.account, blockTag: 'latest' }),
+    ]),
     OPHIS_ETHEREUM_OTC_MANIFEST.readTimeoutMs,
     'Ophis OTC transaction nonce read timed out',
   )
+  if (code !== undefined && code !== '0x') throw new Error('Ophis OTC contract wallets are not supported')
   if (!Number.isSafeInteger(nonce) || nonce < 0) throw new Error('Ophis OTC transaction nonce unavailable')
+  if (!Number.isSafeInteger(confirmedNonce) || confirmedNonce <= 0 || confirmedNonce > nonce)
+    throw new Error('Ophis OTC requires a prior confirmed Ethereum transaction')
   if (nonce !== walletNonce)
     throw new Error('Ophis OTC pending transaction nonce differs between wallet and canonical reader')
   return { requestHash: otcRequestHash(request), nonce }

@@ -8,6 +8,18 @@ import { OTC_CANARY_POLICY } from './otcCanary.const'
 
 export function OtcWriteNotice(): ReactNode {
   const { t } = useLingui()
+  if (process.env.REACT_APP_OTC_WRITE_MODE === 'public') {
+    return (
+      <Callout tone="warning" title={t`Ethereum transactions`}>
+        <p>
+          <Trans>
+            These transactions use real Ethereum assets and cost gas. Review both token amounts before approving or
+            signing. Anyone can fill an open order in full; orders stay active until filled or cancelled by the maker.
+          </Trans>
+        </p>
+      </Callout>
+    )
+  }
   if (process.env.REACT_APP_OTC_WRITE_MODE !== 'canary') {
     return (
       <Callout tone="warning" title={t`Fork-only transaction mode`}>

@@ -57,7 +57,9 @@ function pairRestriction(terms: OtcCreateDraft, policy: OtcCanaryPolicy): string
   return null
 }
 
-export function assertOtcCanaryIntent(intent: OtcWriteIntent, nowSeconds: bigint): void {
+export function assertOtcWritePolicy(intent: OtcWriteIntent, nowSeconds: bigint, mode: string | undefined): void {
+  if (mode === 'public') return
+  if (mode !== 'canary') throw new Error('Ophis OTC writes are disabled')
   const restriction = getOtcCanaryRestriction(intent, nowSeconds)
   if (restriction) throw new Error(restriction)
 }

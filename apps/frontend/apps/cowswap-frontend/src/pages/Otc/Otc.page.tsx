@@ -3,7 +3,7 @@
  *
  * Browse and inspect fixed-price escrow orders on the external immutable
  * Swapboard contract. Production defaults to read-only. Wallet actions mount
- * only when the fork or restricted canary write gate passes; all signer access stays isolated in ophis/otcWrite.
+ * only when an explicitly configured write mode passes its gates; signing stays isolated in ophis/otcWrite.
  *
  * Data flow: on-chain snapshot (settlement authority, fail-closed) +
  * subgraph enrichment (ages/history, optional). Rows are labeled
@@ -53,6 +53,9 @@ export interface OtcPageViewProps {
 }
 
 function OtcLede({ writeEnabled, canary }: { writeEnabled: boolean; canary: boolean }): ReactNode {
+  if (writeEnabled && process.env.REACT_APP_OTC_WRITE_MODE === 'public') {
+    return <Trans>Connect your wallet to create, fill, or cancel fixed-price ERC-20 orders on Ethereum.</Trans>
+  }
   return writeEnabled && canary ? (
     <Trans>
       Create, fill, and cancel exact ERC-20 orders in the restricted Ethereum canary. Transactions use real assets and
@@ -72,6 +75,7 @@ function OtcLede({ writeEnabled, canary }: { writeEnabled: boolean; canary: bool
 }
 
 function OtcModeLabel({ writeEnabled, canary }: { writeEnabled: boolean; canary: boolean }): ReactNode {
+  if (writeEnabled && process.env.REACT_APP_OTC_WRITE_MODE === 'public') return <Trans>Public Ethereum trading</Trans>
   return writeEnabled ? (
     canary ? (
       <Trans>Restricted Ethereum canary</Trans>

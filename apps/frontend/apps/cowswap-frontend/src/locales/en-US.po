@@ -6413,3 +6413,19 @@ msgstr "These transactions use real Ethereum assets and cost gas. Only admitted 
 #: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
 msgid "These wallet prompts use your local Ethereum fork. Every action re-reads the pinned escrow and simulates the exact transaction."
 msgstr "These wallet prompts use your local Ethereum fork. Every action re-reads the pinned escrow and simulates the exact transaction."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "Ethereum transactions"
+msgstr "Ethereum transactions"
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "These transactions use real Ethereum assets and cost gas. Review both token amounts before approving or signing. Anyone can fill an open order in full; orders stay active until filled or cancelled by the maker."
+msgstr "These transactions use real Ethereum assets and cost gas. Review both token amounts before approving or signing. Anyone can fill an open order in full; orders stay active until filled or cancelled by the maker."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Connect your wallet to create, fill, or cancel fixed-price ERC-20 orders on Ethereum."
+msgstr "Connect your wallet to create, fill, or cancel fixed-price ERC-20 orders on Ethereum."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Public Ethereum trading"
+msgstr "Public Ethereum trading"

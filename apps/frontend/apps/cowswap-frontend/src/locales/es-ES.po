@@ -6569,3 +6569,19 @@ msgstr "Estas transacciones usan activos reales de Ethereum y consumen gas. Solo
 #: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
 msgid "These wallet prompts use your local Ethereum fork. Every action re-reads the pinned escrow and simulates the exact transaction."
 msgstr "Estas solicitudes de la cartera usan tu fork local de Ethereum. Cada acción vuelve a consultar el contrato de custodia fijado y simula la transacción exacta."
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "Ethereum transactions"
+msgstr "Transacciones en Ethereum"
+
+#: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
+msgid "These transactions use real Ethereum assets and cost gas. Review both token amounts before approving or signing. Anyone can fill an open order in full; orders stay active until filled or cancelled by the maker."
+msgstr "Estas transacciones utilizan activos reales de Ethereum y tienen un coste de gas. Revisa los importes de ambos tokens antes de aprobar o firmar. Cualquiera puede ejecutar una orden abierta en su totalidad; las órdenes permanecen activas hasta que se ejecutan o el creador las cancela."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Connect your wallet to create, fill, or cancel fixed-price ERC-20 orders on Ethereum."
+msgstr "Conecta tu cartera para crear, ejecutar o cancelar órdenes ERC-20 a precio fijo en Ethereum."
+
+#: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
+msgid "Public Ethereum trading"
+msgstr "Comercio público en Ethereum"
