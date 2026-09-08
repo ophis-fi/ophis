@@ -475,9 +475,24 @@ jobs:
           # name-exclude + pin procedure. DATED 2026-08-16 (a Sunday): osv-gate
           # expires ignores when expiry < today, so the Monday 08-17 scheduled
           # audit runs with this already failing closed.
+          # IGNORE four advisories published 2026-09-08, all fixed the same day
+          # (astro 7.2.8 GHSA-26w7-cxv4-gfx2 CRITICAL RCE via AVIF image
+          # optimisation; js-yaml 4.3.2 GHSA-2883-xcg3-v3hh CPU DoS on merge keys;
+          # sharp 0.35.4 GHSA-rgj7-g3m4-5g8c libheif; svgo 3.3.5 GHSA-w27v-7q3p-w38r
+          # removeScripts bypass). This workspace's 7-day minimumReleaseAge
+          # refuses same-day releases, so the bump lands after soak via the
+          # documented name-exclude + pin procedure. Reachability in THIS
+          # workspace: all four run at BUILD time only, on repo-authored inputs
+          # (astro/sharp optimise our own images, svgo minifies our own SVGs,
+          # js-yaml parses our own config); the shipped artefact is a static SPA
+          # on Cloudflare Pages with no Node runtime, so no attacker can supply
+          # an image, SVG or YAML document to any of them. DATED 2026-09-16: the
+          # soak ends 09-15; bump then, or renew with fresh evidence.
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
             --osv-rc "$rc" --ignore GHSA-2p57-rm9w-gvfp --ignore GHSA-qwww-vcr4-c8h2 \
-            --ignore GHSA-rgw5-rvv9-x895:2026-08-16
+            --ignore GHSA-rgw5-rvv9-x895:2026-08-16 \
+            --ignore GHSA-26w7-cxv4-gfx2:2026-09-16 --ignore GHSA-2883-xcg3-v3hh:2026-09-16 \
+            --ignore GHSA-rgj7-g3m4-5g8c:2026-09-16 --ignore GHSA-w27v-7q3p-w38r:2026-09-16
 
   pnpm-audit-docs:
     name: pnpm audit (docs-ophis deps)
@@ -542,9 +557,15 @@ jobs:
           # crafted image here. NO patched release exists (vulnerable_versions
           # = "<=2.0.2", latest is 2.0.2). DATED 2026-11-08: re-check for a patched
           # release and either upgrade or renew with fresh evidence.
+          # IGNORE js-yaml GHSA-2883-xcg3-v3hh and svgo GHSA-w27v-7q3p-w38r (both
+          # HIGH, published 2026-09-08, fixed the same day in 4.3.2 / 3.3.5).
+          # Docusaurus build pipeline only: js-yaml parses repo-authored front
+          # matter/config, svgo minifies repo-authored SVGs; the output is static.
+          # DATED 2026-09-16: bump after the release soak, or renew with evidence.
           python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
             --osv-rc "$rc" --ignore GHSA-mh99-v99m-4gvg:2026-10-31 \
-            --ignore GHSA-5p2g-fcmc-qvqq:2026-11-08 --ignore GHSA-w3rx-r6r6-pgpr:2026-11-08
+            --ignore GHSA-5p2g-fcmc-qvqq:2026-11-08 --ignore GHSA-w3rx-r6r6-pgpr:2026-11-08 \
+            --ignore GHSA-2883-xcg3-v3hh:2026-09-16 --ignore GHSA-w27v-7q3p-w38r:2026-09-16
 
   cargo-audit:
     name: cargo audit (Rust deps)
