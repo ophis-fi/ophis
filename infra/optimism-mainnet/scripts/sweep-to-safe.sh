@@ -76,7 +76,7 @@ command -v jq   >/dev/null 2>&1 || { echo "ERROR: jq required" >&2; exit 3; }
 
 lc() { printf '%s' "$1" | tr 'A-F' 'a-f'; }
 
-# Default sweep set: USDC + WETH + native ETH, thresholds ~$10-equivalent
+# Default sweep set: USDC + USDT + WETH + native ETH, thresholds ~$10-equivalent
 # (HIGH-1: per-token base units, never a shared wei number). When TOKENS is
 # overridden, MIN_BASE_UNITS MUST be explicit (Codex re-audit MED, PR #223:
 # the unknown-token fallback silently re-created HIGH-1 for 6-decimal
@@ -95,10 +95,11 @@ if [[ -n "${TOKENS:-}" ]]; then
 else
   TOKEN_LIST=(
     "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85"  # USDC (6 dec)
+    "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58"  # USDT (6 dec)
     "0x4200000000000000000000000000000000000006"  # WETH (18 dec)
     "$NATIVE"                                     # native ETH
   )
-  MIN_LIST=( 1e7 3e15 3e15 )
+  MIN_LIST=( 1e7 1e7 3e15 3e15 )
 fi
 
 to_int() {  # accepts 1e7-style scientific notation

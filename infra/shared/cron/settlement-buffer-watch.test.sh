@@ -283,18 +283,34 @@ ckc "and names unichain" "$out12" "unichain"
 rm -rf "$W12"
 
 # --- 12. a token the chain's sweep does not cover must surface ---------------
-# Optimism holds USDT but the OP sweep's default token list is USDC/WETH/native.
+# Optimism's sweep does not yet cover DAI.
 # Treating it as "no threshold, ignore" is how a balance grows unnoticed forever.
 W13="$(mktemp -d)"
 make_repo "$W13" \
-  "optimism-mainnet|$(report 0xOP 0 "USDT:50000000:ok")|0" \
+  "optimism-mainnet|$(report 0xOP 0 "DAI:50000000:ok")|0" \
   "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
   "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
 out13="$(run_watch "$W13")"
 ckc "a token outside the chain's sweep configuration alerts" "$out13" "ALERT:"
-ckc "and is named" "$out13" "USDT"
+ckc "and is named" "$out13" "DAI"
 ckc "and says the sweep does not cover it" "$out13" "not covered"
 rm -rf "$W13"
+
+# USDT dust is covered; only a sweepable balance should page.
+W13b="$(mktemp -d)"
+make_repo "$W13b" \
+  "optimism-mainnet|$(report 0xOP 0 "USDT:32961:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out13b="$(run_watch "$W13b")"
+ckn "the incident's 0.032961 USDT is covered and below threshold" "$out13b" "ALERT:"
+ckc "the dust check completes" "$out13b" "pass complete"
+make_repo "$W13b" "optimism-mainnet|$(report 0xOP 0 "USDT:10000000:ok")|0"
+out13b="$(run_watch "$W13b")"
+ckc "10 USDT reaches the sweep threshold" "$out13b" "ALERT:"
+ckc "USDT is reported as sweepable" "$out13b" "10000000 sweep threshold"
+ckn "USDT is no longer uncovered" "$out13b" "not covered"
+rm -rf "$W13b"
 
 # --- 13. a structurally valid but EMPTY report is not a measurement ----------
 W14="$(mktemp -d)"

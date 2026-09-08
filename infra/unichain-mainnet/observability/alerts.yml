@@ -374,21 +374,25 @@ groups:
         annotations:
           summary: "Unichain eRPC upstream {{ $labels.upstream }} >5 blocks behind for 15m"
           description: |
-            The {{ $labels.upstream }} upstream has been more than 5 blocks
-            behind the median for 15 minutes. This is the dominant root
-            cause of dispute churn on Block A consensus methods (eth_call,
-            eth_getBalance) — the chronically-lagging upstream returns
-            stale state, gets disputed, eventually gets cordoned by
-            punishMisbehavior.
+            eRPC's observed head for {{ $labels.upstream }} has lagged by more
+            than 5 blocks for 15 minutes. Check both RPC reachability and node
+            freshness: a disconnected upstream cannot refresh its observed head.
+            Either condition reduces available consensus participants.
 
-            For ophis-self-uni (op-reth on the VM 51.158.205.9, reached over
-            Tailscale as ophis-uni-node:8545): SSH check op-node + op-reth sync.
-              ssh -p 24005 root@51.158.205.9 \
+            For ophis-self-uni, first test RPC reachability FROM the stack VM
+            (100.118.29.42) to the node (100.90.134.52:8545). If tailscale ping
+            reports "no matching peer", check the tailnet policy: the stack
+            needs TCP 8545 access to the node. A stale eRPC head can mean failed
+            polling even while op-reth is fully synced (2026-09-08 incident).
+
+            Then SSH to the node over Tailscale and check op-node + op-reth:
+              ssh -i ~/.ssh/aleph-greg root@100.90.134.52 \
                 'curl -s -H content-type:application/json \
                   -d "{\"jsonrpc\":\"2.0\",\"method\":\"eth_syncing\",\"id\":1}" \
                   http://localhost:8545'
-            Expected `false` for healthy. If `{result: {...}}`, op-node
-            is still bootstrapping.
+            Also compare eth_getBlockByNumber("latest") with the public head:
+            eth_syncing=false alone does not prove freshness or reachability
+            from the stack. Check op-node logs if the node's own head is stale.
 
             For unichain-public / publicnode-uni: provider-side regression.
             Consider hot-swap if sustained > 1h.
