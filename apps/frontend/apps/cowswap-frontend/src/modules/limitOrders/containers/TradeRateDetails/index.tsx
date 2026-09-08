@@ -6,6 +6,7 @@ import { TradeFees, TradeTotalCostsDetails } from 'modules/trade'
 import { Box } from 'modules/trade/containers/TradeTotalCostsDetails/styled'
 import { useTradeQuote, useTradeQuoteProtocolFee } from 'modules/tradeQuote'
 import { useUsdAmount } from 'modules/usdAmount'
+import { useAppDataVolumeFeeBps } from 'modules/appData'
 import { useVolumeFee, useVolumeFeeTooltip } from 'modules/volumeFee'
 
 import { RateInfo, RateInfoParams } from 'common/pure/RateInfo'
@@ -20,7 +21,10 @@ interface TradeRateDetailsProps {
 
 export function TradeRateDetails({ rateInfoParams, alwaysExpanded = false }: TradeRateDetailsProps): ReactElement {
   const [isFeeDetailsOpen, setFeeDetailsOpen] = useState(alwaysExpanded)
-  const { volumeBps: partnerFeeBps } = useVolumeFee() || {}
+  // Same aggregate the fee AMOUNT uses (every stacked Volume entry), or the label says 50 while the amount is 51.
+  const appDataVolumeBps = useAppDataVolumeFeeBps()
+  const pipelineVolumeBps = useVolumeFee()?.volumeBps
+  const partnerFeeBps = appDataVolumeBps ?? pipelineVolumeBps
   const partnerFeeAmount = useLimitOrderPartnerFeeAmount()
   const protocolFeeAmount = useLimitOrderProtocolFeeAmount()
   const volumeFeeTooltip = useVolumeFeeTooltip()

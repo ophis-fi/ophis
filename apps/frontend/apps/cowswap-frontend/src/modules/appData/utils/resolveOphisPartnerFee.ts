@@ -11,15 +11,25 @@ import { shouldEmitOphisPartnerFee } from '../updater/shouldEmitOphisPartnerFee'
  * flag is on, and it is already inside the Ophis appData shape, so it must never
  * be appended a second time (the #1236 duplicated-partnerFee class).
  */
-function isThirdPartyVolumeFee(fee: unknown): fee is { volumeBps: number; recipient: string } {
+function isPositiveVolumeFee(fee: unknown): fee is { volumeBps: number; recipient: string } {
   if (typeof fee !== 'object' || fee === null) return false
   const { volumeBps, recipient } = fee as { volumeBps?: unknown; recipient?: unknown }
-  return (
-    typeof volumeBps === 'number' &&
-    volumeBps > 0 &&
-    typeof recipient === 'string' &&
-    !areAddressesEqual(recipient, OPHIS_PARTNER_FEE_RECIPIENT)
-  )
+  return typeof volumeBps === 'number' && volumeBps > 0 && typeof recipient === 'string'
+}
+
+function isThirdPartyVolumeFee(fee: unknown): fee is { volumeBps: number; recipient: string } {
+  return isPositiveVolumeFee(fee) && !areAddressesEqual(fee.recipient, OPHIS_PARTNER_FEE_RECIPIENT)
+}
+
+/**
+ * A host fee paid TO Ophis: the published `@ophis/widget-react` wrapper pins the
+ * recipient to the Ophis Safe on every explicit `partnerFee` and documents that
+ * "the iframe then treats the explicit volume override as authoritative"
+ * (packages/widget-react/src/defaults.ts). Keep that contract: the explicit
+ * Volume fee IS the Ophis fee for that order, nothing is stacked on it.
+ */
+function isOphisRecipientHostFee(fee: unknown): fee is { volumeBps: number; recipient: string } {
+  return isPositiveVolumeFee(fee) && areAddressesEqual(fee.recipient, OPHIS_PARTNER_FEE_RECIPIENT)
 }
 
 /**
@@ -87,5 +97,8 @@ export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   if (hostOverride && Array.isArray(ophis) && isThirdPartyVolumeFee(volumeFee)) {
     return [volumeFee, ...ophis] as unknown as TWidgetFee
   }
+  // Wrapper path (recipient = Ophis): the explicit override stays authoritative,
+  // exactly as before this change, so first-party embeds keep their configured fee.
+  if (hostOverride && isOphisRecipientHostFee(volumeFee)) return volumeFee
   return ophis
 }

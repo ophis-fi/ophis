@@ -76,10 +76,10 @@ describe('resolveOphisPartnerFee', () => {
       // Flat-fee flag on, no host override: volumeFee IS the Ophis 1 bp base,
       // which the Ophis shape already contains (#1236 duplicated-partnerFee class).
       const ophisBase = { volumeBps: 1, recipient: OPHIS_SAFE }
-      expect(resolveOphisPartnerFee(OPHIS_SHAPE, ophisBase, HOSTED, false, true)).toBe(OPHIS_SHAPE)
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, ophisBase, HOSTED, false, false)).toBe(OPHIS_SHAPE)
       // Recipient casing must not defeat the guard.
       expect(
-        resolveOphisPartnerFee(OPHIS_SHAPE, { ...ophisBase, recipient: OPHIS_SAFE.toLowerCase() }, HOSTED, false, true),
+        resolveOphisPartnerFee(OPHIS_SHAPE, { ...ophisBase, recipient: OPHIS_SAFE.toLowerCase() }, HOSTED, false, false),
       ).toBe(OPHIS_SHAPE)
     })
 
@@ -94,6 +94,16 @@ describe('resolveOphisPartnerFee', () => {
       for (const chainId of VOLUME_ONLY) {
         expect(resolveOphisPartnerFee(OPHIS_SHAPE, HOST_FEE, chainId, false, true)).toBe(HOST_FEE)
       }
+    })
+
+    it('keeps an explicit host fee paid TO Ophis authoritative (the @ophis/widget-react wrapper pins that recipient)', () => {
+      // withOphisDefaults keeps the caller's bps and pins recipient = the Ophis Safe,
+      // documenting that the explicit override is authoritative. Pre-change behaviour
+      // for every first-party embed; must not be stacked on or replaced.
+      const WRAPPER_FEE = { volumeBps: 20, recipient: OPHIS_SAFE }
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, WRAPPER_FEE, HOSTED, false, true)).toBe(WRAPPER_FEE)
+      // Without a host override the same shape is the flat-fee-flag base -> Ophis shape wins.
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, { volumeBps: 1, recipient: OPHIS_SAFE }, HOSTED)).toBe(OPHIS_SHAPE)
     })
 
     it('never stacks a non-Ophis pipeline fee that is NOT a host override (the Safe App licence fee)', () => {

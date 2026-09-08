@@ -5,7 +5,7 @@ import { getAddress } from '@ethersproject/address'
 
 import { t } from '@lingui/core/macro'
 
-import { OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
+import { OPHIS_MAX_PARTNER_REQUEST_BPS, OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
 
 import { PARTNER_FEE_MAX_BPS } from '../consts'
 
@@ -18,10 +18,24 @@ export function validatePartnerFee(input: PartnerFee | undefined): string[] | un
   const feeTooHighError = bpss.some((value) => value > PARTNER_FEE_MAX_BPS)
     ? t`Partner fee can not be more than ${PARTNER_FEE_MAX_BPS} BPS!`
     : undefined
+  // A fee paid to a THIRD-PARTY recipient is stacked with the Ophis policy (1 bp
+  // base + capped price improvement, up to 100 bps on a volatile pair), so its
+  // ceiling is the registered-integrator request cap: 90 + 100 = the 190 bps
+  // aggregate cap on Ophis-operated chains, and CoW-hosted chains clamp their
+  // 100 bps aggregate in array order with the host entry first. A fee paid TO the
+  // Ophis Safe (the @ophis/widget-react wrapper pins that recipient) is not
+  // stacked, so the plain PARTNER_FEE_MAX_BPS ceiling above is the only one.
+  const stacksOnOphis = recipients.some(
+    (recipient) => typeof recipient === 'string' && !areAddressesEqual(recipient, OPHIS_PARTNER_FEE_RECIPIENT),
+  )
+  const stackedFeeTooHighError =
+    stacksOnOphis && bpss.some((value) => value > OPHIS_MAX_PARTNER_REQUEST_BPS && value <= PARTNER_FEE_MAX_BPS)
+      ? t`Partner fee paid to your own address can not be more than ${OPHIS_MAX_PARTNER_REQUEST_BPS} BPS: Ophis adds its own fee on top.`
+      : undefined
   const feeTooLowError = bpss.some((value) => value < 0) ? t`Partner fee can not be less than 0!` : undefined
   const recipientErrors = validateRecipients(recipients)
 
-  const errors = [feeTooHighError, feeTooLowError, ...recipientErrors].filter(isTruthy)
+  const errors = [feeTooHighError, stackedFeeTooHighError, feeTooLowError, ...recipientErrors].filter(isTruthy)
 
   return errors.length > 0 ? errors : undefined
 }
@@ -43,13 +57,6 @@ function validateRecipientAddress(recipient: string): string | undefined {
     getAddress(recipient)
   } catch (error) {
     return error.message
-  }
-
-  // The Ophis fee is not configurable from a widget: it is stacked automatically
-  // on top of the host's own fee. A host naming the Ophis Safe would either
-  // duplicate the base entry or silently be ignored, so refuse it outright.
-  if (areAddressesEqual(recipient, OPHIS_PARTNER_FEE_RECIPIENT)) {
-    return t`Partner fee recipient must be your own address: the Ophis fee is added automatically on top of yours.`
   }
 
   return undefined

@@ -12,7 +12,7 @@ describe('validatePartnerFee()', () => {
       recipient: '0x0000000000000000000000000000000000000000',
     })
 
-    expect(result).toEqual(['Partner fee can not be more than 90 BPS!'])
+    expect(result).toEqual(['Partner fee can not be more than 100 BPS!'])
   })
 
   it('When BPS is less than zero, then should return error', () => {
@@ -67,7 +67,7 @@ describe('validatePartnerFee()', () => {
         recipient: '0x0000000000000000000000000000000000000000',
       })
 
-      expect(result).toEqual(['Partner fee can not be more than 90 BPS!'])
+      expect(result).toEqual(['Partner fee can not be more than 100 BPS!'])
     })
 
     it('When all bps are valid, then should return undefined', () => {
@@ -192,7 +192,7 @@ describe('validatePartnerFee()', () => {
         },
       })
 
-      expect(result).toEqual(['Partner fee can not be more than 90 BPS!'])
+      expect(result).toEqual(['Partner fee can not be more than 100 BPS!'])
     })
 
     it('When one of addresses is not a valid address, then should return error', () => {
@@ -236,22 +236,20 @@ describe('validatePartnerFee()', () => {
     })
   })
 
-  it('rejects the Ophis Safe as recipient: the Ophis fee is stacked automatically', () => {
-    const result = validatePartnerFee({
-      bps: 50,
-      recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
+  describe('stacking on the Ophis policy', () => {
+    const THIRD_PARTY = '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4'
+    const OPHIS_SAFE = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
+
+    it('caps a fee paid to a third-party recipient at 90 BPS (Ophis stacks its own on top)', () => {
+      expect(validatePartnerFee({ bps: 90, recipient: THIRD_PARTY })).toBe(undefined)
+      expect(validatePartnerFee({ bps: 91, recipient: THIRD_PARTY })).toEqual([
+        'Partner fee paid to your own address can not be more than 90 BPS: Ophis adds its own fee on top.',
+      ])
     })
 
-    expect(result).toEqual([
-      'Partner fee recipient must be your own address: the Ophis fee is added automatically on top of yours.',
-    ])
-  })
-
-  it('accepts a 90 BPS host fee and rejects 91 (the stacked aggregate cap)', () => {
-    const ok = validatePartnerFee({ bps: 90, recipient: '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4' })
-    const tooHigh = validatePartnerFee({ bps: 91, recipient: '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4' })
-
-    expect(ok).toBe(undefined)
-    expect(tooHigh).toEqual(['Partner fee can not be more than 90 BPS!'])
+    it('keeps the plain 100 BPS ceiling for a fee paid to the Ophis Safe (the widget-react wrapper pins it)', () => {
+      expect(validatePartnerFee({ bps: 100, recipient: OPHIS_SAFE })).toBe(undefined)
+      expect(validatePartnerFee({ bps: 101, recipient: OPHIS_SAFE })).toEqual(['Partner fee can not be more than 100 BPS!'])
+    })
   })
 })
