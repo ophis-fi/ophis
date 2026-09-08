@@ -20,7 +20,11 @@ import {
   type Address,
 } from '../support/otcFork'
 
-const WRITE_NOTICE = Cypress.env('OTC_CANARY_REHEARSAL') ? 'Restricted Ethereum canary' : 'Local fork writes'
+const WRITE_NOTICE = Cypress.env('OTC_PUBLIC_REHEARSAL')
+  ? 'Public Ethereum trading'
+  : Cypress.env('OTC_CANARY_REHEARSAL')
+    ? 'Restricted Ethereum canary'
+    : 'Local fork writes'
 const TEST_ACCOUNT = TEST_ADDRESS_NEVER_USE as Address
 const forkDescribe = Cypress.env('OTC_FORK_RPC_URL') ? describe : describe.skip
 const ACTION_ATTEMPTS = 600
@@ -106,7 +110,7 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
 
   beforeEach(() => {
     stubOtcHostTokenLists()
-    if (Cypress.env('OTC_CANARY_REHEARSAL')) {
+    if (Cypress.env('OTC_CANARY_REHEARSAL') || Cypress.env('OTC_PUBLIC_REHEARSAL')) {
       cy.intercept('GET', '/api/otc-control?*', (request) => {
         request.reply({ enabled: true, nonce: new URL(request.url).searchParams.get('nonce') })
       })

@@ -78,9 +78,14 @@ function fixture(legacy: boolean): {
   return { connected, canonical, send, submitter: clients.wallet, writeClient: clients.writeClient }
 }
 
-describe.each([false, true])('canonical canary adapter (legacy=%s)', (legacy) => {
+describe.each([
+  { mode: 'canary', legacy: false },
+  { mode: 'canary', legacy: true },
+  { mode: 'public', legacy: false },
+  { mode: 'public', legacy: true },
+])('$mode adapter (legacy=$legacy)', ({ mode, legacy }) => {
+  const canaryTest = mode === 'canary' ? it : it.skip
   beforeEach(() => {
-    process.env.REACT_APP_OTC_WRITE_MODE = 'canary'
     global.fetch = jest.fn(
       async (url) =>
         ({
@@ -91,8 +96,9 @@ describe.each([false, true])('canonical canary adapter (legacy=%s)', (legacy) =>
           }),
         }) as Response,
     )
+    process.env.REACT_APP_OTC_WRITE_MODE = mode
     jest.useFakeTimers({ now: Number(NOW) * 1_000 })
-    Object.assign(OTC_CANARY_POLICY, { accounts: [MAKER], pairs: [], expiresAt: 0n })
+    Object.assign(OTC_CANARY_POLICY, { accounts: mode === 'public' ? [] : [MAKER], pairs: [], expiresAt: 0n })
   })
   afterEach(() => {
     delete process.env.REACT_APP_OTC_WRITE_MODE
@@ -150,7 +156,7 @@ describe.each([false, true])('canonical canary adapter (legacy=%s)', (legacy) =>
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('rechecks the canary cutoff after asynchronous nonce reads and before signing', async () => {
+  canaryTest('rechecks the canary cutoff after asynchronous nonce reads and before signing', async () => {
     const { canonical, send, submitter } = fixture(legacy)
     const draft = mockOtcOrder()
     const intent = { kind: 'create' as const, account: MAKER, draft }
@@ -217,7 +223,7 @@ describe.each([false, true])('canonical canary adapter (legacy=%s)', (legacy) =>
     expect(send).not.toHaveBeenCalled()
   })
 
-  it('enforces wallet admission at the signing boundary even for cancellations', async () => {
+  canaryTest('enforces wallet admission at the signing boundary even for cancellations', async () => {
     Object.assign(OTC_CANARY_POLICY, { accounts: [] })
     const { send, submitter } = fixture(legacy)
     await expect(submitter.sendTransaction(REQUEST, INTENT, NOW)).rejects.toThrow('not in the OTC canary')

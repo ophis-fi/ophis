@@ -152,12 +152,12 @@ jobs:
           # Without this, production runs as "local" env and defaults to
           # staging endpoints.
           REACT_APP_DOMAIN_REGEX_PRODUCTION: ^(ophis\.fi|.*\.ophis\.fi)$
-          # Milestone B read-only OTC deployment control. Set the repository
+          # Ethereum OTC deployment control. Set the repository
           # variable to exactly 'false' and rerun this workflow for an emergency
-          # rollback; transaction actions remain independently disabled.
+          # rollback; wallet actions require fresh runtime permission.
           REACT_APP_OTC_ENABLED: ${{ vars.REACT_APP_OTC_ENABLED }}
-          # Signing additionally requires the live runtime control and a nonempty reviewed admission policy.
-          REACT_APP_OTC_WRITE_MODE: canary
+          # Signing additionally requires fresh runtime permission and the supported-token policy.
+          REACT_APP_OTC_WRITE_MODE: public
           # Ophis Bungee affiliate ID (public attribution, bridge rev-share to
           # the Ophis Safe). The dedicated API key (BUNGEE_API) is intentionally
           # NOT built into the bundle (Bungee requires it server-side); it is a

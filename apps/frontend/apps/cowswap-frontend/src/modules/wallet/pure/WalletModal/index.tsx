@@ -2,6 +2,7 @@ import { Command } from '@cowprotocol/types'
 import { AutoRow } from '@cowprotocol/ui'
 import { TryActivation } from '@cowprotocol/wallet'
 
+import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 import { ThemedText } from 'theme'
 
@@ -36,7 +37,14 @@ export function WalletModal(props: Readonly<WalletModalProps>) {
   const isPending = view === 'pending'
 
   return (
-    <CowModal maxWidth={600} isOpen={isOpen} onDismiss={onDismiss} minHeight={false} maxHeight={90}>
+    <CowModal
+      maxWidth={600}
+      isOpen={isOpen}
+      onDismiss={onDismiss}
+      minHeight={false}
+      maxHeight={90}
+      focusLock={!isPending || !!pendingError}
+    >
       <Wrapper>
         <UpperSection>
           {!isPending && (
@@ -45,7 +53,7 @@ export function WalletModal(props: Readonly<WalletModalProps>) {
                 <Trans>Connect a wallet</Trans>
               </HoverText>
 
-              <CloseIcon onClick={onDismiss}>
+              <CloseIcon type="button" aria-label={t`Close`} onClick={onDismiss}>
                 <CloseColor />
               </CloseIcon>
             </HeaderRow>

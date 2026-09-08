@@ -1,8 +1,9 @@
 import { stubOtcHostTokenLists } from '../support/otcFork'
 
-const canaryDescribe = Cypress.env('OTC_CANARY_REHEARSAL') ? describe : describe.skip
+const mainnetDescribe =
+  Cypress.env('OTC_CANARY_REHEARSAL') || Cypress.env('OTC_PUBLIC_REHEARSAL') ? describe : describe.skip
 
-canaryDescribe('OTC canary runtime shutdown', () => {
+mainnetDescribe('OTC Ethereum runtime shutdown', () => {
   it('pauses the mounted create surface and a reloaded tab on shutdown or provider failure', () => {
     cy.on('fail', (error) => {
       error.message += `\nOTC page: ${Cypress.$('main').text()}`

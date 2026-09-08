@@ -6585,3 +6585,6 @@ msgstr "Conecta tu cartera para crear, ejecutar o cancelar órdenes ERC-20 a pre
 #: apps/cowswap-frontend/src/pages/Otc/Otc.page.tsx
 msgid "Public Ethereum trading"
 msgstr "Comercio público en Ethereum"
+
+msgid "Use a standard Ethereum wallet with at least one confirmed outgoing transaction. Contract wallets are not supported."
+msgstr "Usa una cartera Ethereum estándar con al menos una transacción saliente confirmada. Las carteras de contrato no son compatibles."

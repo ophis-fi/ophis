@@ -17,7 +17,10 @@ export const HeaderRow = styled.div`
   }
 `
 
-export const CloseIcon = styled.div`
+export const CloseIcon = styled.button`
+  border: 0;
+  padding: 0;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;

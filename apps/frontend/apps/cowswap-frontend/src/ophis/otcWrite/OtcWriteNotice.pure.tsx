@@ -17,6 +17,12 @@ export function OtcWriteNotice(): ReactNode {
             signing. Anyone can fill an open order in full; orders stay active until filled or cancelled by the maker.
           </Trans>
         </p>
+        <p>
+          <Trans>
+            Use a standard Ethereum wallet with at least one confirmed outgoing transaction. Contract wallets are not
+            supported.
+          </Trans>
+        </p>
       </Callout>
     )
   }
