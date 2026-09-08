@@ -15,7 +15,11 @@ mainnetDescribe('OTC Ethereum runtime shutdown', () => {
     cy.intercept('GET', '/api/otc-control?*', (request) => {
       request.reply({
         statusCode: offline ? 503 : 200,
-        body: { enabled, nonce: new URL(request.url).searchParams.get('nonce') },
+        body: {
+          enabled,
+          mode: Cypress.env('OTC_PUBLIC_REHEARSAL') ? 'public' : 'canary',
+          nonce: new URL(request.url).searchParams.get('nonce'),
+        },
       })
     })
     cy.visit('/#/otc')

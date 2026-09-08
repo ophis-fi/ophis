@@ -111,8 +111,9 @@ forkDescribe('OTC Milestone C injected wallet on a local mainnet fork', () => {
   beforeEach(() => {
     stubOtcHostTokenLists()
     if (Cypress.env('OTC_CANARY_REHEARSAL') || Cypress.env('OTC_PUBLIC_REHEARSAL')) {
+      const mode = Cypress.env('OTC_PUBLIC_REHEARSAL') ? 'public' : 'canary'
       cy.intercept('GET', '/api/otc-control?*', (request) => {
-        request.reply({ enabled: true, nonce: new URL(request.url).searchParams.get('nonce') })
+        request.reply({ enabled: true, mode, nonce: new URL(request.url).searchParams.get('nonce') })
       })
     }
   })

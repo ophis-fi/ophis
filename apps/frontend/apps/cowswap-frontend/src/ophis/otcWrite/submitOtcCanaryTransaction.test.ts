@@ -46,6 +46,7 @@ describe.each(['canary', 'public'])('%s submission at the shared write sink', (m
           ok: true,
           json: async () => ({
             enabled: true,
+            mode,
             nonce: new URL(String(url), 'https://swap.ophis.fi').searchParams.get('nonce'),
           }),
         }) as Response,

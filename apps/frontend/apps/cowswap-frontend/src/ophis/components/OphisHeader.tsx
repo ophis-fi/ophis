@@ -26,7 +26,9 @@ const HeaderStack = styled.div<{ $transparent: boolean }>`
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1;
+  && {
+    z-index: 2;
+  }
   width: 100%;
   min-width: 0;
   align-self: stretch;

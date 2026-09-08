@@ -21,6 +21,7 @@ it.each(['canary', 'public'])('%s keeps tracking through runtime shutdown', asyn
       ok: true,
       json: async () => ({
         enabled: response.enabled,
+        mode,
         nonce: new URL(String(url), 'https://swap.ophis.fi').searchParams.get('nonce'),
       }),
     } as Response

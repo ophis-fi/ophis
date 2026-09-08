@@ -14,7 +14,7 @@ async function read(value: unknown, request = new Request(url)): Promise<Respons
 
 test('permission requires literal true and an expiry within 24 hours, without caching', async () => {
   const response = await read(active());
-  assert.deepEqual(await response.json(), { enabled: true, nonce });
+  assert.deepEqual(await response.json(), { enabled: true, mode: 'canary', nonce });
   assert.match(response.headers.get('cache-control') ?? '', /no-store/);
   assert.equal(response.headers.get('cdn-cache-control'), 'no-store');
   for (const value of [
@@ -38,7 +38,11 @@ test('permission requires literal true and an expiry within 24 hours, without ca
 });
 
 test('only an explicit public control enables service without a trial expiry', async () => {
-  assert.deepEqual(await (await read(publicControl)).json(), { enabled: true, nonce });
+  assert.deepEqual(await (await read(publicControl)).json(), {
+    enabled: true,
+    mode: 'public',
+    nonce,
+  });
 });
 
 test('authenticated updates persist before responding and subsequent readers observe shutdown', async () => {
@@ -62,7 +66,11 @@ test('authenticated updates persist before responding and subsequent readers obs
     const other = 'c'.repeat(32);
     assert.deepEqual(
       await (await handleControl(new Request(url.replace(nonce, other)), storage, token)).json(),
-      { enabled: next.enabled, nonce: other },
+      {
+        enabled: next.enabled,
+        mode: next.enabled ? (next === publicControl ? 'public' : 'canary') : null,
+        nonce: other,
+      },
     );
   }
 });
@@ -108,7 +116,7 @@ test('storage failures, preview origins and malformed requests cannot enable wri
     token,
   );
   assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { enabled: false, nonce });
+  assert.deepEqual(await response.json(), { enabled: false, mode: null, nonce });
 });
 
 for (const mode of ['on', 'public'])
