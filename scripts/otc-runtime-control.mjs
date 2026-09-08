@@ -1,13 +1,10 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-
-const BUCKET = 'ophis-otc-control';
-const OBJECT = `${BUCKET}/ethereum-mainnet.json`;
 
 function controlValue(mode, expiry, now = Date.now()) {
   if (!['init', 'off', 'on'].includes(mode)) throw new Error('Expected init, off or on');
@@ -20,73 +17,61 @@ function controlValue(mode, expiry, now = Date.now()) {
   return { enabled: true, expiresAt };
 }
 
-async function api(path, token, method = 'GET', body) {
-  if (!token) throw new Error('Cloudflare credential unavailable');
-  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
-  if (!/^[a-f0-9]{32}$/.test(account ?? '')) throw new Error('Cloudflare account unavailable');
-  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/${path}`, {
-    method,
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (method === 'GET' && response.status === 404) return null;
-  const result = await response.json();
-  if (!response.ok || !result.success)
-    throw new Error(`Cloudflare ${method} ${path} failed (${response.status})`);
-  return result.result;
-}
-
 async function initialize() {
-  const r2Token = process.env.CLOUDFLARE_WORKERS_TOKEN;
-  if (!(await api(`r2/buckets/${BUCKET}`, r2Token)))
-    await api('r2/buckets', r2Token, 'POST', { name: BUCKET });
-  const token = process.env.CLOUDFLARE_API_TOKEN;
-  const project = await api('pages/projects/greg', token);
-  if (!project?.deployment_configs?.production)
-    throw new Error('Production Pages configuration unavailable');
-  const bindings = project.deployment_configs.production.r2_buckets ?? {};
-  if (bindings.OPHIS_OTC_CONTROL && bindings.OPHIS_OTC_CONTROL.name !== BUCKET)
-    throw new Error('Existing OTC binding points to another bucket');
-  await api('pages/projects/greg', token, 'PATCH', {
-    deployment_configs: {
-      production: { r2_buckets: { ...bindings, OPHIS_OTC_CONTROL: { name: BUCKET } } },
-    },
-  });
-}
-
-function writeControl(value) {
   const token = process.env.CLOUDFLARE_WORKERS_TOKEN;
-  if (!token) throw new Error('Cloudflare R2 credential unavailable');
+  if (!token) throw new Error('Cloudflare Workers credential unavailable');
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/pages/projects/greg/domains/swap.ophis.fi`,
+    {
+      headers: { authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}` },
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  const domain = await response.json();
+  if (!response.ok || !domain.success || !/^[a-f0-9]{32}$/.test(domain.result?.zone_tag ?? ''))
+    throw new Error('Pages domain zone unavailable');
   const directory = mkdtempSync(join(tmpdir(), 'ophis-otc-control-'));
   try {
-    const file = join(directory, 'control.json');
-    writeFileSync(file, JSON.stringify(value), { mode: 0o600 });
+    const config = JSON.parse(readFileSync('apps/otc-control/wrangler.json', 'utf8'));
+    config.main = resolve('apps/otc-control/worker.ts');
+    config.routes = [
+      { pattern: 'swap.ophis.fi/api/otc-control*', zone_id: domain.result.zone_tag },
+    ];
+    const configFile = join(directory, 'wrangler.json');
+    writeFileSync(configFile, JSON.stringify(config));
+    const file = join(directory, 'secrets.json');
+    writeFileSync(file, JSON.stringify({ OTC_CONTROL_TOKEN: controlToken() }), { mode: 0o600 });
     const result = spawnSync(
       'npx',
-      [
-        '--yes',
-        'wrangler@4.100.0',
-        'r2',
-        'object',
-        'put',
-        OBJECT,
-        '--remote',
-        '--file',
-        file,
-        '--content-type',
-        'application/json',
-      ],
+      ['--yes', 'wrangler@4.100.0', 'deploy', '--config', configFile, '--secrets-file', file],
       {
         env: { ...process.env, CLOUDFLARE_API_TOKEN: token },
         stdio: 'inherit',
-        timeout: 90_000,
+        timeout: 120_000,
       },
     );
-    if (result.error || result.status !== 0) throw new Error('Could not write OTC runtime control');
+    if (result.error || result.status !== 0)
+      throw new Error('Could not deploy OTC runtime control');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+function controlToken() {
+  const token = process.env.OTC_CONTROL_TOKEN;
+  if (!/^[a-f0-9]{64}$/.test(token ?? '')) throw new Error('OTC control credential unavailable');
+  return token;
+}
+
+async function writeControl(value) {
+  const nonce = randomBytes(16).toString('hex');
+  const response = await fetch(`https://swap.ophis.fi/api/otc-control?nonce=${nonce}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${controlToken()}`, 'content-type': 'application/json' },
+    body: JSON.stringify(value),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error(`Could not write OTC runtime control (${response.status})`);
 }
 
 async function verifyControl(enabled) {
@@ -103,6 +88,10 @@ async function verifyControl(enabled) {
 }
 
 if (process.argv[2] === '--self-test') {
+  assert.equal(
+    JSON.parse(readFileSync('apps/otc-control/wrangler.json', 'utf8')).name,
+    'ophis-otc-control',
+  );
   const now = Date.parse('2026-09-08T00:00:00Z');
   assert.deepEqual(controlValue('off'), { enabled: false, expiresAt: 0 });
   assert.deepEqual(controlValue('init'), { enabled: false, expiresAt: 0 });
@@ -116,10 +105,10 @@ if (process.argv[2] === '--self-test') {
   const value = controlValue(mode, process.env.OTC_ENABLED_UNTIL);
   if (mode === 'init') await initialize();
   try {
-    writeControl(value);
-    if (mode !== 'init') await verifyControl(value.enabled);
+    await writeControl(value);
+    await verifyControl(value.enabled);
   } catch (error) {
-    if (value.enabled) writeControl({ enabled: false, expiresAt: 0 });
+    if (value.enabled) await writeControl({ enabled: false, expiresAt: 0 });
     throw error;
   }
   console.log(`OTC runtime control: ${mode}; expiry: ${value.expiresAt}`);

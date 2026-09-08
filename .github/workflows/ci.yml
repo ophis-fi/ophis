@@ -40,6 +40,7 @@ jobs:
       # twelve days (esbuild emits undeclared identifiers as global refs rather
       # than erroring). This is the only typecheck they get.
       - run: pnpm typecheck:functions
+      - run: pnpm exec tsc -p apps/otc-control --noEmit
       # Hard gate (no `|| echo` fallback): the /api/intent recognition +
       # injection-safety validators are now the SOLE filter between the LLM and
       # the swap UI (the fixed token allow-list was removed), so a regression
