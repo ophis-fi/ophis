@@ -6,8 +6,8 @@ on:
       mode:
         description: 'init: provision disabled control; off: stop new signing; on: enable until expiry'
         type: choice
-        options: [off, init, on]
-        default: off
+        options: ['off', 'init', 'on']
+        default: 'off'
         required: true
       expires_at:
         description: 'on only: UTC expiry YYYY-MM-DDTHH:MM:SSZ, within 24 hours'
