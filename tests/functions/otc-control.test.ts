@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 import { onRequest } from '../../functions/api/otc-control.ts';
 
@@ -79,5 +83,47 @@ test('unavailable storage, preview origins and malformed requests cannot enable 
     const response = await onRequest(context);
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), { enabled: false, nonce });
+  }
+});
+
+test('a possibly committed enablement with a lost response attempts to restore disabled state', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'otc-control-test-'));
+  const history = join(directory, 'history.jsonl');
+  try {
+    writeFileSync(
+      join(directory, 'npx'),
+      `#!/usr/bin/env node
+const fs = require('node:fs');
+const value = JSON.parse(fs.readFileSync(process.argv[process.argv.indexOf('--file') + 1]));
+fs.appendFileSync(process.env.OTC_TEST_HISTORY, JSON.stringify(value) + '\\n');
+process.exit(value.enabled ? 1 : 0);
+`,
+      { mode: 0o700 },
+    );
+    const result = spawnSync(process.execPath, ['scripts/otc-runtime-control.mjs', 'on'], {
+      env: {
+        ...process.env,
+        PATH: directory + ':' + process.env.PATH,
+        OTC_TEST_HISTORY: history,
+        CLOUDFLARE_WORKERS_TOKEN: 'test-only',
+        OTC_ENABLED_UNTIL: new Date(Date.now() + 60_000)
+          .toISOString()
+          .replace('.000Z', 'Z')
+          .replace(/\.\d{3}Z$/, 'Z'),
+      },
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    assert.equal(result.status, 1);
+    const writes = readFileSync(history, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.deepEqual(
+      writes.map((value) => value.enabled),
+      [true, false],
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });

@@ -115,8 +115,8 @@ if (process.argv[2] === '--self-test') {
   const mode = process.argv[2];
   const value = controlValue(mode, process.env.OTC_ENABLED_UNTIL);
   if (mode === 'init') await initialize();
-  writeControl(value);
   try {
+    writeControl(value);
     if (mode !== 'init') await verifyControl(value.enabled);
   } catch (error) {
     if (value.enabled) writeControl({ enabled: false, expiresAt: 0 });
