@@ -263,6 +263,37 @@ describe('discovery-only decoder (fee_verified upsert arms)', () => {
     await sql`TRUNCATE trades, tracked_wallets`;
   }, 30_000);
 
+  it('the API upgrade of a decoder discovery row also moves wallet from receiver to the payer', async () => {
+    // Decoder credits receiver (no onchainUser on-chain): for a bridged native-ETH
+    // sell that is the bridge DEPOSIT address. When the payer later becomes tracked,
+    // the API row for the same uid must carry identity along with fee_verified, or
+    // the deposit becomes a verified, ticketable "trader" forever.
+    const { runFetcher } = await import('../src/fetcher.js');
+    const { sql } = await import('../src/db/index.js');
+    const ROUTER = '0xba3cb449bd2b4adddbc894d8697f5170800eadec';
+    const PAYER = '0x' + 'e'.repeat(40);
+    const DEPOSIT = '0x' + 'd'.repeat(40);
+    const uid = '0x' + '5e'.repeat(56);
+    await sql`
+      INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code, volume_fee_bps, fee_verified)
+      VALUES (decode(${uid.slice(2)}, 'hex'), 100, decode(${DEPOSIT.slice(2)}, 'hex'), 1, ${RECENT_ISO},
+              decode(${'6a023ccd1ff6f2045c3309768ead9e68f978f6e1'}, 'hex'), decode(${'ddafbb505ad214d7b80b1f830fccc89b60fb7a83'}, 'hex'),
+              1000000000000000000, 2500000000, 'ophis', 0, false)`;
+    await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${PAYER.slice(2)}, 'hex')) ON CONFLICT (wallet) DO NOTHING`;
+    handlers.trades = [trade(uid, ROUTER)];
+    const orig = handlers.order;
+    handlers.order = (u: string) => ({ ...orig(u), owner: ROUTER, receiver: DEPOSIT, onchainUser: PAYER });
+    try {
+      await runFetcher();
+    } finally {
+      handlers.order = orig;
+    }
+    const [row] = await sql<{ w: string; v: boolean }[]>`
+      SELECT encode(wallet, 'hex') AS w, fee_verified AS v FROM trades WHERE trade_uid = decode(${uid.slice(2)}, 'hex')`;
+    expect(row!.v).toBe(true);
+    expect(row!.w).toBe(PAYER.slice(2));
+  }, 30_000);
+
   it('a discovery row (fee=0) is EXCLUDED from the wallets matview but COUNTED by the /stats query', async () => {
     const { sql } = await import('../src/db/index.js');
     await sql`TRUNCATE trades, tracked_wallets`;
