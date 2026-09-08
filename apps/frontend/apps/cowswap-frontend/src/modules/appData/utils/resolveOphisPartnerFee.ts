@@ -1,6 +1,24 @@
-import { ophisAppDataPartnerFeeForChain } from 'ophis/partnerFeeDefault'
+import { OPHIS_PARTNER_FEE_RECIPIENT, ophisAppDataPartnerFeeForChain } from 'ophis/partnerFeeDefault'
 
 import { shouldEmitOphisPartnerFee } from '../updater/shouldEmitOphisPartnerFee'
+
+/**
+ * True for a positive flat Volume fee paid to someone OTHER than Ophis: a host
+ * widget's own `partnerFee` override, which reaches the resolver on the volumeFee
+ * pipeline. The Ophis 1 bp base travels that same pipeline when the flat-fee
+ * flag is on, and it is already inside the Ophis appData shape, so it must never
+ * be appended a second time (the #1236 duplicated-partnerFee class).
+ */
+function isThirdPartyVolumeFee(fee: unknown): fee is { volumeBps: number; recipient: string } {
+  if (typeof fee !== 'object' || fee === null) return false
+  const { volumeBps, recipient } = fee as { volumeBps?: unknown; recipient?: unknown }
+  return (
+    typeof volumeBps === 'number' &&
+    volumeBps > 0 &&
+    typeof recipient === 'string' &&
+    recipient.toLowerCase() !== OPHIS_PARTNER_FEE_RECIPIENT.toLowerCase()
+  )
+}
 
 /**
  * Resolve the `metadata.partnerFee` an order must carry, from the widget
@@ -24,6 +42,11 @@ import { shouldEmitOphisPartnerFee } from '../updater/shouldEmitOphisPartnerFee'
  *      rather than a silent downgrade.
  *   3. Falling back to `volumeFee` picks up that pipeline, which is also the
  *      path a widget consumer's own volumeBps override arrives on.
+ *   4. On a chain where the Ophis shape IS emitted, a third-party volumeFee (a
+ *      host widget's own fee) is APPENDED to it, never substituted for it: the
+ *      embedder charges its users whatever it likes and Ophis still earns the
+ *      1 bp base plus capped improvement on the same order. The rebate indexer
+ *      already reads the stacked shape (Ophis entry + integrator own-fee entry).
  *
  * Exported from the `modules/appData` barrel: other modules must consume it
  * from there, never by reaching into `updater/`.
@@ -39,5 +62,23 @@ export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   // makes the two arguments fight and the call site stops compiling. The union
   // return mirrors what `??` produces at the swap call site.
   const gated = shouldEmitOphisPartnerFee(chainId) ? widgetPartnerFee : undefined
-  return ophisAppDataPartnerFeeForChain(gated, chainId, isStablePair) ?? volumeFee
+  const ophis = ophisAppDataPartnerFeeForChain(gated, chainId, isStablePair)
+  if (ophis === undefined) return volumeFee
+  // Stack AFTER the per-chain gate: that gate swaps in the stable-pair variant by
+  // reference equality, so a new array must only be built here. The host entry goes
+  // FIRST, for two reasons that both key on array order:
+  //  - CoW's autopilot applies partner-fee policies in array order against a 100 bps
+  //    aggregate budget and counts a PI policy's maxVolumeBps against it up front, so
+  //    [Ophis 1, PI cap 99, host 50] would clamp the host to ZERO on volatile pairs.
+  //    [host 50, Ophis 1, PI] keeps the host whole and lets CoW clamp the Ophis PI
+  //    cap to the remainder (49 volatile; untouched on stable, cap 20).
+  //  - The trading SDK's min-buy math reads the FIRST Volume entry only; leading with
+  //    the host's fee keeps a tight order as fillable as today (the 1 bp Ophis base
+  //    and the PI were already unaccounted for on every Ophis order).
+  // The result is the Ophis shape (an array of entries) plus one Volume entry, hence
+  // the TWidgetFee cast.
+  if (Array.isArray(ophis) && isThirdPartyVolumeFee(volumeFee)) {
+    return [volumeFee, ...ophis] as unknown as TWidgetFee
+  }
+  return ophis
 }

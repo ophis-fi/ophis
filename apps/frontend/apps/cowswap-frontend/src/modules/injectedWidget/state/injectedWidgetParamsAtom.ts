@@ -21,14 +21,11 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => {
  * appData.metadata.partnerFee. It bypasses the volumeFee pipeline because that
  * pipeline can represent the 1 bp base but not the capped improvement entry.
  *
- * If a host widget overrides `partnerFee` in injectedWidgetParamsAtom,
- * we honour that override (volume-fee shape) and skip the Ophis on-chain
- * config so widget consumers retain their own fee behaviour.
+ * A host widget's own `partnerFee` override does NOT replace this: it travels
+ * the volumeFee pipeline (injectedWidgetPartnerFeeAtom -> volumeFeeAtom) and
+ * resolveOphisPartnerFee APPENDS it as a second Volume entry, so every embedder
+ * pays Ophis on top of what it charges its own users. Until 2026-09-08 the
+ * override replaced the Ophis entry outright and an embedder (mtpelerin, 50 bps
+ * to itself) routed $11.5k through the widget at 0 bps to Ophis.
  */
-export const injectedWidgetAppDataPartnerFeeAtom = atom((get) => {
-  const widgetFee = get(injectedWidgetParamsAtom).params.partnerFee
-  // Presence, not recipient identity, makes this an explicit host override.
-  // The widget's volume-fee pipeline will serialize exactly that override.
-  if (widgetFee) return undefined
-  return OPHIS_DEFAULT_APP_DATA_PARTNER_FEE
-})
+export const injectedWidgetAppDataPartnerFeeAtom = atom(() => OPHIS_DEFAULT_APP_DATA_PARTNER_FEE)
