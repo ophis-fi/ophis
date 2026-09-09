@@ -2,6 +2,7 @@
 set -euo pipefail
 python3 - <<'PY'
 import concurrent.futures, datetime, json, re, subprocess, time, urllib.request, urllib.parse
+from pathlib import Path
 
 def get(url, payload=None):
     body = None if payload is None else json.dumps(payload).encode()
@@ -18,7 +19,12 @@ def prom(expression, history=False):
     return result['data']['result']
 
 def rpc(url, method, params):
-    return get(url, {'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params})
+    payload = {'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params}
+    result = subprocess.run(['curl', '-sS', '--max-time', '12', '-H', 'content-type: application/json', '--data', json.dumps(payload), url], capture_output=True, text=True, timeout=15)
+    try:
+        return json.loads(result.stdout)
+    except ValueError:
+        return {'error': (result.stdout + result.stderr)[:300]}
 
 def head(url):
     result = rpc(url, 'eth_getBlockByNumber', ['latest', False])
@@ -53,9 +59,17 @@ tasks = {
     'app_heads': lambda: prom('{__name__=~".*last_block_number.*"}'),
     'settlements': lambda: prom('sum by(result) (increase(settlements[1h]))'),
     'self_sync': lambda: rpc('http://localhost:8547', 'eth_syncing', []),
+    'proxy_state': lambda: run(['docker', 'inspect', 'robinhood-mainnet-rpc-proxy-1', '--format', '{{.Config.Image}} {{json .State}} {{json .Mounts}}']),
+    'erpc_config': lambda: re.sub(r'https?://[^\\s"<>]+', '[RPC-URL]', Path('/home/clement/ophis/infra/robinhood-mainnet/rendered/erpc.yaml').read_text()),
+    'metric_names': lambda: [n for n in get('http://localhost:9096/api/v1/label/__name__/values')['data'] if n.startswith('erpc_') and any(k in n for k in ('block', 'sync', 'cordon', 'request', 'circuit', 'served', 'cache'))],
+    'block_gauges': lambda: prom('{__name__=~"erpc_.*(latest_block|finalized_block|served_tip|cordoned|circuit_breaker).*",network="evm:4663"}'),
+    'error_rates_30m': lambda: prom('sum by(upstream,error) (rate(erpc_upstream_request_errors_total{network="evm:4663"}[30m])) > 0'),
 }
-for name in ('robinhood-mainnet-driver-1', 'robinhood-mainnet-autopilot-1', 'robinhood-mainnet-rpc-proxy-1', 'robinhood-nitro-nitro-1'):
-    tasks[name + '_logs'] = lambda name=name: run(['docker', 'logs', '--since', '60m', '--tail', '80', name])
+def raw_logs(name):
+    path = subprocess.check_output(['docker', 'inspect', name, '--format', '{{.LogPath}}'], text=True, timeout=5).strip()
+    return run(['sudo', '-n', 'tail', '-c', '50000', path])
+for name in ('robinhood-mainnet-rpc-proxy-1', 'robinhood-nitro-nitro-1'):
+    tasks[name + '_raw_logs'] = lambda name=name: raw_logs(name)
 
 print('START', datetime.datetime.now(datetime.timezone.utc).isoformat(), flush=True)
 with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
@@ -68,7 +82,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
         print(futures[future], json.dumps(result), flush=True)
 
 urls = {'self': 'http://localhost:8547', 'official': 'https://rpc.mainnet.chain.robinhood.com', 'erpc': 'http://localhost:4003/main/evm/4663'}
-for sample in range(3):
+for sample in range(2):
     print('SAMPLE', sample, datetime.datetime.now(datetime.timezone.utc).isoformat(), flush=True)
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
         futures = {pool.submit(head, url): name for name, url in urls.items()}
@@ -78,12 +92,19 @@ for sample in range(3):
             except Exception as error:
                 result = {'error': str(error)}
             print('head_' + futures[future], json.dumps(result), flush=True)
+    pinned = hex(head(urls['self'])['number'] - 50)
     for name, url in urls.items():
         try:
             result = rpc(url, 'eth_getBalance', ['0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665', 'latest'])
         except Exception as error:
             result = {'error': str(error)}
         print('balance_' + name, json.dumps(result), flush=True)
-    if sample < 2:
+        for method, params in [('eth_getBalance', ['0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665', pinned]), ('eth_call', [{'to': '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD', 'data': '0xfbfa77cf'}, pinned])]:
+            try:
+                result = rpc(url, method, params)
+            except Exception as error:
+                result = {'error': str(error)}
+            print(name, method, pinned, json.dumps(result), flush=True)
+    if sample < 1:
         time.sleep(20)
 PY
