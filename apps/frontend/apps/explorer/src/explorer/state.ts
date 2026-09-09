@@ -10,11 +10,11 @@ export type ExplorerAppState = {
 }
 
 export const INITIAL_STATE = (): ExplorerAppState => ({
-  theme: Theme.DARK,
+  theme: Theme.LIGHT,
   networkId: null,
 })
 
 export const rootReducer = combineReducers({
-  theme: (state = Theme.DARK) => state,
+  theme: (state = Theme.LIGHT) => state,
   networkId: networkReducer,
 })

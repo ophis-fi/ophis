@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 
-import { Media, Color, UI } from '@cowprotocol/ui'
+import { Media, Color } from '@cowprotocol/ui'
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { transparentize } from 'polished'
@@ -38,7 +38,7 @@ export const NotificationWrap = styled.p<{ isActive?: boolean; type: string }>`
       max-width: none;
     }
     a {
-      color: ${Color.cowfi_orange};
+      color: ${Color.explorer_textActive};
     }
   }
 
@@ -76,7 +76,7 @@ const CloseButton = styled.button`
     display: block;
     width: 20px;
     height: 2px;
-    background-color: var(${UI.COLOR_NEUTRAL_100});
+    background-color: ${Color.explorer_textPrimary};
     position: absolute;
   }
   &:after {
@@ -114,7 +114,9 @@ export const Notification: React.FC<NotificationProps> = ({
           </>
         )}
       </span>
-      {closable && <CloseButton onClick={(): void => setIsNoteActive(false)} />}
+      {closable && (
+        <CloseButton type="button" aria-label="Dismiss notification" onClick={(): void => setIsNoteActive(false)} />
+      )}
     </NotificationWrap>
   )
 }

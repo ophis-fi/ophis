@@ -18,14 +18,14 @@ import { Wrapper as WrapperMod } from '../styled'
 
 const Wrapper = styled(WrapperMod)`
   max-width: 100%;
-  height: calc(100vh - 10rem);
-  flex-flow: column wrap;
+  min-height: calc(100svh - 18rem);
+  flex-direction: column;
   justify-content: center;
   display: flex;
   padding: 0;
 
   ${Media.upToMedium()} {
-    height: 50vh;
+    min-height: 60svh;
   }
 
   ${Media.upToSmall()} {
@@ -36,11 +36,13 @@ const Wrapper = styled(WrapperMod)`
     justify-content: center;
     padding: 2.4rem 0 0.75rem;
     margin: 0 0 2.4rem;
-    font-size: 2.4rem;
+    font-family: Georgia, serif;
+    font-weight: 400;
+    font-size: clamp(3.6rem, 5vw, 6.4rem);
     line-height: 1;
 
     ${Media.upToExtraSmall()} {
-      font-size: 1.7rem;
+      font-size: 3.6rem;
     }
   }
 `
@@ -84,9 +86,7 @@ export const Home: React.FC = () => {
   const { pathname } = useLocation()
   const [, firstPathSegment, secondPathSegment] = pathname.split('/')
   const isPrefixedHomePath =
-    firstPathSegment.length > 0 &&
-    NETWORK_PREFIXES.split('|').includes(firstPathSegment) &&
-    !secondPathSegment
+    firstPathSegment.length > 0 && NETWORK_PREFIXES.split('|').includes(firstPathSegment) && !secondPathSegment
 
   // LaunchDarkly removed (Ophis fork). Statically OFF: this preserves the prior
   // live behavior (CoW's LD context never resolved isTheGraphEnabled, so it was

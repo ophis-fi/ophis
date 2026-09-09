@@ -21,12 +21,12 @@ export const Wrapper = styled.form`
 `
 
 export const Input = styled.input`
-  height: 5rem;
+  height: 6.4rem;
   flex: 1 1 auto;
   background: ${Color.explorer_greyOpacity};
   font-weight: ${({ theme }): string => theme.fontMedium};
   font-size: 1.6rem;
-  border-radius: 0.6rem;
+  border-radius: 1.2rem;
   line-height: 1;
   display: flex;
   outline: 0;
