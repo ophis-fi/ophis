@@ -27,6 +27,7 @@ export const mobileSwapTheme: CoWSwapTheme = {
   border2: '#d9d9dc',
   info: '#5d2a1a',
   alert: '#b66a16',
+  warning: '#a13b1f',
   boxShadow1: '0 1px 2px rgba(23,25,28,.04)',
   boxShadow2: '0 16px 40px rgba(23,25,28,.06)',
 }
