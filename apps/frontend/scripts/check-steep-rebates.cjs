@@ -1,11 +1,15 @@
 // node scripts/check-steep-rebates.cjs --fixtures
 // node scripts/check-steep-rebates.cjs https://rebates.ophis.fi
+// Requires both repo workspace installs, Chrome, and (from apps/frontend):
+// pnpm --filter @ophis/landing exec playwright install webkit
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
 const { mkdirSync } = require('node:fs')
+const { createRequire } = require('node:module')
 const { tmpdir } = require('node:os')
 const { join, resolve } = require('node:path')
-const { chromium, webkit } = require('playwright')
+// Reuse the landing workspace's declared browser test dependency.
+const { chromium, webkit } = createRequire(require.resolve('../apps/ophis-landing/package.json'))('@playwright/test')
 
 const fixtures = process.argv.includes('--fixtures')
 const base = fixtures ? 'http://rebates.test' : process.argv[2] || 'https://rebates.ophis.fi'
