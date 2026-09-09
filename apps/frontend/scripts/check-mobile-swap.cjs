@@ -16,6 +16,52 @@ const sizes = [
   [768, 1024],
   [1440, 900],
 ]
+async function assertSwapLayout(page, { width, phone, empty = false }) {
+  // CSS breakpoints update before React's media-query hook on viewport changes.
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('h1')].filter((el) => el.getBoundingClientRect().width > 0).length === 1,
+  )
+  const geometry = await page.evaluate(() => {
+    const box = (el) => {
+      const rect = el.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: el.offsetHeight, minHeight: getComputedStyle(el).minHeight }
+    }
+    const heading = [...document.querySelectorAll('h1')].filter((el) => el.getBoundingClientRect().width > 0)
+    const header = document.querySelector('[data-testid="mobile-swap-header"]')
+    return {
+      viewport: innerWidth,
+      scroll: document.documentElement.scrollWidth,
+      scheme: getComputedStyle(document.documentElement).colorScheme,
+      header: box(header),
+      nav: box(header.querySelector('nav')),
+      headings: heading.map(box),
+      panels: ['input', 'output'].map((side) => box(document.getElementById(side + '-currency-input'))),
+    }
+  })
+  assert.equal(geometry.viewport, width, 'layout viewport expanded')
+  assert.ok(geometry.scroll <= width + 1, 'page overflow')
+  assert.equal(geometry.scheme, 'light', 'standalone swap must stay light at every viewport')
+  assert.ok(geometry.header.width > 0, 'swap header missing')
+  assert.equal(geometry.nav.width > 0, !phone, 'desktop navigation visibility disagrees with phone layout')
+  assert.equal(geometry.headings.length, 1, 'swap must have exactly one visible heading')
+  const panelHeight = phone ? 160 : 224
+  for (const panel of geometry.panels) {
+    assert.equal(panel.minHeight, panelHeight + 'px', 'incorrect responsive panel minimum height')
+    assert.ok(panel.height >= panelHeight, 'swap panel collapsed')
+    assert.ok(panel.x >= -1 && panel.x + panel.width <= width + 1, 'swap panel overflow')
+    if (empty) assert.equal(panel.height, panelHeight, 'empty swap panel has unexpected height')
+  }
+  if (!phone) {
+    const [heading] = geometry.headings
+    const [panel] = geometry.panels
+    assert.ok(panel.width <= 560, 'desktop swap card exceeds its intended width')
+    if (width > 960) {
+      assert.ok(heading.x + heading.width <= panel.x, 'desktop introduction overlaps swap card')
+    } else {
+      assert.ok(heading.y + heading.height <= panel.y, 'tablet heading must stack above swap card')
+    }
+  }
+}
 async function check(engine, size, connected) {
   const [width, height] = size
   const browser = await engine.launch({ headless: true, ...(engine === chromium ? { channel: 'chrome' } : {}) })
@@ -56,23 +102,11 @@ async function check(engine, size, connected) {
   try {
     console.log('CHECK', label)
     await page.goto(base, { waitUntil: 'domcontentloaded' })
-    if (phone) {
-      await page.waitForURL(/#\/\d+\/swap/)
-      assert.equal(await page.locator('[contenteditable=true]').count(), 0)
-    } else {
-      await page.locator('[contenteditable=true]').waitFor()
-      await page.goto(base + '/#/1/swap')
-    }
+    await page.waitForURL(/#\/\d+\/swap/)
+    assert.equal(await page.locator('[contenteditable=true]').count(), 0, 'root must open the swap directly')
     await page.locator('#input-currency-input').waitFor()
     if (connected) await page.locator('[class*=Web3StatusConnected]').waitFor()
-    const geometry = await page.evaluate(() => ({
-      viewport: innerWidth,
-      scroll: document.documentElement.scrollWidth,
-      scheme: getComputedStyle(document.documentElement).colorScheme,
-    }))
-    assert.equal(geometry.viewport, width, 'layout viewport expanded')
-    assert.ok(geometry.scroll <= width + 1, 'page overflow')
-    assert.equal(geometry.scheme, phone ? 'light' : 'dark')
+    await assertSwapLayout(page, { width, phone })
     if (width === 375) {
       await page.locator('#web3-status-connected').click()
       const closeAccount = page.getByRole('button', { name: 'Close account' })
@@ -148,11 +182,15 @@ async function checkDesign(engine) {
     colorScheme: 'dark',
   })
   try {
-    await page.addInitScript(() => localStorage.setItem('ophis_consent', 'denied'))
+    await page.addInitScript(() => {
+      localStorage.setItem('ophis_consent', 'denied')
+      localStorage.setItem('redux_localstorage_simple_user', JSON.stringify({ userDarkMode: true }))
+    })
     await page.goto(base + '/#/1/swap/_/_', { waitUntil: 'domcontentloaded' })
     await page.locator('#input-currency-input').waitFor()
     await page.waitForFunction(() => document.fonts.check('16px "Ophis Inter"'))
-    assert.equal((await page.locator('h1').innerText()).trim(), 'Swap with\nclarity.')
+    assert.equal((await page.locator('h1:visible').innerText()).trim(), 'Swap with\nclarity.')
+    await assertSwapLayout(page, { width: 390, phone: true, empty: true })
     const button = page.getByRole('button', { name: 'Connect Wallet', exact: true })
     const style = await button.evaluate((el) => ({
       radius: getComputedStyle(el).borderRadius,
@@ -166,14 +204,15 @@ async function checkDesign(engine) {
       'reduced-motion animation still running',
     )
     await page.setViewportSize({ width: 1440, height: 900 })
-    await page.waitForFunction(() => getComputedStyle(document.documentElement).colorScheme === 'dark')
-    assert.equal(await page.locator('[data-testid="mobile-swap-header"]').count(), 0)
+    await assertSwapLayout(page, { width: 1440, phone: false, empty: true })
+    assert.equal(await page.locator('header nav a[aria-current="page"]').count(), 1, 'desktop swap nav has no active entry')
+    await page.setViewportSize({ width: 768, height: 1024 })
+    await assertSwapLayout(page, { width: 768, phone: false, empty: true })
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.waitForFunction(() => getComputedStyle(document.documentElement).colorScheme === 'light')
-    await page.locator('[data-testid="mobile-swap-header"]').waitFor()
+    await assertSwapLayout(page, { width: 390, phone: true, empty: true })
     await page.locator('footer nav').getByRole('link', { name: 'Profile', exact: true }).click()
     await page.waitForFunction(() => getComputedStyle(document.documentElement).colorScheme === 'dark')
-    console.log('PASS', engine.name(), 'mobile design, reduced motion, viewport and route theme restoration')
+    console.log('PASS', engine.name(), 'responsive design, reduced motion, desktop geometry and saved-dark route restoration')
   } finally {
     await browser.close()
   }
