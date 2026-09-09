@@ -45,7 +45,7 @@ const Header = styled.header`
     color: #17191c;
     border-bottom: 1px solid currentColor;
   }
-  @media (max-width: 720px) {
+  @media (max-width: 720px), (pointer: coarse) and (max-height: 500px) {
     max-width: 480px;
     padding: 16px;
     nav {
