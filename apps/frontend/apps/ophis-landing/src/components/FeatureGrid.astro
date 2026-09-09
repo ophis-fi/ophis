@@ -19,8 +19,8 @@ const features = [
 ---
 <section class="features" id="features">
   <div class="features-inner">
-    <h2 class="reveal-up section-bloom section-bloom--violet" data-reveal>
-      Built for <span class="accent">real flow.</span>
+    <h2 class="serif reveal-up" data-reveal>
+      Built for <em>real flow.</em>
     </h2>
     <div class="features-grid stagger">
       {features.map(f => (
@@ -60,9 +60,6 @@ const features = [
   h2 {
     text-align: center;
     font-size: 40px;
-    line-height: 1.1;
-    font-weight: 600;
-    letter-spacing: -0.02em;
     margin: 0 0 50px;
   }
   .features-grid {
@@ -81,8 +78,8 @@ const features = [
     height: 32px;
     padding: 6px;
     border-radius: var(--ophis-radius-sm);
-    background: rgba(242, 166, 62, 0.12);
-    color: var(--ophis-saffron-60);
+    background: var(--ophis-surface);
+    color: var(--ophis-fg);
     margin-bottom: 16px;
     display: block;
   }

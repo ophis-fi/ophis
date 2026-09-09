@@ -21,7 +21,7 @@ assertReceiverIsOwner(owner, order.receiver)`
   <div class="sdk-inner">
     <div class="sdk-copy reveal-up" data-reveal>
       <span class="sdk-tag">@ophis/sdk</span>
-      <h2>Ship integrations <span class="accent">in an afternoon.</span></h2>
+      <h2 class="serif">Ship integrations <em>in an afternoon.</em></h2>
       <p>
         Correct orderbook hosts, per-chain signing domains, and agent-safety guards: everything an integrator needs to ship without footguns.
       </p>
@@ -62,17 +62,14 @@ assertReceiverIsOwner(owner, order.receiver)`
     display: inline-block;
     padding: 4px 10px;
     border-radius: 4px;
-    background: rgba(242, 166, 62, 0.12);
-    color: var(--ophis-saffron-60);
-    font-family: 'JetBrains Mono', monospace;
+    background: var(--ophis-surface);
+    color: var(--ophis-fg);
+    font-family: ui-monospace, SFMono-Regular, monospace;
     font-size: 12px;
     margin-bottom: 16px;
   }
   h2 {
     font-size: 40px;
-    line-height: 1.1;
-    font-weight: 600;
-    letter-spacing: -0.02em;
     margin: 0 0 16px;
   }
   .sdk-copy p {
@@ -85,10 +82,10 @@ assertReceiverIsOwner(owner, order.receiver)`
   .mcp-label { color: var(--ophis-fg-muted); font-size: 13px; }
   .mcp-line code {
     display: block;
-    font-family: 'JetBrains Mono', 'Menlo', monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
     color: var(--ophis-fg);
-    background: #111114;
+    background: var(--ophis-surface);
     border: 1px solid var(--ophis-border);
     border-radius: var(--ophis-radius-sm);
     padding: 10px 12px;
@@ -100,7 +97,7 @@ assertReceiverIsOwner(owner, order.receiver)`
   .cta-secondary {
     color: var(--ophis-fg);
     padding: 12px 22px;
-    border-radius: var(--ophis-radius-sm);
+    border-radius: 9999px;
     font-size: 14px;
     font-weight: 500;
     border: 1px solid var(--ophis-border);
@@ -108,10 +105,10 @@ assertReceiverIsOwner(owner, order.receiver)`
     transition: border-color 150ms ease;
   }
   .cta-secondary:hover { border-color: var(--ophis-fg-muted); }
-  .cta-primary { background: rgba(242, 166, 62, 0.12); border-color: var(--ophis-saffron-60); }
-  .cta-primary:hover { border-color: var(--ophis-saffron-60); background: rgba(242, 166, 62, 0.18); }
+  .cta-primary { background: var(--ophis-saffron-60); border-color: var(--ophis-saffron-60); color: #fff; }
+  .cta-primary:hover { border-color: var(--ophis-saffron-60); filter: brightness(0.92); }
   .code-frame {
-    background: #111114;
+    background: var(--ophis-bg);
     border: 1px solid var(--ophis-border);
     border-radius: var(--ophis-radius);
     overflow: hidden;
@@ -127,15 +124,15 @@ assertReceiverIsOwner(owner, order.receiver)`
     border-radius: 6px;
     font-size: 12px;
     background: var(--ophis-surface);
-    color: var(--ophis-saffron-60);
+    color: var(--ophis-fg);
   }
   .code-body {
     margin: 0;
     padding: 24px;
-    font-family: 'JetBrains Mono', 'Menlo', monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 13px;
     line-height: 1.6;
-    color: var(--ophis-fg-muted);
+    color: var(--ophis-fg);
     overflow-x: auto;
     white-space: pre-wrap;
   }

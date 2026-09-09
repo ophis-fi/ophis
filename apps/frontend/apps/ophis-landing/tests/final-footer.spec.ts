@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test'
 
-test('final CTA presents the trade and integration paths', async ({ page }) => {
+test('final CTA presents the swap and docs paths', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('.final h2')).toContainText('One intent')
-  await expect(page.locator('.final h2')).toContainText('A better way to settle')
-  await expect(page.locator('.final p')).toContainText('supported stablecoins and tokenized assets')
-  await expect(page.locator('.final .cta-primary')).toHaveAttribute('href', 'https://swap.ophis.fi/')
-  await expect(page.locator('.final .cta-secondary')).toHaveAttribute('href', '/ai-agent-crypto-swap-api/')
+  await expect(page.locator('.final h2')).toContainText('Your next move.')
+  await expect(page.locator('.final h2')).toContainText('On your terms.')
+  await expect(page.locator('.final p')).toContainText('Choose your assets. Check your limits.')
+  await expect(page.locator('.final .cta-primary')).toHaveAttribute('href', 'https://swap.ophis.fi/#/swap')
+  await expect(page.locator('.final .cta-secondary')).toHaveAttribute('href', 'https://docs.ophis.fi')
 })
 
 test('footer has 4 columns + nav-back-to-top link', async ({ page }) => {

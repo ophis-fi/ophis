@@ -16,9 +16,9 @@ const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long
 >
   <Nav />
   <main id="main" tabindex="-1" class="blog-index">
-    <header class="blog-head section-bloom">
+    <header class="blog-head">
       <p class="eyebrow">Ophis Blog</p>
-      <h1>Writing for the <span class="accent">agent era</span></h1>
+      <h1 class="serif">Writing for the <em>agent era</em></h1>
       <p class="lede">
         Intent-based, MEV-protected swaps, and how to build on them. Notes on AI agents,
         rebates, and multi-chain DeFi.
@@ -78,9 +78,6 @@ const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long
   }
   .blog-head h1 {
     font-size: clamp(34px, 6vw, 52px);
-    line-height: 1.08;
-    letter-spacing: -0.025em;
-    font-weight: 600;
     margin: 0 0 18px;
   }
   .lede {
@@ -135,6 +132,7 @@ const fmtDate = (d: Date) => new Intl.DateTimeFormat('en-US', { dateStyle: 'long
     margin-bottom: 12px;
   }
   .post-meta time {
+    color: var(--ophis-fg-muted);
     font-variant-numeric: tabular-nums;
   }
   .tag {

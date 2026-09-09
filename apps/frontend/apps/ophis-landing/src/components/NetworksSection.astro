@@ -1,0 +1,91 @@
+---
+/* Destination selector: Ethereum same-chain plus Solana and Bitcoin via
+   NEAR Intents. The Ethereum panel renders in markup so the content is
+   complete without JS; the inline module only swaps panels on chip clicks. */
+---
+<section class="product" id="product" aria-labelledby="productTitle">
+  <hr class="rule" />
+  <div class="sec-head">
+    <p class="eyebrow reveal-up" data-reveal>Product</p>
+    <h2 class="serif reveal-up" id="productTitle" data-reveal>One place. <em>Your next swap.</em></h2>
+    <p class="lede reveal-up" data-reveal>Choose where the funds should land. Each destination accepts specific assets, and cross-chain destinations need their own address.</p>
+  </div>
+  <div class="chips reveal-up" role="group" aria-label="Networks" data-reveal>
+    <button type="button" data-chain="ethereum" aria-pressed="true"><img src="/logos/chain-ethereum.png" alt="" width="20" height="20" />Ethereum</button>
+    <button type="button" data-chain="solana" aria-pressed="false"><img src="/logos/solana.svg" alt="" width="20" height="20" />Solana</button>
+    <button type="button" data-chain="bitcoin" aria-pressed="false"><img src="/logos/bitcoin.svg" alt="" width="20" height="20" />Bitcoin</button>
+  </div>
+  <div class="chain-panel reveal-up" id="chainPanel" data-reveal>
+    <h3 id="chainTitle">Ethereum · same-chain settlement</h3>
+    <p id="chainText">Swap between supported Ethereum assets, with the receiving token delivered to your wallet. Review the quote and spending limit before you sign.</p>
+    <div class="chain-tokens" id="chainTokens">
+      <span><img src="/logos/eth.png" alt="" width="22" height="22" />ETH</span>
+      <span><img src="/logos/usdc.png" alt="" width="22" height="22" />USDC</span>
+    </div>
+    <a class="chain-all" href="/supported-chains/">See all supported chains <span aria-hidden="true">→</span></a>
+  </div>
+</section>
+<script>
+  const chainBtns = document.querySelectorAll<HTMLButtonElement>('[data-chain]')
+  if (chainBtns.length) {
+    const titles: Record<string, string> = {
+      ethereum: 'Ethereum · same-chain settlement',
+      solana: 'Solana · needs a Solana address',
+      bitcoin: 'Bitcoin · native BTC only',
+    }
+    const texts: Record<string, string> = {
+      ethereum: 'Swap between supported Ethereum assets, with the receiving token delivered to your wallet. Review the quote and spending limit before you sign.',
+      solana: 'Receive supported assets such as SOL or USDC in your Solana wallet. Choose the receiving token and enter a Solana address; the available quote determines the route.',
+      bitcoin: 'Receive native BTC at your Bitcoin address. USDC can be swapped into BTC when a route is available. Wrapped BTC tokens belong to other networks and are not Bitcoin outputs.',
+    }
+    const tokens: Record<string, string> = {
+      ethereum: '<span><img src="/logos/eth.png" alt="" width="22" height="22">ETH</span><span><img src="/logos/usdc.png" alt="" width="22" height="22">USDC</span>',
+      solana: '<span><img src="/logos/solana.svg" alt="" width="22" height="22">SOL</span><span><img src="/logos/usdc.png" alt="" width="22" height="22">USDC</span>',
+      bitcoin: '<span><img src="/logos/bitcoin.svg" alt="" width="22" height="22">BTC · native</span>',
+    }
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const cTitle = document.getElementById('chainTitle')
+    const cText = document.getElementById('chainText')
+    const cTokens = document.getElementById('chainTokens')
+    const cPanel = document.getElementById('chainPanel')
+    chainBtns.forEach((b) => {
+      b.addEventListener('click', () => {
+        const k = b.getAttribute('data-chain') ?? 'ethereum'
+        chainBtns.forEach((x) => x.setAttribute('aria-pressed', String(x === b)))
+        if (cTitle) cTitle.textContent = titles[k] ?? k
+        if (cText) cText.textContent = texts[k] ?? ''
+        if (cTokens) cTokens.innerHTML = tokens[k] ?? ''
+        if (cPanel && !reduced.matches && cPanel.animate) {
+          cPanel.animate(
+            [{ opacity: 0.35, transform: 'translateY(6px)' }, { opacity: 1, transform: 'translateY(0)' }],
+            { duration: 260, easing: 'cubic-bezier(.22,1,.36,1)' },
+          )
+        }
+      })
+    })
+  }
+</script>
+
+<style>
+  .product { max-width: 1200px; margin: 0 auto; padding: 64px 24px 8px; }
+  .rule { height: 1px; background: var(--ophis-border); border: 0; margin: 0 0 40px; }
+  .sec-head { max-width: 640px; margin-bottom: 32px; }
+  .sec-head .eyebrow { margin: 0 0 12px; }
+  h2 { font-size: clamp(34px, 4vw, 44px); margin: 0; }
+  .sec-head .lede { margin: 12px 0 0; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 20px; }
+  .chips button { border: 1px solid var(--ophis-border); background: var(--ophis-bg); border-radius: 9999px; min-height: 48px; padding: 0 18px; font-size: 14px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; color: var(--ophis-fg); }
+  .chips button img { width: 20px; height: 20px; border-radius: 50%; object-fit: contain; display: block; }
+  .chips button[aria-pressed="true"] { background: var(--ophis-fg); border-color: var(--ophis-fg); color: #fff; }
+  .chain-panel { background: var(--ophis-bg); border: 1px solid var(--ophis-border); border-radius: 20px; padding: 24px; display: grid; gap: 8px; }
+  .chain-panel h3 { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
+  .chain-panel p { margin: 0; font-size: 15px; color: var(--ophis-fg-muted); max-width: 62ch; }
+  .chain-tokens { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .chain-tokens span { display: inline-flex; align-items: center; gap: 8px; background: var(--ophis-surface); border-radius: 9999px; padding: 8px 14px 8px 8px; font-size: 14px; font-weight: 500; }
+  .chain-tokens img { width: 22px; height: 22px; border-radius: 50%; object-fit: contain; display: block; }
+  .chain-all { font-size: 14px; font-weight: 500; color: var(--ophis-fg); text-decoration: none; margin-top: 8px; width: fit-content; }
+  .chain-all:hover { text-decoration: underline; text-underline-offset: 3px; }
+  @media (max-width: 640px) {
+    .product { padding: 48px 16px 8px; }
+  }
+</style>
