@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useAtomValue } from 'jotai'
 
-import { resolveOphisPartnerFee } from 'modules/appData'
-import { sumVolumeFeeBps } from 'modules/appData/utils/sumVolumeFeeBps'
+import { resolveOphisPartnerFee, sumVolumeFeeBps } from 'modules/appData'
 import { injectedWidgetAppDataPartnerFeeAtom, injectedWidgetHostFeeKindAtom } from 'modules/injectedWidget'
 import { isStableStablePair, VolumeFee } from 'modules/volumeFee'
+
+import { OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
 
 import { ResolveLegPartnerFeeFn } from './useBasketLegPartnerFee'
 
@@ -76,7 +77,6 @@ export function useBasketQuotes(
   const resolveLegQuoteFee = useCallback<ResolveLegPartnerFeeFn>(
     (leg) => {
       const legFee = resolveLegPartnerFee(leg)
-      if (!legFee) return legFee
       const signed = resolveOphisPartnerFee(
         widgetPartnerFee,
         legFee,
@@ -85,7 +85,12 @@ export function useBasketQuotes(
         hostFee,
       )
       const bps = sumVolumeFeeBps(signed)
-      return bps === undefined || bps === legFee.volumeBps ? legFee : { ...legFee, volumeBps: bps }
+      // No flat fee signed (fee-exempt leg, or PI-only): quote exactly what the pipeline says.
+      if (bps === undefined) return legFee
+      if (legFee) return bps === legFee.volumeBps ? legFee : { ...legFee, volumeBps: bps }
+      // Pipeline has nothing (e.g. a third-party embed configured bps: 0) but the
+      // order still signs the Ophis policy: quote that, or the buy amount is optimistic.
+      return { volumeBps: bps, recipient: OPHIS_PARTNER_FEE_RECIPIENT }
     },
     [resolveLegPartnerFee, widgetPartnerFee, chainId, hostFee],
   )

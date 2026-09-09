@@ -13,11 +13,12 @@ import { useWalletProvider } from '@cowprotocol/wallet-provider'
 import ms from 'ms.macro'
 import { Nullish } from 'types'
 
-import { AppDataInfo, useAppData } from 'modules/appData'
+import { AppDataInfo, useAppData, sumVolumeFeeBps } from 'modules/appData'
 import { useIsWrapOrUnwrap, useDerivedTradeState } from 'modules/trade'
 import { useTradeSlippageValueAndType } from 'modules/tradeSlippage'
-import { sumVolumeFeeBps } from 'modules/appData/utils/sumVolumeFeeBps'
 import { useVolumeFee } from 'modules/volumeFee'
+
+import { OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
 
 import { useIsProviderNetworkDeprecated } from 'common/hooks/useIsProviderNetworkDeprecated'
 import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetworkUnsupported'
@@ -91,13 +92,17 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
   // fee the appData stacks it with the Ophis 1 bp base, and quoting the pipeline's
   // single entry would leave the shown buy amount 1 bp optimistic.
   const signedVolumeBps = sumVolumeFeeBps(appDataDoc?.metadata?.partnerFee)
-  const volumeFee = useMemo(
-    () =>
-      pipelineVolumeFee && signedVolumeBps !== undefined && signedVolumeBps !== pipelineVolumeFee.volumeBps
-        ? { ...pipelineVolumeFee, volumeBps: signedVolumeBps }
-        : pipelineVolumeFee,
-    [pipelineVolumeFee, signedVolumeBps],
-  )
+  const volumeFee = useMemo(() => {
+    if (signedVolumeBps === undefined) return pipelineVolumeFee
+    if (pipelineVolumeFee) {
+      return signedVolumeBps === pipelineVolumeFee.volumeBps
+        ? pipelineVolumeFee
+        : { ...pipelineVolumeFee, volumeBps: signedVolumeBps }
+    }
+    // Pipeline has nothing (e.g. a third-party embed configured bps: 0) but the order
+    // still signs the Ophis policy: quote that, or the buy amount is optimistic.
+    return { volumeBps: signedVolumeBps, recipient: OPHIS_PARTNER_FEE_RECIPIENT }
+  }, [pipelineVolumeFee, signedVolumeBps])
 
   // eslint-disable-next-line complexity
   const params = useSafeMemo(() => {

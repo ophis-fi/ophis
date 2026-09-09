@@ -3,9 +3,7 @@ import { bpsToPercent, buildPriceFromCurrencyAmounts, getWrappedToken, isSellOrd
 import type { LatestAppDataDocVersion } from '@cowprotocol/cow-sdk'
 import { EnrichedOrder, getPartnerFeeBps, OrderKind, OrderStatus } from '@cowprotocol/cow-sdk'
 
-// Pure helper (no imports of its own), reached by path on purpose: the appData
-// barrel pulls hooks/atoms this legacy util must not depend on at load time.
-import { sumVolumeFeeBps } from 'modules/appData/utils/sumVolumeFeeBps'
+import { sumVolumeFeeBps } from 'modules/appData'
 import { Currency, CurrencyAmount, Percent, Price, Token } from '@cowprotocol/currency'
 import { UiOrderType } from '@cowprotocol/types'
 
