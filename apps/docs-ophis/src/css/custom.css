@@ -45,6 +45,7 @@
   --docusaurus-highlighted-code-line-bg: rgba(255,255,255,.08);
 }
 body { font-variant-numeric: lining-nums tabular-nums; }
+.markdown a:not(.hash-link) { text-decoration: underline; text-underline-offset: 3px; }
 h1, h2, h3 { letter-spacing: -.025em; }
 .navbar { border-bottom: 1px solid var(--ifm-color-emphasis-200); box-shadow: none; }
 .navbar__title { font-weight: 500; letter-spacing: -.02em; }
