@@ -1,7 +1,8 @@
 /**
- * Conservatively rounded compounded Volume bps an order's appData partnerFee charges, across every
+ * Compounded Volume bps an order's appData partnerFee charges, across every
  * entry (a host widget's fee stacked with the Ophis 1 bp base). Price-improvement
- * entries are conditional and excluded. Round up for the SDK's integer-bps math. Returns
+ * entries are conditional and excluded. Preserve fractional bps for display;
+ * the SDK rounds separately when sizing orders. Returns
  * undefined when there is no partnerFee to read, so callers can fall back to the
  * volumeFee pipeline (which knows only about ONE entry).
  */
@@ -17,5 +18,5 @@ export function sumVolumeFeeBps(partnerFee: unknown): number | undefined {
       seen = true
     }
   }
-  return seen ? Math.ceil(total) : undefined
+  return seen ? total : undefined
 }
