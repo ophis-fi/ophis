@@ -9,6 +9,8 @@
     "src/**/*.d.ts",
     "src/ophis/partnerFeeMerge.test.ts",
     "src/modules/appData/utils/sumVolumeFeeBps.test.ts",
+    "src/modules/appData/utils/resolveOphisPartnerFee.test.ts",
+    "src/legacy/state/orders/utils.getOrderVolumeFee.test.ts",
     "src/modules/volumeFee/hooks/useVolumeFeeTooltip.test.ts"
   ]
 }

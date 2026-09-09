@@ -82,34 +82,24 @@ export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   const gated = shouldEmitOphisPartnerFee(chainId) ? widgetPartnerFee : undefined
   const ophis = ophisAppDataPartnerFeeForChain(gated, chainId, isStablePair)
   if (ophis === undefined) {
-    // Volume-only (Ophis-operated) chain: the PI shape is suppressed and the Ophis
-    // floor normally rides the volumeFee pipeline -- which a host's own fee DISPLACES
-    // (resolveVolumeFeeForPair skips ophisVolumeOnlyFloorFee whenever a widget fee
-    // exists). Stack the floor behind a third-party host fee: the sovereign backend
-    // floors the entries that are PRESENT and never injects one, so without this an
-    // allowlisted embedder's orders would carry no Ophis entry at all. Host first,
-    // same array-order rationale as the hosted stack below.
-    const floor =
-      hostFee === 'third-party' && isThirdPartyVolumeFee(volumeFee) && ophisVolumeOnlyFloorFee(chainId, isStablePair)
-    return floor ? ([volumeFee, floor] as unknown as TWidgetFee) : volumeFee
+    return resolveVolumeOnlyPartnerFee(volumeFee, chainId, isStablePair, hostFee)
   }
+  if (!hostFee) return ophis
+
   // Stack AFTER the per-chain gate: that gate swaps in the stable-pair variant by
   // reference equality, so a new array must only be built here. The host entry goes
-  // FIRST, for two reasons that both key on array order:
+  // FIRST to preserve the host fee within the aggregate budget:
   //  - CoW's autopilot applies partner-fee policies in array order against a 100 bps
   //    aggregate budget and counts a PI policy's maxVolumeBps against it up front, so
   //    [Ophis 1, PI cap 99, host 50] would clamp the host to ZERO on volatile pairs.
   //    [host 50, Ophis 1, PI] keeps the host whole and lets CoW clamp the Ophis PI
   //    cap to the remainder (49 volatile; untouched on stable, cap 20).
-  //  - The trading SDK's min-buy math reads the FIRST Volume entry only; leading with
-  //    the host's fee keeps a tight order as fillable as today (the 1 bp Ophis base
-  //    and the PI were already unaccounted for on every Ophis order).
   // The result is the Ophis shape (an array of entries) plus one Volume entry, hence
   // the TWidgetFee cast.
   // `hostFee` is the provenance gate: the volumeFee pipeline also carries the Safe
   // App licence fee (non-Ophis recipient, no widget), which must keep today's
   // behaviour (the Ophis shape wins) rather than be mistaken for a host fee.
-  if (hostFee && Array.isArray(ophis) && isThirdPartyVolumeFee(volumeFee)) {
+  if (Array.isArray(ophis) && isThirdPartyVolumeFee(volumeFee)) {
     return [volumeFee, ...ophis] as unknown as TWidgetFee
   }
   // Wrapper path (recipient = Ophis): the explicit override stays authoritative,
@@ -117,7 +107,20 @@ export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   // -- including an explicit `bps: 0`, which the pipeline resolves to undefined and
   // which means "free" for that embed. A third-party zero gets no such ride: it
   // falls through to the Ophis policy below.
-  if (hostFee && isOphisRecipientHostFee(volumeFee)) return volumeFee
+  if (isOphisRecipientHostFee(volumeFee)) return volumeFee
   if (hostFee === 'ophis' && volumeFee === undefined) return undefined
   return ophis
+}
+
+function resolveVolumeOnlyPartnerFee<TVolumeFee>(
+  volumeFee: TVolumeFee | undefined,
+  chainId: number | undefined,
+  isStablePair: boolean,
+  hostFee: 'ophis' | 'third-party' | undefined,
+): TVolumeFee | undefined {
+  const floor = hostFee === 'third-party' && ophisVolumeOnlyFloorFee(chainId, isStablePair)
+  if (!floor) return volumeFee
+  // The backend floors present entries only, so zero-host routes must still emit it.
+  if (isThirdPartyVolumeFee(volumeFee)) return [volumeFee, floor] as unknown as TVolumeFee
+  return volumeFee ?? (floor as unknown as TVolumeFee)
 }
