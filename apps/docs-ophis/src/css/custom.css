@@ -1,7 +1,9 @@
 /* Steep: shared Ophis typography, neutral surfaces and warm accents. */
 @font-face {
   font-family: 'Ophis Inter'; font-style: normal; font-weight: 100 900;
-  font-display: swap; src: url('/fonts/inter-variable.woff2') format('woff2');
+  font-display: swap;
+  /* Keep the public URL identical to the font preload. */
+  src: /* webpackIgnore: true */ url('/fonts/inter-variable.woff2') format('woff2');
 }
 :root {
   --ifm-color-primary: #5d2a1a;
