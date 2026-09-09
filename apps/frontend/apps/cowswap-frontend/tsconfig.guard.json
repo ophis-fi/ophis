@@ -2,7 +2,13 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["jest", "node"]
+    "types": ["jest", "node", "vite/client", "vite-plugin-svgr/client"]
   },
-  "include": ["src/ophis/partnerFeeMerge.test.ts"]
+  "files": ["../../node_modules/@nx/react/typings/cssmodule.d.ts", "../../node_modules/@nx/react/typings/image.d.ts"],
+  "include": [
+    "src/**/*.d.ts",
+    "src/ophis/partnerFeeMerge.test.ts",
+    "src/modules/appData/utils/sumVolumeFeeBps.test.ts",
+    "src/modules/volumeFee/hooks/useVolumeFeeTooltip.test.ts"
+  ]
 }

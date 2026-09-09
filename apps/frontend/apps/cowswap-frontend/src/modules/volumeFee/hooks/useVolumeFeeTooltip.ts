@@ -18,10 +18,10 @@ export interface VolumeFeeTooltip {
 export function useVolumeFeeTooltip(): VolumeFeeTooltip {
   const safeAppFee = useAtomValue(safeAppFeeAtom)
   const isBoosted = useAtomValue(isBoostedTradeAtom)
-  const widgetParams = useInjectedWidgetParams()
+  const { content } = useInjectedWidgetParams()
+  const { feeLabel, feeTooltipMarkdown } = content ?? {}
   const hostFee = useAtomValue(hostFeeKindAtom)
-  // The host's fee resolved for THIS route; undefined when its bps resolve to 0.
-  const hostVolumeFee = useAtomValue(widgetPartnerFeeAtom)
+  const widgetPartnerFee = useAtomValue(widgetPartnerFeeAtom)
 
   return useMemo(() => {
     // Boosted-token flagship (e.g. ALEPH): the boosted fee wins over a Safe-App fee in
@@ -40,15 +40,17 @@ export function useVolumeFeeTooltip(): VolumeFeeTooltip {
       }
 
     // A third-party host fee is STACKED with the Ophis fee (resolveOphisPartnerFee),
-    // and the row shows their sum, so the host's custom label/tooltip must not
+    // and the row shows their combined rate, so the host's custom label/tooltip must not
     // present the combined rate as the host's own charge. The wrapper path (recipient
     // = Ophis) keeps the host's wording: there the explicit fee IS the whole fee.
-    // A third-party host whose bps resolve to 0 on this route charges nothing
-    // (widgetPartnerFeeAtom is undefined, no host entry is signed): only the Ophis
-    // fee applies, so neither the stacked copy nor the host's label may claim it.
     if (hostFee === 'third-party') {
-      if (!hostVolumeFee) return { content: t`Ophis fee, applied only if the trade is executed.`, label: t`Fees` }
-      const hostLabel = widgetParams.content?.feeLabel || t`partner fee`
+      if (!widgetPartnerFee || widgetPartnerFee.volumeBps <= 0) {
+        return {
+          content: t`The Ophis fee is applied only if the trade is executed.`,
+          label: t`Ophis fee`,
+        }
+      }
+      const hostLabel = feeLabel || t`partner fee`
       return {
         content: t`Includes the ${hostLabel} charged by this app and the Ophis fee, applied only if the trade is executed.`,
         label: t`Fees`,
@@ -56,8 +58,8 @@ export function useVolumeFeeTooltip(): VolumeFeeTooltip {
     }
 
     return {
-      content: widgetParams.content?.feeTooltipMarkdown,
-      label: widgetParams.content?.feeLabel || t`Partner fee`,
+      content: feeTooltipMarkdown,
+      label: feeLabel || t`Partner fee`,
     }
-  }, [safeAppFee, isBoosted, widgetParams, hostFee, hostVolumeFee])
+  }, [safeAppFee, isBoosted, feeLabel, feeTooltipMarkdown, hostFee, widgetPartnerFee])
 }

@@ -11,33 +11,27 @@ index 6a95e9f..d90c40d 100644
  var SIGN_SCHEME_MAP = {
    [import_sdk_order_book.EcdsaSigningScheme.EIP712]: import_sdk_order_book.SigningScheme.EIP712,
    [import_sdk_order_book.EcdsaSigningScheme.ETHSIGN]: import_sdk_order_book.SigningScheme.ETHSIGN
-@@ -85,12 +85,24 @@ function getPartnerFeeBps(partnerFee) {
+@@ -85,12 +85,18 @@ function getPartnerFeeBps(partnerFee) {
    if ("volumeBps" in partnerFee) {
      return partnerFee.volumeBps;
    }
    if (Array.isArray(partnerFee)) {
-+    // Ophis: settlement charges EVERY Volume entry (a host widget fee stacked on the
-+    // 1 bp base), so the buy limit must be sized from their SUM, not the first one.
-+    // The driver folds the policies in sequence (with_protocol_fees): a SELL takes the
-+    // next fee on a buy amount the previous fee already reduced (compounds DOWN, the
-+    // sum is an upper bound); a BUY takes it on a sell amount that includes the
-+    // previous fee (compounds UP by sum(f_i*f_j): 0.005 bp for 50+1). The order book
-+    // SDK applies this as BigInt(partnerFeeBps), so 1 bp is the finest step; rounding
-+    // the product up would cost every stacked sell a full bp for that residual.
++    // Ophis: settlement compounds Volume fees. Round up to whole bps because
++    // downstream quote math converts this value to BigInt (50 + 1 => 51.005 => 52).
 +    let total = 0;
 +    let seen = false;
      for (const fee of partnerFee) {
        if ("volumeBps" in fee) {
 -        return fee.volumeBps;
-+        total += fee.volumeBps;
++        total += fee.volumeBps + total * fee.volumeBps / 10000;
 +        seen = true;
        }
      }
-+    return seen ? total : void 0;
++    return seen ? Math.ceil(total) : void 0;
    }
    return void 0;
  }
-@@ -596,7 +608,11 @@ async function buildAppData({ slippageBps, appCode, orderClass: orderClassName,
+@@ -596,7 +602,11 @@ async function buildAppData({ slippageBps, appCode, orderClass: orderClassName,
    const baseMetadata = {
      quote: quoteParams,
      orderClass,
@@ -50,7 +44,7 @@ index 6a95e9f..d90c40d 100644
      ...shouldAddDefaultUtm ? { utm: getDefaultUtmParams() } : {}
    };
    const doc = await metadataApiSdk.generateAppDataDoc(
-@@ -623,7 +639,13 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
+@@ -623,7 +633,13 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
      metadata: {
        ..._doc.metadata,
        ...appDataOverride.metadata?.hooks ? { hooks: {} } : {},
@@ -78,33 +72,27 @@ index 3e0c67f..06e66c6 100644
  var SIGN_SCHEME_MAP = {
    [EcdsaSigningScheme.EIP712]: SigningScheme.EIP712,
    [EcdsaSigningScheme.ETHSIGN]: SigningScheme.ETHSIGN
-@@ -31,12 +31,24 @@ function getPartnerFeeBps(partnerFee) {
+@@ -31,12 +31,18 @@ function getPartnerFeeBps(partnerFee) {
    if ("volumeBps" in partnerFee) {
      return partnerFee.volumeBps;
    }
    if (Array.isArray(partnerFee)) {
-+    // Ophis: settlement charges EVERY Volume entry (a host widget fee stacked on the
-+    // 1 bp base), so the buy limit must be sized from their SUM, not the first one.
-+    // The driver folds the policies in sequence (with_protocol_fees): a SELL takes the
-+    // next fee on a buy amount the previous fee already reduced (compounds DOWN, the
-+    // sum is an upper bound); a BUY takes it on a sell amount that includes the
-+    // previous fee (compounds UP by sum(f_i*f_j): 0.005 bp for 50+1). The order book
-+    // SDK applies this as BigInt(partnerFeeBps), so 1 bp is the finest step; rounding
-+    // the product up would cost every stacked sell a full bp for that residual.
++    // Ophis: settlement compounds Volume fees. Round up to whole bps because
++    // downstream quote math converts this value to BigInt (50 + 1 => 51.005 => 52).
 +    let total = 0;
 +    let seen = false;
      for (const fee of partnerFee) {
        if ("volumeBps" in fee) {
 -        return fee.volumeBps;
-+        total += fee.volumeBps;
++        total += fee.volumeBps + total * fee.volumeBps / 10000;
 +        seen = true;
        }
      }
-+    return seen ? total : void 0;
++    return seen ? Math.ceil(total) : void 0;
    }
    return void 0;
  }
-@@ -560,7 +572,11 @@ async function buildAppData({ slippageBps, appCode, orderClass: orderClassName,
+@@ -560,7 +566,11 @@ async function buildAppData({ slippageBps, appCode, orderClass: orderClassName,
    const baseMetadata = {
      quote: quoteParams,
      orderClass,
@@ -117,7 +105,7 @@ index 3e0c67f..06e66c6 100644
      ...shouldAddDefaultUtm ? { utm: getDefaultUtmParams() } : {}
    };
    const doc = await metadataApiSdk.generateAppDataDoc(
-@@ -587,7 +603,13 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
+@@ -587,7 +597,13 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
      metadata: {
        ..._doc.metadata,
        ...appDataOverride.metadata?.hooks ? { hooks: {} } : {},
