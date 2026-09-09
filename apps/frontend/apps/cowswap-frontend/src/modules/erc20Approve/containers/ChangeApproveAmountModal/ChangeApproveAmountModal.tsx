@@ -20,8 +20,16 @@ export function ChangeApproveAmountModal({
   initialAmountToApprove,
   amountToSwap,
 }: ChangeApproveAmountModalProps): ReactNode {
-  const { amount: approveAmountInput, isInvalid } = useCustomApproveAmountInputState() || {}
+  const { amount: approveAmountInput, isInvalid: isInputInvalid } = useCustomApproveAmountInputState() || {}
   const [, resetCustomApproveAmountInput] = useUpdateOrResetCustomApproveAmountInputState()
+  const approvalAmount = approveAmountInput ?? initialAmountToApprove
+  const isInvalid =
+    isInputInvalid ||
+    !approvalAmount ||
+    !!(
+      amountToSwap &&
+      (!approvalAmount.currency.equals(amountToSwap.currency) || approvalAmount.lessThan(amountToSwap))
+    )
 
   const onBack = useCallback((): void => {
     setUserApproveAmountState({ isModalOpen: false })
@@ -29,9 +37,10 @@ export function ChangeApproveAmountModal({
   }, [resetCustomApproveAmountInput, setUserApproveAmountState])
 
   const onConfirm = useCallback(() => {
-    setUserApproveAmountState({ isModalOpen: false, amountSetByUser: approveAmountInput ?? undefined })
+    if (isInvalid || !approvalAmount) return
+    setUserApproveAmountState({ isModalOpen: false, amountSetByUser: approvalAmount })
     resetCustomApproveAmountInput()
-  }, [setUserApproveAmountState, approveAmountInput, resetCustomApproveAmountInput])
+  }, [setUserApproveAmountState, approvalAmount, isInvalid, resetCustomApproveAmountInput])
 
   const inputToken = useMemo(
     () => (initialAmountToApprove ? getWrappedToken(initialAmountToApprove.currency) : null),

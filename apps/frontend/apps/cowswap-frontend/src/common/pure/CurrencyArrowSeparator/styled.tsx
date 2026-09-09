@@ -99,6 +99,20 @@ export const LoadingWrapper = styled.button<{ $isLoading: boolean }>`
               0 6px 18px rgba(0, 0, 0, 0.45);
           }
         `}
+  ${({ theme }) =>
+    theme.isOphisMobileSwap &&
+    css`
+      --size: 44px;
+      border: 4px solid #fff;
+      box-shadow: none;
+      background: #f2f2f3;
+      &:not(:disabled):hover {
+        transform: none;
+        box-shadow: none;
+        background: #e8e8ea;
+        color: #17191c;
+      }
+    `}
 `
 
 export const ArrowDownIcon = styled(ArrowDown)<{ disabled: boolean }>`

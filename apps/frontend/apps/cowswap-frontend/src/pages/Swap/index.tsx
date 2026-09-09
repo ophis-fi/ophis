@@ -9,10 +9,11 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 import { useLingui } from '@lingui/react/macro'
 import { OphisTrending, PriceChart, ReferralCta } from 'ophis/components'
 import { OphisDiscoveryPanel } from 'ophis/discovery'
+import { useIsMobileSwap } from 'ophis/hooks/useIsMobileSwap'
 import { Navigate, NavLink, useLocation, useParams } from 'react-router'
 import styled from 'styled-components/macro'
 
-import { PageTitle } from 'modules/application'
+import { NetworkSelector, PageTitle } from 'modules/application'
 import { swapDerivedStateAtom, SwapUpdaters, SwapWidget, useSwapDerivedStateToFill } from 'modules/swap'
 import { parameterizeTradeRoute, getDefaultTradeRawState } from 'modules/trade'
 
@@ -105,6 +106,7 @@ const SideRail = styled.div`
 
 export function SwapPage(): ReactNode {
   const params = useParams()
+  const isMobileSwap = useIsMobileSwap()
   const { i18n } = useLingui()
   const { isOphisOnchainDiscoveryEnabled } = useFeatureFlags()
   const swapDerivedStateToFill = useSwapDerivedStateToFill()
@@ -121,11 +123,14 @@ export function SwapPage(): ReactNode {
       <SwapStage>
         {/* Partner iframe embeds keep the plain DCA banner: the referral CTA
             would route partner users to /profile inside the host's iframe. */}
-        <SwapWidget topContent={isInjectedWidget() ? DcaCta : <ReferralCta fallback={DcaCta} />} />
+        <SwapWidget
+          headerContent={isMobileSwap ? <NetworkSelector /> : undefined}
+          topContent={isMobileSwap ? undefined : isInjectedWidget() ? DcaCta : <ReferralCta fallback={DcaCta} />}
+        />
         {/* Full app only. In an injected widget (partner iframe embeds) the rail is
             not mounted at all, so it never renders in or resizes a partner embed and
             no panel ever fetches a third-party API from one. */}
-        {!isInjectedWidget() && (
+        {!isInjectedWidget() && !isMobileSwap && (
           <SideRail>
             {/* Odos-shaped rail: a price chart and trending, no pre-trade "route"
                 panel. Ophis is a meta-aggregator with no pool-level route to draw

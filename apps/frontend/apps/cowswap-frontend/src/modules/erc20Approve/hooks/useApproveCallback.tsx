@@ -59,7 +59,7 @@ export function useApproveCallback(
       const summary = amountToApprove > 0n ? t`Approve ${tokenSymbol}` : t`Revoke ${tokenSymbol} approval`
       const amountToApproveStr = '0x' + amountToApprove.toString(16)
 
-      if (!tokenChainId || !token || !tokenContract || !spender) {
+      if (!tokenChainId || !token || token.chainId !== tokenChainId || !tokenContract || !spender) {
         console.error('Wrong input for approve: ', { tokenChainId, token, tokenContract, amountToApproveStr, spender })
         return
       }

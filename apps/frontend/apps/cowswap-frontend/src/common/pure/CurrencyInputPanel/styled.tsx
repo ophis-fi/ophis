@@ -60,9 +60,22 @@ export const Wrapper = styled.label<{ withReceiveAmountInfo: boolean; readOnly: 
   ${Media.upToSmall()} {
     padding: 16px 12px;
   }
+  ${({ theme, withReceiveAmountInfo }) =>
+    theme.isOphisMobileSwap &&
+    css`
+      padding: 16px;
+      background: #f2f2f3;
+      border: 1px solid transparent;
+      border-radius: ${withReceiveAmountInfo ? '24px 24px 0 0' : '24px'};
+      min-height: 160px;
+      &:focus-within {
+        border-color: #17191c;
+        box-shadow: none;
+      }
+    `}
 `
 
-export const CurrencyInputBox = styled.div<{ isInvalid?: boolean }>`
+export const CurrencyInputBox = styled.div<{ isInvalid?: boolean; $amountRow?: boolean }>`
   display: grid;
   width: 100%;
   grid-template-columns: repeat(2, auto);
@@ -93,6 +106,18 @@ export const CurrencyInputBox = styled.div<{ isInvalid?: boolean }>`
     text-align: right;
     margin: 0 0 0 auto;
   }
+  ${({ $amountRow }) =>
+    $amountRow &&
+    css`
+      grid-template-columns: minmax(0, 1fr);
+      > div {
+        min-width: 0;
+        width: 100%;
+      }
+      > div:last-child {
+        display: none;
+      }
+    `}
 `
 
 export const CurrencyTopLabel = styled.div`

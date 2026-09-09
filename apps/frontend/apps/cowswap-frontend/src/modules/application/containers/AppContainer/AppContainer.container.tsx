@@ -7,7 +7,10 @@ import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 import { OphisFooter } from 'ophis/components/OphisFooter'
 import { OphisHeader } from 'ophis/components/OphisHeader'
 import { ScrollToTop } from 'ophis/components/ScrollToTop'
+import { useIsMobileSwap } from 'ophis/hooks/useIsMobileSwap'
 import { useOphisWalletFlag } from 'ophis/hooks/useOphisWalletFlag'
+import { MobileSwapHeader, MobileSwapFooter } from 'ophis/mobile/MobileSwapHeader.container'
+import { MobileSwapTheme } from 'ophis/mobile/MobileSwapTheme.container'
 import { Link, useLocation } from 'react-router'
 import styled from 'styled-components/macro'
 
@@ -49,6 +52,12 @@ const OphisBodyWrapper = styled.div`
   padding: 56px 16px 64px;
   background: linear-gradient(180deg, #02000d 0%, #070328 50%, #02000d 100%);
   color: #f5efe6;
+
+  @media (max-width: 720px) {
+    padding: 20px 12px 32px;
+  }
+
+  ${({ theme }) => theme.isOphisMobileSwap && `padding: 8px 16px 32px; background: #fff; color: #17191c;`}
 
   & > * {
     margin: 0 auto;
@@ -142,6 +151,7 @@ function useSubdomainRedirect(): void {
 export function AppContainer({ children }: AppContainerProps): ReactNode {
   useSubdomainRedirect()
   const isTradeRoute = useIsTradeRoute()
+  const isMobileSwap = useIsMobileSwap()
   const { pathname } = useLocation()
   const isOtcRoute = /^\/otc(?:\/|$)/.test(pathname)
   const toggleAccountModal = useToggleAccountModal()
@@ -205,32 +215,38 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
 
   // Every other route: Ophis chrome wrapping cowswap's body.
   return (
-    <PageBackgroundContext.Provider value={pageBackgroundValue}>
-      <ScrollToTop />
-      <styledEl.AppWrapper>
-        <URLWarning />
-        <RecoveryBanner />
-        <InvalidLocalTimeWarning />
+    <MobileSwapTheme>
+      <PageBackgroundContext.Provider value={pageBackgroundValue}>
+        <ScrollToTop />
+        <styledEl.AppWrapper>
+          <URLWarning />
+          <RecoveryBanner />
+          <InvalidLocalTimeWarning />
 
-        <OrdersPanel />
+          <OrdersPanel />
 
-        <OphisHeader>
-          {isTradeRoute ? (
-            <NetworkAndAccountControls />
-          ) : isOtcRoute ? (
-            <Web3Status hideConnectButton={!account} onClick={account ? toggleAccountModal : undefined} />
+          {isMobileSwap ? (
+            <MobileSwapHeader />
           ) : (
-            <OpenTradeCTA to="/1/swap/_/_">Open Trade →</OpenTradeCTA>
+            <OphisHeader walletConnected={!!account && isTradeRoute}>
+              {isTradeRoute ? (
+                <NetworkAndAccountControls />
+              ) : isOtcRoute ? (
+                <Web3Status hideConnectButton={!account} onClick={account ? toggleAccountModal : undefined} />
+              ) : (
+                <OpenTradeCTA to="/1/swap/_/_">Open Trade →</OpenTradeCTA>
+              )}
+            </OphisHeader>
           )}
-        </OphisHeader>
 
-        <OphisBodyWrapper>
-          {children}
-          <styledEl.Marginer />
-        </OphisBodyWrapper>
+          <OphisBodyWrapper>
+            {children}
+            <styledEl.Marginer />
+          </OphisBodyWrapper>
 
-        <OphisFooter />
-      </styledEl.AppWrapper>
-    </PageBackgroundContext.Provider>
+          {isMobileSwap ? <MobileSwapFooter /> : <OphisFooter />}
+        </styledEl.AppWrapper>
+      </PageBackgroundContext.Provider>
+    </MobileSwapTheme>
   )
 }

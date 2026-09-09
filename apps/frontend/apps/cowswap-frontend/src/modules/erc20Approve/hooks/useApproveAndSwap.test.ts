@@ -15,7 +15,7 @@ import { LinguiWrapper } from '../../../../LinguiJestProvider'
 import { useTokenSupportsPermit } from '../../permit'
 import { MAX_APPROVE_AMOUNT } from '../constants'
 import { TradeApproveResult } from '../containers'
-import { useIsPartialApproveSelectedByUser, useUpdateApproveProgressModalState } from '../state'
+import { useUpdateApproveProgressModalState } from '../state'
 
 jest.mock('@cowprotocol/balances-and-allowances', () => ({
   useTradeSpenderAddress: jest.fn(),
@@ -37,9 +37,6 @@ const mockUseGeneratePermitInAdvanceToTrade = useGeneratePermitInAdvanceToTrade 
   typeof useGeneratePermitInAdvanceToTrade
 >
 const mockUseTokenSupportsPermit = useTokenSupportsPermit as jest.MockedFunction<typeof useTokenSupportsPermit>
-const mockUseIsPartialApproveSelectedByUser = useIsPartialApproveSelectedByUser as jest.MockedFunction<
-  typeof useIsPartialApproveSelectedByUser
->
 const mockUseUpdateTradeApproveState = useUpdateApproveProgressModalState as jest.MockedFunction<
   typeof useUpdateApproveProgressModalState
 >
@@ -90,7 +87,6 @@ describe('useApproveAndSwap', () => {
     mockUseApproveCurrency.mockReturnValue(mockHandleApprove)
     mockUseGeneratePermitInAdvanceToTrade.mockReturnValue(mockGeneratePermitToTrade)
     mockUseTokenSupportsPermit.mockReturnValue(false)
-    mockUseIsPartialApproveSelectedByUser.mockReturnValue(false)
     mockUseUpdateTradeApproveState.mockReturnValue(mockUpdateTradeApproveState)
   })
 
@@ -142,7 +138,7 @@ describe('useApproveAndSwap', () => {
         expect(mockGeneratePermitToTrade).toHaveBeenCalled()
         // Regression guard: a failed permit must fall through to the on-chain
         // approve, not leave the "Approve and Swap" CTA a silent no-op.
-        expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+        expect(mockHandleApprove).toHaveBeenCalledWith(mockAmount)
         // handleApprove returns undefined in this test (no tx), so the swap is
         // not confirmed — but the approve path WAS taken.
         expect(mockOnApproveConfirm).not.toHaveBeenCalled()
@@ -225,7 +221,7 @@ describe('useApproveAndSwap', () => {
       await result.current()
 
       await waitFor(() => {
-        expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+        expect(mockHandleApprove).toHaveBeenCalledWith(mockAmount)
         expect(mockOnApproveConfirm).toHaveBeenCalled()
       })
     })
@@ -252,7 +248,7 @@ describe('useApproveAndSwap', () => {
       await result.current()
 
       await waitFor(() => {
-        expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+        expect(mockHandleApprove).toHaveBeenCalledWith(mockAmount)
         expect(mockOnApproveConfirm).toHaveBeenCalled()
       })
     })
@@ -279,7 +275,7 @@ describe('useApproveAndSwap', () => {
       await result.current()
 
       await waitFor(() => {
-        expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+        expect(mockHandleApprove).toHaveBeenCalledWith(mockAmount)
         expect(mockUpdateTradeApproveState).toHaveBeenCalledWith({
           error: expect.objectContaining({
             props: expect.objectContaining({
@@ -313,7 +309,7 @@ describe('useApproveAndSwap', () => {
       await result.current()
 
       await waitFor(() => {
-        expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+        expect(mockHandleApprove).toHaveBeenCalledWith(mockAmount)
         expect(mockUpdateTradeApproveState).toHaveBeenCalledWith({
           error: expect.objectContaining({
             props: expect.objectContaining({
@@ -325,8 +321,7 @@ describe('useApproveAndSwap', () => {
       })
     })
 
-    it('should use partial approve amount when user has enabled it', async () => {
-      mockUseIsPartialApproveSelectedByUser.mockReturnValue(true)
+    it('should approve exactly the supplied amount', async () => {
       const mockTxReceipt = createMockTransactionReceipt()
       const mockResult: TradeApproveResult<TransactionReceipt> = {
         txResponse: mockTxReceipt,
@@ -372,7 +367,7 @@ describe('useApproveAndSwap', () => {
       await result.current()
 
       await waitFor(() => {
-        expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+        expect(mockHandleApprove).toHaveBeenCalledWith(mockAmount)
         expect(mockOnApproveConfirm).not.toHaveBeenCalled()
       })
     })
@@ -394,7 +389,7 @@ describe('useApproveAndSwap', () => {
       await result.current()
 
       await waitFor(() => {
-        expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+        expect(mockHandleApprove).toHaveBeenCalledWith(mockAmount)
         expect(mockOnApproveConfirm).not.toHaveBeenCalled()
       })
     })
@@ -421,7 +416,7 @@ describe('useApproveAndSwap', () => {
       await result.current()
 
       await waitFor(() => {
-        expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+        expect(mockHandleApprove).toHaveBeenCalledWith(mockAmount)
         expect(mockOnApproveConfirm).not.toHaveBeenCalled()
       })
     })
@@ -473,6 +468,45 @@ describe('useApproveAndSwap', () => {
     })
   })
 
+  it.each([6, 18])('passes an exact 10-token approval to the wallet with %i decimals', async (decimals) => {
+    const token = new Token(10, mockToken.address, decimals, 'TEST')
+    const amount = CurrencyAmount.fromRawAmount(token, (10n * 10n ** BigInt(decimals)).toString())
+    const { result } = renderHook(() => useApproveAndSwap({ amountToApprove: amount }), { wrapper: LinguiWrapper })
+
+    await result.current()
+
+    expect(mockHandleApprove).toHaveBeenCalledWith(10n * 10n ** BigInt(decimals))
+  })
+
+  it('preserves an explicitly supplied unlimited approval', async () => {
+    const amount = CurrencyAmount.fromRawAmount(mockToken, MAX_APPROVE_AMOUNT.toString())
+    const { result } = renderHook(() => useApproveAndSwap({ amountToApprove: amount }), { wrapper: LinguiWrapper })
+
+    await result.current()
+
+    expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+  })
+
+  it('does not sign or raise the limit when the refreshed quote needs more', async () => {
+    mockUseTokenSupportsPermit.mockReturnValue(true)
+    const { result } = renderHook(
+      () =>
+        useApproveAndSwap({
+          amountToApprove: mockAmountToApprove,
+          minAmountToSignForSwap: CurrencyAmount.fromRawAmount(mockToken, (mockAmount + 1n).toString()),
+          onApproveConfirm: mockOnApproveConfirm,
+        }),
+      { wrapper: LinguiWrapper },
+    )
+
+    await result.current()
+
+    expect(mockHandleApprove).not.toHaveBeenCalled()
+    expect(mockGeneratePermitToTrade).not.toHaveBeenCalled()
+    expect(mockOnApproveConfirm).not.toHaveBeenCalled()
+    expect(mockUpdateTradeApproveState).toHaveBeenCalledWith({ error: expect.anything() })
+  })
+
   describe('error handling', () => {
     it('should propagate errors from handleApprove', async () => {
       const mockError = new Error('Approval failed')
@@ -491,7 +525,7 @@ describe('useApproveAndSwap', () => {
 
       await expect(result.current()).rejects.toThrow('Approval failed')
 
-      expect(mockHandleApprove).toHaveBeenCalledWith(MAX_APPROVE_AMOUNT)
+      expect(mockHandleApprove).toHaveBeenCalledWith(mockAmount)
       expect(mockOnApproveConfirm).not.toHaveBeenCalled()
     })
 

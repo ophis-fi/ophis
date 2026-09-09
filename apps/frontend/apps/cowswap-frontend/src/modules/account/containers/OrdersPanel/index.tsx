@@ -5,7 +5,7 @@ import { useBodyScrollbarLocker } from '@cowprotocol/common-hooks'
 import { Media, UI } from '@cowprotocol/ui'
 import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
-import { Trans } from '@lingui/react/macro'
+import { Trans, useLingui } from '@lingui/react/macro'
 import { transparentize } from 'color2k'
 import styled from 'styled-components/macro'
 
@@ -29,11 +29,12 @@ const SideBar = styled.div`
   width: 100%;
   max-width: 850px;
   height: 80vh;
+  height: 80dvh;
   border-radius: 24px;
   margin: auto;
   bottom: 0;
   left: 0;
-  z-index: 5;
+  z-index: 100;
   padding: 0;
   cursor: default;
   overflow-y: hidden;
@@ -45,11 +46,10 @@ const SideBar = styled.div`
     height: 100%;
     max-width: 100%;
     border-radius: ${({ theme }) => (theme.isWidget ? '24px' : '0')};
-    z-index: 10;
   }
 
   ${Media.upToSmall()} {
-    padding: 0 0 58px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 `
 
@@ -57,7 +57,7 @@ const SidebarBackground = styled.div`
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 4;
+  z-index: 99;
   width: 100%;
   height: 100%;
   background: ${({ theme }) => (theme.isWidget ? 'transparent' : transparentize(theme.black, 0.1))};
@@ -121,6 +121,17 @@ const CloseIcon = styled((props) => <Close {...props} />)`
   }
 `
 
+const CloseButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  background: none;
+  border: none;
+  cursor: pointer;
+`
+
 const Wrapper = styled.div`
   display: flex;
   flex-flow: row wrap;
@@ -136,6 +147,7 @@ const Wrapper = styled.div`
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function OrdersPanel() {
+  const { t } = useLingui()
   const { active, account } = useWalletInfo()
   const { ensName } = useWalletDetails()
   const toggleAccountSelectorModal = useSetAtom(toggleAccountSelectorModalAtom)
@@ -163,7 +175,9 @@ export function OrdersPanel() {
             <strong>
               <Trans>Account</Trans>
             </strong>
-            <CloseIcon onClick={handleCloseOrdersPanel} />
+            <CloseButton type="button" aria-label={t`Close account`} onClick={handleCloseOrdersPanel}>
+              <CloseIcon aria-hidden="true" />
+            </CloseButton>
           </Header>
 
           <AccountDetails

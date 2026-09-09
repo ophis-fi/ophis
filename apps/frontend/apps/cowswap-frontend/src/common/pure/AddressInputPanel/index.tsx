@@ -11,10 +11,9 @@ import { ExternalLink, RowBetween, UI } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import styled from 'styled-components/macro'
+import styled, { useTheme } from 'styled-components/macro'
 
 import { AutoColumn } from 'legacy/components/Column'
-import { useIsDarkMode } from 'legacy/state/user/hooks'
 
 import { useOphisNameResolution } from '../../hooks/useOphisNameResolution'
 import { autofocus } from '../../utils/autofocus'
@@ -153,7 +152,7 @@ export function AddressInputPanel({
   const address = isNonEvmTarget ? nonEvmAddress : evmAddress
 
   const [chainPrefixWarning, setChainPrefixWarning] = useState('')
-  const isDarkMode = useIsDarkMode()
+  const { darkMode: isDarkMode } = useTheme()
 
   const handleInput = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {

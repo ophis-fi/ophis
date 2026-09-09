@@ -34,6 +34,8 @@ export const ContainerBox = styled.div`
   box-shadow: ${({ theme }) => (theme.isWidget ? theme.boxShadow1 : 'none')};
   padding: var(--ophis-space-3, 12px);
   position: relative;
+  ${({ theme }) =>
+    theme.isOphisMobileSwap && `border: 1px solid #e8e8ea; box-shadow: 0 1px 2px rgba(23,25,28,.04); padding: 16px;`}
 
   > div,
   > span {

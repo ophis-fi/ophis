@@ -19,6 +19,7 @@ interface Props {
   children?: ReactNode
   /** Render with a transparent background to overlay the cosmic hero. */
   transparent?: boolean
+  walletConnected?: boolean
 }
 
 const HeaderStack = styled.div<{ $transparent: boolean }>`
@@ -85,7 +86,7 @@ const AnnouncementLogo = styled.img`
   }
 `
 
-const Bar = styled.header<{ $transparent: boolean }>`
+const Bar = styled.header<{ $transparent: boolean; $walletConnected: boolean }>`
   position: relative;
   display: flex;
   align-items: center;
@@ -98,7 +99,10 @@ const Bar = styled.header<{ $transparent: boolean }>`
   backdrop-filter: ${({ $transparent }) => ($transparent ? 'none' : 'blur(16px)')};
   border-bottom: 1px solid ${({ $transparent }) => ($transparent ? 'transparent' : 'rgba(245, 239, 230, 0.08)')};
   @media (max-width: 600px) {
-    padding: 18px 20px;
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+    ${({ $walletConnected }) => $walletConnected && 'display: grid; grid-template-columns: 1fr auto;'}
   }
 `
 
@@ -141,10 +145,18 @@ const WordmarkAccent = styled.span`
   color: #f2a63e;
 `
 
-const Right = styled.div`
+const Right = styled.div<{ $walletConnected: boolean }>`
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  margin-left: auto;
+
+  @media (max-width: 600px) {
+    ${({ $walletConnected }) => $walletConnected && 'display: contents;'}
+  }
 `
 
 const OtcNavLink = styled(Link)`
@@ -168,7 +180,7 @@ const OtcNavLink = styled(Link)`
   }
 `
 
-export function OphisHeader({ children, transparent = false }: Props): ReactNode {
+export function OphisHeader({ children, transparent = false, walletConnected = false }: Props): ReactNode {
   const scrolled = useScrollClass(40)
   const { isOtcEnabled } = useFeatureFlags()
 
@@ -178,14 +190,18 @@ export function OphisHeader({ children, transparent = false }: Props): ReactNode
         <AnnouncementLogo src="/robinhood-feather.svg" alt="" aria-hidden="true" />
         Robinhood Chain is live on Ophis. <span>Trade now →</span>
       </Announcement>
-      <Bar $transparent={transparent} className={`ophis-header-root${scrolled ? ' scrolled' : ''}`}>
+      <Bar
+        $transparent={transparent}
+        $walletConnected={walletConnected}
+        className={`ophis-header-root${scrolled ? ' scrolled' : ''}`}
+      >
         <Wordmark to="/" aria-label="Ophis, home">
           <Mark src="/ophis-icon.svg" alt="" aria-hidden="true" />
           <WordmarkText>
             ophis<WordmarkAccent>.</WordmarkAccent>
           </WordmarkText>
         </Wordmark>
-        <Right>
+        <Right $walletConnected={walletConnected}>
           {isOtcEnabled ? <OtcNavLink to="/otc">OTC</OtcNavLink> : null}
           {children}
         </Right>

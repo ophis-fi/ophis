@@ -12,12 +12,7 @@ import { TradeType } from 'modules/trade'
 import { ApproveCurrencyCallback, useApproveCurrency } from './useApproveCurrency'
 import { useGeneratePermitInAdvanceToTrade } from './useGeneratePermitInAdvanceToTrade'
 
-import { MAX_APPROVE_AMOUNT } from '../constants'
-import {
-  UpdateApproveProgressModalState,
-  useIsPartialApproveSelectedByUser,
-  useUpdateApproveProgressModalState,
-} from '../state'
+import { UpdateApproveProgressModalState, useUpdateApproveProgressModalState } from '../state'
 import { getIsTradeApproveResult } from '../utils/getIsTradeApproveResult'
 
 export interface ApproveAndSwapProps {
@@ -37,7 +32,6 @@ export function useApproveAndSwap({
 }: ApproveAndSwapProps): () => Promise<void> {
   const { account } = useWalletInfo()
   const tradeSpenderAddress = useTradeSpenderAddress()
-  const isPartialApproveEnabledByUser = useIsPartialApproveSelectedByUser()
   const handleApprove = useApproveCurrency(amountToApprove, useModals)
   const updateTradeApproveState = useUpdateApproveProgressModalState()
 
@@ -67,6 +61,15 @@ export function useApproveAndSwap({
   return useCallback(async (): Promise<void> => {
     if (!account || !tradeSpenderAddress) return
 
+    if (
+      minAmountToSignForSwap &&
+      (!amountToApprove.currency.equals(minAmountToSignForSwap.currency) ||
+        amountToApprove.lessThan(minAmountToSignForSwap))
+    ) {
+      updateTradeApproveState({ error: <Trans>Approved amount is not sufficient!</Trans> })
+      return
+    }
+
     const isPermitFlow = await handlePermit()
 
     if (isPermitFlow) {
@@ -77,14 +80,12 @@ export function useApproveAndSwap({
       amountToApprove,
       onApproveConfirm,
       minAmountToSignForSwap,
-      isPartialApproveEnabledByUser,
       handleApprove,
       updateTradeApproveState,
     })
   }, [
     handlePermit,
     amountToApprove,
-    isPartialApproveEnabledByUser,
     handleApprove,
     onApproveConfirm,
     updateTradeApproveState,
@@ -98,7 +99,6 @@ interface ApproveAndSwapContext {
   amountToApprove: CurrencyAmount<Currency>
   minAmountToSignForSwap?: CurrencyAmount<Currency>
   onApproveConfirm?: (transactionHash: string | null) => void
-  isPartialApproveEnabledByUser?: boolean
   handleApprove: ApproveCurrencyCallback
   updateTradeApproveState: UpdateApproveProgressModalState
 }
@@ -107,13 +107,11 @@ async function approveAndSwap({
   amountToApprove,
   onApproveConfirm,
   minAmountToSignForSwap,
-  isPartialApproveEnabledByUser,
   handleApprove,
   updateTradeApproveState,
 }: ApproveAndSwapContext): Promise<void> {
   const amountToApproveBig = BigInt(amountToApprove.quotient.toString())
-  const toApprove = isPartialApproveEnabledByUser ? amountToApproveBig : MAX_APPROVE_AMOUNT
-  const tx = await handleApprove(toApprove)
+  const tx = await handleApprove(amountToApproveBig)
 
   if (tx && onApproveConfirm) {
     if (getIsTradeApproveResult(tx)) {

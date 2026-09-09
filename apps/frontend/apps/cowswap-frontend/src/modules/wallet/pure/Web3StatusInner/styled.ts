@@ -73,6 +73,7 @@ export const Text = styled.p`
 `
 
 export const Wrapper = styled.div<{ $joinedLeft?: boolean }>`
+  min-width: 0;
   color: inherit;
   height: ${({ theme }) => (theme.isWidget ? 'initial' : '100%')};
   max-height: 100%;
@@ -87,6 +88,8 @@ export const Wrapper = styled.div<{ $joinedLeft?: boolean }>`
     border-radius: ${({ $joinedLeft }) => ($joinedLeft ? '3px 28px 28px 3px' : '28px')};
     padding: 8px 16px;
     width: max-content;
+    min-width: 0;
+    max-width: 100%;
     gap: 6px;
     transition: all var(${UI.ANIMATION_DURATION}) ease-in-out;
     background: var(${UI.COLOR_PRIMARY});

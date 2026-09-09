@@ -8,10 +8,10 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans, useLingui } from '@lingui/react/macro'
 import { createPortal } from 'react-dom'
+import { useTheme } from 'styled-components/macro'
 
 import { useModalIsOpen, useToggleModal } from 'legacy/state/application/hooks'
 import { ApplicationModal } from 'legacy/state/application/reducer'
-import { useIsDarkMode } from 'legacy/state/user/hooks'
 
 import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetworkUnsupported'
 import { useOnSelectNetwork } from 'common/hooks/useOnSelectNetwork'
@@ -65,7 +65,7 @@ export function NetworkSelector(): ReactNode {
   useBodyScrollbarLocker(isOpen && !shouldHideNetworkSelector, Media.upToMedium(false))
 
   const onSelectChain = useOnSelectNetwork()
-  const isDarkMode = useIsDarkMode()
+  const { darkMode: isDarkMode } = useTheme()
   const logoUrl = isDarkMode ? info.logo.dark : info.logo.light
   const availableChains = useAvailableChains()
   const { t } = useLingui()
@@ -151,7 +151,7 @@ export function NetworkSelector(): ReactNode {
  * the click-outside handler).
  */
 function BridgeDestinationsFooter({ onClose }: { onClose?: () => void }): ReactNode {
-  const isDarkMode = useIsDarkMode()
+  const { darkMode: isDarkMode } = useTheme()
   const bridgeChainIds = [AdditionalTargetChainId.SOLANA, AdditionalTargetChainId.BITCOIN] as const
 
   return (

@@ -36,7 +36,7 @@ export function SettingsInput({
   return (
     <SettingsInputWrapper id={id} label={label} tooltip={tooltip} footerSlot={footerSlot}>
       <styledEl.InputWrapper $hasLeftSlot={!!leftSlot} $hasError={!!error}>
-        {leftSlot}
+        {leftSlot && <styledEl.LeftSlot>{leftSlot}</styledEl.LeftSlot>}
 
         <styledEl.Input
           id={id}
