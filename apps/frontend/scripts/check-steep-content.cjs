@@ -14,7 +14,8 @@ async function check(page, dark, label) {
   const googleRequests = []
   const localFonts = []
   page.on('request', (request) => {
-    if (/fonts\.(googleapis|gstatic)\.com/.test(request.url())) googleRequests.push(request.url())
+    if (['fonts.googleapis.com', 'fonts.gstatic.com'].includes(new URL(request.url()).hostname))
+      googleRequests.push(request.url())
   })
   page.on('response', (response) => {
     const url = new URL(response.url())
