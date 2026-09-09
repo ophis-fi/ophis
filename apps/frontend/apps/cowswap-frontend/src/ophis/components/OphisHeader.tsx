@@ -48,9 +48,7 @@ const Announcement = styled.a`
   gap: 10px;
   color: #fff;
   background: linear-gradient(90deg, #7b2cff, #c92cf2 48%, #f2a63e);
-  font:
-    600 13px/1.3 'Geist',
-    var(--cow-font-family-primary, system-ui);
+  font: 600 13px/1.3 ${STEEP_FONT.body};
   text-align: center;
   text-decoration: none;
 

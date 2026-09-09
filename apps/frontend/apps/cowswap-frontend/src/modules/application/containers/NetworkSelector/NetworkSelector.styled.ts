@@ -28,7 +28,7 @@ export const FlyoutHeader = styled.div`
 // with the brand's "JetBrains Mono labels next to data" treatment.
 export const FlyoutHeaderTitle = styled.div`
   flex: 1 1 auto;
-  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--cow-font-family-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.18em;

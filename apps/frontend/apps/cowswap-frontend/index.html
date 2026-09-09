@@ -27,26 +27,14 @@
     <meta name="msapplication-TileColor" content="#ffffff" />
     <meta name="theme-color" content="#ffffff" />
 
-    <!-- Ophis brand fonts: Geist + Geist Mono (Vercel, OFL). Single
-         variable-axis font for the whole site — clean, geometric,
-         readable. Replaces the prior Fraunces/Plus Jakarta Sans pair. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap"
-    />
-    <!-- Inter loads on-demand via @font-face (src/styles/fonts.css) for the few
-         legacy components that still reference it. Deliberately NOT preloaded:
-         the landing and all rebranded surfaces use Geist, so eagerly fetching
-         ~472KB of Inter on every page was pure critical-path waste. -->
+    <!-- Inter is self-hosted through src/styles/fonts.css; headings and code use system fonts. -->
 
     <!-- Social media tags -->
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Ophis, the intent-based DEX aggregator" />
     <meta
       property="og:description"
-      content="Describe your trade in natural language. Ophis pre-fills the order and you sign. Intent-based, MEV-protected."
+      content="Choose your tokens and amount, review the quote, and sign a MEV-protected swap."
     />
     <meta property="og:image" content="https://swap.ophis.fi/ophis-og.jpg" />
     <meta property="og:image:width" content="1920" />
@@ -58,7 +46,7 @@
     <!-- Twitter media tags -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Ophis, the intent-based DEX aggregator" />
-    <meta name="twitter:description" content="Describe your trade in natural language. Ophis pre-fills the order and you sign. Intent-based, MEV-protected." />
+    <meta name="twitter:description" content="Choose your tokens and amount, review the quote, and sign a MEV-protected swap." />
     <meta name="twitter:image" content="https://swap.ophis.fi/ophis-og.jpg" />
     <meta name="twitter:image:alt" content="Ophis cosmic gradient hero" />
 
@@ -82,7 +70,7 @@
             "url": "https://swap.ophis.fi",
             "applicationCategory": "FinanceApplication",
             "operatingSystem": "Web",
-            "description": "Intent-based DEX aggregator across 13 EVM chains, including Robinhood Chain. Describe a trade in natural language; a competitive solver network fills it MEV-protected, and you sign with your own wallet.",
+            "description": "Intent-based DEX aggregator across 13 EVM chains, including Robinhood Chain. Choose your tokens and amount, review the quote, and sign with your own wallet. A competitive solver network fills the swap with MEV protection.",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
           }
         ]
@@ -144,7 +132,7 @@
          'unsafe-inline'). -->
     <div id="ophis-seo">
       <style>
-        #ophis-seo{position:fixed;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;background:#ffffff;color:#17191c;font-family:"Geist",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+        #ophis-seo{position:fixed;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;background:#ffffff;color:#17191c;font-family:"Inter var",Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
         #ophis-seo .wrap{max-width:700px;padding:32px 24px;text-align:center}
         #ophis-seo img{height:32px;width:auto;margin:0 auto 28px;display:block}
         #ophis-seo h1{font-family:Georgia,serif;font-size:clamp(26px,5vw,40px);line-height:1.12;font-weight:400;letter-spacing:-0.02em;margin:0 0 18px}

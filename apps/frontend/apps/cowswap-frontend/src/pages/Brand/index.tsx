@@ -37,10 +37,10 @@ import styled from 'styled-components/macro'
 // don't generalize to the rest of the design system — a brand-kit page
 // is the one place where you DO want display-only chrome.
 const LogoTile = styled.div<{ $dark?: boolean }>`
-  color: ${({ theme, $dark }) => ($dark ? '#f4f4f5' : steep(theme).text)};
+  color: ${({ $dark }) => ($dark ? '#f4f4f5' : '#17191c')};
   border-radius: 16px;
   padding: 32px 18px 18px;
-  background: ${({ theme, $dark }) => ($dark ? 'var(--ophis-steep-ink, #17191c)' : steep(theme).card)};
+  background: ${({ $dark }) => ($dark ? '#17191c' : '#ffffff')};
   border: 1px solid ${({ theme }) => steep(theme).cardBorder};
   display: flex;
   flex-direction: column;
@@ -73,7 +73,7 @@ const DownloadLink = styled.a`
     text-underline-offset: 3px;
   }
   &:focus-visible {
-    outline: 2px solid ${({ theme }) => steep(theme).link};
+    outline: 2px solid currentColor;
     outline-offset: 2px;
     border-radius: 2px;
   }
@@ -171,10 +171,10 @@ const BRAND_SECTIONS: ReactNode = (
             </DownloadLink>
           </LogoMeta>
         </LogoTile>
-        <LogoTile>
-          <img src="/ophis-icon-inverse.svg" alt="Ophis icon, light variant" />
+        <LogoTile $dark>
+          <img src="/ophis-icon-inverse.svg" alt="Ophis icon, inverse variant" />
           <LogoMeta>
-            <span>Icon · light background</span>
+            <span>Inverse icon · dark background</span>
             <DownloadLink href="/ophis-icon-inverse.svg" download>
               Download SVG ↓
             </DownloadLink>
@@ -268,8 +268,8 @@ const BRAND_SECTIONS: ReactNode = (
         </FontSample>
       </FeatureGrid>
       <Callout tone="info">
-        The brand typefaces are OS system stacks — Georgia, Inter with a system-ui fallback, and the system monospace
-        stack. No webfont payload and no additional license is required to use them in derivative materials.
+        Headings use Georgia and data uses the system monospace stack. Body text uses self-hosted Inter with a system-ui
+        fallback.
       </Callout>
     </Section>
 

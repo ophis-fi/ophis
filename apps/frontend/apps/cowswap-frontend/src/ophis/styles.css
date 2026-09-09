@@ -130,7 +130,7 @@
      the swap surface additionally loads Ophis Inter via its own
      MobileSwapGlobalStyle. */
   --ophis-font-display: Georgia, "Times New Roman", ui-serif, serif;
-  --ophis-font-body: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ophis-font-body: "Inter var", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
   --ophis-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   /* Override CoW's font-family CSS variables so existing components inherit Ophis fonts */
@@ -140,8 +140,8 @@
 
 /*
  * Force body font onto the cow root that ThemedGlobalStyle sets via
- * `font-family: 'Inter', sans-serif`. Without this, Geist would only
- * apply where components opt in via var(--cow-font-family-primary).
+ * `font-family: 'Inter', sans-serif`, so the shared self-hosted face also
+ * applies to controls that do not read var(--cow-font-family-primary).
  */
 html,
 input,

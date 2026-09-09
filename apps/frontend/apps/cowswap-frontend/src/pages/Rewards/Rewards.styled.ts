@@ -84,7 +84,7 @@ export const ProgressTrack = styled.div`
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: var(--cow-color-paper-darker);
+  background: var(--cow-color-text-opacity-50);
   overflow: hidden;
 `
 
