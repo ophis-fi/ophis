@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Ophis is an intent-based DEX aggregator. Describe a trade in natural language and Ophis routes you to a pre-filled, MEV-protected trade."
+      content="Ophis is an intent-based DEX aggregator. Choose your tokens and amount, review the quote, and sign a MEV-protected swap."
     />
 
     <!-- Self-referential canonical for the swap host. The SPA still sets
@@ -24,8 +24,8 @@
 
     <link rel="manifest" href="/manifest.json" />
     <link rel="mask-icon" href="/ophis-icon.svg" color="#F2A63E" />
-    <meta name="msapplication-TileColor" content="#02000d" />
-    <meta name="theme-color" content="#02000d" />
+    <meta name="msapplication-TileColor" content="#ffffff" />
+    <meta name="theme-color" content="#ffffff" />
 
     <!-- Ophis brand fonts: Geist + Geist Mono (Vercel, OFL). Single
          variable-axis font for the whole site — clean, geometric,
@@ -93,8 +93,8 @@
       body {
         margin: 0;
         padding: 0;
-        background: #02000d;
-        color: #f5efe6;
+        background: #ffffff;
+        color: #17191c;
       }
     </style>
   </head>
@@ -107,17 +107,17 @@
           max-width: 640px;
           padding: 48px 24px;
           font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-          color: #f5efe6;
+          color: #17191c;
         }
         .banner {
           padding: 16px;
           background: rgba(245, 239, 230, 0.06);
           border: 1px solid rgba(242, 166, 62, 0.45);
           border-radius: 16px;
-          color: #f5efe6;
+          color: #17191c;
         }
         a {
-          color: #f2a63e;
+          color: #5d2a1a;
         }
       </style>
       <main>
@@ -144,32 +144,31 @@
          'unsafe-inline'). -->
     <div id="ophis-seo">
       <style>
-        #ophis-seo{position:fixed;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;background:#02000d;color:#f5efe6;font-family:"Geist",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+        #ophis-seo{position:fixed;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;background:#ffffff;color:#17191c;font-family:"Geist",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
         #ophis-seo .wrap{max-width:700px;padding:32px 24px;text-align:center}
         #ophis-seo img{height:32px;width:auto;margin:0 auto 28px;display:block}
-        #ophis-seo h1{font-size:clamp(26px,5vw,40px);line-height:1.12;font-weight:600;letter-spacing:-0.02em;margin:0 0 18px}
-        #ophis-seo p{font-size:16px;line-height:1.6;color:#c9c2b8;margin:0 auto 14px;max-width:62ch}
+        #ophis-seo h1{font-family:Georgia,serif;font-size:clamp(26px,5vw,40px);line-height:1.12;font-weight:400;letter-spacing:-0.02em;margin:0 0 18px}
+        #ophis-seo p{font-size:16px;line-height:1.6;color:#5b5f68;margin:0 auto 14px;max-width:62ch}
         #ophis-seo nav{margin-top:26px;display:flex;flex-wrap:wrap;gap:10px 18px;justify-content:center}
-        #ophis-seo a{color:#f2a63e;text-decoration:none;font-size:15px}
+        #ophis-seo a{color:#5d2a1a;text-decoration:none;font-size:15px}
         #ophis-seo a:hover{text-decoration:underline}
-        #ophis-seo .hint{margin-top:28px;font-size:13px;color:#7d776e}
+        #ophis-seo .hint{margin-top:28px;font-size:13px;color:#5b5f68}
         /* Swap-card skeleton: a human staring at this fallback while the ~1.3MB
            (brotli) app bundle parses should see the swap widget *loading*, not a
            marketing wall — so the trade UI "appears" instantly. Purely decorative
            (aria-hidden) and removed with the rest of #ophis-seo by seo-fallback.js
            the moment React mounts. No "loading" TEXT (soft-404 classifiers). */
-        #ophis-seo .skl{width:min(392px,92vw);margin:0 auto 30px;background:#0a0713;border:1px solid #1c1730;border-radius:20px;padding:16px;box-shadow:0 8px 40px rgba(0,0,0,.35)}
-        #ophis-seo .skl .row{display:flex;align-items:center;justify-content:space-between;background:#120d20;border-radius:14px;padding:16px 18px}
-        #ophis-seo .skl .arw{width:34px;height:34px;margin:8px auto;border-radius:50%;background:#120d20;border:1px solid #1c1730;display:flex;align-items:center;justify-content:center;color:#4a4258;font-size:16px}
-        #ophis-seo .skl b{display:block;border-radius:8px;background:linear-gradient(90deg,#1c1730 25%,#2a2340 50%,#1c1730 75%);background-size:200% 100%;animation:ophisShimmer 1.25s ease-in-out infinite}
+        #ophis-seo .skl{width:min(392px,92vw);margin:0 auto 30px;background:#ffffff;border:1px solid #e8e8ea;border-radius:20px;padding:16px;box-shadow:0 8px 40px rgba(23,25,28,.06)}
+        #ophis-seo .skl .row{display:flex;align-items:center;justify-content:space-between;background:#f2f2f3;border-radius:14px;padding:16px 18px}
+        #ophis-seo .skl .arw{width:34px;height:34px;margin:8px auto;border-radius:50%;background:#f2f2f3;border:1px solid #e8e8ea;display:flex;align-items:center;justify-content:center;color:#5b5f68;font-size:16px}
+        #ophis-seo .skl b{display:block;border-radius:8px;background:#e8e8ea;}
         #ophis-seo .skl .pill{width:98px;height:34px;border-radius:999px}
         #ophis-seo .skl .amt{width:120px;height:22px}
-        #ophis-seo .skl .btn{width:100%;height:52px;border-radius:14px;margin-top:12px;background:linear-gradient(90deg,#2a2036 25%,#3a2c1c 50%,#2a2036 75%);background-size:200% 100%;animation:ophisShimmer 1.25s ease-in-out infinite}
-        @keyframes ophisShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        #ophis-seo .skl .btn{width:100%;height:52px;border-radius:14px;margin-top:12px;background:#fbe1d1;}
         @media(prefers-reduced-motion:reduce){#ophis-seo .skl b,#ophis-seo .skl .btn{animation:none}}
       </style>
       <div class="wrap">
-        <img src="/ophis-logo-full.svg" alt="Ophis" width="118" height="32" />
+        <img src="/ophis-mono.svg" alt="Ophis" width="118" height="32" />
         <div class="skl" aria-hidden="true">
           <div class="row"><b class="pill"></b><b class="amt"></b></div>
           <div class="arw">↓</div>
@@ -178,7 +177,7 @@
         </div>
         <h1>Ophis: the intent-based DEX aggregator with MEV-protected swaps</h1>
         <p>
-          Describe a trade in plain language and Ophis routes you to a pre-filled order. A
+          Choose your tokens and amount, then review the quote and spending limit. A
           competitive solver network fills it MEV-protected in a batch auction, and you sign
           with your own wallet, no custody, no front-running.
         </p>

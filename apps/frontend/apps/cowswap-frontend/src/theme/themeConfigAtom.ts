@@ -1,5 +1,7 @@
 import { atom } from 'jotai'
 
+import { isInjectedWidget } from '@cowprotocol/common-utils'
+
 import { load } from 'redux-localstorage-simple'
 
 import { getCowswapTheme } from './getCowswapTheme'
@@ -26,7 +28,7 @@ function readPersistedDarkMode(): boolean | null {
 
 function getInitialDarkModePreference(): boolean {
   if (typeof window === 'undefined') {
-    return true
+    return isInjectedWidget()
   }
 
   const persistedPreference = readPersistedDarkMode()
@@ -35,8 +37,8 @@ function getInitialDarkModePreference(): boolean {
     return persistedPreference
   }
 
-  // Match useIsDarkMode: Ophis defaults to dark, regardless of the wallet's OS theme.
-  return true
+  // Match useIsDarkMode: standalone starts light; keep the embedded default.
+  return isInjectedWidget()
 }
 
 const initialDarkMode = getInitialDarkModePreference()

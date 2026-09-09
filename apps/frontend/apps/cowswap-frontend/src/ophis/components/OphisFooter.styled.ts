@@ -1,9 +1,14 @@
 /**
  * Styled components for OphisFooter. Extracted to keep the renderer
  * under the AGENTS.md 250-LOC cap.
+ *
+ * Steep editorial footer: flat paper band, hairline dividers, muted
+ * links resolving to ink on hover. No blur, no glow.
  */
 import { Link } from 'react-router'
 import styled, { css } from 'styled-components/macro'
+
+import { STEEP_FONT, steep } from '../ds/steep.utils'
 
 export const Bar = styled.footer<{ $borderless: boolean }>`
   width: 100%;
@@ -11,11 +16,12 @@ export const Bar = styled.footer<{ $borderless: boolean }>`
   display: flex;
   flex-direction: column;
   gap: 36px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: ${STEEP_FONT.body};
   font-size: 14px;
-  color: rgba(245, 239, 230, 0.6);
-  background: rgba(2, 0, 13, 0.86);
-  border-top: 1px solid ${({ $borderless }) => ($borderless ? 'transparent' : 'rgba(245, 239, 230, 0.08)')};
+  color: ${({ theme }) => steep(theme).muted};
+  background: ${({ theme }) =>
+    theme?.darkMode ? 'var(--ophis-steep-dark-bg, #17191c)' : 'var(--ophis-steep-paper, #ffffff)'};
+  border-top: 1px solid ${({ theme, $borderless }) => ($borderless ? 'transparent' : steep(theme).cardBorder)};
 
   @media (max-width: 720px) {
     padding: 40px 20px 24px;
@@ -36,16 +42,12 @@ export const CompactBar = styled.footer<{ $borderless: boolean }>`
   justify-content: space-between;
   gap: 12px 24px;
   flex-wrap: wrap;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: ${STEEP_FONT.body};
   font-size: 13px;
-  color: rgba(245, 239, 230, 0.6);
-  /* More-opaque dark backing (0.72) gives the footer text a reliable dark
-     surface over the bright hero behind it, so the copyright/links clear
-     WCAG-AA contrast regardless of what hue sits behind the translucent bar. */
-  background: rgba(2, 0, 13, 0.72);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  border-top: 1px solid ${({ $borderless }) => ($borderless ? 'transparent' : 'rgba(245, 239, 230, 0.08)')};
+  color: ${({ theme }) => steep(theme).muted};
+  background: ${({ theme }) =>
+    theme?.darkMode ? 'var(--ophis-steep-dark-bg, #17191c)' : 'var(--ophis-steep-paper, #ffffff)'};
+  border-top: 1px solid ${({ theme, $borderless }) => ($borderless ? 'transparent' : steep(theme).cardBorder)};
 
   @media (max-width: 600px) {
     padding: 12px 18px;
@@ -58,10 +60,10 @@ export const CompactBrand = styled.div`
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: ${STEEP_FONT.body};
   font-weight: 600;
   font-size: 15px;
-  color: #f5efe6;
+  color: ${({ theme }) => steep(theme).text};
 `
 
 export const CompactLinks = styled.nav`
@@ -74,9 +76,7 @@ export const CompactLinks = styled.nav`
 
 export const CompactCopy = styled.span`
   font-size: 12px;
-  /* 0.6 (was 0.42) over the 0.72 dark bar clears WCAG-AA 4.5:1 for the
-     12px copyright line. Review finding LOW#2. */
-  color: rgba(245, 239, 230, 0.6);
+  color: ${({ theme }) => steep(theme).muted};
   white-space: nowrap;
 `
 
@@ -115,10 +115,10 @@ export const BrandMark = styled.div`
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: ${STEEP_FONT.body};
   font-weight: 600;
   font-size: 22px;
-  color: #f5efe6;
+  color: ${({ theme }) => steep(theme).text};
 `
 
 // Wordmark groups "ophis" and its accent period into ONE flex item, so
@@ -126,7 +126,7 @@ export const BrandMark = styled.div`
 // from its trailing period (which previously rendered as a detached "ophis .").
 export const Wordmark = styled.span`
   & span {
-    color: #f2a63e;
+    color: ${({ theme }) => steep(theme).text};
   }
 `
 
@@ -140,17 +140,17 @@ export const BrandTagline = styled.p`
   max-width: 280px;
   font-size: 13px;
   line-height: 1.55;
-  color: rgba(245, 239, 230, 0.55);
+  color: ${({ theme }) => steep(theme).muted};
 `
 
 export const ColTitle = styled.h4`
   margin: 0 0 14px;
-  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: ${STEEP_FONT.body};
   font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(245, 239, 230, 0.45);
+  color: ${({ theme }) => steep(theme).muted};
 `
 
 export const ColList = styled.ul`
@@ -163,16 +163,16 @@ export const ColList = styled.ul`
 `
 
 const linkStyles = css`
-  color: rgba(245, 239, 230, 0.7);
+  color: ${({ theme }) => steep(theme).muted};
   text-decoration: none;
   font-size: 14px;
   transition: color 120ms ease-out;
   &:hover,
   &:focus-visible {
-    color: #f5efe6;
+    color: ${({ theme }) => steep(theme).text};
   }
   &:focus-visible {
-    outline: 2px solid rgba(242, 166, 62, 0.5);
+    outline: 2px solid ${({ theme }) => steep(theme).link};
     outline-offset: 2px;
     border-radius: 2px;
   }
@@ -193,9 +193,9 @@ export const BottomBar = styled.div`
   gap: 16px;
   flex-wrap: wrap;
   padding-top: 24px;
-  border-top: 1px solid rgba(245, 239, 230, 0.06);
+  border-top: 1px solid ${({ theme }) => steep(theme).cardBorder};
   font-size: 12px;
-  color: rgba(245, 239, 230, 0.45);
+  color: ${({ theme }) => steep(theme).muted};
   max-width: 1180px;
   width: 100%;
   margin: 0 auto;
@@ -209,15 +209,15 @@ export const BottomLinks = styled.div`
 `
 
 export const SmallLink = styled(Link)`
-  color: rgba(245, 239, 230, 0.5);
+  color: ${({ theme }) => steep(theme).muted};
   text-decoration: none;
   font-size: 12px;
   &:hover,
   &:focus-visible {
-    color: rgba(245, 239, 230, 0.85);
+    color: ${({ theme }) => steep(theme).text};
   }
   &:focus-visible {
-    outline: 2px solid rgba(242, 166, 62, 0.5);
+    outline: 2px solid ${({ theme }) => steep(theme).link};
     outline-offset: 2px;
     border-radius: 2px;
   }

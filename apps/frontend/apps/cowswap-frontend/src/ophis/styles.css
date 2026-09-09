@@ -51,6 +51,39 @@
   --ophis-danger: #FF5226;
   --ophis-info: #3084FF;
 
+  /* Steep — approved editorial layer for standalone content pages.
+     Light values are the default. `--ophis-steep-dark-*` feeds the
+     neutral-ink dark variant, selected in JS via theme.darkMode (see
+     ophis/ds/steep.utils.ts). ds/ primitives consume these vars with
+     hex fallbacks so they still render if this sheet loads late. */
+  --ophis-steep-ink: #17191c;
+  --ophis-steep-paper: #ffffff;
+  --ophis-steep-mist: #f2f2f3;
+  --ophis-steep-fog: #fafafb;
+  --ophis-steep-slate: #5b606b;
+  --ophis-steep-ash: #979799;
+  --ophis-steep-smoke: #a3a6af;
+  --ophis-steep-muted: #5b606b;
+  --ophis-steep-peach: #fbe1d1;
+  --ophis-steep-brown: #5d2a1a;
+  --ophis-steep-hair: #e8e8ea;
+  --ophis-steep-line: #d9d9dc;
+  --ophis-steep-error: #8a2b1a;
+  --ophis-steep-success: #1c6b3f;
+  --ophis-steep-success-bg: #e9f4ee;
+  --ophis-steep-warning: #7c4a03;
+  --ophis-steep-warning-bg: #faeed3;
+  --ophis-steep-danger-bg: #fbe9e2;
+  --ophis-steep-info: #3d4450;
+  --ophis-steep-info-bg: #eef0f3;
+  --ophis-steep-dark-bg: #17191c;
+  --ophis-steep-dark-card: #1e2126;
+  --ophis-steep-dark-text: #f4f4f5;
+  --ophis-steep-dark-muted: #a3a6af;
+  --ophis-steep-dark-faint: #777b86;
+  --ophis-steep-dark-hair: #2e333a;
+  --ophis-steep-dark-line: #3a4048;
+
   /* Spacing — 4px grid */
   --ophis-space-1: 4px;
   --ophis-space-2: 8px;
@@ -90,16 +123,15 @@
   --ophis-gradient-sunset-soft: linear-gradient(135deg, #FFE0CE 0%, #FFCABE 35%, #F8B8CC 70%, #D5B6D8 100%);
   --ophis-gradient-sunset-radial: radial-gradient(120% 80% at 20% 20%, #FF8A52 0%, #E66A55 40%, #C73D6C 75%, #5C1D14 100%);
 
-  /* Type families — Geist (Vercel, OFL) variable-axis sans-serif for
-     the entire site, plus Geist Mono for code/data. Replaces the prior
-     Fraunces/Plus-Jakarta pairing because:
-       1. Geist is significantly more readable at small body sizes
-       2. Single typeface = cleaner brand + lighter font payload
-       3. Variable-axis weights (100-900) give us display + body + mono
-          contrast without loading 3 separate font families. */
-  --ophis-font-display: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --ophis-font-body: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --ophis-font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* Type families — Steep editorial pairing (approved): Georgia for
+     display/headings (regular + italic only), Inter/system sans for
+     body/UI, system mono for code/data. Georgia and Inter are the
+     documented Steep fallbacks, so no webfont payload is required;
+     the swap surface additionally loads Ophis Inter via its own
+     MobileSwapGlobalStyle. */
+  --ophis-font-display: Georgia, "Times New Roman", ui-serif, serif;
+  --ophis-font-body: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ophis-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   /* Override CoW's font-family CSS variables so existing components inherit Ophis fonts */
   --cow-font-family-primary: var(--ophis-font-body);
@@ -126,41 +158,42 @@ button {
   }
 }
 
-/* Display class — used on hero/marketing surfaces. Now just sets the
-   heaviest Geist weight for clear visual contrast vs body weight. */
+/* Display class — used on hero/marketing surfaces. Steep keeps the
+   serif at regular weight; authority comes from size and tracking. */
 .ophis-display,
 [data-ophis-display] {
   font-family: var(--ophis-font-display);
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-weight: 400;
+  letter-spacing: -0.015em;
 }
 
 /* Mono for hashes, addresses, numeric data. Opt-in via .ophis-mono class. */
 .ophis-mono,
 [data-ophis-mono] {
   font-family: var(--ophis-font-mono);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
-/* Ophis header: frosted-glass on scroll (matches landing) */
+/* Amounts — lining + tabular figures so columns of numbers align. */
+.ophis-amount,
+[data-ophis-amount] {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+/* Ophis header: solid paper + hairline on scroll. No blur: Steep
+   surfaces are flat, and translucency hurts link contrast. */
 .ophis-header-root {
   transition: background-color 200ms ease, border-color 200ms ease;
 }
 .ophis-header-root.scrolled {
-  background-color: rgba(10, 10, 10, 0.85);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  background-color: var(--cow-color-background);
+  border-bottom: 1px solid var(--cow-color-border);
 }
 
-/* Ophis CTA polish: press-scale + saffron hover-glow */
+/* Ophis CTA polish: flat press-scale only. No glow, no blur. */
 .ophis-cta,
 [data-ophis-cta] {
-  transition: transform 80ms ease-out, box-shadow 200ms ease, filter 150ms ease;
-}
-.ophis-cta:hover,
-[data-ophis-cta]:hover {
-  box-shadow: 0 8px 24px -8px rgba(242, 166, 62, 0.45);
-  filter: brightness(1.05);
+  transition: transform 80ms ease-out, background-color 180ms ease, border-color 180ms ease;
 }
 .ophis-cta:active,
 [data-ophis-cta]:active {

@@ -13,11 +13,12 @@ import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { Link } from 'react-router'
 import styled from 'styled-components/macro'
 
+import { STEEP_FONT, steep } from '../ds/steep.utils'
 import { useScrollClass } from '../hooks/useScrollClass'
 
 interface Props {
   children?: ReactNode
-  /** Render with a transparent background to overlay the cosmic hero. */
+  /** Render with a transparent background to overlay a hero. */
   transparent?: boolean
   walletConnected?: boolean
 }
@@ -95,9 +96,14 @@ const Bar = styled.header<{ $transparent: boolean; $walletConnected: boolean }>`
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  background: ${({ $transparent }) => ($transparent ? 'transparent' : 'rgba(2, 0, 13, 0.86)')};
-  backdrop-filter: ${({ $transparent }) => ($transparent ? 'none' : 'blur(16px)')};
-  border-bottom: 1px solid ${({ $transparent }) => ($transparent ? 'transparent' : 'rgba(245, 239, 230, 0.08)')};
+  font-family: ${STEEP_FONT.body};
+  background: ${({ theme, $transparent }) =>
+    $transparent
+      ? 'transparent'
+      : theme?.darkMode
+        ? 'var(--ophis-steep-dark-bg, #17191c)'
+        : 'var(--ophis-steep-paper, #ffffff)'};
+  border-bottom: 1px solid ${({ theme, $transparent }) => ($transparent ? 'transparent' : steep(theme).cardBorder)};
   @media (max-width: 600px) {
     padding: 12px 16px;
     flex-wrap: wrap;
@@ -107,24 +113,24 @@ const Bar = styled.header<{ $transparent: boolean; $walletConnected: boolean }>`
 `
 
 const Wordmark = styled(Link)`
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: ${STEEP_FONT.body};
   font-weight: 600;
   font-size: 22px;
   letter-spacing: -0.01em;
-  color: #f5efe6;
+  color: ${({ theme }) => steep(theme).text};
   text-decoration: none;
   user-select: none;
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  transition:
-    color 140ms ease-out,
-    transform 140ms ease-out;
-  &:hover {
-    color: #ffffff;
-  }
+  transition: color 140ms ease-out;
   &:hover img {
     transform: rotate(8deg);
+  }
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => steep(theme).link};
+    outline-offset: 3px;
+    border-radius: 4px;
   }
 `
 
@@ -142,7 +148,7 @@ const WordmarkText = styled.span`
 `
 
 const WordmarkAccent = styled.span`
-  color: #f2a63e;
+  color: ${({ theme }) => steep(theme).text};
 `
 
 const Right = styled.div<{ $walletConnected: boolean }>`
@@ -161,20 +167,18 @@ const Right = styled.div<{ $walletConnected: boolean }>`
 
 const OtcNavLink = styled(Link)`
   padding: 8px 4px;
-  color: #f5efe6;
-  font:
-    600 14px/1 'Geist',
-    var(--cow-font-family-primary, system-ui);
+  color: ${({ theme }) => steep(theme).muted};
+  font: 600 14px/1 ${STEEP_FONT.body};
   text-decoration: none;
   transition: color 140ms ease-out;
 
   &:hover,
   &:focus-visible {
-    color: #f2a63e;
+    color: ${({ theme }) => steep(theme).text};
   }
 
   &:focus-visible {
-    outline: 2px solid rgba(242, 166, 62, 0.55);
+    outline: 2px solid ${({ theme }) => steep(theme).link};
     outline-offset: 3px;
     border-radius: 4px;
   }

@@ -12,9 +12,7 @@ export function ProfileActions(): ReactNode {
   return (
     <FeatureGrid minCardWidth="240px">
       <FeatureCard title="Trade">
-        <p>
-          Natural-language intents across supported EVM chains, plus Solana and Bitcoin destinations via NEAR Intents.
-        </p>
+        <p>Intent-based swaps across supported EVM chains, plus Solana and Bitcoin destinations via NEAR Intents.</p>
         <p>
           <TextLink href="/">Open the trade form →</TextLink>
         </p>
