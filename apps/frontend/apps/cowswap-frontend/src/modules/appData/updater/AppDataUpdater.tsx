@@ -4,7 +4,7 @@ import React from 'react'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { affiliateTraderSavedCodeAtom } from 'modules/affiliate'
-import { injectedWidgetAppDataPartnerFeeAtom, injectedWidgetHasPartnerFeeOverrideAtom } from 'modules/injectedWidget'
+import { injectedWidgetAppDataPartnerFeeAtom, injectedWidgetHostFeeKindAtom } from 'modules/injectedWidget'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
 import { useReplacedOrderUid } from 'modules/trade/state/alternativeOrder'
 import { useUtm } from 'modules/utm'
@@ -50,8 +50,8 @@ export const AppDataUpdater = React.memo(({ slippageBips, isSmartSlippage, order
   // (ophisVolumeOnlyFloorFee, surfaced via volumeFeeAtom) whether the flag is on
   // or off, so the displayed fee and this on-chain appData fee come from the same
   // source and never diverge. On CoW-hosted chains the PI shape passes through.
-  const hostOverride = useAtomValue(injectedWidgetHasPartnerFeeOverrideAtom)
-  const partnerFee = resolveOphisPartnerFee(ophisAppDataPartnerFeeRaw, volumeFee, chainId, isStablePair, hostOverride)
+  const hostFee = useAtomValue(injectedWidgetHostFeeKindAtom)
+  const partnerFee = resolveOphisPartnerFee(ophisAppDataPartnerFeeRaw, volumeFee, chainId, isStablePair, hostFee)
   const replacedOrderUid = useReplacedOrderUid()
   const userConsent = useRwaConsentForAppData()
   const { savedCode: refCode } = useAtomValue(affiliateTraderSavedCodeAtom)

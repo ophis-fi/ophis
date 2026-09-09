@@ -4,7 +4,7 @@ import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_PARTNER_FEE_RECIPIENT } from 
 
 import {
   injectedWidgetAppDataPartnerFeeAtom,
-  injectedWidgetHasPartnerFeeOverrideAtom,
+  injectedWidgetHostFeeKindAtom,
   injectedWidgetParamsAtom,
 } from './injectedWidgetParamsAtom'
 
@@ -35,14 +35,30 @@ describe('injectedWidgetAppDataPartnerFeeAtom', () => {
   })
 })
 
-describe('injectedWidgetHasPartnerFeeOverrideAtom', () => {
-  it('is false without a host partnerFee and true with one', () => {
+describe('injectedWidgetHostFeeKindAtom', () => {
+  it('is undefined without a host partnerFee, third-party for a foreign recipient, ophis for the wrapper', () => {
     const store = createStore()
-    expect(store.get(injectedWidgetHasPartnerFeeOverrideAtom)).toBe(false)
+    expect(store.get(injectedWidgetHostFeeKindAtom)).toBeUndefined()
     store.set(injectedWidgetParamsAtom, {
       params: { partnerFee: { bps: 50, recipient: '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4' } },
       errors: {},
     })
-    expect(store.get(injectedWidgetHasPartnerFeeOverrideAtom)).toBe(true)
+    expect(store.get(injectedWidgetHostFeeKindAtom)).toBe('third-party')
+    store.set(injectedWidgetParamsAtom, {
+      params: { partnerFee: { bps: 0, recipient: OPHIS_PARTNER_FEE_RECIPIENT.toLowerCase() } },
+      errors: {},
+    })
+    expect(store.get(injectedWidgetHostFeeKindAtom)).toBe('ophis')
+    // A per-network map mixing the two counts as third-party (the stacking side).
+    store.set(injectedWidgetParamsAtom, {
+      params: {
+        partnerFee: {
+          bps: 50,
+          recipient: { 1: OPHIS_PARTNER_FEE_RECIPIENT, 100: '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4' },
+        },
+      },
+      errors: {},
+    })
+    expect(store.get(injectedWidgetHostFeeKindAtom)).toBe('third-party')
   })
 })

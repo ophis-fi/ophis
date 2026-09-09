@@ -1,6 +1,6 @@
 import { isTruthy } from '@cowprotocol/common-utils'
-import { areAddressesEqual } from '@cowprotocol/cow-sdk'
-import { PartnerFee, resolveFlexibleConfigValues } from '@cowprotocol/widget-lib'
+import { areAddressesEqual, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { PartnerFee, resolveFlexibleConfig, resolveFlexibleConfigValues, TradeType } from '@cowprotocol/widget-lib'
 import { getAddress } from '@ethersproject/address'
 
 import { t } from '@lingui/core/macro'
@@ -25,13 +25,28 @@ export function validatePartnerFee(input: PartnerFee | undefined): string[] | un
   // 100 bps aggregate in array order with the host entry first. A fee paid TO the
   // Ophis Safe (the @ophis/widget-react wrapper pins that recipient) is not
   // stacked, so the plain PARTNER_FEE_MAX_BPS ceiling above is the only one.
-  const stacksOnOphis = recipients.some(
-    (recipient) => typeof recipient === 'string' && !areAddressesEqual(recipient, OPHIS_PARTNER_FEE_RECIPIENT),
-  )
-  const stackedFeeTooHighError =
-    stacksOnOphis && bpss.some((value) => value > OPHIS_MAX_PARTNER_REQUEST_BPS && value <= PARTNER_FEE_MAX_BPS)
-      ? t`Partner fee paid to your own address can not be more than ${OPHIS_MAX_PARTNER_REQUEST_BPS} BPS: Ophis adds its own fee on top.`
-      : undefined
+  // bps and recipient are independent FlexibleConfigs (per network, per trade
+  // type), so pair them per (chain, trade type) rather than flattening each: a
+  // 100 bps fee to the Ophis Safe on one chain next to 50 bps to a third party
+  // on another is valid.
+  const stackedFeeTooHigh = Object.values(SupportedChainId)
+    .filter((v): v is SupportedChainId => typeof v === 'number')
+    .some((chainId) =>
+      Object.values(TradeType).some((tradeType) => {
+        const bps = resolveFlexibleConfig(input.bps, chainId, tradeType)
+        const recipient = resolveFlexibleConfig(input.recipient, chainId, tradeType)
+        return (
+          typeof bps === 'number' &&
+          bps > OPHIS_MAX_PARTNER_REQUEST_BPS &&
+          bps <= PARTNER_FEE_MAX_BPS &&
+          typeof recipient === 'string' &&
+          !areAddressesEqual(recipient, OPHIS_PARTNER_FEE_RECIPIENT)
+        )
+      }),
+    )
+  const stackedFeeTooHighError = stackedFeeTooHigh
+    ? t`Partner fee paid to your own address can not be more than ${OPHIS_MAX_PARTNER_REQUEST_BPS} BPS: Ophis adds its own fee on top.`
+    : undefined
   const feeTooLowError = bpss.some((value) => value < 0) ? t`Partner fee can not be less than 0!` : undefined
   const recipientErrors = validateRecipients(recipients)
 

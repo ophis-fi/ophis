@@ -1,8 +1,13 @@
 import { atom } from 'jotai'
 
-import { CowSwapWidgetAppParams } from '@cowprotocol/widget-lib'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { CowSwapWidgetAppParams, resolveFlexibleConfigValues } from '@cowprotocol/widget-lib'
 
-import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_DEFAULT_PARTNER_FEE } from 'ophis/partnerFeeDefault'
+import {
+  OPHIS_DEFAULT_APP_DATA_PARTNER_FEE,
+  OPHIS_DEFAULT_PARTNER_FEE,
+  OPHIS_PARTNER_FEE_RECIPIENT,
+} from 'ophis/partnerFeeDefault'
 
 export type WidgetParamsErrors = Partial<{ [key in keyof CowSwapWidgetAppParams]: string[] | undefined }>
 
@@ -31,12 +36,28 @@ export const injectedWidgetPartnerFeeAtom = atom((get) => {
 export const injectedWidgetAppDataPartnerFeeAtom = atom(() => OPHIS_DEFAULT_APP_DATA_PARTNER_FEE)
 
 /**
- * True when the HOST of an injected widget supplied its own `partnerFee`. This
- * is the provenance resolveOphisPartnerFee needs before stacking a third-party
- * Volume fee on the Ophis policy: the volumeFee pipeline also carries the Safe
- * App licence fee (a non-Ophis recipient, no widget involved), which must keep
- * today's behaviour and never be treated as a host override.
+ * Provenance of the fee on the volumeFee pipeline, for resolveOphisPartnerFee:
+ *  - undefined: the host of an injected widget set no `partnerFee`. The pipeline may
+ *    still carry the Safe App licence fee (non-Ophis recipient, no widget), which
+ *    must keep today's behaviour and never be treated as a host override.
+ *  - 'ophis': every configured recipient is the Ophis Safe. That is the published
+ *    `@ophis/widget-react` wrapper, which pins the recipient and documents the
+ *    explicit override (including `bps: 0`, i.e. free) as authoritative.
+ *  - 'third-party': the host charges its own recipient (a raw embed); its fee is
+ *    STACKED with the Ophis policy, and a zero never buys a free ride.
  */
-export const injectedWidgetHasPartnerFeeOverrideAtom = atom((get) =>
-  Boolean(get(injectedWidgetParamsAtom).params.partnerFee),
-)
+export type InjectedWidgetHostFeeKind = 'ophis' | 'third-party'
+
+export const injectedWidgetHostFeeKindAtom = atom<InjectedWidgetHostFeeKind | undefined>((get) => {
+  const fee = get(injectedWidgetParamsAtom).params.partnerFee
+  if (!fee) return undefined
+  // recipient is a FlexibleConfig: a string, or a per-network map whose values may
+  // themselves be per-trade-type maps. Flatten both levels to the leaf addresses.
+  const recipients = resolveFlexibleConfigValues(fee.recipient).flatMap((r) =>
+    typeof r === 'string' ? [r] : Object.values(r ?? {}),
+  )
+  const allOphis =
+    recipients.length > 0 &&
+    recipients.every((r) => typeof r === 'string' && areAddressesEqual(r, OPHIS_PARTNER_FEE_RECIPIENT))
+  return allOphis ? 'ophis' : 'third-party'
+})

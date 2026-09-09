@@ -247,6 +247,24 @@ describe('validatePartnerFee()', () => {
       ])
     })
 
+    it('pairs per-network bps with per-network recipients instead of flattening them', () => {
+      // 100 bps to the Ophis Safe on mainnet next to 50 bps to a third party on
+      // Gnosis is valid: neither pair breaks its own ceiling.
+      expect(
+        validatePartnerFee({
+          bps: { 1: 100, 100: 50 },
+          recipient: { 1: OPHIS_SAFE, 100: THIRD_PARTY },
+        }),
+      ).toBe(undefined)
+      // ...but 95 bps to the third party on Gnosis is not.
+      expect(
+        validatePartnerFee({
+          bps: { 1: 100, 100: 95 },
+          recipient: { 1: OPHIS_SAFE, 100: THIRD_PARTY },
+        }),
+      ).toEqual(['Partner fee paid to your own address can not be more than 90 BPS: Ophis adds its own fee on top.'])
+    })
+
     it('keeps the plain 100 BPS ceiling for a fee paid to the Ophis Safe (the widget-react wrapper pins it)', () => {
       expect(validatePartnerFee({ bps: 100, recipient: OPHIS_SAFE })).toBe(undefined)
       expect(validatePartnerFee({ bps: 101, recipient: OPHIS_SAFE })).toEqual(['Partner fee can not be more than 100 BPS!'])

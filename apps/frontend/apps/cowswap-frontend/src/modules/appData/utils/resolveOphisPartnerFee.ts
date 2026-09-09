@@ -55,8 +55,8 @@ function isOphisRecipientHostFee(fee: unknown): fee is { volumeBps: number; reci
  *   3. Falling back to `volumeFee` picks up that pipeline, which is also the
  *      path a widget consumer's own volumeBps override arrives on.
  *   4. On a chain where the Ophis shape IS emitted, and ONLY when the host of an
- *      injected widget supplied its own `partnerFee` (`hostOverride`), that fee is
- *      STACKED with the Ophis entries, never substituted for them: the
+ *      injected widget supplied its own `partnerFee` (`hostFee`), a THIRD-PARTY fee
+ *      is STACKED with the Ophis entries, never substituted for them: the
  *      embedder charges its users whatever it likes and Ophis still earns the
  *      1 bp base plus capped improvement on the same order. The rebate indexer
  *      already reads the stacked shape (Ophis entry + integrator own-fee entry).
@@ -69,7 +69,7 @@ export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   volumeFee: TVolumeFee | undefined,
   chainId: number | undefined,
   isStablePair = false,
-  hostOverride = false,
+  hostFee?: 'ophis' | 'third-party',
 ): TWidgetFee | TVolumeFee | undefined {
   // Two type parameters, not one: the widget fee is a price-improvement shape
   // and the volume fee is a Volume shape, so collapsing them to a single `T`
@@ -91,14 +91,18 @@ export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   //    and the PI were already unaccounted for on every Ophis order).
   // The result is the Ophis shape (an array of entries) plus one Volume entry, hence
   // the TWidgetFee cast.
-  // `hostOverride` is the provenance gate: the volumeFee pipeline also carries the
-  // Safe App licence fee (non-Ophis recipient, no widget), which must keep today's
+  // `hostFee` is the provenance gate: the volumeFee pipeline also carries the Safe
+  // App licence fee (non-Ophis recipient, no widget), which must keep today's
   // behaviour (the Ophis shape wins) rather than be mistaken for a host fee.
-  if (hostOverride && Array.isArray(ophis) && isThirdPartyVolumeFee(volumeFee)) {
+  if (hostFee && Array.isArray(ophis) && isThirdPartyVolumeFee(volumeFee)) {
     return [volumeFee, ...ophis] as unknown as TWidgetFee
   }
   // Wrapper path (recipient = Ophis): the explicit override stays authoritative,
-  // exactly as before this change, so first-party embeds keep their configured fee.
-  if (hostOverride && isOphisRecipientHostFee(volumeFee)) return volumeFee
+  // exactly as before this change, so first-party embeds keep their configured fee
+  // -- including an explicit `bps: 0`, which the pipeline resolves to undefined and
+  // which means "free" for that embed. A third-party zero gets no such ride: it
+  // falls through to the Ophis policy below.
+  if (hostFee && isOphisRecipientHostFee(volumeFee)) return volumeFee
+  if (hostFee === 'ophis' && volumeFee === undefined) return undefined
   return ophis
 }
