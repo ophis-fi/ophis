@@ -1,6 +1,4 @@
 ---
-import Particles from '../components/Particles.astro'
-import Sparks from '../components/Sparks.astro'
 import { EVM_CHAIN_COUNT } from '../data/chains'
 
 export interface Props {
@@ -42,7 +40,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0a0a0a">
+  <meta name="theme-color" content="#ffffff">
   <title>{title}</title>
   <meta name="description" content={description}>
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
@@ -75,7 +73,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
   <meta name="twitter:image" content={image}>
   <meta name="twitter:image:alt" content={imageAlt}>
 
-  <link rel="preload" href="/fonts/geist-sans-variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/inter-variable.woff2" as="font" type="font/woff2" crossorigin>
 
   <!-- Reveal-up hidden state is gated on `html.reveal-armed`, added by
        src/lib/reveal.ts only after it confirms IntersectionObserver and arms
@@ -173,14 +171,14 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
             bar.id = 'ophis-consent';
             bar.setAttribute('role', 'dialog');
             bar.setAttribute('aria-label', 'Analytics consent');
-            bar.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid rgba(242,166,62,.28);border-radius:14px;background:rgba(10,10,10,.92);backdrop-filter:blur(8px);color:#e8e8e8;font:14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)';
+            bar.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid #d9d9dc;border-radius:14px;background:#fff;color:#17191c;font:14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(23,25,28,.08)';
             var txt = document.createElement('span');
             txt.style.cssText = 'flex:1 1 240px;min-width:200px';
             var lead = document.createTextNode('We use privacy-respecting analytics (anonymized IP, no ads). ');
             var link = document.createElement('a');
             link.href = 'https://swap.ophis.fi/#/legal';
             link.textContent = 'Learn more';
-            link.style.cssText = 'color:#f2a63e;text-decoration:underline';
+            link.style.cssText = 'color:#17191c;text-decoration:underline';
             txt.appendChild(lead);
             txt.appendChild(link);
             txt.appendChild(document.createTextNode('.'));
@@ -188,7 +186,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
               var b = document.createElement('button');
               b.type = 'button';
               b.textContent = label;
-              b.style.cssText = 'cursor:pointer;border-radius:9px;padding:8px 16px;font:600 14px system-ui,sans-serif;border:1px solid ' + (primary ? '#f2a63e' : 'rgba(255,255,255,.22)') + ';background:' + (primary ? '#f2a63e' : 'transparent') + ';color:' + (primary ? '#0a0a0a' : '#e8e8e8');
+              b.style.cssText = 'cursor:pointer;border-radius:9px;padding:8px 16px;font:600 14px system-ui,sans-serif;border:1px solid ' + (primary ? '#17191c' : '#d9d9dc') + ';background:' + (primary ? '#17191c' : 'transparent') + ';color:' + (primary ? '#fff' : '#17191c');
               b.addEventListener('click', function () {
                 try { localStorage.setItem('ophis_consent', value); } catch (e) {}
                 window.gtag('consent', 'update', { analytics_storage: value });
@@ -220,7 +218,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
   <!-- Critical CSS slot -- Astro inlines /src/styles/global.css here.
        `is:global` is REQUIRED: without it, Astro scopes the @import via
        data-astro-cid-* attributes that match only Base.astro elements,
-       so .nav / .bg-orbs / .reveal-up rules silently miss the components
+       so .nav / .serif / .reveal-up rules silently miss the components
        in src/components/. -->
   <style is:global>@import '../styles/global.css';</style>
 
@@ -231,15 +229,9 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <div class="bg-orbs" aria-hidden="true"></div>
-  <Particles />
-  <Sparks />
-  <div class="scroll-progress" aria-hidden="true"></div>
   <slot />
   <script>
-    // GSAP enhancement layer (nav entrance, scroll depth parallax, CTA
-    // micro-interactions). Additive + reduced-motion-gated; see gsap-anim.ts.
-    import '../lib/gsap-anim.ts'
+    // Privacy-safe acquisition click tracking (trade/integration CTAs only).
     import '../lib/acquisition-analytics.ts'
   </script>
   <style>
@@ -255,7 +247,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
       border-radius: var(--ophis-radius-sm);
       background: var(--ophis-saffron-60);
       color: var(--ophis-bg);
-      font: 600 14px/1 'Geist', system-ui, sans-serif;
+      font: 600 14px/1 'Inter', system-ui, sans-serif;
       text-decoration: none;
       transition: transform 120ms ease;
     }

@@ -1,0 +1,120 @@
+---
+/* Illustrative sample trade (10 USDC -> ETH) with an equal-height peach
+   spending-limit card. Static final scene by default so the illustration is
+   complete without JS; src/lib/swap-story.ts adds the finite replay. */
+---
+<section class="swap-story" id="swap-story" aria-label="A swap, step by step" data-scene="2" data-reveal>
+  <div class="story-toolbar">
+    <div class="story-steps" role="group" aria-label="Explore the swap flow">
+      <button type="button" data-story-step="0" aria-pressed="false"><span>01</span> Choose assets</button>
+      <button type="button" data-story-step="1" aria-pressed="false"><span>02</span> Review quote</button>
+      <button type="button" data-story-step="2" aria-pressed="true"><span>03</span> Check limit</button>
+    </div>
+    <button type="button" class="story-replay" id="storyReplay" aria-label="Replay swap animation">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6" /></svg>
+      <span>Replay</span>
+    </button>
+  </div>
+  <div class="story-grid" role="group" aria-label="Sample swap and spending limit">
+    <div class="story-trade">
+      <div class="story-card-head"><p class="story-cap">You pay</p><span class="story-network"><img src="/logos/chain-ethereum.png" alt="" width="16" height="16" />Ethereum</span></div>
+      <div class="story-asset story-pay"><img class="story-coin" src="/logos/usdc.png" alt="" width="48" height="48" /><p class="story-value">10 <span>USDC</span></p></div>
+      <div class="story-receive">
+        <div class="story-card-head"><p class="story-cap">You receive</p><span class="story-estimate">Estimate</span></div>
+        <div class="story-asset"><span class="story-eth"><img src="/logos/eth.png" alt="" width="32" height="32" /></span><p class="story-output">0.003996 <span>ETH</span></p><svg class="story-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></div>
+      </div>
+      <div class="story-meta"><span>Balance <span>125.00 USDC</span></span><span>Sample quote</span></div>
+    </div>
+    <div class="story-connector" aria-hidden="true"><span><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M4 12h15m-6-6 6 6-6 6" /></svg></span></div>
+    <div class="story-limit">
+      <div class="story-limit-token"><img src="/logos/usdc.png" alt="" width="40" height="40" /><span class="story-check"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m4 10 4 4 8-8" /></svg></span></div>
+      <p class="story-cap">Spending limit</p>
+      <p class="story-value">10 <span>USDC</span></p>
+      <p class="story-sub">Only this amount will be approved.</p>
+      <div class="story-limit-note"><span aria-hidden="true">↳</span> Your amount. Your approval.</div>
+    </div>
+  </div>
+  <p class="story-caption">Illustrative trade · Sample balances and quotes · No wallet connection</p>
+</section>
+<script>
+  import '../lib/swap-story.ts'
+</script>
+
+<style>
+  .swap-story { max-width: 1080px; margin: 48px auto 0; padding: 0 24px; }
+  .story-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
+  .story-steps { display: flex; gap: 24px; flex-wrap: wrap; }
+  .story-steps button, .story-replay { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; border: 0; background: transparent; padding: 8px 0; color: var(--ophis-fg-muted); font-size: 13px; cursor: pointer; }
+  .story-steps button { border-bottom: 1px solid transparent; }
+  .story-steps button span { font-family: Georgia, serif; font-style: italic; font-size: 17px; }
+  .story-steps button[aria-pressed="true"] { color: var(--ophis-fg); border-color: var(--ophis-fg); }
+  .story-replay { color: var(--ophis-fg); padding: 8px; flex-shrink: 0; }
+  .story-grid { display: grid; grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr); align-items: stretch; }
+  .story-trade, .story-limit { border-radius: 20px; padding: 28px; min-height: 340px; min-width: 0; display: flex; flex-direction: column; }
+  .story-trade { background: var(--ophis-bg); border: 1px solid var(--ophis-border); box-shadow: 0 1px 2px rgba(23, 25, 28, 0.04), 0 16px 40px rgba(23, 25, 28, 0.06); }
+  .story-limit { background: var(--ophis-peach); border: 1px solid #f2d2b8; color: var(--ophis-brown); text-align: center; align-items: center; justify-content: center; }
+  .story-cap { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ophis-fg-muted); font-weight: 500; margin: 0; }
+  .story-limit .story-cap { color: var(--ophis-brown); }
+  .story-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .story-network { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ophis-fg-muted); }
+  .story-asset { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .story-coin { border-radius: 50%; flex-shrink: 0; box-shadow: 0 2px 3px rgba(23, 25, 28, 0.06); }
+  .story-pay { margin: 20px 0 24px; }
+  .story-value { font-size: 48px; line-height: 1.15; letter-spacing: -0.035em; margin: 0; font-weight: 450; white-space: nowrap; }
+  .story-value span { font-size: 24px; letter-spacing: -0.02em; font-weight: 430; }
+  .story-receive { background: var(--ophis-surface); border-radius: 12px; padding: 16px; margin-bottom: 4px; }
+  .story-receive .story-asset { margin-top: 10px; }
+  .story-eth { background: #fff; border-radius: 50%; width: 40px; height: 40px; display: grid; place-items: center; flex-shrink: 0; }
+  .story-output { font-size: 22px; letter-spacing: -0.02em; line-height: 1.2; margin: 0; white-space: nowrap; }
+  .story-output span { font-size: 15px; letter-spacing: 0; }
+  .story-estimate { font-size: 12px; color: var(--ophis-fg-muted); }
+  .story-arrow { margin-left: auto; flex-shrink: 0; color: var(--ophis-fg-muted); }
+  .story-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: auto; padding-top: 16px; font-size: 12px; color: var(--ophis-fg-muted); flex-wrap: wrap; }
+  .story-connector { position: relative; display: flex; align-items: center; justify-content: center; }
+  .story-connector > span { display: grid; place-items: center; position: absolute; background: #fff; width: 32px; height: 32px; border: 1px solid var(--ophis-border); border-radius: 50%; color: var(--ophis-fg-muted); }
+  .story-limit-token { position: relative; margin-bottom: 20px; width: 48px; height: 48px; display: grid; place-items: center; }
+  .story-limit-token > img { border-radius: 50%; border: 3px solid #fff; box-sizing: content-box; }
+  .story-check { display: grid; place-items: center; position: absolute; right: -5px; bottom: -2px; width: 23px; height: 23px; border-radius: 50%; background: var(--ophis-brown); color: #fff; border: 2px solid var(--ophis-peach); }
+  .story-limit .story-value { margin: 4px 0 12px; }
+  .story-sub { font-size: 14px; margin: 0; }
+  .story-limit-note { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-top: 24px; opacity: 0.85; }
+  .story-caption { font-size: 13px; color: var(--ophis-fg-faded); margin: 16px 0 0; text-align: center; }
+  .swap-story[data-scene="0"] .story-pay, .swap-story[data-scene="1"] .story-receive { outline: 1px solid var(--ophis-border); outline-offset: 7px; border-radius: 8px; }
+  .swap-story[data-scene="2"] .story-limit { border-color: #ddbba6; }
+  @media (prefers-reduced-motion: no-preference) {
+    .story-steps button { transition: color 180ms, border-color 180ms; }
+    .story-replay:hover svg { transform: rotate(-35deg); transition: transform 220ms; }
+    .swap-story[data-playing] .story-coin { animation: coin-settle 800ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .swap-story[data-playing] .story-receive { animation: quote-arrive 650ms 800ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .swap-story[data-playing] .story-connector > span { animation: limit-pass 650ms 1300ms ease both; }
+    .swap-story[data-playing] .story-limit-token, .swap-story[data-playing] .story-limit .story-value { animation: limit-reveal 700ms 1600ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+    .swap-story[data-playing] .story-check path { stroke-dasharray: 20; animation: check-draw 450ms 2100ms both; }
+    @keyframes coin-settle { 0% { transform: translateY(-22px) rotate(-18deg) scale(0.7); opacity: 0; } 65% { transform: translateY(3px) rotate(3deg) scale(1.06); opacity: 1; } 100% { transform: none; opacity: 1; } }
+    @keyframes quote-arrive { from { transform: translateY(18px); opacity: 0.2; } to { transform: translateY(0); opacity: 1; } }
+    @keyframes limit-pass { 0% { transform: translateX(-10px); opacity: 0; } 70% { transform: translateX(4px); opacity: 1; } 100% { transform: translateX(0); opacity: 1; } }
+    @keyframes limit-reveal { from { transform: translateY(16px) scale(0.96); opacity: 0.15; } to { transform: none; opacity: 1; } }
+    @keyframes check-draw { from { stroke-dashoffset: 20; } to { stroke-dashoffset: 0; } }
+  }
+  @media (max-width: 720px) {
+    .swap-story { padding: 0 16px; }
+    .story-toolbar { gap: 8px; align-items: flex-start; }
+    .story-steps { gap: 8px; flex: 1; justify-content: space-between; }
+    .story-steps button { flex-direction: column; gap: 2px; font-size: 11px; }
+    .story-replay { min-width: 44px; justify-content: center; }
+    .story-replay > span { display: none; }
+    .story-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 24px auto; gap: 12px; }
+    .story-trade, .story-limit { padding: 24px; min-height: 340px; }
+    .story-connector > span { rotate: 90deg; }
+    .story-output { font-size: 20px; }
+    .story-arrow { display: none; }
+  }
+  @media (max-width: 360px) {
+    .story-trade, .story-limit { padding: 20px; }
+    .story-value { font-size: 42px; }
+    .story-value span { font-size: 21px; }
+    .story-pay { gap: 10px; }
+    .story-output { font-size: 18px; }
+    .story-receive { padding: 12px; }
+    .story-steps { gap: 4px; }
+  }
+</style>

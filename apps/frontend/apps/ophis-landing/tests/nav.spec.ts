@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test'
 
-test('nav renders logo (with SVG claw) + nav links + Trade CTA', async ({ page }) => {
+test('nav renders mono logo + nav links + Trade CTA', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.nav .logo')).toContainText('Ophis')
-  // Logo should contain an inline SVG (the claw)
-  await expect(page.locator('.nav .logo svg.logo-claw')).toBeVisible()
+  // Logo is the Ophis mono mark image
+  const mark = page.locator('.nav .logo img.logo-mark')
+  await expect(mark).toBeVisible()
+  await expect(mark).toHaveAttribute('src', '/ophis-mono.svg')
   const links = page.locator('.nav .nav-links a')
   await expect(links).toHaveCount(7)
   await expect(page.locator('.nav .nav-cta')).toHaveText(/Trade/)

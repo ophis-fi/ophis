@@ -13,8 +13,7 @@
  * vector mark is a 150KB+ traced mesh). public/ assets are served at stable
  * URLs with a long cache TTL, so when a mark is CORRECTED, bump its filename
  * (e.g. uniswap.svg -> uniswap-v2.svg) to bust any already-cached immutable
- * copy. Pure markup plus scoped CSS; the breathing bloom comes from the shared
- * .section-bloom class in global.css (disabled under prefers-reduced-motion).
+ * copy. Pure markup plus scoped CSS.
  */
 
 type Protocol = { name: string; logo: string }
@@ -42,8 +41,8 @@ const protocols: Protocol[] = [
 <section class="protocols">
   <div class="protocols-inner">
     <div class="label reveal-up" data-reveal>Aggregated liquidity</div>
-    <h2 class="reveal-up section-bloom" data-reveal>
-      Every venue. <span class="accent">Every chain.</span>
+    <h2 class="serif reveal-up" data-reveal>
+      Every venue. <em>Every chain.</em>
     </h2>
     <p class="sub reveal-up" data-reveal>
       Ophis is solver-driven. A competitive network of solvers races to fill your intent,
@@ -90,9 +89,6 @@ const protocols: Protocol[] = [
   }
   h2 {
     font-size: 32px;
-    line-height: 1.15;
-    font-weight: 600;
-    letter-spacing: -0.02em;
     margin: 0 0 12px;
   }
   .sub {
@@ -120,13 +116,10 @@ const protocols: Protocol[] = [
     background: var(--ophis-surface);
     border: 1px solid var(--ophis-border);
     border-radius: var(--ophis-radius);
-    transition: transform 200ms ease, border-color 200ms ease, background-color 200ms ease, box-shadow 250ms ease;
+    transition: border-color 200ms ease;
   }
   .protocol:hover {
-    transform: translateY(-4px);
-    border-color: rgba(242, 166, 62, 0.3);
-    background-color: rgba(255, 255, 255, 0.04);
-    box-shadow: 0 12px 30px -14px rgba(242, 166, 62, 0.45);
+    border-color: var(--ophis-fg-muted);
   }
   /* Light chip: third-party brand marks are authored for light backgrounds,
      so monochrome-dark logos (Uniswap, Sushi, PancakeSwap, Balancer) would

@@ -1,13 +1,17 @@
 import { test, expect } from '@playwright/test'
 
-test('hero has headline, accent word, two CTAs', async ({ page }) => {
+test('hero has editorial headline, serif emphasis, and two CTAs', async ({ page }) => {
   await page.goto('/')
   const h1 = page.locator('.hero h1')
-  await expect(h1).toContainText('MEV-protected swaps')
-  await expect(h1).toContainText('onchain markets')
-  await expect(page.locator('.hero .accent')).toContainText('onchain markets')
-  await expect(page.locator('.hero .cta-primary')).toContainText(/Trade now/)
-  await expect(page.locator('.hero .cta-secondary')).toContainText(/Integrate Ophis/)
+  await expect(h1).toContainText('Your assets.')
+  await expect(h1).toContainText('Your next move.')
+  await expect(page.locator('.hero h1 em')).toContainText('Your next move.')
+  const primary = page.locator('.hero .cta-primary')
+  await expect(primary).toContainText(/Swap now/)
+  await expect(primary).toHaveAttribute('href', 'https://swap.ophis.fi/#/swap')
+  const secondary = page.locator('.hero .cta-secondary')
+  await expect(secondary).toContainText(/How it works/)
+  await expect(secondary).toHaveAttribute('href', '#how')
 })
 
 test('trade CTA emits a privacy-safe acquisition event and informational links do not', async ({ page }) => {
@@ -45,11 +49,11 @@ test('trade CTA emits a privacy-safe acquisition event and informational links d
   ])
 })
 
-test('hero is single-column centered (no claw image)', async ({ page }) => {
+test('hero is single-column centered (no image in the headline block)', async ({ page }) => {
   await page.goto('/')
-  // No claw img in hero
-  const clawImg = page.locator('.hero img')
-  await expect(clawImg).toHaveCount(0)
+  // No img in hero (token logos live in the swap-story illustration below)
+  const heroImg = page.locator('.hero img')
+  await expect(heroImg).toHaveCount(0)
   // Hero copy is centered
   const heroCopy = page.locator('.hero-inner')
   await expect(heroCopy).toBeVisible()

@@ -1,0 +1,54 @@
+---
+const links = [
+  { href: 'https://docs.ophis.fi', label: 'Read the integration guides' },
+  { href: 'https://explorer.ophis.fi', label: 'Open the transaction explorer' },
+  { href: 'https://swap.ophis.fi/#/swap', label: 'Open the app' },
+]
+---
+<section class="dev" id="developers" aria-labelledby="devTitle">
+  <div class="sec-head">
+    <p class="eyebrow reveal-up" data-reveal>Developers</p>
+    <h2 class="serif reveal-up" id="devTitle" data-reveal>Build with Ophis. <em>Keep your identity.</em></h2>
+    <p class="lede reveal-up" data-reveal>Bring swaps into your own product, with tools for integration and a clear view of settlement.</p>
+  </div>
+  <div class="dev-grid reveal-up" data-reveal>
+    <div class="dev-card">
+      <h3>From integration to execution</h3>
+      <p>Explore the SDK and integration guides. Use the explorer to follow orders and inspect settlement details.</p>
+      <div class="dev-links">
+        {links.map((l) => (
+          <a href={l.href}><span>{l.label}</span><span aria-hidden="true">→</span></a>
+        ))}
+      </div>
+    </div>
+    <div class="chain-panel">
+      <h3>Every trade has a story</h3>
+      <p>An order is more than a confirmation. See its status, the assets exchanged, and where it settled.</p>
+      <p>Keep the details close, from your first quote to the final receipt.</p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .dev { max-width: 1200px; margin: 0 auto; padding: 64px 24px 8px; }
+  .sec-head { max-width: 640px; margin-bottom: 32px; }
+  .sec-head .eyebrow { margin: 0 0 12px; }
+  h2 { font-size: clamp(34px, 4vw, 44px); margin: 0; }
+  .sec-head .lede { margin: 12px 0 0; }
+  .dev-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 24px; align-items: stretch; }
+  .dev-card { background: var(--ophis-surface); border-radius: 20px; padding: 28px; }
+  .dev-card h3 { margin: 0 0 8px; font-size: 20px; font-weight: 500; letter-spacing: -0.01em; }
+  .dev-card p { margin: 0 0 16px; font-size: 15px; color: var(--ophis-fg-muted); }
+  .dev-links { display: grid; gap: 8px; }
+  .dev-links a { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--ophis-bg); border: 1px solid var(--ophis-border); border-radius: 12px; padding: 0 16px; min-height: 52px; text-decoration: none; font-size: 14px; font-weight: 500; color: var(--ophis-fg); }
+  .dev-links a:hover { border-color: var(--ophis-fg); }
+  .chain-panel { background: var(--ophis-bg); border: 1px solid var(--ophis-border); border-radius: 20px; padding: 24px; display: grid; gap: 8px; align-content: start; }
+  .chain-panel h3 { margin: 0; font-size: 18px; font-weight: 500; letter-spacing: -0.01em; }
+  .chain-panel p { margin: 0; font-size: 15px; color: var(--ophis-fg-muted); max-width: 62ch; }
+  @media (max-width: 960px) {
+    .dev-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 640px) {
+    .dev { padding: 48px 16px 8px; }
+  }
+</style>
