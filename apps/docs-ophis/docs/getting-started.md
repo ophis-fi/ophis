@@ -75,7 +75,9 @@ settles the batch on-chain.
 
 Three steps from token selection to settlement:
 
-### 1 · Choose tokens and amount {#1--intent-parse-the-request}
+<span id="1--intent-parse-the-request" />
+
+### 1 · Choose tokens and amount
 
 The swap form opens directly. Select the assets and networks, enter the
 amount, and review the quote and spending limit. Developers and agents can
