@@ -24,7 +24,13 @@ async function assertSwapLayout(page, { width, phone, empty = false }) {
   const geometry = await page.evaluate(() => {
     const box = (el) => {
       const rect = el.getBoundingClientRect()
-      return { x: rect.x, y: rect.y, width: rect.width, height: el.offsetHeight, minHeight: getComputedStyle(el).minHeight }
+      return {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: el.offsetHeight,
+        minHeight: getComputedStyle(el).minHeight,
+      }
     }
     const heading = [...document.querySelectorAll('h1')].filter((el) => el.getBoundingClientRect().width > 0)
     const header = document.querySelector('[data-testid="mobile-swap-header"]')
@@ -34,6 +40,7 @@ async function assertSwapLayout(page, { width, phone, empty = false }) {
       scheme: getComputedStyle(document.documentElement).colorScheme,
       header: box(header),
       nav: box(header.querySelector('nav')),
+      navLinks: [...header.querySelectorAll('nav a')].map(box),
       headings: heading.map(box),
       panels: ['input', 'output'].map((side) => box(document.getElementById(side + '-currency-input'))),
     }
@@ -52,6 +59,12 @@ async function assertSwapLayout(page, { width, phone, empty = false }) {
     if (empty) assert.equal(panel.height, panelHeight, 'empty swap panel has unexpected height')
   }
   if (!phone) {
+    for (let i = 1; i < geometry.navLinks.length; i++) {
+      const previous = geometry.navLinks[i - 1]
+      const current = geometry.navLinks[i]
+      if (Math.abs(previous.y - current.y) < 4)
+        assert.ok(current.x - previous.x - previous.width >= 12, 'header navigation links are cramped')
+    }
     const [heading] = geometry.headings
     const [panel] = geometry.panels
     assert.ok(panel.width <= 560, 'desktop swap card exceeds its intended width')
@@ -205,14 +218,22 @@ async function checkDesign(engine) {
     )
     await page.setViewportSize({ width: 1440, height: 900 })
     await assertSwapLayout(page, { width: 1440, phone: false, empty: true })
-    assert.equal(await page.locator('header nav a[aria-current="page"]').count(), 1, 'desktop swap nav has no active entry')
+    assert.equal(
+      await page.locator('header nav a[aria-current="page"]').count(),
+      1,
+      'desktop swap nav has no active entry',
+    )
     await page.setViewportSize({ width: 768, height: 1024 })
     await assertSwapLayout(page, { width: 768, phone: false, empty: true })
     await page.setViewportSize({ width: 390, height: 844 })
     await assertSwapLayout(page, { width: 390, phone: true, empty: true })
     await page.locator('footer nav').getByRole('link', { name: 'Profile', exact: true }).click()
     await page.waitForFunction(() => getComputedStyle(document.documentElement).colorScheme === 'dark')
-    console.log('PASS', engine.name(), 'responsive design, reduced motion, desktop geometry and saved-dark route restoration')
+    console.log(
+      'PASS',
+      engine.name(),
+      'responsive design, reduced motion, desktop geometry and saved-dark route restoration',
+    )
   } finally {
     await browser.close()
   }

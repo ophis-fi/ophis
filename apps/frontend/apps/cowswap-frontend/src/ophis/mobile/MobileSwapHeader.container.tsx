@@ -35,7 +35,12 @@ const Header = styled.header`
     margin-right: auto;
     margin-left: 32px;
   }
+  nav > div {
+    gap: inherit;
+  }
   nav a {
+    background: transparent;
+    border-radius: 0;
     color: #686d78;
     text-decoration: none;
     font-size: 14px;
