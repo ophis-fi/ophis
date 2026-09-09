@@ -1,5 +1,6 @@
 import { setGlobalAdapter } from '@cowprotocol/cow-sdk'
-import { buildAppData, mergeAppDataDoc } from '@cowprotocol/sdk-trading'
+import { getQuoteAmountsAndCosts, OrderKind } from '@cowprotocol/sdk-order-book'
+import { buildAppData, getPartnerFeeBps, mergeAppDataDoc } from '@cowprotocol/sdk-trading'
 
 import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_PARTNER_FEE_RECIPIENT } from './partnerFeeDefault'
 
@@ -152,6 +153,65 @@ describe('appData partnerFee survives an SDK merge without duplicating', () => {
       const built = await buildAppData(limitOrderParams(operatedChainFee()), hostedChainDoc())
 
       expect(built.doc.metadata.partnerFee).toEqual(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE)
+    })
+  })
+
+  describe('getPartnerFeeBps (patched): the buy limit is sized from EVERY flat Volume entry', () => {
+    // A host widget fee is stacked with the 1 bp Ophis base and settlement charges
+    // both. Upstream returns the FIRST volumeBps, which signed the order 1 bp too
+    // optimistic on every stacked widget order (the same class as the 2.3 bps bridge
+    // expiry above). The patch compounds them and rounds up to integer bps; this fails on the unpatched SDK.
+    const HOST = '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4'
+    it('compounds the host fee and the Ophis base, rounds up, and ignores price improvement', () => {
+      expect(
+        getPartnerFeeBps([
+          { volumeBps: 50, recipient: HOST },
+          { volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+          { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+        ]),
+      ).toBe(52)
+    })
+    it.each([
+      [[1, 50], 52],
+      [[50, 1, 1], 53],
+      [[0, 50], 50],
+      [[0, 0], 0],
+      [[1], 1],
+      [[1000, 1000], 2100],
+    ])('compounds %j without rounding individual fees', (fees, expected) => {
+      expect(getPartnerFeeBps(fees.map((volumeBps) => ({ volumeBps, recipient: HOST })))).toBe(expected)
+    })
+    it('covers the compounded spend of a zero-slippage BUY order', () => {
+      const { amountsToSign } = getQuoteAmountsAndCosts({
+        orderParams: {
+          kind: OrderKind.BUY,
+          sellAmount: '100000000',
+          buyAmount: '100000000',
+          feeAmount: '0',
+          sellToken: HOST,
+          buyToken: OPHIS_PARTNER_FEE_RECIPIENT,
+          validTo: 2000000000,
+          appData: `0x${'0'.repeat(64)}`,
+          partiallyFillable: false,
+        },
+        partnerFeeBps: getPartnerFeeBps([
+          { volumeBps: 50, recipient: HOST },
+          { volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+        ]),
+        protocolFeeBps: undefined,
+        slippagePercentBps: 0,
+      })
+      // Driver BUY fees apply successively to the sell amount including previous fees.
+      // Plain 51 bps allows 100510000, below the required 100510050.
+      expect(BigInt(amountsToSign.sellAmount)).toBeGreaterThanOrEqual(100510050n)
+      expect(BigInt(amountsToSign.buyAmount)).toBe(100000000n)
+    })
+    it('keeps the single-object and PI-only readings', () => {
+      expect(getPartnerFeeBps({ volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT })).toBe(1)
+      expect(
+        getPartnerFeeBps([{ priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS_PARTNER_FEE_RECIPIENT }]),
+      ).toBeUndefined()
+      expect(getPartnerFeeBps(undefined)).toBeUndefined()
     })
   })
 })

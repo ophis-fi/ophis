@@ -106,7 +106,7 @@ jobs:
       # and a dropped patch is otherwise silent until it shows up in settlement fees.
       - name: partner-fee appData guard tests (jest, scoped)
         working-directory: apps/frontend
-        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/ophis/partnerFee' --passWithNoTests=false
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/ophis/partnerFee|sumVolumeFeeBps|useVolumeFeeTooltip|resolveOphisPartnerFee|utils.getOrderVolumeFee|getReceiveAmountInfo.fees' --passWithNoTests=false
 
       # ...and type-check that guard. `pnpm typecheck` above runs tsconfig.app.json,
       # which EXCLUDES *.test.ts, and the Nx jest target transforms tests with

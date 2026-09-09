@@ -1,12 +1,13 @@
+import { useAtomValue } from 'jotai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useAtomValue } from 'jotai'
-
-import { resolveOphisPartnerFee, sumVolumeFeeBps } from 'modules/appData'
-import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
-import { VolumeFee, basketHostFeeKindAtom, isStableStablePair } from 'modules/volumeFee'
+import { getPartnerFeeBps } from '@cowprotocol/cow-sdk'
 
 import { OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
+
+import { resolveOphisPartnerFee } from 'modules/appData'
+import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
+import { VolumeFee, basketHostFeeKindAtom, isStableStablePair } from 'modules/volumeFee'
 
 import { ResolveLegPartnerFeeFn } from './useBasketLegPartnerFee'
 
@@ -84,7 +85,7 @@ export function useBasketQuotes(
         isStableStablePair({ chainId, sellTokenAddress: leg.sellToken, buyTokenAddress: leg.buyToken }),
         hostFee,
       )
-      const bps = sumVolumeFeeBps(signed)
+      const bps = getPartnerFeeBps(signed)
       // No flat fee signed (fee-exempt leg, or PI-only): quote exactly what the pipeline says.
       if (bps === undefined) return legFee
       if (legFee) return bps === legFee.volumeBps ? legFee : { ...legFee, volumeBps: bps }
