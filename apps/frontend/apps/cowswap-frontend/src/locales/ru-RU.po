@@ -6604,3 +6604,31 @@ msgstr "Адрес кошелька Solana"
 #: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
 msgid "Bitcoin wallet address"
 msgstr "Адрес кошелька Bitcoin"
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Choose your tokens. Review your limits. Make your next move."
+msgstr "Выберите токены. Проверьте лимиты. Сделайте следующий шаг."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Choose what to receive."
+msgstr "Выберите, что получить."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Find the asset on the right network."
+msgstr "Найдите актив в нужной сети."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Review the details."
+msgstr "Проверьте детали."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Amounts, fees, and destination, together."
+msgstr "Суммы, комиссии и получатель — вместе."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Set the spending limit."
+msgstr "Установите лимит расходов."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Check the exact approval before signing."
+msgstr "Проверьте точную сумму разрешения перед подписанием."

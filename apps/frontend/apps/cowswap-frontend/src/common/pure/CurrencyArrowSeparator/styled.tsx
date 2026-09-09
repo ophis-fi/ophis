@@ -85,8 +85,8 @@ export const LoadingWrapper = styled.button<{ $isLoading: boolean }>`
     opacity: 0.6;
   }
 
-  ${({ $isLoading }) =>
-    $isLoading
+  ${({ $isLoading, theme }) =>
+    $isLoading && !theme.isOphisMobileSwap
       ? loadingAnimationMixin
       : css`
           &:not(:disabled):hover {

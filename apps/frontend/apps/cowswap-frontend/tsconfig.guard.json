@@ -7,6 +7,8 @@
   "files": ["../../node_modules/@nx/react/typings/cssmodule.d.ts", "../../node_modules/@nx/react/typings/image.d.ts"],
   "include": [
     "src/**/*.d.ts",
+    "src/ophis/hooks/useIsOphisSwap.test.tsx",
+    "src/ophis/components/intent/IntentEntry.container.test.tsx",
     "../../libs/tokens/src/services/tokenPolicy.spec.ts",
     "src/ophis/partnerFeeMerge.test.ts",
     "src/tradingSdk/ophisNearIntentsProvider.service.test.ts",

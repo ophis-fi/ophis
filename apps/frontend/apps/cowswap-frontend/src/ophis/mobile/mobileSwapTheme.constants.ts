@@ -17,7 +17,7 @@ export const mobileSwapTheme: CoWSwapTheme = {
   paperDarkestCustom: '#e8e8ea',
   text: '#17191c',
   text1: '#17191c',
-  text4: '#777b86',
+  text4: '#5b606b',
   bg2: '#f2f2f3',
   bg3: '#f2f2f3',
   bg5: '#fafafb',

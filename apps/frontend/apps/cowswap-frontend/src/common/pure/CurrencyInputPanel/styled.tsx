@@ -67,7 +67,7 @@ export const Wrapper = styled.label<{ withReceiveAmountInfo: boolean; readOnly: 
       background: #f2f2f3;
       border: 1px solid transparent;
       border-radius: ${withReceiveAmountInfo ? '24px 24px 0 0' : '24px'};
-      min-height: 160px;
+      min-height: 224px;
       &:focus-within {
         border-color: #17191c;
         box-shadow: none;

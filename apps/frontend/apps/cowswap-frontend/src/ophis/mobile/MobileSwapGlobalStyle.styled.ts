@@ -13,6 +13,7 @@ export const MobileSwapGlobalStyle = createGlobalStyle`
     --cow-font-family-primary: var(--ophis-font-body);
     --ophis-radius-xl: 24px;
     --ophis-space-3: 20px;
+    @media (min-width: 721px) { --ophis-radius-xl: 20px; }
     color-scheme: light;
   }
   html, body { background: #ffffff; color: #17191c; }
