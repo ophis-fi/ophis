@@ -24,6 +24,7 @@ import { useTradeFlowType } from './useTradeFlowType'
 import { safeBundleApprovalFlow, safeBundleEthFlow } from '../services/safeBundleFlow'
 import { swapFlow } from '../services/swapFlow'
 import { FlowType } from '../types/TradeFlowContext'
+import { isBridgeQuoteRecipientCurrent } from '../utils/isBridgeQuoteRecipientCurrent.utils'
 
 // eslint-disable-next-line max-lines-per-function
 export function useHandleSwap(
@@ -34,7 +35,8 @@ export function useHandleSwap(
   const amountToApprove = useGetAmountToSignApprove()
   const { maximumSendSellAmount } = useAmountsToSignFromQuote() || {}
   const needsApproval = useNeedsApproval(maximumSendSellAmount)
-  const tradeFlowContext = useTradeFlowContext(params)
+  const context = useTradeFlowContext(params)
+  const tradeFlowContext = context && isBridgeQuoteRecipientCurrent(context) ? context : null
   const safeBundleFlowContext = useSafeBundleFlowContext()
   const isBridge = getAreBridgeCurrencies(
     tradeFlowContext?.context.inputAmount.currency,

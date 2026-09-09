@@ -22,6 +22,7 @@ import { useVolumeFee } from 'modules/volumeFee'
 import { useIsProviderNetworkDeprecated } from 'common/hooks/useIsProviderNetworkDeprecated'
 import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetworkUnsupported'
 import { useSafeMemo } from 'common/hooks/useSafeMemo'
+import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
 
 import { useQuoteParamsRecipient } from './useQuoteParamsRecipient'
 
@@ -68,7 +69,6 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
   const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated()
 
   const state = useDerivedTradeState()
-  const pipelineVolumeFee = useVolumeFee()
   const tradeSlippage = useTradeSlippageValueAndType()
 
   const userSlippageBps = tradeSlippage.type === 'user' ? tradeSlippage.value : undefined
@@ -87,28 +87,14 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
 
   const receiver = useQuoteParamsRecipient()
   const appDataDoc = appData?.doc
-  // Quote with the flat fee the order will actually SIGN: with a third-party host
-  // fee the appData stacks it with the Ophis 1 bp base, and quoting the pipeline's
-  // single entry would leave the shown buy amount 1 bp optimistic.
-  const signedVolumeBps = getPartnerFeeBps(appDataDoc?.metadata?.partnerFee)
-  const volumeFee = useMemo(() => {
-    if (signedVolumeBps === undefined) return pipelineVolumeFee
-    if (pipelineVolumeFee) {
-      return signedVolumeBps === pipelineVolumeFee.volumeBps
-        ? pipelineVolumeFee
-        : { ...pipelineVolumeFee, volumeBps: signedVolumeBps }
-    }
-    // Pipeline has nothing (e.g. a third-party embed configured bps: 0) but the order
-    // still signs the Ophis policy: quote that, or the buy amount is optimistic.
-    return { volumeBps: signedVolumeBps, recipient: OPHIS_PARTNER_FEE_RECIPIENT }
-  }, [pipelineVolumeFee, signedVolumeBps])
+  const volumeFee = useQuoteVolumeFee(appDataDoc)
 
   // eslint-disable-next-line complexity
   const params = useSafeMemo(() => {
     if (isWrapOrUnwrap || isProviderNetworkUnsupported || isProviderNetworkDeprecated || !isTokenPolicyAllowed) return
     if (!inputCurrency || !outputCurrency || !orderKind || !provider) return
-
-    const appCode = appDataDoc?.appCode || DEFAULT_APP_CODE
+    // Never let the SDK default a non-EVM destination to the connected EVM account.
+    if (isNonEvmRecipientChain(outputCurrency.chainId) && !receiver) return
 
     const sellTokenAddress = getCurrencyAddress(inputCurrency)
     const buyTokenAddress = getCurrencyAddress(outputCurrency)
@@ -146,7 +132,7 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
       buyTokenDecimals,
 
       account: owner,
-      appCode,
+      appCode: appDataDoc?.appCode || DEFAULT_APP_CODE,
       signer,
 
       ethFlowContractOverride: COW_PROTOCOL_ETH_FLOW_ADDRESS,
@@ -185,4 +171,23 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
   ])
 
   return useDebounce(params, AMOUNT_CHANGE_DEBOUNCE_TIME)
+}
+
+function useQuoteVolumeFee(appDataDoc: AppDataInfo['doc'] | undefined): ReturnType<typeof useVolumeFee> {
+  const pipelineVolumeFee = useVolumeFee()
+  // Quote with the flat fee the order will actually SIGN: with a third-party host
+  // fee the appData stacks it with the Ophis 1 bp base, and quoting the pipeline's
+  // single entry would leave the shown buy amount 1 bp optimistic.
+  const signedVolumeBps = getPartnerFeeBps(appDataDoc?.metadata?.partnerFee)
+  return useMemo(() => {
+    if (signedVolumeBps === undefined) return pipelineVolumeFee
+    if (pipelineVolumeFee) {
+      return signedVolumeBps === pipelineVolumeFee.volumeBps
+        ? pipelineVolumeFee
+        : { ...pipelineVolumeFee, volumeBps: signedVolumeBps }
+    }
+    // Pipeline has nothing (e.g. a third-party embed configured bps: 0) but the order
+    // still signs the Ophis policy: quote that, or the buy amount is optimistic.
+    return { volumeBps: signedVolumeBps, recipient: OPHIS_PARTNER_FEE_RECIPIENT }
+  }, [pipelineVolumeFee, signedVolumeBps])
 }

@@ -1,4 +1,4 @@
-import { OrderKind } from '@cowprotocol/cow-sdk'
+import { AdditionalTargetChainId, OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 
 import { TradeType } from 'modules/trade/types/TradeType'
@@ -21,6 +21,7 @@ describe('validateTradeForm - xStock logic', () => {
   const baseContext: Partial<TradeFormValidationContext> = {
     derivedTradeState: {
       orderKind: OrderKind.SELL,
+      slippage: null,
       inputCurrencyAmount: mockCurrencyAmount('100'),
       outputCurrencyAmount: mockCurrencyAmount('100'),
       inputCurrency: { address: '0x1', chainId: 1 } as unknown as Currency,
@@ -49,7 +50,7 @@ describe('validateTradeForm - xStock logic', () => {
     intermediateTokenToBeImported: false,
     isAccountProxyLoading: false,
     isProxySetupValid: true,
-    customTokenError: null,
+    customTokenError: undefined,
     isRestrictedForCountry: false,
     isBalancesLoading: false,
     isBundlingSupported: true,
@@ -188,5 +189,25 @@ describe('validateTradeForm - xStock logic', () => {
     const context = { ...baseContext, isTokenPolicyDenied: true } as unknown as TradeFormValidationContext
 
     expect(validateTradeForm(context)).toContain(TradeFormValidation.TokenPolicyDenied)
+  })
+
+  test.each([
+    [AdditionalTargetChainId.SOLANA, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', false],
+    [AdditionalTargetChainId.BITCOIN, '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', false],
+    [AdditionalTargetChainId.SOLANA, '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', true],
+    [AdditionalTargetChainId.BITCOIN, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', true],
+    [AdditionalTargetChainId.SOLANA, '', true],
+    [AdditionalTargetChainId.BITCOIN, undefined, true],
+    [AdditionalTargetChainId.SOLANA, '0x1234567890123456789012345678901234567890', true],
+  ])('validates recipient for destination %s', (chainId, recipient, invalid) => {
+    const context = {
+      ...baseContext,
+      derivedTradeState: {
+        ...baseContext.derivedTradeState,
+        outputCurrency: { address: 'destination-token', chainId },
+        recipient,
+      },
+    } as TradeFormValidationContext
+    expect(validateTradeForm(context)?.includes(TradeFormValidation.RecipientInvalid) ?? false).toBe(invalid)
   })
 })

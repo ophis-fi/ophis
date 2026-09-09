@@ -1,8 +1,10 @@
+import { AdditionalTargetChainId } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Token } from '@cowprotocol/currency'
 
 import { renderHook } from '@testing-library/react'
 
 import { useGetAmountToSignApprove } from 'modules/erc20Approve'
+import { ethFlow } from 'modules/ethFlow'
 import { callWidgetHook } from 'modules/injectedWidget'
 import { useAmountsToSignFromQuote } from 'modules/trade'
 
@@ -60,9 +62,49 @@ beforeEach(() => {
     context: { inputAmount: required, outputAmount: cap },
     tradeConfirmActions: { onError },
     swapFlowAnalyticsContext: {},
-    orderParams: {},
+    orderParams: { buyToken: token, sellToken: token },
+    tradeQuoteState: { bridgeQuote: null },
   } as unknown as TradeFlowContext)
 })
+
+it.each([FlowType.REGULAR, FlowType.EOA_ETH_FLOW, FlowType.SAFE_BUNDLE_APPROVAL, FlowType.SAFE_BUNDLE_ETH])(
+  'blocks a stale receiver-account quote before the %s signing path',
+  async (flow) => {
+    jest.mocked(useTradeFlowType).mockReturnValue(flow)
+    jest.mocked(useTradeFlowContext).mockReturnValue({
+      context: { inputAmount: required, outputAmount: cap },
+      tradeConfirmActions: { onError },
+      orderParams: {
+        sellToken: token,
+        buyToken: { chainId: AdditionalTargetChainId.SOLANA, address: 'So11111111111111111111111111111111111111112' },
+        recipient: 'So11111111111111111111111111111111111111112',
+        recipientAddressOrName: 'So11111111111111111111111111111111111111112',
+      },
+      tradeQuote: { quoteResults: { tradeParameters: { sellToken: token.address } } },
+      tradeQuoteState: {
+        bridgeQuote: {
+          providerInfo: { type: 'ReceiverAccountBridgeProvider' },
+          tradeParameters: {
+            sellTokenChainId: 1,
+            buyTokenChainId: AdditionalTargetChainId.SOLANA,
+            buyTokenAddress: 'So11111111111111111111111111111111111111112',
+            receiver: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          },
+        },
+      },
+    } as unknown as TradeFlowContext)
+    const { result } = renderHook(() => useHandleSwap({ deadline: 30 }, actions), { wrapper: LinguiWrapper })
+
+    expect(result.current.contextIsReady).toBe(false)
+    expect(await result.current.callback()).toBeUndefined()
+    expect(onError).not.toHaveBeenCalled()
+    expect(callWidgetHook).not.toHaveBeenCalled()
+    expect(swapFlow).not.toHaveBeenCalled()
+    expect(ethFlow).not.toHaveBeenCalled()
+    expect(safeBundleApprovalFlow).not.toHaveBeenCalled()
+    expect(safeBundleEthFlow).not.toHaveBeenCalled()
+  },
+)
 
 it.each([FlowType.REGULAR, FlowType.SAFE_BUNDLE_APPROVAL, FlowType.SAFE_BUNDLE_ETH])(
   'blocks %s before any permit, batch or order can be signed above the cap',

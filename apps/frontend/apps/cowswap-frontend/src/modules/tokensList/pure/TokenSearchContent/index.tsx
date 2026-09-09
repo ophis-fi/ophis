@@ -56,7 +56,7 @@ export function TokenSearchContent({
     isLoading,
     matchedTokens,
     activeList,
-    disableTokenImport,
+    disableTokenImport: disableTokenImport || areTokensFromBridge,
     blockchainResult,
     inactiveListsResult,
     externalApiResult,

@@ -6588,3 +6588,19 @@ msgstr "Открытая торговля в Ethereum"
 
 msgid "Use a standard Ethereum wallet with at least one confirmed outgoing transaction. Contract wallets are not supported."
 msgstr "Используйте обычный кошелёк Ethereum с хотя бы одной подтверждённой исходящей транзакцией. Контрактные кошельки не поддерживаются."
+
+#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
+msgid "You receive"
+msgstr "Вы получите"
+
+#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/ChainSelector.tsx
+msgid "Receive on"
+msgstr "Сеть получения"
+
+#: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
+msgid "Solana wallet address"
+msgstr "Адрес кошелька Solana"
+
+#: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
+msgid "Bitcoin wallet address"
+msgstr "Адрес кошелька Bitcoin"
