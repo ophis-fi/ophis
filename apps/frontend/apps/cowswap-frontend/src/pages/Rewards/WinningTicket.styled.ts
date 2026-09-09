@@ -4,12 +4,11 @@ export const WinningTicket = styled.article`
   position: relative;
   max-width: 620px;
   overflow: hidden;
-  border: 1px solid rgba(242, 166, 62, 0.55);
+  border: 1px solid #dbb8a0;
   border-radius: 18px;
-  background:
-    radial-gradient(circle at 50% 0%, rgba(242, 166, 62, 0.18), transparent 52%),
-    linear-gradient(145deg, rgba(38, 26, 17, 0.98), rgba(17, 15, 20, 0.98));
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+  background: #fbe1d1;
+  color: #5d2a1a;
+  box-shadow: 0 12px 32px rgba(23, 25, 28, 0.06);
 
   &::before,
   &::after {
@@ -20,7 +19,7 @@ export const WinningTicket = styled.article`
     height: 24px;
     border-radius: 50%;
     background: var(--cow-color-background, #080808);
-    border: 1px solid rgba(242, 166, 62, 0.45);
+    border: 1px solid #dbb8a0;
     transform: translateY(-50%);
   }
   &::before {
@@ -35,11 +34,11 @@ export const TicketTopline = styled.div`
   display: flex;
   justify-content: space-between;
   padding: 16px 24px;
-  border-bottom: 1px dashed rgba(242, 166, 62, 0.35);
-  font-family: 'Geist Mono', ui-monospace, monospace;
+  border-bottom: 1px dashed #dbb8a0;
+  font-family: ui-monospace, monospace;
   font-size: 11px;
   letter-spacing: 0.12em;
-  color: #ffc477;
+  color: #5d2a1a;
 `
 
 export const TicketPrize = styled.div`
@@ -52,18 +51,18 @@ export const TicketPrize = styled.div`
   > small {
     font-size: 11px;
     letter-spacing: 0.16em;
-    opacity: 0.65;
+    opacity: 1;
   }
   > strong {
     font-size: clamp(64px, 12vw, 104px);
     line-height: 1;
-    color: #fff4e5;
+    color: #5d2a1a;
   }
   > span {
     margin-top: 8px;
     font-size: 12px;
     letter-spacing: 0.1em;
-    color: #ffc477;
+    color: #5d2a1a;
   }
 `
 
@@ -73,26 +72,26 @@ export const TicketFooter = styled.div`
   align-items: center;
   gap: 10px;
   padding: 18px 24px 22px;
-  border-top: 1px dashed rgba(242, 166, 62, 0.35);
+  border-top: 1px dashed #dbb8a0;
   text-align: center;
 
   > small {
     max-width: 430px;
     font-size: 11px;
-    opacity: 0.58;
+    opacity: 1;
   }
 `
 
 export const TicketClaimed = styled.strong`
-  color: #71dca8;
+  color: #217346;
 `
 
 export const TicketEmpty = styled.div`
   max-width: 620px;
   padding: 24px;
-  border: 1px dashed rgba(245, 239, 230, 0.2);
+  border: 1px dashed var(--cow-color-border);
   border-radius: 18px;
-  background: rgba(245, 239, 230, 0.025);
+  background: var(--cow-color-paper);
 
   > h3,
   > p {
@@ -102,6 +101,6 @@ export const TicketEmpty = styled.div`
 
 export const TicketError = styled.p`
   margin: 0;
-  color: #ff9d8f;
+  color: var(--cow-color-danger-text);
   font-size: 12px;
 `
