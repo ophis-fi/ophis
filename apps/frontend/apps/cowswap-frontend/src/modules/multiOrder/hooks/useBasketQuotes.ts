@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { VolumeFee } from 'modules/volumeFee'
+import { useAtomValue } from 'jotai'
+
+import { resolveOphisPartnerFee, sumVolumeFeeBps } from 'modules/appData'
+import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
+import { VolumeFee, basketHostFeeKindAtom, isStableStablePair } from 'modules/volumeFee'
+
+import { OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
 
 import { ResolveLegPartnerFeeFn } from './useBasketLegPartnerFee'
 
@@ -61,11 +67,39 @@ export function useBasketQuotes(
   const [quotedSig, setQuotedSig] = useState('')
   const runIdRef = useRef(0)
 
+  // Quote each leg with the flat fee its order will actually SIGN. With a
+  // third-party host fee the signed appData stacks that fee with the Ophis 1 bp
+  // base, so the quote must carry the sum (through the same resolver the appData
+  // builder uses) or the buy amount shown is 1 bp optimistic and a tight limit is
+  // less fillable than the screen implied.
+  const widgetPartnerFee = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
+  const hostFee = useAtomValue(basketHostFeeKindAtom)
+  const resolveLegQuoteFee = useCallback<ResolveLegPartnerFeeFn>(
+    (leg) => {
+      const legFee = resolveLegPartnerFee(leg)
+      const signed = resolveOphisPartnerFee(
+        widgetPartnerFee,
+        legFee,
+        chainId,
+        isStableStablePair({ chainId, sellTokenAddress: leg.sellToken, buyTokenAddress: leg.buyToken }),
+        hostFee,
+      )
+      const bps = sumVolumeFeeBps(signed)
+      // No flat fee signed (fee-exempt leg, or PI-only): quote exactly what the pipeline says.
+      if (bps === undefined) return legFee
+      if (legFee) return bps === legFee.volumeBps ? legFee : { ...legFee, volumeBps: bps }
+      // Pipeline has nothing (e.g. a third-party embed configured bps: 0) but the
+      // order still signs the Ophis policy: quote that, or the buy amount is optimistic.
+      return { volumeBps: bps, recipient: OPHIS_PARTNER_FEE_RECIPIENT }
+    },
+    [resolveLegPartnerFee, widgetPartnerFee, chainId, hostFee],
+  )
+
   // Stable identity for the leg set so the effect only re-fans on real changes.
   // Includes the sell/buy TOKEN addresses AND each leg's resolved fee
   // (legsQuoteSignature), so swapping a token or a fee change at the same
   // slot/amount re-fans instead of reusing a quote for the stale pair or fee.
-  const legsSig = useMemo(() => legsQuoteSignature(legs, resolveLegPartnerFee), [legs, resolveLegPartnerFee])
+  const legsSig = useMemo(() => legsQuoteSignature(legs, resolveLegQuoteFee), [legs, resolveLegQuoteFee])
 
   useEffect(() => {
     if (!legs || legs.length === 0 || !owner) {
@@ -98,7 +132,7 @@ export function useBasketQuotes(
           buyToken: leg.buyToken,
           sellAmountAtoms: leg.sellAmount.toString(),
           validTo,
-          partnerFee: resolveLegPartnerFee(leg),
+          partnerFee: resolveLegQuoteFee(leg),
         },
         controller.signal,
       )
@@ -137,7 +171,7 @@ export function useBasketQuotes(
     // resolver would quote a leg with a fee it is then signed WITHOUT (or vice
     // versa), diverging from useBuildBasketLegAppData.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legsSig, owner, chainId, validTo, quoteFn, resolveLegPartnerFee])
+  }, [legsSig, owner, chainId, validTo, quoteFn, resolveLegQuoteFee])
 
   // Synchronous stale-fee invalidation: until the effect has re-fanned for the
   // CURRENT signature (which folds in each leg's resolved fee), treat the quotes

@@ -1,4 +1,5 @@
 import { APP_CODES, type AppCode } from '../cow/types.js';
+import { OPHIS_SAFE_ADDRESS } from '../safe/addresses.js';
 
 export interface AppDataInfo {
   appCode: AppCode | null;
@@ -43,7 +44,17 @@ export function parseAppData(fullAppData: string | null | undefined): AppDataInf
     const c = rawRef.trim().toLowerCase();
     if (REF_RE.test(c)) refCode = c;
   }
-  const rawBps = (metadata as { partnerFee?: { volumeBps?: unknown } }).partnerFee?.volumeBps;
+  // partnerFee is a single entry or, since the widget stacks a host's own fee with
+  // the Ophis policy, an ARRAY (e.g. [host Volume, Ophis Volume, Ophis PI]). Report
+  // the Ophis Volume entry when one is present; otherwise the first Volume entry,
+  // which keeps the historical single-object reading for non-Ophis shapes.
+  const rawFee = (metadata as { partnerFee?: unknown }).partnerFee;
+  const entries = (Array.isArray(rawFee) ? rawFee : [rawFee]) as Array<{ volumeBps?: unknown; recipient?: unknown } | null | undefined>;
+  const volumeEntries = entries.filter((e) => typeof e?.volumeBps === 'number');
+  const ophisEntry = volumeEntries.find(
+    (e) => typeof e?.recipient === 'string' && e.recipient.toLowerCase() === OPHIS_SAFE_ADDRESS.toLowerCase(),
+  );
+  const rawBps = (ophisEntry ?? volumeEntries[0])?.volumeBps;
   const feeBps = typeof rawBps === 'number' && Number.isInteger(rawBps) && rawBps >= 0 && rawBps <= 10000 ? rawBps : null;
 
   return { appCode, refCode, feeBps };

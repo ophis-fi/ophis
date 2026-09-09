@@ -1,8 +1,12 @@
 import { isTruthy } from '@cowprotocol/common-utils'
-import { PartnerFee, resolveFlexibleConfigValues } from '@cowprotocol/widget-lib'
+import { DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK } from '@cowprotocol/common-const'
+import { areAddressesEqual, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { PartnerFee, resolveFlexibleConfig, resolveFlexibleConfigValues, TradeType } from '@cowprotocol/widget-lib'
 import { getAddress } from '@ethersproject/address'
 
 import { t } from '@lingui/core/macro'
+
+import { OPHIS_MAX_PARTNER_REQUEST_BPS, OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
 
 import { PARTNER_FEE_MAX_BPS } from '../consts'
 
@@ -15,10 +19,50 @@ export function validatePartnerFee(input: PartnerFee | undefined): string[] | un
   const feeTooHighError = bpss.some((value) => value > PARTNER_FEE_MAX_BPS)
     ? t`Partner fee can not be more than ${PARTNER_FEE_MAX_BPS} BPS!`
     : undefined
+  // A fee paid to a THIRD-PARTY recipient is stacked with the Ophis policy (1 bp
+  // base + capped price improvement, up to 100 bps on a volatile pair), so its
+  // ceiling is the registered-integrator request cap: 90 + 100 = the 190 bps
+  // aggregate cap on Ophis-operated chains, and CoW-hosted chains clamp their
+  // 100 bps aggregate in array order with the host entry first. A fee paid TO the
+  // Ophis Safe (the @ophis/widget-react wrapper pins that recipient) is not
+  // stacked, so the plain PARTNER_FEE_MAX_BPS ceiling above is the only one.
+  // bps and recipient are independent FlexibleConfigs (per network, per trade
+  // type), so pair them per (chain, trade type) rather than flattening each: a
+  // 100 bps fee to the Ophis Safe on one chain next to 50 bps to a third party
+  // on another is valid.
+  // Every chain the fee could resolve on: the SDK enum, the Ophis-operated chains
+  // (10/130/4663 are deliberately NOT in that enum) and any chain the host named
+  // in its own per-network maps.
+  const configuredChainIds = [input.bps, input.recipient].flatMap((v) =>
+    typeof v === 'object' && v !== null ? Object.keys(v).map(Number).filter(Number.isFinite) : [],
+  )
+  const candidateChainIds = new Set<number>([
+    ...Object.values(SupportedChainId).filter((v): v is SupportedChainId => typeof v === 'number'),
+    ...Object.keys(DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK).map(Number),
+    ...configuredChainIds,
+  ])
+  const stackedFeeTooHigh = [...candidateChainIds]
+    .map((chainId) => chainId as SupportedChainId)
+    .some((chainId) =>
+      Object.values(TradeType).some((tradeType) => {
+        const bps = resolveFlexibleConfig(input.bps, chainId, tradeType)
+        const recipient = resolveFlexibleConfig(input.recipient, chainId, tradeType)
+        return (
+          typeof bps === 'number' &&
+          bps > OPHIS_MAX_PARTNER_REQUEST_BPS &&
+          bps <= PARTNER_FEE_MAX_BPS &&
+          typeof recipient === 'string' &&
+          !areAddressesEqual(recipient, OPHIS_PARTNER_FEE_RECIPIENT)
+        )
+      }),
+    )
+  const stackedFeeTooHighError = stackedFeeTooHigh
+    ? t`Partner fee paid to your own address can not be more than ${OPHIS_MAX_PARTNER_REQUEST_BPS} BPS: Ophis adds its own fee on top.`
+    : undefined
   const feeTooLowError = bpss.some((value) => value < 0) ? t`Partner fee can not be less than 0!` : undefined
   const recipientErrors = validateRecipients(recipients)
 
-  const errors = [feeTooHighError, feeTooLowError, ...recipientErrors].filter(isTruthy)
+  const errors = [feeTooHighError, stackedFeeTooHighError, feeTooLowError, ...recipientErrors].filter(isTruthy)
 
   return errors.length > 0 ? errors : undefined
 }

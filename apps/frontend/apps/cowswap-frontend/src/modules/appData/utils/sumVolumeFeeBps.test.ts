@@ -1,0 +1,24 @@
+import { sumVolumeFeeBps } from './sumVolumeFeeBps'
+
+const SAFE = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
+
+describe('sumVolumeFeeBps', () => {
+  it('sums every flat Volume entry and ignores price-improvement entries', () => {
+    expect(
+      sumVolumeFeeBps([
+        { volumeBps: 50, recipient: '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4' },
+        { volumeBps: 1, recipient: SAFE },
+        { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: SAFE },
+      ]),
+    ).toBe(51)
+  })
+
+  it('reads a single-object partnerFee', () => {
+    expect(sumVolumeFeeBps({ volumeBps: 5, recipient: SAFE })).toBe(5)
+  })
+
+  it('returns undefined when nothing charges a flat fee', () => {
+    expect(sumVolumeFeeBps(undefined)).toBeUndefined()
+    expect(sumVolumeFeeBps([{ priceImprovementBps: 8000, maxVolumeBps: 99, recipient: SAFE }])).toBeUndefined()
+  })
+})

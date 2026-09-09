@@ -6,6 +6,7 @@ import { useTokenByAddress } from '@cowprotocol/tokens'
 import { Nullish } from '@cowprotocol/types'
 
 import { useTradeQuote, useTradeQuoteProtocolFee } from 'modules/tradeQuote'
+import { useAppDataVolumeFeeBps } from 'modules/appData'
 import { useVolumeFee } from 'modules/volumeFee'
 
 import { useDerivedTradeState } from './useDerivedTradeState'
@@ -28,7 +29,10 @@ export function useGetSwapReceiveAmountInfo(): ReceiveAmountInfo | null {
 export function useSwapReceiveAmountInfoParams(): ReceiveAmountInfoParams | null {
   const derivedTradeState = useDerivedTradeState()
   const tradeQuote = useTradeQuote()
-  const volumeFeeBps = useVolumeFee()?.volumeBps
+  // Disclose what the order signs: every stacked Volume entry, not the pipeline's one.
+  const appDataVolumeFeeBps = useAppDataVolumeFeeBps()
+  const pipelineVolumeFeeBps = useVolumeFee()?.volumeBps
+  const volumeFeeBps = appDataVolumeFeeBps ?? pipelineVolumeFeeBps
   const orderKind = derivedTradeState?.orderKind
   const derivedSlippage = derivedTradeState?.slippage
 

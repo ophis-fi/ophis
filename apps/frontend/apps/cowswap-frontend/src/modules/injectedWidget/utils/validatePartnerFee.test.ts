@@ -26,7 +26,7 @@ describe('validatePartnerFee()', () => {
 
   it('When recipient is empty, then should return error', () => {
     const result = validatePartnerFee({
-      bps: 100,
+      bps: 90,
       recipient: '',
     })
 
@@ -36,7 +36,7 @@ describe('validatePartnerFee()', () => {
   describe('When recipient is a string', () => {
     it('When recipient is not a valid address, then should return error', () => {
       const result = validatePartnerFee({
-        bps: 100,
+        bps: 90,
         recipient: 'asvbfbdf',
       })
 
@@ -47,7 +47,7 @@ describe('validatePartnerFee()', () => {
 
     it('When the recipient is valid, then should return undefined', () => {
       const result = validatePartnerFee({
-        bps: 100,
+        bps: 90,
         recipient: '0x0000000000000000000000000000000000000000',
       })
 
@@ -60,9 +60,9 @@ describe('validatePartnerFee()', () => {
       const result = validatePartnerFee({
         bps: {
           [SupportedChainId.MAINNET]: 200,
-          [SupportedChainId.ARBITRUM_ONE]: 100,
-          [SupportedChainId.GNOSIS_CHAIN]: 100,
-          [SupportedChainId.SEPOLIA]: 100,
+          [SupportedChainId.ARBITRUM_ONE]: 90,
+          [SupportedChainId.GNOSIS_CHAIN]: 90,
+          [SupportedChainId.SEPOLIA]: 90,
         },
         recipient: '0x0000000000000000000000000000000000000000',
       })
@@ -73,10 +73,10 @@ describe('validatePartnerFee()', () => {
     it('When all bps are valid, then should return undefined', () => {
       const result = validatePartnerFee({
         bps: {
-          [SupportedChainId.MAINNET]: 100,
-          [SupportedChainId.ARBITRUM_ONE]: 100,
-          [SupportedChainId.GNOSIS_CHAIN]: 100,
-          [SupportedChainId.SEPOLIA]: 100,
+          [SupportedChainId.MAINNET]: 90,
+          [SupportedChainId.ARBITRUM_ONE]: 90,
+          [SupportedChainId.GNOSIS_CHAIN]: 90,
+          [SupportedChainId.SEPOLIA]: 90,
         },
         recipient: '0x0000000000000000000000000000000000000000',
       })
@@ -88,22 +88,22 @@ describe('validatePartnerFee()', () => {
       const result = validatePartnerFee({
         bps: {
           [TradeType.SWAP]: {
-            [SupportedChainId.MAINNET]: 100,
-            [SupportedChainId.ARBITRUM_ONE]: 100,
-            [SupportedChainId.GNOSIS_CHAIN]: 100,
-            [SupportedChainId.SEPOLIA]: 100,
+            [SupportedChainId.MAINNET]: 90,
+            [SupportedChainId.ARBITRUM_ONE]: 90,
+            [SupportedChainId.GNOSIS_CHAIN]: 90,
+            [SupportedChainId.SEPOLIA]: 90,
           },
           [TradeType.LIMIT]: {
-            [SupportedChainId.MAINNET]: 100,
-            [SupportedChainId.ARBITRUM_ONE]: 100,
+            [SupportedChainId.MAINNET]: 90,
+            [SupportedChainId.ARBITRUM_ONE]: 90,
             [SupportedChainId.GNOSIS_CHAIN]: -1,
-            [SupportedChainId.SEPOLIA]: 100,
+            [SupportedChainId.SEPOLIA]: 90,
           },
           [TradeType.ADVANCED]: {
-            [SupportedChainId.MAINNET]: 100,
-            [SupportedChainId.ARBITRUM_ONE]: 100,
-            [SupportedChainId.GNOSIS_CHAIN]: 100,
-            [SupportedChainId.SEPOLIA]: 100,
+            [SupportedChainId.MAINNET]: 90,
+            [SupportedChainId.ARBITRUM_ONE]: 90,
+            [SupportedChainId.GNOSIS_CHAIN]: 90,
+            [SupportedChainId.SEPOLIA]: 90,
           },
         },
         recipient: '0x0000000000000000000000000000000000000000',
@@ -116,24 +116,24 @@ describe('validatePartnerFee()', () => {
       const result = validatePartnerFee({
         bps: {
           [SupportedChainId.MAINNET]: {
-            [TradeType.SWAP]: 100,
-            [TradeType.LIMIT]: 100,
-            [TradeType.ADVANCED]: 100,
+            [TradeType.SWAP]: 90,
+            [TradeType.LIMIT]: 90,
+            [TradeType.ADVANCED]: 90,
           },
           [SupportedChainId.ARBITRUM_ONE]: {
-            [TradeType.SWAP]: 100,
-            [TradeType.LIMIT]: 100,
-            [TradeType.ADVANCED]: 100,
+            [TradeType.SWAP]: 90,
+            [TradeType.LIMIT]: 90,
+            [TradeType.ADVANCED]: 90,
           },
           [SupportedChainId.GNOSIS_CHAIN]: {
-            [TradeType.SWAP]: 100,
+            [TradeType.SWAP]: 90,
             [TradeType.LIMIT]: -2,
-            [TradeType.ADVANCED]: 100,
+            [TradeType.ADVANCED]: 90,
           },
           [SupportedChainId.SEPOLIA]: {
-            [TradeType.SWAP]: 100,
-            [TradeType.LIMIT]: 100,
-            [TradeType.ADVANCED]: 100,
+            [TradeType.SWAP]: 90,
+            [TradeType.LIMIT]: 90,
+            [TradeType.ADVANCED]: 90,
           },
         },
         recipient: '0x0000000000000000000000000000000000000000',
@@ -146,7 +146,7 @@ describe('validatePartnerFee()', () => {
   describe('When recipient is a map', () => {
     it('When one of addresses is not a valid address, then should return error', () => {
       const result = validatePartnerFee({
-        bps: 100,
+        bps: 90,
         recipient: {
           [SupportedChainId.MAINNET]: '0x0000000000000000000000000000000000000000',
           [SupportedChainId.ARBITRUM_ONE]: '0x0000000000000000000000000000000000000000',
@@ -162,7 +162,7 @@ describe('validatePartnerFee()', () => {
 
     it('When all addresses are valid, then should return undefined', () => {
       const result = validatePartnerFee({
-        bps: 100,
+        bps: 90,
         recipient: {
           [SupportedChainId.MAINNET]: '0x0000000000000000000000000000000000000000',
           [SupportedChainId.ARBITRUM_ONE]: '0x0000000000000000000000000000000000000000',
@@ -180,9 +180,9 @@ describe('validatePartnerFee()', () => {
       const result = validatePartnerFee({
         bps: {
           [SupportedChainId.MAINNET]: 200,
-          [SupportedChainId.ARBITRUM_ONE]: 100,
-          [SupportedChainId.GNOSIS_CHAIN]: 100,
-          [SupportedChainId.SEPOLIA]: 100,
+          [SupportedChainId.ARBITRUM_ONE]: 90,
+          [SupportedChainId.GNOSIS_CHAIN]: 90,
+          [SupportedChainId.SEPOLIA]: 90,
         },
         recipient: {
           [SupportedChainId.MAINNET]: '0x0000000000000000000000000000000000000000',
@@ -198,10 +198,10 @@ describe('validatePartnerFee()', () => {
     it('When one of addresses is not a valid address, then should return error', () => {
       const result = validatePartnerFee({
         bps: {
-          [SupportedChainId.MAINNET]: 100,
-          [SupportedChainId.ARBITRUM_ONE]: 100,
-          [SupportedChainId.GNOSIS_CHAIN]: 100,
-          [SupportedChainId.SEPOLIA]: 100,
+          [SupportedChainId.MAINNET]: 90,
+          [SupportedChainId.ARBITRUM_ONE]: 90,
+          [SupportedChainId.GNOSIS_CHAIN]: 90,
+          [SupportedChainId.SEPOLIA]: 90,
         },
         recipient: {
           [SupportedChainId.MAINNET]: '0x0000000000000000000000000000000000000000',
@@ -219,10 +219,10 @@ describe('validatePartnerFee()', () => {
     it('When everything is valid, then should return undefined', () => {
       const result = validatePartnerFee({
         bps: {
-          [SupportedChainId.MAINNET]: 100,
-          [SupportedChainId.ARBITRUM_ONE]: 100,
-          [SupportedChainId.GNOSIS_CHAIN]: 100,
-          [SupportedChainId.SEPOLIA]: 100,
+          [SupportedChainId.MAINNET]: 90,
+          [SupportedChainId.ARBITRUM_ONE]: 90,
+          [SupportedChainId.GNOSIS_CHAIN]: 90,
+          [SupportedChainId.SEPOLIA]: 90,
         },
         recipient: {
           [SupportedChainId.MAINNET]: '0x0000000000000000000000000000000000000000',
@@ -233,6 +233,51 @@ describe('validatePartnerFee()', () => {
       })
 
       expect(result).toBe(undefined)
+    })
+  })
+
+  describe('stacking on the Ophis policy', () => {
+    const THIRD_PARTY = '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4'
+    const OPHIS_SAFE = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
+
+    it('caps a fee paid to a third-party recipient at 90 BPS (Ophis stacks its own on top)', () => {
+      expect(validatePartnerFee({ bps: 90, recipient: THIRD_PARTY })).toBe(undefined)
+      expect(validatePartnerFee({ bps: 91, recipient: THIRD_PARTY })).toEqual([
+        'Partner fee paid to your own address can not be more than 90 BPS: Ophis adds its own fee on top.',
+      ])
+    })
+
+    it('pairs per-network bps with per-network recipients instead of flattening them', () => {
+      // 100 bps to the Ophis Safe on mainnet next to 50 bps to a third party on
+      // Gnosis is valid: neither pair breaks its own ceiling.
+      expect(
+        validatePartnerFee({
+          bps: { 1: 100, 100: 50 },
+          recipient: { 1: OPHIS_SAFE, 100: THIRD_PARTY },
+        }),
+      ).toBe(undefined)
+      // ...but 95 bps to the third party on Gnosis is not.
+      expect(
+        validatePartnerFee({
+          bps: { 1: 100, 100: 95 },
+          recipient: { 1: OPHIS_SAFE, 100: THIRD_PARTY },
+        }),
+      ).toEqual(['Partner fee paid to your own address can not be more than 90 BPS: Ophis adds its own fee on top.'])
+    })
+
+    it('applies the 90 BPS third-party ceiling on Ophis-operated chains outside the SDK enum too', () => {
+      expect(validatePartnerFee({ bps: { 130: 95 }, recipient: THIRD_PARTY })).toEqual([
+        'Partner fee paid to your own address can not be more than 90 BPS: Ophis adds its own fee on top.',
+      ])
+      expect(validatePartnerFee({ bps: { 4663: 95 }, recipient: THIRD_PARTY })).toEqual([
+        'Partner fee paid to your own address can not be more than 90 BPS: Ophis adds its own fee on top.',
+      ])
+      expect(validatePartnerFee({ bps: { 130: 95 }, recipient: OPHIS_SAFE })).toBe(undefined)
+    })
+
+    it('keeps the plain 100 BPS ceiling for a fee paid to the Ophis Safe (the widget-react wrapper pins it)', () => {
+      expect(validatePartnerFee({ bps: 100, recipient: OPHIS_SAFE })).toBe(undefined)
+      expect(validatePartnerFee({ bps: 101, recipient: OPHIS_SAFE })).toEqual(['Partner fee can not be more than 100 BPS!'])
     })
   })
 })
