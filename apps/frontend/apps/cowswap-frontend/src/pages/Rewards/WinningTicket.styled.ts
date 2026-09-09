@@ -1,6 +1,7 @@
 import styled from 'styled-components/macro'
 
 export const WinningTicket = styled.article`
+  --cow-color-danger-text: #9c2435;
   position: relative;
   max-width: 620px;
   overflow: hidden;
@@ -101,6 +102,6 @@ export const TicketEmpty = styled.div`
 
 export const TicketError = styled.p`
   margin: 0;
-  color: var(--cow-color-danger-text);
+  color: ${({ theme }) => (theme.darkMode ? 'var(--cow-color-danger-text)' : '#9c2435')};
   font-size: 12px;
 `
