@@ -17,7 +17,7 @@ export const howToLd = {
   '@type': 'HowTo',
   name: 'How to make your first swap on Ophis',
   description:
-    'Ophis turns a natural-language sentence into a settled, MEV-protected swap in three steps: intent parsing, a solver auction, and on-chain batch settlement.',
+    'Choose tokens and an amount, review and sign your order, then follow settlement.',
   totalTime: 'PT2M',
   supply: [
     { '@type': 'HowToSupply', name: 'An EVM wallet' },
@@ -27,9 +27,9 @@ export const howToLd = {
   step: [
     {
       '@type': 'HowToStep',
-      name: 'Intent: parse the request',
+      name: 'Choose tokens and amount',
       url: 'https://docs.ophis.fi/getting-started#1--intent-parse-the-request',
-      text: 'Open ophis.fi, connect your wallet, and type the swap as a plain sentence such as swap 100 USDC for ETH on Base. An open LLM extracts the sell token, buy token, amount, and chain into a structured order and pre-fills the swap form. Ophis is non-custodial; fee terms depend on whether the chain is Ophis-operated or CoW-hosted.',
+      text: 'Open swap.ophis.fi, connect your wallet, and select the tokens, networks, and amount. Review the quote, destination address, and spending limit before signing. Ophis is non-custodial; fee terms depend on whether the chain is Ophis-operated or CoW-hosted.',
     },
     {
       '@type': 'HowToStep',
@@ -52,21 +52,16 @@ export const howToLd = {
 
 # Getting started
 
-Ophis turns a sentence into a settled, MEV-protected swap. There's no
-token-picker to fight and no router to configure, you describe the
-trade, review it, and sign.
+Choose your tokens, review the quote, and sign with your wallet.
 
 ## Your first swap
 
-1. Open [ophis.fi](https://ophis.fi) and connect a wallet.
-2. Type what you want in your own words, for example:
-   - `swap 100 USDC for ETH on Base`
-   - `buy 50 USDC of PEPE on ethereum`
-   - `1 ETH to USDC on op`
-3. Ophis parses your sentence into a structured order (sell token, buy
-   token, amount, chain) and pre-fills the swap form.
-4. Review the quote and **sign the order with your wallet.** Nothing
-   leaves your wallet until a solver settles the trade.
+1. Open [the swap app](https://swap.ophis.fi/#/swap) and connect a wallet.
+2. Select the token and network you want to pay from, then enter the amount.
+3. Open **You receive** to select the destination network and token. For
+   Solana or Bitcoin, enter an address on that destination network.
+4. Review the quote, fees, destination address, and spending limit. Approve
+   the displayed amount if needed, then **sign the order with your wallet**.
 
 :::note[Non-custodial by design]
 
@@ -78,15 +73,13 @@ settles the batch on-chain.
 
 ## How it works
 
-Three steps from your sentence to settlement:
+Three steps from token selection to settlement:
 
-### 1 · Intent, parse the request
+### 1 · Choose tokens and amount {#1--intent-parse-the-request}
 
-You type the swap as a sentence. An open LLM (LibertAI's Qwen 3.6 27B,
-hosted on Aleph Cloud) extracts the sell token, buy token, amount, and
-chain into a structured order. The model runs behind a server-side proxy
-so its API key never reaches the browser. See the
-[Intent API](./intent-api.md) for the public endpoint.
+The swap form opens directly. Select the assets and networks, enter the
+amount, and review the quote and spending limit. Developers and agents can
+still use the [Intent API](./intent-api.md) for natural-language requests.
 
 ### 2 · Auction, solver competition
 
@@ -152,7 +145,7 @@ RPC for wallet configuration and fallback use.
 
 :::tip[Building on Ophis?]
 
-Skip the UI entirely, the [Intent API](./intent-api.md) exposes the same
+Skip the UI entirely, the [Intent API](./intent-api.md) exposes a
 natural-language parser as a public endpoint, and the
 [AI agent guide](./ai-agents.md) shows how to wire it into an agent.
 

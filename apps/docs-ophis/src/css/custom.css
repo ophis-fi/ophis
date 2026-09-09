@@ -1,162 +1,61 @@
-/**
- * Ophis brand theme for Docusaurus (Infima override).
- *
- * Mirrors the cosmic palette + Geist typography of the app
- * (apps/frontend/.../src/ophis/styles.css and the static /docs page):
- *   deep    #02000d   ink      #F5EFE6   ink-mute #A8A2B8
- *   coral   #FF7A60   saffron  #F2A63E   indigo   #7A6EE0
- *   sunset  linear-gradient(135deg, #FF8A52, #FF6B5A, #E55A88, #A44E91)
- *
- * Dark is the default and the fully-branded surface; light mode is a
- * readable fallback for users who toggle it.
- */
-
-/*
- * Geist — self-hosted variable font (static/fonts/geist-sans-variable.woff2).
- * Replaces the former Google Fonts <link> so the docs no longer depend on a
- * render-blocking third-party stylesheet. The --ifm-font-family-base fallback
- * stack below keeps text readable if the woff2 fails to load.
- */
+/* Steep: shared Ophis typography, neutral surfaces and warm accents. */
 @font-face {
-  font-family: 'Geist';
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src:
-    url('/fonts/geist-sans-variable.woff2') format('woff2-variations'),
-    url('/fonts/geist-sans-variable.woff2') format('woff2');
+  font-family: 'Ophis Inter'; font-style: normal; font-weight: 100 900;
+  font-display: swap; src: url('/fonts/inter-variable.woff2') format('woff2');
 }
-
-/*
- * Geist Mono is NOT self-hosted yet: the repo ships only the sans woff2. To
- * self-host it, add a geist-mono-variable.woff2 to static/fonts/ (same Vercel
- * OFL source as the sans) and uncomment the @font-face below. Until then, the
- * --ifm-font-family-monospace fallback stack (ui-monospace, SFMono-Regular,
- * 'JetBrains Mono', Menlo, monospace) renders code blocks.
- */
-/*
-@font-face {
-  font-family: 'Geist Mono';
-  font-style: normal;
-  font-weight: 100 900;
-  font-display: swap;
-  src:
-    url('/fonts/geist-mono-variable.woff2') format('woff2-variations'),
-    url('/fonts/geist-mono-variable.woff2') format('woff2');
-}
-*/
-
 :root {
-  /* Light-mode primary: a darker saffron so links clear WCAG AA on white. */
-  --ifm-color-primary: #a86411;
-  --ifm-color-primary-dark: #975a0f;
-  --ifm-color-primary-darker: #8e550e;
-  --ifm-color-primary-darkest: #75450b;
-  --ifm-color-primary-light: #c2751a;
-  --ifm-color-primary-lighter: #cf7f23;
-  --ifm-color-primary-lightest: #e09a3c;
-
-  --ifm-font-family-base: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --ifm-font-family-monospace: 'Geist Mono', ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
-  --ifm-heading-font-weight: 600;
-  --ifm-heading-letter-spacing: -0.02em;
-
+  --ifm-color-primary: #5d2a1a;
+  --ifm-color-primary-dark: #502417;
+  --ifm-color-primary-darker: #482015;
+  --ifm-color-primary-darkest: #36180f;
+  --ifm-color-primary-light: #6a301e;
+  --ifm-color-primary-lighter: #723320;
+  --ifm-color-primary-lightest: #833b25;
+  --ifm-font-family-base: 'Ophis Inter', Inter, system-ui, sans-serif;
+  --ifm-font-family-monospace: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ifm-heading-font-family: Georgia, serif;
+  --ifm-heading-font-weight: 400;
+  --ifm-background-color: #fff;
+  --ifm-background-surface-color: #fafafb;
+  --ifm-color-content: #17191c;
+  --ifm-color-content-secondary: #5b5f68;
+  --ifm-navbar-background-color: #fff;
+  --ifm-footer-background-color: #f2f2f3;
+  --ifm-color-emphasis-200: #e8e8ea;
+  --ifm-code-background: #f2f2f3;
   --ifm-code-font-size: 92%;
-  --docusaurus-highlighted-code-line-bg: rgba(2, 0, 13, 0.08);
-
-  --ophis-deep: #02000d;
-  --ophis-saffron: #f2a63e;
-  --ophis-coral: #ff7a60;
-  --ophis-sunset: linear-gradient(135deg, #ff8a52 0%, #ff6b5a 30%, #e55a88 65%, #a44e91 100%);
+  --docusaurus-highlighted-code-line-bg: rgba(23,25,28,.08);
 }
-
-/* Dark — the canonical Ophis surface. */
 [data-theme='dark'] {
-  --ifm-color-primary: #f2a63e;
-  --ifm-color-primary-dark: #f09a23;
-  --ifm-color-primary-darker: #ec9417;
-  --ifm-color-primary-darkest: #c1760a;
-  --ifm-color-primary-light: #f4b257;
-  --ifm-color-primary-lighter: #f6b966;
-  --ifm-color-primary-lightest: #f9ce95;
-
-  --ifm-background-color: #02000d;
-  --ifm-background-surface-color: #0a0420;
-  --ifm-color-content: #f5efe6;
-  --ifm-color-content-secondary: #a8a2b8;
-
-  --ifm-navbar-background-color: rgba(2, 0, 13, 0.86);
-  --ifm-navbar-link-hover-color: var(--ophis-saffron);
-  --ifm-footer-background-color: #050211;
-  --ifm-footer-link-hover-color: var(--ophis-saffron);
-
-  --ifm-link-color: var(--ophis-saffron);
-  --ifm-link-hover-color: #f9ce95;
-  --ifm-menu-color-active: var(--ophis-saffron);
-  --ifm-breadcrumb-color-active: var(--ophis-saffron);
-
-  --ifm-color-emphasis-100: #0f0726;
-  --ifm-color-emphasis-200: #1a0f36;
-  --ifm-color-emphasis-300: #2a1d4d;
-  --ifm-toc-border-color: rgba(245, 239, 230, 0.1);
-  --ifm-table-border-color: rgba(245, 239, 230, 0.12);
-  --ifm-hr-border-color: rgba(245, 239, 230, 0.1);
-
-  --ifm-code-background: rgba(245, 239, 230, 0.08);
-  --docusaurus-highlighted-code-line-bg: rgba(245, 239, 230, 0.08);
+  --ifm-color-primary: #fbe1d1;
+  --ifm-color-primary-dark: #f3cdb6;
+  --ifm-color-primary-darker: #f0c5aa;
+  --ifm-color-primary-darkest: #e8ad89;
+  --ifm-color-primary-light: #fdf0e8;
+  --ifm-color-primary-lighter: #fef5f0;
+  --ifm-color-primary-lightest: #fff;
+  --ifm-background-color: #17191c;
+  --ifm-background-surface-color: #22252a;
+  --ifm-color-content: #fafafb;
+  --ifm-color-content-secondary: #b8bbc2;
+  --ifm-navbar-background-color: #17191c;
+  --ifm-footer-background-color: #22252a;
+  --ifm-color-emphasis-200: #393c42;
+  --ifm-code-background: #292c31;
+  --docusaurus-highlighted-code-line-bg: rgba(255,255,255,.08);
 }
-
-/* Subtle cosmic wash behind the page, matching the app's bg-stage. */
-[data-theme='dark'] body {
-  background-image:
-    radial-gradient(60% 45% at 8% 0%, rgba(242, 166, 62, 0.12) 0%, transparent 60%),
-    radial-gradient(45% 40% at 92% 6%, rgba(122, 110, 224, 0.12) 0%, transparent 60%);
-  background-attachment: fixed;
-  background-repeat: no-repeat;
-}
-
-[data-theme='dark'] .navbar {
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(245, 239, 230, 0.08);
-}
-
-[data-theme='dark'] .menu,
-[data-theme='dark'] .navbar-sidebar {
-  background-color: transparent;
-}
-
-[data-theme='dark'] .card {
-  background-color: #13072b;
-  border: 1px solid rgba(245, 239, 230, 0.08);
-}
-
-/* Headings use the display weight + tight tracking across both themes. */
-h1,
-h2,
-h3,
-.markdown h1,
-.markdown h2,
-.markdown h3 {
-  letter-spacing: var(--ifm-heading-letter-spacing);
-}
-
-.navbar__title {
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-/* Pill-shaped buttons echo the app's CTA hierarchy. */
-.button {
-  border-radius: 999px;
-  font-weight: 600;
-}
-
-/* Sunset gradient accent reused for the intro page's lead line. */
-.ophis-gradient-text {
-  background: var(--ophis-sunset);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+body { font-variant-numeric: lining-nums tabular-nums; }
+h1, h2, h3 { letter-spacing: -.025em; }
+.navbar { border-bottom: 1px solid var(--ifm-color-emphasis-200); box-shadow: none; }
+.navbar__title { font-weight: 500; letter-spacing: -.02em; }
+[data-theme='dark'] .navbar__logo { filter: invert(1); }
+.footer { --ifm-footer-color: var(--ifm-color-content-secondary); --ifm-footer-link-color: var(--ifm-color-content-secondary); --ifm-footer-title-color: var(--ifm-color-content); }
+.button { border-radius: 12px; font-weight: 500; }
+.card { border: 1px solid var(--ifm-color-emphasis-200); border-radius: 16px; box-shadow: none; }
+.ophis-gradient-text { color: var(--ifm-color-primary); font-style: italic; }
+:focus-visible { outline: 2px solid var(--ifm-color-primary); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
 /* Audit-methodology cards on /audits. Logo stages stay dark in both themes so

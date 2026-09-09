@@ -175,16 +175,15 @@ const config: Config = {
       {property: 'og:type', content: 'website'},
     ],
     colorMode: {
-      // The Ophis brand is dark-first (cosmic palette). Default to dark;
-      // the toggle still works for users who prefer light.
-      defaultMode: 'dark',
+      // Default to the approved Steep surface; retain the theme preference.
+      defaultMode: 'light',
       respectPrefersColorScheme: false,
     },
     navbar: {
       title: 'Ophis Docs',
       logo: {
         alt: 'Ophis',
-        src: 'img/ophis-icon.svg',
+        src: 'ophis-mono.svg',
       },
       items: [
         {to: '/getting-started', label: 'Getting started', position: 'left'},
@@ -197,7 +196,7 @@ const config: Config = {
       ],
     },
     footer: {
-      style: 'dark',
+      style: 'light',
       links: [
         {
           title: 'Documentation',
