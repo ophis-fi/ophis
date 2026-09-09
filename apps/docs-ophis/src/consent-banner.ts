@@ -20,7 +20,7 @@ declare global {
 
 const STORAGE_KEY = 'ophis_consent'
 const BANNER_ID = 'ophis-consent'
-const SAFFRON = '#f2a63e'
+const SAFFRON = '#17191c'
 
 function applyConsent(value: Consent): void {
   try {
@@ -37,11 +37,11 @@ function makeButton(label: string, value: Consent, primary: boolean, onDone: () 
   b.textContent = label
   b.style.cssText =
     'cursor:pointer;border-radius:9px;padding:8px 16px;font:600 14px system-ui,sans-serif;border:1px solid ' +
-    (primary ? SAFFRON : 'rgba(255,255,255,.22)') +
+    (primary ? SAFFRON : '#d9d9dc') +
     ';background:' +
     (primary ? SAFFRON : 'transparent') +
     ';color:' +
-    (primary ? '#0a0a0a' : '#e8e8e8')
+    (primary ? '#fff' : '#17191c')
   b.addEventListener('click', () => {
     applyConsent(value)
     onDone()
@@ -65,7 +65,7 @@ function mountBanner(): void {
   bar.setAttribute('role', 'dialog')
   bar.setAttribute('aria-label', 'Analytics consent')
   bar.style.cssText =
-    'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid rgba(242,166,62,.28);border-radius:14px;background:rgba(10,10,10,.92);backdrop-filter:blur(8px);color:#e8e8e8;font:14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)'
+    'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid #d9d9dc;border-radius:14px;background:#fff;color:#17191c;font:14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(23,25,28,.08)'
 
   const txt = document.createElement('span')
   txt.style.cssText = 'flex:1 1 240px;min-width:200px'

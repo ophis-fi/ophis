@@ -54,18 +54,10 @@ const config: Config = {
     locales: ['en'],
   },
 
-  // Geist — self-hosted (static/fonts/geist-sans-variable.woff2), same family
-  // the app and landing use, no longer fetched from Google Fonts. This removes a
-  // render-blocking third-party stylesheet and font origin. The @font-face is
-  // declared in src/css/custom.css; a system fallback stack there keeps the site
-  // readable if the woff2 is unreachable.
-  // NOTE: Geist Mono is NOT self-hosted yet. The repo ships only the sans woff2,
-  // so until a geist-mono-variable.woff2 (same Vercel OFL source) is added to
-  // static/fonts/ and the placeholder @font-face in custom.css is enabled,
-  // code/monospace text uses the ui-monospace fallback stack in custom.css.
+  // Inter is self-hosted; headings and code use system fonts in custom.css.
   headTags: [
     // Preload the self-hosted body font so first paint is not gated on it.
-    {tagName: 'link', attributes: {rel: 'preload', href: '/fonts/geist-sans-variable.woff2', as: 'font', type: 'font/woff2', crossorigin: 'anonymous'}},
+    {tagName: 'link', attributes: {rel: 'preload', href: '/fonts/inter-variable.woff2', as: 'font', type: 'font/woff2', crossorigin: 'anonymous'}},
     // GA4 (gtag) + Consent Mode v2, REGION-SCOPED. Done manually rather than via
     // the preset `gtag` option so the consent-default is GUARANTEED to run before
     // gtag('config') (so GA4 never sets cookies pre-consent). GA4 Enhanced
@@ -108,7 +100,7 @@ const config: Config = {
       }),
     },
   ],
-  // Geist is now self-hosted via @font-face in src/css/custom.css (see the
+  // Inter is self-hosted via @font-face in src/css/custom.css (see the
   // headTags preload above); no external font stylesheet is loaded.
 
   // Client-side opt-in/opt-out consent banner. Runs on every page; upgrades or
@@ -175,16 +167,15 @@ const config: Config = {
       {property: 'og:type', content: 'website'},
     ],
     colorMode: {
-      // The Ophis brand is dark-first (cosmic palette). Default to dark;
-      // the toggle still works for users who prefer light.
-      defaultMode: 'dark',
+      // Default to the approved Steep surface; retain the theme preference.
+      defaultMode: 'light',
       respectPrefersColorScheme: false,
     },
     navbar: {
       title: 'Ophis Docs',
       logo: {
         alt: 'Ophis',
-        src: 'img/ophis-icon.svg',
+        src: 'ophis-mono.svg',
       },
       items: [
         {to: '/getting-started', label: 'Getting started', position: 'left'},
@@ -197,7 +188,7 @@ const config: Config = {
       ],
     },
     footer: {
-      style: 'dark',
+      style: 'light',
       links: [
         {
           title: 'Documentation',
