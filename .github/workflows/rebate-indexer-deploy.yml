@@ -1,15 +1,15 @@
-name: Ophis Robinhood health verification
+name: Ophis Robinhood consensus diagnostics (read-only)
 on:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: ophis-infra-repair
+  group: ophis-rbh-consensus-diagnostics
   cancel-in-progress: false
 jobs:
   repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 8
     environment: production
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -19,7 +19,7 @@ jobs:
           authkey: ${{ secrets.TS_AUTHKEY }}
           tags: tag:ci
 
-      - name: Verify driver health remains stable on Cadia
+      - name: Collect consensus metrics and upstream status on Cadia
         env:
           SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
           SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
