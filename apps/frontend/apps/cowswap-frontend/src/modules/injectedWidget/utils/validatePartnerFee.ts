@@ -1,4 +1,5 @@
 import { isTruthy } from '@cowprotocol/common-utils'
+import { DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK } from '@cowprotocol/common-const'
 import { areAddressesEqual, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { PartnerFee, resolveFlexibleConfig, resolveFlexibleConfigValues, TradeType } from '@cowprotocol/widget-lib'
 import { getAddress } from '@ethersproject/address'
@@ -29,8 +30,19 @@ export function validatePartnerFee(input: PartnerFee | undefined): string[] | un
   // type), so pair them per (chain, trade type) rather than flattening each: a
   // 100 bps fee to the Ophis Safe on one chain next to 50 bps to a third party
   // on another is valid.
-  const stackedFeeTooHigh = Object.values(SupportedChainId)
-    .filter((v): v is SupportedChainId => typeof v === 'number')
+  // Every chain the fee could resolve on: the SDK enum, the Ophis-operated chains
+  // (10/130/4663 are deliberately NOT in that enum) and any chain the host named
+  // in its own per-network maps.
+  const configuredChainIds = [input.bps, input.recipient].flatMap((v) =>
+    typeof v === 'object' && v !== null ? Object.keys(v).map(Number).filter(Number.isFinite) : [],
+  )
+  const candidateChainIds = new Set<number>([
+    ...Object.values(SupportedChainId).filter((v): v is SupportedChainId => typeof v === 'number'),
+    ...Object.keys(DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK).map(Number),
+    ...configuredChainIds,
+  ])
+  const stackedFeeTooHigh = [...candidateChainIds]
+    .map((chainId) => chainId as SupportedChainId)
     .some((chainId) =>
       Object.values(TradeType).some((tradeType) => {
         const bps = resolveFlexibleConfig(input.bps, chainId, tradeType)

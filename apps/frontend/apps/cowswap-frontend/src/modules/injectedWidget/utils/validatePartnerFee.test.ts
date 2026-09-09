@@ -265,6 +265,16 @@ describe('validatePartnerFee()', () => {
       ).toEqual(['Partner fee paid to your own address can not be more than 90 BPS: Ophis adds its own fee on top.'])
     })
 
+    it('applies the 90 BPS third-party ceiling on Ophis-operated chains outside the SDK enum too', () => {
+      expect(validatePartnerFee({ bps: { 130: 95 }, recipient: THIRD_PARTY })).toEqual([
+        'Partner fee paid to your own address can not be more than 90 BPS: Ophis adds its own fee on top.',
+      ])
+      expect(validatePartnerFee({ bps: { 4663: 95 }, recipient: THIRD_PARTY })).toEqual([
+        'Partner fee paid to your own address can not be more than 90 BPS: Ophis adds its own fee on top.',
+      ])
+      expect(validatePartnerFee({ bps: { 130: 95 }, recipient: OPHIS_SAFE })).toBe(undefined)
+    })
+
     it('keeps the plain 100 BPS ceiling for a fee paid to the Ophis Safe (the widget-react wrapper pins it)', () => {
       expect(validatePartnerFee({ bps: 100, recipient: OPHIS_SAFE })).toBe(undefined)
       expect(validatePartnerFee({ bps: 101, recipient: OPHIS_SAFE })).toEqual(['Partner fee can not be more than 100 BPS!'])

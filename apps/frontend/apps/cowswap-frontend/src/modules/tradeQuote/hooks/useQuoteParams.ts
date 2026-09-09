@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { DEFAULT_APP_CODE } from '@cowprotocol/common-const'
 import { useDebounce } from '@cowprotocol/common-hooks'
@@ -16,6 +16,7 @@ import { Nullish } from 'types'
 import { AppDataInfo, useAppData } from 'modules/appData'
 import { useIsWrapOrUnwrap, useDerivedTradeState } from 'modules/trade'
 import { useTradeSlippageValueAndType } from 'modules/tradeSlippage'
+import { sumVolumeFeeBps } from 'modules/appData/utils/sumVolumeFeeBps'
 import { useVolumeFee } from 'modules/volumeFee'
 
 import { useIsProviderNetworkDeprecated } from 'common/hooks/useIsProviderNetworkDeprecated'
@@ -67,7 +68,7 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
   const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated()
 
   const state = useDerivedTradeState()
-  const volumeFee = useVolumeFee()
+  const pipelineVolumeFee = useVolumeFee()
   const tradeSlippage = useTradeSlippageValueAndType()
 
   const userSlippageBps = tradeSlippage.type === 'user' ? tradeSlippage.value : undefined
@@ -86,6 +87,17 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
 
   const receiver = useQuoteParamsRecipient()
   const appDataDoc = appData?.doc
+  // Quote with the flat fee the order will actually SIGN: with a third-party host
+  // fee the appData stacks it with the Ophis 1 bp base, and quoting the pipeline's
+  // single entry would leave the shown buy amount 1 bp optimistic.
+  const signedVolumeBps = sumVolumeFeeBps(appDataDoc?.metadata?.partnerFee)
+  const volumeFee = useMemo(
+    () =>
+      pipelineVolumeFee && signedVolumeBps !== undefined && signedVolumeBps !== pipelineVolumeFee.volumeBps
+        ? { ...pipelineVolumeFee, volumeBps: signedVolumeBps }
+        : pipelineVolumeFee,
+    [pipelineVolumeFee, signedVolumeBps],
+  )
 
   // eslint-disable-next-line complexity
   const params = useSafeMemo(() => {

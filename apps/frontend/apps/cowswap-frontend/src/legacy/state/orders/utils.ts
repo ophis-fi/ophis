@@ -2,6 +2,10 @@ import { ONE_HUNDRED_PERCENT, PENDING_ORDERS_BUFFER, ZERO, ZERO_FRACTION } from 
 import { bpsToPercent, buildPriceFromCurrencyAmounts, getWrappedToken, isSellOrder } from '@cowprotocol/common-utils'
 import type { LatestAppDataDocVersion } from '@cowprotocol/cow-sdk'
 import { EnrichedOrder, getPartnerFeeBps, OrderKind, OrderStatus } from '@cowprotocol/cow-sdk'
+
+// Pure helper (no imports of its own), reached by path on purpose: the appData
+// barrel pulls hooks/atoms this legacy util must not depend on at load time.
+import { sumVolumeFeeBps } from 'modules/appData/utils/sumVolumeFeeBps'
 import { Currency, CurrencyAmount, Percent, Price, Token } from '@cowprotocol/currency'
 import { UiOrderType } from '@cowprotocol/types'
 
@@ -391,7 +395,11 @@ export function getOrderLimitPriceWithPartnerFee(order: LimitPriceOrder): Price<
 export function getOrderVolumeFee(fullAppData: EnrichedOrder['fullAppData']): number | undefined {
   const appData = decodeAppData(fullAppData) as LatestAppDataDocVersion
 
-  return getPartnerFeeBps(appData?.metadata?.partnerFee)
+  // Every stacked flat Volume entry (a host widget fee + the Ophis 1 bp base),
+  // not only the first one the SDK helper reads; the SDK stays the fallback for
+  // shapes without a Volume entry.
+  const partnerFee = appData?.metadata?.partnerFee
+  return sumVolumeFeeBps(partnerFee) ?? getPartnerFeeBps(partnerFee)
 }
 
 /**
