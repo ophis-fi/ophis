@@ -8,6 +8,7 @@ test('swap story shows the sample USDC -> ETH trade with limit and caption', asy
   await expect(story.locator('.story-output')).toContainText('0.003996')
   await expect(story.locator('.story-output')).toContainText('ETH')
   await expect(story.locator('.story-limit .story-value')).toContainText('10')
+  await expect(story.locator('.story-limit')).toContainText('Partial approval selected')
   await expect(story.locator('.story-caption')).toContainText('Illustrative trade')
   await expect(story.locator('.story-caption')).toContainText('No wallet connection')
   // Token logos resolve.
