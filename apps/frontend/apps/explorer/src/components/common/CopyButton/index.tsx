@@ -41,7 +41,7 @@ const CopiedTooltip = styled.div`
   font-weight: 500;
   font-size: 1.2rem;
   border: 1px solid ${Color.explorer_green1};
-  background-color: ${Color.explorer_green2};
+  background-color: ${Color.explorer_greenOpacity};
   padding: 0.5rem;
   border-radius: 0.4rem;
   z-index: 9999;

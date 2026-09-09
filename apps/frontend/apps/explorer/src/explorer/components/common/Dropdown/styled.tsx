@@ -60,7 +60,7 @@ export const DropdownItemCSS = css<DropdownItemProps>`
   user-select: none;
 
   &.active {
-    background-color: ${Color.explorer_gradient2};
+    background-color: ${Color.explorer_bgHighlighted};
     color: ${Color.explorer_textPrimary};
     font-weight: 600;
   }
@@ -77,7 +77,7 @@ export const DropdownItemCSS = css<DropdownItemProps>`
   }
 
   &:hover {
-    background-color: ${Color.explorer_gradient1};
+    background-color: ${Color.explorer_bgInputLighter};
   }
 
   &:disabled,
