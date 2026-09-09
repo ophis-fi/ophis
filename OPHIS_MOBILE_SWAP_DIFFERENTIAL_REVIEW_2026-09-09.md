@@ -47,6 +47,8 @@ The mandatory independent Cyber review rejected d52860ab with three actionable f
 2. **High: finite DAI requests could become unlimited.** Switching from another ERC20 preserves partial mode even though the DAI toggle was hidden. DAI calldata has no amount field. Reject finite DAI-like permit generation, reject historical finite-key DAI cache hits, and route finite DAI approval through an exact on-chain transaction.
 3. **Medium: ethers getChainId was not a live wallet check.** Its fixed-network cache can still report chain 1 while eth_chainId reports chain 10. Read the live wallet RPC directly and retain explicit chainId on submission. A regression uses the real installed Web3Provider and proves the cached/live difference.
 
+Final sharp-edges verification also reproduced a frozen-confirmation race: an initially sufficient allowance produces a zero approval amount, but live Safe bundling can become required after allowance is consumed. The limit gate now applies whenever the frozen context needs approval **or** live bundling is selected, preventing an unintended approve(0). Its regression failed before the one-line fix and passes afterward.
+
 A transaction already handed to a wallet cannot be cancelled by a React listener. The final live-chain check and submitted chainId together bind the intended network; a wallet must honor the transaction's chainId. No claim is made that the frontend can secure a malicious wallet.
 
 ## Reachability, history and false-positive checks
@@ -64,7 +66,7 @@ A transaction already handed to a wallet cannot be cancelled by a React listener
 
 ## Validation
 
-- App security/mobile suite: 199 tests across 19 suites pass using the Nx CI command.
+- App security/mobile suite: 200 tests across 19 suites pass using the Nx CI command.
 - Permit amount/cache/DAI suite: 8 tests pass. Initial mobile media-query test: 1 test passes.
 - Frontend typecheck and changed-file ESLint pass; internal-module import warnings remain (including tests matching existing module patterns), no lint errors.
 - Semgrep security-audit + secrets: 62 rules over 65 changed production/workflow files, zero findings after all Cyber remediations.

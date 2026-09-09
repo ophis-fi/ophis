@@ -103,7 +103,7 @@ export function useHandleOrderPlacement(
   const tradeFn = useCallback(async () => {
     const { amountToApprove, needsApproval, postOrderParams } = tradeContext
     if (
-      needsApproval &&
+      (needsApproval || isSafeBundle) &&
       (!amountToApprove.currency.equals(postOrderParams.inputAmount.currency) ||
         amountToApprove.lessThan(postOrderParams.inputAmount))
     ) {
