@@ -8,7 +8,7 @@ import { OPHIS_FLAT_VOLUME_FEE_ENABLED } from 'ophis/partnerFeeDefault'
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 
 import { safeAppFeeAtom } from '../state/safeAppFeeAtom'
-import { hostFeeKindAtom, isBoostedTradeAtom } from '../state/volumeFeeAtom'
+import { hostFeeKindAtom, isBoostedTradeAtom, widgetPartnerFeeAtom } from '../state/volumeFeeAtom'
 
 export interface VolumeFeeTooltip {
   content: string | undefined
@@ -20,6 +20,8 @@ export function useVolumeFeeTooltip(): VolumeFeeTooltip {
   const isBoosted = useAtomValue(isBoostedTradeAtom)
   const widgetParams = useInjectedWidgetParams()
   const hostFee = useAtomValue(hostFeeKindAtom)
+  // The host's fee resolved for THIS route; undefined when its bps resolve to 0.
+  const hostVolumeFee = useAtomValue(widgetPartnerFeeAtom)
 
   return useMemo(() => {
     // Boosted-token flagship (e.g. ALEPH): the boosted fee wins over a Safe-App fee in
@@ -41,7 +43,11 @@ export function useVolumeFeeTooltip(): VolumeFeeTooltip {
     // and the row shows their sum, so the host's custom label/tooltip must not
     // present the combined rate as the host's own charge. The wrapper path (recipient
     // = Ophis) keeps the host's wording: there the explicit fee IS the whole fee.
+    // A third-party host whose bps resolve to 0 on this route charges nothing
+    // (widgetPartnerFeeAtom is undefined, no host entry is signed): only the Ophis
+    // fee applies, so neither the stacked copy nor the host's label may claim it.
     if (hostFee === 'third-party') {
+      if (!hostVolumeFee) return { content: t`Ophis fee, applied only if the trade is executed.`, label: t`Fees` }
       const hostLabel = widgetParams.content?.feeLabel || t`partner fee`
       return {
         content: t`Includes the ${hostLabel} charged by this app and the Ophis fee, applied only if the trade is executed.`,
@@ -53,5 +59,5 @@ export function useVolumeFeeTooltip(): VolumeFeeTooltip {
       content: widgetParams.content?.feeTooltipMarkdown,
       label: widgetParams.content?.feeLabel || t`Partner fee`,
     }
-  }, [safeAppFee, isBoosted, widgetParams, hostFee])
+  }, [safeAppFee, isBoosted, widgetParams, hostFee, hostVolumeFee])
 }
