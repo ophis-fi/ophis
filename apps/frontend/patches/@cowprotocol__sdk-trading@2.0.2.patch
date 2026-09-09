@@ -11,7 +11,27 @@ index 6a95e9f..d90c40d 100644
  var SIGN_SCHEME_MAP = {
    [import_sdk_order_book.EcdsaSigningScheme.EIP712]: import_sdk_order_book.SigningScheme.EIP712,
    [import_sdk_order_book.EcdsaSigningScheme.ETHSIGN]: import_sdk_order_book.SigningScheme.ETHSIGN
-@@ -596,7 +596,11 @@ async function buildAppData({ slippageBps, appCode, orderClass: orderClassName,
+@@ -85,12 +85,18 @@ function getPartnerFeeBps(partnerFee) {
+   if ("volumeBps" in partnerFee) {
+     return partnerFee.volumeBps;
+   }
+   if (Array.isArray(partnerFee)) {
++    // Ophis: settlement charges EVERY Volume entry (a host widget fee stacked on the
++    // 1 bp base), so the buy limit must be sized from their SUM, not the first one.
++    let total = 0;
++    let seen = false;
+     for (const fee of partnerFee) {
+       if ("volumeBps" in fee) {
+-        return fee.volumeBps;
++        total += fee.volumeBps;
++        seen = true;
+       }
+     }
++    return seen ? total : void 0;
+   }
+   return void 0;
+ }
+@@ -596,7 +602,11 @@ async function buildAppData({ slippageBps, appCode, orderClass: orderClassName,
    const baseMetadata = {
      quote: quoteParams,
      orderClass,
@@ -24,7 +44,7 @@ index 6a95e9f..d90c40d 100644
      ...shouldAddDefaultUtm ? { utm: getDefaultUtmParams() } : {}
    };
    const doc = await metadataApiSdk.generateAppDataDoc(
-@@ -623,7 +627,13 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
+@@ -623,7 +633,13 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
      metadata: {
        ..._doc.metadata,
        ...appDataOverride.metadata?.hooks ? { hooks: {} } : {},
@@ -52,7 +72,27 @@ index 3e0c67f..06e66c6 100644
  var SIGN_SCHEME_MAP = {
    [EcdsaSigningScheme.EIP712]: SigningScheme.EIP712,
    [EcdsaSigningScheme.ETHSIGN]: SigningScheme.ETHSIGN
-@@ -560,7 +560,11 @@ async function buildAppData({ slippageBps, appCode, orderClass: orderClassName,
+@@ -31,12 +31,18 @@ function getPartnerFeeBps(partnerFee) {
+   if ("volumeBps" in partnerFee) {
+     return partnerFee.volumeBps;
+   }
+   if (Array.isArray(partnerFee)) {
++    // Ophis: settlement charges EVERY Volume entry (a host widget fee stacked on the
++    // 1 bp base), so the buy limit must be sized from their SUM, not the first one.
++    let total = 0;
++    let seen = false;
+     for (const fee of partnerFee) {
+       if ("volumeBps" in fee) {
+-        return fee.volumeBps;
++        total += fee.volumeBps;
++        seen = true;
+       }
+     }
++    return seen ? total : void 0;
+   }
+   return void 0;
+ }
+@@ -560,7 +566,11 @@ async function buildAppData({ slippageBps, appCode, orderClass: orderClassName,
    const baseMetadata = {
      quote: quoteParams,
      orderClass,
@@ -65,7 +105,7 @@ index 3e0c67f..06e66c6 100644
      ...shouldAddDefaultUtm ? { utm: getDefaultUtmParams() } : {}
    };
    const doc = await metadataApiSdk.generateAppDataDoc(
-@@ -587,7 +591,13 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
+@@ -587,7 +597,13 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
      metadata: {
        ..._doc.metadata,
        ...appDataOverride.metadata?.hooks ? { hooks: {} } : {},

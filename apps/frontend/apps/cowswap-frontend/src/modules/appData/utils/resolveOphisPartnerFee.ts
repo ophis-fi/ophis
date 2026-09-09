@@ -1,6 +1,10 @@
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
-import { OPHIS_PARTNER_FEE_RECIPIENT, ophisAppDataPartnerFeeForChain } from 'ophis/partnerFeeDefault'
+import {
+  OPHIS_PARTNER_FEE_RECIPIENT,
+  ophisAppDataPartnerFeeForChain,
+  ophisVolumeOnlyFloorFee,
+} from 'ophis/partnerFeeDefault'
 
 import { shouldEmitOphisPartnerFee } from '../updater/shouldEmitOphisPartnerFee'
 
@@ -77,7 +81,18 @@ export function resolveOphisPartnerFee<TWidgetFee, TVolumeFee>(
   // return mirrors what `??` produces at the swap call site.
   const gated = shouldEmitOphisPartnerFee(chainId) ? widgetPartnerFee : undefined
   const ophis = ophisAppDataPartnerFeeForChain(gated, chainId, isStablePair)
-  if (ophis === undefined) return volumeFee
+  if (ophis === undefined) {
+    // Volume-only (Ophis-operated) chain: the PI shape is suppressed and the Ophis
+    // floor normally rides the volumeFee pipeline -- which a host's own fee DISPLACES
+    // (resolveVolumeFeeForPair skips ophisVolumeOnlyFloorFee whenever a widget fee
+    // exists). Stack the floor behind a third-party host fee: the sovereign backend
+    // floors the entries that are PRESENT and never injects one, so without this an
+    // allowlisted embedder's orders would carry no Ophis entry at all. Host first,
+    // same array-order rationale as the hosted stack below.
+    const floor =
+      hostFee === 'third-party' && isThirdPartyVolumeFee(volumeFee) && ophisVolumeOnlyFloorFee(chainId, isStablePair)
+    return floor ? ([volumeFee, floor] as unknown as TWidgetFee) : volumeFee
+  }
   // Stack AFTER the per-chain gate: that gate swaps in the stable-pair variant by
   // reference equality, so a new array must only be built here. The host entry goes
   // FIRST, for two reasons that both key on array order:
