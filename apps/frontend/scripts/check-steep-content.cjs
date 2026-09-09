@@ -10,6 +10,21 @@ const artifacts = join(tmpdir(), 'ophis-steep-content-review')
 mkdirSync(artifacts, { recursive: true })
 const lightLogos = ['/ophis-wordmark.svg', '/ophis-icon-mono-dark.svg', '/ophis-logo-alt.svg']
 
+// Check the DOM metadata contract; physical browser toolbar rendering is platform-owned.
+async function checkThemeColor(page, dark) {
+  const expected = dark ? '#17191c' : '#ffffff'
+  await page.waitForFunction(
+    (color) => document.querySelector('meta[name="theme-color"]')?.getAttribute('content')?.toLowerCase() === color,
+    expected,
+  )
+  assert.equal(await page.locator('meta[name="theme-color"]').count(), 1, 'ambiguous duplicate theme-color tags')
+  assert.equal(
+    await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme),
+    dark ? 'dark' : 'light',
+    'theme-color must match the effective route theme',
+  )
+}
+
 async function check(page, dark, label) {
   const googleRequests = []
   const localFonts = []
@@ -32,6 +47,7 @@ async function check(page, dark, label) {
   )
   await page.goto(base + '/#/brand', { waitUntil: 'domcontentloaded' })
   await page.locator('#logos img').first().waitFor()
+  await checkThemeColor(page, dark)
   assert.equal(
     await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme),
     dark ? 'dark' : 'light',
@@ -87,6 +103,7 @@ async function check(page, dark, label) {
 
   await page.goto(base + '/#/rewards', { waitUntil: 'domcontentloaded' })
   await page.locator('[class*=ProgressTrack]').first().waitFor()
+  await checkThemeColor(page, dark)
   const tracks = await page.locator('[class*=ProgressTrack]').evaluateAll((elements) =>
     elements.map((track) => ({
       background: getComputedStyle(track).backgroundColor,
@@ -114,6 +131,7 @@ async function check(page, dark, label) {
     .screenshot({ path: join(artifacts, label + '-reward.png') })
   await page.goto(base + '/#/1/swap/USDC/ETH', { waitUntil: 'domcontentloaded' })
   await page.locator('#input-currency-input').waitFor()
+  await checkThemeColor(page, false)
   await page.evaluate(() => document.fonts.ready)
   assert.deepEqual(googleRequests, [], 'active chrome requested Google Fonts')
   assert.ok(localFonts.includes(200), 'local Inter font did not return HTTP 200')
@@ -132,7 +150,17 @@ async function check(page, dark, label) {
   })
   for (const description of descriptions)
     assert.match(description || '', /tokens and amount, review the quote, and sign/i)
-  console.log('PASS', label, 'logo assets, local Inter, no Google Fonts, empty reward tracks and shell descriptions')
+  // Same-document navigation verifies restoration after leaving the forced-light swap.
+  await page.evaluate(() => {
+    location.hash = '/rewards'
+  })
+  await page.locator('[class*=ProgressTrack]').first().waitFor()
+  await checkThemeColor(page, dark)
+  console.log(
+    'PASS',
+    label,
+    'logo assets, local Inter, no Google Fonts, empty reward tracks, shell descriptions and route theme-color restoration',
+  )
 }
 
 ;(async () => {
