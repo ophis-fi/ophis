@@ -12,28 +12,7 @@ const widgetMode = {
   isIframe: isIframe(),
 }
 
-// Cosmic-palette anchors for the EMBEDDED WIDGET dark surfaces (sourced from
-// the new design mockup at /Users/scep/Desktop/website mockups/new-layout-website.svg).
-// Widget-only: the standalone app uses STEEP below.
-const COSMIC = {
-  bgDeep: '#02000d', // page background
-  bgPaper: '#13072B', // card surface — purple-tinted near-black
-  bgPaperHover: '#1A0F36',
-  bgInput: '#0B0421',
-  bgInputHover: '#100A2C',
-  textPrimary: '#F5EFE6', // cream
-  textMuted: '#A8A2B8', // lavender-grey
-  textDisabled: '#5A5470',
-  indigo: '#7A6EE0', // info accent
-  indigoStrong: '#4F1DCA',
-}
-
-const SUNSET = {
-  primary: ophisColors.brand[60],
-  primaryLight: ophisColors.brand[80],
-}
-
-// Steep editorial anchors for the STANDALONE app (approved reference:
+// Steep editorial anchors for the app and default embedded widget (approved reference:
 // DESIGN.md + expansion/app.html + styles.css). Mirrors
 // `--ophis-steep-*` in ophis/styles.css.
 const STEEP = {
@@ -54,86 +33,8 @@ const STEEP = {
   darkHair: '#2e333a',
 }
 
-function gregOverrides(darkMode: boolean): Record<string, string> {
-  if (darkMode) {
-    return {
-      // Brand — saffron sunset, matches the rest of the Ophis brand
-      // (header wordmark, hero accent, ds/ primitives, business page).
-      // Previously this was `ophisColors.brand[50]` (#FF7A60 coral) which
-      // made the swap form look noticeably different from every other
-      // Ophis surface. Now drives `--cow-color-primary` + derived
-      // PRIMARY_LIGHTER / DARKER / PAPER / OPACITY_* variables so the
-      // swap form, token selector, chain selector, wallet modal, and
-      // every other cowswap component re-color to match.
-      primary: SUNSET.primary,
-      buttonTextCustom: ophisColors.neutral[100],
-      // State colors
-      success: ophisColors.green[40],
-      successDark: ophisColors.green[40],
-      successLight: ophisColors.green[50],
-      warning: ophisColors.yellow[30],
-      warningDark: ophisColors.yellow[30],
-      alert: ophisColors.yellow[30],
-      alertDark: ophisColors.yellow[30],
-      danger: ophisColors.red[40],
-      dangerDark: ophisColors.red[40],
-      error: ophisColors.red[40],
-      errorDark: ophisColors.red[40],
-      // Info — cowswap uses blue here (drives DCA banner + hint
-      // backgrounds). Override to cosmic indigo so the swap-form
-      // banners stop looking like CoW.
-      info: COSMIC.indigo,
-      infoDark: COSMIC.indigoStrong,
-      // ── Ophis cosmic surfaces ───────────────────────────────────
-      // These keys feed `--cow-color-paper`, `--cow-color-background`,
-      // `--cow-color-text`, etc. via ThemeColorVars, so overriding
-      // them cascades through every cowswap component (cards, input
-      // rows, modals).
-      paper: COSMIC.bgPaper,
-      background: COSMIC.bgDeep,
-      paperDark: COSMIC.bgPaper,
-      darkerDark: COSMIC.bgDeep,
-      text: COSMIC.textPrimary,
-      text1: COSMIC.textPrimary,
-      text4: COSMIC.textMuted,
-      textDark: COSMIC.textPrimary,
-      disabledText: COSMIC.textDisabled,
-      disabledTextDark: COSMIC.textDisabled,
-      grey1: COSMIC.bgPaperHover,
-      grey1Dark: COSMIC.bgPaperHover,
-      bg2: COSMIC.bgInput,
-      bg3: COSMIC.bgInput,
-      bg5: COSMIC.bgInputHover,
-      bg8: COSMIC.bgDeep,
-      blueDark2: COSMIC.bgInput,
-      blueDark3: COSMIC.bgPaper,
-      blueDark4: COSMIC.bgDeep,
-      blueLight1: COSMIC.textPrimary,
-    }
-  }
-  return {
-    // Brand — saffron sunset (slightly deeper variant for better
-    // light-mode contrast). Same rationale as the dark-mode override:
-    // matches every Ophis-native surface that uses `--sunset` (#f2a63e).
-    primary: SUNSET.primaryLight,
-    buttonTextCustom: ophisColors.white,
-    // State colors
-    success: ophisColors.green[50],
-    successDark: ophisColors.green[40],
-    successLight: ophisColors.green[50],
-    warning: ophisColors.yellow[40],
-    warningLight: ophisColors.yellow[40],
-    alert: ophisColors.yellow[40],
-    alertLight: ophisColors.yellow[40],
-    danger: ophisColors.red[50],
-    error: ophisColors.red[50],
-    info: ophisColors.blue[50],
-    infoDark: ophisColors.blue[60],
-  }
-}
-
 /**
- * Standalone-app overrides — approved Steep semantic tokens.
+ * Default app and widget palette — approved Steep semantic tokens.
  * Mirrors `mobileSwapTheme.constants.ts` for light (the validated Steep
  * reference) without setting `isOphisMobileSwap`, which must stay
  * swap-only. Dark resolves to a neutral-ink variant (no cosmic purple,
@@ -230,10 +131,8 @@ function steepOverrides(darkMode: boolean): Record<string, string> {
 
 export function getCowswapTheme(darkmode: boolean): CoWSwapTheme {
   const base = baseTheme(darkmode ? 'dark' : 'light')
-  // Embedded widget keeps the pre-Steep behavior; the standalone app
-  // gets the approved Steep semantic tokens. Deliberately never sets
-  // `isOphisMobileSwap` here — that flag is swap-only.
-  const overrides = isWidget ? gregOverrides(darkmode) : steepOverrides(darkmode)
+  // Hosts can still supply their own palette through mapWidgetTheme.
+  const overrides = steepOverrides(darkmode)
   return {
     ...base,
     ...overrides,

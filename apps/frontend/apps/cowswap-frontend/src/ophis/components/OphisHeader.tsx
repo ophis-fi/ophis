@@ -39,15 +39,15 @@ const HeaderStack = styled.div<{ $transparent: boolean }>`
 
 const Announcement = styled.a`
   width: 100%;
-  min-height: 38px;
+  min-height: 44px;
   padding: 8px 20px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: #fff;
-  background: linear-gradient(90deg, #7b2cff, #c92cf2 48%, #f2a63e);
+  color: #5d2a1a;
+  background: #fbe1d1;
   font: 600 13px/1.3 ${STEEP_FONT.body};
   text-align: center;
   text-decoration: none;
@@ -63,7 +63,7 @@ const Announcement = styled.a`
   }
 
   &:focus-visible {
-    outline: 2px solid #fff;
+    outline: 2px solid #5d2a1a;
     outline-offset: -4px;
   }
 
@@ -77,7 +77,7 @@ const AnnouncementLogo = styled.img`
   width: 16px;
   height: 21px;
   flex: 0 0 auto;
-  filter: drop-shadow(0 1px 3px rgba(33, 0, 52, 0.35));
+  filter: brightness(0);
 
   @media (max-width: 600px) {
     width: 14px;
