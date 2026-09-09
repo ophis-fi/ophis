@@ -6604,3 +6604,31 @@ msgstr "Dirección de la cartera Solana"
 #: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
 msgid "Bitcoin wallet address"
 msgstr "Dirección de la cartera Bitcoin"
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Choose your tokens. Review your limits. Make your next move."
+msgstr "Elige tus tokens. Revisa tus límites. Da tu siguiente paso."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Choose what to receive."
+msgstr "Elige qué recibir."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Find the asset on the right network."
+msgstr "Encuentra el activo en la red correcta."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Review the details."
+msgstr "Revisa los detalles."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Amounts, fees, and destination, together."
+msgstr "Importes, comisiones y destino, en un solo lugar."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Set the spending limit."
+msgstr "Establece el límite de gasto."
+
+#: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
+msgid "Check the exact approval before signing."
+msgstr "Comprueba el importe exacto de la autorización antes de firmar."

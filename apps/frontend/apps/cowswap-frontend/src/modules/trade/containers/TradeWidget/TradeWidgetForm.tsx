@@ -11,6 +11,7 @@ import { useIsSafeWallet, useWalletDetails, useWalletInfo } from '@cowprotocol/w
 import { Trans, useLingui } from '@lingui/react/macro'
 import { CoinbaseStockContext } from 'ophis/components/CoinbaseStockContext'
 import { RobinhoodAssetContext } from 'ophis/components/RobinhoodAssetContext'
+import { useIsMobileSwap } from 'ophis/hooks/useIsMobileSwap'
 import { MobileSwapHeading } from 'ophis/mobile/MobileSwapHeading.pure'
 import { MobileSwapReveal } from 'ophis/mobile/MobileSwapReveal.pure'
 import SVG from 'react-inlinesvg'
@@ -81,6 +82,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
   const isCurrentTradeBridging = useIsCurrentTradeBridging()
   const { orderKind } = useDerivedTradeState() || {}
   const { darkMode, isOphisMobileSwap } = useTheme()
+  const isMobileSwap = useIsMobileSwap()
 
   const isSellTrade = !!orderKind && isSellOrder(orderKind)
   const hideQuoteAmount = useShouldHideQuoteAmounts()
@@ -231,7 +233,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
 
   return (
     <>
-      {isOphisMobileSwap && <MobileSwapHeading />}
+      {isMobileSwap && <MobileSwapHeading />}
       <MobileSwapReveal enabled={!!isOphisMobileSwap}>
         <styledEl.ContainerBox data-mobile-swap-form={isOphisMobileSwap || undefined}>
           <styledEl.Header>
@@ -340,7 +342,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                       priceImpactParams={!disablePriceImpact ? priceImpact : undefined}
                       topLabel={
                         isOphisMobileSwap
-                          ? outputCurrencyInfo.label || t`Buy amount`
+                          ? outputCurrencyInfo.label || t`You receive`
                           : isWrapOrUnwrap
                             ? undefined
                             : outputCurrencyInfo.label

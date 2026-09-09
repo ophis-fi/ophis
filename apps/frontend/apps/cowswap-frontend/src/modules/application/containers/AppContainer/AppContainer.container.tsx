@@ -7,7 +7,7 @@ import { useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 import { OphisFooter } from 'ophis/components/OphisFooter'
 import { OphisHeader } from 'ophis/components/OphisHeader'
 import { ScrollToTop } from 'ophis/components/ScrollToTop'
-import { useIsMobileSwap } from 'ophis/hooks/useIsMobileSwap'
+import { useIsOphisSwap } from 'ophis/hooks/useIsOphisSwap'
 import { useOphisWalletFlag } from 'ophis/hooks/useOphisWalletFlag'
 import { MobileSwapHeader, MobileSwapFooter } from 'ophis/mobile/MobileSwapHeader.container'
 import { MobileSwapTheme } from 'ophis/mobile/MobileSwapTheme.container'
@@ -15,7 +15,7 @@ import { Link, useLocation } from 'react-router'
 import styled from 'styled-components/macro'
 
 // Ophis: route-aware chrome.
-//   /          → chrome-less landing (IntentLanding handles its own).
+//   /          → direct swap redirect, preserving entry parameters.
 //   anywhere   → Ophis header (wordmark + wallet controls) + Ophis footer.
 // Cowswap's AppMenu, hiring banner, cow scene, snowfall, AMM banner are
 // dropped wholesale. See apps/frontend/.ophis-divergences.md.
@@ -50,8 +50,8 @@ const OphisBodyWrapper = styled.div`
   flex-direction: column;
   align-items: stretch;
   padding: 56px 16px 64px;
-  background: linear-gradient(180deg, #02000d 0%, #070328 50%, #02000d 100%);
-  color: #f5efe6;
+  background: ${({ theme }) => theme.background};
+  color: ${({ theme }) => theme.text};
 
   @media (max-width: 720px) {
     padding: 20px 12px 32px;
@@ -74,10 +74,10 @@ const OpenTradeCTA = styled(Link)`
   align-items: center;
   gap: 6px;
   padding: 10px 20px;
-  background: #f2a63e;
-  color: #02000d;
-  border-radius: 999px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  background: ${({ theme }) => theme.primary};
+  color: ${({ theme }) => theme.buttonTextCustom};
+  border-radius: 12px;
+  font-family: var(--ophis-font-body);
   font-weight: 600;
   font-size: 14px;
   text-decoration: none;
@@ -90,7 +90,7 @@ const OpenTradeCTA = styled(Link)`
     transform: translateY(-1px);
   }
   &:focus-visible {
-    outline: 2px solid rgba(242, 166, 62, 0.55);
+    outline: 2px solid currentColor;
     outline-offset: 2px;
   }
 `
@@ -151,7 +151,7 @@ function useSubdomainRedirect(): void {
 export function AppContainer({ children }: AppContainerProps): ReactNode {
   useSubdomainRedirect()
   const isTradeRoute = useIsTradeRoute()
-  const isMobileSwap = useIsMobileSwap()
+  const isOphisSwap = useIsOphisSwap()
   const { pathname } = useLocation()
   const isOtcRoute = /^\/otc(?:\/|$)/.test(pathname)
   const toggleAccountModal = useToggleAccountModal()
@@ -189,7 +189,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
     [pageBackgroundVariant, pageScene],
   )
 
-  // Landing (`/`) handles its own chrome — render passthrough.
+  // The root redirect renders no page chrome while resolving the swap route.
   if (isStandaloneLanding) {
     return (
       <PageBackgroundContext.Provider value={pageBackgroundValue}>
@@ -225,7 +225,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
 
           <OrdersPanel />
 
-          {isMobileSwap ? (
+          {isOphisSwap ? (
             <MobileSwapHeader />
           ) : (
             <OphisHeader walletConnected={!!account && isTradeRoute}>
@@ -244,7 +244,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
             <styledEl.Marginer />
           </OphisBodyWrapper>
 
-          {isMobileSwap ? <MobileSwapFooter /> : <OphisFooter />}
+          {isOphisSwap ? <MobileSwapFooter /> : <OphisFooter />}
         </styledEl.AppWrapper>
       </PageBackgroundContext.Provider>
     </MobileSwapTheme>

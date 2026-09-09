@@ -1,15 +1,13 @@
 import { ReactNode } from 'react'
 
 import { PAGE_TITLES, WRAPPED_NATIVE_CURRENCIES as WETH } from '@cowprotocol/common-const'
-import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { isInjectedWidget } from '@cowprotocol/common-utils'
 import { InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useLingui } from '@lingui/react/macro'
-import { OphisTrending, PriceChart, ReferralCta } from 'ophis/components'
-import { OphisDiscoveryPanel } from 'ophis/discovery'
-import { useIsMobileSwap } from 'ophis/hooks/useIsMobileSwap'
+import { useIsOphisSwap } from 'ophis/hooks/useIsOphisSwap'
+import { DesktopSwapLayout } from 'ophis/mobile/DesktopSwapLayout.pure'
 import { Navigate, NavLink, useLocation, useParams } from 'react-router'
 import styled from 'styled-components/macro'
 
@@ -38,114 +36,28 @@ const DcaCta = (
   </InlineBanner>
 )
 
-const SIDE_RAIL_MAX_HEIGHT = 'calc(100vh - 180px)'
-
-// The swap widget stays centered (margin auto). On wide viewports the side rail
-// floats to its right without affecting the widget's own (dynamic) sizing; on
-// narrower viewports (where there is no room beside the widget) it drops into
-// normal flow, centered below the widget, instead of being hidden.
-const SwapStage = styled.div`
-  position: relative;
-  width: 100%;
-
-  /* Reserve the rail's maximum height so the footer never sits under it. The
-     rail is absolute at this breakpoint and contributes no height of its own. */
-  @media (min-width: 1181px) {
-    min-height: ${SIDE_RAIL_MAX_HEIGHT};
-  }
-`
-
-// ONE rail, not one float per panel. Each panel decides for itself whether to
-// render, so the rail collapses cleanly: nothing at all on a chain with no
-// solvers and no trending data.
-//
-// The geometry is deliberately unchanged from the single Trending float it
-// replaces (same 250px offset, same 1181px gate, same z-index). Widening the
-// offset is not free: TradeWidget expands its own max-width to 590px and 700px
-// for the token-select views (modules/trade/containers/TradeWidget/styled.tsx),
-// so a 700px widget already reaches centre + 350 and there is no
-// `overflow-x: hidden` anywhere to catch an overlap. Move the gate before the
-// offset.
-const SideRail = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-top: 16px;
-  /* Centre the stack below the widget on narrow viewports. NOT align-items:
-     center: every panel sets align-self: flex-start, which wins over it. The
-     float this replaced centred via justify-content in a ROW flex, so switching
-     to a column silently left-pinned them. */
-  align-items: stretch;
-
-  & > * {
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  @media (min-width: 1181px) {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    margin-left: 250px;
-    margin-top: 0;
-    z-index: 1;
-    /* Absolutely positioned, so the rail adds no height to SwapStage. With a
-       nine-row route panel plus six trending rows the stack can outgrow the
-       widget, and z-index 1 would then paint it over the Marginer and footer.
-       Bound it and scroll internally; SwapStage reserves the same maximum. */
-    max-height: ${SIDE_RAIL_MAX_HEIGHT};
-    overflow-y: auto;
-    overscroll-behavior: contain;
-
-    & > * {
-      margin-left: 0;
-      margin-right: 0;
-    }
-  }
-`
-
 export function SwapPage(): ReactNode {
   const params = useParams()
-  const isMobileSwap = useIsMobileSwap()
+  const isOphisSwap = useIsOphisSwap()
   const { i18n } = useLingui()
-  const { isOphisOnchainDiscoveryEnabled } = useFeatureFlags()
   const swapDerivedStateToFill = useSwapDerivedStateToFill()
 
   if (!params.chainId) {
     return <SwapPageRedirect />
   }
 
+  const widget = (
+    <SwapWidget
+      headerContent={isOphisSwap ? <NetworkSelector /> : undefined}
+      topContent={isInjectedWidget() ? DcaCta : undefined}
+    />
+  )
+
   return (
     <HydrateAtom atom={swapDerivedStateAtom} state={swapDerivedStateToFill}>
       <PageTitle title={i18n._(PAGE_TITLES.SWAP)} />
-
       <SwapUpdaters />
-      <SwapStage>
-        {/* Partner iframe embeds keep the plain DCA banner: the referral CTA
-            would route partner users to /profile inside the host's iframe. */}
-        <SwapWidget
-          headerContent={isMobileSwap ? <NetworkSelector /> : undefined}
-          topContent={isMobileSwap ? undefined : isInjectedWidget() ? DcaCta : <ReferralCta fallback={DcaCta} />}
-        />
-        {/* Full app only. In an injected widget (partner iframe embeds) the rail is
-            not mounted at all, so it never renders in or resizes a partner embed and
-            no panel ever fetches a third-party API from one. */}
-        {!isInjectedWidget() && !isMobileSwap && (
-          <SideRail>
-            {/* Odos-shaped rail: a price chart and trending, no pre-trade "route"
-                panel. Ophis is a meta-aggregator with no pool-level route to draw
-                before signing, so a Route panel could only list the competing
-                solvers, which read as noise and lengthened the rail. The solver
-                count still lives in the fee-details accordion for anyone who wants
-                it. */}
-            <PriceChart />
-            <OphisTrending />
-            {/* Read-only and off by default. The panel cannot select a token or
-                alter routing, solver eligibility, approvals, or token lists. */}
-            {isOphisOnchainDiscoveryEnabled === true && <OphisDiscoveryPanel />}
-          </SideRail>
-        )}
-      </SwapStage>
+      {isOphisSwap ? <DesktopSwapLayout>{widget}</DesktopSwapLayout> : widget}
     </HydrateAtom>
   )
 }

@@ -6,14 +6,14 @@ import { ThemedGlobalStyle } from 'theme/ThemedGlobalStyle'
 import { MobileSwapGlobalStyle } from './MobileSwapGlobalStyle.styled'
 import { mobileSwapTheme } from './mobileSwapTheme.constants'
 
-import { useIsMobileSwap } from '../hooks/useIsMobileSwap'
+import { useIsOphisSwap } from '../hooks/useIsOphisSwap'
 
 export function MobileSwapTheme({ children }: { children: ReactNode }): ReactNode {
   const inheritedTheme = useTheme()
-  const isMobileSwap = useIsMobileSwap()
+  const isSwap = useIsOphisSwap()
   return (
-    <ThemeProvider theme={isMobileSwap ? mobileSwapTheme : inheritedTheme}>
-      {isMobileSwap && (
+    <ThemeProvider theme={isSwap ? mobileSwapTheme : inheritedTheme}>
+      {isSwap && (
         <>
           <ThemedGlobalStyle />
           <MobileSwapGlobalStyle />

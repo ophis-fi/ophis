@@ -6448,3 +6448,24 @@ msgstr "Solana wallet address"
 #: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
 msgid "Bitcoin wallet address"
 msgstr "Bitcoin wallet address"
+
+msgid "Choose your tokens. Review your limits. Make your next move."
+msgstr "Choose your tokens. Review your limits. Make your next move."
+
+msgid "Choose what to receive."
+msgstr "Choose what to receive."
+
+msgid "Find the asset on the right network."
+msgstr "Find the asset on the right network."
+
+msgid "Review the details."
+msgstr "Review the details."
+
+msgid "Amounts, fees, and destination, together."
+msgstr "Amounts, fees, and destination, together."
+
+msgid "Set the spending limit."
+msgstr "Set the spending limit."
+
+msgid "Check the exact approval before signing."
+msgstr "Check the exact approval before signing."
