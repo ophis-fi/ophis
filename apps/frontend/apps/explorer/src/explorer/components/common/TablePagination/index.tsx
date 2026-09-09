@@ -1,6 +1,6 @@
 import React, { Context, useContext } from 'react'
 
-import { Color, Media, UI } from '@cowprotocol/ui'
+import { Color, Media } from '@cowprotocol/ui'
 
 import { faChevronLeft, faChevronRight } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -9,7 +9,7 @@ import styled, { css } from 'styled-components/macro'
 import { Dropdown, DropdownOption } from '../Dropdown'
 
 const PaginationTextCSS = css`
-  color: ${Color.neutral100};
+  color: ${Color.explorer_textPrimary};
   font-size: ${({ theme }): string => theme.fontSizeDefault};
   font-weight: normal;
   white-space: nowrap;
@@ -102,7 +102,7 @@ const PaginationDropdownButton = styled.button`
   background: none;
   border: none;
   cursor: pointer;
-  color: var(${UI.COLOR_NEUTRAL_100});
+  color: ${Color.explorer_textPrimary};
 
   &.selected {
     background-color: transparent;

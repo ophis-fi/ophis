@@ -55,7 +55,7 @@ const tabCustomThemeConfig = getTabTheme({
   activeBg: 'var(--color-transparent)',
   activeBgAlt: 'initial',
   inactiveBg: 'var(--color-transparent)',
-  activeText: Color.neutral100,
+  activeText: Color.explorer_textPrimary,
   inactiveText: 'var(--color-text-secondary2)',
   activeBorder: Color.cowfi_orange,
   inactiveBorder: 'none',

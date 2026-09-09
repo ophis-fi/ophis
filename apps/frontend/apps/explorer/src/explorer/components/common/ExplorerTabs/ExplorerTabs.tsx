@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { Color, Media, UI } from '@cowprotocol/ui'
+import { Color, Media } from '@cowprotocol/ui'
 
 import styled from 'styled-components/macro'
 
@@ -40,7 +40,7 @@ const tabCustomThemeConfig = getTabTheme({
   activeBg: 'transparent',
   activeBgAlt: 'initial',
   inactiveBg: 'transparent',
-  activeText: `var(${UI.COLOR_NEUTRAL_100})`,
+  activeText: Color.explorer_textPrimary,
   inactiveText: Color.explorer_textSecondary2,
   activeBorder: Color.cowfi_orange,
   inactiveBorder: 'none',

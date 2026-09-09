@@ -1,3 +1,3 @@
 import { Theme } from 'theme/types'
 
-export const INITIAL_THEME_STATE = Theme.DARK
+export const INITIAL_THEME_STATE = Theme.LIGHT

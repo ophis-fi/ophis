@@ -1,7 +1,7 @@
 import React, { PropsWithChildren } from 'react'
 
 import { useMediaQuery } from '@cowprotocol/common-hooks'
-import { Color, Media, ProductLogo, ProductVariant, UI } from '@cowprotocol/ui'
+import { Color, Media, ProductLogo, ProductVariant } from '@cowprotocol/ui'
 
 import { Link } from 'react-router'
 import styled from 'styled-components/macro'
@@ -30,7 +30,7 @@ const Logo = styled(Link)`
 
   &:hover {
     text-decoration: none;
-    transform: rotate(-5deg);
+    transform: translateY(-1px);
     transition: transform 0.3s ease 0s;
 
     ${Media.upToSmall()} {
@@ -51,7 +51,7 @@ const Logo = styled(Link)`
     display: flex;
     align-content: center;
     justify-content: center;
-    color: ${Color.neutral100};
+    color: ${Color.explorer_textPrimary};
   }
 
   ${Media.upToExtraSmall()} {
@@ -77,7 +77,7 @@ export const Header: React.FC<Props> = ({ children, linkTo, onClickOptional }) =
             explorer header carries Ophis branding, not CoW's. */}
         <ProductLogo
           variant={ProductVariant.CowSwap}
-          overrideColor={`var(${UI.COLOR_NEUTRAL_100})`}
+          overrideColor={Color.explorer_textPrimary}
           logoIconOnly={isUpToMedium}
         />
       </Logo>

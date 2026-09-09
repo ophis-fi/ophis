@@ -28,7 +28,7 @@ const AllColors = css`
   /* ------------------------------ */
 `
 
-const DarkColors = css`
+const SteepColors = css`
   /* Palette specific */
   --color-green: ${Color.explorer_green1};
   --color-red: ${Color.explorer_red1};
@@ -47,23 +47,23 @@ const DarkColors = css`
   --color-border: ${Color.explorer_border};
 
   /* Text */
-  --color-text-primary: ${Color.neutral100};
+  --color-text-primary: ${Color.explorer_textPrimary};
   --color-text-secondary1: ${Color.explorer_textSecondary1};
   --color-text-secondary2: ${Color.explorer_textSecondary2};
   --color-text-hover: ${Color.explorer_textActive};
-  --color-text-strong: ${Color.neutral100};
+  --color-text-strong: ${Color.explorer_textPrimary};
   --color-text-weak: ${Color.explorer_textSecondary};
 
   /* Buttons */
-  --color-button-gradient: linear-gradient(270deg, #8958ff 0%, #3f77ff 100%);
-  --color-button-gradient-2: linear-gradient(270deg, #8958ff 30%, #3f77ff 100%);
+  --color-button-gradient: #17191c;
+  --color-button-gradient-2: #34373b;
 `
 
 const variables = css`
   /* General styles for all themes */
   :root {
     ${AllColors}
-    ${DarkColors}
+    ${SteepColors}
   }
 
   body {

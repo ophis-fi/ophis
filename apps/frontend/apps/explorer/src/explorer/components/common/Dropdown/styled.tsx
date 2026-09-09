@@ -12,7 +12,7 @@ export const BaseCard = styled.div<{ noPadding?: boolean }>`
 `
 
 export const DropdownTextCSS = css`
-  color: ${Color.neutral100};
+  color: ${Color.explorer_textPrimary};
   font-size: ${({ theme }): string => theme.fontSizeDefault};
   font-weight: normal;
   white-space: nowrap;
@@ -47,7 +47,7 @@ export const DropdownItemCSS = css<DropdownItemProps>`
   align-items: center;
   background-color: ${Color.explorer_bg};
   border-bottom: 1px solid ${Color.explorer_border};
-  color: ${Color.neutral100};
+  color: ${Color.explorer_textPrimary};
   cursor: pointer;
   display: flex;
   font-size: var(--font-size-default);
@@ -61,7 +61,7 @@ export const DropdownItemCSS = css<DropdownItemProps>`
 
   &.active {
     background-color: ${Color.explorer_gradient2};
-    color: ${Color.neutral100};
+    color: ${Color.explorer_textPrimary};
     font-weight: 600;
   }
 

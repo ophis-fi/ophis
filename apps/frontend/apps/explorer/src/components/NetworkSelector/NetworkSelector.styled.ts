@@ -1,4 +1,4 @@
-import { Color, Media, UI } from '@cowprotocol/ui'
+import { Color, Media } from '@cowprotocol/ui'
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { ArrowIconCSS } from 'components/icons/cssIcons'
@@ -26,8 +26,8 @@ export const OptionsContainer = styled.div<{ $width: number }>`
   width: ${({ $width }) => `${184 + $width}px`};
   left: 15px;
   top: 54px;
-  background: var(${UI.COLOR_NEUTRAL_0});
-  border: 1px solid rgba(141, 141, 169, 0.3);
+  background: ${Color.explorer_paperCustom};
+  border: 1px solid ${Color.explorer_border};
   box-sizing: border-box;
   border-radius: 6px;
 `

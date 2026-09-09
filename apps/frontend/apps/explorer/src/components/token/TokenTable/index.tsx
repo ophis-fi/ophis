@@ -46,7 +46,7 @@ const TokenWrapper = styled.div`
 `
 
 const HeaderValue = styled.span<{ captionColor?: 'green' | 'red1' | 'grey' }>`
-  color: ${({ theme, captionColor }): string => (captionColor ? theme[captionColor] : Color.neutral100)};
+  color: ${({ theme, captionColor }): string => (captionColor ? theme[captionColor] : Color.explorer_textPrimary)};
   ${Media.upToSmall()} {
     flex-wrap: wrap;
     text-align: end;
@@ -86,7 +86,7 @@ function _buildChart(chartContainer: HTMLDivElement, width: number | undefined, 
     handleScale: false,
     layout: {
       backgroundColor: 'transparent',
-      textColor: Color.neutral100,
+      textColor: Color.explorer_textPrimary,
     },
     rightPriceScale: {
       scaleMargins: {
