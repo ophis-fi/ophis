@@ -4,10 +4,14 @@
  * page was re-defining locally.
  *
  * Variants follow the same tone vocabulary as `Badge` — keep them in sync.
+ * `planned` renders on the Steep peach accent; other tones use restrained
+ * tinted fills that hold text contrast.
  */
 import { ReactNode } from 'react'
 
-import styled, { css } from 'styled-components/macro'
+import styled from 'styled-components/macro'
+
+import { STEEP_FONT, steep, type SteepToneName } from './steep.utils'
 
 export type CalloutTone = 'info' | 'success' | 'warning' | 'danger' | 'planned'
 
@@ -18,52 +22,24 @@ interface CalloutProps {
   children: ReactNode
 }
 
-const TONE_STYLES: Record<CalloutTone, ReturnType<typeof css>> = {
-  info: css`
-    border-color: rgba(180, 138, 255, 0.35);
-    background: rgba(180, 138, 255, 0.06);
-    --callout-accent: #b48aff;
-  `,
-  success: css`
-    border-color: rgba(109, 207, 161, 0.4);
-    background: rgba(109, 207, 161, 0.06);
-    --callout-accent: #6dcfa1;
-  `,
-  warning: css`
-    border-color: rgba(255, 187, 110, 0.45);
-    background: rgba(255, 187, 110, 0.06);
-    --callout-accent: #ffbb6e;
-  `,
-  danger: css`
-    border-color: rgba(255, 140, 140, 0.45);
-    background: rgba(255, 140, 140, 0.06);
-    --callout-accent: #ff8c8c;
-  `,
-  planned: css`
-    border-color: rgba(242, 166, 62, 0.4);
-    background: rgba(242, 166, 62, 0.08);
-    --callout-accent: #f2a63e;
-  `,
-}
-
 const Outer = styled.aside<{ $tone: CalloutTone }>`
   border: 1px solid;
-  border-radius: 12px;
-  padding: 16px 18px;
+  border-radius: 16px;
+  padding: 18px 20px;
   font-size: 14px;
   line-height: 1.6;
-  color: rgba(245, 239, 230, 0.85);
   display: flex;
   flex-direction: column;
   gap: 6px;
-  ${({ $tone }) => TONE_STYLES[$tone]}
+  color: ${({ theme, $tone }) => steep(theme).tones[$tone as SteepToneName].text};
+  border-color: ${({ theme, $tone }) => steep(theme).tones[$tone as SteepToneName].border};
+  background: ${({ theme, $tone }) => steep(theme).tones[$tone as SteepToneName].bg};
 `
 
 const Title = styled.div`
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
-  font-weight: 500;
-  font-size: 16px;
-  color: var(--callout-accent);
+  font-family: ${STEEP_FONT.body};
+  font-weight: 600;
+  font-size: 15px;
   letter-spacing: -0.005em;
 `
 

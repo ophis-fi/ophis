@@ -7,6 +7,10 @@
  * the prior page was actually close to right (logo grid + color cards +
  * font samples); this rewrite mostly swaps the chrome and adds usage
  * specificity.
+ *
+ * Steep refresh: swatches and type samples follow the approved
+ * editorial palette (ink / paper / mist / fog / peach / sienna) and
+ * the Georgia + Inter/system type pairing.
  */
 import { ReactNode } from 'react'
 
@@ -17,6 +21,8 @@ import {
   InlineCode,
   PageShell,
   Section,
+  STEEP_FONT,
+  steep,
   Table,
   Tbody,
   Td,
@@ -31,10 +37,11 @@ import styled from 'styled-components/macro'
 // don't generalize to the rest of the design system — a brand-kit page
 // is the one place where you DO want display-only chrome.
 const LogoTile = styled.div<{ $dark?: boolean }>`
-  border-radius: 12px;
+  color: ${({ $dark }) => ($dark ? '#f4f4f5' : '#17191c')};
+  border-radius: 16px;
   padding: 32px 18px 18px;
-  background: ${({ $dark }) => ($dark ? '#02000d' : '#f5efe6')};
-  border: 1px solid rgba(245, 239, 230, 0.1);
+  background: ${({ $dark }) => ($dark ? '#17191c' : '#ffffff')};
+  border: 1px solid ${({ theme }) => steep(theme).cardBorder};
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -52,25 +59,32 @@ const LogoMeta = styled.div`
   gap: 4px;
   align-items: center;
   font-size: 13px;
-  color: rgba(245, 239, 230, 0.65);
+  color: inherit;
   text-align: center;
 `
 
 const DownloadLink = styled.a`
-  color: #f2a63e;
+  color: inherit;
   font-size: 12px;
+  font-weight: 500;
   text-decoration: none;
   &:hover {
     text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 `
 
 const ColorSwatch = styled.div<{ $bg: string; $fg: string }>`
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 24px 20px;
   background: ${({ $bg }) => $bg};
   color: ${({ $fg }) => $fg};
-  border: 1px solid rgba(245, 239, 230, 0.08);
+  border: 1px solid ${({ theme }) => steep(theme).cardBorder};
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -78,12 +92,12 @@ const ColorSwatch = styled.div<{ $bg: string; $fg: string }>`
 
   & h3 {
     margin: 0;
-    font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+    font-family: ${STEEP_FONT.body};
     font-size: 16px;
     font-weight: 500;
   }
   & code {
-    font-family: 'Geist Mono', ui-monospace, monospace;
+    font-family: ${STEEP_FONT.mono};
     font-size: 13px;
     opacity: 0.85;
   }
@@ -95,10 +109,10 @@ const ColorSwatch = styled.div<{ $bg: string; $fg: string }>`
 `
 
 const FontSample = styled.div<{ $family: string }>`
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 24px 20px;
-  background: rgba(245, 239, 230, 0.04);
-  border: 1px solid rgba(245, 239, 230, 0.08);
+  background: ${({ theme }) => steep(theme).card};
+  border: 1px solid ${({ theme }) => steep(theme).cardBorder};
   font-family: ${({ $family }) => $family};
   display: flex;
   flex-direction: column;
@@ -108,17 +122,17 @@ const FontSample = styled.div<{ $family: string }>`
   & .sample {
     font-size: 28px;
     line-height: 1.1;
-    color: #f5efe6;
+    color: ${({ theme }) => steep(theme).text};
   }
   & .name {
     font-size: 13px;
-    color: rgba(245, 239, 230, 0.6);
-    font-family: 'Geist', system-ui;
+    color: ${({ theme }) => steep(theme).muted};
+    font-family: ${STEEP_FONT.body};
   }
   & .role {
     font-size: 12px;
-    color: rgba(242, 166, 62, 0.9);
-    font-family: 'Geist', system-ui;
+    color: ${({ theme }) => steep(theme).muted};
+    font-family: ${STEEP_FONT.body};
   }
 `
 
@@ -157,10 +171,10 @@ const BRAND_SECTIONS: ReactNode = (
             </DownloadLink>
           </LogoMeta>
         </LogoTile>
-        <LogoTile>
-          <img src="/ophis-icon-inverse.svg" alt="Ophis icon, light variant" />
+        <LogoTile $dark>
+          <img src="/ophis-icon-inverse.svg" alt="Ophis icon, inverse variant" />
           <LogoMeta>
-            <span>Icon · light background</span>
+            <span>Inverse icon · dark background</span>
             <DownloadLink href="/ophis-icon-inverse.svg" download>
               Download SVG ↓
             </DownloadLink>
@@ -196,54 +210,66 @@ const BRAND_SECTIONS: ReactNode = (
       </FeatureGrid>
     </Section>
 
-    <Section id="color" title="Color">
+    <Section
+      id="color"
+      title="Color"
+      intro="The Steep editorial palette. Near-monochrome ink/paper/grays, with one warm peach accent."
+    >
       <FeatureGrid minCardWidth="220px">
-        <ColorSwatch $bg="#02000d" $fg="#f5efe6">
-          <h3>Cosmic</h3>
-          <code>#02000D</code>
-          <span>Background. Use full-bleed for hero surfaces.</span>
+        <ColorSwatch $bg="#17191c" $fg="#ffffff">
+          <h3>Ink</h3>
+          <code>#17191C</code>
+          <span>Primary text, filled buttons. The only dark surface.</span>
         </ColorSwatch>
-        <ColorSwatch $bg="#f2a63e" $fg="#02000d">
-          <h3>Sunset</h3>
-          <code>#F2A63E</code>
-          <span>Primary accent. Use sparingly. CTAs, emphasis, gradient anchor.</span>
+        <ColorSwatch $bg="#ffffff" $fg="#17191c">
+          <h3>Paper</h3>
+          <code>#FFFFFF</code>
+          <span>Page canvas and elevated surfaces.</span>
         </ColorSwatch>
-        <ColorSwatch $bg="#f5efe6" $fg="#02000d">
-          <h3>Cream</h3>
-          <code>#F5EFE6</code>
-          <span>Foreground text on cosmic. Replaces stark white.</span>
+        <ColorSwatch $bg="#f2f2f3" $fg="#17191c">
+          <h3>Mist</h3>
+          <code>#F2F2F3</code>
+          <span>Card surfaces and nested content blocks.</span>
         </ColorSwatch>
-        <ColorSwatch $bg="linear-gradient(135deg, #FF8A52 0%, #FF6B5A 30%, #E55A88 65%, #A44E91 100%)" $fg="#0a0414">
-          <h3>Sunset gradient</h3>
-          <code>135° · 4 stops</code>
-          <span>Hero / receipt artwork only. Not for text or buttons.</span>
+        <ColorSwatch $bg="#fafafb" $fg="#17191c">
+          <h3>Fog</h3>
+          <code>#FAFAFB</code>
+          <span>Alternating section bands and hover washes.</span>
+        </ColorSwatch>
+        <ColorSwatch $bg="#fbe1d1" $fg="#5d2a1a">
+          <h3>Peach</h3>
+          <code>#FBE1D1</code>
+          <span>The single accent. Editorial highlights only, once per page.</span>
+        </ColorSwatch>
+        <ColorSwatch $bg="#5d2a1a" $fg="#fbe1d1">
+          <h3>Sienna</h3>
+          <code>#5D2A1A</code>
+          <span>Ink for peach surfaces. Never body text on white.</span>
         </ColorSwatch>
       </FeatureGrid>
     </Section>
 
     <Section id="typography" title="Typography">
       <FeatureGrid minCardWidth="280px">
-        <FontSample $family="'Geist', system-ui">
+        <FontSample $family={STEEP_FONT.display}>
           <div className="sample">Aa Bb Cc</div>
-          <div className="name">Geist</div>
-          <div className="role">Display, headings, taglines</div>
+          <div className="name">Georgia</div>
+          <div className="role">Display, headings — regular + italic only</div>
         </FontSample>
-        <FontSample $family="'Geist', system-ui">
+        <FontSample $family={STEEP_FONT.body}>
           <div className="sample">Aa Bb Cc</div>
-          <div className="name">Geist</div>
+          <div className="name">Inter / system sans</div>
           <div className="role">Body, UI, paragraphs, navigation</div>
         </FontSample>
-        <FontSample $family="'Geist Mono', monospace">
+        <FontSample $family={STEEP_FONT.mono}>
           <div className="sample">Aa Bb Cc</div>
-          <div className="name">Geist Mono</div>
+          <div className="name">System mono</div>
           <div className="role">Data, addresses, hashes, code</div>
         </FontSample>
       </FeatureGrid>
       <Callout tone="info">
-        All three fonts are released under the <strong>SIL Open Font License (OFL)</strong> and loaded from Google Fonts
-        at the application root. No additional license is required to use them in derivative materials. See{' '}
-        <TextLink href="/legal#privacy">§ 7.4 of the Legal page</TextLink> for the privacy implications of Google Fonts
-        hosting.
+        Headings use Georgia and data uses the system monospace stack. Body text uses self-hosted Inter with a system-ui
+        fallback.
       </Callout>
     </Section>
 
@@ -264,7 +290,7 @@ const BRAND_SECTIONS: ReactNode = (
           </Tr>
           <Tr>
             <Td>Logo color</Td>
-            <Td>Use the dark-background variant on cosmic surfaces; light variant on cream.</Td>
+            <Td>Use the dark-background variant on ink surfaces; light variant on paper.</Td>
             <Td>Recolor outside the palette.</Td>
           </Tr>
           <Tr>
@@ -291,7 +317,7 @@ const BRAND_SECTIONS: ReactNode = (
           <Tr>
             <Td>Social / OG image</Td>
             <Td>
-              <InlineCode>ophis-og.jpg</InlineCode> @ 1200×630 (Twitter / Open Graph default). Cosmic backdrop with the
+              <InlineCode>ophis-og.jpg</InlineCode> @ 1200×630 (Twitter / Open Graph default). Dark backdrop with the
               lockup left-aligned.
             </Td>
             <Td>Use a portrait-orientation image (cropped on most platforms).</Td>

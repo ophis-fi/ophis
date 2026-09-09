@@ -7,6 +7,7 @@
   font-size: 12px;
   font-weight: 500;
   text-decoration: none;
+  color: var(--cow-color-text);
   border: 1px solid;
   transition: transform 120ms ease, box-shadow 120ms ease;
   white-space: nowrap;
@@ -34,18 +35,18 @@
 }
 
 /* 'none' = sub-$20k floor (not yet earning): neutral ghost styling, like optIn. */
-.none      { color: rgba(245,239,230,0.55); border-color: rgba(245,239,230,0.18); background: transparent; }
-.bronze    { color: #cd7f32; border-color: rgba(205,127,50,0.5);  background: rgba(205,127,50,0.06); }
-.silver    { color: #9aa3b2; border-color: rgba(154,163,178,0.5); background: rgba(154,163,178,0.06); }
-.gold      { color: #d4af37; border-color: rgba(212,175,55,0.5);  background: rgba(212,175,55,0.06); }
-.palladium { color: #ced0dd; border-color: rgba(206,208,221,0.5); background: rgba(206,208,221,0.06); }
-.platinum  { color: #b9f2ff; border-color: rgba(185,242,255,0.5); background: rgba(185,242,255,0.06); }
+.none      { color: var(--cow-color-text-opacity-70); border-color: var(--cow-color-border); background: transparent; }
+.bronze    { border-color: rgba(205,127,50,0.5);  background: rgba(205,127,50,0.06); }
+.silver    { border-color: rgba(154,163,178,0.5); background: rgba(154,163,178,0.06); }
+.gold      { border-color: rgba(212,175,55,0.5);  background: rgba(212,175,55,0.06); }
+.palladium { border-color: rgba(206,208,221,0.5); background: rgba(206,208,221,0.06); }
+.platinum  { border-color: rgba(185,242,255,0.5); background: rgba(185,242,255,0.06); }
 
 /* Opt-in CTA — neutral ghost styling so it doesn't compete visually with
    the colored tier states. Reads as "discoverable but optional." */
 .optIn {
-  color: rgba(245, 239, 230, 0.65);
-  border-color: rgba(245, 239, 230, 0.20);
+  color: var(--cow-color-text-opacity-70);
+  border-color: var(--cow-color-border);
   background: transparent;
   cursor: pointer;
   font: inherit;
@@ -54,6 +55,6 @@
   /* Native <button> resets to look like the <a> variants above. */
 }
 .optIn:hover {
-  color: rgba(245, 239, 230, 0.92);
-  border-color: rgba(245, 239, 230, 0.45);
+  color: var(--cow-color-text);
+  border-color: var(--cow-color-primary);
 }

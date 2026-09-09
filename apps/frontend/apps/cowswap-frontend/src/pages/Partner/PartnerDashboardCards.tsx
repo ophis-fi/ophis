@@ -83,7 +83,7 @@ export function PartnerTraderRank({ account }: { account: string }): ReactNode {
 export function ReferredVolumeMetric({ lifetimeUsd, cycleUsd }: { lifetimeUsd: number; cycleUsd: number }): ReactNode {
   const [view, setView] = useState<'lifetime' | 'cycle'>('lifetime')
   const isLifetime = view === 'lifetime'
-  const activeStyle = { borderColor: '#f2a63e', color: '#f2a63e' }
+  const activeStyle = { borderColor: 'var(--cow-color-primary)', color: 'var(--cow-color-primary)' }
 
   return (
     <div>

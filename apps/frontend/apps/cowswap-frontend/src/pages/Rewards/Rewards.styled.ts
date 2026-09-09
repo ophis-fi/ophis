@@ -26,7 +26,7 @@ export const XpFacts = styled.div`
 
 export const PerkGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 16px;
 `
 
@@ -36,8 +36,8 @@ export const PerkCard = styled.article`
   gap: 10px;
   padding: 20px;
   border-radius: 16px;
-  border: 1px solid rgba(245, 239, 230, 0.12);
-  background: rgba(245, 239, 230, 0.03);
+  border: 1px solid var(--cow-color-border);
+  background: var(--cow-color-paper-darker);
 `
 
 export const PerkHeader = styled.div`
@@ -51,6 +51,10 @@ export const PartnerLogo = styled.img`
   /* Wide wordmark logos (e.g. Octav 996x181): fix the height, let width follow. */
   height: 18px;
   width: auto;
+  box-sizing: content-box;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #17191c;
   display: block;
 `
 
@@ -80,7 +84,7 @@ export const ProgressTrack = styled.div`
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: rgba(245, 239, 230, 0.1);
+  background: var(--cow-color-text-opacity-50);
   overflow: hidden;
 `
 
@@ -88,13 +92,13 @@ export const ProgressFill = styled.div<{ $pct: number }>`
   width: ${({ $pct }) => Math.max(0, Math.min(100, $pct))}%;
   height: 100%;
   border-radius: 3px;
-  background: linear-gradient(90deg, #f2a63e, #d960b5, #7a6ee0);
+  background: var(--cow-color-primary);
 `
 
 export const ProgressLabel = styled.span`
-  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 12px;
-  opacity: 0.65;
+  color: var(--cow-color-text-opacity-70);
 `
 
 export const ClaimButton = styled.a`
@@ -108,13 +112,13 @@ export const ClaimButton = styled.a`
   font-size: 13.5px;
   font-weight: 600;
   text-decoration: none;
-  color: #131214;
-  background: #f2a63e;
+  color: var(--cow-color-button-text);
+  background: var(--cow-color-primary);
   transition: background 120ms ease;
 
   &:hover,
   &:focus-visible {
-    background: #ffb95a;
+    background: var(--cow-color-primary-darker);
   }
 `
 
@@ -130,13 +134,13 @@ export const ClaimActionButton = styled.button`
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
-  color: #131214;
-  background: #f2a63e;
+  color: var(--cow-color-button-text);
+  background: var(--cow-color-primary);
   transition: background 120ms ease;
 
   &:hover,
   &:focus-visible {
-    background: #ffb95a;
+    background: var(--cow-color-primary-darker);
   }
 
   &:disabled {
@@ -164,22 +168,22 @@ export const RedeemRow = styled.div`
 `
 
 export const CodeChip = styled.span`
-  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  color: #f2a63e;
+  color: var(--cow-color-primary);
   padding: 6px 12px;
   border-radius: 10px;
-  border: 1px dashed rgba(242, 166, 62, 0.45);
-  background: rgba(242, 166, 62, 0.08);
+  border: 1px dashed var(--cow-color-primary);
+  background: var(--cow-color-paper-darker);
   /* Single click selects the whole code for easy copy. */
   user-select: all;
 `
 
 export const ClaimNote = styled.span`
   font-size: 12px;
-  opacity: 0.6;
+  color: var(--cow-color-text-opacity-70);
   line-height: 1.4;
 `
 
@@ -201,11 +205,11 @@ export const ClaimLabel = styled.label`
 `
 
 export const ClaimInput = styled.input`
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--cow-font-family-primary, system-ui);
   font-size: 14px;
   color: inherit;
-  background: rgba(8, 4, 24, 0.4);
-  border: 1px solid rgba(245, 239, 230, 0.18);
+  background: var(--cow-color-paper);
+  border: 1px solid var(--cow-color-border);
   border-radius: 10px;
   padding: 9px 12px;
   transition:
@@ -213,12 +217,13 @@ export const ClaimInput = styled.input`
     box-shadow 120ms ease-out;
 
   &::placeholder {
-    opacity: 0.4;
+    color: var(--cow-color-text-opacity-70);
+    opacity: 1;
   }
   &:focus {
-    outline: none;
-    border-color: #f2a63e;
-    box-shadow: 0 0 0 3px rgba(242, 166, 62, 0.18);
+    border-color: var(--cow-color-primary);
+    outline: 2px solid var(--cow-color-primary);
+    outline-offset: 2px;
   }
   &:disabled {
     opacity: 0.6;

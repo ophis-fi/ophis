@@ -66,29 +66,30 @@ const Field = styled.label`
   display: flex;
   flex-direction: column;
   gap: 7px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 14px;
   font-weight: 500;
-  color: rgba(245, 239, 230, 0.85);
+  color: var(--cow-color-text);
 `
 
 const inputChrome = `
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 15px;
-  color: #f5efe6;
-  background: rgba(8, 4, 24, 0.5);
-  border: 1px solid rgba(245, 239, 230, 0.18);
+  color: var(--cow-color-text);
+  background: var(--cow-color-paper);
+  border: 1px solid var(--cow-color-border);
   border-radius: 12px;
   padding: 12px 14px;
   transition: border-color 120ms ease-out, box-shadow 120ms ease-out;
 
   &::placeholder {
-    color: rgba(245, 239, 230, 0.4);
+    color: var(--cow-color-text-opacity-70);
   }
   &:focus {
     outline: none;
-    border-color: #f2a63e;
-    box-shadow: 0 0 0 3px rgba(242, 166, 62, 0.18);
+    border-color: var(--cow-color-primary);
+    outline: 2px solid var(--cow-color-primary);
+    outline-offset: 2px;
   }
 `
 
@@ -102,7 +103,8 @@ const Select = styled.select`
   /* Dark options on the few platforms that honor it; the closed control is
      always styled by inputChrome. */
   & option {
-    color: #02000d;
+    color: var(--cow-color-text);
+    background: var(--cow-color-paper);
   }
 `
 
@@ -130,13 +132,13 @@ const SubmitButton = styled.button`
   appearance: none;
   align-self: flex-start;
   border: none;
-  border-radius: 999px;
+  border-radius: 12px;
   padding: 13px 30px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 15px;
   font-weight: 700;
-  color: #02000d;
-  background: #f2a63e;
+  color: var(--cow-color-button-text);
+  background: var(--cow-color-primary);
   cursor: pointer;
   transition:
     background 120ms ease-out,
@@ -144,7 +146,7 @@ const SubmitButton = styled.button`
     opacity 120ms ease-out;
 
   &:hover:not(:disabled) {
-    background: #ffbb6e;
+    background: var(--cow-color-primary-darker);
   }
   &:active:not(:disabled) {
     transform: translateY(1px);

@@ -14,8 +14,9 @@
  *
  * Anti-vibe-coding guardrails applied (Codex flagged these as fabrication
  * zones — every claim below is source-verified, not recalled):
- *   - Parser model: functions/api/intent.ts → LIBERTAI_MODEL = 'qwen3.6-27b'.
- *     Framed as "currently" (implementation detail, drift-prone).
+ *   - Order entry is the structured in-app swap form. The
+ *     natural-language → structured-order endpoint remains a developer
+ *     API (POST /api/intent); it is not presented as the pretrade UX.
  *   - Fee framing mirrors the /learn copy and docs.ophis.fi/fees (flat 0.01%
  *     volume fee, 0.01% on stablecoin pairs — live since the volume-fee flag
  *     shipped). Source of truth: ophis/partnerFeeDefault.ts, which mirrors
@@ -60,8 +61,8 @@ export function ProtocolPage(): ReactNode {
     <PageShell
       width="medium"
       eyebrow="Protocol"
-      title="The mechanism behind the sentence."
-      lede="How an Ophis trade actually works, from a natural-language intent to batch-auction settlement, and exactly where Ophis differs from the CoW Protocol it forks."
+      title="The mechanism behind the order."
+      lede="How an Ophis trade actually works, from a signed intent to batch-auction settlement, and exactly where Ophis differs from the CoW Protocol it forks."
     >
       <Callout tone="info" title="What this page covers, and what it doesn't">
         <p>
@@ -75,19 +76,19 @@ export function ProtocolPage(): ReactNode {
         </p>
       </Callout>
 
-      <Section id="lifecycle" title="Intent lifecycle" intro="From a sentence to a settled batch, in five steps.">
+      <Section id="lifecycle" title="Intent lifecycle" intro="From order to settled batch, in five steps.">
         <FeatureGrid minCardWidth="240px">
-          <FeatureCard icon="01" title="Describe">
-            You type the trade in natural language, &#34;swap 1 ETH for USDC on Base&#34;. No forms, no token-address
-            lookups, no network dropdown.
+          <FeatureCard icon="01" title="Build">
+            You build the order in the swap form — &#34;swap 1 ETH for USDC on Base&#34; — picking tokens, amount, and
+            chain, with the exact terms shown before anything is signed.
           </FeatureCard>
-          <FeatureCard icon="02" title="Parse">
-            A server-side open LLM (currently LibertAI <InlineCode>qwen3.6-27b</InlineCode>) extracts the sell token,
-            buy token, amount, and chain into a structured order. The parser holds no keys and cannot submit anything.
+          <FeatureCard icon="02" title="Check">
+            The app validates the sell token, buy token, amount, and chain into a structured order and shows you exactly
+            what you will sign. Nothing is submitted until you sign.
           </FeatureCard>
           <FeatureCard icon="03" title="Sign">
-            You review the pre-filled order and sign it with your own wallet (EIP-712). Nothing leaves your wallet and
-            nothing executes until this signature.
+            You review the order and sign it with your own wallet (EIP-712). Nothing leaves your wallet and nothing
+            executes until this signature.
           </FeatureCard>
           <FeatureCard icon="04" title="Compete">
             The signed order is broadcast to a batch auction. Solvers race to find the best path, on-chain DEX,
@@ -143,7 +144,7 @@ export function ProtocolPage(): ReactNode {
             <Tr>
               <RowTh scope="row">Order entry</RowTh>
               <Td>Structured swap form</Td>
-              <Td>Natural-language intent parser (server-side LLM)</Td>
+              <Td>Structured swap form + intent API for developers</Td>
               <Td>
                 <Badge tone="live">Ophis</Badge>
               </Td>
@@ -203,10 +204,9 @@ export function ProtocolPage(): ReactNode {
       </Section>
 
       <Section id="trust-boundaries" title="Trust boundaries" intro="Your signature is the execution boundary.">
-        <Callout tone="success" title="The parser cannot move your funds">
-          The natural-language parser only fills in a form. It runs server-side, holds no keys, and cannot sign or
-          submit an order. Execution begins only when <strong>you</strong> sign, and a solver can act only against the
-          exact order you signed.
+        <Callout tone="success" title="The interface cannot move your funds">
+          The interface prepares and submits orders you authorize. It holds no wallet keys and cannot sign without your
+          wallet authorization. A solver can execute only within the limits of your signed order.
         </Callout>
         <KeyValueList
           items={[
@@ -215,8 +215,8 @@ export function ProtocolPage(): ReactNode {
               value: 'Never held by Ophis. Only the settlement contract moves tokens, and only against a signed order.',
             },
             {
-              label: 'Parser authority',
-              value: 'None. It suggests a structured order; it cannot sign, submit, or settle.',
+              label: 'Interface authority',
+              value: 'Prepares and submits authorized orders; signatures require wallet authorization.',
             },
             {
               label: 'Wallet support',

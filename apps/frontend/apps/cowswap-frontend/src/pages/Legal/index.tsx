@@ -243,14 +243,6 @@ const LEGAL_CONTENT: ReactNode = (
           </TextLink>
         </li>
         <li>
-          <strong>Google Fonts</strong> (Fraunces, Plus Jakarta Sans, JetBrains Mono served from{' '}
-          <InlineCode>fonts.googleapis.com</InlineCode> + <InlineCode>fonts.gstatic.com</InlineCode>). Receives IP +
-          user agent on first page load.{' '}
-          <TextLink href="https://policies.google.com/privacy" external>
-            policy
-          </TextLink>
-        </li>
-        <li>
           <strong>Google Analytics 4</strong> (Google Ireland Ltd., aggregate usage analytics, consent-governed and
           region-scoped as described in 7.4).{' '}
           <TextLink href="https://policies.google.com/privacy" external>

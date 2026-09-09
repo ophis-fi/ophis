@@ -39,8 +39,8 @@ export default function AboutPage(): ReactNode {
     <PageShell
       width="medium"
       eyebrow="About Ophis"
-      title="From a sentence to a settled trade."
-      lede="Tell us what to trade. We pre-fill the form. You sign. The trade settles in a batch auction with MEV protection by construction."
+      title="From order to settled trade."
+      lede="Pick your tokens, review the quote, and sign. The trade settles in a batch auction with MEV protection by construction."
     >
       <Section id="what" title="What is Ophis">
         <p>
@@ -48,8 +48,8 @@ export default function AboutPage(): ReactNode {
           <TextLink href="https://cow.fi" external>
             CoW Protocol
           </TextLink>
-          . You describe what you want to trade in your own words; we parse the tokens, chain, and amount, then route
-          you to a pre-filled swap form that you sign with your own wallet.
+          . You build the order in a structured swap form — tokens, chain, and amount — review exactly what will be
+          signed, and sign with your own wallet.
         </p>
         <p>
           Under the hood, every order is broadcast to a network of competing solvers who race to find the best path. The
@@ -59,11 +59,11 @@ export default function AboutPage(): ReactNode {
         </p>
       </Section>
 
-      <Section id="how" title="How it works" intro="Three steps from your sentence to settlement.">
+      <Section id="how" title="How it works" intro="Three steps from order to settlement.">
         <FeatureGrid minCardWidth="280px">
           <FeatureCard icon="01" title="Intent">
-            You type the swap as a sentence. An open LLM (LibertAI Qwen 3.6 27B) extracts the sell token, buy token,
-            amount, and chain into a structured order.
+            You build the order in the swap form: sell token, buy token, amount, and chain. Developers can also parse
+            natural-language requests through the public Intent API.
           </FeatureCard>
           <FeatureCard icon="02" title="Auction">
             The signed order is broadcast to the batch auction. Solvers race to find the best path. DEX, peer-to-peer
@@ -78,14 +78,15 @@ export default function AboutPage(): ReactNode {
 
       <Section id="why" title="Why intent-based">
         <p>
-          A traditional DEX form asks you to fill four fields, validate two token addresses, and understand which
-          network you&#39;re on before you can start trading. Ophis flips that: type the trade as a sentence, our parser
-          translates it into protocol primitives, and the interface shows you exactly what will be signed before any
-          transaction leaves your wallet.
+          A traditional DEX executes the moment you transact, exposing you to slippage and front-running while the
+          transaction sits in the mempool. Ophis is intent-based instead: you sign an order off-chain describing what
+          you want, solvers compete to fill it, and settlement happens in a batch auction at a uniform clearing price.
+          The interface shows you exactly what will be signed before anything leaves your wallet.
         </p>
         <p>
-          The parser is open source and the routing layer is transparent, the LLM prompt, the structured output schema,
-          and the order submission are all auditable in the public repository.
+          The order schema, the routing layer, and the settlement flow are transparent and auditable in the public
+          repository. Developers building on Ophis can parse natural-language requests through the public Intent API —
+          see <TextLink href="https://docs.ophis.fi/">the docs</TextLink>.
         </p>
       </Section>
 
@@ -201,16 +202,16 @@ export default function AboutPage(): ReactNode {
               wallet. You can resubmit, change parameters, or cancel at any time.
             </p>
           </Accordion>
-          <Accordion summary="Is the natural-language parser reliable?">
+          <Accordion summary="Do I pay gas to place an order?">
             <p>
-              The parser is best-effort. Ambiguous or malformed intents fall through to a standard swap form with
-              whatever fields the parser could extract, you can correct before signing. Nothing executes until you sign.
+              ERC-20 order signing and off-chain cancellation do not require a network transaction. Token approvals,
+              native ETH orders, and on-chain cancellation may require gas. Settlement costs are reflected in the quote.
             </p>
           </Accordion>
           <Accordion summary="Can I use Ophis from my own app?">
             <p>
-              Yes. The natural-language → structured-order endpoint is publicly available at{' '}
-              <InlineCode>POST /api/intent</InlineCode> with a 30 req/min/IP rate limit. No auth, no key. See{' '}
+              Yes. The natural-language intent parser is publicly available at <InlineCode>POST /api/intent</InlineCode>{' '}
+              with a 30 req/min/IP rate limit. No auth, no key. See{' '}
               <TextLink href="https://docs.ophis.fi/">the docs</TextLink> for the full reference.
             </p>
           </Accordion>

@@ -1,7 +1,7 @@
 import styled, { css } from 'styled-components/macro'
 
 export const Mono = styled.span`
-  font-family: 'Geist Mono', var(--cow-font-family-mono, ui-monospace, monospace);
+  font-family: var(--cow-font-family-mono, ui-monospace, monospace);
   font-size: 0.92em;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -22,10 +22,10 @@ export const VisuallyHidden = styled.span`
 
 export const CopyButton = styled.button`
   appearance: none;
-  border: 1px solid rgba(245, 239, 230, 0.18);
+  border: 1px solid var(--cow-color-border);
   border-radius: 6px;
   background: transparent;
-  color: rgba(245, 239, 230, 0.75);
+  color: var(--cow-color-text);
   font: inherit;
   font-size: 11px;
   padding: 2px 7px;
@@ -33,13 +33,13 @@ export const CopyButton = styled.button`
   cursor: pointer;
 
   &:focus-visible {
-    outline: 2px solid rgba(242, 166, 62, 0.55);
+    outline: 2px solid var(--cow-color-primary);
     outline-offset: 1px;
   }
 `
 
 export const RawNote = styled.span`
-  color: rgba(245, 239, 230, 0.55);
+  color: var(--cow-color-text);
   font-size: 0.85em;
   margin-left: 0.35em;
 `
@@ -53,10 +53,10 @@ export const TabBar = styled.div`
 
 export const TabButton = styled.button<{ $active: boolean }>`
   appearance: none;
-  border: 1px solid rgba(245, 239, 230, 0.18);
-  border-radius: 999px;
-  background: ${({ $active }) => ($active ? 'rgba(242, 166, 62, 0.16)' : 'transparent')};
-  color: ${({ $active }) => ($active ? '#f2a63e' : '#f5efe6')};
+  border: 1px solid var(--cow-color-border);
+  border-radius: 12px;
+  background: ${({ $active }) => ($active ? 'var(--cow-color-paper-darker)' : 'transparent')};
+  color: ${({ $active }) => ($active ? 'var(--cow-color-primary)' : 'var(--cow-color-text)')};
   text-decoration: ${({ $active }) => ($active ? 'underline' : 'none')};
   text-underline-offset: 4px;
   font: inherit;
@@ -65,14 +65,14 @@ export const TabButton = styled.button<{ $active: boolean }>`
   cursor: pointer;
 
   &:focus-visible {
-    outline: 2px solid rgba(242, 166, 62, 0.55);
+    outline: 2px solid var(--cow-color-primary);
     outline-offset: 2px;
   }
 
   ${({ $active }) =>
     $active &&
     css`
-      border-color: rgba(242, 166, 62, 0.55);
+      border-color: var(--cow-color-primary);
     `}
 `
 
@@ -91,22 +91,22 @@ export const FilterField = styled.div`
 
   label {
     font-size: 12px;
-    color: rgba(245, 239, 230, 0.65);
+    color: var(--cow-color-text);
   }
 
   input,
   select {
     appearance: none;
-    background: rgba(245, 239, 230, 0.06);
-    border: 1px solid rgba(245, 239, 230, 0.18);
+    background: var(--cow-color-paper-darker);
+    border: 1px solid var(--cow-color-border);
     border-radius: 8px;
-    color: #f5efe6;
+    color: var(--cow-color-text);
     font: inherit;
     font-size: 14px;
     padding: 8px 10px;
 
     &:focus-visible {
-      outline: 2px solid rgba(242, 166, 62, 0.55);
+      outline: 2px solid var(--cow-color-primary);
       outline-offset: 1px;
     }
   }
@@ -128,10 +128,10 @@ export const StatusStack = styled.div`
 
 export const DisabledAction = styled.button`
   appearance: none;
-  border: 1px solid rgba(245, 239, 230, 0.18);
+  border: 1px solid var(--cow-color-border);
   border-radius: 10px;
-  background: rgba(245, 239, 230, 0.06);
-  color: rgba(245, 239, 230, 0.45);
+  background: var(--cow-color-paper-darker);
+  color: var(--cow-color-text);
   font: inherit;
   font-size: 14px;
   padding: 10px 18px;

@@ -4,28 +4,33 @@
  *
  * Does NOT render OphisHeader / OphisFooter — those come from
  * AppContainer.container.tsx. PageShell only owns the inner content layout.
+ * It also does NOT paint a page background: the shell (AppContainer) owns
+ * the canvas, so this stays transparent and only sets ink + type.
  *
  * Variants:
  *   - `narrow` (default, ~720px): long-form legal/about pages
  *   - `medium` (~960px): institutional + dashboard-style pages
  *   - `wide` (~1200px): brand kit, dashboards, learn hub
  *
- * Built for Phase A of the 2026-05-23 design system rebuild — see Codex
- * design-partner review in `docs/development/specs/2026-05-23-ophis-ds-phase-a-plan.md`.
+ * Steep editorial system: Georgia regular headings, Inter/system body,
+ * ink-on-paper light default with a neutral-ink dark variant selected
+ * via theme.darkMode.
  */
 import { ReactNode } from 'react'
 
 import styled, { css } from 'styled-components/macro'
 
+import { STEEP_FONT, steep } from './steep.utils'
+
 export type PageWidth = 'narrow' | 'medium' | 'wide'
 
 interface PageShellProps {
   width?: PageWidth
-  /** Optional eyebrow text shown above the title in monospace caps. */
+  /** Optional eyebrow text shown above the title in small caps. */
   eyebrow?: ReactNode
-  /** Main page title. Renders in Fraunces. */
+  /** Main page title. Renders in Georgia regular. */
   title?: ReactNode
-  /** Lede paragraph below the title, in italic sunset color. */
+  /** Lede paragraph below the title, in muted slate. */
   lede?: ReactNode
   /** Page body — Sections, Callouts, etc. */
   children: ReactNode
@@ -41,8 +46,8 @@ const Outer = styled.main`
   width: 100%;
   display: flex;
   flex-direction: column;
-  color: #f5efe6;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  color: ${({ theme }) => steep(theme).text};
+  font-family: ${STEEP_FONT.body};
   font-size: 16px;
   line-height: 1.65;
 `
@@ -60,21 +65,21 @@ const Inner = styled.div<{ $width: PageWidth }>`
 
 const Eyebrow = styled.p`
   margin: 0 0 12px;
-  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
+  font-family: ${STEEP_FONT.body};
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(245, 239, 230, 0.6);
+  color: ${({ theme }) => steep(theme).muted};
 `
 
 const titleStyles = css`
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
-  font-weight: 500;
+  font-family: ${STEEP_FONT.display};
+  font-weight: 400;
   font-size: clamp(36px, 5vw, 56px);
-  line-height: 1.05;
+  line-height: 1.15;
   letter-spacing: -0.015em;
-  color: #f5efe6;
+  color: ${({ theme }) => steep(theme).text};
   margin: 0;
 `
 
@@ -83,13 +88,12 @@ const Title = styled.h1`
 `
 
 const Lede = styled.p`
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
-  font-size: 20px;
-  font-style: italic;
-  color: #f2a63e;
+  font-family: ${STEEP_FONT.body};
+  font-size: 18px;
+  line-height: 1.5;
+  color: ${({ theme }) => steep(theme).secondary};
   margin: 16px 0 40px;
   max-width: 620px;
-  line-height: 1.5;
 `
 
 const Body = styled.div`
