@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 import { calculateGasMargin, getIsNativeToken } from '@cowprotocol/common-utils'
 import { Erc20 } from '@cowprotocol/cowswap-abis'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
+import { useWalletProvider } from '@cowprotocol/wallet-provider'
 import { BigNumber } from '@ethersproject/bignumber'
 import { TransactionResponse } from '@ethersproject/providers'
 
@@ -48,6 +49,7 @@ export function useApproveCallback(
 ): (amountToApprove: CurrencyAmount<Currency> | bigint, summary?: string) => Promise<TransactionResponse | undefined> {
   const token = currency && !getIsNativeToken(currency) ? currency : undefined
   const { contract: tokenContract, chainId: tokenChainId } = useTokenContract(token?.address)
+  const provider = useWalletProvider()
   const addTransaction = useTransactionAdder()
   const { t } = useLingui()
 
@@ -59,16 +61,25 @@ export function useApproveCallback(
       const summary = amountToApprove > 0n ? t`Approve ${tokenSymbol}` : t`Revoke ${tokenSymbol} approval`
       const amountToApproveStr = '0x' + amountToApprove.toString(16)
 
-      if (!tokenChainId || !token || !tokenContract || !spender) {
+      if (!tokenChainId || !token || token.chainId !== tokenChainId || !tokenContract || !spender || !provider) {
         console.error('Wrong input for approve: ', { tokenChainId, token, tokenContract, amountToApproveStr, spender })
         return
       }
 
+      if (amount instanceof CurrencyAmount && !amount.currency.equals(token)) {
+        throw new Error(t`Approval token does not match the selected token`)
+      }
+
       const estimation = await estimateApprove(tokenContract, spender, amountToApprove)
-      return tokenContract
-        .approve(spender, estimation.approveAmount, {
-          gasLimit: calculateGasMargin(estimation.gasLimit),
-        })
+      const transaction = await tokenContract.populateTransaction.approve(spender, estimation.approveAmount, {
+        gasLimit: calculateGasMargin(estimation.gasLimit),
+      })
+      // getChainId() can return ethers' fixed network after the wallet switches.
+      if (Number(await provider.send('eth_chainId', [])) !== token.chainId) {
+        throw new Error(t`Wallet network changed. Please retry.`)
+      }
+      return tokenContract.signer
+        .sendTransaction({ ...transaction, chainId: token.chainId })
         .then((response: TransactionResponse) => {
           addTransaction({
             hash: response.hash,
@@ -78,6 +89,6 @@ export function useApproveCallback(
           return response
         })
     },
-    [token, t, tokenChainId, tokenContract, spender, addTransaction],
+    [token, t, tokenChainId, tokenContract, spender, provider, addTransaction],
   )
 }

@@ -44,6 +44,7 @@ export const ThemedGlobalStyle = createGlobalStyle`
 
   html {
     font-size: 16px;
+    color-scheme: ${({ theme }) => (theme.darkMode ? 'dark' : 'light')};
     font-variant: none;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -66,6 +67,7 @@ export const ThemedGlobalStyle = createGlobalStyle`
   body {
     background: ${({ theme }) => (theme.isWidget ? 'transparent' : `var(${UI.COLOR_NEUTRAL_98})`)};
     min-height: ${({ theme }) => (theme.isWidget ? 'auto' : '100vh')};
+    min-height: ${({ theme }) => (theme.isWidget ? 'auto' : '100dvh')};
 
     &.noScroll {
       overflow: hidden;
@@ -79,8 +81,6 @@ export const ThemedGlobalStyle = createGlobalStyle`
 
   // TODO: Can be removed once we control this component
   [data-reach-dialog-overlay] {
-    z-index: 10 !important;
-
     ${Media.upToMedium()} {
       top: 0 !important;
       bottom: 0 !important;

@@ -8,9 +8,8 @@ import { useGetUserApproveAmountState } from '../state'
 
 /**
  * Returns the partial amount to sign for the approval transaction/permit
- * It compares the maximum maximumSendSellAmount amount with the amount set by the user
- * and returns the higher of the two.
- * If the user hasn't set an amount, it returns the maximum maximumSendSellAmount amount.
+ * An explicit approval is a spending limit, even when a refreshed quote needs more.
+ * Without a custom limit for this token and chain, use the quote's maximum spend.
  */
 export function useGetPartialAmountToSignApprove(): CurrencyAmount<Currency> | null {
   const { maximumSendSellAmount } = useAmountsToSignFromQuote() || {}
@@ -18,14 +17,6 @@ export function useGetPartialAmountToSignApprove(): CurrencyAmount<Currency> | n
 
   return useMemo(() => {
     if (!maximumSendSellAmount) return null
-    if (!amountSetByUser || amountSetByUser.equalTo('0')) {
-      return maximumSendSellAmount
-    }
-
-    const areCurrenciesEqualAndUserAmountIsHigher =
-      amountSetByUser.currency.equals(maximumSendSellAmount.currency) &&
-      amountSetByUser.greaterThan(maximumSendSellAmount)
-
-    return areCurrenciesEqualAndUserAmountIsHigher ? amountSetByUser : maximumSendSellAmount
+    return amountSetByUser?.currency.equals(maximumSendSellAmount.currency) ? amountSetByUser : maximumSendSellAmount
   }, [maximumSendSellAmount, amountSetByUser])
 }

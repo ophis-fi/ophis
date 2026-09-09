@@ -231,13 +231,14 @@ export const FlyoutMenuContents = styled.div.attrs(() => ({
   max-height: calc(100dvh - 66px - 32px);
 
   ${Media.upToMedium()} {
-    bottom: 56px;
+    bottom: 0;
     left: 0;
     position: fixed;
     width: 100%;
     border-radius: 20px 20px 0 0;
     box-shadow: 0 -100vh 0 100vh ${transparentize('black', 0.5)};
-    max-height: calc(100dvh - 56px) !important;
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
   }
 `
 
@@ -248,7 +249,8 @@ export const FlyoutMenuScrollable = styled.div`
   ${({ theme }) => theme.colorScrollbar};
 
   ${Media.upToMedium()} {
-    padding: 0 0 100px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    overscroll-behavior: contain;
   }
 `
 
@@ -267,7 +269,7 @@ export const SelectorLabel = styled.div`
   white-space: nowrap;
 
   ${Media.upToExtraSmall()} {
-    display: none;
+    display: ${({ theme }) => (theme.isOphisMobileSwap ? 'block' : 'none')};
   }
 `
 export const SelectorControls = styled.div<{ $isChainIdUnsupported: boolean; $isOpen: boolean }>`

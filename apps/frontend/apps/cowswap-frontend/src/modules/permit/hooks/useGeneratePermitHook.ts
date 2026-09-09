@@ -39,6 +39,7 @@ export function useGeneratePermitHook(): GeneratePermitHook {
   const provider = useWalletProvider()
 
   return useCallback(
+    // eslint-disable-next-line complexity
     async (params: GeneratePermitHookParams): Promise<PermitHookData | undefined> => {
       const {
         inputToken,
@@ -51,6 +52,9 @@ export function useGeneratePermitHook(): GeneratePermitHook {
       } = params
 
       const amount = maybeAmount ?? MAX_APPROVE_AMOUNT
+
+      // Reject before consulting persisted permits, which may contain an older unlimited DAI signature.
+      if (permitInfo.type === 'dai-like' && amount !== MAX_APPROVE_AMOUNT) return
 
       if (!provider || !isSupportedPermitInfo(permitInfo)) {
         return

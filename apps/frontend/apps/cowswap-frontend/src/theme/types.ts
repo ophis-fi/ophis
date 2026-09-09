@@ -9,6 +9,7 @@ declare module 'styled-components' {
     /** Properties specific to CoWSwap widget functionality */
     isWidget: boolean
     isIframe: boolean
+    isOphisMobileSwap?: boolean
   }
 
   // Use CoWSwapTheme as the default theme for styled-components in this app

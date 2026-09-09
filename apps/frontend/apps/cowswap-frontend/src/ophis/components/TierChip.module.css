@@ -16,13 +16,19 @@
 .divider { opacity: 0.5; }
 .volume { font-variant-numeric: tabular-nums; }
 
-@media (max-width: 360px) {
+@media (max-width: 720px) {
   .chip {
     padding: 4px 10px;
   }
 
   .optIn .divider,
   .optIn .volume {
+    display: none;
+  }
+}
+
+@media (max-width: 360px) {
+  .chip {
     display: none;
   }
 }

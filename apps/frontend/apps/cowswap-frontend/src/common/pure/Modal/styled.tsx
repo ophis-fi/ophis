@@ -59,7 +59,7 @@ export const ContentWrapper = styled.div`
 const AnimatedDialogOverlay = animated(DialogOverlay)
 export const StyledDialogOverlay = styled(AnimatedDialogOverlay)`
   &[data-reach-dialog-overlay] {
-    z-index: 2;
+    z-index: 1000;
     background-color: transparent;
     overflow: hidden;
 
@@ -99,11 +99,13 @@ export const StyledDialogContent = styled(({ ...rest }) => <AnimatedDialogConten
       $maxHeight &&
       css`
         max-height: ${$maxHeight}vh;
+        max-height: ${$maxHeight}dvh;
       `}
     ${({ $minHeight }) =>
       $minHeight &&
       css`
         min-height: ${$minHeight}vh;
+        min-height: ${$minHeight}dvh;
       `}
     display: flex;
     border-radius: 24px;
@@ -121,7 +123,7 @@ export const StyledDialogContent = styled(({ ...rest }) => <AnimatedDialogConten
           border-radius: 24px;
           border-bottom-left-radius: 0;
           border-bottom-right-radius: 0;
-          padding: 0 0 58px;
+          padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
         `}
       `}
     }

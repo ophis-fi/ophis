@@ -135,6 +135,7 @@ export const CowModal = styled(Modal)<{
 
     ${Media.upToSmall()} {
       max-height: 100vh;
+      max-height: 100dvh;
       max-width: 100%;
       height: 100%;
       width: 100vw;

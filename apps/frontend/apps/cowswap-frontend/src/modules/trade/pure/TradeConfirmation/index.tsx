@@ -4,6 +4,8 @@ import { BackButton } from '@cowprotocol/ui'
 
 import { useLingui } from '@lingui/react/macro'
 import { useSigningStep } from 'entities/trade'
+import { MobileSwapHeading } from 'ophis/mobile/MobileSwapHeading.pure'
+import { useTheme } from 'styled-components/macro'
 
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 
@@ -38,6 +40,7 @@ export interface TradeConfirmationProps extends CommonTradeConfirmContext {
 }
 
 export function TradeConfirmation(_props: TradeConfirmationProps): ReactNode {
+  const { isOphisMobileSwap } = useTheme()
   const { pendingTrade, forcePriceConfirmation } = useTradeConfirmState()
   const { t } = useLingui()
   const signingStep = useSigningStep()
@@ -92,6 +95,7 @@ export function TradeConfirmation(_props: TradeConfirmationProps): ReactNode {
         </styledEl.HeaderRightContent>
       </styledEl.Header>
       <styledEl.ContentWrapper id="trade-confirmation">
+        {isOphisMobileSwap && <MobileSwapHeading review />}
         <ConfirmAmounts
           inputCurrencyInfo={props.inputCurrencyInfo}
           outputCurrencyInfo={props.outputCurrencyInfo}

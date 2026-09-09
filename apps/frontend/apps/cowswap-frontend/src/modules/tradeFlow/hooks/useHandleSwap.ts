@@ -6,13 +6,15 @@ import { useLingui } from '@lingui/react/macro'
 
 import { Field } from 'legacy/state/types'
 
+import { useGetAmountToSignApprove } from 'modules/erc20Approve'
 import { ethFlow, useEthFlowContext } from 'modules/ethFlow'
 import { buildTradeWidgetHookPayload, callWidgetHook } from 'modules/injectedWidget'
-import { TradeWidgetActions, useTradePriceImpact } from 'modules/trade'
+import { TradeWidgetActions, useAmountsToSignFromQuote, useTradePriceImpact } from 'modules/trade'
 import { logTradeFlow } from 'modules/trade/utils/logger'
 import { useTradeFlowAnalytics } from 'modules/trade/utils/tradeFlowAnalytics'
 
 import { useConfirmPriceImpactWithoutFee } from 'common/hooks/useConfirmPriceImpactWithoutFee'
+import { useNeedsApproval } from 'common/hooks/useNeedsApproval'
 import { getAreBridgeCurrencies } from 'common/utils/getAreBridgeCurrencies'
 
 import { useSafeBundleFlowContext } from './useSafeBundleFlowContext'
@@ -29,6 +31,9 @@ export function useHandleSwap(
   actions: TradeWidgetActions,
 ): { callback(): Promise<false | void>; contextIsReady: boolean } {
   const tradeFlowType = useTradeFlowType()
+  const amountToApprove = useGetAmountToSignApprove()
+  const { maximumSendSellAmount } = useAmountsToSignFromQuote() || {}
+  const needsApproval = useNeedsApproval(maximumSendSellAmount)
   const tradeFlowContext = useTradeFlowContext(params)
   const safeBundleFlowContext = useSafeBundleFlowContext()
   const isBridge = getAreBridgeCurrencies(
@@ -49,8 +54,21 @@ export function useHandleSwap(
         : tradeFlowContext,
     ) && !!tradeFlowContext
 
-  const callback = useCallback(async () => {
+  const callback = useCallback(async (): Promise<false | void> => {
     if (!tradeFlowContext) return
+
+    // Gate every signing path, including permits and bundled approve + presign.
+    if (
+      tradeFlowType !== FlowType.EOA_ETH_FLOW &&
+      needsApproval &&
+      (!amountToApprove ||
+        !maximumSendSellAmount ||
+        !amountToApprove.currency.equals(maximumSendSellAmount.currency) ||
+        amountToApprove.lessThan(maximumSendSellAmount))
+    ) {
+      tradeFlowContext.tradeConfirmActions.onError(t`Approved amount is not sufficient!`)
+      return false
+    }
 
     const isWidgetHookPassed = await callWidgetHook(
       WidgetHookEvents.ON_BEFORE_TRADE,
@@ -118,6 +136,9 @@ export function useHandleSwap(
   }, [
     tradeFlowContext,
     tradeFlowType,
+    amountToApprove,
+    maximumSendSellAmount,
+    needsApproval,
     priceImpactParams,
     confirmPriceImpactWithoutFee,
     analytics,

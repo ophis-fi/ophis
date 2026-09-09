@@ -1,10 +1,10 @@
-import { RowFixed, UI } from '@cowprotocol/ui'
+import { Media, RowFixed, UI } from '@cowprotocol/ui'
 
 import { MenuList } from '@reach/menu-button'
 import { transparentize } from 'color2k'
 import styled from 'styled-components/macro'
 
-import { SettingsButton } from 'modules/trade/pure/Settings/styled'
+import { SettingsButton } from 'modules/trade'
 
 // TODO: There's some duplication between this file and modules/trade/pure/Settings/styled.
 // Using a re-export here until that's addressed properly.
@@ -32,7 +32,7 @@ export const StyledMenu = styled.div`
 `
 
 export const MenuFlyout = styled(MenuList)`
-  min-width: 20.125rem;
+  max-width: calc(100vw - 48px);
   background: var(${UI.COLOR_PRIMARY});
   box-shadow:
     0px 0px 1px rgba(0, 0, 0, 0.01),
@@ -54,5 +54,16 @@ export const MenuFlyout = styled(MenuList)`
   margin: 0;
   top: 36px;
   right: 0;
-  width: 280px;
+  width: 20.125rem;
+
+  @media ${Media.upToSmall(false)}, (pointer: coarse) and (max-height: 500px) {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
 `

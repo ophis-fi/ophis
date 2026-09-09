@@ -10,6 +10,7 @@ import {
   TradeApproveButton,
   TradeApproveToggle,
   useIsPartialApprovalModeSelected,
+  useIsPartialApproveSelectedByUser,
   usePartialApproveAmountModalState,
   useUpdatePartialApproveAmountModalState,
 } from 'modules/erc20Approve'
@@ -30,18 +31,25 @@ export function OrderPartialApprove({
   const { isModalOpen, amountSetByUser } = usePartialApproveAmountModalState() || {}
   const updatePartialApproveAmountModalState = useUpdatePartialApproveAmountModalState()
   const isPartialApprovalModeSelected = useIsPartialApprovalModeSelected()
+  const isPartialApproveSelectedByUser = useIsPartialApproveSelectedByUser()
 
   const currency = amountToApprove.currency
 
   const partialAmountToApproveFinal = amountSetByUser ?? amountToApprove
 
   const finalAmountToApprove = useMemo(() => {
-    if (isPartialApproveEnabledBySettings && isPartialApprovalModeSelected) {
+    if (isPartialApproveEnabledBySettings && isPartialApprovalModeSelected && isPartialApproveSelectedByUser) {
       return partialAmountToApproveFinal
     }
 
     return CurrencyAmount.fromRawAmount(currency, MAX_APPROVE_AMOUNT.toString())
-  }, [isPartialApprovalModeSelected, isPartialApproveEnabledBySettings, partialAmountToApproveFinal, currency])
+  }, [
+    isPartialApprovalModeSelected,
+    isPartialApproveSelectedByUser,
+    isPartialApproveEnabledBySettings,
+    partialAmountToApproveFinal,
+    currency,
+  ])
 
   if (isModalOpen) {
     return (
@@ -55,7 +63,7 @@ export function OrderPartialApprove({
       {isPartialApproveEnabledBySettings && (
         <>
           <TradeApproveToggle
-            amountToApprove={finalAmountToApprove}
+            amountToApprove={partialAmountToApproveFinal}
             updateModalState={() => updatePartialApproveAmountModalState({ isModalOpen: true })}
           />
           <ActiveOrdersWithAffectedPermit orderId={orderId} currency={currency} />

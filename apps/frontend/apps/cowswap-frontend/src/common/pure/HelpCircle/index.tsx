@@ -2,9 +2,7 @@ import { questionIcon } from '@cowprotocol/assets/cow-swap/question.js'
 import { UI } from '@cowprotocol/ui'
 
 import SVG from 'react-inlinesvg'
-import styled from 'styled-components/macro'
-
-import { useIsDarkMode } from 'legacy/state/user/hooks'
+import styled, { useTheme } from 'styled-components/macro'
 
 const HelpCircleWrapper = styled.div`
   display: flex;
@@ -27,7 +25,7 @@ export interface HelpCircleProps {
 // TODO: Add proper return type annotation
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function HelpCircle({ size }: HelpCircleProps) {
-  const darkMode = useIsDarkMode()
+  const { darkMode } = useTheme()
   return (
     <HelpCircleWrapper>
       <SVG width={size ? size : 14} height={size ? size : 14} src={questionIcon(darkMode)} />

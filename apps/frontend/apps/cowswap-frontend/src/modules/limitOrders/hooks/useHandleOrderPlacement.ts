@@ -84,7 +84,10 @@ export function useHandleOrderPlacement(
     } = tradeContext
     const inputCurrency = inputAmount.currency
 
-    const cachedPermit = await getCachedPermit(getAddress(inputCurrency))
+    const cachedPermit = await getCachedPermit(
+      getAddress(inputCurrency),
+      BigInt(tradeContext.amountToApprove.quotient.toString()),
+    )
 
     if (cachedPermit) return
 
@@ -98,6 +101,15 @@ export function useHandleOrderPlacement(
   }, [tradeContext, tradeConfirmActions])
 
   const tradeFn = useCallback(async () => {
+    const { amountToApprove, needsApproval, postOrderParams } = tradeContext
+    if (
+      (needsApproval || isSafeBundle) &&
+      (!amountToApprove.currency.equals(postOrderParams.inputAmount.currency) ||
+        amountToApprove.lessThan(postOrderParams.inputAmount))
+    ) {
+      throw new Error(t`Approved amount is not sufficient!`)
+    }
+
     const isWidgetHookPassed = await callWidgetHook(
       WidgetHookEvents.ON_BEFORE_TRADE,
       buildTradeWidgetHookPayload({
