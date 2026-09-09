@@ -1,4 +1,10 @@
+import { createElement } from 'react'
+
 import type { CowSwapWidgetPalette } from '@cowprotocol/widget-lib'
+
+import { render } from '@testing-library/react'
+import { OphisLogoLoader } from 'ophis/components/OphisLogoLoader'
+import { ThemeProvider } from 'styled-components/macro'
 
 import { getCowswapTheme } from './getCowswapTheme'
 import { mapWidgetTheme } from './mapWidgetTheme'
@@ -22,6 +28,13 @@ describe('mapWidgetTheme', () => {
       primary: '#abcdef',
       buttonTextCustom: '#101010',
     })
+    // The host's canvas can oppose baseTheme; lazy-route loaders must still contrast.
+    const hostTheme = mapWidgetTheme({ background: dark ? '#ffffff' : '#17191c' }, defaults)
+    const view = render(createElement(ThemeProvider, { theme: hostTheme }, createElement(OphisLogoLoader)))
+    expect(view.getByRole('status').querySelector('img')).toHaveStyleRule(
+      'filter',
+      dark ? 'brightness(0)' : 'brightness(0) invert(1)',
+    )
   })
 
   it('maps custom widget shadow to the main widget container shadow', () => {

@@ -16,6 +16,8 @@
  */
 import { ReactNode } from 'react'
 
+import { getContrastText } from '@cowprotocol/ui-utils'
+
 import styled, { keyframes } from 'styled-components/macro'
 
 interface Props {
@@ -56,7 +58,8 @@ const Mark = styled.img`
   height: 100%;
   display: block;
   animation: ${rotate} 8s linear infinite;
-  filter: ${({ theme }) => (theme.darkMode ? 'brightness(0) invert(1)' : 'brightness(0)')};
+  filter: ${({ theme }) =>
+    getContrastText(theme.background, '#000000') === '#000000' ? 'brightness(0)' : 'brightness(0) invert(1)'};
   @media (prefers-reduced-motion: reduce) {
     animation: none;
   }
