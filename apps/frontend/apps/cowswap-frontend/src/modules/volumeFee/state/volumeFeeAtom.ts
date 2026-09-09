@@ -7,8 +7,12 @@ import { resolveFlexibleConfig } from '@cowprotocol/widget-lib'
 
 import { correlatedTokensAtom } from 'entities/correlatedTokens'
 
-import { classifyInjectedWidgetHostFee, InjectedWidgetHostFeeKind, injectedWidgetPartnerFeeAtom } from 'modules/injectedWidget'
-import { injectedWidgetParamsAtom } from 'modules/injectedWidget/state/injectedWidgetParamsAtom'
+import {
+  classifyInjectedWidgetHostFee,
+  InjectedWidgetHostFeeKind,
+  injectedWidgetParamsAtom,
+  injectedWidgetPartnerFeeAtom,
+} from 'modules/injectedWidget'
 import { derivedTradeStateAtom, tradeTypeAtom, TradeType, TradeTypeToWidgetTradeTypeMap } from 'modules/trade'
 import { tradeQuotesAtom } from 'modules/tradeQuote'
 
