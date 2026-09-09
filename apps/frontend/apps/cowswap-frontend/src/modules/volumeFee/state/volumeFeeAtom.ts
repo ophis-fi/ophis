@@ -7,7 +7,8 @@ import { resolveFlexibleConfig } from '@cowprotocol/widget-lib'
 
 import { correlatedTokensAtom } from 'entities/correlatedTokens'
 
-import { injectedWidgetPartnerFeeAtom } from 'modules/injectedWidget'
+import { classifyInjectedWidgetHostFee, InjectedWidgetHostFeeKind, injectedWidgetPartnerFeeAtom } from 'modules/injectedWidget'
+import { injectedWidgetParamsAtom } from 'modules/injectedWidget/state/injectedWidgetParamsAtom'
 import { derivedTradeStateAtom, tradeTypeAtom, TradeType, TradeTypeToWidgetTradeTypeMap } from 'modules/trade'
 import { tradeQuotesAtom } from 'modules/tradeQuote'
 
@@ -150,6 +151,32 @@ export const widgetPartnerFeeAtom = atom<VolumeFee | undefined>((get) => {
  * signed appData. A basket leg is a market swap, so pin the widget trade type to
  * SWAP and stay independent of the route the basket happens to be mounted on.
  */
+/**
+ * Provenance of the host fee for the CURRENT form route, resolved for the same
+ * chain + trade type `widgetPartnerFeeAtom` resolves the fee itself, so a mixed
+ * per-network configuration classifies each route on its own recipient.
+ */
+export const hostFeeKindAtom = atom<InjectedWidgetHostFeeKind | undefined>((get) => {
+  const { chainId } = get(walletInfoAtom)
+  const tradeType = get(tradeTypeAtom)?.tradeType
+  if (!tradeType) return undefined
+  return classifyInjectedWidgetHostFee(
+    get(injectedWidgetParamsAtom).params.partnerFee,
+    chainId,
+    TradeTypeToWidgetTradeTypeMap[tradeType],
+  )
+})
+
+/** Same as hostFeeKindAtom for basket legs, pinned to SWAP like basketWidgetVolumeFeeAtom. */
+export const basketHostFeeKindAtom = atom<InjectedWidgetHostFeeKind | undefined>((get) => {
+  const { chainId } = get(walletInfoAtom)
+  return classifyInjectedWidgetHostFee(
+    get(injectedWidgetParamsAtom).params.partnerFee,
+    chainId,
+    TradeTypeToWidgetTradeTypeMap[TradeType.SWAP],
+  )
+})
+
 export const basketWidgetVolumeFeeAtom = atom<VolumeFee | undefined>((get) => {
   const { chainId } = get(walletInfoAtom)
   const partnerFee = get(injectedWidgetPartnerFeeAtom)

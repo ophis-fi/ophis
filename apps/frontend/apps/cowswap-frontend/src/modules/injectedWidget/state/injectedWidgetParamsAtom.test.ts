@@ -2,9 +2,11 @@ import { createStore } from 'jotai'
 
 import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
 
+import { TradeType } from '@cowprotocol/widget-lib'
+
 import {
+  classifyInjectedWidgetHostFee,
   injectedWidgetAppDataPartnerFeeAtom,
-  injectedWidgetHostFeeKindAtom,
   injectedWidgetParamsAtom,
 } from './injectedWidgetParamsAtom'
 
@@ -35,30 +37,25 @@ describe('injectedWidgetAppDataPartnerFeeAtom', () => {
   })
 })
 
-describe('injectedWidgetHostFeeKindAtom', () => {
-  it('is undefined without a host partnerFee, third-party for a foreign recipient, ophis for the wrapper', () => {
-    const store = createStore()
-    expect(store.get(injectedWidgetHostFeeKindAtom)).toBeUndefined()
-    store.set(injectedWidgetParamsAtom, {
-      params: { partnerFee: { bps: 50, recipient: '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4' } },
-      errors: {},
-    })
-    expect(store.get(injectedWidgetHostFeeKindAtom)).toBe('third-party')
-    store.set(injectedWidgetParamsAtom, {
-      params: { partnerFee: { bps: 0, recipient: OPHIS_PARTNER_FEE_RECIPIENT.toLowerCase() } },
-      errors: {},
-    })
-    expect(store.get(injectedWidgetHostFeeKindAtom)).toBe('ophis')
-    // A per-network map mixing the two counts as third-party (the stacking side).
-    store.set(injectedWidgetParamsAtom, {
-      params: {
-        partnerFee: {
-          bps: 50,
-          recipient: { 1: OPHIS_PARTNER_FEE_RECIPIENT, 100: '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4' },
-        },
-      },
-      errors: {},
-    })
-    expect(store.get(injectedWidgetHostFeeKindAtom)).toBe('third-party')
+describe('classifyInjectedWidgetHostFee', () => {
+  const THIRD_PARTY = '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4'
+
+  it('is undefined without a host partnerFee', () => {
+    expect(classifyInjectedWidgetHostFee(undefined, 1, TradeType.SWAP)).toBeUndefined()
+  })
+
+  it('classifies a scalar recipient (any casing)', () => {
+    expect(classifyInjectedWidgetHostFee({ bps: 50, recipient: THIRD_PARTY }, 1, TradeType.SWAP)).toBe('third-party')
+    expect(
+      classifyInjectedWidgetHostFee({ bps: 0, recipient: OPHIS_PARTNER_FEE_RECIPIENT.toLowerCase() }, 1, TradeType.SWAP),
+    ).toBe('ophis')
+  })
+
+  it('classifies a mixed per-network configuration route by route', () => {
+    // Wrapper (free) on mainnet next to a third-party fee on Gnosis: each route
+    // must be judged on its OWN recipient, not on the configuration as a whole.
+    const fee = { bps: { 1: 0, 100: 50 }, recipient: { 1: OPHIS_PARTNER_FEE_RECIPIENT, 100: THIRD_PARTY } }
+    expect(classifyInjectedWidgetHostFee(fee, 1, TradeType.SWAP)).toBe('ophis')
+    expect(classifyInjectedWidgetHostFee(fee, 100, TradeType.SWAP)).toBe('third-party')
   })
 })

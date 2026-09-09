@@ -9,10 +9,10 @@ import { affiliateTraderSavedCodeAtom } from 'modules/affiliate'
 import { AppDataInfo, buildAppData, resolveOphisPartnerFee } from 'modules/appData'
 import { useAppCode, useAppDataHooks } from 'modules/appData/hooks'
 import { useRwaConsentForAppData } from 'modules/appData/hooks/useRwaConsentForAppData'
-import { injectedWidgetAppDataPartnerFeeAtom, injectedWidgetHostFeeKindAtom } from 'modules/injectedWidget'
+import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
 import { useUtm } from 'modules/utm'
-import { isStableStablePair } from 'modules/volumeFee'
+import { basketHostFeeKindAtom, isStableStablePair } from 'modules/volumeFee'
 
 import { useBasketLegPartnerFee } from './useBasketLegPartnerFee'
 import { BuildBasketLegAppDataFn } from './useBasketPlacement'
@@ -57,7 +57,7 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
 
   const resolveLegPartnerFee = useBasketLegPartnerFee()
   const widgetPartnerFee = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
-  const hostFee = useAtomValue(injectedWidgetHostFeeKindAtom)
+  const hostFee = useAtomValue(basketHostFeeKindAtom)
 
   return useCallback(
     async (leg, marker: OphisBasketTag): Promise<AppDataInfo> => {

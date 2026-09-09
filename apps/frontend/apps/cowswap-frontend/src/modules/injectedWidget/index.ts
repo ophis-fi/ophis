@@ -6,9 +6,9 @@ export { useInjectedWidgetMetaData } from './hooks/useInjectedWidgetMetaData'
 export { useInjectedWidgetPalette } from './hooks/useInjectedWidgetPalette'
 export {
   injectedWidgetAppDataPartnerFeeAtom,
-  injectedWidgetHostFeeKindAtom,
   injectedWidgetPartnerFeeAtom,
 } from './state/injectedWidgetParamsAtom'
+export { classifyInjectedWidgetHostFee } from './state/injectedWidgetParamsAtom'
 export type { InjectedWidgetHostFeeKind } from './state/injectedWidgetParamsAtom'
 export { WidgetMarkdownContent } from './pure/WidgetMarkdownContent'
 

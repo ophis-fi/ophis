@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAtomValue } from 'jotai'
 
 import { resolveOphisPartnerFee, sumVolumeFeeBps } from 'modules/appData'
-import { injectedWidgetAppDataPartnerFeeAtom, injectedWidgetHostFeeKindAtom } from 'modules/injectedWidget'
-import { isStableStablePair, VolumeFee } from 'modules/volumeFee'
+import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
+import { VolumeFee, basketHostFeeKindAtom, isStableStablePair } from 'modules/volumeFee'
 
 import { OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
 
@@ -73,7 +73,7 @@ export function useBasketQuotes(
   // builder uses) or the buy amount shown is 1 bp optimistic and a tight limit is
   // less fillable than the screen implied.
   const widgetPartnerFee = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
-  const hostFee = useAtomValue(injectedWidgetHostFeeKindAtom)
+  const hostFee = useAtomValue(basketHostFeeKindAtom)
   const resolveLegQuoteFee = useCallback<ResolveLegPartnerFeeFn>(
     (leg) => {
       const legFee = resolveLegPartnerFee(leg)
