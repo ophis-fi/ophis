@@ -88,12 +88,21 @@ describe('resolveOphisPartnerFee', () => {
       expect(resolveOphisPartnerFee(OPHIS_SHAPE, { volumeBps: 50 }, HOSTED, false, 'third-party')).toBe(OPHIS_SHAPE)
     })
 
-    it('still yields only the pipeline fee on a Volume-only chain (PI shape suppressed there)', () => {
-      // Unchanged behaviour: the sovereign backend enforces its recipient
-      // allowlist at ingress, so a foreign host fee is rejected there anyway.
+    it('stacks the Ophis floor behind a third-party host fee on a Volume-only chain (PI suppressed there)', () => {
+      // The sovereign backend floors PRESENT entries only and never injects one, so
+      // the floor must be emitted here or an allowlisted embedder rides free.
       for (const chainId of VOLUME_ONLY) {
-        expect(resolveOphisPartnerFee(OPHIS_SHAPE, HOST_FEE, chainId, false, 'third-party')).toBe(HOST_FEE)
+        expect(resolveOphisPartnerFee(OPHIS_SHAPE, HOST_FEE, chainId, false, 'third-party')).toEqual([
+          HOST_FEE,
+          { volumeBps: 1, recipient: OPHIS_SAFE },
+        ])
       }
+      // A wrapper fee (recipient = Ophis) stays authoritative there too.
+      const WRAPPER_FEE = { volumeBps: 20, recipient: OPHIS_SAFE }
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, WRAPPER_FEE, 10, false, 'ophis')).toBe(WRAPPER_FEE)
+      // No host override: the pipeline already carries the floor; pass it through.
+      const FLOOR = { volumeBps: 1, recipient: OPHIS_SAFE }
+      expect(resolveOphisPartnerFee(OPHIS_SHAPE, FLOOR, 10)).toBe(FLOOR)
     })
 
     it('keeps an explicit host fee paid TO Ophis authoritative (the @ophis/widget-react wrapper pins that recipient)', () => {

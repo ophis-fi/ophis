@@ -1,5 +1,5 @@
 import { setGlobalAdapter } from '@cowprotocol/cow-sdk'
-import { buildAppData, mergeAppDataDoc } from '@cowprotocol/sdk-trading'
+import { buildAppData, getPartnerFeeBps, mergeAppDataDoc } from '@cowprotocol/sdk-trading'
 
 import { OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, OPHIS_PARTNER_FEE_RECIPIENT } from './partnerFeeDefault'
 
@@ -152,6 +152,28 @@ describe('appData partnerFee survives an SDK merge without duplicating', () => {
       const built = await buildAppData(limitOrderParams(operatedChainFee()), hostedChainDoc())
 
       expect(built.doc.metadata.partnerFee).toEqual(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE)
+    })
+  })
+
+  describe('getPartnerFeeBps (patched): the buy limit is sized from EVERY flat Volume entry', () => {
+    // A host widget fee is stacked with the 1 bp Ophis base and settlement charges
+    // both. Upstream returns the FIRST volumeBps, which signed the order 1 bp too
+    // optimistic on every stacked widget order (the same class as the 2.3 bps bridge
+    // expiry above). The patch sums them; this fails on the unpatched SDK.
+    const HOST = '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4'
+    it('sums the host fee and the Ophis base and ignores price improvement', () => {
+      expect(
+        getPartnerFeeBps([
+          { volumeBps: 50, recipient: HOST },
+          { volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+          { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS_PARTNER_FEE_RECIPIENT },
+        ]),
+      ).toBe(51)
+    })
+    it('keeps the single-object and PI-only readings', () => {
+      expect(getPartnerFeeBps({ volumeBps: 1, recipient: OPHIS_PARTNER_FEE_RECIPIENT })).toBe(1)
+      expect(getPartnerFeeBps([{ priceImprovementBps: 8000, maxVolumeBps: 99, recipient: OPHIS_PARTNER_FEE_RECIPIENT }])).toBeUndefined()
+      expect(getPartnerFeeBps(undefined)).toBeUndefined()
     })
   })
 })
