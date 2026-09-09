@@ -64,11 +64,19 @@ export function useApproveCallback(
         return
       }
 
+      if (amount instanceof CurrencyAmount && !amount.currency.equals(token)) {
+        throw new Error(t`Approval token does not match the selected token`)
+      }
+
       const estimation = await estimateApprove(tokenContract, spender, amountToApprove)
-      return tokenContract
-        .approve(spender, estimation.approveAmount, {
-          gasLimit: calculateGasMargin(estimation.gasLimit),
-        })
+      const transaction = await tokenContract.populateTransaction.approve(spender, estimation.approveAmount, {
+        gasLimit: calculateGasMargin(estimation.gasLimit),
+      })
+      if ((await tokenContract.signer.getChainId()) !== token.chainId) {
+        throw new Error(t`Wallet network changed. Please retry.`)
+      }
+      return tokenContract.signer
+        .sendTransaction({ ...transaction, chainId: token.chainId })
         .then((response: TransactionResponse) => {
           addTransaction({
             hash: response.hash,

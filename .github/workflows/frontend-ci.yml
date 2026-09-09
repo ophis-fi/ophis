@@ -139,6 +139,18 @@ jobs:
         working-directory: apps/frontend
         run: pnpm exec nx run tokens:test --testPathPatterns 'const/tokensLists' --passWithNoTests=false
 
+      - name: Approval and mobile security regression tests
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/modules/erc20Approve|src/modules/tradeFlow/hooks/useHandleSwap|src/modules/account/containers/OrderPartialApprove|src/theme/themeConfigAtom|src/ophis/components/intent/IntentEntry' --passWithNoTests=false
+
+      - name: Permit amount and cache binding regression tests
+        working-directory: apps/frontend
+        run: pnpm exec nx run permit-utils:test --passWithNoTests=false
+
+      - name: Mobile viewport initialization regression test
+        working-directory: apps/frontend
+        run: pnpm exec nx run common-hooks:test --testPathPatterns useMediaQuery --passWithNoTests=false
+
       - name: production-build cowswap-frontend
         working-directory: apps/frontend
         run: pnpm build:cowswap
