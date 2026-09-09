@@ -125,10 +125,8 @@
 
   /* Type families — Steep editorial pairing (approved): Georgia for
      display/headings (regular + italic only), Inter/system sans for
-     body/UI, system mono for code/data. Georgia and Inter are the
-     documented Steep fallbacks, so no webfont payload is required;
-     the swap surface additionally loads Ophis Inter via its own
-     MobileSwapGlobalStyle. */
+     body/UI, system mono for code/data. Inter is self-hosted; Georgia
+     and the system stacks fall back to installed fonts. */
   --ophis-font-display: Georgia, "Times New Roman", ui-serif, serif;
   --ophis-font-body: "Inter var", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
   --ophis-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;

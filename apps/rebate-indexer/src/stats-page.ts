@@ -138,8 +138,9 @@ h1{font:400 clamp(36px,6vw,64px)/1.15 Georgia,serif;letter-spacing:-.015em;margi
 .gl li{background:#f2f2f3;border-radius:24px;padding:24px;font-size:15px;color:#5b606b}
 .gl li strong{display:block;color:#17191c;font-weight:500;margin-bottom:8px}
 .gl li.wide,.gl li.wide strong{background:#fbe1d1;color:#5d2a1a}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:32px}
-@media(min-width:760px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin-bottom:32px}
+@media(min-width:440px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:960px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .card{background:#f2f2f3;border-radius:16px;padding:20px;min-width:0}
 .card .n{font-size:clamp(22px,4vw,30px);font-weight:500;letter-spacing:-.01em;overflow-wrap:anywhere}
 .card .l{font-size:13px;color:#5b606b;margin-top:8px}

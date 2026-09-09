@@ -1,0 +1,94 @@
+@font-face {
+  font-family: 'Ophis Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/static/Inter-roman.var.woff2') format('woff2');
+}
+
+:root {
+  color-scheme: light;
+  font-family: 'Ophis Inter', system-ui, sans-serif;
+  background: #ffffff;
+  color: #17191c;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  padding: 32px 16px;
+  min-height: 100dvh;
+  line-height: 1.5;
+}
+main {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: clamp(16px, 4vw, 32px);
+}
+h1 {
+  margin: 0 0 24px;
+  font:
+    400 clamp(32px, 6vw, 48px) / 1.2 Georgia,
+    serif;
+  letter-spacing: -0.015em;
+}
+.warning {
+  padding: 20px;
+  border-radius: 16px;
+  background: #fbe1d1;
+  color: #5d2a1a;
+}
+dl {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 12px 16px;
+}
+dt {
+  color: #5b606b;
+}
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+}
+button {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #17191c;
+  border-radius: 12px;
+  background: #17191c;
+  color: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  background: #353941;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+button:focus-visible {
+  outline: 2px solid #17191c;
+  outline-offset: 4px;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f2f2f3;
+  border-radius: 16px;
+  padding: 20px;
+  min-height: 44px;
+}
+@media (max-width: 560px) {
+  dl {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  dd {
+    margin-bottom: 12px;
+  }
+}
