@@ -86,6 +86,7 @@ export async function tradeFlow(
       appData,
       typedHooks,
       generatePermitHook,
+      amount: BigInt(params.amountToApprove.quotient.toString()),
     })
 
     if (callDataContainsPermitSigner(postOrderParams.appData.fullAppData)) {

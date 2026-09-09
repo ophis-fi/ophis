@@ -141,7 +141,7 @@ jobs:
 
       - name: Approval and mobile security regression tests
         working-directory: apps/frontend
-        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/modules/erc20Approve|src/modules/tradeFlow/hooks/useHandleSwap|src/modules/account/containers/OrderPartialApprove|src/theme/themeConfigAtom|src/ophis/components/intent/IntentEntry' --passWithNoTests=false
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/modules/erc20Approve|src/modules/limitOrders|src/modules/permit|src/modules/tradeFlow/hooks/useHandleSwap|src/modules/account/containers/OrderPartialApprove|src/theme/themeConfigAtom|src/ophis/components/intent/IntentEntry' --passWithNoTests=false
 
       - name: Permit amount and cache binding regression tests
         working-directory: apps/frontend

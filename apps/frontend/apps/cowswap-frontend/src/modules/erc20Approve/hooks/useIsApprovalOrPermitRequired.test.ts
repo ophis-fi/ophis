@@ -26,6 +26,7 @@ import { useApproveState } from './useApproveState'
 import { useGetAmountToSignApprove } from './useGetAmountToSignApprove'
 import { ApproveRequiredReason, useIsApprovalOrPermitRequired } from './useIsApprovalOrPermitRequired'
 
+import { MAX_APPROVE_AMOUNT } from '../constants'
 import { ApprovalState } from '../types'
 
 jest.mock('modules/permit', () => ({
@@ -570,12 +571,25 @@ describe('useIsApprovalOrPermitRequired', () => {
 
     it('should return DaiLikePermitRequired for dai-like permit type', () => {
       mockUsePermitInfo.mockReturnValue({ type: 'dai-like' })
+      mockUseGetAmountToSignApprove.mockReturnValue(
+        CurrencyAmount.fromRawAmount(mockToken, MAX_APPROVE_AMOUNT.toString()),
+      )
 
       const { result } = renderHook(() =>
         useIsApprovalOrPermitRequired({ isBundlingSupportedOrEnabledForContext: null }),
       )
 
       expect(result.current.reason).toBe(ApproveRequiredReason.DaiLikePermitRequired)
+    })
+
+    it.each([false, true])('keeps a finite DAI limit on the approval path with bundling=%s', (bundling) => {
+      mockUsePermitInfo.mockReturnValue({ type: 'dai-like' })
+      const { result } = renderHook(() =>
+        useIsApprovalOrPermitRequired({ isBundlingSupportedOrEnabledForContext: bundling }),
+      )
+      expect(result.current.reason).toBe(
+        bundling ? ApproveRequiredReason.BundleApproveRequired : ApproveRequiredReason.Required,
+      )
     })
 
     it('should return NotRequired for unsupported permit type', () => {
@@ -740,6 +754,9 @@ describe('useIsApprovalOrPermitRequired', () => {
       expect(result1.current.reason).toBe(ApproveRequiredReason.Eip2612PermitRequired)
 
       mockUsePermitInfo.mockReturnValue({ type: 'dai-like' })
+      mockUseGetAmountToSignApprove.mockReturnValue(
+        CurrencyAmount.fromRawAmount(mockToken, MAX_APPROVE_AMOUNT.toString()),
+      )
       const { result: result2 } = renderHook(() =>
         useIsApprovalOrPermitRequired({ isBundlingSupportedOrEnabledForContext: null }),
       )

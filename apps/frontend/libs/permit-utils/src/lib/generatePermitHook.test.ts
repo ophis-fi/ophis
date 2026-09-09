@@ -4,7 +4,7 @@ import { generatePermitHook } from './generatePermitHook'
 
 import { DEFAULT_PERMIT_VALUE } from '../const'
 import { PermitHookParams } from '../types'
-import { buildEip2612PermitCallData } from '../utils/buildPermitCallData'
+import { buildDaiLikePermitCallData, buildEip2612PermitCallData } from '../utils/buildPermitCallData'
 
 jest.mock('@cowprotocol/hook-dapp-lib', () => ({ PERMIT_HOOK_DAPP_ID: 'permit' }))
 jest.mock('../const', () => ({
@@ -13,7 +13,10 @@ jest.mock('../const', () => ({
   PERMIT_SIGNER: { address: '0x1111111111111111111111111111111111111111' },
 }))
 jest.mock('../utils/getPermitDeadline', () => ({ getPermitDeadline: () => 2000000000 }))
-jest.mock('../utils/buildPermitCallData', () => ({ buildEip2612PermitCallData: jest.fn().mockResolvedValue('0x00') }))
+jest.mock('../utils/buildPermitCallData', () => ({
+  buildEip2612PermitCallData: jest.fn().mockResolvedValue('0x00'),
+  buildDaiLikePermitCallData: jest.fn().mockResolvedValue('0x00'),
+}))
 
 const params = {
   inputToken: { address: '0x2222222222222222222222222222222222222222', name: 'USDC' },
@@ -25,6 +28,8 @@ const params = {
   eip2612Utils: {},
   provider: { estimateGas: jest.fn().mockResolvedValue(BigNumber.from(80000)) },
 } as unknown as PermitHookParams
+
+beforeEach(() => jest.clearAllMocks())
 
 it.each([0n, 10000000n, undefined])(
   'preserves explicit permit value %s and defaults only when omitted',
@@ -59,4 +64,25 @@ it('does not share concurrent permits across different spending limits, spenders
       ]) => [permit.value, permit.spender, permit.nonce],
     ),
   ).toEqual(requests.map(({ amount, spender, nonce }) => [(amount ?? DEFAULT_PERMIT_VALUE).toString(), spender, nonce]))
+})
+
+it.each([0n, 10000000n])(
+  'rejects DAI-like amount %s before signing for real and account-agnostic users',
+  async (amount) => {
+    for (const account of [params.account, undefined]) {
+      const result = await generatePermitHook({ ...params, account, amount, permitInfo: { type: 'dai-like' } })
+      expect(result).toBeUndefined()
+    }
+    expect(buildDaiLikePermitCallData).not.toHaveBeenCalled()
+    expect(buildEip2612PermitCallData).not.toHaveBeenCalled()
+    expect(params.provider.estimateGas).not.toHaveBeenCalled()
+  },
+)
+
+it.each([undefined, DEFAULT_PERMIT_VALUE])('allows DAI-like unlimited amount %s', async (amount) => {
+  expect(await generatePermitHook({ ...params, amount, permitInfo: { type: 'dai-like' } })).toBeDefined()
+  expect(jest.mocked(buildDaiLikePermitCallData).mock.lastCall?.[0].callDataParams[0]).toMatchObject({
+    allowed: true,
+    value: DEFAULT_PERMIT_VALUE.toString(),
+  })
 })

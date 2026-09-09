@@ -106,17 +106,72 @@ const wrapper = ({ children }: PropsWithChildren) => {
   )
 }
 
-describe('useHandleOrderPlacement', () => {
-  beforeEach(() => {
-    mockTradeFlow.mockImplementation(() => Promise.resolve('0xOrderHash'))
-    mockSafeBundleFlow.mockImplementation(() => Promise.resolve('0xOrderHash'))
-    mockUseSafeBundleFlowContext.mockImplementation(() => null)
-    mockUseNeedsApproval.mockImplementation(() => false)
-    mockIsBundlingSupported.mockImplementation(() => true)
-    mockUseNavigateToOpenOrdersTable.mockImplementation(() => () => {})
-    mockUseIsSafeApprovalBundle.mockImplementation(() => false)
-  })
+beforeEach(() => {
+  mockTradeFlow.mockImplementation(() => Promise.resolve('0xOrderHash'))
+  mockSafeBundleFlow.mockImplementation(() => Promise.resolve('0xOrderHash'))
+  mockUseSafeBundleFlowContext.mockImplementation(() => null)
+  mockUseNeedsApproval.mockImplementation(() => false)
+  mockIsBundlingSupported.mockImplementation(() => true)
+  mockUseNavigateToOpenOrdersTable.mockImplementation(() => () => {})
+  mockUseIsSafeApprovalBundle.mockImplementation(() => false)
+})
 
+it.each([false, true])('blocks an order above the carried approval cap (bundle=%s)', async (isBundle) => {
+  mockTradeFlow.mockClear()
+  mockSafeBundleFlow.mockClear()
+  mockUseIsSafeApprovalBundle.mockReturnValue(isBundle)
+  const onError = jest.fn()
+  const context = {
+    ...tradeContextMock,
+    needsApproval: true,
+    amountToApprove: CurrencyAmount.fromRawAmount(USDC_BASE, '10000000'),
+    postOrderParams: {
+      ...tradeContextMock.postOrderParams,
+      inputAmount: CurrencyAmount.fromRawAmount(USDC_BASE, '11000000'),
+    },
+  }
+  const { result } = renderHook(
+    () =>
+      useHandleOrderPlacement(context, priceImpactMock, defaultLimitOrdersSettings, {
+        ...tradeConfirmActions,
+        onError,
+      }),
+    { wrapper },
+  )
+
+  await act(async () => result.current())
+
+  expect(mockTradeFlow).not.toHaveBeenCalled()
+  expect(mockSafeBundleFlow).not.toHaveBeenCalled()
+  expect(onError).toHaveBeenCalledWith('Approved amount is not sufficient!')
+})
+
+it('keeps already-approved orders usable without creating another approval', async () => {
+  mockTradeFlow.mockClear()
+  const context = {
+    ...tradeContextMock,
+    needsApproval: false,
+    amountToApprove: CurrencyAmount.fromRawAmount(USDC_BASE, '0'),
+  }
+  const { result } = renderHook(
+    () => useHandleOrderPlacement(context, priceImpactMock, defaultLimitOrdersSettings, tradeConfirmActions),
+    { wrapper },
+  )
+
+  await act(async () => result.current())
+
+  expect(mockTradeFlow).toHaveBeenCalledWith(
+    expect.objectContaining({ amountToApprove: context.amountToApprove, needsApproval: false }),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+  )
+})
+
+describe('useHandleOrderPlacement', () => {
   it('When a limit order placed, then the recipient value should be deleted', async () => {
     // Arrange
     renderHook(

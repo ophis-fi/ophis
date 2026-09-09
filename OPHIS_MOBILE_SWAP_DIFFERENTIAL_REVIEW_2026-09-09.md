@@ -21,14 +21,14 @@ Untrusted inputs include token metadata, refreshed quotes, wallet/provider state
 - Concurrent permit requests with different amounts, spenders or nonces must not share authorization data.
 - Mobile layout must retain the existing fee, slippage, recipient, price-impact and confirmation controls. Animations must not alter monetary values.
 
-The cap controls new token approval. It does not revoke pre-existing allowances or promise an exact output amount from a market swap. DAI-like permits have boolean unlimited semantics and are not represented as finite EIP-2612 permits.
+The cap controls new token approval. It does not revoke pre-existing allowances or promise an exact output amount from a market swap. DAI-like permits have boolean unlimited semantics. Finite DAI requests must use on-chain approval and must never reuse an unlimited permit from a historical finite-key cache entry.
 
 ## Findings and remediation
 
 | ID | Severity | Finding | Resolution and evidence |
 | --- | --- | --- | --- |
 | H1 | High | With cap 10, allowance 10 and a refreshed BUY order needing 11, allowance was checked against the cap and returned approval amount zero. Permit generation used `amount || DEFAULT_PERMIT_VALUE`, turning zero into unlimited. Concurrent zero/omitted requests also shared a cache key; spender and nonce were absent from that key. | Check allowance against the quote's maximum spend; preserve the cap; gate every swap signing flow; use nullish defaulting and bind the in-flight cache to amount, spender and nonce. Regression tests reproduce 10/10/11 and zero versus omitted values and concurrent requests. |
-| M1 | Medium | Checking chain only at render time allowed a wallet network switch during asynchronous gas estimation to send approval on another chain. | Check signer chain after estimation and transaction population; submit the populated transaction with explicit chainId. Real installed ethers runtime verification confirmed forwarding of chainId, exact spender and base-unit amount. Tests block changed-chain and wrong-token inputs. |
+| M1 | Medium | Checking chain only at render time allowed a wallet network switch during asynchronous gas estimation to send approval on another chain. | Query the wallet's live eth_chainId after estimation and transaction population (ethers getChainId can retain its fixed network); submit the populated transaction with explicit chainId. Real installed ethers runtime verification confirmed forwarding of chainId, exact spender and base-unit amount. Tests block changed-chain and wrong-token inputs. |
 | L1 | Low | Safe bundled approval/presign bypassed the regular approval gate when a refreshed quote exceeded the cap, risking an unfillable order and wasted gas. | A shared useHandleSwap gate covers regular, Safe approval and Safe ETH bundle flows before widget hooks and signing. Native EOA ETH flow remains exempt. Tests cover rejection and valid exact-cap/existing-allowance cases. |
 | L2 | Low | Pending-order approval could display Unlimited but submit a finite amount after removing the downstream unlimited override. | Resolve the final approval mode at OrderPartialApprove; pass the finite amount separately to the toggle. Test confirms finite/unlimited button amounts and display consistency. |
 | D1 | High advisory; build tooling | New js-yaml GHSA-2883-xcg3-v3hh caused the existing contracts OSV gate to regress from 60 to 61 HIGH advisories. | Patch existing resolution and lock entry from 4.3.1 to 4.3.2. Frozen install, existing Hardhat tests and OSV pass. Exactly this advisory removed, none added; baseline and exclusions unchanged. |
@@ -39,6 +39,16 @@ The first chain-binding implementation attempted a Contract.approve chainId over
 
 Maintainer advisory: https://github.com/nodeca/js-yaml/security/advisories/GHSA-2883-xcg3-v3hh (patched 4.3.2).
 
+## Independent Cyber follow-up
+
+The mandatory independent Cyber review rejected d52860ab with three actionable findings, despite the green CI and an initial sharp-edges pass. They were reproduced and addressed before release:
+
+1. **High: limit-order sibling paths omitted/overrode finite caps.** Partial approval state survives swap-to-limit navigation. The limit-order EOA service omitted permit amount and Safe service used MAX directly. Propagate the resolved approval amount through limit context, gate insufficient caps before either signing flow, and send that exact amount to permit and Safe approval builders.
+2. **High: finite DAI requests could become unlimited.** Switching from another ERC20 preserves partial mode even though the DAI toggle was hidden. DAI calldata has no amount field. Reject finite DAI-like permit generation, reject historical finite-key DAI cache hits, and route finite DAI approval through an exact on-chain transaction.
+3. **Medium: ethers getChainId was not a live wallet check.** Its fixed-network cache can still report chain 1 while eth_chainId reports chain 10. Read the live wallet RPC directly and retain explicit chainId on submission. A regression uses the real installed Web3Provider and proves the cached/live difference.
+
+A transaction already handed to a wallet cannot be cancelled by a React listener. The final live-chain check and submitted chainId together bind the intended network; a wallet must honor the transaction's chainId. No claim is made that the frontend can secure a malicious wallet.
+
 ## Reachability, history and false-positive checks
 
 - useApproveCallback has three production callers: TokensTableRow, useZeroApprove and useTradeApproveCallback. Token/amount construction was traced at each; no reachable existing cross-token mismatch was found, and a boundary guard now rejects one.
@@ -47,17 +57,17 @@ Maintainer advisory: https://github.com/nodeca/js-yaml/security/advisories/GHSA-
 - Both Safe bundle services have one production caller, useHandleSwap. That shared hook is used by SwapWidget and YieldWidget. All affected signing routes are gated together.
 - generatePermitHook has four production callers: useAccountAgnosticPermitHookData, useGeneratePermitHook, handlePermit and PermitHookApp. The nullish default/cache fix is shared; omitted amounts preserve the existing API default.
 - Persistent permit state already binds chain, token, account, spender and amount. Approval receipt validation binds token, owner and spender. Account switching does not silently substitute another owner because the signer is account-bound.
-- DAI-like permit flow does not expose the finite approval toggle as an EIP-2612 cap; its boolean unlimited behavior is not a new regression.
+- The first review incorrectly ruled out finite DAI requests because its toggle was hidden. Independent Cyber review and a caller re-check confirmed that partial mode persists when switching tokens. A hidden toggle is not an authorization boundary; the shared permit API and persisted-cache lookup require enforcement.
 - History/blame traced the former auto-max and downstream unlimited behavior to the imported approval implementation (a49e05d4) and checked subsequent safety/permit-fallback changes. No recent security fix was removed; Unichain permit fallback remains intact.
 - UI changes use React escaping and existing components. No dynamic HTML injection, eval, new signing endpoint, external approval spender, secret or dynamic script loader was introduced. Mobile intent navigation keeps query parameters and uses an internal fixed route.
 - The mobile theme is route/viewport scoped and excludes injected widgets. Quote updates do not restart amount animations. Reduced-motion settings cancel running reveals. Dialog stacking and viewport sizing preserve visible controls.
 
 ## Validation
 
-- App security/mobile suite: 180 tests across 16 suites pass using the Nx CI command.
-- Permit amount/cache suite: 4 tests pass. Initial mobile media-query test: 1 test passes.
-- Frontend typecheck and changed-file ESLint pass; seven existing internal-module import warnings remain, no lint errors.
-- Semgrep security-audit + secrets: 62 rules over 57 changed production/workflow files, zero findings. The final transaction-population adjustment was subsequently runtime-verified and covered by the approval regressions.
+- App security/mobile suite: 199 tests across 19 suites pass using the Nx CI command.
+- Permit amount/cache/DAI suite: 8 tests pass. Initial mobile media-query test: 1 test passes.
+- Frontend typecheck and changed-file ESLint pass; internal-module import warnings remain (including tests matching existing module patterns), no lint errors.
+- Semgrep security-audit + secrets: 62 rules over 65 changed production/workflow files, zero findings after all Cyber remediations.
 - Playwright Chrome and WebKit: 14 layouts pass (320, 375, 390, 412, phone landscape 844x390, tablet 768 and desktop 1440). Checks cover overflow, phone intent redirect, settings/slippage, token picker, network selector, wallet/account dialogs, color scheme and input zoom. Two additional checks pass for design, reduced motion, viewport changes and route theme restoration.
 - Contracts: Node 22/Yarn frozen install; existing Hardhat decoding suite 7 tests; config/YAML compatibility and empty-merge budget regression pass.
 - Contracts OSV: critical 10, high 60, moderate 44, low 37. This meets the unchanged existing baseline; it does not mean this legacy development toolchain has zero advisories.
@@ -67,7 +77,7 @@ Reproduce frontend checks from apps/frontend:
 
 ```sh
 pnpm typecheck
-pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/modules/erc20Approve|src/modules/tradeFlow/hooks/useHandleSwap|src/modules/account/containers/OrderPartialApprove|src/theme/themeConfigAtom|src/ophis/components/intent/IntentEntry' --passWithNoTests=false
+pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/modules/erc20Approve|src/modules/limitOrders|src/modules/permit|src/modules/tradeFlow/hooks/useHandleSwap|src/modules/account/containers/OrderPartialApprove|src/theme/themeConfigAtom|src/ophis/components/intent/IntentEntry' --passWithNoTests=false
 pnpm exec nx run permit-utils:test --passWithNoTests=false
 pnpm exec nx run common-hooks:test --testPathPatterns useMediaQuery --passWithNoTests=false
 node scripts/check-mobile-swap.cjs http://127.0.0.1:3017
@@ -111,9 +121,21 @@ No physical iOS/Android wallet application or real-money transaction was used; b
 - `apps/frontend/apps/cowswap-frontend/src/modules/erc20Approve/hooks/useGetAmountToSignApprove.tsx`
 - `apps/frontend/apps/cowswap-frontend/src/modules/erc20Approve/hooks/useGetPartialAmountToSignApprove.test.ts`
 - `apps/frontend/apps/cowswap-frontend/src/modules/erc20Approve/hooks/useGetPartialAmountToSignApprove.ts`
+- `apps/frontend/apps/cowswap-frontend/src/modules/erc20Approve/hooks/useIsApprovalOrPermitRequired.test.ts`
+- `apps/frontend/apps/cowswap-frontend/src/modules/erc20Approve/hooks/useIsApprovalOrPermitRequired.ts`
 - `apps/frontend/apps/cowswap-frontend/src/modules/erc20Approve/pure/Toggle/Toggle.test.tsx`
 - `apps/frontend/apps/cowswap-frontend/src/modules/erc20Approve/pure/Toggle/Toggle.tsx`
 - `apps/frontend/apps/cowswap-frontend/src/modules/erc20Approve/pure/Toggle/styled.ts`
+- `apps/frontend/apps/cowswap-frontend/src/modules/limitOrders/hooks/useHandleOrderPlacement.test.tsx`
+- `apps/frontend/apps/cowswap-frontend/src/modules/limitOrders/hooks/useHandleOrderPlacement.ts`
+- `apps/frontend/apps/cowswap-frontend/src/modules/limitOrders/hooks/useTradeFlowContext.ts`
+- `apps/frontend/apps/cowswap-frontend/src/modules/limitOrders/pure/LimitOrdersDetails/index.cosmos.tsx`
+- `apps/frontend/apps/cowswap-frontend/src/modules/limitOrders/services/approvalAmount.test.ts`
+- `apps/frontend/apps/cowswap-frontend/src/modules/limitOrders/services/safeBundleFlow/index.ts`
+- `apps/frontend/apps/cowswap-frontend/src/modules/limitOrders/services/tradeFlow/index.ts`
+- `apps/frontend/apps/cowswap-frontend/src/modules/limitOrders/services/types.ts`
+- `apps/frontend/apps/cowswap-frontend/src/modules/permit/hooks/useGeneratePermitHook.test.ts`
+- `apps/frontend/apps/cowswap-frontend/src/modules/permit/hooks/useGeneratePermitHook.ts`
 - `apps/frontend/apps/cowswap-frontend/src/modules/swap/containers/SwapWidget/index.tsx`
 - `apps/frontend/apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx`
 - `apps/frontend/apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/styled.tsx`

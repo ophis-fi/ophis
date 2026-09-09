@@ -1,5 +1,6 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Erc20, GPv2Settlement } from '@cowprotocol/cowswap-abis'
+import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import type { SendBatchTxCallback } from '@cowprotocol/wallet'
 import type { JsonRpcSigner } from '@ethersproject/providers'
 
@@ -16,6 +17,8 @@ export interface TradeFlowContext {
   // signer changes creates redundant re-renders
   // validTo must be calculated just before signing of an order
   postOrderParams: Omit<PostOrderParams, 'validTo' | 'signer'>
+  amountToApprove: CurrencyAmount<Currency>
+  needsApproval: boolean
   typedHooks?: TypedAppDataHooks
   settlementContract: GPv2Settlement
   chainId: SupportedChainId
