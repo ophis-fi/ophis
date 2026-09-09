@@ -1,4 +1,5 @@
 import { OPHIS_PARTNER_FEE_RECIPIENT } from '@cowprotocol/common-const'
+import { AdditionalTargetChainId, areAddressesEqual, BTC_CURRENCY_ADDRESS } from '@cowprotocol/cow-sdk'
 import { NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 
 import { utils } from 'ethers'
@@ -115,6 +116,18 @@ export class OphisNearIntentsBridgeProvider extends NearIntentsBridgeProvider {
   constructor(options?: ConstructorParameters<typeof NearIntentsBridgeProvider>[0]) {
     super(options)
     wrapNearApiWithOphisQuoteParams(this.api)
+  }
+
+  async getBuyTokens(
+    params: Parameters<NearIntentsBridgeProvider['getBuyTokens']>[0],
+  ): ReturnType<NearIntentsBridgeProvider['getBuyTokens']> {
+    const result = await super.getBuyTokens(params)
+    if (params.buyChainId !== AdditionalTargetChainId.BITCOIN) return result
+
+    // SDK 4.0.2 maps the newer BTC(OMNI) route to the placeholder "coin".
+    // Only advertise the native BTC route this SDK can identify and quote.
+    const tokens = result.tokens.filter((token) => areAddressesEqual(token.address, BTC_CURRENCY_ADDRESS))
+    return { tokens, isRouteAvailable: result.isRouteAvailable && tokens.length > 0 }
   }
 
   async recoverDepositAddress(

@@ -48,7 +48,7 @@ export function resolveModalTitle(field: Field, tradeType: TradeType | undefined
   }
 
   if (field === Field.OUTPUT) {
-    return isSwapTrade ? t`Swap to` : t`Buy token`
+    return isSwapTrade ? t`You receive` : t`Buy token`
   }
 
   return t`Select token`
