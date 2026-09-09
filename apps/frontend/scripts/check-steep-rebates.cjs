@@ -39,6 +39,7 @@ function renderFixtures() {
       generatedAt: '2026-09-09T12:00:00Z', dataAsOf: '2026-09-09T11:00:00Z',
       dataFresh: true, dataStatus: 'fresh', dataStaleReason: null };
     pages['/stats'] = renderStatsPage(stats);
+    pages['/stats-typical'] = renderStatsPage({ ...stats, totalVolumeUsd: 153875, totalTrades: 167, distinctTraders: 37, chainsActive: 11 });
     pages['/stats-stale'] = renderStatsPage({ ...stats, dataFresh: false, dataStatus: 'degraded' });
     pages['/stats-empty'] = renderStatsPage({ ...stats, byChain: [], dataAsOf: null, dataFresh: false });
     console.log(JSON.stringify(pages));
@@ -54,7 +55,7 @@ function renderFixtures() {
   for (const engine of [chromium, webkit]) {
     const browser = await engine.launch({ headless: true, ...(engine === chromium ? { channel: 'chrome' } : {}) })
     try {
-      for (const width of [320, 390, 768, 1440]) {
+      for (const width of [320, 390, 440, 768, 960, 1440]) {
         const context = await browser.newContext({ viewport: { width, height: 1000 }, colorScheme: 'dark' })
         try {
           if (fixtures)
@@ -117,6 +118,18 @@ function renderFixtures() {
             assert.match(result.heading, /Georgia/, path + ' heading')
             assert.equal(result.overflow, false, path + ' horizontal overflow')
             assert.ok(result.minimumContrast >= 4.5, path + ' text contrast ' + result.minimumContrast)
+            if (path === '/stats-typical')
+              assert.ok(
+                await page
+                  .locator('.card .n')
+                  .evaluateAll((numbers) =>
+                    numbers.every(
+                      (number) =>
+                        number.getBoundingClientRect().height <= parseFloat(getComputedStyle(number).lineHeight) + 1,
+                    ),
+                  ),
+                'ordinary stats totals must stay on one line',
+              )
             await page.keyboard.press('Tab')
             // WebKit follows macOS's links-in-tab-order preference; focus the link explicitly.
             await page.locator('a').first().focus()
