@@ -1,3 +1,4 @@
+import { AdditionalTargetChainId } from '@cowprotocol/cow-sdk'
 import { useWalletInfo, WalletInfo } from '@cowprotocol/wallet'
 
 import { renderHook } from '@testing-library/react'
@@ -179,4 +180,34 @@ describe('useQuoteParamsRecipient', () => {
       expect(result.current).toBe(ACCOUNT_ADDRESS)
     })
   })
+})
+
+const SOLANA = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+const BITCOIN = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'
+
+it.each([
+  [AdditionalTargetChainId.SOLANA, SOLANA, SOLANA],
+  [AdditionalTargetChainId.BITCOIN, BITCOIN, BITCOIN],
+  [AdditionalTargetChainId.SOLANA, BITCOIN, undefined],
+  [AdditionalTargetChainId.BITCOIN, SOLANA, undefined],
+  [AdditionalTargetChainId.SOLANA, ACCOUNT_ADDRESS, undefined],
+  [AdditionalTargetChainId.BITCOIN, '', undefined],
+  [AdditionalTargetChainId.SOLANA, undefined, undefined],
+])('uses only a valid recipient on destination %s', (chainId, recipient, expected) => {
+  mockedUseWalletInfo.mockReturnValue({ account: ACCOUNT_ADDRESS } as WalletInfo)
+  mockedUseTradeQuote.mockReturnValue({} as TradeQuoteState)
+  mockedUseDerivedTradeState.mockReturnValue({
+    recipient,
+    recipientAddress: ANOTHER_VALID_ADDRESS,
+    outputCurrency: { chainId },
+  } as TradeDerivedState)
+  const { result, rerender } = renderHook(() => useQuoteParamsRecipient())
+  expect(result.current).toBe(expected)
+  mockedUseDerivedTradeState.mockReturnValue({
+    recipient,
+    recipientAddress: ANOTHER_VALID_ADDRESS,
+    outputCurrency: { chainId: 1 },
+  } as TradeDerivedState)
+  rerender()
+  expect(result.current).toBe(ANOTHER_VALID_ADDRESS)
 })

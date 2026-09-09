@@ -1,8 +1,10 @@
-import { getIsNativeToken, isAddress, isFractionFalsy, isSellOrder } from '@cowprotocol/common-utils'
+import { getIsNativeToken, isFractionFalsy, isSellOrder } from '@cowprotocol/common-utils'
 
 import { TradeType } from 'modules/trade/types/TradeType'
 import { getIsFastQuote } from 'modules/tradeQuote/utils/getIsFastQuote'
 import { isQuoteExpired } from 'modules/tradeQuote/utils/quoteDeadline'
+
+import { isNonEvmRecipientChain, isRecipientAddress } from 'common/utils/recipientAddress.utils'
 
 import { getIsXstockTradeBelowLimit } from './getIsXstockTradeBelowLimit'
 
@@ -146,14 +148,15 @@ export function validateTradeForm(context: TradeFormValidationContext): TradeFor
   }
 
   if (!isWrapUnwrap) {
-    const isRecipientAddress = Boolean(recipient && isAddress(recipient))
+    const recipientChainId = outputCurrency?.chainId ?? inputCurrency?.chainId
+    const hasRecipientAddress = isRecipientAddress(recipient, recipientChainId)
 
     /**
      * For bridging, recipient can be only an address (ENS is not supported)
      */
-    const isRecipientValid = isBridging ? isRecipientAddress : recipientEnsAddress ? true : isRecipientAddress
+    const isRecipientValid = isBridging ? hasRecipientAddress : recipientEnsAddress ? true : hasRecipientAddress
 
-    if (recipient && !isRecipientValid) {
+    if ((recipient || isNonEvmRecipientChain(recipientChainId)) && !isRecipientValid) {
       validations.push(TradeFormValidation.RecipientInvalid)
     }
 

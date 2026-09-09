@@ -6432,3 +6432,19 @@ msgstr "Public Ethereum trading"
 
 msgid "Use a standard Ethereum wallet with at least one confirmed outgoing transaction. Contract wallets are not supported."
 msgstr "Use a standard Ethereum wallet with at least one confirmed outgoing transaction. Contract wallets are not supported."
+
+#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
+msgid "You receive"
+msgstr "You receive"
+
+#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/ChainSelector.tsx
+msgid "Receive on"
+msgstr "Receive on"
+
+#: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
+msgid "Solana wallet address"
+msgstr "Solana wallet address"
+
+#: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
+msgid "Bitcoin wallet address"
+msgstr "Bitcoin wallet address"

@@ -6588,3 +6588,19 @@ msgstr "Comercio público en Ethereum"
 
 msgid "Use a standard Ethereum wallet with at least one confirmed outgoing transaction. Contract wallets are not supported."
 msgstr "Usa una cartera Ethereum estándar con al menos una transacción saliente confirmada. Las carteras de contrato no son compatibles."
+
+#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
+msgid "You receive"
+msgstr "Recibes"
+
+#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/ChainSelector.tsx
+msgid "Receive on"
+msgstr "Recibir en"
+
+#: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
+msgid "Solana wallet address"
+msgstr "Dirección de la cartera Solana"
+
+#: apps/cowswap-frontend/src/common/pure/AddressInputPanel/index.tsx
+msgid "Bitcoin wallet address"
+msgstr "Dirección de la cartera Bitcoin"

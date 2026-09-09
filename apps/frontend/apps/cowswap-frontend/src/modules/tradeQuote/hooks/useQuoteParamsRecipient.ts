@@ -5,6 +5,8 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useDerivedTradeState } from 'modules/trade'
 
+import { isNonEvmRecipientChain, isRecipientAddress } from 'common/utils/recipientAddress.utils'
+
 import { useTradeQuote } from './useTradeQuote'
 
 /**
@@ -19,11 +21,16 @@ export function useQuoteParamsRecipient(): string | undefined {
   const state = useDerivedTradeState()
   const { account } = useWalletInfo()
 
-  const { recipient, recipientAddress } = state || {}
+  const { recipient, recipientAddress, outputCurrency } = state || {}
+  const recipientChainId = outputCurrency?.chainId
 
   const isReceiverAccountBridgeProvider = bridgeQuote?.providerInfo.type === 'ReceiverAccountBridgeProvider'
 
   return useMemo(() => {
+    if (isNonEvmRecipientChain(recipientChainId)) {
+      return isRecipientAddress(recipient, recipientChainId) ? recipient || undefined : undefined
+    }
+
     if (isReceiverAccountBridgeProvider) {
       if (recipient && isAddress(recipient)) {
         return recipient
@@ -31,5 +38,5 @@ export function useQuoteParamsRecipient(): string | undefined {
     }
 
     return (isAddress(recipientAddress) ? recipientAddress : isAddress(recipient) ? recipient : null) || account
-  }, [isReceiverAccountBridgeProvider, account, recipient, recipientAddress])
+  }, [isReceiverAccountBridgeProvider, account, recipient, recipientAddress, recipientChainId])
 }

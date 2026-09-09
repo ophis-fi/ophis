@@ -143,6 +143,10 @@ jobs:
         working-directory: apps/frontend
         run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/modules/erc20Approve|src/modules/limitOrders|src/modules/permit|src/modules/tradeFlow/hooks/useHandleSwap|src/modules/account/containers/OrderPartialApprove|src/theme/themeConfigAtom|src/ophis/components/intent/IntentEntry' --passWithNoTests=false
 
+      - name: Destination token and picker regression tests
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'ophisNearIntentsProvider|tokensList|useVerifyOphisRecipientName|useQuoteParams|validateTradeForm|isBridgeQuoteRecipientCurrent|tradeQuoteAtom' --passWithNoTests=false
+
       - name: Permit amount and cache binding regression tests
         working-directory: apps/frontend
         run: pnpm exec nx run permit-utils:test --passWithNoTests=false

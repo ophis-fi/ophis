@@ -31,6 +31,7 @@ import { useThrottleFn } from 'common/hooks/useThrottleFn'
 import { CurrencyArrowSeparator } from 'common/pure/CurrencyArrowSeparator'
 import { CurrencyInputPanel, CurrencyInputPanelProps } from 'common/pure/CurrencyInputPanel'
 import { PoweredFooter } from 'common/pure/PoweredFooter'
+import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
 
 import * as styledEl from './styled'
 import { mapCurrencyInfo } from './TradeWidgetForm.utils'
@@ -152,7 +153,8 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
   const bothCurrenciesSet = !!sellToken && !!buyToken
 
   const hasRecipientInUrl = !!tradeStateFromUrl?.recipient
-  const withRecipient = !isWrapOrUnwrap && (showRecipient || hasRecipientInUrl)
+  const withRecipient =
+    !isWrapOrUnwrap && (showRecipient || hasRecipientInUrl || !!recipient || isNonEvmRecipientChain(buyToken?.chainId))
   const maxBalance = maxAmountSpend(inputCurrencyInfo.balance || undefined, isSafeWallet)
   const showSetMax = maxBalance?.greaterThan(0) && !inputCurrencyInfo.amount?.equalTo(maxBalance)
 
@@ -313,6 +315,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                       disabled={
                         shouldLockForAlternativeOrder ||
                         isOutputTokenUnsupported ||
+                        isNonEvmRecipientChain(buyToken?.chainId) ||
                         isProviderNetworkUnsupported ||
                         isProviderNetworkDeprecated
                       }
