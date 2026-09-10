@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import { createDecodeOnlyBungeeBridgeProvider, getRpcProvider } from '@cowprotocol/common-const'
+import { createDecodeOnlyBungeeBridgeProvider, getRpcProvider, ophisAcrossApiOptions } from '@cowprotocol/common-const'
 import { OrderBookApi, setGlobalAdapter, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { AcrossBridgeProvider, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 import { EthersV5Adapter } from '@cowprotocol/sdk-ethers-v5-adapter'
@@ -20,7 +20,7 @@ export const orderBookApi = new OrderBookApi()
 // recovers the destination token from the chain's token list instead.
 export const bungeeBridgeProvider = createDecodeOnlyBungeeBridgeProvider()
 
-const acrossBridgeProvider = new AcrossBridgeProvider()
+const acrossBridgeProvider = new AcrossBridgeProvider({ apiOptions: ophisAcrossApiOptions() })
 
 const nearIntentsBridgeProvider = new NearIntentsBridgeProvider({ apiKey: process.env.REACT_APP_NEAR_API_KEY })
 

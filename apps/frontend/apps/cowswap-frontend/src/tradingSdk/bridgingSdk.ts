@@ -1,4 +1,4 @@
-import { createDecodeOnlyBungeeBridgeProvider } from '@cowprotocol/common-const'
+import { createDecodeOnlyBungeeBridgeProvider, ophisAcrossApiOptions } from '@cowprotocol/common-const'
 import { BridgingSdk } from '@cowprotocol/sdk-bridging'
 
 import { orderBookApi } from 'cowSdk'
@@ -12,7 +12,7 @@ import { tradingSdk } from './tradingSdk'
 // only lets the SDK resolve historical Bungee orders by their appData hook dappId.
 export const bungeeBridgeProvider = createDecodeOnlyBungeeBridgeProvider()
 
-export const acrossBridgeProvider = new OphisAcrossBridgeProvider()
+export const acrossBridgeProvider = new OphisAcrossBridgeProvider({ apiOptions: ophisAcrossApiOptions() })
 
 // `|| undefined`: an unset GitHub secret renders as '' in the deploy env, and
 // an empty-string apiKey would make the SDK send a blank Bearer header instead

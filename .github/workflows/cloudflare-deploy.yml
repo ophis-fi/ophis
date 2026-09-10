@@ -164,6 +164,11 @@ jobs:
           # baked into amountOut — set the secret to remove it. Empty -> keyless
           # (bridgingSdk.ts maps empty to undefined so no blank Bearer header).
           REACT_APP_NEAR_API_KEY: ${{ secrets.REACT_APP_NEAR_API_KEY }}
+          # Across API key. Paired with the Ophis integrator tag 0x0311 (a constant
+          # in common-const). Sent from the browser as a Bearer header, so it is
+          # bundle-public like the NEAR key. Empty -> keyless (mapped to undefined,
+          # no blank header).
+          REACT_APP_ACROSS_API_KEY: ${{ secrets.REACT_APP_ACROSS_API_KEY }}
           # Robinhood Chain (4663) as an Across bridge SOURCE — ENABLED
           # 2026-08-27, after a live end-to-end bridge proved the corridor.
           # 4663 is sovereign, so OUR driver executes the post-hook; that is what

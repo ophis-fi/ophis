@@ -7,6 +7,7 @@ import {
   createDecodeOnlyBungeeBridgeProvider,
   DecodeOnlyBungeeBridgeProvider,
   EXTRA_ACROSS_SOURCE_CHAIN_IDS,
+  ophisAcrossApiOptions,
 } from '@cowprotocol/common-const'
 import { isEvmChainInfo, OrderKind, SupportedChainId, TargetChainId, TokenInfo } from '@cowprotocol/cow-sdk'
 import {
@@ -416,5 +417,48 @@ describe('ophisBridgeProviders', () => {
         patch.match(/^\+\s+\? \{ inputToken: request\.inputToken, outputToken: request\.outputToken \}$/gm),
       ).toHaveLength(2)
     })
+  })
+})
+
+describe('Across API key + integrator ID (sdk-bridging patch)', () => {
+  const originalFetch = global.fetch
+  afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  function mockFetch(): jest.Mock {
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => [] })
+    global.fetch = fetchMock as unknown as typeof fetch
+    return fetchMock
+  }
+
+  const apiOf = (provider: AcrossBridgeProvider): { getAvailableRoutes(params: object): Promise<unknown> } =>
+    (provider as unknown as { api: { getAvailableRoutes(params: object): Promise<unknown> } }).api
+
+  it('sends the integratorId param and the Bearer header when configured', async () => {
+    const fetchMock = mockFetch()
+    await apiOf(
+      new OphisAcrossBridgeProvider({ apiOptions: { apiKey: 'test-key', integratorId: '0x0311' } }),
+    ).getAvailableRoutes({ originChainId: 1 })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(new URL(url).searchParams.get('integratorId')).toBe('0x0311')
+    expect(new URL(url).searchParams.get('originChainId')).toBe('1')
+    expect(init.headers).toEqual({ Authorization: 'Bearer test-key' })
+  })
+
+  it('stays keyless and untagged when neither is configured', async () => {
+    const fetchMock = mockFetch()
+    await apiOf(new OphisAcrossBridgeProvider()).getAvailableRoutes({})
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(new URL(url).searchParams.has('integratorId')).toBe(false)
+    expect(init.headers).toBeUndefined()
+  })
+
+  it('ophisAcrossApiOptions carries the Ophis integrator ID and never a blank key', () => {
+    const options = ophisAcrossApiOptions()
+    expect(options.integratorId).toBe('0x0311')
+    expect(options.apiKey).not.toBe('')
   })
 })
