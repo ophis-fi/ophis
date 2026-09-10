@@ -136,7 +136,12 @@ const Mark = styled.img`
   width: 28px;
   height: 28px;
   display: block;
+  filter: ${({ theme }) => (theme.darkMode ? 'brightness(0) invert(1)' : 'brightness(0)')};
   transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 `
 
 const WordmarkText = styled.span`

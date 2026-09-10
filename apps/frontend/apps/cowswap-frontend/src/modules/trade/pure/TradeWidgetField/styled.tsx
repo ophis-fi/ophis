@@ -40,13 +40,12 @@ export const ErrorText = styled.div<{ type?: 'error' | 'warning' }>`
 
 export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
   --minHeight: 45px;
-  background: ${({ hasPrefix }) => (hasPrefix ? 'transparent' : `var(${UI.COLOR_PAPER_DARKER})`)};
-  border: 1px solid ${({ hasPrefix }) => (hasPrefix ? `var(${UI.COLOR_PAPER_DARKER})` : 'transparent')};
-  border-radius: 16px;
+  background: var(${UI.COLOR_PAPER});
+  border: 1px solid var(${UI.COLOR_BORDER});
+  border-radius: 12px;
   min-height: var(--minHeight);
   font-size: 18px;
-  padding: 10px 16px;
-  padding: ${({ hasPrefix }) => (hasPrefix ? '0' : '10px 16px')};
+  padding: ${({ hasPrefix }) => (hasPrefix ? '0' : '10px 12px')};
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -54,6 +53,12 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
   flex: 1;
   gap: 3px;
   width: 100%;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+
+  &:focus-within {
+    border-color: var(${UI.COLOR_TEXT_PAPER});
+  }
 
   ${Media.upToSmall()} {
     gap: 0;
@@ -82,7 +87,7 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
     color: inherit;
 
     ${NumericalInput} {
-      max-width: 200px;
+      max-width: min(200px, 100%);
       appearance: textfield;
     }
 
@@ -122,11 +127,11 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
           display: flex;
           padding: 0 10px 0 0;
           flex: 0 1 auto;
-          border-radius: 0 15px 15px 0;
+          border-radius: 0 11px 11px 0;
           align-items: center;
 
           ${Media.upToSmall()} {
-            border-radius: 0 0 15px 0;
+            border-radius: 0 0 11px 0;
             width: 136px;
           }
 

@@ -1,5 +1,6 @@
 import { ExternalLink, Media, UI } from '@cowprotocol/ui'
 
+import { STEEP_FONT } from 'ophis/ds'
 import styled from 'styled-components/macro'
 
 export const Wrapper = styled.div`
@@ -14,46 +15,47 @@ export const Content = styled.div`
   flex-flow: column nowrap;
   align-items: center;
   justify-content: center;
-  color: var(${UI.COLOR_TEXT_OPACITY_70});
-  min-height: 490px;
-  padding: 24px 0 0;
-  gap: 32px;
+  color: var(${UI.COLOR_TEXT_PAPER});
+  min-height: 300px;
+  padding: 40px 16px;
+  gap: 16px;
 
-  > h3 {
-    font-size: 32px;
-    line-height: 1;
-    font-weight: 600;
-    margin: 0 auto;
-    text-align: center;
-    color: inherit;
-  }
-
+  > h3,
   > h4 {
-    font-size: 24px;
-    line-height: 1;
-    font-weight: 600;
+    font-family: ${STEEP_FONT.display};
+    font-size: clamp(24px, 2.5vw, 32px);
+    line-height: 1.2;
+    font-weight: 400;
+    letter-spacing: -0.02em;
     margin: 0 auto;
     text-align: center;
     color: inherit;
   }
 
   > p {
-    font-size: 15px;
-    line-height: 1.4;
+    font-size: 14px;
+    line-height: 1.6;
     margin: 0 auto;
     font-weight: 400;
     text-align: center;
     color: inherit;
   }
+
+  ${Media.upToMedium()} {
+    min-height: 0;
+    padding: 32px 12px;
+  }
 `
 export const ContentDescription = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  max-width: 44ch;
+  color: var(${UI.COLOR_TEXT_OPACITY_70});
 
   > p {
-    font-size: 15px;
-    line-height: 1.4;
+    font-size: 14px;
+    line-height: 1.6;
     margin: 0 auto;
     font-weight: 400;
     text-align: center;
@@ -62,7 +64,7 @@ export const ContentDescription = styled.div`
 `
 
 export const ConnectWalletIconWrapper = styled.span`
-  --size: 130px;
+  --size: 72px;
   --backgroundColor: var(${UI.COLOR_PAPER_DARKER});
   --iconFillColor: var(${UI.COLOR_TEXT});
   --iconColor: var(${UI.COLOR_TEXT});
@@ -77,8 +79,6 @@ export const ConnectWalletIconWrapper = styled.span`
   position: relative;
   margin: 0;
   color: inherit;
-  transform: rotate(0);
-  transition: transform 5s cubic-bezier(0.68, -0.55, 0.27, 1.55);
 
   &::before {
     content: '';
@@ -87,10 +87,6 @@ export const ConnectWalletIconWrapper = styled.span`
     background: var(--backgroundColor);
     border-radius: var(--size);
     z-index: -1;
-  }
-
-  &:hover {
-    transform: rotate(360deg);
   }
 
   > svg,
@@ -104,10 +100,9 @@ export const ConnectWalletIconWrapper = styled.span`
   }
 
   > svg {
-    padding: 28px;
+    padding: 18px;
     fill: var(--iconFillColor);
     color: var(--iconColor);
-    opacity: 0.5;
   }
 `
 
@@ -115,18 +110,14 @@ export const UnsupportedNetworkIconWrapper = styled(ConnectWalletIconWrapper)`
   --backgroundColor: var(${UI.COLOR_DANGER_BG});
   --iconFillColor: transparent;
   --iconColor: var(${UI.COLOR_DANGER_TEXT});
-
-  &:hover {
-    transform: rotate(0);
-  }
 `
 
-export const NoOrdersAnimation = styled.div`
+export const NoOrdersArtwork = styled.div`
   width: 100%;
-  max-width: 320px;
-  margin: 16px auto 0;
+  max-width: 112px;
+  margin: 8px auto 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   padding: 0;
 

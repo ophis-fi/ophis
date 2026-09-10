@@ -133,6 +133,7 @@ export const Wordmark = styled.span`
 export const BrandIcon = styled.img`
   width: 28px;
   height: 28px;
+  filter: ${({ theme }) => (theme.darkMode ? 'brightness(0) invert(1)' : 'brightness(0)')};
 `
 
 export const BrandTagline = styled.p`

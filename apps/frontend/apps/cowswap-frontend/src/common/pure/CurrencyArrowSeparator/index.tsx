@@ -35,7 +35,6 @@ export function CurrencyArrowSeparator({
         type="button"
         aria-label="Switch tokens"
         aria-busy={isLoading}
-        $isLoading={isLoading}
         disabled={disabled}
         onClick={onSwitchTokens}
       >
