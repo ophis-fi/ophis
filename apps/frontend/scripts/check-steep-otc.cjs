@@ -1,7 +1,8 @@
 // node scripts/check-steep-otc.cjs http://127.0.0.1:3017
 // Vite required. Renders the actual read-only view with verified-order fixtures.
 const assert = require('node:assert/strict')
-const { chromium, webkit } = require('playwright')
+const { createRequire } = require('node:module')
+const { chromium, webkit } = createRequire(require.resolve('../apps/ophis-landing/package.json'))('@playwright/test')
 const base = process.argv[2] || 'http://127.0.0.1:3017'
 
 async function mountOrders(page) {
@@ -112,7 +113,7 @@ async function check(browser, width, dark) {
 
 ;(async () => {
   for (const engine of [chromium, webkit]) {
-    const browser = await engine.launch({ headless: true, ...(engine === chromium ? { channel: 'chrome' } : {}) })
+    const browser = await engine.launch({ headless: true })
     try {
       for (const dark of [false, true]) for (const width of [320, 390, 1440]) await check(browser, width, dark)
     } finally {

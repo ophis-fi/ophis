@@ -1,8 +1,9 @@
 // node scripts/check-steep-orders.cjs http://127.0.0.1:3017
-// Install the frontend workspace, Chrome, and Playwright's WebKit browser.
+// Install browsers: pnpm --filter @ophis/landing exec playwright install chromium webkit
 // Uses a read-only test wallet; unlocks the UI without signing or submitting orders.
 const assert = require('node:assert/strict')
-const { chromium, webkit } = require('playwright')
+const { createRequire } = require('node:module')
+const { chromium, webkit } = createRequire(require.resolve('../apps/ophis-landing/package.json'))('@playwright/test')
 const base = process.argv[2] || 'http://127.0.0.1:3017'
 
 async function check(browser, width, dark) {
@@ -72,7 +73,7 @@ async function check(browser, width, dark) {
 
 ;(async () => {
   for (const engine of [chromium, webkit]) {
-    const browser = await engine.launch({ headless: true, ...(engine === chromium ? { channel: 'chrome' } : {}) })
+    const browser = await engine.launch({ headless: true })
     try {
       for (const dark of [false, true]) for (const width of [320, 390, 1440]) await check(browser, width, dark)
     } finally {
