@@ -15,7 +15,7 @@ export const PageWrapper = styled.div<{
   display: grid;
   max-width: ${({ maxWidth = DEFAULT_MAX_WIDTH }) => maxWidth};
   margin: 0 auto;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto;
   grid-template-areas: ${({ hideOrdersTable }) => (hideOrdersTable ? '"primary"' : '"primary" "secondary"')};
   gap: 20px;

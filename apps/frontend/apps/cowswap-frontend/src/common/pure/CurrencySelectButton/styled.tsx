@@ -81,7 +81,7 @@ export const CurrencySelectWrapper = styled.button<{
 }>`
   ${({ $noCurrencySelected }) => getButtonColors($noCurrencySelected)}
 
-  --min-height: 35px;
+  --min-height: 44px;
   --min-width: 190px;
   display: flex;
   justify-content: space-between;
@@ -92,9 +92,9 @@ export const CurrencySelectWrapper = styled.button<{
   outline: none;
   background: var(--button-bg);
   color: var(--button-text);
-  box-shadow: ${({ $noCurrencySelected }) => ($noCurrencySelected ? 'none' : `var(${UI.BOX_SHADOW_2})`)};
+  box-shadow: none;
   opacity: ${({ isLoading }) => (isLoading ? 0.6 : 1)};
-  border-radius: var(${UI.BORDER_RADIUS_NORMAL});
+  border-radius: 12px;
   transition: background var(${UI.ANIMATION_DURATION}) ease-in-out;
   max-width: var(--max-width);
   min-height: var(--min-height);
@@ -111,6 +111,11 @@ export const CurrencySelectWrapper = styled.button<{
   ${ArrowDown} > path {
     stroke: ${({ $noCurrencySelected }) =>
       $noCurrencySelected ? 'var(--button-text)' : `var(${UI.COLOR_TEXT_OPACITY_50})`};
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(${UI.COLOR_TEXT_PAPER});
+    outline-offset: 2px;
   }
 
   &:hover {

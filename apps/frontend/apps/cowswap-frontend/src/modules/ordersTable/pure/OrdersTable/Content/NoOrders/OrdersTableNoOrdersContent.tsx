@@ -1,10 +1,10 @@
 import { ReactNode, useMemo } from 'react'
 
-import ophisMark from '@cowprotocol/assets/cow-swap/ophis-mark.svg'
 import { AMOUNT_OF_ORDERS_TO_FETCH } from '@cowprotocol/common-const'
 import { useIsSafeViaWc } from '@cowprotocol/wallet'
 
 import { useLingui } from '@lingui/react/macro'
+import { OphieMark } from 'ophis/components'
 
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 import { useLoadMoreOrders } from 'modules/orders'
@@ -84,13 +84,13 @@ export function OrdersTableNoOrdersContent({
         ))}
       </styledEl.ContentDescription>
 
-      <styledEl.NoOrdersAnimation>
+      <styledEl.NoOrdersArtwork>
         {emptyOrdersImage ? (
           <img src={emptyOrdersImage} alt={t`There are no orders`} />
         ) : hasHydratedOrders ? (
-          <img src={ophisMark} alt={t`There are no open orders`} />
+          <OphieMark size={96} ariaLabel={t`There are no open orders`} />
         ) : null}
-      </styledEl.NoOrdersAnimation>
+      </styledEl.NoOrdersArtwork>
     </styledEl.Content>
   )
 }

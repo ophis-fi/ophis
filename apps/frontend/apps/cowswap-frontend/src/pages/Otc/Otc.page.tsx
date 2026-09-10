@@ -24,7 +24,7 @@ import { Navigate } from 'react-router'
 
 import { Routes as RoutesEnum } from 'common/constants/routes'
 
-import { BadgeRow, TabBar, TabButton } from './Otc.styled'
+import { BadgeRow, OtcStack, TabBar, TabButton } from './Otc.styled'
 import { OtcDisclosure } from './OtcDisclosure'
 import { buildOtcDisplayRows, filterBrowseRows } from './otcDisplay'
 import { BrowsePanel, MyOrdersPanel, OtcStateNotices, ReadOnlyCreatePanel } from './OtcPagePanels'
@@ -109,57 +109,60 @@ export function OtcPageView({
       title={<Trans>Fixed-price peer-to-peer orders.</Trans>}
       lede={<OtcLede writeEnabled={writeEnabled} canary={canary} />}
     >
-      <BadgeRow>
-        <Badge tone="live">Ethereum</Badge>
-        <Badge tone="beta">
-          <OtcModeLabel writeEnabled={writeEnabled} canary={canary} />
-        </Badge>
-        {verifiedBlock && (
-          <span aria-label={t`Verified at block ${verifiedBlock}`}>
-            <Trans>Verified at block {verifiedBlock}</Trans>
-          </span>
-        )}
-      </BadgeRow>
+      <OtcStack>
+        <BadgeRow>
+          <Badge tone="live">Ethereum</Badge>
+          <Badge tone="beta">
+            <OtcModeLabel writeEnabled={writeEnabled} canary={canary} />
+          </Badge>
+          {verifiedBlock && (
+            <span aria-label={t`Verified at block ${verifiedBlock}`}>
+              <Trans>Verified at block {verifiedBlock}</Trans>
+            </span>
+          )}
+        </BadgeRow>
 
-      <OtcDisclosure />
+        <OtcDisclosure />
 
-      {state.status === 'loading' && (
-        <p role="status">
-          <Trans>Loading OTC orders from Ethereum...</Trans>
-        </p>
-      )}
-
-      {state.status === 'unavailable' && (
-        <Callout tone="warning" title={<Trans>OTC data unavailable</Trans>}>
-          <p>
-            <Trans>
-              On-chain verification failed, so order data is hidden rather than shown unverified. Refresh to try again.
-            </Trans>
+        {state.status === 'loading' && (
+          <p role="status">
+            <Trans>Loading OTC orders from Ethereum...</Trans>
           </p>
-        </Callout>
-      )}
+        )}
 
-      {showTabs && (
-        <>
-          {dataReady && <OtcStateNotices state={state} />}
-          <TabBar role="group" aria-label={t`OTC views`}>
-            {TABS.map((item) => (
-              <TabButton
-                key={item}
-                type="button"
-                $active={tab === item}
-                aria-pressed={tab === item}
-                onClick={() => setTab(item)}
-              >
-                <OtcTabLabel tab={item} />
-              </TabButton>
-            ))}
-          </TabBar>
-          {dataReady && tab === 'browse' && <BrowsePanel rows={filterBrowseRows(rows)} nowMs={nowMs} />}
-          {dataReady && tab === 'mine' && <MyOrdersPanel rows={rows} account={account} nowMs={nowMs} />}
-          {tab === 'create' && (createPanel ?? <ReadOnlyCreatePanel />)}
-        </>
-      )}
+        {state.status === 'unavailable' && (
+          <Callout tone="warning" title={<Trans>OTC data unavailable</Trans>}>
+            <p>
+              <Trans>
+                On-chain verification failed, so order data is hidden rather than shown unverified. Refresh to try
+                again.
+              </Trans>
+            </p>
+          </Callout>
+        )}
+
+        {showTabs && (
+          <>
+            {dataReady && <OtcStateNotices state={state} />}
+            <TabBar role="group" aria-label={t`OTC views`}>
+              {TABS.map((item) => (
+                <TabButton
+                  key={item}
+                  type="button"
+                  $active={tab === item}
+                  aria-pressed={tab === item}
+                  onClick={() => setTab(item)}
+                >
+                  <OtcTabLabel tab={item} />
+                </TabButton>
+              ))}
+            </TabBar>
+            {dataReady && tab === 'browse' && <BrowsePanel rows={filterBrowseRows(rows)} nowMs={nowMs} />}
+            {dataReady && tab === 'mine' && <MyOrdersPanel rows={rows} account={account} nowMs={nowMs} />}
+            {tab === 'create' && (createPanel ?? <ReadOnlyCreatePanel />)}
+          </>
+        )}
+      </OtcStack>
     </PageShell>
   )
 }

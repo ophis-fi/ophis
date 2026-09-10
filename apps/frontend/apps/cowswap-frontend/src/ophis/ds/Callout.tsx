@@ -44,6 +44,15 @@ const Title = styled.div`
 `
 
 const Body = styled.div`
+  & > ul,
+  & > ol {
+    margin: 8px 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   & p {
     margin: 0;
   }
