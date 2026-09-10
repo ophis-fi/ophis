@@ -3,6 +3,7 @@ import { ReactNode } from 'react'
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
 import { Trans } from '@lingui/react/macro'
+import { User } from 'react-feather'
 import { Link, NavLink } from 'react-router'
 import styled from 'styled-components/macro'
 
@@ -50,11 +51,29 @@ const Header = styled.header`
     color: #17191c;
     border-bottom: 1px solid currentColor;
   }
+  .profile-link svg {
+    display: none;
+  }
   @media (max-width: 720px), (pointer: coarse) and (max-height: 500px) {
     max-width: 480px;
     padding: 16px;
     nav {
+      margin: 0 0 0 auto;
+      gap: 0;
+    }
+    nav > :not(.profile-link),
+    .profile-link span {
       display: none;
+    }
+    nav .profile-link {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+    }
+    .profile-link svg {
+      display: block;
     }
   }
   @media (min-width: 721px) and (max-width: 960px) {
@@ -83,8 +102,11 @@ export function MobileSwapHeader(): ReactNode {
       </Link>
       <nav aria-label="Ophis">
         <TradeWidgetLinks />
-        <NavLink to="/profile">
-          <Trans>Profile</Trans>
+        <NavLink to="/profile" className="profile-link" aria-label="Profile">
+          <User size={20} aria-hidden="true" />
+          <span>
+            <Trans>Profile</Trans>
+          </span>
         </NavLink>
         {isOtcEnabled && <NavLink to="/otc">OTC</NavLink>}
         <a href="https://explorer.ophis.fi">

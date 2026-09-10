@@ -40,7 +40,7 @@ async function check(browser, width, dark) {
     if (width === 320 && !dark) {
       await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
       await page.locator('#web3-status-connected').click()
-      await page.getByRole('link', { name: 'Profile', exact: true }).click()
+      await page.locator('[class*=OrdersPanel__SideBar]').getByRole('link', { name: 'Profile', exact: true }).click()
       await page.waitForURL(/profile/)
       await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
       const mode = page.getByRole('button', { name: 'Trading mode', exact: true })
@@ -89,6 +89,20 @@ async function check(browser, width, dark) {
   for (const engine of [chromium, webkit]) {
     const browser = await engine.launch({ headless: true })
     try {
+      const disconnected = await browser.newContext({ viewport: { width: 320, height: 800 } })
+      try {
+        const page = await disconnected.newPage()
+        await page.addInitScript(() => localStorage.setItem('ophis_consent', 'denied'))
+        await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
+        await page
+          .getByRole('navigation', { name: 'Ophis', exact: true })
+          .getByRole('link', { name: 'Profile', exact: true })
+          .click()
+        await page.waitForURL(/profile/)
+        console.log('PASS', engine.name(), 'disconnected mobile Profile navigation')
+      } finally {
+        await disconnected.close()
+      }
       for (const dark of [false, true]) for (const width of [320, 390, 1440]) await check(browser, width, dark)
     } finally {
       await browser.close()
