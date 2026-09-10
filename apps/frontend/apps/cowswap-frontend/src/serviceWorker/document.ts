@@ -26,11 +26,6 @@ export function matchDocument({ request, url }: RouteMatchCallbackOptions) {
     return false
   }
 
-  // Pages canonicalizes static HTML to extensionless URLs; these are not app routes.
-  if (standaloneDocuments.has(url.pathname) || (url.hostname === 'business.ophis.fi' && url.pathname === '/')) {
-    return false
-  }
-
   // If this looks like a resource (ie has a file extension), skip.
   if (url.pathname.match(fileExtensionRegexp)) {
     return false
@@ -60,7 +55,15 @@ type HandlerContext = {
 // TODO: Add proper return type annotation
 // TODO: Reduce function complexity by extracting logic
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, complexity
-export async function handleDocument(this: HandlerContext, { event: _event, request }: RouteHandlerCallbackOptions) {
+export async function handleDocument(
+  this: HandlerContext,
+  { event: _event, request, url }: RouteHandlerCallbackOptions,
+) {
+  // Pages canonicalizes static HTML to extensionless URLs. Fetch these before app-shell or precache fallback.
+  if (standaloneDocuments.has(url.pathname) || (url.hostname === 'business.ophis.fi' && url.pathname === '/')) {
+    return fetch(request)
+  }
+
   // If we are offline, serve the offline document.
   if ('onLine' in navigator && !navigator.onLine) return this?.offlineDocument?.clone() || fetch(request)
 
