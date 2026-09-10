@@ -46,7 +46,16 @@ export const Link = styled(NavLink)`
   ${ItemWithIcon};
 `
 
-export const DropdownButton = styled.div`
+export const DropdownButton = styled.button`
+  border: 0;
+  background: transparent;
+  font: inherit;
+  min-height: 44px;
+  cursor: pointer;
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
   display: flex;
   align-items: center;
   justify-content: center;

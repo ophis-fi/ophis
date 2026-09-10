@@ -37,6 +37,16 @@ async function check(browser, width, dark) {
         },
       }
     }, dark)
+    if (width === 320 && !dark) {
+      await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
+      const mode = page.getByRole('button', { name: 'Trading mode', exact: true })
+      await mode.focus()
+      await page.keyboard.press('Enter')
+      await page.getByText('Trading mode', { exact: true }).waitFor()
+      assert.equal(await mode.getAttribute('aria-expanded'), 'true')
+      await page.getByRole('link', { name: 'Limit', exact: true }).last().click()
+      await page.waitForURL(/limit/)
+    }
     for (const route of ['limit', 'advanced']) {
       await page.goto(base + '/#/1/' + route + '/WETH/USDC', { waitUntil: 'domcontentloaded' })
       await page.locator('[id^="unlock-"][id$="-btn"]').click()
