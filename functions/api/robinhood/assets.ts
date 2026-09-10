@@ -187,8 +187,8 @@ export function robinhoodTokenList(assets: SanitizedAsset[], now = new Date()) {
         .map((deployment) => ({
           chainId: deployment.chainId,
           address: deployment.contractAddress,
-          name: asset.tokenName.slice(0, 100),
-          symbol: asset.tokenSymbol,
+          name: asset.tokenName.replace(/[<>]/g, '').slice(0, 100),
+          symbol: asset.tokenSymbol.replace(/[<>]/g, ''),
           // Robinhood documents its Stock Tokens as 18-decimal ERC-20s.
           decimals: 18,
           ...(asset.logoUrl?.startsWith('https://cdn.robinhood.com/')

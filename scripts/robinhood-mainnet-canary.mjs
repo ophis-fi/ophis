@@ -11,7 +11,8 @@ const SOVEREIGN_ORDERBOOKS = [
 ];
 const ASSET_FACADE =
   process.env.ROBINHOOD_ASSET_FACADE_URL || 'https://swap.ophis.fi/api/robinhood/assets';
-const TOKEN_LIST = 'https://ipfs.io/ipns/tokens.uniswap.org';
+const TOKEN_LIST = 'https://tokens.uniswap.org';
+const TOKEN_LIST_FALLBACK = 'https://ipfs.io/ipns/tokens.uniswap.org';
 
 const CONTRACTS = {
   settlement: '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD',
@@ -40,6 +41,10 @@ async function fetchJson(url) {
   return response.json();
 }
 
+async function fetchDefaultTokenList() {
+  return fetchJson(TOKEN_LIST).catch(() => fetchJson(TOKEN_LIST_FALLBACK));
+}
+
 async function rpc(method, params = []) {
   const endpoint = process.env.ROBINHOOD_CANARY_RPC_URL || PUBLIC_RPC;
   const response = await fetch(endpoint, {
@@ -64,8 +69,14 @@ async function assertSovereignOrderbook(name, baseUrl) {
     fetch(`${baseUrl}/api/v1/version`, { signal: timeoutSignal() }),
     fetch(`${baseUrl}/api/v1/auction`, { signal: timeoutSignal() }),
   ]);
-  assert.ok(versionResponse.ok, `${name} orderbook version returned HTTP ${versionResponse.status}`);
-  assert.ok(auctionResponse.ok, `${name} orderbook auction returned HTTP ${auctionResponse.status}`);
+  assert.ok(
+    versionResponse.ok,
+    `${name} orderbook version returned HTTP ${versionResponse.status}`,
+  );
+  assert.ok(
+    auctionResponse.ok,
+    `${name} orderbook auction returned HTTP ${auctionResponse.status}`,
+  );
 
   const version = (await versionResponse.text()).trim();
   assert.ok(version.length > 0, `${name} orderbook returned an empty version`);
@@ -124,7 +135,7 @@ async function liveCanary() {
   ]);
   assert.ok(decodeUint(multiplier) > 0n, 'AAPL uiMultiplier is zero');
 
-  const tokenList = await fetchJson(TOKEN_LIST);
+  const tokenList = await fetchDefaultTokenList();
   const listedStockAddresses = new Set(
     (tokenList.tokens ?? [])
       .filter((token) => token.chainId === CHAIN_ID)
@@ -149,17 +160,33 @@ async function liveCanary() {
   );
 }
 
-function selfTest() {
+async function selfTest() {
   assert.equal(decodeUint(`0x${'0'.repeat(63)}6`), 6n);
   assert.equal(
     decodeAddress(`0x${'0'.repeat(24)}B52C38097c19cd38238c62DD36027a7918eFa890`),
     normalizeAddress(CONTRACTS.vaultRelayer),
   );
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const primaryAvailable of [true, false]) {
+      const calls = [];
+      globalThis.fetch = async (url) => {
+        calls.push(url);
+        return url === TOKEN_LIST && !primaryAvailable
+          ? new Response('Unavailable', { status: 503 })
+          : Response.json({ tokens: [] });
+      };
+      assert.deepEqual(await fetchDefaultTokenList(), { tokens: [] });
+      assert.deepEqual(calls, primaryAvailable ? [TOKEN_LIST] : [TOKEN_LIST, TOKEN_LIST_FALLBACK]);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
   console.log('Robinhood canary helper self-test passed.');
 }
 
 if (process.argv.includes('--self-test')) {
-  selfTest();
+  await selfTest();
 } else {
   await liveCanary();
 }

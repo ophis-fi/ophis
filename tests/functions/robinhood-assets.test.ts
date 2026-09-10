@@ -63,7 +63,7 @@ test('publishes issuer metadata as a Robinhood-only token list with safe logos',
   const list = robinhoodTokenList(
     [
       { ...asset, logoUrl: 'https://cdn.robinhood.com/ncw_assets/logos/apple.png' },
-      { ...asset, tokenSymbol: 'SKHY', logoUrl: 'javascript:alert(1)' },
+      { ...asset, tokenName: '<SK Hynix>', tokenSymbol: '<SKHY>', logoUrl: 'javascript:alert(1)' },
       { ...asset, deployments: [{ ...asset.deployments[0], chainId: 1 }] },
     ],
     new Date('2026-09-10T12:00:00Z'),
@@ -73,6 +73,7 @@ test('publishes issuer metadata as a Robinhood-only token list with safe logos',
   assert.equal(list.tokens[0].address, asset.deployments[0].contractAddress);
   assert.equal(list.tokens[0].logoURI, 'https://cdn.robinhood.com/ncw_assets/logos/apple.png');
   assert.equal(list.tokens[1].symbol, 'SKHY');
+  assert.equal(list.tokens[1].name, 'SK Hynix');
   assert.equal(list.tokens[1].logoURI, undefined);
 });
 

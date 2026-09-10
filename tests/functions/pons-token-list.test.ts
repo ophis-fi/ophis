@@ -247,9 +247,12 @@ test('mirror agreement cannot override a slower authoritative response', async (
 
 test('keeps reference PONS discoverable during catalog outages only after onchain verification', async (t) => {
   let verified = true;
+  let catalogResponse: Response | undefined;
   t.mock.method(globalThis, 'fetch', async (input, init) => {
-    if (new URL(String(input)).hostname === 'www.ponsfamily.com')
-      return new Response('Unavailable', { status: 503 });
+    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
+      if (!catalogResponse) throw new Error('Network failure');
+      return catalogResponse.clone();
+    }
     const requests = JSON.parse(String(init?.body)) as { id: number }[];
     return Response.json(
       requests.map(({ id }) => ({
@@ -263,12 +266,19 @@ test('keeps reference PONS discoverable during catalog outages only after onchai
     request: new Request('https://swap.ophis.fi/api/pons-token-list'),
     waitUntil: (_promise: Promise<unknown>) => undefined,
   } as Parameters<typeof onRequestGet>[0];
-  const available = await onRequestGet(context);
-  assert.equal(available.status, 200);
-  assert.deepEqual(
-    (await available.json()).tokens.map(({ address }) => address),
-    [TOKEN],
-  );
+  for (catalogResponse of [
+    undefined,
+    new Response('Unavailable', { status: 503 }),
+    new Response('{'),
+    Response.json({ error: 'Unavailable' }),
+  ]) {
+    const available = await onRequestGet(context);
+    assert.equal(available.status, 200);
+    assert.deepEqual(
+      (await available.json()).tokens.map(({ address }) => address),
+      [TOKEN],
+    );
+  }
   verified = false;
   const unavailable = await onRequestGet(context);
   assert.equal(unavailable.status, 503);
