@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isRobinhoodAsset, sanitizeRobinhoodAsset } from '../../functions/api/robinhood/assets.ts';
+import {
+  isRobinhoodAsset,
+  sanitizeRobinhoodAsset,
+  robinhoodTokenList,
+  onRequest,
+} from '../../functions/api/robinhood/assets.ts';
 
 const asset = {
   id: 'apple',
@@ -52,4 +57,43 @@ test('projects only validated documented fields', () => {
   assert.ok(sanitized);
   assert.equal('ignoredTopLevel' in sanitized, false);
   assert.equal('ignoredNested' in sanitized.deployments[0], false);
+});
+
+test('publishes issuer metadata as a Robinhood-only token list with safe logos', () => {
+  const list = robinhoodTokenList(
+    [
+      { ...asset, logoUrl: 'https://cdn.robinhood.com/ncw_assets/logos/apple.png' },
+      { ...asset, tokenName: '<SK Hynix>', tokenSymbol: '<SKHY>', logoUrl: 'javascript:alert(1)' },
+      { ...asset, deployments: [{ ...asset.deployments[0], chainId: 1 }] },
+    ],
+    new Date('2026-09-10T12:00:00Z'),
+  );
+  assert.equal(list.tokens.length, 2);
+  assert.equal(list.tokens[0].decimals, 18);
+  assert.equal(list.tokens[0].address, asset.deployments[0].contractAddress);
+  assert.equal(list.tokens[0].logoURI, 'https://cdn.robinhood.com/ncw_assets/logos/apple.png');
+  assert.equal(list.tokens[1].symbol, 'SKHY');
+  assert.equal(list.tokens[1].name, 'SK Hynix');
+  assert.equal(list.tokens[1].logoURI, undefined);
+  for (const [logoUrl, expected] of [
+    ['https://cdn.robinhood.com/a b.png', 'https://cdn.robinhood.com/a%20b.png'],
+    ['https://cdn.robinhood.com/%zz.png', undefined],
+    ['https://cdn.robinhood.com.example.org/a.png', undefined],
+  ]) {
+    assert.equal(robinhoodTokenList([{ ...asset, logoUrl }]).tokens[0].logoURI, expected);
+  }
+});
+
+test('serves both registry and CORS-enabled token-list representations', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ assets: [asset] }));
+  for (const format of ['', '?format=token-list']) {
+    const response = await onRequest({
+      request: new Request('https://swap.ophis.fi/api/robinhood/assets' + format),
+    } as Parameters<typeof onRequest>[0]);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), '*');
+    const body = await response.json();
+    if (format) assert.equal(body.tokens[0].address, asset.deployments[0].contractAddress);
+    else assert.equal(body.assets[0].tokenSymbol, 'AAPL');
+  }
 });

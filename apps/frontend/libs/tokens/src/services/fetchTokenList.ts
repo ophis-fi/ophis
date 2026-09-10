@@ -1,6 +1,7 @@
 import { RPC_URLS } from '@cowprotocol/common-const'
 import {
   contenthashToUri,
+  fetchWithTimeout,
   isAddress,
   parseENSAddress,
   resolveENSContentHash,
@@ -10,6 +11,7 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { JsonRpcProvider } from '@ethersproject/providers'
 import { TokenList } from '@uniswap/token-lists'
 
+import { UNISWAP_TOKENS_LIST } from '../const/tokensLists'
 import { ListSourceConfig, ListState } from '../types'
 import { isExcludedListToken } from '../utils/excludedListTokens'
 import { validateTokenList } from '../utils/validateTokenList'
@@ -25,7 +27,9 @@ export function fetchTokenList(list: ListSourceConfig): Promise<ListState> {
 }
 
 async function fetchTokenListByUrl(list: ListSourceConfig): Promise<ListState> {
-  return _fetchTokenList(list.source, [list.source]).then((result) => {
+  // Keep the persisted list identity while preferring Uniswap's working HTTPS endpoint.
+  const urls = list.source === UNISWAP_TOKENS_LIST ? ['https://tokens.uniswap.org', list.source] : [list.source]
+  return _fetchTokenList(list.source, urls).then((result) => {
     return listStateFromSourceConfig(result, list)
   })
 }
@@ -48,7 +52,7 @@ async function _fetchTokenList(source: string, urls: string[]): Promise<ListStat
     let response
 
     try {
-      response = await fetch(url, { credentials: 'omit' })
+      response = await fetchWithTimeout(url, { credentials: 'omit' })
     } catch (error) {
       const message = `failed to fetch list: ${url}`
 

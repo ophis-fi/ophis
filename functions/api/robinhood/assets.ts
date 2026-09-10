@@ -176,6 +176,46 @@ export function isRobinhoodAsset(value: unknown): boolean {
   return sanitizeRobinhoodAsset(value) !== undefined;
 }
 
+function tokenLogoURI(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    decodeURI(url.href); // Reject malformed percent escapes that URL preserves.
+    if (
+      url.protocol === 'https:' &&
+      url.hostname === 'cdn.robinhood.com' &&
+      !url.username &&
+      !url.password
+    ) {
+      return url.href;
+    }
+  } catch {
+    // A malformed optional logo must not invalidate the stock catalog.
+  }
+  return undefined;
+}
+
+export function robinhoodTokenList(assets: SanitizedAsset[], now = new Date()) {
+  return {
+    name: 'Robinhood Stock Tokens',
+    timestamp: now.toISOString(),
+    version: { major: 1, minor: 0, patch: Math.floor(now.getTime() / 300_000) },
+    tokens: assets.flatMap((asset) =>
+      asset.deployments
+        .filter((deployment) => deployment.chainId === 4663)
+        .map((deployment) => ({
+          chainId: deployment.chainId,
+          address: deployment.contractAddress,
+          name: asset.tokenName.replace(/[<>]/g, '').slice(0, 100),
+          symbol: asset.tokenSymbol.replace(/[<>]/g, ''),
+          // Robinhood documents its Stock Tokens as 18-decimal ERC-20s.
+          decimals: 18,
+          logoURI: tokenLogoURI(asset.logoUrl),
+        })),
+    ),
+  };
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -183,6 +223,7 @@ function json(body: unknown, status = 200): Response {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': status === 200 ? CACHE_CONTROL : 'no-store',
       'x-content-type-options': 'nosniff',
+      'access-control-allow-origin': '*',
     },
   });
 }
@@ -220,8 +261,13 @@ export const onRequest: PagesFunction = async ({ request }) => {
       throw new Error('invalid payload');
     }
     const assets = payload.assets.map(sanitizeRobinhoodAsset);
-    if (assets.some((asset) => asset === undefined)) throw new Error('invalid asset');
-    return json({ assets });
+    if (!assets.every((asset): asset is SanitizedAsset => asset !== undefined))
+      throw new Error('invalid asset');
+    return json(
+      new URL(request.url).searchParams.get('format') === 'token-list'
+        ? robinhoodTokenList(assets)
+        : { assets },
+    );
   } catch {
     return json({ error: 'Invalid Robinhood asset registry response' }, 502);
   }

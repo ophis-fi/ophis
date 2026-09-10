@@ -37,3 +37,13 @@ describe('Base default token lists', () => {
     expect(XSTOCKS_TOKENS_LIST_SOURCE).toContain('backed-fi')
   })
 })
+
+it('enables the issuer stock registry and Pons catalog on Robinhood Chain', () => {
+  const lists = DEFAULT_TOKENS_LISTS[4663 as unknown as SupportedChainId]
+  expect(lists.find((list) => list.source.endsWith('/api/robinhood/assets?format=token-list'))).toEqual({
+    priority: 0,
+    enabledByDefault: true,
+    source: 'https://swap.ophis.fi/api/robinhood/assets?format=token-list',
+  })
+  expect(lists.find((list) => list.source.endsWith('/api/pons-token-list'))?.enabledByDefault).toBe(true)
+})

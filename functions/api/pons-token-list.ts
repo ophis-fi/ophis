@@ -416,13 +416,20 @@ export const onRequestGet: PagesFunction = async (context) => {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   let failureStage: 'catalog' | 'verification' = 'catalog';
   try {
-    const activeResponse = await fetch(UPSTREAM_URL, {
-      signal: controller.signal,
-      headers: { accept: 'application/json', 'user-agent': 'Ophis pons token-list adapter' },
-    });
-    if (!activeResponse.ok) return unavailable('catalog');
-    const active = await activeResponse.json();
-    const launches = parsePonsCatalog(active);
+    let launches: PonsLaunch[] = [];
+    try {
+      const activeResponse = await fetch(UPSTREAM_URL, {
+        // Reserve 22 seconds for six RPC batches (100 catalog entries plus reference PONS).
+        signal: AbortSignal.timeout(3_000),
+        headers: { accept: 'application/json', 'user-agent': 'Ophis pons token-list adapter' },
+      });
+      if (!activeResponse.ok) throw new Error('Catalog unavailable');
+      launches = parsePonsCatalog(await activeResponse.json());
+    } catch {
+      const stale = await safeCacheMatch(cache, staleKey);
+      if (stale) return serveCached(stale);
+    }
+    // The known PONS deployment still requires verification when discovery is unavailable.
     failureStage = 'verification';
     const verified = await verifyLaunchesOnchain([REFERENCE_PONS, ...launches], controller.signal);
     const list = ponsTokenListFromResponse(verified);

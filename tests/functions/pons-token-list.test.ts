@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   isVerifiedLaunchResult,
+  onRequestGet,
   parsePonsCatalog,
   ponsTokenListFromResponse,
   rpcResultsById,
@@ -242,4 +243,76 @@ test('mirror agreement cannot override a slower authoritative response', async (
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('keeps reference PONS discoverable during catalog outages only after onchain verification', async (t) => {
+  let verified = true;
+  let catalogResponse: Response | undefined;
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
+      if (!catalogResponse) throw new Error('Network failure');
+      return catalogResponse.clone();
+    }
+    const requests = JSON.parse(String(init?.body)) as { id: number }[];
+    return Response.json(
+      requests.map(({ id }) => ({
+        jsonrpc: '2.0',
+        id,
+        result: verified ? verifiedResult() : '0x',
+      })),
+    );
+  });
+  const context = {
+    request: new Request('https://swap.ophis.fi/api/pons-token-list'),
+    waitUntil: (_promise: Promise<unknown>) => undefined,
+  } as Parameters<typeof onRequestGet>[0];
+  for (catalogResponse of [
+    undefined,
+    new Response('Unavailable', { status: 503 }),
+    new Response('{'),
+    Response.json({ error: 'Unavailable' }),
+  ]) {
+    const available = await onRequestGet(context);
+    assert.equal(available.status, 200);
+    assert.deepEqual(
+      (await available.json()).tokens.map(({ address }) => address),
+      [TOKEN],
+    );
+  }
+  verified = false;
+  const unavailable = await onRequestGet(context);
+  assert.equal(unavailable.status, 503);
+});
+
+test('verifies reference PONS after the catalog deadline expires', async (t) => {
+  const catalog = new AbortController();
+  t.mock.method(AbortSignal, 'timeout', (milliseconds: number) => {
+    assert.equal(milliseconds, 3_000);
+    return catalog.signal;
+  });
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('Catalog timeout')), {
+          once: true,
+        });
+        queueMicrotask(() => catalog.abort());
+      });
+    }
+    assert.equal(catalog.signal.aborted, true);
+    assert.equal(init?.signal?.aborted, false);
+    const requests = JSON.parse(String(init?.body)) as { id: number }[];
+    return Response.json(
+      requests.map(({ id }) => ({ jsonrpc: '2.0', id, result: verifiedResult() })),
+    );
+  });
+  const response = await onRequestGet({
+    request: new Request('https://swap.ophis.fi/api/pons-token-list'),
+    waitUntil: () => undefined,
+  } as Parameters<typeof onRequestGet>[0]);
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    (await response.json()).tokens.map(({ address }) => address),
+    [TOKEN],
+  );
 });
