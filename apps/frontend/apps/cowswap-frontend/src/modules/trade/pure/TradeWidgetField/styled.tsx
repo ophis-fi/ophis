@@ -84,6 +84,8 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
   ${Content} {
     padding: 0;
     flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
     color: inherit;
 
     ${NumericalInput} {
@@ -117,6 +119,8 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
     }
 
     > span {
+      min-width: 0;
+      max-width: 100%;
       background: ${({ hasPrefix }) => (hasPrefix ? `var(${UI.COLOR_PAPER_DARKER})` : 'transparent')};
 
       ${({ hasPrefix }) =>
