@@ -3,13 +3,13 @@ import { getCacheKeyForURL, matchPrecache } from 'workbox-precaching'
 import { Route } from 'workbox-routing'
 
 const fileExtensionRegexp = new RegExp('/[^/?]+\\.[^/]+$')
-const standaloneDocuments = new Set([
-  '/451',
-  '/business',
-  '/business/',
-  '/ophis-fee-safe-robinhood-ceremony',
-  '/ophis-uniswap-v4-robinhood-ceremony',
-  '/ophis-uniswap-v4-optimism-ceremony',
+const standaloneDocuments = new Map([
+  ['/451', '/451.html'],
+  ['/business', '/business/index.html'],
+  ['/business/', '/business/index.html'],
+  ['/ophis-fee-safe-robinhood-ceremony', '/ophis-fee-safe-robinhood-ceremony.html'],
+  ['/ophis-uniswap-v4-robinhood-ceremony', '/ophis-uniswap-v4-robinhood-ceremony.html'],
+  ['/ophis-uniswap-v4-optimism-ceremony', '/ophis-uniswap-v4-optimism-ceremony.html'],
 ])
 
 export const DOCUMENT = self.location.origin + '/index.html'
@@ -59,10 +59,12 @@ export async function handleDocument(
   this: HandlerContext,
   { event: _event, request, url }: RouteHandlerCallbackOptions,
 ) {
-  // Pages canonicalizes static HTML to extensionless URLs. Fetch these before app-shell or precache fallback.
-  if (standaloneDocuments.has(url.pathname) || (url.hostname === 'business.ophis.fi' && url.pathname === '/')) {
-    return fetch(request)
-  }
+  // Pages canonicalizes static HTML to extensionless URLs. Keep cached pages paired with their build's scripts.
+  const staticDocument =
+    url.hostname === 'business.ophis.fi' && url.pathname === '/'
+      ? '/business/index.html'
+      : standaloneDocuments.get(url.pathname)
+  if (staticDocument) return (await matchPrecache(staticDocument)) || fetch(request)
 
   // If we are offline, serve the offline document.
   if ('onLine' in navigator && !navigator.onLine) return this?.offlineDocument?.clone() || fetch(request)
