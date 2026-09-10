@@ -1,5 +1,5 @@
 import { EXTRA_ACROSS_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
-import { withTimeout } from '@cowprotocol/common-utils'
+import { getTimeoutAbortController } from '@cowprotocol/common-utils'
 import {
   avalanche,
   bnb,
@@ -23,9 +23,9 @@ import {
 
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
 
-// A stalled available-routes request must not hang the quote — it degrades to
-// "no intermediate found" like every other route-fetch failure (the SDK's own
-// fetch has no timeout).
+// A stalled available-routes request must not hang the quote — it is ABORTED
+// (not just raced) at the timeout and degrades to "no intermediate found" like
+// every other route-fetch failure, so retries never pile up open connections.
 const AVAILABLE_ROUTES_TIMEOUT_MS = 10_000
 
 /**
@@ -145,14 +145,13 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
       // Through the SDK's AcrossApi, so this request carries the configured
       // integratorId and API key like every other Across call (the SDK also
       // validates the route shape and rejects garbage as INVALID_API_JSON_RESPONSE).
-      const routes = await withTimeout(
-        this.api.getAvailableRoutes({
+      const routes = await this.api.getAvailableRoutes(
+        {
           originChainId: String(sellTokenChainId),
           destinationChainId: String(buyTokenChainId),
           destinationToken: buyTokenAddress,
-        }),
-        AVAILABLE_ROUTES_TIMEOUT_MS,
-        'Across available-routes',
+        },
+        { signal: getTimeoutAbortController(AVAILABLE_ROUTES_TIMEOUT_MS).signal },
       )
       if (routes.length === 0) return []
 

@@ -1,5 +1,5 @@
 diff --git a/dist/index.d.mts b/dist/index.d.mts
-index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..8cc0b140e6f50d4005638ab80736f49ca1e270a7 100644
+index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..f7042c6c9a8457d3ba06b8fc06952eb56315279a 100644
 --- a/dist/index.d.mts
 +++ b/dist/index.d.mts
 @@ -670,11 +670,12 @@ interface GetCrossChainOrderParams {
@@ -30,8 +30,17 @@ index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..8cc0b140e6f50d4005638ab80736f49c
  }
  declare class AcrossApi {
      private readonly options;
+@@ -902,7 +907,7 @@ declare class AcrossApi {
+      *
+      * See https://docs.across.to/reference/api-reference#available-routes
+      */
+-    getAvailableRoutes({ originChainId, originToken, destinationChainId, destinationToken, }: AvailableRoutesRequest): Promise<Route[]>;
++    getAvailableRoutes({ originChainId, originToken, destinationChainId, destinationToken, }: AvailableRoutesRequest, init?: Pick<RequestInit, 'signal'>): Promise<Route[]>;
+     /**
+      * Retrieve suggested fee quote for a deposit.
+      *
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..8cc0b140e6f50d4005638ab80736f49ca1e270a7 100644
+index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..f7042c6c9a8457d3ba06b8fc06952eb56315279a 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -670,11 +670,12 @@ interface GetCrossChainOrderParams {
@@ -62,10 +71,37 @@ index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..8cc0b140e6f50d4005638ab80736f49c
  }
  declare class AcrossApi {
      private readonly options;
+@@ -902,7 +907,7 @@ declare class AcrossApi {
+      *
+      * See https://docs.across.to/reference/api-reference#available-routes
+      */
+-    getAvailableRoutes({ originChainId, originToken, destinationChainId, destinationToken, }: AvailableRoutesRequest): Promise<Route[]>;
++    getAvailableRoutes({ originChainId, originToken, destinationChainId, destinationToken, }: AvailableRoutesRequest, init?: Pick<RequestInit, 'signal'>): Promise<Route[]>;
+     /**
+      * Retrieve suggested fee quote for a deposit.
+      *
 diff --git a/dist/index.js b/dist/index.js
-index 9fcba626054ad9f635643504d18de1afeddf2401..be8d6788c55405f35c37534dc048ac6942bc82d9 100644
+index 9fcba626054ad9f635643504d18de1afeddf2401..4ac3272e8f2e7b85c9be4c02bfb2248bf3eb8d57 100644
 --- a/dist/index.js
 +++ b/dist/index.js
+@@ -1459,7 +1459,7 @@ var AcrossApi = class {
+     originToken,
+     destinationChainId,
+     destinationToken
+-  }) {
++  }, init) {
+     const params = {};
+     if (originChainId)
+       params.originChainId = originChainId;
+@@ -1469,7 +1469,7 @@ var AcrossApi = class {
+       params.destinationChainId = destinationChainId;
+     if (destinationToken)
+       params.destinationToken = destinationToken;
+-    return this.fetchApi("/available-routes", params, isValidRoutes);
++    return this.fetchApi("/available-routes", params, isValidRoutes, init);
+   }
+   /**
+    * Retrieve suggested fee quote for a deposit.
 @@ -1481,7 +1481,13 @@ var AcrossApi = class {
     */
    async getSuggestedFees(request) {
@@ -81,9 +117,13 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..be8d6788c55405f35c37534dc048ac69
        originChainId: request.originChainId.toString(),
        destinationChainId: request.destinationChainId.toString(),
        amount: request.amount.toString()
-@@ -1505,10 +1511,16 @@ var AcrossApi = class {
+@@ -1503,12 +1509,20 @@ var AcrossApi = class {
+     };
+     return this.fetchApi("/deposit/status", params);
    }
-   async fetchApi(path, params, isValidResponse) {
+-  async fetchApi(path, params, isValidResponse) {
++  // Ophis: optional `init` (e.g. an AbortSignal) is spread into the fetch.
++  async fetchApi(path, params, isValidResponse, init) {
      const baseUrl = this.options.apiBaseUrl || ACROSS_API_URL;
 -    const url = `${baseUrl}${path}?${new URLSearchParams(params).toString()}`;
 +    // Ophis: Across attribution + auth. Their API reference has every request
@@ -96,11 +136,12 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..be8d6788c55405f35c37534dc048ac69
      const response = await fetch(url, {
 -      method: "GET"
 +      method: "GET",
-+      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {})
++      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
++      ...init
      });
      if (!response.ok) {
        const errorBody = await response.json();
-@@ -1585,7 +1597,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
+@@ -1585,7 +1599,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
    [import_sdk_config4.SupportedChainId.GNOSIS_CHAIN]: void 0,
    [import_sdk_config4.SupportedChainId.AVALANCHE]: void 0,
    [import_sdk_config4.AdditionalTargetChainId.BITCOIN]: void 0,
@@ -111,7 +152,7 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..be8d6788c55405f35c37534dc048ac69
  };
  var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [import_sdk_config4.SupportedChainId.MAINNET]: "0xf2ae6728b6f146556977Af0A68bFbf5bADA22863",
-@@ -1598,16 +1612,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+@@ -1598,16 +1614,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [import_sdk_config4.SupportedChainId.POLYGON]: void 0,
    [import_sdk_config4.SupportedChainId.AVALANCHE]: void 0,
    [import_sdk_config4.SupportedChainId.BNB]: void 0,
@@ -135,7 +176,7 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..be8d6788c55405f35c37534dc048ac69
  };
  
  // src/providers/across/util.ts
-@@ -3730,11 +3746,13 @@ var AcrossBridgeProvider = class {
+@@ -3730,11 +3748,13 @@ var AcrossBridgeProvider = class {
      return Object.values(sourceTokens || {}).filter((token) => token.symbol?.toLowerCase() === targetTokenSymbol);
    }
    async getQuote(request) {
@@ -153,7 +194,7 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..be8d6788c55405f35c37534dc048ac69
        originChainId: sellTokenChainId,
        destinationChainId: buyTokenChainId,
        amount,
-@@ -3788,7 +3806,7 @@ var AcrossBridgeProvider = class {
+@@ -3788,7 +3808,7 @@ var AcrossBridgeProvider = class {
      throw new Error("Not implemented");
    }
    async getBridgingParams(chainId, order, txHash, settlementContractOverride) {
@@ -163,9 +204,27 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..be8d6788c55405f35c37534dc048ac69
      }
      const orderUid = order.uid;
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..6e10978b153a74a0fc33694736271edd11899692 100644
+index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..1c96d60ac9c965d56644d7f98374909739abf670 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
+@@ -1402,7 +1402,7 @@ var AcrossApi = class {
+     originToken,
+     destinationChainId,
+     destinationToken
+-  }) {
++  }, init) {
+     const params = {};
+     if (originChainId)
+       params.originChainId = originChainId;
+@@ -1412,7 +1412,7 @@ var AcrossApi = class {
+       params.destinationChainId = destinationChainId;
+     if (destinationToken)
+       params.destinationToken = destinationToken;
+-    return this.fetchApi("/available-routes", params, isValidRoutes);
++    return this.fetchApi("/available-routes", params, isValidRoutes, init);
+   }
+   /**
+    * Retrieve suggested fee quote for a deposit.
 @@ -1424,7 +1424,13 @@ var AcrossApi = class {
     */
    async getSuggestedFees(request) {
@@ -181,9 +240,13 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..6e10978b153a74a0fc33694736271edd
        originChainId: request.originChainId.toString(),
        destinationChainId: request.destinationChainId.toString(),
        amount: request.amount.toString()
-@@ -1448,10 +1454,16 @@ var AcrossApi = class {
+@@ -1446,12 +1452,20 @@ var AcrossApi = class {
+     };
+     return this.fetchApi("/deposit/status", params);
    }
-   async fetchApi(path, params, isValidResponse) {
+-  async fetchApi(path, params, isValidResponse) {
++  // Ophis: optional `init` (e.g. an AbortSignal) is spread into the fetch.
++  async fetchApi(path, params, isValidResponse, init) {
      const baseUrl = this.options.apiBaseUrl || ACROSS_API_URL;
 -    const url = `${baseUrl}${path}?${new URLSearchParams(params).toString()}`;
 +    // Ophis: Across attribution + auth. Their API reference has every request
@@ -196,11 +259,12 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..6e10978b153a74a0fc33694736271edd
      const response = await fetch(url, {
 -      method: "GET"
 +      method: "GET",
-+      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {})
++      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
++      ...init
      });
      if (!response.ok) {
        const errorBody = await response.json();
-@@ -1528,7 +1540,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
+@@ -1528,7 +1542,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
    [SupportedChainId2.GNOSIS_CHAIN]: void 0,
    [SupportedChainId2.AVALANCHE]: void 0,
    [AdditionalTargetChainId.BITCOIN]: void 0,
@@ -211,7 +275,7 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..6e10978b153a74a0fc33694736271edd
  };
  var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [SupportedChainId2.MAINNET]: "0xf2ae6728b6f146556977Af0A68bFbf5bADA22863",
-@@ -1541,16 +1555,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+@@ -1541,16 +1557,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [SupportedChainId2.POLYGON]: void 0,
    [SupportedChainId2.AVALANCHE]: void 0,
    [SupportedChainId2.BNB]: void 0,
@@ -235,7 +299,7 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..6e10978b153a74a0fc33694736271edd
  };
  
  // src/providers/across/util.ts
-@@ -3680,11 +3696,13 @@ var AcrossBridgeProvider = class {
+@@ -3680,11 +3698,13 @@ var AcrossBridgeProvider = class {
      return Object.values(sourceTokens || {}).filter((token) => token.symbol?.toLowerCase() === targetTokenSymbol);
    }
    async getQuote(request) {
@@ -253,7 +317,7 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..6e10978b153a74a0fc33694736271edd
        originChainId: sellTokenChainId,
        destinationChainId: buyTokenChainId,
        amount,
-@@ -3738,7 +3756,7 @@ var AcrossBridgeProvider = class {
+@@ -3738,7 +3758,7 @@ var AcrossBridgeProvider = class {
      throw new Error("Not implemented");
    }
    async getBridgingParams(chainId, order, txHash, settlementContractOverride) {

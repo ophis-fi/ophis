@@ -30,6 +30,10 @@ const ids = (chains: { id: number }[]): number[] => chains.map((c) => c.id)
 // so the SDK's TargetChainId-typed params need the same cast the app relies on at runtime.
 const ROBINHOOD_CHAIN_ID = 4663 as unknown as TargetChainId
 
+// A fetch that never settles except through its abort signal (a stalled request).
+const settleOnlyOnAbort = (signal?: AbortSignal | null): Promise<Response> =>
+  new Promise((_, reject) => signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
+
 describe('ophisBridgeProviders', () => {
   describe('OphisAcrossBridgeProvider', () => {
     it('extends the upstream network list with the probed-supported Ophis chains', async () => {
@@ -135,7 +139,10 @@ describe('ophisBridgeProviders', () => {
         isNative: false,
       })
 
-      afterEach(() => jest.restoreAllMocks())
+      afterEach(() => {
+        jest.restoreAllMocks()
+        jest.useRealTimers()
+      })
 
       it('returns [] for a non-executable source without hitting super or the API', async () => {
         const superSpy = jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens')
@@ -176,12 +183,21 @@ describe('ophisBridgeProviders', () => {
 
         // Both mainnet route origins returned; the Base USDC (wrong chain) excluded.
         expect(result).toEqual([USDC, USDG_MAINNET])
-        // The fallback goes through the SDK's AcrossApi, so it is attributed and
-        // authenticated like every other Across call (Codex P2 on #1382).
-        const [url, init] = fetchSpy.mock.calls[0]
+        const [url, init] = fetchSpy.mock.calls[0] // attributed, authenticated, abortable
         expect(String(url)).toContain('/available-routes?')
         expect(new URL(String(url)).searchParams.get('integratorId')).toBe('0x0311')
         expect(init?.headers).toEqual({ Authorization: 'Bearer test-key' })
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+      })
+
+      it('aborts a stalled route request at the timeout and degrades to []', async () => {
+        jest.useFakeTimers()
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
+        const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((_url, init) => settleOnlyOnAbort(init?.signal))
+        const pending = new OphisAcrossBridgeProvider().getIntermediateTokens(acrossRequest())
+        await jest.advanceTimersByTimeAsync(10_001)
+        expect(await pending).toEqual([])
+        expect(fetchSpy.mock.calls[0][1]?.signal?.aborted).toBe(true)
       })
 
       it('returns [] when the route fetch fails (no crash, corridor just unavailable)', async () => {
