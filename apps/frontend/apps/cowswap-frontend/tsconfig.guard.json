@@ -12,6 +12,7 @@
     "../../libs/tokens/src/services/tokenPolicy.spec.ts",
     "src/ophis/partnerFeeMerge.test.ts",
     "src/tradingSdk/ophisNearIntentsProvider.service.test.ts",
+    "src/tradingSdk/ophisBridgeProviders.test.ts",
     "src/modules/tokensList/containers/TokenSearchResults/index.test.tsx",
     "src/common/hooks/useVerifyOphisRecipientName.test.ts",
     "src/modules/tradeQuote/hooks/useQuoteParamsRecipient.test.ts",

@@ -3,6 +3,9 @@ import { fetchWithTimeout } from '@cowprotocol/common-utils'
 import { avalanche, bnb, ChainInfo, getAddressKey, ink, linea, plasma, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
 import {
   AcrossBridgeProvider,
+  AcrossQuoteResult,
+  BridgeProviderQuoteError,
+  BridgeQuoteErrors,
   BungeeBridgeProvider,
   BuyTokensParams,
   GetProviderBuyTokens,
@@ -106,6 +109,27 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
     if (bySymbol.length > 0) return bySymbol
 
     return this.getIntermediateTokensFromRoutes(request)
+  }
+
+  // The Across deposit hook computes depositV3's outputAmount ON-CHAIN as
+  // balanceOf(sell token) minus the relay fee, in the SELL token's units
+  // (weiroll multiplyAndSubtract); it never rescales for decimals. Since the
+  // sdk-bridging patch quotes with the explicit inputToken/outputToken pair,
+  // Across's cross-asset routes are quotable, and some pair a 6-decimal stable
+  // with an 18-decimal one (USDC -> USDC-BNB, USDT -> USDT-BNB, live 2026-09-10).
+  // Such a deposit would offer 100e6 of input for ~1e-10 of output and be filled
+  // instantly. Refuse them here, the one method every Across quote passes
+  // through, before any fee request; the UI renders NO_ROUTES as "No routes found".
+  async getQuote(request: QuoteBridgeRequest): Promise<AcrossQuoteResult> {
+    if (request.sellTokenDecimals !== request.buyTokenDecimals) {
+      throw new BridgeProviderQuoteError(BridgeQuoteErrors.NO_ROUTES, {
+        reason: 'sell/buy token decimals differ; Across deposit outputAmount is computed in sell-token units',
+        sellTokenDecimals: request.sellTokenDecimals,
+        buyTokenDecimals: request.buyTokenDecimals,
+      })
+    }
+
+    return super.getQuote(request)
   }
 
   private async getIntermediateTokensFromRoutes(request: QuoteBridgeRequest): Promise<TokenInfo[]> {
