@@ -1,36 +1,21 @@
-import { useMemo } from 'react'
-
+import { RPC_URLS, SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
 import { isAddress } from '@cowprotocol/common-utils'
-import { namehash } from '@ethersproject/hash'
+import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { JsonRpcProvider } from '@ethersproject/providers'
 
-import { useENSAddress } from './useENSAddress'
-import { useENSResolverMethod } from './useENSResolverMethod'
+import useSWR from 'swr'
 
-/**
- * Does a reverse lookup for an address to find its ENS name.
- * Note this is not the same as looking up an ENS name to find an address.
- */
+// Wallet identity lives on Ethereum, regardless of the selected trading chain.
+const provider = new JsonRpcProvider(RPC_URLS[SupportedChainId.MAINNET], SupportedChainId.MAINNET)
+
 export function useENSName(address?: string): { ENSName: string | null; loading: boolean } {
-  const ensNodeArgument = useMemo(() => {
-    if (!address || !isAddress(address)) return undefined
-
-    return namehash(`${address.toLowerCase().substr(2)}.addr.reverse`)
-  }, [address])
-
-  const { data: name, isLoading: nameLoading } = useENSResolverMethod('name', ensNodeArgument)
-
-  /* ENS does not enforce that an address owns a .eth domain before setting it as a reverse proxy
-     and recommends that you perform a match on the forward resolution
-     see: https://docs.ens.domains/dapp-developer-guide/resolving-names#reverse-resolution
-  */
-  const fwdAddr = useENSAddress(name)
-  const checkedName = address === fwdAddr?.address ? name : null
-
-  return useMemo(
-    () => ({
-      ENSName: checkedName ?? null,
-      loading: nameLoading,
-    }),
-    [checkedName, nameLoading],
+  const checkedAddress = address && isAddress(address)
+  const { data, isLoading } = useSWR(
+    checkedAddress ? ['useENSName', checkedAddress] : null,
+    // Ethers verifies that the reverse name resolves forward to this address.
+    ([, account]) => provider.lookupAddress(account),
+    SWR_NO_REFRESH_OPTIONS,
   )
+
+  return { ENSName: data ?? null, loading: isLoading }
 }
