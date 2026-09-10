@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import type { TokenWithLogo } from '@cowprotocol/common-const'
+import { NATIVE_CURRENCIES, TokenWithLogo, WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/common-const'
 import { areAddressesEqual, getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 import type { CrossChainOrder } from '@cowprotocol/sdk-bridging'
 import { useTokensByAddressMapForChain } from '@cowprotocol/tokens'
@@ -11,22 +11,30 @@ import { useBridgeSupportedTokens } from 'entities/bridgeProvider'
 import type { Order } from 'legacy/state/orders/actions'
 
 /**
- * Provider list first, destination token list second, source-chain intermediate
- * last. Provider lists can miss the exact address (Bungee replaced ETH with WETH
- * in its lists; a decode-only provider serves none), and the intermediate is the
- * wrong asset and decimals on a receipt.
+ * Provider list first; then the wrapped-to-native mapping (Bungee stored the
+ * WETH address in appData for a native ETH delivery, so a list match on WETH
+ * must still read as ETH, the same normalization the explorer applies); then
+ * the destination token list; the source-chain intermediate last, since it is
+ * the wrong asset and decimals on a receipt.
  */
 function pickOutputToken(
+  destinationChainId: number | undefined,
   providerTokens: TokenWithLogo[] | undefined,
   listToken: TokenWithLogo | undefined,
   fallback: TokenWithLogo,
   outputTokenAddress: string | undefined,
 ): TokenWithLogo {
-  const providerToken = outputTokenAddress
-    ? providerTokens?.find((token) => areAddressesEqual(token.address, outputTokenAddress))
-    : undefined
+  if (!outputTokenAddress) return fallback
 
-  return providerToken ?? listToken ?? fallback
+  const providerToken = providerTokens?.find((token) => areAddressesEqual(token.address, outputTokenAddress))
+  if (providerToken) return providerToken
+
+  const wrapped = destinationChainId ? WRAPPED_NATIVE_CURRENCIES[destinationChainId as SupportedChainId] : undefined
+  if (wrapped && areAddressesEqual(wrapped.address, outputTokenAddress)) {
+    return NATIVE_CURRENCIES[destinationChainId as SupportedChainId] ?? listToken ?? fallback
+  }
+
+  return listToken ?? fallback
 }
 
 /**
@@ -70,6 +78,12 @@ export function useBridgeOrderOutputToken(
     // the fallback keeps swapAndBridgeOverview defined in fresh sessions.
     const providerTokens = data?.isRouteAvailable === false ? undefined : data?.tokens
 
-    return pickOutputToken(providerTokens, listToken, localOrderOutputToken as TokenWithLogo, outputTokenAddress)
-  }, [isLocalOrderCached, localOrderOutputToken, data, outputTokenAddress, destinationTokens])
+    return pickOutputToken(
+      destinationChainId,
+      providerTokens,
+      listToken,
+      localOrderOutputToken as TokenWithLogo,
+      outputTokenAddress,
+    )
+  }, [isLocalOrderCached, localOrderOutputToken, data, outputTokenAddress, destinationTokens, destinationChainId])
 }

@@ -1263,6 +1263,9 @@ importers:
       '@cowprotocol/currency':
         specifier: workspace:*
         version: link:../currency
+      '@cowprotocol/sdk-bridging':
+        specifier: 4.0.2
+        version: 4.0.2(patch_hash=5fc5e3298718d0b7a77695a89e7b64db39dd94b7d4808c565097ffa5cad35bae)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/types':
         specifier: workspace:*
         version: link:../types

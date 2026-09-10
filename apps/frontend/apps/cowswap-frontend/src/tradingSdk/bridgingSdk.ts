@@ -1,19 +1,16 @@
+import { createDecodeOnlyBungeeBridgeProvider } from '@cowprotocol/common-const'
 import { BridgingSdk } from '@cowprotocol/sdk-bridging'
 
 import { orderBookApi } from 'cowSdk'
 
-import { OphisAcrossBridgeProvider, OphisBungeeBridgeProvider } from './ophisBridgeProviders'
+import { OphisAcrossBridgeProvider } from './ophisBridgeProviders'
 import { OphisNearIntentsBridgeProvider } from './ophisNearIntentsProvider.service'
 import { tradingSdk } from './tradingSdk'
 
-// Bungee is registered DECODE-ONLY (see OphisBungeeBridgeProvider): it never
-// quotes and never receives token-picker traffic, it only lets the SDK resolve
-// historical Bungee orders by their appData hook dappId. Hence no API base,
-// dedicated-proxy routing or affiliate header any more; `includeBridges` stays
-// because BungeeApi.validateBridges throws at construction on other slugs.
-export const bungeeBridgeProvider = new OphisBungeeBridgeProvider({
-  apiOptions: { includeBridges: ['across', 'cctp', 'gnosis-native-bridge'] },
-})
+// Bungee is registered DECODE-ONLY (shared class in common-const, also used by
+// the explorer): it never quotes and never receives token-picker traffic, it
+// only lets the SDK resolve historical Bungee orders by their appData hook dappId.
+export const bungeeBridgeProvider = createDecodeOnlyBungeeBridgeProvider()
 
 export const acrossBridgeProvider = new OphisAcrossBridgeProvider()
 

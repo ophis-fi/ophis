@@ -1,12 +1,21 @@
 import { EXTRA_ACROSS_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
 import { fetchWithTimeout } from '@cowprotocol/common-utils'
-import { avalanche, bnb, ChainInfo, getAddressKey, ink, linea, plasma, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
+import {
+  avalanche,
+  bnb,
+  ChainInfo,
+  getAddressKey,
+  ink,
+  linea,
+  plasma,
+  SupportedChainId,
+  TokenInfo,
+} from '@cowprotocol/cow-sdk'
 import {
   AcrossBridgeProvider,
   AcrossQuoteResult,
   BridgeProviderQuoteError,
   BridgeQuoteErrors,
-  BungeeBridgeProvider,
   BuyTokensParams,
   GetProviderBuyTokens,
   QuoteBridgeRequest,
@@ -159,31 +168,11 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
       // Return the SDK's own TokenInfo objects (with decimals/symbol/logo) for
       // the route origins, so the downstream quote path gets the shape it wants.
       const tokens = await this.api.getSupportedTokens()
-      return tokens.filter((token) => token.chainId === sellTokenChainId && originKeys.has(getAddressKey(token.address)))
+      return tokens.filter(
+        (token) => token.chainId === sellTokenChainId && originKeys.has(getAddressKey(token.address)),
+      )
     } catch {
       return []
     }
-  }
-}
-
-/**
- * Bungee, DECODE-ONLY. Its manual v1 API (the only one sdk-bridging 4.0.2
- * speaks) has answered 410 Gone on every route since August 2026, so it can
- * never quote again. It stays registered because the SDK resolves an existing
- * order's provider by the dappId in its appData hooks (getProviderFromAppData /
- * getOrder), and both search the AVAILABLE provider list: dropping Bungee would
- * break rendering of every historical Bungee order. Advertising no networks
- * keeps it out of the quote fan-out (fetchMultiQuote gates on getNetworks) and
- * the destination picker; getBuyTokens is overridden too because that fan-out
- * has no network gate and would otherwise fire one 410 per destination chain
- * on every token-picker open.
- */
-export class OphisBungeeBridgeProvider extends BungeeBridgeProvider {
-  async getNetworks(): Promise<ChainInfo[]> {
-    return []
-  }
-
-  async getBuyTokens(_params: BuyTokensParams): Promise<GetProviderBuyTokens> {
-    return { tokens: [], isRouteAvailable: false }
   }
 }

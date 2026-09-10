@@ -4,6 +4,8 @@ import {
   acrossInkLineaSourceIds,
   acrossRobinhoodSourceIds,
   BRIDGE_SOURCE_CHAIN_IDS,
+  createDecodeOnlyBungeeBridgeProvider,
+  DecodeOnlyBungeeBridgeProvider,
   EXTRA_ACROSS_SOURCE_CHAIN_IDS,
 } from '@cowprotocol/common-const'
 import { isEvmChainInfo, OrderKind, SupportedChainId, TargetChainId, TokenInfo } from '@cowprotocol/cow-sdk'
@@ -19,11 +21,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
-import {
-  ACROSS_EXECUTABLE_SOURCE_IDS,
-  OphisAcrossBridgeProvider,
-  OphisBungeeBridgeProvider,
-} from './ophisBridgeProviders'
+import { ACROSS_EXECUTABLE_SOURCE_IDS, OphisAcrossBridgeProvider } from './ophisBridgeProviders'
 
 const ids = (chains: { id: number }[]): number[] => chains.map((c) => c.id)
 
@@ -277,9 +275,8 @@ describe('ophisBridgeProviders', () => {
     })
   })
 
-  describe('OphisBungeeBridgeProvider (decode-only)', () => {
-    const provider = (): OphisBungeeBridgeProvider =>
-      new OphisBungeeBridgeProvider({ apiOptions: { includeBridges: ['across'] } })
+  describe('DecodeOnlyBungeeBridgeProvider (shared with the explorer, decode-only)', () => {
+    const provider = (): DecodeOnlyBungeeBridgeProvider => createDecodeOnlyBungeeBridgeProvider()
 
     afterEach(() => jest.restoreAllMocks())
 
