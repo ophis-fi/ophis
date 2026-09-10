@@ -114,7 +114,7 @@ export const UnsupportedNetworkIconWrapper = styled(ConnectWalletIconWrapper)`
 
 export const NoOrdersArtwork = styled.div`
   width: 100%;
-  max-width: 112px;
+  max-width: 320px;
   margin: 8px auto 0;
   display: flex;
   align-items: center;

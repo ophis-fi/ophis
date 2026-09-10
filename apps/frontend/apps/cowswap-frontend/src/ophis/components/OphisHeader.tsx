@@ -110,12 +110,12 @@ const Bar = styled.header<{ $transparent: boolean; $walletConnected: boolean }>`
   }
 `
 
-const Wordmark = styled(Link)`
+const Wordmark = styled(Link)<{ $transparent: boolean }>`
   font-family: ${STEEP_FONT.body};
   font-weight: 600;
   font-size: 22px;
   letter-spacing: -0.01em;
-  color: ${({ theme }) => steep(theme).text};
+  color: ${({ theme, $transparent }) => ($transparent ? '#f4f4f5' : steep(theme).text)};
   text-decoration: none;
   user-select: none;
   display: inline-flex;
@@ -126,17 +126,18 @@ const Wordmark = styled(Link)`
     transform: rotate(8deg);
   }
   &:focus-visible {
-    outline: 2px solid ${({ theme }) => steep(theme).link};
+    outline: 2px solid currentColor;
     outline-offset: 3px;
     border-radius: 4px;
   }
 `
 
-const Mark = styled.img`
+const Mark = styled.img<{ $transparent: boolean }>`
   width: 28px;
   height: 28px;
   display: block;
-  filter: ${({ theme }) => (theme.darkMode ? 'brightness(0) invert(1)' : 'brightness(0)')};
+  filter: ${({ theme, $transparent }) =>
+    theme.darkMode || $transparent ? 'brightness(0) invert(1)' : 'brightness(0)'};
   transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
 
   @media (prefers-reduced-motion: reduce) {
@@ -151,7 +152,7 @@ const WordmarkText = styled.span`
 `
 
 const WordmarkAccent = styled.span`
-  color: ${({ theme }) => steep(theme).text};
+  color: inherit;
 `
 
 const Right = styled.div<{ $walletConnected: boolean }>`
@@ -202,8 +203,8 @@ export function OphisHeader({ children, transparent = false, walletConnected = f
         $walletConnected={walletConnected}
         className={`ophis-header-root${scrolled ? ' scrolled' : ''}`}
       >
-        <Wordmark to="/" aria-label="Ophis, home">
-          <Mark src="/ophis-icon.svg" alt="" aria-hidden="true" />
+        <Wordmark to="/" aria-label="Ophis, home" $transparent={transparent}>
+          <Mark src="/ophis-icon.svg" alt="" aria-hidden="true" $transparent={transparent} />
           <WordmarkText>
             ophis<WordmarkAccent>.</WordmarkAccent>
           </WordmarkText>
