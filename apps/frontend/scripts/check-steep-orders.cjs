@@ -39,6 +39,10 @@ async function check(browser, width, dark) {
     }, dark)
     if (width === 320 && !dark) {
       await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
+      await page.locator('#web3-status-connected').click()
+      await page.getByRole('link', { name: 'Profile', exact: true }).click()
+      await page.waitForURL(/profile/)
+      await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
       const mode = page.getByRole('button', { name: 'Trading mode', exact: true })
       await mode.focus()
       await page.keyboard.press('Enter')

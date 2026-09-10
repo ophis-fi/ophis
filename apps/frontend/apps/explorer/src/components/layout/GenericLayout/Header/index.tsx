@@ -1,5 +1,6 @@
 import React, { PropsWithChildren } from 'react'
 
+import { useMediaQuery } from '@cowprotocol/common-hooks'
 import { Color, Media, ProductLogo, ProductVariant } from '@cowprotocol/ui'
 
 import { Link } from 'react-router'
@@ -74,6 +75,7 @@ type Props = PropsWithChildren<{
 }>
 
 export const Header: React.FC<Props> = ({ children, linkTo, onClickOptional }) => {
+  const isUpToMedium = useMediaQuery(Media.upToMedium(false))
   return (
     <HeaderStyled>
       <Logo
@@ -82,7 +84,7 @@ export const Header: React.FC<Props> = ({ children, linkTo, onClickOptional }) =
         onClick={(event): void => onClickOptional && onClickOptional(event)}
       >
         <ProductLogo variant={ProductVariant.CowSwap} overrideColor={Color.explorer_textPrimary} logoIconOnly />
-        <Wordmark aria-hidden="true">ophis.</Wordmark>
+        {!isUpToMedium && <Wordmark aria-hidden="true">ophis.</Wordmark>}
       </Logo>
       {children}
     </HeaderStyled>

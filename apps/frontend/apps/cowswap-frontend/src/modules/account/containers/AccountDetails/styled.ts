@@ -216,7 +216,8 @@ export const Wrapper = styled.div`
     > button {
       align-items: center;
       background: transparent;
-      min-height: initial;
+      min-height: 44px;
+      font-size: 14px;
       cursor: pointer;
       animation: none;
       margin: 0;
