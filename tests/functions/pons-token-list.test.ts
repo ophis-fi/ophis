@@ -287,7 +287,7 @@ test('keeps reference PONS discoverable during catalog outages only after onchai
 test('verifies reference PONS after the catalog deadline expires', async (t) => {
   const catalog = new AbortController();
   t.mock.method(AbortSignal, 'timeout', (milliseconds: number) => {
-    assert.equal(milliseconds, 5_000);
+    assert.equal(milliseconds, 3_000);
     return catalog.signal;
   });
   t.mock.method(globalThis, 'fetch', async (input, init) => {

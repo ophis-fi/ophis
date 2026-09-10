@@ -75,6 +75,13 @@ test('publishes issuer metadata as a Robinhood-only token list with safe logos',
   assert.equal(list.tokens[1].symbol, 'SKHY');
   assert.equal(list.tokens[1].name, 'SK Hynix');
   assert.equal(list.tokens[1].logoURI, undefined);
+  for (const [logoUrl, expected] of [
+    ['https://cdn.robinhood.com/a b.png', 'https://cdn.robinhood.com/a%20b.png'],
+    ['https://cdn.robinhood.com/%zz.png', undefined],
+    ['https://cdn.robinhood.com.example.org/a.png', undefined],
+  ]) {
+    assert.equal(robinhoodTokenList([{ ...asset, logoUrl }]).tokens[0].logoURI, expected);
+  }
 });
 
 test('serves both registry and CORS-enabled token-list representations', async (t) => {

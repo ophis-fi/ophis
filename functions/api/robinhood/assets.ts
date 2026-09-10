@@ -176,6 +176,25 @@ export function isRobinhoodAsset(value: unknown): boolean {
   return sanitizeRobinhoodAsset(value) !== undefined;
 }
 
+function tokenLogoURI(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    decodeURI(url.href); // Reject malformed percent escapes that URL preserves.
+    if (
+      url.protocol === 'https:' &&
+      url.hostname === 'cdn.robinhood.com' &&
+      !url.username &&
+      !url.password
+    ) {
+      return url.href;
+    }
+  } catch {
+    // A malformed optional logo must not invalidate the stock catalog.
+  }
+  return undefined;
+}
+
 export function robinhoodTokenList(assets: SanitizedAsset[], now = new Date()) {
   return {
     name: 'Robinhood Stock Tokens',
@@ -191,9 +210,7 @@ export function robinhoodTokenList(assets: SanitizedAsset[], now = new Date()) {
           symbol: asset.tokenSymbol.replace(/[<>]/g, ''),
           // Robinhood documents its Stock Tokens as 18-decimal ERC-20s.
           decimals: 18,
-          ...(asset.logoUrl?.startsWith('https://cdn.robinhood.com/')
-            ? { logoURI: asset.logoUrl }
-            : {}),
+          logoURI: tokenLogoURI(asset.logoUrl),
         })),
     ),
   };

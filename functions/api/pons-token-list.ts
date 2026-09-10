@@ -419,8 +419,8 @@ export const onRequestGet: PagesFunction = async (context) => {
     let launches: PonsLaunch[] = [];
     try {
       const activeResponse = await fetch(UPSTREAM_URL, {
-        // Leave the overall deadline available for onchain verification after a catalog timeout.
-        signal: AbortSignal.timeout(5_000),
+        // Reserve 22 seconds for six RPC batches (100 catalog entries plus reference PONS).
+        signal: AbortSignal.timeout(3_000),
         headers: { accept: 'application/json', 'user-agent': 'Ophis pons token-list adapter' },
       });
       if (!activeResponse.ok) throw new Error('Catalog unavailable');

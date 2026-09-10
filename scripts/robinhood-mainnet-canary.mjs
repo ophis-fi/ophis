@@ -92,11 +92,17 @@ async function assertIssuerTokenList(assets) {
   const url = new URL(ASSET_FACADE);
   url.searchParams.set('format', 'token-list');
   const list = await fetchTokenList(url.href);
-  const expected = new Set(
+  const expected = new Map(
     assets.flatMap((asset) =>
       asset.deployments
         .filter((deployment) => deployment.chainId === CHAIN_ID)
-        .map((deployment) => normalizeAddress(deployment.contractAddress)),
+        .map((deployment) => [
+          normalizeAddress(deployment.contractAddress),
+          {
+            name: asset.tokenName.replace(/[<>]/g, '').slice(0, 100),
+            symbol: asset.tokenSymbol.replace(/[<>]/g, ''),
+          },
+        ]),
     ),
   );
   assert.ok(
@@ -104,7 +110,12 @@ async function assertIssuerTokenList(assets) {
     'invalid issuer token chain or decimals',
   );
   assert.deepEqual(
-    new Set(list.tokens.map((token) => normalizeAddress(token.address))),
+    new Map(
+      list.tokens.map((token) => [
+        normalizeAddress(token.address),
+        { name: token.name, symbol: token.symbol },
+      ]),
+    ),
     expected,
     'issuer token list differs from the official registry',
   );
@@ -273,7 +284,13 @@ async function selfTest() {
           : [TOKEN_LIST, TOKEN_LIST_FALLBACK],
       );
     }
-    const assets = [{ deployments: [{ chainId: CHAIN_ID, contractAddress: CONTRACTS.weth }] }];
+    const assets = [
+      {
+        tokenName: '<Wrapped Ether>',
+        tokenSymbol: 'WETH',
+        deployments: [{ chainId: CHAIN_ID, contractAddress: CONTRACTS.weth }],
+      },
+    ];
     let issuerList = validList;
     globalThis.fetch = async (url) => {
       const expectedUrl = new URL(ASSET_FACADE);
@@ -282,7 +299,12 @@ async function selfTest() {
       return Response.json(issuerList);
     };
     await assertIssuerTokenList(assets);
-    for (issuerList of [{}, { ...validList, tokens: [] }]) {
+    for (issuerList of [
+      {},
+      { ...validList, tokens: [] },
+      { ...validList, tokens: [{ ...validList.tokens[0], symbol: 'OTHER' }] },
+      { ...validList, tokens: [{ ...validList.tokens[0], name: 'Other stock' }] },
+    ]) {
       await assert.rejects(assertIssuerTokenList(assets));
     }
   } finally {
