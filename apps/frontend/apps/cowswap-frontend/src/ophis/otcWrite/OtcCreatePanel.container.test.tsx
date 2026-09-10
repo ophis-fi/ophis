@@ -1,6 +1,10 @@
+import { DAI } from '@cowprotocol/common-const'
+
 import { i18n } from '@lingui/core'
 import { I18nProvider } from '@lingui/react'
 import { fireEvent, render, screen } from '@testing-library/react'
+import { ThemeProvider } from 'styled-components/macro'
+import { getCowswapTheme } from 'theme'
 import { decodeFunctionData } from 'viem'
 
 import { buildOtcRevokeCreateApproval } from './buildOtcTransaction'
@@ -19,7 +23,9 @@ const controlMock = jest.mocked(OtcActionControl)
 it('can revoke from an empty form and keeps recovery bound to equivalent parsed amounts', () => {
   render(
     <I18nProvider i18n={i18n}>
-      <OtcCreatePanel />
+      <ThemeProvider theme={getCowswapTheme(false)}>
+        <OtcCreatePanel />
+      </ThemeProvider>
     </I18nProvider>,
   )
   const emptyDefinition = controlMock.mock.calls.at(-1)?.[0].definition
@@ -40,4 +46,17 @@ it('can revoke from an empty form and keeps recovery bound to equivalent parsed 
   expect(controlMock.mock.calls.at(-1)?.[0].definition.resetKey).toBe(originalKey)
   fireEvent.change(makerAmount, { target: { value: '2' } })
   expect(controlMock.mock.calls.at(-1)?.[0].definition.resetKey).not.toBe(originalKey)
+})
+
+it('updates the displayed logo when the requested token changes', () => {
+  render(
+    <I18nProvider i18n={i18n}>
+      <ThemeProvider theme={getCowswapTheme(false)}>
+        <OtcCreatePanel />
+      </ThemeProvider>
+    </I18nProvider>,
+  )
+  const selector = screen.getByRole('combobox', { name: 'Requested token' })
+  fireEvent.change(selector, { target: { value: DAI.address } })
+  expect(selector.parentElement?.querySelector('img')?.getAttribute('src')).toBe(DAI.logoURI)
 })

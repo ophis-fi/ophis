@@ -2686,8 +2686,8 @@ msgid "Batching orders"
 msgstr "Batching orders"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
-msgid "Order data changed — refresh required"
-msgstr "Order data changed — refresh required"
+msgid "Order data changed - refresh required"
+msgstr "Order data changed - refresh required"
 
 #: apps/cowswap-frontend/src/modules/ethFlow/pure/EthFlowBanner/index.tsx
 msgid "Switch to {wrappedSymbol}"
@@ -5639,8 +5639,8 @@ msgid "Not yet supported"
 msgstr "Not yet supported"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
-msgid "Escrowed peer-to-peer orders — read the terms before interacting"
-msgstr "Escrowed peer-to-peer orders — read the terms before interacting"
+msgid "Escrowed peer-to-peer orders - read the terms before interacting"
+msgstr "Escrowed peer-to-peer orders - read the terms before interacting"
 
 #: apps/cowswap-frontend/src/modules/hooksStore/pure/HookListItem/index.tsx
 msgid "Remove"

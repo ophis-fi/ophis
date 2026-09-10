@@ -6298,8 +6298,8 @@ msgid "Browse"
 msgstr "Обзор"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
-msgid "Order data changed — refresh required"
-msgstr "Данные ордера изменились — требуется обновление"
+msgid "Order data changed - refresh required"
+msgstr "Данные ордера изменились - требуется обновление"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
 msgid "No active orders match. Clear the filters or check back later."
@@ -6470,8 +6470,8 @@ msgid "Order not found"
 msgstr "Ордер не найден"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
-msgid "Escrowed peer-to-peer orders — read the terms before interacting"
-msgstr "Одноранговые ордера с эскроу — прочитайте условия перед взаимодействием"
+msgid "Escrowed peer-to-peer orders - read the terms before interacting"
+msgstr "Одноранговые ордера с эскроу - прочитайте условия перед взаимодействием"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "Fork actions ignore this checkpoint and re-read exact fork state before opening the wallet."
@@ -6623,7 +6623,7 @@ msgstr "Проверьте детали."
 
 #: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
 msgid "Amounts, fees, and destination, together."
-msgstr "Суммы, комиссии и получатель — вместе."
+msgstr "Суммы, комиссии и получатель - вместе."
 
 #: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
 msgid "Set the spending limit."

@@ -14,7 +14,7 @@ describe('OtcPageView guarded write panels', () => {
         createPanel={<button type="button">Guarded local create</button>}
       />,
     )
-    expect(screen.getByText('Local fork writes')).toBeTruthy()
+    expect(screen.getByText(/local Ethereum fork/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /Create/ }))
     expect(screen.getByRole('button', { name: 'Guarded local create' })).toBeTruthy()
   })

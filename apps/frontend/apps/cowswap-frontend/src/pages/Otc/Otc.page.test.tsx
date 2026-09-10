@@ -36,7 +36,8 @@ describe('OtcPageView', () => {
     expect(screen.getAllByText('Escrowed')).toHaveLength(1)
 
     // ethereum-only surface, age rendering
-    expect(screen.getAllByText('Ethereum').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Ethereum')).toBeNull()
+    expect(screen.getByText(/Verified at block/)).toBeTruthy()
     expect(screen.getAllByText('3h ago').length).toBeGreaterThan(0)
 
     // each row links to its detail route and offers copy + explorer actions
@@ -117,7 +118,7 @@ describe('OtcPageView', () => {
     expect(screen.getByText('#2')).toBeTruthy()
     // no reconciliation -> no verification badge anywhere
     expect(screen.queryByText('Verified on-chain')).toBeNull()
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('-').length).toBeGreaterThan(0)
   })
 
   it('says index data may lag when it is stale but still shown', () => {
@@ -182,7 +183,7 @@ it('shows public trading without trial enrollment or fork labels', () => {
   process.env.REACT_APP_OTC_WRITE_MODE = 'public'
   try {
     renderView(<OtcPageView state={readyState()} account={undefined} nowMs={NOW_MS} writeEnabled />)
-    expect(screen.getByText('Public Ethereum trading')).toBeTruthy()
+    expect(screen.queryByText('Public Ethereum trading')).toBeNull()
     expect(screen.getByText(/Connect your wallet to create, fill, or cancel/)).toBeTruthy()
     expect(screen.queryByText('Restricted Ethereum canary')).toBeNull()
     expect(screen.queryByText('Local fork writes')).toBeNull()

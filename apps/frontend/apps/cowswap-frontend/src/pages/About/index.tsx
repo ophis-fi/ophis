@@ -1,7 +1,7 @@
 /**
  * About Ophis.
  *
- * Phase A3 rebuild (PR #248, 2026-05-23) — replaces the 2026-05-22
+ * Phase A3 rebuild (PR #248, 2026-05-23) - replaces the 2026-05-22
  * "vibe-coded" implementation with ds/ primitives + cow.fi-density
  * content. No local styled-components, no per-page Title/Lede/Section
  * definitions; only ophis/ds primitives.
@@ -48,7 +48,7 @@ export default function AboutPage(): ReactNode {
           <TextLink href="https://cow.fi" external>
             CoW Protocol
           </TextLink>
-          . You build the order in a structured swap form — tokens, chain, and amount — review exactly what will be
+          . You build the order in a structured swap form - tokens, chain, and amount - review exactly what will be
           signed, and sign with your own wallet.
         </p>
         <p>
@@ -85,7 +85,7 @@ export default function AboutPage(): ReactNode {
         </p>
         <p>
           The order schema, the routing layer, and the settlement flow are transparent and auditable in the public
-          repository. Developers building on Ophis can parse natural-language requests through the public Intent API —
+          repository. Developers building on Ophis can parse natural-language requests through the public Intent API -
           see <TextLink href="https://docs.ophis.fi/">the docs</TextLink>.
         </p>
       </Section>

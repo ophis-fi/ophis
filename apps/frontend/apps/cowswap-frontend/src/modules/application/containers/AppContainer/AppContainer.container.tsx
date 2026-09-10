@@ -70,6 +70,7 @@ const OphisBodyWrapper = styled.div`
 // NetworkAndAccountControls (chain dropdown + wallet button) takes the
 // slot because users on those pages need the network/wallet UI to act.
 const OpenTradeCTA = styled(Link)`
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -232,7 +233,10 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
               {isTradeRoute ? (
                 <NetworkAndAccountControls />
               ) : isOtcRoute ? (
-                <Web3Status hideConnectButton={!account} onClick={account ? toggleAccountModal : undefined} />
+                <>
+                  <OpenTradeCTA to="/1/swap">Open Swap</OpenTradeCTA>
+                  <Web3Status hideConnectButton={!account} onClick={account ? toggleAccountModal : undefined} />
+                </>
               ) : (
                 <OpenTradeCTA to="/1/swap/_/_">Open Trade →</OpenTradeCTA>
               )}
