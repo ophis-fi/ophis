@@ -1,10 +1,12 @@
+import { ReactNode } from 'react'
+
 import { getSafeAccountUrl } from '@cowprotocol/core'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
-import { ExternalLink, InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
+import { BannerOrientation, ExternalLink, InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
 
-import { UNSUPPORTED_WALLET_LINK } from 'modules/twap/const'
+import { UNSUPPORTED_WALLET_LINK } from '../../../const'
 
 export interface UnsupportedWalletWarningProps {
   chainId: SupportedChainId
@@ -12,12 +14,10 @@ export interface UnsupportedWalletWarningProps {
   isSafeViaWc: boolean
 }
 
-// TODO: Add proper return type annotation
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function UnsupportedWalletWarning({ isSafeViaWc, chainId, account }: UnsupportedWalletWarningProps) {
+export function UnsupportedWalletWarning({ isSafeViaWc, chainId, account }: UnsupportedWalletWarningProps): ReactNode {
   if (isSafeViaWc && account) {
     return (
-      <InlineBanner bannerType={StatusColorVariant.Info}>
+      <InlineBanner bannerType={StatusColorVariant.Info} orientation={BannerOrientation.Horizontal} iconSize={20}>
         <strong>
           <Trans>Use Safe web app</Trans>
         </strong>
@@ -32,7 +32,7 @@ export function UnsupportedWalletWarning({ isSafeViaWc, chainId, account }: Unsu
   }
 
   return (
-    <InlineBanner bannerType={StatusColorVariant.Alert} iconSize={32}>
+    <InlineBanner bannerType={StatusColorVariant.Alert} orientation={BannerOrientation.Horizontal} iconSize={20}>
       <strong>
         <Trans>Unsupported wallet detected</Trans>
       </strong>
