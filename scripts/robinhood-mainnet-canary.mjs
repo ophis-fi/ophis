@@ -42,7 +42,68 @@ async function fetchJson(url) {
 }
 
 async function fetchDefaultTokenList() {
-  return fetchJson(TOKEN_LIST).catch(() => fetchJson(TOKEN_LIST_FALLBACK));
+  return fetchTokenList(TOKEN_LIST).catch(() => fetchTokenList(TOKEN_LIST_FALLBACK));
+}
+
+async function fetchTokenList(url) {
+  const list = await fetchJson(url);
+  assert.ok(typeof list?.name === 'string' && list.name.length > 0, 'invalid token list name');
+  assert.ok(
+    typeof list.timestamp === 'string' && Number.isFinite(Date.parse(list.timestamp)),
+    'invalid token list timestamp',
+  );
+  for (const part of ['major', 'minor', 'patch']) {
+    assert.ok(
+      Number.isSafeInteger(list.version?.[part]) && list.version[part] >= 0,
+      'invalid token list version',
+    );
+  }
+  assert.ok(Array.isArray(list.tokens), 'invalid token list tokens');
+  for (const token of list.tokens) {
+    assert.ok(
+      token && Number.isSafeInteger(token.chainId) && token.chainId > 0,
+      'invalid token chain',
+    );
+    assert.match(token.address, /^0x[0-9a-fA-F]{40}$/, 'invalid token address');
+    assert.ok(
+      Number.isInteger(token.decimals) && token.decimals >= 0 && token.decimals <= 255,
+      'invalid token decimals',
+    );
+    for (const [field, maxLength] of [
+      ['name', 100],
+      ['symbol', 80],
+    ]) {
+      assert.ok(
+        typeof token[field] === 'string' &&
+          token[field].length <= maxLength &&
+          !/[<>]/.test(token[field]),
+        `invalid token ${field}`,
+      );
+    }
+  }
+  return list;
+}
+
+async function assertIssuerTokenList(assets) {
+  const url = new URL(ASSET_FACADE);
+  url.searchParams.set('format', 'token-list');
+  const list = await fetchTokenList(url.href);
+  const expected = new Set(
+    assets.flatMap((asset) =>
+      asset.deployments
+        .filter((deployment) => deployment.chainId === CHAIN_ID)
+        .map((deployment) => normalizeAddress(deployment.contractAddress)),
+    ),
+  );
+  assert.ok(
+    list.tokens.every((token) => token.chainId === CHAIN_ID && token.decimals === 18),
+    'invalid issuer token chain or decimals',
+  );
+  assert.deepEqual(
+    new Set(list.tokens.map((token) => normalizeAddress(token.address))),
+    expected,
+    'issuer token list differs from the official registry',
+  );
 }
 
 async function rpc(method, params = []) {
@@ -135,6 +196,8 @@ async function liveCanary() {
   ]);
   assert.ok(decodeUint(multiplier) > 0n, 'AAPL uiMultiplier is zero');
 
+  await assertIssuerTokenList(assets);
+
   const tokenList = await fetchDefaultTokenList();
   const listedStockAddresses = new Set(
     (tokenList.tokens ?? [])
@@ -167,17 +230,52 @@ async function selfTest() {
     normalizeAddress(CONTRACTS.vaultRelayer),
   );
   const originalFetch = globalThis.fetch;
+  const validList = {
+    name: 'Test tokens',
+    timestamp: '2026-09-10T00:00:00Z',
+    version: { major: 1, minor: 0, patch: 0 },
+    tokens: [
+      {
+        chainId: CHAIN_ID,
+        address: CONTRACTS.weth,
+        name: 'Wrapped Ether',
+        symbol: 'WETH',
+        decimals: 18,
+      },
+    ],
+  };
   try {
-    for (const primaryAvailable of [true, false]) {
+    for (const primary of [
+      validList,
+      {},
+      { ...validList, version: null },
+      { ...validList, tokens: [null] },
+      null,
+    ]) {
       const calls = [];
       globalThis.fetch = async (url) => {
         calls.push(url);
-        return url === TOKEN_LIST && !primaryAvailable
+        return url === TOKEN_LIST && primary === null
           ? new Response('Unavailable', { status: 503 })
-          : Response.json({ tokens: [] });
+          : Response.json(url === TOKEN_LIST ? primary : validList);
       };
-      assert.deepEqual(await fetchDefaultTokenList(), { tokens: [] });
-      assert.deepEqual(calls, primaryAvailable ? [TOKEN_LIST] : [TOKEN_LIST, TOKEN_LIST_FALLBACK]);
+      assert.deepEqual(await fetchDefaultTokenList(), validList);
+      assert.deepEqual(
+        calls,
+        primary === validList ? [TOKEN_LIST] : [TOKEN_LIST, TOKEN_LIST_FALLBACK],
+      );
+    }
+    const assets = [{ deployments: [{ chainId: CHAIN_ID, contractAddress: CONTRACTS.weth }] }];
+    let issuerList = validList;
+    globalThis.fetch = async (url) => {
+      const expectedUrl = new URL(ASSET_FACADE);
+      expectedUrl.searchParams.set('format', 'token-list');
+      assert.equal(url, expectedUrl.href);
+      return Response.json(issuerList);
+    };
+    await assertIssuerTokenList(assets);
+    for (issuerList of [{}, { ...validList, tokens: [] }]) {
+      await assert.rejects(assertIssuerTokenList(assets));
     }
   } finally {
     globalThis.fetch = originalFetch;

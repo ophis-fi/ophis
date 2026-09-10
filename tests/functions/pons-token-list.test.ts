@@ -283,3 +283,36 @@ test('keeps reference PONS discoverable during catalog outages only after onchai
   const unavailable = await onRequestGet(context);
   assert.equal(unavailable.status, 503);
 });
+
+test('verifies reference PONS after the catalog deadline expires', async (t) => {
+  const catalog = new AbortController();
+  t.mock.method(AbortSignal, 'timeout', (milliseconds: number) => {
+    assert.equal(milliseconds, 5_000);
+    return catalog.signal;
+  });
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('Catalog timeout')), {
+          once: true,
+        });
+        queueMicrotask(() => catalog.abort());
+      });
+    }
+    assert.equal(catalog.signal.aborted, true);
+    assert.equal(init?.signal?.aborted, false);
+    const requests = JSON.parse(String(init?.body)) as { id: number }[];
+    return Response.json(
+      requests.map(({ id }) => ({ jsonrpc: '2.0', id, result: verifiedResult() })),
+    );
+  });
+  const response = await onRequestGet({
+    request: new Request('https://swap.ophis.fi/api/pons-token-list'),
+    waitUntil: () => undefined,
+  } as Parameters<typeof onRequestGet>[0]);
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    (await response.json()).tokens.map(({ address }) => address),
+    [TOKEN],
+  );
+});
