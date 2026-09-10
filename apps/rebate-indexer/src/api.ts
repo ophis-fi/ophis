@@ -3,10 +3,11 @@ import rateLimit from '@fastify/rate-limit';
 import { eq, desc } from 'drizzle-orm';
 import { timingSafeEqual, randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
+import { readFileSync } from 'node:fs';
 import { sql, db, schema } from './db/index.js';
 import { getWalletStatus } from './tierer.js';
 import { renderTierPage } from './tier-page.js';
-import { renderStatsPage, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
+import { renderStatsPage, CHAIN_ICON, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
 import { isDefiLlamaBackfillComplete } from './defillamaBackfill.js';
 import { computeDefiLlamaDay, computeDefiLlamaDayUsers, computePublicStats } from './stats.js';
 import { assessPublicDataFreshness, readPublicDataFreshness, type PublicDataFreshness } from './freshness.js';
@@ -637,9 +638,9 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         .header('cache-control', 'public, max-age=300')
         .header(
           'content-security-policy',
-          "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+          "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'",
         )
-        .send(renderStatsPage(stats));
+        .send(renderStatsPage(stats, new URL(req.url, 'http://localhost').searchParams));
     }
     // Lifetime average trade size over PRICED trades only (computed in
     // computePublicStats via SQL AVG, which ignores NULLs), so it is not skewed low
@@ -647,6 +648,18 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const avgTradeUsd = data.avgTradeUsd;
     return { ok: true, ...stats, avgTradeUsd, execution: EXECUTION_FACTS };
   };
+
+  // Fixed copies of the Ophis brand assets; no URL or filesystem path comes from a request.
+  const chainIcons = new Map(Object.entries(CHAIN_ICON).map(([id, file]) => [Number(id), {
+    body: readFileSync(new URL(`../public/chain-icons/${file}`, import.meta.url)),
+    type: file.endsWith('.svg') ? 'image/svg+xml' : file.endsWith('.png') ? 'image/png' : 'image/jpeg',
+  }]));
+  app.get<{ Params: { chainId: string } }>('/chain-icons/:chainId', (req, reply) => {
+    const icon = chainIcons.get(Number(req.params.chainId));
+    if (!icon) return reply.code(404).send({ error: 'Unknown chain icon' });
+    return reply.type(icon.type).header('cache-control', 'public, max-age=86400')
+      .header('x-content-type-options', 'nosniff').send(icon.body);
+  });
 
   app.get('/stats', {
     config: {
