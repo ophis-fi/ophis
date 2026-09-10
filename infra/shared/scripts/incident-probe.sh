@@ -60,7 +60,7 @@ tasks = {
     'settlements': lambda: prom('sum by(result) (increase(settlements[1h]))'),
     'self_sync': lambda: rpc('http://localhost:8547', 'eth_syncing', []),
     'proxy_state': lambda: run(['docker', 'inspect', 'robinhood-mainnet-rpc-proxy-1', '--format', '{{.Config.Image}} {{json .State}} {{json .Mounts}}']),
-    'erpc_config': lambda: re.sub(r'https?://[^\\s"<>]+', '[RPC-URL]', Path('/home/clement/ophis/infra/robinhood-mainnet/rendered/erpc.yaml').read_text()),
+    'erpc_config': lambda: re.sub(r'https?://[^\s"<>]+', '[RPC-URL]', Path('/home/clement/ophis/infra/robinhood-mainnet/rendered/erpc.yaml').read_text()),
     'metric_names': lambda: [n for n in get('http://localhost:9096/api/v1/label/__name__/values')['data'] if n.startswith('erpc_') and any(k in n for k in ('block', 'sync', 'cordon', 'request', 'circuit', 'served', 'cache'))],
     'block_gauges': lambda: prom('{__name__=~"erpc_.*(latest_block|finalized_block|served_tip|cordoned|circuit_breaker).*",network="evm:4663"}'),
     'error_rates_30m': lambda: prom('sum by(upstream,error) (rate(erpc_upstream_request_errors_total{network="evm:4663"}[30m])) > 0'),
