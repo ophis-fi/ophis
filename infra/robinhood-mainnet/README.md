@@ -118,6 +118,24 @@ same simulation, guaranteed-output, same-chain, and router-allowlist checks.
 
 ## Common Failures
 
+**Driver missing after a Cadia reboot:** `rendered/driver.toml` points into tmpfs,
+which disappears on reboot. Install the recovery unit once from this directory:
+
+```bash
+sudo install -m 0644 systemd/ophis-robinhood-boot-restore.service /etc/systemd/system/
+sudo install -d /etc/systemd/system/ssh.service.d
+sudo install -m 0644 systemd/ssh-tailscale.conf /etc/systemd/system/ssh.service.d/tailscale.conf
+sudo systemctl daemon-reload
+sudo systemctl enable --now ophis-robinhood-boot-restore.service
+```
+
+The unit targets `/home/clement/ophis/infra/robinhood-mainnet` on Cadia. It restores
+the RAM-backed config, preserves existing non-PK rendered outputs, starts the
+existing driver container, and requires healthy Docker and `/healthz` checks.
+To rerun it, use `sudo systemctl restart ophis-robinhood-boot-restore.service`.
+The SSH drop-in retries exit 255 while its Tailscale listen address becomes ready.
+Run the isolated recovery check with `python3 test_boot_restore.py`.
+
 **Autopilot stops settling / `debug_traceTransaction` errors:** the Nitro self-node is the
 only trace source. Confirm it is at the tip, `debug,arb,arbtrace` are in `--http.api`, and
 both L1 legs (execution + beacon) are up. Node down => settlement paused by design.
