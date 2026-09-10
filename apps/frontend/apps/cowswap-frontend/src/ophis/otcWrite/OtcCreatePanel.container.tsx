@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 
 import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
-import { TokenLogo } from '@cowprotocol/tokens'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Badge, Section } from 'ophis/ds'
@@ -42,7 +41,7 @@ function OtcCreateFields(props: OtcCreateFieldsProps): ReactNode {
       <styledEl.WriteField>
         Maker escrows
         <styledEl.TokenSelect>
-          <TokenLogo logoURI={tokenA.logoURI} size={24} hideNetworkBadge />
+          <img src={tokenA.logoURI} width={24} height={24} alt="" />
           <select
             aria-label="Maker escrow token"
             value={tokenA.address}
@@ -68,7 +67,7 @@ function OtcCreateFields(props: OtcCreateFieldsProps): ReactNode {
       <styledEl.WriteField>
         Maker requests
         <styledEl.TokenSelect>
-          <TokenLogo logoURI={tokenB.logoURI} size={24} hideNetworkBadge />
+          <img src={tokenB.logoURI} width={24} height={24} alt="" />
           <select
             aria-label="Requested token"
             value={tokenB.address}

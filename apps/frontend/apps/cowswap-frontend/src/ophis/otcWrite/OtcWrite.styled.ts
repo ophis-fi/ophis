@@ -112,12 +112,12 @@ export const InlineStatus = styled.p`
   overflow-wrap: anywhere;
 `
 
-export const TokenSelect = styled.div`
+export const TokenSelect = styled.span`
   position: relative;
   display: flex;
   align-items: center;
 
-  > div {
+  > img {
     position: absolute;
     left: 12px;
     pointer-events: none;
