@@ -248,7 +248,7 @@ test('mirror agreement cannot override a slower authoritative response', async (
 test('keeps reference PONS discoverable during catalog outages only after onchain verification', async (t) => {
   let verified = true;
   t.mock.method(globalThis, 'fetch', async (input, init) => {
-    if (String(input).includes('ponsfamily.com'))
+    if (new URL(String(input)).hostname === 'www.ponsfamily.com')
       return new Response('Unavailable', { status: 503 });
     const requests = JSON.parse(String(init?.body)) as { id: number }[];
     return Response.json(
