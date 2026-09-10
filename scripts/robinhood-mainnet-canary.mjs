@@ -59,12 +59,16 @@ async function fetchTokenList(url) {
     );
   }
   assert.ok(Array.isArray(list.tokens), 'invalid token list tokens');
-  for (const token of list.tokens) {
+  // The application drops non-EVM entries before validating a multichain list.
+  const tokens = list.tokens.filter((token) => {
+    assert.ok(typeof token?.address === 'string', 'invalid token address');
+    return /^0x[0-9a-fA-F]{40}$/.test(token.address);
+  });
+  for (const token of tokens) {
     assert.ok(
       token && Number.isSafeInteger(token.chainId) && token.chainId > 0,
       'invalid token chain',
     );
-    assert.match(token.address, /^0x[0-9a-fA-F]{40}$/, 'invalid token address');
     assert.ok(
       Number.isInteger(token.decimals) && token.decimals >= 0 && token.decimals <= 255,
       'invalid token decimals',
@@ -81,7 +85,7 @@ async function fetchTokenList(url) {
       );
     }
   }
-  return list;
+  return { ...list, tokens };
 }
 
 async function assertIssuerTokenList(assets) {
@@ -244,9 +248,11 @@ async function selfTest() {
       },
     ],
   };
+  const nonEvmList = { ...validList, tokens: [...validList.tokens, { address: 'non-EVM' }] };
   try {
     for (const primary of [
       validList,
+      nonEvmList,
       {},
       { ...validList, version: null },
       { ...validList, tokens: [null] },
@@ -262,7 +268,9 @@ async function selfTest() {
       assert.deepEqual(await fetchDefaultTokenList(), validList);
       assert.deepEqual(
         calls,
-        primary === validList ? [TOKEN_LIST] : [TOKEN_LIST, TOKEN_LIST_FALLBACK],
+        primary === validList || primary === nonEvmList
+          ? [TOKEN_LIST]
+          : [TOKEN_LIST, TOKEN_LIST_FALLBACK],
       );
     }
     const assets = [{ deployments: [{ chainId: CHAIN_ID, contractAddress: CONTRACTS.weth }] }];
