@@ -10,8 +10,6 @@
  */
 import { ReactNode } from 'react'
 
-import { useMediaQuery } from '@cowprotocol/common-hooks'
-
 import * as styledEl from './OphisFooter.styled'
 
 interface Props {
@@ -169,6 +167,5 @@ function FullFooter({ borderless }: { borderless: boolean }): ReactNode {
 }
 
 export function OphisFooter({ borderless = false, compact = false }: Props): ReactNode {
-  const isMobile = useMediaQuery('(max-width: 720px)')
-  return compact || isMobile ? <CompactFooter borderless={borderless} /> : <FullFooter borderless={borderless} />
+  return compact ? <CompactFooter borderless={borderless} /> : <FullFooter borderless={borderless} />
 }
