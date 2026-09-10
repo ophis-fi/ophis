@@ -397,5 +397,17 @@ describe('ophisBridgeProviders', () => {
       // order throws BridgeOrderParsingError once its trade settles.
       expect(patch).toContain('!ACROSS_SPOOK_CONTRACT_ADDRESSES[chainId]')
     })
+
+    it('carries the explicit inputToken/outputToken fee-quote hunk in BOTH dist builds', () => {
+      // jest resolves the package through `main` (dist/index.js) while Vite ships
+      // `module` (dist/index.mjs), so the behavioural getQuote test above only
+      // proves the CJS build. Each hunk must appear exactly twice: once per build.
+      const patch = readFileSync(join(__dirname, '../../../../patches/@cowprotocol__sdk-bridging@4.0.2.patch'), 'utf8')
+      expect(patch.match(/^\+\s+inputToken: sellTokenAddress,$/gm)).toHaveLength(2)
+      expect(patch.match(/^\+\s+outputToken: buyTokenAddress,$/gm)).toHaveLength(2)
+      expect(
+        patch.match(/^\+\s+\? \{ inputToken: request\.inputToken, outputToken: request\.outputToken \}$/gm),
+      ).toHaveLength(2)
+    })
   })
 })

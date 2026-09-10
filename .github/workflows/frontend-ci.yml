@@ -146,9 +146,11 @@ jobs:
       # ophisBridgeProviders also proves the sdk-bridging patch is applied to the
       # install this build uses: its getQuote test only passes when the patched
       # Across client sends inputToken/outputToken (unpatched code emits `token`).
+      # getBridgeQuoteSigner pins the bridge-quote signer to a generated key: the
+      # legacy published one is EIP-7702-delegated and fails every hook quote.
       - name: Destination token and picker regression tests
         working-directory: apps/frontend
-        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'ophisNearIntentsProvider|ophisBridgeProviders|tokensList|useVerifyOphisRecipientName|useQuoteParams|validateTradeForm|isBridgeQuoteRecipientCurrent|tradeQuoteAtom' --passWithNoTests=false
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'ophisNearIntentsProvider|ophisBridgeProviders|getBridgeQuoteSigner|tokensList|useVerifyOphisRecipientName|useQuoteParams|validateTradeForm|isBridgeQuoteRecipientCurrent|tradeQuoteAtom' --passWithNoTests=false
 
       - name: Permit amount and cache binding regression tests
         working-directory: apps/frontend
