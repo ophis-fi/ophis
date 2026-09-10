@@ -33,7 +33,10 @@
     "@ethersproject/bytes": "5.7.0",
     "@ethersproject/hash": "5.7.0",
     "@ethersproject/providers": "5.7.2",
+    "@tanstack/query-core": "5.90.20",
     "ethers": "5.7.2",
+    "jotai": "2.16.2",
+    "jotai-tanstack-query": "0.11.0",
     "react": "19.1.2",
     "swr": "^2.3.3",
     "viem": "^2.42.1"
