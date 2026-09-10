@@ -1,6 +1,7 @@
 import { RPC_URLS } from '@cowprotocol/common-const'
 import {
   contenthashToUri,
+  fetchWithTimeout,
   isAddress,
   parseENSAddress,
   resolveENSContentHash,
@@ -51,7 +52,7 @@ async function _fetchTokenList(source: string, urls: string[]): Promise<ListStat
     let response
 
     try {
-      response = await fetch(url, { credentials: 'omit' })
+      response = await fetchWithTimeout(url, { credentials: 'omit' })
     } catch (error) {
       const message = `failed to fetch list: ${url}`
 

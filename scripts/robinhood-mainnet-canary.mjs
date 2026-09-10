@@ -20,6 +20,7 @@ const CONTRACTS = {
   ethFlow: '0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29',
   weth: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
   usdg: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168',
+  pons: '0x39dBED3a2bd333467115dE45665cC57F813C4571',
 };
 
 const timeoutSignal = (ms = 15_000) => AbortSignal.timeout(ms);
@@ -36,7 +37,7 @@ export function decodeAddress(hex) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { signal: timeoutSignal() });
+  const response = await fetch(url, { signal: timeoutSignal(30_000) });
   assert.ok(response.ok, `${url} returned HTTP ${response.status}`);
   return response.json();
 }
@@ -49,7 +50,11 @@ async function fetchTokenList(url) {
   const list = await fetchJson(url);
   assert.ok(typeof list?.name === 'string' && list.name.length > 0, 'invalid token list name');
   assert.ok(
-    typeof list.timestamp === 'string' && Number.isFinite(Date.parse(list.timestamp)),
+    typeof list.timestamp === 'string' &&
+      /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/.test(
+        list.timestamp,
+      ) &&
+      Number.isFinite(Date.parse(list.timestamp)),
     'invalid token list timestamp',
   );
   for (const part of ['major', 'minor', 'patch']) {
@@ -118,6 +123,23 @@ async function assertIssuerTokenList(assets) {
     ),
     expected,
     'issuer token list differs from the official registry',
+  );
+}
+
+async function assertPonsTokenList() {
+  const list = await fetchTokenList(new URL('/api/pons-token-list', ASSET_FACADE).href);
+  assert.ok(
+    list.tokens.every((token) => token.chainId === CHAIN_ID && token.decimals === 18),
+    'invalid Pons token chain or decimals',
+  );
+  assert.ok(
+    list.tokens.some(
+      (token) =>
+        normalizeAddress(token.address) === normalizeAddress(CONTRACTS.pons) &&
+        token.symbol === 'PONS' &&
+        token.name === 'Pons',
+    ),
+    'verified reference PONS missing from its enabled token list',
   );
 }
 
@@ -212,6 +234,7 @@ async function liveCanary() {
   assert.ok(decodeUint(multiplier) > 0n, 'AAPL uiMultiplier is zero');
 
   await assertIssuerTokenList(assets);
+  await assertPonsTokenList();
 
   const tokenList = await fetchDefaultTokenList();
   const listedStockAddresses = new Set(
@@ -267,6 +290,8 @@ async function selfTest() {
       {},
       { ...validList, version: null },
       { ...validList, tokens: [null] },
+      { ...validList, timestamp: '09/10/2026' },
+      { ...validList, timestamp: '0' },
       null,
     ]) {
       const calls = [];
@@ -306,6 +331,18 @@ async function selfTest() {
       { ...validList, tokens: [{ ...validList.tokens[0], name: 'Other stock' }] },
     ]) {
       await assert.rejects(assertIssuerTokenList(assets));
+    }
+    let ponsList = {
+      ...validList,
+      tokens: [{ ...validList.tokens[0], address: CONTRACTS.pons, symbol: 'PONS', name: 'Pons' }],
+    };
+    globalThis.fetch = async (url) => {
+      assert.equal(url, new URL('/api/pons-token-list', ASSET_FACADE).href);
+      return Response.json(ponsList);
+    };
+    await assertPonsTokenList();
+    for (ponsList of [{}, { ...validList, tokens: [] }, validList]) {
+      await assert.rejects(assertPonsTokenList());
     }
   } finally {
     globalThis.fetch = originalFetch;
