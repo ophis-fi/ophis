@@ -1,8 +1,23 @@
 diff --git a/dist/index.js b/dist/index.js
-index 9fcba626054ad9f635643504d18de1afeddf2401..2cb427c9678dd851653665b69bd1046531279ded 100644
+index 9fcba626054ad9f635643504d18de1afeddf2401..37ccd0526422fdd6ab5802f93fed3f7321babbfa 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -1585,7 +1585,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
+@@ -1481,7 +1481,13 @@ var AcrossApi = class {
+    */
+   async getSuggestedFees(request) {
+     const params = {
+-      token: request.token,
++      // Ophis: Across's legacy single `token` param only resolves same-symbol
++      // corridors. Cross-asset / chain-aliased routes (USDC or USDG-MAINNET ->
++      // Robinhood Chain USDG) need the explicit inputToken + outputToken pair,
++      // else the API answers 400 "Unsupported token address on given destination chain".
++      ...(request.inputToken && request.outputToken
++        ? { inputToken: request.inputToken, outputToken: request.outputToken }
++        : { token: request.token }),
+       originChainId: request.originChainId.toString(),
+       destinationChainId: request.destinationChainId.toString(),
+       amount: request.amount.toString()
+@@ -1585,7 +1591,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
    [import_sdk_config4.SupportedChainId.GNOSIS_CHAIN]: void 0,
    [import_sdk_config4.SupportedChainId.AVALANCHE]: void 0,
    [import_sdk_config4.AdditionalTargetChainId.BITCOIN]: void 0,
@@ -13,7 +28,7 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..2cb427c9678dd851653665b69bd10465
  };
  var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [import_sdk_config4.SupportedChainId.MAINNET]: "0xf2ae6728b6f146556977Af0A68bFbf5bADA22863",
-@@ -1598,16 +1600,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+@@ -1598,16 +1606,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [import_sdk_config4.SupportedChainId.POLYGON]: void 0,
    [import_sdk_config4.SupportedChainId.AVALANCHE]: void 0,
    [import_sdk_config4.SupportedChainId.BNB]: void 0,
@@ -37,7 +52,25 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..2cb427c9678dd851653665b69bd10465
  };
  
  // src/providers/across/util.ts
-@@ -3788,7 +3792,7 @@ var AcrossBridgeProvider = class {
+@@ -3730,11 +3740,13 @@ var AcrossBridgeProvider = class {
+     return Object.values(sourceTokens || {}).filter((token) => token.symbol?.toLowerCase() === targetTokenSymbol);
+   }
+   async getQuote(request) {
+-    const { sellTokenAddress, sellTokenChainId, buyTokenChainId, amount, receiver } = request;
++    const { sellTokenAddress, sellTokenChainId, buyTokenAddress, buyTokenChainId, amount, receiver } = request;
+     const suggestedFees = await this.api.getSuggestedFees({
+-      token: sellTokenAddress,
+-      // inputToken: sellTokenAddress,
+-      // outputToken: buyTokenAddress,
++      // Ophis: explicit pair (see AcrossApi.getSuggestedFees). createAcrossDepositCall
++      // already passes buyTokenAddress as the depositV3 outputToken, so the fee
++      // quote and the deposit now describe the same route.
++      inputToken: sellTokenAddress,
++      outputToken: buyTokenAddress,
+       originChainId: sellTokenChainId,
+       destinationChainId: buyTokenChainId,
+       amount,
+@@ -3788,7 +3800,7 @@ var AcrossBridgeProvider = class {
      throw new Error("Not implemented");
    }
    async getBridgingParams(chainId, order, txHash, settlementContractOverride) {
@@ -47,10 +80,25 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..2cb427c9678dd851653665b69bd10465
      }
      const orderUid = order.uid;
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..db6a064ddb20814d456c4d0e49226e01815e7b93 100644
+index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..ca223858df666d8c115cddbd6c5f1b0ce3d0f82a 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
-@@ -1528,7 +1528,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
+@@ -1424,7 +1424,13 @@ var AcrossApi = class {
+    */
+   async getSuggestedFees(request) {
+     const params = {
+-      token: request.token,
++      // Ophis: Across's legacy single `token` param only resolves same-symbol
++      // corridors. Cross-asset / chain-aliased routes (USDC or USDG-MAINNET ->
++      // Robinhood Chain USDG) need the explicit inputToken + outputToken pair,
++      // else the API answers 400 "Unsupported token address on given destination chain".
++      ...(request.inputToken && request.outputToken
++        ? { inputToken: request.inputToken, outputToken: request.outputToken }
++        : { token: request.token }),
+       originChainId: request.originChainId.toString(),
+       destinationChainId: request.destinationChainId.toString(),
+       amount: request.amount.toString()
+@@ -1528,7 +1534,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
    [SupportedChainId2.GNOSIS_CHAIN]: void 0,
    [SupportedChainId2.AVALANCHE]: void 0,
    [AdditionalTargetChainId.BITCOIN]: void 0,
@@ -61,7 +109,7 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..db6a064ddb20814d456c4d0e49226e01
  };
  var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [SupportedChainId2.MAINNET]: "0xf2ae6728b6f146556977Af0A68bFbf5bADA22863",
-@@ -1541,16 +1543,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+@@ -1541,16 +1549,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [SupportedChainId2.POLYGON]: void 0,
    [SupportedChainId2.AVALANCHE]: void 0,
    [SupportedChainId2.BNB]: void 0,
@@ -85,7 +133,25 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..db6a064ddb20814d456c4d0e49226e01
  };
  
  // src/providers/across/util.ts
-@@ -3738,7 +3742,7 @@ var AcrossBridgeProvider = class {
+@@ -3680,11 +3690,13 @@ var AcrossBridgeProvider = class {
+     return Object.values(sourceTokens || {}).filter((token) => token.symbol?.toLowerCase() === targetTokenSymbol);
+   }
+   async getQuote(request) {
+-    const { sellTokenAddress, sellTokenChainId, buyTokenChainId, amount, receiver } = request;
++    const { sellTokenAddress, sellTokenChainId, buyTokenAddress, buyTokenChainId, amount, receiver } = request;
+     const suggestedFees = await this.api.getSuggestedFees({
+-      token: sellTokenAddress,
+-      // inputToken: sellTokenAddress,
+-      // outputToken: buyTokenAddress,
++      // Ophis: explicit pair (see AcrossApi.getSuggestedFees). createAcrossDepositCall
++      // already passes buyTokenAddress as the depositV3 outputToken, so the fee
++      // quote and the deposit now describe the same route.
++      inputToken: sellTokenAddress,
++      outputToken: buyTokenAddress,
+       originChainId: sellTokenChainId,
+       destinationChainId: buyTokenChainId,
+       amount,
+@@ -3738,7 +3750,7 @@ var AcrossBridgeProvider = class {
      throw new Error("Not implemented");
    }
    async getBridgingParams(chainId, order, txHash, settlementContractOverride) {

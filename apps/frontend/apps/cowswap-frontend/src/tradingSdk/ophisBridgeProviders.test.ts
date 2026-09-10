@@ -6,10 +6,10 @@ import {
   BRIDGE_SOURCE_CHAIN_IDS,
   EXTRA_ACROSS_SOURCE_CHAIN_IDS,
 } from '@cowprotocol/common-const'
-import { isEvmChainInfo, OrderKind, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
+import { isEvmChainInfo, OrderKind, SupportedChainId, TargetChainId, TokenInfo } from '@cowprotocol/cow-sdk'
 import {
-  AcrossApi,
   AcrossBridgeProvider,
+  BridgeQuoteErrors,
   BungeeBridgeProvider,
   NearIntentsBridgeProvider,
   QuoteBridgeRequest,
@@ -26,6 +26,10 @@ import {
 } from './ophisBridgeProviders'
 
 const ids = (chains: { id: number }[]): number[] => chains.map((c) => c.id)
+
+// 4663 is not a SupportedChainId member (custom bridge chain, see ophisBridgeChains.ts),
+// so the SDK's TargetChainId-typed params need the same cast the app relies on at runtime.
+const ROBINHOOD_CHAIN_ID = 4663 as unknown as TargetChainId
 
 describe('ophisBridgeProviders', () => {
   describe('OphisAcrossBridgeProvider', () => {
@@ -57,7 +61,7 @@ describe('ophisBridgeProviders', () => {
         // destination but cannot execute from the source — must not report
         // route availability (the chain chip would light with dead quotes).
         const result = await new OphisAcrossBridgeProvider().getBuyTokens({
-          buyChainId: 4663,
+          buyChainId: ROBINHOOD_CHAIN_ID,
           sellChainId: SupportedChainId.GNOSIS_CHAIN,
         })
 
@@ -69,7 +73,7 @@ describe('ophisBridgeProviders', () => {
         const upstreamSpy = jest.spyOn(AcrossBridgeProvider.prototype, 'getBuyTokens').mockResolvedValue(upstreamResult)
 
         const result = await new OphisAcrossBridgeProvider().getBuyTokens({
-          buyChainId: 4663,
+          buyChainId: ROBINHOOD_CHAIN_ID,
           sellChainId: SupportedChainId.MAINNET,
         })
 
@@ -79,30 +83,46 @@ describe('ophisBridgeProviders', () => {
     })
 
     // Typed seam onto the protected AcrossApi so the route fallback's
-    // getSupportedTokens() call can be stubbed without an `as any`.
+    // getSupportedTokens() call can be stubbed without an `as any`. The SDK does
+    // not export the AcrossApi class name, so expose only the method the tests stub.
     class TestableAcrossProvider extends OphisAcrossBridgeProvider {
-      get testApi(): AcrossApi {
+      get testApi(): { getSupportedTokens(): Promise<TokenInfo[]> } {
         return this.api
       }
     }
 
+    // Typed fixtures so the tests track the SDK contract the override depends on.
+    const USDG_4663 = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168'
+    const acrossRequest = (overrides: Partial<QuoteBridgeRequest> = {}): QuoteBridgeRequest =>
+      ({
+        kind: OrderKind.SELL,
+        sellTokenChainId: SupportedChainId.MAINNET,
+        buyTokenChainId: 4663,
+        buyTokenAddress: USDG_4663,
+        amount: 1_000_000n,
+        ...overrides,
+      }) as unknown as QuoteBridgeRequest
+
+    const USDC: TokenInfo = {
+      chainId: 1,
+      address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+      symbol: 'USDC',
+      decimals: 6,
+    }
+    const USDG_MAINNET: TokenInfo = {
+      chainId: 1,
+      address: '0xe343167631d89B6Ffc58B88d6b7fB0228795491D',
+      symbol: 'USDG-MAINNET',
+      decimals: 6,
+    }
+    const BASE_USDC: TokenInfo = {
+      chainId: 8453,
+      address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      symbol: 'USDC',
+      decimals: 6,
+    }
+
     describe('getIntermediateTokens route-based fallback', () => {
-      // Typed fixtures so the test tracks the SDK contract the override depends on.
-      const USDG_4663 = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168'
-      const acrossRequest = (overrides: Partial<QuoteBridgeRequest> = {}): QuoteBridgeRequest =>
-        ({
-          kind: OrderKind.SELL,
-          sellTokenChainId: SupportedChainId.MAINNET,
-          buyTokenChainId: 4663,
-          buyTokenAddress: USDG_4663,
-          amount: 1_000_000n,
-          ...overrides,
-        }) as unknown as QuoteBridgeRequest
-
-      const USDC: TokenInfo = { chainId: 1, address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6 }
-      const USDG_MAINNET: TokenInfo = { chainId: 1, address: '0xe343167631d89B6Ffc58B88d6b7fB0228795491D', symbol: 'USDG-MAINNET', decimals: 6 }
-      const BASE_USDC: TokenInfo = { chainId: 8453, address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6 }
-
       const mockRoutes = (routes: unknown): jest.SpyInstance =>
         jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => routes } as Response)
 
@@ -122,7 +142,9 @@ describe('ophisBridgeProviders', () => {
       })
 
       it('returns the symbol match untouched when it is non-empty (no route fetch)', async () => {
-        const symbolMatch: TokenInfo[] = [{ chainId: 1, address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', decimals: 18 }]
+        const symbolMatch: TokenInfo[] = [
+          { chainId: 1, address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', decimals: 18 },
+        ]
         jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue(symbolMatch)
         const fetchSpy = jest.spyOn(global, 'fetch')
 
@@ -164,6 +186,93 @@ describe('ophisBridgeProviders', () => {
         const result = await new OphisAcrossBridgeProvider().getIntermediateTokens(acrossRequest())
 
         expect(result).toEqual([])
+      })
+    })
+
+    describe('getQuote fee request (sdk-bridging patch: explicit inputToken/outputToken)', () => {
+      // Across's legacy single `token` param resolves the destination token by
+      // symbol, so every cross-asset (USDC -> USDG) or chain-aliased
+      // (USDG-MAINNET -> USDG) corridor into Robinhood Chain answered 400
+      // "Unsupported token address on given destination chain" and the UI showed
+      // the generic "Error loading price" for ANY sell token (reproduced live
+      // 2026-09-10). The patch sends the explicit pair, which is also what the
+      // deposit hook already passes to depositV3 as outputToken. Runs against the
+      // installed (patched) package: it FAILS if the patch hunk is lost on an SDK
+      // bump, and it cannot pass by accident since unpatched code never emits
+      // `inputToken`.
+      const SUGGESTED_FEES = {
+        estimatedFillTimeSec: 2,
+        timestamp: '1789041275',
+        isAmountTooLow: false,
+        quoteBlock: '25946820',
+        spokePoolAddress: '0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5',
+        exclusiveRelayer: '0x0000000000000000000000000000000000000000',
+        exclusivityDeadline: 0,
+        fillDeadline: '1789048715',
+        totalRelayFee: { pct: '1162680000000000', total: '116268' },
+        relayerCapitalFee: { pct: '100000000000000', total: '10000' },
+        relayerGasFee: { pct: '462680000000000', total: '46268' },
+        lpFee: { pct: '0', total: '0' },
+        limits: {
+          minDeposit: '500033',
+          maxDeposit: '114824679856',
+          maxDepositInstant: '114824679856',
+          maxDepositShortDelay: '114824679856',
+          recommendedDepositInstant: '114824679856',
+        },
+      }
+
+      afterEach(() => jest.restoreAllMocks())
+
+      it('quotes the cross-asset USDC -> Robinhood USDG corridor with inputToken + outputToken, never the legacy token param', async () => {
+        const fetchSpy = jest
+          .spyOn(global, 'fetch')
+          .mockResolvedValue({ ok: true, json: async () => SUGGESTED_FEES } as Response)
+
+        const quote = await new OphisAcrossBridgeProvider().getQuote(
+          acrossRequest({
+            sellTokenAddress: USDC.address,
+            sellTokenDecimals: 6,
+            buyTokenDecimals: 6,
+            amount: 100_000_000n,
+          }),
+        )
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1)
+        const url = new URL(String(fetchSpy.mock.calls[0]?.[0]))
+        expect(url.pathname).toMatch(/\/suggested-fees$/)
+        expect(url.searchParams.get('inputToken')).toBe(USDC.address)
+        expect(url.searchParams.get('outputToken')).toBe(USDG_4663)
+        expect(url.searchParams.get('originChainId')).toBe('1')
+        expect(url.searchParams.get('destinationChainId')).toBe('4663')
+        expect(url.searchParams.get('amount')).toBe('100000000')
+        expect(url.searchParams.has('token')).toBe(false)
+        // The response flowed through the SDK's quote mapping: 100 USDC minus the
+        // 0.116268% relay fee (1e18-scaled pct) = 99.883732 USDG.
+        expect(quote.amountsAndCosts.afterFee.buyAmount).toBe(99_883_732n)
+      })
+
+      it('refuses a cross-decimal route before any fee request (deposit outputAmount is computed in sell-token units)', async () => {
+        const fetchSpy = jest.spyOn(global, 'fetch')
+        // Across lists USDC (6) -> USDC-BNB (18) on BNB; the 400 on the legacy
+        // `token` param used to make it unquotable by accident. The on-chain
+        // deposit would offer 100e6 input for ~1e-10 output, so it must stay
+        // unquotable on purpose.
+        const USDC_BNB = '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d'
+
+        await expect(
+          new OphisAcrossBridgeProvider().getQuote(
+            acrossRequest({
+              sellTokenAddress: USDC.address,
+              sellTokenDecimals: 6,
+              buyTokenChainId: SupportedChainId.BNB,
+              buyTokenAddress: USDC_BNB,
+              buyTokenDecimals: 18,
+              amount: 100_000_000n,
+            }),
+          ),
+        ).rejects.toMatchObject({ message: BridgeQuoteErrors.NO_ROUTES })
+        expect(fetchSpy).not.toHaveBeenCalled()
       })
     })
   })
@@ -287,6 +396,18 @@ describe('ophisBridgeProviders', () => {
       // permanently false for 4663; without this widening EVERY Robinhood bridge
       // order throws BridgeOrderParsingError once its trade settles.
       expect(patch).toContain('!ACROSS_SPOOK_CONTRACT_ADDRESSES[chainId]')
+    })
+
+    it('carries the explicit inputToken/outputToken fee-quote hunk in BOTH dist builds', () => {
+      // jest resolves the package through `main` (dist/index.js) while Vite ships
+      // `module` (dist/index.mjs), so the behavioural getQuote test above only
+      // proves the CJS build. Each hunk must appear exactly twice: once per build.
+      const patch = readFileSync(join(__dirname, '../../../../patches/@cowprotocol__sdk-bridging@4.0.2.patch'), 'utf8')
+      expect(patch.match(/^\+\s+inputToken: sellTokenAddress,$/gm)).toHaveLength(2)
+      expect(patch.match(/^\+\s+outputToken: buyTokenAddress,$/gm)).toHaveLength(2)
+      expect(
+        patch.match(/^\+\s+\? \{ inputToken: request\.inputToken, outputToken: request\.outputToken \}$/gm),
+      ).toHaveLength(2)
     })
   })
 })

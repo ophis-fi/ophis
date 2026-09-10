@@ -2,7 +2,7 @@
 
 exports[`useTradeQuotePolling() When wallet is NOT connected Then the "receiver" field in the quote request should be undefined 1`] = `
 {
-  "account": "0xD711bD26Bf5B153001a7C0ACcb289782b6f775e9",
+  "account": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
   "amount": 10000000n,
   "appCode": "CoW Swap",
   "buyTokenAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
@@ -25,7 +25,7 @@ exports[`useTradeQuotePolling() When wallet is NOT connected Then the "receiver"
     "9745": "0xba3cb449bd2b4adddbc894d8697f5170800eadec",
   },
   "kind": "sell",
-  "owner": "0xD711bD26Bf5B153001a7C0ACcb289782b6f775e9",
+  "owner": "0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
   "partiallyFillable": false,
   "receiver": undefined,
   "sellTokenAddress": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",

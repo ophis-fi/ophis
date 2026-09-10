@@ -39,6 +39,19 @@ jest.mock('@cowprotocol/wallet-provider', () => ({
   }),
 }))
 
+// Deterministic bridge-quote signer: the real module generates (and persists) a
+// random key per browser, which would make the request snapshots below
+// non-reproducible. Same fixture key as upstream cowswap's test.
+jest.mock('../utils/getBridgeQuoteSigner', () => {
+  const { Wallet } = jest.requireActual('@ethersproject/wallet') as typeof import('@ethersproject/wallet')
+  const bridgeQuoteSigner = new Wallet('0x1111111111111111111111111111111111111111111111111111111111111111')
+
+  return {
+    BRIDGE_QUOTE_ACCOUNT: bridgeQuoteSigner.address,
+    getBridgeQuoteSigner: jest.fn().mockReturnValue(bridgeQuoteSigner),
+  }
+})
+
 jest.mock('tradingSdk/bridgingSdk', () => ({
   bridgingSdk: {
     getQuote: jest.fn(),
