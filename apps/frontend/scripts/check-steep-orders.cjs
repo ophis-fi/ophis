@@ -40,7 +40,11 @@ async function check(browser, width, dark) {
     if (width === 320 && !dark) {
       await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
       await page.locator('#web3-status-connected').click()
-      await page.locator('[class*=OrdersPanel__SideBar]').getByRole('link', { name: 'Profile', exact: true }).click()
+      const profile = page.locator('[class*=OrdersPanel__SideBar]').getByRole('link', { name: 'Profile', exact: true })
+      await page.keyboard.press('Tab')
+      await profile.focus()
+      assert.equal(await profile.evaluate((e) => getComputedStyle(e).outlineStyle), 'solid')
+      await profile.press('Enter')
       await page.waitForURL(/profile/)
       await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
       const mode = page.getByRole('button', { name: 'Trading mode', exact: true })
@@ -50,6 +54,14 @@ async function check(browser, width, dark) {
       assert.equal(await mode.getAttribute('aria-expanded'), 'true')
       await page.getByRole('link', { name: 'Limit', exact: true }).last().click()
       await page.waitForURL(/limit/)
+    }
+    if (width === 1440 && !dark) {
+      await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
+      await page
+        .getByRole('navigation', { name: 'Ophis', exact: true })
+        .getByRole('link', { name: 'Limit', exact: true })
+        .waitFor()
+      assert.equal(await page.getByRole('button', { name: 'Trading mode', exact: true }).count(), 0)
     }
     for (const route of ['limit', 'advanced']) {
       await page.goto(base + '/#/1/' + route + '/WETH/USDC', { waitUntil: 'domcontentloaded' })

@@ -239,7 +239,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
           <styledEl.Header>
             {isOphisMobileSwap ? (
               <>
-                <TradeWidgetLinks isDropdown />
+                {isMobileSwap && <TradeWidgetLinks isDropdown />}
                 {headerContent}
               </>
             ) : shouldLockForAlternativeOrder ? (

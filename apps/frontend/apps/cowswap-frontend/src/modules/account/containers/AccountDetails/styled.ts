@@ -225,6 +225,11 @@ export const Wrapper = styled.div`
       &:hover {
         cursor: pointer;
       }
+
+      &:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 3px;
+      }
     }
   }
 
