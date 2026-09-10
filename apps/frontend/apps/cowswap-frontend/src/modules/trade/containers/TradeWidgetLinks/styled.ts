@@ -61,12 +61,12 @@ export const DropdownButton = styled.div`
 `
 
 export const Wrapper = styled.div`
-  background: transparent;
-  border-radius: var(${UI.BORDER_RADIUS_NORMAL});
-  padding: 0;
+  background: var(${UI.COLOR_PAPER_DARKER});
+  border-radius: 12px;
+  padding: 3px;
   display: flex;
   flex-flow: row wrap;
-  gap: 0;
+  gap: 2px;
 
   ${Link} {
     text-decoration: none;
@@ -85,7 +85,9 @@ export const MenuItem = styled.div<{ isActive?: boolean; isDropdownVisible: bool
     text-align: left;
     font-size: ${({ theme }) => (theme.isWidget ? '16px' : '14px')};
     font-weight: ${({ theme }) => (theme.isWidget ? '600' : '500')};
-    border-radius: var(${UI.BORDER_RADIUS_NORMAL});
+    border: 1px solid transparent;
+    border-radius: 9px;
+    min-height: 38px;
     padding: ${({ theme }) => (theme.isWidget ? '7px' : '5px 10px')};
     background: transparent;
     transition: background var(${UI.ANIMATION_DURATION}) ease-in-out;
@@ -98,7 +100,8 @@ export const MenuItem = styled.div<{ isActive?: boolean; isDropdownVisible: bool
     ${({ isActive }) =>
       isActive &&
       css`
-        background: var(${UI.COLOR_PAPER_DARKER});
+        background: var(${UI.COLOR_PAPER});
+        border-color: var(${UI.COLOR_BORDER});
 
         ${Link} {
           color: inherit;

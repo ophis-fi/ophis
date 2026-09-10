@@ -15,10 +15,10 @@ jest.mock('../hooks/useScrollClass', () => ({
 
 const useFeatureFlagsMock = useFeatureFlags as jest.MockedFunction<typeof useFeatureFlags>
 
-function renderHeader(): void {
+function renderHeader(transparent = false): void {
   render(
     <MemoryRouter>
-      <OphisHeader>
+      <OphisHeader transparent={transparent}>
         <span>Header action</span>
       </OphisHeader>
     </MemoryRouter>,
@@ -26,6 +26,16 @@ function renderHeader(): void {
 }
 
 describe('OphisHeader', () => {
+  it('keeps the transparent hero wordmark visible with the default light theme', () => {
+    useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: false })
+    renderHeader(true)
+    const wordmark = screen.getByRole('link', { name: 'Ophis, home' })
+    const mark = wordmark.querySelector('img')
+    if (!mark) throw new Error('Missing header mark')
+    expect(getComputedStyle(wordmark).color).toBe('rgb(244, 244, 245)')
+    expect(getComputedStyle(mark).filter).toBe('brightness(0) invert(1)')
+  })
+
   it('links to the OTC surface when Milestone B is enabled', () => {
     useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
 

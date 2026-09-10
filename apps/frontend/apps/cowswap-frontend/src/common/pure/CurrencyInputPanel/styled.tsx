@@ -10,13 +10,6 @@ export const OuterWrapper = styled.div`
   flex-flow: column wrap;
 `
 
-// Ophis: brand-polish the currency-input rows.
-// - Bumped radius from 16px → 20px so the rows echo the outer card's
-//   xl rhythm and don't feel like generic cowswap rectangles.
-// - Hairline border in COLOR_PAPER (1px) so the rows have a clear
-//   edge against the card surface, even on the cosmic indigo bg.
-// - Focus-within saffron-tinted ring uses COLOR_PRIMARY so the brand
-//   coral lights up on input focus.
 export const Wrapper = styled.label<{ withReceiveAmountInfo: boolean; readOnly: boolean; pointerDisabled: boolean }>`
   position: relative;
   display: flex;
@@ -26,22 +19,19 @@ export const Wrapper = styled.label<{ withReceiveAmountInfo: boolean; readOnly: 
   padding: 16px;
   background: ${({ readOnly }) => (readOnly ? 'transparent' : `var(${UI.COLOR_PAPER_DARKER})`)};
   border: 1px solid var(${UI.COLOR_PAPER});
-  border-radius: ${({ withReceiveAmountInfo }) => (withReceiveAmountInfo ? '20px 20px 0 0' : '20px')};
+  border-radius: ${({ withReceiveAmountInfo }) => (withReceiveAmountInfo ? '16px 16px 0 0' : '16px')};
   color: inherit;
   min-height: 106px;
   pointer-events: ${({ pointerDisabled }) => (pointerDisabled ? 'none' : '')};
   max-width: 100%;
-  transition:
-    border-color 160ms ease-out,
-    box-shadow 160ms ease-out;
+  transition: border-color 160ms ease-out;
 
   &:hover {
     border-color: var(${UI.COLOR_PAPER_DARKEST});
   }
 
   &:focus-within {
-    border-color: var(${UI.COLOR_PRIMARY_OPACITY_70});
-    box-shadow: 0 0 0 3px var(${UI.COLOR_PRIMARY_OPACITY_10});
+    border-color: var(${UI.COLOR_TEXT_PAPER});
   }
 
   ${({ pointerDisabled }) =>
@@ -153,6 +143,7 @@ export const NumericalInput = styled(Input)<{ $loading: boolean }>`
   background: none;
   font-size: 28px;
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
   color: inherit;
   text-align: left;
 
