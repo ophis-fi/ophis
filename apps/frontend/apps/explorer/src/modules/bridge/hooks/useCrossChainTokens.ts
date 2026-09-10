@@ -25,15 +25,22 @@ export function useCrossChainTokens(crossChainOrder: CrossChainOrder): CrossChai
     provider,
   } = crossChainOrder
   const { data: sourceTokens } = useTokenList(sourceChainId)
+  // The destination chain's token list is the fallback source: a provider that
+  // no longer serves a token list (Bungee is decode-only, its API is 410) or
+  // one that does not list the token must not leave the received asset blank.
+  const { data: destinationListTokens } = useTokenList(destinationChainId)
 
   const { data: destinationChainTokens } = useBridgeProviderBuyTokens(provider, destinationChainId)
 
   const sourceToken = sourceTokens && sourceTokens[getAddressKey(inputTokenAddress)]
   const intermediateToken = sourceTokens && sourceTokens[getAddressKey(order.buyToken)]
-  const destinationToken =
-    destinationChainTokens && outputTokenAddress
-      ? resolveDestinationToken(destinationChainId, destinationChainTokens, outputTokenAddress)
-      : undefined
+  const destinationToken = outputTokenAddress
+    ? resolveDestinationToken(
+        destinationChainId,
+        { ...destinationListTokens, ...destinationChainTokens },
+        outputTokenAddress,
+      )
+    : undefined
 
   return { sourceToken, intermediateToken, destinationToken }
 }

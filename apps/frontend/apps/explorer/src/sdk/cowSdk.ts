@@ -1,9 +1,14 @@
 import { useEffect } from 'react'
 
-import { bungeeAffiliateCode, getRpcProvider } from '@cowprotocol/common-const'
-import { isBarn, isDev, isProd, isStaging } from '@cowprotocol/common-utils'
-import { OrderBookApi, setGlobalAdapter, SupportedChainId } from '@cowprotocol/cow-sdk'
-import { AcrossBridgeProvider, BungeeBridgeProvider, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
+import { getRpcProvider } from '@cowprotocol/common-const'
+import { ChainInfo, OrderBookApi, setGlobalAdapter, SupportedChainId } from '@cowprotocol/cow-sdk'
+import {
+  AcrossBridgeProvider,
+  BungeeBridgeProvider,
+  BuyTokensParams,
+  GetProviderBuyTokens,
+  NearIntentsBridgeProvider,
+} from '@cowprotocol/sdk-bridging'
 import { EthersV5Adapter } from '@cowprotocol/sdk-ethers-v5-adapter'
 
 import { useNetworkId } from '../state/network'
@@ -14,15 +19,29 @@ export const cowSdkAdapter = new EthersV5Adapter({
 
 export const orderBookApi = new OrderBookApi()
 
-const bungeeApiBase = getBungeeApiBase()
+/**
+ * Bungee, DECODE-ONLY (mirror of OphisBungeeBridgeProvider in cowswap-frontend's
+ * tradingSdk/ophisBridgeProviders.ts; keep the two in sync). Its manual v1 API
+ * has answered 410 Gone on every route since August 2026, so it stays
+ * registered only so historical Bungee orders resolve by their appData-hook
+ * dappId; it advertises no networks and no buy tokens, so nothing here calls
+ * its API except status reads for those orders. useCrossChainTokens recovers
+ * the destination token from the chain's token list instead.
+ */
+class DecodeOnlyBungeeBridgeProvider extends BungeeBridgeProvider {
+  async getNetworks(): Promise<ChainInfo[]> {
+    return []
+  }
 
-const bungeeBridgeProvider = new BungeeBridgeProvider({
-  apiOptions: {
-    includeBridges: ['across', 'cctp', 'gnosis-native-bridge'],
-    apiBaseUrl: bungeeApiBase ? `${bungeeApiBase}/api/v1/bungee` : undefined,
-    manualApiBaseUrl: bungeeApiBase ? `${bungeeApiBase}/api/v1/bungee-manual` : undefined,
-    affiliate: bungeeApiBase ? bungeeAffiliateCode : undefined,
-  },
+  async getBuyTokens(_params: BuyTokensParams): Promise<GetProviderBuyTokens> {
+    return { tokens: [], isRouteAvailable: false }
+  }
+}
+
+// `includeBridges` stays because BungeeApi.validateBridges throws at
+// construction on other slugs.
+const bungeeBridgeProvider = new DecodeOnlyBungeeBridgeProvider({
+  apiOptions: { includeBridges: ['across', 'cctp', 'gnosis-native-bridge'] },
 })
 
 const acrossBridgeProvider = new AcrossBridgeProvider()
@@ -30,14 +49,6 @@ const acrossBridgeProvider = new AcrossBridgeProvider()
 const nearIntentsBridgeProvider = new NearIntentsBridgeProvider({ apiKey: process.env.REACT_APP_NEAR_API_KEY })
 
 export const knownBridgeProviders = [bungeeBridgeProvider, acrossBridgeProvider, nearIntentsBridgeProvider]
-
-function getBungeeApiBase(): string | undefined {
-  if (isProd || isDev || isStaging || isBarn) {
-    return 'https://backend.bungee.exchange'
-  }
-
-  return 'https://bff.barn.cow.fi/proxies/socket'
-}
 
 setGlobalAdapter(cowSdkAdapter)
 
