@@ -266,9 +266,10 @@ const LEGAL_CONTENT: ReactNode = (
           <InlineCode>@cowprotocol/sdk-bridging</InlineCode>).
         </li>
         <li>
-          <strong>Bungee Exchange</strong> (historical bridge orders only: no new routes are requested from Bungee, but
-          the app still polls Bungee's public API for the status of bridge orders placed while it was an active
-          provider, so those requests carry IP + request metadata).
+          <strong>Bungee Exchange / Socket</strong> (historical bridge orders only: no new routes are requested from
+          Bungee, but the app still polls the Socket events API (microservices.socket.tech) and, for Across-routed
+          Bungee orders, app.across.to for the status of bridge orders placed while Bungee was an active provider, so
+          those requests carry IP + request metadata).
         </li>
         <li>
           <strong>CoW Protocol orderbook API</strong> (order submission, quote retrieval, settlement broadcast).{' '}

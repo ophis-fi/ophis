@@ -13,6 +13,7 @@
     "src/ophis/partnerFeeMerge.test.ts",
     "src/tradingSdk/ophisNearIntentsProvider.service.test.ts",
     "src/tradingSdk/ophisBridgeProviders.test.ts",
+    "src/tradingSdk/bridgingSdk.test.ts",
     "src/modules/tradeQuote/utils/getBridgeQuoteSigner.test.ts",
     "src/modules/tokensList/containers/TokenSearchResults/index.test.tsx",
     "src/common/hooks/useVerifyOphisRecipientName.test.ts",

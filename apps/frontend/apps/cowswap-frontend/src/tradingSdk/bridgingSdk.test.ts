@@ -40,4 +40,24 @@ describe('bridgingSdk provider registry', () => {
 
     expect(availableIds()).toEqual([bungeeBridgeProvider.info.dappId])
   })
+
+  it('never lists Bungee first while a quote provider is enabled (single-quote path takes providers[0] ungated)', () => {
+    expect(availableIds()[0]).not.toBe(bungeeBridgeProvider.info.dappId)
+
+    setQuoteBridgeProviders([nearIntentsBridgeProvider.info.dappId])
+    expect(availableIds()[0]).toBe(nearIntentsBridgeProvider.info.dappId)
+  })
+
+  it('registers Bungee as the decode-only subclass: no networks, no buy tokens, no API call', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch')
+
+    expect(await bungeeBridgeProvider.getNetworks()).toEqual([])
+    expect(await bungeeBridgeProvider.getBuyTokens({ buyChainId: 8453, sellChainId: 1 })).toEqual({
+      tokens: [],
+      isRouteAvailable: false,
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    fetchSpy.mockRestore()
+  })
 })

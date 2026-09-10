@@ -34,12 +34,11 @@ export function useCrossChainTokens(crossChainOrder: CrossChainOrder): CrossChai
 
   const sourceToken = sourceTokens && sourceTokens[getAddressKey(inputTokenAddress)]
   const intermediateToken = sourceTokens && sourceTokens[getAddressKey(order.buyToken)]
+  // Provider list (with its wrapped -> native mapping) first, token list second,
+  // so a Bungee delivery reported as WETH keeps rendering as ETH.
   const destinationToken = outputTokenAddress
-    ? resolveDestinationToken(
-        destinationChainId,
-        { ...destinationListTokens, ...destinationChainTokens },
-        outputTokenAddress,
-      )
+    ? (resolveDestinationToken(destinationChainId, destinationChainTokens ?? {}, outputTokenAddress) ??
+      destinationListTokens[getAddressKey(outputTokenAddress)])
     : undefined
 
   return { sourceToken, intermediateToken, destinationToken }

@@ -27,8 +27,11 @@ export const nearIntentsBridgeProvider = new OphisNearIntentsBridgeProvider({
   apiKey: process.env.REACT_APP_NEAR_API_KEY || undefined,
 })
 
+// Bungee LAST: the SDK's single-provider getQuote path takes providers[0] for
+// a cross-chain request without checking getNetworks, and getAvailableProviders
+// preserves this constructor order, so the decode-only entry must never be first.
 export const bridgingSdk = new BridgingSdk({
-  providers: [bungeeBridgeProvider, acrossBridgeProvider, nearIntentsBridgeProvider],
+  providers: [acrossBridgeProvider, nearIntentsBridgeProvider, bungeeBridgeProvider],
   enableLogging: !!localStorage.getItem('enableBridgingSdkLogs'),
   tradingSdk,
   orderBookApi,
