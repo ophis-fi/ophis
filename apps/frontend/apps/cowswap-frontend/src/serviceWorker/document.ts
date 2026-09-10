@@ -3,6 +3,14 @@ import { getCacheKeyForURL, matchPrecache } from 'workbox-precaching'
 import { Route } from 'workbox-routing'
 
 const fileExtensionRegexp = new RegExp('/[^/?]+\\.[^/]+$')
+const standaloneDocuments = new Set([
+  '/451',
+  '/business',
+  '/business/',
+  '/ophis-fee-safe-robinhood-ceremony',
+  '/ophis-uniswap-v4-robinhood-ceremony',
+  '/ophis-uniswap-v4-optimism-ceremony',
+])
 
 export const DOCUMENT = self.location.origin + '/index.html'
 
@@ -15,6 +23,11 @@ export const DOCUMENT = self.location.origin + '/index.html'
 export function matchDocument({ request, url }: RouteMatchCallbackOptions) {
   // If this isn't a navigation, skip.
   if (request.mode !== 'navigate') {
+    return false
+  }
+
+  // Pages canonicalizes static HTML to extensionless URLs; these are not app routes.
+  if (standaloneDocuments.has(url.pathname) || (url.hostname === 'business.ophis.fi' && url.pathname === '/')) {
     return false
   }
 

@@ -19,10 +19,25 @@ describe('document', () => {
       [{ request: { mode: 'navigate' }, url: { hostname: 'localhost', pathname: '' } }, true],
       [{ request: { mode: 'navigate' }, url: { hostname: 'localhost', pathname: '/#/swap' } }, true],
       [{ request: { mode: 'navigate' }, url: { hostname: 'localhost', pathname: '/asset.gif' } }, false],
+      [{ request: { mode: 'navigate' }, url: { hostname: 'business.ophis.fi', pathname: '/' } }, false],
+      [{ request: { mode: 'navigate' }, url: { hostname: 'business.ophis.fi', pathname: '/swap' } }, true],
+      [{ request: { mode: 'navigate' }, url: { hostname: 'swap.ophis.fi', pathname: '/' } }, true],
     ] as [RouteMatchCallbackOptions, boolean][]
 
     it.each(TEST_DOCUMENTS)('%j', (document: RouteMatchCallbackOptions, expected: boolean) => {
       expect(matchDocument(document)).toBe(expected)
+    })
+
+    it.each([
+      '/451',
+      '/business',
+      '/business/',
+      '/ophis-fee-safe-robinhood-ceremony',
+      '/ophis-uniswap-v4-robinhood-ceremony',
+      '/ophis-uniswap-v4-optimism-ceremony',
+    ])('leaves the canonical static document %s to the server', (pathname) => {
+      const document = { request: { mode: 'navigate' }, url: new URL(pathname, 'https://swap.ophis.fi') }
+      expect(matchDocument(document as RouteMatchCallbackOptions)).toBe(false)
     })
   })
 
