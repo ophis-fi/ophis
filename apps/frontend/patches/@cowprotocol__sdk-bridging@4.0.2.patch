@@ -1,8 +1,25 @@
 diff --git a/dist/index.d.mts b/dist/index.d.mts
-index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..e78e6231e0dc1a084fc46d01a8f3bbd206c26234 100644
+index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..8cc0b140e6f50d4005638ab80736f49ca1e270a7 100644
 --- a/dist/index.d.mts
 +++ b/dist/index.d.mts
-@@ -890,6 +890,10 @@ interface DepositStatusResponse {
+@@ -670,11 +670,12 @@ interface GetCrossChainOrderParams {
+  */
+ declare function getCrossChainOrder(params: GetCrossChainOrderParams): Promise<CrossChainOrder | null>;
+ 
++/** Ophis: every field optional, matching the runtime (each is only sent when set). */
+ interface AvailableRoutesRequest {
+-    originChainId: string;
+-    originToken: string;
+-    destinationChainId: string;
+-    destinationToken: string;
++    originChainId?: string;
++    originToken?: string;
++    destinationChainId?: string;
++    destinationToken?: string;
+ }
+ interface Route {
+     originChainId: string;
+@@ -890,6 +891,10 @@ interface DepositStatusResponse {
  
  interface AcrossApiOptions {
      apiBaseUrl?: string;
@@ -14,10 +31,27 @@ index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..e78e6231e0dc1a084fc46d01a8f3bbd2
  declare class AcrossApi {
      private readonly options;
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..e78e6231e0dc1a084fc46d01a8f3bbd206c26234 100644
+index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..8cc0b140e6f50d4005638ab80736f49ca1e270a7 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -890,6 +890,10 @@ interface DepositStatusResponse {
+@@ -670,11 +670,12 @@ interface GetCrossChainOrderParams {
+  */
+ declare function getCrossChainOrder(params: GetCrossChainOrderParams): Promise<CrossChainOrder | null>;
+ 
++/** Ophis: every field optional, matching the runtime (each is only sent when set). */
+ interface AvailableRoutesRequest {
+-    originChainId: string;
+-    originToken: string;
+-    destinationChainId: string;
+-    destinationToken: string;
++    originChainId?: string;
++    originToken?: string;
++    destinationChainId?: string;
++    destinationToken?: string;
+ }
+ interface Route {
+     originChainId: string;
+@@ -890,6 +891,10 @@ interface DepositStatusResponse {
  
  interface AcrossApiOptions {
      apiBaseUrl?: string;

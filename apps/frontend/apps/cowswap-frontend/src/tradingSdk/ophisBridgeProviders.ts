@@ -1,5 +1,5 @@
 import { EXTRA_ACROSS_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
-import { fetchWithTimeout } from '@cowprotocol/common-utils'
+import { withTimeout } from '@cowprotocol/common-utils'
 import {
   avalanche,
   bnb,
@@ -23,11 +23,9 @@ import {
 
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
 
-// Across's own API base (keyless). The SDK's internal AcrossApi uses the same
-// host and the app CSP already allows it, so a direct GET here needs no proxy.
-const ACROSS_API_URL = 'https://app.across.to/api'
 // A stalled available-routes request must not hang the quote — it degrades to
-// "no intermediate found" like every other route-fetch failure.
+// "no intermediate found" like every other route-fetch failure (the SDK's own
+// fetch has no timeout).
 const AVAILABLE_ROUTES_TIMEOUT_MS = 10_000
 
 /**
@@ -139,22 +137,24 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
 
   private async getIntermediateTokensFromRoutes(request: QuoteBridgeRequest): Promise<TokenInfo[]> {
     const { sellTokenChainId, buyTokenChainId, buyTokenAddress } = request
-    const params = new URLSearchParams({
-      originChainId: String(sellTokenChainId),
-      destinationChainId: String(buyTokenChainId),
-      destinationToken: buyTokenAddress,
-    })
 
     // Whole body guarded: any failure — network, a timeout, a malformed/garbage
     // routes response, a non-string originToken, the token-list fetch — degrades
     // to "no intermediate found" rather than crashing the quote pipeline.
     try {
-      const response = await fetchWithTimeout(`${ACROSS_API_URL}/available-routes?${params.toString()}`, {
-        timeout: AVAILABLE_ROUTES_TIMEOUT_MS,
-      })
-      if (!response.ok) return []
-      const routes = (await response.json()) as unknown
-      if (!Array.isArray(routes) || routes.length === 0) return []
+      // Through the SDK's AcrossApi, so this request carries the configured
+      // integratorId and API key like every other Across call (the SDK also
+      // validates the route shape and rejects garbage as INVALID_API_JSON_RESPONSE).
+      const routes = await withTimeout(
+        this.api.getAvailableRoutes({
+          originChainId: String(sellTokenChainId),
+          destinationChainId: String(buyTokenChainId),
+          destinationToken: buyTokenAddress,
+        }),
+        AVAILABLE_ROUTES_TIMEOUT_MS,
+        'Across available-routes',
+      )
+      if (routes.length === 0) return []
 
       // Normalize both sides with the repo's canonical address key (not a raw
       // toLowerCase) so matching tracks the SDK's address semantics.

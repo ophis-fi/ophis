@@ -304,6 +304,9 @@ jobs:
       - name: build explorer
         working-directory: apps/frontend
         env:
+          # Same Across key as the swap build: the explorer reads Across order
+          # status through the SDK too (Codex P2 on #1382).
+          REACT_APP_ACROSS_API_KEY: ${{ secrets.REACT_APP_ACROSS_API_KEY }}
           NODE_OPTIONS: --max-old-space-size=6144
           # Maps `SupportedChainId → orderbook host` for every chain the
           # explorer should be able to surface orders for. This MUST cover

@@ -124,6 +124,16 @@ describe('ophisBridgeProviders', () => {
     describe('getIntermediateTokens route-based fallback', () => {
       const mockRoutes = (routes: unknown): jest.SpyInstance =>
         jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => routes } as Response)
+      // The SDK validates every route's shape (the real API returns all of these).
+      const route = (originToken: string, originTokenSymbol: string): Record<string, unknown> => ({
+        originChainId: 1,
+        originToken,
+        originTokenSymbol,
+        destinationChainId: 4663,
+        destinationToken: acrossRequest().buyTokenAddress,
+        destinationTokenSymbol: 'USDG',
+        isNative: false,
+      })
 
       afterEach(() => jest.restoreAllMocks())
 
@@ -155,17 +165,23 @@ describe('ophisBridgeProviders', () => {
 
       it('falls back to Across available-routes when the symbol match is empty (the USDG corridor)', async () => {
         jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
-        mockRoutes([
-          { originToken: USDC.address }, // cross-asset USDC -> USDG
-          { originToken: USDG_MAINNET.address }, // chain-aliased USDG-MAINNET -> USDG
+        const fetchSpy = mockRoutes([
+          route(USDC.address, 'USDC'), // cross-asset USDC -> USDG
+          route(USDG_MAINNET.address, 'USDG'), // chain-aliased USDG-MAINNET -> USDG
         ])
-        const provider = new TestableAcrossProvider()
+        const provider = new TestableAcrossProvider({ apiOptions: { apiKey: 'test-key', integratorId: '0x0311' } })
         jest.spyOn(provider.testApi, 'getSupportedTokens').mockResolvedValue([USDC, USDG_MAINNET, BASE_USDC])
 
         const result = await provider.getIntermediateTokens(acrossRequest())
 
         // Both mainnet route origins returned; the Base USDC (wrong chain) excluded.
         expect(result).toEqual([USDC, USDG_MAINNET])
+        // The fallback goes through the SDK's AcrossApi, so it is attributed and
+        // authenticated like every other Across call (Codex P2 on #1382).
+        const [url, init] = fetchSpy.mock.calls[0]
+        expect(String(url)).toContain('/available-routes?')
+        expect(new URL(String(url)).searchParams.get('integratorId')).toBe('0x0311')
+        expect(init?.headers).toEqual({ Authorization: 'Bearer test-key' })
       })
 
       it('returns [] when the route fetch fails (no crash, corridor just unavailable)', async () => {
