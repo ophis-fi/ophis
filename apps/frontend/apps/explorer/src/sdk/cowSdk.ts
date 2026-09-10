@@ -18,7 +18,7 @@ export const orderBookApi = new OrderBookApi()
 // appData-hook dappId; it advertises no networks and no buy tokens, so nothing
 // here calls its API except status reads for those orders. useCrossChainTokens
 // recovers the destination token from the chain's token list instead.
-const bungeeBridgeProvider = createDecodeOnlyBungeeBridgeProvider()
+export const bungeeBridgeProvider = createDecodeOnlyBungeeBridgeProvider()
 
 const acrossBridgeProvider = new AcrossBridgeProvider()
 

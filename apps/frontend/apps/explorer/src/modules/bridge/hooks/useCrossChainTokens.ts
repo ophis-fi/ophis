@@ -6,6 +6,7 @@ import { useBridgeProviderBuyTokens } from './useBridgeProviderBuyTokens'
 
 import { NATIVE_TOKEN_PER_NETWORK, WRAPPED_NATIVE_ADDRESS } from '../../../const'
 import { useTokenList } from '../../../hooks/useTokenList'
+import { bungeeBridgeProvider } from '../../../sdk/cowSdk'
 
 export interface CrossChainTokens<T = TokenInfo | undefined> {
   sourceToken: T
@@ -29,10 +30,12 @@ export function useCrossChainTokens(crossChainOrder: CrossChainOrder): CrossChai
 
   const sourceToken = sourceTokens && sourceTokens[getAddressKey(inputTokenAddress)]
   const intermediateToken = sourceTokens && sourceTokens[getAddressKey(order.buyToken)]
-  // Provider list (with its wrapped -> native mapping) first, token list second,
-  // so a Bungee delivery reported as WETH keeps rendering as ETH.
+  // Provider list first (with the wrapped -> native mapping for BUNGEE orders:
+  // it delivered native ETH while storing the WETH address, whereas other
+  // providers deliver what appData says), token list second.
+  const isBungeeOrder = provider?.info.dappId === bungeeBridgeProvider.info.dappId
   const destinationToken = outputTokenAddress
-    ? (resolveDestinationToken(destinationChainId, destinationChainTokens ?? {}, outputTokenAddress) ??
+    ? (resolveDestinationToken(destinationChainId, destinationChainTokens ?? {}, outputTokenAddress, isBungeeOrder) ??
       destinationListTokens[getAddressKey(outputTokenAddress)])
     : undefined
 
@@ -43,9 +46,12 @@ function resolveDestinationToken(
   destinationChainId: SupportedChainId,
   destinationChainTokens: Record<string, TokenInfo>,
   outputTokenAddress: string,
+  mapWrappedToNative: boolean,
 ): TokenInfo | undefined {
   const address = getAddressKey(outputTokenAddress)
   const token = destinationChainTokens[address]
+  if (token || !mapWrappedToNative) return token
+
   // The app's own maps, not the SDK's: they know the Ophis chains (Unichain
   // 130, Robinhood Chain 4663) the upstream sdk-config does not.
   const wrappedAddress = WRAPPED_NATIVE_ADDRESS[destinationChainId]
@@ -53,9 +59,9 @@ function resolveDestinationToken(
 
   // Bungee has problems with WETH/ETH
   // So we need to map them
-  if (!token && wrappedAddress && nativeToken && areAddressesEqual(wrappedAddress, address)) {
+  if (wrappedAddress && nativeToken && areAddressesEqual(wrappedAddress, address)) {
     return nativeToken as TokenInfo
   }
 
-  return token
+  return undefined
 }
