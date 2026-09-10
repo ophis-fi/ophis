@@ -14,9 +14,9 @@
  * they are a front-runner timing signal). Cumulative lifetime totals plus
  * static configuration facts are not gameable.
  *
- * Self-contained: inline CSS only, no scripts, no external assets, so it works
- * behind the strictest CSP and needs no build step. All interpolated values are
- * numeric or drawn from a fixed chain map, so there is no untrusted markup.
+ * Native GET filters and sorting need no scripts or build step. Chain icons
+ * come from the local copies of the fixed Ophis brand asset map. Query inputs are normalized before
+ * use; interpolated strings are escaped for HTML attributes and text.
  *
  * Brand: Steep editorial palette, Georgia headings and system sans fallback.
  * No external font requests on this strict-CSP page.
@@ -92,20 +92,58 @@ export const EXECUTION_FACTS = {
 } as const;
 
 const esc = (s: string): string =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 const fmtUsd = (n: number): string =>
   '$' + (n >= 1000 ? Math.round(n).toLocaleString('en-US') : n.toFixed(2));
 
 const fmtInt = (n: number): string => Math.round(n).toLocaleString('en-US');
 
-export function renderStatsPage(s: PublicStats): string {
-  const rows = s.byChain
-    .map((c) => {
-      const name = CHAIN_NAME[c.chainId] ?? `Chain ${c.chainId}`;
-      return `<tr><td>${esc(name)}</td><td class="num">${fmtUsd(c.volumeUsd)}</td><td class="num">${fmtInt(c.trades)}</td></tr>`;
-    })
-    .join('');
+export const CHAIN_ICON: Record<number, string> = {
+  1: 'chain-ethereum.png', 10: 'chain-optimism.png', 56: 'chain-bnb.png',
+  100: 'chain-gnosis.png', 130: 'chain-unichain.svg', 137: 'chain-polygon.png',
+  4663: 'chain-robinhood-v2.svg', 8453: 'chain-base.png', 9745: 'chain-plasma.svg',
+  42161: 'chain-arbitrum.jpg', 43114: 'chain-avalanche.png', 57073: 'chain-ink.svg', 59144: 'chain-linea.jpg',
+};
+
+export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): string {
+  const sort = query.get('sort') ?? 'volume-desc';
+  const activeSort = /^(chain|volume|trades)-(asc|desc)$/.test(sort) ? sort : 'volume-desc';
+  const [column, direction] = activeSort.split('-');
+  const chainId = Number(query.get('chain'));
+  const chain = PRODUCTION_CHAIN_IDS.includes(chainId) ? chainId : 0;
+  const range = (key: string): number | undefined => {
+    const raw = query.get(key);
+    if (!raw?.trim()) return undefined;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : undefined;
+  };
+  const minVolume = range('minVolume'), maxVolume = range('maxVolume');
+  const minTrades = range('minTrades'), maxTrades = range('maxTrades');
+  const filtered = s.byChain.filter(c => (!chain || c.chainId === chain)
+    && (minVolume === undefined || c.volumeUsd >= minVolume)
+    && (maxVolume === undefined || c.volumeUsd <= maxVolume)
+    && (minTrades === undefined || c.trades >= minTrades)
+    && (maxTrades === undefined || c.trades <= maxTrades));
+  filtered.sort((a, b) => {
+    const compared = column === 'chain'
+      ? (CHAIN_NAME[a.chainId] ?? String(a.chainId)).localeCompare(CHAIN_NAME[b.chainId] ?? String(b.chainId), 'en')
+      : column === 'trades' ? a.trades - b.trades : a.volumeUsd - b.volumeUsd;
+    return (direction === 'asc' ? compared : -compared) || a.chainId - b.chainId;
+  });
+  const rows = filtered.map(c => {
+    const name = CHAIN_NAME[c.chainId] ?? `Chain ${c.chainId}`;
+    const icon = CHAIN_ICON[c.chainId];
+    return `<tr><th scope="row"><span class="chain">${icon ? `<img src="/chain-icons/${c.chainId}" width="24" height="24" alt="" decoding="async">` : ''}${esc(name)}</span></th><td class="num">${fmtUsd(c.volumeUsd)}</td><td class="num">${fmtInt(c.trades)}</td></tr>`;
+  }).join('');
+  const heading = (key: string, label: string): string => {
+    const selected = key === column;
+    const next = selected ? direction === 'desc' ? 'asc' : 'desc' : key === 'chain' ? 'asc' : 'desc';
+    return `<th scope="col"${key !== 'chain' ? ' class="num"' : ''} aria-sort="${selected ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}"><button name="sort" value="${key}-${next}" aria-label="Sort ${label.toLowerCase()} ${next === 'asc' ? 'ascending' : 'descending'}">${label} <span aria-hidden="true">${selected ? direction === 'asc' ? '&#8593;' : '&#8595;' : '&#8597;'}</span></button></th>`;
+  };
+  const numberInput = (key: string, label: string, value: number | undefined): string =>
+    `<label><span>${label}</span><input type="number" min="0" step="${key.endsWith('Trades') ? '1' : 'any'}" name="${key}" value="${value ?? ''}" placeholder="Any"></label>`;
+  const chainOptions = PRODUCTION_CHAIN_IDS.map(id => `<option value="${id}"${chain === id ? ' selected' : ''}>${esc(CHAIN_NAME[id] ?? `Chain ${id}`)}</option>`).join('');
   const updated = s.dataAsOf
     ? esc(s.dataAsOf.slice(0, 16).replace('T', ' ')) + ' UTC'
     : null;
@@ -148,16 +186,36 @@ h2{font:400 28px/1.25 Georgia,serif;letter-spacing:-.015em;margin:40px 0 20px}
 .table-scroll{overflow-x:auto;border:1px solid #d9d9dc;border-radius:16px}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:left;padding:12px 16px;border-bottom:1px solid #e8e8ea}
-th{background:#fafafb;color:#5b606b;font-weight:500}
-tr:last-child td{border-bottom:0}
+thead th{background:#fafafb;color:#5b606b;font-weight:500}
+tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}
 td.num,th.num{text-align:right;white-space:nowrap}
 .note{color:#5b606b;font-size:14px;margin-top:24px;line-height:1.6;overflow-wrap:anywhere}
 a{color:inherit;text-underline-offset:3px}
 a:hover{text-decoration:underline}
-a:focus-visible,.table-scroll:focus-visible{outline:2px solid #17191c;outline-offset:4px}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,.table-scroll:focus-visible{outline:2px solid #17191c;outline-offset:4px}
 .warning{background:#faeed3;border:1px solid #b99a56;border-radius:16px;color:#7c4a03;font-size:14px;margin-bottom:24px;padding:16px 20px}
 .foot{margin-top:32px;padding-top:20px;border-top:1px solid #d9d9dc;color:#5b606b;font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px}
 .foot a{display:inline-block;padding:10px 0}
+.chain{display:flex;align-items:center;gap:12px;white-space:nowrap}
+.chain img{border-radius:50%;flex-shrink:0;object-fit:contain}
+tbody th{font-weight:400;background:transparent}
+tbody tr:hover{background:#fafafb}
+.filters{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:20px 0 16px}
+.filters>label{display:flex;flex-direction:column;justify-content:space-between}
+.filters fieldset{border:0;min-width:0}
+.filters legend,.filters>label>span{font-size:13px;color:#5b606b;margin-bottom:8px;display:block}
+.range{display:flex;gap:8px}.range label{flex:1;min-width:0}
+.range span{display:block;font-size:12px;color:#5b606b;margin-bottom:4px}
+input,select{width:100%;min-width:0;height:44px;background:white;border:1px solid #d9d9dc;border-radius:8px;padding:8px 10px;font:inherit;font-size:16px;color:inherit}
+button{cursor:pointer;font:inherit;color:inherit;border:0;background:transparent;min-height:44px}
+thead button{display:inline-flex;align-items:center;gap:8px;text-align:inherit}
+.actions{display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:16px;font-size:14px}
+.actions button{padding:8px 16px;border-radius:8px;background:#17191c;color:white}
+.actions a{display:inline-flex;align-items:center;min-height:44px}
+.actions p{margin-left:auto;color:#5b606b;font-size:13px}
+caption{text-align:left;padding:12px 16px;font-size:13px;color:#5b606b;border-bottom:1px solid #e8e8ea}
+#chains{scroll-margin-top:24px}
+@media(max-width:600px){.filters{grid-template-columns:1fr}.actions p{width:100%;margin:0}.chain{gap:8px}th,td{padding:10px 12px}table{min-width:420px}}
 </style></head>
 <body><main class="wrap">
 <nav class="brand" aria-label="Ophis"><a href="https://ophis.fi/">Ophis</a><span>Execution &amp; volume</span></nav>
@@ -171,13 +229,22 @@ ${freshnessWarning}
   <li><strong>Solver competition on every order</strong>Configured Ophis-operated routing lanes: ${esc(operatedSolverSummary)}. Pair coverage and live participation vary by auction. Other chains draw on ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
   <li class="wide"><strong>Where the price improvement goes</strong>The Ophis fee on every supported chain is a 0.01% (1 bp) base plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). CoW-hosted chains also apply CoW Protocol fees upstream.</li>
 </ul>
-<h2>Settled volume by chain</h2>
+<h2 id="chains">Settled volume by chain</h2>
+<form method="get" action="/stats#chains" aria-label="Filter settled volume">
+<div class="filters">
+  <label><span>Chain</span><select name="chain"><option value="">All chains</option>${chainOptions}</select></label>
+  <fieldset><legend>Volume settled (USD)</legend><div class="range">${numberInput('minVolume', 'Minimum volume', minVolume)}${numberInput('maxVolume', 'Maximum volume', maxVolume)}</div></fieldset>
+  <fieldset><legend>Trades</legend><div class="range">${numberInput('minTrades', 'Minimum trades', minTrades)}${numberInput('maxTrades', 'Maximum trades', maxTrades)}</div></fieldset>
+</div>
+<div class="actions"><button name="sort" value="${activeSort}">Apply filters</button><a href="/stats#chains">Reset</a><p>Showing ${filtered.length} of ${s.byChain.length} chains. Lifetime totals below include all chains.</p></div>
 <div class="table-scroll" role="region" aria-label="Settled volume by chain" tabindex="0">
 <table>
-  <thead><tr><th>Chain</th><th class="num">Volume settled</th><th class="num">Trades</th></tr></thead>
-  <tbody>${rows || '<tr><td colspan="3" style="color:#5b606b">No settled volume indexed yet.</td></tr>'}</tbody>
+  <caption>Lifetime settled volume by chain. Select a column heading to sort.</caption>
+  <thead><tr>${heading('chain', 'Chain')}${heading('volume', 'Volume settled')}${heading('trades', 'Trades')}</tr></thead>
+  <tbody>${rows || `<tr><td colspan="3">${s.byChain.length ? 'No chains match these filters.' : 'No settled volume indexed yet.'}</td></tr>`}</tbody>
 </table>
 </div>
+</form>
 <h2>Lifetime settled volume, cumulative</h2>
 <p class="note" style="margin-top:0;margin-bottom:14px">Ophis is an early-stage venue, so these are lifetime totals since launch, not a rolling window. Every figure is indexed from on-chain settlement and verifiable by anyone.</p>
 <div class="grid">
