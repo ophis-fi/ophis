@@ -9,7 +9,7 @@ import { OphisHeader } from 'ophis/components/OphisHeader'
 import { ScrollToTop } from 'ophis/components/ScrollToTop'
 import { useIsOphisSwap } from 'ophis/hooks/useIsOphisSwap'
 import { useOphisWalletFlag } from 'ophis/hooks/useOphisWalletFlag'
-import { MobileSwapHeader, MobileSwapFooter } from 'ophis/mobile/MobileSwapHeader.container'
+import { MobileSwapHeader } from 'ophis/mobile/MobileSwapHeader.container'
 import { MobileSwapTheme } from 'ophis/mobile/MobileSwapTheme.container'
 import { Link, useLocation } from 'react-router'
 import styled from 'styled-components/macro'
@@ -244,7 +244,7 @@ export function AppContainer({ children }: AppContainerProps): ReactNode {
             <styledEl.Marginer />
           </OphisBodyWrapper>
 
-          {isOphisSwap ? <MobileSwapFooter /> : <OphisFooter />}
+          <OphisFooter compact={isOphisSwap} />
         </styledEl.AppWrapper>
       </PageBackgroundContext.Provider>
     </MobileSwapTheme>

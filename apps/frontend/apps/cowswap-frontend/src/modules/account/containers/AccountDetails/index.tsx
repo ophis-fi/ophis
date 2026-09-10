@@ -2,9 +2,15 @@ import { Fragment, ReactNode } from 'react'
 
 import { CHAIN_INFO } from '@cowprotocol/common-const'
 import { styled } from '@cowprotocol/common-hooks'
-import { getEtherscanLink, getExplorerAddressLink, getExplorerLabel, shortenAddress } from '@cowprotocol/common-utils'
+import {
+  getEtherscanLink,
+  getExplorerAddressLink,
+  getExplorerLabel,
+  isInjectedWidget,
+  shortenAddress,
+} from '@cowprotocol/common-utils'
 import { Command } from '@cowprotocol/types'
-import { ExternalLink } from '@cowprotocol/ui'
+import { ExternalLink, StyledLink } from '@cowprotocol/ui'
 import {
   ConnectionType,
   getIsHardWareWallet,
@@ -19,6 +25,7 @@ import {
 import { i18n } from '@lingui/core'
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
+import { Link } from 'react-router'
 
 import Copy from 'legacy/components/Copy'
 import { groupActivitiesByDay, useMultipleActivityDescriptors } from 'legacy/hooks/useRecentActivity'
@@ -156,6 +163,11 @@ export function AccountDetails({
         <AccountGroupingRow>
           <AccountControl>
             <WalletSecondaryActions>
+              {!isInjectedWidget() && (
+                <StyledLink as={Link} to="/profile" onClick={closeAccountModal}>
+                  <Trans>Profile</Trans>
+                </StyledLink>
+              )}
               {!isInjectedMobileBrowser && account && !isChainIdUnsupported && (
                 <AddressLink
                   hasENS={!!ENSName}

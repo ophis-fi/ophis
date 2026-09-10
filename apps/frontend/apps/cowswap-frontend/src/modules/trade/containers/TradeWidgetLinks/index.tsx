@@ -119,11 +119,14 @@ export function TradeWidgetLinks({ isDropdown = false }: TradeWidgetLinksProps) 
 
   return isDropdown ? (
     <>
-      <styledEl.MenuItem
-        onClick={() => !singleMenuItem && setDropdownVisible(!isDropdownVisible)}
-        isDropdownVisible={isDropdownVisible}
-      >
-        <styledEl.DropdownButton>
+      <styledEl.MenuItem isDropdownVisible={isDropdownVisible}>
+        <styledEl.DropdownButton
+          type="button"
+          aria-label={t`Trading mode`}
+          aria-expanded={isDropdownVisible}
+          disabled={singleMenuItem}
+          onClick={() => setDropdownVisible(!isDropdownVisible)}
+        >
           {selectedMenuItem.props.item.label}
           {!singleMenuItem ? <SVG src={IMAGE_CARET} title={t`select`} /> : null}
         </styledEl.DropdownButton>

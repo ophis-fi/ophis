@@ -150,6 +150,9 @@ export const FlayoutMenuList = styled.div`
 `
 
 export const SelectorLabel = styled.div`
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   display: block;
   flex: 1 1 auto;
   margin: 0;
@@ -160,6 +163,7 @@ export const SelectorLabel = styled.div`
   }
 `
 export const SelectorControls = styled.div<{ $isChainIdUnsupported: boolean; $isOpen: boolean }>`
+  min-width: 0;
   align-items: center;
   color: inherit;
   display: flex;
@@ -196,6 +200,7 @@ export const SelectorControls = styled.div<{ $isChainIdUnsupported: boolean; $is
     `}
 `
 export const SelectorLogo = styled.img<{ interactive?: boolean }>`
+  flex-shrink: 0;
   --size: 24px;
   width: var(--size);
   height: var(--size);
@@ -207,6 +212,7 @@ export const SelectorLogo = styled.img<{ interactive?: boolean }>`
   }
 `
 export const SelectorWrapper = styled.div`
+  min-width: 0;
   display: flex;
   cursor: pointer;
   height: 100%;
@@ -216,6 +222,7 @@ export const SelectorWrapper = styled.div`
   }
 `
 export const StyledChevronDown = styled(ChevronDown)<{ $isOpen: boolean }>`
+  flex-shrink: 0;
   width: 21px;
   height: 21px;
   margin: 0 0 0 -3px;

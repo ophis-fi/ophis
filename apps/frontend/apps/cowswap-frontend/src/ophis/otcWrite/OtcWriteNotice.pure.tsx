@@ -10,7 +10,7 @@ export function OtcWriteNotice(): ReactNode {
   const { t } = useLingui()
   if (process.env.REACT_APP_OTC_WRITE_MODE === 'public') {
     return (
-      <Callout tone="warning" title={t`Ethereum transactions`}>
+      <Callout tone="info" title={t`Ethereum transactions`}>
         <p>
           <Trans>
             These transactions use real Ethereum assets and cost gas. Review both token amounts before approving or

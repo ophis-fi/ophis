@@ -216,13 +216,19 @@ export const Wrapper = styled.div`
     > button {
       align-items: center;
       background: transparent;
-      min-height: initial;
+      min-height: 44px;
+      font-size: 14px;
       cursor: pointer;
       animation: none;
       margin: 0;
 
       &:hover {
         cursor: pointer;
+      }
+
+      &:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 3px;
       }
     }
   }

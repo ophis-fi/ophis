@@ -3,7 +3,7 @@ import { Media, UI, MY_ORDERS_ID } from '@cowprotocol/ui'
 import styled from 'styled-components/macro'
 import { WIDGET_MAX_WIDTH } from 'theme'
 
-const DEFAULT_MAX_WIDTH = '1500px'
+const DEFAULT_MAX_WIDTH = '1200px'
 
 export const PageWrapper = styled.div<{
   isUnlocked: boolean
@@ -15,17 +15,18 @@ export const PageWrapper = styled.div<{
   display: grid;
   max-width: ${({ maxWidth = DEFAULT_MAX_WIDTH }) => maxWidth};
   margin: 0 auto;
+  align-items: start;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto;
   grid-template-areas: ${({ hideOrdersTable }) => (hideOrdersTable ? '"primary"' : '"primary" "secondary"')};
-  gap: 20px;
+  gap: 32px;
 
   ${Media.LargeAndUp()} {
     grid-template-columns: ${({ isUnlocked, hideOrdersTable, secondaryOnLeft }) =>
       isUnlocked && !hideOrdersTable
         ? secondaryOnLeft
-          ? '1fr minmax(auto, ' + WIDGET_MAX_WIDTH.swap.replace('px', '') + 'px)'
-          : 'minmax(auto, ' + WIDGET_MAX_WIDTH.swap.replace('px', '') + 'px) 1fr'
+          ? 'minmax(0, 1fr) minmax(0, ' + WIDGET_MAX_WIDTH.swap + ')'
+          : 'minmax(0, ' + WIDGET_MAX_WIDTH.swap + ') minmax(0, 1fr)'
         : '1fr'};
     grid-template-rows: 1fr;
     grid-template-areas: ${({ secondaryOnLeft, hideOrdersTable }) =>
@@ -40,9 +41,10 @@ export const PageWrapper = styled.div<{
 // Form + banner
 export const PrimaryWrapper = styled.div`
   display: flex;
-  flex-flow: column wrap;
+  flex-direction: column;
   gap: 16px;
   width: 100%;
+  min-width: 0;
   max-width: ${WIDGET_MAX_WIDTH.swap};
   margin: 0 auto;
   color: inherit;
@@ -54,24 +56,24 @@ export const SecondaryWrapper = styled.div.attrs({
   id: MY_ORDERS_ID,
 })`
   display: flex;
-  flex-flow: column wrap;
+  flex-direction: column;
   width: 100%;
   overflow: hidden;
-  border-radius: var(${UI.BORDER_RADIUS_NORMAL});
+  border-radius: 20px;
   background: var(${UI.COLOR_PAPER});
   color: inherit;
-  border: none;
+  border: 1px solid var(${UI.COLOR_BORDER});
   box-shadow: none;
   position: relative;
-  padding: 10px;
-  min-height: 200px;
-  height: 100%;
-  width: 100%;
-  margin: 0 0 76px;
+  padding: 12px;
+  min-width: 0;
+  min-height: 400px;
+  margin: 0;
   grid-area: secondary;
 
   ${Media.upToLargeAlt()} {
-    flex-flow: column wrap;
-    margin: 0 0 20px;
+    flex-direction: column;
+    min-height: 0;
+    padding: 12px;
   }
 `

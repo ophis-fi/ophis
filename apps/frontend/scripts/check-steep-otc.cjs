@@ -75,7 +75,8 @@ async function mountOrders(page) {
 }
 
 async function check(browser, width, dark) {
-  const page = await browser.newPage({ locale: 'en-US', viewport: { width, height: 1000 } })
+  const context = await browser.newContext({ locale: 'en-US', viewport: { width, height: 1000 } })
+  const page = await context.newPage()
   try {
     await page.addInitScript((dark) => {
       localStorage.setItem('ophis_consent', 'denied')
@@ -89,6 +90,15 @@ async function check(browser, width, dark) {
       await page.locator('#otc-fixture table').waitFor()
       // Off-screen table cells may scroll locally; their hidden labels must not widen the page.
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false)
+      const statuses = page.locator('#otc-fixture [class*="StatusStack"]').first()
+      assert.ok(parseFloat(await statuses.evaluate((e) => getComputedStyle(e).gap)) >= 8)
+      assert.equal(
+        await statuses
+          .locator('span')
+          .first()
+          .evaluate((e) => getComputedStyle(e).textTransform),
+        'none',
+      )
       if (tab === 'Browse') {
         await page.getByLabel('Filter by maker address').fill('0x0000')
         await page.getByRole('link', { name: 'Order 1 details' }).waitFor()
@@ -97,13 +107,13 @@ async function check(browser, width, dark) {
     }
     console.log('PASS', browser.browserType().name(), width, dark ? 'dark' : 'light', 'OTC tables and filters')
   } finally {
-    await page.close()
+    await context.close()
   }
 }
 
 ;(async () => {
   for (const engine of [chromium, webkit]) {
-    const browser = await engine.launch({ headless: true, ...(engine === chromium ? { channel: 'chrome' } : {}) })
+    const browser = await engine.launch({ headless: true })
     try {
       for (const dark of [false, true]) for (const width of [320, 390, 1440]) await check(browser, width, dark)
     } finally {

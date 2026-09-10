@@ -1,5 +1,5 @@
 // node scripts/check-steep-orders.cjs http://127.0.0.1:3017
-// Install the frontend workspace, Chrome, and the landing workspace's WebKit browser.
+// Install browsers: pnpm --filter @ophis/landing exec playwright install chromium webkit
 // Uses a read-only test wallet; unlocks the UI without signing or submitting orders.
 const assert = require('node:assert/strict')
 const { createRequire } = require('node:module')
@@ -7,7 +7,12 @@ const { chromium, webkit } = createRequire(require.resolve('../apps/ophis-landin
 const base = process.argv[2] || 'http://127.0.0.1:3017'
 
 async function check(browser, width, dark) {
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, locale: 'en-US', reducedMotion: 'reduce' })
+  const context = await browser.newContext({
+    viewport: { width, height: 1000 },
+    locale: 'en-US',
+    reducedMotion: 'reduce',
+  })
+  const page = await context.newPage()
   page.setDefaultTimeout(45000)
   try {
     await page.addInitScript((dark) => {
@@ -32,6 +37,32 @@ async function check(browser, width, dark) {
         },
       }
     }, dark)
+    if (width === 320 && !dark) {
+      await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
+      await page.locator('#web3-status-connected').click()
+      const profile = page.locator('[class*=OrdersPanel__SideBar]').getByRole('link', { name: 'Profile', exact: true })
+      await page.keyboard.press('Tab')
+      await profile.focus()
+      assert.equal(await profile.evaluate((e) => getComputedStyle(e).outlineStyle), 'solid')
+      await profile.press('Enter')
+      await page.waitForURL(/profile/)
+      await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
+      const mode = page.getByRole('button', { name: 'Trading mode', exact: true })
+      await mode.focus()
+      await page.keyboard.press('Enter')
+      await page.getByText('Trading mode', { exact: true }).waitFor()
+      assert.equal(await mode.getAttribute('aria-expanded'), 'true')
+      await page.getByRole('link', { name: 'Limit', exact: true }).last().click()
+      await page.waitForURL(/limit/)
+    }
+    if (width === 1440 && !dark) {
+      await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
+      await page
+        .getByRole('navigation', { name: 'Ophis', exact: true })
+        .getByRole('link', { name: 'Limit', exact: true })
+        .waitFor()
+      assert.equal(await page.getByRole('button', { name: 'Trading mode', exact: true }).count(), 0)
+    }
     for (const route of ['limit', 'advanced']) {
       await page.goto(base + '/#/1/' + route + '/WETH/USDC', { waitUntil: 'domcontentloaded' })
       await page.locator('[id^="unlock-"][id$="-btn"]').click()
@@ -41,6 +72,8 @@ async function check(browser, width, dark) {
         (dark) => getComputedStyle(document.documentElement).colorScheme === (dark ? 'dark' : 'light'),
         dark,
       )
+      const grid = page.locator('[class*="PageWrapper"]').filter({ has: heading }).last()
+      assert.ok((await grid.boundingBox()).width <= 1200, 'form and orders stay on the shared page grid')
       assert.match(await heading.evaluate((e) => getComputedStyle(e).fontFamily), /Georgia/)
       const artwork = page.locator('[class*=NoOrdersArtwork] svg')
       await artwork.waitFor()
@@ -60,14 +93,28 @@ async function check(browser, width, dark) {
       console.log('PASS', browser.browserType().name(), width, dark ? 'dark' : 'light', route)
     }
   } finally {
-    await page.close()
+    await context.close()
   }
 }
 
 ;(async () => {
   for (const engine of [chromium, webkit]) {
-    const browser = await engine.launch({ headless: true, ...(engine === chromium ? { channel: 'chrome' } : {}) })
+    const browser = await engine.launch({ headless: true })
     try {
+      const disconnected = await browser.newContext({ viewport: { width: 320, height: 800 } })
+      try {
+        const page = await disconnected.newPage()
+        await page.addInitScript(() => localStorage.setItem('ophis_consent', 'denied'))
+        await page.goto(base + '/#/1/swap', { waitUntil: 'domcontentloaded' })
+        await page
+          .getByRole('navigation', { name: 'Ophis', exact: true })
+          .getByRole('link', { name: 'Profile', exact: true })
+          .click()
+        await page.waitForURL(/profile/)
+        console.log('PASS', engine.name(), 'disconnected mobile Profile navigation')
+      } finally {
+        await disconnected.close()
+      }
       for (const dark of [false, true]) for (const width of [320, 390, 1440]) await check(browser, width, dark)
     } finally {
       await browser.close()

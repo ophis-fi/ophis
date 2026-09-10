@@ -238,7 +238,10 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
         <styledEl.ContainerBox data-mobile-swap-form={isOphisMobileSwap || undefined}>
           <styledEl.Header>
             {isOphisMobileSwap ? (
-              headerContent
+              <>
+                {isMobileSwap && <TradeWidgetLinks isDropdown />}
+                {headerContent}
+              </>
             ) : shouldLockForAlternativeOrder ? (
               <div></div>
             ) : (

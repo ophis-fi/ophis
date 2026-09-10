@@ -23,8 +23,9 @@ const Logo = styled(Link)`
   padding: 0;
   margin: 0 1rem 0 0;
   display: flex;
-  align-content: center;
-  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  color: ${Color.explorer_textPrimary};
   z-index: 6;
   transition: transform 0.3s ease 0s;
 
@@ -61,6 +62,13 @@ const Logo = styled(Link)`
   }
 `
 
+const Wordmark = styled.span`
+  font-family: var(--cow-font-family, Inter, system-ui, sans-serif);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+`
+
 type Props = PropsWithChildren<{
   linkTo?: string
   onClickOptional?: React.MouseEventHandler<HTMLAnchorElement>
@@ -68,18 +76,15 @@ type Props = PropsWithChildren<{
 
 export const Header: React.FC<Props> = ({ children, linkTo, onClickOptional }) => {
   const isUpToMedium = useMediaQuery(Media.upToMedium(false))
-
   return (
     <HeaderStyled>
-      <Logo to={linkTo || '/'} onClick={(event): void => onClickOptional && onClickOptional(event)}>
-        {/* Ophis: render the Ophis wordmark (the CowSwap variant art was rebranded
-            to Ophis in-place) rather than the upstream CoW Explorer wordmark, so the
-            explorer header carries Ophis branding, not CoW's. */}
-        <ProductLogo
-          variant={ProductVariant.CowSwap}
-          overrideColor={Color.explorer_textPrimary}
-          logoIconOnly={isUpToMedium}
-        />
+      <Logo
+        aria-label="Ophis explorer home"
+        to={linkTo || '/'}
+        onClick={(event): void => onClickOptional && onClickOptional(event)}
+      >
+        <ProductLogo variant={ProductVariant.CowSwap} overrideColor={Color.explorer_textPrimary} logoIconOnly />
+        {!isUpToMedium && <Wordmark aria-hidden="true">ophis.</Wordmark>}
       </Logo>
       {children}
     </HeaderStyled>

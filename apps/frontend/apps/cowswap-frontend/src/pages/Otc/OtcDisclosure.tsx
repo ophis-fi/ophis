@@ -2,6 +2,25 @@ import type { ReactNode } from 'react'
 
 import { Trans } from '@lingui/react/macro'
 import { Accordion, Callout } from 'ophis/ds'
+import styled from 'styled-components/macro'
+
+const Disclosure = styled(Callout)`
+  padding: 24px;
+  ul {
+    gap: 12px;
+    margin: 16px 0;
+  }
+  @media (min-width: 900px) {
+    ul {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: 40px;
+    }
+  }
+  @media (max-width: 600px) {
+    padding: 16px;
+  }
+`
 
 /**
  * Required disclosure hierarchy from the OTC spec: the primary warning is
@@ -10,7 +29,7 @@ import { Accordion, Callout } from 'ophis/ds'
  */
 export function OtcDisclosure(): ReactNode {
   return (
-    <Callout tone="warning" title={<Trans>Escrowed peer-to-peer orders — read the terms before interacting</Trans>}>
+    <Disclosure tone="planned" title={<Trans>Escrowed peer-to-peer orders — read the terms before interacting</Trans>}>
       <ul>
         <li>
           <Trans>
@@ -46,6 +65,6 @@ export function OtcDisclosure(): ReactNode {
           </Trans>
         </p>
       </Accordion>
-    </Callout>
+    </Disclosure>
   )
 }

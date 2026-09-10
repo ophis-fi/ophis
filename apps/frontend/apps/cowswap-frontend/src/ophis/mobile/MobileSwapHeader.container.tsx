@@ -3,6 +3,7 @@ import { ReactNode } from 'react'
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
 import { Trans } from '@lingui/react/macro'
+import { User } from 'react-feather'
 import { Link, NavLink } from 'react-router'
 import styled from 'styled-components/macro'
 
@@ -50,11 +51,29 @@ const Header = styled.header`
     color: #17191c;
     border-bottom: 1px solid currentColor;
   }
+  .profile-link svg {
+    display: none;
+  }
   @media (max-width: 720px), (pointer: coarse) and (max-height: 500px) {
     max-width: 480px;
     padding: 16px;
     nav {
+      margin: 0 0 0 auto;
+      gap: 0;
+    }
+    nav > :not(.profile-link),
+    .profile-link span {
       display: none;
+    }
+    nav .profile-link {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+    }
+    .profile-link svg {
+      display: block;
     }
   }
   @media (min-width: 721px) and (max-width: 960px) {
@@ -83,8 +102,11 @@ export function MobileSwapHeader(): ReactNode {
       </Link>
       <nav aria-label="Ophis">
         <TradeWidgetLinks />
-        <NavLink to="/profile">
-          <Trans>Profile</Trans>
+        <NavLink to="/profile" className="profile-link" aria-label="Profile">
+          <User size={20} aria-hidden="true" />
+          <span>
+            <Trans>Profile</Trans>
+          </span>
         </NavLink>
         {isOtcEnabled && <NavLink to="/otc">OTC</NavLink>}
         <a href="https://explorer.ophis.fi">
@@ -93,60 +115,5 @@ export function MobileSwapHeader(): ReactNode {
       </nav>
       <AccountElement />
     </Header>
-  )
-}
-
-const Footer = styled.footer`
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 12px 24px max(24px, env(safe-area-inset-bottom));
-  font-size: 13px;
-  color: #5b606b;
-  @media (max-width: 720px) {
-    max-width: 480px;
-  }
-  summary {
-    cursor: pointer;
-    padding: 14px 0;
-  }
-  p {
-    line-height: 1.6;
-  }
-  a {
-    color: inherit;
-    text-underline-offset: 4px;
-  }
-  nav {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 24px;
-    padding: 20px 0;
-    border-top: 1px solid #e8e8ea;
-  }
-`
-
-export function MobileSwapFooter(): ReactNode {
-  return (
-    <Footer>
-      <details>
-        <summary>
-          <Trans>Refer friends</Trans>
-        </summary>
-        <p>
-          <Trans>Share Ophis and track your referrals from your profile.</Trans>{' '}
-          <Link to="/profile">
-            <Trans>View profile</Trans> →
-          </Link>
-        </p>
-      </details>
-      <nav aria-label="More from Ophis">
-        <TradeWidgetLinks />
-        <Link to="/profile">
-          <Trans>Profile</Trans>
-        </Link>
-      </nav>
-    </Footer>
   )
 }

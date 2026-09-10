@@ -35,8 +35,6 @@ import {
 
 import { HydrateAtom } from 'common/state/HydrateAtom'
 
-const ADVANCED_ORDERS_MAX_WIDTH = '1800px'
-
 export function AdvancedOrdersPage(): ReactNode {
   const { i18n } = useLingui()
   const { isUnlocked } = useAtomValue(advancedOrdersAtom)
@@ -62,7 +60,6 @@ export function AdvancedOrdersPage(): ReactNode {
       <SetupAdvancedOrderAmountsFromUrlUpdater />
       <styledEl.PageWrapper
         isUnlocked={isUnlocked}
-        maxWidth={ADVANCED_ORDERS_MAX_WIDTH}
         secondaryOnLeft={ordersTableOnLeft}
         hideOrdersTable={hideOrdersTable}
       >

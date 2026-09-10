@@ -1,3 +1,4 @@
+import { Table } from 'ophis/ds'
 import styled from 'styled-components/macro'
 
 export const OtcStack = styled.div`
@@ -38,8 +39,10 @@ export const CopyButton = styled.button`
   background: transparent;
   color: var(--cow-color-text);
   font: inherit;
-  font-size: 11px;
-  padding: 2px 7px;
+  font-size: 12px;
+  min-height: 28px;
+  min-width: 44px;
+  padding: 4px 8px;
   margin-left: 6px;
   cursor: pointer;
 
@@ -112,8 +115,8 @@ export const FilterField = styled.div`
     border-radius: 8px;
     color: var(--cow-color-text);
     font: inherit;
-    font-size: 14px;
-    padding: 8px 10px;
+    font-size: 16px;
+    padding: 10px 12px;
     min-height: 44px;
     min-width: 0;
 
@@ -135,8 +138,10 @@ export const BadgeRow = styled.div`
 
 export const StatusStack = styled.div`
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
+  min-width: 160px;
+  max-width: 230px;
 `
 
 export const DisabledAction = styled.button`
@@ -149,4 +154,23 @@ export const DisabledAction = styled.button`
   font-size: 14px;
   padding: 10px 18px;
   cursor: not-allowed;
+`
+
+export const OrdersTable = styled(Table)`
+  min-width: 960px;
+  th {
+    font-size: 13px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  td {
+    padding: 16px;
+    vertical-align: middle;
+  }
+`
+
+export const Amount = styled.span`
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 `
