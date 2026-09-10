@@ -15,7 +15,7 @@ const TRUSTED_ROBINHOOD_RPC = 'https://rpc.mainnet.chain.robinhood.com';
 const ROBINHOOD_RPCS = [
   TRUSTED_ROBINHOOD_RPC,
   'https://hood-rpc.pastrylabs.cloud',
-  'https://rpc.arrowrpc.com',
+  'https://robinhood-rpc.publicnode.com',
 ];
 const UPSTREAM_URL =
   `${PONS_ORIGIN}/api/pons-launches?explore=1&sort=recentBuys&age=all&page=1&pageSize=100` +
