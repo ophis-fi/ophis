@@ -307,7 +307,11 @@ describe('ophisBridgeProviders', () => {
       })
     })
   })
+})
 
+// Split from the Across block above to keep each top-level describe under the
+// max-lines-per-function cap.
+describe('ophisBridgeProviders: chains, decode-only provider, invariants', () => {
   describe('DecodeOnlyBungeeBridgeProvider (shared with the explorer, decode-only)', () => {
     const provider = (): DecodeOnlyBungeeBridgeProvider => createDecodeOnlyBungeeBridgeProvider()
 
