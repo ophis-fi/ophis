@@ -1,13 +1,17 @@
 // node scripts/check-steep-orders.cjs http://127.0.0.1:3017
-// Install the frontend workspace, Chrome, and the landing workspace's WebKit browser.
+// Install the frontend workspace, Chrome, and Playwright's WebKit browser.
 // Uses a read-only test wallet; unlocks the UI without signing or submitting orders.
 const assert = require('node:assert/strict')
-const { createRequire } = require('node:module')
-const { chromium, webkit } = createRequire(require.resolve('../apps/ophis-landing/package.json'))('@playwright/test')
+const { chromium, webkit } = require('playwright')
 const base = process.argv[2] || 'http://127.0.0.1:3017'
 
 async function check(browser, width, dark) {
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, locale: 'en-US', reducedMotion: 'reduce' })
+  const context = await browser.newContext({
+    viewport: { width, height: 1000 },
+    locale: 'en-US',
+    reducedMotion: 'reduce',
+  })
+  const page = await context.newPage()
   page.setDefaultTimeout(45000)
   try {
     await page.addInitScript((dark) => {
@@ -41,6 +45,8 @@ async function check(browser, width, dark) {
         (dark) => getComputedStyle(document.documentElement).colorScheme === (dark ? 'dark' : 'light'),
         dark,
       )
+      const grid = page.locator('[class*="PageWrapper"]').filter({ has: heading }).last()
+      assert.ok((await grid.boundingBox()).width <= 1200, 'form and orders stay on the shared page grid')
       assert.match(await heading.evaluate((e) => getComputedStyle(e).fontFamily), /Georgia/)
       const artwork = page.locator('[class*=NoOrdersArtwork] svg')
       await artwork.waitFor()
@@ -60,7 +66,7 @@ async function check(browser, width, dark) {
       console.log('PASS', browser.browserType().name(), width, dark ? 'dark' : 'light', route)
     }
   } finally {
-    await page.close()
+    await context.close()
   }
 }
 

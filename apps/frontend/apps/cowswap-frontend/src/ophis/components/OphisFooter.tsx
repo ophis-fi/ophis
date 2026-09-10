@@ -10,6 +10,8 @@
  */
 import { ReactNode } from 'react'
 
+import { useMediaQuery } from '@cowprotocol/common-hooks'
+
 import * as styledEl from './OphisFooter.styled'
 
 interface Props {
@@ -27,19 +29,19 @@ interface Props {
 function CompactFooter({ borderless }: { borderless: boolean }): ReactNode {
   return (
     <styledEl.CompactBar $borderless={borderless}>
-      <styledEl.CompactBrand>
+      <styledEl.CompactBrand as="a" href="https://ophis.fi/" aria-label="Ophis home">
         <styledEl.BrandIcon src="/ophis-icon.svg" alt="" aria-hidden="true" />
         <styledEl.Wordmark>
           ophis<span>.</span>
         </styledEl.Wordmark>
       </styledEl.CompactBrand>
-      <styledEl.CompactLinks>
-        <styledEl.InternalLink to="/profile">Refer and earn</styledEl.InternalLink>
+      <styledEl.CompactLinks aria-label="More from Ophis">
         <styledEl.ExternalLink href="https://docs.ophis.fi/">Docs</styledEl.ExternalLink>
-        <styledEl.InternalLink to="/about">About</styledEl.InternalLink>
-        <styledEl.ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
-          GitHub
+        <styledEl.ExternalLink href="https://ophis.fi/blog/">Blog</styledEl.ExternalLink>
+        <styledEl.ExternalLink href="https://x.com/ophisfi" aria-label="Ophis on X">
+          X
         </styledEl.ExternalLink>
+        <styledEl.ExternalLink href="https://t.me/ophisfi">Telegram</styledEl.ExternalLink>
         <styledEl.InternalLink to="/legal">Legal</styledEl.InternalLink>
       </styledEl.CompactLinks>
       <styledEl.CompactCopy>&copy; Ophis 2026</styledEl.CompactCopy>
@@ -167,5 +169,6 @@ function FullFooter({ borderless }: { borderless: boolean }): ReactNode {
 }
 
 export function OphisFooter({ borderless = false, compact = false }: Props): ReactNode {
-  return compact ? <CompactFooter borderless={borderless} /> : <FullFooter borderless={borderless} />
+  const isMobile = useMediaQuery('(max-width: 720px)')
+  return compact || isMobile ? <CompactFooter borderless={borderless} /> : <FullFooter borderless={borderless} />
 }

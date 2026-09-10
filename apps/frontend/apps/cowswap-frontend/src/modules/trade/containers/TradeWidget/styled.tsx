@@ -47,6 +47,7 @@ export const ContainerBox = styled.div`
 
 export const Header = styled.div`
   display: flex;
+  gap: 8px;
   justify-content: space-between;
   align-items: center;
   padding: ${({ theme }) => (theme.isWidget ? '0 7px' : '0 5px 0 0')};

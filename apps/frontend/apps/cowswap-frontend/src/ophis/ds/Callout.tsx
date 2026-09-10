@@ -16,6 +16,7 @@ import { STEEP_FONT, steep, type SteepToneName } from './steep.utils'
 export type CalloutTone = 'info' | 'success' | 'warning' | 'danger' | 'planned'
 
 interface CalloutProps {
+  className?: string
   tone?: CalloutTone
   /** Optional title. Renders bold above the body. */
   title?: ReactNode
@@ -80,9 +81,9 @@ interface CalloutPropsWithRole extends CalloutProps {
   role?: 'alert' | 'status' | 'note'
 }
 
-export function Callout({ tone = 'info', title, children, role }: CalloutPropsWithRole): ReactNode {
+export function Callout({ tone = 'info', title, children, role, className }: CalloutPropsWithRole): ReactNode {
   return (
-    <Outer $tone={tone} role={role}>
+    <Outer $tone={tone} role={role} className={className}>
       {title && <Title>{title}</Title>}
       <Body>{children}</Body>
     </Outer>

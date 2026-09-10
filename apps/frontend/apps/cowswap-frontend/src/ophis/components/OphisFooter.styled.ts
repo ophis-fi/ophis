@@ -36,7 +36,9 @@ export const Bar = styled.footer<{ $borderless: boolean }>`
 export const CompactBar = styled.footer<{ $borderless: boolean }>`
   width: 100%;
   flex: 0 0 auto;
-  padding: 14px 36px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 24px max(20px, env(safe-area-inset-bottom));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -49,14 +51,14 @@ export const CompactBar = styled.footer<{ $borderless: boolean }>`
     theme?.darkMode ? 'var(--ophis-steep-dark-bg, #17191c)' : 'var(--ophis-steep-paper, #ffffff)'};
   border-top: 1px solid ${({ theme, $borderless }) => ($borderless ? 'transparent' : steep(theme).cardBorder)};
 
-  @media (max-width: 600px) {
-    padding: 12px 18px;
-    justify-content: center;
+  @media (max-width: 720px) {
+    padding: 16px 18px max(16px, env(safe-area-inset-bottom));
     gap: 6px 16px;
   }
 `
 
 export const CompactBrand = styled.div`
+  text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -72,6 +74,15 @@ export const CompactLinks = styled.nav`
   gap: 20px;
   flex-wrap: wrap;
   justify-content: center;
+  a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  @media (max-width: 720px) {
+    width: 100%;
+    order: 3;
+  }
 `
 
 export const CompactCopy = styled.span`

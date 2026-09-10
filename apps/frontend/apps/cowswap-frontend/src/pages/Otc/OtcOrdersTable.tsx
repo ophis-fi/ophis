@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Badge, Table, Tbody, Td, Th, Thead, Tr } from 'ophis/ds'
+import { Badge, Tbody, Td, Th, Thead, Tr } from 'ophis/ds'
 import { formatOtcAmount, getOtcTokenMeta } from 'ophis/otc'
 import { Link } from 'react-router'
 
-import { CopyButton, Mono, RawNote, VisuallyHidden } from './Otc.styled'
+import { Amount, OrdersTable as Table, StatusStack, CopyButton, Mono, RawNote, VisuallyHidden } from './Otc.styled'
 import { OtcAge } from './OtcAge'
 
 import type { OtcDisplayRow } from './otcDisplay'
@@ -30,9 +30,9 @@ function AmountCell({ token, amount }: { token: string; amount: bigint }): React
   const meta = getOtcTokenMeta(token)
   if (meta) {
     return (
-      <Mono>
+      <Amount>
         {formatOtcAmount(amount, meta.decimals)} {meta.symbol}
-      </Mono>
+      </Amount>
     )
   }
   return (
@@ -48,30 +48,30 @@ function AmountCell({ token, amount }: { token: string; amount: bigint }): React
 
 function StatusCell({ row }: { row: OtcDisplayRow }): ReactNode {
   return (
-    <span>
+    <StatusStack>
       <Badge tone={row.resolution === 'active' ? 'live' : 'draft'}>
         {row.resolution === 'active' ? <Trans>Active</Trans> : <Trans>Inactive</Trans>}
-      </Badge>{' '}
+      </Badge>
       {row.verified && (
-        <Badge tone="audit">
+        <Badge tone="beta">
           <Trans>Verified on-chain</Trans>
         </Badge>
-      )}{' '}
+      )}
       {row.resolution === 'active' && (
         <Badge tone="audit">
           <Trans>Escrowed</Trans>
         </Badge>
-      )}{' '}
+      )}
       {row.indexClaim === 'filled' && (
         <RawNote>
           <Trans>index: filled</Trans>
         </RawNote>
-      )}{' '}
+      )}
       {row.indexClaim === 'cancelled' && (
         <RawNote>
           <Trans>index: cancelled</Trans>
         </RawNote>
-      )}{' '}
+      )}
       {row.mismatch && (
         <Badge tone="planned">
           <Trans>Index mismatch</Trans>
@@ -82,7 +82,7 @@ function StatusCell({ row }: { row: OtcDisplayRow }): ReactNode {
           <Trans>Unreviewed token</Trans>
         </Badge>
       )}
-    </span>
+    </StatusStack>
   )
 }
 
@@ -92,9 +92,9 @@ function RateCell({ row }: { row: OtcDisplayRow }): ReactNode {
   const metaA = getOtcTokenMeta(row.order.tokenA)
   const metaB = getOtcTokenMeta(row.order.tokenB)
   return (
-    <Mono>
+    <Amount>
       {row.rate.rate} {metaB?.symbol} <Trans>per</Trans> {metaA?.symbol}
-    </Mono>
+    </Amount>
   )
 }
 
