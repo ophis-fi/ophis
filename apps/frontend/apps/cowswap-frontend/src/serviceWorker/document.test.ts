@@ -42,12 +42,36 @@ describe('document', () => {
 
     beforeEach(() => {
       fetch.mockReset()
+      matchPrecache.mockReset()
       getCacheKeyForURL.mockReturnValueOnce(requestUrl)
       options = {
         event: new Event('fetch'),
         request: new Request('http://example.com'),
         url: new URL('http://example.com'),
       }
+    })
+
+    it.each([
+      ['https://swap.ophis.fi/451', '/451.html'],
+      ['https://swap.ophis.fi/business', '/business/index.html'],
+      ['https://swap.ophis.fi/business/', '/business/index.html'],
+      ['https://swap.ophis.fi/ophis-fee-safe-robinhood-ceremony', '/ophis-fee-safe-robinhood-ceremony.html'],
+      ['https://swap.ophis.fi/ophis-uniswap-v4-robinhood-ceremony', '/ophis-uniswap-v4-robinhood-ceremony.html'],
+      ['https://swap.ophis.fi/ophis-uniswap-v4-optimism-ceremony', '/ophis-uniswap-v4-optimism-ceremony.html'],
+      ['https://business.ophis.fi/', '/business/index.html'],
+    ])('serves the static document at %s without the app shell', async (address, cachedPath) => {
+      const url = new URL(address)
+      const request = new Request(url)
+      const cached = new Response('cached static page')
+      const response = new Response('static page')
+      matchPrecache.mockResolvedValueOnce(cached)
+      fetch.mockResolvedValueOnce(response)
+      expect(matchDocument({ ...options, url, request: { mode: 'navigate' } } as RouteMatchCallbackOptions)).toBe(true)
+      expect(await handleDocument({ ...options, url, request })).toBe(cached)
+      expect(matchPrecache).toHaveBeenCalledWith(cachedPath)
+      expect(fetch).not.toHaveBeenCalled()
+      expect(await handleDocument({ ...options, url, request })).toBe(response)
+      expect(fetch).toHaveBeenCalledWith(request)
     })
 
     describe('when offline', () => {

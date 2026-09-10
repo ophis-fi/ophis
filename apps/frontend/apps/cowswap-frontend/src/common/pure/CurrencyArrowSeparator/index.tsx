@@ -3,7 +3,6 @@ import { ReactNode } from 'react'
 import { isInjectedWidget } from '@cowprotocol/common-utils'
 
 import { OphieMark } from 'ophis/components'
-import { useTheme } from 'styled-components/macro'
 
 import * as styledEl from './styled'
 
@@ -24,7 +23,6 @@ export function CurrencyArrowSeparator({
   disabled = false,
 }: CurrencyArrowSeparatorProps): ReactNode {
   const isInjectedWidgetMode = isInjectedWidget()
-  const { isOphisMobileSwap } = useTheme()
 
   return (
     <styledEl.Box
@@ -42,12 +40,7 @@ export function CurrencyArrowSeparator({
         onClick={onSwitchTokens}
       >
         {!isInjectedWidgetMode && isLoading ? (
-          <OphieMark
-            size={26}
-            fill={isOphisMobileSwap ? 'currentColor' : 'saffron'}
-            animate="spin-fast"
-            ariaLabel="Switch tokens"
-          />
+          <OphieMark size={26} fill="currentColor" animate="spin-fast" ariaLabel="Switch tokens" />
         ) : (
           <styledEl.ArrowDownIcon disabled={disabled} />
         )}

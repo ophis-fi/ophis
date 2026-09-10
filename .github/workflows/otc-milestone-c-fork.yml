@@ -50,7 +50,7 @@ jobs:
         working-directory: contracts
         env:
           FOUNDRY_PROFILE: otc-fork
-          OTC_FORK_RPC_URL: https://ethereum-rpc.publicnode.com
+          OTC_FORK_RPC_URL: https://eth.drpc.org
         run: |
           timeout 120 forge test --fork-url "$OTC_FORK_RPC_URL" \
             --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol \
@@ -90,13 +90,13 @@ jobs:
       - name: Run injected-wallet flow against a local mainnet fork
         working-directory: apps/frontend
         env:
-          OTC_FORK_RPC_URL: https://ethereum-rpc.publicnode.com
+          OTC_FORK_RPC_URL: https://eth.drpc.org
           CYPRESS_OTC_FORK_RPC_URL: http://127.0.0.1:8545
           CYPRESS_SCREENSHOT_ON_RUN_FAILURE: 'true'
           CYPRESS_SCREENSHOTS_FOLDER: /tmp/otc-screenshots
           # Routine host hydration is not fork evidence. The injected wallet,
           # fixtures, action terms, preflight, sends, and receipts stay on Anvil.
-          REACT_APP_NETWORK_URL_1: https://ethereum-rpc.publicnode.com
+          REACT_APP_NETWORK_URL_1: https://eth.drpc.org
           REACT_APP_OTC_WRITE_FLAG: 'true'
           REACT_APP_OTC_WRITE_MODE: fork
         run: |
