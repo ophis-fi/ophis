@@ -413,7 +413,7 @@ export default function LegalPage(): ReactNode {
       width="medium"
       eyebrow="Legal"
       title="Terms, Privacy & Disclosures"
-      lede="Effective and last updated 14 June 2026. Plain-language summaries sit above the legal language where helpful; the operator is identified in section 8 and governing law is in section 9."
+      lede="Effective 14 June 2026, last updated 10 September 2026. Plain-language summaries sit above the legal language where helpful; the operator is identified in section 8 and governing law is in section 9."
     >
       {LEGAL_CONTENT}
     </PageShell>
