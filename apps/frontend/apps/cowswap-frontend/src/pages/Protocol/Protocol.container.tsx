@@ -1,5 +1,5 @@
 /**
- * Protocol — the trading-mechanism + stack-delta page (Phase A3, 2026-05-25).
+ * Protocol - the trading-mechanism + stack-delta page (Phase A3, 2026-05-25).
  *
  * IA decision (Codex design-partner review, thread 019e5f0b, 2026-05-25):
  * /protocol must NOT become a second /about. /about already owns the
@@ -7,18 +7,18 @@
  * technical reference. So /protocol is scoped as the bridge between them:
  *   - it goes DEEPER than /about's 3-step flow on the actual mechanism, and
  *   - it explicitly delineates WHERE OPHIS DIFFERS from upstream CoW Protocol.
- * The anchor is the "What Ophis adds" comparison Table — the one thing no
+ * The anchor is the "What Ophis adds" comparison Table - the one thing no
  * other surface provides. If this page ever drifts into "what is Ophis / why
  * intents / non-custodial prose / FAQ", that content belongs in /about, not
  * here.
  *
  * Anti-vibe-coding guardrails applied (Codex flagged these as fabrication
- * zones — every claim below is source-verified, not recalled):
+ * zones - every claim below is source-verified, not recalled):
  *   - Order entry is the structured in-app swap form. The
  *     natural-language → structured-order endpoint remains a developer
  *     API (POST /api/intent); it is not presented as the pretrade UX.
  *   - Fee framing mirrors the /learn copy and docs.ophis.fi/fees (flat 0.01%
- *     volume fee, 0.01% on stablecoin pairs — live since the volume-fee flag
+ *     volume fee, 0.01% on stablecoin pairs - live since the volume-fee flag
  *     shipped). Source of truth: ophis/partnerFeeDefault.ts, which mirrors
  *     packages/sdk/src/partner-fee.ts. Update all fee copy together.
  *   - Chain count "11" mirrors SORTED_CHAIN_IDS (libs/common-const/chainInfo.ts).
@@ -79,7 +79,7 @@ export function ProtocolPage(): ReactNode {
       <Section id="lifecycle" title="Intent lifecycle" intro="From order to settled batch, in five steps.">
         <FeatureGrid minCardWidth="240px">
           <FeatureCard icon="01" title="Build">
-            You build the order in the swap form — &#34;swap 1 ETH for USDC on Base&#34; — picking tokens, amount, and
+            You build the order in the swap form - &#34;swap 1 ETH for USDC on Base&#34; - picking tokens, amount, and
             chain, with the exact terms shown before anything is signed.
           </FeatureCard>
           <FeatureCard icon="02" title="Check">

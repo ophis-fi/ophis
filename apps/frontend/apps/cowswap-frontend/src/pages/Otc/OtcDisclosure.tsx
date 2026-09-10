@@ -29,7 +29,7 @@ const Disclosure = styled(Callout)`
  */
 export function OtcDisclosure(): ReactNode {
   return (
-    <Disclosure tone="planned" title={<Trans>Escrowed peer-to-peer orders — read the terms before interacting</Trans>}>
+    <Disclosure tone="planned" title={<Trans>Escrowed peer-to-peer orders - read the terms before interacting</Trans>}>
       <ul>
         <li>
           <Trans>

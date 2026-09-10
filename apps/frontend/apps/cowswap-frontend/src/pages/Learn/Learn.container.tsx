@@ -1,9 +1,9 @@
 /**
- * Learn — orientation / navigation hub (Phase A3 tail, 2026-05-23).
+ * Learn - orientation / navigation hub (Phase A3 tail, 2026-05-23).
  *
  * IA decision (Codex 2026-05-23): NOT a content / publication archive.
  * cow.fi/learn ships years of original articles, podcasts, and media
- * coverage. Ophis has none of that yet — a literal copy would be 90%
+ * coverage. Ophis has none of that yet - a literal copy would be 90%
  * empty placeholders. So /learn is reframed as a GUIDED INDEX of the
  * existing Ophis pages, organized by user intent, with a small
  * upstream-CoW context section clearly separated at the bottom.
@@ -12,16 +12,16 @@
  *   - Title: "Learn Ophis without the guesswork." (anti-marketing)
  *   - Lede: honest about no articles / podcasts / media coverage yet.
  *   - 5 internal clusters first, upstream-CoW external section last.
- *   - Upstream CoW links labeled "Upstream protocol context — not Ophis
+ *   - Upstream CoW links labeled "Upstream protocol context - not Ophis
  *     documentation, not Ophis policy." Codex was specific about this:
  *     do not imply CoW endorses Ophis or that CoW docs define Ophis.
  *   - No search bar / no article cards / no topic subpages / no
- *     podcasts section / no media coverage — those imply a content
+ *     podcasts section / no media coverage - those imply a content
  *     operation that does not exist.
  *   - /profile, /missions, /earn referenced as PLAIN TEXT until their
  *     respective PRs (#255, #256, #257) land, then a follow-up re-links.
  *
- * AGENTS.md compliance (proactive — same constraints as PR #255 Profile):
+ * AGENTS.md compliance (proactive - same constraints as PR #255 Profile):
  *   - Named export (no default).
  *   - Page implementation in *.container.tsx, barrel in index.ts.
  */
@@ -70,7 +70,7 @@ export function LearnPage(): ReactNode {
           </FeatureCard>
           <FeatureCard title="Docs">
             <p>
-              How a swap intent flows through Ophis — building the order, solver competition, MEV-protected settlement.
+              How a swap intent flows through Ophis - building the order, solver competition, MEV-protected settlement.
               Includes a FAQ and API reference.
             </p>
             <p>

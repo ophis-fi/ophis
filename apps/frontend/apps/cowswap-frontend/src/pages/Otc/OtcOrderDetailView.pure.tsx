@@ -137,7 +137,7 @@ function TechnicalDetailsSection({ order, blockNumber }: { order: OtcOrder; bloc
   const technicalRows: KeyValueRow[] = [
     { label: t`Escrow contract`, value: <Mono>{OPHIS_ETHEREUM_OTC_MANIFEST.contract.address}</Mono> },
     { label: t`Order id`, value: order.orderId.toString() },
-    { label: t`Verified at block`, value: blockNumber ? blockNumber.toString() : '—' },
+    { label: t`Verified at block`, value: blockNumber ? blockNumber.toString() : '-' },
   ]
   return (
     <Section id="otc-order-technical" title={<Trans>Technical details</Trans>}>
@@ -179,7 +179,7 @@ function DetailBody({
         <Callout
           tone="warning"
           title={
-            writeEnabled ? <Trans>Canonical index differs</Trans> : <Trans>Order data changed — refresh required</Trans>
+            writeEnabled ? <Trans>Canonical index differs</Trans> : <Trans>Order data changed - refresh required</Trans>
           }
         >
           <p>

@@ -6298,8 +6298,8 @@ msgid "Browse"
 msgstr "Explorar"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
-msgid "Order data changed — refresh required"
-msgstr "Los datos de la orden cambiaron — es necesario actualizar"
+msgid "Order data changed - refresh required"
+msgstr "Los datos de la orden cambiaron - es necesario actualizar"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
 msgid "No active orders match. Clear the filters or check back later."
@@ -6470,8 +6470,8 @@ msgid "Order not found"
 msgstr "Orden no encontrada"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcDisclosure.tsx
-msgid "Escrowed peer-to-peer orders — read the terms before interacting"
-msgstr "Órdenes entre pares en custodia — lee los términos antes de interactuar"
+msgid "Escrowed peer-to-peer orders - read the terms before interacting"
+msgstr "Órdenes entre pares en custodia - lee los términos antes de interactuar"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "Fork actions ignore this checkpoint and re-read exact fork state before opening the wallet."

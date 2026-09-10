@@ -79,7 +79,7 @@ const signingScheme = SigningScheme.EIP1271; // SigningScheme.EIP712 for an EOA 
 // 0. Register the wallet with the rebate indexer once, on wallet-connect. Without
 //    this the indexer never fetches its trades and the rebate never accrues.
 //    Best-effort by default: an indexer outage (non-2xx / network error / timeout)
-//    RESOLVES to { enrolled: false } instead of throwing, so INSPECT the result —
+//    RESOLVES to { enrolled: false } instead of throwing, so INSPECT the result -
 //    re-call on the next connect, and warn your user the rebate may not index yet.
 //    A wallet left un-enrolled past a monthly payout cutoff permanently misses that
 //    trade's rebate; pass { blocking: true } to hard-require enrollment instead.

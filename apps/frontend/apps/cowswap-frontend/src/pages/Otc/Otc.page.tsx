@@ -17,7 +17,7 @@ import { useCallback, useState, type ReactNode } from 'react'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Badge, Callout, PageShell } from 'ophis/ds'
+import { Callout, PageShell } from 'ophis/ds'
 import { useOtcData } from 'ophis/otc'
 import { OtcCreatePanel } from 'ophis/otcWrite'
 import { Navigate } from 'react-router'
@@ -74,19 +74,6 @@ function OtcLede({ writeEnabled, canary }: { writeEnabled: boolean; canary: bool
   )
 }
 
-function OtcModeLabel({ writeEnabled, canary }: { writeEnabled: boolean; canary: boolean }): ReactNode {
-  if (writeEnabled && process.env.REACT_APP_OTC_WRITE_MODE === 'public') return <Trans>Public Ethereum trading</Trans>
-  return writeEnabled ? (
-    canary ? (
-      <Trans>Restricted Ethereum canary</Trans>
-    ) : (
-      <Trans>Local fork writes</Trans>
-    )
-  ) : (
-    <Trans>Read-only</Trans>
-  )
-}
-
 export function OtcPageView({
   state,
   account,
@@ -110,17 +97,13 @@ export function OtcPageView({
       lede={<OtcLede writeEnabled={writeEnabled} canary={canary} />}
     >
       <OtcStack>
-        <BadgeRow>
-          <Badge tone="live">Ethereum</Badge>
-          <Badge tone="beta">
-            <OtcModeLabel writeEnabled={writeEnabled} canary={canary} />
-          </Badge>
-          {verifiedBlock && (
+        {verifiedBlock && (
+          <BadgeRow>
             <span aria-label={t`Verified at block ${verifiedBlock}`}>
               <Trans>Verified at block {verifiedBlock}</Trans>
             </span>
-          )}
-        </BadgeRow>
+          </BadgeRow>
+        )}
 
         <OtcDisclosure />
 

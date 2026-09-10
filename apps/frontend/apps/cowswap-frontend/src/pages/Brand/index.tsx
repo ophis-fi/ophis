@@ -1,5 +1,5 @@
 /**
- * Brand kit — logo variants + color tokens + typography spec + usage
+ * Brand kit - logo variants + color tokens + typography spec + usage
  * guidelines.
  *
  * Phase A3 rebuild (PR #250, 2026-05-23). Replaces local
@@ -34,7 +34,7 @@ import {
 import styled from 'styled-components/macro'
 
 // Visual swatches and typography samples live in this file because they
-// don't generalize to the rest of the design system — a brand-kit page
+// don't generalize to the rest of the design system - a brand-kit page
 // is the one place where you DO want display-only chrome.
 const LogoTile = styled.div<{ $dark?: boolean }>`
   color: ${({ $dark }) => ($dark ? '#f4f4f5' : '#17191c')};
@@ -254,7 +254,7 @@ const BRAND_SECTIONS: ReactNode = (
         <FontSample $family={STEEP_FONT.display}>
           <div className="sample">Aa Bb Cc</div>
           <div className="name">Georgia</div>
-          <div className="role">Display, headings — regular + italic only</div>
+          <div className="role">Display, headings - regular + italic only</div>
         </FontSample>
         <FontSample $family={STEEP_FONT.body}>
           <div className="sample">Aa Bb Cc</div>
