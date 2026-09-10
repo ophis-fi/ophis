@@ -4,7 +4,7 @@ import { Trans, useLingui } from '@lingui/react/macro'
 import { Badge, Callout, KeyValueList, PageShell, Section, TextLink } from 'ophis/ds'
 import { formatOtcAmount, getOtcTokenMeta, OPHIS_ETHEREUM_OTC_MANIFEST } from 'ophis/otc'
 
-import { BadgeRow, Mono, RawNote } from './Otc.styled'
+import { BadgeRow, Mono, OtcStack, RawNote } from './Otc.styled'
 import { OtcAge } from './OtcAge'
 import { OtcFreshnessNotice } from './otcDetailFreshness'
 import { indexedOtcOrderDisagrees } from './otcOrderDetail.utils'
@@ -216,23 +216,25 @@ export function OtcOrderDetailView(props: OtcOrderDetailViewProps): ReactNode {
         )
       }
     >
-      <OtcFreshnessNotice freshness={freshness} loading={loading} failed={failed} />
-      {loading && (
-        <p>
-          <Trans>Verifying order #{orderIdText} on Ethereum...</Trans>
-        </p>
-      )}
-      {failed && (
-        <Callout tone="warning" title={<Trans>Order unavailable</Trans>}>
+      <OtcStack>
+        <OtcFreshnessNotice freshness={freshness} loading={loading} failed={failed} />
+        {loading && (
           <p>
-            <Trans>
-              On-chain verification failed, so this order is hidden rather than shown unverified. Refresh to retry.
-            </Trans>
+            <Trans>Verifying order #{orderIdText} on Ethereum...</Trans>
           </p>
-        </Callout>
-      )}
-      {!loading && !failed && <DetailBody {...props} />}
-      {writeEnabled && props.actionPanel}
+        )}
+        {failed && (
+          <Callout tone="warning" title={<Trans>Order unavailable</Trans>}>
+            <p>
+              <Trans>
+                On-chain verification failed, so this order is hidden rather than shown unverified. Refresh to retry.
+              </Trans>
+            </p>
+          </Callout>
+        )}
+        {!loading && !failed && <DetailBody {...props} />}
+        {writeEnabled && props.actionPanel}
+      </OtcStack>
     </PageShell>
   )
 }

@@ -24,6 +24,7 @@ interface TableProps extends TableHTMLAttributes<HTMLTableElement> {
 }
 
 const ScrollWrapper = styled.div`
+  position: relative;
   width: 100%;
   overflow-x: auto;
   border-radius: 16px;
