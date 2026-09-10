@@ -176,6 +176,29 @@ export function isRobinhoodAsset(value: unknown): boolean {
   return sanitizeRobinhoodAsset(value) !== undefined;
 }
 
+export function robinhoodTokenList(assets: SanitizedAsset[], now = new Date()) {
+  return {
+    name: 'Robinhood Stock Tokens',
+    timestamp: now.toISOString(),
+    version: { major: 1, minor: 0, patch: Math.floor(now.getTime() / 300_000) },
+    tokens: assets.flatMap((asset) =>
+      asset.deployments
+        .filter((deployment) => deployment.chainId === 4663)
+        .map((deployment) => ({
+          chainId: deployment.chainId,
+          address: deployment.contractAddress,
+          name: asset.tokenName.slice(0, 100),
+          symbol: asset.tokenSymbol,
+          // Robinhood documents its Stock Tokens as 18-decimal ERC-20s.
+          decimals: 18,
+          ...(asset.logoUrl?.startsWith('https://cdn.robinhood.com/')
+            ? { logoURI: asset.logoUrl }
+            : {}),
+        })),
+    ),
+  };
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -183,6 +206,7 @@ function json(body: unknown, status = 200): Response {
       'content-type': 'application/json; charset=utf-8',
       'cache-control': status === 200 ? CACHE_CONTROL : 'no-store',
       'x-content-type-options': 'nosniff',
+      'access-control-allow-origin': '*',
     },
   });
 }
@@ -220,8 +244,13 @@ export const onRequest: PagesFunction = async ({ request }) => {
       throw new Error('invalid payload');
     }
     const assets = payload.assets.map(sanitizeRobinhoodAsset);
-    if (assets.some((asset) => asset === undefined)) throw new Error('invalid asset');
-    return json({ assets });
+    if (!assets.every((asset): asset is SanitizedAsset => asset !== undefined))
+      throw new Error('invalid asset');
+    return json(
+      new URL(request.url).searchParams.get('format') === 'token-list'
+        ? robinhoodTokenList(assets)
+        : { assets },
+    );
   } catch {
     return json({ error: 'Invalid Robinhood asset registry response' }, 502);
   }

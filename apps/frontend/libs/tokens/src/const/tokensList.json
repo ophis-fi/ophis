@@ -235,13 +235,18 @@
   ],
   "4663": [
     {
+      "priority": 0,
+      "enabledByDefault": true,
+      "source": "https://swap.ophis.fi/api/robinhood/assets?format=token-list"
+    },
+    {
       "priority": 1,
       "enabledByDefault": true,
       "source": "https://ipfs.io/ipns/tokens.uniswap.org"
     },
     {
       "priority": 2,
-      "enabledByDefault": false,
+      "enabledByDefault": true,
       "source": "https://swap.ophis.fi/api/pons-token-list"
     }
   ]
