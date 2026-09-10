@@ -1,4 +1,15 @@
-import styled, { css } from 'styled-components/macro'
+import styled from 'styled-components/macro'
+
+export const OtcStack = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+
+  @media (max-width: 600px) {
+    gap: 16px;
+  }
+`
 
 export const Mono = styled.span`
   font-family: var(--cow-font-family-mono, ui-monospace, monospace);
@@ -46,34 +57,33 @@ export const RawNote = styled.span`
 
 export const TabBar = styled.div`
   display: flex;
-  gap: 8px;
+  gap: 4px;
   flex-wrap: wrap;
-  margin: 0 0 20px;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--cow-color-border);
+  border-radius: 12px;
+  background: var(--cow-color-paper-darker);
 `
 
 export const TabButton = styled.button<{ $active: boolean }>`
   appearance: none;
-  border: 1px solid var(--cow-color-border);
-  border-radius: 12px;
-  background: ${({ $active }) => ($active ? 'var(--cow-color-paper-darker)' : 'transparent')};
-  color: ${({ $active }) => ($active ? 'var(--cow-color-primary)' : 'var(--cow-color-text)')};
-  text-decoration: ${({ $active }) => ($active ? 'underline' : 'none')};
-  text-underline-offset: 4px;
+  border: 1px solid ${({ $active }) => ($active ? 'var(--cow-color-border)' : 'transparent')};
+  border-radius: 8px;
+  background: ${({ $active }) => ($active ? 'var(--cow-color-paper)' : 'transparent')};
+  color: var(--cow-color-text);
   font: inherit;
   font-size: 14px;
-  padding: 8px 16px;
+  font-weight: 500;
+  min-height: 44px;
+  padding: 8px 12px;
   cursor: pointer;
 
   &:focus-visible {
     outline: 2px solid var(--cow-color-primary);
     outline-offset: 2px;
   }
-
-  ${({ $active }) =>
-    $active &&
-    css`
-      border-color: var(--cow-color-primary);
-    `}
 `
 
 export const FilterBar = styled.div`
@@ -87,7 +97,8 @@ export const FilterField = styled.div`
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 160px;
+  min-width: min(160px, 100%);
+  flex: 1 1 160px;
 
   label {
     font-size: 12px;
@@ -96,14 +107,15 @@ export const FilterField = styled.div`
 
   input,
   select {
-    appearance: none;
-    background: var(--cow-color-paper-darker);
+    background: var(--cow-color-paper);
     border: 1px solid var(--cow-color-border);
     border-radius: 8px;
     color: var(--cow-color-text);
     font: inherit;
     font-size: 14px;
     padding: 8px 10px;
+    min-height: 44px;
+    min-width: 0;
 
     &:focus-visible {
       outline: 2px solid var(--cow-color-primary);
@@ -117,7 +129,8 @@ export const BadgeRow = styled.div`
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
-  margin: 0 0 16px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 `
 
 export const StatusStack = styled.div`
