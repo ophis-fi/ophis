@@ -4,6 +4,8 @@ import {
   acrossInkLineaSourceIds,
   acrossRobinhoodSourceIds,
   BRIDGE_SOURCE_CHAIN_IDS,
+  createDecodeOnlyBungeeBridgeProvider,
+  DecodeOnlyBungeeBridgeProvider,
   EXTRA_ACROSS_SOURCE_CHAIN_IDS,
 } from '@cowprotocol/common-const'
 import { isEvmChainInfo, OrderKind, SupportedChainId, TargetChainId, TokenInfo } from '@cowprotocol/cow-sdk'
@@ -19,11 +21,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
-import {
-  ACROSS_EXECUTABLE_SOURCE_IDS,
-  OphisAcrossBridgeProvider,
-  OphisBungeeBridgeProvider,
-} from './ophisBridgeProviders'
+import { ACROSS_EXECUTABLE_SOURCE_IDS, OphisAcrossBridgeProvider } from './ophisBridgeProviders'
 
 const ids = (chains: { id: number }[]): number[] => chains.map((c) => c.id)
 
@@ -277,23 +275,31 @@ describe('ophisBridgeProviders', () => {
     })
   })
 
-  describe('OphisBungeeBridgeProvider', () => {
-    it('extends the upstream network list with Ink, Linea and Unichain', async () => {
-      const provider = new OphisBungeeBridgeProvider({ apiOptions: {} })
-      const base = await new BungeeBridgeProvider({ apiOptions: {} }).getNetworks()
-      const extended = await provider.getNetworks()
+  describe('DecodeOnlyBungeeBridgeProvider (shared with the explorer, decode-only)', () => {
+    const provider = (): DecodeOnlyBungeeBridgeProvider => createDecodeOnlyBungeeBridgeProvider()
 
-      expect(ids(extended)).toEqual(expect.arrayContaining(ids(base)))
-      expect(ids(extended)).toEqual(expect.arrayContaining([57073, 59144, 130]))
-      // Plasma + Robinhood Chain serve zero routes on the Bungee manual
-      // pipeline (empty bridges arrays, verified live 2026-08-10)
-      expect(ids(extended)).not.toContain(9745)
-      expect(ids(extended)).not.toContain(4663)
+    afterEach(() => jest.restoreAllMocks())
+
+    it('keeps the upstream dappId so existing Bungee orders still resolve', () => {
+      expect(provider().info.dappId).toBe(new BungeeBridgeProvider({ apiOptions: {} }).info.dappId)
     })
 
-    it('has no duplicate chain ids', async () => {
-      const extended = ids(await new OphisBungeeBridgeProvider({ apiOptions: {} }).getNetworks())
-      expect(new Set(extended).size).toBe(extended.length)
+    it('advertises no networks, so the quote fan-out and the destination picker never select it', async () => {
+      expect(await provider().getNetworks()).toEqual([])
+    })
+
+    it('reports no buy tokens without calling the (dead) API', async () => {
+      const upstreamSpy = jest.spyOn(BungeeBridgeProvider.prototype, 'getBuyTokens')
+      const fetchSpy = jest.spyOn(global, 'fetch')
+
+      const result = await provider().getBuyTokens({
+        buyChainId: SupportedChainId.BASE,
+        sellChainId: SupportedChainId.MAINNET,
+      })
+
+      expect(result).toEqual({ tokens: [], isRouteAvailable: false })
+      expect(upstreamSpy).not.toHaveBeenCalled()
+      expect(fetchSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -320,16 +326,17 @@ describe('ophisBridgeProviders', () => {
 
   describe('BRIDGE_SOURCE_CHAIN_IDS invariant', () => {
     // Mutation guard: the source set must equal the union of the UPSTREAM
-    // (unextended) provider lists PLUS the chains we deliberately made
-    // executable via our own on-chain deploys (EXTRA_ACROSS_SOURCE_CHAIN_IDS,
-    // gated OFF until the math helper is live). If an SDK upgrade widens upstream
-    // support, or someone edits either set without provider-side backing, this
-    // fails and forces a conscious review — source chains additionally need CoW
-    // Shed / math-helper deployments plus an E2E hook-execution proof.
+    // (unextended) lists of the providers that can still quote (Across + NEAR
+    // Intents; Bungee is decode-only since 2026-09-10 and its seven chains are
+    // all in NEAR's list) PLUS the chains we deliberately made executable via our own
+    // on-chain deploys (EXTRA_ACROSS_SOURCE_CHAIN_IDS, gated OFF until the math
+    // helper is live). If an SDK upgrade widens upstream support, or someone
+    // edits either set without provider-side backing, this fails and forces a
+    // conscious review — source chains additionally need CoW Shed / math-helper
+    // deployments plus an E2E hook-execution proof.
     it('equals the union of upstream provider EVM source networks plus our executable additions', async () => {
       const upstream = [
         ...(await new AcrossBridgeProvider().getNetworks()),
-        ...(await new BungeeBridgeProvider({ apiOptions: {} }).getNetworks()),
         ...(await new NearIntentsBridgeProvider({}).getNetworks()),
       ]
       const expected = new Set([

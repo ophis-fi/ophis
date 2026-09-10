@@ -24,9 +24,9 @@ import jsonStringify from 'json-stringify-deterministic'
  *    hardcodes "cow") and a 3 bps `appFees` entry paid to the partner-fee
  *    Safe. 1-Click accepts an EVM recipient directly, and the server excludes
  *    appFees from the attested hash (both verified live 2026-08-11), so the
- *    fee cannot break attestation. Fee parity with the Bungee proxy
- *    (functions/api/bungee BUNGEE_INTEGRATOR_FEE_BPS) keeps the best-quote
- *    comparison between providers honest.
+ *    fee cannot break attestation. 3 bps matches the integrator fee Ophis
+ *    charged on the other bridge lane (the Bungee proxy, retired 2026-09-10),
+ *    keeping the best-quote comparison between providers honest.
  */
 
 const OPHIS_NEAR_REFERRAL = 'ophis'

@@ -262,8 +262,14 @@ const LEGAL_CONTENT: ReactNode = (
           </TextLink>
         </li>
         <li>
-          <strong>Bungee Exchange + Across Protocol</strong> (cross-chain EVM bridge providers wired via{' '}
+          <strong>Across Protocol</strong> (cross-chain EVM bridge provider wired via{' '}
           <InlineCode>@cowprotocol/sdk-bridging</InlineCode>).
+        </li>
+        <li>
+          <strong>Bungee Exchange / Socket</strong> (historical bridge orders only: no new routes are requested from
+          Bungee, but the app still polls the Socket events API (microservices.socket.tech) and, for Across-routed
+          Bungee orders, app.across.to for the status of bridge orders placed while Bungee was an active provider, so
+          those requests carry IP + request metadata).
         </li>
         <li>
           <strong>CoW Protocol orderbook API</strong> (order submission, quote retrieval, settlement broadcast).{' '}
@@ -408,7 +414,7 @@ export default function LegalPage(): ReactNode {
       width="medium"
       eyebrow="Legal"
       title="Terms, Privacy & Disclosures"
-      lede="Effective and last updated 14 June 2026. Plain-language summaries sit above the legal language where helpful; the operator is identified in section 8 and governing law is in section 9."
+      lede="Effective 14 June 2026, last updated 10 September 2026. Plain-language summaries sit above the legal language where helpful; the operator is identified in section 8 and governing law is in section 9."
     >
       {LEGAL_CONTENT}
     </PageShell>

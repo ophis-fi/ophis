@@ -1,12 +1,21 @@
 import { EXTRA_ACROSS_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
 import { fetchWithTimeout } from '@cowprotocol/common-utils'
-import { avalanche, bnb, ChainInfo, getAddressKey, ink, linea, plasma, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
+import {
+  avalanche,
+  bnb,
+  ChainInfo,
+  getAddressKey,
+  ink,
+  linea,
+  plasma,
+  SupportedChainId,
+  TokenInfo,
+} from '@cowprotocol/cow-sdk'
 import {
   AcrossBridgeProvider,
   AcrossQuoteResult,
   BridgeProviderQuoteError,
   BridgeQuoteErrors,
-  BungeeBridgeProvider,
   BuyTokensParams,
   GetProviderBuyTokens,
   QuoteBridgeRequest,
@@ -22,13 +31,13 @@ const ACROSS_API_URL = 'https://app.across.to/api'
 const AVAILABLE_ROUTES_TIMEOUT_MS = 10_000
 
 /**
- * sdk-bridging 4.0.2 hardcodes each provider's network list far below what the
- * provider APIs actually serve (verified against the live APIs, 2026-08-10):
+ * sdk-bridging 4.0.2 hardcodes Across's network list far below what the
+ * provider API actually serves (verified against the live API, 2026-08-10):
  * Across covers every Ophis chain except Gnosis — including Robinhood Chain
- * (USDG routes) and Unichain — and Bungee's manual pipeline covers Unichain,
- * Ink and Linea. These subclasses widen ONLY the network list; quotes, token
- * lists and route availability still come live from the provider APIs, and
- * unroutable corridors stay disabled through the existing getBuyTokens probes.
+ * (USDG routes) and Unichain. This subclass widens ONLY the network list;
+ * quotes, token lists and route availability still come live from the provider
+ * API, and unroutable corridors stay disabled through the existing getBuyTokens
+ * probes.
  *
  * The widened list makes these chains bridge DESTINATIONS. Whether a chain can
  * be a bridge SOURCE is governed separately by BRIDGE_SOURCE_CHAIN_IDS
@@ -44,10 +53,6 @@ const ACROSS_EXTRA_NETWORKS: ChainInfo[] = [
   UNICHAIN_BRIDGE_CHAIN,
   ROBINHOOD_BRIDGE_CHAIN,
 ]
-
-// Plasma and Robinhood Chain are deliberately absent: Bungee lists them as
-// chains but serves zero routes on the manual pipeline this SDK consumes.
-const BUNGEE_EXTRA_NETWORKS: ChainInfo[] = [ink, linea, UNICHAIN_BRIDGE_CHAIN]
 
 // Chains Across can actually EXECUTE a bridge deposit from with sdk-bridging
 // 4.0.2: both ACROSS_SPOOK_CONTRACT_ADDRESSES and ACROSS_MATH_CONTRACT_ADDRESSES
@@ -163,15 +168,11 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
       // Return the SDK's own TokenInfo objects (with decimals/symbol/logo) for
       // the route origins, so the downstream quote path gets the shape it wants.
       const tokens = await this.api.getSupportedTokens()
-      return tokens.filter((token) => token.chainId === sellTokenChainId && originKeys.has(getAddressKey(token.address)))
+      return tokens.filter(
+        (token) => token.chainId === sellTokenChainId && originKeys.has(getAddressKey(token.address)),
+      )
     } catch {
       return []
     }
-  }
-}
-
-export class OphisBungeeBridgeProvider extends BungeeBridgeProvider {
-  async getNetworks(): Promise<ChainInfo[]> {
-    return [...(await super.getNetworks()), ...BUNGEE_EXTRA_NETWORKS]
   }
 }

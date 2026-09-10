@@ -162,6 +162,13 @@ export async function getNextOtcOrderId(): Promise<bigint> {
 }
 
 export async function fundForkGas(account: Address): Promise<void> {
+  // The fork inherits mainnet state, and the public anvil/test keys get
+  // EIP-7702-delegated by sweeper bots on mainnet (anvil #0 was being
+  // re-delegated every few seconds on 2026-09-10). A 7702 delegation designator
+  // makes useAccountType classify the account as EIP7702EOA, and the OTC write
+  // path admits only AccountType.EOA (useOtcControllerModel isWalletAdmitted),
+  // so reset it to a plain EOA on the disposable fork before funding it.
+  await rpc<null>('anvil_setCode', [account, '0x'])
   await rpc<null>('anvil_setBalance', [account, hexlify(100n * 10n ** 18n)])
 }
 

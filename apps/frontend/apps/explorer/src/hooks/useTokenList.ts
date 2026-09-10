@@ -78,13 +78,17 @@ export function useTokenList(chainId: SupportedChainId | undefined): { data: Tok
       ...(mergedByChain[chainId] || EMPTY_TOKENS),
     }
 
+    // Non-EVM bridge destinations (Solana, Bitcoin) have no entry here; a
+    // cross-chain order to them must not take the whole order page down.
     const nativeToken = NATIVE_TOKEN_PER_NETWORK[chainId]
 
-    data[getAddressKey(nativeToken.address)] = {
-      ...nativeToken,
-      name: nativeToken.name || '',
-      symbol: nativeToken.symbol || '',
-      chainId,
+    if (nativeToken) {
+      data[getAddressKey(nativeToken.address)] = {
+        ...nativeToken,
+        name: nativeToken.name || '',
+        symbol: nativeToken.symbol || '',
+        chainId,
+      }
     }
 
     return { data, isLoading }
