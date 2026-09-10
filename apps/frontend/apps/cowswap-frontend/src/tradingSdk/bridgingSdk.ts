@@ -1,5 +1,3 @@
-import { bungeeAffiliateCode } from '@cowprotocol/common-const'
-import { isBarn, isDev, isProd, isStaging } from '@cowprotocol/common-utils'
 import { BridgingSdk } from '@cowprotocol/sdk-bridging'
 
 import { orderBookApi } from 'cowSdk'
@@ -8,42 +6,13 @@ import { OphisAcrossBridgeProvider, OphisBungeeBridgeProvider } from './ophisBri
 import { OphisNearIntentsBridgeProvider } from './ophisNearIntentsProvider.service'
 import { tradingSdk } from './tradingSdk'
 
-// Dedicated-integrator tier (flag-gated, default OFF). When enabled, route
-// Bungee calls through the same-origin Cloudflare proxy (functions/api/bungee)
-// which injects the server-side `x-api-key` so the key never ships in the
-// bundle. Unset -> direct backend (affiliate-attribution only), unchanged.
-//
-// MUST be declared before getBungeeApiBase() is called below: the function
-// reads this `const`, and a `const` is in the temporal dead zone until its
-// declaration runs, so declaring it later would throw ReferenceError at import
-// (even with the flag OFF). getBungeeApiBase is a hoisted function declaration,
-// so it may stay below.
-const BUNGEE_DEDICATED_ENABLED = process.env.REACT_APP_BUNGEE_DEDICATED_ENABLED === 'true'
-
-const bungeeApiBase = getBungeeApiBase()
-
-// The Ophis affiliate ID rides the public `affiliate` header (rev-share
-// attribution), so it is safe client-side. The DEDICATED API key is NOT inlined
-// here: Bungee's docs require the key server-side (`x-api-key` against
-// dedicated-backend.bungee.exchange, "rather than exposing the key in frontend
-// code"). Enabling the dedicated tier + explicit feeBps is a follow-up via a
-// Cloudflare Function proxy, not the browser bundle.
+// Bungee is registered DECODE-ONLY (see OphisBungeeBridgeProvider): it never
+// quotes and never receives token-picker traffic, it only lets the SDK resolve
+// historical Bungee orders by their appData hook dappId. Hence no API base,
+// dedicated-proxy routing or affiliate header any more; `includeBridges` stays
+// because BungeeApi.validateBridges throws at construction on other slugs.
 export const bungeeBridgeProvider = new OphisBungeeBridgeProvider({
-  apiOptions: {
-    // Curated route allowlist — the ONLY slugs sdk-bridging 4.0.2 accepts
-    // (BungeeApi.validateBridges throws at construction on anything else).
-    // Consequences, verified against Bungee's live per-chain bridge lists
-    // (2026-08-10): Unichain/Ink/Linea routes still flow via `across`/`cctp`,
-    // but Bungee serves nothing from/to Gnosis (its bridges are stargate-v2/
-    // symbiosis only — NEAR Intents covers Gnosis instead) and Circle's
-    // cctp-v2(-fast) fast paths are unavailable. Widening needs the sdk
-    // bump to >=4.2 (types cctp-v2/-fast; stargate-v2 still untyped there)
-    // or the Socket V3 provider follow-up.
-    includeBridges: ['across', 'cctp', 'gnosis-native-bridge'],
-    apiBaseUrl: bungeeApiBase ? `${bungeeApiBase}/api/v1/bungee` : undefined,
-    manualApiBaseUrl: bungeeApiBase ? `${bungeeApiBase}/api/v1/bungee-manual` : undefined,
-    affiliate: bungeeApiBase ? bungeeAffiliateCode : undefined,
-  },
+  apiOptions: { includeBridges: ['across', 'cctp', 'gnosis-native-bridge'] },
 })
 
 export const acrossBridgeProvider = new OphisAcrossBridgeProvider()
@@ -65,15 +34,11 @@ export const bridgingSdk = new BridgingSdk({
   orderBookApi,
 })
 
-// Ophis fork (Path A, 2026-05-20): enable all three bridge providers by
-// default. Bungee + Across for EVM↔EVM, NEAR Intents for EVM↔Solana
-// (and Bitcoin, plus all major EVM chains).
-//
-// Per cow-sdk v4.0.2 `NearIntentsBridgeProvider`:
-// `NEAR_INTENTS_SUPPORTED_NETWORKS` includes: mainnet, optimism, base,
-// arbitrumOne, polygon, avalanche, bnb, gnosisChain, plasma, bitcoin,
-// solana. CoW DAO integrated NEAR Intents as their primary cross-chain
-// provider in November 2025 per https://x.com/NEARProtocol/status/1995888195343425855
+// Ophis fork (Path A, 2026-05-20): the live providers are Across for EVM<->EVM
+// (the only route into Unichain, Robinhood Chain, Ink and Linea) and NEAR
+// Intents for EVM<->Solana/Bitcoin plus the nine EVM chains it lists. Bungee
+// is listed only so getProviderFromAppData/getOrder (which search this same
+// available list) can still identify existing Bungee orders.
 //
 // Upstream cowswap gates Near + Across behind LaunchDarkly feature flags
 // in `BridgeProvidersUpdater`. We don't run LaunchDarkly — the flags
@@ -85,15 +50,3 @@ bridgingSdk.setAvailableProviders([
   acrossBridgeProvider.info.dappId,
   nearIntentsBridgeProvider.info.dappId,
 ])
-
-function getBungeeApiBase(): string | undefined {
-  if (BUNGEE_DEDICATED_ENABLED && (isProd || isStaging || isBarn) && typeof window !== 'undefined') {
-    return `${window.location.origin}/api/bungee`
-  }
-
-  if (isProd || isDev || isStaging || isBarn) {
-    return 'https://backend.bungee.exchange'
-  }
-
-  return 'https://bff.barn.cow.fi/proxies/socket'
-}

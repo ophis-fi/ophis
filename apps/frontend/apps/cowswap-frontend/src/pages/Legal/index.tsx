@@ -262,8 +262,13 @@ const LEGAL_CONTENT: ReactNode = (
           </TextLink>
         </li>
         <li>
-          <strong>Bungee Exchange + Across Protocol</strong> (cross-chain EVM bridge providers wired via{' '}
+          <strong>Across Protocol</strong> (cross-chain EVM bridge provider wired via{' '}
           <InlineCode>@cowprotocol/sdk-bridging</InlineCode>).
+        </li>
+        <li>
+          <strong>Bungee Exchange</strong> (historical bridge orders only: no new routes are requested from Bungee, but
+          the app still polls Bungee's public API for the status of bridge orders placed while it was an active
+          provider, so those requests carry IP + request metadata).
         </li>
         <li>
           <strong>CoW Protocol orderbook API</strong> (order submission, quote retrieval, settlement broadcast).{' '}

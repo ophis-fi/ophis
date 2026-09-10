@@ -22,13 +22,13 @@ const ACROSS_API_URL = 'https://app.across.to/api'
 const AVAILABLE_ROUTES_TIMEOUT_MS = 10_000
 
 /**
- * sdk-bridging 4.0.2 hardcodes each provider's network list far below what the
- * provider APIs actually serve (verified against the live APIs, 2026-08-10):
+ * sdk-bridging 4.0.2 hardcodes Across's network list far below what the
+ * provider API actually serves (verified against the live API, 2026-08-10):
  * Across covers every Ophis chain except Gnosis — including Robinhood Chain
- * (USDG routes) and Unichain — and Bungee's manual pipeline covers Unichain,
- * Ink and Linea. These subclasses widen ONLY the network list; quotes, token
- * lists and route availability still come live from the provider APIs, and
- * unroutable corridors stay disabled through the existing getBuyTokens probes.
+ * (USDG routes) and Unichain. This subclass widens ONLY the network list;
+ * quotes, token lists and route availability still come live from the provider
+ * API, and unroutable corridors stay disabled through the existing getBuyTokens
+ * probes.
  *
  * The widened list makes these chains bridge DESTINATIONS. Whether a chain can
  * be a bridge SOURCE is governed separately by BRIDGE_SOURCE_CHAIN_IDS
@@ -44,10 +44,6 @@ const ACROSS_EXTRA_NETWORKS: ChainInfo[] = [
   UNICHAIN_BRIDGE_CHAIN,
   ROBINHOOD_BRIDGE_CHAIN,
 ]
-
-// Plasma and Robinhood Chain are deliberately absent: Bungee lists them as
-// chains but serves zero routes on the manual pipeline this SDK consumes.
-const BUNGEE_EXTRA_NETWORKS: ChainInfo[] = [ink, linea, UNICHAIN_BRIDGE_CHAIN]
 
 // Chains Across can actually EXECUTE a bridge deposit from with sdk-bridging
 // 4.0.2: both ACROSS_SPOOK_CONTRACT_ADDRESSES and ACROSS_MATH_CONTRACT_ADDRESSES
@@ -170,8 +166,24 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   }
 }
 
+/**
+ * Bungee, DECODE-ONLY. Its manual v1 API (the only one sdk-bridging 4.0.2
+ * speaks) has answered 410 Gone on every route since August 2026, so it can
+ * never quote again. It stays registered because the SDK resolves an existing
+ * order's provider by the dappId in its appData hooks (getProviderFromAppData /
+ * getOrder), and both search the AVAILABLE provider list: dropping Bungee would
+ * break rendering of every historical Bungee order. Advertising no networks
+ * keeps it out of the quote fan-out (fetchMultiQuote gates on getNetworks) and
+ * the destination picker; getBuyTokens is overridden too because that fan-out
+ * has no network gate and would otherwise fire one 410 per destination chain
+ * on every token-picker open.
+ */
 export class OphisBungeeBridgeProvider extends BungeeBridgeProvider {
   async getNetworks(): Promise<ChainInfo[]> {
-    return [...(await super.getNetworks()), ...BUNGEE_EXTRA_NETWORKS]
+    return []
+  }
+
+  async getBuyTokens(_params: BuyTokensParams): Promise<GetProviderBuyTokens> {
+    return { tokens: [], isRouteAvailable: false }
   }
 }
