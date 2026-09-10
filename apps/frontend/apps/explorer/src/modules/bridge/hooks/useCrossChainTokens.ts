@@ -1,15 +1,10 @@
-import {
-  ALL_SUPPORTED_CHAINS_MAP,
-  areAddressesEqual,
-  getAddressKey,
-  SupportedChainId,
-  WRAPPED_NATIVE_CURRENCIES,
-} from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 import type { CrossChainOrder } from '@cowprotocol/sdk-bridging'
 import type { TokenInfo } from '@uniswap/token-lists'
 
 import { useBridgeProviderBuyTokens } from './useBridgeProviderBuyTokens'
 
+import { NATIVE_TOKEN_PER_NETWORK, WRAPPED_NATIVE_ADDRESS } from '../../../const'
 import { useTokenList } from '../../../hooks/useTokenList'
 
 export interface CrossChainTokens<T = TokenInfo | undefined> {
@@ -51,13 +46,15 @@ function resolveDestinationToken(
 ): TokenInfo | undefined {
   const address = getAddressKey(outputTokenAddress)
   const token = destinationChainTokens[address]
-  const wrapped = WRAPPED_NATIVE_CURRENCIES[destinationChainId]
-  const destinationChain = ALL_SUPPORTED_CHAINS_MAP[destinationChainId]
+  // The app's own maps, not the SDK's: they know the Ophis chains (Unichain
+  // 130, Robinhood Chain 4663) the upstream sdk-config does not.
+  const wrappedAddress = WRAPPED_NATIVE_ADDRESS[destinationChainId]
+  const nativeToken = NATIVE_TOKEN_PER_NETWORK[destinationChainId]
 
   // Bungee has problems with WETH/ETH
   // So we need to map them
-  if (!token && wrapped && areAddressesEqual(wrapped.address, address)) {
-    return destinationChain.nativeCurrency as TokenInfo
+  if (!token && wrappedAddress && nativeToken && areAddressesEqual(wrappedAddress, address)) {
+    return nativeToken as TokenInfo
   }
 
   return token

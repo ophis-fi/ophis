@@ -11,7 +11,7 @@ const MULTICALL3_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11'
  * provider network lists. Cosmetics come from the app's own CHAIN_INFO —
  * single source of truth for labels/logos/explorers.
  */
-function toBridgeChainInfo(chainId: number): EvmChainInfo {
+export function toBridgeChainInfo(chainId: number): EvmChainInfo {
   const info = CHAIN_INFO[chainId as unknown as SupportedChainId]
 
   return {

@@ -7,15 +7,17 @@ import { useTokensByAddressMapForChain } from '@cowprotocol/tokens'
 import type { Nullish } from '@cowprotocol/types'
 
 import { useBridgeSupportedTokens } from 'entities/bridgeProvider'
+import { useWarmTargetChainLists } from 'ophis/components/intent/useWarmTargetChainLists'
 
 import type { Order } from 'legacy/state/orders/actions'
 
 /**
- * Provider list first; then the wrapped-to-native mapping (Bungee stored the
- * WETH address in appData for a native ETH delivery, so a list match on WETH
- * must still read as ETH, the same normalization the explorer applies); then
- * the destination token list; the source-chain intermediate last, since it is
- * the wrong asset and decimals on a receipt.
+ * Wrapped-to-native mapping first: a bridge delivers native ETH to an EOA
+ * while appData carries the destination WETH address (Bungee always stored
+ * it that way), and the aggregate provider list from Across/NEAR contains
+ * WETH, so the mapping must win before any address match. Then the provider
+ * list, then the destination token list; the source-chain intermediate last,
+ * since it is the wrong asset and decimals on a receipt.
  */
 function pickOutputToken(
   destinationChainId: number | undefined,
@@ -26,15 +28,13 @@ function pickOutputToken(
 ): TokenWithLogo {
   if (!outputTokenAddress) return fallback
 
-  const providerToken = providerTokens?.find((token) => areAddressesEqual(token.address, outputTokenAddress))
-  if (providerToken) return providerToken
-
   const wrapped = destinationChainId ? WRAPPED_NATIVE_CURRENCIES[destinationChainId as SupportedChainId] : undefined
-  if (wrapped && areAddressesEqual(wrapped.address, outputTokenAddress)) {
-    return NATIVE_CURRENCIES[destinationChainId as SupportedChainId] ?? listToken ?? fallback
-  }
+  const native = destinationChainId ? NATIVE_CURRENCIES[destinationChainId as SupportedChainId] : undefined
+  if (wrapped && native && areAddressesEqual(wrapped.address, outputTokenAddress)) return native
 
-  return listToken ?? fallback
+  const providerToken = providerTokens?.find((token) => areAddressesEqual(token.address, outputTokenAddress))
+
+  return providerToken ?? listToken ?? fallback
 }
 
 /**
@@ -65,10 +65,12 @@ export function useBridgeOrderOutputToken(
   // The provider lists alone can miss the token (Bungee is decode-only since
   // 2026-09-10 and serves none; a live provider may not list it either), and the
   // remaining fallback is the SOURCE-chain intermediate, i.e. the wrong asset
-  // and decimals on the receipt.
-  const destinationTokens = useTokensByAddressMapForChain(
-    isLocalOrderCached ? undefined : (destinationChainId as SupportedChainId | undefined),
-  )
+  // and decimals on the receipt. Only the connected chain's lists are loaded by
+  // default, so warm the destination chain's cold slot first (best-effort,
+  // no-op once loaded or hydrated from IndexedDB).
+  const destinationListChainId = isLocalOrderCached ? undefined : (destinationChainId as SupportedChainId | undefined)
+  useWarmTargetChainLists(destinationListChainId)
+  const destinationTokens = useTokensByAddressMapForChain(destinationListChainId)
 
   return useMemo(() => {
     if (isLocalOrderCached) return localOrderOutputToken as TokenWithLogo
