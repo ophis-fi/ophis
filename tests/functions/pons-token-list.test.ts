@@ -151,7 +151,7 @@ test('RPC quorum obeys an expired outer deadline and fails once quorum is imposs
     let minorityAborted = false;
     globalThis.fetch = async (input, init) => {
       fetchCalls += 1;
-      if (String(input).includes('arrowrpc')) {
+      if (new URL(String(input)).hostname === 'robinhood-rpc.publicnode.com') {
         return await new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener(
             'abort',
@@ -220,6 +220,27 @@ test('fast mirror failures do not abort a pending authoritative verification', a
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('requires both mirrors when the official RPC is rate limited', async (t) => {
+  let publicNodeAvailable = true;
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    const host = new URL(String(input)).hostname;
+    if (host === 'rpc.mainnet.chain.robinhood.com')
+      return new Response('Rate limited', { status: 429 });
+    if (host === 'robinhood-rpc.publicnode.com' && !publicNodeAvailable)
+      throw new Error('Unavailable');
+    const requests = JSON.parse(String(init?.body)) as { id: number }[];
+    return Response.json(
+      requests.map(({ id }) => ({ jsonrpc: '2.0', id, result: verifiedResult() })),
+    );
+  });
+  assert.equal((await verifyLaunchesOnchain([launch()], new AbortController().signal)).length, 1);
+  publicNodeAvailable = false;
+  await assert.rejects(
+    verifyLaunchesOnchain([launch()], new AbortController().signal),
+    /quorum unavailable/,
+  );
 });
 
 test('mirror agreement cannot override a slower authoritative response', async () => {
