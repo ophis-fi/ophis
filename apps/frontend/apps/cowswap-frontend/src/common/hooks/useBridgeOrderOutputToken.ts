@@ -7,20 +7,24 @@ import { useTokensByAddressMapForChain } from '@cowprotocol/tokens'
 import type { Nullish } from '@cowprotocol/types'
 
 import { useBridgeSupportedTokens } from 'entities/bridgeProvider'
-import { useWarmTargetChainLists } from 'ophis/components/intent/useWarmTargetChainLists'
+import { bungeeBridgeProvider } from 'tradingSdk/bridgingSdk'
 
 import type { Order } from 'legacy/state/orders/actions'
 
+import { useWarmTargetChainLists } from './useWarmTargetChainLists'
+
 /**
- * Wrapped-to-native mapping first: a bridge delivers native ETH to an EOA
- * while appData carries the destination WETH address (Bungee always stored
- * it that way), and the aggregate provider list from Across/NEAR contains
- * WETH, so the mapping must win before any address match. Then the provider
- * list, then the destination token list; the source-chain intermediate last,
- * since it is the wrong asset and decimals on a receipt.
+ * For a BUNGEE order, the wrapped-to-native mapping first: Bungee delivered
+ * native ETH while storing the destination WETH address in appData, and the
+ * aggregate provider list from Across/NEAR contains WETH, so the mapping must
+ * win before any address match. Other providers deliver what appData says, so
+ * for them a WETH address is WETH. Then the provider list, then the destination
+ * token list; the source-chain intermediate last, since it is the wrong asset
+ * and decimals on a receipt.
  */
 function pickOutputToken(
   destinationChainId: number | undefined,
+  isBungeeOrder: boolean,
   providerTokens: TokenWithLogo[] | undefined,
   listToken: TokenWithLogo | undefined,
   fallback: TokenWithLogo,
@@ -28,9 +32,11 @@ function pickOutputToken(
 ): TokenWithLogo {
   if (!outputTokenAddress) return fallback
 
-  const wrapped = destinationChainId ? WRAPPED_NATIVE_CURRENCIES[destinationChainId as SupportedChainId] : undefined
-  const native = destinationChainId ? NATIVE_CURRENCIES[destinationChainId as SupportedChainId] : undefined
-  if (wrapped && native && areAddressesEqual(wrapped.address, outputTokenAddress)) return native
+  if (isBungeeOrder && destinationChainId) {
+    const wrapped = WRAPPED_NATIVE_CURRENCIES[destinationChainId as SupportedChainId]
+    const native = NATIVE_CURRENCIES[destinationChainId as SupportedChainId]
+    if (wrapped && native && areAddressesEqual(wrapped.address, outputTokenAddress)) return native
+  }
 
   const providerToken = providerTokens?.find((token) => areAddressesEqual(token.address, outputTokenAddress))
 
@@ -53,6 +59,7 @@ export function useBridgeOrderOutputToken(
   const isLocalOrderCached = !!order && order.inputToken.chainId !== order.outputToken.chainId
 
   const outputTokenAddress = crossChainOrder?.bridgingParams.outputTokenAddress
+  const isBungeeOrder = crossChainOrder?.provider.info.dappId === bungeeBridgeProvider.info.dappId
   const destinationChainId = isLocalOrderCached
     ? order.outputToken.chainId
     : crossChainOrder?.bridgingParams.destinationChainId
@@ -82,10 +89,19 @@ export function useBridgeOrderOutputToken(
 
     return pickOutputToken(
       destinationChainId,
+      isBungeeOrder,
       providerTokens,
       listToken,
       localOrderOutputToken as TokenWithLogo,
       outputTokenAddress,
     )
-  }, [isLocalOrderCached, localOrderOutputToken, data, outputTokenAddress, destinationTokens, destinationChainId])
+  }, [
+    isLocalOrderCached,
+    localOrderOutputToken,
+    data,
+    outputTokenAddress,
+    destinationTokens,
+    destinationChainId,
+    isBungeeOrder,
+  ])
 }

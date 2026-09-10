@@ -19,6 +19,7 @@ import { Link, useSearchParams } from 'react-router'
 import styled, { keyframes } from 'styled-components/macro'
 
 import { useNavigate } from 'common/hooks/useNavigate'
+import { useWarmTargetChainLists } from 'common/hooks/useWarmTargetChainLists'
 
 import { chainSlugToId } from './chainMap'
 import { IntentCarousel } from './IntentCarousel'
@@ -27,7 +28,6 @@ import { readIntentParam } from './intentParam'
 import { writeIntentStash } from './intentStash'
 import { extractIntentFields, intentToUrl } from './intentToUrl'
 import { useIntentParse } from './useIntentParse'
-import { useWarmTargetChainLists } from './useWarmTargetChainLists'
 
 import { CosmicStarfield } from '../CosmicStarfield'
 import { OphisFooter } from '../OphisFooter'

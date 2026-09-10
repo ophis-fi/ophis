@@ -50,7 +50,7 @@ jobs:
         working-directory: contracts
         env:
           FOUNDRY_PROFILE: otc-fork
-          OTC_FORK_RPC_URL: https://eth.drpc.org
+          OTC_FORK_RPC_URL: https://ethereum-rpc.publicnode.com
         run: |
           timeout 120 forge test --fork-url "$OTC_FORK_RPC_URL" \
             --match-path test/otc-fork/OtcSwapboardEthereumFork.t.sol \
@@ -90,7 +90,7 @@ jobs:
       - name: Run injected-wallet flow against a local mainnet fork
         working-directory: apps/frontend
         env:
-          OTC_FORK_RPC_URL: https://eth.drpc.org
+          OTC_FORK_RPC_URL: https://ethereum-rpc.publicnode.com
           CYPRESS_OTC_FORK_RPC_URL: http://127.0.0.1:8545
           CYPRESS_SCREENSHOT_ON_RUN_FAILURE: 'true'
           CYPRESS_SCREENSHOTS_FOLDER: /tmp/otc-screenshots
