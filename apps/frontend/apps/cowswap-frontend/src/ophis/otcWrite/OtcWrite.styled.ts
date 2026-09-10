@@ -111,3 +111,19 @@ export const InlineStatus = styled.p`
   font-size: 13px;
   overflow-wrap: anywhere;
 `
+
+export const TokenSelect = styled.span`
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  > img {
+    position: absolute;
+    left: 12px;
+    pointer-events: none;
+  }
+
+  select {
+    padding-left: 46px;
+  }
+`

@@ -15,9 +15,9 @@ jest.mock('../hooks/useScrollClass', () => ({
 
 const useFeatureFlagsMock = useFeatureFlags as jest.MockedFunction<typeof useFeatureFlags>
 
-function renderHeader(transparent = false): void {
+function renderHeader(transparent = false, route = '/'): void {
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[route]}>
       <OphisHeader transparent={transparent}>
         <span>Header action</span>
       </OphisHeader>
@@ -51,4 +51,10 @@ describe('OphisHeader', () => {
 
     expect(screen.queryByRole('link', { name: 'OTC' })).toBeNull()
   })
+})
+
+it('omits the OTC self-link on OTC list and order-detail routes', () => {
+  useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
+  renderHeader(false, '/otc/49')
+  expect(screen.queryByRole('link', { name: 'OTC' })).toBeNull()
 })

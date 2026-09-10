@@ -10,7 +10,7 @@ import { ReactNode } from 'react'
 
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import styled from 'styled-components/macro'
 
 import { STEEP_FONT, steep } from '../ds/steep.utils'
@@ -189,6 +189,7 @@ const OtcNavLink = styled(Link)`
 `
 
 export function OphisHeader({ children, transparent = false, walletConnected = false }: Props): ReactNode {
+  const isOtcRoute = /^\/otc(?:\/|$)/.test(useLocation().pathname)
   const scrolled = useScrollClass(40)
   const { isOtcEnabled } = useFeatureFlags()
 
@@ -210,7 +211,7 @@ export function OphisHeader({ children, transparent = false, walletConnected = f
           </WordmarkText>
         </Wordmark>
         <Right $walletConnected={walletConnected}>
-          {isOtcEnabled ? <OtcNavLink to="/otc">OTC</OtcNavLink> : null}
+          {isOtcEnabled && !isOtcRoute ? <OtcNavLink to="/otc">OTC</OtcNavLink> : null}
           {children}
         </Right>
       </Bar>

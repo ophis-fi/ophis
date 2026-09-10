@@ -6,7 +6,7 @@ import { getOtcAge } from './otcDisplay'
 
 export function OtcAge({ nowMs, createdAt }: { nowMs: number; createdAt: number | null }): ReactNode {
   const age = getOtcAge(nowMs, createdAt)
-  if (!age) return '—'
+  if (!age) return '-'
   if (age.unit === 'minutes') {
     const minutes = age.value
     return <Trans>{minutes}m ago</Trans>

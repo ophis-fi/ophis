@@ -88,7 +88,7 @@ function StatusCell({ row }: { row: OtcDisplayRow }): ReactNode {
 
 function RateCell({ row }: { row: OtcDisplayRow }): ReactNode {
   const { t } = useLingui()
-  if (!row.rate) return <span aria-label={t`Rate unavailable`}>—</span>
+  if (!row.rate) return <span aria-label={t`Rate unavailable`}>-</span>
   const metaA = getOtcTokenMeta(row.order.tokenA)
   const metaB = getOtcTokenMeta(row.order.tokenB)
   return (

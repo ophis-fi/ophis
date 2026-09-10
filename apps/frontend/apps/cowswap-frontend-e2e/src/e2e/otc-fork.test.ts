@@ -21,10 +21,10 @@ import {
 } from '../support/otcFork'
 
 const WRITE_NOTICE = Cypress.env('OTC_PUBLIC_REHEARSAL')
-  ? 'Public Ethereum trading'
+  ? 'Ethereum transactions'
   : Cypress.env('OTC_CANARY_REHEARSAL')
     ? 'Restricted Ethereum canary'
-    : 'Local fork writes'
+    : 'Fork-only transaction mode'
 const TEST_ACCOUNT = TEST_ADDRESS_NEVER_USE as Address
 const forkDescribe = Cypress.env('OTC_FORK_RPC_URL') ? describe : describe.skip
 const ACTION_ATTEMPTS = 600
