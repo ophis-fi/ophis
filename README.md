@@ -193,7 +193,7 @@ Canonical contract addresses and the disclosure policy live in
 | `apps/docs-ophis/` | New | Docusaurus docs portal ([docs.ophis.fi](https://docs.ophis.fi)). Self-contained app (own lockfile, excluded from the root, like `apps/frontend`). |
 | `packages/sdk/` | New | [`@ophis/sdk`](packages/sdk): dependency-free helpers for the per-chain orderbook host, EIP-712 order domain, CIP-75 partner-fee `appData`, receiver-pinning guards, tier assignment, and the supported-chain registry. |
 | `contracts/` | [`cowprotocol/contracts`](https://github.com/cowprotocol/contracts) (subtree) | `GPv2Settlement`, `GPv2VaultRelayer`, `GPv2AllowListAuthentication`, deployed under an Ophis-controlled solver allowlist. Per-network artifacts in `contracts/deployments/`. |
-| `functions/` | New | Cloudflare Pages Functions: `api/intent.ts` (the natural-language parser, shared by swap and landing), `api/bungee` (bridge proxy), `_middleware.ts` (host routing). |
+| `functions/` | New | Cloudflare Pages Functions: `api/intent.ts` (the natural-language parser, shared by swap and landing), `_middleware.ts` (host routing). |
 | `infra/` | New | Per-chain runtime stacks (`optimism-mainnet/`, `unichain-mainnet/`, `robinhood-mainnet/`, `local/`), plus `rpc/` (eRPC) and `cloudflare/` config. |
 
 Upstream subtrees are vendored as-is; Ophis changes are catalogued in
@@ -212,7 +212,7 @@ ophis/
 │   └── mcp-server/      agent-facing MCP Worker (mcp.ophis.fi)
 ├── contracts/           GPv2 settlement contracts (+ per-network deployments)
 ├── packages/sdk/        @ophis/sdk
-├── functions/           Cloudflare Pages Functions (intent API, bungee, middleware)
+├── functions/           Cloudflare Pages Functions (intent API, middleware)
 ├── infra/               per-chain runtime stacks + rpc + cloudflare config
 ├── scripts/             repo utility scripts
 └── docs/                specs, plans, audits, operations runbooks
