@@ -34,19 +34,32 @@ export const bridgingSdk = new BridgingSdk({
   orderBookApi,
 })
 
+/**
+ * Provider ids the SDK must ALWAYS be able to resolve, whatever set is enabled
+ * for quoting. getProviderFromAppData and getOrder search the SDK's available
+ * list, so a historical Bungee order needs Bungee in it even when
+ * BridgeProvidersUpdater narrows the quote providers (smart-contract wallets,
+ * feature flags). Being available costs nothing: the provider advertises no
+ * networks and no buy tokens, so no quote or token-list request reaches it.
+ */
+const DECODE_ONLY_PROVIDER_IDS: readonly string[] = [bungeeBridgeProvider.info.dappId]
+
+/**
+ * The one writer of the SDK's available list: the providers enabled for quoting
+ * plus the decode-only registry entries. Every runtime update must go through
+ * here so the decode entries can never be dropped.
+ */
+export function setQuoteBridgeProviders(quoteProviderIds: readonly string[]): void {
+  bridgingSdk.setAvailableProviders([...new Set([...quoteProviderIds, ...DECODE_ONLY_PROVIDER_IDS])])
+}
+
 // Ophis fork (Path A, 2026-05-20): the live providers are Across for EVM<->EVM
 // (the only route into Unichain, Robinhood Chain, Ink and Linea) and NEAR
-// Intents for EVM<->Solana/Bitcoin plus the nine EVM chains it lists. Bungee
-// is listed only so getProviderFromAppData/getOrder (which search this same
-// available list) can still identify existing Bungee orders.
+// Intents for EVM<->Solana/Bitcoin plus the nine EVM chains it lists.
 //
 // Upstream cowswap gates Near + Across behind LaunchDarkly feature flags
 // in `BridgeProvidersUpdater`. We don't run LaunchDarkly — the flags
 // stay undefined → the updater's early-return preserves whatever's set
-// here. To keep the contract simple, all three providers are advertised
+// here. To keep the contract simple, both quote providers are advertised
 // to the bridging SDK from boot.
-bridgingSdk.setAvailableProviders([
-  bungeeBridgeProvider.info.dappId,
-  acrossBridgeProvider.info.dappId,
-  nearIntentsBridgeProvider.info.dappId,
-])
+setQuoteBridgeProviders([acrossBridgeProvider.info.dappId, nearIntentsBridgeProvider.info.dappId])

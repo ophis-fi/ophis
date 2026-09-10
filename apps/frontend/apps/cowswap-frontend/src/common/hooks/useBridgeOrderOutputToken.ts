@@ -1,13 +1,33 @@
 import { useMemo } from 'react'
 
 import type { TokenWithLogo } from '@cowprotocol/common-const'
-import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 import type { CrossChainOrder } from '@cowprotocol/sdk-bridging'
+import { useTokensByAddressMapForChain } from '@cowprotocol/tokens'
 import type { Nullish } from '@cowprotocol/types'
 
 import { useBridgeSupportedTokens } from 'entities/bridgeProvider'
 
 import type { Order } from 'legacy/state/orders/actions'
+
+/**
+ * Provider list first, destination token list second, source-chain intermediate
+ * last. Provider lists can miss the exact address (Bungee replaced ETH with WETH
+ * in its lists; a decode-only provider serves none), and the intermediate is the
+ * wrong asset and decimals on a receipt.
+ */
+function pickOutputToken(
+  providerTokens: TokenWithLogo[] | undefined,
+  listToken: TokenWithLogo | undefined,
+  fallback: TokenWithLogo,
+  outputTokenAddress: string | undefined,
+): TokenWithLogo {
+  const providerToken = outputTokenAddress
+    ? providerTokens?.find((token) => areAddressesEqual(token.address, outputTokenAddress))
+    : undefined
+
+  return providerToken ?? listToken ?? fallback
+}
 
 /**
  * Derives a bridge output token considering swap order source (localStorage or API)
@@ -33,20 +53,23 @@ export function useBridgeOrderOutputToken(
     isLocalOrderCached || !destinationChainId ? undefined : { buyChainId: destinationChainId },
   )
 
+  // Second source for an API-loaded order: the destination chain's token lists.
+  // The provider lists alone can miss the token (Bungee is decode-only since
+  // 2026-09-10 and serves none; a live provider may not list it either), and the
+  // remaining fallback is the SOURCE-chain intermediate, i.e. the wrong asset
+  // and decimals on the receipt.
+  const destinationTokens = useTokensByAddressMapForChain(
+    isLocalOrderCached ? undefined : (destinationChainId as SupportedChainId | undefined),
+  )
+
   return useMemo(() => {
     if (isLocalOrderCached) return localOrderOutputToken as TokenWithLogo
 
-    if (data?.isRouteAvailable === false || !data?.tokens?.length || !outputTokenAddress) {
-      // Fallback to localOrderOutputToken when crossChainOrder data is still loading
-      // This prevents swapAndBridgeOverview from being undefined in fresh sessions
-      return localOrderOutputToken as TokenWithLogo
-    }
+    const listToken = outputTokenAddress ? destinationTokens[getAddressKey(outputTokenAddress)] : undefined
+    // While crossChainOrder data is still loading (or the route is unavailable)
+    // the fallback keeps swapAndBridgeOverview defined in fresh sessions.
+    const providerTokens = data?.isRouteAvailable === false ? undefined : data?.tokens
 
-    const token = data.tokens.find((token) => areAddressesEqual(token.address, outputTokenAddress))
-
-    // This is actually a hack
-    // For some reason Bungee replaces ETH with WETH, so we cannot find WETH in tokens
-    // Here we fallback to localOrderOutputToken to show at least something
-    return token ?? (localOrderOutputToken as TokenWithLogo)
-  }, [isLocalOrderCached, localOrderOutputToken, data, outputTokenAddress])
+    return pickOutputToken(providerTokens, listToken, localOrderOutputToken as TokenWithLogo, outputTokenAddress)
+  }, [isLocalOrderCached, localOrderOutputToken, data, outputTokenAddress, destinationTokens])
 }
