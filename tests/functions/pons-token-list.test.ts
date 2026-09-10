@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   isVerifiedLaunchResult,
+  onRequestGet,
   parsePonsCatalog,
   ponsTokenListFromResponse,
   rpcResultsById,
@@ -242,4 +243,33 @@ test('mirror agreement cannot override a slower authoritative response', async (
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('keeps reference PONS discoverable during catalog outages only after onchain verification', async (t) => {
+  let verified = true;
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    if (String(input).includes('ponsfamily.com'))
+      return new Response('Unavailable', { status: 503 });
+    const requests = JSON.parse(String(init?.body)) as { id: number }[];
+    return Response.json(
+      requests.map(({ id }) => ({
+        jsonrpc: '2.0',
+        id,
+        result: verified ? verifiedResult() : '0x',
+      })),
+    );
+  });
+  const context = {
+    request: new Request('https://swap.ophis.fi/api/pons-token-list'),
+    waitUntil: (_promise: Promise<unknown>) => undefined,
+  } as Parameters<typeof onRequestGet>[0];
+  const available = await onRequestGet(context);
+  assert.equal(available.status, 200);
+  assert.deepEqual(
+    (await available.json()).tokens.map(({ address }) => address),
+    [TOKEN],
+  );
+  verified = false;
+  const unavailable = await onRequestGet(context);
+  assert.equal(unavailable.status, 503);
 });

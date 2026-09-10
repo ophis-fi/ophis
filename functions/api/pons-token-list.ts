@@ -419,10 +419,13 @@ export const onRequestGet: PagesFunction = async (context) => {
     const activeResponse = await fetch(UPSTREAM_URL, {
       signal: controller.signal,
       headers: { accept: 'application/json', 'user-agent': 'Ophis pons token-list adapter' },
-    });
-    if (!activeResponse.ok) return unavailable('catalog');
-    const active = await activeResponse.json();
-    const launches = parsePonsCatalog(active);
+    }).catch(() => undefined);
+    if (!activeResponse?.ok) {
+      const stale = await safeCacheMatch(cache, staleKey);
+      if (stale) return serveCached(stale);
+    }
+    // The known PONS deployment can still be verified without the optional launch catalog.
+    const launches = activeResponse?.ok ? parsePonsCatalog(await activeResponse.json()) : [];
     failureStage = 'verification';
     const verified = await verifyLaunchesOnchain([REFERENCE_PONS, ...launches], controller.signal);
     const list = ponsTokenListFromResponse(verified);
