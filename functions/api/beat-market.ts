@@ -152,8 +152,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     upstream = await fetch(url, {
       signal: controller.signal,
-      // KyberSwap 403s the default fetch UA; send a browser-like one.
-      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh) ophis-beat-market', accept: 'application/json' },
+      // KyberSwap 403s the default fetch UA; send a browser-like one. The
+      // client id puts this traffic in its own rate-limit bucket instead of the
+      // tighter anonymous one (same convention as the solver's kyberswap.toml).
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh) ophis-beat-market',
+        accept: 'application/json',
+        'x-client-id': 'ophis-swap-beat-market',
+      },
     })
   } catch (err: unknown) {
     clearTimeout(timer)
@@ -166,14 +172,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   clearTimeout(timer)
 
   if (!upstream.ok) {
-    // A 4xx is KyberSwap declining the pair (unknown token, no liquidity), i.e.
-    // "no reference", which the widget hides quietly; only a 5xx / network
-    // failure is a gateway error worth a 502 (which Cloudflare then renders as
-    // its own "error code: 502" page and the browser logs as an error).
-    return json(
-      { ok: false, error: { code: 'UPSTREAM', message: `reference returned ${upstream.status}` } },
-      upstream.status >= 500 ? 502 : 200,
-    )
+    const message = `reference returned ${upstream.status}`
+    // 400 / 404 are KyberSwap declining the PAIR (code 4011 "token not found",
+    // no route): "no reference", which the widget hides quietly. Anything else
+    // stays a visible failure so status-based monitoring keeps seeing it:
+    // upstream throttling as 503 with its Retry-After, the rest as 502
+    // (which Cloudflare renders as its own "error code: 502" page).
+    if (upstream.status === 400 || upstream.status === 404) {
+      return json({ ok: false, error: { code: 'UPSTREAM', message } }, 200)
+    }
+    if (upstream.status === 429) {
+      return json({ ok: false, error: { code: 'RATE_LIMITED', message } }, 503, {
+        'retry-after': upstream.headers.get('retry-after') ?? '60',
+      })
+    }
+    return json({ ok: false, error: { code: 'UPSTREAM', message } }, 502)
   }
 
   let raw: unknown

@@ -14,9 +14,15 @@ function quoteRequest(): Request {
   });
 }
 
-async function withUpstream(status: number, body: unknown, run: () => Promise<Response>): Promise<Response> {
+async function withUpstream(
+  status: number,
+  body: unknown,
+  run: () => Promise<Response>,
+  headers: Record<string, string> = {},
+): Promise<Response> {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
   try {
     return await run();
   } finally {
@@ -44,7 +50,29 @@ test('an upstream 4xx (token not found) is "no reference", not a gateway error',
   assert.equal(body.error.code, 'UPSTREAM');
 });
 
-test('an upstream 5xx is still a 502', async () => {
-  const res = await withUpstream(503, { message: 'down' }, call);
-  assert.equal(res.status, 502);
+test('upstream throttling stays visible as a 503 that carries Retry-After', async () => {
+  const res = await withUpstream(429, { message: 'slow down' }, call, { 'retry-after': '17' });
+  assert.equal(res.status, 503);
+  assert.equal(res.headers.get('retry-after'), '17');
+  assert.equal(((await res.json()) as { error: { code: string } }).error.code, 'RATE_LIMITED');
+});
+
+test('an upstream 403 (blocked client) and 5xx are still a 502', async () => {
+  assert.equal((await withUpstream(403, { message: 'forbidden' }, call)).status, 502);
+  assert.equal((await withUpstream(503, { message: 'down' }, call)).status, 502);
+});
+
+test('the upstream request carries a client id (own KyberSwap rate-limit bucket)', async () => {
+  const originalFetch = globalThis.fetch;
+  let clientId: string | null = null;
+  globalThis.fetch = async (_input, init) => {
+    clientId = new Headers(init?.headers).get('x-client-id');
+    return new Response(JSON.stringify({ data: { routeSummary: { amountOut: '1' } } }), { status: 200 });
+  };
+  try {
+    await call();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(clientId, 'ophis-swap-beat-market');
 });
