@@ -46,6 +46,10 @@ const KYBER_SLUG: Record<number, string> = {
 }
 
 const TIMEOUT_MS = 6000
+// KyberSwap's "expected no-route" error codes, mirrored from the solver's
+// classification (apps/backend/crates/solvers/src/infra/dex/kyberswap/mod.rs):
+// the pair is unknown or unroutable, not an API failure.
+const KYBER_NO_ROUTE_CODES = new Set([4008, 4009, 4010, 4011, 4221])
 const MAX_AMOUNT_LEN = 80 // a uint256 in decimal is at most 78 digits
 
 const RATE_LIMIT_WINDOW_MS = 60_000
@@ -100,6 +104,16 @@ async function checkRateLimit(env: Env, ip: string): Promise<{ ok: true } | { ok
     }
   }
   return checkRateLimitIsolate(ip)
+}
+
+/** KyberSwap's numeric error code from a failed response body, or NaN. */
+async function readKyberErrorCode(res: Response): Promise<number> {
+  try {
+    const code = ((await res.json()) as { code?: unknown } | null)?.code
+    return typeof code === 'number' ? code : NaN
+  } catch {
+    return NaN
+  }
 }
 
 const isAddress = (v: unknown): v is string => typeof v === 'string' && /^0x[0-9a-fA-F]{40}$/.test(v)
@@ -173,18 +187,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   if (!upstream.ok) {
     const message = `reference returned ${upstream.status}`
-    // 400 / 404 are KyberSwap declining the PAIR (code 4011 "token not found",
-    // no route): "no reference", which the widget hides quietly. Anything else
-    // stays a visible failure so status-based monitoring keeps seeing it:
-    // upstream throttling as 503 with its Retry-After, the rest as 502
-    // (which Cloudflare renders as its own "error code: 502" page).
-    if (upstream.status === 400 || upstream.status === 404) {
-      return json({ ok: false, error: { code: 'UPSTREAM', message } }, 200)
-    }
+    // Upstream throttling stays visible, with its Retry-After.
     if (upstream.status === 429) {
       return json({ ok: false, error: { code: 'RATE_LIMITED', message } }, 503, {
         'retry-after': upstream.headers.get('retry-after') ?? '60',
       })
+    }
+    // Only KyberSwap declining the PAIR (a known no-route code in the 4xx
+    // body, e.g. 4011 "token not found") is "no reference", which the widget
+    // hides quietly. Every other failure, a broken slug or endpoint included,
+    // stays a 502 so status-based monitoring keeps seeing it (Cloudflare
+    // renders that as its own "error code: 502" page).
+    if (upstream.status < 500 && KYBER_NO_ROUTE_CODES.has(await readKyberErrorCode(upstream))) {
+      return json({ ok: false, error: { code: 'UPSTREAM', message } }, 200)
     }
     return json({ ok: false, error: { code: 'UPSTREAM', message } }, 502)
   }

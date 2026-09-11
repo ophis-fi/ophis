@@ -40,7 +40,7 @@ test('relays a reference amountOut on upstream success', async () => {
   assert.deepEqual(await res.json(), { ok: true, data: { source: 'kyberswap', amountOut: '40440827659578272' } });
 });
 
-test('an upstream 4xx (token not found) is "no reference", not a gateway error', async () => {
+test('a known KyberSwap no-route code is "no reference", not a gateway error', async () => {
   // KyberSwap answers 400 code 4011 for a token it does not know; that used to
   // come back as a 502 and an error line in every bridge session's console.
   const res = await withUpstream(400, { code: 4011, message: 'token not found' }, call);
@@ -48,6 +48,12 @@ test('an upstream 4xx (token not found) is "no reference", not a gateway error',
   const body = (await res.json()) as { ok: boolean; error: { code: string } };
   assert.equal(body.ok, false);
   assert.equal(body.error.code, 'UPSTREAM');
+});
+
+test('a 4xx without a known no-route code (broken slug, unknown error) stays a 502', async () => {
+  assert.equal((await withUpstream(404, { message: 'not found' }, call)).status, 502);
+  assert.equal((await withUpstream(400, { code: 4000, message: 'bad request' }, call)).status, 502);
+  assert.equal((await withUpstream(400, 'not json at all', call)).status, 502);
 });
 
 test('upstream throttling stays visible as a 503 that carries Retry-After', async () => {
