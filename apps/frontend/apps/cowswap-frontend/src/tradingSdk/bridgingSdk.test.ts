@@ -7,6 +7,7 @@ import {
   MONAD_CHAIN_ID,
   NATIVE_CURRENCIES,
   NATIVE_CURRENCY_ADDRESS,
+  OPHIS_NEAR_INTENTS_NETWORKS,
   SORTED_DST_CHAIN_IDS,
   TokenWithLogo,
   SUI_CHAIN_ID,
@@ -22,15 +23,19 @@ import {
   getExplorerLink,
   getIsNativeToken,
   getWrappedToken,
+  isNonEvmDestinationString,
   isSuiAddress,
   isSuiCoinType,
   isTronAddress,
+  NON_EVM_DESTINATION_RULES,
   shortenAddress,
 } from '@cowprotocol/common-utils'
 import { isEvmChain, OrderKind, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 import type { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 import { getTokenPolicyDecision, TokenPolicyProfile } from '@cowprotocol/tokens'
 
+// eslint-disable-next-line import/no-internal-modules -- pure util under test, not part of the module's index
+import * as invalidBridgeOutput from 'modules/swap/updaters/InvalidBridgeOutputUpdater.utils'
 // eslint-disable-next-line import/no-internal-modules -- pure util under test, not part of the module's index
 import { filterDestinationChains } from 'modules/tokensList/utils/chainsState'
 // eslint-disable-next-line import/no-internal-modules -- pure util under test, not part of the module's index
@@ -251,6 +256,54 @@ describe('NEAR Intents non-EVM destinations Ophis adds (Sui, Tron, Hyperliquid)'
     expect(getTokenPolicyDecision({ chainId: TRON_CHAIN_ID, address: TRON_USDT }, profile).allowed).toBe(true)
     expect(getTokenPolicyDecision({ chainId: TRON_CHAIN_ID, address: SUI_USDC }, profile).allowed).toBe(false)
     expect(getTokenPolicyDecision({ chainId: HYPERCORE_CHAIN_ID, address: HL_USDC_HIP1 }, profile).allowed).toBe(true)
+    // The erc20 mirror NEAR also lists is hidden by the picker and rejected here (one predicate for both).
+    expect(getTokenPolicyDecision({ chainId: HYPERCORE_CHAIN_ID, address: HL_USDC_ERC20 }, profile).allowed).toBe(false)
+  })
+
+  it('sharp edges: Tron zero address is no recipient, EVM strings stay on EVM paths, registry and rules agree', () => {
+    // The TRX native sentinel is the base58 zero address, a black hole for a bridge.
+    expect(isTronAddress(TRX_NATIVE_CURRENCY_ADDRESS)).toBe(true)
+    expect(isRecipientAddress(TRX_NATIVE_CURRENCY_ADDRESS, TRON_CHAIN_ID)).toBe(false)
+    // ethers isAddress also accepts ICAP strings; a Hypercore recipient must be a 0x address.
+    expect(isRecipientAddress('XE7338O073KYGTWWZN0F2WZ0R8PX5ZPPZS', HYPERCORE_CHAIN_ID)).toBe(false)
+    expect(isRecipientAddress(EVM_ADDR, HYPERCORE_CHAIN_ID)).toBe(true)
+    // Chain-agnostic predicate (shortening, persisted ids) never claims an EVM address.
+    expect(isNonEvmDestinationString(EVM_ADDR)).toBe(false)
+    expect(isNonEvmDestinationString(SUI_USDC)).toBe(true)
+    expect(isNonEvmDestinationString(TRON_USDT)).toBe(true)
+    expect(isNonEvmDestinationString(HL_USDC_HIP1)).toBe(true)
+    // Every non-EVM registry entry has a rule and every rule is a registered non-EVM chain (two tables, one truth).
+    const nonEvmRegistered = OPHIS_NEAR_INTENTS_NETWORKS.filter((entry) => !entry.evm).map((entry) => entry.chainId)
+    const ruled = Object.keys(NON_EVM_DESTINATION_RULES).map(Number)
+    expect([...nonEvmRegistered].sort()).toEqual([...ruled].sort())
+    // EXACT_INPUT changes money flow (surplus refunded on the origin chain): Hypercore only.
+    expect(OPHIS_NEAR_INTENTS_NETWORKS.filter((entry) => entry.exactInput).map((entry) => entry.chainId)).toEqual([
+      HYPERCORE_CHAIN_ID,
+    ])
+  })
+
+  it('clears a stale non-EVM buy token when the route no longer lists it (InvalidBridgeOutputUpdater)', () => {
+    const route = (addresses: string[]): { isRouteAvailable: boolean; tokens: TokenWithLogo[] } => ({
+      isRouteAvailable: true,
+      tokens: addresses.map((address) => new TokenWithLogo(undefined, SUI_CHAIN_ID, address, 6, 'T')),
+    })
+    const params = (
+      selectedOutputCurrencyId: string,
+      addresses: string[],
+    ): invalidBridgeOutput.InvalidBridgeOutputPatchParams => ({
+      sourceChainId: SupportedChainId.MAINNET,
+      targetChainId: SUI_CHAIN_ID as TargetChainId,
+      selectedOutputCurrencyId,
+      bridgeRouteData: route(
+        addresses,
+      ) as unknown as invalidBridgeOutput.InvalidBridgeOutputPatchParams['bridgeRouteData'],
+      isBridgeRouteLoading: false,
+    })
+    expect(invalidBridgeOutput.getInvalidBridgeOutputPatch(params(SUI_USDC, [SUI_USDC]))).toBeNull()
+    expect(invalidBridgeOutput.getInvalidBridgeOutputPatch(params(SUI_USDC, [SUI_NATIVE_CURRENCY_ADDRESS]))).toEqual({
+      outputCurrencyId: null,
+      outputCurrencyAmount: null,
+    })
   })
 
   it('maps NEAR tokens: native sentinels, Sui coin types, Tron base58, Hypercore HIP-1 only', async () => {

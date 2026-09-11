@@ -43,3 +43,30 @@ it.each([
   rerender()
   expect(result.current?.quoteParams).toEqual(expect.objectContaining({ receiver: address, buyTokenChainId: chainId }))
 })
+
+it('never requests a partially fillable quote for a bridge order (fill-or-kill: the deposit is quoted on the full amount)', () => {
+  const bridge: Partial<ReturnType<typeof useDerivedTradeState>> = {
+    inputCurrency: USDC_MAINNET,
+    outputCurrency: new TokenWithLogo(
+      undefined,
+      AdditionalTargetChainId.SOLANA,
+      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+      6,
+    ),
+    orderKind: OrderKind.SELL,
+  }
+  jest.mocked(useDerivedTradeState).mockReturnValue(bridge as ReturnType<typeof useDerivedTradeState>)
+  jest.mocked(useQuoteParamsRecipient).mockReturnValue('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
+  const { result: bridged } = renderHook(() => useQuoteParams('1000000', true))
+  expect(bridged.current?.quoteParams?.partiallyFillable).toBe(false)
+
+  const sameChain: Partial<ReturnType<typeof useDerivedTradeState>> = {
+    inputCurrency: USDC_MAINNET,
+    outputCurrency: new TokenWithLogo(undefined, USDC_MAINNET.chainId, '0xdAC17F958D2ee523a2206206994597C13D831ec7', 6),
+    orderKind: OrderKind.SELL,
+  }
+  jest.mocked(useDerivedTradeState).mockReturnValue(sameChain as ReturnType<typeof useDerivedTradeState>)
+  jest.mocked(useQuoteParamsRecipient).mockReturnValue(undefined)
+  const { result: local } = renderHook(() => useQuoteParams('1000000', true))
+  expect(local.current?.quoteParams?.partiallyFillable).toBe(true)
+})

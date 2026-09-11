@@ -1,4 +1,4 @@
-import { HYPERCORE_CHAIN_ID, SUI_CHAIN_ID, TRON_CHAIN_ID } from '@cowprotocol/common-const'
+import { HYPERCORE_CHAIN_ID, SUI_CHAIN_ID, TRON_CHAIN_ID, TRX_NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
 import { isAddress } from '@ethersproject/address'
 import { Base58 } from '@ethersproject/basex'
 import { arrayify } from '@ethersproject/bytes'
@@ -24,11 +24,18 @@ export function isTronAddress(value: string): boolean {
   }
 }
 
-/** Hyperliquid (Hypercore) account: an EVM-format address. */
-export const isHypercoreAddress = (value: string): boolean => isAddress(value)
+/** Hyperliquid (Hypercore) account: a 0x EVM address with a valid checksum (ethers isAddress alone also admits ICAP). */
+export const isHypercoreAddress = (value: string): boolean => value.startsWith('0x') && isAddress(value)
 
-/** Hypercore asset id: a HIP-1 token id (0x + 16 bytes) or an EVM-format address. */
-export const isHypercoreTokenId = (value: string): boolean => /^0x[0-9a-fA-F]{32}$/.test(value) || isAddress(value)
+/**
+ * Hypercore asset id: the HIP-1 spot token id (0x + 16 bytes). NEAR also lists
+ * an erc20 mirror under an EVM address; the picker hides it and the policy
+ * rejects it, so one predicate serves both.
+ */
+export const isHypercoreTokenId = (value: string): boolean => /^0x[0-9a-fA-F]{32}$/.test(value)
+
+/** The Tron zero address (our native sentinel) is a black hole, never a recipient. */
+const isTronRecipient = (value: string): boolean => value !== TRX_NATIVE_CURRENCY_ADDRESS && isTronAddress(value)
 
 export interface NonEvmDestinationRules {
   /** What the user types into the recipient field. */
@@ -45,7 +52,7 @@ export interface NonEvmDestinationRules {
  */
 export const NON_EVM_DESTINATION_RULES: Readonly<Partial<Record<number, NonEvmDestinationRules>>> = {
   [SUI_CHAIN_ID]: { isRecipientAddress: isSuiAddress, isTokenId: isSuiCoinType },
-  [TRON_CHAIN_ID]: { isRecipientAddress: isTronAddress, isTokenId: isTronAddress },
+  [TRON_CHAIN_ID]: { isRecipientAddress: isTronRecipient, isTokenId: isTronAddress },
   [HYPERCORE_CHAIN_ID]: { isRecipientAddress: isHypercoreAddress, isTokenId: isHypercoreTokenId },
 }
 
@@ -53,8 +60,14 @@ export function isNonEvmBridgeDestination(chainId: number | undefined): boolean 
   return chainId !== undefined && chainId in NON_EVM_DESTINATION_RULES
 }
 
-/** True when the string is a valid recipient or token id on ANY non-EVM bridge destination. */
+/**
+ * True when the string is a valid recipient or token id on some non-EVM bridge
+ * destination AND is not an EVM-format address (those keep the EVM code paths;
+ * a Hypercore recipient is an EVM address). Chain-agnostic on purpose: used
+ * where only the string is known (address shortening, persisted token ids).
+ */
 export function isNonEvmDestinationString(value: string): boolean {
+  if (isAddress(value)) return false
   return Object.values(NON_EVM_DESTINATION_RULES).some(
     (rule) => rule !== undefined && (rule.isRecipientAddress(value) || rule.isTokenId(value)),
   )

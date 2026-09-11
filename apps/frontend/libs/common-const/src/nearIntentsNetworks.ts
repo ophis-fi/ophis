@@ -13,14 +13,10 @@ import {
   XLAYER_CHAIN_ID,
 } from './bridgeDestination.const'
 
-export interface OphisNearIntentsNetwork {
+export type OphisNearIntentsNetwork = {
   /** NEAR's `blockchain` field in its 1Click token list. */
   blockchain: string
   chainId: number
-  /** EVM chains get isEvmChain() (0x address handling); non-EVM ones use nonEvmDestinations.ts rules. */
-  evm: boolean
-  /** Sentinel for the chain's native asset (NEAR lists it without a contractAddress). */
-  nativeAddress?: string
   /**
    * 1Click rejects FLEX_INPUT for this chain's assets ("supports only EXACT_INPUT or
    * EXACT_OUTPUT"). The SDK then quotes EXACT_INPUT on the order's minimum buy amount:
@@ -28,7 +24,19 @@ export interface OphisNearIntentsNetwork {
    * the owner on the source chain instead of delivering it.
    */
   exactInput?: boolean
-}
+} & (
+  | {
+      /** EVM chain: isEvmChain() applies, 0x handling, native = the SDK's ETH sentinel. */
+      evm: true
+      nativeAddress?: never
+    }
+  | {
+      /** Non-EVM chain: MUST have a rule in common-utils nonEvmDestinations.ts (a test enforces it). */
+      evm: false
+      /** Sentinel for the chain's native asset (NEAR lists it without a contractAddress). */
+      nativeAddress: string
+    }
+)
 
 /**
  * NEAR Intents networks Ophis offers on top of the SDK's built-in list.
