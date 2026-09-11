@@ -12,6 +12,7 @@ import {
 } from '@cowprotocol/common-const'
 import { ExplorerDataType, getExplorerLink, getIsNativeToken, getWrappedToken } from '@cowprotocol/common-utils'
 import { isEvmChain, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
+import { getTokenPolicyDecision, TokenPolicyProfile } from '@cowprotocol/tokens'
 
 // eslint-disable-next-line import/no-internal-modules -- pure util under test, not part of the module's index
 import { filterDestinationChains } from 'modules/tokensList/utils/chainsState'
@@ -166,5 +167,23 @@ describe('NEAR Intents destinations Ophis adds (Monad, X Layer)', () => {
     expect(isBridgeOnlyDestinationChain(undefined)).toBe(false)
     // Public copy (About, Protocol) lists destinations from this same registry.
     expect(BRIDGE_ONLY_DESTINATION_LABELS).toEqual(['Monad', 'X Layer'])
+  })
+
+  it('passes the token policy for a valid destination asset on those chains (Codex round 4)', () => {
+    const profile = TokenPolicyProfile.ESTABLISHED_SETTLEMENT
+    // Selecting a Monad / X Layer token runs through getTokenPolicyDecision before onSelectToken.
+    expect(
+      getTokenPolicyDecision(
+        { chainId: MONAD_CHAIN_ID, address: '0x754704bc059f8c67012fed69bc8a327a5aafb603' },
+        profile,
+      ),
+    ).toEqual({ allowed: true, reason: 'approved' })
+    expect(
+      getTokenPolicyDecision({ chainId: XLAYER_CHAIN_ID, address: NATIVE_CURRENCY_ADDRESS }, profile).allowed,
+    ).toBe(true)
+    expect(getTokenPolicyDecision({ chainId: MONAD_CHAIN_ID, address: 'not-an-address' }, profile)).toEqual({
+      allowed: false,
+      reason: 'invalid-token',
+    })
   })
 })

@@ -1,3 +1,4 @@
+import { MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from '@cowprotocol/common-const'
 import {
   ALL_SUPPORTED_CHAINS_MAP,
   getAddressKey,
@@ -128,13 +129,13 @@ export const NATIVE_TOKEN_PER_NETWORK: Record<SupportedChainId, TokenErc20> = {
     decimals: 18,
   } as TokenErc20,
   // Ophis fork: NEAR Intents bridge destinations (no trading here).
-  [143 as unknown as SupportedChainId]: {
+  [MONAD_CHAIN_ID as SupportedChainId]: {
     address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
     name: 'Monad',
     symbol: 'MON',
     decimals: 18,
   } as TokenErc20,
-  [196 as unknown as SupportedChainId]: {
+  [XLAYER_CHAIN_ID as SupportedChainId]: {
     address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
     name: 'OKB',
     symbol: 'OKB',

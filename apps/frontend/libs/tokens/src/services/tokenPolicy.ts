@@ -1,4 +1,10 @@
-import { DAI, NATIVE_CURRENCY_ADDRESS, USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
+import {
+  DAI,
+  isBridgeOnlyDestinationChain,
+  NATIVE_CURRENCY_ADDRESS,
+  USDC_MAINNET,
+  WETH_MAINNET,
+} from '@cowprotocol/common-const'
 import { isAddress, isSupportedChainId } from '@cowprotocol/common-utils'
 import {
   AdditionalTargetChainId,
@@ -122,6 +128,14 @@ function getBridgeDestinationPolicyDecision(
   }
   if (asset.chainId === AdditionalTargetChainId.SOLANA) {
     return isSolanaAddress(asset.address)
+      ? { allowed: true, reason: 'approved' }
+      : { allowed: false, reason: 'invalid-token' }
+  }
+  // Bridge-only EVM destinations (Monad, X Layer): not trading chains, so
+  // isSupportedChainId is false; the destination asset only needs a valid EVM
+  // address here, the provider validates the mint and the quote.
+  if (isBridgeOnlyDestinationChain(asset.chainId)) {
+    return isAddress(asset.address)
       ? { allowed: true, reason: 'approved' }
       : { allowed: false, reason: 'invalid-token' }
   }

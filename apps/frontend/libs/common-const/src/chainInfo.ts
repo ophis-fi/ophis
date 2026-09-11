@@ -21,6 +21,7 @@ import {
   TargetChainId,
 } from '@cowprotocol/cow-sdk'
 
+import { MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from './bridgeDestination.const'
 import { BRIDGE_DESTINATION_CHAIN_INFO } from './bridgeDestinationChains'
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
 import {
@@ -268,8 +269,8 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   AdditionalTargetChainId.OPTIMISM,
   130 as unknown as TargetChainId, // Ophis fork: Unichain
   4663 as unknown as TargetChainId, // Ophis fork: Robinhood Chain
-  143 as unknown as TargetChainId, // Ophis fork: Monad (NEAR Intents destination only)
-  196 as unknown as TargetChainId, // Ophis fork: X Layer (NEAR Intents destination only)
+  MONAD_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only
+  XLAYER_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
 ]
