@@ -397,8 +397,10 @@ test('keeps verified discovery when a later RPC batch is rate limited', async (t
     launch({ token: `0x${(index + 1).toString(16).padStart(40, '0')}` }),
   );
   let failFirstBatch = false;
+  let cancelOnLaterBatch: AbortController | undefined;
   t.mock.method(globalThis, 'fetch', async (input, init) => {
     const requests = JSON.parse(String(init?.body)) as { id: number; params: { data: string }[] }[];
+    if (requests[0]!.id >= 20) cancelOnLaterBatch?.abort();
     if (
       failFirstBatch ||
       new URL(String(input)).hostname === 'rpc.mainnet.chain.robinhood.com' ||
@@ -415,6 +417,11 @@ test('keeps verified discovery when a later RPC batch is rate limited', async (t
   const verified = await verifyLaunchesOnchain(launches, new AbortController().signal);
   assert.deepEqual(verified, launches.slice(0, 20));
   assert.ok(!verified.includes(launches[20]!));
+  cancelOnLaterBatch = new AbortController();
+  await assert.rejects(
+    verifyLaunchesOnchain(launches, cancelOnLaterBatch.signal),
+    /quorum unavailable/,
+  );
   failFirstBatch = true;
   await assert.rejects(
     verifyLaunchesOnchain(launches, new AbortController().signal),

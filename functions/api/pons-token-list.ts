@@ -347,7 +347,7 @@ export async function verifyLaunchesOnchain(
     } catch (error) {
       // Shared edge RPC limits can interrupt discovery after a successful batch.
       // Keep only completed, verified batches; never publish the failing batch.
-      if (verifiedChunks.some((chunk) => chunk.length > 0)) break;
+      if (!signal.aborted && verifiedChunks.some((chunk) => chunk.length > 0)) break;
       throw error;
     }
   }
