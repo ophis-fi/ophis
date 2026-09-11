@@ -147,6 +147,13 @@ jobs:
           # production. Add REACT_APP_NETWORK_URL_10 to GitHub repo secrets
           # to override.
           REACT_APP_NETWORK_URL_10: ${{ secrets.REACT_APP_NETWORK_URL_10 }}
+          # Ophis: keyed Ethereum mainnet RPC (Alchemy, full archive). The keyless
+          # default (eth.drpc.org) answered 408 mid-quote on the free plan and is
+          # the frontend's weakest link for bridge quotes, wallet reads and
+          # settlement lookups. Bundle-public like every REACT_APP_* value, so the
+          # key must be domain-allowlisted in the Alchemy dashboard (*.ophis.fi).
+          # Empty -> keyless default.
+          REACT_APP_NETWORK_URL_1: ${{ secrets.REACT_APP_NETWORK_URL_1 }}
           # Ophis fork: ensure the production build is detected as the
           # production environment by lib/common-utils/environments.ts.
           # Without this, production runs as "local" env and defaults to
@@ -307,6 +314,8 @@ jobs:
           # Same Across key as the swap build: the explorer reads Across order
           # status through the SDK too (Codex P2 on #1382).
           REACT_APP_ACROSS_API_KEY: ${{ secrets.REACT_APP_ACROSS_API_KEY }}
+          # Same keyed mainnet RPC as the swap build (explorer's SDK adapter reads chain 1 through it).
+          REACT_APP_NETWORK_URL_1: ${{ secrets.REACT_APP_NETWORK_URL_1 }}
           NODE_OPTIONS: --max-old-space-size=6144
           # Maps `SupportedChainId → orderbook host` for every chain the
           # explorer should be able to surface orders for. This MUST cover
