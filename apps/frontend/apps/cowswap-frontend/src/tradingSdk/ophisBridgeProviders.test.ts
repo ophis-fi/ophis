@@ -7,6 +7,7 @@ import {
   createDecodeOnlyBungeeBridgeProvider,
   DecodeOnlyBungeeBridgeProvider,
   EXTRA_ACROSS_SOURCE_CHAIN_IDS,
+  ophisAcrossApiOptions,
 } from '@cowprotocol/common-const'
 import { isEvmChainInfo, OrderKind, SupportedChainId, TargetChainId, TokenInfo } from '@cowprotocol/cow-sdk'
 import {
@@ -28,6 +29,10 @@ const ids = (chains: { id: number }[]): number[] => chains.map((c) => c.id)
 // 4663 is not a SupportedChainId member (custom bridge chain, see ophisBridgeChains.ts),
 // so the SDK's TargetChainId-typed params need the same cast the app relies on at runtime.
 const ROBINHOOD_CHAIN_ID = 4663 as unknown as TargetChainId
+
+// A fetch that never settles except through its abort signal (a stalled request).
+const settleOnlyOnAbort = (signal?: AbortSignal | null): Promise<Response> =>
+  new Promise((_, reject) => signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
 
 describe('ophisBridgeProviders', () => {
   describe('OphisAcrossBridgeProvider', () => {
@@ -123,8 +128,21 @@ describe('ophisBridgeProviders', () => {
     describe('getIntermediateTokens route-based fallback', () => {
       const mockRoutes = (routes: unknown): jest.SpyInstance =>
         jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => routes } as Response)
+      // The SDK validates every route's shape (the real API returns all of these).
+      const route = (originToken: string, originTokenSymbol: string): Record<string, unknown> => ({
+        originChainId: 1,
+        originToken,
+        originTokenSymbol,
+        destinationChainId: 4663,
+        destinationToken: acrossRequest().buyTokenAddress,
+        destinationTokenSymbol: 'USDG',
+        isNative: false,
+      })
 
-      afterEach(() => jest.restoreAllMocks())
+      afterEach(() => {
+        jest.restoreAllMocks()
+        jest.useRealTimers()
+      })
 
       it('returns [] for a non-executable source without hitting super or the API', async () => {
         const superSpy = jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens')
@@ -154,17 +172,32 @@ describe('ophisBridgeProviders', () => {
 
       it('falls back to Across available-routes when the symbol match is empty (the USDG corridor)', async () => {
         jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
-        mockRoutes([
-          { originToken: USDC.address }, // cross-asset USDC -> USDG
-          { originToken: USDG_MAINNET.address }, // chain-aliased USDG-MAINNET -> USDG
+        const fetchSpy = mockRoutes([
+          route(USDC.address, 'USDC'), // cross-asset USDC -> USDG
+          route(USDG_MAINNET.address, 'USDG'), // chain-aliased USDG-MAINNET -> USDG
         ])
-        const provider = new TestableAcrossProvider()
+        const provider = new TestableAcrossProvider({ apiOptions: { apiKey: 'test-key', integratorId: '0x0311' } })
         jest.spyOn(provider.testApi, 'getSupportedTokens').mockResolvedValue([USDC, USDG_MAINNET, BASE_USDC])
 
         const result = await provider.getIntermediateTokens(acrossRequest())
 
         // Both mainnet route origins returned; the Base USDC (wrong chain) excluded.
         expect(result).toEqual([USDC, USDG_MAINNET])
+        const [url, init] = fetchSpy.mock.calls[0] // attributed, authenticated, abortable
+        expect(String(url)).toContain('/available-routes?')
+        expect(new URL(String(url)).searchParams.get('integratorId')).toBe('0x0311')
+        expect(init?.headers).toEqual({ Authorization: 'Bearer test-key' })
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+      })
+
+      it('aborts a stalled route request at the timeout and degrades to []', async () => {
+        jest.useFakeTimers()
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
+        const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((_url, init) => settleOnlyOnAbort(init?.signal))
+        const pending = new OphisAcrossBridgeProvider().getIntermediateTokens(acrossRequest())
+        await jest.advanceTimersByTimeAsync(10_001)
+        expect(await pending).toEqual([])
+        expect(fetchSpy.mock.calls[0][1]?.signal?.aborted).toBe(true)
       })
 
       it('returns [] when the route fetch fails (no crash, corridor just unavailable)', async () => {
@@ -274,7 +307,11 @@ describe('ophisBridgeProviders', () => {
       })
     })
   })
+})
 
+// Split from the Across block above to keep each top-level describe under the
+// max-lines-per-function cap.
+describe('ophisBridgeProviders: chains, decode-only provider, invariants', () => {
   describe('DecodeOnlyBungeeBridgeProvider (shared with the explorer, decode-only)', () => {
     const provider = (): DecodeOnlyBungeeBridgeProvider => createDecodeOnlyBungeeBridgeProvider()
 
@@ -416,5 +453,48 @@ describe('ophisBridgeProviders', () => {
         patch.match(/^\+\s+\? \{ inputToken: request\.inputToken, outputToken: request\.outputToken \}$/gm),
       ).toHaveLength(2)
     })
+  })
+})
+
+describe('Across API key + integrator ID (sdk-bridging patch)', () => {
+  const originalFetch = global.fetch
+  afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  function mockFetch(): jest.Mock {
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => [] })
+    global.fetch = fetchMock as unknown as typeof fetch
+    return fetchMock
+  }
+
+  const apiOf = (provider: AcrossBridgeProvider): { getAvailableRoutes(params: object): Promise<unknown> } =>
+    (provider as unknown as { api: { getAvailableRoutes(params: object): Promise<unknown> } }).api
+
+  it('sends the integratorId param and the Bearer header when configured', async () => {
+    const fetchMock = mockFetch()
+    await apiOf(
+      new OphisAcrossBridgeProvider({ apiOptions: { apiKey: 'test-key', integratorId: '0x0311' } }),
+    ).getAvailableRoutes({ originChainId: 1 })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(new URL(url).searchParams.get('integratorId')).toBe('0x0311')
+    expect(new URL(url).searchParams.get('originChainId')).toBe('1')
+    expect(init.headers).toEqual({ Authorization: 'Bearer test-key' })
+  })
+
+  it('stays keyless and untagged when neither is configured', async () => {
+    const fetchMock = mockFetch()
+    await apiOf(new OphisAcrossBridgeProvider()).getAvailableRoutes({})
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(new URL(url).searchParams.has('integratorId')).toBe(false)
+    expect(init.headers).toBeUndefined()
+  })
+
+  it('ophisAcrossApiOptions carries the Ophis integrator ID and never a blank key', () => {
+    const options = ophisAcrossApiOptions()
+    expect(options.integratorId).toBe('0x0311')
+    expect(options.apiKey).not.toBe('')
   })
 })
