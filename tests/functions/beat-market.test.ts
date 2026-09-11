@@ -5,6 +5,7 @@ import { onRequestPost } from '../../functions/api/beat-market.ts';
 
 // Captured before any test enables mock timers, so the hang guard below is real time.
 const realSetTimeout = setTimeout;
+const realClearTimeout = clearTimeout;
 
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 const WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
@@ -102,7 +103,12 @@ test('a stalled error body is bounded by the same timeout and reported as one', 
     const pending = call();
     for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
     t.mock.timers.tick(6001);
-    const outcome = await Promise.race([pending, new Promise((r) => realSetTimeout(() => r('HUNG'), 3000))]);
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const hung = new Promise((r) => {
+      watchdog = realSetTimeout(() => r('HUNG'), 3000);
+    });
+    const outcome = await Promise.race([pending, hung]);
+    realClearTimeout(watchdog);
     assert.notEqual(outcome, 'HUNG', 'the function stayed pending past its timeout');
     const res = outcome as Response;
     assert.equal(res.status, 504);
