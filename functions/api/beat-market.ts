@@ -106,12 +106,20 @@ async function checkRateLimit(env: Env, ip: string): Promise<{ ok: true } | { ok
   return checkRateLimitIsolate(ip)
 }
 
-/** KyberSwap's numeric error code from a failed response body, or NaN. */
+const isAbortError = (err: unknown): boolean => err instanceof Error && err.name === 'AbortError'
+const timedOut = (): Response => json({ ok: false, error: { code: 'TIMEOUT', message: 'reference timed out' } }, 504)
+
+/**
+ * KyberSwap's numeric error code from a failed response body, or NaN for a
+ * malformed body. A read aborted by the timeout propagates (it is a timeout,
+ * not a malformed body).
+ */
 async function readKyberErrorCode(res: Response): Promise<number> {
   try {
     const code = ((await res.json()) as { code?: unknown } | null)?.code
     return typeof code === 'number' ? code : NaN
-  } catch {
+  } catch (err: unknown) {
+    if (isAbortError(err)) throw err
     return NaN
   }
 }
@@ -179,11 +187,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         },
       })
     } catch (err: unknown) {
-      const aborted = err instanceof Error && err.name === 'AbortError'
-      return json(
-        { ok: false, error: { code: aborted ? 'TIMEOUT' : 'UPSTREAM', message: aborted ? 'reference timed out' : 'failed to reach reference' } },
-        aborted ? 504 : 502,
-      )
+      if (isAbortError(err)) return timedOut()
+      return json({ ok: false, error: { code: 'UPSTREAM', message: 'failed to reach reference' } }, 502)
     }
 
     if (!upstream.ok) {
@@ -199,8 +204,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       // hides quietly. Every other failure, a broken slug or endpoint included,
       // stays a 502 so status-based monitoring keeps seeing it (Cloudflare
       // renders that as its own "error code: 502" page).
-      if (upstream.status < 500 && KYBER_NO_ROUTE_CODES.has(await readKyberErrorCode(upstream))) {
-        return json({ ok: false, error: { code: 'UPSTREAM', message } }, 200)
+      if (upstream.status < 500) {
+        let code: number
+        try {
+          code = await readKyberErrorCode(upstream)
+        } catch {
+          // Only an aborted read propagates: the body stalled past the timeout.
+          return timedOut()
+        }
+        if (KYBER_NO_ROUTE_CODES.has(code)) return json({ ok: false, error: { code: 'UPSTREAM', message } }, 200)
       }
       return json({ ok: false, error: { code: 'UPSTREAM', message } }, 502)
     }
@@ -209,11 +221,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     try {
       raw = await upstream.json()
     } catch (err: unknown) {
-      const aborted = err instanceof Error && err.name === 'AbortError'
-      return json(
-        { ok: false, error: { code: aborted ? 'TIMEOUT' : 'UPSTREAM', message: aborted ? 'reference timed out' : 'reference returned non-JSON' } },
-        aborted ? 504 : 502,
-      )
+      if (isAbortError(err)) return timedOut()
+      return json({ ok: false, error: { code: 'UPSTREAM', message: 'reference returned non-JSON' } }, 502)
     }
 
     const amountOut = (raw as { data?: { routeSummary?: { amountOut?: unknown } } })?.data?.routeSummary?.amountOut

@@ -86,7 +86,7 @@ test('the upstream request carries a client id (own KyberSwap rate-limit bucket)
   assert.equal(clientId, 'ophis-swap-beat-market');
 });
 
-test('a stalled error body is bounded by the same timeout (no hang)', async (t) => {
+test('a stalled error body is bounded by the same timeout and reported as one', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (_input, init) => {
@@ -104,7 +104,9 @@ test('a stalled error body is bounded by the same timeout (no hang)', async (t) 
     t.mock.timers.tick(6001);
     const outcome = await Promise.race([pending, new Promise((r) => realSetTimeout(() => r('HUNG'), 3000))]);
     assert.notEqual(outcome, 'HUNG', 'the function stayed pending past its timeout');
-    assert.equal((outcome as Response).status, 502);
+    const res = outcome as Response;
+    assert.equal(res.status, 504);
+    assert.equal(((await res.json()) as { error: { code: string } }).error.code, 'TIMEOUT');
   } finally {
     globalThis.fetch = originalFetch;
     t.mock.timers.reset();
