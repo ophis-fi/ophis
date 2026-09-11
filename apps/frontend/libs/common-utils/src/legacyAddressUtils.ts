@@ -142,8 +142,11 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
   // to CHAIN_INFO.explorer. The env override and an explicit `base` (bridge
   // networks) still win.
   let ophisBase: string | undefined
-  // Suiscan uses /account/<addr>; every other explorer here uses /address/<addr>.
+  // The Ophis explorer has no token page (token links use /address); native
+  // explorers of bridge-only destinations declare their own routes
+  // (Suiscan /account + /coin, Tronscan /token20).
   let addressPath = 'address'
+  let tokenPath = 'address'
   try {
     ophisBase = getExplorerBaseUrl(chainId as SupportedChainId)
   } catch {
@@ -151,6 +154,7 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
     const info = getChainInfo(chainId)
     ophisBase = info?.explorer
     addressPath = info?.addressPath ?? addressPath
+    tokenPath = info?.tokenPath ?? addressPath
   }
   const basePath = BLOCK_EXPLORER_URL_OVERRIDE || base || ophisBase
 
@@ -160,8 +164,7 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
     case 'transaction':
       return `${basePath}/tx/${data}`
     case 'token':
-      // The Ophis explorer has no token page; route to the address view.
-      return `${basePath}/${addressPath}/${data}`
+      return `${basePath}/${tokenPath}/${data}`
     case 'block':
       return `${basePath}/block/${data}`
     case 'token-transfer':

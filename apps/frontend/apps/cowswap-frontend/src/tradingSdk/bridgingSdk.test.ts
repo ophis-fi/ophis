@@ -354,4 +354,28 @@ describe('NEAR Intents non-EVM destinations Ophis adds (Sui, Tron, Hyperliquid)'
     expect(shortenAddress(SUI_ADDR)).toMatch(/^0x0000\.\.\.0002$/)
     expect(shortenAddress(TRON_USDT)).toMatch(/^TR7NHq\.\.\.Lj6t$/)
   })
+
+  it("routes token links through each explorer's token page, not its account page (Codex P2)", () => {
+    // ClickableAddress builds the token-details "View on explorer" link with ExplorerDataType.TOKEN.
+    expect(getExplorerLink(SUI_CHAIN_ID, SUI_USDC, ExplorerDataType.TOKEN)).toBe(
+      `https://suiscan.xyz/mainnet/coin/${SUI_USDC}`,
+    )
+    expect(getExplorerLink(TRON_CHAIN_ID, TRON_USDT, ExplorerDataType.TOKEN)).toBe(
+      `https://tronscan.org/#/token20/${TRON_USDT}`,
+    )
+    expect(getExplorerLink(HYPERCORE_CHAIN_ID, HL_USDC_HIP1, ExplorerDataType.TOKEN)).toBe(
+      `https://app.hyperliquid.xyz/explorer/token/${HL_USDC_HIP1}`,
+    )
+    // Account links keep the account route.
+    expect(getExplorerLink(SUI_CHAIN_ID, SUI_ADDR, ExplorerDataType.ADDRESS)).toBe(
+      `https://suiscan.xyz/mainnet/account/${SUI_ADDR}`,
+    )
+    // The legacy builder agrees.
+    expect(getBlockExplorerUrl(SUI_CHAIN_ID as SupportedChainId, 'token', SUI_USDC)).toBe(
+      `https://suiscan.xyz/mainnet/coin/${SUI_USDC}`,
+    )
+    expect(getBlockExplorerUrl(TRON_CHAIN_ID as SupportedChainId, 'token', TRON_USDT)).toBe(
+      `https://tronscan.org/#/token20/${TRON_USDT}`,
+    )
+  })
 })

@@ -70,6 +70,8 @@ export interface BaseChainInfo {
   readonly nativeCurrency: TokenWithLogo
   /** Explorer path segment for an address page when it is not `address` (e.g. Suiscan uses `account`). */
   readonly addressPath?: string
+  /** Explorer path segment for a token page when it differs from addressPath (Suiscan `coin`, Tronscan `token20`, Hyperliquid `token`). */
+  readonly tokenPath?: string
 }
 
 export type ChainInfoMap = Record<TargetChainId, BaseChainInfo>

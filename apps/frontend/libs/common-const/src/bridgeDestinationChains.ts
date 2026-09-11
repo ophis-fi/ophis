@@ -68,6 +68,7 @@ export const BRIDGE_DESTINATION_CHAIN_INFO: Readonly<Partial<Record<number, Base
     docs: 'https://docs.sui.io' as HttpsString,
     explorer: 'https://suiscan.xyz/mainnet' as HttpsString,
     addressPath: 'account',
+    tokenPath: 'coin',
     infoLink: 'https://sui.io' as HttpsString,
     logo: { light: SUI_LOGO, dark: SUI_LOGO },
     addressPrefix: 'sui',
@@ -82,6 +83,7 @@ export const BRIDGE_DESTINATION_CHAIN_INFO: Readonly<Partial<Record<number, Base
   [TRON_CHAIN_ID]: {
     docs: 'https://developers.tron.network' as HttpsString,
     explorer: 'https://tronscan.org/#' as HttpsString,
+    tokenPath: 'token20',
     infoLink: 'https://tron.network' as HttpsString,
     logo: { light: TRON_LOGO, dark: TRON_LOGO },
     addressPrefix: 'tron',
@@ -96,6 +98,7 @@ export const BRIDGE_DESTINATION_CHAIN_INFO: Readonly<Partial<Record<number, Base
   [HYPERCORE_CHAIN_ID]: {
     docs: 'https://hyperliquid.gitbook.io/hyperliquid-docs' as HttpsString,
     explorer: 'https://app.hyperliquid.xyz/explorer' as HttpsString,
+    tokenPath: 'token',
     infoLink: 'https://hyperliquid.xyz' as HttpsString,
     logo: { light: HYPERLIQUID_LOGO, dark: HYPERLIQUID_LOGO },
     addressPrefix: 'hl',
