@@ -268,6 +268,8 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   AdditionalTargetChainId.OPTIMISM,
   130 as unknown as TargetChainId, // Ophis fork: Unichain
   4663 as unknown as TargetChainId, // Ophis fork: Robinhood Chain
+  143 as unknown as TargetChainId, // Ophis fork: Monad (NEAR Intents destination only)
+  196 as unknown as TargetChainId, // Ophis fork: X Layer (NEAR Intents destination only)
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
 ]

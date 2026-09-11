@@ -9,6 +9,7 @@ import {
   WRAPPED_NATIVE_CURRENCIES as WRAPPED_NATIVE_CURRENCIES_SDK,
 } from '@cowprotocol/cow-sdk'
 
+import { MONAD_CHAIN_ID, MONAD_LOGO, XLAYER_CHAIN_ID, XLAYER_LOGO } from './bridgeDestinationConst'
 import { TokenWithLogo } from './types'
 
 export const NATIVE_CURRENCY_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
@@ -94,6 +95,25 @@ export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
     18,
     'ETH',
     'Ether',
+  ),
+  // Ophis fork: NEAR Intents bridge destinations (no trading); native MON / OKB
+  // live here so getIsNativeToken() and native sorting treat the sentinel as
+  // native for bridge output tokens.
+  [MONAD_CHAIN_ID as TargetChainId]: new TokenWithLogo(
+    MONAD_LOGO,
+    MONAD_CHAIN_ID as SupportedChainId,
+    NATIVE_CURRENCY_ADDRESS,
+    18,
+    'MON',
+    'Monad',
+  ),
+  [XLAYER_CHAIN_ID as TargetChainId]: new TokenWithLogo(
+    XLAYER_LOGO,
+    XLAYER_CHAIN_ID as SupportedChainId,
+    NATIVE_CURRENCY_ADDRESS,
+    18,
+    'OKB',
+    'OKB',
   ),
   // Native XPL on Plasma (chain 9745). Plasma IS a SupportedChainId, so the
   // mapAllNetworks() spread above already creates this entry — but

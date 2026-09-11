@@ -3,9 +3,14 @@ import {
   getChainInfo,
   MONAD_CHAIN_ID,
   NATIVE_CURRENCY_ADDRESS,
+  SORTED_DST_CHAIN_IDS,
+  toBridgeChainInfo,
   XLAYER_CHAIN_ID,
 } from '@cowprotocol/common-const'
-import { isEvmChain, TargetChainId } from '@cowprotocol/cow-sdk'
+import { getIsNativeToken } from '@cowprotocol/common-utils'
+import { isEvmChain, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
+
+import { filterDestinationChains } from 'modules/tokensList/utils/chainsState'
 
 import { isRecipientAddress } from 'common/utils/recipientAddress.utils'
 
@@ -123,5 +128,17 @@ describe('NEAR Intents destinations Ophis adds (Monad, X Layer)', () => {
     expect(CHAIN_INFO[MONAD_CHAIN_ID as TargetChainId]).toBeUndefined()
     expect(getChainInfo(MONAD_CHAIN_ID as TargetChainId).label).toBe('Monad')
     expect(isRecipientAddress('0x3F92Ac7B4f2ad492D7ADe1bdDf5003922F21331b', MONAD_CHAIN_ID)).toBe(true)
+  })
+
+  it('reaches the destination picker: ordered list, provider-network filter, native semantics (Codex on #1388)', () => {
+    // The picker is fed by SORTED_DST_CHAIN_IDS and filterDestinationChains, not
+    // by the provider registration alone.
+    expect(SORTED_DST_CHAIN_IDS).toEqual(expect.arrayContaining([MONAD_CHAIN_ID, XLAYER_CHAIN_ID]))
+    const kept = filterDestinationChains([toBridgeChainInfo(MONAD_CHAIN_ID), toBridgeChainInfo(XLAYER_CHAIN_ID)])
+    expect(kept?.map((c) => c.id)).toEqual([MONAD_CHAIN_ID, XLAYER_CHAIN_ID])
+    // Native MON / OKB at the sentinel address are native, not ERC-20s.
+    expect(getIsNativeToken(MONAD_CHAIN_ID as SupportedChainId, NATIVE_CURRENCY_ADDRESS)).toBe(true)
+    expect(getIsNativeToken(XLAYER_CHAIN_ID as SupportedChainId, NATIVE_CURRENCY_ADDRESS)).toBe(true)
+    expect(getChainInfo(XLAYER_CHAIN_ID as TargetChainId).nativeCurrency.symbol).toBe('OKB')
   })
 })

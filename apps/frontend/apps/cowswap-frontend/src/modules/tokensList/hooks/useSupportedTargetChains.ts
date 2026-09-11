@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { CHAIN_INFO } from '@cowprotocol/common-const'
+import { getChainInfo } from '@cowprotocol/common-const'
 import { useAvailableTargetChains, useFeatureFlags } from '@cowprotocol/common-hooks'
 import { AdditionalTargetChainId, ChainInfo, TargetChainId } from '@cowprotocol/cow-sdk'
 
@@ -15,7 +15,7 @@ import { mapChainInfo } from '../utils/mapChainInfo'
  * enum therefore dropped Optimism from every destination list no matter what the
  * flags said, so Optimism could not be selected as a bridge destination from any
  * source chain — even though Across and NEAR Intents both deliver there, it sits
- * in SORTED_DST_CHAIN_IDS, it has a CHAIN_INFO entry, and filterDestinationChains
+ * in SORTED_DST_CHAIN_IDS, getChainInfo knows it, and filterDestinationChains
  * admits it. Only the two non-EVM chains are actually flag-gated.
  *
  * (Ophis additionally runs its own sovereign settlement on Optimism, so "cannot
@@ -54,7 +54,8 @@ export function useSupportedTargetChains(): ChainInfo[] {
         return acc
       }
 
-      const info = CHAIN_INFO[id]
+      // getChainInfo covers the bridge-only destinations (Monad, X Layer) too.
+      const info = getChainInfo(id)
       if (info) acc.push(mapChainInfo(id, info))
       return acc
     }, [] as ChainInfo[])
