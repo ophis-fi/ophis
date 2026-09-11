@@ -340,9 +340,16 @@ export async function verifyLaunchesOnchain(
   // batches keep the authoritative path below that limit.
   for (let start = 0; start < chunks.length; start += RPC_CONCURRENCY) {
     const group = chunks.slice(start, start + RPC_CONCURRENCY);
-    verifiedChunks.push(
-      ...(await Promise.all(group.map((chunk, offset) => verifyChunk(chunk, start + offset)))),
-    );
+    try {
+      verifiedChunks.push(
+        ...(await Promise.all(group.map((chunk, offset) => verifyChunk(chunk, start + offset)))),
+      );
+    } catch (error) {
+      // Shared edge RPC limits can interrupt discovery after a successful batch.
+      // Keep only completed, verified batches; never publish the failing batch.
+      if (!signal.aborted && verifiedChunks.some((chunk) => chunk.length > 0)) break;
+      throw error;
+    }
   }
   return verifiedChunks.flat();
 }
