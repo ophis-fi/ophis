@@ -3,6 +3,9 @@ import test from 'node:test';
 
 import { onRequestPost } from '../../functions/api/beat-market.ts';
 
+// Captured before any test enables mock timers, so the hang guard below is real time.
+const realSetTimeout = setTimeout;
+
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 const WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
 
@@ -81,4 +84,29 @@ test('the upstream request carries a client id (own KyberSwap rate-limit bucket)
     globalThis.fetch = originalFetch;
   }
   assert.equal(clientId, 'ophis-swap-beat-market');
+});
+
+test('a stalled error body is bounded by the same timeout (no hang)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    // Headers arrive at once; the body never does, unless the abort signal fires.
+    const body = new ReadableStream({
+      start(controller) {
+        init?.signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')));
+      },
+    });
+    return new Response(body, { status: 400, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const pending = call();
+    for (let i = 0; i < 5; i += 1) await new Promise((r) => setImmediate(r));
+    t.mock.timers.tick(6001);
+    const outcome = await Promise.race([pending, new Promise((r) => realSetTimeout(() => r('HUNG'), 3000))]);
+    assert.notEqual(outcome, 'HUNG', 'the function stayed pending past its timeout');
+    assert.equal((outcome as Response).status, 502);
+  } finally {
+    globalThis.fetch = originalFetch;
+    t.mock.timers.reset();
+  }
 });

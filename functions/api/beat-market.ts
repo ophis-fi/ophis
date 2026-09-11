@@ -162,66 +162,74 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const url = `https://aggregator-api.kyberswap.com/${slug}/api/v1/routes?tokenIn=${sellToken}&tokenOut=${buyToken}&amountIn=${sellAmount}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  let upstream: Response
+  // The timer bounds the body reads too: KyberSwap answering headers promptly
+  // and then stalling the body must not keep the function pending.
   try {
-    upstream = await fetch(url, {
-      signal: controller.signal,
-      // KyberSwap 403s the default fetch UA; send a browser-like one. The
-      // client id puts this traffic in its own rate-limit bucket instead of the
-      // tighter anonymous one (same convention as the solver's kyberswap.toml).
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh) ophis-beat-market',
-        accept: 'application/json',
-        'x-client-id': 'ophis-swap-beat-market',
-      },
-    })
-  } catch (err: unknown) {
-    clearTimeout(timer)
-    const aborted = err instanceof Error && err.name === 'AbortError'
-    return json(
-      { ok: false, error: { code: aborted ? 'TIMEOUT' : 'UPSTREAM', message: aborted ? 'reference timed out' : 'failed to reach reference' } },
-      aborted ? 504 : 502,
-    )
-  }
-  clearTimeout(timer)
-
-  if (!upstream.ok) {
-    const message = `reference returned ${upstream.status}`
-    // Upstream throttling stays visible, with its Retry-After.
-    if (upstream.status === 429) {
-      return json({ ok: false, error: { code: 'RATE_LIMITED', message } }, 503, {
-        'retry-after': upstream.headers.get('retry-after') ?? '60',
+    let upstream: Response
+    try {
+      upstream = await fetch(url, {
+        signal: controller.signal,
+        // KyberSwap 403s the default fetch UA; send a browser-like one. The
+        // client id puts this traffic in its own rate-limit bucket instead of the
+        // tighter anonymous one (same convention as the solver's kyberswap.toml).
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh) ophis-beat-market',
+          accept: 'application/json',
+          'x-client-id': 'ophis-swap-beat-market',
+        },
       })
+    } catch (err: unknown) {
+      const aborted = err instanceof Error && err.name === 'AbortError'
+      return json(
+        { ok: false, error: { code: aborted ? 'TIMEOUT' : 'UPSTREAM', message: aborted ? 'reference timed out' : 'failed to reach reference' } },
+        aborted ? 504 : 502,
+      )
     }
-    // Only KyberSwap declining the PAIR (a known no-route code in the 4xx
-    // body, e.g. 4011 "token not found") is "no reference", which the widget
-    // hides quietly. Every other failure, a broken slug or endpoint included,
-    // stays a 502 so status-based monitoring keeps seeing it (Cloudflare
-    // renders that as its own "error code: 502" page).
-    if (upstream.status < 500 && KYBER_NO_ROUTE_CODES.has(await readKyberErrorCode(upstream))) {
-      return json({ ok: false, error: { code: 'UPSTREAM', message } }, 200)
+
+    if (!upstream.ok) {
+      const message = `reference returned ${upstream.status}`
+      // Upstream throttling stays visible, with its Retry-After.
+      if (upstream.status === 429) {
+        return json({ ok: false, error: { code: 'RATE_LIMITED', message } }, 503, {
+          'retry-after': upstream.headers.get('retry-after') ?? '60',
+        })
+      }
+      // Only KyberSwap declining the PAIR (a known no-route code in the 4xx
+      // body, e.g. 4011 "token not found") is "no reference", which the widget
+      // hides quietly. Every other failure, a broken slug or endpoint included,
+      // stays a 502 so status-based monitoring keeps seeing it (Cloudflare
+      // renders that as its own "error code: 502" page).
+      if (upstream.status < 500 && KYBER_NO_ROUTE_CODES.has(await readKyberErrorCode(upstream))) {
+        return json({ ok: false, error: { code: 'UPSTREAM', message } }, 200)
+      }
+      return json({ ok: false, error: { code: 'UPSTREAM', message } }, 502)
     }
-    return json({ ok: false, error: { code: 'UPSTREAM', message } }, 502)
-  }
 
-  let raw: unknown
-  try {
-    raw = await upstream.json()
-  } catch {
-    return json({ ok: false, error: { code: 'UPSTREAM', message: 'reference returned non-JSON' } }, 502)
-  }
+    let raw: unknown
+    try {
+      raw = await upstream.json()
+    } catch (err: unknown) {
+      const aborted = err instanceof Error && err.name === 'AbortError'
+      return json(
+        { ok: false, error: { code: aborted ? 'TIMEOUT' : 'UPSTREAM', message: aborted ? 'reference timed out' : 'reference returned non-JSON' } },
+        aborted ? 504 : 502,
+      )
+    }
 
-  const amountOut = (raw as { data?: { routeSummary?: { amountOut?: unknown } } })?.data?.routeSummary?.amountOut
-  // Length-cap the upstream value too (symmetric with the inbound sellAmount cap):
-  // a misbehaving / compromised KyberSwap returning a megabyte-long all-digit
-  // string would otherwise flow through to a heavy client-side BigInt parse.
-  if (typeof amountOut !== 'string' || !/^[0-9]+$/.test(amountOut) || amountOut.length > MAX_AMOUNT_LEN) {
-    // No route / unexpected shape: not an error the widget should toast — just
-    // no reference available, so the savings line hides.
-    return json({ ok: false, error: { code: 'UPSTREAM', message: 'no reference route available' } }, 200)
-  }
+    const amountOut = (raw as { data?: { routeSummary?: { amountOut?: unknown } } })?.data?.routeSummary?.amountOut
+    // Length-cap the upstream value too (symmetric with the inbound sellAmount cap):
+    // a misbehaving / compromised KyberSwap returning a megabyte-long all-digit
+    // string would otherwise flow through to a heavy client-side BigInt parse.
+    if (typeof amountOut !== 'string' || !/^[0-9]+$/.test(amountOut) || amountOut.length > MAX_AMOUNT_LEN) {
+      // No route / unexpected shape: not an error the widget should toast — just
+      // no reference available, so the savings line hides.
+      return json({ ok: false, error: { code: 'UPSTREAM', message: 'no reference route available' } }, 200)
+    }
 
-  return json({ ok: true, data: { source: 'kyberswap', amountOut } })
+    return json({ ok: true, data: { source: 'kyberswap', amountOut } })
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 // Reject anything else.
