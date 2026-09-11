@@ -6,6 +6,64 @@ const { createRequire } = require('node:module')
 const { chromium, webkit } = createRequire(require.resolve('../apps/ophis-landing/package.json'))('@playwright/test')
 const base = process.argv[2] || 'http://127.0.0.1:3017'
 
+async function checkTwapControls(page) {
+  const input = page.locator('input[placeholder="10.0"]')
+  const field = page.locator('[class*=TradeWidgetFieldBox]').filter({ has: input })
+  await input.fill('10.1')
+  await input.press('Tab')
+  const increase = field.getByRole('button', { name: 'Increase Value', exact: true })
+  const decrease = field.getByRole('button', { name: 'Decrease Value', exact: true })
+  await increase.press('Enter')
+  assert.equal(await input.inputValue(), '10.2')
+  await decrease.press('Space')
+  assert.equal(await input.inputValue(), '10.1')
+  assert.equal(await decrease.evaluate((e) => getComputedStyle(e).outlineStyle), 'solid')
+  await input.fill('99.99')
+  await input.press('ArrowUp')
+  assert.equal(await input.inputValue(), '99.99')
+  await input.press('Tab')
+
+  // Exercise quote widths without relying on a live market response.
+  const prefix = field.locator('em')
+  const original = await prefix.innerHTML()
+  try {
+    for (const price of ['2 225,0356 USDC', '12345678901234567890 LONGTOKENSYMBOL']) {
+      await prefix.evaluate((e, price) => {
+        e.textContent = price
+      }, price)
+      const layout = await field.evaluate((e) => {
+        const box = e.getBoundingClientRect()
+        const input = e.querySelector('input')
+        const control = input.parentElement
+        const quote = e.querySelector('em')
+        return {
+          overflow: e.scrollWidth > e.clientWidth + 1,
+          clipped: [...e.querySelectorAll('input, button'), control, quote].some((child) => {
+            const rect = child.getBoundingClientRect()
+            return rect.left < box.left || rect.right > box.right || rect.bottom > box.bottom
+          }),
+          overlap: quote.getBoundingClientRect().right > control.getBoundingClientRect().left + 1,
+          inputClipped: input.scrollWidth > input.clientWidth + 1,
+        }
+      })
+      assert.deepEqual(layout, { overflow: false, clipped: false, overlap: false, inputClipped: false }, price)
+    }
+  } finally {
+    await prefix.evaluate((e, original) => {
+      e.innerHTML = original
+    }, original)
+  }
+  await page.getByRole('button', { name: '1 Hour', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Custom', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  const hours = dialog.locator('input').first()
+  await hours.fill('12')
+  await dialog.getByRole('button', { name: 'Increase Value', exact: true }).first().press('Enter')
+  assert.equal(await hours.inputValue(), '13')
+  assert.equal(await dialog.evaluate((e) => e.scrollWidth > e.clientWidth + 1), false)
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click()
+}
+
 async function check(browser, width, dark) {
   const context = await browser.newContext({
     viewport: { width, height: 1000 },
@@ -66,6 +124,9 @@ async function check(browser, width, dark) {
     for (const route of ['limit', 'advanced']) {
       await page.goto(base + '/#/1/' + route + '/WETH/USDC', { waitUntil: 'domcontentloaded' })
       await page.locator('[id^="unlock-"][id$="-btn"]').click()
+      const otc = page.locator('header').getByRole('link', { name: 'Open OTC', exact: true })
+      assert.ok((await otc.boundingBox()).height >= 44, 'OTC has a button-sized target')
+      assert.equal(await otc.getAttribute('href'), '#/otc')
       const heading = page.getByRole('heading', { name: 'No open orders found', exact: true })
       await heading.waitFor()
       await page.waitForFunction(
@@ -89,7 +150,10 @@ async function check(browser, width, dark) {
       assert.deepEqual(layout, { overflow: false, clipped: false }, route + ' layout at ' + width)
       const arrow = page.getByRole('button', { name: 'Switch tokens', exact: true })
       assert.equal(await arrow.evaluate((e) => getComputedStyle(e, '::after').backgroundImage), 'none')
-      if (route === 'advanced') await page.getByText('Unsupported wallet detected', { exact: true }).waitFor()
+      if (route === 'advanced') {
+        await page.getByText('Unsupported wallet detected', { exact: true }).waitFor()
+        await checkTwapControls(page)
+      }
       console.log('PASS', browser.browserType().name(), width, dark ? 'dark' : 'light', route)
     }
   } finally {

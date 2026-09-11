@@ -100,7 +100,8 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
         justify-content: center;
         display: flex;
         padding: 0;
-        height: var(--minHeight);
+        min-height: var(--minHeight);
+        align-items: stretch;
 
         ${Media.upToSmall()} {
           border-top: 1px solid var(${UI.COLOR_PAPER_DARKER});
@@ -111,11 +112,13 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
     > em {
       font-style: normal;
       flex: 1 1 100%;
-      height: 100%;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      text-align: right;
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      padding: 0 12px 0 0;
+      padding: 8px 12px;
     }
 
     > span {
@@ -126,11 +129,10 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
       ${({ hasPrefix }) =>
         hasPrefix &&
         css`
-          margin: auto;
-          height: 100%;
+          margin: 0;
           display: flex;
           padding: 0 10px 0 0;
-          flex: 0 1 auto;
+          flex: 0 0 auto;
           border-radius: 0 11px 11px 0;
           align-items: center;
 
