@@ -1,8 +1,8 @@
 import { HttpsString } from '@cowprotocol/cow-sdk'
 
-// Ids and logos of the bridge-only destination chains, import-free so both
-// nativeAndWrappedTokens.ts (NATIVE_CURRENCIES) and bridgeDestinationChains.ts
-// can use them without a cycle.
+// Ids and logos of the bridge-only destination chains (constants only, hence
+// the .const.ts suffix), import-free so both nativeAndWrappedTokens.ts
+// (NATIVE_CURRENCIES) and bridgeDestinationChains.ts can use them without a cycle.
 export const MONAD_CHAIN_ID = 143
 export const XLAYER_CHAIN_ID = 196
 

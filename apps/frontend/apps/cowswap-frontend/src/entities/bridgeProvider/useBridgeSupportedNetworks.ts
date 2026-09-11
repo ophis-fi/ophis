@@ -9,6 +9,12 @@ import { toBridgeChainInfo } from 'tradingSdk/ophisBridgeChains'
 
 import { useBridgeProvidersIds } from './useBridgeProvidersIds'
 
+// SWR blocker (AGENTS.md, Data fetching & caching): this hook shares its
+// provider-ids key scheme and refresh semantics with useBridgeSupportedTokens
+// and useRoutesAvailability in this entity; migrating one of the three to
+// atomWithQuery alone would split the bridge-provider cache between two
+// systems. The change here is a one-line metadata lookup (getChainInfo), so the
+// coordinated migration of all three hooks is left to its own change.
 export function useBridgeSupportedNetworks(): SWRResponse<ChainInfo[]> {
   const providerIds = useBridgeProvidersIds()
   const key = providerIds.join('|')

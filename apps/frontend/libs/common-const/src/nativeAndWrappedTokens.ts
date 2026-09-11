@@ -9,7 +9,7 @@ import {
   WRAPPED_NATIVE_CURRENCIES as WRAPPED_NATIVE_CURRENCIES_SDK,
 } from '@cowprotocol/cow-sdk'
 
-import { MONAD_CHAIN_ID, MONAD_LOGO, XLAYER_CHAIN_ID, XLAYER_LOGO } from './bridgeDestinationConst'
+import { MONAD_CHAIN_ID, MONAD_LOGO, XLAYER_CHAIN_ID, XLAYER_LOGO } from './bridgeDestination.const'
 import { TokenWithLogo } from './types'
 
 export const NATIVE_CURRENCY_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'

@@ -1,11 +1,11 @@
 import { HttpsString, TargetChainId } from '@cowprotocol/cow-sdk'
 
-import { MONAD_CHAIN_ID, MONAD_LOGO, XLAYER_CHAIN_ID, XLAYER_LOGO } from './bridgeDestinationConst'
+import { MONAD_CHAIN_ID, MONAD_LOGO, XLAYER_CHAIN_ID, XLAYER_LOGO } from './bridgeDestination.const'
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
 
 import type { BaseChainInfo } from './chainInfo'
 
-export { MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from './bridgeDestinationConst'
+export { MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from './bridgeDestination.const'
 
 /**
  * Chains Ophis offers ONLY as bridge destinations (via NEAR Intents): no
@@ -47,6 +47,11 @@ export const BRIDGE_DESTINATION_CHAIN_INFO: Readonly<Partial<Record<number, Base
     nativeCurrency: NATIVE_CURRENCIES[XLAYER_CHAIN_ID as TargetChainId],
   },
 }
+
+/** Display names of the bridge-only destinations, for public copy that lists them. */
+export const BRIDGE_ONLY_DESTINATION_LABELS: readonly string[] = Object.values(BRIDGE_DESTINATION_CHAIN_INFO).flatMap(
+  (info) => (info ? [info.label] : []),
+)
 
 /** True for a chain Ophis serves only as a bridge destination (Monad, X Layer). */
 export function isBridgeOnlyDestinationChain(chainId: number | undefined): boolean {

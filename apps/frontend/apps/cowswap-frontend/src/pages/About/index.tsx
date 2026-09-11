@@ -20,6 +20,8 @@
  */
 import { ReactNode } from 'react'
 
+import { BRIDGE_ONLY_DESTINATION_LABELS } from '@cowprotocol/common-const'
+
 import {
   Accordion,
   AccordionGroup,
@@ -121,16 +123,17 @@ export default function AboutPage(): ReactNode {
       <Section
         id="cross-chain"
         title="Cross-chain via NEAR Intents"
-        intro="Trade from any EVM chain to Solana or Bitcoin without a second wallet."
+        intro={`Trade from any EVM chain to Solana, Bitcoin, ${BRIDGE_ONLY_DESTINATION_LABELS.join(' or ')} without a second wallet.`}
       >
         <p>
           NEAR Intents brokers the bridge step off-chain. You sign with your EVM wallet, paste a destination address
-          (base58 for Solana, native format for Bitcoin), and the solver network handles the rest.
+          (base58 for Solana, native format for Bitcoin, a regular 0x address for{' '}
+          {BRIDGE_ONLY_DESTINATION_LABELS.join(' and ')}), and the solver network handles the rest.
         </p>
         <Callout tone="info" title="Destination-only today">
-          Solana and Bitcoin can be receive addresses but not source chains. Ophis runs on EVM wallet infrastructure
-          (wagmi + WalletConnect / MetaMask / Safe / Coinbase). Native Solana / Bitcoin wallet connect is not on the
-          roadmap.
+          Solana, Bitcoin, {BRIDGE_ONLY_DESTINATION_LABELS.join(' and ')} can be receive addresses but not source
+          chains. Ophis runs on EVM wallet infrastructure (wagmi + WalletConnect / MetaMask / Safe / Coinbase). Native
+          Solana / Bitcoin wallet connect is not on the roadmap.
         </Callout>
       </Section>
 

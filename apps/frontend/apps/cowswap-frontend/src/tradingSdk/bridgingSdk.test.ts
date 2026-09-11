@@ -1,6 +1,7 @@
 import {
   CHAIN_INFO,
   getChainInfo,
+  BRIDGE_ONLY_DESTINATION_LABELS,
   isBridgeOnlyDestinationChain,
   MONAD_CHAIN_ID,
   NATIVE_CURRENCIES,
@@ -163,5 +164,7 @@ describe('NEAR Intents destinations Ophis adds (Monad, X Layer)', () => {
     expect(isBridgeOnlyDestinationChain(XLAYER_CHAIN_ID)).toBe(true)
     expect(isBridgeOnlyDestinationChain(SupportedChainId.MAINNET)).toBe(false)
     expect(isBridgeOnlyDestinationChain(undefined)).toBe(false)
+    // Public copy (About, Protocol) lists destinations from this same registry.
+    expect(BRIDGE_ONLY_DESTINATION_LABELS).toEqual(['Monad', 'X Layer'])
   })
 })
