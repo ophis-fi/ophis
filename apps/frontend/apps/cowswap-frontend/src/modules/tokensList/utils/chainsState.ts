@@ -1,4 +1,4 @@
-import { BRIDGE_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
+import { BRIDGE_SOURCE_CHAIN_IDS, isBridgeOnlyDestinationChain } from '@cowprotocol/common-const'
 import { isSupportedChainId } from '@cowprotocol/common-utils'
 import { AdditionalTargetChainId, ChainInfo, SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -96,10 +96,15 @@ export function createOutputChainsState({
 
 export function filterDestinationChains(bridgeSupportedNetworks: ChainInfo[] | undefined): ChainInfo[] | undefined {
   // isSupportedChainId admits the Ophis chains missing from the SDK enums
-  // (Unichain 130, Robinhood Chain 4663) so the widened provider network lists
-  // survive this filter; unknown chains a provider might list are still dropped.
+  // (Unichain 130, Robinhood Chain 4663) and BRIDGE_DESTINATION_CHAIN_INFO the
+  // bridge-only destinations (Monad, X Layer), so the widened provider network
+  // lists survive this filter; unknown chains a provider might list are dropped.
   return bridgeSupportedNetworks?.filter(
-    (chain) => chain.id in SupportedChainId || chain.id in AdditionalTargetChainId || isSupportedChainId(chain.id),
+    (chain) =>
+      chain.id in SupportedChainId ||
+      chain.id in AdditionalTargetChainId ||
+      isSupportedChainId(chain.id) ||
+      isBridgeOnlyDestinationChain(chain.id),
   )
 }
 

@@ -21,6 +21,8 @@ import {
   TargetChainId,
 } from '@cowprotocol/cow-sdk'
 
+import { MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from './bridgeDestination.const'
+import { BRIDGE_DESTINATION_CHAIN_INFO } from './bridgeDestinationChains'
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
 import {
   ROBINHOOD_CHAIN_BRIDGE,
@@ -267,6 +269,8 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   AdditionalTargetChainId.OPTIMISM,
   130 as unknown as TargetChainId, // Ophis fork: Unichain
   4663 as unknown as TargetChainId, // Ophis fork: Robinhood Chain
+  MONAD_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only
+  XLAYER_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only
   AdditionalTargetChainId.SOLANA,
   AdditionalTargetChainId.BITCOIN,
 ]
@@ -274,5 +278,7 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
 export const CHAIN_INFO_ARRAY: BaseChainInfo[] = SORTED_CHAIN_IDS.map((id) => CHAIN_INFO[id])
 
 export function getChainInfo(chainId: TargetChainId): BaseChainInfo {
-  return CHAIN_INFO[chainId]
+  // Bridge-only destinations (Monad, X Layer) are not trading chains, so they
+  // live outside CHAIN_INFO; see bridgeDestinationChains.ts.
+  return CHAIN_INFO[chainId] ?? (BRIDGE_DESTINATION_CHAIN_INFO[chainId as number] as BaseChainInfo)
 }

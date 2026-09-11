@@ -1,8 +1,52 @@
+diff --git a/dist/index.d.mts b/dist/index.d.mts
+index a16316312c8bcc0ea0af199403beb6eb44cbf1a0..202617d40d55f4397cb97cab688509fe63d16741 100644
+--- a/dist/index.d.mts
++++ b/dist/index.d.mts
+@@ -297,6 +297,7 @@ declare const ALL_CHAINS_MAP: Record<TargetChainId, ChainInfo>;
+  * @param chainId - The chain ID to check
+  * @returns True if the chain ID is in the EvmChains enum, false otherwise
+  */
++declare function registerEvmChainIds(chainIds: Iterable<number>): void;
+ declare function isEvmChain(chainId: ChainId): chainId is EvmChains;
+ /**
+  * Type guard to check if a chain ID represents an Non EVM chain
+@@ -537,4 +538,4 @@ interface EvmCall {
+     value: bigint;
+ }
+ 
+-export { ADDITIONAL_TARGET_CHAINS_MAP, ALL_ADDITIONAL_TARGET_CHAINS, ALL_ADDITIONAL_TARGET_CHAIN_IDS, ALL_CHAINS, ALL_CHAINS_IDS, ALL_CHAINS_MAP, ALL_SUPPORTED_CHAINS, ALL_SUPPORTED_CHAINS_MAP, ALL_SUPPORTED_CHAIN_IDS, AdditionalTargetChainId, type Address, type AddressPerChain, type ApiBaseUrls, type ApiContext, BARN_ETH_FLOW_ADDRESSES, BTC_CURRENCY_ADDRESS, COMPOSABLE_COW, COMPOSABLE_COW_CONTRACT_ADDRESS, COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS, COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS_STAGING, COW_PROTOCOL_VAULT_RELAYER_ADDRESS, COW_PROTOCOL_VAULT_RELAYER_ADDRESS_STAGING, type ChainContract, type ChainContracts, type ChainId, type ChainInfo, type ChainRpcUrls, type CowEnv, DEFAULT_COW_API_CONTEXT, DEFAULT_IPFS_READ_URI, DEFAULT_IPFS_WRITE_URI, ENVS_LIST, ETH_ADDRESS, ETH_FLOW_ADDRESSES, EVM_NATIVE_CURRENCY_ADDRESS, EXTENSIBLE_FALLBACK_HANDLER, EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS, type EvmCall, type EvmChainInfo, EvmChains, type HttpsString, type IpfsConfig, MAX_VALID_TO_EPOCH, type NonEvmChainInfo, NonEvmChains, type PartialApiContext, type ProtocolOptions, RAW_CHAINS_FILES_PATH, RAW_FILES_PATH, type RequestOptions, SOL_NATIVE_CURRENCY_ADDRESS, SupportedChainId, TOKEN_LIST_IMAGES_PATH, TRADABLE_SUPPORTED_CHAINS, TRADABLE_SUPPORTED_CHAIN_IDS, type TargetChainId, type ThemedImage, type TokenInfo, WRAPPED_NATIVE_CURRENCIES, type WebUrl, type WssString, arbitrumOne, avalanche, base, bitcoin, bnb, getChainInfo, getWrappedTokenForChain, gnosisChain, ink, isAdditionalTargetChain, isBtcChain, isChainDeprecated, isChainUnderDevelopment, isEvmChain, isEvmChainInfo, isNonEvmChain, isNonEvmChainInfo, isSolanaChain, isSupportedChain, isTargetChainId, isZkSyncChain, linea, mainnet, mapAddressToSupportedNetworks, mapAllNetworks, mapSupportedNetworks, nativeCurrencyTemplate, optimism, plasma, polygon, sepolia, solana };
++export { ADDITIONAL_TARGET_CHAINS_MAP, ALL_ADDITIONAL_TARGET_CHAINS, ALL_ADDITIONAL_TARGET_CHAIN_IDS, ALL_CHAINS, ALL_CHAINS_IDS, ALL_CHAINS_MAP, ALL_SUPPORTED_CHAINS, ALL_SUPPORTED_CHAINS_MAP, ALL_SUPPORTED_CHAIN_IDS, AdditionalTargetChainId, type Address, type AddressPerChain, type ApiBaseUrls, type ApiContext, BARN_ETH_FLOW_ADDRESSES, BTC_CURRENCY_ADDRESS, COMPOSABLE_COW, COMPOSABLE_COW_CONTRACT_ADDRESS, COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS, COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS_STAGING, COW_PROTOCOL_VAULT_RELAYER_ADDRESS, COW_PROTOCOL_VAULT_RELAYER_ADDRESS_STAGING, type ChainContract, type ChainContracts, type ChainId, type ChainInfo, type ChainRpcUrls, type CowEnv, DEFAULT_COW_API_CONTEXT, DEFAULT_IPFS_READ_URI, DEFAULT_IPFS_WRITE_URI, ENVS_LIST, ETH_ADDRESS, ETH_FLOW_ADDRESSES, EVM_NATIVE_CURRENCY_ADDRESS, EXTENSIBLE_FALLBACK_HANDLER, EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS, type EvmCall, type EvmChainInfo, EvmChains, type HttpsString, type IpfsConfig, MAX_VALID_TO_EPOCH, type NonEvmChainInfo, NonEvmChains, type PartialApiContext, type ProtocolOptions, RAW_CHAINS_FILES_PATH, RAW_FILES_PATH, type RequestOptions, SOL_NATIVE_CURRENCY_ADDRESS, SupportedChainId, TOKEN_LIST_IMAGES_PATH, TRADABLE_SUPPORTED_CHAINS, TRADABLE_SUPPORTED_CHAIN_IDS, type TargetChainId, type ThemedImage, type TokenInfo, WRAPPED_NATIVE_CURRENCIES, type WebUrl, type WssString, arbitrumOne, avalanche, base, bitcoin, bnb, getChainInfo, getWrappedTokenForChain, gnosisChain, ink, isAdditionalTargetChain, isBtcChain, isChainDeprecated, isChainUnderDevelopment, isEvmChain, registerEvmChainIds, isEvmChainInfo, isNonEvmChain, isNonEvmChainInfo, isSolanaChain, isSupportedChain, isTargetChainId, isZkSyncChain, linea, mainnet, mapAddressToSupportedNetworks, mapAllNetworks, mapSupportedNetworks, nativeCurrencyTemplate, optimism, plasma, polygon, sepolia, solana };
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index a16316312c8bcc0ea0af199403beb6eb44cbf1a0..202617d40d55f4397cb97cab688509fe63d16741 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -297,6 +297,7 @@ declare const ALL_CHAINS_MAP: Record<TargetChainId, ChainInfo>;
+  * @param chainId - The chain ID to check
+  * @returns True if the chain ID is in the EvmChains enum, false otherwise
+  */
++declare function registerEvmChainIds(chainIds: Iterable<number>): void;
+ declare function isEvmChain(chainId: ChainId): chainId is EvmChains;
+ /**
+  * Type guard to check if a chain ID represents an Non EVM chain
+@@ -537,4 +538,4 @@ interface EvmCall {
+     value: bigint;
+ }
+ 
+-export { ADDITIONAL_TARGET_CHAINS_MAP, ALL_ADDITIONAL_TARGET_CHAINS, ALL_ADDITIONAL_TARGET_CHAIN_IDS, ALL_CHAINS, ALL_CHAINS_IDS, ALL_CHAINS_MAP, ALL_SUPPORTED_CHAINS, ALL_SUPPORTED_CHAINS_MAP, ALL_SUPPORTED_CHAIN_IDS, AdditionalTargetChainId, type Address, type AddressPerChain, type ApiBaseUrls, type ApiContext, BARN_ETH_FLOW_ADDRESSES, BTC_CURRENCY_ADDRESS, COMPOSABLE_COW, COMPOSABLE_COW_CONTRACT_ADDRESS, COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS, COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS_STAGING, COW_PROTOCOL_VAULT_RELAYER_ADDRESS, COW_PROTOCOL_VAULT_RELAYER_ADDRESS_STAGING, type ChainContract, type ChainContracts, type ChainId, type ChainInfo, type ChainRpcUrls, type CowEnv, DEFAULT_COW_API_CONTEXT, DEFAULT_IPFS_READ_URI, DEFAULT_IPFS_WRITE_URI, ENVS_LIST, ETH_ADDRESS, ETH_FLOW_ADDRESSES, EVM_NATIVE_CURRENCY_ADDRESS, EXTENSIBLE_FALLBACK_HANDLER, EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS, type EvmCall, type EvmChainInfo, EvmChains, type HttpsString, type IpfsConfig, MAX_VALID_TO_EPOCH, type NonEvmChainInfo, NonEvmChains, type PartialApiContext, type ProtocolOptions, RAW_CHAINS_FILES_PATH, RAW_FILES_PATH, type RequestOptions, SOL_NATIVE_CURRENCY_ADDRESS, SupportedChainId, TOKEN_LIST_IMAGES_PATH, TRADABLE_SUPPORTED_CHAINS, TRADABLE_SUPPORTED_CHAIN_IDS, type TargetChainId, type ThemedImage, type TokenInfo, WRAPPED_NATIVE_CURRENCIES, type WebUrl, type WssString, arbitrumOne, avalanche, base, bitcoin, bnb, getChainInfo, getWrappedTokenForChain, gnosisChain, ink, isAdditionalTargetChain, isBtcChain, isChainDeprecated, isChainUnderDevelopment, isEvmChain, isEvmChainInfo, isNonEvmChain, isNonEvmChainInfo, isSolanaChain, isSupportedChain, isTargetChainId, isZkSyncChain, linea, mainnet, mapAddressToSupportedNetworks, mapAllNetworks, mapSupportedNetworks, nativeCurrencyTemplate, optimism, plasma, polygon, sepolia, solana };
++export { ADDITIONAL_TARGET_CHAINS_MAP, ALL_ADDITIONAL_TARGET_CHAINS, ALL_ADDITIONAL_TARGET_CHAIN_IDS, ALL_CHAINS, ALL_CHAINS_IDS, ALL_CHAINS_MAP, ALL_SUPPORTED_CHAINS, ALL_SUPPORTED_CHAINS_MAP, ALL_SUPPORTED_CHAIN_IDS, AdditionalTargetChainId, type Address, type AddressPerChain, type ApiBaseUrls, type ApiContext, BARN_ETH_FLOW_ADDRESSES, BTC_CURRENCY_ADDRESS, COMPOSABLE_COW, COMPOSABLE_COW_CONTRACT_ADDRESS, COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS, COW_PROTOCOL_SETTLEMENT_CONTRACT_ADDRESS_STAGING, COW_PROTOCOL_VAULT_RELAYER_ADDRESS, COW_PROTOCOL_VAULT_RELAYER_ADDRESS_STAGING, type ChainContract, type ChainContracts, type ChainId, type ChainInfo, type ChainRpcUrls, type CowEnv, DEFAULT_COW_API_CONTEXT, DEFAULT_IPFS_READ_URI, DEFAULT_IPFS_WRITE_URI, ENVS_LIST, ETH_ADDRESS, ETH_FLOW_ADDRESSES, EVM_NATIVE_CURRENCY_ADDRESS, EXTENSIBLE_FALLBACK_HANDLER, EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS, type EvmCall, type EvmChainInfo, EvmChains, type HttpsString, type IpfsConfig, MAX_VALID_TO_EPOCH, type NonEvmChainInfo, NonEvmChains, type PartialApiContext, type ProtocolOptions, RAW_CHAINS_FILES_PATH, RAW_FILES_PATH, type RequestOptions, SOL_NATIVE_CURRENCY_ADDRESS, SupportedChainId, TOKEN_LIST_IMAGES_PATH, TRADABLE_SUPPORTED_CHAINS, TRADABLE_SUPPORTED_CHAIN_IDS, type TargetChainId, type ThemedImage, type TokenInfo, WRAPPED_NATIVE_CURRENCIES, type WebUrl, type WssString, arbitrumOne, avalanche, base, bitcoin, bnb, getChainInfo, getWrappedTokenForChain, gnosisChain, ink, isAdditionalTargetChain, isBtcChain, isChainDeprecated, isChainUnderDevelopment, isEvmChain, registerEvmChainIds, isEvmChainInfo, isNonEvmChain, isNonEvmChainInfo, isSolanaChain, isSupportedChain, isTargetChainId, isZkSyncChain, linea, mainnet, mapAddressToSupportedNetworks, mapAllNetworks, mapSupportedNetworks, nativeCurrencyTemplate, optimism, plasma, polygon, sepolia, solana };
 diff --git a/dist/index.js b/dist/index.js
-index 5b9af2a03cdff0eddaf929375f901edf918ad86e..d0a2103dbf1b7cef586efa9ac29fa0fd95ec123a 100644
+index 5b9af2a03cdff0eddaf929375f901edf918ad86e..503d6adc4de38c6c0269d9e411da70ea97dcf1ea 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -436,6 +436,9 @@ var WRAPPED_NATIVE_CURRENCIES = {
+@@ -72,6 +72,7 @@ __export(src_exports, {
+   isChainDeprecated: () => isChainDeprecated,
+   isChainUnderDevelopment: () => isChainUnderDevelopment,
+   isEvmChain: () => isEvmChain,
++  registerEvmChainIds: () => registerEvmChainIds,
+   isEvmChainInfo: () => isEvmChainInfo,
+   isNonEvmChain: () => isNonEvmChain,
+   isNonEvmChainInfo: () => isNonEvmChainInfo,
+@@ -436,6 +437,9 @@ var WRAPPED_NATIVE_CURRENCIES = {
      "0x4200000000000000000000000000000000000006",
      wrappedNativeCurrencyEth
    )
@@ -12,7 +56,7 @@ index 5b9af2a03cdff0eddaf929375f901edf918ad86e..d0a2103dbf1b7cef586efa9ac29fa0fd
  };
  function createWrappedTokenForChain(chainId, address, info) {
    const { logoUrl, ...rest } = info;
-@@ -951,8 +954,8 @@ var EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS = mapAddressToSupportedNetworks
+@@ -951,13 +955,20 @@ var EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS = mapAddressToSupportedNetworks
  var COMPOSABLE_COW_CONTRACT_ADDRESS = mapAddressToSupportedNetworks(COMPOSABLE_COW);
  var ETH_FLOW_ADDRESS = "0xba3cb449bd2b4adddbc894d8697f5170800eadec";
  var BARN_ETH_FLOW_ADDRESS = "0xb37aDD6AC288BD3825a901Cba6ec65A89f31B8CC";
@@ -21,10 +65,23 @@ index 5b9af2a03cdff0eddaf929375f901edf918ad86e..d0a2103dbf1b7cef586efa9ac29fa0fd
 +var ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS), 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504", 130: "0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7", 4663: "0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29" };
 +var BARN_ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS), 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504", 130: "0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7", 4663: "0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29" };
  var MAX_VALID_TO_EPOCH = 4294967295;
-
+ 
  // src/chains/utils.ts
++// Ophis: EVM chains the app serves only as bridge destinations (Monad, X
++// Layer) are registered here instead of being added to the EvmChains enum,
++// which would force every Record<EvmChains, ...> in the codebase to list them.
++var EXTRA_EVM_CHAIN_IDS = /* @__PURE__ */ new Set();
++function registerEvmChainIds(chainIds) {
++  for (const chainId of chainIds) EXTRA_EVM_CHAIN_IDS.add(chainId);
++}
+ function isEvmChain(chainId) {
+-  return chainId in EvmChains;
++  return chainId in EvmChains || EXTRA_EVM_CHAIN_IDS.has(chainId);
+ }
+ function isNonEvmChain(chainId) {
+   return chainId in NonEvmChains;
 diff --git a/dist/index.mjs b/dist/index.mjs
-index efdf095aaae89af725ea14845e579b11403c48d5..fb8075a6284e99de0ad5ce90ba411d7e82e78ecd 100644
+index efdf095aaae89af725ea14845e579b11403c48d5..623e28060d90f37a5edc94eccf8ba449781d7836 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -341,6 +341,9 @@ var WRAPPED_NATIVE_CURRENCIES = {
@@ -37,7 +94,7 @@ index efdf095aaae89af725ea14845e579b11403c48d5..fb8075a6284e99de0ad5ce90ba411d7e
  };
  function createWrappedTokenForChain(chainId, address, info) {
    const { logoUrl, ...rest } = info;
-@@ -856,8 +859,8 @@ var EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS = mapAddressToSupportedNetworks
+@@ -856,13 +859,20 @@ var EXTENSIBLE_FALLBACK_HANDLER_CONTRACT_ADDRESS = mapAddressToSupportedNetworks
  var COMPOSABLE_COW_CONTRACT_ADDRESS = mapAddressToSupportedNetworks(COMPOSABLE_COW);
  var ETH_FLOW_ADDRESS = "0xba3cb449bd2b4adddbc894d8697f5170800eadec";
  var BARN_ETH_FLOW_ADDRESS = "0xb37aDD6AC288BD3825a901Cba6ec65A89f31B8CC";
@@ -46,5 +103,26 @@ index efdf095aaae89af725ea14845e579b11403c48d5..fb8075a6284e99de0ad5ce90ba411d7e
 +var ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(ETH_FLOW_ADDRESS), 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504", 130: "0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7", 4663: "0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29" };
 +var BARN_ETH_FLOW_ADDRESSES = { ...mapAddressToSupportedNetworks(BARN_ETH_FLOW_ADDRESS), 10: "0x764fE4aa1FF493cf39931c7923C8ff5837596504", 130: "0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7", 4663: "0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29" };
  var MAX_VALID_TO_EPOCH = 4294967295;
-
+ 
  // src/chains/utils.ts
++// Ophis: EVM chains the app serves only as bridge destinations (Monad, X
++// Layer) are registered here instead of being added to the EvmChains enum,
++// which would force every Record<EvmChains, ...> in the codebase to list them.
++var EXTRA_EVM_CHAIN_IDS = /* @__PURE__ */ new Set();
++function registerEvmChainIds(chainIds) {
++  for (const chainId of chainIds) EXTRA_EVM_CHAIN_IDS.add(chainId);
++}
+ function isEvmChain(chainId) {
+-  return chainId in EvmChains;
++  return chainId in EvmChains || EXTRA_EVM_CHAIN_IDS.has(chainId);
+ }
+ function isNonEvmChain(chainId) {
+   return chainId in NonEvmChains;
+@@ -968,6 +978,7 @@ export {
+   isChainDeprecated,
+   isChainUnderDevelopment,
+   isEvmChain,
++  registerEvmChainIds,
+   isEvmChainInfo,
+   isNonEvmChain,
+   isNonEvmChainInfo,

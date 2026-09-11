@@ -9,6 +9,7 @@ import {
   WRAPPED_NATIVE_CURRENCIES as WRAPPED_NATIVE_CURRENCIES_SDK,
 } from '@cowprotocol/cow-sdk'
 
+import { MONAD_CHAIN_ID, MONAD_LOGO, XLAYER_CHAIN_ID, XLAYER_LOGO } from './bridgeDestination.const'
 import { TokenWithLogo } from './types'
 
 export const NATIVE_CURRENCY_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
@@ -55,6 +56,26 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
     'WETH',
     'Wrapped Ether',
   ),
+  // Ophis fork: NEAR Intents bridge destinations. getWrappedToken() maps a
+  // native output through this table (USD value, price impact, approval
+  // preview), so native MON / OKB need their wrapped twins. Both verified
+  // on-chain 2026-09-11 (symbol / name / decimals via eth_call).
+  [MONAD_CHAIN_ID as SupportedChainId]: new TokenWithLogo(
+    MONAD_LOGO,
+    MONAD_CHAIN_ID as SupportedChainId,
+    '0x3bd359C1119dA7da1D913d1c4d2B7C461115433a',
+    18,
+    'WMON',
+    'Wrapped MON',
+  ),
+  [XLAYER_CHAIN_ID as SupportedChainId]: new TokenWithLogo(
+    XLAYER_LOGO,
+    XLAYER_CHAIN_ID as SupportedChainId,
+    '0xe538905cf8410324e03A5A23C1c177a474D59b2b',
+    18,
+    'WOKB',
+    'Wrapped OKB',
+  ),
 }
 
 export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
@@ -94,6 +115,25 @@ export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
     18,
     'ETH',
     'Ether',
+  ),
+  // Ophis fork: NEAR Intents bridge destinations (no trading); native MON / OKB
+  // live here so getIsNativeToken() and native sorting treat the sentinel as
+  // native for bridge output tokens.
+  [MONAD_CHAIN_ID as TargetChainId]: new TokenWithLogo(
+    MONAD_LOGO,
+    MONAD_CHAIN_ID as SupportedChainId,
+    NATIVE_CURRENCY_ADDRESS,
+    18,
+    'MON',
+    'Monad',
+  ),
+  [XLAYER_CHAIN_ID as TargetChainId]: new TokenWithLogo(
+    XLAYER_LOGO,
+    XLAYER_CHAIN_ID as SupportedChainId,
+    NATIVE_CURRENCY_ADDRESS,
+    18,
+    'OKB',
+    'OKB',
   ),
   // Native XPL on Plasma (chain 9745). Plasma IS a SupportedChainId, so the
   // mapAllNetworks() spread above already creates this entry — but

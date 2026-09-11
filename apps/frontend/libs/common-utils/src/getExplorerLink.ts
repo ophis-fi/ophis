@@ -1,5 +1,5 @@
-import { CHAIN_INFO } from '@cowprotocol/common-const'
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { getChainInfo } from '@cowprotocol/common-const'
+import { SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 
 import { getExplorerBaseUrl } from './explorer'
 
@@ -42,7 +42,9 @@ export function getExplorerLink(
     try {
       prefix = getExplorerBaseUrl(chainId as SupportedChainId)
     } catch {
-      prefix = CHAIN_INFO[chainId as SupportedChainId]?.explorer || defaultPrefix
+      // getChainInfo also knows the bridge-only destinations (Monad, X Layer),
+      // which have no Ophis explorer route: link to their native explorer.
+      prefix = getChainInfo(chainId as TargetChainId)?.explorer || defaultPrefix
     }
   }
 
