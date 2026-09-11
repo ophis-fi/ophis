@@ -27,13 +27,14 @@ function renderHeader(transparent = false, route = '/'): void {
 
 describe('OphisHeader', () => {
   it('keeps the transparent hero wordmark visible with the default light theme', () => {
-    useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: false })
+    useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
     renderHeader(true)
     const wordmark = screen.getByRole('link', { name: 'Ophis, home' })
     const mark = wordmark.querySelector('img')
     if (!mark) throw new Error('Missing header mark')
     expect(getComputedStyle(wordmark).color).toBe('rgb(244, 244, 245)')
     expect(getComputedStyle(mark).filter).toBe('brightness(0) invert(1)')
+    expect(getComputedStyle(screen.getByRole('link', { name: 'Open OTC' })).color).toBe('rgb(244, 244, 245)')
   })
 
   it('links to the OTC surface when Milestone B is enabled', () => {
@@ -41,7 +42,7 @@ describe('OphisHeader', () => {
 
     renderHeader()
 
-    expect(screen.getByRole('link', { name: 'OTC' }).getAttribute('href')).toBe('/otc')
+    expect(screen.getByRole('link', { name: 'Open OTC' }).getAttribute('href')).toBe('/otc')
   })
 
   it('hides the OTC link when the deployment kill switch is disabled', () => {
@@ -49,12 +50,12 @@ describe('OphisHeader', () => {
 
     renderHeader()
 
-    expect(screen.queryByRole('link', { name: 'OTC' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Open OTC' })).toBeNull()
   })
 })
 
 it('omits the OTC self-link on OTC list and order-detail routes', () => {
   useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
   renderHeader(false, '/otc/49')
-  expect(screen.queryByRole('link', { name: 'OTC' })).toBeNull()
+  expect(screen.queryByRole('link', { name: 'Open OTC' })).toBeNull()
 })
