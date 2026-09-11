@@ -21,6 +21,7 @@ import {
   TargetChainId,
 } from '@cowprotocol/cow-sdk'
 
+import { BRIDGE_DESTINATION_CHAIN_INFO } from './bridgeDestinationChains'
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
 import {
   ROBINHOOD_CHAIN_BRIDGE,
@@ -274,5 +275,7 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
 export const CHAIN_INFO_ARRAY: BaseChainInfo[] = SORTED_CHAIN_IDS.map((id) => CHAIN_INFO[id])
 
 export function getChainInfo(chainId: TargetChainId): BaseChainInfo {
-  return CHAIN_INFO[chainId]
+  // Bridge-only destinations (Monad, X Layer) are not trading chains, so they
+  // live outside CHAIN_INFO; see bridgeDestinationChains.ts.
+  return CHAIN_INFO[chainId] ?? (BRIDGE_DESTINATION_CHAIN_INFO[chainId as number] as BaseChainInfo)
 }

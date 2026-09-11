@@ -1,6 +1,11 @@
 import { useEffect } from 'react'
 
-import { createDecodeOnlyBungeeBridgeProvider, getRpcProvider, ophisAcrossApiOptions } from '@cowprotocol/common-const'
+import {
+  createDecodeOnlyBungeeBridgeProvider,
+  getRpcProvider,
+  ophisAcrossApiOptions,
+  registerOphisNearIntentsNetworks,
+} from '@cowprotocol/common-const'
 import { OrderBookApi, setGlobalAdapter, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { AcrossBridgeProvider, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 import { EthersV5Adapter } from '@cowprotocol/sdk-ethers-v5-adapter'
@@ -12,6 +17,10 @@ export const cowSdkAdapter = new EthersV5Adapter({
 })
 
 export const orderBookApi = new OrderBookApi()
+
+// Same NEAR destination registration as the swap app, so historical orders to
+// Monad / X Layer resolve their network and tokens here too.
+registerOphisNearIntentsNetworks()
 
 // Bungee, DECODE-ONLY (shared class in common-const, also used by the swap
 // app): registered only so historical Bungee orders resolve by their

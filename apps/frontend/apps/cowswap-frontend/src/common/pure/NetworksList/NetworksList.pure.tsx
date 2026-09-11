@@ -15,6 +15,8 @@ import { useDeprecatedChains } from '../../hooks/useDeprecatedChains'
 const NEW_NETWORK_IDS: Set<TargetChainId> = new Set([
   130 as unknown as TargetChainId, // Ophis fork: Unichain
   4663 as unknown as TargetChainId, // Ophis fork: Robinhood Chain
+  143 as unknown as TargetChainId, // Ophis fork: Monad (NEAR Intents destination)
+  196 as unknown as TargetChainId, // Ophis fork: X Layer (NEAR Intents destination)
 ])
 
 export interface NetworksListProps {

@@ -1,4 +1,8 @@
-import { createDecodeOnlyBungeeBridgeProvider, ophisAcrossApiOptions } from '@cowprotocol/common-const'
+import {
+  createDecodeOnlyBungeeBridgeProvider,
+  ophisAcrossApiOptions,
+  registerOphisNearIntentsNetworks,
+} from '@cowprotocol/common-const'
 import { BridgingSdk } from '@cowprotocol/sdk-bridging'
 
 import { orderBookApi } from 'cowSdk'
@@ -6,6 +10,10 @@ import { orderBookApi } from 'cowSdk'
 import { OphisAcrossBridgeProvider } from './ophisBridgeProviders'
 import { OphisNearIntentsBridgeProvider } from './ophisNearIntentsProvider.service'
 import { tradingSdk } from './tradingSdk'
+
+// NEAR destinations the SDK does not ship (Monad, X Layer): registered before
+// any provider is used; the SDK reads its network map at call time.
+registerOphisNearIntentsNetworks()
 
 // Bungee is registered DECODE-ONLY (shared class in common-const, also used by
 // the explorer): it never quotes and never receives token-picker traffic, it

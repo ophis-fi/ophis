@@ -37,6 +37,9 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
   [130 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_130'] as HttpsString) || undefined,
   // Ophis fork: Robinhood Chain (chain 4663)
   [4663 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_4663'] as HttpsString) || undefined,
+  // Ophis fork: NEAR Intents bridge destinations (no trading), see bridgeDestinationChains.ts
+  [143 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_143'] as HttpsString) || undefined,
+  [196 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_196'] as HttpsString) || undefined,
 }
 
 // Ophis fork (F1, 2026-05-20): defaults switched from Infura (which
@@ -109,6 +112,10 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [10 as unknown as SupportedChainId]: { url: `https://optimism.drpc.org`, usesInfura: false },
   // Ophis fork: Unichain default public RPC
   [130 as unknown as SupportedChainId]: { url: `https://mainnet.unichain.org`, usesInfura: false },
+  // Ophis fork: Monad + X Layer official public RPCs (bridge destinations only;
+  // probed eth_chainId 0x8f / 0xc4 on 2026-09-11).
+  [143 as unknown as SupportedChainId]: { url: `https://rpc.monad.xyz`, usesInfura: false },
+  [196 as unknown as SupportedChainId]: { url: `https://rpc.xlayer.tech`, usesInfura: false },
   // Robinhood's official keyless public RPC.
   [4663 as unknown as SupportedChainId]: {
     // Wallet-safe fallback only. Robinhood documents this endpoint as
@@ -130,6 +137,9 @@ export const RPC_URLS: Record<SupportedChainId, HttpsString> = {
   [130 as unknown as SupportedChainId]: getRpcUrl(130 as unknown as SupportedChainId),
   // Ophis fork: include Robinhood Chain (4663).
   [4663 as unknown as SupportedChainId]: getRpcUrl(4663 as unknown as SupportedChainId),
+  // Ophis fork: NEAR Intents bridge destinations.
+  [143 as unknown as SupportedChainId]: getRpcUrl(143 as unknown as SupportedChainId),
+  [196 as unknown as SupportedChainId]: getRpcUrl(196 as unknown as SupportedChainId),
 }
 
 function getRpcUrl(chainId: SupportedChainId): HttpsString {

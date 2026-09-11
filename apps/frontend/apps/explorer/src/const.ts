@@ -127,6 +127,19 @@ export const NATIVE_TOKEN_PER_NETWORK: Record<SupportedChainId, TokenErc20> = {
     symbol: 'ETH',
     decimals: 18,
   } as TokenErc20,
+  // Ophis fork: NEAR Intents bridge destinations (no trading here).
+  [143 as unknown as SupportedChainId]: {
+    address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+    name: 'Monad',
+    symbol: 'MON',
+    decimals: 18,
+  } as TokenErc20,
+  [196 as unknown as SupportedChainId]: {
+    address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+    name: 'OKB',
+    symbol: 'OKB',
+    decimals: 18,
+  } as TokenErc20,
 }
 
 export const TENDERLY_API_URL = 'https://api.tenderly.co/api/v1/public-contract'
