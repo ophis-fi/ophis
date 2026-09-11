@@ -169,22 +169,27 @@ const Right = styled.div<{ $walletConnected: boolean }>`
   }
 `
 
-const OtcNavLink = styled(Link)`
-  padding: 8px 4px;
-  color: ${({ theme }) => steep(theme).muted};
+const OtcNavLink = styled(Link)<{ $transparent: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  color: ${({ theme, $transparent }) => ($transparent ? '#f4f4f5' : steep(theme).text)};
   font: 600 14px/1 ${STEEP_FONT.body};
   text-decoration: none;
-  transition: color 140ms ease-out;
+  transition: background 140ms ease-out;
 
   &:hover,
   &:focus-visible {
-    color: ${({ theme }) => steep(theme).text};
+    background: ${({ theme, $transparent }) => ($transparent ? 'rgba(244, 244, 245, 0.08)' : steep(theme).codeBg)};
   }
 
   &:focus-visible {
-    outline: 2px solid ${({ theme }) => steep(theme).link};
+    outline: 2px solid currentColor;
     outline-offset: 3px;
-    border-radius: 4px;
   }
 `
 
@@ -211,7 +216,11 @@ export function OphisHeader({ children, transparent = false, walletConnected = f
           </WordmarkText>
         </Wordmark>
         <Right $walletConnected={walletConnected}>
-          {isOtcEnabled && !isOtcRoute ? <OtcNavLink to="/otc">OTC</OtcNavLink> : null}
+          {isOtcEnabled && !isOtcRoute ? (
+            <OtcNavLink to="/otc" $transparent={transparent}>
+              Open OTC
+            </OtcNavLink>
+          ) : null}
           {children}
         </Right>
       </Bar>
