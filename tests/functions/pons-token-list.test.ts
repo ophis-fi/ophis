@@ -391,3 +391,33 @@ test('discovers bounded v2 launches and requires their exact on-chain tuple', as
     ['PONS', 'V2'],
   );
 });
+
+test('keeps verified discovery when a later RPC batch is rate limited', async (t) => {
+  const launches = Array.from({ length: 21 }, (_, index) =>
+    launch({ token: `0x${(index + 1).toString(16).padStart(40, '0')}` }),
+  );
+  let failFirstBatch = false;
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    const requests = JSON.parse(String(init?.body)) as { id: number; params: { data: string }[] }[];
+    if (
+      failFirstBatch ||
+      new URL(String(input)).hostname === 'rpc.mainnet.chain.robinhood.com' ||
+      requests[0]!.id >= 20
+    )
+      return new Response('Rate limited', { status: 429 });
+    return Response.json(
+      requests.map(({ id, params }) => ({
+        id,
+        result: `0x${params[0]!.data.slice(-64)}${verifiedResult().slice(66)}`,
+      })),
+    );
+  });
+  const verified = await verifyLaunchesOnchain(launches, new AbortController().signal);
+  assert.deepEqual(verified, launches.slice(0, 20));
+  assert.ok(!verified.includes(launches[20]!));
+  failFirstBatch = true;
+  await assert.rejects(
+    verifyLaunchesOnchain(launches, new AbortController().signal),
+    /quorum unavailable/,
+  );
+});
