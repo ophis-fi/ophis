@@ -8,6 +8,7 @@ import {
   DecodeOnlyBungeeBridgeProvider,
   EXTRA_ACROSS_SOURCE_CHAIN_IDS,
   ophisAcrossApiOptions,
+  tagAcrossIntegratorCalldata,
 } from '@cowprotocol/common-const'
 import { isEvmChainInfo, OrderKind, SupportedChainId, TargetChainId, TokenInfo } from '@cowprotocol/cow-sdk'
 import {
@@ -496,5 +497,47 @@ describe('Across API key + integrator ID (sdk-bridging patch)', () => {
     const options = ophisAcrossApiOptions()
     expect(options.integratorId).toBe('0x0311')
     expect(options.apiKey).not.toBe('')
+  })
+
+  it('tags the signed hook calldata with the on-chain integrator tag, ending on a 32-byte boundary', async () => {
+    // An ABI function call: 4-byte selector + whole words.
+    const original = `0x${'ab'.repeat(4 + 32 * 7)}`
+    const upstream = jest.spyOn(AcrossBridgeProvider.prototype, 'getSignedHook').mockResolvedValue({
+      postHook: {
+        target: `0x${'11'.repeat(20)}`,
+        callData: original,
+        gasLimit: '1',
+        dappId: 'cow-sdk://bridging/providers/across',
+      },
+      recipient: `0x${'22'.repeat(20)}`,
+    })
+
+    const hook = await new OphisAcrossBridgeProvider().getSignedHook(
+      SupportedChainId.MAINNET,
+      { to: `0x${'33'.repeat(20)}`, data: '0x', value: 0n },
+      '0x0',
+      0n,
+      1,
+    )
+
+    const tagged = hook.postHook.callData
+    expect(upstream).toHaveBeenCalledTimes(1)
+    expect(tagged.startsWith(original)).toBe(true)
+    expect(tagged.endsWith('1dc0de0311')).toBe(true)
+    expect(((tagged.length - 2) / 2) % 32).toBe(0)
+    expect(hook.recipient).toBe(`0x${'22'.repeat(20)}`)
+    expect(hook.postHook.target).toBe(`0x${'11'.repeat(20)}`)
+  })
+
+  it('pads any calldata length so the tag is the last bytes of a whole word', () => {
+    for (const bytes of [4 + 32 * 3, 0, 1, 27, 32, 100]) {
+      const input = `0x${'cd'.repeat(bytes)}`
+      const tagged = tagAcrossIntegratorCalldata(input)
+      expect(tagged.startsWith(input)).toBe(true)
+      expect(tagged.endsWith('1dc0de0311')).toBe(true)
+      expect(((tagged.length - 2) / 2) % 32).toBe(0)
+      // Never more than one word of padding + tag on top of the input.
+      expect((tagged.length - input.length) / 2).toBeLessThanOrEqual(32)
+    }
   })
 })

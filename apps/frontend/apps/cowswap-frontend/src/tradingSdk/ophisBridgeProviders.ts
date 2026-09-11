@@ -1,4 +1,4 @@
-import { EXTRA_ACROSS_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
+import { EXTRA_ACROSS_SOURCE_CHAIN_IDS, tagAcrossIntegratorCalldata } from '@cowprotocol/common-const'
 import { getTimeoutAbortController } from '@cowprotocol/common-utils'
 import {
   avalanche,
@@ -14,6 +14,7 @@ import {
 import {
   AcrossBridgeProvider,
   AcrossQuoteResult,
+  BridgeHook,
   BridgeProviderQuoteError,
   BridgeQuoteErrors,
   BuyTokensParams,
@@ -123,6 +124,17 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   // Such a deposit would offer 100e6 of input for ~1e-10 of output and be filled
   // instantly. Refuse them here, the one method every Across quote passes
   // through, before any fee request; the UI renders NO_ROUTES as "No routes found".
+  /**
+   * Same signed CoW Shed hook as upstream, with Across's on-chain integrator
+   * tag appended to its calldata (see tagAcrossIntegratorCalldata). Nothing
+   * decodes this calldata later: the SDK reads Across deposits back from the
+   * FundsDeposited event, not from the hook.
+   */
+  async getSignedHook(...args: Parameters<AcrossBridgeProvider['getSignedHook']>): Promise<BridgeHook> {
+    const hook = await super.getSignedHook(...args)
+    return { ...hook, postHook: { ...hook.postHook, callData: tagAcrossIntegratorCalldata(hook.postHook.callData) } }
+  }
+
   async getQuote(request: QuoteBridgeRequest): Promise<AcrossQuoteResult> {
     if (request.sellTokenDecimals !== request.buyTokenDecimals) {
       throw new BridgeProviderQuoteError(BridgeQuoteErrors.NO_ROUTES, {
