@@ -1,4 +1,4 @@
-import { OPHIS_PARTNER_FEE_RECIPIENT } from '@cowprotocol/common-const'
+import { OPHIS_PARTNER_FEE_RECIPIENT, HYPERCORE_CHAIN_ID } from '@cowprotocol/common-const'
 import { AdditionalTargetChainId, areAddressesEqual, BTC_CURRENCY_ADDRESS } from '@cowprotocol/cow-sdk'
 import { NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 
@@ -122,6 +122,12 @@ export class OphisNearIntentsBridgeProvider extends NearIntentsBridgeProvider {
     params: Parameters<NearIntentsBridgeProvider['getBuyTokens']>[0],
   ): ReturnType<NearIntentsBridgeProvider['getBuyTokens']> {
     const result = await super.getBuyTokens(params)
+    if ((params.buyChainId as number) === HYPERCORE_CHAIN_ID) {
+      // NEAR lists Hypercore USDC twice (the HIP-1 spot id and an erc20
+      // mirror). Only the HIP-1 asset is the account balance a user expects.
+      const tokens = result.tokens.filter((token) => /^0x[0-9a-fA-F]{32}$/.test(token.address))
+      return { tokens, isRouteAvailable: result.isRouteAvailable && tokens.length > 0 }
+    }
     if (params.buyChainId !== AdditionalTargetChainId.BITCOIN) return result
 
     // SDK 4.0.2 maps the newer BTC(OMNI) route to the placeholder "coin".

@@ -1,4 +1,4 @@
-import { CHAIN_INFO } from '@cowprotocol/common-const'
+import { getChainInfo } from '@cowprotocol/common-const'
 import { isBtcAddress, isEvmAddress, isSolanaAddress, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 import { getAddress } from '@ethersproject/address'
 import { AddressZero } from '@ethersproject/constants'
@@ -8,6 +8,7 @@ import { JsonRpcProvider, JsonRpcSigner } from '@ethersproject/providers'
 import { t } from '@lingui/core/macro'
 
 import { getExplorerBaseUrl, getExplorerOrderLink } from './explorer'
+import { isNonEvmDestinationString } from './nonEvmDestinations'
 
 /**
  * Environment variable to override the block explorer URL.
@@ -70,7 +71,7 @@ export function shortenAddress(address: string, chars = 4): string {
 }
 
 function isCaseSensitiveAddress(address: string): boolean {
-  return isBtcAddress(address) || isSolanaAddress(address)
+  return isBtcAddress(address) || isSolanaAddress(address) || isNonEvmDestinationString(address)
 }
 
 function makeAddressShorter(address: string, chars = 4): string {
@@ -141,10 +142,15 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
   // to CHAIN_INFO.explorer. The env override and an explicit `base` (bridge
   // networks) still win.
   let ophisBase: string | undefined
+  // Suiscan uses /account/<addr>; every other explorer here uses /address/<addr>.
+  let addressPath = 'address'
   try {
     ophisBase = getExplorerBaseUrl(chainId as SupportedChainId)
   } catch {
-    ophisBase = CHAIN_INFO[chainId]?.explorer
+    // getChainInfo also knows the bridge-only destinations (no Ophis explorer route).
+    const info = getChainInfo(chainId)
+    ophisBase = info?.explorer
+    addressPath = info?.addressPath ?? addressPath
   }
   const basePath = BLOCK_EXPLORER_URL_OVERRIDE || base || ophisBase
 
@@ -155,7 +161,7 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
       return `${basePath}/tx/${data}`
     case 'token':
       // The Ophis explorer has no token page; route to the address view.
-      return `${basePath}/address/${data}`
+      return `${basePath}/${addressPath}/${data}`
     case 'block':
       return `${basePath}/block/${data}`
     case 'token-transfer':
@@ -166,6 +172,6 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
       return `${basePath}/address/${data}#code`
     case 'address':
     default:
-      return `${basePath}/address/${data}`
+      return `${basePath}/${addressPath}/${data}`
   }
 }

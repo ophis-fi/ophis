@@ -31,22 +31,28 @@ const BLOCK_EXPLORER_URL_OVERRIDE = process.env.REACT_APP_BLOCK_EXPLORER_URL
  * getExplorerBaseUrl. Token links use the explorer's address route because
  * the Ophis explorer has no separate token page.
  */
+/**
+ * The Ophis explorer for chains it serves; otherwise the chain's native
+ * explorer from getChainInfo (which also knows the bridge-only destinations).
+ * Suiscan uses /account/<addr>; every other explorer here uses /address/<addr>.
+ */
+function resolveExplorerPrefix(chainId: number, defaultPrefix: string): { prefix: string; addressPath: string } {
+  if (BLOCK_EXPLORER_URL_OVERRIDE) return { prefix: BLOCK_EXPLORER_URL_OVERRIDE, addressPath: 'address' }
+  try {
+    return { prefix: getExplorerBaseUrl(chainId as SupportedChainId), addressPath: 'address' }
+  } catch {
+    const info = getChainInfo(chainId as TargetChainId)
+    return { prefix: info?.explorer || defaultPrefix, addressPath: info?.addressPath ?? 'address' }
+  }
+}
+
 export function getExplorerLink(
   chainId: number,
   data: string,
   type: ExplorerDataType,
   defaultPrefix = 'https://explorer.ophis.fi',
 ): string {
-  let prefix = BLOCK_EXPLORER_URL_OVERRIDE
-  if (!prefix) {
-    try {
-      prefix = getExplorerBaseUrl(chainId as SupportedChainId)
-    } catch {
-      // getChainInfo also knows the bridge-only destinations (Monad, X Layer),
-      // which have no Ophis explorer route: link to their native explorer.
-      prefix = getChainInfo(chainId as TargetChainId)?.explorer || defaultPrefix
-    }
-  }
+  const { prefix, addressPath } = resolveExplorerPrefix(chainId, defaultPrefix)
 
   switch (type) {
     case ExplorerDataType.TRANSACTION:
@@ -54,13 +60,13 @@ export function getExplorerLink(
 
     case ExplorerDataType.TOKEN:
       // The Ophis explorer has no token page; route to the address view.
-      return `${prefix}/address/${data}`
+      return `${prefix}/${addressPath}/${data}`
 
     case ExplorerDataType.BLOCK:
       return `${prefix}/block/${data}`
 
     case ExplorerDataType.ADDRESS:
-      return `${prefix}/address/${data}`
+      return `${prefix}/${addressPath}/${data}`
     default:
       return `${prefix}`
   }

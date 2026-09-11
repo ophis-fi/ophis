@@ -1,3 +1,4 @@
+import { isNonEvmBridgeDestination } from '@cowprotocol/common-utils'
 import { getAddressKey, SupportedChainId, mapSupportedNetworks } from '@cowprotocol/cow-sdk'
 import { Fraction, Token } from '@cowprotocol/currency'
 import { PersistentStateByChain } from '@cowprotocol/types'
@@ -34,17 +35,24 @@ export async function fetchCurrencyUsdPrice(currency: Token): Promise<Fraction |
     })
   }
 
+  // CoW's price source needs an orderbook on the chain. A bridge-only
+  // destination (Monad, Sui, Tron, Hyperliquid…), Bitcoin or Solana has none,
+  // so the chain of fallbacks ends at null there instead of a TypeError
+  // deep inside the CoW quote lookup.
+  const lastResort =
+    currency.chainId in SupportedChainId ? getCowPrice : (): Promise<Fraction | null> => Promise.resolve(null)
+
   // Try BFF first, then fall back to Defillama, then CoW
   if (!shouldSkipBff) {
     return getBffUsdPrice(currency)
       .catch(handleErrorFactory(currency, null, bffUnknownCurrencies, getDefillamaUsdPrice))
-      .catch(handleErrorFactory(currency, defillamaRateLimitHitTimestamp, defillamaUnknownCurrencies, getCowPrice))
+      .catch(handleErrorFactory(currency, defillamaRateLimitHitTimestamp, defillamaUnknownCurrencies, lastResort))
   }
 
   // If BFF is skipped, try Defillama
   if (!shouldSkipDefillama) {
     return getDefillamaUsdPrice(currency).catch(
-      handleErrorFactory(currency, defillamaRateLimitHitTimestamp, defillamaUnknownCurrencies, getCowPrice),
+      handleErrorFactory(currency, defillamaRateLimitHitTimestamp, defillamaUnknownCurrencies, lastResort),
     )
   }
 
@@ -58,6 +66,9 @@ export async function fetchCurrencyUsdPrice(currency: Token): Promise<Fraction |
 }
 
 function getShouldSkipBff(currency: Token): boolean {
+  // CoW's BFF only knows EVM chain ids; a non-EVM bridge destination (Sui,
+  // Tron, Hyperliquid) would just log a 404 per token.
+  if (isNonEvmBridgeDestination(currency.chainId)) return true
   return getShouldSkipPriceSource(currency, null, bffUnknownCurrencies, null, 0)
 }
 

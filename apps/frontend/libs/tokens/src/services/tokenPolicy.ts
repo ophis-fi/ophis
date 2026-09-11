@@ -5,7 +5,7 @@ import {
   USDC_MAINNET,
   WETH_MAINNET,
 } from '@cowprotocol/common-const'
-import { isAddress, isSupportedChainId } from '@cowprotocol/common-utils'
+import { isAddress, isSupportedChainId, NON_EVM_DESTINATION_RULES } from '@cowprotocol/common-utils'
 import {
   AdditionalTargetChainId,
   BTC_CURRENCY_ADDRESS,
@@ -131,11 +131,13 @@ function getBridgeDestinationPolicyDecision(
       ? { allowed: true, reason: 'approved' }
       : { allowed: false, reason: 'invalid-token' }
   }
-  // Bridge-only EVM destinations (Monad, X Layer): not trading chains, so
-  // isSupportedChainId is false; the destination asset only needs a valid EVM
-  // address here, the provider validates the mint and the quote.
+  // Bridge-only destinations: not trading chains, so isSupportedChainId is
+  // false; the destination asset only needs a well-formed id for its chain
+  // (EVM address, or the non-EVM rule for Sui / Tron / Hyperliquid), the
+  // provider validates the mint and the quote.
   if (isBridgeOnlyDestinationChain(asset.chainId)) {
-    return isAddress(asset.address)
+    const isTokenId = NON_EVM_DESTINATION_RULES[asset.chainId]?.isTokenId ?? isAddress
+    return isTokenId(asset.address)
       ? { allowed: true, reason: 'approved' }
       : { allowed: false, reason: 'invalid-token' }
   }

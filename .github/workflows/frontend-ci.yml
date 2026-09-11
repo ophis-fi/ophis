@@ -150,7 +150,7 @@ jobs:
       # legacy published one is EIP-7702-delegated and fails every hook quote.
       - name: Destination token and picker regression tests
         working-directory: apps/frontend
-        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'ophisNearIntentsProvider|ophisBridgeProviders|tradingSdk/bridgingSdk|getBridgeQuoteSigner|tokensList|useVerifyOphisRecipientName|useQuoteParams|validateTradeForm|isBridgeQuoteRecipientCurrent|tradeQuoteAtom|ophis/hooks/useBeatMarket' --passWithNoTests=false
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'ophisNearIntentsProvider|ophisBridgeProviders|tradingSdk/bridgingSdk|getBridgeQuoteSigner|tokensList|useVerifyOphisRecipientName|useQuoteParams|validateTradeForm|isBridgeQuoteRecipientCurrent|tradeQuoteAtom|ophis/hooks/useBeatMarket|usdAmount/services/fetchCurrencyUsdPrice' --passWithNoTests=false
 
       - name: Permit amount and cache binding regression tests
         working-directory: apps/frontend

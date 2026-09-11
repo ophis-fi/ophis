@@ -35,7 +35,7 @@
  */
 import { ReactNode } from 'react'
 
-import { BRIDGE_ONLY_DESTINATION_LABELS } from '@cowprotocol/common-const'
+import { BRIDGE_ONLY_DESTINATION_LABELS_TEXT } from '@cowprotocol/common-const'
 
 import {
   Badge,
@@ -308,9 +308,7 @@ export function ProtocolPage(): ReactNode {
             </Tr>
             <Tr>
               <RowTh scope="row">Cross-chain destinations</RowTh>
-              <Td>
-                Solana, Bitcoin, {BRIDGE_ONLY_DESTINATION_LABELS.join(' and ')}, brokered off-chain via NEAR Intents
-              </Td>
+              <Td>Solana, Bitcoin, {BRIDGE_ONLY_DESTINATION_LABELS_TEXT}, brokered off-chain via NEAR Intents</Td>
               <Td>
                 <Badge tone="beta">Destination-only</Badge>
               </Td>

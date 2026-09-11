@@ -2,25 +2,62 @@ import { registerEvmChainIds } from '@cowprotocol/cow-sdk'
 import { registerNearIntentsNetworks } from '@cowprotocol/sdk-bridging'
 
 import { toBridgeChainInfo } from './bridgeChainInfo'
-import { MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from './bridgeDestinationChains'
+import {
+  HYPE_NATIVE_CURRENCY_ADDRESS,
+  HYPERCORE_CHAIN_ID,
+  MONAD_CHAIN_ID,
+  SUI_CHAIN_ID,
+  SUI_NATIVE_CURRENCY_ADDRESS,
+  TRON_CHAIN_ID,
+  TRX_NATIVE_CURRENCY_ADDRESS,
+  XLAYER_CHAIN_ID,
+} from './bridgeDestination.const'
+
+export interface OphisNearIntentsNetwork {
+  /** NEAR's `blockchain` field in its 1Click token list. */
+  blockchain: string
+  chainId: number
+  /** EVM chains get isEvmChain() (0x address handling); non-EVM ones use nonEvmDestinations.ts rules. */
+  evm: boolean
+  /** Sentinel for the chain's native asset (NEAR lists it without a contractAddress). */
+  nativeAddress?: string
+  /**
+   * 1Click rejects FLEX_INPUT for this chain's assets ("supports only EXACT_INPUT or
+   * EXACT_OUTPUT"). The SDK then quotes EXACT_INPUT on the order's minimum buy amount:
+   * the deposit is never below it, and NEAR refunds the settlement surplus above it to
+   * the owner on the source chain instead of delivering it.
+   */
+  exactInput?: boolean
+}
 
 /**
- * NEAR Intents networks Ophis offers on top of the SDK's built-in list. The
- * slug is NEAR's `blockchain` field in its 1Click token list. Destinations
- * only: a NEAR bridge is a plain swap with the receiver pointed at NEAR's
- * deposit address, so nothing on these chains needs deploying.
+ * NEAR Intents networks Ophis offers on top of the SDK's built-in list.
+ * Destinations only: a NEAR bridge is a plain swap with the receiver pointed
+ * at NEAR's deposit address, so nothing on these chains needs deploying.
  */
-export const OPHIS_NEAR_INTENTS_NETWORKS: ReadonlyArray<{ blockchain: string; chainId: number }> = [
-  { blockchain: 'monad', chainId: MONAD_CHAIN_ID },
-  { blockchain: 'xlayer', chainId: XLAYER_CHAIN_ID },
+export const OPHIS_NEAR_INTENTS_NETWORKS: ReadonlyArray<OphisNearIntentsNetwork> = [
+  { blockchain: 'monad', chainId: MONAD_CHAIN_ID, evm: true },
+  { blockchain: 'xlayer', chainId: XLAYER_CHAIN_ID, evm: true },
+  { blockchain: 'sui', chainId: SUI_CHAIN_ID, evm: false, nativeAddress: SUI_NATIVE_CURRENCY_ADDRESS },
+  { blockchain: 'tron', chainId: TRON_CHAIN_ID, evm: false, nativeAddress: TRX_NATIVE_CURRENCY_ADDRESS },
+  {
+    blockchain: 'hypercore',
+    chainId: HYPERCORE_CHAIN_ID,
+    evm: false,
+    nativeAddress: HYPE_NATIVE_CURRENCY_ADDRESS,
+    exactInput: true,
+  },
 ]
 
 /** Idempotent; call once at boot before the NEAR provider is first used (both apps). */
 export function registerOphisNearIntentsNetworks(): void {
-  // EVM for address handling (recipient validation, token address matching)
-  // without widening the SDK's EvmChains enum.
-  registerEvmChainIds(OPHIS_NEAR_INTENTS_NETWORKS.map(({ chainId }) => chainId))
+  registerEvmChainIds(OPHIS_NEAR_INTENTS_NETWORKS.filter(({ evm }) => evm).map(({ chainId }) => chainId))
   registerNearIntentsNetworks(
-    OPHIS_NEAR_INTENTS_NETWORKS.map(({ blockchain, chainId }) => ({ blockchain, chain: toBridgeChainInfo(chainId) })),
+    OPHIS_NEAR_INTENTS_NETWORKS.map(({ blockchain, chainId, nativeAddress, exactInput }) => ({
+      blockchain,
+      chain: toBridgeChainInfo(chainId),
+      nativeAddress,
+      exactInput,
+    })),
   )
 }

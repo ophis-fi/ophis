@@ -1,23 +1,39 @@
 import {
+  BRIDGE_ONLY_DESTINATION_LABELS,
   CHAIN_INFO,
   getChainInfo,
-  BRIDGE_ONLY_DESTINATION_LABELS,
+  HYPERCORE_CHAIN_ID,
   isBridgeOnlyDestinationChain,
   MONAD_CHAIN_ID,
   NATIVE_CURRENCIES,
   NATIVE_CURRENCY_ADDRESS,
   SORTED_DST_CHAIN_IDS,
+  SUI_CHAIN_ID,
+  SUI_NATIVE_CURRENCY_ADDRESS,
   toBridgeChainInfo,
+  TRON_CHAIN_ID,
+  TRX_NATIVE_CURRENCY_ADDRESS,
   XLAYER_CHAIN_ID,
 } from '@cowprotocol/common-const'
-import { ExplorerDataType, getExplorerLink, getIsNativeToken, getWrappedToken } from '@cowprotocol/common-utils'
-import { isEvmChain, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
+import {
+  ExplorerDataType,
+  getBlockExplorerUrl,
+  getExplorerLink,
+  getIsNativeToken,
+  getWrappedToken,
+  isSuiAddress,
+  isSuiCoinType,
+  isTronAddress,
+  shortenAddress,
+} from '@cowprotocol/common-utils'
+import { isEvmChain, OrderKind, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
+import type { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 import { getTokenPolicyDecision, TokenPolicyProfile } from '@cowprotocol/tokens'
 
 // eslint-disable-next-line import/no-internal-modules -- pure util under test, not part of the module's index
 import { filterDestinationChains } from 'modules/tokensList/utils/chainsState'
 
-import { isRecipientAddress } from 'common/utils/recipientAddress.utils'
+import { isNonEvmRecipientChain, isRecipientAddress } from 'common/utils/recipientAddress.utils'
 
 import {
   acrossBridgeProvider,
@@ -166,7 +182,7 @@ describe('NEAR Intents destinations Ophis adds (Monad, X Layer)', () => {
     expect(isBridgeOnlyDestinationChain(SupportedChainId.MAINNET)).toBe(false)
     expect(isBridgeOnlyDestinationChain(undefined)).toBe(false)
     // Public copy (About, Protocol) lists destinations from this same registry.
-    expect(BRIDGE_ONLY_DESTINATION_LABELS).toEqual(['Monad', 'X Layer'])
+    expect(BRIDGE_ONLY_DESTINATION_LABELS).toEqual(['Monad', 'X Layer', 'Sui', 'Tron', 'Hyperliquid'])
   })
 
   it('passes the token policy for a valid destination asset on those chains (Codex round 4)', () => {
@@ -185,5 +201,157 @@ describe('NEAR Intents destinations Ophis adds (Monad, X Layer)', () => {
       allowed: false,
       reason: 'invalid-token',
     })
+  })
+})
+
+describe('NEAR Intents non-EVM destinations Ophis adds (Sui, Tron, Hyperliquid)', () => {
+  const SUI_ADDR = '0x0000000000000000000000000000000000000000000000000000000000000002'
+  const SUI_USDC = '0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC'
+  const TRON_USDT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+  const HL_USDC_HIP1 = '0x6d1e7cde53ba9467b783cb7c530ce054'
+  const HL_USDC_ERC20 = '0xb88339CB7199b77E23DB6E890353E22632Ba630f'
+  const EVM_ADDR = '0x3F92Ac7B4f2ad492D7ADe1bdDf5003922F21331b'
+  const profile = TokenPolicyProfile.ESTABLISHED_SETTLEMENT
+  const nearToken = (blockchain: string, symbol: string, decimals: number, contractAddress?: string): object => ({
+    assetId: `test:${blockchain}:${symbol}`,
+    blockchain,
+    symbol,
+    decimals,
+    contractAddress,
+    price: 0,
+    priceUpdatedAt: '2026-09-11T00:00:00Z',
+  })
+
+  it('validates recipient addresses per chain, checksum included for Tron', () => {
+    expect(isSuiAddress(SUI_ADDR)).toBe(true)
+    expect(isSuiAddress(EVM_ADDR)).toBe(false)
+    expect(isTronAddress(TRON_USDT)).toBe(true)
+    expect(isTronAddress(TRX_NATIVE_CURRENCY_ADDRESS)).toBe(true)
+    expect(isTronAddress(TRON_USDT.slice(0, -1) + 'u')).toBe(false) // checksum broken
+    expect(isSuiCoinType(SUI_USDC)).toBe(true)
+    expect(isSuiCoinType(SUI_NATIVE_CURRENCY_ADDRESS)).toBe(true)
+    expect(isSuiCoinType(SUI_ADDR)).toBe(false)
+    // The app's recipient seams route through the same rules.
+    expect(isRecipientAddress(SUI_ADDR, SUI_CHAIN_ID)).toBe(true)
+    expect(isRecipientAddress(EVM_ADDR, SUI_CHAIN_ID)).toBe(false)
+    expect(isRecipientAddress(TRON_USDT, TRON_CHAIN_ID)).toBe(true)
+    expect(isRecipientAddress(EVM_ADDR, HYPERCORE_CHAIN_ID)).toBe(true)
+    expect(isRecipientAddress(SUI_ADDR, HYPERCORE_CHAIN_ID)).toBe(false)
+  })
+
+  it("token policy accepts each chain's own token id format and nothing else", () => {
+    expect(getTokenPolicyDecision({ chainId: SUI_CHAIN_ID, address: SUI_USDC }, profile).allowed).toBe(true)
+    expect(
+      getTokenPolicyDecision({ chainId: SUI_CHAIN_ID, address: SUI_NATIVE_CURRENCY_ADDRESS }, profile).allowed,
+    ).toBe(true)
+    expect(getTokenPolicyDecision({ chainId: SUI_CHAIN_ID, address: EVM_ADDR }, profile).allowed).toBe(false)
+    expect(getTokenPolicyDecision({ chainId: TRON_CHAIN_ID, address: TRON_USDT }, profile).allowed).toBe(true)
+    expect(getTokenPolicyDecision({ chainId: TRON_CHAIN_ID, address: SUI_USDC }, profile).allowed).toBe(false)
+    expect(getTokenPolicyDecision({ chainId: HYPERCORE_CHAIN_ID, address: HL_USDC_HIP1 }, profile).allowed).toBe(true)
+  })
+
+  it('maps NEAR tokens: native sentinels, Sui coin types, Tron base58, Hypercore HIP-1 only', async () => {
+    const api = (nearIntentsBridgeProvider as unknown as { api: { getTokens(): Promise<object[]> } }).api
+    const spy = jest
+      .spyOn(api, 'getTokens')
+      .mockResolvedValue([
+        nearToken('sui', 'SUI', 9),
+        nearToken('sui', 'USDC', 6, SUI_USDC),
+        nearToken('tron', 'TRX', 6),
+        nearToken('tron', 'USDT', 6, TRON_USDT),
+        nearToken('hypercore', 'USDC', 8, HL_USDC_HIP1),
+        nearToken('hypercore', 'USDC', 6, HL_USDC_ERC20),
+      ])
+    const sui = await nearIntentsBridgeProvider.getBuyTokens({ buyChainId: SUI_CHAIN_ID as TargetChainId })
+    expect(sui.tokens.map((t) => [t.symbol, t.address])).toEqual([
+      ['SUI', SUI_NATIVE_CURRENCY_ADDRESS],
+      ['USDC', SUI_USDC],
+    ])
+    const tron = await nearIntentsBridgeProvider.getBuyTokens({ buyChainId: TRON_CHAIN_ID as TargetChainId })
+    expect(tron.tokens.map((t) => [t.symbol, t.address])).toEqual([
+      ['TRX', TRX_NATIVE_CURRENCY_ADDRESS],
+      ['USDT', TRON_USDT],
+    ])
+    const hl = await nearIntentsBridgeProvider.getBuyTokens({ buyChainId: HYPERCORE_CHAIN_ID as TargetChainId })
+    expect(hl.tokens.map((t) => t.address)).toEqual([HL_USDC_HIP1])
+    expect(hl.isRouteAvailable).toBe(true)
+    spy.mockRestore()
+  })
+
+  it('quotes 1Click EXACT_INPUT for Hypercore (its assets reject FLEX_INPUT) and FLEX_INPUT elsewhere', async () => {
+    const MAINNET_USDT = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
+    const api = (
+      nearIntentsBridgeProvider as unknown as {
+        api: { getTokens(): Promise<object[]>; getQuote(r: object): Promise<object> }
+      }
+    ).api
+    const tokens = jest
+      .spyOn(api, 'getTokens')
+      .mockResolvedValue([
+        nearToken('eth', 'USDT', 6, MAINNET_USDT),
+        nearToken('sui', 'USDC', 6, SUI_USDC),
+        nearToken('hypercore', 'USDC', 8, HL_USDC_HIP1),
+      ])
+    const sent: { swapType?: string; amount?: string }[] = []
+    const quote = jest.spyOn(api, 'getQuote').mockImplementation(async (request) => {
+      sent.push(request as { swapType?: string; amount?: string })
+      throw new Error('captured')
+    })
+    const request = (buyTokenChainId: number, buyTokenAddress: string): QuoteBridgeRequest =>
+      ({
+        kind: OrderKind.SELL,
+        amount: 1_000_000n,
+        sellTokenChainId: SupportedChainId.MAINNET,
+        sellTokenAddress: MAINNET_USDT,
+        sellTokenDecimals: 6,
+        buyTokenChainId: buyTokenChainId as TargetChainId,
+        buyTokenAddress,
+        buyTokenDecimals: 6,
+        account: EVM_ADDR,
+        receiver: EVM_ADDR,
+        appCode: 'test',
+      }) as QuoteBridgeRequest
+
+    await expect(nearIntentsBridgeProvider.getQuote(request(HYPERCORE_CHAIN_ID, HL_USDC_HIP1))).rejects.toThrow(
+      'captured',
+    )
+    await expect(nearIntentsBridgeProvider.getQuote(request(SUI_CHAIN_ID, SUI_USDC))).rejects.toThrow('captured')
+    expect(sent.map((r) => [r.swapType, r.amount])).toEqual([
+      ['EXACT_INPUT', '1000000'],
+      ['FLEX_INPUT', '1000000'],
+    ])
+    tokens.mockRestore()
+    quote.mockRestore()
+  })
+
+  it('is wired like the EVM pair: picker lists, native semantics, explorer links, shortening', () => {
+    expect(SORTED_DST_CHAIN_IDS).toEqual(expect.arrayContaining([SUI_CHAIN_ID, TRON_CHAIN_ID, HYPERCORE_CHAIN_ID]))
+    for (const id of [SUI_CHAIN_ID, TRON_CHAIN_ID, HYPERCORE_CHAIN_ID]) {
+      expect(isBridgeOnlyDestinationChain(id)).toBe(true)
+      expect(isEvmChain(id)).toBe(false)
+      expect(isNonEvmRecipientChain(id)).toBe(true)
+      expect(getChainInfo(id as TargetChainId).label).toBeTruthy()
+    }
+    expect(getIsNativeToken(SUI_CHAIN_ID as SupportedChainId, SUI_NATIVE_CURRENCY_ADDRESS)).toBe(true)
+    expect(getWrappedToken(NATIVE_CURRENCIES[TRON_CHAIN_ID as TargetChainId]).symbol).toBe('TRX')
+    expect(getExplorerLink(SUI_CHAIN_ID, SUI_ADDR, ExplorerDataType.ADDRESS)).toBe(
+      `https://suiscan.xyz/mainnet/account/${SUI_ADDR}`,
+    )
+    expect(getExplorerLink(TRON_CHAIN_ID, TRON_USDT, ExplorerDataType.ADDRESS)).toBe(
+      `https://tronscan.org/#/address/${TRON_USDT}`,
+    )
+    expect(getExplorerLink(HYPERCORE_CHAIN_ID, EVM_ADDR, ExplorerDataType.ADDRESS)).toBe(
+      `https://app.hyperliquid.xyz/explorer/address/${EVM_ADDR}`,
+    )
+    // The recipient panel's link builder (getBlockExplorerUrl) resolves the same explorers.
+    expect(getBlockExplorerUrl(SUI_CHAIN_ID as SupportedChainId, 'address', SUI_ADDR)).toBe(
+      `https://suiscan.xyz/mainnet/account/${SUI_ADDR}`,
+    )
+    expect(getBlockExplorerUrl(TRON_CHAIN_ID as SupportedChainId, 'address', TRON_USDT)).toBe(
+      `https://tronscan.org/#/address/${TRON_USDT}`,
+    )
+    // shortenAddress used to throw on anything that was not EVM / BTC / Solana.
+    expect(shortenAddress(SUI_ADDR)).toMatch(/^0x0000\.\.\.0002$/)
+    expect(shortenAddress(TRON_USDT)).toMatch(/^TR7NHq\.\.\.Lj6t$/)
   })
 })
