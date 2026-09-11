@@ -166,7 +166,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   clearTimeout(timer)
 
   if (!upstream.ok) {
-    return json({ ok: false, error: { code: 'UPSTREAM', message: `reference returned ${upstream.status}` } }, 502)
+    // A 4xx is KyberSwap declining the pair (unknown token, no liquidity), i.e.
+    // "no reference", which the widget hides quietly; only a 5xx / network
+    // failure is a gateway error worth a 502 (which Cloudflare then renders as
+    // its own "error code: 502" page and the browser logs as an error).
+    return json(
+      { ok: false, error: { code: 'UPSTREAM', message: `reference returned ${upstream.status}` } },
+      upstream.status >= 500 ? 502 : 200,
+    )
   }
 
   let raw: unknown
