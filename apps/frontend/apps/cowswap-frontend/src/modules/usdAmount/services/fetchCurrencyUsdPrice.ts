@@ -1,4 +1,4 @@
-import { isNonEvmBridgeDestination } from '@cowprotocol/common-utils'
+import { isNonEvmBridgeDestination, isSupportedChainId } from '@cowprotocol/common-utils'
 import { getAddressKey, SupportedChainId, mapSupportedNetworks } from '@cowprotocol/cow-sdk'
 import { Fraction, Token } from '@cowprotocol/currency'
 import { PersistentStateByChain } from '@cowprotocol/types'
@@ -35,12 +35,14 @@ export async function fetchCurrencyUsdPrice(currency: Token): Promise<Fraction |
     })
   }
 
-  // CoW's price source needs an orderbook on the chain. A bridge-only
+  // CoW's price source needs an orderbook on the chain (isSupportedChainId
+  // includes the Ophis sovereign chains the SDK enum lacks). A bridge-only
   // destination (Monad, Sui, Tron, Hyperliquid…), Bitcoin or Solana has none,
   // so the chain of fallbacks ends at null there instead of a TypeError
   // deep inside the CoW quote lookup.
-  const lastResort =
-    currency.chainId in SupportedChainId ? getCowPrice : (): Promise<Fraction | null> => Promise.resolve(null)
+  const lastResort = isSupportedChainId(currency.chainId)
+    ? getCowPrice
+    : (): Promise<Fraction | null> => Promise.resolve(null)
 
   // Try BFF first, then fall back to Defillama, then CoW
   if (!shouldSkipBff) {
@@ -57,7 +59,7 @@ export async function fetchCurrencyUsdPrice(currency: Token): Promise<Fraction |
   }
 
   // CowProtocolUsdPrice is only available for supported chains
-  if (currency.chainId in SupportedChainId) {
+  if (isSupportedChainId(currency.chainId)) {
     // If all other sources are skipped, use CoW as last resort
     return getCowPrice(currency)
   }

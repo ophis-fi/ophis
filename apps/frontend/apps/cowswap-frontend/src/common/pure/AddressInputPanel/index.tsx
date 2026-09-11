@@ -6,11 +6,10 @@ import {
   isPrefixedAddress,
   parsePrefixedAddress,
 } from '@cowprotocol/common-utils'
-import { AdditionalTargetChainId, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { ExternalLink, RowBetween, UI } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import { t } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react'
 import { Trans } from '@lingui/react/macro'
 import styled, { useTheme } from 'styled-components/macro'
@@ -19,7 +18,7 @@ import { AutoColumn } from 'legacy/components/Column'
 
 import { useOphisNameResolution } from '../../hooks/useOphisNameResolution'
 import { autofocus } from '../../utils/autofocus'
-import { isNonEvmRecipientChain, isRecipientAddress } from '../../utils/recipientAddress.utils'
+import { getRecipientPlaceholder, isNonEvmRecipientChain, isRecipientAddress } from '../../utils/recipientAddress.utils'
 import ChainPrefixWarning from '../ChainPrefixWarning'
 
 const InputPanel = styled.div`
@@ -214,10 +213,4 @@ export function AddressInputPanel({
       </ContainerRow>
     </InputPanel>
   )
-}
-
-function getRecipientPlaceholder(chainId: number): string {
-  if (chainId === AdditionalTargetChainId.SOLANA) return t`Solana wallet address`
-  if (chainId === AdditionalTargetChainId.BITCOIN) return t`Bitcoin wallet address`
-  return t`Wallet address, ENS, or .wei name`
 }

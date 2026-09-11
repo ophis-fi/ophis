@@ -47,4 +47,14 @@ describe('fetchCurrencyUsdPrice on a chain without a CoW orderbook', () => {
     await expect(fetchCurrencyUsdPrice(usdcMainnet)).resolves.toEqual(new Fraction(1, 1))
     expect(cow).toHaveBeenCalledTimes(1)
   })
+
+  it('keeps the CoW source for the Ophis chains the SDK enum lacks (Optimism, Unichain, Robinhood Chain) (Codex)', async () => {
+    cow.mockResolvedValue(new Fraction(1, 1))
+    for (const chainId of [10, 130, 4663]) {
+      cow.mockClear()
+      const usdc = new Token(chainId, '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', 6, 'USDC')
+      await expect(fetchCurrencyUsdPrice(usdc)).resolves.toEqual(new Fraction(1, 1))
+      expect(cow).toHaveBeenCalledTimes(1)
+    }
+  })
 })

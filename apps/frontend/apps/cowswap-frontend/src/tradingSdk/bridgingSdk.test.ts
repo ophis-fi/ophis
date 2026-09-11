@@ -41,7 +41,12 @@ import { filterDestinationChains } from 'modules/tokensList/utils/chainsState'
 // eslint-disable-next-line import/no-internal-modules -- pure util under test, not part of the module's index
 import * as recentTokensStorage from 'modules/tokensList/utils/recentTokensStorage'
 
-import { isNonEvmRecipientChain, isRecipientAddress } from 'common/utils/recipientAddress.utils'
+import {
+  getRecipientPlaceholder,
+  isDisplayableRecipient,
+  isNonEvmRecipientChain,
+  isRecipientAddress,
+} from 'common/utils/recipientAddress.utils'
 
 import {
   acrossBridgeProvider,
@@ -280,6 +285,22 @@ describe('NEAR Intents non-EVM destinations Ophis adds (Sui, Tron, Hyperliquid)'
     expect(OPHIS_NEAR_INTENTS_NETWORKS.filter((entry) => entry.exactInput).map((entry) => entry.chainId)).toEqual([
       HYPERCORE_CHAIN_ID,
     ])
+  })
+
+  it('shows non-EVM recipients in the bridge confirmation and names the format in the input (Codex round 3)', () => {
+    // RecipientDetailsItem and AddressLink gate on this; an EVM-only check hid Sui and Tron recipients.
+    expect(isDisplayableRecipient(SUI_ADDR)).toBe(true)
+    expect(isDisplayableRecipient(TRON_USDT)).toBe(true)
+    expect(isDisplayableRecipient(EVM_ADDR)).toBe(true)
+    expect(isDisplayableRecipient('vitalik.eth')).toBe(false)
+    expect(isDisplayableRecipient('')).toBe(false)
+    // The input placeholder must not invite ENS / .wei names on chains where they never resolve.
+    expect(getRecipientPlaceholder(SUI_CHAIN_ID)).toContain('Sui')
+    expect(getRecipientPlaceholder(TRON_CHAIN_ID)).toContain('Tron')
+    expect(getRecipientPlaceholder(HYPERCORE_CHAIN_ID)).toContain('Hyperliquid')
+    for (const id of [SUI_CHAIN_ID, TRON_CHAIN_ID, HYPERCORE_CHAIN_ID])
+      expect(getRecipientPlaceholder(id)).not.toMatch(/ENS/)
+    expect(getRecipientPlaceholder(SupportedChainId.MAINNET)).toMatch(/ENS/)
   })
 
   it('clears a stale non-EVM buy token when the route no longer lists it (InvalidBridgeOutputUpdater)', () => {
