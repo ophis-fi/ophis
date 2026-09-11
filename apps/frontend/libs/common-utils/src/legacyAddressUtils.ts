@@ -147,6 +147,7 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
   // (Suiscan /account + /coin, Tronscan /token20).
   let addressPath = 'address'
   let tokenPath = 'address'
+  let txPath = 'tx'
   try {
     ophisBase = getExplorerBaseUrl(chainId as SupportedChainId)
   } catch {
@@ -155,6 +156,7 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
     ophisBase = info?.explorer
     addressPath = info?.addressPath ?? addressPath
     tokenPath = info?.tokenPath ?? addressPath
+    txPath = info?.txPath ?? txPath
   }
   const basePath = BLOCK_EXPLORER_URL_OVERRIDE || base || ophisBase
 
@@ -162,7 +164,7 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
 
   switch (type) {
     case 'transaction':
-      return `${basePath}/tx/${data}`
+      return `${basePath}/${txPath}/${data}`
     case 'token':
       return `${basePath}/${tokenPath}/${data}`
     case 'block':

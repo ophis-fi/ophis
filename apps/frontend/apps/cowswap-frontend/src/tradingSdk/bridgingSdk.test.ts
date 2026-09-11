@@ -8,6 +8,7 @@ import {
   NATIVE_CURRENCIES,
   NATIVE_CURRENCY_ADDRESS,
   SORTED_DST_CHAIN_IDS,
+  TokenWithLogo,
   SUI_CHAIN_ID,
   SUI_NATIVE_CURRENCY_ADDRESS,
   toBridgeChainInfo,
@@ -32,6 +33,8 @@ import { getTokenPolicyDecision, TokenPolicyProfile } from '@cowprotocol/tokens'
 
 // eslint-disable-next-line import/no-internal-modules -- pure util under test, not part of the module's index
 import { filterDestinationChains } from 'modules/tokensList/utils/chainsState'
+// eslint-disable-next-line import/no-internal-modules -- pure util under test, not part of the module's index
+import * as recentTokensStorage from 'modules/tokensList/utils/recentTokensStorage'
 
 import { isNonEvmRecipientChain, isRecipientAddress } from 'common/utils/recipientAddress.utils'
 
@@ -377,5 +380,41 @@ describe('NEAR Intents non-EVM destinations Ophis adds (Sui, Tron, Hyperliquid)'
     expect(getBlockExplorerUrl(TRON_CHAIN_ID as SupportedChainId, 'token', TRON_USDT)).toBe(
       `https://tronscan.org/#/token20/${TRON_USDT}`,
     )
+  })
+
+  it('routes the destination fill transaction link through each explorer (Tronscan uses /transaction) (Codex round 2)', () => {
+    const hash = '28b3c179f143eed895fca183cab9bc45ff54b316bb6658dedbc1573d668e9e85'
+    expect(getExplorerLink(TRON_CHAIN_ID, hash, ExplorerDataType.TRANSACTION)).toBe(
+      `https://tronscan.org/#/transaction/${hash}`,
+    )
+    expect(getExplorerLink(SUI_CHAIN_ID, hash, ExplorerDataType.TRANSACTION)).toBe(
+      `https://suiscan.xyz/mainnet/tx/${hash}`,
+    )
+    expect(getExplorerLink(HYPERCORE_CHAIN_ID, hash, ExplorerDataType.TRANSACTION)).toBe(
+      `https://app.hyperliquid.xyz/explorer/tx/${hash}`,
+    )
+    expect(getBlockExplorerUrl(TRON_CHAIN_ID as SupportedChainId, 'transaction', hash)).toBe(
+      `https://tronscan.org/#/transaction/${hash}`,
+    )
+    // Trading chains keep the Ophis explorer tx route.
+    expect(getExplorerLink(SupportedChainId.MAINNET, hash, ExplorerDataType.TRANSACTION)).toMatch(/\/tx\/28b3c179/)
+  })
+
+  it('keeps case-sensitive Tron and Sui token ids verbatim through recent-token storage (Codex round 2)', () => {
+    // getAddressKey lowercases EVM addresses only; base58 and Move types pass through untouched,
+    // so a stored Tron/Sui token survives the reload-time validity check.
+    const tron = new TokenWithLogo(undefined, TRON_CHAIN_ID, TRON_USDT, 6, 'USDT', 'Tether USD')
+    const sui = new TokenWithLogo(undefined, SUI_CHAIN_ID, SUI_USDC, 6, 'USDC', 'USD Coin')
+    const stored = recentTokensStorage.buildNextStoredTokens(
+      recentTokensStorage.buildNextStoredTokens({}, tron, 4),
+      sui,
+      4,
+    )
+    expect(stored[TRON_CHAIN_ID][0].address).toBe(TRON_USDT)
+    expect(stored[SUI_CHAIN_ID][0].address).toBe(SUI_USDC)
+    recentTokensStorage.persistStoredTokens(stored)
+    const reloaded = recentTokensStorage.readStoredTokens(4)
+    expect(reloaded[TRON_CHAIN_ID]?.[0]?.address).toBe(TRON_USDT)
+    expect(reloaded[SUI_CHAIN_ID]?.[0]?.address).toBe(SUI_USDC)
   })
 })

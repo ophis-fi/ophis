@@ -84,6 +84,7 @@ export const BRIDGE_DESTINATION_CHAIN_INFO: Readonly<Partial<Record<number, Base
     docs: 'https://developers.tron.network' as HttpsString,
     explorer: 'https://tronscan.org/#' as HttpsString,
     tokenPath: 'token20',
+    txPath: 'transaction',
     infoLink: 'https://tron.network' as HttpsString,
     logo: { light: TRON_LOGO, dark: TRON_LOGO },
     addressPrefix: 'tron',

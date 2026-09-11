@@ -72,6 +72,8 @@ export interface BaseChainInfo {
   readonly addressPath?: string
   /** Explorer path segment for a token page when it differs from addressPath (Suiscan `coin`, Tronscan `token20`, Hyperliquid `token`). */
   readonly tokenPath?: string
+  /** Explorer path segment for a transaction page when it is not `tx` (Tronscan uses `transaction`). */
+  readonly txPath?: string
 }
 
 export type ChainInfoMap = Record<TargetChainId, BaseChainInfo>

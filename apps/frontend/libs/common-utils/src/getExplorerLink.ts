@@ -37,18 +37,23 @@ const BLOCK_EXPLORER_URL_OVERRIDE = process.env.REACT_APP_BLOCK_EXPLORER_URL
  * getChainInfo (which also knows the bridge-only destinations) with its own
  * address and token routes (Suiscan /account and /coin, Tronscan /token20).
  */
-function resolveExplorerPrefix(
-  chainId: number,
-  defaultPrefix: string,
-): { prefix: string; addressPath: string; tokenPath: string } {
-  if (BLOCK_EXPLORER_URL_OVERRIDE)
-    return { prefix: BLOCK_EXPLORER_URL_OVERRIDE, addressPath: 'address', tokenPath: 'address' }
+type ExplorerPaths = { addressPath: string; tokenPath: string; txPath: string }
+
+// The Ophis explorer has no token page, so token links use its address route.
+const OPHIS_EXPLORER_PATHS: ExplorerPaths = { addressPath: 'address', tokenPath: 'address', txPath: 'tx' }
+
+function nativeExplorerPaths(info: ReturnType<typeof getChainInfo> | undefined): ExplorerPaths {
+  const addressPath = info?.addressPath ?? 'address'
+  return { addressPath, tokenPath: info?.tokenPath ?? addressPath, txPath: info?.txPath ?? 'tx' }
+}
+
+function resolveExplorerPrefix(chainId: number, defaultPrefix: string): ExplorerPaths & { prefix: string } {
+  if (BLOCK_EXPLORER_URL_OVERRIDE) return { prefix: BLOCK_EXPLORER_URL_OVERRIDE, ...OPHIS_EXPLORER_PATHS }
   try {
-    return { prefix: getExplorerBaseUrl(chainId as SupportedChainId), addressPath: 'address', tokenPath: 'address' }
+    return { prefix: getExplorerBaseUrl(chainId as SupportedChainId), ...OPHIS_EXPLORER_PATHS }
   } catch {
     const info = getChainInfo(chainId as TargetChainId)
-    const addressPath = info?.addressPath ?? 'address'
-    return { prefix: info?.explorer || defaultPrefix, addressPath, tokenPath: info?.tokenPath ?? addressPath }
+    return { prefix: info?.explorer || defaultPrefix, ...nativeExplorerPaths(info) }
   }
 }
 
@@ -58,11 +63,11 @@ export function getExplorerLink(
   type: ExplorerDataType,
   defaultPrefix = 'https://explorer.ophis.fi',
 ): string {
-  const { prefix, addressPath, tokenPath } = resolveExplorerPrefix(chainId, defaultPrefix)
+  const { prefix, addressPath, tokenPath, txPath } = resolveExplorerPrefix(chainId, defaultPrefix)
 
   switch (type) {
     case ExplorerDataType.TRANSACTION:
-      return `${prefix}/tx/${data}`
+      return `${prefix}/${txPath}/${data}`
 
     case ExplorerDataType.TOKEN:
       return `${prefix}/${tokenPath}/${data}`
