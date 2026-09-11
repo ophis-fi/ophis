@@ -20,7 +20,7 @@ async function loadOphisStyles(page: import('@playwright/test').Page) {
   await page.addStyleTag({ content: globalCss })
   // Wait for styles to be applied — addStyleTag resolves when the sheet is added to the DOM
   // but a layout pass is needed before getComputedStyle is reliable.
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
 }
 
 // Task 2.1 — global.css tests
@@ -38,14 +38,14 @@ test('reveal-up: fails open — visible until html.reveal-armed, then hidden unl
   // html.reveal-armed, all content stays fully visible. So JS-off OR a failed/
   // absent reveal module can never blank the page (the prior bug + the new one
   // Codex flagged: JS on but reveal never runs).
-  const failOpen = await page.locator('#t1').evaluate(el => getComputedStyle(el).opacity)
+  const failOpen = await page.locator('#t1').evaluate((el) => getComputedStyle(el).opacity)
   expect(parseFloat(failOpen)).toBe(1)
   // Once the reveal bootstrap arms the gate, the hidden initial state applies;
   // .in-view (also scoped under html.reveal-armed) reveals it.
   await page.evaluate(() => document.documentElement.classList.add('reveal-armed'))
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
-  const hidden = await page.locator('#t1').evaluate(el => getComputedStyle(el).opacity)
-  const active = await page.locator('#t2').evaluate(el => getComputedStyle(el).opacity)
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+  const hidden = await page.locator('#t1').evaluate((el) => getComputedStyle(el).opacity)
+  const active = await page.locator('#t2').evaluate((el) => getComputedStyle(el).opacity)
   expect(parseFloat(hidden)).toBeLessThan(0.5)
   expect(parseFloat(active)).toBe(1)
 })
@@ -54,10 +54,10 @@ test('nav is a solid surface with a hairline border once scrolled (no blur)', as
   await page.setContent(`<nav class="nav" id="n">nav</nav>`)
   await loadOphisStyles(page)
   const nav = page.locator('#n')
-  const filter = await nav.evaluate(el => getComputedStyle(el).backdropFilter)
+  const filter = await nav.evaluate((el) => getComputedStyle(el).backdropFilter)
   expect(filter === 'none' || filter === '').toBe(true)
-  await nav.evaluate(el => el.classList.add('scrolled'))
-  const border = await nav.evaluate(el => getComputedStyle(el).borderBottomColor)
+  await nav.evaluate((el) => el.classList.add('scrolled'))
+  const border = await nav.evaluate((el) => getComputedStyle(el).borderBottomColor)
   expect(border).not.toBe('rgba(0, 0, 0, 0)')
 })
 
@@ -69,7 +69,7 @@ test('prefers-reduced-motion keeps reveal content visible', async ({ browser }) 
   `)
   await loadOphisStyles(page)
   // reveal-up should be opacity 1 (forced by media query !important)
-  const revealOp = await page.locator('#r').evaluate(el => getComputedStyle(el).opacity)
+  const revealOp = await page.locator('#r').evaluate((el) => getComputedStyle(el).opacity)
   expect(parseFloat(revealOp)).toBe(1)
   await ctx.close()
 })
@@ -87,18 +87,15 @@ test('built dist has no legacy cosmic layers', async ({}, testInfo) => {
   expect(html).not.toContain('scroll-progress')
 })
 
-test('built dist renders the swap story final scene statically', async ({}, testInfo) => {
+test('built dist includes the complete workflow and a no-script explanation', async ({}, testInfo) => {
   const dist = join(__dirname, '..', 'dist', 'index.html')
   testInfo.skip(!existsSync(dist), 'dist/index.html not built yet')
   const html = readFileSync(dist, 'utf8')
-  // Final scene by default: amounts + caption present without JS.
-  expect(html).toContain('data-scene="2"')
-  expect(html).toContain('0.003996')
-  expect(html).toContain('Illustrative trade')
-  expect(html).toContain('No wallet connection')
-  // Never a same-token USDC->USDC quote: the receive block names ETH, not USDC.
-  expect(html).toMatch(/You receive[\s\S]{0,400}0\.003996[\s\S]{0,40}ETH/)
-  expect(html).not.toMatch(/You receive[\s\S]{0,200}USDC/)
+  expect(html).toContain('data-scene="0"')
+  for (const stage of ['Intent', 'Wallet', 'Solvers', 'Settlement', 'Received']) expect(html).toContain(stage)
+  expect(html).toContain('<noscript>')
+  expect(html).toContain('receive tokens after on-chain settlement')
+  expect(html).not.toContain('storyReplay')
 })
 
 // Task 2.2 — reveal.ts tests

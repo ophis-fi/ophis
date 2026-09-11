@@ -308,7 +308,7 @@ test('keeps reference PONS discoverable during catalog outages only after onchai
 test('verifies reference PONS after the catalog deadline expires', async (t) => {
   const catalog = new AbortController();
   t.mock.method(AbortSignal, 'timeout', (milliseconds: number) => {
-    assert.equal(milliseconds, 3_000);
+    assert.equal(milliseconds, 5_000);
     return catalog.signal;
   });
   t.mock.method(globalThis, 'fetch', async (input, init) => {
@@ -335,5 +335,59 @@ test('verifies reference PONS after the catalog deadline expires', async (t) => 
   assert.deepEqual(
     (await response.json()).tokens.map(({ address }) => address),
     [TOKEN],
+  );
+});
+
+test('discovers bounded v2 launches and requires their exact on-chain tuple', async (t) => {
+  const factory = '0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e';
+  const token = `0x${'e'.repeat(40)}`;
+  const pairToken = `0x${'0'.repeat(40)}`;
+  const v2 = launch({ factory, token, pairToken, symbol: 'V2' });
+  const tuple = (phase = 0n, exists = 1n): string =>
+    `0x${[
+      addressWord(token),
+      ...Array.from({ length: 3 }, () => uintWord(0n)),
+      addressWord(pairToken),
+      ...Array.from({ length: 5 }, () => uintWord(0n)),
+      uintWord(phase),
+      ...Array.from({ length: 3 }, () => uintWord(0n)),
+      uintWord(exists),
+    ].join('')}`;
+  assert.equal(isVerifiedLaunchResult(v2, tuple()), true);
+  assert.equal(isVerifiedLaunchResult(v2, tuple(2n)), true);
+  for (const result of [tuple(1n), tuple(3n), tuple(0n, 0n), verifiedResult()]) {
+    assert.equal(isVerifiedLaunchResult(v2, result), false);
+  }
+  assert.equal(isVerifiedLaunchResult({ ...v2, token: TOKEN }, tuple()), false);
+  assert.equal(isVerifiedLaunchResult({ ...v2, pairToken: WETH }, tuple()), false);
+  const catalog = {
+    active: { items: Array.from({ length: 100 }, () => v2) },
+    graduated: { items: [launch()] },
+  };
+  const parsed = parsePonsCatalog(catalog);
+  assert.equal(parsed.length, 75);
+  assert.deepEqual(parsed[0], launch());
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
+      return Response.json({ active: { items: [v2] } });
+    }
+    const requests = JSON.parse(String(init?.body)) as { id: number; params: { to: string }[] }[];
+    return Response.json(
+      requests.map(({ id, params }) => ({
+        jsonrpc: '2.0',
+        id,
+        result: params[0]?.to === factory ? tuple() : verifiedResult(),
+      })),
+    );
+  });
+  const response = await onRequestGet({
+    request: new Request('https://swap.ophis.fi/api/pons-token-list'),
+    waitUntil: () => {},
+  } as Parameters<typeof onRequestGet>[0]);
+  assert.equal(response.status, 200);
+  const list = await response.json();
+  assert.deepEqual(
+    list.tokens.map((entry: { symbol: string }) => entry.symbol),
+    ['PONS', 'V2'],
   );
 });

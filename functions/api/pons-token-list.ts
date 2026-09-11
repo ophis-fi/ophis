@@ -6,7 +6,7 @@
  * permissionless, so inclusion is discovery only and never an endorsement.
  *
  * The upstream index is only a convenience transport. Entries must match the
- * factories and WETH pair documented by pons; malformed metadata is dropped.
+ * documented pons factories and their on-chain pair; malformed metadata is dropped.
  */
 
 const CHAIN_ID = 4663;
@@ -18,12 +18,15 @@ const ROBINHOOD_RPCS = [
   'https://robinhood-rpc.publicnode.com',
 ];
 const UPSTREAM_URL =
-  `${PONS_ORIGIN}/api/pons-launches?explore=1&sort=recentBuys&age=all&page=1&pageSize=100` +
-  '&graduatedPage=1&graduatedPageSize=1&includeGraduated=0&v=10';
+  `${PONS_ORIGIN}/api/pons-launches?explore=1&sort=recentBuys&age=all&page=1&pageSize=75` +
+  '&graduatedPage=1&graduatedPageSize=25&includeGraduated=1&v=10';
 const PONS_LOGO = `${PONS_ORIGIN}/icon.png`;
 const WETH = '0x0bd7d308f8e1639fab988df18a8011f41eacad73';
 const GET_LAUNCHED_TOKEN_SELECTOR = '3cf28b5a';
+// Current v2 deployment and tuple: https://docs.ponsfamily.com/docs/v2#contracts
+const V2_FACTORY = '0x7ed598bcef8bd9edd8c97a195c6d13f40801ec7e';
 const FACTORIES = new Set([
+  V2_FACTORY,
   '0xa5aab3f0c6eeadf30ef1d3eb997108e976351feb',
   '0x0c37a24f5d23a486fa692d1500881d698b1f77a4',
 ]);
@@ -113,13 +116,16 @@ export function parsePonsCatalog(raw: unknown): PonsLaunch[] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('Pons catalog returned a malformed response');
   }
-  const response = raw as { active?: { items?: unknown } };
+  const response = raw as { active?: { items?: unknown }; graduated?: { items?: unknown } };
   if (!response.active || !Array.isArray(response.active.items)) {
     throw new Error('Pons catalog returned a malformed response');
   }
-  return response.active.items.filter(
-    (item): item is PonsLaunch => !!item && typeof item === 'object' && !Array.isArray(item),
-  );
+  const graduated = Array.isArray(response.graduated?.items) ? response.graduated.items : [];
+  return [...graduated, ...response.active.items]
+    .filter(
+      (item): item is PonsLaunch => !!item && typeof item === 'object' && !Array.isArray(item),
+    )
+    .slice(0, 75);
 }
 
 export function ponsTokenListFromResponse(raw: unknown, now = new Date()): PonsTokenList {
@@ -130,7 +136,9 @@ export function ponsTokenListFromResponse(raw: unknown, now = new Date()): PonsT
     if (!launch || typeof launch !== 'object') continue;
     if (typeof launch.factory !== 'string' || !FACTORIES.has(launch.factory.toLowerCase()))
       continue;
-    if (typeof launch.pairToken !== 'string' || launch.pairToken.toLowerCase() !== WETH) continue;
+    if (typeof launch.pairToken !== 'string' || !ADDRESS_RE.test(launch.pairToken)) continue;
+    if (launch.factory.toLowerCase() !== V2_FACTORY && launch.pairToken.toLowerCase() !== WETH)
+      continue;
     if (typeof launch.token !== 'string' || !ADDRESS_RE.test(launch.token)) continue;
     const addressKey = launch.token.toLowerCase();
     if (seen.has(addressKey)) continue;
@@ -165,17 +173,27 @@ function word(result: string, index: number): string {
 }
 
 export function isVerifiedLaunchResult(launch: PonsLaunch, result: unknown): boolean {
+  const isV2 = typeof launch.factory === 'string' && launch.factory.toLowerCase() === V2_FACTORY;
   if (
     typeof launch.token !== 'string' ||
+    typeof launch.pairToken !== 'string' ||
+    !ADDRESS_RE.test(launch.pairToken) ||
     typeof result !== 'string' ||
-    !/^0x[0-9a-fA-F]{832}$/.test(result)
+    !(isV2 ? /^0x[0-9a-fA-F]{960}$/ : /^0x[0-9a-fA-F]{832}$/).test(result)
   ) {
     return false;
   }
   const token = `0x${word(result, 0).slice(24)}`.toLowerCase();
-  const pairToken = `0x${word(result, 2).slice(24)}`.toLowerCase();
-  const exists = BigInt(`0x${word(result, 11)}`) === 1n;
-  return token === launch.token.toLowerCase() && pairToken === WETH && exists;
+  const pairToken = `0x${word(result, isV2 ? 4 : 2).slice(24)}`.toLowerCase();
+  const exists = BigInt(`0x${word(result, isV2 ? 14 : 11)}`) === 1n;
+  // V2 can use native ETH or approved ERC-20 quote assets. Exclude swept/recovery phases.
+  const live = !isV2 || [0n, 2n].includes(BigInt(`0x${word(result, 10)}`));
+  return (
+    token === launch.token.toLowerCase() &&
+    pairToken === (isV2 ? launch.pairToken.toLowerCase() : WETH) &&
+    exists &&
+    live
+  );
 }
 
 export function rpcResultsById(raw: unknown, expectedIds: number[]): Map<number, unknown> {
@@ -419,8 +437,8 @@ export const onRequestGet: PagesFunction = async (context) => {
     let launches: PonsLaunch[] = [];
     try {
       const activeResponse = await fetch(UPSTREAM_URL, {
-        // Reserve 22 seconds for six RPC batches (100 catalog entries plus reference PONS).
-        signal: AbortSignal.timeout(3_000),
+        // Reserve 20 seconds for four RPC batches (75 catalog entries plus reference PONS).
+        signal: AbortSignal.timeout(5_000),
         headers: { accept: 'application/json', 'user-agent': 'Ophis pons token-list adapter' },
       });
       if (!activeResponse.ok) throw new Error('Catalog unavailable');

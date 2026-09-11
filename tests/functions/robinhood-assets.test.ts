@@ -69,6 +69,7 @@ test('publishes issuer metadata as a Robinhood-only token list with safe logos',
     new Date('2026-09-10T12:00:00Z'),
   );
   assert.equal(list.tokens.length, 2);
+  assert.equal(list.logoURI, 'https://swap.ophis.fi/logos/chain-robinhood.svg');
   assert.equal(list.tokens[0].decimals, 18);
   assert.equal(list.tokens[0].address, asset.deployments[0].contractAddress);
   assert.equal(list.tokens[0].logoURI, 'https://cdn.robinhood.com/ncw_assets/logos/apple.png');

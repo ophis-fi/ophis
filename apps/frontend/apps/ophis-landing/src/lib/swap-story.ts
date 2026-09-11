@@ -1,94 +1,66 @@
-// Finite, replayable swap illustration for the landing hero band.
-// Three scenes (choose assets -> review quote -> check limit) play once when
-// the band scrolls into view; amounts never animate or change. No wallet,
-// no network: pure illustration.
-//
-// Contracts:
-// - Content is fully visible without JS: the markup defaults to the final
-//   scene (data-scene="2"), and this module only moves between scenes.
-// - prefers-reduced-motion: no autoplay, no timers; scene buttons still work.
-// - The sequence stops when the page is hidden or the band leaves the
-//   viewport, settling on the final scene.
-
+// A looping walkthrough. Pause when hidden, outside the viewport, or reduced motion is requested.
 function initStory(story: HTMLElement): void {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
-  const stepButtons = Array.from(story.querySelectorAll<HTMLButtonElement>('[data-story-step]'))
-  const replay = document.getElementById('storyReplay')
-  let timers: Array<ReturnType<typeof setTimeout>> = []
-  let played = false
+  const steps = Array.from(story.querySelectorAll<HTMLButtonElement>('[data-story-step]'))
+  const panels = Array.from(story.querySelectorAll<HTMLElement>('[data-story-panel]'))
+  const pauseControl = story.querySelector<HTMLButtonElement>('#storyPause')
+  if (!pauseControl) return
+  const pause = pauseControl
+  let scene = 0
+  let inView = false
+  let paused = reduced.matches
+  let timer: ReturnType<typeof setInterval> | undefined
 
   function selectScene(index: number): void {
+    scene = index
     story.dataset.scene = String(index)
-    for (const button of stepButtons) {
-      button.setAttribute('aria-pressed', String(button.dataset.storyStep === String(index)))
-    }
-  }
-
-  function stop(): void {
-    for (const timer of timers) clearTimeout(timer)
-    timers = []
-    story.removeAttribute('data-playing')
-  }
-
-  function play(): void {
-    stop()
-    if (reduced.matches) {
-      selectScene(2)
-      return
-    }
-    selectScene(0)
-    // Restart the CSS entrance animations for a fresh replay.
-    void story.offsetWidth
-    story.setAttribute('data-playing', '')
-    timers.push(setTimeout(() => selectScene(1), 800))
-    timers.push(setTimeout(() => selectScene(2), 1600))
-    timers.push(setTimeout(stop, 2800))
-  }
-
-  for (const button of stepButtons) {
-    button.addEventListener('click', () => {
-      stop()
-      selectScene(Number(button.dataset.storyStep))
+    steps.forEach((button, i) => button.setAttribute('aria-pressed', String(i === index)))
+    panels.forEach((panel, i) => {
+      panel.hidden = i !== index
     })
   }
-  replay?.addEventListener('click', play)
 
-  reduced.addEventListener('change', () => {
-    if (reduced.matches) {
-      stop()
-      selectScene(2)
-    }
-  })
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      stop()
-      selectScene(2)
-    }
-  })
-
-  if ('IntersectionObserver' in window) {
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) {
-            stop()
-            selectScene(2)
-            continue
-          }
-          if (!played) {
-            played = true
-            play()
-          }
-        }
-      },
-      { threshold: 0.25 },
+  function syncPlayback(): void {
+    clearInterval(timer)
+    timer = undefined
+    const playing = inView && !document.hidden && !paused && !reduced.matches
+    story.toggleAttribute('data-playing', playing)
+    pause.textContent = paused || reduced.matches ? 'Resume' : 'Pause'
+    pause.setAttribute(
+      'aria-label',
+      paused || reduced.matches ? 'Resume workflow animation' : 'Pause workflow animation',
     )
-    io.observe(story)
+    pause.hidden = reduced.matches
+    if (playing) timer = setInterval(() => selectScene((scene + 1) % panels.length), 4500)
   }
+
+  steps.forEach((button, index) =>
+    button.addEventListener('click', () => {
+      paused = true
+      selectScene(index)
+      syncPlayback()
+    }),
+  )
+  pause.addEventListener('click', () => {
+    paused = !paused
+    syncPlayback()
+  })
+  reduced.addEventListener('change', () => {
+    paused = reduced.matches
+    syncPlayback()
+  })
+  document.addEventListener('visibilitychange', syncPlayback)
+  const observer = new IntersectionObserver(
+    (entries) => {
+      inView = entries.some((entry) => entry.isIntersecting)
+      syncPlayback()
+    },
+    { threshold: 0.2 },
+  )
+  observer.observe(story)
+  syncPlayback()
 }
 
 const story = document.getElementById('swap-story')
 if (story) initStory(story)
-
 export {}

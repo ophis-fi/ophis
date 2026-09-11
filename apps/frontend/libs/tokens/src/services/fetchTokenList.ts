@@ -94,6 +94,11 @@ async function _fetchTokenList(source: string, urls: string[]): Promise<ListStat
 function listStateFromSourceConfig(result: ListState, list: ListSourceConfig): ListState {
   return {
     ...result,
+    // The upstream list's IPFS logo is unavailable through its public gateway.
+    list:
+      list.source === UNISWAP_TOKENS_LIST && result.list
+        ? { ...result.list, logoURI: 'https://swap.ophis.fi/logos/uniswap.svg' }
+        : result.list,
     priority: list.priority,
     source: list.source,
     lpTokenProvider: list.lpTokenProvider,
