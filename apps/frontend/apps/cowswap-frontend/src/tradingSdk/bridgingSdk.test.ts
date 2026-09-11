@@ -1,15 +1,18 @@
 import {
   CHAIN_INFO,
   getChainInfo,
+  isBridgeOnlyDestinationChain,
   MONAD_CHAIN_ID,
+  NATIVE_CURRENCIES,
   NATIVE_CURRENCY_ADDRESS,
   SORTED_DST_CHAIN_IDS,
   toBridgeChainInfo,
   XLAYER_CHAIN_ID,
 } from '@cowprotocol/common-const'
-import { getIsNativeToken } from '@cowprotocol/common-utils'
+import { ExplorerDataType, getExplorerLink, getIsNativeToken, getWrappedToken } from '@cowprotocol/common-utils'
 import { isEvmChain, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 
+// eslint-disable-next-line import/no-internal-modules -- pure util under test, not part of the module's index
 import { filterDestinationChains } from 'modules/tokensList/utils/chainsState'
 
 import { isRecipientAddress } from 'common/utils/recipientAddress.utils'
@@ -140,5 +143,25 @@ describe('NEAR Intents destinations Ophis adds (Monad, X Layer)', () => {
     expect(getIsNativeToken(MONAD_CHAIN_ID as SupportedChainId, NATIVE_CURRENCY_ADDRESS)).toBe(true)
     expect(getIsNativeToken(XLAYER_CHAIN_ID as SupportedChainId, NATIVE_CURRENCY_ADDRESS)).toBe(true)
     expect(getChainInfo(XLAYER_CHAIN_ID as TargetChainId).nativeCurrency.symbol).toBe('OKB')
+  })
+
+  it('carries wrapped twins, native explorer links and the shared destination predicate (Codex round 2)', () => {
+    // getWrappedToken() maps a native output through WRAPPED_NATIVE_CURRENCIES
+    // (USD value, price impact, approval preview).
+    expect(getWrappedToken(NATIVE_CURRENCIES[MONAD_CHAIN_ID as TargetChainId]).symbol).toBe('WMON')
+    expect(getWrappedToken(NATIVE_CURRENCIES[XLAYER_CHAIN_ID as TargetChainId]).symbol).toBe('WOKB')
+    // No Ophis explorer route for these chains: link to their native explorer.
+    const addr = '0x3F92Ac7B4f2ad492D7ADe1bdDf5003922F21331b'
+    expect(getExplorerLink(MONAD_CHAIN_ID, addr, ExplorerDataType.ADDRESS)).toBe(
+      `https://monadscan.com/address/${addr}`,
+    )
+    expect(getExplorerLink(XLAYER_CHAIN_ID, addr, ExplorerDataType.ADDRESS)).toBe(
+      `https://www.oklink.com/xlayer/address/${addr}`,
+    )
+    // One predicate for the picker filter and the invalid-output updater.
+    expect(isBridgeOnlyDestinationChain(MONAD_CHAIN_ID)).toBe(true)
+    expect(isBridgeOnlyDestinationChain(XLAYER_CHAIN_ID)).toBe(true)
+    expect(isBridgeOnlyDestinationChain(SupportedChainId.MAINNET)).toBe(false)
+    expect(isBridgeOnlyDestinationChain(undefined)).toBe(false)
   })
 })

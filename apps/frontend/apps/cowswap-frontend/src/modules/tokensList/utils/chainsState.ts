@@ -1,4 +1,4 @@
-import { BRIDGE_DESTINATION_CHAIN_INFO, BRIDGE_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
+import { BRIDGE_SOURCE_CHAIN_IDS, isBridgeOnlyDestinationChain } from '@cowprotocol/common-const'
 import { isSupportedChainId } from '@cowprotocol/common-utils'
 import { AdditionalTargetChainId, ChainInfo, SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -104,7 +104,7 @@ export function filterDestinationChains(bridgeSupportedNetworks: ChainInfo[] | u
       chain.id in SupportedChainId ||
       chain.id in AdditionalTargetChainId ||
       isSupportedChainId(chain.id) ||
-      chain.id in BRIDGE_DESTINATION_CHAIN_INFO,
+      isBridgeOnlyDestinationChain(chain.id),
   )
 }
 

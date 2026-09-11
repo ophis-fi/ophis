@@ -47,3 +47,8 @@ export const BRIDGE_DESTINATION_CHAIN_INFO: Readonly<Partial<Record<number, Base
     nativeCurrency: NATIVE_CURRENCIES[XLAYER_CHAIN_ID as TargetChainId],
   },
 }
+
+/** True for a chain Ophis serves only as a bridge destination (Monad, X Layer). */
+export function isBridgeOnlyDestinationChain(chainId: number | undefined): boolean {
+  return chainId !== undefined && chainId in BRIDGE_DESTINATION_CHAIN_INFO
+}
