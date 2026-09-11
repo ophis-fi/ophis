@@ -198,6 +198,7 @@ function tokenLogoURI(value: string | undefined): string | undefined {
 export function robinhoodTokenList(assets: SanitizedAsset[], now = new Date()) {
   return {
     name: 'Robinhood Stock Tokens',
+    logoURI: 'https://swap.ophis.fi/logos/chain-robinhood.svg',
     timestamp: now.toISOString(),
     version: { major: 1, minor: 0, patch: Math.floor(now.getTime() / 300_000) },
     tokens: assets.flatMap((asset) =>
