@@ -125,7 +125,7 @@ index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..eff41d1ca44b62c79678a8ac814cb6a1
 -export { AcrossBridgeProvider, type AcrossBridgeProviderOptions, type AcrossQuoteResult, type BestQuoteProgressCallback, type BestQuoteProviderContext, type BridgeCallDetails, type BridgeCosts, type BridgeDeposit, type BridgeHook, BridgeOrderParsingError, type BridgeProvider, BridgeProviderError, type BridgeProviderInfo, BridgeProviderQuoteError, type BridgeProviderType, type BridgeQuoteAmountsAndCosts, type BridgeQuoteAndPost, BridgeQuoteErrorPriorities, BridgeQuoteErrors, type BridgeQuoteResult, type BridgeQuoteResults, BridgeStatus, type BridgeStatusResult, type BridgingDepositParams, BridgingSdk, BungeeBridgeProvider, type BungeeBridgeProviderOptions, type BungeeQuoteResult, type BuyTokensParams, COW_SHED_PROXY_CREATION_GAS, type CrossChainOrder, type CrossChainQuoteAndPost, DEFAULT_BRIDGE_SLIPPAGE_BPS, DEFAULT_EXTRA_GAS_FOR_HOOK_ESTIMATION, DEFAULT_EXTRA_GAS_PROXY_CREATION, DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION, type DefaultBridgeProvider, type GetProviderBuyTokens, HOOK_DAPP_BRIDGE_PROVIDER_PREFIX, type HookBridgeProvider, type MultiQuoteContext, type MultiQuoteOptions, type MultiQuoteProgressCallback, type MultiQuoteRequest, type MultiQuoteResult, NearIntentsBridgeProvider, type NearIntentsBridgeProviderOptions, type NearIntentsQuoteResult, type ProviderQuoteContext, type QuoteBridgeRequest, type QuoteBridgeRequestWithoutAmount, RAW_PROVIDERS_FILES_PATH, type ReceiverAccountBridgeProvider, assertIsBridgeQuoteAndPost, assertIsQuoteAndPost, getCrossChainOrder, getPostHooks, isAppDoc, isBridgeQuoteAndPost, isHookBridgeProvider, isQuoteAndPost, isReceiverAccountBridgeProvider };
 +export { AcrossBridgeProvider, type AcrossBridgeProviderOptions, type AcrossQuoteResult, type BestQuoteProgressCallback, type BestQuoteProviderContext, type BridgeCallDetails, type BridgeCosts, type BridgeDeposit, type BridgeHook, BridgeOrderParsingError, type BridgeProvider, BridgeProviderError, type BridgeProviderInfo, BridgeProviderQuoteError, type BridgeProviderType, type BridgeQuoteAmountsAndCosts, type BridgeQuoteAndPost, BridgeQuoteErrorPriorities, BridgeQuoteErrors, type BridgeQuoteResult, type BridgeQuoteResults, BridgeStatus, type BridgeStatusResult, type BridgingDepositParams, BridgingSdk, BungeeBridgeProvider, type BungeeBridgeProviderOptions, type BungeeQuoteResult, type BuyTokensParams, COW_SHED_PROXY_CREATION_GAS, type CrossChainOrder, type CrossChainQuoteAndPost, DEFAULT_BRIDGE_SLIPPAGE_BPS, DEFAULT_EXTRA_GAS_FOR_HOOK_ESTIMATION, DEFAULT_EXTRA_GAS_PROXY_CREATION, DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION, type DefaultBridgeProvider, type GetProviderBuyTokens, HOOK_DAPP_BRIDGE_PROVIDER_PREFIX, type HookBridgeProvider, type MultiQuoteContext, type MultiQuoteOptions, type MultiQuoteProgressCallback, type MultiQuoteRequest, type MultiQuoteResult, NearIntentsBridgeProvider, type NearIntentsBridgeProviderOptions, registerNearIntentsNetworks, type NearIntentsQuoteResult, type ProviderQuoteContext, type QuoteBridgeRequest, type QuoteBridgeRequestWithoutAmount, RAW_PROVIDERS_FILES_PATH, type ReceiverAccountBridgeProvider, assertIsBridgeQuoteAndPost, assertIsQuoteAndPost, getCrossChainOrder, getPostHooks, isAppDoc, isBridgeQuoteAndPost, isHookBridgeProvider, isQuoteAndPost, isReceiverAccountBridgeProvider };
 diff --git a/dist/index.js b/dist/index.js
-index 9fcba626054ad9f635643504d18de1afeddf2401..e03e58ac13f1d46c445064791dbe4a3febaa8f34 100644
+index 9fcba626054ad9f635643504d18de1afeddf2401..7b37e1844f9ddc02d5b114059e30a35dc9efec3a 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -46,6 +46,7 @@ __export(src_exports, {
@@ -310,8 +310,16 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..e03e58ac13f1d46c445064791dbe4a3f
        slippageTolerance: request.bridgeSlippageBps ?? DEFAULT_BRIDGE_SLIPPAGE_BPS,
        originAsset: sellToken.assetId,
        depositType: import_one_click_sdk_typescript2.QuoteRequest.depositType.ORIGIN_CHAIN,
+@@ -5465,6 +5507,7 @@ var NearIntentsBridgeProvider = class {
+   DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION,
+   HOOK_DAPP_BRIDGE_PROVIDER_PREFIX,
+   NearIntentsBridgeProvider,
++  registerNearIntentsNetworks,
+   RAW_PROVIDERS_FILES_PATH,
+   assertIsBridgeQuoteAndPost,
+   assertIsQuoteAndPost,
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..1d026d8754786046e2538d86e84f413a41577155 100644
+index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..f025c4be95eae4451674a5ca392af946f1903bbb 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -1402,7 +1402,7 @@ var AcrossApi = class {
@@ -475,7 +483,7 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..1d026d8754786046e2538d86e84f413a
      if (!isEvmChain(targetTokenChainId)) {
        if (!token.contractAddress) {
 -        return areAddressesEqual4(targetTokenAddress, BTC_CURRENCY_ADDRESS) || areAddressesEqual4(targetTokenAddress, SOL_NATIVE_CURRENCY_ADDRESS);
-+        return areAddressesEqual4(targetTokenAddress, BTC_CURRENCY_ADDRESS) || areAddressesEqual4(targetTokenAddress, SOL_NATIVE_CURRENCY_ADDRESS) || areAddressesEqual(targetTokenAddress, NEAR_INTENTS_NATIVE_ADDRESSES[chainId]);
++        return areAddressesEqual4(targetTokenAddress, BTC_CURRENCY_ADDRESS) || areAddressesEqual4(targetTokenAddress, SOL_NATIVE_CURRENCY_ADDRESS) || areAddressesEqual4(targetTokenAddress, NEAR_INTENTS_NATIVE_ADDRESSES[chainId]);
        }
        return areAddressesEqual4(token.contractAddress, targetTokenAddress);
      }
