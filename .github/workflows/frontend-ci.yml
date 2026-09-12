@@ -160,6 +160,13 @@ jobs:
         working-directory: apps/frontend
         run: pnpm exec nx run common-hooks:test --testPathPatterns useMediaQuery --passWithNoTests=false
 
+      # Guards that the WalletConnect rpcMap (and any wallet-facing RPC map) never
+      # carries our keyed mainnet endpoint: a keyed URL leaks the key to the wallet
+      # and its relay and is rejected by the WalletConnect provider's browser reads.
+      - name: Wallet-facing RPC map security regression test
+        working-directory: apps/frontend
+        run: pnpm exec nx run common-const:test --testPathPatterns networks --passWithNoTests=false
+
       - name: production-build cowswap-frontend
         working-directory: apps/frontend
         run: pnpm build:cowswap

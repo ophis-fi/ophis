@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 
-import { RPC_URLS } from '@cowprotocol/common-const'
+import { WALLET_RPC_URLS } from '@cowprotocol/common-const'
 import { getCurrentChainIdFromUrl } from '@cowprotocol/common-utils'
 import { ALL_SUPPORTED_CHAIN_IDS, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { initializeConnector } from '@web3-react/core'
@@ -14,8 +14,7 @@ import { getConnectionName } from '../../api/utils/connection'
 import { WC_PROJECT_ID } from '../../constants'
 import { WalletConnectV2Connector } from '../connectors/WalletConnectV2Connector'
 import { useIsActiveConnection } from '../hooks/useIsActiveConnection'
-import { ConnectionOptionProps } from '../types'
-import { Web3ReactConnection } from '../types'
+import { ConnectionOptionProps, Web3ReactConnection } from '../types'
 
 export const walletConnectV2Option = {
   color: '#4196FC',
@@ -45,7 +44,8 @@ function createWalletConnectV2Connection(chainId: SupportedChainId): Web3ReactCo
             130 as unknown as SupportedChainId,
             4663 as unknown as SupportedChainId,
           ],
-          rpcMap: RPC_URLS,
+          // Wallet-facing, keyless RPCs: never our keyed mainnet endpoint (WALLET_RPC_URLS).
+          rpcMap: WALLET_RPC_URLS,
           showQrModal: true,
           // Ophis: explicit dApp metadata so wallets never fall back to
           // auto-detecting the name/icon from index.html (which historically

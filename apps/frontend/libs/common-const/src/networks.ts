@@ -143,6 +143,30 @@ export const RPC_URLS: Record<SupportedChainId, HttpsString> = {
   [XLAYER_CHAIN_ID as SupportedChainId]: getRpcUrl(XLAYER_CHAIN_ID as SupportedChainId),
 }
 
+/**
+ * Public, keyless RPC endpoints handed to WALLETS (the WalletConnect rpcMap).
+ * Deliberately NOT RPC_URLS: for mainnet that carries the
+ * REACT_APP_NETWORK_URL_1 override (our Alchemy key, allowlisted to ophis.fi).
+ * Handing a keyed URL to a wallet leaks the key to the wallet and its relay,
+ * and the WalletConnect provider's browser reads to it are rejected
+ * (rate-limited / allowlisted, surfacing as "Failed to fetch"), which broke
+ * bridge confirmation for WalletConnect users. These defaults are keyless and
+ * CORS-clean from the browser (eth.drpc.org and friends).
+ */
+export const WALLET_RPC_URLS: Record<SupportedChainId, HttpsString> = {
+  ...mapSupportedNetworks(getPublicRpcUrl),
+  [10 as unknown as SupportedChainId]: getPublicRpcUrl(10 as unknown as SupportedChainId),
+  [130 as unknown as SupportedChainId]: getPublicRpcUrl(130 as unknown as SupportedChainId),
+  [4663 as unknown as SupportedChainId]: getPublicRpcUrl(4663 as unknown as SupportedChainId),
+  [MONAD_CHAIN_ID as SupportedChainId]: getPublicRpcUrl(MONAD_CHAIN_ID as SupportedChainId),
+  [XLAYER_CHAIN_ID as SupportedChainId]: getPublicRpcUrl(XLAYER_CHAIN_ID as SupportedChainId),
+}
+
+/** The keyless public default for a chain, ignoring the env / Infura overrides. */
+function getPublicRpcUrl(chainId: SupportedChainId): HttpsString {
+  return DEFAULT_RPC_URL[chainId].url
+}
+
 function getRpcUrl(chainId: SupportedChainId): HttpsString {
   const envKey = `REACT_APP_NETWORK_URL_${chainId}`
   const rpcUrl = RPC_URL_ENVS[chainId]
