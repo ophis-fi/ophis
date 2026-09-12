@@ -71,11 +71,32 @@ export function isExecutionError(error: unknown, depth = 0): boolean {
   return hasExecutionCode(e) || NESTED_ERROR_KEYS.some((key) => isExecutionError(e[key], depth + 1))
 }
 
+/** JSON-RPC and ethers codes a failing transport produces (MetaMask wraps upstream RPC failures as -32603). */
+const TRANSPORT_ERROR_CODES = new Set<unknown>([-32603, -32005, -32002, 'SERVER_ERROR', 'TIMEOUT', 'NETWORK_ERROR'])
+const TRANSPORT_ERROR_RE =
+  /timeout|timed out|rate limit|too many requests|limit exceeded|service unavailable|failed to fetch|network ?error|econn|socket hang up|bad gateway|gateway time-?out|forbidden|internal json-rpc error|\b(403|429|500|502|503|504)\b/i
+
+/**
+ * Only an error positively identified as the wallet's TRANSPORT failing (dead
+ * or rate-limited endpoint, blocked extension, timeout) justifies asking the
+ * app RPC. Anything else, including the wallet's own policy answers (EIP-1193
+ * 4001 user rejection, 4100 unauthorized, 4200 unsupported, 4900 disconnected),
+ * surfaces as is.
+ */
+export function isTransportError(error: unknown, depth = 0): boolean {
+  if (depth > MAX_ERROR_DEPTH || error === null || error === undefined) return false
+  const message = getProviderErrorMessage(error)
+  if (typeof message === 'string' && TRANSPORT_ERROR_RE.test(message)) return true
+  if (typeof error !== 'object') return false
+  const e = error as RpcErrorLike
+  return TRANSPORT_ERROR_CODES.has(e.code) || NESTED_ERROR_KEYS.some((key) => isTransportError(e[key], depth + 1))
+}
+
 /**
  * The wallet's provider first, so reads reflect whatever chain state the wallet
  * sees (a fork, a private RPC); the app's keyed RPC only when the wallet's RPC
- * fails or stalls on a read. Writes, signing and chain identity always stay on
- * the wallet.
+ * fails or stalls on a read at the transport level. Writes, signing, chain
+ * identity and the wallet's own policy answers always stay on the wallet.
  *
  * Without the fallback a wallet whose RPC is down (a custom URL that died, or
  * the extension blocked by an RPC domain allowlist) took every bridge quote
@@ -99,7 +120,7 @@ export class WalletFirstReadProvider extends JsonRpcProvider {
     try {
       return await withTimeout(this.wallet.send(method, params), this.readTimeoutMs, `wallet ${method}`)
     } catch (error) {
-      if (isExecutionError(error)) throw error
+      if (isExecutionError(error) || !isTransportError(error)) throw error
       // The app RPC was chosen for the chain the wallet reported when this
       // wrapper was built; mid-switch that is stale. Wallets answer eth_chainId
       // locally, so a live mismatch (or no answer) fails closed on the wallet error.
