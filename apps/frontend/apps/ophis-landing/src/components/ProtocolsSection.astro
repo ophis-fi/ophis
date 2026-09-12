@@ -1,8 +1,5 @@
 ---
-// Aggregator listings alone do not confirm executable quotes.
-type Protocol = { name: string; logo: string; status?: string }
-
-const protocols: Protocol[] = [
+const protocols = [
   { name: 'Uniswap',     logo: '/logos/protocols/uniswap-v2.svg' },
   { name: 'Curve',       logo: '/logos/protocols/curve.png' },
   { name: 'Balancer',    logo: '/logos/protocols/balancer.svg' },
@@ -18,12 +15,11 @@ const protocols: Protocol[] = [
   { name: 'UP33',        logo: '/logos/protocols/up33.svg' },
   { name: 'Ekubo',       logo: '/logos/protocols/ekubo.svg' },
   { name: 'OKX',         logo: '/logos/protocols/okx.svg' },
-  { name: 'RamsesX',     logo: '/logos/protocols/ramses.svg', status: 'Routing unverified' },
+  { name: 'RamsesX',     logo: '/logos/protocols/ramses.svg' },
   { name: '1inch',       logo: '/logos/protocols/1inch.svg' },
-  { name: 'Dexalot',     logo: '/logos/protocols/dexalot.png', status: 'Routing unverified' },
-  { name: 'Native',      logo: '/logos/protocols/native.png', status: 'Routing unverified' },
-  { name: 'Pharaoh',     logo: '/logos/protocols/pharaoh.svg', status: 'Routing unverified' },
-  { name: 'Arcus',       logo: '/logos/protocols/arcus.svg', status: 'Integration pending' },
+  { name: 'Dexalot',     logo: '/logos/protocols/dexalot.png' },
+  { name: 'Native',      logo: '/logos/protocols/native.png' },
+  { name: 'Pharaoh',     logo: '/logos/protocols/pharaoh.svg' },
 ]
 ---
 <section class="protocols">
@@ -46,7 +42,6 @@ const protocols: Protocol[] = [
               <img src={p.logo} alt={`${p.name} logo`} width="30" height="30" loading="lazy" decoding="async" />
             </span>
             <span class="protocol-name">{p.name}</span>
-            {p.status && <span class="protocol-status">{p.status}</span>}
           </div>
         ))}
       </div>
@@ -54,7 +49,6 @@ const protocols: Protocol[] = [
 
     <p class="solver-note reveal-up" data-reveal>
       Solvers select from the venues available for your chain and token pair.
-      Venues marked unverified or pending are not confirmed routing sources.
     </p>
 
   </div>
@@ -128,11 +122,6 @@ const protocols: Protocol[] = [
     font-weight: 600;
     color: var(--ophis-fg-muted);
     line-height: 1.2;
-  }
-  .protocol-status {
-    font-size: 11px;
-    color: var(--ophis-fg-muted);
-    line-height: 1.4;
   }
   .solver-note {
     margin: 32px auto 0;

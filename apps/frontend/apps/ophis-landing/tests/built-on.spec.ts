@@ -23,17 +23,15 @@ test('built-on strip has updated headline and subhead', async ({ page }) => {
   await expect(page.locator('.built-on .sub')).not.toContainText('Bungee')
 })
 
-test('venue grid includes the requested DEXs and identifies the pending integration', async ({ page }) => {
+test('venue grid shows dapp names and logos without status comments or Arcus', async ({ page }) => {
   await page.goto('/')
   const grid = page.locator('.protocol-grid')
-  for (const name of ['RamsesX', 'Dexalot', 'Native', 'Pharaoh', 'Arcus', 'UP33']) {
+  for (const name of ['RamsesX', 'Dexalot', 'Native', 'Pharaoh', 'UP33']) {
     await expect(grid.getByText(name, { exact: true })).toBeVisible()
   }
+  await expect(grid.locator('.protocol')).toHaveCount(20)
   await expect(grid.getByText('Pons', { exact: true })).toHaveCount(0)
-  const pending = grid.locator('.protocol').filter({ hasText: 'Integration pending' })
-  await expect(pending).toHaveCount(1)
-  await expect(pending).toContainText('Arcus')
-  const unverified = grid.locator('.protocol').filter({ hasText: 'Routing unverified' })
-  await expect(unverified).toHaveCount(4)
-  await expect(unverified).toContainText(['RamsesX', 'Dexalot', 'Native', 'Pharaoh'])
+  await expect(grid.getByText('Arcus', { exact: true })).toHaveCount(0)
+  await expect(grid.locator('.protocol-status')).toHaveCount(0)
+  await expect(page.locator('.protocols')).not.toContainText(/unverified|pending/i)
 })
