@@ -18,7 +18,7 @@ import { useWeb3React } from '@web3-react/core'
 
 import { usePublicClient, useWalletClient } from 'wagmi'
 
-import { pickSdkReadProvider } from './cowSdk.utils'
+import { withAppRpcFallback } from './cowSdk.utils'
 
 const chainId = getCurrentChainIdFromUrl()
 
@@ -94,9 +94,10 @@ export function CowSdkUpdater(): null {
   useEffect(() => {
     if (LAUNCH_DARKLY_VIEM_MIGRATION) return
     if (!provider) return
-    // Reads through the app RPC, signing through the wallet (see cowSdk.utils.ts).
-    // The signer adapter keeps its own provider, so a wallet JsonRpcSigner is never re-connected.
-    legacyAdapter.setProvider(pickSdkReadProvider(chainId, provider))
+    // Reads: the wallet first, the app RPC when the wallet's RPC fails (see cowSdk.utils.ts).
+    // Signing stays on the wallet; the signer adapter keeps its own provider, so a
+    // wallet JsonRpcSigner is never re-connected.
+    legacyAdapter.setProvider(withAppRpcFallback(chainId, provider))
     legacyAdapter.setSigner(provider.getSigner())
   }, [chainId, account, provider])
 
