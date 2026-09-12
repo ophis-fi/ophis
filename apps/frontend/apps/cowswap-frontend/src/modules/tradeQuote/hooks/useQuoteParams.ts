@@ -139,7 +139,10 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
       receiver,
       validFor: DEFAULT_QUOTE_TTL,
       ...(volumeFee ? { partnerFee: volumeFee } : undefined),
-      partiallyFillable,
+      // A bridge order is fill-or-kill: the bridge leg is quoted on the full buy
+      // amount (NEAR's deposit address is the order receiver), so a partial fill
+      // would land below the quoted deposit and be refunded, not delivered.
+      partiallyFillable: partiallyFillable && inputCurrency.chainId === outputCurrency.chainId,
       /**
        * Specify only the user entered slippage
        * Because if it's not specified, SDK will suggest a slippage, so no need to pass it in quote request

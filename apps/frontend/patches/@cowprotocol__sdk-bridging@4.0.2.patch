@@ -1,5 +1,5 @@
 diff --git a/dist/index.d.mts b/dist/index.d.mts
-index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..cd9447d53d4f9bd9421850d76382e4fdefa8374c 100644
+index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..eff41d1ca44b62c79678a8ac814cb6a1883e6635 100644
 --- a/dist/index.d.mts
 +++ b/dist/index.d.mts
 @@ -670,11 +670,12 @@ interface GetCrossChainOrderParams {
@@ -39,7 +39,7 @@ index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..cd9447d53d4f9bd9421850d76382e4fd
      /**
       * Retrieve suggested fee quote for a deposit.
       *
-@@ -1303,6 +1308,11 @@ interface NearIntentsBridgeProviderOptions {
+@@ -1303,6 +1308,15 @@ interface NearIntentsBridgeProviderOptions {
      cowShedOptions?: CowShedSdkOptions;
      apiKey?: string;
  }
@@ -47,18 +47,22 @@ index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..cd9447d53d4f9bd9421850d76382e4fd
 +declare function registerNearIntentsNetworks(entries: ReadonlyArray<{
 +    blockchain: string;
 +    chain: ChainInfo;
++    /** Sentinel address for the chain's native asset (NEAR lists it without a contractAddress). */
++    nativeAddress?: string;
++    /** 1Click rejects FLEX_INPUT for this chain (Hypercore); quote it EXACT_INPUT on the order minimum, surplus refunded on the origin chain. */
++    exactInput?: boolean;
 +}>): void;
  declare class NearIntentsBridgeProvider implements ReceiverAccountBridgeProvider<NearIntentsQuoteResult> {
      type: "ReceiverAccountBridgeProvider";
      protected api: NearIntentsApi;
-@@ -1328,4 +1338,4 @@ declare class NearIntentsBridgeProvider implements ReceiverAccountBridgeProvider
+@@ -1328,4 +1342,4 @@ declare class NearIntentsBridgeProvider implements ReceiverAccountBridgeProvider
      recoverDepositAddress({ quote, quoteRequest, timestamp, }: QuoteResponse): Promise<DepositAddressContext | null>;
  }
  
 -export { AcrossBridgeProvider, type AcrossBridgeProviderOptions, type AcrossQuoteResult, type BestQuoteProgressCallback, type BestQuoteProviderContext, type BridgeCallDetails, type BridgeCosts, type BridgeDeposit, type BridgeHook, BridgeOrderParsingError, type BridgeProvider, BridgeProviderError, type BridgeProviderInfo, BridgeProviderQuoteError, type BridgeProviderType, type BridgeQuoteAmountsAndCosts, type BridgeQuoteAndPost, BridgeQuoteErrorPriorities, BridgeQuoteErrors, type BridgeQuoteResult, type BridgeQuoteResults, BridgeStatus, type BridgeStatusResult, type BridgingDepositParams, BridgingSdk, BungeeBridgeProvider, type BungeeBridgeProviderOptions, type BungeeQuoteResult, type BuyTokensParams, COW_SHED_PROXY_CREATION_GAS, type CrossChainOrder, type CrossChainQuoteAndPost, DEFAULT_BRIDGE_SLIPPAGE_BPS, DEFAULT_EXTRA_GAS_FOR_HOOK_ESTIMATION, DEFAULT_EXTRA_GAS_PROXY_CREATION, DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION, type DefaultBridgeProvider, type GetProviderBuyTokens, HOOK_DAPP_BRIDGE_PROVIDER_PREFIX, type HookBridgeProvider, type MultiQuoteContext, type MultiQuoteOptions, type MultiQuoteProgressCallback, type MultiQuoteRequest, type MultiQuoteResult, NearIntentsBridgeProvider, type NearIntentsBridgeProviderOptions, type NearIntentsQuoteResult, type ProviderQuoteContext, type QuoteBridgeRequest, type QuoteBridgeRequestWithoutAmount, RAW_PROVIDERS_FILES_PATH, type ReceiverAccountBridgeProvider, assertIsBridgeQuoteAndPost, assertIsQuoteAndPost, getCrossChainOrder, getPostHooks, isAppDoc, isBridgeQuoteAndPost, isHookBridgeProvider, isQuoteAndPost, isReceiverAccountBridgeProvider };
 +export { AcrossBridgeProvider, type AcrossBridgeProviderOptions, type AcrossQuoteResult, type BestQuoteProgressCallback, type BestQuoteProviderContext, type BridgeCallDetails, type BridgeCosts, type BridgeDeposit, type BridgeHook, BridgeOrderParsingError, type BridgeProvider, BridgeProviderError, type BridgeProviderInfo, BridgeProviderQuoteError, type BridgeProviderType, type BridgeQuoteAmountsAndCosts, type BridgeQuoteAndPost, BridgeQuoteErrorPriorities, BridgeQuoteErrors, type BridgeQuoteResult, type BridgeQuoteResults, BridgeStatus, type BridgeStatusResult, type BridgingDepositParams, BridgingSdk, BungeeBridgeProvider, type BungeeBridgeProviderOptions, type BungeeQuoteResult, type BuyTokensParams, COW_SHED_PROXY_CREATION_GAS, type CrossChainOrder, type CrossChainQuoteAndPost, DEFAULT_BRIDGE_SLIPPAGE_BPS, DEFAULT_EXTRA_GAS_FOR_HOOK_ESTIMATION, DEFAULT_EXTRA_GAS_PROXY_CREATION, DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION, type DefaultBridgeProvider, type GetProviderBuyTokens, HOOK_DAPP_BRIDGE_PROVIDER_PREFIX, type HookBridgeProvider, type MultiQuoteContext, type MultiQuoteOptions, type MultiQuoteProgressCallback, type MultiQuoteRequest, type MultiQuoteResult, NearIntentsBridgeProvider, type NearIntentsBridgeProviderOptions, registerNearIntentsNetworks, type NearIntentsQuoteResult, type ProviderQuoteContext, type QuoteBridgeRequest, type QuoteBridgeRequestWithoutAmount, RAW_PROVIDERS_FILES_PATH, type ReceiverAccountBridgeProvider, assertIsBridgeQuoteAndPost, assertIsQuoteAndPost, getCrossChainOrder, getPostHooks, isAppDoc, isBridgeQuoteAndPost, isHookBridgeProvider, isQuoteAndPost, isReceiverAccountBridgeProvider };
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..cd9447d53d4f9bd9421850d76382e4fdefa8374c 100644
+index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..eff41d1ca44b62c79678a8ac814cb6a1883e6635 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -670,11 +670,12 @@ interface GetCrossChainOrderParams {
@@ -98,7 +102,7 @@ index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..cd9447d53d4f9bd9421850d76382e4fd
      /**
       * Retrieve suggested fee quote for a deposit.
       *
-@@ -1303,6 +1308,11 @@ interface NearIntentsBridgeProviderOptions {
+@@ -1303,6 +1308,15 @@ interface NearIntentsBridgeProviderOptions {
      cowShedOptions?: CowShedSdkOptions;
      apiKey?: string;
  }
@@ -106,18 +110,22 @@ index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..cd9447d53d4f9bd9421850d76382e4fd
 +declare function registerNearIntentsNetworks(entries: ReadonlyArray<{
 +    blockchain: string;
 +    chain: ChainInfo;
++    /** Sentinel address for the chain's native asset (NEAR lists it without a contractAddress). */
++    nativeAddress?: string;
++    /** 1Click rejects FLEX_INPUT for this chain (Hypercore); quote it EXACT_INPUT on the order minimum, surplus refunded on the origin chain. */
++    exactInput?: boolean;
 +}>): void;
  declare class NearIntentsBridgeProvider implements ReceiverAccountBridgeProvider<NearIntentsQuoteResult> {
      type: "ReceiverAccountBridgeProvider";
      protected api: NearIntentsApi;
-@@ -1328,4 +1338,4 @@ declare class NearIntentsBridgeProvider implements ReceiverAccountBridgeProvider
+@@ -1328,4 +1342,4 @@ declare class NearIntentsBridgeProvider implements ReceiverAccountBridgeProvider
      recoverDepositAddress({ quote, quoteRequest, timestamp, }: QuoteResponse): Promise<DepositAddressContext | null>;
  }
  
 -export { AcrossBridgeProvider, type AcrossBridgeProviderOptions, type AcrossQuoteResult, type BestQuoteProgressCallback, type BestQuoteProviderContext, type BridgeCallDetails, type BridgeCosts, type BridgeDeposit, type BridgeHook, BridgeOrderParsingError, type BridgeProvider, BridgeProviderError, type BridgeProviderInfo, BridgeProviderQuoteError, type BridgeProviderType, type BridgeQuoteAmountsAndCosts, type BridgeQuoteAndPost, BridgeQuoteErrorPriorities, BridgeQuoteErrors, type BridgeQuoteResult, type BridgeQuoteResults, BridgeStatus, type BridgeStatusResult, type BridgingDepositParams, BridgingSdk, BungeeBridgeProvider, type BungeeBridgeProviderOptions, type BungeeQuoteResult, type BuyTokensParams, COW_SHED_PROXY_CREATION_GAS, type CrossChainOrder, type CrossChainQuoteAndPost, DEFAULT_BRIDGE_SLIPPAGE_BPS, DEFAULT_EXTRA_GAS_FOR_HOOK_ESTIMATION, DEFAULT_EXTRA_GAS_PROXY_CREATION, DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION, type DefaultBridgeProvider, type GetProviderBuyTokens, HOOK_DAPP_BRIDGE_PROVIDER_PREFIX, type HookBridgeProvider, type MultiQuoteContext, type MultiQuoteOptions, type MultiQuoteProgressCallback, type MultiQuoteRequest, type MultiQuoteResult, NearIntentsBridgeProvider, type NearIntentsBridgeProviderOptions, type NearIntentsQuoteResult, type ProviderQuoteContext, type QuoteBridgeRequest, type QuoteBridgeRequestWithoutAmount, RAW_PROVIDERS_FILES_PATH, type ReceiverAccountBridgeProvider, assertIsBridgeQuoteAndPost, assertIsQuoteAndPost, getCrossChainOrder, getPostHooks, isAppDoc, isBridgeQuoteAndPost, isHookBridgeProvider, isQuoteAndPost, isReceiverAccountBridgeProvider };
 +export { AcrossBridgeProvider, type AcrossBridgeProviderOptions, type AcrossQuoteResult, type BestQuoteProgressCallback, type BestQuoteProviderContext, type BridgeCallDetails, type BridgeCosts, type BridgeDeposit, type BridgeHook, BridgeOrderParsingError, type BridgeProvider, BridgeProviderError, type BridgeProviderInfo, BridgeProviderQuoteError, type BridgeProviderType, type BridgeQuoteAmountsAndCosts, type BridgeQuoteAndPost, BridgeQuoteErrorPriorities, BridgeQuoteErrors, type BridgeQuoteResult, type BridgeQuoteResults, BridgeStatus, type BridgeStatusResult, type BridgingDepositParams, BridgingSdk, BungeeBridgeProvider, type BungeeBridgeProviderOptions, type BungeeQuoteResult, type BuyTokensParams, COW_SHED_PROXY_CREATION_GAS, type CrossChainOrder, type CrossChainQuoteAndPost, DEFAULT_BRIDGE_SLIPPAGE_BPS, DEFAULT_EXTRA_GAS_FOR_HOOK_ESTIMATION, DEFAULT_EXTRA_GAS_PROXY_CREATION, DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION, type DefaultBridgeProvider, type GetProviderBuyTokens, HOOK_DAPP_BRIDGE_PROVIDER_PREFIX, type HookBridgeProvider, type MultiQuoteContext, type MultiQuoteOptions, type MultiQuoteProgressCallback, type MultiQuoteRequest, type MultiQuoteResult, NearIntentsBridgeProvider, type NearIntentsBridgeProviderOptions, registerNearIntentsNetworks, type NearIntentsQuoteResult, type ProviderQuoteContext, type QuoteBridgeRequest, type QuoteBridgeRequestWithoutAmount, RAW_PROVIDERS_FILES_PATH, type ReceiverAccountBridgeProvider, assertIsBridgeQuoteAndPost, assertIsQuoteAndPost, getCrossChainOrder, getPostHooks, isAppDoc, isBridgeQuoteAndPost, isHookBridgeProvider, isQuoteAndPost, isReceiverAccountBridgeProvider };
 diff --git a/dist/index.js b/dist/index.js
-index 9fcba626054ad9f635643504d18de1afeddf2401..636b25bfd92fd5550441026c3b2df5454dbc41ed 100644
+index 9fcba626054ad9f635643504d18de1afeddf2401..7b37e1844f9ddc02d5b114059e30a35dc9efec3a 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -46,6 +46,7 @@ __export(src_exports, {
@@ -247,25 +255,71 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..636b25bfd92fd5550441026c3b2df545
        return null;
      }
      const orderUid = order.uid;
-@@ -5082,6 +5103,16 @@ var NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS = {
+@@ -5082,6 +5103,27 @@ var NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS = {
    btc: import_sdk_config9.bitcoin.id,
    sol: import_sdk_config9.solana.id
  };
 +// Ophis: let the app register NEAR Intents networks the SDK does not ship
 +// (their 1Click API lists ~35 chains, this build maps 11). Idempotent per
 +// chain id; the slug is NEAR's `blockchain` field.
++// Ophis: per-chain native sentinel for NEAR tokens without a contractAddress
++// (the SDK only knows BTC / SOL / ETH); filled by registerNearIntentsNetworks.
++var NEAR_INTENTS_NATIVE_ADDRESSES = {};
++// Ophis: chains whose 1Click assets reject FLEX_INPUT (Hypercore answers
++// "supports only EXACT_INPUT or EXACT_OUTPUT swapType"). EXACT_INPUT swaps
++// exactly `amount`, which is the order's minimum buy amount, so the CoW Shed
++// deposit is never below it; 1Click refunds any surplus above it to refundTo
++// on the origin chain after the swap.
++var NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS = /* @__PURE__ */ new Set();
 +function registerNearIntentsNetworks(entries) {
-+  for (const { blockchain, chain } of entries) {
++  for (const { blockchain, chain, nativeAddress, exactInput } of entries) {
 +    if (!NEAR_INTENTS_SUPPORTED_NETWORKS.some((c) => c.id === chain.id))
 +      NEAR_INTENTS_SUPPORTED_NETWORKS.push(chain);
 +    NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS[blockchain] = chain.id;
++    if (nativeAddress) NEAR_INTENTS_NATIVE_ADDRESSES[chain.id] = nativeAddress;
++    if (exactInput) NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS.add(chain.id);
 +  }
 +}
  var NEAR_INTENTS_STATUS_TO_COW_STATUS = {
    KNOWN_DEPOSIT_TX: "in_progress" /* IN_PROGRESS */,
    PENDING_DEPOSIT: "in_progress" /* IN_PROGRESS */,
+@@ -5111,7 +5153,7 @@ var adaptToken = (token) => {
+   const chainId = NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS[token.blockchain];
+   if (!chainId)
+     return null;
+-  const tokenAddress = token.contractAddress ?? (chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.btc ? import_sdk_config10.BTC_CURRENCY_ADDRESS : chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.sol ? import_sdk_config10.SOL_NATIVE_CURRENCY_ADDRESS : import_sdk_config10.ETH_ADDRESS);
++  const tokenAddress = token.contractAddress ?? NEAR_INTENTS_NATIVE_ADDRESSES[chainId] ?? (chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.btc ? import_sdk_config10.BTC_CURRENCY_ADDRESS : chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.sol ? import_sdk_config10.SOL_NATIVE_CURRENCY_ADDRESS : import_sdk_config10.ETH_ADDRESS);
+   if (!tokenAddress)
+     return null;
+   return {
+@@ -5139,7 +5181,7 @@ var getTokenByAddressAndChainId = (tokens, targetTokenAddress, targetTokenChainI
+       return false;
+     if (!(0, import_sdk_config10.isEvmChain)(targetTokenChainId)) {
+       if (!token.contractAddress) {
+-        return (0, import_sdk_common19.areAddressesEqual)(targetTokenAddress, import_sdk_config10.BTC_CURRENCY_ADDRESS) || (0, import_sdk_common19.areAddressesEqual)(targetTokenAddress, import_sdk_config10.SOL_NATIVE_CURRENCY_ADDRESS);
++        return (0, import_sdk_common19.areAddressesEqual)(targetTokenAddress, import_sdk_config10.BTC_CURRENCY_ADDRESS) || (0, import_sdk_common19.areAddressesEqual)(targetTokenAddress, import_sdk_config10.SOL_NATIVE_CURRENCY_ADDRESS) || (0, import_sdk_common19.areAddressesEqual)(targetTokenAddress, NEAR_INTENTS_NATIVE_ADDRESSES[chainId]);
+       }
+       return (0, import_sdk_common19.areAddressesEqual)(token.contractAddress, targetTokenAddress);
+     }
+@@ -5277,7 +5319,7 @@ var NearIntentsBridgeProvider = class {
+       throw new BridgeProviderQuoteError("NO_ROUTES" /* NO_ROUTES */);
+     const quoteResponse = await this.api.getQuote({
+       dry: false,
+-      swapType: import_one_click_sdk_typescript2.QuoteRequest.swapType.FLEX_INPUT,
++      swapType: NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS.has(buyTokenChainId) ? import_one_click_sdk_typescript2.QuoteRequest.swapType.EXACT_INPUT : import_one_click_sdk_typescript2.QuoteRequest.swapType.FLEX_INPUT,
+       slippageTolerance: request.bridgeSlippageBps ?? DEFAULT_BRIDGE_SLIPPAGE_BPS,
+       originAsset: sellToken.assetId,
+       depositType: import_one_click_sdk_typescript2.QuoteRequest.depositType.ORIGIN_CHAIN,
+@@ -5465,6 +5507,7 @@ var NearIntentsBridgeProvider = class {
+   DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION,
+   HOOK_DAPP_BRIDGE_PROVIDER_PREFIX,
+   NearIntentsBridgeProvider,
++  registerNearIntentsNetworks,
+   RAW_PROVIDERS_FILES_PATH,
+   assertIsBridgeQuoteAndPost,
+   assertIsQuoteAndPost,
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..8dc1296f0ba2d8271b1ffeed96f778a2c4c7e8eb 100644
+index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..f025c4be95eae4451674a5ca392af946f1903bbb 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -1402,7 +1402,7 @@ var AcrossApi = class {
@@ -387,24 +441,62 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..8dc1296f0ba2d8271b1ffeed96f778a2
        return null;
      }
      const orderUid = order.uid;
-@@ -5053,6 +5073,16 @@ var NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS = {
+@@ -5053,6 +5073,27 @@ var NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS = {
    btc: bitcoin.id,
    sol: solana.id
  };
 +// Ophis: let the app register NEAR Intents networks the SDK does not ship
 +// (their 1Click API lists ~35 chains, this build maps 11). Idempotent per
 +// chain id; the slug is NEAR's `blockchain` field.
++// Ophis: per-chain native sentinel for NEAR tokens without a contractAddress
++// (the SDK only knows BTC / SOL / ETH); filled by registerNearIntentsNetworks.
++var NEAR_INTENTS_NATIVE_ADDRESSES = {};
++// Ophis: chains whose 1Click assets reject FLEX_INPUT (Hypercore answers
++// "supports only EXACT_INPUT or EXACT_OUTPUT swapType"). EXACT_INPUT swaps
++// exactly `amount`, which is the order's minimum buy amount, so the CoW Shed
++// deposit is never below it; 1Click refunds any surplus above it to refundTo
++// on the origin chain after the swap.
++var NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS = /* @__PURE__ */ new Set();
 +function registerNearIntentsNetworks(entries) {
-+  for (const { blockchain, chain } of entries) {
++  for (const { blockchain, chain, nativeAddress, exactInput } of entries) {
 +    if (!NEAR_INTENTS_SUPPORTED_NETWORKS.some((c) => c.id === chain.id))
 +      NEAR_INTENTS_SUPPORTED_NETWORKS.push(chain);
 +    NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS[blockchain] = chain.id;
++    if (nativeAddress) NEAR_INTENTS_NATIVE_ADDRESSES[chain.id] = nativeAddress;
++    if (exactInput) NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS.add(chain.id);
 +  }
 +}
  var NEAR_INTENTS_STATUS_TO_COW_STATUS = {
    KNOWN_DEPOSIT_TX: "in_progress" /* IN_PROGRESS */,
    PENDING_DEPOSIT: "in_progress" /* IN_PROGRESS */,
-@@ -5440,6 +5470,7 @@ export {
+@@ -5087,7 +5128,7 @@ var adaptToken = (token) => {
+   const chainId = NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS[token.blockchain];
+   if (!chainId)
+     return null;
+-  const tokenAddress = token.contractAddress ?? (chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.btc ? BTC_CURRENCY_ADDRESS : chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.sol ? SOL_NATIVE_CURRENCY_ADDRESS : ETH_ADDRESS2);
++  const tokenAddress = token.contractAddress ?? NEAR_INTENTS_NATIVE_ADDRESSES[chainId] ?? (chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.btc ? BTC_CURRENCY_ADDRESS : chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.sol ? SOL_NATIVE_CURRENCY_ADDRESS : ETH_ADDRESS2);
+   if (!tokenAddress)
+     return null;
+   return {
+@@ -5115,7 +5156,7 @@ var getTokenByAddressAndChainId = (tokens, targetTokenAddress, targetTokenChainI
+       return false;
+     if (!isEvmChain(targetTokenChainId)) {
+       if (!token.contractAddress) {
+-        return areAddressesEqual4(targetTokenAddress, BTC_CURRENCY_ADDRESS) || areAddressesEqual4(targetTokenAddress, SOL_NATIVE_CURRENCY_ADDRESS);
++        return areAddressesEqual4(targetTokenAddress, BTC_CURRENCY_ADDRESS) || areAddressesEqual4(targetTokenAddress, SOL_NATIVE_CURRENCY_ADDRESS) || areAddressesEqual4(targetTokenAddress, NEAR_INTENTS_NATIVE_ADDRESSES[chainId]);
+       }
+       return areAddressesEqual4(token.contractAddress, targetTokenAddress);
+     }
+@@ -5253,7 +5294,7 @@ var NearIntentsBridgeProvider = class {
+       throw new BridgeProviderQuoteError("NO_ROUTES" /* NO_ROUTES */);
+     const quoteResponse = await this.api.getQuote({
+       dry: false,
+-      swapType: QuoteRequest.swapType.FLEX_INPUT,
++      swapType: NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS.has(buyTokenChainId) ? QuoteRequest.swapType.EXACT_INPUT : QuoteRequest.swapType.FLEX_INPUT,
+       slippageTolerance: request.bridgeSlippageBps ?? DEFAULT_BRIDGE_SLIPPAGE_BPS,
+       originAsset: sellToken.assetId,
+       depositType: QuoteRequest.depositType.ORIGIN_CHAIN,
+@@ -5440,6 +5481,7 @@ export {
    DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION,
    HOOK_DAPP_BRIDGE_PROVIDER_PREFIX,
    NearIntentsBridgeProvider,

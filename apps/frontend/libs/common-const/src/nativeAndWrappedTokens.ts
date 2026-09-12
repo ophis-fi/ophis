@@ -9,7 +9,21 @@ import {
   WRAPPED_NATIVE_CURRENCIES as WRAPPED_NATIVE_CURRENCIES_SDK,
 } from '@cowprotocol/cow-sdk'
 
-import { MONAD_CHAIN_ID, MONAD_LOGO, XLAYER_CHAIN_ID, XLAYER_LOGO } from './bridgeDestination.const'
+import {
+  HYPE_NATIVE_CURRENCY_ADDRESS,
+  HYPERCORE_CHAIN_ID,
+  HYPERLIQUID_LOGO,
+  MONAD_CHAIN_ID,
+  MONAD_LOGO,
+  SUI_CHAIN_ID,
+  SUI_LOGO,
+  SUI_NATIVE_CURRENCY_ADDRESS,
+  TRON_CHAIN_ID,
+  TRON_LOGO,
+  TRX_NATIVE_CURRENCY_ADDRESS,
+  XLAYER_CHAIN_ID,
+  XLAYER_LOGO,
+} from './bridgeDestination.const'
 import { TokenWithLogo } from './types'
 
 export const NATIVE_CURRENCY_ADDRESS = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
@@ -76,6 +90,32 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
     'WOKB',
     'Wrapped OKB',
   ),
+  // Non-EVM destinations have no wrapped twin: getWrappedToken() maps the native
+  // to itself so USD value / price impact keep working.
+  [SUI_CHAIN_ID as SupportedChainId]: new TokenWithLogo(
+    SUI_LOGO,
+    SUI_CHAIN_ID as SupportedChainId,
+    SUI_NATIVE_CURRENCY_ADDRESS,
+    9,
+    'SUI',
+    'Sui',
+  ),
+  [TRON_CHAIN_ID as SupportedChainId]: new TokenWithLogo(
+    TRON_LOGO,
+    TRON_CHAIN_ID as SupportedChainId,
+    TRX_NATIVE_CURRENCY_ADDRESS,
+    6,
+    'TRX',
+    'Tron',
+  ),
+  [HYPERCORE_CHAIN_ID as SupportedChainId]: new TokenWithLogo(
+    HYPERLIQUID_LOGO,
+    HYPERCORE_CHAIN_ID as SupportedChainId,
+    HYPE_NATIVE_CURRENCY_ADDRESS,
+    8,
+    'HYPE',
+    'Hyperliquid',
+  ),
 }
 
 export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
@@ -134,6 +174,31 @@ export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
     18,
     'OKB',
     'OKB',
+  ),
+  // Non-EVM destinations: natives carry the sentinels from bridgeDestination.const.ts.
+  [SUI_CHAIN_ID as TargetChainId]: new TokenWithLogo(
+    SUI_LOGO,
+    SUI_CHAIN_ID as SupportedChainId,
+    SUI_NATIVE_CURRENCY_ADDRESS,
+    9,
+    'SUI',
+    'Sui',
+  ),
+  [TRON_CHAIN_ID as TargetChainId]: new TokenWithLogo(
+    TRON_LOGO,
+    TRON_CHAIN_ID as SupportedChainId,
+    TRX_NATIVE_CURRENCY_ADDRESS,
+    6,
+    'TRX',
+    'Tron',
+  ),
+  [HYPERCORE_CHAIN_ID as TargetChainId]: new TokenWithLogo(
+    HYPERLIQUID_LOGO,
+    HYPERCORE_CHAIN_ID as SupportedChainId,
+    HYPE_NATIVE_CURRENCY_ADDRESS,
+    8,
+    'HYPE',
+    'Hyperliquid',
   ),
   // Native XPL on Plasma (chain 9745). Plasma IS a SupportedChainId, so the
   // mapAllNetworks() spread above already creates this entry — but

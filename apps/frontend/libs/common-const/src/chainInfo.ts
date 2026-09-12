@@ -21,7 +21,13 @@ import {
   TargetChainId,
 } from '@cowprotocol/cow-sdk'
 
-import { MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from './bridgeDestination.const'
+import {
+  HYPERCORE_CHAIN_ID,
+  MONAD_CHAIN_ID,
+  SUI_CHAIN_ID,
+  TRON_CHAIN_ID,
+  XLAYER_CHAIN_ID,
+} from './bridgeDestination.const'
 import { BRIDGE_DESTINATION_CHAIN_INFO } from './bridgeDestinationChains'
 import { NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
 import {
@@ -62,6 +68,12 @@ export interface BaseChainInfo {
   readonly explorerTitle: string
   readonly color: string
   readonly nativeCurrency: TokenWithLogo
+  /** Explorer path segment for an address page when it is not `address` (e.g. Suiscan uses `account`). */
+  readonly addressPath?: string
+  /** Explorer path segment for a token page when it differs from addressPath (Suiscan `coin`, Tronscan `token20`, Hyperliquid `token`). */
+  readonly tokenPath?: string
+  /** Explorer path segment for a transaction page when it is not `tx` (Tronscan uses `transaction`). */
+  readonly txPath?: string
 }
 
 export type ChainInfoMap = Record<TargetChainId, BaseChainInfo>
@@ -272,6 +284,9 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   MONAD_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only
   XLAYER_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only
   AdditionalTargetChainId.SOLANA,
+  SUI_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only (non-EVM)
+  TRON_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only (non-EVM)
+  HYPERCORE_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only (non-EVM)
   AdditionalTargetChainId.BITCOIN,
 ]
 

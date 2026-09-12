@@ -4,6 +4,8 @@ import { ExplorerDataType, getExplorerLink, isAddress, shortenAddress } from '@c
 
 import styled from 'styled-components/macro'
 
+import { isDisplayableRecipient } from '../../utils/recipientAddress.utils'
+
 const Link = styled.a`
   text-decoration: none;
 
@@ -20,7 +22,7 @@ interface AddressLinkProps {
 }
 
 export function AddressLink({ address, chainId, className, content }: AddressLinkProps): ReactNode {
-  return isAddress(address) ? (
+  return isDisplayableRecipient(address) ? (
     <Link
       className={className}
       href={getExplorerLink(chainId, address, ExplorerDataType.ADDRESS)}
