@@ -56,7 +56,7 @@ const TRANSPORT_ERROR_CODES = new Set<unknown>([-32603, -32005, -32002, 'SERVER_
 /** EIP-1193 provider errors that are the wallet's own decision, whatever text they carry. */
 const WALLET_POLICY_CODES = new Set<unknown>([4001, 4100, 4200, 4900, 4901])
 const TRANSPORT_ERROR_RE =
-  /timeout|timed out|rate limit|too many requests|limit exceeded|service unavailable|failed to fetch|fetch failed|load failed|network ?(error|request failed)|failed to connect|connection (refused|reset|closed)|enotfound|unreachable|econn|socket hang up|bad gateway|gateway time-?out|forbidden|unexpected (token|end of json)|invalid json|non-200|internal json-rpc error|\b(403|429|500|502|503|504)\b/i
+  /timeout|timed out|rate limit|too many requests|limit exceeded|service unavailable|failed to fetch|fetch failed|load failed|network ?(error|request failed)|failed to connect|connection (refused|reset|closed)|enotfound|unreachable|econn|socket hang up|bad gateway|gateway time-?out|forbidden|unauthorized|invalid (api )?key|unexpected (token|end of json)|invalid json|non-200|internal json-rpc error|\b(401|403|429|500|502|503|504)\b/i
 /** Wrappers that carry nothing but the node's answer: judge the answer, not the envelope. */
 const GENERIC_WRAPPER_CODES = new Set<unknown>([-32603, 'SERVER_ERROR'])
 

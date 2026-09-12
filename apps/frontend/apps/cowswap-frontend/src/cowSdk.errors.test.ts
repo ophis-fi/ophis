@@ -59,6 +59,8 @@ describe('isTransportError: only a positively identified transport failure', () 
     ['our own read timeout', new Error('wallet eth_getCode. Timeout after 10000 ms')],
     ['request execution timed out (Codex round 13)', { code: -32603, message: 'request execution timed out' }],
     ['an HTTP 403', { code: 'SERVER_ERROR', message: 'bad response (status=403)' }],
+    ['an expired custom-RPC key behind the wrapper (Codex round 20)', wrap({ code: -32600, message: 'Unauthorized' })],
+    ['an HTTP 401', { code: 'SERVER_ERROR', message: 'bad response (status=401)' }],
     ['a blocked extension', wrap({ message: 'Forbidden: domain not allowed' })],
     ['an HTML error page behind the wrapper', wrap({ message: 'Unexpected token < in JSON at position 0' })],
     ['a fetch failure behind the wrapper', wrap({ cause: { message: 'Failed to fetch' } })],
