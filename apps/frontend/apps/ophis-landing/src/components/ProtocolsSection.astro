@@ -1,6 +1,6 @@
 ---
-// Venues include the direct Ekubo and Pons lanes in infra/robinhood-mainnet/configs/driver.toml.tmpl.
-type Protocol = { name: string; logo: string }
+// Aggregator listings alone do not confirm executable quotes.
+type Protocol = { name: string; logo: string; status?: string }
 
 const protocols: Protocol[] = [
   { name: 'Uniswap',     logo: '/logos/protocols/uniswap-v2.svg' },
@@ -17,8 +17,12 @@ const protocols: Protocol[] = [
   { name: 'KyberSwap',   logo: '/logos/protocols/kyberswap.svg' },
   { name: 'Ekubo',       logo: '/logos/protocols/ekubo.svg' },
   { name: 'OKX',         logo: '/logos/protocols/okx.svg' },
-  { name: 'Pons',        logo: '/logos/protocols/pons.png' },
+  { name: 'RamsesX',     logo: '/logos/protocols/ramses.svg', status: 'Routing unverified' },
   { name: '1inch',       logo: '/logos/protocols/1inch.svg' },
+  { name: 'Dexalot',     logo: '/logos/protocols/dexalot.png', status: 'Routing unverified' },
+  { name: 'Native',      logo: '/logos/protocols/native.png', status: 'Routing unverified' },
+  { name: 'Pharaoh',     logo: '/logos/protocols/pharaoh.svg', status: 'Routing unverified' },
+  { name: 'Arcus',       logo: '/logos/protocols/arcus.svg', status: 'Integration pending' },
 ]
 ---
 <section class="protocols">
@@ -41,15 +45,15 @@ const protocols: Protocol[] = [
               <img src={p.logo} alt={`${p.name} logo`} width="30" height="30" loading="lazy" decoding="async" />
             </span>
             <span class="protocol-name">{p.name}</span>
+            {p.status && <span class="protocol-status">{p.status}</span>}
           </div>
         ))}
       </div>
     </div>
 
     <p class="solver-note reveal-up" data-reveal>
-      The marks above are liquidity venues, not solvers: a competitive solver layer
-      routes each order across the venues available on its chain, and more solvers
-      can be authorized over time.
+      Solvers select from the venues available for your chain and token pair.
+      Venues marked unverified or pending are not confirmed routing sources.
     </p>
 
   </div>
@@ -123,6 +127,11 @@ const protocols: Protocol[] = [
     font-weight: 600;
     color: var(--ophis-fg-muted);
     line-height: 1.2;
+  }
+  .protocol-status {
+    font-size: 11px;
+    color: var(--ophis-fg-muted);
+    line-height: 1.4;
   }
   .solver-note {
     margin: 32px auto 0;
