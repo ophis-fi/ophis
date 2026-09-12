@@ -35,23 +35,29 @@ interface RpcErrorLike {
   code?: unknown
   message?: unknown
   data?: unknown
+  error?: unknown
+  originalError?: unknown
+  cause?: unknown
 }
+
+/** Wrappers providers nest the node's answer under: MetaMask (data, data.originalError), ethers (error, cause). */
+const NESTED_ERROR_KEYS = ['data', 'error', 'originalError', 'cause'] as const
+const MAX_ERROR_DEPTH = 6
 
 /**
  * An error the wallet's node produced by EXECUTING the request (a revert, a
  * failed gas estimation, insufficient funds) is an answer about the wallet's
  * chain state and must surface as is; only transport failures (dead endpoint,
  * rate limit, blocked extension, timeout) justify asking the app RPC instead.
+ * Every nesting level a known wrapper can add is inspected.
  */
-export function isExecutionError(error: unknown): boolean {
-  const e = (error ?? {}) as RpcErrorLike
-  // MetaMask wraps node errors as -32603 with the original error under data.
-  const inner = (typeof e.data === 'object' && e.data !== null ? e.data : {}) as RpcErrorLike
-  if (e.code === 3 || inner.code === 3) return true
+export function isExecutionError(error: unknown, depth = 0): boolean {
+  if (depth > MAX_ERROR_DEPTH || error === null || typeof error !== 'object') return false
+  const e = error as RpcErrorLike
+  if (e.code === 3) return true
   if (typeof e.data === 'string' && e.data.startsWith('0x')) return true
-  if (typeof inner.data === 'string' && inner.data.startsWith('0x')) return true
-  const messages = [e.message, inner.message].filter((m): m is string => typeof m === 'string').join(' ')
-  return EXECUTION_ERROR_RE.test(messages)
+  if (typeof e.message === 'string' && EXECUTION_ERROR_RE.test(e.message)) return true
+  return NESTED_ERROR_KEYS.some((key) => isExecutionError(e[key], depth + 1))
 }
 
 /**
@@ -71,10 +77,10 @@ export class WalletFirstReadProvider extends JsonRpcProvider {
   constructor(
     private readonly wallet: JsonRpcProvider,
     private readonly appRpc: JsonRpcProvider,
-    chainId: number,
+    private readonly appRpcChainId: number,
     private readonly readTimeoutMs: number = WALLET_READ_TIMEOUT_MS,
   ) {
-    super(undefined, chainId)
+    super(undefined, appRpcChainId)
   }
 
   async send(method: string, params: unknown[]): Promise<unknown> {
@@ -83,7 +89,20 @@ export class WalletFirstReadProvider extends JsonRpcProvider {
       return await withTimeout(this.wallet.send(method, params), this.readTimeoutMs, `wallet ${method}`)
     } catch (error) {
       if (isExecutionError(error)) throw error
+      // The app RPC was chosen for the chain the wallet reported when this
+      // wrapper was built; mid-switch that is stale. Wallets answer eth_chainId
+      // locally, so a live mismatch (or no answer) fails closed on the wallet error.
+      if (!(await this.walletStillOnChain())) throw error
       return this.appRpc.send(method, params)
+    }
+  }
+
+  private async walletStillOnChain(): Promise<boolean> {
+    try {
+      const live = await withTimeout(this.wallet.send('eth_chainId', []), this.readTimeoutMs, 'wallet eth_chainId')
+      return Number(live) === this.appRpcChainId
+    } catch {
+      return false
     }
   }
 }

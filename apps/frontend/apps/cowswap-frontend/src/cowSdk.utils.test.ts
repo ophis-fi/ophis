@@ -8,8 +8,13 @@ jest.mock('@cowprotocol/common-const', () => ({
   getRpcProvider: jest.fn(),
 }))
 
-function fakeProvider(impl: (method: string) => unknown): JsonRpcProvider & { send: jest.Mock } {
-  return { send: jest.fn(async (method: string) => impl(method)) } as unknown as JsonRpcProvider & { send: jest.Mock }
+/** Wallets answer eth_chainId locally even when their RPC is dead; every other call goes to impl. */
+function fakeProvider(impl: (method: string) => unknown, chainId = '0x1'): JsonRpcProvider & { send: jest.Mock } {
+  return {
+    send: jest.fn(async (method: string) => (method === 'eth_chainId' ? chainId : impl(method))),
+  } as unknown as JsonRpcProvider & {
+    send: jest.Mock
+  }
 }
 
 const dead = Object.assign(new Error('Internal JSON-RPC error.'), { code: -32603 })
@@ -50,9 +55,7 @@ describe('WalletFirstReadProvider: the wallet RPC first, the app RPC only when a
   })
 
   it('never falls back for writes, signing or chain identity (Codex)', async () => {
-    const wallet = fakeProvider(() => {
-      throw dead
-    })
+    const wallet = { send: jest.fn(async () => Promise.reject(dead)) } as unknown as JsonRpcProvider
     const appRpc = fakeProvider(() => '0x1')
     const provider = new WalletFirstReadProvider(wallet, appRpc, 1)
     await expect(provider.send('eth_sendTransaction', [{}])).rejects.toBe(dead)
@@ -63,19 +66,50 @@ describe('WalletFirstReadProvider: the wallet RPC first, the app RPC only when a
   })
 
   it('treats a wallet read that stalls as failed and answers from the app RPC (Codex)', async () => {
-    const wallet = { send: jest.fn(() => new Promise(() => undefined)) } as unknown as JsonRpcProvider
+    const wallet = {
+      send: jest.fn((method: string) =>
+        method === 'eth_chainId' ? Promise.resolve('0x1') : new Promise(() => undefined),
+      ),
+    } as unknown as JsonRpcProvider
     const appRpc = fakeProvider(() => '0x')
     const provider = new WalletFirstReadProvider(wallet, appRpc, 1, 30)
     await expect(provider.send('eth_getCode', ['0x1'])).resolves.toBe('0x')
   })
+
+  it('fails closed on the wallet error when the wallet no longer reports the captured chain (Codex round 3)', async () => {
+    const switched = fakeProvider(() => {
+      throw dead
+    }, '0x2105')
+    const appRpc = fakeProvider(() => '0x')
+    await expect(new WalletFirstReadProvider(switched, appRpc, 1).send('eth_getCode', ['0x1'])).rejects.toBe(dead)
+    const mute = { send: jest.fn(async () => Promise.reject(dead)) } as unknown as JsonRpcProvider
+    await expect(new WalletFirstReadProvider(mute, appRpc, 1).send('eth_getCode', ['0x1'])).rejects.toBe(dead)
+    expect(appRpc.send).not.toHaveBeenCalled()
+  })
 })
 
 describe('isExecutionError', () => {
-  it('recognises reverts in the shapes MetaMask and raw nodes produce', () => {
+  it('recognises reverts in the shapes MetaMask, ethers wrappers and raw nodes produce', () => {
     expect(isExecutionError(revert)).toBe(true)
     expect(isExecutionError({ code: 3, message: 'execution reverted', data: '0x' })).toBe(true)
     expect(isExecutionError({ code: -32000, message: 'insufficient funds for gas * price + value' })).toBe(true)
     expect(isExecutionError({ code: -32000, message: 'gas required exceeds allowance (30000000)' })).toBe(true)
+    // ethers SERVER_ERROR wrapping the node answer under error; MetaMask under data.originalError (Codex round 3)
+    expect(
+      isExecutionError({
+        code: 'SERVER_ERROR',
+        message: 'processing response error',
+        error: { code: 3, data: '0x08c379a0' },
+      }),
+    ).toBe(true)
+    expect(
+      isExecutionError({
+        code: -32603,
+        message: 'Internal JSON-RPC error.',
+        data: { originalError: { code: 3, message: 'execution reverted' } },
+      }),
+    ).toBe(true)
+    expect(isExecutionError({ code: 'SERVER_ERROR', cause: { code: -32603, data: { code: 3 } } })).toBe(true)
   })
 
   it('classifies connectivity, rate-limit and timeout failures as transport errors', () => {
