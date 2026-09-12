@@ -101,6 +101,17 @@ describe('WalletFirstReadProvider: the wallet RPC first, the app RPC only when a
         1,
       ).send('eth_getCode', ['0x1']),
     ).rejects.toBe(unauthorized)
+    // A policy code with transport-looking text is still the wallet's answer (Codex round 8)
+    const forbidden = Object.assign(new Error('Forbidden'), { code: 4100 })
+    await expect(
+      new WalletFirstReadProvider(
+        fakeProvider(() => {
+          throw forbidden
+        }),
+        appRpc,
+        1,
+      ).send('eth_call', [{}]),
+    ).rejects.toBe(forbidden)
     expect(appRpc.send).not.toHaveBeenCalled()
   })
 
@@ -183,6 +194,8 @@ describe('isTransportError', () => {
     expect(isTransportError({ code: 4001, message: 'User rejected the request.' })).toBe(false)
     expect(isTransportError({ code: 4100, message: 'Unauthorized' })).toBe(false)
     expect(isTransportError({ code: 4900, message: 'Disconnected' })).toBe(false)
+    expect(isTransportError({ code: 4100, message: 'Forbidden' })).toBe(false)
+    expect(isTransportError({ code: 4001, message: 'Request timeout' })).toBe(false)
     expect(isTransportError(new Error('something odd'))).toBe(false)
     expect(isTransportError(undefined)).toBe(false)
   })
