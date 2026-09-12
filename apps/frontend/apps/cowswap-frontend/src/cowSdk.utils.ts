@@ -2,12 +2,7 @@ import { getRpcProvider } from '@cowprotocol/common-const'
 import { getProviderErrorMessage, withTimeout } from '@cowprotocol/common-utils'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
-/**
- * Read-only JSON-RPC methods the SDK adapter issues. Writes and signing never
- * fall back, and neither do the chain-identity methods (eth_chainId,
- * net_version): the app RPC is picked from the chain the wallet reported, so
- * answering identity from it would let stale React state mask a network switch.
- */
+/** Read-only methods that may fall back. Writes, signing and chain identity (eth_chainId, net_version) never do. */
 const READ_METHODS = new Set(
   'eth_call eth_getCode eth_getBalance eth_getStorageAt eth_blockNumber eth_getBlockByNumber eth_getBlockByHash eth_getTransactionCount eth_getTransactionByHash eth_getTransactionReceipt eth_getLogs eth_estimateGas eth_gasPrice eth_feeHistory eth_maxPriorityFeePerGas'.split(
     ' ',
@@ -37,13 +32,7 @@ interface RpcErrorLike {
 const NESTED_ERROR_KEYS = ['data', 'error', 'originalError', 'cause'] as const
 const MAX_ERROR_DEPTH = 6
 
-/**
- * An error the wallet's node produced by EXECUTING the request (a revert, a
- * failed gas estimation, insufficient funds) is an answer about the wallet's
- * chain state and must surface as is; only transport failures (dead endpoint,
- * rate limit, blocked extension, timeout) justify asking the app RPC instead.
- * Every nesting level a known wrapper can add is inspected.
- */
+/** The wallet's node answered by running the request (revert, gas, funds): an answer about its chain state, surfaced as is. */
 function hasExecutionMessage(error: unknown): boolean {
   // WalletConnect-style providers reject with a bare string; getProviderErrorMessage knows that shape.
   const message = getProviderErrorMessage(error)
@@ -71,13 +60,7 @@ const TRANSPORT_ERROR_RE =
 /** Wrappers that carry nothing but the node's answer: judge the answer, not the envelope. */
 const GENERIC_WRAPPER_CODES = new Set<unknown>([-32603, 'SERVER_ERROR'])
 
-/**
- * Only an error positively identified as the wallet's TRANSPORT failing (dead
- * or rate-limited endpoint, blocked extension, timeout) justifies asking the
- * app RPC. Anything else, including the wallet's own policy answers (EIP-1193
- * 4001 user rejection, 4100 unauthorized, 4200 unsupported, 4900 disconnected),
- * surfaces as is.
- */
+/** Only a positively identified transport failure (dead or rate-limited endpoint, blocked extension, timeout) may fall back. */
 /** A wallet policy code anywhere in the wrapper chain, however the outer layers describe it. */
 function hasWalletPolicyCode(error: unknown, depth = 0): boolean {
   if (depth > MAX_ERROR_DEPTH || error === null || typeof error !== 'object') return false
@@ -85,11 +68,7 @@ function hasWalletPolicyCode(error: unknown, depth = 0): boolean {
   return WALLET_POLICY_CODES.has(e.code) || NESTED_ERROR_KEYS.some((key) => hasWalletPolicyCode(e[key], depth + 1))
 }
 
-/**
- * The node's own answer a wrapper carries, if any: a nested object with a code
- * or message, or a bare string, reached through wrapper-only objects such as
- * MetaMask's data.originalError.
- */
+/** The node's own answer a wrapper carries: a nested object with a code or message, or a bare string. */
 function nodeAnswerOf(value: unknown, depth: number): unknown {
   if (typeof value === 'string') return value.length > 0 ? value : undefined
   if (!value || typeof value !== 'object') return undefined
