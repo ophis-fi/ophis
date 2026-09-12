@@ -61,6 +61,8 @@ describe('isTransportError: only a positively identified transport failure', () 
     ['an HTTP 403', { code: 'SERVER_ERROR', message: 'bad response (status=403)' }],
     ['an expired custom-RPC key behind the wrapper (Codex round 20)', wrap({ code: -32600, message: 'Unauthorized' })],
     ['an HTTP 401', { code: 'SERVER_ERROR', message: 'bad response (status=401)' }],
+    ['an aborted fetch behind the wrapper', wrap(new DOMException('The operation was aborted.', 'AbortError'))],
+    ['an AbortError with a bland message', Object.assign(new Error('cancelled'), { name: 'AbortError' })],
     ['a blocked extension', wrap({ message: 'Forbidden: domain not allowed' })],
     ['an HTML error page behind the wrapper', wrap({ message: 'Unexpected token < in JSON at position 0' })],
     ['a fetch failure behind the wrapper', wrap({ cause: { message: 'Failed to fetch' } })],
