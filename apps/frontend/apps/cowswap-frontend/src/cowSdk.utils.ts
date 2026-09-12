@@ -85,14 +85,26 @@ const TRANSPORT_ERROR_RE =
  * 4001 user rejection, 4100 unauthorized, 4200 unsupported, 4900 disconnected),
  * surfaces as is.
  */
-export function isTransportError(error: unknown, depth = 0): boolean {
+/** A wallet policy code anywhere in the wrapper chain, however the outer layers describe it. */
+function hasWalletPolicyCode(error: unknown, depth = 0): boolean {
+  if (depth > MAX_ERROR_DEPTH || error === null || typeof error !== 'object') return false
+  const e = error as RpcErrorLike
+  return WALLET_POLICY_CODES.has(e.code) || NESTED_ERROR_KEYS.some((key) => hasWalletPolicyCode(e[key], depth + 1))
+}
+
+function hasTransportMarker(error: unknown, depth = 0): boolean {
   if (depth > MAX_ERROR_DEPTH || error === null || error === undefined) return false
-  const e = (typeof error === 'object' ? error : {}) as RpcErrorLike
-  // A policy code wins over any message text ("Forbidden" on a 4100 is still the wallet's answer).
-  if (WALLET_POLICY_CODES.has(e.code)) return false
   const message = getProviderErrorMessage(error)
   if (typeof message === 'string' && TRANSPORT_ERROR_RE.test(message)) return true
-  return TRANSPORT_ERROR_CODES.has(e.code) || NESTED_ERROR_KEYS.some((key) => isTransportError(e[key], depth + 1))
+  if (typeof error !== 'object') return false
+  const e = error as RpcErrorLike
+  return TRANSPORT_ERROR_CODES.has(e.code) || NESTED_ERROR_KEYS.some((key) => hasTransportMarker(e[key], depth + 1))
+}
+
+export function isTransportError(error: unknown): boolean {
+  // The whole chain is scanned for a policy code first: a 4100 nested under a
+  // -32603 wrapper or an ethers SERVER_ERROR is still the wallet's answer.
+  return !hasWalletPolicyCode(error) && hasTransportMarker(error)
 }
 
 /**

@@ -112,6 +112,19 @@ describe('WalletFirstReadProvider: the wallet RPC first, the app RPC only when a
         1,
       ).send('eth_call', [{}]),
     ).rejects.toBe(forbidden)
+    const wrapped = Object.assign(new Error('Internal JSON-RPC error.'), {
+      code: -32603,
+      data: { originalError: { code: 4100 } },
+    })
+    await expect(
+      new WalletFirstReadProvider(
+        fakeProvider(() => {
+          throw wrapped
+        }),
+        appRpc,
+        1,
+      ).send('eth_getCode', ['0x1']),
+    ).rejects.toBe(wrapped)
     expect(appRpc.send).not.toHaveBeenCalled()
   })
 
@@ -196,6 +209,13 @@ describe('isTransportError', () => {
     expect(isTransportError({ code: 4900, message: 'Disconnected' })).toBe(false)
     expect(isTransportError({ code: 4100, message: 'Forbidden' })).toBe(false)
     expect(isTransportError({ code: 4001, message: 'Request timeout' })).toBe(false)
+    // A policy code nested under a transport wrapper still wins (Codex round 10)
+    expect(
+      isTransportError({ code: -32603, message: 'Internal JSON-RPC error.', data: { originalError: { code: 4100 } } }),
+    ).toBe(false)
+    expect(
+      isTransportError({ code: 'SERVER_ERROR', message: 'bad response (status=403)', error: { code: 4001 } }),
+    ).toBe(false)
     expect(isTransportError(new Error('something odd'))).toBe(false)
     expect(isTransportError(undefined)).toBe(false)
   })
