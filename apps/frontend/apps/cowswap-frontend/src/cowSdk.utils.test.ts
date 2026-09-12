@@ -116,6 +116,14 @@ describe('isExecutionError', () => {
       isExecutionError({ code: -32603, message: 'Internal JSON-RPC error.', data: 'execution reverted: SPL' }),
     ).toBe(true)
     expect(isExecutionError('Internal JSON-RPC error.')).toBe(false)
+    // VM failures without revert data (Codex round 6)
+    for (const message of [
+      'out of gas',
+      'invalid opcode: INVALID',
+      'stack underflow (0 <=> 1)',
+      'invalid jump destination',
+    ])
+      expect(isExecutionError({ code: -32000, message })).toBe(true)
   })
 
   it('classifies connectivity, rate-limit and timeout failures as transport errors', () => {
