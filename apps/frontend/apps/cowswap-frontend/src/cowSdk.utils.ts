@@ -34,7 +34,7 @@ export const WALLET_READ_TIMEOUT_MS = 10_000
  * state: reverts, VM failures, gas, nonce, balance and EIP-1559 fee checks.
  */
 const EXECUTION_ERROR_RE =
-  /revert|execution|insufficient (funds|balance)|gas required exceeds|intrinsic gas|nonce|out of gas|invalid opcode|invalid jump|stack (underflow|overflow)|call depth|max code size|contract creation code storage|fee cap|base fee|max fee per gas|priority fee|tip higher|underpriced|exceeds block gas limit|gas limit reached|already known|already imported|sender is not an eoa/i
+  /revert|execution (reverted|failed|error)|vm execution|insufficient (funds|balance)|gas required exceeds|intrinsic gas|nonce|out of gas|invalid opcode|invalid jump|stack (underflow|overflow)|call depth|max code size|contract creation code storage|fee cap|base fee|max fee per gas|priority fee|tip higher|underpriced|exceeds block gas limit|gas limit reached|already known|already imported|sender is not an eoa/i
 
 interface RpcErrorLike {
   code?: unknown
