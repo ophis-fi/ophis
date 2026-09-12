@@ -39,7 +39,9 @@ printf '%s' "$SVG" | grep -q "#ccff00" || fail "decoded chain icon is missing th
 printf '%s' "$SVG" | grep -q "#1c180d" || fail "decoded chain icon is missing the #1c180d feather"
 
 # 4. The retired green appears nowhere in frontend code (comment lines that
-#    explicitly mark it as retired are exempt).
+#    explicitly mark it as retired are exempt). UP33 owns a separate green
+#    identity; its official logo is not a Robinhood Chain icon.
+UP33_LOGO=apps/frontend/apps/ophis-landing/public/logos/protocols/up33.svg
 if grep -rn "00[cC]805" \
     apps/frontend/libs \
     apps/frontend/apps/cowswap-frontend/src \
@@ -47,7 +49,7 @@ if grep -rn "00[cC]805" \
     apps/frontend/apps/ophis-landing/src \
     apps/frontend/apps/ophis-landing/public \
     --include='*.ts' --include='*.tsx' --include='*.astro' --include='*.svg' --include='*.html' --include='*.css' --exclude='*.test.*' \
-    2>/dev/null | grep -vi "retired" | grep -q .; then
+    2>/dev/null | grep -Fv "$UP33_LOGO:" | grep -vi "retired" | grep -q .; then
   grep -rn "00[cC]805" \
     apps/frontend/libs \
     apps/frontend/apps/cowswap-frontend/src \
@@ -55,7 +57,7 @@ if grep -rn "00[cC]805" \
     apps/frontend/apps/ophis-landing/src \
     apps/frontend/apps/ophis-landing/public \
     --include='*.ts' --include='*.tsx' --include='*.astro' --include='*.svg' --include='*.html' --include='*.css' --exclude='*.test.*' \
-    2>/dev/null | grep -vi "retired" >&2
+    2>/dev/null | grep -Fv "$UP33_LOGO:" | grep -vi "retired" >&2
   fail "retired #00C805 green found in frontend code (above)"
 fi
 
