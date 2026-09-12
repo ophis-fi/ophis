@@ -34,6 +34,6 @@ test('venue grid includes the requested DEXs and identifies the pending integrat
   await expect(pending).toHaveCount(1)
   await expect(pending).toContainText('Arcus')
   const unverified = grid.locator('.protocol').filter({ hasText: 'Routing unverified' })
-  await expect(unverified).toHaveCount(2)
-  await expect(unverified).toContainText(['Dexalot', 'Native'])
+  await expect(unverified).toHaveCount(4)
+  await expect(unverified).toContainText(['RamsesX', 'Dexalot', 'Native', 'Pharaoh'])
 })
