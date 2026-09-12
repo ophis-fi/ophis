@@ -1,5 +1,5 @@
 import { getRpcProvider } from '@cowprotocol/common-const'
-import { withTimeout } from '@cowprotocol/common-utils'
+import { getProviderErrorMessage, withTimeout } from '@cowprotocol/common-utils'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
 /**
@@ -52,11 +52,14 @@ const MAX_ERROR_DEPTH = 6
  * Every nesting level a known wrapper can add is inspected.
  */
 export function isExecutionError(error: unknown, depth = 0): boolean {
-  if (depth > MAX_ERROR_DEPTH || error === null || typeof error !== 'object') return false
+  if (depth > MAX_ERROR_DEPTH || error === null || error === undefined) return false
+  // WalletConnect-style providers reject with a bare string; getProviderErrorMessage knows that shape.
+  const message = getProviderErrorMessage(error)
+  if (typeof message === 'string' && EXECUTION_ERROR_RE.test(message)) return true
+  if (typeof error !== 'object') return false
   const e = error as RpcErrorLike
   if (e.code === 3) return true
   if (typeof e.data === 'string' && e.data.startsWith('0x')) return true
-  if (typeof e.message === 'string' && EXECUTION_ERROR_RE.test(e.message)) return true
   return NESTED_ERROR_KEYS.some((key) => isExecutionError(e[key], depth + 1))
 }
 

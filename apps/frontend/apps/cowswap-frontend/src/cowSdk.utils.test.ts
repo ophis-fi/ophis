@@ -110,6 +110,12 @@ describe('isExecutionError', () => {
       }),
     ).toBe(true)
     expect(isExecutionError({ code: 'SERVER_ERROR', cause: { code: -32603, data: { code: 3 } } })).toBe(true)
+    // WalletConnect-style bare strings, top level or nested as data (Codex round 4)
+    expect(isExecutionError('execution reverted')).toBe(true)
+    expect(
+      isExecutionError({ code: -32603, message: 'Internal JSON-RPC error.', data: 'execution reverted: SPL' }),
+    ).toBe(true)
+    expect(isExecutionError('Internal JSON-RPC error.')).toBe(false)
   })
 
   it('classifies connectivity, rate-limit and timeout failures as transport errors', () => {
