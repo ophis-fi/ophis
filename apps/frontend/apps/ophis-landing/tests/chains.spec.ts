@@ -3,27 +3,31 @@ import { test, expect } from '@playwright/test'
 const EXPECTED_CHAINS = [
   'Ethereum', 'BNB', 'Base', 'Arbitrum', 'Polygon', 'Avalanche',
   'Linea', 'Plasma', 'Ink', 'Gnosis', 'Optimism', 'Unichain', 'Robinhood',
-  'Solana', 'Bitcoin',
+  'Solana', 'Bitcoin', 'Monad', 'Hyperliquid', 'X Layer', 'Sui', 'Tron',
 ]
 
-test('chains strip lists 15 chains in order', async ({ page }) => {
+test('chains strip lists supported networks in order', async ({ page }) => {
   await page.goto('/')
   // The marquee renders an aria-hidden [data-clone] duplicate for a seamless
   // loop; count only the real, accessible set.
   const items = page.locator('.chains .chain:not([data-clone])')
-  await expect(items).toHaveCount(15)
+  await expect(items).toHaveCount(EXPECTED_CHAINS.length)
   for (let i = 0; i < EXPECTED_CHAINS.length; i++) {
     await expect(items.nth(i)).toContainText(EXPECTED_CHAINS[i])
   }
 })
 
-test('Solana and Bitcoin are labeled "via NEAR"', async ({ page }) => {
+test('network marks load without route labels', async ({ page }) => {
   await page.goto('/')
   // The marquee renders an aria-hidden [data-clone] duplicate for a seamless
   // loop; count only the real, accessible set.
   const items = page.locator('.chains .chain:not([data-clone])')
-  await expect(items.nth(13)).toContainText('via NEAR') // Solana
-  await expect(items.nth(14)).toContainText('via NEAR') // Bitcoin
+  await expect(page.locator('.chains')).not.toContainText('via NEAR')
+  for (const img of await items.locator('img').all()) {
+    await img.evaluate((el: HTMLImageElement) => { el.loading = 'eager' })
+    await img.evaluate((el: HTMLImageElement) => el.decode())
+    expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0)
+  }
 })
 
 test('chains marquee has a keyboard-operable pause, hidden until focused (WCAG 2.2.2)', async ({ page }) => {

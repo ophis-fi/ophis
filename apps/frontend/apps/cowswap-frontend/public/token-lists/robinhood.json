@@ -1,0 +1,20 @@
+{
+  "name": "Ophis Robinhood Tokens",
+  "timestamp": "2026-09-12T09:00:00.000Z",
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "logoURI": "https://swap.ophis.fi/logos/chain-robinhood.svg",
+  "tokens": [
+    {
+      "chainId": 4663,
+      "address": "0xb9CE619b168f325b4eb8C2E8E073501838C7A407",
+      "name": "Tiny Humans AI",
+      "symbol": "TINY",
+      "decimals": 18,
+      "logoURI": "https://swap.ophis.fi/logos/token-tiny.png"
+    }
+  ]
+}

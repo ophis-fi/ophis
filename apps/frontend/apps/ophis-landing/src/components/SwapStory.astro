@@ -1,6 +1,6 @@
 ---
 const steps = [
-  { label: 'Intent', title: 'You set the terms.', text: 'Choose your assets, amount, and minimum receive amount. Ophis turns that choice into an intent: what you want your trade to achieve.' },
+  { label: 'Intent', title: 'You set the terms.', text: 'Choose what to sell and receive. Ophis asks solvers for an executable quote. Review the estimated amount, fees, and minimum received before signing your intent.' },
   { label: 'Wallet', title: 'Your wallet stays in control.', text: 'Review the spending approval if one is needed, then sign your order. Your signature sets the limits a solver must respect.' },
   { label: 'Solvers', title: 'Routes compete for your order.', text: 'Solvers look for liquidity and matching orders, then compete to fulfil your intent. The auction selects a valid settlement proposal.' },
   { label: 'Settlement', title: 'Your limits are checked on-chain.', text: 'A solver submits the trade. The settlement contract verifies the signed order and its limits before exchanging the assets.' },
@@ -31,14 +31,15 @@ const steps = [
           {index === 0 && <div class="intent-visual">
             <div class="asset-card"><img src="/logos/usdc.png" alt="" width="44" height="44" /><div><small>You send</small><strong>10 USDC</strong></div></div>
             <div class="flow-track"><span class="flow-packet">→</span></div>
-            <div class="asset-card"><img src="/logos/eth.png" alt="" width="44" height="44" /><div><small>You receive</small><strong>ETH</strong></div></div>
-            <div class="intent-limit"><span>Minimum received</span><strong>Your limit</strong></div>
+            <div class="asset-card"><img src="/logos/eth.png" alt="" width="44" height="44" /><div><small>Estimated receive</small><strong>0.004 ETH</strong></div></div>
+            <div class="intent-limit"><span>Example rate</span><strong>1 ETH = 2,500 USDC</strong></div>
+            <div class="intent-limit"><span>Minimum received <small>0.5% slippage</small></span><strong>0.00398 ETH</strong></div>
           </div>}
           {index === 1 && <div class="wallet-visual">
-            <div class="visual-heading"><span class="wallet-symbol">▱</span><strong>Your wallet</strong><span class="status-dot"></span></div>
+            <div class="visual-heading"><img src="/logos/workflow-wallet.svg" alt="" width="28" height="28" /><strong>Your wallet</strong><span class="status-dot"></span></div>
             <div class="wallet-row"><span>Spending approval</span><strong>10 USDC</strong></div>
             <div class="wallet-row"><span>Order limits</span><strong>Reviewed <span class="tick">✓</span></strong></div>
-            <div class="signature"><svg viewBox="0 0 160 50" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path pathLength="1" d="M10 35C55-12 47 3 24 40S51 5 48 30s20-26 16-4 11 10 17 1 1 15 19 1 12 6 22 0l26-3" /></svg><span>Signed intent</span></div>
+            <div class="signature"><img src="/logos/workflow-fingerprint.svg" alt="" width="48" height="48" /><span>Signed intent</span></div>
           </div>}
           {index === 2 && <div class="auction-visual">
             <div class="visual-heading"><img src="/ophis-mono.svg" alt="" width="28" height="28" /><strong>Ophis auction</strong><span class="status-dot"></span></div>
@@ -56,14 +57,14 @@ const steps = [
           </div>}
           {index === 4 && <div class="receipt-visual">
             <div class="received-token"><img src="/logos/eth.png" alt="" width="64" height="64" /><span class="tick">✓</span></div>
-            <small>Back in your wallet</small><strong>ETH received</strong>
+            <small>Back in your wallet</small><strong>0.004 ETH received</strong>
             <div class="receipt-destinations"><span>Explorer</span><span>Order history</span><span>Rewards</span></div>
           </div>}
         </div>
       </article>
     ))}
   </div>
-  <p class="story-caption">Illustrative same-chain workflow. Quotes and execution depend on available liquidity.</p>
+  <p class="story-caption">Illustrative amounts before fees: 10 ÷ 2,500 = 0.004 ETH, with a 0.00398 ETH minimum at 0.5% slippage. Live quotes reflect available liquidity, fees, and price impact.</p>
   <noscript><p>Choose assets and limits, approve spending if needed, sign your intent, let solvers compete, and receive tokens after on-chain settlement.</p></noscript>
 </section>
 <script>
@@ -94,11 +95,10 @@ const steps = [
   .intent-limit { padding-bottom: 0; color: var(--ophis-fg-muted); }
   .visual-heading, .settlement-network { display: flex; align-items: center; gap: 10px; padding-bottom: 20px; font-size: 15px; }
   .status-dot { width: 6px; height: 6px; background: #1c6b3f; border-radius: 50%; margin-left: auto; }
-  .wallet-symbol { font-size: 28px; line-height: 1; }
   .wallet-row { border-top: 1px solid var(--ophis-border); }
   .wallet-row > span { color: var(--ophis-fg-muted); }
   .signature { display: flex; flex-direction: column; align-items: center; padding: 12px; border: 1px solid #e8c4a8; border-radius: 12px; background: var(--ophis-peach); color: var(--ophis-brown); font-size: 12px; }
-  .signature svg { width: 160px; height: 50px; }
+  .signature img { margin-bottom: 8px; }
   .solver-row { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 10px; font-size: 12px; margin-bottom: 6px; }
   .solver-row > div { flex: 1; }
   .solver-row > span:first-child { color: var(--ophis-fg-muted); font: italic 16px Georgia, serif; }
@@ -122,7 +122,7 @@ const steps = [
     [data-playing] .story-steps button[aria-pressed="true"]::after { animation: stage-progress 4.5s linear both; }
     [data-playing] .story-copy, [data-playing] .story-visual { animation: arrive .55s ease both; }
     [data-playing] .flow-packet { animation: packet 2s ease-in-out infinite; }
-    [data-playing] .signature path { stroke-dasharray: 1; animation: sign 1.8s .4s both; }
+    [data-playing] .signature img { animation: arrive 1.2s .4s both; }
     [data-playing] .route-bar { animation: stage-progress 1.5s .3s both; }
     [data-playing] .route-b { animation-delay: .6s; } [data-playing] .route-c { animation-delay: .9s; }
     [data-playing] .winning-route { animation: arrive .6s 1.4s both; }
@@ -131,7 +131,6 @@ const steps = [
     [data-playing] .received-token { animation: arrive .8s both; }
     @keyframes arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes packet { from { left: 0; opacity: 0; } 20%, 80% { opacity: 1; } to { left: calc(100% - 24px); opacity: 0; } }
-    @keyframes sign { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
     @keyframes stage-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
   }
   @media (max-width: 720px) {
