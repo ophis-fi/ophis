@@ -62,6 +62,10 @@ describe('isTransportError: only a positively identified transport failure', () 
     ['a blocked extension', wrap({ message: 'Forbidden: domain not allowed' })],
     ['an HTML error page behind the wrapper', wrap({ message: 'Unexpected token < in JSON at position 0' })],
     ['a fetch failure behind the wrapper', wrap({ cause: { message: 'Failed to fetch' } })],
+    [
+      'a fetch failure behind data.originalError (Codex round 18)',
+      wrap({ originalError: { message: 'Failed to fetch' } }),
+    ],
   ] as [string, unknown][])('%s', (_name, error) => expect(isTransportError(error)).toBe(true))
 
   it.each([
@@ -83,6 +87,10 @@ describe('isTransportError: only a positively identified transport failure', () 
     [
       'an unknown node answer under an ethers SERVER_ERROR',
       { code: 'SERVER_ERROR', error: { code: -32000, message: 'odd node answer' } },
+    ],
+    [
+      'a node answer behind data.originalError (Codex round 18)',
+      wrap({ originalError: { code: -32000, message: "sender doesn't have enough funds to send tx" } }),
     ],
     ['nothing', undefined],
   ] as [string, unknown][])('is not %s', (_name, error) => expect(isTransportError(error)).toBe(false))

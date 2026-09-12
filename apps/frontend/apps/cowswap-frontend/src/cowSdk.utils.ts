@@ -85,12 +85,23 @@ function hasWalletPolicyCode(error: unknown, depth = 0): boolean {
   return WALLET_POLICY_CODES.has(e.code) || NESTED_ERROR_KEYS.some((key) => hasWalletPolicyCode(e[key], depth + 1))
 }
 
-/** The node's own answer a wrapper carries, if any: a nested object with a code or message, or a bare string. */
-function nestedNodeAnswer(e: RpcErrorLike): unknown {
+/**
+ * The node's own answer a wrapper carries, if any: a nested object with a code
+ * or message, or a bare string, reached through wrapper-only objects such as
+ * MetaMask's data.originalError.
+ */
+function nodeAnswerOf(value: unknown, depth: number): unknown {
+  if (typeof value === 'string') return value.length > 0 ? value : undefined
+  if (!value || typeof value !== 'object') return undefined
+  if ('code' in value || 'message' in value) return value
+  return nestedNodeAnswer(value as RpcErrorLike, depth + 1)
+}
+
+function nestedNodeAnswer(e: RpcErrorLike, depth = 0): unknown {
+  if (depth > MAX_ERROR_DEPTH) return undefined
   for (const key of NESTED_ERROR_KEYS) {
-    const value = e[key]
-    if (typeof value === 'string' && value.length > 0) return value
-    if (value && typeof value === 'object' && ('code' in value || 'message' in value)) return value
+    const answer = nodeAnswerOf(e[key], depth)
+    if (answer !== undefined) return answer
   }
   return undefined
 }
