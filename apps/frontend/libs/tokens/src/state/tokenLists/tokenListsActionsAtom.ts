@@ -12,34 +12,36 @@ import {
 import { ListState } from '../../types'
 import { environmentAtom } from '../environmentAtom'
 
-export const upsertListsAtom = atom(null, async (get, set, chainId: SupportedChainId, listsStates: ListState[]) => {
-  const globalState = await get(listsStatesByChainAtom)
-  const chainState = globalState[chainId]
+export const upsertListsAtom = atom(null, (_get, set, chainId: SupportedChainId, listsStates: ListState[]) =>
+  set(listsStatesByChainAtom, async (previous) => {
+    const globalState = await previous
+    const chainState = globalState[chainId]
 
-  const update = listsStates.reduce<{ [listId: string]: ListState }>((acc, list) => {
-    const listState = chainState?.[list.source]
-    // A periodic refresh has no explicit enabled state and must preserve an
-    // explicit removal. User-driven adds carry `isEnabled: true` and may
-    // intentionally restore the list.
-    if (listState === 'deleted' && list.isEnabled !== true) return acc
-    const defaultEnabledState = listState === 'deleted' ? true : listState?.isEnabled
+    const update = listsStates.reduce<{ [listId: string]: ListState }>((acc, list) => {
+      const listState = chainState?.[list.source]
+      // A periodic refresh has no explicit enabled state and must preserve an
+      // explicit removal. User-driven adds carry `isEnabled: true` and may
+      // intentionally restore the list.
+      if (listState === 'deleted' && list.isEnabled !== true) return acc
+      const defaultEnabledState = listState === 'deleted' ? true : listState?.isEnabled
 
-    acc[list.source] = {
-      ...list,
-      isEnabled: typeof list.isEnabled === 'boolean' ? list.isEnabled : defaultEnabledState,
+      acc[list.source] = {
+        ...list,
+        isEnabled: typeof list.isEnabled === 'boolean' ? list.isEnabled : defaultEnabledState,
+      }
+
+      return acc
+    }, {})
+
+    return {
+      ...globalState,
+      [chainId]: {
+        ...chainState,
+        ...update,
+      },
     }
-
-    return acc
-  }, {})
-
-  set(listsStatesByChainAtom, {
-    ...globalState,
-    [chainId]: {
-      ...chainState,
-      ...update,
-    },
-  })
-})
+  }),
+)
 export const addListAtom = atom(null, (get, set, state: ListState) => {
   const { chainId, widgetAppCode } = get(environmentAtom)
   const userAddedTokenLists = get(userAddedListsSourcesAtom)

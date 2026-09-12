@@ -28,7 +28,8 @@
  * strings come from `ophisSolverPublicLabel` / `ophisSolverPublicDescription`,
  * which neutralize every non-Ophis (third-party aggregator) brand: Ophis public
  * copy never names a competitor (standing copy rule). Only the Ophis-run
- * baseline solver keeps a plain, non-brand label.
+ * baseline solver keeps a plain, non-brand label. UP33 is explicitly named to
+ * distinguish the requested direct-liquidity lane; Ophis remains its operator.
  *
  * Counts derived from this registry are phrased "up to N": being dispatched an
  * auction does not guarantee a solver returns a solution for it.
@@ -132,7 +133,8 @@ export function ophisSolverPublicLabel(solverId: string): string {
   const normalizedSolverId = solverId.toLowerCase()
 
   if (normalizedSolverId === 'baseline') return 'Baseline'
-  if (['uniswap-v4', 'ekubo', 'up33'].includes(normalizedSolverId)) return 'Ophis direct solver'
+  if (normalizedSolverId === 'up33') return 'Ophis UP33 solver'
+  if (['uniswap-v4', 'ekubo'].includes(normalizedSolverId)) return 'Ophis direct solver'
 
   return OPHIS_EXTERNAL_SOLVER_LABEL
 }
@@ -142,7 +144,8 @@ export function ophisSolverPublicDescription(solverId: string): string {
   const normalizedSolverId = solverId.toLowerCase()
 
   if (normalizedSolverId === 'baseline') return 'Ophis baseline solver routing over on-chain liquidity.'
-  if (['uniswap-v4', 'ekubo', 'up33'].includes(normalizedSolverId)) {
+  if (normalizedSolverId === 'up33') return 'Ophis-operated solver routing directly through UP33 liquidity.'
+  if (['uniswap-v4', 'ekubo'].includes(normalizedSolverId)) {
     return 'Ophis-operated direct solver routing through canonical on-chain liquidity.'
   }
 

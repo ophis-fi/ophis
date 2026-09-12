@@ -164,6 +164,22 @@ describe('listsStatesByChainAtom - token lists state', () => {
   })
 
   describe('upsertListsAtom', () => {
+    it('merges independently completed lists without losing a disabled list', async () => {
+      const store = createStore()
+      store.set(listsStatesByChainAtom, {
+        ...DEFAULT_LISTS_STATE,
+        [MOCK_CHAIN_ID]: { [MOCK_LIST_STATE.source]: { ...MOCK_LIST_STATE, isEnabled: false } },
+      })
+      const { isEnabled: _enabled, ...refreshedList } = MOCK_LIST_STATE
+      await Promise.all([
+        store.set(upsertListsAtom, MOCK_CHAIN_ID, [refreshedList]),
+        store.set(upsertListsAtom, MOCK_CHAIN_ID, [MOCK_LIST_STATE_2]),
+      ])
+      const state = (await store.get(listsStatesByChainAtom))[MOCK_CHAIN_ID]
+      expect(state?.[MOCK_LIST_STATE.source]).toEqual({ ...MOCK_LIST_STATE, isEnabled: false })
+      expect(state?.[MOCK_LIST_STATE_2.source]).toEqual(MOCK_LIST_STATE_2)
+    })
+
     it('preserves a removed-list tombstone when a refresh has no explicit enabled state', async () => {
       const store = createStore()
 

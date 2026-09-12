@@ -1,41 +1,15 @@
 import { useAtomValue, useSetAtom } from 'jotai'
-import { atomWithStorage } from 'jotai/utils'
 import { ReactNode, useEffect } from 'react'
 
-import { atomWithPartialUpdate, isInjectedWidget } from '@cowprotocol/common-utils'
-import { getJotaiMergerStorage } from '@cowprotocol/core'
-import { ChainInfo, mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
-import { PersistentStateByChain } from '@cowprotocol/types'
+import { isInjectedWidget } from '@cowprotocol/common-utils'
+import { ChainInfo, SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import * as Sentry from '@sentry/browser'
-import useSWR, { SWRConfiguration } from 'swr'
 
-import { getFulfilledResults, getIsTimeToUpdate, TOKENS_LISTS_UPDATER_INTERVAL } from './helpers'
+import { useTokenListsQuery } from './useTokenListsQuery'
 
-import { fetchTokenList } from '../../services/fetchTokenList'
 import { environmentAtom, updateEnvironmentAtom } from '../../state/environmentAtom'
-import { upsertListsAtom } from '../../state/tokenLists/tokenListsActionsAtom'
-import { allListsSourcesAtom, tokenListsUpdatingAtom } from '../../state/tokenLists/tokenListsStateAtom'
-import { ListState } from '../../types'
 import { UserAddedTokensUpdater } from '../UserAddedTokensUpdater'
-
-const LAST_UPDATE_TIME_DEFAULT = 0
-
-const { atom: lastUpdateTimeAtom, updateAtom: updateLastUpdateTimeAtom } = atomWithPartialUpdate(
-  atomWithStorage<PersistentStateByChain<number>>(
-    'tokens:lastUpdateTimeAtom:v6',
-    mapSupportedNetworks(LAST_UPDATE_TIME_DEFAULT),
-    getJotaiMergerStorage(),
-    {
-      getOnInit: true,
-    },
-  ),
-)
-
-const swrOptions: SWRConfiguration = {
-  refreshInterval: TOKENS_LISTS_UPDATER_INTERVAL,
-  revalidateOnFocus: false,
-}
 
 const NETWORKS_WITHOUT_RESTRICTIONS: SupportedChainId[] = [SupportedChainId.SEPOLIA]
 
@@ -65,42 +39,11 @@ export function TokensListsUpdater({
 }: TokensListsUpdaterProps): ReactNode {
   const { chainId } = useAtomValue(environmentAtom)
   const setEnvironment = useSetAtom(updateEnvironmentAtom)
-  const allTokensLists = useAtomValue(allListsSourcesAtom)
-  const lastUpdateTimeState = useAtomValue(lastUpdateTimeAtom)
-  const updateLastUpdateTime = useSetAtom(updateLastUpdateTimeAtom)
-
-  const setTokenListsUpdating = useSetAtom(tokenListsUpdatingAtom)
-  const upsertLists = useSetAtom(upsertListsAtom)
+  useTokenListsQuery()
 
   useEffect(() => {
     setEnvironment({ chainId: currentChainId, enableLpTokensByDefault, isYieldEnabled, bridgeNetworkInfo })
   }, [setEnvironment, currentChainId, enableLpTokensByDefault, isYieldEnabled, bridgeNetworkInfo])
-
-  useEffect(() => {
-    updateLastUpdateTime({ [chainId]: 0 })
-  }, [chainId, updateLastUpdateTime])
-
-  // Fetch tokens lists once in 6 hours
-  const { data: listsStates, isLoading } = useSWR<ListState[] | null>(
-    ['TokensListsUpdater', allTokensLists, chainId, lastUpdateTimeState],
-    () => {
-      if (!getIsTimeToUpdate(lastUpdateTimeState[chainId] || LAST_UPDATE_TIME_DEFAULT)) return null
-
-      return Promise.allSettled(allTokensLists.map(fetchTokenList)).then(getFulfilledResults)
-    },
-    swrOptions,
-  )
-
-  // Fulfill tokens lists with tokens from fetched lists
-  useEffect(() => {
-    setTokenListsUpdating(isLoading)
-
-    if (isLoading || !listsStates) return
-
-    updateLastUpdateTime({ [chainId]: Date.now() })
-
-    upsertLists(chainId, listsStates)
-  }, [listsStates, isLoading, chainId, upsertLists, setTokenListsUpdating, updateLastUpdateTime])
 
   // Check if a user is from US and use Uniswap list, because of the SEC regulations
   useEffect(() => {
@@ -118,7 +61,6 @@ export function TokensListsUpdater({
 
         if (isUsUser) {
           setEnvironment({ useCuratedListOnly: true })
-          updateLastUpdateTime({ [chainId]: 0 })
         }
       })
       .catch((error) => {

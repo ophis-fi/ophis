@@ -26,7 +26,7 @@ test('built-on strip has updated headline and subhead', async ({ page }) => {
 test('venue grid includes the requested DEXs and identifies the pending integration', async ({ page }) => {
   await page.goto('/')
   const grid = page.locator('.protocol-grid')
-  for (const name of ['RamsesX', 'Dexalot', 'Native', 'Pharaoh', 'Arcus']) {
+  for (const name of ['RamsesX', 'Dexalot', 'Native', 'Pharaoh', 'Arcus', 'UP33']) {
     await expect(grid.getByText(name, { exact: true })).toBeVisible()
   }
   await expect(grid.getByText('Pons', { exact: true })).toHaveCount(0)

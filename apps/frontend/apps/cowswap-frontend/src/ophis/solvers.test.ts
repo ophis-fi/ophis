@@ -124,7 +124,9 @@ describe('solver display-alias layer', () => {
     expect(ophisSolverPublicLabel('uniswap-v4')).toBe('Ophis direct solver')
     expect(ophisSolverPublicLabel('UNISWAP-V4')).toBe('Ophis direct solver')
     expect(ophisSolverPublicLabel('ekubo')).toBe('Ophis direct solver')
-    expect(ophisSolverPublicLabel('up33')).toBe('Ophis direct solver')
+    expect(ophisSolverPublicLabel('up33')).toBe('Ophis UP33 solver')
+    expect(ophisSolverPublicLabel('UP33')).toBe('Ophis UP33 solver')
+    expect(ophisSolverPublicDescription('up33')).toContain('Ophis-operated')
     expect(ophisSolverPublicDescription('uniswap-v4')).toMatch(/Ophis-operated direct solver/i)
   })
 
