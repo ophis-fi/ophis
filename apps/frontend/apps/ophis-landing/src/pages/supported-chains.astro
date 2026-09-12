@@ -14,6 +14,7 @@ import {
   SOVEREIGN_CHAINS,
   SOVEREIGN_CHAIN_LIST as sovereignList,
   NEAR_DESTINATIONS,
+  NEAR_DESTINATION_LIST as destinationList,
 } from '../data/chains'
 
 const { updated } = canonicalPage('/supported-chains/')
@@ -23,15 +24,15 @@ const tableChains = [...EVM_CHAINS].sort((a, b) => a.name.localeCompare(b.name))
 const FAQS = [
   {
     q: 'Which chains does Ophis support?',
-    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated sovereign networks, and supports Solana and Bitcoin as destinations via NEAR Intents.`,
+    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated sovereign networks, and supports ${destinationList} as destinations via NEAR Intents.`,
   },
   {
     q: 'What does Ophis-operated mean?',
     a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement contract at a non-canonical address. Every path pays a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap). Agents and integrators must resolve the per-chain settlement domain and orderbook host via the @ophis/sdk helpers or the MCP list_chains tool before signing, because CoW's canonical address yields a domain the deployed contract rejects.`,
   },
   {
-    q: 'How do Solana and Bitcoin destinations work?',
-    a: `Solana and Bitcoin are supported as destinations from any EVM source chain via NEAR Intents, with no second wallet required. They are destinations only: a swap starts from an EVM chain.`,
+    q: 'How do cross-chain destinations work?',
+    a: `${destinationList} are supported as destinations from any EVM source chain via NEAR Intents, with no second wallet required. They are destinations only: a swap starts from an EVM chain.`,
   },
   {
     q: 'Is there a testnet?',
@@ -55,17 +56,17 @@ const itemListLd = {
 
 <ContentPage
   title={`Supported chains: ${EVM_CHAIN_COUNT} EVM networks | Ophis`}
-  description={`The canonical list of the ${EVM_CHAIN_COUNT} EVM chains Ophis supports, including the Ophis-operated sovereign networks, plus Solana and Bitcoin destinations via NEAR Intents.`}
+  description={`The canonical list of the ${EVM_CHAIN_COUNT} EVM chains Ophis supports, including the Ophis-operated sovereign networks, plus ${destinationList} destinations via NEAR Intents.`}
   path="/supported-chains/"
   heading="Supported chains"
-  lede={`Ophis settles MEV-protected batch auctions on ${EVM_CHAIN_COUNT} EVM chains and reaches Solana and Bitcoin as destinations via NEAR Intents. This page is the canonical list.`}
+  lede={`Ophis settles MEV-protected batch auctions on ${EVM_CHAIN_COUNT} EVM chains and reaches ${destinationList} as destinations via NEAR Intents. This page is the canonical list.`}
   updated={updated}
   faqs={FAQS}
   extraLd={[itemListLd]}
 >
   <p>
     <strong>The short version:</strong> {EVM_CHAIN_COUNT} EVM chains, {SOVEREIGN_CHAINS.length} of
-    them Ophis-operated ({sovereignList}), plus Solana and Bitcoin as NEAR Intents destinations.
+    them Ophis-operated ({sovereignList}), plus {destinationList} as cross-chain destinations.
     The full table with chain IDs and settlement mode:
   </p>
 

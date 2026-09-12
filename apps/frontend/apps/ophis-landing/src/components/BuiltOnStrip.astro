@@ -4,11 +4,11 @@
 // Bungee was dropped 2026-09-10: its API is permanently gone and the swap app
 // no longer routes through it.
 const items = [
-  { name: 'CoW Protocol',    note: 'Settlement stack we forked.',                  logo: '/logos/partners/cow.svg' },
+  { name: 'CoW Protocol',    note: 'Settlement stack we forked.',                  logo: '/logos/partners/cow-icon.svg' },
   { name: 'Aleph Cloud',     note: 'Decentralized compute infra.',                 logo: '/logos/partners/aleph.png' },
-  { name: 'LibertAI',        note: 'LLM for natural-language intent parsing.',     logo: '/logos/partners/libertai.png' },
+  { name: 'Across',         note: 'Cross-chain transfers between EVM networks.', logo: '/logos/partners/across.svg' },
   { name: 'Trail of Bits',   note: 'Security review tooling (Slither, Echidna).',  logo: '/logos/partners/trailofbits.png' },
-  { name: 'NEAR Intents',    note: 'Cross-chain bridging to Solana + Bitcoin.',    logo: '/logos/partners/near.png' },
+  { name: 'NEAR Intents',    note: 'Routing to supported destination chains.',    logo: '/logos/partners/near.png' },
 ]
 ---
 <section class="built-on">
@@ -17,7 +17,7 @@ const items = [
       Built with the tools and partners <em>that earned our trust.</em>
     </h2>
     <p class="sub reveal-up" data-reveal>
-      Forked from CoW Protocol's settlement stack. Reviewed with Trail of Bits' open-source security tooling. Powered by Aleph Cloud compute. LLM intent parsing via LibertAI. Cross-chain routing via NEAR Intents and Across.
+      Forked from CoW Protocol's settlement stack. Reviewed with Trail of Bits' open-source security tooling. Powered by Aleph Cloud compute. Cross-chain routing via NEAR Intents and Across.
     </p>
     <div class="built-grid stagger">
       {items.map(item => (

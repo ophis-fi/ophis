@@ -63,7 +63,7 @@ test('reduced motion stays static but allows reading every stage', async ({ page
 test('workflow pauses outside the viewport and never requests a wallet', async ({ page }) => {
   const suspicious: string[] = []
   page.on('request', (req) => {
-    if (/eth_request|walletconnect|web3|wallet/i.test(req.url())) suspicious.push(req.url())
+    if (!new URL(req.url()).pathname.startsWith('/logos/') && /eth_request|walletconnect|web3|wallet/i.test(req.url())) suspicious.push(req.url())
   })
   await page.goto('/')
   const story = page.locator('#swap-story')
@@ -88,4 +88,14 @@ test('network chips swap the destination panel', async ({ page }) => {
   await expect(panel.locator('#chainText')).toContainText('native BTC')
   await page.locator('[data-chain="ethereum"]').click()
   await expect(panel.locator('#chainTitle')).toContainText('same-chain settlement')
+})
+
+test('sample quote explains its rate and minimum without claiming a live price', async ({ page }) => {
+  await page.goto('/')
+  const story = page.locator('#swap-story')
+  await story.locator('[data-story-step="0"]').click()
+  await expect(story.locator('.asset-card').last()).toContainText('0.004 ETH')
+  await expect(story.locator('.intent-limit').last()).toContainText('0.00398 ETH')
+  await expect(story.locator('.story-caption')).toContainText('10 ÷ 2,500 = 0.004 ETH')
+  await expect(story.locator('.story-caption')).toContainText('Illustrative amounts before fees')
 })

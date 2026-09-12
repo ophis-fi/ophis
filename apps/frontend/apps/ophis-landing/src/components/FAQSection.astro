@@ -12,13 +12,13 @@
  *
  * Accurate Ophis facts only. No em-dash in rendered copy (commas / colons).
  */
-import { EVM_CHAIN_COUNT } from '../data/chains'
+import { EVM_CHAIN_COUNT, NEAR_DESTINATION_LIST as destinationList } from '../data/chains'
 import { jsonLdSafe } from '../lib/jsonld'
 
 const faqs: { q: string; a: string }[] = [
   {
     q: 'What is Ophis?',
-    a: 'Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Traders can route supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets; builders can integrate through MCP, SDK, or API. Ophis batch-settles on supported EVM chains, with Solana and Bitcoin destinations via NEAR Intents. It is non-custodial and a CoW Protocol fork.',
+    a: `Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Traders can route supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets; builders can integrate through MCP, SDK, or API. Ophis batch-settles on supported EVM chains, with ${destinationList} destinations via NEAR Intents. It is non-custodial and a CoW Protocol fork.`,
   },
   {
     q: 'What does Ophis charge?',
@@ -26,7 +26,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'Which chains does Ophis support?',
-    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with Optimism, Unichain, and Robinhood Chain as its operated sovereign networks, and supports Solana and Bitcoin as destinations via NEAR Intents.`,
+    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with Optimism, Unichain, and Robinhood Chain as its operated sovereign networks, and supports ${destinationList} as destinations via NEAR Intents.`,
   },
   {
     q: 'How is Ophis different from CoW Swap?',
