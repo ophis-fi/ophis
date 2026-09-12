@@ -14,9 +14,8 @@ import {
   SOVEREIGN_CHAINS,
   SOVEREIGN_CHAIN_LIST as sovereignList,
   NEAR_DESTINATIONS,
+  NEAR_DESTINATION_LIST as destinationList,
 } from '../data/chains'
-
-const destinationList = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' }).format(NEAR_DESTINATIONS)
 
 const { updated } = canonicalPage('/supported-chains/')
 // Alphabetical for the reference table (the homepage strip keeps display order).

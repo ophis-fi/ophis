@@ -58,3 +58,8 @@ export const SOVEREIGN_CHAIN_LIST = new Intl.ListFormat('en', {
 
 /** Additional destinations reachable from supported EVM source chains. */
 export const NEAR_DESTINATIONS = ['Solana', 'Bitcoin', 'Monad', 'Hyperliquid', 'X Layer', 'Sui', 'Tron'] as const
+
+export const NEAR_DESTINATION_LIST = new Intl.ListFormat('en', {
+  style: 'long',
+  type: 'conjunction',
+}).format(NEAR_DESTINATIONS)

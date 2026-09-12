@@ -43,3 +43,16 @@ test('chains marquee has a keyboard-operable pause, hidden until focused (WCAG 2
   await page.keyboard.press('Space')
   await expect(page.locator('.chains-track')).toHaveCSS('animation-play-state', 'paused')
 })
+
+test('FAQ and machine-readable summaries match the supported destinations', async ({ page }) => {
+  await page.goto('/')
+  const faq = page.locator('details').filter({ hasText: 'Which chains does Ophis support?' })
+  const schemas = (await page.locator('script[type="application/ld+json"]').allTextContents()).map((text) => JSON.parse(text))
+  const software = schemas.find((schema) => schema['@type'] === 'SoftwareApplication')
+  const llms = await (await page.request.get('/llms.txt')).text()
+  for (const name of EXPECTED_CHAINS.slice(13)) {
+    await expect(faq).toContainText(name)
+    expect(software.description).toContain(name)
+    expect(llms).toContain(name)
+  }
+})
