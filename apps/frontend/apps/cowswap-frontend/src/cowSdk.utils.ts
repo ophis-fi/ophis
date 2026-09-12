@@ -73,6 +73,8 @@ export function isExecutionError(error: unknown, depth = 0): boolean {
 
 /** JSON-RPC and ethers codes a failing transport produces (MetaMask wraps upstream RPC failures as -32603). */
 const TRANSPORT_ERROR_CODES = new Set<unknown>([-32603, -32005, -32002, 'SERVER_ERROR', 'TIMEOUT', 'NETWORK_ERROR'])
+/** EIP-1193 provider errors that are the wallet's own decision, whatever text they carry. */
+const WALLET_POLICY_CODES = new Set<unknown>([4001, 4100, 4200, 4900, 4901])
 const TRANSPORT_ERROR_RE =
   /timeout|timed out|rate limit|too many requests|limit exceeded|service unavailable|failed to fetch|network ?error|econn|socket hang up|bad gateway|gateway time-?out|forbidden|internal json-rpc error|\b(403|429|500|502|503|504)\b/i
 
@@ -85,10 +87,11 @@ const TRANSPORT_ERROR_RE =
  */
 export function isTransportError(error: unknown, depth = 0): boolean {
   if (depth > MAX_ERROR_DEPTH || error === null || error === undefined) return false
+  const e = (typeof error === 'object' ? error : {}) as RpcErrorLike
+  // A policy code wins over any message text ("Forbidden" on a 4100 is still the wallet's answer).
+  if (WALLET_POLICY_CODES.has(e.code)) return false
   const message = getProviderErrorMessage(error)
   if (typeof message === 'string' && TRANSPORT_ERROR_RE.test(message)) return true
-  if (typeof error !== 'object') return false
-  const e = error as RpcErrorLike
   return TRANSPORT_ERROR_CODES.has(e.code) || NESTED_ERROR_KEYS.some((key) => isTransportError(e[key], depth + 1))
 }
 
