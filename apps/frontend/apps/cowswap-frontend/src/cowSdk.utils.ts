@@ -29,9 +29,12 @@ const READ_METHODS = new Set([
 /** A wallet read that has not answered by then is treated as failed and retried on the app RPC. */
 export const WALLET_READ_TIMEOUT_MS = 10_000
 
-/** Node answers produced by running the request: reverts, VM failures, gas and nonce checks. */
+/**
+ * Node answers produced by running or validating the request against chain
+ * state: reverts, VM failures, gas, nonce, balance and EIP-1559 fee checks.
+ */
 const EXECUTION_ERROR_RE =
-  /revert|execution|insufficient funds|gas required exceeds|intrinsic gas|nonce|out of gas|invalid opcode|invalid jump|stack (underflow|overflow)|call depth|max code size|contract creation code storage/i
+  /revert|execution|insufficient (funds|balance)|gas required exceeds|intrinsic gas|nonce|out of gas|invalid opcode|invalid jump|stack (underflow|overflow)|call depth|max code size|contract creation code storage|fee cap|base fee|max fee per gas|priority fee|tip higher|underpriced|exceeds block gas limit|gas limit reached|already known|already imported|sender is not an eoa/i
 
 interface RpcErrorLike {
   code?: unknown

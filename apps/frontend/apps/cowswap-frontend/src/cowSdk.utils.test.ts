@@ -189,6 +189,18 @@ describe('isExecutionError', () => {
       'invalid jump destination',
     ])
       expect(isExecutionError({ code: -32000, message })).toBe(true)
+    // EIP-1559 and tx-pool validation answers, wrapped the MetaMask way (Codex round 12)
+    for (const message of [
+      'max fee per gas less than block base fee: maxFeePerGas: 1, baseFee: 2',
+      'fee cap less than block base fee',
+      'max priority fee per gas higher than max fee per gas',
+      'transaction underpriced',
+      'exceeds block gas limit',
+      'insufficient balance for transfer',
+    ])
+      expect(
+        isExecutionError({ code: -32603, message: 'Internal JSON-RPC error.', data: { code: -32000, message } }),
+      ).toBe(true)
   })
 
   it('classifies connectivity, rate-limit and timeout failures as transport errors', () => {
