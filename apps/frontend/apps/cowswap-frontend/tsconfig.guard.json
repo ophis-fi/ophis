@@ -2,9 +2,17 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["jest", "node", "vite/client", "vite-plugin-svgr/client"]
+    "types": [
+      "jest",
+      "node",
+      "vite/client",
+      "vite-plugin-svgr/client"
+    ]
   },
-  "files": ["../../node_modules/@nx/react/typings/cssmodule.d.ts", "../../node_modules/@nx/react/typings/image.d.ts"],
+  "files": [
+    "../../node_modules/@nx/react/typings/cssmodule.d.ts",
+    "../../node_modules/@nx/react/typings/image.d.ts"
+  ],
   "include": [
     "src/**/*.d.ts",
     "src/ophis/hooks/useIsOphisSwap.test.tsx",
@@ -16,6 +24,7 @@
     "src/tradingSdk/bridgingSdk.test.ts",
     "src/ophis/hooks/useBeatMarket.test.ts",
     "src/modules/usdAmount/services/fetchCurrencyUsdPrice.test.ts",
+    "src/cowSdk.utils.test.ts",
     "src/modules/tradeQuote/utils/getBridgeQuoteSigner.test.ts",
     "src/modules/tokensList/containers/TokenSearchResults/index.test.tsx",
     "src/common/hooks/useVerifyOphisRecipientName.test.ts",
