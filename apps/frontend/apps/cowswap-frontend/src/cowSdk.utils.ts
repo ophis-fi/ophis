@@ -51,16 +51,22 @@ const MAX_ERROR_DEPTH = 6
  * rate limit, blocked extension, timeout) justify asking the app RPC instead.
  * Every nesting level a known wrapper can add is inspected.
  */
-export function isExecutionError(error: unknown, depth = 0): boolean {
-  if (depth > MAX_ERROR_DEPTH || error === null || error === undefined) return false
+function hasExecutionMessage(error: unknown): boolean {
   // WalletConnect-style providers reject with a bare string; getProviderErrorMessage knows that shape.
   const message = getProviderErrorMessage(error)
-  if (typeof message === 'string' && EXECUTION_ERROR_RE.test(message)) return true
+  return typeof message === 'string' && EXECUTION_ERROR_RE.test(message)
+}
+
+function hasExecutionCode(e: RpcErrorLike): boolean {
+  return e.code === 3 || (typeof e.data === 'string' && e.data.startsWith('0x'))
+}
+
+export function isExecutionError(error: unknown, depth = 0): boolean {
+  if (depth > MAX_ERROR_DEPTH || error === null || error === undefined) return false
+  if (hasExecutionMessage(error)) return true
   if (typeof error !== 'object') return false
   const e = error as RpcErrorLike
-  if (e.code === 3) return true
-  if (typeof e.data === 'string' && e.data.startsWith('0x')) return true
-  return NESTED_ERROR_KEYS.some((key) => isExecutionError(e[key], depth + 1))
+  return hasExecutionCode(e) || NESTED_ERROR_KEYS.some((key) => isExecutionError(e[key], depth + 1))
 }
 
 /**
