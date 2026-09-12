@@ -8,23 +8,11 @@ import { JsonRpcProvider } from '@ethersproject/providers'
  * net_version): the app RPC is picked from the chain the wallet reported, so
  * answering identity from it would let stale React state mask a network switch.
  */
-const READ_METHODS = new Set([
-  'eth_call',
-  'eth_getCode',
-  'eth_getBalance',
-  'eth_getStorageAt',
-  'eth_blockNumber',
-  'eth_getBlockByNumber',
-  'eth_getBlockByHash',
-  'eth_getTransactionCount',
-  'eth_getTransactionByHash',
-  'eth_getTransactionReceipt',
-  'eth_getLogs',
-  'eth_estimateGas',
-  'eth_gasPrice',
-  'eth_feeHistory',
-  'eth_maxPriorityFeePerGas',
-])
+const READ_METHODS = new Set(
+  'eth_call eth_getCode eth_getBalance eth_getStorageAt eth_blockNumber eth_getBlockByNumber eth_getBlockByHash eth_getTransactionCount eth_getTransactionByHash eth_getTransactionReceipt eth_getLogs eth_estimateGas eth_gasPrice eth_feeHistory eth_maxPriorityFeePerGas'.split(
+    ' ',
+  ),
+)
 
 /** A wallet read that has not answered by then is treated as failed and retried on the app RPC. */
 export const WALLET_READ_TIMEOUT_MS = 10_000
@@ -79,7 +67,9 @@ const TRANSPORT_ERROR_CODES = new Set<unknown>([-32603, -32005, -32002, 'SERVER_
 /** EIP-1193 provider errors that are the wallet's own decision, whatever text they carry. */
 const WALLET_POLICY_CODES = new Set<unknown>([4001, 4100, 4200, 4900, 4901])
 const TRANSPORT_ERROR_RE =
-  /timeout|timed out|rate limit|too many requests|limit exceeded|service unavailable|failed to fetch|load failed|network ?error|econn|socket hang up|bad gateway|gateway time-?out|forbidden|internal json-rpc error|\b(403|429|500|502|503|504)\b/i
+  /timeout|timed out|rate limit|too many requests|limit exceeded|service unavailable|failed to fetch|fetch failed|load failed|network ?(error|request failed)|failed to connect|connection (refused|reset|closed)|enotfound|unreachable|econn|socket hang up|bad gateway|gateway time-?out|forbidden|unexpected (token|end of json)|invalid json|non-200|internal json-rpc error|\b(403|429|500|502|503|504)\b/i
+/** Wrappers that carry nothing but the node's answer: judge the answer, not the envelope. */
+const GENERIC_WRAPPER_CODES = new Set<unknown>([-32603, 'SERVER_ERROR'])
 
 /**
  * Only an error positively identified as the wallet's TRANSPORT failing (dead
@@ -95,13 +85,29 @@ function hasWalletPolicyCode(error: unknown, depth = 0): boolean {
   return WALLET_POLICY_CODES.has(e.code) || NESTED_ERROR_KEYS.some((key) => hasWalletPolicyCode(e[key], depth + 1))
 }
 
+/** The node's own answer a wrapper carries, if any: a nested object with a code or message, or a bare string. */
+function nestedNodeAnswer(e: RpcErrorLike): unknown {
+  for (const key of NESTED_ERROR_KEYS) {
+    const value = e[key]
+    if (typeof value === 'string' && value.length > 0) return value
+    if (value && typeof value === 'object' && ('code' in value || 'message' in value)) return value
+  }
+  return undefined
+}
+
+function hasTransportMessage(error: unknown): boolean {
+  const message = getProviderErrorMessage(error)
+  return typeof message === 'string' && TRANSPORT_ERROR_RE.test(message)
+}
+
 function hasTransportMarker(error: unknown, depth = 0): boolean {
   if (depth > MAX_ERROR_DEPTH || error === null || error === undefined) return false
-  const message = getProviderErrorMessage(error)
-  if (typeof message === 'string' && TRANSPORT_ERROR_RE.test(message)) return true
-  if (typeof error !== 'object') return false
-  const e = error as RpcErrorLike
-  return TRANSPORT_ERROR_CODES.has(e.code) || NESTED_ERROR_KEYS.some((key) => hasTransportMarker(e[key], depth + 1))
+  const e = (typeof error === 'object' ? error : {}) as RpcErrorLike
+  const nested = nestedNodeAnswer(e)
+  // A generic envelope (MetaMask -32603, ethers SERVER_ERROR) says nothing itself; the node's answer decides.
+  if (nested !== undefined && GENERIC_WRAPPER_CODES.has(e.code)) return hasTransportMarker(nested, depth + 1)
+  if (hasTransportMessage(error) || TRANSPORT_ERROR_CODES.has(e.code)) return true
+  return NESTED_ERROR_KEYS.some((key) => hasTransportMarker(e[key], depth + 1))
 }
 
 export function isTransportError(error: unknown): boolean {
@@ -111,17 +117,13 @@ export function isTransportError(error: unknown): boolean {
 }
 
 /**
- * The wallet's provider first, so reads reflect whatever chain state the wallet
- * sees (a fork, a private RPC); the app's keyed RPC only when the wallet's RPC
- * fails or stalls on a read at the transport level. Writes, signing, chain
- * identity and the wallet's own policy answers always stay on the wallet.
- *
- * Without the fallback a wallet whose RPC is down (a custom URL that died, or
- * the extension blocked by an RPC domain allowlist) took every bridge quote
- * down with it: signing the CoW Shed hook reads the account code before any
- * quote API is called, and the trade form only showed "Error loading price".
- * Same-chain swaps are API-only and kept working, which made it look like a
- * bridge bug.
+ * The wallet's provider first, so reads reflect the chain state the wallet sees
+ * (a fork, a private RPC); the app's keyed RPC only when the wallet's RPC fails
+ * or stalls on a read at the transport level. Writes, signing, chain identity
+ * and the wallet's own policy answers always stay on the wallet. Without this,
+ * a wallet whose RPC was down took every bridge quote with it (the CoW Shed hook
+ * signing reads the account code before any quote API is called) while
+ * same-chain swaps, API-only, kept working.
  */
 export class WalletFirstReadProvider extends JsonRpcProvider {
   constructor(

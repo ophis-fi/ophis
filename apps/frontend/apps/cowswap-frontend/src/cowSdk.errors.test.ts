@@ -60,6 +60,8 @@ describe('isTransportError: only a positively identified transport failure', () 
     ['request execution timed out (Codex round 13)', { code: -32603, message: 'request execution timed out' }],
     ['an HTTP 403', { code: 'SERVER_ERROR', message: 'bad response (status=403)' }],
     ['a blocked extension', wrap({ message: 'Forbidden: domain not allowed' })],
+    ['an HTML error page behind the wrapper', wrap({ message: 'Unexpected token < in JSON at position 0' })],
+    ['a fetch failure behind the wrapper', wrap({ cause: { message: 'Failed to fetch' } })],
   ] as [string, unknown][])('%s', (_name, error) => expect(isTransportError(error)).toBe(true))
 
   it.each([
@@ -74,6 +76,14 @@ describe('isTransportError: only a positively identified transport failure', () 
       { code: 'SERVER_ERROR', message: 'bad response (status=403)', error: { code: 4001 } },
     ],
     ['an unknown error', new Error('something odd')],
+    [
+      'a node answer the envelope carries (Codex round 17)',
+      wrap({ code: -32000, message: "sender doesn't have enough funds to send tx" }),
+    ],
+    [
+      'an unknown node answer under an ethers SERVER_ERROR',
+      { code: 'SERVER_ERROR', error: { code: -32000, message: 'odd node answer' } },
+    ],
     ['nothing', undefined],
   ] as [string, unknown][])('is not %s', (_name, error) => expect(isTransportError(error)).toBe(false))
 })
