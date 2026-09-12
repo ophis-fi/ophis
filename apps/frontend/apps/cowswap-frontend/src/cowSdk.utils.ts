@@ -79,7 +79,7 @@ const TRANSPORT_ERROR_CODES = new Set<unknown>([-32603, -32005, -32002, 'SERVER_
 /** EIP-1193 provider errors that are the wallet's own decision, whatever text they carry. */
 const WALLET_POLICY_CODES = new Set<unknown>([4001, 4100, 4200, 4900, 4901])
 const TRANSPORT_ERROR_RE =
-  /timeout|timed out|rate limit|too many requests|limit exceeded|service unavailable|failed to fetch|network ?error|econn|socket hang up|bad gateway|gateway time-?out|forbidden|internal json-rpc error|\b(403|429|500|502|503|504)\b/i
+  /timeout|timed out|rate limit|too many requests|limit exceeded|service unavailable|failed to fetch|load failed|network ?error|econn|socket hang up|bad gateway|gateway time-?out|forbidden|internal json-rpc error|\b(403|429|500|502|503|504)\b/i
 
 /**
  * Only an error positively identified as the wallet's TRANSPORT failing (dead

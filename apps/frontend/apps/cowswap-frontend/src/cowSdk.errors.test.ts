@@ -54,6 +54,8 @@ describe('isTransportError: only a positively identified transport failure', () 
     ['a dead endpoint', dead],
     ['a rate limit', { code: -32005, message: 'limit exceeded' }],
     ['a fetch failure', new TypeError('Failed to fetch')],
+    ["Safari's fetch failure (Codex round 16)", new TypeError('Load failed')],
+    ["Firefox's fetch failure", new TypeError('NetworkError when attempting to fetch resource.')],
     ['our own read timeout', new Error('wallet eth_getCode. Timeout after 10000 ms')],
     ['request execution timed out (Codex round 13)', { code: -32603, message: 'request execution timed out' }],
     ['an HTTP 403', { code: 'SERVER_ERROR', message: 'bad response (status=403)' }],
