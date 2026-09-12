@@ -128,6 +128,19 @@ describe('WalletFirstReadProvider: the wallet RPC first, the app RPC only when a
     expect(appRpc.send).not.toHaveBeenCalled()
   })
 
+  it('discards a fallback answer when the wallet switched chain while it was in flight (Codex round 11)', async () => {
+    const chainAnswers = ['0x1', '0x2105']
+    const wallet = {
+      send: jest.fn(async (method: string) => {
+        if (method === 'eth_chainId') return chainAnswers.shift()
+        throw dead
+      }),
+    } as unknown as JsonRpcProvider
+    const appRpc = fakeProvider(() => '0x')
+    await expect(new WalletFirstReadProvider(wallet, appRpc, 1).send('eth_getCode', ['0x1'])).rejects.toBe(dead)
+    expect(appRpc.send).toHaveBeenCalledTimes(1)
+  })
+
   it('fails closed on the wallet error when the wallet no longer reports the captured chain (Codex round 3)', async () => {
     const switched = fakeProvider(() => {
       throw dead

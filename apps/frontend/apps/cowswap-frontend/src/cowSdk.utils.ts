@@ -140,7 +140,10 @@ export class WalletFirstReadProvider extends JsonRpcProvider {
       // wrapper was built; mid-switch that is stale. Wallets answer eth_chainId
       // locally, so a live mismatch (or no answer) fails closed on the wallet error.
       if (!(await this.walletStillOnChain())) throw error
-      return this.appRpc.send(method, params)
+      const result = await this.appRpc.send(method, params)
+      // A switch that landed while the fallback was in flight makes the answer stale too.
+      if (!(await this.walletStillOnChain())) throw error
+      return result
     }
   }
 
