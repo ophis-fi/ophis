@@ -3,9 +3,9 @@ import { test, expect } from '@playwright/test'
 test('hero has editorial headline, serif emphasis, and two CTAs', async ({ page }) => {
   await page.goto('/')
   const h1 = page.locator('.hero h1')
-  await expect(h1).toContainText('Your assets.')
-  await expect(h1).toContainText('Your next move.')
-  await expect(page.locator('.hero h1 em')).toContainText('Your next move.')
+  await expect(h1).toContainText('MEV-protected swaps.')
+  await expect(page.locator('.hero h1 em')).toContainText('On your terms.')
+  await expect(page.locator('.hero .lede')).toContainText('intent-based DEX aggregator')
   const primary = page.locator('.hero .cta-primary')
   await expect(primary).toContainText(/Swap now/)
   await expect(primary).toHaveAttribute('href', 'https://swap.ophis.fi/#/swap')

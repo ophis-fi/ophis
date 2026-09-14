@@ -145,6 +145,14 @@ test('pricing page states the all-chain capture policy', async ({ page }) => {
   await expect(body).toContainText("Hosted chains apply the same Ophis base and improvement policy")
   await expect(body).not.toContainText('5 bps')
   await expect(body).not.toContainText('Hosted-chain costs follow the flat schedule')
+  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-08-12/)
+})
+
+test('acquisition pages are linked from their relevant guides', async ({ page }) => {
+  await page.goto('/ai-agent-crypto-swap-api')
+  await expect(page.locator('main a[href="/migrate/odos-api/"]')).toBeVisible()
+  await page.goto('/supported-chains')
+  await expect(page.locator('main a[href="/swap/robinhood-chain/"]')).toBeVisible()
 })
 
 test('supported-chains lists every chain from the canonical data, sovereigns badged', async ({ page }) => {

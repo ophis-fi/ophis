@@ -43,6 +43,24 @@ function CompactFooter({ borderless }: { borderless: boolean }): ReactNode {
         <styledEl.InternalLink to="/legal">Legal</styledEl.InternalLink>
       </styledEl.CompactLinks>
       <styledEl.CompactCopy>&copy; Ophis 2026</styledEl.CompactCopy>
+      <styledEl.TradeSummary aria-label="About Ophis swaps">
+        <p>
+          Ophis is an intent-based DEX aggregator for MEV-protected swaps. Choose supported tokens, review your quote
+          and signed limit, and trade with your own wallet. Solvers compete to settle your order through batch auctions.
+        </p>
+        <p>
+          Ophis charges a 0.01% base fee plus capped price-improvement capture. CoW-hosted swaps also carry upstream
+          fees.
+        </p>
+        <styledEl.CompactLinks aria-label="Swap guides">
+          <styledEl.ExternalLink href="https://ophis.fi/pricing/">Fees and pricing</styledEl.ExternalLink>
+          <styledEl.ExternalLink href="https://ophis.fi/supported-chains/">Supported chains</styledEl.ExternalLink>
+          <styledEl.ExternalLink href="https://ophis.fi/security/">Security</styledEl.ExternalLink>
+          <styledEl.ExternalLink href="https://ophis.fi/ai-agent-crypto-swap-api/">
+            Agent integrations
+          </styledEl.ExternalLink>
+        </styledEl.CompactLinks>
+      </styledEl.TradeSummary>
     </styledEl.CompactBar>
   )
 }

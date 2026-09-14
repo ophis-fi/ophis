@@ -20,4 +20,5 @@ test('landing-deploy.yml builds, runs lhci, and deploys via wrangler', () => {
   // (command injection prevention) — it must go through an env: var instead
   expect(yaml).not.toMatch(/printf.*\$\{\{.*head_commit\.message/)
   expect(yaml).toContain('RAW_MSG: ${{ github.event.head_commit.message }}')
+  expect(yaml).toContain('--sitemap apps/frontend/apps/ophis-landing/dist/sitemap.xml')
 })
