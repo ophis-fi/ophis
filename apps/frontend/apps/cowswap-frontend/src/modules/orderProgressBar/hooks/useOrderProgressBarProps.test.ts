@@ -63,16 +63,46 @@ describe('getProgressBarStepName', () => {
 })
 
 describe('solver attribution', () => {
-  it('resolves a known routing lane while CMS data is unavailable', () => {
-    expect(mergeSolverData({ solver: 'kyberswap-solve' }, {})).toMatchObject({
+  it.each([10, 130, 4663])('resolves a registered routing lane on chain %s without CMS data', (chainId) => {
+    expect(mergeSolverData({ solver: 'kyberswap-solve' }, {}, chainId)).toMatchObject({
       solver: 'kyberswap',
       displayName: 'KyberSwap',
+      description: 'Ophis-operated routing lane: KyberSwap.',
     })
   })
 
-  it('keeps an unknown address in details instead of using it as the solver name', () => {
+  it.each([
+    [1, 'kyberswap'],
+    [1, 'baseline'],
+    [130, 'uniswap-v4'],
+  ])('keeps missing metadata neutral on chain %s for solver %s', (chainId, solverId) => {
+    expect(mergeSolverData({ solver: solverId }, {}, chainId)).toMatchObject({
+      displayName: 'Unknown solver',
+      description: `Solver identity unavailable (${solverId}).`,
+    })
+  })
+
+  it.each([1, 4663])('preserves CMS attribution on chain %s', (chainId) => {
+    const metadata = {
+      solverId: 'kyberswap',
+      displayName: 'CMS solver name',
+      description: 'CMS operator description',
+      solverNetworks: [],
+    }
+    expect(mergeSolverData({ solver: 'kyberswap-solve' }, { kyberswap: metadata }, chainId)).toMatchObject(metadata)
+  })
+
+  it('keeps a missing CMS description neutral on a CoW-hosted chain', () => {
+    const metadata = { solverId: 'baseline', displayName: 'Baseline', solverNetworks: [] }
+    expect(mergeSolverData({ solver: 'baseline' }, { baseline: metadata }, 1)).toMatchObject({
+      displayName: 'Baseline',
+      description: 'Solver identity unavailable (baseline).',
+    })
+  })
+
+  it.each([1, 4663])('keeps unknown addresses in details on chain %s', (chainId) => {
     const address = '0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665'
-    const solver = mergeSolverData({ solver: address }, {})
+    const solver = mergeSolverData({ solver: address }, {}, chainId)
     expect(solver.displayName).toBe('Unknown solver')
     expect(solver.description).toContain(address)
     expect(solver.solver).toBe(address)
