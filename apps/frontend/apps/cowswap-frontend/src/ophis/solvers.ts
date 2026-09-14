@@ -132,7 +132,7 @@ const OPHIS_SOLVER_NAMES: Record<string, string> = {
 
 export function ophisSolverPublicLabel(solverId: string): string {
   const key = solverId.toLowerCase().replace(/-solve$/, '')
-  return Object.hasOwn(OPHIS_SOLVER_NAMES, key) ? OPHIS_SOLVER_NAMES[key] : 'Unknown solver'
+  return Object.prototype.hasOwnProperty.call(OPHIS_SOLVER_NAMES, key) ? OPHIS_SOLVER_NAMES[key] : 'Unknown solver'
 }
 
 export function ophisSolverPublicDescription(solverId: string): string {

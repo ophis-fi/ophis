@@ -10,13 +10,19 @@ async function check() {
   const config = await getConfig({ cwd: resolve(__dirname, '..') })
   const [catalog] = await getCatalogs(config)
   assert.ok(catalog.sourcePaths.some((path) => path.endsWith('/libs/common-const/src/common.ts')))
-  const entries = await catalog.read('en-US')
-  const translations = Object.fromEntries(Object.entries(entries).map(([id, entry]) => [id, entry.translation]))
-  const { source, errors } = createCompiledCatalog('en-US', translations, { namespace: 'json' })
-  assert.deepEqual(errors, [])
-  const i18n = setupI18n({ locale: 'en-US', messages: { 'en-US': JSON.parse(source).messages } })
-  assert.equal(i18n._('MNcnd5'), 'Account Proxy')
-  console.log('Shared message extraction and compiled Account Proxy label passed.')
+  for (const locale of config.locales.filter((locale) => locale !== config.pseudoLocale)) {
+    const entries = await catalog.read(locale)
+    assert.ok(entries.MNcnd5, `${locale}: Account Proxy message has not been extracted`)
+    const { messages: translations } = await catalog.getTranslations(locale, config)
+    const { source, errors } = createCompiledCatalog(locale, translations, { namespace: 'json' })
+    assert.deepEqual(errors, [])
+    const i18n = setupI18n({ locale, messages: { [locale]: JSON.parse(source).messages } })
+    const label = i18n._('MNcnd5')
+    assert.notEqual(label, 'MNcnd5', `${locale}: Account Proxy message is missing`)
+    assert.ok(label.trim(), `${locale}: Account Proxy message is empty`)
+    if (locale === config.sourceLocale) assert.equal(label, 'Account Proxy')
+    console.log(`${locale}: compiled Account Proxy label passed.`)
+  }
 }
 
 check().catch((error) => {

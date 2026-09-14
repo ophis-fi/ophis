@@ -96,6 +96,18 @@ describe('OPHIS_SOLVERS registry', () => {
 })
 
 describe('solver display names', () => {
+  it('works in browsers without Object.hasOwn', () => {
+    const hasOwn = Object.hasOwn
+    let label: string | undefined
+    Object.defineProperty(Object, 'hasOwn', { value: undefined })
+    try {
+      label = ophisSolverPublicLabel('kyberswap')
+    } finally {
+      Object.defineProperty(Object, 'hasOwn', { value: hasOwn })
+    }
+    expect(label).toBe('KyberSwap')
+  })
+
   it.each([
     ['baseline', 'Ophis Baseline'],
     ['KYBERSWAP', 'KyberSwap'],
