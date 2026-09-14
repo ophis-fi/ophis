@@ -6344,6 +6344,10 @@ msgstr "Verificada en el bloque"
 msgid "Loading bridge data <0/>"
 msgstr "Cargando datos de puente <0/>"
 
+#: apps/cowswap-frontend/src/modules/orderProgressBar/hooks/useOrderProgressBarProps.ts
+msgid "Solver identity unavailable ({solverId})."
+msgstr "Identidad del solucionador no disponible ({solverId})."
+
 #: apps/cowswap-frontend/src/common/pure/OrderSummary/summaryTemplates.tsx
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/LimitOrdersWidget/index.tsx
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
@@ -6575,6 +6579,10 @@ msgstr "Revisar siempre las solicitudes de billetera con cuidado antes de aproba
 #: apps/cowswap-frontend/src/modules/accountProxy/containers/AccountProxyRecoverPage/index.tsx
 msgid "2/2 Sign transaction"
 msgstr "Transacción de signo 2/2"
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/hooks/useOrderProgressBarProps.ts
+msgid "Unknown solver"
+msgstr "Solucionador desconocido"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "Escrow lock risk:"

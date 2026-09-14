@@ -6345,6 +6345,10 @@ msgstr "Verified at block"
 msgid "Loading bridge data <0/>"
 msgstr "Loading bridge data <0/>"
 
+#: apps/cowswap-frontend/src/modules/orderProgressBar/hooks/useOrderProgressBarProps.ts
+msgid "Solver identity unavailable ({solverId})."
+msgstr "Solver identity unavailable ({solverId})."
+
 #: apps/cowswap-frontend/src/common/pure/OrderSummary/summaryTemplates.tsx
 #: apps/cowswap-frontend/src/modules/limitOrders/containers/LimitOrdersWidget/index.tsx
 #: apps/cowswap-frontend/src/modules/multiOrder/pure/BasketConfirm/BasketConfirm.pure.tsx
@@ -6576,6 +6580,10 @@ msgstr "Always review wallet requests carefully before approving."
 #: apps/cowswap-frontend/src/modules/accountProxy/containers/AccountProxyRecoverPage/index.tsx
 msgid "2/2 Sign transaction"
 msgstr "2/2 Sign transaction"
+
+#: apps/cowswap-frontend/src/modules/orderProgressBar/hooks/useOrderProgressBarProps.ts
+msgid "Unknown solver"
+msgstr "Unknown solver"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "Escrow lock risk:"

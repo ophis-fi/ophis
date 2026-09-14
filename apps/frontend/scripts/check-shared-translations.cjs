@@ -21,7 +21,14 @@ async function check() {
     assert.notEqual(label, 'MNcnd5', `${locale}: Account Proxy message is missing`)
     assert.ok(label.trim(), `${locale}: Account Proxy message is empty`)
     if (locale === config.sourceLocale) assert.equal(label, 'Account Proxy')
-    console.log(`${locale}: compiled Account Proxy label passed.`)
+    for (const message of ['Unknown solver', 'Solver identity unavailable ({solverId}).']) {
+      const id = Object.keys(entries).find((id) => entries[id].message === message)
+      assert.ok(id && entries[id].translation, `${locale}: untranslated solver fallback: ${message}`)
+      const translated = i18n._(id, { solverId: 'unregistered' })
+      assert.equal(translated, entries[id].translation.replace('{solverId}', 'unregistered'))
+      if (locale !== config.sourceLocale) assert.notEqual(translated, message.replace('{solverId}', 'unregistered'))
+    }
+    console.log(`${locale}: compiled Account Proxy and solver fallback labels passed.`)
   }
 }
 
