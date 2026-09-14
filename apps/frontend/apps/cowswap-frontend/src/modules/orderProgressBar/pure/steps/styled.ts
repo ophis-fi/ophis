@@ -47,6 +47,8 @@ export const Link = styled.a<{ underline?: boolean }>`
 
 export const CancelButton = styled(CancelButtonOriginal)`
   font-size: 14px;
+  display: inline;
+  margin: 0;
   padding: 1px 0;
   text-decoration: underline;
 
@@ -118,7 +120,7 @@ export const TokenWrapper = styled.div<{
     2.5s cubic-bezier(0.19, 1, 0.22, 1) forwards;
   animation-delay: ${({ position }) => (position === 'center' ? '0s' : '0.75s')};
   border: ${({ position }) =>
-    position === 'right' || position === 'center' ? `8px solid var(${UI.COLOR_BLUE_300_PRIMARY})` : '0'};
+    position === 'right' || position === 'center' ? `8px solid var(${UI.COLOR_PAPER_DARKER})` : '0'};
   box-sizing: content-box;
   background: ${({ position, bgColor }) =>
     position === 'right' ? bgColor || `var(${UI.COLOR_PRIMARY})` : 'transparent'};
@@ -178,16 +180,16 @@ export const TokenWrapper = styled.div<{
 `
 
 export const CountdownWrapper = styled.div<{ bgColor?: string }>`
-  --size: 160px;
+  --size: 104px;
   height: var(--size);
   width: var(--size);
   top: 0;
   bottom: 0;
-  margin: auto;
-  left: 40px;
+  margin: 0;
+  left: auto;
   background: ${({ bgColor }) => bgColor || `var(${UI.COLOR_PAPER_DARKER})`};
   border-radius: var(--size);
-  position: absolute;
+  position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -206,12 +208,12 @@ const pulseAnimation = keyframes`
 
 export const CountdownText = styled.div<{ $shouldPulse?: boolean }>`
   font-family: ${Font.familyMono};
-  font-size: 68px;
+  font-size: 40px;
   font-weight: bold;
   color: var(${UI.COLOR_TEXT_PAPER});
   z-index: 1;
   font-variant-numeric: slashed-zero;
-  letter-spacing: -3px;
+  letter-spacing: -1px;
   ${({ $shouldPulse }) =>
     $shouldPulse &&
     css`
@@ -227,12 +229,12 @@ export const FinishedStepContainer = styled.div`
   padding: 0;
   width: 100%;
 
-  ${Media.upToSmall()} {
-    ${ProgressImageWrapper} {
-      height: auto;
-      max-height: initial;
-      flex-flow: column-reverse;
-    }
+  ${ProgressImageWrapper} {
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    flex-flow: column;
+    border-radius: 16px;
   }
 `
 
@@ -264,7 +266,7 @@ export const TransactionStatus = styled.div<{ status?: string; flexFlow?: string
   flex-flow: ${({ flexFlow }) => flexFlow || 'row wrap'};
   align-items: center;
   gap: ${({ gap }) => gap || '10px'};
-  font-size: 21px;
+  font-size: 18px;
   font-weight: bold;
   margin: ${({ margin }) => margin || '14px auto 0'};
   color: ${({ status }) =>
@@ -301,7 +303,7 @@ export const SolverRankings = styled.div`
      leaves vertical flow + tooltip portals intact; gracefully ignored on
      older engines, where the SolverName truncation above already prevents it). */
   overflow-x: clip;
-  margin: 32px auto 0;
+  margin: 20px auto 0;
 
   > h3 {
     font-size: 17px;
@@ -334,22 +336,29 @@ export const AggregationInfo = styled.div`
   line-height: 1.45;
   color: var(${UI.COLOR_TEXT_OPACITY_70});
 
-  > .headline {
+  summary {
+    cursor: pointer;
+    color: var(${UI.COLOR_TEXT});
+    font-weight: 600;
+    padding: 8px 0;
+  }
+
+  .headline {
     color: var(${UI.COLOR_TEXT_PAPER});
     font-weight: 600;
     margin: 0 0 8px;
   }
 
-  > ul {
+  ul {
     margin: 0;
     padding-left: 18px;
   }
 
-  > ul > li {
+  ul > li {
     margin: 4px 0;
   }
 
-  > ul > li > b {
+  ul > li > b {
     color: var(${UI.COLOR_TEXT_PAPER});
   }
 
@@ -372,7 +381,8 @@ export const SolverTable = styled.table`
   width: 100%;
   border-collapse: separate;
   border-spacing: 0 4px;
-  margin: 14px auto 0;
+  margin: 10px auto 0;
+  table-layout: fixed;
 `
 
 export const SolverTableCell = styled.td`
@@ -389,6 +399,7 @@ export const SolverTableCell = styled.td`
     border-top-right-radius: 5px;
     border-bottom-right-radius: 5px;
     text-align: right;
+    width: 100px;
   }
 `
 
@@ -405,6 +416,7 @@ export const SolverTableRow = styled.tr<{ isWinner: boolean }>`
 `
 
 export const SolverRank = styled(SolverTableCell)`
+  width: 24px;
   color: inherit;
 `
 
@@ -444,7 +456,6 @@ export const SolverNameText = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-transform: capitalize;
 `
 
 /* The description tooltip sits OUTSIDE the clipped text so it's never cut off. */
@@ -472,7 +483,7 @@ export const WinningBadge = styled.span`
   font-size: 12px;
   font-weight: bold;
   line-height: 1;
-  white-space: pre;
+  white-space: nowrap;
 
   > span {
     font-size: inherit;
@@ -615,7 +626,7 @@ export const CircularProgress = styled.svg`
 
 export const CircleProgress = styled.circle<{ startAt: number; end: number }>`
   fill: none;
-  stroke: #05a1ff;
+  stroke: var(${UI.COLOR_TEXT});
   stroke-width: 6;
   stroke-linecap: round;
   stroke-dasharray: 283; /* Approximately 2 * PI * 45 */

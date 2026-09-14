@@ -2,13 +2,13 @@
 export const STEP_HEIGHTS = {
   // Desktop heights
   desktop: {
-    topSection: 230,
+    topSection: 184,
     stepContent: 80,
     minContainer: 192,
   },
   // Mobile heights
   mobile: {
-    topSection: 200,
+    topSection: 144,
     stepContent: 70,
     minContainer: 160,
   },
