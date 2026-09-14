@@ -12,7 +12,7 @@ import { ProgressTopSection } from './ProgressTopSection'
 import { OrderIntent } from './steps/OrderIntent'
 import * as styledEl from './styled'
 
-import { CHAIN_SPECIFIC_BENEFITS, OrderProgressBarStepName, SURPLUS_IMAGES } from '../constants'
+import { CHAIN_SPECIFIC_BENEFITS, OrderProgressBarStepName } from '../constants'
 import { useProgressBarLayout } from '../hooks/useProgressBarLayout'
 import { OrderProgressBarProps } from '../types'
 
@@ -21,7 +21,6 @@ interface ProgressContentProps {
   stepName: OrderProgressBarProps['stepName']
   order: OrderProgressBarProps['order']
   countdown: number
-  randomImage: string
   surplusPercentValue: string
   randomBenefit: string
   shouldShowSurplus: boolean
@@ -35,7 +34,6 @@ function ProgressContent({
   stepName,
   order,
   countdown,
-  randomImage,
   surplusPercentValue,
   randomBenefit,
   shouldShowSurplus,
@@ -66,7 +64,6 @@ function ProgressContent({
               stepName={stepName}
               order={order}
               countdown={countdown}
-              randomImage={randomImage}
               surplusPercentValue={surplusPercentValue}
               randomBenefit={randomBenefit}
               shouldShowSurplus={shouldShowSurplus}
@@ -94,11 +91,10 @@ export function RenderProgressTopSection({
   const hideIntent =
     stepName === OrderProgressBarStepName.FINISHED || stepName === OrderProgressBarStepName.CANCELLATION_FAILED
 
-  const { randomImage, randomBenefit } = useMemo(() => {
+  const { randomBenefit } = useMemo(() => {
     const benefits = CHAIN_SPECIFIC_BENEFITS[chainId]
 
     return {
-      randomImage: SURPLUS_IMAGES[getRandomInt(0, SURPLUS_IMAGES.length - 1)],
       randomBenefit: t(benefits[getRandomInt(0, benefits.length - 1)]),
     }
   }, [chainId, t])
@@ -115,7 +111,6 @@ export function RenderProgressTopSection({
     stepName,
     order,
     countdown: countdown || 0,
-    randomImage,
     surplusPercentValue,
     randomBenefit,
     shouldShowSurplus,

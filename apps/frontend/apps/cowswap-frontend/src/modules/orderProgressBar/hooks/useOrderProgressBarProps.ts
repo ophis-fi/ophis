@@ -8,6 +8,7 @@ import { useENS } from '@cowprotocol/ens'
 import { Command } from '@cowprotocol/types'
 
 import ms from 'ms.macro'
+import { ophisSolverPublicDescription, ophisSolverPublicLabel } from 'ophis/solvers'
 import useSWR from 'swr'
 
 import { useActivityDerivedState } from 'legacy/hooks/useActivityDerivedState'
@@ -548,7 +549,7 @@ const POOLING_SWR_OPTIONS = {
  * @param solverCompetition
  * @param solversInfo
  */
-function mergeSolverData(
+export function mergeSolverData(
   solverCompetition: ApiSolverCompetition,
   solversInfo: Record<string, SolverInfo>,
 ): SolverCompetition {
@@ -557,7 +558,14 @@ function mergeSolverData(
   const solverId = solverCompetition.solver.replace(/-solve$/, '')
   const solverInfo = solversInfo[solverId.toLowerCase()]
 
-  return { ...solverCompetition, ...solverInfo, solverId, solver: solverId }
+  return {
+    ...solverCompetition,
+    ...solverInfo,
+    solverId,
+    solver: solverId,
+    displayName: solverInfo?.displayName || ophisSolverPublicLabel(solverId),
+    description: solverInfo?.description || ophisSolverPublicDescription(solverId),
+  }
 }
 
 function usePendingOrderStatus(

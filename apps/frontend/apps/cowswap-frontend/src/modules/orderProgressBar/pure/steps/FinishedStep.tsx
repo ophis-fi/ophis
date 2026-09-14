@@ -13,6 +13,7 @@ import { Confetti, ExternalLink, InfoTooltip, TokenAmount } from '@cowprotocol/u
 
 import { i18n } from '@lingui/core'
 import { Trans, useLingui } from '@lingui/react/macro'
+import { Cpu } from 'react-feather'
 import { PiCaretDown, PiCaretUp, PiTrophyFill } from 'react-icons/pi'
 import SVG from 'react-inlinesvg'
 
@@ -30,7 +31,7 @@ import { getIsCustomRecipient } from 'utils/orderUtils/getIsCustomRecipient'
 
 import * as styledEl from './styled'
 
-import { CHAIN_AGGREGATION_INFO, CHAIN_SPECIFIC_BENEFITS, SURPLUS_IMAGES } from '../../constants'
+import { CHAIN_AGGREGATION_INFO, CHAIN_SPECIFIC_BENEFITS } from '../../constants'
 import { getSurplusText, getTwitterShareUrl, getTwitterShareUrlForBenefit } from '../../helpers'
 import { useWithConfetti } from '../../hooks/useWithConfetti'
 import { OrderProgressBarStepName } from '../../types'
@@ -90,7 +91,6 @@ export function FinishedStep({
     const benefits = CHAIN_SPECIFIC_BENEFITS[chainId]
 
     return {
-      randomImage: SURPLUS_IMAGES[getRandomInt(0, SURPLUS_IMAGES.length - 1)],
       randomBenefit: t(benefits[getRandomInt(0, benefits.length - 1)]),
     }
   }, [chainId, t])
@@ -308,21 +308,23 @@ function SolverRow({
   index: number
   solvers: SolverCompetition[]
 }): ReactNode {
+  const logo = solver.image || AMM_LOGOS[solver.solver]?.src
   return (
     <styledEl.SolverTableRow isWinner={index === 0}>
       {solvers.length > 1 && <styledEl.SolverRank>{index + 1}</styledEl.SolverRank>}
       <styledEl.SolverTableCell>
         <styledEl.SolverInfo>
           <styledEl.SolverLogo>
-            <img
-              src={solver.image || AMM_LOGOS[solver.solver]?.src || AMM_LOGOS.default.src}
-              alt={`${solver.displayName || solver.solver} logo`}
-              width="24"
-              height="24"
-            />
+            {logo ? (
+              <img src={logo} alt={`${solver.displayName || solver.solver} logo`} width="24" height="24" />
+            ) : (
+              <Cpu size={24} aria-hidden="true" />
+            )}
           </styledEl.SolverLogo>
           <styledEl.SolverName>
-            <styledEl.SolverNameText>{solver.displayName || solver.solver}</styledEl.SolverNameText>
+            <styledEl.SolverNameText title={solver.solver}>
+              {solver.displayName || solver.solver}
+            </styledEl.SolverNameText>
             {solver.description && (
               <styledEl.SolverTooltip>
                 <InfoTooltip content={solver.description} />
@@ -338,7 +340,7 @@ function SolverRow({
               <PiTrophyFill />
             </styledEl.TrophyIcon>
             <span>
-              <Trans>Winning solver</Trans>
+              <Trans>Winner</Trans>
             </span>
           </styledEl.WinningBadge>
         )}
@@ -382,14 +384,19 @@ function AggregationAndRouteInfo({ chainId, order }: { chainId: SupportedChainId
 
   return (
     <styledEl.AggregationInfo>
-      <p className="headline">{info.headline}</p>
-      <ul>
-        {info.sources.map(({ solver, covers }) => (
-          <li key={solver}>
-            <b>{solver}</b>: {covers}
-          </li>
-        ))}
-      </ul>
+      <details>
+        <summary>
+          <Trans>Liquidity sources</Trans>
+        </summary>
+        <p className="headline">{info.headline}</p>
+        <ul>
+          {info.sources.map(({ solver, covers }) => (
+            <li key={solver}>
+              <b>{solver}</b>: {covers}
+            </li>
+          ))}
+        </ul>
+      </details>
       <a className="explorer-link" href={explorerHref} target="_blank" rel="noopener noreferrer">
         {explorerLabel}
       </a>

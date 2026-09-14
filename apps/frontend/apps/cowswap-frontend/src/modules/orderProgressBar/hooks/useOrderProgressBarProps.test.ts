@@ -1,4 +1,4 @@
-import { getProgressBarStepName } from './useOrderProgressBarProps'
+import { getProgressBarStepName, mergeSolverData } from './useOrderProgressBarProps'
 
 import { OrderProgressBarStepName } from '../constants'
 import { OrderProgressBarState } from '../types'
@@ -59,5 +59,22 @@ describe('getProgressBarStepName', () => {
     })
 
     expect(result).toBe(OrderProgressBarStepName.EXECUTING)
+  })
+})
+
+describe('solver attribution', () => {
+  it('resolves a known routing lane while CMS data is unavailable', () => {
+    expect(mergeSolverData({ solver: 'kyberswap-solve' }, {})).toMatchObject({
+      solver: 'kyberswap',
+      displayName: 'KyberSwap',
+    })
+  })
+
+  it('keeps an unknown address in details instead of using it as the solver name', () => {
+    const address = '0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665'
+    const solver = mergeSolverData({ solver: address }, {})
+    expect(solver.displayName).toBe('Unknown solver')
+    expect(solver.description).toContain(address)
+    expect(solver.solver).toBe(address)
   })
 })

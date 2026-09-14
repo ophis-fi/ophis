@@ -48,8 +48,6 @@ export function useSolversInfo(chainId: SupportedChainId): Record<string, Solver
 
 function staticSolverToSolverInfo(staticInfo: OphisStaticSolverInfo): SolverInfo {
   return {
-    // Internal id kept for CMS matching and attribution; the rendered strings
-    // below come from the display-alias layer so no competitor brand leaks.
     solverId: staticInfo.solverId,
     displayName: ophisSolverPublicLabel(staticInfo.solverId),
     description: ophisSolverPublicDescription(staticInfo.solverId),
