@@ -18,6 +18,8 @@ If you are looking for a DEX aggregator on Robinhood Chain, the first thing to u
 
 Ophis is not affiliated with, endorsed by, or officially connected with Robinhood Markets, Inc. You can explore its supported market on the [Ophis Robinhood Chain page](https://ophis.fi/swap/robinhood-chain/).
 
+New to the ecosystem? Our [introduction to DeFi on Robinhood Chain](https://ophis.fi/blog/defi-on-robinhood-chain/) explains where Ophis and the exchange routing expansion fit.
+
 ## What does a DEX aggregator do?
 
 A decentralized exchange, usually shortened to DEX, lets people exchange tokens through blockchain-based trading systems. Different exchanges can offer different prices for the same pair of tokens.
