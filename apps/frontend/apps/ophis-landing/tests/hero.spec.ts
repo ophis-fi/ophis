@@ -58,3 +58,19 @@ test('hero is single-column centered (no image in the headline block)', async ({
   const heroCopy = page.locator('.hero-inner')
   await expect(heroCopy).toBeVisible()
 })
+
+test('guide CTA keeps its canonical page and strips campaign and fragment data', async ({ page }) => {
+  await page.goto('/blog/dex-aggregator-robinhood?utm_source=test#private')
+  await page.evaluate(() => {
+    const state = window as unknown as { analyticsCalls: unknown[][]; gtag: (...args: unknown[]) => void }
+    state.analyticsCalls = []
+    state.gtag = (...args) => state.analyticsCalls.push(args)
+    document.querySelectorAll('a[href="https://swap.ophis.fi/#/4663/swap"]').forEach((a) =>
+      a.addEventListener('click', (event) => event.preventDefault()),
+    )
+  })
+  await page.locator('a[href="https://swap.ophis.fi/#/4663/swap"]').first().click()
+  expect(await page.evaluate(() => (window as unknown as { analyticsCalls: unknown[][] }).analyticsCalls)).toEqual([
+    ['event', 'trade_click', { destination: 'swap_app', page_location: 'https://ophis.fi/blog/dex-aggregator-robinhood/' }],
+  ])
+})

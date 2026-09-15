@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Swap on Robinhood Chain | Ophis DEX aggregator</title>
+  <meta name="description" content="Open Ophis on Robinhood Chain (4663), choose supported tokens and compare your quote with the signed minimum. Wallet-signed, MEV-protected batch settlement.">
+  <link rel="canonical" href="https://swap.ophis.fi/robinhood-chain/">
+  <link rel="icon" type="image/svg+xml" href="/ophis-icon.svg">
+  <link rel="stylesheet" href="/ophis-utility.css">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Swap on Robinhood Chain with Ophis">
+  <meta property="og:description" content="Choose a supported pair, review your quote and sign with your own wallet. Open the Robinhood Chain trading form.">
+  <meta property="og:url" content="https://swap.ophis.fi/robinhood-chain/">
+  <meta property="og:image" content="https://swap.ophis.fi/ophis-og.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    a { color: #5d2a1a; text-underline-offset: 3px; }
+    nav { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-bottom: 32px; }
+    nav a, footer a { display: inline-flex; min-height: 44px; align-items: center; }
+    .cta { display: inline-flex; min-height: 48px; align-items: center; padding: 12px 20px; border-radius: 12px; background: #17191c; color: white; text-decoration: none; }
+    a:focus-visible { outline: 2px solid #5d2a1a; outline-offset: 4px; }
+    h2 { margin-top: 36px; font-size: 24px; }
+    li { margin-bottom: 12px; }
+    footer { margin-top: 40px; padding-bottom: 140px; border-top: 1px solid #e8e8ea; }
+    footer button { width: auto; }
+    .note { color: #5b606b; font-size: 14px; }
+  </style>
+</head>
+<body>
+<main>
+  <nav aria-label="Ophis"><a href="/">Ophis swap</a><a href="https://ophis.fi/pricing/">Fees</a><a href="https://ophis.fi/security/">Security</a></nav>
+  <h1>Swap on Robinhood Chain</h1>
+  <p>Ophis is an intent-based DEX aggregator with a trading interface for Robinhood Chain, network ID <strong>4663</strong>. Choose a supported token pair, review the available quote and sign an order with your own wallet. Solvers compete to settle the order through batch auctions.</p>
+  <p><a class="cta" data-trade-cta href="/#/4663/swap">Open Robinhood Chain swap</a></p>
+  <p class="note">Ophis is independent of Robinhood Markets. This is an on-chain swap interface, not a Robinhood brokerage account or a stock redemption service.</p>
+
+  <h2>Before you sign</h2>
+  <ol>
+    <li><strong>Choose the network and tokens.</strong> The button above selects Robinhood Chain. Confirm the network shown in the app and wallet, then select the tokens and amount. Verify unfamiliar token contracts against their issuer's official information.</li>
+    <li><strong>Wait for an executable quote.</strong> A listed token does not guarantee liquidity for your amount. If no route is available, do not infer a price or fill from the token list.</li>
+    <li><strong>Check the minimum received.</strong> Compare the quoted output with the minimum in the order you sign. MEV protection mitigates common front-running and sandwich attacks; it does not eliminate price, token or contract risk.</li>
+    <li><strong>Approve only what is needed, then sign.</strong> A token allowance transaction may be required before the swap order. Review the spender and allowance in your wallet. Follow the order status until settlement or expiry; signing is not confirmation of a fill.</li>
+  </ol>
+
+  <h2>What fees apply?</h2>
+  <p>Ophis charges a 0.01% base fee plus capped reference-quote-improvement capture. Approval or other on-chain transactions can require network gas. Review the <a href="https://ophis.fi/pricing/">current fee policy</a> and the actual quote before signing; a gasless order signature does not mean every step is free.</p>
+
+  <h2>Can I swap tokenized stocks?</h2>
+  <p>Only where the app supports the token and can return an executable quote. Tokenized-stock access, transfer restrictions and redemption rights depend on the issuer and your eligibility. A ticker is not proof that a token is the asset you intend to trade.</p>
+
+  <h2>Is this a bridge from another chain?</h2>
+  <p>This entry point opens a swap on Robinhood Chain. It does not move your balance from Ethereum, Base or another network. Check the selected source and destination before using any separate cross-chain route.</p>
+
+  <p><a class="cta" data-trade-cta href="/#/4663/swap">Choose tokens and review a quote</a></p>
+  <footer>
+    <p>More detail: <a href="https://ophis.fi/blog/dex-aggregator-robinhood/">how the aggregator works</a> · <a href="https://docs.robinhood.com/chain/">Robinhood Chain documentation</a></p>
+    <p class="note">Updated <time datetime="2026-09-15">15 September 2026</time> · <a href="/#/legal">Privacy and legal</a></p>
+    <button type="button" id="analytics-preferences">Analytics preferences</button>
+  </footer>
+</main>
+<script type="module" src="/src/ophis/analytics/tradeGuide.service.ts"></script>
+</body>
+</html>

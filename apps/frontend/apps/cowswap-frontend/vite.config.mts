@@ -206,6 +206,10 @@ export default defineConfig(({ mode }) => {
       // the Safari 14.0 destructuring bug. See ../../tools/viteBuildTarget.
       target: OPHIS_BUILD_TARGET,
       rollupOptions: {
+        input: {
+          app: path.resolve(__dirname, 'index.html'),
+          robinhood: path.resolve(__dirname, 'robinhood-chain/index.html'),
+        },
         output: {
           // Remove hash for font files to enable preloading
           assetFileNames: (assetInfo) => {

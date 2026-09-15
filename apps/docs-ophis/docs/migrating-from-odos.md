@@ -1,12 +1,17 @@
 ---
 id: migrating-from-odos
-title: Migrating from Odos
-description: Current production status and field mapping for the Odos v3-compatible quote surface at compat.ophis.fi.
+title: Odos v3 API migration to Ophis — compatibility and endpoints
+description: Map Odos v3 quote requests to Ophis. Check EOA signing, supported chains and intent settlement; this API does not return executable router calldata.
 sidebar_label: Migrating from Odos
 sidebar_position: 9
 ---
 
 # Migrating from Odos
+
+Ophis accepts a limited Odos v3 quote-request shape for one ERC-20 input and output,
+with EOA signing on enabled Ophis-operated chains. It returns a signable intent,
+not executable router calldata. Start with the [Odos API migration checklist](https://ophis.fi/migrate/odos-api/)
+to choose between this compatibility surface and the broader Ophis SDK.
 
 :::tip[Start here: this is probably not your page]
 

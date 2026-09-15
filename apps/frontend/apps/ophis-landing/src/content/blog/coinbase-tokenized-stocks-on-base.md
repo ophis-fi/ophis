@@ -2,7 +2,7 @@
 title: "Coinbase tokenized stocks on Base: swap AAPLc, NVDAc on Ophis"
 description: "Coinbase tokenized stocks are live on Base and listed on Ophis. Swap AAPLc, NVDAc, METAc and GOOGLc gasless and MEV-protected, multiplier read on chain."
 pubDate: 2026-08-24
-updatedDate: 2026-08-25
+updatedDate: 2026-09-15
 author: Ophis
 tags: [base, tokenized-stocks, coinbase, b20, dex-aggregator, swaps]
 draft: false
@@ -28,11 +28,11 @@ Two sentences of context. Base is chain id 8453, an OP-Stack L2 operated by Coin
 
 6. **Wait for settlement.** Solvers race to fill the order against Base liquidity and the winner settles it on-chain in a batch. Order status updates on the page until the trade lands.
 
-At the time of writing, 100 USDC quotes about 0.32 AAPLc, with the token trading near the underlying's 312 USD close, and the deepest pools are the AAPLc/USDC and NVDAc/USDC Aerodrome pools at roughly 650,000 and 950,000 USD of liquidity. Those numbers will be stale by the time you read this; the quote on the page is the one that counts.
+Prices, pool liquidity and executable routes change. Check the live quote rather than using a historical share price or pool snapshot. Confirm the token contract and eligibility against [Base's current issuer list and disclosures](https://www.base.org/stocks), then review the [Ophis fee policy](https://ophis.fi/pricing/); CoW-hosted Base orders also carry upstream fees.
 
 ## What a Coinbase tokenized stock is
 
-Coinbase issues these tokens under [B20](https://docs.base.org/base-chain/specs/upgrades/beryl/b20), a Base-native token standard that extends ERC-20. The full integration reference is on [docs.base.org](https://docs.base.org/base-chain/asset-issuance/tokenized-stocks-on-base), and the product page is [coinbase.com/tokenize](https://coinbase.com/tokenize). The properties that matter when you trade them:
+Coinbase issues these tokens under [B20](https://docs.base.org/base-chain/specs/upgrades/beryl/b20), a Base-native token standard that extends ERC-20. The full integration reference is on [docs.base.org](https://docs.base.org/build-on-base/integrate-defi/list-tokenized-stocks), and the product page is [coinbase.com/tokenize](https://coinbase.com/tokenize). The properties that matter when you trade them:
 
 | Property | Value |
 | --- | --- |

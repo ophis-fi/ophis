@@ -66,7 +66,7 @@ export const EEA_CONSENT_REGIONS = [
   'CH',
 ]
 
-export function initGa4(): void {
+export function initGa4({ deferDownload = true }: { deferDownload?: boolean } = {}): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return
   if (window.location.hostname !== GA4_HOST) return
   // Idempotent: never inject twice (HMR / re-entry).
@@ -125,7 +125,9 @@ export function initGa4(): void {
     script.src = `https://www.googletagmanager.com/gtag/js?id=${GA4_MEASUREMENT_ID}`
     document.head.appendChild(script)
   }
-  if (typeof window.requestIdleCallback === 'function') {
+  if (!deferDownload) {
+    injectGtag()
+  } else if (typeof window.requestIdleCallback === 'function') {
     window.requestIdleCallback(injectGtag, { timeout: 3000 })
   } else {
     window.addEventListener('load', () => window.setTimeout(injectGtag, 1), { once: true })
