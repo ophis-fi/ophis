@@ -1,7 +1,3 @@
-import PROGRESSBAR_COW_SURPLUS_1 from '@cowprotocol/assets/cow-swap/progressbar-finished-image-1.svg'
-import PROGRESSBAR_COW_SURPLUS_2 from '@cowprotocol/assets/cow-swap/progressbar-finished-image-2.svg'
-import PROGRESSBAR_COW_SURPLUS_3 from '@cowprotocol/assets/cow-swap/progressbar-finished-image-3.svg'
-import PROGRESSBAR_COW_SURPLUS_4 from '@cowprotocol/assets/cow-swap/progressbar-finished-image-4.svg'
 import { getAvailableChainsText } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -154,10 +150,3 @@ export const CHAIN_AGGREGATION_INFO: Partial<Record<SupportedChainId, ChainAggre
     ],
   },
 }
-
-export const SURPLUS_IMAGES = [
-  PROGRESSBAR_COW_SURPLUS_1,
-  PROGRESSBAR_COW_SURPLUS_2,
-  PROGRESSBAR_COW_SURPLUS_3,
-  PROGRESSBAR_COW_SURPLUS_4,
-]

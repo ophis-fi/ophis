@@ -111,7 +111,7 @@ const CloseIcon = styled((props) => <Close {...props} />)`
   --size: 20px;
   opacity: 0.6;
   transition: opacity var(${UI.ANIMATION_DURATION}) ease-in-out;
-  stroke: var(${UI.COLOR_TEXT});
+  color: var(${UI.COLOR_TEXT});
   width: var(--size);
   height: var(--size);
   object-fit: contain;
@@ -136,6 +136,7 @@ const Wrapper = styled.div`
   display: flex;
   flex-flow: row wrap;
   align-items: stretch;
+  align-content: flex-start;
   height: inherit;
   width: 100%;
   overflow-y: auto; // fallback for 'overlay'

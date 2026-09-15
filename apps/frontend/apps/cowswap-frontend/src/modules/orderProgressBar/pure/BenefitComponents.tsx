@@ -1,8 +1,5 @@
 import { ReactNode } from 'react'
 
-import { useMediaQuery } from '@cowprotocol/common-hooks'
-import { Media } from '@cowprotocol/ui'
-
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
 
@@ -43,21 +40,13 @@ export function ShowSurplus({
 }
 
 export function NoSurplus({ randomBenefit }: { randomBenefit: string }): ReactNode {
-  const isSmallScreen = useMediaQuery(Media.upToSmall(false))
-
-  const benefitRef = useAutoFitText<HTMLDivElement>({
-    min: 12,
-    max: isSmallScreen ? 28 : 36,
-    deps: [randomBenefit, isSmallScreen],
-  })
-
   return (
     <styledEl.BenefitSurplusContainer>
       <styledEl.BenefitTagLine>
         <Trans>Did you know?</Trans>
       </styledEl.BenefitTagLine>
       <styledEl.BenefitText>
-        <styledEl.BenefitResponsiveText ref={benefitRef}>{randomBenefit}</styledEl.BenefitResponsiveText>
+        <styledEl.BenefitResponsiveText>{randomBenefit}</styledEl.BenefitResponsiveText>
       </styledEl.BenefitText>
     </styledEl.BenefitSurplusContainer>
   )

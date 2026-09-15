@@ -14,7 +14,7 @@ export type GapMap = Record<NonNullable<StepName>, string | undefined>
 // ProgressImageWrapper, matching the bridge states below.
 export const PROCESS_IMAGE_WRAPPER_BG_COLOR: BgColorMap = {
   initial: undefined,
-  unfillable: '#FFDB9C',
+  unfillable: `var(${UI.COLOR_ALERT_BG})`,
   delayed: undefined,
   submissionFailed: undefined,
   solved: undefined,
@@ -22,8 +22,8 @@ export const PROCESS_IMAGE_WRAPPER_BG_COLOR: BgColorMap = {
   finished: undefined,
   cancellationFailed: undefined,
   executing: undefined,
-  cancelling: '#f0dede',
-  cancelled: '#f0dede',
+  cancelling: `var(${UI.COLOR_DANGER_BG})`,
+  cancelled: `var(${UI.COLOR_DANGER_BG})`,
   expired: `var(${UI.COLOR_ALERT_BG})`,
   bridgingFinished: undefined,
   bridgingFailed: undefined,

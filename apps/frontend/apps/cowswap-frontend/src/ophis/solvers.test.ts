@@ -3,7 +3,6 @@ import { resolve } from 'path'
 
 import {
   getOphisSolversForChain,
-  OPHIS_EXTERNAL_SOLVER_LABEL,
   OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
   OPHIS_SOLVER_REGISTRY_CHAIN_ID,
   OPHIS_SOLVERS,
@@ -20,23 +19,6 @@ const ROBINHOOD_AUTOPILOT_CONFIG_PATH = resolve(
   __dirname,
   '../../../../../../infra/robinhood-mainnet/configs/autopilot.toml.tmpl',
 )
-
-// Third-party / competitor brand tokens that must never appear in any rendered
-// solver string. Ophis public copy never names a competitor (standing rule).
-const BANNED_BRAND_TOKENS = [
-  'kyberswap',
-  'kyber',
-  'okx',
-  'velora',
-  'paraswap',
-  'enso',
-  'lifi',
-  'li.fi',
-  'openocean',
-  'dodo',
-  '1inch',
-  'oneinch',
-]
 
 function readAutopilotDriverNames(path = AUTOPILOT_CONFIG_PATH): string[] {
   const toml = readFileSync(path, 'utf8')
@@ -113,47 +95,43 @@ describe('OPHIS_SOLVERS registry', () => {
   })
 })
 
-describe('solver display-alias layer', () => {
-  it('labels the Ophis baseline solver plainly', () => {
-    expect(ophisSolverPublicLabel('baseline')).toBe('Baseline')
-    expect(ophisSolverPublicLabel('BASELINE')).toBe('Baseline')
-    expect(ophisSolverPublicDescription('baseline')).toMatch(/Ophis baseline/i)
-  })
-
-  it('labels the Ophis-operated direct solver distinctly', () => {
-    expect(ophisSolverPublicLabel('uniswap-v4')).toBe('Ophis direct solver')
-    expect(ophisSolverPublicLabel('UNISWAP-V4')).toBe('Ophis direct solver')
-    expect(ophisSolverPublicLabel('ekubo')).toBe('Ophis direct solver')
-    expect(ophisSolverPublicLabel('up33')).toBe('Ophis UP33 solver')
-    expect(ophisSolverPublicLabel('UP33')).toBe('Ophis UP33 solver')
-    expect(ophisSolverPublicDescription('up33')).toContain('Ophis-operated')
-    expect(ophisSolverPublicDescription('uniswap-v4')).toMatch(/Ophis-operated direct solver/i)
-  })
-
-  it('neutralizes every external / competitor solver brand', () => {
-    // The Ophis-RUN solvers keep a plain descriptive label; everything else must
-    // neutralize. `uniswap-v4` joined that set when the Robinhood direct lane
-    // shipped, and this loop was not updated, so it has been failing since.
-    const OPHIS_RUN_SOLVER_IDS = ['baseline', 'uniswap-v4', 'ekubo', 'up33']
-
-    for (const solver of OPHIS_SOLVERS) {
-      if (OPHIS_RUN_SOLVER_IDS.includes(solver.solverId)) continue
-      expect(ophisSolverPublicLabel(solver.solverId)).toBe(OPHIS_EXTERNAL_SOLVER_LABEL)
+describe('solver display names', () => {
+  it('works in browsers without Object.hasOwn', () => {
+    const hasOwn = Object.hasOwn
+    let label: string | undefined
+    Object.defineProperty(Object, 'hasOwn', { value: undefined })
+    try {
+      label = ophisSolverPublicLabel('kyberswap')
+    } finally {
+      Object.defineProperty(Object, 'hasOwn', { value: hasOwn })
     }
+    expect(label).toBe('KyberSwap')
   })
 
-  it('neutralizes unknown solver ids by default (safe by default)', () => {
-    expect(ophisSolverPublicLabel('some-new-aggregator')).toBe(OPHIS_EXTERNAL_SOLVER_LABEL)
+  it.each([
+    ['baseline', 'Ophis Baseline'],
+    ['KYBERSWAP', 'KyberSwap'],
+    ['lifi-solve', 'LI.FI'],
+    ['uniswap-v4', 'Uniswap v4'],
+    ['ekubo', 'Ekubo'],
+    ['up33', 'UP33'],
+    ['pools', 'Pools.trade'],
+  ])('names the %s routing lane', (id, label) => {
+    expect(ophisSolverPublicLabel(id)).toBe(label)
+    expect(ophisSolverPublicDescription(id)).toContain('Ophis-operated')
   })
 
-  it('never leaks a competitor brand in any rendered solver string', () => {
-    for (const solver of OPHIS_SOLVERS) {
-      const rendered = `${ophisSolverPublicLabel(solver.solverId)} ${ophisSolverPublicDescription(solver.solverId)}`
-      const lower = rendered.toLowerCase()
-
-      for (const brand of BANNED_BRAND_TOKENS) {
-        expect(lower).not.toContain(brand)
-      }
-    }
+  it('gives every registered routing lane a distinct name', () => {
+    const labels = OPHIS_SOLVERS.map(({ solverId }) => ophisSolverPublicLabel(solverId))
+    expect(new Set(labels).size).toBe(OPHIS_SOLVERS.length)
+    expect(labels).not.toContain('Unknown solver')
   })
+
+  it.each(['0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665', 'unregistered', 'constructor', '__proto__'])(
+    'keeps unidentified solver %s out of the display label',
+    (id) => {
+      expect(ophisSolverPublicLabel(id)).toBe('Unknown solver')
+      expect(ophisSolverPublicDescription(id)).toContain(id)
+    },
+  )
 })

@@ -136,6 +136,7 @@ export function getCowswapTheme(darkmode: boolean): CoWSwapTheme {
   return {
     ...base,
     ...overrides,
+    blue1: overrides.text,
     ...widgetMode,
   }
 }
