@@ -356,6 +356,10 @@ jobs:
           # `sanitize commit message for CF Pages API` step for why.
           command: pages deploy apps/frontend/build/explorer --project-name=ophis-explorer --branch=main --commit-dirty=true --commit-message="${{ steps.cf_msg.outputs.msg }}" --commit-hash=${{ github.sha }}
 
+      - name: IndexNow swap sitemap
+        continue-on-error: true
+        run: node scripts/indexnow-ping.mjs swap.ophis.fi --sitemap apps/frontend/build/cowswap/sitemap.xml
+
       # Supply-chain provenance (#438). Runs AFTER both deploys so it can never
       # block a release. Hashes exactly the bytes pushed to CF Pages (swap +
       # explorer) into one manifest, then attests it via SLSA build-provenance.
