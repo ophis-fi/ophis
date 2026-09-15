@@ -173,7 +173,11 @@ impl UniswapV4 {
             },
             output: eth::Asset {
                 token: order.buy,
-                amount: min_amount_out,
+                amount: if is_quote {
+                    quote.amountOut
+                } else {
+                    min_amount_out
+                },
             },
             allowance: dex::Allowance {
                 spender: self.config.adapter,

@@ -358,7 +358,7 @@ mod direct_route_smoke {
                     &order,
                     &model::Slippage::one_percent(),
                     &crate::domain::auction::Tokens(Default::default()),
-                    false,
+                    true,
                 )
                 .await
                 .unwrap_or_else(|e| panic!("{chain}/{name}: {e:?}"));
@@ -366,9 +366,22 @@ mod direct_route_smoke {
             assert_eq!(swap.allowance.amount.get(), amount);
             assert!(!swap.output.amount.is_zero());
             assert_eq!(swap.calls.len(), 1);
+            let minimum_word = match kind {
+                "v2" => 1,
+                "v3" if name == "pancakeswap" => 5,
+                "v3" => 6,
+                _ => 2,
+            };
+            let start = 4 + minimum_word * 32;
+            let calldata_floor =
+                eth::U256::from_be_slice(&swap.calls[0].calldata[start..start + 32]);
+            assert!(
+                calldata_floor < swap.output.amount,
+                "{chain}/{name} quote advertised execution floor"
+            );
             // Tight signed limits must tighten the router floor on the solve path.
             let tight = model::Order {
-                buy_limit: swap.output.amount * eth::U256::from(1005) / eth::U256::from(1000),
+                buy_limit: swap.output.amount * eth::U256::from(995) / eth::U256::from(1000),
                 ..order
             };
             let bounded = venue

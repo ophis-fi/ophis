@@ -54,11 +54,8 @@ impl Dex {
         order: &dex::Order,
         slippage: &dex::Slippage,
         tokens: &auction::Tokens,
-        // Quote path: kyberswap/velora report the optimistic output (and, on the
-        // solve path, bound the router minReturn by the order's buy limit so a
-        // tight order still settles). The other lanes report their guaranteed
-        // floor on both paths (self-consistent, so an order quoted at their
-        // floor always settles); they don't need this flag.
+        // Quote-aware lanes report the pool/API estimate for price discovery;
+        // executable solves report the order-bounded calldata floor.
         is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         let swap = match self {

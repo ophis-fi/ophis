@@ -171,7 +171,7 @@ impl Up33 {
             },
             output: eth::Asset {
                 token: order.buy,
-                amount: output,
+                amount: if is_quote { quoted } else { output },
             },
             allowance: dex::Allowance {
                 spender: self.router_address,

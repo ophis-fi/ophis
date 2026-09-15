@@ -147,7 +147,7 @@ impl DirectV3 {
             },
             output: eth::Asset {
                 token: order.buy,
-                amount: min_out,
+                amount: if is_quote { quoted } else { min_out },
             },
             allowance: dex::Allowance {
                 spender: c.router,
