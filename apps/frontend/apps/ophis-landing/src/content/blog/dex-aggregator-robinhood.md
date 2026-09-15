@@ -5,6 +5,7 @@ slug: "dex-aggregator-robinhood"
 primaryKeyword: "dex aggregator robinhood"
 author: "Ophis"
 pubDate: 2026-09-06
+updatedDate: 2026-09-15
 tags: [dex-aggregator, robinhood-chain, swaps, stock-tokens]
 draft: false
 cover: ./dex-aggregator-robinhood.cover.webp
@@ -57,7 +58,7 @@ Some bots try to profit by placing trades around another person's pending swap. 
 
 Ophis uses batch settlement designed to mitigate front-running and sandwich attacks. This is commonly called **MEV protection**. It is a feature of how orders are handled, rather than a guarantee against every trading risk. The [Ophis FAQ](https://ophis.fi/#faq) explains the protection and its limits.
 
-**Ready to see an available route? [Check your Robinhood Chain swap quote on Ophis](https://swap.ophis.fi/#/4663/swap).**
+**Ready to see an available route? [Check your Robinhood Chain swap quote on Ophis](https://swap.ophis.fi/#/4663/swap).** Compare the quoted output and signed minimum before approving. Token support alone does not guarantee executable liquidity; see the [current fee policy](https://ophis.fi/pricing/) and [security model](https://ophis.fi/security/) before trading.
 
 ## What can you swap?
 

@@ -50,12 +50,12 @@ document.addEventListener('click', (event) => {
 
   const gtag = (window as unknown as { gtag?: Gtag }).gtag
   try {
+    const canonical = new URL(document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href || 'https://ophis.fi/')
     gtag?.('event', acquisition.event, {
       destination: acquisition.destination,
-      // GA4 otherwise adds the full browser URL, including query and hash
-      // values, to custom events. Landing acquisition only needs the canonical
-      // site identity; session attribution retains campaign context separately.
-      page_location: 'https://ophis.fi/',
+      // Attribute guide CTAs to their canonical page without leaking query/hash
+      // values. Keep campaign attribution on the session, not internal links.
+      page_location: canonical.origin === 'https://ophis.fi' ? canonical.origin + canonical.pathname : 'https://ophis.fi/',
     })
   } catch {
     // Analytics is best-effort and must never interrupt navigation.

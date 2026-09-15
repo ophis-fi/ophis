@@ -2,6 +2,7 @@
 title: "Ophis on Robinhood Chain: gasless, MEV-protected Stock Token swaps"
 description: "Ophis runs a sovereign deployment on Robinhood Chain (chain 4663): its own GPv2Settlement, orderbook, and solver lanes, with chain-aware pricing."
 pubDate: 2026-07-31
+updatedDate: 2026-09-15
 author: Ophis
 tags: [robinhood-chain, stock-tokens, dex-aggregator, mev, swaps]
 draft: false
@@ -16,6 +17,8 @@ Two sentences of context. Robinhood Chain is chain id 4663, an Arbitrum Orbit L2
 Ophis is an independent protocol and is not affiliated with, endorsed by, or officially connected with Robinhood Markets, Inc. Stock Token eligibility and jurisdictional restrictions apply; review [Robinhood's current disclosures](https://robinhood.com/rhj/stocktokens/) before interacting with them.
 
 ## Swap on Robinhood Chain, step by step
+
+For a shorter introduction, start with the [Robinhood Chain DEX aggregator guide](https://ophis.fi/blog/dex-aggregator-robinhood/). The [chain reference](https://ophis.fi/swap/robinhood-chain/) and [pricing page](https://ophis.fi/pricing/) describe support and fee boundaries; the live quote determines whether your selected pair can execute.
 
 1. **Open the app pinned to the chain.** `https://swap.ophis.fi/#/4663/swap` loads the swap form already pointed at Robinhood Chain. The `4663` is the chain id.
 
