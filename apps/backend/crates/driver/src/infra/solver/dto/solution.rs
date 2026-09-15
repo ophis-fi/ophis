@@ -25,16 +25,6 @@ fn required_custom_amounts(
 ) -> Result<Option<competition::solution::custom_allowlist::RequiredAmounts>, super::Error> {
     const FXUSD: alloy::primitives::Address =
         alloy::primitives::address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
-    const OPTIMISM_CURVE_3POOL: alloy::primitives::Address =
-        alloy::primitives::address!("1337BedC9D22ecbe766dF105c9623922A27963EC");
-    const OPTIMISM_WOOFI_ROUTER: alloy::primitives::Address =
-        alloy::primitives::address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7");
-    const OPTIMISM_UNISWAP_V4_ADAPTER: alloy::primitives::Address =
-        alloy::primitives::address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
-    const ROBINHOOD_EKUBO_ROUTER: alloy::primitives::Address =
-        alloy::primitives::address!("7B2aA7Ecc0B5936b7C52E6259A19C3BA557d0748");
-    const ROBINHOOD_UP33_ROUTER: alloy::primitives::Address =
-        alloy::primitives::address!("f5198743240fAC98db71868F34c70139b1eb0474");
     let protected_interactions: Vec<_> = solution
         .interactions
         .iter()
@@ -42,16 +32,9 @@ fn required_custom_amounts(
             let solvers_dto::solution::Interaction::Custom(custom) = interaction else {
                 return None;
             };
-            [
-                FXUSD,
-                OPTIMISM_CURVE_3POOL,
-                OPTIMISM_WOOFI_ROUTER,
-                OPTIMISM_UNISWAP_V4_ADAPTER,
-                ROBINHOOD_EKUBO_ROUTER,
-                ROBINHOOD_UP33_ROUTER,
-            ]
-            .contains(&custom.target)
-            .then_some(custom.target)
+            competition::solution::custom_allowlist::PROTECTED_TARGETS
+                .contains(&custom.target)
+                .then_some(custom.target)
         })
         .collect();
     if protected_interactions.is_empty() {
@@ -613,12 +596,19 @@ mod protected_interaction_tests {
     };
 
     #[test]
-    fn protected_optimism_interactions_receive_fulfillment_context() {
+    fn protected_direct_interactions_receive_fulfillment_context() {
         let sell = address!("4200000000000000000000000000000000000006");
         let buy = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
         let targets = [
             address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7"),
             address!("d882da9CB91EB458337413E5846824CDCADB2Ddc"),
+            address!("a062aE8A9c5e11aaA026fc2670B0D65cCc8B2858"),
+            address!("3a63171DD9BebF4D07BC782FECC7eb0b890C2A45"),
+            address!("13f4EA83D0bd40E75C8222255bc855a974568Dd4"),
+            address!("a0C33928831cB4518b8c4A7BE6c0f98BA8A22de5"),
+            address!("FCBBe2Af83F94e7E2a9C35a535B3A04719aFD2Ae"),
+            address!("0792a633F0c19c351081CF4B211F68F79bCc9676"),
+            address!("4C41eC6850300d2D6Ba65d602fd31eC07F255b2C"),
         ];
         let uid = competition::order::Uid::default();
         let order = competition::Order {
@@ -690,47 +680,47 @@ mod protected_interaction_tests {
     fn protected_solution_rejects_an_extra_unprotected_interaction() {
         let protected = address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
         let unprotected = address!("0000000000000000000000000000000000000001");
-        let solution: solvers_dto::solution::Solution =
-            serde_json::from_value(serde_json::json!({
-                "id": 1,
-                "prices": {},
-                "trades": [{
-                    "kind": "fulfillment",
-                    "order": format!("0x{}", "00".repeat(56)),
-                    "executedAmount": "1"
-                }],
-                "interactions": [
-                    {
-                        "kind": "custom",
-                        "internalize": false,
-                        "target": format!("{protected:#x}"),
-                        "value": "0",
-                        "callData": "0x",
-                        "allowances": [],
-                        "inputs": [],
-                        "outputs": []
-                    },
-                    {
-                        "kind": "custom",
-                        "internalize": false,
-                        "target": format!("{unprotected:#x}"),
-                        "value": "0",
-                        "callData": "0x",
-                        "allowances": [],
-                        "inputs": [],
-                        "outputs": []
-                    }
-                ]
-            }))
-            .unwrap();
+        let solution: solvers_dto::solution::Solution = serde_json::from_value(serde_json::json!({
+            "id": 1,
+            "prices": {},
+            "trades": [{
+                "kind": "fulfillment",
+                "order": format!("0x{}", "00".repeat(56)),
+                "executedAmount": "1"
+            }],
+            "interactions": [
+                {
+                    "kind": "custom",
+                    "internalize": false,
+                    "target": format!("{protected:#x}"),
+                    "value": "0",
+                    "callData": "0x",
+                    "allowances": [],
+                    "inputs": [],
+                    "outputs": []
+                },
+                {
+                    "kind": "custom",
+                    "internalize": false,
+                    "target": format!("{unprotected:#x}"),
+                    "value": "0",
+                    "callData": "0x",
+                    "allowances": [],
+                    "inputs": [],
+                    "outputs": []
+                }
+            ]
+        }))
+        .unwrap();
 
         let err = required_custom_amounts(&solution, &[]).unwrap_err();
-        assert!(err.0.contains("exactly one fulfillment and one interaction"));
+        assert!(
+            err.0
+                .contains("exactly one fulfillment and one interaction")
+        );
     }
 
-    fn protected_solution_with_raw_interaction(
-        field: &str,
-    ) -> solvers_dto::solution::Solution {
+    fn protected_solution_with_raw_interaction(field: &str) -> solvers_dto::solution::Solution {
         let protected = address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
         let mut solution = serde_json::json!({
             "id": 1,
@@ -763,13 +753,19 @@ mod protected_interaction_tests {
     fn protected_solution_rejects_a_pre_interaction() {
         let solution = protected_solution_with_raw_interaction("preInteractions");
         let err = required_custom_amounts(&solution, &[]).unwrap_err();
-        assert!(err.0.contains("exactly one fulfillment and one interaction"));
+        assert!(
+            err.0
+                .contains("exactly one fulfillment and one interaction")
+        );
     }
 
     #[test]
     fn protected_solution_rejects_a_post_interaction() {
         let solution = protected_solution_with_raw_interaction("postInteractions");
         let err = required_custom_amounts(&solution, &[]).unwrap_err();
-        assert!(err.0.contains("exactly one fulfillment and one interaction"));
+        assert!(
+            err.0
+                .contains("exactly one fulfillment and one interaction")
+        );
     }
 }

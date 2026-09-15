@@ -376,6 +376,22 @@ impl Error {
 /// Returns `Ok(())` if every check passes. Returns `Err(...)` on the first
 /// violation — callers should log + emit `custom_interaction_rejected`
 /// metric + propagate to the solver as a parse error.
+pub(crate) const PROTECTED_TARGETS: &[Address] = &[
+    ETHEREUM_FXUSD,
+    OPTIMISM_CURVE_3POOL,
+    OPTIMISM_WOOFI_ROUTER,
+    OPTIMISM_UNISWAP_V4_ADAPTER,
+    ROBINHOOD_EKUBO_ROUTER,
+    ROBINHOOD_UP33_ROUTER,
+    OPTIMISM_VELODROME_ROUTER,
+    UNICHAIN_VELODROME_ROUTER,
+    ROBINHOOD_PANCAKESWAP_V3_ROUTER,
+    ROBINHOOD_FABLES_ADAPTER,
+    ROBINHOOD_RAMSES_V3_ROUTER,
+    OPTIMISM_SLIPSTREAM_ROUTER,
+    UNICHAIN_UNISWAP_V4_ADAPTER,
+];
+
 pub fn validate(custom: &interaction::Custom, chain_id: u64) -> Result<(), Error> {
     validate_with_required_output(custom, chain_id, None)
 }
