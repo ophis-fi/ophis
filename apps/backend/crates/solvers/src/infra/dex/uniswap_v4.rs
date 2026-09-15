@@ -135,7 +135,10 @@ impl UniswapV4 {
             MAX_SLIPPAGE_BPS,
         );
         let sent_bps = if is_quote {
-            clamped_bps
+            // Quote auctions never execute. Keep advertised output equal to
+            // calldata minimum, as required by the driver's direct-route guard.
+            // Executable solves recompute their slippage floor below.
+            0
         } else {
             order.bounded_solve_slippage_bps(
                 quote.amountOut,

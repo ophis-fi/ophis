@@ -111,7 +111,10 @@ impl DirectV3 {
             2_000,
         );
         let bps = if is_quote {
-            bps
+            // Quote auctions never execute. Keep advertised output equal to
+            // calldata minimum, as required by the driver's direct-route guard.
+            // Executable solves recompute their slippage floor below.
+            0
         } else {
             order.bounded_solve_slippage_bps(
                 quoted,

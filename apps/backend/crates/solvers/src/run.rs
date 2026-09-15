@@ -376,8 +376,8 @@ mod direct_route_smoke {
             let calldata_floor =
                 eth::U256::from_be_slice(&swap.calls[0].calldata[start..start + 32]);
             assert!(
-                calldata_floor < swap.output.amount,
-                "{chain}/{name} quote advertised execution floor"
+                calldata_floor == swap.output.amount,
+                "{chain}/{name} quote output disagrees with driver-validated calldata"
             );
             // Tight signed limits must tighten the router floor on the solve path.
             let tight = model::Order {
