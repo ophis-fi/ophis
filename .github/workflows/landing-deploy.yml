@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths:
+      - 'apps/frontend/package.json'
+      - 'apps/frontend/pnpm-lock.yaml'
       - 'apps/frontend/apps/ophis-landing/**'
       # ophis.fi/api/intent is served by the SHARED functions/api/ handler,
       # staged into the landing bundle by the "stage intent API function" step
@@ -24,6 +26,8 @@ on:
       - 'tests/indexnow-ping.test.mjs'
   pull_request:
     paths:
+      - 'apps/frontend/package.json'
+      - 'apps/frontend/pnpm-lock.yaml'
       - 'apps/frontend/apps/ophis-landing/**'
       - 'functions/api/**'
       - 'apps/frontend/libs/common-const/src/chainInfo.ts'

@@ -2,7 +2,6 @@ import { RouteHandlerCallbackOptions, RouteMatchCallbackOptions } from 'workbox-
 import { getCacheKeyForURL, matchPrecache } from 'workbox-precaching'
 import { Route } from 'workbox-routing'
 
-const fileExtensionRegexp = new RegExp('/[^/?]+\\.[^/]+$')
 const standaloneDocuments = new Map([
   ['/451', '/451.html'],
   ['/business', '/business/index.html'],
@@ -26,12 +25,9 @@ export function matchDocument({ request, url }: RouteMatchCallbackOptions) {
     return false
   }
 
-  // If this looks like a resource (ie has a file extension), skip.
-  if (url.pathname.match(fileExtensionRegexp)) {
-    return false
-  }
-
-  return true
+  // Hash-based app routes all navigate to /. Let Pages handle pathname
+  // aliases (301) and unknown URLs (404), rather than replacing them with the shell.
+  return url.pathname === '/' || standaloneDocuments.has(url.pathname)
 }
 
 type HandlerContext = {

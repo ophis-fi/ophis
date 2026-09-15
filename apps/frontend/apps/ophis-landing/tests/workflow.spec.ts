@@ -9,6 +9,11 @@ test('landing-deploy.yml builds, runs lhci, and deploys via wrangler', () => {
   const path = join(__dirname, '..', '..', '..', '..', '..', '.github', 'workflows', 'landing-deploy.yml')
   const yaml = readFileSync(path, 'utf8')
   expect(yaml).toContain('paths:')
+  for (const event of ['push', 'pull_request']) {
+    const paths = yaml.split(`  ${event}:`)[1].split(/^\S|^  \w/m)[0]
+    expect(paths).toContain("'apps/frontend/package.json'")
+    expect(paths).toContain("'apps/frontend/pnpm-lock.yaml'")
+  }
   expect(yaml).toContain('apps/frontend/apps/ophis-landing/**')
   expect(yaml).toContain('pnpm --filter @ophis/landing build')
   expect(yaml).toContain('lhci autorun')

@@ -12,14 +12,21 @@ jest.mock('workbox-routing', () => ({ Route: class {} }))
 describe('document', () => {
   describe('matchDocument', () => {
     const TEST_DOCUMENTS = [
-      [{ request: { mode: 'navigate' }, url: { hostname: 'swap.cow.fi', pathname: '' } }, true],
-      [{ request: { mode: 'navigate' }, url: { hostname: 'swap.cow.fi', pathname: '/#/swap' } }, true],
+      [{ request: { mode: 'navigate' }, url: { hostname: 'swap.cow.fi', pathname: '/' } }, true],
+      [{ request: { mode: 'navigate' }, url: { hostname: 'swap.cow.fi', pathname: '/', hash: '#/swap' } }, true],
       [{ request: { mode: 'navigate' }, url: { hostname: 'swap.cow.fi', pathname: '/asset.gif' } }, false],
-      [{ request: {}, url: { hostname: 'localhost', pathname: '' } }, false],
-      [{ request: { mode: 'navigate' }, url: { hostname: 'localhost', pathname: '' } }, true],
-      [{ request: { mode: 'navigate' }, url: { hostname: 'localhost', pathname: '/#/swap' } }, true],
+      [{ request: {}, url: { hostname: 'localhost', pathname: '/' } }, false],
+      [{ request: { mode: 'navigate' }, url: { hostname: 'localhost', pathname: '/' } }, true],
+      [{ request: { mode: 'navigate' }, url: { hostname: 'localhost', pathname: '/', hash: '#/swap' } }, true],
       [{ request: { mode: 'navigate' }, url: { hostname: 'localhost', pathname: '/asset.gif' } }, false],
     ] as [RouteMatchCallbackOptions, boolean][]
+
+    for (const pathname of ['/missing-seo-page', '/4663/swap/USDC/ETH', '/docs/fees', '/about']) {
+      TEST_DOCUMENTS.push([
+        { request: { mode: 'navigate' }, url: new URL(pathname, 'https://swap.ophis.fi') } as RouteMatchCallbackOptions,
+        false,
+      ])
+    }
 
     it.each(TEST_DOCUMENTS)('%j', (document: RouteMatchCallbackOptions, expected: boolean) => {
       expect(matchDocument(document)).toBe(expected)
