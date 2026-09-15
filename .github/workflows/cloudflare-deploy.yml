@@ -302,6 +302,10 @@ jobs:
           # so it cannot escape the --commit-message="..." quotes.
           command: pages deploy apps/frontend/build/cowswap --project-name=greg --branch=main --commit-dirty=true --commit-message="${{ steps.cf_msg.outputs.msg }}" --commit-hash=${{ github.sha }}
 
+      - name: IndexNow swap sitemap
+        continue-on-error: true
+        run: node scripts/indexnow-ping.mjs swap.ophis.fi --sitemap apps/frontend/build/cowswap/sitemap.xml
+
       # ── Explorer (separate Pages project, separate hostname) ──────────
       # Build with our self-hosted orderbook base URLs so the explorer
       # reads from {optimism,megaeth,hyperevm}-mainnet.ophis.fi instead
@@ -355,10 +359,6 @@ jobs:
           # above (same workflow run, same HEAD commit). See the
           # `sanitize commit message for CF Pages API` step for why.
           command: pages deploy apps/frontend/build/explorer --project-name=ophis-explorer --branch=main --commit-dirty=true --commit-message="${{ steps.cf_msg.outputs.msg }}" --commit-hash=${{ github.sha }}
-
-      - name: IndexNow swap sitemap
-        continue-on-error: true
-        run: node scripts/indexnow-ping.mjs swap.ophis.fi --sitemap apps/frontend/build/cowswap/sitemap.xml
 
       # Supply-chain provenance (#438). Runs AFTER both deploys so it can never
       # block a release. Hashes exactly the bytes pushed to CF Pages (swap +
