@@ -9,6 +9,11 @@ test('landing-deploy.yml builds, runs lhci, and deploys via wrangler', () => {
   const path = join(__dirname, '..', '..', '..', '..', '..', '.github', 'workflows', 'landing-deploy.yml')
   const yaml = readFileSync(path, 'utf8')
   expect(yaml).toContain('paths:')
+  for (const event of ['push', 'pull_request']) {
+    const paths = yaml.split(`  ${event}:`)[1].split(/^\S|^  \w/m)[0]
+    expect(paths).toContain("'apps/frontend/package.json'")
+    expect(paths).toContain("'apps/frontend/pnpm-lock.yaml'")
+  }
   expect(yaml).toContain('apps/frontend/apps/ophis-landing/**')
   expect(yaml).toContain('pnpm --filter @ophis/landing build')
   expect(yaml).toContain('lhci autorun')
@@ -20,4 +25,5 @@ test('landing-deploy.yml builds, runs lhci, and deploys via wrangler', () => {
   // (command injection prevention) — it must go through an env: var instead
   expect(yaml).not.toMatch(/printf.*\$\{\{.*head_commit\.message/)
   expect(yaml).toContain('RAW_MSG: ${{ github.event.head_commit.message }}')
+  expect(yaml).toContain('--sitemap apps/frontend/apps/ophis-landing/dist/sitemap.xml')
 })

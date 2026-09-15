@@ -176,7 +176,7 @@ const fadeInUp = keyframes`
 
 const Hero = styled.section`
   flex: 1;
-  min-height: 0;
+  min-height: min-content;
   display: flex;
   flex-direction: column;
   align-items: center;

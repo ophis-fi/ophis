@@ -91,6 +91,16 @@ export const CompactCopy = styled.span`
   white-space: nowrap;
 `
 
+export const TradeSummary = styled.section`
+  flex-basis: 100%;
+  order: 4;
+  line-height: 1.6;
+  p {
+    max-width: 80ch;
+    margin: 8px 0;
+  }
+`
+
 export const Grid = styled.div`
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr;
