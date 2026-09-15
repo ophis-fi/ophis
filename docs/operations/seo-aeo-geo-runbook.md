@@ -9,6 +9,32 @@ Surfaces: **landing** `ophis.fi` (Astro), **swap** `swap.ophis.fi`
 
 ## What is live
 
+### Acquisition reporting and campaign links
+
+GA4 property `540148539` uses `Europe/Luxembourg`. Compare completed seven-day
+periods; keep the latest 48 hours provisional. GSC dates are Pacific time and
+its API supplies `firstIncompleteDate`. Do not force clicks to equal sessions.
+
+Use lowercase `utm_source`, `utm_medium`, `utm_campaign` and optional
+`utm_content` on external campaign links. Never include wallet addresses,
+email addresses or other user identifiers. Examples ready for their named channels:
+
+- Newsletter: `https://ophis.fi/blog/dex-aggregator-robinhood/?utm_source=ophis_newsletter&utm_medium=email&utm_campaign=robinhood_guide_202609&utm_content=primary_link`
+- X post: `https://ophis.fi/blog/dex-aggregator-robinhood/?utm_source=x&utm_medium=social&utm_campaign=robinhood_guide_202609&utm_content=organic_post`
+- Integration outreach: `https://ophis.fi/migrate/odos-api/?utm_source=ophis_outreach&utm_medium=email&utm_campaign=odos_migration_202609&utm_content=developer_guide`
+
+Do not put UTMs on links between Ophis pages or subdomains. Existing
+`trade_click` and `integration_click` events retain the source page's canonical
+URL, without queries/fragments, so report CTA performance by page as well as
+destination. Follow quote, order-submission and fill events separately; a CTA
+click is not a completed trade.
+
+For production reports include `ophis.fi`, `swap.ophis.fi` and `docs.ophis.fi`;
+report other hosts separately. Separate the `codex_audit` diagnostic source
+from acquisition analysis. Validate any proposed internal/developer filter in
+testing mode before activating permanent exclusion; do not infer bots from
+Direct traffic or country alone.
+
 | Signal | Landing | Swap | Docs |
 | --- | --- | --- | --- |
 | `robots.txt` (+ AI crawlers allowed) | yes | yes (fixed: now points at swap.ophis.fi) | yes |
