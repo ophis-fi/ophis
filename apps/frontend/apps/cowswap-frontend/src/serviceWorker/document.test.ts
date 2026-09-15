@@ -21,7 +21,7 @@ describe('document', () => {
       [{ request: { mode: 'navigate' }, url: { hostname: 'localhost', pathname: '/asset.gif' } }, false],
     ] as [RouteMatchCallbackOptions, boolean][]
 
-    for (const pathname of ['/missing-seo-page', '/4663/swap/USDC/ETH', '/docs/fees', '/about']) {
+    for (const pathname of ['/missing-seo-page', '/4663/swap/USDC/ETH', '/docs/fees', '/about', '/robinhood-chain/']) {
       TEST_DOCUMENTS.push([
         { request: { mode: 'navigate' }, url: new URL(pathname, 'https://swap.ophis.fi') } as RouteMatchCallbackOptions,
         false,

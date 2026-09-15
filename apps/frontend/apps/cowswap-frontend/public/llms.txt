@@ -13,8 +13,10 @@
 
 ## Routes
 
-- [/](https://ophis.fi/): Landing, entry point, brand surfaces, language-first swap intent input.
-- [/#/swap](https://swap.ophis.fi/#/swap): Trade, standard swap UI (token A → token B, instant fill via solver auction).
+- [/](https://swap.ophis.fi/): Trading app. Choose tokens, review a quote and sign an order with your wallet.
+- [Robinhood Chain swaps](https://swap.ophis.fi/robinhood-chain/): Trading entry point, quote checklist, fee and token restrictions; opens chain 4663.
+- [Ophis overview](https://ophis.fi/): Protocol information and integration resources.
+- [/#/swap](https://swap.ophis.fi/#/swap): Trade, standard swap UI (token A → token B, subject to an executable quote and solver settlement).
 - [/#/limit](https://swap.ophis.fi/#/limit): Limit orders, sign-once orders that solvers fill when your target price is reachable.
 - [/#/advanced](https://swap.ophis.fi/#/advanced): Advanced trading. TWAP / programmable order types.
 - [/#/yield](https://swap.ophis.fi/#/yield): Yield, token-to-yield-bearing-token routes.

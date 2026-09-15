@@ -45,7 +45,7 @@ function makeButton(label: string, value: Consent, primary: boolean, onDone: () 
   return b
 }
 
-export function mountConsentBanner(): void {
+export function mountConsentBanner(force = false): void {
   if (typeof document === 'undefined') return
   if (document.getElementById(BANNER_ID)) return
   let stored: string | null = null
@@ -54,7 +54,7 @@ export function mountConsentBanner(): void {
   } catch {
     /* localStorage blocked: show the banner so the visitor can choose */
   }
-  if (stored === 'granted' || stored === 'denied') return
+  if (!force && (stored === 'granted' || stored === 'denied')) return
 
   const render = (): void => {
     if (document.getElementById(BANNER_ID) || !document.body) return

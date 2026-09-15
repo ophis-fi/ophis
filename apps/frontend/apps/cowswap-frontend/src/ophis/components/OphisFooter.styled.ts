@@ -208,6 +208,16 @@ export const ExternalLink = styled.a`
   ${linkStyles}
 `
 
+export const PreferencesButton = styled.button`
+  ${linkStyles}
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+`
+
 export const BottomBar = styled.div`
   display: flex;
   justify-content: space-between;
