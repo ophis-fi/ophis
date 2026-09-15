@@ -62,7 +62,7 @@ The appeal of Ophis is a simpler starting point. You do not have to begin by dec
 
 Open the app on Robinhood Chain, choose a supported pair and enter an amount. If a route is available, review the expected output and the minimum received. Your signed minimum defines the boundary the order must respect.
 
-For example, someone holding ETH might want to explore exchanging part of it for USDG. The useful question is whether a quote exists for that amount and what the order promises—not whether every exchange supports the same pair. This is an illustration of a trading request, not a live quote or a recommendation to buy either asset.
+For example, someone holding ETH might want to explore exchanging part of it for USDG. The useful question is whether a quote exists for that amount and what the order promises. This is an illustration of a trading request, not a live quote or a recommendation to buy either asset.
 
 Ophis does not guarantee a fill simply because a token is listed. Available liquidity, token restrictions and market conditions still matter. You can read more about the approach in the [Robinhood Chain DEX aggregator guide](https://ophis.fi/blog/dex-aggregator-robinhood/).
 
