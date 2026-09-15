@@ -10,20 +10,18 @@
   functions/_middleware.ts (it would otherwise serve this swap-only file cross-host).
   The landing (ophis.fi) is a separate deploy with its own sitemap.
 
-  Only the swap root is listed. /about, /legal, /brand, /learn were removed
-  (2026-06-25): under this client-rendered SPA they each return the BYTE-IDENTICAL
-  empty shell with a self-referential-to-root canonical, so advertising them only
-  burned crawl budget on duplicate content. The root (/) now ships real crawlable
-  copy + internal links via the #ophis-seo block in index.html (removed on mount).
-  Re-add per-route entries only once those routes render unique server-side content.
-  Marketing pages live on the landing host (ophis.fi); docs live at
-  https://docs.ophis.fi with a Docusaurus-generated sitemap. Trading routes
-  (/:chainId/swap/*) are excluded as user-state-dependent and not useful to index.
+  The root and the server-rendered Robinhood Chain entry page are indexable.
+  Hash trading routes and SPA utility aliases remain excluded: they do not
+  serve independent, canonical documents. Marketing and docs have their own sitemaps.
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://swap.ophis.fi/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://swap.ophis.fi/robinhood-chain/</loc>
+    <lastmod>2026-09-15</lastmod>
   </url>
 </urlset>

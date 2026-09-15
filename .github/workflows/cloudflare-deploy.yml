@@ -302,6 +302,10 @@ jobs:
           # so it cannot escape the --commit-message="..." quotes.
           command: pages deploy apps/frontend/build/cowswap --project-name=greg --branch=main --commit-dirty=true --commit-message="${{ steps.cf_msg.outputs.msg }}" --commit-hash=${{ github.sha }}
 
+      - name: IndexNow swap sitemap
+        continue-on-error: true
+        run: node scripts/indexnow-ping.mjs swap.ophis.fi --sitemap apps/frontend/build/cowswap/sitemap.xml
+
       # ── Explorer (separate Pages project, separate hostname) ──────────
       # Build with our self-hosted orderbook base URLs so the explorer
       # reads from {optimism,megaeth,hyperevm}-mainnet.ophis.fi instead

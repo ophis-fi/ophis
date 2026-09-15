@@ -10,6 +10,8 @@
  */
 import { ReactNode } from 'react'
 
+import { mountConsentBanner } from 'ophis/analytics'
+
 import * as styledEl from './OphisFooter.styled'
 
 interface Props {
@@ -41,6 +43,9 @@ function CompactFooter({ borderless }: { borderless: boolean }): ReactNode {
         </styledEl.ExternalLink>
         <styledEl.ExternalLink href="https://t.me/ophisfi">Telegram</styledEl.ExternalLink>
         <styledEl.InternalLink to="/legal">Legal</styledEl.InternalLink>
+        <styledEl.PreferencesButton type="button" onClick={() => mountConsentBanner(true)}>
+          Analytics preferences
+        </styledEl.PreferencesButton>
       </styledEl.CompactLinks>
       <styledEl.CompactCopy>&copy; Ophis 2026</styledEl.CompactCopy>
       <styledEl.TradeSummary aria-label="About Ophis swaps">
@@ -53,6 +58,7 @@ function CompactFooter({ borderless }: { borderless: boolean }): ReactNode {
           fees.
         </p>
         <styledEl.CompactLinks aria-label="Swap guides">
+          <styledEl.ExternalLink href="/robinhood-chain/">Swap on Robinhood Chain</styledEl.ExternalLink>
           <styledEl.ExternalLink href="https://ophis.fi/pricing/">Fees and pricing</styledEl.ExternalLink>
           <styledEl.ExternalLink href="https://ophis.fi/supported-chains/">Supported chains</styledEl.ExternalLink>
           <styledEl.ExternalLink href="https://ophis.fi/security/">Security</styledEl.ExternalLink>
@@ -117,6 +123,9 @@ function FullFooter({ borderless }: { borderless: boolean }): ReactNode {
               <styledEl.InternalLink to="/1/swap/_/_">Trade</styledEl.InternalLink>
             </li>
             <li>
+              <styledEl.ExternalLink href="/robinhood-chain/">Swap on Robinhood Chain</styledEl.ExternalLink>
+            </li>
+            <li>
               <styledEl.InternalLink to="/profile">Profile</styledEl.InternalLink>
             </li>
             <li>
@@ -176,6 +185,9 @@ function FullFooter({ borderless }: { borderless: boolean }): ReactNode {
       <styledEl.BottomBar>
         <span>© Ophis 2026</span>
         <styledEl.BottomLinks>
+          <styledEl.PreferencesButton type="button" onClick={() => mountConsentBanner(true)}>
+            Analytics preferences
+          </styledEl.PreferencesButton>
           <styledEl.SmallLink to="/legal#privacy">Privacy</styledEl.SmallLink>
           <styledEl.SmallLink to="/brand">Brand kit</styledEl.SmallLink>
         </styledEl.BottomLinks>

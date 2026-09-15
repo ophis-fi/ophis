@@ -98,6 +98,10 @@ jobs:
         working-directory: apps/frontend
         run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/(ophis/otc|pages/Otc)' --passWithNoTests=false
 
+      - name: Analytics consent and document routing regressions
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/ophis/analytics/|src/serviceWorker/document.test' --passWithNoTests=false
+
       # The partner-fee guard (src/ophis/partnerFee*) proves the sdk-trading patch is
       # actually applied to the install this build uses. Unpatched, `mergeAppDataDoc`
       # CONCATENATES our CIP-75 fee pair every time a trade flow hands the SDK the same

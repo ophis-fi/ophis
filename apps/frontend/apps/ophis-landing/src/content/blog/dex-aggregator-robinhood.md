@@ -60,6 +60,8 @@ Ophis uses batch settlement designed to mitigate front-running and sandwich atta
 
 **Ready to see an available route? [Check your Robinhood Chain swap quote on Ophis](https://swap.ophis.fi/#/4663/swap).** Compare the quoted output and signed minimum before approving. Token support alone does not guarantee executable liquidity; see the [current fee policy](https://ophis.fi/pricing/) and [security model](https://ophis.fi/security/) before trading.
 
+For the trading checklist and a direct app entry, visit [swap on Robinhood Chain](https://swap.ophis.fi/robinhood-chain/).
+
 ## What can you swap?
 
 Ophis can request quotes for supported Robinhood Chain assets, including stablecoins and Stock Tokens, where a route and sufficient liquidity are available.
