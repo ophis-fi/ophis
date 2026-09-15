@@ -38,6 +38,11 @@ pub struct Args {
 #[derive(Subcommand, Debug)]
 #[clap(rename_all = "lowercase")]
 pub enum Command {
+    /// Direct V3/Slipstream routing over pinned onchain factories and quoters.
+    DirectV3 {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
     /// solve individual orders exclusively via provided onchain liquidity
     Baseline {
         #[clap(long, env)]
@@ -110,6 +115,11 @@ pub enum Command {
     },
     /// solve ERC-20 orders through Ekubo's canonical Core-only routes
     Ekubo {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
+    /// solve orders through pinned Velodrome V2 contracts
+    Velodrome {
         #[clap(long, env)]
         config: PathBuf,
     },

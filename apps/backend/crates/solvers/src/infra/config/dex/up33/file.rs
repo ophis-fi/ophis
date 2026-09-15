@@ -22,18 +22,45 @@ struct Config {
 
 pub async fn load(path: &Path) -> super::Config {
     let (mut base, config) = file::load::<Config>(path).await;
-    assert_eq!(config.chain_id, eth::ChainId::Robinhood);
+    let (factory, router, weth, leaf, metric) = match config.chain_id {
+        eth::ChainId::Robinhood => (
+            FACTORY,
+            ROUTER,
+            WETH,
+            false,
+            crate::infra::metrics::Dex::Up33,
+        ),
+        eth::ChainId::Optimism => (
+            "0xF1046053aa5682b4F9a81b5481394DA16BE5FF5a",
+            "0xa062aE8A9c5e11aaA026fc2670B0D65cCc8B2858",
+            "0x4200000000000000000000000000000000000006",
+            false,
+            crate::infra::metrics::Dex::Velodrome,
+        ),
+        eth::ChainId::Unichain => (
+            "0x31832f2a97Fd20664D76Cc421207669b55CE4BC0",
+            "0x3a63171DD9BebF4D07BC782FECC7eb0b890C2A45",
+            "0x4200000000000000000000000000000000000006",
+            true,
+            crate::infra::metrics::Dex::Velodrome,
+        ),
+        _ => panic!("unsupported direct Solidly chain"),
+    };
     assert_eq!(
         config.factory,
-        FACTORY.parse::<eth::Address>().unwrap(),
+        factory.parse::<eth::Address>().unwrap(),
         "unexpected UP33 factory"
     );
     assert_eq!(
         config.router,
-        ROUTER.parse::<eth::Address>().unwrap(),
+        router.parse::<eth::Address>().unwrap(),
         "unexpected UP33 router"
     );
-    assert_eq!(config.weth, WETH.parse::<eth::Address>().unwrap(), "unexpected Robinhood WETH");
+    assert_eq!(
+        config.weth,
+        weth.parse::<eth::Address>().unwrap(),
+        "unexpected Robinhood WETH"
+    );
     base.internalize_interactions = false;
     let provider = blockchain::rpc(&base.node_url).provider;
     super::Config {
@@ -43,6 +70,8 @@ pub async fn load(path: &Path) -> super::Config {
             weth: config.weth,
             factory: config.factory,
             router: config.router,
+            leaf,
+            metric,
         },
         base,
     }

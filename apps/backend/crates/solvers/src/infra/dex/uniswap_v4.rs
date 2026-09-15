@@ -51,6 +51,8 @@ pub struct Config {
     pub stablecoin: Address,
     pub pool_fee: u32,
     pub tick_spacing: i32,
+    pub hook: Address,
+    pub metric: crate::infra::metrics::Dex,
 }
 
 pub struct UniswapV4 {
@@ -110,7 +112,7 @@ impl UniswapV4 {
                         .tick_spacing
                         .try_into()
                         .map_err(|_| Error::InvalidPoolKey)?,
-                    hooks: Address::ZERO,
+                    hooks: self.config.hook,
                 },
                 zeroForOne: zero_for_one,
                 exactAmount: exact_amount,
@@ -128,7 +130,7 @@ impl UniswapV4 {
 
         let configured_bps = slippage.as_bps().ok_or(Error::InvalidSlippage)?;
         let clamped_bps = crate::infra::metrics::clamp_slippage_bps(
-            crate::infra::metrics::Dex::UniswapV4,
+            self.config.metric,
             configured_bps,
             MAX_SLIPPAGE_BPS,
         );

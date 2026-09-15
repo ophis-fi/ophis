@@ -74,6 +74,16 @@ type = "Web3"
 type = "Alloy"
 
 [[drivers]]
+name = "velodrome"
+url = "http://driver/velodrome"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+[[drivers]]
+name = "uniswap-v4"
+url = "http://driver/uniswap-v4"
+address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+
+[[drivers]]
 name = "baseline"
 url = "http://driver/baseline"
 address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
@@ -134,6 +144,8 @@ read-url = "%DB_READ_URL"
 [order-quoting]
 price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
+  { name = "uniswap-v4", url = "http://driver/uniswap-v4" },
+  { name = "velodrome", url = "http://driver/velodrome" },
   { name = "okx", url = "http://driver/okx" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
   { name = "velora", url = "http://driver/velora" },

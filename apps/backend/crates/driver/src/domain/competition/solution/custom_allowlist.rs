@@ -82,6 +82,21 @@ const ROBINHOOD_EKUBO_ROUTER: Address = address!("7B2aA7Ecc0B5936b7C52E6259A19C3
 const ROBINHOOD_UP33_ROUTER: Address = address!("f5198743240fAC98db71868F34c70139b1eb0474");
 const UP33_SWAP_EXACT_TOKENS_SELECTOR: [u8; 4] = [0xca, 0xc8, 0x8e, 0xa9];
 const ROBINHOOD_UP33_FACTORY: Address = address!("FA5429AEBa338BEa2BFcc1b9a889862Ee395bc28");
+// Official Velodrome contracts README and superchain deployment-addresses/unichain.json.
+const OPTIMISM_VELODROME_ROUTER: Address = address!("a062aE8A9c5e11aaA026fc2670B0D65cCc8B2858");
+const OPTIMISM_VELODROME_FACTORY: Address = address!("F1046053aa5682b4F9a81b5481394DA16BE5FF5a");
+const UNICHAIN_VELODROME_ROUTER: Address = address!("3a63171DD9BebF4D07BC782FECC7eb0b890C2A45");
+const UNICHAIN_VELODROME_FACTORY: Address = address!("31832f2a97Fd20664D76Cc421207669b55CE4BC0");
+const ROBINHOOD_PANCAKESWAP_V3_ROUTER: Address =
+    address!("13f4EA83D0bd40E75C8222255bc855a974568Dd4");
+const ROBINHOOD_FABLES_ADAPTER: Address = address!("a0C33928831cB4518b8c4A7BE6c0f98BA8A22de5");
+const ROBINHOOD_USDG: Address = address!("5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
+const ROBINHOOD_RAMSES_V3_ROUTER: Address = address!("FCBBe2Af83F94e7E2a9C35a535B3A04719aFD2Ae");
+const OPTIMISM_SLIPSTREAM_ROUTER: Address = address!("0792a633F0c19c351081CF4B211F68F79bCc9676");
+const UNICHAIN_UNISWAP_V4_ADAPTER: Address = address!("4C41eC6850300d2D6Ba65d602fd31eC07F255b2C");
+const UNICHAIN_USDC: Address = address!("078D782b760474a361dDA0AF3839290b0EF57AD6");
+const UNICHAIN_SETTLEMENT: Address = address!("108A678716e5E1776036eF044CAB7064226F714E");
+const LEAF_SWAP_EXACT_TOKENS_SELECTOR: [u8; 4] = [0xf4, 0x17, 0x66, 0xd8];
 const ROBINHOOD_EKUBO_VE33: Address = address!("D18685a514E59b06d59824e16Db07e73345d9953");
 
 #[derive(Clone, Copy, Debug)]
@@ -418,7 +433,10 @@ pub fn validate_with_required_output(
     // The immutable Ophis adapter has no arbitrary-call or recipient surface,
     // but still receives a selector-scoped exception so a compromised solver
     // cannot misdeclare its pair, input, output floor, or allowance.
-    if chain_id == 10 && Address::from(custom.target) == OPTIMISM_UNISWAP_V4_ADAPTER {
+    if (chain_id == 10 && Address::from(custom.target) == OPTIMISM_UNISWAP_V4_ADAPTER)
+        || (chain_id == 130 && Address::from(custom.target) == UNICHAIN_UNISWAP_V4_ADAPTER)
+        || (chain_id == 4663 && Address::from(custom.target) == ROBINHOOD_FABLES_ADAPTER)
+    {
         validate_value(custom.value.0)?;
         for required in &custom.allowances {
             if required.0.amount > MAX_CUSTOM_ALLOWANCE {
@@ -427,7 +445,7 @@ pub fn validate_with_required_output(
                 });
             }
         }
-        return validate_uniswap_v4_swap(custom, required_amounts);
+        return validate_uniswap_v4_swap(custom, required_amounts, chain_id);
     }
     // Ekubo's Yul router has no ABI selector and embeds route instructions in
     // packed calldata. Keep it out of the generic allowlist: accept only the
@@ -441,7 +459,53 @@ pub fn validate_with_required_output(
     // Permit only exact-input paths bound to the fulfillment and Settlement.
     if chain_id == 4663 && Address::from(custom.target) == ROBINHOOD_UP33_ROUTER {
         validate_value(custom.value.0)?;
-        return validate_up33_swap(custom, required_amounts);
+        return validate_solidly_swap(
+            custom,
+            required_amounts,
+            4663,
+            ROBINHOOD_UP33_ROUTER,
+            ROBINHOOD_UP33_FACTORY,
+            ROBINHOOD_SETTLEMENT,
+            ROBINHOOD_WETH,
+            false,
+        );
+    }
+    if (chain_id == 10 && Address::from(custom.target) == OPTIMISM_VELODROME_ROUTER)
+        || (chain_id == 130 && Address::from(custom.target) == UNICHAIN_VELODROME_ROUTER)
+    {
+        let (router, factory, settlement, leaf) = if chain_id == 10 {
+            (
+                OPTIMISM_VELODROME_ROUTER,
+                OPTIMISM_VELODROME_FACTORY,
+                OPTIMISM_SETTLEMENT,
+                false,
+            )
+        } else {
+            (
+                UNICHAIN_VELODROME_ROUTER,
+                UNICHAIN_VELODROME_FACTORY,
+                UNICHAIN_SETTLEMENT,
+                true,
+            )
+        };
+        validate_value(custom.value.0)?;
+        return validate_solidly_swap(
+            custom,
+            required_amounts,
+            chain_id,
+            router,
+            factory,
+            settlement,
+            OPTIMISM_WETH,
+            leaf,
+        );
+    }
+    let target = Address::from(custom.target);
+    if (chain_id == 4663
+        && [ROBINHOOD_PANCAKESWAP_V3_ROUTER, ROBINHOOD_RAMSES_V3_ROUTER].contains(&target))
+        || (chain_id == 10 && target == OPTIMISM_SLIPSTREAM_ROUTER)
+    {
+        return validate_direct_v3_swap(custom, required_amounts, chain_id);
     }
     let allowlist = chain_allowlist(chain_id)?;
 
@@ -516,43 +580,59 @@ fn validate_common_direct_swap(
         && !custom.internalize
 }
 
-fn validate_up33_swap(
+#[allow(clippy::too_many_arguments)]
+fn validate_solidly_swap(
     custom: &interaction::Custom,
     required_amounts: Option<RequiredAmounts>,
+    chain_id: u64,
+    router: Address,
+    expected_factory: Address,
+    settlement: Address,
+    weth: Address,
+    leaf: bool,
 ) -> Result<(), Error> {
     let reject = || Error::CallDataNotAllowed {
-        target: ROBINHOOD_UP33_ROUTER,
-        chain_id: 4663,
+        target: router,
+        chain_id,
     };
     let data = custom.call_data.as_ref();
-    if data.len() < 4 + 32 * 10 || data[..4] != UP33_SWAP_EXACT_TOKENS_SELECTOR {
+    let stride = if leaf { 96 } else { 128 };
+    let selector = if leaf {
+        LEAF_SWAP_EXACT_TOKENS_SELECTOR
+    } else {
+        UP33_SWAP_EXACT_TOKENS_SELECTOR
+    };
+    if data.len() < 4 + 32 * 6 + stride || data[..4] != selector {
         return Err(reject());
     }
     let word = |offset: usize| U256::from_be_slice(&data[offset..offset + 32]);
     let address = |offset: usize| Address::from_slice(&data[offset + 12..offset + 32]);
     let amount_in = word(4);
     let min_out = word(36);
-    if word(68) != U256::from(160) || address(100) != ROBINHOOD_SETTLEMENT || word(132) != U256::MAX
-    {
+    if word(68) != U256::from(160) || address(100) != settlement || word(132) != U256::MAX {
         return Err(reject());
     }
     let route_len: usize = word(164).try_into().map_err(|_| reject())?;
-    if !(1..=2).contains(&route_len) || data.len() != 4 + 32 * 6 + 128 * route_len {
+    if !(1..=2).contains(&route_len) || data.len() != 4 + 32 * 6 + stride * route_len {
         return Err(reject());
     }
     let mut current = address(196);
     let sell = current;
     for i in 0..route_len {
-        let offset = 196 + i * 128;
+        let offset = 196 + i * stride;
         let from = address(offset);
         let to = address(offset + 32);
         let stable = word(offset + 64);
-        let factory = address(offset + 96);
-        if from != current || stable > U256::from(1) || factory != ROBINHOOD_UP33_FACTORY {
+        let factory = if leaf {
+            expected_factory
+        } else {
+            address(offset + 96)
+        };
+        if from != current || stable > U256::from(1) || factory != expected_factory {
             return Err(reject());
         }
         current = to;
-        if route_len == 2 && i == 0 && current != ROBINHOOD_WETH {
+        if route_len == 2 && i == 0 && current != weth {
             return Err(reject());
         }
     }
@@ -561,7 +641,60 @@ fn validate_up33_swap(
     };
     if sell != required.sell_token
         || current != required.buy_token
-        || !validate_common_direct_swap(custom, required, ROBINHOOD_UP33_ROUTER, amount_in, min_out)
+        || !validate_common_direct_swap(custom, required, router, amount_in, min_out)
+    {
+        return Err(reject());
+    }
+    Ok(())
+}
+
+fn validate_direct_v3_swap(
+    custom: &interaction::Custom,
+    required: Option<RequiredAmounts>,
+    chain_id: u64,
+) -> Result<(), Error> {
+    let target = Address::from(custom.target);
+    let reject = || Error::CallDataNotAllowed { target, chain_id };
+    let cl = target != ROBINHOOD_PANCAKESWAP_V3_ROUTER;
+    let settlement = if chain_id == 10 {
+        OPTIMISM_SETTLEMENT
+    } else {
+        ROBINHOOD_SETTLEMENT
+    };
+    let data = custom.call_data.as_ref();
+    let selector = if cl {
+        [0xa0, 0x26, 0x38, 0x3e]
+    } else {
+        [0x04, 0xe4, 0x5a, 0xaf]
+    };
+    if data.len() != 4 + 32 * if cl { 8 } else { 7 } || data[..4] != selector {
+        return Err(reject());
+    }
+    let word = |i: usize| U256::from_be_slice(&data[4 + i * 32..4 + (i + 1) * 32]);
+    let address = |i: usize| Address::from_slice(&data[4 + i * 32 + 12..4 + (i + 1) * 32]);
+    for i in [0, 1, 3] {
+        if data[4 + i * 32..4 + i * 32 + 12].iter().any(|&b| b != 0) {
+            return Err(reject());
+        }
+    }
+    let amount_index = if cl { 5 } else { 4 };
+    let Some(required) = required else {
+        return Err(reject());
+    };
+    if address(0) != required.sell_token
+        || address(1) != required.buy_token
+        || address(3) != settlement
+        || word(2).is_zero()
+        || word(2) > U256::from(if cl { 32_767 } else { 999_999 })
+        || (cl && word(4) != U256::MAX)
+        || !word(amount_index + 2).is_zero()
+        || !validate_common_direct_swap(
+            custom,
+            required,
+            target,
+            word(amount_index),
+            word(amount_index + 1),
+        )
     {
         return Err(reject());
     }
@@ -878,10 +1011,16 @@ fn validate_woofi_swap(
 fn validate_uniswap_v4_swap(
     custom: &interaction::Custom,
     required_amounts: Option<RequiredAmounts>,
+    chain_id: u64,
 ) -> Result<(), Error> {
+    let (adapter, stablecoin, weth) = match chain_id {
+        130 => (UNICHAIN_UNISWAP_V4_ADAPTER, UNICHAIN_USDC, OPTIMISM_WETH),
+        4663 => (ROBINHOOD_FABLES_ADAPTER, ROBINHOOD_USDG, ROBINHOOD_WETH),
+        _ => (OPTIMISM_UNISWAP_V4_ADAPTER, OPTIMISM_USDC, OPTIMISM_WETH),
+    };
     let reject = || Error::CallDataNotAllowed {
-        target: OPTIMISM_UNISWAP_V4_ADAPTER,
-        chain_id: 10,
+        target: adapter,
+        chain_id,
     };
     let data = custom.call_data.as_ref();
     if data.len() != 4 + 32 * 3
@@ -895,10 +1034,10 @@ fn validate_uniswap_v4_swap(
     let sell_token = word_address(4);
     let amount_in = word_u256(36);
     let min_out = word_u256(68);
-    let buy_token = if sell_token == OPTIMISM_WETH {
-        OPTIMISM_USDC
-    } else if sell_token == OPTIMISM_USDC {
-        OPTIMISM_WETH
+    let buy_token = if sell_token == weth {
+        stablecoin
+    } else if sell_token == stablecoin {
+        weth
     } else {
         return Err(reject());
     };
@@ -931,7 +1070,7 @@ fn validate_uniswap_v4_swap(
         || Address::from(output.token) != buy_token
         || output.amount.0 != min_out
         || allowance.token != sell_token.into()
-        || allowance.spender != OPTIMISM_UNISWAP_V4_ADAPTER
+        || allowance.spender != adapter
         || allowance.amount != amount_in
         || custom.internalize
     {
@@ -1205,6 +1344,180 @@ mod tests {
                 amount: eth::TokenAmount(U256::from(output)),
             }],
             internalize: false,
+        }
+    }
+
+    #[test]
+    fn direct_v3_guards_bind_calldata_to_fulfillment() {
+        for (chain, target, settlement, cl) in [
+            (
+                4663,
+                ROBINHOOD_PANCAKESWAP_V3_ROUTER,
+                ROBINHOOD_SETTLEMENT,
+                false,
+            ),
+            (4663, ROBINHOOD_RAMSES_V3_ROUTER, ROBINHOOD_SETTLEMENT, true),
+            (10, OPTIMISM_SLIPSTREAM_ROUTER, OPTIMISM_SETTLEMENT, true),
+        ] {
+            let sell = Address::repeat_byte(1);
+            let buy = Address::repeat_byte(2);
+            let mut data = if cl {
+                vec![0xa0, 0x26, 0x38, 0x3e]
+            } else {
+                vec![0x04, 0xe4, 0x5a, 0xaf]
+            };
+            let mut words = vec![
+                U256::from_be_slice(sell.as_slice()),
+                U256::from_be_slice(buy.as_slice()),
+                U256::from(10),
+                U256::from_be_slice(settlement.as_slice()),
+            ];
+            if cl {
+                words.push(U256::MAX);
+            }
+            words.extend([U256::from(1000), U256::from(990), U256::ZERO]);
+            for w in words {
+                data.extend_from_slice(&w.to_be_bytes::<32>());
+            }
+            let custom = direct_custom(target, sell, buy, 1000, 990, data);
+            let amounts = Some(required(sell, buy, 1000, 990));
+            assert_eq!(
+                validate_with_required_output(&custom, chain, amounts),
+                Ok(())
+            );
+            assert!(validate_with_required_output(&custom, chain, None).is_err());
+            assert!(
+                validate_target(target, chain).is_err(),
+                "no raw pre/post bypass"
+            );
+            for index in [0, 4, 4 + 32 * 3 + 31, custom.call_data.len() - 1] {
+                let mut poisoned = custom.clone();
+                let mut bytes = poisoned.call_data.to_vec();
+                bytes[index] ^= 1;
+                poisoned.call_data = bytes.into();
+                assert!(validate_with_required_output(&poisoned, chain, amounts).is_err());
+            }
+            let mut poisoned = custom.clone();
+            poisoned.internalize = true;
+            assert!(validate_with_required_output(&poisoned, chain, amounts).is_err());
+            assert!(
+                validate_with_required_output(&custom, chain, Some(required(sell, buy, 999, 990)))
+                    .is_err()
+            );
+            assert!(
+                validate_with_required_output(&custom, chain, Some(required(sell, buy, 1000, 991)))
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn velodrome_guards_handle_both_route_abis() {
+        for (chain, router, factory, settlement, leaf) in [
+            (
+                10,
+                OPTIMISM_VELODROME_ROUTER,
+                OPTIMISM_VELODROME_FACTORY,
+                OPTIMISM_SETTLEMENT,
+                false,
+            ),
+            (
+                130,
+                UNICHAIN_VELODROME_ROUTER,
+                UNICHAIN_VELODROME_FACTORY,
+                UNICHAIN_SETTLEMENT,
+                true,
+            ),
+        ] {
+            let sell = Address::repeat_byte(1);
+            let buy = Address::repeat_byte(2);
+            let mut data = if leaf {
+                LEAF_SWAP_EXACT_TOKENS_SELECTOR.to_vec()
+            } else {
+                UP33_SWAP_EXACT_TOKENS_SELECTOR.to_vec()
+            };
+            let mut words = vec![
+                U256::from(1000),
+                U256::from(990),
+                U256::from(160),
+                U256::from_be_slice(settlement.as_slice()),
+                U256::MAX,
+                U256::from(1),
+                U256::from_be_slice(sell.as_slice()),
+                U256::from_be_slice(buy.as_slice()),
+                U256::ZERO,
+            ];
+            if !leaf {
+                words.push(U256::from_be_slice(factory.as_slice()));
+            }
+            for w in words {
+                data.extend_from_slice(&w.to_be_bytes::<32>());
+            }
+            let custom = direct_custom(router, sell, buy, 1000, 990, data);
+            let amounts = Some(required(sell, buy, 1000, 990));
+            assert_eq!(
+                validate_with_required_output(&custom, chain, amounts),
+                Ok(())
+            );
+            assert!(validate_target(router, chain).is_err());
+            for (index, value) in [(0, 0u8), (4 + 32 * 3 + 31, 0), (4 + 32 * 8 + 31, 2)] {
+                let mut poisoned = custom.clone();
+                let mut bytes = poisoned.call_data.to_vec();
+                bytes[index] = value;
+                poisoned.call_data = bytes.into();
+                assert!(validate_with_required_output(&poisoned, chain, amounts).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn new_v4_adapters_are_pair_and_chain_scoped() {
+        for (chain, target, sell, buy) in [
+            (
+                130,
+                UNICHAIN_UNISWAP_V4_ADAPTER,
+                OPTIMISM_WETH,
+                UNICHAIN_USDC,
+            ),
+            (
+                4663,
+                ROBINHOOD_FABLES_ADAPTER,
+                ROBINHOOD_WETH,
+                ROBINHOOD_USDG,
+            ),
+        ] {
+            for (sell, buy) in [(sell, buy), (buy, sell)] {
+                let mut data = UNISWAP_V4_SWAP_EXACT_INPUT_SELECTOR.to_vec();
+                for w in [
+                    U256::from_be_slice(sell.as_slice()),
+                    U256::from(1000),
+                    U256::from(990),
+                ] {
+                    data.extend_from_slice(&w.to_be_bytes::<32>());
+                }
+                let custom = direct_custom(target, sell, buy, 1000, 990, data);
+                assert_eq!(
+                    validate_with_required_output(
+                        &custom,
+                        chain,
+                        Some(required(sell, buy, 1000, 990))
+                    ),
+                    Ok(())
+                );
+                assert!(
+                    validate_with_required_output(
+                        &custom,
+                        chain,
+                        Some(required(sell, Address::ZERO, 1000, 990))
+                    )
+                    .is_err()
+                );
+                assert!(
+                    validate_with_required_output(&custom, 1, Some(required(sell, buy, 1000, 990)))
+                        .is_err()
+                );
+                assert!(validate_target(target, chain).is_err());
+            }
         }
     }
 

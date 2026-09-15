@@ -1,4 +1,4 @@
-//! Direct UP33 Solidly V2 solver for Robinhood Chain.
+//! Direct Solidly V2 execution shared by UP33 and Velodrome.
 //!
 //! Pool discovery and quotes are read from pinned onchain contracts. Execution
 //! is restricted to ordinary two- or three-token V2 paths and always returns
@@ -32,6 +32,13 @@ sol! {
             uint256 deadline
         ) external returns (uint256[] amounts);
     }
+    #[sol(rpc)]
+    interface ILeafRouter {
+        struct Route { address from; address to; bool stable; }
+        function getAmountsOut(uint256 amountIn, Route[] routes) external view returns (uint256[] amounts);
+        function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, Route[] routes, address to, uint256 deadline) external returns (uint256[] amounts);
+    }
+
 }
 
 const MAX_SLIPPAGE_BPS: u16 = 2_000;
@@ -45,6 +52,8 @@ pub struct Config {
     pub weth: Address,
     pub factory: Address,
     pub router: Address,
+    pub leaf: bool,
+    pub metric: crate::infra::metrics::Dex,
 }
 
 pub struct Up33 {
@@ -54,6 +63,9 @@ pub struct Up33 {
     weth: Address,
     factory_address: Address,
     router_address: Address,
+    leaf_router: ILeafRouter::ILeafRouterInstance<DynProvider>,
+    leaf: bool,
+    metric: crate::infra::metrics::Dex,
 }
 
 impl Up33 {
@@ -70,7 +82,10 @@ impl Up33 {
         }
         Ok(Self {
             factory: IUp33Factory::new(config.factory, config.provider.clone()),
-            router: IUp33Router::new(config.router, config.provider),
+            router: IUp33Router::new(config.router, config.provider.clone()),
+            leaf_router: ILeafRouter::new(config.router, config.provider),
+            leaf: config.leaf,
+            metric: config.metric,
             settlement: config.settlement,
             weth: config.weth,
             factory_address: config.factory,
@@ -94,7 +109,7 @@ impl Up33 {
             .best_route(order.sell.0, order.buy.0, order.amount.get())
             .await?;
         let bps = crate::infra::metrics::clamp_slippage_bps(
-            crate::infra::metrics::Dex::Up33,
+            self.metric,
             slippage.as_bps().ok_or(Error::InvalidSlippage)?,
             MAX_SLIPPAGE_BPS,
         );
@@ -104,14 +119,25 @@ impl Up33 {
                 let min_out = subtract_slippage(quoted, bps)
                     .filter(|x| !x.is_zero())
                     .ok_or(Error::NotFound)?;
-                let calldata = IUp33Router::swapExactTokensForTokensCall {
-                    amountIn: amount_in,
-                    amountOutMin: min_out,
-                    routes: routes.clone(),
-                    to: self.settlement,
-                    deadline: DEADLINE,
-                }
-                .abi_encode();
+                let calldata = if self.leaf {
+                    ILeafRouter::swapExactTokensForTokensCall {
+                        amountIn: amount_in,
+                        amountOutMin: min_out,
+                        routes: leaf_routes(&routes),
+                        to: self.settlement,
+                        deadline: DEADLINE,
+                    }
+                    .abi_encode()
+                } else {
+                    IUp33Router::swapExactTokensForTokensCall {
+                        amountIn: amount_in,
+                        amountOutMin: min_out,
+                        routes: routes.clone(),
+                        to: self.settlement,
+                        deadline: DEADLINE,
+                    }
+                    .abi_encode()
+                };
                 (amount_in, min_out, calldata)
             }
             order::Side::Buy => unreachable!("buy orders were rejected above"),
@@ -170,12 +196,18 @@ impl Up33 {
         }
         let mut best: Option<(Vec<IUp33Router::Route>, U256)> = None;
         for routes in candidates {
-            let amounts = self
-                .router
-                .getAmountsOut(amount, routes.clone())
-                .call()
-                .await
-                .map_err(classify_quote_error);
+            let amounts = if self.leaf {
+                self.leaf_router
+                    .getAmountsOut(amount, leaf_routes(&routes))
+                    .call()
+                    .await
+            } else {
+                self.router
+                    .getAmountsOut(amount, routes.clone())
+                    .call()
+                    .await
+            }
+            .map_err(classify_quote_error);
             let amounts = match amounts {
                 Ok(amounts) => amounts,
                 Err(Error::NotFound) => continue,
@@ -208,6 +240,17 @@ impl Up33 {
             .map(|p| !p.is_zero())
             .map_err(Error::Rpc)
     }
+}
+
+fn leaf_routes(routes: &[IUp33Router::Route]) -> Vec<ILeafRouter::Route> {
+    routes
+        .iter()
+        .map(|r| ILeafRouter::Route {
+            from: r.from,
+            to: r.to,
+            stable: r.stable,
+        })
+        .collect()
 }
 
 fn classify_quote_error(err: alloy::contract::Error) -> Error {

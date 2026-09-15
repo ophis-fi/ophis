@@ -44,6 +44,21 @@ type = "Web3"
 type = "Alloy"
 
 [[drivers]]
+name = "pancakeswap"
+url = "http://driver/pancakeswap"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
+
+[[drivers]]
+name = "ramses"
+url = "http://driver/ramses"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
+
+[[drivers]]
+name = "fables"
+url = "http://driver/fables"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
+
+[[drivers]]
 name = "baseline"
 url = "http://driver/baseline"
 address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
@@ -94,6 +109,9 @@ read-url = "%DB_READ_URL"
 [order-quoting]
 price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
+  { name = "fables", url = "http://driver/fables" },
+  { name = "ramses", url = "http://driver/ramses" },
+  { name = "pancakeswap", url = "http://driver/pancakeswap" },
   { name = "lifi", url = "http://driver/lifi" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
   { name = "uniswap-v4", url = "http://driver/uniswap-v4" },

@@ -16,7 +16,7 @@ This stack runs the Ophis Protocol deployment on **Unichain mainnet (chain 130)*
 |---------------|-------------|-------------|
 | orderbook     | 8400        | REST API — order creation, quotes, status |
 | driver        | 8401        | Solver engine + settlement submitter |
-| baseline      | 9301        | On-chain liquidity solver — **ships empty on Unichain** (v4 routed via aggregators) |
+| baseline      | 9301        | On-chain liquidity solver — **ships empty on Unichain** (dedicated solvers handle direct routing) |
 | okx-solver    | 9302        | OKX DEX aggregator (staged — see Solver Status) |
 | kyberswap-solver | 9303     | KyberSwap aggregator (the active first-fill connector) |
 | velora-solver | 9304        | Velora/ParaSwap — **disabled on Unichain** (no v4 adapter) |
@@ -69,14 +69,12 @@ If the self-node is down, `debug`/`trace` fail-closed and the autopilot **pauses
 
 ## Solver Status
 
-| Solver     | Unichain v4 support | Status |
-|------------|---------------------|--------|
-| kyberswap  | Confirmed — live v4 routes (USDC→WETH) | **Active — the first-fill connector** |
-| okx        | Confirmed — V6, incl. hooked v4 pools | Staged — needs `OKX_*` creds + the chain-130 router/spender added to `OKX_ROUTER_ALLOWLIST` |
-| baseline   | n/a — ships empty | Inactive — Unichain v4 liquidity is routed via the aggregators, not the on-chain baseline |
-| velora     | **None** — no Uniswap-v4 adapter on any chain | Disabled — do NOT enable for Unichain |
+The auction configuration includes seven aggregator lanes and dedicated
+`velodrome` (V2) and `uniswap-v4` (ETH/USDC) lanes. The baseline remains empty.
+The direct lanes require rollout; configuration alone does not establish live status.
+Deploy the pinned V4 adapter before starting its solver.
+See [direct route scope and rollout](../../docs/operations/direct-dex-routes.md).
 
-Single-solver (KyberSwap) at first means no competitive auction, so surplus is poor until a second aggregator (OKX) joins. That's an accepted Phase-0 tradeoff.
 
 ---
 

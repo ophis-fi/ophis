@@ -63,6 +63,16 @@ type = "Web3"
 type = "Alloy"
 
 [[drivers]]
+name = "velodrome"
+url = "http://driver/velodrome"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
+name = "velodrome-slipstream"
+url = "http://driver/velodrome-slipstream"
+address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
+
+[[drivers]]
 name = "baseline"
 url = "http://driver/baseline"
 address = "0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1"
@@ -157,6 +167,8 @@ read-url = "%DB_READ_URL"
 [order-quoting]
 price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
+  { name = "velodrome-slipstream", url = "http://driver/velodrome-slipstream" },
+  { name = "velodrome", url = "http://driver/velodrome" },
   { name = "okx", url = "http://driver/okx" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
   { name = "velora", url = "http://driver/velora" },

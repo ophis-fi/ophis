@@ -91,6 +91,10 @@ pub enum Dex {
     Woofi,
     Ekubo,
     Up33,
+    Velodrome,
+    PancakeSwap,
+    Ramses,
+    Fables,
 }
 
 impl Dex {
@@ -111,6 +115,10 @@ impl Dex {
             Dex::Woofi => "woofi",
             Dex::Ekubo => "ekubo",
             Dex::Up33 => "up33",
+            Dex::Velodrome => "velodrome",
+            Dex::PancakeSwap => "pancakeswap",
+            Dex::Ramses => "ramses",
+            Dex::Fables => "fables",
         }
     }
 }

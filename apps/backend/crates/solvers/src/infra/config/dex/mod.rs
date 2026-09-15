@@ -47,3 +47,5 @@ pub struct Config {
     pub wrapped_native: Address,
     pub wrapped_native_balance_slot: u8,
 }
+
+pub mod direct_v3;

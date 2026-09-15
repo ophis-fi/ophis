@@ -6,6 +6,7 @@ use {
 
 pub mod bitget;
 pub mod curve;
+pub mod direct_v3;
 pub mod dodo;
 pub mod ekubo;
 pub mod enso;
@@ -40,6 +41,7 @@ pub enum Dex {
     Woofi(Box<woofi::Woofi>),
     Ekubo(Box<ekubo::Ekubo>),
     Up33(Box<up33::Up33>),
+    DirectV3(Box<direct_v3::DirectV3>),
 }
 
 impl Dex {
@@ -75,6 +77,7 @@ impl Dex {
             Dex::Woofi(woofi) => woofi.swap(order, slippage, is_quote).await?,
             Dex::Ekubo(ekubo) => ekubo.swap(order, slippage, is_quote).await?,
             Dex::Up33(up33) => up33.swap(order, slippage, is_quote).await?,
+            Dex::DirectV3(v3) => v3.swap(order, slippage, is_quote).await?,
         };
         Ok(swap)
     }
@@ -303,6 +306,16 @@ impl From<fx::Error> for Error {
             fx::Error::OrderNotSupported => Self::OrderNotSupported,
             fx::Error::NotFound => Self::NotFound,
             _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<direct_v3::Error> for Error {
+    fn from(err: direct_v3::Error) -> Self {
+        match err {
+            direct_v3::Error::OrderNotSupported => Self::OrderNotSupported,
+            direct_v3::Error::NotFound => Self::NotFound,
+            other => Self::Other(other.into()),
         }
     }
 }
