@@ -58,6 +58,8 @@ estimators = [
 # through SushiSwap V2 which has minimal liquidity on OP.
 price-estimation-drivers = [
   { name = "baseline", url = "http://driver/baseline" },
+  { name = "velodrome-slipstream", url = "http://driver/velodrome-slipstream" },
+  { name = "velodrome", url = "http://driver/velodrome" },
   { name = "okx", url = "http://driver/okx" },
   { name = "kyberswap", url = "http://driver/kyberswap" },
   { name = "velora", url = "http://driver/velora" },

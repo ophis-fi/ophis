@@ -180,7 +180,17 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
-        cli::Command::Up33 { config: path } => {
+        cli::Command::DirectV3 { config: path } => {
+            let config = config::dex::direct_v3::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::DirectV3(Box::new(
+                    dex::direct_v3::DirectV3::try_new(config.direct_v3)
+                        .expect("invalid direct V3 configuration"),
+                )),
+                config.base,
+            )))
+        }
+        cli::Command::Up33 { config: path } | cli::Command::Velodrome { config: path } => {
             let config = config::dex::up33::file::load(&path).await;
             solver::Solver::Dex(Box::new(solver::Dex::new(
                 dex::Dex::Up33(Box::new(
@@ -216,4 +226,181 @@ async fn shutdown_signal() {
 async fn shutdown_signal() {
     // We don't support signal handling on Windows.
     std::future::pending().await
+}
+
+#[cfg(test)]
+mod direct_route_smoke {
+    use crate::{
+        domain::{dex as model, eth, order},
+        infra::{config, dex},
+    };
+
+    /// Exercises the shipped configuration and the actual Rust quoting path.
+    /// Run explicitly with the three RPC environment variables; never broadcasts.
+    #[tokio::test]
+    #[ignore = "requires OP_MAINNET_RPC, UNICHAIN_RPC and ROBINHOOD_RPC"]
+    async fn live_direct_routes() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
+        for (chain, id, name, kind, rpc_env, wrapped, buy) in [
+            (
+                "optimism",
+                10,
+                "velodrome",
+                "v2",
+                "OP_MAINNET_RPC",
+                "0x4200000000000000000000000000000000000006",
+                "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+            ),
+            (
+                "optimism",
+                10,
+                "velodrome-slipstream",
+                "v3",
+                "OP_MAINNET_RPC",
+                "0x4200000000000000000000000000000000000006",
+                "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+            ),
+            (
+                "unichain",
+                130,
+                "velodrome",
+                "v2",
+                "UNICHAIN_RPC",
+                "0x4200000000000000000000000000000000000006",
+                "0x7f9AdFbd38b669F03d1d11000Bc76b9AaEA28A81",
+            ),
+            (
+                "unichain",
+                130,
+                "uniswap-v4",
+                "v4",
+                "UNICHAIN_RPC",
+                "0x4200000000000000000000000000000000000006",
+                "0x078D782b760474a361dDA0AF3839290b0EF57AD6",
+            ),
+            (
+                "robinhood",
+                4663,
+                "pancakeswap",
+                "v3",
+                "ROBINHOOD_RPC",
+                "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+                "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            ),
+            (
+                "robinhood",
+                4663,
+                "ramses",
+                "v3",
+                "ROBINHOOD_RPC",
+                "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+                "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            ),
+            (
+                "robinhood",
+                4663,
+                "up33",
+                "v2",
+                "ROBINHOOD_RPC",
+                "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+                "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            ),
+            (
+                "robinhood",
+                4663,
+                "fables",
+                "v4",
+                "ROBINHOOD_RPC",
+                "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+                "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+            ),
+        ] {
+            let text = std::fs::read_to_string(
+                root.join(format!("infra/{chain}-mainnet/configs/{name}.toml.tmpl")),
+            )
+            .unwrap();
+            let text = text.replace(
+                &format!("http://rpc-proxy:4000/main/evm/{id}"),
+                &std::env::var(rpc_env).expect(rpc_env),
+            );
+            let tmp = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(tmp.path(), text).unwrap();
+            let venue = match kind {
+                "v2" => {
+                    let c = config::dex::up33::file::load(tmp.path()).await;
+                    dex::Dex::Up33(Box::new(dex::up33::Up33::try_new(c.up33).unwrap()))
+                }
+                "v3" => {
+                    let c = config::dex::direct_v3::file::load(tmp.path()).await;
+                    dex::Dex::DirectV3(Box::new(
+                        dex::direct_v3::DirectV3::try_new(c.direct_v3).unwrap(),
+                    ))
+                }
+                _ => {
+                    let c = config::dex::uniswap_v4::file::load(tmp.path()).await;
+                    dex::Dex::UniswapV4(Box::new(
+                        dex::uniswap_v4::UniswapV4::try_new(c.uniswap_v4).unwrap(),
+                    ))
+                }
+            };
+            let amount = eth::U256::from(100_000_000_000_000u64);
+            let order = model::Order {
+                sell: wrapped.parse::<eth::Address>().unwrap().into(),
+                buy: buy.parse::<eth::Address>().unwrap().into(),
+                side: order::Side::Sell,
+                amount: model::Amount::new(amount),
+                buy_limit: Default::default(),
+                owner: eth::Address::ZERO,
+                solve_fee: Default::default(),
+            };
+            let swap = venue
+                .swap(
+                    &order,
+                    &model::Slippage::one_percent(),
+                    &crate::domain::auction::Tokens(Default::default()),
+                    true,
+                )
+                .await
+                .unwrap_or_else(|e| panic!("{chain}/{name}: {e:?}"));
+            assert_eq!(swap.input.amount, amount);
+            assert_eq!(swap.allowance.amount.get(), amount);
+            assert!(!swap.output.amount.is_zero());
+            assert_eq!(swap.calls.len(), 1);
+            let minimum_word = match kind {
+                "v2" => 1,
+                "v3" if name == "pancakeswap" => 5,
+                "v3" => 6,
+                _ => 2,
+            };
+            let start = 4 + minimum_word * 32;
+            let calldata_floor =
+                eth::U256::from_be_slice(&swap.calls[0].calldata[start..start + 32]);
+            assert!(
+                calldata_floor == swap.output.amount,
+                "{chain}/{name} quote output disagrees with driver-validated calldata"
+            );
+            // Tight signed limits must tighten the router floor on the solve path.
+            let tight = model::Order {
+                buy_limit: swap.output.amount * eth::U256::from(995) / eth::U256::from(1000),
+                ..order
+            };
+            let bounded = venue
+                .swap(
+                    &tight,
+                    &model::Slippage::one_percent(),
+                    &crate::domain::auction::Tokens(Default::default()),
+                    false,
+                )
+                .await
+                .unwrap_or_else(|e| panic!("{chain}/{name} tight solve: {e:?}"));
+            assert!(
+                bounded.output.amount >= tight.buy_limit,
+                "{chain}/{name} ignored signed limit"
+            );
+            eprintln!(
+                "{chain}/{name}: {} -> {}",
+                swap.input.amount, swap.output.amount
+            );
+        }
+    }
 }

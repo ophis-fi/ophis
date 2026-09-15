@@ -348,6 +348,58 @@ services:
       retries: 6
       start_period: 30s
 
+  uniswap-v4-solver:
+    logging: *default-logging
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/uniswap-v4.toml:/uniswap-v4.toml:ro
+    command: ["uniswapv4", "--config", "/uniswap-v4.toml"]
+    ports:
+      - "127.0.0.1:9310:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  velodrome-solver:
+    logging: *default-logging
+    extra_hosts:
+      - "ophis-uni-node:${OPHIS_UNI_NODE_HOST:-host-gateway}"
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/velodrome.toml:/velodrome.toml:ro
+    command: ["velodrome", "--config", "/velodrome.toml"]
+    ports:
+      - "127.0.0.1:9311:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
   # Velora (formerly ParaSwap) Augustus V6.2 aggregator solver — ENABLED on
   # Unichain (verified 2026-06-30: api.velora.xyz serves network 130, the live
   # route's router == the allowlisted Augustus V6.2 0x6a000f20…001068, and

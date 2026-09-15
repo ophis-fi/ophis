@@ -6,6 +6,7 @@ use {
 
 pub mod bitget;
 pub mod curve;
+pub mod direct_v3;
 pub mod dodo;
 pub mod ekubo;
 pub mod enso;
@@ -40,6 +41,7 @@ pub enum Dex {
     Woofi(Box<woofi::Woofi>),
     Ekubo(Box<ekubo::Ekubo>),
     Up33(Box<up33::Up33>),
+    DirectV3(Box<direct_v3::DirectV3>),
 }
 
 impl Dex {
@@ -52,11 +54,8 @@ impl Dex {
         order: &dex::Order,
         slippage: &dex::Slippage,
         tokens: &auction::Tokens,
-        // Quote path: kyberswap/velora report the optimistic output (and, on the
-        // solve path, bound the router minReturn by the order's buy limit so a
-        // tight order still settles). The other lanes report their guaranteed
-        // floor on both paths (self-consistent, so an order quoted at their
-        // floor always settles); they don't need this flag.
+        // Quote-aware lanes report the pool/API estimate for price discovery;
+        // executable solves report the order-bounded calldata floor.
         is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         let swap = match self {
@@ -75,6 +74,7 @@ impl Dex {
             Dex::Woofi(woofi) => woofi.swap(order, slippage, is_quote).await?,
             Dex::Ekubo(ekubo) => ekubo.swap(order, slippage, is_quote).await?,
             Dex::Up33(up33) => up33.swap(order, slippage, is_quote).await?,
+            Dex::DirectV3(v3) => v3.swap(order, slippage, is_quote).await?,
         };
         Ok(swap)
     }
@@ -303,6 +303,16 @@ impl From<fx::Error> for Error {
             fx::Error::OrderNotSupported => Self::OrderNotSupported,
             fx::Error::NotFound => Self::NotFound,
             _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<direct_v3::Error> for Error {
+    fn from(err: direct_v3::Error) -> Self {
+        match err {
+            direct_v3::Error::OrderNotSupported => Self::OrderNotSupported,
+            direct_v3::Error::NotFound => Self::NotFound,
+            other => Self::Other(other.into()),
         }
     }
 }

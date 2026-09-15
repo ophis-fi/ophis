@@ -11,6 +11,8 @@ use {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 struct Config {
     chain_id: eth::ChainId,
+    #[serde(default)]
+    fables: bool,
     adapter: eth::Address,
     quoter: eth::Address,
     wrapped_native: eth::Address,
@@ -24,24 +26,34 @@ pub async fn load(path: &Path) -> super::Config {
     assert!(
         matches!(
             config.chain_id,
-            eth::ChainId::Optimism | eth::ChainId::Robinhood
+            eth::ChainId::Optimism | eth::ChainId::Robinhood | eth::ChainId::Unichain
         ),
         "direct Uniswap V4 lane is restricted to configured Ophis deployments"
     );
     assert!(
-        config.pool_fee < 1_000_000,
+        config.pool_fee < 1_000_000 || (config.fables && config.pool_fee == 0x800000),
         "V4 pool fee must be static and below 100%"
     );
     assert!(
         (1..=32_767).contains(&config.tick_spacing),
         "V4 tick spacing is outside PoolManager bounds"
     );
-    let expected = match config.chain_id {
+    assert!(
+        !config.fables || config.chain_id == eth::ChainId::Robinhood,
+        "Fables is Robinhood-only"
+    );
+    let mut expected = match config.chain_id {
         eth::ChainId::Optimism => (
             "0xd882da9cb91eb458337413e5846824cdcadb2ddc",
             "0x1f3131a13296fb91c90870043742c3cdbff1a8d7",
             "0x4200000000000000000000000000000000000006",
             "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+        ),
+        eth::ChainId::Unichain => (
+            "0x4c41ec6850300d2d6ba65d602fd31ec07f255b2c",
+            "0x333e3c607b141b18ff6de9f258db6e77fe7491e0",
+            "0x4200000000000000000000000000000000000006",
+            "0x078d782b760474a361dda0af3839290b0ef57ad6",
         ),
         eth::ChainId::Robinhood => (
             "0x8573c5fcf5bd890f4edd4a41e783eac552b307ae",
@@ -51,6 +63,9 @@ pub async fn load(path: &Path) -> super::Config {
         ),
         _ => unreachable!("chain was restricted above"),
     };
+    if config.fables {
+        expected.0 = "0xa0c33928831cb4518b8c4a7be6c0f98ba8a22de5";
+    }
     let parse = |address: &str| address.parse::<eth::Address>().expect("pinned V4 address");
     assert_eq!(config.adapter, parse(expected.0), "unexpected V4 adapter");
     assert_eq!(config.quoter, parse(expected.1), "unexpected V4 quoter");
@@ -64,7 +79,11 @@ pub async fn load(path: &Path) -> super::Config {
         parse(expected.3),
         "unexpected V4 quote token"
     );
-    assert_eq!(config.pool_fee, 500, "unexpected V4 pool fee");
+    assert_eq!(
+        config.pool_fee,
+        if config.fables { 0x800000 } else { 500 },
+        "unexpected V4 pool fee"
+    );
     assert_eq!(config.tick_spacing, 10, "unexpected V4 tick spacing");
     super::Config {
         uniswap_v4: uniswap_v4::Config {
@@ -76,6 +95,16 @@ pub async fn load(path: &Path) -> super::Config {
             stablecoin: config.stablecoin,
             pool_fee: config.pool_fee,
             tick_spacing: config.tick_spacing,
+            hook: if config.fables {
+                parse("0x06a889870C8f83640D6816319f72e2aA579b6080")
+            } else {
+                eth::Address::ZERO
+            },
+            metric: if config.fables {
+                crate::infra::metrics::Dex::Fables
+            } else {
+                crate::infra::metrics::Dex::UniswapV4
+            },
         },
         base,
     }

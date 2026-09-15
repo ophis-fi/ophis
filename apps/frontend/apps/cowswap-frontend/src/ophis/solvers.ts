@@ -52,10 +52,6 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   // Mirrors each stack's AUTOPILOT [[drivers]], the only list that decides which
   // lanes are dispatched an auction. Pinned per chain by
   // scripts/check-solver-registry-invariant.sh.
-  //   chain 10   baseline, okx, kyberswap, velora, enso, lifi, openocean, dodo,
-  //              curve, woofi, uniswap-v4
-  //   chain 130  baseline, okx, kyberswap, velora, openocean, dodo, lifi, enso
-  //   chain 4663 baseline, lifi, kyberswap, uniswap-v4, ekubo, up33, pools
   {
     solverId: 'baseline',
     chainIds: [
@@ -104,8 +100,20 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   { solverId: 'woofi', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   {
     solverId: 'uniswap-v4',
-    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID],
+    chainIds: [
+      OPHIS_SOLVER_REGISTRY_CHAIN_ID,
+      OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID,
+      OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
+    ],
   }, // direct on-chain lane
+  {
+    solverId: 'velodrome',
+    chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID, OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID],
+  },
+  { solverId: 'velodrome-slipstream', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] },
+  { solverId: 'pancakeswap', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] },
+  { solverId: 'ramses', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] },
+  { solverId: 'fables', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] },
   { solverId: 'ekubo', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   { solverId: 'up33', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   { solverId: 'pools', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // pools.trade via Nordstern
@@ -125,6 +133,11 @@ const OPHIS_SOLVER_NAMES: Record<string, string> = {
   curve: 'Curve',
   woofi: 'WOOFi',
   'uniswap-v4': 'Uniswap v4',
+  velodrome: 'Velodrome',
+  'velodrome-slipstream': 'Velodrome Slipstream',
+  pancakeswap: 'PancakeSwap',
+  ramses: 'RamsesX',
+  fables: 'Fables',
   ekubo: 'Ekubo',
   up33: 'UP33',
   pools: 'Pools.trade',

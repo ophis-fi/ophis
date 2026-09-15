@@ -51,6 +51,8 @@ pub struct Config {
     pub stablecoin: Address,
     pub pool_fee: u32,
     pub tick_spacing: i32,
+    pub hook: Address,
+    pub metric: crate::infra::metrics::Dex,
 }
 
 pub struct UniswapV4 {
@@ -110,7 +112,7 @@ impl UniswapV4 {
                         .tick_spacing
                         .try_into()
                         .map_err(|_| Error::InvalidPoolKey)?,
-                    hooks: Address::ZERO,
+                    hooks: self.config.hook,
                 },
                 zeroForOne: zero_for_one,
                 exactAmount: exact_amount,
@@ -128,12 +130,15 @@ impl UniswapV4 {
 
         let configured_bps = slippage.as_bps().ok_or(Error::InvalidSlippage)?;
         let clamped_bps = crate::infra::metrics::clamp_slippage_bps(
-            crate::infra::metrics::Dex::UniswapV4,
+            self.config.metric,
             configured_bps,
             MAX_SLIPPAGE_BPS,
         );
         let sent_bps = if is_quote {
-            clamped_bps
+            // Quote auctions never execute. Keep advertised output equal to
+            // calldata minimum, as required by the driver's direct-route guard.
+            // Executable solves recompute their slippage floor below.
+            0
         } else {
             order.bounded_solve_slippage_bps(
                 quote.amountOut,
@@ -141,7 +146,8 @@ impl UniswapV4 {
                 eth::Gas(
                     quote
                         .gasEstimate
-                        .saturating_add(U256::from(ADAPTER_OVERHEAD_GAS)),
+                        .saturating_add(U256::from(ADAPTER_OVERHEAD_GAS))
+                        .saturating_add(U256::from(dex::SIM_SETTLE_OVERHEAD_GAS)),
                 ),
                 0,
             )
@@ -170,7 +176,11 @@ impl UniswapV4 {
             },
             output: eth::Asset {
                 token: order.buy,
-                amount: min_amount_out,
+                amount: if is_quote {
+                    quote.amountOut
+                } else {
+                    min_amount_out
+                },
             },
             allowance: dex::Allowance {
                 spender: self.config.adapter,

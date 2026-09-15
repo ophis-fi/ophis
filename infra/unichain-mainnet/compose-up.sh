@@ -178,7 +178,7 @@ echo ""
 # config change, and render-configs.sh rewrites atomically via temp+mv).
 CONFIG_BOUND_SERVICES=(rpc-proxy driver orderbook autopilot \
   kyberswap-solver velora-solver openocean-solver dodo-solver okx-solver \
-  lifi-solver enso-solver)
+  lifi-solver enso-solver velodrome-solver uniswap-v4-solver)
 if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   echo "==> sequenced restart of config-mounted services to pick up rendered/* changes"
   echo "    (services: ${CONFIG_BOUND_SERVICES[*]})"
@@ -202,7 +202,7 @@ if docker compose ps --services 2>/dev/null | grep -qF rpc-proxy; then
   # before declaring deploy complete.
   DOWNSTREAM=(driver orderbook autopilot \
     kyberswap-solver velora-solver openocean-solver dodo-solver okx-solver \
-    lifi-solver enso-solver)
+    lifi-solver enso-solver velodrome-solver uniswap-v4-solver)
   docker compose stop "${DOWNSTREAM[@]}"
   docker compose up -d --no-deps --force-recreate rpc-proxy
   # Wait for rpc-proxy-health (busybox tcp probe) to report healthy.

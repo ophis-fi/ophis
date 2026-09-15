@@ -537,6 +537,58 @@ services:
       retries: 6
       start_period: 30s
 
+  velodrome-slipstream-solver:
+    logging: *default-logging
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/velodrome-slipstream.toml:/velodrome-slipstream.toml:ro
+    command: ["directv3", "--config", "/velodrome-slipstream.toml"]
+    ports:
+      - "127.0.0.1:9035:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  velodrome-solver:
+    logging: *default-logging
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/velodrome.toml:/velodrome.toml:ro
+    command: ["velodrome", "--config", "/velodrome.toml"]
+    ports:
+      - "127.0.0.1:9034:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
   curve-solver:
     logging: *default-logging
     image: local-baseline:latest

@@ -1,4 +1,5 @@
 [profile.default]
+no_match_path = "test/direct-routes/**"
 src = "src"
 out = "out"
 libs = ["node_modules", "lib"]
@@ -94,3 +95,14 @@ skip = []
 # Keep it off the build; run `forge lint` explicitly (e.g. in CI) to review
 # Ophis-authored code. deny_warnings above still gates solc warnings.
 lint_on_build = false
+
+# Direct-venue fork checks compile only the adapters under test.
+[profile.direct-routes]
+no_match_path = "test/otc-fork/**"
+src = "test/direct-routes"
+test = "test/direct-routes"
+script = "test/direct-routes"
+out = "out/direct-routes"
+libs = ["lib"]
+remappings = ["forge-std/=lib/forge-std/src/"]
+solc_version = "0.8.30"

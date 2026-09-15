@@ -388,6 +388,84 @@ services:
       retries: 6
       start_period: 30s
 
+  pancakeswap-solver:
+    logging: *default-logging
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/pancakeswap.toml:/pancakeswap.toml:ro
+    command: ["directv3", "--config", "/pancakeswap.toml"]
+    ports:
+      - "127.0.0.1:9318:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  ramses-solver:
+    logging: *default-logging
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/ramses.toml:/ramses.toml:ro
+    command: ["directv3", "--config", "/ramses.toml"]
+    ports:
+      - "127.0.0.1:9319:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  fables-solver:
+    logging: *default-logging
+    image: local-baseline:latest
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/fables.toml:/fables.toml:ro
+    command: ["uniswapv4", "--config", "/fables.toml"]
+    ports:
+      - "127.0.0.1:9320:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
   up33-solver:
     logging: *default-logging
     image: local-baseline:latest

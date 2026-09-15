@@ -97,6 +97,27 @@ absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
 account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
 
+[[solver]]
+name = "pancakeswap"
+endpoint = "http://pancakeswap-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+[[solver]]
+name = "ramses"
+endpoint = "http://ramses-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
+[[solver]]
+name = "fables"
+endpoint = "http://fables-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"
+account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+
 [submission]
 # Robinhood L2 gas is ~0.02 gwei. 5 gwei cap is far above realistic traffic.
 gas-price-cap = "5000000000"

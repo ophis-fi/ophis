@@ -1,0 +1,18 @@
+# Ophis Unichain direct hookless Uniswap V4 solver. Quotes use the canonical
+# V4Quoter through Ophis's eRPC proxy; execution is restricted to the immutable
+# ETH/USDC 0.05% adapter and selector-scoped by the driver.
+node-url = "http://rpc-proxy:4000/main/evm/130"
+settlement = "0x108A678716e5E1776036eF044CAB7064226F714E"
+internalize-interactions = false
+strict-market-output-simulation = "all"
+wrapped-native = "0x4200000000000000000000000000000000000006"
+wrapped-native-balance-slot = 0
+
+[dex]
+chain-id = "130"
+adapter = "0x4C41eC6850300d2D6Ba65d602fd31eC07F255b2C"
+quoter = "0x333e3c607b141b18ff6de9f258db6e77fe7491e0"
+wrapped-native = "0x4200000000000000000000000000000000000006"
+stablecoin = "0x078D782b760474a361dDA0AF3839290b0EF57AD6"
+pool-fee = 500
+tick-spacing = 10
