@@ -12,12 +12,12 @@ export const ScrollBarStyle = css`
   }
 
   &::-webkit-scrollbar-thumb {
-    background-color: hsla(0, 0%, 100%, 0.25);
+    background-color: ${Color.explorer_borderPrimary};
     border-radius: 2rem;
   }
 
   &::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.2);
+    background: ${Color.explorer_bg2};
   }
 `
 
@@ -38,7 +38,7 @@ export const GlobalStyle = createGlobalStyle`
 
   // TODO: remove this once we have a proper way to set global CSS variables for all apps
   :root {
-    --cow-color-alert-text: ${Color.explorer_yellow4};
+    --cow-color-alert-text: ${Color.explorer_buttonWarning};
   }
 
   .hover {
@@ -53,8 +53,9 @@ export const GlobalStyle = createGlobalStyle`
     text-align: left;
     font-size: 1.2rem;
     border-radius: 0.5rem;
-    border: 1px solid rgb(45, 43, 51);
-    background: rgb(60, 62, 78);
+    border: 1px solid ${Color.explorer_border};
+    background: ${Color.explorer_bg};
+    color: ${Color.explorer_textPrimary};
     line-height: 1.4rem;
     word-break: break-all;
   }

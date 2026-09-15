@@ -41,17 +41,24 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
   // via the CoW API, removes the routers from the fetch queues, then re-scores
   // so the rebate ranking reflects the repair immediately. Idempotent; the
   // nightly cron also runs it, so this exists for out-of-band verification.
+  // Under the pipeline lock: the reward scheduler takes the same lock, and an
+  // eth-flow row still credited to a bridge deposit is a ticket CANDIDATE until
+  // re-pointed (only routers are excluded), so an unlocked scan could lose the
+  // race to reserveTicket between two rows and then skip that row forever.
   async ['repair-router-trades']() {
     const { repairRouterTrades } = await import('./repair/routerTrades.js');
-    const result = await repairRouterTrades();
-    log.info(result, 'repair-router-trades complete');
-    // Queue cleanup can make the fail-closed DefiLlama gate ready immediately.
-    // Do not require an operator to wait for (or manually emulate) nightly cron.
-    await completeDefiLlamaBackfillIfReady();
-    // Unconditional: a PRIOR partially-failed invocation (rows updated, then the
-    // cleanup or scorer threw) leaves the matview stale while a retry reports
-    // repaired = 0, so gating the refresh on this run's count would skip it.
-    await runScorer();
+    const ran = await withPipelineLock(async () => {
+      const result = await repairRouterTrades();
+      log.info(result, 'repair-router-trades complete');
+      // Queue cleanup can make the fail-closed DefiLlama gate ready immediately.
+      // Do not require an operator to wait for (or manually emulate) nightly cron.
+      await completeDefiLlamaBackfillIfReady();
+      // Unconditional: a PRIOR partially-failed invocation (rows updated, then the
+      // cleanup or scorer threw) leaves the matview stale while a retry reports
+      // repaired = 0, so gating the refresh on this run's count would skip it.
+      await runScorer();
+    });
+    if (!ran) log.error('pipeline lock busy (nightly run or another command in progress); retry later');
   },
   // Register a wallet in the owner registry so the next fetch backfills it.
   async ['track-wallet'](args) {

@@ -21,7 +21,7 @@ export interface GlobalState {
  * make sure the name of the state key(s) is/are the same as the reducer key(s) below
  */
 
-export const GLOBAL_INITIAL_STATE = (): GlobalState => ({ theme: Theme.DARK })
+export const GLOBAL_INITIAL_STATE = (): GlobalState => ({ theme: Theme.LIGHT })
 
 /**********************************
  * Side Effect after a reducer has run its course

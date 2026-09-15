@@ -29,6 +29,8 @@ const rateInfoParams = {
 }
 
 const tradeContext: TradeFlowContext = {
+  amountToApprove: CurrencyAmount.fromRawAmount(inputCurrency, '0'),
+  needsApproval: false,
   typedHooks: undefined,
   permitInfo: undefined,
   generatePermitHook: () => Promise.resolve(undefined),

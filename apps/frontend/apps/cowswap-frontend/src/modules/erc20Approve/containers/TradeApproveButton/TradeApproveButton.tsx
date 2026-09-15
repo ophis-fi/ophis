@@ -11,7 +11,6 @@ import { useGetConfirmButtonLabel, useIsCurrentTradeBridging } from 'modules/tra
 import * as styledEl from './styled'
 import { ButtonWrapper } from './styled'
 
-import { MAX_APPROVE_AMOUNT } from '../../constants'
 import { useApprovalStateForSpender, useApproveCurrency } from '../../hooks'
 import { useApproveAndSwap } from '../../hooks/useApproveAndSwap'
 import { ApprovalTooltip } from '../../pure/ApprovalTooltip'
@@ -61,7 +60,7 @@ export function TradeApproveButton(props: TradeApproveButtonProps): ReactNode {
           currency={amountToApprove.currency}
           state={approvalState}
           isDisabled={isDisabled}
-          onClick={() => handleApprove(MAX_APPROVE_AMOUNT)}
+          onClick={() => handleApprove(BigInt(amountToApprove.quotient.toString()))}
           clickEvent={approveClickEvent}
         />
         {children}

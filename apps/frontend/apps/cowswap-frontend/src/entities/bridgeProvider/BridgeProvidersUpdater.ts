@@ -5,12 +5,7 @@ import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { DefaultBridgeProvider } from '@cowprotocol/sdk-bridging'
 import { useIsSmartContractWallet } from '@cowprotocol/wallet'
 
-import {
-  acrossBridgeProvider,
-  bridgingSdk,
-  bungeeBridgeProvider,
-  nearIntentsBridgeProvider,
-} from 'tradingSdk/bridgingSdk'
+import { acrossBridgeProvider, nearIntentsBridgeProvider, setQuoteBridgeProviders } from 'tradingSdk/bridgingSdk'
 
 import { bridgeProvidersAtom } from './bridgeProvidersAtom'
 
@@ -24,17 +19,12 @@ function toggleProvider(providers: Set<DefaultBridgeProvider>, provider: Default
 
 export function BridgeProvidersUpdater(): null {
   const setBridgeProviders = useSetAtom(bridgeProvidersAtom)
-  const { isNearIntentsBridgeProviderEnabled, isAcrossBridgeProviderEnabled, isBungeeBridgeProviderEnabled } =
-    useFeatureFlags()
+  const { isNearIntentsBridgeProviderEnabled, isAcrossBridgeProviderEnabled } = useFeatureFlags()
   const isSmartContractWallet = useIsSmartContractWallet()
 
   useEffect(() => {
     // Skip updating till all flags are loaded
-    if (
-      [isNearIntentsBridgeProviderEnabled, isAcrossBridgeProviderEnabled, isBungeeBridgeProviderEnabled].some(
-        (v) => typeof v !== 'boolean',
-      )
-    ) {
+    if ([isNearIntentsBridgeProviderEnabled, isAcrossBridgeProviderEnabled].some((v) => typeof v !== 'boolean')) {
       return
     }
 
@@ -45,24 +35,18 @@ export function BridgeProvidersUpdater(): null {
 
       // Only Near intents provider should be available for smart-contract wallets
       if (isSmartContractWallet) {
-        toggleProvider(newProviders, bungeeBridgeProvider, false)
         toggleProvider(newProviders, acrossBridgeProvider, false)
       } else {
-        toggleProvider(newProviders, bungeeBridgeProvider, isBungeeBridgeProviderEnabled)
         toggleProvider(newProviders, acrossBridgeProvider, isAcrossBridgeProviderEnabled)
       }
 
-      bridgingSdk.setAvailableProviders([...newProviders].map((p) => p.info.dappId))
+      // Through the one writer that keeps the decode-only registry entries
+      // (historical Bungee orders) resolvable whatever is enabled for quoting.
+      setQuoteBridgeProviders([...newProviders].map((p) => p.info.dappId))
 
       return newProviders
     })
-  }, [
-    isNearIntentsBridgeProviderEnabled,
-    isAcrossBridgeProviderEnabled,
-    isBungeeBridgeProviderEnabled,
-    isSmartContractWallet,
-    setBridgeProviders,
-  ])
+  }, [isNearIntentsBridgeProviderEnabled, isAcrossBridgeProviderEnabled, isSmartContractWallet, setBridgeProviders])
 
   return null
 }

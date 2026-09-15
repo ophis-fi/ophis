@@ -48,3 +48,7 @@ export type { TrendDirection } from './MetricCard'
 export { FeatureGrid, FeatureCard } from './FeatureGrid'
 
 export { Table, Th, Td, RowTh, Tr, Thead, Tbody } from './Table'
+
+// Steep palette selector — light default + neutral-ink dark variant.
+export { steep, isSteepDark, STEEP_FONT } from './steep.utils'
+export type { SteepPalette, SteepTone, SteepToneName, SteepThemeFlag } from './steep.utils'

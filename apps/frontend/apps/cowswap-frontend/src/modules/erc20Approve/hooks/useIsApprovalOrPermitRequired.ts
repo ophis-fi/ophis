@@ -12,6 +12,7 @@ import { useApproveState } from './useApproveState'
 import { useGetAmountToSignApprove } from './useGetAmountToSignApprove'
 
 import { ApprovalState, ApproveRequiredReason } from '../types'
+import { isMaxAmountToApprove } from '../utils/isMaxAmountToApprove'
 
 export { ApproveRequiredReason } from '../types'
 
@@ -30,6 +31,11 @@ export function useIsApprovalOrPermitRequired({ isBundlingSupportedOrEnabledForC
   const { inputCurrency, tradeType } = useDerivedTradeState() || {}
   const { type } = usePermitInfo(inputCurrency, tradeType) || {}
 
+  const isFiniteDaiPermit = type === 'dai-like' && !isMaxAmountToApprove(amountToApprove)
+  const approvalReason = isBundlingSupportedOrEnabledForContext
+    ? ApproveRequiredReason.BundleApproveRequired
+    : ApproveRequiredReason.Required
+
   const reason = (() => {
     if (!isApproveSupportedByFlowOrWallet(inputCurrency, tradeType, !!isBundlingSupportedOrEnabledForContext)) {
       return ApproveRequiredReason.Unsupported
@@ -38,6 +44,9 @@ export function useIsApprovalOrPermitRequired({ isBundlingSupportedOrEnabledForC
     if (!isErc20TokenAmountApproveRequired(amountToApprove)) {
       return ApproveRequiredReason.NotRequired
     }
+
+    // DAI permits can only grant unlimited allowance; finite limits need an approval transaction.
+    if (isFiniteDaiPermit) return approvalReason
 
     const isPermitSupported = type && type !== 'unsupported'
 

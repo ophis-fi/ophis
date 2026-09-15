@@ -2,6 +2,8 @@ import { useMemo } from 'react'
 
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 
+import { useAmountsToSignFromQuote } from 'modules/trade'
+
 import { useNeedsApproval } from 'common/hooks/useNeedsApproval'
 
 import { useGetPartialAmountToSignApprove } from './useGetPartialAmountToSignApprove'
@@ -19,7 +21,9 @@ import { useIsPartialApproveSelectedByUser } from '../state'
  */
 export function useGetAmountToSignApprove(): CurrencyAmount<Currency> | null {
   const partialAmountToSign = useGetPartialAmountToSignApprove()
-  const isApprovalNeeded = useNeedsApproval(partialAmountToSign)
+  const { maximumSendSellAmount } = useAmountsToSignFromQuote() || {}
+  // Allowance must cover the order, even when the user chose a smaller approval cap.
+  const isApprovalNeeded = useNeedsApproval(maximumSendSellAmount)
   const isPartialApprovalSelectedByUser = useIsPartialApproveSelectedByUser()
   const isPartialApprovalEnabledInSettings = useIsPartialApprovalModeSelected()
 

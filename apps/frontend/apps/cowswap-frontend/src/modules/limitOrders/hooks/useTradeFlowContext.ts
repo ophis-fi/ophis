@@ -44,7 +44,7 @@ export function useTradeFlowContext(): TradeFlowContext | null {
   const permitInfo = usePermitInfo(state.inputCurrency, TradeType.LIMIT_ORDER)
   const amountToApprove = useGetAmountToSignApprove()
 
-  const enoughAllowance = useEnoughAllowance(amountToApprove || undefined)
+  const enoughAllowance = useEnoughAllowance(state.inputCurrencyAmount || undefined)
   const generatePermitHook = useGeneratePermitHook()
   const getCachedPermit = useGetCachedPermit()
   const verifyRecipientName = useVerifyOphisRecipientName()
@@ -70,6 +70,7 @@ export function useTradeFlowContext(): TradeFlowContext | null {
       !state.outputCurrency ||
       !provider ||
       !settlementContract ||
+      !amountToApprove ||
       !isQuoteReady ||
       !appData
     ) {
@@ -84,6 +85,8 @@ export function useTradeFlowContext(): TradeFlowContext | null {
       dispatch,
       signer: provider.getUncheckedSigner(),
       rateImpact,
+      amountToApprove,
+      needsApproval: !enoughAllowance,
       permitInfo: !enoughAllowance ? permitInfo : undefined,
       generatePermitHook,
       getCachedPermit,
@@ -125,6 +128,7 @@ export function useTradeFlowContext(): TradeFlowContext | null {
     allowsOffchainSigning,
     dispatch,
     rateImpact,
+    amountToApprove,
     enoughAllowance,
     permitInfo,
     generatePermitHook,

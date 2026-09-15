@@ -11,7 +11,6 @@ import {
 
 import { i18n } from '@lingui/core'
 import { Trans, useLingui } from '@lingui/react/macro'
-import { transparentize } from 'color2k'
 import styled from 'styled-components/macro'
 
 import { useUsdAmount } from 'modules/usdAmount'
@@ -62,7 +61,7 @@ const Wrapper = styled.div`
   justify-content: center;
   grid-template-columns: 1fr;
   grid-template-rows: max-content;
-  gap: 24px;
+  gap: 12px;
   box-sizing: border-box;
   padding: 0;
   color: inherit;
@@ -78,11 +77,10 @@ const Wrapper = styled.div`
     flex-flow: column wrap;
     align-items: center;
     justify-content: center;
-    gap: 0;
-    background: ${({ theme }) => theme.gradient2};
+    gap: 16px;
+    background: var(${UI.COLOR_PAPER_DARKER});
     border-radius: 16px;
-    padding: 20px 26px 26px;
-    min-height: 190px;
+    padding: 20px 16px;
     width: 100%;
     max-width: 100%;
     margin: 0;
@@ -95,14 +93,6 @@ const Wrapper = styled.div`
     align-items: center;
     justify-content: center;
     color: inherit;
-
-    &:first-child {
-      margin: 20px auto 0;
-    }
-
-    &:last-child {
-      margin: auto 0 0;
-    }
   }
 
   ${InfoCard} > div > span {
@@ -120,7 +110,7 @@ const Wrapper = styled.div`
     font-size: 13px;
     font-style: normal;
     font-weight: 500;
-    line-height: 1.1;
+    line-height: 1.4;
     width: 100%;
     text-align: center;
     justify-content: center;
@@ -142,24 +132,20 @@ const Wrapper = styled.div`
   }
 
   ${InfoCard} > div > span > b {
-    font-size: 28px;
+    font-size: 24px;
     font-weight: bold;
-    color: var(${UI.COLOR_SUCCESS});
+    color: var(${UI.COLOR_SUCCESS_TEXT});
     width: 100%;
     text-align: center;
     margin: 12px auto 0;
-    word-break: break-all;
-  }
-
-  ${InfoCard} > div > a {
-    margin: 20px auto 0;
+    overflow-wrap: anywhere;
   }
 
   ${InfoCard} > div > small {
     font-size: 15px;
     font-weight: 500;
-    line-height: 1.1;
-    color: ${({ theme }) => transparentize(theme.text, 0.5)};
+    line-height: 1.4;
+    color: var(${UI.COLOR_TEXT_OPACITY_70});
     margin: 3px auto 0;
   }
 
@@ -220,8 +206,8 @@ export function SurplusCard() {
           <small>{surplusUsdAmount && <FiatAmount amount={surplusUsdAmount} accurate={false} />}</small>
         </div>
         <div>
-          <ExternalLink href={'https://github.com/ophis-fi/ophis'}>
-            <Trans>Learn about surplus on Ophis</Trans> ↗
+          <ExternalLink href="https://docs.ophis.fi/fees">
+            <Trans>How surplus works</Trans> ↗
           </ExternalLink>
         </div>
       </InfoCard>

@@ -32,12 +32,12 @@ export interface CanonicalPage {
 }
 
 export const CANONICAL_PAGES: CanonicalPage[] = [
-  { path: '/pricing/', updated: new Date('2026-08-02') },
-  { path: '/supported-chains/', updated: new Date('2026-08-02') },
+  { path: '/pricing/', updated: new Date('2026-08-12') },
+  { path: '/supported-chains/', updated: new Date('2026-09-14') },
   { path: '/security/', updated: new Date('2026-08-21') },
   { path: '/stablecoin-swaps/', updated: new Date('2026-09-02') },
   { path: '/tokenized-stocks-rwa/', updated: new Date('2026-09-02') },
-  { path: '/ai-agent-crypto-swap-api/', updated: new Date('2026-09-02') },
+  { path: '/ai-agent-crypto-swap-api/', updated: new Date('2026-09-14') },
   { path: '/swap/robinhood-chain/', updated: new Date('2026-09-02') },
   { path: '/migrate/odos-api/', updated: new Date('2026-09-02') },
   { path: '/learn/', updated: new Date('2026-08-03') },

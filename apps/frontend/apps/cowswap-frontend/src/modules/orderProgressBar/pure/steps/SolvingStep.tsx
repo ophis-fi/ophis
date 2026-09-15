@@ -1,6 +1,7 @@
 import React, { ReactNode } from 'react'
 
 import { Command } from '@cowprotocol/types'
+import { UI } from '@cowprotocol/ui'
 
 import { t } from '@lingui/core/macro'
 import { Trans } from '@lingui/react/macro'
@@ -10,7 +11,6 @@ import { CowSwapAnalyticsCategory, toCowSwapGtmEvent } from 'common/analytics/ty
 import * as styledEl from './styled'
 
 import { STEPS, OrderProgressBarStepName } from '../../constants'
-import { Description } from '../../sharedStyled'
 import { StepsWrapper } from '../StepsWrapper'
 
 interface SolvingStepProps {
@@ -196,15 +196,15 @@ export function SolvingStep({
         currentStep={1}
         customStepTitles={getCustomStepTitles(isUnfillable, isDelayed, isSubmissionFailed, isSolved)}
         extraContent={
-          <Description>
-            <StepDescription
-              stepName={stepName || OrderProgressBarStepName.SOLVING}
-              showCancellationModal={showCancellationModal}
-              cancelEventData={cancelEventData}
-            />
-          </Description>
+          <StepDescription
+            stepName={stepName || OrderProgressBarStepName.SOLVING}
+            showCancellationModal={showCancellationModal}
+            cancelEventData={cancelEventData}
+          />
         }
-        customColor={isUnfillable || isDelayed || isSolved || isSubmissionFailed ? '#996815' : undefined}
+        customColor={
+          isUnfillable || isDelayed || isSolved || isSubmissionFailed ? `var(${UI.COLOR_ALERT_TEXT})` : undefined
+        }
         isUnfillable={isUnfillable}
       />
     </styledEl.ProgressContainer>

@@ -542,9 +542,15 @@ jobs:
           # crafted image here. NO patched release exists (vulnerable_versions
           # = "<=2.0.2", latest is 2.0.2). DATED 2026-11-08: re-check for a patched
           # release and either upgrade or renew with fresh evidence.
+          # IGNORE js-yaml GHSA-2883-xcg3-v3hh and svgo GHSA-w27v-7q3p-w38r (both
+          # HIGH, published 2026-09-08, fixed the same day in 4.3.2 / 3.3.5).
+          # Docusaurus build pipeline only: js-yaml parses repo-authored front
+          # matter/config, svgo minifies repo-authored SVGs; the output is static.
+          # DATED 2026-09-16: bump after the release soak, or renew with evidence.
           python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
             --osv-rc "$rc" --ignore GHSA-mh99-v99m-4gvg:2026-10-31 \
-            --ignore GHSA-5p2g-fcmc-qvqq:2026-11-08 --ignore GHSA-w3rx-r6r6-pgpr:2026-11-08
+            --ignore GHSA-5p2g-fcmc-qvqq:2026-11-08 --ignore GHSA-w3rx-r6r6-pgpr:2026-11-08 \
+            --ignore GHSA-2883-xcg3-v3hh:2026-09-16 --ignore GHSA-w27v-7q3p-w38r:2026-09-16
 
   cargo-audit:
     name: cargo audit (Rust deps)

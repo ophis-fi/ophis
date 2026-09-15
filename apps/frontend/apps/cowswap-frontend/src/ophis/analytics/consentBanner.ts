@@ -15,7 +15,7 @@ type Consent = 'granted' | 'denied'
 
 const STORAGE_KEY = 'ophis_consent'
 const BANNER_ID = 'ophis-consent'
-const SAFFRON = '#f2a63e'
+const INK = '#17191c'
 
 function applyConsent(value: Consent): void {
   try {
@@ -32,12 +32,12 @@ function makeButton(label: string, value: Consent, primary: boolean, onDone: () 
   b.type = 'button'
   b.textContent = label
   b.style.cssText =
-    'cursor:pointer;border-radius:9px;padding:8px 16px;font:600 14px system-ui,sans-serif;border:1px solid ' +
-    (primary ? SAFFRON : 'rgba(255,255,255,.22)') +
+    'cursor:pointer;border-radius:9px;min-height:44px;padding:10px 16px;font:600 14px system-ui,sans-serif;border:1px solid ' +
+    (primary ? INK : '#d9d9dc') +
     ';background:' +
-    (primary ? SAFFRON : 'transparent') +
+    (primary ? INK : 'transparent') +
     ';color:' +
-    (primary ? '#0a0a0a' : '#e8e8e8')
+    (primary ? '#ffffff' : INK)
   b.addEventListener('click', () => {
     applyConsent(value)
     onDone()
@@ -64,7 +64,7 @@ export function mountConsentBanner(): void {
     bar.setAttribute('role', 'dialog')
     bar.setAttribute('aria-label', 'Analytics consent')
     bar.style.cssText =
-      'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid rgba(242,166,62,.28);border-radius:14px;background:rgba(10,10,10,.92);backdrop-filter:blur(8px);color:#e8e8e8;font:14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5)'
+      'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:max-content;max-width:calc(100vw - 24px);display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;padding:12px 16px;border:1px solid #d9d9dc;border-radius:14px;background:#ffffff;color:#17191c;font:14px/1.4 system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(23,25,28,.08)'
 
     const txt = document.createElement('span')
     txt.style.cssText = 'flex:1 1 240px;min-width:200px'
@@ -72,7 +72,7 @@ export function mountConsentBanner(): void {
     const link = document.createElement('a')
     link.href = '/#/legal'
     link.textContent = 'Learn more'
-    link.style.cssText = `color:${SAFFRON};text-decoration:underline`
+    link.style.cssText = `color:${INK};text-decoration:underline`
     txt.appendChild(link)
     txt.appendChild(document.createTextNode('.'))
 

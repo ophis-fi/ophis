@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 
-import { Media, Color, UI } from '@cowprotocol/ui'
+import { Media, Color } from '@cowprotocol/ui'
 
 import { faCopy } from '@fortawesome/free-regular-svg-icons'
 import { faCheck } from '@fortawesome/free-solid-svg-icons'
@@ -32,7 +32,7 @@ const Icon = styled(FontAwesomeIcon)<{ copied?: string; height?: number }>`
     `}
 
   &:hover {
-    color: ${({ copied }): string => (copied ? Color.explorer_green1 : `var(${UI.COLOR_NEUTRAL_100})`)};
+    color: ${({ copied }): string => (copied ? Color.explorer_green1 : Color.explorer_textPrimary)};
   }
 `
 
@@ -41,7 +41,7 @@ const CopiedTooltip = styled.div`
   font-weight: 500;
   font-size: 1.2rem;
   border: 1px solid ${Color.explorer_green1};
-  background-color: ${Color.explorer_green2};
+  background-color: ${Color.explorer_greenOpacity};
   padding: 0.5rem;
   border-radius: 0.4rem;
   z-index: 9999;

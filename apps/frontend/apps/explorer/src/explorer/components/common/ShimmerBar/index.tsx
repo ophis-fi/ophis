@@ -1,4 +1,4 @@
-import { Color, UI } from '@cowprotocol/ui'
+import { Color } from '@cowprotocol/ui'
 
 import styled, { keyframes } from 'styled-components/macro'
 
@@ -18,7 +18,7 @@ const ShimmerBar = styled.div<{ height?: number }>`
   width: 100%;
   height: ${({ height = 1.2 }): string => `${height}rem`};
   border-radius: 2px;
-  color: var(${UI.COLOR_NEUTRAL_100});
+  color: ${Color.explorer_textPrimary};
   background: ${Color.explorer_greyOpacity}
     gradient(
       linear,

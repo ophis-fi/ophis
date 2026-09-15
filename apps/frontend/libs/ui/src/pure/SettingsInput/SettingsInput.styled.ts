@@ -7,6 +7,7 @@ export const InputWrapper = styled.div<{ $hasLeftSlot: boolean; $hasError: boole
   width: 100%;
   min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
   flex: 1;
@@ -24,11 +25,20 @@ export const InputWrapper = styled.div<{ $hasLeftSlot: boolean; $hasError: boole
   padding-left: ${({ $hasLeftSlot }) => ($hasLeftSlot ? '0' : '16px')};
 `
 
+export const LeftSlot = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  gap: 8px;
+  min-height: 38px;
+`
+
 export const Input = styled.input`
   font-size: 16px;
   outline: none;
   width: 100%;
   min-width: 0;
+  min-height: 38px;
   box-sizing: border-box;
   border: 0;
   background: transparent;

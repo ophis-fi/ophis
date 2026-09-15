@@ -34,12 +34,12 @@ export function CurrencyArrowSeparator({
       <styledEl.LoadingWrapper
         type="button"
         aria-label="Switch tokens"
-        $isLoading={isLoading}
+        aria-busy={isLoading}
         disabled={disabled}
         onClick={onSwitchTokens}
       >
         {!isInjectedWidgetMode && isLoading ? (
-          <OphieMark size={26} fill="saffron" animate="spin-fast" ariaLabel="Switch tokens" />
+          <OphieMark size={26} fill="currentColor" animate="spin-fast" ariaLabel="Switch tokens" />
         ) : (
           <styledEl.ArrowDownIcon disabled={disabled} />
         )}

@@ -44,6 +44,12 @@ async function generatePermitHookRaw(params: PermitHookParams): Promise<PermitHo
     throw new Error(`Trying to generate permit hook for unsupported token: ${tokenAddress}`)
   }
 
+  const value = params.amount ?? DEFAULT_PERMIT_VALUE
+  // DAI-like permits encode only allowed, so a finite value would grant unlimited spending.
+  if (permitInfo.type === 'dai-like' && value !== DEFAULT_PERMIT_VALUE) {
+    throw new Error('DAI-like permits cannot represent a finite approval amount')
+  }
+
   if (!tokenName) {
     throw new Error(`No token name for token: ${tokenAddress}`)
   }
@@ -55,7 +61,6 @@ async function generatePermitHookRaw(params: PermitHookParams): Promise<PermitHo
   const nonce = preFetchedNonce === undefined ? await eip2612Utils.getTokenNonce(tokenAddress, owner) : preFetchedNonce
 
   const deadline = getPermitDeadline()
-  const value = params.amount || DEFAULT_PERMIT_VALUE
 
   const callData =
     permitInfo.type === 'eip-2612'
@@ -128,6 +133,6 @@ async function calculateGasLimit(
 }
 
 function getCacheKey(params: PermitHookParams): string {
-  const { inputToken, chainId, account, amount } = params
-  return `${inputToken.address.toLowerCase()}-${chainId}${account ? `-${account.toLowerCase()}` : ''}${amount ? `-${amount.toString()}` : ''}`
+  const { inputToken, chainId, account, amount, spender, nonce } = params
+  return `${inputToken.address.toLowerCase()}-${chainId}-${account ?? ''}-${spender}-${nonce ?? ''}-${amount ?? DEFAULT_PERMIT_VALUE}`
 }

@@ -10,13 +10,6 @@ export const OuterWrapper = styled.div`
   flex-flow: column wrap;
 `
 
-// Ophis: brand-polish the currency-input rows.
-// - Bumped radius from 16px → 20px so the rows echo the outer card's
-//   xl rhythm and don't feel like generic cowswap rectangles.
-// - Hairline border in COLOR_PAPER (1px) so the rows have a clear
-//   edge against the card surface, even on the cosmic indigo bg.
-// - Focus-within saffron-tinted ring uses COLOR_PRIMARY so the brand
-//   coral lights up on input focus.
 export const Wrapper = styled.label<{ withReceiveAmountInfo: boolean; readOnly: boolean; pointerDisabled: boolean }>`
   position: relative;
   display: flex;
@@ -26,22 +19,19 @@ export const Wrapper = styled.label<{ withReceiveAmountInfo: boolean; readOnly: 
   padding: 16px;
   background: ${({ readOnly }) => (readOnly ? 'transparent' : `var(${UI.COLOR_PAPER_DARKER})`)};
   border: 1px solid var(${UI.COLOR_PAPER});
-  border-radius: ${({ withReceiveAmountInfo }) => (withReceiveAmountInfo ? '20px 20px 0 0' : '20px')};
+  border-radius: ${({ withReceiveAmountInfo }) => (withReceiveAmountInfo ? '16px 16px 0 0' : '16px')};
   color: inherit;
   min-height: 106px;
   pointer-events: ${({ pointerDisabled }) => (pointerDisabled ? 'none' : '')};
   max-width: 100%;
-  transition:
-    border-color 160ms ease-out,
-    box-shadow 160ms ease-out;
+  transition: border-color 160ms ease-out;
 
   &:hover {
     border-color: var(${UI.COLOR_PAPER_DARKEST});
   }
 
   &:focus-within {
-    border-color: var(${UI.COLOR_PRIMARY_OPACITY_70});
-    box-shadow: 0 0 0 3px var(${UI.COLOR_PRIMARY_OPACITY_10});
+    border-color: var(${UI.COLOR_TEXT_PAPER});
   }
 
   ${({ pointerDisabled }) =>
@@ -60,9 +50,25 @@ export const Wrapper = styled.label<{ withReceiveAmountInfo: boolean; readOnly: 
   ${Media.upToSmall()} {
     padding: 16px 12px;
   }
+  ${({ theme, withReceiveAmountInfo }) =>
+    theme.isOphisMobileSwap &&
+    css`
+      padding: 16px;
+      background: #f2f2f3;
+      border: 1px solid transparent;
+      border-radius: ${withReceiveAmountInfo ? '24px 24px 0 0' : '24px'};
+      min-height: 224px;
+      @media (max-width: 720px), (pointer: coarse) and (max-height: 500px) {
+        min-height: 160px;
+      }
+      &:focus-within {
+        border-color: #17191c;
+        box-shadow: none;
+      }
+    `}
 `
 
-export const CurrencyInputBox = styled.div<{ isInvalid?: boolean }>`
+export const CurrencyInputBox = styled.div<{ isInvalid?: boolean; $amountRow?: boolean }>`
   display: grid;
   width: 100%;
   grid-template-columns: repeat(2, auto);
@@ -93,6 +99,18 @@ export const CurrencyInputBox = styled.div<{ isInvalid?: boolean }>`
     text-align: right;
     margin: 0 0 0 auto;
   }
+  ${({ $amountRow }) =>
+    $amountRow &&
+    css`
+      grid-template-columns: minmax(0, 1fr);
+      > div {
+        min-width: 0;
+        width: 100%;
+      }
+      > div:last-child {
+        display: none;
+      }
+    `}
 `
 
 export const CurrencyTopLabel = styled.div`
@@ -125,6 +143,7 @@ export const NumericalInput = styled(Input)<{ $loading: boolean }>`
   background: none;
   font-size: 28px;
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
   color: inherit;
   text-align: left;
 

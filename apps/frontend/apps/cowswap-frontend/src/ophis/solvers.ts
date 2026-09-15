@@ -23,12 +23,8 @@
  * deployed commit 45c1c7e0b3, autopilot drivers baseline/okx/kyberswap/velora,
  * and auction 2239975 returned solutions from a subset of exactly those.
  *
- * DISPLAY-ALIAS LAYER: `solverId` is INTERNAL ONLY (mirrors the driver config,
- * drives CMS matching and attribution). It is NEVER rendered as-is. User-facing
- * strings come from `ophisSolverPublicLabel` / `ophisSolverPublicDescription`,
- * which neutralize every non-Ophis (third-party aggregator) brand: Ophis public
- * copy never names a competitor (standing copy rule). Only the Ophis-run
- * baseline solver keeps a plain, non-brand label.
+ * Public names identify each routing lane; internal ids still mirror autopilot.
+ * All entries are Ophis-operated, including lanes that query external aggregators.
  *
  * Counts derived from this registry are phrased "up to N": being dispatched an
  * auction does not guarantee a solver returns a solution for it.
@@ -41,8 +37,8 @@ export const OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID = 4663
 
 export interface OphisStaticSolverInfo {
   /**
-   * Lowercase id, byte-identical to the autopilot `[[drivers]] name`. Internal
-   * only: used for CMS matching and attribution, never rendered as a public label.
+   * Lowercase id, byte-identical to the autopilot `[[drivers]] name`. Used
+   * for CMS matching and attribution; public labels come from the name map below.
    */
   solverId: string
   /** Chains (sovereign, Ophis-operated) this solver competes on. */
@@ -50,8 +46,7 @@ export interface OphisStaticSolverInfo {
 }
 
 /**
- * Registry entries. The trailing comment names the underlying solver for
- * maintainers only; that brand string is never rendered (see the alias layer).
+ * Registry entries and the underlying routing providers.
  */
 export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   // Mirrors each stack's AUTOPILOT [[drivers]], the only list that decides which
@@ -118,35 +113,33 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   // its API began answering 410. It is in no autopilot, so it is in no registry.
 ]
 
-/** Neutral, brand-free label shown for every external (non-Ophis) solver. */
-export const OPHIS_EXTERNAL_SOLVER_LABEL = 'External solver'
-
-/**
- * Display-alias layer: internal solverId -> brand-neutral public label.
- *
- * Safe by default: any id that is not an Ophis-run solver neutralizes to
- * `OPHIS_EXTERNAL_SOLVER_LABEL`, so a newly added third-party solver can never
- * leak its brand into rendered copy without an explicit opt-in here.
- */
-export function ophisSolverPublicLabel(solverId: string): string {
-  const normalizedSolverId = solverId.toLowerCase()
-
-  if (normalizedSolverId === 'baseline') return 'Baseline'
-  if (['uniswap-v4', 'ekubo', 'up33'].includes(normalizedSolverId)) return 'Ophis direct solver'
-
-  return OPHIS_EXTERNAL_SOLVER_LABEL
+const OPHIS_SOLVER_NAMES: Record<string, string> = {
+  baseline: 'Ophis Baseline',
+  okx: 'OKX',
+  kyberswap: 'KyberSwap',
+  velora: 'Velora',
+  enso: 'Enso',
+  lifi: 'LI.FI',
+  openocean: 'OpenOcean',
+  dodo: 'DODO',
+  curve: 'Curve',
+  woofi: 'WOOFi',
+  'uniswap-v4': 'Uniswap v4',
+  ekubo: 'Ekubo',
+  up33: 'UP33',
+  pools: 'Pools.trade',
 }
 
-/** Brand-neutral description shown in the solver tooltip. */
+export function ophisSolverPublicLabel(solverId: string): string {
+  const key = solverId.toLowerCase().replace(/-solve$/, '')
+  return Object.prototype.hasOwnProperty.call(OPHIS_SOLVER_NAMES, key) ? OPHIS_SOLVER_NAMES[key] : 'Unknown solver'
+}
+
 export function ophisSolverPublicDescription(solverId: string): string {
-  const normalizedSolverId = solverId.toLowerCase()
-
-  if (normalizedSolverId === 'baseline') return 'Ophis baseline solver routing over on-chain liquidity.'
-  if (['uniswap-v4', 'ekubo', 'up33'].includes(normalizedSolverId)) {
-    return 'Ophis-operated direct solver routing through canonical on-chain liquidity.'
-  }
-
-  return 'An external solver competing in the Ophis batch auction to give you the best execution.'
+  const label = ophisSolverPublicLabel(solverId)
+  return label === 'Unknown solver'
+    ? `Solver identity unavailable (${solverId}).`
+    : `Ophis-operated routing lane: ${label}.`
 }
 
 /**

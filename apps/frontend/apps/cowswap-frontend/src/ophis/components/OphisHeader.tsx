@@ -10,15 +10,17 @@ import { ReactNode } from 'react'
 
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import styled from 'styled-components/macro'
 
+import { STEEP_FONT, steep } from '../ds/steep.utils'
 import { useScrollClass } from '../hooks/useScrollClass'
 
 interface Props {
   children?: ReactNode
-  /** Render with a transparent background to overlay the cosmic hero. */
+  /** Render with a transparent background to overlay a hero. */
   transparent?: boolean
+  walletConnected?: boolean
 }
 
 const HeaderStack = styled.div<{ $transparent: boolean }>`
@@ -26,7 +28,9 @@ const HeaderStack = styled.div<{ $transparent: boolean }>`
   top: 0;
   left: 0;
   right: 0;
-  z-index: 50;
+  && {
+    z-index: 2;
+  }
   width: 100%;
   min-width: 0;
   align-self: stretch;
@@ -35,18 +39,16 @@ const HeaderStack = styled.div<{ $transparent: boolean }>`
 
 const Announcement = styled.a`
   width: 100%;
-  min-height: 38px;
+  min-height: 44px;
   padding: 8px 20px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: #fff;
-  background: linear-gradient(90deg, #7b2cff, #c92cf2 48%, #f2a63e);
-  font:
-    600 13px/1.3 'Geist',
-    var(--cow-font-family-primary, system-ui);
+  color: #5d2a1a;
+  background: #fbe1d1;
+  font: 600 13px/1.3 ${STEEP_FONT.body};
   text-align: center;
   text-decoration: none;
 
@@ -61,7 +63,7 @@ const Announcement = styled.a`
   }
 
   &:focus-visible {
-    outline: 2px solid #fff;
+    outline: 2px solid #5d2a1a;
     outline-offset: -4px;
   }
 
@@ -75,7 +77,7 @@ const AnnouncementLogo = styled.img`
   width: 16px;
   height: 21px;
   flex: 0 0 auto;
-  filter: drop-shadow(0 1px 3px rgba(33, 0, 52, 0.35));
+  filter: brightness(0);
 
   @media (max-width: 600px) {
     width: 14px;
@@ -83,7 +85,7 @@ const AnnouncementLogo = styled.img`
   }
 `
 
-const Bar = styled.header<{ $transparent: boolean }>`
+const Bar = styled.header<{ $transparent: boolean; $walletConnected: boolean }>`
   position: relative;
   display: flex;
   align-items: center;
@@ -92,41 +94,55 @@ const Bar = styled.header<{ $transparent: boolean }>`
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  background: ${({ $transparent }) => ($transparent ? 'transparent' : 'rgba(2, 0, 13, 0.86)')};
-  backdrop-filter: ${({ $transparent }) => ($transparent ? 'none' : 'blur(16px)')};
-  border-bottom: 1px solid ${({ $transparent }) => ($transparent ? 'transparent' : 'rgba(245, 239, 230, 0.08)')};
+  font-family: ${STEEP_FONT.body};
+  background: ${({ theme, $transparent }) =>
+    $transparent
+      ? 'transparent'
+      : theme?.darkMode
+        ? 'var(--ophis-steep-dark-bg, #17191c)'
+        : 'var(--ophis-steep-paper, #ffffff)'};
+  border-bottom: 1px solid ${({ theme, $transparent }) => ($transparent ? 'transparent' : steep(theme).cardBorder)};
   @media (max-width: 600px) {
-    padding: 18px 20px;
+    padding: 12px 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+    ${({ $walletConnected }) => $walletConnected && 'display: grid; grid-template-columns: 1fr auto;'}
   }
 `
 
-const Wordmark = styled(Link)`
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+const Wordmark = styled(Link)<{ $transparent: boolean }>`
+  font-family: ${STEEP_FONT.body};
   font-weight: 600;
   font-size: 22px;
   letter-spacing: -0.01em;
-  color: #f5efe6;
+  color: ${({ theme, $transparent }) => ($transparent ? '#f4f4f5' : steep(theme).text)};
   text-decoration: none;
   user-select: none;
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  transition:
-    color 140ms ease-out,
-    transform 140ms ease-out;
-  &:hover {
-    color: #ffffff;
-  }
+  transition: color 140ms ease-out;
   &:hover img {
     transform: rotate(8deg);
   }
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
 `
 
-const Mark = styled.img`
+const Mark = styled.img<{ $transparent: boolean }>`
   width: 28px;
   height: 28px;
   display: block;
+  filter: ${({ theme, $transparent }) =>
+    theme.darkMode || $transparent ? 'brightness(0) invert(1)' : 'brightness(0)'};
   transition: transform 280ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 `
 
 const WordmarkText = styled.span`
@@ -136,37 +152,49 @@ const WordmarkText = styled.span`
 `
 
 const WordmarkAccent = styled.span`
-  color: #f2a63e;
+  color: inherit;
 `
 
-const Right = styled.div`
+const Right = styled.div<{ $walletConnected: boolean }>`
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  margin-left: auto;
+
+  @media (max-width: 600px) {
+    ${({ $walletConnected }) => $walletConnected && 'display: contents;'}
+  }
 `
 
-const OtcNavLink = styled(Link)`
-  padding: 8px 4px;
-  color: #f5efe6;
-  font:
-    600 14px/1 'Geist',
-    var(--cow-font-family-primary, system-ui);
+const OtcNavLink = styled(Link)<{ $transparent: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  color: ${({ theme, $transparent }) => ($transparent ? '#f4f4f5' : steep(theme).text)};
+  font: 600 14px/1 ${STEEP_FONT.body};
   text-decoration: none;
-  transition: color 140ms ease-out;
+  transition: background 140ms ease-out;
 
   &:hover,
   &:focus-visible {
-    color: #f2a63e;
+    background: ${({ theme, $transparent }) => ($transparent ? 'rgba(244, 244, 245, 0.08)' : steep(theme).codeBg)};
   }
 
   &:focus-visible {
-    outline: 2px solid rgba(242, 166, 62, 0.55);
+    outline: 2px solid currentColor;
     outline-offset: 3px;
-    border-radius: 4px;
   }
 `
 
-export function OphisHeader({ children, transparent = false }: Props): ReactNode {
+export function OphisHeader({ children, transparent = false, walletConnected = false }: Props): ReactNode {
+  const isOtcRoute = /^\/otc(?:\/|$)/.test(useLocation().pathname)
   const scrolled = useScrollClass(40)
   const { isOtcEnabled } = useFeatureFlags()
 
@@ -176,15 +204,23 @@ export function OphisHeader({ children, transparent = false }: Props): ReactNode
         <AnnouncementLogo src="/robinhood-feather.svg" alt="" aria-hidden="true" />
         Robinhood Chain is live on Ophis. <span>Trade now →</span>
       </Announcement>
-      <Bar $transparent={transparent} className={`ophis-header-root${scrolled ? ' scrolled' : ''}`}>
-        <Wordmark to="/" aria-label="Ophis, home">
-          <Mark src="/ophis-icon.svg" alt="" aria-hidden="true" />
+      <Bar
+        $transparent={transparent}
+        $walletConnected={walletConnected}
+        className={`ophis-header-root${scrolled ? ' scrolled' : ''}`}
+      >
+        <Wordmark to="/" aria-label="Ophis, home" $transparent={transparent}>
+          <Mark src="/ophis-icon.svg" alt="" aria-hidden="true" $transparent={transparent} />
           <WordmarkText>
             ophis<WordmarkAccent>.</WordmarkAccent>
           </WordmarkText>
         </Wordmark>
-        <Right>
-          {isOtcEnabled ? <OtcNavLink to="/otc">OTC</OtcNavLink> : null}
+        <Right $walletConnected={walletConnected}>
+          {isOtcEnabled && !isOtcRoute ? (
+            <OtcNavLink to="/otc" $transparent={transparent}>
+              Open OTC
+            </OtcNavLink>
+          ) : null}
           {children}
         </Right>
       </Bar>

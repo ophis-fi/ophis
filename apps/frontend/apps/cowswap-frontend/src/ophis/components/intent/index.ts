@@ -1,4 +1,4 @@
-export { IntentLanding } from './IntentLanding'
+export { IntentEntry } from './IntentEntry.container'
 export { IntentInput } from './IntentInput'
 export { IntentCarousel } from './IntentCarousel'
 export { useIntentParse } from './useIntentParse'

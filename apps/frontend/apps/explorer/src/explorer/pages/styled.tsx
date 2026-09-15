@@ -1,4 +1,4 @@
-import { Color, Media, UI } from '@cowprotocol/ui'
+import { Color, Media } from '@cowprotocol/ui'
 
 import * as CSS from 'csstype'
 import { Link } from 'react-router'
@@ -78,7 +78,7 @@ export const StyledLink = styled(Link)`
   justify-content: center;
   flex: 0 1 auto;
   cursor: pointer;
-  color: ${(): string => `var(${UI.COLOR_NEUTRAL_100})`} !important;
+  color: ${Color.explorer_textPrimary};
 
   :hover {
     background-color: ${Color.explorer_greyOpacity};

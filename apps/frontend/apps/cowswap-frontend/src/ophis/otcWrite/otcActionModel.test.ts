@@ -11,7 +11,7 @@ function facts(overrides: Partial<OtcActionFacts> = {}): OtcActionFacts {
     connected: true,
     correctChain: true,
     networkVerified: true,
-    canary: false,
+    mainnet: false,
     walletAdmitted: undefined,
     ready: true,
     reviewed: true,
@@ -31,8 +31,8 @@ function facts(overrides: Partial<OtcActionFacts> = {}): OtcActionFacts {
 
 describe('deriveOtcActionModel', () => {
   it.each([false, undefined])('requires explicit canary admission (%s)', (walletAdmitted) => {
-    expect(deriveOtcActionModel(facts({ canary: true, walletAdmitted })).disabled).toBe(true)
-    expect(deriveOtcActionModel(facts({ canary: true, walletAdmitted: true })).action).toBe('execute')
+    expect(deriveOtcActionModel(facts({ mainnet: true, walletAdmitted })).disabled).toBe(true)
+    expect(deriveOtcActionModel(facts({ mainnet: true, walletAdmitted: true })).action).toBe('execute')
   })
 
   it('uses one primary action through connect, fork verification, approval, and execution', () => {

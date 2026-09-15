@@ -1,4 +1,5 @@
 import { TokenWithLogo } from '@cowprotocol/common-const'
+import { isNonEvmDestinationString } from '@cowprotocol/common-utils'
 import { getAddressKey, getTokenId, isBtcAddress, isEvmAddress, isSolanaAddress } from '@cowprotocol/cow-sdk'
 
 export const RECENT_TOKENS_LIMIT = 4
@@ -136,7 +137,9 @@ export function readStoredTokens(limit: number): StoredRecentTokensByChain {
 }
 
 function isValidAddress(address: string): boolean {
-  return isEvmAddress(address) || isBtcAddress(address) || isSolanaAddress(address)
+  return (
+    isEvmAddress(address) || isBtcAddress(address) || isSolanaAddress(address) || isNonEvmDestinationString(address)
+  )
 }
 
 function canUseLocalStorage(): boolean {

@@ -5,6 +5,7 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { TierChip } from 'ophis/components/TierChip'
 import ReactDOM from 'react-dom'
+import { useTheme } from 'styled-components/macro'
 
 import { useToggleAccountModal } from 'modules/account'
 import {
@@ -34,6 +35,7 @@ interface NotificationSidebarPortalProps {
 
 export function AccountElement({ className }: AccountElementProps): ReactNode {
   const { account } = useWalletInfo()
+  const { isOphisMobileSwap } = useTheme()
   const toggleAccountModal = useToggleAccountModal()
   const unreadNotificationsCount = useUnreadSidebarNotificationsCount()
   const { isDismissed, dismiss } = useNotificationAlertDismissal()
@@ -78,7 +80,7 @@ export function AccountElement({ className }: AccountElementProps): ReactNode {
     <>
       <Wrapper className={className} active={!!account} ref={wrapperRef}>
         <Web3Status onClick={() => account && toggleAccountModal()} hideConnectButton={!account} />
-        {account && <TierChip wallet={account as `0x${string}`} />}
+        {account && !isOphisMobileSwap && <TierChip wallet={account as `0x${string}`} />}
         {account && (
           <NotificationAlertPopover
             show={shouldShowPopover}

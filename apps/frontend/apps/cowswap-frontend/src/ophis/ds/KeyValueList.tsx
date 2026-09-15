@@ -2,12 +2,14 @@
  * KeyValueList — definition list for spec sheets, legal-entity
  * disclosure, contact blocks, API parameter listings.
  *
- * Two-column grid: dim label on the left, regular text on the right.
+ * Two-column grid: muted label on the left, regular text on the right.
  * Wraps to two-line on mobile.
  */
 import { ReactNode } from 'react'
 
 import styled from 'styled-components/macro'
+
+import { STEEP_FONT, steep } from './steep.utils'
 
 export interface KeyValueRow {
   /** Label (rendered as `<dt>`). */
@@ -37,10 +39,10 @@ const Dl = styled.dl<{ $labelWidth: string }>`
 `
 
 const Dt = styled.dt`
-  color: rgba(245, 239, 230, 0.55);
-  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  color: ${({ theme }) => steep(theme).muted};
+  font-family: ${STEEP_FONT.body};
+  font-size: 13px;
+  font-weight: 500;
 
   @media (max-width: 600px) {
     margin-bottom: -8px;
@@ -49,7 +51,7 @@ const Dt = styled.dt`
 
 const Dd = styled.dd`
   margin: 0;
-  color: rgba(245, 239, 230, 0.85);
+  color: ${({ theme }) => steep(theme).text};
 `
 
 export function KeyValueList({ items, labelWidth = 'max-content' }: KeyValueListProps): ReactNode {

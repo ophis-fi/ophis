@@ -40,13 +40,12 @@ export const ErrorText = styled.div<{ type?: 'error' | 'warning' }>`
 
 export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
   --minHeight: 45px;
-  background: ${({ hasPrefix }) => (hasPrefix ? 'transparent' : `var(${UI.COLOR_PAPER_DARKER})`)};
-  border: 1px solid ${({ hasPrefix }) => (hasPrefix ? `var(${UI.COLOR_PAPER_DARKER})` : 'transparent')};
-  border-radius: 16px;
+  background: var(${UI.COLOR_PAPER});
+  border: 1px solid var(${UI.COLOR_BORDER});
+  border-radius: 12px;
   min-height: var(--minHeight);
   font-size: 18px;
-  padding: 10px 16px;
-  padding: ${({ hasPrefix }) => (hasPrefix ? '0' : '10px 16px')};
+  padding: ${({ hasPrefix }) => (hasPrefix ? '0' : '10px 12px')};
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -54,6 +53,12 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
   flex: 1;
   gap: 3px;
   width: 100%;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+
+  &:focus-within {
+    border-color: var(${UI.COLOR_TEXT_PAPER});
+  }
 
   ${Media.upToSmall()} {
     gap: 0;
@@ -79,10 +84,12 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
   ${Content} {
     padding: 0;
     flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
     color: inherit;
 
     ${NumericalInput} {
-      max-width: 200px;
+      max-width: min(200px, 100%);
       appearance: textfield;
     }
 
@@ -93,7 +100,8 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
         justify-content: center;
         display: flex;
         padding: 0;
-        height: var(--minHeight);
+        min-height: var(--minHeight);
+        align-items: stretch;
 
         ${Media.upToSmall()} {
           border-top: 1px solid var(${UI.COLOR_PAPER_DARKER});
@@ -104,29 +112,32 @@ export const TradeWidgetFieldBox = styled.div<{ hasPrefix?: boolean }>`
     > em {
       font-style: normal;
       flex: 1 1 100%;
-      height: 100%;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      text-align: right;
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      padding: 0 12px 0 0;
+      padding: 8px 12px;
     }
 
     > span {
+      min-width: 0;
+      max-width: 100%;
       background: ${({ hasPrefix }) => (hasPrefix ? `var(${UI.COLOR_PAPER_DARKER})` : 'transparent')};
 
       ${({ hasPrefix }) =>
         hasPrefix &&
         css`
-          margin: auto;
-          height: 100%;
+          margin: 0;
           display: flex;
           padding: 0 10px 0 0;
-          flex: 0 1 auto;
-          border-radius: 0 15px 15px 0;
+          flex: 0 0 auto;
+          border-radius: 0 11px 11px 0;
           align-items: center;
 
           ${Media.upToSmall()} {
-            border-radius: 0 0 15px 0;
+            border-radius: 0 0 11px 0;
             width: 136px;
           }
 

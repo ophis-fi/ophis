@@ -24,7 +24,7 @@ const Caption = styled.span`
 export interface OphieSpinnerProps {
   /** Size of the Ophie mark in pixels. Default 96. */
   size?: number
-  /** Optional caption rendered below the mark in Plus Jakarta. */
+  /** Optional caption rendered below the mark in the body font. */
   caption?: ReactNode
   /** Animation pace. "fast" for active loading, "slow" for ambient. Default "fast". */
   pace?: 'fast' | 'slow'
@@ -41,7 +41,7 @@ export interface OphieSpinnerProps {
 export function OphieSpinner({ size = 96, caption, pace = 'fast' }: OphieSpinnerProps): ReactNode {
   return (
     <Wrapper $size={size}>
-      <OphieMark size={size} fill="saffron" animate={pace === 'fast' ? 'spin-fast' : 'spin'} />
+      <OphieMark size={size} fill="currentColor" animate={pace === 'fast' ? 'spin-fast' : 'spin'} />
       {caption && <Caption>{caption}</Caption>}
     </Wrapper>
   )

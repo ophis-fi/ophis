@@ -20,7 +20,8 @@ const ActionButton = styled.button<{ hasLongText$: boolean }>`
   color: var(${UI.COLOR_BUTTON_TEXT});
   font-size: ${({ hasLongText$ }) => (hasLongText$ ? '16px' : '18px')};
   font-weight: 600;
-  border-radius: 16px;
+  border-radius: ${({ theme }) => (theme.isOphisMobileSwap ? '9999px' : '16px')};
+  ${({ theme }) => theme.isOphisMobileSwap && 'font-size: 16px; font-weight: 500;'}
   cursor: pointer;
   min-height: 58px;
   text-align: center;

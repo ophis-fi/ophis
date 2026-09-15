@@ -15,24 +15,25 @@ export const WriteField = styled.label`
   flex-direction: column;
   gap: 6px;
   min-width: 0;
-  color: #f5efe6;
+  color: var(--cow-color-text);
   font-size: 13px;
 
   input,
   select {
     width: 100%;
     box-sizing: border-box;
-    appearance: none;
-    border: 1px solid rgba(245, 239, 230, 0.2);
+    border: 1px solid var(--cow-color-border);
     border-radius: 10px;
-    background: rgba(245, 239, 230, 0.06);
-    color: #f5efe6;
+    background: var(--cow-color-paper);
+    color: var(--cow-color-text);
     font: inherit;
     font-size: 16px;
     padding: 11px 12px;
+    min-height: 44px;
+    font-variant-numeric: tabular-nums;
 
     &:focus-visible {
-      outline: 2px solid rgba(242, 166, 62, 0.7);
+      outline: 2px solid var(--cow-color-primary);
       outline-offset: 2px;
     }
   }
@@ -40,16 +41,18 @@ export const WriteField = styled.label`
 
 export const WriteHint = styled.span`
   min-height: 18px;
-  color: rgba(245, 239, 230, 0.68);
+  color: var(--cow-color-text);
   font-size: 12px;
 `
 
 export const WriteSummary = styled.div`
-  margin: 16px 0;
+  margin: 0;
   padding: 14px;
-  border: 1px solid rgba(245, 239, 230, 0.18);
+  border: 1px solid var(--cow-color-border);
   border-radius: 12px;
-  background: rgba(245, 239, 230, 0.04);
+  background: var(--cow-color-paper-darker);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
 
   p {
     margin: 4px 0;
@@ -60,47 +63,67 @@ export const ReviewLabel = styled.label`
   display: flex;
   align-items: flex-start;
   gap: 9px;
-  margin: 14px 0;
-  color: #f5efe6;
+  margin: 0;
+  color: var(--cow-color-text);
   font-size: 14px;
 
   input {
     margin-top: 3px;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    accent-color: var(--cow-color-primary);
   }
 `
 
 export const PrimaryAction = styled.button`
   appearance: none;
   width: 100%;
-  border: 1px solid rgba(242, 166, 62, 0.72);
+  border: 1px solid var(--cow-color-primary);
   border-radius: 10px;
-  background: #f2a63e;
-  color: #19140e;
+  background: var(--cow-color-primary);
+  color: var(--cow-color-button-text);
   font: inherit;
-  font-weight: 700;
+  font-weight: 600;
   padding: 12px 18px;
   cursor: pointer;
 
   &:hover:not(:disabled) {
-    background: #f5b45b;
+    background: var(--cow-color-primary-darker);
   }
 
   &:focus-visible {
-    outline: 2px solid #f5efe6;
+    outline: 2px solid var(--cow-color-primary);
     outline-offset: 2px;
   }
 
   &:disabled {
-    border-color: rgba(245, 239, 230, 0.15);
-    background: rgba(245, 239, 230, 0.08);
-    color: rgba(245, 239, 230, 0.48);
+    border-color: var(--cow-color-border);
+    background: var(--cow-color-paper-darker);
+    color: var(--cow-color-text);
     cursor: not-allowed;
   }
 `
 
 export const InlineStatus = styled.p`
   margin: 10px 0 0;
-  color: rgba(245, 239, 230, 0.76);
+  color: var(--cow-color-text);
   font-size: 13px;
   overflow-wrap: anywhere;
+`
+
+export const TokenSelect = styled.span`
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  > img {
+    position: absolute;
+    left: 12px;
+    pointer-events: none;
+  }
+
+  select {
+    padding-left: 46px;
+  }
 `

@@ -45,6 +45,10 @@ const animations = {
 const Svg = styled.svg<{ $animate: OphieAnimation }>`
   display: block;
   ${({ $animate }) => animations[$animate]};
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
 `
 
 export interface OphieMarkProps {
@@ -80,7 +84,7 @@ function resolveFill(fill: OphieFill | string | undefined): string {
  */
 export function OphieMark({
   size = 96,
-  fill = 'saffron',
+  fill = 'currentColor',
   animate = 'none',
   className,
   ariaLabel = 'Ophis',

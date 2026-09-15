@@ -1,4 +1,4 @@
-import { UI } from '@cowprotocol/ui'
+import { Media, UI } from '@cowprotocol/ui'
 
 import { MenuButton, MenuList } from '@reach/menu-button'
 import styled from 'styled-components/macro'
@@ -42,6 +42,10 @@ export const SettingsButton = styled(MenuButton)`
   max-height: var(--maxSize);
   width: var(--maxSize);
   height: var(--maxSize);
+
+  ${Media.upToSmall()} {
+    --maxSize: 44px;
+  }
 
   &:not(:disabled):hover {
     color: var(${UI.COLOR_TEXT});

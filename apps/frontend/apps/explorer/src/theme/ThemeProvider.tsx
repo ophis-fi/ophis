@@ -1,4 +1,4 @@
-import React, { PropsWithChildren } from 'react'
+import React, { PropsWithChildren, ReactNode } from 'react'
 
 import { baseTheme } from '@cowprotocol/ui'
 
@@ -8,8 +8,12 @@ import { getFonts } from './styles'
 import { Theme } from './types'
 
 const themeObject = {
-  ...baseTheme(Theme.DARK),
-  mode: Theme.DARK,
+  ...baseTheme(Theme.LIGHT),
+  mode: Theme.LIGHT,
+  primary: '#17191c',
+  text: '#17191c',
+  background: '#ffffff',
+  paper: '#ffffff',
   ...getFonts(),
   colorScrollbar: css`
     --scrollbarWidth: 0.6rem;
@@ -19,17 +23,15 @@ const themeObject = {
       height: var(--scrollbarWidth);
     }
     &::-webkit-scrollbar-thumb {
-      background: hsla(0, 0%, 100%, 0.35);
+      background: #b8bbc2;
       border-radius: 2rem;
     }
     &::-webkit-scrollbar-track {
-      background: rgba(0, 0, 0, 0.2);
+      background: #f2f2f3;
     }
   `,
 }
 
-// TODO: Add proper return type annotation
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export const ThemeProvider = ({ children }: PropsWithChildren) => {
+export function ThemeProvider({ children }: PropsWithChildren): ReactNode {
   return <StyledComponentsThemeProvider theme={themeObject}>{children}</StyledComponentsThemeProvider>
 }

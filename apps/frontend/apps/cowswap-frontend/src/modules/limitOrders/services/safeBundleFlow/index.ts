@@ -3,7 +3,6 @@ import { SigningScheme } from '@cowprotocol/cow-sdk'
 import { Percent } from '@cowprotocol/currency'
 import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { Command, UiOrderType } from '@cowprotocol/types'
-import { MaxUint256 } from '@ethersproject/constants'
 import type { MetaTransactionData } from '@safe-global/types-kit'
 
 import { tradingSdk } from 'tradingSdk/tradingSdk'
@@ -80,7 +79,7 @@ export async function safeBundleFlow(
     const approveTx = await buildApproveTx({
       erc20Contract,
       spender,
-      amountToApprove: MaxUint256.toBigInt(),
+      amountToApprove: BigInt(params.amountToApprove.quotient.toString()),
     })
 
     logTradeFlow(LOG_PREFIX, 'STEP 3: post order')

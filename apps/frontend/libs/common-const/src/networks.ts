@@ -1,6 +1,7 @@
 import { mapSupportedNetworks, SupportedChainId, HttpsString } from '@cowprotocol/cow-sdk'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
+import { MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from './bridgeDestination.const'
 import { ROBINHOOD_CHAIN_PUBLIC_RPC } from './robinhood.const'
 
 // Ophis fork (Phase 3.3 F1, 2026-05-20): the upstream cowswap default
@@ -37,6 +38,9 @@ const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
   [130 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_130'] as HttpsString) || undefined,
   // Ophis fork: Robinhood Chain (chain 4663)
   [4663 as unknown as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_4663'] as HttpsString) || undefined,
+  // Ophis fork: NEAR Intents bridge destinations (no trading), see bridgeDestinationChains.ts
+  [MONAD_CHAIN_ID as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_143'] as HttpsString) || undefined,
+  [XLAYER_CHAIN_ID as SupportedChainId]: (process.env['REACT_APP_NETWORK_URL_196'] as HttpsString) || undefined,
 }
 
 // Ophis fork (F1, 2026-05-20): defaults switched from Infura (which
@@ -109,6 +113,10 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   [10 as unknown as SupportedChainId]: { url: `https://optimism.drpc.org`, usesInfura: false },
   // Ophis fork: Unichain default public RPC
   [130 as unknown as SupportedChainId]: { url: `https://mainnet.unichain.org`, usesInfura: false },
+  // Ophis fork: Monad + X Layer official public RPCs (bridge destinations only;
+  // probed eth_chainId 0x8f / 0xc4 on 2026-09-11).
+  [MONAD_CHAIN_ID as SupportedChainId]: { url: `https://rpc.monad.xyz`, usesInfura: false },
+  [XLAYER_CHAIN_ID as SupportedChainId]: { url: `https://rpc.xlayer.tech`, usesInfura: false },
   // Robinhood's official keyless public RPC.
   [4663 as unknown as SupportedChainId]: {
     // Wallet-safe fallback only. Robinhood documents this endpoint as
@@ -130,6 +138,33 @@ export const RPC_URLS: Record<SupportedChainId, HttpsString> = {
   [130 as unknown as SupportedChainId]: getRpcUrl(130 as unknown as SupportedChainId),
   // Ophis fork: include Robinhood Chain (4663).
   [4663 as unknown as SupportedChainId]: getRpcUrl(4663 as unknown as SupportedChainId),
+  // Ophis fork: NEAR Intents bridge destinations.
+  [MONAD_CHAIN_ID as SupportedChainId]: getRpcUrl(MONAD_CHAIN_ID as SupportedChainId),
+  [XLAYER_CHAIN_ID as SupportedChainId]: getRpcUrl(XLAYER_CHAIN_ID as SupportedChainId),
+}
+
+/**
+ * Public, keyless RPC endpoints handed to WALLETS (the WalletConnect rpcMap).
+ * Deliberately NOT RPC_URLS: for mainnet that carries the
+ * REACT_APP_NETWORK_URL_1 override (our Alchemy key, allowlisted to ophis.fi).
+ * Handing a keyed URL to a wallet leaks the key to the wallet and its relay,
+ * and the WalletConnect provider's browser reads to it are rejected
+ * (rate-limited / allowlisted, surfacing as "Failed to fetch"), which broke
+ * bridge confirmation for WalletConnect users. These defaults are keyless and
+ * CORS-clean from the browser (eth.drpc.org and friends).
+ */
+export const WALLET_RPC_URLS: Record<SupportedChainId, HttpsString> = {
+  ...mapSupportedNetworks(getPublicRpcUrl),
+  [10 as unknown as SupportedChainId]: getPublicRpcUrl(10 as unknown as SupportedChainId),
+  [130 as unknown as SupportedChainId]: getPublicRpcUrl(130 as unknown as SupportedChainId),
+  [4663 as unknown as SupportedChainId]: getPublicRpcUrl(4663 as unknown as SupportedChainId),
+  [MONAD_CHAIN_ID as SupportedChainId]: getPublicRpcUrl(MONAD_CHAIN_ID as SupportedChainId),
+  [XLAYER_CHAIN_ID as SupportedChainId]: getPublicRpcUrl(XLAYER_CHAIN_ID as SupportedChainId),
+}
+
+/** The keyless public default for a chain, ignoring the env / Infura overrides. */
+function getPublicRpcUrl(chainId: SupportedChainId): HttpsString {
+  return DEFAULT_RPC_URL[chainId].url
 }
 
 function getRpcUrl(chainId: SupportedChainId): HttpsString {

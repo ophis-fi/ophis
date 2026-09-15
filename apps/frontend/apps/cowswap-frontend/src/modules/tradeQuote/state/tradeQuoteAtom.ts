@@ -1,7 +1,8 @@
 import { atom } from 'jotai'
 
 import { getCurrencyAddress } from '@cowprotocol/common-utils'
-import { getAddressKey, QuoteAndPost } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, getAddressKey, QuoteAndPost } from '@cowprotocol/cow-sdk'
+import type { Currency } from '@cowprotocol/currency'
 import { BridgeProviderQuoteError, BridgeQuoteResults } from '@cowprotocol/sdk-bridging'
 
 import { isProviderNetworkDeprecatedAtom } from 'entities/common/isProviderNetworkDeprecated.atom'
@@ -10,6 +11,7 @@ import { isProviderNetworkUnsupportedAtom } from 'entities/common/isProviderNetw
 import { derivedTradeStateAtom } from 'modules/trade/state/derivedTradeStateAtom'
 
 import { QuoteApiError } from 'api/cowProtocol/errors/QuoteError'
+import { isNonEvmRecipientChain, isRecipientAddress } from 'common/utils/recipientAddress.utils'
 
 import { TradeQuoteFetchParams } from '../types'
 import { getIsFastQuote } from '../utils/getIsFastQuote'
@@ -23,6 +25,8 @@ export interface TradeQuoteState {
   hasParamsChanged: boolean
   isLoading: boolean
   localQuoteTimestamp: number | null
+  /** Derived-only: the cached quote belongs to another destination asset or recipient. */
+  isStaleDestination?: boolean
 }
 
 type SellTokenAddress = string
@@ -85,5 +89,41 @@ export const currentTradeQuoteAtom = atom<TradeQuoteState>((get) => {
     return DEFAULT_TRADE_QUOTE_STATE
   }
 
-  return tradeQuotes[getAddressKey(getCurrencyAddress(inputCurrency))] || DEFAULT_TRADE_QUOTE_STATE
+  const currentQuote = tradeQuotes[getAddressKey(getCurrencyAddress(inputCurrency))] || DEFAULT_TRADE_QUOTE_STATE
+  return filterNonEvmQuote(currentQuote, inputCurrency, outputCurrency, state?.recipient)
 })
+
+function filterNonEvmQuote(
+  currentQuote: TradeQuoteState,
+  inputCurrency: Currency,
+  outputCurrency: Currency,
+  recipient: string | null | undefined,
+): TradeQuoteState {
+  const bridgeParams = currentQuote.bridgeQuote?.tradeParameters
+  const isNonEvmDestination = isNonEvmRecipientChain(outputCurrency.chainId)
+  if (![outputCurrency.chainId, bridgeParams?.buyTokenChainId].some(isNonEvmRecipientChain)) return currentQuote
+  if (isNonEvmDestination && !isRecipientAddress(recipient, outputCurrency.chainId)) return DEFAULT_TRADE_QUOTE_STATE
+
+  // Quotes are cached by sell token. Never relabel an earlier quote's amounts
+  // when switching to or from a non-EVM destination while its quote is pending.
+  const isCurrent =
+    !!bridgeParams &&
+    [
+      bridgeParams.sellTokenChainId === inputCurrency.chainId,
+      bridgeParams.buyTokenChainId === outputCurrency.chainId,
+      areAddressesEqual(currentQuote.quote?.quoteResults.tradeParameters.sellToken, getCurrencyAddress(inputCurrency)),
+      areAddressesEqual(bridgeParams.buyTokenAddress, getCurrencyAddress(outputCurrency)),
+      areAddressesEqual(bridgeParams.bridgeRecipient || bridgeParams.receiver, recipient),
+    ].every(Boolean)
+
+  return isCurrent
+    ? currentQuote
+    : {
+        ...currentQuote,
+        quote: null,
+        bridgeQuote: null,
+        isBridgeQuote: null,
+        localQuoteTimestamp: null,
+        isStaleDestination: true,
+      }
+}

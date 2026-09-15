@@ -9,6 +9,7 @@ import { useToggleWalletModal } from 'legacy/state/application/hooks'
 
 import { isOtcCanaryAccount } from './otcCanaryPolicy'
 import { useOtcWriteAuthorization } from './otcWriteAuthorization'
+import { isOtcMainnetMode } from './otcWriteMode.utils'
 import { translateOtcWriteError } from './translateOtcWriteError'
 import { useOtcControllerModel } from './useOtcControllerModel'
 import { useOtcNetworkReads, type OtcNetworkReads } from './useOtcNetworkReads'
@@ -45,7 +46,7 @@ export interface OtcActionDefinition {
 }
 
 export interface OtcActionController {
-  canary?: boolean
+  mainnet?: boolean
   model: OtcActionModel
   error: string | null
   successHash: Hex | null
@@ -90,8 +91,9 @@ export function useOtcActionController(
   const { account, chainId } = useWalletInfo()
   const connectWallet = useToggleWalletModal()
   const { enabled, configured, authorization } = useOtcWriteAuthorization()
-  const canary = authorization.writeMode === 'canary'
-  const walletAdmitted = !canary || isOtcCanaryAccount(account)
+  const { writeMode } = authorization
+  const mainnet = isOtcMainnetMode(writeMode)
+  const walletAdmitted = authorization.writeMode !== 'canary' || isOtcCanaryAccount(account)
   const { data: walletClient } = useWalletClient()
   const allowanceToken = definition.allowanceToken ?? null
   const network = useOtcNetworkReads(configured && walletAdmitted, account, chainId, walletClient, allowanceToken)
@@ -108,26 +110,23 @@ export function useOtcActionController(
   })
   const accountKey = account ? getAddressKey(account) : null
   const switchKey = JSON.stringify([enabled, walletAdmitted, accountKey, chainId, network.transportId])
-  const { switching, switchToEthereum } = useOtcNetworkSwitch(canary, walletClient, submission.setError, switchKey)
+  const { switching, switchToEthereum } = useOtcNetworkSwitch(mainnet, walletClient, submission.setError, switchKey)
   const allowance = network.allowanceResponse.data?.allowance ?? null
-  const model = useOtcControllerModel({ definition, network, submission, enabled, account, chainId, canary, switching })
+  const model = useOtcControllerModel({
+    definition,
+    network,
+    submission,
+    enabled,
+    account,
+    chainId,
+    writeMode,
+    switching,
+  })
 
   const runPrimary = useCallback(async () => {
-    switch (model.action) {
-      case 'connect':
-        connectWallet()
-        return
-      case 'switch':
-        await switchToEthereum()
-        return
-      case 'approve':
-      case 'revoke':
-      case 'execute':
-        await submitPrimaryAction(model.action, definition, submission)
-        return
-      case 'unavailable':
-        return
-    }
+    if (model.action === 'connect') connectWallet()
+    else if (model.action === 'switch') await switchToEthereum()
+    else if (model.action !== 'unavailable') await submitPrimaryAction(model.action, definition, submission)
   }, [connectWallet, definition, model.action, submission, switchToEthereum])
 
   const error =
@@ -138,7 +137,7 @@ export function useOtcActionController(
 
   return useMemo(
     () => ({
-      canary,
+      mainnet,
       model,
       error,
       successHash,
@@ -151,7 +150,7 @@ export function useOtcActionController(
     }),
     [
       allowance,
-      canary,
+      mainnet,
       clearUncertainTransaction,
       network.allowanceResponse.error,
       error,

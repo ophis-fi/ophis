@@ -492,11 +492,13 @@ const OPHIS_ETHFLOW_OWNERS: ReadonlySet<string> = new Set(Object.values(OPHIS_ET
  * @cowprotocol/sdk-config ETH_FLOW_ADDRESS / BARN_ETH_FLOW_ADDRESS (see
  * apps/frontend/patches/@cowprotocol__sdk-config@2.0.0.patch). Lowercased.
  *
- * The on-chain settle() decoder uses these so a native-ETH order on a hosted chain
- * (e.g. Base) attributes to its `receiver` (the real trader), not the router. The
- * CoW-API fetcher does NOT use them: it cannot enumerate a shared contract as an
- * "owner" (that would pull all of CoW's eth-flow traffic), which is exactly the gap
- * the decoder closes. Keep in sync with the SDK patch by hand (grep ETH_FLOW_ADDRESS).
+ * Both trade sources must recognise these. The settle() decoder discovers a hosted-chain
+ * native-ETH order blind and needs them to credit `receiver`. The CoW-API fetcher never
+ * QUERIES the shared contract as an owner (that would pull all of CoW's eth-flow traffic),
+ * but `GET /trades?owner=W` lists W's eth-flow orders by their on-chain sender with the
+ * payload owner = this contract, so the fetcher sees it too; without it in the owner set
+ * those rows were stored with wallet = the router until the nightly repair (2026-09-08).
+ * Keep in sync with the SDK patch by hand (grep ETH_FLOW_ADDRESS).
  */
 export const CANONICAL_COW_ETHFLOW_OWNERS: ReadonlySet<string> = new Set([
   '0xba3cb449bd2b4adddbc894d8697f5170800eadec', // prod
@@ -504,16 +506,42 @@ export const CANONICAL_COW_ETHFLOW_OWNERS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The eth-flow owner set the ON-CHAIN settle() decoder passes to attributeOrder:
- * the Ophis-dedicated contracts UNION the shared canonical CoW eth-flow contracts.
- * The decoder discovers settlements blind, so it must recognise the shared contract
- * (which the API fetcher never queries) to attribute a hosted-chain native-ETH order
- * to its receiver rather than the router.
+ * The eth-flow owner set attributeOrder uses by default, for BOTH the CoW-API fetcher
+ * and the on-chain settle() decoder: the Ophis-dedicated contracts UNION the shared
+ * canonical CoW eth-flow contracts. Either source can hand attributeOrder an order whose
+ * owner is the shared contract (see CANONICAL_COW_ETHFLOW_OWNERS), and each must credit
+ * the receiver rather than the router.
  */
 export const DECODER_ETHFLOW_OWNERS: ReadonlySet<string> = new Set([
   ...OPHIS_ETHFLOW_OWNERS,
   ...CANONICAL_COW_ETHFLOW_OWNERS,
 ]);
+
+/**
+ * The trader behind an eth-flow order (owner = an eth-flow contract). Prefer
+ * `onchainUser` — CoW's record of the address that called the contract and PAID
+ * the native ETH (msg.sender; a Safe or forwarder counts and is correctly
+ * credited) — over `receiver`, which is only where the bought tokens go: for a
+ * bridge order that is the bridge's deposit address (2026-08-26: a $1,404 NEAR
+ * intents order was credited to the deposit, which then ranked #3 and was issued
+ * the reward ticket). Falls back to `receiver` when the source has no onchainUser
+ * (the on-chain decoder; historical API payloads). Never credits the zero
+ * address, the eth-flow contract itself, or another router: null = skip, never
+ * guess. Shared by attributeOrder and repair/routerTrades so both arms agree.
+ */
+export function ethFlowTrader(
+  ctx: { owner: string; receiver?: string | null; onchainUser?: string | null },
+  ethFlowOwners: ReadonlySet<string> = DECODER_ETHFLOW_OWNERS,
+): `0x${string}` | null {
+  const owner = ctx.owner.toLowerCase();
+  for (const raw of [ctx.onchainUser, ctx.receiver]) {
+    const a = raw?.trim().toLowerCase();
+    if (!a || !/^0x[0-9a-f]{40}$/.test(a) || /^0x0{40}$/.test(a)) continue;
+    if (a === owner || ethFlowOwners.has(a)) continue;
+    return a as `0x${string}`;
+  }
+  return null;
+}
 
 /**
  * PURE per-trade attribution: given a parsed appData document and the settled-trade
@@ -529,15 +557,18 @@ export const DECODER_ETHFLOW_OWNERS: ReadonlySet<string> = new Set([
  * Trade event is terminal by construction, so there is no status check here.
  *
  * `ethFlowOwners` is the set of addresses that, when they are the order `owner`, mean
- * an eth-flow order whose real trader is `receiver`. The API fetcher passes the
- * narrow Ophis-dedicated set (default); the decoder passes that UNION the shared
- * canonical CoW eth-flow contracts so hosted-chain native-ETH attributes correctly.
+ * an eth-flow order whose real trader is the payer (ethFlowTrader). Defaults to DECODER_ETHFLOW_OWNERS
+ * (Ophis-dedicated UNION shared canonical CoW) for every caller: the API fetcher meets
+ * the shared contract as the payload owner of a tracked wallet's own eth-flow trades,
+ * the decoder meets it when it discovers a hosted-chain native-ETH settlement blind.
  */
 export function attributeOrder(
   meta: unknown,
   ctx: {
     owner: string;
     receiver: string | null | undefined;
+    /** eth-flow only: the EOA that placed (and paid for) the order. See ethFlowTrader. */
+    onchainUser?: string | null;
     sellToken: `0x${string}`;
     buyToken: `0x${string}`;
     executedSell: bigint;
@@ -547,7 +578,7 @@ export function attributeOrder(
     blockNumber: bigint;
     blockTimestamp: Date;
   },
-  ethFlowOwners: ReadonlySet<string> = OPHIS_ETHFLOW_OWNERS,
+  ethFlowOwners: ReadonlySet<string> = DECODER_ETHFLOW_OWNERS,
 ): PendingTrade | null {
   let appCode: AppCode | undefined;
   let appdataRefCode: string | null = null;
@@ -627,14 +658,13 @@ export function attributeOrder(
   if (ctx.executedSell === 0n) return null; // no settled volume (defensive)
 
   // eth-flow orders settle with owner = the eth-flow contract, NOT the trader.
-  // Attribute to the order `receiver` (the real trader). Skip rather than mis-credit
-  // an eth-flow order with no usable receiver, and never attribute back to a router.
+  // Attribute to the payer (onchainUser, receiver as fallback — see ethFlowTrader).
+  // Skip rather than mis-credit when neither is usable; never credit a router.
   let wallet: `0x${string}`;
   if (ethFlowOwners.has(ctx.owner.toLowerCase())) {
-    const receiver = ctx.receiver?.trim().toLowerCase();
-    if (!receiver || !/^0x[0-9a-f]{40}$/.test(receiver)) return null;
-    if (receiver === ctx.owner.toLowerCase() || ethFlowOwners.has(receiver)) return null;
-    wallet = receiver as `0x${string}`;
+    const trader = ethFlowTrader(ctx, ethFlowOwners);
+    if (!trader) return null;
+    wallet = trader;
   } else {
     wallet = ctx.owner as `0x${string}`;
   }
@@ -768,12 +798,16 @@ export async function fetchChainTrades(
       // rebate window is 30 days, so sub-minute skew is irrelevant; also avoids a
       // per-chain RPC dependency). NOTE: for a limit/TWAP order created long before it
       // fills this could land in the wrong 30-day window — tracked as a follow-up if
-      // non-market volume appears. The default (Ophis-dedicated) eth-flow owner set is
-      // correct here: the API path only ever queries those contracts as an owner.
+      // non-market volume appears. `t.owner` is the SHARED canonical CoW eth-flow
+      // router for a tracked wallet's own native-ETH sells (CoW lists eth-flow orders
+      // under their on-chain sender), so the default owner set must include it or the
+      // row is credited to the contract (2026-09-08: $5.8k across 3 rows, until the
+      // nightly repair). attributeOrder's default DECODER_ETHFLOW_OWNERS covers it.
       if (isTerminal && firstForOrder && !rebateRowComplete) {
         const trade = attributeOrder(meta, {
           owner: t.owner,
           receiver: order.receiver,
+          onchainUser: order.onchainUser,
           sellToken: t.sellToken as `0x${string}`,
           buyToken: t.buyToken as `0x${string}`,
           executedSell: BigInt(execSell),
@@ -801,6 +835,7 @@ export async function fetchChainTrades(
         const fill = attributeOrder(meta, {
           owner: t.owner,
           receiver: order.receiver,
+          onchainUser: order.onchainUser,
           sellToken: t.sellToken as `0x${string}`,
           buyToken: t.buyToken as `0x${string}`,
           executedSell: BigInt(t.sellAmount),
@@ -1089,10 +1124,10 @@ export async function runFetcher(
     //     `inserted` log count.
     //   - The SHARED canonical CoW routers must never be fetched as an owner at
     //     all: an owner-scoped fetch of the shared contract lists all of CoW's
-    //     eth-flow traffic, and attributeOrder's API path (narrow Ophis set)
-    //     then stores Ophis orders with wallet = the router, the mis-attribution
-    //     repaired by repair/routerTrades.ts. Their native-ETH orders attribute
-    //     correctly via the on-chain settle() decoder (full DECODER set).
+    //     eth-flow traffic (self-DoS + CoW rate-limit burn). Their Ophis orders
+    //     need no such fetch: CoW lists an eth-flow order under its on-chain
+    //     SENDER, so a tracked wallet's own fetch returns them with owner = the
+    //     router and attributeOrder credits the receiver.
     const owners = ownerRows.filter((o) => !DECODER_ETHFLOW_OWNERS.has(o.wallet.toLowerCase()));
     let inserted = 0;
     // Reusable ON CONFLICT predicates (see the onConflictDoUpdate comment below).
@@ -1175,6 +1210,13 @@ export async function runFetcher(
         .onConflictDoUpdate({
           target: schema.trades.tradeUid,
           set: {
+            // Identity follows the fee upgrade of a decoder DISCOVERY row: the
+            // decoder credits `receiver` (settle() calldata has no onchainUser),
+            // the API row for the same uid credits the payer. Only this arm may
+            // move `wallet` -- a fee_verified=false row is never ticketable
+            // (tradeRewards/service.ts filters fee_verified = true), so the flip
+            // cannot strand a signed ticket; every other conflict leaves it alone.
+            wallet: dsql`CASE WHEN (${schema.trades.feeVerified} = false AND excluded.fee_verified = true) THEN excluded.wallet ELSE ${schema.trades.wallet} END`,
             volumeFeeBps: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) THEN excluded.volume_fee_bps ELSE ${schema.trades.volumeFeeBps} END`,
             feeVerified: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) THEN excluded.fee_verified ELSE ${schema.trades.feeVerified} END`,
             undecodedFeeFallbackBps: dsql`CASE WHEN (${POLICY_MARKER_FILL_ARM}) THEN excluded.undecoded_fee_fallback_bps ELSE ${schema.trades.undecodedFeeFallbackBps} END`,
@@ -1223,9 +1265,10 @@ export async function runFetcher(
     }
 
     // eth-flow synthetic owners: eth-flow orders settle with owner = the Ophis
-    // eth-flow contract (not the trader), so they never appear under a tracked
-    // wallet's query above. Fetch each dedicated Ophis eth-flow contract as an
-    // owner on its own chain; fetchChainTrades attributes each trade to its
+    // eth-flow contract (not the trader). CoW lists them under their on-chain
+    // sender too, but only for wallets we track; fetching each dedicated Ophis
+    // eth-flow contract as an owner on its own chain also catches UNTRACKED
+    // traders' native-ETH sells. fetchChainTrades attributes each trade to its
     // receiver. Fixed addresses (one per override chain), so no tracked-wallet
     // budget cost, and they are never added to tracked_wallets (fetched directly).
     for (const [chainIdStr, ethFlowOwner] of Object.entries(OPHIS_ETHFLOW_OWNER_BY_CHAIN)) {
@@ -1241,8 +1284,8 @@ export async function runFetcher(
     }
 
     // On-chain settle() decoder (SUPPLEMENTAL source): closes the rebate gap for
-    // hosted-chain native-ETH (shared eth-flow) + contract-owner / EIP-1271 orders
-    // that the owner-scoped CoW-API fetch above structurally misses. Runs INSIDE
+    // UNTRACKED wallets' hosted-chain native-ETH (shared eth-flow) + contract-owner
+    // / EIP-1271 orders, which the owner-scoped CoW-API fetch above never lists. Runs INSIDE
     // this advisory lock so its per-chain cursor + upserts share the fetcher's
     // critical section. OFF unless SETTLE_DECODER_CHAINS is set (Base-first). Reuses
     // the same upsertTrades (PK-idempotent on trade_uid, so it can never double-count
@@ -1254,8 +1297,9 @@ export async function runFetcher(
           sql: sql as unknown as Parameters<typeof runSettleDecoder>[0]['sql'],
           upsertTrades,
           // Settlement-fill persistence for decoder-discovered trades: the only
-          // source of hosted-chain native-ETH (shared eth-flow) fills now that
-          // routers are never fetched as owners. Fee fields carry the decoder's
+          // source of hosted-chain native-ETH (shared eth-flow) fills for wallets
+          // nobody tracks (a tracked wallet's own fetch above lists its eth-flow
+          // trades under their on-chain sender). Fee fields carry the decoder's
           // gated values (DISCOVERY mode: fee 0 / unverified), so these fills are
           // excluded from /defillama until fee verification lands (ToB B1); the
           // per-fill event data is preserved for that upgrade.

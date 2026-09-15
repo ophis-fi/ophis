@@ -2,7 +2,14 @@ import { RouteHandlerCallbackOptions, RouteMatchCallbackOptions } from 'workbox-
 import { getCacheKeyForURL, matchPrecache } from 'workbox-precaching'
 import { Route } from 'workbox-routing'
 
-const fileExtensionRegexp = new RegExp('/[^/?]+\\.[^/]+$')
+const standaloneDocuments = new Map([
+  ['/451', '/451.html'],
+  ['/business', '/business/index.html'],
+  ['/business/', '/business/index.html'],
+  ['/ophis-fee-safe-robinhood-ceremony', '/ophis-fee-safe-robinhood-ceremony.html'],
+  ['/ophis-uniswap-v4-robinhood-ceremony', '/ophis-uniswap-v4-robinhood-ceremony.html'],
+  ['/ophis-uniswap-v4-optimism-ceremony', '/ophis-uniswap-v4-optimism-ceremony.html'],
+])
 
 export const DOCUMENT = self.location.origin + '/index.html'
 
@@ -18,12 +25,9 @@ export function matchDocument({ request, url }: RouteMatchCallbackOptions) {
     return false
   }
 
-  // If this looks like a resource (ie has a file extension), skip.
-  if (url.pathname.match(fileExtensionRegexp)) {
-    return false
-  }
-
-  return true
+  // Hash-based app routes all navigate to /. Let Pages handle pathname
+  // aliases (301) and unknown URLs (404), rather than replacing them with the shell.
+  return url.pathname === '/' || standaloneDocuments.has(url.pathname)
 }
 
 type HandlerContext = {
@@ -47,7 +51,17 @@ type HandlerContext = {
 // TODO: Add proper return type annotation
 // TODO: Reduce function complexity by extracting logic
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, complexity
-export async function handleDocument(this: HandlerContext, { event: _event, request }: RouteHandlerCallbackOptions) {
+export async function handleDocument(
+  this: HandlerContext,
+  { event: _event, request, url }: RouteHandlerCallbackOptions,
+) {
+  // Pages canonicalizes static HTML to extensionless URLs. Keep cached pages paired with their build's scripts.
+  const staticDocument =
+    url.hostname === 'business.ophis.fi' && url.pathname === '/'
+      ? '/business/index.html'
+      : standaloneDocuments.get(url.pathname)
+  if (staticDocument) return (await matchPrecache(staticDocument)) || fetch(request)
+
   // If we are offline, serve the offline document.
   if ('onLine' in navigator && !navigator.onLine) return this?.offlineDocument?.clone() || fetch(request)
 

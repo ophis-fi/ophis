@@ -6,11 +6,24 @@ import { useIsSafeApp } from '@cowprotocol/wallet'
 
 import { appDataHooksAtom, appDataInfoAtom } from './state/atoms'
 import { AppDataInfo } from './types'
+import { sumVolumeFeeBps } from './utils/sumVolumeFeeBps'
 
 const APP_CODE = process.env.REACT_APP_APP_CODE
 
 export function useAppData(): AppDataInfo | null {
   return useAtomValue(appDataInfoAtom)
+}
+
+/**
+ * The flat Volume bps the CURRENT appData actually signs, summed over every
+ * partnerFee entry. The fee row and the receive-amount maths must read this, not
+ * the volumeFee pipeline alone: with a host widget override the order carries the
+ * host's fee AND the Ophis 1 bp base, and the pipeline knows only the former.
+ * undefined while no appData is built yet (callers fall back to the pipeline).
+ */
+export function useAppDataVolumeFeeBps(): number | undefined {
+  const appData = useAtomValue(appDataInfoAtom)
+  return useMemo(() => sumVolumeFeeBps(appData?.doc.metadata.partnerFee), [appData])
 }
 
 export function useAppCode(): string | null {

@@ -71,7 +71,7 @@ const tools = [
     min-height: 104px;
     padding: 14px;
     color: var(--ophis-fg-muted);
-    background: rgba(255, 255, 255, 0.025);
+    background: var(--ophis-bg);
     border: 1px solid var(--ophis-border);
     border-radius: 12px;
     text-decoration: none;
@@ -79,8 +79,8 @@ const tools = [
   }
   .tool-card:hover {
     color: var(--ophis-fg-muted);
-    background: rgba(255, 255, 255, 0.045);
-    border-color: rgba(242, 166, 62, 0.38);
+    background: var(--ophis-fog);
+    border-color: var(--ophis-fg-muted);
   }
   .tool-card:focus-visible {
     outline: 2px solid var(--ophis-saffron-60);
@@ -118,9 +118,9 @@ const tools = [
   }
   .methodology-note {
     padding: 16px 18px;
-    color: var(--ophis-fg-faded);
-    background: rgba(242, 166, 62, 0.045);
-    border-left: 3px solid rgba(242, 166, 62, 0.55);
+    color: var(--ophis-brown);
+    background: var(--ophis-peach);
+    border-left: 3px solid var(--ophis-brown);
     border-radius: 0 8px 8px 0;
     font-size: 14px;
     line-height: 1.6;

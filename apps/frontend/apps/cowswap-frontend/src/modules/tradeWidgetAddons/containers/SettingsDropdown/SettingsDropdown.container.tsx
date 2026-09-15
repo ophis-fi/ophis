@@ -78,7 +78,12 @@ export function SettingsDropdown({
     <Menu>
       <SettingsTabController buttonRef={menuButtonRef}>
         <styledEl.StyledMenu className={className}>
-          <styledEl.StyledMenuButton ref={menuButtonRef} id="open-settings-dialog-button" disabled={isSettingsDisabled}>
+          <styledEl.StyledMenuButton
+            ref={menuButtonRef}
+            id="open-settings-dialog-button"
+            aria-label={t`Swap settings`}
+            disabled={isSettingsDisabled}
+          >
             <SettingsIcon />
           </styledEl.StyledMenuButton>
           <styledEl.MenuFlyout portal={false}>

@@ -1,4 +1,4 @@
-import { Media, RowFixed, UI } from '@cowprotocol/ui'
+import { Media, RowFixed } from '@cowprotocol/ui'
 
 import styled, { css } from 'styled-components/macro'
 
@@ -12,21 +12,14 @@ export const HeaderControls = styled.div`
   height: 100%;
 
   ${Media.upToMedium()} {
-    margin: 0 0 0 auto;
-    height: 56px;
-    width: 100%;
-    position: sticky;
-    bottom: 0;
-    left: 0;
-    z-index: 10;
-    background: var(${UI.COLOR_PAPER});
-    padding: 5px 10px;
-    flex-flow: row-reverse;
+    min-width: 0;
+    grid-column: 1 / -1;
     justify-content: space-between;
   }
 `
 
 export const HeaderElement = styled.div`
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 0;

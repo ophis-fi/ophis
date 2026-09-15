@@ -15,7 +15,7 @@ export const Wrapper = styled.div`
   display: flex;
   flex-flow: row wrap;
   align-items: center;
-  color: ${Color.neutral100};
+  color: ${Color.explorer_textPrimary};
 
   ${Media.upToSmall()} {
     gap: 1rem;
@@ -102,7 +102,7 @@ export const TableHeading = styled.div`
     }
 
     > span > span:first-child {
-      color: ${Color.neutral100};
+      color: ${Color.explorer_textPrimary};
     }
   }
 `

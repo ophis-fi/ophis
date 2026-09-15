@@ -20,18 +20,18 @@ export interface OtcActionControlViewProps {
 function UncertainTransactionRecovery({
   transactionHash,
   clearUncertainTransaction,
-  canary,
+  mainnet,
 }: {
   transactionHash: string
   clearUncertainTransaction(): void
-  canary: boolean
+  mainnet: boolean
 }): ReactNode {
   const [verifiedDropped, setVerifiedDropped] = useState(false)
   return (
     <div role="alert" aria-live="assertive" aria-atomic="true">
       <Callout tone="warning" title="Confirmation unavailable">
         <p>Submitted transaction: {transactionHash}</p>
-        {canary ? (
+        {mainnet ? (
           <p>
             Check Ethereum for confirmation before continuing. A missing receipt does not prove that a transaction or
             its replacement was dropped. If confirmation is recovered, reload to review the current order and allowance
@@ -50,10 +50,10 @@ function UncertainTransactionRecovery({
         <p>
           <LinkStyledButton
             type="button"
-            disabled={!canary && !verifiedDropped}
+            disabled={!mainnet && !verifiedDropped}
             onClick={() => clearUncertainTransaction()}
           >
-            {canary ? 'Check Ethereum confirmation' : 'Clear this lock and allow a fresh preflight'}
+            {mainnet ? 'Check Ethereum confirmation' : 'Clear this lock and allow a fresh preflight'}
           </LinkStyledButton>
           .
         </p>
@@ -90,7 +90,7 @@ function UnknownSubmissionRecovery({ reconcile }: { reconcile(hash?: Hex): void 
         </p>
         <p>
           Only a mined transaction matching the reviewed action can resolve this warning. A missing or unrelated receipt
-          leaves the action locked; contact the canary operator if no hash is available.
+          leaves the action locked. Check your wallet activity for the hash before continuing.
         </p>
       </Callout>
     </div>
@@ -131,7 +131,7 @@ export function OtcActionControlView(props: OtcActionControlViewProps): ReactNod
           key={controller.uncertainHash}
           transactionHash={controller.uncertainHash}
           clearUncertainTransaction={controller.clearUncertainTransaction}
-          canary={!!controller.canary}
+          mainnet={!!controller.mainnet}
         />
       )}
       <styledEl.PrimaryAction

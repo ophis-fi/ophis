@@ -1,7 +1,18 @@
 import { DAI, NATIVE_CURRENCY_ADDRESS, USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import {
+  AdditionalTargetChainId,
+  BTC_CURRENCY_ADDRESS,
+  SOL_NATIVE_CURRENCY_ADDRESS,
+  SupportedChainId,
+} from '@cowprotocol/cow-sdk'
+import { Token } from '@cowprotocol/currency'
 
-import { assertTradeTokenPolicy, getTokenPolicyDecision, TokenPolicyProfile } from './tokenPolicy'
+import {
+  assertTradeTokenPolicy,
+  getTokenPolicyDecision,
+  isTradeAllowedByTokenPolicy,
+  TokenPolicyProfile,
+} from './tokenPolicy'
 
 const PINNED_OTC_ASSETS = [
   '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
@@ -123,5 +134,59 @@ describe('Ophis token policy — shared input handling', () => {
         TokenPolicyProfile.RESTRICTED_EXECUTION,
       ),
     ).toThrow('token-not-reviewed')
+  })
+})
+
+describe('non-EVM bridge destinations', () => {
+  const solana = { chainId: AdditionalTargetChainId.SOLANA, address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' }
+  const bitcoin = { chainId: AdditionalTargetChainId.BITCOIN, address: BTC_CURRENCY_ADDRESS }
+  const source = { chainId: 1, address: USDC_MAINNET.address }
+
+  it.each([solana, bitcoin, { ...solana, address: SOL_NATIVE_CURRENCY_ADDRESS }])(
+    'allows a valid destination asset under established settlement',
+    (destination) => {
+      expect(getTokenPolicyDecision(destination, TokenPolicyProfile.ESTABLISHED_SETTLEMENT).allowed).toBe(true)
+      expect(() => assertTradeTokenPolicy(source, destination, TokenPolicyProfile.ESTABLISHED_SETTLEMENT)).not.toThrow()
+      expect(
+        isTradeAllowedByTokenPolicy(
+          USDC_MAINNET,
+          new Token(destination.chainId, destination.address, 6),
+          TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
+        ),
+      ).toBe(true)
+    },
+  )
+
+  it.each([
+    { ...bitcoin, address: 'coin' },
+    { ...bitcoin, address: source.address },
+    { ...bitcoin, address: solana.address },
+    { ...solana, address: source.address },
+    { ...solana, address: 'not-a-mint' },
+    { ...solana, address: '' },
+    { chainId: 999999, address: solana.address },
+  ])('rejects malformed or wrong-chain asset identifiers', (asset) => {
+    expect(getTokenPolicyDecision(asset, TokenPolicyProfile.ESTABLISHED_SETTLEMENT).allowed).toBe(false)
+  })
+
+  it.each([TokenPolicyProfile.RESTRICTED_EXECUTION, TokenPolicyProfile.OTC_ESCROW])(
+    'does not expand the %s policy',
+    (profile) => {
+      expect(getTokenPolicyDecision(solana, profile).allowed).toBe(false)
+      expect(getTokenPolicyDecision(bitcoin, profile).allowed).toBe(false)
+    },
+  )
+
+  it.each([solana, bitcoin])('rejects a non-EVM source at quote and signing boundaries', (asset) => {
+    expect(() => assertTradeTokenPolicy(asset, source, TokenPolicyProfile.ESTABLISHED_SETTLEMENT)).toThrow(
+      'unsupported source chain',
+    )
+    expect(
+      isTradeAllowedByTokenPolicy(
+        new Token(asset.chainId, asset.address, 6),
+        USDC_MAINNET,
+        TokenPolicyProfile.ESTABLISHED_SETTLEMENT,
+      ),
+    ).toBe(false)
   })
 })

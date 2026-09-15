@@ -1,9 +1,22 @@
-import { EXTRA_ACROSS_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
-import { fetchWithTimeout } from '@cowprotocol/common-utils'
-import { avalanche, bnb, ChainInfo, getAddressKey, ink, linea, plasma, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
+import { EXTRA_ACROSS_SOURCE_CHAIN_IDS, tagAcrossIntegratorCalldata } from '@cowprotocol/common-const'
+import { getTimeoutAbortController } from '@cowprotocol/common-utils'
+import {
+  avalanche,
+  bnb,
+  ChainInfo,
+  getAddressKey,
+  ink,
+  linea,
+  plasma,
+  SupportedChainId,
+  TokenInfo,
+} from '@cowprotocol/cow-sdk'
 import {
   AcrossBridgeProvider,
-  BungeeBridgeProvider,
+  AcrossQuoteResult,
+  BridgeHook,
+  BridgeProviderQuoteError,
+  BridgeQuoteErrors,
   BuyTokensParams,
   GetProviderBuyTokens,
   QuoteBridgeRequest,
@@ -11,21 +24,19 @@ import {
 
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
 
-// Across's own API base (keyless). The SDK's internal AcrossApi uses the same
-// host and the app CSP already allows it, so a direct GET here needs no proxy.
-const ACROSS_API_URL = 'https://app.across.to/api'
-// A stalled available-routes request must not hang the quote — it degrades to
-// "no intermediate found" like every other route-fetch failure.
+// A stalled available-routes request must not hang the quote — it is ABORTED
+// (not just raced) at the timeout and degrades to "no intermediate found" like
+// every other route-fetch failure, so retries never pile up open connections.
 const AVAILABLE_ROUTES_TIMEOUT_MS = 10_000
 
 /**
- * sdk-bridging 4.0.2 hardcodes each provider's network list far below what the
- * provider APIs actually serve (verified against the live APIs, 2026-08-10):
+ * sdk-bridging 4.0.2 hardcodes Across's network list far below what the
+ * provider API actually serves (verified against the live API, 2026-08-10):
  * Across covers every Ophis chain except Gnosis — including Robinhood Chain
- * (USDG routes) and Unichain — and Bungee's manual pipeline covers Unichain,
- * Ink and Linea. These subclasses widen ONLY the network list; quotes, token
- * lists and route availability still come live from the provider APIs, and
- * unroutable corridors stay disabled through the existing getBuyTokens probes.
+ * (USDG routes) and Unichain. This subclass widens ONLY the network list;
+ * quotes, token lists and route availability still come live from the provider
+ * API, and unroutable corridors stay disabled through the existing getBuyTokens
+ * probes.
  *
  * The widened list makes these chains bridge DESTINATIONS. Whether a chain can
  * be a bridge SOURCE is governed separately by BRIDGE_SOURCE_CHAIN_IDS
@@ -41,10 +52,6 @@ const ACROSS_EXTRA_NETWORKS: ChainInfo[] = [
   UNICHAIN_BRIDGE_CHAIN,
   ROBINHOOD_BRIDGE_CHAIN,
 ]
-
-// Plasma and Robinhood Chain are deliberately absent: Bungee lists them as
-// chains but serves zero routes on the manual pipeline this SDK consumes.
-const BUNGEE_EXTRA_NETWORKS: ChainInfo[] = [ink, linea, UNICHAIN_BRIDGE_CHAIN]
 
 // Chains Across can actually EXECUTE a bridge deposit from with sdk-bridging
 // 4.0.2: both ACROSS_SPOOK_CONTRACT_ADDRESSES and ACROSS_MATH_CONTRACT_ADDRESSES
@@ -108,24 +115,57 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
     return this.getIntermediateTokensFromRoutes(request)
   }
 
+  // The Across deposit hook computes depositV3's outputAmount ON-CHAIN as
+  // balanceOf(sell token) minus the relay fee, in the SELL token's units
+  // (weiroll multiplyAndSubtract); it never rescales for decimals. Since the
+  // sdk-bridging patch quotes with the explicit inputToken/outputToken pair,
+  // Across's cross-asset routes are quotable, and some pair a 6-decimal stable
+  // with an 18-decimal one (USDC -> USDC-BNB, USDT -> USDT-BNB, live 2026-09-10).
+  // Such a deposit would offer 100e6 of input for ~1e-10 of output and be filled
+  // instantly. Refuse them here, the one method every Across quote passes
+  // through, before any fee request; the UI renders NO_ROUTES as "No routes found".
+  /**
+   * Same signed CoW Shed hook as upstream, with Across's on-chain integrator
+   * tag appended to its calldata (see tagAcrossIntegratorCalldata). Nothing
+   * decodes this calldata later: the SDK reads Across deposits back from the
+   * FundsDeposited event, not from the hook.
+   */
+  async getSignedHook(...args: Parameters<AcrossBridgeProvider['getSignedHook']>): Promise<BridgeHook> {
+    const hook = await super.getSignedHook(...args)
+    return { ...hook, postHook: { ...hook.postHook, callData: tagAcrossIntegratorCalldata(hook.postHook.callData) } }
+  }
+
+  async getQuote(request: QuoteBridgeRequest): Promise<AcrossQuoteResult> {
+    if (request.sellTokenDecimals !== request.buyTokenDecimals) {
+      throw new BridgeProviderQuoteError(BridgeQuoteErrors.NO_ROUTES, {
+        reason: 'sell/buy token decimals differ; Across deposit outputAmount is computed in sell-token units',
+        sellTokenDecimals: request.sellTokenDecimals,
+        buyTokenDecimals: request.buyTokenDecimals,
+      })
+    }
+
+    return super.getQuote(request)
+  }
+
   private async getIntermediateTokensFromRoutes(request: QuoteBridgeRequest): Promise<TokenInfo[]> {
     const { sellTokenChainId, buyTokenChainId, buyTokenAddress } = request
-    const params = new URLSearchParams({
-      originChainId: String(sellTokenChainId),
-      destinationChainId: String(buyTokenChainId),
-      destinationToken: buyTokenAddress,
-    })
 
     // Whole body guarded: any failure — network, a timeout, a malformed/garbage
     // routes response, a non-string originToken, the token-list fetch — degrades
     // to "no intermediate found" rather than crashing the quote pipeline.
     try {
-      const response = await fetchWithTimeout(`${ACROSS_API_URL}/available-routes?${params.toString()}`, {
-        timeout: AVAILABLE_ROUTES_TIMEOUT_MS,
-      })
-      if (!response.ok) return []
-      const routes = (await response.json()) as unknown
-      if (!Array.isArray(routes) || routes.length === 0) return []
+      // Through the SDK's AcrossApi, so this request carries the configured
+      // integratorId and API key like every other Across call (the SDK also
+      // validates the route shape and rejects garbage as INVALID_API_JSON_RESPONSE).
+      const routes = await this.api.getAvailableRoutes(
+        {
+          originChainId: String(sellTokenChainId),
+          destinationChainId: String(buyTokenChainId),
+          destinationToken: buyTokenAddress,
+        },
+        { signal: getTimeoutAbortController(AVAILABLE_ROUTES_TIMEOUT_MS).signal },
+      )
+      if (routes.length === 0) return []
 
       // Normalize both sides with the repo's canonical address key (not a raw
       // toLowerCase) so matching tracks the SDK's address semantics.
@@ -139,15 +179,11 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
       // Return the SDK's own TokenInfo objects (with decimals/symbol/logo) for
       // the route origins, so the downstream quote path gets the shape it wants.
       const tokens = await this.api.getSupportedTokens()
-      return tokens.filter((token) => token.chainId === sellTokenChainId && originKeys.has(getAddressKey(token.address)))
+      return tokens.filter(
+        (token) => token.chainId === sellTokenChainId && originKeys.has(getAddressKey(token.address)),
+      )
     } catch {
       return []
     }
-  }
-}
-
-export class OphisBungeeBridgeProvider extends BungeeBridgeProvider {
-  async getNetworks(): Promise<ChainInfo[]> {
-    return [...(await super.getNetworks()), ...BUNGEE_EXTRA_NETWORKS]
   }
 }

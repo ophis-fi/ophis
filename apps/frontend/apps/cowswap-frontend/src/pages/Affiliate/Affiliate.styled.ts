@@ -9,13 +9,13 @@ export const ActionButton = styled.button`
   appearance: none;
   align-self: flex-start;
   border: none;
-  border-radius: 999px;
+  border-radius: 12px;
   padding: 13px 30px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 15px;
   font-weight: 700;
-  color: #02000d;
-  background: #f2a63e;
+  color: var(--cow-color-button-text);
+  background: var(--cow-color-primary);
   cursor: pointer;
   transition:
     background 120ms ease-out,
@@ -23,7 +23,7 @@ export const ActionButton = styled.button`
     opacity 120ms ease-out;
 
   &:hover:not(:disabled) {
-    background: #ffbb6e;
+    background: var(--cow-color-primary-darker);
   }
   &:active:not(:disabled) {
     transform: translateY(1px);
@@ -40,14 +40,14 @@ export const ActionButton = styled.button`
  */
 export const GhostButton = styled.button`
   appearance: none;
-  border: 1px solid rgba(245, 239, 230, 0.22);
-  border-radius: 999px;
+  border: 1px solid var(--cow-color-border);
+  border-radius: 12px;
   padding: 8px 16px;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: var(--ophis-font-body);
   font-size: 13px;
   font-weight: 600;
-  color: #f5efe6;
-  background: rgba(245, 239, 230, 0.04);
+  color: var(--cow-color-text);
+  background: var(--cow-color-border);
   cursor: pointer;
   transition:
     border-color 120ms ease-out,
@@ -55,8 +55,8 @@ export const GhostButton = styled.button`
     opacity 120ms ease-out;
 
   &:hover:not(:disabled) {
-    border-color: rgba(242, 166, 62, 0.5);
-    background: rgba(245, 239, 230, 0.07);
+    border-color: var(--cow-color-primary);
+    background: var(--cow-color-border);
   }
   &:disabled {
     opacity: 0.55;

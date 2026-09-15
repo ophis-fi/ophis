@@ -9,19 +9,21 @@ import { HTMLAttributes, ReactNode } from 'react'
 
 import styled from 'styled-components/macro'
 
+import { STEEP_FONT, steep } from './steep.utils'
+
 interface InlineCodeProps extends Omit<HTMLAttributes<HTMLElement>, 'children'> {
   children: ReactNode
 }
 
 const Code = styled.code`
-  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: ${STEEP_FONT.mono};
   font-size: 0.875em;
   font-weight: 500;
-  color: #f5efe6;
-  background: rgba(245, 239, 230, 0.08);
+  color: ${({ theme }) => steep(theme).text};
+  background: ${({ theme }) => steep(theme).codeBg};
   padding: 1px 5px;
-  border-radius: 4px;
-  border: 1px solid rgba(245, 239, 230, 0.06);
+  border-radius: 6px;
+  border: 1px solid ${({ theme }) => steep(theme).cardBorder};
   white-space: nowrap;
 `
 

@@ -14,7 +14,7 @@ export interface ActiveRowLinksProps {
 // Ophis: dropped the hardcoded "CoW Protocol Explorer" row and the per-chain
 // block-explorer (Etherscan/Arbiscan) link. Also dropped the per-chain external
 // "Bridge" link (e.g. bridge.optimism.io): it is obsolete now that Ophis bridges
-// natively in-app via Bungee + Across (EVM to EVM) and NEAR Intents (Solana,
+// natively in-app via Across (EVM to EVM) and NEAR Intents (Solana,
 // Bitcoin); you just pick a destination chain in the token picker. Block-explorer
 // links still appear on order receipts and transaction rows.
 export function ActiveRowLinks({ helpCenterUrl }: ActiveRowLinksProps): ReactNode {

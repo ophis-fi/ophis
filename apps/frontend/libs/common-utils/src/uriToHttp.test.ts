@@ -12,7 +12,14 @@ describe('uriToHttp', () => {
   })
   it('returns ipfs gateways for ipfs:// urls', () => {
     expect(uriToHttp('ipfs://QmV8AfDE8GFSGQvt3vck8EwAzsPuNTmtP8VcQJE3qxRPaZ')).toEqual([
-      'https://ipfs.io/ipfs/QmV8AfDE8GFSGQvt3vck8EwAzsPuNTmtP8VcQJE3qxRPaZ/',
+      'https://ipfs.filebase.io/ipfs/QmV8AfDE8GFSGQvt3vck8EwAzsPuNTmtP8VcQJE3qxRPaZ',
+      'https://ipfs.io/ipfs/QmV8AfDE8GFSGQvt3vck8EwAzsPuNTmtP8VcQJE3qxRPaZ',
+    ])
+  })
+  it('preserves IPFS file paths without adding a directory slash', () => {
+    expect(uriToHttp('ipfs://ipfs/bafyexample/logo.png')).toEqual([
+      'https://ipfs.filebase.io/ipfs/bafyexample/logo.png',
+      'https://ipfs.io/ipfs/bafyexample/logo.png',
     ])
   })
   it('returns ipns gateways for ipns:// urls', () => {

@@ -62,8 +62,8 @@ export const SnapshotAccordion = styled.div<{ $expanded: boolean }>`
   border: 0.1rem solid ${Color.explorer_border};
   border-radius: 1rem;
   overflow: hidden;
-  background: linear-gradient(180deg, ${Color.explorer_bg2} 0%, rgba(16, 21, 39, 0.15) 100%);
-  box-shadow: ${({ $expanded }): string => ($expanded ? '0 0.6rem 2.4rem rgba(0, 0, 0, 0.18)' : 'none')};
+  background: ${Color.explorer_bg};
+  box-shadow: ${({ $expanded }): string => ($expanded ? '0 0.6rem 2.4rem rgba(23, 25, 28, 0.06)' : 'none')};
 `
 
 export const SectionHeader = styled.button<{ $expanded: boolean }>`
@@ -79,7 +79,7 @@ export const SectionHeader = styled.button<{ $expanded: boolean }>`
   min-height: 5.4rem;
   padding: 0 1.2rem;
   text-align: left;
-  color: ${Color.neutral100};
+  color: ${Color.explorer_textPrimary};
   border-bottom: 0.1rem solid ${({ $expanded }): string => ($expanded ? Color.explorer_border : 'transparent')};
 
   > ${SectionTitle} {
@@ -92,7 +92,7 @@ export const SectionHeader = styled.button<{ $expanded: boolean }>`
 export const ToggleButton = styled.span`
   border: 0.1rem solid ${Color.explorer_border};
   background: ${Color.explorer_greyOpacity};
-  color: ${Color.neutral100};
+  color: ${Color.explorer_textPrimary};
   border-radius: 0.7rem;
   padding: 0.45rem 0.9rem;
   font-size: 1.2rem;

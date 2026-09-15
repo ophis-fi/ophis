@@ -1,5 +1,7 @@
 import { atom } from 'jotai'
 
+import { isInjectedWidget } from '@cowprotocol/common-utils'
+
 import { load } from 'redux-localstorage-simple'
 
 import { getCowswapTheme } from './getCowswapTheme'
@@ -9,18 +11,13 @@ function readPersistedDarkMode(): boolean | null {
     const persistedState = load({ states: ['user'], disableWarnings: true }) as {
       user?: {
         userDarkMode?: boolean | null
-        matchesDarkMode?: boolean
       }
     }
 
-    const { userDarkMode, matchesDarkMode } = persistedState?.user ?? {}
+    const { userDarkMode } = persistedState?.user ?? {}
 
     if (typeof userDarkMode === 'boolean') {
       return userDarkMode
-    }
-
-    if (typeof matchesDarkMode === 'boolean') {
-      return matchesDarkMode
     }
   } catch {
     // ignore localStorage access issues
@@ -29,19 +26,9 @@ function readPersistedDarkMode(): boolean | null {
   return null
 }
 
-function readSystemDarkMode(): boolean {
-  try {
-    const prefersDarkScheme = window.matchMedia?.('(prefers-color-scheme: dark)')
-
-    return prefersDarkScheme?.matches ?? false
-  } catch {
-    return false
-  }
-}
-
 function getInitialDarkModePreference(): boolean {
-  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
-    return false
+  if (typeof window === 'undefined') {
+    return isInjectedWidget()
   }
 
   const persistedPreference = readPersistedDarkMode()
@@ -50,7 +37,8 @@ function getInitialDarkModePreference(): boolean {
     return persistedPreference
   }
 
-  return readSystemDarkMode()
+  // Match useIsDarkMode: standalone starts light; keep the embedded default.
+  return isInjectedWidget()
 }
 
 const initialDarkMode = getInitialDarkModePreference()

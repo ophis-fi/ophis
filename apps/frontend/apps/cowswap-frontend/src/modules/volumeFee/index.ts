@@ -1,7 +1,14 @@
 export { useVolumeFee } from './hooks/useVolumeFee'
 export { useVolumeFeeTooltip } from './hooks/useVolumeFeeTooltip'
 export type { VolumeFeeTooltip } from './hooks/useVolumeFeeTooltip'
-export { basketWidgetVolumeFeeAtom, isStableTradeAtom, volumeFeeAtom, widgetPartnerFeeAtom } from './state/volumeFeeAtom'
+export {
+  basketHostFeeKindAtom,
+  basketWidgetVolumeFeeAtom,
+  hostFeeKindAtom,
+  isStableTradeAtom,
+  volumeFeeAtom,
+  widgetPartnerFeeAtom,
+} from './state/volumeFeeAtom'
 export {
   isBoostedPair,
   isCorrelatedPair,

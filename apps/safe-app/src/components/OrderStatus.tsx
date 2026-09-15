@@ -10,7 +10,6 @@ interface Props {
   enrollmentWarning?: string;
 }
 
-const shell = { fontFamily: 'system-ui', padding: 24, maxWidth: 520, display: 'grid', gap: 12 } as const;
 
 // CoW order statuses that will not change again, so polling can stop.
 const TERMINAL_STATUSES = new Set(['fulfilled', 'cancelled', 'expired']);
@@ -36,7 +35,7 @@ export function OrderStatus({ chainId, orderUid, safeTxHash, enrollmentWarning }
   }, [chainId, orderUid, status]);
 
   return (
-    <main style={shell}>
+    <main>
       <h1>Order proposed</h1>
       {enrollmentWarning && (
         <div

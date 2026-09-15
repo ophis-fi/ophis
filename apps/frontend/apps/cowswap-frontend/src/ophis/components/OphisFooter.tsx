@@ -27,22 +27,40 @@ interface Props {
 function CompactFooter({ borderless }: { borderless: boolean }): ReactNode {
   return (
     <styledEl.CompactBar $borderless={borderless}>
-      <styledEl.CompactBrand>
+      <styledEl.CompactBrand as="a" href="https://ophis.fi/" aria-label="Ophis home">
         <styledEl.BrandIcon src="/ophis-icon.svg" alt="" aria-hidden="true" />
         <styledEl.Wordmark>
           ophis<span>.</span>
         </styledEl.Wordmark>
       </styledEl.CompactBrand>
-      <styledEl.CompactLinks>
-        <styledEl.InternalLink to="/profile">Refer and earn</styledEl.InternalLink>
+      <styledEl.CompactLinks aria-label="More from Ophis">
         <styledEl.ExternalLink href="https://docs.ophis.fi/">Docs</styledEl.ExternalLink>
-        <styledEl.InternalLink to="/about">About</styledEl.InternalLink>
-        <styledEl.ExternalLink href="https://github.com/ophis-fi/ophis" target="_blank" rel="noreferrer">
-          GitHub
+        <styledEl.ExternalLink href="https://ophis.fi/blog/">Blog</styledEl.ExternalLink>
+        <styledEl.ExternalLink href="https://x.com/ophisfi" aria-label="Ophis on X">
+          X
         </styledEl.ExternalLink>
+        <styledEl.ExternalLink href="https://t.me/ophisfi">Telegram</styledEl.ExternalLink>
         <styledEl.InternalLink to="/legal">Legal</styledEl.InternalLink>
       </styledEl.CompactLinks>
       <styledEl.CompactCopy>&copy; Ophis 2026</styledEl.CompactCopy>
+      <styledEl.TradeSummary aria-label="About Ophis swaps">
+        <p>
+          Ophis is an intent-based DEX aggregator for MEV-protected swaps. Choose supported tokens, review your quote
+          and signed limit, and trade with your own wallet. Solvers compete to settle your order through batch auctions.
+        </p>
+        <p>
+          Ophis charges a 0.01% base fee plus capped price-improvement capture. CoW-hosted swaps also carry upstream
+          fees.
+        </p>
+        <styledEl.CompactLinks aria-label="Swap guides">
+          <styledEl.ExternalLink href="https://ophis.fi/pricing/">Fees and pricing</styledEl.ExternalLink>
+          <styledEl.ExternalLink href="https://ophis.fi/supported-chains/">Supported chains</styledEl.ExternalLink>
+          <styledEl.ExternalLink href="https://ophis.fi/security/">Security</styledEl.ExternalLink>
+          <styledEl.ExternalLink href="https://ophis.fi/ai-agent-crypto-swap-api/">
+            Agent integrations
+          </styledEl.ExternalLink>
+        </styledEl.CompactLinks>
+      </styledEl.TradeSummary>
     </styledEl.CompactBar>
   )
 }

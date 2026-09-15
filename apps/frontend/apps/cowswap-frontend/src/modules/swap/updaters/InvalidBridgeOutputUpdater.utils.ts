@@ -1,5 +1,5 @@
 import { BRIDGE_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
-import { isAddress } from '@cowprotocol/common-utils'
+import { isAddress, NON_EVM_DESTINATION_RULES } from '@cowprotocol/common-utils'
 import { areAddressesEqual, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 
 import { BridgeSupportedToken } from 'entities/bridgeProvider'
@@ -54,6 +54,12 @@ export function getUnsupportedBridgePairPatch(params: UnsupportedBridgePairPatch
   return null
 }
 
+/** Non-EVM destinations carry their own token-id format (Sui coin type, Tron base58, HIP-1 id). */
+function isDestinationTokenId(chainId: TargetChainId, id: string): boolean {
+  const rule = NON_EVM_DESTINATION_RULES[chainId]
+  return rule ? rule.isTokenId(id) : !!isAddress(id)
+}
+
 export function getInvalidBridgeOutputPatch(params: InvalidBridgeOutputPatchParams): Partial<SwapRawState> | null {
   const { sourceChainId, targetChainId, selectedOutputCurrencyId, bridgeRouteData, isBridgeRouteLoading } = params
 
@@ -77,7 +83,7 @@ export function getInvalidBridgeOutputPatch(params: InvalidBridgeOutputPatchPara
 
   // Route exists, but the currently selected buy token might not be bridgeable for this sell token.
   // In that case, clear only the buy token so the user can re-pick on the same destination chain.
-  if (selectedOutputCurrencyId && isAddress(selectedOutputCurrencyId)) {
+  if (selectedOutputCurrencyId && isDestinationTokenId(targetChainId, selectedOutputCurrencyId)) {
     const isSelectedOutputSupported = bridgeRouteData.tokens.some((token) =>
       areAddressesEqual(token.address, selectedOutputCurrencyId),
     )

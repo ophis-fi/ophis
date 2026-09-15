@@ -10,13 +10,13 @@
  *   - A subtle scale + opacity pulse (1.00 → 1.04 → 1.00) every 2.2s
  *     adds a "breathing" heartbeat so it doesn't feel static.
  *
- * The SVG is loaded as <img> (from /ophis-logo-full.svg) for simplicity;
- * sunset color is applied via CSS filter rather than fill-currentColor
- * to keep this file slim (the raw SVG path is 11 KB).
+ * The external SVG follows the page's ink/paper palette.
  *
  * Respects `prefers-reduced-motion: reduce`.
  */
 import { ReactNode } from 'react'
+
+import { getContrastText } from '@cowprotocol/ui-utils'
 
 import styled, { keyframes } from 'styled-components/macro'
 
@@ -53,16 +53,13 @@ const Wrapper = styled.div<{ $size: number }>`
   }
 `
 
-/* Filter chain converts black SVG to saffron #f2a63e. Computed via
-   color-matrix; alternative would be inlining the SVG and using
-   fill="currentColor", but the path is ~11 KB so we keep it external. */
 const Mark = styled.img`
   width: 100%;
   height: 100%;
   display: block;
   animation: ${rotate} 8s linear infinite;
-  filter: brightness(0) saturate(100%) invert(75%) sepia(60%) saturate(550%) hue-rotate(345deg) brightness(95%)
-    contrast(95%);
+  filter: ${({ theme }) =>
+    getContrastText(theme.background, '#000000') === '#000000' ? 'brightness(0)' : 'brightness(0) invert(1)'};
   @media (prefers-reduced-motion: reduce) {
     animation: none;
   }

@@ -45,7 +45,7 @@ const TooltipArrow = styled.div<{ $bgColor?: string }>`
 
 const TooltipInner = styled.div<{ $bgColor?: string }>`
   background: ${Color.explorer_shade};
-  color: ${Color.neutral100};
+  color: ${Color.explorer_textPrimary};
   font-weight: var(--font-weight-normal);
   padding: 1rem;
   font-size: 1.3rem;

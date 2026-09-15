@@ -7,7 +7,11 @@ import { CompetitionOrderStatus, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useENS } from '@cowprotocol/ens'
 import { Command } from '@cowprotocol/types'
 
+import { I18n } from '@lingui/core'
+import { msg } from '@lingui/core/macro'
+import { useLingui } from '@lingui/react'
 import ms from 'ms.macro'
+import { getOphisSolversForChain, ophisSolverPublicDescription, ophisSolverPublicLabel } from 'ophis/solvers'
 import useSWR from 'swr'
 
 import { useActivityDerivedState } from 'legacy/hooks/useActivityDerivedState'
@@ -138,6 +142,7 @@ function getDoNotQueryStatusEndpoint(
 // eslint-disable-next-line max-lines-per-function, complexity
 function useOrderBaseProgressBarProps(params: UseOrderProgressBarPropsParams): UseOrderProgressBarResult | undefined {
   const { activityDerivedState, chainId, isBridgingTrade } = params
+  const { _ } = useLingui()
 
   const {
     order,
@@ -187,7 +192,7 @@ function useOrderBaseProgressBarProps(params: UseOrderProgressBarPropsParams): U
           return acc
         }
         // Merge the solver competition data with the info fetched from CMS under the same key, to avoid duplicates
-        acc[entry.solver] = mergeSolverData(entry, solversInfo)
+        acc[entry.solver] = mergeSolverData(entry, solversInfo, chainId, _)
         return acc
       },
       {} as Record<string, SolverCompetition>,
@@ -198,7 +203,7 @@ function useOrderBaseProgressBarProps(params: UseOrderProgressBarPropsParams): U
         // Reverse it since backend returns the solutions ranked ascending. Winner is the last one.
         .reverse()
     )
-  }, [apiSolverCompetition, solversInfo])
+  }, [apiSolverCompetition, solversInfo, chainId, _])
   const { swapAndBridgeContext } = useSwapAndBridgeContext(
     chainId,
     isBridgingTrade ? order : undefined,
@@ -547,17 +552,33 @@ const POOLING_SWR_OPTIONS = {
  *
  * @param solverCompetition
  * @param solversInfo
+ * @param chainId
+ * @param _ Current locale translator
  */
-function mergeSolverData(
+export function mergeSolverData(
   solverCompetition: ApiSolverCompetition,
   solversInfo: Record<string, SolverInfo>,
+  chainId: number,
+  _: I18n['_'],
 ): SolverCompetition {
   // Backend has the prefix `-solve` on some solvers. We should discard that for now.
   // In the future this prefix will be removed.
   const solverId = solverCompetition.solver.replace(/-solve$/, '')
   const solverInfo = solversInfo[solverId.toLowerCase()]
+  const isOphisSolver = getOphisSolversForChain(chainId).some(
+    (registeredSolver) => registeredSolver.solverId === solverId.toLowerCase(),
+  )
 
-  return { ...solverCompetition, ...solverInfo, solverId, solver: solverId }
+  return {
+    ...solverCompetition,
+    ...solverInfo,
+    solverId,
+    solver: solverId,
+    displayName: solverInfo?.displayName || (isOphisSolver ? ophisSolverPublicLabel(solverId) : _(msg`Unknown solver`)),
+    description:
+      solverInfo?.description ||
+      (isOphisSolver ? ophisSolverPublicDescription(solverId) : _(msg`Solver identity unavailable (${solverId}).`)),
+  }
 }
 
 function usePendingOrderStatus(

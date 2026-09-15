@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { DEFAULT_APP_CODE } from '@cowprotocol/common-const'
 import { useDebounce } from '@cowprotocol/common-hooks'
 import { COW_PROTOCOL_ETH_FLOW_ADDRESS, getCurrencyAddress } from '@cowprotocol/common-utils'
-import { OrderKind } from '@cowprotocol/cow-sdk'
+import { getPartnerFeeBps, OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 import { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 import { isTradeAllowedByTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
@@ -11,6 +11,7 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 import { useWalletProvider } from '@cowprotocol/wallet-provider'
 
 import ms from 'ms.macro'
+import { OPHIS_PARTNER_FEE_RECIPIENT } from 'ophis/partnerFeeDefault'
 import { Nullish } from 'types'
 
 import { AppDataInfo, useAppData } from 'modules/appData'
@@ -21,6 +22,7 @@ import { useVolumeFee } from 'modules/volumeFee'
 import { useIsProviderNetworkDeprecated } from 'common/hooks/useIsProviderNetworkDeprecated'
 import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetworkUnsupported'
 import { useSafeMemo } from 'common/hooks/useSafeMemo'
+import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
 
 import { useQuoteParamsRecipient } from './useQuoteParamsRecipient'
 
@@ -67,7 +69,6 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
   const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated()
 
   const state = useDerivedTradeState()
-  const volumeFee = useVolumeFee()
   const tradeSlippage = useTradeSlippageValueAndType()
 
   const userSlippageBps = tradeSlippage.type === 'user' ? tradeSlippage.value : undefined
@@ -86,13 +87,14 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
 
   const receiver = useQuoteParamsRecipient()
   const appDataDoc = appData?.doc
+  const volumeFee = useQuoteVolumeFee(appDataDoc)
 
   // eslint-disable-next-line complexity
   const params = useSafeMemo(() => {
     if (isWrapOrUnwrap || isProviderNetworkUnsupported || isProviderNetworkDeprecated || !isTokenPolicyAllowed) return
     if (!inputCurrency || !outputCurrency || !orderKind || !provider) return
-
-    const appCode = appDataDoc?.appCode || DEFAULT_APP_CODE
+    // Never let the SDK default a non-EVM destination to the connected EVM account.
+    if (isNonEvmRecipientChain(outputCurrency.chainId) && !receiver) return
 
     const sellTokenAddress = getCurrencyAddress(inputCurrency)
     const buyTokenAddress = getCurrencyAddress(outputCurrency)
@@ -130,14 +132,17 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
       buyTokenDecimals,
 
       account: owner,
-      appCode,
+      appCode: appDataDoc?.appCode || DEFAULT_APP_CODE,
       signer,
 
       ethFlowContractOverride: COW_PROTOCOL_ETH_FLOW_ADDRESS,
       receiver,
       validFor: DEFAULT_QUOTE_TTL,
       ...(volumeFee ? { partnerFee: volumeFee } : undefined),
-      partiallyFillable,
+      // A bridge order is fill-or-kill: the bridge leg is quoted on the full buy
+      // amount (NEAR's deposit address is the order receiver), so a partial fill
+      // would land below the quoted deposit and be refunded, not delivered.
+      partiallyFillable: partiallyFillable && inputCurrency.chainId === outputCurrency.chainId,
       /**
        * Specify only the user entered slippage
        * Because if it's not specified, SDK will suggest a slippage, so no need to pass it in quote request
@@ -169,4 +174,23 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
   ])
 
   return useDebounce(params, AMOUNT_CHANGE_DEBOUNCE_TIME)
+}
+
+function useQuoteVolumeFee(appDataDoc: AppDataInfo['doc'] | undefined): ReturnType<typeof useVolumeFee> {
+  const pipelineVolumeFee = useVolumeFee()
+  // Quote with the flat fee the order will actually SIGN: with a third-party host
+  // fee the appData stacks it with the Ophis 1 bp base, and quoting the pipeline's
+  // single entry would leave the shown buy amount 1 bp optimistic.
+  const signedVolumeBps = getPartnerFeeBps(appDataDoc?.metadata?.partnerFee)
+  return useMemo(() => {
+    if (signedVolumeBps === undefined) return pipelineVolumeFee
+    if (pipelineVolumeFee) {
+      return signedVolumeBps === pipelineVolumeFee.volumeBps
+        ? pipelineVolumeFee
+        : { ...pipelineVolumeFee, volumeBps: signedVolumeBps }
+    }
+    // Pipeline has nothing (e.g. a third-party embed configured bps: 0) but the order
+    // still signs the Ophis policy: quote that, or the buy amount is optimistic.
+    return { volumeBps: signedVolumeBps, recipient: OPHIS_PARTNER_FEE_RECIPIENT }
+  }, [pipelineVolumeFee, signedVolumeBps])
 }

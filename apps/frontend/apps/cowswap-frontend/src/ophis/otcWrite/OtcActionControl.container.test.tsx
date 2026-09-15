@@ -90,7 +90,7 @@ describe('OtcActionControl screen-reader semantics', () => {
   it('requires a complete hash for unknown-send reconciliation and keeps direct retry disabled', () => {
     const reconcile = jest.fn()
     useControllerMock.mockReturnValue({
-      canary: true,
+      mainnet: true,
       signatureUncertain: true,
       model: { action: 'unavailable', label: 'Verify submitted transaction', disabled: true, pending: false },
       error: null,
@@ -117,7 +117,7 @@ describe('OtcActionControl screen-reader semantics', () => {
   it('offers receipt reconciliation without a manual lock-clear checkbox in the canary', () => {
     const clearUncertainTransaction = jest.fn()
     useControllerMock.mockReturnValue({
-      canary: true,
+      mainnet: true,
       model: { action: 'unavailable', label: 'Verify submitted transaction', disabled: true, pending: false },
       error: null,
       successHash: null,

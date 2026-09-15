@@ -30,6 +30,29 @@ describe('renderStatsPage', () => {
     expect(html).toContain('Data as of 2026-06-21 14:58 UTC');
   });
 
+  it('filters each column, sorts numerically, and leaves lifetime totals unchanged', () => {
+    const html = renderStatsPage(sample, new URLSearchParams('minVolume=1&maxVolume=1000000&minTrades=100&maxTrades=4000&sort=volume-asc'));
+    const table = html.slice(html.indexOf('<tbody>'), html.indexOf('</tbody>'));
+    expect(table.indexOf('Base')).toBeLessThan(table.indexOf('Optimism'));
+    expect(table).not.toContain('Ethereum');
+    expect(html).toContain('$1,234,568');
+    expect(html).toContain('aria-sort="ascending"');
+    expect(html).toContain('Showing 2 of 3 chains');
+    const byChain = renderStatsPage(sample, new URLSearchParams('chain=1'));
+    expect(byChain.slice(byChain.indexOf('<tbody>'), byChain.indexOf('</tbody>'))).toContain('Ethereum');
+    expect(byChain).toContain('Showing 1 of 3 chains');
+    expect(renderStatsPage(sample, new URLSearchParams('minTrades=99999'))).toContain('No chains match these filters.');
+  });
+
+  it('uses fixed brand icons and normalizes untrusted filter values without scripts', () => {
+    const html = renderStatsPage(sample, new URLSearchParams('chain=bad&minVolume=Infinity&maxVolume=-1&sort=%22%3E%3Cscript%3E'));
+    expect(html).toContain('Showing 3 of 3 chains');
+    expect(html).toContain('/chain-icons/1');
+    expect(html).toContain('method="get" action="/stats#chains"');
+    expect(html).not.toContain('<script');
+    expect(html).not.toContain('Infinity');
+  });
+
   it('shows a placeholder when no volume is indexed yet', () => {
     expect(renderStatsPage({ ...sample, byChain: [] })).toContain('No settled volume indexed yet');
   });

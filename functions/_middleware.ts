@@ -50,6 +50,18 @@ const SUBDOMAIN_TO_PATH: Record<string, string> = {
 
 const DOCS_PORTAL = 'https://docs.ophis.fi/'
 
+// Preserve the real pathname aliases formerly handled by emergency.js. The
+// root 404.html disables Pages' blanket SPA fallback for everything else.
+// Keep these patterns aligned with RoutesApp.tsx when adding a public route.
+const LEGACY_APP_PATHS = [
+  /^\/(?:about|legal|brand|contact|institutional|profile|affiliate|leaderboard|partner|rewards|cash-prize|learn|protocol|faq|send|claim|anyswap-affected-users)\/?$/,
+  /^\/otc(?:\/[^/]+)?\/?$/,
+  /^\/account(?:\/tokens)?\/?$/,
+  /^\/play\/mev-slicer\/?$/,
+  /^\/(?:\d+\/)?(?:widget\/)?(?:swap(?:\/hooks)?|limit(?:-orders)?|advanced(?:-orders)?|yield)(?:\/[^/]+){0,2}\/?$/,
+  /^\/\d+\/account-proxy(?:\/[^/]+(?:\/recover\/[^/]+)?)?\/?$/,
+]
+
 const BUSINESS_ORIGIN = 'https://business.ophis.fi'
 
 // business.ophis.fi same-host robots.txt: points at its OWN sitemap (not
@@ -207,20 +219,23 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return finalizeResponse(res, url.hostname)
   }
 
-  // Never serve the SPA HTML fallback at asset-shaped paths. Pages' SPA
-  // fallback answers ANY missing path with index.html, and _headers applies
-  // cache rules BY PATH, so during a deploy-propagation window a missing
-  // hashed bundle (e.g. /static/index-<hash>.js) is served as text/html WITH
-  // the one-year immutable header. Browsers and Google's renderer then cache
-  // HTML-as-JavaScript ~forever: the app dies at the static shell for that
-  // client, which is exactly the "Soft 404" Google Search Console reports.
-  // A real, uncacheable 404 makes every client (and crawler) simply retry.
+  if (!target && (context.request.method === 'GET' || context.request.method === 'HEAD')) {
+    if (url.pathname === '/docs' || url.pathname.startsWith('/docs/')) {
+      return Response.redirect(`${DOCS_PORTAL}${url.pathname.slice(6)}${url.search}`, 301)
+    }
+    if (LEGACY_APP_PATHS.some((pattern) => pattern.test(url.pathname))) {
+      return Response.redirect(`${url.origin}/#${url.pathname}${url.search}`, 301)
+    }
+  }
+
+  // Missing bundles must never cache an HTML error or old SPA fallback under
+  // the one-year immutable /static/* rule: that would break future renders.
   const assetLike =
     url.pathname.startsWith('/static/') ||
     (/\.[a-z0-9]{2,5}$/i.test(url.pathname) && !url.pathname.endsWith('.html'))
   if (assetLike) {
     const res = await context.next()
-    if (res.status === 200 && (res.headers.get('content-type') || '').includes('text/html')) {
+    if (res.status === 404 || (res.status === 200 && (res.headers.get('content-type') || '').includes('text/html'))) {
       return new Response('Not found', {
         status: 404,
         headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },

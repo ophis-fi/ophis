@@ -1,6 +1,7 @@
 import { Media, UI } from '@cowprotocol/ui'
 
 import { transparentize, darken } from 'color2k'
+import { STEEP_FONT } from 'ophis/ds'
 import styled from 'styled-components/macro'
 
 export const Container = styled.div`
@@ -13,22 +14,23 @@ export const TitleSection = styled.div`
   text-align: center;
   font-size: 20px;
   color: inherit;
-  margin: 24px auto 42px;
+  margin: 16px auto 24px;
 
   > h3 {
     color: inherit;
-    font-size: inherit;
+    font-family: ${STEEP_FONT.display};
+    font-size: 28px;
+    line-height: 1.2;
     font-weight: 400;
     hyphens: auto;
-    margin: 0 0 4px;
-    opacity: 0.7;
+    margin: 0 0 12px;
     overflow-wrap: normal;
     word-break: normal;
   }
 
   > strong {
-    font-size: 22px;
-    font-weight: 800;
+    font-size: 15px;
+    font-weight: 500;
     hyphens: auto;
     margin: 0;
     overflow-wrap: normal;

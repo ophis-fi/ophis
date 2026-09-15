@@ -40,17 +40,20 @@ function OtcCreateFields(props: OtcCreateFieldsProps): ReactNode {
     <styledEl.WriteGrid>
       <styledEl.WriteField>
         Maker escrows
-        <select
-          aria-label="Maker escrow token"
-          value={tokenA.address}
-          onChange={(event) => props.onTokenA(event.target.value as Address)}
-        >
-          {OTC_REVIEWED_TOKENS.map((token) => (
-            <option key={token.address} value={token.address} disabled={token.address === tokenB.address}>
-              {token.symbol} — {token.name}
-            </option>
-          ))}
-        </select>
+        <styledEl.TokenSelect>
+          <img src={tokenA.logoURI} width={24} height={24} alt="" />
+          <select
+            aria-label="Maker escrow token"
+            value={tokenA.address}
+            onChange={(event) => props.onTokenA(event.target.value as Address)}
+          >
+            {OTC_REVIEWED_TOKENS.map((token) => (
+              <option key={token.address} value={token.address} disabled={token.address === tokenB.address}>
+                {token.symbol} - {token.name}
+              </option>
+            ))}
+          </select>
+        </styledEl.TokenSelect>
         <input
           aria-label="Maker escrow amount"
           inputMode="decimal"
@@ -63,17 +66,20 @@ function OtcCreateFields(props: OtcCreateFieldsProps): ReactNode {
       </styledEl.WriteField>
       <styledEl.WriteField>
         Maker requests
-        <select
-          aria-label="Requested token"
-          value={tokenB.address}
-          onChange={(event) => props.onTokenB(event.target.value as Address)}
-        >
-          {OTC_REVIEWED_TOKENS.map((token) => (
-            <option key={token.address} value={token.address} disabled={token.address === tokenA.address}>
-              {token.symbol} — {token.name}
-            </option>
-          ))}
-        </select>
+        <styledEl.TokenSelect>
+          <img src={tokenB.logoURI} width={24} height={24} alt="" />
+          <select
+            aria-label="Requested token"
+            value={tokenB.address}
+            onChange={(event) => props.onTokenB(event.target.value as Address)}
+          >
+            {OTC_REVIEWED_TOKENS.map((token) => (
+              <option key={token.address} value={token.address} disabled={token.address === tokenA.address}>
+                {token.symbol} - {token.name}
+              </option>
+            ))}
+          </select>
+        </styledEl.TokenSelect>
         <input
           aria-label="Requested amount"
           inputMode="decimal"
@@ -161,8 +167,8 @@ export function OtcCreatePanel({ onConfirmed }: { onConfirmed?: () => void }): R
       />
       <styledEl.WriteSummary>
         <Badge tone="audit">Exact approval only</Badge>
-        <p>Escrow: {draft ? `${formatOtcAmount(draft.amountA, tokenA.decimals)} ${tokenA.symbol}` : '—'}</p>
-        <p>Receive: {draft ? `${formatOtcAmount(draft.amountB, tokenB.decimals)} ${tokenB.symbol}` : '—'}</p>
+        <p>Escrow: {draft ? `${formatOtcAmount(draft.amountA, tokenA.decimals)} ${tokenA.symbol}` : '-'}</p>
+        <p>Receive: {draft ? `${formatOtcAmount(draft.amountB, tokenB.decimals)} ${tokenB.symbol}` : '-'}</p>
         <p>Orders do not expire automatically and fills are all-or-nothing.</p>
       </styledEl.WriteSummary>
       <styledEl.ReviewLabel>

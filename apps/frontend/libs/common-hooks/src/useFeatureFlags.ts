@@ -29,9 +29,10 @@ export interface FeatureFlags {
  * The OTC deployment kill switch below is the sole final-authority exception.
  */
 export const DEFAULT_FEATURE_FLAGS: Readonly<Partial<FeatureFlags>> = {
-  // Bridge providers — enable all three so users see EVM↔Solana via
-  // NEAR Intents AND EVM↔EVM via Bungee/Across.
-  isBungeeBridgeProviderEnabled: true,
+  // Bridge providers — enable both quote providers so users see EVM↔Solana via
+  // NEAR Intents AND EVM↔EVM via Across. Bungee is decode-only (registered
+  // unconditionally in tradingSdk/bridgingSdk), so its upstream flag key is
+  // deliberately left undefined here.
   isAcrossBridgeProviderEnabled: true,
   isNearIntentsBridgeProviderEnabled: true,
   // Destination chains — surface Bitcoin + Solana in the target-chain

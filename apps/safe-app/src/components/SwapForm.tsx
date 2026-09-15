@@ -16,7 +16,6 @@ interface Props {
   chainId: number;
 }
 
-const shell = { fontFamily: 'system-ui', padding: 24, maxWidth: 520, display: 'grid', gap: 12 } as const;
 
 // Scaffold-level form: raw token addresses + atom amounts. Replace with a real token picker
 // + balance reads + decimals handling before production.
@@ -111,7 +110,7 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
 
   const q = quoted ? (quoted.quote?.quote ?? quoted.quote) : null;
   return (
-    <main style={shell}>
+    <main>
       <h1>Ophis Swap</h1>
       <p style={{ color: '#666', marginTop: -8 }}>
         Chain {chainId} · Safe {short(owner)}{referral ? ` · ref ${referral}` : ''}{isSafeWalletLaunch() ? ' · via Safe Wallet' : ''}

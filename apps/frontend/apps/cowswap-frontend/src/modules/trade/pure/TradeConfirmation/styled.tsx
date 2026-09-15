@@ -19,7 +19,7 @@ export const AmountsPreviewContainer = styled.div`
   grid-template-rows: max-content;
   gap: 6px;
   width: 100%;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
   position: relative;
 `

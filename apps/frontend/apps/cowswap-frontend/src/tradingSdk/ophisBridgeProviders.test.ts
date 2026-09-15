@@ -4,12 +4,16 @@ import {
   acrossInkLineaSourceIds,
   acrossRobinhoodSourceIds,
   BRIDGE_SOURCE_CHAIN_IDS,
+  createDecodeOnlyBungeeBridgeProvider,
+  DecodeOnlyBungeeBridgeProvider,
   EXTRA_ACROSS_SOURCE_CHAIN_IDS,
+  ophisAcrossApiOptions,
+  tagAcrossIntegratorCalldata,
 } from '@cowprotocol/common-const'
-import { isEvmChainInfo, OrderKind, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
+import { isEvmChainInfo, OrderKind, SupportedChainId, TargetChainId, TokenInfo } from '@cowprotocol/cow-sdk'
 import {
-  AcrossApi,
   AcrossBridgeProvider,
+  BridgeQuoteErrors,
   BungeeBridgeProvider,
   NearIntentsBridgeProvider,
   QuoteBridgeRequest,
@@ -19,13 +23,17 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
-import {
-  ACROSS_EXECUTABLE_SOURCE_IDS,
-  OphisAcrossBridgeProvider,
-  OphisBungeeBridgeProvider,
-} from './ophisBridgeProviders'
+import { ACROSS_EXECUTABLE_SOURCE_IDS, OphisAcrossBridgeProvider } from './ophisBridgeProviders'
 
 const ids = (chains: { id: number }[]): number[] => chains.map((c) => c.id)
+
+// 4663 is not a SupportedChainId member (custom bridge chain, see ophisBridgeChains.ts),
+// so the SDK's TargetChainId-typed params need the same cast the app relies on at runtime.
+const ROBINHOOD_CHAIN_ID = 4663 as unknown as TargetChainId
+
+// A fetch that never settles except through its abort signal (a stalled request).
+const settleOnlyOnAbort = (signal?: AbortSignal | null): Promise<Response> =>
+  new Promise((_, reject) => signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))))
 
 describe('ophisBridgeProviders', () => {
   describe('OphisAcrossBridgeProvider', () => {
@@ -57,7 +65,7 @@ describe('ophisBridgeProviders', () => {
         // destination but cannot execute from the source — must not report
         // route availability (the chain chip would light with dead quotes).
         const result = await new OphisAcrossBridgeProvider().getBuyTokens({
-          buyChainId: 4663,
+          buyChainId: ROBINHOOD_CHAIN_ID,
           sellChainId: SupportedChainId.GNOSIS_CHAIN,
         })
 
@@ -69,7 +77,7 @@ describe('ophisBridgeProviders', () => {
         const upstreamSpy = jest.spyOn(AcrossBridgeProvider.prototype, 'getBuyTokens').mockResolvedValue(upstreamResult)
 
         const result = await new OphisAcrossBridgeProvider().getBuyTokens({
-          buyChainId: 4663,
+          buyChainId: ROBINHOOD_CHAIN_ID,
           sellChainId: SupportedChainId.MAINNET,
         })
 
@@ -79,34 +87,63 @@ describe('ophisBridgeProviders', () => {
     })
 
     // Typed seam onto the protected AcrossApi so the route fallback's
-    // getSupportedTokens() call can be stubbed without an `as any`.
+    // getSupportedTokens() call can be stubbed without an `as any`. The SDK does
+    // not export the AcrossApi class name, so expose only the method the tests stub.
     class TestableAcrossProvider extends OphisAcrossBridgeProvider {
-      get testApi(): AcrossApi {
+      get testApi(): { getSupportedTokens(): Promise<TokenInfo[]> } {
         return this.api
       }
     }
 
+    // Typed fixtures so the tests track the SDK contract the override depends on.
+    const USDG_4663 = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168'
+    const acrossRequest = (overrides: Partial<QuoteBridgeRequest> = {}): QuoteBridgeRequest =>
+      ({
+        kind: OrderKind.SELL,
+        sellTokenChainId: SupportedChainId.MAINNET,
+        buyTokenChainId: 4663,
+        buyTokenAddress: USDG_4663,
+        amount: 1_000_000n,
+        ...overrides,
+      }) as unknown as QuoteBridgeRequest
+
+    const USDC: TokenInfo = {
+      chainId: 1,
+      address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+      symbol: 'USDC',
+      decimals: 6,
+    }
+    const USDG_MAINNET: TokenInfo = {
+      chainId: 1,
+      address: '0xe343167631d89B6Ffc58B88d6b7fB0228795491D',
+      symbol: 'USDG-MAINNET',
+      decimals: 6,
+    }
+    const BASE_USDC: TokenInfo = {
+      chainId: 8453,
+      address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+      symbol: 'USDC',
+      decimals: 6,
+    }
+
     describe('getIntermediateTokens route-based fallback', () => {
-      // Typed fixtures so the test tracks the SDK contract the override depends on.
-      const USDG_4663 = '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168'
-      const acrossRequest = (overrides: Partial<QuoteBridgeRequest> = {}): QuoteBridgeRequest =>
-        ({
-          kind: OrderKind.SELL,
-          sellTokenChainId: SupportedChainId.MAINNET,
-          buyTokenChainId: 4663,
-          buyTokenAddress: USDG_4663,
-          amount: 1_000_000n,
-          ...overrides,
-        }) as unknown as QuoteBridgeRequest
-
-      const USDC: TokenInfo = { chainId: 1, address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6 }
-      const USDG_MAINNET: TokenInfo = { chainId: 1, address: '0xe343167631d89B6Ffc58B88d6b7fB0228795491D', symbol: 'USDG-MAINNET', decimals: 6 }
-      const BASE_USDC: TokenInfo = { chainId: 8453, address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6 }
-
       const mockRoutes = (routes: unknown): jest.SpyInstance =>
         jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => routes } as Response)
+      // The SDK validates every route's shape (the real API returns all of these).
+      const route = (originToken: string, originTokenSymbol: string): Record<string, unknown> => ({
+        originChainId: 1,
+        originToken,
+        originTokenSymbol,
+        destinationChainId: 4663,
+        destinationToken: acrossRequest().buyTokenAddress,
+        destinationTokenSymbol: 'USDG',
+        isNative: false,
+      })
 
-      afterEach(() => jest.restoreAllMocks())
+      afterEach(() => {
+        jest.restoreAllMocks()
+        jest.useRealTimers()
+      })
 
       it('returns [] for a non-executable source without hitting super or the API', async () => {
         const superSpy = jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens')
@@ -122,7 +159,9 @@ describe('ophisBridgeProviders', () => {
       })
 
       it('returns the symbol match untouched when it is non-empty (no route fetch)', async () => {
-        const symbolMatch: TokenInfo[] = [{ chainId: 1, address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', decimals: 18 }]
+        const symbolMatch: TokenInfo[] = [
+          { chainId: 1, address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', decimals: 18 },
+        ]
         jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue(symbolMatch)
         const fetchSpy = jest.spyOn(global, 'fetch')
 
@@ -134,17 +173,32 @@ describe('ophisBridgeProviders', () => {
 
       it('falls back to Across available-routes when the symbol match is empty (the USDG corridor)', async () => {
         jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
-        mockRoutes([
-          { originToken: USDC.address }, // cross-asset USDC -> USDG
-          { originToken: USDG_MAINNET.address }, // chain-aliased USDG-MAINNET -> USDG
+        const fetchSpy = mockRoutes([
+          route(USDC.address, 'USDC'), // cross-asset USDC -> USDG
+          route(USDG_MAINNET.address, 'USDG'), // chain-aliased USDG-MAINNET -> USDG
         ])
-        const provider = new TestableAcrossProvider()
+        const provider = new TestableAcrossProvider({ apiOptions: { apiKey: 'test-key', integratorId: '0x0311' } })
         jest.spyOn(provider.testApi, 'getSupportedTokens').mockResolvedValue([USDC, USDG_MAINNET, BASE_USDC])
 
         const result = await provider.getIntermediateTokens(acrossRequest())
 
         // Both mainnet route origins returned; the Base USDC (wrong chain) excluded.
         expect(result).toEqual([USDC, USDG_MAINNET])
+        const [url, init] = fetchSpy.mock.calls[0] // attributed, authenticated, abortable
+        expect(String(url)).toContain('/available-routes?')
+        expect(new URL(String(url)).searchParams.get('integratorId')).toBe('0x0311')
+        expect(init?.headers).toEqual({ Authorization: 'Bearer test-key' })
+        expect(init?.signal).toBeInstanceOf(AbortSignal)
+      })
+
+      it('aborts a stalled route request at the timeout and degrades to []', async () => {
+        jest.useFakeTimers()
+        jest.spyOn(AcrossBridgeProvider.prototype, 'getIntermediateTokens').mockResolvedValue([])
+        const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation((_url, init) => settleOnlyOnAbort(init?.signal))
+        const pending = new OphisAcrossBridgeProvider().getIntermediateTokens(acrossRequest())
+        await jest.advanceTimersByTimeAsync(10_001)
+        expect(await pending).toEqual([])
+        expect(fetchSpy.mock.calls[0][1]?.signal?.aborted).toBe(true)
       })
 
       it('returns [] when the route fetch fails (no crash, corridor just unavailable)', async () => {
@@ -166,25 +220,124 @@ describe('ophisBridgeProviders', () => {
         expect(result).toEqual([])
       })
     })
+
+    describe('getQuote fee request (sdk-bridging patch: explicit inputToken/outputToken)', () => {
+      // Across's legacy single `token` param resolves the destination token by
+      // symbol, so every cross-asset (USDC -> USDG) or chain-aliased
+      // (USDG-MAINNET -> USDG) corridor into Robinhood Chain answered 400
+      // "Unsupported token address on given destination chain" and the UI showed
+      // the generic "Error loading price" for ANY sell token (reproduced live
+      // 2026-09-10). The patch sends the explicit pair, which is also what the
+      // deposit hook already passes to depositV3 as outputToken. Runs against the
+      // installed (patched) package: it FAILS if the patch hunk is lost on an SDK
+      // bump, and it cannot pass by accident since unpatched code never emits
+      // `inputToken`.
+      const SUGGESTED_FEES = {
+        estimatedFillTimeSec: 2,
+        timestamp: '1789041275',
+        isAmountTooLow: false,
+        quoteBlock: '25946820',
+        spokePoolAddress: '0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5',
+        exclusiveRelayer: '0x0000000000000000000000000000000000000000',
+        exclusivityDeadline: 0,
+        fillDeadline: '1789048715',
+        totalRelayFee: { pct: '1162680000000000', total: '116268' },
+        relayerCapitalFee: { pct: '100000000000000', total: '10000' },
+        relayerGasFee: { pct: '462680000000000', total: '46268' },
+        lpFee: { pct: '0', total: '0' },
+        limits: {
+          minDeposit: '500033',
+          maxDeposit: '114824679856',
+          maxDepositInstant: '114824679856',
+          maxDepositShortDelay: '114824679856',
+          recommendedDepositInstant: '114824679856',
+        },
+      }
+
+      afterEach(() => jest.restoreAllMocks())
+
+      it('quotes the cross-asset USDC -> Robinhood USDG corridor with inputToken + outputToken, never the legacy token param', async () => {
+        const fetchSpy = jest
+          .spyOn(global, 'fetch')
+          .mockResolvedValue({ ok: true, json: async () => SUGGESTED_FEES } as Response)
+
+        const quote = await new OphisAcrossBridgeProvider().getQuote(
+          acrossRequest({
+            sellTokenAddress: USDC.address,
+            sellTokenDecimals: 6,
+            buyTokenDecimals: 6,
+            amount: 100_000_000n,
+          }),
+        )
+
+        expect(fetchSpy).toHaveBeenCalledTimes(1)
+        const url = new URL(String(fetchSpy.mock.calls[0]?.[0]))
+        expect(url.pathname).toMatch(/\/suggested-fees$/)
+        expect(url.searchParams.get('inputToken')).toBe(USDC.address)
+        expect(url.searchParams.get('outputToken')).toBe(USDG_4663)
+        expect(url.searchParams.get('originChainId')).toBe('1')
+        expect(url.searchParams.get('destinationChainId')).toBe('4663')
+        expect(url.searchParams.get('amount')).toBe('100000000')
+        expect(url.searchParams.has('token')).toBe(false)
+        // The response flowed through the SDK's quote mapping: 100 USDC minus the
+        // 0.116268% relay fee (1e18-scaled pct) = 99.883732 USDG.
+        expect(quote.amountsAndCosts.afterFee.buyAmount).toBe(99_883_732n)
+      })
+
+      it('refuses a cross-decimal route before any fee request (deposit outputAmount is computed in sell-token units)', async () => {
+        const fetchSpy = jest.spyOn(global, 'fetch')
+        // Across lists USDC (6) -> USDC-BNB (18) on BNB; the 400 on the legacy
+        // `token` param used to make it unquotable by accident. The on-chain
+        // deposit would offer 100e6 input for ~1e-10 output, so it must stay
+        // unquotable on purpose.
+        const USDC_BNB = '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d'
+
+        await expect(
+          new OphisAcrossBridgeProvider().getQuote(
+            acrossRequest({
+              sellTokenAddress: USDC.address,
+              sellTokenDecimals: 6,
+              buyTokenChainId: SupportedChainId.BNB,
+              buyTokenAddress: USDC_BNB,
+              buyTokenDecimals: 18,
+              amount: 100_000_000n,
+            }),
+          ),
+        ).rejects.toMatchObject({ message: BridgeQuoteErrors.NO_ROUTES })
+        expect(fetchSpy).not.toHaveBeenCalled()
+      })
+    })
   })
+})
 
-  describe('OphisBungeeBridgeProvider', () => {
-    it('extends the upstream network list with Ink, Linea and Unichain', async () => {
-      const provider = new OphisBungeeBridgeProvider({ apiOptions: {} })
-      const base = await new BungeeBridgeProvider({ apiOptions: {} }).getNetworks()
-      const extended = await provider.getNetworks()
+// Split from the Across block above to keep each top-level describe under the
+// max-lines-per-function cap.
+describe('ophisBridgeProviders: chains, decode-only provider, invariants', () => {
+  describe('DecodeOnlyBungeeBridgeProvider (shared with the explorer, decode-only)', () => {
+    const provider = (): DecodeOnlyBungeeBridgeProvider => createDecodeOnlyBungeeBridgeProvider()
 
-      expect(ids(extended)).toEqual(expect.arrayContaining(ids(base)))
-      expect(ids(extended)).toEqual(expect.arrayContaining([57073, 59144, 130]))
-      // Plasma + Robinhood Chain serve zero routes on the Bungee manual
-      // pipeline (empty bridges arrays, verified live 2026-08-10)
-      expect(ids(extended)).not.toContain(9745)
-      expect(ids(extended)).not.toContain(4663)
+    afterEach(() => jest.restoreAllMocks())
+
+    it('keeps the upstream dappId so existing Bungee orders still resolve', () => {
+      expect(provider().info.dappId).toBe(new BungeeBridgeProvider({ apiOptions: {} }).info.dappId)
     })
 
-    it('has no duplicate chain ids', async () => {
-      const extended = ids(await new OphisBungeeBridgeProvider({ apiOptions: {} }).getNetworks())
-      expect(new Set(extended).size).toBe(extended.length)
+    it('advertises no networks, so the quote fan-out and the destination picker never select it', async () => {
+      expect(await provider().getNetworks()).toEqual([])
+    })
+
+    it('reports no buy tokens without calling the (dead) API', async () => {
+      const upstreamSpy = jest.spyOn(BungeeBridgeProvider.prototype, 'getBuyTokens')
+      const fetchSpy = jest.spyOn(global, 'fetch')
+
+      const result = await provider().getBuyTokens({
+        buyChainId: SupportedChainId.BASE,
+        sellChainId: SupportedChainId.MAINNET,
+      })
+
+      expect(result).toEqual({ tokens: [], isRouteAvailable: false })
+      expect(upstreamSpy).not.toHaveBeenCalled()
+      expect(fetchSpy).not.toHaveBeenCalled()
     })
   })
 
@@ -211,16 +364,17 @@ describe('ophisBridgeProviders', () => {
 
   describe('BRIDGE_SOURCE_CHAIN_IDS invariant', () => {
     // Mutation guard: the source set must equal the union of the UPSTREAM
-    // (unextended) provider lists PLUS the chains we deliberately made
-    // executable via our own on-chain deploys (EXTRA_ACROSS_SOURCE_CHAIN_IDS,
-    // gated OFF until the math helper is live). If an SDK upgrade widens upstream
-    // support, or someone edits either set without provider-side backing, this
-    // fails and forces a conscious review — source chains additionally need CoW
-    // Shed / math-helper deployments plus an E2E hook-execution proof.
+    // (unextended) lists of the providers that can still quote (Across + NEAR
+    // Intents; Bungee is decode-only since 2026-09-10 and its seven chains are
+    // all in NEAR's list) PLUS the chains we deliberately made executable via our own
+    // on-chain deploys (EXTRA_ACROSS_SOURCE_CHAIN_IDS, gated OFF until the math
+    // helper is live). If an SDK upgrade widens upstream support, or someone
+    // edits either set without provider-side backing, this fails and forces a
+    // conscious review — source chains additionally need CoW Shed / math-helper
+    // deployments plus an E2E hook-execution proof.
     it('equals the union of upstream provider EVM source networks plus our executable additions', async () => {
       const upstream = [
         ...(await new AcrossBridgeProvider().getNetworks()),
-        ...(await new BungeeBridgeProvider({ apiOptions: {} }).getNetworks()),
         ...(await new NearIntentsBridgeProvider({}).getNetworks()),
       ]
       const expected = new Set([
@@ -288,5 +442,102 @@ describe('ophisBridgeProviders', () => {
       // order throws BridgeOrderParsingError once its trade settles.
       expect(patch).toContain('!ACROSS_SPOOK_CONTRACT_ADDRESSES[chainId]')
     })
+
+    it('carries the explicit inputToken/outputToken fee-quote hunk in BOTH dist builds', () => {
+      // jest resolves the package through `main` (dist/index.js) while Vite ships
+      // `module` (dist/index.mjs), so the behavioural getQuote test above only
+      // proves the CJS build. Each hunk must appear exactly twice: once per build.
+      const patch = readFileSync(join(__dirname, '../../../../patches/@cowprotocol__sdk-bridging@4.0.2.patch'), 'utf8')
+      expect(patch.match(/^\+\s+inputToken: sellTokenAddress,$/gm)).toHaveLength(2)
+      expect(patch.match(/^\+\s+outputToken: buyTokenAddress,$/gm)).toHaveLength(2)
+      expect(
+        patch.match(/^\+\s+\? \{ inputToken: request\.inputToken, outputToken: request\.outputToken \}$/gm),
+      ).toHaveLength(2)
+    })
+  })
+})
+
+describe('Across API key + integrator ID (sdk-bridging patch)', () => {
+  const originalFetch = global.fetch
+  afterEach(() => {
+    global.fetch = originalFetch
+  })
+
+  function mockFetch(): jest.Mock {
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => [] })
+    global.fetch = fetchMock as unknown as typeof fetch
+    return fetchMock
+  }
+
+  const apiOf = (provider: AcrossBridgeProvider): { getAvailableRoutes(params: object): Promise<unknown> } =>
+    (provider as unknown as { api: { getAvailableRoutes(params: object): Promise<unknown> } }).api
+
+  it('sends the integratorId param and the Bearer header when configured', async () => {
+    const fetchMock = mockFetch()
+    await apiOf(
+      new OphisAcrossBridgeProvider({ apiOptions: { apiKey: 'test-key', integratorId: '0x0311' } }),
+    ).getAvailableRoutes({ originChainId: 1 })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(new URL(url).searchParams.get('integratorId')).toBe('0x0311')
+    expect(new URL(url).searchParams.get('originChainId')).toBe('1')
+    expect(init.headers).toEqual({ Authorization: 'Bearer test-key' })
+  })
+
+  it('stays keyless and untagged when neither is configured', async () => {
+    const fetchMock = mockFetch()
+    await apiOf(new OphisAcrossBridgeProvider()).getAvailableRoutes({})
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(new URL(url).searchParams.has('integratorId')).toBe(false)
+    expect(init.headers).toBeUndefined()
+  })
+
+  it('ophisAcrossApiOptions carries the Ophis integrator ID and never a blank key', () => {
+    const options = ophisAcrossApiOptions()
+    expect(options.integratorId).toBe('0x0311')
+    expect(options.apiKey).not.toBe('')
+  })
+
+  it('tags the signed hook calldata with the on-chain integrator tag, ending on a 32-byte boundary', async () => {
+    // An ABI function call: 4-byte selector + whole words.
+    const original = `0x${'ab'.repeat(4 + 32 * 7)}`
+    const upstream = jest.spyOn(AcrossBridgeProvider.prototype, 'getSignedHook').mockResolvedValue({
+      postHook: {
+        target: `0x${'11'.repeat(20)}`,
+        callData: original,
+        gasLimit: '1',
+        dappId: 'cow-sdk://bridging/providers/across',
+      },
+      recipient: `0x${'22'.repeat(20)}`,
+    })
+
+    const hook = await new OphisAcrossBridgeProvider().getSignedHook(
+      SupportedChainId.MAINNET,
+      { to: `0x${'33'.repeat(20)}`, data: '0x', value: 0n },
+      '0x0',
+      0n,
+      1,
+    )
+
+    const tagged = hook.postHook.callData
+    expect(upstream).toHaveBeenCalledTimes(1)
+    expect(tagged.startsWith(original)).toBe(true)
+    expect(tagged.endsWith('1dc0de0311')).toBe(true)
+    expect(((tagged.length - 2) / 2) % 32).toBe(0)
+    expect(hook.recipient).toBe(`0x${'22'.repeat(20)}`)
+    expect(hook.postHook.target).toBe(`0x${'11'.repeat(20)}`)
+  })
+
+  it('pads any calldata length so the tag is the last bytes of a whole word', () => {
+    for (const bytes of [4 + 32 * 3, 0, 1, 27, 32, 100]) {
+      const input = `0x${'cd'.repeat(bytes)}`
+      const tagged = tagAcrossIntegratorCalldata(input)
+      expect(tagged.startsWith(input)).toBe(true)
+      expect(tagged.endsWith('1dc0de0311')).toBe(true)
+      expect(((tagged.length - 2) / 2) % 32).toBe(0)
+      // Never more than one word of padding + tag on top of the input.
+      expect((tagged.length - input.length) / 2).toBeLessThanOrEqual(32)
+    }
   })
 })

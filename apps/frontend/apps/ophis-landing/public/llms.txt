@@ -1,6 +1,6 @@
 # Ophis
 
-> Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Trade supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets, or integrate through MCP, SDK, and API. Ophis batch-settles on supported EVM chains, with Solana and Bitcoin destinations via NEAR Intents.
+> Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Trade supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets, or integrate through MCP, SDK, and API. Ophis batch-settles on supported EVM chains, with Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui, and Tron destinations via NEAR Intents.
 
 Ophis is a CoW Protocol fork supporting 13 EVM chains: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, and Unichain. Orders are gasless, off-chain, EIP-712-signed intents with a hard limit price: an agent signs a *bounded capability*, not an arbitrary transaction, and it can never be settled below its signed limit. On the Ophis-operated networks Optimism (chain 10), Unichain (chain 130), and Robinhood Chain (chain 4663), settlement uses Ophis's own GPv2Settlement at a non-canonical address (NOT CoW's canonical address). Agents MUST resolve the per-chain settlement domain (and orderbook host) via the `@ophis/sdk` helpers or the MCP `list_chains` tool before signing; signing against CoW's canonical address yields a domain the deployed contract rejects.
 

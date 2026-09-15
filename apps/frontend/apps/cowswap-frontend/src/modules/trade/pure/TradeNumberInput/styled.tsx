@@ -24,12 +24,12 @@ export const ArrowsWrapper = styled.div`
   flex-flow: column wrap;
   align-items: stretch;
   width: 28px;
+  flex: 0 0 28px;
   gap: 3px;
-  margin: 0 -16px 0 0;
   user-select: all; // Fix for preventing text selection on double click
 
-  > span,
-  > span > span {
+  > button,
+  > button > span {
     display: flex;
     flex-flow: column wrap;
     align-items: center;
@@ -38,7 +38,12 @@ export const ArrowsWrapper = styled.div`
     color: inherit;
   }
 
-  > span {
+  > button {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 4px;
+    min-height: 24px;
     overflow: hidden;
     cursor: pointer;
     opacity: 0.5;
@@ -51,6 +56,12 @@ export const ArrowsWrapper = styled.div`
     flex: auto;
     height: 50%;
 
+    &:focus-visible {
+      outline: 2px solid currentColor;
+      outline-offset: 1px;
+      opacity: 1;
+    }
+
     &:hover {
       opacity: 1;
 
@@ -60,7 +71,7 @@ export const ArrowsWrapper = styled.div`
     }
   }
 
-  > span > span > svg {
+  > button > span > svg {
     display: flex;
     --size: 12px;
     width: var(--size);
@@ -71,11 +82,11 @@ export const ArrowsWrapper = styled.div`
     color: currentColor;
   }
 
-  > span > span > svg > path {
+  > button > span > svg > path {
     fill: currentColor;
   }
 
-  > span:first-child > span > svg {
+  > button:first-child > span > svg {
     transform: rotate(180deg);
   }
 `
@@ -108,8 +119,9 @@ export const NumericalInput = styled(Input)<{ color?: string }>`
   display: flex;
   align-items: center;
   background: none;
-  flex: 1;
-  width: auto;
+  flex: 1 1 auto;
+  width: 6ch;
+  min-width: 0;
   height: 100%;
   font-size: 22px;
   font-weight: 500;

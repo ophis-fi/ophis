@@ -15,7 +15,7 @@ import { mainnet } from 'viem/chains'
 import { usePublicClient } from 'wagmi'
 
 import { assertOtcTransactionRequest } from './assertOtcTransactionRequest'
-import { assertOtcCanaryIntent } from './otcCanaryPolicy'
+import { assertOtcWritePolicy } from './otcCanaryPolicy'
 import {
   assertForkIdentity,
   getOtcProviderForkId,
@@ -39,9 +39,10 @@ function safeBlockNumber(blockNumber: bigint): number {
   return value
 }
 
-function assertOtcSigningContext(intent: OtcWriteIntent, canary: boolean, isCurrentContext: () => boolean): void {
+function assertOtcSigningContext(intent: OtcWriteIntent, mainnet: boolean, isCurrentContext: () => boolean): void {
   if (!isCurrentContext()) throw new Error('Ophis OTC action context changed')
-  if (canary) assertOtcCanaryIntent(intent, BigInt(Math.floor(Date.now() / 1_000)))
+  if (mainnet)
+    assertOtcWritePolicy(intent, BigInt(Math.floor(Date.now() / 1_000)), process.env.REACT_APP_OTC_WRITE_MODE)
 }
 
 /** Extends the already-pinned reader adapter with exact eth_call simulation. */
@@ -82,7 +83,7 @@ export function toOtcWalletSubmitter(
       assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
       if (canaryClient) {
         await verifyOtcCanaryNetwork(toOtcReaderClient(publicClient), toOtcReaderClient(canaryClient))
-        assertOtcCanaryIntent(intent, nowSeconds)
+        assertOtcWritePolicy(intent, nowSeconds, process.env.REACT_APP_OTC_WRITE_MODE)
       } else if (!(await verifyOtcLocalForkWallet(walletClient))) {
         throw new Error('Ophis OTC local fork verification failed')
       }
@@ -191,7 +192,7 @@ export function toOtcLegacyForkClients(
       assertOtcTransactionRequest(checkedRequest, intent, nowSeconds)
       if (canaryClient) {
         await verifyOtcCanaryNetwork(connectedReader, toOtcReaderClient(canaryClient))
-        assertOtcCanaryIntent(intent, nowSeconds)
+        assertOtcWritePolicy(intent, nowSeconds, process.env.REACT_APP_OTC_WRITE_MODE)
       } else if (!(await verifyOtcLocalForkProvider(provider))) {
         throw new Error('Ophis OTC local fork verification failed')
       }

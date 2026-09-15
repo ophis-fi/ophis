@@ -1,6 +1,7 @@
 import { useAtomValue } from 'jotai'
 import { useEffect, useMemo } from 'react'
 
+import { isBridgeOnlyDestinationChain } from '@cowprotocol/common-const'
 import { isSupportedChainId } from '@cowprotocol/common-utils'
 import { isAdditionalTargetChain } from '@cowprotocol/cow-sdk'
 import { BuyTokensParams } from '@cowprotocol/sdk-bridging'
@@ -72,7 +73,11 @@ export function InvalidBridgeOutputUpdater(): null {
   const sourceChainId = isSupportedChainId(rawChainId) ? rawChainId : undefined
   const isValidTargetChain =
     rawTargetChainId !== undefined &&
-    (isSupportedChainId(rawTargetChainId) || isAdditionalTargetChain(rawTargetChainId))
+    (isSupportedChainId(rawTargetChainId) ||
+      isAdditionalTargetChain(rawTargetChainId) ||
+      // Bridge-only destinations (Monad, X Layer) are valid targets too, so a
+      // persisted trade to them is validated and reset like any other.
+      isBridgeOnlyDestinationChain(rawTargetChainId))
   const targetChainId = isValidTargetChain ? rawTargetChainId : undefined
 
   const { data: bridgeSupportedNetworks, isLoading: isBridgeSupportedNetworksLoading } = useBridgeSupportedNetworks()

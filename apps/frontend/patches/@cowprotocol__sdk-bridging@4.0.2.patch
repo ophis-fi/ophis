@@ -1,8 +1,199 @@
+diff --git a/dist/index.d.mts b/dist/index.d.mts
+index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..eff41d1ca44b62c79678a8ac814cb6a1883e6635 100644
+--- a/dist/index.d.mts
++++ b/dist/index.d.mts
+@@ -670,11 +670,12 @@ interface GetCrossChainOrderParams {
+  */
+ declare function getCrossChainOrder(params: GetCrossChainOrderParams): Promise<CrossChainOrder | null>;
+ 
++/** Ophis: every field optional, matching the runtime (each is only sent when set). */
+ interface AvailableRoutesRequest {
+-    originChainId: string;
+-    originToken: string;
+-    destinationChainId: string;
+-    destinationToken: string;
++    originChainId?: string;
++    originToken?: string;
++    destinationChainId?: string;
++    destinationToken?: string;
+ }
+ interface Route {
+     originChainId: string;
+@@ -890,6 +891,10 @@ interface DepositStatusResponse {
+ 
+ interface AcrossApiOptions {
+     apiBaseUrl?: string;
++    /** Ophis: Across API key, sent as `Authorization: Bearer`. */
++    apiKey?: string;
++    /** Ophis: 2-byte Across integrator tag, sent as the `integratorId` query param. */
++    integratorId?: string;
+ }
+ declare class AcrossApi {
+     private readonly options;
+@@ -902,7 +907,7 @@ declare class AcrossApi {
+      *
+      * See https://docs.across.to/reference/api-reference#available-routes
+      */
+-    getAvailableRoutes({ originChainId, originToken, destinationChainId, destinationToken, }: AvailableRoutesRequest): Promise<Route[]>;
++    getAvailableRoutes({ originChainId, originToken, destinationChainId, destinationToken, }: AvailableRoutesRequest, init?: Pick<RequestInit, 'signal'>): Promise<Route[]>;
+     /**
+      * Retrieve suggested fee quote for a deposit.
+      *
+@@ -1303,6 +1308,15 @@ interface NearIntentsBridgeProviderOptions {
+     cowShedOptions?: CowShedSdkOptions;
+     apiKey?: string;
+ }
++/** Ophis: register NEAR Intents networks this SDK build does not ship (slug = NEAR's `blockchain` field). */
++declare function registerNearIntentsNetworks(entries: ReadonlyArray<{
++    blockchain: string;
++    chain: ChainInfo;
++    /** Sentinel address for the chain's native asset (NEAR lists it without a contractAddress). */
++    nativeAddress?: string;
++    /** 1Click rejects FLEX_INPUT for this chain (Hypercore); quote it EXACT_INPUT on the order minimum, surplus refunded on the origin chain. */
++    exactInput?: boolean;
++}>): void;
+ declare class NearIntentsBridgeProvider implements ReceiverAccountBridgeProvider<NearIntentsQuoteResult> {
+     type: "ReceiverAccountBridgeProvider";
+     protected api: NearIntentsApi;
+@@ -1328,4 +1342,4 @@ declare class NearIntentsBridgeProvider implements ReceiverAccountBridgeProvider
+     recoverDepositAddress({ quote, quoteRequest, timestamp, }: QuoteResponse): Promise<DepositAddressContext | null>;
+ }
+ 
+-export { AcrossBridgeProvider, type AcrossBridgeProviderOptions, type AcrossQuoteResult, type BestQuoteProgressCallback, type BestQuoteProviderContext, type BridgeCallDetails, type BridgeCosts, type BridgeDeposit, type BridgeHook, BridgeOrderParsingError, type BridgeProvider, BridgeProviderError, type BridgeProviderInfo, BridgeProviderQuoteError, type BridgeProviderType, type BridgeQuoteAmountsAndCosts, type BridgeQuoteAndPost, BridgeQuoteErrorPriorities, BridgeQuoteErrors, type BridgeQuoteResult, type BridgeQuoteResults, BridgeStatus, type BridgeStatusResult, type BridgingDepositParams, BridgingSdk, BungeeBridgeProvider, type BungeeBridgeProviderOptions, type BungeeQuoteResult, type BuyTokensParams, COW_SHED_PROXY_CREATION_GAS, type CrossChainOrder, type CrossChainQuoteAndPost, DEFAULT_BRIDGE_SLIPPAGE_BPS, DEFAULT_EXTRA_GAS_FOR_HOOK_ESTIMATION, DEFAULT_EXTRA_GAS_PROXY_CREATION, DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION, type DefaultBridgeProvider, type GetProviderBuyTokens, HOOK_DAPP_BRIDGE_PROVIDER_PREFIX, type HookBridgeProvider, type MultiQuoteContext, type MultiQuoteOptions, type MultiQuoteProgressCallback, type MultiQuoteRequest, type MultiQuoteResult, NearIntentsBridgeProvider, type NearIntentsBridgeProviderOptions, type NearIntentsQuoteResult, type ProviderQuoteContext, type QuoteBridgeRequest, type QuoteBridgeRequestWithoutAmount, RAW_PROVIDERS_FILES_PATH, type ReceiverAccountBridgeProvider, assertIsBridgeQuoteAndPost, assertIsQuoteAndPost, getCrossChainOrder, getPostHooks, isAppDoc, isBridgeQuoteAndPost, isHookBridgeProvider, isQuoteAndPost, isReceiverAccountBridgeProvider };
++export { AcrossBridgeProvider, type AcrossBridgeProviderOptions, type AcrossQuoteResult, type BestQuoteProgressCallback, type BestQuoteProviderContext, type BridgeCallDetails, type BridgeCosts, type BridgeDeposit, type BridgeHook, BridgeOrderParsingError, type BridgeProvider, BridgeProviderError, type BridgeProviderInfo, BridgeProviderQuoteError, type BridgeProviderType, type BridgeQuoteAmountsAndCosts, type BridgeQuoteAndPost, BridgeQuoteErrorPriorities, BridgeQuoteErrors, type BridgeQuoteResult, type BridgeQuoteResults, BridgeStatus, type BridgeStatusResult, type BridgingDepositParams, BridgingSdk, BungeeBridgeProvider, type BungeeBridgeProviderOptions, type BungeeQuoteResult, type BuyTokensParams, COW_SHED_PROXY_CREATION_GAS, type CrossChainOrder, type CrossChainQuoteAndPost, DEFAULT_BRIDGE_SLIPPAGE_BPS, DEFAULT_EXTRA_GAS_FOR_HOOK_ESTIMATION, DEFAULT_EXTRA_GAS_PROXY_CREATION, DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION, type DefaultBridgeProvider, type GetProviderBuyTokens, HOOK_DAPP_BRIDGE_PROVIDER_PREFIX, type HookBridgeProvider, type MultiQuoteContext, type MultiQuoteOptions, type MultiQuoteProgressCallback, type MultiQuoteRequest, type MultiQuoteResult, NearIntentsBridgeProvider, type NearIntentsBridgeProviderOptions, registerNearIntentsNetworks, type NearIntentsQuoteResult, type ProviderQuoteContext, type QuoteBridgeRequest, type QuoteBridgeRequestWithoutAmount, RAW_PROVIDERS_FILES_PATH, type ReceiverAccountBridgeProvider, assertIsBridgeQuoteAndPost, assertIsQuoteAndPost, getCrossChainOrder, getPostHooks, isAppDoc, isBridgeQuoteAndPost, isHookBridgeProvider, isQuoteAndPost, isReceiverAccountBridgeProvider };
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index b5f70b776ee9b712e0efbe7b06247d04e14ad3d1..eff41d1ca44b62c79678a8ac814cb6a1883e6635 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -670,11 +670,12 @@ interface GetCrossChainOrderParams {
+  */
+ declare function getCrossChainOrder(params: GetCrossChainOrderParams): Promise<CrossChainOrder | null>;
+ 
++/** Ophis: every field optional, matching the runtime (each is only sent when set). */
+ interface AvailableRoutesRequest {
+-    originChainId: string;
+-    originToken: string;
+-    destinationChainId: string;
+-    destinationToken: string;
++    originChainId?: string;
++    originToken?: string;
++    destinationChainId?: string;
++    destinationToken?: string;
+ }
+ interface Route {
+     originChainId: string;
+@@ -890,6 +891,10 @@ interface DepositStatusResponse {
+ 
+ interface AcrossApiOptions {
+     apiBaseUrl?: string;
++    /** Ophis: Across API key, sent as `Authorization: Bearer`. */
++    apiKey?: string;
++    /** Ophis: 2-byte Across integrator tag, sent as the `integratorId` query param. */
++    integratorId?: string;
+ }
+ declare class AcrossApi {
+     private readonly options;
+@@ -902,7 +907,7 @@ declare class AcrossApi {
+      *
+      * See https://docs.across.to/reference/api-reference#available-routes
+      */
+-    getAvailableRoutes({ originChainId, originToken, destinationChainId, destinationToken, }: AvailableRoutesRequest): Promise<Route[]>;
++    getAvailableRoutes({ originChainId, originToken, destinationChainId, destinationToken, }: AvailableRoutesRequest, init?: Pick<RequestInit, 'signal'>): Promise<Route[]>;
+     /**
+      * Retrieve suggested fee quote for a deposit.
+      *
+@@ -1303,6 +1308,15 @@ interface NearIntentsBridgeProviderOptions {
+     cowShedOptions?: CowShedSdkOptions;
+     apiKey?: string;
+ }
++/** Ophis: register NEAR Intents networks this SDK build does not ship (slug = NEAR's `blockchain` field). */
++declare function registerNearIntentsNetworks(entries: ReadonlyArray<{
++    blockchain: string;
++    chain: ChainInfo;
++    /** Sentinel address for the chain's native asset (NEAR lists it without a contractAddress). */
++    nativeAddress?: string;
++    /** 1Click rejects FLEX_INPUT for this chain (Hypercore); quote it EXACT_INPUT on the order minimum, surplus refunded on the origin chain. */
++    exactInput?: boolean;
++}>): void;
+ declare class NearIntentsBridgeProvider implements ReceiverAccountBridgeProvider<NearIntentsQuoteResult> {
+     type: "ReceiverAccountBridgeProvider";
+     protected api: NearIntentsApi;
+@@ -1328,4 +1342,4 @@ declare class NearIntentsBridgeProvider implements ReceiverAccountBridgeProvider
+     recoverDepositAddress({ quote, quoteRequest, timestamp, }: QuoteResponse): Promise<DepositAddressContext | null>;
+ }
+ 
+-export { AcrossBridgeProvider, type AcrossBridgeProviderOptions, type AcrossQuoteResult, type BestQuoteProgressCallback, type BestQuoteProviderContext, type BridgeCallDetails, type BridgeCosts, type BridgeDeposit, type BridgeHook, BridgeOrderParsingError, type BridgeProvider, BridgeProviderError, type BridgeProviderInfo, BridgeProviderQuoteError, type BridgeProviderType, type BridgeQuoteAmountsAndCosts, type BridgeQuoteAndPost, BridgeQuoteErrorPriorities, BridgeQuoteErrors, type BridgeQuoteResult, type BridgeQuoteResults, BridgeStatus, type BridgeStatusResult, type BridgingDepositParams, BridgingSdk, BungeeBridgeProvider, type BungeeBridgeProviderOptions, type BungeeQuoteResult, type BuyTokensParams, COW_SHED_PROXY_CREATION_GAS, type CrossChainOrder, type CrossChainQuoteAndPost, DEFAULT_BRIDGE_SLIPPAGE_BPS, DEFAULT_EXTRA_GAS_FOR_HOOK_ESTIMATION, DEFAULT_EXTRA_GAS_PROXY_CREATION, DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION, type DefaultBridgeProvider, type GetProviderBuyTokens, HOOK_DAPP_BRIDGE_PROVIDER_PREFIX, type HookBridgeProvider, type MultiQuoteContext, type MultiQuoteOptions, type MultiQuoteProgressCallback, type MultiQuoteRequest, type MultiQuoteResult, NearIntentsBridgeProvider, type NearIntentsBridgeProviderOptions, type NearIntentsQuoteResult, type ProviderQuoteContext, type QuoteBridgeRequest, type QuoteBridgeRequestWithoutAmount, RAW_PROVIDERS_FILES_PATH, type ReceiverAccountBridgeProvider, assertIsBridgeQuoteAndPost, assertIsQuoteAndPost, getCrossChainOrder, getPostHooks, isAppDoc, isBridgeQuoteAndPost, isHookBridgeProvider, isQuoteAndPost, isReceiverAccountBridgeProvider };
++export { AcrossBridgeProvider, type AcrossBridgeProviderOptions, type AcrossQuoteResult, type BestQuoteProgressCallback, type BestQuoteProviderContext, type BridgeCallDetails, type BridgeCosts, type BridgeDeposit, type BridgeHook, BridgeOrderParsingError, type BridgeProvider, BridgeProviderError, type BridgeProviderInfo, BridgeProviderQuoteError, type BridgeProviderType, type BridgeQuoteAmountsAndCosts, type BridgeQuoteAndPost, BridgeQuoteErrorPriorities, BridgeQuoteErrors, type BridgeQuoteResult, type BridgeQuoteResults, BridgeStatus, type BridgeStatusResult, type BridgingDepositParams, BridgingSdk, BungeeBridgeProvider, type BungeeBridgeProviderOptions, type BungeeQuoteResult, type BuyTokensParams, COW_SHED_PROXY_CREATION_GAS, type CrossChainOrder, type CrossChainQuoteAndPost, DEFAULT_BRIDGE_SLIPPAGE_BPS, DEFAULT_EXTRA_GAS_FOR_HOOK_ESTIMATION, DEFAULT_EXTRA_GAS_PROXY_CREATION, DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION, type DefaultBridgeProvider, type GetProviderBuyTokens, HOOK_DAPP_BRIDGE_PROVIDER_PREFIX, type HookBridgeProvider, type MultiQuoteContext, type MultiQuoteOptions, type MultiQuoteProgressCallback, type MultiQuoteRequest, type MultiQuoteResult, NearIntentsBridgeProvider, type NearIntentsBridgeProviderOptions, registerNearIntentsNetworks, type NearIntentsQuoteResult, type ProviderQuoteContext, type QuoteBridgeRequest, type QuoteBridgeRequestWithoutAmount, RAW_PROVIDERS_FILES_PATH, type ReceiverAccountBridgeProvider, assertIsBridgeQuoteAndPost, assertIsQuoteAndPost, getCrossChainOrder, getPostHooks, isAppDoc, isBridgeQuoteAndPost, isHookBridgeProvider, isQuoteAndPost, isReceiverAccountBridgeProvider };
 diff --git a/dist/index.js b/dist/index.js
-index 9fcba626054ad9f635643504d18de1afeddf2401..2cb427c9678dd851653665b69bd1046531279ded 100644
+index 9fcba626054ad9f635643504d18de1afeddf2401..7b37e1844f9ddc02d5b114059e30a35dc9efec3a 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -1585,7 +1585,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
+@@ -46,6 +46,7 @@ __export(src_exports, {
+   DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION: () => DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION,
+   HOOK_DAPP_BRIDGE_PROVIDER_PREFIX: () => HOOK_DAPP_BRIDGE_PROVIDER_PREFIX,
+   NearIntentsBridgeProvider: () => NearIntentsBridgeProvider,
++  registerNearIntentsNetworks: () => registerNearIntentsNetworks,
+   RAW_PROVIDERS_FILES_PATH: () => RAW_PROVIDERS_FILES_PATH,
+   assertIsBridgeQuoteAndPost: () => assertIsBridgeQuoteAndPost,
+   assertIsQuoteAndPost: () => assertIsQuoteAndPost,
+@@ -1459,7 +1460,7 @@ var AcrossApi = class {
+     originToken,
+     destinationChainId,
+     destinationToken
+-  }) {
++  }, init) {
+     const params = {};
+     if (originChainId)
+       params.originChainId = originChainId;
+@@ -1469,7 +1470,7 @@ var AcrossApi = class {
+       params.destinationChainId = destinationChainId;
+     if (destinationToken)
+       params.destinationToken = destinationToken;
+-    return this.fetchApi("/available-routes", params, isValidRoutes);
++    return this.fetchApi("/available-routes", params, isValidRoutes, init);
+   }
+   /**
+    * Retrieve suggested fee quote for a deposit.
+@@ -1481,7 +1482,13 @@ var AcrossApi = class {
+    */
+   async getSuggestedFees(request) {
+     const params = {
+-      token: request.token,
++      // Ophis: Across's legacy single `token` param only resolves same-symbol
++      // corridors. Cross-asset / chain-aliased routes (USDC or USDG-MAINNET ->
++      // Robinhood Chain USDG) need the explicit inputToken + outputToken pair,
++      // else the API answers 400 "Unsupported token address on given destination chain".
++      ...(request.inputToken && request.outputToken
++        ? { inputToken: request.inputToken, outputToken: request.outputToken }
++        : { token: request.token }),
+       originChainId: request.originChainId.toString(),
+       destinationChainId: request.destinationChainId.toString(),
+       amount: request.amount.toString()
+@@ -1503,12 +1510,20 @@ var AcrossApi = class {
+     };
+     return this.fetchApi("/deposit/status", params);
+   }
+-  async fetchApi(path, params, isValidResponse) {
++  // Ophis: optional `init` (e.g. an AbortSignal) is spread into the fetch.
++  async fetchApi(path, params, isValidResponse, init) {
+     const baseUrl = this.options.apiBaseUrl || ACROSS_API_URL;
+-    const url = `${baseUrl}${path}?${new URLSearchParams(params).toString()}`;
++    // Ophis: Across attribution + auth. Their API reference has every request
++    // carry a Bearer token and an integratorId query param; both stay
++    // optional here so a keyless dev build keeps quoting.
++    const { apiKey, integratorId } = this.options;
++    const query = new URLSearchParams(integratorId ? { ...params, integratorId } : params);
++    const url = `${baseUrl}${path}?${query.toString()}`;
+     (0, import_sdk_common9.log)(`Fetching Across API: GET ${url}. Params: ${JSON.stringify(params)}`);
+     const response = await fetch(url, {
+-      method: "GET"
++      method: "GET",
++      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
++      ...init
+     });
+     if (!response.ok) {
+       const errorBody = await response.json();
+@@ -1585,7 +1600,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
    [import_sdk_config4.SupportedChainId.GNOSIS_CHAIN]: void 0,
    [import_sdk_config4.SupportedChainId.AVALANCHE]: void 0,
    [import_sdk_config4.AdditionalTargetChainId.BITCOIN]: void 0,
@@ -13,7 +204,7 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..2cb427c9678dd851653665b69bd10465
  };
  var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [import_sdk_config4.SupportedChainId.MAINNET]: "0xf2ae6728b6f146556977Af0A68bFbf5bADA22863",
-@@ -1598,16 +1600,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+@@ -1598,16 +1615,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [import_sdk_config4.SupportedChainId.POLYGON]: void 0,
    [import_sdk_config4.SupportedChainId.AVALANCHE]: void 0,
    [import_sdk_config4.SupportedChainId.BNB]: void 0,
@@ -37,7 +228,25 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..2cb427c9678dd851653665b69bd10465
  };
  
  // src/providers/across/util.ts
-@@ -3788,7 +3792,7 @@ var AcrossBridgeProvider = class {
+@@ -3730,11 +3749,13 @@ var AcrossBridgeProvider = class {
+     return Object.values(sourceTokens || {}).filter((token) => token.symbol?.toLowerCase() === targetTokenSymbol);
+   }
+   async getQuote(request) {
+-    const { sellTokenAddress, sellTokenChainId, buyTokenChainId, amount, receiver } = request;
++    const { sellTokenAddress, sellTokenChainId, buyTokenAddress, buyTokenChainId, amount, receiver } = request;
+     const suggestedFees = await this.api.getSuggestedFees({
+-      token: sellTokenAddress,
+-      // inputToken: sellTokenAddress,
+-      // outputToken: buyTokenAddress,
++      // Ophis: explicit pair (see AcrossApi.getSuggestedFees). createAcrossDepositCall
++      // already passes buyTokenAddress as the depositV3 outputToken, so the fee
++      // quote and the deposit now describe the same route.
++      inputToken: sellTokenAddress,
++      outputToken: buyTokenAddress,
+       originChainId: sellTokenChainId,
+       destinationChainId: buyTokenChainId,
+       amount,
+@@ -3788,7 +3809,7 @@ var AcrossBridgeProvider = class {
      throw new Error("Not implemented");
    }
    async getBridgingParams(chainId, order, txHash, settlementContractOverride) {
@@ -46,11 +255,131 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..2cb427c9678dd851653665b69bd10465
        return null;
      }
      const orderUid = order.uid;
+@@ -5082,6 +5103,27 @@ var NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS = {
+   btc: import_sdk_config9.bitcoin.id,
+   sol: import_sdk_config9.solana.id
+ };
++// Ophis: let the app register NEAR Intents networks the SDK does not ship
++// (their 1Click API lists ~35 chains, this build maps 11). Idempotent per
++// chain id; the slug is NEAR's `blockchain` field.
++// Ophis: per-chain native sentinel for NEAR tokens without a contractAddress
++// (the SDK only knows BTC / SOL / ETH); filled by registerNearIntentsNetworks.
++var NEAR_INTENTS_NATIVE_ADDRESSES = {};
++// Ophis: chains whose 1Click assets reject FLEX_INPUT (Hypercore answers
++// "supports only EXACT_INPUT or EXACT_OUTPUT swapType"). EXACT_INPUT swaps
++// exactly `amount`, which is the order's minimum buy amount, so the CoW Shed
++// deposit is never below it; 1Click refunds any surplus above it to refundTo
++// on the origin chain after the swap.
++var NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS = /* @__PURE__ */ new Set();
++function registerNearIntentsNetworks(entries) {
++  for (const { blockchain, chain, nativeAddress, exactInput } of entries) {
++    if (!NEAR_INTENTS_SUPPORTED_NETWORKS.some((c) => c.id === chain.id))
++      NEAR_INTENTS_SUPPORTED_NETWORKS.push(chain);
++    NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS[blockchain] = chain.id;
++    if (nativeAddress) NEAR_INTENTS_NATIVE_ADDRESSES[chain.id] = nativeAddress;
++    if (exactInput) NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS.add(chain.id);
++  }
++}
+ var NEAR_INTENTS_STATUS_TO_COW_STATUS = {
+   KNOWN_DEPOSIT_TX: "in_progress" /* IN_PROGRESS */,
+   PENDING_DEPOSIT: "in_progress" /* IN_PROGRESS */,
+@@ -5111,7 +5153,7 @@ var adaptToken = (token) => {
+   const chainId = NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS[token.blockchain];
+   if (!chainId)
+     return null;
+-  const tokenAddress = token.contractAddress ?? (chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.btc ? import_sdk_config10.BTC_CURRENCY_ADDRESS : chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.sol ? import_sdk_config10.SOL_NATIVE_CURRENCY_ADDRESS : import_sdk_config10.ETH_ADDRESS);
++  const tokenAddress = token.contractAddress ?? NEAR_INTENTS_NATIVE_ADDRESSES[chainId] ?? (chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.btc ? import_sdk_config10.BTC_CURRENCY_ADDRESS : chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.sol ? import_sdk_config10.SOL_NATIVE_CURRENCY_ADDRESS : import_sdk_config10.ETH_ADDRESS);
+   if (!tokenAddress)
+     return null;
+   return {
+@@ -5139,7 +5181,7 @@ var getTokenByAddressAndChainId = (tokens, targetTokenAddress, targetTokenChainI
+       return false;
+     if (!(0, import_sdk_config10.isEvmChain)(targetTokenChainId)) {
+       if (!token.contractAddress) {
+-        return (0, import_sdk_common19.areAddressesEqual)(targetTokenAddress, import_sdk_config10.BTC_CURRENCY_ADDRESS) || (0, import_sdk_common19.areAddressesEqual)(targetTokenAddress, import_sdk_config10.SOL_NATIVE_CURRENCY_ADDRESS);
++        return (0, import_sdk_common19.areAddressesEqual)(targetTokenAddress, import_sdk_config10.BTC_CURRENCY_ADDRESS) || (0, import_sdk_common19.areAddressesEqual)(targetTokenAddress, import_sdk_config10.SOL_NATIVE_CURRENCY_ADDRESS) || (0, import_sdk_common19.areAddressesEqual)(targetTokenAddress, NEAR_INTENTS_NATIVE_ADDRESSES[chainId]);
+       }
+       return (0, import_sdk_common19.areAddressesEqual)(token.contractAddress, targetTokenAddress);
+     }
+@@ -5277,7 +5319,7 @@ var NearIntentsBridgeProvider = class {
+       throw new BridgeProviderQuoteError("NO_ROUTES" /* NO_ROUTES */);
+     const quoteResponse = await this.api.getQuote({
+       dry: false,
+-      swapType: import_one_click_sdk_typescript2.QuoteRequest.swapType.FLEX_INPUT,
++      swapType: NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS.has(buyTokenChainId) ? import_one_click_sdk_typescript2.QuoteRequest.swapType.EXACT_INPUT : import_one_click_sdk_typescript2.QuoteRequest.swapType.FLEX_INPUT,
+       slippageTolerance: request.bridgeSlippageBps ?? DEFAULT_BRIDGE_SLIPPAGE_BPS,
+       originAsset: sellToken.assetId,
+       depositType: import_one_click_sdk_typescript2.QuoteRequest.depositType.ORIGIN_CHAIN,
+@@ -5465,6 +5507,7 @@ var NearIntentsBridgeProvider = class {
+   DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION,
+   HOOK_DAPP_BRIDGE_PROVIDER_PREFIX,
+   NearIntentsBridgeProvider,
++  registerNearIntentsNetworks,
+   RAW_PROVIDERS_FILES_PATH,
+   assertIsBridgeQuoteAndPost,
+   assertIsQuoteAndPost,
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..db6a064ddb20814d456c4d0e49226e01815e7b93 100644
+index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..f025c4be95eae4451674a5ca392af946f1903bbb 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
-@@ -1528,7 +1528,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
+@@ -1402,7 +1402,7 @@ var AcrossApi = class {
+     originToken,
+     destinationChainId,
+     destinationToken
+-  }) {
++  }, init) {
+     const params = {};
+     if (originChainId)
+       params.originChainId = originChainId;
+@@ -1412,7 +1412,7 @@ var AcrossApi = class {
+       params.destinationChainId = destinationChainId;
+     if (destinationToken)
+       params.destinationToken = destinationToken;
+-    return this.fetchApi("/available-routes", params, isValidRoutes);
++    return this.fetchApi("/available-routes", params, isValidRoutes, init);
+   }
+   /**
+    * Retrieve suggested fee quote for a deposit.
+@@ -1424,7 +1424,13 @@ var AcrossApi = class {
+    */
+   async getSuggestedFees(request) {
+     const params = {
+-      token: request.token,
++      // Ophis: Across's legacy single `token` param only resolves same-symbol
++      // corridors. Cross-asset / chain-aliased routes (USDC or USDG-MAINNET ->
++      // Robinhood Chain USDG) need the explicit inputToken + outputToken pair,
++      // else the API answers 400 "Unsupported token address on given destination chain".
++      ...(request.inputToken && request.outputToken
++        ? { inputToken: request.inputToken, outputToken: request.outputToken }
++        : { token: request.token }),
+       originChainId: request.originChainId.toString(),
+       destinationChainId: request.destinationChainId.toString(),
+       amount: request.amount.toString()
+@@ -1446,12 +1452,20 @@ var AcrossApi = class {
+     };
+     return this.fetchApi("/deposit/status", params);
+   }
+-  async fetchApi(path, params, isValidResponse) {
++  // Ophis: optional `init` (e.g. an AbortSignal) is spread into the fetch.
++  async fetchApi(path, params, isValidResponse, init) {
+     const baseUrl = this.options.apiBaseUrl || ACROSS_API_URL;
+-    const url = `${baseUrl}${path}?${new URLSearchParams(params).toString()}`;
++    // Ophis: Across attribution + auth. Their API reference has every request
++    // carry a Bearer token and an integratorId query param; both stay
++    // optional here so a keyless dev build keeps quoting.
++    const { apiKey, integratorId } = this.options;
++    const query = new URLSearchParams(integratorId ? { ...params, integratorId } : params);
++    const url = `${baseUrl}${path}?${query.toString()}`;
+     log4(`Fetching Across API: GET ${url}. Params: ${JSON.stringify(params)}`);
+     const response = await fetch(url, {
+-      method: "GET"
++      method: "GET",
++      ...(apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : {}),
++      ...init
+     });
+     if (!response.ok) {
+       const errorBody = await response.json();
+@@ -1528,7 +1542,9 @@ var ACROSS_SPOOK_CONTRACT_ADDRESSES = {
    [SupportedChainId2.GNOSIS_CHAIN]: void 0,
    [SupportedChainId2.AVALANCHE]: void 0,
    [AdditionalTargetChainId.BITCOIN]: void 0,
@@ -61,7 +390,7 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..db6a064ddb20814d456c4d0e49226e01
  };
  var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [SupportedChainId2.MAINNET]: "0xf2ae6728b6f146556977Af0A68bFbf5bADA22863",
-@@ -1541,16 +1543,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
+@@ -1541,16 +1557,18 @@ var ACROSS_MATH_CONTRACT_ADDRESSES = {
    [SupportedChainId2.POLYGON]: void 0,
    [SupportedChainId2.AVALANCHE]: void 0,
    [SupportedChainId2.BNB]: void 0,
@@ -85,7 +414,25 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..db6a064ddb20814d456c4d0e49226e01
  };
  
  // src/providers/across/util.ts
-@@ -3738,7 +3742,7 @@ var AcrossBridgeProvider = class {
+@@ -3680,11 +3698,13 @@ var AcrossBridgeProvider = class {
+     return Object.values(sourceTokens || {}).filter((token) => token.symbol?.toLowerCase() === targetTokenSymbol);
+   }
+   async getQuote(request) {
+-    const { sellTokenAddress, sellTokenChainId, buyTokenChainId, amount, receiver } = request;
++    const { sellTokenAddress, sellTokenChainId, buyTokenAddress, buyTokenChainId, amount, receiver } = request;
+     const suggestedFees = await this.api.getSuggestedFees({
+-      token: sellTokenAddress,
+-      // inputToken: sellTokenAddress,
+-      // outputToken: buyTokenAddress,
++      // Ophis: explicit pair (see AcrossApi.getSuggestedFees). createAcrossDepositCall
++      // already passes buyTokenAddress as the depositV3 outputToken, so the fee
++      // quote and the deposit now describe the same route.
++      inputToken: sellTokenAddress,
++      outputToken: buyTokenAddress,
+       originChainId: sellTokenChainId,
+       destinationChainId: buyTokenChainId,
+       amount,
+@@ -3738,7 +3758,7 @@ var AcrossBridgeProvider = class {
      throw new Error("Not implemented");
    }
    async getBridgingParams(chainId, order, txHash, settlementContractOverride) {
@@ -94,3 +441,66 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..db6a064ddb20814d456c4d0e49226e01
        return null;
      }
      const orderUid = order.uid;
+@@ -5053,6 +5073,27 @@ var NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS = {
+   btc: bitcoin.id,
+   sol: solana.id
+ };
++// Ophis: let the app register NEAR Intents networks the SDK does not ship
++// (their 1Click API lists ~35 chains, this build maps 11). Idempotent per
++// chain id; the slug is NEAR's `blockchain` field.
++// Ophis: per-chain native sentinel for NEAR tokens without a contractAddress
++// (the SDK only knows BTC / SOL / ETH); filled by registerNearIntentsNetworks.
++var NEAR_INTENTS_NATIVE_ADDRESSES = {};
++// Ophis: chains whose 1Click assets reject FLEX_INPUT (Hypercore answers
++// "supports only EXACT_INPUT or EXACT_OUTPUT swapType"). EXACT_INPUT swaps
++// exactly `amount`, which is the order's minimum buy amount, so the CoW Shed
++// deposit is never below it; 1Click refunds any surplus above it to refundTo
++// on the origin chain after the swap.
++var NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS = /* @__PURE__ */ new Set();
++function registerNearIntentsNetworks(entries) {
++  for (const { blockchain, chain, nativeAddress, exactInput } of entries) {
++    if (!NEAR_INTENTS_SUPPORTED_NETWORKS.some((c) => c.id === chain.id))
++      NEAR_INTENTS_SUPPORTED_NETWORKS.push(chain);
++    NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS[blockchain] = chain.id;
++    if (nativeAddress) NEAR_INTENTS_NATIVE_ADDRESSES[chain.id] = nativeAddress;
++    if (exactInput) NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS.add(chain.id);
++  }
++}
+ var NEAR_INTENTS_STATUS_TO_COW_STATUS = {
+   KNOWN_DEPOSIT_TX: "in_progress" /* IN_PROGRESS */,
+   PENDING_DEPOSIT: "in_progress" /* IN_PROGRESS */,
+@@ -5087,7 +5128,7 @@ var adaptToken = (token) => {
+   const chainId = NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS[token.blockchain];
+   if (!chainId)
+     return null;
+-  const tokenAddress = token.contractAddress ?? (chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.btc ? BTC_CURRENCY_ADDRESS : chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.sol ? SOL_NATIVE_CURRENCY_ADDRESS : ETH_ADDRESS2);
++  const tokenAddress = token.contractAddress ?? NEAR_INTENTS_NATIVE_ADDRESSES[chainId] ?? (chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.btc ? BTC_CURRENCY_ADDRESS : chainId === NEAR_INTENTS_BLOCKCHAIN_CHAIN_IDS.sol ? SOL_NATIVE_CURRENCY_ADDRESS : ETH_ADDRESS2);
+   if (!tokenAddress)
+     return null;
+   return {
+@@ -5115,7 +5156,7 @@ var getTokenByAddressAndChainId = (tokens, targetTokenAddress, targetTokenChainI
+       return false;
+     if (!isEvmChain(targetTokenChainId)) {
+       if (!token.contractAddress) {
+-        return areAddressesEqual4(targetTokenAddress, BTC_CURRENCY_ADDRESS) || areAddressesEqual4(targetTokenAddress, SOL_NATIVE_CURRENCY_ADDRESS);
++        return areAddressesEqual4(targetTokenAddress, BTC_CURRENCY_ADDRESS) || areAddressesEqual4(targetTokenAddress, SOL_NATIVE_CURRENCY_ADDRESS) || areAddressesEqual4(targetTokenAddress, NEAR_INTENTS_NATIVE_ADDRESSES[chainId]);
+       }
+       return areAddressesEqual4(token.contractAddress, targetTokenAddress);
+     }
+@@ -5253,7 +5294,7 @@ var NearIntentsBridgeProvider = class {
+       throw new BridgeProviderQuoteError("NO_ROUTES" /* NO_ROUTES */);
+     const quoteResponse = await this.api.getQuote({
+       dry: false,
+-      swapType: QuoteRequest.swapType.FLEX_INPUT,
++      swapType: NEAR_INTENTS_EXACT_INPUT_CHAIN_IDS.has(buyTokenChainId) ? QuoteRequest.swapType.EXACT_INPUT : QuoteRequest.swapType.FLEX_INPUT,
+       slippageTolerance: request.bridgeSlippageBps ?? DEFAULT_BRIDGE_SLIPPAGE_BPS,
+       originAsset: sellToken.assetId,
+       depositType: QuoteRequest.depositType.ORIGIN_CHAIN,
+@@ -5440,6 +5481,7 @@ export {
+   DEFAULT_GAS_COST_FOR_HOOK_ESTIMATION,
+   HOOK_DAPP_BRIDGE_PROVIDER_PREFIX,
+   NearIntentsBridgeProvider,
++  registerNearIntentsNetworks,
+   RAW_PROVIDERS_FILES_PATH,
+   assertIsBridgeQuoteAndPost,
+   assertIsQuoteAndPost,

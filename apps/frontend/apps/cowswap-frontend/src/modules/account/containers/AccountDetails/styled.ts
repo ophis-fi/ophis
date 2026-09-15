@@ -124,23 +124,19 @@ export const WalletNameAddress = styled.div`
   font-size: 20px;
   font-weight: 500;
   margin: 0 0 0 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 `
 
 export const Wrapper = styled.div`
   display: block;
   width: 100%;
   color: inherit;
-  padding: 0;
-  height: 100%;
-  margin: 0 24px;
+  padding: 0 24px 24px;
+  min-width: 0;
 
   ${Media.upToMedium()} {
-    padding: 12px 0 0;
-    margin: 0 16px;
-  }
-
-  ${Media.upToSmall()} {
-    margin: 0 8px;
+    padding: 12px 16px 24px;
   }
 
   ${WalletName},
@@ -181,8 +177,8 @@ export const Wrapper = styled.div`
 
   ${WalletName} {
     width: 100%;
-    text-align: center;
-    justify-content: center;
+    text-align: left;
+    justify-content: flex-start;
     margin: 0;
     font-size: 12px;
   }
@@ -195,7 +191,7 @@ export const Wrapper = styled.div`
 
   ${AccountControl} {
     ${Media.upToSmall()} {
-      align-items: center;
+      align-items: flex-start;
     }
   }
 
@@ -203,26 +199,34 @@ export const Wrapper = styled.div`
     width: 100%;
     margin: 0;
     padding: 0;
-    display: grid;
-    gap: 8px;
-    justify-items: flex-end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    justify-content: flex-end;
 
     ${Media.upToSmall()} {
-      justify-items: center;
-      margin: 12px auto 0;
+      justify-content: flex-start;
+      margin-top: 8px;
     }
 
     > a,
     > button {
+      display: inline-flex;
       align-items: center;
       background: transparent;
-      min-height: initial;
+      min-height: 44px;
+      font-size: 14px;
       cursor: pointer;
       animation: none;
       margin: 0;
 
       &:hover {
         cursor: pointer;
+      }
+
+      &:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 3px;
       }
     }
   }
@@ -231,8 +235,9 @@ export const Wrapper = styled.div`
     ${Media.upToSmall()} {
       width: 100%;
       flex-flow: row wrap;
-      justify-content: center;
-      margin: 12px auto;
+      justify-content: flex-start;
+      gap: 8px;
+      margin: 8px 0;
     }
   }
 `
@@ -259,7 +264,7 @@ export const InfoCard = styled.div`
   }
 
   ${Media.upToSmall()} {
-    padding: 16px 10px 24px;
+    padding: 16px;
 
     &:not(:first-child) {
       margin: 16px 0;
@@ -312,6 +317,9 @@ export const LowerSection = styled.div`
     display: flex;
     color: inherit;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 14px;
     padding: 0 0 12px;
 
     ${Media.upToMedium()} {
@@ -442,7 +450,7 @@ export const NetworkCard = styled(NetworkCardUni)`
   flex: 0 0 fit-content;
 
   ${Media.upToSmall()} {
-    margin: 0 auto 12px;
+    margin: 0;
   }
 `
 

@@ -38,5 +38,6 @@ export const TokenLogoWrapper = styled.div`
   display: inline-block;
   border-radius: 50%;
   line-height: 0;
-  box-shadow: 0 2px 10px 0 ${({ theme }) => (theme.darkMode ? '#496e9f' : '#bfd6f7')};
+  box-shadow: ${({ theme }) =>
+    theme.isOphisMobileSwap ? 'none' : `0 2px 10px 0 ${theme.darkMode ? '#496e9f' : '#bfd6f7'}`};
 `

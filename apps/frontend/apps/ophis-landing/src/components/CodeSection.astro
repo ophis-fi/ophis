@@ -3,8 +3,8 @@ import CodeTabs from '../islands/CodeTabs.tsx'
 ---
 <section class="code-section" id="code">
   <div class="code-inner">
-    <h2 class="reveal-up" data-reveal>
-      Trade <span class="accent">tonight.</span>
+    <h2 class="serif reveal-up" data-reveal>
+      Trade <em>tonight.</em>
     </h2>
     <p class="sub reveal-up" data-reveal>
       An intent, a sell token, a buy token. The Ophis API does the rest: quote, route, MEV protection, settlement. Hit it from JavaScript, Rust, or just <code>curl</code>.
@@ -21,9 +21,6 @@ import CodeTabs from '../islands/CodeTabs.tsx'
   h2 {
     text-align: center;
     font-size: 40px;
-    line-height: 1.1;
-    font-weight: 600;
-    letter-spacing: -0.02em;
     margin: 0 0 12px;
   }
   .sub {
@@ -36,11 +33,11 @@ import CodeTabs from '../islands/CodeTabs.tsx'
     background: var(--ophis-surface);
     padding: 2px 6px;
     border-radius: 4px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: ui-monospace, SFMono-Regular, monospace;
     font-size: 14px;
   }
   :global(.code-frame) {
-    background: #111114;
+    background: var(--ophis-bg);
     border: 1px solid var(--ophis-border);
     border-radius: var(--ophis-radius);
     overflow: hidden;
@@ -64,15 +61,15 @@ import CodeTabs from '../islands/CodeTabs.tsx'
   }
   :global(.tab.active) {
     background: var(--ophis-surface);
-    color: var(--ophis-saffron-60);
+    color: var(--ophis-fg);
   }
   :global(.code-body) {
     margin: 0;
     padding: 24px;
-    font-family: 'JetBrains Mono', 'Menlo', monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 13px;
     line-height: 1.6;
-    color: var(--ophis-fg-muted);
+    color: var(--ophis-fg);
     overflow-x: auto;
     white-space: pre-wrap;
   }

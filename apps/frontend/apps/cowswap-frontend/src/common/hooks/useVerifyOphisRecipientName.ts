@@ -1,12 +1,12 @@
 import { useCallback } from 'react'
 
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { parseOphisName, verifyOphisNameResolution } from '@cowprotocol/ens'
 
-import { isAddress } from 'viem'
 import { usePublicClient } from 'wagmi'
 
 import { createOphisNameReader } from '../utils/createOphisNameReader'
+import { isNonEvmRecipientChain, isRecipientAddress } from '../utils/recipientAddress.utils'
 
 export type VerifyOphisRecipientName = (
   nameOrAddress: string | null | undefined,
@@ -19,7 +19,13 @@ export function useVerifyOphisRecipientName(): VerifyOphisRecipientName {
 
   return useCallback(
     async (nameOrAddress, expectedAddress, recipientChainId) => {
-      if (!nameOrAddress || isAddress(nameOrAddress)) return
+      if (nameOrAddress && isRecipientAddress(nameOrAddress, recipientChainId)) {
+        if (!areAddressesEqual(nameOrAddress, expectedAddress))
+          throw new Error('Recipient address changed before signing')
+        return
+      }
+      if (isNonEvmRecipientChain(recipientChainId)) throw new Error('Invalid destination recipient address')
+      if (!nameOrAddress) return
       if (recipientChainId !== SupportedChainId.MAINNET || !parseOphisName(nameOrAddress)) {
         throw new Error('Recipient name is not supported on this chain')
       }

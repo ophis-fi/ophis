@@ -1,4 +1,4 @@
-import { isSellOrder } from '@cowprotocol/common-utils'
+import { bpsToPercent, isSellOrder } from '@cowprotocol/common-utils'
 import { getQuoteAmountsAndCosts } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount, Price } from '@cowprotocol/currency'
 import { QuoteAmountsAndCosts } from '@cowprotocol/sdk-order-book'
@@ -29,12 +29,19 @@ export function getReceiveAmountInfo(
       buyAmount: buyAmountOverride ? buyAmountOverride.quotient.toString() : orderParams.buyAmount,
     },
     slippagePercentBps: Number(slippagePercent.numerator),
-    partnerFeeBps,
+    partnerFeeBps: Math.ceil(partnerFeeBps),
     protocolFeeBps,
   })
 
   const beforeNetworkCosts = mapSellBuyAmounts(result.beforeNetworkCosts, currencies)
   const afterNetworkCosts = mapSellBuyAmounts(result.afterNetworkCosts, currencies)
+  const beforeAllFees = mapSellBuyAmounts(result.beforeAllFees, currencies)
+  const feeBase = isSell ? beforeAllFees.buyAmount : beforeAllFees.sellAmount
+  // Signing headroom is not a fee. Estimate costs from the unrounded rate.
+  const partnerFeeAmount = CurrencyAmount.fromRawAmount(
+    feeBase.currency,
+    feeBase.multiply(bpsToPercent(Math.max(0, partnerFeeBps))).quotient,
+  )
 
   return {
     isSell,
@@ -44,13 +51,16 @@ export function getReceiveAmountInfo(
     }),
     costs: {
       networkFee: calculateNetworkFee(result.costs.networkFee, currencies),
-      partnerFee: mapFeeAmounts(isSell, result.costs.partnerFee, currencies),
+      partnerFee: { amount: partnerFeeAmount, bps: partnerFeeBps },
       protocolFee: !!result.costs.protocolFee ? mapFeeAmounts(isSell, result.costs.protocolFee, currencies) : undefined,
     },
-    beforeAllFees: mapSellBuyAmounts(result.beforeAllFees, currencies),
+    beforeAllFees,
     beforeNetworkCosts,
     afterNetworkCosts,
-    afterPartnerFees: mapSellBuyAmounts(result.afterPartnerFees, currencies),
+    afterPartnerFees: {
+      sellAmount: isSell ? afterNetworkCosts.sellAmount : afterNetworkCosts.sellAmount.add(partnerFeeAmount),
+      buyAmount: isSell ? afterNetworkCosts.buyAmount.subtract(partnerFeeAmount) : afterNetworkCosts.buyAmount,
+    },
     afterSlippage: mapSellBuyAmounts(result.afterSlippage, currencies),
     amountsToSign: mapSellBuyAmounts(result.amountsToSign, currencies),
   }

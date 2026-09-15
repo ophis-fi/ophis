@@ -1,26 +1,5 @@
 ---
-/**
- * Aggregated-liquidity section: the DEX venues and aggregators the Ophis solver
- * network routes across to fill an intent. The list spans major on-chain AMMs
- * (Uniswap, Curve, Balancer, PancakeSwap, SushiSwap), chain-native venues
- * (Velodrome on Optimism, Aerodrome on Base, QuickSwap on Polygon), newer DEXs
- * (Fluid, DODO, LFJ), and the professional meta-aggregators the solver
- * competition leans on (KyberSwap, Velora, OKX, 0x, 1inch), which each route
- * across hundreds of underlying pools per chain.
- *
- * Logos live in public/logos/protocols/ (official brand marks: SVG where the
- * brand ships a clean one, a high-res raster otherwise, e.g. Curve, whose only
- * vector mark is a 150KB+ traced mesh). public/ assets are served at stable
- * URLs with a long cache TTL, so when a mark is CORRECTED, bump its filename
- * (e.g. uniswap.svg -> uniswap-v2.svg) to bust any already-cached immutable
- * copy. Pure markup plus scoped CSS; the breathing bloom comes from the shared
- * .section-bloom class in global.css (disabled under prefers-reduced-motion).
- */
-
-type Protocol = { name: string; logo: string }
-import { EVM_CHAIN_COUNT } from '../data/chains'
-
-const protocols: Protocol[] = [
+const protocols = [
   { name: 'Uniswap',     logo: '/logos/protocols/uniswap-v2.svg' },
   { name: 'Curve',       logo: '/logos/protocols/curve.png' },
   { name: 'Balancer',    logo: '/logos/protocols/balancer.svg' },
@@ -33,17 +12,21 @@ const protocols: Protocol[] = [
   { name: 'DODO',        logo: '/logos/protocols/dodo.png' },
   { name: 'LFJ',         logo: '/logos/protocols/lfj.png' },
   { name: 'KyberSwap',   logo: '/logos/protocols/kyberswap.svg' },
-  { name: 'Velora',      logo: '/logos/protocols/velora.svg' },
+  { name: 'UP33',        logo: '/logos/protocols/up33.svg' },
+  { name: 'Ekubo',       logo: '/logos/protocols/ekubo.svg' },
   { name: 'OKX',         logo: '/logos/protocols/okx.svg' },
-  { name: '0x',          logo: '/logos/protocols/0x.svg' },
+  { name: 'RamsesX',     logo: '/logos/protocols/ramses.svg' },
   { name: '1inch',       logo: '/logos/protocols/1inch.svg' },
+  { name: 'Dexalot',     logo: '/logos/protocols/dexalot.png' },
+  { name: 'Native',      logo: '/logos/protocols/native.png' },
+  { name: 'Pharaoh',     logo: '/logos/protocols/pharaoh.svg' },
 ]
 ---
 <section class="protocols">
   <div class="protocols-inner">
     <div class="label reveal-up" data-reveal>Aggregated liquidity</div>
-    <h2 class="reveal-up section-bloom" data-reveal>
-      Every venue. <span class="accent">Every chain.</span>
+    <h2 class="serif reveal-up" data-reveal>
+      Every venue. <em>Every chain.</em>
     </h2>
     <p class="sub reveal-up" data-reveal>
       Ophis is solver-driven. A competitive network of solvers races to fill your intent,
@@ -65,15 +48,9 @@ const protocols: Protocol[] = [
     </div>
 
     <p class="solver-note reveal-up" data-reveal>
-      The marks above are liquidity venues, not solvers: a competitive solver layer
-      routes each order across the venues available on its chain, and more solvers
-      can be authorized over time.
+      Solvers select from the venues available for your chain and token pair.
     </p>
 
-    <p class="coverage reveal-up" data-reveal>
-      Liquidity sourced across <strong>{EVM_CHAIN_COUNT} EVM chains</strong>, with Solana &amp; Bitcoin
-      destinations via <strong>NEAR Intents</strong>.
-    </p>
   </div>
 </section>
 
@@ -90,9 +67,6 @@ const protocols: Protocol[] = [
   }
   h2 {
     font-size: 32px;
-    line-height: 1.15;
-    font-weight: 600;
-    letter-spacing: -0.02em;
     margin: 0 0 12px;
   }
   .sub {
@@ -120,13 +94,10 @@ const protocols: Protocol[] = [
     background: var(--ophis-surface);
     border: 1px solid var(--ophis-border);
     border-radius: var(--ophis-radius);
-    transition: transform 200ms ease, border-color 200ms ease, background-color 200ms ease, box-shadow 250ms ease;
+    transition: border-color 200ms ease;
   }
   .protocol:hover {
-    transform: translateY(-4px);
-    border-color: rgba(242, 166, 62, 0.3);
-    background-color: rgba(255, 255, 255, 0.04);
-    box-shadow: 0 12px 30px -14px rgba(242, 166, 62, 0.45);
+    border-color: var(--ophis-fg-muted);
   }
   /* Light chip: third-party brand marks are authored for light backgrounds,
      so monochrome-dark logos (Uniswap, Sushi, PancakeSwap, Balancer) would
@@ -159,14 +130,6 @@ const protocols: Protocol[] = [
     color: var(--ophis-fg-muted);
     line-height: 1.6;
   }
-  .coverage {
-    margin: 16px auto 0;
-    max-width: 560px;
-    font-size: 13.5px;
-    color: var(--ophis-fg-faded);
-    line-height: 1.6;
-  }
-  .coverage strong { color: var(--ophis-fg-muted); font-weight: 600; }
 
   @media (max-width: 900px) {
     .protocol-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }

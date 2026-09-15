@@ -1,7 +1,7 @@
 import { ReactNode, useCallback, useEffect, useMemo } from 'react'
 
 import { doesTokenMatchSymbolOrAddress } from '@cowprotocol/common-utils'
-import { getAddressKey } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
 import { getTokenSearchFilter, TokenSearchResponse, useSearchToken } from '@cowprotocol/tokens'
 
 import { Field } from 'legacy/state/types'
@@ -19,15 +19,16 @@ import { TokenSearchContent } from '../../pure/TokenSearchContent'
 export function TokenSearchResults(): ReactNode {
   const { searchInput } = useTokenListViewState()
 
-  const { selectTokenContext, areTokensFromBridge, allTokens, bridgeSupportedTokensMap } = useTokenListContext()
+  const { selectTokenContext, areTokensFromBridge, allTokens, areTokensLoading, bridgeSupportedTokensMap } =
+    useTokenListContext()
   const { tokenLists, sellTokenLists, buyTokenLists } = useInjectedWidgetParams()
 
   const { onTokenListItemClick } = selectTokenContext
 
   const { field, onSelectToken } = useSelectTokenWidgetState()
 
-  // Search all tokens (used in both modes)
-  const defaultSearchResults = useSearchToken(searchInput)
+  // Bridge destinations must not query the wallet chain's token lists.
+  const defaultSearchResults = useSearchToken(areTokensFromBridge ? null : searchInput)
   const filter = useMemo(() => getTokenSearchFilter(searchInput), [searchInput])
   const hasScopedListRestriction = useMemo(() => {
     if (field === Field.INPUT) {
@@ -46,40 +47,25 @@ export function TokenSearchResults(): ReactNode {
       return defaultSearchResults
     }
 
-    // scoped list restriction
-    if (!areTokensFromBridge) {
-      return {
-        ...defaultSearchResults,
-        activeListsResult: allTokens.filter(filter),
-        inactiveListsResult: [],
-        blockchainResult: [],
-        externalApiResult: [],
-      }
-    }
-
-    const filteredBridgeTokens = allTokens.filter(filter)
-
-    if (hasScopedListRestriction) {
-      return {
-        ...defaultSearchResults,
-        activeListsResult: filteredBridgeTokens,
-        inactiveListsResult: [],
-        blockchainResult: [],
-        externalApiResult: [],
-      }
-    }
-
-    // Merge: bridge tokens first, then additional search results (will be marked disabled)
-    const bridgeAddresses = new Set(filteredBridgeTokens.map((t) => getAddressKey(t.address)))
-    const additionalTokens = defaultSearchResults.activeListsResult.filter(
-      (t) => !bridgeAddresses.has(getAddressKey(t.address)),
-    )
-
+    // A destination search uses only assets offered for this chain pair.
     return {
-      ...defaultSearchResults,
-      activeListsResult: [...filteredBridgeTokens, ...additionalTokens],
+      isLoading: areTokensFromBridge ? areTokensLoading : defaultSearchResults.isLoading,
+      activeListsResult: allTokens.filter(
+        (token) => filter(token) || (areTokensFromBridge && areAddressesEqual(token.address, searchInput)),
+      ),
+      inactiveListsResult: [],
+      blockchainResult: [],
+      externalApiResult: [],
     }
-  }, [allTokens, areTokensFromBridge, defaultSearchResults, filter, hasScopedListRestriction])
+  }, [
+    allTokens,
+    areTokensFromBridge,
+    areTokensLoading,
+    defaultSearchResults,
+    filter,
+    hasScopedListRestriction,
+    searchInput,
+  ])
 
   const { activeListsResult } = searchResults
 

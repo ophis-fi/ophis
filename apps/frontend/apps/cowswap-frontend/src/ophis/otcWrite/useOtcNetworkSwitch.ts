@@ -6,7 +6,7 @@ import { useSwitchNetwork } from '@cowprotocol/wallet'
 import type { toOtcForkClients } from './otcWriteAdapters'
 
 export function useOtcNetworkSwitch(
-  canary: boolean,
+  mainnet: boolean,
   walletClient: Parameters<typeof toOtcForkClients>[0] | undefined,
   setError: (error: string | null) => void,
   resetKey: string,
@@ -23,9 +23,9 @@ export function useOtcNetworkSwitch(
     return () => {
       contextGeneration.current += 1
     }
-  }, [canary, connection, resetKey])
+  }, [mainnet, connection, resetKey])
   const switchToEthereum = useCallback(async () => {
-    if (!canary) {
+    if (!mainnet) {
       setError(
         'Select your chain-id-1 Anvil fork network in the wallet. Automatic switching to real Ethereum is disabled.',
       )
@@ -52,6 +52,6 @@ export function useOtcNetworkSwitch(
         setSwitching(false)
       }
     }
-  }, [canary, setError, switchLegacyNetwork, walletClient])
+  }, [mainnet, setError, switchLegacyNetwork, walletClient])
   return useMemo(() => ({ switching, switchToEthereum }), [switching, switchToEthereum])
 }

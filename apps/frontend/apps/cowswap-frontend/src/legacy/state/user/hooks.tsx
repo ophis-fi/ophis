@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 
 import { NATIVE_CURRENCIES, SupportedLocale, TokenWithLogo } from '@cowprotocol/common-const'
-import { getIsNativeToken } from '@cowprotocol/common-utils'
+import { getIsNativeToken, isInjectedWidget } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 import { Command } from '@cowprotocol/types'
@@ -61,10 +61,8 @@ export function useIsDarkMode(): boolean {
     shallowEqual,
   )
 
-  // Ophis: default to dark on first load. The cosmic palette is
-  // designed dark-first; light remains a togglable fallback. Tracked
-  // in apps/frontend/.ophis-divergences.md.
-  return userDarkMode === null ? true : userDarkMode
+  // Preserve saved preferences and the embedded default; standalone starts light.
+  return userDarkMode === null ? isInjectedWidget() : userDarkMode
 }
 
 export function useSelectedWallet(): string | undefined {

@@ -10,7 +10,7 @@ const transaction = { hash: TX_HASH, from: MAKER, to: request.to, input: request
 
 it('captures the independently read nonce for the signer and exact reviewed calldata', async () => {
   const getTransactionCount = jest.fn(async () => 5)
-  const client = { getTransactionCount } as unknown as PublicClient
+  const client = { getTransactionCount, getBytecode: async () => undefined } as unknown as PublicClient
   await expect(readOtcSubmissionProof(client, request, async () => 5)).resolves.toEqual(proof)
   expect(getTransactionCount).toHaveBeenCalledWith({ address: MAKER, blockTag: 'pending' })
   await expect(
@@ -38,7 +38,10 @@ it.each([
 it.each([-1, NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1])(
   'rejects an invalid nonce %s before signing',
   async (nonce) => {
-    const client = { getTransactionCount: async () => nonce } as unknown as PublicClient
+    const client = {
+      getTransactionCount: async () => nonce,
+      getBytecode: async () => undefined,
+    } as unknown as PublicClient
     await expect(readOtcSubmissionProof(client, request, async () => 5)).rejects.toThrow('nonce unavailable')
   },
 )
@@ -50,6 +53,7 @@ it.each([false, true])('bounds nonce and post-receipt reads (wallet stalls=%s)',
     const client = {
       getTransactionCount: walletStalls ? async () => 5 : stalled,
       getTransaction: stalled,
+      getBytecode: async () => undefined,
     } as unknown as PublicClient
     const nonce = expect(
       readOtcSubmissionProof(client, request, walletStalls ? stalled : async () => 5),
@@ -60,4 +64,12 @@ it.each([false, true])('bounds nonce and post-receipt reads (wallet stalls=%s)',
   } finally {
     jest.useRealTimers()
   }
+})
+
+it.each([0, 6, NaN])('rejects absent or inconsistent confirmed account history (%s)', async (confirmedNonce) => {
+  const client = {
+    getBytecode: async () => undefined,
+    getTransactionCount: async ({ blockTag }: { blockTag: string }) => (blockTag === 'latest' ? confirmedNonce : 5),
+  } as unknown as PublicClient
+  await expect(readOtcSubmissionProof(client, request, async () => 5)).rejects.toThrow('prior confirmed')
 })

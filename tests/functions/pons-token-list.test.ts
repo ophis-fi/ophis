@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   isVerifiedLaunchResult,
+  onRequestGet,
   parsePonsCatalog,
   ponsTokenListFromResponse,
   rpcResultsById,
@@ -150,7 +151,7 @@ test('RPC quorum obeys an expired outer deadline and fails once quorum is imposs
     let minorityAborted = false;
     globalThis.fetch = async (input, init) => {
       fetchCalls += 1;
-      if (String(input).includes('arrowrpc')) {
+      if (new URL(String(input)).hostname === 'robinhood-rpc.publicnode.com') {
         return await new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener(
             'abort',
@@ -221,6 +222,27 @@ test('fast mirror failures do not abort a pending authoritative verification', a
   }
 });
 
+test('requires both mirrors when the official RPC is rate limited', async (t) => {
+  let publicNodeAvailable = true;
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    const host = new URL(String(input)).hostname;
+    if (host === 'rpc.mainnet.chain.robinhood.com')
+      return new Response('Rate limited', { status: 429 });
+    if (host === 'robinhood-rpc.publicnode.com' && !publicNodeAvailable)
+      throw new Error('Unavailable');
+    const requests = JSON.parse(String(init?.body)) as { id: number }[];
+    return Response.json(
+      requests.map(({ id }) => ({ jsonrpc: '2.0', id, result: verifiedResult() })),
+    );
+  });
+  assert.equal((await verifyLaunchesOnchain([launch()], new AbortController().signal)).length, 1);
+  publicNodeAvailable = false;
+  await assert.rejects(
+    verifyLaunchesOnchain([launch()], new AbortController().signal),
+    /quorum unavailable/,
+  );
+});
+
 test('mirror agreement cannot override a slower authoritative response', async () => {
   const originalFetch = globalThis.fetch;
   try {
@@ -242,4 +264,167 @@ test('mirror agreement cannot override a slower authoritative response', async (
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('keeps reference PONS discoverable during catalog outages only after onchain verification', async (t) => {
+  let verified = true;
+  let catalogResponse: Response | undefined;
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
+      if (!catalogResponse) throw new Error('Network failure');
+      return catalogResponse.clone();
+    }
+    const requests = JSON.parse(String(init?.body)) as { id: number }[];
+    return Response.json(
+      requests.map(({ id }) => ({
+        jsonrpc: '2.0',
+        id,
+        result: verified ? verifiedResult() : '0x',
+      })),
+    );
+  });
+  const context = {
+    request: new Request('https://swap.ophis.fi/api/pons-token-list'),
+    waitUntil: (_promise: Promise<unknown>) => undefined,
+  } as Parameters<typeof onRequestGet>[0];
+  for (catalogResponse of [
+    undefined,
+    new Response('Unavailable', { status: 503 }),
+    new Response('{'),
+    Response.json({ error: 'Unavailable' }),
+  ]) {
+    const available = await onRequestGet(context);
+    assert.equal(available.status, 200);
+    assert.deepEqual(
+      (await available.json()).tokens.map(({ address }) => address),
+      [TOKEN],
+    );
+  }
+  verified = false;
+  const unavailable = await onRequestGet(context);
+  assert.equal(unavailable.status, 503);
+});
+
+test('verifies reference PONS after the catalog deadline expires', async (t) => {
+  const catalog = new AbortController();
+  t.mock.method(AbortSignal, 'timeout', (milliseconds: number) => {
+    assert.equal(milliseconds, 5_000);
+    return catalog.signal;
+  });
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('Catalog timeout')), {
+          once: true,
+        });
+        queueMicrotask(() => catalog.abort());
+      });
+    }
+    assert.equal(catalog.signal.aborted, true);
+    assert.equal(init?.signal?.aborted, false);
+    const requests = JSON.parse(String(init?.body)) as { id: number }[];
+    return Response.json(
+      requests.map(({ id }) => ({ jsonrpc: '2.0', id, result: verifiedResult() })),
+    );
+  });
+  const response = await onRequestGet({
+    request: new Request('https://swap.ophis.fi/api/pons-token-list'),
+    waitUntil: () => undefined,
+  } as Parameters<typeof onRequestGet>[0]);
+  assert.equal(response.status, 200);
+  assert.deepEqual(
+    (await response.json()).tokens.map(({ address }) => address),
+    [TOKEN],
+  );
+});
+
+test('discovers bounded v2 launches and requires their exact on-chain tuple', async (t) => {
+  const factory = '0x7eD598BcEf8bd9Edd8C97A195C6d13f40801EC7e';
+  const token = `0x${'e'.repeat(40)}`;
+  const pairToken = `0x${'0'.repeat(40)}`;
+  const v2 = launch({ factory, token, pairToken, symbol: 'V2' });
+  const tuple = (phase = 0n, exists = 1n): string =>
+    `0x${[
+      addressWord(token),
+      ...Array.from({ length: 3 }, () => uintWord(0n)),
+      addressWord(pairToken),
+      ...Array.from({ length: 5 }, () => uintWord(0n)),
+      uintWord(phase),
+      ...Array.from({ length: 3 }, () => uintWord(0n)),
+      uintWord(exists),
+    ].join('')}`;
+  assert.equal(isVerifiedLaunchResult(v2, tuple()), true);
+  assert.equal(isVerifiedLaunchResult(v2, tuple(2n)), true);
+  for (const result of [tuple(1n), tuple(3n), tuple(0n, 0n), verifiedResult()]) {
+    assert.equal(isVerifiedLaunchResult(v2, result), false);
+  }
+  assert.equal(isVerifiedLaunchResult({ ...v2, token: TOKEN }, tuple()), false);
+  assert.equal(isVerifiedLaunchResult({ ...v2, pairToken: WETH }, tuple()), false);
+  const catalog = {
+    active: { items: Array.from({ length: 100 }, () => v2) },
+    graduated: { items: [launch()] },
+  };
+  const parsed = parsePonsCatalog(catalog);
+  assert.equal(parsed.length, 75);
+  assert.deepEqual(parsed[0], launch());
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    if (new URL(String(input)).hostname === 'www.ponsfamily.com') {
+      return Response.json({ active: { items: [v2] } });
+    }
+    const requests = JSON.parse(String(init?.body)) as { id: number; params: { to: string }[] }[];
+    return Response.json(
+      requests.map(({ id, params }) => ({
+        jsonrpc: '2.0',
+        id,
+        result: params[0]?.to === factory ? tuple() : verifiedResult(),
+      })),
+    );
+  });
+  const response = await onRequestGet({
+    request: new Request('https://swap.ophis.fi/api/pons-token-list'),
+    waitUntil: () => {},
+  } as Parameters<typeof onRequestGet>[0]);
+  assert.equal(response.status, 200);
+  const list = await response.json();
+  assert.deepEqual(
+    list.tokens.map((entry: { symbol: string }) => entry.symbol),
+    ['PONS', 'V2'],
+  );
+});
+
+test('keeps verified discovery when a later RPC batch is rate limited', async (t) => {
+  const launches = Array.from({ length: 21 }, (_, index) =>
+    launch({ token: `0x${(index + 1).toString(16).padStart(40, '0')}` }),
+  );
+  let failFirstBatch = false;
+  let cancelOnLaterBatch: AbortController | undefined;
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    const requests = JSON.parse(String(init?.body)) as { id: number; params: { data: string }[] }[];
+    if (requests[0]!.id >= 20) cancelOnLaterBatch?.abort();
+    if (
+      failFirstBatch ||
+      new URL(String(input)).hostname === 'rpc.mainnet.chain.robinhood.com' ||
+      requests[0]!.id >= 20
+    )
+      return new Response('Rate limited', { status: 429 });
+    return Response.json(
+      requests.map(({ id, params }) => ({
+        id,
+        result: `0x${params[0]!.data.slice(-64)}${verifiedResult().slice(66)}`,
+      })),
+    );
+  });
+  const verified = await verifyLaunchesOnchain(launches, new AbortController().signal);
+  assert.deepEqual(verified, launches.slice(0, 20));
+  assert.ok(!verified.includes(launches[20]!));
+  cancelOnLaterBatch = new AbortController();
+  await assert.rejects(
+    verifyLaunchesOnchain(launches, cancelOnLaterBatch.signal),
+    /quorum unavailable/,
+  );
+  failFirstBatch = true;
+  await assert.rejects(
+    verifyLaunchesOnchain(launches, new AbortController().signal),
+    /quorum unavailable/,
+  );
 });

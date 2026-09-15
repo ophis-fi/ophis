@@ -52,9 +52,9 @@ describe('getOtcWalletTransportId', () => {
 })
 
 describe('useOtcNetworkReads', () => {
-  it('fails closed when canary mode has no independent mainnet client', () => {
+  it.each(['canary', 'public'])('fails closed when %s has no independent mainnet client', (mode) => {
     const walletClient = {} as Parameters<typeof toOtcForkClients>[0]
-    process.env.REACT_APP_OTC_WRITE_MODE = 'canary'
+    process.env.REACT_APP_OTC_WRITE_MODE = mode
     try {
       const { result } = renderHook(() => useOtcNetworkReads(false, ACCOUNT, 1, walletClient, TOKEN), {
         wrapper: Wrapper,

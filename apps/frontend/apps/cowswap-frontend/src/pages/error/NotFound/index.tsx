@@ -24,7 +24,8 @@ const Wrapper = styled(Page)`
 
   ${Title} {
     font-size: 52px;
-    font-weight: 600;
+    font-family: var(--ophis-font-display);
+    font-weight: 400;
     text-align: center;
 
     ${Media.upToSmall()} {

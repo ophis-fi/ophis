@@ -24,7 +24,7 @@ export interface DesktopChainPanelProps {
 
 export function DesktopChainPanel({
   chains,
-  title = t`Select network`,
+  title,
   onSelectChain,
   tradeType,
   field,
@@ -38,7 +38,7 @@ export function DesktopChainPanel({
 
   return (
     <ChainPanel
-      title={title}
+      title={title ?? (field === Field.OUTPUT ? t`Receive on` : t`Select network`)}
       chainsState={chains}
       onSelectChain={onSelectChain}
       tradeType={tradeType}

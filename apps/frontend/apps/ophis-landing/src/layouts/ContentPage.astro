@@ -82,7 +82,7 @@ const faqLd = faqs.length
         <span aria-current="page">{heading}</span>
       </nav>
       <header class="page-header">
-        <h1>{heading}</h1>
+        <h1 class="serif">{heading}</h1>
         <p class="lede">{lede}</p>
         <p class="updated">
           Last updated: <time datetime={updated.toISOString().slice(0, 10)}>{fmtDate}</time>
@@ -121,9 +121,6 @@ const faqLd = faqs.length
   }
   .page-header h1 {
     font-size: clamp(30px, 5.2vw, 46px);
-    line-height: 1.12;
-    letter-spacing: -0.025em;
-    font-weight: 600;
     margin: 0 0 18px;
   }
   .page-header .lede {
@@ -159,7 +156,7 @@ const faqLd = faqs.length
   .prose :global(a) {
     color: var(--ophis-saffron-60);
     text-decoration: none;
-    border-bottom: 1px solid rgba(242, 166, 62, 0.35);
+    border-bottom: 1px solid rgba(23, 25, 28, 0.3);
     transition: border-color 120ms ease;
   }
   .prose :global(a:hover) { border-bottom-color: var(--ophis-saffron-60); }
@@ -176,11 +173,11 @@ const faqLd = faqs.length
   .prose :global(:not(pre) > code) {
     font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
     font-size: 0.86em;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--ophis-surface);
     border: 1px solid var(--ophis-border);
     border-radius: 6px;
     padding: 1.5px 6px;
-    color: var(--ophis-saffron-30);
+    color: var(--ophis-fg);
     word-break: break-word;
   }
   .prose :global(table) {
@@ -201,11 +198,11 @@ const faqLd = faqs.length
   .prose :global(th) {
     color: var(--ophis-fg);
     font-weight: 600;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--ophis-fog);
   }
   .prose :global(.badge) {
     display: inline-block;
-    border: 1px solid rgba(242, 166, 62, 0.4);
+    border: 1px solid rgba(23, 25, 28, 0.35);
     border-radius: 999px;
     padding: 1px 9px;
     font-size: 11.5px;

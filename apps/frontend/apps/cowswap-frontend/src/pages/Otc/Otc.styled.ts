@@ -1,7 +1,19 @@
-import styled, { css } from 'styled-components/macro'
+import { Table } from 'ophis/ds'
+import styled from 'styled-components/macro'
+
+export const OtcStack = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+
+  @media (max-width: 600px) {
+    gap: 16px;
+  }
+`
 
 export const Mono = styled.span`
-  font-family: 'Geist Mono', var(--cow-font-family-mono, ui-monospace, monospace);
+  font-family: var(--cow-font-family-mono, ui-monospace, monospace);
   font-size: 0.92em;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -22,58 +34,59 @@ export const VisuallyHidden = styled.span`
 
 export const CopyButton = styled.button`
   appearance: none;
-  border: 1px solid rgba(245, 239, 230, 0.18);
+  border: 1px solid var(--cow-color-border);
   border-radius: 6px;
   background: transparent;
-  color: rgba(245, 239, 230, 0.75);
+  color: var(--cow-color-text);
   font: inherit;
-  font-size: 11px;
-  padding: 2px 7px;
+  font-size: 12px;
+  min-height: 28px;
+  min-width: 44px;
+  padding: 4px 8px;
   margin-left: 6px;
   cursor: pointer;
 
   &:focus-visible {
-    outline: 2px solid rgba(242, 166, 62, 0.55);
+    outline: 2px solid var(--cow-color-primary);
     outline-offset: 1px;
   }
 `
 
 export const RawNote = styled.span`
-  color: rgba(245, 239, 230, 0.55);
+  color: var(--cow-color-text);
   font-size: 0.85em;
   margin-left: 0.35em;
 `
 
 export const TabBar = styled.div`
   display: flex;
-  gap: 8px;
+  gap: 4px;
   flex-wrap: wrap;
-  margin: 0 0 20px;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 4px;
+  border: 1px solid var(--cow-color-border);
+  border-radius: 12px;
+  background: var(--cow-color-paper-darker);
 `
 
 export const TabButton = styled.button<{ $active: boolean }>`
   appearance: none;
-  border: 1px solid rgba(245, 239, 230, 0.18);
-  border-radius: 999px;
-  background: ${({ $active }) => ($active ? 'rgba(242, 166, 62, 0.16)' : 'transparent')};
-  color: ${({ $active }) => ($active ? '#f2a63e' : '#f5efe6')};
-  text-decoration: ${({ $active }) => ($active ? 'underline' : 'none')};
-  text-underline-offset: 4px;
+  border: 1px solid ${({ $active }) => ($active ? 'var(--cow-color-border)' : 'transparent')};
+  border-radius: 8px;
+  background: ${({ $active }) => ($active ? 'var(--cow-color-paper)' : 'transparent')};
+  color: var(--cow-color-text);
   font: inherit;
   font-size: 14px;
-  padding: 8px 16px;
+  font-weight: 500;
+  min-height: 44px;
+  padding: 8px 12px;
   cursor: pointer;
 
   &:focus-visible {
-    outline: 2px solid rgba(242, 166, 62, 0.55);
+    outline: 2px solid var(--cow-color-primary);
     outline-offset: 2px;
   }
-
-  ${({ $active }) =>
-    $active &&
-    css`
-      border-color: rgba(242, 166, 62, 0.55);
-    `}
 `
 
 export const FilterBar = styled.div`
@@ -87,26 +100,28 @@ export const FilterField = styled.div`
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 160px;
+  min-width: min(160px, 100%);
+  flex: 1 1 160px;
 
   label {
     font-size: 12px;
-    color: rgba(245, 239, 230, 0.65);
+    color: var(--cow-color-text);
   }
 
   input,
   select {
-    appearance: none;
-    background: rgba(245, 239, 230, 0.06);
-    border: 1px solid rgba(245, 239, 230, 0.18);
+    background: var(--cow-color-paper);
+    border: 1px solid var(--cow-color-border);
     border-radius: 8px;
-    color: #f5efe6;
+    color: var(--cow-color-text);
     font: inherit;
-    font-size: 14px;
-    padding: 8px 10px;
+    font-size: 16px;
+    padding: 10px 12px;
+    min-height: 44px;
+    min-width: 0;
 
     &:focus-visible {
-      outline: 2px solid rgba(242, 166, 62, 0.55);
+      outline: 2px solid var(--cow-color-primary);
       outline-offset: 1px;
     }
   }
@@ -117,23 +132,45 @@ export const BadgeRow = styled.div`
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
-  margin: 0 0 16px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 `
 
 export const StatusStack = styled.div`
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
+  min-width: 160px;
+  max-width: 230px;
 `
 
 export const DisabledAction = styled.button`
   appearance: none;
-  border: 1px solid rgba(245, 239, 230, 0.18);
+  border: 1px solid var(--cow-color-border);
   border-radius: 10px;
-  background: rgba(245, 239, 230, 0.06);
-  color: rgba(245, 239, 230, 0.45);
+  background: var(--cow-color-paper-darker);
+  color: var(--cow-color-text);
   font: inherit;
   font-size: 14px;
   padding: 10px 18px;
   cursor: not-allowed;
+`
+
+export const OrdersTable = styled(Table)`
+  min-width: 960px;
+  th {
+    font-size: 13px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  td {
+    padding: 16px;
+    vertical-align: middle;
+  }
+`
+
+export const Amount = styled.span`
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 `

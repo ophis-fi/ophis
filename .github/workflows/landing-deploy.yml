@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths:
+      - 'apps/frontend/package.json'
+      - 'apps/frontend/pnpm-lock.yaml'
       - 'apps/frontend/apps/ophis-landing/**'
       # ophis.fi/api/intent is served by the SHARED functions/api/ handler,
       # staged into the landing bundle by the "stage intent API function" step
@@ -20,11 +22,18 @@ on:
       # happened to trigger a build - the exact drift the gate exists to stop.
       - 'apps/frontend/libs/common-const/src/chainInfo.ts'
       - '.github/workflows/landing-deploy.yml'
+      - 'scripts/indexnow-ping.mjs'
+      - 'tests/indexnow-ping.test.mjs'
   pull_request:
     paths:
+      - 'apps/frontend/package.json'
+      - 'apps/frontend/pnpm-lock.yaml'
       - 'apps/frontend/apps/ophis-landing/**'
       - 'functions/api/**'
       - 'apps/frontend/libs/common-const/src/chainInfo.ts'
+      - '.github/workflows/landing-deploy.yml'
+      - 'scripts/indexnow-ping.mjs'
+      - 'tests/indexnow-ping.test.mjs'
 
 permissions:
   contents: read
@@ -71,6 +80,9 @@ jobs:
       - name: typecheck
         working-directory: apps/frontend
         run: pnpm --filter @ophis/landing typecheck
+
+      - name: IndexNow tests
+        run: node --test tests/indexnow-ping.test.mjs
 
       - name: build
         working-directory: apps/frontend
@@ -145,7 +157,7 @@ jobs:
       - name: IndexNow ping
         if: github.ref == 'refs/heads/main'
         continue-on-error: true
-        run: node scripts/indexnow-ping.mjs ophis.fi https://ophis.fi/
+        run: node scripts/indexnow-ping.mjs ophis.fi --sitemap apps/frontend/apps/ophis-landing/dist/sitemap.xml
 
       # Supply-chain provenance (#438). main-only (matches the deploy step) and
       # AFTER it, so it can never block a release. Hashes exactly the deployed

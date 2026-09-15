@@ -52,7 +52,7 @@ const BUTTON_VARIANT_STYLES = {
     }
   `,
   secondary: css`
-    color: var(${UI.COLOR_NEUTRAL_100});
+    color: ${Color.explorer_textPrimary};
     background: ${Color.explorer_bgInput};
     border-color: ${Color.explorer_textActive};
 
@@ -89,7 +89,7 @@ const BUTTON_VARIANT_STYLES = {
     }
   `,
   cancel: css`
-    color: var(${UI.COLOR_NEUTRAL_100});
+    color: ${Color.explorer_textPrimary};
     background: transparent;
 
     &:hover {

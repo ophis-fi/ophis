@@ -8,11 +8,14 @@
  * so cards reflow on narrow viewports without bleeding off the side.
  *
  * FeatureCard is composable — accepts heading, body, optional icon and
- * optional footer (badge/link/CTA).
+ * optional footer (badge/link/CTA). Cards are flat mist surfaces —
+ * no lift, no shadow.
  */
 import { ReactNode } from 'react'
 
 import styled from 'styled-components/macro'
+
+import { STEEP_FONT, steep } from './steep.utils'
 
 interface FeatureGridProps {
   /** Minimum card width before wrapping. Default 260px. */
@@ -37,9 +40,9 @@ export function FeatureGrid({ minCardWidth = '260px', gap = '16px', children }: 
 }
 
 interface FeatureCardProps {
-  /** Optional icon / emoji / small illustration above the heading. */
+  /** Optional icon / step numeral / small illustration above the heading. */
   icon?: ReactNode
-  /** Card heading. Renders as h3 in Fraunces. */
+  /** Card heading. Renders as h3 in sans medium. */
   title: ReactNode
   /** Card body — paragraph(s) or short list. */
   children: ReactNode
@@ -48,52 +51,42 @@ interface FeatureCardProps {
 }
 
 const Card = styled.article`
-  border-radius: 12px;
-  padding: 22px 20px;
-  background: rgba(245, 239, 230, 0.04);
-  border: 1px solid rgba(245, 239, 230, 0.08);
+  border-radius: 20px;
+  padding: 24px 22px;
+  background: ${({ theme }) => (theme?.darkMode ? steep(theme).card : 'var(--ophis-steep-mist, #f2f2f3)')};
+  border: 1px solid ${({ theme }) => (theme?.darkMode ? steep(theme).cardBorder : 'transparent')};
   display: flex;
   flex-direction: column;
   gap: 10px;
   transition:
     border-color 180ms ease-out,
-    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 200ms ease-out,
-    background 200ms ease-out;
+    background-color 180ms ease-out;
 
   &:hover {
-    border-color: rgba(242, 166, 62, 0.32);
-    background: rgba(245, 239, 230, 0.06);
-    transform: translateY(-2px);
-    box-shadow: 0 18px 40px -20px rgba(242, 166, 62, 0.18);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: border-color 120ms ease-out;
-    &:hover {
-      transform: none;
-      box-shadow: none;
-    }
+    border-color: ${({ theme }) => steep(theme).hoverBorder};
   }
 `
 
 const Icon = styled.div`
-  font-size: 20px;
+  font-family: ${STEEP_FONT.display};
+  font-style: italic;
+  font-size: 22px;
   line-height: 1;
-  color: #f2a63e;
+  color: ${({ theme }) => steep(theme).secondary};
 `
 
 const Title = styled.h3`
   margin: 0;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: ${STEEP_FONT.body};
   font-weight: 500;
   font-size: 18px;
-  letter-spacing: -0.005em;
-  color: #f2a63e;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  color: ${({ theme }) => steep(theme).text};
 `
 
 const Body = styled.div`
-  color: rgba(245, 239, 230, 0.78);
+  color: ${({ theme }) => steep(theme).muted};
   font-size: 14px;
   line-height: 1.6;
 

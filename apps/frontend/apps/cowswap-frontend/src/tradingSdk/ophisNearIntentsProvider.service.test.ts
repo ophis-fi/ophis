@@ -1,4 +1,5 @@
 import { OPHIS_PARTNER_FEE_RECIPIENT } from '@cowprotocol/common-const'
+import { AdditionalTargetChainId, BTC_CURRENCY_ADDRESS, SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { utils } from 'ethers'
 import jsonStringify from 'json-stringify-deterministic'
@@ -156,5 +157,71 @@ describe('ophisNearIntentsProvider', () => {
 
       expect(result).toBeNull()
     })
+  })
+})
+
+type NearToken = Awaited<ReturnType<TestableNearProvider['testApi']['getTokens']>>[number]
+const NATIVE_BTC: NearToken = {
+  assetId: 'nep141:btc.omft.near',
+  blockchain: 'btc' as NearToken['blockchain'],
+  symbol: 'BTC',
+  decimals: 8,
+  price: 1,
+  priceUpdatedAt: '2026-09-09T00:00:00.000Z',
+}
+const OMNI_BTC: NearToken = {
+  ...NATIVE_BTC,
+  assetId: '1cs_v1:btc:native:coin',
+  symbol: 'BTC(OMNI)',
+  contractAddress: 'coin',
+}
+const SOLANA_USDC: NearToken = {
+  ...NATIVE_BTC,
+  assetId: 'nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near',
+  blockchain: 'sol' as NearToken['blockchain'],
+  symbol: 'USDC',
+  decimals: 6,
+  contractAddress: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+}
+
+describe('NEAR destination tokens', () => {
+  it('offers the quotable native BTC route without the unsupported OMNI placeholder', async () => {
+    const provider = new TestableNearProvider({})
+    jest.spyOn(provider.testApi, 'getTokens').mockResolvedValue([OMNI_BTC, SOLANA_USDC, NATIVE_BTC])
+
+    const result = await provider.getBuyTokens({
+      sellChainId: SupportedChainId.MAINNET,
+      buyChainId: AdditionalTargetChainId.BITCOIN,
+    })
+
+    expect(result.isRouteAvailable).toBe(true)
+    expect(result.tokens).toEqual([expect.objectContaining({ symbol: 'BTC', address: BTC_CURRENCY_ADDRESS })])
+  })
+
+  it('does not advertise a Bitcoin route when only the unsupported placeholder exists', async () => {
+    const provider = new TestableNearProvider({})
+    jest.spyOn(provider.testApi, 'getTokens').mockResolvedValue([OMNI_BTC])
+
+    expect(
+      await provider.getBuyTokens({
+        sellChainId: SupportedChainId.MAINNET,
+        buyChainId: AdditionalTargetChainId.BITCOIN,
+      }),
+    ).toEqual({ tokens: [], isRouteAvailable: false })
+  })
+
+  it('preserves provider-supported Solana tokens and their case-sensitive mint addresses', async () => {
+    const provider = new TestableNearProvider({})
+    jest.spyOn(provider.testApi, 'getTokens').mockResolvedValue([NATIVE_BTC, SOLANA_USDC])
+
+    const result = await provider.getBuyTokens({
+      sellChainId: SupportedChainId.MAINNET,
+      buyChainId: AdditionalTargetChainId.SOLANA,
+    })
+
+    expect(result.isRouteAvailable).toBe(true)
+    expect(result.tokens).toEqual([
+      expect.objectContaining({ symbol: 'USDC', address: SOLANA_USDC.contractAddress, decimals: 6 }),
+    ])
   })
 })

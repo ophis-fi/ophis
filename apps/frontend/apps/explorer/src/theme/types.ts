@@ -4,9 +4,10 @@ import { Fonts } from './styles'
 
 export enum Theme {
   DARK = 'dark',
+  LIGHT = 'light',
 }
 
-type ThemeMode = 'dark'
+type ThemeMode = Theme
 
 declare module 'styled-components' {
   export interface ExplorerTheme extends Fonts {

@@ -3,7 +3,7 @@
  *
  * XP progress toward the next perk rendered as a ring closing on itself:
  * the ouroboros (the Ophis brand mark) is a circle completing itself, so
- * the metaphor is the brand, not decoration. Sunset-gradient stroke on a
+ * the metaphor is the brand, not decoration. Solid stroke on a
  * faint track; the count sits in the center in the utility mono face.
  */
 import { ReactNode } from 'react'
@@ -48,7 +48,7 @@ const Center = styled.div`
 `
 
 const Count = styled.span`
-  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 26px;
   font-weight: 600;
   line-height: 1;
@@ -58,7 +58,7 @@ const Unit = styled.span`
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  opacity: 0.6;
+  color: var(--cow-color-text-opacity-70);
 `
 
 interface XpRingProps {
@@ -76,13 +76,6 @@ export function XpRing({ xp, nextUnlockXp }: XpRingProps): ReactNode {
   return (
     <Wrap role="img" aria-label={`${xp.toLocaleString('en-US')} XP`}>
       <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`} aria-hidden="true">
-        <defs>
-          <linearGradient id="ophis-xp-ring" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#f2a63e" />
-            <stop offset="50%" stopColor="#d960b5" />
-            <stop offset="100%" stopColor="#7a6ee0" />
-          </linearGradient>
-        </defs>
         <circle
           cx={center}
           cy={center}
@@ -98,7 +91,7 @@ export function XpRing({ xp, nextUnlockXp }: XpRingProps): ReactNode {
           cy={center}
           r={RADIUS}
           fill="none"
-          stroke="url(#ophis-xp-ring)"
+          stroke="var(--cow-color-primary)"
           strokeWidth={STROKE}
           strokeLinecap="round"
           strokeDasharray={CIRCUMFERENCE}

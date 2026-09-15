@@ -103,7 +103,7 @@ describe('OtcOrderDetailView', () => {
 
   it('requires a refresh when indexed data disagrees with the chain', () => {
     renderDetail({ indexed: indexed({ amountB: 999n }) })
-    expect(screen.getByText(/Order data changed — refresh required/)).toBeTruthy()
+    expect(screen.getByText(/Order data changed - refresh required/)).toBeTruthy()
   })
 
   it('shows a loading state', () => {

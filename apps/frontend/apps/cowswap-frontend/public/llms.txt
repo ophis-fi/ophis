@@ -27,7 +27,7 @@
 
 ## APIs
 
-- [POST /api/intent](https://ophis.fi/api/intent): Natural-language → structured `ParsedIntent`. Backed by LibertAI Qwen 3.6 27B; CF Pages Function proxies, browser never sees the LLM key. Rate-limited 30 req/min/IP. Response shape: `{ ok: true, data: { intent: 'swap'|'unknown', entities: [{type, value, raw, start, end}] } }` or `{ ok: false, error: { code, message } }` with codes `TIMEOUT | UPSTREAM | INVALID_JSON | BAD_INPUT | RATE_LIMITED | FORBIDDEN`. Browser calls are Origin-allowlisted (ophis.fi, swap.ophis.fi); non-browser callers (curl, server-side scripts, agents) that omit the Origin header are allowed, subject to the rate limit. Full spec: [/openapi.yaml](https://ophis.fi/openapi.yaml).
+- [POST /api/intent](https://ophis.fi/api/intent): Natural-language → structured `ParsedIntent`. Backed by LibertAI Qwen 3.6 27B; CF Pages Function proxies, browser never sees the LLM key. Rate-limited 30 req/min/IP. Response shape: `{ ok: true, data: { intent: 'swap'|'unknown', entities: [{type, value, raw, start, end}] } }` or `{ ok: false, error: { code, message } }` with codes `TIMEOUT | UPSTREAM | INVALID_JSON | BAD_INPUT | RATE_LIMITED | FORBIDDEN`. Browser calls are Origin-allowlisted (ophis.fi, swap.ophis.fi); non-browser callers (curl, server-side scripts, agents) that omit the Origin header are allowed, subject to the rate limit. Full spec: [/openapi.json](https://ophis.fi/openapi.json).
 
 ## For AI agents
 

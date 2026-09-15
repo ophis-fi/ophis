@@ -2,7 +2,35 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["jest", "node"]
+    "types": ["jest", "node", "vite/client", "vite-plugin-svgr/client"]
   },
-  "include": ["src/ophis/partnerFeeMerge.test.ts"]
+  "files": ["../../node_modules/@nx/react/typings/cssmodule.d.ts", "../../node_modules/@nx/react/typings/image.d.ts"],
+  "include": [
+    "src/**/*.d.ts",
+    "src/ophis/hooks/useIsOphisSwap.test.tsx",
+    "src/ophis/components/intent/IntentEntry.container.test.tsx",
+    "../../libs/tokens/src/services/tokenPolicy.spec.ts",
+    "src/ophis/partnerFeeMerge.test.ts",
+    "src/tradingSdk/ophisNearIntentsProvider.service.test.ts",
+    "src/tradingSdk/ophisBridgeProviders.test.ts",
+    "src/tradingSdk/bridgingSdk.test.ts",
+    "src/ophis/hooks/useBeatMarket.test.ts",
+    "src/modules/usdAmount/services/fetchCurrencyUsdPrice.test.ts",
+    "src/cowSdk.utils.test.ts",
+    "src/cowSdk.errors.test.ts",
+    "src/modules/tradeQuote/utils/getBridgeQuoteSigner.test.ts",
+    "src/modules/tokensList/containers/TokenSearchResults/index.test.tsx",
+    "src/common/hooks/useVerifyOphisRecipientName.test.ts",
+    "src/modules/tradeQuote/hooks/useQuoteParamsRecipient.test.ts",
+    "src/modules/tradeQuote/hooks/useQuoteParams.test.ts",
+    "src/modules/tradeQuote/state/tradeQuoteAtom.test.ts",
+    "src/modules/tradeFlow/hooks/useHandleSwap.test.ts",
+    "src/modules/tradeFlow/utils/isBridgeQuoteRecipientCurrent.utils.test.ts",
+    "src/modules/tradeFormValidation/services/validateTradeForm.test.ts",
+    "src/modules/appData/utils/sumVolumeFeeBps.test.ts",
+    "src/modules/appData/utils/resolveOphisPartnerFee.test.ts",
+    "src/legacy/state/orders/utils.getOrderVolumeFee.test.ts",
+    "src/modules/volumeFee/hooks/useVolumeFeeTooltip.test.ts",
+    "src/modules/trade/utils/getReceiveAmountInfo.fees.test.ts"
+  ]
 }

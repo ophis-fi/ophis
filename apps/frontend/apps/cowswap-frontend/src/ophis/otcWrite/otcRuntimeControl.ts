@@ -1,5 +1,7 @@
 import { fetchWithTimeout, withTimeout } from '@cowprotocol/common-utils'
 
+import { isOtcMainnetMode } from './otcWriteMode.utils'
+
 const CONTROL_TIMEOUT_MS = 4_000
 
 async function readControl(): Promise<boolean> {
@@ -13,7 +15,8 @@ async function readControl(): Promise<boolean> {
   const value: unknown = await response.json()
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const control = value as Record<string, unknown>
-  return control.nonce === nonce && control.enabled === true
+  const mode = process.env.REACT_APP_OTC_WRITE_MODE
+  return isOtcMainnetMode(mode) && control.mode === mode && control.nonce === nonce && control.enabled === true
 }
 
 export function readOtcRuntimeControl(): Promise<boolean> {

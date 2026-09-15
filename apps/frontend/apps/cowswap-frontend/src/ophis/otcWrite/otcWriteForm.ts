@@ -9,12 +9,25 @@ export interface OtcReviewedToken {
   symbol: string
   name: string
   decimals: number
+  logoURI?: string
 }
 
 export const OTC_REVIEWED_TOKENS: readonly OtcReviewedToken[] = Object.freeze([
-  { address: WETH_MAINNET.address, symbol: 'WETH', name: 'Wrapped Ether', decimals: WETH_MAINNET.decimals },
-  { address: USDC_MAINNET.address, symbol: 'USDC', name: 'USD Coin', decimals: USDC_MAINNET.decimals },
-  { address: DAI.address, symbol: 'DAI', name: 'Dai Stablecoin', decimals: DAI.decimals },
+  {
+    address: WETH_MAINNET.address,
+    symbol: 'WETH',
+    name: 'Wrapped Ether',
+    decimals: WETH_MAINNET.decimals,
+    logoURI: WETH_MAINNET.logoURI,
+  },
+  {
+    address: USDC_MAINNET.address,
+    symbol: 'USDC',
+    name: 'USD Coin',
+    decimals: USDC_MAINNET.decimals,
+    logoURI: USDC_MAINNET.logoURI,
+  },
+  { address: DAI.address, symbol: 'DAI', name: 'Dai Stablecoin', decimals: DAI.decimals, logoURI: DAI.logoURI },
 ])
 
 export function reviewedOtcToken(address: Address): OtcReviewedToken | null {

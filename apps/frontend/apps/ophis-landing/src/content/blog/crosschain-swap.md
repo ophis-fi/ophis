@@ -57,7 +57,7 @@ Using several networks can leave you with small balances in different places. Mo
 
 ## How Ophis helps with cross-chain swaps
 
-Ophis connects its swap experience to cross-chain providers including Across, Bungee, and NEAR Intents. The app requests supported routes so you can review the outcome without arranging every step in a separate service.
+Ophis connects its swap experience to cross-chain providers including Across and NEAR Intents. The app requests supported routes so you can review the outcome without arranging every step in a separate service.
 
 Its published network coverage includes 13 EVM blockchains, including Ethereum, Base, Arbitrum, Optimism, and Robinhood Chain. Bitcoin and Solana are also available as destinations through NEAR Intents. See the [Ophis supported-chain list](https://ophis.fi/supported-chains/).
 

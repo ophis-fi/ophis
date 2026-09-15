@@ -34,7 +34,7 @@ function setStatusColors({
       break
     case 'open':
     case 'signing':
-      text = Color.neutral100
+      text = Color.explorer_textPrimary
       background = Color.explorer_bgInput
       break
     case 'partially filled':
@@ -42,7 +42,7 @@ function setStatusColors({
       background = Color.explorer_greenOpacity
       break
     case BridgeStatus.IN_PROGRESS.toLowerCase():
-      text = Color.neutral100
+      text = Color.explorer_textPrimary
       background = Color.explorer_bgInput
       break
     case BridgeStatus.EXECUTED.toLowerCase():

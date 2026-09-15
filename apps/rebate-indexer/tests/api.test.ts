@@ -117,11 +117,25 @@ test('/stats returns public cumulative JSON for an API client', async () => {
 
 test('/stats serves a styled HTML page to a browser (Accept: text/html)', async () => {
   app = await buildApiServer();
-  const res = await app.inject({ method: 'GET', url: '/stats', headers: { accept: 'text/html' } });
+  const res = await app.inject({ method: 'GET', url: '/stats?chain=1&sort=chain-asc', headers: { accept: 'text/html' } });
   expect(res.statusCode).toBe(200);
   expect(res.headers['content-type']).toContain('text/html');
   expect(res.body).toContain('Every trade settles MEV-protected');
-  expect(res.headers['content-security-policy']).toBeDefined();
+  expect(res.headers['content-security-policy']).toContain("form-action 'self'");
+  expect(res.headers['content-security-policy']).toContain("img-src 'self'");
+  expect(res.body).toContain('<option value="1" selected>');
+  expect(res.body).toContain('aria-sort="ascending"');
+});
+
+test('chain icons are served locally from the fixed map, with unknown paths rejected', async () => {
+  app = await buildApiServer();
+  const icon = await app.inject({ method: 'GET', url: '/chain-icons/1' });
+  expect(icon.statusCode).toBe(200);
+  expect(icon.headers['content-type']).toContain('image/png');
+  expect(icon.headers['x-content-type-options']).toBe('nosniff');
+  expect(icon.rawPayload.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+  expect((await app.inject({ method: 'GET', url: '/chain-icons/99999' })).statusCode).toBe(404);
+  expect((await app.inject({ method: 'GET', url: '/chain-icons/%2e%2e%2f.env' })).statusCode).toBe(404);
 });
 
 test('/defillama returns bounded daily protocol aggregates only', async () => {

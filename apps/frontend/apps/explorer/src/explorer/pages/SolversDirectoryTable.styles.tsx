@@ -78,7 +78,7 @@ export const ClearInputButton = styled.button`
   border-radius: 50%;
 
   &:hover {
-    color: ${Color.neutral100};
+    color: ${Color.explorer_textPrimary};
     background: ${Color.explorer_bg};
   }
 `
@@ -88,7 +88,7 @@ export const Select = styled.select`
   border: 0.1rem solid ${Color.explorer_border};
   border-radius: 0.8rem;
   background: ${Color.explorer_bg2};
-  color: ${Color.neutral100};
+  color: ${Color.explorer_textPrimary};
   padding: 0.95rem 1.1rem;
 `
 
@@ -133,7 +133,7 @@ export const TableScrollHint = styled.div`
       bottom: 2rem;
       width: 2.8rem;
       pointer-events: none;
-      background: linear-gradient(to left, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
+      background: linear-gradient(to left, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0));
     }
   }
 `
@@ -161,7 +161,7 @@ export const SolverLogoFallback = styled.div`
   align-items: center;
   justify-content: center;
   border: 0.1rem solid ${Color.explorer_border};
-  color: ${Color.neutral100};
+  color: ${Color.explorer_textPrimary};
   font-weight: 700;
 `
 
@@ -179,7 +179,7 @@ export const SolverId = styled.span`
 export const ExpandButton = styled.button`
   border: 0.1rem solid ${Color.explorer_border};
   background: ${Color.explorer_bg2};
-  color: ${Color.neutral100};
+  color: ${Color.explorer_textPrimary};
   border-radius: 0.6rem;
   min-width: 2.4rem;
   height: 2.4rem;
@@ -263,7 +263,7 @@ export const DeploymentsSection = styled.div<{ $muted?: boolean }>`
 export const DeploymentsSectionTitle = styled.h4<{ $muted?: boolean }>`
   margin: 0 0 0.6rem;
   font-size: 1.2rem;
-  color: ${({ $muted }): string => ($muted ? Color.explorer_textSecondary2 : Color.neutral100)};
+  color: ${({ $muted }): string => ($muted ? Color.explorer_textSecondary2 : Color.explorer_textPrimary)};
 `
 
 export const DeploymentsGridHeader = styled.div`

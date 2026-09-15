@@ -2,13 +2,12 @@
 @import './tokens.css';
 
 @font-face {
-  font-family: 'Geist';
+  font-family: 'Inter';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
-  src: url('/fonts/geist-sans-variable.woff2') format('woff2-variations'),
-       url('/fonts/geist-sans-variable.woff2') format('woff2');
-  unicode-range: U+0000-00FF, U+2010-2027, U+2030-205E;
+  src: url('/fonts/inter-variable.woff2') format('woff2-variations'),
+       url('/fonts/inter-variable.woff2') format('woff2');
 }
 
 * { box-sizing: border-box; }
@@ -18,9 +17,35 @@ body {
   position: relative;
   background: var(--ophis-bg);
   color: var(--ophis-fg);
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   font-size: 17px;
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible { outline: 2px solid var(--ophis-fg); outline-offset: 3px; border-radius: 8px; }
+
+/* Shared editorial type: Georgia display serif (regular, italic for emphasis),
+// Inter body with tabular figures for financial numerals. */
+.serif {
+  font-family: Georgia, 'Times New Roman', ui-serif, serif;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+.serif em, .accent { font-style: italic; }
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ophis-fg-faded);
+  font-weight: 500;
+}
+.lede {
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--ophis-fg-muted);
+  max-width: 46ch;
 }
 
 /* Reveal-up motion primitive. The hidden initial state is gated on
@@ -39,7 +64,7 @@ body {
 /* Hide WITHOUT a transition: arming the gate must snap not-yet-revealed
    elements straight to opacity:0 (no 1->0 fade). A fade-out would (a) flicker
    off-screen content and (b) be caught by axe mid-transition as a false
-   low-contrast violation, since --ophis-fg-faded is rgba(255,255,255,0.5) and
+   low-contrast violation, since --ophis-fg-faded is mid-gray and
    axe multiplies by element opacity. */
 html.reveal-armed .reveal-up {
   opacity: 0;
@@ -58,269 +83,37 @@ html.reveal-armed .reveal-up.in-view {
 .stagger > .reveal-up:nth-child(4) { transition-delay: 240ms; }
 .stagger > .reveal-up:nth-child(5) { transition-delay: 320ms; }
 
-/* Nav blur (toggled by JS) — always frosted from the start, scrolled intensifies */
+/* Nav (toggled by JS): solid paper, hairline border once scrolled. No blur. */
 .nav {
-  background: rgba(10, 10, 10, 0.72);
-  -webkit-backdrop-filter: blur(10px) saturate(180%);
-  backdrop-filter: blur(10px) saturate(180%);
+  background: var(--ophis-bg);
   border-bottom: 1px solid transparent;
-  transition: background 200ms ease, border-color 200ms ease, backdrop-filter 200ms ease;
+  transition: border-color 200ms ease;
 }
 .nav.scrolled {
-  background: rgba(10, 10, 10, 0.92);
   border-bottom-color: var(--ophis-border);
 }
 
-/* Claw rotate */
-@keyframes claw-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-.claw {
-  animation: claw-spin 40s linear infinite;
-  transform-origin: center;
-  will-change: transform;
-}
-
-/* Gradient accent shimmer */
-@keyframes shimmer {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-}
-.accent {
-  background: linear-gradient(135deg, var(--ophis-saffron-60) 0%, var(--ophis-saffron-30) 50%, var(--ophis-saffron-60) 100%);
-  background-size: 200% 200%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: shimmer 8s ease-in-out infinite;
-}
-
-/* Card hover lift */
+/* Card hover: border emphasis only, no lift or glow. */
 .feat {
-  transition: transform 200ms ease, border-color 200ms ease, background-color 200ms ease;
+  transition: border-color 200ms ease, background-color 200ms ease;
 }
 .feat:hover {
-  transform: translateY(-4px);
-  border-color: rgba(242, 166, 62, 0.3);
-  background-color: rgba(255, 255, 255, 0.04);
+  border-color: var(--ophis-fg-muted);
 }
 
-/* CTA hover glow (more pronounced) */
+/* CTA press states: flat darken + press scale, no glow. */
 .cta-primary, .nav-cta {
-  transition: filter 150ms ease, box-shadow 250ms ease, transform 80ms ease;
+  transition: filter 150ms ease, transform 80ms ease;
 }
 .cta-primary:hover, .nav-cta:hover {
-  filter: brightness(1.08);
-  box-shadow: 0 8px 24px -8px rgba(242, 166, 62, 0.55);
+  filter: brightness(0.92);
 }
 .cta-primary:active, .nav-cta:active {
   transform: scale(0.97);
 }
 
-/* Pill subtle attention pulse */
-@keyframes pill-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(242, 166, 62, 0); }
-  50%      { box-shadow: 0 0 0 6px rgba(242, 166, 62, 0.08); }
-}
-.pill::before {
-  animation: pill-pulse 2.4s ease-in-out infinite;
-}
-
-/* Scroll-progress thin bar at top — pure CSS using scroll-timeline (modern browsers) */
-.scroll-progress {
-  position: fixed;
-  inset: 0 0 auto 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--ophis-saffron-60), var(--ophis-saffron-30));
-  transform-origin: left center;
-  transform: scaleX(0);
-  z-index: 60;
-  pointer-events: none;
-  animation: scroll-progress linear;
-  animation-timeline: scroll(root);
-}
-@keyframes scroll-progress {
-  to { transform: scaleX(1); }
-}
-
-/* Cosmic backdrop — two slowly-drifting radial gradients (saffron + violet)
-   over a vignette. Pure CSS, GPU-cheap. Disabled for prefers-reduced-motion. */
-.bg-orbs {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-}
-.bg-orbs::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(120% 80% at 50% 0%, transparent 0%, rgba(10, 10, 10, 0.55) 75%),
-    linear-gradient(180deg, rgba(10, 10, 10, 0) 0%, rgba(10, 10, 10, 0.6) 75%, rgba(10, 10, 10, 0.95) 100%);
-  z-index: 1;
-}
-.bg-orbs::after {
-  content: '';
-  position: absolute;
-  inset: -10%;
-  background:
-    radial-gradient(420px 320px at 20% 30%, rgba(242, 166, 62, 0.18), transparent 70%),
-    radial-gradient(380px 280px at 80% 60%, rgba(180, 138, 255, 0.14), transparent 70%),
-    radial-gradient(300px 220px at 55% 85%, rgba(242, 166, 62, 0.10), transparent 70%),
-    radial-gradient(340px 300px at 88% 18%, rgba(217, 96, 181, 0.10), transparent 72%);
-  filter: blur(50px);
-  z-index: 0;
-  animation: bg-orb-drift 28s ease-in-out infinite alternate;
-  /* `will-change` intentionally omitted: this layer animates forever, and
-     pinning a permanent composited layer with `filter: blur(50px)` would
-     hold GPU memory on mobile for the entire session. Browsers promote
-     transformed elements automatically; let them. */
-}
-@keyframes bg-orb-drift {
-  0%   { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
-  33%  { transform: translate3d(-2.5%, 1.5%, 0) scale(1.06) rotate(1.2deg); }
-  66%  { transform: translate3d(2%, -1.5%, 0) scale(0.96) rotate(-1deg); }
-  100% { transform: translate3d(-1%, 1.5%, 0) scale(1.03) rotate(0.6deg); }
-}
-
-/* Particle field — N static dots (rendered by Particles.astro) drifting up
-   and twinkling. Each dot carries its own --drift/--dur/--delay/--tdur/--op
-   custom properties set inline at build time. Only transform + opacity
-   animate (compositor-friendly); box-shadow is static. Sits on the orb
-   layer (z-index 0), behind all content (z-index 1). */
-.particles {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-.particle {
-  position: absolute;
-  border-radius: 50%;
-  opacity: var(--op, 0.4);
-  animation:
-    particle-drift var(--dur, 24s) ease-in-out var(--delay, 0s) infinite alternate,
-    particle-twinkle var(--tdur, 5s) ease-in-out var(--delay, 0s) infinite;
-}
-.particle--saffron {
-  background: rgba(242, 166, 62, 0.9);
-  box-shadow: 0 0 6px 1px rgba(242, 166, 62, 0.35);
-}
-.particle--violet {
-  background: rgba(180, 138, 255, 0.9);
-  box-shadow: 0 0 6px 1px rgba(180, 138, 255, 0.30);
-}
-@keyframes particle-drift {
-  from { transform: translate3d(0, 0, 0); }
-  to   { transform: translate3d(0, calc(var(--drift, 16px) * -1), 0); }
-}
-@keyframes particle-twinkle {
-  0%, 100% { opacity: calc(var(--op, 0.4) * 0.35); }
-  50%      { opacity: var(--op, 0.4); }
-}
-
-/* Spark field — brighter 4-point star motes (rendered by Sparks.astro) that
-   drift along a random 2D vector (--dx/--dy) while twinkling. The cross shape
-   is two thin crossing gradients; the soft halo is the ::after radial glow.
-   Only transform + opacity animate (compositor-friendly). Sits on the orb
-   layer (z-index 0), behind all content (z-index 1). */
-.sparks {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-.spark {
-  position: absolute;
-  opacity: var(--op, 0.6);
-  /* No clip-path / background here: a clip-path on .spark would also clip the
-     ::after halo. The glint lives on ::before (clipped to a star), the soft
-     bloom on ::after (unclipped). Pure CSS + inline style-vars only -> no CSP
-     / script-hash impact (style-src is 'unsafe-inline'). */
-  animation:
-    spark-move var(--dur, 10s) ease-in-out var(--delay, 0s) infinite alternate,
-    spark-twinkle var(--tdur, 4s) ease-in-out var(--delay, 0s) infinite;
-}
-/* The 4-point glint: a bright white core fading to the spark hue, clipped to a
-   concave 4-point star so the arms taper to fine points (a twinkle, not a '+'),
-   with a soft drop-shadow bloom in the spark's glow colour. */
-.spark::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% 50%, #fff 0%, var(--c) 30%, transparent 74%);
-  clip-path: polygon(
-    50% 0%, 58% 42%, 100% 50%, 58% 58%,
-    50% 100%, 42% 58%, 0% 50%, 42% 42%
-  );
-  filter: drop-shadow(0 0 3px var(--g));
-}
-/* Soft round bloom behind the glint. */
-.spark::after {
-  content: '';
-  position: absolute;
-  inset: -75%;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--g) 0%, transparent 60%);
-  z-index: -1;
-}
-.spark--saffron { --c: rgba(255, 209, 154, 0.95); --g: rgba(242, 166, 62, 0.45); }
-.spark--violet  { --c: rgba(214, 196, 255, 0.95); --g: rgba(180, 138, 255, 0.40); }
-@keyframes spark-move {
-  from { transform: translate3d(0, 0, 0) rotate(0deg); }
-  to   { transform: translate3d(var(--dx, 0), var(--dy, 0), 0) rotate(var(--rot, 0deg)); }
-}
-@keyframes spark-twinkle {
-  0%, 100% { opacity: calc(var(--op, 0.6) * 0.12); }
-  50%      { opacity: var(--op, 0.6); }
-}
-
-/* ── Section light accents ────────────────────────────────────────────────
-   `.section-bloom`: a soft radial bloom behind a heading that gently breathes.
-   Decorative + aria-hidden via pseudo-element; disabled under
-   prefers-reduced-motion. */
-.section-bloom { position: relative; }
-.section-bloom::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: min(560px, 80%);
-  height: 260px;
-  transform: translate(-50%, -28%);
-  pointer-events: none;
-  z-index: -1;
-  background: radial-gradient(50% 50% at 50% 50%, rgba(242, 166, 62, 0.14), transparent 70%);
-  filter: blur(22px);
-  animation: bloom-pulse 7.5s ease-in-out infinite;
-}
-.section-bloom--violet::before {
-  background: radial-gradient(50% 50% at 50% 50%, rgba(180, 138, 255, 0.14), transparent 70%);
-}
-@keyframes bloom-pulse {
-  0%, 100% { opacity: 0.55; transform: translate(-50%, -28%) scale(0.96); }
-  50%      { opacity: 1;    transform: translate(-50%, -28%) scale(1.04); }
-}
-
-/* Ensure main content sits above the orb + particle layers */
-main, .nav, footer, .scroll-progress { position: relative; z-index: 1; }
-
 @media (prefers-reduced-motion: reduce) {
   .reveal-up { opacity: 1 !important; transform: none !important; transition: none !important; }
-  .claw { animation: none !important; }
-  .accent { animation: none !important; }
   .feat, .cta-primary, .nav-cta { transition: none !important; }
-  .pill::before { animation: none !important; }
-  .scroll-progress { animation: none !important; transform: scaleX(0) !important; }
-  .bg-orbs::after { animation: none !important; transform: none !important; }
-  /* Particles + sparks stay visible as a static starfield, just no motion. */
-  .particle { animation: none !important; }
-  .spark { animation: none !important; transform: none !important; }
-  .section-bloom::before { animation: none !important; }
   * { transition: none !important; }
 }

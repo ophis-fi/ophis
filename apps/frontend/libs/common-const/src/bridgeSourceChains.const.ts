@@ -69,12 +69,12 @@ export const EXTRA_ACROSS_SOURCE_CHAIN_IDS: readonly number[] = [
  * Chains a cross-chain (bridge) order can be CREATED from — the sell side.
  *
  * Source and destination support are asymmetric: a DESTINATION only needs the
- * bridge provider's API to deliver there (see OphisAcrossBridgeProvider /
- * OphisBungeeBridgeProvider, which widen destinations), while a SOURCE chain
- * needs execution machinery on-chain: NEAR Intents settles via an attested
- * deposit-address receiver (any chain it lists), but Across/Bungee build
- * post-swap hooks via CoW Shed, and Across additionally needs a math-helper
- * contract that upstream only deployed on Ethereum/Arbitrum/Base.
+ * bridge provider's API to deliver there (see OphisAcrossBridgeProvider, which
+ * widens destinations), while a SOURCE chain needs execution machinery
+ * on-chain: NEAR Intents settles via an attested deposit-address receiver (any
+ * chain it lists), but Across builds post-swap hooks via CoW Shed and
+ * additionally needs a math-helper contract that upstream only deployed on
+ * Ethereum/Arbitrum/Base.
  *
  * This set is the union of chains at least one provider can execute FROM with
  * sdk-bridging 4.0.2 — exactly the effective source set before destinations

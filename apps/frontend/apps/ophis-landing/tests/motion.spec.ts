@@ -20,7 +20,7 @@ async function loadOphisStyles(page: import('@playwright/test').Page) {
   await page.addStyleTag({ content: globalCss })
   // Wait for styles to be applied — addStyleTag resolves when the sheet is added to the DOM
   // but a layout pass is needed before getComputedStyle is reliable.
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
 }
 
 // Task 2.1 — global.css tests
@@ -38,70 +38,64 @@ test('reveal-up: fails open — visible until html.reveal-armed, then hidden unl
   // html.reveal-armed, all content stays fully visible. So JS-off OR a failed/
   // absent reveal module can never blank the page (the prior bug + the new one
   // Codex flagged: JS on but reveal never runs).
-  const failOpen = await page.locator('#t1').evaluate(el => getComputedStyle(el).opacity)
+  const failOpen = await page.locator('#t1').evaluate((el) => getComputedStyle(el).opacity)
   expect(parseFloat(failOpen)).toBe(1)
   // Once the reveal bootstrap arms the gate, the hidden initial state applies;
   // .in-view (also scoped under html.reveal-armed) reveals it.
   await page.evaluate(() => document.documentElement.classList.add('reveal-armed'))
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)))
-  const hidden = await page.locator('#t1').evaluate(el => getComputedStyle(el).opacity)
-  const active = await page.locator('#t2').evaluate(el => getComputedStyle(el).opacity)
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)))
+  const hidden = await page.locator('#t1').evaluate((el) => getComputedStyle(el).opacity)
+  const active = await page.locator('#t2').evaluate((el) => getComputedStyle(el).opacity)
   expect(parseFloat(hidden)).toBeLessThan(0.5)
   expect(parseFloat(active)).toBe(1)
 })
 
-test('claw has 40s spin animation', async ({ page }) => {
-  await page.setContent(`<div class="claw"></div>`)
+test('nav is a solid surface with a hairline border once scrolled (no blur)', async ({ page }) => {
+  await page.setContent(`<nav class="nav" id="n">nav</nav>`)
   await loadOphisStyles(page)
-  const anim = await page.locator('.claw').evaluate(el => getComputedStyle(el).animationName)
-  expect(anim).toBe('claw-spin')
+  const nav = page.locator('#n')
+  const filter = await nav.evaluate((el) => getComputedStyle(el).backdropFilter)
+  expect(filter === 'none' || filter === '').toBe(true)
+  await nav.evaluate((el) => el.classList.add('scrolled'))
+  const border = await nav.evaluate((el) => getComputedStyle(el).borderBottomColor)
+  expect(border).not.toBe('rgba(0, 0, 0, 0)')
 })
 
-test('prefers-reduced-motion suppresses claw and reveal', async ({ browser }) => {
+test('prefers-reduced-motion keeps reveal content visible', async ({ browser }) => {
   const ctx = await browser.newContext({ reducedMotion: 'reduce' })
   const page = await ctx.newPage()
   await page.setContent(`
     <div class="reveal-up" id="r">hidden</div>
-    <div class="claw" id="c"></div>
   `)
   await loadOphisStyles(page)
   // reveal-up should be opacity 1 (forced by media query !important)
-  const revealOp = await page.locator('#r').evaluate(el => getComputedStyle(el).opacity)
+  const revealOp = await page.locator('#r').evaluate((el) => getComputedStyle(el).opacity)
   expect(parseFloat(revealOp)).toBe(1)
-  const clawAnim = await page.locator('#c').evaluate(el => getComputedStyle(el).animationName)
-  expect(clawAnim).toBe('none')
   await ctx.close()
 })
 
-// Particle field tests
+// Steep illustration tests: the swap story renders its complete final scene in
+// static markup (no JS needed) and the legacy cosmic layers are gone.
 
-test('particle has drift + twinkle animations', async ({ page }) => {
-  await page.setContent(`<span class="particle particle--saffron" id="p"></span>`)
-  await loadOphisStyles(page)
-  const anim = await page.locator('#p').evaluate((el) => getComputedStyle(el).animationName)
-  expect(anim).toContain('particle-drift')
-  expect(anim).toContain('particle-twinkle')
-})
-
-test('prefers-reduced-motion suppresses particle animation (stays visible)', async ({ browser }) => {
-  const ctx = await browser.newContext({ reducedMotion: 'reduce' })
-  const page = await ctx.newPage()
-  await page.setContent(`<span class="particle particle--violet" id="p" style="--op:0.5"></span>`)
-  await loadOphisStyles(page)
-  const anim = await page.locator('#p').evaluate((el) => getComputedStyle(el).animationName)
-  expect(anim).toBe('none')
-  await ctx.close()
-})
-
-test('built dist renders a static aria-hidden particle field', async ({}, testInfo) => {
+test('built dist has no legacy cosmic layers', async ({}, testInfo) => {
   const dist = join(__dirname, '..', 'dist', 'index.html')
   testInfo.skip(!existsSync(dist), 'dist/index.html not built yet')
   const html = readFileSync(dist, 'utf8')
-  // The field container is aria-hidden so the dots never reach the a11y tree.
-  expect(html).toMatch(/class="particles"[^>]*aria-hidden|aria-hidden[^>]*class="particles"/)
-  // Field is statically rendered (no JS): expect many particle spans in the markup.
-  const count = (html.match(/class="particle particle--/g) || []).length
-  expect(count).toBeGreaterThanOrEqual(40)
+  expect(html).not.toContain('bg-orbs')
+  expect(html).not.toContain('class="particles"')
+  expect(html).not.toContain('class="sparks"')
+  expect(html).not.toContain('scroll-progress')
+})
+
+test('built dist includes the complete workflow and a no-script explanation', async ({}, testInfo) => {
+  const dist = join(__dirname, '..', 'dist', 'index.html')
+  testInfo.skip(!existsSync(dist), 'dist/index.html not built yet')
+  const html = readFileSync(dist, 'utf8')
+  expect(html).toContain('data-scene="0"')
+  for (const stage of ['Intent', 'Wallet', 'Solvers', 'Settlement', 'Received']) expect(html).toContain(stage)
+  expect(html).toContain('<noscript>')
+  expect(html).toContain('receive tokens after on-chain settlement')
+  expect(html).not.toContain('storyReplay')
 })
 
 // Task 2.2 — reveal.ts tests

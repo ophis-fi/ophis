@@ -3,8 +3,6 @@ import { UI } from '@cowprotocol/ui'
 import { ArrowDown } from 'react-feather'
 import styled, { css } from 'styled-components/macro'
 
-import { loadingAnimationMixin } from './style-mixins'
-
 export const Box = styled.div<{
   isCollapsed: boolean
   hasSeparatorLine?: boolean
@@ -35,11 +33,7 @@ export const Box = styled.div<{
     `}
 `
 
-// Ophis: pill-shaped arrow swap button (32px round disc) that
-// punches through the seam between the two input rows. Card bg as
-// the disc surface (so it sits on a "puck" of card colour), with a
-// brand coral border by default — the affordance is loud, not shy.
-export const LoadingWrapper = styled.button<{ $isLoading: boolean }>`
+export const LoadingWrapper = styled.button`
   --size: 32px;
 
   position: absolute;
@@ -48,19 +42,13 @@ export const LoadingWrapper = styled.button<{ $isLoading: boolean }>`
   bottom: 0;
   height: var(--size);
   text-align: center;
-  transform-style: preserve-3d;
-  transform-origin: center right;
   transition:
-    transform 0.25s ease-out,
-    box-shadow 160ms ease-out,
     background 160ms ease-out,
     border-color 160ms ease-out;
-  border: 1.5px solid var(${UI.COLOR_PRIMARY});
-  box-shadow:
-    0 0 0 4px var(${UI.COLOR_PAPER}),
-    0 6px 18px rgba(0, 0, 0, 0.45);
+  border: 1px solid var(${UI.COLOR_BORDER});
+  box-shadow: 0 0 0 4px var(${UI.COLOR_PAPER});
   background: var(${UI.COLOR_PAPER});
-  color: var(${UI.COLOR_PRIMARY});
+  color: var(${UI.COLOR_TEXT_PAPER});
   border-radius: 50%;
   width: var(--size);
   margin: auto;
@@ -85,27 +73,39 @@ export const LoadingWrapper = styled.button<{ $isLoading: boolean }>`
     opacity: 0.6;
   }
 
-  ${({ $isLoading }) =>
-    $isLoading
-      ? loadingAnimationMixin
-      : css`
-          &:not(:disabled):hover {
-            transform: translateY(-2px) rotate(180deg);
-            background: var(${UI.COLOR_PRIMARY});
-            color: var(${UI.COLOR_PAPER});
-            box-shadow:
-              0 0 0 4px var(${UI.COLOR_PAPER}),
-              0 0 0 6px var(${UI.COLOR_PRIMARY_OPACITY_25}),
-              0 6px 18px rgba(0, 0, 0, 0.45);
-          }
-        `}
+  &:not(:disabled):hover {
+    background: var(${UI.COLOR_PAPER_DARKER});
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(${UI.COLOR_TEXT_PAPER});
+    outline-offset: 4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+  ${({ theme }) =>
+    theme.isOphisMobileSwap &&
+    css`
+      --size: 44px;
+      border: 4px solid #fff;
+      box-shadow: none;
+      background: #f2f2f3;
+      &:not(:disabled):hover {
+        transform: none;
+        box-shadow: none;
+        background: #e8e8ea;
+        color: #17191c;
+      }
+    `}
 `
 
 export const ArrowDownIcon = styled(ArrowDown)<{ disabled: boolean }>`
   display: block;
   margin: auto;
   stroke: currentColor;
-  stroke-width: 3px;
+  stroke-width: 2px;
   padding: 0;
   height: 100%;
   width: 20px;

@@ -74,9 +74,9 @@ export function renderTierPage(
     const pct = span > 0 ? Math.max(0, Math.min(100, Math.round((into / span) * 100))) : 0;
     progressHtml = `
       <div class="progress" role="group" aria-label="Progress to ${TIER_META[next.name].label}">
-        <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <div class="progress-track" role="progressbar" aria-label="Tier progress" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${pct}%"></div></div>
         <p class="progress-label">${fmtUsd(status.usd_to_next_tier)} more in 30-day volume to reach
-          <strong style="color:${TIER_META[next.name].color}">${TIER_META[next.name].label}</strong>
+          <strong>${TIER_META[next.name].label}</strong>
           (${fmtPct(next.rebate_pct)} rebate share)</p>
       </div>`;
   } else {
@@ -95,60 +95,54 @@ export function renderTierPage(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Ophis Rebates</title>
+<meta name="theme-color" content="#ffffff">
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: light; }
   * { box-sizing: border-box; }
   body {
-    margin: 0; min-height: 100dvh; padding: 32px 20px;
-    display: flex; align-items: center; justify-content: center;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    color: #e7e7ef;
-    background: radial-gradient(1200px 600px at 50% -10%, #1a1b3d 0%, #0e0f1a 55%, #090a12 100%);
+    margin: 0; min-height: 100dvh; padding: 32px 16px;
+    font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-variant-numeric: lining-nums tabular-nums;
+    color: #17191c; background: #ffffff; line-height: 1.5;
   }
-  .card {
-    width: 100%; max-width: 440px;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 18px; padding: 28px;
-    box-shadow: 0 24px 60px -30px rgba(0,0,0,0.8);
-  }
-  .brand { display: flex; align-items: center; gap: 8px; margin-bottom: 22px; }
-  .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: #f2a63e; box-shadow: 0 0 12px #f2a63e; }
-  .brand b { font-size: 15px; letter-spacing: 0.01em; }
-  .brand span { color: #8b8ba3; font-size: 13px; }
-  .wallet { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: #9a9ab2; margin: 0 0 20px; }
-  .tier-badge {
-    display: inline-flex; align-items: center; gap: 10px;
-    padding: 10px 16px; border-radius: 999px; margin-bottom: 4px;
-    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
-  }
-  .tier-badge .pip { width: 12px; height: 12px; border-radius: 50%; }
-  .tier-badge .name { font-size: 20px; font-weight: 700; }
-  .tier-badge .share { color: #b9b9cc; font-size: 14px; }
-  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 22px 0; }
-  .stat { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 14px 16px; }
-  .stat .k { color: #8b8ba3; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-  .stat .v { font-size: 22px; font-weight: 600; }
-  .progress { margin: 18px 0 4px; }
-  .progress-track { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
-  .progress-fill { height: 100%; background: linear-gradient(90deg, #f2a63e, #ffce7a); border-radius: 999px; }
-  .progress-label { color: #b9b9cc; font-size: 13.5px; line-height: 1.5; margin: 10px 0 0; }
-  .note { margin: 22px 0; padding: 14px 16px; border-radius: 12px; background: rgba(242,166,62,0.07); border: 1px solid rgba(242,166,62,0.18); color: #d8d2c4; font-size: 13.5px; line-height: 1.55; }
-  .actions { display: flex; gap: 10px; margin-top: 8px; }
-  .actions a { flex: 1; text-align: center; text-decoration: none; padding: 12px 14px; border-radius: 12px; font-size: 14px; font-weight: 600; }
-  .actions .primary { background: #f2a63e; color: #1a1206; }
-  .actions .ghost { background: rgba(255,255,255,0.05); color: #e7e7ef; border: 1px solid rgba(255,255,255,0.12); }
-  .foot { margin-top: 20px; color: #6f6f86; font-size: 11.5px; line-height: 1.5; }
+  .card { width: 100%; max-width: 560px; margin: 0 auto; padding: clamp(16px, 4vw, 32px); }
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+  .brand a { color: #17191c; font-size: 24px; text-decoration: none; }
+  .brand span, .wallet, .tier-badge .share, .stat .k, .progress-label, .foot { color: #5b606b; }
+  .wallet { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; margin: 0 0 16px; }
+  h1 { margin: 0 0 24px; font: 400 clamp(36px, 8vw, 52px)/1.15 Georgia, serif; letter-spacing: -0.015em; }
+  .tier-badge { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .tier-badge .pip { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #5b606b; }
+  .tier-badge .name { font-size: 20px; font-weight: 500; }
+  .tier-badge .share { font-size: 14px; }
+  .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 24px 0; }
+  .stat { background: #f2f2f3; border-radius: 16px; padding: 16px; min-width: 0; }
+  .stat .k { font-size: 12px; margin-bottom: 8px; }
+  .stat .v { font-size: clamp(20px, 5vw, 28px); font-weight: 500; overflow-wrap: anywhere; }
+  .progress { margin: 24px 0 0; }
+  .progress-track { height: 8px; border-radius: 4px; background: #d9d9dc; overflow: hidden; }
+  .progress-fill { height: 100%; background: #17191c; border-radius: 4px; }
+  .progress-label { font-size: 14px; margin: 12px 0 0; }
+  .note { margin: 24px 0; padding: 20px; border-radius: 16px; background: #fbe1d1; color: #5d2a1a; font-size: 14px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  .actions a { flex: 1 1 180px; min-height: 44px; text-align: center; text-decoration: none; padding: 12px 16px; border: 1px solid #17191c; border-radius: 12px; font-size: 14px; }
+  .actions .primary { background: #17191c; color: #ffffff; }
+  .actions .primary:hover { background: #353941; }
+  .actions .ghost { background: #ffffff; color: #17191c; }
+  .actions .ghost:hover { background: #f2f2f3; }
+  a:focus-visible { outline: 2px solid #17191c; outline-offset: 4px; }
+  .foot { margin-top: 24px; font-size: 13px; }
 </style>
 </head>
 <body>
   <main class="card">
-    <div class="brand"><span class="dot"></span><b>Ophis</b><span>Rebates</span></div>
+    <nav class="brand" aria-label="Ophis"><a href="https://ophis.fi/">Ophis</a><span>Rebates</span></nav>
+    <h1>Your trading rewards.</h1>
     <p class="wallet">${wallet}</p>
 
     <div class="tier-badge">
       <span class="pip" style="background:${meta.color}"></span>
-      <span class="name" style="color:${meta.color}">${meta.label}</span>
+      <span class="name">${meta.label}</span>
       <span class="share">${share} rebate share</span>
     </div>
 

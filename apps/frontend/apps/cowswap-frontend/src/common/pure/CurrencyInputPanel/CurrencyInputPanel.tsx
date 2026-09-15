@@ -8,6 +8,7 @@ import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { HoverTooltip, TokenAmount } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
+import { useTheme } from 'styled-components/macro'
 import { Nullish } from 'types'
 
 import { BalanceAndSubsidy } from 'legacy/hooks/useCowBalanceAndSubsidy'
@@ -112,6 +113,7 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
     receiveAmountInfo,
     isUsdValuesMode = false,
   } = currencyInfo
+  const { isOphisMobileSwap } = useTheme()
   const disabled = !!props.disabled || isProviderNetworkUnsupported || isProviderNetworkDeprecated
 
   const { value: usdAmount } = useUsdAmount(amount)
@@ -238,6 +240,18 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
     openTokenSelectWidget(currency, field, (currency) => onCurrencySelection(field, currency))
   }, [openTokenSelectWidget, currency, onCurrencySelection, field])
 
+  const currencySelector = (
+    <CurrencySelectButton
+      onClick={onTokenSelectClick}
+      currency={disabled ? undefined : currency || undefined}
+      loading={areCurrenciesLoading || disabled}
+      readonlyMode={tokenSelectorDisabled}
+      displayTokenName={displayTokenName}
+      displayChainName={displayChainName}
+      customSelectTokenButton={customSelectTokenButton}
+    />
+  )
+
   return (
     <styledEl.OuterWrapper>
       <styledEl.Wrapper
@@ -256,11 +270,12 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
             </styledEl.CurrencyTopLabel>
           )}
 
+          {isOphisMobileSwap && currencySelector}
           {isUsdValuesMode && balanceView}
         </styledEl.TopRow>
 
         {topContent}
-        <styledEl.CurrencyInputBox isInvalid={isInvalid}>
+        <styledEl.CurrencyInputBox isInvalid={isInvalid} $amountRow={isOphisMobileSwap}>
           <div>
             {inputTooltip ? (
               <HoverTooltip wrapInContainer content={inputTooltip}>
@@ -270,17 +285,7 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
               numericalInput
             )}
           </div>
-          <div>
-            <CurrencySelectButton
-              onClick={onTokenSelectClick}
-              currency={disabled ? undefined : currency || undefined}
-              loading={areCurrenciesLoading || disabled}
-              readonlyMode={tokenSelectorDisabled}
-              displayTokenName={displayTokenName}
-              displayChainName={displayChainName}
-              customSelectTokenButton={customSelectTokenButton}
-            />
-          </div>
+          <div>{!isOphisMobileSwap && currencySelector}</div>
         </styledEl.CurrencyInputBox>
 
         <styledEl.CurrencyInputBox>

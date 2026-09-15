@@ -56,12 +56,13 @@ export const Step = styled.div<{ status: StepStatus; isFirst: boolean }>`
   align-items: flex-start;
   margin: 0 auto;
   width: 100%;
-  padding: 30px 30px 10px;
+  padding: 20px 16px 10px;
   opacity: ${({ status, theme }) => getOpacity(status, theme.darkMode)};
   contain: layout style;
 `
 
 export const Content = styled.div`
+  min-width: 0;
   display: flex;
   flex-direction: column;
 `
@@ -69,7 +70,8 @@ export const Content = styled.div`
 export const Title = styled.h3<{ customColor?: string }>`
   color: ${({ customColor }) => customColor || `var(${UI.COLOR_TEXT_PAPER})`};
   margin: 0;
-  font-size: 21px;
+  font-size: 18px;
+  line-height: 1.35;
 `
 
 export const ProgressTopSection = styled.div`
@@ -91,38 +93,20 @@ export const ProgressTopSection = styled.div`
   }
 `
 
-export const CowImage = styled.div`
-  flex: 1;
-  height: 100%;
-  width: auto;
+export const ProgressArt = styled.div`
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  position: relative;
-
-  ${Media.upToSmall()} {
-    width: 100%;
-    align-items: center;
-    justify-content: center;
-    max-height: 100%;
-  }
-
-  > svg {
-    height: 100%;
-    width: 100%;
-    max-width: 199px;
-    object-fit: contain;
-
-    ${Media.upToSmall()} {
-      max-width: 100%;
-    }
-  }
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  width: 100%;
+  height: 100%;
+  color: var(${UI.COLOR_TEXT});
 `
 
 export const TokenPairTitle = styled.span`
   margin: 4px 0 4px 4px;
-  background: var(${UI.COLOR_BLUE_100_PRIMARY});
-  color: var(${UI.COLOR_BLUE_900_PRIMARY});
+  background: var(${UI.COLOR_PAPER_DARKEST});
+  color: var(${UI.COLOR_TEXT});
   border-radius: 12px;
   padding: 0 6px;
   word-break: break-word;
@@ -131,7 +115,7 @@ export const TokenPairTitle = styled.span`
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
-  hyphens: auto;
+  hyphens: none;
   font-size: 1em;
 `
 
@@ -158,7 +142,7 @@ export const FinishedTagLine = styled.div`
   font-weight: bold;
   color: inherit;
   max-width: 100%;
-  font-size: 22px;
+  font-size: 18px;
   width: 100%;
   text-align: right;
   display: flex;
@@ -180,9 +164,9 @@ export const FinishedLogo = styled.div`
   justify-content: space-between;
   z-index: 1;
   padding: 0;
-  margin: auto 0 0;
+  margin: 0;
   width: 100%;
-  flex: 0;
+  font-size: 13px;
 
   > b {
     font-weight: 700;
@@ -203,15 +187,15 @@ export const NumberedElement = styled.div<{
   justify-content: center;
   align-items: center;
   margin-right: 15px;
-  color: ${({ status }) => (status === StepStatus.ACTIVE ? `var(${UI.COLOR_PAPER})` : `var(${UI.COLOR_PAPER})`)};
+  color: var(${UI.COLOR_PAPER});
   font-weight: bold;
   font-size: 16px;
-  background-color: ${({ status, customColor, $isUnfillable, $isCancelling }) =>
+  background-color: ${({ customColor, $isUnfillable, $isCancelling }) =>
     $isCancelling
       ? `var(${UI.COLOR_DANGER_BG})`
       : $isUnfillable
-        ? '#996815'
-        : customColor || (status === StepStatus.ACTIVE ? '#2196F3' : `var(${UI.COLOR_TEXT})`)};
+        ? `var(${UI.COLOR_ALERT_TEXT})`
+        : customColor || `var(${UI.COLOR_TEXT})`};
   border-radius: 50%;
   position: relative;
 `
@@ -237,39 +221,19 @@ export const Spinner = styled.div`
   }
 `
 
-export const ClockAnimation = styled.div`
-  --size: 85px;
-  width: var(--size);
-  height: var(--size);
-  position: absolute;
-  bottom: 36px;
-  right: 71px;
-  background: #996815;
-  border-radius: var(--size);
-  padding: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  ${Media.upToSmall()} {
-    bottom: 16px;
-    right: 16px;
-  }
-`
-
 export const FinishedImageContent = styled.div`
   display: flex;
   flex-flow: column;
   align-items: center;
   justify-content: space-between;
-  height: 100%;
-  width: 50%;
+  height: auto;
+  width: 100%;
   position: relative;
-  border: 2px solid var(${UI.COLOR_BLUE_900_PRIMARY});
-  border-radius: 21px;
-  padding: 14px 12px 16px;
+  border: 1px solid var(${UI.COLOR_PAPER_DARKEST});
+  border-radius: 12px;
+  padding: 16px;
   gap: 12px;
-  color: var(${UI.COLOR_BLUE_900_PRIMARY});
+  color: var(${UI.COLOR_TEXT});
 
   ${Media.upToSmall()} {
     width: 100%;
@@ -291,8 +255,7 @@ export const BenefitSurplusContainer = styled.div`
 
 export const BenefitText = styled.div`
   width: 100%;
-  height: 100%;
-  overflow: hidden;
+  height: auto;
   padding: 6px 0 0;
   margin: 0;
   box-sizing: border-box;
@@ -306,7 +269,7 @@ export const BenefitTagLine = styled.div`
   margin: 0 auto auto 0;
   border-radius: 12px;
   padding: 2px 10px;
-  background-color: var(${UI.COLOR_BLUE_400_PRIMARY});
+  background-color: var(${UI.COLOR_PAPER_DARKEST});
   color: var(${UI.COLOR_TEXT});
 `
 
@@ -326,11 +289,11 @@ export const SurplusValue = styled.span`
 export const BenefitResponsiveText = styled.div`
   display: block;
   width: 100%;
-  line-height: 1.2;
+  font-weight: 500;
+  line-height: 1.5;
   text-align: left;
   word-break: break-word;
-  hyphens: auto;
-  font-size: 1em;
-  overflow: hidden;
+  hyphens: none;
+  font-size: 16px;
   white-space: normal;
 `

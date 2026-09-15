@@ -630,7 +630,7 @@
       if (unresolvedTransaction) {
         setStatus(
           [
-            'TRANSACTION STILL PENDING — RETRY LOCKED',
+            'TRANSACTION STILL PENDING - RETRY LOCKED',
             unresolvedTransaction.hash,
             error?.message || String(error),
             'Keep this page open or press the button after reloading to resume receipt reconciliation.',

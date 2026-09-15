@@ -12,7 +12,7 @@ import { useRwaConsentForAppData } from 'modules/appData/hooks/useRwaConsentForA
 import { injectedWidgetAppDataPartnerFeeAtom } from 'modules/injectedWidget'
 import { useAppCodeWidgetAware } from 'modules/injectedWidget/hooks/useAppCodeWidgetAware'
 import { useUtm } from 'modules/utm'
-import { isStableStablePair } from 'modules/volumeFee'
+import { basketHostFeeKindAtom, isStableStablePair } from 'modules/volumeFee'
 
 import { useBasketLegPartnerFee } from './useBasketLegPartnerFee'
 import { BuildBasketLegAppDataFn } from './useBasketPlacement'
@@ -57,6 +57,7 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
 
   const resolveLegPartnerFee = useBasketLegPartnerFee()
   const widgetPartnerFee = useAtomValue(injectedWidgetAppDataPartnerFeeAtom)
+  const hostFee = useAtomValue(basketHostFeeKindAtom)
 
   return useCallback(
     async (leg, marker: OphisBasketTag): Promise<AppDataInfo> => {
@@ -69,6 +70,7 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
         resolveLegPartnerFee(leg),
         chainId,
         isStableStablePair({ chainId, sellTokenAddress: leg.sellToken, buyTokenAddress: leg.buyToken }),
+        hostFee,
       )
 
       return buildAppData({
@@ -96,6 +98,7 @@ export function useBuildBasketLegAppData(slippageBips: number): BuildBasketLegAp
       refCode,
       utm,
       widgetPartnerFee,
+      hostFee,
       resolveLegPartnerFee,
       chainId,
     ],

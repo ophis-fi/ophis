@@ -96,7 +96,7 @@ jobs:
           CYPRESS_SCREENSHOTS_FOLDER: /tmp/otc-screenshots
           # Routine host hydration is not fork evidence. The injected wallet,
           # fixtures, action terms, preflight, sends, and receipts stay on Anvil.
-          REACT_APP_NETWORK_URL_1: https://ethereum-rpc.publicnode.com
+          REACT_APP_NETWORK_URL_1: https://eth.drpc.org
           REACT_APP_OTC_WRITE_FLAG: 'true'
           REACT_APP_OTC_WRITE_MODE: fork
         run: |

@@ -1,6 +1,7 @@
 export * from './updater/AppDataUpdater'
 
-export { useAppData, useAppDataHooks } from './hooks'
+export { useAppData, useAppDataHooks, useAppDataVolumeFeeBps } from './hooks'
+export { sumVolumeFeeBps } from './utils/sumVolumeFeeBps'
 export { uploadAppDataDocOrderbookApi } from './services'
 
 export { getAppData } from './utils/fullAppData'

@@ -56,5 +56,10 @@ export const SOVEREIGN_CHAIN_LIST = new Intl.ListFormat('en', {
   type: 'conjunction',
 }).format(SOVEREIGN_CHAINS.map((c) => c.name))
 
-/** Non-EVM destinations reachable from EVM source chains via NEAR Intents. */
-export const NEAR_DESTINATIONS = ['Solana', 'Bitcoin'] as const
+/** Additional destinations reachable from supported EVM source chains. */
+export const NEAR_DESTINATIONS = ['Solana', 'Bitcoin', 'Monad', 'Hyperliquid', 'X Layer', 'Sui', 'Tron'] as const
+
+export const NEAR_DESTINATION_LIST = new Intl.ListFormat('en', {
+  style: 'long',
+  type: 'conjunction',
+}).format(NEAR_DESTINATIONS)

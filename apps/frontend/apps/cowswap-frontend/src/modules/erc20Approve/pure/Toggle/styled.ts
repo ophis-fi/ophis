@@ -79,3 +79,49 @@ export const OptionTitle = styled.div`
   margin: 0;
   color: inherit;
 `
+
+export const SpendingLimit = styled.section`
+  background: #fbe1d1;
+  color: #5d2a1a;
+  border-radius: 24px;
+  padding: 24px 16px 16px;
+  text-align: center;
+  > h3 {
+    font-size: 11px;
+    line-height: 1.4;
+    font-weight: 500;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    margin: 0 0 14px;
+  }
+  > p {
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 12px 0 0;
+  }
+  > button {
+    background: transparent;
+    color: inherit;
+    border: none;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    cursor: pointer;
+  }
+`
+
+export const SpendingAmount = styled.div`
+  font-family: var(--ophis-font-body);
+  font-size: clamp(24px, 7vw, 32px);
+  font-weight: 400;
+  font-variant-numeric: lining-nums tabular-nums;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+`
+
+export const ApprovalOptions = styled.details`
+  font-size: 13px;
+  > summary {
+    cursor: pointer;
+    padding: 14px 0;
+  }
+`

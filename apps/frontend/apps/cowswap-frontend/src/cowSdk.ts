@@ -18,6 +18,8 @@ import { useWeb3React } from '@web3-react/core'
 
 import { usePublicClient, useWalletClient } from 'wagmi'
 
+import { withAppRpcFallback } from './cowSdk.utils'
+
 const chainId = getCurrentChainIdFromUrl()
 
 // Ophis fork: hardcode the full OrderBook baseUrls map including OP mainnet (chain 10).
@@ -92,7 +94,10 @@ export function CowSdkUpdater(): null {
   useEffect(() => {
     if (LAUNCH_DARKLY_VIEM_MIGRATION) return
     if (!provider) return
-    legacyAdapter.setProvider(provider)
+    // Reads: the wallet first, the app RPC when the wallet's RPC fails (see cowSdk.utils.ts).
+    // Signing stays on the wallet; the signer adapter keeps its own provider, so a
+    // wallet JsonRpcSigner is never re-connected.
+    legacyAdapter.setProvider(withAppRpcFallback(chainId, provider))
     legacyAdapter.setSigner(provider.getSigner())
   }, [chainId, account, provider])
 

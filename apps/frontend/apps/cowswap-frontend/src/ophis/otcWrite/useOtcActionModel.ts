@@ -5,7 +5,7 @@ import { deriveOtcActionModel, type OtcActionFacts, type OtcActionModel } from '
 export function useOtcActionModel(facts: OtcActionFacts): OtcActionModel {
   const {
     enabled,
-    canary,
+    mainnet,
     walletAdmitted,
     connected,
     correctChain,
@@ -27,7 +27,7 @@ export function useOtcActionModel(facts: OtcActionFacts): OtcActionModel {
     () =>
       deriveOtcActionModel({
         enabled,
-        canary,
+        mainnet,
         walletAdmitted,
         connected,
         correctChain,
@@ -52,7 +52,7 @@ export function useOtcActionModel(facts: OtcActionFacts): OtcActionModel {
       connected,
       correctChain,
       enabled,
-      canary,
+      mainnet,
       walletAdmitted,
       executeLabel,
       networkVerified,

@@ -1,14 +1,4 @@
-/*
- * Ophis fonts.
- *
- * StudioFeixen (CoW's licensed face) replaced with OFL-licensed alternatives:
- *   - Plus Jakarta Sans  → body, UI labels, sub-headings (H2-H6)
- *   - Fraunces           → display headlines (Display 1/2, H1)
- *   - JetBrains Mono     → addresses, hashes, numeric data
- *
- * Loading: see <link rel="stylesheet"> for fonts.googleapis.com in index.html.
- * Inter retained as fallback only (some legacy components reference it directly).
- */
+/* Self-hosted Inter for body and UI text; headings and code use system fonts. */
 
 /* Inter variable fonts - covers all weights and styles */
 @font-face {

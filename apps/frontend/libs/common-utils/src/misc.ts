@@ -1,6 +1,7 @@
 import { OrderKind, SupportedChainId as ChainId } from '@cowprotocol/cow-sdk'
 import { Percent } from '@cowprotocol/currency'
 
+import { FractionUtils } from './fractionUtils'
 import { isSellOrder } from './isSellOrder'
 import { log } from './logger'
 
@@ -90,7 +91,8 @@ export interface TokensFromMarketParams<T> extends Market<T> {
  * @param percent
  */
 export function bpsToPercent(bps: number): Percent {
-  return new Percent(bps, 10000)
+  const fraction = FractionUtils.fromNumber(bps).divide(10_000)
+  return new Percent(fraction.numerator, fraction.denominator)
 }
 
 export function getCanonicalMarket<T>({ sellToken, buyToken, kind }: CanonicalMarketParams<T>): Market<T> {

@@ -3,7 +3,7 @@
  *
  * Browse and inspect fixed-price escrow orders on the external immutable
  * Swapboard contract. Production defaults to read-only. Wallet actions mount
- * only when the fork or restricted canary write gate passes; all signer access stays isolated in ophis/otcWrite.
+ * only when an explicitly configured write mode passes its gates; signing stays isolated in ophis/otcWrite.
  *
  * Data flow: on-chain snapshot (settlement authority, fail-closed) +
  * subgraph enrichment (ages/history, optional). Rows are labeled
@@ -17,14 +17,14 @@ import { useCallback, useState, type ReactNode } from 'react'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { Badge, Callout, PageShell } from 'ophis/ds'
+import { Callout, PageShell } from 'ophis/ds'
 import { useOtcData } from 'ophis/otc'
 import { OtcCreatePanel } from 'ophis/otcWrite'
 import { Navigate } from 'react-router'
 
 import { Routes as RoutesEnum } from 'common/constants/routes'
 
-import { BadgeRow, TabBar, TabButton } from './Otc.styled'
+import { BadgeRow, OtcStack, TabBar, TabButton } from './Otc.styled'
 import { OtcDisclosure } from './OtcDisclosure'
 import { buildOtcDisplayRows, filterBrowseRows } from './otcDisplay'
 import { BrowsePanel, MyOrdersPanel, OtcStateNotices, ReadOnlyCreatePanel } from './OtcPagePanels'
@@ -53,6 +53,9 @@ export interface OtcPageViewProps {
 }
 
 function OtcLede({ writeEnabled, canary }: { writeEnabled: boolean; canary: boolean }): ReactNode {
+  if (writeEnabled && process.env.REACT_APP_OTC_WRITE_MODE === 'public') {
+    return <Trans>Connect your wallet to create, fill, or cancel fixed-price ERC-20 orders on Ethereum.</Trans>
+  }
   return writeEnabled && canary ? (
     <Trans>
       Create, fill, and cancel exact ERC-20 orders in the restricted Ethereum canary. Transactions use real assets and
@@ -68,18 +71,6 @@ function OtcLede({ writeEnabled, canary }: { writeEnabled: boolean; canary: bool
       Browse escrowed OTC orders settled on an external immutable Ethereum contract. This surface is read-only; order
       data is verified directly against Ethereum.
     </Trans>
-  )
-}
-
-function OtcModeLabel({ writeEnabled, canary }: { writeEnabled: boolean; canary: boolean }): ReactNode {
-  return writeEnabled ? (
-    canary ? (
-      <Trans>Restricted Ethereum canary</Trans>
-    ) : (
-      <Trans>Local fork writes</Trans>
-    )
-  ) : (
-    <Trans>Read-only</Trans>
   )
 }
 
@@ -105,57 +96,56 @@ export function OtcPageView({
       title={<Trans>Fixed-price peer-to-peer orders.</Trans>}
       lede={<OtcLede writeEnabled={writeEnabled} canary={canary} />}
     >
-      <BadgeRow>
-        <Badge tone="live">Ethereum</Badge>
-        <Badge tone="beta">
-          <OtcModeLabel writeEnabled={writeEnabled} canary={canary} />
-        </Badge>
+      <OtcStack>
         {verifiedBlock && (
-          <span aria-label={t`Verified at block ${verifiedBlock}`}>
-            <Trans>Verified at block {verifiedBlock}</Trans>
-          </span>
+          <BadgeRow>
+            <span aria-label={t`Verified at block ${verifiedBlock}`}>
+              <Trans>Verified at block {verifiedBlock}</Trans>
+            </span>
+          </BadgeRow>
         )}
-      </BadgeRow>
 
-      <OtcDisclosure />
+        <OtcDisclosure />
 
-      {state.status === 'loading' && (
-        <p role="status">
-          <Trans>Loading OTC orders from Ethereum...</Trans>
-        </p>
-      )}
-
-      {state.status === 'unavailable' && (
-        <Callout tone="warning" title={<Trans>OTC data unavailable</Trans>}>
-          <p>
-            <Trans>
-              On-chain verification failed, so order data is hidden rather than shown unverified. Refresh to try again.
-            </Trans>
+        {state.status === 'loading' && (
+          <p role="status">
+            <Trans>Loading OTC orders from Ethereum...</Trans>
           </p>
-        </Callout>
-      )}
+        )}
 
-      {showTabs && (
-        <>
-          {dataReady && <OtcStateNotices state={state} />}
-          <TabBar role="group" aria-label={t`OTC views`}>
-            {TABS.map((item) => (
-              <TabButton
-                key={item}
-                type="button"
-                $active={tab === item}
-                aria-pressed={tab === item}
-                onClick={() => setTab(item)}
-              >
-                <OtcTabLabel tab={item} />
-              </TabButton>
-            ))}
-          </TabBar>
-          {dataReady && tab === 'browse' && <BrowsePanel rows={filterBrowseRows(rows)} nowMs={nowMs} />}
-          {dataReady && tab === 'mine' && <MyOrdersPanel rows={rows} account={account} nowMs={nowMs} />}
-          {tab === 'create' && (createPanel ?? <ReadOnlyCreatePanel />)}
-        </>
-      )}
+        {state.status === 'unavailable' && (
+          <Callout tone="warning" title={<Trans>OTC data unavailable</Trans>}>
+            <p>
+              <Trans>
+                On-chain verification failed, so order data is hidden rather than shown unverified. Refresh to try
+                again.
+              </Trans>
+            </p>
+          </Callout>
+        )}
+
+        {showTabs && (
+          <>
+            {dataReady && <OtcStateNotices state={state} />}
+            <TabBar role="group" aria-label={t`OTC views`}>
+              {TABS.map((item) => (
+                <TabButton
+                  key={item}
+                  type="button"
+                  $active={tab === item}
+                  aria-pressed={tab === item}
+                  onClick={() => setTab(item)}
+                >
+                  <OtcTabLabel tab={item} />
+                </TabButton>
+              ))}
+            </TabBar>
+            {dataReady && tab === 'browse' && <BrowsePanel rows={filterBrowseRows(rows)} nowMs={nowMs} />}
+            {dataReady && tab === 'mine' && <MyOrdersPanel rows={rows} account={account} nowMs={nowMs} />}
+            {tab === 'create' && (createPanel ?? <ReadOnlyCreatePanel />)}
+          </>
+        )}
+      </OtcStack>
     </PageShell>
   )
 }

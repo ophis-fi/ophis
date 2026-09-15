@@ -4,6 +4,7 @@
  * Seznam (and other IndexNow participants). Run from CI after a content deploy.
  *
  * Usage:  node scripts/indexnow-ping.mjs <host> <url> [<url> ...]
+ *         node scripts/indexnow-ping.mjs <host> --sitemap <built-sitemap.xml>
  *   e.g.  node scripts/indexnow-ping.mjs ophis.fi https://ophis.fi/
  *
  * The key is PUBLIC and hosted at https://<host>/<key>.txt (see the
@@ -13,9 +14,22 @@
  * deploy. All URLs must be on <host> (IndexNow rejects cross-host batches).
  */
 
+import { readFileSync } from 'node:fs'
+
 const KEY = '87363f03a1714c85a011bd1001cdec15'
 
-const [host, ...urls] = process.argv.slice(2)
+const [host, ...args] = process.argv.slice(2)
+let urls = args
+if (args[0] === '--sitemap') {
+  try {
+    // ponytail: submit the small generated sitemap; diff URLs if it grows large.
+    const xml = readFileSync(args[1], 'utf8')
+    urls = [...new Set([...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1].replaceAll('&amp;', '&')))]
+  } catch (err) {
+    console.error('IndexNow: cannot read sitemap (non-fatal):', err.message)
+    process.exit(0)
+  }
+}
 
 if (!host || urls.length === 0) {
   console.error('usage: node scripts/indexnow-ping.mjs <host> <url> [<url> ...]')
@@ -25,7 +39,8 @@ if (!host || urls.length === 0) {
 // Guard: every URL must be on <host> or IndexNow rejects the whole batch.
 const offHost = urls.filter((u) => {
   try {
-    return new URL(u).host !== host
+    const url = new URL(u)
+    return url.host !== host || url.protocol !== 'https:' || !!url.username || !!url.password || !!url.hash
   } catch {
     return true
   }

@@ -3,6 +3,7 @@ import { Media, UI } from '@cowprotocol/ui'
 import styled from 'styled-components/macro'
 
 export const Wrapper = styled.div<{ active: boolean }>`
+  min-width: 0;
   display: flex;
   flex-direction: row;
   align-items: center;

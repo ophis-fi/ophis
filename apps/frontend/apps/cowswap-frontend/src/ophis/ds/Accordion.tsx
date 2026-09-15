@@ -12,6 +12,8 @@ import { DetailsHTMLAttributes, ReactNode } from 'react'
 
 import styled from 'styled-components/macro'
 
+import { STEEP_FONT, steep } from './steep.utils'
+
 interface AccordionProps extends Omit<DetailsHTMLAttributes<HTMLDetailsElement>, 'children'> {
   /** Trigger row — what the user clicks to expand. Typically a short question. */
   summary: ReactNode
@@ -20,20 +22,21 @@ interface AccordionProps extends Omit<DetailsHTMLAttributes<HTMLDetailsElement>,
 }
 
 const Details = styled.details`
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 0;
   background: transparent;
 `
 
 const Summary = styled.summary`
   cursor: pointer;
-  font-family: 'Geist', var(--cow-font-family-primary, system-ui);
+  font-family: ${STEEP_FONT.body};
   font-weight: 500;
-  font-size: 17px;
+  font-size: 16px;
   letter-spacing: -0.005em;
-  color: #f5efe6;
+  color: ${({ theme }) => steep(theme).text};
   padding: 14px 16px;
-  border-radius: 10px;
+  min-height: 44px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -45,20 +48,22 @@ const Summary = styled.summary`
   }
 
   &:hover {
-    background-color: rgba(245, 239, 230, 0.04);
+    background-color: ${({ theme }) =>
+      theme?.darkMode ? 'rgba(244, 244, 245, 0.05)' : 'var(--ophis-steep-mist, #f2f2f3)'};
   }
 
   &:focus-visible {
-    outline: 2px solid rgba(242, 166, 62, 0.5);
+    outline: 2px solid ${({ theme }) => steep(theme).link};
     outline-offset: 2px;
   }
 
   &::after {
     content: '+';
     margin-left: auto;
-    font-family: 'Geist Mono', ui-monospace, monospace;
+    font-family: ${STEEP_FONT.body};
     font-size: 18px;
-    color: #f2a63e;
+    font-weight: 400;
+    color: ${({ theme }) => steep(theme).secondary};
     transition: transform 160ms ease-out;
   }
 
@@ -69,7 +74,7 @@ const Summary = styled.summary`
 
 const Body = styled.div`
   padding: 0 16px 16px;
-  color: rgba(245, 239, 230, 0.78);
+  color: ${({ theme }) => steep(theme).muted};
   font-size: 15px;
   line-height: 1.65;
 
@@ -93,9 +98,10 @@ export function Accordion({ summary, children, ...rest }: AccordionProps): React
 export const AccordionGroup = styled.div`
   display: flex;
   flex-direction: column;
-  border-top: 1px solid rgba(245, 239, 230, 0.08);
+  border-top: 1px solid ${({ theme }) => steep(theme).cardBorder};
 
   & > details {
-    border-bottom: 1px solid rgba(245, 239, 230, 0.08);
+    border-bottom: 1px solid ${({ theme }) => steep(theme).cardBorder};
+    border-radius: 0;
   }
 `

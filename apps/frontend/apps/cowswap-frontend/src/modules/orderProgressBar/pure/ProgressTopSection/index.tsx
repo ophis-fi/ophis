@@ -17,7 +17,6 @@ export interface ProgressTopSectionProps {
   stepName: OrderProgressBarStepName
   order: Order | undefined
   countdown: number
-  randomImage: string
   shouldShowSurplus: boolean | undefined | null
   surplusPercentValue: string
   randomBenefit: string
@@ -33,7 +32,6 @@ export function ProgressTopSection({
   stepName,
   order,
   countdown,
-  randomImage,
   randomBenefit,
   shouldShowSurplus,
   surplusPercentValue,
@@ -75,7 +73,6 @@ export function ProgressTopSection({
       <FinishedCancellationFailedTopSection
         stepName={stepName}
         order={order}
-        randomImage={randomImage}
         shouldShowSurplus={shouldShowSurplus}
         surplusPercentValue={surplusPercentValue}
         randomBenefit={randomBenefit}

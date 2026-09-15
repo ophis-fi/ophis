@@ -11,7 +11,8 @@ const SOVEREIGN_ORDERBOOKS = [
 ];
 const ASSET_FACADE =
   process.env.ROBINHOOD_ASSET_FACADE_URL || 'https://swap.ophis.fi/api/robinhood/assets';
-const TOKEN_LIST = 'https://ipfs.io/ipns/tokens.uniswap.org';
+const TOKEN_LIST = 'https://tokens.uniswap.org';
+const TOKEN_LIST_FALLBACK = 'https://ipfs.io/ipns/tokens.uniswap.org';
 
 const CONTRACTS = {
   settlement: '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD',
@@ -19,6 +20,7 @@ const CONTRACTS = {
   ethFlow: '0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29',
   weth: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
   usdg: '0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168',
+  pons: '0x39dBED3a2bd333467115dE45665cC57F813C4571',
 };
 
 const timeoutSignal = (ms = 15_000) => AbortSignal.timeout(ms);
@@ -35,9 +37,110 @@ export function decodeAddress(hex) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url, { signal: timeoutSignal() });
+  const response = await fetch(url, { signal: timeoutSignal(30_000) });
   assert.ok(response.ok, `${url} returned HTTP ${response.status}`);
   return response.json();
+}
+
+async function fetchDefaultTokenList() {
+  return fetchTokenList(TOKEN_LIST).catch(() => fetchTokenList(TOKEN_LIST_FALLBACK));
+}
+
+async function fetchTokenList(url) {
+  const list = await fetchJson(url);
+  assert.ok(typeof list?.name === 'string' && list.name.length > 0, 'invalid token list name');
+  assert.ok(
+    typeof list.timestamp === 'string' &&
+      /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/.test(
+        list.timestamp,
+      ) &&
+      Number.isFinite(Date.parse(list.timestamp)),
+    'invalid token list timestamp',
+  );
+  for (const part of ['major', 'minor', 'patch']) {
+    assert.ok(
+      Number.isSafeInteger(list.version?.[part]) && list.version[part] >= 0,
+      'invalid token list version',
+    );
+  }
+  assert.ok(Array.isArray(list.tokens), 'invalid token list tokens');
+  // The application drops non-EVM entries before validating a multichain list.
+  const tokens = list.tokens.filter((token) => {
+    assert.ok(typeof token?.address === 'string', 'invalid token address');
+    return /^0x[0-9a-fA-F]{40}$/.test(token.address);
+  });
+  for (const token of tokens) {
+    assert.ok(
+      token && Number.isSafeInteger(token.chainId) && token.chainId > 0,
+      'invalid token chain',
+    );
+    assert.ok(
+      Number.isInteger(token.decimals) && token.decimals >= 0 && token.decimals <= 255,
+      'invalid token decimals',
+    );
+    for (const [field, maxLength] of [
+      ['name', 100],
+      ['symbol', 80],
+    ]) {
+      assert.ok(
+        typeof token[field] === 'string' &&
+          token[field].length <= maxLength &&
+          !/[<>]/.test(token[field]),
+        `invalid token ${field}`,
+      );
+    }
+  }
+  return { ...list, tokens };
+}
+
+async function assertIssuerTokenList(assets) {
+  const url = new URL(ASSET_FACADE);
+  url.searchParams.set('format', 'token-list');
+  const list = await fetchTokenList(url.href);
+  const expected = new Map(
+    assets.flatMap((asset) =>
+      asset.deployments
+        .filter((deployment) => deployment.chainId === CHAIN_ID)
+        .map((deployment) => [
+          normalizeAddress(deployment.contractAddress),
+          {
+            name: asset.tokenName.replace(/[<>]/g, '').slice(0, 100),
+            symbol: asset.tokenSymbol.replace(/[<>]/g, ''),
+          },
+        ]),
+    ),
+  );
+  assert.ok(
+    list.tokens.every((token) => token.chainId === CHAIN_ID && token.decimals === 18),
+    'invalid issuer token chain or decimals',
+  );
+  assert.deepEqual(
+    new Map(
+      list.tokens.map((token) => [
+        normalizeAddress(token.address),
+        { name: token.name, symbol: token.symbol },
+      ]),
+    ),
+    expected,
+    'issuer token list differs from the official registry',
+  );
+}
+
+async function assertPonsTokenList() {
+  const list = await fetchTokenList(new URL('/api/pons-token-list', ASSET_FACADE).href);
+  assert.ok(
+    list.tokens.every((token) => token.chainId === CHAIN_ID && token.decimals === 18),
+    'invalid Pons token chain or decimals',
+  );
+  assert.ok(
+    list.tokens.some(
+      (token) =>
+        normalizeAddress(token.address) === normalizeAddress(CONTRACTS.pons) &&
+        token.symbol === 'PONS' &&
+        token.name === 'Pons',
+    ),
+    'verified reference PONS missing from its enabled token list',
+  );
 }
 
 async function rpc(method, params = []) {
@@ -64,8 +167,14 @@ async function assertSovereignOrderbook(name, baseUrl) {
     fetch(`${baseUrl}/api/v1/version`, { signal: timeoutSignal() }),
     fetch(`${baseUrl}/api/v1/auction`, { signal: timeoutSignal() }),
   ]);
-  assert.ok(versionResponse.ok, `${name} orderbook version returned HTTP ${versionResponse.status}`);
-  assert.ok(auctionResponse.ok, `${name} orderbook auction returned HTTP ${auctionResponse.status}`);
+  assert.ok(
+    versionResponse.ok,
+    `${name} orderbook version returned HTTP ${versionResponse.status}`,
+  );
+  assert.ok(
+    auctionResponse.ok,
+    `${name} orderbook auction returned HTTP ${auctionResponse.status}`,
+  );
 
   const version = (await versionResponse.text()).trim();
   assert.ok(version.length > 0, `${name} orderbook returned an empty version`);
@@ -124,7 +233,10 @@ async function liveCanary() {
   ]);
   assert.ok(decodeUint(multiplier) > 0n, 'AAPL uiMultiplier is zero');
 
-  const tokenList = await fetchJson(TOKEN_LIST);
+  await assertIssuerTokenList(assets);
+  await assertPonsTokenList();
+
+  const tokenList = await fetchDefaultTokenList();
   const listedStockAddresses = new Set(
     (tokenList.tokens ?? [])
       .filter((token) => token.chainId === CHAIN_ID)
@@ -149,17 +261,97 @@ async function liveCanary() {
   );
 }
 
-function selfTest() {
+async function selfTest() {
   assert.equal(decodeUint(`0x${'0'.repeat(63)}6`), 6n);
   assert.equal(
     decodeAddress(`0x${'0'.repeat(24)}B52C38097c19cd38238c62DD36027a7918eFa890`),
     normalizeAddress(CONTRACTS.vaultRelayer),
   );
+  const originalFetch = globalThis.fetch;
+  const validList = {
+    name: 'Test tokens',
+    timestamp: '2026-09-10T00:00:00Z',
+    version: { major: 1, minor: 0, patch: 0 },
+    tokens: [
+      {
+        chainId: CHAIN_ID,
+        address: CONTRACTS.weth,
+        name: 'Wrapped Ether',
+        symbol: 'WETH',
+        decimals: 18,
+      },
+    ],
+  };
+  const nonEvmList = { ...validList, tokens: [...validList.tokens, { address: 'non-EVM' }] };
+  try {
+    for (const primary of [
+      validList,
+      nonEvmList,
+      {},
+      { ...validList, version: null },
+      { ...validList, tokens: [null] },
+      { ...validList, timestamp: '09/10/2026' },
+      { ...validList, timestamp: '0' },
+      null,
+    ]) {
+      const calls = [];
+      globalThis.fetch = async (url) => {
+        calls.push(url);
+        return url === TOKEN_LIST && primary === null
+          ? new Response('Unavailable', { status: 503 })
+          : Response.json(url === TOKEN_LIST ? primary : validList);
+      };
+      assert.deepEqual(await fetchDefaultTokenList(), validList);
+      assert.deepEqual(
+        calls,
+        primary === validList || primary === nonEvmList
+          ? [TOKEN_LIST]
+          : [TOKEN_LIST, TOKEN_LIST_FALLBACK],
+      );
+    }
+    const assets = [
+      {
+        tokenName: '<Wrapped Ether>',
+        tokenSymbol: 'WETH',
+        deployments: [{ chainId: CHAIN_ID, contractAddress: CONTRACTS.weth }],
+      },
+    ];
+    let issuerList = validList;
+    globalThis.fetch = async (url) => {
+      const expectedUrl = new URL(ASSET_FACADE);
+      expectedUrl.searchParams.set('format', 'token-list');
+      assert.equal(url, expectedUrl.href);
+      return Response.json(issuerList);
+    };
+    await assertIssuerTokenList(assets);
+    for (issuerList of [
+      {},
+      { ...validList, tokens: [] },
+      { ...validList, tokens: [{ ...validList.tokens[0], symbol: 'OTHER' }] },
+      { ...validList, tokens: [{ ...validList.tokens[0], name: 'Other stock' }] },
+    ]) {
+      await assert.rejects(assertIssuerTokenList(assets));
+    }
+    let ponsList = {
+      ...validList,
+      tokens: [{ ...validList.tokens[0], address: CONTRACTS.pons, symbol: 'PONS', name: 'Pons' }],
+    };
+    globalThis.fetch = async (url) => {
+      assert.equal(url, new URL('/api/pons-token-list', ASSET_FACADE).href);
+      return Response.json(ponsList);
+    };
+    await assertPonsTokenList();
+    for (ponsList of [{}, { ...validList, tokens: [] }, validList]) {
+      await assert.rejects(assertPonsTokenList());
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
   console.log('Robinhood canary helper self-test passed.');
 }
 
 if (process.argv.includes('--self-test')) {
-  selfTest();
+  await selfTest();
 } else {
   await liveCanary();
 }

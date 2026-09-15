@@ -1,11 +1,11 @@
 import { Theme } from 'theme/types'
 
-const DARK_THEME_MANAGER: [Theme, (newTheme: Theme) => void] = [Theme.DARK, () => {}]
+const THEME_MANAGER: [Theme, (newTheme: Theme) => void] = [Theme.LIGHT, () => {}]
 
 export function useThemeMode(): Theme {
-  return Theme.DARK
+  return Theme.LIGHT
 }
 
 export function useThemeManager(): [Theme, (newTheme: Theme) => void] {
-  return DARK_THEME_MANAGER
+  return THEME_MANAGER
 }

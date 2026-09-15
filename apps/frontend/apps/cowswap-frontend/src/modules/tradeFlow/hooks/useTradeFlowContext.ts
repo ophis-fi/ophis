@@ -230,7 +230,8 @@ export function useTradeFlowContext({ deadline }: TradeFlowParams): TradeFlowCon
             allowsOffchainSigning,
             appData,
             class: OrderClass.MARKET,
-            partiallyFillable: isHooksTradeType,
+            // Bridge orders are fill-or-kill (see useQuoteParams).
+            partiallyFillable: isHooksTradeType && inputAmount.currency.chainId === outputAmount.currency.chainId,
             quoteId: tradeQuote.quoteResults.quoteResponse.id,
             isSafeWallet,
           },

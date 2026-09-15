@@ -58,11 +58,15 @@ function aggAddress(currency: Currency): string | null {
   return currency.isToken ? currency.address : AGG_NATIVE
 }
 
-function buildBeatMarketRequest(info: ReceiveAmountInfo | null): BeatMarketRequest | null {
+export function buildBeatMarketRequest(info: ReceiveAmountInfo | null): BeatMarketRequest | null {
   if (!info?.isSell) return null
   const sellAmount = info.afterNetworkCosts.sellAmount
   const buyAmount = info.afterNetworkCosts.buyAmount
   const chainId = sellAmount.currency.chainId
+  // A bridge trade buys on another chain: no single-chain aggregator can quote
+  // it, and asking one with the destination token address only earned a
+  // "token not found" that surfaced as a 502 in every bridge session.
+  if (buyAmount.currency.chainId !== chainId) return null
   const sellToken = aggAddress(sellAmount.currency)
   const buyToken = aggAddress(buyAmount.currency)
   const sellAtoms = sellAmount.quotient.toString()
@@ -81,12 +85,7 @@ function buildBeatMarketRequest(info: ReceiveAmountInfo | null): BeatMarketReque
 }
 
 function isValidMarketResponse(body: BeatMarketApiResponse): body is Extract<BeatMarketApiResponse, { ok: true }> {
-  return (
-    body.ok &&
-    !!body.data &&
-    /^[0-9]+$/.test(body.data.amountOut) &&
-    body.data.amountOut.length <= 80
-  )
+  return body.ok && !!body.data && /^[0-9]+$/.test(body.data.amountOut) && body.data.amountOut.length <= 80
 }
 
 function buildMarketState(request: BeatMarketRequest, amountOut: string): BeatMarketState {

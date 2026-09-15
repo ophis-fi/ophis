@@ -4,6 +4,8 @@ import { CurrencyAmount, Token } from '@cowprotocol/currency'
 
 import { renderHook } from '@testing-library/react'
 
+import { useAmountsToSignFromQuote } from 'modules/trade'
+
 import { useNeedsApproval } from 'common/hooks/useNeedsApproval'
 
 import { useGetAmountToSignApprove } from './useGetAmountToSignApprove'
@@ -11,6 +13,8 @@ import { useGetPartialAmountToSignApprove } from './useGetPartialAmountToSignApp
 
 import { MAX_APPROVE_AMOUNT } from '../constants'
 import { useIsPartialApproveSelectedByUser } from '../state'
+
+jest.mock('modules/trade', () => ({ useAmountsToSignFromQuote: jest.fn() }))
 
 jest.mock('jotai', () => ({
   ...jest.requireActual('jotai'),
@@ -47,6 +51,9 @@ describe('useGetAmountToSignApprove', () => {
   beforeEach(() => {
     jest.clearAllMocks()
 
+    jest
+      .mocked(useAmountsToSignFromQuote)
+      .mockReturnValue({ maximumSendSellAmount: mockPartialAmount, minimumReceiveBuyAmount: mockPartialAmount })
     mockUseGetPartialAmountToSignApprove.mockReturnValue(mockPartialAmount)
     mockUseNeedsApproval.mockReturnValue(true)
     mockUseIsPartialApproveSelectedByUser.mockReturnValue(false)
@@ -310,4 +317,20 @@ describe('useGetAmountToSignApprove', () => {
       expect(result.current).toEqual(mockMaxAmount)
     })
   })
+})
+
+it('keeps the explicit 10 cap when allowance covers 10 but the refreshed order needs 11', () => {
+  const token = new Token(1, '0x1234567890123456789012345678901234567890', 6, 'TEST')
+  const cap = CurrencyAmount.fromRawAmount(token, '10000000')
+  const required = CurrencyAmount.fromRawAmount(token, '11000000')
+  jest.mocked(useGetPartialAmountToSignApprove).mockReturnValue(cap)
+  jest
+    .mocked(useAmountsToSignFromQuote)
+    .mockReturnValue({ maximumSendSellAmount: required, minimumReceiveBuyAmount: cap })
+  jest.mocked(useNeedsApproval).mockImplementation((amount) => !!amount?.greaterThan(cap))
+  mockUseIsPartialApproveSelectedByUser.mockReturnValue(true)
+  mockUseAtomValue.mockReturnValue(true)
+  const { result } = renderHook(useGetAmountToSignApprove)
+  expect(result.current?.toExact()).toBe('10')
+  expect(useNeedsApproval).toHaveBeenCalledWith(required)
 })

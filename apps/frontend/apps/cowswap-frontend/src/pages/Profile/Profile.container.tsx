@@ -1,5 +1,5 @@
 /**
- * Profile — wallet-aware trader identity page.
+ * Profile - wallet-aware trader identity page.
  *
  * Phase C restructure (2026-06-11): COMPACT "rank and profile" layout modeled
  * on Jumper's profile. Sections, in order:
@@ -7,7 +7,7 @@
  *   (b) rank       : the rebate Tier (apps/rebate-indexer/src/tiers.ts) chip +
  *                    rebate % for the tier, fetched from /tier/:account.
  *   (c) referral   : the self-serve affiliate dashboard folded in (mint code,
- *                    share link, referred totals). REGULAR 8% tier only — no
+ *                    share link, referred totals). REGULAR 8% tier only - no
  *                    partner-tier surface.
  *
  * The standalone /affiliate route now redirects here (RoutesApp.tsx); the
@@ -51,7 +51,11 @@ export function ProfilePage(): ReactNode {
       width="medium"
       eyebrow="Profile"
       title="Your rank, rebates, and referrals."
-      lede="Connect a wallet to see your tier rank, rebate rate, and referral code. Read from your wallet and the public rebate indexer."
+      lede={
+        account
+          ? 'Your wallet identity, trading rank, and referral activity in one place.'
+          : 'Connect a wallet to see your tier rank, rebate rate, and referral code.'
+      }
     >
       <Section id="identity" title="Identity">
         {account ? (
@@ -60,7 +64,7 @@ export function ProfilePage(): ReactNode {
               { label: 'Address', value: <InlineCode>{truncateAddress(account)}</InlineCode> },
               {
                 label: 'ENS',
-                value: ensName ? <InlineCode>{ensName}</InlineCode> : <em>none</em>,
+                value: ensName ? <InlineCode>{ensName}</InlineCode> : <span aria-label="ENS name unavailable">-</span>,
               },
               {
                 label: 'App chain',

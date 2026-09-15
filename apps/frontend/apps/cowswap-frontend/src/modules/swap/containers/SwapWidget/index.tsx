@@ -53,6 +53,7 @@ import { TradeButtons } from '../TradeButtons'
 import { Warnings } from '../Warnings'
 
 export interface SwapWidgetProps {
+  headerContent?: ReactNode
   topContent?: ReactNode
   bottomContent?: ReactNode
   allowSwapSameToken?: boolean
@@ -60,7 +61,12 @@ export interface SwapWidgetProps {
 
 // TODO: Break down this large function into smaller functions
 // eslint-disable-next-line max-lines-per-function
-export function SwapWidget({ topContent, bottomContent, allowSwapSameToken }: SwapWidgetProps): ReactNode {
+export function SwapWidget({
+  headerContent,
+  topContent,
+  bottomContent,
+  allowSwapSameToken,
+}: SwapWidgetProps): ReactNode {
   const { showRecipient } = useSwapSettings()
   const deadlineState = useSwapDeadlineState()
   const recipientToggleState = useSwapRecipientToggleState()
@@ -196,6 +202,7 @@ export function SwapWidget({ topContent, bottomContent, allowSwapSameToken }: Sw
   ]
 
   const slots: TradeWidgetSlots = {
+    headerContent,
     topContent,
     lockScreen: shouldShowLockScreen ? <CrossChainUnlockScreen handleUnlock={handleUnlock} /> : undefined,
     settingsWidget: (

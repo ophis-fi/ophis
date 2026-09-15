@@ -47,5 +47,18 @@ describe('parseAppData', () => {
     expect(parseAppData('{"appCode":"ophis","metadata":{"partnerFee":{"volumeBps":10}}}').feeBps).toBe(10);
     expect(parseAppData('{"appCode":"ophis","metadata":{"partnerFee":{"volumeBps":-5}}}').feeBps).toBeNull();
     expect(parseAppData('{"appCode":"ophis","metadata":{"partnerFee":{"volumeBps":10.5}}}').feeBps).toBeNull();
+    // Stacked widget shape: the Ophis Volume entry wins over the host's, PI is ignored.
+    const safe = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8';
+    const host = '0x40d5faafb4540fb1f8f0af5b293425d11cd07fb4';
+    const stacked = JSON.stringify({ appCode: 'mtpelerin', metadata: { widget: { appCode: 'ophis' }, partnerFee: [
+      { volumeBps: 50, recipient: host }, { volumeBps: 1, recipient: safe },
+      { priceImprovementBps: 8000, maxVolumeBps: 99, recipient: safe },
+    ] } });
+    expect(parseAppData(stacked).feeBps).toBe(1);
+    // Array without an Ophis Volume entry: first Volume entry, as a single object read before.
+    const hostOnly = JSON.stringify({ appCode: 'mtpelerin', metadata: { widget: { appCode: 'ophis' }, partnerFee: [{ volumeBps: 50, recipient: host }] } });
+    expect(parseAppData(hostOnly).feeBps).toBe(50);
+    const piOnly = JSON.stringify({ appCode: 'ophis', metadata: { partnerFee: [{ priceImprovementBps: 8000, maxVolumeBps: 99, recipient: safe }] } });
+    expect(parseAppData(piOnly).feeBps).toBeNull();
   });
 });

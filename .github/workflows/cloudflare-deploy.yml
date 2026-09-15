@@ -63,7 +63,7 @@ jobs:
         # scripts -- the workspace's own postinstall runs patch-package (cowswap
         # patches) and native deps (@swc/core, esbuild) link their platform
         # binaries. Later steps in THIS job carry CLOUDFLARE_API_TOKEN /
-        # FORMSPREE_DEPLOY_KEY / BUNGEE_API. The proper hardening is the job
+        # FORMSPREE_DEPLOY_KEY. The proper hardening is the job
         # split (secret-free build job -> artifact -> deploy job with tokens);
         # tracked as future work rather than breaking the build with
         # --ignore-scripts. Exposure is bounded by --frozen-lockfile.
@@ -147,32 +147,35 @@ jobs:
           # production. Add REACT_APP_NETWORK_URL_10 to GitHub repo secrets
           # to override.
           REACT_APP_NETWORK_URL_10: ${{ secrets.REACT_APP_NETWORK_URL_10 }}
+          # Ophis: keyed Ethereum mainnet RPC (Alchemy, full archive). The keyless
+          # default (eth.drpc.org) answered 408 mid-quote on the free plan and is
+          # the frontend's weakest link for bridge quotes, wallet reads and
+          # settlement lookups. Bundle-public like every REACT_APP_* value, so the
+          # key must be domain-allowlisted in the Alchemy dashboard (*.ophis.fi).
+          # Empty -> keyless default.
+          REACT_APP_NETWORK_URL_1: ${{ secrets.REACT_APP_NETWORK_URL_1 }}
           # Ophis fork: ensure the production build is detected as the
           # production environment by lib/common-utils/environments.ts.
           # Without this, production runs as "local" env and defaults to
           # staging endpoints.
           REACT_APP_DOMAIN_REGEX_PRODUCTION: ^(ophis\.fi|.*\.ophis\.fi)$
-          # Milestone B read-only OTC deployment control. Set the repository
+          # Ethereum OTC deployment control. Set the repository
           # variable to exactly 'false' and rerun this workflow for an emergency
-          # rollback; transaction actions remain independently disabled.
+          # rollback; wallet actions require fresh runtime permission.
           REACT_APP_OTC_ENABLED: ${{ vars.REACT_APP_OTC_ENABLED }}
-          # Signing additionally requires the live runtime control and a nonempty reviewed admission policy.
-          REACT_APP_OTC_WRITE_MODE: canary
-          # Ophis Bungee affiliate ID (public attribution, bridge rev-share to
-          # the Ophis Safe). The dedicated API key (BUNGEE_API) is intentionally
-          # NOT built into the bundle (Bungee requires it server-side); it is a
-          # Cloudflare Pages RUNTIME secret read by functions/api/bungee.
-          REACT_APP_BUNGEE_AFFILIATE_ID: ${{ secrets.REACT_APP_BUNGEE_AFFILIATE_ID }}
-          # Build flag (default OFF/empty) to route Bungee through the dedicated
-          # proxy. Set to 'true' only after BUNGEE_API is a CF Pages runtime
-          # secret + the dedicated host/feeBps are confirmed. Empty -> OFF.
-          REACT_APP_BUNGEE_DEDICATED_ENABLED: ${{ secrets.REACT_APP_BUNGEE_DEDICATED_ENABLED }}
+          # Signing additionally requires fresh runtime permission and the supported-token policy.
+          REACT_APP_OTC_WRITE_MODE: public
           # NEAR Intents 1-Click API key (self-serve: partners.near-intents.org).
           # PUBLIC-tier value, safe in the bundle. Keyless mode works BUT every
           # unauthenticated quote carries NEAR's 0.2% (20 bps) platform fee
           # baked into amountOut — set the secret to remove it. Empty -> keyless
           # (bridgingSdk.ts maps empty to undefined so no blank Bearer header).
           REACT_APP_NEAR_API_KEY: ${{ secrets.REACT_APP_NEAR_API_KEY }}
+          # Across API key. Paired with the Ophis integrator tag 0x0311 (a constant
+          # in common-const). Sent from the browser as a Bearer header, so it is
+          # bundle-public like the NEAR key. Empty -> keyless (mapped to undefined,
+          # no blank header).
+          REACT_APP_ACROSS_API_KEY: ${{ secrets.REACT_APP_ACROSS_API_KEY }}
           # Robinhood Chain (4663) as an Across bridge SOURCE — ENABLED
           # 2026-08-27, after a live end-to-end bridge proved the corridor.
           # 4663 is sovereign, so OUR driver executes the post-hook; that is what
@@ -286,28 +289,6 @@ jobs:
           sys.stdout.write('EOF_CF_MSG\n')
           PY
 
-      # Sync the Bungee dedicated-integrator API key into the `greg` Pages
-      # project as a RUNTIME secret (read by functions/api/bungee). Bridges the
-      # GitHub secret to Cloudflare so the key never enters the browser bundle.
-      # Idempotent, gated on the secret being set, timeout-guarded, and
-      # continue-on-error so it can never block the frontend deploy. Only used
-      # once REACT_APP_BUNGEE_DEDICATED_ENABLED routes traffic through the proxy.
-      - name: sync BUNGEE_API to Pages runtime secret
-        continue-on-error: true
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          BUNGEE_API: ${{ secrets.BUNGEE_API }}
-        run: |
-          if [ -n "$BUNGEE_API" ]; then
-            # Pinned exact (was wrangler@4 floating tag): this step carries the CF
-            # API token + the BUNGEE_API secret, so it must not pull a compromised
-            # future 4.x release. Bump deliberately.
-            printf '%s' "$BUNGEE_API" | timeout 90 npx --yes wrangler@4.100.0 pages secret put BUNGEE_API --project-name greg
-          else
-            echo "BUNGEE_API not set; skipping Pages runtime secret sync."
-          fi
-
       - name: deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
@@ -330,6 +311,11 @@ jobs:
       - name: build explorer
         working-directory: apps/frontend
         env:
+          # Same Across key as the swap build: the explorer reads Across order
+          # status through the SDK too (Codex P2 on #1382).
+          REACT_APP_ACROSS_API_KEY: ${{ secrets.REACT_APP_ACROSS_API_KEY }}
+          # Same keyed mainnet RPC as the swap build (explorer's SDK adapter reads chain 1 through it).
+          REACT_APP_NETWORK_URL_1: ${{ secrets.REACT_APP_NETWORK_URL_1 }}
           NODE_OPTIONS: --max-old-space-size=6144
           # Maps `SupportedChainId → orderbook host` for every chain the
           # explorer should be able to surface orders for. This MUST cover

@@ -30,7 +30,7 @@ const markets = [
 <section class="markets" id="markets">
   <div class="markets-inner">
     <div class="label reveal-up" data-reveal>Markets and integrations</div>
-    <h2 class="reveal-up section-bloom" data-reveal>Built for assets that <span class="accent">move.</span></h2>
+    <h2 class="serif reveal-up" data-reveal>Built for assets that <em>move.</em></h2>
     <div class="market-grid stagger">
       {markets.map((market) => (
         <a class="market-card reveal-up" data-reveal href={market.href}>
@@ -48,16 +48,14 @@ const markets = [
   .markets { padding: 80px 56px; }
   .markets-inner { max-width: 1080px; margin: 0 auto; }
   .label {
-    color: var(--ophis-saffron-60);
-    font: 12px/1.2 'Geist Mono', ui-monospace, monospace;
+    color: var(--ophis-fg-faded);
+    font: 500 12px/1.2 ui-monospace, SFMono-Regular, monospace;
     letter-spacing: 0.18em;
     text-align: center;
     text-transform: uppercase;
   }
   h2 {
     font-size: 42px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
     margin: 14px 0 40px;
     text-align: center;
   }
@@ -74,7 +72,7 @@ const markets = [
     text-decoration: none;
     transition: border-color 150ms ease, transform 150ms ease;
   }
-  .market-card:hover { border-color: rgba(242, 166, 62, 0.5); transform: translateY(-2px); }
+  .market-card:hover { border-color: var(--ophis-fg-muted); }
   .market-card:focus-visible { outline: 2px solid var(--ophis-saffron-60); outline-offset: 3px; }
   .eyebrow { color: var(--ophis-saffron-60); font-size: 12px; margin-bottom: 14px; text-transform: uppercase; }
   strong { font-size: 21px; font-weight: 600; margin-bottom: 8px; }

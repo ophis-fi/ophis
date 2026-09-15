@@ -1,7 +1,7 @@
 import { lazy, ReactNode, Suspense, useEffect } from 'react'
 
 import { OphisPageLoader } from 'ophis/components'
-import { IntentLanding } from 'ophis/components/intent'
+import { IntentEntry } from 'ophis/components/intent'
 import { Navigate, Route, Routes } from 'react-router'
 
 import { RedirectPathToSwapOnly, RedirectToPath } from 'legacy/pages/Swap/redirects'
@@ -232,7 +232,7 @@ export function RoutesApp(): ReactNode {
       <Route path={RoutesEnum.ANYSWAP_AFFECTED} element={<AnySwapAffectedUsers />} />
 
       {/* Ophis: `/` shows the intent landing instead of redirecting to /swap. */}
-      <Route path={RoutesEnum.HOME} element={<IntentLanding />} />
+      <Route path={RoutesEnum.HOME} element={<IntentEntry />} />
       <Route
         path="*"
         element={
