@@ -366,6 +366,24 @@ mod direct_route_smoke {
             assert_eq!(swap.allowance.amount.get(), amount);
             assert!(!swap.output.amount.is_zero());
             assert_eq!(swap.calls.len(), 1);
+            // Tight signed limits must tighten the router floor on the solve path.
+            let tight = model::Order {
+                buy_limit: swap.output.amount * eth::U256::from(1005) / eth::U256::from(1000),
+                ..order
+            };
+            let bounded = venue
+                .swap(
+                    &tight,
+                    &model::Slippage::one_percent(),
+                    &crate::domain::auction::Tokens(Default::default()),
+                    false,
+                )
+                .await
+                .unwrap_or_else(|e| panic!("{chain}/{name} tight solve: {e:?}"));
+            assert!(
+                bounded.output.amount >= tight.buy_limit,
+                "{chain}/{name} ignored signed limit"
+            );
             eprintln!(
                 "{chain}/{name}: {} -> {}",
                 swap.input.amount, swap.output.amount

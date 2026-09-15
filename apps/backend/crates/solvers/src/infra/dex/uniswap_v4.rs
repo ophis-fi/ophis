@@ -143,7 +143,8 @@ impl UniswapV4 {
                 eth::Gas(
                     quote
                         .gasEstimate
-                        .saturating_add(U256::from(ADAPTER_OVERHEAD_GAS)),
+                        .saturating_add(U256::from(ADAPTER_OVERHEAD_GAS))
+                        .saturating_add(U256::from(dex::SIM_SETTLE_OVERHEAD_GAS)),
                 ),
                 0,
             )

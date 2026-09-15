@@ -113,7 +113,12 @@ impl DirectV3 {
         let bps = if is_quote {
             bps
         } else {
-            order.bounded_solve_slippage_bps(quoted, bps, eth::Gas(gas), 0)
+            order.bounded_solve_slippage_bps(
+                quoted,
+                bps,
+                eth::Gas(gas.saturating_add(U256::from(dex::SIM_SETTLE_OVERHEAD_GAS))),
+                0,
+            )
         };
         let min_out = U256::uint_try_from(
             U512::from(quoted) * U512::from(10_000u16 - bps) / U512::from(10_000u16),

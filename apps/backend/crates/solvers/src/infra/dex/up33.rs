@@ -97,7 +97,7 @@ impl Up33 {
         &self,
         order: &dex::Order,
         slippage: &dex::Slippage,
-        _is_quote: bool,
+        is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         if order.sell == order.buy || order.sell.0.is_zero() || order.buy.0.is_zero() {
             return Err(Error::OrderNotSupported);
@@ -113,6 +113,24 @@ impl Up33 {
             slippage.as_bps().ok_or(Error::InvalidSlippage)?,
             MAX_SLIPPAGE_BPS,
         );
+        let gas = eth::Gas(U256::from(if routes.len() == 1 {
+            SINGLE_HOP_GAS
+        } else {
+            MULTI_HOP_GAS
+        }));
+        let bps = if is_quote {
+            bps
+        } else {
+            order.bounded_solve_slippage_bps(
+                quoted,
+                bps,
+                eth::Gas(
+                    gas.0
+                        .saturating_add(U256::from(dex::SIM_SETTLE_OVERHEAD_GAS)),
+                ),
+                0,
+            )
+        };
         let (input, output, calldata) = match order.side {
             order::Side::Sell => {
                 let amount_in = order.amount.get();
@@ -159,11 +177,7 @@ impl Up33 {
                 spender: self.router_address,
                 amount: dex::Amount::new(input),
             },
-            gas: eth::Gas(U256::from(if routes.len() == 1 {
-                SINGLE_HOP_GAS
-            } else {
-                MULTI_HOP_GAS
-            })),
+            gas,
         })
     }
 
