@@ -17,13 +17,14 @@ import { mapOperatorErrorToQuoteError, QuoteApiError, QuoteApiErrorCodes } from 
 import { getIsOrderBookTypedError } from 'api/cowProtocol/getIsOrderBookTypedError'
 import { coWBFFClient } from 'common/services/bff'
 
+import { getSwapQuote } from './getSwapQuote'
+
 import { TradeQuoteManager } from '../hooks/useTradeQuoteManager'
 import { TradeQuoteFetchParams, TradeQuotePollingParameters } from '../types'
 import { getBridgeQuoteSigner } from '../utils/getBridgeQuoteSigner'
 
-const getQuote = bridgingSdk.getQuote.bind(bridgingSdk)
-const getFastQuote = onlyResolvesLast<CrossChainQuoteAndPost>(getQuote)
-const getOptimalQuote = onlyResolvesLast<CrossChainQuoteAndPost>(getQuote)
+const getFastQuote = onlyResolvesLast<CrossChainQuoteAndPost>(getSwapQuote)
+const getOptimalQuote = onlyResolvesLast<CrossChainQuoteAndPost>(getSwapQuote)
 const getBestQuote = onlyResolvesLast<MultiQuoteResult | null>(bridgingSdk.getBestQuote.bind(bridgingSdk))
 
 export async function fetchAndProcessQuote(

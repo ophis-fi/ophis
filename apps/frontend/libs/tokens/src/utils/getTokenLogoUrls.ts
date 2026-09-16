@@ -4,6 +4,8 @@ import { areAddressesEqual, getAddressKey, SupportedChainId } from '@cowprotocol
 
 import { trustTokenLogoUrl } from './trustTokenLogoUrl'
 
+import MPS_LOGO from '../assets/mps.svg'
+
 const ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
 const ROBINHOOD_USDG_ADDRESS = '0x5fc5360d0400a0fd4f2af552add042d716f1d168'
 const ROBINHOOD_WETH_ADDRESS = '0x0bd7d308f8e1639fab988df18a8011f41eacad73'
@@ -26,6 +28,16 @@ export function getTokenLogoUrls(token: TokenWithLogo | undefined): string[] {
 function getTokenLogoFallbacks(address: string, chainId: SupportedChainId): string[] {
   const logos: string[] = []
   const addressKey = getAddressKey(address)
+
+  // Official asset: https://www.mtpelerin.com/brand
+  if (
+    (chainId === SupportedChainId.MAINNET &&
+      areAddressesEqual(address, '0x96c645D3D3706f793Ef52C19bBACe441900eD47D')) ||
+    (chainId === SupportedChainId.GNOSIS_CHAIN &&
+      areAddressesEqual(address, '0xfa57AA7beED63D03Aaf85fFd1753f5f6242588fb'))
+  ) {
+    logos.push(MPS_LOGO)
+  }
 
   // Robinhood's canonical Stock Token list currently omits logoURI, while its
   // first-party asset registry publishes every logo at this address-derived URL.

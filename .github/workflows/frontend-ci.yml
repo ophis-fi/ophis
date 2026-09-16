@@ -130,6 +130,12 @@ jobs:
         working-directory: apps/frontend
         run: pnpm exec nx run tokens:test --testPathPatterns tokenPolicy --passWithNoTests=false
 
+      - name: Whole-token quote and logo regressions
+        working-directory: apps/frontend
+        run: |
+          pnpm exec nx run cowswap-frontend:test --testPathPatterns 'getSwapQuote|fetchAndProcessQuote|getReceiveAmountInfo.test' --passWithNoTests=false
+          pnpm exec nx run tokens:test --testPathPatterns getTokenLogoUrls --passWithNoTests=false
+
       # Coinbase tokenized stocks on Base: the shipped token list is validated
       # here with the SAME ajv schema the runtime loader applies (a schema miss
       # fails silently in production: the list never loads), plus the Base

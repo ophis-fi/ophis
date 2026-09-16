@@ -3,10 +3,31 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { getTokenLogoUrls } from './getTokenLogoUrls'
 
+import MPS_LOGO from '../assets/mps.svg'
+
 const ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
 const AAPL = '0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9'
 
 describe('getTokenLogoUrls', () => {
+  it.each([
+    [SupportedChainId.MAINNET, '0x96c645d3d3706f793ef52c19bbace441900ed47d'],
+    [SupportedChainId.GNOSIS_CHAIN, '0xfa57aa7beed63d03aaf85ffd1753f5f6242588fb'],
+  ])('uses the bundled official MPS logo on chain %s', (chainId, address) => {
+    const token = new TokenWithLogo(undefined, chainId, address, 0, 'MPS', 'Mt Pelerin Shares')
+    expect(getTokenLogoUrls(token)[0]).toBe(MPS_LOGO)
+  })
+
+  it('does not assign MPS artwork to the same address on another chain', () => {
+    const token = new TokenWithLogo(
+      undefined,
+      SupportedChainId.BASE,
+      '0x96c645d3d3706f793ef52c19bbace441900ed47d',
+      0,
+      'MPS',
+    )
+    expect(getTokenLogoUrls(token)).not.toContain(MPS_LOGO)
+  })
+
   it('uses the official bright Robinhood logo fallback for Stock Tokens', () => {
     const token = new TokenWithLogo(undefined, ROBINHOOD_CHAIN_ID, AAPL, 18, 'AAPL', 'Apple')
 
