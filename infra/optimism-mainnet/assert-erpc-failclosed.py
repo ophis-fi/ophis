@@ -36,7 +36,7 @@ from urllib.parse import urlsplit
 import yaml
 
 CHAIN_ID = 10
-EXPECTED_UPSTREAMS = 3
+EXPECTED_UPSTREAMS = 4
 # The 3 intended INDEPENDENT failure domains, pinned by hostname so a sibling host,
 # IP-literal, or extra provider cannot pose as a 3rd domain. A deliberate provider
 # change MUST update this set (that is the point — see module docstring).
@@ -69,6 +69,7 @@ EXPECTED_UPSTREAMS = 3
 # once it fell past publicnode's ~128-block archive gate. Replaced by official-op
 # (mainnet.optimism.io): non-CF, archive-capable, no quota to exhaust.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
+    "edge.goldsky.com",
     "lb.drpc.org",
     "api.zan.top",
     "optimism.gateway.tenderly.co",
@@ -102,7 +103,7 @@ ALLOWED = {
     "retry": {"backoffFactor", "backoffMaxDelay", "delay", "jitter", "maxAttempts"},
     "timeout": {"duration"},
     "hedge": {"delay", "maxCount"},
-    "upstream": {"endpoint", "failsafe", "id"},
+    "upstream": {"endpoint", "failsafe", "id", "allowMethods", "ignoreMethods"},
     "upstream_rule": {"matchMethod", "timeout", "retry", "circuitBreaker"},
     "circuitBreaker": {"failureThresholdCount", "failureThresholdCapacity", "halfOpenAfter", "successThresholdCount", "successThresholdCapacity"},
 }
@@ -331,7 +332,15 @@ def validate(cfg):
             if isinstance(defaults.get("evm"), dict):
                 _check_keys(defaults["evm"], "upstreamDefaults.evm", "project.upstreamDefaults.evm", errs)
         ups = [u for u in (proj.get("upstreams") or []) if isinstance(u, dict)]
+        transaction_methods = ["eth_getTransactionByHash", "eth_getTransactionReceipt", "eth_getLogs"]
         for u in ups:
+            host = _hostname(u.get("endpoint"))
+            expected = ({"ignoreMethods": transaction_methods} if host == "edge.goldsky.com"
+                        else {"allowMethods": transaction_methods} if host == "lb.drpc.org"
+                        else {})
+            actual = {k: u[k] for k in ("allowMethods", "ignoreMethods") if k in u}
+            if actual != expected:
+                errs.append(f"{host}: method filters must preserve three independent voters per method")
             _check_keys(u, "upstream", f"upstream[{u.get('id')}]", errs)
             for j, r in enumerate(u.get("failsafe") or []):
                 if isinstance(r, dict):
@@ -343,9 +352,13 @@ def validate(cfg):
         for u in ups:
             if not u.get("endpoint"):
                 errs.append(f"upstream {u.get('id')!r} has no endpoint")
+        for u in ups:
+            if _hostname(u.get("endpoint")) == "edge.goldsky.com":
+                if urlsplit(u["endpoint"]).path != "/boost/10":
+                    errs.append("Goldsky must use /boost/10, not metered Edge RPC or another chain")
         hosts = {_hostname(u.get("endpoint")) for u in ups}
         if hosts != EXPECTED_UPSTREAM_HOSTS:
-            errs.append(f"upstream hosts {sorted(hosts)} != the 3 expected independent failure domains {sorted(EXPECTED_UPSTREAM_HOSTS)} (sibling host / IP / extra provider dilutes 2-of-3-across-3; update EXPECTED_UPSTREAM_HOSTS only for a deliberate provider change)")
+            errs.append(f"upstream hosts {sorted(hosts)} != the expected provider hosts {sorted(EXPECTED_UPSTREAM_HOSTS)} (sibling host / IP / extra provider dilutes 2-of-3-across-3; update EXPECTED_UPSTREAM_HOSTS only for a deliberate provider change)")
         for net in proj.get("networks") or []:
             if (net.get("evm") or {}).get("chainId") != CHAIN_ID:
                 continue
@@ -393,7 +406,7 @@ def main(path):
         return EXIT_FAIL
     print(
         "OK (#447): OP eRPC fail-closed — closed-world schema lock passed (no unrecognized config keys); "
-        "exactly the 3 expected independent upstream hosts; every Block A+B method's first-matching failsafe "
+        "four pinned hosts with exactly three eligible voters per protected method; every Block A+B method's first-matching failsafe "
         "rule is a maxParticipants:3/agreementThreshold:2 consensus block with lowParticipants:returnError "
         "(outage fail-closed) and dispute in {returnError, preferBlockHeadLeader} (#476); every consensus rule fail-closed."
     )

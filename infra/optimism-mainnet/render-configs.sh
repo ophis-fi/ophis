@@ -249,20 +249,14 @@ if [[ -z "${TENDERLY_OP_KEY:-}" ]]; then
   exit 15
 fi
 
-# ── Blockdaemon key: NEVER render an empty one ───────────────────────────────
-# blockdaemon-op took over the single Cloudflare slot from publicnode on
-# 2026-08-29 and is the ONLY full-archive lane, so it is the deciding vote on
-# eth_getTransactionReceipt and deep eth_getLogs. Its key rides in a QUERY PARAM,
-# so an empty substitution renders '...native?apiKey=' — which the '/'-suffix and
-# '//' checks in validate_rendered_erpc cannot see (they only catch path-style
-# keys). An unauthenticated blockdaemon URL is rejected by the provider, so the
-# archive bucket would drop back to the 2-capable-lane state that broke receipts
-# on 2026-08-29. Fail closed here as well as in the rendered-file check.
+# Boost is a required consensus voter; do not render an empty credential.
+if [[ -z "${GOLDSKY_BOOST_KEY:-}" ]]; then
+  echo "ERROR: GOLDSKY_BOOST_KEY is unset/empty. Set it in .env." >&2
+  exit 15
+fi
+
 if [[ -z "${DRPC_API_KEY:-}" ]]; then
-  echo "ERROR: DRPC_API_KEY is unset/empty." >&2
-  echo "       Refusing to render: the drpc upstream would render keyless," >&2
-  echo "       losing the Cloudflare-slot archive lane and leaving eth_getTransactionReceipt" >&2
-  echo "       and deep eth_getLogs on a 2-lane quorum. Set it in .env (.env.example)." >&2
+  echo "ERROR: DRPC_API_KEY is unset/empty (required for transaction/receipt/log consensus)." >&2
   exit 15
 fi
 
@@ -597,7 +591,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   #
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax, defensive against future config additions.
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${DRPC_API_KEY} ${TENDERLY_OP_KEY} ${ZAN_API_KEY}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${GOLDSKY_BOOST_KEY} ${DRPC_API_KEY} ${TENDERLY_OP_KEY} ${ZAN_API_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.

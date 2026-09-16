@@ -1,17 +1,20 @@
-# Zero-budget eRPC proxy for Robinhood Chain mainnet (chain 4663).
+# eRPC proxy with a Goldsky Boost / Alchemy voter for Robinhood Chain mainnet (chain 4663).
 #
-# READ AUTHORITY: 2-of-2 consensus between Cadia Nitro and Robinhood's official
-# public RPC. Cadia was restored from a third-party snapshot whose flat
+# READ AUTHORITY: 2-of-2 consensus between Cadia Nitro and Goldsky Boost / Alchemy.
+# Only one voter goes through Boost; never forward it to Cadia or this proxy. Cadia was restored from a third-party snapshot whose flat
 # state cannot be proven from the header anchor alone, so it must never be the
 # sole authority for balances, code, storage, calls, logs, transaction data, or
-# receipts. The official endpoint is free and requires no provider credential.
+# receipts. Boost caches historical reads; Alchemy serves cache misses.
+# Transaction, receipt and block-by-hash methods retain the official RPC as
+# their second voter because Boost's cached JSON differs. Each protected method
+# still requires exactly TWO independent votes; never count both external lanes.
 #
 # TRACES: debug_* is self-node-only because the managed endpoint does not expose
 # it. If Cadia is unavailable, trace-dependent settlement fails closed.
 #
 # TRANSACTION RELAY: Cadia Nitro forwards writes to Robinhood's official public
 # endpoint via --execution.forwarding-target. eRPC can also submit directly to
-# that endpoint.
+# Boost / Alchemy as a second relay.
 
 logLevel: warn
 
@@ -75,7 +78,7 @@ projects:
           # the incident record): a silently hanging lane on this sequential
           # path otherwise burns the whole network budget before failover —
           # A/B-proven on erpc 0.0.64 (12/12 x ~12s failures vs 18/18 OK at
-          # ~1.1s). Here the hang-capable lane is robinhood-official (remote
+          # ~1.1s). Here the hang-capable lane is goldsky-rbh (remote
           # CDN); ophis-self-rbh shares the Cadia host with this proxy and
           # dies WITH it, so hedging mostly protects against official-gateway
           # stalls.
@@ -147,8 +150,8 @@ projects:
               successThresholdCount: 2
               successThresholdCapacity: 4
 
-      - id: robinhood-official
-        endpoint: https://rpc.mainnet.chain.robinhood.com
+      - id: goldsky-rbh
+        endpoint: https://edge.goldsky.com/boost/4663?key=${GOLDSKY_BOOST_KEY}
         # Block-head inputs are restricted to Cadia by the per-method selection
         # policy above. Do not ignore them here: this upstream's private state
         # poller needs those methods to establish its served tip.
@@ -160,6 +163,39 @@ projects:
           # genesis node derives; switch logs to the two local verified nodes at
           # promotion time.
           - eth_getLogs
+          - debug_*
+          - trace_*
+          - eth_getTransactionByHash
+          - eth_getTransactionReceipt
+          - eth_getBlockByHash
+        failsafe:
+          # Same budget invariant as ophis-self-rbh's generic rule (9s < 12s).
+          # This remote lane is the one that can silently hang while the local
+          # stack survives — the exact 08-14 OP failure shape.
+          - matchMethod: "*"
+            timeout:
+              duration: 4s
+            retry:
+              maxAttempts: 2
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+            circuitBreaker:
+              failureThresholdCount: 12
+              failureThresholdCapacity: 24
+              halfOpenAfter: 30s
+              successThresholdCount: 2
+              successThresholdCapacity: 4
+
+      # Keep full-object consensus on the original providers: Boost's cached
+      # objects add fields that do not compare byte-for-byte with Nitro.
+      - id: robinhood-official
+        endpoint: https://rpc.mainnet.chain.robinhood.com
+        allowMethods:
+          - eth_getTransactionByHash
+          - eth_getTransactionReceipt
+          - eth_getBlockByHash
         failsafe:
           # Same budget invariant as ophis-self-rbh's generic rule (9s < 12s).
           # This remote lane is the one that can silently hang while the local
