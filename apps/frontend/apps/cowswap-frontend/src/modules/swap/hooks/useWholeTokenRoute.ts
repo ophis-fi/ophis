@@ -118,6 +118,13 @@ function selectDirect(
     ? best
     : undefined
 }
+function isDirectPending(
+  result: { isPending: boolean; isFetching: boolean; isError: boolean; data?: DirectQuote[] },
+  now: number,
+): boolean {
+  const best = result.isError ? undefined : result.data?.[0]
+  return result.isPending || (result.isFetching && (!best || now - best.quotedAt >= 30000))
+}
 function comparisonLoading(
   key: string,
   isReviewing: boolean,
@@ -180,7 +187,7 @@ export function useWholeTokenRoute(): {
   const { gas: depositGas, loading: gasLoading } = useCowDepositGas(requestKey ? cow.quote : null, request?.account)
   const best = requestKey && !result.isError ? result.data?.[0] : undefined
   const now = useMachineTimeMs(1000)
-  const loading = comparisonLoading(requestKey, isReviewing, result.isPending, cow, gasLoading)
+  const loading = comparisonLoading(requestKey, isReviewing, isDirectPending(result, now), cow, gasLoading)
   const quote = reviewed || (loading ? undefined : selectDirect(best, cow, now, depositGas))
   const review = useCallback((quote: DirectQuote | null) => setSelection({ quote, key: requestKey }), [requestKey])
   const output = useMemo(

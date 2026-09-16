@@ -51,7 +51,23 @@ async function main() {
           json: { errorType: 'UnsupportedToken', description: 'CoW-only test rejection' },
         })
       })
-    await page.route(frontendRpc, async (route) => route.fulfill({ response: await route.fetch({ url: rpcUrl }) }))
+    let stallRefresh = false
+    let markStalled
+    const refreshStalled = new Promise((resolve) => {
+      markStalled = resolve
+    })
+    await page.route(frontendRpc, async (route) => {
+      const body = route.request().postDataJSON()
+      if (
+        stallRefresh &&
+        body.method === 'eth_estimateGas' &&
+        body.params[0]?.to?.toLowerCase() === '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2'
+      ) {
+        markStalled()
+        return new Promise(() => {})
+      }
+      return route.fulfill({ response: await route.fetch({ url: rpcUrl }) })
+    })
     let sent = 0
     await page.exposeFunction('forkRpc', async (method, params) => {
       if (method === 'wallet_getCapabilities') return {}
@@ -87,6 +103,19 @@ async function main() {
     await input.fill('0.0033')
     const card = page.getByRole('region', { name: 'Best MPS route' })
     await card.waitFor({ timeout: 90000 })
+    if (process.env.MPS_REFRESH_STALL) {
+      stallRefresh = true
+      await Promise.race([
+        refreshStalled,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('No background refresh')), 30000)),
+      ])
+      await page.clock.setFixedTime(Date.now() + 31000)
+      await page.getByText('Comparing swap routes…', { exact: true }).waitFor({ timeout: 5000 })
+      assert.equal(await page.getByRole('button', { name: 'Swap', exact: true }).count(), 0)
+      assert.equal(sent, 0)
+      console.log('PASS: expired cached quote keeps CoW actions suppressed during background refresh')
+      return
+    }
     await card.getByRole('button', { name: 'Review swap', exact: true }).click()
     await card.getByText('Recipient:', { exact: false }).waitFor()
     await input.fill('0.0034')
