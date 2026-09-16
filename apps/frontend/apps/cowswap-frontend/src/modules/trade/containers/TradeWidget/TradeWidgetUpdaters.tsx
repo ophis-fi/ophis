@@ -13,6 +13,7 @@ import { PriceImpactUpdater } from '../../updaters/PriceImpactUpdater'
 import { RecipientAddressUpdater } from '../../updaters/RecipientAddressUpdater'
 
 interface TradeWidgetUpdatersProps {
+  disableTradeNotifications?: boolean
   disableQuotePolling: boolean
   disableNativeSelling: boolean
   enableSmartSlippage?: boolean
@@ -23,6 +24,7 @@ interface TradeWidgetUpdatersProps {
 }
 
 export function TradeWidgetUpdaters({
+  disableTradeNotifications = false,
   disableQuotePolling,
   disableNativeSelling,
   disableSuggestedSlippageApi,
@@ -47,7 +49,7 @@ export function TradeWidgetUpdaters({
       />
       <PriceImpactUpdater />
       <TradeFormValidationUpdater />
-      <CommonTradeUpdater />
+      <CommonTradeUpdater disableTradeNotifications={disableTradeNotifications} />
       {!allowSwapSameToken && <ForbidSwapSameTokenUpdater />}
       {disableNativeSelling && <DisableNativeTokenSellingUpdater />}
       {children}
