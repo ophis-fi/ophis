@@ -147,6 +147,7 @@ jobs:
           # production. Add REACT_APP_NETWORK_URL_10 to GitHub repo secrets
           # to override.
           REACT_APP_NETWORK_URL_10: ${{ secrets.REACT_APP_NETWORK_URL_10 }}
+          REACT_APP_NETWORK_URL_4663: ${{ secrets.REACT_APP_NETWORK_URL_4663 }}
           # Ophis: keyed Ethereum mainnet RPC (Alchemy, full archive). The keyless
           # default (eth.drpc.org) answered 408 mid-quote on the free plan and is
           # the frontend's weakest link for bridge quotes, wallet reads and
