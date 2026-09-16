@@ -74,6 +74,7 @@ export async function getDirectQuotes(provider: JsonRpcProvider, request: Direct
 
 interface Market {
   blockNumber: number
+  timestamp: number
   baseFee: bigint
   priorityFee: bigint
   usdcReserve: bigint
@@ -97,7 +98,7 @@ async function getMarket(provider: JsonRpcProvider): Promise<Market> {
   const usdcReserve = reserves ? BigInt(String(reserves[1])) : 0n
   const mpsReserve = reserves ? BigInt(String(reserves[0])) : 0n
 
-  return { blockNumber: block.number, baseFee, priorityFee, usdcReserve, mpsReserve }
+  return { blockNumber: block.number, timestamp: block.timestamp, baseFee, priorityFee, usdcReserve, mpsReserve }
 }
 
 async function quoteV3(
@@ -156,7 +157,7 @@ async function forAmount(
     totalCost: 0n,
     maxTotal: maxInput + feeTotal,
     quotedAt: Date.now(),
-    expiresAt: Math.floor(Date.now() / 1000) + 300,
+    expiresAt: market.timestamp + 300,
   }
   const tx = buildDirectTransaction(quote)
   const simulation = [

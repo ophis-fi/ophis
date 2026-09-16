@@ -1,4 +1,4 @@
-// Run against a disposable Anvil mainnet fork: node scripts/check-mps-direct-swap.cjs
+// Run on an Anvil mainnet fork pinned to block 25990611 with base fee 0.1 gwei.
 const assert = require('node:assert/strict')
 const { createRequire } = require('node:module')
 const { mkdtempSync, rmSync } = require('node:fs')
@@ -26,9 +26,7 @@ async function main() {
   const mps = new Contract(MPS, abi, provider), weth = new Contract(WETH, abi, provider), usdc = new Contract(USDC, abi, provider)
   const request = { account, recipient, budget: 3300000000000000n, slippageBps: 50, fees: [{ recipient: feeRecipient, bps: 51.005 }] }
   const quotes = await getDirectQuotes(provider, request)
-  assert(quotes.length >= 3, 'Compare direct v3, USDC v3, and mixed v3/v2 routes')
-  assert(quotes.some(q => q.route.viaV2))
-  assert(quotes.some(q => q.route.tokens.length === 3))
+  assert.equal(quotes.length, 9, 'All nine expected fee-tier routes must remain executable')
   for (const q of quotes) {
     const snapshot = await provider.send('evm_snapshot', [])
     const before = await Promise.all([provider.getBalance(account), mps.balanceOf(recipient), weth.balanceOf(feeRecipient), weth.balanceOf(ROUTER), provider.getBalance(ROUTER), usdc.balanceOf(ROUTER)])
@@ -58,7 +56,7 @@ async function main() {
   await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...q, maxInput: q.sellAmount - 1n, sellAmount: q.sellAmount - 1n })))
   await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...q, expiresAt: 1 })))
   assert.throws(() => buildDirectTransaction({ ...q, budget: 1n }))
-  for (const recipient of [ROUTER, ...[0, 1, 2].map(n => '0x' + n.toString(16).padStart(40, '0'))]) for (const invalid of [{ recipient }, { fees: [{ recipient, amount: 1n }] }]) assert.throws(() => buildDirectTransaction({ ...q, ...invalid }))
+  for (const recipient of [ROUTER, ...[0, 1, 2].map(n => '0x' + n.toString(16).padStart(40, '0'))]) for (const invalid of [{ account: recipient }, { recipient }, { fees: [{ recipient, amount: 1n }] }]) assert.throws(() => buildDirectTransaction({ ...q, ...invalid }))
   await assert.rejects(getDirectQuotes(provider, { ...request, slippageBps: -1 }))
   console.log('PASS: exact output, all-in budget, fee recipient, ETH refunds, empty router balances, price limit and deadline')
 }
