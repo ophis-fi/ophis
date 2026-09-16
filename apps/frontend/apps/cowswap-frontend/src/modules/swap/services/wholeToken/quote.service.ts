@@ -66,7 +66,7 @@ export async function getDirectQuotes(provider: JsonRpcProvider, request: Direct
   return results
     .flatMap((result) => (result.status === 'fulfilled' && result.value ? [result.value] : []))
     .sort((a, b) =>
-      a.buyAmount !== b.buyAmount ? (a.buyAmount > b.buyAmount ? -1 : 1) : a.totalCost < b.totalCost ? -1 : 1,
+      a.buyAmount !== b.buyAmount ? (a.buyAmount > b.buyAmount ? -1 : 1) : a.netCost < b.netCost ? -1 : 1,
     )
 }
 
@@ -124,9 +124,10 @@ async function forAmount(
   market: Market,
   route: Route,
   buyAmount: bigint,
+  estimatedGas?: bigint,
 ): Promise<DirectQuote | null> {
   const { usdcReserve, mpsReserve, baseFee, priorityFee, blockNumber } = market
-  if (route.viaV2 && (buyAmount >= mpsReserve || !usdcReserve)) return null
+  if (route.viaV2 && [buyAmount >= mpsReserve, !usdcReserve].some(Boolean)) return null
   const usdcRequired = route.viaV2 ? (usdcReserve * buyAmount * 1000n) / ((mpsReserve - buyAmount) * 997n) + 1n : 0n
   // Split the mixed-route tolerance across both legs, retaining the overall ETH cap.
   const usdcAmount = (usdcRequired * BigInt(20000 + request.slippageBps) + 19999n) / 20000n
@@ -148,6 +149,8 @@ async function forAmount(
     sellAmount,
     maxInput,
     usdcAmount,
+    usdcRefund: usdcAmount - usdcRequired,
+    netCost: 0n,
     fees,
     gasLimit: 0n,
     gasCost: 0n,
@@ -159,25 +162,30 @@ async function forAmount(
     expiresAt: Math.floor(Date.now() / 1000) + 300,
   }
   const tx = buildDirectTransaction(quote)
-  // Read-only simulation with funded sender; works before wallet connection and
-  // verifies the complete route, native wrapping, fee transfers and refunds.
-  const gas = BigInt(
-    await provider
-      .send('eth_estimateGas', [
-        {
-          from: tx.from,
-          to: tx.to,
-          data: tx.data,
-          value: `0x${(maxInput + feeTotal).toString(16)}`,
-        },
-        `0x${blockNumber.toString(16)}`,
-        { [request.account]: { balance: '0x3635c9adc5dea00000' } },
-      ])
-      .catch(async () => (await provider.estimateGas({ ...tx, gasLimit: undefined })).toString()),
-  )
+  const gas =
+    estimatedGas ??
+    BigInt(
+      await provider
+        .send('eth_estimateGas', [
+          {
+            from: tx.from,
+            to: tx.to,
+            data: tx.data,
+            value: `0x${(maxInput + feeTotal).toString(16)}`,
+          },
+          `0x${blockNumber.toString(16)}`,
+          { [request.account]: { balance: '0x3635c9adc5dea00000' } },
+        ])
+        .catch(async () => (await provider.estimateGas({ ...tx, gasLimit: undefined })).toString()),
+    )
   quote.gasLimit = (gas * 120n + 99n) / 100n
   quote.gasCost = gas * (baseFee + priorityFee)
   quote.totalCost = sellAmount + feeTotal + quote.gasCost
+  const refundValue =
+    quote.usdcRefund > 0n
+      ? await quoteV3(provider, blockNumber, { ...route, tokens: [USDC, WETH] }, quote.usdcRefund, false)
+      : 0n
+  quote.netCost = quote.totalCost - refundValue
   quote.maxTotal = maxInput + feeTotal + quote.gasLimit * quote.maxFeePerGas
   return quote.maxTotal <= request.budget ? quote : null
 }
@@ -192,15 +200,15 @@ async function quoteRoute(
   const capacity = await quoteV3(provider, market.blockNumber, route, request.budget, false)
   const maximum = route.viaV2 ? (capacity * 997n * mpsReserve) / (usdcReserve * 1000n + capacity * 997n) : capacity
   if (maximum <= 0n) return null
-  const full = await forAmount(provider, request, market, route, maximum)
-  if (full) return full
+  const seed = await forAmount(provider, request, market, route, 1n)
+  if (!seed || maximum === 1n) return seed
   // Integer search avoids losing a whole token to conservative gas reservation.
-  let low = 1n
-  let high = maximum - 1n
-  let best: DirectQuote | null = null
+  let low = 2n
+  let high = maximum
+  let best = seed
   while (low <= high) {
     const middle = (low + high) / 2n
-    const quote = await forAmount(provider, request, market, route, middle)
+    const quote = await forAmount(provider, request, market, route, middle, (seed.gasLimit * 100n) / 120n)
     if (quote) {
       best = quote
       low = middle + 1n
@@ -208,5 +216,10 @@ async function quoteRoute(
       high = middle - 1n
     }
   }
-  return best
+  // Reuse the seed's gas for search probes, then simulate the chosen transaction.
+  if (best.buyAmount === 1n) return seed
+  return (
+    (await forAmount(provider, request, market, route, best.buyAmount)) ??
+    (await forAmount(provider, request, market, route, best.buyAmount - 1n))
+  )
 }

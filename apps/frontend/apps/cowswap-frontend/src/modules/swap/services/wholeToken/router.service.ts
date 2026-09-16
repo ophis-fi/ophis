@@ -31,6 +31,8 @@ export interface DirectQuote {
   sellAmount: bigint
   maxInput: bigint
   usdcAmount: bigint
+  usdcRefund: bigint
+  netCost: bigint
   fees: { recipient: string; amount: bigint }[]
   gasLimit: bigint
   gasCost: bigint
