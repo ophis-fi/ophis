@@ -21,6 +21,11 @@
     {
       "priority": 5,
       "source": "https://raw.githubusercontent.com/backed-fi/cowswap-xstocks-tokenlist/refs/heads/main/tokenlist.json"
+    },
+    {
+      "priority": 6,
+      "enabledByDefault": true,
+      "source": "https://swap.ophis.fi/token-lists/mt-pelerin.json"
     }
   ],
   "100": [
@@ -47,6 +52,11 @@
     {
       "priority": 5,
       "source": "https://curvefi.github.io/curve-assets/gnosis.json"
+    },
+    {
+      "priority": 6,
+      "enabledByDefault": true,
+      "source": "https://swap.ophis.fi/token-lists/mt-pelerin.json"
     }
   ],
   "42161": [
