@@ -1,8 +1,8 @@
 import { useAtomValue } from 'jotai'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { useCurrencyAmountBalance } from '@cowprotocol/balances-and-allowances'
-import { getRpcProvider, NATIVE_CURRENCIES, NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
+import { useNativeTokenBalance } from '@cowprotocol/balances-and-allowances'
+import { getRpcProvider, NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
 import { useMachineTimeMs } from '@cowprotocol/common-hooks'
 import { getCurrencyAddress, getIsNativeToken, isTruthy, withTimeout } from '@cowprotocol/common-utils'
 import { areAddressesEqual, OrderKind } from '@cowprotocol/cow-sdk'
@@ -134,7 +134,7 @@ export function useWholeTokenRoute(): {
   const state = useSwapDerivedState()
   const params = useQuoteParams(state.inputCurrencyAmount?.quotient.toString())
   const { account, chainId } = useWalletInfo()
-  const nativeBalance = useCurrencyAmountBalance(NATIVE_CURRENCIES[1])
+  const { data: nativeBalance } = useNativeTokenBalance(account, 1)
   const isSmartWallet = useIsSmartContractWallet()
   const slippage = useTradeSlippageValueAndType()
   const config = useSlippageConfig()
@@ -182,7 +182,7 @@ export function useWholeTokenRoute(): {
   const best =
     requestKey && !result.isError
       ? result.data?.find((candidate) =>
-          canFundDirect(candidate, !!account, nativeBalance ? BigInt(nativeBalance.quotient.toString()) : undefined),
+          canFundDirect(candidate, !!account, nativeBalance ? BigInt(nativeBalance.toString()) : undefined),
         )
       : undefined
   const now = useMachineTimeMs(1000)

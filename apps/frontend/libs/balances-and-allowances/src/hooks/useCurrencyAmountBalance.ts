@@ -8,15 +8,15 @@ import { useTokensBalances } from './useTokensBalances'
 export function useCurrencyAmountBalance(
   token: TokenWithLogo | undefined | null,
 ): CurrencyAmount<TokenWithLogo> | undefined {
-  const { values: balances, chainId } = useTokensBalances()
+  const { values: balances } = useTokensBalances()
 
   return useMemo(() => {
-    if (!token || token.chainId !== chainId) return undefined
+    if (!token) return undefined
 
     const balance = balances[token.address.toLowerCase()]
 
     if (!balance) return undefined
 
     return CurrencyAmount.fromRawAmount(token, balance.toHexString())
-  }, [token, balances, chainId])
+  }, [token, balances])
 }
