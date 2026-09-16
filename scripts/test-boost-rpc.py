@@ -37,6 +37,9 @@ for method in ("eth_blockNumber", "eth_getBlockByNumber"):
 bad = copy.deepcopy(config)
 bad["projects"][0]["networks"][0].pop("selectionPolicy")
 assert validate(bad), "Application head reads must exclude dRPC"
+bad = copy.deepcopy(config)
+next(u for u in bad["projects"][0]["upstreams"] if u["id"] == "drpc-op")["id"] = "renamed-drpc"
+assert validate(bad), "Renaming dRPC must not bypass the application selection policy"
 policy = config["projects"][0]["networks"][0]["selectionPolicy"]["evalFunc"]
 subprocess.run(["node", "-e", """
 const assert = require('node:assert/strict');

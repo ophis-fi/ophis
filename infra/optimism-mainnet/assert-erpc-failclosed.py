@@ -338,6 +338,8 @@ def validate(cfg):
         transaction_methods = ["eth_getTransactionByHash", "eth_getTransactionReceipt", "eth_getLogs"]
         for u in ups:
             host = _hostname(u.get("endpoint"))
+            if (host == "lb.drpc.org") != (u.get("id") == "drpc-op"):
+                errs.append("dRPC host/id must match the pinned application selection policy")
             expected = ({"ignoreMethods": transaction_methods} if host == "edge.goldsky.com"
                         else {"allowMethods": transaction_methods + ["eth_blockNumber", "eth_getBlockByNumber"]} if host == "lb.drpc.org"
                         else {})
