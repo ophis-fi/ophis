@@ -37,6 +37,7 @@ async function main() {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true })
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+    page.on('pageerror', error => console.error('Page error:', error.message))
     // Limit unrelated balance lookups; all quote, simulation and execution calls use real fork state.
     const lists = require('../libs/tokens/src/const/tokensList.json')
     const sources = new Set(
@@ -70,7 +71,7 @@ async function main() {
     const refreshStalled = new Promise((resolve) => {
       markStalled = resolve
     })
-    await page.route(frontendRpc, async (route) => {
+    await page.route(frontendRpc + '/**', async (route) => {
       const body = route.request().postDataJSON()
       if (
         stallRefresh &&
@@ -80,11 +81,14 @@ async function main() {
         markStalled()
         return new Promise(() => {})
       }
-      return route.fulfill({ response: await route.fetch({ url: rpcUrl }) })
+      const response = await route.fetch({ url: rpcUrl })
+      const result = await response.json()
+      if (result.error) console.error('Fork RPC error:', body.method, result.error.code, result.error.message)
+      return route.fulfill({ response })
     })
     let sent = 0
     await page.exposeFunction('forkRpc', async (method, params) => {
-      if (method === 'wallet_getCapabilities') return {}
+      if (method === 'wallet_getCapabilities') return process.env.MPS_CAPABILITIES_STALL ? new Promise(() => {}) : {}
       if (method !== 'eth_sendTransaction') return rpc(method, params)
       const { gas, from, chainId, ...tx } = params[0]
       assert.equal(from.toLowerCase(), account.toLowerCase())
@@ -134,13 +138,27 @@ async function main() {
       await card.getByRole('button', { name: 'Approve USDC', exact: true }).click()
       await card.getByRole('button', { name: 'Review swap', exact: true }).waitFor({ timeout: 90000 })
     }
+    assert.equal(await card.locator('[aria-expanded="false"]').count(), 1)
+    if (process.env.MPS_SCREENSHOT) await page.screenshot({ path: process.env.MPS_SCREENSHOT.replace('.png', '-quote.png'), fullPage: true })
     await card.getByRole('button', { name: 'Review swap', exact: true }).click()
-    await card.getByText('Recipient:', { exact: false }).waitFor()
+    await page.locator('#input-currency-preview').waitFor()
+    assert.equal(await input.count(), 0, 'review replaces editable inputs')
+    await page.getByText('Recipient:', { exact: false }).waitFor()
+    if (process.env.MPS_SCREENSHOT) await page.screenshot({ path: process.env.MPS_SCREENSHOT.replace('.png', '-review.png'), fullPage: true })
+    await page.keyboard.press('Escape')
+    await input.waitFor()
     await input.fill(inputToken === 'USDC' ? '9' : '0.0034')
     await card.getByRole('button', { name: 'Review swap', exact: true }).waitFor({ timeout: 90000 })
     assert.equal(await card.getByRole('button', { name: 'Confirm swap', exact: true }).count(), 0)
     await input.fill(inputAmount)
     await card.getByRole('button', { name: 'Review swap', exact: true }).click({ timeout: 90000 })
+    if (process.env.MPS_REVIEW_EXPIRY) {
+      await card.getByRole('button', { name: 'Refresh quote', exact: true }).waitFor({ timeout: 35000 })
+      assert.equal(sent, inputToken === 'USDC' ? 2 : 0, 'expiry must not sign a swap')
+      await card.getByRole('button', { name: 'Refresh quote', exact: true }).click()
+      await input.waitFor()
+      await card.getByRole('button', { name: 'Review swap', exact: true }).click({ timeout: 90000 })
+    }
     await card.getByRole('button', { name: 'Confirm swap', exact: true }).click()
     await card.getByRole('status').filter({ hasText: 'Received 1 MPS' }).waitFor({ timeout: 90000 })
     if (process.env.MPS_COW_UNSUPPORTED) assert(cowRejections.length > 0)

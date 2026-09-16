@@ -1,8 +1,16 @@
+import { getDefaultStore } from 'jotai'
+
+import { OrderKind } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Token } from '@cowprotocol/currency'
 
 import { renderHook } from '@testing-library/react'
 
 import { RwaTokenStatus, useRwaTokenStatus, useRwaConsentModalState } from 'modules/rwa'
+import {
+  TradeFormValidation,
+  TradeFormValidationContext,
+  tradeFormValidationContextAtom,
+} from 'modules/tradeFormValidation'
 import { useUsdAmount } from 'modules/usdAmount'
 
 import { useConfirmationRequest } from 'common/hooks/useConfirmationRequest'
@@ -18,8 +26,9 @@ jest.mock('common/hooks/useConfirmPriceImpactWithoutFee', () => ({ useConfirmPri
 jest.mock('./useSwapDerivedState', () => ({ useSwapDerivedState: jest.fn() }))
 jest.mock('@cowprotocol/tokens', () => ({ useIsTradeUnsupported: () => false }))
 jest.mock('modules/tradeFormValidation', () => ({
-  tradeFormValidationContextAtom: jest.requireActual('jotai').atom({ tradePriceImpact: {} }),
-  validateTradeForm: () => null,
+  ...jest.requireActual('../../tradeFormValidation/types'),
+  tradeFormValidationContextAtom: jest.requireActual('jotai').atom(null),
+  validateTradeForm: jest.requireActual('../../tradeFormValidation/services/validateTradeForm').validateTradeForm,
 }))
 jest.mock('modules/rwa', () => ({
   RwaTokenStatus: { Allowed: 'Allowed', RequiredConsent: 'RequiredConsent' },
@@ -31,6 +40,21 @@ const confirmUnknown = jest.fn()
 const openModal = jest.fn()
 beforeEach(() => {
   jest.clearAllMocks()
+  getDefaultStore().set(tradeFormValidationContextAtom, {
+    account: token.address,
+    isOnline: true,
+    isSupportedWallet: true,
+    isBundlingSupported: null,
+    tradeQuote: { isLoading: false },
+    tradePriceImpact: {},
+    derivedTradeState: {
+      inputCurrency: usd,
+      outputCurrency: token,
+      inputCurrencyAmount: amount(100),
+      inputCurrencyBalance: amount(1000),
+      orderKind: OrderKind.SELL,
+    },
+  } as TradeFormValidationContext)
   jest.mocked(useRwaTokenStatus).mockReturnValue({ status: RwaTokenStatus.Allowed, rwaTokenInfo: null })
   jest.mocked(useRwaConsentModalState).mockReturnValue({ openModal } as ReturnType<typeof useRwaConsentModalState>)
   jest.mocked(useConfirmationRequest).mockReturnValue(confirmUnknown)
@@ -85,4 +109,55 @@ test('required token consent opens the existing dialog and stops execution', asy
     expect.objectContaining({ consentHash: 'consent', onImportSuccess: expect.any(Function) }),
   )
   expect(confirmUnknown).not.toHaveBeenCalled()
+})
+
+test('ordinary direct swaps do not wait for wallet bundling capabilities or cached fiat refresh', () => {
+  jest
+    .mocked(useUsdAmount)
+    .mockReturnValueOnce({ value: amount(100), isLoading: true })
+    .mockReturnValueOnce({ value: amount(99), isLoading: true })
+  const { result } = renderHook(() => useDirectPriceImpact(quote))
+  expect(result.current.allowed).toBe(true)
+  expect(result.current.validation).toBeNull()
+  expect(result.current.loading).toBe(false)
+})
+
+test('missing fiat remains loading until the first price is available', () => {
+  jest.mocked(useUsdAmount).mockReturnValue({ value: undefined, isLoading: true })
+  const { result } = renderHook(() => useDirectPriceImpact(quote))
+  expect(result.current.loading).toBe(true)
+})
+
+test.each([
+  [{ isTokenPolicyDenied: true }, TradeFormValidation.TokenPolicyDenied],
+  [{ isOnline: false }, TradeFormValidation.BrowserOffline],
+  [{ isRestrictedForCountry: true }, TradeFormValidation.RestrictedForCountry],
+  [{ isProviderNetworkUnsupported: true }, TradeFormValidation.NetworkNotSupported],
+  [{ isSafeReadonlyUser: true }, TradeFormValidation.SafeReadonlyUser],
+  [
+    { injectedWidgetParams: { disableTrade: { whenPriceImpactIsUnknown: true } } },
+    TradeFormValidation.DisableTradeWithUnknownPriceImpact,
+  ],
+])('preserves the real validation blocker: %s', (overrides, validation) => {
+  const store = getDefaultStore()
+  const context = store.get(tradeFormValidationContextAtom)
+  store.set(tradeFormValidationContextAtom, { ...context, ...overrides } as TradeFormValidationContext)
+  const { result } = renderHook(() => useDirectPriceImpact(quote))
+  expect(result.current.allowed).toBe(false)
+  expect(result.current.validation).toBe(validation)
+})
+
+test('widget price-impact ceiling remains enforced during a cached fiat refresh', () => {
+  const store = getDefaultStore()
+  store.set(tradeFormValidationContextAtom, {
+    ...store.get(tradeFormValidationContextAtom),
+    injectedWidgetParams: { disableTrade: { whenPriceImpactIsHigherThan: 5 } },
+  } as TradeFormValidationContext)
+  jest
+    .mocked(useUsdAmount)
+    .mockReturnValueOnce({ value: amount(100), isLoading: true })
+    .mockReturnValueOnce({ value: amount(80), isLoading: true })
+  const { result } = renderHook(() => useDirectPriceImpact(quote))
+  expect(result.current.allowed).toBe(false)
+  expect(result.current.validation).toBe(TradeFormValidation.DisableTradeWithHighPriceImpact)
 })

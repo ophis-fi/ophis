@@ -91,3 +91,5 @@ export * from './pure/Settings'
 export * from './pure/TradePageLayout'
 
 export { useTradeFlowAnalytics } from './utils/tradeFlowAnalytics'
+
+export { ConfirmAmounts } from './pure/TradeConfirmation/ConfirmAmounts'

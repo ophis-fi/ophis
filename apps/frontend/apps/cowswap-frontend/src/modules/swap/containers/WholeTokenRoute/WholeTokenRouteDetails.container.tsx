@@ -1,0 +1,106 @@
+import { ReactNode, useState } from 'react'
+
+import { CurrencyAmount } from '@cowprotocol/currency'
+import { formatEther, formatUnits } from '@ethersproject/units'
+
+import { t } from '@lingui/core/macro'
+
+import { TradeTotalCostsDetails } from 'modules/trade'
+import { useUsdAmount } from 'modules/usdAmount'
+
+import { useRateInfoParams } from 'common/hooks/useRateInfoParams'
+
+import { useDirectPriceImpact } from '../../hooks/useDirectPriceImpact'
+import { useSwapDerivedState } from '../../hooks/useSwapDerivedState'
+import { DirectQuote } from '../../services/wholeToken/router.service'
+
+function displayEth(amount: bigint): string {
+  // Round displayed ceilings up to eight decimals; the transaction uses exact wei.
+  return formatEther(((amount + 9999999999n) / 10000000000n) * 10000000000n)
+}
+
+export function WholeTokenRouteDetails({
+  shown,
+  impact,
+}: {
+  shown: DirectQuote
+  impact: ReturnType<typeof useDirectPriceImpact>['impact']
+}): ReactNode {
+  const { inputCurrency, outputCurrency } = useSwapDerivedState()
+  const totalInput = shown.totalCost - (shown.inputToken ? shown.gasCostInInput || 0n : 0n)
+  const total = inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, totalInput.toString())
+  const symbol = inputCurrency?.symbol
+  const { value: fiat } = useUsdAmount(total)
+  const fees = shown.fees.reduce((sum, fee) => sum + fee.amount, 0n)
+  const input = inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, shown.sellAmount.toString())
+  const output = outputCurrency && CurrencyAmount.fromRawAmount(outputCurrency, shown.buyAmount.toString())
+  const feeAmount = inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, fees.toString())
+  const rateInfoParams = useRateInfoParams(input, output)
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <p>
+        {t`Estimated spend`}: {displayInput(totalInput, shown.inputToken, inputCurrency?.decimals)} {symbol}{' '}
+        {fiat && `(≈ $${fiat.toFixed(2)})`}
+        {shown.inputToken && t` + gas`}
+      </p>
+      <TradeTotalCostsDetails
+        rateInfoParams={rateInfoParams}
+        totalCosts={feeAmount}
+        isFeeDetailsOpen={open}
+        toggleAccordion={() => setOpen(!open)}
+      >
+        <dl>
+          <dt>{t`Route`}</dt>
+          <dd>{routeLabel(shown)}</dd>
+          <dt>{t`Expected input`}</dt>
+          <dd>
+            {displayInput(shown.sellAmount, shown.inputToken, inputCurrency?.decimals)} {symbol}
+          </dd>
+          <dt>{t`Fees`}</dt>
+          <dd>
+            {displayInput(fees, shown.inputToken, inputCurrency?.decimals)} {symbol}
+          </dd>
+          <dt>{t`Estimated gas`}</dt>
+          <dd>{displayEth(shown.gasCost)} ETH</dd>
+          <dt>{t`Estimated total`}</dt>
+          <dd>
+            {displayInput(totalInput, shown.inputToken, inputCurrency?.decimals)} {symbol}{' '}
+            {fiat && `(≈ $${fiat.toFixed(2)})`}
+          </dd>
+          <dt>{shown.inputToken ? t`Maximum input` : t`Maximum total, including gas`}</dt>
+          <dd>
+            {displayInput(shown.maxTotal, shown.inputToken, inputCurrency?.decimals)} {symbol}
+          </dd>
+          {!!shown.approvalGas && (
+            <>
+              <dt>{t`Estimated approval gas`}</dt>
+              <dd>{displayEth(shown.approvalGas * ((shown.maxFeePerGas + shown.maxPriorityFeePerGas) / 2n))} ETH</dd>
+            </>
+          )}
+          {shown.usdcRefund > 0n && (
+            <>
+              <dt>{t`Expected USDC returned`}</dt>
+              <dd>{formatUnits(shown.usdcRefund, 6)} USDC</dd>
+            </>
+          )}
+          <dt>{t`Price impact`}</dt>
+          <dd>{impact ? `${impact.toFixed(2)}%` : t`Unavailable`}</dd>
+          <dt>{t`Slippage tolerance`}</dt>
+          <dd>{shown.slippageBps / 100}%</dd>
+        </dl>
+        <p>{t`Unused input stays in your wallet or is refunded. Gas is paid on Ethereum.`}</p>
+      </TradeTotalCostsDetails>
+    </>
+  )
+}
+
+function displayInput(amount: bigint, inputToken: string | undefined, decimals: number | undefined): string {
+  return inputToken ? formatUnits(amount, decimals) : displayEth(amount)
+}
+
+function routeLabel(quote: DirectQuote): string {
+  if (quote.inputToken) return quote.route.label
+  if (quote.route.viaV2) return t`Uniswap v3 + v2 via USDC`
+  return quote.route.tokens.length > 2 ? t`Uniswap v3 via USDC` : quote.route.label
+}

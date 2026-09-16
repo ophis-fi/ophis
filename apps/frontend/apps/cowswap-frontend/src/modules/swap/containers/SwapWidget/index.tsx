@@ -53,6 +53,7 @@ import { SwapConfirmModal } from '../SwapConfirmModal'
 import { SwapRateDetails } from '../SwapRateDetails'
 import { TradeButtons } from '../TradeButtons'
 import { Warnings } from '../Warnings'
+import { WholeTokenReview } from '../WholeTokenRoute/WholeTokenReview.container'
 import { WholeTokenRoute } from '../WholeTokenRoute/WholeTokenRoute.container'
 
 export interface SwapWidgetProps {
@@ -290,6 +291,22 @@ export function SwapWidget({
     priceImpact,
   }
 
+  const genericModal = useMemo(
+    () =>
+      direct.reviewed && direct.quote ? (
+        <WholeTokenReview
+          quote={direct.quote}
+          requestKey={direct.requestKey}
+          reviewed
+          review={direct.review}
+          refresh={direct.refresh}
+        />
+      ) : (
+        showNativeWrapModal && <EthFlowModal {...ethFlowProps} />
+      ),
+    [direct, showNativeWrapModal, ethFlowProps],
+  )
+
   return (
     <Container>
       {showAddIntermediateTokenModal ? (
@@ -315,7 +332,7 @@ export function SwapWidget({
               outputCurrencyInfo={outputCurrencyPreviewInfo}
             />
           }
-          genericModal={showNativeWrapModal && <EthFlowModal {...ethFlowProps} />}
+          genericModal={genericModal}
         />
       )}
       <BottomBanners />
