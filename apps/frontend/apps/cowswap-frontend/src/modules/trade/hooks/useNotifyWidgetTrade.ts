@@ -13,14 +13,12 @@ import { useDerivedTradeState } from './useDerivedTradeState'
 import { TradeTypeToUiOrderType } from '../const/common'
 import { TradeDerivedState, TradeType } from '../types'
 
-// TODO: Add proper return type annotation
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function useNotifyWidgetTrade() {
+export function useNotifyWidgetTrade(disabled = false): void {
   const state = useDerivedTradeState()
   const amountsToSign = useAmountsToSignFromQuote()
 
   useEffect(() => {
-    if (!state || !amountsToSign) return
+    if (disabled || !state || !amountsToSign) return
 
     /**
      * There is no way to select both empty sell and buy currencies in the widget UI.
@@ -39,7 +37,7 @@ export function useNotifyWidgetTrade() {
       CowWidgetEvents.ON_CHANGE_TRADE_PARAMS,
       getTradeParamsEventPayload(state.tradeType, state, amountsToSign),
     )
-  }, [state, amountsToSign])
+  }, [disabled, state, amountsToSign])
 }
 
 function currencyAmountToAtomsAndUnits(currency: CurrencyAmount<Currency> | null): AtomsAndUnits | undefined {

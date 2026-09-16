@@ -1,9 +1,9 @@
-import { SupportedChainId as ChainId } from '@cowprotocol/cow-sdk'
+import { OrderKind, SupportedChainId as ChainId } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Token } from '@cowprotocol/currency'
 
 import { act, renderHook } from '@testing-library/react'
 
-import { useDerivedTradeState } from 'modules/trade'
+import { useAmountsToSignFromQuote, useDerivedTradeState } from 'modules/trade'
 import { useTradeUsdAmounts } from 'modules/usdAmount'
 
 import { useFiatValuePriceImpact } from './useFiatValuePriceImpact'
@@ -15,6 +15,7 @@ jest.mock('@cowprotocol/common-hooks', () => ({
 
 jest.mock('modules/trade', () => ({
   useDerivedTradeState: jest.fn(),
+  useAmountsToSignFromQuote: jest.fn(),
 }))
 
 jest.mock('modules/usdAmount', () => ({
@@ -63,5 +64,25 @@ describe('useFiatValuePriceImpact', () => {
     })
 
     expect(result.current).toEqual({ priceImpact: undefined, isLoading: false })
+  })
+  it('values the actual signed input for whole-token sells instead of the unspent budget', () => {
+    const sell = CurrencyAmount.fromRawAmount(inputToken, 70)
+    const buy = CurrencyAmount.fromRawAmount(new Token(ChainId.SEPOLIA, outputToken.address, 0), 1)
+    mockedUseDerivedTradeState.mockReturnValue({
+      inputCurrency: inputToken,
+      outputCurrency: buy.currency,
+      inputCurrencyAmount: CurrencyAmount.fromRawAmount(inputToken, 100),
+      outputCurrencyAmount: buy,
+      orderKind: OrderKind.SELL,
+    } as ReturnType<typeof useDerivedTradeState>)
+    jest
+      .mocked(useAmountsToSignFromQuote)
+      .mockReturnValue({ maximumSendSellAmount: sell, minimumReceiveBuyAmount: buy })
+    mockedUseTradeUsdAmounts.mockReturnValue({
+      inputAmount: { value: null, isLoading: false },
+      outputAmount: { value: null, isLoading: false },
+    })
+    renderHook(() => useFiatValuePriceImpact())
+    expect(mockedUseTradeUsdAmounts).toHaveBeenCalledWith(sell, buy, inputToken, buy.currency)
   })
 })

@@ -3,11 +3,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { ONE_HUNDRED_PERCENT } from '@cowprotocol/common-const'
 import { useDebounce } from '@cowprotocol/common-hooks'
 import { FractionUtils, getWrappedToken } from '@cowprotocol/common-utils'
+import { OrderKind } from '@cowprotocol/cow-sdk'
 import { Fraction, Percent } from '@cowprotocol/currency'
 
 import ms from 'ms.macro'
 
-import { useDerivedTradeState } from 'modules/trade'
+import { useAmountsToSignFromQuote, useDerivedTradeState } from 'modules/trade'
 import { useTradeUsdAmounts } from 'modules/usdAmount'
 
 import { useSafeMemo } from 'common/hooks/useSafeMemo'
@@ -22,12 +23,17 @@ export function useFiatValuePriceImpact(): { priceImpact: Percent | undefined; i
   const inputToken = useMemo(() => (inputCurrency ? getWrappedToken(inputCurrency) : undefined), [inputCurrency])
   const outputToken = useMemo(() => (outputCurrency ? getWrappedToken(outputCurrency) : undefined), [outputCurrency])
 
+  const amountsToSign = useAmountsToSignFromQuote()
+  const quotedInput =
+    state?.orderKind === OrderKind.SELL && outputCurrency?.decimals === 0
+      ? (amountsToSign?.maximumSendSellAmount ?? inputCurrencyAmount)
+      : inputCurrencyAmount
   const isTradeSetUp = useDebounce(!!inputToken && !!outputToken, TRADE_SET_UP_DEBOUNCE_TIME)
 
   const {
     inputAmount: { value: fiatValueInput, isLoading: inputIsLoading },
     outputAmount: { value: fiatValueOutput, isLoading: outputIsLoading },
-  } = useTradeUsdAmounts(inputCurrencyAmount, outputCurrencyAmount, inputToken, outputToken)
+  } = useTradeUsdAmounts(quotedInput, outputCurrencyAmount, inputToken, outputToken)
 
   const isLoading = inputIsLoading || outputIsLoading
   const [hasLoadingTimedOut, setHasLoadingTimedOut] = useState(false)

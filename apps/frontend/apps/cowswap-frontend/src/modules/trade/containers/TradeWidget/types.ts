@@ -20,6 +20,7 @@ export interface TradeWidgetParams {
   isTradePriceUpdating: boolean
   isSellingEthSupported?: boolean
   priceImpact: PriceImpact
+  disableTradeNotifications?: boolean
   disableQuotePolling?: boolean
   disableNativeSelling?: boolean
   disablePriceImpact?: boolean

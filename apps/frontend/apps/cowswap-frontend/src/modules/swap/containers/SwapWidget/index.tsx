@@ -25,6 +25,7 @@ import { useHandleSwap } from 'modules/tradeFlow'
 import { useIsTradeFormValidationPassed, useShouldHideTradeRateDetails } from 'modules/tradeFormValidation'
 import { useTradeQuote } from 'modules/tradeQuote'
 import { SettingsTab } from 'modules/tradeWidgetAddons'
+import { useUsdAmount } from 'modules/usdAmount'
 
 import { useIsProviderNetworkDeprecated } from 'common/hooks/useIsProviderNetworkDeprecated'
 import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetworkUnsupported'
@@ -132,6 +133,7 @@ export function SwapWidget({
   })
 
   const inputCurrencyInfo: CurrencyInfo = {
+    label: isSellTrade && outputCurrency?.decimals === 0 ? t`Spend up to` : undefined,
     field: Field.INPUT,
     currency: inputCurrency,
     amount: inputCurrencyAmount,
@@ -151,9 +153,13 @@ export function SwapWidget({
     receiveAmountInfo: isSellTrade ? receiveAmountInfo : null,
   }
 
+  const previewInput = isSellTrade
+    ? (receiveAmountInfo?.amountsToSign.sellAmount ?? inputCurrencyAmount)
+    : inputCurrencyAmount
+  const { value: previewFiat } = useUsdAmount(previewInput)
   const inputCurrencyPreviewInfo = {
-    amount: inputCurrencyAmount,
-    fiatAmount: inputCurrencyFiatAmount,
+    amount: previewInput,
+    fiatAmount: previewFiat,
     balance: inputCurrencyBalance,
     label: isSellTrade ? t`Sell amount` : t`Expected sell amount`,
   }
