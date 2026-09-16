@@ -1,25 +1,19 @@
 import { useAtomValue } from 'jotai'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
-import { TokenWithLogo } from '@cowprotocol/common-const'
+import { getRpcProvider, TokenWithLogo } from '@cowprotocol/common-const'
 import { useDebounce } from '@cowprotocol/common-hooks'
 import { isAddress } from '@cowprotocol/common-utils'
-import { useWalletProvider } from '@cowprotocol/wallet-provider'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
+import { atomWithQuery } from 'jotai-tanstack-query'
 import ms from 'ms.macro'
-import useSWR, { SWRResponse } from 'swr'
 
-import { searchTokensInApi } from '../../services/searchTokensInApi'
 import { environmentAtom } from '../../state/environmentAtom'
 import { allActiveTokensAtom, inactiveTokensAtom } from '../../state/tokens/allTokensAtom'
 import { fetchTokenFromBlockchain } from '../../utils/fetchTokenFromBlockchain'
 import { getTokenSearchFilter } from '../../utils/getTokenSearchFilter'
-import { parseTokensFromApi } from '../../utils/parseTokensFromApi'
 
-// Local token-list filtering is cheap (sub-5ms for ~hundreds of tokens), so a
-// short debounce keeps results feeling instant while still coalescing rapid
-// keystrokes. The expensive sources (external API + on-chain lookup) keep the
-// longer 1s debounce below.
 const IN_LISTS_DEBOUNCE_TIME = ms`50ms`
 const IN_EXTERNALS_DEBOUNCE_TIME = ms`1s`
 
@@ -31,11 +25,6 @@ export type TokenSearchResponse = {
   inactiveListsResult: TokenWithLogo[]
 }
 
-type FromListsResult = {
-  tokensFromActiveLists: TokenWithLogo[]
-  tokensFromInactiveLists: TokenWithLogo[]
-}
-
 const emptyResponse: TokenSearchResponse = {
   isLoading: false,
   blockchainResult: [],
@@ -44,149 +33,55 @@ const emptyResponse: TokenSearchResponse = {
   inactiveListsResult: [],
 }
 
-const emptyFromListsResult: FromListsResult = { tokensFromActiveLists: [], tokensFromInactiveLists: [] }
-
-/**
- * The hook is searching into 4 sources: active lists, inactive lists, external API, and blockchain
- * useSWR is widely used inside to cache the search results
- */
 export function useSearchToken(input: string | null): TokenSearchResponse {
-  const inputLowerCase = input?.toLowerCase()
-  const [isLoading, setIsLoading] = useState(false)
-
-  const debouncedInputInList = useDebounce(inputLowerCase, IN_LISTS_DEBOUNCE_TIME)
-  const debouncedInputInExternals = useDebounce(inputLowerCase, IN_EXTERNALS_DEBOUNCE_TIME)
-
-  const isInputStale = debouncedInputInExternals !== inputLowerCase
-
-  // Search in active and inactive lists
-  const { tokensFromActiveLists, tokensFromInactiveLists } = useSearchTokensInLists(debouncedInputInList)
-
-  const isTokenAlreadyFoundByAddress = useMemo(() => {
-    return [...tokensFromActiveLists, ...tokensFromInactiveLists].some(
-      (token) => token.address.toLowerCase() === debouncedInputInList,
-    )
-  }, [debouncedInputInList, tokensFromActiveLists, tokensFromInactiveLists])
-
-  // Search in external API
-  // TODO: Temporarily disabled since the API is no longer available. Re-enable when the API is fixed
-  const { data: apiResultTokens, isLoading: apiIsLoading } = { data: null, isLoading: false } /*useSearchTokensInApi(
-    debouncedInputInExternals,
-    isTokenAlreadyFoundByAddress,
-  )*/
-
-  // Search in Blockchain
-  const { data: tokenFromBlockChain, isLoading: blockchainIsLoading } = useFetchTokenFromBlockchain(
-    debouncedInputInExternals,
-    isTokenAlreadyFoundByAddress,
-  )
-
-  useEffect(() => {
-    setIsLoading(true)
-  }, [inputLowerCase])
-
-  useEffect(() => {
-    // When there are results from toke lists, then we don't need to wait for the rest
-    if (tokensFromActiveLists.length || tokensFromInactiveLists.length) {
-      setIsLoading(false)
-      return
-    }
-
-    // Change loading state only when input is not stale
-    if (isInputStale) return
-
-    // Loading is finished when all sources are loaded
-    if (!apiIsLoading && !blockchainIsLoading) {
-      setIsLoading(false)
-    }
-  }, [isInputStale, apiIsLoading, blockchainIsLoading, tokensFromActiveLists, tokensFromInactiveLists])
-
-  return useMemo(() => {
-    if (!debouncedInputInList) {
-      return emptyResponse
-    }
-
-    if (isTokenAlreadyFoundByAddress) {
-      return {
-        ...emptyResponse,
-        isLoading,
-        activeListsResult: tokensFromActiveLists,
-        inactiveListsResult: tokensFromInactiveLists,
-      }
-    }
-
-    const blockchainResult = !isInputStale && tokenFromBlockChain ? [tokenFromBlockChain] : []
-    const externalApiResult = !isInputStale && apiResultTokens ? apiResultTokens : []
-
-    return {
-      isLoading,
-      activeListsResult: tokensFromActiveLists,
-      inactiveListsResult: tokensFromInactiveLists,
-      blockchainResult,
-      externalApiResult,
-    }
-  }, [
-    isInputStale,
-    isLoading,
-    debouncedInputInList,
-    isTokenAlreadyFoundByAddress,
-    tokensFromActiveLists,
-    tokensFromInactiveLists,
-    apiResultTokens,
-    tokenFromBlockChain,
-  ])
-}
-
-function useSearchTokensInLists(input: string | undefined): FromListsResult {
+  const normalizedInput = input?.trim().toLowerCase()
+  const listInput = useDebounce(normalizedInput, IN_LISTS_DEBOUNCE_TIME)
+  const blockchainInput = useDebounce(normalizedInput, IN_EXTERNALS_DEBOUNCE_TIME)
+  const { chainId } = useAtomValue(environmentAtom)
   const activeTokens = useAtomValue(allActiveTokensAtom).tokens
   const inactiveTokens = useAtomValue(inactiveTokensAtom)
-
-  const { data: inListsResult } = useSWR<FromListsResult>(
-    ['searchTokensInLists', input, activeTokens, inactiveTokens],
-    () => {
-      if (!input) return emptyFromListsResult
-
-      const filter = getTokenSearchFilter(input)
-      const tokensFromActiveLists = activeTokens.filter(filter)
-      const tokensFromInactiveLists = inactiveTokens.filter(filter)
-
-      return { tokensFromActiveLists, tokensFromInactiveLists }
-    },
+  const lists = useMemo(() => {
+    if (!listInput) return emptyResponse
+    const filter = getTokenSearchFilter(listInput)
+    return {
+      activeListsResult: activeTokens.filter(filter),
+      inactiveListsResult: inactiveTokens.filter(filter),
+    }
+  }, [listInput, activeTokens, inactiveTokens])
+  const foundByAddress = [...lists.activeListsResult, ...lists.inactiveListsResult].some(
+    (token) => !!blockchainInput && areAddressesEqual(token.address, blockchainInput),
   )
+  const queryAtom = useMemo(
+    () =>
+      atomWithQuery(() => ({
+        // Metadata belongs to the picker network, regardless of the wallet's network.
+        queryKey: ['fetchTokenFromBlockchain', chainId, blockchainInput],
+        enabled: !!blockchainInput && !!isAddress(blockchainInput) && !foundByAddress,
+        queryFn: async () => {
+          if (!blockchainInput || !isAddress(blockchainInput)) return null
+          const provider = getRpcProvider(chainId)
+          if (!provider) return null
+          return TokenWithLogo.fromToken(await fetchTokenFromBlockchain(blockchainInput, chainId, provider))
+        },
+        staleTime: ms`1m`,
+        refetchOnWindowFocus: false,
+        retry: 1,
+      })),
+    [chainId, blockchainInput, foundByAddress],
+  )
+  const blockchain = useAtomValue(queryAtom)
+  const isStale = blockchainInput !== normalizedInput
 
-  return inListsResult || emptyFromListsResult
-}
-
-// eslint-disable-next-line unused-imports/no-unused-vars
-function useSearchTokensInApi(
-  input: string | undefined,
-  isTokenAlreadyFoundByAddress: boolean,
-): SWRResponse<TokenWithLogo[] | null> {
-  const { chainId } = useAtomValue(environmentAtom)
-
-  return useSWR<TokenWithLogo[] | null>(['searchTokensInApi', input], () => {
-    if (isTokenAlreadyFoundByAddress || !input) {
-      return null
+  return useMemo(() => {
+    if (!normalizedInput || listInput !== normalizedInput) {
+      return { ...emptyResponse, isLoading: !!normalizedInput }
     }
-
-    return searchTokensInApi(chainId, input).then((result) => parseTokensFromApi(result, chainId))
-  })
-}
-
-function useFetchTokenFromBlockchain(
-  input: string | undefined,
-  isTokenAlreadyFoundByAddress: boolean,
-): SWRResponse<TokenWithLogo | null> {
-  const { chainId } = useAtomValue(environmentAtom)
-  // TODO M-6 COW-573
-  // This flow will be reviewed and updated later, to include a wagmi alternative
-  const provider = useWalletProvider()
-
-  return useSWR<TokenWithLogo | null>(['fetchTokenFromBlockchain', input], () => {
-    if (isTokenAlreadyFoundByAddress || !input || !provider || !isAddress(input)) {
-      return null
+    const hasListResults = !!(lists.activeListsResult.length || lists.inactiveListsResult.length)
+    return {
+      ...emptyResponse,
+      ...lists,
+      isLoading: !hasListResults && (isStale || blockchain.isLoading),
+      blockchainResult: !foundByAddress && !isStale && blockchain.data ? [blockchain.data] : [],
     }
-
-    return fetchTokenFromBlockchain(input, chainId, provider).then(TokenWithLogo.fromToken)
-  })
+  }, [normalizedInput, listInput, lists, isStale, foundByAddress, blockchain.isLoading, blockchain.data])
 }

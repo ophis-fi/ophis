@@ -74,3 +74,31 @@ it('enables the verified Tiny Humans deployment with its own artwork', async () 
     )?.enabledByDefault,
   ).toBe(true)
 })
+
+it('ships zero-decimal MPS in the default Ethereum and Gnosis lists', async () => {
+  const list = JSON.parse(
+    readFileSync(resolve(__dirname, '../../../../apps/cowswap-frontend/public/token-lists/mt-pelerin.json'), 'utf8'),
+  )
+  await validateTokenList(list)
+  expect(list.tokens).toEqual([
+    {
+      chainId: 1,
+      address: '0x96c645D3D3706f793Ef52C19bBACe441900eD47D',
+      name: 'Mt Pelerin Shares',
+      symbol: 'MPS',
+      decimals: 0,
+    },
+    {
+      chainId: 100,
+      address: '0xfa57AA7beED63D03Aaf85fFd1753f5f6242588fb',
+      name: 'Mt Pelerin Shares',
+      symbol: 'MPS',
+      decimals: 0,
+    },
+  ])
+  for (const chainId of [SupportedChainId.MAINNET, SupportedChainId.GNOSIS_CHAIN]) {
+    expect(
+      DEFAULT_TOKENS_LISTS[chainId].find((entry) => entry.source.endsWith('/mt-pelerin.json'))?.enabledByDefault,
+    ).toBe(true)
+  }
+})

@@ -134,7 +134,7 @@ jobs:
         working-directory: apps/frontend
         run: |
           pnpm exec nx run cowswap-frontend:test --testPathPatterns 'getSwapQuote|fetchAndProcessQuote|getReceiveAmountInfo.test' --passWithNoTests=false
-          pnpm exec nx run tokens:test --testPathPatterns getTokenLogoUrls --passWithNoTests=false
+          pnpm exec nx run tokens:test --testPathPatterns 'getTokenLogoUrls|useSearchToken' --passWithNoTests=false
 
       # Coinbase tokenized stocks on Base: the shipped token list is validated
       # here with the SAME ajv schema the runtime loader applies (a schema miss

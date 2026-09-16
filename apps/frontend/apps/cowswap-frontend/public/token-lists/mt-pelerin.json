@@ -1,0 +1,25 @@
+{
+  "name": "Mt Pelerin",
+  "timestamp": "2026-09-16T14:00:00Z",
+  "version": {
+    "major": 1,
+    "minor": 0,
+    "patch": 0
+  },
+  "tokens": [
+    {
+      "chainId": 1,
+      "address": "0x96c645D3D3706f793Ef52C19bBACe441900eD47D",
+      "name": "Mt Pelerin Shares",
+      "symbol": "MPS",
+      "decimals": 0
+    },
+    {
+      "chainId": 100,
+      "address": "0xfa57AA7beED63D03Aaf85fFd1753f5f6242588fb",
+      "name": "Mt Pelerin Shares",
+      "symbol": "MPS",
+      "decimals": 0
+    }
+  ]
+}
