@@ -50,6 +50,11 @@ async function main() {
     await provider.send('evm_revert', [snapshot])
     console.log(JSON.stringify({ route: q.route.label, mps: '1', inputWei: q.sellAmount.toString(), gasUsed: receipt.gasUsed.toString(), refundChecked: true }))
   }
+  const mixed = quotes.find(q => q.route.viaV2)
+  const snapshot = await provider.send('evm_snapshot', [])
+  await (await signer.sendTransaction(buildDirectTransaction(mixed))).wait()
+  assert.equal((await (await signer.sendTransaction(buildDirectTransaction(mixed))).wait()).status, 1, 'Mixed route tolerates reserve movement')
+  await provider.send('evm_revert', [snapshot])
   const q = quotes[0]
   await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...q, maxInput: q.sellAmount - 1n, sellAmount: q.sellAmount - 1n })))
   await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...q, expiresAt: 1 })))
