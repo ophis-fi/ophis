@@ -121,6 +121,8 @@ projects:
           - eth_getTransactionByHash
           - eth_getTransactionReceipt
           - eth_getBlockByHash
+          - eth_blockNumber
+          - eth_getBlockByNumber
         failsafe:
           - matchMethod: "*"
             timeout:

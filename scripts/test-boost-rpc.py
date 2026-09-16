@@ -29,12 +29,18 @@ for path in ("/standard/evm/10", "/boost/4663"):
     upstream["endpoint"] = f"https://edge.goldsky.com{path}?key=test"
     assert validate(bad), path
 
+for method in ("eth_blockNumber", "eth_getBlockByNumber"):
+    bad = copy.deepcopy(config)
+    next(u for u in bad["projects"][0]["upstreams"] if u["id"] == "drpc-op")["allowMethods"].remove(method)
+    assert validate(bad), "Retained providers need head methods for their state pollers"
+
 driver = (OP / "configs/driver.toml.tmpl").read_text()
 assert "https://edge.goldsky.com/boost/10?key=${GOLDSKY_BOOST_KEY}" in driver
 rbh = runpy.run_path(str(RBH / "assert-erpc-failclosed.py"))
 source = (RBH / "configs/erpc.yaml.tmpl").read_text()
 assert rbh["active_lines"](source) == rbh["EXPECTED_ACTIVE_LINES"]
-for line in ("          - debug_*\n", "          - trace_*\n", "          - eth_getLogs\n"):
+for line in ("          - debug_*\n", "          - trace_*\n", "          - eth_getLogs\n",
+             "          - eth_blockNumber\n", "          - eth_getBlockByNumber\n"):
     assert rbh["active_lines"](source.replace(line, "")) != rbh["EXPECTED_ACTIVE_LINES"]
 
 for stack in (OP, RBH):

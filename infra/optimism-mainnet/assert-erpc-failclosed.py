@@ -337,7 +337,7 @@ def validate(cfg):
         for u in ups:
             host = _hostname(u.get("endpoint"))
             expected = ({"ignoreMethods": transaction_methods} if host == "edge.goldsky.com"
-                        else {"allowMethods": transaction_methods} if host == "lb.drpc.org"
+                        else {"allowMethods": transaction_methods + ["eth_blockNumber", "eth_getBlockByNumber"]} if host == "lb.drpc.org"
                         else {})
             actual = {k: u[k] for k in ("allowMethods", "ignoreMethods") if k in u}
             if actual != expected:

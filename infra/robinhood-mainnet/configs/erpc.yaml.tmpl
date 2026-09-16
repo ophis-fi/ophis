@@ -196,6 +196,8 @@ projects:
           - eth_getTransactionByHash
           - eth_getTransactionReceipt
           - eth_getBlockByHash
+          - eth_blockNumber
+          - eth_getBlockByNumber
         failsafe:
           # Same budget invariant as ophis-self-rbh's generic rule (9s < 12s).
           # This remote lane is the one that can silently hang while the local
