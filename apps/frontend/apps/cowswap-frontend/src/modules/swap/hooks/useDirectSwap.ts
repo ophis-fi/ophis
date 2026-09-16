@@ -1,6 +1,6 @@
 import { atom, useAtom } from 'jotai'
 import { atomFamily } from 'jotai/utils'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 
 import { getRpcProvider } from '@cowprotocol/common-const'
 import { captureError, ERROR_TYPES, normalizeError } from '@cowprotocol/common-utils'
@@ -21,10 +21,11 @@ import { useTradeFlowAnalytics } from 'modules/trade'
 
 import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
 
+import { useCurrentRequest } from './useCurrentRequest'
+import { useDirectApproval } from './useDirectApproval'
 import { useSwapDerivedState } from './useSwapDerivedState'
 
 import { executeDirectSwap, waitForDirectReceipt } from '../services/wholeToken/execute.service'
-import { approveDirectInput } from '../services/wholeToken/input.service'
 import { DirectQuote } from '../services/wholeToken/router.service'
 
 const executionAtom = atomFamily((_: string) =>
@@ -105,51 +106,6 @@ export function useDirectSwap(requestKey: string): {
   )
   const approve = useDirectApproval(wallet, requestKey, current, busy, setStatus)
   return useMemo(() => ({ ...status, execute, approve }), [status, execute, approve])
-}
-
-function useDirectApproval(
-  wallet: ReturnType<typeof useWalletProvider>,
-  requestKey: string,
-  current: { current: string },
-  busy: { current: boolean },
-  setStatus: (
-    update: (previous: { pending: boolean; message: string; hash: string; submitted: DirectQuote | null }) => {
-      pending: boolean
-      message: string
-      hash: string
-      submitted: DirectQuote | null
-    },
-  ) => void,
-): (quote: DirectQuote) => Promise<boolean> {
-  return useCallback(
-    async (quote: DirectQuote): Promise<boolean> => {
-      if (!wallet || busy.current) return false
-      busy.current = true
-      setStatus((previous) => ({ ...previous, pending: true, message: t`Approve USDC in your wallet` }))
-      try {
-        await approveDirectInput(wallet, getRpcProvider(1), quote, () => current.current === requestKey)
-        setStatus((previous) => ({ ...previous, pending: false, message: t`Approved. Refreshing quote.` }))
-        return true
-      } catch (error) {
-        setStatus((previous) => ({ ...previous, pending: false, message: getSwapErrorMessage(normalizeError(error)) }))
-        return false
-      } finally {
-        busy.current = false
-      }
-    },
-    [wallet, requestKey, setStatus, current, busy],
-  )
-}
-
-function useCurrentRequest(requestKey: string): { current: string } {
-  const current = useRef(requestKey)
-  useEffect(() => {
-    current.current = requestKey
-    return () => {
-      current.current = ''
-    }
-  }, [requestKey])
-  return current
 }
 
 async function confirmHost(quote: DirectQuote, inputCurrency: Currency, outputCurrency: Currency): Promise<boolean> {

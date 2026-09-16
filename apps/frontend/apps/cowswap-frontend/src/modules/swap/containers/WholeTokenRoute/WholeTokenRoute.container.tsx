@@ -152,8 +152,6 @@ function RouteDetails({
   const { inputCurrency } = useSwapDerivedState()
   const totalInput = shown.totalCost - (shown.inputToken ? shown.gasCostInInput || 0n : 0n)
   const total = inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, totalInput.toString())
-  const displayInput = (amount: bigint): string =>
-    shown.inputToken ? formatUnits(amount, inputCurrency?.decimals) : displayEth(amount)
   const symbol = inputCurrency?.symbol
   const { value: fiat } = useUsdAmount(total)
   const fees = shown.fees.reduce((sum, fee) => sum + fee.amount, 0n)
@@ -163,21 +161,22 @@ function RouteDetails({
       <dd>{shown.buyAmount.toString()} MPS</dd>
       <dt>{t`Expected input`}</dt>
       <dd>
-        {displayInput(shown.sellAmount)} {symbol}
+        {displayInput(shown.sellAmount, shown.inputToken, inputCurrency?.decimals)} {symbol}
       </dd>
       <dt>{t`Fees`}</dt>
       <dd>
-        {displayInput(fees)} {symbol}
+        {displayInput(fees, shown.inputToken, inputCurrency?.decimals)} {symbol}
       </dd>
       <dt>{t`Estimated gas`}</dt>
       <dd>{displayEth(shown.gasCost)} ETH</dd>
       <dt>{t`Estimated total`}</dt>
       <dd>
-        {displayInput(totalInput)} {symbol} {fiat && `(≈ $${fiat.toFixed(2)})`}
+        {displayInput(totalInput, shown.inputToken, inputCurrency?.decimals)} {symbol}{' '}
+        {fiat && `(≈ $${fiat.toFixed(2)})`}
       </dd>
       <dt>{shown.inputToken ? t`Maximum input` : t`Maximum total, including gas`}</dt>
       <dd>
-        {displayInput(shown.maxTotal)} {symbol}
+        {displayInput(shown.maxTotal, shown.inputToken, inputCurrency?.decimals)} {symbol}
       </dd>
       {!!shown.approvalGas && (
         <>
@@ -197,4 +196,8 @@ function RouteDetails({
       <dd>{shown.slippageBps / 100}%</dd>
     </dl>
   )
+}
+
+function displayInput(amount: bigint, inputToken: string | undefined, decimals: number | undefined): string {
+  return inputToken ? formatUnits(amount, decimals) : displayEth(amount)
 }

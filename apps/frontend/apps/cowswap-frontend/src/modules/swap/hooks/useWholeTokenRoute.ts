@@ -6,7 +6,6 @@ import { getRpcProvider, NATIVE_CURRENCIES, NATIVE_CURRENCY_ADDRESS } from '@cow
 import { useMachineTimeMs } from '@cowprotocol/common-hooks'
 import { getCurrencyAddress, getIsNativeToken, isTruthy, withTimeout } from '@cowprotocol/common-utils'
 import { areAddressesEqual, OrderKind } from '@cowprotocol/cow-sdk'
-import { CurrencyAmount } from '@cowprotocol/currency'
 import { useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
 
 import { atomWithQuery } from 'jotai-tanstack-query'
@@ -17,6 +16,7 @@ import { useSlippageConfig, useTradeSlippageValueAndType } from 'modules/tradeSl
 import { useUsdAmount } from 'modules/usdAmount'
 
 import { useCowDepositGas } from './useCowDepositGas'
+import { useDirectOutput } from './useDirectOutput'
 import { useSwapDerivedState } from './useSwapDerivedState'
 import { useSwapSettings } from './useSwapSettings'
 
@@ -208,14 +208,4 @@ function depositQuote(
   quote: ReturnType<typeof useTradeQuote>['quote'],
 ): ReturnType<typeof useTradeQuote>['quote'] {
   return key && !request?.inputToken ? quote : null
-}
-
-function useDirectOutput(
-  quote: DirectQuote | undefined,
-  currency: SwapState['outputCurrency'],
-): SwapState['outputCurrencyAmount'] {
-  return useMemo(
-    () => (quote && currency ? CurrencyAmount.fromRawAmount(currency, quote.buyAmount.toString()) : null),
-    [quote, currency],
-  )
 }
