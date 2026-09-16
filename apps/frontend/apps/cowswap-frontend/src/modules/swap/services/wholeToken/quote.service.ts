@@ -206,20 +206,13 @@ async function findAffordable(
   route: Route,
   maximum: bigint,
   estimatedGas?: bigint,
+  low = 2n,
+  best: DirectQuote | null = null,
 ): Promise<DirectQuote | null> {
-  // Integer search avoids losing a whole token to conservative gas reservation.
-  let low = 2n
-  let high = maximum
-  let best: DirectQuote | null = null
-  while (low <= high) {
-    const middle = (low + high) / 2n
-    const quote = await forAmount(provider, request, market, route, middle, estimatedGas).catch(() => null)
-    if (quote && quote.maxTotal <= request.budget) {
-      best = quote
-      low = middle + 1n
-    } else {
-      high = middle - 1n
-    }
-  }
-  return best
+  if (low > maximum) return best
+  const middle = (low + maximum) / 2n
+  const quote = await forAmount(provider, request, market, route, middle, estimatedGas).catch(() => null)
+  return quote && quote.maxTotal <= request.budget
+    ? findAffordable(provider, request, market, route, maximum, estimatedGas, middle + 1n, quote)
+    : findAffordable(provider, request, market, route, middle - 1n, estimatedGas, low, best)
 }
