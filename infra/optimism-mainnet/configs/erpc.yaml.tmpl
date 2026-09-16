@@ -163,6 +163,19 @@ projects:
         # self-consistent fork that the autopilot signs settlements against.
         # 2-of-3 agreement on the methods that drive solver behavior closes
         # that hole.
+        # Keep dRPC head calls for its private poller, not application reads.
+        selectionPolicy:
+          evalScope: network-method
+          evalFunc: |
+            (upstreams, ctx) => {
+              if (ctx.method === 'eth_blockNumber' || ctx.method === 'eth_getBlockByNumber') {
+                upstreams = upstreams.filter((upstream) => upstream.id !== 'drpc-op')
+              }
+              return upstreams
+                .removeCordoned()
+                .whenEmpty(() => upstreams)
+                .sortByScore(PREFER_FASTEST)
+            }
         failsafe:
           # Critical reads: state-dependent calls that gate solver behavior
           # and settlement validity. eth_getTransactionByHash is included

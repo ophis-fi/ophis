@@ -34,6 +34,24 @@ for method in ("eth_blockNumber", "eth_getBlockByNumber"):
     next(u for u in bad["projects"][0]["upstreams"] if u["id"] == "drpc-op")["allowMethods"].remove(method)
     assert validate(bad), "Retained providers need head methods for their state pollers"
 
+bad = copy.deepcopy(config)
+bad["projects"][0]["networks"][0].pop("selectionPolicy")
+assert validate(bad), "Application head reads must exclude dRPC"
+policy = config["projects"][0]["networks"][0]["selectionPolicy"]["evalFunc"]
+subprocess.run(["node", "-e", """
+const assert = require('node:assert/strict');
+const PREFER_FASTEST = 0;
+Array.prototype.removeCordoned = function() { return this; };
+Array.prototype.whenEmpty = function(f) { return this.length ? this : f(); };
+Array.prototype.sortByScore = function() { return this; };
+const select = """ + policy + """;
+const upstreams = ['goldsky-op', 'drpc-op', 'zan-op', 'tenderly-op'].map(id => ({id}));
+for (const method of ['eth_blockNumber', 'eth_getBlockByNumber']) {
+  assert.deepEqual(select(upstreams, {method}).map(u => u.id), ['goldsky-op', 'zan-op', 'tenderly-op']);
+}
+assert.deepEqual(select(upstreams, {method: 'eth_getTransactionReceipt'}), upstreams);
+"""], check=True)
+
 driver = (OP / "configs/driver.toml.tmpl").read_text()
 assert "https://edge.goldsky.com/boost/10?key=${GOLDSKY_BOOST_KEY}" in driver
 rbh = runpy.run_path(str(RBH / "assert-erpc-failclosed.py"))

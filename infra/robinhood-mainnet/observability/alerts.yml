@@ -249,10 +249,10 @@ groups:
           description: |
             eRPC is failing consensus because fewer than agreementThreshold (2)
             of the 2 upstreams respond within the retry budget for
-            `{{ $labels.category }}` requests. Robinhood has exactly TWO
-            upstreams — ophis-self-rbh (Cadia Nitro node) and robinhood-official
-            (managed gateway) — so a single slow, rate-limited, or down
-            upstream is enough to trip this.
+            `{{ $labels.category }}` requests. Each protected method has TWO
+            eligible voters: ophis-self-rbh plus goldsky-rbh for state/simulation,
+            or robinhood-official for transactions, receipts and block-by-hash.
+            A single slow, rate-limited, or down voter is enough to trip this.
 
             Diagnose: set UPSTREAM to each endpoint listed in the rendered erpc.yaml and run
             `cast block-number --rpc-url "$UPSTREAM"` to find which one is unresponsive. Check rpc-proxy logs:
@@ -273,20 +273,22 @@ groups:
         annotations:
           summary: "Robinhood eRPC dispute rate > 5/s on {{ $labels.category }} for 15m"
           description: |
-            The two Robinhood upstreams are returning DIFFERENT responses for
+            The two eligible Robinhood upstreams are returning DIFFERENT responses for
             the same request — fork-view-poisoning suspect OR natural tip
             drift. 2-of-2 consensus fails whenever the pair disagree.
 
             Sustained > 2/s means either (a) one of the two upstreams
-            (ophis-self-rbh or robinhood-official) is on a fork / lagging
+            (ophis-self-rbh plus the category's external voter) is on a fork / lagging
             behind the other, OR (b) a specific request pattern is triggering
             deterministic disagreement (e.g., a `latest`-tag query that
             resolves to different blocks).
 
             On Robinhood's ~134ms blocks, expect occasional disputes on tip
             queries. Sustained elevation = find which side is drifting.
-            From anywhere:
-              cast block-number --rpc-url https://rpc.mainnet.chain.robinhood.com
+            For state/simulation categories, probe goldsky-rbh; for transactions,
+            receipts and block-by-hash, probe robinhood-official. Use the matching
+            endpoint from private rendered/erpc.yaml and inspect upstream-labelled
+            RPC errors. Do not paste credential-bearing URLs into incident reports.
             On Cadia (tailscale ssh clement@cadia-wsl), the Nitro node:
               cast block-number --rpc-url http://localhost:8547
             https://robinhood-rpc.publicnode.com is an independent tie-breaker
@@ -312,41 +314,31 @@ groups:
             autopilot / orderbook will stall, no new settlements can broadcast,
             in-flight settlements will revert.
 
-            Robinhood consensus is 2-of-2 (ophis-self-rbh + robinhood-official,
-            agreementThreshold 2): EITHER upstream lagging or down is enough
-            to reach 100% failure. There is no third provider to hot-swap to.
+            Robinhood consensus is 2-of-2 per protected method: ophis-self-rbh
+            plus goldsky-rbh for state/simulation, or robinhood-official for
+            transactions, receipts and block-by-hash. EITHER eligible voter
+            lagging or down can reach 100% failure for that category.
 
             Likely causes, most common first:
               1. ophis-self-rbh (Cadia Nitro) lagging or catching up after
                  downtime — check OphisRbhErpcUpstreamBlockHeadLagging. A
                  syncing node makes this alert EXPECTED; it resolves on its
                  own at tip. Do NOT reconfigure mid-catch-up (2026-08-19).
-              2. robinhood-official degraded (rate-limit, outage, DNS) — probe:
-                 cast block-number --rpc-url https://rpc.mainnet.chain.robinhood.com
+              2. External voter degraded (rate-limit, outage, DNS): identify the
+                 failing category and upstream label, then probe goldsky-rbh or
+                 robinhood-official using its private rendered endpoint.
               3. Cadia host trouble — rebates.ophis.fi/stats returning 200
                  proves the host is up; robinhood-mainnet.ophis.fi 530 means
                  host/tunnel down, 502 means the orderbook is not serving
                  (often bootstrap-looping on this very consensus failure).
 
-            Last resort ONLY when robinhood-official is the confirmed-bad
-            side and the self node is healthy (removing ophis-self-rbh can
-            never restore settlements — see the trace note below): in
-            configs/erpc.yaml.tmpl remove robinhood-official from the
-            upstreams list AND lower agreementThreshold to 1, then activate
-            with ./render-configs.sh followed by
-            docker compose up -d --force-recreate rpc-proxy — template edits
-            alone change nothing, the proxy reads rendered/erpc.yaml. Do NOT
-            use compose-up.sh here (it rebuilds the backend images). NOT
-            audit-compliant — revert immediately after recovery. Neither step
-            alone is enough: threshold 1 with both upstreams listed is
-            unreliable (it works only if the bad upstream fails outright; two
-            differing live replies form a 1-1 tie that disputeBehavior
-            returnError rejects), and removal alone leaves one participant
-            below the threshold of 2, which lowParticipantsBehavior
-            returnError rejects. This lever restores protected READS only:
-            Nitro forwards eth_sendRawTransaction to the official gateway
-            regardless, so settlement broadcasts stay down for as long as
-            that gateway's transaction path is down.
+            Restore the failing voter or replace it with a verified independent
+            provider compatible with that method's response shape. Keep the
+            agreement threshold at 2 and the self-node logs/traces route intact.
+            Render reviewed endpoint changes and recreate only rpc-proxy;
+            template edits alone do not change the running proxy. Do not use
+            compose-up.sh for this repair (it rebuilds backend images).
+            Nitro transaction broadcasts still depend on the official gateway.
             Note ophis-self-rbh is the only upstream able to serve debug_*
             traces (the managed gateway does not expose them), so nothing in
             eRPC can restore settlements while the self node itself is behind.

@@ -95,7 +95,7 @@ ALLOWED = {
     "project": {"id", "networks", "upstreamDefaults", "upstreams"},
     "upstreamDefaults": {"evm"},
     "upstreamDefaults.evm": {"statePollerDebounce", "statePollerInterval"},
-    "network": {"architecture", "evm", "failsafe"},
+    "network": {"architecture", "evm", "failsafe", "selectionPolicy"},
     "network.evm": {"chainId", "integrity"},
     "integrity": {"enforceHighestBlock", "enforceNonNullTaggedBlocks"},
     "rule": {"matchMethod", "timeout", "consensus", "retry", "hedge"},
@@ -108,6 +108,8 @@ ALLOWED = {
     "upstream_rule": {"matchMethod", "timeout", "retry", "circuitBreaker"},
     "circuitBreaker": {"failureThresholdCount", "failureThresholdCapacity", "halfOpenAfter", "successThresholdCount", "successThresholdCapacity"},
 }
+
+EXPECTED_SELECTION_POLICY = {"evalScope": "network-method", "evalFunc": "(upstreams, ctx) => {\n  if (ctx.method === 'eth_blockNumber' || ctx.method === 'eth_getBlockByNumber') {\n    upstreams = upstreams.filter((upstream) => upstream.id !== 'drpc-op')\n  }\n  return upstreams\n    .removeCordoned()\n    .whenEmpty(() => upstreams)\n    .sortByScore(PREFER_FASTEST)\n}\n"}
 
 _SEGMENT_OK = re.compile(r"^[A-Za-z0-9_*]*$")
 EXIT_FAIL = 14
@@ -369,6 +371,8 @@ def validate(cfg):
                 _check_keys(net["evm"], "network.evm", f"network[{CHAIN_ID}].evm", errs)
                 if isinstance(net["evm"].get("integrity"), dict):
                     _check_keys(net["evm"]["integrity"], "integrity", f"network[{CHAIN_ID}].evm.integrity", errs)
+            if net.get("selectionPolicy") != EXPECTED_SELECTION_POLICY:
+                errs.append("OP application head routing must exclude dRPC without changing protected voters")
             rules = [r for r in (net.get("failsafe") or []) if isinstance(r, dict)]
             for i, r in enumerate(rules):
                 _check_rule_subtree(r, f"network[{CHAIN_ID}].failsafe[{i}]", errs)
