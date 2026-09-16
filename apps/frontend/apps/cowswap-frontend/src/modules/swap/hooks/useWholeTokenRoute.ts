@@ -21,6 +21,7 @@ import { useSwapSettings } from './useSwapSettings'
 
 import { DirectRequest, getDirectQuotes } from '../services/wholeToken/quote.service'
 import { DirectQuote, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
+import { comparisonLoading, selectDirect } from '../services/wholeToken/selection.service'
 
 type SwapState = ReturnType<typeof useSwapDerivedState>
 type QuoteParams = NonNullable<ReturnType<typeof useQuoteParams>>
@@ -98,50 +99,12 @@ function matchesForm(
     areAddressesEqual(q.receiver || q.owner, recipient),
   ].every(Boolean)
 }
-function selectDirect(
-  best: DirectQuote | undefined,
-  cow: ReturnType<typeof useTradeQuote>,
-  now: number,
-  depositGas: bigint,
-): DirectQuote | undefined {
-  if (!best || now - best.quotedAt >= 30000) return undefined
-  if (!cow.quote) return best
-  if ([cow.error, cow.isLoading, cow.hasParamsChanged].some(Boolean)) return best
-  const params = cow.quote.quoteResults.tradeParameters
-  const changed = [
-    !areAddressesEqual(params.sellToken, best.inputToken || NATIVE_CURRENCY_ADDRESS),
-    !areAddressesEqual(params.buyToken, MPS),
-    params.amount !== best.budget.toString(),
-  ].some(Boolean)
-  if (changed) return undefined
-  const amounts = cow.quote.quoteResults.amountsAndCosts
-  return best.buyAmount > amounts.afterPartnerFees.buyAmount ||
-    (best.buyAmount === amounts.afterPartnerFees.buyAmount &&
-      best.netCost <
-        amounts.amountsToSign.sellAmount + depositGas * ((best.maxFeePerGas + best.maxPriorityFeePerGas) / 2n))
-    ? best
-    : undefined
-}
 function isDirectPending(
   result: { isPending: boolean; isFetching: boolean; isError: boolean; data?: DirectQuote[] },
   now: number,
 ): boolean {
   const best = result.isError ? undefined : result.data?.[0]
   return result.isPending || (result.isFetching && (!best || now - best.quotedAt >= 30000))
-}
-function comparisonLoading(
-  key: string,
-  isReviewing: boolean,
-  directPending: boolean,
-  cow: ReturnType<typeof useTradeQuote>,
-  gasPending: boolean,
-  hasDirect: boolean,
-): boolean {
-  return (
-    !!key &&
-    !isReviewing &&
-    (directPending || (!hasDirect && (cow.isLoading || cow.hasParamsChanged || !cow.fetchParams || gasPending)))
-  )
 }
 type Selection = { quote: DirectQuote | null; key: string } | null
 function reviewedForKey(selection: Selection, key: string): DirectQuote | null {
