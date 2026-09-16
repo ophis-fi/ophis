@@ -12,7 +12,7 @@ const folder = mkdtempSync(join(tmpdir(), 'mps-execution-'))
 async function main() {
   const provider = new JsonRpcProvider(process.env.MPS_FORK_RPC || 'http://127.0.0.1:8557', 1)
   assert.match(await provider.send('web3_clientVersion', []), /anvil/i, 'Never send test transactions to a real network')
-  for (const name of ['quote', 'router']) buildSync({
+  for (const name of ['quote', 'router', 'input']) buildSync({
     entryPoints: [resolve(__dirname, `../apps/cowswap-frontend/src/modules/swap/services/wholeToken/${name}.service.ts`)],
     outfile: join(folder, `${name}.cjs`), bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent',
   })
@@ -54,6 +54,7 @@ async function main() {
   await (await signer.sendTransaction(buildDirectTransaction(mixed))).wait()
   assert.equal((await (await signer.sendTransaction(buildDirectTransaction(mixed))).wait()).status, 1, 'Mixed route tolerates reserve movement')
   await provider.send('evm_revert', [snapshot])
+  await checkUsdc(provider, signer, { account, recipient, feeRecipient }, { getDirectQuotes, buildDirectTransaction, USDC, MPS, ROUTER }, folder)
   const q = quotes[0]
   await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...q, maxInput: q.sellAmount - 1n, sellAmount: q.sellAmount - 1n })))
   await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...q, expiresAt: 1 })))
@@ -61,5 +62,44 @@ async function main() {
   for (const recipient of [ROUTER, ...[0, 1, 2].map(n => '0x' + n.toString(16).padStart(40, '0'))]) for (const invalid of [{ account: recipient }, { recipient }, { fees: [{ recipient, amount: 1n }] }]) assert.throws(() => buildDirectTransaction({ ...q, ...invalid }))
   await assert.rejects(getDirectQuotes(provider, { ...request, slippageBps: -1 }))
   console.log('PASS: exact output, all-in budget, fee recipient, ETH refunds, empty router balances, price limit and deadline')
+}
+async function checkUsdc(provider, signer, { account, recipient, feeRecipient }, { getDirectQuotes, buildDirectTransaction, USDC, MPS, ROUTER }, folder) {
+  const snapshot = await provider.send('evm_snapshot', [])
+  try {
+    const { PERMIT2, getInputApprovals } = require(join(folder, 'input.cjs'))
+    const whale = '0x55FE002aefF02F77364de339a1292923A15844B8'
+    await provider.send('anvil_impersonateAccount', [whale])
+    await provider.send('anvil_setBalance', [whale, '0x3635c9adc5dea00000'])
+    const abi = ['function balanceOf(address) view returns(uint256)', 'function transfer(address,uint256) returns(bool)']
+    const usdc = new Contract(USDC, abi, signer), mps = new Contract(MPS, abi, provider)
+    await (await usdc.connect(provider.getSigner(whale)).transfer(account, 10000000)).wait()
+    const secondFee = '0x4444444444444444444444444444444444444444'
+    await provider.send('anvil_setCode', [secondFee, '0x'])
+    const request = { inputToken: USDC, account, recipient, budget: 10000000n, deadlineSeconds: 600, slippageBps: 50, fees: [{ recipient: feeRecipient, bps: 50 }, { recipient: secondFee, bps: 1 }] }
+    const quotes = await getDirectQuotes(provider, request)
+    assert.equal(quotes.length, 6, 'Compare direct USDC v2/v3 and every viable WETH intermediate tier')
+    assert(quotes[0].needsApproval)
+    const approvals = await getInputApprovals(provider, account, request.budget, quotes[0].expiresAt + 1800)
+    assert.equal(approvals.length, 2)
+    for (const tx of approvals) assert.equal((await (await signer.sendTransaction(tx)).wait()).status, 1)
+    const ready = await getDirectQuotes(provider, request)
+    assert(ready.every(q => !q.needsApproval))
+    for (const q of ready) {
+      const inner = await provider.send('evm_snapshot', [])
+      const before = await Promise.all([usdc.balanceOf(account), mps.balanceOf(recipient), usdc.balanceOf(feeRecipient), usdc.balanceOf(secondFee), usdc.balanceOf(ROUTER)])
+      assert.equal(q.buyAmount, 1n)
+      const receipt = await (await signer.sendTransaction(buildDirectTransaction(q))).wait()
+      assert.equal(receipt.status, 1)
+      assert.equal(BigInt((await mps.balanceOf(recipient)).sub(before[1]).toString()), 1n)
+      const fee = q.fees.reduce((sum, f) => sum + f.amount, 0n)
+      assert.equal(BigInt(before[0].sub(await usdc.balanceOf(account)).toString()), q.sellAmount + fee)
+      assert.equal(BigInt((await usdc.balanceOf(feeRecipient)).sub(before[2]).toString()), q.fees[0].amount)
+      assert.equal(BigInt((await usdc.balanceOf(secondFee)).sub(before[3]).toString()), q.fees[1].amount)
+      assert((await usdc.balanceOf(ROUTER)).eq(before[4]))
+      assert(receipt.gasUsed.lte(q.gasLimit.toString()))
+      await provider.send('evm_revert', [inner])
+      console.log(JSON.stringify({ input: 'USDC', route: q.route.label, amount: q.sellAmount.toString(), output: '1', bothFeesPaid: true, refundChecked: true }))
+    }
+  } finally { await provider.send('evm_revert', [snapshot]) }
 }
 main().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => rmSync(folder, { recursive: true, force: true }))

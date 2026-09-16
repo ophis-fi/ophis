@@ -1,6 +1,7 @@
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { JsonRpcProvider, TransactionReceipt, TransactionResponse, Web3Provider } from '@ethersproject/providers'
 
+import { getInputApprovals, getInputBalance } from './input.service'
 import { buildDirectTransaction, DirectQuote } from './router.service'
 
 export async function executeDirectSwap(
@@ -20,7 +21,7 @@ export async function executeDirectSwap(
   ])
   if (Number(chain) !== 1 || !areAddressesEqual(account, quote.account))
     throw new Error('Wallet changed. Review a new quote.')
-  if (BigInt(balance.toString()) < quote.maxTotal) throw new Error('Insufficient ETH including gas.')
+  await validateFunding(rpc, quote, BigInt(balance.toString()))
   const tx = buildDirectTransaction(quote)
   // A fresh simulation must fit the reviewed gas cap; never silently raise spend limits.
   const gas = await rpc.estimateGas(tx)
@@ -42,5 +43,18 @@ export async function waitForDirectReceipt(
       if (replacement.cancelled === false) return replacement.receipt
     }
     throw error
+  }
+}
+
+async function validateFunding(rpc: JsonRpcProvider, quote: DirectQuote, nativeBalance: bigint): Promise<void> {
+  const inputBalance = await getInputBalance(rpc, quote)
+  if (inputBalance < quote.maxTotal) throw new Error('Insufficient input balance.')
+  const nativeRequired = quote.inputToken ? quote.gasLimit * quote.maxFeePerGas : quote.maxTotal
+  if (nativeBalance < nativeRequired) throw new Error('Insufficient ETH including gas.')
+  if (
+    quote.inputToken &&
+    (await getInputApprovals(rpc, quote.account, quote.maxTotal, Math.floor(Date.now() / 1000) + 30)).length
+  ) {
+    throw new Error('Token approval required. Review again.')
   }
 }

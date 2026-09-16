@@ -25,6 +25,10 @@ export interface VolumeFee {
   bps: number
 }
 export interface DirectQuote {
+  inputToken?: string
+  gasCostInInput?: bigint
+  approvalGas?: bigint
+  needsApproval?: boolean
   route: Route
   account: string
   recipient: string
@@ -54,36 +58,30 @@ export function encodePath(route: Route, reverse = false): string {
 }
 
 export function buildDirectTransaction(quote: DirectQuote): TransactionRequest {
-  getAddress(quote.account)
-  getAddress(quote.recipient)
-  const recipients = [quote.account, quote.recipient, ...quote.fees.map((fee) => fee.recipient)]
-  if (recipients.some((address) => BigInt(address) <= 2n || areAddressesEqual(address, ROUTER))) {
-    throw new Error('Invalid swap recipient or sender')
-  }
-  if (quote.buyAmount <= 0n || quote.maxInput < quote.sellAmount || quote.maxTotal > quote.budget) {
-    throw new Error('Invalid swap limits')
-  }
+  validateQuote(quote)
   const feeTotal = quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)
-  const commands = ['0b']
-  const inputs = [defaultAbiCoder.encode(['address', 'uint256'], [ROUTER_RECIPIENT, quote.maxInput + feeTotal])]
+  const inputToken = quote.inputToken || WETH
+  const { commands, inputs } = fundingCommands(quote, inputToken, feeTotal)
   for (const fee of quote.fees) {
     getAddress(fee.recipient)
     commands.push('05')
-    inputs.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [WETH, fee.recipient, fee.amount]))
+    inputs.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [inputToken, fee.recipient, fee.amount]))
   }
-  commands.push('01')
-  inputs.push(
-    defaultAbiCoder.encode(
-      ['address', 'uint256', 'uint256', 'bytes', 'bool'],
-      [
-        quote.route.viaV2 ? ROUTER_RECIPIENT : quote.recipient,
-        quote.route.viaV2 ? quote.usdcAmount : quote.buyAmount,
-        quote.maxInput,
-        encodePath(quote.route, true),
-        false,
-      ],
-    ),
-  )
+  if (quote.route.tokens.length > 1) {
+    commands.push('01')
+    inputs.push(
+      defaultAbiCoder.encode(
+        ['address', 'uint256', 'uint256', 'bytes', 'bool'],
+        [
+          quote.route.viaV2 ? ROUTER_RECIPIENT : quote.recipient,
+          quote.route.viaV2 ? quote.usdcAmount : quote.buyAmount,
+          quote.maxInput,
+          encodePath(quote.route, true),
+          false,
+        ],
+      ),
+    )
+  }
   if (quote.route.viaV2) {
     commands.push('09', '04')
     inputs.push(
@@ -95,17 +93,52 @@ export function buildDirectTransaction(quote: DirectQuote): TransactionRequest {
     inputs.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [USDC, quote.account, 0]))
   }
   // Return all unused wrapped/native input to the sender, including when recipient differs.
-  commands.push('0c', '04')
-  inputs.push(defaultAbiCoder.encode(['address', 'uint256'], [quote.account, 0]))
-  inputs.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [AddressZero, quote.account, 0]))
+  if (quote.inputToken) {
+    commands.push('04')
+    inputs.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [inputToken, quote.account, 0]))
+  } else {
+    commands.push('0c', '04')
+    inputs.push(defaultAbiCoder.encode(['address', 'uint256'], [quote.account, 0]))
+    inputs.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [AddressZero, quote.account, 0]))
+  }
   return {
     chainId: 1,
     from: quote.account,
     to: ROUTER,
-    value: (quote.maxInput + feeTotal).toString(),
+    value: quote.inputToken ? '0' : (quote.maxInput + feeTotal).toString(),
     data: routerInterface.encodeFunctionData('execute', [`0x${commands.join('')}`, inputs, quote.expiresAt]),
     gasLimit: quote.gasLimit.toString(),
     maxFeePerGas: quote.maxFeePerGas.toString(),
     maxPriorityFeePerGas: quote.maxPriorityFeePerGas.toString(),
   }
+}
+
+function validateQuote(quote: DirectQuote): void {
+  if (quote.inputToken && !areAddressesEqual(quote.inputToken, USDC)) throw new Error('Unsupported direct input')
+  getAddress(quote.account)
+  getAddress(quote.recipient)
+  const recipients = [quote.account, quote.recipient, ...quote.fees.map((fee) => fee.recipient)]
+  if (recipients.some((address) => BigInt(address) <= 2n || areAddressesEqual(address, ROUTER))) {
+    throw new Error('Invalid swap recipient or sender')
+  }
+  if (quote.buyAmount <= 0n || quote.maxInput < quote.sellAmount || quote.maxTotal > quote.budget) {
+    throw new Error('Invalid swap limits')
+  }
+}
+
+function fundingCommands(
+  quote: DirectQuote,
+  inputToken: string,
+  feeTotal: bigint,
+): { commands: string[]; inputs: string[] } {
+  const commands = [quote.inputToken ? '02' : '0b']
+  const inputs = [
+    quote.inputToken
+      ? defaultAbiCoder.encode(
+          ['address', 'address', 'uint160'],
+          [inputToken, ROUTER_RECIPIENT, quote.maxInput + feeTotal],
+        )
+      : defaultAbiCoder.encode(['address', 'uint256'], [ROUTER_RECIPIENT, quote.maxInput + feeTotal]),
+  ]
+  return { commands, inputs }
 }

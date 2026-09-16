@@ -20,7 +20,7 @@ import { useSwapDerivedState } from './useSwapDerivedState'
 import { useSwapSettings } from './useSwapSettings'
 
 import { DirectRequest, getDirectQuotes } from '../services/wholeToken/quote.service'
-import { DirectQuote, MPS, VolumeFee } from '../services/wholeToken/router.service'
+import { DirectQuote, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
 
 type SwapState = ReturnType<typeof useSwapDerivedState>
 type QuoteParams = NonNullable<ReturnType<typeof useQuoteParams>>
@@ -29,7 +29,7 @@ function supportsDirect(state: SwapState): boolean {
   if (!inputCurrency || !outputCurrency) return false
   return [
     state.orderKind === OrderKind.SELL,
-    getIsNativeToken(inputCurrency),
+    getIsNativeToken(inputCurrency) || areAddressesEqual(getCurrencyAddress(inputCurrency), USDC),
     inputCurrency.chainId === 1,
     outputCurrency.chainId === 1,
     areAddressesEqual(getCurrencyAddress(outputCurrency), MPS),
@@ -62,8 +62,10 @@ function getRequest(
   if (!q?.owner || !budget) return null
   const recipient = resolveRecipient(state, account, q.owner)
   const fees = getFees(params)
-  if (!recipient || !fees || !matchesForm(q, budget, account, recipient)) return null
+  const inputToken = directInput(state)
+  if (!recipient || !fees || !matchesForm(q, budget, account, recipient, inputToken)) return null
   return {
+    inputToken,
     account: q.owner,
     recipient,
     budget: BigInt(budget),
@@ -83,12 +85,13 @@ function matchesForm(
   budget: string,
   account: string | undefined,
   recipient: string,
+  inputToken?: string,
 ): boolean {
   return [
     q.amount.toString() === budget,
     q.kind === OrderKind.SELL,
     q.sellTokenChainId === 1,
-    areAddressesEqual(q.sellTokenAddress, NATIVE_CURRENCY_ADDRESS),
+    areAddressesEqual(q.sellTokenAddress, inputToken || NATIVE_CURRENCY_ADDRESS),
     q.buyTokenChainId === 1,
     areAddressesEqual(q.buyTokenAddress, MPS),
     areAddressesEqual(q.owner, account || q.owner),
@@ -102,10 +105,11 @@ function selectDirect(
   depositGas: bigint,
 ): DirectQuote | undefined {
   if (!best || now - best.quotedAt >= 30000) return undefined
-  if (cow.error || !cow.quote) return best
+  if (!cow.quote) return best
+  if ([cow.error, cow.isLoading, cow.hasParamsChanged].some(Boolean)) return best
   const params = cow.quote.quoteResults.tradeParameters
   const changed = [
-    !areAddressesEqual(params.sellToken, NATIVE_CURRENCY_ADDRESS),
+    !areAddressesEqual(params.sellToken, best.inputToken || NATIVE_CURRENCY_ADDRESS),
     !areAddressesEqual(params.buyToken, MPS),
     params.amount !== best.budget.toString(),
   ].some(Boolean)
@@ -131,9 +135,12 @@ function comparisonLoading(
   directPending: boolean,
   cow: ReturnType<typeof useTradeQuote>,
   gasPending: boolean,
+  hasDirect: boolean,
 ): boolean {
   return (
-    !!key && !isReviewing && (directPending || cow.isLoading || cow.hasParamsChanged || !cow.fetchParams || gasPending)
+    !!key &&
+    !isReviewing &&
+    (directPending || (!hasDirect && (cow.isLoading || cow.hasParamsChanged || !cow.fetchParams || gasPending)))
   )
 }
 type Selection = { quote: DirectQuote | null; key: string } | null
@@ -152,6 +159,7 @@ export function useWholeTokenRoute(): {
   requestKey: string
   reviewed: boolean
   loading: boolean
+  refresh: () => Promise<unknown>
   review: (quote: DirectQuote | null) => void
 } {
   const [selection, setSelection] = useState<Selection>(null)
@@ -172,11 +180,25 @@ export function useWholeTokenRoute(): {
       atomWithQuery(() => ({
         queryKey: ['wholeTokenRoutes', requestKey],
         enabled: !!requestKey && !isReviewing,
-        queryFn: async () => {
+        queryFn: async ({ signal }) => {
           const parsed = JSON.parse(requestKey) as Omit<DirectRequest, 'budget'> & { budget: string }
-          return withTimeout(getDirectQuotes(getRpcProvider(1), { ...parsed, budget: BigInt(parsed.budget) }), 20000)
+          const controller = new AbortController()
+          const abort = (): void => controller.abort()
+          signal.addEventListener('abort', abort, { once: true })
+          if (signal.aborted) abort()
+          const timer = setTimeout(abort, 20000)
+          try {
+            return await withTimeout(
+              getDirectQuotes(getRpcProvider(1), { ...parsed, budget: BigInt(parsed.budget) }, controller.signal),
+              20000,
+            )
+          } finally {
+            abort()
+            clearTimeout(timer)
+            signal.removeEventListener('abort', abort)
+          }
         },
-        refetchInterval: 15000,
+        refetchInterval: 20000,
         retry: false,
         staleTime: 10000,
       })),
@@ -184,10 +206,13 @@ export function useWholeTokenRoute(): {
   )
   const result = useAtomValue(queryAtom)
   const cow = useTradeQuote()
-  const { gas: depositGas, loading: gasLoading } = useCowDepositGas(requestKey ? cow.quote : null, request?.account)
+  const { gas: depositGas, loading: gasLoading } = useCowDepositGas(
+    depositQuote(requestKey, request, cow.quote),
+    request?.account,
+  )
   const best = requestKey && !result.isError ? result.data?.[0] : undefined
   const now = useMachineTimeMs(1000)
-  const loading = comparisonLoading(requestKey, isReviewing, isDirectPending(result, now), cow, gasLoading)
+  const loading = comparisonLoading(requestKey, isReviewing, isDirectPending(result, now), cow, gasLoading, !!best)
   const quote = reviewed || (loading ? undefined : selectDirect(best, cow, now, depositGas))
   const review = useCallback((quote: DirectQuote | null) => setSelection({ quote, key: requestKey }), [requestKey])
   const output = useMemo(
@@ -199,7 +224,20 @@ export function useWholeTokenRoute(): {
   )
   const { value: fiat } = useUsdAmount(output)
   return useMemo(
-    () => ({ quote, output, fiat, requestKey, reviewed: !!reviewed, review, loading }),
-    [quote, output, fiat, requestKey, reviewed, review, loading],
+    () => ({ quote, output, fiat, requestKey, reviewed: !!reviewed, review, loading, refresh: result.refetch }),
+    [quote, output, fiat, requestKey, reviewed, review, loading, result.refetch],
   )
+}
+
+function directInput(state: SwapState): string | undefined {
+  return state.inputCurrency && !getIsNativeToken(state.inputCurrency)
+    ? getCurrencyAddress(state.inputCurrency)
+    : undefined
+}
+function depositQuote(
+  key: string,
+  request: DirectRequest | null,
+  quote: ReturnType<typeof useTradeQuote>['quote'],
+): ReturnType<typeof useTradeQuote>['quote'] {
+  return key && !request?.inputToken ? quote : null
 }

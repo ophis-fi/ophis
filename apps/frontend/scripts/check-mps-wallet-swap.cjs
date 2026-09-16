@@ -9,6 +9,9 @@ const { JsonRpcProvider } = appRequire('@ethersproject/providers')
 const rpcUrl = process.env.MPS_FORK_RPC || 'http://127.0.0.1:8560'
 const frontend = process.env.MPS_FRONTEND || 'http://127.0.0.1:4176'
 const frontendRpc = process.env.MPS_FRONTEND_RPC || 'http://127.0.0.1:8557'
+const inputToken = process.env.MPS_INPUT || 'ETH'
+const inputAmount = inputToken === 'USDC' ? '10' : (process.env.MPS_AMOUNT || '0.0033')
+const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const MPS = '0x96c645D3D3706f793Ef52C19bBACe441900eD47D'
 const provider = new JsonRpcProvider(rpcUrl, 1)
 const signer = Wallet.createRandom().connect(provider)
@@ -18,8 +21,19 @@ async function main() {
   const account = signer.address
   await rpc('anvil_setBalance', [account, '0x56bc75e2d63100000'])
   await rpc('anvil_setCode', [account, '0x'])
+  await rpc('anvil_setBlockTimestampInterval', [1])
+  await rpc('anvil_setNextBlockBaseFeePerGas', ['0x5f5e100'])
+  await rpc('evm_setNextBlockTimestamp', [Math.floor(Date.now() / 1000)])
   await rpc('evm_mine')
   const snapshot = await rpc('evm_snapshot')
+  if (inputToken === 'USDC') {
+    const whale = '0x55FE002aefF02F77364de339a1292923A15844B8'
+    await rpc('anvil_impersonateAccount', [whale])
+    await rpc('anvil_setBalance', [whale, '0x3635c9adc5dea00000'])
+    const { Contract } = appRequire('@ethersproject/contracts')
+    const usdc = new Contract(USDC, ['function transfer(address,uint256) returns(bool)'], provider.getSigner(whale))
+    await (await usdc.transfer(account, 10000000)).wait()
+  }
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true })
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
@@ -75,7 +89,7 @@ async function main() {
       const { gas, from, chainId, ...tx } = params[0]
       assert.equal(from.toLowerCase(), account.toLowerCase())
       assert.equal(Number(chainId), 1)
-      assert.equal(tx.to.toLowerCase(), '0x66a9893cc07d91d95644aedd05d03f95e1dba8af')
+      assert(['0x66a9893cc07d91d95644aedd05d03f95e1dba8af', USDC.toLowerCase(), '0x000000000022d473030f116ddee9f6b43ac78ba3'].includes(tx.to.toLowerCase()))
       sent++
       return (await signer.sendTransaction({ ...tx, gasLimit: gas, chainId: 1 })).hash
     })
@@ -96,13 +110,13 @@ async function main() {
       },
       { account },
     )
-    await page.goto(`${frontend}/#/1/swap/ETH/${MPS}`)
+    await page.goto(`${frontend}/#/1/swap/${inputToken}/${MPS}`)
     const input = page.locator('#input-currency-input input')
     await input.waitFor({ timeout: 90000 })
     await page.waitForTimeout(3000)
-    await input.fill('0.0033')
+    await input.fill(inputAmount)
     const card = page.getByRole('region', { name: 'Best MPS route' })
-    await card.waitFor({ timeout: 90000 })
+    await card.waitFor({ timeout: 90000 }).catch(async error => { console.log((await page.locator('body').innerText()).slice(-7000)); throw error })
     if (process.env.MPS_REFRESH_STALL) {
       stallRefresh = true
       await Promise.race([
@@ -116,17 +130,21 @@ async function main() {
       console.log('PASS: expired cached quote keeps CoW actions suppressed during background refresh')
       return
     }
+    if (inputToken === 'USDC') {
+      await card.getByRole('button', { name: 'Approve USDC', exact: true }).click()
+      await card.getByRole('button', { name: 'Review swap', exact: true }).waitFor({ timeout: 90000 })
+    }
     await card.getByRole('button', { name: 'Review swap', exact: true }).click()
     await card.getByText('Recipient:', { exact: false }).waitFor()
-    await input.fill('0.0034')
+    await input.fill(inputToken === 'USDC' ? '9' : '0.0034')
     await card.getByRole('button', { name: 'Review swap', exact: true }).waitFor({ timeout: 90000 })
     assert.equal(await card.getByRole('button', { name: 'Confirm swap', exact: true }).count(), 0)
-    await input.fill('0.0033')
+    await input.fill(inputAmount)
     await card.getByRole('button', { name: 'Review swap', exact: true }).click({ timeout: 90000 })
     await card.getByRole('button', { name: 'Confirm swap', exact: true }).click()
     await card.getByRole('status').filter({ hasText: 'Received 1 MPS' }).waitFor({ timeout: 90000 })
     if (process.env.MPS_COW_UNSUPPORTED) assert(cowRejections.length > 0)
-    assert.equal(sent, 1)
+    assert.equal(sent, inputToken === 'USDC' ? 3 : 1)
     assert(await card.getByRole('button', { name: 'Swap submitted', exact: true }).isDisabled())
     const balance = await rpc('eth_call', [
       { to: MPS, data: '0x70a08231' + account.slice(2).toLowerCase().padStart(64, '0') },
