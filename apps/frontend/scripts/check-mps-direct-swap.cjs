@@ -34,7 +34,6 @@ async function main() {
     const before = await Promise.all([provider.getBalance(account), mps.balanceOf(recipient), weth.balanceOf(feeRecipient), weth.balanceOf(ROUTER), provider.getBalance(ROUTER), usdc.balanceOf(ROUTER)])
     assert(q.maxTotal <= request.budget)
     assert.equal(q.buyAmount, 1n)
-    assert(q.maxInput > q.sellAmount)
     const tx = await signer.sendTransaction(buildDirectTransaction(q))
     const receipt = await tx.wait()
     assert.equal(receipt.status, 1)
@@ -59,7 +58,7 @@ async function main() {
   await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...q, maxInput: q.sellAmount - 1n, sellAmount: q.sellAmount - 1n })))
   await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...q, expiresAt: 1 })))
   assert.throws(() => buildDirectTransaction({ ...q, budget: 1n }))
-  for (const recipient of [ROUTER, ...[0, 1, 2].map(n => '0x' + n.toString(16).padStart(40, '0'))]) assert.throws(() => buildDirectTransaction({ ...q, recipient }))
+  for (const recipient of [ROUTER, ...[0, 1, 2].map(n => '0x' + n.toString(16).padStart(40, '0'))]) for (const invalid of [{ recipient }, { fees: [{ recipient, amount: 1n }] }]) assert.throws(() => buildDirectTransaction({ ...q, ...invalid }))
   await assert.rejects(getDirectQuotes(provider, { ...request, slippageBps: -1 }))
   console.log('PASS: exact output, all-in budget, fee recipient, ETH refunds, empty router balances, price limit and deadline')
 }

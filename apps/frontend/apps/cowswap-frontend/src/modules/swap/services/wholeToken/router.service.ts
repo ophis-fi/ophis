@@ -56,7 +56,8 @@ export function encodePath(route: Route, reverse = false): string {
 export function buildDirectTransaction(quote: DirectQuote): TransactionRequest {
   getAddress(quote.account)
   getAddress(quote.recipient)
-  if ([quote.account, quote.recipient].some((address) => BigInt(address) <= 2n || areAddressesEqual(address, ROUTER))) {
+  const recipients = [quote.account, quote.recipient, ...quote.fees.map((fee) => fee.recipient)]
+  if (recipients.some((address) => BigInt(address) <= 2n || areAddressesEqual(address, ROUTER))) {
     throw new Error('Invalid swap recipient or sender')
   }
   if (quote.buyAmount <= 0n || quote.maxInput < quote.sellAmount || quote.maxTotal > quote.budget) {
