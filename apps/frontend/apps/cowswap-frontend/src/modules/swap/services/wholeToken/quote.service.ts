@@ -18,6 +18,7 @@ import {
   WETH,
 } from './router.service'
 
+const fallbackProvider = new JsonRpcProvider('https://eth.drpc.org', 1)
 const quoter = new Interface([
   'function quoteExactInput(bytes,uint256) returns (uint256,uint160[],uint32[],uint256)',
   'function quoteExactOutput(bytes,uint256) returns (uint256,uint160[],uint32[],uint256)',
@@ -81,11 +82,12 @@ interface Market {
 async function getMarket(provider: JsonRpcProvider): Promise<Market> {
   const [block, priority] = await Promise.all([
     provider.getBlock('latest'),
-    provider.send('eth_maxPriorityFeePerGas', []) as Promise<string>,
+    provider.send('eth_maxPriorityFeePerGas', []).catch(() => null) as Promise<string | null>,
   ])
   if (!block.baseFeePerGas) throw new Error('Gas estimate unavailable')
-  const priorityFee = BigInt(priority)
   const baseFee = BigInt(block.baseFeePerGas.toString())
+  const tip = priority === null ? BigInt((await provider.getGasPrice()).toString()) - baseFee : BigInt(priority)
+  const priorityFee = BigInt(BigNumber.maximum(tip.toString(), 0).toFixed())
   const reserveResult = await Promise.allSettled([
     provider.call({ to: MPS_V2_PAIR, data: pair.encodeFunctionData('getReserves') }, block.number),
     provider.call({ to: MPS_V2_PAIR, data: pair.encodeFunctionData('token0') }, block.number),
@@ -162,21 +164,17 @@ async function forAmount(
     expiresAt: Math.floor(Date.now() / 1000) + 300,
   }
   const tx = buildDirectTransaction(quote)
+  const simulation = [
+    { from: tx.from, to: tx.to, data: tx.data, value: `0x${(maxInput + feeTotal).toString(16)}` },
+    `0x${blockNumber.toString(16)}`,
+    { [request.account]: { balance: '0x3635c9adc5dea00000' } },
+  ]
   const gas =
     estimatedGas ??
     BigInt(
       await provider
-        .send('eth_estimateGas', [
-          {
-            from: tx.from,
-            to: tx.to,
-            data: tx.data,
-            value: `0x${(maxInput + feeTotal).toString(16)}`,
-          },
-          `0x${blockNumber.toString(16)}`,
-          { [request.account]: { balance: '0x3635c9adc5dea00000' } },
-        ])
-        .catch(async () => (await provider.estimateGas({ ...tx, gasLimit: undefined })).toString()),
+        .send('eth_estimateGas', simulation)
+        .catch(() => fallbackProvider.send('eth_estimateGas', simulation)),
     )
   quote.gasLimit = (gas * 120n + 99n) / 100n
   quote.gasCost = gas * (baseFee + priorityFee)
