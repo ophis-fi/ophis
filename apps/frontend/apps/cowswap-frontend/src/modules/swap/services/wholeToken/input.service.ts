@@ -79,7 +79,7 @@ export async function approveDirectInput(
     if (!isCurrent() || Number(chain) !== 1 || !areAddressesEqual(account, quote.account)) {
       throw new Error('Wallet or quote changed. Review again.')
     }
-    const sent = await wallet.getSigner().sendTransaction({ ...tx, chainId: 1, value: 0 })
+    const sent = await wallet.getSigner().sendTransaction({ ...tx, from: quote.account, chainId: 1, value: 0 })
     const receipt = await sent.wait()
     if (receipt.status !== 1) throw new Error('Approval failed')
   }

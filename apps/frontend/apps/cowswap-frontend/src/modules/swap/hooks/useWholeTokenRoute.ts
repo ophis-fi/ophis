@@ -1,7 +1,8 @@
 import { useAtomValue } from 'jotai'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { getRpcProvider, NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
+import { useCurrencyAmountBalance } from '@cowprotocol/balances-and-allowances'
+import { getRpcProvider, NATIVE_CURRENCIES, NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
 import { useMachineTimeMs } from '@cowprotocol/common-hooks'
 import { getCurrencyAddress, getIsNativeToken, isTruthy, withTimeout } from '@cowprotocol/common-utils'
 import { areAddressesEqual, OrderKind } from '@cowprotocol/cow-sdk'
@@ -19,9 +20,10 @@ import { useCowDepositGas } from './useCowDepositGas'
 import { useSwapDerivedState } from './useSwapDerivedState'
 import { useSwapSettings } from './useSwapSettings'
 
+import { isReplaceableCowPermit } from '../services/wholeToken/permitHook.service'
 import { DirectRequest, getDirectQuotes } from '../services/wholeToken/quote.service'
 import { DirectQuote, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
-import { comparisonLoading, selectDirect } from '../services/wholeToken/selection.service'
+import { canFundDirect, comparisonLoading, selectDirect } from '../services/wholeToken/selection.service'
 
 type SwapState = ReturnType<typeof useSwapDerivedState>
 type QuoteParams = NonNullable<ReturnType<typeof useQuoteParams>>
@@ -39,7 +41,10 @@ function supportsDirect(state: SwapState): boolean {
 function getFees(params: QuoteParams): VolumeFee[] | null {
   const metadata = params.appData?.metadata
   if (!metadata) return null
-  if ([metadata.hooks?.pre?.length, metadata.hooks?.post?.length].some(Boolean)) return null
+  const customPreHooks = metadata.hooks?.pre?.filter(
+    (hook) => !isReplaceableCowPermit(hook, params.quoteParams?.sellTokenAddress),
+  )
+  if ([customPreHooks?.length, metadata.hooks?.post?.length].some(Boolean)) return null
   const entries = [metadata.partnerFee].flat().filter(isTruthy)
   // Ophis's CoW auction-improvement fee is inapplicable to a fixed-output AMM quote.
   const volume = entries.filter((fee) => 'volumeBps' in fee)
@@ -129,6 +134,7 @@ export function useWholeTokenRoute(): {
   const state = useSwapDerivedState()
   const params = useQuoteParams(state.inputCurrencyAmount?.quotient.toString())
   const { account, chainId } = useWalletInfo()
+  const nativeBalance = useCurrencyAmountBalance(NATIVE_CURRENCIES[1])
   const isSmartWallet = useIsSmartContractWallet()
   const slippage = useTradeSlippageValueAndType()
   const config = useSlippageConfig()
@@ -173,18 +179,17 @@ export function useWholeTokenRoute(): {
     depositQuote(requestKey, request, cow.quote),
     request?.account,
   )
-  const best = requestKey && !result.isError ? result.data?.[0] : undefined
+  const best =
+    requestKey && !result.isError
+      ? result.data?.find((candidate) =>
+          canFundDirect(candidate, !!account, nativeBalance ? BigInt(nativeBalance.quotient.toString()) : undefined),
+        )
+      : undefined
   const now = useMachineTimeMs(1000)
-  const loading = comparisonLoading(requestKey, isReviewing, isDirectPending(result, now), cow, gasLoading, !!best)
+  const loading = comparisonLoading(requestKey, isReviewing, isDirectPending(result, now), cow, gasLoading)
   const quote = reviewed || (loading ? undefined : selectDirect(best, cow, now, depositGas))
   const review = useCallback((quote: DirectQuote | null) => setSelection({ quote, key: requestKey }), [requestKey])
-  const output = useMemo(
-    () =>
-      quote && state.outputCurrency
-        ? CurrencyAmount.fromRawAmount(state.outputCurrency, quote.buyAmount.toString())
-        : null,
-    [quote, state.outputCurrency],
-  )
+  const output = useDirectOutput(quote, state.outputCurrency)
   const { value: fiat } = useUsdAmount(output)
   return useMemo(
     () => ({ quote, output, fiat, requestKey, reviewed: !!reviewed, review, loading, refresh: result.refetch }),
@@ -203,4 +208,14 @@ function depositQuote(
   quote: ReturnType<typeof useTradeQuote>['quote'],
 ): ReturnType<typeof useTradeQuote>['quote'] {
   return key && !request?.inputToken ? quote : null
+}
+
+function useDirectOutput(
+  quote: DirectQuote | undefined,
+  currency: SwapState['outputCurrency'],
+): SwapState['outputCurrencyAmount'] {
+  return useMemo(
+    () => (quote && currency ? CurrencyAmount.fromRawAmount(currency, quote.buyAmount.toString()) : null),
+    [quote, currency],
+  )
 }

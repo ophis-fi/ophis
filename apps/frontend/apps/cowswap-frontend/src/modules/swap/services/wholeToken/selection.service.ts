@@ -1,5 +1,5 @@
 import { NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
-import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, PriceQuality } from '@cowprotocol/cow-sdk'
 
 import type { useTradeQuote } from 'modules/tradeQuote'
 
@@ -35,11 +35,20 @@ export function comparisonLoading(
   directPending: boolean,
   cow: ReturnType<typeof useTradeQuote>,
   gasPending: boolean,
-  hasDirect: boolean,
 ): boolean {
-  return (
-    !!key &&
-    !isReviewing &&
-    (directPending || gasPending || (!hasDirect && (cow.isLoading || cow.hasParamsChanged || !cow.fetchParams)))
-  )
+  const awaitingCow =
+    !cow.error && (!cow.quote || cow.hasParamsChanged || cow.fetchParams?.priceQuality !== PriceQuality.OPTIMAL)
+  return !!key && !isReviewing && (directPending || gasPending || awaitingCow)
+}
+
+export function canFundDirect(
+  quote: DirectQuote | undefined,
+  connected: boolean,
+  nativeBalance: bigint | undefined,
+): boolean {
+  if (!quote) return false
+  if (!connected || !quote.inputToken) return true
+  if (nativeBalance === undefined) return false
+  const approvalGas = ((quote.approvalGas || 0n) * 120n + 99n) / 100n
+  return nativeBalance >= (quote.gasLimit + approvalGas) * quote.maxFeePerGas
 }
