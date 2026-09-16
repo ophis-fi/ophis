@@ -41,7 +41,12 @@ export async function getDirectQuotes(
   const market = await getMarket(provider, signal)
   market.rpc.check()
   const approvals = request.inputToken
-    ? await getInputApprovals(provider, request.account, request.budget, market.timestamp + 60)
+    ? await getInputApprovals(
+        provider,
+        request.account,
+        request.budget,
+        market.timestamp + getDeadlineSeconds(request.deadlineSeconds),
+      )
     : []
   market.rpc.check()
   const approvalGas = await Promise.all(

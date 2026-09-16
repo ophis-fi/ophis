@@ -13,7 +13,7 @@ export function selectDirect(
 ): DirectQuote | undefined {
   if (!best || now - best.quotedAt >= 30000) return undefined
   if (!cow.quote) return best
-  if ([cow.error, cow.hasParamsChanged].some(Boolean)) return best
+  if (cow.hasParamsChanged) return best
   const params = cow.quote.quoteResults.tradeParameters
   const changed = [
     !areAddressesEqual(params.sellToken, best.inputToken || NATIVE_CURRENCY_ADDRESS),

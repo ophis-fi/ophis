@@ -21,7 +21,7 @@ const rpc = {
   getBalance: jest.fn().mockResolvedValue(BigNumber.from(1000)),
   estimateGas: jest.fn().mockResolvedValue(BigNumber.from(100)),
 } as unknown as JsonRpcProvider
-const quote = { account, maxTotal: 200n, gasLimit: 120n, quotedAt: Date.now() } as DirectQuote
+const quote = { account, maxTotal: 200n, gasLimit: 120n, quotedAt: Date.now(), expiresAt: 2000000000 } as DirectQuote
 beforeEach(() => sendTransaction.mockClear())
 it('submits the reviewed limits only after wallet, balance and simulation checks', async () => {
   await executeDirectSwap(wallet, rpc, quote, () => true)
@@ -80,5 +80,16 @@ it('requires ETH gas even with enough USDC', async () => {
   jest.mocked(rpc.call).mockResolvedValueOnce('0x3e8')
   const usdc = { ...quote, inputToken: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', maxFeePerGas: 100n }
   await expect(executeDirectSwap(wallet, rpc, usdc, () => true)).rejects.toThrow('Insufficient ETH')
+  expect(sendTransaction).not.toHaveBeenCalled()
+})
+
+it('requires the Permit2 approval to last through the reviewed swap deadline', async () => {
+  jest
+    .mocked(rpc.call)
+    .mockResolvedValueOnce('0x3e8')
+    .mockResolvedValueOnce('0x3e8')
+    .mockResolvedValueOnce(defaultAbiCoder.encode(['uint160', 'uint48', 'uint48'], [1000, 1999999999, 0]))
+  const usdc = { ...quote, inputToken: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', maxFeePerGas: 1n }
+  await expect(executeDirectSwap(wallet, rpc, usdc, () => true)).rejects.toThrow('Token approval required')
   expect(sendTransaction).not.toHaveBeenCalled()
 })

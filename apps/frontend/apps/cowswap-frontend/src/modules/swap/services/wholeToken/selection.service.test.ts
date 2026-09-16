@@ -76,3 +76,9 @@ it('keeps gasless CoW available when USDC users cannot fund direct gas and appro
   expect(canFundDirect(usdc, true, 480n)).toBe(true)
   expect(canFundDirect(usdc, false, undefined)).toBe(true)
 })
+
+it('compares a retained current CoW quote after a background refresh error', () => {
+  const cow = { ...cowQuote(), error: new Error('Polling failed') } as ReturnType<typeof useTradeQuote>
+  expect(selectDirect(direct, cow, 1001, 0n)).toBeUndefined()
+  expect(selectDirect(direct, { ...cow, quote: null }, 1001, 0n)).toBe(direct)
+})
