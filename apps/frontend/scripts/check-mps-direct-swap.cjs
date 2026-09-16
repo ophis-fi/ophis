@@ -66,7 +66,7 @@ async function main() {
 async function checkUsdc(provider, signer, { account, recipient, feeRecipient }, { getDirectQuotes, buildDirectTransaction, USDC, MPS, ROUTER }, folder) {
   const snapshot = await provider.send('evm_snapshot', [])
   try {
-    const { PERMIT2, getInputApprovals } = require(join(folder, 'input.cjs'))
+    const { getInputApprovals } = require(join(folder, 'input.cjs'))
     const whale = '0x55FE002aefF02F77364de339a1292923A15844B8'
     await provider.send('anvil_impersonateAccount', [whale])
     await provider.send('anvil_setBalance', [whale, '0x3635c9adc5dea00000'])
