@@ -59,6 +59,7 @@ async function main() {
   await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...q, maxInput: q.sellAmount - 1n, sellAmount: q.sellAmount - 1n })))
   await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...q, expiresAt: 1 })))
   assert.throws(() => buildDirectTransaction({ ...q, budget: 1n }))
+  for (const recipient of [ROUTER, ...[0, 1, 2].map(n => '0x' + n.toString(16).padStart(40, '0'))]) assert.throws(() => buildDirectTransaction({ ...q, recipient }))
   await assert.rejects(getDirectQuotes(provider, { ...request, slippageBps: -1 }))
   console.log('PASS: exact output, all-in budget, fee recipient, ETH refunds, empty router balances, price limit and deadline')
 }

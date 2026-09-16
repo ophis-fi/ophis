@@ -1,5 +1,7 @@
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { defaultAbiCoder, Interface } from '@ethersproject/abi'
 import { getAddress } from '@ethersproject/address'
+import { AddressZero } from '@ethersproject/constants'
 import { TransactionRequest } from '@ethersproject/providers'
 
 // Ethereum deployments: https://developers.uniswap.org/docs/protocols/v3/deployments/v3-ethereum-deployments
@@ -54,6 +56,9 @@ export function encodePath(route: Route, reverse = false): string {
 export function buildDirectTransaction(quote: DirectQuote): TransactionRequest {
   getAddress(quote.account)
   getAddress(quote.recipient)
+  if ([quote.account, quote.recipient].some((address) => BigInt(address) <= 2n || areAddressesEqual(address, ROUTER))) {
+    throw new Error('Invalid swap recipient or sender')
+  }
   if (quote.buyAmount <= 0n || quote.maxInput < quote.sellAmount || quote.maxTotal > quote.budget) {
     throw new Error('Invalid swap limits')
   }
@@ -91,12 +96,7 @@ export function buildDirectTransaction(quote: DirectQuote): TransactionRequest {
   // Return all unused wrapped/native input to the sender, including when recipient differs.
   commands.push('0c', '04')
   inputs.push(defaultAbiCoder.encode(['address', 'uint256'], [quote.account, 0]))
-  inputs.push(
-    defaultAbiCoder.encode(
-      ['address', 'address', 'uint256'],
-      ['0x0000000000000000000000000000000000000000', quote.account, 0],
-    ),
-  )
+  inputs.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [AddressZero, quote.account, 0]))
   return {
     chainId: 1,
     from: quote.account,

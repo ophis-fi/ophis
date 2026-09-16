@@ -1,4 +1,3 @@
-import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { Interface } from '@ethersproject/abi'
 import { getAddress } from '@ethersproject/address'
 import { JsonRpcProvider } from '@ethersproject/providers'
@@ -18,15 +17,11 @@ import {
   WETH,
 } from './router.service'
 
-const fallbackProvider = new JsonRpcProvider('https://eth.drpc.org', 1)
 const quoter = new Interface([
   'function quoteExactInput(bytes,uint256) returns (uint256,uint160[],uint32[],uint256)',
   'function quoteExactOutput(bytes,uint256) returns (uint256,uint160[],uint32[],uint256)',
 ])
-const pair = new Interface([
-  'function getReserves() view returns (uint112,uint112,uint32)',
-  'function token0() view returns (address)',
-])
+const pair = new Interface(['function getReserves() view returns (uint112,uint112,uint32)'])
 const FEES = [100, 500, 3000, 10000]
 // MPS's three Ethereum pools: direct v3, USDC v3 (1%), and USDC v2.
 // Compare each standard WETH/USDC v3 fee tier for the intermediate hop.
@@ -62,6 +57,12 @@ export async function getDirectQuotes(provider: JsonRpcProvider, request: Direct
     if (!Number.isFinite(fee.bps) || fee.bps < 0 || fee.bps > 10000) throw new Error('Invalid fee')
   }
   if ((await provider.getNetwork()).chainId !== 1) throw new Error('Switch to Ethereum')
+  // Require funded simulation on this read RPC; never mix fork and public state.
+  await provider.send('eth_estimateGas', [
+    { from: request.account, to: WETH, value: '0x1' },
+    'latest',
+    { [request.account]: { balance: '0x3635c9adc5dea00000' } },
+  ])
   const market = await getMarket(provider)
   const results = await Promise.allSettled(ROUTES.map((route) => quoteRoute(provider, request, market, route)))
   return results
@@ -88,19 +89,13 @@ async function getMarket(provider: JsonRpcProvider): Promise<Market> {
   const baseFee = BigInt(block.baseFeePerGas.toString())
   const tip = priority === null ? BigInt((await provider.getGasPrice()).toString()) - baseFee : BigInt(priority)
   const priorityFee = BigInt(BigNumber.maximum(tip.toString(), 0).toFixed())
-  const reserveResult = await Promise.allSettled([
-    provider.call({ to: MPS_V2_PAIR, data: pair.encodeFunctionData('getReserves') }, block.number),
-    provider.call({ to: MPS_V2_PAIR, data: pair.encodeFunctionData('token0') }, block.number),
-  ])
-  const reserves =
-    reserveResult[0].status === 'fulfilled' && reserveResult[1].status === 'fulfilled'
-      ? pair.decodeFunctionResult('getReserves', reserveResult[0].value)
-      : null
-  const usdcFirst =
-    reserveResult[1].status === 'fulfilled' &&
-    areAddressesEqual(String(pair.decodeFunctionResult('token0', reserveResult[1].value)[0]), USDC)
-  const usdcReserve = reserves ? BigInt(String(reserves[usdcFirst ? 0 : 1])) : 0n
-  const mpsReserve = reserves ? BigInt(String(reserves[usdcFirst ? 1 : 0])) : 0n
+  const reserves = await provider
+    .call({ to: MPS_V2_PAIR, data: pair.encodeFunctionData('getReserves') }, block.number)
+    .then((result) => pair.decodeFunctionResult('getReserves', result))
+    .catch(() => null)
+  // The immutable v2 pair sorts MPS (0x96...) before USDC (0xA0...).
+  const usdcReserve = reserves ? BigInt(String(reserves[1])) : 0n
+  const mpsReserve = reserves ? BigInt(String(reserves[0])) : 0n
 
   return { blockNumber: block.number, baseFee, priorityFee, usdcReserve, mpsReserve }
 }
@@ -169,13 +164,7 @@ async function forAmount(
     `0x${blockNumber.toString(16)}`,
     { [request.account]: { balance: '0x3635c9adc5dea00000' } },
   ]
-  const gas =
-    estimatedGas ??
-    BigInt(
-      await provider
-        .send('eth_estimateGas', simulation)
-        .catch(() => fallbackProvider.send('eth_estimateGas', simulation)),
-    )
+  const gas = estimatedGas ?? BigInt(await provider.send('eth_estimateGas', simulation))
   quote.gasLimit = (gas * 120n + 99n) / 100n
   quote.gasCost = gas * (baseFee + priorityFee)
   quote.totalCost = sellAmount + feeTotal + quote.gasCost
@@ -185,7 +174,7 @@ async function forAmount(
       : 0n
   quote.netCost = quote.totalCost - refundValue
   quote.maxTotal = maxInput + feeTotal + quote.gasLimit * quote.maxFeePerGas
-  return quote.maxTotal <= request.budget ? quote : null
+  return quote
 }
 
 async function quoteRoute(
@@ -199,25 +188,37 @@ async function quoteRoute(
   const maximum = route.viaV2 ? (capacity * 997n * mpsReserve) / (usdcReserve * 1000n + capacity * 997n) : capacity
   if (maximum <= 0n) return null
   const seed = await forAmount(provider, request, market, route, 1n)
-  if (!seed || maximum === 1n) return seed
+  if (!seed || seed.maxTotal > request.budget) return null
+  const candidate = await findAffordable(provider, request, market, route, maximum, (seed.gasLimit * 100n) / 120n)
+  if (!candidate) return seed
+  const verified = await forAmount(provider, request, market, route, candidate.buyAmount).catch(() => null)
+  if (verified && verified.maxTotal <= request.budget) return verified
+  // If tick crossings or transfer rules invalidate the estimate, search below
+  // that candidate with actual simulations instead of discarding the route.
+  return (await findAffordable(provider, request, market, route, candidate.buyAmount - 1n)) || seed
+}
+
+async function findAffordable(
+  provider: JsonRpcProvider,
+  request: DirectRequest,
+  market: Market,
+  route: Route,
+  maximum: bigint,
+  estimatedGas?: bigint,
+): Promise<DirectQuote | null> {
   // Integer search avoids losing a whole token to conservative gas reservation.
   let low = 2n
   let high = maximum
-  let best = seed
+  let best: DirectQuote | null = null
   while (low <= high) {
     const middle = (low + high) / 2n
-    const quote = await forAmount(provider, request, market, route, middle, (seed.gasLimit * 100n) / 120n)
-    if (quote) {
+    const quote = await forAmount(provider, request, market, route, middle, estimatedGas).catch(() => null)
+    if (quote && quote.maxTotal <= request.budget) {
       best = quote
       low = middle + 1n
     } else {
       high = middle - 1n
     }
   }
-  // Reuse the seed's gas for search probes, then simulate the chosen transaction.
-  if (best.buyAmount === 1n) return seed
-  return (
-    (await forAmount(provider, request, market, route, best.buyAmount)) ??
-    (await forAmount(provider, request, market, route, best.buyAmount - 1n))
-  )
+  return best
 }
