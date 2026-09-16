@@ -151,6 +151,11 @@ set -a
 source .env
 set +a
 
+if [[ -z "${GOLDSKY_BOOST_KEY:-}" ]]; then
+  echo "ERROR: GOLDSKY_BOOST_KEY is unset/empty. Set it in .env." >&2
+  exit 15
+fi
+
 # Resolve PK file path.
 #
 # G1 portability (2026-05-20 DR drill findings): on macOS the canonical
@@ -417,10 +422,8 @@ fi
 # (ROBINHOOD_RPC_INTERNAL must thread through). driver.toml (PK) and okx.toml
 # (OKX secrets) bear secrets and must land on the RAM-disk.
 # Day-1 is LiFi-only: only driver.toml bears the submitter PK. LiFi is keyless.
-# erpc.yaml contains no credentials and renders to ./rendered/ 0644 so the
-# nonroot erpc container can read it. When aggregator
-# lanes with real credentials (OKX/Enso) are added later, add their toml here.
-PK_BEARING_NAMES=(driver.toml)
+# erpc.yaml now contains the Boost credential and must also stay on RAM-disk.
+PK_BEARING_NAMES=(driver.toml erpc.yaml)
 
 is_pk_bearing() {
   local n="$1"
@@ -483,7 +486,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax (none today, but defensive against
   # future eRPC config additions).
-  envsubst '${ROBINHOOD_MAINNET_RPC} ${ROBINHOOD_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY}' \
+  envsubst '${ROBINHOOD_MAINNET_RPC} ${ROBINHOOD_RPC_INTERNAL} ${OPHIS_DRIVER_SUBMITTER_KEY} ${GOLDSKY_BOOST_KEY}' \
     < "$tmpl" > "$out_tmp"
   # PK/secret-bearing configs stay 0600. Non-secret configs (RPC URLs,
   # contract addresses, %VAR runtime-substituted placeholders — NO secret
@@ -501,7 +504,11 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
 
   # Native Linux bind mounts preserve numeric ownership; the driver image runs as 10001.
   if is_pk_bearing "$name" && [[ "$(uname -s)" == "Linux" ]]; then
-    sudo chown 10001:10001 "$out"
+    if [[ "$name" == "erpc.yaml" ]]; then
+      sudo chown 65532:65532 "$out"
+    else
+      sudo chown 10001:10001 "$out"
+    fi
   fi
 
   if is_pk_bearing "$name"; then

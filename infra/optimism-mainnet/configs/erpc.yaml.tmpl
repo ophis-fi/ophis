@@ -1,6 +1,13 @@
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape (2026-08-29): 2-of-3 across Blockdaemon + ZAN + Tenderly.**
+# **Current shape (2026-09-16): 2-of-3 across Boost/Alchemy + ZAN + Tenderly.**
+# Transactions, receipts and logs retain dRPC + ZAN + Tenderly because Boost's
+# cached objects have incompatible JSON fields. Four endpoints, THREE voters
+# per method; exact method filters are pinned by assert-erpc-failclosed.py.
+#
+# Boost replaces dRPC; only the /boost/ route is free, not /standard/evm/.
+# The incident history below describes retired providers. Current endpoints are
+# authoritative in upstreams and pinned by assert-erpc-failclosed.py.
 #
 # ⚠️ READ THIS BEFORE TOUCHING A LANE. Until 2026-08-29 this header claimed
 # "PublicNode + ZAN + Ophis-owned Aleph op-reth" — and the owned op-reth had been
@@ -156,6 +163,19 @@ projects:
         # self-consistent fork that the autopilot signs settlements against.
         # 2-of-3 agreement on the methods that drive solver behavior closes
         # that hole.
+        # Keep dRPC head calls for its private poller, not application reads.
+        selectionPolicy:
+          evalScope: network-method
+          evalFunc: |
+            (upstreams, ctx) => {
+              if (ctx.method === 'eth_blockNumber' || ctx.method === 'eth_getBlockByNumber') {
+                upstreams = upstreams.filter((upstream) => upstream.id !== 'drpc-op')
+              }
+              return upstreams
+                .removeCordoned()
+                .whenEmpty(() => upstreams)
+                .sortByScore(PREFER_FASTEST)
+            }
         failsafe:
           # Critical reads: state-dependent calls that gate solver behavior
           # and settlement validity. eth_getTransactionByHash is included
@@ -514,51 +534,52 @@ projects:
       #
       # Hosts are literal so the CI guard can pin the failure domains. The only
       # endpoint credential is ZAN_API_KEY; erpc.yaml remains RAM-disk rendered.
+      - id: goldsky-op
+        # Boost caches historical reads and forwards misses to Alchemy (verified
+        # by x-alchemy-trace-id). This is ONE voter, alongside ZAN and Tenderly.
+        # Never point Boost at either other voter or at this eRPC proxy.
+        endpoint: https://edge.goldsky.com/boost/10?key=${GOLDSKY_BOOST_KEY}
+        ignoreMethods:
+          - eth_getTransactionByHash
+          - eth_getTransactionReceipt
+          - eth_getLogs
+        failsafe:
+          # BUDGET INVARIANT (2026-08-15, CI-enforced by assert-erpc-failclosed):
+          # one lane's worst-case serial budget (attempts x timeout + backoff)
+          # MUST stay under the 12s network budget, or a single wedged lane
+          # starves every request before failover — the 08-14 outage. 4s x 2
+          # + 1s backoff = 9s < 12s, and 4s is still ~40-80x each lane's
+          # measured median. The circuitBreaker ejects a lane that returns
+          # clean errors in bulk (the 429-storm pattern of 07-23/08-09);
+          # a silently HANGING lane is covered by the catch-all hedge instead
+          # (hedge-cancelled attempts may not record breaker outcomes).
+          - matchMethod: "*"
+            timeout:
+              duration: 4s
+            retry:
+              maxAttempts: 2
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+            circuitBreaker:
+              failureThresholdCount: 12
+              failureThresholdCapacity: 24
+              halfOpenAfter: 30s
+              successThresholdCount: 2
+              successThresholdCapacity: 4
+
+      # Boost's cached transaction/receipt/log JSON contains extra fields that
+      # do not hash identically to the other voters. Keep the original quorum
+      # for just these methods; every method still has exactly THREE voters.
       - id: drpc-op
-        # Cloudflare-fronted (lb.drpc.org -> 104.18.x, AS13335, server: cloudflare,
-        # cf-ray present) — the ONE permitted CF lane. It REPLACES blockdaemon-op
-        # (2026-08-30), which is also Cloudflare, so the swap is domain-NEUTRAL and
-        # the quorum still spans Cloudflare / Alibaba(zan) / Google(tenderly).
-        #
-        # WHY: blockdaemon's free tier is EXHAUSTED — direct probe returns
-        # HTTP 429 {"title":"Quota limit exceeded"} on every request, and it had
-        # already been degrading (measured 2026-08-29 on the receipt path: 6%
-        # rejected at 1 req/s, 13% at 2, 21% at 4 — no clean operating point).
-        # It lasted ONE DAY in the quorum.
-        #
-        # ⚠️ THE MEASUREMENT THAT MATTERS, and how it was nearly got wrong twice:
-        # A first probe of drpc at 8 req/s returned 75% HTTP 429 and looked like a
-        # hard rejection. That was SELF-INFLICTED: dRPC's free tier caps
-        # THROUGHPUT (120k CU/min per IP), not volume, and the burst had drained
-        # the day's budget — dRPC's own dashboard read "Limited by RPS today: 75%"
-        # while the MONTHLY quota showed 210M CU untouched (100% remaining).
-        # After a cooldown, at the rate a lane in this quorum actually carries:
-        #   360s @ 3 req/s, production method mix (67% ARCHIVE eth_getLogs, 25%
-        #   eth_getBlockByNumber, 8% eth_call/eth_getTransactionReceipt, params
-        #   varied every request so nothing is cache-served):
-        #     633/633 = 100%. ZERO failures in ANY 60s bucket. No JSON-RPC error
-        #     bodies. p50 201ms / p95 234ms / p99 277ms / max 439ms. Flat curve.
-        # LESSON, now twice-learned: measure at the rate THIS QUORUM imposes
-        # (~2.5-3 req/s per lane), with the REAL method mix, for MINUTES — and do
-        # not let an over-rate probe poison the very budget you are measuring.
-        #
-        # HEADROOM (the reason this should outlast every predecessor): dRPC free is
-        # 210M CU per 30 days at a flat ~20 CU/request. This stack sends ~5.5M
-        # requests/30d to one lane => ~110M CU = ~52% of the allowance. That is the
-        # first lane with real margin. For contrast ZAN's 150M was consumed to
-        # EXACTLY 100% by this same load, which is why it dies every cycle.
-        # Watch it: if the monthly CU trend exceeds ~60%, the lane is on borrowed
-        # time and needs replacing BEFORE it caps, not after.
-        #
-        # Host is LITERAL so the CI guard's urlsplit can pin the failure domain;
-        # only ${DRPC_API_KEY} resolves from .env via render-configs.sh envsubst —
-        # NEVER committed. erpc.yaml is in PK_BEARING_NAMES, so the rendered file
-        # carrying this key lands on the RAM-disk, not the SSD.
-        #
-        # The key rides in a QUERY PARAM (?dkey=), the same shape blockdaemon used,
-        # so validate_rendered_erpc's empty-query-param rule already covers an
-        # empty substitution. render-configs.sh also fails fast on the unset var.
         endpoint: https://lb.drpc.org/ogrpc?network=optimism&dkey=${DRPC_API_KEY}
+        allowMethods:
+          - eth_getTransactionByHash
+          - eth_getTransactionReceipt
+          - eth_getLogs
+          - eth_blockNumber
+          - eth_getBlockByNumber
         failsafe:
           # BUDGET INVARIANT (2026-08-15, CI-enforced by assert-erpc-failclosed):
           # one lane's worst-case serial budget (attempts x timeout + backoff)

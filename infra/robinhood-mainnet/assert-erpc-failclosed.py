@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lock Robinhood's zero-budget RPC trust and transaction-relay topology."""
+"""Lock Robinhood's Boost RPC trust and transaction-relay topology."""
 
 from __future__ import annotations
 
@@ -90,10 +90,39 @@ projects:
               halfOpenAfter: 30s
               successThresholdCount: 2
               successThresholdCapacity: 4
-      - id: robinhood-official
-        endpoint: https://rpc.mainnet.chain.robinhood.com
+      - id: goldsky-rbh
+        endpoint: https://edge.goldsky.com/boost/4663?key=${GOLDSKY_BOOST_KEY}
         ignoreMethods:
           - eth_getLogs
+          - debug_*
+          - trace_*
+          - eth_getTransactionByHash
+          - eth_getTransactionReceipt
+          - eth_getBlockByHash
+        failsafe:
+          - matchMethod: "*"
+            timeout:
+              duration: 4s
+            retry:
+              maxAttempts: 2
+              delay: 200ms
+              backoffMaxDelay: 1s
+              backoffFactor: 1.5
+              jitter: 50ms
+            circuitBreaker:
+              failureThresholdCount: 12
+              failureThresholdCapacity: 24
+              halfOpenAfter: 30s
+              successThresholdCount: 2
+              successThresholdCapacity: 4
+      - id: robinhood-official
+        endpoint: https://rpc.mainnet.chain.robinhood.com
+        allowMethods:
+          - eth_getTransactionByHash
+          - eth_getTransactionReceipt
+          - eth_getBlockByHash
+          - eth_blockNumber
+          - eth_getBlockByNumber
         failsafe:
           - matchMethod: "*"
             timeout:
