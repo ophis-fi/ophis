@@ -9,8 +9,8 @@
 # their second voter because Boost's cached JSON differs. Each protected method
 # still requires exactly TWO independent votes; never count both external lanes.
 #
-# TRACES: debug_* is self-node-only because the managed endpoint does not expose
-# it. If Cadia is unavailable, trace-dependent settlement fails closed.
+# TRACES: debug_* and trace_* are explicitly self-node-only. If Cadia is
+# unavailable, trace-dependent settlement fails closed.
 #
 # TRANSACTION RELAY: Cadia Nitro forwards writes to Robinhood's official public
 # endpoint via --execution.forwarding-target. eRPC can also submit directly to

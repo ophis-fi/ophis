@@ -12,16 +12,17 @@ policies, ...). Rather than allow arbitrary configs and try to prove each is
 fail-closed (an unwinnable whack-a-mole — see Codex #464 rounds 1-7), this guard
 pins the known-good KEY SCHEMA of the chain-10 consensus/upstream surface and
 REJECTS any key it does not explicitly recognize. So `skipConsensus`, `tier`,
-`matchFinality`, `allowMethods`/`ignoreMethods`, `ignoreFields`, `prefer*`, etc.
-all fail closed by construction — a future eRPC field can weaken consensus only
+`matchFinality`, `ignoreFields`, `prefer*`, etc.
+all fail closed by construction. The only allowed method filters are pinned
+Goldsky/dRPC partitions; each protected method still has three voters.
+A future eRPC field can weaken consensus only
 after this allowlist is deliberately extended in review.
 
 WHY CI, NOT render-configs.sh: wiring PyYAML into the operator/DR render path
 would make a stack restart fail on a host without PyYAML — worse than the
 weakening it guards against (Codex #464 P1). Template edits go through PRs.
 
-On top of the schema lock it asserts the value invariants: exactly the 3 expected
-independent upstream hosts; every Block A+B settlement-relevant method's
+On top of the schema lock it asserts the value invariants: exactly four pinned upstream hosts with three eligible voters per method; every Block A+B settlement-relevant method's
 first-matching failsafe rule is a consensus rule with maxParticipants:3,
 agreementThreshold:2, lowParticipants:returnError (always fail-closed on an
 outage) and dispute in {returnError, preferBlockHeadLeader} (the latter only
@@ -37,7 +38,7 @@ import yaml
 
 CHAIN_ID = 10
 EXPECTED_UPSTREAMS = 4
-# The 3 intended INDEPENDENT failure domains, pinned by hostname so a sibling host,
+# The intended provider hosts, pinned by hostname so a sibling host,
 # IP-literal, or extra provider cannot pose as a 3rd domain. A deliberate provider
 # change MUST update this set (that is the point — see module docstring).
 #
