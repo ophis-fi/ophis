@@ -21,6 +21,7 @@ export function useDirectPriceImpact(quote: DirectQuote): {
   impact: Percent | undefined
   loading: boolean
   allowed: boolean
+  validation: TradeFormValidation | null
   confirm: () => Promise<boolean>
 } {
   const { inputCurrency, outputCurrency } = useSwapDerivedState()
@@ -35,7 +36,7 @@ export function useDirectPriceImpact(quote: DirectQuote): {
       : undefined
   const context = useAtomValue(tradeFormValidationContextAtom)
   const isSwapUnsupported = useIsTradeUnsupported(inputCurrency, outputCurrency)
-  const loading = input.isLoading || output.isLoading
+  const loading = [input, output].some((price) => !price.value && price.isLoading)
   const validations =
     context &&
     validateTradeForm({
@@ -44,20 +45,22 @@ export function useDirectPriceImpact(quote: DirectQuote): {
       tradePriceImpact: { ...context.tradePriceImpact, priceImpact: impact, loading },
     })
   // Direct execution validates its own quote, actual balance and expiry.
-  const allowed =
-    !!context &&
-    !validations?.some(
+  const validation =
+    validations?.find(
       (validation) =>
         ![
           TradeFormValidation.SellNativeToken,
           TradeFormValidation.ApproveRequired,
           TradeFormValidation.ApproveAndSwapInBundle,
+          // Direct swaps send ordinary transactions and never use wallet bundling.
+          TradeFormValidation.WalletCapabilitiesLoading,
           TradeFormValidation.QuoteErrors,
           TradeFormValidation.QuoteLoading,
           TradeFormValidation.QuoteExpired,
           TradeFormValidation.BalanceInsufficient,
         ].includes(validation),
-    )
+    ) ?? null
+  const allowed = !!context && validation === null
   const { confirmPriceImpactWithoutFee } = useConfirmPriceImpactWithoutFee(false)
   const confirmUnknown = useConfirmationRequest({})
   const { status, rwaTokenInfo } = useRwaTokenStatus({ inputCurrency, outputCurrency })
@@ -66,6 +69,7 @@ export function useDirectPriceImpact(quote: DirectQuote): {
     impact,
     loading,
     allowed,
+    validation,
     confirm: async () => {
       if (status === RwaTokenStatus.RequiredConsent && rwaTokenInfo) {
         openModal({
