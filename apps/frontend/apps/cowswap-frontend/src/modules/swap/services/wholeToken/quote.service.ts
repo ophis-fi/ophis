@@ -3,6 +3,8 @@ import { Interface } from '@ethersproject/abi'
 import { getAddress } from '@ethersproject/address'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
+import BigNumber from 'bignumber.js'
+
 import {
   buildDirectTransaction,
   DirectQuote,
@@ -56,7 +58,7 @@ export async function getDirectQuotes(provider: JsonRpcProvider, request: Direct
   }
   for (const fee of request.fees) {
     getAddress(fee.recipient)
-    if (!Number.isInteger(fee.bps) || fee.bps < 0 || fee.bps > 10000) throw new Error('Invalid fee')
+    if (!Number.isFinite(fee.bps) || fee.bps < 0 || fee.bps > 10000) throw new Error('Invalid fee')
   }
   if ((await provider.getNetwork()).chainId !== 1) throw new Error('Switch to Ethereum')
   const market = await getMarket(provider)
@@ -125,12 +127,17 @@ async function forAmount(
 ): Promise<DirectQuote | null> {
   const { usdcReserve, mpsReserve, baseFee, priorityFee, blockNumber } = market
   if (route.viaV2 && (buyAmount >= mpsReserve || !usdcReserve)) return null
-  const usdcAmount = route.viaV2 ? (usdcReserve * buyAmount * 1000n) / ((mpsReserve - buyAmount) * 997n) + 1n : 0n
-  const sellAmount = await quoteV3(provider, blockNumber, route, route.viaV2 ? usdcAmount : buyAmount, true)
-  const maxInput = (sellAmount * BigInt(10000 + request.slippageBps) + 9999n) / 10000n
+  const usdcRequired = route.viaV2 ? (usdcReserve * buyAmount * 1000n) / ((mpsReserve - buyAmount) * 997n) + 1n : 0n
+  // Split the mixed-route tolerance across both legs, retaining the overall ETH cap.
+  const usdcAmount = (usdcRequired * BigInt(20000 + request.slippageBps) + 19999n) / 20000n
+  const baseInput = await quoteV3(provider, blockNumber, route, route.viaV2 ? usdcRequired : buyAmount, true)
+  const sellAmount = route.viaV2 ? await quoteV3(provider, blockNumber, route, usdcAmount, true) : baseInput
+  const maxInput = (baseInput * BigInt(10000 + request.slippageBps) + 9999n) / 10000n
   const fees = request.fees.map((fee) => ({
     recipient: fee.recipient,
-    amount: (sellAmount * BigInt(fee.bps) + 9999n) / 10000n,
+    amount: BigInt(
+      new BigNumber(sellAmount.toString()).times(fee.bps).div(10000).integerValue(BigNumber.ROUND_CEIL).toFixed(0),
+    ),
   }))
   const feeTotal = fees.reduce((sum, fee) => sum + fee.amount, 0n)
   if (maxInput + feeTotal >= request.budget) return null
@@ -155,16 +162,18 @@ async function forAmount(
   // Read-only simulation with funded sender; works before wallet connection and
   // verifies the complete route, native wrapping, fee transfers and refunds.
   const gas = BigInt(
-    await provider.send('eth_estimateGas', [
-      {
-        from: tx.from,
-        to: tx.to,
-        data: tx.data,
-        value: `0x${(maxInput + feeTotal).toString(16)}`,
-      },
-      `0x${blockNumber.toString(16)}`,
-      { [request.account]: { balance: '0x3635c9adc5dea00000' } },
-    ]),
+    await provider
+      .send('eth_estimateGas', [
+        {
+          from: tx.from,
+          to: tx.to,
+          data: tx.data,
+          value: `0x${(maxInput + feeTotal).toString(16)}`,
+        },
+        `0x${blockNumber.toString(16)}`,
+        { [request.account]: { balance: '0x3635c9adc5dea00000' } },
+      ])
+      .catch(async () => (await provider.estimateGas({ ...tx, gasLimit: undefined })).toString()),
   )
   quote.gasLimit = (gas * 120n + 99n) / 100n
   quote.gasCost = gas * (baseFee + priorityFee)

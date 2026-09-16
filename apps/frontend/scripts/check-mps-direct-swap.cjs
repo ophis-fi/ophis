@@ -24,7 +24,7 @@ async function main() {
   const signer = provider.getSigner(account)
   const abi = ['function balanceOf(address) view returns(uint256)']
   const mps = new Contract(MPS, abi, provider), weth = new Contract(WETH, abi, provider), usdc = new Contract(USDC, abi, provider)
-  const request = { account, recipient, budget: 3300000000000000n, slippageBps: 50, fees: [{ recipient: feeRecipient, bps: 51 }] }
+  const request = { account, recipient, budget: 3300000000000000n, slippageBps: 50, fees: [{ recipient: feeRecipient, bps: 51.005 }] }
   const quotes = await getDirectQuotes(provider, request)
   assert(quotes.length >= 3, 'Compare direct v3, USDC v3, and mixed v3/v2 routes')
   assert(quotes.some(q => q.route.viaV2))
