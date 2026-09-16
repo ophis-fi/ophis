@@ -73,7 +73,10 @@ export function useDirectSwap(requestKey: string): {
             maximumSendSellAmount: CurrencyAmount.fromRawAmount(inputCurrency, maximum.toString()),
           }),
         )
-        if (!allowed) throw new Error(t`Swap cancelled by wallet host.`)
+        if (!allowed) {
+          setStatus((previous) => ({ ...previous, pending: false, message: t`Swap cancelled by wallet host.` }))
+          return
+        }
         analytics.trade(context)
         const isCurrent = (): boolean => current.current === requestKey
         const tx = await executeDirectSwap(wallet, getRpcProvider(1), quote, isCurrent, status.hash)

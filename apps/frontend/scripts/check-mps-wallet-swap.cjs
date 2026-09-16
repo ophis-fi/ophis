@@ -40,6 +40,17 @@ async function main() {
         await route.fulfill({ json: data })
       },
     )
+    const cowRejections = []
+    if (process.env.MPS_COW_UNSUPPORTED)
+      await page.route('**/quote', async (route) => {
+        const body = route.request().postDataJSON()
+        if (body?.buyToken?.toLowerCase() !== MPS.toLowerCase()) return route.fallback()
+        cowRejections.push(true)
+        await route.fulfill({
+          status: 400,
+          json: { errorType: 'UnsupportedToken', description: 'CoW-only test rejection' },
+        })
+      })
     await page.route(frontendRpc, async (route) => route.fulfill({ response: await route.fetch({ url: rpcUrl }) }))
     let sent = 0
     await page.exposeFunction('forkRpc', async (method, params) => {
@@ -85,6 +96,7 @@ async function main() {
     await card.getByRole('button', { name: 'Review swap', exact: true }).click({ timeout: 90000 })
     await card.getByRole('button', { name: 'Confirm swap', exact: true }).click()
     await card.getByRole('status').filter({ hasText: 'Received 1 MPS' }).waitFor({ timeout: 90000 })
+    if (process.env.MPS_COW_UNSUPPORTED) assert(cowRejections.length > 0)
     assert.equal(sent, 1)
     assert(await card.getByRole('button', { name: 'Swap submitted', exact: true }).isDisabled())
     const balance = await rpc('eth_call', [

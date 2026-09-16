@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { getRpcProvider, NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
 import { useMachineTimeMs } from '@cowprotocol/common-hooks'
-import { getCurrencyAddress, getIsNativeToken, isTruthy } from '@cowprotocol/common-utils'
+import { getCurrencyAddress, getIsNativeToken, isTruthy, withTimeout } from '@cowprotocol/common-utils'
 import { areAddressesEqual, OrderKind } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount } from '@cowprotocol/currency'
 import { useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
@@ -17,6 +17,7 @@ import { useUsdAmount } from 'modules/usdAmount'
 
 import { useCowDepositGas } from './useCowDepositGas'
 import { useSwapDerivedState } from './useSwapDerivedState'
+import { useSwapSettings } from './useSwapSettings'
 
 import { DirectRequest, getDirectQuotes } from '../services/wholeToken/quote.service'
 import { DirectQuote, MPS, VolumeFee } from '../services/wholeToken/router.service'
@@ -53,6 +54,7 @@ function getRequest(
   account: string | undefined,
   slippage: ReturnType<typeof useTradeSlippageValueAndType>,
   defaultSlippage: number,
+  deadlineSeconds: number,
 ): DirectRequest | null {
   if (!params || !supportsDirect(state)) return null
   const q = params.quoteParams
@@ -65,6 +67,7 @@ function getRequest(
     account: q.owner,
     recipient,
     budget: BigInt(budget),
+    deadlineSeconds,
     slippageBps: getSlippage(slippage, defaultSlippage),
     fees,
   }
@@ -151,7 +154,8 @@ export function useWholeTokenRoute(): {
   const isSmartWallet = useIsSmartContractWallet()
   const slippage = useTradeSlippageValueAndType()
   const config = useSlippageConfig()
-  const request = getRequest(state, params, account, slippage, config.defaultValue)
+  const { deadline } = useSwapSettings()
+  const request = getRequest(state, params, account, slippage, config.defaultValue, deadline)
   const requestKey = getRequestKey(request, !!account && isSmartWallet !== false, chainId)
   useEffect(() => setSelection(null), [requestKey])
   const reviewed = reviewedForKey(selection, requestKey)
@@ -163,7 +167,7 @@ export function useWholeTokenRoute(): {
         enabled: !!requestKey && !isReviewing,
         queryFn: async () => {
           const parsed = JSON.parse(requestKey) as Omit<DirectRequest, 'budget'> & { budget: string }
-          return getDirectQuotes(getRpcProvider(1), { ...parsed, budget: BigInt(parsed.budget) })
+          return withTimeout(getDirectQuotes(getRpcProvider(1), { ...parsed, budget: BigInt(parsed.budget) }), 20000)
         },
         refetchInterval: 15000,
         retry: false,

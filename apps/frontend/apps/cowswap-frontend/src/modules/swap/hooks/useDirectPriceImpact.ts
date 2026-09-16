@@ -1,6 +1,7 @@
 import { useAtomValue } from 'jotai'
 
 import { CurrencyAmount, Percent } from '@cowprotocol/currency'
+import { useIsTradeUnsupported } from '@cowprotocol/tokens'
 
 import { tradeFormValidationContextAtom, TradeFormValidation, validateTradeForm } from 'modules/tradeFormValidation'
 import { useUsdAmount } from 'modules/usdAmount'
@@ -28,10 +29,15 @@ export function useDirectPriceImpact(quote: DirectQuote): {
       ? new Percent(input.value.subtract(output.value).quotient, input.value.quotient)
       : undefined
   const context = useAtomValue(tradeFormValidationContextAtom)
+  const isSwapUnsupported = useIsTradeUnsupported(inputCurrency, outputCurrency)
   const loading = input.isLoading || output.isLoading
   const validations =
     context &&
-    validateTradeForm({ ...context, tradePriceImpact: { ...context.tradePriceImpact, priceImpact: impact, loading } })
+    validateTradeForm({
+      ...context,
+      isSwapUnsupported,
+      tradePriceImpact: { ...context.tradePriceImpact, priceImpact: impact, loading },
+    })
   // Direct execution validates its own quote, actual balance and expiry.
   const allowed =
     !!context &&

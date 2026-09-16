@@ -2,7 +2,7 @@ import { useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 
 import { getRpcProvider } from '@cowprotocol/common-const'
-import { COW_PROTOCOL_ETH_FLOW_ADDRESS } from '@cowprotocol/common-utils'
+import { COW_PROTOCOL_ETH_FLOW_ADDRESS, withTimeout } from '@cowprotocol/common-utils'
 import { QuoteAndPost } from '@cowprotocol/cow-sdk'
 import { CoWSwapEthFlowAbi } from '@cowprotocol/cowswap-abis'
 import { Interface } from '@ethersproject/abi'
@@ -24,16 +24,19 @@ export function useCowDepositGas(quote: QuoteAndPost | null, account: string | u
         queryFn: async () => {
           if (!account || !order) return 0n
           return BigInt(
-            await getRpcProvider(1).send('eth_estimateGas', [
-              {
-                from: account,
-                to: COW_PROTOCOL_ETH_FLOW_ADDRESS[1],
-                data: ethFlow.encodeFunctionData('createOrder', [{ ...order, quoteId }]),
-                value: `0x${BigInt(order.sellAmount).toString(16)}`,
-              },
-              'latest',
-              { [account]: { balance: '0x3635c9adc5dea00000' } },
-            ]),
+            await withTimeout(
+              getRpcProvider(1).send('eth_estimateGas', [
+                {
+                  from: account,
+                  to: COW_PROTOCOL_ETH_FLOW_ADDRESS[1],
+                  data: ethFlow.encodeFunctionData('createOrder', [{ ...order, quoteId }]),
+                  value: `0x${BigInt(order.sellAmount).toString(16)}`,
+                },
+                'latest',
+                { [account]: { balance: '0x3635c9adc5dea00000' } },
+              ]),
+              10000,
+            ),
           )
         },
         retry: false,
