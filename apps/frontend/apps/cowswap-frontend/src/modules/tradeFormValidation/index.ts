@@ -10,3 +10,5 @@ export { tradeFormValidationContextAtom } from './state/tradeFormValidationConte
 export { getIsXstockTradeBelowLimit } from './services/getIsXstockTradeBelowLimit'
 export { XSTOCK_MIN_TRADE_SIZE_USD } from './consts'
 export * from './types'
+
+export { validateTradeForm } from './services/validateTradeForm'

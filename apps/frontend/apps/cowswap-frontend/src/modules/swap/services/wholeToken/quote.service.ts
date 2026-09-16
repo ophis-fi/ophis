@@ -37,11 +37,18 @@ export interface DirectRequest {
   account: string
   recipient: string
   budget: bigint
+  deadlineSeconds?: number
   slippageBps: number
   fees: VolumeFee[]
 }
 
+function getDeadlineSeconds(deadline = 300): number {
+  if (!Number.isSafeInteger(deadline) || deadline <= 0) throw new Error('Invalid deadline')
+  return deadline
+}
+
 export async function getDirectQuotes(provider: JsonRpcProvider, request: DirectRequest): Promise<DirectQuote[]> {
+  getDeadlineSeconds(request.deadlineSeconds)
   getAddress(request.account)
   getAddress(request.recipient)
   if (
@@ -157,7 +164,7 @@ async function forAmount(
     totalCost: 0n,
     maxTotal: maxInput + feeTotal,
     quotedAt: Date.now(),
-    expiresAt: market.timestamp + 300,
+    expiresAt: market.timestamp + getDeadlineSeconds(request.deadlineSeconds),
   }
   const tx = buildDirectTransaction(quote)
   const simulation = [

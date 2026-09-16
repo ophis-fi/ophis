@@ -1,5 +1,5 @@
 import { AdditionalTargetChainId, OrderKind } from '@cowprotocol/cow-sdk'
-import { Currency, CurrencyAmount } from '@cowprotocol/currency'
+import { Currency, CurrencyAmount, Percent } from '@cowprotocol/currency'
 
 import { TradeType } from 'modules/trade/types/TradeType'
 import type { TradeQuoteState } from 'modules/tradeQuote/state/tradeQuoteAtom'
@@ -183,6 +183,17 @@ describe('validateTradeForm - xStock logic', () => {
 
     const result = validateTradeForm(context)
     expect(result).toEqual([TradeFormValidation.XstockMinimumTradeSize])
+  })
+
+  test.each([undefined, 20, 1])('enforces the widget price-impact policy for %s percent', (impact) => {
+    const context = {
+      ...baseContext,
+      injectedWidgetParams: { disableTrade: { whenPriceImpactIsHigherThan: 10 } },
+      tradePriceImpact: { loading: false, priceImpact: impact === undefined ? undefined : new Percent(impact, 100) },
+    } as TradeFormValidationContext
+    const violations = validateTradeForm(context)
+    expect(violations?.includes(TradeFormValidation.DisableTradeWithHighPriceImpact)).toBe(impact === 20)
+    expect(violations?.includes(TradeFormValidation.DisableTradeWithUnknownPriceImpact)).toBe(impact === undefined)
   })
 
   test('blocks a trade denied by the Ophis token policy', () => {

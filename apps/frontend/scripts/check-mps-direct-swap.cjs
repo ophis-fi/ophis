@@ -24,10 +24,11 @@ async function main() {
   const signer = provider.getSigner(account)
   const abi = ['function balanceOf(address) view returns(uint256)']
   const mps = new Contract(MPS, abi, provider), weth = new Contract(WETH, abi, provider), usdc = new Contract(USDC, abi, provider)
-  const request = { account, recipient, budget: 3300000000000000n, slippageBps: 50, fees: [{ recipient: feeRecipient, bps: 51.005 }] }
+  const request = { account, recipient, budget: 3300000000000000n, deadlineSeconds: 600, slippageBps: 50, fees: [{ recipient: feeRecipient, bps: 51.005 }] }
   const quotes = await getDirectQuotes(provider, request)
   assert.equal(quotes.length, 9, 'All nine expected fee-tier routes must remain executable')
-  const block = await provider.getBlock('latest'); assert(quotes.every(q => q.expiresAt === block.timestamp + 300))
+  await assert.rejects(getDirectQuotes(provider, { ...request, deadlineSeconds: 0 }), /Invalid deadline/)
+  const block = await provider.getBlock('latest'); assert(quotes.every(q => q.expiresAt === block.timestamp + request.deadlineSeconds))
   for (const q of quotes) {
     const snapshot = await provider.send('evm_snapshot', [])
     const before = await Promise.all([provider.getBalance(account), mps.balanceOf(recipient), weth.balanceOf(feeRecipient), weth.balanceOf(ROUTER), provider.getBalance(ROUTER), usdc.balanceOf(ROUTER)])

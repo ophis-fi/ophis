@@ -1,7 +1,16 @@
-import { CurrencyAmount, Percent } from '@cowprotocol/currency'
+import { useAtomValue } from 'jotai'
 
+import { TokenWithLogo } from '@cowprotocol/common-const'
+import { CurrencyAmount, Percent } from '@cowprotocol/currency'
+import { useIsTradeUnsupported } from '@cowprotocol/tokens'
+
+import { t } from '@lingui/core/macro'
+
+import { RwaTokenStatus, useRwaTokenStatus, useRwaConsentModalState } from 'modules/rwa'
+import { tradeFormValidationContextAtom, TradeFormValidation, validateTradeForm } from 'modules/tradeFormValidation'
 import { useUsdAmount } from 'modules/usdAmount'
 
+import { useConfirmationRequest } from 'common/hooks/useConfirmationRequest'
 import { useConfirmPriceImpactWithoutFee } from 'common/hooks/useConfirmPriceImpactWithoutFee'
 
 import { useSwapDerivedState } from './useSwapDerivedState'
@@ -11,6 +20,7 @@ import { DirectQuote } from '../services/wholeToken/router.service'
 export function useDirectPriceImpact(quote: DirectQuote): {
   impact: Percent | undefined
   loading: boolean
+  allowed: boolean
   confirm: () => Promise<boolean>
 } {
   const { inputCurrency, outputCurrency } = useSwapDerivedState()
@@ -23,6 +33,56 @@ export function useDirectPriceImpact(quote: DirectQuote): {
     input.value?.greaterThan(0) && output.value
       ? new Percent(input.value.subtract(output.value).quotient, input.value.quotient)
       : undefined
+  const context = useAtomValue(tradeFormValidationContextAtom)
+  const isSwapUnsupported = useIsTradeUnsupported(inputCurrency, outputCurrency)
+  const loading = input.isLoading || output.isLoading
+  const validations =
+    context &&
+    validateTradeForm({
+      ...context,
+      isSwapUnsupported,
+      tradePriceImpact: { ...context.tradePriceImpact, priceImpact: impact, loading },
+    })
+  // Direct execution validates its own quote, actual balance and expiry.
+  const allowed =
+    !!context &&
+    !validations?.some(
+      (validation) =>
+        ![
+          TradeFormValidation.SellNativeToken,
+          TradeFormValidation.QuoteErrors,
+          TradeFormValidation.QuoteLoading,
+          TradeFormValidation.QuoteExpired,
+          TradeFormValidation.BalanceInsufficient,
+        ].includes(validation),
+    )
   const { confirmPriceImpactWithoutFee } = useConfirmPriceImpactWithoutFee(false)
-  return { impact, loading: input.isLoading || output.isLoading, confirm: () => confirmPriceImpactWithoutFee(impact) }
+  const confirmUnknown = useConfirmationRequest({})
+  const { status, rwaTokenInfo } = useRwaTokenStatus({ inputCurrency, outputCurrency })
+  const { openModal } = useRwaConsentModalState()
+  return {
+    impact,
+    loading,
+    allowed,
+    confirm: async () => {
+      if (status === RwaTokenStatus.RequiredConsent && rwaTokenInfo) {
+        openModal({
+          token: TokenWithLogo.fromToken(rwaTokenInfo.token),
+          consentHash: rwaTokenInfo.consentHash,
+          onImportSuccess: () => {},
+        })
+        return false
+      }
+      if (!impact)
+        return confirmUnknown({
+          title: t`Price impact unavailable`,
+          description: t`Price impact is unavailable. You may receive less value than expected.`,
+          action: t`continue with this swap`,
+          callToAction: t`Confirm Swap`,
+          confirmWord: t`confirm`,
+          skipInput: true,
+        })
+      return confirmPriceImpactWithoutFee(impact)
+    },
+  }
 }

@@ -52,7 +52,7 @@ it('recovers 1 whole token within the budget and preserves the SDK signing paylo
   expect(result.quoteResults.orderToSign).toEqual({ sellAmount: '3250', buyAmount: '1' })
   // 18.77% cannot remove a fraction of a whole MPS; the signed minimum stays 1.
   expect(result.quoteResults.amountsAndCosts.afterSlippage.buyAmount).toBe(1n)
-  expect(mockQuote).toHaveBeenLastCalledWith(request, {
+  expect(mockQuote).toHaveBeenNthCalledWith(2, request, {
     quoteRequest: { priceQuality: PriceQuality.OPTIMAL, sellAmountBeforeFee: undefined, sellAmountAfterFee: '2600' },
   })
 })
@@ -122,4 +122,29 @@ it('keeps fast previews fast', async () => {
   mockQuote.mockResolvedValueOnce(original)
   expect(await getSwapQuote(request, { quoteRequest: { priceQuality: PriceQuality.FAST } })).toBe(original)
   expect(mockQuote).toHaveBeenCalledTimes(1)
+})
+
+it('spends less for the same whole output using a BUY hint and a genuine SELL requote', async () => {
+  const original = quote('2600', '0', '700')
+  const recovered = quote('2600', '1', '650')
+  const optimized = quote('2260', '1', '520')
+  mockQuote
+    .mockResolvedValueOnce(original)
+    .mockResolvedValueOnce(recovered)
+    .mockResolvedValueOnce(quote('2260', '1', '450'))
+    .mockResolvedValueOnce(optimized)
+  expect(await getSwapQuote(request, settings)).toBe(optimized)
+  expect(mockQuote.mock.calls[2]?.[0]).toMatchObject({ kind: OrderKind.BUY, amount: 1n })
+  expect(mockQuote.mock.calls[3]?.[0].kind).toBe(OrderKind.SELL)
+  expect(mockQuote.mock.calls[3]?.[1]?.quoteRequest?.sellAmountAfterFee).toBe('2260')
+})
+
+it('keeps the recovered quote if the cheaper price loses a whole token', async () => {
+  const recovered = quote('2600', '1', '650')
+  mockQuote
+    .mockResolvedValueOnce(recovered)
+    .mockResolvedValueOnce(recovered)
+    .mockResolvedValueOnce(quote('2260', '1', '450'))
+    .mockResolvedValueOnce(quote('2260', '0', '520'))
+  expect(await getSwapQuote(request, settings)).toBe(recovered)
 })
