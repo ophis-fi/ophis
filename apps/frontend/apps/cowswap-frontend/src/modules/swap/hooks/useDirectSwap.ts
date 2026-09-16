@@ -1,11 +1,11 @@
 import { atom, useAtom } from 'jotai'
 import { atomFamily } from 'jotai/utils'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 
 import { getRpcProvider } from '@cowprotocol/common-const'
 import { captureError, ERROR_TYPES, normalizeError } from '@cowprotocol/common-utils'
 import { OrderKind } from '@cowprotocol/cow-sdk'
-import { CurrencyAmount } from '@cowprotocol/currency'
+import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { UiOrderType } from '@cowprotocol/types'
 import { useWalletProvider } from '@cowprotocol/wallet-provider'
 import { WidgetHookEvents } from '@cowprotocol/widget-lib'
@@ -21,6 +21,8 @@ import { useTradeFlowAnalytics } from 'modules/trade'
 
 import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
 
+import { useCurrentRequest } from './useCurrentRequest'
+import { useDirectApproval } from './useDirectApproval'
 import { useSwapDerivedState } from './useSwapDerivedState'
 
 import { executeDirectSwap, waitForDirectReceipt } from '../services/wholeToken/execute.service'
@@ -35,6 +37,7 @@ export function useDirectSwap(requestKey: string): {
   message: string
   hash: string
   submitted: DirectQuote | null
+  approve: (quote: DirectQuote) => Promise<boolean>
   execute: (quote: DirectQuote) => Promise<void>
 } {
   const wallet = useWalletProvider()
@@ -43,36 +46,21 @@ export function useDirectSwap(requestKey: string): {
   const addTransaction = useTransactionAdder()
   const { inputCurrency, outputCurrency } = useSwapDerivedState()
   const [status, setStatus] = useAtom(executionAtom(requestKey))
-  const current = useRef(requestKey)
+  const current = useCurrentRequest(requestKey)
   const busy = useRef(false)
-  useEffect(() => {
-    current.current = requestKey
-    return () => {
-      current.current = ''
-    }
-  }, [requestKey])
   const execute = useCallback(
     async (quote: DirectQuote): Promise<void> => {
       if (!wallet || !inputCurrency || !outputCurrency) return
       if ([busy.current, status.pending, status.submitted === quote].some(Boolean)) return
       busy.current = true
       setStatus((previous) => ({ ...previous, pending: true, message: t`Confirm in your wallet` }))
-      const context = { account: quote.account, orderType: UiOrderType.SWAP, marketLabel: 'ETH/MPS' }
+      const context = {
+        account: quote.account,
+        orderType: UiOrderType.SWAP,
+        marketLabel: `${inputCurrency.symbol}/MPS`,
+      }
       try {
-        const input = CurrencyAmount.fromRawAmount(inputCurrency, quote.sellAmount.toString())
-        const output = CurrencyAmount.fromRawAmount(outputCurrency, quote.buyAmount.toString())
-        const maximum = quote.maxTotal - quote.gasLimit * quote.maxFeePerGas
-        const allowed = await callWidgetHook(
-          WidgetHookEvents.ON_BEFORE_TRADE,
-          buildTradeWidgetHookPayload({
-            orderType: UiOrderType.SWAP,
-            orderKind: OrderKind.SELL,
-            inputAmount: input,
-            outputAmount: output,
-            recipient: quote.recipient,
-            maximumSendSellAmount: CurrencyAmount.fromRawAmount(inputCurrency, maximum.toString()),
-          }),
-        )
+        const allowed = await confirmHost(quote, inputCurrency, outputCurrency)
         if (!allowed) {
           setStatus((previous) => ({ ...previous, pending: false, message: t`Swap cancelled by wallet host.` }))
           return
@@ -103,7 +91,36 @@ export function useDirectSwap(requestKey: string): {
         busy.current = false
       }
     },
-    [wallet, analytics, inputCurrency, outputCurrency, status, setStatus, requestKey, addTransaction, dispatch],
+    [
+      wallet,
+      analytics,
+      inputCurrency,
+      outputCurrency,
+      status,
+      setStatus,
+      requestKey,
+      addTransaction,
+      dispatch,
+      current,
+    ],
   )
-  return useMemo(() => ({ ...status, execute }), [status, execute])
+  const approve = useDirectApproval(wallet, requestKey, current, busy, setStatus)
+  return useMemo(() => ({ ...status, execute, approve }), [status, execute, approve])
+}
+
+async function confirmHost(quote: DirectQuote, inputCurrency: Currency, outputCurrency: Currency): Promise<boolean> {
+  const input = CurrencyAmount.fromRawAmount(inputCurrency, quote.sellAmount.toString())
+  const output = CurrencyAmount.fromRawAmount(outputCurrency, quote.buyAmount.toString())
+  const maximum = quote.maxTotal - (quote.inputToken ? 0n : quote.gasLimit * quote.maxFeePerGas)
+  return callWidgetHook(
+    WidgetHookEvents.ON_BEFORE_TRADE,
+    buildTradeWidgetHookPayload({
+      orderType: UiOrderType.SWAP,
+      orderKind: OrderKind.SELL,
+      inputAmount: input,
+      outputAmount: output,
+      recipient: quote.recipient,
+      maximumSendSellAmount: CurrencyAmount.fromRawAmount(inputCurrency, maximum.toString()),
+    }),
+  )
 }

@@ -230,6 +230,7 @@ export function SwapWidget({
             <>
               {bottomContent}
               <WholeTokenRoute
+                refresh={direct.refresh}
                 quote={direct.quote}
                 requestKey={direct.requestKey}
                 reviewed={direct.reviewed}

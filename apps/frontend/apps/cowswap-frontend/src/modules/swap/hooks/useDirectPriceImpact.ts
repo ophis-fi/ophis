@@ -24,7 +24,7 @@ export function useDirectPriceImpact(quote: DirectQuote): {
   confirm: () => Promise<boolean>
 } {
   const { inputCurrency, outputCurrency } = useSwapDerivedState()
-  const netInput = quote.netCost - quote.gasCost - quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)
+  const netInput = getNetInput(quote)
   const input = useUsdAmount(inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, netInput.toString()))
   const output = useUsdAmount(
     outputCurrency && CurrencyAmount.fromRawAmount(outputCurrency, quote.buyAmount.toString()),
@@ -50,6 +50,8 @@ export function useDirectPriceImpact(quote: DirectQuote): {
       (validation) =>
         ![
           TradeFormValidation.SellNativeToken,
+          TradeFormValidation.ApproveRequired,
+          TradeFormValidation.ApproveAndSwapInBundle,
           TradeFormValidation.QuoteErrors,
           TradeFormValidation.QuoteLoading,
           TradeFormValidation.QuoteExpired,
@@ -85,4 +87,8 @@ export function useDirectPriceImpact(quote: DirectQuote): {
       return confirmPriceImpactWithoutFee(impact)
     },
   }
+}
+
+function getNetInput(quote: DirectQuote): bigint {
+  return quote.netCost - (quote.gasCostInInput ?? quote.gasCost) - quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)
 }

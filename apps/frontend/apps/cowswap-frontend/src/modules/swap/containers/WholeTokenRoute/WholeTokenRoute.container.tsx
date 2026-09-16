@@ -38,6 +38,7 @@ const Card = styled.section`
 `
 
 function routeLabel(quote: DirectQuote): string {
+  if (quote.inputToken) return quote.route.label
   if (quote.route.viaV2) return t`Uniswap v3 + v2 via USDC`
   return quote.route.tokens.length > 2 ? t`Uniswap v3 via USDC` : quote.route.label
 }
@@ -55,7 +56,7 @@ function buttonText(
   expired: boolean,
 ): string {
   if (pending) return t`Transaction in progress`
-  if (insufficient) return t`Insufficient ETH including gas`
+  if (insufficient) return t`Insufficient balance`
   if (submitted) return t`Swap submitted`
   if (!reviewed) return t`Review swap`
   return expired ? t`Quote expired — review again` : t`Confirm swap`
@@ -66,11 +67,13 @@ export function WholeTokenRoute({
   requestKey,
   reviewed,
   review,
+  refresh,
 }: {
   quote: DirectQuote
   requestKey: string
   reviewed: boolean
   review: (quote: DirectQuote | null) => void
+  refresh: () => Promise<unknown>
 }): ReactNode {
   const { account } = useWalletInfo()
   const connect = useToggleWalletModal()
@@ -82,40 +85,12 @@ export function WholeTokenRoute({
   const expired = now - shown.quotedAt >= 30000
   const insufficient =
     !!account && (!inputCurrencyBalance || BigInt(inputCurrencyBalance.quotient.toString()) < shown.maxTotal)
-  const total = inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, shown.totalCost.toString())
-  const { value: fiat } = useUsdAmount(total)
-  const fees = shown.fees.reduce((sum, fee) => sum + fee.amount, 0n)
   return (
     <Card aria-label={t`Best MPS route`}>
       <p>
         <strong>{routeLabel(shown)}</strong> · {t`Exact output`}
       </p>
-      <dl>
-        <dt>{t`You receive`}</dt>
-        <dd>{shown.buyAmount.toString()} MPS</dd>
-        <dt>{t`Expected input`}</dt>
-        <dd>{displayEth(shown.sellAmount)} ETH</dd>
-        <dt>{t`Fees`}</dt>
-        <dd>{displayEth(fees)} ETH</dd>
-        <dt>{t`Estimated gas`}</dt>
-        <dd>{displayEth(shown.gasCost)} ETH</dd>
-        <dt>{t`Estimated total`}</dt>
-        <dd>
-          {displayEth(shown.totalCost)} ETH {fiat && `(≈ $${fiat.toFixed(2)})`}
-        </dd>
-        <dt>{t`Maximum total, including gas`}</dt>
-        <dd>{displayEth(shown.maxTotal)} ETH</dd>
-        {shown.usdcRefund > 0n && (
-          <>
-            <dt>{t`Expected USDC returned`}</dt>
-            <dd>{formatUnits(shown.usdcRefund, 6)} USDC</dd>
-          </>
-        )}
-        <dt>{t`Price impact`}</dt>
-        <dd>{priceImpact.impact ? `${priceImpact.impact.toFixed(2)}%` : t`Unavailable`}</dd>
-        <dt>{t`Slippage tolerance`}</dt>
-        <dd>{shown.slippageBps / 100}%</dd>
-      </dl>
+      <RouteDetails shown={shown} impact={priceImpact.impact} />
       <p>{t`Unused input is returned to your wallet. Gas is paid on Ethereum.`}</p>
       {reviewed && (
         <p>
@@ -144,11 +119,20 @@ export function WholeTokenRoute({
             (reviewed && expired)
           }
           onClick={async () => {
+            if (shown.needsApproval) {
+              if (await execution.approve(shown)) {
+                review(null)
+                await refresh()
+              }
+              return
+            }
             if (!reviewed) return review(shown)
             if (priceImpact.allowed && (await priceImpact.confirm())) await execution.execute(shown)
           }}
         >
-          {buttonText(execution.pending, insufficient, submitted, reviewed, expired)}
+          {shown.needsApproval && !execution.pending
+            ? t`Approve USDC`
+            : buttonText(execution.pending, insufficient, submitted, reviewed, expired)}
         </ButtonPrimary>
       )}
       {reviewed && !execution.pending && (
@@ -156,4 +140,64 @@ export function WholeTokenRoute({
       )}
     </Card>
   )
+}
+
+function RouteDetails({
+  shown,
+  impact,
+}: {
+  shown: DirectQuote
+  impact: ReturnType<typeof useDirectPriceImpact>['impact']
+}): ReactNode {
+  const { inputCurrency } = useSwapDerivedState()
+  const totalInput = shown.totalCost - (shown.inputToken ? shown.gasCostInInput || 0n : 0n)
+  const total = inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, totalInput.toString())
+  const symbol = inputCurrency?.symbol
+  const { value: fiat } = useUsdAmount(total)
+  const fees = shown.fees.reduce((sum, fee) => sum + fee.amount, 0n)
+  return (
+    <dl>
+      <dt>{t`You receive`}</dt>
+      <dd>{shown.buyAmount.toString()} MPS</dd>
+      <dt>{t`Expected input`}</dt>
+      <dd>
+        {displayInput(shown.sellAmount, shown.inputToken, inputCurrency?.decimals)} {symbol}
+      </dd>
+      <dt>{t`Fees`}</dt>
+      <dd>
+        {displayInput(fees, shown.inputToken, inputCurrency?.decimals)} {symbol}
+      </dd>
+      <dt>{t`Estimated gas`}</dt>
+      <dd>{displayEth(shown.gasCost)} ETH</dd>
+      <dt>{t`Estimated total`}</dt>
+      <dd>
+        {displayInput(totalInput, shown.inputToken, inputCurrency?.decimals)} {symbol}{' '}
+        {fiat && `(≈ $${fiat.toFixed(2)})`}
+      </dd>
+      <dt>{shown.inputToken ? t`Maximum input` : t`Maximum total, including gas`}</dt>
+      <dd>
+        {displayInput(shown.maxTotal, shown.inputToken, inputCurrency?.decimals)} {symbol}
+      </dd>
+      {!!shown.approvalGas && (
+        <>
+          <dt>{t`Estimated approval gas`}</dt>
+          <dd>{displayEth(shown.approvalGas * ((shown.maxFeePerGas + shown.maxPriorityFeePerGas) / 2n))} ETH</dd>
+        </>
+      )}
+      {shown.usdcRefund > 0n && (
+        <>
+          <dt>{t`Expected USDC returned`}</dt>
+          <dd>{formatUnits(shown.usdcRefund, 6)} USDC</dd>
+        </>
+      )}
+      <dt>{t`Price impact`}</dt>
+      <dd>{impact ? `${impact.toFixed(2)}%` : t`Unavailable`}</dd>
+      <dt>{t`Slippage tolerance`}</dt>
+      <dd>{shown.slippageBps / 100}%</dd>
+    </dl>
+  )
+}
+
+function displayInput(amount: bigint, inputToken: string | undefined, decimals: number | undefined): string {
+  return inputToken ? formatUnits(amount, decimals) : displayEth(amount)
 }
