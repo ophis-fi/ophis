@@ -89,3 +89,5 @@ export { CompatibilityIssuesWarning } from './pure/CompatibilityIssuesWarning'
 export * from './pure/Row/styled'
 export * from './pure/Settings'
 export * from './pure/TradePageLayout'
+
+export { useTradeFlowAnalytics } from './utils/tradeFlowAnalytics'

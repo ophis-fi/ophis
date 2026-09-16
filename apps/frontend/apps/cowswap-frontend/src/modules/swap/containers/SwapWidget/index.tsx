@@ -46,12 +46,14 @@ import {
 } from '../../hooks/useSwapSettings'
 import { useSwapWidgetActions } from '../../hooks/useSwapWidgetActions'
 import { useUpdateSwapRawState } from '../../hooks/useUpdateSwapRawState'
+import { useWholeTokenRoute } from '../../hooks/useWholeTokenRoute'
 import { CrossChainUnlockScreen } from '../../pure/CrossChainUnlockScreen'
 import { BottomBanners } from '../BottomBanners/BottomBanners.container'
 import { SwapConfirmModal } from '../SwapConfirmModal'
 import { SwapRateDetails } from '../SwapRateDetails'
 import { TradeButtons } from '../TradeButtons'
 import { Warnings } from '../Warnings'
+import { WholeTokenRoute } from '../WholeTokenRoute/WholeTokenRoute.container'
 
 export interface SwapWidgetProps {
   headerContent?: ReactNode
@@ -68,6 +70,7 @@ export function SwapWidget({
   bottomContent,
   allowSwapSameToken,
 }: SwapWidgetProps): ReactNode {
+  const direct = useWholeTokenRoute()
   const { showRecipient } = useSwapSettings()
   const deadlineState = useSwapDeadlineState()
   const recipientToggleState = useSwapRecipientToggleState()
@@ -146,11 +149,11 @@ export function SwapWidget({
   const outputCurrencyInfo: CurrencyInfo = {
     field: Field.OUTPUT,
     currency: outputCurrency,
-    amount: outputCurrencyAmount,
+    amount: direct.quote ? direct.output : outputCurrencyAmount,
     isIndependent: !isSellTrade,
     balance: outputCurrencyBalance,
-    fiatAmount: outputCurrencyFiatAmount,
-    receiveAmountInfo: isSellTrade ? receiveAmountInfo : null,
+    fiatAmount: direct.quote ? direct.fiat : outputCurrencyFiatAmount,
+    receiveAmountInfo: !direct.quote && isSellTrade ? receiveAmountInfo : null,
   }
 
   const previewInput = isSellTrade
@@ -221,6 +224,19 @@ export function SwapWidget({
     ),
     bottomContent: useCallback(
       (tradeWarnings: ReactNode | null) => {
+        if (direct.loading) return <p role="status">{t`Comparing swap routes…`}</p>
+        if (direct.quote)
+          return (
+            <>
+              {bottomContent}
+              <WholeTokenRoute
+                quote={direct.quote}
+                requestKey={direct.requestKey}
+                reviewed={direct.reviewed}
+                review={direct.review}
+              />
+            </>
+          )
         return (
           <>
             {bottomContent}
@@ -240,6 +256,7 @@ export function SwapWidget({
         )
       },
       [
+        direct,
         bottomContent,
         rateInfoParams,
         deadlineState,
@@ -258,6 +275,11 @@ export function SwapWidget({
   const params = {
     compactView: true,
     enableSmartSlippage: true,
+    disableQuotePolling: direct.reviewed,
+    disableTradeNotifications: direct.loading || !!direct.quote,
+    isPriceStatic: !!direct.quote,
+    disablePriceImpact: !!direct.quote,
+    hideTradeWarnings: !!direct.quote,
     isMarketOrderWidget: true,
     isSellingEthSupported: true,
     allowSwapSameToken,

@@ -9,6 +9,43 @@ export async function getSwapQuote(params: QuoteBridgeRequest, settings: SwapAdv
     return original
   }
 
+  const recovered = await recoverWholeToken(params, settings, original)
+  return minimizeWholeTokenInput(params, settings, recovered)
+}
+
+async function minimizeWholeTokenInput(
+  params: QuoteBridgeRequest,
+  settings: SwapAdvancedSettings,
+  original: QuoteAndPost,
+): Promise<QuoteAndPost> {
+  const output = original.quoteResults.amountsAndCosts.afterPartnerFees.buyAmount
+  if (output <= 0n) return original
+  try {
+    // BUY is only a price hint. Keep a real SELL quote and its SDK signing callback.
+    const hint = (await bridgingSdk.getQuote(
+      { ...params, kind: OrderKind.BUY, amount: output },
+      settings,
+    )) as QuoteAndPost
+    const input = hint.quoteResults.quoteResponse.quote.sellAmount
+    const quoteRequest = { ...settings.quoteRequest, sellAmountBeforeFee: undefined, sellAmountAfterFee: input }
+    const candidate = (await bridgingSdk.getQuote(params, {
+      ...settings,
+      quoteRequest,
+    })) as QuoteAndPost
+    return candidate.quoteResults.amountsAndCosts.amountsToSign.sellAmount <= params.amount &&
+      isBetterQuote(candidate, original)
+      ? candidate
+      : original
+  } catch {
+    return original
+  }
+}
+
+async function recoverWholeToken(
+  params: QuoteBridgeRequest,
+  settings: SwapAdvancedSettings,
+  original: QuoteAndPost,
+): Promise<QuoteAndPost> {
   // The orderbook scales an already-rounded buy amount down for network fees:
   // 1 MPS * (budget - fee) / budget becomes 0. Quote the actual input instead.
   let fee = BigInt(original.quoteResults.quoteResponse.quote.feeAmount)

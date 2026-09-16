@@ -3,17 +3,23 @@ import { atomFamily } from 'jotai/utils'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { getRpcProvider } from '@cowprotocol/common-const'
+import { captureError, ERROR_TYPES, normalizeError } from '@cowprotocol/common-utils'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount } from '@cowprotocol/currency'
 import { UiOrderType } from '@cowprotocol/types'
 import { useWalletProvider } from '@cowprotocol/wallet-provider'
 import { WidgetHookEvents } from '@cowprotocol/widget-lib'
 
+import { t } from '@lingui/core/macro'
+
 import { replaceTransaction } from 'legacy/state/enhancedTransactions/actions'
 import { useTransactionAdder } from 'legacy/state/enhancedTransactions/hooks'
 import { useAppDispatch } from 'legacy/state/hooks'
 
 import { buildTradeWidgetHookPayload, callWidgetHook } from 'modules/injectedWidget'
+import { useTradeFlowAnalytics } from 'modules/trade'
+
+import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
 
 import { useSwapDerivedState } from './useSwapDerivedState'
 
@@ -33,6 +39,7 @@ export function useDirectSwap(requestKey: string): {
 } {
   const wallet = useWalletProvider()
   const dispatch = useAppDispatch()
+  const analytics = useTradeFlowAnalytics()
   const addTransaction = useTransactionAdder()
   const { inputCurrency, outputCurrency } = useSwapDerivedState()
   const [status, setStatus] = useAtom(executionAtom(requestKey))
@@ -49,7 +56,8 @@ export function useDirectSwap(requestKey: string): {
       if (!wallet || !inputCurrency || !outputCurrency) return
       if ([busy.current, status.pending, status.submitted === quote].some(Boolean)) return
       busy.current = true
-      setStatus((previous) => ({ ...previous, pending: true, message: 'Confirm in your wallet' }))
+      setStatus((previous) => ({ ...previous, pending: true, message: t`Confirm in your wallet` }))
+      const context = { account: quote.account, orderType: UiOrderType.SWAP, marketLabel: 'ETH/MPS' }
       try {
         const input = CurrencyAmount.fromRawAmount(inputCurrency, quote.sellAmount.toString())
         const output = CurrencyAmount.fromRawAmount(outputCurrency, quote.buyAmount.toString())
@@ -65,28 +73,34 @@ export function useDirectSwap(requestKey: string): {
             maximumSendSellAmount: CurrencyAmount.fromRawAmount(inputCurrency, maximum.toString()),
           }),
         )
-        if (!allowed) throw new Error('Swap cancelled by wallet host.')
+        if (!allowed) throw new Error(t`Swap cancelled by wallet host.`)
+        analytics.trade(context)
         const isCurrent = (): boolean => current.current === requestKey
         const tx = await executeDirectSwap(wallet, getRpcProvider(1), quote, isCurrent, status.hash)
-        await addTransaction({ hash: tx.hash, summary: `Buy ${quote.buyAmount} MPS on Uniswap` })
-        setStatus({ pending: true, message: 'Transaction pending', hash: tx.hash, submitted: quote })
+        analytics.sign(context)
+        const buyAmount = quote.buyAmount.toString()
+        await addTransaction({ hash: tx.hash, summary: t`Buy ${buyAmount} MPS on Uniswap` })
+        setStatus({ pending: true, message: t`Transaction pending`, hash: tx.hash, submitted: quote })
         const receipt = await waitForDirectReceipt(tx, (hash, cancelled) => {
           dispatch(
             replaceTransaction({ chainId: 1, oldHash: tx.hash, newHash: hash, type: cancelled ? 'cancel' : 'speedup' }),
           )
           setStatus((previous) => ({ ...previous, hash }))
         })
-        if (receipt.status !== 1) throw new Error('Transaction reverted.')
-        const message = `Received ${quote.buyAmount} MPS`
+        if (receipt.status !== 1) throw new Error(t`Transaction reverted.`)
+        const message = t`Received ${buyAmount} MPS`
         setStatus({ pending: false, message, hash: receipt.transactionHash, submitted: quote })
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Swap failed. Check your wallet before retrying.'
+        const normalized = normalizeError(error)
+        const message = getSwapErrorMessage(normalized)
+        analytics.error(normalized, message, context)
+        captureError(normalized, ERROR_TYPES.ON_SWAP)
         setStatus((previous) => ({ ...previous, pending: false, message }))
       } finally {
         busy.current = false
       }
     },
-    [wallet, inputCurrency, outputCurrency, status, setStatus, requestKey, addTransaction, dispatch],
+    [wallet, analytics, inputCurrency, outputCurrency, status, setStatus, requestKey, addTransaction, dispatch],
   )
   return useMemo(() => ({ ...status, execute }), [status, execute])
 }

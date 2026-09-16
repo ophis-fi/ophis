@@ -1,5 +1,8 @@
+import { useAtomValue } from 'jotai'
+
 import { CurrencyAmount, Percent } from '@cowprotocol/currency'
 
+import { tradeFormValidationContextAtom, TradeFormValidation, validateTradeForm } from 'modules/tradeFormValidation'
 import { useUsdAmount } from 'modules/usdAmount'
 
 import { useConfirmPriceImpactWithoutFee } from 'common/hooks/useConfirmPriceImpactWithoutFee'
@@ -11,6 +14,7 @@ import { DirectQuote } from '../services/wholeToken/router.service'
 export function useDirectPriceImpact(quote: DirectQuote): {
   impact: Percent | undefined
   loading: boolean
+  allowed: boolean
   confirm: () => Promise<boolean>
 } {
   const { inputCurrency, outputCurrency } = useSwapDerivedState()
@@ -23,6 +27,24 @@ export function useDirectPriceImpact(quote: DirectQuote): {
     input.value?.greaterThan(0) && output.value
       ? new Percent(input.value.subtract(output.value).quotient, input.value.quotient)
       : undefined
+  const context = useAtomValue(tradeFormValidationContextAtom)
+  const loading = input.isLoading || output.isLoading
+  const validations =
+    context &&
+    validateTradeForm({ ...context, tradePriceImpact: { ...context.tradePriceImpact, priceImpact: impact, loading } })
+  // Direct execution validates its own quote, actual balance and expiry.
+  const allowed =
+    !!context &&
+    !validations?.some(
+      (validation) =>
+        ![
+          TradeFormValidation.SellNativeToken,
+          TradeFormValidation.QuoteErrors,
+          TradeFormValidation.QuoteLoading,
+          TradeFormValidation.QuoteExpired,
+          TradeFormValidation.BalanceInsufficient,
+        ].includes(validation),
+    )
   const { confirmPriceImpactWithoutFee } = useConfirmPriceImpactWithoutFee(false)
-  return { impact, loading: input.isLoading || output.isLoading, confirm: () => confirmPriceImpactWithoutFee(impact) }
+  return { impact, loading, allowed, confirm: () => confirmPriceImpactWithoutFee(impact) }
 }
