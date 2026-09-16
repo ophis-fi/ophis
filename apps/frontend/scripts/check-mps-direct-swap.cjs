@@ -27,6 +27,7 @@ async function main() {
   const request = { account, recipient, budget: 3300000000000000n, slippageBps: 50, fees: [{ recipient: feeRecipient, bps: 51.005 }] }
   const quotes = await getDirectQuotes(provider, request)
   assert.equal(quotes.length, 9, 'All nine expected fee-tier routes must remain executable')
+  const block = await provider.getBlock('latest'); assert(quotes.every(q => q.expiresAt === block.timestamp + 300))
   for (const q of quotes) {
     const snapshot = await provider.send('evm_snapshot', [])
     const before = await Promise.all([provider.getBalance(account), mps.balanceOf(recipient), weth.balanceOf(feeRecipient), weth.balanceOf(ROUTER), provider.getBalance(ROUTER), usdc.balanceOf(ROUTER)])
