@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 import { usePrevious } from '@cowprotocol/common-hooks'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { Command } from '@cowprotocol/types'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -13,7 +14,11 @@ export function useHandleChainChange(onDismiss: Command): null {
   const prevAccount = usePrevious(account)
 
   useEffect(() => {
-    if ((prevChainId && chainId !== prevChainId) || (prevAccount && account !== prevAccount)) onDismiss()
+    if (
+      (prevChainId && chainId !== prevChainId) ||
+      (prevAccount && (!account || !areAddressesEqual(account, prevAccount)))
+    )
+      onDismiss()
   }, [chainId, account, onDismiss, prevChainId, prevAccount])
 
   return null

@@ -84,10 +84,13 @@ export function SwapWidget({
   const widgetActions = useSwapWidgetActions()
   const receiveAmountInfo = useGetReceiveAmountInfo()
   const { token: intermediateBuyToken, toBeImported } = useTryFindToken(getBridgeIntermediateTokenAddress(bridgeQuote))
-  const [nativeWrapAmount, setNativeWrapAmount] = useState<CurrencyAmount<Currency> | null>(null)
+  const [{ wrap: nativeWrapAmount, approval: nativeApprovalAmount }, setNativeFunding] = useState<{
+    wrap: CurrencyAmount<Currency> | null
+    approval: CurrencyAmount<Currency> | undefined
+  }>({ wrap: null, approval: undefined })
   const [showAddIntermediateTokenModal, setShowAddIntermediateTokenModal] = useState(false)
 
-  const dismissNativeWrapModal = useCallback(() => setNativeWrapAmount(null), [])
+  const dismissNativeWrapModal = useCallback(() => setNativeFunding({ wrap: null, approval: undefined }), [])
 
   const updateSwapState = useUpdateSwapRawState()
 
@@ -111,10 +114,13 @@ export function SwapWidget({
   const showNativeWrapModal = !!nativeWrapAmount
   const wrapCallback = useWrapNativeFlow(nativeWrapAmount)
   const hasEnoughWrappedBalanceForSwap = useHasEnoughWrappedBalanceForSwap(nativeWrapAmount ?? signedFundingAmount)
-  const openNativeWrapModal = useCallback(
-    () => setNativeWrapAmount(hasEnoughWrappedBalanceForSwap ? signedFundingAmount : nativeFundingAmount),
-    [hasEnoughWrappedBalanceForSwap, signedFundingAmount, nativeFundingAmount],
-  )
+  const openNativeWrapModal = useCallback(() => {
+    if (signedFundingAmount && nativeFundingAmount)
+      setNativeFunding({
+        wrap: hasEnoughWrappedBalanceForSwap ? signedFundingAmount : nativeFundingAmount,
+        approval: nativeFundingAmount,
+      })
+  }, [hasEnoughWrappedBalanceForSwap, signedFundingAmount, nativeFundingAmount])
   const isSmartContractWallet = useIsSmartContractWallet()
   const { account } = useWalletInfo()
   const isEagerConnectInProgress = useIsEagerConnectInProgress()
@@ -144,6 +150,7 @@ export function SwapWidget({
 
   const ethFlowProps: EthFlowProps = useSafeMemoObject({
     nativeInput: nativeWrapAmount || undefined,
+    approvalInput: nativeApprovalAmount,
     onDismiss: dismissNativeWrapModal,
     wrapCallback,
     directSwapCallback: doTrade.callback,

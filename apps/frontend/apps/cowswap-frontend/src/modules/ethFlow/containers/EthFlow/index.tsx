@@ -32,6 +32,7 @@ import { ethFlowContextAtom } from '../../state/ethFlowContextAtom'
 
 export interface EthFlowProps {
   nativeInput?: CurrencyAmount<Currency>
+  approvalInput: CurrencyAmount<Currency> | undefined
   hasEnoughWrappedBalanceForSwap: boolean
   wrapCallback: WrapUnwrapCallback | null
   directSwapCallback: Command
@@ -40,6 +41,7 @@ export interface EthFlowProps {
 
 export function EthFlowModal({
   nativeInput,
+  approvalInput,
   onDismiss,
   wrapCallback,
   directSwapCallback,
@@ -55,10 +57,10 @@ export function EthFlowModal({
   const ethFlowReady = !!native && !!wrapped
 
   const wrappedAmount = useMemo(() => {
-    if (!nativeInput) return null
+    if (!approvalInput) return null
 
-    return CurrencyAmount.fromRawAmount(getWrappedToken(nativeInput.currency), nativeInput.quotient)
-  }, [nativeInput])
+    return CurrencyAmount.fromRawAmount(getWrappedToken(approvalInput.currency), approvalInput.quotient)
+  }, [approvalInput])
   const { state: approvalState } = useApproveState(wrappedAmount)
 
   const ethFlowContext = useAtomValue(ethFlowContextAtom)
@@ -92,13 +94,20 @@ export function EthFlowModal({
 
   const nativeBalance = useCurrencyAmountBalance(native ?? undefined)
   const wrappedBalance = useCurrencyAmountBalance(wrapped ?? undefined)
+  const nativeSpendAmount = useMemo(
+    () =>
+      nativeInput && hasEnoughWrappedBalanceForSwap
+        ? CurrencyAmount.fromRawAmount(nativeInput.currency, '0')
+        : nativeInput,
+    [nativeInput, hasEnoughWrappedBalanceForSwap],
+  )
 
   // user safety checks to make sure any on-chain native currency operations are economically safe
   // shows user warning with remaining available TXs if a certain threshold is reached
   const { balanceChecks } = useRemainingNativeTxsAndCosts({
     native,
     nativeBalance,
-    nativeInput,
+    nativeInput: nativeSpendAmount,
   })
 
   const state = useMemo(() => getDerivedEthFlowState(ethFlowContext), [ethFlowContext])
