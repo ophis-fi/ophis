@@ -1,10 +1,14 @@
 import json
+import os
+import subprocess
 import tempfile
+import textwrap
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
-from normalize import ValidationError, atomic_write, normalize
+from normalize import ValidationError, atomic_write, normalize, parse_timestamp
 
 
 NOW = datetime(2026, 7, 27, 12, 0, tzinfo=timezone.utc)
@@ -61,6 +65,12 @@ class NormalizeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "stale"):
             normalize(raw, expected_chain_id=10, now=NOW)
 
+    def test_timestamps_require_explicit_timezone_and_valid_numeric_value(self):
+        for value in ("2026-07-27T12:00:00", "2026-07-27", True, False, float("nan"), float("inf")):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                parse_timestamp(value, "head_timestamp")
+        self.assertEqual(parse_timestamp("2026-07-27T14:00:00+02:00", "head_timestamp"), NOW)
+
     def test_expiry_is_bounded_by_scanned_head_time(self):
         raw = scanner_output()
         raw["head_timestamp"] = int((NOW - timedelta(hours=5, minutes=59)).timestamp())
@@ -99,11 +109,52 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(feed["status"], "scan_error")
         self.assertEqual(feed["errors"], ["factory stableswap-ng: log query failed"])
 
+    def test_rejects_malformed_scanner_collections(self):
+        for malformed in ("", "decode failed", False, 0, {}):
+            with self.subTest(malformed=malformed):
+                raw = scanner_output({"pool": POOL, "ui_flag": "none", "ui_reasons": malformed})
+                with self.assertRaisesRegex(ValidationError, "ui_reasons must be a string array"):
+                    normalize(raw, expected_chain_id=10, now=NOW)
+                raw = scanner_output()
+                raw["factories"] = malformed
+                with self.assertRaisesRegex(ValidationError, "factories must be an array"):
+                    normalize(raw, expected_chain_id=10, now=NOW)
+        with self.assertRaisesRegex(ValidationError, "unsupported ui_flag"):
+            normalize(scanner_output({"pool": POOL, "ui_flag": []}), expected_chain_id=10, now=NOW)
+
     def test_atomic_write_produces_complete_json(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "feed.json"
             atomic_write(target, {"ok": True})
             self.assertEqual(json.loads(target.read_text()), {"ok": True})
+
+    def test_failed_atomic_write_preserves_previous_feed_and_removes_temporary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "feed.json"
+            target.write_text('{"previous": true}\n')
+            with patch("normalize.os.replace", side_effect=OSError("replacement failed")):
+                with self.assertRaisesRegex(OSError, "replacement failed"):
+                    atomic_write(target, {"next": True})
+            self.assertEqual(json.loads(target.read_text()), {"previous": True})
+            self.assertEqual(list(Path(directory).iterdir()), [target])
+
+    def test_workflow_window_input_cannot_execute_shell_or_inject_environment(self):
+        workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/toxic-pool-monitor.yml").read_text()
+        step = workflow.split("      - name: Validate configuration\n", 1)[1].split("\n      - name:", 1)[0]
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        for window in ("1", "7", "183", '$(touch injected)', "7\nBASH_ENV=injected"):
+            with self.subTest(window=window), tempfile.TemporaryDirectory() as directory:
+                env_file = Path(directory) / "github-env"
+                env = dict(os.environ, GITHUB_EVENT_NAME="workflow_dispatch", WINDOW_DAYS_INPUT=window,
+                           EVENT_SCHEDULE="", RPC_URL_OPTIMISM="configured", GITHUB_ENV=str(env_file))
+                result = subprocess.run(["bash", "-c", script], cwd=directory, env=env, capture_output=True)
+                if window in ("1", "7", "183"):
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(env_file.read_text(), f"WINDOW_DAYS={window}\n")
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(env_file.exists())
+                self.assertFalse((Path(directory) / "injected").exists())
 
 
 if __name__ == "__main__":

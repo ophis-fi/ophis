@@ -115,12 +115,42 @@ export default {
     // their arithmetic semantics. Foundry remains the source of truth for
     // vault deployments; these artifacts exist only so hardhat can compile.
     overrides: {
+      "src/contracts/AcrossMathHelper.sol": {
+        version: "0.8.28",
+        settings: {
+          optimizer: { enabled: true, runs: 1000000 },
+          evmVersion: "cancun",
+        },
+      },
+      "src/contracts/OphisFablesAdapter.sol": {
+        version: "0.8.28",
+        settings: {
+          optimizer: { enabled: true, runs: 1000000 },
+          evmVersion: "cancun",
+        },
+      },
+      "src/contracts/OphisUniswapV4Adapter.sol": {
+        version: "0.8.28",
+        settings: {
+          optimizer: { enabled: true, runs: 1000000 },
+          evmVersion: "cancun",
+        },
+      },
+      "src/contracts/OphisHooklessUniswapV4Adapter.sol": {
+        version: "0.8.28",
+        settings: {
+          optimizer: { enabled: true, runs: 1000000 },
+          evmVersion: "cancun",
+        },
+      },
       "src/contracts/vault/OphisVaultPolicyModule.sol": { version: "0.8.28" },
       "src/contracts/vault/OphisVaultPolicyModuleFactory.sol": {
         version: "0.8.28",
       },
       "src/contracts/vault/OphisChainlinkFloor.sol": { version: "0.8.28" },
-      "src/contracts/rewards/OphisRewardsDistributor.sol": { version: "0.8.28" },
+      "src/contracts/rewards/OphisRewardsDistributor.sol": {
+        version: "0.8.28",
+      },
       "src/contracts/vault/interfaces/IVaultPolicyDeps.sol": {
         version: "0.8.28",
       },

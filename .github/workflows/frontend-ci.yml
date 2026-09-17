@@ -79,6 +79,9 @@ jobs:
         working-directory: apps/frontend
         run: pnpm install --frozen-lockfile
 
+      - name: dependency security regressions
+        run: node scripts/test-security-dependencies.cjs --workspace frontend
+
       # `nx run cowswap-frontend:typecheck`. No secrets required.
       - name: typecheck cowswap-frontend
         working-directory: apps/frontend

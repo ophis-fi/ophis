@@ -30,8 +30,9 @@ jobs:
           cache-dependency-path: |
             pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint || echo "no lint targets yet"
-      - run: pnpm typecheck || echo "no typecheck targets yet"
+      - run: node scripts/test-security-dependencies.cjs --workspace root
+      - run: pnpm lint
+      - run: pnpm typecheck
       # Hard gate (no `|| echo` fallback). functions/ belongs to no package
       # workspace and is excluded from the build manifest below, because
       # Cloudflare compiles Pages Functions server-side. That left these
@@ -88,10 +89,7 @@ jobs:
           cache-dependency-path: |
             pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      # The Safe App's `turbo run typecheck` runs in the root job, but that step is
-      # `|| echo`-swallowed (non-fatal), so a type error there does NOT redden CI. This job is
-      # the real, BLOCKING gate: it typechecks AND builds apps/safe-app. The Safe App typechecks
-      # against @ophis/sdk's emitted .d.ts, so build the SDK first.
+      # Build the SDK declarations before validating and building the Safe App.
       - run: |
           if [ -f apps/safe-app/package.json ]; then
             pnpm --filter @ophis/sdk build
@@ -117,10 +115,8 @@ jobs:
           cache-dependency-path: |
             pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      # The root `turbo run typecheck` is `|| echo`-swallowed (non-fatal). This package builds the
-      # presign tx batch a vault Safe EXECUTES (money path), so a silent compile or guard break must
-      # redden CI. This job is the real, BLOCKING gate. It typechecks against @ophis/sdk's emitted
-      # .d.ts, so build the SDK first. Fork tests (test/fork*) are env-gated and do NOT run here.
+      # Validate the Safe transaction builder against SDK declarations.
+      # Fork tests remain env-gated and do not run here.
       - run: |
           if [ -f packages/safe-swap/package.json ]; then
             pnpm --filter @ophis/sdk build
@@ -145,10 +141,8 @@ jobs:
           cache-dependency-path: |
             pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      # The root `turbo run typecheck` is `|| echo`-swallowed (non-fatal). These AI-agent swap
-      # plugins SIGN + SUBMIT CoW orders, so a silent compile break must redden CI. This job is the
-      # real, BLOCKING gate. The plugins typecheck against @ophis/agent-swap's emitted .d.ts, which
-      # itself needs @ophis/sdk built first.
+      # Agent plugins sign and submit orders; build dependencies before their
+      # type/build/test gates.
       - run: |
           if [ -f packages/agent-swap/package.json ]; then
             pnpm --filter @ophis/sdk build
@@ -178,10 +172,8 @@ jobs:
           cache-dependency-path: |
             pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      # The root `turbo run typecheck` is `|| echo`-swallowed (non-fatal). This Worker maps
-      # external integrator requests onto SIGNABLE order drafts and relays pre-signed orders,
-      # so a silent compile or guard break must redden CI. This job is the real, BLOCKING
-      # gate. It typechecks against @ophis/sdk's emitted .d.ts, so build the SDK first.
+      # Validate integrator order drafts and pre-signed order forwarding against
+      # SDK declarations before running the Worker tests.
       - run: |
           if [ -f apps/compat-api/package.json ]; then
             pnpm --filter @ophis/sdk build

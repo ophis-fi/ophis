@@ -32,12 +32,14 @@ def iso8601(value: datetime) -> str:
 
 def parse_timestamp(value: Any, field: str) -> datetime:
     try:
-        if isinstance(value, (int, float)):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
             return datetime.fromtimestamp(value, timezone.utc)
         if isinstance(value, str):
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
-    except (OverflowError, ValueError):
-        pass
+            timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if timestamp.tzinfo is not None:
+                return timestamp.astimezone(timezone.utc)
+    except (OSError, OverflowError, ValueError) as exc:
+        raise ValidationError(f"{field} is not a valid timestamp") from exc
     raise ValidationError(f"{field} is not a valid timestamp")
 
 
@@ -71,11 +73,14 @@ def normalize_row(row: Any) -> tuple[str, dict[str, Any]]:
     address = address.lower()
 
     flag = row.get("ui_flag")
-    if flag not in ALLOWED_FLAGS:
+    if not isinstance(flag, str) or flag not in ALLOWED_FLAGS:
         raise ValidationError(f"pool {address} has unsupported ui_flag {flag!r}")
     row_errors = optional_string_list(row, "errors", f"pool {address} errors")
 
-    reasons = [normalize_reason(item) for item in (row.get("ui_reasons") or [])]
+    reasons = [
+        normalize_reason(item)
+        for item in optional_string_list(row, "ui_reasons", f"pool {address} ui_reasons")
+    ]
     if row_errors:
         status = "scan_error"
         severity = "unknown"
@@ -126,7 +131,9 @@ def normalize(
     if declared_count != len(rows):
         raise ValidationError(f"pool_count mismatch: declared {declared_count}, found {len(rows)}")
     top_errors = list(optional_string_list(raw, "errors", "errors"))
-    factories = raw.get("factories") or []
+    factories = raw.get("factories")
+    if factories is None:
+        factories = []
     if not isinstance(factories, list):
         raise ValidationError("factories must be an array")
     for factory in factories:
@@ -187,10 +194,7 @@ def atomic_write(path: Path, value: Any) -> None:
             os.fsync(handle.fileno())
         os.replace(temporary, path)
     except BaseException:
-        try:
-            os.unlink(temporary)
-        except FileNotFoundError:
-            pass
+        Path(temporary).unlink(missing_ok=True)
         raise
 
 

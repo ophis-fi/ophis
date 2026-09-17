@@ -77,7 +77,7 @@ describe('solver attribution', () => {
   it.each([
     [1, 'kyberswap'],
     [1, 'baseline'],
-    [130, 'uniswap-v4'],
+    [130, 'unregistered'],
   ])('keeps missing metadata neutral on chain %s for solver %s', (chainId, solverId) => {
     expect(mergeSolverData({ solver: solverId }, {}, chainId, i18n._.bind(i18n))).toMatchObject({
       displayName: 'Unknown solver',

@@ -123,6 +123,30 @@ function rpcError(httpStatus: number, code: number, message: string): Response {
   return Response.json({ jsonrpc: '2.0', error: { code, message }, id: null }, { status: httpStatus })
 }
 
+/** Count bytes while reading, so undeclared/chunked bodies cannot exhaust the Worker. */
+async function readBody(request: Request): Promise<string | null> {
+  if (Number(request.headers.get('content-length')) > MAX_BODY_BYTES) return null
+  if (!request.body) return ''
+  const reader = request.body.getReader()
+  const decoder = new TextDecoder()
+  let size = 0
+  let body = ''
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) return body + decoder.decode()
+      size += value.byteLength
+      if (size > MAX_BODY_BYTES) {
+        void reader.cancel().catch(() => {})
+        return null
+      }
+      body += decoder.decode(value, { stream: true })
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
@@ -162,8 +186,8 @@ export default {
       }
 
       if (request.method === 'POST') {
-        const body = await request.text()
-        if (body.length > MAX_BODY_BYTES) {
+        const body = await readBody(request)
+        if (body === null) {
           return rpcError(413, -32600, `Request body exceeds ${MAX_BODY_BYTES} bytes.`)
         }
         try {

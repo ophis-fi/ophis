@@ -49,6 +49,31 @@ const SUBDOMAIN_TO_PATH: Record<string, string> = {
 }
 
 const DOCS_PORTAL = 'https://docs.ophis.fi/'
+const MAX_POST_BODY_BYTES = 64 * 1024
+
+/** Bound every Pages POST before an API handler buffers/parses its JSON. */
+async function readPostBody(request: Request): Promise<string | null> {
+  if (Number(request.headers.get('content-length')) > MAX_POST_BODY_BYTES) return null
+  if (!request.body) return ''
+  const reader = request.body.getReader()
+  const decoder = new TextDecoder()
+  let size = 0
+  let body = ''
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) return body + decoder.decode()
+      size += value.byteLength
+      if (size > MAX_POST_BODY_BYTES) {
+        void reader.cancel().catch(() => {})
+        return null
+      }
+      body += decoder.decode(value, { stream: true })
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}
 
 // Preserve the real pathname aliases formerly handled by emergency.js. The
 // root 404.html disables Pages' blanket SPA fallback for everything else.
@@ -169,6 +194,17 @@ function finalizeResponse(res: Response, hostname: string): Response {
 
 export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url)
+  let request: Request = context.request
+  if (request.method === 'POST') {
+    const body = await readPostBody(request)
+    if (body === null) {
+      return Response.json(
+        { ok: false, error: { code: 'BAD_INPUT', message: `Request body exceeds ${MAX_POST_BODY_BYTES} bytes.` } },
+        { status: 413, headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } },
+      )
+    }
+    request = new Request(request, { body })
+  }
 
   // Vite copies the app's own package.json into the deploy root. Served
   // verbatim it discloses dependency names + versions (an info-leak that
@@ -234,7 +270,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     url.pathname.startsWith('/static/') ||
     (/\.[a-z0-9]{2,5}$/i.test(url.pathname) && !url.pathname.endsWith('.html'))
   if (assetLike) {
-    const res = await context.next()
+    const res = await context.next(request)
     if (res.status === 404 || (res.status === 200 && (res.headers.get('content-type') || '').includes('text/html'))) {
       return new Response('Not found', {
         status: 404,
@@ -243,5 +279,5 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
     return res
   }
-  return finalizeResponse(await context.next(), url.hostname)
+  return finalizeResponse(await context.next(request), url.hostname)
 }
