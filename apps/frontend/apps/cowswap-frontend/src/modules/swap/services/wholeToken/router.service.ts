@@ -1,10 +1,10 @@
-import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, EVM_NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/cow-sdk'
 import { defaultAbiCoder, Interface } from '@ethersproject/abi'
 import { getAddress } from '@ethersproject/address'
 import { AddressZero } from '@ethersproject/constants'
 import { TransactionRequest } from '@ethersproject/providers'
 
-import { buildGnosisTransaction, GNOSIS_MPS } from './gnosis.service'
+import { buildGnosisTransaction, GNOSIS_MPS, WXDAI } from './gnosis.service'
 
 // Ethereum deployments: https://developers.uniswap.org/docs/protocols/v3/deployments/v3-ethereum-deployments
 export const ROUTER = '0x66a9893cc07d91d95644aedd05d03f95e1dba8af'
@@ -29,6 +29,7 @@ export interface VolumeFee {
 export interface DirectQuote {
   chainId?: 1 | 100
   inputToken?: string
+  outputToken?: string
   minBuyAmount?: bigint
   gasCostInInput?: bigint
   approvalGas?: bigint
@@ -65,6 +66,8 @@ export function buildDirectTransaction(quote: DirectQuote): TransactionRequest {
   if (quote.chainId === 100) return buildGnosisTransaction(quote)
   if (quote.chainId !== undefined && quote.chainId !== 1) throw new Error('Unsupported direct chain')
   validateQuote(quote)
+  if (!areAddressesEqual(directOutputToken(quote), isMpsSell(quote) ? EVM_NATIVE_CURRENCY_ADDRESS : MPS))
+    throw new Error('Unsupported direct output')
   const feeTotal = quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)
   const { commands, inputs } = isMpsSell(quote) ? sellCommands(quote, feeTotal) : buyCommands(quote, feeTotal)
   return {
@@ -223,6 +226,10 @@ function appendFees(quote: DirectQuote, inputToken: string, commands: string[], 
 
 export function directChainId(quote: { chainId?: 1 | 100 }): 1 | 100 {
   return quote.chainId ?? 1
+}
+
+export function directOutputToken(quote: Pick<DirectQuote, 'chainId' | 'inputToken' | 'outputToken'>): string {
+  return quote.outputToken || (quote.chainId === 100 ? WXDAI : isMpsSell(quote) ? EVM_NATIVE_CURRENCY_ADDRESS : MPS)
 }
 
 export function directVenue(quote: DirectQuote): string {

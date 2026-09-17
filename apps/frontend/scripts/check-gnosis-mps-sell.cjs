@@ -1,6 +1,7 @@
 // GNOSIS_FORK_RPC=http://127.0.0.1:8574 node scripts/check-gnosis-mps-sell.cjs
 // Uses deployed contracts on a local Anvil fork; never submits live transactions.
 const assert = require('node:assert/strict')
+const { randomBytes } = require('node:crypto')
 const { createRequire } = require('node:module')
 const { mkdtempSync, rmSync } = require('node:fs')
 const { tmpdir } = require('node:os')
@@ -10,7 +11,7 @@ const { buildSync } = createRequire(app.resolve('vite/package.json'))('esbuild')
 const { JsonRpcProvider, Web3Provider } = app('@ethersproject/providers')
 const { Contract } = app('@ethersproject/contracts')
 const folder = mkdtempSync(join(tmpdir(), 'gnosis-mps-'))
-async function main() {
+async function main(unwrap) {
   const url = process.env.GNOSIS_FORK_RPC || 'http://127.0.0.1:8574'
   assert(['127.0.0.1', 'localhost'].includes(new URL(url).hostname), 'Local fork required')
   const provider = new JsonRpcProvider(url, 100)
@@ -26,13 +27,17 @@ async function main() {
     const { buildDirectTransaction } = require(join(folder, 'router.cjs'))
     const { getInputApprovals, simulationState } = require(join(folder, 'input.cjs'))
     const { GNOSIS_MPS, WXDAI, GNOSIS_ROUTER, GNOSIS_EXECUTOR, GNOSIS_PAYMENTS, SUSHI_V2_ROUTER } = require(join(folder, 'gnosis.cjs'))
-    const [account, recipient, partner] = await provider.listAccounts()
+    const [account, , partner] = await provider.listAccounts()
+    // Public Anvil fixture addresses can have live EIP-7702 delegations that reject native transfers.
+    const recipient = '0x' + randomBytes(20).toString('hex')
+    assert.equal(await provider.getCode(recipient), '0x')
     const feeRecipient = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8'
     const abi = ['function balanceOf(address) view returns(uint256)', 'function allowance(address,address) view returns(uint256)']
     const mps = new Contract(GNOSIS_MPS, abi, provider), wxdai = new Contract(WXDAI, abi, provider)
     const signer = provider.getSigner(account)
     const wallet = new Web3Provider({ request: ({ method, params }) => provider.send(method, params || []) })
-    const request = { chainId: 100, inputToken: GNOSIS_MPS, account, recipient, budget: 1n, slippageBps: 50,
+    const outputToken = unwrap ? '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' : WXDAI
+    const request = { chainId: 100, inputToken: GNOSIS_MPS, outputToken, account, recipient, budget: 1n, slippageBps: 50,
       fees: [{ recipient: feeRecipient, bps: 1 }, { recipient: partner, bps: 12.5 }] }
     const state = simulationState(account, GNOSIS_MPS)
     for (const [method, args] of [['balanceOf', [account]], ['allowance', [account, GNOSIS_ROUTER]]]) {
@@ -55,11 +60,13 @@ async function main() {
     assert.throws(() => buildDirectTransaction({ ...ready, chainId: 1 }))
     assert.throws(() => buildDirectTransaction({ ...ready, recipient: GNOSIS_EXECUTOR }))
     assert.throws(() => buildDirectTransaction({ ...ready, minBuyAmount: 0n }))
+    assert.throws(() => buildDirectTransaction({ ...ready, outputToken: GNOSIS_MPS }))
     await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...ready, expiresAt: 1 })))
     await assert.rejects(provider.estimateGas(buildDirectTransaction({ ...ready, buyAmount: ready.buyAmount * 2n, minBuyAmount: ready.buyAmount * 2n })))
     await assert.rejects(executeDirectSwap(wallet, provider, ready, () => false), /changed or expired/)
     const targets = [recipient, feeRecipient, partner, GNOSIS_EXECUTOR, GNOSIS_PAYMENTS, GNOSIS_ROUTER]
     const before = await Promise.all(targets.map(a => wxdai.balanceOf(a)))
+    const nativeBefore = await Promise.all(targets.map(a => provider.getBalance(a)))
     ready.quotedAt = Date.now()
     const receipt = await (await executeDirectSwap(wallet, provider, ready, () => true)).wait()
     assert.equal(receipt.status, 1)
@@ -67,11 +74,13 @@ async function main() {
     assert.equal((await mps.allowance(GNOSIS_EXECUTOR, SUSHI_V2_ROUTER)).toString(), '0', 'No executor approval remains')
     for (let i = 0; i < targets.length; i++) {
       const delta = BigInt((await wxdai.balanceOf(targets[i])).sub(before[i]).toString())
-      assert.equal(delta, i === 0 ? ready.buyAmount : i < 3 ? ready.fees[i - 1].amount : 0n)
+      assert.equal(delta, i === 0 ? (unwrap ? 0n : ready.buyAmount) : i < 3 ? ready.fees[i - 1].amount : 0n)
+      const nativeDelta = BigInt((await provider.getBalance(targets[i])).sub(nativeBefore[i]).toString())
+      assert.equal(nativeDelta, unwrap && i === 0 ? ready.buyAmount : 0n)
     }
     assert.equal((await mps.balanceOf(GNOSIS_EXECUTOR)).toString(), '0')
-    console.log(JSON.stringify({ soldMps: '1', receivedWXDAI: ready.buyAmount.toString(), gasUsed: receipt.gasUsed.toString() }))
+    console.log(JSON.stringify({ soldMps: '1', outputToken, received: ready.buyAmount.toString(), gasUsed: receipt.gasUsed.toString() }))
     console.log('PASS: exact input, bounded approvals, output fees, recipient, deadline, slippage, freshness, no residual funds')
   } finally { await provider.send('evm_revert', [snapshot]) }
 }
-main().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => rmSync(folder, { recursive: true, force: true }))
+;(async () => { await main(false); await main(true) })().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => rmSync(folder, { recursive: true, force: true }))

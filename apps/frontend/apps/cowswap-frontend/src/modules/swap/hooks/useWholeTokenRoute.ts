@@ -23,19 +23,22 @@ import { useSwapSettings } from './useSwapSettings'
 import { GNOSIS_MPS, WXDAI } from '../services/wholeToken/gnosis.service'
 import { isReplaceableCowPermit } from '../services/wholeToken/permitHook.service'
 import { DirectRequest, getDirectQuotes } from '../services/wholeToken/quote.service'
-import { directChainId, DirectQuote, isMpsSell, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
+import { directChainId, DirectQuote, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
 import { canFundDirect, comparisonLoading, selectDirect } from '../services/wholeToken/selection.service'
 
 type SwapState = ReturnType<typeof useSwapDerivedState>
 type QuoteParams = NonNullable<ReturnType<typeof useQuoteParams>>
-function supportsDirect(state: SwapState): boolean {
+function supportsDirect(state: SwapState): state is SwapState & {
+  inputCurrency: NonNullable<SwapState['inputCurrency']>
+  outputCurrency: NonNullable<SwapState['outputCurrency']>
+} {
   const { inputCurrency, outputCurrency } = state
   if (!inputCurrency || !outputCurrency) return false
   if (inputCurrency.chainId === 100 && outputCurrency.chainId === 100) {
     return [
       state.orderKind === OrderKind.SELL,
       areAddressesEqual(getCurrencyAddress(inputCurrency), GNOSIS_MPS),
-      areAddressesEqual(getCurrencyAddress(outputCurrency), WXDAI),
+      getIsNativeToken(outputCurrency) || areAddressesEqual(getCurrencyAddress(outputCurrency), WXDAI),
     ].every(Boolean)
   }
   const buying =
@@ -80,10 +83,12 @@ function getRequest(
   const recipient = resolveRecipient(state, account, q.owner)
   const fees = getFees(params)
   const inputToken = directInput(state)
+  const outputToken = getCurrencyAddress(state.outputCurrency)
   const chainId = requestChain(state)
-  if (!recipient || !fees || !matchesForm(q, budget, account, recipient, inputToken, chainId)) return null
+  if (!recipient || !fees || !matchesForm(q, budget, account, recipient, inputToken, chainId, outputToken)) return null
   return {
     inputToken,
+    outputToken,
     chainId,
     account: q.owner,
     recipient,
@@ -105,7 +110,8 @@ function matchesForm(
   account: string | undefined,
   recipient: string,
   inputToken?: string,
-  chainId = 1,
+  chainId: 1 | 100 = 1,
+  outputToken?: string,
 ): boolean {
   return [
     q.amount.toString() === budget,
@@ -113,10 +119,7 @@ function matchesForm(
     q.sellTokenChainId === chainId,
     areAddressesEqual(q.sellTokenAddress, inputToken || NATIVE_CURRENCY_ADDRESS),
     q.buyTokenChainId === chainId,
-    areAddressesEqual(
-      q.buyTokenAddress,
-      chainId === 100 ? WXDAI : isMpsSell({ inputToken }) ? NATIVE_CURRENCY_ADDRESS : MPS,
-    ),
+    areAddressesEqual(q.buyTokenAddress, outputToken),
     areAddressesEqual(q.owner, account || q.owner),
     areAddressesEqual(q.receiver || q.owner, recipient),
   ].every(Boolean)
@@ -148,7 +151,6 @@ interface WholeTokenRouteState {
   refresh: () => Promise<unknown>
   review: (quote: DirectQuote | null) => void
 }
-
 export function useWholeTokenRoute(): WholeTokenRouteState {
   const [selection, setSelection] = useState<Selection>(null)
   const state = useSwapDerivedState()
@@ -225,7 +227,6 @@ export function useWholeTokenRoute(): WholeTokenRouteState {
     [quote, output, fiat, requestKey, reviewed, review, loading, comparisonFailed, result.refetch],
   )
 }
-
 function directInput(state: SwapState): string | undefined {
   return state.inputCurrency && !getIsNativeToken(state.inputCurrency)
     ? getCurrencyAddress(state.inputCurrency)
@@ -238,7 +239,6 @@ function depositQuote(
 ): ReturnType<typeof useTradeQuote>['quote'] {
   return key && !request?.inputToken ? quote : null
 }
-
 function requestChain(state: SwapState): 1 | 100 {
   return state.inputCurrency?.chainId === 100 ? 100 : 1
 }
