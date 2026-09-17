@@ -1,6 +1,6 @@
 import { WRAPPED_NATIVE_CURRENCIES, NATIVE_CURRENCIES, USDC_MAINNET } from '@cowprotocol/common-const'
 import { OrderKind } from '@cowprotocol/cow-sdk'
-import { CurrencyAmount } from '@cowprotocol/currency'
+import { CurrencyAmount, Token } from '@cowprotocol/currency'
 
 import { renderHook } from '@testing-library/react'
 
@@ -93,6 +93,10 @@ it('funds the full BUY cap in native currency and rejects an outdated amount', (
   order.sellToken = USDC_MAINNET.address
   rerender()
   expect(result.current).toBeNull()
+
+  state.outputCurrencyAmount = CurrencyAmount.fromRawAmount(new Token(10, USDC_MAINNET.address, 6), '10000000')
+  rerender()
+  expect(result.current).toBe(state.inputCurrencyAmount)
 
   state.tradeType = TradeType.LIMIT_ORDER
   rerender()

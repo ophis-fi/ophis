@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
 
+import { useCurrencyAmountBalance } from '@cowprotocol/balances-and-allowances'
 import { useIsOnline } from '@cowprotocol/common-hooks'
 import { getIsNativeToken } from '@cowprotocol/common-utils'
-import { Nullish } from '@cowprotocol/cow-sdk'
+import { Nullish, OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency, Token } from '@cowprotocol/currency'
 import {
   isTradeAllowedByTokenPolicy,
@@ -24,6 +25,8 @@ import {
   TradeType,
   useDerivedTradeState,
   useIsWrapOrUnwrap,
+  useIsEoaEthFlow,
+  useWrappedToken,
   useSwapFundingAmount,
   useTradePriceImpact,
 } from 'modules/trade'
@@ -53,6 +56,9 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
   const { isLoading: isBalancesLoading, hasFirstLoad, error: balancesError } = useTokensBalancesCombined()
 
   const { inputCurrency, outputCurrency, recipient, tradeType } = derivedTradeState || {}
+  const wrappedToken = useWrappedToken()
+  const wrappedBalance = useCurrencyAmountBalance(wrappedToken)
+  const isEoaEthFlow = useIsEoaEthFlow()
   const customTokenError = useTokenCustomTradeError(inputCurrency, outputCurrency, tradeQuote.error)
   const amountToApprove = useGetAmountToSignApprove()
   const { state: approvalState } = useApproveState(amountToApprove)
@@ -93,6 +99,13 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
 
   return useMemo(() => {
     if (!derivedTradeState) return null
+    const useWrappedBalance =
+      isEoaEthFlow &&
+      derivedTradeState.orderKind === OrderKind.BUY &&
+      fundingAmount &&
+      wrappedBalance &&
+      wrappedBalance.currency.chainId === fundingAmount.currency.chainId &&
+      !wrappedBalance.lessThan(fundingAmount)
 
     return {
       account,
@@ -110,7 +123,11 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
       isProviderNetworkUnsupported,
       isProviderNetworkDeprecated,
       isOnline,
-      derivedTradeState: { ...derivedTradeState, inputCurrencyAmount: fundingAmount },
+      derivedTradeState: {
+        ...derivedTradeState,
+        inputCurrencyAmount: fundingAmount,
+        inputCurrencyBalance: useWrappedBalance ? wrappedBalance : derivedTradeState.inputCurrencyBalance,
+      },
       intermediateTokenToBeImported: !!intermediateBuyToken && toBeImported,
       isAccountProxyLoading,
       isProxySetupValid,
@@ -130,6 +147,8 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
     customTokenError,
     derivedTradeState,
     fundingAmount,
+    wrappedBalance,
+    isEoaEthFlow,
     intermediateBuyToken,
     isAccountProxyLoading,
     isApproveRequired,

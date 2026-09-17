@@ -96,7 +96,8 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
     // Never let the SDK default a non-EVM destination to the connected EVM account.
     if (isNonEvmRecipientChain(outputCurrency.chainId) && !receiver) return
 
-    const sellCurrency = orderKind === OrderKind.BUY ? getWrappedToken(inputCurrency) : inputCurrency
+    const isLocalBuy = orderKind === OrderKind.BUY && inputCurrency.chainId === outputCurrency.chainId
+    const sellCurrency = isLocalBuy ? getWrappedToken(inputCurrency) : inputCurrency
     const sellTokenAddress = getCurrencyAddress(sellCurrency)
     const buyTokenAddress = getCurrencyAddress(outputCurrency)
 

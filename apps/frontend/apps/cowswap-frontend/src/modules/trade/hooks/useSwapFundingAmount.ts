@@ -23,7 +23,12 @@ export function useSwapFundingAmount(includeApprovalBuffer = false): CurrencyAmo
   const sellAmount = includeApprovalBuffer ? maximumSendSellAmount : amountsToSign?.sellAmount
   const { account } = useWalletInfo()
   const isWrap = useIsWrapOrUnwrap()
-  const isBuySwap = orderKind === OrderKind.BUY && tradeType === TradeType.SWAP && !isWrap
+  const isBuySwap = [
+    orderKind === OrderKind.BUY,
+    tradeType === TradeType.SWAP,
+    !isWrap,
+    inputCurrency?.chainId === outputCurrencyAmount?.currency.chainId,
+  ].every(Boolean)
   const tradeQuote = useTradeQuote()
   const { quote } = tradeQuote
   const order = quote?.quoteResults.quoteResponse.quote

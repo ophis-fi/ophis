@@ -1,6 +1,7 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
-import { isSellOrder } from '@cowprotocol/common-utils'
+import { getIsNativeToken, isSellOrder } from '@cowprotocol/common-utils'
+import { OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { useTryFindToken } from '@cowprotocol/tokens'
 import { InlineBanner, StatusColorVariant, LinkStyledButton } from '@cowprotocol/ui'
@@ -106,10 +107,14 @@ export function SwapWidget({
   } = useSwapDerivedState()
   const doTrade = useHandleSwap({ deadline: deadlineState[0] }, widgetActions)
   const nativeFundingAmount = useSwapFundingAmount(true)
-  const openNativeWrapModal = useCallback(() => setNativeWrapAmount(nativeFundingAmount), [nativeFundingAmount])
+  const signedFundingAmount = useSwapFundingAmount()
   const showNativeWrapModal = !!nativeWrapAmount
   const wrapCallback = useWrapNativeFlow(nativeWrapAmount)
-  const hasEnoughWrappedBalanceForSwap = useHasEnoughWrappedBalanceForSwap(nativeWrapAmount ?? nativeFundingAmount)
+  const hasEnoughWrappedBalanceForSwap = useHasEnoughWrappedBalanceForSwap(nativeWrapAmount ?? signedFundingAmount)
+  const openNativeWrapModal = useCallback(
+    () => setNativeWrapAmount(hasEnoughWrappedBalanceForSwap ? signedFundingAmount : nativeFundingAmount),
+    [hasEnoughWrappedBalanceForSwap, signedFundingAmount, nativeFundingAmount],
+  )
   const isSmartContractWallet = useIsSmartContractWallet()
   const { account } = useWalletInfo()
   const isEagerConnectInProgress = useIsEagerConnectInProgress()
@@ -121,6 +126,19 @@ export function SwapWidget({
     // Hydration guard: defer lock-screen until persisted state (isUnlocked) loads to prevent initial flash.
     setIsHydrated(true)
   }, [])
+
+  useEffect(() => {
+    // Exact-output editing is for same-chain swaps; native bridges remain SELL-only.
+    if (
+      inputCurrency &&
+      outputCurrency &&
+      inputCurrency.chainId !== outputCurrency.chainId &&
+      getIsNativeToken(inputCurrency) &&
+      !isSmartContractWallet &&
+      orderKind === OrderKind.BUY
+    )
+      updateSwapState({ orderKind: OrderKind.SELL, inputCurrencyAmount: null, outputCurrencyAmount: null })
+  }, [inputCurrency, outputCurrency, isSmartContractWallet, orderKind, updateSwapState])
 
   const isSellTrade = isSellOrder(orderKind)
 

@@ -91,3 +91,15 @@ it.each([OrderKind.BUY, OrderKind.SELL])('quotes native %s with the matching set
     }),
   )
 })
+
+it('preserves the native settlement currency for cross-chain quotes', () => {
+  const state: Partial<ReturnType<typeof useDerivedTradeState>> = {
+    inputCurrency: NATIVE_CURRENCIES[1],
+    outputCurrency: new TokenWithLogo(undefined, 10, USDC_MAINNET.address, 6),
+    orderKind: OrderKind.BUY,
+  }
+  jest.mocked(useDerivedTradeState).mockReturnValue(state as ReturnType<typeof useDerivedTradeState>)
+  jest.mocked(useQuoteParamsRecipient).mockReturnValue(undefined)
+  const { result } = renderHook(() => useQuoteParams('10000000'))
+  expect(result.current?.quoteParams?.sellTokenAddress).toBe(NATIVE_CURRENCIES[1].address)
+})
