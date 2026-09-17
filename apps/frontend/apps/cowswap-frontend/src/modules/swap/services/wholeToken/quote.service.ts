@@ -22,6 +22,7 @@ import { quoteMpsSell } from './sell.service'
 export interface DirectRequest {
   chainId?: 1 | 100
   inputToken?: string
+  outputToken?: string
   account: string
   recipient: string
   budget: bigint

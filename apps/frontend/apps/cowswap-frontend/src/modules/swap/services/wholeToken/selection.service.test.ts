@@ -3,6 +3,7 @@ import { PriceQuality, QuoteAndPost } from '@cowprotocol/cow-sdk'
 
 import type { useTradeQuote } from 'modules/tradeQuote'
 
+import { GNOSIS_MPS, WXDAI } from './gnosis.service'
 import { DirectQuote, MPS, USDC } from './router.service'
 import { canFundDirect, comparisonLoading, selectDirect } from './selection.service'
 
@@ -93,4 +94,22 @@ it('compares MPS sell proceeds in ETH after swap and approval gas', () => {
   cow.quote.quoteResults.amountsAndCosts.afterPartnerFees.buyAmount = 99n
   expect(selectDirect(sale, cow, 1001, 0n)).toBe(sale)
   expect(selectDirect(sale, { ...cow, quote: null }, 1001, 0n)).toBe(sale)
+})
+
+it.each([WXDAI, NATIVE_CURRENCY_ADDRESS])('compares Gnosis proceeds against the selected output %s', (outputToken) => {
+  const sale: DirectQuote = {
+    ...direct,
+    chainId: 100,
+    inputToken: GNOSIS_MPS,
+    outputToken,
+    buyAmount: 120n,
+    gasCost: 10n,
+  }
+  const cow = cowQuote(GNOSIS_MPS)
+  if (!cow.quote) throw new Error('Missing fixture')
+  cow.quote.quoteResults.tradeParameters.buyToken = outputToken
+  cow.quote.quoteResults.amountsAndCosts.afterPartnerFees.buyAmount = 111n
+  expect(selectDirect(sale, cow, 1001, 0n)).toBeUndefined()
+  cow.quote.quoteResults.tradeParameters.buyToken = outputToken === WXDAI ? NATIVE_CURRENCY_ADDRESS : WXDAI
+  expect(selectDirect(sale, cow, 1001, 0n)).toBe(sale)
 })

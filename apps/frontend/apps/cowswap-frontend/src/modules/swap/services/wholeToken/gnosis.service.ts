@@ -1,4 +1,4 @@
-import { areAddressesEqual } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, EVM_NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/cow-sdk'
 import { defaultAbiCoder, Interface } from '@ethersproject/abi'
 import { getAddress } from '@ethersproject/address'
 import { TransactionRequest } from '@ethersproject/providers'
@@ -25,6 +25,8 @@ const routerInterface = new Interface([
 
 export function buildGnosisTransaction(quote: DirectQuote): TransactionRequest {
   const minimum = quote.minBuyAmount ?? 0n
+  const outputToken = quote.outputToken || WXDAI
+  const unwrap = areAddressesEqual(outputToken, EVM_NATIVE_CURRENCY_ADDRESS)
   const blocked = [GNOSIS_ROUTER, GNOSIS_EXECUTOR, SUSHI_V2_ROUTER, GNOSIS_PAYMENTS, GNOSIS_MPS, WXDAI]
   for (const address of [quote.account, quote.recipient, ...quote.fees.map((fee) => fee.recipient)]) {
     getAddress(address)
@@ -35,6 +37,7 @@ export function buildGnosisTransaction(quote: DirectQuote): TransactionRequest {
     [
       quote.chainId !== 100,
       !areAddressesEqual(quote.inputToken, GNOSIS_MPS),
+      !unwrap && !areAddressesEqual(outputToken, WXDAI),
       quote.budget <= 0n,
       quote.sellAmount !== quote.budget,
       quote.maxInput !== quote.budget,
@@ -49,7 +52,11 @@ export function buildGnosisTransaction(quote: DirectQuote): TransactionRequest {
   const transfers = quote.fees.map((fee) =>
     defaultAbiCoder.encode(['address', 'address', 'uint256'], [WXDAI, fee.recipient, fee.amount]),
   )
-  transfers.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [WXDAI, quote.recipient, minimum]))
+  transfers.push(
+    unwrap
+      ? defaultAbiCoder.encode(['address', 'uint256'], [quote.recipient, minimum])
+      : defaultAbiCoder.encode(['address', 'address', 'uint256'], [WXDAI, quote.recipient, minimum]),
+  )
   // Exact input consumes the executor's entire approval. Payments and the final sweep
   // run in the same transaction, leaving no swap proceeds in public executors.
   const executors = [
@@ -69,7 +76,7 @@ export function buildGnosisTransaction(quote: DirectQuote): TransactionRequest {
       GNOSIS_PAYMENTS,
       0,
       paymentsInterface.encodeFunctionData('execute', [
-        `0x${'05'.repeat(quote.fees.length)}04`,
+        `0x${'05'.repeat(quote.fees.length)}${unwrap ? '0c' : '04'}`,
         transfers,
         quote.expiresAt,
       ]),
@@ -82,7 +89,7 @@ export function buildGnosisTransaction(quote: DirectQuote): TransactionRequest {
     value: '0',
     data: routerInterface.encodeFunctionData('snwapMultiple', [
       [[GNOSIS_MPS, quote.budget, GNOSIS_EXECUTOR]],
-      [[WXDAI, quote.recipient, minimum]],
+      [[outputToken, quote.recipient, minimum]],
       executors,
     ]),
     gasLimit: quote.gasLimit.toString(),
