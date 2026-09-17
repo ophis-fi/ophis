@@ -9,7 +9,7 @@ import { t } from '@lingui/core/macro'
 import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
 
 import { approveDirectInput } from '../services/wholeToken/input.service'
-import { DirectQuote, isMpsSell } from '../services/wholeToken/router.service'
+import { directChainId, DirectQuote, isMpsSell } from '../services/wholeToken/router.service'
 
 export function useDirectApproval(
   wallet: ReturnType<typeof useWalletProvider>,
@@ -32,7 +32,12 @@ export function useDirectApproval(
       const symbol = isMpsSell(quote) ? 'MPS' : 'USDC'
       setStatus((previous) => ({ ...previous, pending: true, message: t`Approve ${symbol} in your wallet` }))
       try {
-        await approveDirectInput(wallet, getRpcProvider(1), quote, () => current.current === requestKey)
+        await approveDirectInput(
+          wallet,
+          getRpcProvider(directChainId(quote)),
+          quote,
+          () => current.current === requestKey,
+        )
         setStatus((previous) => ({ ...previous, pending: false, message: t`Approved. Refreshing quote.` }))
         return true
       } catch (error) {

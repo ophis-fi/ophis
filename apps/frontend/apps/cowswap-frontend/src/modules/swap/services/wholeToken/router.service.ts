@@ -4,6 +4,8 @@ import { getAddress } from '@ethersproject/address'
 import { AddressZero } from '@ethersproject/constants'
 import { TransactionRequest } from '@ethersproject/providers'
 
+import { buildGnosisTransaction, GNOSIS_MPS } from './gnosis.service'
+
 // Ethereum deployments: https://developers.uniswap.org/docs/protocols/v3/deployments/v3-ethereum-deployments
 export const ROUTER = '0x66a9893cc07d91d95644aedd05d03f95e1dba8af'
 export const WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
@@ -25,6 +27,7 @@ export interface VolumeFee {
   bps: number
 }
 export interface DirectQuote {
+  chainId?: 1 | 100
   inputToken?: string
   minBuyAmount?: bigint
   gasCostInInput?: bigint
@@ -59,6 +62,8 @@ export function encodePath(route: Route, reverse = false): string {
 }
 
 export function buildDirectTransaction(quote: DirectQuote): TransactionRequest {
+  if (quote.chainId === 100) return buildGnosisTransaction(quote)
+  if (quote.chainId !== undefined && quote.chainId !== 1) throw new Error('Unsupported direct chain')
   validateQuote(quote)
   const feeTotal = quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)
   const { commands, inputs } = isMpsSell(quote) ? sellCommands(quote, feeTotal) : buyCommands(quote, feeTotal)
@@ -108,7 +113,7 @@ function validateSellLimits(quote: DirectQuote): void {
 }
 
 export function isMpsSell(quote: { inputToken?: string }): boolean {
-  return areAddressesEqual(quote.inputToken, MPS)
+  return [MPS, GNOSIS_MPS].some((token) => areAddressesEqual(quote.inputToken, token))
 }
 
 function appendSellSwap(quote: DirectQuote, commands: string[], inputs: string[], feeTotal: bigint): void {
@@ -214,4 +219,16 @@ function appendFees(quote: DirectQuote, inputToken: string, commands: string[], 
     commands.push('05')
     inputs.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [inputToken, fee.recipient, fee.amount]))
   }
+}
+
+export function directChainId(quote: { chainId?: 1 | 100 }): 1 | 100 {
+  return quote.chainId ?? 1
+}
+
+export function directVenue(quote: DirectQuote): string {
+  return quote.chainId === 100 ? 'Sushi' : 'Uniswap'
+}
+
+export function directGasSymbol(quote: DirectQuote): string {
+  return quote.chainId === 100 ? 'xDAI' : 'ETH'
 }

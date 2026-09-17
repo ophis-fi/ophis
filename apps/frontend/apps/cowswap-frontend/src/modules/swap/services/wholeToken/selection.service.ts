@@ -3,6 +3,7 @@ import { areAddressesEqual, PriceQuality } from '@cowprotocol/cow-sdk'
 
 import type { useTradeQuote } from 'modules/tradeQuote'
 
+import { WXDAI } from './gnosis.service'
 import { DirectQuote, isMpsSell, MPS } from './router.service'
 
 export function selectDirect(
@@ -17,7 +18,7 @@ export function selectDirect(
   const params = cow.quote.quoteResults.tradeParameters
   const changed = [
     !areAddressesEqual(params.sellToken, best.inputToken || NATIVE_CURRENCY_ADDRESS),
-    !areAddressesEqual(params.buyToken, isMpsSell(best) ? NATIVE_CURRENCY_ADDRESS : MPS),
+    !areAddressesEqual(params.buyToken, best.chainId === 100 ? WXDAI : isMpsSell(best) ? NATIVE_CURRENCY_ADDRESS : MPS),
     params.amount !== best.budget.toString(),
   ].some(Boolean)
   if (changed) return best

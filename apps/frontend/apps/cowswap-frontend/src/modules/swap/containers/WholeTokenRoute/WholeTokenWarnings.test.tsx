@@ -59,5 +59,5 @@ test('MPS sales measure costs in ETH and describe the minimum receive protection
     />,
   )
   expect(screen.getByText(/20.00% of the expected output value/)).toBeTruthy()
-  expect(screen.getByText(/ETH received can decrease to the quoted minimum/)).toBeTruthy()
+  expect(screen.getByText(/The received amount can decrease to the quoted minimum/)).toBeTruthy()
 })

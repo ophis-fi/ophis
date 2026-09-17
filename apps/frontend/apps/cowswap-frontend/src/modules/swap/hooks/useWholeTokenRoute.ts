@@ -20,9 +20,10 @@ import { useDirectOutput } from './useDirectOutput'
 import { useSwapDerivedState } from './useSwapDerivedState'
 import { useSwapSettings } from './useSwapSettings'
 
+import { GNOSIS_MPS, WXDAI } from '../services/wholeToken/gnosis.service'
 import { isReplaceableCowPermit } from '../services/wholeToken/permitHook.service'
 import { DirectRequest, getDirectQuotes } from '../services/wholeToken/quote.service'
-import { DirectQuote, isMpsSell, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
+import { directChainId, DirectQuote, isMpsSell, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
 import { canFundDirect, comparisonLoading, selectDirect } from '../services/wholeToken/selection.service'
 
 type SwapState = ReturnType<typeof useSwapDerivedState>
@@ -30,6 +31,13 @@ type QuoteParams = NonNullable<ReturnType<typeof useQuoteParams>>
 function supportsDirect(state: SwapState): boolean {
   const { inputCurrency, outputCurrency } = state
   if (!inputCurrency || !outputCurrency) return false
+  if (inputCurrency.chainId === 100 && outputCurrency.chainId === 100) {
+    return [
+      state.orderKind === OrderKind.SELL,
+      areAddressesEqual(getCurrencyAddress(inputCurrency), GNOSIS_MPS),
+      areAddressesEqual(getCurrencyAddress(outputCurrency), WXDAI),
+    ].every(Boolean)
+  }
   const buying =
     (getIsNativeToken(inputCurrency) || areAddressesEqual(getCurrencyAddress(inputCurrency), USDC)) &&
     areAddressesEqual(getCurrencyAddress(outputCurrency), MPS)
@@ -72,9 +80,11 @@ function getRequest(
   const recipient = resolveRecipient(state, account, q.owner)
   const fees = getFees(params)
   const inputToken = directInput(state)
-  if (!recipient || !fees || !matchesForm(q, budget, account, recipient, inputToken)) return null
+  const chainId = requestChain(state)
+  if (!recipient || !fees || !matchesForm(q, budget, account, recipient, inputToken, chainId)) return null
   return {
     inputToken,
+    chainId,
     account: q.owner,
     recipient,
     budget: BigInt(budget),
@@ -95,14 +105,18 @@ function matchesForm(
   account: string | undefined,
   recipient: string,
   inputToken?: string,
+  chainId = 1,
 ): boolean {
   return [
     q.amount.toString() === budget,
     q.kind === OrderKind.SELL,
-    q.sellTokenChainId === 1,
+    q.sellTokenChainId === chainId,
     areAddressesEqual(q.sellTokenAddress, inputToken || NATIVE_CURRENCY_ADDRESS),
-    q.buyTokenChainId === 1,
-    areAddressesEqual(q.buyTokenAddress, isMpsSell({ inputToken }) ? NATIVE_CURRENCY_ADDRESS : MPS),
+    q.buyTokenChainId === chainId,
+    areAddressesEqual(
+      q.buyTokenAddress,
+      chainId === 100 ? WXDAI : isMpsSell({ inputToken }) ? NATIVE_CURRENCY_ADDRESS : MPS,
+    ),
     areAddressesEqual(q.owner, account || q.owner),
     areAddressesEqual(q.receiver || q.owner, recipient),
   ].every(Boolean)
@@ -119,7 +133,7 @@ function reviewedForKey(selection: Selection, key: string): DirectQuote | null {
   return selection?.key === key ? selection.quote : null
 }
 function getRequestKey(request: DirectRequest | null, isSmartWallet: boolean | undefined, chainId: number): string {
-  return request && !isSmartWallet && chainId === 1
+  return request && !isSmartWallet && chainId === (request.chainId ?? 1)
     ? JSON.stringify({ ...request, budget: request.budget.toString() })
     : ''
 }
@@ -140,7 +154,7 @@ export function useWholeTokenRoute(): WholeTokenRouteState {
   const state = useSwapDerivedState()
   const params = useQuoteParams(state.inputCurrencyAmount?.quotient.toString())
   const { account, chainId } = useWalletInfo()
-  const { data: nativeBalance } = useNativeTokenBalance(account, 1)
+  const { data: nativeBalance } = useNativeTokenBalance(account, chainId)
   const isSmartWallet = useIsSmartContractWallet()
   const slippage = useTradeSlippageValueAndType()
   const config = useSlippageConfig()
@@ -163,10 +177,7 @@ export function useWholeTokenRoute(): WholeTokenRouteState {
           if (signal.aborted) abort()
           const timer = setTimeout(abort, 20000)
           try {
-            return await withTimeout(
-              getDirectQuotes(getRpcProvider(1), { ...parsed, budget: BigInt(parsed.budget) }, controller.signal),
-              20000,
-            )
+            return await withTimeout(fetchDirectQuotes(parsed, controller.signal), 20000)
           } finally {
             abort()
             clearTimeout(timer)
@@ -226,4 +237,14 @@ function depositQuote(
   quote: ReturnType<typeof useTradeQuote>['quote'],
 ): ReturnType<typeof useTradeQuote>['quote'] {
   return key && !request?.inputToken ? quote : null
+}
+
+function requestChain(state: SwapState): 1 | 100 {
+  return state.inputCurrency?.chainId === 100 ? 100 : 1
+}
+function fetchDirectQuotes(
+  parsed: Omit<DirectRequest, 'budget'> & { budget: string },
+  signal: AbortSignal,
+): Promise<DirectQuote[]> {
+  return getDirectQuotes(getRpcProvider(directChainId(parsed)), { ...parsed, budget: BigInt(parsed.budget) }, signal)
 }

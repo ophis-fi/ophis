@@ -55,7 +55,7 @@ export function WholeTokenWarnings({
       {quote.slippageBps > ETH_FLOW_SLIPPAGE_WARNING_THRESHOLD[1] && (
         <InlineBanner bannerType={StatusColorVariant.Warning}>
           {selling
-            ? t`High slippage tolerance: ${slippagePercent}%. ETH received can decrease to the quoted minimum.`
+            ? t`High slippage tolerance: ${slippagePercent}%. The received amount can decrease to the quoted minimum.`
             : t`High slippage tolerance: ${slippagePercent}%. The input spent can increase up to the quoted maximum.`}
         </InlineBanner>
       )}

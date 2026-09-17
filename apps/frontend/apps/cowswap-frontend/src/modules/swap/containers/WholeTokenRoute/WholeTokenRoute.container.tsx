@@ -105,7 +105,11 @@ function RouteAction({
     <>
       {execution.message && <p role="status">{execution.message}</p>}
       {execution.hash && (
-        <a href={`https://etherscan.io/tx/${execution.hash}`} target="_blank" rel="noreferrer">{t`View transaction`}</a>
+        <a
+          href={`https://${quote.chainId === 100 ? 'gnosisscan.io' : 'etherscan.io'}/tx/${execution.hash}`}
+          target="_blank"
+          rel="noreferrer"
+        >{t`View transaction`}</a>
       )}
       {inputCurrency && <MetamaskTransactionWarning sellToken={inputCurrency} />}
       {!account ? (
