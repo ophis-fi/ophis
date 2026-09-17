@@ -1,6 +1,8 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
-import { isSellOrder } from '@cowprotocol/common-utils'
+import { getIsNativeToken, isSellOrder } from '@cowprotocol/common-utils'
+import { OrderKind } from '@cowprotocol/cow-sdk'
+import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { useTryFindToken } from '@cowprotocol/tokens'
 import { InlineBanner, StatusColorVariant, LinkStyledButton } from '@cowprotocol/ui'
 import { useIsEagerConnectInProgress, useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
@@ -12,13 +14,12 @@ import { useHooksEnabledManager } from 'legacy/state/user/hooks'
 
 import { TradeApproveWithAffectedOrderList } from 'modules/erc20Approve'
 import { EthFlowModal, EthFlowProps } from 'modules/ethFlow'
-import { SELL_ETH_RESET_STATE } from 'modules/swap/consts'
 import { AddIntermediateTokenModal } from 'modules/tokensList'
 import {
   TradeWidget,
   TradeWidgetSlots,
   useGetReceiveAmountInfo,
-  useIsEoaEthFlow,
+  useSwapFundingAmount,
   useTradePriceImpact,
   useWrapNativeFlow,
 } from 'modules/trade'
@@ -83,13 +84,14 @@ export function SwapWidget({
   const widgetActions = useSwapWidgetActions()
   const receiveAmountInfo = useGetReceiveAmountInfo()
   const { token: intermediateBuyToken, toBeImported } = useTryFindToken(getBridgeIntermediateTokenAddress(bridgeQuote))
-  const [showNativeWrapModal, setOpenNativeWrapModal] = useState(false)
+  const [{ wrap: nativeWrapAmount, approval: nativeApprovalAmount }, setNativeFunding] = useState<{
+    wrap: CurrencyAmount<Currency> | null
+    approval: CurrencyAmount<Currency> | undefined
+  }>({ wrap: null, approval: undefined })
   const [showAddIntermediateTokenModal, setShowAddIntermediateTokenModal] = useState(false)
 
-  const openNativeWrapModal = useCallback(() => setOpenNativeWrapModal(true), [])
-  const dismissNativeWrapModal = useCallback(() => setOpenNativeWrapModal(false), [])
+  const dismissNativeWrapModal = useCallback(() => setNativeFunding({ wrap: null, approval: undefined }), [])
 
-  const wrapCallback = useWrapNativeFlow()
   const updateSwapState = useUpdateSwapRawState()
 
   const {
@@ -107,14 +109,24 @@ export function SwapWidget({
     isUnlocked,
   } = useSwapDerivedState()
   const doTrade = useHandleSwap({ deadline: deadlineState[0] }, widgetActions)
-  const hasEnoughWrappedBalanceForSwap = useHasEnoughWrappedBalanceForSwap()
+  const nativeFundingAmount = useSwapFundingAmount(true)
+  const signedFundingAmount = useSwapFundingAmount()
+  const showNativeWrapModal = !!nativeWrapAmount
+  const wrapCallback = useWrapNativeFlow(nativeWrapAmount)
+  const hasEnoughWrappedBalanceForSwap = useHasEnoughWrappedBalanceForSwap(nativeWrapAmount ?? signedFundingAmount)
+  const openNativeWrapModal = useCallback(() => {
+    if (signedFundingAmount && nativeFundingAmount)
+      setNativeFunding({
+        wrap: hasEnoughWrappedBalanceForSwap ? signedFundingAmount : nativeFundingAmount,
+        approval: nativeFundingAmount,
+      })
+  }, [hasEnoughWrappedBalanceForSwap, signedFundingAmount, nativeFundingAmount])
   const isSmartContractWallet = useIsSmartContractWallet()
   const { account } = useWalletInfo()
   const isEagerConnectInProgress = useIsEagerConnectInProgress()
   const [isHydrated, setIsHydrated] = useState(false)
   const handleUnlock = useCallback(() => updateSwapState({ isUnlocked: true }), [updateSwapState])
   const isPrimaryValidationPassed = useIsTradeFormValidationPassed()
-  const isEoaEthFlow = useIsEoaEthFlow()
 
   useEffect(() => {
     // Hydration guard: defer lock-screen until persisted state (isUnlocked) loads to prevent initial flash.
@@ -122,15 +134,23 @@ export function SwapWidget({
   }, [])
 
   useEffect(() => {
-    if (isEoaEthFlow && !isSellOrder(orderKind)) {
-      updateSwapState(SELL_ETH_RESET_STATE)
-    }
-  }, [isEoaEthFlow, orderKind, updateSwapState])
+    // Exact-output editing is for same-chain swaps; native bridges remain SELL-only.
+    if (
+      inputCurrency &&
+      outputCurrency &&
+      inputCurrency.chainId !== outputCurrency.chainId &&
+      getIsNativeToken(inputCurrency) &&
+      !isSmartContractWallet &&
+      orderKind === OrderKind.BUY
+    )
+      updateSwapState({ orderKind: OrderKind.SELL, inputCurrencyAmount: null, outputCurrencyAmount: null })
+  }, [inputCurrency, outputCurrency, isSmartContractWallet, orderKind, updateSwapState])
 
   const isSellTrade = isSellOrder(orderKind)
 
   const ethFlowProps: EthFlowProps = useSafeMemoObject({
-    nativeInput: inputCurrencyAmount || undefined,
+    nativeInput: nativeWrapAmount || undefined,
+    approvalInput: nativeApprovalAmount,
     onDismiss: dismissNativeWrapModal,
     wrapCallback,
     directSwapCallback: doTrade.callback,
@@ -254,7 +274,7 @@ export function SwapWidget({
             <Warnings buyingFiatAmount={buyingFiatAmount} hideQuoteAmount={hideQuoteAmount} />
             {tradeWarnings}
             <TradeButtons
-              isTradeContextReady={doTrade.contextIsReady}
+              isTradeContextReady={doTrade.contextIsReady && !!nativeFundingAmount}
               openNativeWrapModal={openNativeWrapModal}
               hasEnoughWrappedBalanceForSwap={hasEnoughWrappedBalanceForSwap}
               tokenToBeImported={toBeImported}
@@ -271,6 +291,7 @@ export function SwapWidget({
         deadlineState,
         buyingFiatAmount,
         doTrade.contextIsReady,
+        nativeFundingAmount,
         openNativeWrapModal,
         hasEnoughWrappedBalanceForSwap,
         toBeImported,
@@ -290,7 +311,6 @@ export function SwapWidget({
     disablePriceImpact: !!direct.quote,
     hideTradeWarnings: !!direct.quote,
     isMarketOrderWidget: true,
-    isSellingEthSupported: true,
     allowSwapSameToken,
     recipient,
     showRecipient,

@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
 
+import { useCurrencyAmountBalance } from '@cowprotocol/balances-and-allowances'
 import { useIsOnline } from '@cowprotocol/common-hooks'
 import { getIsNativeToken } from '@cowprotocol/common-utils'
-import { Nullish } from '@cowprotocol/cow-sdk'
+import { Nullish, OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency, Token } from '@cowprotocol/currency'
 import {
   isTradeAllowedByTokenPolicy,
@@ -20,7 +21,16 @@ import { useTokensBalancesCombined } from 'modules/combinedBalances'
 import { useApproveState, useGetAmountToSignApprove, useIsApprovalOrPermitRequired } from 'modules/erc20Approve'
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 import { RwaTokenStatus, useRwaTokenStatus } from 'modules/rwa'
-import { TradeType, useDerivedTradeState, useIsWrapOrUnwrap, useTradePriceImpact } from 'modules/trade'
+import {
+  TradeType,
+  useDerivedTradeState,
+  useIsWrapOrUnwrap,
+  useIsSwapEth,
+  useIsHooksTradeType,
+  useWrappedToken,
+  useSwapFundingAmount,
+  useTradePriceImpact,
+} from 'modules/trade'
 import { TradeQuoteState, useTradeQuote } from 'modules/tradeQuote'
 
 import { QuoteApiError, QuoteApiErrorCodes } from 'api/cowProtocol/errors/QuoteError'
@@ -37,6 +47,8 @@ import { TradeFormValidationCommonContext } from '../types'
 export function useTradeFormValidationContext(): TradeFormValidationCommonContext | null {
   const { account } = useWalletInfo()
   const derivedTradeState = useDerivedTradeState()
+  const fundingAmount = useSwapFundingAmount()
+  const wrappingFundingAmount = useSwapFundingAmount(true)
   const tradeQuote = useTradeQuote()
   const injectedWidgetParams = useInjectedWidgetParams()
   const tradePriceImpact = useTradePriceImpact()
@@ -46,6 +58,10 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
   const { isLoading: isBalancesLoading, hasFirstLoad, error: balancesError } = useTokensBalancesCombined()
 
   const { inputCurrency, outputCurrency, recipient, tradeType } = derivedTradeState || {}
+  const wrappedToken = useWrappedToken()
+  const wrappedBalance = useCurrencyAmountBalance(wrappedToken)
+  const isSwapEth = useIsSwapEth()
+  const isHooksStore = useIsHooksTradeType()
   const customTokenError = useTokenCustomTradeError(inputCurrency, outputCurrency, tradeQuote.error)
   const amountToApprove = useGetAmountToSignApprove()
   const { state: approvalState } = useApproveState(amountToApprove)
@@ -58,6 +74,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
   const isOutputCurrencyXstock = useIsXstockToken(getNonNativeCurrency(outputCurrency))
 
   const isBundlingSupported = useIsTxBundlingSupported()
+  const isNativeWrapFlow = [isSwapEth, !isBundlingSupported, !isHooksStore].every(Boolean)
   const isWrapUnwrap = useIsWrapOrUnwrap()
   const { isSupportedWallet } = useWalletDetails()
   const gnosisSafeInfo = useGnosisSafeInfo()
@@ -86,6 +103,15 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
 
   return useMemo(() => {
     if (!derivedTradeState) return null
+    const useWrappedBalance =
+      fundingAmount &&
+      wrappedBalance &&
+      [
+        isNativeWrapFlow,
+        derivedTradeState.orderKind === OrderKind.BUY,
+        wrappedBalance.currency.chainId === fundingAmount.currency.chainId,
+        !wrappedBalance.lessThan(fundingAmount),
+      ].every(Boolean)
 
     return {
       account,
@@ -103,7 +129,11 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
       isProviderNetworkUnsupported,
       isProviderNetworkDeprecated,
       isOnline,
-      derivedTradeState,
+      derivedTradeState: {
+        ...derivedTradeState,
+        inputCurrencyAmount: isNativeWrapFlow && !useWrappedBalance ? wrappingFundingAmount : fundingAmount,
+        inputCurrencyBalance: useWrappedBalance ? wrappedBalance : derivedTradeState.inputCurrencyBalance,
+      },
       intermediateTokenToBeImported: !!intermediateBuyToken && toBeImported,
       isAccountProxyLoading,
       isProxySetupValid,
@@ -122,6 +152,10 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
     approvalState,
     customTokenError,
     derivedTradeState,
+    fundingAmount,
+    wrappingFundingAmount,
+    wrappedBalance,
+    isNativeWrapFlow,
     intermediateBuyToken,
     isAccountProxyLoading,
     isApproveRequired,
