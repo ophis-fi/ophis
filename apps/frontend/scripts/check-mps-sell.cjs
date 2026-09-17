@@ -84,7 +84,20 @@ async function main() {
         console.log(JSON.stringify({ route: quote.route.label, soldMps: '1', receivedWei: received.toString(), gasUsed: receipt.gasUsed.toString() }))
       } finally { await provider.send('evm_revert', [inner]) }
     }
-    console.log('PASS: exact MPS input, bounded approvals, net ETH output, fees, recipient, slippage, deadline, empty router balances')
+    // Exhaust a concentrated-liquidity v3 route: unused input must return to its sender.
+    const partialBudget = 10n ** 18n
+    await provider.send('anvil_setStorageAt', [MPS, balanceSlot, '0x' + partialBudget.toString(16).padStart(64, '0')])
+    const partial = (await getDirectQuotes(provider, { ...request, budget: partialBudget })).find(q => !q.route.viaV2 && q.route.tokens.length === 2)
+    assert(partial, 'Exhausted v3 route must quote its available liquidity')
+    for (const tx of await getInputApprovals(provider, account, partialBudget, partial.expiresAt, MPS))
+      await (await signer.sendTransaction(tx)).wait()
+    partial.quotedAt = Date.now()
+    assert.equal((await (await executeDirectSwap(wallet, provider, partial, () => true)).wait()).status, 1)
+    const refunded = BigInt((await mps.balanceOf(account)).toString())
+    assert(refunded > 0n && refunded < partialBudget, 'Partial fill refunds unused MPS to sender')
+    assert.equal((await mps.balanceOf(ROUTER)).toString(), '0', 'No MPS remains publicly sweepable')
+    assert.equal((await usdc.balanceOf(ROUTER)).toString(), '0', 'No intermediate USDC remains publicly sweepable')
+    console.log('PASS: exact MPS input, bounded approvals, net ETH output, fees, recipient, slippage, deadline, partial-fill refunds')
   } finally { await provider.send('evm_revert', [snapshot]) }
 }
 main().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => rmSync(folder, { recursive: true, force: true }))

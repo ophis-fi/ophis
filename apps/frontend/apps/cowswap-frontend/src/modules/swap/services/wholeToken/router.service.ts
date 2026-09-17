@@ -200,6 +200,11 @@ function sellCommands(quote: DirectQuote, feeTotal: bigint): { commands: string[
   appendFees(quote, WETH, commands, inputs)
   commands.push('0c')
   inputs.push(defaultAbiCoder.encode(['address', 'uint256'], [quote.recipient, quote.minBuyAmount]))
+  // Exact-input v3 swaps can stop at the price boundary without consuming all input.
+  for (const token of [MPS, USDC]) {
+    commands.push('04')
+    inputs.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [token, quote.account, 0]))
+  }
   return { commands, inputs }
 }
 
