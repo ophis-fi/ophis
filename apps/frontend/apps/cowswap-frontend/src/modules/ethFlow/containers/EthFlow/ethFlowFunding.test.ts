@@ -1,3 +1,5 @@
+import { ReactElement } from 'react'
+
 import { useCurrencyAmountBalance } from '@cowprotocol/balances-and-allowances'
 import { NATIVE_CURRENCIES, WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/common-const'
 import { CurrencyAmount } from '@cowprotocol/currency'
@@ -10,6 +12,8 @@ import { useApproveState } from 'modules/erc20Approve'
 import { useEthFlowActions } from './hooks/useEthFlowActions'
 import { useHandleChainChange } from './hooks/useHandleChainChange'
 import useRemainingNativeTxsAndCosts from './hooks/useRemainingNativeTxsAndCosts'
+
+import { EthFlowModalContentProps } from '../../pure/EthFlowModalContent'
 
 import { EthFlowModal } from './index'
 
@@ -50,9 +54,9 @@ it.each([true, false])('keeps approval headroom and charges native value only wh
   const cap = CurrencyAmount.fromRawAmount(native, '1000000000000000000')
   const approval = CurrencyAmount.fromRawAmount(native, '1010000000000000000')
   jest.mocked(useCurrencyAmountBalance).mockReturnValue(CurrencyAmount.fromRawAmount(native, '10000000000000000'))
-  renderHook(() =>
+  const { result } = renderHook(() =>
     EthFlowModal({
-      nativeInput: cap,
+      nativeInput: funded ? cap : approval,
       approvalInput: approval,
       hasEnoughWrappedBalanceForSwap: funded,
       wrapCallback: null,
@@ -64,8 +68,9 @@ it.each([true, false])('keeps approval headroom and charges native value only wh
   expect(amount?.currency).toBe(WRAPPED_NATIVE_CURRENCIES[1])
   expect(amount?.quotient.toString()).toBe(approval.quotient.toString())
   expect(jest.mocked(useEthFlowActions).mock.calls[0][1]).toBe(BigInt(approval.quotient.toString()))
+  expect((result.current as ReactElement<EthFlowModalContentProps>).props.wrappingPreview.amount).toBe(approval)
   expect(jest.mocked(useRemainingNativeTxsAndCosts).mock.calls[0][0].nativeInput?.quotient.toString()).toBe(
-    funded ? '0' : cap.quotient.toString(),
+    funded ? '0' : approval.quotient.toString(),
   )
 })
 

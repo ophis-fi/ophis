@@ -130,7 +130,8 @@ export function EthFlowModal({
     nativeBalance,
     wrapped,
     wrappedBalance,
-    amount: nativeInput,
+    // Wrapping uses the same buffered amount whenever a deposit is needed.
+    amount: approvalInput,
   }
 
   return (
