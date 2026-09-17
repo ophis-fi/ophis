@@ -53,3 +53,44 @@ test('docs aliases preserve the path and cannot redirect to another host', async
   }
   assert.equal((await request('/docs/fees?x=1')).headers.get('location'), 'https://docs.ophis.fi/fees?x=1');
 });
+
+test('POST body limits cancel chunked input before forwarding or waiting for cancellation', async () => {
+  for (const path of ['/api/intent', '/api/beat-market', '/api/intent/']) {
+    let reads = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        reads++;
+        if (reads === 1) controller.enqueue(new Uint8Array(64 * 1024 + 1));
+        else controller.error(new Error('oversized body must not be drained'));
+      },
+      cancel() {
+        cancelled = true;
+        return new Promise<void>(() => {});
+      },
+    }, { highWaterMark: 0 });
+    const res = await onRequest({
+      request: new Request(`https://swap.ophis.fi${path}`, { method: 'POST', body, duplex: 'half' } as RequestInit),
+      next: async () => { throw new Error('must not forward oversized input'); },
+    } as unknown as Parameters<typeof onRequest>[0]);
+    assert.equal(res.status, 413);
+    assert.equal(cancelled, true);
+    assert.equal(reads, 1);
+    assert.equal(body.locked, false);
+  }
+});
+
+test('POST limits count UTF-8 bytes and preserve a valid body through the middleware', async () => {
+  for (const [body, headers, status] of [
+    [JSON.stringify({ text: 'swap € for ETH' }), {}, 200],
+    [JSON.stringify({ text: '€'.repeat(24 * 1024) }), {}, 413],
+    ['{}', { 'content-length': String(64 * 1024 + 1) }, 413],
+  ] as const) {
+    const res = await onRequest({
+      request: new Request('https://swap.ophis.fi/api/intent', { method: 'POST', body, headers }),
+      next: async (forwarded: Request) => new Response(await forwarded.text()),
+    } as unknown as Parameters<typeof onRequest>[0]);
+    assert.equal(res.status, status);
+    if (status === 200) assert.equal(await res.text(), body);
+  }
+});

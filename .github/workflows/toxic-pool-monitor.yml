@@ -57,21 +57,28 @@ jobs:
           cache-dependency-path: tools/toxic-pool-risk/requirements-scanner.lock
 
       - name: Validate configuration
+        env:
+          WINDOW_DAYS_INPUT: ${{ inputs.window_days }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
           test -n "${RPC_URL_OPTIMISM:-}" || {
             echo "::error::OPHIS_OPTIMISM_READ_RPC_URL is not configured"
             exit 1
           }
-          case "${{ github.event_name }}" in
-            workflow_dispatch) WINDOW_DAYS="${{ inputs.window_days }}" ;;
+          case "$GITHUB_EVENT_NAME" in
+            workflow_dispatch) WINDOW_DAYS="$WINDOW_DAYS_INPUT" ;;
             schedule)
-              if [[ "${{ github.event.schedule }}" == "41 2 * * *" ]]; then
+              if [[ "$EVENT_SCHEDULE" == "41 2 * * *" ]]; then
                 WINDOW_DAYS=183
               else
                 WINDOW_DAYS=7
               fi
               ;;
+          esac
+          case "$WINDOW_DAYS" in
+            1|7|183) ;;
+            *) echo 'Invalid scanner deployment window' >&2; exit 1 ;;
           esac
           printf 'WINDOW_DAYS=%s\n' "$WINDOW_DAYS" >> "$GITHUB_ENV"
 
@@ -84,12 +91,15 @@ jobs:
             ./.external/toxic-pool-utils
 
       - name: Scan Optimism
+        env:
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          RECONCILE_CURRENT_INPUT: ${{ inputs.reconcile_current }}
         run: |
           set -euo pipefail
           mkdir -p risk-output/raw risk-output/published
           extra=()
-          if [[ "${{ github.event.schedule }}" == "41 2 * * *" ]] ||
-             [[ "${{ inputs.reconcile_current }}" == "true" ]]; then
+          if [[ "$EVENT_SCHEDULE" == "41 2 * * *" ]] ||
+             [[ "$RECONCILE_CURRENT_INPUT" == "true" ]]; then
             extra+=(--reconcile-current)
           fi
           toxic-scanner scan \

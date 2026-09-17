@@ -11,10 +11,9 @@ old scripts/contracts-audit-gate.py.
 
 Modes:
   advisories  Block HIGH/CRITICAL findings whose GHSA id is not in --ignore.
-              (the two pnpm workspace jobs)
-  baseline    Block if per-severity finding counts exceed a committed baseline
-              JSON. (the legacy contracts toolchain, which carries a large known
-              baseline and gates on regressions, not on absolute HIGH/CRITICAL)
+              (the three pnpm workspace jobs)
+  baseline    Block new package/version/advisory/severity fingerprints or counts
+              above a reviewed baseline. Fixing one advisory cannot admit another.
 
 Fail-closed by construction:
   - unreadable JSON or missing top-level 'results' key            -> exit 2
@@ -78,16 +77,13 @@ def iter_findings(doc):
             p = pkg.get("package") or {}
             name = p.get("name", "?")
             version = p.get("version", "?")
-            # Per-id CVSS fallback from groups[].max_severity (+ a package-wide
-            # max as a last resort), so a CVSS-only HIGH is still gated.
-            id_cvss, pkg_max = {}, None
+            # Only a matching advisory's CVSS may supply its missing severity.
+            # A different LOW advisory must not make an ungraded finding pass.
+            id_cvss = {}
             for g in pkg.get("groups") or []:
                 band = band_from_cvss(g.get("max_severity"))
                 if band is None:
                     continue
-                order = ("low", "moderate", "high", "critical")
-                if pkg_max is None or order.index(band) > order.index(pkg_max):
-                    pkg_max = band
                 for key in (g.get("ids") or []) + (g.get("aliases") or []):
                     id_cvss[key] = band
             for vuln in pkg.get("vulnerabilities") or []:
@@ -99,7 +95,7 @@ def iter_findings(doc):
                             if alias in id_cvss:
                                 sev = id_cvss[alias]
                                 break
-                    sev = sev or pkg_max or ""
+                    sev = sev or ""
                 title = vuln.get("summary") or vuln.get("id") or "?"
                 yield name, version, ghsa_of(vuln), sev, title
 
@@ -111,8 +107,8 @@ def load_osv(path):
     except (OSError, json.JSONDecodeError) as exc:
         print(f"ERROR: cannot read osv JSON {path!r}: {exc} -- failing closed.", file=sys.stderr)
         sys.exit(2)
-    if not isinstance(doc, dict) or "results" not in doc:
-        print("ERROR: osv JSON has no top-level 'results' key -- failing closed.", file=sys.stderr)
+    if not isinstance(doc, dict) or not isinstance(doc.get("results"), list):
+        print("ERROR: osv JSON must contain a 'results' array -- failing closed.", file=sys.stderr)
         sys.exit(2)
     return doc
 
@@ -186,6 +182,17 @@ def mode_baseline(findings, baseline_path):
     except (OSError, json.JSONDecodeError) as exc:
         print(f"ERROR: cannot read baseline {baseline_path!r}: {exc} -- failing closed.", file=sys.stderr)
         sys.exit(2)
+    reviewed = baseline.get("findings") if isinstance(baseline, dict) else None
+    if not isinstance(reviewed, list) or any(not isinstance(item, str) for item in reviewed):
+        print("ERROR: baseline requires reviewed finding fingerprints -- failing closed.", file=sys.stderr)
+        sys.exit(2)
+    current = {f"{name}@{version} {ghsa} {sev}" for name, version, ghsa, sev, _ in findings}
+    new = sorted(current - set(reviewed))
+    if new:
+        print("BLOCKING: new or changed advisories absent from the reviewed baseline:")
+        for entry in new:
+            print(f"  - {entry}")
+        sys.exit(1)
     counts = collections.Counter(sev for _, _, _, sev, _ in findings if sev in SEVERITIES)
     regressions = []
     for sev in SEVERITIES:
@@ -214,6 +221,10 @@ def main():
     ap.add_argument("--osv-rc", type=int, default=None,
                     help="osv-scanner's exit code, for a fail-closed schema-drift check")
     args = ap.parse_args()
+
+    if args.osv_rc not in (None, 0, 1):
+        print(f"ERROR: scanner failed (rc={args.osv_rc}) -- failing closed.", file=sys.stderr)
+        sys.exit(2)
 
     doc = load_osv(args.osv_json)
     findings = list(iter_findings(doc))

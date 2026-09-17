@@ -29,11 +29,6 @@ const ERC20 = parseAbi(['function balanceOf(address) view returns (uint256)']);
  */
 const ROUTER_WALLETS: readonly string[] = Object.freeze([...DECODER_ETHFLOW_OWNERS]);
 
-// Telegram alerts are sent with parse_mode 'HTML' (alerter.ts). An ERC20
-// `symbol` is attacker-controllable — anyone can airdrop a token with markup in
-// its symbol — so escape untrusted token metadata before interpolating it.
-const escapeHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
 const MAX_ALERT_TOKENS = 12;
 
 // Advisory-lock key for runBatcher single-flight. MUST be distinct from

@@ -13,7 +13,6 @@ import {
   primaryKey,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-import { sql } from 'drizzle-orm';
 
 // uint256 stored as NUMERIC(78) — drizzle exposes string at the TS layer;
 // we convert to bigint at use-site to stay lossless.

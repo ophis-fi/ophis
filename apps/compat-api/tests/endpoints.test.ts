@@ -938,6 +938,36 @@ describe('worker plumbing', () => {
     expect(((await res.json()) as Record<string, any>).error.code).toBe('BODY_TOO_LARGE');
   });
 
+  it.each(['/sor/quote/v3', '/sor/assemble', '/sor/swap/v3', '/sor/submit'])(
+    'cancels an oversized chunked body before reading the remainder on %s',
+    async (path) => {
+      let reads = 0;
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          reads++;
+          if (reads === 1) controller.enqueue(new Uint8Array(64 * 1024 + 1));
+          else controller.error(new Error('oversized body must not be drained'));
+        },
+        cancel() {
+          cancelled = true;
+          return new Promise<void>(() => {});
+        },
+      }, { highWaterMark: 0 });
+      const res = await handleRequest(
+        new Request(`https://compat.ophis.fi${path}`, {
+          method: 'POST', body, duplex: 'half',
+        } as RequestInit),
+        ENV,
+        deps(stubFetch({ onRequest: () => { throw new Error('must not call upstream'); } })),
+      );
+      expect(res.status).toBe(413);
+      expect(cancelled).toBe(true);
+      expect(reads).toBe(1);
+      expect(body.locked).toBe(false);
+    },
+  );
+
   it('404s unknown routes with the endpoint list', async () => {
     const res = await handleRequest(
       new Request('https://compat.ophis.fi/nope'),

@@ -126,19 +126,34 @@ const assertChainEnabled = (env: Env, chainId: number): void => {
 };
 
 async function readJsonBody(request: Request): Promise<unknown> {
-  // Reject an over-cap body BEFORE buffering it: a declared Content-Length past
-  // the cap fails immediately, so an arbitrarily large payload is never read
-  // into memory first.
+  // Reject a declared oversized body before reading, then enforce the same byte
+  // cap while streaming so chunked/undeclared bodies cannot exhaust the Worker.
   const declaredLength = Number(request.headers.get('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
     throw new CompatError('BODY_TOO_LARGE', `Request body exceeds ${MAX_BODY_BYTES} bytes.`);
   }
-  const text = await request.text();
-  // Measure encoded BYTES, not UTF-16 code units: a multibyte body could carry
-  // up to ~3x the cap in bytes while text.length stayed under it. This is the
-  // authoritative check for a chunked/undeclared body that slipped the header.
-  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
-    throw new CompatError('BODY_TOO_LARGE', `Request body exceeds ${MAX_BODY_BYTES} bytes.`);
+  let text = '';
+  if (request.body) {
+    const reader = request.body.getReader();
+    const decoder = new TextDecoder();
+    let size = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          text += decoder.decode();
+          break;
+        }
+        size += value.byteLength;
+        if (size > MAX_BODY_BYTES) {
+          void reader.cancel().catch(() => {});
+          throw new CompatError('BODY_TOO_LARGE', `Request body exceeds ${MAX_BODY_BYTES} bytes.`);
+        }
+        text += decoder.decode(value, { stream: true });
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
   try {
     return JSON.parse(text);

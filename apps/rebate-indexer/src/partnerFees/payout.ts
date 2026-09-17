@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, isNotNull, lt, ne, sql as dsql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, isNotNull, lt, sql as dsql } from 'drizzle-orm';
 import { createPublicClient, http, parseAbi } from 'viem';
 import { db, schema, sql } from '../db/index.js';
 import { OPHIS_SAFE_ADDRESS, WETH_BY_CHAIN } from '../safe/addresses.js';

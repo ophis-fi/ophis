@@ -1,0 +1,14 @@
+diff --git a/filters/FilterBase.js b/filters/FilterBase.js
+--- a/filters/FilterBase.js
++++ b/filters/FilterBase.js
+@@ -55,6 +55,10 @@
+   }
+ 
+   _check(chunk, _, callback) {
++    // Backport GHSA-528h-pc64-c93x without breaking the v1 CommonJS API.
++    if (this._stack.length > 1024) {
++      return callback(new RangeError("JSON nesting exceeds 1024 levels"));
++    }
+     // update the last stack key
+     switch (chunk.name) {
+       case 'startObject':

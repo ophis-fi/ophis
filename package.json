@@ -60,14 +60,12 @@
       "js-yaml": "^4.3.2",
       "pdfjs-dist": ">=6.2.108",
       "browserslist": ">=4.28.7 <5",
-      "brace-expansion@<1.1.16": ">=5.0.9",
-      "brace-expansion@>=2.0.0 <2.1.2": ">=5.0.9",
       "brace-expansion@>=5.0.0 <5.0.9": ">=5.0.9",
       "nanoid@>=3.0.0 <3.3.18": ">=3.3.18 <4.0.0",
       "nanoid@>=5.0.0 <5.1.16": ">=5.1.16 <6.0.0",
       "vite": "^7.0.0",
       "@grpc/grpc-js": "1.14.4",
-      "hono": "4.12.34",
+      "hono": "4.13.5",
       "@hono/node-server": "2.0.10",
       "number-to-bn>bn.js": "^4.12.3",
       "ethjs-unit>bn.js": "^4.12.3",
@@ -78,7 +76,16 @@
       "@metamask/sdk>uuid": "^11.1.1",
       "@metamask/sdk-communication-layer>uuid": "^11.1.1",
       "nanoid@<3.3.17": "^3.3.17",
-      "nanoid@>=4.0.0 <5.1.16": "^5.1.16"
+      "nanoid@>=4.0.0 <5.1.16": "^5.1.16",
+      "qs": "^6.16.0",
+      "@ai-sdk/provider-utils@>=4.0.0 <4.0.33": "^4.0.33",
+      "decode-uri-component": "0.5.0",
+      "brace-expansion@<2.0.0": "^1.1.21",
+      "brace-expansion@>=2.0.0 <3.0.0": "^2.1.7"
+    },
+    "patchedDependencies": {
+      "decode-uri-component@0.5.0": "patches/decode-uri-component@0.5.0.patch",
+      "stream-json@1.9.1": "patches/stream-json@1.9.1.patch"
     }
   }
 }

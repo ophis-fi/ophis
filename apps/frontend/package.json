@@ -32,13 +32,12 @@
     "patchedDependencies": {
       "@cowprotocol/sdk-config@2.0.0": "patches/@cowprotocol__sdk-config@2.0.0.patch",
       "@cowprotocol/sdk-trading@2.0.2": "patches/@cowprotocol__sdk-trading@2.0.2.patch",
-      "eslint-plugin-react@7.37.5": "patches/eslint-plugin-react@7.37.5.patch",
-      "eslint-plugin-import@2.32.0": "patches/eslint-plugin-import@2.32.0.patch",
-      "eslint-plugin-jsx-a11y@6.10.2": "patches/eslint-plugin-jsx-a11y@6.10.2.patch",
-      "@cowprotocol/sdk-bridging@4.0.2": "patches/@cowprotocol__sdk-bridging@4.0.2.patch"
+      "@cowprotocol/sdk-bridging@4.0.2": "patches/@cowprotocol__sdk-bridging@4.0.2.patch",
+      "decode-uri-component@0.5.0": "../../patches/decode-uri-component@0.5.0.patch",
+      "stream-json@1.9.1": "../../patches/stream-json@1.9.1.patch"
     },
     "overrides": {
-      "adm-zip": "^0.6.0",
+      "adm-zip": "^0.6.1",
       "elliptic": "^6.6.1",
       "form-data": "^2.5.6",
       "protobufjs": "^7.6.5",
@@ -76,7 +75,6 @@
       "defu": "^6.1.5",
       "picomatch": "^2.3.2",
       "serialize-javascript": "^7.0.3",
-      "glob": "^11.1.0",
       "bn.js": "^5.2.3",
       "vite": "^7.3.5",
       "esbuild": "^0.28.1",
@@ -89,7 +87,7 @@
       "postcss": "8.5.23",
       "smol-toml@<1.7.1": "1.8.0",
       "yaml": "^1.10.3",
-      "qs": "^6.14.1",
+      "qs": "^6.16.0",
       "mdast-util-to-hast": "^13.2.1",
       "js-yaml": "^4.3.2",
       "nx": "22.7.8",
@@ -113,7 +111,6 @@
       "webpack-dev-server": "^5.2.6",
       "on-headers": "^1.1.0",
       "@babel/plugin-transform-modules-systemjs": "^7.29.4",
-      "minimatch": "^10.2.3",
       "svgo": "^3.3.5",
       "sharp": "^0.35.4",
       "tmp": "^0.2.6",
@@ -125,7 +122,23 @@
       "body-parser@>=2.0.0 <2.3.0": "2.3.0",
       "@rjsf/core>nanoid": "3.3.18",
       "cypress": ">=15.16.0 <16",
-      "puppeteer-core>@puppeteer/browsers": ">=3.0.2 <4"
+      "puppeteer-core>@puppeteer/browsers": ">=3.0.2 <4",
+      "@humanfs/node": "^0.16.8",
+      "postcss-selector-parser@>=7.0.0 <7.1.3": "^7.1.3",
+      "ajv@>=8.0.0 <8.18.0": "^8.18.0",
+      "fflate@>=0.8.0 <0.8.3": "^0.8.3",
+      "decode-uri-component": "0.5.0",
+      "socks": "^2.8.10",
+      "file-type@>=19.0.0 <21.3.2": "^21.3.2",
+      "uuid@>=8.0.0 <11.1.1": "^11.1.1",
+      "glob@>=10.2.0 <10.5.0": "^10.5.0",
+      "glob@>=11.0.0 <11.1.0": "^11.1.0",
+      "minimatch@<4.0.0": "^3.1.5",
+      "minimatch@>=5.0.0 <6.0.0": "^5.1.9",
+      "minimatch@>=9.0.0 <10.0.0": "^9.0.9",
+      "minimatch@>=10.0.0 <10.2.5": "^10.2.5",
+      "brace-expansion@<2.0.0": "^1.1.21",
+      "brace-expansion@>=2.0.0 <3.0.0": "^2.1.7"
     }
   },
   "config": {
@@ -255,7 +268,7 @@
     "@vitejs/plugin-react": "~5.0.4",
     "@vitejs/plugin-react-swc": "^4.1.0",
     "@vitest/coverage-c8": "~0.33.0",
-    "@vitest/ui": "4.1.7",
+    "@vitest/ui": "4.1.11",
     "babel-jest": "^30.2.0",
     "babel-plugin-styled-components": "2.1.4",
     "babel-plugin-transform-import-meta": "^2.2.0",
@@ -305,6 +318,6 @@
     "vite-plugin-pwa": "^1.0.0",
     "vite-plugin-svgr": "^4.2.0",
     "vite-tsconfig-paths": "~5.1.4",
-    "vitest": "4.1.7"
+    "vitest": "4.1.11"
   }
 }
