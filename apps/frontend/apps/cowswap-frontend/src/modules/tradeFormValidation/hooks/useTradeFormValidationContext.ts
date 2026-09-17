@@ -25,7 +25,8 @@ import {
   TradeType,
   useDerivedTradeState,
   useIsWrapOrUnwrap,
-  useIsEoaEthFlow,
+  useIsSwapEth,
+  useIsHooksTradeType,
   useWrappedToken,
   useSwapFundingAmount,
   useTradePriceImpact,
@@ -59,7 +60,8 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
   const { inputCurrency, outputCurrency, recipient, tradeType } = derivedTradeState || {}
   const wrappedToken = useWrappedToken()
   const wrappedBalance = useCurrencyAmountBalance(wrappedToken)
-  const isEoaEthFlow = useIsEoaEthFlow()
+  const isSwapEth = useIsSwapEth()
+  const isHooksStore = useIsHooksTradeType()
   const customTokenError = useTokenCustomTradeError(inputCurrency, outputCurrency, tradeQuote.error)
   const amountToApprove = useGetAmountToSignApprove()
   const { state: approvalState } = useApproveState(amountToApprove)
@@ -72,6 +74,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
   const isOutputCurrencyXstock = useIsXstockToken(getNonNativeCurrency(outputCurrency))
 
   const isBundlingSupported = useIsTxBundlingSupported()
+  const isNativeWrapFlow = [isSwapEth, !isBundlingSupported, !isHooksStore].every(Boolean)
   const isWrapUnwrap = useIsWrapOrUnwrap()
   const { isSupportedWallet } = useWalletDetails()
   const gnosisSafeInfo = useGnosisSafeInfo()
@@ -104,7 +107,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
       fundingAmount &&
       wrappedBalance &&
       [
-        isEoaEthFlow,
+        isNativeWrapFlow,
         derivedTradeState.orderKind === OrderKind.BUY,
         wrappedBalance.currency.chainId === fundingAmount.currency.chainId,
         !wrappedBalance.lessThan(fundingAmount),
@@ -128,7 +131,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
       isOnline,
       derivedTradeState: {
         ...derivedTradeState,
-        inputCurrencyAmount: isEoaEthFlow && !useWrappedBalance ? wrappingFundingAmount : fundingAmount,
+        inputCurrencyAmount: isNativeWrapFlow && !useWrappedBalance ? wrappingFundingAmount : fundingAmount,
         inputCurrencyBalance: useWrappedBalance ? wrappedBalance : derivedTradeState.inputCurrencyBalance,
       },
       intermediateTokenToBeImported: !!intermediateBuyToken && toBeImported,
@@ -152,7 +155,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
     fundingAmount,
     wrappingFundingAmount,
     wrappedBalance,
-    isEoaEthFlow,
+    isNativeWrapFlow,
     intermediateBuyToken,
     isAccountProxyLoading,
     isApproveRequired,
