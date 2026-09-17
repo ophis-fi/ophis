@@ -82,3 +82,15 @@ it('compares a retained current CoW quote after a background refresh error', () 
   expect(selectDirect(direct, cow, 1001, 0n)).toBeUndefined()
   expect(selectDirect(direct, { ...cow, quote: null }, 1001, 0n)).toBe(direct)
 })
+
+it('compares MPS sell proceeds in ETH after swap and approval gas', () => {
+  const sale = { ...direct, inputToken: MPS, buyAmount: 120n, gasCost: 10n, approvalGas: 10n }
+  const cow = cowQuote(MPS)
+  if (!cow.quote) throw new Error('Missing fixture')
+  cow.quote.quoteResults.tradeParameters.buyToken = NATIVE_CURRENCY_ADDRESS
+  cow.quote.quoteResults.amountsAndCosts.afterPartnerFees.buyAmount = 101n
+  expect(selectDirect(sale, cow, 1001, 0n)).toBeUndefined()
+  cow.quote.quoteResults.amountsAndCosts.afterPartnerFees.buyAmount = 99n
+  expect(selectDirect(sale, cow, 1001, 0n)).toBe(sale)
+  expect(selectDirect(sale, { ...cow, quote: null }, 1001, 0n)).toBe(sale)
+})

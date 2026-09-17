@@ -6,7 +6,7 @@ import { render, screen } from '@testing-library/react'
 
 import { WholeTokenWarnings } from './WholeTokenWarnings.pure'
 
-import { DirectQuote } from '../../services/wholeToken/router.service'
+import { DirectQuote, MPS } from '../../services/wholeToken/router.service'
 
 jest.mock('@cowprotocol/ui', () => ({
   InlineBanner: ({ children }: { children: ReactNode }) => <aside>{children}</aside>,
@@ -38,4 +38,26 @@ test('shows unavailable impact after loading finishes', () => {
   expect(screen.queryByText(/Price impact is unavailable/)).toBeNull()
   rerender(<WholeTokenWarnings quote={quote} impact={undefined} loading={false} />)
   expect(screen.getByText(/Price impact is unavailable/)).toBeTruthy()
+})
+
+test('MPS sales measure costs in ETH and describe the minimum receive protection', () => {
+  render(
+    <WholeTokenWarnings
+      quote={{
+        ...quote,
+        inputToken: MPS,
+        netCost: 1n,
+        buyAmount: 99n,
+        gasCost: 9n,
+        approvalGas: 10n,
+        maxFeePerGas: 2n,
+        maxPriorityFeePerGas: 0n,
+        slippageBps: 300,
+      }}
+      impact={new Percent(1, 1000)}
+      loading={false}
+    />,
+  )
+  expect(screen.getByText(/20.00% of the expected output value/)).toBeTruthy()
+  expect(screen.getByText(/ETH received can decrease to the quoted minimum/)).toBeTruthy()
 })

@@ -4,7 +4,7 @@ import { JsonRpcProvider } from '@ethersproject/providers'
 import BigNumber from 'bignumber.js'
 
 import { createQuoteRpc } from './quoteRpc.service'
-import { encodePath, MPS, MPS_V2_PAIR, QUOTER, Route, USDC, WETH } from './router.service'
+import { encodePath, isMpsSell, MPS, MPS_V2_PAIR, QUOTER, Route, USDC, WETH } from './router.service'
 
 const quoter = new Interface([
   'function quoteExactInput(bytes,uint256) returns (uint256,uint160[],uint32[],uint256)',
@@ -75,6 +75,13 @@ export async function quoteV3(market: Market, route: Route, amount: bigint, exac
 }
 
 export function getRoutes(inputToken?: string): Route[] {
+  if (isMpsSell({ inputToken }))
+    return ROUTES.map((route) => ({
+      ...route,
+      label: route.viaV2 ? 'Uniswap v2 + v3 via USDC' : route.label,
+      tokens: [...route.tokens].reverse(),
+      fees: [...route.fees].reverse(),
+    }))
   return inputToken
     ? [
         { label: 'Uniswap v3 USDC/MPS', tokens: [USDC, MPS], fees: [10000] },

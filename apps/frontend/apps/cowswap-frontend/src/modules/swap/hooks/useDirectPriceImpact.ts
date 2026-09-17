@@ -15,7 +15,7 @@ import { useConfirmPriceImpactWithoutFee } from 'common/hooks/useConfirmPriceImp
 
 import { useSwapDerivedState } from './useSwapDerivedState'
 
-import { DirectQuote } from '../services/wholeToken/router.service'
+import { DirectQuote, isMpsSell } from '../services/wholeToken/router.service'
 
 export function useDirectPriceImpact(quote: DirectQuote): {
   impact: Percent | undefined
@@ -28,7 +28,7 @@ export function useDirectPriceImpact(quote: DirectQuote): {
   const netInput = getNetInput(quote)
   const input = useUsdAmount(inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, netInput.toString()))
   const output = useUsdAmount(
-    outputCurrency && CurrencyAmount.fromRawAmount(outputCurrency, quote.buyAmount.toString()),
+    outputCurrency && CurrencyAmount.fromRawAmount(outputCurrency, getGrossOutput(quote).toString()),
   )
   const impact =
     input.value?.greaterThan(0) && output.value
@@ -94,5 +94,10 @@ export function useDirectPriceImpact(quote: DirectQuote): {
 }
 
 function getNetInput(quote: DirectQuote): bigint {
+  if (isMpsSell(quote)) return quote.sellAmount
   return quote.netCost - (quote.gasCostInInput ?? quote.gasCost) - quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)
+}
+
+function getGrossOutput(quote: DirectQuote): bigint {
+  return quote.buyAmount + (isMpsSell(quote) ? quote.fees.reduce((sum, fee) => sum + fee.amount, 0n) : 0n)
 }

@@ -12,7 +12,7 @@ import { useRateInfoParams } from 'common/hooks/useRateInfoParams'
 
 import { useDirectPriceImpact } from '../../hooks/useDirectPriceImpact'
 import { useSwapDerivedState } from '../../hooks/useSwapDerivedState'
-import { DirectQuote } from '../../services/wholeToken/router.service'
+import { DirectQuote, isMpsSell } from '../../services/wholeToken/router.service'
 
 function displayEth(amount: bigint, roundUp = true): string {
   // Round displayed ceilings up to eight decimals; the transaction uses exact wei.
@@ -27,6 +27,7 @@ export function WholeTokenRouteDetails({
   impact: ReturnType<typeof useDirectPriceImpact>['impact']
 }): ReactNode {
   const { inputCurrency, outputCurrency } = useSwapDerivedState()
+  const selling = isMpsSell(shown)
   const totalInput = shown.totalCost - (shown.inputToken ? shown.gasCostInInput || 0n : 0n)
   const unused = shown.budget - totalInput
   const decimals = inputCurrency?.decimals
@@ -36,7 +37,8 @@ export function WholeTokenRouteDetails({
   const fees = shown.fees.reduce((sum, fee) => sum + fee.amount, 0n)
   const input = inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, shown.sellAmount.toString())
   const output = outputCurrency && CurrencyAmount.fromRawAmount(outputCurrency, shown.buyAmount.toString())
-  const feeAmount = inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, fees.toString())
+  const feeCurrency = selling ? outputCurrency : inputCurrency
+  const feeAmount = feeCurrency && CurrencyAmount.fromRawAmount(feeCurrency, fees.toString())
   const rateInfoParams = useRateInfoParams(input, output)
   const [open, setOpen] = useState(false)
   return (
@@ -47,7 +49,7 @@ export function WholeTokenRouteDetails({
           {fiat && `(≈ $${fiat.toFixed(2)})`}
         </strong>
         <br />
-        {shown.inputToken ? t`Includes fees; Ethereum gas is paid separately.` : t`Includes fees and estimated gas.`}
+        {feeNotice(shown)}
         <br />
         {t`Estimated unused budget`}: {shown.inputToken ? formatUnits(unused, decimals) : displayEth(unused, false)}{' '}
         {symbol}
@@ -69,8 +71,14 @@ export function WholeTokenRouteDetails({
           </dd>
           <dt>{t`Fees`}</dt>
           <dd>
-            {displayInput(fees, shown.inputToken, decimals)} {symbol}
+            {selling ? displayEth(fees) : displayInput(fees, shown.inputToken, decimals)} {feeCurrency?.symbol}
           </dd>
+          {shown.minBuyAmount !== undefined && (
+            <>
+              <dt>{t`Minimum received after fees`}</dt>
+              <dd>{formatEther(shown.minBuyAmount)} ETH</dd>
+            </>
+          )}
           <dt>{t`Estimated gas`}</dt>
           <dd>{displayEth(shown.gasCost)} ETH</dd>
           <dt>{t`Estimated total`}</dt>
@@ -104,6 +112,11 @@ export function WholeTokenRouteDetails({
 
 function displayInput(amount: bigint, inputToken: string | undefined, decimals: number | undefined): string {
   return inputToken ? formatUnits(amount, decimals) : displayEth(amount)
+}
+
+function feeNotice(quote: DirectQuote): string {
+  if (isMpsSell(quote)) return t`Fees are deducted from ETH received; gas is paid separately.`
+  return quote.inputToken ? t`Includes fees; Ethereum gas is paid separately.` : t`Includes fees and estimated gas.`
 }
 
 function routeLabel(quote: DirectQuote): string {

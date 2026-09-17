@@ -99,6 +99,7 @@ function RouteAction({
     priceImpact,
     quote.needsApproval,
     reviewed,
+    inputCurrency?.symbol || '',
   )
   return (
     <>
@@ -133,6 +134,7 @@ function buttonText(
   priceImpact: ReturnType<typeof useDirectPriceImpact>,
   needsApproval: boolean | undefined,
   reviewed: boolean,
+  symbol: string,
 ): string {
   if (pending) return t`Transaction in progress`
   if (submitted) return t`Swap submitted`
@@ -140,6 +142,6 @@ function buttonText(
   if (insufficient) return t`Insufficient balance`
   if (priceImpact.loading) return t`Fetching price impact`
   if (!priceImpact.allowed) return t`Preparing swap`
-  if (needsApproval) return t`Approve USDC`
+  if (needsApproval) return t`Approve ${symbol}`
   return reviewed ? t`Confirm swap` : t`Review swap`
 }

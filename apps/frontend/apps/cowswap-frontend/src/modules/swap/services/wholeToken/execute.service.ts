@@ -51,7 +51,10 @@ async function validateFunding(rpc: JsonRpcProvider, quote: DirectQuote, nativeB
   if (inputBalance < quote.maxTotal) throw new Error('Insufficient input balance.')
   const nativeRequired = quote.inputToken ? quote.gasLimit * quote.maxFeePerGas : quote.maxTotal
   if (nativeBalance < nativeRequired) throw new Error('Insufficient ETH including gas.')
-  if (quote.inputToken && (await getInputApprovals(rpc, quote.account, quote.maxTotal, quote.expiresAt)).length) {
+  if (
+    quote.inputToken &&
+    (await getInputApprovals(rpc, quote.account, quote.maxTotal, quote.expiresAt, quote.inputToken)).length
+  ) {
     throw new Error('Token approval required. Review again.')
   }
 }

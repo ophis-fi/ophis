@@ -14,6 +14,7 @@ import { WholeTokenRoute, WholeTokenRouteProps } from './WholeTokenRoute.contain
 
 import { useDirectPriceImpact } from '../../hooks/useDirectPriceImpact'
 import { useSwapDerivedState } from '../../hooks/useSwapDerivedState'
+import { isMpsSell } from '../../services/wholeToken/router.service'
 
 export function WholeTokenReview(props: WholeTokenRouteProps): ReactNode {
   const { inputCurrency, outputCurrency, inputCurrencyBalance, outputCurrencyBalance } = useSwapDerivedState()
@@ -22,7 +23,7 @@ export function WholeTokenReview(props: WholeTokenRouteProps): ReactNode {
     inputCurrency &&
     CurrencyAmount.fromRawAmount(
       inputCurrency,
-      (quote.sellAmount + quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)).toString(),
+      (quote.sellAmount + (isMpsSell(quote) ? 0n : quote.fees.reduce((sum, fee) => sum + fee.amount, 0n))).toString(),
     )
   const output = outputCurrency && CurrencyAmount.fromRawAmount(outputCurrency, quote.buyAmount.toString())
   const { value: inputFiat } = useUsdAmount(input)
@@ -37,13 +38,13 @@ export function WholeTokenReview(props: WholeTokenRouteProps): ReactNode {
           amount: input,
           fiatAmount: inputFiat,
           balance: inputCurrencyBalance,
-          label: t`Expected spend (incl. fees)`,
+          label: isMpsSell(quote) ? t`You sell` : t`Expected spend (incl. fees)`,
         }}
         outputCurrencyInfo={{
           amount: output,
           fiatAmount: outputFiat,
           balance: outputCurrencyBalance,
-          label: t`You receive`,
+          label: isMpsSell(quote) ? t`Expected receive (after fees)` : t`You receive`,
         }}
         priceImpact={{ priceImpact: impact, loading }}
       />

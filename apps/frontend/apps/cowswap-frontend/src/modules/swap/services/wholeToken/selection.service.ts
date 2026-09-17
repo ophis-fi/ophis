@@ -3,7 +3,7 @@ import { areAddressesEqual, PriceQuality } from '@cowprotocol/cow-sdk'
 
 import type { useTradeQuote } from 'modules/tradeQuote'
 
-import { DirectQuote, MPS } from './router.service'
+import { DirectQuote, isMpsSell, MPS } from './router.service'
 
 export function selectDirect(
   best: DirectQuote | undefined,
@@ -17,17 +17,30 @@ export function selectDirect(
   const params = cow.quote.quoteResults.tradeParameters
   const changed = [
     !areAddressesEqual(params.sellToken, best.inputToken || NATIVE_CURRENCY_ADDRESS),
-    !areAddressesEqual(params.buyToken, MPS),
+    !areAddressesEqual(params.buyToken, isMpsSell(best) ? NATIVE_CURRENCY_ADDRESS : MPS),
     params.amount !== best.budget.toString(),
   ].some(Boolean)
   if (changed) return best
   const amounts = cow.quote.quoteResults.amountsAndCosts
-  return best.buyAmount > amounts.afterPartnerFees.buyAmount ||
-    (best.buyAmount === amounts.afterPartnerFees.buyAmount &&
-      best.netCost <
-        amounts.amountsToSign.sellAmount + depositGas * ((best.maxFeePerGas + best.maxPriorityFeePerGas) / 2n))
+  return improvesAmounts(best, amounts.afterPartnerFees.buyAmount, amounts.amountsToSign.sellAmount, depositGas)
     ? best
     : undefined
+}
+
+function improvesAmounts(best: DirectQuote, buyAmount: bigint, sellAmount: bigint, depositGas: bigint): boolean {
+  if (isMpsSell(best)) {
+    return sellProceeds(best) > buyAmount
+  }
+  return (
+    best.buyAmount > buyAmount ||
+    (best.buyAmount === buyAmount &&
+      best.netCost < sellAmount + depositGas * ((best.maxFeePerGas + best.maxPriorityFeePerGas) / 2n))
+  )
+}
+
+function sellProceeds(quote: DirectQuote): bigint {
+  const approvalCost = (quote.approvalGas || 0n) * ((quote.maxFeePerGas + quote.maxPriorityFeePerGas) / 2n)
+  return quote.buyAmount - quote.gasCost - approvalCost
 }
 export function comparisonLoading(
   key: string,
