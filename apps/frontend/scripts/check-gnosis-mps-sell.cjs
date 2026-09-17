@@ -7,7 +7,7 @@ const { mkdtempSync, rmSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { resolve, join } = require('node:path')
 const app = createRequire(resolve(__dirname, '../apps/cowswap-frontend/package.json'))
-const { buildSync } = createRequire(app.resolve('vite/package.json'))('esbuild')
+const build = require('./build-whole-token-check.cjs')
 const { JsonRpcProvider, Web3Provider } = app('@ethersproject/providers')
 const { Contract } = app('@ethersproject/contracts')
 const folder = mkdtempSync(join(tmpdir(), 'gnosis-mps-'))
@@ -18,7 +18,7 @@ async function main(target) {
   assert.match(await provider.send('web3_clientVersion', []), /anvil/i)
   const snapshot = await provider.send('evm_snapshot', [])
   try {
-    for (const name of ['quote', 'router', 'input', 'execute', 'gnosis', 'outputTokens']) buildSync({
+    for (const name of ['quote', 'router', 'input', 'execute', 'gnosis', 'outputTokens']) await build({
       entryPoints: [resolve(__dirname, `../apps/cowswap-frontend/src/modules/swap/services/wholeToken/${name}.service.ts`)],
       outfile: join(folder, `${name}.cjs`), bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent',
     })
