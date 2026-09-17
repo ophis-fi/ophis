@@ -94,3 +94,21 @@ test('POST limits count UTF-8 bytes and preserve a valid body through the middle
     if (status === 200) assert.equal(await res.text(), body);
   }
 });
+
+
+test('business root rewrite forwards the rebuilt POST request', async () => {
+  const body = JSON.stringify({ text: 'business €' });
+  const res = await onRequest({
+    request: new Request('https://business.ophis.fi/', {
+      method: 'POST', body, headers: { 'content-type': 'application/json' },
+    }),
+    env: { ASSETS: { fetch: async (forwarded: Request) => {
+      assert.equal(new URL(forwarded.url).pathname, '/business/');
+      assert.equal(forwarded.method, 'POST');
+      assert.equal(forwarded.headers.get('content-type'), 'application/json');
+      return new Response(await forwarded.text());
+    } } },
+  } as unknown as Parameters<typeof onRequest>[0]);
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), body);
+});

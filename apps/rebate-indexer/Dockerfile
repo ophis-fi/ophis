@@ -4,6 +4,7 @@ FROM node:24-alpine AS deps
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY patches/ patches/
 COPY apps/rebate-indexer/package.json apps/rebate-indexer/
 COPY packages/sdk/package.json packages/sdk/
 # --ignore-scripts: do NOT run dependency lifecycle (postinstall) scripts inside the
@@ -24,6 +25,7 @@ RUN pnpm --filter @ophis/rebate-indexer typecheck
 
 FROM node:24-alpine AS runtime
 WORKDIR /app
+ENV COREPACK_HOME=/opt/corepack
 RUN apk add --no-cache tini && corepack enable && corepack prepare pnpm@9.12.0 --activate
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /app /app

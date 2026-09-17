@@ -251,7 +251,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (target && url.pathname === '/') {
     const rewritten = new URL(url)
     rewritten.pathname = target
-    const res = await context.env.ASSETS.fetch(new Request(rewritten.toString(), context.request))
+    const res = await context.env.ASSETS.fetch(new Request(rewritten.toString(), request))
     return finalizeResponse(res, url.hostname)
   }
 

@@ -39,6 +39,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'patches/**'
       - 'apps/frontend/**'
   workflow_dispatch:
 

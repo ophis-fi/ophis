@@ -11,14 +11,23 @@ name: Deploy @ophis/mcp-server to Cloudflare Workers
 # for re-asserting it on each deploy.
 
 on:
+  workflow_dispatch: {}
   push:
     branches: [main]
     paths:
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
       - 'apps/mcp-server/**'
       - 'packages/sdk/**'
       - '.github/workflows/mcp-deploy.yml'
   pull_request:
     paths:
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
       - 'apps/mcp-server/**'
       - 'packages/sdk/**'
 
