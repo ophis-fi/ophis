@@ -25,6 +25,7 @@ RUN pnpm --filter @ophis/rebate-indexer typecheck
 
 FROM node:24-alpine AS runtime
 WORKDIR /app
+ENV COREPACK_HOME=/opt/corepack
 RUN apk add --no-cache tini && corepack enable && corepack prepare pnpm@9.12.0 --activate
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /app /app
