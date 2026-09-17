@@ -22,7 +22,7 @@
  * every backing endpoint is already public, and the tools are read/build-only.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { McpAgent } from 'agents/mcp'
+import { createMcpHandler, McpAgent } from 'agents/mcp'
 
 import { OPHIS_TOOL_NAMES, registerOphisTools, SERVER_INFO } from './tools.js'
 
@@ -88,6 +88,8 @@ async function recordTelemetry(
   }
 }
 
+// Retain the deployed class for rollback without deleting its existing namespace.
+// Public requests use the stateless handler below and never invoke this binding.
 export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string, never>> {
   server = new McpServer(SERVER_INFO)
 
@@ -97,6 +99,16 @@ export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string
       rebatesApi: this.env.OPHIS_REBATES_API,
     })
   }
+}
+
+function serveMcp(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  // Each request gets its own transport; the tools carry no session state.
+  const server = new McpServer(SERVER_INFO)
+  registerOphisTools(server, {
+    defaultReferrerCode: env.OPHIS_DEFAULT_REFERRER_CODE,
+    rebatesApi: env.OPHIS_REBATES_API,
+  })
+  return createMcpHandler(server, { enableJsonResponse: true })(request, env, ctx)
 }
 
 const INFO = {
@@ -185,6 +197,9 @@ export default {
         if (!success) return rpcError(429, -32000, 'Rate limit exceeded — slow down.')
       }
 
+      // Stateless tools never send unsolicited events; do not open idle SSE streams.
+      if (request.method === 'GET') return new Response(null, { status: 405, headers: { Allow: 'POST, OPTIONS' } })
+
       if (request.method === 'POST') {
         const body = await readBody(request)
         if (body === null) {
@@ -209,10 +224,10 @@ export default {
         }
         // The body stream is consumed above; hand the transport an equivalent request.
         const rebuilt = new Request(request.url, { method: 'POST', headers: request.headers, body })
-        return OphisMCP.serve('/mcp', { binding: 'OPHIS_MCP' }).fetch(rebuilt, env, ctx)
+        return serveMcp(rebuilt, env, ctx)
       }
 
-      return OphisMCP.serve('/mcp', { binding: 'OPHIS_MCP' }).fetch(request, env, ctx)
+      return serveMcp(request, env, ctx)
     }
 
     return new Response('Not found. MCP endpoint: /mcp', { status: 404 })

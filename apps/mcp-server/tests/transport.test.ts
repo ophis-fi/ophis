@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { transportFetch } = vi.hoisted(() => ({ transportFetch: vi.fn() }))
 vi.mock('agents/mcp', () => ({
+  createMcpHandler: () => transportFetch,
   McpAgent: class {
     static serve() { return { fetch: transportFetch } }
   },
@@ -9,7 +10,9 @@ vi.mock('agents/mcp', () => ({
 
 import worker from '../src/index.js'
 
-const env = {} as Parameters<typeof worker.fetch>[1]
+const env = {
+  get OPHIS_MCP(): never { throw new Error('Public MCP requests must not access Durable Objects') },
+} as Parameters<typeof worker.fetch>[1]
 const ctx = { waitUntil: vi.fn() } as unknown as ExecutionContext
 const post = (body: BodyInit, headers?: HeadersInit): Request => new Request('https://mcp.ophis.fi/mcp', {
   method: 'POST', body, headers, duplex: 'half',

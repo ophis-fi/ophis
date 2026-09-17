@@ -15,9 +15,8 @@
   // consumers can be told apart from crawlers and health-checks. The write is
   // non-blocking and swallowed; an unbound dataset is a no-op.
   "analytics_engine_datasets": [{ "binding": "MCP_ANALYTICS", "dataset": "ophis_mcp_funnel" }],
-  // McpAgent is a Durable Object. Each MCP session is one DO instance; our
-  // tools are stateless (each call is independent) so the DO just holds the
-  // Streamable-HTTP transport session — no app state is persisted.
+  // Retained for rollback only. Public MCP requests use a stateless transport
+  // and do not invoke this namespace or write Durable Object storage.
   "durable_objects": {
     "bindings": [{ "name": "OPHIS_MCP", "class_name": "OphisMCP" }]
   },
