@@ -19,9 +19,11 @@ it.each([
 ])('routes EOA native %s to %s', (orderKind, expected) => {
   jest
     .mocked(useSwapDerivedState)
-    .mockReturnValue({ inputCurrency: NATIVE_CURRENCIES[1], outputCurrency: USDC_MAINNET, orderKind } as ReturnType<
-      typeof useSwapDerivedState
-    >)
+    .mockReturnValue({
+      inputCurrency: NATIVE_CURRENCIES[1],
+      outputCurrency: USDC_MAINNET,
+      orderKind,
+    } as unknown as ReturnType<typeof useSwapDerivedState>)
   const { result } = renderHook(() => useSwapFormState())
   expect(result.current).toBe(expected)
 })

@@ -21,11 +21,13 @@ it.each([OrderKind.BUY, OrderKind.SELL])(
   async (orderKind) => {
     const onOpen = jest.fn()
     const reset = jest.fn()
-    jest.mocked(useTradeQuoteManager).mockReturnValue({ reset } as ReturnType<typeof useTradeQuoteManager>)
+    jest.mocked(useTradeQuoteManager).mockReturnValue({ reset } as unknown as ReturnType<typeof useTradeQuoteManager>)
     const selectCurrency = jest.fn((_field, _currency, callback) => callback())
     jest.mocked(useDerivedTradeState).mockReturnValue({ orderKind } as ReturnType<typeof useDerivedTradeState>)
     jest.mocked(useOnCurrencySelection).mockReturnValue(selectCurrency)
-    jest.mocked(useTradeConfirmActions).mockReturnValue({ onOpen } as ReturnType<typeof useTradeConfirmActions>)
+    jest
+      .mocked(useTradeConfirmActions)
+      .mockReturnValue({ onOpen } as unknown as ReturnType<typeof useTradeConfirmActions>)
     const callbacks: EthFlowActionCallbacks = {
       approve: jest.fn(),
       wrap: jest.fn(),

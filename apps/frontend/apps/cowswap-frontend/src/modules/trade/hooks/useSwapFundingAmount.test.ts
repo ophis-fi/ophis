@@ -1,6 +1,6 @@
-import { WRAPPED_NATIVE_CURRENCIES, NATIVE_CURRENCIES, USDC_MAINNET } from '@cowprotocol/common-const'
+import { WRAPPED_NATIVE_CURRENCIES, NATIVE_CURRENCIES, USDC_MAINNET, TokenWithLogo } from '@cowprotocol/common-const'
 import { OrderKind } from '@cowprotocol/cow-sdk'
-import { CurrencyAmount, Token } from '@cowprotocol/currency'
+import { CurrencyAmount } from '@cowprotocol/currency'
 
 import { renderHook } from '@testing-library/react'
 
@@ -35,7 +35,7 @@ it('funds the full BUY cap in native currency and rejects an outdated amount', (
     orderKind: OrderKind.BUY,
     tradeType: TradeType.SWAP,
   }
-  jest.mocked(useDerivedTradeState).mockReturnValue(state as ReturnType<typeof useDerivedTradeState>)
+  jest.mocked(useDerivedTradeState).mockReturnValue(state as unknown as ReturnType<typeof useDerivedTradeState>)
   jest.mocked(useAmountsToSignFromQuote).mockReturnValue({
     maximumSendSellAmount: CurrencyAmount.fromRawAmount(WRAPPED_NATIVE_CURRENCIES[1], '1150'),
     minimumReceiveBuyAmount: state.outputCurrencyAmount,
@@ -45,7 +45,7 @@ it('funds the full BUY cap in native currency and rejects an outdated amount', (
       sellAmount: CurrencyAmount.fromRawAmount(WRAPPED_NATIVE_CURRENCIES[1], '1100'),
       buyAmount: state.outputCurrencyAmount,
     },
-  } as ReturnType<typeof useGetReceiveAmountInfo>)
+  } as unknown as ReturnType<typeof useGetReceiveAmountInfo>)
   const order = {
     kind: OrderKind.BUY,
     sellToken: WRAPPED_NATIVE_CURRENCIES[1].address,
@@ -94,10 +94,14 @@ it('funds the full BUY cap in native currency and rejects an outdated amount', (
   rerender()
   expect(result.current).toBeNull()
 
-  state.outputCurrencyAmount = CurrencyAmount.fromRawAmount(new Token(10, USDC_MAINNET.address, 6), '10000000')
+  state.outputCurrencyAmount = CurrencyAmount.fromRawAmount(
+    new TokenWithLogo(undefined, 10, USDC_MAINNET.address, 6),
+    '10000000',
+  )
   rerender()
   expect(result.current).toBe(state.inputCurrencyAmount)
 
+  state.outputCurrencyAmount = CurrencyAmount.fromRawAmount(USDC_MAINNET, '10000000')
   state.tradeType = TradeType.LIMIT_ORDER
   rerender()
   expect(result.current).toBe(state.inputCurrencyAmount)
