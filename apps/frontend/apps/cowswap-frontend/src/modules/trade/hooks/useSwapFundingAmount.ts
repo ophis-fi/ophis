@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 
-import { getCurrencyAddress, getWrappedToken } from '@cowprotocol/common-utils'
+import { getWrappedToken } from '@cowprotocol/common-utils'
 import { areAddressesEqual, OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { useWalletInfo } from '@cowprotocol/wallet'
@@ -46,7 +46,7 @@ export function useSwapFundingAmount(includeApprovalBuffer = false): CurrencyAmo
       !account || areAddressesEqual(quote.quoteResults.tradeParameters.owner, account),
       Number(quote.quoteResults.orderTypedData.domain.chainId) === inputCurrency.chainId,
       areAddressesEqual(order.sellToken, getWrappedToken(inputCurrency).address),
-      areAddressesEqual(order.buyToken, getCurrencyAddress(outputCurrencyAmount.currency)),
+      areAddressesEqual(order.buyToken, getWrappedToken(outputCurrencyAmount.currency).address),
       order.buyAmount === outputCurrencyAmount.quotient.toString(),
       sellAmount.currency.chainId === inputCurrency.chainId,
     ].every(Boolean)

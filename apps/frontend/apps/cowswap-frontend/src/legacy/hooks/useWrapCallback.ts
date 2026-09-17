@@ -190,12 +190,10 @@ async function wrapContractCall(
   if (!areAddressesEqual(await wethContract.signer.getAddress(), account)) {
     throw new Error(t`Wallet account changed. Please try again.`)
   }
-  const [balance, gasPrice] = await Promise.all([
-    wethContract.provider.getBalance(account),
-    wethContract.provider.getGasPrice(),
-  ])
-  if (balance.lt(BigNumber.from(amountHex).add(gasLimit.mul(gasPrice)))) {
-    throw new Error(t`Insufficient balance to wrap and pay the network fee.`)
+  // The wallet determines the gas payer; contract-wallet gas may be paid externally.
+  const balance = await wethContract.provider.getBalance(account)
+  if (balance.lt(amountHex)) {
+    throw new Error(t`Insufficient balance to wrap.`)
   }
 
   const tx = await wethContract.populateTransaction.deposit({ value: amountHex, gasLimit })

@@ -94,6 +94,16 @@ it('funds the full BUY cap in native currency and rejects an outdated amount', (
   rerender()
   expect(result.current).toBeNull()
 
+  state.inputCurrency = USDC_MAINNET
+  state.outputCurrencyAmount = CurrencyAmount.fromRawAmount(native, '10000000')
+  order.buyToken = WRAPPED_NATIVE_CURRENCIES[1].address
+  rerender()
+  expect(result.current?.currency).toBe(USDC_MAINNET)
+  expect(result.current?.quotient.toString()).toBe('1150')
+  order.buyToken = USDC_MAINNET.address
+  rerender()
+  expect(result.current).toBeNull()
+
   state.outputCurrencyAmount = CurrencyAmount.fromRawAmount(
     new TokenWithLogo(undefined, 10, USDC_MAINNET.address, 6),
     '10000000',
