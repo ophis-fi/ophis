@@ -61,20 +61,29 @@ export async function priceDefiLlamaFill(row: {
     : Date.parse(row.settlementTimestamp);
   if (!Number.isFinite(settlementMs)) throw new Error('invalid settlement timestamp');
   const requestedTimestamp = Math.floor(settlementMs / 1000);
-  const coin = `${slug}:${row.sellToken}`;
-  const url = `https://coins.llama.fi/prices/historical/${requestedTimestamp}/${coin}?searchWidth=4h`;
-  const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-  if (!response.ok) throw new Error(`DefiLlama historical price ${response.status} for ${coin}`);
-  const body = await response.json() as HistoricalPriceResponse;
-  const quote = body.coins?.[coin];
-  if (!quote || !Number.isInteger(quote.decimals) || quote.decimals! < 0 || quote.decimals! > 255 ||
-      !Number.isFinite(quote.price) || quote.price! <= 0 || !Number.isInteger(quote.timestamp) ||
-      Math.abs(quote.timestamp! - requestedTimestamp) > 4 * 60 * 60) {
-    throw new Error(`invalid DefiLlama historical price for ${coin} at ${requestedTimestamp}`);
+  const sides = [{ token: row.sellToken, amount: row.sellAmount }];
+  if (row.buyToken && row.buyAmount !== undefined) {
+    sides.push({ token: row.buyToken, amount: row.buyAmount });
   }
-  const usd = Number(row.sellAmount) / 10 ** quote.decimals! * quote.price!;
-  if (!Number.isFinite(usd) || usd < 0) throw new Error(`non-finite historical USD for ${coin}`);
-  return usd;
+  for (const side of sides) {
+    // Polygon's coins API uses its native-token address, not CoW's sentinel.
+    const token = row.chainId === 137 && side.token.toLowerCase() === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+      ? '0x0000000000000000000000000000000000001010'
+      : side.token.toLowerCase();
+    const coin = `${slug}:${token}`;
+    const url = `https://coins.llama.fi/prices/historical/${requestedTimestamp}/${coin}?searchWidth=4h`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) throw new Error(`DefiLlama historical price ${response.status} for ${coin}`);
+    const body = await response.json() as HistoricalPriceResponse;
+    const quote = body.coins?.[coin];
+    if (!quote || !Number.isInteger(quote.decimals) || quote.decimals! < 0 || quote.decimals! > 255 ||
+        !Number.isFinite(quote.price) || quote.price! <= 0 || !Number.isInteger(quote.timestamp) ||
+        Math.abs(quote.timestamp! - requestedTimestamp) > 4 * 60 * 60) continue;
+    const usd = Number(side.amount) / 10 ** quote.decimals! * quote.price!;
+    if (!Number.isFinite(usd) || usd < 0) throw new Error(`non-finite historical USD for ${coin}`);
+    return usd;
+  }
+  throw new Error(`invalid DefiLlama historical price for either fill side at ${requestedTimestamp}`);
 }
 
 // ─── OP native_price is per-atom (since the 2026-07-06 oracle fix) ───────────

@@ -81,6 +81,57 @@ describe('priceDefiLlamaFill — settlement-time pricing', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([
+    [1, 'ethereum', '0xdac17f958d2ee523a2206206994597c13d831ec7', '0xdac17f958d2ee523a2206206994597c13d831ec7', 6],
+    [100, 'xdai', '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 18],
+    [137, 'polygon', '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', '0x0000000000000000000000000000000000001010', 18],
+  ] as const)('prices an unlisted sell token from the historical buy side on chain %s', async (chainId, slug, buyToken, priceToken, decimals) => {
+    const settlementTimestamp = '2026-09-02T12:07:10Z';
+    const timestamp = Math.floor(Date.parse(settlementTimestamp) / 1000);
+    const coin = `${slug}:${priceToken}`;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ coins: {} })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        coins: { [coin]: { decimals, price: 0.5, timestamp } },
+      })));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      expect(await priceDefiLlamaFill({
+        chainId, sellToken: WETH, sellAmount: 900n * 10n ** 18n,
+        buyToken, buyAmount: 3n * 10n ** BigInt(decimals), settlementTimestamp,
+      })).toBe(1.5);
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        `https://coins.llama.fi/prices/historical/${timestamp}/${coin}?searchWidth=4h`,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    { decimals: 18, price: 1, age: 14401 },
+    { decimals: -1, price: 1, age: 0 },
+    { decimals: 18, price: 0, age: 0 },
+  ])('rejects an invalid historical buy-side quote: %j', async ({ decimals, price, age }) => {
+    const settlementTimestamp = '2026-09-02T12:07:10Z';
+    const timestamp = Math.floor(Date.parse(settlementTimestamp) / 1000);
+    const buyToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ coins: {} })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        coins: { [`xdai:${buyToken}`]: { decimals, price, timestamp: timestamp - age } },
+      }))));
+    try {
+      await expect(priceDefiLlamaFill({
+        chainId: 100, sellToken: WETH, sellAmount: 1n,
+        buyToken, buyAmount: 10n ** 18n, settlementTimestamp,
+      })).rejects.toThrow('invalid DefiLlama historical price');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('accepts the ISO timestamp strings returned by raw postgres queries', async () => {
     const settlementTimestamp = '2026-08-06T15:41:40.000Z';
     const timestamp = Math.floor(Date.parse(settlementTimestamp) / 1000);
