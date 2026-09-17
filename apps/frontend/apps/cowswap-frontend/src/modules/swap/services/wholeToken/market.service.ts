@@ -47,10 +47,9 @@ export async function getMarket(provider: JsonRpcProvider, signal?: AbortSignal)
   const reserves = await provider
     .call({ to: MPS_V2_PAIR, data: pair.encodeFunctionData('getReserves') }, block.number)
     .then((result) => pair.decodeFunctionResult('getReserves', result))
-    .catch(() => null)
   // The immutable v2 pair sorts MPS (0x96...) before USDC (0xA0...).
-  const usdcReserve = reserves ? BigInt(String(reserves[1])) : 0n
-  const mpsReserve = reserves ? BigInt(String(reserves[0])) : 0n
+  const usdcReserve = BigInt(String(reserves[1]))
+  const mpsReserve = BigInt(String(reserves[0]))
 
   return {
     inputPerEth: 10n ** 18n,

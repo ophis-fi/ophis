@@ -14,9 +14,9 @@ import { useDirectPriceImpact } from '../../hooks/useDirectPriceImpact'
 import { useSwapDerivedState } from '../../hooks/useSwapDerivedState'
 import { DirectQuote } from '../../services/wholeToken/router.service'
 
-function displayEth(amount: bigint): string {
+function displayEth(amount: bigint, roundUp = true): string {
   // Round displayed ceilings up to eight decimals; the transaction uses exact wei.
-  return formatEther(((amount + 9999999999n) / 10000000000n) * 10000000000n)
+  return formatEther(((amount + (roundUp ? 9999999999n : 0n)) / 10000000000n) * 10000000000n)
 }
 
 export function WholeTokenRouteDetails({
@@ -28,6 +28,8 @@ export function WholeTokenRouteDetails({
 }): ReactNode {
   const { inputCurrency, outputCurrency } = useSwapDerivedState()
   const totalInput = shown.totalCost - (shown.inputToken ? shown.gasCostInInput || 0n : 0n)
+  const unused = shown.budget - totalInput
+  const decimals = inputCurrency?.decimals
   const total = inputCurrency && CurrencyAmount.fromRawAmount(inputCurrency, totalInput.toString())
   const symbol = inputCurrency?.symbol
   const { value: fiat } = useUsdAmount(total)
@@ -40,9 +42,17 @@ export function WholeTokenRouteDetails({
   return (
     <>
       <p>
-        {t`Estimated spend`}: {displayInput(totalInput, shown.inputToken, inputCurrency?.decimals)} {symbol}{' '}
-        {fiat && `(≈ $${fiat.toFixed(2)})`}
-        {shown.inputToken && t` + gas`}
+        <strong>
+          {t`Estimated spend`}: {displayInput(totalInput, shown.inputToken, decimals)} {symbol}{' '}
+          {fiat && `(≈ $${fiat.toFixed(2)})`}
+        </strong>
+        <br />
+        {shown.inputToken ? t`Includes fees; Ethereum gas is paid separately.` : t`Includes fees and estimated gas.`}
+        <br />
+        {t`Estimated unused budget`}: {shown.inputToken ? formatUnits(unused, decimals) : displayEth(unused, false)}{' '}
+        {symbol}
+        <br />
+        {t`Slippage tolerance`}: {shown.slippageBps / 100}%
       </p>
       <TradeTotalCostsDetails
         rateInfoParams={rateInfoParams}
@@ -55,22 +65,21 @@ export function WholeTokenRouteDetails({
           <dd>{routeLabel(shown)}</dd>
           <dt>{t`Expected input`}</dt>
           <dd>
-            {displayInput(shown.sellAmount, shown.inputToken, inputCurrency?.decimals)} {symbol}
+            {displayInput(shown.sellAmount, shown.inputToken, decimals)} {symbol}
           </dd>
           <dt>{t`Fees`}</dt>
           <dd>
-            {displayInput(fees, shown.inputToken, inputCurrency?.decimals)} {symbol}
+            {displayInput(fees, shown.inputToken, decimals)} {symbol}
           </dd>
           <dt>{t`Estimated gas`}</dt>
           <dd>{displayEth(shown.gasCost)} ETH</dd>
           <dt>{t`Estimated total`}</dt>
           <dd>
-            {displayInput(totalInput, shown.inputToken, inputCurrency?.decimals)} {symbol}{' '}
-            {fiat && `(≈ $${fiat.toFixed(2)})`}
+            {displayInput(totalInput, shown.inputToken, decimals)} {symbol} {fiat && `(≈ $${fiat.toFixed(2)})`}
           </dd>
           <dt>{shown.inputToken ? t`Maximum input` : t`Maximum total, including gas`}</dt>
           <dd>
-            {displayInput(shown.maxTotal, shown.inputToken, inputCurrency?.decimals)} {symbol}
+            {displayInput(shown.maxTotal, shown.inputToken, decimals)} {symbol}
           </dd>
           {!!shown.approvalGas && (
             <>
@@ -86,8 +95,6 @@ export function WholeTokenRouteDetails({
           )}
           <dt>{t`Price impact`}</dt>
           <dd>{impact ? `${impact.toFixed(2)}%` : t`Unavailable`}</dd>
-          <dt>{t`Slippage tolerance`}</dt>
-          <dd>{shown.slippageBps / 100}%</dd>
         </dl>
         <p>{t`Unused input stays in your wallet or is refunded. Gas is paid on Ethereum.`}</p>
       </TradeTotalCostsDetails>

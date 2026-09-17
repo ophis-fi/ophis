@@ -16,3 +16,4 @@ export { useHighFeeWarning } from './containers/HighFeeWarning/hooks/useHighFeeW
 export { NetworkCostsTooltipSuffix } from './pure/NetworkCostsTooltipSuffix'
 export { DeadlineTransactionSettings } from './containers/DeadlineTransactionSettings/DeadlineTransactionSettings.container'
 export { TransactionSlippageInput } from './containers/TransactionSlippageInput/TransactionSlippageInput.container'
+export { LOW_TIER_FEE } from './containers/HighFeeWarning/consts'

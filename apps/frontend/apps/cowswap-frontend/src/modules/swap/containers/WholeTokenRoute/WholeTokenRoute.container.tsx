@@ -13,6 +13,7 @@ import { TradeFormButtons, useTradeFormButtonContext } from 'modules/tradeFormVa
 import { MetamaskTransactionWarning } from 'modules/tradeWidgetAddons'
 
 import { WholeTokenRouteDetails } from './WholeTokenRouteDetails.container'
+import { WholeTokenWarnings } from './WholeTokenWarnings.pure'
 
 import { useDirectPriceImpact } from '../../hooks/useDirectPriceImpact'
 import { useDirectSwap } from '../../hooks/useDirectSwap'
@@ -48,8 +49,9 @@ export interface WholeTokenRouteProps {
 export function WholeTokenRoute(props: WholeTokenRouteProps): ReactNode {
   const priceImpact = useDirectPriceImpact(props.quote)
   return (
-    <Card aria-label={t`Best MPS route`}>
+    <Card aria-label={t`MPS quote`}>
       <WholeTokenRouteDetails shown={props.quote} impact={priceImpact.impact} />
+      <WholeTokenWarnings quote={props.quote} impact={priceImpact.impact} loading={priceImpact.loading} />
       <RouteAction {...props} priceImpact={priceImpact} />
     </Card>
   )
