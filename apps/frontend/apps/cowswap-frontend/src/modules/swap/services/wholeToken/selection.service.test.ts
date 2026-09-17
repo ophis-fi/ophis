@@ -113,3 +113,21 @@ it.each([WXDAI, NATIVE_CURRENCY_ADDRESS])('compares Gnosis proceeds against the 
   cow.quote.quoteResults.tradeParameters.buyToken = outputToken === WXDAI ? NATIVE_CURRENCY_ADDRESS : WXDAI
   expect(selectDirect(sale, cow, 1001, 0n)).toBe(sale)
 })
+
+it('compares USDC proceeds using gas converted to USDC instead of native wei', () => {
+  const sale: DirectQuote = {
+    ...direct,
+    inputToken: MPS,
+    outputToken: USDC,
+    buyAmount: 6_000_000n,
+    gasCost: 100_000_000_000_000n,
+    gasCostInOutput: 250_000n,
+  }
+  const cow = cowQuote(MPS)
+  if (!cow.quote) throw new Error('Missing fixture')
+  cow.quote.quoteResults.tradeParameters.buyToken = USDC
+  cow.quote.quoteResults.amountsAndCosts.afterPartnerFees.buyAmount = 5_700_000n
+  expect(selectDirect(sale, cow, 1001, 0n)).toBe(sale)
+  cow.quote.quoteResults.amountsAndCosts.afterPartnerFees.buyAmount = 5_800_000n
+  expect(selectDirect(sale, cow, 1001, 0n)).toBeUndefined()
+})

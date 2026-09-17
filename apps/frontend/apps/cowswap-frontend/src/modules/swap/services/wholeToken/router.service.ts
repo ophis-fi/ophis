@@ -5,6 +5,8 @@ import { AddressZero } from '@ethersproject/constants'
 import { TransactionRequest } from '@ethersproject/providers'
 
 import { buildGnosisTransaction, GNOSIS_MPS, WXDAI } from './gnosis.service'
+import { isSupportedMpsOutput } from './outputTokens.service'
+import { sellCommands } from './sellTransaction.service'
 
 // Ethereum deployments: https://developers.uniswap.org/docs/protocols/v3/deployments/v3-ethereum-deployments
 export const ROUTER = '0x66a9893cc07d91d95644aedd05d03f95e1dba8af'
@@ -14,7 +16,7 @@ export const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 export const QUOTER = '0x61fFE014bA17989E743c5F6cB21bF9697530B21e'
 export const MPS_V2_PAIR = '0xcD6F65A972551FFaC9B52Fa2D4a561D9b7AB4741'
 const routerInterface = new Interface(['function execute(bytes commands, bytes[] inputs, uint256 deadline) payable'])
-const ROUTER_RECIPIENT = '0x0000000000000000000000000000000000000002'
+export const ROUTER_RECIPIENT = '0x0000000000000000000000000000000000000002'
 
 export interface Route {
   label: string
@@ -32,6 +34,7 @@ export interface DirectQuote {
   outputToken?: string
   minBuyAmount?: bigint
   gasCostInInput?: bigint
+  gasCostInOutput?: bigint
   approvalGas?: bigint
   needsApproval?: boolean
   route: Route
@@ -65,9 +68,9 @@ export function encodePath(route: Route, reverse = false): string {
 export function buildDirectTransaction(quote: DirectQuote): TransactionRequest {
   if (quote.chainId === 100) return buildGnosisTransaction(quote)
   if (quote.chainId !== undefined && quote.chainId !== 1) throw new Error('Unsupported direct chain')
-  validateQuote(quote)
-  if (!areAddressesEqual(directOutputToken(quote), isMpsSell(quote) ? EVM_NATIVE_CURRENCY_ADDRESS : MPS))
+  if (!isMpsSell(quote) && !areAddressesEqual(directOutputToken(quote), MPS))
     throw new Error('Unsupported direct output')
+  validateQuote(quote)
   const feeTotal = quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)
   const { commands, inputs } = isMpsSell(quote) ? sellCommands(quote, feeTotal) : buyCommands(quote, feeTotal)
   return {
@@ -102,6 +105,7 @@ function validateSellLimits(quote: DirectQuote): void {
   const minimum = quote.minBuyAmount ?? 0n
   if (
     [
+      !isSupportedMpsOutput(1, directOutputToken(quote)),
       minimum <= 0n,
       minimum > quote.buyAmount,
       quote.sellAmount <= 0n,
@@ -109,7 +113,7 @@ function validateSellLimits(quote: DirectQuote): void {
       quote.maxInput !== quote.budget,
       quote.maxTotal !== quote.budget,
       !areAddressesEqual(quote.route.tokens[0], quote.route.viaV2 ? USDC : MPS),
-      !areAddressesEqual(quote.route.tokens[quote.route.tokens.length - 1], WETH),
+      !areAddressesEqual(quote.route.tokens[quote.route.tokens.length - 1], directWrappedOutputToken(quote)),
     ].some(Boolean)
   )
     throw new Error('Invalid MPS sell limits')
@@ -119,32 +123,7 @@ export function isMpsSell(quote: { inputToken?: string }): boolean {
   return [MPS, GNOSIS_MPS].some((token) => areAddressesEqual(quote.inputToken, token))
 }
 
-function appendSellSwap(quote: DirectQuote, commands: string[], inputs: string[], feeTotal: bigint): void {
-  if (quote.route.viaV2) {
-    commands.push('08')
-    inputs.push(
-      defaultAbiCoder.encode(
-        ['address', 'uint256', 'uint256', 'address[]', 'bool'],
-        [ROUTER_RECIPIENT, quote.sellAmount, 0, [MPS, USDC], false],
-      ),
-    )
-  }
-  commands.push('00')
-  inputs.push(
-    defaultAbiCoder.encode(
-      ['address', 'uint256', 'uint256', 'bytes', 'bool'],
-      [
-        ROUTER_RECIPIENT,
-        quote.route.viaV2 ? 1n << 255n : quote.sellAmount,
-        (quote.minBuyAmount || 0n) + feeTotal,
-        encodePath(quote.route),
-        false,
-      ],
-    ),
-  )
-}
-
-function fundingCommands(
+export function fundingCommands(
   quote: DirectQuote,
   inputToken: string,
   feeTotal: bigint,
@@ -202,21 +181,7 @@ function buyCommands(quote: DirectQuote, feeTotal: bigint): { commands: string[]
   return { commands, inputs }
 }
 
-function sellCommands(quote: DirectQuote, feeTotal: bigint): { commands: string[]; inputs: string[] } {
-  const { commands, inputs } = fundingCommands(quote, MPS, 0n)
-  appendSellSwap(quote, commands, inputs, feeTotal)
-  appendFees(quote, WETH, commands, inputs)
-  commands.push('0c')
-  inputs.push(defaultAbiCoder.encode(['address', 'uint256'], [quote.recipient, quote.minBuyAmount]))
-  // Exact-input v3 swaps can stop at the price boundary without consuming all input.
-  for (const token of [MPS, USDC]) {
-    commands.push('04')
-    inputs.push(defaultAbiCoder.encode(['address', 'address', 'uint256'], [token, quote.account, 0]))
-  }
-  return { commands, inputs }
-}
-
-function appendFees(quote: DirectQuote, inputToken: string, commands: string[], inputs: string[]): void {
+export function appendFees(quote: DirectQuote, inputToken: string, commands: string[], inputs: string[]): void {
   for (const fee of quote.fees) {
     getAddress(fee.recipient)
     commands.push('05')
@@ -238,4 +203,14 @@ export function directVenue(quote: DirectQuote): string {
 
 export function directGasSymbol(quote: DirectQuote): string {
   return quote.chainId === 100 ? 'xDAI' : 'ETH'
+}
+
+export function directWrappedOutputToken(quote: Pick<DirectQuote, 'chainId' | 'inputToken' | 'outputToken'>): string {
+  const output = directOutputToken(quote)
+  return areAddressesEqual(output, EVM_NATIVE_CURRENCY_ADDRESS) ? (quote.chainId === 100 ? WXDAI : WETH) : output
+}
+
+export function directSellProceeds(quote: DirectQuote): bigint {
+  const approvalCost = (quote.approvalGas || 0n) * ((quote.maxFeePerGas + quote.maxPriorityFeePerGas) / 2n)
+  return quote.buyAmount - (quote.gasCostInOutput ?? quote.gasCost + approvalCost)
 }

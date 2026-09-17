@@ -3,6 +3,8 @@ import { defaultAbiCoder, Interface } from '@ethersproject/abi'
 import { getAddress } from '@ethersproject/address'
 import { TransactionRequest } from '@ethersproject/providers'
 
+import { isSupportedMpsOutput } from './outputTokens.service'
+
 import type { DirectQuote } from './router.service'
 
 export const GNOSIS_MPS = '0xfa57AA7beED63D03Aaf85fFd1753f5f6242588fb'
@@ -27,7 +29,9 @@ export function buildGnosisTransaction(quote: DirectQuote): TransactionRequest {
   const minimum = quote.minBuyAmount ?? 0n
   const outputToken = quote.outputToken || WXDAI
   const unwrap = areAddressesEqual(outputToken, EVM_NATIVE_CURRENCY_ADDRESS)
-  const blocked = [GNOSIS_ROUTER, GNOSIS_EXECUTOR, SUSHI_V2_ROUTER, GNOSIS_PAYMENTS, GNOSIS_MPS, WXDAI]
+  const path = gnosisSellPath(outputToken)
+  const wrappedOutput = path[path.length - 1]
+  const blocked = [GNOSIS_ROUTER, GNOSIS_EXECUTOR, SUSHI_V2_ROUTER, GNOSIS_PAYMENTS, GNOSIS_MPS, WXDAI, wrappedOutput]
   for (const address of [quote.account, quote.recipient, ...quote.fees.map((fee) => fee.recipient)]) {
     getAddress(address)
     if (BigInt(address) <= 2n || blocked.some((target) => areAddressesEqual(address, target)))
@@ -37,7 +41,6 @@ export function buildGnosisTransaction(quote: DirectQuote): TransactionRequest {
     [
       quote.chainId !== 100,
       !areAddressesEqual(quote.inputToken, GNOSIS_MPS),
-      !unwrap && !areAddressesEqual(outputToken, WXDAI),
       quote.budget <= 0n,
       quote.sellAmount !== quote.budget,
       quote.maxInput !== quote.budget,
@@ -50,12 +53,12 @@ export function buildGnosisTransaction(quote: DirectQuote): TransactionRequest {
     throw new Error('Invalid Gnosis sell limits')
   const feeTotal = quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)
   const transfers = quote.fees.map((fee) =>
-    defaultAbiCoder.encode(['address', 'address', 'uint256'], [WXDAI, fee.recipient, fee.amount]),
+    defaultAbiCoder.encode(['address', 'address', 'uint256'], [wrappedOutput, fee.recipient, fee.amount]),
   )
   transfers.push(
     unwrap
       ? defaultAbiCoder.encode(['address', 'uint256'], [quote.recipient, minimum])
-      : defaultAbiCoder.encode(['address', 'address', 'uint256'], [WXDAI, quote.recipient, minimum]),
+      : defaultAbiCoder.encode(['address', 'address', 'uint256'], [wrappedOutput, quote.recipient, minimum]),
   )
   // Exact input consumes the executor's entire approval. Payments and the final sweep
   // run in the same transaction, leaving no swap proceeds in public executors.
@@ -67,7 +70,7 @@ export function buildGnosisTransaction(quote: DirectQuote): TransactionRequest {
       sushiInterface.encodeFunctionData('swapExactTokensForTokens', [
         quote.budget,
         minimum + feeTotal,
-        [GNOSIS_MPS, WXDAI],
+        path,
         GNOSIS_PAYMENTS,
         quote.expiresAt,
       ]),
@@ -96,4 +99,11 @@ export function buildGnosisTransaction(quote: DirectQuote): TransactionRequest {
     maxFeePerGas: quote.maxFeePerGas.toString(),
     maxPriorityFeePerGas: quote.maxPriorityFeePerGas.toString(),
   }
+}
+
+export function gnosisSellPath(outputToken = WXDAI): string[] {
+  if (!isSupportedMpsOutput(100, outputToken)) throw new Error('Unsupported Gnosis output')
+  return [WXDAI, EVM_NATIVE_CURRENCY_ADDRESS].some((token) => areAddressesEqual(token, outputToken))
+    ? [GNOSIS_MPS, WXDAI]
+    : [GNOSIS_MPS, WXDAI, outputToken]
 }
