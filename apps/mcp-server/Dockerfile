@@ -9,11 +9,13 @@ FROM node:24-alpine AS deps
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY patches/ patches/
 COPY apps/mcp-server/package.json apps/mcp-server/
 COPY packages/sdk/package.json packages/sdk/
 # Workspace-scoped install: mcp-server + its workspace dep (@ophis/sdk) and their
-# external deps only. The lockfile is committed, so install frozen.
-RUN pnpm install --frozen-lockfile --filter @ophis/mcp-server...
+# external deps only. Match the Worker install: optional native accelerators
+# have JavaScript fallbacks, so third-party lifecycle scripts are unnecessary.
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter @ophis/mcp-server...
 
 FROM node:24-alpine AS build
 WORKDIR /app

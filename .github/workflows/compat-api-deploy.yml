@@ -12,6 +12,7 @@ name: Deploy @ophis/compat-api to Cloudflare Workers
 # runbook in the introducing PR.
 
 on:
+  workflow_dispatch: {}
   push:
     branches: [main]
     paths:
