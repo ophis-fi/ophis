@@ -728,7 +728,17 @@ describe('readAssessedOphisFeeBps', () => {
     });
     const meta = { metadata: { partnerFee: { volumeBps: 1, recipient: OPHIS } } };
 
-    expect(readAssessedOphisFeeBps(10, 'market', meta, trade)).toBe('50.00000000');
+    for (const chainId of [10, 4663]) {
+      expect(readAssessedOphisFeeBps(chainId, 'market', meta, trade)).toBe('50.00000000');
+      expect(readAssessedOphisFeeBps(chainId, 'limit', meta, trade)).toBe('50.00000000');
+      expect(readAssessedOphisFeeBps(chainId, 'liquidity', meta, trade)).toBeNull();
+      expect(readAssessedOphisFeeBps(chainId, undefined, meta, trade)).toBeNull();
+    }
+    trade.executedProtocolFees![0]!.policy = { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.005 } };
+    expect(readAssessedOphisFeeBps(10, 'limit', meta, trade)).toBe('50.00000000');
+    expect(readAssessedOphisFeeBps(4663, 'limit', meta, trade)).toBeNull();
+    trade.executedProtocolFees![0]!.policy = { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.006 } };
+    expect(readAssessedOphisFeeBps(10, 'limit', meta, trade)).toBeNull();
   });
 
   it('removes sell-token protocol fees from a buy-order gross volume', async () => {
@@ -753,7 +763,7 @@ describe('readAssessedOphisFeeBps', () => {
     expect(readAssessedOphisFeeBps(1, undefined, meta, trade)).toBe('15.00000000');
   });
 
-  it('accepts an operated-chain limit fill with no market-only improvement policy', async () => {
+  it('accepts an operated-chain limit fill with no backend improvement policy', async () => {
     const [{ readAssessedOphisFeeBps }, { CowTrade }] = await Promise.all([
       import('../src/fetcher.js'),
       import('../src/cow/types.js'),

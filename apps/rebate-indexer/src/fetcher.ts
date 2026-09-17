@@ -362,11 +362,15 @@ function appDataMatchesExecutedFee(
 }
 
 function isCanonicalOphisImprovement(
+  chainId: number,
   policy: NonNullable<CowTrade['executedProtocolFees']>[number]['policy'],
 ): boolean {
   if (!('priceImprovement' in policy)) return false;
   const fee = policy.priceImprovement;
-  return (approxFactor(fee.factor, 8_000) && approxFactor(fee.maxVolumeFactor, 99))
+  // Optimism historical executions also used the 80% / 50 bp policy.
+  return (approxFactor(fee.factor, 8_000)
+      && (approxFactor(fee.maxVolumeFactor, 99)
+        || (chainId === 10 && approxFactor(fee.maxVolumeFactor, 50))))
     || (approxFactor(fee.factor, 5_000) && approxFactor(fee.maxVolumeFactor, 20));
 }
 
@@ -391,15 +395,15 @@ export function readAssessedOphisFeeBps(
   const executed = trade.executedProtocolFees ?? [];
   if (appFees.length === 0 || executed.length < appFees.length) return null;
 
-  // Operated market orders prepend one canonical Ophis improvement policy;
-  // limit orders have only the appData policies. Exact cardinality plus the
-  // value-level suffix match below rejects layouts where a recipient was filtered.
+  // Operated market and limit orders can prepend one canonical Ophis improvement
+  // policy. Exact cardinality plus the value-level suffix match below rejects
+  // layouts where a recipient was filtered.
   const sovereign = SOVEREIGN_CHAIN_IDS.has(chainId);
   let hasSovereignImprovement = false;
   if (sovereign) {
-    if (orderClass === 'market'
+    if ((orderClass === 'market' || orderClass === 'limit')
       && executed.length === appFees.length + 1
-      && isCanonicalOphisImprovement(executed[0]!.policy)) {
+      && isCanonicalOphisImprovement(chainId, executed[0]!.policy)) {
       hasSovereignImprovement = true;
     } else if ((orderClass !== 'limit' && orderClass !== 'liquidity')
       || executed.length !== appFees.length) {
