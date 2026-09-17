@@ -11,6 +11,8 @@ import { useDerivedTradeState } from './useDerivedTradeState'
 import { useGetReceiveAmountInfo } from './useGetReceiveAmountInfo'
 import { useSwapFundingAmount } from './useSwapFundingAmount'
 
+import { TradeType } from '../types'
+
 jest.mock('modules/tradeQuote', () => ({
   useTradeQuote: jest.fn(),
   getIsFastQuote: () => false,
@@ -20,6 +22,7 @@ jest.mock('@cowprotocol/wallet', () => ({
   useWalletInfo: () => ({ account: '0x1111111111111111111111111111111111111111' }),
 }))
 jest.mock('./useGetReceiveAmountInfo', () => ({ useGetReceiveAmountInfo: jest.fn() }))
+jest.mock('./useIsWrapOrUnwrap', () => ({ useIsWrapOrUnwrap: () => false }))
 jest.mock('./useAmountsToSignFromQuote', () => ({ useAmountsToSignFromQuote: jest.fn() }))
 jest.mock('./useDerivedTradeState', () => ({ useDerivedTradeState: jest.fn() }))
 
@@ -30,6 +33,7 @@ it('funds the full BUY cap in native currency and rejects an outdated amount', (
     inputCurrencyAmount: CurrencyAmount.fromRawAmount(native, '1000'),
     outputCurrencyAmount: CurrencyAmount.fromRawAmount(USDC_MAINNET, '10000000'),
     orderKind: OrderKind.BUY,
+    tradeType: TradeType.SWAP,
   }
   jest.mocked(useDerivedTradeState).mockReturnValue(state as ReturnType<typeof useDerivedTradeState>)
   jest.mocked(useAmountsToSignFromQuote).mockReturnValue({
@@ -90,6 +94,11 @@ it('funds the full BUY cap in native currency and rejects an outdated amount', (
   rerender()
   expect(result.current).toBeNull()
 
+  state.tradeType = TradeType.LIMIT_ORDER
+  rerender()
+  expect(result.current).toBe(state.inputCurrencyAmount)
+
+  state.tradeType = TradeType.SWAP
   state.orderKind = OrderKind.SELL
   rerender()
   expect(result.current).toBe(state.inputCurrencyAmount)

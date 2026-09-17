@@ -10,19 +10,25 @@ import { getIsFastQuote, isQuoteExpired, useTradeQuote } from 'modules/tradeQuot
 import { useAmountsToSignFromQuote } from './useAmountsToSignFromQuote'
 import { useDerivedTradeState } from './useDerivedTradeState'
 import { useGetReceiveAmountInfo } from './useGetReceiveAmountInfo'
+import { useIsWrapOrUnwrap } from './useIsWrapOrUnwrap'
+
+import { TradeType } from '../types'
 
 // Validate the signed BUY cap; wrapping can also reserve approval headroom.
 export function useSwapFundingAmount(includeApprovalBuffer = false): CurrencyAmount<Currency> | null {
-  const { inputCurrency, outputCurrencyAmount, inputCurrencyAmount, orderKind } = useDerivedTradeState() || {}
+  const { inputCurrency, outputCurrencyAmount, inputCurrencyAmount, orderKind, tradeType } =
+    useDerivedTradeState() || {}
   const { maximumSendSellAmount } = useAmountsToSignFromQuote() || {}
   const { amountsToSign } = useGetReceiveAmountInfo() || {}
   const sellAmount = includeApprovalBuffer ? maximumSendSellAmount : amountsToSign?.sellAmount
   const { account } = useWalletInfo()
+  const isWrap = useIsWrapOrUnwrap()
+  const isBuySwap = orderKind === OrderKind.BUY && tradeType === TradeType.SWAP && !isWrap
   const tradeQuote = useTradeQuote()
   const { quote } = tradeQuote
   const order = quote?.quoteResults.quoteResponse.quote
   return useMemo(() => {
-    if (!inputCurrency || orderKind !== OrderKind.BUY) {
+    if (!inputCurrency || !isBuySwap) {
       return inputCurrencyAmount || null
     }
     if (!sellAmount || !outputCurrencyAmount || !order || !quote) return null
@@ -43,7 +49,7 @@ export function useSwapFundingAmount(includeApprovalBuffer = false): CurrencyAmo
   }, [
     inputCurrency,
     inputCurrencyAmount,
-    orderKind,
+    isBuySwap,
     sellAmount,
     outputCurrencyAmount,
     order,
