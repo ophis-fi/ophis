@@ -16,11 +16,19 @@ on:
   push:
     branches: [main]
     paths:
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
       - 'apps/compat-api/**'
       - 'packages/sdk/**'
       - '.github/workflows/compat-api-deploy.yml'
   pull_request:
     paths:
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
       - 'apps/compat-api/**'
       - 'packages/sdk/**'
 

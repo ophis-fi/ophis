@@ -30,6 +30,10 @@ on:
     branches:
       - main
     paths:
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'patches/**'
       - 'apps/safe-app/**'
       # @ophis/safe-app bundles @ophis/sdk (workspace:*). An SDK change must redeploy the Safe App
       # too, or safe.ophis.fi silently ships a stale SDK.
