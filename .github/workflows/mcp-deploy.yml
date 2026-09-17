@@ -57,8 +57,8 @@ jobs:
       # CLOUDFLARE_WORKERS_TOKEN on the same runner, so no third-party dependency
       # lifecycle script should execute next to that token (mirrors
       # sdk-release.yml). Safe here: the root workspace has no own postinstall,
-      # the SDK build is invoked explicitly below, and the test step is plain
-      # `vitest run` (no workerd/miniflare native runtime needed).
+      # the SDK build is invoked explicitly below. The local Worker smoke test
+      # uses the platform binary already shipped by the pinned workerd package.
       # Future option if a build ever needs a native dep script: split into a
       # secret-free build job + a deploy job (upload/download artifact).
       - run: pnpm install --frozen-lockfile --ignore-scripts
