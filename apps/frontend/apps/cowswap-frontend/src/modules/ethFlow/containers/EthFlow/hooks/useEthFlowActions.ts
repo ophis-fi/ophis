@@ -2,6 +2,7 @@ import { useSetAtom } from 'jotai'
 import { useMemo } from 'react'
 
 import { WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/common-const'
+import { OrderKind } from '@cowprotocol/cow-sdk'
 import { Command } from '@cowprotocol/types'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -10,7 +11,8 @@ import { Field } from 'legacy/state/types'
 
 import { MAX_APPROVE_AMOUNT, TradeApproveCallback } from 'modules/erc20Approve'
 import { useSwapPartialApprovalToggleState } from 'modules/swap/hooks/useSwapSettings'
-import { useOnCurrencySelection, useTradeConfirmActions } from 'modules/trade'
+import { useDerivedTradeState, useOnCurrencySelection, useTradeConfirmActions } from 'modules/trade'
+import { useTradeQuoteManager } from 'modules/tradeQuote'
 
 import { updateEthFlowContextAtom } from '../../../state/ethFlowContextAtom'
 
@@ -33,6 +35,8 @@ export interface EthFlowActions {
 
 export function useEthFlowActions(callbacks: EthFlowActionCallbacks, amountToApprove?: bigint): EthFlowActions {
   const { chainId } = useWalletInfo()
+  const isBuy = useDerivedTradeState()?.orderKind === OrderKind.BUY
+  const wrappedQuoteManager = useTradeQuoteManager(WRAPPED_NATIVE_CURRENCIES[chainId]?.address)
 
   const updateEthFlowContext = useSetAtom(updateEthFlowContextAtom)
   const onCurrencySelection = useOnCurrencySelection()
@@ -60,8 +64,9 @@ export function useEthFlowActions(callbacks: EthFlowActionCallbacks, amountToApp
 
     const swap = async (): Promise<void> => {
       callbacks.dismiss()
+      if (isBuy) wrappedQuoteManager?.reset()
       onCurrencySelection(Field.INPUT, WRAPPED_NATIVE_CURRENCIES[chainId], () => {
-        openSwapConfirmModal(true)
+        if (!isBuy) openSwapConfirmModal(true)
       })
     }
 
@@ -102,5 +107,7 @@ export function useEthFlowActions(callbacks: EthFlowActionCallbacks, amountToApp
     openSwapConfirmModal,
     isPartialApproveEnabledBySettings,
     amountToApprove,
+    isBuy,
+    wrappedQuoteManager,
   ])
 }

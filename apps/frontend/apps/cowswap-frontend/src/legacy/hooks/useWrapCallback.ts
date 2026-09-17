@@ -7,7 +7,7 @@ import {
   getRawCurrentChainIdFromUrl,
   isRejectRequestProviderError,
 } from '@cowprotocol/common-utils'
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { getChainCurrencySymbols } from '@cowprotocol/tokens'
 import { Command } from '@cowprotocol/types'
@@ -187,6 +187,16 @@ async function wrapContractCall(
   const gasLimit = calculateGasMargin(estimatedGas)
 
   const network = await assertProviderNetwork(chainId, wethContract.provider, 'wrap')
+  if (!areAddressesEqual(await wethContract.signer.getAddress(), account)) {
+    throw new Error(t`Wallet account changed. Please try again.`)
+  }
+  const [balance, gasPrice] = await Promise.all([
+    wethContract.provider.getBalance(account),
+    wethContract.provider.getGasPrice(),
+  ])
+  if (balance.lt(BigNumber.from(amountHex).add(gasLimit.mul(gasPrice)))) {
+    throw new Error(t`Insufficient balance to wrap and pay the network fee.`)
+  }
 
   const tx = await wethContract.populateTransaction.deposit({ value: amountHex, gasLimit })
 

@@ -8,12 +8,13 @@ import { useWalletInfo } from '@cowprotocol/wallet'
  * Handles EthFlow chain change by calling onDismiss when it happens
  */
 export function useHandleChainChange(onDismiss: Command): null {
-  const { chainId } = useWalletInfo()
+  const { chainId, account } = useWalletInfo()
   const prevChainId = usePrevious(chainId)
+  const prevAccount = usePrevious(account)
 
   useEffect(() => {
-    if (chainId && prevChainId && chainId !== prevChainId) onDismiss()
-  }, [chainId, onDismiss, prevChainId])
+    if ((prevChainId && chainId !== prevChainId) || (prevAccount && account !== prevAccount)) onDismiss()
+  }, [chainId, account, onDismiss, prevChainId, prevAccount])
 
   return null
 }

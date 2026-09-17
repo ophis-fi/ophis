@@ -18,7 +18,6 @@ export interface TradeWidgetParams {
   compactView: boolean
   showRecipient: boolean
   isTradePriceUpdating: boolean
-  isSellingEthSupported?: boolean
   priceImpact: PriceImpact
   disableTradeNotifications?: boolean
   disableQuotePolling?: boolean

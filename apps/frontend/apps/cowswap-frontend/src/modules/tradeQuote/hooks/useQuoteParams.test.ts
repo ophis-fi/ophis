@@ -1,4 +1,4 @@
-import { TokenWithLogo, USDC_MAINNET } from '@cowprotocol/common-const'
+import { WRAPPED_NATIVE_CURRENCIES, NATIVE_CURRENCIES, TokenWithLogo, USDC_MAINNET } from '@cowprotocol/common-const'
 import { AdditionalTargetChainId, BTC_CURRENCY_ADDRESS, OrderKind } from '@cowprotocol/cow-sdk'
 
 import { renderHook } from '@testing-library/react'
@@ -69,4 +69,25 @@ it('never requests a partially fillable quote for a bridge order (fill-or-kill: 
   jest.mocked(useQuoteParamsRecipient).mockReturnValue(undefined)
   const { result: local } = renderHook(() => useQuoteParams('1000000', true))
   expect(local.current?.quoteParams?.partiallyFillable).toBe(true)
+})
+
+it.each([OrderKind.BUY, OrderKind.SELL])('quotes native %s with the matching settlement path', (orderKind) => {
+  const native = NATIVE_CURRENCIES[1]
+  const state: Partial<ReturnType<typeof useDerivedTradeState>> = {
+    inputCurrency: native,
+    outputCurrency: USDC_MAINNET,
+    orderKind,
+  }
+  jest.mocked(useDerivedTradeState).mockReturnValue(state as ReturnType<typeof useDerivedTradeState>)
+  jest.mocked(useQuoteParamsRecipient).mockReturnValue(undefined)
+  const { result } = renderHook(() => useQuoteParams('1000000'))
+  expect(result.current?.inputCurrency).toBe(native)
+  expect(result.current?.quoteParams).toEqual(
+    expect.objectContaining({
+      kind: orderKind,
+      amount: 1000000n,
+      sellTokenAddress: orderKind === OrderKind.BUY ? WRAPPED_NATIVE_CURRENCIES[1].address : native.address,
+      buyTokenAddress: USDC_MAINNET.address,
+    }),
+  )
 })

@@ -137,7 +137,7 @@ jobs:
       - name: Whole-token quote and logo regressions
         working-directory: apps/frontend
         run: |
-          pnpm exec nx run cowswap-frontend:test --testPathPatterns 'getSwapQuote|fetchAndProcessQuote|getReceiveAmountInfo.test|modules/swap/(services/wholeToken|hooks/useDirectPriceImpact|containers/WholeTokenRoute/WholeTokenWarnings)' --passWithNoTests=false
+          pnpm exec nx run cowswap-frontend:test --testPathPatterns 'getSwapQuote|fetchAndProcessQuote|getReceiveAmountInfo.test|useSwapFundingAmount|useSwapFormState|useEthFlowActions|modules/swap/(services/wholeToken|hooks/useDirectPriceImpact|containers/WholeTokenRoute/WholeTokenWarnings)' --passWithNoTests=false
           pnpm exec nx run tokens:test --testPathPatterns 'getTokenLogoUrls|useSearchToken' --passWithNoTests=false
 
       # Coinbase tokenized stocks on Base: the shipped token list is validated

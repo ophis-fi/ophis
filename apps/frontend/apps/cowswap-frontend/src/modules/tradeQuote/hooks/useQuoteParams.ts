@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 
 import { DEFAULT_APP_CODE } from '@cowprotocol/common-const'
 import { useDebounce } from '@cowprotocol/common-hooks'
-import { COW_PROTOCOL_ETH_FLOW_ADDRESS, getCurrencyAddress } from '@cowprotocol/common-utils'
+import { COW_PROTOCOL_ETH_FLOW_ADDRESS, getCurrencyAddress, getWrappedToken } from '@cowprotocol/common-utils'
 import { getPartnerFeeBps, OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 import { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
@@ -96,11 +96,9 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
     // Never let the SDK default a non-EVM destination to the connected EVM account.
     if (isNonEvmRecipientChain(outputCurrency.chainId) && !receiver) return
 
-    const sellTokenAddress = getCurrencyAddress(inputCurrency)
+    const sellCurrency = orderKind === OrderKind.BUY ? getWrappedToken(inputCurrency) : inputCurrency
+    const sellTokenAddress = getCurrencyAddress(sellCurrency)
     const buyTokenAddress = getCurrencyAddress(outputCurrency)
-
-    const sellTokenDecimals = inputCurrency.decimals
-    const buyTokenDecimals = outputCurrency.decimals
 
     if (!amount) {
       return {
@@ -125,11 +123,11 @@ export function useQuoteParams(amount: Nullish<string>, partiallyFillable = fals
 
       sellTokenChainId: inputCurrency.chainId,
       sellTokenAddress,
-      sellTokenDecimals,
+      sellTokenDecimals: inputCurrency.decimals,
 
       buyTokenChainId: outputCurrency.chainId,
       buyTokenAddress,
-      buyTokenDecimals,
+      buyTokenDecimals: outputCurrency.decimals,
 
       account: owner,
       appCode: appDataDoc?.appCode || DEFAULT_APP_CODE,

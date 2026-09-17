@@ -65,6 +65,7 @@ export const ethFlowConfigs: {
     buttonText: t`Wrap ${nativeSymbol}`,
     descriptions: [
       t`To continue, click below to wrap your ${nativeSymbol} to ${wrappedSymbol} via an on-chain ERC20 transaction.`,
+      t`Unused ${wrappedSymbol} stays in your wallet. You can unwrap it back to ${nativeSymbol}.`,
     ],
   }),
   [EthFlowState.ApproveNeeded]: ({ wrappedSymbol }) => ({

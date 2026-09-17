@@ -29,6 +29,7 @@ import {
   useGetReceiveAmountInfo,
   useTradeConfirmActions,
   useCommonTradeConfirmContext,
+  useSwapFundingAmount,
 } from 'modules/trade'
 import { useTradeQuote } from 'modules/tradeQuote'
 import { HighFeeWarning, RowDeadline, RowQuoteId } from 'modules/tradeWidgetAddons'
@@ -83,10 +84,11 @@ export function SwapConfirmModal(props: SwapConfirmModalProps): ReactNode {
   const labelsAndTooltips = useLabelsAndTooltips()
 
   const { values: balances } = useTokensBalancesCombined()
+  const fundingAmount = useSwapFundingAmount()
 
   // TODO: Reduce function complexity by extracting logic
   const disableConfirm = useMemo(() => {
-    const current = inputCurrencyInfo?.amount?.currency
+    const current = fundingAmount?.currency
 
     if (shouldDisplayBridgeDetails && !bridgeQuoteAmounts) {
       return true
@@ -98,15 +100,14 @@ export function SwapConfirmModal(props: SwapConfirmModalProps): ReactNode {
       const balanceAsCurrencyAmount = CurrencyAmount.fromRawAmount(current, balance?.toString() ?? '0')
 
       const isBalanceEnough = balanceAsCurrencyAmount
-        ? inputCurrencyInfo?.amount?.equalTo(balanceAsCurrencyAmount) ||
-          inputCurrencyInfo?.amount?.lessThan(balanceAsCurrencyAmount)
+        ? fundingAmount?.equalTo(balanceAsCurrencyAmount) || fundingAmount?.lessThan(balanceAsCurrencyAmount)
         : false
 
       return !isBalanceEnough
     }
 
     return true
-  }, [balances, inputCurrencyInfo, shouldDisplayBridgeDetails, bridgeQuoteAmounts])
+  }, [balances, fundingAmount, shouldDisplayBridgeDetails, bridgeQuoteAmounts])
 
   const confirmText = useGetConfirmButtonLabel('swap', shouldDisplayBridgeDetails, true)
 

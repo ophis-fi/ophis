@@ -1,6 +1,6 @@
 import { getEthFlowContractAddresses } from '@cowprotocol/common-const'
 import { captureError, ERROR_TYPES, normalizeError, reportPlaceOrderWithExpiredQuote } from '@cowprotocol/common-utils'
-import { areAddressesEqual, OrderClass, SigningScheme, SigningStepManager } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, OrderClass, OrderKind, SigningScheme, SigningStepManager } from '@cowprotocol/cow-sdk'
 import { Percent } from '@cowprotocol/currency'
 import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
@@ -103,6 +103,9 @@ export async function ethFlow({
     // "contract address doesn't match" error AFTER the wallet popup already
     // opened. Throw inside the try block so existing error handling
     // (normalizeError, captureError, tradeConfirmActions.onError) fires.
+    if (kind !== OrderKind.SELL) {
+      throw new Error(t`Wrap your native token before buying an exact amount.`)
+    }
     const ethFlowAddrForChain = getAvailableEthFlowAddress(chainId)
 
     // Do not proceed if fee is expired

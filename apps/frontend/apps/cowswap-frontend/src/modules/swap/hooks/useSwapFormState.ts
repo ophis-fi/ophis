@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 
 import { getIsNativeToken } from '@cowprotocol/common-utils'
+import { OrderKind } from '@cowprotocol/cow-sdk'
 import { useIsSmartContractWallet, useIsTxBundlingSupported } from '@cowprotocol/wallet'
 
 import { useIsHooksTradeType } from 'modules/trade'
@@ -29,7 +30,7 @@ export function useSwapFormState(): SwapFormState | null {
         state.inputCurrency && state.outputCurrency && state.inputCurrency.chainId !== state.outputCurrency.chainId
 
       if (!isSmartContractWallet) {
-        return SwapFormState.RegularEthFlowSwap
+        return state.orderKind === OrderKind.BUY ? SwapFormState.SwapWithWrappedToken : SwapFormState.RegularEthFlowSwap
       } else if (isBundlingSupported) {
         return isBridging ? SwapFormState.WrapAndSwapAndBridge : SwapFormState.WrapAndSwap
       } else {

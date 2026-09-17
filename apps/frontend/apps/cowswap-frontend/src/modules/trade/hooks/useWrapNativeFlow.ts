@@ -23,9 +23,10 @@ import { useWethContract } from 'common/hooks/useContract'
 import { useDerivedTradeState } from './useDerivedTradeState'
 import { useWrapNativeScreenState } from './useWrapNativeScreenState'
 
-export function useWrapNativeFlow(): WrapUnwrapCallback {
+export function useWrapNativeFlow(amountOverride?: Nullish<CurrencyAmount<Currency>>): WrapUnwrapCallback {
   const state = useDerivedTradeState()
-  const wrapCallback = useWrapNativeCallback(state?.inputCurrencyAmount)
+  const amount = amountOverride === undefined ? state?.inputCurrencyAmount : amountOverride
+  const wrapCallback = useWrapNativeCallback(amount)
 
   return useCallback(
     async (params?: WrapUnwrapCallbackParams) => {
@@ -35,7 +36,7 @@ export function useWrapNativeFlow(): WrapUnwrapCallback {
         WidgetHookEvents.ON_BEFORE_WRAP_UNWRAP,
         buildTradeWidgetHookPayload({
           orderType: UiOrderType.SWAP,
-          inputAmount: state?.inputCurrencyAmount,
+          inputAmount: amount,
           outputAmount: state?.outputCurrencyAmount,
         }),
       ).catch(() => false)
@@ -46,7 +47,7 @@ export function useWrapNativeFlow(): WrapUnwrapCallback {
 
       return wrapCallback(params)
     },
-    [wrapCallback, state?.inputCurrencyAmount, state?.outputCurrencyAmount],
+    [wrapCallback, amount, state?.outputCurrencyAmount],
   )
 }
 

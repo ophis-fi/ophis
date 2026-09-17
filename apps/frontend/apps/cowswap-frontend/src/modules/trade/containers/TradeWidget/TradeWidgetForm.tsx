@@ -40,7 +40,6 @@ import { TradeWidgetProps } from './types'
 
 import { useTradeStateFromUrl } from '../../hooks/setupTradeState/useTradeStateFromUrl'
 import { useIsCurrentTradeBridging } from '../../hooks/useIsCurrentTradeBridging'
-import { useIsEoaEthFlow } from '../../hooks/useIsEoaEthFlow'
 import { useIsQuoteUpdatePossible } from '../../hooks/useIsQuoteUpdatePossible'
 import { useIsWrapOrUnwrap } from '../../hooks/useIsWrapOrUnwrap'
 import { useLimitOrdersPromoBanner } from '../../hooks/useLimitOrdersPromoBanner'
@@ -102,7 +101,6 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
     displayTokenName = false,
     displayChainName = isCurrentTradeBridging,
     isMarketOrderWidget = false,
-    isSellingEthSupported = false,
     isPriceStatic = false,
   } = params
 
@@ -146,7 +144,6 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
   const tradeStateFromUrl = useTradeStateFromUrl()
   const primaryFormValidation = useGetTradeFormValidation()
   const { shouldBeVisible: isLimitOrdersPromoBannerVisible } = useLimitOrdersPromoBanner()
-  const isEoaEthFlow = useIsEoaEthFlow()
   const isQuoteUpdatePossible = useIsQuoteUpdatePossible()
 
   const sellToken = inputCurrencyInfo.currency
@@ -330,17 +327,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                   <div>
                     <CurrencyInputPanel
                       id="output-currency-input"
-                      inputDisabled={
-                        (isSellingEthSupported && isEoaEthFlow) ||
-                        isWrapOrUnwrap ||
-                        isCurrentTradeBridging ||
-                        disableOutput
-                      }
-                      inputTooltip={
-                        isSellingEthSupported && isEoaEthFlow
-                          ? t`You cannot edit this field when selling` + ` ${inputCurrencyInfo?.currency?.symbol}`
-                          : undefined
-                      }
+                      inputDisabled={isWrapOrUnwrap || isCurrentTradeBridging || disableOutput}
                       currencyInfo={outputCurrencyInfo}
                       priceImpactParams={!disablePriceImpact ? priceImpact : undefined}
                       topLabel={

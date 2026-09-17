@@ -6,7 +6,7 @@ import { renderHook } from '@testing-library/react'
 import { useGetAmountToSignApprove } from 'modules/erc20Approve'
 import { ethFlow } from 'modules/ethFlow'
 import { callWidgetHook } from 'modules/injectedWidget'
-import { useAmountsToSignFromQuote } from 'modules/trade'
+import { useAmountsToSignFromQuote, useSwapFundingAmount } from 'modules/trade'
 
 import { useNeedsApproval } from 'common/hooks/useNeedsApproval'
 
@@ -22,7 +22,11 @@ import { FlowType, SafeBundleFlowContext, TradeFlowContext } from '../types/Trad
 
 jest.mock('modules/erc20Approve', () => ({ useGetAmountToSignApprove: jest.fn() }))
 jest.mock('modules/injectedWidget', () => ({ callWidgetHook: jest.fn(), buildTradeWidgetHookPayload: jest.fn() }))
-jest.mock('modules/trade', () => ({ useAmountsToSignFromQuote: jest.fn(), useTradePriceImpact: () => ({}) }))
+jest.mock('modules/trade', () => ({
+  useAmountsToSignFromQuote: jest.fn(),
+  useSwapFundingAmount: jest.fn(),
+  useTradePriceImpact: () => ({}),
+}))
 jest.mock('modules/ethFlow', () => ({ useEthFlowContext: () => null, ethFlow: jest.fn() }))
 jest.mock('modules/trade/utils/tradeFlowAnalytics', () => ({ useTradeFlowAnalytics: () => ({}) }))
 jest.mock('modules/trade/utils/logger', () => ({ logTradeFlow: jest.fn() }))
@@ -49,6 +53,7 @@ const actions = {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  jest.mocked(useSwapFundingAmount).mockReturnValue(required)
   jest.mocked(useGetAmountToSignApprove).mockReturnValue(cap)
   jest
     .mocked(useAmountsToSignFromQuote)
@@ -143,4 +148,14 @@ it('allows an exact-cap bundle without widening its approval', async () => {
     expect.anything(),
     expect.anything(),
   )
+})
+
+it('blocks signing until the BUY funding quote matches the current wallet and chain', async () => {
+  jest.mocked(useTradeFlowType).mockReturnValue(FlowType.REGULAR)
+  jest.mocked(useSwapFundingAmount).mockReturnValue(null)
+  const { result } = renderHook(() => useHandleSwap({ deadline: 30 }, actions), { wrapper: LinguiWrapper })
+  expect(result.current.contextIsReady).toBe(false)
+  await result.current.callback()
+  expect(callWidgetHook).not.toHaveBeenCalled()
+  expect(swapFlow).not.toHaveBeenCalled()
 })

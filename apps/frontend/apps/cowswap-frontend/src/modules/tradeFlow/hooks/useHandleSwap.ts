@@ -9,7 +9,7 @@ import { Field } from 'legacy/state/types'
 import { useGetAmountToSignApprove } from 'modules/erc20Approve'
 import { ethFlow, useEthFlowContext } from 'modules/ethFlow'
 import { buildTradeWidgetHookPayload, callWidgetHook } from 'modules/injectedWidget'
-import { TradeWidgetActions, useAmountsToSignFromQuote, useTradePriceImpact } from 'modules/trade'
+import { TradeWidgetActions, useAmountsToSignFromQuote, useTradePriceImpact, useSwapFundingAmount } from 'modules/trade'
 import { logTradeFlow } from 'modules/trade/utils/logger'
 import { useTradeFlowAnalytics } from 'modules/trade/utils/tradeFlowAnalytics'
 
@@ -33,10 +33,11 @@ export function useHandleSwap(
 ): { callback(): Promise<false | void>; contextIsReady: boolean } {
   const tradeFlowType = useTradeFlowType()
   const amountToApprove = useGetAmountToSignApprove()
+  const fundingAmount = useSwapFundingAmount()
   const { maximumSendSellAmount } = useAmountsToSignFromQuote() || {}
   const needsApproval = useNeedsApproval(maximumSendSellAmount)
   const context = useTradeFlowContext(params)
-  const tradeFlowContext = context && isBridgeQuoteRecipientCurrent(context) ? context : null
+  const tradeFlowContext = context && fundingAmount && isBridgeQuoteRecipientCurrent(context) ? context : null
   const safeBundleFlowContext = useSafeBundleFlowContext()
   const isBridge = getAreBridgeCurrencies(
     tradeFlowContext?.context.inputAmount.currency,

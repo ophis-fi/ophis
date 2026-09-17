@@ -20,7 +20,13 @@ import { useTokensBalancesCombined } from 'modules/combinedBalances'
 import { useApproveState, useGetAmountToSignApprove, useIsApprovalOrPermitRequired } from 'modules/erc20Approve'
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 import { RwaTokenStatus, useRwaTokenStatus } from 'modules/rwa'
-import { TradeType, useDerivedTradeState, useIsWrapOrUnwrap, useTradePriceImpact } from 'modules/trade'
+import {
+  TradeType,
+  useDerivedTradeState,
+  useIsWrapOrUnwrap,
+  useSwapFundingAmount,
+  useTradePriceImpact,
+} from 'modules/trade'
 import { TradeQuoteState, useTradeQuote } from 'modules/tradeQuote'
 
 import { QuoteApiError, QuoteApiErrorCodes } from 'api/cowProtocol/errors/QuoteError'
@@ -37,6 +43,7 @@ import { TradeFormValidationCommonContext } from '../types'
 export function useTradeFormValidationContext(): TradeFormValidationCommonContext | null {
   const { account } = useWalletInfo()
   const derivedTradeState = useDerivedTradeState()
+  const fundingAmount = useSwapFundingAmount()
   const tradeQuote = useTradeQuote()
   const injectedWidgetParams = useInjectedWidgetParams()
   const tradePriceImpact = useTradePriceImpact()
@@ -103,7 +110,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
       isProviderNetworkUnsupported,
       isProviderNetworkDeprecated,
       isOnline,
-      derivedTradeState,
+      derivedTradeState: { ...derivedTradeState, inputCurrencyAmount: fundingAmount },
       intermediateTokenToBeImported: !!intermediateBuyToken && toBeImported,
       isAccountProxyLoading,
       isProxySetupValid,
@@ -122,6 +129,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
     approvalState,
     customTokenError,
     derivedTradeState,
+    fundingAmount,
     intermediateBuyToken,
     isAccountProxyLoading,
     isApproveRequired,
