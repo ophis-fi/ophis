@@ -12,6 +12,8 @@ const quoter = new Interface([
 ])
 const pair = new Interface(['function getReserves() view returns (uint112,uint112,uint32)'])
 const FEES = [100, 500, 3000, 10000]
+// QuoterV2 uses TickMath.MIN_SQRT_RATIO + 1 / MAX_SQRT_RATIO - 1 as its swap limits.
+const PRICE_LIMITS = ['4295128740', '1461446703485210103287273052203988822378723970341']
 // MPS's three Ethereum pools: direct v3, USDC v3 (1%), and USDC v2.
 // Compare each standard WETH/USDC v3 fee tier for the intermediate hop.
 const ROUTES: Route[] = [
@@ -64,14 +66,23 @@ export async function getMarket(provider: JsonRpcProvider, signal?: AbortSignal)
   }
 }
 
-export async function quoteV3(market: Market, route: Route, amount: bigint, exactOutput: boolean): Promise<bigint> {
+export async function quoteV3(
+  market: Market,
+  route: Route,
+  amount: bigint,
+  exactOutput: boolean,
+  requireFullInput = false,
+): Promise<bigint> {
   if (route.tokens.length === 1) return amount
   const method = exactOutput ? 'quoteExactOutput' : 'quoteExactInput'
   const result = await market.rpc.call(
     QUOTER,
     quoter.encodeFunctionData(method, [encodePath(route, exactOutput), amount]),
   )
-  return BigInt(String(quoter.decodeFunctionResult(method, result)[0]))
+  const [quotedAmount, prices] = quoter.decodeFunctionResult(method, result)
+  // A boundary hit can leave MPS or intermediate USDC unspent; do not quote it as a full sale.
+  if (requireFullInput && Array.from(prices, String).some((price) => PRICE_LIMITS.includes(price))) return 0n
+  return BigInt(String(quotedAmount))
 }
 
 export function getRoutes(inputToken?: string): Route[] {

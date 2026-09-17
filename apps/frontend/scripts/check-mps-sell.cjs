@@ -87,8 +87,16 @@ async function main() {
     // Exhaust a concentrated-liquidity v3 route: unused input must return to its sender.
     const partialBudget = 10n ** 18n
     await provider.send('anvil_setStorageAt', [MPS, balanceSlot, '0x' + partialBudget.toString(16).padStart(64, '0')])
-    const partial = (await getDirectQuotes(provider, { ...request, budget: partialBudget })).find(q => !q.route.viaV2 && q.route.tokens.length === 2)
-    assert(partial, 'Exhausted v3 route must quote its available liquidity')
+    const limited = await getDirectQuotes(provider, { ...request, budget: partialBudget })
+    assert(!limited.some(q => !q.route.viaV2 && q.route.tokens.length === 2), 'Do not advertise exhausted liquidity as a full-input sale')
+    // A stale quote can still encounter depleted liquidity at execution; refunds remain mandatory.
+    const partial = { ...ready[0], route: { label: 'Partial-fill fixture', tokens: [MPS, WETH], fees: [10000] },
+      budget: partialBudget, sellAmount: partialBudget, maxInput: partialBudget, maxTotal: partialBudget,
+      buyAmount: 1n, minBuyAmount: 1n, fees: [], gasLimit: 30000000n }
+    const usdcBefore = await usdc.balanceOf(account)
+    const usdcSlot = keccak256(defaultAbiCoder.encode(['address', 'uint256'], [ROUTER, 9]))
+    await provider.send('anvil_setStorageAt', [USDC, usdcSlot, '0x' + 'b'.padStart(64, '0')])
+    assert.equal((await usdc.balanceOf(ROUTER)).toString(), '11', 'USDC residual fixture must be nonzero')
     for (const tx of await getInputApprovals(provider, account, partialBudget, partial.expiresAt, MPS))
       await (await signer.sendTransaction(tx)).wait()
     partial.quotedAt = Date.now()
@@ -97,6 +105,7 @@ async function main() {
     assert(refunded > 0n && refunded < partialBudget, 'Partial fill refunds unused MPS to sender')
     assert.equal((await mps.balanceOf(ROUTER)).toString(), '0', 'No MPS remains publicly sweepable')
     assert.equal((await usdc.balanceOf(ROUTER)).toString(), '0', 'No intermediate USDC remains publicly sweepable')
+    assert.equal((await usdc.balanceOf(account)).sub(usdcBefore).toString(), '11', 'USDC residual returns to sender')
     console.log('PASS: exact MPS input, bounded approvals, net ETH output, fees, recipient, slippage, deadline, partial-fill refunds')
   } finally { await provider.send('evm_revert', [snapshot]) }
 }

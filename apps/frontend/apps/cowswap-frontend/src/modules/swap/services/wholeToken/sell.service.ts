@@ -19,7 +19,7 @@ export async function quoteMpsSell(
     ? (budget * 997n * market.usdcReserve) / (market.mpsReserve * 1000n + budget * 997n)
     : budget
   if (intermediate <= 0n) return null
-  const gross = await quoteV3(market, route, intermediate, false)
+  const gross = await quoteV3(market, route, intermediate, false, true)
   // Fees are paid in WETH from output, so a 1 MPS sale never needs fractional MPS.
   const fees = request.fees.map((fee) => ({
     recipient: fee.recipient,
