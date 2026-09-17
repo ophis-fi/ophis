@@ -6,7 +6,8 @@ import BigNumber from 'bignumber.js'
 import { getInputApprovals, simulationState } from './input.service'
 import { getMarket, getRoutes, Market, quoteV3 } from './market.service'
 import { unavailableRoute } from './quoteRpc.service'
-import { buildDirectTransaction, DirectQuote, Route, USDC, VolumeFee, WETH } from './router.service'
+import { buildDirectTransaction, DirectQuote, isMpsSell, Route, USDC, VolumeFee, WETH } from './router.service'
+import { quoteMpsSell } from './sell.service'
 
 export interface DirectRequest {
   inputToken?: string
@@ -47,6 +48,7 @@ export async function getDirectQuotes(
         request.account,
         request.budget,
         market.timestamp + getDeadlineSeconds(request.deadlineSeconds),
+        request.inputToken,
       )
     : []
   market.rpc.check()
@@ -62,16 +64,31 @@ export async function getDirectQuotes(
     ),
   )
   market.approvalGas = approvalGas.reduce((sum, gas) => sum + gas, 0n)
-  if (request.inputToken)
+  if (request.inputToken && !isMpsSell(request))
     market.inputPerEth = await quoteV3(market, { label: '', tokens: [WETH, USDC], fees: [500] }, 10n ** 18n, false)
   const results = await Promise.all(
-    getRoutes(request.inputToken).map((route) => quoteRoute(provider, request, market, route).catch(unavailableRoute)),
+    getRoutes(request.inputToken).map((route) =>
+      (isMpsSell(request)
+        ? quoteMpsSell(provider, request, market, route)
+        : quoteRoute(provider, request, market, route)
+      ).catch(unavailableRoute),
+    ),
   )
   signal?.throwIfAborted()
   return results
     .flatMap((result) => (result ? [result] : []))
     .sort((a, b) =>
-      a.buyAmount !== b.buyAmount ? (a.buyAmount > b.buyAmount ? -1 : 1) : a.netCost < b.netCost ? -1 : 1,
+      isMpsSell(request)
+        ? a.buyAmount - a.gasCost > b.buyAmount - b.gasCost
+          ? -1
+          : 1
+        : a.buyAmount !== b.buyAmount
+          ? a.buyAmount > b.buyAmount
+            ? -1
+            : 1
+          : a.netCost < b.netCost
+            ? -1
+            : 1,
     )
 }
 

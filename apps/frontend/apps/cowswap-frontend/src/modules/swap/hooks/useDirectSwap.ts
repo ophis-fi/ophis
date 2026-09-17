@@ -26,7 +26,7 @@ import { useDirectApproval } from './useDirectApproval'
 import { useSwapDerivedState } from './useSwapDerivedState'
 
 import { executeDirectSwap, waitForDirectReceipt } from '../services/wholeToken/execute.service'
-import { DirectQuote } from '../services/wholeToken/router.service'
+import { DirectQuote, isMpsSell } from '../services/wholeToken/router.service'
 
 const executionAtom = atomFamily((_: string) =>
   atom({ pending: false, message: '', hash: '', submitted: null as DirectQuote | null }),
@@ -57,7 +57,7 @@ export function useDirectSwap(requestKey: string): {
       const context = {
         account: quote.account,
         orderType: UiOrderType.SWAP,
-        marketLabel: `${inputCurrency.symbol}/MPS`,
+        marketLabel: `${inputCurrency.symbol}/${outputCurrency.symbol}`,
       }
       try {
         const allowed = await confirmHost(quote, inputCurrency, outputCurrency)
@@ -69,8 +69,9 @@ export function useDirectSwap(requestKey: string): {
         const isCurrent = (): boolean => current.current === requestKey
         const tx = await executeDirectSwap(wallet, getRpcProvider(1), quote, isCurrent, status.hash)
         analytics.sign(context)
-        const buyAmount = quote.buyAmount.toString()
-        await addTransaction({ hash: tx.hash, summary: t`Buy ${buyAmount} MPS on Uniswap` })
+        const buyAmount = CurrencyAmount.fromRawAmount(outputCurrency, quote.buyAmount.toString()).toSignificant(6)
+        const symbol = outputCurrency.symbol || ''
+        await addTransaction({ hash: tx.hash, summary: t`Swap for ${buyAmount} ${symbol} on Uniswap` })
         setStatus({ pending: true, message: t`Transaction pending`, hash: tx.hash, submitted: quote })
         const receipt = await waitForDirectReceipt(tx, (hash, cancelled) => {
           dispatch(
@@ -79,7 +80,7 @@ export function useDirectSwap(requestKey: string): {
           setStatus((previous) => ({ ...previous, hash }))
         })
         if (receipt.status !== 1) throw new Error(t`Transaction reverted.`)
-        const message = t`Received ${buyAmount} MPS`
+        const message = isMpsSell(quote) ? t`Swap confirmed` : t`Received ${buyAmount} ${symbol}`
         setStatus({ pending: false, message, hash: receipt.transactionHash, submitted: quote })
       } catch (error) {
         const normalized = normalizeError(error)

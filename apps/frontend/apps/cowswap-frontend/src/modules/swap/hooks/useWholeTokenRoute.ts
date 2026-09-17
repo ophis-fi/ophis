@@ -22,7 +22,7 @@ import { useSwapSettings } from './useSwapSettings'
 
 import { isReplaceableCowPermit } from '../services/wholeToken/permitHook.service'
 import { DirectRequest, getDirectQuotes } from '../services/wholeToken/quote.service'
-import { DirectQuote, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
+import { DirectQuote, isMpsSell, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
 import { canFundDirect, comparisonLoading, selectDirect } from '../services/wholeToken/selection.service'
 
 type SwapState = ReturnType<typeof useSwapDerivedState>
@@ -30,12 +30,15 @@ type QuoteParams = NonNullable<ReturnType<typeof useQuoteParams>>
 function supportsDirect(state: SwapState): boolean {
   const { inputCurrency, outputCurrency } = state
   if (!inputCurrency || !outputCurrency) return false
+  const buying =
+    (getIsNativeToken(inputCurrency) || areAddressesEqual(getCurrencyAddress(inputCurrency), USDC)) &&
+    areAddressesEqual(getCurrencyAddress(outputCurrency), MPS)
+  const selling = areAddressesEqual(getCurrencyAddress(inputCurrency), MPS) && getIsNativeToken(outputCurrency)
   return [
     state.orderKind === OrderKind.SELL,
-    getIsNativeToken(inputCurrency) || areAddressesEqual(getCurrencyAddress(inputCurrency), USDC),
+    buying || selling,
     inputCurrency.chainId === 1,
     outputCurrency.chainId === 1,
-    areAddressesEqual(getCurrencyAddress(outputCurrency), MPS),
   ].every(Boolean)
 }
 function getFees(params: QuoteParams): VolumeFee[] | null {
@@ -46,7 +49,7 @@ function getFees(params: QuoteParams): VolumeFee[] | null {
   )
   if ([customPreHooks?.length, metadata.hooks?.post?.length].some(Boolean)) return null
   const entries = [metadata.partnerFee].flat().filter(isTruthy)
-  // Ophis's CoW auction-improvement fee is inapplicable to a fixed-output AMM quote.
+  // Ophis's CoW auction-improvement fee is inapplicable to a direct AMM quote.
   const volume = entries.filter((fee) => 'volumeBps' in fee)
   const auction = entries.filter(
     (fee) => 'priceImprovementBps' in fee && areAddressesEqual(fee.recipient, OPHIS_PARTNER_FEE_RECIPIENT),
@@ -99,7 +102,7 @@ function matchesForm(
     q.sellTokenChainId === 1,
     areAddressesEqual(q.sellTokenAddress, inputToken || NATIVE_CURRENCY_ADDRESS),
     q.buyTokenChainId === 1,
-    areAddressesEqual(q.buyTokenAddress, MPS),
+    areAddressesEqual(q.buyTokenAddress, isMpsSell({ inputToken }) ? NATIVE_CURRENCY_ADDRESS : MPS),
     areAddressesEqual(q.owner, account || q.owner),
     areAddressesEqual(q.receiver || q.owner, recipient),
   ].every(Boolean)

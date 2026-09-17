@@ -3,7 +3,7 @@ import { defaultAbiCoder, Interface } from '@ethersproject/abi'
 import { keccak256 } from '@ethersproject/keccak256'
 import { JsonRpcProvider, TransactionRequest, Web3Provider } from '@ethersproject/providers'
 
-import { DirectQuote, ROUTER, USDC } from './router.service'
+import { DirectQuote, MPS, ROUTER, USDC } from './router.service'
 
 export const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 const tokenAbi = new Interface([
@@ -27,20 +27,21 @@ function word(value: bigint): string {
 export function simulationState(account: string, inputToken?: string): Record<string, unknown> {
   const funding = { [account]: { balance: '0x3635c9adc5dea00000' } }
   if (!inputToken) return funding
-  if (!areAddressesEqual(inputToken, USDC)) throw new Error('Unsupported direct input')
-  // Ethereum USDC balance/allowance slots; fork tests verify both using the deployed contract.
+  if (![USDC, MPS].some((token) => areAddressesEqual(inputToken, token))) throw new Error('Unsupported direct input')
+  const mps = areAddressesEqual(inputToken, MPS)
+  // Ethereum balance/allowance slots, verified against each deployed contract on a fork.
   return {
     ...funding,
-    [USDC]: {
+    [inputToken]: {
       stateDiff: {
-        [slot(account, 9)]: word(10n ** 18n),
-        [slot(PERMIT2, slot(account, 10))]: word(10n ** 18n),
+        [slot(account, mps ? 0 : 9)]: word(10n ** 18n),
+        [slot(PERMIT2, slot(account, mps ? 2 : 10))]: word(10n ** 18n),
       },
     },
     // Permit2 AllowanceTransfer: owner -> token -> spender; uint160 amount + uint48 expiry + uint48 nonce.
     [PERMIT2]: {
       stateDiff: {
-        [slot(ROUTER, slot(USDC, slot(account, 1)))]: word((10n ** 18n) | (((1n << 48n) - 1n) << 160n)),
+        [slot(ROUTER, slot(inputToken, slot(account, 1)))]: word((10n ** 18n) | (((1n << 48n) - 1n) << 160n)),
       },
     },
   }
@@ -51,16 +52,19 @@ export async function getInputApprovals(
   account: string,
   amount: bigint,
   deadline: number,
+  inputToken = USDC,
 ): Promise<TransactionRequest[]> {
+  if (![USDC, MPS].some((token) => areAddressesEqual(inputToken, token))) throw new Error('Unsupported direct input')
   const [tokenRaw, permitRaw] = await Promise.all([
-    provider.call({ to: USDC, data: tokenAbi.encodeFunctionData('allowance', [account, PERMIT2]) }),
-    provider.call({ to: PERMIT2, data: permitAbi.encodeFunctionData('allowance', [account, USDC, ROUTER]) }),
+    provider.call({ to: inputToken, data: tokenAbi.encodeFunctionData('allowance', [account, PERMIT2]) }),
+    provider.call({ to: PERMIT2, data: permitAbi.encodeFunctionData('allowance', [account, inputToken, ROUTER]) }),
   ])
   const [allowed, expiration] = permitAbi.decodeFunctionResult('allowance', permitRaw)
   const txs: TransactionRequest[] = []
-  if (BigInt(tokenRaw) < amount) txs.push({ to: USDC, data: tokenAbi.encodeFunctionData('approve', [PERMIT2, amount]) })
+  if (BigInt(tokenRaw) < amount)
+    txs.push({ to: inputToken, data: tokenAbi.encodeFunctionData('approve', [PERMIT2, amount]) })
   if (BigInt(allowed.toString()) < amount || Number(expiration) < deadline) {
-    txs.push({ to: PERMIT2, data: permitAbi.encodeFunctionData('approve', [USDC, ROUTER, amount, deadline]) })
+    txs.push({ to: PERMIT2, data: permitAbi.encodeFunctionData('approve', [inputToken, ROUTER, amount, deadline]) })
   }
   return txs
 }
@@ -71,8 +75,8 @@ export async function approveDirectInput(
   quote: DirectQuote,
   isCurrent: () => boolean,
 ): Promise<void> {
-  if (!areAddressesEqual(quote.inputToken, USDC)) throw new Error('Unsupported direct input')
-  const txs = await getInputApprovals(rpc, quote.account, quote.budget, quote.expiresAt + 1800)
+  if (!quote.inputToken) throw new Error('Token approval not required')
+  const txs = await getInputApprovals(rpc, quote.account, quote.budget, quote.expiresAt + 1800, quote.inputToken)
   for (const tx of txs) {
     const account = await wallet.getSigner().getAddress()
     const chain = await wallet.send('eth_chainId', [])

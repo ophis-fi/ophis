@@ -10,7 +10,7 @@ const rpcUrl = process.env.MPS_FORK_RPC || 'http://127.0.0.1:8560'
 const frontend = process.env.MPS_FRONTEND || 'http://127.0.0.1:4176'
 const frontendRpc = process.env.MPS_FRONTEND_RPC || 'http://127.0.0.1:8557'
 const inputToken = process.env.MPS_INPUT || 'ETH'
-const inputAmount = inputToken === 'USDC' ? '10' : (process.env.MPS_AMOUNT || '0.0033')
+const inputAmount = inputToken === 'MPS' ? '1' : inputToken === 'USDC' ? '10' : (process.env.MPS_AMOUNT || '0.0033')
 const USDC = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 const MPS = '0x96c645D3D3706f793Ef52C19bBACe441900eD47D'
 const provider = new JsonRpcProvider(rpcUrl, 1)
@@ -26,6 +26,12 @@ async function main() {
   await rpc('evm_setNextBlockTimestamp', [Math.floor(Date.now() / 1000)])
   await rpc('evm_mine')
   const snapshot = await rpc('evm_snapshot')
+  if (inputToken === 'MPS') {
+    const { defaultAbiCoder } = appRequire('@ethersproject/abi')
+    const { keccak256 } = appRequire('@ethersproject/keccak256')
+    const slot = keccak256(defaultAbiCoder.encode(['address', 'uint256'], [account, 0]))
+    await rpc('anvil_setStorageAt', [MPS, slot, '0x' + '2'.padStart(64, '0')])
+  }
   if (inputToken === 'USDC') {
     const whale = '0x55FE002aefF02F77364de339a1292923A15844B8'
     await rpc('anvil_impersonateAccount', [whale])
@@ -35,8 +41,10 @@ async function main() {
     await (await usdc.transfer(account, 10000000)).wait()
   }
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true })
+  let testPage
   try {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+    testPage = page
     page.on('pageerror', error => console.error('Page error:', error.message))
     // Limit unrelated balance lookups; all quote, simulation and execution calls use real fork state.
     const lists = require('../libs/tokens/src/const/tokensList.json')
@@ -100,7 +108,7 @@ async function main() {
       const { gas, from, chainId, ...tx } = params[0]
       assert.equal(from.toLowerCase(), account.toLowerCase())
       assert.equal(Number(chainId), 1)
-      assert(['0x66a9893cc07d91d95644aedd05d03f95e1dba8af', USDC.toLowerCase(), '0x000000000022d473030f116ddee9f6b43ac78ba3'].includes(tx.to.toLowerCase()))
+      assert(['0x66a9893cc07d91d95644aedd05d03f95e1dba8af', USDC.toLowerCase(), MPS.toLowerCase(), '0x000000000022d473030f116ddee9f6b43ac78ba3'].includes(tx.to.toLowerCase()))
       sent++
       return (await signer.sendTransaction({ ...tx, gasLimit: gas, chainId: 1 })).hash
     })
@@ -121,7 +129,7 @@ async function main() {
       },
       { account },
     )
-    await page.goto(`${frontend}/#/1/swap/${inputToken}/${MPS}`)
+    await page.goto(`${frontend}/#/1/swap/${inputToken === 'MPS' ? MPS : inputToken}/${inputToken === 'MPS' ? 'ETH' : MPS}`)
     const input = page.locator('#input-currency-input input')
     await input.waitFor({ timeout: 90000 })
     await page.waitForTimeout(3000)
@@ -153,8 +161,8 @@ async function main() {
       console.log('PASS: expired cached quote keeps CoW actions suppressed during background refresh')
       return
     }
-    if (inputToken === 'USDC') {
-      await card.getByRole('button', { name: 'Approve USDC', exact: true }).click()
+    if (inputToken !== 'ETH') {
+      await card.getByRole('button', { name: `Approve ${inputToken}`, exact: true }).click()
       await card.getByRole('button', { name: 'Review swap', exact: true }).waitFor({ timeout: 90000 })
     }
     assert.equal(await card.locator('[aria-expanded="false"]').count(), 1)
@@ -166,22 +174,22 @@ async function main() {
     if (process.env.MPS_SCREENSHOT) await page.screenshot({ path: process.env.MPS_SCREENSHOT.replace('.png', '-review.png'), fullPage: true })
     await page.keyboard.press('Escape')
     await input.waitFor()
-    await input.fill(inputToken === 'USDC' ? '9' : '0.0034')
-    await card.getByRole('button', { name: 'Review swap', exact: true }).waitFor({ timeout: 90000 })
+    await input.fill(inputToken === 'MPS' ? '2' : inputToken === 'USDC' ? '9' : '0.0034')
+    await card.getByRole('button', { name: inputToken === 'MPS' ? 'Approve MPS' : 'Review swap', exact: true }).waitFor({ timeout: 90000 })
     assert.equal(await card.getByRole('button', { name: 'Confirm swap', exact: true }).count(), 0)
     await input.fill(inputAmount)
     await card.getByRole('button', { name: 'Review swap', exact: true }).click({ timeout: 90000 })
     if (process.env.MPS_REVIEW_EXPIRY) {
       await card.getByRole('button', { name: 'Refresh quote', exact: true }).waitFor({ timeout: 35000 })
-      assert.equal(sent, inputToken === 'USDC' ? 2 : 0, 'expiry must not sign a swap')
+      assert.equal(sent, inputToken !== 'ETH' ? 2 : 0, 'expiry must not sign a swap')
       await card.getByRole('button', { name: 'Refresh quote', exact: true }).click()
       await input.waitFor()
       await card.getByRole('button', { name: 'Review swap', exact: true }).click({ timeout: 90000 })
     }
     await card.getByRole('button', { name: 'Confirm swap', exact: true }).click()
-    await card.getByRole('status').filter({ hasText: 'Received 1 MPS' }).waitFor({ timeout: 90000 })
+    await card.getByRole('status').filter({ hasText: inputToken === 'MPS' ? 'Swap confirmed' : 'Received 1 MPS' }).waitFor({ timeout: 90000 })
     if (process.env.MPS_COW_UNSUPPORTED) assert(cowRejections.length > 0)
-    assert.equal(sent, inputToken === 'USDC' ? 3 : 1)
+    assert.equal(sent, inputToken !== 'ETH' ? 3 : 1)
     assert(await card.getByRole('button', { name: 'Swap submitted', exact: true }).isDisabled())
     const balance = await rpc('eth_call', [
       { to: MPS, data: '0x70a08231' + account.slice(2).toLowerCase().padStart(64, '0') },
@@ -191,6 +199,9 @@ async function main() {
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
     console.log(await card.innerText())
     if (process.env.MPS_SCREENSHOT) await page.screenshot({ path: process.env.MPS_SCREENSHOT, fullPage: true })
+  } catch (error) {
+    if (testPage) console.error((await testPage.locator('body').innerText()).slice(-5000))
+    throw error
   } finally {
     await browser.close()
     await rpc('evm_revert', [snapshot])

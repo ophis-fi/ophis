@@ -10,7 +10,7 @@ import { LOW_TIER_FEE } from 'modules/tradeWidgetAddons'
 
 import { PRICE_IMPACT_THRESHOLD } from 'common/constants/priceImpact'
 
-import { DirectQuote } from '../../services/wholeToken/router.service'
+import { DirectQuote, isMpsSell } from '../../services/wholeToken/router.service'
 
 export function WholeTokenWarnings({
   quote,
@@ -21,8 +21,14 @@ export function WholeTokenWarnings({
   impact: Percent | undefined
   loading: boolean
 }): ReactNode {
-  const feesAndGas = quote.fees.reduce((sum, fee) => sum + fee.amount, quote.gasCostInInput ?? quote.gasCost)
-  const costs = quote.netCost > 0n ? new Percent(feesAndGas.toString(), quote.netCost.toString()) : undefined
+  const selling = isMpsSell(quote)
+  const fees = quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)
+  const approvalCost = selling
+    ? (quote.approvalGas || 0n) * ((quote.maxFeePerGas + quote.maxPriorityFeePerGas) / 2n)
+    : 0n
+  const feesAndGas = fees + (selling ? quote.gasCost + approvalCost : (quote.gasCostInInput ?? quote.gasCost))
+  const value = selling ? quote.buyAmount + fees : quote.netCost
+  const costs = value > 0n ? new Percent(feesAndGas.toString(), value.toString()) : undefined
   const highImpact = impact && !impact.lessThan(PRICE_IMPACT_THRESHOLD.high)
   const impactPercent = impact?.toFixed(2) ?? ''
   const costPercent = costs?.toFixed(2) ?? ''
@@ -41,12 +47,16 @@ export function WholeTokenWarnings({
       )}
       {costs && !costs.lessThan(new Percent(LOW_TIER_FEE, 100)) && (
         <InlineBanner bannerType={StatusColorVariant.Warning}>
-          {t`Fees and estimated gas are ${costPercent}% of the expected total spend.`}
+          {selling
+            ? t`Fees and estimated gas are ${costPercent}% of the expected output value.`
+            : t`Fees and estimated gas are ${costPercent}% of the expected total spend.`}
         </InlineBanner>
       )}
       {quote.slippageBps > ETH_FLOW_SLIPPAGE_WARNING_THRESHOLD[1] && (
         <InlineBanner bannerType={StatusColorVariant.Warning}>
-          {t`High slippage tolerance: ${slippagePercent}%. The input spent can increase up to the quoted maximum.`}
+          {selling
+            ? t`High slippage tolerance: ${slippagePercent}%. ETH received can decrease to the quoted minimum.`
+            : t`High slippage tolerance: ${slippagePercent}%. The input spent can increase up to the quoted maximum.`}
         </InlineBanner>
       )}
     </>
