@@ -3,13 +3,24 @@ import { JsonRpcProvider } from '@ethersproject/providers'
 
 import BigNumber from 'bignumber.js'
 
+import { getGnosisQuotes } from './gnosisQuote.service'
 import { getInputApprovals, simulationState } from './input.service'
 import { getMarket, getRoutes, Market, quoteV3 } from './market.service'
 import { unavailableRoute } from './quoteRpc.service'
-import { buildDirectTransaction, DirectQuote, isMpsSell, Route, USDC, VolumeFee, WETH } from './router.service'
+import {
+  directChainId,
+  buildDirectTransaction,
+  DirectQuote,
+  isMpsSell,
+  Route,
+  USDC,
+  VolumeFee,
+  WETH,
+} from './router.service'
 import { quoteMpsSell } from './sell.service'
 
 export interface DirectRequest {
+  chainId?: 1 | 100
   inputToken?: string
   account: string
   recipient: string
@@ -31,7 +42,8 @@ export async function getDirectQuotes(
 ): Promise<DirectQuote[]> {
   signal?.throwIfAborted()
   validateRequest(request)
-  if ((await provider.getNetwork()).chainId !== 1) throw new Error('Switch to Ethereum')
+  if ((await provider.getNetwork()).chainId !== directChainId(request)) throw new Error('Switch to the quoted network')
+  if (request.chainId === 100) return getGnosisQuotes(provider, request, signal)
   signal?.throwIfAborted()
   // Require funded simulation on this read RPC; never mix fork and public state.
   await provider.send('eth_estimateGas', [

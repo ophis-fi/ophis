@@ -3,7 +3,8 @@ import { defaultAbiCoder, Interface } from '@ethersproject/abi'
 import { keccak256 } from '@ethersproject/keccak256'
 import { JsonRpcProvider, TransactionRequest, Web3Provider } from '@ethersproject/providers'
 
-import { DirectQuote, MPS, ROUTER, USDC } from './router.service'
+import { GNOSIS_MPS, GNOSIS_ROUTER, MPS_PROCESSOR } from './gnosis.service'
+import { directChainId, DirectQuote, MPS, ROUTER, USDC } from './router.service'
 
 export const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 const tokenAbi = new Interface([
@@ -27,6 +28,20 @@ function word(value: bigint): string {
 export function simulationState(account: string, inputToken?: string): Record<string, unknown> {
   const funding = { [account]: { balance: '0x3635c9adc5dea00000' } }
   if (!inputToken) return funding
+  if (areAddressesEqual(inputToken, GNOSIS_MPS)) {
+    // ShareBridgeToken stores balances/allowances in Processor._tokens (slot 152).
+    // Confirmed against the deployed token getters with read-only state overrides.
+    const base = BigInt(slot(GNOSIS_MPS, 152))
+    return {
+      ...funding,
+      [MPS_PROCESSOR]: {
+        stateDiff: {
+          [slot(account, (base + 3n).toString())]: word(10n ** 18n),
+          [slot(GNOSIS_ROUTER, slot(account, (base + 4n).toString()))]: word(10n ** 18n),
+        },
+      },
+    }
+  }
   if (![USDC, MPS].some((token) => areAddressesEqual(inputToken, token))) throw new Error('Unsupported direct input')
   const mps = areAddressesEqual(inputToken, MPS)
   // Ethereum balance/allowance slots, verified against each deployed contract on a fork.
@@ -53,8 +68,19 @@ export async function getInputApprovals(
   amount: bigint,
   deadline: number,
   inputToken = USDC,
+  chainId = 1,
 ): Promise<TransactionRequest[]> {
-  if (![USDC, MPS].some((token) => areAddressesEqual(inputToken, token))) throw new Error('Unsupported direct input')
+  if ([chainId === 100, areAddressesEqual(inputToken, GNOSIS_MPS)].every(Boolean)) {
+    const allowed = await provider.call({
+      to: inputToken,
+      data: tokenAbi.encodeFunctionData('allowance', [account, GNOSIS_ROUTER]),
+    })
+    return BigInt(allowed) >= amount
+      ? []
+      : [{ to: inputToken, data: tokenAbi.encodeFunctionData('approve', [GNOSIS_ROUTER, amount]) }]
+  }
+  if (chainId !== 1 || ![USDC, MPS].some((token) => areAddressesEqual(inputToken, token)))
+    throw new Error('Unsupported direct input')
   const [tokenRaw, permitRaw] = await Promise.all([
     provider.call({ to: inputToken, data: tokenAbi.encodeFunctionData('allowance', [account, PERMIT2]) }),
     provider.call({ to: PERMIT2, data: permitAbi.encodeFunctionData('allowance', [account, inputToken, ROUTER]) }),
@@ -76,14 +102,23 @@ export async function approveDirectInput(
   isCurrent: () => boolean,
 ): Promise<void> {
   if (!quote.inputToken) throw new Error('Token approval not required')
-  const txs = await getInputApprovals(rpc, quote.account, quote.budget, quote.expiresAt + 1800, quote.inputToken)
+  const txs = await getInputApprovals(
+    rpc,
+    quote.account,
+    quote.budget,
+    quote.expiresAt + 1800,
+    quote.inputToken,
+    directChainId(quote),
+  )
   for (const tx of txs) {
     const account = await wallet.getSigner().getAddress()
     const chain = await wallet.send('eth_chainId', [])
-    if (!isCurrent() || Number(chain) !== 1 || !areAddressesEqual(account, quote.account)) {
+    if (!isCurrent() || Number(chain) !== directChainId(quote) || !areAddressesEqual(account, quote.account)) {
       throw new Error('Wallet or quote changed. Review again.')
     }
-    const sent = await wallet.getSigner().sendTransaction({ ...tx, from: quote.account, chainId: 1, value: 0 })
+    const sent = await wallet
+      .getSigner()
+      .sendTransaction({ ...tx, from: quote.account, chainId: directChainId(quote), value: 0 })
     const receipt = await sent.wait()
     if (receipt.status !== 1) throw new Error('Approval failed')
   }

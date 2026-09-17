@@ -79,7 +79,7 @@ it.each([false, true])('requires both real USDC approval layers before signing (
 it('requires ETH gas even with enough USDC', async () => {
   jest.mocked(rpc.call).mockResolvedValueOnce('0x3e8')
   const usdc = { ...quote, inputToken: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', maxFeePerGas: 100n }
-  await expect(executeDirectSwap(wallet, rpc, usdc, () => true)).rejects.toThrow('Insufficient ETH')
+  await expect(executeDirectSwap(wallet, rpc, usdc, () => true)).rejects.toThrow('Insufficient native balance')
   expect(sendTransaction).not.toHaveBeenCalled()
 })
 

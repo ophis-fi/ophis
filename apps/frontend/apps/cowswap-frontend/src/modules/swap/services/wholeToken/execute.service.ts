@@ -2,7 +2,7 @@ import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { JsonRpcProvider, TransactionReceipt, TransactionResponse, Web3Provider } from '@ethersproject/providers'
 
 import { getInputApprovals, getInputBalance } from './input.service'
-import { buildDirectTransaction, DirectQuote } from './router.service'
+import { directChainId, buildDirectTransaction, DirectQuote } from './router.service'
 
 export async function executeDirectSwap(
   wallet: Web3Provider,
@@ -19,7 +19,7 @@ export async function executeDirectSwap(
     signer.getAddress(),
     rpc.getBalance(quote.account),
   ])
-  if (Number(chain) !== 1 || !areAddressesEqual(account, quote.account))
+  if (Number(chain) !== directChainId(quote) || !areAddressesEqual(account, quote.account))
     throw new Error('Wallet changed. Review a new quote.')
   await validateFunding(rpc, quote, BigInt(balance.toString()))
   const tx = buildDirectTransaction(quote)
@@ -50,10 +50,19 @@ async function validateFunding(rpc: JsonRpcProvider, quote: DirectQuote, nativeB
   const inputBalance = await getInputBalance(rpc, quote)
   if (inputBalance < quote.maxTotal) throw new Error('Insufficient input balance.')
   const nativeRequired = quote.inputToken ? quote.gasLimit * quote.maxFeePerGas : quote.maxTotal
-  if (nativeBalance < nativeRequired) throw new Error('Insufficient ETH including gas.')
+  if (nativeBalance < nativeRequired) throw new Error('Insufficient native balance including gas.')
   if (
     quote.inputToken &&
-    (await getInputApprovals(rpc, quote.account, quote.maxTotal, quote.expiresAt, quote.inputToken)).length
+    (
+      await getInputApprovals(
+        rpc,
+        quote.account,
+        quote.maxTotal,
+        quote.expiresAt,
+        quote.inputToken,
+        directChainId(quote),
+      )
+    ).length
   ) {
     throw new Error('Token approval required. Review again.')
   }

@@ -26,7 +26,7 @@ import { useDirectApproval } from './useDirectApproval'
 import { useSwapDerivedState } from './useSwapDerivedState'
 
 import { executeDirectSwap, waitForDirectReceipt } from '../services/wholeToken/execute.service'
-import { DirectQuote, isMpsSell } from '../services/wholeToken/router.service'
+import { directChainId, directVenue, DirectQuote, isMpsSell } from '../services/wholeToken/router.service'
 
 const executionAtom = atomFamily((_: string) =>
   atom({ pending: false, message: '', hash: '', submitted: null as DirectQuote | null }),
@@ -66,17 +66,18 @@ export function useDirectSwap(requestKey: string): {
           return
         }
         analytics.trade(context)
+        const chainId = directChainId(quote)
         const isCurrent = (): boolean => current.current === requestKey
-        const tx = await executeDirectSwap(wallet, getRpcProvider(1), quote, isCurrent, status.hash)
+        const tx = await executeDirectSwap(wallet, getRpcProvider(chainId), quote, isCurrent, status.hash)
         analytics.sign(context)
         const buyAmount = CurrencyAmount.fromRawAmount(outputCurrency, quote.buyAmount.toString()).toSignificant(6)
         const symbol = outputCurrency.symbol || ''
-        await addTransaction({ hash: tx.hash, summary: t`Swap for ${buyAmount} ${symbol} on Uniswap` })
+        const venue = directVenue(quote)
+        await addTransaction({ hash: tx.hash, summary: t`Swap for ${buyAmount} ${symbol} on ${venue}` })
         setStatus({ pending: true, message: t`Transaction pending`, hash: tx.hash, submitted: quote })
         const receipt = await waitForDirectReceipt(tx, (hash, cancelled) => {
-          dispatch(
-            replaceTransaction({ chainId: 1, oldHash: tx.hash, newHash: hash, type: cancelled ? 'cancel' : 'speedup' }),
-          )
+          const type = cancelled ? 'cancel' : 'speedup'
+          dispatch(replaceTransaction({ chainId, oldHash: tx.hash, newHash: hash, type }))
           setStatus((previous) => ({ ...previous, hash }))
         })
         if (receipt.status !== 1) throw new Error(t`Transaction reverted.`)
