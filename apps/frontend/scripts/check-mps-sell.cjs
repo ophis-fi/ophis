@@ -6,20 +6,20 @@ const { mkdtempSync, rmSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { resolve, join } = require('node:path')
 const app = createRequire(resolve(__dirname, '../apps/cowswap-frontend/package.json'))
-const { buildSync } = createRequire(app.resolve('vite/package.json'))('esbuild')
+const build = require('./build-whole-token-check.cjs')
 const { JsonRpcProvider, Web3Provider } = app('@ethersproject/providers')
 const { Contract } = app('@ethersproject/contracts')
 const { defaultAbiCoder } = app('@ethersproject/abi')
 const { keccak256 } = app('@ethersproject/keccak256')
 const folder = mkdtempSync(join(tmpdir(), 'mps-sell-'))
-async function main() {
+async function main(outputToken) {
   const url = process.env.MPS_FORK_RPC || 'http://127.0.0.1:8573'
   assert(['127.0.0.1', 'localhost'].includes(new URL(url).hostname), 'Local fork required')
   const provider = new JsonRpcProvider(url, 1)
   assert.match(await provider.send('web3_clientVersion', []), /anvil/i)
   const snapshot = await provider.send('evm_snapshot', [])
   try {
-    for (const name of ['quote', 'router', 'input', 'execute']) buildSync({
+    for (const name of ['quote', 'router', 'input', 'execute', 'outputTokens']) await build({
       entryPoints: [resolve(__dirname, `../apps/cowswap-frontend/src/modules/swap/services/wholeToken/${name}.service.ts`)],
       outfile: join(folder, `${name}.cjs`), bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent',
     })
@@ -41,10 +41,12 @@ async function main() {
       const raw = await provider.send('eth_call', [{ to: MPS, data: mps.interface.encodeFunctionData(method, args) }, 'latest', state])
       assert.equal(BigInt(raw), 10n ** 18n)
     }
-    const request = { inputToken: MPS, account, recipient, budget: 1n, slippageBps: 50, fees: [{ recipient: feeRecipient, bps: 51.005 }] }
+    const output = new Contract(outputToken || WETH, abi, provider)
+    const outputBalance = address => outputToken ? output.balanceOf(address) : provider.getBalance(address)
+    const request = { outputToken, inputToken: MPS, account, recipient, budget: 1n, slippageBps: 50, fees: [{ recipient: feeRecipient, bps: 51.005 }] }
     const quotes = await getDirectQuotes(provider, request)
-    assert(quotes.length > 0, 'One MPS must have an executable ETH quote')
-    assert(quotes.some(q => q.route.viaV2), 'Mixed v2/v3 route is compared')
+    assert(quotes.length > 0, 'One MPS must have an executable output quote')
+    assert(quotes.some(q => q.route.viaV2), 'V2 input route is compared')
     // V3 exact-input rounds its input after fees to zero for a single indivisible MPS.
     assert(quotes.every(q => q.route.viaV2), 'One MPS must use the viable v2 first hop')
     assert(quotes.every(q => q.needsApproval))
@@ -64,7 +66,7 @@ async function main() {
         assert.equal(quote.sellAmount, 1n)
         assert.equal(quote.maxTotal, 1n)
         assert.equal(quote.minBuyAmount, quote.buyAmount * 9950n / 10000n)
-        const before = await Promise.all([provider.getBalance(recipient), weth.balanceOf(feeRecipient), weth.balanceOf(ROUTER), usdc.balanceOf(ROUTER), mps.balanceOf(ROUTER)])
+        const before = await Promise.all([outputBalance(recipient), output.balanceOf(feeRecipient), output.balanceOf(ROUTER), usdc.balanceOf(ROUTER), mps.balanceOf(ROUTER), weth.balanceOf(ROUTER)])
         assert.throws(() => buildDirectTransaction({ ...quote, minBuyAmount: 0n }))
         assert.throws(() => buildDirectTransaction({ ...quote, budget: 2n }))
         assert.throws(() => buildDirectTransaction({ ...quote, fees: [{ recipient: feeRecipient, amount: -1n }] }))
@@ -73,17 +75,19 @@ async function main() {
         const receipt = await (await executeDirectSwap(wallet, provider, quote, () => true)).wait()
         assert.equal(receipt.status, 1)
         assert.equal((await mps.balanceOf(account)).toString(), '0', 'Exactly one MPS spent')
-        const received = BigInt((await provider.getBalance(recipient)).sub(before[0]).toString())
-        assert.equal(received, quote.buyAmount, 'Quoted net ETH received by chosen recipient')
+        const received = BigInt((await outputBalance(recipient)).sub(before[0]).toString())
+        assert.equal(received, quote.buyAmount, 'Quoted net output received by chosen recipient')
         assert(received >= quote.minBuyAmount)
-        assert.equal(BigInt((await weth.balanceOf(feeRecipient)).sub(before[1]).toString()), quote.fees[0].amount)
-        assert((await weth.balanceOf(ROUTER)).eq(before[2]))
+        assert.equal(BigInt((await output.balanceOf(feeRecipient)).sub(before[1]).toString()), quote.fees[0].amount)
+        assert((await output.balanceOf(ROUTER)).eq(before[2]))
         assert((await usdc.balanceOf(ROUTER)).eq(before[3]))
         assert((await mps.balanceOf(ROUTER)).eq(before[4]))
+        assert((await weth.balanceOf(ROUTER)).eq(before[5]), 'No intermediate WETH remains')
         assert(receipt.gasUsed.lte(quote.gasLimit.toString()))
-        console.log(JSON.stringify({ route: quote.route.label, soldMps: '1', receivedWei: received.toString(), gasUsed: receipt.gasUsed.toString() }))
+        console.log(JSON.stringify({ outputToken: outputToken || 'ETH', route: quote.route.label, soldMps: '1', receivedWei: received.toString(), gasUsed: receipt.gasUsed.toString() }))
       } finally { await provider.send('evm_revert', [inner]) }
     }
+    if (outputToken) return
     // Exhaust a concentrated-liquidity v3 route: unused input must return to its sender.
     const partialBudget = 10n ** 18n
     await provider.send('anvil_setStorageAt', [MPS, balanceSlot, '0x' + partialBudget.toString(16).padStart(64, '0')])
@@ -109,4 +113,9 @@ async function main() {
     console.log('PASS: exact MPS input, bounded approvals, net ETH output, fees, recipient, slippage, deadline, partial-fill refunds')
   } finally { await provider.send('evm_revert', [snapshot]) }
 }
-main().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => rmSync(folder, { recursive: true, force: true }))
+;(async () => {
+  await main()
+  const { WETH, USDC } = require(join(folder, 'router.cjs'))
+  const { USDT } = require(join(folder, 'outputTokens.cjs'))
+  for (const token of [WETH, USDC, USDT]) await main(token)
+})().catch(error => { console.error(error); process.exitCode = 1 }).finally(() => rmSync(folder, { recursive: true, force: true }))

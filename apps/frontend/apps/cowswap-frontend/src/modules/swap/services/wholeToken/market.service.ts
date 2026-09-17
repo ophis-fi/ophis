@@ -1,10 +1,23 @@
+import { areAddressesEqual, EVM_NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/cow-sdk'
 import { Interface } from '@ethersproject/abi'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
 import BigNumber from 'bignumber.js'
 
 import { createQuoteRpc } from './quoteRpc.service'
-import { encodePath, isMpsSell, MPS, MPS_V2_PAIR, QUOTER, Route, USDC, WETH } from './router.service'
+import {
+  directWrappedOutputToken,
+  encodePath,
+  isMpsSell,
+  MPS,
+  MPS_V2_PAIR,
+  QUOTER,
+  Route,
+  USDC,
+  WETH,
+} from './router.service'
+
+import type { DirectRequest } from './quote.service'
 
 const quoter = new Interface([
   'function quoteExactInput(bytes,uint256) returns (uint256,uint160[],uint32[],uint256)',
@@ -23,6 +36,13 @@ const ROUTES: Route[] = [
     { label: 'Uniswap v3 + v2 via USDC', tokens: [WETH, USDC], fees: [fee], viaV2: true },
   ]),
 ]
+
+export async function gasConversionRate(market: Market, request: DirectRequest): Promise<bigint> {
+  const token = isMpsSell(request) ? directWrappedOutputToken(request) : request.inputToken || WETH
+  return areAddressesEqual(token, WETH)
+    ? 10n ** 18n
+    : quoteV3(market, { label: '', tokens: [WETH, token], fees: [500] }, 10n ** 18n, false)
+}
 
 export interface Market {
   inputPerEth: bigint
@@ -85,7 +105,13 @@ export async function quoteV3(
   return BigInt(String(quotedAmount))
 }
 
-export function getRoutes(inputToken?: string): Route[] {
+export function getRoutes(inputToken?: string, outputToken?: string): Route[] {
+  if (
+    isMpsSell({ inputToken }) &&
+    outputToken &&
+    ![WETH, EVM_NATIVE_CURRENCY_ADDRESS].some((token) => areAddressesEqual(token, outputToken))
+  )
+    return sellTokenRoutes(outputToken)
   if (isMpsSell({ inputToken }))
     return ROUTES.map((route) => ({
       ...route,
@@ -100,4 +126,18 @@ export function getRoutes(inputToken?: string): Route[] {
         ...FEES.map((fee) => ({ label: 'Uniswap v3 via WETH', tokens: [USDC, WETH, MPS], fees: [fee, 10000] })),
       ]
     : ROUTES
+}
+
+function sellTokenRoutes(outputToken: string): Route[] {
+  if (areAddressesEqual(outputToken, USDC))
+    return [
+      { label: 'Uniswap v2', tokens: [USDC], fees: [], viaV2: true },
+      { label: 'Uniswap v3', tokens: [MPS, USDC], fees: [10000] },
+      ...FEES.map((fee) => ({ label: 'Uniswap v3 via WETH', tokens: [MPS, WETH, USDC], fees: [10000, fee] })),
+    ]
+  return FEES.flatMap((fee) => [
+    { label: 'Uniswap v2 + v3 via USDC', tokens: [USDC, outputToken], fees: [fee], viaV2: true },
+    { label: 'Uniswap v3 via USDC', tokens: [MPS, USDC, outputToken], fees: [10000, fee] },
+    { label: 'Uniswap v3 via WETH', tokens: [MPS, WETH, outputToken], fees: [10000, fee] },
+  ])
 }

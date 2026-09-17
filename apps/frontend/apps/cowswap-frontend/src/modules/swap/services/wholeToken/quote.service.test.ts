@@ -1,6 +1,6 @@
 import { JsonRpcProvider } from '@ethersproject/providers'
 
-import { getMarket, getRoutes, quoteV3 } from './market.service'
+import { gasConversionRate, getMarket, getRoutes, quoteV3 } from './market.service'
 import { getDirectQuotes } from './quote.service'
 import { MPS, WETH } from './router.service'
 
@@ -16,6 +16,7 @@ function setup(): JsonRpcProvider {
   jest.spyOn(provider, 'getNetwork').mockResolvedValue({ chainId: 1, name: 'homestead' })
   jest.spyOn(provider, 'send').mockResolvedValue('0x64')
   jest.mocked(getRoutes).mockReturnValue(routes)
+  jest.mocked(gasConversionRate).mockResolvedValue(10n ** 18n)
   jest.mocked(getMarket).mockResolvedValue({
     rpc: { check: () => {}, call: jest.fn() },
     blockNumber: 42,

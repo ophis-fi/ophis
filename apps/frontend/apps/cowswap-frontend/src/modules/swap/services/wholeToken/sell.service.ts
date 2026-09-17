@@ -20,7 +20,7 @@ export async function quoteMpsSell(
     : budget
   if (intermediate <= 0n) return null
   const gross = await quoteV3(market, route, intermediate, false, true)
-  // Fees are paid in WETH from output, so a 1 MPS sale never needs fractional MPS.
+  // Fees are paid from output, so a 1 MPS sale never needs fractional MPS.
   const fees = request.fees.map((fee) => ({
     recipient: fee.recipient,
     amount: BigInt(
@@ -64,5 +64,8 @@ export async function quoteMpsSell(
   market.rpc.check()
   quote.gasLimit = (gas * 120n + 99n) / 100n
   quote.gasCost = gas * (market.baseFee + market.priorityFee)
+  quote.gasCostInOutput =
+    ((gas + market.approvalGas) * (market.baseFee + market.priorityFee) * market.inputPerEth + 10n ** 18n - 1n) /
+    10n ** 18n
   return quote
 }

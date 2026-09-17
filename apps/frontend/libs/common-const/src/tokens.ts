@@ -141,6 +141,14 @@ export const WBTC_GNOSIS_CHAIN = new TokenWithLogo(
 )
 
 export const WETH_GNOSIS_CHAIN = WRAPPED_NATIVE_CURRENCIES[SupportedChainId.GNOSIS_CHAIN]
+export const BRIDGED_WETH_GNOSIS_CHAIN = new TokenWithLogo(
+  WRAPPED_NATIVE_CURRENCIES[SupportedChainId.MAINNET].logoURI,
+  SupportedChainId.GNOSIS_CHAIN,
+  '0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1',
+  18,
+  'WETH',
+  'Wrapped Ether',
+)
 
 export const GNO_GNOSIS_CHAIN = new TokenWithLogo(
   GNO_MAINNET.logoURI,

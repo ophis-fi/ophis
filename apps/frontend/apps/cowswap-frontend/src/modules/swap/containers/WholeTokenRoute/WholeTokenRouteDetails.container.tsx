@@ -71,13 +71,14 @@ export function WholeTokenRouteDetails({
           </dd>
           <dt>{t`Fees`}</dt>
           <dd>
-            {selling ? displayEth(fees) : displayInput(fees, shown.inputToken, decimals)} {feeCurrency?.symbol}
+            {formatUnits(fees, feeCurrency?.decimals)} {feeCurrency?.symbol}
           </dd>
           {shown.minBuyAmount !== undefined && (
             <>
               <dt>{t`Minimum received after fees`}</dt>
               <dd>
-                {formatEther(shown.minBuyAmount)} {outputCurrency?.symbol}
+                {outputCurrency &&
+                  `${formatUnits(shown.minBuyAmount, outputCurrency.decimals)} ${outputCurrency.symbol}`}
               </dd>
             </>
           )}

@@ -61,3 +61,23 @@ test('MPS sales measure costs in ETH and describe the minimum receive protection
   expect(screen.getByText(/20.00% of the expected output value/)).toBeTruthy()
   expect(screen.getByText(/The received amount can decrease to the quoted minimum/)).toBeTruthy()
 })
+
+test('stablecoin sales use output-denominated gas including approval costs', () => {
+  render(
+    <WholeTokenWarnings
+      quote={{
+        ...quote,
+        inputToken: MPS,
+        buyAmount: 9999999n,
+        gasCost: 100000000000000n,
+        gasCostInOutput: 1999999n,
+        approvalGas: 50000n,
+        maxFeePerGas: 1000000000n,
+        maxPriorityFeePerGas: 0n,
+      }}
+      impact={new Percent(1, 1000)}
+      loading={false}
+    />,
+  )
+  expect(screen.getByText(/20.00% of the expected output value/)).toBeTruthy()
+})

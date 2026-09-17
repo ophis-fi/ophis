@@ -3,7 +3,7 @@ import { areAddressesEqual, PriceQuality } from '@cowprotocol/cow-sdk'
 
 import type { useTradeQuote } from 'modules/tradeQuote'
 
-import { DirectQuote, directOutputToken, isMpsSell } from './router.service'
+import { DirectQuote, directOutputToken, directSellProceeds, isMpsSell } from './router.service'
 
 export function selectDirect(
   best: DirectQuote | undefined,
@@ -29,7 +29,7 @@ export function selectDirect(
 
 function improvesAmounts(best: DirectQuote, buyAmount: bigint, sellAmount: bigint, depositGas: bigint): boolean {
   if (isMpsSell(best)) {
-    return sellProceeds(best) > buyAmount
+    return directSellProceeds(best) > buyAmount
   }
   return (
     best.buyAmount > buyAmount ||
@@ -38,10 +38,6 @@ function improvesAmounts(best: DirectQuote, buyAmount: bigint, sellAmount: bigin
   )
 }
 
-function sellProceeds(quote: DirectQuote): bigint {
-  const approvalCost = (quote.approvalGas || 0n) * ((quote.maxFeePerGas + quote.maxPriorityFeePerGas) / 2n)
-  return quote.buyAmount - quote.gasCost - approvalCost
-}
 export function comparisonLoading(
   key: string,
   isReviewing: boolean,

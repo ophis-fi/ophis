@@ -3,7 +3,7 @@ import { JsonRpcProvider } from '@ethersproject/providers'
 
 import BigNumber from 'bignumber.js'
 
-import { GNOSIS_MPS, SUSHI_V2_ROUTER, sushiInterface, WXDAI } from './gnosis.service'
+import { GNOSIS_MPS, SUSHI_V2_ROUTER, sushiInterface, gnosisSellPath } from './gnosis.service'
 import { getInputApprovals, simulationState } from './input.service'
 import { buildDirectTransaction, DirectQuote } from './router.service'
 
@@ -15,17 +15,18 @@ export async function getGnosisQuotes(
   signal?: AbortSignal,
 ): Promise<DirectQuote[]> {
   if (!areAddressesEqual(request.inputToken, GNOSIS_MPS)) throw new Error('Unsupported Gnosis input')
+  const path = gnosisSellPath(request.outputToken)
   const [block, gasPrice] = await Promise.all([provider.getBlock('latest'), provider.getGasPrice()])
   signal?.throwIfAborted()
   const raw = await provider.call(
     {
       to: SUSHI_V2_ROUTER,
-      data: sushiInterface.encodeFunctionData('getAmountsOut', [request.budget, [GNOSIS_MPS, WXDAI]]),
+      data: sushiInterface.encodeFunctionData('getAmountsOut', [request.budget, path]),
     },
     block.number,
   )
   const [amounts] = sushiInterface.decodeFunctionResult('getAmountsOut', raw)
-  const gross = BigInt(amounts[1].toString())
+  const gross = BigInt(amounts[amounts.length - 1].toString())
   const fees = request.fees.map((fee) => ({
     recipient: fee.recipient,
     amount: BigInt(
@@ -48,7 +49,7 @@ export async function getGnosisQuotes(
   const quote: DirectQuote = {
     ...request,
     chainId: 100,
-    route: { label: 'Sushi v2', tokens: [GNOSIS_MPS, WXDAI], fees: [] },
+    route: { label: 'Sushi v2', tokens: path, fees: [] },
     fees,
     buyAmount,
     minBuyAmount,
@@ -80,5 +81,18 @@ export async function getGnosisQuotes(
   signal?.throwIfAborted()
   quote.gasLimit = (gas * 120n + 99n) / 100n
   quote.gasCost = gas * (baseFee + priority)
+  const outputPerNative = await nativeOutputRate(provider, path, block.number)
+  quote.gasCostInOutput = ((gas + approvalGas) * (baseFee + priority) * outputPerNative + 10n ** 18n - 1n) / 10n ** 18n
+  signal?.throwIfAborted()
   return [quote]
+}
+
+async function nativeOutputRate(provider: JsonRpcProvider, path: string[], block: number): Promise<bigint> {
+  if (path.length === 2) return 10n ** 18n
+  const raw = await provider.call(
+    { to: SUSHI_V2_ROUTER, data: sushiInterface.encodeFunctionData('getAmountsOut', [10n ** 18n, path.slice(1)]) },
+    block,
+  )
+  const [amounts] = sushiInterface.decodeFunctionResult('getAmountsOut', raw)
+  return BigInt(amounts[amounts.length - 1].toString())
 }

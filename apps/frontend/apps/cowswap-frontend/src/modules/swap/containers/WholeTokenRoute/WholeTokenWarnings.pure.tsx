@@ -10,7 +10,7 @@ import { LOW_TIER_FEE } from 'modules/tradeWidgetAddons'
 
 import { PRICE_IMPACT_THRESHOLD } from 'common/constants/priceImpact'
 
-import { DirectQuote, isMpsSell } from '../../services/wholeToken/router.service'
+import { directSellProceeds, DirectQuote, isMpsSell } from '../../services/wholeToken/router.service'
 
 export function WholeTokenWarnings({
   quote,
@@ -23,10 +23,8 @@ export function WholeTokenWarnings({
 }): ReactNode {
   const selling = isMpsSell(quote)
   const fees = quote.fees.reduce((sum, fee) => sum + fee.amount, 0n)
-  const approvalCost = selling
-    ? (quote.approvalGas || 0n) * ((quote.maxFeePerGas + quote.maxPriorityFeePerGas) / 2n)
-    : 0n
-  const feesAndGas = fees + (selling ? quote.gasCost + approvalCost : (quote.gasCostInInput ?? quote.gasCost))
+  const feesAndGas =
+    fees + (selling ? quote.buyAmount - directSellProceeds(quote) : (quote.gasCostInInput ?? quote.gasCost))
   const value = selling ? quote.buyAmount + fees : quote.netCost
   const costs = value > 0n ? new Percent(feesAndGas.toString(), value.toString()) : undefined
   const highImpact = impact && !impact.lessThan(PRICE_IMPACT_THRESHOLD.high)

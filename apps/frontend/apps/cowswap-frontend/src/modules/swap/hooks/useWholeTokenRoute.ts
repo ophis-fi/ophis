@@ -20,31 +20,32 @@ import { useDirectOutput } from './useDirectOutput'
 import { useSwapDerivedState } from './useSwapDerivedState'
 import { useSwapSettings } from './useSwapSettings'
 
-import { GNOSIS_MPS, WXDAI } from '../services/wholeToken/gnosis.service'
+import { GNOSIS_MPS } from '../services/wholeToken/gnosis.service'
+import { isSupportedMpsOutput } from '../services/wholeToken/outputTokens.service'
 import { isReplaceableCowPermit } from '../services/wholeToken/permitHook.service'
 import { DirectRequest, getDirectQuotes } from '../services/wholeToken/quote.service'
 import { directChainId, DirectQuote, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
 import { canFundDirect, comparisonLoading, selectDirect } from '../services/wholeToken/selection.service'
 
 type SwapState = ReturnType<typeof useSwapDerivedState>
+type DirectSwapState = SwapState & { outputCurrency: NonNullable<SwapState['outputCurrency']> }
 type QuoteParams = NonNullable<ReturnType<typeof useQuoteParams>>
-function supportsDirect(state: SwapState): state is SwapState & {
-  inputCurrency: NonNullable<SwapState['inputCurrency']>
-  outputCurrency: NonNullable<SwapState['outputCurrency']>
-} {
+function supportsDirect(state: SwapState): state is DirectSwapState {
   const { inputCurrency, outputCurrency } = state
   if (!inputCurrency || !outputCurrency) return false
   if (inputCurrency.chainId === 100 && outputCurrency.chainId === 100) {
     return [
       state.orderKind === OrderKind.SELL,
       areAddressesEqual(getCurrencyAddress(inputCurrency), GNOSIS_MPS),
-      getIsNativeToken(outputCurrency) || areAddressesEqual(getCurrencyAddress(outputCurrency), WXDAI),
+      isSupportedMpsOutput(100, getCurrencyAddress(outputCurrency)),
     ].every(Boolean)
   }
   const buying =
     (getIsNativeToken(inputCurrency) || areAddressesEqual(getCurrencyAddress(inputCurrency), USDC)) &&
     areAddressesEqual(getCurrencyAddress(outputCurrency), MPS)
-  const selling = areAddressesEqual(getCurrencyAddress(inputCurrency), MPS) && getIsNativeToken(outputCurrency)
+  const selling =
+    areAddressesEqual(getCurrencyAddress(inputCurrency), MPS) &&
+    isSupportedMpsOutput(1, getCurrencyAddress(outputCurrency))
   return [
     state.orderKind === OrderKind.SELL,
     buying || selling,
@@ -239,9 +240,7 @@ function depositQuote(
 ): ReturnType<typeof useTradeQuote>['quote'] {
   return key && !request?.inputToken ? quote : null
 }
-function requestChain(state: SwapState): 1 | 100 {
-  return state.inputCurrency?.chainId === 100 ? 100 : 1
-}
+const requestChain = (state: SwapState): 1 | 100 => (state.inputCurrency?.chainId === 100 ? 100 : 1)
 function fetchDirectQuotes(
   parsed: Omit<DirectRequest, 'budget'> & { budget: string },
   signal: AbortSignal,

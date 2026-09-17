@@ -5,10 +5,11 @@ import BigNumber from 'bignumber.js'
 
 import { getGnosisQuotes } from './gnosisQuote.service'
 import { getInputApprovals, simulationState } from './input.service'
-import { getMarket, getRoutes, Market, quoteV3 } from './market.service'
+import { getMarket, getRoutes, Market, quoteV3, gasConversionRate } from './market.service'
 import { unavailableRoute } from './quoteRpc.service'
 import {
   directChainId,
+  directSellProceeds,
   buildDirectTransaction,
   DirectQuote,
   isMpsSell,
@@ -77,10 +78,9 @@ export async function getDirectQuotes(
     ),
   )
   market.approvalGas = approvalGas.reduce((sum, gas) => sum + gas, 0n)
-  if (request.inputToken && !isMpsSell(request))
-    market.inputPerEth = await quoteV3(market, { label: '', tokens: [WETH, USDC], fees: [500] }, 10n ** 18n, false)
+  market.inputPerEth = await gasConversionRate(market, request)
   const results = await Promise.all(
-    getRoutes(request.inputToken).map((route) =>
+    getRoutes(request.inputToken, request.outputToken).map((route) =>
       (isMpsSell(request)
         ? quoteMpsSell(provider, request, market, route)
         : quoteRoute(provider, request, market, route)
@@ -92,7 +92,7 @@ export async function getDirectQuotes(
     .flatMap((result) => (result ? [result] : []))
     .sort((a, b) =>
       isMpsSell(request)
-        ? a.buyAmount - a.gasCost > b.buyAmount - b.gasCost
+        ? directSellProceeds(a) > directSellProceeds(b)
           ? -1
           : 1
         : a.buyAmount !== b.buyAmount
@@ -104,7 +104,6 @@ export async function getDirectQuotes(
             : 1,
     )
 }
-
 async function forAmount(
   provider: JsonRpcProvider,
   request: DirectRequest,
@@ -153,7 +152,6 @@ async function forAmount(
   }
   return finishQuote(provider, market, quote, estimatedGas)
 }
-
 async function finishQuote(
   provider: JsonRpcProvider,
   market: Market,
@@ -187,7 +185,6 @@ async function finishQuote(
   quote.maxTotal = quote.maxInput + feeTotal + (quote.inputToken ? 0n : quote.gasLimit * quote.maxFeePerGas)
   return quote
 }
-
 async function quoteRoute(
   provider: JsonRpcProvider,
   request: DirectRequest,

@@ -5,14 +5,14 @@ const { mkdtempSync, rmSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const { resolve, join } = require('node:path')
 const app = createRequire(resolve(__dirname, '../apps/cowswap-frontend/package.json'))
-const { buildSync } = createRequire(app.resolve('vite/package.json'))('esbuild')
+const build = require('./build-whole-token-check.cjs')
 const { JsonRpcProvider } = app('@ethersproject/providers')
 const { Contract } = app('@ethersproject/contracts')
 const folder = mkdtempSync(join(tmpdir(), 'mps-execution-'))
 async function main() {
   const provider = new JsonRpcProvider(process.env.MPS_FORK_RPC || 'http://127.0.0.1:8557', 1)
   assert.match(await provider.send('web3_clientVersion', []), /anvil/i, 'Never send test transactions to a real network')
-  for (const name of ['quote', 'router', 'input']) buildSync({
+  for (const name of ['quote', 'router', 'input']) await build({
     entryPoints: [resolve(__dirname, `../apps/cowswap-frontend/src/modules/swap/services/wholeToken/${name}.service.ts`)],
     outfile: join(folder, `${name}.cjs`), bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent',
   })
