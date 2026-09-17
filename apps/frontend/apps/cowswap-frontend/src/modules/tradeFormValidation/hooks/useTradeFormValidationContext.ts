@@ -47,6 +47,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
   const { account } = useWalletInfo()
   const derivedTradeState = useDerivedTradeState()
   const fundingAmount = useSwapFundingAmount()
+  const wrappingFundingAmount = useSwapFundingAmount(true)
   const tradeQuote = useTradeQuote()
   const injectedWidgetParams = useInjectedWidgetParams()
   const tradePriceImpact = useTradePriceImpact()
@@ -100,12 +101,14 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
   return useMemo(() => {
     if (!derivedTradeState) return null
     const useWrappedBalance =
-      isEoaEthFlow &&
-      derivedTradeState.orderKind === OrderKind.BUY &&
       fundingAmount &&
       wrappedBalance &&
-      wrappedBalance.currency.chainId === fundingAmount.currency.chainId &&
-      !wrappedBalance.lessThan(fundingAmount)
+      [
+        isEoaEthFlow,
+        derivedTradeState.orderKind === OrderKind.BUY,
+        wrappedBalance.currency.chainId === fundingAmount.currency.chainId,
+        !wrappedBalance.lessThan(fundingAmount),
+      ].every(Boolean)
 
     return {
       account,
@@ -125,7 +128,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
       isOnline,
       derivedTradeState: {
         ...derivedTradeState,
-        inputCurrencyAmount: fundingAmount,
+        inputCurrencyAmount: isEoaEthFlow && !useWrappedBalance ? wrappingFundingAmount : fundingAmount,
         inputCurrencyBalance: useWrappedBalance ? wrappedBalance : derivedTradeState.inputCurrencyBalance,
       },
       intermediateTokenToBeImported: !!intermediateBuyToken && toBeImported,
@@ -147,6 +150,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
     customTokenError,
     derivedTradeState,
     fundingAmount,
+    wrappingFundingAmount,
     wrappedBalance,
     isEoaEthFlow,
     intermediateBuyToken,
