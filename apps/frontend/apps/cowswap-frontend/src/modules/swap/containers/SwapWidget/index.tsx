@@ -2,6 +2,7 @@ import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { isSellOrder } from '@cowprotocol/common-utils'
 import { useTryFindToken } from '@cowprotocol/tokens'
+import { InlineBanner, StatusColorVariant, LinkStyledButton } from '@cowprotocol/ui'
 import { useIsEagerConnectInProgress, useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
 
 import { t } from '@lingui/core/macro'
@@ -242,6 +243,12 @@ export function SwapWidget({
         return (
           <>
             {bottomContent}
+            {direct.comparisonFailed && (
+              <InlineBanner bannerType={StatusColorVariant.Alert}>
+                {t`Some swap routes could not be checked. A better quote may be available.`}{' '}
+                <LinkStyledButton onClick={() => void direct.refresh()}>{t`Retry comparison`}</LinkStyledButton>
+              </InlineBanner>
+            )}
             {!hideQuoteAmount && <SwapRateDetails rateInfoParams={rateInfoParams} deadline={deadlineState[0]} />}
             {isPrimaryValidationPassed && <TradeApproveWithAffectedOrderList />}
             <Warnings buyingFiatAmount={buyingFiatAmount} hideQuoteAmount={hideQuoteAmount} />

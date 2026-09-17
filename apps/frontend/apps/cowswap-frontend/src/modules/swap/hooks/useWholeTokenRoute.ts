@@ -120,16 +120,19 @@ function getRequestKey(request: DirectRequest | null, isSmartWallet: boolean | u
     ? JSON.stringify({ ...request, budget: request.budget.toString() })
     : ''
 }
-export function useWholeTokenRoute(): {
+interface WholeTokenRouteState {
   quote: Awaited<ReturnType<typeof getDirectQuotes>>[number] | undefined
   output: ReturnType<typeof useSwapDerivedState>['outputCurrencyAmount']
   fiat: ReturnType<typeof useUsdAmount>['value']
   requestKey: string
   reviewed: boolean
   loading: boolean
+  comparisonFailed: boolean
   refresh: () => Promise<unknown>
   review: (quote: DirectQuote | null) => void
-} {
+}
+
+export function useWholeTokenRoute(): WholeTokenRouteState {
   const [selection, setSelection] = useState<Selection>(null)
   const state = useSwapDerivedState()
   const params = useQuoteParams(state.inputCurrencyAmount?.quotient.toString())
@@ -168,7 +171,8 @@ export function useWholeTokenRoute(): {
           }
         },
         refetchInterval: 20000,
-        retry: false,
+        retry: 1,
+        retryDelay: 1000,
         staleTime: 10000,
       })),
     [requestKey, isReviewing],
@@ -191,9 +195,20 @@ export function useWholeTokenRoute(): {
   const review = useCallback((quote: DirectQuote | null) => setSelection({ quote, key: requestKey }), [requestKey])
   const output = useDirectOutput(quote, state.outputCurrency)
   const { value: fiat } = useUsdAmount(output)
+  const comparisonFailed = !!requestKey && result.isError
   return useMemo(
-    () => ({ quote, output, fiat, requestKey, reviewed: !!reviewed, review, loading, refresh: result.refetch }),
-    [quote, output, fiat, requestKey, reviewed, review, loading, result.refetch],
+    () => ({
+      quote,
+      output,
+      fiat,
+      requestKey,
+      reviewed: !!reviewed,
+      review,
+      loading,
+      comparisonFailed,
+      refresh: result.refetch,
+    }),
+    [quote, output, fiat, requestKey, reviewed, review, loading, comparisonFailed, result.refetch],
   )
 }
 

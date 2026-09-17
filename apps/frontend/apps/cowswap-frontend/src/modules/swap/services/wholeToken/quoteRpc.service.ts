@@ -8,6 +8,36 @@ const abi = new Interface([
 
 type PendingCall = { to: string; data: string; resolve: (data: string) => void; reject: (error: unknown) => void }
 
+class RouteUnavailableError extends Error {}
+
+/** Only an EVM/pool rejection rules out a route. Transport errors must fail the comparison. */
+export function unavailableRoute(error: unknown): null {
+  if (error instanceof RouteUnavailableError || isEvmRevert(error)) return null
+  throw error
+}
+
+function isEvmRevert(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const {
+    code,
+    message,
+    error: inner,
+    body,
+  } = error as { code?: unknown; message?: unknown; error?: unknown; body?: unknown }
+  if ([3, -32000, -32015].includes(Number(code))) {
+    return /^execution reverted\b/i.test(String(message))
+  }
+  if (isEvmRevert(inner)) return true
+  if (typeof body === 'string') {
+    try {
+      return isEvmRevert(JSON.parse(body))
+    } catch {
+      return false
+    }
+  }
+  return false
+}
+
 /** Batch independent quoter reads at the same block; stop follow-up work when the form changes. */
 export function createQuoteRpc(
   provider: JsonRpcProvider,
@@ -31,7 +61,7 @@ export function createQuoteRpc(
       calls.forEach((call, i) => {
         const result = results[i]
         if (result?.success) call.resolve(result.returnData)
-        else call.reject(new Error('Pool cannot quote this route'))
+        else call.reject(new RouteUnavailableError('Pool cannot quote this route'))
       })
     } catch (error) {
       calls.forEach((call) => call.reject(error))

@@ -67,12 +67,19 @@ async function main() {
         })
       })
     let stallRefresh = false
+    let rpcFailures = 0
+    let injectedFailures = 0
     let markStalled
     const refreshStalled = new Promise((resolve) => {
       markStalled = resolve
     })
     await page.route(frontendRpc + '/**', async (route) => {
       const body = route.request().postDataJSON()
+      if (rpcFailures && body.method === 'eth_call' && body.params[0]?.to?.toLowerCase() === '0xca11bde05977b3631167028862be2a173976ca11') {
+        rpcFailures--
+        injectedFailures++
+        return route.fulfill({ json: { jsonrpc: '2.0', id: body.id, error: { code: 429, message: 'Test rate limit' } } })
+      }
       if (
         stallRefresh &&
         body.method === 'eth_estimateGas' &&
@@ -118,9 +125,21 @@ async function main() {
     const input = page.locator('#input-currency-input input')
     await input.waitFor({ timeout: 90000 })
     await page.waitForTimeout(3000)
+    if (process.env.MPS_RPC_RECOVERY) rpcFailures = 2
     await input.fill(inputAmount)
-    const card = page.getByRole('region', { name: 'Best MPS route' })
+    const card = page.getByRole('region', { name: 'MPS quote' })
+    if (process.env.MPS_RPC_RECOVERY) {
+      await page.getByText('Some swap routes could not be checked. A better quote may be available.').waitFor({ timeout: 90000 })
+      assert.equal(injectedFailures, 2, 'One automatic retry before reporting incomplete coverage')
+      assert.equal(await card.count(), 0, 'Do not present a partial route comparison as complete')
+      await page.getByRole('button', { name: 'Retry comparison', exact: true }).click()
+    }
     await card.waitFor({ timeout: 90000 }).catch(async error => { console.log((await page.locator('body').innerText()).slice(-7000)); throw error })
+    const summary = await card.locator('p').first().innerText()
+    const spend = Number(summary.match(/Estimated spend: ([\d.]+)/)[1])
+    const unused = Number(summary.match(/Estimated unused budget: ([\d.]+)/)[1])
+    assert(Math.abs(spend + unused - Number(inputAmount)) < 0.00000002, 'Spend and unused budget must reconcile')
+    assert(summary.includes('Slippage tolerance: 0.5%'))
     if (process.env.MPS_REFRESH_STALL) {
       stallRefresh = true
       await Promise.race([

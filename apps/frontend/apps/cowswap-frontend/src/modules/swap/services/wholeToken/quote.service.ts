@@ -5,6 +5,7 @@ import BigNumber from 'bignumber.js'
 
 import { getInputApprovals, simulationState } from './input.service'
 import { getMarket, getRoutes, Market, quoteV3 } from './market.service'
+import { unavailableRoute } from './quoteRpc.service'
 import { buildDirectTransaction, DirectQuote, Route, USDC, VolumeFee, WETH } from './router.service'
 
 export interface DirectRequest {
@@ -63,12 +64,12 @@ export async function getDirectQuotes(
   market.approvalGas = approvalGas.reduce((sum, gas) => sum + gas, 0n)
   if (request.inputToken)
     market.inputPerEth = await quoteV3(market, { label: '', tokens: [WETH, USDC], fees: [500] }, 10n ** 18n, false)
-  const results = await Promise.allSettled(
-    getRoutes(request.inputToken).map((route) => quoteRoute(provider, request, market, route)),
+  const results = await Promise.all(
+    getRoutes(request.inputToken).map((route) => quoteRoute(provider, request, market, route).catch(unavailableRoute)),
   )
   signal?.throwIfAborted()
   return results
-    .flatMap((result) => (result.status === 'fulfilled' && result.value ? [result.value] : []))
+    .flatMap((result) => (result ? [result] : []))
     .sort((a, b) =>
       a.buyAmount !== b.buyAmount ? (a.buyAmount > b.buyAmount ? -1 : 1) : a.netCost < b.netCost ? -1 : 1,
     )
@@ -173,7 +174,7 @@ async function quoteRoute(
   market.rpc.check()
   if (!candidate) return seed
   if (candidate.buyAmount === seed.buyAmount) return seed
-  const verified = await forAmount(provider, request, market, route, candidate.buyAmount).catch(() => null)
+  const verified = await forAmount(provider, request, market, route, candidate.buyAmount).catch(unavailableRoute)
   if (verified && verified.maxTotal <= request.budget) return verified
   // If tick crossings or transfer rules invalidate the estimate, search below
   // that candidate with actual simulations instead of discarding the route.
@@ -193,7 +194,7 @@ async function findAffordable(
   market.rpc.check()
   if (low > maximum) return best
   const middle = (low + maximum) / 2n
-  const quote = await forAmount(provider, request, market, route, middle, estimatedGas).catch(() => null)
+  const quote = await forAmount(provider, request, market, route, middle, estimatedGas).catch(unavailableRoute)
   return quote && quote.maxTotal <= request.budget
     ? findAffordable(provider, request, market, route, maximum, estimatedGas, middle + 1n, quote)
     : findAffordable(provider, request, market, route, middle - 1n, estimatedGas, low, best)
