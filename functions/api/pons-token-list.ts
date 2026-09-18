@@ -229,9 +229,14 @@ export async function verifyLaunchesOnchain(
       typeof launch.token === 'string' &&
       ADDRESS_RE.test(launch.token),
   );
-  const chunks = Array.from({ length: Math.ceil(candidates.length / RPC_BATCH_SIZE) }, (_, index) =>
-    candidates.slice(index * RPC_BATCH_SIZE, (index + 1) * RPC_BATCH_SIZE),
-  );
+  // A small first batch can fit shared-edge rate limits and seed verified
+  // discovery. Keep later batches large enough to fit the overall deadline.
+  const chunks: PonsLaunch[][] = [];
+  for (let start = 0; start < candidates.length; ) {
+    const size = start === 0 ? 5 : RPC_BATCH_SIZE;
+    chunks.push(candidates.slice(start, start + size));
+    start += size;
+  }
 
   const verifiedChunks: PonsLaunch[][] = [];
   const verifyChunk = async (chunk: PonsLaunch[], chunkIndex: number): Promise<PonsLaunch[]> => {
@@ -444,7 +449,7 @@ export const onRequestGet: PagesFunction = async (context) => {
     let launches: PonsLaunch[] = [];
     try {
       const activeResponse = await fetch(UPSTREAM_URL, {
-        // Reserve 20 seconds for four RPC batches (75 catalog entries plus reference PONS).
+        // Reserve 20 seconds for at most five RPC batches (75 entries plus reference PONS).
         signal: AbortSignal.timeout(5_000),
         headers: { accept: 'application/json', 'user-agent': 'Ophis pons token-list adapter' },
       });
