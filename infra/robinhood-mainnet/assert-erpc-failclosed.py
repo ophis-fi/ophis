@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lock Robinhood's Boost RPC trust and transaction-relay topology."""
+"""Lock Robinhood's independent RPC trust and transaction-relay topology."""
 
 from __future__ import annotations
 
@@ -35,7 +35,20 @@ projects:
                 .sortByScore(PREFER_FASTEST)
             }
         failsafe:
-          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionByHash|eth_getTransactionReceipt"
+          - matchMethod: "eth_getTransactionByHash"
+            timeout:
+              duration: 12s
+            consensus:
+              maxParticipants: 2
+              agreementThreshold: 2
+              maxWaitOnResult: 5s
+              maxWaitOnEmpty: 5s
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
+              ignoreFields:
+                eth_getTransactionByHash:
+                  - blockTimestamp
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_estimateGas|eth_feeHistory|eth_getTransactionCount|eth_getBlockByHash|eth_getTransactionReceipt"
             timeout:
               duration: 12s
             consensus:
@@ -90,39 +103,12 @@ projects:
               halfOpenAfter: 30s
               successThresholdCount: 2
               successThresholdCapacity: 4
-      - id: goldsky-rbh
-        endpoint: https://edge.goldsky.com/boost/4663?key=${GOLDSKY_BOOST_KEY}
+      - id: robinhood-official
+        endpoint: https://rpc.mainnet.chain.robinhood.com
         ignoreMethods:
           - eth_getLogs
           - debug_*
           - trace_*
-          - eth_getTransactionByHash
-          - eth_getTransactionReceipt
-          - eth_getBlockByHash
-        failsafe:
-          - matchMethod: "*"
-            timeout:
-              duration: 4s
-            retry:
-              maxAttempts: 2
-              delay: 200ms
-              backoffMaxDelay: 1s
-              backoffFactor: 1.5
-              jitter: 50ms
-            circuitBreaker:
-              failureThresholdCount: 12
-              failureThresholdCapacity: 24
-              halfOpenAfter: 30s
-              successThresholdCount: 2
-              successThresholdCapacity: 4
-      - id: robinhood-official
-        endpoint: https://rpc.mainnet.chain.robinhood.com
-        allowMethods:
-          - eth_getTransactionByHash
-          - eth_getTransactionReceipt
-          - eth_getBlockByHash
-          - eth_blockNumber
-          - eth_getBlockByNumber
         failsafe:
           - matchMethod: "*"
             timeout:

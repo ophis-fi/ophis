@@ -92,6 +92,13 @@ docker compose ps             # verify all services healthy
 
 ## eRPC Upstreams
 
+On 2026-09-18, Boost/Alchemy quota exhaustion stopped driver startup. Restore
+the official public voter while keeping 2-of-2 agreement, served-tip pinning,
+and self-only logs/traces. Check the error body and self-node head before any
+provider change; never lower quorum to recover from a provider outage.
+Recreate only `rpc-proxy` with the reviewed rendered config. The restarting
+driver can then recover without a backend rebuild.
+
 The autopilot needs `debug_traceTransaction`, which the public RPC does not serve.
 The self-hosted **Nitro** node supplies traces while protected reads use 2-of-2
 agreement with Robinhood's official public RPC. Nitro forwards submitted

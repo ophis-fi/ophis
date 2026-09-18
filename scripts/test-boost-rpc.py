@@ -61,10 +61,18 @@ rbh = runpy.run_path(str(RBH / "assert-erpc-failclosed.py"))
 source = (RBH / "configs/erpc.yaml.tmpl").read_text()
 assert rbh["active_lines"](source) == rbh["EXPECTED_ACTIVE_LINES"]
 for line in ("          - debug_*\n", "          - trace_*\n", "          - eth_getLogs\n",
-             "          - eth_blockNumber\n", "          - eth_getBlockByNumber\n"):
+             "              agreementThreshold: 2\n", "              maxWaitOnEmpty: 5s\n"):
     assert rbh["active_lines"](source.replace(line, "")) != rbh["EXPECTED_ACTIVE_LINES"]
 
-for stack in (OP, RBH):
+for field in ("value", "input", "blockHash", "hash", "r", "s", "v"):
+    assert rbh["active_lines"](source.replace("- blockTimestamp", "- " + field)) != rbh["EXPECTED_ACTIVE_LINES"]
+assert rbh["active_lines"](source.replace('          - matchMethod: "eth_getTransactionByHash"\n', "")) != rbh["EXPECTED_ACTIVE_LINES"]
+
+assert "GOLDSKY_BOOST_KEY" not in (RBH / "render-configs.sh").read_text()
+assert "edge.goldsky.com" not in source
+assert len(yaml.safe_load(source)["projects"][0]["upstreams"]) == 2
+
+for stack in (OP,):
     with tempfile.TemporaryDirectory() as tmp:
         sandbox = Path(tmp)
         (sandbox / "render-configs.sh").write_text((stack / "render-configs.sh").read_text())
@@ -77,6 +85,6 @@ for stack in (OP, RBH):
         result = subprocess.run(["bash", str(sandbox / "render-configs.sh")], env=env,
                                 capture_output=True, text=True)
         assert result.returncode == 15, (stack.name, result.stderr)
-        assert ("DRPC_API_KEY" if stack == OP else "GOLDSKY_BOOST_KEY") + " is unset/empty" in result.stderr
+        assert "DRPC_API_KEY is unset/empty" in result.stderr
 
 print("Boost RPC regression checks passed")
