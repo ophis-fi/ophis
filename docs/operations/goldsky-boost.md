@@ -1,8 +1,12 @@
-# Backend-only Goldsky Boost
+# Backend-only Goldsky Boost (historical)
 
-OP retired Boost on 2026-09-18 after its Alchemy upstream exhausted monthly
-capacity. OP now uses dRPC/ZAN/Tenderly for all protected methods; see
-[the OP runbook](op-erpc-runbook.md). The OP rollout notes below are historical.
+Both OP and Robinhood retired Boost on 2026-09-18 after its Alchemy upstream
+exhausted monthly capacity. OP uses dRPC/ZAN/Tenderly; Robinhood uses strict
+2-of-2 agreement between Cadia Nitro and the official public RPC. Robinhood
+logs and traces remain self-only. See [the OP runbook](op-erpc-runbook.md) and
+[the Robinhood runbook](../../infra/robinhood-mainnet/README.md).
+
+The rollout notes below describe the retired configuration.
 
 Use `/boost/10` and `/boost/4663`, never metered `/standard/evm/`.
 The website uses its original public endpoints. `GOLDSKY_BOOST_KEY` belongs in
