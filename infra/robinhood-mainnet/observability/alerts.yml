@@ -250,8 +250,8 @@ groups:
             eRPC is failing consensus because fewer than agreementThreshold (2)
             of the 2 upstreams respond within the retry budget for
             `{{ $labels.category }}` requests. Each protected method has TWO
-            eligible voters: ophis-self-rbh plus goldsky-rbh for state/simulation,
-            or robinhood-official for transactions, receipts and block-by-hash.
+            eligible voters: ophis-self-rbh and robinhood-official for state,
+            simulation, transactions, receipts and block-by-hash.
             A single slow, rate-limited, or down voter is enough to trip this.
 
             Diagnose: set UPSTREAM to each endpoint listed in the rendered erpc.yaml and run
@@ -285,8 +285,8 @@ groups:
 
             On Robinhood's ~134ms blocks, expect occasional disputes on tip
             queries. Sustained elevation = find which side is drifting.
-            For state/simulation categories, probe goldsky-rbh; for transactions,
-            receipts and block-by-hash, probe robinhood-official. Use the matching
+            For every protected category, compare ophis-self-rbh and
+            robinhood-official. Use the matching
             endpoint from private rendered/erpc.yaml and inspect upstream-labelled
             RPC errors. Do not paste credential-bearing URLs into incident reports.
             On Cadia (tailscale ssh clement@cadia-wsl), the Nitro node:
@@ -315,8 +315,8 @@ groups:
             in-flight settlements will revert.
 
             Robinhood consensus is 2-of-2 per protected method: ophis-self-rbh
-            plus goldsky-rbh for state/simulation, or robinhood-official for
-            transactions, receipts and block-by-hash. EITHER eligible voter
+            plus robinhood-official for state, simulation, transactions, receipts
+            and block-by-hash. EITHER eligible voter
             lagging or down can reach 100% failure for that category.
 
             Likely causes, most common first:
@@ -325,8 +325,8 @@ groups:
                  syncing node makes this alert EXPECTED; it resolves on its
                  own at tip. Do NOT reconfigure mid-catch-up (2026-08-19).
               2. External voter degraded (rate-limit, outage, DNS): identify the
-                 failing category and upstream label, then probe goldsky-rbh or
-                 robinhood-official using its private rendered endpoint.
+                 failing category and upstream label, then probe robinhood-official
+                 using the endpoint in rendered/erpc.yaml.
               3. Cadia host trouble — rebates.ophis.fi/stats returning 200
                  proves the host is up; robinhood-mainnet.ophis.fi 530 means
                  host/tunnel down, 502 means the orderbook is not serving
