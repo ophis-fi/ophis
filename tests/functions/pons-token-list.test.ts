@@ -415,8 +415,8 @@ test('keeps verified discovery when a later RPC batch is rate limited', async (t
     );
   });
   const verified = await verifyLaunchesOnchain(launches, new AbortController().signal);
-  assert.deepEqual(verified, launches.slice(0, 20));
-  assert.ok(!verified.includes(launches[20]!));
+  assert.deepEqual(verified, launches.slice(0, 5));
+  assert.ok(!verified.includes(launches[5]!));
   cancelOnLaterBatch = new AbortController();
   await assert.rejects(
     verifyLaunchesOnchain(launches, cancelOnLaterBatch.signal),
@@ -427,4 +427,16 @@ test('keeps verified discovery when a later RPC batch is rate limited', async (t
     verifyLaunchesOnchain(launches, new AbortController().signal),
     /quorum unavailable/,
   );
+});
+
+test('starts discovery within small edge RPC budgets without exceeding five batches', async (t) => {
+  const sizes: number[] = [];
+  const launches = Array.from({ length: 76 }, () => launch());
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    const requests = JSON.parse(String(init?.body)) as { id: number }[];
+    if (String(input) === 'https://rpc.mainnet.chain.robinhood.com') sizes.push(requests.length);
+    return Response.json(requests.map(({ id }) => ({ id, result: verifiedResult() })));
+  });
+  assert.equal((await verifyLaunchesOnchain(launches, new AbortController().signal)).length, 76);
+  assert.deepEqual(sizes, [5, 20, 20, 20, 11]);
 });
