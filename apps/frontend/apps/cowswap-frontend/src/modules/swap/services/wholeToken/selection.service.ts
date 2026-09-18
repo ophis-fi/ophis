@@ -5,11 +5,20 @@ import type { useTradeQuote } from 'modules/tradeQuote'
 
 import { DirectQuote, directOutputToken, directSellProceeds, isMpsSell } from './router.service'
 
+export function bestDirect(
+  quotes: DirectQuote[] | undefined,
+  connected: boolean,
+  nativeBalance: bigint | undefined,
+): DirectQuote | undefined {
+  return quotes?.find((quote) => canFundDirect(quote, connected, nativeBalance)) || quotes?.[0]
+}
+
 export function selectDirect(
   best: DirectQuote | undefined,
   cow: ReturnType<typeof useTradeQuote>,
   now: number,
   depositGas: bigint,
+  funded = true,
 ): DirectQuote | undefined {
   if (!best || now - best.quotedAt >= 30000) return undefined
   if (!cow.quote) return best
@@ -21,6 +30,8 @@ export function selectDirect(
     params.amount !== best.budget.toString(),
   ].some(Boolean)
   if (changed) return best
+  // Prefer a usable gasless quote, but retain direct quotes when CoW has none.
+  if (!funded) return undefined
   const amounts = cow.quote.quoteResults.amountsAndCosts
   return improvesAmounts(best, amounts.afterPartnerFees.buyAmount, amounts.amountsToSign.sellAmount, depositGas)
     ? best

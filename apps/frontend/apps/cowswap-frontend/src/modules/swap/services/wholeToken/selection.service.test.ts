@@ -5,7 +5,7 @@ import type { useTradeQuote } from 'modules/tradeQuote'
 
 import { GNOSIS_MPS, WXDAI } from './gnosis.service'
 import { DirectQuote, MPS, USDC } from './router.service'
-import { canFundDirect, comparisonLoading, selectDirect } from './selection.service'
+import { bestDirect, canFundDirect, comparisonLoading, selectDirect } from './selection.service'
 
 const direct = {
   inputToken: USDC,
@@ -76,6 +76,25 @@ it('keeps gasless CoW available when USDC users cannot fund direct gas and appro
   expect(canFundDirect(usdc, true, 479n)).toBe(false)
   expect(canFundDirect(usdc, true, 480n)).toBe(true)
   expect(canFundDirect(usdc, false, undefined)).toBe(true)
+  expect(selectDirect(usdc, cowQuote(), 1001, 0n, false)).toBeUndefined()
+})
+
+it.each([MPS, GNOSIS_MPS])('retains a quote for %s when gas is unavailable and CoW rejects the sale', (inputToken) => {
+  const sale = { ...direct, inputToken, gasLimit: 120n, approvalGas: 100n }
+  const cow = { ...cowQuote(inputToken), quote: null, error: new Error('SellAmountDoesNotCoverFee') }
+  for (const balance of [undefined, 0n, 479n]) {
+    const best = bestDirect([sale], true, balance)
+    expect(selectDirect(best, cow, 1001, 0n, canFundDirect(best, true, balance))).toBe(sale)
+  }
+  expect(selectDirect(sale, cow, 31000, 0n, false)).toBeUndefined()
+})
+
+it('prefers a funded direct route and never invents a quote while requests are pending', () => {
+  const expensive = { ...direct, gasLimit: 500n, approvalGas: 0n }
+  const affordable = { ...direct, gasLimit: 100n, approvalGas: 0n }
+  expect(bestDirect([expensive, affordable], true, 200n)).toBe(affordable)
+  expect(bestDirect(undefined, true, 200n)).toBeUndefined()
+  expect(bestDirect([], true, 200n)).toBeUndefined()
 })
 
 it('compares a retained current CoW quote after a background refresh error', () => {

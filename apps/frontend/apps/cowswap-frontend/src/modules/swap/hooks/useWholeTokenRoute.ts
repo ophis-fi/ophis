@@ -25,7 +25,7 @@ import { isSupportedMpsOutput } from '../services/wholeToken/outputTokens.servic
 import { isReplaceableCowPermit } from '../services/wholeToken/permitHook.service'
 import { DirectRequest, getDirectQuotes } from '../services/wholeToken/quote.service'
 import { directChainId, DirectQuote, MPS, USDC, VolumeFee } from '../services/wholeToken/router.service'
-import { canFundDirect, comparisonLoading, selectDirect } from '../services/wholeToken/selection.service'
+import { bestDirect, canFundDirect, comparisonLoading, selectDirect } from '../services/wholeToken/selection.service'
 
 type SwapState = ReturnType<typeof useSwapDerivedState>
 type DirectSwapState = SwapState & { outputCurrency: NonNullable<SwapState['outputCurrency']> }
@@ -149,6 +149,7 @@ interface WholeTokenRouteState {
   reviewed: boolean
   loading: boolean
   comparisonFailed: boolean
+  funding: { balance: bigint | undefined; failed: boolean }
   refresh: () => Promise<unknown>
   review: (quote: DirectQuote | null) => void
 }
@@ -157,7 +158,7 @@ export function useWholeTokenRoute(): WholeTokenRouteState {
   const state = useSwapDerivedState()
   const params = useQuoteParams(state.inputCurrencyAmount?.quotient.toString())
   const { account, chainId } = useWalletInfo()
-  const { data: nativeBalance } = useNativeTokenBalance(account, chainId)
+  const { data: nativeBalance, error: balanceError } = useNativeTokenBalance(account, chainId)
   const isSmartWallet = useIsSmartContractWallet()
   const slippage = useTradeSlippageValueAndType()
   const config = useSlippageConfig()
@@ -200,19 +201,19 @@ export function useWholeTokenRoute(): WholeTokenRouteState {
     depositQuote(requestKey, request, cow.quote),
     request?.account,
   )
-  const best =
-    requestKey && !result.isError
-      ? result.data?.find((candidate) =>
-          canFundDirect(candidate, !!account, nativeBalance ? BigInt(nativeBalance.toString()) : undefined),
-        )
-      : undefined
+  const candidates = requestKey && !result.isError ? result.data : undefined
+  const balance = nativeBalance ? BigInt(nativeBalance.toString()) : undefined
+  const best = bestDirect(candidates, !!account, balance)
   const now = useMachineTimeMs(1000)
   const loading = comparisonLoading(requestKey, isReviewing, isDirectPending(result, now), cow, gasLoading)
-  const quote = reviewed || (loading ? undefined : selectDirect(best, cow, now, depositGas))
+  const quote =
+    reviewed ||
+    (loading ? undefined : selectDirect(best, cow, now, depositGas, canFundDirect(best, !!account, balance)))
   const review = useCallback((quote: DirectQuote | null) => setSelection({ quote, key: requestKey }), [requestKey])
   const output = useDirectOutput(quote, state.outputCurrency)
   const { value: fiat } = useUsdAmount(output)
   const comparisonFailed = !!requestKey && result.isError
+  const funding = useMemo(() => ({ balance, failed: !!balanceError }), [balance, balanceError])
   return useMemo(
     () => ({
       quote,
@@ -223,15 +224,15 @@ export function useWholeTokenRoute(): WholeTokenRouteState {
       review,
       loading,
       comparisonFailed,
+      funding,
       refresh: result.refetch,
     }),
-    [quote, output, fiat, requestKey, reviewed, review, loading, comparisonFailed, result.refetch],
+    [quote, output, fiat, requestKey, reviewed, review, loading, comparisonFailed, result.refetch, funding],
   )
 }
 function directInput(state: SwapState): string | undefined {
-  return state.inputCurrency && !getIsNativeToken(state.inputCurrency)
-    ? getCurrencyAddress(state.inputCurrency)
-    : undefined
+  const input = state.inputCurrency
+  return input && !getIsNativeToken(input) ? getCurrencyAddress(input) : undefined
 }
 function depositQuote(
   key: string,

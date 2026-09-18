@@ -6682,3 +6682,15 @@ msgstr "Swap and bridge costs are at least {formattedFeePercentage}% of the swap
 #: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
 msgid "Orders created by the connected wallet"
 msgstr "Orders created by the connected wallet"
+
+#: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenRoute.container.tsx
+msgid "Insufficient {nativeSymbol} for gas"
+msgstr "Insufficient {nativeSymbol} for gas"
+
+#: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenRoute.container.tsx
+msgid "Unable to check gas balance"
+msgstr "Unable to check gas balance"
+
+#: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenRoute.container.tsx
+msgid "Checking gas balance"
+msgstr "Checking gas balance"
