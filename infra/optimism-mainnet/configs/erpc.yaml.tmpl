@@ -153,6 +153,15 @@ projects:
           integrity:
             enforceHighestBlock: true
             enforceNonNullTaggedBlocks: true
+        # Keep recovered voters eligible: the implicit legacy policy can
+        # exclude a healthy lane after a brief rate-limit burst.
+        selectionPolicy:
+          evalScope: network-method
+          evalFunc: |
+            (upstreams, ctx) => upstreams
+              .removeCordoned()
+              .whenEmpty(() => upstreams)
+              .sortByScore(PREFER_FASTEST)
         # Consensus failsafe: defeats fork-view-poisoning on state-reads.
         # Each free provider is unauthenticated HTTPS — a hostile provider
         # (or MITM via CA compromise / DNS hijack) could otherwise serve a

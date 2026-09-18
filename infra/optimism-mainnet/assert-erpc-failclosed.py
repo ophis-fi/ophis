@@ -92,7 +92,7 @@ ALLOWED = {
     "project": {"id", "networks", "upstreamDefaults", "upstreams"},
     "upstreamDefaults": {"evm"},
     "upstreamDefaults.evm": {"statePollerDebounce", "statePollerInterval"},
-    "network": {"architecture", "evm", "failsafe"},
+    "network": {"architecture", "evm", "failsafe", "selectionPolicy"},
     "network.evm": {"chainId", "integrity"},
     "integrity": {"enforceHighestBlock", "enforceNonNullTaggedBlocks"},
     "rule": {"matchMethod", "timeout", "consensus", "retry", "hedge"},
@@ -104,6 +104,11 @@ ALLOWED = {
     "upstream": {"endpoint", "failsafe", "id"},
     "upstream_rule": {"matchMethod", "timeout", "retry", "circuitBreaker"},
     "circuitBreaker": {"failureThresholdCount", "failureThresholdCapacity", "halfOpenAfter", "successThresholdCount", "successThresholdCapacity"},
+}
+
+EXPECTED_SELECTION_POLICY = {
+    "evalScope": "network-method",
+    "evalFunc": "(upstreams, ctx) => upstreams\n  .removeCordoned()\n  .whenEmpty(() => upstreams)\n  .sortByScore(PREFER_FASTEST)\n",
 }
 
 _SEGMENT_OK = re.compile(r"^[A-Za-z0-9_*]*$")
@@ -343,6 +348,8 @@ def validate(cfg):
             if (net.get("evm") or {}).get("chainId") != CHAIN_ID:
                 continue
             networks_checked += 1
+            if net.get("selectionPolicy") != EXPECTED_SELECTION_POLICY:
+                errs.append("selectionPolicy must retain every uncordoned voter; implicit/filtered policies are unsafe")
             _check_keys(net, "network", f"network[{CHAIN_ID}]", errs)
             if isinstance(net.get("evm"), dict):
                 _check_keys(net["evm"], "network.evm", f"network[{CHAIN_ID}].evm", errs)

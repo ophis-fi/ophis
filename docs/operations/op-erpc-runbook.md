@@ -16,7 +16,9 @@ network timeout; adaptive defaults cancelled slower voters after only 5ms.
 The guard pins these values. Genuine tip disagreements may now return transient
 errors instead of selecting one provider's view.
 
-There are no method filters or application head exclusions. Goldsky is absent
+There are no method filters or application head exclusions. An explicit policy
+keeps every uncordoned voter eligible; the implicit legacy policy sidelined a
+recovered dRPC lane after its rate-limit burst. Goldsky is absent
 from OP reads and submission. Do not restore it while its Alchemy upstream is
 quota-exhausted. The three remaining providers are also quota-dependent;
 provider health must include actual state, populated receipt and log responses.

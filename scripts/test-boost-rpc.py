@@ -43,6 +43,14 @@ bad = copy.deepcopy(config)
 bad["projects"][0]["networks"][0]["selectionPolicy"] = {}
 assert validate(bad), "Selection policies must not silently exclude the restored voter"
 bad = copy.deepcopy(config)
+del bad["projects"][0]["networks"][0]["selectionPolicy"]
+assert validate(bad), "Implicit policy can sideline a recovered voter"
+for expression in ("upstreams.slice(0, 2)", "upstreams.filter(u => u.id !== 'drpc-op')",
+                   "upstreams.sortByScore(PREFER_FASTEST)", "upstreams.removeCordoned()"):
+    bad = copy.deepcopy(config)
+    bad["projects"][0]["networks"][0]["selectionPolicy"]["evalFunc"] = expression
+    assert validate(bad), expression
+bad = copy.deepcopy(config)
 bad["projects"][0]["upstreams"].append(copy.deepcopy(bad["projects"][0]["upstreams"][0]))
 assert validate(bad), "An extra upstream must not dilute the independent three-provider quorum"
 driver = (OP / "configs/driver.toml.tmpl").read_text()
