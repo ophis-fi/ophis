@@ -5,6 +5,8 @@ pubDate: 2026-09-18
 author: Ophis
 tags: [stock-tokens, tokenized-stocks, robinhood-chain, ondo, xstocks, reality-finance, rwa]
 draft: false
+cover: ./stock-tokens-tokenized-stocks.cover.webp
+coverAlt: "A paper stock certificate transforms into digital stock tokens that flow into a wallet, in Ophis's white, peach and brown palette."
 ---
 
 Apple, Tesla and NVIDIA are familiar names. Finding them in a crypto wallet still feels a little surprising.
