@@ -1,5 +1,7 @@
 import { ReactNode } from 'react'
 
+import { useNativeTokenBalance } from '@cowprotocol/balances-and-allowances'
+import { NATIVE_CURRENCIES } from '@cowprotocol/common-const'
 import { useMachineTimeMs } from '@cowprotocol/common-hooks'
 import { ButtonPrimary } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
@@ -18,7 +20,8 @@ import { WholeTokenWarnings } from './WholeTokenWarnings.pure'
 import { useDirectPriceImpact } from '../../hooks/useDirectPriceImpact'
 import { useDirectSwap } from '../../hooks/useDirectSwap'
 import { useSwapDerivedState } from '../../hooks/useSwapDerivedState'
-import { DirectQuote } from '../../services/wholeToken/router.service'
+import { directChainId, DirectQuote } from '../../services/wholeToken/router.service'
+import { canFundDirect } from '../../services/wholeToken/selection.service'
 
 const Card = styled.section`
   display: flex;
@@ -68,6 +71,10 @@ function RouteAction({
   priceImpact: ReturnType<typeof useDirectPriceImpact>
 }): ReactNode {
   const { account } = useWalletInfo()
+  const { data: nativeBalance, error: balanceError } = useNativeTokenBalance(account, directChainId(quote))
+  const funded = canFundDirect(quote, !!account, nativeBalance ? BigInt(nativeBalance.toString()) : undefined)
+  const nativeSymbol = NATIVE_CURRENCIES[directChainId(quote)].symbol
+  const gasError = gasErrorText(funded, !!nativeBalance, !!balanceError, nativeSymbol)
   const connect = useToggleWalletModal()
   const { inputCurrency, inputCurrencyBalance } = useSwapDerivedState()
   const execution = useDirectSwap(requestKey)
@@ -89,13 +96,16 @@ function RouteAction({
     else if (priceImpact.allowed && (await priceImpact.confirm())) await execution.execute(quote)
   }
   const context = useTradeFormButtonContext(t`Confirm swap`, onClick)
-  const disabled =
-    execution.pending || submitted || (!expired && (!priceImpact.allowed || priceImpact.loading || insufficient))
+  const disabled = [
+    execution.pending,
+    submitted,
+    !expired && [!priceImpact.allowed, priceImpact.loading, insufficient, !funded].some(Boolean),
+  ].some(Boolean)
   const label = buttonText(
     execution.pending,
     submitted,
     expired,
-    insufficient,
+    insufficient ? t`Insufficient balance` : gasError,
     priceImpact,
     quote.needsApproval,
     reviewed,
@@ -130,11 +140,17 @@ function RouteAction({
   )
 }
 
+function gasErrorText(funded: boolean, hasBalance: boolean, failed: boolean, nativeSymbol = ''): string {
+  if (funded) return ''
+  if (hasBalance) return t`Insufficient ${nativeSymbol} for gas`
+  return failed ? t`Unable to check gas balance` : t`Checking gas balance`
+}
+
 function buttonText(
   pending: boolean,
   submitted: boolean,
   expired: boolean,
-  insufficient: boolean,
+  fundingError: string,
   priceImpact: ReturnType<typeof useDirectPriceImpact>,
   needsApproval: boolean | undefined,
   reviewed: boolean,
@@ -143,7 +159,7 @@ function buttonText(
   if (pending) return t`Transaction in progress`
   if (submitted) return t`Swap submitted`
   if (expired) return t`Refresh quote`
-  if (insufficient) return t`Insufficient balance`
+  if (fundingError) return fundingError
   if (priceImpact.loading) return t`Fetching price impact`
   if (!priceImpact.allowed) return t`Preparing swap`
   if (needsApproval) return t`Approve ${symbol}`

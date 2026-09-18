@@ -40,6 +40,10 @@ async function main() {
     const usdc = new Contract(USDC, ['function transfer(address,uint256) returns(bool)'], provider.getSigner(whale))
     await (await usdc.transfer(account, 10000000)).wait()
   }
+  if (process.env.MPS_NO_GAS) {
+    assert.equal(inputToken, 'MPS', 'The no-gas regression sells one MPS')
+    await rpc('anvil_setBalance', [account, '0x0'])
+  }
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true })
   let testPage
   try {
@@ -148,6 +152,15 @@ async function main() {
     const unused = Number(summary.match(/Estimated unused budget: ([\d.]+)/)[1])
     assert(Math.abs(spend + unused - Number(inputAmount)) < 0.00000002, 'Spend and unused budget must reconcile')
     assert(summary.includes('Slippage tolerance: 0.5%'))
+    if (process.env.MPS_NO_GAS) {
+      const button = card.getByRole('button', { name: 'Insufficient ETH for gas', exact: true })
+      await button.waitFor()
+      assert(await button.isDisabled())
+      assert(!(await page.locator('body').innerText()).includes('Sell amount is too small'))
+      assert.equal(sent, 0, 'Gasless wallet must not approve or submit a direct swap')
+      console.log('PASS: 1 MPS quote stays visible without ETH; the gas requirement blocks signing')
+      return
+    }
     if (process.env.MPS_REFRESH_STALL) {
       stallRefresh = true
       await Promise.race([
