@@ -249,14 +249,8 @@ if [[ -z "${TENDERLY_OP_KEY:-}" ]]; then
   exit 15
 fi
 
-# Boost is a required consensus voter; do not render an empty credential.
-if [[ -z "${GOLDSKY_BOOST_KEY:-}" ]]; then
-  echo "ERROR: GOLDSKY_BOOST_KEY is unset/empty. Set it in .env." >&2
-  exit 15
-fi
-
 if [[ -z "${DRPC_API_KEY:-}" ]]; then
-  echo "ERROR: DRPC_API_KEY is unset/empty (required for transaction/receipt/log consensus)." >&2
+  echo "ERROR: DRPC_API_KEY is unset/empty (required for OP consensus)." >&2
   exit 15
 fi
 
@@ -591,7 +585,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   #
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax, defensive against future config additions.
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${GOLDSKY_BOOST_KEY} ${DRPC_API_KEY} ${TENDERLY_OP_KEY} ${ZAN_API_KEY}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${VALIDATIONCLOUD_OP_KEY} ${BLOCKDAEMON_OP_KEY} ${DRPC_API_KEY} ${TENDERLY_OP_KEY} ${ZAN_API_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.

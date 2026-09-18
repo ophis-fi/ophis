@@ -1,38 +1,33 @@
 # Optimism eRPC consensus — operational runbook
 
-Updated 2026-09-16 for backend-only Goldsky Boost. The website retains its
-public RPC. See [Boost routing](goldsky-boost.md) for compatibility limits.
+Updated 2026-09-18 after Goldsky Boost forwarded Alchemy's monthly-capacity error.
+OP has returned to dRPC, ZAN and Tenderly. The website retains its public RPC.
 
 ## Current routing
 
 The backend reads through `rpc-proxy:4000/main/evm/10` (host loopback port
-4001). Four configured providers supply exactly three eligible voters per
-protected method:
-
-| Protected methods | Eligible voters |
-| --- | --- |
-| State/simulation: call, balance, code, storage, estimateGas, feeHistory, transactionCount | `goldsky-op` (Boost/Alchemy), `zan-op`, `tenderly-op` |
-| TransactionByHash, transactionReceipt, getLogs | `drpc-op`, `zan-op`, `tenderly-op` |
-
+4001). All protected state, simulation, transaction, receipt and log methods
+use exactly three eligible voters: `drpc-op`, `zan-op`, and `tenderly-op`.
 Every protected group retains `maxParticipants: 3`, `agreementThreshold: 2`
-and `lowParticipantsBehavior: returnError`. Existing dispute policies remain
-pinned by `assert-erpc-failclosed.py`. Application block-number and
-block-by-number reads exclude dRPC; dRPC's private state poller still uses
-those methods to stay eligible for transaction/receipt/log consensus.
+and both dispute/low-participant policies set to `returnError`. The pinned
+engine's leader preference can otherwise accept a lone reply before checking
+low participation. Consensus wait caps are explicitly 12s, matching the existing
+network timeout; adaptive defaults cancelled slower voters after only 5ms.
+The guard pins these values. Genuine tip disagreements may now return transient
+errors instead of selecting one provider's view.
 
-Boost's cached full objects differ from the other providers. Do not route
-transactions, receipts or logs through Boost, ignore response fields, or
-lower quorum to hide these differences. Do not point Boost at another voter
-or back at Ophis eRPC. Both would undermine provider independence.
+There are no method filters or application head exclusions. Goldsky is absent
+from OP reads and submission. Do not restore it while its Alchemy upstream is
+quota-exhausted. The three remaining providers are also quota-dependent;
+provider health must include actual state, populated receipt and log responses.
 
-The active configuration and method filters in
-`infra/optimism-mainnet/configs/erpc.yaml.tmpl` are authoritative. Its older
-dated incident notes describe previous topologies, not current voters.
+The active configuration and guard are authoritative. Older dated incident
+notes in the template describe previous topologies, not current voters.
 
 ## Diagnose a failure
 
 1. Identify the failing request category in consensus metrics/logs, then
-   select its three voters from the table. Inspect upstream-labelled errors
+   check all three configured voters. Inspect upstream-labelled errors
    and `erpc_upstream_block_head_lag{network="evm:10"}`. A block-head gap over
    five blocks is suspicious, but a healthy head does not prove logs or
    receipts are available.
@@ -59,7 +54,7 @@ persistent outage. Receipt/log failures can stall settlement indexing.
 Restore the affected provider's credentials, quota or connectivity. If a
 replacement is necessary, verify its operator and CDN/DNS independence,
 response compatibility, archive support and latency before changing the
-reviewed host set and method filters. There is no permanently pre-vetted
+reviewed host set and routing. There is no permanently pre-vetted
 public fallback list. Keep three eligible voters and two required matching
 responses for every protected method.
 
@@ -88,9 +83,9 @@ annotations change; they are mounted directly from `observability/alerts.yml`.
 
 ## Submission and receipts
 
-The driver broadcasts through five `[[submission.mempool]]` relays:
-PublicNode, the official OP gateway, Tenderly, Goldsky Boost and dRPC.
-Keep both Goldsky and dRPC to preserve overlap with pending-nonce readers.
+The driver broadcasts through four `[[submission.mempool]]` relays:
+PublicNode, the official OP gateway, Tenderly and dRPC.
+Keep Tenderly and dRPC to preserve overlap with pending-nonce readers.
 Changes to submission relays require rendering and recreating the driver.
 
 Broadcast acknowledgements do not prove inclusion. Receipt verification

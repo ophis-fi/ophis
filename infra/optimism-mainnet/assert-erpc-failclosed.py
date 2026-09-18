@@ -12,21 +12,19 @@ policies, ...). Rather than allow arbitrary configs and try to prove each is
 fail-closed (an unwinnable whack-a-mole — see Codex #464 rounds 1-7), this guard
 pins the known-good KEY SCHEMA of the chain-10 consensus/upstream surface and
 REJECTS any key it does not explicitly recognize. So `skipConsensus`, `tier`,
-`matchFinality`, `ignoreFields`, `prefer*`, etc.
-all fail closed by construction. The only allowed method filters are pinned
-Goldsky/dRPC partitions; each protected method still has three voters.
-A future eRPC field can weaken consensus only
+`matchFinality`, `allowMethods`/`ignoreMethods`, `ignoreFields`, `prefer*`, etc.
+all fail closed by construction — a future eRPC field can weaken consensus only
 after this allowlist is deliberately extended in review.
 
 WHY CI, NOT render-configs.sh: wiring PyYAML into the operator/DR render path
 would make a stack restart fail on a host without PyYAML — worse than the
 weakening it guards against (Codex #464 P1). Template edits go through PRs.
 
-On top of the schema lock it asserts the value invariants: exactly four pinned upstream hosts with three eligible voters per method; every Block A+B settlement-relevant method's
+On top of the schema lock it asserts the value invariants: exactly the 3 expected
+independent upstream hosts; every Block A+B settlement-relevant method's
 first-matching failsafe rule is a consensus rule with maxParticipants:3,
 agreementThreshold:2, lowParticipants:returnError (always fail-closed on an
-outage) and dispute in {returnError, preferBlockHeadLeader} (the latter only
-breaks 1-block tip-drift ties among upstreams that DID respond — see #476);
+outage) and dispute:returnError;
 every consensus rule fail-closed; matchMethod uses only the modelled `*`/`|`
 matcher.
 """
@@ -37,8 +35,8 @@ from urllib.parse import urlsplit
 import yaml
 
 CHAIN_ID = 10
-EXPECTED_UPSTREAMS = 4
-# The intended provider hosts, pinned by hostname so a sibling host,
+EXPECTED_UPSTREAMS = 3
+# The 3 intended INDEPENDENT failure domains, pinned by hostname so a sibling host,
 # IP-literal, or extra provider cannot pose as a 3rd domain. A deliberate provider
 # change MUST update this set (that is the point — see module docstring).
 #
@@ -70,7 +68,6 @@ EXPECTED_UPSTREAMS = 4
 # once it fell past publicnode's ~128-block archive gate. Replaced by official-op
 # (mainnet.optimism.io): non-CF, archive-capable, no quota to exhaust.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
-    "edge.goldsky.com",
     "lb.drpc.org",
     "api.zan.top",
     "optimism.gateway.tenderly.co",
@@ -95,21 +92,19 @@ ALLOWED = {
     "project": {"id", "networks", "upstreamDefaults", "upstreams"},
     "upstreamDefaults": {"evm"},
     "upstreamDefaults.evm": {"statePollerDebounce", "statePollerInterval"},
-    "network": {"architecture", "evm", "failsafe", "selectionPolicy"},
+    "network": {"architecture", "evm", "failsafe"},
     "network.evm": {"chainId", "integrity"},
     "integrity": {"enforceHighestBlock", "enforceNonNullTaggedBlocks"},
     "rule": {"matchMethod", "timeout", "consensus", "retry", "hedge"},
-    "consensus": {"agreementThreshold", "disputeBehavior", "lowParticipantsBehavior", "maxParticipants", "punishMisbehavior"},
+    "consensus": {"agreementThreshold", "disputeBehavior", "lowParticipantsBehavior", "maxParticipants", "punishMisbehavior", "maxWaitOnResult", "maxWaitOnEmpty"},
     "punishMisbehavior": {"disputeThreshold", "disputeWindow", "sitOutPenalty"},
     "retry": {"backoffFactor", "backoffMaxDelay", "delay", "jitter", "maxAttempts"},
     "timeout": {"duration"},
     "hedge": {"delay", "maxCount"},
-    "upstream": {"endpoint", "failsafe", "id", "allowMethods", "ignoreMethods"},
+    "upstream": {"endpoint", "failsafe", "id"},
     "upstream_rule": {"matchMethod", "timeout", "retry", "circuitBreaker"},
     "circuitBreaker": {"failureThresholdCount", "failureThresholdCapacity", "halfOpenAfter", "successThresholdCount", "successThresholdCapacity"},
 }
-
-EXPECTED_SELECTION_POLICY = {"evalScope": "network-method", "evalFunc": "(upstreams, ctx) => {\n  if (ctx.method === 'eth_blockNumber' || ctx.method === 'eth_getBlockByNumber') {\n    upstreams = upstreams.filter((upstream) => upstream.id !== 'drpc-op')\n  }\n  return upstreams\n    .removeCordoned()\n    .whenEmpty(() => upstreams)\n    .sortByScore(PREFER_FASTEST)\n}\n"}
 
 _SEGMENT_OK = re.compile(r"^[A-Za-z0-9_*]*$")
 EXIT_FAIL = 14
@@ -152,23 +147,17 @@ def _hostname(endpoint):
 def _consensus_failclosed(c):
     """consensus params (unknown KEYS like ignoreFields are already rejected by
     the closed-world key check on the consensus level; here we pin the VALUES)."""
+    for field in ("maxWaitOnResult", "maxWaitOnEmpty"):
+        if c.get(field) != "12s":
+            return f"{field} must be 12s so adaptive defaults cannot cancel quorum voters early", False
     if c.get("maxParticipants") != 3:
         return f"maxParticipants={c.get('maxParticipants')!r} (must be int 3)", False
     if c.get("agreementThreshold") != 2:
         return f"agreementThreshold={c.get('agreementThreshold')!r} (must be int 2)", False
-    # disputeBehavior: a DISPUTE means maxParticipants responded but fewer than
-    # agreementThreshold agree. On OP's ~2s blocks publicnode + self routinely sit
-    # 1 block apart on `latest`-tagged reads, so returnError failed ~30-50% of
-    # quote/state reads (#476). `preferBlockHeadLeader` breaks that tie by freshest
-    # block — it still requires the participants to have responded, so it is NOT a
-    # 1-of-N bypass. Both are fail-closed-enough for DISPUTES; nothing else (e.g.
-    # acceptMostCommonValidResult, onlyBlockHeadLeader) is permitted.
-    if c.get("disputeBehavior") not in ("returnError", "preferBlockHeadLeader"):
-        return (
-            f"disputeBehavior={c.get('disputeBehavior')!r} "
-            "(must be returnError or preferBlockHeadLeader)",
-            False,
-        )
+    # The pinned eRPC preferBlockHeadLeader rule can return one valid vote
+    # before evaluating lowParticipantsBehavior. Both paths must returnError.
+    if c.get("disputeBehavior") != "returnError":
+        return f"disputeBehavior={c.get('disputeBehavior')!r} (must be returnError)", False
     # lowParticipantsBehavior MUST stay returnError (Codex #476 P1). LOW
     # PARTICIPANTS means fewer than agreementThreshold upstreams returned a valid
     # response (an outage, not a disagreement); serving the lone freshest result
@@ -335,17 +324,7 @@ def validate(cfg):
             if isinstance(defaults.get("evm"), dict):
                 _check_keys(defaults["evm"], "upstreamDefaults.evm", "project.upstreamDefaults.evm", errs)
         ups = [u for u in (proj.get("upstreams") or []) if isinstance(u, dict)]
-        transaction_methods = ["eth_getTransactionByHash", "eth_getTransactionReceipt", "eth_getLogs"]
         for u in ups:
-            host = _hostname(u.get("endpoint"))
-            if (host == "lb.drpc.org") != (u.get("id") == "drpc-op"):
-                errs.append("dRPC host/id must match the pinned application selection policy")
-            expected = ({"ignoreMethods": transaction_methods} if host == "edge.goldsky.com"
-                        else {"allowMethods": transaction_methods + ["eth_blockNumber", "eth_getBlockByNumber"]} if host == "lb.drpc.org"
-                        else {})
-            actual = {k: u[k] for k in ("allowMethods", "ignoreMethods") if k in u}
-            if actual != expected:
-                errs.append(f"{host}: method filters must preserve three independent voters per method")
             _check_keys(u, "upstream", f"upstream[{u.get('id')}]", errs)
             for j, r in enumerate(u.get("failsafe") or []):
                 if isinstance(r, dict):
@@ -357,13 +336,9 @@ def validate(cfg):
         for u in ups:
             if not u.get("endpoint"):
                 errs.append(f"upstream {u.get('id')!r} has no endpoint")
-        for u in ups:
-            if _hostname(u.get("endpoint")) == "edge.goldsky.com":
-                if urlsplit(u["endpoint"]).path != "/boost/10":
-                    errs.append("Goldsky must use /boost/10, not metered Edge RPC or another chain")
         hosts = {_hostname(u.get("endpoint")) for u in ups}
         if hosts != EXPECTED_UPSTREAM_HOSTS:
-            errs.append(f"upstream hosts {sorted(hosts)} != the expected provider hosts {sorted(EXPECTED_UPSTREAM_HOSTS)} (sibling host / IP / extra provider dilutes 2-of-3-across-3; update EXPECTED_UPSTREAM_HOSTS only for a deliberate provider change)")
+            errs.append(f"upstream hosts {sorted(hosts)} != the 3 expected independent failure domains {sorted(EXPECTED_UPSTREAM_HOSTS)} (sibling host / IP / extra provider dilutes 2-of-3-across-3; update EXPECTED_UPSTREAM_HOSTS only for a deliberate provider change)")
         for net in proj.get("networks") or []:
             if (net.get("evm") or {}).get("chainId") != CHAIN_ID:
                 continue
@@ -373,8 +348,6 @@ def validate(cfg):
                 _check_keys(net["evm"], "network.evm", f"network[{CHAIN_ID}].evm", errs)
                 if isinstance(net["evm"].get("integrity"), dict):
                     _check_keys(net["evm"]["integrity"], "integrity", f"network[{CHAIN_ID}].evm.integrity", errs)
-            if net.get("selectionPolicy") != EXPECTED_SELECTION_POLICY:
-                errs.append("OP application head routing must exclude dRPC without changing protected voters")
             rules = [r for r in (net.get("failsafe") or []) if isinstance(r, dict)]
             for i, r in enumerate(rules):
                 _check_rule_subtree(r, f"network[{CHAIN_ID}].failsafe[{i}]", errs)
@@ -413,9 +386,9 @@ def main(path):
         return EXIT_FAIL
     print(
         "OK (#447): OP eRPC fail-closed — closed-world schema lock passed (no unrecognized config keys); "
-        "four pinned hosts with exactly three eligible voters per protected method; every Block A+B method's first-matching failsafe "
+        "exactly the 3 expected independent upstream hosts; every Block A+B method's first-matching failsafe "
         "rule is a maxParticipants:3/agreementThreshold:2 consensus block with lowParticipants:returnError "
-        "(outage fail-closed) and dispute in {returnError, preferBlockHeadLeader} (#476); every consensus rule fail-closed."
+        "(outage fail-closed) and dispute:returnError; every consensus rule fail-closed."
     )
     return 0
 
