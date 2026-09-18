@@ -536,9 +536,8 @@ groups:
             eRPC is failing consensus because fewer than 2 of 3 upstreams respond
             within the retry budget for `{{ $labels.category }}` requests. Sustained
             elevation indicates an eligible OP voter is slow or unavailable.
-            State/simulation uses goldsky-op (Alchemy), zan-op and tenderly-op;
-            transactions, receipts and logs use drpc-op, zan-op and tenderly-op.
-            Choose the voter set from the failing category and upstream labels.
+            All protected methods use drpc-op, zan-op and tenderly-op.
+            Identify the failing provider from its upstream label.
 
             ⚠️ 2026-08-09 lesson: this alert only trips at >5/s, which assumes
             steady driver/orderbook polling. A LOW-TRAFFIC stack with one live
@@ -577,9 +576,8 @@ groups:
             (e.g., a `latest`-tag query that resolves to different blocks).
 
             On OP, expect occasional disputes on tip queries (PR #71 trade-off).
-            Sustained elevation = identify the category's voters: goldsky-op /
-            zan-op / tenderly-op for state/simulation, or drpc-op / zan-op /
-            tenderly-op for transactions, receipts and logs. Probe their private
+            Sustained elevation = investigate drpc-op, zan-op and tenderly-op.
+            Probe their private
             endpoints from rendered/erpc.yaml without sharing credentials.
             A provider > 5 blocks behind the median should be
             sit-out-penalized by eRPC's punishMisbehavior — verify.
@@ -604,14 +602,13 @@ groups:
             settlements will revert.
 
             Likely cause: two eligible voters degraded (rate-limit, outage, or
-            DNS). State/simulation uses goldsky-op / zan-op / tenderly-op;
-            transactions, receipts and logs use drpc-op / zan-op / tenderly-op.
+            DNS). All protected methods use drpc-op / zan-op / tenderly-op.
 
             Immediate actions:
               1. Identify the failing category and its eligible upstreams.
               2. Restore the failed voter or replace it with a verified
                  independent provider compatible with that method's responses.
-              3. Preserve 2-of-3 agreement and method filters. Follow
+              3. Preserve three independent voters and 2-of-3 agreement. Follow
                  docs/operations/op-erpc-runbook.md; do not lower quorum.
 
       # ============================================================

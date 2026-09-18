@@ -1,5 +1,9 @@
 # Backend-only Goldsky Boost
 
+OP retired Boost on 2026-09-18 after its Alchemy upstream exhausted monthly
+capacity. OP now uses dRPC/ZAN/Tenderly for all protected methods; see
+[the OP runbook](op-erpc-runbook.md). The OP rollout notes below are historical.
+
 Use `/boost/10` and `/boost/4663`, never metered `/standard/evm/`.
 The website uses its original public endpoints. `GOLDSKY_BOOST_KEY` belongs in
 each backend's private `.env`; rendered credentials stay on RAM-disk.
