@@ -26,6 +26,9 @@ struct Config {
     /// Partner code sent in the `Partner-Code` header.
     #[serde(default = "default_partner_code")]
     partner_code: String,
+
+    #[serde(default)]
+    request_budget: Option<bitget::RequestBudgetConfig>,
 }
 
 #[derive(Deserialize)]
@@ -72,6 +75,7 @@ pub async fn load(path: &Path) -> super::Config {
             partner_code: config.partner_code,
             block_stream: base.block_stream.clone(),
             settlement_contract: base.contracts.settlement,
+            request_budget: config.request_budget,
         },
         base,
     }
