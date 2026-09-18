@@ -1,6 +1,5 @@
 import { ReactNode } from 'react'
 
-import { useNativeTokenBalance } from '@cowprotocol/balances-and-allowances'
 import { NATIVE_CURRENCIES } from '@cowprotocol/common-const'
 import { useMachineTimeMs } from '@cowprotocol/common-hooks'
 import { ButtonPrimary } from '@cowprotocol/ui'
@@ -43,6 +42,7 @@ const Card = styled.section`
 
 export interface WholeTokenRouteProps {
   quote: DirectQuote
+  funding: { balance: bigint | undefined; failed: boolean }
   requestKey: string
   reviewed: boolean
   review: (quote: DirectQuote | null) => void
@@ -67,14 +67,14 @@ function RouteAction({
   review,
   refresh,
   priceImpact,
+  funding,
 }: WholeTokenRouteProps & {
   priceImpact: ReturnType<typeof useDirectPriceImpact>
 }): ReactNode {
   const { account } = useWalletInfo()
-  const { data: nativeBalance, error: balanceError } = useNativeTokenBalance(account, directChainId(quote))
-  const funded = canFundDirect(quote, !!account, nativeBalance ? BigInt(nativeBalance.toString()) : undefined)
+  const funded = canFundDirect(quote, !!account, funding.balance)
   const nativeSymbol = NATIVE_CURRENCIES[directChainId(quote)].symbol
-  const gasError = gasErrorText(funded, !!nativeBalance, !!balanceError, nativeSymbol)
+  const gasError = gasErrorText(funded, funding.balance !== undefined, funding.failed, nativeSymbol)
   const connect = useToggleWalletModal()
   const { inputCurrency, inputCurrencyBalance } = useSwapDerivedState()
   const execution = useDirectSwap(requestKey)

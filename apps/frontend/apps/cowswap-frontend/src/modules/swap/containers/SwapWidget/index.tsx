@@ -253,6 +253,7 @@ export function SwapWidget({
               {bottomContent}
               <WholeTokenRoute
                 refresh={direct.refresh}
+                funding={direct.funding}
                 quote={direct.quote}
                 requestKey={direct.requestKey}
                 reviewed={direct.reviewed}
@@ -323,6 +324,7 @@ export function SwapWidget({
       direct.reviewed && direct.quote ? (
         <WholeTokenReview
           quote={direct.quote}
+          funding={direct.funding}
           requestKey={direct.requestKey}
           reviewed
           review={direct.review}

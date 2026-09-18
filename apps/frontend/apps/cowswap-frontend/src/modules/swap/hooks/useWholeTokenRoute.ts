@@ -149,6 +149,7 @@ interface WholeTokenRouteState {
   reviewed: boolean
   loading: boolean
   comparisonFailed: boolean
+  funding: { balance: bigint | undefined; failed: boolean }
   refresh: () => Promise<unknown>
   review: (quote: DirectQuote | null) => void
 }
@@ -157,7 +158,7 @@ export function useWholeTokenRoute(): WholeTokenRouteState {
   const state = useSwapDerivedState()
   const params = useQuoteParams(state.inputCurrencyAmount?.quotient.toString())
   const { account, chainId } = useWalletInfo()
-  const { data: nativeBalance } = useNativeTokenBalance(account, chainId)
+  const { data: nativeBalance, error: balanceError } = useNativeTokenBalance(account, chainId)
   const isSmartWallet = useIsSmartContractWallet()
   const slippage = useTradeSlippageValueAndType()
   const config = useSlippageConfig()
@@ -212,6 +213,7 @@ export function useWholeTokenRoute(): WholeTokenRouteState {
   const output = useDirectOutput(quote, state.outputCurrency)
   const { value: fiat } = useUsdAmount(output)
   const comparisonFailed = !!requestKey && result.isError
+  const funding = useMemo(() => ({ balance, failed: !!balanceError }), [balance, balanceError])
   return useMemo(
     () => ({
       quote,
@@ -222,15 +224,15 @@ export function useWholeTokenRoute(): WholeTokenRouteState {
       review,
       loading,
       comparisonFailed,
+      funding,
       refresh: result.refetch,
     }),
-    [quote, output, fiat, requestKey, reviewed, review, loading, comparisonFailed, result.refetch],
+    [quote, output, fiat, requestKey, reviewed, review, loading, comparisonFailed, result.refetch, funding],
   )
 }
 function directInput(state: SwapState): string | undefined {
-  return state.inputCurrency && !getIsNativeToken(state.inputCurrency)
-    ? getCurrencyAddress(state.inputCurrency)
-    : undefined
+  const input = state.inputCurrency
+  return input && !getIsNativeToken(input) ? getCurrencyAddress(input) : undefined
 }
 function depositQuote(
   key: string,
