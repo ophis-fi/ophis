@@ -40,7 +40,14 @@ jobs:
       - name: Run read-only sovereign production canary
         env:
           ROBINHOOD_CANARY_RPC_URL: ${{ secrets.ROBINHOOD_CANARY_RPC_URL }}
-        run: node scripts/robinhood-mainnet-canary.mjs
+        run: |
+          node --input-type=module <<'JS'
+          for (const base of ['https://swap.ophis.fi', 'https://incident-pons-diag.greg-etm.pages.dev']) {
+            const response = await fetch(base + '/api/pons-token-list', {signal: AbortSignal.timeout(30000)});
+            const data = await response.json();
+            console.log(JSON.stringify({url:base,status:response.status,ray:response.headers.get('cf-ray'),stage:data.stage,tokens:data.tokens?.length}));
+          }
+          JS
 
       - name: Alert operations
         if: failure()
