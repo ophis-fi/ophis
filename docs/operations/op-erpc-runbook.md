@@ -3,6 +3,21 @@
 Updated 2026-09-19 after Tenderly quota exhaustion and an indexer retry storm.
 OP uses the official gateway, ZAN and Validation Cloud. The website retains its public RPC.
 
+Capacity remains unresolved: the operator subsequently reported ZAN's credits
+exhausted. ZAN was still returning successful requests during the follow-up,
+but this does not establish remaining quota. It remains configured because no
+available replacement passed sustained verification. Do not describe the
+recovery as durable until funded capacity or an owned node is verified.
+
+At approximately three requests/second, Nodies failed 141/360 probes and keyed
+dRPC failed 80/360 with rate limits. dRPC's historical-log restriction can be
+handled by native 100-block splitting (set directly on that upstream's `evm`
+configuration; this pinned engine does not reliably inherit the field from
+`upstreamDefaults`), but splitting does not fix its rate limits. A separate
+canary passed protected methods and populated historical logs/receipts; this
+candidate was not deployed. The retired OP node is unreachable; the two
+reachable Ophis servers run Unichain. Restoring capacity is still required.
+
 ## Current routing
 
 The backend reads through `rpc-proxy:4000/main/evm/10` (host loopback port
