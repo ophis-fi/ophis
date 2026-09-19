@@ -9,6 +9,7 @@ import { ArrowRight, Gift } from 'react-feather'
 import { Link } from 'react-router'
 
 import { getProxyAccountUrl } from 'modules/accountProxy/utils/getProxyAccountUrl'
+import { TRADE_REWARDS_ELIGIBLE_CHAIN_IDS } from 'modules/affiliate'
 import { useIsHooksTradeType } from 'modules/trade'
 
 import { useIsProviderNetworkDeprecated } from 'common/hooks/useIsProviderNetworkDeprecated'
@@ -49,22 +50,24 @@ export function BottomBanners(): ReactNode {
 
   return (
     <styledEl.Wrapper>
-      <styledEl.Giveaway to="/rewards">
-        <strong>
-          <Gift size={20} aria-hidden="true" />
-          <Trans>Swap $100+. Get a ticket.</Trans>
-        </strong>
-        <p>
-          <Trans>Win 1 or 10 USDG on Robinhood Chain.</Trans>
-        </p>
-        <small>
-          <Trans>One per eligible wallet. While rewards last.</Trans>
-        </small>
-        <span>
-          <Trans>Claim your ticket</Trans>
-          <ArrowRight size={16} aria-hidden="true" />
-        </span>
-      </styledEl.Giveaway>
+      {TRADE_REWARDS_ELIGIBLE_CHAIN_IDS.includes(chainId) && (
+        <styledEl.Giveaway to="/rewards">
+          <strong>
+            <Gift size={20} aria-hidden="true" />
+            <Trans>Swap $100+. Get a ticket.</Trans>
+          </strong>
+          <p>
+            <Trans>Win 1 or 10 USDG on Robinhood Chain.</Trans>
+          </p>
+          <small>
+            <Trans>One per eligible wallet. While rewards last.</Trans>
+          </small>
+          <span>
+            <Trans>Claim your ticket</Trans>
+            <ArrowRight size={16} aria-hidden="true" />
+          </span>
+        </styledEl.Giveaway>
+      )}
       {bannerNode}
     </styledEl.Wrapper>
   )
