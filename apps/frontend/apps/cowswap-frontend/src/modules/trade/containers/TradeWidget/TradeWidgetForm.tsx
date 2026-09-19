@@ -291,7 +291,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                       maxBalance={maxBalance}
                       topLabel={
                         isOphisMobileSwap
-                          ? inputCurrencyInfo.label || t`You pay`
+                          ? inputCurrencyInfo.label || t`You sell`
                           : isWrapOrUnwrap
                             ? undefined
                             : inputCurrencyInfo.label
