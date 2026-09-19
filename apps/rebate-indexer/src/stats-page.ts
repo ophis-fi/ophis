@@ -172,10 +172,9 @@ body{background:#ffffff;color:#17191c;font-family:Inter,system-ui,-apple-system,
 h1{font:400 clamp(36px,6vw,64px)/1.15 Georgia,serif;letter-spacing:-.015em;margin-bottom:20px;max-width:22ch}
 .lede{color:#5b606b;font-size:17px;max-width:65ch;margin-bottom:32px}
 .gl{list-style:none;display:grid;gap:16px;margin-bottom:48px}
-@media(min-width:560px){.gl{grid-template-columns:repeat(2,minmax(0,1fr))}.gl li.wide{grid-column:1/-1}}
+@media(min-width:560px){.gl{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .gl li{background:#f2f2f3;border-radius:24px;padding:24px;font-size:15px;color:#5b606b}
 .gl li strong{display:block;color:#17191c;font-weight:500;margin-bottom:8px}
-.gl li.wide,.gl li.wide strong{background:#fbe1d1;color:#5d2a1a}
 .grid{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin-bottom:32px}
 @media(min-width:440px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:960px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
@@ -227,7 +226,6 @@ ${freshnessWarning}
   <li><strong>Hard signed limit price</strong>Your signed order is a contract-enforced price floor. A fill below it cannot settle on-chain.</li>
   <li><strong>Gasless execution</strong>Solvers pay the settlement gas and costs settle inside the trade. After a one-time token approval before the first sell, no native gas token is needed, and failed settlements cost you nothing.</li>
   <li><strong>Solver competition on every order</strong>Configured Ophis-operated routing lanes: ${esc(operatedSolverSummary)}. Pair coverage and live participation vary by auction. Other chains draw on ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
-  <li class="wide"><strong>Where the price improvement goes</strong>The Ophis fee on every supported chain is a 0.01% (1 bp) base plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). CoW-hosted chains also apply CoW Protocol fees upstream.</li>
 </ul>
 <h2 id="chains">Settled volume by chain</h2>
 <form method="get" action="/stats#chains" aria-label="Filter settled volume">

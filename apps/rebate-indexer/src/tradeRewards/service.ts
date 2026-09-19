@@ -261,7 +261,12 @@ export async function runTradeRewards(): Promise<{ reserved: number; submitted: 
   return { reserved, submitted };
 }
 
-export async function getTradeRewardStatus(wallet: `0x${string}`): Promise<TradeRewardStatus> {
+export async function getTradeRewardCampaign(): Promise<{
+  campaignEnabled: boolean;
+  campaignAvailable: boolean;
+  ticketsRemaining: number;
+  eligibleChainIds: readonly number[];
+}> {
   const campaignRows = await sql<{ enabled: boolean; tickets_remaining: number }[]>`
     SELECT enabled,
            GREATEST(${TRADE_REWARDS_MAX_TICKETS} - next_allocation_index, 0)::integer AS tickets_remaining
@@ -269,9 +274,14 @@ export async function getTradeRewardStatus(wallet: `0x${string}`): Promise<Trade
     WHERE campaign_id = ${TRADE_REWARDS_CAMPAIGN_ID}
   `;
   const campaign = campaignRows[0];
-  const campaignEnabled = campaign?.enabled === true;
+  const campaignEnabled = enabledFromEnv() && campaign?.enabled === true;
   const ticketsRemaining = campaign?.tickets_remaining ?? 0;
   const campaignAvailable = campaignEnabled && ticketsRemaining > 0;
+  return { campaignEnabled, campaignAvailable, ticketsRemaining, eligibleChainIds: TRADE_REWARDS_ELIGIBLE_CHAIN_IDS };
+}
+
+export async function getTradeRewardStatus(wallet: `0x${string}`): Promise<TradeRewardStatus> {
+  const { campaignEnabled, campaignAvailable, ticketsRemaining } = await getTradeRewardCampaign();
   const rows = await sql<{
     ticket_id: number; amount_usdg: string; assignment_status: string; claim_status: string;
     assignment_tx_hex: string | null; claim_tx_hex: string | null;

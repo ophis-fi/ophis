@@ -1,7 +1,7 @@
 import { useAtomValue } from 'jotai'
 import { ReactNode, useMemo } from 'react'
 
-import { ROBINHOOD_CHAIN_BRIDGE, ROBINHOOD_CHAIN_DOCS } from '@cowprotocol/common-const'
+import { ROBINHOOD_CHAIN_DOCS } from '@cowprotocol/common-const'
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 
@@ -80,24 +80,7 @@ function RobinhoodAssetContextContent({
     )
   }
 
-  if (selectedAssets.length === 0) {
-    return (
-      <styledEl.Panel $attention={false}>
-        {ROBINHOOD_MARK}
-        <styledEl.Content>
-          <strong>
-            <Trans>Robinhood Chain · gasless intent</Trans>
-          </strong>
-          <p>
-            <Trans>
-              Swaps are gasless. Approvals and wrapping still use ETH; paying a higher priority fee does not buy earlier
-              ordering. Need funds? <a href={ROBINHOOD_CHAIN_BRIDGE}>Bridge to Robinhood Chain ↗</a>
-            </Trans>
-          </p>
-        </styledEl.Content>
-      </styledEl.Panel>
-    )
-  }
+  if (selectedAssets.length === 0) return null
 
   const restrictedAssets = selectedAssets.filter(hasTradingRestriction)
   const restrictedSymbols = restrictedAssets.map((asset) => asset.tokenSymbol).join(', ')

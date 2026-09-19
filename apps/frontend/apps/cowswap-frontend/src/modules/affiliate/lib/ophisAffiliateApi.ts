@@ -339,6 +339,31 @@ export interface TradeRewardStatus {
   claimTxHash?: string
 }
 
+export interface TradeRewardCampaign {
+  campaignAvailable: boolean
+  eligibleChainIds: number[]
+}
+
+export async function getTradeRewardCampaign(): Promise<TradeRewardCampaign> {
+  const response = await fetch(`${REBATES_API}/trade-rewards/campaign`, {
+    headers: { accept: 'application/json' },
+    cache: 'no-store',
+    signal: timeoutSignal(),
+  })
+  const data = await parseJson<unknown>(response)
+  if (
+    !data ||
+    typeof data !== 'object' ||
+    !('campaignAvailable' in data) ||
+    typeof data.campaignAvailable !== 'boolean' ||
+    !('eligibleChainIds' in data) ||
+    !Array.isArray(data.eligibleChainIds) ||
+    !data.eligibleChainIds.every(Number.isSafeInteger)
+  )
+    throw new Error('Invalid trade reward campaign response')
+  return { campaignAvailable: data.campaignAvailable, eligibleChainIds: data.eligibleChainIds }
+}
+
 export interface SponsoredTradeRewardClaim {
   wallet: string
   transactionHash?: string

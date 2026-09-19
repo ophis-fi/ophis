@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getTradeRewardStatus, sponsorTradeRewardClaim } from './service.js';
+import { getTradeRewardCampaign, getTradeRewardStatus, sponsorTradeRewardClaim } from './service.js';
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
@@ -9,6 +9,14 @@ function walletAddress(raw: unknown): `0x${string}` | null {
 }
 
 export function registerTradeRewardRoutes(app: FastifyInstance): void {
+  app.get('/trade-rewards/campaign',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (_req, reply) => {
+      reply.header('cache-control', 'no-store');
+      return getTradeRewardCampaign();
+    },
+  );
+
   app.get<{ Params: { wallet: string } }>(
     '/trade-rewards/:wallet',
     { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
