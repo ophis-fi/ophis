@@ -24,8 +24,8 @@ const INSERT_EVENT_BATCH_SIZE: usize = 10_000;
 // chances of avoiding the need for history fetch of block events, since history
 // fetch is less efficient than latest block fetch
 const MAX_BLOCKS_QUERIED: u64 = 2 * MAX_REORG_BLOCK_COUNT;
-// Max number of rpc calls that can be sent at the same time to the node.
-const MAX_PARALLEL_RPC_CALLS: usize = 128;
+// Keep catch-up from bursting 128 reads into every consensus voter at once.
+pub(crate) const MAX_PARALLEL_RPC_CALLS: usize = 4;
 
 /// General idea behind the algorithm:
 /// 1. Use `last_handled_blocks` as an indicator of the beginning of the block
@@ -747,6 +747,64 @@ mod tests {
         let (replacement_blocks, is_reorg) = detect_reorg_path(&handled_blocks, &latest_blocks);
         assert!(replacement_blocks.is_empty());
         assert!(!is_reorg);
+    }
+
+    #[tokio::test]
+    async fn catch_up_bounds_requests_and_keeps_the_contiguous_prefix() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Contract {
+            active: AtomicUsize,
+            peak: AtomicUsize,
+            fail_at: Option<B256>,
+        }
+        #[async_trait::async_trait]
+        impl EventRetrieving for Contract {
+            type Event = ((), Log);
+
+            async fn get_events_by_block_hash(&self, hash: B256) -> Result<Vec<Self::Event>> {
+                let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                self.peak.fetch_max(active, Ordering::SeqCst);
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                self.active.fetch_sub(1, Ordering::SeqCst);
+                anyhow::ensure!(Some(hash) != self.fail_at, "provider rate limit");
+                Ok(vec![])
+            }
+
+            async fn get_events_by_block_range(
+                &self,
+                _: &RangeInclusive<u64>,
+            ) -> Result<EventStream<Self::Event>> {
+                unreachable!()
+            }
+
+            fn address(&self) -> Vec<Address> {
+                vec![]
+            }
+        }
+
+        let provider = alloy_provider::ProviderBuilder::new()
+            .connect_mocked_client(alloy_provider::mock::Asserter::new());
+        let blocks: Vec<_> = (0..16)
+            .map(|n| (n, B256::with_last_byte(n as u8)))
+            .collect();
+        let mut handler = EventHandler::new(
+            Arc::new(alloy_provider::Provider::erased(provider)),
+            Contract {
+                active: AtomicUsize::new(0),
+                peak: AtomicUsize::new(0),
+                fail_at: None,
+            },
+            EventStorage { events: vec![] },
+            None,
+        );
+        let (retrieved, _) = handler.past_events_by_block_hashes(&blocks).await;
+        assert_eq!(retrieved, blocks);
+        assert!(handler.contract.peak.load(Ordering::SeqCst) <= 4);
+
+        handler.contract.fail_at = Some(blocks[3].1);
+        let (retrieved, _) = handler.past_events_by_block_hashes(&blocks).await;
+        assert_eq!(retrieved, blocks[..3]);
     }
 
     #[test]

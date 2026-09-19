@@ -1,13 +1,33 @@
 # Optimism eRPC consensus — operational runbook
 
-Updated 2026-09-18 after Goldsky Boost forwarded Alchemy's monthly-capacity error.
-OP has returned to dRPC, ZAN and Tenderly. The website retains its public RPC.
+Updated 2026-09-19 after Tenderly quota exhaustion and an indexer retry storm.
+OP uses the official gateway, ZAN and Validation Cloud. The website retains its public RPC.
+
+Capacity remains unresolved: the operator subsequently reported ZAN's credits
+exhausted. ZAN was still returning successful requests during the follow-up,
+but this does not establish remaining quota. It remains configured because no
+available replacement passed sustained verification. Do not describe the
+recovery as durable until funded capacity or an owned node is verified.
+
+At approximately three requests/second, Nodies failed 141/360 probes and keyed
+dRPC failed 80/360 with rate limits. dRPC's historical-log restriction can be
+handled by native 100-block splitting (set directly on that upstream's `evm`
+configuration; this pinned engine does not reliably inherit the field from
+`upstreamDefaults`), but splitting does not fix its rate limits. A separate
+canary passed protected methods and populated historical logs/receipts; this
+candidate was not deployed. The retired OP node is unreachable; the two
+reachable Ophis servers run Unichain. Restoring capacity is still required.
+As of 2026-09-20 the operator has no budget for paid capacity. The prepared
+dRPC upgrade is not authorized; do not activate a paid tier or assume a top-up
+is pending. Retain the existing fail-closed checks while evaluating no-cost
+options. Increasing the autopilot polling interval does not reduce per-block
+log reads and must not be presented as a solution to monthly log usage.
 
 ## Current routing
 
 The backend reads through `rpc-proxy:4000/main/evm/10` (host loopback port
 4001). All protected state, simulation, transaction, receipt and log methods
-use exactly three eligible voters: `drpc-op`, `zan-op`, and `tenderly-op`.
+use exactly three eligible voters: `official-op`, `zan-op`, and `validationcloud-op`.
 Every protected group retains `maxParticipants: 3`, `agreementThreshold: 2`
 and both dispute/low-participant policies set to `returnError`. The pinned
 engine's leader preference can otherwise accept a lone reply before checking
@@ -20,8 +40,22 @@ There are no method filters or application head exclusions. An explicit policy
 keeps every uncordoned voter eligible; the implicit legacy policy sidelined a
 recovered dRPC lane after its rate-limit burst. Goldsky is absent
 from OP reads and submission. Do not restore it while its Alchemy upstream is
-quota-exhausted. The three remaining providers are also quota-dependent;
-provider health must include actual state, populated receipt and log responses.
+quota-exhausted. Tenderly is exhausted and Blockdaemon is near its cap; neither
+is an active voter or submission relay. The official endpoint is public and
+rate-limited; ZAN and Validation Cloud still have finite account quotas.
+Provider health must include actual state, populated receipt and log responses.
+
+Failure domains were rechecked: official-op uses Google, ZAN uses Alibaba, and
+Validation Cloud uses AWS/Route53. Validation Cloud prunes historical state and
+can return null for older receipts; those requests require official-op and ZAN
+to agree. All protected methods remain fail-closed. Do not claim three full
+archive voters just because historical empty log queries succeed.
+
+A bounded in-memory cache stores only numbered, non-empty block headers:
+finalized for one hour, unfinalized for two seconds. Live tags and protected
+state methods remain uncached. Each indexer's catch-up caps concurrent header
+and block-hash log reads at four; the old 128-request bursts repeatedly rate-limited
+providers and prevented catch-up after credentials were repaired.
 
 The active configuration and guard are authoritative. Older dated incident
 notes in the template describe previous topologies, not current voters.
@@ -38,8 +72,8 @@ notes in the template describe previous topologies, not current voters.
    Reproduce the affected method at a fixed block, including populated logs
    and a mined receipt. Compare with the production proxy.
 3. Distinguish rate limits, authentication failures, timeouts, stale indexing
-   and response disagreements. dRPC rate limits were observed before the
-   Boost rollout; they can still affect its retained methods.
+   and response disagreements. Also check request volume: a stalled indexer
+   can amplify a provider outage into a sustained retry storm.
 
 Prometheus is available on host loopback port 9091. Useful metrics include
 `erpc_consensus_errors_total`, `erpc_upstream_request_errors_total` and
@@ -85,12 +119,20 @@ annotations change; they are mounted directly from `observability/alerts.yml`.
 
 ## Submission and receipts
 
-The driver broadcasts through four `[[submission.mempool]]` relays:
-PublicNode, the official OP gateway, Tenderly and dRPC.
-Keep Tenderly and dRPC to preserve overlap with pending-nonce readers.
+The driver broadcasts through three `[[submission.mempool]]` relays:
+PublicNode, the official OP gateway and Validation Cloud.
+Keep official-op and Validation Cloud to preserve overlap with pending-nonce readers.
 Changes to submission relays require rendering and recreating the driver.
 
 Broadcast acknowledgements do not prove inclusion. Receipt verification
-continues through the original dRPC/ZAN/Tenderly consensus route. A submission
+continues through the official-op/ZAN/Validation Cloud consensus route. A submission
 provider can observe signed calldata; multiple relays do not eliminate that
 exposure.
+
+## Notification grouping
+
+RPC alerts and maintenance-stalled alerts share a chain-level incident message.
+The first message waits 20 seconds; new symptoms and resolutions update the
+group within five minutes. An unchanged incident repeats every two hours.
+Full alert descriptions remain available in Prometheus. Other critical alerts
+retain their existing immediate route and 30-minute reminder interval.

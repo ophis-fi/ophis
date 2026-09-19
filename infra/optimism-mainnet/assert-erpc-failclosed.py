@@ -40,37 +40,16 @@ EXPECTED_UPSTREAMS = 3
 # IP-literal, or extra provider cannot pose as a 3rd domain. A deliberate provider
 # change MUST update this set (that is the point — see module docstring).
 #
-# 2026-08-11: alchemy-op -> ophis-self-op. Alchemy's shared free monthly quota
-# exhausted two days after it joined the quorum, recreating the exact
-# low-participants outage it was meant to prevent. The replacement is Ophis's
-# synced Aleph op-reth node, reached only over Tailscale. It has no provider
-# quota and was verified against every protected method before admission.
-#
-# The "≤1 Cloudflare-fronted upstream per quorum" property is PRESERVED:
-# publicnode is the one CF lane, while zan (no CDN) and official-op (GCP LB,
-# `via: 1.1 google`) are non-CF failure domains, so a single CDN compromise
-# cannot forge 2-of-3.
-#
-# Thin-method note: publicnode's free tier is archive-gated, so it can serve
-# NEITHER eth_getTransactionReceipt NOR eth_getLogs deeper than ~128 blocks from
-# head. Both therefore run 2-of-3 on zan+official-op, which is why the template's
-# receipt rule is disputeBehavior:returnError (fail closed).
-# This guard's consensus-parameter assertions are unchanged.
-#
-# 2026-08-15: the self-hosted lane 100.90.108.54 was retired after its Aleph VM
-# died with its host and blocked the whole network policy for 23h (a dead lane at
-# routing priority 1 outlasts the 12s network budget). Replaced by validationcloud.
-#
-# 2026-08-23: validationcloud-op was retired after returning HTTP 401 from 08-18
-# (its third credential/quota death: 07-30, 08-18, this one). With it gone, the
-# only lane that could serve archive eth_getLogs was zan — 1 of 3, BELOW
-# agreementThreshold — so the autopilot's settlement indexer wedged permanently
-# once it fell past publicnode's ~128-block archive gate. Replaced by official-op
-# (mainnet.optimism.io): non-CF, archive-capable, no quota to exhaust.
+# 2026-09-19: Google / Alibaba / AWS, after Tenderly quota exhaustion and
+# dRPC history/rate limits. Blockdaemon is excluded after its quota warning.
+# Validation Cloud supports historical logs but prunes old state and may return
+# null for old receipts; those requests need official-op and ZAN to agree.
+# Consensus parameters remain unchanged and fail closed when fewer than two
+# eligible providers return matching responses.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
-    "lb.drpc.org",
+    "mainnet.optimism.io",
     "api.zan.top",
-    "optimism.gateway.tenderly.co",
+    "mainnet.optimism.validationcloud.io",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus
@@ -320,6 +299,19 @@ def _check_nonconsensus_hedges(net_rules, errs):
 
 def validate(cfg):
     errs = []
+    # Pin the cache scope: never cache live tags, empty replies, or protected
+    # state reads under the numbered-header exception.
+    cache = cfg.get("database")
+    expected_cache = {"evmJsonRpcCache": {
+        "connectors": [{"id": "op-headers", "driver": "memory", "memory": {
+            "maxItems": 10000, "maxTotalSize": "64MB"}}],
+        "policies": [{"connector": "op-headers", "network": "evm:10",
+            "method": "eth_getBlockByNumber", "params": ["0x*", False],
+            "finality": finality, "empty": "ignore", "ttl": ttl}
+            for finality, ttl in (("finalized", "1h"), ("unfinalized", "2s"))],
+    }}
+    if cache != expected_cache:
+        errs.append("database must contain only the bounded numbered-header cache")
     networks_checked = 0
     for proj in cfg.get("projects") or []:
         _check_keys(proj, "project", "project", errs)
