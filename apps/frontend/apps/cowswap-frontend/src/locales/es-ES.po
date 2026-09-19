@@ -2463,10 +2463,6 @@ msgstr "Caducidad"
 msgid "Unsupported Wallet"
 msgstr "Billetera no soportada"
 
-#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
-msgid "Robinhood Chain · gasless intent"
-msgstr ""
-
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
@@ -4900,10 +4896,6 @@ msgstr "Fuera de rango"
 msgid "Since prices can change significantly over time, we suggest increasing your price protection for orders with long deadlines."
 msgstr "Dado que los precios pueden cambiar significativamente con el tiempo, le sugerimos aumentar su protección de precios para pedidos con plazos largos."
 
-#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
-msgid "Swaps are gasless. Approvals and wrapping still use ETH; paying a higher priority fee does not buy earlier ordering. Need funds? <0>Bridge to Robinhood Chain ↗</0>"
-msgstr ""
-
 #: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
 msgid "Ethereum transactions"
 msgstr "Transacciones en Ethereum"
@@ -6681,3 +6673,19 @@ msgstr "Los costos de intercambio y puente son por lo menos {formattedFeePercent
 #: apps/cowswap-frontend/src/pages/Otc/OtcPagePanels.tsx
 msgid "Orders created by the connected wallet"
 msgstr "Órdenes creadas por la cartera conectada"
+
+#: apps/cowswap-frontend/src/modules/swap/containers/BottomBanners/BottomBanners.container.tsx
+msgid "Swap $100+. Get a ticket."
+msgstr "Intercambia $100 o más. Recibe un boleto."
+
+#: apps/cowswap-frontend/src/modules/swap/containers/BottomBanners/BottomBanners.container.tsx
+msgid "Win 1 or 10 USDG on Robinhood Chain."
+msgstr "Gana 1 o 10 USDG en Robinhood Chain."
+
+#: apps/cowswap-frontend/src/modules/swap/containers/BottomBanners/BottomBanners.container.tsx
+msgid "One per eligible wallet. While rewards last."
+msgstr "Uno por cartera elegible. Hasta agotar premios."
+
+#: apps/cowswap-frontend/src/modules/swap/containers/BottomBanners/BottomBanners.container.tsx
+msgid "Claim your ticket"
+msgstr "Reclama tu boleto"

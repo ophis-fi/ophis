@@ -2458,10 +2458,6 @@ msgstr "Expiration"
 msgid "Unsupported Wallet"
 msgstr "Unsupported Wallet"
 
-#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
-msgid "Robinhood Chain · gasless intent"
-msgstr "Robinhood Chain · gasless intent"
-
 #: apps/cowswap-frontend/src/modules/account/containers/Transaction/StatusDetails.tsx
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/TransactionSubmittedContent/index.tsx
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrderStatusBox/getOrderStatusTitleAndColor.ts
@@ -4898,10 +4894,6 @@ msgstr "Out of range"
 msgid "Since prices can change significantly over time, we suggest increasing your price protection for orders with long deadlines."
 msgstr "Since prices can change significantly over time, we suggest increasing your price protection for orders with long deadlines."
 
-#: apps/cowswap-frontend/src/ophis/components/RobinhoodAssetContext/RobinhoodAssetContext.container.tsx
-msgid "Swaps are gasless. Approvals and wrapping still use ETH; paying a higher priority fee does not buy earlier ordering. Need funds? <0>Bridge to Robinhood Chain ↗</0>"
-msgstr "Swaps are gasless. Approvals and wrapping still use ETH; paying a higher priority fee does not buy earlier ordering. Need funds? <0>Bridge to Robinhood Chain ↗</0>"
-
 #: apps/cowswap-frontend/src/ophis/otcWrite/OtcWriteNotice.pure.tsx
 msgid "Ethereum transactions"
 msgstr "Ethereum transactions"
@@ -6694,3 +6686,19 @@ msgstr "Unable to check gas balance"
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenRoute.container.tsx
 msgid "Checking gas balance"
 msgstr "Checking gas balance"
+
+#: apps/cowswap-frontend/src/modules/swap/containers/BottomBanners/BottomBanners.container.tsx
+msgid "Swap $100+. Get a ticket."
+msgstr "Swap $100+. Get a ticket."
+
+#: apps/cowswap-frontend/src/modules/swap/containers/BottomBanners/BottomBanners.container.tsx
+msgid "Win 1 or 10 USDG on Robinhood Chain."
+msgstr "Win 1 or 10 USDG on Robinhood Chain."
+
+#: apps/cowswap-frontend/src/modules/swap/containers/BottomBanners/BottomBanners.container.tsx
+msgid "One per eligible wallet. While rewards last."
+msgstr "One per eligible wallet. While rewards last."
+
+#: apps/cowswap-frontend/src/modules/swap/containers/BottomBanners/BottomBanners.container.tsx
+msgid "Claim your ticket"
+msgstr "Claim your ticket"
