@@ -17,6 +17,11 @@ configuration; this pinned engine does not reliably inherit the field from
 canary passed protected methods and populated historical logs/receipts; this
 candidate was not deployed. The retired OP node is unreachable; the two
 reachable Ophis servers run Unichain. Restoring capacity is still required.
+As of 2026-09-20 the operator has no budget for paid capacity. The prepared
+dRPC upgrade is not authorized; do not activate a paid tier or assume a top-up
+is pending. Retain the existing fail-closed checks while evaluating no-cost
+options. Increasing the autopilot polling interval does not reduce per-block
+log reads and must not be presented as a solution to monthly log usage.
 
 ## Current routing
 
