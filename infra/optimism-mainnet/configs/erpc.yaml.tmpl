@@ -1,7 +1,14 @@
-# 2026-09-18: restored dRPC/ZAN/Tenderly after Boost forwarded Alchemy quota errors.
+# 2026-09-19: official-op/ZAN/Validation Cloud replace dRPC/ZAN/Tenderly.
+# Tenderly exhausted its quota; dRPC rejected the stalled historic log window.
+# All three replacements matched populated receipts/logs and current state.
+# Validation Cloud serves historic logs but prunes old state and may return
+# null for old receipts; those reads need official-op + ZAN to agree.
+# Failure domains: Google / Alibaba / AWS (Validation Cloud).
+# Blockdaemon was tested during recovery but removed after its quota warning.
+# Dated notes below describe past incidents, not the current topology.
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape (2026-09-18): 2-of-3 across dRPC + ZAN + Tenderly.**
+# **Current shape (2026-09-19): 2-of-3 across official-op + ZAN + Validation Cloud.**
 # Consensus wait caps match the 12s network timeout: the v0.2.0 adaptive
 # default can cancel slower independent voters only 5ms after the first reply.
 #
@@ -142,6 +149,33 @@
 # Endpoint exposed: http://rpc-proxy:4000/main/evm/10
 
 logLevel: warn  # was info; info logs 1 line/RPC req+resp -> filled the docker-VM disk (2026-06-15 incident). warn still surfaces consensus disputes / upstream-exhausted.
+
+# Repeated indexer header reads must not consume fresh provider quota each time.
+# Only explicit numbered, non-empty headers: live tags and protected state reads
+# still reach upstreams. Unfinalized headers expire after one OP block (2s).
+database:
+  evmJsonRpcCache:
+    connectors:
+      - id: op-headers
+        driver: memory
+        memory:
+          maxItems: 10000
+          maxTotalSize: 64MB
+    policies:
+      - connector: op-headers
+        network: evm:10
+        method: eth_getBlockByNumber
+        params: ["0x*", false]
+        finality: finalized
+        empty: ignore
+        ttl: 1h
+      - connector: op-headers
+        network: evm:10
+        method: eth_getBlockByNumber
+        params: ["0x*", false]
+        finality: unfinalized
+        empty: ignore
+        ttl: 2s
 
 projects:
   - id: main
@@ -517,52 +551,14 @@ projects:
       # ZAN and the owned Aleph node are independent non-CF failure domains.
       #
       # Hosts are literal so the CI guard can pin the failure domains. The only
-      # endpoint credential is ZAN_API_KEY; erpc.yaml remains RAM-disk rendered.
-      - id: drpc-op
-        # Cloudflare-fronted (lb.drpc.org -> 104.18.x, AS13335, server: cloudflare,
-        # cf-ray present) — the ONE permitted CF lane. It REPLACES blockdaemon-op
-        # (2026-08-30), which is also Cloudflare, so the swap is domain-NEUTRAL and
-        # the quorum still spans Cloudflare / Alibaba(zan) / Google(tenderly).
-        #
-        # WHY: blockdaemon's free tier is EXHAUSTED — direct probe returns
-        # HTTP 429 {"title":"Quota limit exceeded"} on every request, and it had
-        # already been degrading (measured 2026-08-29 on the receipt path: 6%
-        # rejected at 1 req/s, 13% at 2, 21% at 4 — no clean operating point).
-        # It lasted ONE DAY in the quorum.
-        #
-        # ⚠️ THE MEASUREMENT THAT MATTERS, and how it was nearly got wrong twice:
-        # A first probe of drpc at 8 req/s returned 75% HTTP 429 and looked like a
-        # hard rejection. That was SELF-INFLICTED: dRPC's free tier caps
-        # THROUGHPUT (120k CU/min per IP), not volume, and the burst had drained
-        # the day's budget — dRPC's own dashboard read "Limited by RPS today: 75%"
-        # while the MONTHLY quota showed 210M CU untouched (100% remaining).
-        # After a cooldown, at the rate a lane in this quorum actually carries:
-        #   360s @ 3 req/s, production method mix (67% ARCHIVE eth_getLogs, 25%
-        #   eth_getBlockByNumber, 8% eth_call/eth_getTransactionReceipt, params
-        #   varied every request so nothing is cache-served):
-        #     633/633 = 100%. ZERO failures in ANY 60s bucket. No JSON-RPC error
-        #     bodies. p50 201ms / p95 234ms / p99 277ms / max 439ms. Flat curve.
-        # LESSON, now twice-learned: measure at the rate THIS QUORUM imposes
-        # (~2.5-3 req/s per lane), with the REAL method mix, for MINUTES — and do
-        # not let an over-rate probe poison the very budget you are measuring.
-        #
-        # HEADROOM (the reason this should outlast every predecessor): dRPC free is
-        # 210M CU per 30 days at a flat ~20 CU/request. This stack sends ~5.5M
-        # requests/30d to one lane => ~110M CU = ~52% of the allowance. That is the
-        # first lane with real margin. For contrast ZAN's 150M was consumed to
-        # EXACTLY 100% by this same load, which is why it dies every cycle.
-        # Watch it: if the monthly CU trend exceeds ~60%, the lane is on borrowed
-        # time and needs replacing BEFORE it caps, not after.
-        #
-        # Host is LITERAL so the CI guard's urlsplit can pin the failure domain;
-        # only ${DRPC_API_KEY} resolves from .env via render-configs.sh envsubst —
-        # NEVER committed. erpc.yaml is in PK_BEARING_NAMES, so the rendered file
-        # carrying this key lands on the RAM-disk, not the SSD.
-        #
-        # The key rides in a QUERY PARAM (?dkey=), the same shape blockdaemon used,
-        # so validate_rendered_erpc's empty-query-param rule already covers an
-        # empty substitution. render-configs.sh also fails fast on the unset var.
-        endpoint: https://lb.drpc.org/ogrpc?network=optimism&dkey=${DRPC_API_KEY}
+      # endpoint credentials are ZAN_API_KEY and VALIDATIONCLOUD_OP_KEY;
+      # erpc.yaml remains RAM-disk rendered.
+      - id: official-op
+        # Re-admitted 2026-09-19: OP's public endpoint, Google-fronted.
+        # Passed current state, populated receipts/logs, the stalled historic
+        # window, and 120/120 paced requests at 3 req/s. Still rate-limited.
+        # Replaces quota-constrained Blockdaemon, not an additional voter.
+        endpoint: https://mainnet.optimism.io
         failsafe:
           # BUDGET INVARIANT (2026-08-15, CI-enforced by assert-erpc-failclosed):
           # one lane's worst-case serial budget (attempts x timeout + backoff)
@@ -668,52 +664,12 @@ projects:
               successThresholdCount: 2
               successThresholdCapacity: 4
 
-      - id: tenderly-op
-        # Google-fronted (GCE/envoy, `via: 1.1 google`, AS396982) — it REPLACES
-        # official-op (mainnet.optimism.io, ALSO AS396982 Google, `via: 1.1 google`)
-        # on 2026-08-29. Both sit in the SAME failure domain, so this swap is
-        # domain-NEUTRAL: the quorum still spans exactly three independent domains
-        # (Cloudflare=blockdaemon, Alibaba=zan, Google=tenderly) and no 2-upstream
-        # subset shares a CDN/DNS operator.
-        #
-        # ⚠️ For the same reason tenderly may NEVER be added ALONGSIDE official-op:
-        # two Google-fronted lanes would let a single provider satisfy
-        # agreementThreshold:2, which is the Cloudflare attack with a different
-        # logo. It is a REPLACEMENT, never an addition.
-        #
-        # WHY THE SWAP: official-op is chronically rate-limited from this host and
-        # archive-gated. Measured 2026-08-29 at a sustained 4 req/s of uncacheable
-        # calls: 12/160 = 7.5% HTTP 429 (matches the ~10% ErrUpstreamBlockUnavailable
-        # in Prometheus). tenderly on the KEYED gateway returned 0/160 failures over
-        # the same run, and unlike official-op it is a FULL ARCHIVE node.
-        #
-        # Measured 2026-08-29 (direct, keyed endpoint):
-        #   eth_getTransactionReceipt (head-60) ......... OK
-        #   eth_call    @ -200 / -20k / -200k / -2M ..... OK / OK / OK / OK
-        #   eth_getLogs @ -200 / -20k / -200k / -2M ..... OK / OK / OK / OK
-        #   sustained 4 req/s x 160 sequential: 160/160 OK, p50 56ms, p95 1061ms,
-        #   p99 2058ms, max 2065ms — the tail is REAL and reproducible, but it
-        #   stays under this lane's 4s timeout, and the 12s network budget is
-        #   unaffected (4s x 2 attempts + 1s backoff = 9s < 12s, unchanged).
-        #   x-tdly-limit on the keyed gateway is 400 req/s (keyless is 20), so a
-        #   consensus lane's ~4 req/s uses ~1% of it. The three historical
-        #   tenderly rate-limit outages happened when it carried the WHOLE stack's
-        #   ~40 req/s on the keyless tier, not a lane's share on a keyed one.
-        #
-        # With blockdaemon and zan this makes ALL THREE lanes full-archive and
-        # receipt-capable for the first time: eth_getTransactionReceipt and deep
-        # eth_getLogs go from 2 capable voters to 3, so losing any single lane —
-        # including zan to its monthly credit cap — no longer breaks receipts.
-        #
-        # Host is LITERAL so the CI guard's urlsplit can pin the failure domain;
-        # only ${TENDERLY_OP_KEY} resolves from .env via render-configs.sh envsubst
-        # — NEVER committed. erpc.yaml is in PK_BEARING_NAMES, so the rendered file
-        # carrying this key lands on the RAM-disk, not the SSD.
-        #
-        # NOTE: driver.toml.tmpl [[submission.mempool]] still lists
-        # mainnet.optimism.io directly. That list is NOT routed through eRPC, so
-        # dropping official-op as an upstream leaves submission untouched.
-        endpoint: https://optimism.gateway.tenderly.co/${TENDERLY_OP_KEY}
+      - id: validationcloud-op
+        # Re-admitted 2026-09-19 with the existing keyed account (istio-envoy).
+        # Passed current state, populated receipts/logs, the stalled historic
+        # window, and 120/120 paced requests at 3 req/s. Old state is pruned;
+        # historical eth_call needs the other two voters. No leader tie-break.
+        endpoint: https://mainnet.optimism.validationcloud.io/v1/${VALIDATIONCLOUD_OP_KEY}
         failsafe:
           # BUDGET INVARIANT (2026-08-15, CI-enforced by assert-erpc-failclosed):
           # one lane's worst-case serial budget (attempts x timeout + backoff)

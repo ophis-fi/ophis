@@ -55,7 +55,9 @@ bad["projects"][0]["upstreams"].append(copy.deepcopy(bad["projects"][0]["upstrea
 assert validate(bad), "An extra upstream must not dilute the independent three-provider quorum"
 driver = (OP / "configs/driver.toml.tmpl").read_text()
 assert "edge.goldsky.com" not in driver
-assert "lb.drpc.org/ogrpc?network=optimism&dkey=${DRPC_API_KEY}" in driver
+assert 'url = "https://mainnet.optimism.io"' in driver
+assert "${VALIDATIONCLOUD_OP_KEY}" in driver
+assert "tenderly.co" not in driver
 assert "GOLDSKY_BOOST_KEY" not in (OP / "render-configs.sh").read_text()
 rbh = runpy.run_path(str(RBH / "assert-erpc-failclosed.py"))
 source = (RBH / "configs/erpc.yaml.tmpl").read_text()
@@ -77,14 +79,20 @@ for stack in (OP,):
         sandbox = Path(tmp)
         (sandbox / "render-configs.sh").write_text((stack / "render-configs.sh").read_text())
         (sandbox / ".env.example").write_text((stack / ".env.example").read_text())
-        (sandbox / ".env").write_text("POSTGRES_USER=test\nZAN_API_KEY=test\nTENDERLY_OP_KEY=test\n")
-        env = {k: v for k, v in os.environ.items() if k not in {"GOLDSKY_BOOST_KEY", "DRPC_API_KEY"}}
+        (sandbox / ".env").write_text("POSTGRES_USER=test\nZAN_API_KEY=test\n")
+        env = {k: v for k, v in os.environ.items() if k not in {"GOLDSKY_BOOST_KEY", "VALIDATIONCLOUD_OP_KEY"}}
         for line in (stack / ".env.example").read_text().splitlines():
             if line.startswith("ERPC_IMAGE="):
                 env["ERPC_IMAGE"] = line.split("=", 1)[1]
         result = subprocess.run(["bash", str(sandbox / "render-configs.sh")], env=env,
                                 capture_output=True, text=True)
         assert result.returncode == 15, (stack.name, result.stderr)
-        assert "DRPC_API_KEY is unset/empty" in result.stderr
+        assert "VALIDATIONCLOUD_OP_KEY is unset/empty" in result.stderr
+
+for field, value in (("method", "*"), ("params", ["latest", False]),
+                     ("empty", "allow"), ("ttl", "1h")):
+    bad = copy.deepcopy(config)
+    bad["database"]["evmJsonRpcCache"]["policies"][1][field] = value
+    assert validate(bad), (field, value)
 
 print("Boost RPC regression checks passed")

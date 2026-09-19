@@ -236,21 +236,9 @@ if [[ -z "${ZAN_API_KEY:-}" ]]; then
   exit 15
 fi
 
-# ── Tenderly key: NEVER render an empty one ──────────────────────────────────
-# tenderly-op replaced official-op on 2026-08-29 and carries a PATH-style key.
-# An empty substitution yields https://optimism.gateway.tenderly.co/ , which is
-# the KEYLESS gateway: a 20 req/s bucket instead of 400, and it silently drops
-# this lane's archive guarantees. validate_rendered_erpc catches the trailing
-# slash, but fail fast here too so the operator sees it before the render runs.
-if [[ -z "${TENDERLY_OP_KEY:-}" ]]; then
-  echo "ERROR: TENDERLY_OP_KEY is unset/empty." >&2
-  echo "       Refusing to render: the tenderly upstream would fall back to the" >&2
-  echo "       KEYLESS gateway (20 req/s, no archive guarantee). Set it in .env." >&2
-  exit 15
-fi
-
-if [[ -z "${DRPC_API_KEY:-}" ]]; then
-  echo "ERROR: DRPC_API_KEY is unset/empty (required for OP consensus)." >&2
+# Validation Cloud is keyed; the official endpoint needs no key.
+if [[ -z "${VALIDATIONCLOUD_OP_KEY:-}" ]]; then
+  echo "ERROR: VALIDATIONCLOUD_OP_KEY is unset/empty (required for OP consensus)." >&2
   exit 15
 fi
 
