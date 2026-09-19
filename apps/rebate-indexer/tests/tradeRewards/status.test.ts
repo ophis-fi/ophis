@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify from 'fastify';
 import { TRADE_REWARDS_ELIGIBLE_CHAIN_IDS } from '../../src/tradeRewards/config.js';
 
@@ -16,15 +16,27 @@ const sql = vi.fn(async (strings: TemplateStringsArray) => {
 
 vi.mock('../../src/db/index.js', () => ({ sql }));
 
-const { getTradeRewardStatus } = await import('../../src/tradeRewards/service.js');
+const { getTradeRewardCampaign, getTradeRewardStatus } = await import('../../src/tradeRewards/service.js');
 const { registerTradeRewardRoutes } = await import('../../src/tradeRewards/routes.js');
 const WALLET = `0x${'11'.repeat(20)}` as `0x${string}`;
 
 describe('trade reward campaign status', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('TRADE_REWARDS_ENABLED', 'true');
     state.campaign = { enabled: true, tickets_remaining: 105 };
     state.tickets = [];
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('honors the live pause switch even when the persisted campaign is enabled', async () => {
+    vi.stubEnv('TRADE_REWARDS_ENABLED', 'false');
+    await expect(getTradeRewardCampaign()).resolves.toMatchObject({
+      campaignEnabled: false,
+      campaignAvailable: false,
+      ticketsRemaining: 105,
+    });
   });
 
   it.each([

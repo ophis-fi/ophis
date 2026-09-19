@@ -274,7 +274,7 @@ export async function getTradeRewardCampaign(): Promise<{
     WHERE campaign_id = ${TRADE_REWARDS_CAMPAIGN_ID}
   `;
   const campaign = campaignRows[0];
-  const campaignEnabled = campaign?.enabled === true;
+  const campaignEnabled = enabledFromEnv() && campaign?.enabled === true;
   const ticketsRemaining = campaign?.tickets_remaining ?? 0;
   const campaignAvailable = campaignEnabled && ticketsRemaining > 0;
   return { campaignEnabled, campaignAvailable, ticketsRemaining, eligibleChainIds: TRADE_REWARDS_ELIGIBLE_CHAIN_IDS };
