@@ -9,7 +9,7 @@ import { ArrowRight, Gift } from 'react-feather'
 import { Link } from 'react-router'
 
 import { getProxyAccountUrl } from 'modules/accountProxy/utils/getProxyAccountUrl'
-import { TRADE_REWARDS_ELIGIBLE_CHAIN_IDS } from 'modules/affiliate'
+import { useTradeRewardPromotion } from 'modules/affiliate'
 import { useIsHooksTradeType } from 'modules/trade'
 
 import { useIsProviderNetworkDeprecated } from 'common/hooks/useIsProviderNetworkDeprecated'
@@ -21,6 +21,7 @@ import { NetworkBridgeBanner } from '../NetworkBridgeBanner/NetworkBridgeBanner.
 
 export function BottomBanners(): ReactNode {
   const { chainId, account } = useWalletInfo()
+  const showGiveaway = useTradeRewardPromotion(chainId)
   const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated()
   const isHookTradeType = useIsHooksTradeType()
   const accountProxyUrl = getProxyAccountUrl(chainId, 'hooks')
@@ -50,7 +51,7 @@ export function BottomBanners(): ReactNode {
 
   return (
     <styledEl.Wrapper>
-      {TRADE_REWARDS_ELIGIBLE_CHAIN_IDS.includes(chainId) && (
+      {showGiveaway && (
         <styledEl.Giveaway to="/rewards">
           <strong>
             <Gift size={20} aria-hidden="true" />

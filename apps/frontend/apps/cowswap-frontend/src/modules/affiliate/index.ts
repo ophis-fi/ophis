@@ -1,5 +1,5 @@
 export { affiliateTraderSavedCodeAtom } from './state/affiliateTraderSavedCodeAtom'
-export { default as TRADE_REWARDS_ELIGIBLE_CHAIN_IDS } from './config/tradeRewards.json'
+export { useTradeRewardPromotion } from './hooks/useTradeRewardPromotion'
 export { affiliateOwnCodeAtom, setAffiliateOwnCodeAtom } from './state/affiliateOwnCodeAtom'
 
 // Ophis native affiliate program (rebates.ophis.fi). NATIVE-only surfaces:
