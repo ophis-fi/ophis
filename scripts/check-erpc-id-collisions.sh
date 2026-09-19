@@ -53,7 +53,13 @@ for i in "${!CHAIN_DIRS[@]}"; do
       errors=$((errors + 1))
     fi
     echo "${id}|${chain_dir}" >> "$ALL_IDS_FILE"
-  done < <(awk '/^      - id:/ {print $3}' "$cfg")
+  # Cache connectors also have an id at this indentation; only upstreams emit
+  # the provider metric labels this check is intended to validate.
+  done < <(awk '
+    /^[^ ]|^  [^ ]|^    [^ ]/ { upstreams = 0 }
+    /^    upstreams:/ { upstreams = 1 }
+    upstreams && /^      - id:/ { print $3 }
+  ' "$cfg")
 done
 
 if (( errors > 0 )); then
