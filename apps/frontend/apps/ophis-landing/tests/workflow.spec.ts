@@ -27,3 +27,16 @@ test('landing-deploy.yml builds, runs lhci, and deploys via wrangler', () => {
   expect(yaml).toContain('RAW_MSG: ${{ github.event.head_commit.message }}')
   expect(yaml).toContain('--sitemap apps/frontend/apps/ophis-landing/dist/sitemap.xml')
 })
+
+
+test('landing Functions are restricted to API routes and retain shared middleware', () => {
+  const root = join(__dirname, '..', '..', '..', '..', '..')
+  const routes = JSON.parse(readFileSync(join(__dirname, '..', 'dist', '_routes.json'), 'utf8'))
+  expect(routes).toEqual({ version: 1, include: ['/api/*'], exclude: [] })
+  const workflow = readFileSync(join(root, '.github/workflows/landing-deploy.yml'), 'utf8')
+  expect(workflow).toContain("'functions/**'")
+  expect(workflow).not.toContain('dist/functions')
+  const redirects = readFileSync(join(__dirname, '..', 'dist', '_redirects'), 'utf8')
+  expect(redirects).toContain('/docs  https://docs.ophis.fi/  301')
+  expect(redirects).toContain('/docs/*  https://docs.ophis.fi/:splat  301')
+})
