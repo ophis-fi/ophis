@@ -58,7 +58,12 @@ require('node:fs').writeFileSync(require('node:path').join(__dirname, 'npm-call.
     {
       cwd: directory,
       // No inherited auth/config: the replacement npm only records the invocation locally.
-      env: { PATH: process.env.PATH, NPM_CONFIG_PROVENANCE: 'true' },
+      env: {
+        PATH: process.env.PATH,
+        // action-setup caches the pinned pnpm here; retain its location to avoid a download.
+        ...(process.env.PNPM_HOME ? { PNPM_HOME: process.env.PNPM_HOME } : {}),
+        NPM_CONFIG_PROVENANCE: 'true',
+      },
       encoding: 'utf8',
       timeout: 30_000,
     },
