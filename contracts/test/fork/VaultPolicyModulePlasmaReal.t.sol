@@ -46,6 +46,7 @@ interface ISafeSetup {
 ///
 /// Run: OPHIS_FORK_RPC_PLASMA=https://rpc.plasma.to forge test \
 ///        --match-path 'test/fork/VaultPolicyModulePlasmaReal.t.sol'
+/// Requires VAULT_XPL_MIN_PRICE18 / VAULT_XPL_MAX_PRICE18, matching the deployment policy.
 contract VaultPolicyModulePlasmaReal is Test {
     // Canonical Safe v1.3.0 (same on every chain).
     address internal constant SAFE_FACTORY = 0xa6B71E26C5e0845f74c812102Ca7114b6a896AB2;
@@ -89,8 +90,13 @@ contract VaultPolicyModulePlasmaReal is Test {
         safe = ISafeSetup(proxy);
 
         OphisVaultPolicyModule.TokenFeed[] memory tokens = new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(USDT0, IAggregatorV3(USDT0_USD_FEED), USDT0_STALENESS);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(WXPL, IAggregatorV3(XPL_USD_FEED), XPL_STALENESS);
+        tokens[0] = OphisVaultPolicyModule.TokenFeed(
+            USDT0, IAggregatorV3(USDT0_USD_FEED), USDT0_STALENESS, 25e16, 4e18
+        );
+        tokens[1] = OphisVaultPolicyModule.TokenFeed(
+            WXPL, IAggregatorV3(XPL_USD_FEED), XPL_STALENESS,
+            vm.envUint("VAULT_XPL_MIN_PRICE18"), vm.envUint("VAULT_XPL_MAX_PRICE18")
+        );
 
         // EXACT production config incl. the disabled sequencer gate (L1). A
         // passing setUp proves the real feeds serve a fresh price and the
@@ -106,6 +112,7 @@ contract VaultPolicyModulePlasmaReal is Test {
                 maxTtl: 1980, // matches the deploy script: builder 1800s TTL + 180s block-ts lag margin
                 dailyUsdTurnoverCap: 1_000e18,
                 sequencerUptimeFeed: IAggregatorV3(address(0)),
+                allowNoSequencerFeed: true,
                 sequencerGracePeriod: 0,
                 tokens: tokens
             })

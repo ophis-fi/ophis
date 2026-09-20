@@ -63,6 +63,50 @@ beforeEach(async () => {
 });
 
 describe('partner-fee feed ingestion', () => {
+  it.each([{}, { trades: null }, { trades: {} }])('rejects malformed feed pages instead of treating them as drained: %j', async (page) => {
+    server.use(http.get(FEED, () => HttpResponse.json(page)));
+    try {
+      await expect(runFetch()).rejects.toThrow();
+      const sql = await getSql();
+      expect(await sql`SELECT 1 FROM partner_fee_cursor`).toHaveLength(0);
+    } finally {
+      server.resetHandlers();
+    }
+  });
+
+  it.each([
+    { trades: [{ ...TRADES[1], blockNumber: Number.MAX_SAFE_INTEGER + 1 }] },
+    { trades: [{ ...TRADES[1], protocolFeeAmounts: ['1000', '-3000'] }] },
+    { trades: [TRADES[2], TRADES[1]] },
+    { trades: [TRADES[1]], nextBlock: 999, nextLogIndex: 0 },
+    { trades: [], nextBlock: 100, nextLogIndex: 1 },
+    { trades: Array.from({ length: 1000 }, (_, logIndex) => ({ ...TRADES[1], logIndex })) },
+  ])('rejects malformed rows or pagination before persisting the page', async (page) => {
+    server.use(http.get(FEED, () => HttpResponse.json(page)));
+    try {
+      await expect(runFetch()).rejects.toThrow();
+      const sql = await getSql();
+      expect(await sql`SELECT 1 FROM partner_fee_trades`).toHaveLength(0);
+      expect(await sql`SELECT 1 FROM partner_fee_cursor`).toHaveLength(0);
+    } finally {
+      server.resetHandlers();
+    }
+  });
+
+  it('continues from a validated page cursor and drains the next page', async () => {
+    const { runPartnerFeeFetch } = await import('../../src/partnerFees/fetch.js');
+    const fetcher = vi.fn(async (_feed: unknown, block: bigint, logIndex: bigint) => {
+      if (block === 0n) return { trades: TRADES.slice(0, 2), nextBlock: 100, nextLogIndex: 3 };
+      expect([block, logIndex]).toEqual([100n, 3n]);
+      return { trades: TRADES.slice(2) };
+    });
+    await expect(runPartnerFeeFetch({
+      feeds: [{ chainId: 10, url: FEED }], fetcher,
+      blockTimestamp: async () => new Date('2026-05-15T00:00:00Z'),
+    })).resolves.toMatchObject({ inserted: 1, skipped: 1, capped: false });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it('attributes only the non-Ophis registered partner, skips the ambiguous one', async () => {
     const sql = await getSql();
     const r = await runFetch();

@@ -96,16 +96,16 @@ export async function executeOphisSafePresign(
   // executed:true must mean "mined and the batch succeeded", never just "submitted".
   const txResponse = res.transactionResponse as { wait?: () => Promise<MinimalReceipt> } | undefined;
   const receipt = await txResponse?.wait?.();
-  if (receipt) {
-    // Accept both viem ('success'|'reverted') and ethers (1|0) receipt shapes.
-    const reverted =
-      receipt.status === 'reverted' || receipt.status === 0 || receipt.status === 0n || receipt.status === '0x0';
-    const innerFailure = (receipt.logs ?? []).some((l) => l.topics?.[0]?.toLowerCase() === EXECUTION_FAILURE_TOPIC);
-    if (reverted || innerFailure) {
-      throw new Error(
-        `executeOphisSafePresign: Safe batch did not succeed (tx ${res.hash}; ${innerFailure ? 'Safe ExecutionFailure' : 'reverted'})`,
-      );
-    }
+  if (!receipt || receipt.status == null || !Array.isArray(receipt.logs)) {
+    throw new Error(`executeOphisSafePresign: receipt unavailable or incomplete (tx ${res.hash}); execution is unconfirmed`);
+  }
+  // Accept both viem ('success'|'reverted') and ethers (1|0) receipt shapes.
+  const reverted = ![1, 1n, '0x1', 'success'].includes(receipt.status);
+  const innerFailure = receipt.logs.some((l) => l.topics?.[0]?.toLowerCase() === EXECUTION_FAILURE_TOPIC);
+  if (reverted || innerFailure) {
+    throw new Error(
+      `executeOphisSafePresign: Safe batch did not succeed (tx ${res.hash}; ${innerFailure ? 'Safe ExecutionFailure' : 'reverted'})`,
+    );
   }
 
   return { safeTxHash, ethTxHash: res.hash, executed: true, threshold };

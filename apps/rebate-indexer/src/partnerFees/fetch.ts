@@ -1,4 +1,5 @@
 import { createPublicClient, http } from 'viem';
+import { z } from 'zod';
 import { attributePartnerFees } from './parsePartnerFees.js';
 import { alerts } from '../telegram/alerter.js';
 import { logger } from '../logger.js';
@@ -62,27 +63,31 @@ const FEED_LIMIT = 1_000;
 /** Safety bound on pages per run so a runaway/looping feed can't spin forever. */
 const MAX_PAGES_PER_RUN = 10_000;
 
-/** One raw trade row from the feed (camelCase, string amounts) -- mirrors PartnerFeeFeedRow. */
-interface FeedTrade {
-  blockNumber: number;
-  logIndex: number;
-  orderUid: string;
-  owner: string;
-  sellToken: string;
-  buyToken: string;
-  sellAmount: string;
-  buyAmount: string;
-  protocolFeeAmounts: string[];
-  protocolFeeTokens: string[];
-  protocolFeeKinds: string[];
-  fullAppData: string | null;
-}
-
-interface FeedResponse {
-  trades: FeedTrade[];
-  nextBlock?: number;
-  nextLogIndex?: number;
-}
+// This feed controls the Safe's reserved partner liability. A malformed success
+// response must fail the run, never masquerade as an empty, fully drained feed.
+const feedIndex = z.number().int().nonnegative().safe();
+const feedAddress = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
+const feedAmount = z.string().regex(/^\d+$/).max(78)
+  .refine((value) => BigInt(value) < (1n << 256n), 'amount exceeds uint256');
+const feedResponseSchema = z.object({
+  trades: z.array(z.object({
+    blockNumber: feedIndex,
+    logIndex: feedIndex,
+    orderUid: z.string().regex(/^0x[0-9a-fA-F]{112}$/),
+    owner: feedAddress,
+    sellToken: feedAddress,
+    buyToken: feedAddress,
+    sellAmount: feedAmount,
+    buyAmount: feedAmount,
+    protocolFeeAmounts: z.array(feedAmount),
+    protocolFeeTokens: z.array(feedAddress),
+    protocolFeeKinds: z.array(z.string()),
+    fullAppData: z.string().nullable(),
+  })).max(FEED_LIMIT),
+  nextBlock: feedIndex.nullish(),
+  nextLogIndex: feedIndex.nullish(),
+});
+type FeedResponse = z.infer<typeof feedResponseSchema>;
 
 /** A configured feed: one Ophis-operated chain's restricted endpoint. */
 export interface PartnerFeeFeed {
@@ -302,7 +307,24 @@ export async function runPartnerFeeFetch(
   for (const feed of feeds) {
     let cursor = await loadCursor(feed.chainId);
     for (let page = 0; page < MAX_PAGES_PER_RUN; page++) {
-      const resp = await fetcher(feed, cursor.block, cursor.logIndex, FEED_LIMIT);
+      const resp = feedResponseSchema.parse(await fetcher(feed, cursor.block, cursor.logIndex, FEED_LIMIT));
+      // Validate the entire page before writing any row or advancing its cursor.
+      let next = cursor;
+      for (const trade of resp.trades) {
+        const block = BigInt(trade.blockNumber);
+        const logIndex = BigInt(trade.logIndex);
+        if (block < next.block || (block === next.block && logIndex < next.logIndex)) {
+          throw new Error('partner-fee feed returned out-of-order or stale trades');
+        }
+        next = { block, logIndex: logIndex + 1n };
+      }
+      if ((resp.nextBlock != null || resp.nextLogIndex != null)
+        && (resp.trades.length === 0 || resp.nextBlock !== Number(next.block) || resp.nextLogIndex !== Number(next.logIndex))) {
+        throw new Error('partner-fee feed returned an inconsistent continuation cursor');
+      }
+      if (resp.trades.length === FEED_LIMIT && resp.nextBlock == null) {
+        throw new Error('partner-fee feed omitted the continuation cursor for a full page');
+      }
       if (page === 0) {
         // ACTIVATION marker on the FIRST successful poll, even an EMPTY one: saveCursor
         // only runs after a nonempty page, so a live feed with no trades yet would leave
@@ -315,7 +337,7 @@ export async function runPartnerFeeFetch(
           ON CONFLICT (chain_id) DO NOTHING
         `;
       }
-      const trades = resp.trades ?? [];
+      const trades = resp.trades;
       for (const t of trades) {
         const result = attributePartnerFees(t);
         if (result.skipped) {

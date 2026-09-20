@@ -124,7 +124,14 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-_GOOD = {"buyAmount": "50000000000000000", "sellAmount": "100000000", "feeAmount": "0"}
+_GOOD = {"sellToken": USDC, "buyToken": WETH, "buyAmount": "50000000000000000", "sellAmount": "100000000", "feeAmount": "0"}
+
+
+@pytest.mark.parametrize("field,token", [("sellToken", WETH), ("buyToken", USDC)])
+def test_rejects_substituted_quote_tokens(monkeypatch, field, token):
+    _patch_orderbook(monkeypatch, quote={**_GOOD, field: token})
+    ok, reason = _run(_make().swap_exact_in(sell_token=USDC, buy_token=WETH, amount_in="100"))
+    assert ok is False and "quote tokens" in reason
 
 
 def test_happy_path_submits_and_binds(monkeypatch):

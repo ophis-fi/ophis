@@ -1,4 +1,6 @@
 import importlib.util
+import io
+import json
 import urllib.error
 from pathlib import Path
 from unittest import TestCase, main, mock
@@ -11,6 +13,33 @@ SPEC.loader.exec_module(proxy)
 
 
 class L1ExecutionProxyTest(TestCase):
+    def test_post_rejects_wrong_response_identity_and_invalid_envelopes(self) -> None:
+        request = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+        valid = {"jsonrpc": "2.0", "id": 1, "result": "0x1"}
+        invalid = [[], {}, {**valid, "id": 2}, {**valid, "id": True},
+                   {**valid, "jsonrpc": "1.0"}, {"jsonrpc": "2.0", "result": "0x1"},
+                   {"jsonrpc": "2.0", "id": 1}, {**valid, "error": {}},
+                   {"jsonrpc": "2.0", "id": 1, "error": {"code": "-32005"}}]
+        for result in invalid:
+            with self.subTest(result=result), mock.patch.object(
+                proxy.urllib.request, "urlopen", return_value=io.BytesIO(json.dumps(result).encode())
+            ), self.assertRaises(ValueError):
+                proxy._post(proxy.GENERAL_UPSTREAM, request)
+        for result in [valid, {**valid, "result": None},
+                       {"jsonrpc": "2.0", "id": 1, "error": {"code": -32005, "message": "rate limit"}}]:
+            with mock.patch.object(proxy.urllib.request, "urlopen",
+                                   return_value=io.BytesIO(json.dumps(result).encode())):
+                self.assertEqual(proxy._post(proxy.GENERAL_UPSTREAM, request), result)
+
+    def test_post_bounds_response_before_decoding(self) -> None:
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b" " * (proxy.MAX_RESPONSE_BYTES + 1)
+        with mock.patch.object(proxy.urllib.request, "urlopen", return_value=response):
+            with self.assertRaisesRegex(ValueError, "byte limit"):
+                proxy._post(proxy.GENERAL_UPSTREAM, {"id": 1})
+        response.read.assert_called_once_with(proxy.MAX_RESPONSE_BYTES + 1)
+
     def test_splits_log_ranges_at_free_limit(self) -> None:
         request = {
             "jsonrpc": "2.0",

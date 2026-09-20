@@ -175,7 +175,8 @@ export async function executeOphisSwap(
     sellAmountBeforeFee: sellAmountAtomic.toString(),
     from: owner,
     receiver,
-    appData: appDataHash,
+    // With appDataHash present the orderbook validates appData as the full JSON preimage.
+    appData: fullAppData,
     appDataHash,
     signingScheme: SigningScheme.EIP712,
   } as never)) as { quote?: Record<string, unknown> } & Record<string, unknown>;

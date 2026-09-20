@@ -49,7 +49,7 @@ if [[ -z "${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}" ]] && [[ "$(uname -s)" == "Darwin
     export OPHIS_INTER_SERVICE_AUTH_TOKEN
     echo "==> F7 inter-service auth token sourced from Keychain"
   else
-    echo "==> F7 inter-service auth token NOT set + not in Keychain — driver will run un-authenticated" >&2
+    echo "==> F7 inter-service auth token NOT set + not in Keychain — Compose requires it in the environment or .env" >&2
     echo "    To enable: openssl rand -hex 32 | xargs -I{} security add-generic-password \\"  >&2
     echo "      -a \"\$USER\" -s ophis-inter-service-auth-token -w {} -U" >&2
   fi

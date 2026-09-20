@@ -13,6 +13,9 @@ import {
   getOphisOrderDomain,
   buildOphisAppDataPartnerFee,
   assertReceiverIsOwner,
+  assertAtoms,
+  assertFeeAtoms,
+  checksum,
 } from '@ophis/sdk'
 
 export interface SwapRequest {
@@ -59,6 +62,7 @@ const ORDER_TYPES = {
 function minBuyAmount(quotedBuy: string, slippageBips: number): string {
   const q = BigInt(quotedBuy)
   const out = (q * BigInt(10_000 - slippageBips)) / BigInt(10_000)
+  if (out <= 0n) throw new Error('quote buy floor is zero; refusing a zero-proceeds order')
   return out.toString()
 }
 
@@ -74,6 +78,14 @@ export const MAX_SLIPPAGE_BIPS = 5000
  * Returns null when fulfillable, otherwise a human-readable reason.
  */
 export function validateFulfillable(req: SwapRequest): string | null {
+  try {
+    checksum(req.owner, 'owner')
+    checksum(req.sellToken, 'sellToken')
+    checksum(req.buyToken, 'buyToken')
+    assertAtoms(req.sellAmount, 'sellAmount')
+  } catch (error) {
+    return (error as Error).message
+  }
   // getOphisOrderbookUrl THROWS for an unsupported/invalid chain id (it asserts a
   // valid chain and has no entry), it does not return a falsy value. Catch it so
   // an unfulfillable requirement returns a clean reason and is rejected BEFORE
@@ -143,19 +155,28 @@ export async function buildSignableOrder(req: SwapRequest, nowSeconds: number): 
     const text = await res.text().catch(() => '')
     throw new Error(`quote failed (${res.status}): ${text.slice(0, 300)}`)
   }
-  const quote = (await res.json()) as { quote?: { sellAmount: string; buyAmount: string; feeAmount: string; validTo: number } }
+  const quote = (await res.json()) as { quote?: { sellToken: string; buyToken: string; sellAmount: string; buyAmount: string; feeAmount: string } }
   const q = quote.quote
   if (!q) throw new Error('quote response missing `quote`')
+  assertAtoms(q.sellAmount, 'quote.sellAmount')
+  assertAtoms(q.buyAmount, 'quote.buyAmount')
+  assertFeeAtoms(q.feeAmount, 'quote.feeAmount')
+  if (checksum(q.sellToken, 'quote.sellToken') !== checksum(req.sellToken, 'sellToken') ||
+      checksum(q.buyToken, 'quote.buyToken') !== checksum(req.buyToken, 'buyToken')) {
+    throw new Error('quote tokens do not match the requested pair; refusing to sign')
+  }
+  const grossSell = BigInt(q.sellAmount) + BigInt(q.feeAmount)
+  if (grossSell !== BigInt(req.sellAmount)) throw new Error('quote gross sell amount differs from the request; refusing to sign')
 
   // 3. Bound the limit: minimum buy after slippage; receiver pinned to the buyer.
   const receiver = req.owner
   assertReceiverIsOwner(req.owner, receiver)
-  const validTo = Math.max(q.validTo, nowSeconds + 600)
+  const validTo = Math.floor(nowSeconds) + 1200
   const order = {
     sellToken: req.sellToken,
     buyToken: req.buyToken,
     receiver,
-    sellAmount: q.sellAmount,
+    sellAmount: grossSell.toString(),
     buyAmount: minBuyAmount(q.buyAmount, slippageBips),
     validTo,
     appData: appDataHash,

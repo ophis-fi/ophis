@@ -1,0 +1,45 @@
+diff --git a/lib/v35.js b/lib/v35.js
+--- a/lib/v35.js
++++ b/lib/v35.js
+@@ -21,7 +21,10 @@
+ 
+ module.exports = function(name, version, hashfunc) {
+   var generateUUID = function(value, namespace, buf, offset) {
+-    var off = buf && offset || 0;
++    var off = offset === undefined ? 0 : offset;
++    if (buf && (!Number.isInteger(off) || off < 0 || off + 16 > buf.length)) {
++      throw new RangeError('UUID buffer must have room for 16 bytes');
++    }
+ 
+     if (typeof(value) == 'string') value = stringToBytes(value);
+     if (typeof(namespace) == 'string') namespace = uuidToBytes(namespace);
+diff --git a/v1.js b/v1.js
+--- a/v1.js
++++ b/v1.js
+@@ -15,7 +15,10 @@
+ 
+ // See https://github.com/uuidjs/uuid for API details
+ function v1(options, buf, offset) {
+-  var i = buf && offset || 0;
++  var i = offset === undefined ? 0 : offset;
++  if (buf && (!Number.isInteger(i) || i < 0 || i + 16 > buf.length)) {
++    throw new RangeError('UUID buffer must have room for 16 bytes');
++  }
+   var b = buf || [];
+ 
+   options = options || {};
+diff --git a/v4.js b/v4.js
+--- a/v4.js
++++ b/v4.js
+@@ -2,7 +2,10 @@
+ var bytesToUuid = require('./lib/bytesToUuid');
+ 
+ function v4(options, buf, offset) {
+-  var i = buf && offset || 0;
++  var i = offset === undefined ? 0 : offset;
++  if (buf && (!Number.isInteger(i) || i < 0 || i + 16 > buf.length)) {
++    throw new RangeError('UUID buffer must have room for 16 bytes');
++  }
+ 
+   if (typeof(options) == 'string') {
+     buf = options === 'binary' ? new Array(16) : null;

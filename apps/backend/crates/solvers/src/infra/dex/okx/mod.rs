@@ -56,7 +56,7 @@ const DEFAULT_DEX_APPROVED_ADDRESSES_CACHE_SIZE: u64 = 100;
 /// attacker-controlled router/spender can drain Settlement's transient balance
 /// during execution. Pinning to a static allowlist closes the window.
 ///
-/// **Verification methodology:** addresses below were extracted from a live
+/// **Historical evidence:** addresses below were extracted from a live
 /// authenticated probe (using the same OKX credentials the solver uses in
 /// production) and cross-verified via `cast code` on the chain's RPC to confirm
 /// each is a deployed contract with substantial bytecode (router: ~48 KiB,
@@ -65,11 +65,14 @@ const DEFAULT_DEX_APPROVED_ADDRESSES_CACHE_SIZE: u64 = 100;
 /// confirming it is a single OKX approve-proxy contract per chain rather than
 /// per-token.
 ///
-/// **Adding a chain** (HyperEVM, MegaETH, etc.): re-run the probe under that
-/// chain's `chainIndex`, confirm `dexContractAddress` is stable across ≥3
-/// tokens, and verify both addresses via `cast code` against the chain's RPC.
-/// Do NOT take addresses from a `/swap` response without independent
-/// verification — that's the attack we're preventing.
+/// API consistency and bytecode existence do not establish deployment control.
+/// The Optimism and Unichain approval spenders independently match OKX's
+/// Token Approval table as of 2026-09-20:
+/// https://web3.okx.com/onchainos/dev-docs/trade/dex-smart-contract
+/// Per-chain provenance of the pinned routers remains unresolved; the current
+/// router table lists newer addresses. Do not silently repin from API responses.
+/// Adding or changing an entry requires canonical upstream deployment evidence
+/// for that chain and role, followed by an integration check.
 const OKX_ROUTER_ALLOWLIST: &[(u64, Address, Address)] = &[
     // Optimism mainnet (chain 10). Verified 2026-05-18 via authenticated
     // probe + `cast code` on https://optimism-rpc.publicnode.com.

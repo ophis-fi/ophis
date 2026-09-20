@@ -185,12 +185,10 @@ services:
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
       # F7 inter-service auth (#443): the orderbook signs its driver /quote
       # calls with this Bearer token (price-estimation ExternalTradeFinder).
-      # Empty default = no header (un-authenticated) so this is a SAFE no-op
-      # until the driver enforces — the enforcement flip is a separate, windowed
-      # step. compose-up.sh sources the value from the macOS Keychain entry
+      # Required on production stacks. compose-up.sh sources the macOS Keychain entry
       # `ophis-inter-service-auth-token`; all three services (orderbook, driver,
       # autopilot) must carry the SAME value (constant-time compare = exact).
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
       - ./configs/orderbook.toml:/orderbook.toml:ro
       # pathviz venue registry ([pathviz].venues-file). Read-only; a missing or
@@ -241,12 +239,11 @@ services:
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
       # F7 (2026-05-21 whole-repo audit, HIGH H2): inter-service auth on
       # driver /solve /reveal /settle /quote routes. When set, autopilot
-      # injects Authorization: Bearer <token> on outgoing requests. When
-      # unset, no header is sent — preserves pre-F7 behavior. Driver
-      # MUST be configured with the SAME token via its own env. Generate
+      # injects Authorization: Bearer <token> on outgoing requests. Driver
+      # MUST be configured with the SAME required token via its own env. Generate
       # via `openssl rand -hex 32` and store in macOS Keychain
       # (service=ophis-inter-service-auth-token, account=$USER).
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
       - ./configs/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
@@ -286,7 +283,7 @@ services:
       # When set, driver enforces Authorization: Bearer <token> on all
       # per-solver routes. Autopilot MUST use the SAME token to make
       # successful requests. See autopilot block above for setup.
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
       # Tier 1 PK isolation (2026-05-18): PK *source* is now
       # /Users/ophis-driver/.config/submitter.key (read at render time via sudo).

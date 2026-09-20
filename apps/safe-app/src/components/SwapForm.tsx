@@ -119,6 +119,7 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
         <input
           type="checkbox"
           checked={sellNative}
+          disabled={busy}
           onChange={(e) => { setSellNative(e.target.checked); setQuoted(null); setError(null); }}
           style={{ width: 'auto' }}
         />
@@ -129,14 +130,14 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
           value={sellNative ? 'native ETH → WETH' : sellToken}
           onChange={onInput(setSellToken)}
           placeholder="0x..."
-          disabled={sellNative}
+          disabled={sellNative || busy}
         />
       </label>
       <label>Buy token (address)
-        <input value={buyToken} onChange={onInput(setBuyToken)} placeholder="0x..." />
+        <input value={buyToken} onChange={onInput(setBuyToken)} placeholder="0x..." disabled={busy} />
       </label>
       <label>Sell amount (atoms)
-        <input value={sellAmount} onChange={onInput(setSellAmount)} placeholder="1000000000000000000" />
+        <input value={sellAmount} onChange={onInput(setSellAmount)} placeholder="1000000000000000000" disabled={busy} />
       </label>
       <button onClick={onQuote} disabled={busy || (!sellNative && !sellToken) || !buyToken || !sellAmount}>Get quote</button>
       {q && (

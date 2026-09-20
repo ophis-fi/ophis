@@ -71,9 +71,11 @@ def main() -> None:
     # The order sells the gross amount with feeAmount 0: Ophis/CoW take the fee from surplus + the
     # appData partner fee, and the orderbook rejects a non-zero signed feeAmount. A sell quote splits
     # sellAmountBeforeFee into (sellAmount NET, feeAmount); their sum is the gross the caller asked for.
-    for _f in ("sellAmount", "buyAmount", "feeAmount"):
+    for _f in ("sellToken", "buyToken", "sellAmount", "buyAmount", "feeAmount"):
         if _f not in quote:
             sys.exit(f"orderbook quote is missing required field {_f!r}: {quote}")
+    if quote["sellToken"].lower() != sell_token.lower() or quote["buyToken"].lower() != buy_token.lower():
+        sys.exit("quote tokens do not match the requested pair; refusing to sign")
     quote_buy = int(quote["buyAmount"])
     quote_sell = int(quote["sellAmount"])
     quote_fee = int(quote["feeAmount"])
@@ -132,7 +134,10 @@ def main() -> None:
         "signature": "0x",
         "from": wallet,
     }
-    order_uid = oc.post_order(chain_id, order)
+    order_uid = oc.compute_order_uid(chain_id, order)
+    host_uid = oc.post_order(chain_id, order)
+    if not isinstance(host_uid, str) or host_uid.lower() != order_uid:
+        sys.exit("orderbook UID does not match the locally computed order; refusing to presign")
     print(f"Order posted (presignature pending): {order_uid}")
 
     # 6. Authorize the order on-chain via Bankr Submit -> setPreSignature(uid, true).

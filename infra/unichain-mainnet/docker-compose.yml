@@ -180,7 +180,7 @@ services:
       ETH_RPC_URL: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/unichain-mainnet/.env}
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
       - ./rendered/orderbook.toml:/orderbook.toml:ro
     command: ["--config", "/orderbook.toml"]
@@ -216,7 +216,7 @@ services:
       ETH_RPC_URL: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
       COINGECKO_API_KEY: ${COINGECKO_API_KEY:?coingecko key must be set in infra/unichain-mainnet/.env}
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
       - ./rendered/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
@@ -245,7 +245,7 @@ services:
       ETHRPC: ${UNICHAIN_RPC_INTERNAL:-http://rpc-proxy:4000/main/evm/130}
       ADDR: 0.0.0.0:80
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
-      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:-}
+      OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
       LOG_FILTER: "info,driver=info,driver::infra::observe=info"
     volumes:
       - ./rendered/driver.toml:/driver.toml:ro

@@ -5,7 +5,7 @@
 //!   the router (`to`), the calldata (`data`), the optimistic estimate
 //!   (`resAmount`, a float) and the GUARANTEED slippage floor (`minReturnAmount`,
 //!   raw-wei string), plus a SEPARATE ERC-20 approval target
-//!   (`targetApproveAddr`, DODO's ApproveProxy).
+//!   (`targetApproveAddr`, DODO's approval contract).
 //!
 //! There is no separate "approve transaction" endpoint and no HMAC signing.
 //! Authentication is limited to a public widget `apikey` used for rate limiting
@@ -66,6 +66,8 @@ const MAX_SLIPPAGE_BPS: u16 = 2000;
 ///
 /// Probed live for USDC -> WETH on 130: both addresses are stable across
 /// slippage values and both carry code.
+/// This is existence evidence only: independent per-chain deployment provenance
+/// for this Unichain pair remained unresolved on 2026-09-20.
 ///
 /// **If DODO redeploys** (new router / approve proxy): add the new address here
 /// after independent verification — do NOT take it from a response unchecked.
@@ -83,14 +85,14 @@ const DODO_APPROVE_PROXY: Address = Address::new([
     0x41, 0x34, 0x62, 0xDD,
 ]);
 
-/// DODORouteProxy on Optimism (10) -- the router `to` (per-chain; verified
-/// 2026-07-06). EIP-55 0x8b09DB11ea380d6454D2592D334FFC319ce6EF3E.
+/// DODOFeeRouteProxy (for widget) on Optimism (10), authenticated 2026-09-20:
+/// https://docs.dodoex.io/en/developer/contracts/dodo-v1-v2/contracts-address/optimism
 const DODO_ROUTE_PROXY_OP: Address = Address::new([
     0x8b, 0x09, 0xdb, 0x11, 0xea, 0x38, 0x0d, 0x64, 0x54, 0xd2, 0x59, 0x2d, 0x33, 0x4f, 0xfc, 0x31,
     0x9c, 0xe6, 0xef, 0x3e,
 ]);
-/// DODOApproveProxy on Optimism (10) -- the ERC-20 approval target (per-chain).
-/// EIP-55 0xa492d6eABcdc3E204676f15B950bBdD448080364.
+/// DODOApprove on Optimism (10), authenticated by the same deployment record.
+/// This ERC-20 spender is distinct from DODOApproveProxy.
 const DODO_APPROVE_PROXY_OP: Address = Address::new([
     0xa4, 0x92, 0xd6, 0xea, 0xbc, 0xdc, 0x3e, 0x20, 0x46, 0x76, 0xf1, 0x5b, 0x95, 0x0b, 0xbd, 0xd4,
     0x48, 0x08, 0x03, 0x64,
@@ -98,7 +100,7 @@ const DODO_APPROVE_PROXY_OP: Address = Address::new([
 
 /// Validates a DODO response address against the EXPECTED role-specific
 /// contract. ROLE-SPECIFIC, not a union: the router (`to`) must be the
-/// RouteProxy and the spender (`targetApproveAddr`) must be the ApproveProxy.
+/// RouteProxy and the spender (`targetApproveAddr`) the pinned approval contract.
 /// A union check would accept a response that swapped the two fields (or pointed
 /// `to` at the ApproveProxy) — here that is rejected.
 fn validate_dodo_address(addr: &Address, expected: &Address, role: &str) -> Result<(), Error> {

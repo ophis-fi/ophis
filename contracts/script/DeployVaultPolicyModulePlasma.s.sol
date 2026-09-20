@@ -8,7 +8,8 @@ import {IAggregatorV3, IGPv2Settlement, ISafe} from "src/contracts/vault/interfa
 
 /// @notice Deploys the vault policy factory + a module for a trial vault on
 /// Plasma (9745). Env: VAULT_SAFE, VAULT_CURATOR, VAULT_APPDATA_HASH, optional
-/// VAULT_CAP (default 250e18). CoW-hosted: canonical settlement + relayer, Ophis
+/// VAULT_CAP (default 250e18), and required VAULT_XPL_MIN_PRICE18 /
+/// VAULT_XPL_MAX_PRICE18 bounds in 18-decimal USD. CoW-hosted: canonical settlement + relayer, Ophis
 /// partner fee via the pinned appData. Plasma is an L1 (PlasmaBFT, not an
 /// OP-stack rollup) with no Chainlink L2 sequencer-uptime feed, so the sequencer
 /// gate is disabled (address(0), grace 0; the module constructor requires they
@@ -41,8 +42,13 @@ contract DeployVaultPolicyModulePlasma is Script {
         uint256 cap = vm.envOr("VAULT_CAP", uint256(250e18));
 
         OphisVaultPolicyModule.TokenFeed[] memory tokens = new OphisVaultPolicyModule.TokenFeed[](2);
-        tokens[0] = OphisVaultPolicyModule.TokenFeed(USDT0, IAggregatorV3(USDT0_FEED), USDT0_STALENESS);
-        tokens[1] = OphisVaultPolicyModule.TokenFeed(WXPL, IAggregatorV3(XPL_FEED), XPL_STALENESS);
+        tokens[0] = OphisVaultPolicyModule.TokenFeed(
+            USDT0, IAggregatorV3(USDT0_FEED), USDT0_STALENESS, 25e16, 4e18
+        );
+        tokens[1] = OphisVaultPolicyModule.TokenFeed(
+            WXPL, IAggregatorV3(XPL_FEED), XPL_STALENESS,
+            vm.envUint("VAULT_XPL_MIN_PRICE18"), vm.envUint("VAULT_XPL_MAX_PRICE18")
+        );
 
         OphisVaultPolicyModule.ModuleConfig memory cfg = OphisVaultPolicyModule.ModuleConfig({
             safe: ISafe(safe),
@@ -56,6 +62,7 @@ contract DeployVaultPolicyModulePlasma is Script {
             maxTtl: 1980,
             dailyUsdTurnoverCap: cap,
             sequencerUptimeFeed: IAggregatorV3(address(0)), // L1: no sequencer gate
+            allowNoSequencerFeed: true,
             sequencerGracePeriod: 0,
             tokens: tokens
         });

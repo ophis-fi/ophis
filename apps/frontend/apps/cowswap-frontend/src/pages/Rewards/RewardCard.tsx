@@ -42,7 +42,7 @@ type ClaimState =
   | { step: 'validating' }
   // `wallet` pins the validation to the address that actually signed: the
   // validated branch renders only while that address is still connected.
-  | { step: 'validated'; wallet: string; issued: number; signature: string }
+  | { step: 'validated'; wallet: string }
   | { step: 'rejected' }
   | { step: 'error' }
 
@@ -104,13 +104,13 @@ function useRewardClaim(perk: RewardPerk, xp: number | null, account: string | u
     const startAccount = account
     setClaim({ step: 'validating' })
     try {
-      const signed = await sign(`claim reward ${perk.id}`)
+      await sign(`claim reward ${perk.id}`)
       // Bail if the wallet actually changed during signing (case-insensitive:
       // a same-wallet reconnect can re-emit different casing). The
       // account-change effect already reset the claim for a genuinely new
       // wallet, so applying A's result here would leak into B's card.
       if (!areAddressesEqual(accountRef.current, startAccount)) return
-      setClaim({ step: 'validated', wallet: startAccount, issued: signed.issued, signature: signed.signature })
+      setClaim({ step: 'validated', wallet: startAccount })
     } catch (error: unknown) {
       if (!areAddressesEqual(accountRef.current, startAccount)) return
       const code = (error as { code?: number | string })?.code
@@ -155,7 +155,7 @@ function ValidatedReward({
           <styledEl.ClaimNote>{claimNote}</styledEl.ClaimNote>
         </>
       ) : (
-        <RewardClaimForm perk={perk} wallet={claim.wallet} issued={claim.issued} signature={claim.signature} />
+        <RewardClaimForm perk={perk} wallet={claim.wallet} />
       )}
     </styledEl.ClaimPanel>
   )

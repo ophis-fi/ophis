@@ -1,4 +1,5 @@
 import json
+import io
 import unittest
 import unittest.mock as mock
 from pathlib import Path
@@ -13,6 +14,14 @@ SPEC.loader.exec_module(proxy)
 
 
 class BlobArchiveProxyTest(unittest.TestCase):
+    def test_rejects_oversized_upstream_before_decoding(self) -> None:
+        body = io.BytesIO(b' ' * (proxy.MAX_RESPONSE_BYTES + 2))
+        with mock.patch.object(proxy.urllib.request, "urlopen") as urlopen:
+            urlopen.return_value.__enter__.return_value = body
+            with self.assertRaisesRegex(ValueError, "exceeds size limit"):
+                proxy.fetch_blob("0x01" + "ab" * 31)
+        self.assertEqual(body.tell(), proxy.MAX_RESPONSE_BYTES + 1)
+
     def test_rejects_bad_blob_length(self) -> None:
         with self.assertRaisesRegex(ValueError, "invalid length"):
             proxy._validate_blob("0x00")

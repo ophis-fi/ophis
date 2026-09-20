@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import type { OphisAgentWallet, Address } from '../src/index.js';
+import { keccak256, toBytes } from 'viem';
 
 // A mutable quote the mocked orderbook returns. Defaults to {} so the input-guard tests keep
 // throwing at order-build (unchanged); the binding-guard tests set a concrete quote to drive
@@ -7,13 +8,15 @@ import type { OphisAgentWallet, Address } from '../src/index.js';
 const hoisted = vi.hoisted(() => ({
   quote: {} as Record<string, unknown>,
   enroll: { enrolled: true, status: 200 } as { enrolled: boolean; status?: number },
+  quoteRequest: {} as Record<string, unknown>,
 }));
 
 // Stub the cow-sdk / app-data modules so importing swap.ts doesn't pull the heavy CoW order stack
 // (and its ethers-v5 CJS shim) into Node. These input-guard tests throw BEFORE any of it is used.
 vi.mock('@cowprotocol/cow-sdk', () => ({
   OrderBookApi: class {
-    async getQuote() {
+    async getQuote(request: Record<string, unknown>) {
+      hoisted.quoteRequest = request;
       return { quote: hoisted.quote };
     }
     async sendOrder() {
@@ -155,6 +158,19 @@ describe('executeOphisSwap quote<->request binding (defense against a malicious/
     buyAmount: '3000000000',
     validTo: 4_000_000_000,
   };
+
+  it('quotes with the full appData preimage and the same hash the wallet signs', async () => {
+    hoisted.quote = { ...honest };
+    const wallet = mockWallet(1);
+    await executeOphisSwap(wallet, { sellToken: WETH, buyToken: USDC, sellAmount: '1' }, REF);
+    const fullAppData = hoisted.quoteRequest.appData as string;
+    expect(JSON.parse(fullAppData)).toEqual({});
+    const hash = keccak256(toBytes(fullAppData));
+    expect(hoisted.quoteRequest.appDataHash).toBe(hash);
+    expect(wallet.signTypedData).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.objectContaining({ appData: hash }),
+    }));
+  });
 
   it('refuses to sign when the quote substitutes the sell token', async () => {
     hoisted.quote = { ...honest, sellToken: USDC }; // != requested WETH

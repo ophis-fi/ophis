@@ -1,0 +1,39 @@
+diff --git a/src/index.ts b/src/index.ts
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -8,14 +8,7 @@
+ 
+ let converter: ConverterInterface;
+ 
+-if (!process.browser) {
+-  try {
+-    converter = require('bindings')('bigint_buffer');
+-  } catch (e) {
+-    console.warn(
+-        'bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)');
+-  }
+-}
++// Use the existing pure-JS fallback; native bindings have GHSA-3gc7-fjrx-p6mg.
+ 
+ /**
+  * Convert a little-endian buffer into a BigInt.
+diff --git a/dist/node.js b/dist/node.js
+--- a/dist/node.js
++++ b/dist/node.js
+@@ -2,14 +2,8 @@
+ 
+ Object.defineProperty(exports, "__esModule", { value: true });
+ let converter;
+-{
+-    try {
+-        converter = require('bindings')('bigint_buffer');
+-    }
+-    catch (e) {
+-        console.warn('bigint: Failed to load bindings, pure JS will be used (try npm run rebuild?)');
+-    }
+-}
++// Use the existing pure-JS fallback; native bindings have GHSA-3gc7-fjrx-p6mg.
++
+ /**
+  * Convert a little-endian buffer into a BigInt.
+  * @param buf The little-endian buffer to convert

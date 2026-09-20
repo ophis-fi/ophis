@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 GENERAL_UPSTREAM = "https://eth.drpc.org"
 LOG_UPSTREAM = "https://rpc.mevblocker.io"
 MAX_BODY_BYTES = 1_048_576
+MAX_RESPONSE_BYTES = 16 * 1_048_576
 MAX_LOG_BLOCKS = 50
 MIN_LOG_INTERVAL = 0.25
 MAX_ATTEMPTS = 3
@@ -31,9 +32,20 @@ def _post(url: str, payload: dict[str, object], timeout: float = 5.0) -> dict[st
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        result = json.load(response)
-    if not isinstance(result, dict):
-        raise ValueError("upstream returned a non-object JSON-RPC response")
+        body = response.read(MAX_RESPONSE_BYTES + 1)
+    if len(body) > MAX_RESPONSE_BYTES:
+        raise ValueError("upstream JSON-RPC response exceeds byte limit")
+    result = json.loads(body)
+    if (not isinstance(result, dict) or result.get("jsonrpc") != "2.0"
+            or "id" not in result or result["id"] != payload.get("id")
+            or isinstance(result["id"], bool)):
+        raise ValueError("upstream JSON-RPC response does not match the request")
+    if ("result" in result) == ("error" in result):
+        raise ValueError("upstream must return exactly one of result or error")
+    if "error" in result and (not isinstance(result["error"], dict)
+            or type(result["error"].get("code")) is not int
+            or not isinstance(result["error"].get("message"), str)):
+        raise ValueError("upstream returned an invalid JSON-RPC error")
     return result
 
 

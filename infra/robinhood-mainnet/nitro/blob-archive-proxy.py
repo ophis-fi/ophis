@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 HASH_RE = re.compile(r"^0x01[0-9a-fA-F]{62}$")
 PATH_RE = re.compile(r"^/eth/v1/beacon/blobs/([0-9]+)$")
 EXPECTED_HEX_LENGTH = 2 + 131_072 * 2
+MAX_RESPONSE_BYTES = 1_048_576
 MAX_BLOBS_PER_REQUEST = 16
 
 BLOBSCAN_BASE_URL = os.environ.get("BLOBSCAN_BASE_URL", "https://api.blobscan.com").rstrip("/")
@@ -54,7 +55,10 @@ def fetch_blob(versioned_hash: str) -> str:
         # Do not cache before Nitro's KZG/versioned-hash verification. A
         # well-formed but substituted upstream blob must be retried from the
         # recovered archive rather than poison a persistent local cache.
-        return _validate_blob(json.load(response))
+        body = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise ValueError("archive response exceeds size limit")
+        return _validate_blob(json.loads(body))
 
 
 class Handler(BaseHTTPRequestHandler):

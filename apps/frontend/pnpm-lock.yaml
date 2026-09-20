@@ -16,6 +16,7 @@ overrides:
   '@walletconnect/utils': 2.18.0
   '@walletconnect/types': 2.18.0
   adm-zip: ^0.6.1
+  devalue@>=5.0.0 <5.9.2: 5.9.2
   elliptic: ^6.6.1
   form-data: ^2.5.6
   protobufjs: ^7.6.5
@@ -131,9 +132,24 @@ patchedDependencies:
   decode-uri-component@0.5.0:
     hash: ba8d99daf7d94c77ac4edc04a075e8192141718a2c3cc9483d1c0f0714679d3c
     path: ../../patches/decode-uri-component@0.5.0.patch
+  elliptic@6.6.1:
+    hash: 5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef
+    path: ../../patches/elliptic@6.6.1.patch
+  request@2.88.2:
+    hash: 07433b2788f5fc8e40dd98909a62fdf6ec464fde15f62ca4dd6bc2f59d032cc3
+    path: ../../patches/request@2.88.2.patch
   stream-json@1.9.1:
     hash: 7384de7e36eef7c52c8397f28a10ff3b740a336263a5d40ec0633c5da45b4f5b
     path: ../../patches/stream-json@1.9.1.patch
+  uuid@3.4.0:
+    hash: 34583c2ff6a44d871c6eb6a38bb2f95e0b7e048009e0a3071acaee9a2a87086e
+    path: ../../patches/uuid@3.4.0.patch
+  web3-core-method@1.10.3:
+    hash: 7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c
+    path: ../../patches/web3-core-method@1.10.3.patch
+  web3-core-subscriptions@1.10.3:
+    hash: f3b32ddbaa463bd15283892b7468a2a62a9da379eac2684a3b279db742930ea2
+    path: ../../patches/web3-core-subscriptions@1.10.3.patch
 
 importers:
 
@@ -10205,9 +10221,6 @@ packages:
     engines: {node: '>= 16.0.0'}
     hasBin: true
 
-  devalue@5.8.1:
-    resolution: {integrity: sha512-4CXDYRBGqN+57wVJkuXBYmpAVUSg3L6JAQa/DFqm238G73E1wuyc/JhGQJzN7vUf/CMphYau2zXbfWzDR5aTEw==}
-
   devalue@5.9.2:
     resolution: {integrity: sha512-po4PAY5c53tw5XMocSnf8A/5OHhbbUftpr93aEN6BBoAdntUmK7vu7wOATqvt7cXO7m1Cl4gMVn6p7n6n4mj0w==}
 
@@ -18259,7 +18272,7 @@ snapshots:
       '@astrojs/internal-helpers': 0.10.0
       '@preact/preset-vite': 2.10.5(@babel/core@7.29.7)(preact@10.28.2)(rollup@4.63.1)(vite@7.3.5(@types/node@26.5.0)(jiti@2.6.1)(less@4.8.1)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.51.2)(yaml@1.10.3))
       '@preact/signals': 2.9.0(preact@10.28.2)
-      devalue: 5.8.1
+      devalue: 5.9.2
       preact: 10.28.2
       preact-render-to-string: 6.7.0(preact@10.28.2)
       vite: 7.3.5(@types/node@26.5.0)(jiti@2.6.1)(less@4.8.1)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.51.2)(yaml@1.10.3)
@@ -20591,7 +20604,7 @@ snapshots:
       '@ethersproject/logger': 5.8.0
       '@ethersproject/properties': 5.7.0
       bn.js: 5.2.3
-      elliptic: 6.6.1
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       hash.js: 1.1.7
 
   '@ethersproject/signing-key@5.8.0':
@@ -20600,7 +20613,7 @@ snapshots:
       '@ethersproject/logger': 5.8.0
       '@ethersproject/properties': 5.8.0
       bn.js: 5.2.3
-      elliptic: 6.6.1
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       hash.js: 1.1.7
 
   '@ethersproject/solidity@5.7.0':
@@ -26082,7 +26095,7 @@ snapshots:
       '@walletconnect/window-getters': 1.0.1
       '@walletconnect/window-metadata': 1.0.1
       detect-browser: 5.3.0
-      elliptic: 6.6.1
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       query-string: 7.1.3
       uint8arrays: 3.1.0
     transitivePeerDependencies:
@@ -27215,7 +27228,7 @@ snapshots:
       browserify-rsa: 4.1.1
       create-hash: 1.2.0
       create-hmac: 1.1.7
-      elliptic: 6.6.1
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       hash-base: 3.0.5
       inherits: 2.0.4
       parse-asn1: 5.1.7
@@ -27918,7 +27931,7 @@ snapshots:
   create-ecdh@4.0.4:
     dependencies:
       bn.js: 5.2.3
-      elliptic: 6.6.1
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
 
   create-hash@1.2.0:
     dependencies:
@@ -28420,8 +28433,6 @@ snapshots:
     dependencies:
       address: 2.0.3
 
-  devalue@5.8.1: {}
-
   devalue@5.9.2: {}
 
   devlop@1.1.0:
@@ -28570,7 +28581,7 @@ snapshots:
 
   electron-to-chromium@1.5.415: {}
 
-  elliptic@6.6.1:
+  elliptic@6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef):
     dependencies:
       bn.js: 5.2.3
       brorand: 1.1.0
@@ -29260,7 +29271,7 @@ snapshots:
   eth-lib@0.1.29(bufferutil@4.0.8)(utf-8-validate@5.0.10):
     dependencies:
       bn.js: 5.2.3
-      elliptic: 6.6.1
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       nano-json-stream-parser: 0.1.2
       servify: 0.1.12
       ws: 7.5.13(bufferutil@4.0.8)(utf-8-validate@5.0.10)
@@ -29273,7 +29284,7 @@ snapshots:
   eth-lib@0.2.8:
     dependencies:
       bn.js: 5.2.3
-      elliptic: 6.6.1
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       xhr-request-promise: 0.1.3
 
   eth-rpc-errors@4.0.3:
@@ -34599,7 +34610,7 @@ snapshots:
     dependencies:
       throttleit: 1.0.0
 
-  request@2.88.2:
+  request@2.88.2(patch_hash=07433b2788f5fc8e40dd98909a62fdf6ec464fde15f62ca4dd6bc2f59d032cc3):
     dependencies:
       aws-sign2: 0.7.0
       aws4: 1.12.0
@@ -34620,7 +34631,7 @@ snapshots:
       safe-buffer: 5.2.1
       tough-cookie: 4.1.4
       tunnel-agent: 0.6.0
-      uuid: 3.4.0
+      uuid: 3.4.0(patch_hash=34583c2ff6a44d871c6eb6a38bb2f95e0b7e048009e0a3071acaee9a2a87086e)
 
   require-directory@2.1.1: {}
 
@@ -34746,7 +34757,7 @@ snapshots:
     dependencies:
       bn.js: 5.2.3
       brorand: 1.1.0
-      elliptic: 6.6.1
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       hash.js: 1.1.7
       ripple-address-codec: 4.3.0
 
@@ -35162,7 +35173,7 @@ snapshots:
 
   secp256k1@4.0.4:
     dependencies:
-      elliptic: 6.6.1
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       node-addon-api: 5.1.0
       node-gyp-build: 4.6.0
 
@@ -35251,7 +35262,7 @@ snapshots:
       body-parser: 1.20.6
       cors: 2.8.5
       express: 4.22.2
-      request: 2.88.2
+      request: 2.88.2(patch_hash=07433b2788f5fc8e40dd98909a62fdf6ec464fde15f62ca4dd6bc2f59d032cc3)
       xhr: 2.6.0
     transitivePeerDependencies:
       - supports-color
@@ -36191,7 +36202,7 @@ snapshots:
       bindings: 1.5.0
       bn.js: 5.2.3
       create-hmac: 1.1.7
-      elliptic: 6.6.1
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       nan: 2.17.0
 
   tiny-warning@1.0.3: {}
@@ -36839,7 +36850,7 @@ snapshots:
 
   uuid@11.1.1: {}
 
-  uuid@3.4.0: {}
+  uuid@3.4.0(patch_hash=34583c2ff6a44d871c6eb6a38bb2f95e0b7e048009e0a3071acaee9a2a87086e): {}
 
   v8-compile-cache-lib@3.0.1: {}
 
@@ -37332,12 +37343,12 @@ snapshots:
       web3-eth-iban: 1.10.3
       web3-utils: 1.10.3
 
-  web3-core-method@1.10.3:
+  web3-core-method@1.10.3(patch_hash=7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c):
     dependencies:
       '@ethersproject/transactions': 5.7.0
       web3-core-helpers: 1.10.3
       web3-core-promievent: 1.10.3
-      web3-core-subscriptions: 1.10.3
+      web3-core-subscriptions: 1.10.3(patch_hash=f3b32ddbaa463bd15283892b7468a2a62a9da379eac2684a3b279db742930ea2)
       web3-utils: 1.10.3
 
   web3-core-promievent@1.10.3:
@@ -37355,7 +37366,7 @@ snapshots:
       - encoding
       - supports-color
 
-  web3-core-subscriptions@1.10.3:
+  web3-core-subscriptions@1.10.3(patch_hash=f3b32ddbaa463bd15283892b7468a2a62a9da379eac2684a3b279db742930ea2):
     dependencies:
       eventemitter3: 4.0.4
       web3-core-helpers: 1.10.3
@@ -37366,7 +37377,7 @@ snapshots:
       '@types/node': 12.20.55
       bignumber.js: 9.1.2
       web3-core-helpers: 1.10.3
-      web3-core-method: 1.10.3
+      web3-core-method: 1.10.3(patch_hash=7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c)
       web3-core-requestmanager: 1.10.3(encoding@0.1.13)
       web3-utils: 1.10.3
     transitivePeerDependencies:
@@ -37388,7 +37399,7 @@ snapshots:
       uuid: 11.1.1
       web3-core: 1.10.3(encoding@0.1.13)
       web3-core-helpers: 1.10.3
-      web3-core-method: 1.10.3
+      web3-core-method: 1.10.3(patch_hash=7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c)
       web3-utils: 1.10.3
     transitivePeerDependencies:
       - encoding
@@ -37399,9 +37410,9 @@ snapshots:
       '@types/bn.js': 5.1.1
       web3-core: 1.10.3(encoding@0.1.13)
       web3-core-helpers: 1.10.3
-      web3-core-method: 1.10.3
+      web3-core-method: 1.10.3(patch_hash=7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c)
       web3-core-promievent: 1.10.3
-      web3-core-subscriptions: 1.10.3
+      web3-core-subscriptions: 1.10.3(patch_hash=f3b32ddbaa463bd15283892b7468a2a62a9da379eac2684a3b279db742930ea2)
       web3-eth-abi: 1.10.3
       web3-utils: 1.10.3
     transitivePeerDependencies:
@@ -37432,7 +37443,7 @@ snapshots:
       '@types/node': 12.20.55
       web3-core: 1.10.3(encoding@0.1.13)
       web3-core-helpers: 1.10.3
-      web3-core-method: 1.10.3
+      web3-core-method: 1.10.3(patch_hash=7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c)
       web3-net: 1.10.3(encoding@0.1.13)
       web3-utils: 1.10.3
     transitivePeerDependencies:
@@ -37443,8 +37454,8 @@ snapshots:
     dependencies:
       web3-core: 1.10.3(encoding@0.1.13)
       web3-core-helpers: 1.10.3
-      web3-core-method: 1.10.3
-      web3-core-subscriptions: 1.10.3
+      web3-core-method: 1.10.3(patch_hash=7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c)
+      web3-core-subscriptions: 1.10.3(patch_hash=f3b32ddbaa463bd15283892b7468a2a62a9da379eac2684a3b279db742930ea2)
       web3-eth-abi: 1.10.3
       web3-eth-accounts: 1.10.3(encoding@0.1.13)
       web3-eth-contract: 1.10.3(encoding@0.1.13)
@@ -37460,7 +37471,7 @@ snapshots:
   web3-net@1.10.3(encoding@0.1.13):
     dependencies:
       web3-core: 1.10.3(encoding@0.1.13)
-      web3-core-method: 1.10.3
+      web3-core-method: 1.10.3(patch_hash=7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c)
       web3-utils: 1.10.3
     transitivePeerDependencies:
       - encoding
@@ -37491,8 +37502,8 @@ snapshots:
   web3-shh@1.10.3(encoding@0.1.13):
     dependencies:
       web3-core: 1.10.3(encoding@0.1.13)
-      web3-core-method: 1.10.3
-      web3-core-subscriptions: 1.10.3
+      web3-core-method: 1.10.3(patch_hash=7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c)
+      web3-core-subscriptions: 1.10.3(patch_hash=f3b32ddbaa463bd15283892b7468a2a62a9da379eac2684a3b279db742930ea2)
       web3-net: 1.10.3(encoding@0.1.13)
     transitivePeerDependencies:
       - encoding

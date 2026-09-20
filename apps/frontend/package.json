@@ -34,10 +34,16 @@
       "@cowprotocol/sdk-trading@2.0.2": "patches/@cowprotocol__sdk-trading@2.0.2.patch",
       "@cowprotocol/sdk-bridging@4.0.2": "patches/@cowprotocol__sdk-bridging@4.0.2.patch",
       "decode-uri-component@0.5.0": "../../patches/decode-uri-component@0.5.0.patch",
-      "stream-json@1.9.1": "../../patches/stream-json@1.9.1.patch"
+      "stream-json@1.9.1": "../../patches/stream-json@1.9.1.patch",
+      "elliptic@6.6.1": "../../patches/elliptic@6.6.1.patch",
+      "request@2.88.2": "../../patches/request@2.88.2.patch",
+      "uuid@3.4.0": "../../patches/uuid@3.4.0.patch",
+      "web3-core-method@1.10.3": "../../patches/web3-core-method@1.10.3.patch",
+      "web3-core-subscriptions@1.10.3": "../../patches/web3-core-subscriptions@1.10.3.patch"
     },
     "overrides": {
       "adm-zip": "^0.6.1",
+      "devalue@>=5.0.0 <5.9.2": "5.9.2",
       "elliptic": "^6.6.1",
       "form-data": "^2.5.6",
       "protobufjs": "^7.6.5",

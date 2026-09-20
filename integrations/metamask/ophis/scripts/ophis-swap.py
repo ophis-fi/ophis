@@ -67,9 +67,11 @@ def main() -> None:
     quote = oc.get_quote(chain_id, sell_token, buy_token, sell_atomic, wallet, full_app_data, app_hash)
     # Require the binding fields to be PRESENT — a missing field must not silently default into the
     # request (which would defeat the gross bind below).
-    for _f in ("sellAmount", "buyAmount", "feeAmount"):
+    for _f in ("sellToken", "buyToken", "sellAmount", "buyAmount", "feeAmount"):
         if _f not in quote:
             sys.exit(f"orderbook quote is missing required field {_f!r}: {quote}")
+    if quote["sellToken"].lower() != sell_token.lower() or quote["buyToken"].lower() != buy_token.lower():
+        sys.exit("quote tokens do not match the requested pair; refusing to sign")
     quote_buy = int(quote["buyAmount"])
     quote_sell = int(quote["sellAmount"])
     quote_fee = int(quote["feeAmount"])

@@ -134,10 +134,10 @@ def ophis_swap(
 
         oc.enroll_wallet(owner)  # best-effort rebate enrollment; never raises
 
-        # 1-2. Ophis partner-fee appData + quote (quote carries the appData HASH).
+        # 1-2. Quote with the same fee-bearing appData that the order will submit.
         is_stable_pair = oc.is_stable_pair(chain_id, sell, buy)  # derived, not caller-controlled
         full_app_data, app_hash = oc.build_app_data(chain_id, referral_code=referral_code or None, is_stable_pair=is_stable_pair)
-        quote = oc.get_quote(chain_id, sell, buy, sell_atomic, owner, app_hash)
+        quote = oc.get_quote(chain_id, sell, buy, sell_atomic, owner, full_app_data, app_hash)
         if not isinstance(quote, dict):
             raise RuntimeError(f"orderbook quote was not an object: {quote!r}")
         for field in ("sellToken", "buyToken", "sellAmount", "buyAmount", "feeAmount"):

@@ -60,7 +60,8 @@ function mockSdk(allowance: bigint | 'throws') {
     return AbiCoder.defaultAbiCoder().encode(['uint256'], [allowance]);
   });
   const send = vi.fn(async (_args: SentTxs) => ({ safeTxHash: '0x5afe' }));
-  return { sdk: { eth: { call }, txs: { send } } as never, send };
+  const getInfo = vi.fn(async () => ({ chainId: CHAIN, safeAddress: OWNER }));
+  return { sdk: { eth: { call }, txs: { send }, safe: { getInfo } } as never, send, getInfo };
 }
 
 beforeEach(() => {
@@ -70,6 +71,15 @@ beforeEach(() => {
 });
 
 describe('submitOrder (shared @ophis/safe-swap batch + wire body)', () => {
+  it.each([
+    { chainId: 1, safeAddress: OWNER },
+    { chainId: CHAIN, safeAddress: '0x2222222222222222222222222222222222222222' },
+  ])('refuses a proposal after the Safe context changes during order preparation', async (current) => {
+    const { sdk, send, getInfo } = mockSdk(0n);
+    getInfo.mockResolvedValue(current as never);
+    await expect(submitOrder(sdk, CHAIN, OWNER, order, FULL_APP_DATA, APP_DATA_HASH)).rejects.toThrow(/account or network changed/);
+    expect(send).not.toHaveBeenCalled();
+  });
   it('surfaces enrollmentWarning when best-effort enrollment resolves not-enrolled (order still submits)', async () => {
     // The SDK's best-effort contract RESOLVES { enrolled:false } on a non-2xx/timeout instead of
     // throwing, so a catch-only caller would silently drop the warning — this pins the fix.

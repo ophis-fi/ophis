@@ -10,8 +10,10 @@
 // file-type 21, uuid 11 and workbox-build 6, using this repo's overrides/patches.
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
+const { createHash } = require('node:crypto');
 const { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } = require('node:fs');
-const { createRequire } = require('node:module');
+const { createRequire, Module } = require('node:module');
+const { createServer } = require('node:http');
 const { tmpdir } = require('node:os');
 const { basename, join, resolve } = require('node:path');
 const { Readable, Writable } = require('node:stream');
@@ -42,14 +44,26 @@ const roots = (positionals.length ? positionals : defaultRoots.map((path) => res
   const path = resolve(input);
   return basename(path) === '.pnpm' ? path : join(path, basename(path) === 'node_modules' ? '.pnpm' : 'node_modules/.pnpm');
 });
-const stores = roots.filter(existsSync).map((root) => ({ root, entries: readdirSync(root) }));
+const stores = roots.filter(existsSync).map((root) => {
+  const lock = join(root, 'lock.yaml');
+  // pnpm retains old, unused package directories after adding a patch. Test
+  // the installed lock's patch hash, not those stale cache entries.
+  const patches = new Map(Array.from((existsSync(lock) ? readFileSync(lock, 'utf8') : '')
+    .matchAll(/^  (\S+):\n    hash: (\S+)$/gm), ([, name, hash]) => [name, hash]));
+  return { root, entries: readdirSync(root), patches };
+});
 
 function installed(name, major) {
   const found = [];
-  for (const { root, entries } of stores) {
+  for (const { root, entries, patches } of stores) {
     for (const entry of entries.filter((entry) => entry.startsWith(`${name}@${major}.`))) {
       const manifest = join(root, entry, 'node_modules', name, 'package.json');
-      if (existsSync(manifest)) found.push({ require: createRequire(manifest), ...JSON.parse(readFileSync(manifest, 'utf8')) });
+      if (existsSync(manifest)) {
+        const pkg = JSON.parse(readFileSync(manifest, 'utf8'));
+        const hash = patches.get(`${name}@${pkg.version}`);
+        if (hash && !entry.includes(`patch_hash=${hash}`)) continue;
+        found.push({ require: createRequire(manifest), ...pkg });
+      }
     }
   }
   assert(found.length, `${name}@${major} is missing; supply installed root/frontend .pnpm stores or a complete fixture`);
@@ -57,6 +71,123 @@ function installed(name, major) {
 }
 
 async function main() {
+  for (const pkg of installed('elliptic', 6)) {
+    // Independent researcher vector from elliptic issue #322: P-521 needs to
+    // discard seven bits even when the DRBG's first byte is zero.
+    const EC = pkg.require('elliptic').ec;
+    const ec = new EC('p521');
+    const key = ec.keyFromPrivate('01535d22d63de9195efd4c41358ddc89c68b6cc202b558fbf48a09e95dddf953afc1b4cfed6df0f3330f986735085e367fd07030c3ab49dcd3461197b00f09a064fb', 'hex');
+    const hash = createHash('sha512').update(Buffer.from('12f830e9591916ec', 'hex')).digest();
+    const signature = key.sign(hash);
+    assert.equal(signature.toDER('hex'),
+      '308188024201e92eeaf15414d4af3ee933825131867b6cb10234f28336ac976a' +
+      '99127139f23100458a9ee7184bfa64540ba385331eb3b469f491b3da013c42ad' +
+      '154a5907f554f0024200db3703c6d51b8a85c10c21b7643fe751781a7ad5708e' +
+      '3a944107f6da086afdc8532765871a9cabc81cec0f5b28ee59f0c72b48b72a39' +
+      'ae2d230dfb03afb9968a94');
+    assert(key.verify(hash, signature));
+    const ethereum = new EC('secp256k1');
+    const ethKey = ethereum.keyFromPrivate('1');
+    const ethSig = ethKey.sign(hash.subarray(0, 32), { canonical: true });
+    assert(ethKey.verify(hash.subarray(0, 32), ethSig));
+    assert(ethereum.recoverPubKey(hash.subarray(0, 32), ethSig, ethSig.recoveryParam).eq(ethKey.getPublic()));
+    console.log(`PASS elliptic ${pkg.version}: independent P-521 nonce vector and Ethereum sign/verify/recovery`);
+  }
+
+  for (const pkg of workspace === 'frontend' ? [] : installed('bigint-buffer', 1)) {
+    const originalLoad = Module._load;
+    let nativeLoads = 0;
+    let convert;
+    try {
+      Module._load = function (name, parent, isMain) {
+        if (name === 'bindings') { nativeLoads += 1; return () => ({}); }
+        return originalLoad.call(this, name, parent, isMain);
+      };
+      convert = pkg.require('bigint-buffer');
+    } finally { Module._load = originalLoad; }
+    assert.equal(nativeLoads, 0, 'the memory-unsafe native converter must never load');
+    for (const width of [0, 1, 8, 256, 8192]) {
+      const bytes = Buffer.alloc(width, 0xff);
+      const expected = width ? (1n << BigInt(width * 8)) - 1n : 0n;
+      assert.equal(convert.toBigIntBE(bytes), expected);
+      assert.equal(convert.toBigIntLE(bytes), expected);
+      assert.deepEqual(convert.toBufferBE(expected, width), bytes);
+      assert.deepEqual(convert.toBufferLE(expected, width), bytes);
+    }
+    assert.equal(convert.toBigIntLE(Buffer.from([1, 2])), 513n);
+    assert.equal(convert.toBigIntBE(Buffer.from([1, 2])), 258n);
+    console.log(`PASS bigint-buffer ${pkg.version}: no native binding, empty/large and endian round trips`);
+  }
+
+  // Cypress's SSRF fix deliberately blocks BOTH cross-protocol directions:
+  // dropping even an HTTP agent on an HTTPS upgrade discards its destination filter.
+  // https://github.com/cypress-io/request/commit/c5bcf21d40fb61feaff21a0e5a2b3934a440024f
+  for (const pkg of workspace === 'root' ? [] : installed('request', 2)) {
+    const request = pkg.require('request');
+    const server = createServer((req, res) => {
+      if (req.url === '/same' || req.url === '/cross') {
+        res.writeHead(302, { Location: req.url === '/same' ? '/ok' : `https://127.0.0.1:${server.address().port}/ok` });
+      }
+      res.end('ok');
+    });
+    try {
+      await new Promise((done) => server.listen(0, '127.0.0.1', done));
+      const url = `http://127.0.0.1:${server.address().port}`;
+      const get = (path) => new Promise((done) => request.get({ url: url + path, proxy: null, timeout: 2000 }, (error, response, body) => done({ error, response, body })));
+      const same = await get('/same');
+      assert.ifError(same.error);
+      assert.equal(same.response.statusCode, 200);
+      assert.equal(same.body, 'ok');
+      const cross = await get('/cross');
+      assert.equal(cross.error?.code, 'ERR_INVALID_PROTOCOL', 'cross-protocol redirects must retain the filtering agent');
+    } finally { await new Promise((done) => server.close(done)); }
+    console.log(`PASS request ${pkg.version}: same-protocol redirect succeeds, cross-protocol agent bypass rejected`);
+  }
+
+  for (const pkg of workspace === 'root' ? [] : installed('uuid', 3)) {
+    for (const version of [1, 3, 4, 5]) {
+      const uuid = pkg.require(`uuid/v${version}`); // Preserve request's legacy deep imports.
+      const options = version === 1 ? { msecs: 0, nsecs: 0, node: [0, 0, 0, 0, 0, 0], clockseq: 0 } : { random: Array(16).fill(0) };
+      const generate = (buf, offset) => version === 3 || version === 5 ? uuid('ophis', uuid.DNS, buf, offset) : uuid(options, buf, offset);
+      const bytes = Buffer.alloc(18, 0xab);
+      assert.equal(generate(bytes, 1), bytes);
+      assert.equal(bytes[0], 0xab);
+      assert.equal(bytes[17], 0xab);
+      assert.equal(pkg.require('uuid/lib/bytesToUuid')(bytes.subarray(1, 17)), generate());
+      for (const offset of [-1, 3, 0.5, NaN, Infinity]) {
+        const output = Buffer.alloc(18, 0xab);
+        assert.throws(() => generate(output, offset), RangeError);
+        assert(output.every((byte) => byte === 0xab), 'rejected UUID writes must leave the buffer intact');
+      }
+      assert.throws(() => generate(Buffer.alloc(15)), RangeError);
+    }
+    console.log(`PASS uuid ${pkg.version}: v1/v3/v4/v5 legacy APIs and atomic output bounds`);
+  }
+
+  for (const name of workspace === 'root' ? [] : ['web3-core-method', 'web3-core-subscriptions']) {
+    for (const pkg of installed(name, 1)) {
+      const exported = pkg.require(name);
+      const Constructor = name === 'web3-core-method' ? exported : exported.subscriptions;
+      try {
+        for (const name of ['__proto__.ophisPolluted', 'constructor.prototype', 'eth.__proto__', 'prototype', 'constructor']) {
+          assert.throws(() => new Constructor({ name, call: 'eth_test', type: 'eth' }).attachToObject({}), /Unsafe method namespace/);
+          assert.equal(Object.prototype.ophisPolluted, undefined);
+        }
+        const target = {};
+        new Constructor({ name: 'eth.test', call: 'eth_test', type: 'eth' }).attachToObject(target);
+        assert.equal(typeof target.eth.test, 'function');
+        new Constructor({ name: 'subscribe', call: 'eth_test', type: 'eth' }).attachToObject(target);
+        assert.equal(typeof target.subscribe, 'function');
+        const prototype = { eth: {} };
+        const inherited = Object.create(prototype);
+        new Constructor({ name: 'eth.test', call: 'eth_test', type: 'eth' }).attachToObject(inherited);
+        assert.equal(typeof inherited.eth.test, 'function');
+        assert.equal(prototype.eth.test, undefined, 'attachment must never traverse an inherited namespace');
+      } finally { delete Object.prototype.ophisPolluted; }
+      console.log(`PASS ${name} ${pkg.version}: prototype paths rejected, normal single/nested attachment preserved`);
+    }
+  }
+
   for (const major of workspace === 'root' ? [7] : [5, 7]) {
     for (const pkg of installed('query-string', major)) {
       const query = pkg.require('query-string');
