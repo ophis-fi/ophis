@@ -51,6 +51,20 @@ describe('executeOphisSafePresign', () => {
     await expect(executeOphisSafePresign({ ...base, txs: [...TXS] })).rejects.toThrow(/did not succeed.*reverted/);
   });
 
+  it.each([undefined, {}, { status: 1 }, { status: 'unknown', logs: [] }])(
+    'does not report execution success with an unverified receipt: %j', async (receipt) => {
+      safeMock.executeTransaction.mockResolvedValue({
+        hash: '0xethtxhash', transactionResponse: { wait: async () => receipt },
+      } as never);
+      await expect(executeOphisSafePresign({ ...base, txs: [...TXS] })).rejects.toThrow(/unconfirmed|did not succeed/);
+    },
+  );
+
+  it('does not report execution success when the transport has no receipt waiter', async () => {
+    safeMock.executeTransaction.mockResolvedValue({ hash: '0xethtxhash' } as never);
+    await expect(executeOphisSafePresign({ ...base, txs: [...TXS] })).rejects.toThrow(/unconfirmed/);
+  });
+
   it('THROWS on a Safe ExecutionFailure (mined but inner batch reverted)', async () => {
     okReceipt.logs = [{ topics: [EXEC_FAILURE_TOPIC] }];
     await expect(executeOphisSafePresign({ ...base, txs: [...TXS] })).rejects.toThrow(/ExecutionFailure/);

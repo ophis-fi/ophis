@@ -1,1 +1,0 @@
-export { getLastTrace } from "./register";

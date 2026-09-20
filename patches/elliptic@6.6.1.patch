@@ -1,0 +1,13 @@
+diff --git a/lib/elliptic/ec/index.js b/lib/elliptic/ec/index.js
+--- a/lib/elliptic/ec/index.js
++++ b/lib/elliptic/ec/index.js
+@@ -153,7 +153,8 @@
+   for (var iter = 0; ; iter++) {
+     var k = options.k ?
+       options.k(iter) :
+-      new BN(drbg.generate(this.n.byteLength()));
++      // Preserve leading zero bytes for RFC 6979 bits2int (GHSA-848j-6mx2-7j84).
++      drbg.generate(this.n.byteLength());
+     k = this._truncateToN(k, true);
+     if (k.cmpn(1) <= 0 || k.cmp(ns1) >= 0)
+       continue;

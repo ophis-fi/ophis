@@ -180,6 +180,37 @@ def encode_approve(spender: str, amount: int) -> str:
     return "0x095ea7b3" + _pad(spender.lower().replace("0x", "")) + _pad(format(amount, "x"))
 
 
+def compute_order_uid(chain_id: int, order: dict) -> str:
+    """GPv2 EIP-712 digest + owner + uint32 expiry; never trust a host's presign UID."""
+    orderbook_url(chain_id)  # Reject unsupported domains before hashing.
+    def word(value: int) -> bytes:
+        return value.to_bytes(32, "big")
+
+    def address(value: str) -> bytes:
+        if not isinstance(value, str) or not re.fullmatch(r"0x[0-9a-fA-F]{40}", value):
+            raise ValueError("invalid order address")
+        return bytes.fromhex(value[2:]).rjust(32, b"\0")
+
+    domain = keccak256(
+        keccak256(b"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+        + keccak256(b"Gnosis Protocol") + keccak256(b"v2")
+        + word(chain_id) + address(settlement_address(chain_id))
+    )
+    app_hash = keccak256(order["appData"].encode())
+    if "0x" + app_hash.hex() != order["appDataHash"].lower():
+        raise ValueError("appData hash mismatch")
+    fields = b"Order(address sellToken,address buyToken,address receiver,uint256 sellAmount,uint256 buyAmount,uint32 validTo,bytes32 appData,uint256 feeAmount,string kind,bool partiallyFillable,string sellTokenBalance,string buyTokenBalance)"
+    struct = keccak256(
+        keccak256(fields) + address(order["sellToken"]) + address(order["buyToken"])
+        + address(order["receiver"]) + word(int(order["sellAmount"])) + word(int(order["buyAmount"]))
+        + word(order["validTo"]) + app_hash + word(int(order["feeAmount"]))
+        + keccak256(order["kind"].encode()) + word(int(order["partiallyFillable"]))
+        + keccak256(order["sellTokenBalance"].encode()) + keccak256(order["buyTokenBalance"].encode())
+    )
+    return "0x" + (keccak256(b"\x19\x01" + domain + struct)
+                   + address(order["from"])[12:] + order["validTo"].to_bytes(4, "big")).hex()
+
+
 def encode_set_presignature(order_uid_hex: str, signed: bool = True) -> str:
     """setPreSignature(bytes orderUid, bool signed).
 
@@ -344,10 +375,8 @@ def get_quote(chain_id: int, sell_token: str, buy_token: str, sell_amount_wei: i
         # treats the requested scheme as part of the returned order shape/UID expectations.
         "signingScheme": "presign",
         "onchainOrder": False,
-        # Send the appData HASH (not the full JSON) to the quote: CoW's strict app-data schema
-        # rejects the Ophis-only ophisReferrer key, so an inline full doc 400s a referral'd quote.
-        # The full string is only PUT + submitted (those paths accept the extension).
-        "appData": app_data_hash,
+        # With appDataHash present, appData must be the full JSON preimage.
+        "appData": full_app_data,
         "appDataHash": app_data_hash,
         "validFor": 1200,
     }

@@ -6,6 +6,7 @@
   "description": "Ophis ACP seller handler: makes Ophis hireable on Virtuals Protocol ACP by delivering bounded, ready-to-sign swap orders. Ophis holds no keys.",
   "scripts": {
     "start": "tsx --env-file=.env src/index.ts",
+    "test": "tsx --test src/buildOrder.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "comment": "Standalone service, intentionally NOT a pnpm-workspace member (so the monorepo install and CI do not build it). It installs and runs on its own on the host VM. Uses the published @ophis/sdk, not the workspace one.",

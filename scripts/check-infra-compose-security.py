@@ -34,6 +34,15 @@ def has_directly_pinned_erpc_image(block: str) -> bool:
     ))
 
 
+def auth_errors(text: str) -> list[str]:
+    """All production callers and the driver must require the same nonempty token."""
+    required = re.compile(
+        rf'^      {TOKEN}: \$\{{{TOKEN}:\?[^}}\n]+\}}\s*$', re.MULTILINE,
+    )
+    return [f'{svc} must require {TOKEN}' for svc in TRIO
+            if not required.search(service_block(text, svc))]
+
+
 errors: list[str] = []
 for path in STACKS:
     text = path.read_text()
@@ -44,9 +53,7 @@ for path in STACKS:
     if rpc_proxy and ERPC_PIN not in text and not directly_pinned_erpc:
         errors.append(f'{path.relative_to(ROOT)} has rpc-proxy but does not require a pinned ERPC_IMAGE')
 
-    present = {svc: TOKEN in service_block(text, svc) for svc in TRIO if service_block(text, svc)}
-    if present and len(set(present.values())) != 1:
-        errors.append(f'{path.relative_to(ROOT)} has partial {TOKEN} coverage: {present}')
+    errors.extend(f'{path.relative_to(ROOT)} {error}' for error in auth_errors(text))
 
     if path.parent.name == 'robinhood-mainnet':
         for svc in TRIO:
@@ -54,10 +61,6 @@ for path in STACKS:
             if 'ophis-rbh-net' in block:
                 errors.append(
                     f'{path.relative_to(ROOT)} exposes signing service {svc} to ophis-rbh-net'
-                )
-            if f'{TOKEN}: ${{{TOKEN}:?' not in block:
-                errors.append(
-                    f'{path.relative_to(ROOT)} permits {svc} without mandatory {TOKEN}'
                 )
         nitro_compose = path.parent / 'nitro' / 'docker-compose.yml'
         nitro_text = nitro_compose.read_text()

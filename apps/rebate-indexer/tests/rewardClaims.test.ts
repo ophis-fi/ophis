@@ -49,9 +49,9 @@ const { buildApiServer } = await import('../src/api.js');
 const account = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d');
 const WALLET = account.address.toLowerCase();
 
-async function signClaim(rewardId: string, issued: number, wallet = WALLET): Promise<string> {
+async function signClaim(rewardId: string, issued: number, wallet = WALLET, email = 'trader@example.com'): Promise<string> {
   return account.signMessage({
-    message: `Ophis claim reward ${rewardId}\nAddress: ${wallet}\nIssued: ${issued}`,
+    message: `Ophis claim reward ${rewardId}\nEmail: ${email.trim()}\nAddress: ${wallet}\nIssued: ${issued}`,
   });
 }
 
@@ -91,6 +91,39 @@ test('a wallet below the XP threshold cannot claim, even with a valid signature'
 
   expect(res.statusCode).toBe(403);
   expect(lastInsert).toBeUndefined();
+});
+
+test('a claim signature cannot redirect the reward to a different email', async () => {
+  volumeUsd = '100000';
+  const issued = Math.floor(Date.now() / 1000);
+  const signature = await signClaim('octav-20', issued);
+  const res = await claim({ ...validBody(issued, signature), email: 'attacker@example.com' });
+
+  expect(res.statusCode).toBe(401);
+  expect(lastInsert).toBeUndefined();
+});
+
+test('a legacy signature without the delivery email cannot authorize a claim', async () => {
+  volumeUsd = '100000';
+  const issued = Math.floor(Date.now() / 1000);
+  const signature = await account.signMessage({
+    message: `Ophis claim reward octav-20\nAddress: ${WALLET}\nIssued: ${issued}`,
+  });
+  const res = await claim(validBody(issued, signature));
+
+  expect(res.statusCode).toBe(401);
+  expect(lastInsert).toBeUndefined();
+});
+
+test('a fresh signature authorizes a new email with matching normalization', async () => {
+  volumeUsd = '100000';
+  const issued = Math.floor(Date.now() / 1000);
+  const email = '  Trader+rewards@example.com  ';
+  const signature = await signClaim('octav-20', issued, WALLET, email);
+  const res = await claim({ ...validBody(issued, signature), email });
+
+  expect(res.statusCode).toBe(200);
+  expect(lastInsert).toContain(email.trim());
 });
 
 test('a signature for a different action does not authorize a claim', async () => {

@@ -113,17 +113,19 @@ class OphisAdapter(BaseAdapter):
 
             await asyncio.to_thread(oc.enroll_wallet, self.owner)  # best-effort; never raises
 
-            # 1-2. Ophis partner-fee appData + a quote (quote carries the appData HASH).
+            # 1-2. Quote with the same fee-bearing appData that the order will submit.
             is_stable_pair = oc.is_stable_pair(self.chain_id, sell, buy)  # derived, not caller-controlled
             full_app_data, app_hash = oc.build_app_data(self.chain_id, referral_code=referral_code, is_stable_pair=is_stable_pair)
-            quote = await asyncio.to_thread(oc.get_quote, self.chain_id, sell, buy, sell_atomic, self.owner, app_hash)
+            quote = await asyncio.to_thread(oc.get_quote, self.chain_id, sell, buy, sell_atomic, self.owner, full_app_data, app_hash)
             if not isinstance(quote, dict):
                 return False, f"orderbook quote was not an object: {quote!r}"
             # Require the binding fields to be PRESENT — a missing field must not silently
             # default into the request (which would defeat the bind below).
-            for field in ("sellAmount", "buyAmount", "feeAmount"):
+            for field in ("sellToken", "buyToken", "sellAmount", "buyAmount", "feeAmount"):
                 if field not in quote:
                     return False, f"orderbook quote is missing required field {field!r}: {quote}"
+            if to_checksum_address(str(quote["sellToken"])) != sell or to_checksum_address(str(quote["buyToken"])) != buy:
+                return False, "quote tokens do not match the requested pair; refusing to sign"
             quote_buy = int(quote["buyAmount"])
             quote_sell = int(quote["sellAmount"])
             quote_fee = int(quote["feeAmount"])

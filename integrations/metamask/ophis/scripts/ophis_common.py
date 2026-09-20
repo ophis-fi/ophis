@@ -218,16 +218,13 @@ def _http(method: str, url: str, body: dict | None = None, headers: dict | None 
 
 
 def get_quote(chain_id, sell_token, buy_token, sell_amount_atomic, from_addr, full_app_data, app_data_hash) -> dict:
-    # Send the appData HASH (not the full string) to the quote — CoW's strict app-data
-    # schema (additionalProperties:false) rejects the Ophis-only `ophisReferrer` key,
-    # so an inline full doc can 400 a referral'd quote. The full string is only PUT +
-    # submitted (those paths accept the extension). Matches @ophis/agent-swap swap.ts.
+    # With appDataHash present, appData must be the full JSON preimage.
     body = {
         "sellToken": sell_token, "buyToken": buy_token, "from": from_addr, "receiver": from_addr,
         "kind": "sell", "sellAmountBeforeFee": str(sell_amount_atomic),
         "partiallyFillable": False, "sellTokenBalance": "erc20", "buyTokenBalance": "erc20",
         "priceQuality": "optimal", "signingScheme": "eip712", "onchainOrder": False,
-        "appData": app_data_hash, "appDataHash": app_data_hash, "validFor": 1200,
+        "appData": full_app_data, "appDataHash": app_data_hash, "validFor": 1200,
     }
     res = _http("POST", f"{orderbook_url(chain_id)}/api/v1/quote", body=body)
     return res.get("quote") or res

@@ -303,7 +303,7 @@ describe("E2E: Direct Balancer swap", () => {
 
       await expect(
         settlement.connect(solver).swap(...encoder.encodedSwap()),
-      ).to.be.revertedWith(`${kind} amount not respected`);
+      ).to.be.revertedWith(`GPv2: ${kind} amount not respected`);
     });
 
     it(`reverts ${kind} order if limit price is not respected`, async () => {

@@ -287,9 +287,8 @@ export function getRankStatus(wallet: string): Promise<RankStatus> {
 }
 
 /**
- * Body for POST /rewards/claim. The claim is signature-gated on the SAME
- * `claim reward <id>` message the card already has the wallet sign, so the
- * ownership proof is reused rather than prompting a second time.
+ * Body for POST /rewards/claim. Sign `claim reward <id>\nEmail: <trimmed email>`
+ * with buildAffiliateSignMessage; the signature authorizes this delivery email.
  *
  * `email` is collected for one purpose only: contacting the claimer about this
  * reward (the partner needs it to send the code). Never a marketing list.

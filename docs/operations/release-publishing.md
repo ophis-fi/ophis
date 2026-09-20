@@ -1,5 +1,12 @@
 # Release publishing controls
 
+The organization ruleset
+[`ophis-trusted-otc-review`](https://github.com/organizations/ophis-fi/settings/rules/23726380)
+requires `.github/workflows/otc-milestone-c-gate.yml` from `ophis-fi/ophis` at
+`refs/heads/main`. It applies to Ophis `main` without bypass actors. Keep this
+workflow binding alongside the repository's required checks: an Actions check
+name alone does not identify the trusted review workflow.
+
 Ophis package and MCP releases use protected version tags. Repository ruleset
 [`protect-release-tags`](https://github.com/ophis-fi/ophis/rules/21001422)
 restricts creation, update, and deletion of these tags to organization admins:

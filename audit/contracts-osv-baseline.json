@@ -1,33 +1,19 @@
 {
-  "moderate": 11,
+  "moderate": 3,
   "high": 1,
-  "critical": 2,
-  "low": 7,
+  "critical": 1,
+  "low": 1,
   "findings": [
-    "@openzeppelin/contracts@3.4.0-solc-0.7 GHSA-7grf-83vw-6f5x moderate",
-    "@openzeppelin/contracts@3.4.0-solc-0.7 GHSA-88g8-f5mf-f5rj high",
-    "@openzeppelin/contracts@3.4.0-solc-0.7 GHSA-9c22-pwxw-p6hx moderate",
-    "@openzeppelin/contracts@3.4.0-solc-0.7 GHSA-fg47-3c2x-m2wr critical",
-    "@openzeppelin/contracts@3.4.0-solc-0.7 GHSA-mx2q-35m2-x2rh moderate",
-    "babel-traverse@6.26.0 GHSA-67hx-6x53-jw92 critical",
-    "decode-uri-component@0.2.2 GHSA-vcc3-ghjq-m6fr moderate",
-    "elliptic@6.6.1 GHSA-848j-6mx2-7j84 low",
-    "got@9.6.0 GHSA-pfrx-2q88-qq97 moderate",
-    "request@2.88.2 GHSA-p8p7-x288-28g6 moderate",
-    "uuid@3.3.2 GHSA-w5hq-g745-h8pq moderate",
-    "uuid@3.4.0 GHSA-w5hq-g745-h8pq moderate",
-    "uuid@8.3.2 GHSA-w5hq-g745-h8pq moderate",
-    "uuid@9.0.1 GHSA-w5hq-g745-h8pq moderate",
-    "web3-core-method@1.10.0 GHSA-2j4c-9qqq-896r low",
-    "web3-core-method@1.2.11 GHSA-2j4c-9qqq-896r low",
-    "web3-core-subscriptions@1.10.0 GHSA-hhf6-3xpg-pggx low",
-    "web3-core-subscriptions@1.10.4 GHSA-hhf6-3xpg-pggx low",
-    "web3-core-subscriptions@1.2.11 GHSA-hhf6-3xpg-pggx low",
-    "web3@1.2.11 GHSA-27v7-qhfv-rqq8 low",
-    "yargs-parser@2.4.1 GHSA-p9pc-299p-vxgp moderate"
+    "@openzeppelin/contracts@3.4.2-solc-0.7 GHSA-7grf-83vw-6f5x moderate",
+    "@openzeppelin/contracts@3.4.2-solc-0.7 GHSA-88g8-f5mf-f5rj high",
+    "@openzeppelin/contracts@3.4.2-solc-0.7 GHSA-9c22-pwxw-p6hx moderate",
+    "@openzeppelin/contracts@3.4.2-solc-0.7 GHSA-fg47-3c2x-m2wr critical",
+    "@openzeppelin/contracts@3.4.2-solc-0.7 GHSA-mx2q-35m2-x2rh moderate",
+    "elliptic@6.6.1 GHSA-848j-6mx2-7j84 low"
   ],
   "notes": [
-    "Reviewed 2026-09-17 after compatible updates reduced 151 findings to 21; see docs/audit/security-audit-2026-09-17.md for reachability and remaining migrations.",
+    "Reviewed 2026-09-20: removal of unused Safe/Slack packages, Waffle 4/Hardhat-Waffle 2.0.6 migration and compatible overrides reduced 21 findings to 6. No new advisories were accepted.",
+    "The five OpenZeppelin advisories retain the prior fixture-only reachability assessment; the affected ERC165Checker, Initializable, TimelockController and TransparentUpgradeableProxy components are not imported by production contracts. The patch release changes fingerprints only. Elliptic 6.6.1 has no fixed compatible release; signing compatibility and negative-message rejection are tested.",
     "Exact package/version/advisory/severity fingerprints and severity ceilings both gate CI. A new advisory cannot consume budget freed by an unrelated fix."
   ]
 }

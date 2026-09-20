@@ -1,0 +1,36 @@
+diff --git a/lib/index.js b/lib/index.js
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -71,8 +71,13 @@
+     var func = this.buildCall();
+     Object.defineProperty(func, 'call', { configurable: true, writable: true, value: this.call });
+     var name = this.name.split('.');
++    if (name.some(function (part) {
++        return part === '__proto__' || part === 'constructor' || part === 'prototype';
++    })) {
++        throw new Error('Unsafe method namespace');
++    }
+     if (name.length > 1) {
+-        obj[name[0]] = obj[name[0]] || {};
++        obj[name[0]] = Object.prototype.hasOwnProperty.call(obj, name[0]) ? obj[name[0]] || {} : {};
+         obj[name[0]][name[1]] = func;
+     }
+     else {
+diff --git a/src/index.js b/src/index.js
+--- a/src/index.js
++++ b/src/index.js
+@@ -87,8 +87,13 @@
+     var func = this.buildCall();
+     Object.defineProperty(func, 'call', { configurable: true, writable: true, value: this.call });
+     var name = this.name.split('.');
++    if (name.some(function (part) {
++        return part === '__proto__' || part === 'constructor' || part === 'prototype';
++    })) {
++        throw new Error('Unsafe method namespace');
++    }
+     if (name.length > 1) {
+-        obj[name[0]] = obj[name[0]] || {};
++        obj[name[0]] = Object.prototype.hasOwnProperty.call(obj, name[0]) ? obj[name[0]] || {} : {};
+         obj[name[0]][name[1]] = func;
+     } else {
+         obj[name[0]] = func;

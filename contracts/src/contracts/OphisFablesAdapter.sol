@@ -113,6 +113,7 @@ contract OphisFablesAdapter {
         uint256 amountOut = uint128(outputDelta);
 
         if (zeroForOne) {
+            poolManager.sync(address(0));
             poolManager.settle{value: amountIn}();
             poolManager.take(usdg, address(this), amountOut);
         } else {

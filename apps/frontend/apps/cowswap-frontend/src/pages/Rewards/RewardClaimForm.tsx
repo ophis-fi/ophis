@@ -2,8 +2,7 @@
  * RewardClaimForm: email capture for partner-fulfilled perks.
  *
  * Rendered only AFTER the address validation in RewardCard succeeds, so the
- * signature that proves wallet ownership already exists and is reused as the
- * claim's auth (no second wallet prompt).
+ * email is authorized by a fresh signature when the claim is submitted.
  *
  * The email is collected for one purpose only: contacting the claimer about
  * this reward, i.e. the partner sending the code. The form says so.
@@ -23,7 +22,7 @@ import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
 import { TextLink } from 'ophis/ds'
 
-import { AffiliateApiError, submitRewardClaim } from 'modules/affiliate'
+import { AffiliateApiError, submitRewardClaim, useOphisAffiliateSign } from 'modules/affiliate'
 
 import { CLAIM_EMAIL, RewardPerk } from './rewards.const'
 import * as styledEl from './Rewards.styled'
@@ -36,20 +35,16 @@ type SubmitState =
 
 interface RewardClaimFormProps {
   perk: RewardPerk
-  /** The address that produced `signature` (already validated by RewardCard). */
+  /** The address already validated by RewardCard. */
   wallet: string
-  issued: number
-  signature: string
 }
 
-/** Pre-filled fallback mail, carrying the same signed proof the POST would have. */
-function claimHref(perk: RewardPerk, account: string, issued: number, signature: string): string {
+/** Fallback contact request; the team must verify eligibility and ownership. */
+function claimHref(perk: RewardPerk, account: string): string {
   const subject = `Reward claim: ${perk.title}`
   const body = [
     `Reward: ${perk.id}`,
     `Address: ${account}`,
-    `Issued: ${issued}`,
-    `Signature: ${signature}`,
     '',
     `Please send my ${perk.partner} discount code to this email address.`,
   ].join('\n')
@@ -59,9 +54,10 @@ function claimHref(perk: RewardPerk, account: string, issued: number, signature:
 // The signature is valid for 5 minutes server-side (PARTNER_SIG_MAX_AGE_SEC), so
 // a form left open past that window gets a 401 on submit. Say so plainly instead
 // of surfacing the raw backend reason.
-const EXPIRED_MESSAGE = 'This claim expired. Close and click "Claim reward" again to re-validate.'
+const EXPIRED_MESSAGE = 'This claim expired. Submit again to sign a fresh claim.'
 
-export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaimFormProps): ReactNode {
+export function RewardClaimForm({ perk, wallet }: RewardClaimFormProps): ReactNode {
+  const sign = useOphisAffiliateSign(wallet)
   const [email, setEmail] = useState('')
   const [state, setState] = useState<SubmitState>({ step: 'idle' })
 
@@ -71,12 +67,12 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
       if (state.step === 'sending') return
       setState({ step: 'sending' })
       try {
+        const deliveryEmail = email.trim()
+        const signed = await sign(`claim reward ${perk.id}\nEmail: ${deliveryEmail}`)
         const res = await submitRewardClaim({
-          wallet,
+          ...signed,
           rewardId: perk.id,
-          email: email.trim(),
-          issued,
-          signature,
+          email: deliveryEmail,
         })
         setState({ step: 'done', email: email.trim(), alreadyClaimed: res.alreadyClaimed })
       } catch (error: unknown) {
@@ -90,7 +86,7 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
         setState({ step: 'error', message })
       }
     },
-    [email, issued, perk.id, signature, state.step, wallet],
+    [email, perk.id, sign, state.step],
   )
 
   const formRef = useRef<HTMLFormElement>(null)
@@ -134,7 +130,7 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
       </styledEl.ClaimLabel>
       <styledEl.ClaimNote>
         We only use your email to contact you about this reward. {perk.partner} needs it to send your code. No
-        marketing, no commercial use.
+        marketing, no commercial use. Confirm this delivery address with your wallet when submitting.
       </styledEl.ClaimNote>
       <styledEl.ClaimActionButton type="submit" disabled={state.step === 'sending'}>
         {state.step === 'sending' ? 'Recording claim...' : 'Claim my code'}
@@ -144,8 +140,7 @@ export function RewardClaimForm({ perk, wallet, issued, signature }: RewardClaim
           {state.message}{' '}
           {state.message === EXPIRED_MESSAGE ? null : (
             <>
-              You can also <TextLink href={claimHref(perk, wallet, issued, signature)}>request it by email</TextLink>.
-              The message carries the same signed proof.
+              You can also <TextLink href={claimHref(perk, wallet)}>request it by email</TextLink>.
             </>
           )}
         </styledEl.ClaimNote>

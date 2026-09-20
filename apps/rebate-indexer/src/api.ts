@@ -1197,7 +1197,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   //
   // Nothing from the client is trusted for eligibility: the signature proves the
   // caller controls `wallet` (same EIP-191 mechanism as /ref/codes, namespaced
-  // by the `claim reward <id>` action so a dashboard signature cannot be
+  // by the `claim reward <id>\nEmail: <email>` action so a dashboard signature cannot be
   // replayed into a claim), the XP threshold comes from the server-side catalog,
   // and the XP balance is recomputed here from indexed trades.
   //
@@ -1242,11 +1242,12 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       return reply.code(400).send({ error: 'this reward is redeemed in-app and needs no claim' });
     }
 
-    // Prove control of `wallet` before any DB write. Rebuilds
-    // `Ophis claim reward <id>\nAddress: <wallet>\nIssued: <issued>`, byte-identical
-    // to what the frontend signs, and enforces the 5-minute replay window.
+    // Prove control of `wallet` before any DB write and bind the delivery email:
+    // replaying a signature must
+    // never redirect fulfillment, including when updating an existing claim.
+    // The frontend signs the same trimmed, case-preserving email.
     const auth = await verifyPartnerAuth({
-      action: `claim reward ${rewardId}`,
+      action: `claim reward ${rewardId}\nEmail: ${email}`,
       address: wallet,
       issued,
       signature: signature as `0x${string}`,

@@ -122,6 +122,10 @@ export async function submitOrder(
 
   // 4) Propose the (wrap? + approve? + presign) batch to the Safe queue; owners co-sign + execute
   //    in the UI.
+  const currentSafe = await sdk.safe.getInfo();
+  if (currentSafe.chainId !== chainId || currentSafe.safeAddress.toLowerCase() !== owner.toLowerCase()) {
+    throw new Error('Safe account or network changed. Review a new quote before proposing.');
+  }
   const { safeTxHash } = await sdk.txs.send({ txs });
   return { orderUid, safeTxHash, enrollmentWarning };
 }

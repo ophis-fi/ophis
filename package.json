@@ -85,7 +85,9 @@
     },
     "patchedDependencies": {
       "decode-uri-component@0.5.0": "patches/decode-uri-component@0.5.0.patch",
-      "stream-json@1.9.1": "patches/stream-json@1.9.1.patch"
+      "stream-json@1.9.1": "patches/stream-json@1.9.1.patch",
+      "elliptic@6.6.1": "patches/elliptic@6.6.1.patch",
+      "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch"
     }
   }
 }

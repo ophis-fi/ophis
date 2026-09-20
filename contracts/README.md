@@ -38,7 +38,7 @@ REPORT_GAS=1 yarn test
 
 ### Benchmarking
 
-This repository additionally includes tools for gas benchmarking and tracing.
+This repository additionally includes tools for gas benchmarking.
 
 In order to run a gas benchmark on a whole bunch of settlement scenarios:
 
@@ -50,12 +50,6 @@ These gas benchmarks can be compared against any other git reference and will de
 
 ```sh
 yarn bench:compare [<ref>]
-```
-
-In order to get a detailed trace of a settlement to identify how much gas is being spent where:
-
-```sh
-yarn bench:trace
 ```
 
 ## Deployment

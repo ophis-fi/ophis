@@ -179,6 +179,8 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Check auth parity and pinned RPC proxy image requirements
         run: ./scripts/check-infra-compose-security.py
+      - name: Reject missing, commented-out, or optional production auth
+        run: python3 scripts/test-infra-compose-security.py
 
   erpc-id-collisions:
     name: eRPC upstream-ID cross-stack collision lint

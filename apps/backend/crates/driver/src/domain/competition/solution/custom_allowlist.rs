@@ -37,22 +37,21 @@
 //!   1. The upstream's canonical deployment records (e.g. LI.FI publishes
 //!      `deployments/<network>.json` at github.com/lifinance/contracts;
 //!      KyberSwap and Velora publish per-chain address docs).
-//!   2. A byte-for-byte match with an address ALREADY allowlisted for another
-//!      chain from source (1) — a poisoned response cannot introduce a NEW
-//!      address that way, only agree with a trusted one. This is why the
-//!      CREATE2-deterministic KyberSwap / Velora / Enso / OpenOcean entries are
-//!      sound.
+//!   2. A canonical upstream record of a deterministic deployment covering
+//!      the destination chain. Address equality on another chain alone does
+//!      not establish the code, constructor parameters or controller here.
 //! On-chain and API evidence is corroboration that a contract is deployed
 //! and in use — never the basis for trusting it.
 //!
-//! PROVENANCE AUDIT STATUS: the LI.FI entries (chains 10 / 130 / 4663) were
-//! re-authenticated against LI.FI's canonical repo on 2026-07-26 and all
-//! three matched. NOT yet re-authenticated to standard (1) or (2): the OKX
-//! router/spender pair and the DODO router/approve-proxy
-//! pair, whose notes still cite an API response plus a code-size check.
-//! Their addresses may well be correct — the point is the recorded basis is
-//! not sufficient. Re-authenticate them from upstream sources before
-//! relying on them further.
+//! PROVENANCE AUDIT STATUS (2026-09-20): LI.FI's three entries matched its
+//! canonical repo. DODO's Optimism widget router and DODOApprove now match
+//! its Optimism deployment docs; both OKX approval spenders match its official
+//! Token Approval table. The existing OKX routers and DODO Unichain pair still
+//! lack independently established per-chain provenance. OKX's current router
+//! docs list different addresses; this does not establish that the pinned
+//! older routers are malicious or safe to replace without integration review.
+//! Address pinning does not validate generic calldata, recipient or token
+//! conservation: these integrations retain trust in the solver/router.
 
 use {
     crate::domain::competition::solution::interaction,
@@ -185,9 +184,9 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // OKX `/swap`. Distinct from the spender address below — OKX
     // separates router and approval target on V6.
     address!("Dd5E9B947c99Aa60bab00ca4631Dce63b49983E7"),
-    // OKX V6 spender on Optimism mainnet. Returned by OKX
-    // `/approve-transaction` as `dexContractAddress` — the ERC-20
-    // approval grantee. Verified 2026-05-18 alongside the router.
+    // OKX ERC-20 approval grantee on Optimism. Independently authenticated
+    // 2026-09-20 against the Token Approval table (not the router table):
+    // https://web3.okx.com/onchainos/dev-docs/trade/dex-smart-contract
     address!("68D6B739D2020067D1e2F713b999dA97E4d54812"),
     // Enso EnsoRouter on Optimism (10) -- tx.to == approval target.
     // CREATE2-deterministic (same as Unichain). Verified 2026-07-06 (3313 B).
@@ -205,11 +204,11 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // OpenOcean OpenOceanExchangeProxy on Optimism (10) -- router == spender.
     // Deterministic proxy (same as Unichain). Verified 2026-07-06 (2092 B).
     address!("6352a56caadC4F1E25CD6c75970Fa768A3304e64"),
-    // DODO DODORouteProxy on Optimism (10) -- the router tx.to. Per-chain.
-    // Verified 2026-07-06 via getdodoroute?chainId=10 (11202 B).
+    // DODOFeeRouteProxy (for widget) on Optimism. Authenticated 2026-09-20:
+    // https://docs.dodoex.io/en/developer/contracts/dodo-v1-v2/contracts-address/optimism
     address!("8b09DB11ea380d6454D2592D334FFC319ce6EF3E"),
-    // DODO DODOApproveProxy on Optimism (10) -- ERC-20 approval target,
-    // distinct from the router above. Verified 2026-07-06 (2432 B).
+    // DODOApprove on Optimism, authenticated by the same deployment record.
+    // This is the ERC-20 spender, distinct from DODOApproveProxy.
     address!("a492d6eABcdc3E204676f15B950bBdD448080364"),
 ];
 
@@ -296,10 +295,9 @@ const UNICHAIN_MAINNET: &[Address] = &[
     // (stable across 3 token pairs, 24367 B); matches the (130,...) entry in the
     // solver-level OKX_ROUTER_ALLOWLIST.
     address!("6733Eb2E75B1625F1Fe5f18aD2cB2BaBDA510d19"),
-    // OKX DEX spender on Unichain (130) — the `dexContractAddress` returned by
-    // OKX V6 /approve-transaction (the ERC-20 approval target). Separate from the
-    // router above. Verified 2026-06-30 (stable across 3 pairs, 1610 B); matches
-    // the solver-level OKX_ROUTER_ALLOWLIST spender.
+    // OKX ERC-20 approval grantee on Unichain. Independently authenticated
+    // 2026-09-20 against the Token Approval table (not the router table):
+    // https://web3.okx.com/onchainos/dev-docs/trade/dex-smart-contract
     address!("2e28281Cf3D58f475cebE27bec4B8a23dFC7782c"),
     // LI.FI LiFiDiamond on Unichain (130) — BOTH the same-chain swap `tx.to` AND
     // the ERC-20 approval target (estimate.approvalAddress == tx.to). Verified
@@ -532,11 +530,8 @@ pub fn validate_with_required_output(
         return Err(Error::TargetNotAllowed { target, chain_id });
     }
 
-    // (2) — native ETH value cap (closes a residual sharp edge flagged by
-    // the 2026-05-22 sharp-edges PR-E audit: solver can request arbitrary
-    // ETH transfer with the call, and allowlisted aggregators accept
-    // ETH-in swaps — bounding `value` prevents settlement-balance drain
-    // via a single Custom interaction).
+    // (2) Reject extreme native-value sentinels. This large cap is not a
+    // balance-conservation bound; generic router calldata remains trusted.
     let value: U256 = custom.value.0;
     if value > MAX_INTERACTION_VALUE {
         return Err(Error::ValueTooLarge { value });

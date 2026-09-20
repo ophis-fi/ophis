@@ -24,5 +24,5 @@ export function App() {
     );
   }
 
-  return <SwapForm sdk={sdk} owner={safe.safeAddress} chainId={safe.chainId} />;
+  return <SwapForm key={`${safe.chainId}:${safe.safeAddress.toLowerCase()}`} sdk={sdk} owner={safe.safeAddress} chainId={safe.chainId} />;
 }

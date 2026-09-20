@@ -3,6 +3,9 @@ no_match_path = "test/direct-routes/**"
 src = "src"
 out = "out"
 libs = ["node_modules", "lib"]
+# Keep CREATE2 metadata stable when optional Hardhat dependencies are installed.
+auto_detect_remappings = false
+remappings = ["forge-std/=lib/forge-std/src/"]
 
 # Compiler settings
 via_ir = false
