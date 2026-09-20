@@ -7,3 +7,7 @@
 # returns the corpus instead of a 404. 302 (temporary) because the canonical home
 # of the full text is docs.ophis.fi, which regenerates it on every docs build.
 /llms-full.txt  https://docs.ophis.fi/llms-full.txt  302
+
+# Retired docs aliases now bypass the shared SPA middleware.
+/docs  https://docs.ophis.fi/  301
+/docs/*  https://docs.ophis.fi/:splat  301
