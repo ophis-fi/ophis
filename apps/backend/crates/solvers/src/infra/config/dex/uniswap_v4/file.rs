@@ -44,19 +44,19 @@ pub async fn load(path: &Path) -> super::Config {
     );
     let mut expected = match config.chain_id {
         eth::ChainId::Optimism => (
-            "0xd882da9cb91eb458337413e5846824cdcadb2ddc",
+            "0x833fa253e3a0cb2be15f14cb0b0ad0c17dd57b12",
             "0x1f3131a13296fb91c90870043742c3cdbff1a8d7",
             "0x4200000000000000000000000000000000000006",
             "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
         ),
         eth::ChainId::Unichain => (
-            "0x4c41ec6850300d2d6ba65d602fd31ec07f255b2c",
+            "0xe490d7ac34cdf92a3bd16cd4ca3bb1f1a6671828",
             "0x333e3c607b141b18ff6de9f258db6e77fe7491e0",
             "0x4200000000000000000000000000000000000006",
             "0x078d782b760474a361dda0af3839290b0ef57ad6",
         ),
         eth::ChainId::Robinhood => (
-            "0x8573c5fcf5bd890f4edd4a41e783eac552b307ae",
+            "0xb0f223b932b6c2a5cb6e3a6b04aab82b44ea7c29",
             "0x8dc178efb8111bb0973dd9d722ebeff267c98f94",
             "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
             "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
@@ -64,7 +64,7 @@ pub async fn load(path: &Path) -> super::Config {
         _ => unreachable!("chain was restricted above"),
     };
     if config.fables {
-        expected.0 = "0xa0c33928831cb4518b8c4a7be6c0f98ba8a22de5";
+        expected.0 = "0xc35fe0dbabd82f9e347cf6a7d9c795a18c902fbe";
     }
     let parse = |address: &str| address.parse::<eth::Address>().expect("pinned V4 address");
     assert_eq!(config.adapter, parse(expected.0), "unexpected V4 adapter");

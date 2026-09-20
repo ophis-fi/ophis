@@ -4,16 +4,24 @@ The three adapter implementations now call `sync(address(0))` immediately
 before native settlement. Existing immutable deployments retain their old
 behavior; publishing the source does not update them.
 
-The following are **planned v2 addresses**, derived offline, not deployment
-receipts. They cover the four lanes configured in the repository. Presence
-and activation of each v1 deployment must be checked on its chain.
+All four v2 adapters were deployed on 2026-09-20 UTC using Ledger account
+`0xBeC5B03ffDcac50071693E87bFDb88bAa6710199`. Receipts, exact calldata,
+runtime (including consistent immutable references) and every constructor
+getter were independently checked against the reviewed build.
 
-| Chain | Adapter | Previous configured address | Planned v2 address |
-| --- | --- | --- | --- |
+| Chain | Adapter | Previous configured address | Deployed v2 address |
+| ---------------- | ----------------------------- | -------------------------------------------- | -------------------------------------------- |
 | Optimism (10) | OphisHooklessUniswapV4Adapter | `0xd882da9CB91EB458337413E5846824CDCADB2Ddc` | `0x833fA253e3A0cb2be15F14Cb0B0Ad0C17dD57b12` |
 | Unichain (130) | OphisHooklessUniswapV4Adapter | `0x4C41eC6850300d2D6Ba65d602fd31eC07F255b2C` | `0xe490d7aC34CDf92a3Bd16cd4cA3BB1F1a6671828` |
 | Robinhood (4663) | OphisUniswapV4Adapter | `0x8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae` | `0xb0F223B932B6C2a5CB6e3a6B04AAB82b44eA7C29` |
 | Robinhood (4663) | OphisFablesAdapter | `0xa0C33928831cB4518b8c4A7BE6c0f98BA8A22de5` | `0xC35FE0dBABd82f9E347CF6a7d9c795A18c902FbE` |
+
+Deployment receipts: [Optimism](https://optimistic.etherscan.io/tx/0x1baaedba8f67f47f416ea59652412e8c2b5d104de6658a70ac8fa889ed6ab56a),
+[Unichain](https://uniscan.xyz/tx/0x683573bb0e8001e2bdf6085ac57dd1de674f492b17a2ac4dfab08954012c25ea),
+[Robinhood Uniswap V4](https://robinhoodchain.blockscout.com/tx/0xd04966770847612a06d5ffda4bf9dffbe0a90e35e9df65f122409e70e8426d9d),
+[Robinhood Fables](https://robinhoodchain.blockscout.com/tx/0x3be23bee22107944a463a0d7aefea8e6ef5ec9521b7da22445ce98567c92349b).
+Do not resubmit these transactions. Backend activation requires the coordinated
+configuration rollout below; an on-chain deployment alone does not activate a lane.
 
 ## Generate the unsigned transactions
 
@@ -37,13 +45,10 @@ are `ophis.optimism.hookless-v4.v2`, `ophis.unichain.hookless-v4.v2`,
 The four addresses were independently reproduced with `cast create2` using
 the emitted salt and initcode hash.
 
-The existing Optimism and Robinhood browser ceremonies identify deployment
-wallet `0x0494f503912c101bfd76b88e4f5d8a33de284d1a`. Use the intended deployer
-wallet or hardware signer for the selected chain; a driver operational key
-is unnecessary. CREATE2 does not depend on the transaction sender here.
-Do not reuse the old browser artifact or `DeployDirectAdapters.s.sol`:
-their v1 artifact hashes and addresses refer to the previous source, and
-the existing direct-routes script deliberately rejects the changed hash.
+CREATE2 does not depend on the transaction sender here; a driver operational
+key is unnecessary. The direct-routes script now pins the deployed v2 builds.
+The one-time browser ceremonies are retired; historical v1 artifacts must not
+be used to reproduce these v2 addresses.
 
 ## Deploy, verify, then activate
 

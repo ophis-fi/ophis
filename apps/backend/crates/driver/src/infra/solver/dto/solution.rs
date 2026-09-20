@@ -601,14 +601,15 @@ mod protected_interaction_tests {
         let buy = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
         let targets = [
             address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7"),
-            address!("d882da9CB91EB458337413E5846824CDCADB2Ddc"),
+            address!("833fA253e3A0cb2be15F14Cb0B0Ad0C17dD57b12"),
             address!("a062aE8A9c5e11aaA026fc2670B0D65cCc8B2858"),
             address!("3a63171DD9BebF4D07BC782FECC7eb0b890C2A45"),
             address!("13f4EA83D0bd40E75C8222255bc855a974568Dd4"),
-            address!("a0C33928831cB4518b8c4A7BE6c0f98BA8A22de5"),
+            address!("C35FE0dBABd82f9E347CF6a7d9c795A18c902FbE"),
+            address!("b0F223B932B6C2a5CB6e3a6B04AAB82b44eA7C29"),
             address!("FCBBe2Af83F94e7E2a9C35a535B3A04719aFD2Ae"),
             address!("0792a633F0c19c351081CF4B211F68F79bCc9676"),
-            address!("4C41eC6850300d2D6Ba65d602fd31eC07F255b2C"),
+            address!("e490d7aC34CDf92a3Bd16cd4cA3BB1F1a6671828"),
         ];
         let uid = competition::order::Uid::default();
         let order = competition::Order {
@@ -678,7 +679,7 @@ mod protected_interaction_tests {
 
     #[test]
     fn protected_solution_rejects_an_extra_unprotected_interaction() {
-        let protected = address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
+        let protected = address!("833fA253e3A0cb2be15F14Cb0B0Ad0C17dD57b12");
         let unprotected = address!("0000000000000000000000000000000000000001");
         let solution: solvers_dto::solution::Solution = serde_json::from_value(serde_json::json!({
             "id": 1,
@@ -721,7 +722,7 @@ mod protected_interaction_tests {
     }
 
     fn protected_solution_with_raw_interaction(field: &str) -> solvers_dto::solution::Solution {
-        let protected = address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
+        let protected = address!("833fA253e3A0cb2be15F14Cb0B0Ad0C17dD57b12");
         let mut solution = serde_json::json!({
             "id": 1,
             "prices": {},

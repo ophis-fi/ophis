@@ -3,7 +3,7 @@
 Implemented configuration; production rollout is still required.
 
 | Chain | Direct venue | Coverage |
-| --- | --- | --- |
+| --------- | -------------------- | ----------------------------------------------------- |
 | Unichain | Uniswap V4 | Hookless ETH/USDC, fee 500, spacing 10 |
 | Unichain | Velodrome V2 | Stable/volatile pools; direct or through WETH |
 | Optimism | Velodrome V2 | Stable/volatile pools; direct or through WETH |
@@ -38,11 +38,12 @@ Velodrome routes access their underlying DEX liquidity where applicable.
 ## Adapter deployment and rollout
 
 | Chain | Adapter | Deterministic address |
-| --- | --- | --- |
-| Unichain | OphisHooklessUniswapV4Adapter | `0x4C41eC6850300d2D6Ba65d602fd31eC07F255b2C` |
-| Robinhood | OphisFablesAdapter | `0xa0C33928831cB4518b8c4A7BE6c0f98BA8A22de5` |
+| --------- | ----------------------------- | -------------------------------------------- |
+| Unichain | OphisHooklessUniswapV4Adapter | `0xe490d7aC34CDf92a3Bd16cd4cA3BB1F1a6671828` |
+| Robinhood | OphisFablesAdapter | `0xC35FE0dBABd82f9E347CF6a7d9c795A18c902FbE` |
 
-Both CREATE2 deployments were dry-run successfully. Neither was broadcast.
+Both v2 CREATE2 deployments are mined and code-verified; see the
+[native-settlement migration receipts](../../contracts/script/native-settlement-migration.md).
 The script checks chain, initcode hash, deterministic address and proxy code.
 Compiler settings and source metadata affect these addresses: use the committed
 Foundry profile and do not repin addresses without repeating review and tests.
@@ -54,8 +55,7 @@ FOUNDRY_PROFILE=direct-routes forge script contracts/test/direct-routes/DeployDi
 FOUNDRY_PROFILE=direct-routes forge script contracts/test/direct-routes/DeployDirectAdapters.s.sol:DeployDirectAdapters --root contracts --rpc-url "$ROBINHOOD_RPC"
 ```
 
-Broadcast requires an explicitly selected funded signer and `--broadcast`.
-After verifying both deployed contracts, build the backend image containing
+Do not broadcast again to these occupied addresses. Build the backend image containing
 the solver and driver changes. Roll out each chain using its existing
 `compose-up.sh`, which renders configs and restarts the dependent services.
 Check the new solver health endpoints, quotes and driver simulation before
