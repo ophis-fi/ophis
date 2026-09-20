@@ -100,19 +100,27 @@ jobs:
       - name: publish @ophis/agent-swap
         run: pnpm --filter @ophis/agent-swap publish --no-git-checks --access public --provenance --ignore-scripts
         env:
+          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: publish @ophis/plugin-goat
         run: pnpm --filter @ophis/plugin-goat publish --no-git-checks --access public --provenance --ignore-scripts
         env:
+          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: publish @ophis/agentkit-ophis
         run: pnpm --filter @ophis/agentkit-ophis publish --no-git-checks --access public --provenance --ignore-scripts
         env:
+          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: publish @ophis/plugin-elizaos
         run: pnpm --filter @ophis/plugin-elizaos publish --no-git-checks --access public --provenance --ignore-scripts
         env:
+          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
