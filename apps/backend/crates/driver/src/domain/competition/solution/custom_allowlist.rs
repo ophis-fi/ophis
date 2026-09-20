@@ -71,7 +71,7 @@ const OPTIMISM_CURVE_3POOL_COINS: [Address; 3] = [
 const OPTIMISM_WOOFI_ROUTER: Address = address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7");
 const OPTIMISM_SETTLEMENT: Address = address!("310784c7FCE12d578dA6f53460777bAc9718B859");
 const WOOFI_SWAP_SELECTOR: [u8; 4] = [0x7d, 0xc2, 0x03, 0x82];
-const OPTIMISM_UNISWAP_V4_ADAPTER: Address = address!("d882da9CB91EB458337413E5846824CDCADB2Ddc");
+const OPTIMISM_UNISWAP_V4_ADAPTER: Address = address!("833fA253e3A0cb2be15F14Cb0B0Ad0C17dD57b12");
 const OPTIMISM_WETH: Address = address!("4200000000000000000000000000000000000006");
 const OPTIMISM_USDC: Address = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
 const UNISWAP_V4_SWAP_EXACT_INPUT_SELECTOR: [u8; 4] = [0xd9, 0x95, 0x94, 0x9a];
@@ -88,11 +88,12 @@ const UNICHAIN_VELODROME_ROUTER: Address = address!("3a63171DD9BebF4D07BC782FECC
 const UNICHAIN_VELODROME_FACTORY: Address = address!("31832f2a97Fd20664D76Cc421207669b55CE4BC0");
 const ROBINHOOD_PANCAKESWAP_V3_ROUTER: Address =
     address!("13f4EA83D0bd40E75C8222255bc855a974568Dd4");
-const ROBINHOOD_FABLES_ADAPTER: Address = address!("a0C33928831cB4518b8c4A7BE6c0f98BA8A22de5");
+const ROBINHOOD_UNISWAP_V4_ADAPTER: Address = address!("b0F223B932B6C2a5CB6e3a6B04AAB82b44eA7C29");
+const ROBINHOOD_FABLES_ADAPTER: Address = address!("C35FE0dBABd82f9E347CF6a7d9c795A18c902FbE");
 const ROBINHOOD_USDG: Address = address!("5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
 const ROBINHOOD_RAMSES_V3_ROUTER: Address = address!("FCBBe2Af83F94e7E2a9C35a535B3A04719aFD2Ae");
 const OPTIMISM_SLIPSTREAM_ROUTER: Address = address!("0792a633F0c19c351081CF4B211F68F79bCc9676");
-const UNICHAIN_UNISWAP_V4_ADAPTER: Address = address!("4C41eC6850300d2D6Ba65d602fd31eC07F255b2C");
+const UNICHAIN_UNISWAP_V4_ADAPTER: Address = address!("e490d7aC34CDf92a3Bd16cd4cA3BB1F1a6671828");
 const UNICHAIN_USDC: Address = address!("078D782b760474a361dDA0AF3839290b0EF57AD6");
 const UNICHAIN_SETTLEMENT: Address = address!("108A678716e5E1776036eF044CAB7064226F714E");
 const LEAF_SWAP_EXACT_TOKENS_SELECTOR: [u8; 4] = [0xf4, 0x17, 0x66, 0xd8];
@@ -222,12 +223,6 @@ const OPTIMISM_MAINNET: &[Address] = &[
 /// the Unichain diamond has no code on 4663, so its address does not carry
 /// over.
 const ROBINHOOD_MAINNET: &[Address] = &[
-    // OphisUniswapV4Adapter V1. Deterministic CREATE2 deployment through the
-    // canonical 0x4e59 deployer with salt
-    // keccak256("OPHIS_ROBINHOOD_UNISWAP_V4_ADAPTER_V1"). Its immutable
-    // constructor pins Settlement, Uniswap PoolManager, WETH, and USDG; only
-    // Settlement can call it and output can only return to Settlement.
-    address!("8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae"),
     // pons SwapRouter02. Serves as both Custom interaction target and ERC-20
     // allowance spender for the direct pons solver. Authenticated from pons's
     // published integration contract registry (docs.ponsfamily.com); onchain
@@ -385,6 +380,7 @@ pub(crate) const PROTECTED_TARGETS: &[Address] = &[
     UNICHAIN_VELODROME_ROUTER,
     ROBINHOOD_PANCAKESWAP_V3_ROUTER,
     ROBINHOOD_FABLES_ADAPTER,
+    ROBINHOOD_UNISWAP_V4_ADAPTER,
     ROBINHOOD_RAMSES_V3_ROUTER,
     OPTIMISM_SLIPSTREAM_ROUTER,
     UNICHAIN_UNISWAP_V4_ADAPTER,
@@ -450,6 +446,7 @@ pub fn validate_with_required_output(
     if (chain_id == 10 && Address::from(custom.target) == OPTIMISM_UNISWAP_V4_ADAPTER)
         || (chain_id == 130 && Address::from(custom.target) == UNICHAIN_UNISWAP_V4_ADAPTER)
         || (chain_id == 4663 && Address::from(custom.target) == ROBINHOOD_FABLES_ADAPTER)
+        || (chain_id == 4663 && Address::from(custom.target) == ROBINHOOD_UNISWAP_V4_ADAPTER)
     {
         validate_value(custom.value.0)?;
         for required in &custom.allowances {
@@ -1024,14 +1021,18 @@ fn validate_uniswap_v4_swap(
     required_amounts: Option<RequiredAmounts>,
     chain_id: u64,
 ) -> Result<(), Error> {
-    let (adapter, stablecoin, weth) = match chain_id {
-        130 => (UNICHAIN_UNISWAP_V4_ADAPTER, UNICHAIN_USDC, OPTIMISM_WETH),
-        4663 => (ROBINHOOD_FABLES_ADAPTER, ROBINHOOD_USDG, ROBINHOOD_WETH),
-        _ => (OPTIMISM_UNISWAP_V4_ADAPTER, OPTIMISM_USDC, OPTIMISM_WETH),
-    };
+    let adapter = Address::from(custom.target);
     let reject = || Error::CallDataNotAllowed {
         target: adapter,
         chain_id,
+    };
+    let (stablecoin, weth) = match (chain_id, adapter) {
+        (10, OPTIMISM_UNISWAP_V4_ADAPTER) => (OPTIMISM_USDC, OPTIMISM_WETH),
+        (130, UNICHAIN_UNISWAP_V4_ADAPTER) => (UNICHAIN_USDC, OPTIMISM_WETH),
+        (4663, ROBINHOOD_FABLES_ADAPTER | ROBINHOOD_UNISWAP_V4_ADAPTER) => {
+            (ROBINHOOD_USDG, ROBINHOOD_WETH)
+        }
+        _ => return Err(reject()),
     };
     let data = custom.call_data.as_ref();
     if data.len() != 4 + 32 * 3
@@ -1482,8 +1483,32 @@ mod tests {
     }
 
     #[test]
+    fn retired_v4_adapters_are_not_allowed() {
+        for (chain, old) in [
+            (10, address!("d882da9CB91EB458337413E5846824CDCADB2Ddc")),
+            (130, address!("4C41eC6850300d2D6Ba65d602fd31eC07F255b2C")),
+            (4663, address!("8573C5Fcf5BD890f4EDD4a41e783Eac552B307ae")),
+            (4663, address!("a0C33928831cB4518b8c4A7BE6c0f98BA8A22de5")),
+        ] {
+            assert!(validate_target(old, chain).is_err());
+        }
+    }
+
+    #[test]
     fn new_v4_adapters_are_pair_and_chain_scoped() {
         for (chain, target, sell, buy) in [
+            (
+                10,
+                OPTIMISM_UNISWAP_V4_ADAPTER,
+                OPTIMISM_WETH,
+                OPTIMISM_USDC,
+            ),
+            (
+                4663,
+                ROBINHOOD_UNISWAP_V4_ADAPTER,
+                ROBINHOOD_WETH,
+                ROBINHOOD_USDG,
+            ),
             (
                 130,
                 UNICHAIN_UNISWAP_V4_ADAPTER,
@@ -1528,6 +1553,25 @@ mod tests {
                         .is_err()
                 );
                 assert!(validate_target(target, chain).is_err());
+                for context in [
+                    None,
+                    Some(required(sell, buy, 999, 990)),
+                    Some(required(sell, buy, 1000, 991)),
+                ] {
+                    assert!(validate_with_required_output(&custom, chain, context).is_err());
+                }
+                let context = Some(required(sell, buy, 1000, 990));
+                for field in 0..5 {
+                    let mut poisoned = custom.clone();
+                    match field {
+                        0 => poisoned.allowances[0].0.spender = ATTACKER,
+                        1 => poisoned.allowances[0].0.amount = U256::from(1001),
+                        2 => poisoned.outputs[0].token = ATTACKER.into(),
+                        3 => poisoned.internalize = true,
+                        _ => poisoned.call_data = vec![0; 100].into(),
+                    }
+                    assert!(validate_with_required_output(&poisoned, chain, context).is_err());
+                }
             }
         }
     }

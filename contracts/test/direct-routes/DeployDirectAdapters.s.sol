@@ -26,9 +26,9 @@ contract DeployDirectAdapters is Script {
                     int24(10)
                 )
             );
-            salt = keccak256("ophis.unichain.hookless-v4.v1");
-            expectedHash = 0x85e71c0c1fefc982dfaa5a0aaba6417a94e53d63233c6867caed92aa45dc5580;
-            expected = 0x4C41eC6850300d2D6Ba65d602fd31eC07F255b2C;
+            salt = keccak256("ophis.unichain.hookless-v4.v2");
+            expectedHash = 0xfe66673957f9a422e0158cc58e45be0d2912e26a6ed6bd4aa050412f5393453c;
+            expected = 0xe490d7aC34CDf92a3Bd16cd4cA3BB1F1a6671828;
         } else if (block.chainid == 4663) {
             initcode = abi.encodePacked(
                 type(OphisFablesAdapter).creationCode,
@@ -39,9 +39,9 @@ contract DeployDirectAdapters is Script {
                     0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168
                 )
             );
-            salt = keccak256("ophis.robinhood.fables.v1");
-            expectedHash = 0xdfa065d1a6d577ca0cc7b13b09e867d5e0f3385237fe53643fd6060ae37b44b6;
-            expected = 0xa0C33928831cB4518b8c4A7BE6c0f98BA8A22de5;
+            salt = keccak256("ophis.robinhood.fables.v2");
+            expectedHash = 0xc29a2cfe701fc8c5baeadd184be2368ebe96f70e1292e9fd632b5f0a55bfbf09;
+            expected = 0xC35FE0dBABd82f9E347CF6a7d9c795A18c902FbE;
         } else {
             revert("unsupported chain");
         }
