@@ -293,12 +293,12 @@ the rebate accrues:
 
 | Package                                                                        | Version | For                                                       | Registers                            |
 | ------------------------------------------------------------------------------ | ------- | --------------------------------------------------------- | ------------------------------------ |
-| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.3  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
-| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.3  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
-| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.3  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
-| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.3  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
+| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.4  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
+| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.4  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
+| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.4  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
+| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.4  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
 
-The v0.3.3 adapter family is built and published against `@ophis/sdk` v0.4.2,
+The v0.3.4 adapter family is built and published against `@ophis/sdk` v0.4.2,
 so its fee policy, chain list, orderbook hosts, settlement contracts, and vault
 relayers match the current SDK.
 

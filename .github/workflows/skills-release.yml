@@ -109,4 +109,6 @@ jobs:
       - name: publish
         run: pnpm --filter @ophis/agent-skills publish --no-git-checks --access public --provenance --ignore-scripts
         env:
+          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -10,6 +10,7 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:release-provenance": "node scripts/test-release-provenance.mjs",
     "test:agent-plugin-release": "node scripts/verify-agent-plugin-release.mjs",
     "test:network-docs": "node scripts/check-network-docs-invariant.mjs",
     "test:robinhood-canary": "node scripts/robinhood-mainnet-canary.mjs --self-test",

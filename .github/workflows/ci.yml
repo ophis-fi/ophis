@@ -31,6 +31,7 @@ jobs:
             pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: node scripts/test-security-dependencies.cjs --workspace root
+      - run: pnpm test:release-provenance
       - run: pnpm lint
       - run: pnpm typecheck
       # Hard gate (no `|| echo` fallback). functions/ belongs to no package
