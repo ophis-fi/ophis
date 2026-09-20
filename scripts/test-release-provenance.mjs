@@ -22,11 +22,12 @@ assert.equal(publishSteps, 8);
 
 const directory = mkdtempSync(join(tmpdir(), 'ophis-provenance-'));
 try {
-  // Pin the same pnpm version as the repo, even when invoked through Corepack outside the repo.
-  const { packageManager } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url)));
+  // Reuse the exact CLI running this script; a shim may download pnpm again outside the repo.
+  const pnpm = process.env.npm_execpath;
+  assert.ok(pnpm, 'Run this check with pnpm test:release-provenance');
   writeFileSync(
     join(directory, 'package.json'),
-    JSON.stringify({ name: 'ophis-provenance-fixture', version: '0.0.0', packageManager }),
+    JSON.stringify({ name: 'ophis-provenance-fixture', version: '0.0.0' }),
   );
   writeFileSync(join(directory, 'pnpm-workspace.yaml'), "packages: ['.']\n");
   const npm = join(directory, 'npm.cjs');
@@ -40,8 +41,9 @@ require('node:fs').writeFileSync(require('node:path').join(__dirname, 'npm-call.
     { mode: 0o700 },
   );
   const result = spawnSync(
-    'pnpm',
+    process.execPath,
     [
+      pnpm,
       '--filter',
       'ophis-provenance-fixture',
       'publish',
@@ -58,12 +60,7 @@ require('node:fs').writeFileSync(require('node:path').join(__dirname, 'npm-call.
     {
       cwd: directory,
       // No inherited auth/config: the replacement npm only records the invocation locally.
-      env: {
-        PATH: process.env.PATH,
-        // action-setup caches the pinned pnpm here; retain its location to avoid a download.
-        ...(process.env.PNPM_HOME ? { PNPM_HOME: process.env.PNPM_HOME } : {}),
-        NPM_CONFIG_PROVENANCE: 'true',
-      },
+      env: { PATH: process.env.PATH, NPM_CONFIG_PROVENANCE: 'true' },
       encoding: 'utf8',
       timeout: 30_000,
     },
