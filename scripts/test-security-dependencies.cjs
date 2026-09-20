@@ -119,6 +119,9 @@ async function main() {
     console.log(`PASS bigint-buffer ${pkg.version}: no native binding, empty/large and endian round trips`);
   }
 
+  // Cypress's SSRF fix deliberately blocks BOTH cross-protocol directions:
+  // dropping even an HTTP agent on an HTTPS upgrade discards its destination filter.
+  // https://github.com/cypress-io/request/commit/c5bcf21d40fb61feaff21a0e5a2b3934a440024f
   for (const pkg of workspace === 'root' ? [] : installed('request', 2)) {
     const request = pkg.require('request');
     const server = createServer((req, res) => {

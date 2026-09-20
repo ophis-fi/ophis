@@ -309,42 +309,50 @@ export async function getTradeRewardStatus(wallet: `0x${string}`): Promise<Trade
   };
 }
 
+// ponytail: one sponsored claim per process bounds receipt waits to one DB
+// connection; use an outbox if this finite campaign needs parallel sponsorship.
+let claimInFlight = false;
+
 export async function sponsorTradeRewardClaim(wallet: `0x${string}`): Promise<Hex | undefined> {
-  const walletBytes = Buffer.from(wallet.slice(2), 'hex');
-  return sql.begin(async (tx) => {
-    // A transaction-scoped row lock releases on process/connection loss. A
-    // durable 'submitted' flag alone stranded claims after pre-broadcast crashes.
-    // ponytail: one DB connection spans receipt wait; use an outbox if claim
-    // throughput grows beyond the current bounded reward campaign.
-    const [ticket] = await tx<{
-      assignment_status: string; claim_status: string; claim_tx_hex: string | null;
-    }[]>`
-      SELECT assignment_status, claim_status, encode(claim_tx_hash, 'hex') AS claim_tx_hex
-      FROM trade_reward_tickets WHERE wallet = ${walletBytes}
-      FOR UPDATE SKIP LOCKED
-    `;
-    if (!ticket) throw new Error('reward is unavailable or already submitted');
-    // Check AFTER taking the lock. A prior interrupted relay may have mined;
-    // reconcile it without broadcasting another transaction. The distributor's
-    // claimed-before-transfer guard also prevents duplicate payment if a pending
-    // transaction mines while this retry is being submitted.
-    const existing = await rewardState(wallet);
-    if (existing.claimed) {
+  if (claimInFlight) throw new Error('reward sponsor is unavailable; retry shortly');
+  claimInFlight = true;
+  try {
+    const walletBytes = Buffer.from(wallet.slice(2), 'hex');
+    return await sql.begin(async (tx) => {
+      // A transaction-scoped row lock releases on process/connection loss. A
+      // durable 'submitted' flag alone stranded claims after pre-broadcast crashes.
+      const [ticket] = await tx<{
+        assignment_status: string; claim_status: string; claim_tx_hex: string | null;
+      }[]>`
+        SELECT assignment_status, claim_status, encode(claim_tx_hash, 'hex') AS claim_tx_hex
+        FROM trade_reward_tickets WHERE wallet = ${walletBytes}
+        FOR UPDATE SKIP LOCKED
+      `;
+      if (!ticket) throw new Error('reward is unavailable or already submitted');
+      // Check AFTER taking the lock. A prior interrupted relay may have mined;
+      // reconcile it without broadcasting another transaction. The distributor's
+      // claimed-before-transfer guard also prevents duplicate payment if a pending
+      // transaction mines while this retry is being submitted.
+      const existing = await rewardState(wallet);
+      if (existing.claimed) {
+        await tx`
+          UPDATE trade_reward_tickets SET claim_status = 'claimed', updated_at = now()
+          WHERE wallet = ${walletBytes}
+        `;
+        return ticket.claim_tx_hex ? `0x${ticket.claim_tx_hex}` as Hex : undefined;
+      }
+      if (ticket.assignment_status !== 'confirmed' || ticket.claim_status === 'claimed') {
+        throw new Error('reward is unavailable or unassigned');
+      }
+      const hash = await relayClaim(wallet);
       await tx`
-        UPDATE trade_reward_tickets SET claim_status = 'claimed', updated_at = now()
+        UPDATE trade_reward_tickets
+        SET claim_status = 'claimed', claim_tx_hash = ${Buffer.from(hash.slice(2), 'hex')}, updated_at = now()
         WHERE wallet = ${walletBytes}
       `;
-      return ticket.claim_tx_hex ? `0x${ticket.claim_tx_hex}` as Hex : undefined;
-    }
-    if (ticket.assignment_status !== 'confirmed' || ticket.claim_status === 'claimed') {
-      throw new Error('reward is unavailable or unassigned');
-    }
-    const hash = await relayClaim(wallet);
-    await tx`
-      UPDATE trade_reward_tickets
-      SET claim_status = 'claimed', claim_tx_hash = ${Buffer.from(hash.slice(2), 'hex')}, updated_at = now()
-      WHERE wallet = ${walletBytes}
-    `;
-    return hash;
-  });
+      return hash;
+    });
+  } finally {
+    claimInFlight = false;
+  }
 }

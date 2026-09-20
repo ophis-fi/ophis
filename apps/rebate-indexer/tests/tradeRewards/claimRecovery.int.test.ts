@@ -71,6 +71,49 @@ it('excludes a concurrent sponsor while the same wallet is being relayed', async
   }
 });
 
+it('rejects distinct-wallet bursts before they can occupy the database pool', async () => {
+  const wallets = Array.from({ length: 10 }, (_, i) => `0x${(i + 32).toString(16).repeat(20)}` as const);
+  for (const [i, wallet] of wallets.entries()) {
+    await sql`
+      INSERT INTO trade_reward_tickets (
+        wallet, ticket_id, amount_usdg, qualifying_trade_uid, qualifying_chain_id,
+        qualifying_value_usd, assignment_signature, signer_epoch, assignment_status
+      ) VALUES (
+        ${Buffer.from(wallet.slice(2), 'hex')}, ${i + 2}, 1000000, ${Buffer.alloc(56, i + 2)}, 4663,
+        100, ${Buffer.alloc(65, 1)}, 1, 'confirmed'
+      )
+    `;
+  }
+  let release!: () => void;
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  chain.relay.mockImplementation(async () => { entered(); await pending; return HASH; });
+  const first = sponsor(WALLET);
+  await started;
+  const burst = Promise.allSettled(wallets.map((wallet) => sponsor(wallet)));
+  let timer!: ReturnType<typeof setTimeout>;
+  try {
+    const results = await Promise.race([
+      burst,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('sponsor burst did not fail promptly')), 1000);
+      }),
+    ]);
+    expect(results).toHaveLength(10);
+    for (const result of results) {
+      expect(result).toMatchObject({ status: 'rejected', reason: new Error('reward sponsor is unavailable; retry shortly') });
+    }
+    expect(await sql`SELECT 1 AS available`).toEqual([{ available: 1 }]);
+    expect(chain.relay).toHaveBeenCalledOnce();
+  } finally {
+    clearTimeout(timer);
+    release();
+    await Promise.allSettled([first, burst]);
+  }
+  await expect(sponsor(wallets[0]!)).resolves.toBe(HASH);
+});
+
 it('rechecks the chain after a mined claim whose receipt was lost', async () => {
   chain.relay.mockImplementationOnce(async () => {
     chain.claimed = true;
