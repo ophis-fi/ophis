@@ -396,8 +396,10 @@ owner-gated: the hot key never touches an attacker-controllable destination.
   returns true from `isSolver` on the chain-130 authenticator
   `0x1002E12f2e7f848b20fe572F92133E467a5D010C` and settled on 2026-09-21. Its key
   exists only on the Unichain VM, so run the sweep there. The sweep still fails
-  **locally**, not on-chain, if the broadcaster is not a solver. Any future
-  allowlist change on chain 130 goes through the 24h Timelock: use
+  **locally**, not on-chain, if the broadcaster is not a solver. On chain 130
+  ADDING a solver goes through the 24h Timelock (`addSolver` is `onlyTimelock`);
+  REMOVING one is immediate from the Guardian Safe (`removeSolver` is
+  `onlyGuardian`), so never route an emergency eviction through the Timelock. Use
   `../../infra/unichain-mainnet/deploy/timelock-governance-runbook.md`, NOT the
   OP-mainnet `allowlist-governance-runbook.md`, whose addresses are OP-specific.
 - `sovereign-sweep-rehearsal.md` (what to rehearse BEFORE this ceremony:
