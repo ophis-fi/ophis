@@ -143,7 +143,7 @@ groups:
           chain: unichain
         annotations:
           summary: "Unichain: autopilot is deny-listing driver {{ $labels.driver }}, orders cannot fill"
-          description: "autopilot discarded this driver's solutions 3+ times in 10m. Cause is one of: (1) its `[[drivers]] address` in rendered/autopilot.toml is not an allowlisted solver (stale after a submitter rotation): run `cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C 'isSolver(address)(bool)' THAT_ADDRESS --rpc-url https://mainnet.unichain.org`, then fix configs/autopilot.toml.tmpl and restart autopilot; (2) the isSolver eth_call itself keeps failing: grep autopilot logs for 'solver participation check failed' and check the rpc-proxy upstreams."
+          description: "autopilot discarded this driver's solutions 3+ times in 10m. Cause is one of: (1) its `[[drivers]] address` in rendered/autopilot.toml is not an allowlisted solver (stale after a submitter rotation): run `cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C 'isSolver(address)(bool)' THAT_ADDRESS --rpc-url https://mainnet.unichain.org`, then fix configs/autopilot.toml.tmpl and run ./compose-up.sh (autopilot reads rendered/autopilot.toml, so a bare restart keeps the stale address); (2) the isSolver eth_call itself keeps failing: grep autopilot logs for 'solver participation check failed' and check the rpc-proxy upstreams."
 
       - alert: OphisUniSettlementFailureRateHigh
         expr: |
