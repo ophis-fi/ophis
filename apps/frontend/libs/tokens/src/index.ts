@@ -97,7 +97,7 @@ export {
 export type { TokenPolicyAsset, TokenPolicyDecision, TokenPolicyReason } from './services/tokenPolicy'
 
 // Consts
-export { DEFAULT_TOKENS_LISTS } from './const/tokensLists'
+export { DEFAULT_TOKENS_LISTS, OPHIS_TOKENS_LIST_SOURCE } from './const/tokensLists'
 export {
   COINBASE_TOKENIZED_STOCKS_LIST_SOURCE,
   ONDO_TOKENS_LIST_SOURCE,

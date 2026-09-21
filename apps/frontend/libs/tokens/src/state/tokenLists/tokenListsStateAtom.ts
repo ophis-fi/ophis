@@ -14,6 +14,7 @@ import {
   TokenListsState,
 } from '../../types'
 import { environmentAtom } from '../environmentAtom'
+import { migrateOphisTokenList } from '../migrations/migrateOphisTokenList'
 
 const TOKEN_LIST_SRC = `${COW_CDN}/token-lists`
 
@@ -115,7 +116,14 @@ export const listsStatesMapAtom = atom(async (get) => {
   const useeAddedTokenListsForChain = userAddedTokenLists[chainId] || []
 
   const allTokenListsInfo = await get(listsStatesByChainAtom)
-  const listsState = allTokenListsInfo[chainId] || {}
+  // Normalize after hydration, before consumers see the cache. This keeps the
+  // main list usable even when the first Ophis request fails or the user is offline.
+  const listsState =
+    migrateOphisTokenList(
+      chainId,
+      allTokenListsInfo[chainId],
+      new Set([...get(allListsSourcesAtom).map(({ source }) => source), ...(selectedLists || [])]),
+    ) || {}
 
   const currentNetworkLists = {
     ...Object.keys(listsState).reduce<TokenListsState>((acc, key) => {

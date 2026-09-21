@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { DEFAULT_TOKENS_LISTS } from './tokensLists'
+import { DEFAULT_TOKENS_LISTS, OPHIS_TOKENS_LIST_SOURCE } from './tokensLists'
 
 import { isExcludedListToken } from '../utils/excludedListTokens'
 import { validateTokenList } from '../utils/validateTokenList'
@@ -66,6 +66,10 @@ describe('Ophis token list', () => {
     const identities = shippedList.tokens.map(({ chainId, address }) => `${chainId}:${getAddressKey(address)}`)
     expect(new Set(identities).size).toBe(identities.length)
     expect(shippedList.tokens.some(({ chainId, address }) => isExcludedListToken(chainId, address))).toBe(false)
+    for (const lists of Object.values(DEFAULT_TOKENS_LISTS)) {
+      expect(lists?.filter(({ source }) => source === OPHIS_TOKENS_LIST_SOURCE)).toHaveLength(1)
+      expect(lists?.some(({ source }) => /\/CowSwap(?:Sepolia)?\.json$/.test(source))).toBe(false)
+    }
   })
 
   it.each([

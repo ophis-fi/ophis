@@ -155,7 +155,7 @@ jobs:
 
       - name: Ophis token-list schema and contract evidence
         working-directory: apps/frontend
-        run: pnpm exec nx run tokens:test --testPathPatterns 'const/ophisTokenList' --passWithNoTests=false
+        run: pnpm exec nx run tokens:test --testPathPatterns 'ophisTokenList|migrateOphisTokenList|tokenListsStateAtom|excludedListTokens|useTokenListsQuery' --passWithNoTests=false
 
       - name: Approval and mobile security regression tests
         working-directory: apps/frontend
