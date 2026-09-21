@@ -68,9 +68,9 @@ EXPECTED_UPSTREAMS = 3
 # once it fell past publicnode's ~128-block archive gate. Replaced by official-op
 # (mainnet.optimism.io): non-CF, archive-capable, no quota to exhaust.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
-    "lb.drpc.org",
+    "mainnet.optimism.io",
     "api.zan.top",
-    "optimism.gateway.tenderly.co",
+    "op-pokt.nodies.app",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus
@@ -101,7 +101,7 @@ ALLOWED = {
     "retry": {"backoffFactor", "backoffMaxDelay", "delay", "jitter", "maxAttempts"},
     "timeout": {"duration"},
     "hedge": {"delay", "maxCount"},
-    "upstream": {"endpoint", "failsafe", "id"},
+    "upstream": {"endpoint", "failsafe", "id", "evm"},
     "upstream_rule": {"matchMethod", "timeout", "retry", "circuitBreaker"},
     "circuitBreaker": {"failureThresholdCount", "failureThresholdCapacity", "halfOpenAfter", "successThresholdCount", "successThresholdCapacity"},
 }
@@ -320,6 +320,19 @@ def _check_nonconsensus_hedges(net_rules, errs):
 
 def validate(cfg):
     errs = []
+    # Pin the cache scope: never cache live tags, empty replies, or protected
+    # state reads under the numbered-header exception.
+    cache = cfg.get("database")
+    expected_cache = {"evmJsonRpcCache": {
+        "connectors": [{"id": "op-headers", "driver": "memory", "memory": {
+            "maxItems": 10000, "maxTotalSize": "64MB"}}],
+        "policies": [{"connector": "op-headers", "network": "evm:10",
+            "method": "eth_getBlockByNumber", "params": ["0x*", False],
+            "finality": finality, "empty": "ignore", "ttl": ttl}
+            for finality, ttl in (("finalized", "1h"), ("unfinalized", "2s"))],
+    }}
+    if cache != expected_cache:
+        errs.append("database must contain only the bounded numbered-header cache")
     networks_checked = 0
     for proj in cfg.get("projects") or []:
         _check_keys(proj, "project", "project", errs)
@@ -331,6 +344,9 @@ def validate(cfg):
         ups = [u for u in (proj.get("upstreams") or []) if isinstance(u, dict)]
         for u in ups:
             _check_keys(u, "upstream", f"upstream[{u.get('id')}]", errs)
+            expected_evm = {"getLogsAutoSplittingRangeThreshold": 50} if _hostname(u.get("endpoint")) == "op-pokt.nodies.app" else None
+            if u.get("evm") != expected_evm:
+                errs.append("upstream evm config must only split public Nodies logs into 50-block ranges")
             for j, r in enumerate(u.get("failsafe") or []):
                 if isinstance(r, dict):
                     _check_rule_subtree(r, f"upstream[{u.get('id')}].failsafe[{j}]", errs, level="upstream_rule")

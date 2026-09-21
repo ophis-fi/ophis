@@ -253,7 +253,7 @@ services:
 
   driver:
     logging: *default-logging
-    image: local-driver:latest
+    image: ${OP_DRIVER_IMAGE:-local-driver:latest}
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -271,6 +271,8 @@ services:
       uniswap-v4-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
     environment:
+      # OP produces a block every two seconds; avoid four polls per block.
+      BLOCK_STREAM_POLL_INTERVAL: "2s"
       # Driver uses eRPC proxy for block-stream polling + eth_call workload.
       # Transaction submission still routes directly to the chosen mempool
       # via the [[submission.mempool]] block in driver.toml — that path

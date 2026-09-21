@@ -25,6 +25,7 @@ PORT = 14011
 
 class MockRpc(BaseHTTPRequestHandler):
     healthy = 1
+    log_ranges = []
 
     def log_message(self, *_):
         pass
@@ -32,11 +33,19 @@ class MockRpc(BaseHTTPRequestHandler):
     def do_POST(self):
         request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         method = request["method"]
-        if method in ("eth_call", "eth_getTransactionReceipt") and int(self.path[1:]) > self.healthy:
+        if method in ("eth_call", "eth_getTransactionReceipt", "eth_getLogs") and int(self.path[1:]) > self.healthy:
             self.send_response(500)
             self.end_headers()
             self.wfile.write(b"mock upstream unavailable")
             return
+        if method == "eth_getLogs":
+            f = request["params"][0]
+            size = int(f["toBlock"], 16) - int(f["fromBlock"], 16) + 1
+            self.log_ranges.append(size)
+            if size > 50:
+                self.send_response(413)
+                self.end_headers()
+                return
         result = {
             "eth_chainId": "0xa",
             "net_version": "10",
@@ -44,6 +53,7 @@ class MockRpc(BaseHTTPRequestHandler):
             "eth_syncing": False,
             "eth_getBlockByNumber": {"number": "0x100", "hash": BLOCK_HASH, "timestamp": "0x123456"},
             "eth_call": CALL_RESULT,
+            "eth_getLogs": [],
             "eth_getTransactionReceipt": {
                 "transactionHash": TX_HASH, "blockHash": BLOCK_HASH,
                 "blockNumber": "0x80", "status": "0x1", "logs": [],
@@ -82,6 +92,7 @@ def main():
             config_file.write_text(yaml.safe_dump(config))
             for healthy in (1, 2):
                 MockRpc.healthy = healthy
+                MockRpc.log_ranges.clear()
                 container = subprocess.check_output([
                     "docker", "run", "--pull=never", "--rm", "-d",
                     "-p", f"127.0.0.1:{PORT}:4000",
@@ -100,6 +111,7 @@ def main():
                     for method, params in (
                         ("eth_call", [{"to": "0x" + "33" * 20, "data": "0x"}, "0x80"]),
                         ("eth_getTransactionReceipt", [TX_HASH]),
+                        ("eth_getLogs", [{"fromBlock": "0x80", "toBlock": "0xe4"}]),
                     ):
                         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
                         req = Request(f"http://127.0.0.1:{PORT}/main/evm/10", data=body,
@@ -113,11 +125,13 @@ def main():
                         if healthy == 1:
                             assert result.get("error") and "result" not in result, result
                         else:
-                            expected = CALL_RESULT if method == "eth_call" else TX_HASH
+                            expected = {"eth_call": CALL_RESULT, "eth_getTransactionReceipt": TX_HASH, "eth_getLogs": []}[method]
                             actual = result.get("result")
                             if isinstance(actual, dict):
                                 actual = actual.get("transactionHash")
                             assert actual == expected and "error" not in result, result
+                        if method == "eth_getLogs":
+                            assert MockRpc.log_ranges and max(MockRpc.log_ranges) <= 50, MockRpc.log_ranges
                         print(f"PASS {method}: {healthy} valid voter(s), {3 - healthy} HTTP 500 voter(s)", flush=True)
                 finally:
                     subprocess.run(["docker", "rm", "-f", container], check=True, stdout=subprocess.DEVNULL)
