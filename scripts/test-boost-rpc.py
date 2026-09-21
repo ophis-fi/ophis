@@ -93,4 +93,23 @@ for stack in (OP,):
         assert result.returncode == 15, (stack.name, result.stderr)
         assert "ZAN_API_KEY is unset/empty" in result.stderr
 
+# Connector IDs share the YAML indentation of upstream IDs but are not voters.
+with tempfile.TemporaryDirectory() as tmp:
+    sandbox = Path(tmp)
+    (sandbox / "scripts").mkdir()
+    lint = sandbox / "scripts/check-erpc-id-collisions.sh"
+    lint.write_text((ROOT / "scripts/check-erpc-id-collisions.sh").read_text())
+    paths = []
+    for chain, upstream_id in (("optimism", "shared-op-uni"), ("unichain", "unique-uni")):
+        path = sandbox / f"infra/{chain}-mainnet/configs/erpc.yaml.tmpl"
+        path.parent.mkdir(parents=True)
+        path.write_text("database:\n  evmJsonRpcCache:\n    connectors:\n      - id: cache\n"
+                        f"projects:\n  - id: main\n    upstreams:\n      - id: {upstream_id}\n")
+        paths.append(path)
+    result = subprocess.run(["bash", str(lint)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    paths[1].write_text(paths[1].read_text().replace("unique-uni", "shared-op-uni"))
+    result = subprocess.run(["bash", str(lint)], capture_output=True, text=True)
+    assert result.returncode == 1 and "declared in both" in result.stderr, result.stderr
+
 print("Boost RPC regression checks passed")
