@@ -20,7 +20,7 @@ export const upsertListsAtom = atom(null, (get, set, chainId: SupportedChainId, 
     const retainedSources = new Set([
       ...(DEFAULT_TOKENS_LISTS[chainId] || []).map(({ source }) => source),
       ...(get(userAddedListsSourcesAtom)[chainId] || []).map(({ source }) => source),
-      ...(get(environmentAtom).selectedLists || []),
+      ...(Array.isArray(get(environmentAtom).selectedLists) ? get(environmentAtom).selectedLists || [] : []),
     ])
     const chainState = listsStates.some(({ source }) => source === OPHIS_TOKENS_LIST_SOURCE)
       ? migrateOphisTokenList(chainId, globalState[chainId], retainedSources)

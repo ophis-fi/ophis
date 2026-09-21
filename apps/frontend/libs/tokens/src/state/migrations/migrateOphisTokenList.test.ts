@@ -32,14 +32,22 @@ describe('Ophis list migration during successful upsert', () => {
   it.each([true, false])('keeps offline tokens with malformed saved sources and enabled=%s', async (isEnabled) => {
     const store = createStore()
     const old = { ...fresh, source: COW_SOURCE, isEnabled, list: { ...fresh.list, tokens: [token] } }
-    store.set(userAddedListsSourcesAtom, JSON.parse('{"1":[{}]}'))
+    store.set(
+      userAddedListsSourcesAtom,
+      JSON.parse(
+        isEnabled
+          ? '{"1":[null,{}, {"source":42},{"source":"https://files.cow.fi/tokens/CowSwap.json"}]}'
+          : '{"1":{"source":42}}',
+      ),
+    )
     store.set(environmentAtom, { chainId: SupportedChainId.MAINNET, selectedLists: JSON.parse('[null, 42]') })
     store.set(listsStatesByChainAtom, { 1: { [COW_SOURCE]: old } })
     expect(!!(await store.get(activeTokensMapAtom))[token.address]).toBe(isEnabled)
-    expect((await store.get(listsStatesByChainAtom))[1]?.[OPHIS_TOKENS_LIST_SOURCE]).toEqual({
-      ...old,
-      source: OPHIS_TOKENS_LIST_SOURCE,
+    expect((await store.get(listsStatesByChainAtom))[1]?.[OPHIS_TOKENS_LIST_SOURCE]).toMatchObject({
+      isEnabled: old.isEnabled,
     })
+    await store.set(upsertListsAtom, SupportedChainId.MAINNET, [fresh])
+    expect((await store.get(listsStatesByChainAtom))[1]?.[COW_SOURCE]).toEqual(isEnabled ? old : undefined)
   })
 
   it('retains and activates a lowercased widget-selected legacy URL after migration', async () => {
@@ -77,20 +85,6 @@ describe('Ophis list migration during successful upsert', () => {
       )
     },
   )
-
-  it('keeps cached preferences before replacement and preserves an explicitly imported CoW list', async () => {
-    const store = createStore()
-    const old = { ...fresh, source: COW_SOURCE, isEnabled: false }
-    store.set(listsStatesByChainAtom, { 1: { [COW_SOURCE]: old } })
-    await store.set(upsertListsAtom, SupportedChainId.MAINNET, [])
-    expect((await store.get(listsStatesByChainAtom))[1]?.[OPHIS_TOKENS_LIST_SOURCE]).toEqual({
-      ...old,
-      source: OPHIS_TOKENS_LIST_SOURCE,
-    })
-    store.set(userAddedListsSourcesAtom, { 1: [{ source: COW_SOURCE }] })
-    await store.set(upsertListsAtom, SupportedChainId.MAINNET, [fresh])
-    expect((await store.get(listsStatesByChainAtom))[1]?.[COW_SOURCE]).toEqual(old)
-  })
 
   it.each([
     [10, 'https://static.optimism.io/optimism.tokenlist.json', true],

@@ -19,18 +19,16 @@ export function migrateOphisTokenList(
   state: TokenListsByChainState[SupportedChainId],
   retainedSources: Set<unknown>,
 ): TokenListsByChainState[SupportedChainId] {
-  const normalized = normalizeCachedLists(chainId, state)
+  const migrated = normalizeCachedLists(chainId, state)
   const source = PREVIOUS_SOURCES[chainId] || 'https://files.cow.fi/tokens/CowSwap.json'
-  const previous = normalized[source]
+  const previous = migrated[source]
 
   if (
     !previous ||
     (previous !== 'deleted' && (Object.getPrototypeOf(previous) !== Object.prototype || previous.widgetAppCode))
   ) {
-    return normalized
+    return migrated
   }
-
-  const migrated = { ...normalized }
   if (!migrated[OPHIS_TOKENS_LIST_SOURCE]) {
     migrated[OPHIS_TOKENS_LIST_SOURCE] =
       previous === 'deleted' ? previous : { ...previous, source: OPHIS_TOKENS_LIST_SOURCE, priority: 1 }

@@ -51,11 +51,20 @@ const curatedListSourceAtom = atom((get) => {
   return [UNISWAP_LIST_SOURCE]
 })
 
-export const userAddedListsSourcesAtom = atomWithStorage<ListsSourcesByNetwork>(
+const storedUserAddedListsSourcesAtom = atomWithStorage<ListsSourcesByNetwork>(
   'userAddedTokenListsAtom:v3',
   mapSupportedNetworks([]),
   getJotaiMergerStorage(),
 )
+
+export const userAddedListsSourcesAtom = atom((get) => {
+  return Object.fromEntries(
+    Object.entries(get(storedUserAddedListsSourcesAtom) || {}).map(([chain, lists]) => [
+      chain,
+      Array.isArray(lists) ? lists.filter((list) => typeof list?.source === 'string') : [],
+    ]),
+  ) as ListsSourcesByNetwork
+}, storedUserAddedListsSourcesAtom.write)
 
 export const allListsSourcesAtom = atom((get) => {
   const { chainId, useCuratedListOnly, isYieldEnabled } = get(environmentAtom)
@@ -111,7 +120,7 @@ export const listsStatesByChainAtom = atom(async (get) => {
       const retained = new Set([
         ...(DEFAULT_TOKENS_LISTS[chainId] || []).map(({ source }) => source),
         ...(custom[chainId] || []).map(({ source }) => source),
-        ...(selectedLists || []),
+        ...(Array.isArray(selectedLists) ? selectedLists : []),
         ...(useCuratedListOnly ? [UNISWAP_TOKEN_LIST_URL[chainId]] : []),
       ])
       return [key, migrateOphisTokenList(chainId, lists, retained)]
