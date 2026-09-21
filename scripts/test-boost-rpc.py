@@ -54,12 +54,17 @@ for evm in (None, {}, {"getLogsAutoSplittingRangeThreshold": 100}, {"getLogsAuto
     bad = copy.deepcopy(config)
     bad["projects"][0]["upstreams"][2]["evm"] = evm
     assert validate(bad), "Nodies must use the proven 50-block log limit only"
+for endpoint in ("https://op-pokt.nodies.app", "https://lb.nodies.app/v2/optimism?apikey=",
+                 "https://lb.nodies.app/v2/ethereum?apikey=test"):
+    bad = copy.deepcopy(config)
+    bad["projects"][0]["upstreams"][2]["endpoint"] = endpoint
+    assert validate(bad), "Do not silently use public, keyless, or wrong-chain Nodies"
 bad = copy.deepcopy(config)
 bad["projects"][0]["upstreams"].append(copy.deepcopy(bad["projects"][0]["upstreams"][0]))
 assert validate(bad), "An extra upstream must not dilute the independent three-provider quorum"
 driver = (OP / "configs/driver.toml.tmpl").read_text()
 assert "edge.goldsky.com" not in driver
-assert 'url = "https://op-pokt.nodies.app"' in driver
+assert 'url = "https://lb.nodies.app/v2/optimism?apikey=${NODIES_OP_KEY}"' in driver
 assert "VALIDATIONCLOUD_OP_KEY" not in driver
 assert "DRPC_API_KEY" not in driver
 assert "GOLDSKY_BOOST_KEY" not in (OP / "render-configs.sh").read_text()
@@ -84,7 +89,7 @@ for stack in (OP,):
         (sandbox / "render-configs.sh").write_text((stack / "render-configs.sh").read_text())
         (sandbox / ".env.example").write_text((stack / ".env.example").read_text())
         (sandbox / ".env").write_text("POSTGRES_USER=test\n")
-        env = {k: v for k, v in os.environ.items() if k not in {"GOLDSKY_BOOST_KEY", "ZAN_API_KEY", "ZAN_OP_KEY"}}
+        env = {k: v for k, v in os.environ.items() if k not in {"GOLDSKY_BOOST_KEY", "ZAN_API_KEY", "ZAN_OP_KEY", "NODIES_OP_KEY"}}
         for line in (stack / ".env.example").read_text().splitlines():
             if line.startswith("ERPC_IMAGE="):
                 env["ERPC_IMAGE"] = line.split("=", 1)[1]
@@ -92,6 +97,11 @@ for stack in (OP,):
                                 capture_output=True, text=True)
         assert result.returncode == 15, (stack.name, result.stderr)
         assert "ZAN_API_KEY is unset/empty" in result.stderr
+        (sandbox / ".env").write_text("POSTGRES_USER=test\nZAN_API_KEY=test\n")
+        result = subprocess.run(["bash", str(sandbox / "render-configs.sh")], env=env,
+                                capture_output=True, text=True)
+        assert result.returncode == 15 and "NODIES_OP_KEY is unset/empty" in result.stderr
+
 
 # Connector IDs share the YAML indentation of upstream IDs but are not voters.
 with tempfile.TemporaryDirectory() as tmp:

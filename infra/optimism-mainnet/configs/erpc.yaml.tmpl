@@ -1,4 +1,4 @@
-# 2026-09-21: official OP gateway + ZAN + public Nodies. Validation Cloud quota
+# 2026-09-21: official OP gateway + ZAN + private Nodies. Validation Cloud quota
 # is exhausted. Public dRPC needs no account key; it still has rate limits.
 # Current state, populated logs/receipts and fixed-block reads were compared.
 # Failure domains: Google / Alibaba / Cloudflare (Nodies). Keep two agreeing votes.
@@ -6,7 +6,7 @@
 # Dated notes below describe past incidents, not the current topology.
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape (2026-09-21): 2-of-3 across official-op + ZAN + public Nodies.**
+# **Current shape (2026-09-21): 2-of-3 across official-op + ZAN + private Nodies.**
 # Consensus wait caps match the 12s network timeout: the v0.2.0 adaptive
 # default can cancel slower independent voters only 5ms after the first reply.
 #
@@ -549,7 +549,7 @@ projects:
       # ZAN and the owned Aleph node are independent non-CF failure domains.
       #
       # Hosts are literal so the CI guard can pin the failure domains. The only
-      # endpoint credential is ZAN_API_KEY; erpc.yaml remains RAM-disk rendered.
+      # endpoint credentials stay in the RAM-disk rendered erpc.yaml.
       - id: official-op
         # Re-admitted 2026-09-19: OP's public endpoint, Google-fronted.
         # Passed current state, populated receipts/logs, the stalled historic
@@ -662,9 +662,9 @@ projects:
               successThresholdCapacity: 4
 
       - id: nodies-op
-        # No keyed quota. Keep native 50-block log splitting for historical
-        # requests; never bypass consensus when a public endpoint rate-limits.
-        endpoint: https://op-pokt.nodies.app
+        # Keyed account replaces the throttled public endpoint. Keep 50-block
+        # log splitting; never bypass consensus if the account is rate-limited.
+        endpoint: https://lb.nodies.app/v2/optimism?apikey=${NODIES_OP_KEY}
         evm:
           getLogsAutoSplittingRangeThreshold: 50
         failsafe:

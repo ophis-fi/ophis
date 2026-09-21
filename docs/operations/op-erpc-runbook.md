@@ -1,11 +1,16 @@
 # Optimism RPC capacity and recovery
 
-Updated 2026-09-21. Current read voters: official OP (`mainnet.optimism.io`),
-keyed ZAN (`api.zan.top`), and public Nodies (`op-pokt.nodies.app`).
+Updated 2026-09-21. Prepared read voters: official OP (`mainnet.optimism.io`),
+keyed ZAN (`api.zan.top`), and private Nodies (`lb.nodies.app/v2/optimism`).
+The operator supplied an existing free-account endpoint. Its key stays in
+`NODIES_OP_KEY`, outside Git, and credential-bearing renders remain on RAM disk.
+Production still uses public Nodies pending confirmation of remaining free
+requests, reset date and whether overages are disabled. The private RPC does not
+expose these account limits; the dashboard is the source of truth.
 Validation Cloud returned HTTP 401 `api client is disabled`; the operator
 confirmed exhausted quota. Public dRPC passed bounded comparisons but then
 rate-limited under live traffic and was rejected as the replacement.
-Nodies also rate-limited after the initial healthy window. The reduced workload
+Public Nodies also rate-limited after the initial healthy window. The reduced workload
 restored all seven buffer probes, but redundant capacity remains unresolved.
 Keep this limitation explicit: do not describe the third lane as reliably
 available merely because the other two currently satisfy consensus.
@@ -49,7 +54,8 @@ code/storage, gas estimation, fee history, transaction lookup, populated receipt
 and populated logs. A canary with the official voter deliberately unavailable
 passed balance/receipt checks and a 101-block historical log request.
 
-Nodies allows at most 50 blocks per log request. The pinned eRPC 0.2.0 field is
+The public Nodies endpoint allows at most 50 blocks per log request; keep the
+conservative 50-block split for the private endpoint until a larger range is verified. The pinned eRPC 0.2.0 field is
 `evm.getLogsAutoSplittingRangeThreshold: 50` on that upstream. The old
 `getLogsMaxBlockRange` name is silently ignored by this version. Native splitting
 routes every child request through consensus. The local regression rejects one
@@ -59,6 +65,13 @@ Allow at least 20 seconds after proxy startup before testing provider outages.
 The routing policy refreshes every 15 seconds; a provider that registers after
 the initial snapshot can otherwise be absent from early requests even though it
 answers direct calls. `/healthcheck` alone does not establish a working quorum.
+
+The private endpoint passed current balance, receipt, populated-log, 101-block
+split-log and recent-fee-history canary requests while the official voter was
+unavailable. Nine protected historical responses matched the independent
+baseline. One older fee-history response differed in `blobGasUsedRatio`; recent
+fee history agreed across all three providers. Do not add ignored fields to
+force agreement; retain the existing fail-closed policy on disagreements.
 
 ## Submission
 

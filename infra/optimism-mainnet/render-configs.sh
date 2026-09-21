@@ -236,7 +236,11 @@ if [[ -z "${ZAN_API_KEY:-}" ]]; then
   exit 15
 fi
 
-# The official OP and Nodies endpoints are public; only ZAN needs a key.
+# Nodies is the existing private free-account endpoint, not the public pool.
+if [[ -z "${NODIES_OP_KEY:-}" ]]; then
+  echo "ERROR: NODIES_OP_KEY is unset/empty (required for OP consensus)." >&2
+  exit 15
+fi
 
 # Resolve PK file path.
 #
@@ -569,7 +573,7 @@ for tmpl in configs/*.toml.tmpl configs/*.yaml.tmpl; do
   #
   # envsubst only substitutes the explicit list we pass — keeps unknown
   # ${VARS} in eRPC's YAML syntax, defensive against future config additions.
-  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${ZAN_API_KEY}' \
+  envsubst '${OP_MAINNET_RPC} ${OKX_PROJECT_ID} ${OKX_API_KEY} ${OKX_SECRET_KEY} ${OKX_PASSPHRASE} ${ENSO_API_KEY} ${OPHIS_DRIVER_SUBMITTER_KEY} ${ZAN_API_KEY} ${NODIES_OP_KEY}' \
     < "$tmpl" > "$out_tmp"
   # Redundant under `umask 077` set at script top, but kept as defense-
   # in-depth against a future edit that hoists or removes the umask.

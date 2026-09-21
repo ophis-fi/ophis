@@ -30,7 +30,7 @@ matcher.
 """
 import re
 import sys
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import yaml
 
@@ -70,7 +70,7 @@ EXPECTED_UPSTREAMS = 3
 EXPECTED_UPSTREAM_HOSTS = frozenset({
     "mainnet.optimism.io",
     "api.zan.top",
-    "op-pokt.nodies.app",
+    "lb.nodies.app",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus
@@ -344,9 +344,16 @@ def validate(cfg):
         ups = [u for u in (proj.get("upstreams") or []) if isinstance(u, dict)]
         for u in ups:
             _check_keys(u, "upstream", f"upstream[{u.get('id')}]", errs)
-            expected_evm = {"getLogsAutoSplittingRangeThreshold": 50} if _hostname(u.get("endpoint")) == "op-pokt.nodies.app" else None
+            expected_evm = {"getLogsAutoSplittingRangeThreshold": 50} if _hostname(u.get("endpoint")) == "lb.nodies.app" else None
+            if _hostname(u.get("endpoint")) == "lb.nodies.app":
+                url = urlsplit(u["endpoint"])
+                query = parse_qs(url.query, keep_blank_values=True)
+                key = query.get("apikey", [])
+                if (url.scheme != "https" or url.path != "/v2/optimism" or url.fragment
+                        or set(query) != {"apikey"} or len(key) != 1 or not key[0].strip()):
+                    errs.append("Nodies must use the private Optimism endpoint with a nonempty API key")
             if u.get("evm") != expected_evm:
-                errs.append("upstream evm config must only split public Nodies logs into 50-block ranges")
+                errs.append("upstream evm config must only split Nodies logs into 50-block ranges")
             for j, r in enumerate(u.get("failsafe") or []):
                 if isinstance(r, dict):
                     _check_rule_subtree(r, f"upstream[{u.get('id')}].failsafe[{j}]", errs, level="upstream_rule")
