@@ -12,8 +12,6 @@ const PREVIOUS_SOURCES: Record<number, string> = {
 }
 
 // TODO: review removal after 2027-09-21, once pre-Ophis browser caches have aged out.
-// Normalize the hydrated view before token consumers read it, including offline.
-// Persist on successful upsert; avoid racing IndexedDB with a startup side effect.
 export function migrateOphisTokenList(
   chainId: SupportedChainId,
   state: TokenListsByChainState[SupportedChainId],
