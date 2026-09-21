@@ -17,7 +17,7 @@ const PREVIOUS_SOURCES: Record<number, string> = {
 export function migrateOphisTokenList(
   chainId: SupportedChainId,
   state: TokenListsByChainState[SupportedChainId],
-  retainedSources: Set<string>,
+  retainedSources: Set<unknown>,
 ): TokenListsByChainState[SupportedChainId] {
   const normalized = normalizeCachedLists(chainId, state)
   const source = PREVIOUS_SOURCES[chainId] || 'https://files.cow.fi/tokens/CowSwap.json'
@@ -36,7 +36,10 @@ export function migrateOphisTokenList(
       previous === 'deleted' ? previous : { ...previous, source: OPHIS_TOKENS_LIST_SOURCE, priority: 1 }
   }
   // Keep intentionally imported lists and sources still used by curated/widget mode.
-  if (![...retainedSources].some((retained) => retained.toLowerCase() === source.toLowerCase())) delete migrated[source]
+  const retained = [...retainedSources].some(
+    (value) => typeof value === 'string' && value.toLowerCase() === source.toLowerCase(),
+  )
+  if (!retained) delete migrated[source]
   return migrated
 }
 

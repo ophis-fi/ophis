@@ -10,6 +10,13 @@ import { listsStatesByChainAtom, userAddedListsSourcesAtom } from '../tokenLists
 import { activeTokensMapAtom } from '../tokens/allTokensAtom'
 
 const COW_SOURCE = 'https://files.cow.fi/tokens/CowSwap.json'
+const token = {
+  chainId: 1,
+  address: '0x0000000000000000000000000000000000000001',
+  symbol: 'TEST',
+  name: 'Test',
+  decimals: 18,
+}
 const fresh: ListState = {
   source: OPHIS_TOKENS_LIST_SOURCE,
   priority: 1,
@@ -22,17 +29,11 @@ const fresh: ListState = {
 }
 
 describe('Ophis list migration during successful upsert', () => {
-  it.each([true, false])('keeps offline cached tokens available with enabled=%s', async (isEnabled) => {
+  it.each([true, false])('keeps offline tokens with malformed saved sources and enabled=%s', async (isEnabled) => {
     const store = createStore()
-    const token = {
-      chainId: 1,
-      address: '0x0000000000000000000000000000000000000001',
-      symbol: 'TEST',
-      name: 'Test',
-      decimals: 18,
-    }
     const old = { ...fresh, source: COW_SOURCE, isEnabled, list: { ...fresh.list, tokens: [token] } }
-    store.set(environmentAtom, { chainId: SupportedChainId.MAINNET })
+    store.set(userAddedListsSourcesAtom, JSON.parse('{"1":[{}]}'))
+    store.set(environmentAtom, { chainId: SupportedChainId.MAINNET, selectedLists: JSON.parse('[null, 42]') })
     store.set(listsStatesByChainAtom, { 1: { [COW_SOURCE]: old } })
     expect(!!(await store.get(activeTokensMapAtom))[token.address]).toBe(isEnabled)
     expect((await store.get(listsStatesByChainAtom))[1]?.[OPHIS_TOKENS_LIST_SOURCE]).toEqual({
@@ -43,13 +44,6 @@ describe('Ophis list migration during successful upsert', () => {
 
   it('retains and activates a lowercased widget-selected legacy URL after migration', async () => {
     const store = createStore()
-    const token = {
-      chainId: 1,
-      address: '0x0000000000000000000000000000000000000001',
-      symbol: 'TEST',
-      name: 'Test',
-      decimals: 18,
-    }
     const old = { ...fresh, source: COW_SOURCE, list: { ...fresh.list, tokens: [token] } }
     store.set(environmentAtom, {
       chainId: SupportedChainId.MAINNET,
