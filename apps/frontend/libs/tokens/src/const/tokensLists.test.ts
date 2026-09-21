@@ -7,6 +7,7 @@ import {
   COINBASE_TOKENIZED_STOCKS_LIST_SOURCE,
   DEFAULT_TOKENS_LISTS,
   ONDO_TOKENS_LIST_SOURCE,
+  OPHIS_TOKENS_LIST_SOURCE,
   RWA_TOKENS_LIST_SOURCES,
   XSTOCKS_TOKENS_LIST_SOURCE,
 } from './tokensLists'
@@ -55,23 +56,24 @@ it('enables the issuer stock registry and Pons catalog on Robinhood Chain', () =
 
 it('enables the verified Tiny Humans deployment with its own artwork', async () => {
   const list = JSON.parse(
-    readFileSync(resolve(__dirname, '../../../../apps/cowswap-frontend/public/token-lists/robinhood.json'), 'utf8'),
+    readFileSync(resolve(__dirname, '../../../../apps/cowswap-frontend/public/token-lists/ophis.json'), 'utf8'),
   )
   await validateTokenList(list)
-  expect(list.tokens).toEqual([
-    expect.objectContaining({
-      chainId: 4663,
-      address: '0xb9CE619b168f325b4eb8C2E8E073501838C7A407',
-      name: 'Tiny Humans AI',
-      symbol: 'TINY',
-      decimals: 18,
-      logoURI: 'https://swap.ophis.fi/logos/token-tiny.png',
-    }),
-  ])
+  expect(list.tokens).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        chainId: 4663,
+        address: '0xb9CE619b168f325b4eb8C2E8E073501838C7A407',
+        name: 'Tiny Humans AI',
+        symbol: 'TINY',
+        decimals: 18,
+        logoURI: 'https://swap.ophis.fi/logos/token-tiny.png',
+      }),
+    ]),
+  )
   expect(
-    DEFAULT_TOKENS_LISTS[4663 as unknown as SupportedChainId].find(
-      (list) => list.source === 'https://swap.ophis.fi/token-lists/robinhood.json',
-    )?.enabledByDefault,
+    DEFAULT_TOKENS_LISTS[4663 as unknown as SupportedChainId].find((list) => list.source === OPHIS_TOKENS_LIST_SOURCE)
+      ?.enabledByDefault,
   ).toBe(true)
 })
 
