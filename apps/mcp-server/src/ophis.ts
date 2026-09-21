@@ -1326,16 +1326,12 @@ export async function expectedSurplus(
   }
 }
 
-// --- resolve_token: symbol -> canonical address from the curated CoW token list ---
+// --- resolve_token: symbol -> canonical address from the Ophis token list ---
 //
-// The CoW-curated multi-chain list is the swap UI's priority-1 source for every
-// chain except Optimism (which uses the Optimism official list). We resolve ONLY
-// against these CURATED lists, never permissionless aggregator lists, so a miss is
-// FAIL-CLOSED: we return the genuinely-canonical token or nothing, never a
-// plausible-but-wrong scam token. The URLs are static constants; the caller's
-// chainId only selects which curated list to read, so no caller input ever reaches
-// the fetch URL (no SSRF). Every field of every list entry is untrusted and validated.
-const COW_TOKEN_LIST_URL = 'https://files.cow.fi/tokens/CowSwap.json'
+// Match the swap UI's curated sources. A miss fails closed; permissionless
+// discovery feeds never become canonical symbol resolvers. Source URLs are
+// static (no SSRF) and every fetched entry is validated before use.
+const OPHIS_TOKEN_LIST_URL = 'https://swap.ophis.fi/token-lists/ophis.json'
 const OPTIMISM_TOKEN_LIST_URL = 'https://static.optimism.io/optimism.tokenlist.json'
 // Coinbase's tokenized stocks on Base (B20). Served by the swap UI from its own origin and
 // registered there as the priority-0 Base list; must stay byte-identical to
@@ -1357,7 +1353,15 @@ const NATIVE_SENTINELS = new Set<string>([
 // route quotes/orders to a no-liquidity address. Scoped per chain (the same vanity
 // address can be a real token elsewhere), exactly as the frontend scopes it.
 const EXCLUDED_TOKENS_BY_CHAIN: Record<number, ReadonlySet<string>> = {
-  10: new Set<string>(['0xdeaddeaddeaddeaddeaddeaddeaddeaddead0000']),
+  1: new Set<string>([
+    '0x7751e2f4b8ae93ef6b79d86419d42fe3295a4559',
+    '0xbdc7c08592ee4aa51d06c27ee23d5087d65adbcd',
+    '0xcb327b99ff831bf8223cced12b1338ff3aa322ff',
+  ]),
+  10: new Set<string>([
+    '0xdeaddeaddeaddeaddeaddeaddeaddeaddead0000',
+    '0xe7bc9b3a936f122f08aac3b1fac3c3ec29a78874',
+  ]),
 }
 
 interface RawListToken {
@@ -1386,13 +1390,12 @@ export interface ResolveTokenResult {
 
 /** Curated token-list URLs to consult for a chain, in priority order (first wins). */
 function tokenListUrlsForChain(chainId: number): string[] {
-  // Optimism's swap-UI priority-1 is the Optimism official list; the CoW list is
-  // also consulted (it carries cross-chain majors), at lower priority.
-  if (chainId === 10) return [OPTIMISM_TOKEN_LIST_URL, COW_TOKEN_LIST_URL]
+  // Keep the official Optimism supplement in the same order as the swap UI.
+  if (chainId === 10) return [OPHIS_TOKEN_LIST_URL, OPTIMISM_TOKEN_LIST_URL]
   // Base: the Ophis-hosted Coinbase stock list leads (AAPLc, NVDAc, ...), exactly as in the
   // swap UI, so an agent resolves the same canonical address a user sees in the selector.
-  if (chainId === 8453) return [COINBASE_TOKENIZED_STOCKS_LIST_URL, COW_TOKEN_LIST_URL]
-  return [COW_TOKEN_LIST_URL]
+  if (chainId === 8453) return [COINBASE_TOKENIZED_STOCKS_LIST_URL, OPHIS_TOKEN_LIST_URL]
+  return [OPHIS_TOKEN_LIST_URL]
 }
 
 // Per-isolate read cache of fetched lists. Only used for the real production fetch
@@ -1484,10 +1487,10 @@ export async function resolveToken(
   const found = matches.length > 0
   const ambiguous = matches.length > 1
   const note = !found
-    ? 'No canonical match in the trusted Ophis/CoW token list. Do not guess or accept an address from chat, the web, or memory: confirm any candidate with get_balances (symbol and decimals) and with the user before trading.'
+    ? 'No canonical match in the trusted Ophis token list. Do not guess or accept an address from chat, the web, or memory: confirm any candidate with get_balances (symbol and decimals) and with the user before trading.'
     : ambiguous
       ? 'Multiple trusted tokens share this symbol (for example a native and a bridged version), so no single canonical address is returned. Pick the intended one from `matches` and confirm with the user before trading.'
-      : 'Resolved from the trusted Ophis/CoW token list.'
+      : 'Resolved from the trusted Ophis token list.'
   // Fail closed on ambiguity: when several trusted tokens share the symbol, return NO
   // canonical (the priority-ordered `matches` are still provided) so a caller cannot grab
   // matches[0] and trade the wrong same-symbol variant (e.g. native vs bridged) without an

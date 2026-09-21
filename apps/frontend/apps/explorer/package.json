@@ -80,7 +80,9 @@
     "web3": "^1.10.3",
     "web3-core": "^1.10.3",
     "web3-utils": "^1.10.3",
-    "yaml": "^2.8.1"
+    "yaml": "^2.8.1",
+    "@cowprotocol/tokens": "workspace:*",
+    "jotai-tanstack-query": "^0.11.0"
   },
   "devDependencies": {
     "@testing-library/react": "16.3.0",
