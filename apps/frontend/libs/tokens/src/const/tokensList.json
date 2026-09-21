@@ -3,7 +3,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/tokens/CowSwap.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
@@ -32,7 +32,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/tokens/CowSwap.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
@@ -63,7 +63,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/tokens/CowSwap.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
@@ -92,7 +92,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/token-lists/CowSwapSepolia.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     }
   ],
   "8453": [
@@ -104,7 +104,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/tokens/CowSwap.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
@@ -129,7 +129,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/tokens/CowSwap.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
@@ -146,7 +146,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/tokens/CowSwap.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
@@ -163,7 +163,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/tokens/CowSwap.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
@@ -188,7 +188,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/tokens/CowSwap.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
@@ -200,7 +200,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/tokens/CowSwap.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
@@ -212,7 +212,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://files.cow.fi/tokens/CowSwap.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
@@ -228,10 +228,15 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://static.optimism.io/optimism.tokenlist.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,
+      "enabledByDefault": true,
+      "source": "https://static.optimism.io/optimism.tokenlist.json"
+    },
+    {
+      "priority": 3,
       "enabledByDefault": true,
       "source": "https://tokens.coingecko.com/optimistic-ethereum/all.json"
     }
@@ -239,6 +244,11 @@
   "130": [
     {
       "priority": 1,
+      "enabledByDefault": true,
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
+    },
+    {
+      "priority": 2,
       "enabledByDefault": true,
       "source": "https://ipfs.io/ipns/tokens.uniswap.org"
     }
@@ -252,7 +262,7 @@
     {
       "priority": 1,
       "enabledByDefault": true,
-      "source": "https://swap.ophis.fi/token-lists/robinhood.json"
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
     },
     {
       "priority": 2,

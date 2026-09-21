@@ -8,7 +8,7 @@ import { queryClientAtom } from 'jotai-tanstack-query'
 
 import { useTokenListsQuery } from './useTokenListsQuery'
 
-import { DEFAULT_TOKENS_LISTS } from '../../const/tokensLists'
+import { DEFAULT_TOKENS_LISTS, OPHIS_TOKENS_LIST_SOURCE } from '../../const/tokensLists'
 import { fetchTokenList } from '../../services/fetchTokenList'
 import { environmentAtom } from '../../state/environmentAtom'
 import { listsStatesByChainAtom } from '../../state/tokenLists/tokenListsStateAtom'
@@ -24,7 +24,7 @@ function Updater(): null {
 
 it('makes TINY selectable with its logo while Pons is pending and preserves it after Pons fails', async () => {
   const chainId = 4663 as SupportedChainId
-  const source = DEFAULT_TOKENS_LISTS[chainId].find((list) => list.source.endsWith('/token-lists/robinhood.json'))
+  const source = DEFAULT_TOKENS_LISTS[chainId].find((list) => list.source === OPHIS_TOKENS_LIST_SOURCE)
   if (!source) throw new Error('Missing Robinhood default token list')
   const token = {
     chainId,

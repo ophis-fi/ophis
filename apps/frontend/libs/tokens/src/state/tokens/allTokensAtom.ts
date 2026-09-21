@@ -50,7 +50,7 @@ const tokensStateAtom = atom(async (get) => {
             return acc
           }
 
-          const isListEnabled = listsEnabledState[list.source] || selectedLists?.includes(list.source)
+          const isListEnabled = listsEnabledState[list.source] || selectedLists?.includes(list.source.toLowerCase())
           const lpTokenProvider = list.lpTokenProvider
 
           list.list.tokens.forEach((token) => {

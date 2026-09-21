@@ -14,6 +14,7 @@ import {
   TokenListsState,
 } from '../../types'
 import { environmentAtom } from '../environmentAtom'
+import { migrateOphisTokenList } from '../migrations/migrateOphisTokenList'
 
 const TOKEN_LIST_SRC = `${COW_CDN}/token-lists`
 
@@ -50,11 +51,20 @@ const curatedListSourceAtom = atom((get) => {
   return [UNISWAP_LIST_SOURCE]
 })
 
-export const userAddedListsSourcesAtom = atomWithStorage<ListsSourcesByNetwork>(
+const storedUserAddedListsSourcesAtom = atomWithStorage<ListsSourcesByNetwork>(
   'userAddedTokenListsAtom:v3',
   mapSupportedNetworks([]),
   getJotaiMergerStorage(),
 )
+
+export const userAddedListsSourcesAtom = atom((get) => {
+  return Object.fromEntries(
+    Object.entries(get(storedUserAddedListsSourcesAtom) || {}).map(([chain, lists]) => [
+      chain,
+      Array.isArray(lists) ? lists.filter((list) => typeof list?.source === 'string') : [],
+    ]),
+  ) as ListsSourcesByNetwork
+}, storedUserAddedListsSourcesAtom.write)
 
 export const allListsSourcesAtom = atom((get) => {
   const { chainId, useCuratedListOnly, isYieldEnabled } = get(environmentAtom)
@@ -92,11 +102,31 @@ function isValidTokenListsByChainState(value: unknown): value is TokenListsByCha
  * Note: v6 -> v7 migration is handled by migrateTokenListsFromGithubCdn()
  *
  */
-export const listsStatesByChainAtom = atomWithIdbStorage<TokenListsByChainState>(
+const storedListsStatesByChainAtom = atomWithIdbStorage<TokenListsByChainState>(
   'allTokenListsInfoAtom:v7',
   mapSupportedNetworks({}),
   isValidTokenListsByChainState,
 )
+
+// All readers, including cross-chain consumers, see the normalized hydrated cache.
+// Writes retain the existing storage semantics; upsert persists the migration.
+export const listsStatesByChainAtom = atom(async (get) => {
+  const state = await get(storedListsStatesByChainAtom)
+  const custom = get(userAddedListsSourcesAtom)
+  const { selectedLists, useCuratedListOnly } = get(environmentAtom)
+  return Object.fromEntries(
+    Object.entries(state).map(([key, lists]) => {
+      const chainId = Number(key) as SupportedChainId
+      const retained = new Set([
+        ...(DEFAULT_TOKENS_LISTS[chainId] || []).map(({ source }) => source),
+        ...(custom[chainId] || []).map(({ source }) => source),
+        ...(Array.isArray(selectedLists) ? selectedLists : []),
+        ...(useCuratedListOnly ? [UNISWAP_TOKEN_LIST_URL[chainId]] : []),
+      ])
+      return [key, migrateOphisTokenList(chainId, lists, retained)]
+    }),
+  ) as TokenListsByChainState
+}, storedListsStatesByChainAtom.write)
 
 export const tokenListsUpdatingAtom = atom<boolean>(false)
 

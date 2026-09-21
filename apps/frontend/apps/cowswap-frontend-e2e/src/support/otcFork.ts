@@ -50,7 +50,7 @@ const OTC_INTERFACE = new Interface([
 
 /** Keep unrelated host balance hydration from exhausting the keyless fork upstream. */
 export function stubOtcHostTokenLists(): void {
-  cy.intercept(/https:\/\/files\.cow\.fi\/(?:tokens\/CowSwap|token-lists\/CoinGecko\.1)\.json$/, {
+  cy.intercept(/^https:\/\/(?:swap\.ophis|files\.cow)\.fi\/token-lists\/(?:ophis|CoinGecko\.1)\.json$/, {
     body: {
       name: 'OTC fork tokens',
       timestamp: '2026-09-07T00:00:00.000Z',

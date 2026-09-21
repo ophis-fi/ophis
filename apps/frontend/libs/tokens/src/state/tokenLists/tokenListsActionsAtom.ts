@@ -9,13 +9,22 @@ import {
   userAddedListsSourcesAtom,
 } from './tokenListsStateAtom'
 
+import { DEFAULT_TOKENS_LISTS, OPHIS_TOKENS_LIST_SOURCE } from '../../const/tokensLists'
 import { ListState } from '../../types'
 import { environmentAtom } from '../environmentAtom'
+import { migrateOphisTokenList } from '../migrations/migrateOphisTokenList'
 
-export const upsertListsAtom = atom(null, (_get, set, chainId: SupportedChainId, listsStates: ListState[]) =>
+export const upsertListsAtom = atom(null, (get, set, chainId: SupportedChainId, listsStates: ListState[]) =>
   set(listsStatesByChainAtom, async (previous) => {
     const globalState = await previous
-    const chainState = globalState[chainId]
+    const retainedSources = new Set([
+      ...(DEFAULT_TOKENS_LISTS[chainId] || []).map(({ source }) => source),
+      ...(get(userAddedListsSourcesAtom)[chainId] || []).map(({ source }) => source),
+      ...(Array.isArray(get(environmentAtom).selectedLists) ? get(environmentAtom).selectedLists || [] : []),
+    ])
+    const chainState = listsStates.some(({ source }) => source === OPHIS_TOKENS_LIST_SOURCE)
+      ? migrateOphisTokenList(chainId, globalState[chainId], retainedSources)
+      : globalState[chainId]
 
     const update = listsStates.reduce<{ [listId: string]: ListState }>((acc, list) => {
       const listState = chainState?.[list.source]
