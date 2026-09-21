@@ -26,7 +26,7 @@ every backing endpoint is already public, and the tools are read/build-only.
 | Tool | Purpose |
 |------|---------|
 | `parse_intent` | Plain-English swap request → structured intent (LibertAI Qwen via `swap.ophis.fi/api/intent`). |
-| `resolve_token` | Resolve a token symbol to its canonical address from the trusted Ophis/CoW list; fails closed (anti-spoof). |
+| `resolve_token` | Resolve a token symbol to its canonical address from the trusted Ophis list; fails closed (anti-spoof). |
 | `list_chains` | Supported chains, orderbook hosts, settlement contracts, partner-fee config. |
 | `get_quote` | Best-execution quote from the chain's Ophis orderbook (`/api/v1/quote`). |
 | `expected_surplus` | Estimate price improvement versus a public aggregator (KyberSwap), in basis points. |

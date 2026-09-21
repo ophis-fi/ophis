@@ -739,20 +739,41 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
       return jsonResponse({ tokens: [] })
     }) as unknown as typeof fetch
     await resolveToken({ chainId: 137, symbol: 'USDC' }, spy)
-    expect(calledUrl).toBe('https://files.cow.fi/tokens/CowSwap.json')
+    expect(calledUrl).toBe('https://swap.ophis.fi/token-lists/ophis.json')
   })
 
   const COINBASE_STOCKS_LIST_URL = 'https://swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json'
   const AAPLC_BASE = '0xb200000000000000000000C2e324d24d7eEcd1fb'
 
-  it('on Base consults the Ophis-hosted Coinbase stock list first, then the CoW list (static URLs only)', async () => {
+  it('resolves tokens on the extra chains from the shipped Ophis list and keeps its URL aligned with the UI', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const url = 'https://swap.ophis.fi/token-lists/ophis.json'
+    const frontendConst = readFileSync(resolve(__dirname, '../../frontend/libs/tokens/src/const/tokensLists.ts'), 'utf8')
+    expect(frontendConst).toContain(`OPHIS_TOKENS_LIST_SOURCE = '${url}'`)
+    const shipped = JSON.parse(readFileSync(resolve(__dirname, '../../frontend/apps/cowswap-frontend/public/token-lists/ophis.json'), 'utf8'))
+    const calls: string[] = []
+    const mock = (async (source: string) => {
+      calls.push(String(source))
+      return jsonResponse(String(source) === url ? shipped : { tokens: [] })
+    }) as unknown as typeof fetch
+    for (const [chainId, symbol] of [[10, 'USDC'], [130, 'USDC'], [4663, 'USDG'], [4663, 'WETH'], [4663, 'TINY']] as const) {
+      const result = await resolveToken({ chainId, symbol }, mock)
+      expect(result.found).toBe(true)
+      expect(result.ambiguous).toBe(false)
+      expect(result.canonical?.source).toBe(url)
+    }
+    expect(calls.some((source) => source.includes('files.cow.fi'))).toBe(false)
+  })
+
+  it('on Base consults the Ophis-hosted Coinbase stock list first, then the Ophis list (static URLs only)', async () => {
     const calledUrls: string[] = []
     const spy = (async (url: string) => {
       calledUrls.push(String(url))
       return jsonResponse({ tokens: [] })
     }) as unknown as typeof fetch
     await resolveToken({ chainId: 8453, symbol: 'AAPLc' }, spy)
-    expect(calledUrls).toEqual([COINBASE_STOCKS_LIST_URL, 'https://files.cow.fi/tokens/CowSwap.json'])
+    expect(calledUrls).toEqual([COINBASE_STOCKS_LIST_URL, 'https://swap.ophis.fi/token-lists/ophis.json'])
   })
 
   it('keeps the Coinbase stock list URL identical to the swap UI constant (cross-workspace drift guard)', async () => {
@@ -772,7 +793,7 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
           tokens: [{ chainId: 8453, address: AAPLC_BASE.toLowerCase(), symbol: 'AAPLc', decimals: 8, name: 'Apple Inc.' }],
         })
       }
-      if (String(url).includes('CowSwap')) return jsonResponse({ tokens: [] })
+      if (String(url).includes('/token-lists/ophis.json')) return jsonResponse({ tokens: [] })
       throw new Error(`unexpected url ${url}`)
     }) as unknown as typeof fetch
     const res = await resolveToken({ chainId: 8453, symbol: 'aaplc' }, mock)
@@ -783,10 +804,10 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
     expect(res.canonical?.source).toBe(COINBASE_STOCKS_LIST_URL)
   })
 
-  it('fails closed on Base when the Coinbase stock list is unavailable, even if the CoW list loads', async () => {
+  it('fails closed on Base when the Coinbase stock list is unavailable, even if the Ophis list loads', async () => {
     const mock = (async (url: string) => {
       if (String(url) === COINBASE_STOCKS_LIST_URL) return jsonResponse({}, 503)
-      if (String(url).includes('CowSwap')) return jsonResponse({ tokens: [] })
+      if (String(url).includes('/token-lists/ophis.json')) return jsonResponse({ tokens: [] })
       throw new Error(`unexpected url ${url}`)
     }) as unknown as typeof fetch
     const res = await resolveToken({ chainId: 8453, symbol: 'AAPLc' }, mock)
@@ -795,13 +816,13 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
     expect(res.note).toMatch(/temporarily unavailable/i)
   })
 
-  it('consults the Optimism list first then the CoW list (priority order, ambiguity across lists)', async () => {
+  it('consults the Ophis list first then the Optimism list (priority order, ambiguity across lists)', async () => {
     const opMock = (async (url: string) => {
       if (String(url).includes('optimism.tokenlist')) {
         return jsonResponse({ tokens: [{ chainId: 10, address: WETH_OP, symbol: 'WETH', decimals: 18, name: 'WETH (OP list)' }] })
       }
-      if (String(url).includes('CowSwap')) {
-        return jsonResponse({ tokens: [{ chainId: 10, address: USDC_OP, symbol: 'WETH', decimals: 18, name: 'WETH (cow list)' }] })
+      if (String(url).includes('/token-lists/ophis.json')) {
+        return jsonResponse({ tokens: [{ chainId: 10, address: USDC_OP, symbol: 'WETH', decimals: 18, name: 'WETH (Ophis list)' }] })
       }
       throw new Error(`unexpected url ${url}`)
     }) as unknown as typeof fetch
@@ -809,29 +830,29 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
     expect(res.ambiguous).toBe(true)
     expect(res.canonical).toBeNull() // ambiguous across lists -> fail-closed, no single canonical
     expect(res.matches).toHaveLength(2)
-    expect(res.matches[0]?.address).toBe(WETH_OP) // Optimism list is priority-1, still leads matches
+    expect(res.matches[0]?.address).toBe(USDC_OP) // Ophis is priority-1, but ambiguity still fails closed
   })
 
-  it('chain 10: fails closed if the Optimism (priority-1) list is unavailable', async () => {
+  it('chain 10: fails closed if the Optimism supplemental list is unavailable', async () => {
     const mock = (async (url: string) => {
       if (String(url).includes('optimism.tokenlist')) return jsonResponse({}, 503) // OP list down
-      if (String(url).includes('CowSwap')) {
-        return jsonResponse({ tokens: [{ chainId: 10, address: USDC_OP, symbol: 'WETH', decimals: 18, name: 'WETH (cow)' }] })
+      if (String(url).includes('/token-lists/ophis.json')) {
+        return jsonResponse({ tokens: [{ chainId: 10, address: USDC_OP, symbol: 'WETH', decimals: 18, name: 'WETH (Ophis)' }] })
       }
       throw new Error(`unexpected url ${url}`)
     }) as unknown as typeof fetch
     const res = await resolveToken({ chainId: 10, symbol: 'WETH' }, mock)
-    expect(res.found).toBe(false) // must NOT present the lower-priority CoW match as canonical
+    expect(res.found).toBe(false) // must NOT present the lower-priority Ophis match as canonical
     expect(res.canonical).toBeNull()
     expect(res.note).toMatch(/unavailable/i)
   })
 
-  it('chain 10: fails closed if the CoW list is unavailable (ambiguity it holds is unknown)', async () => {
+  it('chain 10: fails closed if the Ophis list is unavailable (ambiguity it holds is unknown)', async () => {
     const mock = (async (url: string) => {
       if (String(url).includes('optimism.tokenlist')) {
         return jsonResponse({ tokens: [{ chainId: 10, address: WETH_OP, symbol: 'WETH', decimals: 18, name: 'WETH (OP)' }] })
       }
-      if (String(url).includes('CowSwap')) return jsonResponse({}, 500) // CoW down
+      if (String(url).includes('/token-lists/ophis.json')) return jsonResponse({}, 500) // Ophis down
       throw new Error(`unexpected url ${url}`)
     }) as unknown as typeof fetch
     const res = await resolveToken({ chainId: 10, symbol: 'WETH' }, mock)
@@ -854,11 +875,25 @@ describe('resolveToken (fail-closed canonical symbol resolution)', () => {
       if (String(url).includes('optimism.tokenlist')) {
         return jsonResponse({ tokens: [{ chainId: 10, address: OVM_ETH, symbol: 'ETH', decimals: 18, name: 'Ether' }] })
       }
-      if (String(url).includes('CowSwap')) return jsonResponse({ tokens: [] })
+      if (String(url).includes('/token-lists/ophis.json')) return jsonResponse({ tokens: [] })
       throw new Error(`unexpected url ${url}`)
     }) as unknown as typeof fetch
     const res = await resolveToken({ chainId: 10, symbol: 'ETH' }, mock)
     expect(res.found).toBe(false) // OVM_ETH filtered; the agent resolves WETH for native ETH
+  })
+
+  it('does not reintroduce the audited stale entries through supplemental lists', async () => {
+    for (const [chainId, address, symbol] of [
+      [1, '0x7751E2F4b8ae93EF6B79d86419d42FE3295A4559', 'wUSDL'],
+      [1, '0xCb327b99fF831bF8223cCEd12B1338FF3aA322Ff', 'bsdETH'],
+      [10, '0xe7BC9b3A936F122f08AAC3b1fac3C3eC29A78874', 'ECO'],
+    ] as const) {
+      const result = await resolveToken(
+        { chainId, symbol },
+        list([{ chainId, address, symbol, name: symbol, decimals: 18 }]),
+      )
+      expect(result.found).toBe(false)
+    }
   })
 
   it('treats a malformed list (no tokens array) as unavailable, not as empty', async () => {
