@@ -73,62 +73,68 @@ type = "Web3"
 [[gas-estimators]]
 type = "Alloy"
 
+# `address` MUST be the driver's submitter EOA (the address of
+# OPHIS_DRIVER_SUBMITTER_KEY) and MUST be allowlisted: autopilot calls
+# authenticator.isSolver(address) per auction and silently drops every
+# solution as SolverDenyListed when it is false. Rotating the submitter key
+# means updating all entries below (2026-09-21: the 08-07 rotation did not,
+# and Unichain filled nothing for 45 days).
 [[drivers]]
 name = "velodrome"
 url = "http://driver/velodrome"
-address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+address = "0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"
 
 [[drivers]]
 name = "uniswap-v4"
 url = "http://driver/uniswap-v4"
-address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+address = "0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"
 
 [[drivers]]
 name = "baseline"
 url = "http://driver/baseline"
-address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+address = "0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"
 
 # OKX V6 DEX aggregator — ENABLED on Unichain (2026-06-30, renewed OKX_* creds).
 [[drivers]]
 name = "okx"
 url = "http://driver/okx"
-address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+address = "0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"
 
 [[drivers]]
 name = "kyberswap"
 url = "http://driver/kyberswap"
-address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+address = "0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"
 
 # Velora aggregator — ENABLED on Unichain (verified 2026-06-30: api.velora.xyz
 # serves 130; live route router == allowlisted Augustus V6.2). 2nd solver.
 [[drivers]]
 name = "velora"
 url = "http://driver/velora"
-address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+address = "0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"
 
 # OpenOcean V4 aggregator — ENABLED on Unichain (keyless). 4th solver.
 [[drivers]]
 name = "openocean"
 url = "http://driver/openocean"
-address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+address = "0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"
 
 # DODO route-service aggregator — ENABLED on Unichain (keyless). 5th solver.
 [[drivers]]
 name = "dodo"
 url = "http://driver/dodo"
-address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+address = "0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"
 
 # LI.FI same-chain aggregator — ENABLED on Unichain (keyless). 7th solver.
 [[drivers]]
 name = "lifi"
 url = "http://driver/lifi"
-address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+address = "0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"
 
 # Enso Shortcuts aggregator — ENABLED on Unichain (keyed). 8th solver.
 [[drivers]]
 name = "enso"
 url = "http://driver/enso"
-address = "0x7A956C269a12f1B897367663b536EB5dd29f3fBb"
+address = "0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"
 
 [fee-policies]
 max-partner-fee = 0.01

@@ -19,7 +19,7 @@ umask 077
 
 RPC="${OPHIS_RPC:-http://localhost:4002/main/evm/130}"
 SETTLEMENT="0x108A678716e5E1776036eF044CAB7064226F714E"
-SUBMITTER="0x7A956C269a12f1B897367663b536EB5dd29f3fBb"   # the ONLY authorized solver/submitter EOA
+SUBMITTER="0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2"   # the ONLY authorized solver/submitter EOA
 TRADE_TOPIC0="0xa07a543ab8a018198e99ca0184c93fe9050a79400a0a723441f84de1d972cc17"
 SETTLEMENT_TOPIC0="0x40338ce1a7c49204f0099533b1e9a7ee0a3d261f84974ab7af36105b8c4e9db4"
 # Tunables (env-overridable). Conservative defaults to avoid alert fatigue.

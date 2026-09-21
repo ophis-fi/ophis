@@ -124,7 +124,23 @@ groups:
           chain: unichain
         annotations:
           summary: "Unichain: 0 successful settlements in 1h despite active auctions"
-          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and upstream status; (3) driver-submitter wallet out of ETH — `cast balance 0x7A956C269a12f1B897367663b536EB5dd29f3fBb --rpc-url https://mainnet.unichain.org`."
+          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and upstream status; (3) driver-submitter wallet out of ETH — `cast balance 0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2 --rpc-url https://mainnet.unichain.org`."
+
+      # 2026-09-21: the 08-07 submitter rotation never reached
+      # autopilot.toml.tmpl, so autopilot's isSolver(drivers[].address) check
+      # failed and it dropped EVERY solution as SolverDenyListed (DEBUG-only
+      # log) for 45 days. This series only moves when a real order is in an
+      # auction, so any increase means an order is being starved right now.
+      - alert: OphisUniSolverDenyListed
+        expr: |
+          sum by (driver) (increase(gp_v2_autopilot_runloop_solve_count{result="deny_listed"}[10m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          chain: unichain
+        annotations:
+          summary: "Unichain: autopilot is deny-listing driver {{ $labels.driver }}, orders cannot fill"
+          description: "autopilot's isSolver(address) check is false for this driver, so its solutions are discarded. Compare `[[drivers]] address` in rendered/autopilot.toml with the driver's submitter EOA and run `cast call <authenticator> 'isSolver(address)(bool)' <address> --rpc-url https://mainnet.unichain.org`. After a submitter rotation, update configs/autopilot.toml.tmpl and restart autopilot."
 
       - alert: OphisUniSettlementFailureRateHigh
         expr: |
