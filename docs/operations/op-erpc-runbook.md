@@ -5,6 +5,10 @@ keyed ZAN (`api.zan.top`), and public Nodies (`op-pokt.nodies.app`).
 Validation Cloud returned HTTP 401 `api client is disabled`; the operator
 confirmed exhausted quota. Public dRPC passed bounded comparisons but then
 rate-limited under live traffic and was rejected as the replacement.
+Nodies also rate-limited after the initial healthy window. The reduced workload
+restored all seven buffer probes, but redundant capacity remains unresolved.
+Keep this limitation explicit: do not describe the third lane as reliably
+available merely because the other two currently satisfy consensus.
 
 The operator has no budget for paid capacity. Do not activate a paid tier or
 assume a top-up. ZAN still answers but the operator previously reported its
