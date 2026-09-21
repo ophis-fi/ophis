@@ -22,6 +22,8 @@ export const DEFAULT_TOKENS_LISTS: ListsSourcesByNetwork = {
 
 export const UNISWAP_TOKENS_LIST = 'https://ipfs.io/ipns/tokens.uniswap.org'
 
+export const OPHIS_TOKENS_LIST_SOURCE = 'https://swap.ophis.fi/token-lists/ophis.json'
+
 export const ONDO_TOKENS_LIST_SOURCE = tokensList[SupportedChainId.MAINNET][3].source
 
 export const XSTOCKS_TOKENS_LIST_SOURCE = tokensList[SupportedChainId.MAINNET][4].source

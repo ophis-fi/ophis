@@ -1,0 +1,244 @@
+[
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0x7751E2F4b8ae93EF6B79d86419d42FE3295A4559",
+      "name": "Wrapped USDL (Lift Dollar)",
+      "symbol": "wUSDL",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0x7751e2f4b8ae93ef6b79d86419d42fe3295a4559/logo.png"
+    },
+    "reason": "Onchain decimals 6 conflict with source 18; issuer announced USDL wind-down. Excluded pending issuer review."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0xbdC7c08592Ee4aa51D06C27Ee23D5087D65aDbcD",
+      "name": "Lift Dollar",
+      "symbol": "USDL",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0xbdc7c08592ee4aa51d06c27ee23d5087d65adbcd/logo.png"
+    },
+    "reason": "USDL issuer announced wind-down completed December 2025."
+  },
+  {
+    "token": {
+      "chainId": 10,
+      "address": "0xe7BC9b3A936F122f08AAC3b1fac3C3eC29A78874",
+      "name": "Eco",
+      "symbol": "ECO",
+      "decimals": 18,
+      "logoURI": "https://ethereum-optimism.github.io/data/ECO/logo.svg"
+    },
+    "reason": "Name and symbol both 0xdead on two independent chain-10 RPCs."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0x0Ae38f7E10A43B5b2fB064B42a2f4514cbA909ef",
+      "name": "unshETH Ether",
+      "symbol": "unshETH",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0x0ae38f7e10a43b5b2fb064b42a2f4514cba909ef/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0x24Ae2dA0f361AA4BE46b48EB19C91e02c5e4f27E",
+      "name": "Mev Liquid Staking Receipt",
+      "symbol": "mevETH",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0x24ae2da0f361aa4be46b48eb19c91e02c5e4f27e/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0x341c05c0E9b33C0E38d64de76516b2Ce970bB3BE",
+      "name": "Diversified Staked ETH Index (dsETH)",
+      "symbol": "dsETH",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0x341c05c0e9b33c0e38d64de76516b2ce970bb3be/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0x36c833Eed0D376f75D1ff9dFDeE260191336065e",
+      "name": "Gitcoin Staked ETH Index",
+      "symbol": "gtcETH",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0x36c833eed0d376f75d1ff9dfdee260191336065e/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0x465a5a630482f3abD6d3b84B39B29b07214d19e5",
+      "name": "Flux USDC",
+      "symbol": "fUSDC",
+      "decimals": 8,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0x465a5a630482f3abd6d3b84b39b29b07214d19e5/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0x6c8984bc7DBBeDAf4F6b2FD766f16eBB7d10AAb4",
+      "name": "Staked USR",
+      "symbol": "stUSR",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0x6c8984bc7dbbedaf4f6b2fd766f16ebb7d10aab4/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0x81994b9607e06ab3d5cF3AffF9a67374f05F27d7",
+      "name": "Flux USDT",
+      "symbol": "fUSDT",
+      "decimals": 8,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0x81994b9607e06ab3d5cf3afff9a67374f05f27d7/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0xc55126051B22eBb829D00368f4B12Bde432de5Da",
+      "name": "Redacted Protocol",
+      "symbol": "BTRFLY",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0xc55126051b22ebb829d00368f4b12bde432de5da/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0xe07F9D810a48ab5c3c914BA3cA53AF14E4491e8A",
+      "name": "Gyro Dollar",
+      "symbol": "GYD",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0xe07f9d810a48ab5c3c914ba3ca53af14e4491e8a/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0xe3668873D944E4A949DA05fc8bDE419eFF543882",
+      "name": "Yearn PRISMA",
+      "symbol": "yPRISMA",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0xe3668873d944e4a949da05fc8bde419eff543882/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0xEd40834A13129509A89be39a9bE9C0E96A0DDd71",
+      "name": "Warp Token",
+      "symbol": "WARP",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0xed40834a13129509a89be39a9be9c0e96a0ddd71/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0xf16e81dce15B08F326220742020379B855B87DF9",
+      "name": "IceToken",
+      "symbol": "ICE",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0xf16e81dce15b08f326220742020379b855b87df9/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0xF938424F7210f31dF2Aee3011291b658f872e91e",
+      "name": "VISOR",
+      "symbol": "VISR",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0xf938424f7210f31df2aee3011291b658f872e91e/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 1,
+      "address": "0xFE4BCE4b3949c35fB17691D8b03c3caDBE2E5E23",
+      "name": "Staked Resolv",
+      "symbol": "stRESOLV",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/1/0xfe4bce4b3949c35fb17691d8b03c3cadbe2e5e23/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 100,
+      "address": "0x6de572FaA138048CE8142c4A206eB09a8Ec39E45",
+      "name": "Humans of Gnosis",
+      "symbol": "HoG",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/100/0x6de572faa138048ce8142c4a206eb09a8ec39e45/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 100,
+      "address": "0xc791240D1F2dEf5938E2031364Ff4ed887133C3d",
+      "name": "Rocket Pool ETH from Mainnet",
+      "symbol": "rETH",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/100/0xc791240d1f2def5938e2031364ff4ed887133c3d/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 100,
+      "address": "0xCA5d8F8a8d49439357d3CF46Ca2e720702F132b8",
+      "name": "Gyro Dollar",
+      "symbol": "GYD",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/100/0xca5d8f8a8d49439357d3cf46ca2e720702f132b8/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 100,
+      "address": "0xccDa41BD2ffE7D5b48212190b796C292982fcE2e",
+      "name": "Mu",
+      "symbol": "MU",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/100/0xccda41bd2ffe7d5b48212190b796c292982fce2e/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  },
+  {
+    "token": {
+      "chainId": 100,
+      "address": "0xeA50f402653c41cAdbaFD1f788341dB7B7F37816",
+      "name": "Savings GYD",
+      "symbol": "sGYD",
+      "decimals": 18,
+      "logoURI": "https://files.cow.fi/token-lists/images/100/0xea50f402653c41cadbafd1f788341db7b7f37816/logo.png"
+    },
+    "reason": "No address corroboration outside the inherited CoW list in the registries checked; pending issuer review. This does not establish that the token is invalid."
+  }
+]

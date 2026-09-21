@@ -1,6 +1,6 @@
-import { COW_CDN, TokenWithLogo } from '@cowprotocol/common-const'
+import { TokenWithLogo } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
-import { ListState } from '@cowprotocol/tokens'
+import { ListState, OPHIS_TOKENS_LIST_SOURCE } from '@cowprotocol/tokens'
 
 export const allTokensMock: TokenWithLogo[] = [
   {
@@ -100,9 +100,9 @@ export const customTokensMock: TokenWithLogo[] = [
 
 export const listsMock: ListState[] = [
   {
-    source: `https://tokenlists.org/token-list?url=${COW_CDN}/token-lists/CowSwapSepolia.json`,
+    source: `https://tokenlists.org/token-list?url=${OPHIS_TOKENS_LIST_SOURCE}`,
     list: {
-      name: 'CowSwap Sepolia',
+      name: 'Ophis Token List',
       logoURI: 'https://gnosis.mypinata.cloud/ipfs/Qme9B6jRpGtZsRFcPjHvA5T4ugFuL4c3SzWfxyMPa59AMo',
       // TODO: Replace any with proper type definitions
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -127,10 +127,10 @@ export const listsMock: ListState[] = [
 ]
 
 export const importListsMock: ListState = {
-  source: `${COW_CDN}/tokens/CowSwap.json`,
+  source: OPHIS_TOKENS_LIST_SOURCE,
   list: {
-    name: 'CoW Swap',
-    logoURI: `${COW_CDN}/token-lists/images/list-logo.png`,
+    name: 'Ophis Token List',
+    logoURI: 'https://swap.ophis.fi/ophis-icon.svg',
     // TODO: Replace any with proper type definitions
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     tokens: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] as any[],

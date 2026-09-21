@@ -20,15 +20,25 @@ export const LEGACY_OVM_ETH_ADDRESS = '0xDeadDeAddeAddEAddeadDEaDDEAdDeaDDeAD000
 // exclusion is scoped per-chain rather than applied globally — excluding it
 // everywhere would risk hiding a legitimate token on a future-supported chain.
 const EXCLUDED_TOKENS_BY_CHAIN: Record<number, ReadonlySet<string>> = {
-  10: new Set([LEGACY_OVM_ETH_ADDRESS.toLowerCase()]), // Optimism mainnet
+  // September 2026 verification: stale decimals / sunset USDL, and bsdETH
+  // incorrectly assigned to Ethereum (the contract exists on Base only).
+  1: new Set([
+    '0x7751e2f4b8ae93ef6b79d86419d42fe3295a4559',
+    '0xbdc7c08592ee4aa51d06c27ee23d5087d65adbcd',
+    '0xcb327b99ff831bf8223cced12b1338ff3aa322ff',
+  ]),
+  10: new Set([
+    LEGACY_OVM_ETH_ADDRESS.toLowerCase(),
+    '0xe7bc9b3a936f122f08aac3b1fac3c3ec29a78874', // ECO now reports name/symbol 0xdead.
+  ]),
   11155420: new Set([LEGACY_OVM_ETH_ADDRESS.toLowerCase()]), // OP Sepolia
 }
 
 /**
  * True when a token must never enter the app's token maps (selector, symbol
  * lookup, address lookup, USD-price queue) on the given chain. Matching is
- * address-only and case-insensitive; the excluded entries are dead sentinels
- * that are never a legitimate tradeable token on that chain.
+ * address-only and case-insensitive; exclusions cover dead sentinels and
+ * known stale or wrongly assigned entries, including supplemental lists/caches.
  */
 export function isExcludedListToken(chainId: number, address: string): boolean {
   return EXCLUDED_TOKENS_BY_CHAIN[chainId]?.has(address.toLowerCase()) ?? false

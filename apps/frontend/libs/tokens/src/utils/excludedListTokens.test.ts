@@ -6,6 +6,13 @@ const MAINNET = 1
 const MANTLE = 5000
 
 describe('isExcludedListToken', () => {
+  it('blocks stale entries from supplements while preserving bsdETH on Base', () => {
+    expect(isExcludedListToken(1, '0x7751E2F4b8ae93EF6B79d86419d42FE3295A4559')).toBe(true)
+    expect(isExcludedListToken(1, '0xbdC7c08592Ee4aa51D06C27Ee23D5087D65aDbcD')).toBe(true)
+    expect(isExcludedListToken(10, '0xe7BC9b3A936F122f08AAC3b1fac3C3eC29A78874')).toBe(true)
+    expect(isExcludedListToken(1, '0xCb327b99fF831bF8223cCEd12B1338FF3aA322Ff')).toBe(true)
+    expect(isExcludedListToken(8453, '0xCb327b99fF831bF8223cCEd12B1338FF3aA322Ff')).toBe(false)
+  })
   it('excludes the legacy OVM_ETH placeholder on Optimism, any case', () => {
     expect(isExcludedListToken(OPTIMISM, LEGACY_OVM_ETH_ADDRESS)).toBe(true)
     expect(isExcludedListToken(OPTIMISM, '0xdeaddeaddeaddeaddeaddeaddeaddeaddead0000')).toBe(true)
