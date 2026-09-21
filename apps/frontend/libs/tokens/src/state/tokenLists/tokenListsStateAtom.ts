@@ -93,11 +93,31 @@ function isValidTokenListsByChainState(value: unknown): value is TokenListsByCha
  * Note: v6 -> v7 migration is handled by migrateTokenListsFromGithubCdn()
  *
  */
-export const listsStatesByChainAtom = atomWithIdbStorage<TokenListsByChainState>(
+const storedListsStatesByChainAtom = atomWithIdbStorage<TokenListsByChainState>(
   'allTokenListsInfoAtom:v7',
   mapSupportedNetworks({}),
   isValidTokenListsByChainState,
 )
+
+// All readers, including cross-chain consumers, see the normalized hydrated cache.
+// Writes retain the existing storage semantics; upsert persists the migration.
+export const listsStatesByChainAtom = atom(async (get) => {
+  const state = await get(storedListsStatesByChainAtom)
+  const custom = get(userAddedListsSourcesAtom)
+  const { selectedLists, useCuratedListOnly } = get(environmentAtom)
+  return Object.fromEntries(
+    Object.entries(state).map(([key, lists]) => {
+      const chainId = Number(key) as SupportedChainId
+      const retained = new Set([
+        ...(DEFAULT_TOKENS_LISTS[chainId] || []).map(({ source }) => source),
+        ...(custom[chainId] || []).map(({ source }) => source),
+        ...(selectedLists || []),
+        ...(useCuratedListOnly ? [UNISWAP_TOKEN_LIST_URL[chainId]] : []),
+      ])
+      return [key, migrateOphisTokenList(chainId, lists, retained)]
+    }),
+  ) as TokenListsByChainState
+}, storedListsStatesByChainAtom.write)
 
 export const tokenListsUpdatingAtom = atom<boolean>(false)
 
@@ -116,14 +136,7 @@ export const listsStatesMapAtom = atom(async (get) => {
   const useeAddedTokenListsForChain = userAddedTokenLists[chainId] || []
 
   const allTokenListsInfo = await get(listsStatesByChainAtom)
-  // Normalize after hydration, before consumers see the cache. This keeps the
-  // main list usable even when the first Ophis request fails or the user is offline.
-  const listsState =
-    migrateOphisTokenList(
-      chainId,
-      allTokenListsInfo[chainId],
-      new Set([...get(allListsSourcesAtom).map(({ source }) => source), ...(selectedLists || [])]),
-    ) || {}
+  const listsState = allTokenListsInfo[chainId] || {}
 
   const currentNetworkLists = {
     ...Object.keys(listsState).reduce<TokenListsState>((acc, key) => {

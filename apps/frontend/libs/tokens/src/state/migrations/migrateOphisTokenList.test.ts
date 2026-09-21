@@ -35,7 +35,10 @@ describe('Ophis list migration during successful upsert', () => {
     store.set(environmentAtom, { chainId: SupportedChainId.MAINNET })
     store.set(listsStatesByChainAtom, { 1: { [COW_SOURCE]: old } })
     expect(!!(await store.get(activeTokensMapAtom))[token.address]).toBe(isEnabled)
-    expect((await store.get(listsStatesByChainAtom))[1]?.[COW_SOURCE]).toEqual(old)
+    expect((await store.get(listsStatesByChainAtom))[1]?.[OPHIS_TOKENS_LIST_SOURCE]).toEqual({
+      ...old,
+      source: OPHIS_TOKENS_LIST_SOURCE,
+    })
   })
 
   it('retains and activates a lowercased widget-selected legacy URL after migration', async () => {
@@ -75,16 +78,21 @@ describe('Ophis list migration during successful upsert', () => {
       )
       expect(state[1]?.[COW_SOURCE]).toBeUndefined()
       expect(state[1]?.[custom.source]).toEqual(custom)
-      expect(state[100]?.[COW_SOURCE]).toEqual(old)
+      expect(state[100]?.[OPHIS_TOKENS_LIST_SOURCE]).toEqual(
+        old === 'deleted' ? old : { ...old, source: OPHIS_TOKENS_LIST_SOURCE },
+      )
     },
   )
 
-  it('keeps the old cache until the replacement loads and preserves an explicitly imported CoW list', async () => {
+  it('keeps cached preferences before replacement and preserves an explicitly imported CoW list', async () => {
     const store = createStore()
     const old = { ...fresh, source: COW_SOURCE, isEnabled: false }
     store.set(listsStatesByChainAtom, { 1: { [COW_SOURCE]: old } })
     await store.set(upsertListsAtom, SupportedChainId.MAINNET, [])
-    expect((await store.get(listsStatesByChainAtom))[1]?.[COW_SOURCE]).toEqual(old)
+    expect((await store.get(listsStatesByChainAtom))[1]?.[OPHIS_TOKENS_LIST_SOURCE]).toEqual({
+      ...old,
+      source: OPHIS_TOKENS_LIST_SOURCE,
+    })
     store.set(userAddedListsSourcesAtom, { 1: [{ source: COW_SOURCE }] })
     await store.set(upsertListsAtom, SupportedChainId.MAINNET, [fresh])
     expect((await store.get(listsStatesByChainAtom))[1]?.[COW_SOURCE]).toEqual(old)
@@ -104,7 +112,7 @@ describe('Ophis list migration during successful upsert', () => {
       await store.set(upsertListsAtom, chainId as SupportedChainId, [fresh])
       const state = (await store.get(listsStatesByChainAtom))[chainId as SupportedChainId]
       expect(state?.[OPHIS_TOKENS_LIST_SOURCE]).toEqual({ ...fresh, isEnabled: false })
-      expect(state?.[source]).toEqual(retained ? old : undefined)
+      expect(state?.[source]).toEqual(retained ? { ...old, priority: 2 } : undefined)
       // An explicit choice on the new list must win on later refreshes.
       await store.set(upsertListsAtom, chainId as SupportedChainId, [{ ...fresh, isEnabled: true }])
       await store.set(upsertListsAtom, chainId as SupportedChainId, [fresh])

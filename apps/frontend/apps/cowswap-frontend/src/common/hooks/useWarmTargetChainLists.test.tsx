@@ -4,7 +4,7 @@ import { ReactElement, ReactNode, Suspense } from 'react'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { fetchTokenList, listsStatesByChainAtom } from '@cowprotocol/tokens'
 
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 
 import { useWarmTargetChainLists } from './useWarmTargetChainLists'
 
@@ -54,7 +54,7 @@ describe('useWarmTargetChainLists', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     store.set(listsStatesByChainAtom, {} as any)
 
-    renderHook(() => useWarmTargetChainLists(BASE), { wrapper: wrapperFor(store) })
+    await act(async () => renderHook(() => useWarmTargetChainLists(BASE), { wrapper: wrapperFor(store) }))
 
     // It fetched the chain's default sources.
     await waitFor(() => expect(mockFetchTokenList).toHaveBeenCalled())
@@ -83,7 +83,7 @@ describe('useWarmTargetChainLists', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     store.set(listsStatesByChainAtom, {} as any) // cold
 
-    renderHook(() => useWarmTargetChainLists(BASE), { wrapper: wrapperFor(store) })
+    await act(async () => renderHook(() => useWarmTargetChainLists(BASE), { wrapper: wrapperFor(store) }))
     await waitFor(() => expect(mockFetchTokenList).toHaveBeenCalled()) // fetch started (slot was cold)
 
     // User disables a Base list mid-fetch.
@@ -108,7 +108,7 @@ describe('useWarmTargetChainLists', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
 
-    renderHook(() => useWarmTargetChainLists(BASE), { wrapper: wrapperFor(store) })
+    await act(async () => renderHook(() => useWarmTargetChainLists(BASE), { wrapper: wrapperFor(store) }))
 
     await new Promise((r) => setTimeout(r, 50))
     expect(mockFetchTokenList).not.toHaveBeenCalled()
@@ -118,7 +118,7 @@ describe('useWarmTargetChainLists', () => {
     const store = createStore()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     store.set(listsStatesByChainAtom, {} as any)
-    renderHook(() => useWarmTargetChainLists(undefined), { wrapper: wrapperFor(store) })
+    await act(async () => renderHook(() => useWarmTargetChainLists(undefined), { wrapper: wrapperFor(store) }))
 
     await new Promise((r) => setTimeout(r, 50))
     expect(mockFetchTokenList).not.toHaveBeenCalled()

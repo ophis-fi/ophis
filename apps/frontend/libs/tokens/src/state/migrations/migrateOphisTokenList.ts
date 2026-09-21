@@ -1,7 +1,8 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
-import { OPHIS_TOKENS_LIST_SOURCE, UNISWAP_TOKENS_LIST } from '../../const/tokensLists'
-import { TokenListsByChainState } from '../../types'
+import { DEFAULT_TOKENS_LISTS, OPHIS_TOKENS_LIST_SOURCE, UNISWAP_TOKENS_LIST } from '../../const/tokensLists'
+import { ListState, TokenListsByChainState } from '../../types'
+import { isExcludedListToken } from '../../utils/excludedListTokens'
 
 const PREVIOUS_SOURCES: Record<number, string> = {
   10: 'https://static.optimism.io/optimism.tokenlist.json',
@@ -18,22 +19,40 @@ export function migrateOphisTokenList(
   state: TokenListsByChainState[SupportedChainId],
   retainedSources: Set<string>,
 ): TokenListsByChainState[SupportedChainId] {
+  const normalized = normalizeCachedLists(chainId, state)
   const source = PREVIOUS_SOURCES[chainId] || 'https://files.cow.fi/tokens/CowSwap.json'
-  const previous = state?.[source]
+  const previous = normalized[source]
 
   if (
     !previous ||
     (previous !== 'deleted' && (Object.getPrototypeOf(previous) !== Object.prototype || previous.widgetAppCode))
   ) {
-    return state
+    return normalized
   }
 
-  const migrated = { ...state }
+  const migrated = { ...normalized }
   if (!migrated[OPHIS_TOKENS_LIST_SOURCE]) {
     migrated[OPHIS_TOKENS_LIST_SOURCE] =
-      previous === 'deleted' ? previous : { ...previous, source: OPHIS_TOKENS_LIST_SOURCE }
+      previous === 'deleted' ? previous : { ...previous, source: OPHIS_TOKENS_LIST_SOURCE, priority: 1 }
   }
   // Keep intentionally imported lists and sources still used by curated/widget mode.
   if (![...retainedSources].some((retained) => retained.toLowerCase() === source.toLowerCase())) delete migrated[source]
   return migrated
+}
+
+function normalizeCachedLists(
+  chainId: SupportedChainId,
+  state: TokenListsByChainState[SupportedChainId],
+): Record<string, ListState | 'deleted'> {
+  return Object.fromEntries(
+    Object.entries(state || {}).map(([key, value]) => {
+      if (value === 'deleted' || !Array.isArray(value?.list?.tokens)) return [key, value]
+      const config = DEFAULT_TOKENS_LISTS[chainId]?.find((item) => item.source === key && !value.widgetAppCode)
+      const priority = config?.priority ?? value.priority
+      const tokens = value.list.tokens.filter(
+        (token) => typeof token?.address === 'string' && !isExcludedListToken(token.chainId, token.address),
+      )
+      return [key, { ...value, priority, list: { ...value.list, tokens } }]
+    }),
+  )
 }

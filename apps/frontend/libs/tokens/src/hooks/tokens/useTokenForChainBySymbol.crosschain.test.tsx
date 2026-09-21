@@ -3,9 +3,10 @@ import { ReactNode, Suspense } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 
 import { useTokenForChainMapBySymbol } from './useTokenForChainBySymbol'
+import { useTokensByAddressMapForChain } from './useTokensByAddressMapForChain'
 
 import { listsStatesByChainAtom } from '../../state/tokenLists/tokenListsStateAtom'
 import { ListState, TokenListsByChainState } from '../../types'
@@ -68,22 +69,56 @@ function wrapperFor(store: ReturnType<typeof createStore>): ({ children }: { chi
 }
 
 describe('useTokenForChainMapBySymbol (cross-chain: resolves by chainId argument, not the connected chain)', () => {
+  it('resolves default-enabled legacy caches offline and excludes invalid entries from both maps', async () => {
+    const store = createStore()
+    const source = 'https://files.cow.fi/tokens/CowSwap.json'
+    const address = '0xcb327b99ff831bf8223cced12b1338ff3aa322ff'
+    const legacy = Object.values(listFor(BASE, BASE_USDC))[0]
+    store.set(listsStatesByChainAtom, {
+      [BASE]: { [source]: { ...legacy, source, isEnabled: undefined } },
+      [ETHEREUM]: {
+        [source]: {
+          ...legacy,
+          source,
+          list: { ...legacy.list, tokens: [{ chainId: 1, address, symbol: 'bsdETH', decimals: 18, name: 'Invalid' }] },
+        },
+      },
+    })
+    const { result } = await act(async () =>
+      renderHook(
+        () => ({
+          base: useTokenForChainMapBySymbol(BASE),
+          ethereum: useTokenForChainMapBySymbol(ETHEREUM),
+          addresses: useTokensByAddressMapForChain(ETHEREUM),
+        }),
+        { wrapper: wrapperFor(store) },
+      ),
+    )
+    await waitFor(() => expect(result.current?.base['usdc']?.address).toBe(BASE_USDC))
+    expect(result.current.ethereum['bsdeth']).toBeUndefined()
+    expect(result.current.addresses[address]).toBeUndefined()
+  })
+
   // Load-bearing guard: both chains are seeded with a distinct USDC address, so a
   // hook that regressed to reading the env/connected chain (Mainnet) instead of its
   // argument would return ETH_USDC for the Base call and FAIL here.
   it('resolves the TARGET chain token (Base) even though the env/connected chain is Mainnet', async () => {
-    const { result } = renderHook(() => useTokenForChainMapBySymbol(BASE), {
-      wrapper: wrapperFor(storeWithBothChains()),
-    })
+    const { result } = await act(async () =>
+      renderHook(() => useTokenForChainMapBySymbol(BASE), {
+        wrapper: wrapperFor(storeWithBothChains()),
+      }),
+    )
     await waitFor(() => expect(result.current?.['usdc']?.address).toBe(BASE_USDC))
   })
 
   // With both chains present, the Ethereum argument must resolve Ethereum's USDC,
   // not Base's — each call gets only its own chain's token.
   it('resolves the Ethereum token for the Ethereum argument', async () => {
-    const { result } = renderHook(() => useTokenForChainMapBySymbol(ETHEREUM), {
-      wrapper: wrapperFor(storeWithBothChains()),
-    })
+    const { result } = await act(async () =>
+      renderHook(() => useTokenForChainMapBySymbol(ETHEREUM), {
+        wrapper: wrapperFor(storeWithBothChains()),
+      }),
+    )
     await waitFor(() => expect(result.current?.['usdc']?.address).toBe(ETH_USDC))
   })
 })
