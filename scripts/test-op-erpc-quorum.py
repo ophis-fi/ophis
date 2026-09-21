@@ -137,6 +137,7 @@ def main():
                         assert set(MockRpc.balance_reads) == {"eth_getBalance", "eth_getCode"}
                         assert len(MockRpc.balance_reads) <= 20, MockRpc.balance_reads
                         assert "error" in result, "Exhausted budget must stop forwarding"
+                        assert "ErrUpstreamRateLimitRuleExceeded" in json.dumps(result), result
                         print("PASS shared Nodies budget limits combined traffic across methods", flush=True)
                         continue
                     for method, params in (
