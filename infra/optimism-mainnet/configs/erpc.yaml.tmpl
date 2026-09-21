@@ -1,5 +1,5 @@
 # 2026-09-21: official OP gateway + ZAN + private Nodies. Validation Cloud quota
-# is exhausted. Public dRPC needs no account key; it still has rate limits.
+# is exhausted. Public Nodies and dRPC rate-limit under sustained traffic.
 # Current state, populated logs/receipts and fixed-block reads were compared.
 # Failure domains: Google / Alibaba / Cloudflare (Nodies). Keep two agreeing votes.
 # Numbered-header caching and bounded catch-up avoid redundant provider work.
@@ -174,6 +174,19 @@ database:
         finality: unfinalized
         empty: ignore
         ttl: 2s
+
+# One shared pool across methods; 180/minute averages 3 requests/second.
+# Through September 30 this allows <2.4M proxy requests of the confirmed 4M.
+# ponytail: memory counters reset on restart; use dashboard totals for billing.
+rateLimiters:
+  store:
+    driver: memory
+  budgets:
+    - id: nodies-op-free
+      rules:
+        - method: "*"
+          maxCount: 180
+          period: minute
 
 projects:
   - id: main
@@ -665,20 +678,23 @@ projects:
         # Keyed account replaces the throttled public endpoint. Keep 50-block
         # log splitting; never bypass consensus if the account is rate-limited.
         endpoint: https://lb.nodies.app/v2/optimism?apikey=${NODIES_OP_KEY}
+        rateLimitBudget: nodies-op-free
+        # Request mode has separate method counters; credit mode shares a pool.
+        rateLimitCountMode: credit
+        creditUnits:
+          "*": 1
+        rateLimitAutoTune:
+          enabled: false
         evm:
           getLogsAutoSplittingRangeThreshold: 50
         failsafe:
-          # BUDGET INVARIANT (2026-08-15, CI-enforced by assert-erpc-failclosed):
-          # one lane's worst-case serial budget (attempts x timeout + backoff)
-          # MUST stay under the 12s network budget, or a single wedged lane
-          # starves every request before failover — the 08-14 outage. 4s x 2
-          # + 1s backoff = 9s < 12s, and 4s is ~37x this lane's measured p95
-          # (109ms). Shape is deliberately identical to the lane it replaces.
+          # The limiter charges before upstream retries: one attempt prevents
+          # uncounted retry amplification. Network retries acquire a new permit.
           - matchMethod: "*"
             timeout:
               duration: 4s
             retry:
-              maxAttempts: 2
+              maxAttempts: 1
               delay: 200ms
               backoffMaxDelay: 1s
               backoffFactor: 1.5

@@ -1,19 +1,19 @@
 # Optimism RPC capacity and recovery
 
-Updated 2026-09-21. Prepared read voters: official OP (`mainnet.optimism.io`),
+Updated 2026-09-21. Active read voters: official OP (`mainnet.optimism.io`),
 keyed ZAN (`api.zan.top`), and private Nodies (`lb.nodies.app/v2/optimism`).
 The operator supplied an existing free-account endpoint. Its key stays in
 `NODIES_OP_KEY`, outside Git, and credential-bearing renders remain on RAM disk.
-Production still uses public Nodies pending confirmation of remaining free
-requests, reset date and whether overages are disabled. The private RPC does not
-expose these account limits; the dashboard is the source of truth.
+The operator confirmed **4M requests remaining through September 30** on
+September 21. Private Nodies was activated at 19:53 UTC with the bounded budget
+below. The RPC does not expose account limits; the dashboard remains the source
+of truth. Paid overage settings were not confirmed or changed.
 Validation Cloud returned HTTP 401 `api client is disabled`; the operator
 confirmed exhausted quota. Public dRPC passed bounded comparisons but then
 rate-limited under live traffic and was rejected as the replacement.
-Public Nodies also rate-limited after the initial healthy window. The reduced workload
-restored all seven buffer probes, but redundant capacity remains unresolved.
-Keep this limitation explicit: do not describe the third lane as reliably
-available merely because the other two currently satisfy consensus.
+Public Nodies also rate-limited after the initial healthy window and was replaced
+by the private account. Verify that the private voter contributes under real
+traffic; a healthy buffer probe alone can hide a broken third provider.
 
 The operator has no budget for paid capacity. Do not activate a paid tier or
 assume a top-up. ZAN still answers but the operator previously reported its
@@ -40,6 +40,25 @@ The existing bounded numbered-header cache and indexer concurrency limits remain
 Protected balances, receipts, transactions and logs are not cached. Slowing the
 autopilot loop does not remove required per-block log indexing and is not a fix
 for monthly log consumption. Do not reduce the hourly monitor to hide this issue.
+
+## Nodies allowance
+
+The native eRPC limiter admits at most **180 requests/minute** across all methods,
+including its state poller. `rateLimitCountMode: credit` with `creditUnits: {"*": 1}`
+creates one shared request pool; the default request mode would create separate
+method counters. Autotuning is explicitly disabled. Nodies has one upstream
+attempt because eRPC charges before upstream retries; network retries acquire
+another permit. A local regression exhausts the pool across two different methods.
+
+At the ceiling, proxy traffic through the end of September 30 is below **2.4M**,
+leaving more than **1.6M** of the confirmed allowance for submission, startup,
+other clients and reserve. Driver submission goes directly to providers and is
+outside this cap. Memory counters reset on proxy restart; this is a consumption
+rate limit, not an account-wide monthly billing lock. Check dashboard totals if
+other applications share the key or the proxy is repeatedly restarted. No paid
+plan, top-up or overage setting was enabled. Reassess against the dashboard's
+actual renewed allowance after September 30; 4M remaining is not a claim about
+the account's full-month allocation.
 
 ## Quorum and provider checks
 

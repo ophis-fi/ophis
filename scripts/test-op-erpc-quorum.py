@@ -26,6 +26,7 @@ PORT = 14011
 class MockRpc(BaseHTTPRequestHandler):
     healthy = 1
     log_ranges = []
+    balance_reads = []
 
     def log_message(self, *_):
         pass
@@ -33,6 +34,8 @@ class MockRpc(BaseHTTPRequestHandler):
     def do_POST(self):
         request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         method = request["method"]
+        if method in ("eth_getBalance", "eth_getCode"):
+            self.balance_reads.append(method)
         if method in ("eth_call", "eth_getTransactionReceipt", "eth_getLogs") and int(self.path[1:]) > self.healthy:
             self.send_response(500)
             self.end_headers()
@@ -53,6 +56,8 @@ class MockRpc(BaseHTTPRequestHandler):
             "eth_syncing": False,
             "eth_getBlockByNumber": {"number": "0x100", "hash": BLOCK_HASH, "timestamp": "0x123456"},
             "eth_call": CALL_RESULT,
+            "eth_getBalance": "0x0",
+            "eth_getCode": "0x",
             "eth_getLogs": [],
             "eth_getTransactionReceipt": {
                 "transactionHash": TX_HASH, "blockHash": BLOCK_HASH,
@@ -89,10 +94,18 @@ def main():
     try:
         with tempfile.TemporaryDirectory(prefix="ophis-quorum-", dir=cache) as folder:
             config_file = Path(folder) / "erpc.yaml"
-            config_file.write_text(yaml.safe_dump(config))
-            for healthy in (1, 2):
+            for healthy in (1, 2, 3):
                 MockRpc.healthy = healthy
                 MockRpc.log_ranges.clear()
+                if healthy == 3:
+                    # Isolate the actual Nodies limiter with local traffic only.
+                    # One hour avoids a minute rollover during this short test.
+                    project["upstreams"] = [project["upstreams"][2]]
+                    project["networks"][0]["failsafe"] = [{"matchMethod": "*",
+                        "timeout": {"duration": "2s"}, "retry": {"maxAttempts": 1}}]
+                    config["rateLimiters"]["budgets"][0]["rules"][0].update(maxCount=20, period="hour")
+                    MockRpc.balance_reads.clear()
+                config_file.write_text(yaml.safe_dump(config))
                 container = subprocess.check_output([
                     "docker", "run", "--pull=never", "--rm", "-d",
                     "-p", f"127.0.0.1:{PORT}:4000",
@@ -108,6 +121,24 @@ def main():
                             time.sleep(0.1)
                     else:
                         raise AssertionError("Local eRPC failed to become healthy")
+                    if healthy == 3:
+                        for index in range(40):
+                            method = ("eth_getBalance", "eth_getCode")[index % 2]
+                            body = json.dumps({"jsonrpc": "2.0", "id": index, "method": method,
+                                "params": ["0x" + "33" * 20, "0x80"]}).encode()
+                            try:
+                                response = urlopen(Request(f"http://127.0.0.1:{PORT}/main/evm/10",
+                                    data=body, headers={"Content-Type": "application/json"}), timeout=5)
+                            except HTTPError as error:
+                                response = error
+                            with response:
+                                result = json.load(response)
+                            assert "result" in result or "error" in result, result
+                        assert set(MockRpc.balance_reads) == {"eth_getBalance", "eth_getCode"}
+                        assert len(MockRpc.balance_reads) <= 20, MockRpc.balance_reads
+                        assert "error" in result, "Exhausted budget must stop forwarding"
+                        print("PASS shared Nodies budget limits combined traffic across methods", flush=True)
+                        continue
                     for method, params in (
                         ("eth_call", [{"to": "0x" + "33" * 20, "data": "0x"}, "0x80"]),
                         ("eth_getTransactionReceipt", [TX_HASH]),

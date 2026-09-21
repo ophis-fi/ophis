@@ -101,7 +101,7 @@ ALLOWED = {
     "retry": {"backoffFactor", "backoffMaxDelay", "delay", "jitter", "maxAttempts"},
     "timeout": {"duration"},
     "hedge": {"delay", "maxCount"},
-    "upstream": {"endpoint", "failsafe", "id", "evm"},
+    "upstream": {"endpoint", "failsafe", "id", "evm", "rateLimitBudget", "rateLimitCountMode", "creditUnits", "rateLimitAutoTune"},
     "upstream_rule": {"matchMethod", "timeout", "retry", "circuitBreaker"},
     "circuitBreaker": {"failureThresholdCount", "failureThresholdCapacity", "halfOpenAfter", "successThresholdCount", "successThresholdCapacity"},
 }
@@ -333,6 +333,9 @@ def validate(cfg):
     }}
     if cache != expected_cache:
         errs.append("database must contain only the bounded numbered-header cache")
+    if cfg.get("rateLimiters") != {"store": {"driver": "memory"}, "budgets": [{
+            "id": "nodies-op-free", "rules": [{"method": "*", "maxCount": 180, "period": "minute"}]}]}:
+        errs.append("Nodies requires the fixed shared 180/minute budget")
     networks_checked = 0
     for proj in cfg.get("projects") or []:
         _check_keys(proj, "project", "project", errs)
@@ -344,6 +347,16 @@ def validate(cfg):
         ups = [u for u in (proj.get("upstreams") or []) if isinstance(u, dict)]
         for u in ups:
             _check_keys(u, "upstream", f"upstream[{u.get('id')}]", errs)
+            budget_keys = {"rateLimitBudget", "rateLimitCountMode", "creditUnits", "rateLimitAutoTune"}
+            budget = {k: u[k] for k in budget_keys if k in u}
+            expected_budget = ({"rateLimitBudget": "nodies-op-free", "rateLimitCountMode": "credit",
+                                "creditUnits": {"*": 1}, "rateLimitAutoTune": {"enabled": False}}
+                               if _hostname(u.get("endpoint")) == "lb.nodies.app" else {})
+            if budget != expected_budget:
+                errs.append("Only Nodies may use the fixed shared request budget, with autotuning disabled")
+            if expected_budget and (len(u.get("failsafe", [])) != 1
+                    or u["failsafe"][0].get("retry", {}).get("maxAttempts") != 1):
+                errs.append("Nodies must use one upstream attempt so retries cannot bypass its budget")
             expected_evm = {"getLogsAutoSplittingRangeThreshold": 50} if _hostname(u.get("endpoint")) == "lb.nodies.app" else None
             if _hostname(u.get("endpoint")) == "lb.nodies.app":
                 url = urlsplit(u["endpoint"])

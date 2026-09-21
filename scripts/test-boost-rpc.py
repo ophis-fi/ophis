@@ -59,6 +59,17 @@ for endpoint in ("https://op-pokt.nodies.app", "https://lb.nodies.app/v2/optimis
     bad = copy.deepcopy(config)
     bad["projects"][0]["upstreams"][2]["endpoint"] = endpoint
     assert validate(bad), "Do not silently use public, keyless, or wrong-chain Nodies"
+for key, value in (("rateLimitCountMode", "request"), ("rateLimitBudget", ""),
+                   ("creditUnits", {"*": 0}), ("rateLimitAutoTune", {"enabled": True})):
+    bad = copy.deepcopy(config)
+    bad["projects"][0]["upstreams"][2][key] = value
+    assert validate(bad), "Nodies must not bypass or increase the shared quota cap"
+bad = copy.deepcopy(config)
+bad["projects"][0]["upstreams"][2]["failsafe"][0]["retry"]["maxAttempts"] = 2
+assert validate(bad), "Upstream retries would spend uncounted requests"
+bad = copy.deepcopy(config)
+bad["rateLimiters"]["budgets"][0]["rules"][0]["maxCount"] = 181
+assert validate(bad), "Do not silently raise the account budget"
 bad = copy.deepcopy(config)
 bad["projects"][0]["upstreams"].append(copy.deepcopy(bad["projects"][0]["upstreams"][0]))
 assert validate(bad), "An extra upstream must not dilute the independent three-provider quorum"
