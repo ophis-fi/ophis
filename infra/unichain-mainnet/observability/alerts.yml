@@ -130,17 +130,20 @@ groups:
       # autopilot.toml.tmpl, so autopilot's isSolver(drivers[].address) check
       # failed and it dropped EVERY solution as SolverDenyListed (DEBUG-only
       # log) for 45 days. This series only moves when a real order is in an
-      # auction, so any increase means an order is being starved right now.
+      # auction (one sample per driver per ~20s auction). try_solve() ALSO
+      # maps an RPC error on the isSolver call to deny_listed, so require 3+
+      # in 10m: a lone RPC blip stays quiet, a real mismatch trips within
+      # about a minute of an order going live.
       - alert: OphisUniSolverDenyListed
         expr: |
-          sum by (driver) (increase(gp_v2_autopilot_runloop_solve_count{result="deny_listed"}[10m])) > 0
+          sum by (driver) (increase(gp_v2_autopilot_runloop_solve_count{result="deny_listed"}[10m])) >= 3
         for: 1m
         labels:
           severity: critical
           chain: unichain
         annotations:
           summary: "Unichain: autopilot is deny-listing driver {{ $labels.driver }}, orders cannot fill"
-          description: "autopilot's isSolver(address) check is false for this driver, so its solutions are discarded. Compare `[[drivers]] address` in rendered/autopilot.toml with the driver's submitter EOA and run `cast call <authenticator> 'isSolver(address)(bool)' <address> --rpc-url https://mainnet.unichain.org`. After a submitter rotation, update configs/autopilot.toml.tmpl and restart autopilot."
+          description: "autopilot discarded this driver's solutions 3+ times in 10m. Cause is one of: (1) its `[[drivers]] address` in rendered/autopilot.toml is not an allowlisted solver (stale after a submitter rotation): run `cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C 'isSolver(address)(bool)' THAT_ADDRESS --rpc-url https://mainnet.unichain.org`, then fix configs/autopilot.toml.tmpl and restart autopilot; (2) the isSolver eth_call itself keeps failing: grep autopilot logs for 'solver participation check failed' and check the rpc-proxy upstreams."
 
       - alert: OphisUniSettlementFailureRateHigh
         expr: |
