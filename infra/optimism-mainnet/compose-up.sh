@@ -368,9 +368,11 @@ if [[ -f observability/alerts.yml ]] && \
   # must not pass silently either — silence is how a dead alert survives.
   _want="$(grep -c '^[[:space:]]*- alert:' observability/alerts.yml 2>/dev/null || echo 0)"
   _got=0
+  # `|| true`: under `set -euo pipefail` a refused connection or a not-ready
+  # response (curl/grep non-zero) would otherwise abort the whole deploy here.
   for _ in 1 2 3 4 5 6 7 8 9 10; do
     _got="$(curl -s -m 3 http://127.0.0.1:9091/api/v1/rules 2>/dev/null \
-            | grep -oE '"name":"[A-Za-z0-9]+"' | sort -u | wc -l | tr -d ' ')"
+            | grep -oE '"name":"[A-Za-z0-9]+"' | sort -u | wc -l | tr -d ' ' || true)"
     [[ "${_got:-0}" -ge "${_want:-0}" && "${_want:-0}" -gt 0 ]] && break
     sleep 2
   done

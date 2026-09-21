@@ -389,21 +389,21 @@ owner-gated: the hot key never touches an attacker-controllable destination.
 
 ## Related documents
 
-- **Unichain needs an `addSolver` grant before its sweep can run.** As of
-  2026-08-27 the pinned submitter `0x7A956C269a12f1B897367663b536EB5dd29f3fBb`
-  returns false from `isSolver` on the chain-130 authenticator
-  `0x1002E12f2e7f848b20fe572F92133E467a5D010C`. It settled six times, last on
-  2026-07-18, so the allowlist changed after that. The sweep fails **locally**,
-  not on-chain: `SweepSettlementBuffer.s.sol` requires `isSolver(broadcaster)`
-  before it reaches `vm.startBroadcast`, so nothing is built, signed or
-  submitted. There is **no owner-Safe shortcut on chain 130** - its AllowList
-  manager is the Guardian and the proxy owner is a 24h TimelockController, so
-  `addSolver` goes through that Timelock's schedule / wait / execute flow. Use
+- **Unichain does NOT need an `addSolver` grant (corrected 2026-09-21).** The
+  2026-08-27 finding checked the pre-rotation submitter
+  `0x7A956C269a12f1B897367663b536EB5dd29f3fBb`, which was evicted on purpose on
+  2026-08-07. The live submitter `0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2`
+  returns true from `isSolver` on the chain-130 authenticator
+  `0x1002E12f2e7f848b20fe572F92133E467a5D010C` and settled on 2026-09-21. Its key
+  exists only on the Unichain VM, so run the sweep there. The sweep still fails
+  **locally**, not on-chain, if the broadcaster is not a solver. On chain 130
+  ADDING a solver goes through the 24h Timelock (`addSolver` is `onlyTimelock`);
+  REMOVING one is immediate from the Guardian Safe (`removeSolver` is
+  `onlyGuardian`), so never route an emergency eviction through the Timelock. Use
   `../../infra/unichain-mainnet/deploy/timelock-governance-runbook.md`, NOT the
   OP-mainnet `allowlist-governance-runbook.md`, whose addresses are OP-specific.
-  Optimism and Robinhood are unaffected.
 - `sovereign-sweep-rehearsal.md` (what to rehearse BEFORE this ceremony:
-  Robinhood needs no ceremony at all, Unichain needs the grant above first, and
+  Robinhood needs no ceremony at all, Unichain runs from its VM, and
   every current buffer sits 30x-100x below the default thresholds, so a stock
   sweep today moves nothing and looks like a clean no-op)
 - `../../infra/shared/scripts/sweep-preflight.sh` (read-only precondition check:

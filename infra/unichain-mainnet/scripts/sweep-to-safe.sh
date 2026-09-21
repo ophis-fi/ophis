@@ -72,7 +72,7 @@ command -v forge >/dev/null 2>&1 || { echo "ERROR: forge (foundry) not in PATH" 
 # Driver-submitter EOA (must match the PK at PK_PATH). UNICHAIN submitter -
 # NOT the OP one (0x92B9…); the OP address would fail the Unichain
 # authenticator's solver check.
-SUBMITTER_EOA="${OPHIS_SUBMITTER_EOA:-0x7A956C269a12f1B897367663b536EB5dd29f3fBb}"
+SUBMITTER_EOA="${OPHIS_SUBMITTER_EOA:-0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2}"
 
 # UNICHAIN settlement + tradeable tokens for SweepSettlementBuffer.s.sol,
 # which otherwise defaults to the OP settlement + OP token set. Exported so

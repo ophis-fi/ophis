@@ -43,28 +43,22 @@ Two corrections to what was previously recorded:
   would look like a successful no-op. The overrides below are what make the
   rehearsal actually move value.
 
-## ⚠️ Unichain is blocked today
+## Unichain: the "blocked" finding was a stale pin (corrected 2026-09-21)
 
-The preflight found it: on chain 130 the pinned submitter
-`0x7A956C269a12f1B897367663b536EB5dd29f3fBb` is **not currently an allowlisted
-solver**. `isSolver` on the authenticator `0x1002E12f2e7f848b20fe572F92133E467a5D010C`
-returns false (verified 2026-08-27 with a successful call, not an RPC error), so a
-Unichain sweep cannot run. It fails **locally**, not on-chain:
-`SweepSettlementBuffer.s.sol` requires `auth.isSolver(broadcaster)` before it
-reaches `vm.startBroadcast`, so nothing is built, signed or submitted. Treat it
-as an ordinary precondition failure, not a leaked transaction or an incident.
+This section used to say Unichain needed an `addSolver` grant, because the
+pinned submitter `0x7A956C269a12f1B897367663b536EB5dd29f3fBb` returns false from
+`isSolver` on the authenticator `0x1002E12f2e7f848b20fe572F92133E467a5D010C`.
+That was the wrong address, not a missing grant. The submitter key was rotated
+on 2026-08-07: `0x7A956C269a12f1B897367663b536EB5dd29f3fBb` was evicted and
+`0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2` was allowlisted through the 24h
+Timelock. The scripts and the autopilot config kept the old constant (fixed in
+PR #1446), so the preflight was checking an EOA that was revoked on purpose.
 
-That EOA did settle successfully six times, most recently **2026-07-18**, so the
-allowlist changed at some point after that. The cause was not established here:
-a full allowlist event scan needs an archive endpoint the free RPC tier refuses.
-
-Consequence for this plan: Unichain needs an `addSolver` grant before its sweep
-can run, and there is **no owner-Safe shortcut on chain 130**. Its AllowList
-manager is the Guardian and the proxy owner is a 24h TimelockController, so
-`addSolver` is callable only through that Timelock's schedule / wait / execute
-flow. Follow `../../infra/unichain-mainnet/deploy/timelock-governance-runbook.md`,
-not the OP-mainnet `allowlist-governance-runbook.md`, whose addresses are
-OP-specific. Robinhood is unaffected and its submitter checks out.
+`isSolver(0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2)` is true and that key
+settled on 2026-09-21, so no governance action is needed. The one real
+constraint: the rotated key exists only on the Unichain VM, so the sweep has to
+run there. `SweepSettlementBuffer.s.sol` still checks `auth.isSolver(broadcaster)`
+before `vm.startBroadcast`, so a wrong address fails locally and submits nothing.
 
 ## Order: Robinhood, then Unichain, then Optimism
 
@@ -147,7 +141,7 @@ Robinhood:
 # Unichain reads a bare SAFE and OPHIS_SUBMITTER_EOA; set them before preflighting.
 UNI_ENV=(OPHIS_RPC=<the Unichain RPC the sweep will use>
          SAFE=0x858f0F5eE954846D47155F5203c04aF1819eCeF8
-         OPHIS_SUBMITTER_EOA=0x7A956C269a12f1B897367663b536EB5dd29f3fBb
+         OPHIS_SUBMITTER_EOA=0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2
          TOKENS=0x078D782b760474a361dDA0AF3839290b0EF57AD6,0x4200000000000000000000000000000000000006
          MIN_BASE_UNITS=100000,10000000000000)
 

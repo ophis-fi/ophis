@@ -124,7 +124,26 @@ groups:
           chain: unichain
         annotations:
           summary: "Unichain: 0 successful settlements in 1h despite active auctions"
-          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and upstream status; (3) driver-submitter wallet out of ETH — `cast balance 0x7A956C269a12f1B897367663b536EB5dd29f3fBb --rpc-url https://mainnet.unichain.org`."
+          description: "Auctions are running (auction_preprocessing_count > 0) but no settlement has succeeded in the last hour. Common causes, in order of likelihood: (1) solver stuck — check `solutions{result}` breakdown; (2) RPC submission failing — check `mempool_submission{result}` and upstream status; (3) driver-submitter wallet out of ETH — `cast balance 0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2 --rpc-url https://mainnet.unichain.org`."
+
+      # 2026-09-21: the 08-07 submitter rotation never reached
+      # autopilot.toml.tmpl, so autopilot's isSolver(drivers[].address) check
+      # failed and it dropped EVERY solution as SolverDenyListed (DEBUG-only
+      # log) for 45 days. This series only moves when a real order is in an
+      # auction (one sample per driver per ~20s auction). try_solve() ALSO
+      # maps an RPC error on the isSolver call to deny_listed, so require 3+
+      # in 10m: a lone RPC blip stays quiet, a real mismatch trips within
+      # about a minute of an order going live.
+      - alert: OphisUniSolverDenyListed
+        expr: |
+          sum by (driver) (increase(gp_v2_autopilot_runloop_solve_count{result="deny_listed"}[10m])) >= 3
+        for: 1m
+        labels:
+          severity: critical
+          chain: unichain
+        annotations:
+          summary: "Unichain: autopilot is deny-listing driver {{ $labels.driver }}, orders cannot fill"
+          description: "autopilot discarded this driver's solutions 3+ times in 10m. Cause is one of: (1) its `[[drivers]] address` in rendered/autopilot.toml is not an allowlisted solver (stale after a submitter rotation): run `cast call 0x1002E12f2e7f848b20fe572F92133E467a5D010C 'isSolver(address)(bool)' THAT_ADDRESS --rpc-url https://mainnet.unichain.org`, then fix configs/autopilot.toml.tmpl and run ./compose-up.sh (autopilot reads rendered/autopilot.toml, so a bare restart keeps the stale address); (2) the isSolver eth_call itself keeps failing: grep autopilot logs for 'solver participation check failed' and check the rpc-proxy upstreams."
 
       - alert: OphisUniSettlementFailureRateHigh
         expr: |
