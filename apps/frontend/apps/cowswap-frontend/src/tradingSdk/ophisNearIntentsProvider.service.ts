@@ -5,7 +5,7 @@ import {
 } from '@cowprotocol/common-const'
 import { isHypercoreTokenId } from '@cowprotocol/common-utils'
 import { AdditionalTargetChainId, areAddressesEqual, BTC_CURRENCY_ADDRESS } from '@cowprotocol/cow-sdk'
-import { NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
+import { BridgeProviderQuoteError, BridgeQuoteErrors, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 
 import { utils } from 'ethers'
 import jsonStringify from 'json-stringify-deterministic'
@@ -49,6 +49,10 @@ const ATTESTATION_PREFIX = '0x0a773570'
 const ATTESTATION_VERSION_BYTE = '0x00'
 
 export type NearQuoteResponse = Parameters<NearIntentsBridgeProvider['recoverDepositAddress']>[0]
+type NearConfidentiality = 'basic' | 'advanced'
+type NearProviderOptions = ConstructorParameters<typeof NearIntentsBridgeProvider>[0] & {
+  confidentiality?: NearConfidentiality
+}
 
 /**
  * The exact object the 1-Click server hashes for deposit-address attestation
@@ -99,10 +103,13 @@ export function buildNearQuoteHashInput(
  * Pure request augmentation, split out for testability: adds Ophis referral
  * attribution and the integrator appFees to a 1-Click quote request.
  */
-export function withOphisNearQuoteParams<T extends object>(request: T): T {
-  // referral/appFees exist on the server API but not yet on the pinned
-  // one-click client types — the cast tracks the server contract.
-  return { ...request, referral: OPHIS_NEAR_REFERRAL, appFees: OPHIS_NEAR_APP_FEES } as T
+export function withOphisNearQuoteParams<T extends object>(request: T, confidentiality?: NearConfidentiality): T {
+  return {
+    ...request,
+    referral: OPHIS_NEAR_REFERRAL,
+    appFees: OPHIS_NEAR_APP_FEES,
+    ...(confidentiality && { confidentiality }),
+  }
 }
 
 /**
@@ -110,17 +117,26 @@ export function withOphisNearQuoteParams<T extends object>(request: T): T {
  * Ophis referral + appFees. Split out so the wrapping mechanics are testable
  * against a fake api (the constructor is the single untested line).
  */
-export function wrapNearApiWithOphisQuoteParams<T extends { getQuote: (...args: never[]) => Promise<unknown> }>(
-  api: T,
+export function wrapNearApiWithOphisQuoteParams(
+  api: { getQuote(request: NearQuoteResponse['quoteRequest']): Promise<NearQuoteResponse> },
+  confidentiality?: NearConfidentiality,
 ): void {
-  const originalGetQuote = (api.getQuote as (request: unknown) => Promise<unknown>).bind(api)
-  api.getQuote = ((request: unknown) => originalGetQuote(withOphisNearQuoteParams(request as object))) as T['getQuote']
+  const originalGetQuote = api.getQuote.bind(api)
+  api.getQuote = async (request) => {
+    const response = await originalGetQuote(withOphisNearQuoteParams(request, confidentiality))
+    const echoedRequest = response.quoteRequest as NearQuoteResponse['quoteRequest'] & { confidentiality?: string }
+    // Confidential quotes require NEAR access. Never silently downgrade to a public swap.
+    if (confidentiality && echoedRequest?.confidentiality !== confidentiality) {
+      throw new BridgeProviderQuoteError(BridgeQuoteErrors.INVALID_API_JSON_RESPONSE)
+    }
+    return response
+  }
 }
 
 export class OphisNearIntentsBridgeProvider extends NearIntentsBridgeProvider {
-  constructor(options?: ConstructorParameters<typeof NearIntentsBridgeProvider>[0]) {
+  constructor(options?: NearProviderOptions) {
     super(options)
-    wrapNearApiWithOphisQuoteParams(this.api)
+    wrapNearApiWithOphisQuoteParams(this.api, options?.confidentiality)
     // Idempotent: the provider cannot exist with the Ophis destinations unregistered
     // (a consumer that never imports bridgingSdk.ts would otherwise get no tokens).
     registerOphisNearIntentsNetworks()

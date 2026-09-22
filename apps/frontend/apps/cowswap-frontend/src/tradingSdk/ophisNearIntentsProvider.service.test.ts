@@ -1,5 +1,6 @@
 import { OPHIS_PARTNER_FEE_RECIPIENT } from '@cowprotocol/common-const'
 import { AdditionalTargetChainId, BTC_CURRENCY_ADDRESS, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { BridgeQuoteErrors } from '@cowprotocol/sdk-bridging'
 
 import { utils } from 'ethers'
 import jsonStringify from 'json-stringify-deterministic'
@@ -12,12 +13,8 @@ import {
   wrapNearApiWithOphisQuoteParams,
 } from './ophisNearIntentsProvider.service'
 
-// Deterministic fixtures typed against the SDK contract, with GOLDEN values
-// computed offline (independent of the implementation, so a struct drift —
-// e.g. someone re-adding the depositMode field NEAR removed from their server
-// hash — fails loudly). Enum-valued fields carry targeted literal casts: the
-// one-click enum VALUES are not importable (transitive dependency), but every
-// field name and non-enum type stays compiler-checked.
+// Golden fixtures catch server-hash drift. The transitive one-click enums need
+// literal casts; field names and non-enum types stay compiler-checked.
 type NearQuoteRequest = NearQuoteResponse['quoteRequest']
 
 const QUOTE: NearQuoteResponse['quote'] = {
@@ -106,13 +103,13 @@ describe('ophisNearIntentsProvider', () => {
 
   describe('wrapNearApiWithOphisQuoteParams', () => {
     it('rebinds api.getQuote so the underlying call receives the injected params', async () => {
-      const underlying = jest.fn().mockResolvedValue('quote-result')
+      const underlying = jest.fn().mockResolvedValue(QUOTE_RESPONSE)
       const api = { getQuote: underlying }
 
       wrapNearApiWithOphisQuoteParams(api)
       const result = await api.getQuote({ ...QUOTE_REQUEST, referral: 'cow' } as never)
 
-      expect(result).toBe('quote-result')
+      expect(result).toBe(QUOTE_RESPONSE)
       expect(underlying).toHaveBeenCalledWith(
         expect.objectContaining({
           amount: QUOTE_REQUEST.amount,
@@ -130,6 +127,30 @@ describe('ophisNearIntentsProvider', () => {
       expect(provider.testApi.getQuote).not.toBe(Object.getPrototypeOf(provider.testApi).getQuote)
       expect(Object.prototype.hasOwnProperty.call(provider.testApi, 'getQuote')).toBe(true)
     })
+
+    it.each(['basic', 'advanced'] as const)(
+      'requests %s confidentiality without accepting a public downgrade',
+      async (mode) => {
+        const underlying = jest.fn().mockResolvedValue({
+          ...QUOTE_RESPONSE,
+          quoteRequest: { ...QUOTE_REQUEST, confidentiality: mode },
+        })
+        const api = { getQuote: underlying }
+        wrapNearApiWithOphisQuoteParams(api, mode)
+
+        await expect(api.getQuote(QUOTE_REQUEST)).resolves.toHaveProperty('quoteRequest.confidentiality', mode)
+        expect(underlying).toHaveBeenCalledWith(expect.objectContaining({ confidentiality: mode, referral: 'ophis' }))
+
+        underlying.mockResolvedValue({
+          ...QUOTE_RESPONSE,
+          quoteRequest: { ...QUOTE_REQUEST, confidentiality: 'public' },
+        })
+        await expect(api.getQuote(QUOTE_REQUEST)).rejects.toThrow(BridgeQuoteErrors.INVALID_API_JSON_RESPONSE)
+        underlying.mockRejectedValue(new Error('Unauthorized'))
+        await expect(api.getQuote(QUOTE_REQUEST)).rejects.toThrow('Unauthorized')
+        expect(underlying).toHaveBeenCalledTimes(3)
+      },
+    )
   })
 
   describe('recoverDepositAddress', () => {

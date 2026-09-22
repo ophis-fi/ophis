@@ -40,10 +40,11 @@ export type OphisNearIntentsNetwork = {
 
 /**
  * NEAR Intents networks Ophis offers on top of the SDK's built-in list.
- * Destinations only: a NEAR bridge is a plain swap with the receiver pointed
- * at NEAR's deposit address, so nothing on these chains needs deploying.
+ * A NEAR bridge delivers to the destination through its API. Source capability
+ * is separate: BRIDGE_SOURCE_CHAIN_IDS requires a working CoW settlement.
  */
 export const OPHIS_NEAR_INTENTS_NETWORKS: ReadonlyArray<OphisNearIntentsNetwork> = [
+  { blockchain: 'hood', chainId: 4663, evm: true },
   { blockchain: 'monad', chainId: MONAD_CHAIN_ID, evm: true },
   { blockchain: 'xlayer', chainId: XLAYER_CHAIN_ID, evm: true },
   { blockchain: 'sui', chainId: SUI_CHAIN_ID, evm: false, nativeAddress: SUI_NATIVE_CURRENCY_ADDRESS },

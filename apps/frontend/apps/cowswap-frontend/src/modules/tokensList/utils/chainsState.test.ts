@@ -366,9 +366,7 @@ describe('chainsState', () => {
       })
 
       it('disables every destination when the current chain is destination-only', () => {
-        // Unichain is a valid DESTINATION but not a source (no on-chain
-        // execution machinery yet) — even though the provider network lists
-        // contain it, bridging FROM it must stay off.
+        // Unichain is a destination only; its presence in the network list cannot enable a source.
         const result = createOutputChainsState(
           createOptions({
             chainId: 130 as unknown as SupportedChainId,
@@ -381,6 +379,17 @@ describe('chainsState', () => {
         expect(result.disabledChainIds?.has(SupportedChainId.MAINNET)).toBe(true)
         expect(result.disabledChainIds?.has(SupportedChainId.GNOSIS_CHAIN)).toBe(true)
         expect(result.disabledChainIds?.has(130) ?? false).toBe(false)
+      })
+
+      it('offers destinations from Robinhood through NEAR even with the Across source flag off', () => {
+        const options = createOptions({
+          chainId: 4663 as SupportedChainId,
+          currentChainInfo: ROBINHOOD,
+          bridgeSupportedNetworks: [BASE, ROBINHOOD],
+          supportedChains: [BASE, ROBINHOOD],
+        })
+        const result = createOutputChainsState(options)
+        expect(result.disabledChainIds?.has(SupportedChainId.BASE) ?? false).toBe(false)
       })
     })
   })

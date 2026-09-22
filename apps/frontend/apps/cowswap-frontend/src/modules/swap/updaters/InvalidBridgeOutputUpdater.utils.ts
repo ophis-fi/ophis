@@ -37,7 +37,7 @@ export function getUnsupportedBridgePairPatch(params: UnsupportedBridgePairPatch
 
   // The provider network union gates DESTINATIONS only; source capability is
   // the narrower BRIDGE_SOURCE_CHAIN_IDS (destination-only chains like
-  // Unichain/Robinhood are in the union but cannot execute a bridge order).
+  // Unichain is in the union but cannot execute a bridge order).
   // Without this, a crafted URL with a destination-only source chain keeps a
   // cross-chain output alive and quote polling fails forever downstream.
   const isSourceSupported = BRIDGE_SOURCE_CHAIN_IDS.has(sourceChainId)

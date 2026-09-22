@@ -11,7 +11,7 @@ import { OphisAcrossBridgeProvider } from './ophisBridgeProviders'
 import { OphisNearIntentsBridgeProvider } from './ophisNearIntentsProvider.service'
 import { tradingSdk } from './tradingSdk'
 
-// NEAR destinations the SDK does not ship (Monad, X Layer): registered before
+// NEAR networks the SDK does not ship (including Robinhood): registered before
 // any provider is used; the SDK reads its network map at call time.
 registerOphisNearIntentsNetworks()
 
@@ -30,6 +30,8 @@ export const acrossBridgeProvider = new OphisAcrossBridgeProvider({ apiOptions: 
 // adds referral attribution + the 3 bps integrator appFee (see its header).
 export const nearIntentsBridgeProvider = new OphisNearIntentsBridgeProvider({
   apiKey: process.env.REACT_APP_NEAR_API_KEY || undefined,
+  // The deployed partner key supports confidential quotes; keyless development uses public routes.
+  confidentiality: process.env.REACT_APP_NEAR_API_KEY ? 'basic' : undefined,
 })
 
 // Bungee LAST: the SDK's single-provider getQuote path takes providers[0] for
@@ -62,8 +64,8 @@ export function setQuoteBridgeProviders(quoteProviderIds: readonly string[]): vo
 }
 
 // Ophis fork (Path A, 2026-05-20): the live providers are Across for EVM<->EVM
-// (the only route into Unichain, Robinhood Chain, Ink and Linea) and NEAR
-// Intents for EVM<->Solana/Bitcoin plus the nine EVM chains it lists.
+// (including Unichain, Robinhood Chain, Ink and Linea) and NEAR Intents for
+// EVM<->Solana/Bitcoin plus its EVM routes, including Robinhood Chain.
 //
 // Upstream cowswap gates Near + Across behind LaunchDarkly feature flags
 // in `BridgeProvidersUpdater`. We don't run LaunchDarkly — the flags
