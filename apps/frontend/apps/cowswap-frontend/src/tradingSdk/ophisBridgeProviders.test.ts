@@ -379,6 +379,7 @@ describe('ophisBridgeProviders: chains, decode-only provider, invariants', () =>
       ]
       const expected = new Set([
         ...upstream.filter((c) => isEvmChainInfo(c)).map((c) => c.id),
+        4663, // NEAR hood uses a deposit-address receiver, independently of Across.
         ...EXTRA_ACROSS_SOURCE_CHAIN_IDS,
       ])
 
@@ -391,10 +392,12 @@ describe('ophisBridgeProviders: chains, decode-only provider, invariants', () =>
       expect(EXTRA_ACROSS_SOURCE_CHAIN_IDS).toEqual([])
       // The executable set and the source set derive from the same const, so
       // they agree on every flagged chain in every flag state.
-      for (const id of [57073, 59144, 4663]) {
+      for (const id of [57073, 59144]) {
         expect(BRIDGE_SOURCE_CHAIN_IDS.has(id)).toBe(false)
         expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(id)).toBe(false)
       }
+      expect(BRIDGE_SOURCE_CHAIN_IDS.has(4663)).toBe(true)
+      expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(4663)).toBe(false)
     })
 
     it('adds exactly Robinhood Chain (4663) when its own gate is enabled', () => {

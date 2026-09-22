@@ -81,9 +81,9 @@ export const EXTRA_ACROSS_SOURCE_CHAIN_IDS: readonly number[] = [
  * were widened, so widening destinations cannot accidentally offer bridging
  * from a chain where every quote would fail. Ink and Linea join via the flagged
  * EXTRA_ACROSS_SOURCE_CHAIN_IDS above (a math-helper deploy, no CoW Shed or
- * own-driver work — those chains ride upstream CoW solvers). Unichain and
- * Robinhood Chain sources remain future: they are sovereign, so they also need a
- * CoW Shed factory deploy and an E2E hook-execution proof on our own driver.
+ * own-driver work — those chains ride upstream CoW solvers). Robinhood joins via
+ * NEAR's attested deposit-address receiver; it does not need an Across hook.
+ * Unichain still needs its own execution proof before it can be a source.
  */
 export const BRIDGE_SOURCE_CHAIN_IDS: ReadonlySet<number> = new Set<number>([
   SupportedChainId.MAINNET,
@@ -97,6 +97,8 @@ export const BRIDGE_SOURCE_CHAIN_IDS: ReadonlySet<number> = new Set<number>([
   // Optimism (Ophis sovereign): NEAR Intents lists it as a source, and its
   // deposit-address model needs only a plain swap with an overridden receiver.
   10,
+  // NEAR 1Click hood routes: FLEX_INPUT quotes and attestations verified 2026-09-22.
+  4663,
   // Ink + Linea, gated behind the deploy flag above (empty until enabled).
   ...EXTRA_ACROSS_SOURCE_CHAIN_IDS,
 ])

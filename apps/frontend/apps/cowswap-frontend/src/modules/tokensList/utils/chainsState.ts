@@ -69,8 +69,8 @@ export function createOutputChainsState({
   // Source capability is NOT the destination list: destinations only need the
   // provider API to deliver there, while sources need on-chain execution
   // machinery (see BRIDGE_SOURCE_CHAIN_IDS). Gating on destinationIds here
-  // would offer bridging FROM destination-only chains (Unichain, Robinhood
-  // Chain, Ink, Linea) where every quote fails.
+  // would offer bridging FROM destination-only chains (Unichain and, before
+  // their source flags are enabled, Ink/Linea) where every quote fails.
   const sourceSupported = BRIDGE_SOURCE_CHAIN_IDS.has(chainId)
 
   const baseDisabledChainIds = computeDisabledChainIds(
