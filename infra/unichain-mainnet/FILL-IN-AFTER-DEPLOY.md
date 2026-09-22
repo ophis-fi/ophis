@@ -22,7 +22,7 @@ contracts (Balances / Signatures / HooksTrampoline) are NOT in networks.json
 | Balances (artifact)             | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` | .env |
 | Signatures (artifact)           | `0x5f315A204E7971fC29a66fef3a5773f6B0202fac` | .env |
 | HooksTrampoline (artifact)      | `0x2FbB1e41fF4f9b707E4428EEC7F5AFAaC5D60810` | .env |
-| Submitter EOA (WS10)            | `0x7A956C269a12f1B897367663b536EB5dd29f3fBb` | allowlisted ✓ |
+| Submitter EOA (WS10)            | `0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2` | allowlisted ✓ |
 
 Governance: `owner()` == `manager()` == protocol Safe `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`
 (2-of-3 on chain 130). `isSolver(submitter)` == true. Verified on the public RPC

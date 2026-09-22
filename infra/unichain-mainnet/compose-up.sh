@@ -240,6 +240,39 @@ if [[ -f observability-rendered/alertmanager.yml ]] && \
   docker compose --profile observability up -d --no-deps --force-recreate alertmanager
 fi
 
+# Prometheus loads alerts.yml and prometheus.yml ONLY at process start and runs
+# with `--no-web.enable-lifecycle`, so a plain `up -d` leaves it evaluating the
+# rules it started with: a new alert could be merged, deployed and STILL never
+# fire. Same block as infra/optimism-mainnet/compose-up.sh (see there for the
+# full rationale). Recreating is safe: the TSDB lives in the named volume
+# unichain-mainnet_prometheus-data.
+if [[ -f observability/alerts.yml ]] && \
+   docker compose ps --services 2>/dev/null | grep -qF prometheus; then
+  echo "==> force-recreating prometheus to load alerts.yml / prometheus.yml"
+  docker compose --profile observability up -d --no-deps --force-recreate prometheus
+
+  # Assert the rules actually LOADED. Warn-only: a monitoring hiccup must not
+  # fail an otherwise good deploy, but it must not pass silently either.
+  _want="$(grep -c '^[[:space:]]*- alert:' observability/alerts.yml 2>/dev/null || echo 0)"
+  _got=0
+  # `|| true`: under `set -euo pipefail` a refused connection or a not-ready
+  # response (curl/grep non-zero) would otherwise abort the whole deploy here.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    _got="$(curl -s -m 3 http://127.0.0.1:9092/api/v1/rules 2>/dev/null \
+            | grep -oE '"name":"[A-Za-z0-9]+"' | sort -u | wc -l | tr -d ' ' || true)"
+    [[ "${_got:-0}" -ge "${_want:-0}" && "${_want:-0}" -gt 0 ]] && break
+    sleep 2
+  done
+  if [[ "${_got:-0}" -ge "${_want:-0}" && "${_want:-0}" -gt 0 ]]; then
+    echo "    prometheus loaded ${_got}/${_want} alert rules"
+  else
+    echo "    WARNING: prometheus loaded ${_got} rules but observability/alerts.yml defines ${_want}." >&2
+    echo "             Alerts you believe are active may NOT be evaluating. Check:" >&2
+    echo "               docker logs unichain-mainnet-prometheus-1 --tail 50" >&2
+    echo "               curl -s localhost:9092/api/v1/rules" >&2
+  fi
+fi
+
 # Retire the odos-solver container on hosts that ran it before it was removed
 # from docker-compose.yml (Odos shut down 2026-07-30; its API returns 410).
 # See the identical block in infra/optimism-mainnet/compose-up.sh for why this
