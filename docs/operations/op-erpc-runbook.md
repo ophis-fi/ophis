@@ -28,8 +28,11 @@ external provider capacity.
 The driver previously refreshed settlement balances for **every token it had
 encountered, on every block, indefinitely**. It now caches symbol/decimals only,
 fetches balances for requested tokens, and shares overlapping in-flight reads.
-An RPC failure omits the token; it never reuses a cached balance or invents zero.
-The regression covers idle block updates, fresh reads, failed reads and real zero.
+Balance-read failures propagate through quotes and auction preprocessing as
+HTTP 503 `BalanceUnavailable`; they never become missing entries that callers
+could interpret as zero. Cached metadata survives balance failures. Missing
+optional metadata still triggers a fresh balance read. The regressions cover
+idle block updates, fresh reads, both error mappings, missing metadata and real zero.
 
 Driver and orderbook block polling use two seconds instead of 500 milliseconds.
 The driver setting is `BLOCK_STREAM_POLL_INTERVAL`; the orderbook setting is

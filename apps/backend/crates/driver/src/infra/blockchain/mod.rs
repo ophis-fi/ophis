@@ -425,7 +425,7 @@ mod token_demand_tests {
         rpc.push_success(&word(6));
         rpc.push_success(&alloy::primitives::Bytes::from("TEST".abi_encode()));
         rpc.push_success(&word(42));
-        let first = fetcher.get(&[token, token]).await;
+        let first = fetcher.get(&[token, token]).await.unwrap();
         assert_eq!(first[&token].balance, eth::U256::from(42).into());
         assert_eq!(first[&token].decimals, Some(6));
         assert_eq!(first[&token].symbol.as_deref(), Some("TEST"));
@@ -438,7 +438,7 @@ mod token_demand_tests {
         });
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
         assert_eq!(rpc.read_q().len(), 1, "idle block triggered an RPC read");
-        let second = fetcher.get(&[token]).await;
+        let second = fetcher.get(&[token]).await.unwrap();
         assert_eq!(second[&token].balance, eth::U256::from(43).into());
         assert!(
             rpc.read_q().is_empty(),
@@ -446,14 +446,38 @@ mod token_demand_tests {
         );
 
         rpc.push_failure_msg("quota exhausted");
-        assert!(
-            fetcher.get(&[token]).await.is_empty(),
-            "failed balance must not reuse 43 or invent zero"
-        );
+        let error = fetcher
+            .get(&[token])
+            .await
+            .expect_err("failed balance must not reuse 43 or invent zero");
+        assert!(error.to_string().contains("quota exhausted"));
+        // The real auction converter must fail before constructing zero balances.
+        let request: crate::infra::api::routes::solve::dto::SolveRequest = serde_json::from_value(
+            serde_json::json!({"id": "1", "tokens": [{"address": token.0, "trusted": false}],
+                "orders": [], "deadline": chrono::Utc::now()}),
+        )
+        .unwrap();
+        rpc.push_failure_msg("quota exhausted");
+        let error = request
+            .into_domain(&eth, &fetcher, Default::default())
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            crate::infra::api::routes::solve::AuctionError::TokenBalance(_)
+        ));
         rpc.push_success(&word(0));
         assert_eq!(
-            fetcher.get(&[token]).await[&token].balance,
+            fetcher.get(&[token]).await.unwrap()[&token].balance,
             eth::U256::ZERO.into()
         );
+
+        // Missing metadata is optional; it must not suppress a balance read.
+        let other: eth::TokenAddress = eth::Address::repeat_byte(0x43).into();
+        rpc.push_failure_msg("metadata unavailable");
+        rpc.push_success(&word(99));
+        let result = fetcher.get(&[other]).await.unwrap();
+        assert_eq!(result[&other].balance, eth::U256::from(99).into());
+        assert!(result[&other].decimals.is_none() && result[&other].symbol.is_none());
     }
 }

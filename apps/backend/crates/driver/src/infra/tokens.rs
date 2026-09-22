@@ -1,5 +1,5 @@
 use {
-    crate::infra::Ethereum,
+    crate::infra::{Ethereum, blockchain},
     eth_domain_types as eth,
     futures::FutureExt,
     itertools::Itertools,
@@ -75,13 +75,12 @@ impl Fetcher {
         Self(inner)
     }
 
-    /// Returns the `Metadata` for the given tokens. Note that the result will
-    /// not contain data for tokens that encountered errors while fetching
-    /// the data.
+    /// Returns metadata and fresh balances, or the balance-read failure.
+    /// Missing optional metadata must never imply a zero settlement balance.
     pub async fn get(
         &self,
         addresses: &[eth::TokenAddress],
-    ) -> HashMap<eth::TokenAddress, Metadata> {
+    ) -> Result<HashMap<eth::TokenAddress, Metadata>, Arc<blockchain::Error>> {
         self.0.get(addresses).await
     }
 }
@@ -147,7 +146,7 @@ mod poison_recovery_tests {
 }
 
 /// Symbol and decimals can be cached without polling balances while idle.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct TokenInfo {
     decimals: Option<u8>,
     symbol: Option<String>,
@@ -158,7 +157,8 @@ struct Inner {
     eth: Ethereum,
     cache: RwLock<HashMap<eth::TokenAddress, TokenInfo>>,
     requests: BoxRequestSharing<eth::TokenAddress, Option<(eth::TokenAddress, TokenInfo)>>,
-    balances: BoxRequestSharing<eth::TokenAddress, Option<eth::TokenAmount>>,
+    balances:
+        BoxRequestSharing<eth::TokenAddress, Result<eth::TokenAmount, Arc<blockchain::Error>>>,
 }
 
 impl Inner {
@@ -210,7 +210,10 @@ impl Inner {
         write_token_cache(&self.cache).extend(fetched.into_iter().flatten());
     }
 
-    async fn get(&self, addresses: &[eth::TokenAddress]) -> HashMap<eth::TokenAddress, Metadata> {
+    async fn get(
+        &self,
+        addresses: &[eth::TokenAddress],
+    ) -> Result<HashMap<eth::TokenAddress, Metadata>, Arc<blockchain::Error>> {
         let to_fetch: Vec<_> = {
             let cache = read_token_cache(&self.cache);
 
@@ -232,19 +235,20 @@ impl Inner {
             addresses
                 .iter()
                 .unique()
-                .filter_map(|address| Some((*address, cache.get(address)?.clone())))
+                .filter(|address| address.0.0 != BUY_ETH_ADDRESS)
+                .map(|address| (*address, cache.get(address).cloned().unwrap_or_default()))
                 .collect()
         };
         let settlement = *self.eth.contracts().settlement().address();
-        // Fetch only requested balances. Failed reads omit the token, never reuse
-        // a stale balance or turn an unavailable balance into zero.
+        // Optional metadata can be absent; balances must still be read. Propagate
+        // failures so callers cannot mistake a missing entry for zero.
         let futures = infos.into_iter().map(|(address, info)| {
             let balance = self.balances.shared_or_else(address, |address| {
                 let token = self.eth.erc20(*address);
-                async move { token.balance(settlement).await.ok() }.boxed()
+                async move { token.balance(settlement).await.map_err(Arc::new) }.boxed()
             });
             async move {
-                Some((
+                Ok((
                     address,
                     Metadata {
                         decimals: info.decimals,
@@ -257,7 +261,6 @@ impl Inner {
         futures::future::join_all(futures)
             .await
             .into_iter()
-            .flatten()
             .collect()
     }
 }

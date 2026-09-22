@@ -17,7 +17,10 @@ use {
     },
     chrono::Utc,
     eth_domain_types as eth,
-    std::collections::{HashMap, HashSet},
+    std::{
+        collections::{HashMap, HashSet},
+        sync::Arc,
+    },
 };
 
 /// A quote describing the expected outcome of an order.
@@ -169,7 +172,7 @@ impl Order {
         tokens: &infra::tokens::Fetcher,
         quote_using_limit_orders: bool,
     ) -> Result<competition::Auction, Error> {
-        let tokens = tokens.get(&[self.buy().token, self.sell().token]).await;
+        let tokens = tokens.get(&[self.buy().token, self.sell().token]).await?;
 
         let buy_token_metadata = tokens.get(&self.buy().token);
         let sell_token_metadata = tokens.get(&self.sell().token);
@@ -371,6 +374,8 @@ pub enum Error {
     /// Encountered an unexpected error reading blockchain data.
     #[error("blockchain error: {0:?}")]
     Blockchain(#[from] blockchain::Error),
+    #[error("token balance read failed: {0}")]
+    TokenBalance(#[from] Arc<blockchain::Error>),
     #[error("solver error: {0:?}")]
     Solver(#[from] solver::Error),
     #[error("boundary error: {0:?}")]

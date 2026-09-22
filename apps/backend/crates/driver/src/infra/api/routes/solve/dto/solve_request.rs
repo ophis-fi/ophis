@@ -36,7 +36,7 @@ impl SolveRequest {
             .iter()
             .map(|token| token.address.into())
             .collect();
-        let token_infos = tokens.get(&token_addresses).await;
+        let token_infos = tokens.get(&token_addresses).await?;
 
         competition::Auction::new(
             Some(self.id.try_into()?),
@@ -188,6 +188,8 @@ pub enum Error {
     InvalidTokens,
     #[error("invalid order amounts in auction")]
     InvalidAmounts,
+    #[error("token balance read failed: {0}")]
+    TokenBalance(#[from] Arc<crate::infra::blockchain::Error>),
     #[error("blockchain error: {0:?}")]
     Blockchain(#[source] crate::infra::blockchain::Error),
 }
