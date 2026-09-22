@@ -30,7 +30,7 @@ matcher.
 """
 import re
 import sys
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import yaml
 
@@ -68,9 +68,9 @@ EXPECTED_UPSTREAMS = 3
 # once it fell past publicnode's ~128-block archive gate. Replaced by official-op
 # (mainnet.optimism.io): non-CF, archive-capable, no quota to exhaust.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
-    "lb.drpc.org",
+    "mainnet.optimism.io",
     "api.zan.top",
-    "optimism.gateway.tenderly.co",
+    "lb.nodies.app",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus
@@ -101,7 +101,7 @@ ALLOWED = {
     "retry": {"backoffFactor", "backoffMaxDelay", "delay", "jitter", "maxAttempts"},
     "timeout": {"duration"},
     "hedge": {"delay", "maxCount"},
-    "upstream": {"endpoint", "failsafe", "id"},
+    "upstream": {"endpoint", "failsafe", "id", "evm", "rateLimitBudget", "rateLimitCountMode", "creditUnits", "rateLimitAutoTune"},
     "upstream_rule": {"matchMethod", "timeout", "retry", "circuitBreaker"},
     "circuitBreaker": {"failureThresholdCount", "failureThresholdCapacity", "halfOpenAfter", "successThresholdCount", "successThresholdCapacity"},
 }
@@ -320,6 +320,22 @@ def _check_nonconsensus_hedges(net_rules, errs):
 
 def validate(cfg):
     errs = []
+    # Pin the cache scope: never cache live tags, empty replies, or protected
+    # state reads under the numbered-header exception.
+    cache = cfg.get("database")
+    expected_cache = {"evmJsonRpcCache": {
+        "connectors": [{"id": "op-headers", "driver": "memory", "memory": {
+            "maxItems": 10000, "maxTotalSize": "64MB"}}],
+        "policies": [{"connector": "op-headers", "network": "evm:10",
+            "method": "eth_getBlockByNumber", "params": ["0x*", False],
+            "finality": finality, "empty": "ignore", "ttl": ttl}
+            for finality, ttl in (("finalized", "1h"), ("unfinalized", "2s"))],
+    }}
+    if cache != expected_cache:
+        errs.append("database must contain only the bounded numbered-header cache")
+    if cfg.get("rateLimiters") != {"store": {"driver": "memory"}, "budgets": [{
+            "id": "nodies-op-free", "rules": [{"method": "*", "maxCount": 180, "period": "minute"}]}]}:
+        errs.append("Nodies requires the fixed shared 180/minute budget")
     networks_checked = 0
     for proj in cfg.get("projects") or []:
         _check_keys(proj, "project", "project", errs)
@@ -331,6 +347,26 @@ def validate(cfg):
         ups = [u for u in (proj.get("upstreams") or []) if isinstance(u, dict)]
         for u in ups:
             _check_keys(u, "upstream", f"upstream[{u.get('id')}]", errs)
+            budget_keys = {"rateLimitBudget", "rateLimitCountMode", "creditUnits", "rateLimitAutoTune"}
+            budget = {k: u[k] for k in budget_keys if k in u}
+            expected_budget = ({"rateLimitBudget": "nodies-op-free", "rateLimitCountMode": "credit",
+                                "creditUnits": {"*": 1}, "rateLimitAutoTune": {"enabled": False}}
+                               if _hostname(u.get("endpoint")) == "lb.nodies.app" else {})
+            if budget != expected_budget:
+                errs.append("Only Nodies may use the fixed shared request budget, with autotuning disabled")
+            if expected_budget and (len(u.get("failsafe", [])) != 1
+                    or u["failsafe"][0].get("retry", {}).get("maxAttempts") != 1):
+                errs.append("Nodies must use one upstream attempt so retries cannot bypass its budget")
+            expected_evm = {"getLogsAutoSplittingRangeThreshold": 50} if _hostname(u.get("endpoint")) == "lb.nodies.app" else None
+            if _hostname(u.get("endpoint")) == "lb.nodies.app":
+                url = urlsplit(u["endpoint"])
+                query = parse_qs(url.query, keep_blank_values=True)
+                key = query.get("apikey", [])
+                if (url.scheme != "https" or url.path != "/v2/optimism" or url.fragment
+                        or set(query) != {"apikey"} or len(key) != 1 or not key[0].strip()):
+                    errs.append("Nodies must use the private Optimism endpoint with a nonempty API key")
+            if u.get("evm") != expected_evm:
+                errs.append("upstream evm config must only split Nodies logs into 50-block ranges")
             for j, r in enumerate(u.get("failsafe") or []):
                 if isinstance(r, dict):
                     _check_rule_subtree(r, f"upstream[{u.get('id')}].failsafe[{j}]", errs, level="upstream_rule")

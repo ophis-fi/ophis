@@ -46,14 +46,14 @@ for i in "${!CHAIN_DIRS[@]}"; do
     fi
 
     # Check collision (look up in flat ALL_IDS_FILE)
-    if grep -Fxq "${id}|" "$ALL_IDS_FILE" 2>/dev/null; then
+    if cut -d'|' -f1 "$ALL_IDS_FILE" | grep -Fxq "$id"; then
       other=$(grep -F "${id}|" "$ALL_IDS_FILE" | cut -d'|' -f2)
       echo "FAIL: id '$id' declared in both ${other} and ${chain_dir}" >&2
       echo "       (causes Prometheus metric-label collision)" >&2
       errors=$((errors + 1))
     fi
     echo "${id}|${chain_dir}" >> "$ALL_IDS_FILE"
-  done < <(awk '/^      - id:/ {print $3}' "$cfg")
+  done < <(awk '/^    upstreams:/ {upstreams=1; next} /^    [^ ]/ {upstreams=0} upstreams && /^      - id:/ {print $3}' "$cfg")
 done
 
 if (( errors > 0 )); then

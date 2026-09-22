@@ -1,9 +1,7 @@
 use {
     crate::infra::{Ethereum, blockchain},
-    anyhow::Result,
     eth_domain_types as eth,
-    ethrpc::block_stream::{self, CurrentBlockWatcher},
-    futures::{FutureExt, StreamExt},
+    futures::FutureExt,
     itertools::Itertools,
     model::order::BUY_ETH_ADDRESS,
     request_sharing::BoxRequestSharing,
@@ -14,7 +12,6 @@ use {
             atomic::{AtomicBool, Ordering},
         },
     },
-    tracing::Instrument,
 };
 
 /// Logged-once gate for the token-metadata cache poison-recovery path.
@@ -31,23 +28,10 @@ fn note_cache_poison() {
     }
 }
 
-/// Read-acquire the token metadata cache, recovering from poison.
-///
-/// A panicking read does NOT poison `RwLock` (read guards are shared
-/// and can't violate invariants); only a panicking write does. So this
-/// helper exists primarily to make recovery uniform with `write_token_cache`.
-/// If we DO encounter a poisoned lock here (write-side panic happened
-/// in a sibling task), we observe the recovered guard as-is. Sharp-edges
-/// flagged that the recovered guard may contain a half-mutated cache
-/// from `update_balances` (mixed pre-trade/post-trade balances) — that's
-/// addressed by `write_token_cache` which clears the map on recovery,
-/// so the FIRST write after poison resets the cache. Reads in between
-/// see the half-mutated state; this is documented degradation and
-/// downstream callers (`get` at the bottom of the file) tolerate
-/// missing entries by triggering a re-fetch.
+/// Read cached token metadata, recovering from a poisoned lock.
 fn read_token_cache(
-    rw: &RwLock<HashMap<eth::TokenAddress, Metadata>>,
-) -> RwLockReadGuard<'_, HashMap<eth::TokenAddress, Metadata>> {
+    rw: &RwLock<HashMap<eth::TokenAddress, TokenInfo>>,
+) -> RwLockReadGuard<'_, HashMap<eth::TokenAddress, TokenInfo>> {
     rw.read().unwrap_or_else(|e| {
         note_cache_poison();
         rw.clear_poison();
@@ -55,19 +39,10 @@ fn read_token_cache(
     })
 }
 
-/// Write-acquire the token metadata cache, recovering from poison.
-///
-/// **Cache-clearing on recovery** (sharp-edges HIGH): `update_balances`
-/// iterates the cache and mutates `entry.balance` in place. If that
-/// loop panics partway through (e.g. Vec::push OOM in
-/// `keys_without_balances`), the cache is left with some entries on
-/// post-trade balances and others on pre-trade — the quoter would
-/// then over-allocate against stale higher balances. Clearing the map
-/// on the first write-side recovery converts that dangerous mixed state
-/// to a clean empty cache; the quoter then re-fetches on next read.
+/// Discard potentially partial metadata after a poisoned write.
 fn write_token_cache(
-    rw: &RwLock<HashMap<eth::TokenAddress, Metadata>>,
-) -> RwLockWriteGuard<'_, HashMap<eth::TokenAddress, Metadata>> {
+    rw: &RwLock<HashMap<eth::TokenAddress, TokenInfo>>,
+) -> RwLockWriteGuard<'_, HashMap<eth::TokenAddress, TokenInfo>> {
     rw.write().unwrap_or_else(|e| {
         note_cache_poison();
         rw.clear_poison();
@@ -91,54 +66,32 @@ pub struct Fetcher(Arc<Inner>);
 impl Fetcher {
     pub fn new(eth: &Ethereum) -> Self {
         let eth = eth.with_metric_label("tokenInfos".into());
-        let block_stream = eth.current_block().clone();
         let inner = Arc::new(Inner {
             eth,
             cache: RwLock::new(HashMap::new()),
             requests: BoxRequestSharing::labelled("token_info".into()),
+            balances: BoxRequestSharing::labelled("token_balance".into()),
         });
-        tokio::task::spawn(
-            update_task(block_stream, Arc::downgrade(&inner))
-                .instrument(tracing::info_span!("token_fetcher")),
-        );
         Self(inner)
     }
 
-    /// Returns the `Metadata` for the given tokens. Note that the result will
-    /// not contain data for tokens that encountered errors while fetching
-    /// the data.
+    /// Returns metadata and fresh balances, or the balance-read failure.
+    /// Missing optional metadata must never imply a zero settlement balance.
     pub async fn get(
         &self,
         addresses: &[eth::TokenAddress],
-    ) -> HashMap<eth::TokenAddress, Metadata> {
+    ) -> Result<HashMap<eth::TokenAddress, Metadata>, Arc<blockchain::Error>> {
         self.0.get(addresses).await
     }
 }
 
-/// Runs a single cache update cycle whenever a new block arrives until the
-/// fetcher is dropped.
-async fn update_task(blocks: CurrentBlockWatcher, inner: std::sync::Weak<Inner>) {
-    let mut stream = block_stream::into_stream(blocks);
-    while stream.next().await.is_some() {
-        let inner = match inner.upgrade() {
-            Some(inner) => inner,
-            // Fetcher was dropped, stop update task.
-            None => break,
-        };
-        if let Err(err) = update_balances(inner).await {
-            tracing::warn!(?err, "error updating token cache");
-        }
-    }
-}
-
-/// Updates the settlement contract's balance for every cached token.
 #[cfg(test)]
 mod poison_recovery_tests {
-    use {super::*, alloy::primitives::U256, std::panic::AssertUnwindSafe};
+    use {super::*, std::panic::AssertUnwindSafe};
 
     #[test]
     fn read_write_cache_recover_after_poison() {
-        let rw: RwLock<HashMap<eth::TokenAddress, Metadata>> = RwLock::new(HashMap::new());
+        let rw: RwLock<HashMap<eth::TokenAddress, TokenInfo>> = RwLock::new(HashMap::new());
 
         // Poison via panicking write.
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
@@ -160,16 +113,18 @@ mod poison_recovery_tests {
         }));
         // Note: a read-side panic does NOT poison RwLock (read guards are
         // shared, no exclusive invariant). So is_poisoned should be false.
-        assert!(!rw.is_poisoned(), "read-side panic should not poison RwLock");
+        assert!(
+            !rw.is_poisoned(),
+            "read-side panic should not poison RwLock"
+        );
 
         // write_token_cache after a poisoning write also recovers AND
         // clears the cache (HIGH-2 guard: pre-clear, the map could
-        // contain half-mutated entries from update_balances).
+        // contain half-mutated entries from an interrupted write).
         let addr: eth::TokenAddress = eth::Address::repeat_byte(0x42).into();
-        let stale = Metadata {
+        let stale = TokenInfo {
             decimals: Some(18),
             symbol: Some("STALE".into()),
-            balance: U256::from(1_000_000u64).into(),
         };
         rw.write().unwrap().insert(addr, stale);
         assert_eq!(rw.read().unwrap().len(), 1);
@@ -183,66 +138,27 @@ mod poison_recovery_tests {
         assert!(
             w.is_empty(),
             "write_token_cache must CLEAR the cache on poison recovery — \
-             otherwise stale half-mutated balances flow to the quoter"
+             otherwise partial metadata flows to the quoter"
         );
         drop(w);
         assert!(!rw.is_poisoned(), "write_token_cache must clear poison");
     }
 }
 
-async fn update_balances(inner: Arc<Inner>) -> Result<(), blockchain::Error> {
-    let settlement = *inner.eth.contracts().settlement().address();
-    let futures = {
-        let cache = read_token_cache(&inner.cache);
-        let tokens = cache.keys().cloned().collect::<Vec<_>>();
-        tokens.into_iter().map(|token| {
-            let erc20 = inner.eth.erc20(token);
-            async move {
-                Ok::<(eth::TokenAddress, eth::TokenAmount), blockchain::Error>((
-                    token,
-                    erc20.balance(settlement).await?,
-                ))
-            }
-        })
-    };
-
-    tracing::debug!(
-        tokens = futures.len(),
-        "updating settlement contract balances"
-    );
-
-    // Don't hold on to the lock while fetching balances to allow concurrent
-    // updates. This may lead to new entries arriving in the meantime, however
-    // their balances should already be up-to-date.
-    let mut balances = futures::future::try_join_all(futures)
-        .await?
-        .into_iter()
-        .collect::<HashMap<_, _>>();
-
-    let mut keys_without_balances = vec![];
-    {
-        let mut cache = write_token_cache(&inner.cache);
-        for (key, entry) in cache.iter_mut() {
-            if let Some(balance) = balances.remove(key) {
-                entry.balance = balance;
-            } else {
-                // Avoid logging while holding the exclusive lock.
-                keys_without_balances.push(*key);
-            }
-        }
-    }
-    if !keys_without_balances.is_empty() {
-        tracing::info!(keys = ?keys_without_balances, "updated keys without balance");
-    }
-
-    Ok(())
+/// Symbol and decimals can be cached without polling balances while idle.
+#[derive(Clone, Debug, Default)]
+struct TokenInfo {
+    decimals: Option<u8>,
+    symbol: Option<String>,
 }
 
 /// Provides metadata of tokens.
 struct Inner {
     eth: Ethereum,
-    cache: RwLock<HashMap<eth::TokenAddress, Metadata>>,
-    requests: BoxRequestSharing<eth::TokenAddress, Option<(eth::TokenAddress, Metadata)>>,
+    cache: RwLock<HashMap<eth::TokenAddress, TokenInfo>>,
+    requests: BoxRequestSharing<eth::TokenAddress, Option<(eth::TokenAddress, TokenInfo)>>,
+    balances:
+        BoxRequestSharing<eth::TokenAddress, Result<eth::TokenAmount, Arc<blockchain::Error>>>,
 }
 
 impl Inner {
@@ -250,8 +166,7 @@ impl Inner {
     async fn fetch_token_infos(
         &self,
         tokens: &[eth::TokenAddress],
-    ) -> Vec<Option<(eth::TokenAddress, Metadata)>> {
-        let settlement = *self.eth.contracts().settlement().address();
+    ) -> Vec<Option<(eth::TokenAddress, TokenInfo)>> {
         let futures = tokens.iter().map(|token| {
             let build_request = |token: &eth::TokenAddress| {
                 let token = self.eth.erc20(*token);
@@ -259,22 +174,12 @@ impl Inner {
                     // Use `try_join` because these calls get batched under the hood
                     // so if one of them fails the others will as well.
                     // Also this way we won't get incomplete data for a token.
-                    let (decimals, symbol, balance) = futures::future::try_join3(
-                        token.decimals(),
-                        token.symbol(),
-                        token.balance(settlement),
-                    )
-                    .await
-                    .ok()?;
+                    let (decimals, symbol) =
+                        futures::future::try_join(token.decimals(), token.symbol())
+                            .await
+                            .ok()?;
 
-                    Some((
-                        token.address(),
-                        Metadata {
-                            decimals,
-                            symbol,
-                            balance,
-                        },
-                    ))
+                    Some((token.address(), TokenInfo { decimals, symbol }))
                 }
                 .boxed()
             };
@@ -305,7 +210,10 @@ impl Inner {
         write_token_cache(&self.cache).extend(fetched.into_iter().flatten());
     }
 
-    async fn get(&self, addresses: &[eth::TokenAddress]) -> HashMap<eth::TokenAddress, Metadata> {
+    async fn get(
+        &self,
+        addresses: &[eth::TokenAddress],
+    ) -> Result<HashMap<eth::TokenAddress, Metadata>, Arc<blockchain::Error>> {
         let to_fetch: Vec<_> = {
             let cache = read_token_cache(&self.cache);
 
@@ -322,11 +230,37 @@ impl Inner {
 
         self.cache_missing_tokens(&to_fetch).await;
 
-        let cache = read_token_cache(&self.cache);
-        // Return token infos from the cache.
-        addresses
-            .iter()
-            .filter_map(|address| Some((*address, cache.get(address)?.clone())))
+        let infos: Vec<_> = {
+            let cache = read_token_cache(&self.cache);
+            addresses
+                .iter()
+                .unique()
+                .filter(|address| address.0.0 != BUY_ETH_ADDRESS)
+                .map(|address| (*address, cache.get(address).cloned().unwrap_or_default()))
+                .collect()
+        };
+        let settlement = *self.eth.contracts().settlement().address();
+        // Optional metadata can be absent; balances must still be read. Propagate
+        // failures so callers cannot mistake a missing entry for zero.
+        let futures = infos.into_iter().map(|(address, info)| {
+            let balance = self.balances.shared_or_else(address, |address| {
+                let token = self.eth.erc20(*address);
+                async move { token.balance(settlement).await.map_err(Arc::new) }.boxed()
+            });
+            async move {
+                Ok((
+                    address,
+                    Metadata {
+                        decimals: info.decimals,
+                        symbol: info.symbol,
+                        balance: balance.await?,
+                    },
+                ))
+            }
+        });
+        futures::future::join_all(futures)
+            .await
+            .into_iter()
             .collect()
     }
 }

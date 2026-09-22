@@ -370,3 +370,114 @@ impl From<SimulationError> for Error {
         }
     }
 }
+
+#[cfg(test)]
+mod token_demand_tests {
+    use {
+        super::*, alloy::providers::mock::Asserter, alloy::sol_types::SolValue,
+        ethrpc::block_stream::BlockInfo, tokio::sync::watch,
+    };
+
+    #[tokio::test]
+    async fn token_balances_are_fresh_on_demand_and_never_polled_while_idle() {
+        let rpc = Asserter::new();
+        let web3 = Web3::with_asserter(rpc.clone());
+        for _ in 0..3 {
+            rpc.push_success(&alloy::primitives::Bytes::from(vec![0; 32]));
+        }
+        let contracts = Contracts::new(&web3, Chain::Mainnet, Default::default())
+            .await
+            .unwrap();
+        let balance_overrider = Arc::new(BalanceOverrides::new(web3.clone()));
+        let balance_simulator = BalanceSimulator::new(
+            contracts.settlement().clone(),
+            contracts.balance_helper().clone(),
+            *contracts.vault_relayer(),
+            Some(*contracts.vault().address()),
+            balance_overrider.clone(),
+        );
+        let gas = Arc::new(
+            GasPriceEstimator::new(
+                &web3,
+                &Default::default(),
+                &[crate::infra::mempool::Config::test_config(
+                    "http://localhost".parse().unwrap(),
+                )],
+            )
+            .await
+            .unwrap(),
+        );
+        let (blocks, current_block) = watch::channel(BlockInfo::default());
+        let eth = Ethereum {
+            web3,
+            inner: Arc::new(Inner {
+                chain: Chain::Mainnet,
+                contracts,
+                gas,
+                current_block,
+                balance_simulator,
+                balance_overrider,
+            }),
+        };
+        let fetcher = crate::infra::tokens::Fetcher::new(&eth);
+        let token: eth::TokenAddress = eth::Address::repeat_byte(0x42).into();
+        let word = |n: u64| alloy::primitives::Bytes::from(eth::U256::from(n).abi_encode());
+        rpc.push_success(&word(6));
+        rpc.push_success(&alloy::primitives::Bytes::from("TEST".abi_encode()));
+        rpc.push_success(&word(42));
+        let first = fetcher.get(&[token, token]).await.unwrap();
+        assert_eq!(first[&token].balance, eth::U256::from(42).into());
+        assert_eq!(first[&token].decimals, Some(6));
+        assert_eq!(first[&token].symbol.as_deref(), Some("TEST"));
+        assert!(rpc.read_q().is_empty());
+
+        // A new block must not consume this queued response without demand.
+        rpc.push_success(&word(43));
+        blocks.send_modify(|block| {
+            block.number += 1;
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        assert_eq!(rpc.read_q().len(), 1, "idle block triggered an RPC read");
+        let second = fetcher.get(&[token]).await.unwrap();
+        assert_eq!(second[&token].balance, eth::U256::from(43).into());
+        assert!(
+            rpc.read_q().is_empty(),
+            "cached metadata should need only one balance call"
+        );
+
+        rpc.push_failure_msg("quota exhausted");
+        let error = fetcher
+            .get(&[token])
+            .await
+            .expect_err("failed balance must not reuse 43 or invent zero");
+        assert!(error.to_string().contains("quota exhausted"));
+        // The real auction converter must fail before constructing zero balances.
+        let request: crate::infra::api::routes::solve::dto::SolveRequest = serde_json::from_value(
+            serde_json::json!({"id": "1", "tokens": [{"address": token.0, "trusted": false}],
+                "orders": [], "deadline": chrono::Utc::now()}),
+        )
+        .unwrap();
+        rpc.push_failure_msg("quota exhausted");
+        let error = request
+            .into_domain(&eth, &fetcher, Default::default())
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            crate::infra::api::routes::solve::AuctionError::TokenBalance(_)
+        ));
+        rpc.push_success(&word(0));
+        assert_eq!(
+            fetcher.get(&[token]).await.unwrap()[&token].balance,
+            eth::U256::ZERO.into()
+        );
+
+        // Missing metadata is optional; it must not suppress a balance read.
+        let other: eth::TokenAddress = eth::Address::repeat_byte(0x43).into();
+        rpc.push_failure_msg("metadata unavailable");
+        rpc.push_success(&word(99));
+        let result = fetcher.get(&[other]).await.unwrap();
+        assert_eq!(result[&other].balance, eth::U256::from(99).into());
+        assert!(result[&other].decimals.is_none() && result[&other].symbol.is_none());
+    }
+}

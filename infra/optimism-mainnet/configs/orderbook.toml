@@ -141,3 +141,7 @@ venues-file = "/configs/pathviz-venues.toml"
 [partner-fee-registry]
 registration-enabled = false
 refresh-interval = "30s"
+
+# Match OP block time instead of polling the same head every 500ms.
+[shared.current-block]
+poll-interval = "2s"
