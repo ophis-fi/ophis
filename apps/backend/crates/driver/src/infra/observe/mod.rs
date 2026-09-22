@@ -323,6 +323,7 @@ pub fn quoted(solver: &solver::Name, order: &quote::Order, result: &Result<Quote
                         }
                         quote::Error::Boundary(_) => "Unknown",
                         quote::Error::Encoding(_) => "Encoding",
+                        quote::Error::TokenBalance(_) => "BalanceUnavailable",
                     },
                 ])
                 .inc();
@@ -539,6 +540,7 @@ fn competition_error(err: &competition::Error) -> &'static str {
         competition::Error::TooManyPendingSettlements => "TooManyPendingSettlements",
         competition::Error::NoValidOrdersFound => "NoValidOrdersFound",
         competition::Error::MalformedRequest => "MalformedRequest",
+        competition::Error::TokenBalance(_) => "BalanceUnavailable",
     }
 }
 

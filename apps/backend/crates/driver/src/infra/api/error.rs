@@ -12,6 +12,7 @@ use {
 #[serde(rename_all = "PascalCase")]
 enum Kind {
     QuotingFailed,
+    BalanceUnavailable,
     SolverFailed,
     TooManyPendingSettlements,
     SolutionNotAvailable,
@@ -42,6 +43,7 @@ impl From<Kind> for (axum::http::StatusCode, axum::Json<Error>) {
     fn from(value: Kind) -> Self {
         let description = match value {
             Kind::QuotingFailed => "No valid quote found",
+            Kind::BalanceUnavailable => "Token balance is temporarily unavailable",
             Kind::SolverFailed => "Solver engine returned an invalid response",
             Kind::SolutionNotAvailable => {
                 "no solution is available yet, this might mean that /settle was called before \
@@ -71,7 +73,11 @@ impl From<Kind> for (axum::http::StatusCode, axum::Json<Error>) {
             Kind::CustomSolverError => "Solver returned a custom error",
         };
         (
-            axum::http::StatusCode::BAD_REQUEST,
+            if matches!(value, Kind::BalanceUnavailable) {
+                axum::http::StatusCode::SERVICE_UNAVAILABLE
+            } else {
+                axum::http::StatusCode::BAD_REQUEST
+            },
             axum::Json(Error {
                 kind: value,
                 description: description.into(),
@@ -129,6 +135,7 @@ impl From<quote::Error> for (axum::http::StatusCode, axum::Json<Error>) {
             quote::Error::DeadlineExceeded(_) => Kind::DeadlineExceeded,
             quote::Error::Solver(_) => Kind::SolverFailed,
             quote::Error::Blockchain(_) => Kind::Unknown,
+            quote::Error::TokenBalance(_) => Kind::BalanceUnavailable,
             quote::Error::Boundary(_) => Kind::Unknown,
             quote::Error::Encoding(_) => Kind::Unknown,
         };
@@ -146,6 +153,7 @@ impl From<competition::Error> for (axum::http::StatusCode, axum::Json<Error>) {
             competition::Error::TooManyPendingSettlements => Kind::TooManyPendingSettlements,
             competition::Error::NoValidOrdersFound => Kind::NoValidOrders,
             competition::Error::MalformedRequest => Kind::MalformedRequest,
+            competition::Error::TokenBalance(_) => Kind::BalanceUnavailable,
         };
         error.into()
     }
@@ -165,6 +173,7 @@ impl From<api::routes::AuctionError> for (axum::http::StatusCode, axum::Json<Err
             api::routes::AuctionError::InvalidTokens => Kind::InvalidTokens,
             api::routes::AuctionError::InvalidAmounts => Kind::InvalidAmounts,
             api::routes::AuctionError::Blockchain(_) => Kind::Unknown,
+            api::routes::AuctionError::TokenBalance(_) => Kind::BalanceUnavailable,
         };
         error.into()
     }
@@ -230,5 +239,20 @@ mod tests {
         let (kind, message) = map_custom_solver_error(&custom_err);
         assert!(matches!(kind, Kind::CustomSolverError));
         assert_eq!(message, "downstream solver reason");
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn balance_failures_are_retryable_for_quotes_and_auctions() {
+    let error = std::sync::Arc::new(blockchain::Error::AccessList("RPC unavailable".into()));
+    let responses: [(axum::http::StatusCode, axum::Json<Error>); 3] = [
+        quote::Error::TokenBalance(error.clone()).into(),
+        api::routes::AuctionError::TokenBalance(error.clone()).into(),
+        competition::Error::TokenBalance(error).into(),
+    ];
+    for (status, body) in responses {
+        assert_eq!(status, axum::http::StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body.0.kind, Kind::BalanceUnavailable);
     }
 }

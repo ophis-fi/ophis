@@ -436,7 +436,12 @@ impl Competition {
             .await
             .map_err(|err| {
                 tracing::error!(?err, "pre-processing auction failed");
-                Error::MalformedRequest
+                match err.downcast_ref::<infra::api::routes::solve::AuctionError>() {
+                    Some(infra::api::routes::solve::AuctionError::TokenBalance(error)) => {
+                        Error::TokenBalance(error.clone())
+                    }
+                    _ => Error::MalformedRequest,
+                }
             })?;
         let mut auction = Arc::unwrap_or_clone(tasks.auction.await);
 
@@ -1355,6 +1360,8 @@ pub enum Error {
     NoValidOrdersFound,
     #[error("could not parse the request")]
     MalformedRequest,
+    #[error("token balance read failed: {0}")]
+    TokenBalance(Arc<infra::blockchain::Error>),
 }
 
 /// Categorical breakdown of submission failures so alerting can distinguish

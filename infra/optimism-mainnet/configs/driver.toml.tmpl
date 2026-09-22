@@ -224,9 +224,9 @@ gas-price-cap = "5000000000"
 # nonce. So the number of read lanes that are ALSO submission targets decides
 # whether consensus returns the fresh pending nonce or a stale one.
 #
-#   read lanes:  drpc-op | zan-op | tenderly-op
-#   submission:  publicnode | official | tenderly | drpc
-#   overlap:     tenderly + drpc = 2 of 3 read lanes
+#   read lanes:  official-op | zan-op | nodies-op
+#   submission:  publicnode | official | nodies
+#   overlap:     official + nodies = 2 of 3 read lanes
 #
 # ⚠️ 2-of-3 overlap is a MITIGATION, NOT A GUARANTEE, and never was. Fresh wins
 # only if BOTH overlapping lanes have actually reflected the tx; if either lags,
@@ -246,7 +246,7 @@ gas-price-cap = "5000000000"
 # 2026-08-30: blockdaemon -> drpc here, in lockstep with the read-lane swap. THIS
 # ENTRY MUST TRACK THE CF READ LANE. If they drift, the overlap silently drops to
 # 1 and the stale-nonce bug returns with no test to catch it.
-# 2026-09-18: removed quota-exhausted Boost/Alchemy; dRPC remains the read/submission lane.
+# 2026-09-21: official-op and Nodies now overlap reads/submission.
 # If you change a read lane, re-check this overlap.
 [[submission.mempool]]
 url = "https://optimism-rpc.publicnode.com"
@@ -255,10 +255,7 @@ url = "https://optimism-rpc.publicnode.com"
 url = "https://mainnet.optimism.io"
 
 [[submission.mempool]]
-url = "https://optimism.gateway.tenderly.co"
-
-[[submission.mempool]]
-url = "https://lb.drpc.org/ogrpc?network=optimism&dkey=${DRPC_API_KEY}"
+url = "https://lb.nodies.app/v2/optimism?apikey=${NODIES_OP_KEY}"
 
 [liquidity]
 base-tokens = [
