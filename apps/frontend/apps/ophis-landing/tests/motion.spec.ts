@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,7 +8,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const TOKENS_CSS = join(__dirname, '..', 'src', 'styles', 'tokens.css')
 const GLOBAL_CSS = join(__dirname, '..', 'src', 'styles', 'global.css')
 
-async function loadOphisStyles(page: import('@playwright/test').Page) {
+async function loadOphisStyles(page: import('@playwright/test').Page): Promise<void> {
   // tokens.css is generated, ensure it exists first
   if (!existsSync(TOKENS_CSS)) {
     // run prebuild to generate it
@@ -87,14 +88,14 @@ test('built dist has no legacy cosmic layers', async ({}, testInfo) => {
   expect(html).not.toContain('scroll-progress')
 })
 
-test('built dist includes the complete workflow and a no-script explanation', async ({}, testInfo) => {
+test('built dist includes the native workflow and accessible static explanation', async ({}, testInfo) => {
   const dist = join(__dirname, '..', 'dist', 'index.html')
   testInfo.skip(!existsSync(dist), 'dist/index.html not built yet')
   const html = readFileSync(dist, 'utf8')
-  expect(html).toContain('data-scene="0"')
-  for (const stage of ['Intent', 'Wallet', 'Solvers', 'Settlement', 'Received']) expect(html).toContain(stage)
-  expect(html).toContain('<noscript>')
-  expect(html).toContain('receive tokens after on-chain settlement')
+  expect(html).toContain('id="playground"')
+  for (const stage of ['Signed', 'DEX liquidity', 'Solvers compete', 'Batch auction', 'Received']) expect(html).toContain(stage)
+  expect(html).toContain('aria-labelledby="scene-title scene-description"')
+  expect(html).toContain('before crosschain delivery and receipt on Solana')
   expect(html).not.toContain('storyReplay')
 })
 
