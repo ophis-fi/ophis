@@ -104,6 +104,8 @@ jobs:
           cache: true
       - name: Arc offline deployment and budget checks
         run: |
+          python3 -m venv "$RUNNER_TEMP/arc-release-tools"
+          . "$RUNNER_TEMP/arc-release-tools/bin/activate"
           python3 -m pip install solc-select==1.2.0 PyYAML==6.0.2
           solc-select install 0.8.30
           node infra/arc-mainnet/release/rehearse.cjs
