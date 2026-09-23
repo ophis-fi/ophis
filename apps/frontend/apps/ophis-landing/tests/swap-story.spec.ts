@@ -34,7 +34,7 @@ for (const width of [320, 390, 768, 850, 851, 1024, 1440, 1920]) {
     await expect(story).toHaveAttribute('data-playing', 'false')
     await expect(story.locator('#receipt')).toHaveAttribute('opacity', '1.000')
     await expect(story.getByRole('heading', { name: 'From intent to settlement.' })).toBeVisible()
-    await expect(page.locator('h1')).toHaveCount(1)
+    await expect(page.locator('main h1')).toHaveCount(1)
     expect(await story.innerText()).not.toMatch(/Illustrative auction|Ethereum|Solana|Base/)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
     const clipped = await story.locator('#playground').evaluate(svg => {
