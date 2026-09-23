@@ -1,11 +1,14 @@
 // Disposable governance/deployment rehearsal. Fixed loopback URL; no forks or real keys.
 const fs = require('node:fs')
 const path = require('node:path')
+const os = require('node:os')
 const net = require('node:net')
 const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
 const { root, dep, validate, compile, build, checkHash } = require('./plan.cjs')
 const { verify } = require('./verify.cjs')
+const { prepare } = require('./solver.cjs')
+const { Wallet } = dep('@ethersproject/wallet')
 const { JsonRpcProvider } = dep('@ethersproject/providers')
 const { Contract, ContractFactory } = dep('@ethersproject/contracts')
 const { hexConcat } = dep('@ethersproject/bytes')
@@ -25,6 +28,7 @@ async function main() {
   const anvil = spawn(process.env.ARC_ANVIL || 'anvil', ['--chain-id', '5042', '--port', '31559', '--host', '127.0.0.1', '--silent'], { stdio: 'ignore' })
   const rpc = new JsonRpcProvider('http://127.0.0.1:31559', { chainId: 5042, name: 'local-arc' })
   rpc.pollingInterval = 50
+  let solverDirectory
   try {
     let ready = false
     for (let attempt = 0; attempt < 100 && !ready; attempt++) {
@@ -44,8 +48,13 @@ async function main() {
     const safeAddress = await factory.callStatic.createProxyWithNonce(singleton.address, initializer, 5042)
     await (await factory.createProxyWithNonce(singleton.address, initializer, 5042)).wait()
     const safe = new Contract(safeAddress, safeArtifact.abi, signer)
-    const config = { ...example,
-      deployer: accounts[0], solver: accounts[4], safe: safeAddress, safeOwners: owners, nonce: await signer.getTransactionCount() }
+    solverDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-rehearsal-solver-'))
+    fs.chmodSync(solverDirectory, 0o700)
+    const solverKey = path.join(solverDirectory, 'submitter.key')
+    const config = prepare({ ...example, deployer: accounts[0], safe: safeAddress, safeOwners: owners },
+      path.join(solverDirectory, 'config.json'), solverKey, await signer.getTransactionCount(), true)
+    // Disposable local key only; the production startup never exports key material.
+    const solver = new Wallet(fs.readFileSync(solverKey, 'utf8').trim(), rpc)
     const compiled = compile(), plan = build(config, compiled.artifacts)
     fs.mkdirSync(OUT, { recursive: true, mode: 0o700 })
     // Rehearsal output is separate from a prepared operator plan.
@@ -70,7 +79,8 @@ async function main() {
       const proxy = new Contract(auth.address, compiled.artifacts.EIP173Proxy.abi, signer)
       await assert.rejects(proxy.callStatic.upgradeTo(plan.contracts.authImplementation))
       await assert.rejects(proxy.connect(rpc.getSigner(owners[0])).callStatic.upgradeTo(plan.contracts.authImplementation))
-      const settlement = new Contract(plan.contracts.settlement, compiled.artifacts.GPv2Settlement.abi, rpc.getSigner(config.solver))
+      await (await signer.sendTransaction({ to: config.solver, value: '1000000000000000000' })).wait()
+      const settlement = new Contract(plan.contracts.settlement, compiled.artifacts.GPv2Settlement.abi, solver)
       await assert.rejects(settlement.callStatic.settle([], [], [], [[], [], []]))
       async function safeCall(data, count = 2) {
         const tx = { to: auth.address, value: 0, data, operation: 0, safeTxGas: 0, baseGas: 0, gasPrice: 0, gasToken: ZERO, refundReceiver: ZERO, nonce: await safe.nonce() }
@@ -97,6 +107,9 @@ async function main() {
       fs.writeFileSync(path.join(OUT, 'rehearsal.json'), JSON.stringify({ ...result, revokedSuccessfully: true, gasUsed: receipts.map(r => r.gasUsed.toString()) }, null, 2) + '\n', { mode: 0o600 })
       console.log('PASS: seven production deployments; 2-of-3 Safe activation; single-owner denial; runtime/domain/wiring verification; solver revocation; no production activation from a local node.')
     } finally { if (previous) fs.writeFileSync(artifactsFile, previous); else fs.unlinkSync(artifactsFile) }
-  } finally { anvil.kill('SIGTERM'); rpc.removeAllListeners() }
+  } finally {
+    anvil.kill('SIGTERM'); rpc.removeAllListeners()
+    if (solverDirectory) fs.rmSync(solverDirectory, { recursive: true, force: true })
+  }
 }
 main().catch(error => { console.error(error); process.exitCode = 1 })

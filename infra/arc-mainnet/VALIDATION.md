@@ -6,6 +6,26 @@ fixtures. Existing real Uniswap liquidity was checked separately in [LIQUIDITY.m
 
 ## Release package completed locally — September 23
 
+The remaining submitter preparation is now implemented in `release/solver.cjs`.
+It creates an Arc-only key through explicit exclusive creation outside the
+checkout, derives the public launch identity, and requires an explicit deployer
+nonce. Preparation and startup share the same file/owner/identity validation.
+Regression checks cover overwrite prevention, unsafe permissions, symlinks,
+malformed keys, mismatched addresses and governance signer separation. CI runs
+the new check. The full local Safe rehearsal now provisions a fresh disposable
+solver through this command's implementation, funds it on Anvil, authorizes it,
+settles and revokes it successfully. Render checks bind every driver/autopilot
+lane to the same planned solver.
+
+All changed-path checks passed; temporary keys and the owned node were removed.
+No production key was created or read, and no public RPC was called. Disk space
+was 5.3 GiB. Jev (`jev-1.13.0`, 2,146 input / 62 output tokens) provided a bounded
+advisory review of overwrite and identity checks; this is not security proof.
+Production key provisioning/backup, funding and the deployment/activation
+ceremony remain runtime operations, with runnable instructions in the release
+runbook. Existing contract/frontend reviews below still apply; this pass changes
+only release tooling and its tests.
+
 The [release package](release/README.md) now includes unsigned deployment plans,
 Ledger ceremony/resume tooling, real Safe verification, production configuration,
 guarded startup, persistent credit accounting, frontend/explorer activation and

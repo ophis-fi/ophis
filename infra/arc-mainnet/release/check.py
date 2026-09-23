@@ -9,6 +9,10 @@ import sys
 import tempfile
 import uuid
 import yaml
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / 'generated'
@@ -36,6 +40,10 @@ def main():
     assert len(submit) == 1 and submit[0]['id'] == 'arc-official'
     assert submit[0]['rateLimitBudget'] == 'arc-official'
     assert 'guarded' not in (OUT / 'driver.toml').read_text()
+    autopilot = tomllib.loads((OUT / 'autopilot.toml').read_text())
+    driver = tomllib.loads((OUT / 'driver.toml').read_text())
+    assert all(lane['address'] == cfg['solver'] for lane in autopilot['drivers'])
+    assert all(lane['account'] == cfg['solver'] for lane in driver['solver'])
     assert 'skip-event-sync = false' in (OUT / 'autopilot.toml').read_text()
     assert 'REACT_APP_ARC_ENABLED=false' in (OUT / 'frontend.env').read_text()
     assert subprocess.run([sys.executable, str(HERE / 'render.py'), '--activate'], capture_output=True).returncode != 0, 'Unverified plan activated'

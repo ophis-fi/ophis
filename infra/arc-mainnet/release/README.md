@@ -25,16 +25,35 @@ came from stale deployment records. Commit `d3acec5c` documents how leaving that
 old address in Unichain's autopilot after rotation caused solver rejection.
 Do not reuse it as Arc's default.
 
-The example nonce **0 is a placeholder**, not an observed Arc nonce. Before the
-ceremony copy it to ignored `config.json`, set `solver` to the public address of
-Arc's new submitter, set the deployer's current pending nonce using a free Arc RPC,
-and confirm the intended public API/frontend origins. Prepare the Arc key on the
-runtime host under the isolated signing account, following the existing
+The example nonce **0 is a placeholder**, not an observed Arc nonce. The offline
+`solver.cjs` command requires an explicit nonce and derives `solver` from Arc's
+dedicated key, writing ignored `config.json`. Prepare the Arc key on the runtime
+host under the isolated signing account, following the existing
 [custody and backup procedure](../../../docs/operations/submitter-pk-backup-runbook.md).
 Use a separate Arc key path; never overwrite another chain's `submitter.key`.
 Only its public address belongs in the plan. Planning rejects an unset solver;
 startup derives the key's address and requires it to match the reviewed plan.
 Predicted contract addresses are not deployment evidence.
+
+Run the following on the runtime host as the unprivileged signing account, from
+the checkout root. First set `ARC_DEPLOYER_NONCE` to the existing Ledger's observed
+pending Arc nonce using the free official RPC. Confirm the public API/frontend
+origins in the resulting configuration before planning.
+
+```sh
+mkdir -p -m 700 "$HOME/.config/ophis-arc"
+export ARC_SOLVER_KEY_FILE="$HOME/.config/ophis-arc/submitter.key"
+node infra/arc-mainnet/release/solver.cjs --nonce "${ARC_DEPLOYER_NONCE:?Set the observed pending nonce}" --create-solver
+node infra/arc-mainnet/release/plan.cjs infra/arc-mainnet/release/config.json
+```
+
+This follows the existing file-backed hot-key custody: directory 0700, key 0600,
+outside the checkout, and only the public address printed or stored in the plan.
+Back up the key using the existing encrypted off-site procedure before funding.
+It never overwrites a key or configuration. For an already provisioned **Arc** key,
+omit `--create-solver`; do not point at another chain's key. If preparation stops
+after creating the key, it retains that key for recovery rather than rotating it.
+An existing `config.json` must be reviewed explicitly, not regenerated blindly.
 
 The same Safe address must actually exist on Arc. The preflight verifies its
 proxy dispatcher, pinned Safe/SafeL2 singleton bytecode (1.3.0 or 1.4.1), exactly
@@ -54,6 +73,7 @@ with PyYAML (and tomli on Python <3.11), and Docker. Check disk before building:
 
 ```sh
 python3 infra/arc-mainnet/local/build.py --check-only
+node infra/arc-mainnet/release/test_solver.cjs
 node infra/arc-mainnet/release/rehearse.cjs
 python3 infra/arc-mainnet/release/check.py
 python3 infra/arc-mainnet/test_credit_gate.py
@@ -65,7 +85,9 @@ keys; these are not production identities. It preserves an existing prepared pla
 Use `node infra/arc-mainnet/release/plan.cjs infra/arc-mainnet/release/config.json`
 only after completing the actual launch inputs.
 
-The rehearsal owns a fresh non-forked Anvil on `127.0.0.1:31559`, deploys the actual
+The rehearsal creates a disposable solver through the production preparation path,
+funds it only on local Anvil, and removes its temporary key on completion. It owns
+a fresh non-forked Anvil on `127.0.0.1:31559`, deploys the actual
 seven production contracts and a real 2-of-3 Safe, tests single-owner denial,
 activation, settlement, revocation, runtime/domain/wiring verification, and local
 proof rejection for production. It cleans up only its own node. The RPC/API checks
@@ -88,8 +110,8 @@ plans, receipts and rendered configuration stay ignored and mode 0600.
 These steps are operational work after deployment authorization, not pending
 application development. Use the reviewed revision and actual `config.json`:
 
-1. Provision and back up Arc's dedicated submitter on the runtime host; put its
-   public address in `config.json`. Confirm the Safe on Arc and native USDC gas
+1. Run the offline submitter preparation above and back up Arc's dedicated key.
+   Confirm the Safe on Arc and native USDC gas
    for the existing Ledger and new Arc submitter.
    Refresh the deployer nonce and prepare the final unsigned plan. Review all
    seven transactions and the Safe activation batch. No arbitrary Balancer fallback
