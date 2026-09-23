@@ -7,8 +7,8 @@ later authorized launch. Do not run them as part of local development.
 
 ## Existing identities
 
-`config.example.json` uses the existing protocol Safe
-`0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`, Ledger deployer
+`config.example.json` uses the operator-supplied Arc Safe
+`0x858f0F5eE954846D47155F5203c04aF1819eCeF8`, existing Ledger deployer
 `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199`, and the three owners recorded in
 `infra/shared/cron/safe-drift-check.sh.tmpl`. The solver is deliberately unset:
 Arc follows the existing **new submitter EOA per chain** pattern, documented in
@@ -55,11 +55,19 @@ omit `--create-solver`; do not point at another chain's key. If preparation stop
 after creating the key, it retains that key for recovery rather than rotating it.
 An existing `config.json` must be reviewed explicitly, not regenerated blindly.
 
-The same Safe address must actually exist on Arc. The preflight verifies its
-proxy dispatcher, pinned Safe/SafeL2 singleton bytecode (1.3.0 or 1.4.1), exactly
+The configured Safe must actually exist on Arc. The preflight verifies its
+proxy dispatcher, pinned Safe/SafeL2 singleton bytecode (1.3.0, 1.4.1 or 1.5.0), exactly
 the expected three owners, threshold two, and no enabled modules. If absent,
-deploy the existing Safe configuration through the normal Safe ceremony first.
-Reusing its address on another chain does not deploy it on Arc.
+deploy the intended Safe configuration through the normal Safe ceremony first.
+
+At block **22379061**, both free Arc RPCs reported the supplied Safe as deployed
+SafeL2 1.5.0, with no modules, **two owners and threshold one**. Its singleton
+matches the [official pinned 1.5.0 artifact](https://github.com/safe-global/safe-deployments/blob/v1.37.50/src/assets/v1.5.0/safe_l2.json).
+The current owners are `0x746Ad9C63cCA6d3A8588731d60Fb87deaB4da46A` and
+`0x0494F503912C101Bfd76b88e4F5D8A33de284d1A`; the Ledger owner is absent.
+This does **not** satisfy the existing launch requirement of all three recorded
+owners and threshold two. The address is configured, but launch remains blocked
+on resolving that governance mismatch; no owner or threshold change was sent.
 
 Initial Arc governance follows the direct Safe arrangement: proxy owner and
 allowlist manager are the Safe from construction. OP's later timelock/guardian

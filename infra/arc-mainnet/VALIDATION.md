@@ -6,6 +6,14 @@ fixtures. Existing real Uniswap liquidity was checked separately in [LIQUIDITY.m
 
 ## Release package completed locally — September 23
 
+The operator supplied Arc Safe `0x858f0F5eE954846D47155F5203c04aF1819eCeF8`
+replaces the earlier assumed cross-chain Safe address. Both free Arc RPCs agreed
+at block 22379061: deployed SafeL2 1.5.0, official singleton runtime hash, no
+modules, two owners and threshold one. The verifier now pins official 1.5.0
+Safe/SafeL2 hashes from safe-deployments v1.37.50. The existing three-owner,
+two-signature requirement is unchanged, so this Safe's governance configuration
+still fails preflight. These reads used no QuickNode/dRPC credits or transactions.
+
 The remaining submitter preparation is now implemented in `release/solver.cjs`.
 It creates an Arc-only key through explicit exclusive creation outside the
 checkout, derives the public launch identity, and requires an explicit deployer
