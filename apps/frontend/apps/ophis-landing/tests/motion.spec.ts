@@ -87,14 +87,14 @@ test('built dist has no legacy cosmic layers', async ({}, testInfo) => {
   expect(html).not.toContain('scroll-progress')
 })
 
-test('built dist includes the complete workflow and a no-script explanation', async ({}, testInfo) => {
+test('built dist includes the native workflow and accessible static explanation', async ({}, testInfo) => {
   const dist = join(__dirname, '..', 'dist', 'index.html')
   testInfo.skip(!existsSync(dist), 'dist/index.html not built yet')
   const html = readFileSync(dist, 'utf8')
-  expect(html).toContain('data-scene="0"')
-  for (const stage of ['Intent', 'Wallet', 'Solvers', 'Settlement', 'Received']) expect(html).toContain(stage)
-  expect(html).toContain('<noscript>')
-  expect(html).toContain('receive tokens after on-chain settlement')
+  expect(html).toContain('id="playground"')
+  for (const stage of ['Signed', 'DEX liquidity', 'Solvers compete', 'Batch auction', 'Received']) expect(html).toContain(stage)
+  expect(html).toContain('aria-labelledby="scene-title scene-description"')
+  expect(html).toContain('before crosschain delivery and receipt on Solana')
   expect(html).not.toContain('storyReplay')
 })
 

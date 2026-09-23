@@ -1,147 +1,79 @@
 ---
-const steps = [
-  { label: 'Intent', title: 'You set the terms.', text: 'Choose what to sell and receive. Ophis asks solvers for an executable quote. Review the estimated amount, fees, and minimum received before signing your intent.' },
-  { label: 'Wallet', title: 'Your wallet stays in control.', text: 'Review the spending approval if one is needed, then sign your order. Your signature sets the limits a solver must respect.' },
-  { label: 'Solvers', title: 'Routes compete for your order.', text: 'Solvers look for liquidity and matching orders, then compete to fulfil your intent. The auction selects a valid settlement proposal.' },
-  { label: 'Settlement', title: 'Your limits are checked on-chain.', text: 'A solver submits the trade. The settlement contract verifies the signed order and its limits before exchanging the assets.' },
-  { label: 'Received', title: 'The result returns to you.', text: 'Receive your tokens in your wallet. Follow the transaction in Explorer, check your order history, and see eligible activity in your rewards profile.' },
-]
+// Native SVG; one lightweight animation clock and local artwork.
 ---
-<section class="swap-story" id="swap-story" aria-label="How Ophis works" data-scene="0" data-reveal>
-  <div class="story-toolbar">
-    <p class="story-eyebrow">From intent to settlement</p>
-    <button type="button" id="storyPause" class="story-pause" hidden aria-label="Pause workflow animation">Pause</button>
-  </div>
-  <div class="story-steps" role="group" aria-label="Workflow stages">
-    {steps.map((step, index) => (
-      <button type="button" data-story-step={index} aria-pressed={index === 0} aria-controls={`story-scene-${index}`}>
-        <span class="story-number">0{index + 1}</span><span>{step.label}</span>
-      </button>
-    ))}
-  </div>
-  <div class="story-scenes">
-    {steps.map((step, index) => (
-      <article class="story-scene" id={`story-scene-${index}`} data-story-panel={index} hidden={index !== 0}>
-        <div class="story-copy">
-          <p class="story-eyebrow">0{index + 1} / 05</p>
-          <h2>{step.title}</h2>
-          <p>{step.text}</p>
-        </div>
-        <div class="story-visual" aria-hidden="true">
-          {index === 0 && <div class="intent-visual">
-            <div class="asset-card"><img src="/logos/usdc.png" alt="" width="44" height="44" /><div><small>You send</small><strong>10 USDC</strong></div></div>
-            <div class="flow-track"><span class="flow-packet">→</span></div>
-            <div class="asset-card"><img src="/logos/eth.png" alt="" width="44" height="44" /><div><small>Estimated receive</small><strong>0.004 ETH</strong></div></div>
-            <div class="intent-limit"><span>Example rate</span><strong>1 ETH = 2,500 USDC</strong></div>
-            <div class="intent-limit"><span>Minimum received <small>0.5% slippage</small></span><strong>0.00398 ETH</strong></div>
-          </div>}
-          {index === 1 && <div class="wallet-visual">
-            <div class="visual-heading"><img src="/logos/workflow-wallet.svg" alt="" width="28" height="28" /><strong>Your wallet</strong><span class="status-dot"></span></div>
-            <div class="wallet-row"><span>Spending approval</span><strong>10 USDC</strong></div>
-            <div class="wallet-row"><span>Order limits</span><strong>Reviewed <span class="tick">✓</span></strong></div>
-            <div class="signature"><img src="/logos/workflow-fingerprint.svg" alt="" width="48" height="48" /><span>Signed intent</span></div>
-          </div>}
-          {index === 2 && <div class="auction-visual">
-            <div class="visual-heading"><img src="/ophis-mono.svg" alt="" width="28" height="28" /><strong>Ophis auction</strong><span class="status-dot"></span></div>
-            <div class="solver-row"><span>01</span><div><strong>DEX liquidity</strong><i class="route-bar route-a"></i></div><span>→</span></div>
-            <div class="solver-row"><span>02</span><div><strong>Matching orders</strong><i class="route-bar route-b"></i></div><span>→</span></div>
-            <div class="solver-row winning-route"><span>03</span><div><strong>Winning proposal</strong><i class="route-bar route-c"></i></div><span class="tick">✓</span></div>
-            <p class="visual-note">One intent. Competing solutions.</p>
-          </div>}
-          {index === 3 && <div class="settlement-visual">
-            <div class="settlement-network"><img src="/logos/chain-ethereum.png" alt="" width="28" height="28" /><strong>On-chain settlement</strong></div>
-            <div class="validation-row"><span class="tick">✓</span> Signature verified</div>
-            <div class="validation-row"><span class="tick">✓</span> Signed limits respected</div>
-            <div class="validation-row"><span class="tick">✓</span> Assets exchanged together</div>
-            <div class="settlement-transfer"><img src="/logos/usdc.png" alt="" width="36" height="36" /><div class="flow-track"><span class="flow-packet">→</span></div><img src="/logos/eth.png" alt="" width="36" height="36" /></div>
-          </div>}
-          {index === 4 && <div class="receipt-visual">
-            <div class="received-token"><img src="/logos/eth.png" alt="" width="64" height="64" /><span class="tick">✓</span></div>
-            <small>Back in your wallet</small><strong>0.004 ETH received</strong>
-            <div class="receipt-destinations"><span>Explorer</span><span>Order history</span><span>Rewards</span></div>
-          </div>}
-        </div>
-      </article>
-    ))}
-  </div>
-  <p class="story-caption">Illustrative amounts before fees: 10 ÷ 2,500 = 0.004 ETH, with a 0.00398 ETH minimum at 0.5% slippage. Live quotes reflect available liquidity, fees, and price impact.</p>
-  <noscript><p>Choose assets and limits, approve spending if needed, sign your intent, let solvers compete, and receive tokens after on-chain settlement.</p></noscript>
+<section class="story swap-story" id="swap-story" data-mode="cross" aria-labelledby="story-title" data-reveal>
+<div class="heading"><h2 id="story-title">From intent<br> to <em>settlement.</em></h2></div>
+<div class="scene">
+<div class="intent"><span class="intent-spark" aria-hidden="true">✦</span><span id="intent-label">USDC <span class="intent-arrow">→</span> SOL</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg><span class="signed">Signed</span></div>
+<svg class="playground" id="playground" role="img" aria-labelledby="scene-title scene-description" viewBox="0 70 1080 450">
+<title id="scene-title">USDC on Ethereum to SOL on Solana</title><desc id="scene-description">An illustrative USDC to SOL order. DEX liquidity feeds competing solver proposals for an Ophis batch auction. The winning valid proposal settles on Ethereum before crosschain delivery and receipt on Solana.</desc>
+<defs>
+<clipPath id="token-clip"><circle r="43"/></clipPath>
+<clipPath id="packet-clip"><circle r="21"/></clipPath>
+<linearGradient id="incoming" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#749cf4"/><stop offset="1" stop-color="#ca9174"/></linearGradient>
+<linearGradient id="outgoing" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#ca9174"/><stop offset="1" stop-color="#8eab92"/></linearGradient>
+<radialGradient id="portal-fill" r=".9" cx=".32" cy=".22"><stop stop-color="#fcebe1"/><stop offset="1" stop-color="#f4c7ac"/></radialGradient>
+<radialGradient id="aura"><stop stop-color="#d4a68e" stop-opacity=".11"/><stop offset="1" stop-color="#d4a68e" stop-opacity="0"/></radialGradient>
+<filter id="coin-shadow" width="200%" height="200%" x="-50%" y="-50%"><feDropShadow dx="0" dy="7" stdDeviation="6" flood-color="#000" flood-opacity=".22"/></filter>
+<symbol id="tick" viewBox="0 0 24 24"><path d="m5 12 4 4 10-10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</defs>
+<g aria-hidden="true">
+<path id="path-in" class="path-base" d="M85,285C160,285 175,160 265,160"/>
+<path id="path-out" class="path-base" d="M755,285C835,285 915,285 995,285"/>
+<path id="trail-in" class="trail" stroke="url(#incoming)" d="M85,285C160,285 175,160 265,160"/>
+<path id="trail-out" class="trail" stroke="url(#outgoing)" d="M755,285C835,285 915,285 995,285"/>
+</g>
+<g id="sell-links" aria-hidden="true"><path id="sell-path-0" class="venue-path" d="M85,285C160,285 175,160 265,160"/><path id="sell-active-0" class="venue-active" opacity="0" d="M85,285C160,285 175,160 265,160"/><path id="sell-path-1" class="venue-path" d="M85,285C160,285 175,285 265,285"/><path id="sell-active-1" class="venue-active" opacity="0" d="M85,285C160,285 175,285 265,285"/><path id="sell-path-2" class="venue-path" d="M85,285C160,285 175,410 265,410"/><path id="sell-active-2" class="venue-active" opacity="0" d="M85,285C160,285 175,410 265,410"/></g>
+<g id="venue-links" aria-hidden="true"><path id="liquidity-bus" class="venue-path" d="M375,160L375,410"/><path id="liquidity-path-0" class="venue-path" d="M375,160L446,160"/><path id="liquidity-active-0" class="venue-active" opacity="0" d="M375,160L446,160"/><path id="liquidity-path-1" class="venue-path" d="M375,285L446,285"/><path id="liquidity-active-1" class="venue-active" opacity="0" d="M375,285L446,285"/><path id="liquidity-path-2" class="venue-path" d="M375,410L446,410"/><path id="liquidity-active-2" class="venue-active" opacity="0" d="M375,410L446,410"/><path id="bus-active" class="venue-active" opacity="0" d="M375,160L375,285"/><path id="venue-path-0" class="venue-path" d="M298,160L375,160"/><path id="venue-active-0" class="venue-active" opacity="0" d="M298,160L375,160"/><circle id="quote-0" r="4" fill="#a86f50" opacity="0" cx="485" cy="160"/><path id="venue-path-1" class="venue-path" d="M298,285L375,285"/><path id="venue-active-1" class="venue-active" opacity="0" d="M298,285L375,285"/><circle id="quote-1" r="4" fill="#a86f50" opacity="0" cx="485" cy="285"/><path id="venue-path-2" class="venue-path" d="M298,410L375,410"/><path id="venue-active-2" class="venue-active" opacity="0" d="M298,410L375,410"/><circle id="quote-2" r="4" fill="#a86f50" opacity="0" cx="485" cy="410"/></g>
+<g id="order-packet" opacity="0" aria-hidden="true" transform="translate(265 160) scale(1)"><circle r="24" fill="#fff" stroke="#dec9bc"/><image id="order-logo" href="/logos/swap-story/usdc.svg" width="36" height="36" x="-18" y="-18"/><circle cx="18" cy="-18" r="9" fill="#d9e9de"/><use href="#tick" x="11" y="-25" width="14" height="14" color="#345840"/></g>
+<text id="execution-label" class="execution-label" opacity="0" x="890" y="250">Crosschain delivery</text>
+<g id="delivery-packet" opacity="0" aria-hidden="true" transform="translate(995 285) scale(1)"><circle r="24" fill="#ffffff"/><image id="delivery-logo" clip-path="url(#packet-clip)" href="/logos/swap-story/solana.svg" width="42" height="42" x="-21" y="-21"/></g>
+<g id="source-node" transform="translate(85,285) scale(0.7)">
+<ellipse class="landing-pad source-pad" cy="90" rx="72" ry="13"/>
+
+<circle class="coin-rim" r="55"/>
+<image id="source-logo" href="/logos/swap-story/usdc.svg" width="86" height="86" x="-43" y="-43"/>
+<g class="chain-badge"><circle cx="42" cy="38" r="17"/><image id="source-chain-logo" href="/logos/swap-story/ethereum.svg" width="22" height="22" x="31" y="27"/></g>
+<g id="source-check" opacity="0" aria-hidden="true"><circle cx="42" cy="-38" r="13" fill="#d9e9de"/><use href="#tick" x="32" y="-48" width="20" height="20" color="#345840"/></g>
+</g>
+<g id="solver-links" aria-hidden="true"><path id="solver-path-0" class="solver-path" d="M485,160C580,160 645,285 755,285"/><path id="solver-active-0" class="solver-active" opacity="0" d="M485,160C580,160 645,285 755,285"/><circle id="solver-quote-0" r="5" fill="#ad7b5b" opacity="0" transform="translate(755 285) scale(1)"/><path id="solver-path-1" class="solver-path" d="M485,285C580,285 645,285 755,285"/><path id="solver-active-1" class="solver-active" opacity="0" d="M485,285C580,285 645,285 755,285"/><circle id="solver-quote-1" r="5" fill="#ad7b5b" opacity="0" transform="translate(755 285) scale(1)"/><path id="solver-path-2" class="solver-path" d="M485,410C580,410 645,285 755,285"/><path id="solver-active-2" class="solver-active" opacity="0" d="M485,410C580,410 645,285 755,285"/><circle id="solver-quote-2" r="5" fill="#ad7b5b" opacity="0" transform="translate(755 285) scale(1)"/></g><g id="solver-network"><text id="solver-heading" class="competition-label" x="485" y="96">Solvers compete</text><g id="solver-0" class="solver" transform="translate(485,160) scale(1)"><circle class="solver-coin" r="34"/><circle class="bid-track" r="39"/><circle id="bid-0" class="bid-fill" r="39" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" transform="rotate(-90)"/><image href="/logos/swap-story/solver-horadrim.svg" x="-24" y="-24" width="48" height="48"/><text y="61">Horadrim</text><g id="solver-check-0" opacity="0"><circle cx="30" cy="-25" r="12" fill="#fbe1d1"/><use href="#tick" x="21" y="-34" width="18" height="18"/></g></g><g id="solver-1" class="solver" transform="translate(485,285) scale(1)"><circle class="solver-coin" r="34"/><circle class="bid-track" r="39"/><circle id="bid-1" class="bid-fill" r="39" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" transform="rotate(-90)"/><image href="/logos/swap-story/solver-tsolver.svg" x="-24" y="-24" width="48" height="48"/><text y="61">Tsolver</text><g id="solver-check-1" opacity="0"><circle cx="30" cy="-25" r="12" fill="#fbe1d1"/><use href="#tick" x="21" y="-34" width="18" height="18"/></g></g><g id="solver-2" class="solver" transform="translate(485,410) scale(1)"><circle class="solver-coin" r="34"/><circle class="bid-track" r="39"/><circle id="bid-2" class="bid-fill" r="39" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100" transform="rotate(-90)"/><image href="/logos/swap-story/solver-okx.png" x="-24" y="-24" width="48" height="48"/><text y="61">OKX</text><g id="solver-check-2" opacity="0"><circle cx="30" cy="-25" r="12" fill="#fbe1d1"/><use href="#tick" x="21" y="-34" width="18" height="18"/></g></g></g>
+<g id="portal" transform="translate(755,285) scale(1)"><circle id="batch-ring" r="77" fill="none" stroke="#d8bca9" stroke-width="1" stroke-dasharray="3 7"/>
+<circle class="hub" r="60"/><image href="/logos/swap-story/ophis.svg" x="-32" y="-32" width="64" height="64"/>
+<text class="auction-title" x="0" y="-110">Batch auction</text><text id="winner-label" opacity="0" x="0" y="105">Winning quote</text>
+<g id="batch-orders"><g id="batch-order-0" transform="translate(44.16538559903056 63.074707410252365) scale(1)"><circle r="19" fill="#fff" stroke="#e0d8d2"/><image href="/logos/swap-story/usdc.svg" x="-14" y="-14" width="28" height="28"/></g><g id="batch-order-1" transform="translate(4.7148901767173095e-15 77) scale(1)"><circle r="19" fill="#fff" stroke="#e0d8d2"/><image href="/logos/swap-story/ethereum.svg" x="-14" y="-14" width="28" height="28"/></g><g id="batch-order-2" transform="translate(-44.16538559903053 63.07470741025239) scale(1)"><circle r="19" fill="#fff" stroke="#e0d8d2"/><image href="/logos/swap-story/usdc.svg" x="-14" y="-14" width="28" height="28"/></g></g></g>
+<g id="destination-node" transform="translate(995,285) scale(0.8)">
+<ellipse id="landing-pad" class="landing-pad" rx="72" ry="13" cy="90"/>
+
+<g id="destination-coin" transform="translate(0 -4.261330003061048)"><circle class="coin-rim" r="55"/><image id="destination-logo" clip-path="url(#token-clip)" href="/logos/swap-story/solana.svg" width="86" height="86" x="-43" y="-43"/></g>
+<g class="chain-badge"><circle cx="42" cy="38" r="17"/><image id="destination-chain-logo" href="/logos/swap-story/solana.svg" width="22" height="22" x="31" y="27"/></g>
+<g id="receipt" opacity="0" aria-hidden="true" transform="translate(0 -38)"><rect x="-55" y="156" width="110" height="28" rx="14" fill="#d9e9de"/><use href="#tick" x="-42" y="161" width="18" height="18" color="#345840"/><text x="9" y="175" class="receipt-label">Received</text></g>
+<g id="burst" stroke="#d9e9de" stroke-width="2" stroke-linecap="round" opacity="0" aria-hidden="true" transform="scale(1.06)"><path d="M-53 -25l-6 -3M-24 -53l-3 -6M13 -56l1 -6M47 -38l5 -4M58 2l6 1"/></g>
+</g>
+<g id="venues"><text id="venue-heading" class="venue-heading" x="265" y="96">DEX liquidity</text><g id="venue-0" class="venue" transform="translate(265,160)"><circle r="33"/><image id="venue-logo-0" href="/logos/swap-story/uniswap.svg" width="44" height="44" x="-22" y="-22"/><text id="venue-name-0" x="0" y="54">Uniswap</text></g><g id="venue-1" class="venue" transform="translate(265,285)"><circle r="33"/><image id="venue-logo-1" href="/logos/swap-story/curve.png" width="44" height="44" x="-22" y="-22"/><text id="venue-name-1" x="0" y="54">Curve</text></g><g id="venue-2" class="venue" transform="translate(265,410)"><circle r="33"/><image id="venue-logo-2" href="/logos/swap-story/sushi.svg" width="44" height="44" x="-22" y="-22"/><text id="venue-name-2" x="0" y="54">SushiSwap</text></g></g>
+</svg>
+</div>
 </section>
 <script>
   import '../lib/swap-story.ts'
 </script>
 <style>
-  .swap-story { max-width: 1080px; margin: 48px auto 0; padding: 0 24px; }
-  .story-toolbar { display: flex; justify-content: space-between; align-items: center; min-height: 44px; gap: 16px; }
-  .story-eyebrow { color: var(--ophis-fg-muted); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; margin: 0; }
-  .story-pause { background: transparent; border: 0; color: var(--ophis-fg-muted); padding: 12px; min-height: 44px; cursor: pointer; font-size: 12px; }
-  .story-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 12px 0 0; }
-  .story-steps button { position: relative; display: flex; align-items: center; gap: 10px; min-height: 56px; padding: 12px 0; border: 0; border-bottom: 1px solid var(--ophis-border); background: transparent; color: var(--ophis-fg-muted); cursor: pointer; font-size: 13px; }
-  .story-number { font: italic 20px Georgia, serif; }
-  .story-steps button[aria-pressed="true"] { color: var(--ophis-fg); border-color: var(--ophis-fg); }
-  .story-steps button::after { content: ''; position: absolute; bottom: -1px; left: 0; width: 100%; height: 2px; background: var(--ophis-fg); transform: scaleX(0); transform-origin: left; }
-  .story-scene { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 64px; min-height: 400px; padding: 40px 0; }
-  .story-scene[hidden], .story-pause[hidden] { display: none; }
-  .story-copy h2 { font: 400 clamp(30px, 3vw, 42px)/1.12 Georgia, serif; letter-spacing: -.03em; margin: 16px 0; max-width: 420px; }
-  .story-copy > p:last-child { font-size: 15px; line-height: 1.7; color: var(--ophis-fg-muted); margin: 0; max-width: 420px; }
-  .story-visual { min-height: 300px; display: grid; align-items: center; background: var(--ophis-surface); border: 1px solid var(--ophis-border); border-radius: 20px; padding: 28px; min-width: 0; }
-  .story-visual small { display: block; color: var(--ophis-fg-muted); font-size: 12px; margin-bottom: 6px; }
-  .story-visual strong { font-weight: 500; }
-  .asset-card { display: flex; align-items: center; gap: 16px; background: var(--ophis-bg); padding: 16px; border-radius: 12px; }
-  .asset-card strong { font-size: 24px; }
-  .asset-card img { object-fit: contain; }
-  .intent-visual > .flow-track { height: 1px; width: 26px; margin: 13px auto; transform: rotate(90deg); }
-  .intent-limit, .wallet-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 16px 0; }
-  .intent-limit { padding-bottom: 0; color: var(--ophis-fg-muted); }
-  .visual-heading, .settlement-network { display: flex; align-items: center; gap: 10px; padding-bottom: 20px; font-size: 15px; }
-  .status-dot { width: 6px; height: 6px; background: #1c6b3f; border-radius: 50%; margin-left: auto; }
-  .wallet-row { border-top: 1px solid var(--ophis-border); }
-  .wallet-row > span { color: var(--ophis-fg-muted); }
-  .signature { display: flex; flex-direction: column; align-items: center; padding: 12px; border: 1px solid #e8c4a8; border-radius: 12px; background: var(--ophis-peach); color: var(--ophis-brown); font-size: 12px; }
-  .signature img { margin-bottom: 8px; }
-  .solver-row { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 10px; font-size: 12px; margin-bottom: 6px; }
-  .solver-row > div { flex: 1; }
-  .solver-row > span:first-child { color: var(--ophis-fg-muted); font: italic 16px Georgia, serif; }
-  .route-bar { display: block; margin-top: 10px; height: 3px; background: currentColor; transform-origin: left; opacity: .35; }
-  .route-a { width: 70%; }.route-b { width: 84%; }.route-c { width: 100%; }
-  .winning-route { background: var(--ophis-peach); color: var(--ophis-brown); }
-  .visual-note { font-size: 12px; color: var(--ophis-fg-muted); text-align: center; margin: 18px 0 0; }
-  .validation-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; font-size: 13px; border-top: 1px solid var(--ophis-border); }
-  .tick { color: #1c6b3f; }
-  .settlement-transfer { display: flex; align-items: center; gap: 16px; margin-top: 20px; }
-  .flow-track { position: relative; background: var(--ophis-border); height: 1px; flex: 1; }
-  .flow-packet { position: absolute; top: -12px; left: 0; background: var(--ophis-surface); padding: 0 6px; }
-  .receipt-visual { text-align: center; }
-  .receipt-visual > strong { display: block; font: 32px Georgia, serif; margin: 12px 0 28px; }
-  .received-token { position: relative; width: 80px; height: 80px; margin: 0 auto 20px; display: grid; place-items: center; background: white; border-radius: 50%; }
-  .received-token > .tick { position: absolute; right: -4px; bottom: 0; width: 26px; height: 26px; display: grid; place-items: center; background: #e9f4ee; border: 2px solid var(--ophis-surface); border-radius: 50%; }
-  .receipt-destinations { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; color: var(--ophis-fg-muted); font-size: 11px; }
-  .receipt-destinations span + span::before { content: '·'; margin-right: 8px; }
-  .story-caption { border-top: 1px solid var(--ophis-border); padding-top: 16px; font-size: 12px; color: var(--ophis-fg-muted); margin: 0; }
-  @media (prefers-reduced-motion: no-preference) {
-    [data-playing] .story-steps button[aria-pressed="true"]::after { animation: stage-progress 4.5s linear both; }
-    [data-playing] .story-copy, [data-playing] .story-visual { animation: arrive .55s ease both; }
-    [data-playing] .flow-packet { animation: packet 2s ease-in-out infinite; }
-    [data-playing] .signature img { animation: arrive 1.2s .4s both; }
-    [data-playing] .route-bar { animation: stage-progress 1.5s .3s both; }
-    [data-playing] .route-b { animation-delay: .6s; } [data-playing] .route-c { animation-delay: .9s; }
-    [data-playing] .winning-route { animation: arrive .6s 1.4s both; }
-    [data-playing] .validation-row { animation: arrive .45s .3s both; }
-    [data-playing] .validation-row:nth-child(3) { animation-delay: .7s; } [data-playing] .validation-row:nth-child(4) { animation-delay: 1.1s; }
-    [data-playing] .received-token { animation: arrive .8s both; }
-    @keyframes arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes packet { from { left: 0; opacity: 0; } 20%, 80% { opacity: 1; } to { left: calc(100% - 24px); opacity: 0; } }
-    @keyframes stage-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-  }
-  @media (max-width: 720px) {
-    .swap-story { padding: 0 16px; }
-    .story-steps { gap: 6px; }
-    .story-steps button { flex-direction: column; gap: 6px; font-size: 10px; }
-    .story-scene { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 28px 0; min-height: 520px; align-content: start; }
-    .story-copy { min-height: 162px; }
-    .story-copy h2 { font-size: 30px; margin: 10px 0; }
-    .story-copy > p:last-child { font-size: 13px; }
-    .story-visual { min-height: 300px; padding: 20px; }
-    .story-eyebrow { font-size: 10px; }
-  }
+.story{scroll-margin-top:100px;max-width:1080px;margin:48px auto;padding:0 24px;color:var(--ophis-fg);font-family:Inter,system-ui,sans-serif}
+.heading{margin-bottom:26px}h2{font:400 clamp(34px,4vw,50px)/1.04 Georgia,serif;letter-spacing:-.045em;margin:0}h2 br{display:none}h2 em{font-weight:400}
+.scene{position:relative;isolation:isolate;border-radius:24px;overflow:hidden;background:var(--ophis-surface);color:var(--ophis-fg);border:1px solid var(--ophis-border)}
+.scene::before{content:'';position:absolute;inset:0;z-index:-1;background:radial-gradient(ellipse at 50% 48%,#fbe1d160,transparent 52%);pointer-events:none}
+.intent{position:relative;width:max-content;max-width:calc(100% - 24px);margin:24px auto 18px;display:flex;align-items:center;gap:14px;padding:10px 16px;border:1px solid var(--ophis-border);background:var(--ophis-bg);border-radius:16px;font-size:15px;font-weight:500;white-space:nowrap;z-index:2}
+.intent-spark{font-size:20px;color:var(--ophis-brown)}:global(.intent-arrow){color:var(--ophis-fg-faded);padding:0 11px}.intent>svg{width:16px;height:16px;fill:none;stroke:#45674d;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.signed{font-size:10px;color:#45674d;margin-left:-8px;font-weight:400}
+.playground{width:92%;height:auto;display:block;overflow:visible;margin:auto}
+.path-base{fill:none;stroke:#8e929b;stroke-opacity:.55;stroke-width:1.3;stroke-dasharray:3 7}.trail{fill:none;stroke-width:2;stroke-linecap:round;opacity:0}
+.coin-rim{fill:var(--ophis-bg);stroke:#e0d8d2;stroke-width:1}.landing-pad{fill:#fbe1d138;stroke:#b4a296;stroke-opacity:.5;stroke-width:1}.source-pad{stroke:#a7b1c5;fill:#eceef340}.chain-badge circle{fill:var(--ophis-bg);stroke:var(--ophis-border);stroke-width:1}.receipt-label{text-anchor:middle;fill:#345840;font-size:12px;font-weight:600}
+#source-logo,#destination-coin{filter:url(#coin-shadow)}
+.venue-path,.solver-path{fill:none;stroke:#d1c4bc;stroke-width:1.2}.venue-active,.solver-active{fill:none;stroke:#aa7152;stroke-width:2;stroke-linecap:round}
+.venue circle,.solver-coin{fill:var(--ophis-bg);stroke:#e0d9d4;stroke-width:1;transition:fill .45s,stroke .45s}.venue text,.solver text{font-size:14px;fill:var(--ophis-fg-muted);font-weight:500;text-anchor:middle}.venue.is-selected circle,.solver.is-winner .solver-coin{fill:var(--ophis-peach);stroke:#c89678}
+.venue-heading,.competition-label{font-size:12px;fill:var(--ophis-fg-faded);text-anchor:middle}.hub{fill:var(--ophis-peach);stroke:#dbbca7;stroke-width:1}.auction-title{font-size:18px;fill:var(--ophis-fg);font-weight:500;text-anchor:middle}#winner-label{font-size:12px;fill:var(--ophis-brown);text-anchor:middle;font-weight:500}
+.bid-track,.bid-fill{fill:none;stroke-width:2.5}.bid-track{stroke:#e1dcd7}.bid-fill{stroke:#b1b6bf;stroke-linecap:round;transition:stroke .4s}.solver.is-winner .bid-fill{stroke:#a86f50}.solver use{color:var(--ophis-brown)}
+.execution-label{font-size:13px;fill:var(--ophis-brown);text-anchor:middle;paint-order:stroke;stroke:var(--ophis-surface);stroke-width:6px;stroke-linejoin:round}
+.venue text,.solver text,.venue-heading,.competition-label,.auction-title{paint-order:stroke;stroke:var(--ophis-surface);stroke-width:7px;stroke-linejoin:round}
+@media(max-width:850px){.story{padding:0 16px;margin:30px auto}.heading{margin-bottom:22px}h2{font-size:38px}h2 br{display:block}.intent{margin:20px auto 14px;font-size:14px;padding:9px 13px;gap:11px}:global(.intent-arrow){padding:0 9px}.landing-pad{display:none}.receipt-label{font-size:17px}#receipt rect{width:134px;x:-67px}#receipt use{x:-55px}.venue text,.solver text{font-size:16px}.venue-heading,.competition-label{font-size:14px}.auction-title{font-size:21px}#winner-label{font-size:15px}.playground{max-width:480px}.execution-label{font-size:14px}}
+@media(prefers-reduced-motion:reduce){.story *,.story *::before,.story *::after{transition:none!important}}
+
 </style>

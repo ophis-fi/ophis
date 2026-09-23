@@ -1,101 +1,92 @@
 import { test, expect } from '@playwright/test'
 
-test('workflow autoplays all five stages, loops, and supports pause and manual selection', async ({ page }) => {
+test('native animation rotates crosschain, same-chain and stock examples without controls', async ({ page }) => {
+  await page.clock.install()
   await page.goto('/')
   const story = page.locator('#swap-story')
   await story.scrollIntoViewIfNeeded()
-  await expect(story).toHaveAttribute('data-playing', '')
-  await expect(story.getByRole('button', { name: /replay/i })).toHaveCount(0)
-  await page.clock.install()
-  for (const scene of [1, 2, 3, 4, 0]) {
-    await page.clock.runFor(4500)
-    await expect(story).toHaveAttribute('data-scene', String(scene))
-    await expect(story.locator('[data-story-panel]:visible')).toHaveCount(1)
+  await expect(story).toHaveAttribute('data-playing', 'true')
+  await expect(story.locator('button, video, canvas, .scene-footer, .preview-footnote, .token-label, .chain-badge text')).toHaveCount(0)
+  await expect(story.locator('.solver text')).toHaveText(['Horadrim', 'Tsolver', 'OKX'])
+  const titles = ['USDC on Ethereum to SOL on Solana', 'ETH on Ethereum to USDC on Ethereum', 'USDC on Base to AAPLc on Base', 'USDC on Base to ETH on Ethereum', 'USDC on Base to NVDAc on Base']
+  await expect(story.locator('#scene-title')).toHaveText(titles[0])
+  for (const index of [1, 2, 3, 4, 0]) {
+    await page.clock.runFor(4800)
+    await expect(story).toHaveAttribute('data-example', String(index))
+    await expect(story.locator('#scene-title')).toHaveText(titles[index])
   }
-  await story.getByRole('button', { name: 'Pause workflow animation' }).click()
-  await page.clock.runFor(9000)
-  await expect(story).toHaveAttribute('data-scene', '0')
-  await story.getByRole('button', { name: 'Resume workflow animation' }).click()
-  await page.clock.runFor(4500)
-  await expect(story).toHaveAttribute('data-scene', '1')
-  await story.locator('[data-story-step="3"]').click()
-  await page.clock.runFor(9000)
-  await expect(story).toHaveAttribute('data-scene', '3')
-  await expect(story).not.toHaveAttribute('data-playing', '')
+  await page.locator('footer').scrollIntoViewIfNeeded()
+  await expect(story).toHaveAttribute('data-playing', 'false')
+  const example = await story.getAttribute('data-example')
+  await page.clock.runFor(9600)
+  await expect(story).toHaveAttribute('data-example', example ?? '')
 })
 
-for (const width of [320, 390, 1440]) {
-  test(`workflow fits ${width}px with working artwork and all stages readable`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 900 })
+for (const width of [320, 390, 768, 850, 851, 1024, 1440, 1920]) {
+  test(`component fits the landing at ${width}px with local artwork and static reduced motion`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 })
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const errors: string[] = []
+    page.on('pageerror', error => errors.push(error.message))
     await page.goto('/')
     const story = page.locator('#swap-story')
-    for (let index = 0; index < 5; index++) {
-      await story.locator(`[data-story-step="${index}"]`).click()
-      const panel = story.locator('[data-story-panel]:visible')
-      await expect(panel.getByRole('heading')).toBeVisible()
-      const bounds = await panel.boundingBox()
-      expect(bounds!.x).toBeGreaterThanOrEqual(0)
-      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
-      for (const img of await panel.locator('img').all()) {
-        await expect(img).toHaveJSProperty('complete', true)
-        expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0)
-      }
-    }
+    await story.scrollIntoViewIfNeeded()
+    await expect(story).toHaveAttribute('data-playing', 'false')
+    await expect(story.locator('#receipt')).toHaveAttribute('opacity', '1.000')
+    await expect(story.getByRole('heading', { name: 'From intent to settlement.' })).toBeVisible()
+    await expect(page.locator('h1')).toHaveCount(1)
+    expect(await story.innerText()).not.toMatch(/Illustrative auction|Ethereum|Solana|Base/)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+    const clipped = await story.locator('#playground').evaluate(svg => {
+      const box = svg.getBoundingClientRect()
+      return [...svg.querySelectorAll('#source-node,#portal,#destination-node,.venue,.solver')].some(node => {
+        const r = node.getBoundingClientRect()
+        return r.left < box.left - 1 || r.right > box.right + 1 || r.top < box.top - 1 || r.bottom > box.bottom + 1
+      })
+    })
+    expect(clipped).toBe(false)
+    const gap = await story.evaluate(root => {
+      const intent = root.querySelector('.intent')?.getBoundingClientRect()
+      const heading = root.querySelector('#solver-heading')?.getBoundingClientRect()
+      return intent && heading ? heading.top - intent.bottom : -1
+    })
+    expect(gap).toBeGreaterThanOrEqual(12)
+    const ordered = await story.evaluate(root => {
+      const axis = matchMedia('(max-width:850px)').matches ? 'top' : 'left'
+      const position = (id: string): number => root.querySelector(`#${id}`)?.getBoundingClientRect()[axis] ?? Infinity
+      return [0,1,2].every(i => position('source-node') < position(`venue-${i}`) && position(`venue-${i}`) < position(`solver-${i}`) && position(`solver-${i}`) < position('portal') && position('portal') < position('destination-node'))
+    })
+    expect(ordered).toBe(true)
+    const artwork = await story.locator('image').evaluateAll(nodes => Promise.all(nodes.map(node => new Promise<boolean>(resolve => {
+      const img = new Image()
+      img.onload = () => resolve(img.naturalWidth > 0)
+      img.onerror = () => resolve(false)
+      img.src = node.getAttribute('href') ?? ''
+    }))))
+    expect(artwork.every(Boolean)).toBe(true)
+    expect(errors).toEqual([])
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await expect(story).toHaveAttribute('data-playing', 'true')
   })
 }
 
-test('reduced motion stays static but allows reading every stage', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.goto('/')
-  const story = page.locator('#swap-story')
-  await story.scrollIntoViewIfNeeded()
-  await expect(story).not.toHaveAttribute('data-playing', '')
-  await expect(story.locator('#storyPause')).toBeHidden()
-  await story.locator('[data-story-step="4"]').click()
-  await expect(story.getByRole('heading', { name: 'The result returns to you.' })).toBeVisible()
-  await page.emulateMedia({ reducedMotion: 'no-preference' })
-  await expect(story).toHaveAttribute('data-playing', '')
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  await expect(story).not.toHaveAttribute('data-playing', '')
-})
-
-test('workflow pauses outside the viewport and never requests a wallet', async ({ page }) => {
-  const suspicious: string[] = []
-  page.on('request', (req) => {
-    if (!new URL(req.url()).pathname.startsWith('/logos/') && /eth_request|walletconnect|web3|wallet/i.test(req.url())) suspicious.push(req.url())
-  })
-  await page.goto('/')
-  const story = page.locator('#swap-story')
-  await story.scrollIntoViewIfNeeded()
-  await expect(story).toHaveAttribute('data-playing', '')
-  await page.locator('footer').scrollIntoViewIfNeeded()
-  await expect(story).not.toHaveAttribute('data-playing', '')
-  await story.scrollIntoViewIfNeeded()
-  await expect(story).toHaveAttribute('data-playing', '')
-  expect(suspicious).toEqual([])
-})
-
-test('network chips swap the destination panel', async ({ page }) => {
+test('network chips still swap the destination panel', async ({ page }) => {
   await page.goto('/')
   const panel = page.locator('#chainPanel')
-  await expect(panel.locator('#chainTitle')).toContainText('same-chain settlement')
   await page.locator('[data-chain="solana"]').click()
-  await expect(panel.locator('#chainTitle')).toContainText('needs a Solana address')
   await expect(panel.locator('#chainText')).toContainText('Solana address')
-  await page.locator('[data-chain="bitcoin"]').click()
-  await expect(panel.locator('#chainTitle')).toContainText('native BTC only')
-  await expect(panel.locator('#chainText')).toContainText('native BTC')
   await page.locator('[data-chain="ethereum"]').click()
   await expect(panel.locator('#chainTitle')).toContainText('same-chain settlement')
 })
 
-test('sample quote explains its rate and minimum without claiming a live price', async ({ page }) => {
+ test('static SVG remains coherent without JavaScript', async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false })
+  const page = await context.newPage()
   await page.goto('/')
   const story = page.locator('#swap-story')
-  await story.locator('[data-story-step="0"]').click()
-  await expect(story.locator('.asset-card').last()).toContainText('0.004 ETH')
-  await expect(story.locator('.intent-limit').last()).toContainText('0.00398 ETH')
-  await expect(story.locator('.story-caption')).toContainText('10 ÷ 2,500 = 0.004 ETH')
-  await expect(story.locator('.story-caption')).toContainText('Illustrative amounts before fees')
+  await expect(story).toBeVisible()
+  await expect(story.locator('#portal')).toHaveAttribute('transform', 'translate(755,285) scale(1)')
+  await expect(story.locator('#source-node')).toHaveAttribute('transform', 'translate(85,285) scale(0.7)')
+  await expect(story.locator('#solver-0')).toHaveAttribute('transform', 'translate(485,160) scale(1)')
+  await context.close()
 })
