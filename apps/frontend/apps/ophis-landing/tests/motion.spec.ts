@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,7 +8,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const TOKENS_CSS = join(__dirname, '..', 'src', 'styles', 'tokens.css')
 const GLOBAL_CSS = join(__dirname, '..', 'src', 'styles', 'global.css')
 
-async function loadOphisStyles(page: import('@playwright/test').Page) {
+async function loadOphisStyles(page: import('@playwright/test').Page): Promise<void> {
   // tokens.css is generated, ensure it exists first
   if (!existsSync(TOKENS_CSS)) {
     // run prebuild to generate it
