@@ -44,6 +44,10 @@ for (const width of [320, 390, 768, 850, 851, 1024, 1440, 1920]) {
     const story = page.locator('#swap-story')
     await story.scrollIntoViewIfNeeded()
     await expect(story).toHaveAttribute('data-playing', 'false')
+    await expect(story.locator('#story-scene')).toHaveAttribute('role', 'region')
+    await expect(story.locator('#story-scene')).toHaveAttribute('aria-label', 'Static swap illustration')
+    await story.locator('.intent').click()
+    await expect(story).toHaveAttribute('data-playing', 'false')
     await expect(story.locator('#receipt')).toHaveAttribute('opacity', '1.000')
     await expect(story.getByRole('heading', { name: 'From intent to settlement.' })).toBeVisible()
     await expect(page.locator('main h1')).toHaveCount(1)
@@ -79,6 +83,7 @@ for (const width of [320, 390, 768, 850, 851, 1024, 1440, 1920]) {
     expect(errors).toEqual([])
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     await expect(story).toHaveAttribute('data-playing', 'true')
+    await expect(story.locator('#story-scene')).toHaveAttribute('role', 'button')
   })
 }
 

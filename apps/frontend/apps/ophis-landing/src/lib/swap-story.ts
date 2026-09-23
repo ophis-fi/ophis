@@ -1,3 +1,5 @@
+import { chains, duration, examples, solverNames, tokens, venueSets } from './swap-story.const';
+
 function getStory(): HTMLElement {
   const root = document.querySelector<HTMLElement>('#swap-story');
   if (!root) throw new Error('Missing swap-story component');
@@ -13,24 +15,10 @@ const get = (id: string): Visual => {
   return node;
 };
 const svg = get('playground'), reduced = matchMedia('(prefers-reduced-motion: reduce)');
-const tokens = {USDC: '/logos/swap-story/usdc.svg', ETH: '/logos/swap-story/ethereum.svg', SOL: '/logos/swap-story/solana.svg', AAPLc: '/logos/swap-story/AAPLc.png', NVDAc: '/logos/swap-story/NVDAc.png'};
-const chains = {Ethereum: '/logos/swap-story/ethereum.svg', Solana: '/logos/swap-story/solana.svg', Base: '/logos/swap-story/base.png'};
-const examples: [keyof typeof tokens, keyof typeof tokens, keyof typeof venueSets, keyof typeof chains, string][] = [
-  ['USDC', 'SOL', 'Ethereum', 'Solana', 'Crosschain'],
-  ['ETH', 'USDC', 'Ethereum', 'Ethereum', 'Same-chain swap'],
-  ['USDC', 'AAPLc', 'Base', 'Base', 'Tokenized stocks'],
-  ['USDC', 'ETH', 'Base', 'Ethereum', 'Crosschain'],
-  ['USDC', 'NVDAc', 'Base', 'Base', 'Tokenized stocks'],
-];
 const changing = ['source-logo', 'destination-logo', 'source-chain-logo', 'destination-chain-logo', 'intent-label', 'venue-logo-1', 'venue-name-1'].map(get);
 changing.filter(node => node.namespaceURI !== 'http://www.w3.org/2000/svg').forEach(node => { const host = document.createElement('span'); host.style.display = 'inline-grid'; node.before(host); host.append(node); });
-const solverNames = ['Horadrim', 'Tsolver', 'OKX'];
-const venueSets = {
-  Ethereum: [['Uniswap', '/logos/swap-story/uniswap.svg'], ['Curve', '/logos/swap-story/curve.png'], ['SushiSwap', '/logos/swap-story/sushi.svg']],
-  Base: [['Uniswap', '/logos/swap-story/uniswap.svg'], ['Aerodrome', '/logos/swap-story/aerodrome.png'], ['SushiSwap', '/logos/swap-story/sushi.svg']],
-};
 const venueNodes = [0, 1, 2].map(i => ({card: get(`venue-${i}`), path: get(`venue-path-${i}`), active: get(`venue-active-${i}`), quote: get(`quote-${i}`)}));
-[...new Set([...Object.values(tokens), ...Object.values(chains)])].forEach(src => { const img = new Image(); img.src = src; });
+[...new Set([...Object.values(tokens), ...Object.values(chains), ...Object.values(venueSets).flat().map(venue => venue[1])])].forEach(src => { const img = new Image(); img.src = src; });
 const incoming = [get('path-in'), get('trail-in')], outgoing = [get('path-out'), get('trail-out')];
 const order = get('order-packet'), delivery = get('delivery-packet');
 const sourceCheck = get('source-check'), receipt = get('receipt'), burst = get('burst');
@@ -41,12 +29,10 @@ const state = {
   liquidityEntries: [] as Point[], liquidityExits: [] as Point[], paths: [] as Curve[],
   example: 0, small: false, visible: false, paused: false, frame: 0, last: null as number | null, elapsed: 0,
 };
-const duration = 4800;
 const clamp = (x: number): number => Math.max(0, Math.min(1, x));
 const ease = (x: number): number => { x = clamp(x); return x * x * (3 - 2 * x); };
 const windowOpacity = (p: number, start: number, end: number, fade = .035): number => ease((p - start) / fade) * (1 - ease((p - end) / fade));
 const opacity = (node: Visual, value: number): void => node.setAttribute('opacity', value.toFixed(3));
-// The same Bézier geometry draws the route and positions its moving packet.
 function point(curve: Curve, t: number): Point {
   const u = 1 - t;
   return [0, 1].map(axis => u*u*u*curve[0][axis] + 3*u*u*t*curve[1][axis] + 3*u*t*t*curve[2][axis] + t*t*t*curve[3][axis]) as Point;
@@ -69,7 +55,6 @@ function render(p: number): void {
   const [a,b,c,d] = state.paths[0];
   incoming.forEach(node => node.setAttribute('d', `M${a}C${b} ${c} ${d}`));
   packet(order, state.paths[0], p, .06, .28);
-  // Venue liquidity and solver bids are distinct, illustrative inputs; no live quotes.
   venueNodes.forEach((venue, i) => {
     const start = .29 + i * .015, end = .44 + i * .015;
     const [x, y] = point(state.venuePaths[i], ease((p - start) / (end - start)));
@@ -185,10 +170,17 @@ function tick(now: number): void {
   render(state.elapsed / duration);
   state.frame = requestAnimationFrame(tick);
 }
+function syncControls(): void {
+  const control = {'role': reduced.matches ? 'region' : 'button', 'tabindex': reduced.matches ? '-1' : '0', 'aria-label': reduced.matches ? 'Static swap illustration' : state.paused ? 'Resume swap animation' : 'Pause swap animation', 'aria-describedby': reduced.matches ? 'scene-description' : 'scene-description motion-help'};
+  Object.entries(control).forEach(([name, value]) => get('story-scene').setAttribute(name, value));
+  if (reduced.matches) get('story-scene').removeAttribute('aria-keyshortcuts');
+  else get('story-scene').setAttribute('aria-keyshortcuts', 'Space Enter');
+}
 function sync(): void {
   cancelAnimationFrame(state.frame); state.last = null;
   const running = state.visible && !document.hidden && !reduced.matches && !state.paused;
   root.dataset.playing = String(running);
+  syncControls();
   if (reduced.matches) render(.90);
   if (running) state.frame = requestAnimationFrame(tick);
 }
@@ -230,14 +222,13 @@ function updateExample(index: number): void {
   get('scene-description').textContent += ' The visual reading order is sell token, DEX liquidity venues, competing solvers, Ophis batch auction, then received token. The sell token fans out to available venue routes, which feed a shared solver liquidity network. These links show route exploration, not funds transferred before a winner is selected. The batch dispatches orders to solvers, which return execution proposals. The Ophis hub represents coordination, not custody. Signed orders collect into a batch; solvers compete with execution proposals; the winning valid bid settles before receipt. Solvers search venues including ' + venueSets[source].map(v => v[0]).join(', ') + '. Horadrim, Tsolver and OKX are named from the source-chain solver registry. Progress rings illustrate competing proposals, not live quotes. One example winner is highlighted; actual participation, venue and pair availability varies.';
 }
 function togglePause(): void {
+  if (reduced.matches) return;
   state.paused = !state.paused; root.dataset.paused = String(state.paused);
-  get('story-scene').setAttribute('aria-label', state.paused ? 'Resume swap animation' : 'Pause swap animation');
   get('motion-help').textContent = state.paused ? 'Paused · tap, click or press Space to resume' : 'Tap, click or press Space to pause';
   sync();
 }
-Object.entries({tabindex: '0', role: 'button', 'aria-label': 'Pause swap animation', 'aria-describedby': 'scene-description motion-help', 'aria-keyshortcuts': 'Space Enter'}).forEach(([name, value]) => get('story-scene').setAttribute(name, value));
 root.addEventListener('keydown', event => {
-  if (event.target !== get('story-scene') || ![' ', 'Enter'].includes(event.key)) return;
+  if (reduced.matches || event.target !== get('story-scene') || ![' ', 'Enter'].includes(event.key)) return;
   event.preventDefault(); togglePause();
 });
 get('story-scene').addEventListener('click', togglePause);
