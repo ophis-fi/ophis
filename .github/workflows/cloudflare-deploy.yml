@@ -173,6 +173,13 @@ jobs:
           # bundle-public like the NEAR key. Empty -> keyless (mapped to undefined,
           # no blank header).
           REACT_APP_ACROSS_API_KEY: ${{ secrets.REACT_APP_ACROSS_API_KEY }}
+          # Copy these public values from Arc's verified release/frontend.env.
+          # Unset/false keeps Arc hidden in BOTH the swap app and explorer.
+          REACT_APP_ARC_ENABLED: ${{ vars.REACT_APP_ARC_ENABLED }}
+          REACT_APP_ARC_LOCAL: 'false'
+          REACT_APP_ARC_SETTLEMENT: ${{ vars.REACT_APP_ARC_SETTLEMENT }}
+          REACT_APP_ARC_VAULT_RELAYER: ${{ vars.REACT_APP_ARC_VAULT_RELAYER }}
+          REACT_APP_ARC_ORDERBOOK_URL: ${{ vars.REACT_APP_ARC_ORDERBOOK_URL }}
           # Robinhood Chain (4663) as an Across bridge SOURCE — ENABLED
           # 2026-08-27, after a live end-to-end bridge proved the corridor.
           # 4663 is sovereign, so OUR driver executes the post-hook; that is what
@@ -315,6 +322,13 @@ jobs:
           # Same Across key as the swap build: the explorer reads Across order
           # status through the SDK too (Codex P2 on #1382).
           REACT_APP_ACROSS_API_KEY: ${{ secrets.REACT_APP_ACROSS_API_KEY }}
+          # Copy these public values from Arc's verified release/frontend.env.
+          # Unset/false keeps Arc hidden in BOTH the swap app and explorer.
+          REACT_APP_ARC_ENABLED: ${{ vars.REACT_APP_ARC_ENABLED }}
+          REACT_APP_ARC_LOCAL: 'false'
+          REACT_APP_ARC_SETTLEMENT: ${{ vars.REACT_APP_ARC_SETTLEMENT }}
+          REACT_APP_ARC_VAULT_RELAYER: ${{ vars.REACT_APP_ARC_VAULT_RELAYER }}
+          REACT_APP_ARC_ORDERBOOK_URL: ${{ vars.REACT_APP_ARC_ORDERBOOK_URL }}
           # Same mainnet RPC as the swap build.
           REACT_APP_NETWORK_URL_1: https://eth.drpc.org
           NODE_OPTIONS: --max-old-space-size=6144

@@ -2,7 +2,7 @@ import React, { ReactNode, useCallback, useMemo } from 'react'
 
 import ICON_ORDERS from '@cowprotocol/assets/svg/orders.svg'
 import { useFeatureFlags, useTheme, useMediaQuery } from '@cowprotocol/common-hooks'
-import { isInjectedWidget, isSellOrder, maxAmountSpend } from '@cowprotocol/common-utils'
+import { isInjectedWidget, isSellOrder, isSupportedChainId, maxAmountSpend } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 import { ButtonOutlined, Media, MY_ORDERS_ID, SWAP_HEADER_OFFSET } from '@cowprotocol/ui'
@@ -218,13 +218,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
     }
   }, [isMarketOrderWidget, toggleAccountModal])
 
-  // Ophis sovereign chains are supported at the frontend layer.
-  const isOutputTokenUnsupported =
-    !!buyToken &&
-    !(buyToken.chainId in SupportedChainId) &&
-    buyToken.chainId !== 10 &&
-    buyToken.chainId !== 130 &&
-    buyToken.chainId !== 4663
+  const isOutputTokenUnsupported = !!buyToken && !isSupportedChainId(buyToken.chainId)
 
   const { t } = useLingui()
 

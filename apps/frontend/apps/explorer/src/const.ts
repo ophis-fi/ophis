@@ -1,4 +1,4 @@
-import { MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, ARC_ENABLED, MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from '@cowprotocol/common-const'
 import {
   ALL_SUPPORTED_CHAINS_MAP,
   getAddressKey,
@@ -106,6 +106,16 @@ export const WRAPPED_NATIVE_ADDRESS: Record<SupportedChainId, string> = {
 }
 
 export const NATIVE_TOKEN_PER_NETWORK: Record<SupportedChainId, TokenErc20> = {
+  ...(ARC_ENABLED
+    ? {
+        [ARC_CHAIN_ID]: {
+          address: NATIVE_TOKEN_ADDRESS,
+          name: 'USDC',
+          symbol: 'USDC',
+          decimals: 18,
+        } as TokenErc20,
+      }
+    : {}),
   ...mapSupportedNetworks((chainId) => ALL_SUPPORTED_CHAINS_MAP[chainId].nativeCurrency),
   // Ophis fork: ETH on OP mainnet (chain 10)
   [10 as unknown as SupportedChainId]: {

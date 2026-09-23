@@ -228,6 +228,15 @@ index 9fcba626054ad9f635643504d18de1afeddf2401..7b37e1844f9ddc02d5b114059e30a35d
  };
  
  // src/providers/across/util.ts
+@@ -1690,7 +1690,7 @@
+ }
+ var AcrossStatusToBridgeStatus = {
+   filled: "executed" /* EXECUTED */,
+-  slowFillRequested: "executed" /* EXECUTED */,
++  slowFillRequested: "in_progress" /* IN_PROGRESS */,
+   pending: "in_progress" /* IN_PROGRESS */,
+   expired: "expired" /* EXPIRED */,
+   refunded: "refund" /* REFUND */
 @@ -3730,11 +3749,13 @@ var AcrossBridgeProvider = class {
      return Object.values(sourceTokens || {}).filter((token) => token.symbol?.toLowerCase() === targetTokenSymbol);
    }
@@ -414,6 +423,15 @@ index 3217f83a33eedfcd0ac38f65608fc19d2f311cde..f025c4be95eae4451674a5ca392af946
  };
  
  // src/providers/across/util.ts
+@@ -1633,7 +1633,7 @@
+ }
+ var AcrossStatusToBridgeStatus = {
+   filled: "executed" /* EXECUTED */,
+-  slowFillRequested: "executed" /* EXECUTED */,
++  slowFillRequested: "in_progress" /* IN_PROGRESS */,
+   pending: "in_progress" /* IN_PROGRESS */,
+   expired: "expired" /* EXPIRED */,
+   refunded: "refund" /* REFUND */
 @@ -3680,11 +3698,13 @@ var AcrossBridgeProvider = class {
      return Object.values(sourceTokens || {}).filter((token) => token.symbol?.toLowerCase() === targetTokenSymbol);
    }

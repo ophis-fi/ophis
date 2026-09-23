@@ -1,3 +1,10 @@
+import {
+  ARC_CHAIN_ID,
+  ARC_ENABLED,
+  ARC_ENABLED_CHAIN_IDS,
+  ARC_LOCAL,
+  ARC_ORDERBOOK_URL,
+} from '@cowprotocol/common-const'
 import { SupportedChainId as ChainId, UID } from '@cowprotocol/cow-sdk'
 
 import { isBarn, isDev, isLocal, isPr, isStaging } from './environments'
@@ -42,6 +49,7 @@ function _getExplorerUrlByEnvironment(): Record<ChainId, string> {
     [130 as unknown as ChainId]: `${baseUrl}/unichain`,
     // Ophis fork: Robinhood Chain mainnet (chain 4663).
     [4663 as unknown as ChainId]: `${baseUrl}/robinhood`,
+    ...Object.fromEntries(ARC_ENABLED_CHAIN_IDS.map((chainId) => [chainId, `${baseUrl}/arc`])),
   }
 }
 
@@ -50,10 +58,15 @@ const EXPLORER_BASE_URL: Record<ChainId, string> = _getExplorerUrlByEnvironment(
 export function getExplorerAddressLink(chainId: ChainId, address: string): string {
   const baseUrl = getExplorerBaseUrl(chainId)
 
+  if (chainId === ARC_CHAIN_ID && ARC_ENABLED && ARC_LOCAL) return `${baseUrl}/account/${address}/orders`
+
   return baseUrl + `/address/${address}`
 }
 
 export function getExplorerBaseUrl(chainId: ChainId): string {
+  // The local Arc lab has an orderbook, but no deployed public Ophis explorer.
+  if (chainId === ARC_CHAIN_ID && ARC_ENABLED && ARC_LOCAL) return `${ARC_ORDERBOOK_URL}/api/v1`
+
   const baseUrl = EXPLORER_BASE_URL[chainId]
 
   if (!baseUrl) {

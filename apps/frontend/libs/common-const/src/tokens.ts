@@ -1,5 +1,12 @@
-import { AdditionalTargetChainId, EvmChains, mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
+import {
+  AdditionalTargetChainId,
+  EvmChains,
+  getAddressKey,
+  mapSupportedNetworks,
+  SupportedChainId,
+} from '@cowprotocol/cow-sdk'
 
+import { ARC_CHAIN_ID, ARC_EURC, ARC_USDC } from './arc.const'
 import { COW_CONTRACT_ADDRESS, V_COW_CONTRACT_ADDRESS } from './common'
 import { cowprotocolTokenLogoUrl } from './cowprotocolTokenLogoUrl'
 import { NATIVE_CURRENCIES, WRAPPED_NATIVE_CURRENCIES } from './nativeAndWrappedTokens'
@@ -640,6 +647,7 @@ export const USDG_ROBINHOOD = new TokenWithLogo(
 )
 
 export const USDC: Record<EvmChains, TokenWithLogo> = {
+  [ARC_CHAIN_ID]: ARC_USDC,
   [SupportedChainId.MAINNET]: USDC_MAINNET,
   [SupportedChainId.GNOSIS_CHAIN]: USDC_GNOSIS_CHAIN,
   [SupportedChainId.ARBITRUM_ONE]: USDC_ARBITRUM_ONE,
@@ -860,6 +868,7 @@ const UNICHAIN_STABLECOINS = [USDC_UNICHAIN.address].map((t) => t.toLowerCase())
 const ROBINHOOD_STABLECOINS = [USDG_ROBINHOOD.address].map((t) => t.toLowerCase())
 
 export const STABLECOINS: Record<SupportedChainId, Set<string>> = {
+  [ARC_CHAIN_ID]: new Set([ARC_USDC.address, ARC_EURC.address].map(getAddressKey)),
   [SupportedChainId.MAINNET]: new Set(MAINNET_STABLECOINS),
   [SupportedChainId.GNOSIS_CHAIN]: new Set(GNOSIS_CHAIN_STABLECOINS),
   [SupportedChainId.ARBITRUM_ONE]: new Set(ARBITRUM_ONE_STABLECOINS),

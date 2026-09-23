@@ -1,4 +1,11 @@
-import { TokenWithLogo, USDC, WRAPPED_NATIVE_CURRENCIES as WETH } from '@cowprotocol/common-const'
+import {
+  ARC_CHAIN_ID,
+  ARC_USDC,
+  ARC_EURC,
+  TokenWithLogo,
+  USDC,
+  WRAPPED_NATIVE_CURRENCIES as WETH,
+} from '@cowprotocol/common-const'
 import { OrderKind, SupportedChainId } from '@cowprotocol/cow-sdk'
 
 export interface TradeUrlParams {
@@ -33,6 +40,7 @@ export type TradeCurrencies = {
 }
 
 export function getDefaultCurrencies(chainId: SupportedChainId | null): TradeCurrencies {
+  if (chainId === ARC_CHAIN_ID) return { inputCurrency: ARC_USDC, outputCurrency: ARC_EURC }
   return {
     inputCurrency: chainId ? WETH[chainId] || null : null,
     outputCurrency: chainId ? USDC[chainId] || null : null,

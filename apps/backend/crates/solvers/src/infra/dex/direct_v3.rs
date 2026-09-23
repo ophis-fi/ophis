@@ -5,7 +5,7 @@ use {
         domain::{dex, eth, order},
         infra::metrics,
     },
-    alloy::primitives::{Address, U256, U512, ruint::UintTryFrom},
+    alloy::primitives::{Address, U256, U512, address, ruint::UintTryFrom},
     ethrpc::block_context::{Error as RpcError, ReadOnlyRpc},
 };
 
@@ -17,6 +17,7 @@ pub struct Config {
     pub quoter: Address,
     pub router: Address,
     pub tick_spacing: bool,
+    pub legacy_router: bool,
     pub tiers: Vec<u32>,
     pub metric: metrics::Dex,
 }
@@ -52,6 +53,17 @@ impl DirectV3 {
             return Err(Error::OrderNotSupported);
         }
         let c = &self.config;
+        // ponytail: Arc starts with USDC/EURC and pinned fee tiers. Expand
+        // only after measuring liquidity and RPC cost; no factory event scans.
+        if c.chain_id == 5042 {
+            let usdc = address!("3600000000000000000000000000000000000000");
+            let eurc = address!("bEf5f6d51CB62b58e6A8f77868681825C6fe21c1");
+            if !((order.sell.0 == usdc && order.buy.0 == eurc)
+                || (order.sell.0 == eurc && order.buy.0 == usdc))
+            {
+                return Err(Error::OrderNotSupported);
+            }
+        }
         let context = self.rpc.snapshot().await?;
         let mut best = None;
         // ponytail: single-pool search over pinned tiers; add multihop when measured pairs need it.
@@ -132,6 +144,7 @@ impl DirectV3 {
         }
         let data = swap_calldata(
             c.tick_spacing,
+            c.legacy_router,
             order.sell.0,
             order.buy.0,
             tier,
@@ -173,6 +186,7 @@ fn encode(selector: [u8; 4], words: &[U256]) -> Vec<u8> {
 }
 fn swap_calldata(
     tick_spacing: bool,
+    legacy_router: bool,
     sell: Address,
     buy: Address,
     tier: u32,
@@ -181,13 +195,15 @@ fn swap_calldata(
     output: U256,
 ) -> Vec<u8> {
     let mut words = vec![word(sell), word(buy), U256::from(tier), word(recipient)];
-    if tick_spacing {
+    if tick_spacing || legacy_router {
         words.push(U256::MAX);
     }
     words.extend([input, output, U256::ZERO]);
     encode(
         if tick_spacing {
             [0xa0, 0x26, 0x38, 0x3e]
+        } else if legacy_router {
+            [0x41, 0x4b, 0xf3, 0x89]
         } else {
             [0x04, 0xe4, 0x5a, 0xaf]
         },
@@ -215,16 +231,17 @@ mod tests {
     use alloy::{sol, sol_types::SolCall};
     sol! {
         interface V3 { struct Params { address tokenIn; address tokenOut; uint24 fee; address recipient; uint256 amountIn; uint256 amountOutMinimum; uint160 sqrtPriceLimitX96; } function exactInputSingle(Params p) external; }
+        interface Legacy { struct Params { address tokenIn; address tokenOut; uint24 fee; address recipient; uint256 deadline; uint256 amountIn; uint256 amountOutMinimum; uint160 sqrtPriceLimitX96; } function exactInputSingle(Params p) external; }
         interface CL { struct Params { address tokenIn; address tokenOut; int24 tickSpacing; address recipient; uint256 deadline; uint256 amountIn; uint256 amountOutMinimum; uint160 sqrtPriceLimitX96; } function exactInputSingle(Params p) external; }
     }
     #[test]
-    fn calldata_matches_both_router_abis() {
+    fn calldata_matches_all_router_abis() {
         let sell = Address::repeat_byte(1);
         let buy = Address::repeat_byte(2);
         let recipient = Address::repeat_byte(3);
         let amount = U256::from(100);
         let min = U256::from(99);
-        let a = swap_calldata(false, sell, buy, 500, recipient, amount, min);
+        let a = swap_calldata(false, false, sell, buy, 500, recipient, amount, min);
         let p = V3::exactInputSingleCall::abi_decode(&a).unwrap().p;
         assert_eq!(
             (
@@ -236,7 +253,20 @@ mod tests {
             ),
             (sell, buy, recipient, amount, min)
         );
-        let a = swap_calldata(true, sell, buy, 10, recipient, amount, min);
+        let a = swap_calldata(false, true, sell, buy, 500, recipient, amount, min);
+        let p = Legacy::exactInputSingleCall::abi_decode(&a).unwrap().p;
+        assert_eq!(
+            (
+                p.tokenIn,
+                p.tokenOut,
+                p.recipient,
+                p.deadline,
+                p.amountIn,
+                p.amountOutMinimum
+            ),
+            (sell, buy, recipient, U256::MAX, amount, min)
+        );
+        let a = swap_calldata(true, false, sell, buy, 10, recipient, amount, min);
         let p = CL::exactInputSingleCall::abi_decode(&a).unwrap().p;
         assert_eq!(
             (

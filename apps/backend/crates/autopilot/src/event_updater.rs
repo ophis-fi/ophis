@@ -10,7 +10,7 @@ use {
     tokio::sync::Mutex,
 };
 
-pub struct EventUpdater<DB, W>(Mutex<EventHandler<W, DB, W::Event>>)
+pub struct EventUpdater<DB, W>(Mutex<EventHandler<W, DB, W::Event>>, bool)
 where
     DB: EventStoring<W::Event>,
     W: EventRetrieving + Send + Sync;
@@ -31,12 +31,21 @@ where
         block_retriever: Arc<dyn BlockRetrieving>,
         start_sync_at_block: Option<BlockNumberHash>,
     ) -> Self {
-        Self(Mutex::new(EventHandler::new(
-            block_retriever,
-            contract,
-            db,
-            start_sync_at_block,
-        )))
+        Self(
+            Mutex::new(EventHandler::new(
+                block_retriever,
+                contract,
+                db,
+                start_sync_at_block,
+            )),
+            false,
+        )
+    }
+
+    /// Arc finalizes each block; other chains retain the reorg-aware indexer.
+    pub fn with_deterministic_finality(mut self) -> Self {
+        self.1 = true;
+        self
     }
 
     /// Creates a new event updater.
@@ -52,15 +61,14 @@ where
         block_retriever: Arc<dyn BlockRetrieving>,
         start_sync_at_block: BlockNumberHash,
     ) -> Result<Self> {
-        Ok(Self(Mutex::new(
-            EventHandler::new_skip_blocks_before(
-                block_retriever,
-                contract,
-                db,
-                start_sync_at_block,
-            )
-            .await?,
-        )))
+        let handler = EventHandler::new_skip_blocks_before(
+            block_retriever,
+            contract,
+            db,
+            start_sync_at_block,
+        )
+        .await?;
+        Ok(Self(Mutex::new(handler), false))
     }
 }
 
@@ -72,7 +80,11 @@ where
     W::Event: Send + Sync,
 {
     async fn run_maintenance(&self) -> Result<()> {
-        self.0.run_maintenance().await
+        if self.1 {
+            self.0.lock().await.update_events_deterministic().await
+        } else {
+            self.0.run_maintenance().await
+        }
     }
 
     fn name(&self) -> &str {

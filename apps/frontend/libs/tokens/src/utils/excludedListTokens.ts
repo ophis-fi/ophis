@@ -1,3 +1,6 @@
+import { ARC_CHAIN_ID, NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
+import { getAddressKey } from '@cowprotocol/cow-sdk'
+
 /**
  * Legacy OVM_ETH placeholder on the OP stack.
  *
@@ -20,6 +23,7 @@ export const LEGACY_OVM_ETH_ADDRESS = '0xDeadDeAddeAddEAddeadDEaDDEAdDeaDDeAD000
 // exclusion is scoped per-chain rather than applied globally — excluding it
 // everywhere would risk hiding a legitimate token on a future-supported chain.
 const EXCLUDED_TOKENS_BY_CHAIN: Record<number, ReadonlySet<string>> = {
+  [ARC_CHAIN_ID]: new Set([getAddressKey(NATIVE_CURRENCY_ADDRESS)]),
   // September 2026 verification: stale decimals / sunset USDL, and bsdETH
   // incorrectly assigned to Ethereum (the contract exists on Base only).
   1: new Set([

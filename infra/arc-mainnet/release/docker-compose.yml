@@ -1,0 +1,69 @@
+name: ophis-arc
+x-backend: &backend
+  image: ophis-arc-backend:${ARC_RELEASE_TAG:?set the reviewed release revision}
+  build:
+    context: ../../../apps/backend
+  restart: unless-stopped
+  user: "${ARC_RUNTIME_UID:?use start.cjs}:${ARC_RUNTIME_GID:?use start.cjs}"
+  env_file: ./generated/services.env
+  volumes: ["./generated:/config:ro"]
+  logging: {driver: json-file, options: {max-size: "5m", max-file: "2"}}
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment: {POSTGRES_USER: arc, POSTGRES_DB: arc}
+    env_file: ./generated/database.env
+    volumes: ["database:/var/lib/postgresql/data"]
+    healthcheck: {test: [CMD-SHELL, "pg_isready -U arc -d arc"], interval: 5s, timeout: 3s, retries: 20}
+  migrations:
+    image: ophis-arc-migrations:${ARC_RELEASE_TAG:?set the reviewed release revision}
+    build: {context: ../../../apps/backend, target: migrations}
+    environment: {FLYWAY_URL: 'jdbc:postgresql://postgres:5432/arc', FLYWAY_USER: arc}
+    env_file: ./generated/database.env
+    depends_on: {postgres: {condition: service_healthy}}
+  credit-gate:
+    image: python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f
+    restart: unless-stopped
+    mem_limit: 64m
+    environment:
+      ARC_QUICKNODE_RPC_URL: ${ARC_QUICKNODE_RPC_URL:?set private endpoint in ignored .env}
+      ARC_QUICKNODE_CREDIT_ALLOWANCE: ${ARC_QUICKNODE_CREDIT_ALLOWANCE:?reserve remaining credits explicitly}
+    command: [python, /app/credit_gate.py]
+    volumes: ["../credit_gate.py:/app/credit_gate.py:ro", "credits:/data"]
+  rpc-proxy:
+    image: ghcr.io/erpc/erpc:0.2.0@sha256:c6a22d3290cc54bef0dd0b915d779c5218d049563151c267e5c69c9adc644d5c
+    restart: unless-stopped
+    user: "${ARC_RUNTIME_UID:?use start.cjs}:${ARC_RUNTIME_GID:?use start.cjs}"
+    mem_limit: 256m
+    volumes: ["./generated/erpc.yaml:/erpc.yaml:ro"]
+    depends_on: [credit-gate]
+  uniswap-v3:
+    <<: *backend
+    command: [solvers, --addr, "0.0.0.0:7877", directv3, --config, /config/uniswap-v3.toml]
+    depends_on: [rpc-proxy]
+  driver:
+    <<: *backend
+    command: [driver, --addr, "0.0.0.0:11088", --ethrpc, "http://rpc-proxy:4000/main/evm/5042", --block-stream-poll-interval, 30s, --ethrpc-max-concurrent-requests, "2", --config, /config/driver.toml]
+    secrets: [solver-key]
+    depends_on: [uniswap-v3]
+  autopilot:
+    <<: *backend
+    command: [autopilot, --config, /config/autopilot.toml]
+    depends_on: {migrations: {condition: service_completed_successfully}, driver: {condition: service_started}}
+  orderbook:
+    <<: *backend
+    command: [orderbook, --config, /config/orderbook.toml]
+    depends_on: {migrations: {condition: service_completed_successfully}, autopilot: {condition: service_started}}
+  api:
+    image: nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+    restart: unless-stopped
+    volumes: ["./generated/nginx.conf:/etc/nginx/nginx.conf:ro"]
+    ports: ["127.0.0.1:8442:8080"]
+    depends_on: [orderbook]
+secrets:
+  solver-key: {file: "${ARC_SOLVER_KEY_FILE:?set existing solver key file outside this repository}"}
+volumes:
+  database:
+  credits:
+    name: ophis-arc-quicknode-credits

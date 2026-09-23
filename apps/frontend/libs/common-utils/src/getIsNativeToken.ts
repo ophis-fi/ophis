@@ -1,5 +1,5 @@
-import { NATIVE_CURRENCIES, TokenWithLogo } from '@cowprotocol/common-const'
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { ARC_CHAIN_ID, NATIVE_CURRENCY_ADDRESS, NATIVE_CURRENCIES, TokenWithLogo } from '@cowprotocol/common-const'
+import { areAddressesEqual, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency, NativeCurrency } from '@cowprotocol/currency'
 
 import { doesTokenMatchSymbolOrAddress } from './doesTokenMatchSymbolOrAddress'
@@ -14,6 +14,7 @@ export function getIsNativeToken(chainIdOrTokenParams: SupportedChainId | Curren
   if (chainIdOrTokenParams instanceof NativeCurrency) return chainIdOrTokenParams.isNative
 
   if (typeof chainIdOrTokenParams === 'number') {
+    if (chainIdOrTokenParams === ARC_CHAIN_ID) return areAddressesEqual(_tokenId, NATIVE_CURRENCY_ADDRESS)
     const nativeToken = NATIVE_CURRENCIES[chainIdOrTokenParams as SupportedChainId]
 
     if (!nativeToken) return false

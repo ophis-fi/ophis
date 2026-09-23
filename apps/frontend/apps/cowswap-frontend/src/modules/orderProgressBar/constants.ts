@@ -1,4 +1,4 @@
-import { getAvailableChainsText } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, getAvailableChainsText } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { MessageDescriptor } from '@lingui/core'
@@ -91,6 +91,7 @@ const availableChainsText = getAvailableChainsText()
 export const TRADE_ON_NEW_CHAINS_BENEFIT = msg`Ophis is live on ${availableChainsText}. Switch the network toggle in the nav bar for quick, cheap transactions.`
 
 export const CHAIN_SPECIFIC_BENEFITS: Record<SupportedChainId, MessageDescriptor[]> = {
+  [ARC_CHAIN_ID]: [msg`Your signed order sets the minimum amount you receive.`],
   [SupportedChainId.MAINNET]: [TRADE_ON_NEW_CHAINS_BENEFIT, ...COW_SWAP_BENEFITS],
   [SupportedChainId.ARBITRUM_ONE]: COW_SWAP_BENEFITS,
   [SupportedChainId.BASE]: COW_SWAP_BENEFITS,

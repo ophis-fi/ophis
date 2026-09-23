@@ -1,0 +1,18 @@
+{
+  "chainId": 5042,
+  "deployer": "0xBeC5B03ffDcac50071693E87bFDb88bAa6710199",
+  "safe": "0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF",
+  "safeOwners": [
+    "0x0494f503912c101bfd76b88e4f5d8a33de284d1a",
+    "0x746ad9c63cca6d3a8588731d60fb87deab4da46a",
+    "0xBeC5B03ffDcac50071693E87bFDb88bAa6710199"
+  ],
+  "solver": "0x7A956C269a12f1B897367663b536EB5dd29f3fBb",
+  "nonce": 0,
+  "gasLimit": 10000000,
+  "maxFeePerGas": "100000000000",
+  "submissionDeadlineBlocks": 600,
+  "orderbookUrl": "https://arc-mainnet.ophis.fi",
+  "frontendOrigin": "https://swap.ophis.fi",
+  "explorerOrigin": "https://explorer.ophis.fi"
+}

@@ -75,6 +75,19 @@ impl StrategyExt for Strategy {
         amount: &U256,
     ) -> AddressMap<AccountOverride> {
         let (target_contract, key) = match self {
+            Self::ArcUsdc => {
+                let Some(balance) = amount.checked_mul(U256::from(1_000_000_000_000u64)) else {
+                    return AddressMap::default();
+                };
+                return iter::once((
+                    *holder,
+                    AccountOverride {
+                        balance: Some(balance),
+                        ..Default::default()
+                    },
+                ))
+                .collect();
+            }
             Self::SolidityMapping {
                 target_contract,
                 map_slot,
@@ -133,7 +146,10 @@ impl StrategyExt for Strategy {
         // constants; the slot and value are derived per-holder at override
         // time. Caching the strategy once per token avoids re-running the
         // probe for every new `from` address.
-        matches!(self, Self::DirectSlot { .. } | Self::AaveV3AToken { .. })
+        matches!(
+            self,
+            Self::ArcUsdc | Self::DirectSlot { .. } | Self::AaveV3AToken { .. }
+        )
     }
 }
 
@@ -644,5 +660,29 @@ mod tests {
             })
             .await;
         assert!(result.is_none());
+    }
+}
+
+#[cfg(test)]
+mod arc_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn arc_usdc_overrides_native_balance_and_rejects_overflow() {
+        let holder = Address::repeat_byte(7);
+        let state = Strategy::ArcUsdc
+            .state_override(None, &holder, &U256::from(1_000_000))
+            .await;
+        assert_eq!(
+            state[&holder].balance,
+            Some(U256::from(1_000_000_000_000_000_000u64))
+        );
+        assert!(state[&holder].state_diff.is_none());
+        assert!(
+            Strategy::ArcUsdc
+                .state_override(None, &holder, &U256::MAX)
+                .await
+                .is_empty()
+        );
     }
 }

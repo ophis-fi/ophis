@@ -66,7 +66,9 @@ contract Trader layout at 0x02565dba7d68dcbed629110024b7b5e785bfc1a484602045eea5
     ) external {
         require(!triggerInitialization(), "prepareSwap can only be called once");
 
-        if (sellToken == nativeToken) {
+        // Arc USDC is already the native balance; deposit() does not exist.
+        if (sellToken == nativeToken && !(block.chainid == 5042 &&
+            nativeToken == address(0x3600000000000000000000000000000000000000))) {
             uint256 availableNativeToken = IERC20(sellToken).balanceOf(address(this));
             if (availableNativeToken < sellAmount) {
                 uint256 amountToWrap = sellAmount - availableNativeToken;

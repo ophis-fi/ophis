@@ -67,6 +67,10 @@ pub struct Configuration {
     #[serde(flatten)]
     pub shared: SharedConfig,
 
+    /// First settlement block for sovereign deployments absent from built-in artifacts.
+    /// Only the initial cursor is affected; persisted progress survives restarts.
+    pub settlement_deployment_block: Option<u64>,
+
     /// Solver drivers to dispatch auctions to.
     pub drivers: Vec<Solver>,
 
@@ -217,6 +221,7 @@ impl Configuration {
 
         Self {
             shared: Default::default(),
+            settlement_deployment_block: None,
             drivers: vec![],
             fee_policies: Default::default(),
             trusted_tokens: Default::default(),
@@ -249,6 +254,7 @@ impl Configuration {
 
         Self {
             shared: Default::default(),
+            settlement_deployment_block: None,
             drivers: vec![Solver::test(name, solver_address)],
             fee_policies: Default::default(),
             trusted_tokens: Default::default(),
@@ -320,6 +326,7 @@ mod tests {
         min-order-validity-period = "2m"
         max-auction-age = "10m"
         native-price-timeout = "3s"
+        settlement-deployment-block = 504200
 
         [[drivers]]
         name = "solver1"
@@ -463,6 +470,7 @@ mod tests {
         assert_eq!(config.min_order_validity_period, Duration::from_secs(120));
         assert_eq!(config.max_auction_age, Duration::from_secs(600));
         assert_eq!(config.native_price_timeout, Duration::from_secs(3));
+        assert_eq!(config.settlement_deployment_block, Some(504200));
     }
 
     #[test]

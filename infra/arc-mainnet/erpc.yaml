@@ -1,0 +1,148 @@
+# Arc RPC pilot only; no signing services or node. See README.md for limits.
+logLevel: error
+
+database:
+  evmJsonRpcCache:
+    connectors:
+      - id: arc-headers
+        driver: memory
+        memory:
+          maxItems: 10000
+          maxTotalSize: 32MB
+    policies:
+      # Never cache latest/pending state or simulation overrides.
+      - connector: arc-headers
+        network: evm:5042
+        method: eth_getBlockByNumber
+        params: ["0x*", false]
+        finality: finalized
+        empty: ignore
+        ttl: 1h
+
+rateLimiters:
+  store:
+    driver: memory
+  budgets:
+    # eRPC paces requests; the private credit gate also enforces a durable allowance.
+    - id: arc-quicknode
+      rules:
+        - method: "*"
+          maxCount: 1000
+          period: minute
+        - method: "*"
+          maxCount: 40000
+          period: day
+    - id: arc-official
+      rules:
+        - method: "*"
+          maxCount: 120
+          period: minute
+    - id: arc-blockdaemon
+      rules:
+        - method: "*"
+          maxCount: 120
+          period: minute
+
+projects:
+  - id: main
+    # Callers cannot request a single voter or bypass consensus/cache policy.
+    allowClientDirectives: ""
+    networks:
+      - architecture: evm
+        evm:
+          chainId: 5042
+          enforceBlockAvailability: false
+          servedTip:
+            enabledFor: [latest]
+          integrity:
+            enforceHighestBlock: false
+            enforceNonNullTaggedBlocks: true
+        selectionPolicy:
+          evalScope: network-method
+          evalFunc: |
+            (upstreams, ctx) => upstreams
+              .sortByScore(PREFER_FASTEST)
+        failsafe:
+          - matchMethod: "eth_call|eth_estimateGas|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_getTransactionCount|eth_getTransactionByHash|eth_getTransactionReceipt|eth_getBlockByHash|eth_getBlockByNumber|eth_feeHistory"
+            timeout:
+              duration: 12s
+            retry:
+              maxAttempts: 1
+            consensus:
+              maxParticipants: 2
+              agreementThreshold: 2
+              maxWaitOnResult: 10s
+              maxWaitOnEmpty: 10s
+              disputeBehavior: returnError
+              lowParticipantsBehavior: returnError
+          - matchMethod: "*"
+            timeout:
+              duration: 12s
+            retry:
+              maxAttempts: 1
+    upstreamDefaults:
+      evm:
+        chainId: 5042
+        statePollerInterval: 30s
+        statePollerDebounce: 5s
+        skipSyncingCheck: true
+        getLogsAutoSplittingRangeThreshold: 100
+      rateLimitAutoTune:
+        enabled: false
+      jsonRpc:
+        supportsBatch: false
+      failsafe:
+        - matchMethod: "*"
+          timeout:
+            duration: 10s
+          # Upstream retries occur inside the credit permit: never amplify them.
+          retry:
+            maxAttempts: 1
+    upstreams:
+      - id: arc-official
+        endpoint: https://rpc.mainnet.arc.io
+        rateLimitBudget: arc-official
+        rateLimitCountMode: credit
+        creditUnits: {"*": 1}
+        ignoreMethods: ["*"]
+        allowMethods: &public-methods
+          - eth_chainId
+          - net_version
+          - eth_blockNumber
+          - eth_getBlockByNumber
+          - eth_getBlockByHash
+          - eth_call
+          - eth_estimateGas
+          - eth_getBalance
+          - eth_getCode
+          - eth_getStorageAt
+          - eth_getLogs
+          - eth_getTransactionCount
+          - eth_getTransactionByHash
+          - eth_getTransactionReceipt
+          - eth_gasPrice
+          - eth_maxPriorityFeePerGas
+          - eth_feeHistory
+      - id: arc-blockdaemon
+        endpoint: https://rpc.blockdaemon.mainnet.arc.io
+        rateLimitBudget: arc-blockdaemon
+        rateLimitCountMode: credit
+        creditUnits: {"*": 1}
+        ignoreMethods: ["*"]
+        allowMethods: *public-methods
+      - id: arc-quicknode
+        endpoint: http://credit-gate:8080
+        rateLimitBudget: arc-quicknode
+        rateLimitCountMode: credit
+        creditUnits:
+          "*": 20
+          debug_traceTransaction: 40
+        ignoreMethods: ["*"]
+        allowMethods: [debug_traceTransaction]
+        evm:
+          chainId: 5042
+          # eRPC v0.2.0 replaces 0s with 30s and its poller bypasses allowMethods.
+          # Two header reads/hour cost ~960 credits/day; included in the budget.
+          statePollerInterval: 1h
+          statePollerDebounce: 1h
+          skipSyncingCheck: true

@@ -1,3 +1,4 @@
+import { ARC_ENABLED_CHAIN_IDS } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 // Ophis fork: Optimism (10) is treated as a primary supported chain at the
@@ -18,7 +19,7 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 // viem `unichain` chain), so wagmi's getClient `find(c => c.id === 130)` resolves
 // and cannot re-trigger the PR #234 boot crash. Restores auto network-switch for
 // limit/advanced orders + cross-chain selector balances on Unichain.
-const OPHIS_EXTRA_CHAINS = new Set<number>([10, 130, 4663])
+const OPHIS_EXTRA_CHAINS = new Set<number>([10, 130, 4663, ...ARC_ENABLED_CHAIN_IDS])
 
 export function isSupportedChainId(chainId: number | undefined): chainId is SupportedChainId {
   return typeof chainId === 'number' && (chainId in SupportedChainId || OPHIS_EXTRA_CHAINS.has(chainId))

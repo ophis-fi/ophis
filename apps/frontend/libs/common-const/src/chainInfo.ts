@@ -21,6 +21,7 @@ import {
   TargetChainId,
 } from '@cowprotocol/cow-sdk'
 
+import { ARC_CHAIN_ID, ARC_ENABLED_CHAIN_IDS, ARC_LABEL } from './arc.const'
 import {
   HYPERCORE_CHAIN_ID,
   MONAD_CHAIN_ID,
@@ -107,7 +108,24 @@ function mapChainInfoToBaseChainInfo(
  * Keep in mind when iterating over this map that the order of keys is guaranteed to be numerically sorted.
  * So this order is mostly for reference and not for iteration.
  */
+const ARC_LOGO =
+  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"%3E%3Ccircle cx="16" cy="16" r="16" fill="%232775ca"/%3E%3Cpath d="M8 24L16 7l8 17M11 18h10" fill="none" stroke="white" stroke-width="3"/%3E%3C/svg%3E' as HttpsString
+
 export const CHAIN_INFO: ChainInfoMap = {
+  [ARC_CHAIN_ID]: {
+    docs: 'https://docs.arc.io',
+    explorer: 'https://arcscan.app',
+    infoLink: 'https://www.arc.io',
+    logo: { light: ARC_LOGO, dark: ARC_LOGO },
+    addressPrefix: 'arc',
+    label: ARC_LABEL,
+    eip155Label: ARC_LABEL,
+    explorerTitle: 'Arcscan',
+    color: '#2775ca',
+    name: 'arc',
+    urlAlias: 'arc',
+    nativeCurrency: NATIVE_CURRENCIES[ARC_CHAIN_ID],
+  },
   [SupportedChainId.MAINNET]: {
     ...mapChainInfoToBaseChainInfo(mainnet),
     name: 'ethereum',
@@ -248,6 +266,7 @@ export const CHAIN_INFO: ChainInfoMap = {
  * TODO: Sort by TVL? Reference: https://defillama.com/chain/gnosis
  */
 export const SORTED_CHAIN_IDS: SupportedChainId[] = [
+  ...ARC_ENABLED_CHAIN_IDS,
   SupportedChainId.MAINNET,
   SupportedChainId.BNB,
   SupportedChainId.BASE,
@@ -268,6 +287,7 @@ export const SORTED_CHAIN_IDS: SupportedChainId[] = [
  * TODO: Sort by TVL? Reference: https://defillama.com/chain/gnosis
  */
 export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
+  ...ARC_ENABLED_CHAIN_IDS,
   SupportedChainId.MAINNET,
   SupportedChainId.BNB,
   SupportedChainId.BASE,

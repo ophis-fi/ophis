@@ -73,6 +73,7 @@ pub struct NativePriceEstimator {
     inner: Arc<dyn PriceEstimating>,
     native_token: Address,
     price_estimation_amount: NonZeroU256,
+    native_token_unit_scale: u64,
 }
 
 impl NativePriceEstimator {
@@ -80,11 +81,13 @@ impl NativePriceEstimator {
         inner: Arc<dyn PriceEstimating>,
         native_token: Address,
         price_estimation_amount: NonZeroU256,
+        native_token_unit_scale: u64,
     ) -> Self {
         Self {
             inner,
             native_token,
             price_estimation_amount,
+            native_token_unit_scale,
         }
     }
 
@@ -120,7 +123,7 @@ impl NativePriceEstimating for NativePriceEstimator {
         async move {
             let query = Arc::new(self.query(&token, timeout));
             let estimate = self.inner.estimate(query.clone()).await?;
-            let price = estimate.price_in_buy_token_f64(&query);
+            let price = estimate.price_in_buy_token_f64(&query) * self.native_token_unit_scale as f64;
             if is_price_malformed(price) {
                 let err = anyhow::anyhow!("estimator returned malformed price: {price}");
                 Err(PriceEstimationError::EstimatorInternal(err))
@@ -153,6 +156,38 @@ mod tests {
     };
 
     #[tokio::test]
+    async fn arc_prices_are_native_atoms_per_erc20_atom() {
+        let mut inner = MockPriceEstimating::new();
+        inner.expect_estimate().returning(|_| {
+            async {
+                Ok(Estimate {
+                    out_amount: U256::from(1_000_000),
+                    gas: 0,
+                    solver: Address::repeat_byte(1),
+                    verified: false,
+                    execution: Default::default(),
+                })
+            }
+            .boxed()
+        });
+        let estimator = NativePriceEstimator::new(
+            Arc::new(inner),
+            Address::with_last_byte(7),
+            NonZeroU256::try_from(U256::from(1_000_000)).unwrap(),
+            chain::Chain::Arc.native_token_unit_scale(),
+        );
+        let price = estimator
+            .estimate_native_price(Address::with_last_byte(3), HEALTHY_PRICE_ESTIMATION_TIME)
+            .await
+            .unwrap();
+        assert_eq!(price, 1e12);
+        let normalized = to_normalized_price(price).unwrap();
+        let expected = U256::from(10).pow(U256::from(30));
+        // Reference prices use f64; allow rounding, never a 10^12 unit error.
+        assert!(normalized.abs_diff(expected) < U256::from(10).pow(U256::from(15)));
+    }
+
+    #[tokio::test]
     async fn prices_dont_get_modified() {
         let mut inner = MockPriceEstimating::new();
         inner.expect_estimate().times(1).returning(|query| {
@@ -173,6 +208,7 @@ mod tests {
         let native_price_estimator = NativePriceEstimator {
             inner: Arc::new(inner),
             native_token: Address::with_last_byte(7),
+            native_token_unit_scale: 1,
             price_estimation_amount: NonZeroU256::try_from(U256::from(10).pow(U256::from(18)))
                 .unwrap(),
         };
@@ -200,6 +236,7 @@ mod tests {
         let native_price_estimator = NativePriceEstimator {
             inner: Arc::new(inner),
             native_token: Address::with_last_byte(7),
+            native_token_unit_scale: 1,
             price_estimation_amount: NonZeroU256::try_from(U256::from(10).pow(U256::from(18)))
                 .unwrap(),
         };

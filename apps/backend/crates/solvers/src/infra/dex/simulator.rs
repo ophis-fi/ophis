@@ -68,7 +68,11 @@ fn eth_flow_balance_override(
     // sim run a swap that reverts with "ERC20: transfer to the zero address",
     // turning the graceful "sim unavailable" path (which quotes are exempt from)
     // into a hard error. Skip it -- such quotes fall through to Ok(None).
-    if owner.is_zero() || swap.input.token.0 != wrapped_native {
+    // Arc USDC has no wrapping/EthFlow path; keep its real native balance.
+    if owner.is_zero()
+        || swap.input.token.0 != wrapped_native
+        || wrapped_native == address!("3600000000000000000000000000000000000000")
+    {
         return None;
     }
     let value = B256::from(swap.input.amount.to_be_bytes::<32>());

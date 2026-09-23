@@ -354,8 +354,9 @@ impl Solutions {
                                 // ALLOWLISTs in solvers/src/infra/dex/*.
                                 let chain_id = solver.eth.chain().id();
                                 if let Err(err) =
-                                    competition::solution::custom_allowlist::validate_with_required_output(
+                                    competition::solution::custom_allowlist::validate_with_settlement(
                                         &custom, chain_id, required_custom_amounts,
+                                        Some(*solver.eth.contracts().settlement().address()),
                                     )
                                 {
                                     crate::infra::observe::metrics::get()

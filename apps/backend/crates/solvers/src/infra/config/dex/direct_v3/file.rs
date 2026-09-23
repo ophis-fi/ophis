@@ -47,14 +47,56 @@ pub async fn load(path: &Path) -> super::Config {
                 metrics::Dex::Velodrome,
                 "0x310784c7FCE12d578dA6f53460777bAc9718B859",
             ),
+            // First-party deployment references (2026-09-22):
+            // https://developers.uniswap.org/deployments.json (chainId 5042, v3)
+            // https://docs.synthra.org/docs/contract-addresses
+            // https://docs.achswap.app/technical/contract-addresses/
+            (eth::ChainId::Arc, "uniswap-v3") => (
+                "0xf0db7b58379503491d857dB50AC9ece64c653918",
+                "0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468",
+                "0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77",
+                false,
+                // Public-RPC quote + router simulation at Arc block 22231320:
+                // 500 executed; 100 reverted. Do not spend calls on that tier.
+                vec![500],
+                metrics::Dex::UniswapV3,
+                "",
+            ),
+            (eth::ChainId::Arc, "synthra") => (
+                "0x6307fc239C7964942c1BfFE51930E55606619c74",
+                "0x9c179A7335B3fc841F59Aa6a62daf6d5c61b65D7",
+                "0xa50eDe66a573eE5bB37E28AF5789B76aE5FEb828",
+                false,
+                vec![100, 500],
+                metrics::Dex::Synthra,
+                "",
+            ),
+            (eth::ChainId::Arc, "achswap") => (
+                "0xaE54BF4C8078BaAAf7e17f8e01659Ea470a989FC",
+                "0x659Da32F3F10566bDB6B55Ad84c182f1D00Ba058",
+                "0xEA0129203FBB99ebEea3f78B2d05b924f17FB556",
+                false,
+                vec![100, 500],
+                metrics::Dex::AchSwap,
+                "",
+            ),
             _ => panic!("unsupported direct V3 venue/chain"),
         };
     let parse = |s: &str| s.parse::<eth::Address>().expect("pinned direct V3 address");
-    assert_eq!(
-        base.contracts.settlement,
-        parse(settlement),
-        "unexpected direct V3 settlement"
-    );
+    if config.chain_id == eth::ChainId::Arc {
+        // Arc has no Ophis mainnet deployment. Use the operator's explicit
+        // settlement; the driver independently binds calldata to its own config.
+        assert!(
+            !base.contracts.settlement.is_zero(),
+            "missing Arc settlement"
+        );
+    } else {
+        assert_eq!(
+            base.contracts.settlement,
+            parse(settlement),
+            "unexpected direct V3 settlement"
+        );
+    }
     base.internalize_interactions = false;
     super::Config {
         direct_v3: direct_v3::Config {
@@ -65,6 +107,7 @@ pub async fn load(path: &Path) -> super::Config {
             quoter: parse(quoter),
             router: parse(router),
             tick_spacing,
+            legacy_router: config.chain_id == eth::ChainId::Arc && config.venue == "achswap",
             tiers,
             metric,
         },

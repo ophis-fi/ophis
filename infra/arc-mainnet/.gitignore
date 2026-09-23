@@ -1,0 +1,4 @@
+.env
+local/generated/
+release/generated/
+release/config.json

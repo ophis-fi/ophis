@@ -1,6 +1,12 @@
 import { useEffect } from 'react'
 
-import { getRpcProvider, LAUNCH_DARKLY_VIEM_MIGRATION } from '@cowprotocol/common-const'
+import {
+  ARC_ENABLED,
+  ARC_CHAIN_ID,
+  ARC_ORDERBOOK_URL,
+  getRpcProvider,
+  LAUNCH_DARKLY_VIEM_MIGRATION,
+} from '@cowprotocol/common-const'
 import { getCurrentChainIdFromUrl, isBarnBackendEnv } from '@cowprotocol/common-utils'
 import {
   ApiBaseUrls,
@@ -34,6 +40,7 @@ const OPHIS_ROBINHOOD_ORDERBOOK_URL = 'https://robinhood-mainnet.ophis.fi'
 // infra/hyperevm-mainnet/ for future re-enablement.
 
 const OPHIS_ORDERBOOK_BASE_URLS = {
+  ...(ARC_ENABLED ? { [ARC_CHAIN_ID]: ARC_ORDERBOOK_URL } : {}),
   [SupportedChainId.MAINNET]: `${PROD_BASE_URL}/mainnet`,
   [SupportedChainId.GNOSIS_CHAIN]: `${PROD_BASE_URL}/xdai`,
   [SupportedChainId.ARBITRUM_ONE]: `${PROD_BASE_URL}/arbitrum_one`,

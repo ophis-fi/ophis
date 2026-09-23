@@ -1,4 +1,4 @@
-import { EXTRA_ACROSS_SOURCE_CHAIN_IDS, tagAcrossIntegratorCalldata } from '@cowprotocol/common-const'
+import { ARC_ENABLED, EXTRA_ACROSS_SOURCE_CHAIN_IDS, tagAcrossIntegratorCalldata } from '@cowprotocol/common-const'
 import { getTimeoutAbortController } from '@cowprotocol/common-utils'
 import {
   avalanche,
@@ -22,7 +22,7 @@ import {
   QuoteBridgeRequest,
 } from '@cowprotocol/sdk-bridging'
 
-import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
+import { ARC_BRIDGE_CHAIN, ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
 
 // A stalled available-routes request must not hang the quote — it is ABORTED
 // (not just raced) at the timeout and degrades to "no intermediate found" like
@@ -44,6 +44,7 @@ const AVAILABLE_ROUTES_TIMEOUT_MS = 10_000
  * have yet.
  */
 const ACROSS_EXTRA_NETWORKS: ChainInfo[] = [
+  ...(ARC_ENABLED ? [ARC_BRIDGE_CHAIN] : []),
   avalanche,
   bnb,
   plasma,
