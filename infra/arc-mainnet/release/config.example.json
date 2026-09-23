@@ -7,7 +7,7 @@
     "0x746ad9c63cca6d3a8588731d60fb87deab4da46a",
     "0xBeC5B03ffDcac50071693E87bFDb88bAa6710199"
   ],
-  "solver": "0x7A956C269a12f1B897367663b536EB5dd29f3fBb",
+  "solver": null,
   "nonce": 0,
   "gasLimit": 10000000,
   "maxFeePerGas": "100000000000",

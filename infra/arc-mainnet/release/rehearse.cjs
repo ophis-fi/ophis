@@ -4,7 +4,7 @@ const path = require('node:path')
 const net = require('node:net')
 const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
-const { root, dep, compile, build, checkHash } = require('./plan.cjs')
+const { root, dep, validate, compile, build, checkHash } = require('./plan.cjs')
 const { verify } = require('./verify.cjs')
 const { JsonRpcProvider } = dep('@ethersproject/providers')
 const { Contract, ContractFactory } = dep('@ethersproject/contracts')
@@ -16,6 +16,9 @@ const TYPES = { SafeTx: [ ['to', 'address'], ['value', 'uint256'], ['data', 'byt
 ].map(([name, type]) => ({ name, type })) }
 
 async function main() {
+  const example = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.example.json')))
+  assert.equal(example.solver, null, 'Never default to another chain\'s submitter')
+  assert.throws(() => validate(example), /dedicated Arc submitter/)
   const check = net.createServer()
   await new Promise((resolve, reject) => { check.once('error', reject); check.listen(31559, '127.0.0.1', resolve) })
   await new Promise(resolve => check.close(resolve))
@@ -41,7 +44,7 @@ async function main() {
     const safeAddress = await factory.callStatic.createProxyWithNonce(singleton.address, initializer, 5042)
     await (await factory.createProxyWithNonce(singleton.address, initializer, 5042)).wait()
     const safe = new Contract(safeAddress, safeArtifact.abi, signer)
-    const config = { ...JSON.parse(fs.readFileSync(path.join(__dirname, 'config.example.json'))),
+    const config = { ...example,
       deployer: accounts[0], solver: accounts[4], safe: safeAddress, safeOwners: owners, nonce: await signer.getTransactionCount() }
     const compiled = compile(), plan = build(config, compiled.artifacts)
     fs.mkdirSync(OUT, { recursive: true, mode: 0o700 })

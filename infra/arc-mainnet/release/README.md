@@ -10,13 +10,30 @@ later authorized launch. Do not run them as part of local development.
 `config.example.json` uses the existing protocol Safe
 `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`, Ledger deployer
 `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199`, and the three owners recorded in
-`infra/shared/cron/safe-drift-check.sh.tmpl`. The default solver is Robinhood's
-`0x7A956C269a12f1B897367663b536EB5dd29f3fBb`; OP and Unichain have different recorded
-solvers. This is an offline default pending the operator's choice, not a new key.
+`infra/shared/cron/safe-drift-check.sh.tmpl`. The solver is deliberately unset:
+Arc follows the existing **new submitter EOA per chain** pattern, documented in
+[Unichain prerequisites](../../unichain-mainnet/README.md) and
+[Robinhood deployment inputs](../../robinhood-mainnet/deploy/README.md).
+All solver lanes on one chain share that chain's submitter. This is a signing
+account, not another node or a separate liquidity provider.
+
+The current tracked runtime configurations record OP's `0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1`,
+Robinhood's `0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665`, and Unichain's
+`0xB6537cFd4f574b339a6b145Db64EcC92af3ebdf2`. These are repository evidence, not
+fresh onchain observations. The previously copied `0x7A956C269a12f1B897367663b536EB5dd29f3fBb`
+came from stale deployment records. Commit `d3acec5c` documents how leaving that
+old address in Unichain's autopilot after rotation caused solver rejection.
+Do not reuse it as Arc's default.
 
 The example nonce **0 is a placeholder**, not an observed Arc nonce. Before the
-ceremony copy it to ignored `config.json`, set the deployer's current pending nonce
-using a free Arc RPC, and confirm the intended public API/frontend origins.
+ceremony copy it to ignored `config.json`, set `solver` to the public address of
+Arc's new submitter, set the deployer's current pending nonce using a free Arc RPC,
+and confirm the intended public API/frontend origins. Prepare the Arc key on the
+runtime host under the isolated signing account, following the existing
+[custody and backup procedure](../../../docs/operations/submitter-pk-backup-runbook.md).
+Use a separate Arc key path; never overwrite another chain's `submitter.key`.
+Only its public address belongs in the plan. Planning rejects an unset solver;
+startup derives the key's address and requires it to match the reviewed plan.
 Predicted contract addresses are not deployment evidence.
 
 The same Safe address must actually exist on Arc. The preflight verifies its
@@ -38,11 +55,15 @@ with PyYAML (and tomli on Python <3.11), and Docker. Check disk before building:
 ```sh
 python3 infra/arc-mainnet/local/build.py --check-only
 node infra/arc-mainnet/release/rehearse.cjs
-node infra/arc-mainnet/release/plan.cjs infra/arc-mainnet/release/config.example.json
 python3 infra/arc-mainnet/release/check.py
 python3 infra/arc-mainnet/test_credit_gate.py
 python3 infra/arc-mainnet/test_rpc.py --release
 ```
+
+On a clean checkout, `check.py` generates preview identities without known signing
+keys; these are not production identities. It preserves an existing prepared plan.
+Use `node infra/arc-mainnet/release/plan.cjs infra/arc-mainnet/release/config.json`
+only after completing the actual launch inputs.
 
 The rehearsal owns a fresh non-forked Anvil on `127.0.0.1:31559`, deploys the actual
 seven production contracts and a real 2-of-3 Safe, tests single-owner denial,
@@ -67,7 +88,9 @@ plans, receipts and rendered configuration stay ignored and mode 0600.
 These steps are operational work after deployment authorization, not pending
 application development. Use the reviewed revision and actual `config.json`:
 
-1. Confirm the Safe on Arc and native USDC gas for the existing Ledger/solver.
+1. Provision and back up Arc's dedicated submitter on the runtime host; put its
+   public address in `config.json`. Confirm the Safe on Arc and native USDC gas
+   for the existing Ledger and new Arc submitter.
    Refresh the deployer nonce and prepare the final unsigned plan. Review all
    seven transactions and the Safe activation batch. No arbitrary Balancer fallback
    or wrapped-USDC deployment is used.
@@ -87,7 +110,7 @@ application development. Use the reviewed revision and actual `config.json`:
    `ARC_RUNTIME_GID=$(id -g)`; `docker compose -f infra/arc-mainnet/release/docker-compose.yml
    build`. Share the one backend image across services. Never build on the current
    laptop's approximately 6 GiB free space without increasing available storage.
-5. Supply `ARC_SOLVER_KEY_FILE` pointing to the existing private key file outside
+5. Supply `ARC_SOLVER_KEY_FILE` pointing to the dedicated Arc private key file outside
    the repo, mode 0600. Set `ARC_QUICKNODE_RPC_URL` privately and reserve only the
    actually available credits in `ARC_QUICKNODE_CREDIT_ALLOWANCE` (1..10,000,000).
    Use the environment or an ignored release `.env`; never put these in frontend

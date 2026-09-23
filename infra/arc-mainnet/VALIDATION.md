@@ -9,9 +9,12 @@ fixtures. Existing real Uniswap liquidity was checked separately in [LIQUIDITY.m
 The [release package](release/README.md) now includes unsigned deployment plans,
 Ledger ceremony/resume tooling, real Safe verification, production configuration,
 guarded startup, persistent credit accounting, frontend/explorer activation and
-CI checks. Its example uses the existing Safe, owners and deployer; Robinhood's
-solver is the documented offline default while the choice between existing solvers
-is pending. The example nonce is not a live observation. Nothing was broadcast,
+CI checks. Its example uses the existing Safe, owners and deployer. Deployment
+history confirms a separate submitter EOA per chain; the stale Robinhood solver
+default has been removed. Arc's dedicated submitter is provisioned on the runtime
+host during the launch ceremony, rather than choosing an existing chain's key.
+Planning rejects an unset solver; offline checks use disposable preview identities.
+The example nonce is not a live observation. Nothing was broadcast,
 published, merged, or pushed.
 
 Latest verification:

@@ -3,8 +3,10 @@
 import json
 import os
 from pathlib import Path
+import secrets
 import subprocess
 import sys
+import tempfile
 import uuid
 import yaml
 
@@ -17,7 +19,14 @@ from test_rpc import docker
 def main():
     # Do not overwrite an operator's prepared plan. CI starts from a clean checkout.
     if not (OUT / 'plan.json').exists():
-        subprocess.run(['node', str(HERE / 'plan.cjs'), str(HERE / 'config.example.json')], check=True)
+        config = json.loads((HERE / 'config.example.json').read_text())
+        # Preview identities have no known signing keys and cannot match the Ledger.
+        for role in ['deployer', 'safe', 'solver']:
+            config[role] = '0x' + secrets.token_hex(20)
+        with tempfile.TemporaryDirectory(prefix='arc-release-check-') as directory:
+            fixture = Path(directory) / 'config.json'
+            fixture.write_text(json.dumps(config))
+            subprocess.run(['node', str(HERE / 'plan.cjs'), str(fixture)], check=True)
     subprocess.run([sys.executable, str(HERE / 'render.py')], check=True)
     erpc = yaml.safe_load((OUT / 'erpc.yaml').read_text())
     cfg = json.loads((OUT / 'plan.json').read_text())['config']

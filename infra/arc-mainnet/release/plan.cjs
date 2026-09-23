@@ -16,6 +16,7 @@ const address = value => { const result = getAddress(value); assert(!/^0x0{40}$/
 
 function validate(config) {
   assert.equal(config.chainId, 5042)
+  assert(config.solver, 'Set solver to the public address of a dedicated Arc submitter; no cross-chain default')
   for (const key of ['deployer', 'safe', 'solver']) config[key] = address(config[key])
   config.safeOwners = config.safeOwners.map(address)
   assert.equal(config.safeOwners.length, 3)
@@ -106,7 +107,7 @@ function checkHash(plan) {
 
 if (require.main === module) {
   assert.equal(process.argv.length, 3, 'Usage: node release/plan.cjs CONFIG.json')
-  const config = JSON.parse(fs.readFileSync(process.argv[2])), built = compile()
+  const config = validate(JSON.parse(fs.readFileSync(process.argv[2]))), built = compile()
   const out = path.join(__dirname, 'generated'); fs.mkdirSync(out, { recursive: true, mode: 0o700 })
   const plan = build(config, built.artifacts)
   for (const [name, value] of Object.entries({ 'solc-input': built.input, artifacts: built.artifacts, plan,
