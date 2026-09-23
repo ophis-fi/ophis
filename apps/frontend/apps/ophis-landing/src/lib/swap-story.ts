@@ -25,14 +25,12 @@ const examples: [keyof typeof tokens, keyof typeof tokens, keyof typeof venueSet
 ];
 const changing = ['source-logo', 'destination-logo', 'source-chain-logo', 'destination-chain-logo', 'intent-label', 'venue-logo-1', 'venue-name-1'].map(get);
 changing.filter(node => node.namespaceURI !== 'http://www.w3.org/2000/svg').forEach(node => { const host = document.createElement('span'); host.style.display = 'inline-grid'; node.before(host); host.append(node); });
-
 const solverNames = ['Horadrim', 'Tsolver', 'OKX'];
 const venueSets = {
   Ethereum: [['Uniswap', '/logos/swap-story/uniswap.svg'], ['Curve', '/logos/swap-story/curve.png'], ['SushiSwap', '/logos/swap-story/sushi.svg']],
   Base: [['Uniswap', '/logos/swap-story/uniswap.svg'], ['Aerodrome', '/logos/swap-story/aerodrome.png'], ['SushiSwap', '/logos/swap-story/sushi.svg']],
 };
 const venueNodes = [0, 1, 2].map(i => ({card: get(`venue-${i}`), path: get(`venue-path-${i}`), active: get(`venue-active-${i}`), quote: get(`quote-${i}`)}));
-
 // Preload the next routes so an asset change cannot flash a missing logo.
 [...new Set([...Object.values(tokens), ...Object.values(chains)])].forEach(src => { const img = new Image(); img.src = src; });
 const incoming = [get('path-in'), get('trail-in')], outgoing = [get('path-out'), get('trail-out')];
@@ -43,7 +41,7 @@ const solvers = [0, 1, 2].map(i => ({row: get(`solver-${i}`), bid: get(`bid-${i}
 const state = {
   ghosts: [] as Visual[], venuePaths: [] as Curve[], solverPaths: [] as Curve[], sellPaths: [] as Curve[],
   liquidityEntries: [] as Point[], liquidityExits: [] as Point[], paths: [] as Curve[],
-  example: 0, small: false, visible: false, frame: 0, last: null as number | null, elapsed: 0,
+  example: 0, small: false, visible: false, paused: false, frame: 0, last: null as number | null, elapsed: 0,
 };
 const duration = 4800;
 const clamp = (x: number): number => Math.max(0, Math.min(1, x));
@@ -66,7 +64,6 @@ function render(p: number): void {
   changing.forEach(node => { node.style.opacity = String(fade); });
   state.ghosts.forEach(node => { node.style.opacity = String(1 - fade); });
   if (fade === 1) { state.ghosts.forEach(node => node.remove()); state.ghosts = []; }
-
   const selectedVenue = [0, 2, 0, 1, 0][state.example];
   const winningSolver = [1, 2, 0, 2, 1][state.example];
   // Sell-side route exploration; the pulse represents the request, not an early funds transfer.
@@ -192,7 +189,7 @@ function tick(now: number): void {
 }
 function sync(): void {
   cancelAnimationFrame(state.frame); state.last = null;
-  const running = state.visible && !document.hidden && !reduced.matches;
+  const running = state.visible && !document.hidden && !reduced.matches && !state.paused;
   root.dataset.playing = String(running);
   if (reduced.matches) render(.90);
   if (running) state.frame = requestAnimationFrame(tick);
@@ -234,10 +231,18 @@ function updateExample(index: number): void {
   });
   get('scene-description').textContent += ' The visual reading order is sell token, DEX liquidity venues, competing solvers, Ophis batch auction, then received token. The sell token fans out to available venue routes, which feed a shared solver liquidity network. These links show route exploration, not funds transferred before a winner is selected. The batch dispatches orders to solvers, which return execution proposals. The Ophis hub represents coordination, not custody. Signed orders collect into a batch; solvers compete with execution proposals; the winning valid bid settles before receipt. Solvers search venues including ' + venueSets[source].map(v => v[0]).join(', ') + '. Horadrim, Tsolver and OKX are named from the source-chain solver registry. Progress rings illustrate competing proposals, not live quotes. One example winner is highlighted; actual participation, venue and pair availability varies.';
 }
+get('story-scene').setAttribute('tabindex', '0');
+get('story-scene').setAttribute('aria-describedby', 'motion-help');
+get('story-scene').setAttribute('aria-keyshortcuts', 'Space Enter');
+root.addEventListener('keydown', event => {
+  if (event.target !== get('story-scene') || ![' ', 'Enter'].includes(event.key)) return;
+  event.preventDefault(); state.paused = !state.paused;
+  get('motion-help').textContent = state.paused ? 'Paused. Space or Enter to resume' : 'Space or Enter to pause or resume';
+  sync();
+});
 reduced.addEventListener('change', sync);
 document.addEventListener('visibilitychange', sync);
 new ResizeObserver(layout).observe(root);
 new IntersectionObserver(entries => { state.visible = entries.some(entry => entry.isIntersecting); sync(); }).observe(svg);
 layout(); updateExample(0); sync();
-
 export {};

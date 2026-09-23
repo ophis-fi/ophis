@@ -3,7 +3,9 @@
 ---
 <section class="story swap-story" id="swap-story" data-mode="cross" aria-labelledby="story-title" data-reveal>
 <div class="heading"><h2 id="story-title">From intent<br> to <em>settlement.</em></h2></div>
-<div class="scene">
+<div class="scene" id="story-scene" role="region" aria-label="Swap animation">
+<span id="motion-help" class="motion-help" aria-live="polite">Space or Enter to pause or resume</span>
+<p class="static-summary">DEX liquidity → competing solvers → Ophis batch auction → crosschain receipt.</p>
 <div class="intent"><span class="intent-spark" aria-hidden="true">✦</span><span id="intent-label">USDC <span class="intent-arrow">→</span> SOL</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg><span class="signed">Signed</span></div>
 <svg class="playground" id="playground" role="img" aria-labelledby="scene-title scene-description" viewBox="0 70 1080 450">
 <title id="scene-title">USDC on Ethereum to SOL on Solana</title><desc id="scene-description">An illustrative USDC to SOL order. DEX liquidity feeds competing solver proposals for an Ophis batch auction. The winning valid proposal settles on Ethereum before crosschain delivery and receipt on Solana.</desc>
@@ -60,6 +62,9 @@
 .story{scroll-margin-top:100px;max-width:1080px;margin:48px auto;padding:0 24px;color:var(--ophis-fg);font-family:Inter,system-ui,sans-serif}
 .heading{margin-bottom:26px}h2{font:400 clamp(34px,4vw,50px)/1.04 Georgia,serif;letter-spacing:-.045em;margin:0}h2 br{display:none}h2 em{font-weight:400}
 .scene{position:relative;isolation:isolate;border-radius:24px;overflow:hidden;background:var(--ophis-surface);color:var(--ophis-fg);border:1px solid var(--ophis-border)}
+.scene:focus-visible{outline:2px solid var(--ophis-brown);outline-offset:4px}
+.story:not([data-example]) .motion-help{display:none}
+.motion-help{position:absolute;inset:auto 12px 8px;text-align:center;font-size:11px;opacity:0;pointer-events:none}.scene:focus-visible .motion-help{opacity:1}.static-summary{display:none}
 .scene::before{content:'';position:absolute;inset:0;z-index:-1;background:radial-gradient(ellipse at 50% 48%,#fbe1d160,transparent 52%);pointer-events:none}
 .intent{position:relative;width:max-content;max-width:calc(100% - 24px);margin:24px auto 18px;display:flex;align-items:center;gap:14px;padding:10px 16px;border:1px solid var(--ophis-border);background:var(--ophis-bg);border-radius:16px;font-size:15px;font-weight:500;white-space:nowrap;z-index:2}
 .intent-spark{font-size:20px;color:var(--ophis-brown)}:global(.intent-arrow){color:var(--ophis-fg-faded);padding:0 11px}.intent>svg{width:16px;height:16px;fill:none;stroke:#45674d;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.signed{font-size:10px;color:#45674d;margin-left:-8px;font-weight:400}
@@ -73,7 +78,7 @@
 .bid-track,.bid-fill{fill:none;stroke-width:2.5}.bid-track{stroke:#e1dcd7}.bid-fill{stroke:#b1b6bf;stroke-linecap:round;transition:stroke .4s}.solver.is-winner .bid-fill{stroke:#a86f50}.solver use{color:var(--ophis-brown)}
 .execution-label{font-size:13px;fill:var(--ophis-brown);text-anchor:middle;paint-order:stroke;stroke:var(--ophis-surface);stroke-width:6px;stroke-linejoin:round}
 .venue text,.solver text,.venue-heading,.competition-label,.auction-title{paint-order:stroke;stroke:var(--ophis-surface);stroke-width:7px;stroke-linejoin:round}
-@media(max-width:850px){.story{padding:0 16px;margin:30px auto}.heading{margin-bottom:22px}h2{font-size:38px}h2 br{display:block}.intent{margin:20px auto 14px;font-size:14px;padding:9px 13px;gap:11px}:global(.intent-arrow){padding:0 9px}.landing-pad{display:none}.receipt-label{font-size:17px}#receipt rect{width:134px;x:-67px}#receipt use{x:-55px}.venue text,.solver text{font-size:16px}.venue-heading,.competition-label{font-size:14px}.auction-title{font-size:21px}#winner-label{font-size:15px}.playground{max-width:480px}.execution-label{font-size:14px}}
+@media(max-width:850px){.story:not([data-example]) .playground{display:none}.story:not([data-example]) .static-summary{display:block;margin:20px 24px;line-height:1.8;font-size:16px}.story{padding:0 16px;margin:30px auto}.heading{margin-bottom:22px}h2{font-size:38px}h2 br{display:block}.intent{margin:20px auto 14px;font-size:14px;padding:9px 13px;gap:11px}:global(.intent-arrow){padding:0 9px}.landing-pad{display:none}.receipt-label{font-size:17px}#receipt rect{width:134px;x:-67px}#receipt use{x:-55px}.venue text,.solver text{font-size:16px}.venue-heading,.competition-label{font-size:14px}.auction-title{font-size:21px}#winner-label{font-size:15px}.playground{max-width:480px}.execution-label{font-size:14px}}
 @media(prefers-reduced-motion:reduce){.story *,.story *::before,.story *::after{transition:none!important}}
 
 </style>
