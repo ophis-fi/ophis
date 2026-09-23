@@ -15,7 +15,6 @@ const get = (id: string): Visual => {
 const svg = get('playground'), reduced = matchMedia('(prefers-reduced-motion: reduce)');
 const tokens = {USDC: '/logos/swap-story/usdc.svg', ETH: '/logos/swap-story/ethereum.svg', SOL: '/logos/swap-story/solana.svg', AAPLc: '/logos/swap-story/AAPLc.png', NVDAc: '/logos/swap-story/NVDAc.png'};
 const chains = {Ethereum: '/logos/swap-story/ethereum.svg', Solana: '/logos/swap-story/solana.svg', Base: '/logos/swap-story/base.png'};
-// Stock examples use Ophis's canonical Coinbase token list on Base.
 const examples: [keyof typeof tokens, keyof typeof tokens, keyof typeof venueSets, keyof typeof chains, string][] = [
   ['USDC', 'SOL', 'Ethereum', 'Solana', 'Crosschain'],
   ['ETH', 'USDC', 'Ethereum', 'Ethereum', 'Same-chain swap'],
@@ -31,7 +30,6 @@ const venueSets = {
   Base: [['Uniswap', '/logos/swap-story/uniswap.svg'], ['Aerodrome', '/logos/swap-story/aerodrome.png'], ['SushiSwap', '/logos/swap-story/sushi.svg']],
 };
 const venueNodes = [0, 1, 2].map(i => ({card: get(`venue-${i}`), path: get(`venue-path-${i}`), active: get(`venue-active-${i}`), quote: get(`quote-${i}`)}));
-// Preload the next routes so an asset change cannot flash a missing logo.
 [...new Set([...Object.values(tokens), ...Object.values(chains)])].forEach(src => { const img = new Image(); img.src = src; });
 const incoming = [get('path-in'), get('trail-in')], outgoing = [get('path-out'), get('trail-out')];
 const order = get('order-packet'), delivery = get('delivery-packet');
@@ -231,15 +229,18 @@ function updateExample(index: number): void {
   });
   get('scene-description').textContent += ' The visual reading order is sell token, DEX liquidity venues, competing solvers, Ophis batch auction, then received token. The sell token fans out to available venue routes, which feed a shared solver liquidity network. These links show route exploration, not funds transferred before a winner is selected. The batch dispatches orders to solvers, which return execution proposals. The Ophis hub represents coordination, not custody. Signed orders collect into a batch; solvers compete with execution proposals; the winning valid bid settles before receipt. Solvers search venues including ' + venueSets[source].map(v => v[0]).join(', ') + '. Horadrim, Tsolver and OKX are named from the source-chain solver registry. Progress rings illustrate competing proposals, not live quotes. One example winner is highlighted; actual participation, venue and pair availability varies.';
 }
-get('story-scene').setAttribute('tabindex', '0');
-get('story-scene').setAttribute('aria-describedby', 'motion-help');
-get('story-scene').setAttribute('aria-keyshortcuts', 'Space Enter');
+function togglePause(): void {
+  state.paused = !state.paused; root.dataset.paused = String(state.paused);
+  get('story-scene').setAttribute('aria-label', state.paused ? 'Resume swap animation' : 'Pause swap animation');
+  get('motion-help').textContent = state.paused ? 'Paused · tap, click or press Space to resume' : 'Tap, click or press Space to pause';
+  sync();
+}
+Object.entries({tabindex: '0', role: 'button', 'aria-label': 'Pause swap animation', 'aria-describedby': 'scene-description motion-help', 'aria-keyshortcuts': 'Space Enter'}).forEach(([name, value]) => get('story-scene').setAttribute(name, value));
 root.addEventListener('keydown', event => {
   if (event.target !== get('story-scene') || ![' ', 'Enter'].includes(event.key)) return;
-  event.preventDefault(); state.paused = !state.paused;
-  get('motion-help').textContent = state.paused ? 'Paused. Space or Enter to resume' : 'Space or Enter to pause or resume';
-  sync();
+  event.preventDefault(); togglePause();
 });
+get('story-scene').addEventListener('click', togglePause);
 reduced.addEventListener('change', sync);
 document.addEventListener('visibilitychange', sync);
 new ResizeObserver(layout).observe(root);

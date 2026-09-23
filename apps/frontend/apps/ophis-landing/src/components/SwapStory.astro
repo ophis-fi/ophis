@@ -4,7 +4,7 @@
 <section class="story swap-story" id="swap-story" data-mode="cross" aria-labelledby="story-title" data-reveal>
 <div class="heading"><h2 id="story-title">From intent<br> to <em>settlement.</em></h2></div>
 <div class="scene" id="story-scene" role="region" aria-label="Swap animation">
-<span id="motion-help" class="motion-help" aria-live="polite">Space or Enter to pause or resume</span>
+<span id="motion-help" class="motion-help" aria-live="polite">Tap, click or press Space to pause</span>
 <p class="static-summary">DEX liquidity → competing solvers → Ophis batch auction → crosschain receipt.</p>
 <div class="intent"><span class="intent-spark" aria-hidden="true">✦</span><span id="intent-label">USDC <span class="intent-arrow">→</span> SOL</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg><span class="signed">Signed</span></div>
 <svg class="playground" id="playground" role="img" aria-labelledby="scene-title scene-description" viewBox="0 70 1080 450">
@@ -64,7 +64,8 @@
 .scene{position:relative;isolation:isolate;border-radius:24px;overflow:hidden;background:var(--ophis-surface);color:var(--ophis-fg);border:1px solid var(--ophis-border)}
 .scene:focus-visible{outline:2px solid var(--ophis-brown);outline-offset:4px}
 .story:not([data-example]) .motion-help{display:none}
-.motion-help{position:absolute;inset:auto 12px 8px;text-align:center;font-size:11px;opacity:0;pointer-events:none}.scene:focus-visible .motion-help{opacity:1}.static-summary{display:none}
+.story[data-example] .scene{cursor:pointer}
+.motion-help{position:absolute;inset:4px 12px auto;line-height:1.2;text-align:center;font-size:11px;opacity:0;pointer-events:none}.scene:hover .motion-help,.scene:focus-visible .motion-help,.story[data-paused="true"] .motion-help{opacity:1}.static-summary{display:none}
 .scene::before{content:'';position:absolute;inset:0;z-index:-1;background:radial-gradient(ellipse at 50% 48%,#fbe1d160,transparent 52%);pointer-events:none}
 .intent{position:relative;width:max-content;max-width:calc(100% - 24px);margin:24px auto 18px;display:flex;align-items:center;gap:14px;padding:10px 16px;border:1px solid var(--ophis-border);background:var(--ophis-bg);border-radius:16px;font-size:15px;font-weight:500;white-space:nowrap;z-index:2}
 .intent-spark{font-size:20px;color:var(--ophis-brown)}:global(.intent-arrow){color:var(--ophis-fg-faded);padding:0 11px}.intent>svg{width:16px;height:16px;fill:none;stroke:#45674d;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.signed{font-size:10px;color:#45674d;margin-left:-8px;font-weight:400}
