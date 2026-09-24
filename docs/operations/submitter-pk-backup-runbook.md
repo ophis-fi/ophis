@@ -23,7 +23,7 @@ successful backup/restore.
 | OP | Mac mini | `/Users/ophis-driver/.config/submitter.key` | `/Users/scep/.local/state/ophis/ram-pk/driver.toml` on a verified hdiutil RAM image |
 | Robinhood | Cadia WSL (`cadia-wsl`) | `/home/ophis-driver/.config/submitter.key` | `/home/clement/.local/state/ophis/rbh-ram-pk/driver.toml` on tmpfs |
 | Unichain | Separate VM (`ophis-unichain-vm-2`) | `/home/ophis-driver/.config/submitter.key` | `/root/.local/state/ophis/ram-pk/driver.toml` on tmpfs |
-| Arc | Mac mini | `/Users/ophis-driver/.config/ophis-arc/submitter.key` | Planned `/Users/scep/.local/state/ophis/arc-ram-pk/submitter.key`; not yet prepared or activated |
+| Arc | Mac mini | `/Users/ophis-driver/.config/ophis-arc/submitter.key` | `/Users/scep/.local/state/ophis/arc-ram-pk/submitter.key` on a verified hdiutil RAM image; prepared and active |
 
 Robinhood's canonical file is owned by `ophis-driver`, mode 0600; Unichain's
 canonical file is owned by UID 999, mode 0600. OP's isolated file was not opened;
@@ -36,8 +36,17 @@ The off-site USB procedure below is documented policy, not evidence that every
 chain has a verified backup. No backup USB was mounted on the Mac during these
 checks. Bounded metadata checks in the relevant host operations/state directories
 found no verified key-backup receipt or private recovery runbook; they do not
-establish that an off-site backup is absent. Arc's backup is explicitly pending
-operator completion; retain its encrypted staging copy until verification.
+establish that an off-site backup is absent.
+
+Arc subsequently received an independent encrypted Ethereum V3 backup on this
+Mac mini, as explicitly requested by the operator. The backup under
+`/Users/scep/.local/share/ophis-backups/arc/20260924T114439Z/` was decrypted from
+disk and verified against the planned solver address with a local signing check
+at 11:46 UTC. Directories are 0700 and files 0600. Its independent recovery
+password is in macOS login Keychain, service `fi.ophis.arc.backup`, account
+`solver-5042-20260924T114439Z`. `recovery.json` records the keystore hash and
+verification. The canonical key is unchanged; encrypted staging is retained.
+This same-host backup is verified; off-site recovery is not.
 
 ## Backup (outline)
 

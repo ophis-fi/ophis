@@ -47,6 +47,9 @@ def main():
     assert 'guarded' not in (OUT / 'driver.toml').read_text()
     autopilot = tomllib.loads((OUT / 'autopilot.toml').read_text())
     driver = tomllib.loads((OUT / 'driver.toml').read_text())
+    assert driver['gas-estimator'] == {'estimator': 'web3'}
+    assert int(driver['submission']['gas-price-cap']) == int(cfg['maxFeePerGas'])
+    assert all(pool['additional-tip-percentage'] == 0 for pool in driver['submission']['mempool'])
     assert all(lane['address'] == cfg['solver'] for lane in autopilot['drivers'])
     assert all(lane['account'] == cfg['solver'] for lane in driver['solver'])
     assert 'skip-event-sync = false' in (OUT / 'autopilot.toml').read_text()
@@ -102,12 +105,12 @@ for i in range(40):
  except urllib.error.HTTPError: break
  except OSError: time.sleep(.1)
 codes=[]
-for i in range(4):
+for i in range(8):
  try:
   r=urllib.request.urlopen('http://''' + api + ''':8080/api/v1/quote')
   codes.append(r.status)
  except urllib.error.HTTPError as e: codes.append(e.code)
-assert codes==[404,404,429,429],codes
+assert codes==[404]*6+[429,429],codes
 print('PASS live Nginx quote rate limit:',codes)
 allowed=''' + repr(allowed_origins) + '''
 for origin in allowed+['https://untrusted.example']:

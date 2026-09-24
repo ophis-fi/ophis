@@ -1,5 +1,5 @@
 import { areAddressesEqual, registerEvmChainIds, SupportedChainId } from '@cowprotocol/cow-sdk'
-import { getAddress, isAddress } from '@ethersproject/address'
+import { utils } from 'ethers'
 
 import { TokenWithLogo } from './types'
 
@@ -20,7 +20,7 @@ export const ARC_LABEL = ARC_LOCAL ? 'Arc (local)' : 'Arc'
 export const ARC_ORDERBOOK_URL = ARC_LOCAL ? 'http://127.0.0.1:8087' : process.env.REACT_APP_ARC_ORDERBOOK_URL || ''
 
 function configuredAddress(value: string | undefined): `0x${string}` | undefined {
-  return value && isAddress(value) && !/^0x0{40}$/i.test(value) ? (getAddress(value) as `0x${string}`) : undefined
+  return value && utils.isAddress(value) && !/^0x0{40}$/i.test(value) ? (utils.getAddress(value) as `0x${string}`) : undefined
 }
 
 export const ARC_SETTLEMENT = configuredAddress(process.env.REACT_APP_ARC_SETTLEMENT)

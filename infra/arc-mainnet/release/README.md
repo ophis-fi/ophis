@@ -1,9 +1,13 @@
-# Arc release package — local preparation only
+# Arc release package
 
-Nothing in this branch has been merged or deployed publicly. `plan`, `rehearse`,
-`render`, and `check` do not send public transactions. `broadcast.cjs --broadcast
---ledger` and `start.cjs --start` are separate, explicit operator actions for the
-later authorized launch. Do not run them as part of local development.
+The operator authorized the Arc mainnet launch on September 24. All seven
+contracts are deployed and the 2-of-3 Safe has authorized the dedicated solver.
+Both free RPCs passed `verify.cjs`; the solver holds 0.45005359 native USDC.
+The backend and public API at `https://arc-mainnet.ophis.fi` are running, with a
+simulation-verified USDC/EURC quote. Frontend publication and funded swap/bridge
+validation remain pending. No remote merge or push was performed.
+`plan`, `rehearse`, `render`, and `check` are preparation
+commands, not deployment commands; do not regenerate this deployed release.
 
 ## Existing identities
 
@@ -16,8 +20,11 @@ the operator (UID 501). The actual ignored `config.json` and
 `0x839029e110F4954e05aFad4Fa222CfE93ce6d86f`, the Safe and Ledger below,
 and observed deployer nonce zero. Plan hash:
 `0xf847a22abd920e48c88906ead95e39be4f5673433e378f0903cfe2289e01fcc0`.
-The seven deployment transactions and solver-activation Safe batch are unsigned.
-The generated frontend and backend configuration remains inactive.
+The seven deployment transactions are confirmed, costing 0.162722960008136148
+native USDC in total. Solver activation succeeded at block 22516917, transaction
+`0xbad31b4a400b97db748807face9ede4ab4401a1a2c3081bfe08ef93f46135ca1`.
+Do not resubmit the activation batch. Generated frontend/backend configuration
+is active after successful runtime preparation and startup.
 
 The operator confirmed successful import into `ophis-driver` on September 24.
 The importer checks the planned address and owner-only runtime file permissions.
@@ -33,13 +40,14 @@ Authenticate sudo locally. The command verifies the reviewed plan and address,
 imports to `/Users/ophis-driver/.config/ophis-arc/submitter.key` with owner 502 and
 mode 0600, and refuses to replace an existing key. It sends no transaction and
 starts no service. No password or private key belongs in chat or shell arguments.
-Complete and verify the existing encrypted off-site backup before funding, then
-remove the temporary staging copies through the custody procedure; retaining
-them preserves the operator account's recovery access. The encrypted staging
-keystore and its macOS Keychain password remain in place pending that backup.
+The operator explicitly selected an encrypted backup on this Mac mini. That
+backup was created and restored successfully, including a signing/address check,
+on September 24. Its password is stored separately in macOS Keychain. This is a
+verified local backup, not off-site recovery; encrypted staging is retained.
+See the [backup inventory](../../../docs/operations/submitter-pk-backup-runbook.md).
 
 The prepared key supersedes the fresh-key example below: **do not generate a
-second solver or overwrite this plan**. Recheck nonce and balance before signing.
+second solver or overwrite this deployed plan**.
 The original disk blocker is resolved: removing only this checkout's rebuildable
 Rust intermediates recovered about 10 GiB, preserving all four native binaries.
 The production backend and migrations images are now built as
@@ -67,11 +75,15 @@ Arc uses its own mount, separate from OP; it must be prepared again after reboot
 The operator account and Docker administrators can read the runtime copy. This
 does not provide isolation from them. Startup rejects a missing RAM mount or a
 regular disk substitute. Release files and backend containers stay owned by
-the Colima operator (UID 501, GID 20). No production service has been started.
+the Colima operator (UID 501, GID 20). The operator prepared the actual RAM key;
+startup independently matched its address to the authorized solver and started
+the prebuilt stack. All 110 database migrations passed.
 Rapid reuse of a detached RAM device exposed stale Colima mount caching during
-testing. A fresh device passed the real dummy-key check. Preparation/startup stop
-if the Docker probe fails; resolve host mounting during a maintenance window,
-without bypassing the checks or restarting the existing OP stack implicitly.
+testing. The production empty RAM mount initially failed the public marker probe.
+A one-time `colima ssh -- sudo sh -c 'echo 2 > /proc/sys/vm/drop_caches'` cleared
+reclaimable guest filesystem metadata; the same probe then passed. OP services
+were not restarted. This was a diagnostic repair, not routine cache tuning.
+Preparation/startup still stop if the Docker probe fails.
 The opt-in reproduction is `node infra/arc-mainnet/release/test_mac_key_mount.cjs
 --scratch`; it uses only a public dummy key and cleans up its own RAM volume.
 
@@ -292,8 +304,23 @@ remains pending until an actual fill status arrives.
 Free official and Blockdaemon RPC responses must agree for protected reads.
 Only the official endpoint receives `eth_sendRawTransaction`, one attempt; it
 never reaches QuickNode. Each public provider is capped at 120 requests/minute.
-Public quote ingress is capped globally at six/minute with a burst of one; this
+Public quote ingress is capped globally at six/minute with a burst of five; the
+initial fast/optimal quote pair, amount edit and slippage update can complete
+without raising the sustained RPC budget. This
 is deliberately a low-volume launch configuration, not a high-traffic SLA.
+The driver explicitly uses the existing Web3 gas-price estimator and zero extra
+tip. Alloy's default doubled base-fee estimate exceeded the reviewed 25 gwei cap
+even at a 20.1 gwei network price. The cap and guarded signer are unchanged.
+`eth_getBlockByNumber(latest)` is translated to the common served height before
+quorum, avoiding a race between providers on Arc's 0.5-second blocks. The public
+pollers still read raw latest every 30 seconds; advancing served heights and
+actual conflicting-header rejection were checked. This does not add a hard
+freshness guarantee during a poller outage.
+
+The separate Arc Cloudflare tunnel is `f3eb4ae9-0d9c-43be-9a59-568e18824895`.
+Its local configuration is `~/.cloudflared/config-ophis-arc-mainnet.yml`; launchd
+label is `com.ophis.cloudflared.arc-mainnet`. It exposes only the localhost API
+proxy at port 8442. The existing OP tunnel and services were not restarted.
 
 QuickNode receives transaction traces plus eRPC's bounded bootstrap/hourly header
 probes. SQLite reserves credits **before** an upstream attempt: 1,000/minute,

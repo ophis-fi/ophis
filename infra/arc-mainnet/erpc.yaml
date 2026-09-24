@@ -49,6 +49,17 @@ projects:
     allowClientDirectives: ""
     networks:
       - architecture: evm
+        methods:
+          preserveDefaultMethods: true
+          definitions:
+            # Both voters must compare the same header on Arc's fast-moving head.
+            # Poller reads go directly upstream and keep discovering fresh heads.
+            eth_getBlockByNumber:
+              reqRefs: [[0]]
+              respRefs: [[number], [hash]]
+              translateLatestTag: true
+              translateFinalizedTag: false
+              enforceBlockAvailability: false
         evm:
           chainId: 5042
           enforceBlockAvailability: false

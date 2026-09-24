@@ -114,6 +114,8 @@ concurrent-requests = 1
 {common}'''
     account = (f'{{ guarded = {{ path = "/run/secrets/solver-key" }}, settlement-targets = [{{ address = "{c["settlement"]}", selectors = ["0x13d79a0b"] }}], require-zero-value = true }}' if active else f'"{cfg["solver"]}"')
     driver = f'''chain-id = 5042
+# Use the node's current gas price; Alloy's 2x base-fee estimate exceeds Arc's reviewed cap.
+gas-estimator = {{estimator = "web3"}}
 tx-gas-limit = "{cfg['gasLimit']}"
 disable-access-list-simulation = true
 orderbook-url = "http://orderbook:8080"
@@ -134,6 +136,7 @@ manage-native-token = {{wrap-address = false, insert-unwraps = false}}
 gas-price-cap = "{cfg['maxFeePerGas']}"
 [[submission.mempool]]
 url = "{rpc}"
+additional-tip-percentage = 0.0
 [liquidity]
 base-tokens = ["{USDC}"]
 '''
@@ -182,7 +185,7 @@ http {
     add_header Access-Control-Allow-Methods "GET, POST, DELETE, OPTIONS" always;
     if ($request_method = OPTIONS) { return 204; }
     location = /api/v1/quote {
-      limit_req zone=quotes burst=1 nodelay;
+      limit_req zone=quotes burst=5 nodelay;
       proxy_hide_header Access-Control-Allow-Origin;
       proxy_pass http://orderbook:8080;
     }

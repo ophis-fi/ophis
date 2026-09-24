@@ -1061,6 +1061,10 @@ msgid "Protection from MEV by default"
 msgstr "Protection from MEV by default"
 
 #: apps/cowswap-frontend/src/modules/twap/pure/PrimaryActionButton/index.tsx
+msgid "TWAP is unavailable on this network"
+msgstr "TWAP is unavailable on this network"
+
+#: apps/cowswap-frontend/src/modules/twap/pure/PrimaryActionButton/index.tsx
 msgid "Interval time too long"
 msgstr "Interval time too long"
 

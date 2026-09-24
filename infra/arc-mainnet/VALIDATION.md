@@ -1,10 +1,71 @@
-# Arc local validation — 2026-09-24
+# Arc validation — 2026-09-24
 
-No public deployment, merge or bridge transfer was performed. The automatic
-settlement checks used a disposable Arc Anvil chain and labelled 1:1 liquidity
-fixtures. Existing real Uniswap liquidity was checked separately in [LIQUIDITY.md](LIQUIDITY.md).
+## Authorized mainnet deployment and Safe activation
 
-## Final preparation review — September 24
+All seven planned contracts were deployed with the Ledger after the operator
+authorized launch and chose a verified encrypted backup on this Mac mini.
+Deployment consumed 8,136,148 gas and 0.162722960008136148 native USDC.
+Settlement is `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A`; authenticator is
+`0xBA352C486B526886fDe4D15f3d3c9aC67Eca9d59`.
+
+The Safe authorized solver `0x839029e110F4954e05aFad4Fa222CfE93ce6d86f`
+at block **22516917**, transaction
+`0xbad31b4a400b97db748807face9ede4ab4401a1a2c3081bfe08ef93f46135ca1`.
+`verify.cjs` passed independently against both free RPCs: successful deployment
+receipts, creation calldata, runtime code, official 2-of-3 Safe authority with no
+modules, solver authorization and settlement/vault/relayer/domain/hooks wiring.
+The solver held **0.45005359 native USDC** at block 22517168.
+Ignored `release/generated/verified.json` and `solver-activation-receipt.json`
+record the checks. Do not regenerate the deployed plan or resubmit either Safe batch.
+
+The local encrypted backup was restored and checked by address and signing.
+Off-site backup remains unverified, consistent with the operator's explicit
+same-Mac choice. The empty production RAM key mount's Colima metadata cache
+issue was cleared once; its Docker marker/permissions probe now passes. Existing
+OP services were not restarted. The operator then prepared the actual RAM key;
+startup independently verified its identity/provenance and launched the backend.
+All 110 database migrations passed. The indexer caught up from deployment using
+a temporary five-second poll, then returned to the configured 30-second cadence.
+
+The public API `https://arc-mainnet.ophis.fi` returns the expected release
+`7f2f8b10f2e1`, a current auction, and a simulation-verified quote with correct
+swap-origin CORS. A 10 USDC quote returned 8.789004 EURC at 20.1 gwei. This is
+simulation evidence, not an executed swap. The Arc tunnel and proxied DNS record
+were created with existing Cloudflare credentials; no additional paid plan.
+
+Live startup exposed two configuration gaps, now fixed and independently
+reviewed: the driver's default Alloy estimator exceeded the reviewed gas cap,
+and raw latest-header queries raced between RPC providers. The renderer selects
+the existing Web3 estimator with zero extra tip, retaining the 25 gwei cap.
+eRPC now pins latest-header requests to the common served height before quorum.
+The isolated pilot and release proxy tests passed, including skewed latest heads,
+real header disagreement, missing voters, bypass rejection, cache behavior and
+paid-lane accounting. Live served heights advanced across polling cycles.
+An isolated active render checked estimator, zero tip, cap and guarded signer.
+No backend binary or contract changed for these fixes. QuickNode usage was
+120 credits after startup and one proxy restart; dRPC was not used by Arc.
+
+The production swap and explorer builds passed with isolated, frozen offline
+dependencies and more than 8 GiB free. A previously undeclared address import
+now uses the library's existing ethers dependency; its ten Arc configuration
+tests and an independent dependency review passed. Browser checks of the built
+swap app showed a verified 10 USDC/EURC quote, correct fee display and wallet
+dialog without uncaught errors. Production bundles contain the deployed Arc
+addresses and public API, with no Arc QuickNode endpoint or local API.
+The browser's initial fast/optimal quotes exposed an ingress burst mismatch:
+the burst is now five while the sustained global six/minute cap is unchanged.
+The isolated Nginx regression admitted six immediate requests and rejected the
+next two, with CORS and exact v2 routes still passing; independent review passed.
+No credit cap or paid RPC permission changed.
+
+No remote merge, push, live swap or bridge transfer was performed. Frontend
+publication and live swap/bridge validation remain pending. Today's production
+wallet fixes and preceding UI changes were cherry-picked locally to avoid a
+frontend rollback. Earlier automatic
+settlement tests used disposable Anvil and labelled 1:1 liquidity fixtures.
+Real Uniswap liquidity was checked separately in [LIQUIDITY.md](LIQUIDITY.md).
+
+## Earlier preparation review — September 24 (before deployment)
 
 The existing Mac mini is selected for Arc. A fresh dedicated solver,
 `0x839029e110F4954e05aFad4Fa222CfE93ce6d86f`, was imported into the existing

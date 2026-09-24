@@ -16,7 +16,8 @@ import uuid
 
 def serve_mock():
     counts = collections.Counter()
-    mode = {"disagree": False, "fail": False, "trace_fail": False}
+    mode = {"disagree": False, "fail": False, "trace_fail": False,
+            "latest_skew": False, "header_disagree": False}
     lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
@@ -41,9 +42,14 @@ def serve_mock():
                         value = "0x100"
                     elif method == "eth_getBlockByNumber":
                         block = body["params"][0]
+                        counts[self.path + ":" + method + ":" + block] += 1
                         value = {"number": "0x100" if block in ("latest", "finalized") else block,
                                  "hash": "0x" + "ab" * 32,
                                  "timestamp": hex(int(time.time())), "transactions": []}
+                        if self.path == "/blockdaemon" and mode["latest_skew"] and block == "latest":
+                            value["number"] = "0x101"
+                        if self.path == "/blockdaemon" and mode["header_disagree"] and block == "0x81":
+                            value["hash"] = "0x" + "cd" * 32
                     elif method == "debug_traceTransaction":
                         value = {"type": "CALL", "gasUsed": "0x5208", "calls": []}
                     elif method == "eth_call" and self.path == "/blockdaemon" and mode["disagree"]:
@@ -107,6 +113,16 @@ def check_proxy(rpc_url, control, release=False):
     post(control, {"disagree": False, "fail": True})
     assert "error" in rpc("eth_call", call), "missing voter accepted"
     post(control, {"fail": False})
+
+    # Moving latest heads must be pinned before quorum; actual header disputes fail.
+    before = post(control, {"latest_skew": True})["counts"]
+    assert rpc("eth_getBlockByNumber", ["latest", False]).get("result", {}).get("number") == "0x100"
+    after = post(control, {"latest_skew": False, "header_disagree": True})["counts"]
+    for source in ["/official", "/blockdaemon"]:
+        key = source + ":eth_getBlockByNumber:0x100"
+        assert after.get(key, 0) == before.get(key, 0) + 1, "latest was not pinned for both voters"
+    assert "error" in rpc("eth_getBlockByNumber", ["0x81", False]), "conflicting header accepted"
+    post(control, {"header_disagree": False})
 
     # A numbered finalized header is cached; dynamic calls above are not.
     assert "result" in rpc("eth_getBlockByNumber", ["0x80", False])
