@@ -125,6 +125,15 @@ jobs:
           fi
           echo "flat-fee flag OK (${BPS} bps retail)"
 
+      - name: validate Ophis WalletConnect project
+        env:
+          WC_PROJECT_ID: ${{ vars.REACT_APP_WC_PROJECT_ID }}
+        run: |
+          if [[ ! "$WC_PROJECT_ID" =~ ^[a-fA-F0-9]{32}$ ]] || [[ "$WC_PROJECT_ID" == 'a6cc11517a10f6f12953fd67b1eb67e7' ]]; then
+            echo "::error::Set REACT_APP_WC_PROJECT_ID to the Ophis-owned Reown public Project ID, with swap.ophis.fi allowlisted. The upstream CoW project must not be reused."
+            exit 1
+          fi
+
       - name: build cowswap
         working-directory: apps/frontend
         env:
@@ -133,6 +142,7 @@ jobs:
           # (instead of cowswap's upstream default "CoW Swap"). Tracked
           # in apps/frontend/.ophis-divergences.md.
           REACT_APP_APP_CODE: ophis
+          REACT_APP_WC_PROJECT_ID: ${{ vars.REACT_APP_WC_PROJECT_ID }}
           # Base URL for the rebate-indexer API (TierChip + useTier hook).
           # Defaults to the same value at runtime if the env var is missing.
           REACT_APP_REBATES_API: https://rebates.ophis.fi

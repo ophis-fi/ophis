@@ -1,8 +1,8 @@
 import { ReactNode } from 'react'
 
 import { WALLET_RPC_URLS } from '@cowprotocol/common-const'
-import { getCurrentChainIdFromUrl } from '@cowprotocol/common-utils'
-import { ALL_SUPPORTED_CHAIN_IDS, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { isSupportedChainId } from '@cowprotocol/common-utils'
+import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { initializeConnector } from '@web3-react/core'
 
 import { onError } from './onError'
@@ -22,9 +22,10 @@ export const walletConnectV2Option = {
   id: 'wallet-connect-v2',
 }
 
-const wc2Connections = new Map<SupportedChainId, Web3ReactConnection>()
+// One provider owns the persisted session across network changes.
+const walletConnectV2Connection = createWalletConnectV2Connection()
 
-function createWalletConnectV2Connection(chainId: SupportedChainId): Web3ReactConnection {
+function createWalletConnectV2Connection(): Web3ReactConnection {
   const appUrl = typeof window !== 'undefined' ? window.location.origin : 'https://swap.ophis.fi'
 
   const [connector, hooks] = initializeConnector<WalletConnectV2Connector>(
@@ -34,19 +35,22 @@ function createWalletConnectV2Connection(chainId: SupportedChainId): Web3ReactCo
         onError,
         options: {
           projectId: WC_PROJECT_ID,
-          chains: [chainId],
-          // Ophis fork: include OP mainnet (chain 10) and Unichain (chain 130)
-          // in optional chains. MegaETH (4326) + HyperEVM (999) dropped in
-          // PR #233 follow-up to P0 hotfix.
           optionalChains: [
-            ...ALL_SUPPORTED_CHAIN_IDS,
-            10 as unknown as SupportedChainId,
-            130 as unknown as SupportedChainId,
-            4663 as unknown as SupportedChainId,
+            SupportedChainId.MAINNET,
+            ...Object.keys(WALLET_RPC_URLS)
+              .map(Number)
+              .filter(isSupportedChainId)
+              .filter((chainId) => chainId !== SupportedChainId.MAINNET),
           ],
           // Wallet-facing, keyless RPCs: never our keyed mainnet endpoint (WALLET_RPC_URLS).
           rpcMap: WALLET_RPC_URLS,
+          // The SDK's extra JSON-RPC "test" probe does not validate the network.
+          disableProviderPing: true,
           showQrModal: true,
+          qrModalOptions: {
+            // The app's pending connection overlay uses z-index 1000.
+            themeVariables: { '--wcm-z-index': '1100' },
+          },
           // Ophis: explicit dApp metadata so wallets never fall back to
           // auto-detecting the name/icon from index.html (which historically
           // surfaced "CoW Swap" + the cow favicon in the connect prompt).
@@ -67,22 +71,12 @@ function createWalletConnectV2Connection(chainId: SupportedChainId): Web3ReactCo
   }
 }
 
-export function getWalletConnectV2Connection(
-  chainId: SupportedChainId = getCurrentChainIdFromUrl(),
-): Web3ReactConnection {
-  let connection = wc2Connections.get(chainId)
-
-  if (!connection) {
-    connection = createWalletConnectV2Connection(chainId)
-    wc2Connections.set(chainId, connection)
-  }
-
-  return connection
+export function getWalletConnectV2Connection(): Web3ReactConnection {
+  return walletConnectV2Connection
 }
 
 export function WalletConnectV2Option({ selectedWallet, tryActivation }: ConnectionOptionProps): ReactNode {
-  const chainId = getCurrentChainIdFromUrl()
-  const connection = getWalletConnectV2Connection(chainId)
+  const connection = getWalletConnectV2Connection()
 
   const isActive = useIsActiveConnection(selectedWallet, connection)
 
