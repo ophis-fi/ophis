@@ -6,7 +6,9 @@ Both free RPCs passed `verify.cjs`; the solver holds 0.45005359 native USDC.
 The backend and public API at `https://arc-mainnet.ophis.fi` are running, with a
 simulation-verified USDC/EURC quote. The swap frontend at `https://swap.ophis.fi`
 and explorer at `https://explorer.ophis.fi/arc` are published and browser-checked.
-Funded swap/bridge validation remains pending. No remote merge or push was
+The first funded swap succeeded: 2 USDC to 1.740907 EURC, with receipt and wallet
+transfer logs verified in [VALIDATION.md](../VALIDATION.md). A live bridge transfer
+remains unverified. No remote merge or push was
 performed. Merge the reviewed Arc branch before the next ordinary main-branch
 frontend deployment, which would otherwise remove this manual Arc activation.
 `plan`, `rehearse`, `render`, and `check` are preparation

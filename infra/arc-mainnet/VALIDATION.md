@@ -1,5 +1,21 @@
 # Arc validation — 2026-09-24
 
+## First funded mainnet swap
+
+The operator's `custodes.eth` order was accepted at 14:41:09 UTC and marked
+fulfilled by 14:41:58 UTC. It sold **2 USDC** and received **1.740907 EURC**.
+The public order API and an independent receipt read from Arc's free official
+RPC agree: transaction
+`0xba2f98b61df1c265f1f3d5e795293085523d2146c664bd2a5e8670c137e0685e`
+succeeded in block **22533210**, submitted by the configured solver to the
+deployed settlement contract. Transfer logs confirm the received EURC amount
+at the user's wallet. Gas used was 329,605. The first auction encountered public
+RPC capacity exhaustion; the next auction solved and settled automatically,
+without changing budgets or quorum. Evidence is in ignored
+`release/generated/first-live-swap.json`. This validates one funded USDC/EURC
+swap; a live bridge transfer remains unverified. Earlier pending-swap statements
+below describe the checks before this transaction.
+
 ## Follow-up: browser submission, quote traffic and logos
 
 The first production wallet attempt exposed a missing `PUT` in the API's CORS
