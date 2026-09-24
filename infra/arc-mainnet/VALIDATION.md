@@ -1,5 +1,24 @@
 # Arc validation — 2026-09-24
 
+## Arc logo and wallet protocol label
+
+The operator-supplied `Arc_network.svg` replaces the white-only mark, with its
+dark circular background intact. The shared URL now uses `chain-arc-network.svg`
+to avoid the old immutable image cache. Both builds and changed-file lint passed;
+Cloudflare deployments are `4481157e.greg-etm.pages.dev` and
+`af132552.ophis-explorer.pages.dev`. The live SVG matches the supplied file exactly,
+and mobile-sized WebKit loaded the new icon with all external API/RPC requests
+blocked. Light and dark background rendering was also checked.
+
+Rabby's missing Protocol label is wallet-side metadata: its
+[approval lookup](https://github.com/RabbyHub/rabby-action/blob/main/src/actions/approveToken/fetchData.ts)
+uses the spender's `getContractInfo(...).protocol`, and its
+[display component](https://github.com/RabbyHub/rabby-mobile/blob/develop/apps/mobile/src/components/Approval/components/Actions/components/ProtocolListItem.tsx)
+renders `-` when that metadata is absent. The screenshots show the deployed Arc
+relayer and settlement addresses correctly. Rabby/DeBank must label these as
+Ophis; a frontend name change cannot supply this field. No listing request was
+sent and no signing-domain or contract change was made.
+
 ## First funded mainnet swap
 
 The operator's `custodes.eth` order was accepted at 14:41:09 UTC and marked
