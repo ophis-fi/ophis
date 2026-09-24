@@ -79,6 +79,7 @@ const LearnPage = lazy(() =>
 )
 // Phase A3 (2026-05-25): trading-mechanism + CoW-vs-Ophis stack-delta page.
 // AGENTS.md-compliant lazy pattern — see ProfilePage above.
+const CctpPage = lazy(() => import('modules/cctp').then((m) => ({ default: m.CctpPage })))
 const ProtocolPage = lazy(() =>
   import(/* webpackChunkName: "ophis_protocol" */ 'pages/Protocol').then((m) => ({
     default: m.ProtocolPage,
@@ -166,6 +167,7 @@ function LazyRoute({ route, element, key }: LazyRouteProps): ReactNode {
 // ABOUT, LEGAL, and BRAND wired below in PR #234 (2026-05-22) to closed
 // Ophis-native static pages.
 const lazyRoutes: LazyRouteProps[] = [
+  { route: RoutesEnum.CCTP, element: <CctpPage /> },
   { route: RoutesEnum.YIELD, element: <YieldPage /> },
   { route: RoutesEnum.LONG_LIMIT_ORDER, element: <RedirectToPath path={'/limit'} /> },
   { route: RoutesEnum.LONG_ADVANCED_ORDERS, element: <RedirectToPath path={'/advanced'} /> },

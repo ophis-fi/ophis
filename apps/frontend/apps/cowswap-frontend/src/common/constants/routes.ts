@@ -21,6 +21,7 @@ export const Routes = {
   ACCOUNT_PROXY_RECOVER: '/:chainId/account-proxy/:proxyAddress/recover/:tokenAddress',
   ACCOUNT_PROXY_HELP: '/:chainId/account-proxy/help',
   SEND: '/send',
+  CCTP: '/bridge',
   ACCOUNT: '/account',
   ACCOUNT_TOKENS: '/account/tokens',
   ACCOUNT_TOKENS_SINGLE: '/account/tokens/:address',
