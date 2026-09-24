@@ -1,5 +1,33 @@
 # Arc validation — 2026-09-24
 
+## Follow-up: browser submission, quote traffic and logos
+
+The first production wallet attempt exposed a missing `PUT` in the API's CORS
+methods. Logs showed repeated app-data preflights without an upload or accepted
+order. The existing SDK uploads app data before signing/posting an order, and
+its ten-attempt network retry obscured this as a long wallet confirmation wait.
+The origin allowlist is unchanged; `PUT` is now allowed. The isolated Nginx
+preflight regression passes for allowed and rejected origins. Real Chromium and
+WebKit cross-origin uploads of intentionally invalid data reach the backend's
+422 validation response, without creating an order or moving funds.
+
+Arc now requests only the optimal quote, skips polling in hidden/offline tabs,
+and refreshes immediately when a tab returns. Arc HTTP 429 responses do not
+automatically retry; other Arc HTTP recovery stops after three attempts. Other
+chains and unclassified network errors retain the SDK policy. Existing 350 ms
+input debouncing remains. Seven targeted tests and two snapshots pass, including
+hide/show recovery; ten Arc configuration tests also pass. Changed production
+files pass ESLint; the older hook test retains one existing module-boundary warning.
+
+The chain mark comes from Arc's official website, stored as `chain-arc.svg`;
+USDC and EURC reuse Ophis's existing PNG assets. Chromium and mobile-sized
+WebKit loaded all three images, displayed quotes, and opened the wallet dialog.
+Each browser requested one optimal quote per amount instead of fast+optimal.
+One Chromium quote was rejected because a free RPC reported capacity exhaustion;
+subsequent Chromium and both WebKit quotes were verified. Consensus, RPC limits,
+and QuickNode permissions remain unchanged; the credit ledger still reads 120.
+No funded swap/bridge was executed by these checks.
+
 ## Authorized mainnet deployment and Safe activation
 
 All seven planned contracts were deployed with the Ledger after the operator

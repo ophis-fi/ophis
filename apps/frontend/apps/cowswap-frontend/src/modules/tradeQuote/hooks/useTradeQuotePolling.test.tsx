@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 
 import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
+import { useIsWindowVisible } from '@cowprotocol/common-hooks'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount } from '@cowprotocol/currency'
 import { WalletInfo, walletInfoAtom } from '@cowprotocol/wallet'
@@ -31,6 +32,7 @@ jest.mock('@cowprotocol/common-hooks', () => ({
 }))
 jest.mock('@cowprotocol/wallet-provider', () => ({
   ...jest.requireActual('@cowprotocol/wallet-provider'),
+  useWalletChainId: jest.fn().mockReturnValue(1),
   useWalletProvider: jest.fn().mockReturnValue({
     provider: {},
     getSigner() {
@@ -100,10 +102,25 @@ const Wrapper =
 describe('useTradeQuotePolling()', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    jest.mocked(useIsWindowVisible).mockReturnValue(true)
 
     bridgingSdkMock.getQuote.mockImplementation(() => new Promise(() => void 0))
 
     useEnoughAllowanceMock.mockReturnValue(true)
+  })
+
+  it('fetches immediately when the tab becomes visible again', async () => {
+    const { rerender } = renderHook(
+      () => useTradeQuotePolling({ isConfirmOpen: false, isQuoteUpdatePossible: true, useSuggestedSlippageApi: false }),
+      { wrapper: Wrapper([...jotaiMock, [walletInfoAtom, walletInfoMock]]) },
+    )
+    await waitFor(() => expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(1))
+    jest.mocked(useIsWindowVisible).mockReturnValue(false)
+    rerender()
+    expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(1)
+    jest.mocked(useIsWindowVisible).mockReturnValue(true)
+    rerender()
+    await waitFor(() => expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(2))
   })
 
   describe('When wallet is connected', () => {

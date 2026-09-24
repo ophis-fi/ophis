@@ -114,6 +114,15 @@ assert codes==[404]*6+[429,429],codes
 print('PASS live Nginx quote rate limit:',codes)
 allowed=''' + repr(allowed_origins) + '''
 for origin in allowed+['https://untrusted.example']:
+ request=urllib.request.Request('http://''' + api + ''':8080/api/v1/app_data/'+'0'*64,
+  method='OPTIONS',headers={'Origin':origin,'Access-Control-Request-Method':'PUT',
+  'Access-Control-Request-Headers':'content-type'})
+ response=urllib.request.urlopen(request)
+ assert response.status==204
+ assert response.headers.get('Access-Control-Allow-Origin')==(origin if origin in allowed else None)
+ assert 'PUT' in response.headers.get('Access-Control-Allow-Methods','').split(', ')
+ assert 'content-type' in response.headers.get('Access-Control-Allow-Headers','').lower()
+for origin in allowed+['https://untrusted.example']:
  for endpoint in ['/api/v1/version','/api/v2/trades?orderUid=fixture&offset=0&limit=10']:
   request=urllib.request.Request('http://''' + api + ''':8080'+endpoint,headers={'Origin':origin})
   try: response=urllib.request.urlopen(request)

@@ -182,7 +182,7 @@ http {
     add_header Access-Control-Allow-Origin $allowed_origin always;
     add_header Vary Origin always;
     add_header Access-Control-Allow-Headers "Content-Type" always;
-    add_header Access-Control-Allow-Methods "GET, POST, DELETE, OPTIONS" always;
+    add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
     if ($request_method = OPTIONS) { return 204; }
     location = /api/v1/quote {
       limit_req zone=quotes burst=5 nodelay;

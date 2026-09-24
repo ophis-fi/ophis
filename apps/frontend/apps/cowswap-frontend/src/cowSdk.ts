@@ -24,6 +24,7 @@ import { useWeb3React } from '@web3-react/core'
 
 import { usePublicClient, useWalletClient } from 'wagmi'
 
+import { retryOrderBookRequest } from './cowSdk.retry'
 import { withAppRpcFallback } from './cowSdk.utils'
 
 const chainId = getCurrentChainIdFromUrl()
@@ -77,7 +78,7 @@ setGlobalAdapter(legacyAdapter)
 export const orderBookApi = new OrderBookApi({
   env: isBarnBackendEnv ? 'staging' : 'prod',
   baseUrls,
-  backoffOpts: DEFAULT_BACKOFF_OPTIONS,
+  backoffOpts: { ...DEFAULT_BACKOFF_OPTIONS, retry: retryOrderBookRequest },
 })
 
 export const metadataApiSDK = new MetadataApi()

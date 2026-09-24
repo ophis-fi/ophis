@@ -1302,6 +1302,9 @@ importers:
       '@cowprotocol/types':
         specifier: workspace:*
         version: link:../types
+      '@ethersproject/address':
+        specifier: 5.7.0
+        version: 5.7.0
       '@ethersproject/providers':
         specifier: 5.7.0
         version: 5.7.0(bufferutil@4.0.8)(utf-8-validate@5.0.10)

@@ -1,13 +1,20 @@
 import { areAddressesEqual, registerEvmChainIds, SupportedChainId } from '@cowprotocol/cow-sdk'
-import { utils } from 'ethers'
+import { getAddress, isAddress } from '@ethersproject/address'
 
 import { TokenWithLogo } from './types'
 
 export const ARC_CHAIN_ID = 5042 as SupportedChainId
 export const ARC_USDC_ADDRESS = '0x3600000000000000000000000000000000000000'
-export const ARC_USDC = new TokenWithLogo(undefined, ARC_CHAIN_ID, ARC_USDC_ADDRESS, 6, 'USDC', 'USDC')
+export const ARC_USDC = new TokenWithLogo(
+  'https://swap.ophis.fi/logos/token-usdc.png',
+  ARC_CHAIN_ID,
+  ARC_USDC_ADDRESS,
+  6,
+  'USDC',
+  'USDC',
+)
 export const ARC_EURC = new TokenWithLogo(
-  undefined,
+  'https://swap.ophis.fi/logos/token-eurc.png',
   ARC_CHAIN_ID,
   '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1',
   6,
@@ -20,7 +27,7 @@ export const ARC_LABEL = ARC_LOCAL ? 'Arc (local)' : 'Arc'
 export const ARC_ORDERBOOK_URL = ARC_LOCAL ? 'http://127.0.0.1:8087' : process.env.REACT_APP_ARC_ORDERBOOK_URL || ''
 
 function configuredAddress(value: string | undefined): `0x${string}` | undefined {
-  return value && utils.isAddress(value) && !/^0x0{40}$/i.test(value) ? (utils.getAddress(value) as `0x${string}`) : undefined
+  return value && isAddress(value) && !/^0x0{40}$/i.test(value) ? (getAddress(value) as `0x${string}`) : undefined
 }
 
 export const ARC_SETTLEMENT = configuredAddress(process.env.REACT_APP_ARC_SETTLEMENT)

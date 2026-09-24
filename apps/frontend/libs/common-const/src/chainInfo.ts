@@ -108,8 +108,8 @@ function mapChainInfoToBaseChainInfo(
  * Keep in mind when iterating over this map that the order of keys is guaranteed to be numerically sorted.
  * So this order is mostly for reference and not for iteration.
  */
-const ARC_LOGO =
-  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"%3E%3Ccircle cx="16" cy="16" r="16" fill="%232775ca"/%3E%3Cpath d="M8 24L16 7l8 17M11 18h10" fill="none" stroke="white" stroke-width="3"/%3E%3C/svg%3E' as HttpsString
+// Official Arc mark, served with the app so wallet browsers need no third-party image fetch.
+const ARC_LOGO = 'https://swap.ophis.fi/logos/chain-arc.svg' as HttpsString
 
 export const CHAIN_INFO: ChainInfoMap = {
   [ARC_CHAIN_ID]: {

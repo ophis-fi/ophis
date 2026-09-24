@@ -9,7 +9,7 @@ import {
   WRAPPED_NATIVE_CURRENCIES as WRAPPED_NATIVE_CURRENCIES_SDK,
 } from '@cowprotocol/cow-sdk'
 
-import { ARC_CHAIN_ID } from './arc.const'
+import { ARC_CHAIN_ID, ARC_USDC } from './arc.const'
 import {
   HYPE_NATIVE_CURRENCY_ADDRESS,
   HYPERCORE_CHAIN_ID,
@@ -120,7 +120,7 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
 }
 
 export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
-  [ARC_CHAIN_ID]: new TokenWithLogo(undefined, ARC_CHAIN_ID, NATIVE_CURRENCY_ADDRESS, 18, 'USDC', 'USDC (gas)'),
+  [ARC_CHAIN_ID]: new TokenWithLogo(ARC_USDC.logoURI, ARC_CHAIN_ID, NATIVE_CURRENCY_ADDRESS, 18, 'USDC', 'USDC (gas)'),
   ...mapAllNetworks(getTokenWithLogoFromNativeCurrency),
   // Native ETH on Optimism (chain 10). OP IS in the SDK's
   // AdditionalTargetChainId, so `mapAllNetworks` would otherwise give it the
