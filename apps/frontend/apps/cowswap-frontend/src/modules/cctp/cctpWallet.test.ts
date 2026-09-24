@@ -18,7 +18,7 @@ const client = {
   getBalance: jest.fn(),
   getCode: jest.fn(),
   getTransactionCount: jest.fn(),
-  getBlockNumber: jest.fn(),
+  getBlock: jest.fn(),
 }
 const wallet = { getChainId: jest.fn(), getAddresses: jest.fn(), sendTransaction: jest.fn() }
 const beforeSignature = jest.fn().mockResolvedValue(undefined)
@@ -36,6 +36,7 @@ beforeEach(() => {
   client.getBalance.mockResolvedValue(3n * 10n ** 18n)
   client.getCode.mockResolvedValue('0x')
   client.getTransactionCount.mockResolvedValue(7)
+  client.getBlock.mockResolvedValue({ number: 100n, timestamp: BigInt(Math.floor(Date.now() / 1000)) })
 })
 
 it('reserves Arc gas at 18 decimals while burning six-decimal USDC', async () => {
@@ -138,7 +139,7 @@ it('rejects a non-USDC quote when its source block expiry is reached before sign
       expiry: { mode: 'BLOCK_NUMBER', expiresAtBlock: 500, blockEstimatedAt: now + 120 },
     },
   }
-  client.getBlockNumber.mockResolvedValueOnce(500n)
+  client.getBlock.mockResolvedValueOnce({ number: 500n, timestamp: BigInt(now) })
   await expect(burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)).rejects.toThrow('expired')
   expect(beforeSignature).not.toHaveBeenCalled()
   expect(wallet.sendTransaction).not.toHaveBeenCalled()
@@ -150,3 +151,32 @@ it('keeps supported networks and replaces unsupported asset routes with distinct
   expect(cctpAssetRoute('cirBTC', 8453, 5042)).toEqual({ source: 1, destination: 5042 })
   expect(cctpAssetRoute('EURC', 5042, 8453)).toEqual({ source: 5042, destination: 8453 })
 })
+
+it.each([-3600000, 3600000])(
+  'uses source-chain quote expiry when the browser clock is offset by %s ms',
+  async (offset) => {
+    const now = Date.now()
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now + offset)
+    const expanded: CctpQuote = {
+      ...quote,
+      quotedAt: now + offset,
+      asset: 'EURC',
+      maxFee: '0',
+      expanded: {
+        signedQuote: `0x${'11'.repeat(100)}`,
+        feeTotalAmount: '1',
+        issuedAt: Math.floor(now / 1000),
+        expiry: { mode: 'TIMESTAMP', expiresAt: Math.floor(now / 1000) + 120 },
+      },
+    }
+    try {
+      await burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)
+      expect(wallet.sendTransaction).toHaveBeenCalledTimes(1)
+      client.getBlock.mockResolvedValueOnce({ number: 100n, timestamp: BigInt(Math.floor(now / 1000) + 120) })
+      await expect(burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)).rejects.toThrow('expired')
+      expect(wallet.sendTransaction).toHaveBeenCalledTimes(1)
+    } finally {
+      clock.mockRestore()
+    }
+  },
+)

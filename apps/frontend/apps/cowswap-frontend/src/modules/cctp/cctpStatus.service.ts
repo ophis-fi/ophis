@@ -123,14 +123,21 @@ async function sourceStatus(transfer: CctpTransfer): Promise<CctpStatus | Hex> {
   return sourceMessage
 }
 
+function assertAttestationSource(sourceTxHash: Hex | undefined, transfer: CctpTransfer): void {
+  if (
+    (transfer.expanded && !sourceTxHash) ||
+    (sourceTxHash && sourceTxHash.toLowerCase() !== String(transfer.burnHash).toLowerCase())
+  )
+    throw new Error('Circle returned a different source transaction or omitted its hash')
+}
+
 function readAttestation(
   data: unknown,
   transfer: CctpTransfer,
   sourceMessage?: Hex,
 ): { message: Hex; attestation: Hex; forwardTxHash?: Hex | null } | null {
   const response = messagesSchema.parse(data)
-  if (response.sourceTxHash && response.sourceTxHash.toLowerCase() !== String(transfer.burnHash).toLowerCase())
-    throw new Error('Circle returned a different source transaction')
+  assertAttestationSource(response.sourceTxHash, transfer)
   if (response.messages.length !== 1) return null
   const entry = response.messages[0]
   if (!entry || entry.message === '0x' || !entry.attestation || entry.attestation === 'PENDING') return null

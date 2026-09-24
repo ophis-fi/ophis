@@ -177,7 +177,7 @@ function rpc(item, chain) {
       number: '0x100',
       hash: blockHash,
       transactions: [],
-      timestamp: '0x1',
+      timestamp: v.toHex(Math.floor(Date.now() / 1000)),
       gasLimit: '0x1c9c380',
       gasUsed: '0x0',
     };

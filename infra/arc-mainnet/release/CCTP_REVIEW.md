@@ -91,16 +91,28 @@ NODE_OPTIONS=--max-old-space-size=6144 pnpm exec tsc --project apps/cowswap-fron
 After building with the verified public Arc deployment environment and `REACT_APP_CCTP_ENABLED=true`, from the repository root:
 
 ```sh
-node infra/arc-mainnet/release/check-cctp-browser.cjs
-node infra/arc-mainnet/release/check-cctp-browser.cjs --webkit
+for asset in USDC EURC cirBTC; do
+  node infra/arc-mainnet/release/check-cctp-browser.cjs --asset="$asset"
+  node infra/arc-mainnet/release/check-cctp-browser.cjs --asset="$asset" --webkit
+done
 ```
 
 `--live` loads the published frontend assets while still simulating all wallet/chain/Circle traffic. It does not send funds.
 
+## EURC and cirBTC extension — 2026-09-25
+
+PR #1454 extends the reviewed flow with Circle's CrossChainTokenService: native EURC across Ethereum, Base and Arc; native cirBTC across Ethereum and Arc. Approvals target the pinned per-token TokenManager. Circle's native-currency forwarding fee is separate from the token amount. cirBTC uses eight decimals. Network token/manager resolution and trusted domains are checked before signing. Signed-quote expiry uses source-chain block number/time; browser clock skew does not decide Circle quote validity.
+
+The v2 journal lazily reads legacy v1 USDC transfers and migrates on the first locked update. A verified v1 guard blocks old-tab burns and mutations. Migration compatibility is owned by `state/migrations/cctpV2Storage.service.ts`, initialized at module entry. Keep both keys during rollback; do not discard pending transfers.
+
+Non-USDC recovery binds the opaque message body to a finalized source transaction with exact calldata/value/owner/nonce. Iris must echo the matching source transaction hash. Whole-message equality is invalid for CCTP V2: Circle assigns the nonce and executed finality offchain. A real Arc CCTS receipt and matching Iris response were independently decoded (source hash `0x4742bfb6a52df3e90c9608531353524aca6d501f10d450d08b0d222b8c1af8e0`): both messages are 341 bytes and their 193-byte bodies match. This evidence uses another registered CCTS token, not a funded EURC/cirBTC transfer. Iris's nonce assignment remains an explicit trust boundary.
+
+Run the asset loop above for both Chromium and WebKit; omitting `--asset` only checks USDC. Expanded-asset checks cover exact manager approvals, separate native fees, supported networks, completion and reload. All browser transactions remain simulated. No Circle Swap, new contracts, hosted infrastructure, API keys or paid RPCs were added.
+
 ## Limitations and operations
 
 - No real mainnet burn/mint was signed. The first funded user transfer remains an operational verification step.
-- Personal wallets only; no custom recipient, Fast transfers, EURC, wrapped assets or automatic swap-and-bridge composition. Add these only with separate route and ownership validation.
+- Personal wallets only; no custom recipient, Fast transfers, USYC, wrapped assets or automatic swap-and-bridge composition. Add these only with separate route and ownership validation.
 - Local quote expiry cannot invalidate an already-open wallet request. The on-chain maximum fee and recipient remain encoded; changing destination gas conditions may delay forwarding. Manual claim requires destination gas.
 - Keep browser storage and source hash until delivery. Clearing browser data, changing browser origins or an uncertain submission without a recoverable hash can require manual recovery. Replacement burn/claim hashes can be supplied in the UI. A cancellation must be a finalized zero-value self-send at the saved nonce; an interrupted request with no hash remains locked until such evidence exists. The UI deliberately does not offer a blind retry or discard button for unresolved burns.
 - Public RPC outages pause progress and produce an error. No retries on the transport, no idle fee polling, no hidden/offline status polling, and no private paid RPC fallback. Polling is every 15 seconds only while the bridge page is visible and online.

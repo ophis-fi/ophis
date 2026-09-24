@@ -3,7 +3,7 @@ import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { decodeEventLog, erc20Abi, isHex, size, slice, zeroHash, type Hex, type TransactionReceipt } from 'viem'
 
 import { CCTP_ABI, FORWARD_HOOK, MESSAGE_TRANSMITTER, TOKEN_MESSENGER, cctpNetwork } from './cctp.const'
-import { cctpAddressWord, type CctpTransfer } from './cctp.service'
+import { type CctpTransfer } from './cctp.service'
 import { cctpService, cctpToken } from './cctpAssets.const'
 
 function validateCctpxHeader(message: Hex, transfer: CctpTransfer): void {
@@ -28,14 +28,19 @@ export function messageInteger(message: Hex, start: number, length: number): big
   return BigInt(slice(message, start, start + length))
 }
 
+function isMessageAddress(word: Hex, address: string): boolean {
+  return size(word) === 32 && messageInteger(word, 0, 12) === 0n && areAddressesEqual(slice(word, 12), address)
+}
+
 function assertMessageAddress(message: Hex, offset: number, address: string): void {
-  if (slice(message, offset, offset + 32).toLowerCase() !== cctpAddressWord(address).toLowerCase())
-    throw new Error('CCTP message address mismatch')
+  if (!isMessageAddress(slice(message, offset, offset + 32), address)) throw new Error('CCTP message address mismatch')
 }
 
 export function validateCctpMessage(message: Hex, transfer: CctpTransfer, sourceMessage?: Hex): void {
   if (transfer.asset && transfer.asset !== 'USDC') {
     validateCctpxHeader(message, transfer)
+    // V2 assigns nonce and executed finality offchain; only the body is immutable.
+    // Iris must also echo the verified source hash (checked by readAttestation).
     if (!sourceMessage || slice(message, 148).toLowerCase() !== slice(sourceMessage, 148).toLowerCase())
       throw new Error('Non-USDC attestation does not match the verified source message')
     return
@@ -106,7 +111,7 @@ export function verifyMintReceipt(
       return (
         args.sourceDomain === cctpNetwork(transfer.source).domain &&
         args.nonce.toLowerCase() === slice(message, 12, 44).toLowerCase() &&
-        args.sender.toLowerCase() === cctpAddressWord(cctpService(transfer.asset)).toLowerCase() &&
+        isMessageAddress(args.sender, cctpService(transfer.asset)) &&
         args.finalityThresholdExecuted >= 2000 &&
         args.messageBody.toLowerCase() === slice(message, 148).toLowerCase()
       )

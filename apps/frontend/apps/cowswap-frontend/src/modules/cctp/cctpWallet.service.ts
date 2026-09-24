@@ -13,6 +13,7 @@ import {
 } from './cctp.service'
 import { cctpService, cctpSpender, cctpToken } from './cctpAssets.const'
 import { validateCctpMessage } from './cctpStatus.service'
+import { assertCctpxQuote } from './cctpx.service'
 
 function isUnknownChain(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 4902
@@ -69,6 +70,8 @@ export async function approveCctp(wallet: WalletClient, quote: CctpQuote): Promi
     args: [cctpSpender(quote.asset), BigInt(quote.amount)],
   })
   await prepareCctpCall(quote, quote.source, to, data, false)
+  if (quote.expanded) assertCctpxQuote(quote.expanded, await cctpClient(quote.source).getBlock())
+  assertCctpQuote(quote)
   await assertCctpWallet(wallet, quote.owner, quote.source)
   return wallet.sendTransaction({ account: quote.owner, chain: cctpNetwork(quote.source).chain, to, data, value: 0n })
 }
@@ -93,10 +96,7 @@ export async function burnCctp(
     throw new Error('CCTP currently supports personal wallets without smart-account code only')
   await prepareCctpCall(quote, quote.source, cctpService(quote.asset), data, true)
   const nonce = await cctpClient(quote.source).getTransactionCount({ address: quote.owner, blockTag: 'pending' })
-  if (quote.expanded?.expiry.mode === 'BLOCK_NUMBER') {
-    const block = await cctpClient(quote.source).getBlockNumber()
-    if (block >= BigInt(quote.expanded.expiry.expiresAtBlock)) throw new Error('Circle fee quote expired')
-  }
+  if (quote.expanded) assertCctpxQuote(quote.expanded, await cctpClient(quote.source).getBlock())
   // Fee and account must still match after the asynchronous reads/simulation.
   assertCctpQuote(quote)
   await assertCctpWallet(wallet, quote.owner, quote.source)

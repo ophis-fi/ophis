@@ -61,10 +61,12 @@ export function parseCctpxQuote(data: unknown, quote: CctpQuote): CctpxQuote {
   return cctpxQuoteSchema.parse(parsed)
 }
 
-export function assertCctpxQuote(quote: CctpxQuote, now: number): void {
-  const expiry = quote.expiry.mode === 'TIMESTAMP' ? quote.expiry.expiresAt : quote.expiry.blockEstimatedAt
-  if (quote.issuedAt * 1000 > now + 5000 || expiry * 1000 <= now + 15000)
-    throw new Error('Circle fee quote expired. Refresh before signing.')
+export function assertCctpxQuote(quote: CctpxQuote, block: { number: bigint; timestamp: bigint }): void {
+  const expired =
+    quote.expiry.mode === 'BLOCK_NUMBER'
+      ? block.number >= BigInt(quote.expiry.expiresAtBlock)
+      : block.timestamp + 15n >= BigInt(quote.expiry.expiresAt)
+  if (expired) throw new Error('Circle fee quote expired. Refresh before signing.')
 }
 
 export function cctpxBurnData(quote: CctpQuote): Hex {

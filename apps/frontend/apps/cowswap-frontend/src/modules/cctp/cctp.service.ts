@@ -136,6 +136,7 @@ export async function quoteCctp(
     requests: [{ type: 'FORWARD', params: { msgType: 'TransferMessage', destinationAddress: quote.owner } }],
   })
   const result = { ...quote, expanded: parseCctpxQuote(data, quote) }
+  assertCctpxQuote(result.expanded, await cctpClient(source).getBlock())
   assertCctpQuote(result)
   return result
 }
@@ -156,7 +157,6 @@ export function assertCctpTerms(quote: CctpQuote): void {
 
 export function assertCctpQuote(quote: CctpQuote, now = Date.now()): void {
   assertCctpTerms(quote)
-  if (quote.expanded) assertCctpxQuote(quote.expanded, now)
   if (now < quote.quotedAt || now - quote.quotedAt > QUOTE_LIFETIME_MS)
     throw new Error('Bridge quote expired. Refresh the fee before signing.')
 }

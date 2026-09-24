@@ -3,6 +3,7 @@ import {
   decodeFunctionData,
   encodeAbiParameters,
   encodeEventTopics,
+  encodePacked,
   pad,
   slice,
   toHex,
@@ -25,7 +26,7 @@ import { CCTPX_ABI, CROSS_CHAIN_TOKEN_SERVICE, cctpAsset, cctpToken } from './cc
 import { verifyBurnReceipt, verifyMintReceipt, validateCctpMessage } from './cctpMessage.service'
 import { cctpTransferSchema } from './cctpState'
 import { getCctpStatus } from './cctpStatus.service'
-import { parseCctpxQuote } from './cctpx.service'
+import { assertCctpxQuote, parseCctpxQuote } from './cctpx.service'
 
 jest.mock('./cctp.service', () => ({
   ...jest.requireActual('./cctp.service'),
@@ -101,7 +102,12 @@ it('keeps old USDC journals and rejects unsupported or incomplete expanded-asset
     expect(cctpTransferSchema.safeParse(invalid).success).toBe(false)
   expect(() => assertCctpQuote(transfer, now)).not.toThrow()
   expect(() => assertCctpQuote(transfer, now + 61000)).toThrow('expired')
-  expect(() => assertCctpQuote({ ...transfer, quotedAt: now + 110000 }, now + 110000)).toThrow('expired')
+  const fee = parseCctpxQuote(response, transfer)
+  expect(() => assertCctpxQuote(fee, { number: 5000n, timestamp: 1n })).toThrow('expired')
+  expect(() => assertCctpxQuote(fee, { number: 4999n, timestamp: 9999999999n })).not.toThrow()
+  const timed = { ...fee, expiry: { mode: 'TIMESTAMP' as const, expiresAt: 2000 } }
+  expect(() => assertCctpxQuote(timed, { number: 1n, timestamp: 1990n })).toThrow('expired')
+  expect(() => assertCctpxQuote(timed, { number: 1n, timestamp: 1900n })).not.toThrow()
 })
 
 it('encodes native EURC and eight-decimal cirBTC with exact receiver, fees, no hook and standard finality', () => {
@@ -117,7 +123,7 @@ it('encodes native EURC and eight-decimal cirBTC with exact receiver, fees, no h
       cctpAsset(asset).tokenId,
       10000000n,
       26,
-      owner.toLowerCase(),
+      encodePacked(['address'], [owner]),
       zeroHash,
       2000,
       { signedQuote, refundAddress: owner },
@@ -237,8 +243,11 @@ it('requires finalized exact source evidence despite a boolean cache and reuses 
   const reads = client.getTransaction.mock.calls.length
   expect((await getCctpStatus(saved, ready.sourceMessage)).sourceConfirmed).toBe(true)
   expect(client.getTransaction).toHaveBeenCalledTimes(reads)
-  jest
-    .mocked(circleGet)
-    .mockResolvedValueOnce({ messages: [{ message: concat([message, '0x01']), attestation: `0x${'aa'.repeat(65)}` }] })
+  jest.mocked(circleGet).mockResolvedValueOnce({
+    sourceTxHash: hash,
+    messages: [{ message: concat([message, '0x01']), attestation: `0x${'aa'.repeat(65)}` }],
+  })
   await expect(getCctpStatus(saved, ready.sourceMessage)).rejects.toThrow('verified source')
+  jest.mocked(circleGet).mockResolvedValueOnce({ messages: [{ message, attestation: `0x${'aa'.repeat(65)}` }] })
+  await expect(getCctpStatus(saved, ready.sourceMessage)).rejects.toThrow('omitted its hash')
 })
