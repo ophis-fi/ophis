@@ -1,8 +1,22 @@
-# Arc local validation — 2026-09-23
+# Arc local validation — 2026-09-24
 
 No public deployment, merge or bridge transfer was performed. The automatic
 settlement checks used a disposable Arc Anvil chain and labelled 1:1 liquidity
 fixtures. Existing real Uniswap liquidity was checked separately in [LIQUIDITY.md](LIQUIDITY.md).
+
+## Governance choice and unsigned batch — September 24
+
+The operator chose to retain 2-of-3 by adding the existing Ledger owner to the
+supplied Arc Safe. `release/safe-governance.json` encodes one zero-value Safe
+self-call to `addOwnerWithThreshold(deployer, 2)` on chain 5042. No public
+transaction was signed or sent. The local rehearsal now starts a real Safe at
+1-of-2, rejects its initial state against the launch checks, executes the exact
+proposed calldata, verifies all three owners and threshold two, rejects duplicate
+addition, and confirms a single owner cannot authorize the solver afterward.
+The remaining deployment, settlement and revocation rehearsal also passed.
+This run used zero public RPC calls and zero paid credits. The local Safe fixture
+is the vendored 1.3.0 implementation; this is not an execution against the live
+1.5.0 Safe. The live governance state must be rechecked after the owner ceremony.
 
 ## Release package completed locally — September 23
 

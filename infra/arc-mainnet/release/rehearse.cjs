@@ -6,7 +6,7 @@ const net = require('node:net')
 const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
 const { root, dep, validate, compile, build, checkHash } = require('./plan.cjs')
-const { verify } = require('./verify.cjs')
+const { verify, checkSafe } = require('./verify.cjs')
 const { prepare } = require('./solver.cjs')
 const { Wallet } = dep('@ethersproject/wallet')
 const { JsonRpcProvider } = dep('@ethersproject/providers')
@@ -20,6 +20,12 @@ const TYPES = { SafeTx: [ ['to', 'address'], ['value', 'uint256'], ['data', 'byt
 
 async function main() {
   const example = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.example.json')))
+  const governance = JSON.parse(fs.readFileSync(path.join(__dirname, 'safe-governance.json')))
+  assert.equal(governance.chainId, '5042')
+  assert.equal(governance.meta.createdFromSafeAddress, example.safe)
+  assert.equal(governance.transactions.length, 1)
+  assert.equal(governance.transactions[0].to, example.safe)
+  assert.equal(governance.transactions[0].value, '0')
   assert.equal(example.solver, null, 'Never default to another chain\'s submitter')
   assert.throws(() => validate(example), /dedicated Arc submitter/)
   const check = net.createServer()
@@ -39,15 +45,33 @@ async function main() {
     assert.equal(await rpc.send('eth_chainId', []), '0x13b2')
     assert(!(await rpc.send('anvil_nodeInfo', [])).forkConfig?.forkUrl)
     const accounts = await rpc.listAccounts(), signer = rpc.getSigner(accounts[0])
-    const owners = accounts.slice(1, 4)
+    const owners = [...accounts.slice(1, 3), example.deployer]
     const fixture = name => { const a = JSON.parse(fs.readFileSync(path.join(root, 'apps/backend/contracts/artifacts', name + '.json'))); return { ...a, abi: [...a.abi, ...(a._disabled || [])] } }
     const safeArtifact = fixture('GnosisSafe'), factoryArtifact = fixture('GnosisSafeProxyFactory')
     async function deploy(a, args = []) { const c = await new ContractFactory(a.abi, a.bytecode, signer).deploy(...args); await c.deployTransaction.wait(); return c }
     const singleton = await deploy(safeArtifact), factory = await deploy(factoryArtifact)
-    const initializer = singleton.interface.encodeFunctionData('setup', [owners, 2, ZERO, '0x', ZERO, ZERO, 0, ZERO])
+    const initializer = singleton.interface.encodeFunctionData('setup', [owners.slice(0, 2), 1, ZERO, '0x', ZERO, ZERO, 0, ZERO])
     const safeAddress = await factory.callStatic.createProxyWithNonce(singleton.address, initializer, 5042)
     await (await factory.createProxyWithNonce(singleton.address, initializer, 5042)).wait()
     const safe = new Contract(safeAddress, safeArtifact.abi, signer)
+    async function safeCall(to, data, count = 2) {
+      const tx = { to, value: 0, data, operation: 0, safeTxGas: 0, baseGas: 0, gasPrice: 0, gasToken: ZERO, refundReceiver: ZERO, nonce: await safe.nonce() }
+      const signatures = []
+      for (const owner of owners.slice(0, count).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))) {
+        signatures.push(await rpc.getSigner(owner)._signTypedData({ chainId: 5042, verifyingContract: safe.address }, TYPES, tx))
+      }
+      const args = [to, 0, data, 0, 0, 0, 0, ZERO, ZERO, hexConcat(signatures)]
+      assert.equal(await safe.callStatic.execTransaction(...args), true)
+      return (await safe.execTransaction(...args)).wait()
+    }
+    const governanceData = governance.transactions[0].data
+    assert.equal(governanceData, safe.interface.encodeFunctionData('addOwnerWithThreshold', [example.deployer, 2]))
+    await assert.rejects(checkSafe(rpc, { safe: safe.address, safeOwners: owners }), /Safe owners differ/)
+    await assert.rejects(safe.connect(rpc.getSigner(owners[0])).callStatic.addOwnerWithThreshold(example.deployer, 2))
+    // Execute the exact proposed calldata through a real local Safe at its initial 1-of-2 threshold.
+    await safeCall(safe.address, governanceData, 1)
+    await checkSafe(rpc, { safe: safe.address, safeOwners: owners })
+    await assert.rejects(safeCall(safe.address, governanceData, 2))
     solverDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'arc-rehearsal-solver-'))
     fs.chmodSync(solverDirectory, 0o700)
     const solverKey = path.join(solverDirectory, 'submitter.key')
@@ -82,30 +106,19 @@ async function main() {
       await (await signer.sendTransaction({ to: config.solver, value: '1000000000000000000' })).wait()
       const settlement = new Contract(plan.contracts.settlement, compiled.artifacts.GPv2Settlement.abi, solver)
       await assert.rejects(settlement.callStatic.settle([], [], [], [[], [], []]))
-      async function safeCall(data, count = 2) {
-        const tx = { to: auth.address, value: 0, data, operation: 0, safeTxGas: 0, baseGas: 0, gasPrice: 0, gasToken: ZERO, refundReceiver: ZERO, nonce: await safe.nonce() }
-        const signatures = []
-        for (const owner of owners.slice(0, count).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))) {
-          signatures.push(await rpc.getSigner(owner)._signTypedData({ chainId: 5042, verifyingContract: safe.address }, TYPES, tx))
-        }
-        const args = [tx.to, 0, data, 0, 0, 0, 0, ZERO, ZERO, hexConcat(signatures)]
-        if (count < 2) return safe.callStatic.execTransaction(...args)
-        assert.equal(await safe.callStatic.execTransaction(...args), true)
-        return (await safe.execTransaction(...args)).wait()
-      }
-      await assert.rejects(safeCall(plan.safeTransaction.data, 1))
-      await safeCall(plan.safeTransaction.data)
+      await assert.rejects(safeCall(auth.address, plan.safeTransaction.data, 1))
+      await safeCall(auth.address, plan.safeTransaction.data)
       await (await settlement.settle([], [], [], [[], [], []])).wait()
       const result = await verify(rpc, plan, receipts, compiled.artifacts, true)
       const relayer = new Contract(plan.contracts.vaultRelayer, compiled.artifacts.GPv2VaultRelayer.abi, signer)
       await assert.rejects(relayer.callStatic.transferFromAccounts([]))
       await assert.rejects(rpc.send('eth_call', [{ to: plan.contracts.vault, data: '0x12345678' }, 'latest']))
       await assert.rejects(rpc.send('eth_call', [{ from: config.deployer, to: plan.contracts.vault, value: '0x1' }, 'latest']))
-      await safeCall(auth.interface.encodeFunctionData('removeSolver', [config.solver]))
+      await safeCall(auth.address, auth.interface.encodeFunctionData('removeSolver', [config.solver]))
       await assert.rejects(settlement.callStatic.settle([], [], [], [[], [], []]))
       await assert.rejects(verify(rpc, plan, receipts, compiled.artifacts, false))
-      fs.writeFileSync(path.join(OUT, 'rehearsal.json'), JSON.stringify({ ...result, revokedSuccessfully: true, gasUsed: receipts.map(r => r.gasUsed.toString()) }, null, 2) + '\n', { mode: 0o600 })
-      console.log('PASS: seven production deployments; 2-of-3 Safe activation; single-owner denial; runtime/domain/wiring verification; solver revocation; no production activation from a local node.')
+      fs.writeFileSync(path.join(OUT, 'rehearsal.json'), JSON.stringify({ ...result, governanceMigrationTested: true, revokedSuccessfully: true, gasUsed: receipts.map(r => r.gasUsed.toString()) }, null, 2) + '\n', { mode: 0o600 })
+      console.log('PASS: exact governance calldata migrates 1-of-2 to 2-of-3; seven production deployments; single-owner denial; runtime/domain/wiring verification; solver revocation; no production activation from a local node.')
     } finally { if (previous) fs.writeFileSync(artifactsFile, previous); else fs.unlinkSync(artifactsFile) }
   } finally {
     anvil.kill('SIGTERM'); rpc.removeAllListeners()
