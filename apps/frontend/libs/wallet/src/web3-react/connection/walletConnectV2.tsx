@@ -44,6 +44,8 @@ function createWalletConnectV2Connection(): Web3ReactConnection {
           ],
           // Wallet-facing, keyless RPCs: never our keyed mainnet endpoint (WALLET_RPC_URLS).
           rpcMap: WALLET_RPC_URLS,
+          // The SDK's extra JSON-RPC "test" probe does not validate the network.
+          disableProviderPing: true,
           showQrModal: true,
           qrModalOptions: {
             // The app's pending connection overlay uses z-index 1000.

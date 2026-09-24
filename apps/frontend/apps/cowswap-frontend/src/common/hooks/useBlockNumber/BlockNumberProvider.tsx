@@ -1,17 +1,17 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useIsWindowVisible } from '@cowprotocol/common-hooks'
+import { useWalletInfo } from '@cowprotocol/wallet'
 import { useWalletChainId, useWalletProvider } from '@cowprotocol/wallet-provider'
 
 import { BlockNumberContext } from './context'
 
-// TODO: Add proper return type annotation
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function BlockNumberProvider({ children }: { children: ReactNode }) {
+export function BlockNumberProvider({ children }: { children: ReactNode }): ReactNode {
   // TODO M-6 COW-573
   // This flow will be reviewed and updated later, to include a wagmi alternative
   const provider = useWalletProvider()
   const activeChainId = useWalletChainId()
+  const { account } = useWalletInfo()
 
   const [{ chainId, block }, setChainBlock] = useState<{ chainId?: number; block?: number }>({ chainId: activeChainId })
 
@@ -46,7 +46,8 @@ export function BlockNumberProvider({ children }: { children: ReactNode }) {
           console.error(`Failed to get block number for chainId ${activeChainId}`, error)
         })
 
-      provider.on('block', onBlock)
+      // The read-only network connector is active even without a wallet.
+      if (account) provider.on('block', onBlock)
 
       return () => {
         stale = true
@@ -55,7 +56,7 @@ export function BlockNumberProvider({ children }: { children: ReactNode }) {
     }
 
     return void 0
-  }, [activeChainId, provider, onBlock, setChainBlock, windowVisible])
+  }, [activeChainId, provider, onBlock, setChainBlock, windowVisible, account])
 
   const value = useMemo(
     () => ({
