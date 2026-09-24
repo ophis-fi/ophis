@@ -65,8 +65,8 @@ export async function submitCctpBurn(
     let signatureRequested = false
     const beforeSignature = async (nonce: number): Promise<void> => {
       pending = { ...quote, sourceNonce: nonce }
-      persist(pending)
       persisted = true
+      persist(pending)
       const saved = await cctpStorage.getItem(CCTP_STORAGE_KEY, null)
       if (!matchesSavedTransfer(saved, pending))
         throw new Error('Unable to save bridge recovery details. Nothing was signed.')
@@ -109,13 +109,20 @@ export async function claimCctpTransfer(
   let pending = transfer
   let signatureRequested = false
   try {
-    const mintHash = await claimCctp(wallet, transfer, latest.message, latest.attestation, async (nonce) => {
-      pending = { ...transfer, mintHash: undefined, claimNonce: nonce }
-      persist(pending)
-      if (!matchesSavedTransfer(await cctpStorage.getItem(CCTP_STORAGE_KEY, null), pending))
-        throw new Error('Unable to save claim recovery details. Nothing was signed.')
-      signatureRequested = true
-    })
+    const mintHash = await claimCctp(
+      wallet,
+      transfer,
+      latest.message,
+      latest.attestation,
+      async (nonce) => {
+        pending = { ...transfer, mintHash: undefined, claimNonce: nonce }
+        persist(pending)
+        if (!matchesSavedTransfer(await cctpStorage.getItem(CCTP_STORAGE_KEY, null), pending))
+          throw new Error('Unable to save claim recovery details. Nothing was signed.')
+        signatureRequested = true
+      },
+      latest.sourceMessage,
+    )
     if (!/^0x[a-fA-F0-9]{64}$/.test(mintHash))
       throw new Error('Check wallet activity and recover the destination claim hash.')
     return { ...pending, mintHash }
@@ -139,7 +146,7 @@ export async function resumeCctpClaim(transfer: CctpTransfer, value: string): Pr
       throw new Error('Wait for the claim cancellation to become final')
     return { ...transfer, claimNonce: undefined, mintHash: undefined }
   }
-  if (receipt.status === 'success') verifyMintReceipt(receipt, latest.message, transfer)
+  if (receipt.status === 'success') verifyMintReceipt(receipt, latest.message, transfer, latest.sourceMessage)
   else {
     const data = encodeFunctionData({
       abi: CCTP_ABI,

@@ -17,11 +17,37 @@ const build = root + '/apps/frontend/build/cowswap',
   out = root + '/infra/arc-mainnet/release/generated';
 const live = process.argv.includes('--live'),
   mobile = process.argv.includes('--webkit');
+const asset = process.argv.find((x) => x.startsWith('--asset='))?.split('=')[1] || 'USDC';
+assert(['USDC', 'EURC', 'cirBTC'].includes(asset));
+const expanded = asset !== 'USDC',
+  btc = asset === 'cirBTC';
+const destination = btc ? 1 : 8453,
+  domain = btc ? 0 : 6;
+const amount = btc ? 200000000 : 2000000;
+const fee = expanded ? 10000000000000000n : 0n;
 const owner = '0x0494f503912c101bfd76b88e4f5d8a33de284d1a',
-  TM = '0x28b5a0e9c621a5badaa536219b3a228c8168cf5d',
+  TM = expanded
+    ? '0x431871229103b780868f8c6bb820cd16ecf942bc'
+    : '0x28b5a0e9c621a5badaa536219b3a228c8168cf5d',
   MT = '0x81d40f21f12a8f0e3252bccb954d722d4c464b64';
-const USDC = '0x3600000000000000000000000000000000000000',
-  BASE_USDC = '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
+const TOKEN = btc
+  ? '0x171a4217b86a807a64eb94757db6849fb4bdbaa0'
+  : expanded
+    ? '0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1'
+    : '0x3600000000000000000000000000000000000000';
+const DEST_TOKEN = btc
+  ? '0x72dfb2e44f59c5ad2bafe84314e5b99a7cd5075e'
+  : expanded
+    ? '0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42'
+    : '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
+const manager = btc
+  ? '0xa1db0fda2d1bfebe2e5701fe73b252bc2b25700e'
+  : expanded
+    ? '0x8c27579e24f9f19d96724e19fc059dacd1469e10'
+    : TM;
+const tokenId = btc
+  ? '0x3d26699fb5d40190fc3fa0dcbc1cd24e558355043c1997572ff9fd6efbb3fdca'
+  : '0x6ca9e29fa53becc29becaf4a90b9ca7a995ad4d2234880da13ca38c657fb241c';
 const burnHash = '0x' + 'ab'.repeat(32),
   approvalHash = '0x' + 'cd'.repeat(32),
   mintHash = '0x' + 'ef'.repeat(32),
@@ -33,21 +59,24 @@ const abi = v.parseAbi([
 ]);
 const word = (n) => v.toHex(n, { size: 32 }),
   u32 = (n) => v.toHex(n, { size: 4 });
-const body = v.concat([
-  u32(1),
-  v.pad(USDC),
-  v.pad(owner),
-  word(2000000),
-  v.pad(owner),
-  word(20000),
-  word(20000),
-  word(0),
-  hook,
-]);
+// Non-USDC body is opaque: bind it byte-for-byte to the verified source receipt.
+const body = expanded
+  ? v.concat([tokenId, v.pad(owner), word(amount)])
+  : v.concat([
+      u32(1),
+      v.pad(TOKEN),
+      v.pad(owner),
+      word(2000000),
+      v.pad(owner),
+      word(20000),
+      word(20000),
+      word(0),
+      hook,
+    ]);
 const message = v.concat([
   u32(1),
   u32(26),
-  u32(6),
+  u32(domain),
   word(42),
   v.pad(TM),
   v.pad(TM),
@@ -90,7 +119,7 @@ function receipt(hash) {
     blockHash,
     blockNumber: '0x100',
     from: owner,
-    to: hash === approvalHash ? USDC : TM,
+    to: hash === approvalHash ? TOKEN : TM,
     cumulativeGasUsed: '0x186a0',
     gasUsed: '0x186a0',
     contractAddress: null,
@@ -123,13 +152,13 @@ function receipt(hash) {
         ),
       ),
       log(
-        BASE_USDC,
+        DEST_TOKEN,
         [
           '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
           v.pad(v.zeroAddress),
           v.pad(owner),
         ],
-        word(1980000),
+        word(expanded ? amount : 1980000),
         1,
       ),
     ];
@@ -143,7 +172,15 @@ function rpc(item, chain) {
   if (method === 'eth_getCode')
     result = [TM, MT].includes(params[0]?.toLowerCase()) ? '0x60016000' : '0x';
   if (method === 'eth_blockNumber') result = '0x100';
-  if (method === 'eth_getBlockByNumber') result = { number: '0x100', hash: blockHash, transactions: [], timestamp: '0x1', gasLimit: '0x1c9c380', gasUsed: '0x0' };
+  if (method === 'eth_getBlockByNumber')
+    result = {
+      number: '0x100',
+      hash: blockHash,
+      transactions: [],
+      timestamp: v.toHex(Math.floor(Date.now() / 1000)),
+      gasLimit: '0x1c9c380',
+      gasUsed: '0x0',
+    };
   if (method === 'eth_getBalance') result = v.toHex(10n ** 19n);
   if (method === 'eth_gasPrice') result = '0x3b9aca00';
   if (method === 'eth_estimateGas') result = '0x186a0';
@@ -153,11 +190,15 @@ function rpc(item, chain) {
     const input = params[0]?.data || params[0]?.input || '';
     const selector = input.slice(0, 10);
     result = toWord(0);
-    if (selector === '0x313ce567') result = toWord(6);
+    if (selector === '0x313ce567') result = toWord(btc ? 8 : 6);
     if (selector === v.toFunctionSelector('localDomain()'))
-      result = toWord(chain === 5042 ? 26 : 6);
-    if (selector === '0x70a08231') result = toWord(10000000);
-    if (selector === '0xdd62ed3e') result = toWord(approved ? 2000000 : 0);
+      result = toWord(chain === 5042 ? 26 : domain);
+    if (selector === '0x70a08231') result = toWord(amount * 5);
+    if (selector === '0xdd62ed3e') result = toWord(approved ? amount : 0);
+    if (selector === v.toFunctionSelector('resolveTokenAddress(bytes32)'))
+      result = v.pad(chain === 5042 ? TOKEN : DEST_TOKEN);
+    if (selector === v.toFunctionSelector('resolveTokenManager(bytes32)')) result = v.pad(manager);
+    if (selector === v.toFunctionSelector('isTrustedDomain(uint32)')) result = toWord(1);
     if (selector === '0x95d89b41') result = v.encodeAbiParameters([{ type: 'string' }], ['USDC']);
   }
   if (method === 'eth_getTransactionReceipt') result = receipt(params[0]);
@@ -173,7 +214,7 @@ function rpc(item, chain) {
       input: burnData,
       nonce: '0x7',
       transactionIndex: '0x0',
-      value: '0x0',
+      value: v.toHex(fee),
       type: '0x0',
       v: '0x1b',
       r: word(1),
@@ -181,7 +222,7 @@ function rpc(item, chain) {
     };
   if (method === 'eth_sendTransaction') {
     sends.push(params[0]);
-    if (params[0].to.toLowerCase() === USDC) {
+    if (params[0].to.toLowerCase() === TOKEN) {
       approved = true;
       result = approvalHash;
     } else {
@@ -269,6 +310,29 @@ function rpc(item, chain) {
         return r.fulfill({ path: build + '/index.html', contentType: 'text/html' });
       }
       if (u.hostname === 'iris-api.circle.com') {
+        if (u.pathname.includes('/quote/cctpx/')) {
+          feeRequests++;
+          assert.equal(u.pathname, `/v2/quote/cctpx/${tokenId}/26/${domain}`);
+          assert.equal(req.postDataJSON().amount, String(amount));
+          const now = Math.floor(Date.now() / 1000);
+          return r.fulfill({
+            json: {
+              signedQuote: '0x' + '11'.repeat(100),
+              feeTotalAmount: String(fee),
+              feeToken: v.zeroAddress,
+              issuedAt: now,
+              expiry: { mode: 'TIMESTAMP', expiresAt: now + 120 },
+              items: [
+                {
+                  type: 'FORWARD',
+                  amount: String(fee),
+                  args: [String(domain), 'TransferMessage', v.zeroHash, 'false', '', owner],
+                },
+                { type: 'PROTOCOL', amount: '0', args: [tokenId] },
+              ],
+            },
+          });
+        }
         if (u.pathname.includes('/fees/')) {
           feeRequests++;
           return r.fulfill({
@@ -283,13 +347,23 @@ function rpc(item, chain) {
         });
       }
       if (
-        ['rpc.mainnet.arc.io', 'mainnet.base.org', 'cctp-wallet.invalid'].includes(u.hostname) &&
+        [
+          'rpc.mainnet.arc.io',
+          'mainnet.base.org',
+          'ethereum-rpc.publicnode.com',
+          'cctp-wallet.invalid',
+        ].includes(u.hostname) &&
         req.method() === 'POST'
       ) {
         requests++;
         assert(requests < 300);
         const data = req.postDataJSON(),
-          chain = u.hostname === 'mainnet.base.org' ? 8453 : 5042;
+          chain =
+            u.hostname === 'mainnet.base.org'
+              ? 8453
+              : u.hostname === 'ethereum-rpc.publicnode.com'
+                ? 1
+                : 5042;
         return r.fulfill({
           json: Array.isArray(data) ? data.map((x) => rpc(x, chain)) : rpc(data, chain),
         });
@@ -300,13 +374,13 @@ function rpc(item, chain) {
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('https://swap.ophis.fi/#/bridge');
     await page
-      .getByRole('heading', { name: 'Bridge USDC', exact: true })
+      .getByRole('heading', { name: 'Bridge tokens', exact: true })
       .waitFor({ timeout: 60000 });
     await page.screenshot({
-      path: out + '/cctp-' + (mobile ? 'mobile' : 'desktop') + '.png',
+      path: out + '/cctp-' + asset + '-' + (mobile ? 'mobile' : 'desktop') + '.png',
       fullPage: true,
     });
-    assert.equal(await page.locator('select').count(), 2);
+    assert.equal(await page.locator('select').count(), 3);
     assert.equal(feeRequests, 0, 'No idle fee polling');
     await page
       .getByRole('button', { name: 'Decline', exact: true })
@@ -320,37 +394,58 @@ function rpc(item, chain) {
     await page
       .getByRole('button', { name: 'Review bridge fee', exact: true })
       .waitFor({ timeout: 20000 });
-    await page.getByRole('combobox').nth(1).selectOption('8453');
-    await page.getByRole('combobox').nth(0).selectOption('5042');
-    await page.getByLabel('USDC amount', { exact: true }).fill('2');
+    await page.getByRole('combobox', { name: /^To/ }).selectOption('8453');
+    await page.getByRole('combobox', { name: /^From/ }).selectOption('5042');
+    await page.getByRole('combobox', { name: /^Asset/ }).selectOption(asset);
+    assert.notEqual(
+      await page.getByRole('combobox', { name: /^From/ }).inputValue(),
+      await page.getByRole('combobox', { name: /^To/ }).inputValue(),
+    );
+    assert.equal(
+      await page.getByRole('combobox', { name: /^From/ }).locator('option').count(),
+      btc ? 2 : expanded ? 3 : 6,
+    );
+    await page.getByRole('combobox', { name: /^To/ }).selectOption(String(destination));
+    await page.getByRole('combobox', { name: /^From/ }).selectOption('5042');
+    await page.getByLabel(`${asset} amount`, { exact: true }).fill('2');
     await page.getByRole('button', { name: 'Review bridge fee', exact: true }).click();
-    await page.getByRole('button', { name: 'Approve USDC', exact: true }).click({ timeout: 15000 });
+    await page
+      .getByRole('button', { name: `Approve ${asset}`, exact: true })
+      .click({ timeout: 15000 });
     await page
       .getByRole('button', { name: 'Review bridge fee', exact: true })
       .click({ timeout: 15000 });
-    await page.getByRole('button', { name: 'Bridge USDC', exact: true }).click({ timeout: 15000 });
     await page
-      .getByText('USDC received. Bridge complete.', { exact: true })
+      .getByRole('button', { name: `Bridge ${asset}`, exact: true })
+      .click({ timeout: 15000 });
+    await page
+      .getByText('Tokens received. Bridge complete.', { exact: true })
       .waitFor({ timeout: 30000 });
     assert.equal(sends.length, 2, 'Exactly one approval and one burn');
     assert.equal(feeRequests, 2, 'Only explicit fee reviews');
     assert.equal(sends[1].nonce, '0x7');
+    assert.equal(BigInt(sends[1].value), fee);
+    assert.equal(sends[1].to.toLowerCase(), TM);
+    const approval = v.decodeFunctionData({ abi: v.erc20Abi, data: sends[0].data });
+    assert.equal(approval.args[0].toLowerCase(), manager);
+    assert.equal(approval.args[1], BigInt(amount));
     assert.equal(errors.length, 0, 'No uncaught page error');
     await page.reload();
     await page
-      .getByText('USDC received. Bridge complete.', { exact: true })
+      .getByText('Tokens received. Bridge complete.', { exact: true })
       .waitFor({ timeout: 30000 });
     assert.equal(sends.length, 2, 'Reload never resubmits');
     await page.screenshot({
-      path: out + '/cctp-complete-' + (mobile ? 'mobile' : 'desktop') + '.png',
+      path: out + '/cctp-complete-' + asset + '-' + (mobile ? 'mobile' : 'desktop') + '.png',
       fullPage: true,
     });
     fs.writeFileSync(
-      out + '/cctp-browser-' + (mobile ? 'webkit' : 'chromium') + '.json',
+      out + '/cctp-browser-' + asset + '-' + (mobile ? 'webkit' : 'chromium') + '.json',
       JSON.stringify(
         {
           checkedAt: new Date().toISOString(),
           live,
+          asset,
           simulated: true,
           externalRpcRequests: 0,
           simulatedRpcRequests: requests,
@@ -363,7 +458,7 @@ function rpc(item, chain) {
       ),
     );
     console.log(
-      'PASS CCTP approval, burn, receipt completion and reload; all wallet/RPC responses simulated.',
+      `PASS ${asset} approval, burn, receipt completion and reload; all wallet/RPC responses simulated.`,
     );
   } catch (e) {
     console.error(e.message);

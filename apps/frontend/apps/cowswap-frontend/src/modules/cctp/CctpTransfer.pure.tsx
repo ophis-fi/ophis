@@ -4,6 +4,7 @@ import { formatUnits } from 'viem'
 
 import { cctpNetwork } from './cctp.const'
 import { type CctpTransfer } from './cctp.service'
+import { cctpAsset } from './cctpAssets.const'
 import { type CctpStatus } from './cctpStatus.service'
 import { type useCctpTransfer } from './useCctpTransfer'
 
@@ -49,13 +50,15 @@ export function CctpTransferDetails({
   onResumeClaim(hash: string): void
   onFinish(): void
 }): ReactNode {
+  const asset = cctpAsset(transfer.asset)
   const source = cctpNetwork(transfer.source)
   const destination = cctpNetwork(transfer.destination)
   return (
     <>
-      <h2>Your USDC transfer</h2>
+      <h2>Your {asset.symbol} transfer</h2>
       <p>
-        {formatUnits(BigInt(transfer.amount), 6)} USDC · {source.chain.name} → {destination.chain.name}
+        {formatUnits(BigInt(transfer.amount), asset.decimals)} {asset.symbol} · {source.chain.name} →{' '}
+        {destination.chain.name}
       </p>
       <p>Recipient: {transfer.owner}</p>
       <p role="status">{status?.text || 'Checking transfer status…'}</p>
@@ -157,13 +160,22 @@ export function CctpQuoteDetails({
   source: number
 }): ReactNode {
   if (!flow.quote) return null
+  const asset = cctpAsset(flow.quote.asset)
+  const native = cctpNetwork(flow.quote.source).chain.nativeCurrency
+  const fee = flow.quote.expanded
+    ? { amount: flow.quote.expanded.feeTotalAmount, ...native }
+    : { amount: flow.quote.maxFee, ...asset }
   return (
     <>
       <dl>
         <dt>Maximum bridge fee</dt>
-        <dd>{formatUnits(BigInt(flow.quote.maxFee), 6)} USDC</dd>
+        <dd>
+          {formatUnits(BigInt(fee.amount), fee.decimals)} {fee.symbol}
+        </dd>
         <dt>You receive at least</dt>
-        <dd>{formatUnits(BigInt(flow.quote.amount) - BigInt(flow.quote.maxFee), 6)} USDC</dd>
+        <dd>
+          {formatUnits(BigInt(flow.quote.amount) - BigInt(flow.quote.maxFee), asset.decimals)} {asset.symbol}
+        </dd>
       </dl>
       <p>Standard transfer. Confirmation can take several minutes. Source network gas is paid separately.</p>
       {!correctChain && <p>Switch your wallet to {cctpNetwork(source).chain.name} to continue.</p>}
@@ -172,7 +184,11 @@ export function CctpQuoteDetails({
         disabled={!!flow.busy}
         onClick={!correctChain ? () => flow.switchNetwork(source) : flow.approved ? flow.bridge : flow.approve}
       >
-        {!correctChain ? `Switch to ${cctpNetwork(source).chain.name}` : flow.approved ? 'Bridge USDC' : 'Approve USDC'}
+        {!correctChain
+          ? `Switch to ${cctpNetwork(source).chain.name}`
+          : flow.approved
+            ? `Bridge ${asset.symbol}`
+            : `Approve ${asset.symbol}`}
       </button>
     </>
   )

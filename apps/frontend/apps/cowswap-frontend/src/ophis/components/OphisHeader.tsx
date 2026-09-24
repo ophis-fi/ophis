@@ -221,7 +221,7 @@ export function OphisHeader({ children, transparent = false, walletConnected = f
         <Right $walletConnected={walletConnected}>
           {CCTP_ENABLED && pathname !== '/bridge' ? (
             <OtcNavLink to="/bridge" $transparent={transparent}>
-              Bridge USDC
+              Bridge
             </OtcNavLink>
           ) : null}
           {isOtcEnabled && !isOtcRoute ? (
