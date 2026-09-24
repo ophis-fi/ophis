@@ -1,3 +1,4 @@
+import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
 import { PriceQuality } from '@cowprotocol/cow-sdk'
 import { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 
@@ -11,6 +12,10 @@ function isQuoteCached(quote: TradeQuoteState): boolean {
   const hasCachedError = quote.error
 
   return Boolean(hasCachedResponse || hasCachedError)
+}
+
+function canUseFastQuote(params: QuoteBridgeRequest | undefined): boolean {
+  return !!params && params.sellTokenChainId !== ARC_CHAIN_ID && params.sellTokenChainId === params.buyTokenChainId
 }
 
 export interface QuoteUpdateContext {
@@ -40,6 +45,9 @@ export function doQuotePolling({
 }: QuoteUpdateContext): boolean {
   const currentQuoteAppDataDoc = currentQuote.quote?.quoteResults.appDataInfo.doc
 
+  // Forced refreshes bypass the cache, never the hidden/offline-tab guard.
+  if (!isBrowserOnline) return false
+
   if (!forceUpdate) {
     // Don't fetch quote if the parameters are the same
     // Also avoid quote refresh when only appData.quote (contains slippage) is changed
@@ -50,18 +58,12 @@ export function doQuotePolling({
     ) {
       return false
     }
-
-    // When browser is offline or the tab is not active do no fetch
-    if (!isBrowserOnline) {
-      return false
-    }
   }
 
-  const isBridging = !!quoteParams && quoteParams.sellTokenChainId !== quoteParams.buyTokenChainId
   const fetchStartTimestamp = Date.now()
 
-  // Don't fetch fast quote in confirm screen and in bridging mode
-  if (fastQuote && !isConfirmOpen && !isBridging) {
+  // Arc's direct solver already returns promptly; a second quote wastes its limited RPC budget.
+  if (fastQuote && !isConfirmOpen && canUseFastQuote(quoteParams)) {
     fetchQuote({ hasParamsChanged, priceQuality: PriceQuality.FAST, fetchStartTimestamp })
   }
   fetchQuote({ hasParamsChanged, priceQuality: PriceQuality.OPTIMAL, fetchStartTimestamp })

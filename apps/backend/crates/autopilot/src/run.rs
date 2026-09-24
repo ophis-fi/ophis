@@ -447,7 +447,10 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         infra::persistence::Persistence::new(config.s3.map(Into::into), Arc::new(db_write.clone()))
             .instrument(info_span!("persistence_init"))
             .await;
-    let settlement_contract_start_index = match GPv2Settlement::deployment_block(&chain_id) {
+    let settlement_contract_start_index = match config
+        .settlement_deployment_block
+        .or_else(|| GPv2Settlement::deployment_block(&chain_id))
+    {
         Some(block) => {
             tracing::debug!(block, "found settlement contract deployment");
             block
@@ -473,6 +476,13 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         block_retriever.clone(),
         skip_event_sync_start,
     );
+    // Arc's BFT finality permits bounded log ranges instead of per-block reads.
+    // https://docs.arc.io/integrate/infrastructure/indexing-events
+    let settlement_event_indexer = if chain_id == 5042 {
+        settlement_event_indexer.with_deterministic_finality()
+    } else {
+        settlement_event_indexer
+    };
 
     let archive_node_web3 = config
         .cow_amm
@@ -568,6 +578,7 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         deny_listed_tokens.clone(),
         competition_native_price_updater.clone(),
         *eth.contracts().weth().address(),
+        chain.native_token_unit_scale(),
         domain::ProtocolFees::new(
             chain_id,
             &config.fee_policies,

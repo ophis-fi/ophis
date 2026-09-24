@@ -1,6 +1,7 @@
 import { mapSupportedNetworks, SupportedChainId, HttpsString } from '@cowprotocol/cow-sdk'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
+import { ARC_CHAIN_ID, ARC_RPC_URL } from './arc.const'
 import { MONAD_CHAIN_ID, XLAYER_CHAIN_ID } from './bridgeDestination.const'
 import { ROBINHOOD_CHAIN_PUBLIC_RPC } from './robinhood.const'
 
@@ -21,6 +22,7 @@ import { ROBINHOOD_CHAIN_PUBLIC_RPC } from './robinhood.const'
 const INFURA_KEY = process.env['REACT_APP_INFURA_KEY'] || ''
 
 const RPC_URL_ENVS: Record<SupportedChainId, HttpsString | undefined> = {
+  [ARC_CHAIN_ID]: ARC_RPC_URL as HttpsString,
   [SupportedChainId.MAINNET]: (process.env['REACT_APP_NETWORK_URL_1'] as HttpsString) || undefined,
   [SupportedChainId.BNB]: (process.env['REACT_APP_NETWORK_URL_56'] as HttpsString) || undefined,
   [SupportedChainId.GNOSIS_CHAIN]: (process.env['REACT_APP_NETWORK_URL_100'] as HttpsString) || undefined,
@@ -112,6 +114,7 @@ const DEFAULT_RPC_URL: Record<SupportedChainId, { url: HttpsString; usesInfura: 
   // Ophis fork: OP mainnet default public RPC
   [10 as unknown as SupportedChainId]: { url: `https://optimism.drpc.org`, usesInfura: false },
   // Ophis fork: Unichain default public RPC
+  [ARC_CHAIN_ID]: { url: ARC_RPC_URL, usesInfura: false },
   [130 as unknown as SupportedChainId]: { url: `https://mainnet.unichain.org`, usesInfura: false },
   // Ophis fork: Monad + X Layer official public RPCs (bridge destinations only;
   // probed eth_chainId 0x8f / 0xc4 on 2026-09-11).
@@ -135,6 +138,7 @@ export const RPC_URLS: Record<SupportedChainId, HttpsString> = {
   // Ophis fork: include OP mainnet (chain 10) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
   [10 as unknown as SupportedChainId]: getRpcUrl(10 as unknown as SupportedChainId),
   // Ophis fork: include Unichain (chain 130) which the SDK omits from ALL_SUPPORTED_CHAIN_IDS
+  [ARC_CHAIN_ID]: getRpcUrl(ARC_CHAIN_ID),
   [130 as unknown as SupportedChainId]: getRpcUrl(130 as unknown as SupportedChainId),
   // Ophis fork: include Robinhood Chain (4663).
   [4663 as unknown as SupportedChainId]: getRpcUrl(4663 as unknown as SupportedChainId),
@@ -156,6 +160,7 @@ export const RPC_URLS: Record<SupportedChainId, HttpsString> = {
 export const WALLET_RPC_URLS: Record<SupportedChainId, HttpsString> = {
   ...mapSupportedNetworks(getPublicRpcUrl),
   [10 as unknown as SupportedChainId]: getPublicRpcUrl(10 as unknown as SupportedChainId),
+  [ARC_CHAIN_ID]: getPublicRpcUrl(ARC_CHAIN_ID),
   [130 as unknown as SupportedChainId]: getPublicRpcUrl(130 as unknown as SupportedChainId),
   [4663 as unknown as SupportedChainId]: getPublicRpcUrl(4663 as unknown as SupportedChainId),
   [MONAD_CHAIN_ID as SupportedChainId]: getPublicRpcUrl(MONAD_CHAIN_ID as SupportedChainId),

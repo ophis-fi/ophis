@@ -37,12 +37,22 @@ pub enum Chain {
     // NOTE: unlike the OP-stack chains above, WETH is chain-specific
     // (0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73), NOT the 0x4200..0006 predeploy.
     Robinhood = 4663,
+    Arc = 5042,
 }
 
 impl Chain {
     /// Returns the chain's chain ID
     pub fn id(&self) -> u64 {
         *self as u64
+    }
+
+    /// Native gas atoms per atom of the ERC20 native-token interface.
+    pub fn native_token_unit_scale(&self) -> u64 {
+        if *self == Self::Arc {
+            1_000_000_000_000
+        } else {
+            1
+        }
     }
 
     /// Returns the canonical name of the chain on CoW Protocol.
@@ -71,6 +81,7 @@ impl Chain {
             Self::MantleTestnet => "Mantle / Sepolia",
             Self::MantleMainnet => "Mantle",
             Self::Robinhood => "Robinhood",
+            Self::Arc => "Arc",
         }
     }
 
@@ -95,6 +106,7 @@ impl Chain {
             // Robinhood: native gas is ETH, so the same 0.1 ETH probe as the
             // other ETH-native chains.
             | Self::Robinhood => U256::from(10u128.pow(17)),
+            Self::Arc => U256::from(1_000_000u64), // 1 USDC through its ERC20 interface
             Self::Gnosis | Self::Avalanche => U256::from(10u128.pow(18)),
             Self::Polygon | Self::Plasma => U256::from(10u128.pow(20)),
             Self::Hardhat => {
@@ -137,6 +149,7 @@ impl Chain {
             // from block counts rather than wall-clock gets proportionally tighter
             // here — see `blocks_in` callers before assuming a default is safe.
             Self::Robinhood => Duration::from_millis(100),
+            Self::Arc => Duration::from_millis(500),
         }
     }
 
@@ -175,6 +188,7 @@ impl TryFrom<u64> for Chain {
             x if x == Self::MantleTestnet as u64 => Self::MantleTestnet,
             x if x == Self::MantleMainnet as u64 => Self::MantleMainnet,
             x if x == Self::Robinhood as u64 => Self::Robinhood,
+            x if x == Self::Arc as u64 => Self::Arc,
             _ => Err(ChainIdNotSupported)?,
         };
         Ok(network)

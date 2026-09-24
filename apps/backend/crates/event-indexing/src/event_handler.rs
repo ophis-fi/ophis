@@ -7,9 +7,9 @@ use {
     alloy_provider::{DynProvider, Provider},
     alloy_rpc_types::{Filter, Log},
     alloy_sol_types::SolEventInterface,
-    anyhow::{Context, Result},
+    anyhow::{Context, Result, ensure},
     ethrpc::block_stream::BlockNumberHash,
-    futures::{Stream, StreamExt},
+    futures::{Stream, StreamExt, TryStreamExt},
     std::{pin::Pin, sync::Arc},
     tokio::sync::Mutex,
     tracing::{Instrument, instrument},
@@ -174,6 +174,33 @@ where
     fn address(&self) -> Vec<Address> {
         self.filter().address.iter().copied().collect()
     }
+
+    fn validate_finalized_event(
+        &self,
+        event: &Self::Event,
+        range: &RangeInclusive<u64>,
+    ) -> Result<()> {
+        validate_finalized_log(&event.1, range)
+    }
+}
+
+fn validate_finalized_log(log: &Log, range: &RangeInclusive<u64>) -> Result<()> {
+    let number = log
+        .block_number
+        .context("finalized log missing block number")?;
+    ensure!(
+        number >= *range.start() && number <= *range.end(),
+        "finalized log outside requested range"
+    );
+    ensure!(!log.removed, "finalized log was removed");
+    log.block_hash.context("finalized log missing block hash")?;
+    log.transaction_hash
+        .context("finalized log missing transaction hash")?;
+    let index = log.log_index.context("finalized log missing index")?;
+    // The settlement database stores these as signed 64-bit integers.
+    i64::try_from(number).context("finalized log block number exceeds storage range")?;
+    i64::try_from(index).context("finalized log index exceeds storage range")?;
+    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -188,6 +215,12 @@ pub trait EventRetrieving {
     ) -> Result<EventStream<Self::Event>>;
 
     fn address(&self) -> Vec<Address>;
+
+    /// Finalized indexing cannot revisit skipped events. Validate metadata before
+    /// handing logs to stores that may otherwise filter malformed entries out.
+    fn validate_finalized_event(&self, _: &Self::Event, _: &RangeInclusive<u64>) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -399,6 +432,63 @@ where
                 .await?;
         }
         Ok(())
+    }
+
+    /// Range indexing for chains with deterministic finality, such as Arc.
+    /// Never enable this for a chain where the current head can reorganize.
+    /// Retain checkpoint checks to fail closed on inconsistent RPC views.
+    pub async fn update_events_deterministic(&mut self) -> Result<()> {
+        let mut last = match self.last_handled_blocks.last() {
+            Some(last) => *last,
+            None => {
+                let number = self.store.last_event_block().await?;
+                self.block_retriever.block(number).await?
+            }
+        };
+        let head = self.block_retriever.current_block().await?;
+        ensure!(head.number >= last.0, "finalized head regressed");
+        if head.number == last.0 {
+            ensure!(head.hash == last.1, "finalized checkpoint changed");
+            return Ok(());
+        }
+        ensure!(
+            self.block_retriever.block(last.0).await? == last,
+            "finalized checkpoint changed"
+        );
+        // Process up to four 100-block log ranges per maintenance tick. This
+        // catches up faster than Arc produces blocks while bounding free RPC
+        // reads (at most 15 calls here), leaving capacity for live settlement.
+        for _ in 0..4 {
+            let end = head.number.min(last.0.saturating_add(100));
+            let checkpoint = if end == head.number {
+                (end, head.hash)
+            } else {
+                self.block_retriever.block(end).await?
+            };
+            let range = RangeInclusive::try_new(last.0 + 1, end)?;
+            let events = self
+                .contract
+                .get_events_by_block_range(&range)
+                .await?
+                .try_collect::<Vec<_>>()
+                .await?;
+            ensure!(
+                self.block_retriever.block(end).await? == checkpoint,
+                "finalized range changed while fetching events"
+            );
+            for event in &events {
+                self.contract.validate_finalized_event(event, &range)?;
+            }
+            // Do not advance either cursor on a fetch/write error; appends are replayable.
+            self.store.append_events(events).await?;
+            self.store.persist_last_indexed_block(end).await?;
+            self.last_handled_blocks = vec![checkpoint];
+            last = checkpoint;
+            if end == head.number {
+                return Ok(());
+            }
+        }
+        anyhow::bail!("finalized event catch-up incomplete");
     }
 
     #[instrument(skip_all)]
@@ -1064,5 +1154,243 @@ mod tests {
         assert!(!nonempty_all_events.contains(&first_event))
         // However, some events slightly older than last_event's block might be
         // there because of reorg protection.
+    }
+}
+
+#[cfg(test)]
+mod deterministic_tests {
+    use super::*;
+    use ethrpc::block_stream::BlockInfo;
+    use mockall::mock;
+
+    mock! {
+        #[derive(Debug)]
+        Blocks {}
+        #[async_trait::async_trait]
+        impl BlockRetrieving for Blocks {
+            async fn current_block(&self) -> Result<BlockInfo>;
+            async fn block(&self, number: u64) -> Result<BlockNumberHash>;
+            async fn blocks(&self, range: RangeInclusive<u64>) -> Result<Vec<BlockNumberHash>>;
+        }
+    }
+    mock! {
+        Contract {}
+        #[async_trait::async_trait]
+        impl EventRetrieving for Contract {
+            type Event = u64;
+            async fn get_events_by_block_hash(&self, hash: B256) -> Result<Vec<u64>>;
+            async fn get_events_by_block_range(&self, range: &RangeInclusive<u64>) -> Result<EventStream<u64>>;
+            fn address(&self) -> Vec<Address>;
+            fn validate_finalized_event(&self, event: &u64, range: &RangeInclusive<u64>) -> Result<()>;
+        }
+    }
+    #[derive(Default)]
+    struct Store {
+        events: Vec<u64>,
+        cursor: u64,
+        failure: &'static str,
+    }
+    #[async_trait::async_trait]
+    impl EventStoring<u64> for Store {
+        async fn replace_events(&mut self, _: Vec<u64>, _: RangeInclusive<u64>) -> Result<()> {
+            panic!("finalized history must not be replaced")
+        }
+        async fn append_events(&mut self, events: Vec<u64>) -> Result<()> {
+            ensure!(self.failure != "append", "write unavailable");
+            // Match the real store's ON CONFLICT DO NOTHING replay behavior.
+            for event in events {
+                if !self.events.contains(&event) {
+                    self.events.push(event);
+                }
+            }
+            Ok(())
+        }
+        async fn last_event_block(&self) -> Result<u64> {
+            Ok(self.cursor)
+        }
+        async fn persist_last_indexed_block(&mut self, last: u64) -> Result<()> {
+            ensure!(self.failure != "persist", "checkpoint write unavailable");
+            self.cursor = last;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn finalized_log_metadata_is_required() {
+        let valid = Log {
+            block_number: Some(2),
+            block_hash: Some(B256::repeat_byte(1)),
+            transaction_hash: Some(B256::repeat_byte(2)),
+            log_index: Some(0),
+            ..Default::default()
+        };
+        let range = RangeInclusive::try_new(2, 101).unwrap();
+        assert!(validate_finalized_log(&valid, &range).is_ok());
+        for malformed in [
+            Log {
+                block_number: None,
+                ..valid.clone()
+            },
+            Log {
+                block_hash: None,
+                ..valid.clone()
+            },
+            Log {
+                transaction_hash: None,
+                ..valid.clone()
+            },
+            Log {
+                log_index: None,
+                ..valid.clone()
+            },
+            Log {
+                block_number: Some(1),
+                ..valid.clone()
+            },
+            Log {
+                block_number: Some(102),
+                ..valid.clone()
+            },
+            Log {
+                log_index: Some(u64::MAX),
+                ..valid.clone()
+            },
+            Log {
+                removed: true,
+                ..valid
+            },
+        ] {
+            assert!(validate_finalized_log(&malformed, &range).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn bounded_range_and_fail_closed_checkpoint() {
+        // No per-block range/hash requests are configured: such a regression fails.
+        for failure in [
+            "none",
+            "empty",
+            "logs",
+            "checkpoint",
+            "end",
+            "regression",
+            "catchup",
+            "caughtup",
+            "metadata",
+            "append",
+            "persist",
+        ] {
+            let mut blocks = MockBlocks::new();
+            blocks.expect_current_block().returning(move || {
+                Ok(BlockInfo {
+                    number: match failure {
+                        "regression" => 0,
+                        "catchup" => 1000,
+                        "caughtup" => 200,
+                        _ => 101,
+                    },
+                    hash: B256::repeat_byte(2),
+                    ..Default::default()
+                })
+            });
+            let mut calls = 0;
+            blocks.expect_block().returning(move |number| {
+                calls += 1;
+                let byte = if failure == "end" && calls == 2 {
+                    3
+                } else if number == 1 {
+                    if failure == "checkpoint" { 0 } else { 1 }
+                } else {
+                    2
+                };
+                Ok((number, B256::repeat_byte(byte)))
+            });
+            let mut contract = MockContract::new();
+            contract
+                .expect_validate_finalized_event()
+                .returning(move |_, _| {
+                    if failure == "metadata" {
+                        let malformed = Log {
+                            block_number: Some(2),
+                            block_hash: Some(B256::repeat_byte(2)),
+                            log_index: Some(0),
+                            // A decodable event without transaction_hash must fail closed.
+                            ..Default::default()
+                        };
+                        validate_finalized_log(&malformed, &RangeInclusive::try_new(2, 101)?)?;
+                    }
+                    Ok(())
+                });
+            contract
+                .expect_get_events_by_block_range()
+                .returning(move |range| {
+                    if matches!(failure, "catchup" | "caughtup") {
+                        assert!(*range.end() - *range.start() < 100);
+                    } else {
+                        assert_eq!(range.clone().into_inner(), (2, 101));
+                    }
+                    let events = match failure {
+                        "logs" => vec![Err(anyhow::anyhow!("unavailable"))],
+                        "empty" => vec![],
+                        _ => vec![Ok(42)],
+                    };
+                    Ok(Box::pin(futures::stream::iter(events)))
+                });
+            let mut handler = EventHandler::new(
+                Arc::new(blocks),
+                contract,
+                Store {
+                    cursor: 1,
+                    failure,
+                    ..Default::default()
+                },
+                Some((1, B256::repeat_byte(1))),
+            );
+            let result = handler.update_events_deterministic().await;
+            if matches!(failure, "none" | "empty" | "catchup" | "caughtup") {
+                assert_eq!(result.is_err(), failure == "catchup");
+                let expected = match failure {
+                    "catchup" => 401,
+                    "caughtup" => 200,
+                    _ => 101,
+                };
+                assert_eq!(handler.store.cursor, expected);
+                assert_eq!(
+                    handler.store.events,
+                    if failure == "empty" { vec![] } else { vec![42] }
+                );
+                assert_eq!(
+                    handler.last_handled_blocks,
+                    vec![(expected, B256::repeat_byte(2))]
+                );
+            } else {
+                assert!(result.is_err(), "{failure}");
+                assert_eq!(handler.store.cursor, 1);
+                assert_eq!(
+                    handler.store.events,
+                    if failure == "persist" {
+                        vec![42]
+                    } else {
+                        vec![]
+                    }
+                );
+                assert_eq!(handler.last_handled_blocks, vec![(1, B256::repeat_byte(1))]);
+            }
+            if matches!(failure, "append" | "persist" | "none") {
+                handler.store.failure = "";
+                // Recreate from persisted height, including the crash window after
+                // event append but before checkpoint persistence. Replays are safe.
+                let EventHandler {
+                    block_retriever,
+                    contract,
+                    store,
+                    ..
+                } = handler;
+                let mut restarted = EventHandler::new(block_retriever, contract, store, None);
+                restarted.update_events_deterministic().await.unwrap();
+                assert_eq!(restarted.store.cursor, 101);
+                assert_eq!(restarted.store.events, vec![42]);
+            }
+        }
     }
 }

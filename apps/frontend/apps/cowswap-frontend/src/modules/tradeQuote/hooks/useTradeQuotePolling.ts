@@ -83,7 +83,7 @@ export function useTradeQuotePolling(quotePollingParams: TradeQuotePollingParame
     if (pollQuoteRef.current(true)) {
       resetQuoteCounter()
     }
-  }, [isConfirmOpen, isQuoteUpdatePossible, quoteParams, resetQuoteCounter])
+  }, [isConfirmOpen, isQuoteUpdatePossible, quoteParams, resetQuoteCounter, isWindowVisible, isOnline])
 
   /**
    * Update quote once a QUOTE_POLLING_INTERVAL

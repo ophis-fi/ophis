@@ -89,6 +89,8 @@ const DEFAULT_GAS_UNITS: u64 = 1_500_000;
 /// `config/networks.json` for the chain-id mapping). Authenticate there first;
 /// treat on-chain and API evidence as corroboration.
 const LIFI_ROUTER_ALLOWLIST: &[Address] = &[
+    // Authenticated against lifinance/contracts deployments/arc.json, 2026-09-22.
+    alloy::primitives::address!("A4072583658Fae592A3506A42431cb6316a8d40b"),
     // LiFiDiamond on Unichain (130).
     // EIP-55: 0x864b314D4C5a0399368609581d3E8933a63b9232 (raw bytes lowercased).
     Address::new([

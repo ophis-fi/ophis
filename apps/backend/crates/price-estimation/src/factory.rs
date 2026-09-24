@@ -197,6 +197,14 @@ impl<'a> PriceEstimatorFactory<'a> {
         source: &NativePriceEstimatorSource,
         weth: &WETH9::Instance,
     ) -> Result<(String, Arc<dyn NativePriceEstimating>)> {
+        if self.network.chain == chain::Chain::Arc
+            && !matches!(
+                source,
+                NativePriceEstimatorSource::Driver(_) | NativePriceEstimatorSource::Forwarder { .. }
+            )
+        {
+            anyhow::bail!("Arc requires Driver native pricing or an already normalized Forwarder");
+        }
         match source {
             NativePriceEstimatorSource::Forwarder { url } => {
                 let name = format!("Forwarder|{}", url);
@@ -219,6 +227,7 @@ impl<'a> PriceEstimatorFactory<'a> {
                             Arc::new(self.sanitized_native_price(estimator)),
                             self.network.native_token,
                             native_token_price_estimation_amount,
+                            self.network.chain.native_token_unit_scale(),
                         ),
                         driver.name.to_string(),
                     )),

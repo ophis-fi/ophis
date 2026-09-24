@@ -1,3 +1,4 @@
+import { ARC_CHAIN_ID, ARC_ENABLED, ARC_ORDERBOOK_URL } from '@cowprotocol/common-const'
 import { ApiBaseUrls, MetadataApi, OrderBookApi, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { SubgraphApi } from '@cowprotocol/sdk-subgraph'
 
@@ -12,6 +13,7 @@ const OPHIS_UNICHAIN_ORDERBOOK_URL = 'https://unichain-mainnet.ophis.fi'
 const OPHIS_ROBINHOOD_ORDERBOOK_URL = 'https://robinhood-mainnet.ophis.fi'
 
 const OPHIS_ORDERBOOK_BASE_URLS = {
+  ...(ARC_ENABLED ? { [ARC_CHAIN_ID]: ARC_ORDERBOOK_URL } : {}),
   [SupportedChainId.MAINNET]: `${PROD_BASE_URL}/mainnet`,
   [SupportedChainId.GNOSIS_CHAIN]: `${PROD_BASE_URL}/xdai`,
   [SupportedChainId.ARBITRUM_ONE]: `${PROD_BASE_URL}/arbitrum_one`,

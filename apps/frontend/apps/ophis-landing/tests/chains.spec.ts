@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 const EXPECTED_CHAINS = [
   'Ethereum', 'BNB', 'Base', 'Arbitrum', 'Polygon', 'Avalanche',
-  'Linea', 'Plasma', 'Ink', 'Gnosis', 'Optimism', 'Unichain', 'Robinhood',
+  'Linea', 'Plasma', 'Ink', 'Gnosis', 'Optimism', 'Unichain', 'Robinhood', 'Arc',
   'Solana', 'Bitcoin', 'Monad', 'Hyperliquid', 'X Layer', 'Sui', 'Tron',
 ]
 
@@ -50,7 +50,7 @@ test('FAQ and machine-readable summaries match the supported destinations', asyn
   const schemas = (await page.locator('script[type="application/ld+json"]').allTextContents()).map((text) => JSON.parse(text))
   const software = schemas.find((schema) => schema['@type'] === 'SoftwareApplication')
   const llms = await (await page.request.get('/llms.txt')).text()
-  for (const name of EXPECTED_CHAINS.slice(13)) {
+  for (const name of EXPECTED_CHAINS.slice(14)) {
     await expect(faq).toContainText(name)
     expect(software.description).toContain(name)
     expect(llms).toContain(name)

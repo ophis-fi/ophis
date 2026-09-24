@@ -6,17 +6,18 @@ import {
   ophisAcrossApiOptions,
   registerOphisNearIntentsNetworks,
 } from '@cowprotocol/common-const'
-import { OrderBookApi, setGlobalAdapter, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { setGlobalAdapter, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { AcrossBridgeProvider, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 import { EthersV5Adapter } from '@cowprotocol/sdk-ethers-v5-adapter'
 
+import { orderBookSDK } from '../cowSdk'
 import { useNetworkId } from '../state/network'
 
 export const cowSdkAdapter = new EthersV5Adapter({
   provider: getRpcProvider(SupportedChainId.MAINNET)!,
 })
 
-export const orderBookApi = new OrderBookApi()
+export const orderBookApi = orderBookSDK
 
 // Same NEAR destination registration as the swap app, so historical orders to
 // Monad / X Layer resolve their network and tokens here too.

@@ -1,0 +1,31 @@
+name: ophis-arc-rpc
+services:
+  rpc-proxy:
+    image: ghcr.io/erpc/erpc:0.2.0@sha256:c6a22d3290cc54bef0dd0b915d779c5218d049563151c267e5c69c9adc644d5c
+    restart: "no"
+    mem_limit: 256m
+    depends_on:
+      - credit-gate
+    volumes:
+      - ./erpc.yaml:/erpc.yaml:ro
+    ports:
+      - "127.0.0.1:4004:4000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+  credit-gate:
+    image: python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f
+    restart: "no"
+    mem_limit: 64m
+    environment:
+      ARC_QUICKNODE_RPC_URL: ${ARC_QUICKNODE_RPC_URL:?set the private endpoint in .env}
+      ARC_QUICKNODE_CREDIT_ALLOWANCE: ${ARC_QUICKNODE_CREDIT_ALLOWANCE:?reserve remaining credits explicitly}
+    command: [python, /app/credit_gate.py]
+    volumes:
+      - ./credit_gate.py:/app/credit_gate.py:ro
+      - credits:/data
+volumes:
+  credits:
+    name: ophis-arc-quicknode-credits

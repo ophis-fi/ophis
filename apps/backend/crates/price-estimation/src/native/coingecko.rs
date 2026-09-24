@@ -97,7 +97,8 @@ impl CoinGecko {
             // see, so CoinGecko is the fallback. This was an OPEN GATE in the stack
             // config ("a brand-new chain usually is NOT listed") — it is listed now.
             Chain::Robinhood => "robinhood".to_string(),
-            Chain::Sepolia
+            Chain::Arc
+            | Chain::Sepolia
             | Chain::Goerli
             | Chain::Hardhat
             | Chain::OptimismSepolia

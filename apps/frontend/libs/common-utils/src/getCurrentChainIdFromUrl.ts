@@ -1,5 +1,7 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
+import { isSupportedChainId } from './isSupportedChainId'
+
 /**
  * Maps chain names used in URL query parameters to SupportedChainId
  * Those networks are the ones that existed before we started using chain IDs in the URL
@@ -21,8 +23,7 @@ export function getRawCurrentChainIdFromUrl(location = window.location): Support
   // Ophis fork: chains 10 (Optimism), 130 (Unichain), and 4663 (Robinhood)
   // are supported at frontend
   // layer even though the SDK enum doesn't include them as primary SupportedChainId.
-  if (chainId && (chainId in SupportedChainId || chainId === 10 || chainId === 130 || chainId === 4663))
-    return chainId as SupportedChainId
+  if (isSupportedChainId(chainId)) return chainId as SupportedChainId
 
   return null
 }

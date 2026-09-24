@@ -88,6 +88,7 @@ pub enum Dex {
     Enso,
     Bitget,
     UniswapV4,
+    UniswapV3,
     Woofi,
     Ekubo,
     Up33,
@@ -95,6 +96,8 @@ pub enum Dex {
     PancakeSwap,
     Ramses,
     Fables,
+    Synthra,
+    AchSwap,
 }
 
 impl Dex {
@@ -112,6 +115,7 @@ impl Dex {
             Dex::Enso => "enso",
             Dex::Bitget => "bitget",
             Dex::UniswapV4 => "uniswap-v4",
+            Dex::UniswapV3 => "uniswap-v3",
             Dex::Woofi => "woofi",
             Dex::Ekubo => "ekubo",
             Dex::Up33 => "up33",
@@ -119,6 +123,8 @@ impl Dex {
             Dex::PancakeSwap => "pancakeswap",
             Dex::Ramses => "ramses",
             Dex::Fables => "fables",
+            Dex::Synthra => "synthra",
+            Dex::AchSwap => "achswap",
         }
     }
 }

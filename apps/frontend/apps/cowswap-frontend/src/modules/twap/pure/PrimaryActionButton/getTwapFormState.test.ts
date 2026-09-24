@@ -1,4 +1,4 @@
-import { COW_TOKEN_TO_CHAIN, WETH_SEPOLIA } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, COW_TOKEN_TO_CHAIN, WETH_SEPOLIA } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount } from '@cowprotocol/currency'
 
@@ -25,6 +25,21 @@ const twapOrder: TWAPOrder = {
 }
 
 describe('getTwapFormState()', () => {
+  it.each([10, 130, 4663, ARC_CHAIN_ID])('blocks unsupported chain %s before wallet checks complete', (chainId) => {
+    expect(
+      getTwapFormState({
+        chainId: chainId as SupportedChainId,
+        isTxBundlingSupported: null,
+        verification: null,
+        twapOrder: null,
+        sellAmountPartFiat: null,
+        partTime: undefined,
+        numberOfPartsValue: 1,
+        tradeFormValidationContext: null,
+      }),
+    ).toBe(TwapFormState.UNSUPPORTED_CHAIN)
+  })
+
   describe('When sell fiat amount is under threshold', () => {
     it('And order has buy amount, then should return SELL_AMOUNT_TOO_SMALL', () => {
       const result = getTwapFormState({

@@ -2,8 +2,7 @@ import { useSetAtom } from 'jotai'
 import { useEffect, useMemo, useState } from 'react'
 
 import { LAUNCH_DARKLY_VIEM_MIGRATION } from '@cowprotocol/common-const'
-import { getCurrentChainIdFromUrl } from '@cowprotocol/common-utils'
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { getCurrentChainIdFromUrl, isSupportedChainId } from '@cowprotocol/common-utils'
 import { useENSName } from '@cowprotocol/ens'
 import { useSafeAppsSDK } from '@safe-global/safe-apps-react-sdk'
 
@@ -20,15 +19,7 @@ import { getWalletTypeLabel } from '../api/utils/getWalletTypeLabel'
 
 function useWalletInfo(): WalletInfo {
   const { address, chainId, isConnected } = useConnection()
-  // Ophis fork: chain 10 (OP Mainnet) is supported at the frontend layer
-  // even though the SDK enum doesn't include it. Without this, switching
-  // the wallet to OP is treated as "unsupported" and silently falls back
-  // to MAINNET. Chains 4326 (MegaETH) and 999 (HyperEVM) were removed
-  // from the FE list in PR #167 (2026-05-21); leaving them in this
-  // whitelist would let wagmi attempt to route to chains that aren't in
-  // SUPPORTED_CHAINS and re-trigger the P0 crash (see wagmi/config.ts).
-  const isChainIdUnsupported =
-    !!chainId && !(chainId in SupportedChainId) && chainId !== 10 && chainId !== 130 && chainId !== 4663
+  const isChainIdUnsupported = !isSupportedChainId(chainId)
 
   return useMemo(
     () => ({

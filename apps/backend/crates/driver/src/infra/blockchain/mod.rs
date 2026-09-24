@@ -124,7 +124,14 @@ impl Ethereum {
         )
         .await
         .expect("could not initialize important smart contracts after retries");
-        let balance_overrider = Arc::new(BalanceOverrides::new(web3.clone()));
+        let mut balance_overrider = BalanceOverrides::new(web3.clone());
+        if chain == Chain::Arc {
+            balance_overrider.hardcoded.insert(
+                alloy::primitives::address!("3600000000000000000000000000000000000000"),
+                configs::balance_overrides::Strategy::ArcUsdc,
+            );
+        }
+        let balance_overrider = Arc::new(balance_overrider);
         let balance_simulator = BalanceSimulator::new(
             contracts.settlement().clone(),
             contracts.balance_helper().clone(),

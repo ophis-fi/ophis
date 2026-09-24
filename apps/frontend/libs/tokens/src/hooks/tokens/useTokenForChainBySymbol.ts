@@ -2,6 +2,8 @@ import { useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 
 import {
+  ARC_CHAIN_ID,
+  ARC_USDC,
   NATIVE_CURRENCIES,
   NATIVE_CURRENCY_ADDRESS,
   TokenWithLogo,
@@ -89,7 +91,7 @@ export function tokenBySymbolMap(
     addTokenBySymbol(bySymbol, token)
   }
   addTokenBySymbol(bySymbol, wrapped)
-  addTokenBySymbol(bySymbol, native, true)
+  addTokenBySymbol(bySymbol, native?.chainId === ARC_CHAIN_ID ? ARC_USDC : native, true)
 
   return bySymbol
 }

@@ -234,6 +234,7 @@ impl Order {
         .await
         .map_err(|err| match err {
             auction::Error::Blockchain(e) => e.into(),
+            auction::Error::NativeArcOrder => QuotingFailed::UnsupportedToken.into(),
         })
     }
 

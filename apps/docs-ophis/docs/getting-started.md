@@ -88,7 +88,7 @@ still use the [Intent API](./intent-api.md) for natural-language requests.
 Your signed order is broadcast to a batch auction. Solvers race to find
 the best path, an on-chain DEX, a peer-to-peer match against another
 order in the same batch, or a cross-chain route, and bid for the right
-to settle it. On Optimism, Unichain, and Robinhood Chain, Ophis currently operates the solver itself,
+to settle it. On Optimism, Unichain, Robinhood Chain, and Arc, Ophis currently operates the solver itself,
 competing across several routing strategies, see [How it works](./architecture.md).
 
 ### 3 · Settle, on-chain, MEV-protected
@@ -103,11 +103,15 @@ For the full lifecycle, see [How it works](./architecture.md).
 
 ## Supported networks
 
-Ophis surfaces **13 EVM chains** as full source _and_ destination in the
+Ophis surfaces **14 EVM chains** as full source _and_ destination in the
 network selector: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart
-Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, and Unichain
+Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc
 (plus the Sepolia testnet). On any of these you can both pay from and receive into
 your EVM wallet.
+
+Arc is available in the swap app (chain ID 5042). Its native gas currency is USDC;
+direct USDC transfers to and from Arc use the app’s CCTP bridge. The published
+SDK and MCP chain lists do not yet include Arc.
 
 |          |                 |                 |
 | -------- | --------------- | --------------- |
@@ -115,7 +119,7 @@ your EVM wallet.
 | Base     | BNB Smart Chain | Gnosis Chain    |
 | Ink      | Linea           | Optimism        |
 | Plasma   | Polygon         | Robinhood Chain |
-| Unichain |                 |                 |
+| Unichain | Arc             |                 |
 
 In addition, **Solana** and **Bitcoin** are available as cross-chain
 _destinations only_ via [NEAR Intents](https://near.org/intents): trade

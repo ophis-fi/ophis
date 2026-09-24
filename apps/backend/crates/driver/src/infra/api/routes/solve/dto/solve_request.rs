@@ -204,6 +204,7 @@ impl From<auction::Error> for Error {
     fn from(value: auction::Error) -> Self {
         match value {
             auction::Error::Blockchain(err) => Self::Blockchain(err),
+            auction::Error::NativeArcOrder => Self::InvalidTokens,
         }
     }
 }

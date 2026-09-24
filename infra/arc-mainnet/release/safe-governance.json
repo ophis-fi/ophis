@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "chainId": "5042",
+  "createdAt": 1790242109907,
+  "meta": {
+    "name": "Arc governance: add Ledger owner and require 2-of-3",
+    "description": "One Safe self-call adds the existing Ledger owner and atomically raises the threshold from 1 to 2. Review current owners before signing.",
+    "createdFromSafeAddress": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8"
+  },
+  "transactions": [
+    {
+      "to": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8",
+      "value": "0",
+      "data": "0x0d582f13000000000000000000000000bec5b03ffdcac50071693e87bfdb88baa67101990000000000000000000000000000000000000000000000000000000000000002",
+      "contractMethod": null,
+      "contractInputsValues": null
+    }
+  ]
+}

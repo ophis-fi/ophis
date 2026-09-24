@@ -99,6 +99,13 @@ const UNICHAIN_SETTLEMENT: Address = address!("108A678716e5E1776036eF044CAB70642
 const LEAF_SWAP_EXACT_TOKENS_SELECTOR: [u8; 4] = [0xf4, 0x17, 0x66, 0xd8];
 const ROBINHOOD_EKUBO_VE33: Address = address!("D18685a514E59b06d59824e16Db07e73345d9953");
 
+// First-party Arc deployment references, 2026-09-22: Synthra contract-addresses
+// and AchSwap technical/contract-addresses; Uniswap developers deployment feed.
+// Never learned from quote responses.
+const ARC_SYNTHRA_ROUTER: Address = address!("a50eDe66a573eE5bB37E28AF5789B76aE5FEb828");
+const ARC_ACHSWAP_ROUTER: Address = address!("EA0129203FBB99ebEea3f78B2d05b924f17FB556");
+const ARC_UNISWAP_V3_ROUTER: Address = address!("53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77");
+
 #[derive(Clone, Copy, Debug)]
 pub struct RequiredAmounts {
     pub sell_token: Address,
@@ -162,6 +169,16 @@ const ALLOWLIST: &[(u64, &[Address])] = &[
     (10, OPTIMISM_MAINNET),
     (130, UNICHAIN_MAINNET),
     (4663, ROBINHOOD_MAINNET),
+    (
+        5042,
+        &[
+            // LI.FI canonical deployments/arc.json (chain 5042).
+            address!("A4072583658Fae592A3506A42431cb6316a8d40b"),
+            // KyberSwap's explicit Arc entry (2026-09-22):
+            // https://docs.kyberswap.com/developer-guide/aggregator-api/contracts
+            address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5"),
+        ],
+    ),
 ];
 
 /// Optimism mainnet (chain 10). Verified against upstream docs.
@@ -370,6 +387,9 @@ impl Error {
 /// violation — callers should log + emit `custom_interaction_rejected`
 /// metric + propagate to the solver as a parse error.
 pub(crate) const PROTECTED_TARGETS: &[Address] = &[
+    ARC_UNISWAP_V3_ROUTER,
+    ARC_SYNTHRA_ROUTER,
+    ARC_ACHSWAP_ROUTER,
     ETHEREUM_FXUSD,
     OPTIMISM_CURVE_3POOL,
     OPTIMISM_WOOFI_ROUTER,
@@ -394,6 +414,16 @@ pub fn validate_with_required_output(
     custom: &interaction::Custom,
     chain_id: u64,
     required_amounts: Option<RequiredAmounts>,
+) -> Result<(), Error> {
+    validate_with_settlement(custom, chain_id, required_amounts, None)
+}
+
+/// The settlement comes from the driver's contracts, never from solver JSON.
+pub fn validate_with_settlement(
+    custom: &interaction::Custom,
+    chain_id: u64,
+    required_amounts: Option<RequiredAmounts>,
+    settlement: Option<Address>,
 ) -> Result<(), Error> {
     // Ethereum's native f(x) lane is intentionally NOT added to the generic
     // address-only router allowlist. fxUSD is an ERC-20 proxy, so allowing the
@@ -515,8 +545,10 @@ pub fn validate_with_required_output(
     if (chain_id == 4663
         && [ROBINHOOD_PANCAKESWAP_V3_ROUTER, ROBINHOOD_RAMSES_V3_ROUTER].contains(&target))
         || (chain_id == 10 && target == OPTIMISM_SLIPSTREAM_ROUTER)
+        || (chain_id == 5042
+            && [ARC_UNISWAP_V3_ROUTER, ARC_SYNTHRA_ROUTER, ARC_ACHSWAP_ROUTER].contains(&target))
     {
-        return validate_direct_v3_swap(custom, required_amounts, chain_id);
+        return validate_direct_v3_swap(custom, required_amounts, chain_id, settlement);
     }
     let allowlist = chain_allowlist(chain_id)?;
 
@@ -660,11 +692,18 @@ fn validate_direct_v3_swap(
     custom: &interaction::Custom,
     required: Option<RequiredAmounts>,
     chain_id: u64,
+    configured_settlement: Option<Address>,
 ) -> Result<(), Error> {
     let target = Address::from(custom.target);
     let reject = || Error::CallDataNotAllowed { target, chain_id };
-    let cl = target != ROBINHOOD_PANCAKESWAP_V3_ROUTER;
-    let settlement = if chain_id == 10 {
+    let cl = [ROBINHOOD_RAMSES_V3_ROUTER, OPTIMISM_SLIPSTREAM_ROUTER].contains(&target);
+    let legacy = target == ARC_ACHSWAP_ROUTER;
+    let deadline = cl || legacy;
+    let settlement = if chain_id == 5042 {
+        configured_settlement
+            .filter(|address| !address.is_zero())
+            .ok_or_else(reject)?
+    } else if chain_id == 10 {
         OPTIMISM_SETTLEMENT
     } else {
         ROBINHOOD_SETTLEMENT
@@ -672,10 +711,12 @@ fn validate_direct_v3_swap(
     let data = custom.call_data.as_ref();
     let selector = if cl {
         [0xa0, 0x26, 0x38, 0x3e]
+    } else if legacy {
+        [0x41, 0x4b, 0xf3, 0x89]
     } else {
         [0x04, 0xe4, 0x5a, 0xaf]
     };
-    if data.len() != 4 + 32 * if cl { 8 } else { 7 } || data[..4] != selector {
+    if data.len() != 4 + 32 * if deadline { 8 } else { 7 } || data[..4] != selector {
         return Err(reject());
     }
     let word = |i: usize| U256::from_be_slice(&data[4 + i * 32..4 + (i + 1) * 32]);
@@ -685,7 +726,7 @@ fn validate_direct_v3_swap(
             return Err(reject());
         }
     }
-    let amount_index = if cl { 5 } else { 4 };
+    let amount_index = if deadline { 5 } else { 4 };
     let Some(required) = required else {
         return Err(reject());
     };
@@ -694,7 +735,7 @@ fn validate_direct_v3_swap(
         || address(3) != settlement
         || word(2).is_zero()
         || word(2) > U256::from(if cl { 32_767 } else { 999_999 })
-        || (cl && word(4) != U256::MAX)
+        || (deadline && word(4) != U256::MAX)
         || !word(amount_index + 2).is_zero()
         || !validate_common_direct_swap(
             custom,
@@ -1361,20 +1402,56 @@ mod tests {
 
     #[test]
     fn direct_v3_guards_bind_calldata_to_fulfillment() {
-        for (chain, target, settlement, cl) in [
+        for (chain, target, settlement, cl, legacy) in [
             (
                 4663,
                 ROBINHOOD_PANCAKESWAP_V3_ROUTER,
                 ROBINHOOD_SETTLEMENT,
                 false,
+                false,
             ),
-            (4663, ROBINHOOD_RAMSES_V3_ROUTER, ROBINHOOD_SETTLEMENT, true),
-            (10, OPTIMISM_SLIPSTREAM_ROUTER, OPTIMISM_SETTLEMENT, true),
+            (
+                4663,
+                ROBINHOOD_RAMSES_V3_ROUTER,
+                ROBINHOOD_SETTLEMENT,
+                true,
+                false,
+            ),
+            (
+                10,
+                OPTIMISM_SLIPSTREAM_ROUTER,
+                OPTIMISM_SETTLEMENT,
+                true,
+                false,
+            ),
+            (
+                5042,
+                ARC_UNISWAP_V3_ROUTER,
+                Address::repeat_byte(0x42),
+                false,
+                false,
+            ),
+            (
+                5042,
+                ARC_SYNTHRA_ROUTER,
+                Address::repeat_byte(0x42),
+                false,
+                false,
+            ),
+            (
+                5042,
+                ARC_ACHSWAP_ROUTER,
+                Address::repeat_byte(0x42),
+                false,
+                true,
+            ),
         ] {
             let sell = Address::repeat_byte(1);
             let buy = Address::repeat_byte(2);
             let mut data = if cl {
                 vec![0xa0, 0x26, 0x38, 0x3e]
+            } else if legacy {
+                vec![0x41, 0x4b, 0xf3, 0x89]
             } else {
                 vec![0x04, 0xe4, 0x5a, 0xaf]
             };
@@ -1384,7 +1461,7 @@ mod tests {
                 U256::from(10),
                 U256::from_be_slice(settlement.as_slice()),
             ];
-            if cl {
+            if cl || legacy {
                 words.push(U256::MAX);
             }
             words.extend([U256::from(1000), U256::from(990), U256::ZERO]);
@@ -1394,10 +1471,25 @@ mod tests {
             let custom = direct_custom(target, sell, buy, 1000, 990, data);
             let amounts = Some(required(sell, buy, 1000, 990));
             assert_eq!(
-                validate_with_required_output(&custom, chain, amounts),
+                validate_with_settlement(&custom, chain, amounts, Some(settlement)),
                 Ok(())
             );
-            assert!(validate_with_required_output(&custom, chain, None).is_err());
+            assert!(validate_with_settlement(&custom, chain, None, Some(settlement)).is_err());
+            if chain == 5042 {
+                assert!(validate_with_required_output(&custom, chain, amounts).is_err());
+                assert!(
+                    validate_with_settlement(&custom, chain, amounts, Some(Address::ZERO)).is_err()
+                );
+                assert!(
+                    validate_with_settlement(
+                        &custom,
+                        chain,
+                        amounts,
+                        Some(Address::repeat_byte(8))
+                    )
+                    .is_err()
+                );
+            }
             assert!(
                 validate_target(target, chain).is_err(),
                 "no raw pre/post bypass"
@@ -1407,18 +1499,30 @@ mod tests {
                 let mut bytes = poisoned.call_data.to_vec();
                 bytes[index] ^= 1;
                 poisoned.call_data = bytes.into();
-                assert!(validate_with_required_output(&poisoned, chain, amounts).is_err());
+                assert!(
+                    validate_with_settlement(&poisoned, chain, amounts, Some(settlement)).is_err()
+                );
             }
             let mut poisoned = custom.clone();
             poisoned.internalize = true;
-            assert!(validate_with_required_output(&poisoned, chain, amounts).is_err());
+            assert!(validate_with_settlement(&poisoned, chain, amounts, Some(settlement)).is_err());
             assert!(
-                validate_with_required_output(&custom, chain, Some(required(sell, buy, 999, 990)))
-                    .is_err()
+                validate_with_settlement(
+                    &custom,
+                    chain,
+                    Some(required(sell, buy, 999, 990)),
+                    Some(settlement)
+                )
+                .is_err()
             );
             assert!(
-                validate_with_required_output(&custom, chain, Some(required(sell, buy, 1000, 991)))
-                    .is_err()
+                validate_with_settlement(
+                    &custom,
+                    chain,
+                    Some(required(sell, buy, 1000, 991)),
+                    Some(settlement)
+                )
+                .is_err()
             );
         }
     }

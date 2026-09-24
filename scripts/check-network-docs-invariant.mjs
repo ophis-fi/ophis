@@ -23,6 +23,7 @@ const chains = [
 ];
 
 const selectorEntries = [
+  '...ARC_ENABLED_CHAIN_IDS',
   'SupportedChainId.MAINNET',
   'SupportedChainId.BNB',
   'SupportedChainId.BASE',
@@ -105,10 +106,12 @@ for (const [name, chainId, configKey] of chains) {
   );
 }
 
-assert.match(faq, /13 EVM chains/, 'FAQ must state the canonical 13-EVM-chain count');
+assert.match(faq, /14 EVM chains/, 'FAQ must state the canonical 14-EVM-chain count');
+assert.match(read('apps/frontend/libs/common-const/src/arc.const.ts'), /ARC_CHAIN_ID = 5042 as SupportedChainId/);
+assert.match(gettingStarted, /Arc is available in the swap app \(chain ID 5042\)/);
 assert.match(
   gettingStarted,
-  /Robinhood Chain, and Unichain/,
+  /Robinhood Chain, Unichain, and Arc/,
   'getting-started chain list is incomplete',
 );
 
@@ -205,4 +208,4 @@ assert.ok(
   'removed Robinhood docs URL reappeared',
 );
 
-console.log('Network/docs invariants are in sync (13 EVM chains; 3 Ophis-operated chains).');
+console.log('Network/docs invariants are in sync (14 app EVM chains; 13 published SDK/MCP chains).');

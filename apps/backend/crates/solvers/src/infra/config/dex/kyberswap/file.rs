@@ -55,6 +55,8 @@ fn chain_slug(chain_id: eth::ChainId) -> &'static str {
         // ChainId::Robinhood without a slug here would crash the kyberswap
         // solver at startup rather than fail to deserialize.
         eth::ChainId::Robinhood => "robinhood",
+        // https://docs.kyberswap.com/getting-started/supported-exchanges-and-networks
+        eth::ChainId::Arc => "arc",
         // KyberSwap doesn't deploy on Gnosis / Goerli / Plasma / Ink in v1 —
         // panic clearly rather than silently picking a wrong slug.
         other => panic!("unsupported KyberSwap chain: {other:?}"),
@@ -90,5 +92,16 @@ pub async fn load(path: &Path) -> super::Config {
             block_stream: base.block_stream.clone(),
         },
         base,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn arc_endpoint_uses_arc_slug() {
+        assert_eq!(
+            super::default_endpoint(crate::domain::eth::ChainId::Arc).as_str(),
+            "https://aggregator-api.kyberswap.com/arc/api/v1/"
+        );
     }
 }

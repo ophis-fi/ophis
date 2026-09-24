@@ -12,6 +12,8 @@ use {
 #[cfg_attr(any(test, feature = "test-util"), derive(serde::Serialize))]
 #[serde(tag = "type")]
 pub enum Strategy {
+    /// Arc USDC ERC20 atoms (6 decimals) share the holder native balance (18).
+    ArcUsdc,
     /// Balance override strategy for tokens whose balances are stored in a
     /// direct Solidity mapping from token holder to balance amount in the
     /// form `mapping(address holder => uint256 amount)`.
@@ -68,6 +70,7 @@ impl std::fmt::Display for TokenConfiguration {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         let format_entry =
             |f: &mut Formatter, (addr, strategy): (&Address, &Strategy)| match strategy {
+                Strategy::ArcUsdc => write!(f, "ArcUsdc({addr:?})"),
                 Strategy::SolidityMapping {
                     target_contract,
                     map_slot,

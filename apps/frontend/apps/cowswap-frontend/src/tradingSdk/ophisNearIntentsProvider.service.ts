@@ -172,7 +172,7 @@ export class OphisNearIntentsBridgeProvider extends NearIntentsBridgeProvider {
       const stringifiedQuote = jsonStringify(buildNearQuoteHashInput(quote, quoteRequest, timestamp))
 
       const quoteHash = utils.sha256(utils.toUtf8Bytes(stringifiedQuote)) as `0x${string}`
-      const depositAddress = utils.getAddress(quote.depositAddress)
+      const depositAddress = utils.getAddress(quote.depositAddress) as `0x${string}`
 
       const { signature } = await this.api.getAttestation({ quoteHash, depositAddress })
       if (!signature || !utils.isHexString(signature)) return null
@@ -180,7 +180,7 @@ export class OphisNearIntentsBridgeProvider extends NearIntentsBridgeProvider {
       const message = utils.hexConcat([ATTESTATION_PREFIX, ATTESTATION_VERSION_BYTE, depositAddress, quoteHash])
 
       return {
-        address: utils.recoverAddress(utils.keccak256(message), signature),
+        address: utils.recoverAddress(utils.keccak256(message), signature) as `0x${string}`,
         quoteHash,
         stringifiedQuote,
         // Safe: isHexString guarded above

@@ -1,4 +1,4 @@
-import { RPC_URLS } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, ARC_ENABLED_CHAIN_IDS, ARC_LABEL, ARC_RPC_URL, RPC_URLS } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { safe, injected } from '@wagmi/connectors'
@@ -36,7 +36,14 @@ const robinhood = defineChain({
     default: { name: 'Robinhood Chain Blockscout', url: 'https://robinhoodchain.blockscout.com' },
   },
 })
+const arc = defineChain({
+  id: ARC_CHAIN_ID,
+  name: ARC_LABEL,
+  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+  rpcUrls: { default: { http: [ARC_RPC_URL] } },
+})
 const ALL_CHAIN_IDS_FOR_WAGMI: SupportedChainId[] = [
+  ...ARC_ENABLED_CHAIN_IDS,
   ...SUPPORTED_CHAIN_IDS,
   OPTIMISM_CHAIN_ID,
   UNICHAIN_CHAIN_ID,
@@ -62,6 +69,7 @@ if (typeof window !== 'undefined') {
 }
 
 const SUPPORTED_CHAINS: Record<SupportedChainId, Chain> = {
+  [ARC_CHAIN_ID]: arc,
   [SupportedChainId.MAINNET]: mainnet,
   [SupportedChainId.BNB]: bsc,
   [SupportedChainId.GNOSIS_CHAIN]: gnosis,
@@ -88,9 +96,7 @@ const WAGMI_CHAINS = ALL_CHAIN_IDS_FOR_WAGMI.map((chainId) => SUPPORTED_CHAINS[c
 )
 
 if (WAGMI_CHAINS.length === 0) {
-  throw new Error(
-    'wagmi config: no supported chains resolved — check SUPPORTED_CHAINS map vs ALL_CHAIN_IDS_FOR_WAGMI',
-  )
+  throw new Error('wagmi config: no supported chains resolved — check SUPPORTED_CHAINS map vs ALL_CHAIN_IDS_FOR_WAGMI')
 }
 
 export const config = createConfig({

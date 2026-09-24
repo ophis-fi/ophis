@@ -84,6 +84,7 @@ pub fn defaults_for_network(chain: &Chain) -> Vec<BaselineSource> {
         | Chain::KatanaMainnet
         | Chain::MantleTestnet
         | Chain::MantleMainnet
+        | Chain::Arc
         | Chain::Robinhood
         | Chain::Unichain => vec![],
     }

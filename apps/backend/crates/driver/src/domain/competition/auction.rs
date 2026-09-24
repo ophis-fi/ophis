@@ -38,6 +38,13 @@ impl Auction {
         eth: &Ethereum,
         surplus_capturing_jit_order_owners: HashSet<eth::Address>,
     ) -> Result<Self, Error> {
+        if eth.chain() == chain::Chain::Arc
+            && orders.iter().any(|order| {
+                order.buy.token == eth::ETH_TOKEN || order.sell.token == eth::ETH_TOKEN
+            })
+        {
+            return Err(Error::NativeArcOrder);
+        }
         let tokens = Tokens(tokens.map(|token| (token.address, token)).collect());
         let weth = eth.contracts().weth_address();
 
@@ -273,6 +280,8 @@ pub struct InvalidPrice;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    #[error("Arc orders must use ERC20 token addresses; native USDC has different units")]
+    NativeArcOrder,
     #[error("blockchain error: {0:?}")]
     Blockchain(#[from] blockchain::Error),
 }

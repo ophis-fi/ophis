@@ -105,7 +105,8 @@ jobs:
         run: |
           cargo test --offline --locked --lib \
             -p app-data -p shared -p autopilot -p orderbook \
-            -p chain -p solvers -p driver -p liquidity-sources -p price-estimation
+            -p chain -p solvers -p driver -p liquidity-sources -p price-estimation \
+            -p balance-overrides -p event-indexing -p configs
 
       # Lightweight Rust STATIC analysis on exactly the Ophis-diverged money-path
       # crates. CodeQL does not cover Rust here (codeql-config paths-ignore

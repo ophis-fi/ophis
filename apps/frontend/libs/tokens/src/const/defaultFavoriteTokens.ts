@@ -1,4 +1,7 @@
 import {
+  ARC_CHAIN_ID,
+  ARC_USDC,
+  ARC_EURC,
   ARB_ARBITRUM_ONE,
   BTCB_BNB,
   BUSD_BNB,
@@ -99,10 +102,7 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     DAI_BASE,
     EURE_BASE,
   ]),
-  [SupportedChainId.SEPOLIA]: tokensListToMap([
-    WRAPPED_NATIVE_CURRENCIES[SupportedChainId.SEPOLIA],
-    USDC_SEPOLIA,
-  ]),
+  [SupportedChainId.SEPOLIA]: tokensListToMap([WRAPPED_NATIVE_CURRENCIES[SupportedChainId.SEPOLIA], USDC_SEPOLIA]),
   [SupportedChainId.POLYGON]: tokensListToMap([
     USDC_POLYGON,
     USDT_POLYGON,
@@ -135,6 +135,7 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     USDT_PLASMA,
     WETH_PLASMA,
   ]),
+  [ARC_CHAIN_ID]: tokensListToMap([ARC_USDC, ARC_EURC]),
   [SupportedChainId.INK]: tokensListToMap([WRAPPED_NATIVE_CURRENCIES[SupportedChainId.INK], USDT_INK, USDC_INK]),
   // Ophis fork: OP mainnet (chain 10) favorites — WETH + USDC
   [10 as unknown as SupportedChainId]: tokensListToMap([

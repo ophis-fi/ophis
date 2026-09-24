@@ -2,9 +2,8 @@ import { useSetAtom } from 'jotai'
 import { useEffect, useMemo, useState } from 'react'
 
 import { LAUNCH_DARKLY_VIEM_MIGRATION } from '@cowprotocol/common-const'
-import { getCurrentChainIdFromUrl } from '@cowprotocol/common-utils'
+import { getCurrentChainIdFromUrl, isSupportedChainId } from '@cowprotocol/common-utils'
 import { getSafeInfo } from '@cowprotocol/core'
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useENSName } from '@cowprotocol/ens'
 import { useWeb3React } from '@web3-react/core'
 
@@ -36,11 +35,7 @@ function checkIsSupportedWallet(walletName?: string): boolean {
 
 function useWalletInfo(): WalletInfo {
   const { account, chainId, isActive: active } = useWeb3React()
-  // Ophis fork: chain 10 (OP Mainnet) is supported at the frontend layer
-  // even though the SDK enum doesn't include it. Chains 4326 (MegaETH)
-  // and 999 (HyperEVM) were removed in PR #167 (2026-05-21).
-  const isChainIdUnsupported =
-    !!chainId && !(chainId in SupportedChainId) && chainId !== 10 && chainId !== 130 && chainId !== 4663
+  const isChainIdUnsupported = !isSupportedChainId(chainId)
 
   return useMemo(
     () => ({

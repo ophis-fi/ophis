@@ -1,3 +1,4 @@
+import { ARC_ENABLED_CHAIN_IDS } from '@cowprotocol/common-const'
 import { ALL_SUPPORTED_CHAIN_IDS, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Connector } from '@web3-react/types'
 
@@ -11,6 +12,7 @@ import { ConnectionType } from '../../api/types'
 // downstream getChainInfo() callers that crash on undefined.
 const OPHIS_ALL_SUPPORTED_CHAIN_IDS: SupportedChainId[] = [
   ...ALL_SUPPORTED_CHAIN_IDS,
+  ...ARC_ENABLED_CHAIN_IDS,
   10 as unknown as SupportedChainId,
   130 as unknown as SupportedChainId,
   4663 as unknown as SupportedChainId,

@@ -88,6 +88,40 @@ jobs:
         working-directory: apps/frontend
         run: pnpm typecheck
 
+      - name: Arc activation, native USDC and bridge regressions
+        working-directory: apps/frontend
+        run: |
+          pnpm exec nx run common-const:test --testPathPatterns 'arc.const.test' --passWithNoTests=false --runInBand
+          pnpm exec nx run common-utils:test --testPathPatterns 'arc.test' --passWithNoTests=false --runInBand
+          pnpm exec nx run wallet:test --testPathPatterns 'isChainAllowed.test' --passWithNoTests=false --runInBand
+          pnpm exec nx run cowswap-frontend:test --testPathPatterns 'arcBridge.test|ophisBridgeProviders.test|ophisBridgeChains.test|getQuoteCurrency/arc.test|useMenuItems.arc.test|getTwapFormState.test|TwapConfirmModal/unsupportedChain.test' --passWithNoTests=false --runInBand
+          pnpm exec nx run explorer:test --testPathPatterns 'cowSdk.arc.test' --passWithNoTests=false --runInBand
+
+      - name: CCTP transfer, recovery and polling regressions
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'modules/cctp|cowSdk.retry.test|doQuotePolling.test|useTradeQuotePolling.test|BlockNumberProvider.test|usePendingTransactionsContext.test' --passWithNoTests=false --runInBand
+
+      - name: Install pinned Foundry for offline Arc ceremony
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.5.1
+          cache: true
+      - name: Arc offline deployment and budget checks
+        run: |
+          python3 -m venv "$RUNNER_TEMP/arc-release-tools"
+          . "$RUNNER_TEMP/arc-release-tools/bin/activate"
+          python3 -m pip install solc-select==1.2.0 PyYAML==6.0.2
+          solc-select use 0.8.30 --always-install
+          export ARC_SOLC="$(command -v solc)"
+          node infra/arc-mainnet/release/test_solver.cjs
+          node infra/arc-mainnet/release/test_plan.cjs
+          node infra/arc-mainnet/release/test_mac_key.cjs
+          node infra/arc-mainnet/release/rehearse.cjs
+          python3 infra/arc-mainnet/test_credit_gate.py
+          python3 infra/arc-mainnet/release/check.py
+          python3 infra/arc-mainnet/test_rpc.py
+          python3 infra/arc-mainnet/test_rpc.py --release
+
       # The frontend jest suite is not a repo-root CI gate (security.yml
       # documents this), and tsconfig.app.json excludes *.test.ts — so without
       # these steps the OTC exit-gate tests (read boundary, exact Milestone C
@@ -191,4 +225,22 @@ jobs:
 
       - name: production-build cowswap-frontend
         working-directory: apps/frontend
+        env:
+          REACT_APP_ARC_ENABLED: 'true'
+          REACT_APP_CCTP_ENABLED: 'true'
+          REACT_APP_ARC_LOCAL: 'false'
+          REACT_APP_ARC_SETTLEMENT: '0x1111111111111111111111111111111111111111'
+          REACT_APP_ARC_VAULT_RELAYER: '0x2222222222222222222222222222222222222222'
+          REACT_APP_ARC_ORDERBOOK_URL: 'https://arc-mainnet.ophis.fi'
         run: pnpm build:cowswap
+
+      - name: production-build explorer with Arc
+        working-directory: apps/frontend
+        env:
+          REACT_APP_ARC_ENABLED: 'true'
+          REACT_APP_CCTP_ENABLED: 'true'
+          REACT_APP_ARC_LOCAL: 'false'
+          REACT_APP_ARC_SETTLEMENT: '0x1111111111111111111111111111111111111111'
+          REACT_APP_ARC_VAULT_RELAYER: '0x2222222222222222222222222222222222222222'
+          REACT_APP_ARC_ORDERBOOK_URL: 'https://arc-mainnet.ophis.fi'
+        run: pnpm exec nx run explorer:build

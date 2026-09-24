@@ -455,13 +455,10 @@ impl TradeVerifier {
         // contract has funds, it needs to exist in order to not revert
         // simulations (Solidity reverts on attempts to call addresses without
         // any code).
-        overrides.insert(
-            Self::SPARDOSE,
-            AccountOverride {
-                code: Some(Spardose::Spardose::DEPLOYED_BYTECODE.clone()),
-                ..Default::default()
-            },
-        );
+        // Native-backed tokens (Arc USDC) fund this account's balance directly.
+        // Adding helper code must preserve that previously configured balance.
+        overrides.entry(Self::SPARDOSE).or_default().code =
+            Some(Spardose::Spardose::DEPLOYED_BYTECODE.clone());
 
         // Set up mocked solver.
         let solver_override = AccountOverride {

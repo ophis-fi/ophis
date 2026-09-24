@@ -13,6 +13,11 @@ export interface PrimaryActionButtonContext {
 }
 
 const buttonsMap: Record<TwapFormState, (_context: PrimaryActionButtonContext) => ReactElement> = {
+  [TwapFormState.UNSUPPORTED_CHAIN]: () => (
+    <ButtonPrimary disabled={true} buttonSize={ButtonSize.BIG}>
+      <Trans>TWAP is unavailable on this network</Trans>
+    </ButtonPrimary>
+  ),
   [TwapFormState.LOADING_SAFE_INFO]: () => (
     <ButtonPrimary disabled={true} buttonSize={ButtonSize.BIG}>
       <Trans>Loading...</Trans>

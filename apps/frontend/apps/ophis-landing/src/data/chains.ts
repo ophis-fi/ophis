@@ -42,6 +42,7 @@ export const EVM_CHAINS: EvmChain[] = [
   // Chain team feedback 2026-08-02); /logos/* is cached immutable, so a brand
   // fix must ship under a new filename (see public/_headers).
   { name: 'Robinhood Chain', shortName: 'Robinhood', chainId: 4663, logo: '/logos/chain-robinhood-v2.svg', sovereign: true },
+  { name: 'Arc', shortName: 'Arc', chainId: 5042, logo: '/logos/chain-arc-network.svg', sovereign: true },
 ]
 
 export const EVM_CHAIN_COUNT = EVM_CHAINS.length

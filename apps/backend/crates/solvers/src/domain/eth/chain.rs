@@ -23,6 +23,7 @@ pub enum ChainId {
     // `chain` crate enum, so without this variant the lifi solver's chain_id TOML
     // deserializer rejects 4663 at startup.
     Robinhood = 4663,
+    Arc = 5042,
 }
 
 impl ChainId {
@@ -42,6 +43,7 @@ impl ChainId {
             57073 => Ok(Self::Ink),
             130 => Ok(Self::Unichain),
             4663 => Ok(Self::Robinhood),
+            5042 => Ok(Self::Arc),
             _ => Err(UnsupportedChain),
         }
     }
@@ -63,6 +65,7 @@ impl ChainId {
             ChainId::Ink => "57073",
             ChainId::Unichain => "130",
             ChainId::Robinhood => "4663",
+            ChainId::Arc => "5042",
         }
     }
 }

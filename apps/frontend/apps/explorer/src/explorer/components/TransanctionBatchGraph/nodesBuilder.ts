@@ -366,7 +366,7 @@ export function getNotesAndEdges(
 
 export function getTokenAddress(address: string, networkId: SupportedChainId): string {
   if (areAddressesEqual(address, NATIVE_TOKEN_ADDRESS_NORMALIZED)) {
-    return getAddressKey(WRAPPED_NATIVE_ADDRESS[networkId])
+    return getAddressKey(WRAPPED_NATIVE_ADDRESS[networkId] || address)
   }
   return getAddressKey(address)
 }

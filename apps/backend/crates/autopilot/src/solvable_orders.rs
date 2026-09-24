@@ -145,6 +145,7 @@ pub struct SolvableOrdersCache {
     cache: Mutex<Option<Inner>>,
     native_price_estimator: Arc<NativePriceUpdater>,
     weth: Address,
+    native_token_unit_scale: u64,
     protocol_fees: domain::ProtocolFees,
     cow_amm_registry: cow_amm::Registry,
     native_price_timeout: Duration,
@@ -181,6 +182,7 @@ impl SolvableOrdersCache {
         deny_listed_tokens: DenyListedTokens,
         native_price_estimator: Arc<NativePriceUpdater>,
         weth: Address,
+        native_token_unit_scale: u64,
         protocol_fees: domain::ProtocolFees,
         cow_amm_registry: cow_amm::Registry,
         native_price_timeout: Duration,
@@ -196,6 +198,7 @@ impl SolvableOrdersCache {
             cache: Mutex::new(None),
             native_price_estimator,
             weth,
+            native_token_unit_scale,
             protocol_fees,
             cow_amm_registry,
             native_price_timeout,
@@ -310,10 +313,11 @@ impl SolvableOrdersCache {
             .await;
         tracing::trace!("fetched native prices for solvable orders");
         // WETH's native price is 1 by definition — insert it directly to
-        // support ETH wrap when required.
+        // support ETH wrap when required. Arc uses 10^12 native gas atoms per
+        // ERC20 USDC atom instead of the 1:1 wrapped-native ratio.
         prices
             .entry(self.weth)
-            .or_insert_with(|| to_normalized_price(1.0).unwrap());
+            .or_insert_with(|| to_normalized_price(self.native_token_unit_scale as f64).unwrap());
         Metrics::track_filtered_orders(MissingNativePrice, &removed);
         filtered_order_events.extend(removed.into_iter().map(|uid| (uid, MissingNativePrice)));
 
