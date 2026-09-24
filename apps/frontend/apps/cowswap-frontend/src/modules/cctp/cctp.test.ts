@@ -136,6 +136,19 @@ it('requires the source MessageSent from Circle and destination message plus rec
   expect(() =>
     verifyMintReceipt(receipt([received, mint] as TransactionReceipt['logs']), message, transfer),
   ).not.toThrow()
+  // Arc emits both streams. Only the six-decimal ERC-20 log proves the
+  // received CCTP amount here; the system emitter carries 18-decimal units.
+  const nativeMint = {
+    ...mint,
+    address: '0xffffFFFfFFffffffffffffffFfFFFfffFFFfFFfE',
+    data: toHex(1984362n * 10n ** 12n, { size: 32 }),
+  }
+  expect(() =>
+    verifyMintReceipt(receipt([nativeMint, received, mint] as TransactionReceipt['logs']), message, transfer),
+  ).not.toThrow()
+  expect(() =>
+    verifyMintReceipt(receipt([nativeMint, received] as TransactionReceipt['logs']), message, transfer),
+  ).toThrow()
   expect(() => verifyMintReceipt(receipt([received] as TransactionReceipt['logs']), message, transfer)).toThrow()
   expect(() => verifyMintReceipt(receipt([mint] as TransactionReceipt['logs']), message, transfer)).toThrow()
   expect(() =>

@@ -97,6 +97,10 @@ jobs:
           pnpm exec nx run cowswap-frontend:test --testPathPatterns 'arcBridge.test|ophisBridgeProviders.test|ophisBridgeChains.test|getQuoteCurrency/arc.test|useMenuItems.arc.test|getTwapFormState.test|TwapConfirmModal/unsupportedChain.test' --passWithNoTests=false --runInBand
           pnpm exec nx run explorer:test --testPathPatterns 'cowSdk.arc.test' --passWithNoTests=false --runInBand
 
+      - name: CCTP transfer, recovery and polling regressions
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'modules/cctp|cowSdk.retry.test|doQuotePolling.test|useTradeQuotePolling.test|BlockNumberProvider.test|usePendingTransactionsContext.test' --passWithNoTests=false --runInBand
+
       - name: Install pinned Foundry for offline Arc ceremony
         uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
