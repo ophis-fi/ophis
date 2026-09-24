@@ -20,6 +20,11 @@ SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE'
 
 
 def render(active=False):
+    if not active:
+        for name in ['receipts.json', 'verified.json']:
+            assert not (OUT / name).exists(), 'Refusing to overwrite deployed release configuration: ' + name
+        if (OUT / 'activation.json').exists():
+            assert json.loads((OUT / 'activation.json').read_text()).get('active') is False, 'Refusing to overwrite active release configuration'
     plan = json.loads((OUT / 'plan.json').read_text())
     subprocess.run(['node', '-e', "const p=require('./plan.cjs');p.checkHash(JSON.parse(require('fs').readFileSync('./generated/plan.json')))"], cwd=HERE, check=True)
     c, cfg = plan['contracts'], plan['config']
@@ -182,6 +187,11 @@ http {
       proxy_pass http://orderbook:8080;
     }
     location /api/v1/ {
+      limit_req zone=reads burst=6 nodelay;
+      proxy_hide_header Access-Control-Allow-Origin;
+      proxy_pass http://orderbook:8080;
+    }
+    location = /api/v2/trades {
       limit_req zone=reads burst=6 nodelay;
       proxy_hide_header Access-Control-Allow-Origin;
       proxy_pass http://orderbook:8080;

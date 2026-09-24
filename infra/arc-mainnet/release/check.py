@@ -21,6 +21,11 @@ from test_rpc import docker
 
 
 def main():
+    # Checks render inactive files: never overwrite a deployed or active release.
+    for name in ['receipts.json', 'verified.json']:
+        assert not (OUT / name).exists(), 'Refusing to modify deployed release state: ' + name
+    if (OUT / 'activation.json').exists():
+        assert json.loads((OUT / 'activation.json').read_text()).get('active') is False, 'Refusing to modify active release files'
     # Do not overwrite an operator's prepared plan. CI starts from a clean checkout.
     if not (OUT / 'plan.json').exists():
         config = json.loads((HERE / 'config.example.json').read_text())
@@ -78,7 +83,12 @@ print('PASS Linux private config/key ownership boundary')
     try:
         docker('network', 'create', '--internal', network)
         docker('run', '-d', '--name', backend, '--network', network, '--network-alias', 'orderbook',
-               pilot['services']['credit-gate']['image'], 'python', '-m', 'http.server', '8080')
+               pilot['services']['credit-gate']['image'], 'python', '-c',
+               "import http.server,os,pathlib,tempfile;os.chdir(tempfile.mkdtemp());"
+               "pathlib.Path('api/v2').mkdir(parents=True);"
+               "pathlib.Path('api/v2/trades').write_text('[]');"
+               "pathlib.Path('api/v2/other').write_text('[]');"
+               "http.server.test(HandlerClass=http.server.SimpleHTTPRequestHandler,port=8080)")
         docker('run', '-d', '--name', api, '--network', network,
                '-v', f'{OUT / "nginx.conf"}:/etc/nginx/nginx.conf:ro', release['services']['api']['image'])
         code = '''import json,time,urllib.request,urllib.error
@@ -101,11 +111,17 @@ assert codes==[404,404,429,429],codes
 print('PASS live Nginx quote rate limit:',codes)
 allowed=''' + repr(allowed_origins) + '''
 for origin in allowed+['https://untrusted.example']:
- request=urllib.request.Request('http://''' + api + ''':8080/api/v1/version',headers={'Origin':origin})
- try: response=urllib.request.urlopen(request)
- except urllib.error.HTTPError as e: response=e
- assert response.headers.get('Access-Control-Allow-Origin')==(origin if origin in allowed else None)
-print('PASS swap/explorer CORS allowlist')
+ for endpoint in ['/api/v1/version','/api/v2/trades?orderUid=fixture&offset=0&limit=10']:
+  request=urllib.request.Request('http://''' + api + ''':8080'+endpoint,headers={'Origin':origin})
+  try: response=urllib.request.urlopen(request)
+  except urllib.error.HTTPError as e: response=e
+  assert response.headers.get('Access-Control-Allow-Origin')==(origin if origin in allowed else None)
+  if endpoint.startswith('/api/v2/'):
+   assert response.status==200 and json.loads(response.read())==[], 'SDK trades route did not reach the backend'
+try: urllib.request.urlopen('http://''' + api + ''':8080/api/v2/other')
+except urllib.error.HTTPError as e: assert e.code==404
+else: raise AssertionError('Unintended v2 API exposed')
+print('PASS SDK v2 trades, exact route boundary and swap/explorer CORS allowlist')
 '''
         print(docker('exec', backend, 'python', '-c', code))
     finally:

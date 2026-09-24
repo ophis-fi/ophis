@@ -4,6 +4,63 @@ No public deployment, merge or bridge transfer was performed. The automatic
 settlement checks used a disposable Arc Anvil chain and labelled 1:1 liquidity
 fixtures. Existing real Uniswap liquidity was checked separately in [LIQUIDITY.md](LIQUIDITY.md).
 
+## Final preparation review — September 24
+
+The existing Mac mini is selected for Arc. A fresh dedicated solver,
+`0x839029e110F4954e05aFad4Fa222CfE93ce6d86f`, is encrypted in local staging;
+import into the existing isolated `ophis-driver` account still requires the
+operator's local sudo authentication. The staged key is recoverable by the
+operator account until verified off-site backup and staging cleanup. No claim of
+completed runtime custody or backup is made. No existing chain's key was reused.
+
+The actual Safe, deployer and solver are bound to the prepared unsigned plan:
+`0xf847a22abd920e48c88906ead95e39be4f5673433e378f0903cfe2289e01fcc0`.
+Both free RPCs passed governance and reported deployer nonce zero and 0.3 native
+USDC at **10:23:49 UTC**. Seven deployment caps total **0.245375 USDC** at
+25 gwei; runtime solver startup separately requires **0.25 native USDC** at the
+configured gas limit and fee cap. Refresh all onchain observations before signing.
+
+| Requested review | Scope and result |
+| --- | --- |
+| Trail of Bits secure-workflow / differential review | Release plan, activation, signer custody, startup and RPC budget boundaries. Fixed release overwrite and stale Safe-batch hazards. Final staged-key importer review found no actionable defect. |
+| Pashov Solidity auditor v3 | All 12 specialty reference lenses applied in grouped passes; deployed Solidity dependencies, authority, signatures, native USDC arithmetic and direct DEX execution. No confirmed exploitable finding or unresolved actionable lead in this pass. |
+| Ethskills QA | Frontend, explorer, native gas handling, direct swaps, bridge status and activation. Fixed missing explorer trades route and direct-URL TWAP guard. Public launch still requires actual deployment and live swap/bridge validation. |
+
+These are skill-guided AI/tool reviews, **not approval or certification by the
+named firms**. Pashov v3 was the installed version; this was not a 12-independent-
+agent audit. Earlier findings and accepted boundaries remain recorded below.
+
+The final review fixes prevent release-plan replacement, validate the exact Safe
+activation batch, expose only the required `/api/v2/trades` route with the existing
+CORS policy, and explicitly disable TWAP review/confirmation on unsupported
+chains. The importer binds the encrypted key to the plan, uses a stdin pipe for
+the isolated account, and creates owner-only files exclusively; no key goes into
+arguments or logs. Regression checks run in CI where platform-independent.
+
+Fresh checks passed: solver provisioning/import and overwrite regressions; plan
+preservation and activation binding; seven-contract local Safe rehearsal;
+release preview/activation rejection; Linux file ownership; actual Nginx route,
+CORS and quote throttling; credit accounting and two-voter RPC failure boundaries.
+The new TWAP suites passed **7 tests** and frontend TypeScript passed. Fresh
+Slither runs on Balances and Signatures used **101 detectors** each and reported
+only informational assembly/pragma findings. Arithmetic review exercised
+100,000 direct-output cases, 100,000 settlement-floor cases and native boundaries.
+
+HooksTrampoline creation bytecode and ABI matched the pinned
+[upstream artifact](https://github.com/cowprotocol/services/blob/cfbec985dfe476bf7ef42750435f7d5a12223a85/contracts/artifacts/HooksTrampoline.json);
+its [source](https://github.com/cowprotocol/hooks-trampoline/blob/de9bf6d844a26a3a945afc511d4ccf877a9b654e/src/HooksTrampoline.sol)
+was reviewed but not independently rebuilt with solc 0.8.20. EIP173Proxy creation
+and runtime bytecode matched the repository-pinned
+[hardhat-deploy 0.11.26 artifact](https://unpkg.com/hardhat-deploy@0.11.26/extendedArtifacts/EIP173Proxy.json).
+
+The fresh free-RPC direct Uniswap check passed with **21 requests** and no
+transaction; see LIQUIDITY.md. All local tests used zero public RPC, QuickNode or
+dRPC calls. No paid credits were used by preparation. Production Docker images
+are not built: 4.8 GiB free is below the fresh-build floor of 12 GiB. Isolated
+runtime ownership/access, off-site backup, solver funding, deployment and Safe
+activation, service publication and live swap/bridge smoke tests remain launch
+operations. Nothing was broadcast, merged or pushed.
+
 ## Governance choice and unsigned batch — September 24
 
 At **10:08 UTC**, both free RPCs confirmed **0.3 native USDC** on the deployer,
@@ -15,8 +72,9 @@ plus at least 20% margin, enforced in the full rehearsal. The seven limits total
 **0.245375 USDC**. The broadcaster checks the current gas price against the cap
 before each send. The fresh seven-contract rehearsal, solver checks and release
 preview/activation-rejection/permissions/HTTP checks passed. No public transaction
-was sent; no QuickNode/dRPC credits were used. The production solver and final
-production plan are still absent; only the disposable preview was regenerated.
+was sent; no QuickNode/dRPC credits were used. At that earlier point the production
+solver and final production plan were absent; both are now prepared as recorded
+above, with isolated custody import pending.
 
 Following the operator's confirmation, read-only checks through both free Arc
 RPCs at **09:58 UTC** passed: the Safe has all three expected owners, threshold

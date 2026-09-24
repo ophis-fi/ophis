@@ -1,4 +1,16 @@
-# Arc route verification — 2026-09-22
+# Arc route verification — 2026-09-24
+
+The bounded check was refreshed on September 24 at block **22502232**
+(`0x2982b6b2d90eee2d400a08e77604c407db2ccf5f29f9726dcee2b9521da1596e`).
+The same direct Uniswap V3 0.05% pool quoted **1,000 USDC → 878.125950 EURC**
+and **1,000 EURC → 1,135.664158 USDC**. The state-override router simulation
+completed both legs and returned **999.000470 USDC**. This refresh used **21
+free public RPC requests**, zero transactions and zero QuickNode/dRPC credits.
+The 0.01% Uniswap tier and Synthra still did not produce executable quotes;
+AchSwap quotes remained uncompetitive. Only direct Uniswap V3 0.05% is enabled
+in the release candidate. This is read-only simulation, not a funded live swap.
+
+## Earlier snapshot — September 22
 
 Read-only checks against Arc's official public RPC, chain 5042, block **22231320**
 (`0x3b1390c030421e5e9fac80e5691e52109b454770d33c8b1ccaa373638fc8a523`),

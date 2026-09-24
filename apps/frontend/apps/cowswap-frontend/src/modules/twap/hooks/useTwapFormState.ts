@@ -1,6 +1,5 @@
 import { useAtomValue } from 'jotai'
 
-import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
 import { useIsTxBundlingSupported, useWalletInfo } from '@cowprotocol/wallet'
 
 import { useGetReceiveAmountInfo } from 'modules/trade'
@@ -18,14 +17,6 @@ export function useTwapFormState(): TwapFormState | null {
   const { chainId } = useWalletInfo()
   const twapOrder = useTwapOrder()
 
-  // TWAP requires ComposableCow + ExtensibleFallbackHandler, which are not
-  // deployed on the sovereign chains. Disable the tab instead of no-oping.
-  const isUnsupportedChain =
-    (chainId as number) === 10 ||
-    (chainId as number) === 130 ||
-    (chainId as number) === 4663 ||
-    chainId === ARC_CHAIN_ID
-
   const receiveAmountInfo = useGetReceiveAmountInfo()
   const { sellAmount } = receiveAmountInfo?.beforeAllFees || {}
   const sellAmountPartFiat = useUsdAmount(sellAmount).value
@@ -36,8 +27,6 @@ export function useTwapFormState(): TwapFormState | null {
 
   const verification = useFallbackHandlerVerification()
   const isTxBundlingSupported = useIsTxBundlingSupported()
-
-  if (isUnsupportedChain) return null
 
   return getTwapFormState({
     isTxBundlingSupported,

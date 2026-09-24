@@ -30,18 +30,28 @@ function readSolver(file) {
   } finally { fs.closeSync(fd) }
 }
 
+function importSolver(file, key, expected) {
+  const keyFile = keyPath(file)
+  const parent = fs.statSync(path.dirname(keyFile))
+  assert(parent.uid === process.getuid() && (parent.mode & 0o777) === 0o700,
+    'Create the key in a signing-account-owned directory with mode 0700')
+  let wallet
+  try { wallet = new Wallet(key) } catch { throw new Error('Invalid solver key') }
+  assert.equal(wallet.address.toLowerCase(), expected.toLowerCase(), 'Imported key differs from planned solver')
+  const fd = fs.openSync(keyFile, 'wx', 0o600)
+  try { fs.writeFileSync(fd, wallet.privateKey + '\n'); fs.fsyncSync(fd) }
+  finally { fs.closeSync(fd) }
+  return readSolver(keyFile)
+}
+
 function prepare(config, output, file, nonce, createSolver = false) {
   assert(!fs.existsSync(output), 'Configuration already exists; review it instead of replacing it')
   assert(Number.isSafeInteger(nonce) && nonce >= 0 && nonce <= Number.MAX_SAFE_INTEGER - 7, 'Explicit deployer nonce required')
   const keyFile = keyPath(file)
   if (createSolver) {
-    const parent = fs.statSync(path.dirname(keyFile))
-    assert(parent.uid === process.getuid() && (parent.mode & 0o777) === 0o700,
-      'Create the key in a signing-account-owned directory with mode 0700')
     // Exclusive creation: repeated commands cannot rotate or overwrite a live key.
-    const fd = fs.openSync(keyFile, 'wx', 0o600)
-    try { fs.writeFileSync(fd, Wallet.createRandom().privateKey + '\n'); fs.fsyncSync(fd) }
-    finally { fs.closeSync(fd) }
+    const wallet = Wallet.createRandom()
+    importSolver(keyFile, wallet.privateKey, wallet.address)
   }
   const signer = readSolver(keyFile)
   if (config.solver) assert.equal(signer.address.toLowerCase(), config.solver.toLowerCase(), 'Configured solver differs from key')
@@ -63,4 +73,4 @@ if (require.main === module) {
     console.log('Back up the dedicated key using the existing custody procedure before funding or deployment.')
   } catch (error) { console.error(error.message); process.exitCode = 1 }
 }
-module.exports = { readSolver, prepare }
+module.exports = { readSolver, prepare, importSolver }

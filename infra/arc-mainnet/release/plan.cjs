@@ -109,15 +109,42 @@ function checkHash(plan) {
   assert.deepEqual(build(plan.config, JSON.parse(fs.readFileSync(path.join(__dirname, 'generated/artifacts.json')))), plan)
 }
 
+function checkActivation(plan, batch) {
+  assert.equal(batch.version, '1.0')
+  assert.equal(batch.chainId, String(plan.chainId))
+  assert.equal(address(batch.meta.createdFromSafeAddress), plan.config.safe)
+  assert.deepEqual(batch.transactions, [plan.safeTransaction], 'Safe activation batch differs from reviewed plan')
+}
+
+function assertNewPlan(out) {
+  for (const name of ['plan', 'receipts', 'verified', 'activation', 'artifacts', 'solc-input', 'safe-activation']) {
+    assert(!fs.existsSync(path.join(out, name + '.json')), 'Existing release state must be preserved: ' + name + '.json')
+  }
+}
+
+function writePlan(config, built, out) {
+  assertNewPlan(out)
+  const plan = build(config, built.artifacts)
+  const batch = { version: '1.0', chainId: '5042', createdAt: Date.now(),
+    meta: { name: 'Authorize Arc solver', createdFromSafeAddress: plan.config.safe }, transactions: [plan.safeTransaction] }
+  checkActivation(plan, batch)
+  fs.mkdirSync(out, { recursive: true, mode: 0o700 })
+  // Exclusive writes prevent concurrent preparation from replacing another plan.
+  // Publish plan last; incomplete preparation fails closed and requires recovery.
+  for (const [name, value] of Object.entries({ 'solc-input': built.input, artifacts: built.artifacts, 'safe-activation': batch, plan })) {
+    const fd = fs.openSync(path.join(out, name + '.json'), 'wx', 0o600)
+    try { fs.writeFileSync(fd, JSON.stringify(value, null, 2) + '\n'); fs.fsyncSync(fd) }
+    finally { fs.closeSync(fd) }
+  }
+  return plan
+}
+
 if (require.main === module) {
   assert.equal(process.argv.length, 3, 'Usage: node release/plan.cjs CONFIG.json')
+  const out = path.join(__dirname, 'generated')
+  assertNewPlan(out)
   const config = validate(JSON.parse(fs.readFileSync(process.argv[2]))), built = compile()
-  const out = path.join(__dirname, 'generated'); fs.mkdirSync(out, { recursive: true, mode: 0o700 })
-  const plan = build(config, built.artifacts)
-  for (const [name, value] of Object.entries({ 'solc-input': built.input, artifacts: built.artifacts, plan,
-    'safe-activation': { version: '1.0', chainId: '5042', createdAt: Date.now(), meta: { name: 'Authorize Arc solver', createdFromSafeAddress: config.safe }, transactions: [plan.safeTransaction] } })) {
-    fs.writeFileSync(path.join(out, name + '.json'), JSON.stringify(value, null, 2) + '\n', { mode: 0o600 })
-  }
+  const plan = writePlan(config, built, out)
   console.log('Prepared seven unsigned deployments and one Safe activation transaction. Plan hash:', plan.hash)
 }
-module.exports = { root, dep, validate, compile, build, checkHash, address, defaultAbiCoder }
+module.exports = { root, dep, validate, compile, build, checkHash, checkActivation, assertNewPlan, writePlan, address, defaultAbiCoder }

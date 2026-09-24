@@ -7,6 +7,43 @@ later authorized launch. Do not run them as part of local development.
 
 ## Existing identities
 
+### Prepared Mac mini launch — September 24
+
+The selected runtime host is the existing Mac mini, using its isolated
+`ophis-driver` account (UID 502). The actual ignored `config.json` and
+`generated/plan.json` now use Arc's dedicated solver
+`0x839029e110F4954e05aFad4Fa222CfE93ce6d86f`, the Safe and Ledger below,
+and observed deployer nonce zero. Plan hash:
+`0xf847a22abd920e48c88906ead95e39be4f5673433e378f0903cfe2289e01fcc0`.
+The seven deployment transactions and solver-activation Safe batch are unsigned.
+The generated frontend and backend configuration remains inactive.
+
+The new key is currently encrypted under the operator's account, with its random
+password in macOS Keychain. This is **temporary staging**, not completed isolated
+custody. Import that exact key from the operator's Terminal:
+
+```sh
+node /Users/scep/ophis-arc/infra/arc-mainnet/release/import-staged.cjs --import
+```
+
+Authenticate sudo locally. The command verifies the reviewed plan and address,
+imports to `/Users/ophis-driver/.config/ophis-arc/submitter.key` with owner 502 and
+mode 0600, and refuses to replace an existing key. It sends no transaction and
+starts no service. No password or private key belongs in chat or shell arguments.
+At preparation time this import remained pending operator authentication.
+Complete and verify the existing encrypted off-site backup before funding, then
+remove the temporary staging copies through the custody procedure; retaining
+them preserves the operator account's recovery access.
+
+The prepared key supersedes the fresh-key example below: **do not generate a
+second solver or overwrite this plan**. Recheck nonce and balance before signing.
+The runtime still needs owner-aligned release files, a readable pinned compiler,
+Docker access and built images. Only 4.8 GiB was free at preparation; a fresh
+Docker Rust build was not attempted (12 GiB minimum). No production image or
+isolated-account startup success is claimed.
+
+### Reproducible preparation for a new installation
+
 `config.example.json` uses the operator-supplied Arc Safe
 `0x858f0F5eE954846D47155F5203c04aF1819eCeF8`, existing Ledger deployer
 `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199`, and the three owners recorded in
@@ -110,6 +147,7 @@ with PyYAML (and tomli on Python <3.11), and Docker. Check disk before building:
 ```sh
 python3 infra/arc-mainnet/local/build.py --check-only
 node infra/arc-mainnet/release/test_solver.cjs
+node infra/arc-mainnet/release/test_plan.cjs
 node infra/arc-mainnet/release/rehearse.cjs
 python3 infra/arc-mainnet/release/check.py
 python3 infra/arc-mainnet/test_credit_gate.py
@@ -120,6 +158,9 @@ On a clean checkout, `check.py` generates preview identities without known signi
 keys; these are not production identities. It preserves an existing prepared plan.
 Use `node infra/arc-mainnet/release/plan.cjs infra/arc-mainnet/release/config.json`
 only after completing the actual launch inputs.
+Planning refuses an existing or partial release bundle. Preview checks and direct
+rendering refuse deployed, verified or activated state; they cannot reset it.
+The broadcaster validates the exact planned Safe activation calldata before use.
 
 The rehearsal creates a disposable solver through the production preparation path,
 funds it only on local Anvil, and removes its temporary key on completion. It owns
@@ -148,10 +189,10 @@ application development. Use the reviewed revision and actual `config.json`:
 
 1. Recheck the completed 2-of-3 Safe configuration; do not repeat the owner-add
    transaction. Run the offline
-   submitter preparation above and back up Arc's dedicated key.
+   staged-key import above for this prepared Mac mini launch, and back up Arc's dedicated key.
    Confirm the Safe on Arc and native USDC gas
    for the existing Ledger and new Arc submitter.
-   Refresh the deployer nonce and prepare the final unsigned plan. Review all
+   Refresh the deployer nonce and compare it with the prepared unsigned plan. Review all
    seven transactions and the Safe activation batch. No arbitrary Balancer fallback
    or wrapped-USDC deployment is used.
 2. Set `ARC_READ_RPC_URL=https://rpc.mainnet.arc.io`; run
@@ -169,7 +210,7 @@ application development. Use the reviewed revision and actual `config.json`:
    reviewed revision, and export `ARC_RUNTIME_UID=$(id -u)` and
    `ARC_RUNTIME_GID=$(id -g)`; `docker compose -f infra/arc-mainnet/release/docker-compose.yml
    build`. Share the one backend image across services. Never build on the current
-   laptop's approximately 6 GiB free space without increasing available storage.
+   Mac mini's approximately 4.8 GiB free space without increasing available storage.
 5. Supply `ARC_SOLVER_KEY_FILE` pointing to the dedicated Arc private key file outside
    the repo, mode 0600. Set `ARC_QUICKNODE_RPC_URL` privately and reserve only the
    actually available credits in `ARC_QUICKNODE_CREDIT_ALLOWANCE` (1..10,000,000).
