@@ -188,7 +188,8 @@ async function main() {
     }
   }
 
-  for (const major of workspace === 'root' ? [7] : [5, 7]) {
+  // WalletConnect 2.25 removed the frontend's last query-string 7 consumer; root still uses it.
+  for (const major of workspace === 'root' ? [7] : workspace === 'frontend' ? [5] : [5, 7]) {
     for (const pkg of installed('query-string', major)) {
       const query = pkg.require('query-string');
       const decoder = pkg.require('decode-uri-component');
