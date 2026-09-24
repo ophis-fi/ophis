@@ -13,9 +13,13 @@ export class WalletConnectV2Connector extends WalletConnect {
   }
 
   async activate(desiredChainId?: number): Promise<void> {
-    const isNetworkSwitching = !!this.provider?.session
-
-    await super.activate(isNetworkSwitching ? desiredChainId : undefined)
+    try {
+      await super.activate(desiredChainId)
+    } catch (error) {
+      // Upstream caches a rejected initialization promise before its cleanup block.
+      if (!this.provider) await this.deactivate()
+      throw error
+    }
     this.syncRpcChain()
 
     /**
