@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 
+import { LAUNCH_DARKLY_VIEM_MIGRATION } from '@cowprotocol/common-const'
 import { useWalletProvider } from '@cowprotocol/wallet-provider'
 
 import { createWalletClient, custom, type WalletClient } from 'viem'
@@ -10,15 +11,16 @@ export function useCctpWallet(): WalletClient | undefined {
   const legacy = useWalletProvider()
   return useMemo(
     () =>
-      wallet ||
-      (legacy
-        ? createWalletClient({
-            transport: custom(
-              { request: ({ method, params }) => legacy.send(method, Array.isArray(params) ? params : []) },
-              { retryCount: 0 },
-            ),
-          })
-        : undefined),
+      LAUNCH_DARKLY_VIEM_MIGRATION
+        ? wallet
+        : legacy
+          ? createWalletClient({
+              transport: custom(
+                { request: ({ method, params }) => legacy.send(method, Array.isArray(params) ? params : []) },
+                { retryCount: 0 },
+              ),
+            })
+          : undefined,
     [wallet, legacy],
   )
 }

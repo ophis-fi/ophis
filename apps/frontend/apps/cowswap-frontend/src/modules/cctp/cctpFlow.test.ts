@@ -2,9 +2,10 @@ import { type Hex, type WalletClient } from 'viem'
 
 import { cctpBurnData, cctpClient, circleGet, type CctpTransfer } from './cctp.service'
 import { CCTP_STORAGE_KEY, cctpStorage } from './cctpState'
+import * as cctpStatus from './cctpStatus.service'
 import { getCctpStatus } from './cctpStatus.service'
-import { resumeCctpTransfer, submitCctpBurn } from './cctpSubmission.service'
-import { burnCctp } from './cctpWallet.service'
+import { claimCctpTransfer, resumeCctpTransfer, submitCctpBurn, updateCctpTransfer } from './cctpSubmission.service'
+import { burnCctp, claimCctp } from './cctpWallet.service'
 
 jest.mock('./cctpWallet.service', () => ({ burnCctp: jest.fn(), claimCctp: jest.fn() }))
 jest.mock('./cctp.service', () => ({
@@ -88,8 +89,9 @@ it('does not reach wallet signing if storage or the cross-tab lock is unavailabl
 
 it('refuses an unrelated reverted hash as recovery proof and accepts only exact burn calldata', async () => {
   const client = {
-    getTransactionReceipt: jest.fn().mockResolvedValue({ status: 'reverted' }),
-    getTransaction: jest.fn().mockResolvedValue({ from: owner, to: owner, input: '0x', value: 0n, nonce: 7 }),
+    getTransactionReceipt: jest.fn().mockResolvedValue({ status: 'reverted', blockNumber: 1n }),
+    getBlock: jest.fn().mockResolvedValue({ number: 2n }),
+    getTransaction: jest.fn().mockResolvedValue({ from: owner, to: owner, input: '0x1234', value: 0n, nonce: 7 }),
   }
   jest.mocked(cctpClient).mockReturnValue(client as unknown as ReturnType<typeof cctpClient>)
   await expect(resumeCctpTransfer(transfer, hash)).rejects.toThrow('does not match')
@@ -119,4 +121,87 @@ it('does not treat pending or malformed Circle data as received USDC', async () 
   expect((await getCctpStatus({ ...transfer, burnHash: hash }, true)).completed).toBe(false)
   jest.mocked(circleGet).mockResolvedValueOnce({ sourceTxHash: `0x${'cd'.repeat(32)}`, messages: [] })
   await expect(getCctpStatus({ ...transfer, burnHash: hash }, true)).rejects.toThrow('different source')
+})
+
+it('serializes recovery with burns and prevents a stale tab from clearing a newer transfer', async () => {
+  let locked = false
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: {
+      request: async (_name: string, _options: unknown, action: (lock: object | null) => Promise<void>) => {
+        if (locked) return action(null)
+        locked = true
+        try {
+          await action({})
+        } finally {
+          locked = false
+        }
+      },
+    },
+  })
+  persist(transfer)
+  let release: (value: CctpTransfer) => void = () => undefined
+  const delayed = new Promise<CctpTransfer>((resolve) => {
+    release = resolve
+  })
+  const recovering = updateCctpTransfer(transfer, () => delayed, persist)
+  await expect(updateCctpTransfer(transfer, async () => null, persist)).rejects.toThrow('Another tab')
+  await expect(submitCctpBurn(wallet, transfer, persist)).rejects.toThrow('already pending')
+  expect(burn).not.toHaveBeenCalled()
+  const resumed = { ...transfer, burnHash: hash }
+  release(resumed)
+  await recovering
+  await expect(updateCctpTransfer(transfer, async () => null, persist)).rejects.toThrow('changed in another tab')
+  expect(await cctpStorage.getItem(CCTP_STORAGE_KEY, null)).toEqual(resumed)
+  await updateCctpTransfer(resumed, async () => null, persist)
+  expect(await cctpStorage.getItem(CCTP_STORAGE_KEY, null)).toBeNull()
+})
+
+it('journals a claim before signing and retains it after a lost wallet response', async () => {
+  const status = jest.spyOn(cctpStatus, 'getCctpStatus').mockResolvedValue({
+    text: 'ready',
+    completed: false,
+    failed: false,
+    sourceConfirmed: true,
+    message: '0x01',
+    attestation: '0x02',
+  })
+  const saved = { ...transfer, burnHash: hash }
+  persist(saved)
+  jest.mocked(claimCctp).mockImplementationOnce(async (_wallet, _quote, _message, _attestation, beforeSignature) => {
+    await beforeSignature(9)
+    expect(await cctpStorage.getItem(CCTP_STORAGE_KEY, null)).toEqual({ ...saved, claimNonce: 9 })
+    throw new Error('wallet disconnected after broadcast')
+  })
+  try {
+    await expect(claimCctpTransfer(wallet, saved, persist)).rejects.toThrow('after broadcast')
+    expect(await cctpStorage.getItem(CCTP_STORAGE_KEY, null)).toEqual({ ...saved, claimNonce: 9 })
+    status.mockResolvedValueOnce({
+      text: 'pending',
+      completed: false,
+      failed: false,
+      sourceConfirmed: true,
+      claimPending: true,
+    })
+    await expect(claimCctpTransfer(wallet, { ...saved, claimNonce: 9 }, persist)).rejects.toThrow('already pending')
+    expect(claimCctp).toHaveBeenCalledTimes(1)
+  } finally {
+    status.mockRestore()
+  }
+})
+
+it('accepts only a finalized self-send at the saved source nonce as wallet cancellation', async () => {
+  const client = {
+    getTransactionReceipt: jest.fn().mockResolvedValue({ status: 'success', blockNumber: 500n }),
+    getTransaction: jest.fn().mockResolvedValue({ from: owner, to: owner, input: '0x', value: 0n, nonce: 7 }),
+    getBlock: jest.fn().mockResolvedValue({ number: 499n }),
+  }
+  jest.mocked(cctpClient).mockReturnValue(client as unknown as ReturnType<typeof cctpClient>)
+  const cancelled = { ...transfer, burnHash: hash }
+  expect((await getCctpStatus(cancelled)).failed).toBe(false)
+  client.getBlock.mockResolvedValueOnce({ number: 500n })
+  expect((await getCctpStatus(cancelled)).failed).toBe(true)
+  client.getTransaction.mockResolvedValueOnce({ from: owner, to: owner, input: '0x', value: 0n, nonce: 6 })
+  await expect(getCctpStatus(cancelled)).rejects.toThrow('does not match')
+  expect(circleGet).not.toHaveBeenCalled()
 })

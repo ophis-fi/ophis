@@ -38,6 +38,7 @@ export interface CctpTransfer extends CctpQuote {
   sourceNonce?: number
   burnHash?: Hex
   mintHash?: Hex
+  claimNonce?: number
 }
 
 const feeSchema = z.array(

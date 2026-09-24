@@ -107,7 +107,7 @@ for i in range(40):
 codes=[]
 for i in range(8):
  try:
-  r=urllib.request.urlopen('http://''' + api + ''':8080/api/v1/quote')
+  r=urllib.request.urlopen('http://''' + api + ''':8080/api/v1/quote'+('/draft' if i%2 else ''))
   codes.append(r.status)
  except urllib.error.HTTPError as e: codes.append(e.code)
 assert codes==[404]*6+[429,429],codes
@@ -133,7 +133,16 @@ for origin in allowed+['https://untrusted.example']:
 try: urllib.request.urlopen('http://''' + api + ''':8080/api/v2/other')
 except urllib.error.HTTPError as e: assert e.code==404
 else: raise AssertionError('Unintended v2 API exposed')
-print('PASS SDK v2 trades, exact route boundary and swap/explorer CORS allowlist')
+# Cloudflare supplies the real client header through the loopback-only tunnel.
+# Exhaust one client's bucket without throttling a different visitor.
+for client in ['198.51.100.1','198.51.100.2']:
+ codes=[]
+ for i in range(12):
+  request=urllib.request.Request('http://''' + api + ''':8080/api/v2/trades',headers={'CF-Connecting-IP':client})
+  try: codes.append(urllib.request.urlopen(request).status)
+  except urllib.error.HTTPError as e: codes.append(e.code)
+ assert codes[0]==200 and 429 in codes,codes
+print('PASS SDK v2 trades, exact route boundary, per-client rate limit and swap/explorer CORS allowlist')
 '''
         print(docker('exec', backend, 'python', '-c', code))
     finally:

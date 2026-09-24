@@ -111,7 +111,8 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/arc-release-tools"
           . "$RUNNER_TEMP/arc-release-tools/bin/activate"
           python3 -m pip install solc-select==1.2.0 PyYAML==6.0.2
-          solc-select install 0.8.30
+          solc-select use 0.8.30 --always-install
+          export ARC_SOLC="$(command -v solc)"
           node infra/arc-mainnet/release/test_solver.cjs
           node infra/arc-mainnet/release/test_plan.cjs
           node infra/arc-mainnet/release/test_mac_key.cjs

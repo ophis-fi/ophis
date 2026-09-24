@@ -40,7 +40,7 @@ async function checkSafe(rpc, config) {
 }
 
 async function verify(rpc, plan, receipts, artifacts, localOnly = false) {
-  checkHash(plan)
+  checkHash(plan, artifacts)
   assert.equal(await rpc.send('eth_chainId', []), '0x13b2')
   const client = await rpc.send('web3_clientVersion', [])
   if (localOnly) {

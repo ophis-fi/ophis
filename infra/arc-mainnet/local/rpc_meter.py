@@ -23,7 +23,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path != '/counts':
-            return self.reply(404, b'{}')
+            self.reply(404, b'{}')
+            return
         with lock:
             body = json.dumps(counts).encode()
         self.reply(200, body)
@@ -32,7 +33,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             size = int(self.headers.get('Content-Length', '0'))
             if not 0 < size <= 8 * 1024 * 1024:
-                return self.reply(413, b'{}')
+                self.reply(413, b'{}')
+                return
             body = self.rfile.read(size)
             payload = json.loads(body)
             requests = payload if isinstance(payload, list) else [payload]

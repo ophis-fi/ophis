@@ -1,7 +1,7 @@
 import { decodeFunctionData, erc20Abi, type WalletClient } from 'viem'
 
 import { cctpClient, readCctpFunds, type CctpQuote } from './cctp.service'
-import { approveCctp, burnCctp } from './cctpWallet.service'
+import { approveCctp, burnCctp, switchCctpChain } from './cctpWallet.service'
 
 jest.mock('./cctp.service', () => ({
   ...jest.requireActual('./cctp.service'),
@@ -71,4 +71,23 @@ it('approves only the displayed amount and skips approval when allowance already
   const decoded = decodeFunctionData({ abi: erc20Abi, data })
   expect(decoded.functionName).toBe('approve')
   expect(decoded.args).toEqual(['0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d', 2000000n])
+})
+
+it('adds a missing Arc network with native USDC metadata but never retries a rejected switch', async () => {
+  const switching = {
+    switchChain: jest.fn().mockRejectedValueOnce({ code: 4902 }).mockResolvedValue(undefined),
+    addChain: jest.fn().mockResolvedValue(undefined),
+  }
+  await switchCctpChain(switching as unknown as WalletClient, 5042)
+  expect(switching.addChain).toHaveBeenCalledWith({
+    chain: expect.objectContaining({
+      id: 5042,
+      nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
+      rpcUrls: { default: { http: ['https://rpc.mainnet.arc.io'] } },
+    }),
+  })
+  expect(switching.switchChain).toHaveBeenCalledTimes(2)
+  switching.switchChain.mockRejectedValueOnce({ code: 4001 })
+  await expect(switchCctpChain(switching as unknown as WalletClient, 5042)).rejects.toEqual({ code: 4001 })
+  expect(switching.addChain).toHaveBeenCalledTimes(1)
 })

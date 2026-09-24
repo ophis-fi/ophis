@@ -138,7 +138,17 @@ if (!sortedBlock) {
   for (const entry of entries) {
     const num = entry.match(/^(\d+)(?:\s+as\b[\w\s.]*)?$/)
     const member = entry.match(/^(?:SupportedChainId|AdditionalTargetChainId)\.(\w+)(?:\s+as\b[\w\s.]*)?$/)
-    if (num) {
+    if (entry === '...ARC_ENABLED_CHAIN_IDS') {
+      // Production enables Arc; verify the conditional definition rather than
+      // accepting arbitrary spreads or silently omitting a launched chain.
+      const arcSrc = readFileSync(resolve(root, '../../libs/common-const/src/arc.const.ts'), 'utf8')
+      if (!/ARC_CHAIN_ID = 5042 as SupportedChainId/.test(arcSrc) ||
+          !/ARC_ENABLED_CHAIN_IDS: SupportedChainId\[\] = ARC_ENABLED \? \[ARC_CHAIN_ID\] : \[\]/.test(arcSrc)) {
+        failures.push('Arc chain definition drifted; review its advertised chain ID')
+      } else {
+        appIds.push(5042)
+      }
+    } else if (num) {
       appIds.push(Number(num[1]))
     } else if (member) {
       if (!(member[1] in ENUM_IDS)) {

@@ -6,7 +6,14 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { isCctpOwner, type CctpTransfer } from './cctp.service'
 import { cctpTransferAtom, cctpTransferSchema } from './cctpState'
-import { claimCctpTransfer, resumeCctpTransfer, submitCctpBurn } from './cctpSubmission.service'
+import {
+  claimCctpTransfer,
+  resumeCctpClaim,
+  resumeCctpTransfer,
+  submitCctpBurn,
+  updateCctpTransfer,
+} from './cctpSubmission.service'
+import { switchCctpChain } from './cctpWallet.service'
 import { type RunCctpAction, useCctpQuote } from './useCctpQuote'
 import { useCctpStatus } from './useCctpStatus'
 import { useCctpWallet } from './useCctpWallet'
@@ -16,7 +23,7 @@ function cctpErrorMessage(caught: unknown): string {
   return caught instanceof Error ? caught.message : 'Bridge request failed'
 }
 
-export function useCctpTransfer(): ReturnType<typeof useCctpQuote> & {
+type CctpFlow = ReturnType<typeof useCctpQuote> & {
   transfer: CctpTransfer | null
   status: ReturnType<typeof useCctpStatus>['status']
   error: string | null
@@ -25,8 +32,11 @@ export function useCctpTransfer(): ReturnType<typeof useCctpQuote> & {
   bridge(): Promise<void>
   claim(): Promise<void>
   resume(hash: string): Promise<void>
+  resumeClaim(hash: string): Promise<void>
   finish(): void
-} {
+}
+
+export function useCctpTransfer(): CctpFlow {
   const { account } = useWalletInfo()
   const wallet = useCctpWallet()
   const [stored, setStored] = useAtom(cctpTransferAtom)
@@ -64,7 +74,7 @@ export function useCctpTransfer(): ReturnType<typeof useCctpQuote> & {
       switchNetwork: (chainId: number) =>
         run('Switch network in your wallet', async () => {
           if (!wallet) throw new Error('Connect your wallet first')
-          await wallet.switchChain({ id: chainId })
+          await switchCctpChain(wallet, chainId)
         }),
       bridge: () =>
         run('Confirm the bridge in your wallet', async () => {
@@ -77,15 +87,21 @@ export function useCctpTransfer(): ReturnType<typeof useCctpQuote> & {
         run('Confirm destination claim in your wallet', async () => {
           if (!wallet || !transfer || !isCctpOwner(transfer.owner, account))
             throw new Error('Connect the wallet that started this bridge')
-          setStored(await claimCctpTransfer(wallet, transfer))
+          await updateCctpTransfer(transfer, () => claimCctpTransfer(wallet, transfer, setStored), setStored)
         }),
       resume: (hash: string) =>
         run('Checking source transaction', async () => {
           if (!transfer) throw new Error('No transfer to resume')
-          setStored(await resumeCctpTransfer(transfer, hash))
+          await updateCctpTransfer(transfer, () => resumeCctpTransfer(transfer, hash), setStored)
+        }),
+      resumeClaim: (hash: string) =>
+        run('Checking destination transaction', async () => {
+          if (!transfer) throw new Error('No transfer to resume')
+          await updateCctpTransfer(transfer, () => resumeCctpClaim(transfer, hash), setStored)
         }),
       finish: () => {
-        if (tracking.status?.completed || tracking.status?.failed) setStored(null)
+        if (transfer && (tracking.status?.completed || tracking.status?.failed))
+          void run('Finishing transfer', () => updateCctpTransfer(transfer, async () => null, setStored))
       },
     }),
     [account, busy, error, parsed, quoting, run, setStored, tracking, transfer, wallet],

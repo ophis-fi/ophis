@@ -83,12 +83,9 @@ async function main() {
     const totalGasCap = plan.transactions.reduce((sum, tx) => sum + BigInt(tx.gasLimit) * BigInt(tx.maxFeePerGas), 0n)
     assert(totalGasCap <= 300_000_000_000_000_000n, 'Default deployment caps must fit 0.3 native USDC')
     fs.mkdirSync(OUT, { recursive: true, mode: 0o700 })
-    // Rehearsal output is separate from a prepared operator plan.
-    const artifactsFile = path.join(OUT, 'artifacts.json')
-    const previous = fs.existsSync(artifactsFile) ? fs.readFileSync(artifactsFile) : null
-    fs.writeFileSync(artifactsFile, JSON.stringify(compiled.artifacts), { mode: 0o600 })
-    try {
-      checkHash(plan)
+    // Verify against the disposable build in memory; never overwrite the
+    // operator's generated artifacts, even temporarily.
+    checkHash(plan, compiled.artifacts)
       const receipts = []
       for (const tx of plan.transactions) {
         const { name, artifact, predictedAddress, constructorArgs, initcodeHash, ...request } = tx
@@ -122,7 +119,6 @@ async function main() {
       await assert.rejects(verify(rpc, plan, receipts, compiled.artifacts, false))
       fs.writeFileSync(path.join(OUT, 'rehearsal.json'), JSON.stringify({ ...result, governanceMigrationTested: true, revokedSuccessfully: true, gasUsed: receipts.map(r => r.gasUsed.toString()) }, null, 2) + '\n', { mode: 0o600 })
       console.log('PASS: exact governance calldata migrates 1-of-2 to 2-of-3; seven production deployments; single-owner denial; runtime/domain/wiring verification; solver revocation; no production activation from a local node.')
-    } finally { if (previous) fs.writeFileSync(artifactsFile, previous); else fs.unlinkSync(artifactsFile) }
   } finally {
     anvil.kill('SIGTERM'); rpc.removeAllListeners()
     if (solverDirectory) fs.rmSync(solverDirectory, { recursive: true, force: true })

@@ -8,6 +8,7 @@ import {
   slice,
   TransactionReceiptNotFoundError,
   zeroHash,
+  type Transaction,
   type Hex,
   type TransactionReceipt,
 } from 'viem'
@@ -41,6 +42,7 @@ export interface CctpStatus {
   completed: boolean
   failed: boolean
   mintHash?: Hex
+  claimPending?: boolean
   message?: Hex
   attestation?: Hex
 }
@@ -148,6 +150,28 @@ const waiting: CctpStatus = {
   failed: false,
 }
 
+function isCancellation(transaction: Transaction, transfer: CctpTransfer): boolean {
+  return (
+    transfer.sourceNonce !== undefined &&
+    transaction.nonce === transfer.sourceNonce &&
+    areAddressesEqual(transaction.from, transfer.owner) &&
+    areAddressesEqual(transaction.to, transfer.owner) &&
+    transaction.input === '0x' &&
+    transaction.value === 0n
+  )
+}
+
+async function finalizedFailure(
+  transfer: CctpTransfer,
+  receipt: TransactionReceipt,
+  reason: string,
+): Promise<CctpStatus> {
+  const finalized = await cctpClient(transfer.source).getBlock({ blockTag: 'finalized' })
+  if (finalized.number === null || finalized.number < receipt.blockNumber)
+    return { ...waiting, text: 'Waiting for the source transaction outcome to become final' }
+  return { ...waiting, failed: true, text: `The source transaction was ${reason}. No USDC was bridged.` }
+}
+
 async function sourceStatus(transfer: CctpTransfer): Promise<CctpStatus | null> {
   if (!transfer.burnHash)
     return { ...waiting, text: 'Check your wallet activity and paste the burn transaction hash to resume.' }
@@ -156,6 +180,10 @@ async function sourceStatus(transfer: CctpTransfer): Promise<CctpStatus | null> 
   // Recovery must never accept an unrelated reverted transaction as proof that
   // this burn failed: doing so could unlock a second burn after the first succeeded.
   const transaction = await cctpClient(transfer.source).getTransaction({ hash: transfer.burnHash })
+  // A confirmed self-send at the saved nonce can be a wallet cancellation.
+  // Wait for finality before releasing the journal; a reorg must not restore
+  // the original burn after the UI permits a new transfer.
+  if (isCancellation(transaction, transfer)) return finalizedFailure(transfer, receipt, 'cancelled')
   if (
     !areAddressesEqual(transaction.from, transfer.owner) ||
     !areAddressesEqual(transaction.to, TOKEN_MESSENGER) ||
@@ -164,8 +192,7 @@ async function sourceStatus(transfer: CctpTransfer): Promise<CctpStatus | null> 
     transaction.nonce !== transfer.sourceNonce
   )
     throw new Error('Transaction does not match the saved bridge')
-  if (receipt.status === 'reverted')
-    return { ...waiting, failed: true, text: 'The source transaction reverted. No USDC was bridged.' }
+  if (receipt.status === 'reverted') return finalizedFailure(transfer, receipt, 'reverted')
   verifyBurnReceipt(receipt, transfer)
   return null
 }
@@ -195,10 +222,11 @@ async function destinationStatus(
 ): Promise<CctpStatus> {
   const hashes = [...new Set([transfer.mintHash, forwardTxHash].filter((value): value is Hex => !!value))]
   let result: CctpStatus = ready
+  let pendingHash: Hex | undefined
   for (const mintHash of hashes) {
     const receipt = await cctpReceipt(transfer.destination, mintHash)
     if (!receipt) {
-      result = { ...ready, mintHash, text: 'Waiting for destination confirmation' }
+      pendingHash = mintHash
       continue
     }
     if (receipt.status === 'reverted') {
@@ -208,6 +236,14 @@ async function destinationStatus(
     verifyMintReceipt(receipt, ready.message, transfer)
     return { ...ready, mintHash, completed: true, text: 'USDC received. Bridge complete.' }
   }
+  if (pendingHash)
+    return { ...ready, mintHash: pendingHash, claimPending: true, text: 'Waiting for destination confirmation' }
+  if (transfer.claimNonce !== undefined && !transfer.mintHash)
+    return {
+      ...ready,
+      claimPending: true,
+      text: 'Check wallet activity and paste the destination claim hash to resume.',
+    }
   return result
 }
 

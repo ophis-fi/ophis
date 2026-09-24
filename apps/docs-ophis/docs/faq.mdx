@@ -37,7 +37,7 @@ export const faqLd = {
       name: 'Which networks are supported?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: '13 EVM chains as source or destination: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, and Unichain. Plus Solana and Bitcoin as cross-chain destinations via NEAR Intents.',
+        text: '14 EVM chains as source or destination: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc. Plus Solana and Bitcoin as cross-chain destinations via NEAR Intents.',
       },
     },
     {
@@ -61,7 +61,7 @@ export const faqLd = {
       name: 'Who runs the solvers?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "On the CoW-hosted chains Ophis surfaces, CoW's established solver network competes. On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own stack, Ophis operates multiple routing lanes. Their availability and pair coverage vary at runtime, so Ophis does not promise a fixed live count. The on-chain allowlist gates who may settle, and more solvers can be authorized over time. Your protection is the same either way: the signed order's limit price is enforced on-chain, so no solver can fill it worse than the price you accepted.",
+        text: "On the CoW-hosted chains Ophis surfaces, CoW's established solver network competes. On Optimism, Unichain, Robinhood Chain, and Arc, where Ophis runs its own stack, Ophis operates multiple routing lanes. Their availability and pair coverage vary at runtime, so Ophis does not promise a fixed live count. The on-chain allowlist gates who may settle, and more solvers can be authorized over time. Your protection is the same either way: the signed order's limit price is enforced on-chain, so no solver can fill it worse than the price you accepted.",
       },
     },
     {
@@ -115,9 +115,9 @@ your funds move only when a solver settles the batch.
 
 ### Which networks are supported?
 
-13 EVM chains as source / destination: Ethereum, Arbitrum One, Avalanche,
+14 EVM chains as source / destination: Ethereum, Arbitrum One, Avalanche,
 Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma,
-Polygon, Robinhood Chain, and Unichain. Plus **Solana** and **Bitcoin** as cross-chain
+Polygon, Robinhood Chain, Unichain, and Arc. Plus **Solana** and **Bitcoin** as cross-chain
 destinations via NEAR Intents. See [Getting started](./getting-started.md#supported-networks).
 
 ### Is my trade protected from MEV?
@@ -137,7 +137,7 @@ parameters, or cancel at any time.
 ### Who runs the solvers?
 
 On the CoW-hosted chains Ophis surfaces, CoW's established solver network
-competes. On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own
+competes. On Optimism, Unichain, Robinhood Chain, and Arc, where Ophis runs its own
 stack, Ophis operates multiple routing lanes. Availability and pair coverage
 vary at runtime, so Ophis does not promise a fixed live count. The on-chain allowlist
 gates who may settle, and more solvers can be authorized over time. Your

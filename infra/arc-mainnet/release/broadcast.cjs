@@ -43,7 +43,14 @@ async function main() {
     assert.equal(Number(receipt.status), 1)
     assert.equal(receipt.contractAddress.toLowerCase(), tx.predictedAddress.toLowerCase())
     receipts.push(receipt)
-    fs.writeFileSync(file, JSON.stringify(receipts, null, 2) + '\n', { mode: 0o600 })
+    const temporary = fs.mkdtempSync(path.join(OUT, '.receipts-'))
+    try {
+      const pending = path.join(temporary, 'receipts.json')
+      const fd = fs.openSync(pending, 'wx', 0o600)
+      try { fs.writeFileSync(fd, JSON.stringify(receipts, null, 2) + '\n'); fs.fsyncSync(fd) }
+      finally { fs.closeSync(fd) }
+      fs.renameSync(pending, file)
+    } finally { fs.rmSync(temporary, { recursive: true, force: true }) }
   }
   console.log('Contracts deployed. Verify receipt addresses, then execute safe-activation.json through the 2-of-3 Safe and run verify.cjs.')
 }

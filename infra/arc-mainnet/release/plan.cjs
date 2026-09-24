@@ -102,11 +102,11 @@ function build(config, artifacts) {
   return { ...plan, hash: keccak256(toUtf8Bytes(JSON.stringify(plan))) }
 }
 
-function checkHash(plan) {
+function checkHash(plan, artifacts = JSON.parse(fs.readFileSync(path.join(__dirname, 'generated/artifacts.json')))) {
   const { hash, ...body } = plan
   assert.equal(keccak256(toUtf8Bytes(JSON.stringify(body))), hash, 'Plan changed since preparation')
   validate({ ...plan.config })
-  assert.deepEqual(build(plan.config, JSON.parse(fs.readFileSync(path.join(__dirname, 'generated/artifacts.json')))), plan)
+  assert.deepEqual(build(plan.config, artifacts), plan)
 }
 
 function checkActivation(plan, batch) {

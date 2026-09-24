@@ -1,14 +1,41 @@
-import { BaseError, UserRejectedRequestError, type Hex, type WalletClient } from 'viem'
+import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
-import { type CctpQuote, type CctpTransfer } from './cctp.service'
+import {
+  encodeFunctionData,
+  BaseError,
+  UserRejectedRequestError,
+  type Hex,
+  type Transaction,
+  type WalletClient,
+} from 'viem'
+
+import { CCTP_ABI, MESSAGE_TRANSMITTER } from './cctp.const'
+import { cctpClient, type CctpQuote, type CctpTransfer } from './cctp.service'
 import { CCTP_STORAGE_KEY, cctpStorage } from './cctpState'
-import { getCctpStatus } from './cctpStatus.service'
+import { cctpReceipt, getCctpStatus, verifyMintReceipt } from './cctpStatus.service'
 import { burnCctp, claimCctp } from './cctpWallet.service'
 
 function isExplicitRejection(error: unknown): boolean {
   if (error instanceof BaseError)
     return error.walk((cause) => cause instanceof UserRejectedRequestError) instanceof UserRejectedRequestError
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 4001
+}
+
+// Every journal mutation shares the burn lock. A stale tab must never erase or
+// overwrite a newer transfer while an RPC response or wallet signature is pending.
+export async function updateCctpTransfer(
+  expected: CctpTransfer,
+  update: () => Promise<CctpTransfer | null>,
+  persist: (value: CctpTransfer | null) => void,
+): Promise<void> {
+  if (!navigator.locks) throw new Error('Please use a current browser to bridge')
+  await navigator.locks.request('ophisCctpBurn', { ifAvailable: true }, async (lock) => {
+    if (!lock) throw new Error('Another tab is updating this bridge. Wait and try again.')
+    const saved = await cctpStorage.getItem(CCTP_STORAGE_KEY, null)
+    if (JSON.stringify(saved) !== JSON.stringify(expected))
+      throw new Error('Bridge details changed in another tab. Refresh before continuing.')
+    persist(await update())
+  })
 }
 
 export async function submitCctpBurn(
@@ -56,11 +83,63 @@ export async function resumeCctpTransfer(transfer: CctpTransfer, value: string):
   return resumed
 }
 
-export async function claimCctpTransfer(wallet: WalletClient, transfer: CctpTransfer): Promise<CctpTransfer> {
+export async function claimCctpTransfer(
+  wallet: WalletClient,
+  transfer: CctpTransfer,
+  persist: (value: CctpTransfer | null) => void,
+): Promise<CctpTransfer> {
   const latest = await getCctpStatus(transfer)
   if (latest.completed) return transfer
-  if (latest.mintHash) throw new Error('A destination transaction is already pending. Wait for confirmation.')
+  if (latest.claimPending || latest.mintHash)
+    throw new Error('A destination transaction is already pending. Wait for confirmation or recover its hash.')
   if (!latest.message || !latest.attestation) throw new Error('The attestation is not ready yet')
-  const mintHash = await claimCctp(wallet, transfer, latest.message, latest.attestation)
+  let pending = transfer
+  let signatureRequested = false
+  try {
+    const mintHash = await claimCctp(wallet, transfer, latest.message, latest.attestation, async (nonce) => {
+      pending = { ...transfer, mintHash: undefined, claimNonce: nonce }
+      persist(pending)
+      if (JSON.stringify(await cctpStorage.getItem(CCTP_STORAGE_KEY, null)) !== JSON.stringify(pending))
+        throw new Error('Unable to save claim recovery details. Nothing was signed.')
+      signatureRequested = true
+    })
+    if (!/^0x[a-fA-F0-9]{64}$/.test(mintHash))
+      throw new Error('Check wallet activity and recover the destination claim hash.')
+    return { ...pending, mintHash }
+  } catch (caught) {
+    if (!signatureRequested || isExplicitRejection(caught)) persist(transfer)
+    throw caught
+  }
+}
+
+export async function resumeCctpClaim(transfer: CctpTransfer, value: string): Promise<CctpTransfer> {
+  if (!/^0x[a-fA-F0-9]{64}$/.test(value)) throw new Error('Enter the destination claim transaction hash')
+  const latest = await getCctpStatus(transfer)
+  if (latest.completed) return transfer
+  if (!latest.message || !latest.attestation) throw new Error('The attestation is not ready yet')
+  const mintHash = value as Hex
+  const receipt = await cctpReceipt(transfer.destination, mintHash)
+  if (!receipt) throw new Error('Destination transaction is not confirmed yet. Check again shortly.')
+  if (receipt.status === 'success') verifyMintReceipt(receipt, latest.message, transfer)
+  else {
+    const tx = await cctpClient(transfer.destination).getTransaction({ hash: mintHash })
+    const data = encodeFunctionData({
+      abi: CCTP_ABI,
+      functionName: 'receiveMessage',
+      args: [latest.message, latest.attestation],
+    })
+    assertClaimTransaction(tx, transfer, data)
+  }
   return { ...transfer, mintHash }
+}
+
+function assertClaimTransaction(tx: Transaction, transfer: CctpTransfer, data: Hex): void {
+  if (
+    !areAddressesEqual(tx.from, transfer.owner) ||
+    !areAddressesEqual(tx.to, MESSAGE_TRANSMITTER) ||
+    tx.nonce !== transfer.claimNonce ||
+    tx.input.toLowerCase() !== data.toLowerCase() ||
+    tx.value !== 0n
+  )
+    throw new Error('Transaction does not match the saved claim')
 }

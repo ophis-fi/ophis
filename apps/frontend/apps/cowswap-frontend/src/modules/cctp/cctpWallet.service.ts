@@ -1,6 +1,6 @@
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
-import { encodeFunctionData, erc20Abi, type Address, type Hex, type WalletClient } from 'viem'
+import { BaseError, encodeFunctionData, erc20Abi, type Address, type Hex, type WalletClient } from 'viem'
 
 import { CCTP_ABI, MESSAGE_TRANSMITTER, TOKEN_MESSENGER, cctpNetwork } from './cctp.const'
 import {
@@ -12,6 +12,21 @@ import {
   type CctpQuote,
 } from './cctp.service'
 import { validateCctpMessage } from './cctpStatus.service'
+
+function isUnknownChain(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 4902
+}
+
+export async function switchCctpChain(wallet: WalletClient, chainId: number): Promise<void> {
+  const { chain } = cctpNetwork(chainId)
+  try {
+    await wallet.switchChain({ id: chain.id })
+  } catch (error) {
+    if (!isUnknownChain(error instanceof BaseError ? error.walk(isUnknownChain) : error)) throw error
+    await wallet.addChain({ chain })
+    await wallet.switchChain({ id: chain.id })
+  }
+}
 
 export async function assertCctpWallet(wallet: WalletClient, owner: Address, chainId: number): Promise<void> {
   const [id, accounts] = await Promise.all([wallet.getChainId(), wallet.getAddresses()])
@@ -88,14 +103,23 @@ export async function burnCctp(
   })
 }
 
-export async function claimCctp(wallet: WalletClient, quote: CctpQuote, message: Hex, attestation: Hex): Promise<Hex> {
+export async function claimCctp(
+  wallet: WalletClient,
+  quote: CctpQuote,
+  message: Hex,
+  attestation: Hex,
+  beforeSignature: (nonce: number) => Promise<void>,
+): Promise<Hex> {
   validateCctpMessage(message, quote)
   await assertCctpWallet(wallet, quote.owner, quote.destination)
   const data = encodeFunctionData({ abi: CCTP_ABI, functionName: 'receiveMessage', args: [message, attestation] })
   await prepareCctpCall(quote, quote.destination, MESSAGE_TRANSMITTER, data, false)
+  const nonce = await cctpClient(quote.destination).getTransactionCount({ address: quote.owner, blockTag: 'pending' })
   await assertCctpWallet(wallet, quote.owner, quote.destination)
+  await beforeSignature(nonce)
   return wallet.sendTransaction({
     account: quote.owner,
+    nonce,
     chain: cctpNetwork(quote.destination).chain,
     to: MESSAGE_TRANSMITTER,
     data,

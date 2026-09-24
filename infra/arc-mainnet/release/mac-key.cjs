@@ -57,10 +57,13 @@ function verifyRamMount(mount = MOUNT, state = inspect()) {
   const stat = fs.lstatSync(mount)
   assert(stat.isDirectory() && stat.uid === process.getuid() && (stat.mode & 0o777) === 0o700,
     'RAM mount must be operator-owned with mode 0700')
-  const marker = path.join(mount, MARKER), markerStat = fs.lstatSync(marker)
-  assert(markerStat.isFile() && markerStat.uid === process.getuid() && (markerStat.mode & 0o777) === 0o600 && markerStat.size < 64,
-    'Invalid RAM volume marker')
-  assert.equal(fs.readFileSync(marker, 'utf8'), LABEL + '\n', 'Invalid RAM volume marker')
+  const marker = fs.openSync(path.join(mount, MARKER), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK)
+  try {
+    const markerStat = fs.fstatSync(marker)
+    assert(markerStat.isFile() && markerStat.uid === process.getuid() && (markerStat.mode & 0o777) === 0o600 && markerStat.size < 64,
+      'Invalid RAM volume marker')
+    assert.equal(fs.readFileSync(marker, 'utf8'), LABEL + '\n', 'Invalid RAM volume marker')
+  } finally { fs.closeSync(marker) }
   const exclusion = fs.lstatSync(path.join(mount, NO_INDEX))
   assert(exclusion.isFile() && exclusion.uid === process.getuid() && (exclusion.mode & 0o777) === 0o600 && exclusion.size === 0,
     'RAM volume must exclude Spotlight indexing')

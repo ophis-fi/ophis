@@ -35,6 +35,7 @@ function CctpForm(): ReactNode {
           canClaim={chainId === flow.transfer.destination && isCctpOwner(flow.transfer.owner, account)}
           onClaim={flow.claim}
           onResume={flow.resume}
+          onResumeClaim={flow.resumeClaim}
           onFinish={flow.finish}
         />
       ) : (

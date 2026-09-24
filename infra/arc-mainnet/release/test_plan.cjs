@@ -59,6 +59,16 @@ with tempfile.TemporaryDirectory() as directory:
  scope['render'](); scope['render']()
  assert json.loads((out/'activation.json').read_text())['active'] is False
  assert 'guarded' not in (out/'driver.toml').read_text()
+ assert 'REACT_APP_CCTP_ENABLED=false' in (out/'frontend.env').read_text()
+ assert 'location ~ ^/api/v1/quote(?:/draft)?$' in (out/'nginx.conf').read_text()
+ assert out.stat().st_mode & 0o777 == 0o700
+ for name in ['postgres-password','service-token','database.env','services.env','orderbook.toml','autopilot.toml']:
+  assert (out/name).stat().st_mode & 0o777 == 0o600
+ target=out/'untouched'; target.write_text('keep')
+ (out/'database.env').unlink(); (out/'database.env').symlink_to(target)
+ scope['render']()
+ assert target.read_text()=='keep' and not (out/'database.env').is_symlink()
+
 `
   execFileSync('python3', ['-c', script], { stdio: 'pipe' })
   console.log('PASS: existing release state preserved; stale Safe batch rejected; active/deployed checks refuse before mutation')

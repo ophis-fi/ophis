@@ -99,6 +99,7 @@ def check_proxy(rpc_url, control, release=False):
             if rpc("eth_chainId", []).get("result") == "0x13b2":
                 break
         except (URLError, OSError):
+            # The container may still be starting; retry only until the deadline.
             pass
         assert time.monotonic() < deadline, "mock proxy did not boot"
         time.sleep(0.2)

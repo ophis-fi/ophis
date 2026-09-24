@@ -7,6 +7,8 @@ from pathlib import Path
 import secrets
 import subprocess
 import time
+import tempfile
+import stat
 try:
     import tomllib
 except ImportError:  # Python 3.9 on the existing operator host.
@@ -34,10 +36,22 @@ def render(active=False):
         from datetime import datetime
         assert 0 <= time.time() - datetime.fromisoformat(verified['verifiedAt'].replace('Z', '+00:00')).timestamp() < 3600, 'Re-run verify.cjs before activation'
         assert verified['contracts'] == c and verified['solver'] == cfg['solver']
+    # These service credentials must be readable by Compose/Postgres, but only
+    # by the operator on the host. Create private files BEFORE writing secrets;
+    # atomic replacement also avoids truncation and following destination links.
+    directory = OUT.lstat()
+    assert stat.S_ISDIR(directory.st_mode) and directory.st_uid == os.getuid(), 'Private operator-owned output directory required'
+    OUT.chmod(0o700)
     def write(name, value):
-        file = OUT / name
-        file.write_text(value)
-        file.chmod(0o600)
+        with tempfile.NamedTemporaryFile(mode='w', dir=OUT, delete=False) as pending:
+            temporary = Path(pending.name)
+            try:
+                pending.write(value)
+                pending.flush()
+                os.fsync(pending.fileno())
+                os.replace(temporary, OUT / name)
+            finally:
+                temporary.unlink(missing_ok=True)
     for name in ['postgres-password', 'service-token']:
         if not (OUT / name).exists():
             write(name, secrets.token_hex(32))
@@ -161,6 +175,7 @@ venue = "uniswap-v3"
     upstream['allowMethods'] = [*upstream['allowMethods'], 'eth_sendRawTransaction']
     write('erpc.yaml', yaml.safe_dump(erpc, sort_keys=False))
     write('frontend.env', f'''REACT_APP_ARC_ENABLED={str(active).lower()}
+REACT_APP_CCTP_ENABLED={str(active).lower()}
 REACT_APP_ARC_LOCAL=false
 REACT_APP_ARC_SETTLEMENT={c['settlement']}
 REACT_APP_ARC_VAULT_RELAYER={c['vaultRelayer']}
@@ -174,7 +189,13 @@ http {
     "''' + cfg['explorerOrigin'] + '''" $http_origin;
   }
   limit_req_zone arc-quotes zone=quotes:1m rate=6r/m;
-  limit_req_zone $binary_remote_addr zone=reads:1m rate=3r/s;
+  # Only the loopback-published tunnel can reach this port externally. Cloudflare
+  # overwrites this header; a local operator already controls the whole service.
+  map $http_cf_connecting_ip $client_ip {
+    "" $binary_remote_addr;
+    default $http_cf_connecting_ip;
+  }
+  limit_req_zone $client_ip zone=reads:1m rate=3r/s;
   server {
     listen 8080;
     client_max_body_size 256k;
@@ -184,7 +205,7 @@ http {
     add_header Access-Control-Allow-Headers "Content-Type" always;
     add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
     if ($request_method = OPTIONS) { return 204; }
-    location = /api/v1/quote {
+    location ~ ^/api/v1/quote(?:/draft)?$ {
       limit_req zone=quotes burst=5 nodelay;
       proxy_hide_header Access-Control-Allow-Origin;
       proxy_pass http://orderbook:8080;

@@ -31,6 +31,7 @@ export const cctpTransferSchema = z
     sourceNonce: z.number().int().nonnegative().safe().optional(),
     burnHash: hash.optional(),
     mintHash: hash.optional(),
+    claimNonce: z.number().int().nonnegative().safe().optional(),
   })
   .refine(
     (value) =>

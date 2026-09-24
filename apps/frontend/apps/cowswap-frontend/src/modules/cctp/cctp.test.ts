@@ -9,12 +9,28 @@ import {
   zeroHash,
   type Hex,
   type TransactionReceipt,
+  TransactionReceiptNotFoundError,
 } from 'viem'
 
 import { CCTP_ABI, FORWARD_HOOK, MESSAGE_TRANSMITTER, TOKEN_MESSENGER } from './cctp.const'
-import { assertCctpQuote, calculateCctpFee, cctpBurnData, parseCctpAmount, type CctpTransfer } from './cctp.service'
+import {
+  cctpClient,
+  circleGet,
+  assertCctpQuote,
+  calculateCctpFee,
+  cctpBurnData,
+  parseCctpAmount,
+  type CctpTransfer,
+} from './cctp.service'
 import { cctpTransferSchema } from './cctpState'
-import { validateCctpMessage, verifyBurnReceipt, verifyMintReceipt } from './cctpStatus.service'
+import { getCctpStatus, validateCctpMessage, verifyBurnReceipt, verifyMintReceipt } from './cctpStatus.service'
+import { resumeCctpClaim } from './cctpSubmission.service'
+
+jest.mock('./cctp.service', () => ({
+  ...jest.requireActual('./cctp.service'),
+  cctpClient: jest.fn(),
+  circleGet: jest.fn(),
+}))
 
 const owner = '0x0494F503912C101Bfd76b88e4F5D8A33de284d1A'
 const transfer: CctpTransfer = {
@@ -158,4 +174,64 @@ it('requires the source MessageSent from Circle and destination message plus rec
       transfer,
     ),
   ).toThrow()
+})
+
+it('keeps a pending manual claim locked when forwarding reverted and recovers a mined claim from its receipt', async () => {
+  const mintHash = `0x${'ab'.repeat(32)}` as Hex
+  const forwardTxHash = `0x${'cd'.repeat(32)}` as Hex
+  const burnHash = `0x${'ef'.repeat(32)}` as Hex
+  const sent = {
+    address: MESSAGE_TRANSMITTER,
+    topics: encodeEventTopics({ abi: CCTP_ABI, eventName: 'MessageSent' }),
+    data: encodeAbiParameters([{ type: 'bytes' }], [message]),
+  }
+  const client = {
+    getTransactionReceipt: jest.fn().mockImplementation(async ({ hash }: { hash: Hex }) => {
+      if (hash === mintHash) throw new TransactionReceiptNotFoundError({ hash })
+      if (hash === burnHash) return receipt([sent] as TransactionReceipt['logs'])
+      return { status: 'reverted' }
+    }),
+    getTransaction: jest
+      .fn()
+      .mockResolvedValue({ from: owner, to: TOKEN_MESSENGER, input: cctpBurnData(transfer), value: 0n, nonce: 7 }),
+  }
+  jest.mocked(cctpClient).mockReturnValue(client as unknown as ReturnType<typeof cctpClient>)
+  jest
+    .mocked(circleGet)
+    .mockResolvedValue({ messages: [{ message, attestation: `0x${'01'.repeat(65)}`, forwardTxHash }] })
+  const stored = { ...transfer, sourceNonce: 7, burnHash, mintHash, claimNonce: 9 }
+  expect(await getCctpStatus(stored, true)).toEqual(
+    expect.objectContaining({ completed: false, claimPending: true, mintHash }),
+  )
+  const unknown = { ...stored, mintHash: undefined }
+  expect(await getCctpStatus(unknown, true)).toEqual(expect.objectContaining({ completed: false, claimPending: true }))
+  client.getTransactionReceipt.mockImplementation(async ({ hash }: { hash: Hex }) =>
+    hash === burnHash ? receipt([sent] as TransactionReceipt['logs']) : receipt([]),
+  )
+  await expect(resumeCctpClaim(unknown, mintHash)).rejects.toThrow('does not confirm')
+  const received = {
+    address: MESSAGE_TRANSMITTER,
+    topics: encodeEventTopics({
+      abi: CCTP_ABI,
+      eventName: 'MessageReceived',
+      args: { caller: owner, nonce: word(42), finalityThresholdExecuted: 2000 },
+    }),
+    data: encodeAbiParameters(
+      [{ type: 'uint32' }, { type: 'bytes32' }, { type: 'bytes' }],
+      [6, pad(TOKEN_MESSENGER), body],
+    ),
+  }
+  const mint = {
+    address: '0x3600000000000000000000000000000000000000',
+    topics: ['0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef', pad(zeroAddress), pad(owner)],
+    data: word(1984362),
+  }
+  client.getTransactionReceipt.mockImplementation(async ({ hash }: { hash: Hex }) => {
+    if (hash === burnHash) return receipt([sent] as TransactionReceipt['logs'])
+    if (hash === mintHash) return receipt([received, mint] as TransactionReceipt['logs'])
+    return { status: 'reverted' }
+  })
+  const recovered = await resumeCctpClaim(unknown, mintHash)
+  expect(recovered.mintHash).toBe(mintHash)
+  expect((await getCctpStatus(recovered)).completed).toBe(true)
 })

@@ -16,8 +16,14 @@ async function main() {
   assert.match(metadata.keychainAccount, /^solver-5042-\d{8}$/)
   const file = path.join(directory, 'solver-staged.keystore.json')
   assert.equal(metadata.keystore, file)
-  const stat = fs.lstatSync(file)
-  assert(stat.isFile() && stat.uid === process.getuid() && (stat.mode & 0o777) === 0o600, 'Private owner-controlled keystore required')
+  const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK)
+  let encrypted
+  try {
+    const stat = fs.fstatSync(fd)
+    assert(stat.isFile() && stat.size <= 65536 && stat.uid === process.getuid() && (stat.mode & 0o777) === 0o600,
+      'Private owner-controlled keystore required')
+    encrypted = fs.readFileSync(fd, 'utf8')
+  } finally { fs.closeSync(fd) }
   const plan = JSON.parse(fs.readFileSync(path.join(__dirname, 'generated/plan.json')))
   checkHash(plan)
   assert.equal(metadata.solver, plan.config.solver, 'Staged address differs from reviewed plan')
@@ -26,7 +32,7 @@ async function main() {
   const password = execFileSync('/usr/bin/security', ['find-generic-password', '-s', metadata.keychainService,
     '-a', metadata.keychainAccount, '-w'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
   let wallet
-  try { wallet = await Wallet.fromEncryptedJson(fs.readFileSync(file, 'utf8'), password) }
+  try { wallet = await Wallet.fromEncryptedJson(encrypted, password) }
   catch { throw new Error('Unable to decrypt the staged keystore') }
   assert.equal(wallet.address, plan.config.solver)
   const destination = '/Users/ophis-driver/.config/ophis-arc/submitter.key'

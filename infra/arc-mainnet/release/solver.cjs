@@ -56,7 +56,9 @@ function prepare(config, output, file, nonce, createSolver = false) {
   const signer = readSolver(keyFile)
   if (config.solver) assert.equal(signer.address.toLowerCase(), config.solver.toLowerCase(), 'Configured solver differs from key')
   const prepared = validate({ ...config, solver: signer.address, nonce })
-  fs.writeFileSync(output, JSON.stringify(prepared, null, 2) + '\n', { flag: 'wx', mode: 0o600 })
+  const fd = fs.openSync(output, 'wx', 0o600)
+  try { fs.writeFileSync(fd, JSON.stringify(prepared, null, 2) + '\n'); fs.fsyncSync(fd) }
+  finally { fs.closeSync(fd) }
   return prepared
 }
 

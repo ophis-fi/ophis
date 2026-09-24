@@ -99,6 +99,7 @@ try:
         while all(p.poll() is None for p in processes):
             time.sleep(1)
 except KeyboardInterrupt:
+    # The finally block terminates every disposable lab process.
     pass
 finally:
     for process in reversed(processes):

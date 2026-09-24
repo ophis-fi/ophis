@@ -438,7 +438,7 @@ where
     /// Never enable this for a chain where the current head can reorganize.
     /// Retain checkpoint checks to fail closed on inconsistent RPC views.
     pub async fn update_events_deterministic(&mut self) -> Result<()> {
-        let last = match self.last_handled_blocks.last() {
+        let mut last = match self.last_handled_blocks.last() {
             Some(last) => *last,
             None => {
                 let number = self.store.last_event_block().await?;
@@ -455,34 +455,40 @@ where
             self.block_retriever.block(last.0).await? == last,
             "finalized checkpoint changed"
         );
-        // Match the Arc RPC pilot's maximum unsplit log range. Catch-up remains bounded.
-        let end = head.number.min(last.0.saturating_add(100));
-        let checkpoint = if end == head.number {
-            (end, head.hash)
-        } else {
-            self.block_retriever.block(end).await?
-        };
-        let range = RangeInclusive::try_new(last.0 + 1, end)?;
-        let events = self
-            .contract
-            .get_events_by_block_range(&range)
-            .await?
-            .try_collect::<Vec<_>>()
-            .await?;
-        ensure!(
-            self.block_retriever.block(end).await? == checkpoint,
-            "finalized range changed while fetching events"
-        );
-        for event in &events {
-            self.contract.validate_finalized_event(event, &range)?;
+        // Process up to four 100-block log ranges per maintenance tick. This
+        // catches up faster than Arc produces blocks while bounding free RPC
+        // reads (at most 15 calls here), leaving capacity for live settlement.
+        for _ in 0..4 {
+            let end = head.number.min(last.0.saturating_add(100));
+            let checkpoint = if end == head.number {
+                (end, head.hash)
+            } else {
+                self.block_retriever.block(end).await?
+            };
+            let range = RangeInclusive::try_new(last.0 + 1, end)?;
+            let events = self
+                .contract
+                .get_events_by_block_range(&range)
+                .await?
+                .try_collect::<Vec<_>>()
+                .await?;
+            ensure!(
+                self.block_retriever.block(end).await? == checkpoint,
+                "finalized range changed while fetching events"
+            );
+            for event in &events {
+                self.contract.validate_finalized_event(event, &range)?;
+            }
+            // Do not advance either cursor on a fetch/write error; appends are replayable.
+            self.store.append_events(events).await?;
+            self.store.persist_last_indexed_block(end).await?;
+            self.last_handled_blocks = vec![checkpoint];
+            last = checkpoint;
+            if end == head.number {
+                return Ok(());
+            }
         }
-        // Do not advance either cursor on a fetch/write error; appends are replayable.
-        self.store.append_events(events).await?;
-        self.store.persist_last_indexed_block(end).await?;
-        self.last_handled_blocks = vec![checkpoint];
-        // Maintenance retries bounded chunks before exposing an up-to-date auction.
-        ensure!(end == head.number, "finalized event catch-up incomplete");
-        Ok(())
+        anyhow::bail!("finalized event catch-up incomplete");
     }
 
     #[instrument(skip_all)]
@@ -1269,6 +1275,7 @@ mod deterministic_tests {
             "end",
             "regression",
             "catchup",
+            "caughtup",
             "metadata",
             "append",
             "persist",
@@ -1278,7 +1285,8 @@ mod deterministic_tests {
                 Ok(BlockInfo {
                     number: match failure {
                         "regression" => 0,
-                        "catchup" => 200,
+                        "catchup" => 1000,
+                        "caughtup" => 200,
                         _ => 101,
                     },
                     hash: B256::repeat_byte(2),
@@ -1316,7 +1324,11 @@ mod deterministic_tests {
             contract
                 .expect_get_events_by_block_range()
                 .returning(move |range| {
-                    assert_eq!(range.clone().into_inner(), (2, 101));
+                    if matches!(failure, "catchup" | "caughtup") {
+                        assert!(*range.end() - *range.start() < 100);
+                    } else {
+                        assert_eq!(range.clone().into_inner(), (2, 101));
+                    }
                     let events = match failure {
                         "logs" => vec![Err(anyhow::anyhow!("unavailable"))],
                         "empty" => vec![],
@@ -1335,16 +1347,21 @@ mod deterministic_tests {
                 Some((1, B256::repeat_byte(1))),
             );
             let result = handler.update_events_deterministic().await;
-            if matches!(failure, "none" | "empty" | "catchup") {
+            if matches!(failure, "none" | "empty" | "catchup" | "caughtup") {
                 assert_eq!(result.is_err(), failure == "catchup");
-                assert_eq!(handler.store.cursor, 101);
+                let expected = match failure {
+                    "catchup" => 401,
+                    "caughtup" => 200,
+                    _ => 101,
+                };
+                assert_eq!(handler.store.cursor, expected);
                 assert_eq!(
                     handler.store.events,
                     if failure == "empty" { vec![] } else { vec![42] }
                 );
                 assert_eq!(
                     handler.last_handled_blocks,
-                    vec![(101, B256::repeat_byte(2))]
+                    vec![(expected, B256::repeat_byte(2))]
                 );
             } else {
                 assert!(result.is_err(), "{failure}");

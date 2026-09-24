@@ -7,6 +7,29 @@ import { type CctpTransfer } from './cctp.service'
 import { type CctpStatus } from './cctpStatus.service'
 import { type useCctpTransfer } from './useCctpTransfer'
 
+function CctpHashRecovery({
+  label,
+  busy,
+  onResume,
+}: {
+  label: string
+  busy: boolean
+  onResume(hash: string): void
+}): ReactNode {
+  const [hash, setHash] = useState('')
+  return (
+    <>
+      <label>
+        {label}
+        <input value={hash} onChange={(event) => setHash(event.target.value.trim())} />
+      </label>
+      <button type="button" disabled={busy || !hash} onClick={() => onResume(hash)}>
+        Resume transfer
+      </button>
+    </>
+  )
+}
+
 export function CctpTransferDetails({
   transfer,
   status,
@@ -14,6 +37,7 @@ export function CctpTransferDetails({
   canClaim,
   onClaim,
   onResume,
+  onResumeClaim,
   onFinish,
 }: {
   transfer: CctpTransfer
@@ -22,9 +46,9 @@ export function CctpTransferDetails({
   canClaim: boolean
   onClaim(): void
   onResume(hash: string): void
+  onResumeClaim(hash: string): void
   onFinish(): void
 }): ReactNode {
-  const [hash, setHash] = useState('')
   const source = cctpNetwork(transfer.source)
   const destination = cctpNetwork(transfer.destination)
   return (
@@ -35,7 +59,7 @@ export function CctpTransferDetails({
       </p>
       <p>Recipient: {transfer.owner}</p>
       <p role="status">{status?.text || 'Checking transfer status…'}</p>
-      {transfer.burnHash ? (
+      {transfer.burnHash && (
         <a
           href={`${source.chain.blockExplorers?.default.url}/tx/${transfer.burnHash}`}
           target="_blank"
@@ -43,19 +67,14 @@ export function CctpTransferDetails({
         >
           Source transaction
         </a>
-      ) : (
+      )}
+      {!status?.sourceConfirmed && !status?.failed && (
         <>
           <p>
-            If the wallet submitted your bridge but did not return its hash, paste the source transaction hash below. Do
-            not submit another bridge.
+            If your wallet did not return a hash, or you sped up the transaction, paste the confirmed source transaction
+            hash below. Do not submit another bridge.
           </p>
-          <label>
-            Source transaction hash
-            <input value={hash} onChange={(event) => setHash(event.target.value.trim())} />
-          </label>
-          <button type="button" disabled={busy || !hash} onClick={() => onResume(hash)}>
-            Resume transfer
-          </button>
+          <CctpHashRecovery label="Source transaction hash" busy={busy} onResume={onResume} />
         </>
       )}
       {status?.mintHash && (
@@ -67,23 +86,55 @@ export function CctpTransferDetails({
           Destination transaction
         </a>
       )}
-      {status?.message && !status.completed && (
-        <>
-          <p>
-            Circle normally delivers automatically. If delivery stalls, you can claim on {destination.chain.name} using
-            your wallet and pay destination gas.
-          </p>
-          <button type="button" disabled={busy || !canClaim || !!status.mintHash} onClick={onClaim}>
-            Claim on {destination.chain.name}
-          </button>
-          {!canClaim && <p>Connect the recipient wallet on {destination.chain.name} to claim.</p>}
-        </>
-      )}
+      <CctpClaimDetails
+        status={status}
+        busy={busy}
+        canClaim={canClaim}
+        destinationName={destination.chain.name}
+        onClaim={onClaim}
+        onResumeClaim={onResumeClaim}
+      />
       {(status?.completed || status?.failed) && (
         <button type="button" disabled={busy} onClick={onFinish}>
           Start another transfer
         </button>
       )}
+    </>
+  )
+}
+
+function CctpClaimDetails({
+  status,
+  busy,
+  canClaim,
+  destinationName,
+  onClaim,
+  onResumeClaim,
+}: {
+  status: CctpStatus | null
+  busy: boolean
+  canClaim: boolean
+  destinationName: string
+  onClaim(): void
+  onResumeClaim(hash: string): void
+}): ReactNode {
+  if (!status?.message || status.completed) return null
+  return (
+    <>
+      <p>
+        Circle normally delivers automatically. If delivery stalls, you can claim on {destinationName} using your wallet
+        and pay destination gas.
+      </p>
+      <button
+        type="button"
+        disabled={busy || !canClaim || !!status.mintHash || !!status.claimPending}
+        onClick={onClaim}
+      >
+        Claim on {destinationName}
+      </button>
+      {!canClaim && <p>Connect the recipient wallet on {destinationName} to claim.</p>}
+      <p>If you already claimed, or sped up a claim, paste the confirmed destination transaction hash to recover it.</p>
+      <CctpHashRecovery label="Destination transaction hash" busy={busy} onResume={onResumeClaim} />
     </>
   )
 }
