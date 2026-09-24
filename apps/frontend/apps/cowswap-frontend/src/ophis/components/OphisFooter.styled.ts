@@ -95,18 +95,6 @@ export const TradeSummary = styled.section`
   flex-basis: 100%;
   order: 4;
   line-height: 1.6;
-  summary {
-    padding: 12px 0;
-    cursor: pointer;
-    color: ${({ theme }) => steep(theme).text};
-    &:focus-visible {
-      outline: 2px solid ${({ theme }) => steep(theme).link};
-      outline-offset: 2px;
-    }
-  }
-  p {
-    max-width: 80ch;
-  }
 `
 
 export const Grid = styled.div`
