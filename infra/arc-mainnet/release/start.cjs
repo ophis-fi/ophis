@@ -15,6 +15,11 @@ async function main() {
   const plan = read('plan')
   checkHash(plan)
   assert.deepEqual(build(plan.config, compile().artifacts), plan)
+  if (process.platform === 'darwin') {
+    const { verifyRamKey, probeDockerMount } = require('./mac-key.cjs')
+    verifyRamKey(process.env.ARC_SOLVER_KEY_FILE)
+    probeDockerMount()
+  }
   const { keyFile, address: signer } = readSolver(process.env.ARC_SOLVER_KEY_FILE)
   assert(fs.statSync(OUT).uid === process.getuid(), 'Release directory must have the same owner as the key')
   process.env.ARC_SOLVER_KEY_FILE = keyFile

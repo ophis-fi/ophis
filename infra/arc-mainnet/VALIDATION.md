@@ -7,11 +7,46 @@ fixtures. Existing real Uniswap liquidity was checked separately in [LIQUIDITY.m
 ## Final preparation review — September 24
 
 The existing Mac mini is selected for Arc. A fresh dedicated solver,
-`0x839029e110F4954e05aFad4Fa222CfE93ce6d86f`, is encrypted in local staging;
-import into the existing isolated `ophis-driver` account still requires the
-operator's local sudo authentication. The staged key is recoverable by the
-operator account until verified off-site backup and staging cleanup. No claim of
-completed runtime custody or backup is made. No existing chain's key was reused.
+`0x839029e110F4954e05aFad4Fa222CfE93ce6d86f`, was imported into the existing
+isolated `ophis-driver` account, as confirmed by the operator on September 24.
+The importer verifies identity and owner-only file permissions; an independent
+assistant recheck remains unavailable because noninteractive sudo still requires
+authentication. The encrypted staged key remains recoverable by the operator
+account until verified off-site backup and staging cleanup. No backup completion
+is claimed: the operator confirmed the backup is **not yet done**. No existing
+chain's key was reused. Encrypted staging is retained; solver funding remains pending.
+
+The disk blocker was resolved by removing about 10 GiB of this checkout's
+rebuildable Rust intermediates, preserving hashes of all four native binaries.
+The production backend and migrations images built successfully from backend
+code revision `7f2f8b10f2e1`, beginning with 14.3 GiB free. Two Cargo jobs,
+locked dependencies, disabled debug information and a 3 GiB stop bounded the
+build. The backend image's five binaries passed offline CLI checks as UID 501;
+the direct V3 command is present. Flyway's offline version check passed.
+`release/generated/production-images.json` records both arm64 image IDs and
+checks. No Arc services were activated.
+
+The selected Colima instance runs as UID 501 and cannot directly mount the
+isolated UID 502 key. Mac startup now requires a separate owner-only RAM copy,
+using OP's existing hdiutil approach, with exact RAM device/mount provenance,
+Spotlight exclusion and planned-key binding. The canonical key remains under
+UID 502; the operator and Docker administrators can access the runtime copy.
+It must be recreated after reboot. A real disposable-key test proved Colima's
+read-only mount works as UID 501:20 with no networking. Rapid reuse of a detached
+RAM device number exposed a Colima stale-mount cache issue; a fresh device passed.
+A Docker marker/permissions probe must therefore pass before actual key copying
+or startup. No actual solver key was used in these tests, and Colima/OP were not
+restarted. Production RAM preparation remains an operator step; a failed mount
+probe requires host maintenance, not bypassing the guard.
+Trail of Bits workflow implementation review and independent QA review passed
+the final host-tool changes. The real-entrypoint regression proves a failed
+Docker probe prevents sudo, key reads/writes, RPC, rendering and activation.
+The existing Pashov contract review remains applicable: no Solidity or backend
+source changed in this host preparation pass. RAM storage is not a guarantee
+against OS swap/hibernation. All scratch devices and mounts were cleaned up.
+After building, 3.6 GB of disposable Docker compiler cache was pruned and free
+guest blocks were trimmed; production images, existing containers and database
+volumes were preserved. The final disk check showed approximately **10 GiB free**.
 
 The actual Safe, deployer and solver are bound to the prepared unsigned plan:
 `0xf847a22abd920e48c88906ead95e39be4f5673433e378f0903cfe2289e01fcc0`.
@@ -56,8 +91,8 @@ and runtime bytecode matched the repository-pinned
 The fresh free-RPC direct Uniswap check passed with **21 requests** and no
 transaction; see LIQUIDITY.md. All local tests used zero public RPC, QuickNode or
 dRPC calls. No paid credits were used by preparation. Production Docker images
-are not built: 4.8 GiB free is below the fresh-build floor of 12 GiB. Isolated
-runtime ownership/access, off-site backup, solver funding, deployment and Safe
+are now built; approximately 10 GiB remained after cache cleanup. Verified off-site backup,
+production RAM-key preparation, solver funding, deployment and Safe
 activation, service publication and live swap/bridge smoke tests remain launch
 operations. Nothing was broadcast, merged or pushed.
 
@@ -74,7 +109,7 @@ before each send. The fresh seven-contract rehearsal, solver checks and release
 preview/activation-rejection/permissions/HTTP checks passed. No public transaction
 was sent; no QuickNode/dRPC credits were used. At that earlier point the production
 solver and final production plan were absent; both are now prepared as recorded
-above, with isolated custody import pending.
+above; the operator subsequently confirmed successful isolated-account import.
 
 Following the operator's confirmation, read-only checks through both free Arc
 RPCs at **09:58 UTC** passed: the Safe has all three expected owners, threshold

@@ -9,8 +9,9 @@ later authorized launch. Do not run them as part of local development.
 
 ### Prepared Mac mini launch — September 24
 
-The selected runtime host is the existing Mac mini, using its isolated
-`ophis-driver` account (UID 502). The actual ignored `config.json` and
+The selected runtime host is the existing Mac mini. Its isolated
+`ophis-driver` account (UID 502) holds the canonical key; Colima runs as
+the operator (UID 501). The actual ignored `config.json` and
 `generated/plan.json` now use Arc's dedicated solver
 `0x839029e110F4954e05aFad4Fa222CfE93ce6d86f`, the Safe and Ledger below,
 and observed deployer nonce zero. Plan hash:
@@ -18,9 +19,11 @@ and observed deployer nonce zero. Plan hash:
 The seven deployment transactions and solver-activation Safe batch are unsigned.
 The generated frontend and backend configuration remains inactive.
 
-The new key is currently encrypted under the operator's account, with its random
-password in macOS Keychain. This is **temporary staging**, not completed isolated
-custody. Import that exact key from the operator's Terminal:
+The operator confirmed successful import into `ophis-driver` on September 24.
+The importer checks the planned address and owner-only runtime file permissions.
+The assistant could not independently repeat that check: its noninteractive sudo
+session still requires authentication. No private key was read or displayed.
+For reference, the completed operator command was:
 
 ```sh
 node /Users/scep/ophis-arc/infra/arc-mainnet/release/import-staged.cjs --import
@@ -30,17 +33,47 @@ Authenticate sudo locally. The command verifies the reviewed plan and address,
 imports to `/Users/ophis-driver/.config/ophis-arc/submitter.key` with owner 502 and
 mode 0600, and refuses to replace an existing key. It sends no transaction and
 starts no service. No password or private key belongs in chat or shell arguments.
-At preparation time this import remained pending operator authentication.
 Complete and verify the existing encrypted off-site backup before funding, then
 remove the temporary staging copies through the custody procedure; retaining
-them preserves the operator account's recovery access.
+them preserves the operator account's recovery access. The encrypted staging
+keystore and its macOS Keychain password remain in place pending that backup.
 
 The prepared key supersedes the fresh-key example below: **do not generate a
 second solver or overwrite this plan**. Recheck nonce and balance before signing.
-The runtime still needs owner-aligned release files, a readable pinned compiler,
-Docker access and built images. Only 4.8 GiB was free at preparation; a fresh
-Docker Rust build was not attempted (12 GiB minimum). No production image or
-isolated-account startup success is claimed.
+The original disk blocker is resolved: removing only this checkout's rebuildable
+Rust intermediates recovered about 10 GiB, preserving all four native binaries.
+The production backend and migrations images are now built as
+`ophis-arc-backend:7f2f8b10f2e1` and `ophis-arc-migrations:7f2f8b10f2e1`.
+The build used two Cargo jobs and a 3 GiB disk stop; it began with 14.3 GiB free.
+All five backend binary help commands passed inside the image as UID 501 with
+networking disabled; Flyway's offline version check also passed. Image IDs and
+architecture are recorded in ignored `generated/production-images.json`.
+
+Colima's operator-owned socket and virtiofs cannot directly use UID 502's private
+key. As with OP, the Mac runtime therefore needs an owner-only RAM-backed copy:
+
+```sh
+node infra/arc-mainnet/release/mac-key.cjs --prepare
+```
+
+Run this as the Colima operator from the checkout root, authenticate sudo locally,
+and set `ARC_SOLVER_KEY_FILE` to
+`/Users/scep/.local/state/ophis/arc-ram-pk/submitter.key`. The helper binds the key to
+the reviewed plan and verifies the exact mounted device against hdiutil's
+`ram://` image record before writing. It excludes Spotlight indexing and checks
+Colima can read the public mount markers before accessing the canonical key.
+It retains the canonical UID 502 file.
+Arc uses its own mount, separate from OP; it must be prepared again after reboot.
+The operator account and Docker administrators can read the runtime copy. This
+does not provide isolation from them. Startup rejects a missing RAM mount or a
+regular disk substitute. Release files and backend containers stay owned by
+the Colima operator (UID 501, GID 20). No production service has been started.
+Rapid reuse of a detached RAM device exposed stale Colima mount caching during
+testing. A fresh device passed the real dummy-key check. Preparation/startup stop
+if the Docker probe fails; resolve host mounting during a maintenance window,
+without bypassing the checks or restarting the existing OP stack implicitly.
+The opt-in reproduction is `node infra/arc-mainnet/release/test_mac_key_mount.cjs
+--scratch`; it uses only a public dummy key and cleans up its own RAM volume.
 
 ### Reproducible preparation for a new installation
 
@@ -148,6 +181,7 @@ with PyYAML (and tomli on Python <3.11), and Docker. Check disk before building:
 python3 infra/arc-mainnet/local/build.py --check-only
 node infra/arc-mainnet/release/test_solver.cjs
 node infra/arc-mainnet/release/test_plan.cjs
+node infra/arc-mainnet/release/test_mac_key.cjs
 node infra/arc-mainnet/release/rehearse.cjs
 python3 infra/arc-mainnet/release/check.py
 python3 infra/arc-mainnet/test_credit_gate.py
@@ -205,14 +239,17 @@ application development. Use the reviewed revision and actual `config.json`:
    execute with two owners. Run `node infra/arc-mainnet/release/verify.cjs`.
    It binds receipts and creation inputs to the plan and checks actual code,
    ownership, empty pending manager, solver authorization and contract wiring.
-4. Build the backend/migrations Docker images on a host with sufficient space
+4. Use the prepared backend/migrations Docker images above, or build them on a host with sufficient space
    (a fresh Rust build needs at least 12 GiB free). Set `ARC_RELEASE_TAG` to the
    reviewed revision, and export `ARC_RUNTIME_UID=$(id -u)` and
    `ARC_RUNTIME_GID=$(id -g)`; `docker compose -f infra/arc-mainnet/release/docker-compose.yml
-   build`. Share the one backend image across services. Never build on the current
-   Mac mini's approximately 4.8 GiB free space without increasing available storage.
-5. Supply `ARC_SOLVER_KEY_FILE` pointing to the dedicated Arc private key file outside
-   the repo, mode 0600. Set `ARC_QUICKNODE_RPC_URL` privately and reserve only the
+   build`. Share the one backend image across services. A fresh build still needs
+   a new disk-space check; cached outputs are not a reservation of space.
+5. On the selected Mac mini, prepare the verified RAM copy using `mac-key.cjs`
+   above and run Compose/startup as the Colima operator. On Linux, use the isolated
+   signing account and its canonical key directly. Supply `ARC_SOLVER_KEY_FILE`
+   pointing to the corresponding dedicated Arc file outside the repo, mode 0600.
+   Set `ARC_QUICKNODE_RPC_URL` privately and reserve only the
    actually available credits in `ARC_QUICKNODE_CREDIT_ALLOWANCE` (1..10,000,000).
    Use the environment or an ignored release `.env`; never put these in frontend
    variables. `start.cjs` expects these variables exported in its environment.

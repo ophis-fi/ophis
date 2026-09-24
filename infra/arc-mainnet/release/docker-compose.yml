@@ -3,6 +3,10 @@ x-backend: &backend
   image: ophis-arc-backend:${ARC_RELEASE_TAG:?set the reviewed release revision}
   build:
     context: ../../../apps/backend
+    args:
+      CARGO_BUILD_FEATURES: --jobs 2 --locked
+      RUSTFLAGS: -C debuginfo=0
+      OPHIS_GIT_DESCRIBE: ${ARC_RELEASE_TAG:?set the reviewed release revision}
   restart: unless-stopped
   user: "${ARC_RUNTIME_UID:?use start.cjs}:${ARC_RUNTIME_GID:?use start.cjs}"
   env_file: ./generated/services.env
