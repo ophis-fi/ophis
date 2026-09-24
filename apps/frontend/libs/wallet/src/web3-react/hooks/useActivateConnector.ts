@@ -15,24 +15,24 @@ export interface ConnectorActivationContext {
 
   afterActivation(isHardWareWallet: boolean, connectionType: ConnectionType): void
 
-  // TODO: Replace any with proper type definitions
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onActivationError(error: any): void
+  onActivationError(error: unknown): void
 }
 
-// TODO: Add proper return type annotation
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function useActivateConnector({
   skipNetworkChanging,
   beforeActivation,
   afterActivation,
   onActivationError,
-}: ConnectorActivationContext) {
+}: ConnectorActivationContext): {
+  tryActivation: (connector: Connector) => Promise<void>
+  retryPendingActivation: () => void
+  pendingConnectionType: ConnectionType | undefined
+} {
   const { chainId } = useWalletInfo()
   const [pendingConnector, setPendingConnector] = useState<Connector | undefined>()
 
   const tryActivation = useCallback(
-    async (connector: Connector) => {
+    async (connector: Connector): Promise<void> => {
       const connection = getWeb3ReactConnection(connector)
       const connectionType = connection.type
       const isHardWareWallet = getIsHardWareWallet(connectionType)
@@ -48,9 +48,7 @@ export function useActivateConnector({
         await connector.activate(skipNetworkChanging ? undefined : getCurrentChainIdFromUrl())
 
         afterActivation(isHardWareWallet, connectionType)
-        // TODO: Replace any with proper type definitions
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (error: any) {
+      } catch (error) {
         console.error(`[tryActivation] web3-react connection error`, error)
 
         onActivationError(error)
@@ -62,7 +60,8 @@ export function useActivateConnector({
   return useMemo(
     () => ({
       tryActivation,
-      retryPendingActivation: () => {
+      pendingConnectionType: pendingConnector ? getWeb3ReactConnection(pendingConnector).type : undefined,
+      retryPendingActivation: (): void => {
         if (pendingConnector) {
           tryActivation(pendingConnector)
         }

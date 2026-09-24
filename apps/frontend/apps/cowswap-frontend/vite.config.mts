@@ -17,8 +17,8 @@ import * as path from 'path'
 
 import { formatChunkFileName } from '../../tools/formatChunkFileName'
 import { getReactProcessEnv } from '../../tools/getReactProcessEnv'
-import { OPHIS_BUILD_TARGET } from '../../tools/viteBuildTarget'
 import { robotsPlugin } from '../../tools/vite-plugins/robotsPlugin'
+import { OPHIS_BUILD_TARGET } from '../../tools/viteBuildTarget'
 
 // eslint-disable-next-line @typescript-eslint/no-restricted-imports
 import type { TemplateType } from 'rollup-plugin-visualizer/dist/plugin/template-types'
@@ -190,6 +190,8 @@ export default defineConfig(({ mode }) => {
     },
 
     resolve: {
+      // pnpm peer variants must share the same Wagmi React context in production.
+      dedupe: ['wagmi'],
       alias: {
         'node-fetch': 'isomorphic-fetch',
       },

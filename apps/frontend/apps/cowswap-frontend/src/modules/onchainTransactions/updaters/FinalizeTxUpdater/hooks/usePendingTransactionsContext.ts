@@ -15,7 +15,7 @@ import useNativeCurrency from 'lib/hooks/useNativeCurrency'
 
 import { CheckEthereumTransactions } from '../types'
 
-export function usePendingTransactionsContext(): CheckEthereumTransactions | null {
+export function usePendingTransactionsContext(hasPendingTransactions: boolean): CheckEthereumTransactions | null {
   // TODO M-6 COW-573
   // This flow will be reviewed and updated later, to include a wagmi alternative
   const provider = useWalletProvider()
@@ -40,7 +40,7 @@ export function usePendingTransactionsContext(): CheckEthereumTransactions | nul
 
   return useAsyncMemo(
     async () => {
-      if (!provider || !lastBlockNumber || !account) return null
+      if (!hasPendingTransactions || !provider || !lastBlockNumber || !account) return null
 
       const transactionsCount = await provider.getTransactionCount(account)
 
@@ -62,6 +62,7 @@ export function usePendingTransactionsContext(): CheckEthereumTransactions | nul
       return params
     },
     [
+      hasPendingTransactions,
       chainId,
       account,
       isSafeWallet,

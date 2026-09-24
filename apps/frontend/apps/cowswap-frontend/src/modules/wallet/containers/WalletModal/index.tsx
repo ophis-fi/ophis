@@ -1,5 +1,5 @@
 import { useSetAtom } from 'jotai'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { normalizeError } from '@cowprotocol/common-utils'
 import { useWalletInfo, useActivateConnector, ConnectionType } from '@cowprotocol/wallet'
@@ -16,10 +16,7 @@ import { useWalletConnectionError } from '../../hooks/useWalletConnectionError'
 import { WalletModal as WalletModalPure, WalletModalView } from '../../pure/WalletModal'
 import { toggleAccountSelectorModalAtom } from '../AccountSelectorModal/state'
 
-// TODO: Break down this large function into smaller functions
-// TODO: Add proper return type annotation
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-export function WalletModal() {
+export function WalletModal(): ReactNode {
   const dispatch = useAppDispatch()
   const { account } = useWalletInfo()
   const setWalletConnectionError = useSetWalletConnectionError()
@@ -51,7 +48,7 @@ export function WalletModal() {
     }
   }, [isPendingView, setWalletConnectionError])
 
-  const { tryActivation, retryPendingActivation } = useActivateConnector(
+  const { tryActivation, retryPendingActivation, pendingConnectionType } = useActivateConnector(
     useMemo(
       () => ({
         skipNetworkChanging: isWalletChangingFlow,
@@ -81,7 +78,11 @@ export function WalletModal() {
 
   return (
     <WalletModalPure
-      isOpen={walletModalOpen}
+      // Reach hides sibling dialogs from assistive technology. Let AppKit own the pending modal.
+      isOpen={
+        walletModalOpen &&
+        !(pendingConnectionType === ConnectionType.WALLET_CONNECT_V2 && isPendingView && !pendingError)
+      }
       onDismiss={closeWalletModal}
       openOptions={openOptions}
       pendingError={pendingError}

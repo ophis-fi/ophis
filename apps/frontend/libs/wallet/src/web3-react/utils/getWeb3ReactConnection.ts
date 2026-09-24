@@ -1,4 +1,3 @@
-import { getCurrentChainIdFromUrl } from '@cowprotocol/common-utils'
 import { Connector } from '@web3-react/types'
 
 import { ConnectionType } from '../../api/types'
@@ -27,7 +26,7 @@ const STATIC_CONNECTIONS: Web3ReactConnection[] = Object.values(connectionTypeTo
 
 export function getWeb3ReactConnection(c: Connector | ConnectionType): Web3ReactConnection {
   if (c instanceof WalletConnectV2Connector || c === ConnectionType.WALLET_CONNECT_V2) {
-    return getWalletConnectV2Connection(getCurrentChainIdFromUrl())
+    return getWalletConnectV2Connection()
   }
 
   if (c instanceof Connector) {
