@@ -394,7 +394,13 @@ function rpc(item, chain) {
     await page
       .getByRole('button', { name: 'Review bridge fee', exact: true })
       .waitFor({ timeout: 20000 });
+    await page.getByRole('combobox', { name: /^To/ }).selectOption('8453');
+    await page.getByRole('combobox', { name: /^From/ }).selectOption('5042');
     await page.getByRole('combobox', { name: /^Asset/ }).selectOption(asset);
+    assert.notEqual(
+      await page.getByRole('combobox', { name: /^From/ }).inputValue(),
+      await page.getByRole('combobox', { name: /^To/ }).inputValue(),
+    );
     assert.equal(
       await page.getByRole('combobox', { name: /^From/ }).locator('option').count(),
       btc ? 2 : expanded ? 3 : 6,

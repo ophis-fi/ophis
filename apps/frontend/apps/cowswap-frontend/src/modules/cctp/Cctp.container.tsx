@@ -13,7 +13,7 @@ import { CCTP_ENABLED } from 'common/constants/featureFlags'
 import { CCTP_NETWORKS } from './cctp.const'
 import { isCctpOwner } from './cctp.service'
 import * as styledEl from './Cctp.styled'
-import { CCTP_ASSETS, supportsCctpAsset, type CctpAsset } from './cctpAssets.const'
+import { CCTP_ASSETS, cctpAssetRoute, supportsCctpAsset, type CctpAsset } from './cctpAssets.const'
 import { CctpTransferDetails, CctpQuoteDetails } from './CctpTransfer.pure'
 import { useCctpTransfer } from './useCctpTransfer'
 
@@ -25,7 +25,6 @@ function CctpForm(): ReactNode {
   const [source, setSource] = useState(8453)
   const [destination, setDestination] = useState(5042)
   const [amount, setAmount] = useState('')
-  const correctChain = chainId === source
   return (
     <styledEl.Card aria-label="CCTP token bridge">
       <Web3Status hideConnectButton />
@@ -47,8 +46,9 @@ function CctpForm(): ReactNode {
             busy={!!flow.busy}
             onChange={(selected) => {
               setAsset(selected)
-              if (!supportsCctpAsset(source, selected)) setSource(1)
-              if (!supportsCctpAsset(destination, selected)) setDestination(5042)
+              const next = cctpAssetRoute(selected, source, destination)
+              setSource(next.source)
+              setDestination(next.destination)
               setAmount('')
               flow.clearQuote()
             }}
@@ -105,7 +105,7 @@ function CctpForm(): ReactNode {
               Connect wallet
             </button>
           )}
-          {flow.quote && <CctpQuoteDetails flow={flow} correctChain={correctChain} source={source} />}
+          {flow.quote && <CctpQuoteDetails flow={flow} correctChain={chainId === source} source={source} />}
         </>
       )}
       {flow.busy && (

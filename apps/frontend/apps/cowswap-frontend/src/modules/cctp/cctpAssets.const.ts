@@ -1,6 +1,6 @@
 import { type Address, type Hex, parseAbi } from 'viem'
 
-import { cctpNetwork, TOKEN_MESSENGER } from './cctp.const'
+import { CCTP_NETWORKS, cctpNetwork, TOKEN_MESSENGER } from './cctp.const'
 
 export type CctpAsset = 'USDC' | 'EURC' | 'cirBTC'
 export const CCTP_ASSETS: readonly CctpAsset[] = ['USDC', 'EURC', 'cirBTC']
@@ -70,3 +70,20 @@ export const CCTPX_ABI = parseAbi([
   'function resolveTokenManager(bytes32 tokenId) view returns(address)',
   'function isTrustedDomain(uint32 domain) view returns(bool)',
 ])
+
+export function cctpAssetRoute(
+  asset: CctpAsset,
+  source: number,
+  destination: number,
+): { source: number; destination: number } {
+  const networks = CCTP_NETWORKS.filter(({ chain }) => supportsCctpAsset(chain.id, asset))
+  const nextSource = supportsCctpAsset(source, asset)
+    ? source
+    : networks.find(({ chain }) => chain.id !== destination)?.chain.id
+  const nextDestination =
+    supportsCctpAsset(destination, asset) && destination !== nextSource
+      ? destination
+      : networks.find(({ chain }) => chain.id !== nextSource)?.chain.id
+  if (nextSource === undefined || nextDestination === undefined) throw new Error('No bridge route for this asset')
+  return { source: nextSource, destination: nextDestination }
+}

@@ -1,7 +1,7 @@
 import { decodeFunctionData, erc20Abi, getAddress, type WalletClient } from 'viem'
 
 import { cctpClient, readCctpFunds, type CctpQuote } from './cctp.service'
-import { cctpSpender, CROSS_CHAIN_TOKEN_SERVICE } from './cctpAssets.const'
+import { cctpAssetRoute, cctpSpender, CROSS_CHAIN_TOKEN_SERVICE } from './cctpAssets.const'
 import { approveCctp, burnCctp, switchCctpChain } from './cctpWallet.service'
 
 jest.mock('./cctp.service', () => ({
@@ -142,4 +142,11 @@ it('rejects a non-USDC quote when its source block expiry is reached before sign
   await expect(burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)).rejects.toThrow('expired')
   expect(beforeSignature).not.toHaveBeenCalled()
   expect(wallet.sendTransaction).not.toHaveBeenCalled()
+})
+
+it('keeps supported networks and replaces unsupported asset routes with distinct endpoints', () => {
+  expect(cctpAssetRoute('cirBTC', 5042, 8453)).toEqual({ source: 5042, destination: 1 })
+  expect(cctpAssetRoute('cirBTC', 8453, 1)).toEqual({ source: 5042, destination: 1 })
+  expect(cctpAssetRoute('cirBTC', 8453, 5042)).toEqual({ source: 1, destination: 5042 })
+  expect(cctpAssetRoute('EURC', 5042, 8453)).toEqual({ source: 5042, destination: 8453 })
 })
