@@ -6,6 +6,15 @@ fixtures. Existing real Uniswap liquidity was checked separately in [LIQUIDITY.m
 
 ## Governance choice and unsigned batch — September 24
 
+Following the operator's confirmation, read-only checks through both free Arc
+RPCs at **09:58 UTC** passed: the Safe has all three expected owners, threshold
+two, no modules, and the official SafeL2 1.5.0 runtime. This resolves the prior
+governance mismatch. The deployer still has zero native USDC and pending nonce
+zero; production solver/configuration preparation remains outstanding. The
+ignored `release/generated/safe-preflight.json` records this check and is **not**
+a contract deployment verification record. No transactions were sent by the
+assistant, and no QuickNode/dRPC credits were consumed.
+
 The operator chose to retain 2-of-3 by adding the existing Ledger owner to the
 supplied Arc Safe. `release/safe-governance.json` encodes one zero-value Safe
 self-call to `addOwnerWithThreshold(deployer, 2)` on chain 5042. No public
@@ -16,7 +25,7 @@ addition, and confirms a single owner cannot authorize the solver afterward.
 The remaining deployment, settlement and revocation rehearsal also passed.
 This run used zero public RPC calls and zero paid credits. The local Safe fixture
 is the vendored 1.3.0 implementation; this is not an execution against the live
-1.5.0 Safe. The live governance state must be rechecked after the owner ceremony.
+1.5.0 Safe. The live governance state was subsequently verified as recorded above.
 
 ## Release package completed locally — September 23
 
@@ -25,8 +34,9 @@ replaces the earlier assumed cross-chain Safe address. Both free Arc RPCs agreed
 at block 22379061: deployed SafeL2 1.5.0, official singleton runtime hash, no
 modules, two owners and threshold one. The verifier now pins official 1.5.0
 Safe/SafeL2 hashes from safe-deployments v1.37.50. The existing three-owner,
-two-signature requirement is unchanged, so this Safe's governance configuration
-still fails preflight. These reads used no QuickNode/dRPC credits or transactions.
+two-signature requirement is unchanged. The initial governance mismatch was
+resolved and verified on September 24 as recorded above. These reads used no
+QuickNode/dRPC credits or transactions.
 
 The remaining submitter preparation is now implemented in `release/solver.cjs`.
 It creates an Arc-only key through explicit exclusive creation outside the

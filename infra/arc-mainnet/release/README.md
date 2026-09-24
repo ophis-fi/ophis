@@ -60,24 +60,28 @@ proxy dispatcher, pinned Safe/SafeL2 singleton bytecode (1.3.0, 1.4.1 or 1.5.0),
 the expected three owners, threshold two, and no enabled modules. If absent,
 deploy the intended Safe configuration through the normal Safe ceremony first.
 
-At block **22379061**, both free Arc RPCs reported the supplied Safe as deployed
-SafeL2 1.5.0, with no modules, **two owners and threshold one**. Its singleton
+After the operator's update, both free Arc RPCs verified the Safe at
+**2026-09-24 09:58 UTC**: all three configured owners (including the Ledger),
+threshold **two**, no modules, and official SafeL2 1.5.0 runtime. Governance
+preflight now passes. The deployer still had zero native USDC and pending nonce
+zero at that check. The final launch must recheck these values.
+
+Previously, at block **22379061**, both free Arc RPCs reported the supplied Safe
+with **two owners and threshold one**. Its singleton
 matches the [official pinned 1.5.0 artifact](https://github.com/safe-global/safe-deployments/blob/v1.37.50/src/assets/v1.5.0/safe_l2.json).
-The current owners are `0x746Ad9C63cCA6d3A8588731d60Fb87deaB4da46A` and
-`0x0494F503912C101Bfd76b88e4F5D8A33de284d1A`; the Ledger owner is absent.
+The original owners were `0x746Ad9C63cCA6d3A8588731d60Fb87deaB4da46A` and
+`0x0494F503912C101Bfd76b88e4F5D8A33de284d1A`.
 The operator confirmed retaining **2-of-3** on September 24. The unsigned
-[safe-governance.json](safe-governance.json) is ready to import into this Safe's
-Transaction Builder on Arc (chain 5042). It contains one zero-value **Safe
+[safe-governance.json](safe-governance.json) is retained as the reviewed migration
+artifact; **do not submit it again**. It contains one zero-value **Safe
 self-call**: `addOwnerWithThreshold(0xBeC5B03ffDcac50071693E87bFDb88bAa6710199, 2)`.
 This atomically adds the existing Ledger owner and requires two signatures,
 preserving the two current owners. It must execute through the Safe, not as a
 direct EOA transaction to `addOwnerWithThreshold`.
 
-Before signing, confirm the Safe address and that it still has the observed two
-owners with threshold one. Under that current threshold, one existing owner can
-authorize this change; subsequent transactions require two of the three owners.
-If the change has already been applied, do not submit the batch again. Re-run
-the launch preflight to verify the resulting owner set and threshold. The exact
+The original threshold allowed one existing owner to authorize the change;
+subsequent transactions require two of the three owners. Re-run the launch
+preflight to verify the resulting owner set and threshold. The exact
 calldata passed a local real-Safe rehearsal from 1-of-2 to 2-of-3, including
 duplicate-owner rejection and denial of single-owner authorization afterward.
 No owner or threshold change has been broadcast to Arc by this local work.
@@ -131,8 +135,8 @@ plans, receipts and rendered configuration stay ignored and mode 0600.
 These steps are operational work after deployment authorization, not pending
 application development. Use the reviewed revision and actual `config.json`:
 
-1. Execute the reviewed `safe-governance.json` through the existing Safe owner
-   ceremony and verify the expected 2-of-3 configuration. Run the offline
+1. Recheck the completed 2-of-3 Safe configuration; do not repeat the owner-add
+   transaction. Run the offline
    submitter preparation above and back up Arc's dedicated key.
    Confirm the Safe on Arc and native USDC gas
    for the existing Ledger and new Arc submitter.
