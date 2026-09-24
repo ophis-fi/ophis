@@ -109,7 +109,7 @@ function mapChainInfoToBaseChainInfo(
  * So this order is mostly for reference and not for iteration.
  */
 // Official Arc mark, served with the app so wallet browsers need no third-party image fetch.
-const ARC_LOGO = 'https://swap.ophis.fi/logos/chain-arc.svg' as HttpsString
+const ARC_LOGO = 'https://swap.ophis.fi/logos/chain-arc-network.svg' as HttpsString
 
 export const CHAIN_INFO: ChainInfoMap = {
   [ARC_CHAIN_ID]: {
