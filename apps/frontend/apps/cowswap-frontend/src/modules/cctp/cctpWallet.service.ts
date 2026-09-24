@@ -2,7 +2,7 @@ import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
 import { BaseError, encodeFunctionData, erc20Abi, type Address, type Hex, type WalletClient } from 'viem'
 
-import { CCTP_ABI, MESSAGE_TRANSMITTER, TOKEN_MESSENGER, cctpNetwork } from './cctp.const'
+import { CCTP_ABI, MESSAGE_TRANSMITTER, cctpNetwork } from './cctp.const'
 import {
   assertCctpQuote,
   cctpBurnData,
@@ -11,6 +11,7 @@ import {
   verifyCctpNetwork,
   type CctpQuote,
 } from './cctp.service'
+import { cctpService, cctpSpender, cctpToken } from './cctpAssets.const'
 import { validateCctpMessage } from './cctpStatus.service'
 
 function isUnknownChain(error: unknown): boolean {
@@ -42,27 +43,30 @@ async function prepareCctpCall(
   burn: boolean,
 ): Promise<void> {
   const client = cctpClient(chainId)
-  await verifyCctpNetwork(chainId)
+  await verifyCctpNetwork(chainId, quote.asset, chainId === quote.source ? quote.destination : quote.source)
+  const value = burn && quote.expanded ? BigInt(quote.expanded.feeTotalAmount) : 0n
   const [gas, gasPrice, balance] = await Promise.all([
-    client.estimateGas({ account: quote.owner, to, data, value: 0n }),
+    client.estimateGas({ account: quote.owner, to, data, value }),
     client.getGasPrice(),
     client.getBalance({ address: quote.owner }),
   ])
-  const principal = burn && chainId === 5042 ? BigInt(quote.amount) * 1_000_000_000_000n : 0n
-  if (balance < principal + gas * gasPrice * 2n) throw new Error('Leave enough native currency to pay transaction gas')
+  const principal =
+    burn && chainId === 5042 && (quote.asset ?? 'USDC') === 'USDC' ? BigInt(quote.amount) * 1_000_000_000_000n : 0n
+  if (balance < value + principal + gas * gasPrice * 2n)
+    throw new Error('Leave enough native currency to pay transaction gas')
 }
 
 export async function approveCctp(wallet: WalletClient, quote: CctpQuote): Promise<Hex | undefined> {
   assertCctpQuote(quote)
   await assertCctpWallet(wallet, quote.owner, quote.source)
   const { allowance, balance } = await readCctpFunds(quote)
-  if (balance < BigInt(quote.amount)) throw new Error('Insufficient USDC balance')
+  if (balance < BigInt(quote.amount)) throw new Error('Insufficient token balance')
   if (allowance >= BigInt(quote.amount)) return undefined
-  const to = cctpNetwork(quote.source).usdc
+  const to = cctpToken(quote.source, quote.asset)
   const data = encodeFunctionData({
     abi: erc20Abi,
     functionName: 'approve',
-    args: [TOKEN_MESSENGER, BigInt(quote.amount)],
+    args: [cctpSpender(quote.asset), BigInt(quote.amount)],
   })
   await prepareCctpCall(quote, quote.source, to, data, false)
   await assertCctpWallet(wallet, quote.owner, quote.source)
@@ -78,17 +82,21 @@ export async function burnCctp(
   await assertCctpWallet(wallet, quote.owner, quote.source)
   const { allowance, balance } = await readCctpFunds(quote)
   if (allowance < BigInt(quote.amount) || balance < BigInt(quote.amount))
-    throw new Error('USDC approval or balance is insufficient')
+    throw new Error('Token approval or balance is insufficient')
   const data = cctpBurnData(quote)
-  await verifyCctpNetwork(quote.destination)
+  await verifyCctpNetwork(quote.destination, quote.asset, quote.source)
   const codes = await Promise.all(
     [quote.source, quote.destination].map((id) => cctpClient(id).getCode({ address: quote.owner })),
   )
   // A Safe at the source address need not exist or have the same owners elsewhere.
   if (codes.some((code) => code && code !== '0x'))
     throw new Error('CCTP currently supports personal wallets without smart-account code only')
-  await prepareCctpCall(quote, quote.source, TOKEN_MESSENGER, data, true)
+  await prepareCctpCall(quote, quote.source, cctpService(quote.asset), data, true)
   const nonce = await cctpClient(quote.source).getTransactionCount({ address: quote.owner, blockTag: 'pending' })
+  if (quote.expanded?.expiry.mode === 'BLOCK_NUMBER') {
+    const block = await cctpClient(quote.source).getBlockNumber()
+    if (block >= BigInt(quote.expanded.expiry.expiresAtBlock)) throw new Error('Circle fee quote expired')
+  }
   // Fee and account must still match after the asynchronous reads/simulation.
   assertCctpQuote(quote)
   await assertCctpWallet(wallet, quote.owner, quote.source)
@@ -96,10 +104,10 @@ export async function burnCctp(
   return wallet.sendTransaction({
     account: quote.owner,
     chain: cctpNetwork(quote.source).chain,
-    to: TOKEN_MESSENGER,
+    to: cctpService(quote.asset),
     nonce,
     data,
-    value: 0n,
+    value: quote.expanded ? BigInt(quote.expanded.feeTotalAmount) : 0n,
   })
 }
 
@@ -109,8 +117,9 @@ export async function claimCctp(
   message: Hex,
   attestation: Hex,
   beforeSignature: (nonce: number) => Promise<void>,
+  sourceMessage?: Hex,
 ): Promise<Hex> {
-  validateCctpMessage(message, quote)
+  validateCctpMessage(message, quote, sourceMessage)
   await assertCctpWallet(wallet, quote.owner, quote.destination)
   const data = encodeFunctionData({ abi: CCTP_ABI, functionName: 'receiveMessage', args: [message, attestation] })
   await prepareCctpCall(quote, quote.destination, MESSAGE_TRANSMITTER, data, false)

@@ -1,6 +1,7 @@
-import { decodeFunctionData, erc20Abi, type WalletClient } from 'viem'
+import { decodeFunctionData, erc20Abi, getAddress, type WalletClient } from 'viem'
 
 import { cctpClient, readCctpFunds, type CctpQuote } from './cctp.service'
+import { cctpSpender, CROSS_CHAIN_TOKEN_SERVICE } from './cctpAssets.const'
 import { approveCctp, burnCctp, switchCctpChain } from './cctpWallet.service'
 
 jest.mock('./cctp.service', () => ({
@@ -17,6 +18,7 @@ const client = {
   getBalance: jest.fn(),
   getCode: jest.fn(),
   getTransactionCount: jest.fn(),
+  getBlockNumber: jest.fn(),
 }
 const wallet = { getChainId: jest.fn(), getAddresses: jest.fn(), sendTransaction: jest.fn() }
 const beforeSignature = jest.fn().mockResolvedValue(undefined)
@@ -90,4 +92,54 @@ it('adds a missing Arc network with native USDC metadata but never retries a rej
   switching.switchChain.mockRejectedValueOnce({ code: 4001 })
   await expect(switchCctpChain(switching as unknown as WalletClient, 5042)).rejects.toEqual({ code: 4001 })
   expect(switching.addChain).toHaveBeenCalledTimes(1)
+})
+
+it('approves the cirBTC manager and pays a separate native Arc fee without treating cirBTC as native USDC', async () => {
+  const expanded: CctpQuote = {
+    ...quote,
+    asset: 'cirBTC',
+    destination: 1,
+    amount: '100000000',
+    maxFee: '0',
+    expanded: {
+      signedQuote: `0x${'11'.repeat(100)}`,
+      feeTotalAmount: '10000000000000000',
+      issuedAt: Math.floor(Date.now() / 1000),
+      expiry: { mode: 'TIMESTAMP', expiresAt: Math.floor(Date.now() / 1000) + 120 },
+    },
+  }
+  jest.mocked(readCctpFunds).mockResolvedValue({ allowance: 0n, balance: 100000000n })
+  await approveCctp(wallet as unknown as WalletClient, expanded)
+  expect(decodeFunctionData({ abi: erc20Abi, data: wallet.sendTransaction.mock.calls[0]?.[0].data }).args).toEqual([
+    getAddress(cctpSpender('cirBTC')),
+    100000000n,
+  ])
+  jest.mocked(readCctpFunds).mockResolvedValue({ allowance: 100000000n, balance: 100000000n })
+  client.getBalance.mockResolvedValue(20000000000000000n)
+  await burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)
+  expect(wallet.sendTransaction).toHaveBeenLastCalledWith(
+    expect.objectContaining({ to: CROSS_CHAIN_TOKEN_SERVICE, value: 10000000000000000n, nonce: 7 }),
+  )
+  expect(client.estimateGas).toHaveBeenLastCalledWith(expect.objectContaining({ value: 10000000000000000n }))
+  client.getBalance.mockResolvedValueOnce(10000000000000000n)
+  await expect(burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)).rejects.toThrow('gas')
+})
+
+it('rejects a non-USDC quote when its source block expiry is reached before signing', async () => {
+  const now = Math.floor(Date.now() / 1000)
+  const expanded: CctpQuote = {
+    ...quote,
+    asset: 'EURC',
+    maxFee: '0',
+    expanded: {
+      signedQuote: `0x${'11'.repeat(100)}`,
+      feeTotalAmount: '1',
+      issuedAt: now,
+      expiry: { mode: 'BLOCK_NUMBER', expiresAtBlock: 500, blockEstimatedAt: now + 120 },
+    },
+  }
+  client.getBlockNumber.mockResolvedValueOnce(500n)
+  await expect(burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)).rejects.toThrow('expired')
+  expect(beforeSignature).not.toHaveBeenCalled()
+  expect(wallet.sendTransaction).not.toHaveBeenCalled()
 })

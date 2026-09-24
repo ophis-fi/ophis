@@ -4,6 +4,8 @@ import { isAddress, type Address, type Hex } from 'viem'
 import { z } from 'zod'
 
 import { CCTP_NETWORKS, MAX_BURN } from './cctp.const'
+import { assertCctpTerms } from './cctp.service'
+import { cctpxQuoteSchema } from './cctpx.service'
 
 const chain = z
   .number()
@@ -19,6 +21,8 @@ const hash = z
   .transform((value) => value as Hex)
 export const cctpTransferSchema = z
   .object({
+    asset: z.enum(['USDC', 'EURC', 'cirBTC']).optional(),
+    expanded: cctpxQuoteSchema.optional(),
     source: chain,
     destination: chain,
     owner: z
@@ -33,13 +37,14 @@ export const cctpTransferSchema = z
     mintHash: hash.optional(),
     claimNonce: z.number().int().nonnegative().safe().optional(),
   })
-  .refine(
-    (value) =>
-      value.source !== value.destination &&
-      /^\d{1,14}$/.test(value.amount) &&
-      /^\d{1,14}$/.test(value.maxFee) &&
-      BigInt(value.amount) > BigInt(value.maxFee),
-  )
+  .refine((value) => {
+    try {
+      assertCctpTerms(value)
+      return true
+    } catch {
+      return false
+    }
+  })
 
 // Retain the burn intent BEFORE requesting a signature. A wallet transport error
 // can occur after broadcast; an unknown outcome must never trigger a second burn.

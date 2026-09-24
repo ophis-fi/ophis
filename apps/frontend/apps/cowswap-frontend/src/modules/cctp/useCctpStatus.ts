@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useIsOnline, useIsWindowVisible } from '@cowprotocol/common-hooks'
 
+import { type Hex } from 'viem'
+
 import { type CctpTransfer } from './cctp.service'
 import { getCctpStatus, type CctpStatus } from './cctpStatus.service'
 
@@ -15,12 +17,12 @@ export function useCctpStatus(transfer: CctpTransfer | null): { status: CctpStat
     setError(null)
     if (!transfer || !visible || !online) return undefined
     let cancelled = false
-    let sourceVerified = false
+    let sourceVerified: boolean | Hex = false
     let timer: ReturnType<typeof setTimeout>
     const refresh = async (): Promise<void> => {
       try {
         const next = await getCctpStatus(transfer, sourceVerified)
-        sourceVerified = next.sourceConfirmed
+        sourceVerified = next.sourceMessage ?? next.sourceConfirmed
         if (cancelled) return
         setResult({ transfer, status: next })
         setError(null)

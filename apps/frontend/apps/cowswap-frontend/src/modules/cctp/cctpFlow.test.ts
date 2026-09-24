@@ -165,6 +165,7 @@ it('journals a claim before signing and retains it after a lost wallet response'
     completed: false,
     failed: false,
     sourceConfirmed: true,
+    sourceMessage: '0x03',
     message: '0x01',
     attestation: '0x02',
   })
@@ -187,6 +188,7 @@ it('journals a claim before signing and retains it after a lost wallet response'
     })
     await expect(claimCctpTransfer(wallet, { ...saved, claimNonce: 9 }, persist)).rejects.toThrow('already pending')
     expect(claimCctp).toHaveBeenCalledTimes(1)
+    expect(claimCctp).toHaveBeenCalledWith(wallet, saved, '0x01', '0x02', expect.any(Function), '0x03')
   } finally {
     status.mockRestore()
   }
