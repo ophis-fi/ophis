@@ -186,6 +186,7 @@ it('keeps a pending manual claim locked when forwarding reverted and recovers a 
     data: encodeAbiParameters([{ type: 'bytes' }], [message]),
   }
   const client = {
+    getBlock: jest.fn().mockResolvedValue({ number: 600n }),
     getTransactionReceipt: jest.fn().mockImplementation(async ({ hash }: { hash: Hex }) => {
       if (hash === mintHash) throw new TransactionReceiptNotFoundError({ hash })
       if (hash === burnHash) return receipt([sent] as TransactionReceipt['logs'])
@@ -234,4 +235,22 @@ it('keeps a pending manual claim locked when forwarding reverted and recovers a 
   const recovered = await resumeCctpClaim(unknown, mintHash)
   expect(recovered.mintHash).toBe(mintHash)
   expect((await getCctpStatus(recovered)).completed).toBe(true)
+  // A cancelled destination claim can release only its own finalized nonce.
+  client.getTransactionReceipt.mockImplementation(async ({ hash }: { hash: Hex }) => {
+    if (hash === burnHash) return receipt([sent] as TransactionReceipt['logs'])
+    if (hash === mintHash) return { ...receipt([]), blockNumber: 500n }
+    return { status: 'reverted' }
+  })
+  client.getTransaction.mockImplementation(async ({ hash }: { hash: Hex }) =>
+    hash === burnHash
+      ? { from: owner, to: TOKEN_MESSENGER, input: cctpBurnData(transfer), value: 0n, nonce: 7 }
+      : { from: owner, to: owner, input: '0x', value: 0n, nonce: 9 },
+  )
+  client.getBlock.mockResolvedValueOnce({ number: 499n })
+  await expect(resumeCctpClaim(unknown, mintHash)).rejects.toThrow('become final')
+  const cancelled = await resumeCctpClaim(unknown, mintHash)
+  expect(cancelled.claimNonce).toBeUndefined()
+  expect(cancelled.mintHash).toBeUndefined()
+  expect((await getCctpStatus(cancelled)).claimPending).not.toBe(true)
+  await expect(resumeCctpClaim({ ...unknown, claimNonce: 8 }, mintHash)).rejects.toThrow('does not confirm')
 })

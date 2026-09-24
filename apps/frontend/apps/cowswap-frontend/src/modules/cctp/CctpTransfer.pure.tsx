@@ -91,6 +91,7 @@ export function CctpTransferDetails({
         busy={busy}
         canClaim={canClaim}
         destinationName={destination.chain.name}
+        claimNonce={transfer.claimNonce}
         onClaim={onClaim}
         onResumeClaim={onResumeClaim}
       />
@@ -108,6 +109,7 @@ function CctpClaimDetails({
   busy,
   canClaim,
   destinationName,
+  claimNonce,
   onClaim,
   onResumeClaim,
 }: {
@@ -115,6 +117,7 @@ function CctpClaimDetails({
   busy: boolean
   canClaim: boolean
   destinationName: string
+  claimNonce?: number
   onClaim(): void
   onResumeClaim(hash: string): void
 }): ReactNode {
@@ -133,7 +136,16 @@ function CctpClaimDetails({
         Claim on {destinationName}
       </button>
       {!canClaim && <p>Connect the recipient wallet on {destinationName} to claim.</p>}
-      <p>If you already claimed, or sped up a claim, paste the confirmed destination transaction hash to recover it.</p>
+      <p>
+        If you already claimed, sped up or cancelled a claim, paste the confirmed destination transaction hash to
+        recover it.
+      </p>
+      {status.claimPending && claimNonce !== undefined && (
+        <p>
+          Saved claim nonce: {claimNonce}. If your wallet lost the request without submitting it, cancel this nonce on{' '}
+          {destinationName} in your wallet, then paste its confirmed cancellation hash.
+        </p>
+      )}
       <CctpHashRecovery label="Destination transaction hash" busy={busy} onResume={onResumeClaim} />
     </>
   )

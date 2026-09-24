@@ -1,7 +1,7 @@
 import { type Hex, type WalletClient } from 'viem'
 
 import { cctpBurnData, cctpClient, circleGet, type CctpTransfer } from './cctp.service'
-import { CCTP_STORAGE_KEY, cctpStorage } from './cctpState'
+import { CCTP_STORAGE_KEY, cctpStorage, cctpTransferSchema } from './cctpState'
 import * as cctpStatus from './cctpStatus.service'
 import { getCctpStatus } from './cctpStatus.service'
 import { claimCctpTransfer, resumeCctpTransfer, submitCctpBurn, updateCctpTransfer } from './cctpSubmission.service'
@@ -204,4 +204,13 @@ it('accepts only a finalized self-send at the saved source nonce as wallet cance
   client.getTransaction.mockResolvedValueOnce({ from: owner, to: owner, input: '0x', value: 0n, nonce: 6 })
   await expect(getCctpStatus(cancelled)).rejects.toThrow('does not match')
   expect(circleGet).not.toHaveBeenCalled()
+})
+
+it('matches the journal after reload, schema parsing and appending a recovered claim hash', async () => {
+  persist({ ...transfer, burnHash: hash, claimNonce: 9 })
+  const reloaded = cctpTransferSchema.parse(await cctpStorage.getItem(CCTP_STORAGE_KEY, null))
+  await updateCctpTransfer(reloaded, async () => ({ ...reloaded, mintHash: hash }), persist)
+  const parsed = cctpTransferSchema.parse(await cctpStorage.getItem(CCTP_STORAGE_KEY, null))
+  await updateCctpTransfer(parsed, async () => null, persist)
+  expect(await cctpStorage.getItem(CCTP_STORAGE_KEY, null)).toBeNull()
 })

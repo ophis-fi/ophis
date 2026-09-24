@@ -31,7 +31,7 @@ New financial entry points are `approveCctp`, `burnCctp`, and `claimCctp` in `ap
 1. **Wallet → transaction:** chain and active account are re-read before submission; the account, Circle spender, amount, route, zero native value and finality are encoded locally. The wallet remains responsible for the user's final confirmation. A source nonce is explicitly bound before signing.
 2. **Circle fees → quote:** JSON is parsed, only Standard forwarding is accepted, integer USDC units are used, protocol basis-point fees round upward, and total fee must be smaller than the transfer. Quotes expire locally after 60 seconds and approval requires a fresh review.
 3. **RPC → preflight:** chain ID, Circle `localDomain()`, USDC decimals and messenger code are checked. Funds and allowance are fresh. Simulation and a conservative native-gas budget precede every financial action. Arc's ERC-20 USDC uses six decimals; native gas balances use eighteen.
-4. **Browser storage → recovery:** storage is schema checked without throwing on malformed numeric strings. The intent is saved and read back before the wallet request. Web Locks serialize burns across tabs; Jotai storage subscriptions synchronize other tabs. Missing/unavailable storage fails before signing.
+4. **Browser storage → recovery:** storage is schema checked without throwing on malformed numeric strings. The intent is saved and read back before the wallet request. Web Locks serialize every journal mutation across tabs; Jotai storage subscriptions synchronize other tabs. Missing/unavailable storage fails before signing.
 5. **Uncertain wallet response:** only explicit EIP-1193 rejection clears a submitted intent. Transport failures and ambiguous rejection messages leave it locked. A returned hash is retained; a lost hash can be supplied from wallet activity. No automatic burn retry exists.
 6. **Source receipt → attestation:** recovery requires exact calldata, owner, messenger, value and nonce. Success requires the expected MessageSent from Circle's transmitter. An unrelated or historical reverted transaction cannot unlock a new burn.
 7. **Attestation → manual claim:** binary V2 message fields are bound to source/destination domains, messenger addresses, burn token, recipient, sender, amount, maximum fee, zero destination caller and forwarding hook. Executed fee cannot exceed the reviewed cap. Attestation encoding/finality are checked; Circle's contract verifies its cryptographic signatures during simulation/execution.
@@ -54,9 +54,22 @@ RPC/HTTPS integrity, Circle's deployed contracts and attestation system, and the
 | Account or quote changed during preflight | Could submit stale user intent | Recheck account, chain and quote after asynchronous reads; wallet regressions |
 | Source native USDC treated as ERC-20 units | Could fail to reserve Arc gas | Convert principal to 18-decimal native units only for Arc gas accounting; regression |
 
+## Merge review follow-up
+
+Independent sharp-edges reviews found and prompted these additional corrections:
+
+- Shared journal lock and expected-transfer comparison for claim, resume and finish; schema-normalized comparisons survive persistence and property-order changes.
+- Destination claim nonce saved before signing; lost responses remain locked. Receipt-validated claim recovery and finalized cancellation evidence allow safe retry.
+- Pending claims remain pending when a different forwarding attempt reverted.
+- Source replacements are recoverable by hash; failed/cancelled source nonces are released only after finality.
+- CCTP uses the application's selected wallet backend. Unknown networks are added using the pinned native currency and RPC metadata.
+- Arc's native 18-decimal event stream cannot substitute for the six-decimal ERC-20 mint receipt.
+
+The repository's pinned Codex model was unavailable for this account. Per CONTRIBUTING.md, two independent sharp-edges reviews with separate frontend/state and backend/release scopes were used instead; their findings were addressed. These are agent reviews, not external audit-firm approvals. Exact revision review results are recorded on PR #1453.
+
 ## Validation
 
-- 14 unit/regression checks in four files: amount/fee arithmetic, ABI encoding, message substitution, source/destination receipt evidence, durable recovery, nonce matching, explicit rejection, unavailable storage/locks, account changes, stale quotes, smart accounts, Arc gas, exact approvals, hidden/offline polling, and stale responses.
+- 21 unit/regression checks in five files: amount/fee arithmetic, ABI encoding, message substitution, source/destination receipt evidence, durable recovery, nonce matching, explicit rejection, unavailable storage/locks, account changes, stale quotes, smart accounts, Arc gas, exact approvals, hidden/offline polling, and stale responses.
 - TypeScript application typecheck; scoped ESLint; `git diff --check`; production Nx/Vite build.
 - Chromium desktop and WebKit mobile exercise the actual built page: wallet connection → exact approval → refreshed fee → burn → destination completion → reload/recovery. All wallet operations, Circle responses and RPC requests are intercepted and simulated. Exactly two simulated submissions (approval and burn), two requested fee quotes, zero external RPC calls, no uncaught page errors.
 - Bounded read-only mainnet preflight: 24 free RPC calls across six chains. All chain IDs, domains, six-decimal USDC interfaces, and deployed TokenMessenger code matched. No QuickNode/dRPC requests.
@@ -89,7 +102,7 @@ node infra/arc-mainnet/release/check-cctp-browser.cjs --webkit
 - No real mainnet burn/mint was signed. The first funded user transfer remains an operational verification step.
 - Personal wallets only; no custom recipient, Fast transfers, EURC, wrapped assets or automatic swap-and-bridge composition. Add these only with separate route and ownership validation.
 - Local quote expiry cannot invalidate an already-open wallet request. The on-chain maximum fee and recipient remain encoded; changing destination gas conditions may delay forwarding. Manual claim requires destination gas.
-- Keep browser storage and source hash until delivery. Clearing browser data, changing browser origins, a cancelled/replaced source transaction, or an uncertain submission without a recoverable hash can require manual recovery. The UI deliberately does not offer a blind retry or discard button for unresolved burns.
+- Keep browser storage and source hash until delivery. Clearing browser data, changing browser origins or an uncertain submission without a recoverable hash can require manual recovery. Replacement burn/claim hashes can be supplied in the UI. A cancellation must be a finalized zero-value self-send at the saved nonce; an interrupted request with no hash remains locked until such evidence exists. The UI deliberately does not offer a blind retry or discard button for unresolved burns.
 - Public RPC outages pause progress and produce an error. No retries on the transport, no idle fee polling, no hidden/offline status polling, and no private paid RPC fallback. Polling is every 15 seconds only while the bridge page is visible and online.
 - `REACT_APP_CCTP_ENABLED=false` hides new bridging. Preserve a prior enabled build and transaction details for recovery if rolling back; disabling a UI does not undo a burn.
 - Existing unrelated build warnings about large chunks and wallet barrel cycles remain. Browser execution checks passed.

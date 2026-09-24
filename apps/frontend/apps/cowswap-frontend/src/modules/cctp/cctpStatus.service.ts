@@ -9,6 +9,7 @@ import {
   TransactionReceiptNotFoundError,
   zeroHash,
   type Transaction,
+  type Address,
   type Hex,
   type TransactionReceipt,
 } from 'viem'
@@ -150,15 +151,20 @@ const waiting: CctpStatus = {
   failed: false,
 }
 
-function isCancellation(transaction: Transaction, transfer: CctpTransfer): boolean {
+export function isCctpCancellation(transaction: Transaction, owner: Address, nonce: number | undefined): boolean {
   return (
-    transfer.sourceNonce !== undefined &&
-    transaction.nonce === transfer.sourceNonce &&
-    areAddressesEqual(transaction.from, transfer.owner) &&
-    areAddressesEqual(transaction.to, transfer.owner) &&
+    nonce !== undefined &&
+    transaction.nonce === nonce &&
+    areAddressesEqual(transaction.from, owner) &&
+    areAddressesEqual(transaction.to, owner) &&
     transaction.input === '0x' &&
     transaction.value === 0n
   )
+}
+
+export async function isCctpFinalized(chainId: number, receipt: TransactionReceipt): Promise<boolean> {
+  const finalized = await cctpClient(chainId).getBlock({ blockTag: 'finalized' })
+  return finalized.number !== null && finalized.number >= receipt.blockNumber
 }
 
 async function finalizedFailure(
@@ -166,8 +172,7 @@ async function finalizedFailure(
   receipt: TransactionReceipt,
   reason: string,
 ): Promise<CctpStatus> {
-  const finalized = await cctpClient(transfer.source).getBlock({ blockTag: 'finalized' })
-  if (finalized.number === null || finalized.number < receipt.blockNumber)
+  if (!(await isCctpFinalized(transfer.source, receipt)))
     return { ...waiting, text: 'Waiting for the source transaction outcome to become final' }
   return { ...waiting, failed: true, text: `The source transaction was ${reason}. No USDC was bridged.` }
 }
@@ -183,7 +188,8 @@ async function sourceStatus(transfer: CctpTransfer): Promise<CctpStatus | null> 
   // A confirmed self-send at the saved nonce can be a wallet cancellation.
   // Wait for finality before releasing the journal; a reorg must not restore
   // the original burn after the UI permits a new transfer.
-  if (isCancellation(transaction, transfer)) return finalizedFailure(transfer, receipt, 'cancelled')
+  if (isCctpCancellation(transaction, transfer.owner, transfer.sourceNonce))
+    return finalizedFailure(transfer, receipt, 'cancelled')
   if (
     !areAddressesEqual(transaction.from, transfer.owner) ||
     !areAddressesEqual(transaction.to, TOKEN_MESSENGER) ||

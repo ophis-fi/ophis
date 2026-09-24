@@ -8,9 +8,10 @@ simulation-verified USDC/EURC quote. The swap frontend at `https://swap.ophis.fi
 and explorer at `https://explorer.ophis.fi/arc` are published and browser-checked.
 The first funded swap succeeded: 2 USDC to 1.740907 EURC, with receipt and wallet
 transfer logs verified in [VALIDATION.md](../VALIDATION.md). A live bridge transfer
-remains unverified. No remote merge or push was
-performed. Merge the reviewed Arc branch before the next ordinary main-branch
-frontend deployment, which would otherwise remove this manual Arc activation.
+remains unverified. PR #1453 carries the Arc source and direct CCTP bridge into
+the normal main-branch deployment workflow. The public Arc and CCTP repository
+variables are configured; generated/frontend.env now includes both activation
+flags. CCTP uses Circle's permissionless API and no Circle Swap or secret API key.
 `plan`, `rehearse`, `render`, and `check` are preparation
 commands, not deployment commands; do not regenerate this deployed release.
 
