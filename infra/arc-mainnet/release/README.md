@@ -308,8 +308,8 @@ Free official and Blockdaemon RPC responses must agree for protected reads.
 Only the official endpoint receives `eth_sendRawTransaction`, one attempt; it
 never reaches QuickNode. Each public provider is capped at 120 requests/minute.
 Public quote ingress is capped globally at six/minute with a burst of five; the
-initial fast/optimal quote pair, amount edit and slippage update can complete
-without raising the sustained RPC budget. This
+frontend requests only optimal Arc quotes, skips hidden/offline polling and
+does not automatically retry Arc HTTP 429 responses. This
 is deliberately a low-volume launch configuration, not a high-traffic SLA.
 The driver explicitly uses the existing Web3 gas-price estimator and zero extra
 tip. Alloy's default doubled base-fee estimate exceeded the reviewed 25 gwei cap

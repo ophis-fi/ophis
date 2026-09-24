@@ -28,6 +28,16 @@ subsequent Chromium and both WebKit quotes were verified. Consensus, RPC limits,
 and QuickNode permissions remain unchanged; the credit ledger still reads 120.
 No funded swap/bridge was executed by these checks.
 
+The hotfix source is local commit `cfe34c74`. Both production builds passed and
+were published directly to Cloudflare: swap deployment
+`cf395755-94b5-41d9-86cd-6bed10d7873e` and explorer deployment
+`d409c0a7-1708-4539-9b86-d719f30b0ec4`. A live mobile-sized WebKit check verified
+1 and 10 USDC quotes, all three logos, the wallet dialog, and app-data PUT reaching
+schema validation, with no uncaught page errors. The live explorer account check
+also passed. The existing intent Function returns HTTP 200. QuickNode's durable
+ledger remains at 120 credits; disk has 8.6 GiB free after both builds. No GitHub
+push or merge was performed. The earlier deployments below are rollback references.
+
 ## Authorized mainnet deployment and Safe activation
 
 All seven planned contracts were deployed with the Ledger after the operator
@@ -74,8 +84,8 @@ No backend binary or contract changed for these fixes. QuickNode usage was
 120 credits after startup and one proxy restart; dRPC was not used by Arc.
 
 The production swap and explorer builds passed with isolated, frozen offline
-dependencies and more than 8 GiB free. A previously undeclared address import
-now uses the library's existing ethers dependency; its ten Arc configuration
+dependencies and more than 8 GiB free. The address import now declares the
+already-installed `@ethersproject/address` dependency; its ten Arc configuration
 tests and an independent dependency review passed. Browser checks of the built
 swap app showed a verified 10 USDC/EURC quote, correct fee display and wallet
 dialog without uncaught errors. Production bundles contain the deployed Arc
@@ -86,9 +96,9 @@ The isolated Nginx regression admitted six immediate requests and rejected the
 next two, with CORS and exact v2 routes still passing; independent review passed.
 No credit cap or paid RPC permission changed.
 
-The swap frontend is published at `https://swap.ophis.fi` (Pages deployment
+The initial swap frontend publication at `https://swap.ophis.fi` (Pages deployment
 `d834dccb.greg-etm.pages.dev`), and the explorer at `https://explorer.ophis.fi/arc`
-(`1228a5ee.ophis-explorer.pages.dev`). Public browser checks confirmed the Arc
+(`1228a5ee.ophis-explorer.pages.dev`) preceded the hotfix above. Public browser checks confirmed the Arc
 quote, wallet dialog and explorer's Arc account-order requests without uncaught
 errors. The existing intent Function still returns HTTP 200. The deployment
 helper's final check now targets the swap subdomain and current `app-*.js`
