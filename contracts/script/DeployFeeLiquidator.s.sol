@@ -107,6 +107,8 @@ contract DeployFeeLiquidator is Script {
         console.log("  1. record the address in contracts/deployments/<network>/ + networks.json");
         console.log("  2. schedule the 24h Timelock addSolver(liquidator) ceremony");
         console.log("  3. after execution, verify authenticator.isSolver(liquidator)");
+        console.log("  4. owner Safe: setSweepToken(feeToken, true) per fee denomination");
+        console.log("     (sweepTokenAllowed ships EMPTY; non-native sweeps revert until set)");
     }
 
     /// @dev Settlement resolves from OFL_SETTLEMENT; the mainnet default is

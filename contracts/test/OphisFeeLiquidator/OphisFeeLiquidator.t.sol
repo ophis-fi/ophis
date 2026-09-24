@@ -51,6 +51,15 @@ contract OphisFeeLiquidatorTest is Test {
         dai = new MockERC20(18);
         weth = new MockERC20(18);
         venue = new MockVenueRouter();
+
+        // Sweep now requires each non-native token to be owner-allowlisted;
+        // enable the standard fee tokens so the behaviour tests below exercise
+        // sweep logic rather than the allowlist gate (which has its own tests).
+        vm.startPrank(ownerSafe);
+        liq.setSweepToken(address(usdc), true);
+        liq.setSweepToken(address(dai), true);
+        liq.setSweepToken(address(weth), true);
+        vm.stopPrank();
     }
 
     // --- helpers ---
@@ -137,6 +146,102 @@ contract OphisFeeLiquidatorTest is Test {
         vm.prank(ownerSafe);
         liq.setOutputToken(address(weth), true);
         assertTrue(liq.outputTokenAllowed(address(weth)));
+    }
+
+    function test_setSweepToken_only_owner_and_rejects_native() public {
+        MockERC20 tok = new MockERC20(18);
+
+        vm.prank(ops);
+        vm.expectRevert("OFL: caller not owner");
+        liq.setSweepToken(address(tok), true);
+
+        vm.prank(ownerSafe);
+        vm.expectRevert("OFL: native needs no allowlist");
+        liq.setSweepToken(address(0), true);
+
+        vm.prank(ownerSafe);
+        vm.expectEmit(address(liq));
+        emit OphisFeeLiquidator.SweepTokenSet(address(tok), true);
+        liq.setSweepToken(address(tok), true);
+        assertTrue(liq.sweepTokenAllowed(address(tok)));
+
+        vm.prank(ownerSafe);
+        liq.setSweepToken(address(tok), false);
+        assertFalse(liq.sweepTokenAllowed(address(tok)));
+    }
+
+    // --- sweep: allowlist gate ---
+
+    /// The audit hardening: `sweep` turns each non-native `tokens[i]` into an
+    /// interaction target the solver-privileged Settlement calls, so a
+    /// non-allowlisted token must be rejected before any interaction is built.
+    function test_sweep_rejects_non_allowlisted_token() public {
+        MockERC20 rogue = new MockERC20(18);
+        rogue.mint(address(settlement), 1e18);
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(rogue);
+        uint256[] memory amounts = new uint256[](1);
+
+        vm.prank(ops);
+        vm.expectRevert("OFL: sweep token not allowed");
+        liq.sweep(tokens, amounts);
+
+        // Once the owner allowlists it, the same sweep succeeds.
+        vm.prank(ownerSafe);
+        liq.setSweepToken(address(rogue), true);
+        vm.prank(ops);
+        liq.sweep(tokens, amounts);
+        assertEq(rogue.balanceOf(feeSafe), 1e18);
+    }
+
+    /// A rogue token bundled alongside an allowlisted one still reverts the
+    /// whole sweep (no partial execution of the vetted leg).
+    function test_sweep_rejects_batch_containing_non_allowlisted_token() public {
+        MockERC20 rogue = new MockERC20(18);
+        usdc.mint(address(settlement), 5e6);
+        rogue.mint(address(settlement), 1e18);
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(usdc); // allowlisted in setUp
+        tokens[1] = address(rogue); // not allowlisted
+        uint256[] memory amounts = new uint256[](2);
+
+        vm.prank(ops);
+        vm.expectRevert("OFL: sweep token not allowed");
+        liq.sweep(tokens, amounts);
+        assertEq(usdc.balanceOf(feeSafe), 0); // nothing moved
+    }
+
+    /// Native ETH carries no arbitrary-call surface (target is the fee Safe),
+    /// so it sweeps with no allowlist entry — even on a contract whose token
+    /// allowlist is entirely empty.
+    function test_sweep_native_eth_needs_no_allowlist() public {
+        OphisFeeLiquidator fresh =
+            new OphisFeeLiquidator(settlement, feeSafe, ownerSafe, ops);
+        vm.prank(manager);
+        allowList.addSolver(address(fresh));
+
+        vm.deal(address(settlement), 3 ether);
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(0);
+        uint256[] memory amounts = new uint256[](1);
+
+        vm.prank(ops);
+        fresh.sweep(tokens, amounts);
+        assertEq(feeSafe.balance, 3 ether);
+    }
+
+    /// De-allowlisting a token blocks future sweeps of it.
+    function test_sweep_blocked_after_token_removed() public {
+        usdc.mint(address(settlement), 2e6);
+        vm.prank(ownerSafe);
+        liq.setSweepToken(address(usdc), false);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(usdc);
+        uint256[] memory amounts = new uint256[](1);
+        vm.prank(ops);
+        vm.expectRevert("OFL: sweep token not allowed");
+        liq.sweep(tokens, amounts);
     }
 
     // --- sweep: auth matrix ---
@@ -236,6 +341,8 @@ contract OphisFeeLiquidatorTest is Test {
 
     function test_sweep_no_return_token() public {
         NoReturnERC20 usdt = new NoReturnERC20();
+        vm.prank(ownerSafe);
+        liq.setSweepToken(address(usdt), true);
         usdt.mint(address(settlement), 9e6);
         address[] memory tokens = new address[](1);
         tokens[0] = address(usdt);
@@ -248,6 +355,8 @@ contract OphisFeeLiquidatorTest is Test {
 
     function test_sweep_false_return_token_reverts() public {
         FalseReturnERC20 broken = new FalseReturnERC20();
+        vm.prank(ownerSafe);
+        liq.setSweepToken(address(broken), true);
         broken.mint(address(settlement), 1e18);
         address[] memory tokens = new address[](1);
         tokens[0] = address(broken);
