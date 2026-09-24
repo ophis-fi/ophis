@@ -4,8 +4,11 @@ The operator authorized the Arc mainnet launch on September 24. All seven
 contracts are deployed and the 2-of-3 Safe has authorized the dedicated solver.
 Both free RPCs passed `verify.cjs`; the solver holds 0.45005359 native USDC.
 The backend and public API at `https://arc-mainnet.ophis.fi` are running, with a
-simulation-verified USDC/EURC quote. Frontend publication and funded swap/bridge
-validation remain pending. No remote merge or push was performed.
+simulation-verified USDC/EURC quote. The swap frontend at `https://swap.ophis.fi`
+and explorer at `https://explorer.ophis.fi/arc` are published and browser-checked.
+Funded swap/bridge validation remains pending. No remote merge or push was
+performed. Merge the reviewed Arc branch before the next ordinary main-branch
+frontend deployment, which would otherwise remove this manual Arc activation.
 `plan`, `rehearse`, `render`, and `check` are preparation
 commands, not deployment commands; do not regenerate this deployed release.
 

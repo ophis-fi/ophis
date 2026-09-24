@@ -58,8 +58,19 @@ The isolated Nginx regression admitted six immediate requests and rejected the
 next two, with CORS and exact v2 routes still passing; independent review passed.
 No credit cap or paid RPC permission changed.
 
-No remote merge, push, live swap or bridge transfer was performed. Frontend
-publication and live swap/bridge validation remain pending. Today's production
+The swap frontend is published at `https://swap.ophis.fi` (Pages deployment
+`d834dccb.greg-etm.pages.dev`), and the explorer at `https://explorer.ophis.fi/arc`
+(`1228a5ee.ophis-explorer.pages.dev`). Public browser checks confirmed the Arc
+quote, wallet dialog and explorer's Arc account-order requests without uncaught
+errors. The existing intent Function still returns HTTP 200. The deployment
+helper's final check now targets the swap subdomain and current `app-*.js`
+bundles; its old marketing-root/index-bundle check incorrectly exited after a
+successful upload. Backend QuickNode usage remains 120 reserved credits.
+
+No remote merge, push, live swap or bridge transfer was performed. Funded
+swap/bridge validation remains pending. These frontend publications are manual;
+the Arc branch must be merged before the next normal main-branch frontend
+deployment, or that deployment will remove Arc activation. Today's production
 wallet fixes and preceding UI changes were cherry-picked locally to avoid a
 frontend rollback. Earlier automatic
 settlement tests used disposable Anvil and labelled 1:1 liquidity fixtures.

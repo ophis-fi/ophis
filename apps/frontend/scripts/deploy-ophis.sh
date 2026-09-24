@@ -173,13 +173,13 @@ echo ""
 echo "Post-deploy sanity check (give CF a few seconds to propagate):"
 sleep 6
 
-INTENT_STATUS=$(curl -s -X POST "https://ophis.fi/api/intent" \
+INTENT_STATUS=$(curl -s -X POST "https://swap.ophis.fi/api/intent" \
   -H 'Content-Type: application/json' \
   -d '{"text":"swap 100 USDC for ETH on Base"}' \
   -o /dev/null -w '%{http_code}')
 # --compressed so we never get a gzipped body that breaks the grep
 # (sharp-edges MED 2026-05-20). Empty result triggers a warn below.
-BUNDLE_HASH=$(curl -s --compressed https://ophis.fi 2>&1 | grep -oE 'index-[A-Za-z0-9_-]+\.js' | head -1)
+BUNDLE_HASH=$(curl -s --compressed https://swap.ophis.fi | grep -oE '(app|index)-[A-Za-z0-9_-]+\.js' | head -1 || true)
 
 echo "  /api/intent status: $INTENT_STATUS (expected: 200)"
 echo "  bundle hash:        ${BUNDLE_HASH:-<extract-failed>}"
@@ -196,4 +196,4 @@ if [[ "$INTENT_STATUS" != "200" ]]; then
 fi
 
 echo ""
-echo "✅ Deploy verified. ophis.fi is live with /api/intent + the new bundle."
+echo "✅ Deploy verified. swap.ophis.fi is live with /api/intent + the new bundle."
