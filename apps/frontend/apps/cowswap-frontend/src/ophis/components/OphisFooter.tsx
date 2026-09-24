@@ -49,36 +49,6 @@ function CompactFooter({ borderless }: { borderless: boolean }): ReactNode {
       </styledEl.CompactLinks>
       <styledEl.CompactCopy>&copy; Ophis 2026</styledEl.CompactCopy>
       <styledEl.TradeSummary aria-label="About Ophis swaps">
-        <details>
-          <summary>How Ophis swaps work: networks, fees and wallet approvals</summary>
-          <p>
-            Ophis Swap is the trading app of Ophis, an intent-based DEX aggregator. Select a network, token pair and
-            amount, connect your wallet, and review the available quote before signing. For intent orders, solvers
-            compete to settle the trade through batch auctions.
-          </p>
-          <p>
-            Check the minimum received, destination network and spending allowance in your wallet. A token approval can
-            require an on-chain transaction before the order signature. Signing an order does not guarantee a fill:
-            follow its status until settlement or expiry. MEV protection mitigates common front-running and sandwich
-            attacks; token, price and smart-contract risks remain.
-          </p>
-          <p>
-            Supported EVM networks include Ethereum, Base, Arbitrum, BNB Chain, Optimism, Unichain and Robinhood Chain.
-            Token availability and executable liquidity depend on the network, pair and amount. The Robinhood Chain
-            guide opens network 4663; it does not bridge a balance from another chain. Ophis is independent of Robinhood
-            Markets.
-          </p>
-          <p>
-            Developers can access Ophis through its API, MCP server and SDK, or embed the swap widget. AI agent
-            integrations and Safe wallet users should also review the selected network, quoted output and approval
-            before submitting a trade.
-          </p>
-          <p>
-            Ophis charges a 0.01% base fee plus capped price-improvement capture, measured against a reference quote.
-            CoW-hosted swaps also carry upstream fees. Approvals and other on-chain transactions can require network
-            gas. Review the quote and current fee policy before signing.
-          </p>
-        </details>
         <styledEl.CompactLinks aria-label="Swap guides">
           <styledEl.ExternalLink href="/robinhood-chain/">Swap on Robinhood Chain</styledEl.ExternalLink>
           <styledEl.ExternalLink href="https://ophis.fi/pricing/">Fees and pricing</styledEl.ExternalLink>

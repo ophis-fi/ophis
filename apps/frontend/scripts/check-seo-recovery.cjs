@@ -41,31 +41,19 @@ async function checkStructuredData(page, path) {
       for (const width of [320, 390, 1440]) {
         const page = await browser.newPage({ viewport: { width, height: width < 400 ? 667 : 900 } })
         await page.goto(base, { waitUntil: 'domcontentloaded' })
-        const summary = page.getByRole('region', { name: 'About Ophis swaps' })
-        await summary.waitFor({ timeout: 60000 })
-        await summary.scrollIntoViewIfNeeded()
-        const disclosure = summary.locator('details')
-        assert.equal(await disclosure.getAttribute('open'), null, 'guide starts collapsed')
-        await disclosure.locator('summary').focus()
-        await page.keyboard.press('Enter')
-        assert.notEqual(await disclosure.getAttribute('open'), null, 'guide opens with keyboard')
-        assert.match(await summary.innerText(), /intent-based DEX aggregator/)
-        assert.match(await summary.innerText(), /0\.01% base fee plus capped price-improvement capture/)
-        assert.match(await summary.innerText(), /Signing an order does not guarantee a fill/)
-        assert.match(await summary.innerText(), /independent of Robinhood Markets/)
-        const html = await checkStructuredData(page, '/')
-        const fallbackParagraphs = await page.evaluate((html) => {
-          const document = new DOMParser().parseFromString(html, 'text/html')
-          return [...document.querySelectorAll('#ophis-seo p')].map((p) => p.textContent.replace(/\s+/g, ' ').trim())
-        }, html)
-        const guideParagraphs = (await disclosure.locator('p').allTextContents()).map((text) =>
-          text.replace(/\s+/g, ' ').trim(),
+        const guides = page.getByRole('navigation', { name: 'Swap guides' })
+        await guides.waitFor({ timeout: 60000 })
+        await guides.scrollIntoViewIfNeeded()
+        assert.equal(
+          await page.getByText('How Ophis swaps work: networks, fees and wallet approvals', { exact: true }).count(),
+          0,
+          'explanatory footer section is removed',
         )
-        assert.deepEqual(guideParagraphs, fallbackParagraphs, 'raw HTML and rendered guide explain the same product')
+        await checkStructuredData(page, '/')
         await checkStructuredData(page, '/robinhood-chain/')
         assert.equal(await page.locator('#ophis-seo').count(), 0, 'app must finish mounting')
         for (const path of ['pricing', 'supported-chains', 'security', 'ai-agent-crypto-swap-api']) {
-          assert.equal(await summary.locator(`a[href="https://ophis.fi/${path}/"]`).count(), 1)
+          assert.equal(await guides.locator(`a[href="https://ophis.fi/${path}/"]`).count(), 1)
         }
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1))
         await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 60000 })
@@ -78,7 +66,7 @@ async function checkStructuredData(page, path) {
         const missing = await page.goto(base + '/missing-seo-page', { waitUntil: 'domcontentloaded' })
         assert.equal(missing.status(), 404, 'controlled navigation must preserve the network 404')
         assert.ok(await page.getByRole('heading', { name: 'Page not found' }).isVisible())
-        console.log('PASS', engine.name(), width, 'persistent copy, links, overflow, routes, API discovery')
+        console.log('PASS', engine.name(), width, 'footer links, overflow, routes, API discovery')
         await page.close()
       }
       const page = await browser.newPage({ javaScriptEnabled: false, viewport: { width: 320, height: 667 } })
