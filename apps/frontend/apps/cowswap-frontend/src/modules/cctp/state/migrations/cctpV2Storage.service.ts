@@ -16,11 +16,19 @@ export const cctpStorage: typeof jsonStorage = {
       jsonStorage.setItem(legacyKey, null)
       jsonStorage.setItem(key, null)
     } else {
-      jsonStorage.setItem(key, value)
+      const previous = jsonStorage.getItem(key, null)
+      const legacy = jsonStorage.getItem(legacyKey, null)
       const guard = { version: 2, recoveryKey: CCTP_STORAGE_KEY }
-      jsonStorage.setItem(legacyKey, guard)
-      if (JSON.stringify(jsonStorage.getItem(legacyKey, null)) !== JSON.stringify(guard))
-        throw new Error('Unable to protect bridge recovery from an older tab. Nothing was signed.')
+      jsonStorage.setItem(key, value)
+      try {
+        if (JSON.stringify(legacy) !== JSON.stringify(guard)) jsonStorage.setItem(legacyKey, guard)
+        if (JSON.stringify(jsonStorage.getItem(legacyKey, null)) !== JSON.stringify(guard))
+          throw new Error('Unable to protect bridge recovery from an older tab. Nothing was signed.')
+      } catch (error) {
+        jsonStorage.setItem(key, previous)
+        jsonStorage.setItem(legacyKey, legacy)
+        throw error
+      }
     }
   },
   removeItem: (key) => cctpStorage.setItem(key, null),

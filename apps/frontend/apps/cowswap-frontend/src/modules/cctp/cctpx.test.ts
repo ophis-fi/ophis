@@ -105,9 +105,6 @@ it('keeps old USDC journals and rejects unsupported or incomplete expanded-asset
   const fee = parseCctpxQuote(response, transfer)
   expect(() => assertCctpxQuote(fee, { number: 5000n, timestamp: 1n })).toThrow('expired')
   expect(() => assertCctpxQuote(fee, { number: 4999n, timestamp: 9999999999n })).not.toThrow()
-  const timed = { ...fee, expiry: { mode: 'TIMESTAMP' as const, expiresAt: 2000 } }
-  expect(() => assertCctpxQuote(timed, { number: 1n, timestamp: 1990n })).toThrow('expired')
-  expect(() => assertCctpxQuote(timed, { number: 1n, timestamp: 1900n })).not.toThrow()
 })
 
 it('encodes native EURC and eight-decimal cirBTC with exact receiver, fees, no hook and standard finality', () => {

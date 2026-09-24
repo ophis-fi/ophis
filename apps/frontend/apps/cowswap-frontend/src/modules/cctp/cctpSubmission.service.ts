@@ -65,8 +65,8 @@ export async function submitCctpBurn(
     let signatureRequested = false
     const beforeSignature = async (nonce: number): Promise<void> => {
       pending = { ...quote, sourceNonce: nonce }
-      persist(pending)
       persisted = true
+      persist(pending)
       const saved = await cctpStorage.getItem(CCTP_STORAGE_KEY, null)
       if (!matchesSavedTransfer(saved, pending))
         throw new Error('Unable to save bridge recovery details. Nothing was signed.')

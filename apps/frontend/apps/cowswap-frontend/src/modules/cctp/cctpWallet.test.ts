@@ -172,7 +172,7 @@ it.each([-3600000, 3600000])(
     try {
       await burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)
       expect(wallet.sendTransaction).toHaveBeenCalledTimes(1)
-      client.getBlock.mockResolvedValueOnce({ number: 100n, timestamp: BigInt(Math.floor(now / 1000) + 120) })
+      client.getBlock.mockResolvedValueOnce({ number: 100n, timestamp: BigInt(Math.floor(now / 1000) + 110) })
       await expect(burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)).rejects.toThrow('expired')
       expect(wallet.sendTransaction).toHaveBeenCalledTimes(1)
     } finally {

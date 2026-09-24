@@ -66,7 +66,22 @@ it.each([CCTP_STORAGE_KEY, legacyKey, 'silent legacy failure'])(
     })
     await expect(submitCctpBurn({} as WalletClient, transfer, persist)).rejects.toThrow()
     expect(signed).not.toHaveBeenCalled()
-    if (failure !== CCTP_STORAGE_KEY)
-      expect(raw.getItem(CCTP_STORAGE_KEY, null)).toEqual({ ...transfer, sourceNonce: 7 })
+    expect(raw.getItem(CCTP_STORAGE_KEY, null)).toBeNull()
+    expect(raw.getItem(legacyKey, null)).toBeNull()
+    jest.restoreAllMocks()
+    await submitCctpBurn({} as WalletClient, transfer, persist)
+    expect(signed).toHaveBeenCalledTimes(1)
   },
 )
+
+it('restores an existing legacy journal if migration cannot protect older tabs', () => {
+  raw.setItem(legacyKey, transfer)
+  const write = Storage.prototype.setItem
+  jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+    if (key === legacyKey) throw new Error('Storage unavailable')
+    write.call(this, key, value)
+  })
+  expect(() => persist({ ...transfer, sourceNonce: 7 })).toThrow('Storage unavailable')
+  expect(raw.getItem(CCTP_STORAGE_KEY, null)).toBeNull()
+  expect(cctpStorage.getItem(CCTP_STORAGE_KEY, null)).toEqual(transfer)
+})
