@@ -6,11 +6,23 @@ fixtures. Existing real Uniswap liquidity was checked separately in [LIQUIDITY.m
 
 ## Governance choice and unsigned batch — September 24
 
+At **10:08 UTC**, both free RPCs confirmed **0.3 native USDC** on the deployer,
+pending nonce zero and passing governance checks. Local deployment gas totaled
+8,136,136; both RPCs quoted 20.1 gwei, implying about 0.163536 USDC at that price.
+Replaced the oversized per-transaction default with measured creation limits
+plus at least 20% margin, enforced in the full rehearsal. The seven limits total
+9,815,000 gas; at the new 25 gwei default cap their combined maximum is
+**0.245375 USDC**. The broadcaster checks the current gas price against the cap
+before each send. The fresh seven-contract rehearsal, solver checks and release
+preview/activation-rejection/permissions/HTTP checks passed. No public transaction
+was sent; no QuickNode/dRPC credits were used. The production solver and final
+production plan are still absent; only the disposable preview was regenerated.
+
 Following the operator's confirmation, read-only checks through both free Arc
 RPCs at **09:58 UTC** passed: the Safe has all three expected owners, threshold
 two, no modules, and the official SafeL2 1.5.0 runtime. This resolves the prior
-governance mismatch. The deployer still has zero native USDC and pending nonce
-zero; production solver/configuration preparation remains outstanding. The
+governance mismatch. At that earlier check the deployer had zero native USDC and
+pending nonce zero; the subsequent funding is recorded above. The
 ignored `release/generated/safe-preflight.json` records this check and is **not**
 a contract deployment verification record. No transactions were sent by the
 assistant, and no QuickNode/dRPC credits were consumed.

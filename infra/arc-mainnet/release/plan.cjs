@@ -75,13 +75,17 @@ function compile() {
 function build(config, artifacts) {
   config = validate({ ...config })
   const transactions = [], contracts = {}
+  // Measured creation gas plus >=20% margin, enforced by the full local rehearsal.
+  // Keep the runtime solver limit separate from each deployment's funding requirement.
+  const deploymentLimits = { authImplementation: 1_250_000, authenticator: 805_000, vault: 110_000,
+    settlement: 5_700_000, Balances: 1_070_000, Signatures: 550_000, HooksTrampoline: 330_000 }
   function deploy(name, artifactName, args = []) {
     const artifact = artifacts[artifactName], nonce = config.nonce + transactions.length
     const predicted = getContractAddress({ from: config.deployer, nonce })
     const iface = new Interface(artifact.abi)
     const data = ('0x' + artifact.bytecode.replace(/^0x/, '') + iface.encodeDeploy(args).slice(2)).toLowerCase()
     transactions.push({ name, artifact: artifactName, from: config.deployer, chainId: 5042, nonce, value: '0',
-      gasLimit: config.gasLimit, maxFeePerGas: config.maxFeePerGas, maxPriorityFeePerGas: '1', data,
+      gasLimit: Math.min(config.gasLimit, deploymentLimits[name]), maxFeePerGas: config.maxFeePerGas, maxPriorityFeePerGas: '1', data,
       predictedAddress: predicted, constructorArgs: iface.encodeDeploy(args), initcodeHash: keccak256(data) })
     contracts[name] = predicted
     return predicted

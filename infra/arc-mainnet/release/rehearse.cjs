@@ -80,6 +80,8 @@ async function main() {
     // Disposable local key only; the production startup never exports key material.
     const solver = new Wallet(fs.readFileSync(solverKey, 'utf8').trim(), rpc)
     const compiled = compile(), plan = build(config, compiled.artifacts)
+    const totalGasCap = plan.transactions.reduce((sum, tx) => sum + BigInt(tx.gasLimit) * BigInt(tx.maxFeePerGas), 0n)
+    assert(totalGasCap <= 300_000_000_000_000_000n, 'Default deployment caps must fit 0.3 native USDC')
     fs.mkdirSync(OUT, { recursive: true, mode: 0o700 })
     // Rehearsal output is separate from a prepared operator plan.
     const artifactsFile = path.join(OUT, 'artifacts.json')
@@ -93,6 +95,7 @@ async function main() {
         const receipt = await (await signer.sendTransaction(request)).wait()
         assert.equal(receipt.contractAddress, predictedAddress)
         assert(receipt.gasUsed.lt(tx.gasLimit), `${name} exceeds configured gas`)
+        assert(BigInt(receipt.gasUsed.toString()) * 120n <= BigInt(tx.gasLimit) * 100n, `${name} needs at least 20% gas margin`)
         receipts.push(receipt)
       }
       const auth = new Contract(plan.contracts.authenticator, compiled.artifacts.GPv2AllowListAuthentication.abi, signer)

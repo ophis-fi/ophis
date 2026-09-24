@@ -33,6 +33,7 @@ async function main() {
       continue
     }
     assert.equal(await rpc.getTransactionCount(plan.config.deployer, 'pending'), tx.nonce, 'Nonce changed; stop and prepare a new reviewed plan')
+    assert(BigInt((await rpc.getGasPrice()).toString()) <= BigInt(tx.maxFeePerGas), 'Current gas price exceeds the reviewed cap; wait before broadcasting')
     assert((await rpc.getBalance(plan.config.deployer)).gte(BigInt(tx.gasLimit) * BigInt(tx.maxFeePerGas)), 'Insufficient native USDC for this gas cap')
     assert.equal(await rpc.getCode(tx.predictedAddress), '0x')
     const receipt = JSON.parse(execFileSync('cast', ['send', '--rpc-url', url.href, '--ledger', '--chain', '5042', '--json',

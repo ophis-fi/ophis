@@ -63,8 +63,19 @@ deploy the intended Safe configuration through the normal Safe ceremony first.
 After the operator's update, both free Arc RPCs verified the Safe at
 **2026-09-24 09:58 UTC**: all three configured owners (including the Ledger),
 threshold **two**, no modules, and official SafeL2 1.5.0 runtime. Governance
-preflight now passes. The deployer still had zero native USDC and pending nonce
-zero at that check. The final launch must recheck these values.
+preflight now passes. At **10:08 UTC**, both free RPCs confirmed the deployer was
+funded with **0.3 native USDC**, pending nonce zero, and the Safe still passed.
+The final launch must recheck these values.
+
+The seven contract deployments used **8,136,136 gas** in the local rehearsal.
+At the observed **20.1 gwei** this suggests approximately **0.163536 USDC**.
+The reviewed per-contract limits preserve at least 20% gas headroom (checked by
+the rehearsal), totaling **9,815,000 gas**. With the default **25 gwei** fee cap,
+the seven planned deployments are capped at **0.245375 USDC**, within the funded
+balance. The broadcaster stops before sending if the suggested gas price exceeds
+the reviewed cap. Refresh the quote before the ceremony; solver gas and Safe
+activation funding are separate. The runtime solver gas limit stays independent
+of these tighter deployment limits.
 
 Previously, at block **22379061**, both free Arc RPCs reported the supplied Safe
 with **two owners and threshold one**. Its singleton

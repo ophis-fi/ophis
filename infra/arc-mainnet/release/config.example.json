@@ -10,7 +10,7 @@
   "solver": null,
   "nonce": 0,
   "gasLimit": 10000000,
-  "maxFeePerGas": "100000000000",
+  "maxFeePerGas": "25000000000",
   "submissionDeadlineBlocks": 600,
   "orderbookUrl": "https://arc-mainnet.ophis.fi",
   "frontendOrigin": "https://swap.ophis.fi",
