@@ -128,11 +128,7 @@ function CctpClaimDetails({
         Circle normally delivers automatically. If delivery stalls, you can claim on {destinationName} using your wallet
         and pay destination gas.
       </p>
-      <button
-        type="button"
-        disabled={busy || !canClaim || !!status.mintHash || !!status.claimPending}
-        onClick={onClaim}
-      >
+      <button type="button" disabled={busy || !canClaim || !!status.claimPending} onClick={onClaim}>
         Claim on {destinationName}
       </button>
       {!canClaim && <p>Connect the recipient wallet on {destinationName} to claim.</p>}

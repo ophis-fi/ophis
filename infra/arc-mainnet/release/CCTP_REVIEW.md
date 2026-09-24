@@ -60,8 +60,8 @@ Independent sharp-edges reviews found and prompted these additional corrections:
 
 - Shared journal lock and expected-transfer comparison for claim, resume and finish; schema-normalized comparisons survive persistence and property-order changes.
 - Destination claim nonce saved before signing; lost responses remain locked. Receipt-validated claim recovery and finalized cancellation evidence allow safe retry.
-- Pending claims remain pending when a different forwarding attempt reverted.
-- Source replacements are recoverable by hash; failed/cancelled source nonces are released only after finality.
+- Pending claims remain pending when a different forwarding attempt reverted. A stalled Circle forwarding hash does not disable manual claiming.
+- Source replacements are recoverable by hash; source confirmations and failed/cancelled nonces are cached or released only after finality and canonical-block checks. Destination completion also waits for finality.
 - CCTP uses the application's selected wallet backend. Unknown networks are added using the pinned native currency and RPC metadata.
 - Arc's native 18-decimal event stream cannot substitute for the six-decimal ERC-20 mint receipt.
 

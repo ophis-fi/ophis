@@ -160,6 +160,8 @@ it('serializes recovery with burns and prevents a stale tab from clearing a newe
 it('journals a claim before signing and retains it after a lost wallet response', async () => {
   const status = jest.spyOn(cctpStatus, 'getCctpStatus').mockResolvedValue({
     text: 'ready',
+    mintHash: hash,
+    claimPending: false,
     completed: false,
     failed: false,
     sourceConfirmed: true,
@@ -192,14 +194,14 @@ it('journals a claim before signing and retains it after a lost wallet response'
 
 it('accepts only a finalized self-send at the saved source nonce as wallet cancellation', async () => {
   const client = {
-    getTransactionReceipt: jest.fn().mockResolvedValue({ status: 'success', blockNumber: 500n }),
+    getTransactionReceipt: jest.fn().mockResolvedValue({ status: 'success', blockNumber: 500n, blockHash: hash }),
     getTransaction: jest.fn().mockResolvedValue({ from: owner, to: owner, input: '0x', value: 0n, nonce: 7 }),
-    getBlock: jest.fn().mockResolvedValue({ number: 499n }),
+    getBlock: jest.fn().mockResolvedValue({ number: 600n, hash }),
   }
   jest.mocked(cctpClient).mockReturnValue(client as unknown as ReturnType<typeof cctpClient>)
   const cancelled = { ...transfer, burnHash: hash }
+  client.getBlock.mockResolvedValueOnce({ number: 499n, hash })
   expect((await getCctpStatus(cancelled)).failed).toBe(false)
-  client.getBlock.mockResolvedValueOnce({ number: 500n })
   expect((await getCctpStatus(cancelled)).failed).toBe(true)
   client.getTransaction.mockResolvedValueOnce({ from: owner, to: owner, input: '0x', value: 0n, nonce: 6 })
   await expect(getCctpStatus(cancelled)).rejects.toThrow('does not match')

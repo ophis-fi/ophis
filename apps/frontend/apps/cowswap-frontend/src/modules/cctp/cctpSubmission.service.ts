@@ -103,7 +103,7 @@ export async function claimCctpTransfer(
 ): Promise<CctpTransfer> {
   const latest = await getCctpStatus(transfer)
   if (latest.completed) return transfer
-  if (latest.claimPending || latest.mintHash)
+  if (latest.claimPending)
     throw new Error('A destination transaction is already pending. Wait for confirmation or recover its hash.')
   if (!latest.message || !latest.attestation) throw new Error('The attestation is not ready yet')
   let pending = transfer

@@ -121,7 +121,14 @@ it('rejects substituted domains, contracts, recipients, amounts, fees, caller an
 })
 
 function receipt(logs: TransactionReceipt['logs'], to = TOKEN_MESSENGER): TransactionReceipt {
-  return { status: 'success', from: owner, to, logs } as TransactionReceipt
+  return {
+    status: 'success',
+    from: owner,
+    to,
+    logs,
+    blockNumber: 500n,
+    blockHash: `0x${'11'.repeat(32)}`,
+  } as TransactionReceipt
 }
 
 it('requires the source MessageSent from Circle and destination message plus received USDC', () => {
@@ -186,7 +193,7 @@ it('keeps a pending manual claim locked when forwarding reverted and recovers a 
     data: encodeAbiParameters([{ type: 'bytes' }], [message]),
   }
   const client = {
-    getBlock: jest.fn().mockResolvedValue({ number: 600n }),
+    getBlock: jest.fn().mockResolvedValue({ number: 600n, hash: `0x${'11'.repeat(32)}` }),
     getTransactionReceipt: jest.fn().mockImplementation(async ({ hash }: { hash: Hex }) => {
       if (hash === mintHash) throw new TransactionReceiptNotFoundError({ hash })
       if (hash === burnHash) return receipt([sent] as TransactionReceipt['logs'])
@@ -201,6 +208,12 @@ it('keeps a pending manual claim locked when forwarding reverted and recovers a 
     .mocked(circleGet)
     .mockResolvedValue({ messages: [{ message, attestation: `0x${'01'.repeat(65)}`, forwardTxHash }] })
   const stored = { ...transfer, sourceNonce: 7, burnHash, mintHash, claimNonce: 9 }
+  client.getBlock.mockResolvedValueOnce({ number: 499n })
+  expect((await getCctpStatus(stored)).sourceConfirmed).toBe(false)
+  client.getBlock.mockResolvedValueOnce({ number: 600n }).mockResolvedValueOnce({ hash: `0x${'22'.repeat(32)}` })
+  expect((await getCctpStatus(stored)).sourceConfirmed).toBe(false)
+  expect((await getCctpStatus(stored)).sourceConfirmed).toBe(true)
+
   expect(await getCctpStatus(stored, true)).toEqual(
     expect.objectContaining({ completed: false, claimPending: true, mintHash }),
   )
@@ -234,6 +247,8 @@ it('keeps a pending manual claim locked when forwarding reverted and recovers a 
   })
   const recovered = await resumeCctpClaim(unknown, mintHash)
   expect(recovered.mintHash).toBe(mintHash)
+  client.getBlock.mockResolvedValueOnce({ number: 499n })
+  expect((await getCctpStatus(recovered, true)).completed).toBe(false)
   expect((await getCctpStatus(recovered)).completed).toBe(true)
   // A cancelled destination claim can release only its own finalized nonce.
   client.getTransactionReceipt.mockImplementation(async ({ hash }: { hash: Hex }) => {
@@ -246,11 +261,22 @@ it('keeps a pending manual claim locked when forwarding reverted and recovers a 
       ? { from: owner, to: TOKEN_MESSENGER, input: cctpBurnData(transfer), value: 0n, nonce: 7 }
       : { from: owner, to: owner, input: '0x', value: 0n, nonce: 9 },
   )
-  client.getBlock.mockResolvedValueOnce({ number: 499n })
+  client.getBlock
+    .mockResolvedValueOnce({ number: 600n, hash: `0x${'11'.repeat(32)}` })
+    .mockResolvedValueOnce({ hash: `0x${'11'.repeat(32)}` })
+    .mockResolvedValueOnce({ number: 499n })
   await expect(resumeCctpClaim(unknown, mintHash)).rejects.toThrow('become final')
   const cancelled = await resumeCctpClaim(unknown, mintHash)
   expect(cancelled.claimNonce).toBeUndefined()
   expect(cancelled.mintHash).toBeUndefined()
   expect((await getCctpStatus(cancelled)).claimPending).not.toBe(true)
   await expect(resumeCctpClaim({ ...unknown, claimNonce: 8 }, mintHash)).rejects.toThrow('does not confirm')
+  // Circle's stalled transaction cannot disable the user's manual fallback.
+  client.getTransactionReceipt.mockImplementation(async ({ hash }: { hash: Hex }) => {
+    if (hash === burnHash) return receipt([sent] as TransactionReceipt['logs'])
+    throw new TransactionReceiptNotFoundError({ hash })
+  })
+  const forwarding = await getCctpStatus({ ...transfer, sourceNonce: 7, burnHash })
+  expect(forwarding.mintHash).toBe(forwardTxHash)
+  expect(forwarding.claimPending).toBe(false)
 })

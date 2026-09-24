@@ -164,7 +164,9 @@ export function isCctpCancellation(transaction: Transaction, owner: Address, non
 
 export async function isCctpFinalized(chainId: number, receipt: TransactionReceipt): Promise<boolean> {
   const finalized = await cctpClient(chainId).getBlock({ blockTag: 'finalized' })
-  return finalized.number !== null && finalized.number >= receipt.blockNumber
+  if (finalized.number === null || finalized.number < receipt.blockNumber) return false
+  const canonical = await cctpClient(chainId).getBlock({ blockNumber: receipt.blockNumber })
+  return canonical.hash === receipt.blockHash
 }
 
 async function finalizedFailure(
@@ -175,6 +177,17 @@ async function finalizedFailure(
   if (!(await isCctpFinalized(transfer.source, receipt)))
     return { ...waiting, text: 'Waiting for the source transaction outcome to become final' }
   return { ...waiting, failed: true, text: `The source transaction was ${reason}. No USDC was bridged.` }
+}
+
+function assertBurnTransaction(transaction: Transaction, transfer: CctpTransfer): void {
+  if (
+    !areAddressesEqual(transaction.from, transfer.owner) ||
+    !areAddressesEqual(transaction.to, TOKEN_MESSENGER) ||
+    transaction.input.toLowerCase() !== cctpBurnData(transfer).toLowerCase() ||
+    transaction.value !== 0n ||
+    transaction.nonce !== transfer.sourceNonce
+  )
+    throw new Error('Transaction does not match the saved bridge')
 }
 
 async function sourceStatus(transfer: CctpTransfer): Promise<CctpStatus | null> {
@@ -190,16 +203,11 @@ async function sourceStatus(transfer: CctpTransfer): Promise<CctpStatus | null> 
   // the original burn after the UI permits a new transfer.
   if (isCctpCancellation(transaction, transfer.owner, transfer.sourceNonce))
     return finalizedFailure(transfer, receipt, 'cancelled')
-  if (
-    !areAddressesEqual(transaction.from, transfer.owner) ||
-    !areAddressesEqual(transaction.to, TOKEN_MESSENGER) ||
-    transaction.input.toLowerCase() !== cctpBurnData(transfer).toLowerCase() ||
-    transaction.value !== 0n ||
-    transaction.nonce !== transfer.sourceNonce
-  )
-    throw new Error('Transaction does not match the saved bridge')
+  assertBurnTransaction(transaction, transfer)
   if (receipt.status === 'reverted') return finalizedFailure(transfer, receipt, 'reverted')
   verifyBurnReceipt(receipt, transfer)
+  if (!(await isCctpFinalized(transfer.source, receipt)))
+    return { ...waiting, text: 'Source included. Waiting for source finality.' }
   return null
 }
 
@@ -229,10 +237,12 @@ async function destinationStatus(
   const hashes = [...new Set([transfer.mintHash, forwardTxHash].filter((value): value is Hex => !!value))]
   let result: CctpStatus = ready
   let pendingHash: Hex | undefined
+  let claimPending = transfer.claimNonce !== undefined && !transfer.mintHash
   for (const mintHash of hashes) {
     const receipt = await cctpReceipt(transfer.destination, mintHash)
     if (!receipt) {
-      pendingHash = mintHash
+      pendingHash ??= mintHash
+      if (mintHash === transfer.mintHash) claimPending = true
       continue
     }
     if (receipt.status === 'reverted') {
@@ -240,11 +250,13 @@ async function destinationStatus(
       continue
     }
     verifyMintReceipt(receipt, ready.message, transfer)
+    if (!(await isCctpFinalized(transfer.destination, receipt)))
+      return { ...ready, mintHash, claimPending: true, text: 'USDC delivered. Waiting for destination finality.' }
     return { ...ready, mintHash, completed: true, text: 'USDC received. Bridge complete.' }
   }
   if (pendingHash)
-    return { ...ready, mintHash: pendingHash, claimPending: true, text: 'Waiting for destination confirmation' }
-  if (transfer.claimNonce !== undefined && !transfer.mintHash)
+    return { ...ready, mintHash: pendingHash, claimPending, text: 'Waiting for destination confirmation' }
+  if (claimPending)
     return {
       ...ready,
       claimPending: true,

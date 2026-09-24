@@ -143,6 +143,7 @@ function rpc(item, chain) {
   if (method === 'eth_getCode')
     result = [TM, MT].includes(params[0]?.toLowerCase()) ? '0x60016000' : '0x';
   if (method === 'eth_blockNumber') result = '0x100';
+  if (method === 'eth_getBlockByNumber') result = { number: '0x100', hash: blockHash, transactions: [], timestamp: '0x1', gasLimit: '0x1c9c380', gasUsed: '0x0' };
   if (method === 'eth_getBalance') result = v.toHex(10n ** 19n);
   if (method === 'eth_gasPrice') result = '0x3b9aca00';
   if (method === 'eth_estimateGas') result = '0x186a0';
