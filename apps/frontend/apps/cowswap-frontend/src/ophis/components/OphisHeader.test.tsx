@@ -69,10 +69,8 @@ it('omits the OTC self-link on OTC list and order-detail routes', () => {
   expect(screen.queryByRole('link', { name: 'Open OTC' })).toBeNull()
 })
 
-it('passes the resolved trade token address and chain into the bridge', () => {
+it('keeps bridging in the swap box without a separate navigation link', () => {
   useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
   renderHeader(false, '/1/swap/WETH')
-  expect(screen.getByRole('link', { name: 'Bridge' }).getAttribute('href')).toBe(
-    '/bridge?source=1&token=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
-  )
+  expect(screen.queryByRole('link', { name: 'Bridge' })).toBeNull()
 })

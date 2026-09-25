@@ -1,11 +1,15 @@
+import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { renderHook, waitFor } from '@testing-library/react'
+import { useIsCctpEnabled } from 'entities/cctp'
 import { bridgingSdk } from 'tradingSdk/bridgingSdk'
 
 import { useBridgeProvidersIds } from './useBridgeProvidersIds'
 import { useRoutesAvailability } from './useRoutesAvailability'
+
+jest.mock('entities/cctp/useIsCctpEnabled', () => ({ useIsCctpEnabled: jest.fn(() => true) }))
 
 // Mock dependencies
 jest.mock('@cowprotocol/common-hooks', () => ({
@@ -31,6 +35,7 @@ let testId = 0
 describe('useRoutesAvailability', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    jest.mocked(useIsCctpEnabled).mockReturnValue(true)
     mockUseIsBridgingEnabled.mockReturnValue(true)
     // Use unique provider IDs per test to avoid SWR cache conflicts
     testId++
@@ -161,4 +166,13 @@ describe('useRoutesAvailability', () => {
       expect(result.current.unavailableChainIds.has(SupportedChainId.GNOSIS_CHAIN)).toBe(false)
     })
   })
+})
+
+it('uses provider availability on surfaces where CCTP cannot execute', async () => {
+  jest.mocked(useIsCctpEnabled).mockReturnValue(false)
+  mockUseIsBridgingEnabled.mockReturnValue(true)
+  mockUseBridgeProvidersIds.mockReturnValue(['cctp-disabled-surface'])
+  mockGetBuyTokens.mockResolvedValue({ tokens: [], isRouteAvailable: false })
+  const { result } = renderHook(() => useRoutesAvailability(SupportedChainId.MAINNET, [ARC_CHAIN_ID]))
+  await waitFor(() => expect(result.current.unavailableChainIds.has(5042)).toBe(true))
 })

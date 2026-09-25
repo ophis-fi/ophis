@@ -223,3 +223,18 @@ it.each([-3600000, 3600000])(
     }
   },
 )
+
+it('does not request approval if the form changed during transaction preparation', async () => {
+  jest.mocked(readCctpFunds).mockResolvedValueOnce({ allowance: 0n, balance: 2000000n })
+  const current = { value: true }
+  client.estimateGas.mockImplementationOnce(async () => {
+    current.value = false
+    return 100000n
+  })
+  await expect(
+    approveCctp(wallet as unknown as WalletClient, quote, () => {
+      if (!current.value) throw new Error('Bridge details changed')
+    }),
+  ).rejects.toThrow('changed')
+  expect(wallet.sendTransaction).not.toHaveBeenCalled()
+})

@@ -6,6 +6,7 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useBridgeSupportedNetworks, useRoutesAvailability } from 'entities/bridgeProvider'
+import { useIsCctpEnabled } from 'entities/cctp'
 
 import { Field } from 'legacy/state/types'
 
@@ -37,6 +38,7 @@ export function useChainsToSelect(): ChainsToSelectState | undefined {
   const { field, selectedTargetChainId = chainId, tradeType, oppositeToken } = useSelectTokenWidgetState()
   const { data: bridgeSupportedNetworks, isLoading } = useBridgeSupportedNetworks()
   const isBridgingEnabled = useIsBridgingEnabled() // Reads from Jotai atom
+  const cctpEnabled = useIsCctpEnabled()
   const isAdvancedTradeType = tradeType === TradeType.LIMIT_ORDER || tradeType === TradeType.ADVANCED_ORDERS
   const shouldHideNetworkSelector = useShouldHideNetworkSelector()
 
@@ -79,6 +81,7 @@ export function useChainsToSelect(): ChainsToSelectState | undefined {
       supportedChains: supportedTargetChains,
       isLoading,
       routesAvailability,
+      cctpEnabled,
     })
   }, [
     field,
@@ -90,6 +93,7 @@ export function useChainsToSelect(): ChainsToSelectState | undefined {
     supportedTargetChains,
     isLoading,
     isBridgingEnabled,
+    cctpEnabled,
     isAdvancedTradeType,
     routesAvailability,
     shouldHideNetworkSelector,
