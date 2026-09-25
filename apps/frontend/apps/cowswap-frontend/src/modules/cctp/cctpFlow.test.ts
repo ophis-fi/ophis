@@ -218,3 +218,19 @@ it('matches the journal after reload, schema parsing and appending a recovered c
   await updateCctpTransfer(parsed, async () => null, persist)
   expect(await cctpStorage.getItem(CCTP_STORAGE_KEY, null)).toBeNull()
 })
+
+it('drops an unsigned journal if context changes during its persistence check', async () => {
+  burn.mockImplementation(async (_wallet, _quote, beforeSignature) => {
+    await beforeSignature(7)
+    return hash
+  })
+  const guard = jest
+    .fn()
+    .mockImplementationOnce(() => undefined)
+    .mockImplementationOnce(() => {
+      throw new Error('Bridge details changed')
+    })
+  await expect(submitCctpBurn(wallet, transfer, persist, guard)).rejects.toThrow('changed')
+  expect(guard).toHaveBeenCalledTimes(2)
+  expect(await cctpStorage.getItem(CCTP_STORAGE_KEY, null)).toBeNull()
+})

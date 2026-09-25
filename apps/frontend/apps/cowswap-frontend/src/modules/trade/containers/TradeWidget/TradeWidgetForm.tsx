@@ -188,7 +188,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
     onCurrencySelection,
     onUserInput,
     allowsOffchainSigning,
-    tokenSelectorDisabled: shouldLockForAlternativeOrder,
+    tokenSelectorDisabled: shouldLockForAlternativeOrder || params.inputsDisabled,
     displayTokenName,
     displayChainName,
     isBridging: isCurrentTradeBridging,
@@ -280,8 +280,9 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                   <div>
                     <CurrencyInputPanel
                       id="input-currency-input"
+                      inputDisabled={params.inputsDisabled}
                       currencyInfo={inputCurrencyInfo}
-                      showSetMax={showSetMax}
+                      showSetMax={showSetMax && !params.inputsDisabled}
                       maxBalance={maxBalance}
                       topLabel={
                         isOphisMobileSwap
@@ -309,6 +310,8 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                       }
                       isLoading={Boolean(sellToken && outputCurrencyInfo.currency && isTradePriceUpdating)}
                       disabled={
+                        params.inputsDisabled ||
+                        params.disableTokenSwitch ||
                         shouldLockForAlternativeOrder ||
                         isOutputTokenUnsupported ||
                         isNonEvmRecipientChain(buyToken?.chainId) ||
@@ -338,14 +341,19 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                     />
                   </div>
                   {withRecipient && (
-                    <SetRecipient
-                      recipient={recipient || ''}
-                      onChangeRecipient={onChangeRecipient}
-                      targetChainId={buyToken?.chainId as SupportedChainId}
-                    />
+                    <fieldset
+                      disabled={params.inputsDisabled}
+                      style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+                    >
+                      <SetRecipient
+                        recipient={recipient || ''}
+                        onChangeRecipient={onChangeRecipient}
+                        targetChainId={buyToken?.chainId as SupportedChainId}
+                      />
+                    </fieldset>
                   )}
 
-                  {isWrapOrUnwrap ? (
+                  {isWrapOrUnwrap && !isPriceStatic ? (
                     sellToken ? (
                       <WrapFlowActionButton sellToken={sellToken} />
                     ) : null

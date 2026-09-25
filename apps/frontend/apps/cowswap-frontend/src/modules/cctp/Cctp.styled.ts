@@ -2,11 +2,8 @@ import styled from 'styled-components/macro'
 
 export const Card = styled.section`
   width: 100%;
-  max-width: 520px;
-  margin: 24px auto;
-  padding: 24px;
-  border: 1px solid ${({ theme }) => theme.border};
-  border-radius: 20px;
+  margin: 16px 0 0;
+  padding: 0;
   display: grid;
   gap: 18px;
   box-sizing: border-box;
