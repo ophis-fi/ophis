@@ -24,13 +24,8 @@ export interface UnsupportedBridgePairPatchParams {
 }
 
 export function getUnsupportedBridgePairPatch(params: UnsupportedBridgePairPatchParams): Partial<SwapRawState> | null {
-  const {
-    sourceChainId,
-    targetChainId,
-    bridgeSupportedNetworks,
-    isBridgeSupportedNetworksLoading,
-    cctpEnabled,
-  } = params
+  const { sourceChainId, targetChainId, bridgeSupportedNetworks, isBridgeSupportedNetworksLoading, cctpEnabled } =
+    params
 
   if (!sourceChainId || !targetChainId || sourceChainId === targetChainId) {
     return null

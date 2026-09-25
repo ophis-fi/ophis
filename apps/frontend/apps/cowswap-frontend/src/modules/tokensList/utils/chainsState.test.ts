@@ -48,8 +48,7 @@ it.each([130, 5042])('requires surface-level CCTP support to enable source %s', 
     createOutputChainsState({ ...options, cctpEnabled: false }).disabledChainIds?.has(SupportedChainId.MAINNET),
   ).toBe(true)
   expect(
-    createOutputChainsState({ ...options, cctpEnabled: true }).disabledChainIds?.has(SupportedChainId.MAINNET) ??
-      false,
+    createOutputChainsState({ ...options, cctpEnabled: true }).disabledChainIds?.has(SupportedChainId.MAINNET) ?? false,
   ).toBe(false)
 })
 
