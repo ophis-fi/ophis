@@ -1,10 +1,15 @@
 import { ReactNode, useState } from 'react'
 
+import { Link } from 'react-router'
 import { formatUnits } from 'viem'
+
+import { parameterizeTradeRoute } from 'modules/trade'
+
+import { Routes } from 'common/constants/routes'
 
 import { cctpNetwork } from './cctp.const'
 import { type CctpTransfer } from './cctp.service'
-import { cctpAsset } from './cctpAssets.const'
+import { cctpAsset, cctpToken } from './cctpAssets.const'
 import { type CctpStatus } from './cctpStatus.service'
 import { type useCctpTransfer } from './useCctpTransfer'
 
@@ -36,6 +41,7 @@ export function CctpTransferDetails({
   status,
   busy,
   canClaim,
+  claimPreparation,
   onClaim,
   onResume,
   onResumeClaim,
@@ -45,6 +51,7 @@ export function CctpTransferDetails({
   status: CctpStatus | null
   busy: boolean
   canClaim: boolean
+  claimPreparation?: { label: string; action(): void }
   onClaim(): void
   onResume(hash: string): void
   onResumeClaim(hash: string): void
@@ -93,11 +100,30 @@ export function CctpTransferDetails({
         status={status}
         busy={busy}
         canClaim={canClaim}
+        claimPreparation={claimPreparation}
         destinationName={destination.chain.name}
         claimNonce={transfer.claimNonce}
         onClaim={onClaim}
         onResumeClaim={onResumeClaim}
       />
+      {status?.completed && (
+        <Link
+          to={parameterizeTradeRoute(
+            {
+              chainId: String(transfer.destination),
+              inputCurrencyId: cctpToken(transfer.destination, transfer.asset),
+              outputCurrencyId: undefined,
+              inputCurrencyAmount: undefined,
+              outputCurrencyAmount: undefined,
+              orderKind: undefined,
+            },
+            Routes.SWAP,
+          )}
+          onClick={onFinish}
+        >
+          Swap on {destination.chain.name}
+        </Link>
+      )}
       {(status?.completed || status?.failed) && (
         <button type="button" disabled={busy} onClick={onFinish}>
           Start another transfer
@@ -111,6 +137,7 @@ function CctpClaimDetails({
   status,
   busy,
   canClaim,
+  claimPreparation,
   destinationName,
   claimNonce,
   onClaim,
@@ -119,6 +146,7 @@ function CctpClaimDetails({
   status: CctpStatus | null
   busy: boolean
   canClaim: boolean
+  claimPreparation?: { label: string; action(): void }
   destinationName: string
   claimNonce?: number
   onClaim(): void
@@ -131,10 +159,14 @@ function CctpClaimDetails({
         Circle normally delivers automatically. If delivery stalls, you can claim on {destinationName} using your wallet
         and pay destination gas.
       </p>
-      <button type="button" disabled={busy || !canClaim || !!status.claimPending} onClick={onClaim}>
-        Claim on {destinationName}
+      <button
+        type="button"
+        disabled={busy || (!canClaim && !claimPreparation) || !!status.claimPending}
+        onClick={claimPreparation?.action ?? onClaim}
+      >
+        {claimPreparation?.label ?? `Claim on ${destinationName}`}
       </button>
-      {!canClaim && <p>Connect the recipient wallet on {destinationName} to claim.</p>}
+      {!canClaim && !claimPreparation && <p>Connect the recipient wallet on {destinationName} to claim.</p>}
       <p>
         If you already claimed, sped up or cancelled a claim, paste the confirmed destination transaction hash to
         recover it.

@@ -15,16 +15,8 @@ import {
 } from 'viem'
 import { z } from 'zod'
 
-import {
-  CCTP_ABI,
-  CCTP_API,
-  FORWARD_HOOK,
-  MAX_BURN,
-  MESSAGE_TRANSMITTER,
-  QUOTE_LIFETIME_MS,
-  cctpNetwork,
-} from './cctp.const'
-import { cctpAsset, cctpToken, cctpService, cctpSpender, type CctpAsset } from './cctpAssets.const'
+import { CCTP_ABI, CCTP_API, FORWARD_HOOK, MESSAGE_TRANSMITTER, QUOTE_LIFETIME_MS, cctpNetwork } from './cctp.const'
+import { cctpAsset, cctpToken, cctpService, cctpSpender, cctpMaxAmount, type CctpAsset } from './cctpAssets.const'
 import {
   assertCctpxQuote,
   assertCctpxTerms,
@@ -74,7 +66,8 @@ export function parseCctpAmount(value: string, asset: CctpAsset = 'USDC'): bigin
   if (!new RegExp(`^(0|[1-9]\\d*)(\\.\\d{1,${decimals}})?$`).test(value))
     throw new Error(`Enter a ${asset} amount with at most ${decimals} decimal places`)
   const amount = parseUnits(value, decimals)
-  if (amount <= 0n || amount > MAX_BURN) throw new Error('Amount must be above zero and within the bridge limit')
+  if (amount <= 0n || amount > cctpMaxAmount(asset))
+    throw new Error('Amount must be above zero and within the bridge limit')
   return amount
 }
 
@@ -148,7 +141,7 @@ export function assertCctpTerms(quote: CctpQuote): void {
   if (
     quote.source === quote.destination ||
     BigInt(quote.amount) <= BigInt(quote.maxFee) ||
-    BigInt(quote.amount) > MAX_BURN ||
+    BigInt(quote.amount) > cctpMaxAmount(quote.asset) ||
     BigInt(quote.maxFee) < 0n
   )
     throw new Error('Invalid bridge terms')

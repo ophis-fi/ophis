@@ -11,7 +11,7 @@ import {
   verifyCctpNetwork,
   type CctpQuote,
 } from './cctp.service'
-import { cctpService, cctpSpender, cctpToken } from './cctpAssets.const'
+import { cctpAsset, cctpService, cctpSpender, cctpToken } from './cctpAssets.const'
 import { validateCctpMessage } from './cctpStatus.service'
 import { assertCctpxQuote } from './cctpx.service'
 
@@ -88,6 +88,7 @@ export async function burnCctp(
     throw new Error('Token approval or balance is insufficient')
   const data = cctpBurnData(quote)
   await verifyCctpNetwork(quote.destination, quote.asset, quote.source)
+  await verifyCctpUnlock(quote)
   const codes = await Promise.all(
     [quote.source, quote.destination].map((id) => cctpClient(id).getCode({ address: quote.owner })),
   )
@@ -109,6 +110,20 @@ export async function burnCctp(
     data,
     value: quote.expanded ? BigInt(quote.expanded.feeTotalAmount) : 0n,
   })
+}
+
+// Ownerless tokens are released from escrow on their home chain. Simulate that
+// exact transfer before burning on Arc: destination eligibility/pause/escrow
+// failures must not strand an otherwise valid outbound transfer.
+export async function verifyCctpUnlock(quote: CctpQuote): Promise<void> {
+  if (cctpAsset(quote.asset).homeChainId !== quote.destination) return
+  const result = await cctpClient(quote.destination).call({
+    account: cctpSpender(quote.asset),
+    to: cctpToken(quote.destination, quote.asset),
+    data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [quote.owner, BigInt(quote.amount)] }),
+  })
+  if (result.data && result.data !== '0x' && BigInt(result.data) !== 1n)
+    throw new Error('Destination token transfer is unavailable for this wallet or amount')
 }
 
 export async function claimCctp(

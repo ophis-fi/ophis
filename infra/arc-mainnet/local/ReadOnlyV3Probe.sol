@@ -42,3 +42,32 @@ contract ReadOnlyV3Probe {
         require(received >= minimum && abi.decode(result, (uint256)) == received, "probe output");
     }
 }
+
+interface IProbeSettlement {
+    function vaultRelayer() external view returns (address);
+    function setPreSignature(bytes calldata uid, bool signed) external;
+    function filledAmount(bytes calldata uid) external view returns (uint256);
+}
+
+/// Test-only runtime override at the authorized solver EOA. It acts as both a
+/// disposable trader and solver; the actual settlement/router code is unchanged.
+contract ReadOnlySettlementProbe {
+    fallback(bytes calldata data) external returns (bytes memory) {
+        (address settlement, address sell, address buy, uint256 amount, uint256 minimum, bytes memory uid, bytes memory settleData) =
+            abi.decode(data, (address, address, address, uint256, uint256, bytes, bytes));
+        require(block.chainid == 5042 && sell != buy && amount > 0 && minimum > 0, "probe parameters");
+        uint256[4] memory beforeBalances = [IProbeToken(sell).balanceOf(address(this)), IProbeToken(buy).balanceOf(address(this)),
+            IProbeToken(sell).balanceOf(settlement), IProbeToken(buy).balanceOf(settlement)];
+        IProbeSettlement target = IProbeSettlement(settlement);
+        require(IProbeToken(sell).approve(target.vaultRelayer(), amount), "probe approval");
+        target.setPreSignature(uid, true);
+        (bool ok, bytes memory result) = settlement.call(settleData);
+        if (!ok) assembly { revert(add(result, 32), mload(result)) }
+        uint256 received = IProbeToken(buy).balanceOf(address(this)) - beforeBalances[1];
+        require(beforeBalances[0] - IProbeToken(sell).balanceOf(address(this)) == amount, "probe input");
+        require(received >= minimum && target.filledAmount(uid) == amount, "probe output/fill");
+        require(IProbeToken(sell).balanceOf(settlement) >= beforeBalances[2] &&
+            IProbeToken(buy).balanceOf(settlement) >= beforeBalances[3], "probe depleted settlement buffer");
+        return abi.encode(received);
+    }
+}

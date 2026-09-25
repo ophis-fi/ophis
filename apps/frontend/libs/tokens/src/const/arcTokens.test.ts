@@ -51,7 +51,17 @@ it.each([false, true])('loads Arc tokens without relying on favourites (curated=
 
 it('ships locally hosted logos and the additional Arc trading assets', () => {
   const arc = shippedList.tokens.filter(({ chainId }) => chainId === ARC_CHAIN_ID)
-  expect(arc.map(({ symbol }) => symbol).sort()).toEqual(['EURC', 'USDC', 'USYC', 'WETH', 'XAUM', 'cirBTC'])
+  expect(arc.map(({ symbol }) => symbol).sort()).toEqual([
+    'ARGUS',
+    'CRCLon',
+    'EURC',
+    'ONDO',
+    'USDC',
+    'USYC',
+    'WETH',
+    'XAUM',
+    'cirBTC',
+  ])
   for (const token of arc) {
     expect(token.logoURI).toMatch(/^https:\/\/swap\.ophis\.fi\/logos\//)
     const path = new URL(token.logoURI || '').pathname

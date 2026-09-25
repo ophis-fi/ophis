@@ -1,8 +1,8 @@
 import { decodeFunctionData, erc20Abi, getAddress, type WalletClient } from 'viem'
 
 import { cctpClient, readCctpFunds, type CctpQuote } from './cctp.service'
-import { cctpAssetRoute, cctpSpender, CROSS_CHAIN_TOKEN_SERVICE } from './cctpAssets.const'
-import { approveCctp, burnCctp, switchCctpChain } from './cctpWallet.service'
+import { cctpAssetRoute, cctpSpender, cctpToken, CROSS_CHAIN_TOKEN_SERVICE } from './cctpAssets.const'
+import { approveCctp, burnCctp, switchCctpChain, verifyCctpUnlock } from './cctpWallet.service'
 
 jest.mock('./cctp.service', () => ({
   ...jest.requireActual('./cctp.service'),
@@ -19,6 +19,7 @@ const client = {
   getCode: jest.fn(),
   getTransactionCount: jest.fn(),
   getBlock: jest.fn(),
+  call: jest.fn(),
 }
 const wallet = { getChainId: jest.fn(), getAddresses: jest.fn(), sendTransaction: jest.fn() }
 const beforeSignature = jest.fn().mockResolvedValue(undefined)
@@ -37,6 +38,7 @@ beforeEach(() => {
   client.getCode.mockResolvedValue('0x')
   client.getTransactionCount.mockResolvedValue(7)
   client.getBlock.mockResolvedValue({ number: 100n, timestamp: BigInt(Math.floor(Date.now() / 1000)) })
+  client.call.mockResolvedValue({ data: '0x01' })
 })
 
 it('reserves Arc gas at 18 decimals while burning six-decimal USDC', async () => {
@@ -150,6 +152,47 @@ it('keeps supported networks and replaces unsupported asset routes with distinct
   expect(cctpAssetRoute('cirBTC', 8453, 1)).toEqual({ source: 5042, destination: 1 })
   expect(cctpAssetRoute('cirBTC', 8453, 5042)).toEqual({ source: 1, destination: 5042 })
   expect(cctpAssetRoute('EURC', 5042, 8453)).toEqual({ source: 5042, destination: 8453 })
+})
+
+it('checks the exact home-chain release before burning and rejects unavailable destination transfers', async () => {
+  const now = Math.floor(Date.now() / 1000)
+  const expanded: CctpQuote = {
+    ...quote,
+    asset: 'WETH',
+    destination: 1,
+    amount: '1250000000000000001',
+    maxFee: '0',
+    expanded: {
+      signedQuote: `0x${'11'.repeat(100)}`,
+      feeTotalAmount: '1',
+      issuedAt: now,
+      expiry: { mode: 'TIMESTAMP', expiresAt: now + 120 },
+    },
+  }
+  jest.mocked(readCctpFunds).mockResolvedValue({ allowance: BigInt(expanded.amount), balance: BigInt(expanded.amount) })
+  for (const failure of [
+    async () => ({ data: '0x00' }),
+    async () => {
+      throw new Error('issuer restriction')
+    },
+  ]) {
+    client.call.mockImplementationOnce(failure)
+    await expect(burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)).rejects.toThrow()
+    expect(wallet.sendTransaction).not.toHaveBeenCalled()
+    expect(beforeSignature).not.toHaveBeenCalled()
+  }
+  await burnCctp(wallet as unknown as WalletClient, expanded, beforeSignature)
+  const call = client.call.mock.calls[2]?.[0]
+  expect(call).toEqual(expect.objectContaining({ account: cctpSpender('WETH'), to: cctpToken(1, 'WETH') }))
+  expect(decodeFunctionData({ abi: erc20Abi, data: call.data })).toEqual({
+    functionName: 'transfer',
+    args: [owner, 1250000000000000001n],
+  })
+  expect(wallet.sendTransaction).toHaveBeenCalledTimes(1)
+  client.call.mockClear()
+  for (const asset of ['USDC', 'EURC', 'cirBTC'] as const) await verifyCctpUnlock({ ...expanded, asset })
+  await verifyCctpUnlock({ ...expanded, source: 1, destination: 5042 })
+  expect(client.call).not.toHaveBeenCalled()
 })
 
 it.each([-3600000, 3600000])(

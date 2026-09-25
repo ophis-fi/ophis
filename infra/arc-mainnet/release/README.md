@@ -351,7 +351,7 @@ sovereign canary after its Arc URL is enabled.
 Back up Postgres with `docker compose ... exec -T postgres pg_dump -U arc arc`
 and retain the credit volume independently. Never use `down -v` to roll back.
 Disable `REACT_APP_ARC_ENABLED` and redeploy frontend/explorer to hide Arc; stop
-`autopilot driver uniswap-v3` to stop submitting. In a signing incident, the
+`autopilot driver uniswap-v3 kyberswap` to stop submitting and both quote services. In a signing incident, the
 2-of-3 Safe calls authenticator `removeSolver(solver)` immediately. Preserve the
 orderbook/database so existing orders and histories remain inspectable. Contract
 deployments cannot be undone; do not replace addresses without a new reviewed plan.

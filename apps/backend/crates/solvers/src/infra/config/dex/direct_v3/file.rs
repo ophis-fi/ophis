@@ -56,9 +56,9 @@ pub async fn load(path: &Path) -> super::Config {
                 "0x7DfD4F31be6814D2906BDE155c3e1B146EAc1468",
                 "0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77",
                 false,
-                // Public-RPC quote + router simulation at Arc block 22231320:
-                // 500 executed; 100 reverted. Do not spend calls on that tier.
-                vec![500],
+                // The 100 tier carries cirBTC; 3000 carries WETH. Pool
+                // discovery is cached, and quotes always use a fresh snapshot.
+                vec![100, 500, 3000, 10000],
                 metrics::Dex::UniswapV3,
                 "",
             ),
@@ -84,8 +84,7 @@ pub async fn load(path: &Path) -> super::Config {
         };
     let parse = |s: &str| s.parse::<eth::Address>().expect("pinned direct V3 address");
     if config.chain_id == eth::ChainId::Arc {
-        // Arc has no Ophis mainnet deployment. Use the operator's explicit
-        // settlement; the driver independently binds calldata to its own config.
+        // The driver independently binds calldata to its configured settlement.
         assert!(
             !base.contracts.settlement.is_zero(),
             "missing Arc settlement"

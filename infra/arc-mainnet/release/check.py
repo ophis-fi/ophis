@@ -52,6 +52,16 @@ def main():
     assert all(pool['additional-tip-percentage'] == 0 for pool in driver['submission']['mempool'])
     assert all(lane['address'] == cfg['solver'] for lane in autopilot['drivers'])
     assert all(lane['account'] == cfg['solver'] for lane in driver['solver'])
+    lanes = {'uniswap-v3', 'kyberswap'}
+    assert {lane['name'] for lane in driver['solver']} == lanes
+    assert len(autopilot['drivers']) == 2
+    assert autopilot['run-loop']['max-winners-per-auction'] == 1
+    for name in lanes:
+        solver = tomllib.loads((OUT / (name + '.toml')).read_text())
+        assert solver['strict-output-simulation'] is True
+        assert solver['strict-market-output-simulation'] == 'all'
+        assert solver['concurrent-requests'] == 1
+    assert all(lane['manage-native-token'] == {'wrap-address': False, 'insert-unwraps': False} for lane in driver['solver'])
     assert 'skip-event-sync = false' in (OUT / 'autopilot.toml').read_text()
     assert 'REACT_APP_ARC_ENABLED=false' in (OUT / 'frontend.env').read_text()
     assert subprocess.run([sys.executable, str(HERE / 'render.py'), '--activate'], capture_output=True).returncode != 0, 'Unverified plan activated'
