@@ -5,7 +5,14 @@ import { cctpBuyTokens, cctpRouteAsset, hasCctpRoute } from './cctpRouting.utils
 
 jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: true }))
 
-const token = (chainId: number) => TokenWithLogo.fromToken({ chainId, address: cctpToken(chainId, 'cirBTC'), decimals: cctpAsset('cirBTC').decimals, symbol: 'cirBTC', name: 'Circle Wrapped Bitcoin' })
+const token = (chainId: number): TokenWithLogo =>
+  TokenWithLogo.fromToken({
+    chainId,
+    address: cctpToken(chainId, 'cirBTC'),
+    decimals: cctpAsset('cirBTC').decimals,
+    symbol: 'cirBTC',
+    name: 'Circle Wrapped Bitcoin',
+  })
 
 it('discovers the canonical Ethereum to Arc cirBTC route by destination address', () => {
   expect(cctpRouteAsset(token(1), token(5042))).toBe('cirBTC')
@@ -21,10 +28,14 @@ it('rejects spoofed metadata, wrong-chain addresses and arbitrary custom contrac
   expect(cctpRouteAsset(token(1), spoof)).toBeUndefined()
   const wrongChain = TokenWithLogo.fromToken({ ...token(1), chainId: 5042 })
   expect(cctpRouteAsset(token(1), wrongChain)).toBeUndefined()
-  expect(cctpBuyTokens({ sellChainId: 1, buyChainId: 5042, sellTokenAddress: '0x0000000000000000000000000000000000000001' })).toEqual([])
+  expect(
+    cctpBuyTokens({ sellChainId: 1, buyChainId: 5042, sellTokenAddress: '0x0000000000000000000000000000000000000001' }),
+  ).toEqual([])
 })
 
 it('never advertises CCTP assets for native ETH or an unsupported source asset', () => {
   expect(cctpBuyTokens({ sellChainId: 1, buyChainId: 5042, sellTokenAddress: NATIVE_CURRENCY_ADDRESS })).toEqual([])
-  expect(cctpBuyTokens({ sellChainId: 1, buyChainId: 5042, sellTokenAddress: cctpToken(1, 'WETH') }).map((t) => t.symbol)).toEqual(['WETH'])
+  expect(
+    cctpBuyTokens({ sellChainId: 1, buyChainId: 5042, sellTokenAddress: cctpToken(1, 'WETH') }).map((t) => t.symbol),
+  ).toEqual(['WETH'])
 })

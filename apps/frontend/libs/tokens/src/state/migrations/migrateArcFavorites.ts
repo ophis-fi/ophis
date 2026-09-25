@@ -11,7 +11,10 @@ export function migrateArcFavorites(): void {
     if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return
     const chain = Reflect.get(stored, ARC_CHAIN_ID)
     if (chain && typeof chain === 'object' && !Array.isArray(chain)) {
-      Reflect.set(stored, ARC_CHAIN_ID, { ...Object.fromEntries([ARC_CIRBTC, ARC_USYC].map((token) => [getAddressKey(token.address), token])), ...chain })
+      Reflect.set(stored, ARC_CHAIN_ID, {
+        ...Object.fromEntries([ARC_CIRBTC, ARC_USYC].map((token) => [getAddressKey(token.address), token])),
+        ...chain,
+      })
     }
     localStorage.setItem('favoriteTokensAtom:v5', JSON.stringify(stored))
   } catch {

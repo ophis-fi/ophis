@@ -15,11 +15,16 @@ export function CctpLegacyRedirect(): ReactNode {
   const { chainId } = useWalletInfo()
   const { search } = useLocation()
   const { source, destination, asset, swapFirstToken } = cctpInitialSelection(search, chainId)
-  const path = parameterizeTradeRoute({
-    chainId: String(source),
-    inputCurrencyId: swapFirstToken || cctpToken(source, asset),
-    outputCurrencyId: cctpToken(swapFirstToken ? source : destination, asset),
-    inputCurrencyAmount: undefined, outputCurrencyAmount: undefined, orderKind: undefined,
-  }, Routes.SWAP)
+  const path = parameterizeTradeRoute(
+    {
+      chainId: String(source),
+      inputCurrencyId: swapFirstToken || cctpToken(source, asset),
+      outputCurrencyId: cctpToken(swapFirstToken ? source : destination, asset),
+      inputCurrencyAmount: undefined,
+      outputCurrencyAmount: undefined,
+      orderKind: undefined,
+    },
+    Routes.SWAP,
+  )
   return <Navigate replace to={`${path}${swapFirstToken ? '' : `?targetChainId=${destination}`}`} />
 }
