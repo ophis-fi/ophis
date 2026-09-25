@@ -71,6 +71,13 @@ paths:
               schema:
                 type: string
                 example: "Internal error"
+        "503":
+          description: Temporary estimator failure. Retryable; do not cache as missing liquidity.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Price temporarily unavailable"
 components:
   schemas:
     Address:

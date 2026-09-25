@@ -100,9 +100,16 @@ async fn get_native_price(
 
 fn error_to_response(err: PriceEstimationError) -> Response {
     match err {
-        PriceEstimationError::NoLiquidity | PriceEstimationError::EstimatorInternal(_) => {
+        PriceEstimationError::NoLiquidity => {
             (StatusCode::NOT_FOUND, "No liquidity").into_response()
         }
+        // The forwarder caches 404 as NoLiquidity. RPC/estimator failures must
+        // remain retryable instead of hiding a liquid token for the cache TTL.
+        PriceEstimationError::EstimatorInternal(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Price temporarily unavailable",
+        )
+            .into_response(),
         PriceEstimationError::UnsupportedToken { token: _, reason } => (
             StatusCode::BAD_REQUEST,
             format!("Unsupported token, reason: {reason}"),
@@ -131,6 +138,84 @@ fn error_to_response(err: PriceEstimationError) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn transient_failure_is_not_cached_as_missing_liquidity() {
+        use {
+            futures::FutureExt,
+            price_estimation::{
+                native::{Forwarder, MockNativePriceEstimating},
+                native_price_cache::{Cache, CachingNativePriceEstimator},
+            },
+        };
+
+        let failure =
+            PriceEstimationError::EstimatorInternal(anyhow::anyhow!("private RPC detail"));
+        let response = error_to_response(failure.clone());
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        assert_eq!(&body[..], b"Price temporarily unavailable");
+        assert_eq!(
+            error_to_response(PriceEstimationError::NoLiquidity).status(),
+            StatusCode::NOT_FOUND
+        );
+
+        let mut estimator = MockNativePriceEstimating::new();
+        let mut sequence = mockall::Sequence::new();
+        estimator
+            .expect_estimate_native_price()
+            .times(1)
+            .in_sequence(&mut sequence)
+            .returning(move |_, _| futures::future::ready(Err(failure.clone())).boxed());
+        estimator
+            .expect_estimate_native_price()
+            .times(1)
+            .in_sequence(&mut sequence)
+            .returning(|_, _| futures::future::ready(Ok(2.0)).boxed());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route("/native_price/{token}", get(get_native_price))
+            .with_state(State {
+                estimator: Arc::new(estimator),
+                allowed_timeout: MIN_TIMEOUT..=Duration::from_secs(2),
+            });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let cache = CachingNativePriceEstimator::new(
+            Box::new(Forwarder::new(
+                reqwest::Client::builder().no_proxy().build().unwrap(),
+                format!("http://{address}/").parse().unwrap(),
+            )),
+            Cache::new(Duration::from_secs(600), Default::default()),
+            1,
+            Default::default(),
+            Duration::from_secs(2),
+        );
+        let token = Address::repeat_byte(1);
+        assert!(matches!(
+            cache
+                .estimate_native_price(token, Duration::from_secs(2))
+                .await,
+            Err(PriceEstimationError::ProtocolInternal(_))
+        ));
+        assert_eq!(
+            cache
+                .estimate_native_price(token, Duration::from_secs(2))
+                .await
+                .unwrap(),
+            2.0
+        );
+        assert_eq!(
+            cache
+                .estimate_native_price(token, Duration::from_secs(2))
+                .await
+                .unwrap(),
+            2.0
+        );
+        server.abort();
+    }
 
     async fn assert_bad_request_message(err: PriceEstimationError, expected_message: &str) {
         let response = error_to_response(err);
