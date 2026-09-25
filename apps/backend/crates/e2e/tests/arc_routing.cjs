@@ -69,6 +69,7 @@ async function main() {
       console.log(`PASS ${lane}: USDC -> ${symbol}, actual output ${received} >= ${minimum}`);
     }
   }
+  fs.mkdirSync(out, { recursive: true, mode: 0o700 });
   fs.writeFileSync(out + '/router-execution.json', JSON.stringify({ readOnly: true, results }, null, 2) + '\n');
 }
 main().catch((error) => { console.error(error.message); process.exitCode = 1; });

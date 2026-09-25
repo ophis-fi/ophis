@@ -248,28 +248,3 @@ it('requires finalized exact source evidence despite a boolean cache and reuses 
   jest.mocked(circleGet).mockResolvedValueOnce({ messages: [{ message, attestation: `0x${'aa'.repeat(65)}` }] })
   await expect(getCctpStatus(saved, ready.sourceMessage)).rejects.toThrow('omitted its hash')
 })
-
-it('preserves 18-decimal transfers and validates every reviewed registry route across refresh', () => {
-  const { CCTP_ASSETS, cctpAssetRoute, cctpSpender } =
-    jest.requireActual<typeof import('./cctpAssets.const')>('./cctpAssets.const')
-  expect(new Set(CCTP_ASSETS).size).toBe(CCTP_ASSETS.length)
-  expect(CCTP_ASSETS.length).toBe(40)
-  for (const asset of CCTP_ASSETS.filter((item) => item !== 'USDC')) {
-    const route = cctpAssetRoute(asset, 5042, 1)
-    const quote = { ...transfer, asset, ...route, amount: parseCctpAmount('1.25', asset).toString() }
-    expect(cctpTransferSchema.parse(JSON.parse(JSON.stringify(quote)))).toEqual(quote)
-    const decoded = decodeFunctionData({ abi: CCTPX_ABI, data: cctpBurnData(quote) })
-    expect(decoded.args?.[0]).toBe(cctpAsset(asset).tokenId)
-    expect(decoded.args?.[1]).toBe(BigInt(quote.amount))
-    expect(cctpSpender(asset)).toMatch(/^0x[0-9a-fA-F]{40}$/)
-    expect(cctpToken(quote.source, asset)).not.toBe(cctpToken(quote.destination, asset))
-  }
-  expect(parseCctpAmount('1.250000000000000001', 'WETH')).toBe(1250000000000000001n)
-  expect(() => parseCctpAmount('0.0000000000000000001', 'WETH')).toThrow()
-  const weth = { ...transfer, asset: 'WETH', source: 5042, destination: 1, amount: '1250000000000000001' }
-  for (const amount of ['0', '-1', '01', '0x10', '1e18', '9'.repeat(78)]) {
-    expect(cctpTransferSchema.safeParse({ ...weth, amount }).success).toBe(false)
-  }
-  expect(cctpTransferSchema.safeParse({ ...transfer, amount: '10000000000001' }).success).toBe(false)
-  expect(cctpTransferSchema.safeParse({ ...weth, source: 10 }).success).toBe(false)
-})

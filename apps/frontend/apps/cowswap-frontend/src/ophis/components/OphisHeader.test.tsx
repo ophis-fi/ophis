@@ -10,8 +10,13 @@ jest.mock('@cowprotocol/common-hooks', () => ({
 }))
 
 jest.mock('modules/trade', () => ({
-  useTradeRouteContext: () => ({ chainId: '5042', inputCurrencyId: '0x3600000000000000000000000000000000000000' }),
+  useTradeRouteContext: () => ({ chainId: '1', inputCurrencyId: 'WETH' }),
+  useDerivedTradeState: () => ({
+    inputCurrency: { chainId: 1, address: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2' },
+  }),
 }))
+
+jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: true }))
 
 jest.mock('../hooks/useScrollClass', () => ({
   useScrollClass: () => false,
@@ -62,4 +67,12 @@ it('omits the OTC self-link on OTC list and order-detail routes', () => {
   useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
   renderHeader(false, '/otc/49')
   expect(screen.queryByRole('link', { name: 'Open OTC' })).toBeNull()
+})
+
+it('passes the resolved trade token address and chain into the bridge', () => {
+  useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
+  renderHeader(false, '/1/swap/WETH')
+  expect(screen.getByRole('link', { name: 'Bridge', exact: true }).getAttribute('href')).toBe(
+    '/bridge?source=1&token=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+  )
 })

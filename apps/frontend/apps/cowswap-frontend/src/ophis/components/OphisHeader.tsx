@@ -9,11 +9,12 @@
 import { ReactNode } from 'react'
 
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
+import { getCurrencyAddress } from '@cowprotocol/common-utils'
 
 import { Link, useLocation } from 'react-router'
 import styled from 'styled-components/macro'
 
-import { useTradeRouteContext } from 'modules/trade'
+import { useDerivedTradeState, useTradeRouteContext } from 'modules/trade'
 
 import { CCTP_ENABLED } from 'common/constants/featureFlags'
 
@@ -200,7 +201,8 @@ const OtcNavLink = styled(Link)<{ $transparent: boolean }>`
 export function OphisHeader({ children, transparent = false, walletConnected = false }: Props): ReactNode {
   const { pathname } = useLocation()
   const trade = useTradeRouteContext()
-  const bridgeRoute = `/bridge?${new URLSearchParams({ source: trade.chainId || '', token: trade.inputCurrencyId || '' })}`
+  const currency = useDerivedTradeState()?.inputCurrency
+  const bridgeRoute = `/bridge?${new URLSearchParams({ source: String(currency?.chainId || trade.chainId || ''), token: currency ? getCurrencyAddress(currency) : trade.inputCurrencyId || '' })}`
   const isOtcRoute = /^\/otc(?:\/|$)/.test(pathname)
   const scrolled = useScrollClass(40)
   const { isOtcEnabled } = useFeatureFlags()
