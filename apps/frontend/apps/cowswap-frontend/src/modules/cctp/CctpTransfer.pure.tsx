@@ -36,6 +36,18 @@ function CctpHashRecovery({
   )
 }
 
+interface CctpTransferDetailsProps {
+  transfer: CctpTransfer
+  status: CctpStatus | null
+  busy: boolean
+  canClaim: boolean
+  claimPreparation?: { label: string; action(): void }
+  onClaim(): void
+  onResume(hash: string): void
+  onResumeClaim(hash: string): void
+  onFinish(): void
+}
+
 export function CctpTransferDetails({
   transfer,
   status,
@@ -46,17 +58,7 @@ export function CctpTransferDetails({
   onResume,
   onResumeClaim,
   onFinish,
-}: {
-  transfer: CctpTransfer
-  status: CctpStatus | null
-  busy: boolean
-  canClaim: boolean
-  claimPreparation?: { label: string; action(): void }
-  onClaim(): void
-  onResume(hash: string): void
-  onResumeClaim(hash: string): void
-  onFinish(): void
-}): ReactNode {
+}: CctpTransferDetailsProps): ReactNode {
   const asset = cctpAsset(transfer.asset)
   const source = cctpNetwork(transfer.source)
   const destination = cctpNetwork(transfer.destination)
@@ -84,6 +86,12 @@ export function CctpTransferDetails({
             If your wallet did not return a hash, or you sped up the transaction, paste the confirmed source transaction
             hash below. Do not submit another bridge.
           </p>
+          {!transfer.burnHash && transfer.sourceNonce !== undefined && (
+            <p>
+              Saved source nonce: {transfer.sourceNonce}. If your wallet lost the request without submitting it, cancel
+              this nonce on {source.chain.name} in your wallet, then paste its confirmed cancellation hash.
+            </p>
+          )}
           <CctpHashRecovery label="Source transaction hash" busy={busy} onResume={onResume} />
         </>
       )}

@@ -55,6 +55,7 @@ export async function submitCctpBurn(
   wallet: WalletClient,
   quote: CctpQuote,
   persist: (value: CctpTransfer | null) => void,
+  assertCurrent: () => void = () => undefined,
 ): Promise<void> {
   if (!navigator.locks) throw new Error('Please use a current browser to bridge')
   await navigator.locks.request('ophisCctpBurn', { ifAvailable: true }, async (lock) => {
@@ -64,12 +65,14 @@ export async function submitCctpBurn(
     let persisted = false
     let signatureRequested = false
     const beforeSignature = async (nonce: number): Promise<void> => {
+      assertCurrent()
       pending = { ...quote, sourceNonce: nonce }
       persisted = true
       persist(pending)
       const saved = await cctpStorage.getItem(CCTP_STORAGE_KEY, null)
       if (!matchesSavedTransfer(saved, pending))
         throw new Error('Unable to save bridge recovery details. Nothing was signed.')
+      assertCurrent()
       signatureRequested = true
     }
     try {

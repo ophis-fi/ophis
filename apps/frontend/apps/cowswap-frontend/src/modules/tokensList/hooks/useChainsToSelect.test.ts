@@ -21,6 +21,8 @@ const DEFAULT_ROUTES_AVAILABILITY = {
   isLoading: false,
 }
 
+jest.mock('entities/cctp/useIsCctpEnabled', () => ({ useIsCctpEnabled: () => false }))
+
 jest.mock('@cowprotocol/wallet', () => ({
   ...jest.requireActual('@cowprotocol/wallet'),
   useWalletInfo: jest.fn(),

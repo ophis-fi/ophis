@@ -11,7 +11,7 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { JsonRpcProvider } from '@ethersproject/providers'
 import { TokenList } from '@uniswap/token-lists'
 
-import { UNISWAP_TOKENS_LIST } from '../const/tokensLists'
+import { OPHIS_TOKENS_LIST_SOURCE, UNISWAP_TOKENS_LIST } from '../const/tokensLists'
 import { ListSourceConfig, ListState } from '../types'
 import { isExcludedListToken } from '../utils/excludedListTokens'
 import { validateTokenList } from '../utils/validateTokenList'
@@ -52,7 +52,10 @@ async function _fetchTokenList(source: string, urls: string[]): Promise<ListStat
     let response
 
     try {
-      response = await fetchWithTimeout(url, { credentials: 'omit' })
+      response = await fetchWithTimeout(url, {
+        credentials: 'omit',
+        ...(source === OPHIS_TOKENS_LIST_SOURCE ? { cache: 'no-cache' as const } : {}),
+      })
     } catch (error) {
       const message = `failed to fetch list: ${url}`
 

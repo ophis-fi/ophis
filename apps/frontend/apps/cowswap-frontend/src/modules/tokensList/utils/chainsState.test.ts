@@ -10,6 +10,8 @@ import {
 } from './chainsState'
 import { sortChainsByDisplayOrder } from './sortChainsByDisplayOrder'
 
+jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: true }))
+
 jest.mock('./sortChainsByDisplayOrder', () => ({
   sortChainsByDisplayOrder: jest.fn((chains: ChainInfo[]) => chains),
 }))
@@ -29,6 +31,26 @@ const GNOSIS = createChainInfo(SupportedChainId.GNOSIS_CHAIN, 'Gnosis')
 const ARBITRUM = createChainInfo(SupportedChainId.ARBITRUM_ONE, 'Arbitrum')
 const BASE = createChainInfo(SupportedChainId.BASE, 'Base')
 const UNSUPPORTED = createChainInfo(999999, 'Unsupported')
+
+it.each([130, 5042])('requires surface-level CCTP support to enable source %s', (chainId) => {
+  const source = createChainInfo(chainId)
+  const options: CreateOutputChainsOptions = {
+    selectedTargetChainId: SupportedChainId.MAINNET,
+    chainId: chainId as SupportedChainId,
+    currentChainInfo: source,
+    bridgeSupportedNetworks: [MAINNET, source],
+    supportedChains: [MAINNET, source],
+    isLoading: false,
+    routesAvailability: { unavailableChainIds: new Set(), loadingChainIds: new Set(), isLoading: false },
+  }
+  expect(createOutputChainsState(options).disabledChainIds?.has(SupportedChainId.MAINNET)).toBe(true)
+  expect(
+    createOutputChainsState({ ...options, cctpEnabled: false }).disabledChainIds?.has(SupportedChainId.MAINNET),
+  ).toBe(true)
+  expect(
+    createOutputChainsState({ ...options, cctpEnabled: true }).disabledChainIds?.has(SupportedChainId.MAINNET) ?? false,
+  ).toBe(false)
+})
 
 describe('chainsState', () => {
   beforeEach(() => {

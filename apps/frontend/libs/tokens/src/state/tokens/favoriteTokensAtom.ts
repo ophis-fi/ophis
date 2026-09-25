@@ -18,6 +18,7 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { DEFAULT_FAVORITE_TOKENS } from '../../const/defaultFavoriteTokens'
 import { TokensMap } from '../../types'
 import { environmentAtom } from '../environmentAtom'
+import { migrateArcFavorites } from '../migrations/migrateArcFavorites'
 
 type FavoriteTokens = Record<SupportedChainId, TokensMap>
 
@@ -35,7 +36,7 @@ const EMPTY_FAVORITE_TOKENS: TokenWithLogo[] = []
 // existing users without a key bump; migrateFavoriteTokensAtomV3toV4 carries the
 // v3 selection forward PLUS the new EURe entries.
 export const favoriteTokensAtom = atomWithStorage<FavoriteTokens>(
-  'favoriteTokensAtom:v4',
+  'favoriteTokensAtom:v5',
   DEFAULT_FAVORITE_TOKENS,
   getJotaiMergerStorage(),
 )
@@ -194,3 +195,6 @@ migrateFavoriteTokensAtomV2toV3('favoriteTokensAtom:v2', 'favoriteTokensAtom:v3'
 // 2026-07-09: carry v3 favorites to v4 plus the new EURe defaults. Chain order:
 // v1 -> v2 -> v3 -> v4, each step idempotent.
 migrateFavoriteTokensAtomV3toV4('favoriteTokensAtom:v3', 'favoriteTokensAtom:v4')
+
+// Arc defaults must reach returning users without discarding their custom favorites.
+migrateArcFavorites()
