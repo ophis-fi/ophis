@@ -10,6 +10,7 @@ import { type TradeWidgetParams } from 'modules/trade'
 import { useCctpTransfer } from './useCctpTransfer'
 
 export function useCctpSwapRoute({
+  enabled,
   input,
   output,
   amount,
@@ -17,6 +18,7 @@ export function useCctpSwapRoute({
   recipientAddress,
   orderKind,
 }: {
+  enabled: boolean
   input: Currency | null | undefined
   output: Currency | null | undefined
   amount: CurrencyAmount<Currency> | null | undefined
@@ -34,8 +36,9 @@ export function useCctpSwapRoute({
   const { account } = useWalletInfo()
   const smartWallet = useIsSmartContractWallet()
   const bridgingEnabled = useIsBridgingEnabled()
-  const asset = bridgingEnabled ? cctpRouteAsset(input, output) : undefined
+  const asset = enabled && bridgingEnabled ? cctpRouteAsset(input, output) : undefined
   const key = JSON.stringify([
+    enabled,
     input?.chainId,
     output?.chainId,
     asset,
@@ -48,8 +51,8 @@ export function useCctpSwapRoute({
   ])
   const flow = useCctpTransfer(key)
   const blocked = cctpBlockedReason(smartWallet, recipient, recipientAddress, account)
-  const validQuote = asset && orderKind === OrderKind.SELL && !blocked ? flow.quote : null
   const active = !!asset && !blocked
+  const validQuote = active && orderKind === OrderKind.SELL ? flow.quote : null
   return {
     params: active
       ? {

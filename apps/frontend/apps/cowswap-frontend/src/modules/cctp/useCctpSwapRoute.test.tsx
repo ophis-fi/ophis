@@ -28,7 +28,15 @@ const mockTransfer: CctpTransfer = {
 }
 const input = cctpBuyTokens({ sellChainId: 5042, buyChainId: 1 }).find((token) => token.symbol === 'USDC')
 const output = cctpBuyTokens({ sellChainId: 1, buyChainId: 5042 }).find((token) => token.symbol === 'USDC')
-const params = { input, output, amount: null, recipient: null, recipientAddress: null, orderKind: OrderKind.SELL }
+const params = {
+  enabled: true,
+  input,
+  output,
+  amount: null,
+  recipient: null,
+  recipientAddress: null,
+  orderKind: OrderKind.SELL,
+}
 
 beforeEach(() => {
   jest.mocked(useIsBridgingEnabled).mockReturnValue(true)
@@ -66,5 +74,14 @@ it('honors the widget bridge kill switch without hiding transfer recovery', () =
   expect(result.current.active).toBe(false)
   expect(result.current.asset).toBeUndefined()
   expect(result.current.params).toEqual({})
+  expect(result.current.flow.transfer).toBe(mockTransfer)
+})
+
+it('requires the normal swap screen to opt in, keeping hooks execution on the generic trade path', () => {
+  const { result } = renderHook(() => useCctpSwapRoute({ ...params, enabled: false }))
+  expect(result.current.asset).toBeUndefined()
+  expect(result.current.active).toBe(false)
+  expect(result.current.params).toEqual({})
+  expect(result.current.flow.quote).toBeNull()
   expect(result.current.flow.transfer).toBe(mockTransfer)
 })

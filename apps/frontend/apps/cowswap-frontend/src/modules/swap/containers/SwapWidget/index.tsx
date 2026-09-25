@@ -64,6 +64,7 @@ export interface SwapWidgetProps {
   topContent?: ReactNode
   bottomContent?: ReactNode
   allowSwapSameToken?: boolean
+  enableCctp?: boolean
 }
 
 // TODO: Break down this large function into smaller functions
@@ -73,6 +74,7 @@ export function SwapWidget({
   topContent,
   bottomContent,
   allowSwapSameToken,
+  enableCctp,
 }: SwapWidgetProps): ReactNode {
   const direct = useWholeTokenRoute()
   const { showRecipient } = useSwapSettings()
@@ -110,6 +112,7 @@ export function SwapWidget({
     isUnlocked,
   } = useSwapDerivedState()
   const cctp = useCctpSwapRoute({
+    enabled: !!enableCctp,
     input: inputCurrency,
     output: outputCurrency,
     amount: inputCurrencyAmount,

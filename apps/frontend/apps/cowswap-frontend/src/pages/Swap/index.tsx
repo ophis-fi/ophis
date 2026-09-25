@@ -48,6 +48,7 @@ export function SwapPage(): ReactNode {
 
   const widget = (
     <SwapWidget
+      enableCctp
       headerContent={isOphisSwap ? <NetworkSelector /> : undefined}
       topContent={isInjectedWidget() ? DcaCta : undefined}
     />
