@@ -46,6 +46,12 @@ def main():
     assert submit[0]['rateLimitBudget'] == 'arc-official'
     assert 'guarded' not in (OUT / 'driver.toml').read_text()
     autopilot = tomllib.loads((OUT / 'autopilot.toml').read_text())
+    orderbook = tomllib.loads((OUT / 'orderbook.toml').read_text())
+    # Two bounded native-price legs must retain usable solver time after
+    # driver/solver deadline margins; sharing avoids duplicate cold probes.
+    assert autopilot['price-estimation']['quote-timeout'] == '10s'
+    assert orderbook['price-estimation']['quote-timeout'] == '10s'
+    assert 'api-estimators' not in autopilot['native-price-estimation']
     driver = tomllib.loads((OUT / 'driver.toml').read_text())
     assert driver['gas-estimator'] == {'estimator': 'web3'}
     assert int(driver['submission']['gas-price-cap']) == int(cfg['maxFeePerGas'])
