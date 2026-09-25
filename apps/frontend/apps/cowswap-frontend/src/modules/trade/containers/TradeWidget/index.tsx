@@ -47,7 +47,7 @@ export function TradeWidget(props: TradeWidgetProps): JSX.Element {
         <TradeWidgetUpdaters
           disableTradeNotifications={params.disableTradeNotifications}
           allowSwapSameToken={allowSwapSameToken}
-          disableQuotePolling={disableQuotePolling}
+          disableQuotePolling={disableQuotePolling || isTokenSelectOpen}
           disableNativeSelling={disableNativeSelling}
           disableSuggestedSlippageApi={disableSuggestedSlippageApi}
           onChangeRecipient={props.actions.onChangeRecipient}

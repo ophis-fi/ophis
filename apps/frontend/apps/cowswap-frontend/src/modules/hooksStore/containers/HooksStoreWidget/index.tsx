@@ -6,9 +6,10 @@ import { BannerOrientation, DismissableInlineBanner } from '@cowprotocol/ui'
 import { useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans } from '@lingui/react/macro'
+import { cctpRouteAsset } from 'entities/cctp'
 
 import { SwapWidget } from 'modules/swap'
-import { useIsSellNative, useIsWrapOrUnwrap } from 'modules/trade'
+import { useDerivedTradeState, useIsSellNative, useIsWrapOrUnwrap } from 'modules/trade'
 
 import { useIsProviderNetworkDeprecated } from 'common/hooks/useIsProviderNetworkDeprecated'
 import { useIsProviderNetworkUnsupported } from 'common/hooks/useIsProviderNetworkUnsupported'
@@ -26,6 +27,7 @@ type HookPosition = 'pre' | 'post'
 
 export function HooksStoreWidget(): ReactNode {
   const { chainId } = useWalletInfo()
+  const { inputCurrency, outputCurrency } = useDerivedTradeState() || {}
   const [selectedHookPosition, setSelectedHookPosition] = useState<HookPosition | null>(null)
   const [hookToEdit, setHookToEdit] = useState<string | undefined>(undefined)
 
@@ -83,6 +85,11 @@ export function HooksStoreWidget(): ReactNode {
           </a>
         </p>
       </DismissableInlineBanner>
+      {cctpRouteAsset(inputCurrency, outputCurrency) && (
+        <p role="status">
+          Direct Circle bridging is available in Swap. Hooks require a bridge route supporting hook execution.
+        </p>
+      )}
       <PreHookButton
         disabled={hooksDisabled}
         onOpen={() => setSelectedHookPosition('pre')}

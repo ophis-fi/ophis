@@ -12,6 +12,7 @@ import { t } from '@lingui/core/macro'
 import { Field } from 'legacy/state/types'
 import { useHooksEnabledManager } from 'legacy/state/user/hooks'
 
+import { CctpSwapDetails, CctpSwapRecovery, useCctpSwapRoute } from 'modules/cctp'
 import { TradeApproveWithAffectedOrderList } from 'modules/erc20Approve'
 import { EthFlowModal, EthFlowProps } from 'modules/ethFlow'
 import { AddIntermediateTokenModal } from 'modules/tokensList'
@@ -63,6 +64,7 @@ export interface SwapWidgetProps {
   topContent?: ReactNode
   bottomContent?: ReactNode
   allowSwapSameToken?: boolean
+  enableCctp?: boolean
 }
 
 // TODO: Break down this large function into smaller functions
@@ -72,6 +74,7 @@ export function SwapWidget({
   topContent,
   bottomContent,
   allowSwapSameToken,
+  enableCctp,
 }: SwapWidgetProps): ReactNode {
   const direct = useWholeTokenRoute()
   const { showRecipient } = useSwapSettings()
@@ -108,6 +111,15 @@ export function SwapWidget({
     orderKind,
     isUnlocked,
   } = useSwapDerivedState()
+  const cctp = useCctpSwapRoute({
+    enabled: !!enableCctp,
+    input: inputCurrency,
+    output: outputCurrency,
+    amount: inputCurrencyAmount,
+    recipient,
+    recipientAddress,
+    orderKind,
+  })
   const doTrade = useHandleSwap({ deadline: deadlineState[0] }, widgetActions)
   const nativeFundingAmount = useSwapFundingAmount(true)
   const signedFundingAmount = useSwapFundingAmount()
@@ -139,12 +151,12 @@ export function SwapWidget({
       inputCurrency &&
       outputCurrency &&
       inputCurrency.chainId !== outputCurrency.chainId &&
-      getIsNativeToken(inputCurrency) &&
+      (getIsNativeToken(inputCurrency) || cctp.active) &&
       !isSmartContractWallet &&
       orderKind === OrderKind.BUY
     )
       updateSwapState({ orderKind: OrderKind.SELL, inputCurrencyAmount: null, outputCurrencyAmount: null })
-  }, [inputCurrency, outputCurrency, isSmartContractWallet, orderKind, updateSwapState])
+  }, [inputCurrency, outputCurrency, isSmartContractWallet, orderKind, updateSwapState, cctp.active])
 
   const isSellTrade = isSellOrder(orderKind)
 
@@ -168,15 +180,25 @@ export function SwapWidget({
     receiveAmountInfo: !isSellTrade ? receiveAmountInfo : null,
   }
 
-  const outputCurrencyInfo: CurrencyInfo = {
-    field: Field.OUTPUT,
-    currency: outputCurrency,
-    amount: direct.quote ? direct.output : outputCurrencyAmount,
-    isIndependent: !isSellTrade,
-    balance: outputCurrencyBalance,
-    fiatAmount: direct.quote ? direct.fiat : outputCurrencyFiatAmount,
-    receiveAmountInfo: !direct.quote && isSellTrade ? receiveAmountInfo : null,
-  }
+  const outputCurrencyInfo: CurrencyInfo = cctp.active
+    ? {
+        field: Field.OUTPUT,
+        currency: outputCurrency,
+        amount: cctp.output,
+        isIndependent: false,
+        balance: outputCurrencyBalance,
+        fiatAmount: null,
+        receiveAmountInfo: null,
+      }
+    : {
+        field: Field.OUTPUT,
+        currency: outputCurrency,
+        amount: direct.quote ? direct.output : outputCurrencyAmount,
+        isIndependent: !isSellTrade,
+        balance: outputCurrencyBalance,
+        fiatAmount: direct.quote ? direct.fiat : outputCurrencyFiatAmount,
+        receiveAmountInfo: !direct.quote && isSellTrade ? receiveAmountInfo : null,
+      }
 
   const previewInput = isSellTrade
     ? (receiveAmountInfo?.amountsToSign.sellAmount ?? inputCurrencyAmount)
@@ -234,7 +256,12 @@ export function SwapWidget({
 
   const slots: TradeWidgetSlots = {
     headerContent,
-    topContent,
+    topContent: (
+      <>
+        {topContent}
+        <CctpSwapRecovery route={cctp} />
+      </>
+    ),
     lockScreen: shouldShowLockScreen ? <CrossChainUnlockScreen handleUnlock={handleUnlock} /> : undefined,
     settingsWidget: (
       <SettingsTab
@@ -246,6 +273,15 @@ export function SwapWidget({
     ),
     bottomContent: useCallback(
       (tradeWarnings: ReactNode | null) => {
+        if (cctp.active)
+          return (
+            <CctpSwapDetails
+              route={cctp}
+              source={inputCurrency?.chainId}
+              destination={outputCurrency?.chainId}
+              amount={inputCurrencyAmount?.toExact()}
+            />
+          )
         if (direct.loading) return <p role="status">{t`Comparing swap routes…`}</p>
         if (direct.quote)
           return (
@@ -287,6 +323,10 @@ export function SwapWidget({
       },
       [
         direct,
+        cctp,
+        inputCurrency,
+        outputCurrency,
+        inputCurrencyAmount,
         bottomContent,
         rateInfoParams,
         deadlineState,
@@ -316,6 +356,7 @@ export function SwapWidget({
     recipient,
     showRecipient,
     isTradePriceUpdating: isRateLoading,
+    ...cctp.params,
     priceImpact,
   }
 

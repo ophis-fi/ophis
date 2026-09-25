@@ -95,3 +95,5 @@ export { useTradeFlowAnalytics } from './utils/tradeFlowAnalytics'
 export { ConfirmAmounts } from './pure/TradeConfirmation/ConfirmAmounts'
 
 export * from './hooks/useSwapFundingAmount'
+
+export * from './hooks/useTradeTypeInfoFromUrl'

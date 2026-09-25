@@ -99,7 +99,7 @@ jobs:
 
       - name: CCTP transfer, recovery and polling regressions
         working-directory: apps/frontend
-        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'modules/cctp|cowSdk.retry.test|doQuotePolling.test|useTradeQuotePolling.test|BlockNumberProvider.test|usePendingTransactionsContext.test' --passWithNoTests=false --runInBand
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'modules/cctp|entities/cctp|cctpDiscovery.test|BridgingEnabledUpdater.test|useTokensToSelect.test|OphisHeader.test|cowSdk.retry.test|doQuotePolling.test|useTradeQuotePolling.test|BlockNumberProvider.test|usePendingTransactionsContext.test' --passWithNoTests=false --runInBand
 
       - name: Install pinned Foundry for offline Arc ceremony
         uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
@@ -189,7 +189,7 @@ jobs:
 
       - name: Ophis token-list schema and contract evidence
         working-directory: apps/frontend
-        run: pnpm exec nx run tokens:test --testPathPatterns 'arcTokens|ophisTokenList|migrateOphisTokenList|tokenListsStateAtom|excludedListTokens|useTokenListsQuery|useTokenForChainBySymbol' --passWithNoTests=false
+        run: pnpm exec nx run tokens:test --testPathPatterns 'arcTokens|migrateArcFavorites|ophisTokenList|migrateOphisTokenList|tokenListsStateAtom|excludedListTokens|useTokenListsQuery|useTokenForChainBySymbol' --passWithNoTests=false
 
       - name: Explorer token-list priority and network isolation
         working-directory: apps/frontend
