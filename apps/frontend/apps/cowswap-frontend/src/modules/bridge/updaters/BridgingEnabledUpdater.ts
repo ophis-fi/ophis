@@ -5,11 +5,11 @@ import { isInjectedWidget } from '@cowprotocol/common-utils'
 import { useIsSafeApp } from '@cowprotocol/wallet'
 
 import { useHasBridgeProviders } from 'entities/bridgeProvider'
+import { useIsCctpEnabled } from 'entities/cctp'
 
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 import { useTradeTypeInfo } from 'modules/trade'
 
-import { CCTP_ENABLED } from 'common/constants/featureFlags'
 import { Routes } from 'common/constants/routes'
 
 export function BridgingEnabledUpdater(): null {
@@ -24,9 +24,10 @@ export function BridgingEnabledUpdater(): null {
   const shouldEnableInWidgetSafe = isBridgingInSafeWidgetEnabled ? true : !widgetInSafeApp
 
   const hasBridgeProviders = useHasBridgeProviders()
+  const cctpEnabled = useIsCctpEnabled()
 
   const shouldEnableBridging =
-    isSwapOrHooksPage && !disableCrossChainSwap && shouldEnableInWidgetSafe && (hasBridgeProviders || CCTP_ENABLED)
+    isSwapOrHooksPage && !disableCrossChainSwap && shouldEnableInWidgetSafe && (hasBridgeProviders || cctpEnabled)
 
   useEffect(() => {
     setIsBridgingEnabled(shouldEnableBridging)

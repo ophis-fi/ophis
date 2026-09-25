@@ -15,6 +15,7 @@ export interface CreateOutputChainsOptions {
   bridgeSupportedNetworks: ChainInfo[] | undefined
   supportedChains: ChainInfo[]
   isLoading: boolean
+  cctpEnabled?: boolean
   routesAvailability: {
     unavailableChainIds: Set<number>
     loadingChainIds: Set<number>
@@ -62,6 +63,7 @@ export function createOutputChainsState({
   supportedChains,
   isLoading,
   routesAvailability,
+  cctpEnabled = false,
 }: CreateOutputChainsOptions): ChainsToSelectState {
   const chainSet = new Set(supportedChains.map((c) => c.id))
   const chainsWithCurrent = chainSet.has(chainId) ? supportedChains : [...supportedChains, currentChainInfo]
@@ -74,7 +76,7 @@ export function createOutputChainsState({
   // would offer bridging FROM destination-only chains (Unichain and, before
   // their source flags are enabled, Ink/Linea) where every quote fails.
   const sourceSupported =
-    BRIDGE_SOURCE_CHAIN_IDS.has(chainId) || [...destinationIds].some((id) => hasCctpRoute(chainId, id))
+    BRIDGE_SOURCE_CHAIN_IDS.has(chainId) || (cctpEnabled && [...destinationIds].some((id) => hasCctpRoute(chainId, id)))
 
   const baseDisabledChainIds = computeDisabledChainIds(
     orderedChains,

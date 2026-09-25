@@ -7,6 +7,7 @@ import { getAddressKey, isAdditionalTargetChain } from '@cowprotocol/cow-sdk'
 import { BuyTokensParams } from '@cowprotocol/sdk-bridging'
 
 import { useBridgeSupportedNetworks, useBridgeSupportedTokens } from 'entities/bridgeProvider'
+import { useIsCctpEnabled } from 'entities/cctp'
 import { useLocation } from 'react-router'
 
 import {
@@ -64,6 +65,7 @@ function syncUrlAfterPatch(params: {
 }
 
 export function InvalidBridgeOutputUpdater(): null {
+  const cctpEnabled = useIsCctpEnabled()
   const rawState = useAtomValue(swapRawStateAtom)
   const { inputCurrency } = useSwapDerivedState()
   const updateSwapState = useUpdateSwapRawState()
@@ -95,8 +97,9 @@ export function InvalidBridgeOutputUpdater(): null {
         targetChainId,
         bridgeSupportedNetworks,
         isBridgeSupportedNetworksLoading,
+        cctpEnabled,
       }),
-    [sourceChainId, targetChainId, bridgeSupportedNetworks, isBridgeSupportedNetworksLoading],
+    [sourceChainId, targetChainId, bridgeSupportedNetworks, isBridgeSupportedNetworksLoading, cctpEnabled],
   )
 
   const bridgeRouteParams: BuyTokensParams | undefined = useMemo(() => {

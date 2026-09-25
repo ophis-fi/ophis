@@ -4,7 +4,7 @@ import { SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 
-import { hasCctpRoute } from 'entities/cctp'
+import { hasCctpRoute, useIsCctpEnabled } from 'entities/cctp'
 import useSWR from 'swr'
 
 import {
@@ -29,15 +29,16 @@ export function useRoutesAvailability(
   destinationChainIds: TargetChainId[],
 ): RoutesAvailabilityResult {
   const isBridgingEnabled = useIsBridgingEnabled()
+  const cctpEnabled = useIsCctpEnabled()
   const providerIds = useBridgeProvidersIds()
   const providersKey = providerIds.join('|')
 
   const chainsToCheck = useMemo(
     () =>
       filterDestinationChains(destinationChainIds, sourceChainId).filter(
-        (id) => !sourceChainId || !hasCctpRoute(sourceChainId, id),
+        (id) => !cctpEnabled || !sourceChainId || !hasCctpRoute(sourceChainId, id),
       ),
-    [destinationChainIds, sourceChainId],
+    [destinationChainIds, sourceChainId, cctpEnabled],
   )
 
   const swrKey = useMemo(

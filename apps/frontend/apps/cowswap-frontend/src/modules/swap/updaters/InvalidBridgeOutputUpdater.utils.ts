@@ -20,10 +20,17 @@ export interface UnsupportedBridgePairPatchParams {
   targetChainId: TargetChainId | undefined
   bridgeSupportedNetworks: Array<{ id: number }> | undefined
   isBridgeSupportedNetworksLoading: boolean
+  cctpEnabled?: boolean
 }
 
 export function getUnsupportedBridgePairPatch(params: UnsupportedBridgePairPatchParams): Partial<SwapRawState> | null {
-  const { sourceChainId, targetChainId, bridgeSupportedNetworks, isBridgeSupportedNetworksLoading } = params
+  const {
+    sourceChainId,
+    targetChainId,
+    bridgeSupportedNetworks,
+    isBridgeSupportedNetworksLoading,
+    cctpEnabled,
+  } = params
 
   if (!sourceChainId || !targetChainId || sourceChainId === targetChainId) {
     return null
@@ -41,7 +48,8 @@ export function getUnsupportedBridgePairPatch(params: UnsupportedBridgePairPatch
   // Unichain is in the union but cannot execute a bridge order).
   // Without this, a crafted URL with a destination-only source chain keeps a
   // cross-chain output alive and quote polling fails forever downstream.
-  const isSourceSupported = BRIDGE_SOURCE_CHAIN_IDS.has(sourceChainId) || hasCctpRoute(sourceChainId, targetChainId)
+  const isSourceSupported =
+    BRIDGE_SOURCE_CHAIN_IDS.has(sourceChainId) || (cctpEnabled && hasCctpRoute(sourceChainId, targetChainId))
   const isTargetSupported = destinationIds.has(targetChainId)
 
   if (!isSourceSupported || !isTargetSupported) {

@@ -6,7 +6,7 @@ import { getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { BuyTokensParams } from '@cowprotocol/sdk-bridging'
 import { useTokensByAddressMapForChain } from '@cowprotocol/tokens'
 
-import { cctpBuyTokens } from 'entities/cctp'
+import { cctpBuyTokens, useIsCctpEnabled } from 'entities/cctp'
 import useSWR, { SWRResponse } from 'swr'
 import { bridgingSdk } from 'tradingSdk/bridgingSdk'
 
@@ -19,6 +19,7 @@ export function useBridgeSupportedTokens(
   params: BuyTokensParams | undefined,
 ): SWRResponse<BridgeSupportedToken | null> {
   const isBridgingEnabled = useIsBridgingEnabled()
+  const cctpEnabled = useIsCctpEnabled()
   const providerIds = useBridgeProvidersIds()
   const key = providerIds.join('|')
 
@@ -28,10 +29,10 @@ export function useBridgeSupportedTokens(
 
   const cctpTokens = useMemo(
     () =>
-      (isBridgingEnabled ? cctpBuyTokens(params) : []).map((token) =>
+      (isBridgingEnabled && cctpEnabled ? cctpBuyTokens(params) : []).map((token) =>
         TokenWithLogo.fromToken(token, tokensByAddress[getAddressKey(token.address)]?.logoURI),
       ),
-    [params, tokensByAddress, isBridgingEnabled],
+    [params, tokensByAddress, isBridgingEnabled, cctpEnabled],
   )
   const response = useSWR(
     isBridgingEnabled

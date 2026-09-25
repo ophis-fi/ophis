@@ -3,12 +3,10 @@ import { useMemo } from 'react'
 import { getChainInfo, SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
 import type { ChainInfo, SupportedChainId } from '@cowprotocol/cow-sdk'
 
-import { CCTP_NETWORKS } from 'entities/cctp'
+import { CCTP_NETWORKS, useIsCctpEnabled } from 'entities/cctp'
 import useSWR, { SWRResponse } from 'swr'
 import { bridgingSdk } from 'tradingSdk/bridgingSdk'
 import { toBridgeChainInfo } from 'tradingSdk/ophisBridgeChains'
-
-import { CCTP_ENABLED } from 'common/constants/featureFlags'
 
 import { useBridgeProvidersIds } from './useBridgeProvidersIds'
 
@@ -19,6 +17,7 @@ import { useBridgeProvidersIds } from './useBridgeProvidersIds'
 // systems. The change here is a one-line metadata lookup (getChainInfo), so the
 // coordinated migration of all three hooks is left to its own change.
 export function useBridgeSupportedNetworks(): SWRResponse<ChainInfo[]> {
+  const cctpEnabled = useIsCctpEnabled()
   const providerIds = useBridgeProvidersIds()
   const key = providerIds.join('|')
 
@@ -30,10 +29,10 @@ export function useBridgeSupportedNetworks(): SWRResponse<ChainInfo[]> {
     SWR_NO_REFRESH_OPTIONS,
   )
   const data = useMemo(() => {
-    if (!CCTP_ENABLED) return response.data
+    if (!cctpEnabled) return response.data
     const networks = [...(response.data || []), ...CCTP_NETWORKS.map(({ chain }) => toBridgeChainInfo(chain.id))]
     return [...new Map(networks.map((chain) => [chain.id, chain])).values()]
-  }, [response.data])
+  }, [response.data, cctpEnabled])
   return { ...response, data }
 }
 

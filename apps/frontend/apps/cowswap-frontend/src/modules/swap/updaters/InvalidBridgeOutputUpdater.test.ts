@@ -2,6 +2,8 @@ import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { getInvalidBridgeOutputPatch, getUnsupportedBridgePairPatch } from './InvalidBridgeOutputUpdater.utils'
 
+jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: true }))
+
 describe('getInvalidBridgeOutputPatch', () => {
   it('returns null when route check is still loading', () => {
     const result = getInvalidBridgeOutputPatch({
@@ -78,6 +80,19 @@ describe('getInvalidBridgeOutputPatch', () => {
 })
 
 describe('getUnsupportedBridgePairPatch', () => {
+  it.each([130, 5042])('requires surface-level CCTP support to preserve source %s', (sourceChainId) => {
+    const params = {
+      sourceChainId: sourceChainId as SupportedChainId,
+      targetChainId: SupportedChainId.MAINNET,
+      bridgeSupportedNetworks: [{ id: sourceChainId }, { id: SupportedChainId.MAINNET }],
+      isBridgeSupportedNetworksLoading: false,
+    }
+    const reset = { targetChainId: null, outputCurrencyId: null, outputCurrencyAmount: null }
+    expect(getUnsupportedBridgePairPatch(params)).toEqual(reset)
+    expect(getUnsupportedBridgePairPatch({ ...params, cctpEnabled: false })).toEqual(reset)
+    expect(getUnsupportedBridgePairPatch({ ...params, cctpEnabled: true })).toBeNull()
+  })
+
   it('returns null while supported networks are still loading', () => {
     const result = getUnsupportedBridgePairPatch({
       sourceChainId: SupportedChainId.LINEA,

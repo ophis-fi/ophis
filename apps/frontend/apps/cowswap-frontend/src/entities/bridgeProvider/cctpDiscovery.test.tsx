@@ -1,7 +1,9 @@
 import { renderHook } from '@testing-library/react'
-import { cctpToken } from 'entities/cctp'
+import { cctpToken, useIsCctpEnabled } from 'entities/cctp'
 
 import { useBridgeSupportedTokens } from './useBridgeSupportedTokens'
+
+jest.mock('entities/cctp/useIsCctpEnabled', () => ({ useIsCctpEnabled: jest.fn(() => true) }))
 
 jest.mock('@cowprotocol/common-hooks', () => ({ useIsBridgingEnabled: () => true }))
 jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: true }))
@@ -32,4 +34,10 @@ it('publishes CCTP before generic discovery completes, preserving canonical iden
   rerender()
   expect(result.current.data).toBe(data)
   expect(result.current.data?.tokens[0]).toBe(data?.tokens[0])
+})
+
+it('does not advertise CCTP-only tokens on surfaces that cannot execute them', () => {
+  jest.mocked(useIsCctpEnabled).mockReturnValue(false)
+  const { result } = renderHook(() => useBridgeSupportedTokens({ sellChainId: 1, buyChainId: 5042 }))
+  expect(result.current.data).toBeUndefined()
 })

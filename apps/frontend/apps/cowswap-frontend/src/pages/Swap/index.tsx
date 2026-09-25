@@ -6,6 +6,7 @@ import { InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useLingui } from '@lingui/react/macro'
+import { useIsCctpEnabled } from 'entities/cctp'
 import { useIsOphisSwap } from 'ophis/hooks/useIsOphisSwap'
 import { DesktopSwapLayout } from 'ophis/mobile/DesktopSwapLayout.pure'
 import { Navigate, NavLink, useLocation, useParams } from 'react-router'
@@ -38,6 +39,7 @@ const DcaCta = (
 
 export function SwapPage(): ReactNode {
   const params = useParams()
+  const cctpEnabled = useIsCctpEnabled()
   const isOphisSwap = useIsOphisSwap()
   const { i18n } = useLingui()
   const swapDerivedStateToFill = useSwapDerivedStateToFill()
@@ -48,7 +50,7 @@ export function SwapPage(): ReactNode {
 
   const widget = (
     <SwapWidget
-      enableCctp={!isInjectedWidget()}
+      enableCctp={cctpEnabled}
       headerContent={isOphisSwap ? <NetworkSelector /> : undefined}
       topContent={isInjectedWidget() ? DcaCta : undefined}
     />
