@@ -1,6 +1,8 @@
 import { checkIsCallDataAValidPermit, getPermitUtilsInstance, PermitInfo } from '@cowprotocol/permit-utils'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
+import { instance, mock } from 'ts-mockito'
+
 import { Order } from 'legacy/state/orders/actions'
 
 import { checkPermitNonceAndAmount } from './checkPermitNonceAndAmount'
@@ -20,11 +22,9 @@ const mockCheckIsCallDataAValidPermit = checkIsCallDataAValidPermit as jest.Mock
 >
 const mockGetPermitUtilsInstance = getPermitUtilsInstance as jest.MockedFunction<typeof getPermitUtilsInstance>
 const mockExtractPermitData = extractPermitData as jest.MockedFunction<typeof extractPermitData>
-
-// Type for the permit utils instance
-interface PermitUtilsInstance {
-  getTokenNonce: (tokenAddress: string, account: string) => Promise<number>
-}
+const { Eip2612PermitUtils } = jest.requireActual<typeof import('@1inch/permit-signed-approvals-utils')>(
+  '@1inch/permit-signed-approvals-utils',
+)
 
 describe('checkPermitNonceAndAmount', () => {
   const mockAccount = '0x1234567890123456789012345678901234567890'
@@ -47,13 +47,13 @@ describe('checkPermitNonceAndAmount', () => {
   const mockPermitCallData = '0xd505accf' + '0'.repeat(512)
   const mockPermitInfo: PermitInfo = { type: 'eip-2612' as const }
 
-  const mockEip2612Utils: PermitUtilsInstance = {
-    getTokenNonce: jest.fn() as jest.MockedFunction<(tokenAddress: string, account: string) => Promise<number>>,
-  }
+  const mockEip2612Utils = Object.assign(new Eip2612PermitUtils(instance(mock())), {
+    getTokenNonce: jest.fn<Promise<number>, [string, string]>(),
+  })
 
   beforeEach(() => {
     jest.clearAllMocks()
-    mockGetPermitUtilsInstance.mockReturnValue(mockEip2612Utils)
+    mockGetPermitUtilsInstance.mockResolvedValue(mockEip2612Utils)
   })
 
   describe('DAI-like permits', () => {

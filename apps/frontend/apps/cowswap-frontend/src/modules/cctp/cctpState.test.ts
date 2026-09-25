@@ -53,7 +53,7 @@ it.each([CCTP_STORAGE_KEY, legacyKey, 'silent legacy failure'])(
   'never signs if a journal or legacy guard write fails: %s',
   async (failure) => {
     const write = Storage.prototype.setItem
-    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
       if (key === legacyKey && failure === 'silent legacy failure') return
       if (key === failure) throw new Error('Storage unavailable')
       write.call(this, key, value)
@@ -77,7 +77,7 @@ it.each([CCTP_STORAGE_KEY, legacyKey, 'silent legacy failure'])(
 it('restores an existing legacy journal if migration cannot protect older tabs', () => {
   raw.setItem(legacyKey, transfer)
   const write = Storage.prototype.setItem
-  jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+  jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
     if (key === legacyKey) throw new Error('Storage unavailable')
     write.call(this, key, value)
   })

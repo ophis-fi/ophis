@@ -50,7 +50,14 @@ describe('buildBasketLegAppData (marker reaches the built appData)', () => {
     // Stand-in for the real modules/appData buildAppData: echoes the params into
     // a doc whose metadata carries the merged ophisBasket, exactly as buildAppData
     // spreads `...(ophisBasket ? { ophisBasket } : {})` into metadata.
-    const fakeBuild = async (params: { appCode: string; ophisBasket: unknown }): Promise<Record<string, unknown>> => ({
+    const fakeBuild = async (params: {
+      appCode: string
+      ophisBasket: unknown
+    }): Promise<{
+      doc: { appCode: string; metadata: { orderClass: { orderClass: string }; ophisBasket: unknown } }
+      fullAppData: string
+      appDataKeccak256: string
+    }> => ({
       doc: {
         appCode: params.appCode,
         metadata: { orderClass: { orderClass: 'market' }, ophisBasket: params.ophisBasket },

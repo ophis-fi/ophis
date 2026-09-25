@@ -4,6 +4,7 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { act, render as rtlRender } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components/macro'
+import { getCowswapTheme } from 'theme'
 
 import { useDerivedTradeState } from 'modules/trade'
 import { getDefillamaPriceChart } from 'modules/usdAmount'
@@ -52,7 +53,7 @@ const WETH = { address: '0x4200000000000000000000000000000000000006', symbol: 'W
 
 // The styled panel and the chart's own text colour both read from the theme, so
 // render through a provider exactly as the app does.
-const THEME = { text1: '#ffffff' }
+const THEME = { ...getCowswapTheme(true), text1: '#ffffff' }
 const render = (ui: React.ReactElement): ReturnType<typeof rtlRender> =>
   rtlRender(<ThemeProvider theme={THEME}>{ui}</ThemeProvider>)
 

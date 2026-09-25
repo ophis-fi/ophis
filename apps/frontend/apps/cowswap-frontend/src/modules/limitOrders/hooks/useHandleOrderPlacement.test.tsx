@@ -6,13 +6,14 @@ import { CurrencyAmount } from '@cowprotocol/currency'
 import { useIsTxBundlingSupported } from '@cowprotocol/wallet'
 
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { instance, mock } from 'ts-mockito'
 
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 
 import { useSafeBundleFlowContext } from 'modules/limitOrders/hooks/useSafeBundleFlowContext'
 import { safeBundleFlow } from 'modules/limitOrders/services/safeBundleFlow'
 import { tradeFlow } from 'modules/limitOrders/services/tradeFlow'
-import { TradeFlowContext } from 'modules/limitOrders/services/types'
+import { SafeBundleFlowContext, TradeFlowContext } from 'modules/limitOrders/services/types'
 import { useNavigateToOrdersTableTab } from 'modules/ordersTable'
 
 import { useIsSafeApprovalBundle } from 'common/hooks/useIsSafeApprovalBundle'
@@ -182,7 +183,12 @@ it('blocks a newly required Safe approval when the frozen confirmation has a zer
     needsApproval: false,
     amountToApprove: CurrencyAmount.fromRawAmount(USDC_BASE, '0'),
   }
-  mockUseSafeBundleFlowContext.mockReturnValue(context as ReturnType<typeof useSafeBundleFlowContext>)
+  mockUseSafeBundleFlowContext.mockReturnValue({
+    ...context,
+    erc20Contract: instance(mock<SafeBundleFlowContext['erc20Contract']>()),
+    spender: USDC_BASE.address,
+    sendBatchTransactions: jest.fn(),
+  })
   const { result, rerender } = renderHook(
     () =>
       useHandleOrderPlacement(context, priceImpactMock, defaultLimitOrdersSettings, {

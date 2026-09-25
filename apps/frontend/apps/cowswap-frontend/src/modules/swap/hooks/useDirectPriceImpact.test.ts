@@ -56,9 +56,11 @@ beforeEach(() => {
     },
   } as TradeFormValidationContext)
   jest.mocked(useRwaTokenStatus).mockReturnValue({ status: RwaTokenStatus.Allowed, rwaTokenInfo: null })
-  jest.mocked(useRwaConsentModalState).mockReturnValue({ openModal } as ReturnType<typeof useRwaConsentModalState>)
+  jest
+    .mocked(useRwaConsentModalState)
+    .mockReturnValue({ openModal, closeModal: jest.fn(), isModalOpen: false, context: undefined })
   jest.mocked(useConfirmationRequest).mockReturnValue(confirmUnknown)
-  jest.mocked(useUsdAmount).mockReturnValue({ value: undefined, isLoading: false })
+  jest.mocked(useUsdAmount).mockReturnValue({ value: null, isLoading: false })
   jest.mocked(useConfirmPriceImpactWithoutFee).mockReturnValue({
     confirmPriceImpactWithoutFee: jest.fn().mockResolvedValue(true),
     isConfirmed: false,
@@ -123,7 +125,7 @@ test('ordinary direct swaps do not wait for wallet bundling capabilities or cach
 })
 
 test('missing fiat remains loading until the first price is available', () => {
-  jest.mocked(useUsdAmount).mockReturnValue({ value: undefined, isLoading: true })
+  jest.mocked(useUsdAmount).mockReturnValue({ value: null, isLoading: true })
   const { result } = renderHook(() => useDirectPriceImpact(quote))
   expect(result.current.loading).toBe(true)
 })

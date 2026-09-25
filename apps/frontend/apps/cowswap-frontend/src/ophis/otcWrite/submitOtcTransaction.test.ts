@@ -30,7 +30,7 @@ describe('Milestone C wallet submission sink', () => {
       sendTransaction: jest.fn(async () => TX_HASH),
       waitForTransactionReceipt: jest.fn(async () => ({
         transactionHash: TX_HASH,
-        status: 'success',
+        status: 'success' as const,
         blockNumber: 201n,
       })),
     }
@@ -55,7 +55,7 @@ describe('Milestone C wallet submission sink', () => {
       sendTransaction: jest.fn(async () => TX_HASH),
       waitForTransactionReceipt: jest.fn(async () => ({
         transactionHash: TX_HASH,
-        status: 'success',
+        status: 'success' as const,
         blockNumber: 201n,
       })),
     }
@@ -95,7 +95,7 @@ describe('Milestone C wallet submission sink', () => {
       waitForTransactionReceipt: async (_hash, receivedProof) => {
         expect(receivedProof).toEqual(proof)
         calls.push('receipt')
-        return { transactionHash: TX_HASH, status: 'success', blockNumber: 201n }
+        return { transactionHash: TX_HASH, status: 'success' as const, blockNumber: 201n }
       },
     }
     const receipt = await submitOtcTransaction(
@@ -133,7 +133,7 @@ describe('Milestone C wallet submission sink', () => {
         sendTransaction: jest.fn(async () => TX_HASH),
         waitForTransactionReceipt: jest.fn(async () => ({
           transactionHash: TX_HASH,
-          status: 'success',
+          status: 'success' as const,
           blockNumber: 201n,
         })),
       }
@@ -168,7 +168,7 @@ describe('Milestone C wallet submission sink', () => {
       sendTransaction,
       waitForTransactionReceipt: jest.fn(async () => ({
         transactionHash: TX_HASH,
-        status: 'success',
+        status: 'success' as const,
         blockNumber: 201n,
       })),
     }
@@ -220,7 +220,7 @@ describe('Milestone C wallet submission sink', () => {
         mockOtcAuthorization(),
         mockOtcManifest(),
       ),
-    ).rejects.toMatchObject<OtcReceiptTrackingError>({ transactionHash: TX_HASH })
+    ).rejects.toMatchObject<Partial<OtcReceiptTrackingError>>({ transactionHash: TX_HASH })
   })
 
   it.each([false, true])('accepts a different receipt only for a verified reprice: %s', async (verifiedReprice) => {
@@ -229,7 +229,7 @@ describe('Milestone C wallet submission sink', () => {
       waitForTransactionReceipt: async () => ({
         transactionHash: `0x${'ab'.repeat(32)}`,
         ...(verifiedReprice ? { replacedTransactionHash: TX_HASH } : {}),
-        status: 'success',
+        status: 'success' as const,
         blockNumber: 201n,
       }),
     }
@@ -244,7 +244,7 @@ describe('Milestone C wallet submission sink', () => {
     if (verifiedReprice) {
       await expect(submission).resolves.toMatchObject({ transactionHash: `0x${'ab'.repeat(32)}` })
     } else {
-      await expect(submission).rejects.toMatchObject<OtcReceiptTrackingError>({ transactionHash: TX_HASH })
+      await expect(submission).rejects.toMatchObject<Partial<OtcReceiptTrackingError>>({ transactionHash: TX_HASH })
     }
   })
 })

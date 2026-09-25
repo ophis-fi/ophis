@@ -25,7 +25,7 @@ const ADDRESS_3 = '0x3333333333333333333333333333333333333333'
 const DEFAULT_DECIMALS = 18
 
 function createTestToken(chainId: number, address: string, symbol: string): TokenWithLogo {
-  return new TokenWithLogo(undefined, chainId, address, DEFAULT_DECIMALS, symbol, `${symbol} Token`, undefined, [])
+  return new TokenWithLogo(undefined, chainId, address, DEFAULT_DECIMALS, symbol, `${symbol} Token`)
 }
 
 function createStoredToken(chainId: number, address: string, symbol?: string): StoredRecentToken {

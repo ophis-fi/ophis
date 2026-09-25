@@ -1,5 +1,6 @@
 import { useSetAtom } from 'jotai'
 
+import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 import { OrderKind, PriceQuality, SupportedChainId, type QuoteAndPost } from '@cowprotocol/cow-sdk'
 import { type QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 
@@ -26,11 +27,17 @@ const optimalFetchParams = {
 
 function quoteParams(amount: string): QuoteBridgeRequest {
   return {
-    amount,
+    amount: BigInt(amount),
+    account: '0x0000000000000000000000000000000000000001',
+    appCode: 'test',
+    sellTokenAddress: WETH_MAINNET.address,
+    sellTokenDecimals: WETH_MAINNET.decimals,
+    buyTokenAddress: USDC_MAINNET.address,
+    buyTokenDecimals: USDC_MAINNET.decimals,
     sellTokenChainId: SupportedChainId.MAINNET,
     buyTokenChainId: SupportedChainId.MAINNET,
     kind: OrderKind.SELL,
-  } as QuoteBridgeRequest
+  }
 }
 
 describe('useTradeQuoteManager GA4 events', () => {

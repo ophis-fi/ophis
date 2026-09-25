@@ -1,7 +1,7 @@
 import { useAtomValue } from 'jotai'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { AdditionalTargetChainId, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useFavoriteTokens } from '@cowprotocol/tokens'
 import { useWalletInfo, WalletInfo } from '@cowprotocol/wallet'
 
@@ -160,7 +160,7 @@ describe('useTokensToSelect', () => {
     const optimismFavorite = {
       ...mainnetToken,
       address: sharedAddress,
-      chainId: SupportedChainId.OPTIMISM,
+      chainId: AdditionalTargetChainId.OPTIMISM,
       symbol: 'WETH',
     } as TokenWithLogo
     const baseBridgeToken = {
