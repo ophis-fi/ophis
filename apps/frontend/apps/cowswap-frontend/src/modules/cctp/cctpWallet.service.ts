@@ -57,7 +57,11 @@ async function prepareCctpCall(
     throw new Error('Leave enough native currency to pay transaction gas')
 }
 
-export async function approveCctp(wallet: WalletClient, quote: CctpQuote): Promise<Hex | undefined> {
+export async function approveCctp(
+  wallet: WalletClient,
+  quote: CctpQuote,
+  assertCurrent: () => void = () => undefined,
+): Promise<Hex | undefined> {
   assertCctpQuote(quote)
   await assertCctpWallet(wallet, quote.owner, quote.source)
   const { allowance, balance } = await readCctpFunds(quote)
@@ -73,6 +77,7 @@ export async function approveCctp(wallet: WalletClient, quote: CctpQuote): Promi
   if (quote.expanded) assertCctpxQuote(quote.expanded, await cctpClient(quote.source).getBlock())
   assertCctpQuote(quote)
   await assertCctpWallet(wallet, quote.owner, quote.source)
+  assertCurrent()
   return wallet.sendTransaction({ account: quote.owner, chain: cctpNetwork(quote.source).chain, to, data, value: 0n })
 }
 

@@ -36,7 +36,7 @@ type CctpFlow = ReturnType<typeof useCctpQuote> & {
   finish(): void
 }
 
-export function useCctpTransfer(): CctpFlow {
+export function useCctpTransfer(contextKey = ''): CctpFlow {
   const { account } = useWalletInfo()
   const wallet = useCctpWallet()
   const [stored, setStored] = useAtom(cctpTransferAtom)
@@ -60,7 +60,7 @@ export function useCctpTransfer(): CctpFlow {
       setBusy('')
     }
   }, [])
-  const quoting = useCctpQuote(account, wallet, run)
+  const quoting = useCctpQuote(account, wallet, run, contextKey)
   return useMemo(
     () => ({
       ...quoting,
@@ -80,7 +80,7 @@ export function useCctpTransfer(): CctpFlow {
         run('Confirm the bridge in your wallet', async () => {
           if (!wallet || !quoting.quote || !isCctpOwner(quoting.quote.owner, account))
             throw new Error('Refresh the quote for your connected wallet')
-          await submitCctpBurn(wallet, quoting.quote, setStored)
+          await submitCctpBurn(wallet, quoting.quote, setStored, quoting.assertCurrentQuote)
           quoting.clearQuote()
         }),
       claim: () =>

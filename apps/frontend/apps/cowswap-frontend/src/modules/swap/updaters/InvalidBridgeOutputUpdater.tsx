@@ -2,21 +2,26 @@ import { useAtomValue } from 'jotai'
 import { useEffect, useMemo } from 'react'
 
 import { isBridgeOnlyDestinationChain } from '@cowprotocol/common-const'
-import { isSupportedChainId } from '@cowprotocol/common-utils'
-import { isAdditionalTargetChain } from '@cowprotocol/cow-sdk'
+import { getCurrencyAddress, isSupportedChainId } from '@cowprotocol/common-utils'
+import { getAddressKey, isAdditionalTargetChain } from '@cowprotocol/cow-sdk'
 import { BuyTokensParams } from '@cowprotocol/sdk-bridging'
 
 import { useBridgeSupportedNetworks, useBridgeSupportedTokens } from 'entities/bridgeProvider'
 import { useLocation } from 'react-router'
 
-import { useTradeTypeInfo, parameterizeTradeRoute, parameterizeTradeSearch } from 'modules/trade'
-import { useTradeTypeInfoFromUrl } from 'modules/trade/hooks/useTradeTypeInfoFromUrl'
+import {
+  useTradeTypeInfo,
+  useTradeTypeInfoFromUrl,
+  parameterizeTradeRoute,
+  parameterizeTradeSearch,
+} from 'modules/trade'
 
 import type { RoutesValues } from 'common/constants/routes'
 import { useNavigate } from 'common/hooks/useNavigate'
 
 import { getInvalidBridgeOutputPatch, getUnsupportedBridgePairPatch } from './InvalidBridgeOutputUpdater.utils'
 
+import { useSwapDerivedState } from '../hooks/useSwapDerivedState'
 import { useUpdateSwapRawState } from '../hooks/useUpdateSwapRawState'
 import { swapRawStateAtom, SwapRawState } from '../state/swapRawStateAtom'
 
@@ -60,6 +65,7 @@ function syncUrlAfterPatch(params: {
 
 export function InvalidBridgeOutputUpdater(): null {
   const rawState = useAtomValue(swapRawStateAtom)
+  const { inputCurrency } = useSwapDerivedState()
   const updateSwapState = useUpdateSwapRawState()
   const navigate = useNavigate()
   const location = useLocation()
@@ -98,15 +104,25 @@ export function InvalidBridgeOutputUpdater(): null {
       return undefined
     }
 
-    if (!sourceChainId || !targetChainId || sourceChainId === targetChainId) {
+    if (!sourceChainId || !targetChainId || sourceChainId === targetChainId || !inputCurrency) {
       return undefined
     }
 
+    // Derived currencies can lag URL edits by one render. Never validate a new
+    // route using the previous route's source token.
+    if (
+      inputCurrency.chainId !== sourceChainId ||
+      ![getCurrencyAddress(inputCurrency), inputCurrency.symbol].some(
+        (id) => id && rawState.inputCurrencyId && getAddressKey(id) === getAddressKey(rawState.inputCurrencyId),
+      )
+    )
+      return undefined
     return {
       sellChainId: sourceChainId,
       buyChainId: targetChainId,
+      sellTokenAddress: getCurrencyAddress(inputCurrency),
     }
-  }, [sourceChainId, targetChainId, unsupportedBridgePairPatch])
+  }, [sourceChainId, targetChainId, unsupportedBridgePairPatch, inputCurrency, rawState.inputCurrencyId])
 
   const { data: bridgeRouteData, isLoading: isBridgeRouteLoading } = useBridgeSupportedTokens(bridgeRouteParams)
 

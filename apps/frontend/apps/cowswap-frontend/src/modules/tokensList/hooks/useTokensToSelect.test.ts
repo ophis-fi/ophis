@@ -131,6 +131,7 @@ describe('useTokensToSelect', () => {
     expect(mockUseBridgeSupportedTokens).toHaveBeenCalledWith({
       buyChainId: SupportedChainId.LINEA,
       sellChainId: SupportedChainId.MAINNET,
+      sellTokenAddress: mainnetToken.address,
     })
   })
 
@@ -152,6 +153,7 @@ describe('useTokensToSelect', () => {
     expect(mockUseBridgeSupportedTokens).toHaveBeenCalledWith({
       buyChainId: SupportedChainId.MAINNET,
       sellChainId: SupportedChainId.ARBITRUM_ONE,
+      sellTokenAddress: mainnetToken.address,
     })
   })
 

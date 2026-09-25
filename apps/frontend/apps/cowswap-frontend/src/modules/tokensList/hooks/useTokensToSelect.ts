@@ -2,6 +2,7 @@ import { useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 
 import { TokenWithLogo } from '@cowprotocol/common-const'
+import { getCurrencyAddress } from '@cowprotocol/common-utils'
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 import { BuyTokensParams } from '@cowprotocol/sdk-bridging'
 import { useFavoriteTokens } from '@cowprotocol/tokens'
@@ -51,8 +52,12 @@ export function useTokensToSelect(): TokensToSelectContext {
   const params: BuyTokensParams | undefined = useMemo(() => {
     if (!areTokensFromBridge) return undefined
 
-    return { buyChainId: targetChainId, sellChainId: sourceChainId }
-  }, [areTokensFromBridge, sourceChainId, targetChainId])
+    return {
+      buyChainId: targetChainId,
+      sellChainId: sourceChainId,
+      sellTokenAddress: oppositeToken ? getCurrencyAddress(oppositeToken) : undefined,
+    }
+  }, [areTokensFromBridge, sourceChainId, targetChainId, oppositeToken])
 
   const { data: result, isLoading } = useBridgeSupportedTokens(params)
 

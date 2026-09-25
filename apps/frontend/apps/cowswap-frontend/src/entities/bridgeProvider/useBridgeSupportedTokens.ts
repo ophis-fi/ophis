@@ -1,9 +1,12 @@
+import { useMemo } from 'react'
+
 import { SWR_NO_REFRESH_OPTIONS, TokenWithLogo } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { BuyTokensParams } from '@cowprotocol/sdk-bridging'
 import { useTokensByAddressMapForChain } from '@cowprotocol/tokens'
 
+import { cctpBuyTokens } from 'entities/cctp'
 import useSWR, { SWRResponse } from 'swr'
 import { bridgingSdk } from 'tradingSdk/bridgingSdk'
 
@@ -23,7 +26,14 @@ export function useBridgeSupportedTokens(
   const tokensByAddress = useTokensByAddressMapForChain(params?.buyChainId as SupportedChainId | undefined)
   const tokenListSize = Object.keys(tokensByAddress).length
 
-  return useSWR(
+  const cctpTokens = useMemo(
+    () =>
+      cctpBuyTokens(params).map((token) =>
+        TokenWithLogo.fromToken(token, tokensByAddress[getAddressKey(token.address)]?.logoURI),
+      ),
+    [params, tokensByAddress],
+  )
+  const response = useSWR(
     isBridgingEnabled
       ? [
           params,
@@ -83,4 +93,13 @@ export function useBridgeSupportedTokens(
     },
     SWR_NO_REFRESH_OPTIONS,
   )
+  const data = useMemo(() => {
+    if (!cctpTokens.length) return response.data
+    const tokens = [...(response.data?.tokens || []), ...cctpTokens]
+    return {
+      tokens: [...new Map(tokens.map((token) => [getAddressKey(token.address), token])).values()],
+      isRouteAvailable: true,
+    }
+  }, [response.data, cctpTokens])
+  return { ...response, data, isLoading: cctpTokens.length ? false : response.isLoading }
 }

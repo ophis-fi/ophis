@@ -85,7 +85,11 @@ export function TokenSearchContent({
   if (isTokenNotFound)
     return (
       <styledEl.TokenNotFound>
-        {areTokensFromBridge ? <Trans>No available tokens found to bridge</Trans> : <Trans>No tokens found</Trans>}
+        {areTokensFromBridge ? (
+          <Trans>No bridge route for this token on the selected networks. Try another token or network.</Trans>
+        ) : (
+          <Trans>No tokens found</Trans>
+        )}
       </styledEl.TokenNotFound>
     )
 

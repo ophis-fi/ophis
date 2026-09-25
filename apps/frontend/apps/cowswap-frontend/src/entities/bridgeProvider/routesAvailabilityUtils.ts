@@ -1,5 +1,6 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
+import { hasCctpRoute } from 'entities/cctp'
 import { bridgingSdk } from 'tradingSdk/bridgingSdk'
 
 export interface RoutesAvailabilityResult {
@@ -61,6 +62,7 @@ async function checkSingleRouteAvailability(
   sellChainId: SupportedChainId,
   buyChainId: number,
 ): Promise<RouteCheckResult> {
+  if (hasCctpRoute(sellChainId, buyChainId)) return { chainId: buyChainId, isAvailable: true }
   try {
     const result = await bridgingSdk.getBuyTokens({ sellChainId, buyChainId })
     const isAvailable = result.tokens.length > 0 && result.isRouteAvailable

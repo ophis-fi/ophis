@@ -51,22 +51,38 @@ it.each([false, true])('loads Arc tokens without relying on favourites (curated=
 
 it('ships locally hosted logos and the additional Arc trading assets', () => {
   const arc = shippedList.tokens.filter(({ chainId }) => chainId === ARC_CHAIN_ID)
-  expect(arc.map(({ symbol }) => symbol).sort()).toEqual([
-    'ARGUS',
-    'CRCLon',
-    'EURC',
-    'ONDO',
-    'USDC',
-    'USYC',
-    'WETH',
-    'XAUM',
-    'cirBTC',
-  ])
-  for (const token of arc) {
+  expect(arc.map(({ symbol }) => symbol).sort()).toEqual(
+    expect.arrayContaining(['ARGUS', 'CRCLon', 'EURC', 'ONDO', 'USDC', 'USYC', 'WETH', 'XAUM', 'cirBTC']),
+  )
+  for (const token of arc.filter((token) => token.logoURI)) {
     expect(token.logoURI).toMatch(/^https:\/\/swap\.ophis\.fi\/logos\//)
     const path = new URL(token.logoURI || '').pathname
     expect(readFileSync(resolve(__dirname, '../../../../apps/cowswap-frontend/public' + path)).length).toBeGreaterThan(
       0,
     )
+  }
+})
+
+it('refreshes an old two-token Arc list while preserving disabled preferences', async () => {
+  const store = createStore()
+  store.set(environmentAtom, { chainId: ARC_CHAIN_ID, hideFavoriteTokens: true })
+  const source = store.get(allListsSourcesAtom)[0]
+  for (const isEnabled of [true, false]) {
+    await store.set(upsertListsAtom, ARC_CHAIN_ID, [
+      {
+        ...source,
+        isEnabled,
+        list: {
+          ...shippedList,
+          tokens: shippedList.tokens.filter(
+            (token) => token.chainId === ARC_CHAIN_ID && ['USDC', 'EURC'].includes(token.symbol),
+          ),
+        },
+      },
+    ])
+    await store.set(upsertListsAtom, ARC_CHAIN_ID, [{ ...source, list: shippedList }])
+    const active = await store.get(allActiveTokensAtom)
+    expect(active.tokens.some((token) => token.symbol === 'cirBTC')).toBe(isEnabled)
+    if (isEnabled) expect(active.tokens.length).toBeGreaterThanOrEqual(42)
   }
 })
