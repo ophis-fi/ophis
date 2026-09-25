@@ -2,12 +2,13 @@ use {
     super::PriceEstimationError,
     crate::native::{NativePriceEstimateResult, NativePriceEstimating, from_normalized_price},
     alloy::primitives::Address,
-    model::order::BUY_ETH_ADDRESS,
     arc_swap::ArcSwap,
     bigdecimal::BigDecimal,
     futures::{FutureExt, StreamExt},
+    model::order::BUY_ETH_ADDRESS,
     prometheus::{IntCounter, IntCounterVec, IntGauge},
     rand::Rng,
+    request_sharing::{BoxRequestSharing, RequestSharing},
     std::{
         collections::{HashMap, HashSet},
         sync::Arc,
@@ -264,6 +265,7 @@ pub struct CachingNativePriceEstimator(Arc<CachingInner>);
 
 struct CachingInner {
     estimator: Box<dyn NativePriceEstimating>,
+    in_flight: BoxRequestSharing<Address, NativePriceEstimateResult>,
     cache: Cache,
     concurrent_requests: usize,
     // TODO remove when implementing a less hacky solution
@@ -289,6 +291,7 @@ impl CachingNativePriceEstimator {
     ) -> Self {
         let inner = Arc::new(CachingInner {
             estimator,
+            in_flight: RequestSharing::labelled("native_price_cache".to_string()),
             cache,
             concurrent_requests,
             approximation_tokens,
@@ -331,24 +334,56 @@ impl CachingNativePriceEstimator {
                 return (token, cached.result);
             }
 
-            let approximation = self
-                .0
-                .approximation_tokens
-                .get(&token)
-                .copied()
-                .unwrap_or(ApproximationToken::same_decimals(token));
-
-            let result = self
-                .0
-                .estimator
-                .estimate_native_price(approximation.address, request_timeout)
+            // Quote ranking and token validation can miss the same cache at
+            // once. Share their work and write once so a late error cannot
+            // overwrite a successful price from the duplicate request.
+            let inner = self.0.clone();
+            let request = self.0.in_flight.shared_or_else(token, move |_| {
+                async move {
+                    // Another request may have filled the cache after our first
+                    // lookup and finished before we joined its shared future.
+                    if let Some(cached) = Cache::get_cached_price(
+                        token,
+                        Instant::now(),
+                        &inner.cache.0.data,
+                        &max_age,
+                    ) {
+                        return cached.result;
+                    }
+                    let approximation = inner
+                        .approximation_tokens
+                        .get(&token)
+                        .copied()
+                        .unwrap_or(ApproximationToken::same_decimals(token));
+                    let result = time::timeout(
+                        inner.quote_timeout,
+                        inner
+                            .estimator
+                            .estimate_native_price(approximation.address, inner.quote_timeout),
+                    )
+                    .await
+                    .unwrap_or_else(|_| {
+                        Err(PriceEstimationError::EstimatorInternal(anyhow::anyhow!(
+                            "native price estimation timed out"
+                        )))
+                    })
+                    .map(|price| approximation.normalize_price(price));
+                    if should_cache(&result) {
+                        inner.cache.insert(token, result.clone());
+                    }
+                    result
+                }
+                .boxed()
+            });
+            // A short-lived caller may stop waiting without cancelling another
+            // caller or caching its local timeout as a token's market price.
+            let result = time::timeout(request_timeout, request)
                 .await
-                .map(|price| approximation.normalize_price(price));
-
-            // update price in cache
-            if should_cache(&result) {
-                self.0.cache.insert(token, result.clone());
-            };
+                .unwrap_or_else(|_| {
+                    Err(PriceEstimationError::EstimatorInternal(anyhow::anyhow!(
+                        "native price request timed out"
+                    )))
+                });
 
             (token, result)
         });
@@ -567,8 +602,7 @@ mod tests {
     use {
         super::*,
         crate::{
-            HEALTHY_PRICE_ESTIMATION_TIME,
-            PriceEstimationError,
+            HEALTHY_PRICE_ESTIMATION_TIME, PriceEstimationError,
             native::{MockNativePriceEstimating, NativePriceEstimating},
         },
         anyhow::anyhow,
@@ -655,6 +689,145 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shares_concurrent_single_batch_and_cloned_estimator_requests() {
+        let mut inner = MockNativePriceEstimating::new();
+        inner
+            .expect_estimate_native_price()
+            .times(1)
+            .returning(|_, timeout| {
+                assert_eq!(timeout, HEALTHY_PRICE_ESTIMATION_TIME);
+                async {
+                    time::sleep(Duration::from_millis(20)).await;
+                    Ok(2.0)
+                }
+                .boxed()
+            });
+        let estimator =
+            create_caching_estimator(inner, Duration::from_secs(60), 1, Default::default());
+        let updater = estimator.clone();
+        let tokens = [token(0)];
+        let (single, batch, refresh) = futures::join!(
+            estimator.estimate_native_price(token(0), Duration::from_secs(1)),
+            updater.fetch_prices(&tokens, Duration::from_secs(2)),
+            updater
+                .estimate_prices_and_update_cache(
+                    [token(0)],
+                    Duration::from_secs(30),
+                    Duration::from_secs(3)
+                )
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(single.unwrap(), 2.0);
+        assert_eq!(batch[&token(0)].as_ref().unwrap(), &2.0);
+        assert_eq!(refresh[0].1.as_ref().unwrap(), &2.0);
+    }
+
+    #[tokio::test]
+    async fn short_waiter_cannot_cancel_or_poison_another_waiter() {
+        let mut inner = MockNativePriceEstimating::new();
+        inner
+            .expect_estimate_native_price()
+            .times(1)
+            .returning(|_, _| {
+                async {
+                    time::sleep(Duration::from_millis(30)).await;
+                    Ok(3.0)
+                }
+                .boxed()
+            });
+        let estimator =
+            create_caching_estimator(inner, Duration::from_secs(60), 1, Default::default());
+        let (short, long) = futures::join!(
+            estimator.estimate_native_price(token(0), Duration::from_millis(1)),
+            estimator.estimate_native_price(token(0), Duration::from_secs(1)),
+        );
+        assert!(matches!(
+            short,
+            Err(PriceEstimationError::EstimatorInternal(_))
+        ));
+        assert_eq!(long.unwrap(), 3.0);
+        assert_eq!(
+            estimator
+                .estimate_native_price(token(0), Duration::from_secs(1))
+                .await
+                .unwrap(),
+            3.0
+        );
+        assert_eq!(
+            estimator
+                .cache()
+                .0
+                .data
+                .get(&token(0))
+                .unwrap()
+                .accumulative_errors_count,
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn all_waiters_cancelling_allows_a_fresh_request() {
+        let mut inner = MockNativePriceEstimating::new();
+        inner
+            .expect_estimate_native_price()
+            .times(2)
+            .returning(|_, _| {
+                async {
+                    time::sleep(Duration::from_millis(20)).await;
+                    Ok(4.0)
+                }
+                .boxed()
+            });
+        let estimator =
+            create_caching_estimator(inner, Duration::from_secs(60), 1, Default::default());
+        assert!(
+            estimator
+                .estimate_native_price(token(0), Duration::from_millis(1))
+                .await
+                .is_err()
+        );
+        assert!(estimator.cache().0.data.get(&token(0)).is_none());
+        assert_eq!(
+            estimator
+                .estimate_native_price(token(0), Duration::from_secs(1))
+                .await
+                .unwrap(),
+            4.0
+        );
+    }
+
+    #[tokio::test]
+    async fn shared_work_has_a_deadline_even_if_estimator_ignores_it() {
+        let mut inner = MockNativePriceEstimating::new();
+        inner
+            .expect_estimate_native_price()
+            .times(1)
+            .returning(|_, _| futures::future::pending().boxed());
+        let estimator = CachingNativePriceEstimator::new(
+            Box::new(inner),
+            Cache::new(Duration::from_secs(60), Default::default()),
+            1,
+            Default::default(),
+            Duration::from_millis(10),
+        );
+        let (a, b) = futures::join!(
+            estimator.estimate_native_price(token(0), Duration::from_secs(1)),
+            estimator.estimate_native_price(token(0), Duration::from_secs(2)),
+        );
+        assert!(a.is_err() && b.is_err());
+        assert_eq!(
+            estimator
+                .cache()
+                .0
+                .data
+                .get(&token(0))
+                .unwrap()
+                .accumulative_errors_count,
+            1
+        );
+    }
+
+    #[tokio::test]
     async fn native_eth_sentinel_short_circuits_to_one() {
         // The native price of native ETH (BUY_ETH_ADDRESS) is 1.0 by
         // definition. It must resolve WITHOUT hitting the inner estimator —
@@ -688,7 +861,10 @@ mod tests {
         let prices = estimator
             .fetch_prices(&[BUY_ETH_ADDRESS], HEALTHY_PRICE_ESTIMATION_TIME)
             .await;
-        assert_eq!(prices.get(&BUY_ETH_ADDRESS).unwrap().as_ref().unwrap(), &1.0);
+        assert_eq!(
+            prices.get(&BUY_ETH_ADDRESS).unwrap().as_ref().unwrap(),
+            &1.0
+        );
     }
 
     #[tokio::test]
@@ -702,8 +878,13 @@ mod tests {
         let estimator =
             create_caching_estimator(inner, Duration::from_millis(30), 1, Default::default());
 
-        let prices = estimator.fetch_prices(&[BUY_ETH_ADDRESS], Duration::ZERO).await;
-        assert_eq!(prices.get(&BUY_ETH_ADDRESS).unwrap().as_ref().unwrap(), &1.0);
+        let prices = estimator
+            .fetch_prices(&[BUY_ETH_ADDRESS], Duration::ZERO)
+            .await;
+        assert_eq!(
+            prices.get(&BUY_ETH_ADDRESS).unwrap().as_ref().unwrap(),
+            &1.0
+        );
     }
 
     #[tokio::test]

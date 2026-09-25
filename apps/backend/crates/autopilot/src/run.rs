@@ -377,30 +377,36 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         .api_estimators
         .as_ref()
         .unwrap_or(&config.native_price_estimation.estimators);
-    let api_native_price_estimator: Arc<dyn NativePriceEstimating> = Arc::new(
-        price_estimator_factory
-            .caching_native_price_estimator(
-                api_sources.as_slice(),
-                config.native_price_estimation.shared.results_required,
-                &weth,
-                shared_cache.clone(),
-                config.native_price_estimation.eip4626,
-            )
-            .instrument(info_span!("api_native_price_estimator"))
-            .await,
-    );
+    let api_caching_estimator = price_estimator_factory
+        .caching_native_price_estimator(
+            api_sources.as_slice(),
+            config.native_price_estimation.shared.results_required,
+            &weth,
+            shared_cache.clone(),
+            config.native_price_estimation.eip4626,
+        )
+        .instrument(info_span!("api_native_price_estimator"))
+        .await;
+    let api_native_price_estimator: Arc<dyn NativePriceEstimating> =
+        Arc::new(api_caching_estimator.clone());
 
     let competition_native_price_updater = {
-        let caching = price_estimator_factory
-            .caching_native_price_estimator(
-                config.native_price_estimation.estimators.as_slice(),
-                config.native_price_estimation.shared.results_required,
-                &weth,
-                shared_cache.clone(),
-                config.native_price_estimation.eip4626,
-            )
-            .instrument(info_span!("competition_native_price_updater"))
-            .await;
+        // Share in-flight work with API requests when both use the same
+        // sources. An explicit API source override keeps its own estimator.
+        let caching = if config.native_price_estimation.api_estimators.is_none() {
+            api_caching_estimator
+        } else {
+            price_estimator_factory
+                .caching_native_price_estimator(
+                    config.native_price_estimation.estimators.as_slice(),
+                    config.native_price_estimation.shared.results_required,
+                    &weth,
+                    shared_cache.clone(),
+                    config.native_price_estimation.eip4626,
+                )
+                .instrument(info_span!("competition_native_price_updater"))
+                .await
+        };
         price_estimation::native_price_cache::NativePriceUpdater::new(
             caching,
             config.native_price_estimation.cache_refresh_interval,

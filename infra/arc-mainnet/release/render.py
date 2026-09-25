@@ -75,6 +75,7 @@ max-connections = 4
 price-estimation-drivers = [{price_drivers}]
 [price-estimation]
 amount-to-estimate-prices-with = "1000000"
+quote-timeout = "10s"
 quote-verification = "enforce-when-possible"
 [price-estimation.balance-overrides.token-overrides.{USDC}]
 type = "ArcUsdc"
