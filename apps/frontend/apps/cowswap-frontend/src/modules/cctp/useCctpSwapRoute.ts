@@ -41,6 +41,7 @@ export function useCctpSwapRoute({
     asset,
     amount?.quotient.toString(),
     account,
+    smartWallet,
     recipient,
     recipientAddress,
     orderKind,
@@ -48,7 +49,7 @@ export function useCctpSwapRoute({
   const flow = useCctpTransfer(key)
   const blocked = cctpBlockedReason(smartWallet, recipient, recipientAddress, account)
   const validQuote = asset && orderKind === OrderKind.SELL && !blocked ? flow.quote : null
-  const active = !!asset
+  const active = !!asset && !blocked
   return {
     params: active
       ? {

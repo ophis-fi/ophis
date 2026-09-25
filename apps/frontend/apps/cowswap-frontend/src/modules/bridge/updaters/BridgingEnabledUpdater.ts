@@ -9,6 +9,7 @@ import { useHasBridgeProviders } from 'entities/bridgeProvider'
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
 import { useTradeTypeInfo } from 'modules/trade'
 
+import { CCTP_ENABLED } from 'common/constants/featureFlags'
 import { Routes } from 'common/constants/routes'
 
 export function BridgingEnabledUpdater(): null {
@@ -16,7 +17,7 @@ export function BridgingEnabledUpdater(): null {
   const setIsBridgingEnabled = useSetIsBridgingEnabled()
   const { isBridgingInSafeWidgetEnabled } = useFeatureFlags()
   const isSafeApp = useIsSafeApp()
-  const { disableCrossChainSwap = false } = useInjectedWidgetParams()
+  const { disableCrossChainSwap } = useInjectedWidgetParams()
 
   const isSwapOrHooksPage = tradeTypeInfo?.route === Routes.SWAP || tradeTypeInfo?.route === Routes.HOOKS
   const widgetInSafeApp = isSafeApp && isInjectedWidget()
@@ -25,7 +26,7 @@ export function BridgingEnabledUpdater(): null {
   const hasBridgeProviders = useHasBridgeProviders()
 
   const shouldEnableBridging =
-    isSwapOrHooksPage && !disableCrossChainSwap && shouldEnableInWidgetSafe && hasBridgeProviders
+    isSwapOrHooksPage && !disableCrossChainSwap && shouldEnableInWidgetSafe && (hasBridgeProviders || CCTP_ENABLED)
 
   useEffect(() => {
     setIsBridgingEnabled(shouldEnableBridging)

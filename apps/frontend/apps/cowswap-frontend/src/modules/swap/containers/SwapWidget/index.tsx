@@ -148,12 +148,12 @@ export function SwapWidget({
       inputCurrency &&
       outputCurrency &&
       inputCurrency.chainId !== outputCurrency.chainId &&
-      (getIsNativeToken(inputCurrency) || !!cctp.asset) &&
+      (getIsNativeToken(inputCurrency) || cctp.active) &&
       !isSmartContractWallet &&
       orderKind === OrderKind.BUY
     )
       updateSwapState({ orderKind: OrderKind.SELL, inputCurrencyAmount: null, outputCurrencyAmount: null })
-  }, [inputCurrency, outputCurrency, isSmartContractWallet, orderKind, updateSwapState, cctp.asset])
+  }, [inputCurrency, outputCurrency, isSmartContractWallet, orderKind, updateSwapState, cctp.active])
 
   const isSellTrade = isSellOrder(orderKind)
 

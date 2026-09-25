@@ -37,6 +37,9 @@ export function CctpSwapDetails({
       ) : (
         <>
           <p>Via Circle CCTP · {asset} arrives at your wallet on the destination network.</p>
+          {asset?.endsWith('on') && (
+            <p>Tokenized securities may require issuer eligibility on the destination network.</p>
+          )}
           {blocked ? (
             <p role="alert">{blocked}</p>
           ) : !account ? (
