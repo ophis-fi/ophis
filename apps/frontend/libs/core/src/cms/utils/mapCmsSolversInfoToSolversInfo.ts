@@ -9,7 +9,7 @@ export function mapCmsSolversInfoToSolversInfo(cmsSolversInfo: CmsSolversInfo): 
       // eslint-disable-next-line complexity
       const solverNetworks = solver_networks?.data?.reduce<SolverNetwork[]>((acc, entry) => {
         if (entry.attributes) {
-          const { network, environment } = entry.attributes
+          const { network, environment, address } = entry.attributes
           const chainId = network?.data?.attributes?.chainId
           const cmsEnv = environment?.data?.attributes?.name
 
@@ -19,6 +19,7 @@ export function mapCmsSolversInfoToSolversInfo(cmsSolversInfo: CmsSolversInfo): 
             acc.push({
               chainId,
               env,
+              address,
             })
           }
         }

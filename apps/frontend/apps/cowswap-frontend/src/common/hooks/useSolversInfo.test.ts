@@ -74,4 +74,16 @@ describe('useSolversInfo', () => {
 
     expect(Object.keys(result.current).length).toBe(0)
   })
+
+  it('counts only the configured Arc lanes and resolves their names without CMS data', () => {
+    const { result } = renderHook(() => useSolversInfo(5042 as SupportedChainId))
+
+    expect(Object.keys(result.current)).toEqual(['kyberswap', 'uniswap-v3'])
+    expect(result.current['kyberswap'].displayName).toBe('KyberSwap')
+    expect(result.current['uniswap-v3']).toMatchObject({
+      displayName: 'Uniswap v3',
+      description: 'Ophis-operated routing lane: Uniswap v3.',
+      solverNetworks: expect.arrayContaining([{ chainId: 5042, env: 'prod' }]),
+    })
+  })
 })

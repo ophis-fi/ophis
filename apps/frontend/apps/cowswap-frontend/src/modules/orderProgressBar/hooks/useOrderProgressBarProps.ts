@@ -2,8 +2,9 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
+import { isAddress, isBarnBackendEnv } from '@cowprotocol/common-utils'
 import { SolverInfo } from '@cowprotocol/core'
-import { CompetitionOrderStatus, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, CompetitionOrderStatus, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useENS } from '@cowprotocol/ens'
 import { Command } from '@cowprotocol/types'
 
@@ -564,7 +565,18 @@ export function mergeSolverData(
   // Backend has the prefix `-solve` on some solvers. We should discard that for now.
   // In the future this prefix will be removed.
   const solverId = solverCompetition.solver.replace(/-solve$/, '')
-  const solverInfo = solversInfo[solverId.toLowerCase()]
+  const matches = isAddress(solverId)
+    ? Object.values(solversInfo).filter(({ solverNetworks }) =>
+        solverNetworks.some(
+          ({ address, chainId: solverChainId, env }) =>
+            solverChainId === chainId &&
+            env === (isBarnBackendEnv ? 'staging' : 'prod') &&
+            areAddressesEqual(address, solverId),
+        ),
+      )
+    : [solversInfo[solverId.toLowerCase()]]
+  // Do not assign a team when deployment metadata is ambiguous.
+  const solverInfo = matches.length === 1 ? matches[0] : undefined
   const isOphisSolver = getOphisSolversForChain(chainId).some(
     (registeredSolver) => registeredSolver.solverId === solverId.toLowerCase(),
   )

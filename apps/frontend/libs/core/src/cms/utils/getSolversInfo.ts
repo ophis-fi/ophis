@@ -12,7 +12,7 @@ import { getCmsClient } from '../utils'
  */
 const CACHE_KEY = 'solvers-info'
 
-const cache = new TTLCache<CmsSolversInfo>('cmsSolversInfo:v0', true, DEFAULT_CMS_REQUEST_TTL)
+const cache = new TTLCache<CmsSolversInfo>('cmsSolversInfo:v1', true, DEFAULT_CMS_REQUEST_TTL)
 
 export async function getSolversInfo(): Promise<CmsSolversInfo> {
   const cached = cache.get(CACHE_KEY)
@@ -36,7 +36,7 @@ async function fetchSolversInfo(): Promise<CmsSolversInfo | null> {
         query: {
           populate: {
             solver_networks: {
-              fields: ['active'],
+              fields: ['active', 'address'],
               populate: {
                 network: {
                   fields: ['chainId'],

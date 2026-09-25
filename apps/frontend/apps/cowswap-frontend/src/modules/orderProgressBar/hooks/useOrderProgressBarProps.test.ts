@@ -1,10 +1,24 @@
+import { useAtomValue } from 'jotai'
+
+import { mapCmsSolversInfoToSolversInfo, SolverInfo } from '@cowprotocol/core'
+import { getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
+
 import { i18n, setupI18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
+import { renderHook } from '@testing-library/react'
+
+import { useSolversInfo } from 'common/hooks/useSolversInfo'
 
 import { getProgressBarStepName, mergeSolverData } from './useOrderProgressBarProps'
 
 import { OrderProgressBarStepName } from '../constants'
 import { OrderProgressBarState } from '../types'
+
+jest.mock('jotai', () => ({ ...jest.requireActual('jotai'), useAtomValue: jest.fn() }))
+jest.mock('@cowprotocol/common-utils', () => ({
+  ...jest.requireActual('@cowprotocol/common-utils'),
+  isBarnBackendEnv: false,
+}))
 
 const OPEN_STATUS = 'open' as OrderProgressBarState['backendApiStatus']
 const EXECUTING_STATUS = 'executing' as OrderProgressBarState['backendApiStatus']
@@ -66,7 +80,79 @@ describe('getProgressBarStepName', () => {
 })
 
 describe('solver attribution', () => {
-  it.each([10, 130, 4663])('resolves a registered routing lane on chain %s without CMS data', (chainId) => {
+  const address = '0xb222da0155640eB2f604164d4a3684139dcC1f95'
+
+  it.each(Object.values(SupportedChainId).filter((id): id is SupportedChainId => typeof id === 'number'))(
+    'resolves a CMS deployment address on chain %s without counting it twice',
+    (chainId) => {
+      const metadata = mapCmsSolversInfoToSolversInfo([
+        {
+          attributes: {
+            solverId: 'brrr',
+            displayName: 'BRRRolver',
+            solver_networks: {
+              data: [
+                {
+                  attributes: {
+                    address,
+                    network: { data: { attributes: { chainId } } },
+                    environment: { data: { attributes: { name: 'prod' } } },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ])
+      ;(useAtomValue as jest.MockedFunction<typeof useAtomValue>).mockReturnValue(metadata)
+      const { result } = renderHook(() => useSolversInfo(chainId))
+      const winner = { solver: getAddressKey(address), executedAmounts: { sell: '1000', buy: '999' } }
+
+      expect(Object.keys(result.current)).toEqual(['brrr'])
+      expect(mergeSolverData(winner, result.current, chainId, i18n._.bind(i18n))).toMatchObject({
+        ...winner,
+        displayName: 'BRRRolver',
+      })
+    },
+  )
+
+  it.each([
+    { chainId: SupportedChainId.MAINNET, env: 'prod' as const },
+    { chainId: SupportedChainId.BASE, env: 'staging' as const },
+  ])('does not borrow an address identity from another deployment: %j', (network) => {
+    const brrr: SolverInfo = {
+      solverId: 'brrr',
+      displayName: 'BRRRolver',
+      solverNetworks: [{ ...network, address }],
+    }
+    expect(mergeSolverData({ solver: address }, { brrr }, SupportedChainId.BASE, i18n._.bind(i18n)).displayName).toBe(
+      'Unknown solver',
+    )
+  })
+
+  it('does not guess when multiple teams claim the same deployment address', () => {
+    const brrr: SolverInfo = {
+      solverId: 'brrr',
+      displayName: 'BRRRolver',
+      solverNetworks: [{ chainId: SupportedChainId.BASE, env: 'prod', address }],
+    }
+    const metadata = { brrr, another: { ...brrr, solverId: 'another', displayName: 'Another solver' } }
+    expect(mergeSolverData({ solver: address }, metadata, SupportedChainId.BASE, i18n._.bind(i18n)).displayName).toBe(
+      'Unknown solver',
+    )
+  })
+
+  it('names the winner from the reported Arc USDC/EURC order without CMS data', () => {
+    // Public Arc order status on 2026-09-24: 2 USDC sold for 1.740907 EURC.
+    const winner = { solver: 'uniswap-v3', executedAmounts: { sell: '2000000', buy: '1740907' } }
+    expect(mergeSolverData(winner, {}, 5042, i18n._.bind(i18n))).toMatchObject({
+      ...winner,
+      displayName: 'Uniswap v3',
+      description: 'Ophis-operated routing lane: Uniswap v3.',
+    })
+  })
+
+  it.each([10, 130, 4663, 5042])('resolves a registered routing lane on chain %s without CMS data', (chainId) => {
     expect(mergeSolverData({ solver: 'kyberswap-solve' }, {}, chainId, i18n._.bind(i18n))).toMatchObject({
       solver: 'kyberswap',
       displayName: 'KyberSwap',

@@ -32,6 +32,8 @@ CHAIN_PINS=(
   "OPHIS_SOLVER_REGISTRY_CHAIN_ID|infra/optimism-mainnet/configs/autopilot.toml"
   "OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID|infra/unichain-mainnet/configs/autopilot.toml.tmpl"
   "OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID|infra/robinhood-mainnet/configs/autopilot.toml.tmpl"
+  # Arc's autopilot template is embedded here; inspect it without rendering secrets.
+  "OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID|infra/arc-mainnet/release/render.py"
 )
 REGISTRY=apps/frontend/apps/cowswap-frontend/src/ophis/solvers.ts
 
@@ -45,12 +47,17 @@ done
 
 extract_autopilot() {
   ${PYTHON_BIN} - "$1" <<'PY'
-import re, sys, json
+import ast, re, sys, json
 with open(sys.argv[1]) as f:
     src = f.read()
 # Strip TOML comments so prose never contributes a name.
 src = re.sub(r'#[^\n]*', '', src)
-names = re.findall(r'\[\[drivers\]\]\s*\n\s*name\s*=\s*"([^"]+)"', src)
+if sys.argv[1].endswith('.py'):
+    # Arc generates all autopilot drivers from this literal list. Never run the renderer.
+    lanes = re.search(r'^\s*lanes\s*=\s*(\[[^\n]+\])', src, re.M)
+    names = ast.literal_eval(lanes.group(1)) if lanes else []
+else:
+    names = re.findall(r'\[\[drivers\]\]\s*\n\s*name\s*=\s*"([^"]+)"', src)
 if not names:
     print('NO_AUTOPILOT_DRIVERS_FOUND', file=sys.stderr); sys.exit(3)
 if len(set(names)) != len(names):
