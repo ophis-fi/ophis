@@ -61,3 +61,52 @@ it('shows the issuer explanation on hover and includes USYC eligibility', async 
   })
   expect(screen.queryByRole('tooltip')).toBeNull()
 })
+
+it('opens from keyboard focus and dismisses with Escape or an outside tap', async () => {
+  render(<TokenSymbol token={ARC_USYC} />)
+  const trigger = screen.getByRole('button', { name: badge })
+  await act(async () => {
+    trigger.focus()
+  })
+  expect(screen.getByRole('tooltip')).toBeTruthy()
+  await act(async () => {
+    fireEvent.keyDown(trigger, { key: 'Escape' })
+  })
+  expect(screen.queryByRole('tooltip')).toBeNull()
+  await act(async () => {
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+  })
+  expect(screen.getByRole('tooltip')).toBeTruthy()
+  await act(async () => {
+    fireEvent.pointerDown(document.body)
+  })
+  expect(screen.queryByRole('tooltip')).toBeNull()
+})
+
+it('reuses a parent button focus and lets a badge tap explain without selecting the token', async () => {
+  const select = jest.fn()
+  render(
+    <button onClick={select}>
+      <TokenSymbol token={ARC_USYC} />
+    </button>,
+  )
+  const trigger = screen.getByRole('button')
+  expect(trigger.querySelector('[tabindex], [role="button"]')).toBeNull()
+  await act(async () => {
+    trigger.focus()
+  })
+  expect(screen.getByRole('tooltip')).toBeTruthy()
+  await act(async () => {
+    trigger.blur()
+  })
+  expect(screen.queryByRole('tooltip')).toBeNull()
+  await act(async () => {
+    fireEvent.click(screen.getByRole('img', { name: badge }))
+  })
+  expect(screen.getByRole('tooltip')).toBeTruthy()
+  expect(select).not.toHaveBeenCalled()
+  await act(async () => {
+    fireEvent.keyDown(trigger, { key: 'Escape' })
+  })
+  expect(screen.queryByRole('tooltip')).toBeNull()
+})
