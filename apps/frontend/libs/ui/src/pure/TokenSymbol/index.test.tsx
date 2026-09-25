@@ -68,6 +68,9 @@ it('opens from keyboard focus and dismisses with Escape or an outside tap', asyn
   await act(async () => {
     trigger.focus()
   })
+  await act(async () => {
+    fireEvent.mouseLeave(screen.getByRole('img', { name: badge }))
+  })
   expect(screen.getByRole('tooltip')).toBeTruthy()
   await act(async () => {
     fireEvent.keyDown(trigger, { key: 'Escape' })
@@ -94,6 +97,9 @@ it('reuses a parent button focus and lets a badge tap explain without selecting 
   expect(trigger.querySelector('[tabindex], [role="button"]')).toBeNull()
   await act(async () => {
     trigger.focus()
+  })
+  await act(async () => {
+    fireEvent.mouseLeave(screen.getByRole('img', { name: badge }))
   })
   expect(screen.getByRole('tooltip')).toBeTruthy()
   await act(async () => {

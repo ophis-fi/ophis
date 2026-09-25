@@ -99,7 +99,9 @@ export function CircleBadge({ restricted }: { restricted: boolean }): ReactNode 
           setShow(true)
         }}
         onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
+        onMouseLeave={() => {
+          if (!ref.current?.closest('button, a, [role="button"]')?.matches(':focus')) setShow(false)
+        }}
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" role="img" aria-label={`${label}. ${description}`}>
           <circle cx="8" cy="8" r="8" fill="currentColor" />
