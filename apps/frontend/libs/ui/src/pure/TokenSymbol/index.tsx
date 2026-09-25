@@ -5,8 +5,7 @@ import { formatSymbol } from '@cowprotocol/common-utils'
 import { Currency } from '@cowprotocol/currency'
 import { Nullish } from '@cowprotocol/types'
 
-import { t } from '@lingui/core/macro'
-import { CheckCircle } from 'react-feather'
+import { CircleBadge } from './CircleBadge'
 
 export type TokenNameAndSymbol = Pick<Currency, 'symbol' | 'name'>
 
@@ -29,23 +28,11 @@ export function TokenSymbol(props: TokenSymbolProps): ReactNode {
 
   const { abbreviateSymbol, title } = abbreviatedSymbol
   const verified = isCircleToken(props.token)
-  const verificationLabel = verified
-    ? t`Circle-issued token: contract address matches Circle's official records`
-    : undefined
 
   return (
     <span className={props.className} title={title}>
       {abbreviateSymbol}
-      {verified && (
-        <span title={verificationLabel}>
-          <CheckCircle
-            size={14}
-            role="img"
-            aria-label={verificationLabel}
-            style={{ marginLeft: 4, verticalAlign: -2 }}
-          />
-        </span>
-      )}
+      {verified && <CircleBadge restricted={props.token?.symbol === 'USYC'} />}
     </span>
   )
 }

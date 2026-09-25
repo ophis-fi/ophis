@@ -1,6 +1,6 @@
 import { createStore } from 'jotai'
 
-import { ARC_CHAIN_ID, ARC_CIRBTC, ARC_EURC, ARC_USDC } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, ARC_CIRBTC, ARC_EURC, ARC_USDC, ARC_USYC } from '@cowprotocol/common-const'
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 import type { TokenList } from '@uniswap/token-lists'
 
@@ -18,9 +18,9 @@ import { allActiveTokensAtom } from '../state/tokens/allTokensAtom'
 const shippedList = JSON.parse(
   readFileSync(resolve(__dirname, '../../../../apps/cowswap-frontend/public/token-lists/ophis.json'), 'utf8'),
 ) as TokenList
-const arcTokens = [ARC_USDC, ARC_EURC, ARC_CIRBTC]
+const arcTokens = [ARC_USDC, ARC_EURC, ARC_CIRBTC, ARC_USYC]
 
-it('ships the three Arc issuer tokens with the bridge decimals in the list and favourites', () => {
+it('ships all four Arc issuer tokens with the correct decimals in the list and favourites', () => {
   for (const token of arcTokens) {
     const identity = { chainId: ARC_CHAIN_ID, address: token.address, decimals: token.decimals, symbol: token.symbol }
     expect(shippedList.tokens).toContainEqual(expect.objectContaining(identity))
@@ -47,4 +47,16 @@ it.each([false, true])('loads Arc tokens without relying on favourites (curated=
       ),
     ),
   )
+})
+
+it('ships locally hosted logos and the additional Arc trading assets', () => {
+  const arc = shippedList.tokens.filter(({ chainId }) => chainId === ARC_CHAIN_ID)
+  expect(arc.map(({ symbol }) => symbol).sort()).toEqual(['EURC', 'USDC', 'USYC', 'WETH', 'XAUM', 'cirBTC'])
+  for (const token of arc) {
+    expect(token.logoURI).toMatch(/^https:\/\/swap\.ophis\.fi\/logos\//)
+    const path = new URL(token.logoURI || '').pathname
+    expect(readFileSync(resolve(__dirname, '../../../../apps/cowswap-frontend/public' + path)).length).toBeGreaterThan(
+      0,
+    )
+  }
 })
