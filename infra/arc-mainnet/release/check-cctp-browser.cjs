@@ -404,7 +404,8 @@ function rpc(item, chain) {
     });
     const page = await context.newPage();
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.goto('https://swap.ophis.fi/#/bridge');
+    const swapContext = asset === 'WETH' ? '?source=5042&token=0x178b01f61cbea1d2a5581fe1621be607835ec349' : '';
+    await page.goto('https://swap.ophis.fi/#/bridge' + swapContext);
     await page
       .getByRole('heading', { name: 'Bridge tokens', exact: true })
       .waitFor({ timeout: 60000 });
@@ -413,6 +414,7 @@ function rpc(item, chain) {
       fullPage: true,
     });
     assert.equal(await page.locator('select').count(), 3);
+    if (swapContext) await page.getByRole('link', { name: 'Swap it to USDC', exact: true }).waitFor();
     assert.equal(feeRequests, 0, 'No idle fee polling');
     await page
       .getByRole('button', { name: 'Decline', exact: true })
@@ -429,6 +431,7 @@ function rpc(item, chain) {
     await page.getByRole('combobox', { name: /^To/ }).selectOption('8453');
     await page.getByRole('combobox', { name: /^From/ }).selectOption('5042');
     await page.getByRole('combobox', { name: /^Asset/ }).selectOption(asset);
+    if (swapContext) assert.equal(await page.getByRole('link', { name: 'Swap it to USDC', exact: true }).count(), 0);
     assert.notEqual(
       await page.getByRole('combobox', { name: /^From/ }).inputValue(),
       await page.getByRole('combobox', { name: /^To/ }).inputValue(),
@@ -462,6 +465,8 @@ function rpc(item, chain) {
     assert.equal(approval.args[0].toLowerCase(), manager);
     assert.equal(approval.args[1], BigInt(amount));
     assert.equal(errors.length, 0, 'No uncaught page error');
+    const swapLink = await page.getByRole('link', { name: `Swap on ${destination === 1 ? 'Ethereum' : 'Base'}`, exact: true }).getAttribute('href');
+    assert(swapLink.includes(String(destination)) && swapLink.toLowerCase().includes(DEST_TOKEN));
     await page.reload();
     await page
       .getByText('Tokens received. Bridge complete.', { exact: true })

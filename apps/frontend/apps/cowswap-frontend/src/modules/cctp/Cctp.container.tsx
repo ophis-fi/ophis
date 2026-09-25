@@ -38,7 +38,7 @@ function CctpForm(): ReactNode {
         <CctpPendingTransfer flow={flow} />
       ) : (
         <>
-          <CctpSwapFirst initial={initial} />
+          {asset === initial.asset && source === initial.source && <CctpSwapFirst initial={initial} />}
           <CctpAssetSelect
             value={asset}
             busy={!!flow.busy}
