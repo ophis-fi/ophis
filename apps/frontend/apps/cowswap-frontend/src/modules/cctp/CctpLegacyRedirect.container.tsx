@@ -19,12 +19,12 @@ export function CctpLegacyRedirect(): ReactNode {
     {
       chainId: String(source),
       inputCurrencyId: swapFirstToken || cctpToken(source, asset),
-      outputCurrencyId: cctpToken(swapFirstToken ? source : destination, asset),
+      outputCurrencyId: cctpToken(destination, asset),
       inputCurrencyAmount: undefined,
       outputCurrencyAmount: undefined,
       orderKind: undefined,
     },
     Routes.SWAP,
   )
-  return <Navigate replace to={`${path}${swapFirstToken ? '' : `?targetChainId=${destination}`}`} />
+  return <Navigate replace to={`${path}?targetChainId=${destination}`} />
 }
