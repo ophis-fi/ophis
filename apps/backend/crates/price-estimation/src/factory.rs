@@ -1,7 +1,6 @@
 use {
     super::{
-        NativePriceEstimator as NativePriceEstimatorSource,
-        PriceEstimating,
+        NativePriceEstimator as NativePriceEstimatorSource, PriceEstimating,
         competition::CompetitionEstimator,
         external::ExternalPriceEstimator,
         instrumented::InstrumentedPriceEstimator,
@@ -200,7 +199,8 @@ impl<'a> PriceEstimatorFactory<'a> {
         if self.network.chain == chain::Chain::Arc
             && !matches!(
                 source,
-                NativePriceEstimatorSource::Driver(_) | NativePriceEstimatorSource::Forwarder { .. }
+                NativePriceEstimatorSource::Driver(_)
+                    | NativePriceEstimatorSource::Forwarder { .. }
             )
         {
             anyhow::bail!("Arc requires Driver native pricing or an already normalized Forwarder");
@@ -409,6 +409,41 @@ impl<'a> PriceEstimatorFactory<'a> {
         results_required: NonZeroUsize,
         weth: &WETH9::Instance,
     ) -> Result<Box<dyn NativePriceEstimating>> {
+        if self.network.chain == chain::Chain::Arc
+            && native
+                .iter()
+                .flatten()
+                .any(|source| matches!(source, NativePriceEstimatorSource::Driver(_)))
+        {
+            let mut stages = Vec::with_capacity(native.len());
+            for stage in native {
+                let mut estimators = Vec::with_capacity(stage.len());
+                for source in stage {
+                    let NativePriceEstimatorSource::Driver(driver) = source else {
+                        anyhow::bail!(
+                            "Arc native pricing cannot mix Driver and normalized sources"
+                        );
+                    };
+                    estimators.push((
+                        driver.name.clone(),
+                        self.get_estimator(driver)?.native.clone(),
+                    ));
+                }
+                stages.push(estimators);
+            }
+            // Compete on raw output before converting to native prices. An
+            // inverse native->token price would otherwise reward the worst route.
+            let competition = CompetitionEstimator::new(stages, PriceRanking::MaxOutAmount)
+                .with_early_return(results_required);
+            // Keep identity/deny-list handling outside competition: native USDC
+            // has a valid synthetic price with zero gas and needs no driver call.
+            return Ok(Box::new(NativePriceEstimator::new(
+                Arc::new(self.sanitized_native_price(Arc::new(competition))),
+                self.network.native_token,
+                self.native_token_price_estimation_amount()?,
+                self.network.chain.native_token_unit_scale(),
+            )));
+        }
         let mut estimators = Vec::with_capacity(native.len());
         for stage in native.iter() {
             let mut stages = Vec::with_capacity(stage.len());

@@ -127,19 +127,25 @@ impl NativePriceEstimating for NativePriceEstimator {
             let started = Instant::now();
             let mut query = Arc::new(self.query(&token, timeout));
             let mut estimate = self.inner.estimate(query.clone()).await;
-            let no_output = match &estimate {
-                Ok(estimate) => estimate.out_amount.is_zero(),
-                Err(PriceEstimationError::NoLiquidity) => true,
-                _ => false,
+            // Below 1,000 atoms, integer truncation alone can distort the
+            // inverse price by more than 0.1%. Price the output in reverse.
+            let reverse_amount = match &estimate {
+                Ok(estimate) if estimate.out_amount < alloy::primitives::U256::from(1_000) => {
+                    Some(NonZeroU256::try_from(estimate.out_amount).unwrap_or(NonZeroU256::ONE))
+                }
+                Err(PriceEstimationError::NoLiquidity) => Some(NonZeroU256::ONE),
+                _ => None,
             };
             let remaining = timeout.saturating_sub(started.elapsed());
-            if self.native_token_unit_scale != 1 && no_output && !remaining.is_zero() {
-                // A low-decimal token's smallest unit can cost more than the
-                // native probe. Try selling that unit once, within the deadline.
+            if let Some(in_amount) = reverse_amount.filter(|_| self.native_token_unit_scale != 1) {
+                if remaining.is_zero() {
+                    return Err(PriceEstimationError::NoLiquidity);
+                }
+                // At most one reverse probe, within the original deadline.
                 query = Arc::new(Query {
                     sell_token: token,
                     buy_token: self.native_token,
-                    in_amount: NonZeroU256::ONE,
+                    in_amount,
                     timeout: remaining,
                     ..(*query).clone()
                 });
@@ -180,7 +186,12 @@ mod tests {
     use {
         super::*,
         crate::{Estimate, HEALTHY_PRICE_ESTIMATION_TIME, MockPriceEstimating},
+        crate::{
+            competition::{CompetitionEstimator, PriceRanking},
+            sanitized::SanitizedPriceEstimator,
+        },
         alloy::primitives::{Address, U256},
+        bad_tokens::list_based::DenyListedTokens,
         std::str::FromStr,
     };
 
@@ -346,6 +357,110 @@ mod tests {
                 Err(PriceEstimationError::NoLiquidity | PriceEstimationError::RateLimited)
             ));
         }
+    }
+
+    #[tokio::test]
+    async fn arc_competes_before_inverting_and_reverse_prices_coarse_outputs() {
+        // Ordinary prices use the route with most token output. Coarse prices
+        // use the route with most USDC output on one bounded reverse probe.
+        for (outputs, reverse_outputs, expected, calls) in [
+            ([500_000u64, 1_000_000], [0u64, 0], 1e12, 1),
+            ([1_000, 2_000], [0, 0], 5e14, 1),
+            ([1, 1], [500_000, 600_000], 6e17, 2),
+            ([998, 999], [899_100, 999_000], 1e15, 2),
+            ([0, 0], [9_000_000, 10_000_000], 1e19, 2),
+        ] {
+            let drivers = outputs
+                .into_iter()
+                .zip(reverse_outputs)
+                .enumerate()
+                .map(|(i, (output, reverse_output))| {
+                    let mut inner = MockPriceEstimating::new();
+                    inner
+                        .expect_estimate()
+                        .times(calls)
+                        .returning(move |query| {
+                            let native_input = query.sell_token == Address::with_last_byte(7);
+                            if !native_input {
+                                assert_eq!(query.in_amount.get(), U256::from(outputs[1].max(1)));
+                                assert!(query.timeout <= HEALTHY_PRICE_ESTIMATION_TIME);
+                            }
+                            async move {
+                                Ok(Estimate {
+                                    out_amount: U256::from(if native_input {
+                                        output
+                                    } else {
+                                        reverse_output
+                                    }),
+                                    gas: 100,
+                                    ..Default::default()
+                                })
+                            }
+                            .boxed()
+                        });
+                    (i.to_string(), Arc::new(inner) as Arc<dyn PriceEstimating>)
+                })
+                .collect();
+            let competition = CompetitionEstimator::new(vec![drivers], PriceRanking::MaxOutAmount);
+            let estimator = NativePriceEstimator::new(
+                Arc::new(SanitizedPriceEstimator::new(
+                    Arc::new(competition),
+                    Address::with_last_byte(7),
+                    DenyListedTokens::new(vec![]),
+                    true,
+                )),
+                Address::with_last_byte(7),
+                NonZeroU256::try_from(U256::from(1_000_000)).unwrap(),
+                chain::Chain::Arc.native_token_unit_scale(),
+            );
+            assert_eq!(
+                estimator
+                    .estimate_native_price(
+                        Address::with_last_byte(3),
+                        HEALTHY_PRICE_ESTIMATION_TIME
+                    )
+                    .await
+                    .unwrap(),
+                expected
+            );
+            // Identity must bypass competition's zero-gas filter and driver RPC.
+            assert_eq!(
+                estimator
+                    .estimate_native_price(
+                        Address::with_last_byte(7),
+                        HEALTHY_PRICE_ESTIMATION_TIME
+                    )
+                    .await
+                    .unwrap(),
+                1e12
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn arc_rejects_unresolved_prices_when_deadline_is_exhausted() {
+        let mut inner = MockPriceEstimating::new();
+        inner.expect_estimate().times(1).returning(|_| {
+            async {
+                Ok(Estimate {
+                    out_amount: U256::ONE,
+                    ..Default::default()
+                })
+            }
+            .boxed()
+        });
+        let estimator = NativePriceEstimator::new(
+            Arc::new(inner),
+            Address::with_last_byte(7),
+            NonZeroU256::try_from(U256::from(1_000_000)).unwrap(),
+            chain::Chain::Arc.native_token_unit_scale(),
+        );
+        assert!(matches!(
+            estimator
+                .estimate_native_price(Address::with_last_byte(3), Duration::ZERO)
+                .await,
+            Err(PriceEstimationError::NoLiquidity)
+        ));
     }
 
     #[tokio::test]

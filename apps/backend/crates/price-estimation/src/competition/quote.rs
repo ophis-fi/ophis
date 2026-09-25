@@ -1,15 +1,10 @@
 use {
     super::{CompetitionEstimator, PriceRanking, compare_error},
     crate::{
-        Estimate,
-        PriceEstimateResult,
-        PriceEstimating,
-        PriceEstimationError,
-        Query,
+        Estimate, PriceEstimateResult, PriceEstimating, PriceEstimationError, Query,
         QuoteVerificationMode,
     },
     alloy::primitives::{Address, U256},
-    anyhow::Context,
     futures::future::{BoxFuture, FutureExt, TryFutureExt},
     model::order::OrderKind,
     std::{cmp::Ordering, sync::Arc, time::Duration},
@@ -43,6 +38,11 @@ impl PriceEstimating for CompetitionEstimator<Arc<dyn PriceEstimating>> {
 
             let (context, results) = futures::try_join!(get_context, get_results)?;
 
+            let has_zero_output = results.iter().any(|(_, result)| {
+                result
+                    .as_ref()
+                    .is_ok_and(|estimate| estimate.gas > 0 && estimate.out_amount.is_zero())
+            });
             let winner = results
                 .into_iter()
                 .filter(|(_index, r)| r.is_err() || is_reasonable(r))
@@ -55,8 +55,15 @@ impl PriceEstimating for CompetitionEstimator<Arc<dyn PriceEstimating>> {
                         !matches!(self.verification_mode, QuoteVerificationMode::Unverified),
                     )
                 })
-                .with_context(|| "all price estimates were unreasonable (0 gas or 0 out_amount)")
-                .map_err(PriceEstimationError::EstimatorInternal)?;
+                .ok_or_else(|| {
+                    if has_zero_output {
+                        PriceEstimationError::NoLiquidity
+                    } else {
+                        PriceEstimationError::EstimatorInternal(anyhow::anyhow!(
+                            "all price estimates were unreasonable (0 gas or 0 out_amount)"
+                        ))
+                    }
+                })?;
             self.report_winner(&query, query.kind, winner)
         }
         .boxed()
@@ -345,6 +352,30 @@ mod tests {
         )
         .await;
         assert_eq!(best, price(1, 1_000_000));
+    }
+
+    #[tokio::test]
+    async fn zero_output_is_no_liquidity_but_zero_gas_is_malformed() {
+        for (estimates, no_liquidity) in [
+            (vec![price(0, 100), price(0, 200)], true),
+            (vec![price(10, 0)], false),
+        ] {
+            let result = best_response(
+                PriceRanking::MaxOutAmount,
+                OrderKind::Sell,
+                estimates,
+                QuoteVerificationMode::Unverified,
+            )
+            .await;
+            if no_liquidity {
+                assert!(matches!(result, Err(PriceEstimationError::NoLiquidity)));
+            } else {
+                assert!(matches!(
+                    result,
+                    Err(PriceEstimationError::EstimatorInternal(_))
+                ));
+            }
+        }
     }
 
     #[tokio::test]
