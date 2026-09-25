@@ -1,3 +1,4 @@
+import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
 import { mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import lpTokensList from './lpTokensList.json'
@@ -15,6 +16,7 @@ export const LP_TOKEN_LISTS = lpTokensList as Array<ListSourceConfig>
 const _baseTokensLists = mapSupportedNetworks((chainId) => tokensList[chainId])
 export const DEFAULT_TOKENS_LISTS: ListsSourcesByNetwork = {
   ..._baseTokensLists,
+  [ARC_CHAIN_ID]: tokensList['5042'],
   [10 as unknown as SupportedChainId]: tokensList['10' as unknown as keyof typeof tokensList],
   [130 as unknown as SupportedChainId]: tokensList['130' as unknown as keyof typeof tokensList],
   [4663 as unknown as SupportedChainId]: tokensList['4663' as unknown as keyof typeof tokensList],

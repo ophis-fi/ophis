@@ -6481,6 +6481,10 @@ msgstr "{walletName} account changed"
 msgid "Price impact is too high"
 msgstr "Price impact is too high"
 
+#: libs/ui/src/pure/TokenSymbol/index.tsx
+msgid "Circle-issued token: contract address matches Circle's official records"
+msgstr "Circle-issued token: contract address matches Circle's official records"
+
 #: apps/cowswap-frontend/src/legacy/components/Tokens/TokensTable.tsx
 msgid "Value"
 msgstr "Value"

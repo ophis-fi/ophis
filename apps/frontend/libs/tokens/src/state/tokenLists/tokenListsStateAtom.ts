@@ -1,11 +1,16 @@
 import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
 
-import { COW_CDN } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, COW_CDN } from '@cowprotocol/common-const'
 import { atomWithIdbStorage, getJotaiMergerStorage } from '@cowprotocol/core'
 import { mapSupportedNetworks, SupportedChainId } from '@cowprotocol/cow-sdk'
 
-import { DEFAULT_TOKENS_LISTS, LP_TOKEN_LISTS, UNISWAP_TOKENS_LIST } from '../../const/tokensLists'
+import {
+  DEFAULT_TOKENS_LISTS,
+  LP_TOKEN_LISTS,
+  OPHIS_TOKENS_LIST_SOURCE,
+  UNISWAP_TOKENS_LIST,
+} from '../../const/tokensLists'
 import {
   ListSourceConfig,
   ListsSourcesByNetwork,
@@ -19,6 +24,7 @@ import { migrateOphisTokenList } from '../migrations/migrateOphisTokenList'
 const TOKEN_LIST_SRC = `${COW_CDN}/token-lists`
 
 const UNISWAP_TOKEN_LIST_URL: Record<SupportedChainId, string> = {
+  [ARC_CHAIN_ID]: OPHIS_TOKENS_LIST_SOURCE,
   [SupportedChainId.MAINNET]: UNISWAP_TOKENS_LIST,
   [SupportedChainId.GNOSIS_CHAIN]: `${TOKEN_LIST_SRC}/Uniswap.100.json`,
   [SupportedChainId.ARBITRUM_ONE]: `${TOKEN_LIST_SRC}/Uniswap.42161.json`,
