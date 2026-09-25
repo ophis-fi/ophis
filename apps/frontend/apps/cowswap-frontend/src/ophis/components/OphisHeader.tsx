@@ -13,6 +13,8 @@ import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { Link, useLocation } from 'react-router'
 import styled from 'styled-components/macro'
 
+import { useTradeRouteContext } from 'modules/trade'
+
 import { CCTP_ENABLED } from 'common/constants/featureFlags'
 
 import { STEEP_FONT, steep } from '../ds/steep.utils'
@@ -197,6 +199,8 @@ const OtcNavLink = styled(Link)<{ $transparent: boolean }>`
 
 export function OphisHeader({ children, transparent = false, walletConnected = false }: Props): ReactNode {
   const { pathname } = useLocation()
+  const trade = useTradeRouteContext()
+  const bridgeRoute = `/bridge?${new URLSearchParams({ source: trade.chainId || '', token: trade.inputCurrencyId || '' })}`
   const isOtcRoute = /^\/otc(?:\/|$)/.test(pathname)
   const scrolled = useScrollClass(40)
   const { isOtcEnabled } = useFeatureFlags()
@@ -220,7 +224,7 @@ export function OphisHeader({ children, transparent = false, walletConnected = f
         </Wordmark>
         <Right $walletConnected={walletConnected}>
           {CCTP_ENABLED && pathname !== '/bridge' ? (
-            <OtcNavLink to="/bridge" $transparent={transparent}>
+            <OtcNavLink to={bridgeRoute} $transparent={transparent}>
               Bridge
             </OtcNavLink>
           ) : null}

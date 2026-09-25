@@ -9,6 +9,10 @@ jest.mock('@cowprotocol/common-hooks', () => ({
   useFeatureFlags: jest.fn(),
 }))
 
+jest.mock('modules/trade', () => ({
+  useTradeRouteContext: () => ({ chainId: '5042', inputCurrencyId: '0x3600000000000000000000000000000000000000' }),
+}))
+
 jest.mock('../hooks/useScrollClass', () => ({
   useScrollClass: () => false,
 }))

@@ -1,0 +1,406 @@
+import { type Address, type Hex } from 'viem'
+
+// Circle mainnet registry, verified against CCTS and token metadata on all
+// listed chains, 2026-09-25. Registry membership does not imply Circle issuance.
+// Source: https://iris-api.circle.com/v2/cctpx/tokens?pageSize=150
+// Smoke-test and duplicate MCCT registrations are deliberately omitted.
+export const CCTPX_ASSETS = {
+  TSLAon: {
+    homeChainId: 1,
+    tokenId: '0x02d69bcc318cb750f9a95d074432b2ad2c82f62e592a0b4e6f7baf996882105e',
+    manager: '0xae25955edff1a8ae335b9f385e0753f3bede1a12',
+    decimals: 18,
+    addresses: {
+      '1': '0xf6b1117ec07684d3958cad8beb1b302bfd21103f',
+      '5042': '0x7de283100d916cfc7822a7664bcd7e9371e78d32',
+    },
+  },
+  SLVon: {
+    homeChainId: 1,
+    tokenId: '0x04ec2f5c1f9bb6f461f103075c913e40e0a2f2177efe504db4f48b4dff393ee6',
+    manager: '0xc4220334fed86f1bfd076e9bd865cc612f5c4416',
+    decimals: 18,
+    addresses: {
+      '1': '0xf3e4872e6a4cf365888d93b6146a2baa7348f1a4',
+      '5042': '0xf1e9c8ec5ba4f98ccdc44a5d012d06b83fb8fe41',
+    },
+  },
+  Mog: {
+    homeChainId: 1,
+    tokenId: '0x082795116fb8e26d05d63c3cb04853b003d3c4fb97cb26f994431bbe239deb88',
+    manager: '0x77da4014ee23a1a3d4731bf34b5a1386c889cd41',
+    decimals: 18,
+    addresses: {
+      '1': '0xaaee1a9723aadb7afa2810263653a34ba2c21c7a',
+      '5042': '0x890cdd22e41af1788be02922dc51c7f3ce09d70c',
+    },
+  },
+  AAVE: {
+    homeChainId: 1,
+    tokenId: '0x088232c3ed1704e55cb36d4d624851721c7edc7feb1d6f03c46b37039d6371de',
+    manager: '0x017386a04e5dc0e40d26b2c1e3abbd907be4472b',
+    decimals: 18,
+    addresses: {
+      '1': '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9',
+      '5042': '0xb2dceeb933a87ba45875f5587c4455849771810d',
+    },
+  },
+  LDO: {
+    homeChainId: 1,
+    tokenId: '0x11d16372827196c6b042a3f3e39d5ca31ea66186e61cf78ada15c395bce1e1b0',
+    manager: '0x775a35ee21f00e9f4814432e5a792a5f85b7b4a0',
+    decimals: 18,
+    addresses: {
+      '1': '0x5a98fcbea516cf06857215779fd812ca3bef1b32',
+      '5042': '0x24be0c52927404685bb712e1f3856a47e583ca0b',
+    },
+  },
+  LINK: {
+    homeChainId: 1,
+    tokenId: '0x14f80cf1c5d5b09780f0f1c4bc9402da8520661a8f663f05a0d2dbd3da7fb11f',
+    manager: '0x753431171bc0feab9fea73a116d954acb3e772c8',
+    decimals: 18,
+    addresses: {
+      '1': '0x514910771af9ca656af840dff83e8264ecf986ca',
+      '5042': '0x6dbfc59e951034e858a152a0eb107f355084ed8a',
+    },
+  },
+  AMZNon: {
+    homeChainId: 1,
+    tokenId: '0x18933fb5d182c6ebc359a836b1f03d21bee7f1aa399782ceb53c4150a7c9b9a3',
+    manager: '0xf66d30837d6eb5a47884af07ef684003a177ce74',
+    decimals: 18,
+    addresses: {
+      '1': '0xbb8774fb97436d23d74c1b882e8e9a69322cfd31',
+      '5042': '0x1adfa4849ee99c7fc7ebec5844fd682533212323',
+    },
+  },
+  SHIB: {
+    homeChainId: 1,
+    tokenId: '0x1b052a43e401a70bb4ab06fa2e5b7cbc8d47a33a1ac0b6ba2a95ef7c4e5fdfec',
+    manager: '0x788549162a90e505ae04b83bb44bf90320aef454',
+    decimals: 18,
+    addresses: {
+      '1': '0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce',
+      '5042': '0x1798af2fbd2f33dc4ac5518dcb09e5a5789418c5',
+    },
+  },
+  MSFTon: {
+    homeChainId: 1,
+    tokenId: '0x1b92eb84644b9d63a651a05cbbad237d6e52c67d5d031c09806e75d264b4f77d',
+    manager: '0x7b01ad7cb7de047562116556df0641e6c63610a1',
+    decimals: 18,
+    addresses: {
+      '1': '0xb812837b81a3a6b81d7cd74cfb19a7f2784555e5',
+      '5042': '0x2dbe7d8a69f03a400b04f6f0e66e5c07139473a6',
+    },
+  },
+  CRCLon: {
+    homeChainId: 1,
+    tokenId: '0x3647e065ddafd0acb5cf82fd4baded195cc5bb5d16c76a27a1ea4c9a8826db31',
+    manager: '0x53da28adc98c8ee19f7c209bf8ff68428e609053',
+    decimals: 18,
+    addresses: {
+      '1': '0x3632dea96a953c11dac2f00b4a05a32cd1063fae',
+      '5042': '0x543f1e0fca332eb3a5f668207a2f54934c1e2296',
+    },
+  },
+  ONDO: {
+    homeChainId: 1,
+    tokenId: '0x383d5ff225159b357b9c22f60fe262e17e0800360a364855fd624a0b26a73b24',
+    manager: '0x11a967989a27807a6ffcb7d452f4c5b498d08a15',
+    decimals: 18,
+    addresses: {
+      '1': '0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3',
+      '5042': '0x5a1dfb15d0e2edf47618702cee0dbb256fe5d058',
+    },
+  },
+  ENA: {
+    homeChainId: 1,
+    tokenId: '0x3a53c99271bea5c86e4ab8af335990b99c7d4ce1d4bf0bbd3b3193983a0dbaf7',
+    manager: '0x0feb950e7aad64edc512c9bc577acd933ea68e85',
+    decimals: 18,
+    addresses: {
+      '1': '0x57e114b691db790c35207b2e685d4a43181e6061',
+      '5042': '0x039495ae4600721dde131e6bbd9caaeedc2f8b0b',
+    },
+  },
+  GOOGLon: {
+    homeChainId: 1,
+    tokenId: '0x3adbbfb78811da89d5c8024449d22486df880b07c05c1d8a178b393fe96c031b',
+    manager: '0xff7247c1a3b205ad5ce08af2ba5930a251410fc4',
+    decimals: 18,
+    addresses: {
+      '1': '0xba47214edd2bb43099611b208f75e4b42fdcfedc',
+      '5042': '0x52097cece2da600dc238b10c22f8c494c595d71b',
+    },
+  },
+  cirBTC: {
+    tokenId: '0x3d26699fb5d40190fc3fa0dcbc1cd24e558355043c1997572ff9fd6efbb3fdca',
+    manager: '0xa1db0fda2d1bfebe2e5701fe73b252bc2b25700e',
+    decimals: 8,
+    addresses: {
+      '1': '0x72dfb2e44f59c5ad2bafe84314e5b99a7cd5075e',
+      '5042': '0x171a4217b86a807a64eb94757db6849fb4bdbaa0',
+    },
+  },
+  MORPHO: {
+    homeChainId: 1,
+    tokenId: '0x41c156675c3a877f102035ed28223b485b95b1d665282e587ca92c492e30af84',
+    manager: '0x6d9b7b29932105a4ef523eec4d9dcf43e5848288',
+    decimals: 18,
+    addresses: {
+      '1': '0x58d97b57bb95320f9a05dc918aef65434969c2b2',
+      '5042': '0xccb689378588a247f186a0500830d1c8c4c4e52e',
+    },
+  },
+  AAPLon: {
+    homeChainId: 1,
+    tokenId: '0x539857939bbeb892fadffda36df98e772c74b2034d8f5ee30905fd51c6a517fd',
+    manager: '0x516370b9b2b2f83afb6af1e971028df18744550d',
+    decimals: 18,
+    addresses: {
+      '1': '0x14c3abf95cb9c93a8b82c1cdcb76d72cb87b2d4c',
+      '5042': '0x7042f907266d5ff1c57529d36f9e8c731b569c10',
+    },
+  },
+  PENDLE: {
+    homeChainId: 1,
+    tokenId: '0x5748302c2d9fc1990c2153c917b81a3ae1d085d66615752dda3e04512456adf3',
+    manager: '0x2adb2aeeb129bca541370f2ce965f13b3b23962b',
+    decimals: 18,
+    addresses: {
+      '1': '0x808507121b80c02388fad14726482e061b8da827',
+      '5042': '0xa7a02ab57ff4f49f060da6da0faad1f28ea94d25',
+    },
+  },
+  WETH: {
+    homeChainId: 1,
+    tokenId: '0x5c2cf12eccf48ab63313169ce192dc00af7c37a58bbc546ba4becf54df4962ea',
+    manager: '0x8b86d0a92d779bbcc3208a98df0ab1926b3ac4dd',
+    decimals: 18,
+    addresses: {
+      '1': '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+      '5042': '0x128cc466b61f542da60c70e3aa11c10e19b84edb',
+    },
+  },
+  ETHFI: {
+    homeChainId: 1,
+    tokenId: '0x5ed4078ba4127c0ba9e4e8e5d7102a7aff6a8356b3f5e1bc5131e88e56b3b073',
+    manager: '0x3b83853061cd7906cde68bbb7eac07047518044b',
+    decimals: 18,
+    addresses: {
+      '1': '0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb',
+      '5042': '0xbd12a81704dd685026311700183b0584c358d244',
+    },
+  },
+  UNI: {
+    homeChainId: 1,
+    tokenId: '0x6421b4cceb4a9a17ef5f10ff090cd948ae28d1668630756946cafea063586c9f',
+    manager: '0x1d964555dd3afc28725bff2cafda6dde6fa73903',
+    decimals: 18,
+    addresses: {
+      '1': '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984',
+      '5042': '0xdb88be9e557cd02efae5c84194dbab54fb38438c',
+    },
+  },
+  PEPE: {
+    homeChainId: 1,
+    tokenId: '0x697fe49c1501b47a3f132867a9d763791f2b888ad8f5a512fecc59927a9b0c3f',
+    manager: '0xea8587e6d8b37b36f016477b40e2ccaf67accd47',
+    decimals: 18,
+    addresses: {
+      '1': '0x6982508145454ce325ddbe47a25d4ec3d2311933',
+      '5042': '0x4965ed9411cd778c5954b7b23f51fe9a3f05f26e',
+    },
+  },
+  EURC: {
+    tokenId: '0x6ca9e29fa53becc29becaf4a90b9ca7a995ad4d2234880da13ca38c657fb241c',
+    manager: '0x8c27579e24f9f19d96724e19fc059dacd1469e10',
+    decimals: 6,
+    addresses: {
+      '1': '0x1abaea1f7c830bd89acc67ec4af516284b1bc33c',
+      '8453': '0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42',
+      '5042': '0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1',
+    },
+  },
+  VIRTUAL: {
+    homeChainId: 1,
+    tokenId: '0x71c09869f5ff03cf3cdb2e73c56482aa6e0beada22fd6d3c304c6f7aa61a08f0',
+    manager: '0x1d71ef8b3caccee44c239427e7de9f4e961f5301',
+    decimals: 18,
+    addresses: {
+      '1': '0x44ff8620b8ca30902395a7bd3f2407e1a091bf73',
+      '5042': '0x3f1edbef6f66e0e516dfeb74dbd4a12113bf9034',
+    },
+  },
+  PAXG: {
+    homeChainId: 1,
+    tokenId: '0x7262df93409b3a36427a14e0c7303ed0f8d3b7eaae85df8ff0bafca9b5c1a3a9',
+    manager: '0x3f6c956e43fe44cd79f421ef0417e70331fd9908',
+    decimals: 18,
+    addresses: {
+      '1': '0x45804880de22913dafe09f4980848ece6ecbaf78',
+      '5042': '0xa3e0fa586126ae154712faff3c3573e708e901cf',
+    },
+  },
+  ENS: {
+    homeChainId: 1,
+    tokenId: '0x75652badbe7972ba76e4d9a29b8b71ee268663af667f4b5dd34b794c2f14f4b7',
+    manager: '0xc083a38dfa20362ca46627d6ab684b99b02f2f69',
+    decimals: 18,
+    addresses: {
+      '1': '0xc18360217d8f7ab5e7c516566761ea12ce7f9d72',
+      '5042': '0xbc0722a2c720e63f6183f4699e5a961ee004ec11',
+    },
+  },
+  RNDR: {
+    homeChainId: 1,
+    tokenId: '0x7d00fb87f8f05b144cfd903ff8fb032d09fa1af5d504374037a7bd8f449e53ca',
+    manager: '0xc71a51d0ad5938c6f761468cb87815a50c081ab2',
+    decimals: 18,
+    addresses: {
+      '1': '0x6de037ef9ad2725eb40118bb1702ebb27e4aeb24',
+      '5042': '0x4ea93cf492bdddad4282c2bf32b44fbfe1192fb3',
+    },
+  },
+  TRX: {
+    homeChainId: 1,
+    tokenId: '0x8c6d918a8cadc1d77991bdcaa5c75e12ce189653fce05a6088c4ac934d30eafe',
+    manager: '0x0748d793a03e855eff7a1e7133c0f3883053e748',
+    decimals: 6,
+    addresses: {
+      '1': '0x50327c6c5a14dcade707abad2e27eb517df87ab5',
+      '5042': '0x0fbbb24c4801fb3834cff643901eabfa59490593',
+    },
+  },
+  XAUt: {
+    homeChainId: 1,
+    tokenId: '0xa3b4102964d1d6151cbfba370378d4ac7c98550b0a03a90345ad8b736b6f0ff1',
+    manager: '0x59f98ded86d4e5759b8fd16b44273553c26ee77f',
+    decimals: 6,
+    addresses: {
+      '1': '0x68749665ff8d2d112fa859aa293f07a622782f38',
+      '5042': '0xb8777ad70c0116b21810bc938b1b28a130319e89',
+    },
+  },
+  FET: {
+    homeChainId: 1,
+    tokenId: '0xa6288714e8ad6de96b60b7d2ff5530117f6fa34f1b0e88e2cf58e6284d71bd22',
+    manager: '0x21573eaa644e542ff7f6656be1434043179c6484',
+    decimals: 18,
+    addresses: {
+      '1': '0xaea46a60368a7bd060eec7df8cba43b7ef41ad85',
+      '5042': '0xe1f05945bc9a16d976af1e21546dae45c492fded',
+    },
+  },
+  SPX: {
+    homeChainId: 1,
+    tokenId: '0xa676a71c32865c1b8ce37802658f5dc02cf8afaa0cdb93b87e2879da81abc035',
+    manager: '0x469501ae090bcfe2282e7c0ca23f27c0db21332d',
+    decimals: 8,
+    addresses: {
+      '1': '0xe0f63a424a4439cbe457d80e4f4b51ad25b2c56c',
+      '5042': '0x45b51bc9bc13f6756ad8d4955635a1d4beacd639',
+    },
+  },
+  COINon: {
+    homeChainId: 1,
+    tokenId: '0xbfa80bd308da93764278049b4614025db9bfcf629c862e3bb48c9fdec9f154ee',
+    manager: '0x59b3098a499e67a9b104ead1f77998b1fab389d7',
+    decimals: 18,
+    addresses: {
+      '1': '0xf042cfa86cf1d598a75bdb55c3507a1f39f9493b',
+      '5042': '0x090816b08e9edba445835cba3af774117ff0a865',
+    },
+  },
+  EIGEN: {
+    homeChainId: 1,
+    tokenId: '0xc24d472b3cb6a2a19c5b5462a023a142e1d091d70a7e478a5c8967dc85c0b43d',
+    manager: '0x29af02cbc4c0de53b9f999c7f531b571ee432407',
+    decimals: 18,
+    addresses: {
+      '1': '0xec53bf9167f50cdeb3ae105f56099aaab9061f83',
+      '5042': '0xb806e57506c73d42abd58e3a80f239c7aa037b15',
+    },
+  },
+  ARGUS: {
+    homeChainId: 8453,
+    tokenId: '0xc476e1fea404e28b324c727a1bba343ab29413af46f01ea9ce16b2f7838f7c54',
+    manager: '0x0af07ddfd8f1ea073f780981895f5970705cf42f',
+    decimals: 18,
+    addresses: {
+      '8453': '0x6fde9ed3802af7e95f4fcb36fde2f57ea6bc3e68',
+      '5042': '0xece5ca8bf9220718e5727754026757512212cb3c',
+    },
+  },
+  WLD: {
+    homeChainId: 1,
+    tokenId: '0xcbd9ac1a88429daa4d633d5ff33113845f516b1f3d6a5ffce59c403b2582470a',
+    manager: '0xf491b7b16f1264dec94d90142437dbd508857bc3',
+    decimals: 18,
+    addresses: {
+      '1': '0x163f8c2467924be0ae7b5347228cabf260318753',
+      '5042': '0x3b08162074b447cfae5c75d8c9df30c7cb804da4',
+    },
+  },
+  NVDAon: {
+    homeChainId: 1,
+    tokenId: '0xcfd8957c3edb3bf7ce5d72df3cf047a58f01fc44cc0223b3a111b1135762b444',
+    manager: '0x8582133d6561dcb43af8c4d2ff6e48c7eaa7cf44',
+    decimals: 18,
+    addresses: {
+      '1': '0x2d1f7226bd1f780af6b9a49dcc0ae00e8df4bdee',
+      '5042': '0x65a70add2abe2051373a92f4a951d34eefdffa90',
+    },
+  },
+  SOL: {
+    homeChainId: 1,
+    tokenId: '0xd0dec03ef1ae8a1c24aa6d63e321807170a4974490ca70518c819b1f27a5738b',
+    manager: '0xd5a6b0e7f6c663b0d0723b9072a95679d3c0aed6',
+    decimals: 9,
+    addresses: {
+      '1': '0xd31a59c85ae9d8edefec411d448f90841571b89c',
+      '5042': '0x871120a830959b79761851764b06a658d1f589c9',
+    },
+  },
+  SPYon: {
+    homeChainId: 1,
+    tokenId: '0xd7058b0f60f69692b5bdb94ae870b00d0c2fdf77b90e8ee13c0e8a4e6a30ff6b',
+    manager: '0xd493543715e8a908bf29d532496e3c3fc1b5b12c',
+    decimals: 18,
+    addresses: {
+      '1': '0xfedc5f4a6c38211c1338aa411018dfaf26612c08',
+      '5042': '0x9ea7792cd23f69327fab2008f3e5c9c567bd1140',
+    },
+  },
+  SPCXon: {
+    homeChainId: 1,
+    tokenId: '0xea1d9e5fdda47401443d3cfecf71b76a9829dda7496f991b7506798556510063',
+    manager: '0xeffff058257afd923a225d06dbedfdc8f7c39dec',
+    decimals: 18,
+    addresses: {
+      '1': '0xc9eef266834730340a55b6cc24621b31baf55581',
+      '5042': '0xb5ed2be7d25174698f9017b63f3a883e04b042bb',
+    },
+  },
+  MSTRon: {
+    homeChainId: 1,
+    tokenId: '0xfe1a52a800c2dbf21bfe2c0f0d554518e162b1e908ba0163be0e0f9a7ca54658',
+    manager: '0xc29693ac717f2ee9e1412d74520def9d807f8d30',
+    decimals: 18,
+    addresses: {
+      '1': '0xcabd955322dfbf94c084929ac5e9eca3feb5556f',
+      '5042': '0x2fd4b76734d9a48b419f7bbb072fb5cfaddb1c2a',
+    },
+  },
+} as const satisfies Record<
+  string,
+  {
+    homeChainId?: number
+    tokenId: Hex
+    manager: Address
+    decimals: number
+    addresses: Partial<Record<number, Address>>
+  }
+>

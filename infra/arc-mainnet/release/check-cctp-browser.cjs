@@ -18,36 +18,60 @@ const build = root + '/apps/frontend/build/cowswap',
 const live = process.argv.includes('--live'),
   mobile = process.argv.includes('--webkit');
 const asset = process.argv.find((x) => x.startsWith('--asset='))?.split('=')[1] || 'USDC';
-assert(['USDC', 'EURC', 'cirBTC'].includes(asset));
-const expanded = asset !== 'USDC',
-  btc = asset === 'cirBTC';
-const destination = btc ? 1 : 8453,
-  domain = btc ? 0 : 6;
-const amount = btc ? 200000000 : 2000000;
+const fixtures = {
+  "EURC": {
+    "decimals": 6,
+    "destination": 8453,
+    "domain": 6,
+    "token": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+    "destinationToken": "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42",
+    "manager": "0x8c27579e24f9f19d96724e19fc059dacd1469e10",
+    "tokenId": "0x6ca9e29fa53becc29becaf4a90b9ca7a995ad4d2234880da13ca38c657fb241c",
+    "networks": 3
+  },
+  "cirBTC": {
+    "decimals": 8,
+    "destination": 1,
+    "domain": 0,
+    "token": "0x171a4217b86a807a64eb94757db6849fb4bdbaa0",
+    "destinationToken": "0x72dfb2e44f59c5ad2bafe84314e5b99a7cd5075e",
+    "manager": "0xa1db0fda2d1bfebe2e5701fe73b252bc2b25700e",
+    "tokenId": "0x3d26699fb5d40190fc3fa0dcbc1cd24e558355043c1997572ff9fd6efbb3fdca",
+    "networks": 2
+  },
+  "WETH": {
+    "decimals": 18,
+    "destination": 1,
+    "domain": 0,
+    "token": "0x128cc466b61f542da60c70e3aa11c10e19b84edb",
+    "destinationToken": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+    "manager": "0x8b86d0a92d779bbcc3208a98df0ab1926b3ac4dd",
+    "tokenId": "0x5c2cf12eccf48ab63313169ce192dc00af7c37a58bbc546ba4becf54df4962ea",
+    "networks": 2
+  },
+  "ARGUS": {
+    "decimals": 18,
+    "destination": 8453,
+    "domain": 6,
+    "token": "0xece5ca8bf9220718e5727754026757512212cb3c",
+    "destinationToken": "0x6fde9ed3802af7e95f4fcb36fde2f57ea6bc3e68",
+    "manager": "0x0af07ddfd8f1ea073f780981895f5970705cf42f",
+    "tokenId": "0xc476e1fea404e28b324c727a1bba343ab29413af46f01ea9ce16b2f7838f7c54",
+    "networks": 2
+  }
+};
+assert(asset === 'USDC' || fixtures[asset]);
+const expanded = asset !== 'USDC', fixture = fixtures[asset];
+const decimals = fixture?.decimals ?? 6;
+const destination = fixture?.destination ?? 8453, domain = fixture?.domain ?? 6;
+const amount = 2n * 10n ** BigInt(decimals);
 const fee = expanded ? 10000000000000000n : 0n;
 const owner = '0x0494f503912c101bfd76b88e4f5d8a33de284d1a',
-  TM = expanded
-    ? '0x431871229103b780868f8c6bb820cd16ecf942bc'
-    : '0x28b5a0e9c621a5badaa536219b3a228c8168cf5d',
+  TM = expanded ? '0x431871229103b780868f8c6bb820cd16ecf942bc' : '0x28b5a0e9c621a5badaa536219b3a228c8168cf5d',
   MT = '0x81d40f21f12a8f0e3252bccb954d722d4c464b64';
-const TOKEN = btc
-  ? '0x171a4217b86a807a64eb94757db6849fb4bdbaa0'
-  : expanded
-    ? '0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1'
-    : '0x3600000000000000000000000000000000000000';
-const DEST_TOKEN = btc
-  ? '0x72dfb2e44f59c5ad2bafe84314e5b99a7cd5075e'
-  : expanded
-    ? '0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42'
-    : '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
-const manager = btc
-  ? '0xa1db0fda2d1bfebe2e5701fe73b252bc2b25700e'
-  : expanded
-    ? '0x8c27579e24f9f19d96724e19fc059dacd1469e10'
-    : TM;
-const tokenId = btc
-  ? '0x3d26699fb5d40190fc3fa0dcbc1cd24e558355043c1997572ff9fd6efbb3fdca'
-  : '0x6ca9e29fa53becc29becaf4a90b9ca7a995ad4d2234880da13ca38c657fb241c';
+const TOKEN = fixture?.token ?? '0x3600000000000000000000000000000000000000';
+const DEST_TOKEN = fixture?.destinationToken ?? '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
+const manager = fixture?.manager ?? TM, tokenId = fixture?.tokenId;
 const burnHash = '0x' + 'ab'.repeat(32),
   approvalHash = '0x' + 'cd'.repeat(32),
   mintHash = '0x' + 'ef'.repeat(32),
@@ -190,10 +214,18 @@ function rpc(item, chain) {
     const input = params[0]?.data || params[0]?.input || '';
     const selector = input.slice(0, 10);
     result = toWord(0);
-    if (selector === '0x313ce567') result = toWord(btc ? 8 : 6);
+    if (selector === '0x313ce567') result = toWord(decimals);
     if (selector === v.toFunctionSelector('localDomain()'))
       result = toWord(chain === 5042 ? 26 : domain);
-    if (selector === '0x70a08231') result = toWord(amount * 5);
+    if (selector === '0xa9059cbb') {
+      const transfer = v.decodeFunctionData({ abi: v.erc20Abi, data: input });
+      assert.equal(params[0].from.toLowerCase(), manager);
+      assert.equal(params[0].to.toLowerCase(), DEST_TOKEN);
+      assert.equal(transfer.args[0].toLowerCase(), owner);
+      assert.equal(transfer.args[1], amount);
+      result = toWord(1);
+    }
+    if (selector === '0x70a08231') result = toWord(amount * 5n);
     if (selector === '0xdd62ed3e') result = toWord(approved ? amount : 0);
     if (selector === v.toFunctionSelector('resolveTokenAddress(bytes32)'))
       result = v.pad(chain === 5042 ? TOKEN : DEST_TOKEN);
@@ -403,7 +435,7 @@ function rpc(item, chain) {
     );
     assert.equal(
       await page.getByRole('combobox', { name: /^From/ }).locator('option').count(),
-      btc ? 2 : expanded ? 3 : 6,
+      fixture?.networks ?? 6,
     );
     await page.getByRole('combobox', { name: /^To/ }).selectOption(String(destination));
     await page.getByRole('combobox', { name: /^From/ }).selectOption('5042');

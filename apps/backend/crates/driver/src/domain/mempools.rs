@@ -11,6 +11,10 @@ use {
     ethrpc::block_stream::into_stream,
     futures::{FutureExt, StreamExt, future::select_ok},
     num::Saturating,
+    std::{
+        collections::HashMap,
+        sync::{Arc, Mutex},
+    },
     thiserror::Error,
     tracing::Instrument,
 };
@@ -41,11 +45,33 @@ pub enum SubmissionMode {
     },
 }
 
+/// Shared by every lane in a driver; only configured signing accounts enter this map.
+#[derive(Debug, Clone, Default)]
+struct SubmissionLocks(Arc<Mutex<HashMap<eth::Address, Arc<tokio::sync::Mutex<()>>>>>);
+
+impl SubmissionLocks {
+    async fn acquire(&self, mode: &SubmissionMode) -> tokio::sync::OwnedMutexGuard<()> {
+        let signer = match mode {
+            SubmissionMode::Direct(signer) => *signer,
+            SubmissionMode::Delegated { submitter_eoa, .. } => *submitter_eoa,
+        };
+        let lock = self
+            .0
+            .lock()
+            .expect("signer registry only allocates locks; no external calls")
+            .entry(signer)
+            .or_default()
+            .clone();
+        lock.lock_owned().await
+    }
+}
+
 /// The mempools used to execute settlements.
 #[derive(Debug, Clone)]
 pub struct Mempools {
     mempools: Vec<infra::Mempool>,
     ethereum: Ethereum,
+    submission_locks: SubmissionLocks,
 }
 
 impl Mempools {
@@ -60,7 +86,11 @@ impl Mempools {
             // observe::init_mempool_metric_children).
             let names: Vec<String> = mempools.iter().map(|m| m.to_string()).collect();
             observe::init_mempool_metric_children(&names);
-            Ok(Self { mempools, ethereum })
+            Ok(Self {
+                mempools,
+                ethereum,
+                submission_locks: SubmissionLocks::default(),
+            })
         }
     }
 
@@ -70,6 +100,14 @@ impl Mempools {
         submission_deadline: BlockNo,
         mode: &SubmissionMode,
     ) -> Result<eth::TxId, Error> {
+        // Hold across nonce reads, every mempool broadcast and cancellation.
+        // Competition-local slots cannot serialize different lanes sharing a signer.
+        let _signer_guard = self.submission_locks.acquire(mode).await;
+        if BlockNo(self.ethereum.current_block().borrow().number) >= submission_deadline {
+            return Err(
+                anyhow::anyhow!("submission deadline passed while waiting for signer").into(),
+            );
+        }
         let (submission, _remaining_futures) = select_ok(self.mempools.iter().map(|mempool| {
             async move {
                 let result = self
@@ -509,7 +547,9 @@ impl Mempools {
 
         let futures = self.mempools.iter().map(|mempool| async move {
             let mempool_label = mempool.to_string();
-            let result = self.cancel(mempool, original_tx_gas_price, signer, nonce).await;
+            let result = self
+                .cancel(mempool, original_tx_gas_price, signer, nonce)
+                .await;
             match &result {
                 Ok(tx_id) => {
                     // Sharp-edges M2 (PR #201 review): forensic-grade per-
@@ -804,9 +844,7 @@ fn observe_cancel_cap_violation(estimate: Eip1559Estimation, mempool: &infra::Me
 /// Ties (same category) keep the last-in-order error, preserving the prior
 /// representative-failure behavior. `submitter_cancel_broadcast_failed{reason}`
 /// still increments per-mempool independently for correlation.
-fn aggregate_cancel_broadcast_results(
-    results: Vec<Result<TxId, Error>>,
-) -> Result<TxId, Error> {
+fn aggregate_cancel_broadcast_results(results: Vec<Result<TxId, Error>>) -> Result<TxId, Error> {
     if let Some(tx_id) = results.iter().find_map(|r| r.as_ref().ok().copied()) {
         return Ok(tx_id);
     }
@@ -934,6 +972,36 @@ fn check_cap(estimate: Eip1559Estimation, cap: eth::U256) -> Option<(eth::U256, 
 mod tests {
     use {super::*, alloy::eips::eip1559::Eip1559Estimation};
 
+    #[tokio::test]
+    async fn lanes_share_signer_lock_including_delegated_accounts() {
+        let first_lane = SubmissionLocks::default();
+        let second_lane = first_lane.clone();
+        let signer = eth::Address::repeat_byte(1);
+        let other = eth::Address::repeat_byte(2);
+        let direct = SubmissionMode::Direct(signer);
+        let held = first_lane.acquire(&direct).await;
+        let delegated = SubmissionMode::Delegated {
+            submitter_eoa: signer,
+            solver_eoa: other,
+        };
+        let waiting = second_lane.acquire(&delegated);
+        tokio::pin!(waiting);
+        assert!(futures::poll!(&mut waiting).is_pending());
+        // Distinct signers do not block each other.
+        let independent = second_lane.acquire(&SubmissionMode::Direct(other)).await;
+        drop(independent);
+        drop(held);
+        let acquired = waiting.await;
+        drop(acquired);
+        // Cancelling a waiter leaves the account available.
+        let held = first_lane.acquire(&direct).await;
+        let mut cancelled = Box::pin(second_lane.acquire(&direct));
+        assert!(futures::poll!(&mut cancelled).is_pending());
+        drop(cancelled);
+        drop(held);
+        assert!(futures::poll!(Box::pin(first_lane.acquire(&direct))).is_ready());
+    }
+
     fn estimate(max_fee_per_gas: u128) -> Eip1559Estimation {
         Eip1559Estimation {
             max_fee_per_gas,
@@ -959,10 +1027,7 @@ mod tests {
     fn check_cap_rejects_above_cap() {
         let cap = eth::U256::from(5_000_000_000u128);
         let result = check_cap(estimate(5_000_000_001), cap);
-        assert_eq!(
-            result,
-            Some((eth::U256::from(5_000_000_001u128), cap)),
-        );
+        assert_eq!(result, Some((eth::U256::from(5_000_000_001u128), cap)),);
     }
 
     #[test]
@@ -985,7 +1050,7 @@ mod tests {
     fn check_cap_rejects_when_priority_fee_exceeds_cap() {
         let cap = eth::U256::from(5_000_000_000u128);
         let priority_above_cap = Eip1559Estimation {
-            max_fee_per_gas: 1_000_000_000,    // 1 gwei — under cap
+            max_fee_per_gas: 1_000_000_000,          // 1 gwei — under cap
             max_priority_fee_per_gas: 6_000_000_000, // 6 gwei — over cap
         };
         let result = check_cap(priority_above_cap, cap);
@@ -1197,7 +1262,9 @@ mod tests {
     fn aggregate_empty_returns_sentinel_err() {
         let results: Vec<Result<TxId, Error>> = vec![];
         let aggregate = aggregate_cancel_broadcast_results(results);
-        assert!(matches!(&aggregate, Err(Error::Other(e)) if e.to_string().contains("no mempools configured")));
+        assert!(
+            matches!(&aggregate, Err(Error::Other(e)) if e.to_string().contains("no mempools configured"))
+        );
     }
 
     /// F4 race-window proof: aggregator returns Ok even when the FIRST
@@ -1206,7 +1273,9 @@ mod tests {
     #[test]
     fn aggregate_f4_first_mempool_fails_others_succeed() {
         let results = vec![
-            Err(rpc_err("primary mempool A: nonce already consumed by settle race")),
+            Err(rpc_err(
+                "primary mempool A: nonce already consumed by settle race",
+            )),
             Ok(tx(0x42)), // peer mempool B's cancel landed first
         ];
         let aggregate = aggregate_cancel_broadcast_results(results);

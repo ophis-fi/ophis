@@ -3,17 +3,21 @@ import { ReactNode, useState } from 'react'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { PageShell } from 'ophis/ds'
+import { Link, useLocation } from 'react-router'
 
 import { useToggleWalletModal } from 'legacy/state/application/hooks'
 
+import { parameterizeTradeRoute } from 'modules/trade'
 import { Web3Status } from 'modules/wallet'
 
 import { CCTP_ENABLED } from 'common/constants/featureFlags'
+import { Routes } from 'common/constants/routes'
 
-import { CCTP_NETWORKS } from './cctp.const'
+import { CCTP_NETWORKS, cctpNetwork } from './cctp.const'
 import { isCctpOwner } from './cctp.service'
 import * as styledEl from './Cctp.styled'
-import { CCTP_ASSETS, cctpAssetRoute, supportsCctpAsset, type CctpAsset } from './cctpAssets.const'
+import { CCTP_ASSETS, cctpToken, cctpAssetRoute, supportsCctpAsset, type CctpAsset } from './cctpAssets.const'
+import { cctpInitialSelection } from './cctpRoute.utils'
 import { CctpTransferDetails, CctpQuoteDetails } from './CctpTransfer.pure'
 import { useCctpTransfer } from './useCctpTransfer'
 
@@ -21,26 +25,20 @@ function CctpForm(): ReactNode {
   const { account, chainId } = useWalletInfo()
   const connect = useToggleWalletModal()
   const flow = useCctpTransfer()
-  const [asset, setAsset] = useState<CctpAsset>('USDC')
-  const [source, setSource] = useState(8453)
-  const [destination, setDestination] = useState(5042)
+  const { search } = useLocation()
+  const [initial] = useState(() => cctpInitialSelection(search, chainId))
+  const [asset, setAsset] = useState<CctpAsset>(initial.asset)
+  const [source, setSource] = useState(initial.source)
+  const [destination, setDestination] = useState(initial.destination)
   const [amount, setAmount] = useState('')
   return (
     <styledEl.Card aria-label="CCTP token bridge">
       <Web3Status hideConnectButton />
       {flow.transfer ? (
-        <CctpTransferDetails
-          transfer={flow.transfer}
-          status={flow.status}
-          busy={!!flow.busy}
-          canClaim={chainId === flow.transfer.destination && isCctpOwner(flow.transfer.owner, account)}
-          onClaim={flow.claim}
-          onResume={flow.resume}
-          onResumeClaim={flow.resumeClaim}
-          onFinish={flow.finish}
-        />
+        <CctpPendingTransfer flow={flow} />
       ) : (
         <>
+          <CctpSwapFirst initial={initial} />
           <CctpAssetSelect
             value={asset}
             busy={!!flow.busy}
@@ -92,6 +90,9 @@ function CctpForm(): ReactNode {
               ? 'Circle’s forwarding fee is deducted from the amount.'
               : 'Circle’s bridge fee is paid separately in the source network’s native currency.'}
           </p>
+          {asset.endsWith('on') && (
+            <p>Tokenized securities may require issuer eligibility on the destination network.</p>
+          )}
           {account ? (
             <button
               type="button"
@@ -115,6 +116,63 @@ function CctpForm(): ReactNode {
       )}
       {flow.error && <p role="alert">{flow.error}</p>}
     </styledEl.Card>
+  )
+}
+
+function CctpSwapFirst({ initial }: { initial: ReturnType<typeof cctpInitialSelection> }): ReactNode {
+  return (
+    <>
+      {initial.swapFirstToken && (
+        <p>
+          This token has no direct CCTP route.{' '}
+          <Link
+            to={parameterizeTradeRoute(
+              {
+                chainId: String(initial.source),
+                inputCurrencyId: initial.swapFirstToken,
+                outputCurrencyId: cctpToken(initial.source),
+                inputCurrencyAmount: undefined,
+                outputCurrencyAmount: undefined,
+                orderKind: undefined,
+              },
+              Routes.SWAP,
+            )}
+          >
+            Swap it to USDC
+          </Link>
+          , then return here to bridge the USDC. Each step needs your confirmation.
+        </p>
+      )}
+    </>
+  )
+}
+
+function CctpPendingTransfer({ flow }: { flow: ReturnType<typeof useCctpTransfer> }): ReactNode {
+  const { account, chainId } = useWalletInfo()
+  const connect = useToggleWalletModal()
+  const { transfer } = flow
+  if (!transfer) return null
+  return (
+    <CctpTransferDetails
+      transfer={transfer}
+      status={flow.status}
+      busy={!!flow.busy}
+      canClaim={chainId === transfer.destination && isCctpOwner(transfer.owner, account)}
+      onClaim={flow.claim}
+      claimPreparation={
+        !account
+          ? { label: 'Connect wallet', action: connect }
+          : chainId !== transfer.destination && isCctpOwner(transfer.owner, account)
+            ? {
+                label: `Switch to ${cctpNetwork(transfer.destination).chain.name}`,
+                action: () => transfer && flow.switchNetwork(transfer.destination),
+              }
+            : undefined
+      }
+      onResume={flow.resume}
+      onResumeClaim={flow.resumeClaim}
+      onFinish={flow.finish}
+    />
   )
 }
 
@@ -181,7 +239,7 @@ export function CctpPage(): ReactNode {
       width="medium"
       eyebrow="Circle CCTP"
       title="Bridge tokens"
-      lede="Transfer native USDC, EURC, and cirBTC between networks with Circle."
+      lede="Transfer USDC, EURC, cirBTC, WETH and supported tokens between networks with Circle CCTP."
     >
       {CCTP_ENABLED ? <CctpForm /> : <p>CCTP bridging is not enabled on this deployment.</p>}
     </PageShell>

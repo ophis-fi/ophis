@@ -63,12 +63,16 @@ def render(active=False):
     token = (OUT / 'service-token').read_text().strip()
     write('services.env', f'OPHIS_INTER_SERVICE_AUTH_TOKEN={token}\n')
     rpc = 'http://rpc-proxy:4000/main/evm/5042'
+    lanes = ['uniswap-v3', 'kyberswap']
+    price_drivers = ', '.join(f'{{name = "{name}", url = "http://driver:11088/{name}"}}' for name in lanes)
+    drivers = '\n'.join(f'[[drivers]]\nname = "{name}"\nurl = "http://driver:11088/{name}"\naddress = "{cfg["solver"]}"' for name in lanes)
+    native_estimators = ', '.join(f'{{type = "Driver", name = "{name}", url = "http://driver:11088/{name}"}}' for name in lanes)
     contracts = '\n'.join(f'{key} = "{c[value]}"' for key, value in [('settlement', 'settlement'), ('balances', 'Balances'), ('signatures', 'Signatures'), ('hooks', 'HooksTrampoline'), ('balancer-v2-vault', 'vault')]) + f'\nnative-token = "{USDC}"\n'
     common = f'''[database]
 write-url = "postgresql://arc:{password}@postgres:5432/arc"
 max-connections = 4
 [order-quoting]
-price-estimation-drivers = [{{name = "uniswap-v3", url = "http://driver:11088/uniswap-v3"}}]
+price-estimation-drivers = [{price_drivers}]
 [price-estimation]
 amount-to-estimate-prices-with = "1000000"
 quote-verification = "enforce-when-possible"
@@ -107,10 +111,7 @@ max-concurrent-requests = 2
 [ethflow]
 contracts = []
 skip-event-sync = false
-[[drivers]]
-name = "uniswap-v3"
-url = "http://driver:11088/uniswap-v3"
-address = "{cfg['solver']}"
+{drivers}
 [fee-policies]
 policies = []
 [run-loop]
@@ -119,7 +120,7 @@ max-delay = "15s"
 max-winners-per-auction = 1
 submission-deadline = {cfg['submissionDeadlineBlocks']}
 [native-price-estimation]
-estimators = [[{{type = "Driver", name = "uniswap-v3", url = "http://driver:11088/uniswap-v3"}}]]
+estimators = [[{native_estimators}]]
 cache-refresh-interval = "30s"
 prefetch-time = "30s"
 [native-price-estimation.cache]
@@ -127,6 +128,15 @@ max-age = "5m"
 concurrent-requests = 1
 {common}'''
     account = (f'{{ guarded = {{ path = "/run/secrets/solver-key" }}, settlement-targets = [{{ address = "{c["settlement"]}", selectors = ["0x13d79a0b"] }}], require-zero-value = true }}' if active else f'"{cfg["solver"]}"')
+    solver_lanes = '\n'.join(f'''[[solver]]
+name = "{name}"
+endpoint = "http://{name}:7877"
+account = {account}
+relative-slippage = "0.01"
+absolute-slippage = "1000000000000000000"
+skip-liquidity = true
+manage-native-token = {{wrap-address = false, insert-unwraps = false}}
+''' for name in lanes)
     driver = f'''chain-id = 5042
 # Use the node's current gas price; Alloy's 2x base-fee estimate exceeds Arc's reviewed cap.
 gas-estimator = {{estimator = "web3"}}
@@ -138,14 +148,7 @@ gp-v2-settlement = "{c['settlement']}"
 weth = "{USDC}"
 balances = "{c['Balances']}"
 signatures = "{c['Signatures']}"
-[[solver]]
-name = "uniswap-v3"
-endpoint = "http://uniswap-v3:7877"
-account = {account}
-relative-slippage = "0.01"
-absolute-slippage = "1000000000000000000"
-skip-liquidity = true
-manage-native-token = {{wrap-address = false, insert-unwraps = false}}
+{solver_lanes}
 [submission]
 gas-price-cap = "{cfg['maxFeePerGas']}"
 [[submission.mempool]]
@@ -165,7 +168,8 @@ strict-market-output-simulation = "all"
 chain-id = "5042"
 venue = "uniswap-v3"
 '''
-    for name, content in [('orderbook', orderbook), ('autopilot', autopilot), ('driver', driver), ('uniswap-v3', solver)]:
+    kyberswap = solver.replace('venue = "uniswap-v3"', 'client-id = "ophis"')
+    for name, content in [('orderbook', orderbook), ('autopilot', autopilot), ('driver', driver), ('uniswap-v3', solver), ('kyberswap', kyberswap)]:
         tomllib.loads(content)
         write(name + '.toml', content)
     erpc = yaml.safe_load((HERE.parent / 'erpc.yaml').read_text())

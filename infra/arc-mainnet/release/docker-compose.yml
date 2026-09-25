@@ -46,11 +46,15 @@ services:
     <<: *backend
     command: [solvers, --addr, "0.0.0.0:7877", directv3, --config, /config/uniswap-v3.toml]
     depends_on: [rpc-proxy]
+  kyberswap:
+    <<: *backend
+    command: [solvers, --addr, "0.0.0.0:7877", kyberswap, --config, /config/kyberswap.toml]
+    depends_on: [rpc-proxy]
   driver:
     <<: *backend
     command: [driver, --addr, "0.0.0.0:11088", --ethrpc, "http://rpc-proxy:4000/main/evm/5042", --block-stream-poll-interval, 30s, --ethrpc-max-concurrent-requests, "2", --config, /config/driver.toml]
     secrets: [solver-key]
-    depends_on: [uniswap-v3]
+    depends_on: [uniswap-v3, kyberswap]
   autopilot:
     <<: *backend
     command: [autopilot, --config, /config/autopilot.toml]
