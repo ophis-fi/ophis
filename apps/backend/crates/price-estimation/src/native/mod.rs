@@ -7,7 +7,7 @@ use {
     number::nonzero::NonZeroU256,
     std::{
         sync::{Arc, LazyLock},
-        time::Duration,
+        time::{Duration, Instant},
     },
     tracing::instrument,
 };
@@ -20,12 +20,8 @@ mod oneinch;
 mod uniswap_v3;
 
 pub use self::{
-    coingecko::CoinGecko,
-    eip4626::Eip4626,
-    fallback::FallbackNativePriceEstimator,
-    forwarder::Forwarder,
-    oneinch::OneInch,
-    uniswap_v3::UniswapV3,
+    coingecko::CoinGecko, eip4626::Eip4626, fallback::FallbackNativePriceEstimator,
+    forwarder::Forwarder, oneinch::OneInch, uniswap_v3::UniswapV3,
 };
 
 pub type NativePrice = f64;
@@ -101,9 +97,16 @@ impl NativePriceEstimator {
     /// (UniV3 reader, CoinGecko), SELL quotes are still accurate within
     /// 0.5% — the TODO's "shallow liquidity" advantage was theoretical.
     fn query(&self, token: &Address, timeout: Duration) -> Query {
+        // Arc's configured amount is in six-decimal USDC. Spend that native
+        // token amount so an 18-decimal asset is not priced with a dust sale.
+        let (sell_token, buy_token) = if self.native_token_unit_scale != 1 {
+            (self.native_token, *token)
+        } else {
+            (*token, self.native_token)
+        };
         Query {
-            sell_token: *token,
-            buy_token: self.native_token,
+            sell_token,
+            buy_token,
             in_amount: self.price_estimation_amount,
             kind: OrderKind::Sell,
             verification: Default::default(),
@@ -121,9 +124,35 @@ impl NativePriceEstimating for NativePriceEstimator {
         timeout: Duration,
     ) -> futures::future::BoxFuture<'_, NativePriceEstimateResult> {
         async move {
-            let query = Arc::new(self.query(&token, timeout));
-            let estimate = self.inner.estimate(query.clone()).await?;
-            let price = estimate.price_in_buy_token_f64(&query) * self.native_token_unit_scale as f64;
+            let started = Instant::now();
+            let mut query = Arc::new(self.query(&token, timeout));
+            let mut estimate = self.inner.estimate(query.clone()).await;
+            let no_output = match &estimate {
+                Ok(estimate) => estimate.out_amount.is_zero(),
+                Err(PriceEstimationError::NoLiquidity) => true,
+                _ => false,
+            };
+            let remaining = timeout.saturating_sub(started.elapsed());
+            if self.native_token_unit_scale != 1 && no_output && !remaining.is_zero() {
+                // A low-decimal token's smallest unit can cost more than the
+                // native probe. Try selling that unit once, within the deadline.
+                query = Arc::new(Query {
+                    sell_token: token,
+                    buy_token: self.native_token,
+                    in_amount: NonZeroU256::ONE,
+                    timeout: remaining,
+                    ..(*query).clone()
+                });
+                estimate = self.inner.estimate(query.clone()).await;
+            }
+            let estimate = estimate?;
+            let ratio = estimate.price_in_buy_token_f64(&query);
+            let price =
+                if self.native_token_unit_scale != 1 && query.sell_token == self.native_token {
+                    self.native_token_unit_scale as f64 / ratio
+                } else {
+                    ratio * self.native_token_unit_scale as f64
+                };
             if is_price_malformed(price) {
                 let err = anyhow::anyhow!("estimator returned malformed price: {price}");
                 Err(PriceEstimationError::EstimatorInternal(err))
@@ -158,7 +187,11 @@ mod tests {
     #[tokio::test]
     async fn arc_prices_are_native_atoms_per_erc20_atom() {
         let mut inner = MockPriceEstimating::new();
-        inner.expect_estimate().returning(|_| {
+        inner.expect_estimate().returning(|query| {
+            assert_eq!(query.sell_token, Address::with_last_byte(7));
+            assert_eq!(query.buy_token, Address::with_last_byte(3));
+            assert_eq!(query.in_amount.get(), U256::from(1_000_000));
+            assert_eq!(query.kind, OrderKind::Sell);
             async {
                 Ok(Estimate {
                     out_amount: U256::from(1_000_000),
@@ -185,6 +218,134 @@ mod tests {
         let expected = U256::from(10).pow(U256::from(30));
         // Reference prices use f64; allow rounding, never a 10^12 unit error.
         assert!(normalized.abs_diff(expected) < U256::from(10).pow(U256::from(15)));
+    }
+
+    #[tokio::test]
+    async fn arc_prices_mixed_decimals_and_rejects_invalid_outputs() {
+        // One USDC buys two 6-decimal tokens, 1,000 satoshis, or 0.0005 WETH.
+        for (output, expected) in [
+            (U256::from(2_000_000), Some(5e11)),
+            (U256::from(1_000), Some(1e15)),
+            (U256::from(500_000_000_000_000u64), Some(2e3)),
+            (U256::ZERO, None),
+            (U256::MAX, None),
+        ] {
+            let mut inner = MockPriceEstimating::new();
+            inner
+                .expect_estimate()
+                .times(if output.is_zero() { 2 } else { 1 })
+                .returning(move |query| {
+                    let native_input = query.sell_token == Address::with_last_byte(7);
+                    assert_eq!(
+                        query.in_amount.get(),
+                        U256::from(if native_input { 1_000_000 } else { 1 })
+                    );
+                    async move {
+                        Ok(Estimate {
+                            out_amount: output,
+                            gas: 0,
+                            solver: Address::repeat_byte(1),
+                            verified: false,
+                            execution: Default::default(),
+                        })
+                    }
+                    .boxed()
+                });
+            let estimator = NativePriceEstimator::new(
+                Arc::new(inner),
+                Address::with_last_byte(7),
+                NonZeroU256::try_from(U256::from(1_000_000)).unwrap(),
+                chain::Chain::Arc.native_token_unit_scale(),
+            );
+            let result = estimator
+                .estimate_native_price(Address::with_last_byte(3), HEALTHY_PRICE_ESTIMATION_TIME)
+                .await;
+            match expected {
+                Some(expected) => assert!((result.unwrap() / expected - 1.).abs() < 1e-12),
+                None => assert!(matches!(
+                    result,
+                    Err(PriceEstimationError::EstimatorInternal(_))
+                )),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn arc_prices_low_decimal_tokens_with_one_bounded_fallback() {
+        for zero_output in [false, true] {
+            let mut inner = MockPriceEstimating::new();
+            inner
+                .expect_estimate()
+                .times(1)
+                .withf(|query| query.sell_token == Address::with_last_byte(7))
+                .returning(move |_| {
+                    async move {
+                        if zero_output {
+                            Ok(Estimate::default())
+                        } else {
+                            Err(PriceEstimationError::NoLiquidity)
+                        }
+                    }
+                    .boxed()
+                });
+            inner
+                .expect_estimate()
+                .times(1)
+                .withf(|query| query.sell_token == Address::with_last_byte(3))
+                .returning(|query| {
+                    assert_eq!(query.buy_token, Address::with_last_byte(7));
+                    assert_eq!(query.in_amount, NonZeroU256::ONE);
+                    assert!(query.timeout <= HEALTHY_PRICE_ESTIMATION_TIME);
+                    async {
+                        Ok(Estimate {
+                            out_amount: U256::from(10_000_000),
+                            ..Default::default()
+                        })
+                    }
+                    .boxed()
+                });
+            let estimator = NativePriceEstimator::new(
+                Arc::new(inner),
+                Address::with_last_byte(7),
+                NonZeroU256::try_from(U256::from(1_000_000)).unwrap(),
+                chain::Chain::Arc.native_token_unit_scale(),
+            );
+            let price = estimator
+                .estimate_native_price(Address::with_last_byte(3), HEALTHY_PRICE_ESTIMATION_TIME)
+                .await
+                .unwrap();
+            assert_eq!(price, 1e19); // One indivisible token costs ten native USDC.
+        }
+    }
+
+    #[tokio::test]
+    async fn arc_does_not_retry_rate_limits_or_exhausted_deadlines() {
+        for timeout in [Duration::ZERO, HEALTHY_PRICE_ESTIMATION_TIME] {
+            let mut inner = MockPriceEstimating::new();
+            inner.expect_estimate().times(1).returning(move |_| {
+                async move {
+                    Err(if timeout.is_zero() {
+                        PriceEstimationError::NoLiquidity
+                    } else {
+                        PriceEstimationError::RateLimited
+                    })
+                }
+                .boxed()
+            });
+            let estimator = NativePriceEstimator::new(
+                Arc::new(inner),
+                Address::with_last_byte(7),
+                NonZeroU256::ONE,
+                chain::Chain::Arc.native_token_unit_scale(),
+            );
+            let result = estimator
+                .estimate_native_price(Address::with_last_byte(3), timeout)
+                .await;
+            assert!(matches!(
+                result,
+                Err(PriceEstimationError::NoLiquidity | PriceEstimationError::RateLimited)
+            ));
+        }
     }
 
     #[tokio::test]
