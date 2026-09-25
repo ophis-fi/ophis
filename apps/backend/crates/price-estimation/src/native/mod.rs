@@ -520,26 +520,39 @@ mod tests {
 
     #[tokio::test]
     async fn arc_never_uses_forward_price_when_reverse_fails() {
-        let mut inner = MockPriceEstimating::new();
-        inner.expect_estimate().times(2).returning(|query| {
-            async move {
-                if query.sell_token == Address::with_last_byte(7) {
-                    Ok(Estimate {
-                        out_amount: U256::from(1_000_000),
-                        ..Default::default()
-                    })
-                } else {
-                    Err(PriceEstimationError::RateLimited)
+        for stalled in [false, true] {
+            let mut inner = MockPriceEstimating::new();
+            inner.expect_estimate().times(2).returning(move |query| {
+                async move {
+                    if query.sell_token == Address::with_last_byte(7) {
+                        Ok(Estimate {
+                            out_amount: U256::from(1_000_000),
+                            ..Default::default()
+                        })
+                    } else if stalled {
+                        tokio::time::sleep(query.timeout * 4).await;
+                        Ok(Estimate {
+                            out_amount: U256::from(1_000_000),
+                            ..Default::default()
+                        })
+                    } else {
+                        Err(PriceEstimationError::RateLimited)
+                    }
                 }
+                .boxed()
+            });
+            let result = arc_driver(inner)
+                .estimate_native_price(Address::with_last_byte(3), Duration::from_millis(100))
+                .await;
+            if stalled {
+                assert!(matches!(
+                    result,
+                    Err(PriceEstimationError::EstimatorInternal(_))
+                ));
+            } else {
+                assert!(matches!(result, Err(PriceEstimationError::RateLimited)));
             }
-            .boxed()
-        });
-        assert!(matches!(
-            arc_driver(inner)
-                .estimate_native_price(Address::with_last_byte(3), HEALTHY_PRICE_ESTIMATION_TIME)
-                .await,
-            Err(PriceEstimationError::RateLimited)
-        ));
+        }
     }
 
     #[tokio::test]
