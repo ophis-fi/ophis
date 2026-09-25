@@ -21,6 +21,14 @@ export const ARC_EURC = new TokenWithLogo(
   'EURC',
   'EURC',
 )
+export const ARC_CIRBTC = new TokenWithLogo(
+  undefined,
+  ARC_CHAIN_ID,
+  '0x171A4217b86A807A64eB94757Db6849fb4bDbAA0',
+  8,
+  'cirBTC',
+  'Circle Wrapped Bitcoin',
+)
 export const ARC_LOCAL = process.env.NODE_ENV !== 'production' && process.env.REACT_APP_ARC_LOCAL === 'true'
 export const ARC_RPC_URL = ARC_LOCAL ? 'http://127.0.0.1:8547' : 'https://rpc.mainnet.arc.io'
 export const ARC_LABEL = ARC_LOCAL ? 'Arc (local)' : 'Arc'

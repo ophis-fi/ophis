@@ -16,6 +16,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 LIST = ROOT / "apps/frontend/apps/cowswap-frontend/public/token-lists/ophis.json"
 RPCS = {
+    5042: ["https://rpc.mainnet.arc.io"],
     1: ["https://ethereum-rpc.publicnode.com", "https://eth.drpc.org"],
     10: ["https://optimism-rpc.publicnode.com", "https://mainnet.optimism.io"],
     56: ["https://bsc-rpc.publicnode.com", "https://bsc-dataseed.bnbchain.org"],

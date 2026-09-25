@@ -274,5 +274,12 @@
       "enabledByDefault": true,
       "source": "https://swap.ophis.fi/api/pons-token-list"
     }
+  ],
+  "5042": [
+    {
+      "priority": 1,
+      "enabledByDefault": true,
+      "source": "https://swap.ophis.fi/token-lists/ophis.json"
+    }
   ]
 }
