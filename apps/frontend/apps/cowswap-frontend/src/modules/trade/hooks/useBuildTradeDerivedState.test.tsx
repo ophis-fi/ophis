@@ -27,7 +27,7 @@ jest.mock('modules/usdAmount', () => ({ useTradeUsdAmounts: () => ({ inputAmount
 
 const custom = TokenWithLogo.fromToken({
   chainId: ARC_CHAIN_ID,
-  address: '0x0000000000000000000000000000000000000123',
+  address: '0x000000000000000000000000000000000000abcd',
   decimals: 8,
   symbol: 'CUSTOM',
   name: 'Custom Arc token',
@@ -83,6 +83,18 @@ it.each([null, '_'])(
     expect(result.current.outputCurrency).toBeNull()
   },
 )
+
+it('restores an imported destination from a legacy mixed-case storage key', () => {
+  const store = createStore()
+  const legacyKey = custom.address.toUpperCase().replace('0X', '0x')
+  expect(legacyKey).not.toBe(getAddressKey(custom.address))
+  store.set(userAddedTokensAtom, { [ARC_CHAIN_ID]: { [legacyKey]: custom } })
+  const state = atom({ ...receiveFirst, inputCurrencyId: '_' })
+  const { result } = renderHook(() => useBuildTradeDerivedState(state, true), {
+    wrapper: ({ children }: { children: ReactNode }): ReactNode => <Provider store={store}>{children}</Provider>,
+  })
+  expect(result.current.outputCurrency).toEqual(custom)
+})
 
 it('keeps canonical bridge metadata ahead of destination catalog metadata', () => {
   jest.mocked(useTokensByAddressMapForChain).mockReturnValue({ [getAddressKey(ARC_USDC.address)]: custom })

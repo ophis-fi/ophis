@@ -120,7 +120,9 @@ function useTokenForTargetChain(
     if (!allowCatalogFallback || !targetChainId) return null
     const listedToken = catalog[currencyIdKey]
     if (listedToken) return listedToken
-    const customToken = customTokens[targetChainId]?.[currencyIdKey]
+    const customToken = Object.values(customTokens[targetChainId] || {}).find((token) =>
+      areAddressesEqual(token.address, currencyId),
+    )
     if (customToken?.chainId === targetChainId) return TokenWithLogo.fromToken(customToken, customToken.logoURI)
     return matchingNativeToken
   }, [result.data, currencyId, allowCatalogFallback, targetChainId, catalog, customTokens, matchingNativeToken])
