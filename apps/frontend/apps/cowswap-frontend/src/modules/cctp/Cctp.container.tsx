@@ -12,8 +12,10 @@ import { type useCctpSwapRoute } from './useCctpSwapRoute'
 import { type useCctpTransfer } from './useCctpTransfer'
 
 export function CctpSwapRecovery({ route }: { route: ReturnType<typeof useCctpSwapRoute> }): ReactNode {
-  if (route.active || !route.flow.transfer) return null
-  return <CctpSwapDetails route={route} source={undefined} destination={undefined} amount={undefined} />
+  if (route.active) return null
+  if (route.flow.transfer)
+    return <CctpSwapDetails route={route} source={undefined} destination={undefined} amount={undefined} />
+  return route.asset && route.blocked ? <p role="status">{route.blocked}</p> : null
 }
 
 export function CctpSwapDetails({
