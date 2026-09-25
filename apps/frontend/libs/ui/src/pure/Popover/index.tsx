@@ -64,6 +64,7 @@ export interface PopoverContainerProps {
 }
 
 export interface PopoverProps extends PopoverContainerProps, Omit<React.HTMLAttributes<HTMLDivElement>, 'content'> {
+  inline?: boolean
   content: React.ReactNode
   children: React.ReactNode
   placement?: Placement
@@ -105,9 +106,10 @@ export default function Popover(props: PopoverProps): React.JSX.Element {
     mobileBorderRadius,
     zIndex = 999999,
     forceMount = false,
+    inline = false,
   } = props
 
-  const [referenceElement, setReferenceElement] = useState<HTMLDivElement | null>(null)
+  const [referenceElement, setReferenceElement] = useState<HTMLElement | null>(null)
   const [popperElement, setPopperElement] = useState<HTMLDivElement | null>(null)
   const [arrowElement, setArrowElement] = useState<HTMLDivElement | null>(null)
   const isMobile = useMediaQuery(Media.upToSmall(false))
@@ -141,7 +143,9 @@ export default function Popover(props: PopoverProps): React.JSX.Element {
   const arrowPlacement = (attributes.popper?.['data-popper-placement'] as string | undefined)?.split('-')[0] ?? ''
   return (
     <>
-      <ReferenceElement ref={setReferenceElement}>{children}</ReferenceElement>
+      <ReferenceElement as={inline ? 'span' : 'div'} ref={setReferenceElement}>
+        {children}
+      </ReferenceElement>
       <PopoverPortal
         shouldRender={shouldRenderPortal}
         show={show}

@@ -1,6 +1,6 @@
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
-import { ARC_CIRBTC, ARC_EURC, ARC_USDC } from './arc.const'
+import { ARC_CIRBTC, ARC_EURC, ARC_USDC, ARC_USYC } from './arc.const'
 import {
   USDC_ARBITRUM_ONE,
   USDC_AVALANCHE,
@@ -24,10 +24,12 @@ export interface CircleTokenIdentity {
 // https://developers.circle.com/stablecoins/usdc-contract-addresses
 // https://developers.circle.com/stablecoins/eurc-contract-addresses
 // https://developers.circle.com/assets/cirbtc-contract-addresses
+// https://docs.arc.io/arc/references/contract-addresses
 const CIRCLE_TOKENS = [
   ARC_USDC,
   ARC_EURC,
   ARC_CIRBTC,
+  ARC_USYC,
   USDC_MAINNET,
   USDC_OPTIMISM,
   USDC_UNICHAIN,

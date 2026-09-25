@@ -1,6 +1,7 @@
 import {
   ARC_CHAIN_ID,
   ARC_CIRBTC,
+  ARC_USYC,
   ARC_USDC,
   ARC_EURC,
   ARB_ARBITRUM_ONE,
@@ -136,7 +137,7 @@ export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
     USDT_PLASMA,
     WETH_PLASMA,
   ]),
-  [ARC_CHAIN_ID]: tokensListToMap([ARC_USDC, ARC_EURC, ARC_CIRBTC]),
+  [ARC_CHAIN_ID]: tokensListToMap([ARC_USDC, ARC_EURC, ARC_CIRBTC, ARC_USYC]),
   [SupportedChainId.INK]: tokensListToMap([WRAPPED_NATIVE_CURRENCIES[SupportedChainId.INK], USDT_INK, USDC_INK]),
   // Ophis fork: OP mainnet (chain 10) favorites — WETH + USDC
   [10 as unknown as SupportedChainId]: tokensListToMap([

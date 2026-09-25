@@ -1,4 +1,14 @@
-import { cowprotocolTokenLogoUrl, TokenWithLogo, USDG_LOGO_URL, WETH_MAINNET } from '@cowprotocol/common-const'
+import {
+  ARC_CHAIN_ID,
+  ARC_CIRBTC,
+  ARC_EURC,
+  ARC_USDC,
+  ARC_USYC,
+  cowprotocolTokenLogoUrl,
+  TokenWithLogo,
+  USDG_LOGO_URL,
+  WETH_MAINNET,
+} from '@cowprotocol/common-const'
 import { uriToHttp } from '@cowprotocol/common-utils'
 import { areAddressesEqual, getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -9,6 +19,7 @@ import MPS_LOGO from '../assets/mps.svg'
 const ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
 const ROBINHOOD_USDG_ADDRESS = '0x5fc5360d0400a0fd4f2af552add042d716f1d168'
 const ROBINHOOD_WETH_ADDRESS = '0x0bd7d308f8e1639fab988df18a8011f41eacad73'
+const ARC_CIRCLE_TOKENS = [ARC_USDC, ARC_EURC, ARC_CIRBTC, ARC_USYC]
 export function getTokenLogoUrls(token: TokenWithLogo | undefined): string[] {
   const fallbackUrls = token?.address ? getTokenLogoFallbacks(token.address, token.chainId as SupportedChainId) : []
 
@@ -25,8 +36,15 @@ export function getTokenLogoUrls(token: TokenWithLogo | undefined): string[] {
   return urls
 }
 
+function getArcTokenLogoUrls(address: string, chainId: SupportedChainId): string[] {
+  // Saved favourites and address imports can predate the token-list artwork.
+  if (chainId !== ARC_CHAIN_ID) return []
+  const official = ARC_CIRCLE_TOKENS.find((token) => areAddressesEqual(token.address, address))
+  return official?.logoURI ? [official.logoURI] : []
+}
+
 function getTokenLogoFallbacks(address: string, chainId: SupportedChainId): string[] {
-  const logos: string[] = []
+  const logos = getArcTokenLogoUrls(address, chainId)
   const addressKey = getAddressKey(address)
 
   // Official asset: https://www.mtpelerin.com/brand

@@ -1,4 +1,13 @@
-import { TokenWithLogo, USDG_LOGO_URL, USDG_ROBINHOOD, WETH_MAINNET } from '@cowprotocol/common-const'
+import {
+  ARC_CIRBTC,
+  ARC_EURC,
+  ARC_USDC,
+  ARC_USYC,
+  TokenWithLogo,
+  USDG_LOGO_URL,
+  USDG_ROBINHOOD,
+  WETH_MAINNET,
+} from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { getTokenLogoUrls } from './getTokenLogoUrls'
@@ -9,6 +18,27 @@ const ROBINHOOD_CHAIN_ID = 4663 as unknown as SupportedChainId
 const AAPL = '0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9'
 
 describe('getTokenLogoUrls', () => {
+  it.each([ARC_USDC, ARC_EURC, ARC_CIRBTC, ARC_USYC])(
+    'restores the $symbol logo for saved Arc favourites without artwork',
+    (token) => {
+      const saved = new TokenWithLogo(
+        undefined,
+        token.chainId,
+        token.address.toLowerCase(),
+        token.decimals,
+        token.symbol,
+      )
+      expect(getTokenLogoUrls(saved)[0]).toBe(token.logoURI)
+      const wrongChain = new TokenWithLogo(
+        undefined,
+        SupportedChainId.BASE,
+        token.address,
+        token.decimals,
+        token.symbol,
+      )
+      expect(getTokenLogoUrls(wrongChain)).not.toContain(token.logoURI)
+    },
+  )
   it.each([
     [SupportedChainId.MAINNET, '0x96c645d3d3706f793ef52c19bbace441900ed47d'],
     [SupportedChainId.GNOSIS_CHAIN, '0xfa57aa7beed63d03aaf85ffd1753f5f6242588fb'],

@@ -639,6 +639,10 @@ msgstr "Ophis"
 msgid "I received surplus on"
 msgstr "I received surplus on"
 
+#: libs/ui/src/pure/TokenSymbol/CircleBadge.tsx
+msgid "Official Circle token"
+msgstr "Official Circle token"
+
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/Toggle/Toggle.tsx
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/Toggle/Toggle.tsx
 msgid "Spending limit"
@@ -2232,6 +2236,10 @@ msgstr "On-chain verification failed, so order data is hidden rather than shown 
 #: apps/cowswap-frontend/src/common/pure/CoWAmmBannerContent/GlobalContent/index.tsx
 msgid "Pool analytics"
 msgstr "Pool analytics"
+
+#: libs/ui/src/pure/TokenSymbol/CircleBadge.tsx
+msgid "Contract verified against Circle's registry."
+msgstr "Contract verified against Circle's registry."
 
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/DeadlineTransactionSettings/DeadlineTransactionSettings.container.tsx
 msgid "Swap deadline"
@@ -6047,6 +6055,10 @@ msgstr "for"
 msgid "Default approve"
 msgstr "Default approve"
 
+#: libs/ui/src/pure/TokenSymbol/CircleBadge.tsx
+msgid "Contract verified against Circle's registry. USYC requires an eligible, allowlisted wallet."
+msgstr "Contract verified against Circle's registry. USYC requires an eligible, allowlisted wallet."
+
 #: apps/cowswap-frontend/src/modules/account/pure/OrderFillabilityWarning/index.tsx
 msgid "Order cannot be filled due to insufficient balance on the current account."
 msgstr "Order cannot be filled due to insufficient balance on the current account."
@@ -6480,10 +6492,6 @@ msgstr "{walletName} account changed"
 #: apps/cowswap-frontend/src/modules/tradeFormValidation/pure/TradeFormButtons/tradeButtonsMap.tsx
 msgid "Price impact is too high"
 msgstr "Price impact is too high"
-
-#: libs/ui/src/pure/TokenSymbol/index.tsx
-msgid "Circle-issued token: contract address matches Circle's official records"
-msgstr "Circle-issued token: contract address matches Circle's official records"
 
 #: apps/cowswap-frontend/src/legacy/components/Tokens/TokensTable.tsx
 msgid "Value"

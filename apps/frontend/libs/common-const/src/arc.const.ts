@@ -22,12 +22,20 @@ export const ARC_EURC = new TokenWithLogo(
   'EURC',
 )
 export const ARC_CIRBTC = new TokenWithLogo(
-  undefined,
+  'https://swap.ophis.fi/logos/token-cirbtc.png',
   ARC_CHAIN_ID,
   '0x171A4217b86A807A64eB94757Db6849fb4bDbAA0',
   8,
   'cirBTC',
   'Circle Wrapped Bitcoin',
+)
+export const ARC_USYC = new TokenWithLogo(
+  'https://swap.ophis.fi/logos/token-usyc.svg',
+  ARC_CHAIN_ID,
+  '0x8a5D989Bbb96929F689B0200f435f53dA42bF490',
+  6,
+  'USYC',
+  'USYC (eligible wallets only)',
 )
 export const ARC_LOCAL = process.env.NODE_ENV !== 'production' && process.env.REACT_APP_ARC_LOCAL === 'true'
 export const ARC_RPC_URL = ARC_LOCAL ? 'http://127.0.0.1:8547' : 'https://rpc.mainnet.arc.io'
