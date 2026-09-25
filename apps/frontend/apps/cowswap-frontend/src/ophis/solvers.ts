@@ -34,6 +34,7 @@
 export const OPHIS_SOLVER_REGISTRY_CHAIN_ID = 10
 export const OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID = 130
 export const OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID = 4663
+export const OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID = 5042
 
 export interface OphisStaticSolverInfo {
   /**
@@ -70,6 +71,7 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
       OPHIS_SOLVER_REGISTRY_CHAIN_ID,
       OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID,
       OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
+      OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID,
     ],
   }, // external aggregator
   {
@@ -98,6 +100,7 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   }, // external aggregator
   { solverId: 'curve', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   { solverId: 'woofi', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
+  { solverId: 'uniswap-v3', chainIds: [OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   {
     solverId: 'uniswap-v4',
     chainIds: [
@@ -132,6 +135,7 @@ const OPHIS_SOLVER_NAMES: Record<string, string> = {
   dodo: 'DODO',
   curve: 'Curve',
   woofi: 'WOOFi',
+  'uniswap-v3': 'Uniswap v3',
   'uniswap-v4': 'Uniswap v4',
   velodrome: 'Velodrome',
   'velodrome-slipstream': 'Velodrome Slipstream',
