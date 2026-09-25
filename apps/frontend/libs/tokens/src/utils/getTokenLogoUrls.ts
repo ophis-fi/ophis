@@ -36,15 +36,16 @@ export function getTokenLogoUrls(token: TokenWithLogo | undefined): string[] {
   return urls
 }
 
-function getTokenLogoFallbacks(address: string, chainId: SupportedChainId): string[] {
-  const logos: string[] = []
-  const addressKey = getAddressKey(address)
-
+function getArcTokenLogoUrls(address: string, chainId: SupportedChainId): string[] {
   // Saved favourites and address imports can predate the token-list artwork.
-  if (chainId === ARC_CHAIN_ID) {
-    const official = ARC_CIRCLE_TOKENS.find((token) => areAddressesEqual(token.address, address))
-    if (official?.logoURI) logos.push(official.logoURI)
-  }
+  if (chainId !== ARC_CHAIN_ID) return []
+  const official = ARC_CIRCLE_TOKENS.find((token) => areAddressesEqual(token.address, address))
+  return official?.logoURI ? [official.logoURI] : []
+}
+
+function getTokenLogoFallbacks(address: string, chainId: SupportedChainId): string[] {
+  const logos = getArcTokenLogoUrls(address, chainId)
+  const addressKey = getAddressKey(address)
 
   // Official asset: https://www.mtpelerin.com/brand
   if (
