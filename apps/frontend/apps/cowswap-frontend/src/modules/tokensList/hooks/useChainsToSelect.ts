@@ -44,6 +44,7 @@ export function useChainsToSelect(): ChainsToSelectState | undefined {
 
   const supportedChains = useSupportedChains()
   const supportedTargetChains = useSupportedTargetChains()
+  const selectableChains = field === Field.INPUT ? supportedChains : supportedTargetChains
 
   // When selecting the BUY token, the bridge "source chain" is the SELL token's chain (oppositeToken),
   // not necessarily the wallet network. This keeps chain availability accurate when wallet network != trade network.
@@ -53,7 +54,7 @@ export function useChainsToSelect(): ChainsToSelectState | undefined {
   const destinationChainIds = useMemo(() => supportedTargetChains.map((c) => c.id), [supportedTargetChains])
   const isBuyField = field === Field.OUTPUT
   const routesAvailability = useRoutesAvailability(
-    isBuyField && isBridgingEnabled ? sourceChainId : undefined,
+    isBuyField && oppositeToken && isBridgingEnabled ? sourceChainId : undefined,
     destinationChainIds,
   )
 
@@ -64,10 +65,10 @@ export function useChainsToSelect(): ChainsToSelectState | undefined {
     const chainInfo = CHAIN_INFO[sourceChainId]
     if (!chainInfo) return undefined
 
-    if (field === Field.INPUT) {
+    if (field === Field.INPUT || !oppositeToken) {
       return {
         defaultChainId: selectedTargetChainId,
-        chains: shouldHideNetworkSelector ? [] : sortChainsByDisplayOrder(supportedChains),
+        chains: shouldHideNetworkSelector ? [] : sortChainsByDisplayOrder(selectableChains),
         isLoading: false,
       }
     }
@@ -85,11 +86,12 @@ export function useChainsToSelect(): ChainsToSelectState | undefined {
     })
   }, [
     field,
+    oppositeToken,
     selectedTargetChainId,
     chainId,
     sourceChainId,
     bridgeSupportedNetworks,
-    supportedChains,
+    selectableChains,
     supportedTargetChains,
     isLoading,
     isBridgingEnabled,
