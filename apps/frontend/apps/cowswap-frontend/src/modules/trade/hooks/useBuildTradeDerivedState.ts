@@ -2,7 +2,7 @@ import { Atom, useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 
 import { NATIVE_CURRENCIES, TokenWithLogo } from '@cowprotocol/common-const'
-import { isSupportedChainId, tryParseFractionalAmount } from '@cowprotocol/common-utils'
+import { getCurrencyAddress, isSupportedChainId, tryParseFractionalAmount } from '@cowprotocol/common-utils'
 import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { BuyTokensParams } from '@cowprotocol/sdk-bridging'
@@ -40,8 +40,9 @@ export function useBuildTradeDerivedState(
     return {
       buyChainId: targetChainId,
       sellChainId: sellChainId || undefined,
+      sellTokenAddress: inputCurrency ? getCurrencyAddress(inputCurrency) : undefined,
     }
-  }, [sellChainId, targetChainId])
+  }, [sellChainId, targetChainId, inputCurrency])
 
   const outputCurrencyFromBridge = useTokenForTargetChain(
     buyTokensParams,

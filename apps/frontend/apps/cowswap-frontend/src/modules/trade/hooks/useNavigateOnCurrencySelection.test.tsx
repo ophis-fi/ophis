@@ -285,6 +285,17 @@ describe('useNavigateOnCurrencySelection - cross-chain', () => {
     )
   })
 
+  it.each([true, false])('keeps a new destination only while bridge networks are pending (%s)', (pending) => {
+    mockedUseBridgeSupportedNetworks.mockReturnValue({ data: pending ? undefined : [], isLoading: pending } as never)
+    const { result } = renderHook(() => useNavigateOnCurrencySelection())
+    act(() => result.current(Field.OUTPUT, USDC_GNOSIS))
+    expect(mockNavigate).toHaveBeenCalledWith(
+      SupportedChainId.MAINNET,
+      { inputCurrencyId: WETH_MAINNET.symbol, outputCurrencyId: pending ? USDC_GNOSIS.address : null },
+      pending ? { targetChainId: SupportedChainId.GNOSIS_CHAIN } : {},
+    )
+  })
+
   describe('Chain switching scenarios', () => {
     it('should preserve buy token when selecting input currency from different chain and buy was on same chain as sell', () => {
       // Default state: wallet on Mainnet, sell=WETH_MAINNET, buy=USDC_MAINNET (same-chain swap)

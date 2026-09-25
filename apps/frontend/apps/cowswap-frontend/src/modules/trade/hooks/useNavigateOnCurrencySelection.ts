@@ -57,7 +57,7 @@ export function useNavigateOnCurrencySelection(): CurrencySelectionCallback {
       const isOutputCurrencyBridgeSupported =
         !targetInputCurrency ||
         !targetOutputCurrency ||
-        !!bridgeSupportedNetworks?.some((network) => network.id === targetOutputCurrency.chainId)
+        bridgeSupportedNetworks?.some((network) => network.id === targetOutputCurrency.chainId) !== false
 
       const isBridgeTrade = getAreBridgeCurrencies(targetInputCurrency, targetOutputCurrency)
 

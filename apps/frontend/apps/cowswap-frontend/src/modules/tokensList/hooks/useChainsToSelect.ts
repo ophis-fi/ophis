@@ -19,7 +19,7 @@ import { useSupportedChains } from './useSupportedChains'
 import { useSupportedTargetChains } from './useSupportedTargetChains'
 
 import { ChainsToSelectState } from '../types'
-import { createOutputChainsState } from '../utils/chainsState'
+import { createOutputChainsState, resolveDefaultChainId } from '../utils/chainsState'
 import { mapChainInfo } from '../utils/mapChainInfo'
 import { sortChainsByDisplayOrder } from '../utils/sortChainsByDisplayOrder'
 
@@ -66,9 +66,10 @@ export function useChainsToSelect(): ChainsToSelectState | undefined {
     if (!chainInfo) return undefined
 
     if (field === Field.INPUT || !oppositeToken) {
+      const chains = sortChainsByDisplayOrder(selectableChains)
       return {
-        defaultChainId: selectedTargetChainId,
-        chains: shouldHideNetworkSelector ? [] : sortChainsByDisplayOrder(selectableChains),
+        defaultChainId: resolveDefaultChainId(chains, selectedTargetChainId, sourceChainId, new Set()),
+        chains: shouldHideNetworkSelector ? [] : chains,
         isLoading: false,
       }
     }

@@ -1,7 +1,7 @@
 import { atom, createStore, Provider } from 'jotai'
 import { ReactNode } from 'react'
 
-import { ARC_CHAIN_ID, ARC_USDC, NATIVE_CURRENCIES, TokenWithLogo } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, ARC_USDC, NATIVE_CURRENCIES, TokenWithLogo, USDC } from '@cowprotocol/common-const'
 import { getAddressKey, OrderKind } from '@cowprotocol/cow-sdk'
 import { userAddedTokensAtom, useTokenBySymbolOrAddress, useTokensByAddressMapForChain } from '@cowprotocol/tokens'
 
@@ -94,6 +94,34 @@ it('keeps canonical bridge metadata ahead of destination catalog metadata', () =
   const state = atom({ ...receiveFirst, outputCurrencyId: ARC_USDC.address })
   const { result } = renderHook(() => useBuildTradeDerivedState(state, true))
   expect(result.current.outputCurrency).toBe(ARC_USDC)
+})
+
+it('queries the selected sell token after receive-first discovery returned an empty result', () => {
+  const sellToken = USDC[1]
+  jest.mocked(useTokensByAddressMapForChain).mockReturnValue({ [getAddressKey(custom.address)]: custom })
+  jest.mocked(useTokenBySymbolOrAddress).mockImplementation((id) => (id === sellToken.address ? sellToken : null))
+  jest.mocked(useBridgeSupportedTokens).mockImplementation(
+    (params) =>
+      ({
+        data: {
+          tokens: params?.sellTokenAddress === sellToken.address ? [custom] : [],
+          isRouteAvailable: params?.sellTokenAddress === sellToken.address,
+        },
+      }) as ReturnType<typeof useBridgeSupportedTokens>,
+  )
+  const state = atom({ ...receiveFirst, inputCurrencyId: '_' })
+  const store = createStore()
+  const { result } = renderHook(() => useBuildTradeDerivedState(state, true), {
+    wrapper: ({ children }: { children: ReactNode }): ReactNode => <Provider store={store}>{children}</Provider>,
+  })
+  expect(result.current.outputCurrency).toBe(custom)
+  act(() => store.set(state, { ...receiveFirst, inputCurrencyId: sellToken.address }))
+  expect(useBridgeSupportedTokens).toHaveBeenLastCalledWith({
+    sellChainId: 1,
+    buyChainId: ARC_CHAIN_ID,
+    sellTokenAddress: sellToken.address,
+  })
+  expect(result.current.outputCurrency).toBe(custom)
 })
 
 it('retains the destination native token without using the source native token', () => {

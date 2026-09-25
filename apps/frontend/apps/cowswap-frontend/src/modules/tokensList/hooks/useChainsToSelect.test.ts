@@ -417,6 +417,15 @@ describe('useChainsToSelect hook', () => {
     expect(mockUseRoutesAvailability).toHaveBeenCalledWith(undefined, expect.any(Array))
   })
 
+  it('replaces a saved receive-first destination that is no longer enabled', () => {
+    mockUseSelectTokenWidgetState.mockReturnValue(
+      createWidgetState({ field: Field.OUTPUT, tradeType: TradeType.SWAP, selectedTargetChainId: 999 }),
+    )
+    const { result } = renderHook(() => useChainsToSelect())
+    expect(result.current?.chains?.some((chain) => chain.id === 999)).toBe(false)
+    expect(result.current?.defaultChainId).toBe(SupportedChainId.MAINNET)
+  })
+
   it('returns chains for SWAP + OUTPUT (buy token)', () => {
     // Include Mainnet in bridge data to exercise bridge destinations path
     // Use mockReturnValueOnce for test isolation
