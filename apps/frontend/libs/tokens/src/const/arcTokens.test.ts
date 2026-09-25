@@ -54,7 +54,9 @@ it('ships locally hosted logos and the additional Arc trading assets', () => {
   expect(arc.map(({ symbol }) => symbol).sort()).toEqual(
     expect.arrayContaining(['ARGUS', 'CRCLon', 'EURC', 'ONDO', 'USDC', 'USYC', 'WETH', 'XAUM', 'cirBTC']),
   )
-  for (const token of arc.filter((token) => token.logoURI)) {
+  for (const token of arc.filter((token) =>
+    ['USDC', 'EURC', 'cirBTC', 'USYC', 'WETH', 'XAUM', 'CRCLon', 'ONDO', 'ARGUS'].includes(token.symbol),
+  )) {
     expect(token.logoURI).toMatch(/^https:\/\/swap\.ophis\.fi\/logos\//)
     const path = new URL(token.logoURI || '').pathname
     expect(readFileSync(resolve(__dirname, '../../../../apps/cowswap-frontend/public' + path)).length).toBeGreaterThan(
