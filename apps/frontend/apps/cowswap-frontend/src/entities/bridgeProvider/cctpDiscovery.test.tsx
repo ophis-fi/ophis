@@ -1,3 +1,5 @@
+import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
+
 import { renderHook } from '@testing-library/react'
 import { cctpToken, useIsCctpEnabled } from 'entities/cctp'
 
@@ -23,7 +25,7 @@ const mockResponse = { data: undefined, isLoading: true }
 jest.mock('swr', () => ({ __esModule: true, default: () => mockResponse }))
 
 it('publishes CCTP before generic discovery completes, preserving canonical identity and stable token objects', () => {
-  const params = { sellChainId: 1, buyChainId: 5042, sellTokenAddress: cctpToken(1, 'cirBTC') }
+  const params = { sellChainId: 1, buyChainId: ARC_CHAIN_ID, sellTokenAddress: cctpToken(1, 'cirBTC') }
   const { result, rerender } = renderHook(() => useBridgeSupportedTokens(params))
   const data = result.current.data
   // Partial CCTP results are usable, but must not invalidate a saved provider
@@ -38,6 +40,6 @@ it('publishes CCTP before generic discovery completes, preserving canonical iden
 
 it('does not advertise CCTP-only tokens on surfaces that cannot execute them', () => {
   jest.mocked(useIsCctpEnabled).mockReturnValue(false)
-  const { result } = renderHook(() => useBridgeSupportedTokens({ sellChainId: 1, buyChainId: 5042 }))
+  const { result } = renderHook(() => useBridgeSupportedTokens({ sellChainId: 1, buyChainId: ARC_CHAIN_ID }))
   expect(result.current.data).toBeUndefined()
 })
