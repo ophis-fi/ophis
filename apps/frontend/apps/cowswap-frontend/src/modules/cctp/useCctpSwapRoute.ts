@@ -78,7 +78,7 @@ function cctpOutputAmount(
 }
 
 function cctpBlockedReason(
-  smartWallet: boolean,
+  smartWallet: boolean | undefined,
   recipient: string | null | undefined,
   recipientAddress: string | null | undefined,
   account: string | undefined,
