@@ -27,6 +27,7 @@ type CctpFlow = ReturnType<typeof useCctpQuote> & {
   transfer: CctpTransfer | null
   status: ReturnType<typeof useCctpStatus>['status']
   error: string | null
+  recoveryError: string | null
   busy: string
   switchNetwork(chainId: number): Promise<void>
   bridge(): Promise<void>
@@ -40,8 +41,10 @@ export function useCctpTransfer(contextKey = ''): CctpFlow {
   const { account } = useWalletInfo()
   const wallet = useCctpWallet()
   const [stored, setStored] = useAtom(cctpTransferAtom)
-  const parsed = useMemo(() => (stored ? cctpTransferSchema.safeParse(stored) : null), [stored])
+  const parsed = useMemo(() => (stored == null ? null : cctpTransferSchema.safeParse(stored)), [stored])
   const transfer = parsed?.success ? parsed.data : null
+  const recoveryError =
+    parsed && !parsed.success ? 'Saved bridge data is invalid. Keep your source transaction hash for recovery.' : null
   const tracking = useCctpStatus(transfer)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState('')
@@ -67,10 +70,8 @@ export function useCctpTransfer(contextKey = ''): CctpFlow {
       transfer,
       status: tracking.status,
       busy,
-      error:
-        parsed && !parsed.success
-          ? 'Saved bridge data is invalid. Keep your source transaction hash for recovery.'
-          : error || tracking.error,
+      recoveryError,
+      error: recoveryError || error || tracking.error,
       switchNetwork: (chainId: number) =>
         run('Switch network in your wallet', async () => {
           if (!wallet) throw new Error('Connect your wallet first')
@@ -104,6 +105,6 @@ export function useCctpTransfer(contextKey = ''): CctpFlow {
           void run('Finishing transfer', () => updateCctpTransfer(transfer, async () => null, setStored))
       },
     }),
-    [account, busy, error, parsed, quoting, run, setStored, tracking, transfer, wallet],
+    [account, busy, error, recoveryError, quoting, run, setStored, tracking, transfer, wallet],
   )
 }

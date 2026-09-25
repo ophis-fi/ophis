@@ -1,7 +1,8 @@
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { areAddressesEqual, OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
-import { useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
+import { AccountType } from '@cowprotocol/types'
+import { useAccountType, useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
 
 import { cctpRouteAsset } from 'entities/cctp'
 
@@ -35,6 +36,7 @@ export function useCctpSwapRoute({
 } {
   const { account } = useWalletInfo()
   const smartWallet = useIsSmartContractWallet()
+  const accountType = useAccountType()
   const bridgingEnabled = useIsBridgingEnabled()
   const asset = enabled && bridgingEnabled ? cctpRouteAsset(input, output) : undefined
   const key = JSON.stringify([
@@ -45,12 +47,13 @@ export function useCctpSwapRoute({
     amount?.quotient.toString(),
     account,
     smartWallet,
+    accountType,
     recipient,
     recipientAddress,
     orderKind,
   ])
   const flow = useCctpTransfer(key)
-  const blocked = cctpBlockedReason(smartWallet, recipient, recipientAddress, account)
+  const blocked = cctpBlockedReason(smartWallet, accountType, recipient, recipientAddress, account)
   const active = !!asset && !blocked
   const validQuote = active && orderKind === OrderKind.SELL ? flow.quote : null
   return {
@@ -63,6 +66,7 @@ export function useCctpSwapRoute({
           hideTradeWarnings: true,
           isTradePriceUpdating: !!flow.busy,
           inputsDisabled: !!flow.busy,
+          disableTokenSwitch: true,
         }
       : {},
     active,
@@ -83,11 +87,14 @@ function cctpOutputAmount(
 
 function cctpBlockedReason(
   smartWallet: boolean | undefined,
+  accountType: AccountType | undefined,
   recipient: string | null | undefined,
   recipientAddress: string | null | undefined,
   account: string | undefined,
 ): string | null {
-  if (smartWallet) return 'CCTP currently supports personal wallets. Connect a personal wallet to bridge.'
+  if (account && accountType === undefined) return 'Wallet type is not confirmed. Reconnect your wallet to use CCTP.'
+  if (smartWallet || (account && accountType !== AccountType.EOA))
+    return 'CCTP currently supports personal wallets without smart-account code. Use another bridge route for this wallet.'
   if (recipient && !areAddressesEqual(recipientAddress || recipient, account))
     return 'CCTP delivers to your connected wallet. Clear the custom recipient to continue.'
   return null

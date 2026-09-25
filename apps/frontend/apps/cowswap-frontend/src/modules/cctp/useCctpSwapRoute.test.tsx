@@ -1,6 +1,7 @@
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { OrderKind } from '@cowprotocol/cow-sdk'
-import { useIsSmartContractWallet } from '@cowprotocol/wallet'
+import { AccountType } from '@cowprotocol/types'
+import { useAccountType, useIsSmartContractWallet } from '@cowprotocol/wallet'
 
 import { renderHook } from '@testing-library/react'
 import { cctpBuyTokens } from 'entities/cctp'
@@ -12,6 +13,7 @@ jest.mock('@cowprotocol/common-hooks', () => ({ useIsBridgingEnabled: jest.fn(()
 jest.mock('@cowprotocol/wallet', () => ({
   useWalletInfo: () => ({ account: '0x0000000000000000000000000000000000000001' }),
   useIsSmartContractWallet: jest.fn(() => false),
+  useAccountType: jest.fn(),
 }))
 jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: true }))
 jest.mock('./useCctpTransfer', () => ({
@@ -41,7 +43,20 @@ const params = {
 beforeEach(() => {
   jest.mocked(useIsBridgingEnabled).mockReturnValue(true)
   jest.mocked(useIsSmartContractWallet).mockReturnValue(false)
+  jest.mocked(useAccountType).mockReturnValue(AccountType.EOA)
 })
+
+it.each([undefined, AccountType.EIP7702EOA, AccountType.SMART_CONTRACT])(
+  'keeps generic routing for unresolved or code-bearing accounts (%s)',
+  (accountType) => {
+    jest.mocked(useAccountType).mockReturnValue(accountType)
+    const { result } = renderHook(() => useCctpSwapRoute(params))
+    expect(result.current.active).toBe(false)
+    expect(result.current.blocked).toBeTruthy()
+    expect(result.current.params).toEqual({})
+    expect(result.current.flow.quote).toBeNull()
+  },
+)
 
 it('activates only a selected CCTP route and keeps unrelated swaps usable while recovery remains available', () => {
   const { result, rerender } = renderHook(({ output }) => useCctpSwapRoute({ ...params, output }), {
@@ -49,6 +64,7 @@ it('activates only a selected CCTP route and keeps unrelated swaps usable while 
   })
   expect(result.current.active).toBe(true)
   expect(result.current.params.disableQuotePolling).toBe(true)
+  expect(result.current.params.disableTokenSwitch).toBe(true)
   rerender({ output: input })
   expect(result.current.active).toBe(false)
   expect(result.current.params).toEqual({})

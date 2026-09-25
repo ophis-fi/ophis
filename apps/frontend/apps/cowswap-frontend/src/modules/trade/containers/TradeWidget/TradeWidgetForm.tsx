@@ -311,6 +311,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                       isLoading={Boolean(sellToken && outputCurrencyInfo.currency && isTradePriceUpdating)}
                       disabled={
                         params.inputsDisabled ||
+                        params.disableTokenSwitch ||
                         shouldLockForAlternativeOrder ||
                         isOutputTokenUnsupported ||
                         isNonEvmRecipientChain(buyToken?.chainId) ||

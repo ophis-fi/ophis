@@ -13,6 +13,7 @@ import { type useCctpTransfer } from './useCctpTransfer'
 
 export function CctpSwapRecovery({ route }: { route: ReturnType<typeof useCctpSwapRoute> }): ReactNode {
   if (route.active) return null
+  if (route.flow.recoveryError) return <p role="alert">{route.flow.recoveryError}</p>
   if (route.flow.transfer)
     return <CctpSwapDetails route={route} source={undefined} destination={undefined} amount={undefined} />
   return route.asset && route.blocked ? <p role="status">{route.blocked}</p> : null
@@ -32,6 +33,7 @@ export function CctpSwapDetails({
   const { account, chainId } = useWalletInfo()
   const connect = useToggleWalletModal()
   const { flow, asset, blocked } = route
+  if (flow.recoveryError) return <p role="alert">{flow.recoveryError}</p>
   return (
     <styledEl.Card aria-label="Bridge details">
       {flow.transfer ? (
@@ -48,18 +50,21 @@ export function CctpSwapDetails({
             <button type="button" onClick={connect}>
               Connect wallet
             </button>
-          ) : flow.quote && source ? (
-            <CctpQuoteDetails flow={flow} correctChain={chainId === source} source={source} />
           ) : (
-            <button
-              type="button"
-              disabled={!!flow.busy || !amount || !source || !destination || !asset}
-              onClick={() =>
-                source && destination && amount && asset && flow.loadQuote(source, destination, amount, asset)
-              }
-            >
-              Review bridge fee
-            </button>
+            <>
+              {flow.quote && source && (
+                <CctpQuoteDetails flow={flow} correctChain={chainId === source} source={source} />
+              )}
+              <button
+                type="button"
+                disabled={!!flow.busy || !amount || !source || !destination || !asset}
+                onClick={() =>
+                  source && destination && amount && asset && flow.loadQuote(source, destination, amount, asset)
+                }
+              >
+                {flow.quote ? 'Refresh bridge fee' : 'Review bridge fee'}
+              </button>
+            </>
           )}
         </>
       )}

@@ -30,6 +30,7 @@ export interface TradeWidgetParams {
   displayTokenName?: boolean
   displayChainName?: boolean
   inputsDisabled?: boolean
+  disableTokenSwitch?: boolean
   isPriceStatic?: boolean
   allowSwapSameToken?: boolean
   customSelectTokenButton?: ReactNode
