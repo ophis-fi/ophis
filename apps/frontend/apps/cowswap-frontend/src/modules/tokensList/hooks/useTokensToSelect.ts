@@ -60,6 +60,7 @@ export function useTokensToSelect(): TokensToSelectContext {
   }, [areTokensFromBridge, sourceChainId, targetChainId, oppositeToken])
 
   const { data: result, isLoading } = useBridgeSupportedTokens(params)
+  const isPickerLoading = isLoading && !result?.tokens.length
 
   const bridgeSupportedTokensMap = useMemo(() => {
     const tokens = result?.tokens
@@ -89,12 +90,12 @@ export function useTokensToSelect(): TokensToSelectContext {
       : favoriteTokens
 
     return {
-      isLoading: areTokensFromBridge ? isLoading : false,
+      isLoading: areTokensFromBridge ? isPickerLoading : false,
       tokens: (areTokensFromBridge ? result?.tokens : allTokens) || EMPTY_TOKENS,
       favoriteTokens: favoriteTokensToSelect,
       areTokensFromBridge,
       isRouteAvailable: result?.isRouteAvailable,
       bridgeSupportedTokensMap,
     }
-  }, [allTokens, bridgeSupportedTokensMap, isLoading, areTokensFromBridge, favoriteTokens, result])
+  }, [allTokens, bridgeSupportedTokensMap, isPickerLoading, areTokensFromBridge, favoriteTokens, result])
 }

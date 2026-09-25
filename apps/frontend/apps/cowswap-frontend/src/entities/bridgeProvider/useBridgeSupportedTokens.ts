@@ -28,10 +28,10 @@ export function useBridgeSupportedTokens(
 
   const cctpTokens = useMemo(
     () =>
-      cctpBuyTokens(params).map((token) =>
+      (isBridgingEnabled ? cctpBuyTokens(params) : []).map((token) =>
         TokenWithLogo.fromToken(token, tokensByAddress[getAddressKey(token.address)]?.logoURI),
       ),
-    [params, tokensByAddress],
+    [params, tokensByAddress, isBridgingEnabled],
   )
   const response = useSWR(
     isBridgingEnabled
@@ -101,5 +101,5 @@ export function useBridgeSupportedTokens(
       isRouteAvailable: true,
     }
   }, [response.data, cctpTokens])
-  return { ...response, data, isLoading: cctpTokens.length ? false : response.isLoading }
+  return { ...response, data }
 }

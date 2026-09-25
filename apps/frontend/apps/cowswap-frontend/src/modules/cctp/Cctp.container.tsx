@@ -11,6 +11,11 @@ import { CctpTransferDetails, CctpQuoteDetails } from './CctpTransfer.pure'
 import { type useCctpSwapRoute } from './useCctpSwapRoute'
 import { type useCctpTransfer } from './useCctpTransfer'
 
+export function CctpSwapRecovery({ route }: { route: ReturnType<typeof useCctpSwapRoute> }): ReactNode {
+  if (route.active || !route.flow.transfer) return null
+  return <CctpSwapDetails route={route} source={undefined} destination={undefined} amount={undefined} />
+}
+
 export function CctpSwapDetails({
   route,
   source,

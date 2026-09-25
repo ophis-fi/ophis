@@ -12,7 +12,7 @@ import { t } from '@lingui/core/macro'
 import { Field } from 'legacy/state/types'
 import { useHooksEnabledManager } from 'legacy/state/user/hooks'
 
-import { CctpSwapDetails, useCctpSwapRoute } from 'modules/cctp'
+import { CctpSwapDetails, CctpSwapRecovery, useCctpSwapRoute } from 'modules/cctp'
 import { TradeApproveWithAffectedOrderList } from 'modules/erc20Approve'
 import { EthFlowModal, EthFlowProps } from 'modules/ethFlow'
 import { AddIntermediateTokenModal } from 'modules/tokensList'
@@ -253,7 +253,12 @@ export function SwapWidget({
 
   const slots: TradeWidgetSlots = {
     headerContent,
-    topContent,
+    topContent: (
+      <>
+        {topContent}
+        <CctpSwapRecovery route={cctp} />
+      </>
+    ),
     lockScreen: shouldShowLockScreen ? <CrossChainUnlockScreen handleUnlock={handleUnlock} /> : undefined,
     settingsWidget: (
       <SettingsTab

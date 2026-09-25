@@ -188,4 +188,21 @@ describe('useTokensToSelect', () => {
     expect(result.current.favoriteTokens).toEqual([baseBridgeToken])
     expect(result.current.favoriteTokens[0]).not.toBe(optimismFavorite)
   })
+
+  it('shows known bridge tokens while provider discovery is still loading', () => {
+    mockUseBridgeSupportedTokens.mockReturnValue({
+      data: { tokens: [lineaToken], isRouteAvailable: true },
+      isLoading: true,
+    } as ReturnType<typeof useBridgeSupportedTokens>)
+    mockUseSelectTokenWidgetState.mockReturnValue(
+      createWidgetState({
+        field: Field.OUTPUT,
+        selectedTargetChainId: SupportedChainId.LINEA,
+        oppositeToken: mainnetToken,
+      }),
+    )
+    const { result } = renderHook(() => useTokensToSelect())
+    expect(result.current.tokens).toEqual([lineaToken])
+    expect(result.current.isLoading).toBe(false)
+  })
 })
