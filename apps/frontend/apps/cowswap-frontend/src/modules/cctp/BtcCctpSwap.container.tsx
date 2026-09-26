@@ -3,11 +3,9 @@ import { ReactNode } from 'react'
 import { useMachineTimeMs } from '@cowprotocol/common-hooks'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import { formatUnits } from 'viem'
-
 import { useToggleWalletModal } from 'legacy/state/application/hooks'
 
-import { BtcSwapAmounts } from './BtcSwapAmounts.container'
+import { BtcSwapAmounts, BtcSwapReceived } from './BtcSwapAmounts.container'
 import { isCctpOwner } from './cctp.service'
 import * as styledEl from './Cctp.styled'
 import { CctpHashRecovery, CctpQuoteDetails } from './CctpTransfer.pure'
@@ -48,7 +46,7 @@ function BtcSwapRecovery({ route }: { route: Route }): ReactNode {
       ) : (
         btc.tracking.status?.amount && (
           <>
-            <p>Ready to bridge: {formatUnits(BigInt(btc.tracking.status.amount), 8)} cirBTC.</p>
+            <BtcSwapReceived amount={btc.tracking.status.amount} />
             {flow.quote?.swapOrderUid === pending.orderUid && (
               <CctpQuoteDetails flow={flow} correctChain={chainId === 1} source={1} />
             )}

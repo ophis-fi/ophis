@@ -4,8 +4,9 @@ import { render, screen } from '@testing-library/react'
 
 import { useUsdAmount } from 'modules/usdAmount'
 
-import { BtcSwapAmounts } from './BtcSwapAmounts.container'
+import { BtcSwapAmounts, BtcSwapReceived } from './BtcSwapAmounts.container'
 import { type BtcSwapQuote } from './btcSwapQuote.service'
+import { cctpToken } from './cctpAssets.const'
 
 jest.mock('@cowprotocol/common-hooks', () => ({
   ...jest.requireActual('@cowprotocol/common-hooks'),
@@ -21,6 +22,8 @@ const quote = {
   swap: { orderToSign: { sellAmount: '1000000', buyAmount: '993939' } },
   bridge: { expanded: { feeTotalAmount: '7145237173721' } },
 } as BtcSwapQuote
+
+beforeEach(() => jest.clearAllMocks())
 
 it('uses eight-decimal BTC and eighteen-decimal ETH amounts with available fiat values', () => {
   jest.mocked(useUsdAmount).mockImplementation((amount) => ({
@@ -47,4 +50,15 @@ it('does not fabricate fiat values when the price is unavailable', () => {
   expect(container.textContent).toContain('WBTC')
   expect(container.textContent).toContain('cirBTC')
   expect(container.textContent).toContain('ETH')
+})
+
+it('shows the recovered eight-decimal Ethereum cirBTC amount with its available USD value', () => {
+  jest.mocked(useUsdAmount).mockReturnValue({ value: CurrencyAmount.fromRawAmount(usd, '600000000'), isLoading: false })
+  const { container } = render(<BtcSwapReceived amount="993939" />)
+  const [amount] = jest.mocked(useUsdAmount).mock.calls[0]
+  expect(amount?.currency).toEqual(new Token(1, cctpToken(1, 'cirBTC'), 8, 'cirBTC'))
+  expect(amount?.toExact()).toBe('0.00993939')
+  expect(screen.getByText('Ready to bridge')).toBeTruthy()
+  expect(container.querySelectorAll('.fiat-amount')).toHaveLength(1)
+  expect(container.textContent).toContain('$600')
 })

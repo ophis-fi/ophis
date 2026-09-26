@@ -13,6 +13,7 @@ import { cctpToken } from './cctpAssets.const'
 
 const wbtc = new Token(1, WBTC_ETHEREUM, 8, 'WBTC')
 const cirbtc = new Token(ARC_CHAIN_ID, cctpToken(ARC_CHAIN_ID, 'cirBTC'), 8, 'cirBTC')
+const sourceCirbtc = new Token(1, cctpToken(1, 'cirBTC'), 8, 'cirBTC')
 
 export function BtcSwapAmounts({ quote }: { quote: BtcSwapQuote }): ReactNode {
   const sell = CurrencyAmount.fromRawAmount(wbtc, quote.swap.orderToSign.sellAmount)
@@ -25,6 +26,14 @@ export function BtcSwapAmounts({ quote }: { quote: BtcSwapQuote }): ReactNode {
       <BtcRouteAmount label="You pay" amount={sell} />
       <BtcRouteAmount label="Minimum received on Arc" amount={receive} />
       <BtcRouteAmount label="Estimated bridge fee" amount={fee} />
+    </dl>
+  )
+}
+
+export function BtcSwapReceived({ amount }: { amount: string }): ReactNode {
+  return (
+    <dl>
+      <BtcRouteAmount label="Ready to bridge" amount={CurrencyAmount.fromRawAmount(sourceCirbtc, amount)} />
     </dl>
   )
 }
