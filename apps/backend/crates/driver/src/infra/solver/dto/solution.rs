@@ -61,7 +61,7 @@ fn required_custom_amounts(
     };
     let sell = alloy::primitives::Address::from(order.sell.token);
     let buy = alloy::primitives::Address::from(order.buy.token);
-    if arc_v4 {
+    let arc_v4_input = if arc_v4 {
         // The only multi-interaction exception: exactly the sold ERC20's
         // transfer first, then the protected v4 router. Both calls undergo
         // canonical calldata and fulfillment-bound amount checks below.
@@ -77,7 +77,17 @@ fn required_custom_amounts(
         if funding.target != sell || swap.target != shared::arc_routes::V4_ROUTER {
             return Err(super::Error("invalid Arc v4 funding/swap order".to_owned()));
         }
-    }
+        Some(
+            funding
+                .inputs
+                .first()
+                .filter(|_| funding.inputs.len() == 1)
+                .ok_or_else(|| super::Error("expected one Arc v4 funding input".to_owned()))?
+                .amount,
+        )
+    } else {
+        None
+    };
     if order.side != competition::order::Side::Sell
         || (protected_interactions[0] == FXUSD && sell != FXUSD)
     {
@@ -115,7 +125,7 @@ fn required_custom_amounts(
             buy_token: buy,
             max_input: amount_in,
             min_output: required,
-            arc_v4_bundle: arc_v4,
+            arc_v4_input,
         },
     ))
 }
@@ -665,7 +675,7 @@ mod protected_interaction_tests {
             assert_eq!(context.buy_token, buy);
             assert_eq!(context.max_input, U256::from(1_000));
             assert_eq!(context.min_output, U256::from(990));
-            assert!(!context.arc_v4_bundle);
+            assert!(context.arc_v4_input.is_none());
         }
     }
 
@@ -704,11 +714,19 @@ mod protected_interaction_tests {
     #[test]
     fn arc_v4_funding_requires_exactly_one_ordered_atomic_bundle() {
         use shared::arc_routes::{EURC, USDC, V4_ROUTER};
-        let orders = [protected_order(USDC, EURC)];
+        let mut order = protected_order(USDC, EURC);
+        order.kind = competition::order::Kind::Limit;
+        order.sell.amount = U256::from(2000).into();
+        order.buy.amount = U256::from(1600).into();
+        order.partial = competition::order::Partial::Yes {
+            available: competition::order::TargetAmount(U256::from(2000)),
+        };
+        let orders = [order];
         let custom = |target: Address| {
             serde_json::json!({
                 "kind":"custom", "internalize":false, "target":target,
-                "value":"0", "callData":"0x", "allowances":[], "inputs":[], "outputs":[]
+                "value":"0", "callData":"0x", "allowances":[],
+                "inputs":[{"token":USDC,"amount":"1000"}], "outputs":[]
             })
         };
         let bundle = serde_json::json!({
@@ -718,7 +736,15 @@ mod protected_interaction_tests {
         });
         let context =
             |value| required_custom_amounts(&serde_json::from_value(value).unwrap(), &orders);
-        assert!(context(bundle.clone()).unwrap().unwrap().arc_v4_bundle);
+        assert_eq!(
+            context(bundle.clone()).unwrap().unwrap().arc_v4_input,
+            Some(U256::from(1000))
+        );
+        let mut with_fee = bundle.clone();
+        with_fee["trades"][0]["fee"] = serde_json::json!("10");
+        let amounts = context(with_fee).unwrap().unwrap();
+        assert_eq!(amounts.max_input, U256::from(1010));
+        assert_eq!(amounts.arc_v4_input, Some(U256::from(1000)));
         for interactions in [
             vec![custom(V4_ROUTER)],
             vec![custom(V4_ROUTER), custom(USDC)],

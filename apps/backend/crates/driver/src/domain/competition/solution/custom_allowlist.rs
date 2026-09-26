@@ -115,8 +115,8 @@ pub struct RequiredAmounts {
     pub buy_token: Address,
     pub max_input: U256,
     pub min_output: U256,
-    /// Set only after DTO validation proves an ordered funding + v4 swap bundle.
-    pub arc_v4_bundle: bool,
+    /// Routed input shared by the DTO-validated ordered funding + v4 swap bundle.
+    pub arc_v4_input: Option<U256>,
 }
 
 /// Cap on the value of any allowance a solver can request via a `Custom`
@@ -460,7 +460,7 @@ pub fn validate_with_settlement(
     // transfer+swap pair with one fulfillment and no pre/post interactions.
     if chain_id == 5042
         && (target == arc_routes::V4_ROUTER
-            || required_amounts.is_some_and(|r| r.arc_v4_bundle && target == r.sell_token))
+            || required_amounts.is_some_and(|r| r.arc_v4_input.is_some() && target == r.sell_token))
     {
         return validate_arc_v4(custom, required_amounts);
     }
@@ -675,11 +675,13 @@ fn validate_arc_v4(
         chain_id: 5042,
     };
     let required = required.ok_or_else(reject)?;
-    if !required.arc_v4_bundle
-        || !custom.value.0.is_zero()
+    let routed_input = required
+        .arc_v4_input
+        .filter(|amount| !amount.is_zero() && *amount <= required.max_input)
+        .ok_or_else(reject)?;
+    if !custom.value.0.is_zero()
         || custom.internalize
         || !custom.allowances.is_empty()
-        || required.max_input.is_zero()
         || !arc_routes::valid_pair(required.sell_token, required.buy_token)
     {
         return Err(reject());
@@ -697,7 +699,7 @@ fn validate_arc_v4(
                 custom.call_data.as_ref(),
                 required.sell_token,
                 required.buy_token,
-                required.max_input,
+                routed_input,
                 output.amount.0,
             )
         {
@@ -711,9 +713,9 @@ fn validate_arc_v4(
             .ok_or_else(reject)?;
         if target != required.sell_token
             || Address::from(input.token) != required.sell_token
-            || input.amount.0 != required.max_input
+            || input.amount.0 != routed_input
             || !custom.outputs.is_empty()
-            || custom.call_data.as_ref() != arc_routes::v4_funding(required.max_input)
+            || custom.call_data.as_ref() != arc_routes::v4_funding(routed_input)
         {
             return Err(reject());
         }
@@ -1471,7 +1473,7 @@ mod tests {
             buy_token: buy,
             max_input: U256::from(max_input),
             min_output: U256::from(min_output),
-            arc_v4_bundle: false,
+            arc_v4_input: None,
         }
     }
 
@@ -1536,11 +1538,22 @@ mod tests {
             funding.allowances.clear();
             for custom in [aero, funding, swap] {
                 let mut required = required(sell, buy, 1000, 990);
-                required.arc_v4_bundle = Address::from(custom.target) != AERO_ROUTER;
+                required.arc_v4_input =
+                    (Address::from(custom.target) != AERO_ROUTER).then_some(U256::from(1000));
                 let amounts = Some(required);
                 let validate =
                     |c: &Custom| validate_with_settlement(c, 5042, amounts, Some(settlement));
                 assert_eq!(validate(&custom), Ok(()));
+                // Partial LIMIT fills can leave their surplus fee in Settlement:
+                // both v4 calls bind the routed input, not the larger total debit.
+                let with_fee = RequiredAmounts {
+                    max_input: U256::from(1010),
+                    ..required
+                };
+                assert_eq!(
+                    validate_with_settlement(&custom, 5042, Some(with_fee), Some(settlement)),
+                    Ok(())
+                );
                 assert!(validate_with_settlement(&custom, 1, amounts, Some(settlement)).is_err());
                 assert!(validate_with_settlement(&custom, 5042, None, Some(settlement)).is_err());
                 assert!(validate_target(Address::from(custom.target), 5042).is_err());
