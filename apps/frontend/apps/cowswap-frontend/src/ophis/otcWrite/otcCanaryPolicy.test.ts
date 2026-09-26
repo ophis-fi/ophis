@@ -38,10 +38,10 @@ describe('OTC canary admission and exposure limits', () => {
   })
 
   it.each(intents.slice(0, 4))('limits both legs before $kind, including approvals', (intent) => {
-    const mutate = (amountA: bigint, amountB: bigint): OtcWriteIntent =>
-      'draft' in intent
-        ? { ...intent, draft: { ...order, amountA, amountB } }
-        : { ...intent, order: { ...order, amountA, amountB } }
+    const mutate = (amountA: bigint, amountB: bigint): OtcWriteIntent => {
+      const updatedOrder = { ...order, amountA, amountB }
+      return 'draft' in intent ? { ...intent, draft: updatedOrder } : { ...intent, order: updatedOrder }
+    }
     expect(getOtcCanaryRestriction(mutate(order.amountA + 1n, order.amountB), NOW, policy)).toMatch(/limit/)
     expect(getOtcCanaryRestriction(mutate(order.amountA, order.amountB + 1n), NOW, policy)).toMatch(/limit/)
     expect(getOtcCanaryRestriction(intent, policy.expiresAt, policy)).toMatch(/window/)

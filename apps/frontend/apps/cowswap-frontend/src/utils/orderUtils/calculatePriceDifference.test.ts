@@ -1,11 +1,8 @@
-import { GNO, USDC_SEPOLIA, ZERO_FRACTION } from '@cowprotocol/common-const'
+import { GNO_SEPOLIA, USDC_SEPOLIA, ZERO_FRACTION } from '@cowprotocol/common-const'
 import { buildPriceFromCurrencyAmounts, FractionUtils, tryParseCurrencyAmount } from '@cowprotocol/common-utils'
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency, Price } from '@cowprotocol/currency'
 
 import { calculatePriceDifference, CalculatePriceDifferenceParams } from './calculatePriceDifference'
-
-const GNO_SEPOLIA = GNO[SupportedChainId.SEPOLIA]
 
 function buildPrice(daiAmount: string, usdcAmount: string): Price<Currency, Currency> {
   const quoteAmount = tryParseCurrencyAmount(daiAmount, GNO_SEPOLIA)

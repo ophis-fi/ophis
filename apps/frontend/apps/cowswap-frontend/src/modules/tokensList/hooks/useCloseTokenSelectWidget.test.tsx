@@ -5,7 +5,7 @@ import { act, renderHook } from '@testing-library/react'
 
 import { useCloseTokenSelectWidget } from './useCloseTokenSelectWidget'
 
-import { selectTokenWidgetAtom, updateSelectTokenWidgetAtom } from '../state/selectTokenWidgetAtom'
+import { SelectTokenWidgetState, selectTokenWidgetAtom } from '../state/selectTokenWidgetAtom'
 
 function createTestWrapper(store: ReturnType<typeof createStore>) {
   return function TestWrapper({ children }: { children: ReactNode }) {
@@ -23,14 +23,14 @@ describe('useCloseTokenSelectWidget', () => {
 
     // Toggle forceOpen to true
     act(() => {
-      store.set(updateSelectTokenWidgetAtom, { forceOpen: true })
+      store.set(selectTokenWidgetAtom, (state: SelectTokenWidgetState) => ({ ...state, forceOpen: true }))
     })
     rerender()
     expect(result.current).toBe(firstRef) // Same reference
 
     // Toggle forceOpen back to false
     act(() => {
-      store.set(updateSelectTokenWidgetAtom, { forceOpen: false })
+      store.set(selectTokenWidgetAtom, (state: SelectTokenWidgetState) => ({ ...state, forceOpen: false }))
     })
     rerender()
     expect(result.current).toBe(firstRef) // Still same reference
@@ -44,7 +44,7 @@ describe('useCloseTokenSelectWidget', () => {
 
     // Set forceOpen = true, open = true
     act(() => {
-      store.set(updateSelectTokenWidgetAtom, { forceOpen: true, open: true })
+      store.set(selectTokenWidgetAtom, (state: SelectTokenWidgetState) => ({ ...state, forceOpen: true, open: true }))
     })
 
     // Call without override - should NOT reset
@@ -62,7 +62,7 @@ describe('useCloseTokenSelectWidget', () => {
 
     // Set forceOpen = true, open = true
     act(() => {
-      store.set(updateSelectTokenWidgetAtom, { forceOpen: true, open: true })
+      store.set(selectTokenWidgetAtom, (state: SelectTokenWidgetState) => ({ ...state, forceOpen: true, open: true }))
     })
 
     // Call with override - SHOULD reset
@@ -80,7 +80,7 @@ describe('useCloseTokenSelectWidget', () => {
 
     // Set open = true, forceOpen = false
     act(() => {
-      store.set(updateSelectTokenWidgetAtom, { open: true, forceOpen: false })
+      store.set(selectTokenWidgetAtom, (state: SelectTokenWidgetState) => ({ ...state, open: true, forceOpen: false }))
     })
 
     // Call without override - should reset because forceOpen is false
@@ -98,13 +98,13 @@ describe('useCloseTokenSelectWidget', () => {
 
     // Set open = true, forceOpen = false
     act(() => {
-      store.set(updateSelectTokenWidgetAtom, { open: true, forceOpen: false })
+      store.set(selectTokenWidgetAtom, (state: SelectTokenWidgetState) => ({ ...state, open: true, forceOpen: false }))
     })
     rerender()
 
     // Now toggle forceOpen to true in the same test
     act(() => {
-      store.set(updateSelectTokenWidgetAtom, { forceOpen: true })
+      store.set(selectTokenWidgetAtom, (state: SelectTokenWidgetState) => ({ ...state, forceOpen: true }))
     })
     rerender()
 

@@ -72,5 +72,5 @@ it('omits the OTC self-link on OTC list and order-detail routes', () => {
 it('keeps bridging in the swap box without a separate navigation link', () => {
   useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
   renderHeader(false, '/1/swap/WETH')
-  expect(screen.queryByRole('link', { name: 'Bridge', exact: true })).toBeNull()
+  expect(screen.queryByRole('link', { name: 'Bridge' })).toBeNull()
 })

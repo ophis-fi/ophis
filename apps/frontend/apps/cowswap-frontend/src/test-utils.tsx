@@ -11,7 +11,7 @@ import { i18n } from '@lingui/core'
 import { I18nProvider } from '@lingui/react'
 import { render, RenderResult } from '@testing-library/react'
 import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, MemoryRouterProps } from 'react-router'
 import { ThemeProvider as StyledComponentsThemeProvider } from 'styled-components/macro'
 import { getCowswapTheme } from 'theme'
 
@@ -79,7 +79,13 @@ export const [mockedConnector, mockedConnectorHooks] = initializeConnector<Mocke
   (actions) => new MockedConnector(actions),
 )
 
-export function WithMockedWeb3({ children, location }: { children?: ReactNode; location?: Location }): ReactNode {
+export function WithMockedWeb3({
+  children,
+  location,
+}: {
+  children?: ReactNode
+  location?: NonNullable<MemoryRouterProps['initialEntries']>[number]
+}): ReactNode {
   const connectors: [Connector, Web3ReactHooks][] = [[mockedConnector, mockedConnectorHooks]]
 
   return (

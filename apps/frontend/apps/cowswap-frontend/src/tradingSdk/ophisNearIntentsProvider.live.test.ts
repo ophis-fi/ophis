@@ -3,6 +3,7 @@ import { OrderKind, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk
 import { BridgeStatus } from '@cowprotocol/sdk-bridging'
 
 import { utils } from 'ethers'
+import { getAddress, type Hex } from 'viem'
 
 import { BRIDGE_QUOTE_ACCOUNT } from 'modules/tradeQuote'
 
@@ -62,7 +63,7 @@ live('NEAR Robinhood live quotes and deposit attestations', () => {
               buyTokenChainId: targetChainId as TargetChainId,
               buyTokenAddress: destination.contractAddress ?? NATIVE_CURRENCY_ADDRESS,
               buyTokenDecimals: destination.decimals,
-              account: BRIDGE_QUOTE_ACCOUNT,
+              account: getAddress(BRIDGE_QUOTE_ACCOUNT) as Hex,
               receiver: BRIDGE_QUOTE_ACCOUNT,
               appCode: 'ophis',
             })

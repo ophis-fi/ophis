@@ -21,6 +21,7 @@ describe('transaction reducer', () => {
         addTransaction({
           hash: '0x0',
           hashType: HashType.ETHEREUM_TX,
+          nonce: 0,
           chainId: 1,
           summary: 'hello world',
           approval,
@@ -67,6 +68,7 @@ describe('transaction reducer', () => {
         addTransaction({
           hash: '0x0',
           hashType: HashType.ETHEREUM_TX,
+          nonce: 0,
           chainId: 4,
           approval: { spender: '0x0', tokenAddress: '0x0', amount: '0x1' },
           summary: 'hello world',
@@ -124,6 +126,7 @@ describe('transaction reducer', () => {
         addTransaction({
           hash: '0x0',
           hashType: HashType.ETHEREUM_TX,
+          nonce: 0,
           chainId: 4,
           approval: { spender: '0x0', tokenAddress: '0x0', amount: '0x1' },
           summary: 'hello world',
@@ -145,6 +148,7 @@ describe('transaction reducer', () => {
         addTransaction({
           hash: '0x0',
           hashType: HashType.ETHEREUM_TX,
+          nonce: 0,
           chainId: 4,
           approval: { spender: '0x0', tokenAddress: '0x0', amount: '0x1' },
           summary: 'hello world',
@@ -176,6 +180,7 @@ describe('transaction reducer', () => {
         addTransaction({
           hash: '0x0',
           hashType: HashType.ETHEREUM_TX,
+          nonce: 0,
           chainId: 1,
           summary: 'hello world',
           approval: { tokenAddress: 'abc', spender: 'def', amount: '0x1' },
@@ -186,6 +191,7 @@ describe('transaction reducer', () => {
         addTransaction({
           hash: '0x1',
           hashType: HashType.ETHEREUM_TX,
+          nonce: 0,
           chainId: 4,
           summary: 'hello world',
           approval: { tokenAddress: 'abc', spender: 'def', amount: '0x1' },

@@ -50,10 +50,16 @@ it.each([false, true])('keeps a 10-token limit at the signing boundary (bundle=%
   jest.mocked(buildApproveTx).mockRejectedValue(stop)
 
   const result = isBundle
-    ? safeBundleFlow(params, { loading: false }, defaultLimitOrdersSettings, async () => true, analytics)
+    ? safeBundleFlow(
+        params,
+        { loading: false, priceImpact: undefined },
+        defaultLimitOrdersSettings,
+        async () => true,
+        analytics,
+      )
     : tradeFlow(
         params,
-        { loading: false },
+        { loading: false, priceImpact: undefined },
         defaultLimitOrdersSettings,
         analytics,
         async () => true,

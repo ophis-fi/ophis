@@ -97,6 +97,7 @@ describe('useWarmTargetChainLists', () => {
     await new Promise((r) => setTimeout(r, 30))
 
     const slot = (await store.get(listsStatesByChainAtom))[BASE]
+    if (!slot) throw new Error('Expected the Base token lists to remain loaded')
     expect(Object.keys(slot)).toEqual(['user-pick']) // warm did NOT add its lists
     expect((slot['user-pick'] as { isEnabled?: boolean }).isEnabled).toBe(false) // toggle preserved
   })

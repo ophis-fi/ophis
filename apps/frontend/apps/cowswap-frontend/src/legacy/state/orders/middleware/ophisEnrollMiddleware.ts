@@ -36,7 +36,7 @@ const REBATES_API = process.env.REACT_APP_REBATES_API ?? 'https://rebates.ophis.
 const isPendingOrderAction = isAnyOf(OrderActions.addPendingOrder)
 const enrolled = new Set<string>()
 
-export const ophisEnrollMiddleware: Middleware<Record<string, unknown>, AppState> = () => (next) => (action) => {
+export const ophisEnrollMiddleware = (() => (next) => (action) => {
   if (isPendingOrderAction(action)) {
     // Enrollment is a best-effort side effect; it must NEVER break order
     // dispatch, so any failure is swallowed and `next(action)` still runs.
@@ -47,7 +47,7 @@ export const ophisEnrollMiddleware: Middleware<Record<string, unknown>, AppState
     }
   }
   return next(action)
-}
+}) satisfies Middleware<Record<string, unknown>, AppState>
 
 function enrollWallet(raw: string | null | undefined): void {
   if (!raw) return

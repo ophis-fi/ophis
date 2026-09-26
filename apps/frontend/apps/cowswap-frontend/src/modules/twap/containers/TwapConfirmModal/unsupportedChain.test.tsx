@@ -9,6 +9,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { mobileSwapTheme } from 'ophis/mobile/mobileSwapTheme.constants'
 import { ThemeProvider } from 'styled-components/macro'
 
+import { RwaTokenStatus } from 'modules/rwa'
 import { useConfirmTradeWithRwaCheck } from 'modules/trade'
 
 import { useCreateTwapOrder } from '../../hooks/useCreateTwapOrder'
@@ -93,7 +94,19 @@ it('blocks review and an already-open confirmation on Arc, and restores supporte
   const review = jest.fn()
   const createOrder = jest.fn()
   jest.mocked(useWalletInfo).mockReturnValue({ chainId: ARC_CHAIN_ID } as ReturnType<typeof useWalletInfo>)
-  jest.mocked(useConfirmTradeWithRwaCheck).mockReturnValue({ confirmTrade: review })
+  jest.mocked(useConfirmTradeWithRwaCheck).mockReturnValue({
+    confirmTrade: review,
+    rwaStatus: RwaTokenStatus.Allowed,
+    rwaTokenInfo: null,
+    tradeConfirmActions: {
+      onSign: jest.fn(),
+      onError: jest.fn(),
+      onSuccess: jest.fn(),
+      onOpen: jest.fn(),
+      onDismiss: jest.fn(),
+      requestPermitSignature: jest.fn(),
+    },
+  })
   jest.mocked(useCreateTwapOrder).mockReturnValue(createOrder)
 
   const { rerender } = render(<DirectTwapPage />)

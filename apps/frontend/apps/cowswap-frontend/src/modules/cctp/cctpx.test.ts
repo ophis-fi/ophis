@@ -3,6 +3,7 @@ import {
   decodeFunctionData,
   encodeAbiParameters,
   encodeEventTopics,
+  getAddress,
   encodePacked,
   pad,
   slice,
@@ -73,8 +74,8 @@ const message = concat([
   u32(6),
   u32(26),
   word(42),
-  pad(CROSS_CHAIN_TOKEN_SERVICE),
-  pad(CROSS_CHAIN_TOKEN_SERVICE),
+  pad(getAddress(CROSS_CHAIN_TOKEN_SERVICE) as Hex),
+  pad(getAddress(CROSS_CHAIN_TOKEN_SERVICE) as Hex),
   zeroHash,
   u32(2000),
   u32(2000),
@@ -175,7 +176,7 @@ it('binds non-USDC attestations to source evidence and requires an exact destina
     }),
     data: encodeAbiParameters(
       [{ type: 'uint32' }, { type: 'bytes32' }, { type: 'bytes' }],
-      [6, pad(CROSS_CHAIN_TOKEN_SERVICE), body],
+      [6, pad(getAddress(CROSS_CHAIN_TOKEN_SERVICE) as Hex), body],
     ),
   }
   const mint = {

@@ -73,7 +73,10 @@ it.each([null, '_'])(
   'retains imported tokens with empty source %s independently of the token-list environment',
   (inputCurrencyId) => {
     const store = createStore()
-    store.set(userAddedTokensAtom, { [ARC_CHAIN_ID]: { [getAddressKey(custom.address)]: custom } })
+    store.set(userAddedTokensAtom, (previous) => ({
+      ...previous,
+      [ARC_CHAIN_ID]: { [getAddressKey(custom.address)]: custom },
+    }))
     const state = atom({ ...receiveFirst, inputCurrencyId })
     const { result } = renderHook(() => useBuildTradeDerivedState(state, true), {
       wrapper: ({ children }: { children: ReactNode }): ReactNode => <Provider store={store}>{children}</Provider>,
@@ -88,7 +91,7 @@ it('restores an imported destination from a legacy mixed-case storage key', () =
   const store = createStore()
   const legacyKey = custom.address.toUpperCase().replace('0X', '0x')
   expect(legacyKey).not.toBe(getAddressKey(custom.address))
-  store.set(userAddedTokensAtom, { [ARC_CHAIN_ID]: { [legacyKey]: custom } })
+  store.set(userAddedTokensAtom, (previous) => ({ ...previous, [ARC_CHAIN_ID]: { [legacyKey]: custom } }))
   const state = atom({ ...receiveFirst, inputCurrencyId: '_' })
   const { result } = renderHook(() => useBuildTradeDerivedState(state, true), {
     wrapper: ({ children }: { children: ReactNode }): ReactNode => <Provider store={store}>{children}</Provider>,

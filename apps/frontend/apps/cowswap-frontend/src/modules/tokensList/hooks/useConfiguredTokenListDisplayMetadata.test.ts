@@ -1,3 +1,4 @@
+import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
 import { getTokenId, SupportedChainId } from '@cowprotocol/cow-sdk'
 import {
   COINBASE_TOKENIZED_STOCKS_LIST_SOURCE,
@@ -81,7 +82,7 @@ describe('configured token-list display metadata', () => {
   it('renders curated Arc stocks with the same issuer label and clean names as Ethereum', () => {
     const result = getConfiguredTokenListDisplayMetadata([
       { source: OPHIS_TOKENS_LIST_SOURCE, list: shippedList },
-      createList(USER_SOURCE, { ...MAINNET_TOKEN, chainId: 5042, symbol: 'AAPLon' }),
+      createList(USER_SOURCE, { ...MAINNET_TOKEN, chainId: ARC_CHAIN_ID, symbol: 'AAPLon' }),
     ])
     const stocks = shippedList.tokens.filter((token) => token.chainId === 5042 && token.tags?.includes('ondo'))
     expect(stocks).toHaveLength(12)

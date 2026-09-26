@@ -3,6 +3,7 @@ import {
   decodeFunctionData,
   encodeAbiParameters,
   encodeEventTopics,
+  getAddress,
   pad,
   toHex,
   zeroAddress,
@@ -49,8 +50,8 @@ const header = concat([
   u32(6),
   u32(26),
   word(42),
-  pad(TOKEN_MESSENGER),
-  pad(TOKEN_MESSENGER),
+  pad(getAddress(TOKEN_MESSENGER) as Hex),
+  pad(getAddress(TOKEN_MESSENGER) as Hex),
   zeroHash,
   u32(2000),
   u32(2000),
@@ -148,7 +149,7 @@ it('requires the source MessageSent from Circle and destination message plus rec
     }),
     data: encodeAbiParameters(
       [{ type: 'uint32' }, { type: 'bytes32' }, { type: 'bytes' }],
-      [6, pad(TOKEN_MESSENGER), body],
+      [6, pad(getAddress(TOKEN_MESSENGER) as Hex), body],
     ),
   }
   const mint = {
@@ -232,7 +233,7 @@ it('keeps a pending manual claim locked when forwarding reverted and recovers a 
     }),
     data: encodeAbiParameters(
       [{ type: 'uint32' }, { type: 'bytes32' }, { type: 'bytes' }],
-      [6, pad(TOKEN_MESSENGER), body],
+      [6, pad(getAddress(TOKEN_MESSENGER) as Hex), body],
     ),
   }
   const mint = {

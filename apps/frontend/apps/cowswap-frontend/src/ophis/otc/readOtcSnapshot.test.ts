@@ -165,7 +165,7 @@ describe('readOtcSnapshot', () => {
 
   it('rejects a latest block without a hash', async () => {
     const client = createMockClient({ nextOrderId: 3n })
-    client.getLatestBlock = async () => ({ number: 100n, hash: null })
+    client.getLatestBlock = async () => ({ number: 100n, hash: null, timestamp: 1_755_792_000n })
     await expect(readOtcSnapshot(client, testManifest())).rejects.toThrow('Ophis OTC block is not identifiable')
   })
 
