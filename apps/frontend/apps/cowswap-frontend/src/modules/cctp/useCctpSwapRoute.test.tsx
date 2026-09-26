@@ -7,7 +7,8 @@ import { useAccountType, useIsSmartContractWallet } from '@cowprotocol/wallet'
 import { renderHook } from '@testing-library/react'
 import { cctpBuyTokens } from 'entities/cctp'
 
-import { type CctpTransfer } from './cctp.service'
+import { type BtcSwapPending } from './btcSwapState'
+import { type CctpQuote, type CctpTransfer } from './cctp.service'
 import { useCctpSwapRoute } from './useCctpSwapRoute'
 
 jest.mock('@cowprotocol/common-hooks', () => ({ useIsBridgingEnabled: jest.fn(() => true) }))
@@ -17,9 +18,13 @@ jest.mock('@cowprotocol/wallet', () => ({
   useAccountType: jest.fn(),
 }))
 jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: true }))
+jest.mock('./useBtcCctpSwap', () => ({ useBtcCctpSwap: () => ({ pending: mockPending, quote: null }) }))
 jest.mock('./useCctpTransfer', () => ({
-  useCctpTransfer: () => ({ quote: null, transfer: mockTransfer, busy: '' }),
+  useCctpTransfer: () => ({ quote: mockQuote, transfer: mockTransfer, busy: '' }),
 }))
+
+let mockQuote: CctpQuote | null = null
+let mockPending: BtcSwapPending | null = null
 
 const mockTransfer: CctpTransfer = {
   source: 1,
@@ -42,6 +47,8 @@ const params = {
 }
 
 beforeEach(() => {
+  mockQuote = null
+  mockPending = null
   jest.mocked(useIsBridgingEnabled).mockReturnValue(true)
   jest.mocked(useIsSmartContractWallet).mockReturnValue(false)
   jest.mocked(useAccountType).mockReturnValue(AccountType.EOA)
@@ -101,4 +108,42 @@ it('requires the normal swap screen to opt in, keeping hooks execution on the ge
   expect(result.current.params).toEqual({})
   expect(result.current.flow.quote).toBeNull()
   expect(result.current.flow.transfer).toBe(mockTransfer)
+})
+
+it('keeps a bound recovered BTC bridge quote usable on an unrelated picker pair', () => {
+  mockPending = {
+    type: 'wbtcToArc',
+    owner: mockTransfer.owner,
+    orderUid: `0x${'ab'.repeat(56)}`,
+    sellAmount: '1000000',
+    minimumBuyAmount: '990000',
+    validTo: 1000,
+  }
+  mockQuote = { ...mockTransfer, asset: 'cirBTC', swapOrderUid: mockPending.orderUid }
+  const { result, rerender } = renderHook(() => useCctpSwapRoute({ ...params, output: input }))
+  expect(result.current.active).toBe(false)
+  expect(result.current.flow.quote).toBe(mockQuote)
+  expect(result.current.output).toBeNull()
+  mockQuote = { ...mockQuote, owner: '0x0000000000000000000000000000000000000002' }
+  rerender()
+  expect(result.current.flow.quote).toBeNull()
+  mockQuote = { ...mockQuote, owner: mockTransfer.owner, swapOrderUid: `0x${'cd'.repeat(56)}` }
+  rerender()
+  expect(result.current.flow.quote).toBeNull()
+})
+
+it('does not show recovered cirBTC raw units as another active CCTP pair output', () => {
+  mockPending = {
+    type: 'wbtcToArc',
+    owner: mockTransfer.owner,
+    orderUid: `0x${'ab'.repeat(56)}`,
+    sellAmount: '1000000',
+    minimumBuyAmount: '990000',
+    validTo: 1000,
+  }
+  mockQuote = { ...mockTransfer, asset: 'cirBTC', swapOrderUid: mockPending.orderUid }
+  const { result } = renderHook(() => useCctpSwapRoute(params))
+  expect(result.current.active).toBe(true)
+  expect(result.current.flow.quote).toBe(mockQuote)
+  expect(result.current.output).toBeNull()
 })

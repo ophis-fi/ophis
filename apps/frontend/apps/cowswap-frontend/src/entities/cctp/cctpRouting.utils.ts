@@ -5,6 +5,7 @@ import { BuyTokensParams } from '@cowprotocol/sdk-bridging'
 
 import { CCTP_ENABLED } from 'common/constants/featureFlags'
 
+import { isBtcCctpSource } from './btcCctp.utils'
 import { CCTP_ASSETS, cctpAsset, cctpToken, supportsCctpAsset, type CctpAsset } from './cctpAssets.const'
 
 export function hasCctpRoute(source: number, destination: number): boolean {
@@ -39,7 +40,9 @@ export function cctpBuyTokens(params: BuyTokensParams | undefined): TokenWithLog
     (asset) =>
       supportsCctpAsset(sellChainId, asset) &&
       supportsCctpAsset(buyChainId, asset) &&
-      (!sellTokenAddress || areAddressesEqual(sellTokenAddress, cctpToken(sellChainId, asset))),
+      (!sellTokenAddress ||
+        areAddressesEqual(sellTokenAddress, cctpToken(sellChainId, asset)) ||
+        (asset === 'cirBTC' && isBtcCctpSource(sellChainId, buyChainId, sellTokenAddress))),
   ).map((asset) =>
     TokenWithLogo.fromToken({
       chainId: buyChainId,

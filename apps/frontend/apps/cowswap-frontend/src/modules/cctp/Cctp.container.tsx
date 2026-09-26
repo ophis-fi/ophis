@@ -4,6 +4,7 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useToggleWalletModal } from 'legacy/state/application/hooks'
 
+import { BtcCctpSwap } from './BtcCctpSwap.container'
 import { cctpNetwork } from './cctp.const'
 import { isCctpOwner } from './cctp.service'
 import * as styledEl from './Cctp.styled'
@@ -14,6 +15,7 @@ import { type useCctpTransfer } from './useCctpTransfer'
 export function CctpSwapRecovery({ route }: { route: ReturnType<typeof useCctpSwapRoute> }): ReactNode {
   if (route.active) return null
   if (route.flow.recoveryError) return <p role="alert">{route.flow.recoveryError}</p>
+  if (route.btc?.pending) return <BtcCctpSwap route={route} />
   if (route.flow.transfer)
     return <CctpSwapDetails route={route} source={undefined} destination={undefined} amount={undefined} />
   return route.asset && route.blocked ? <p role="status">{route.blocked}</p> : null
@@ -34,6 +36,7 @@ export function CctpSwapDetails({
   const connect = useToggleWalletModal()
   const { flow, asset, blocked } = route
   if (flow.recoveryError) return <p role="alert">{flow.recoveryError}</p>
+  if (!flow.transfer && (route.conversion || route.btc?.pending)) return <BtcCctpSwap route={route} />
   return (
     <styledEl.Card aria-label="Bridge details">
       {flow.transfer ? (
