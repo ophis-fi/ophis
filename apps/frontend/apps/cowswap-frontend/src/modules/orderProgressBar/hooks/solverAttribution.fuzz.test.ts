@@ -27,7 +27,7 @@ const chains = Array.from(
 const translate = i18n._.bind(i18n)
 
 beforeAll(() => {
-  expect(Number.isSafeInteger(runs) && runs > 0 && runs <= 100000).toBe(true)
+  expect(Number.isSafeInteger(runs) && runs > 0 && runs <= 10000).toBe(true)
 })
 
 afterEach(() => {

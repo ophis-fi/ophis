@@ -7,7 +7,8 @@ const { resolve } = require('node:path');
 
 const seed = process.env.SOLVER_FUZZ_SEED || '20260925';
 const runs = Number(process.env.SOLVER_FUZZ_RUNS || 1000);
-assert(Number.isSafeInteger(runs) && runs > 0 && runs <= 100000);
+// ponytail: keep cases in memory; cap at 10k groups, stream if larger campaigns are needed.
+assert(Number.isSafeInteger(runs) && runs > 0 && runs <= 10000, 'SOLVER_FUZZ_RUNS must be 1..10000');
 const script = readFileSync(resolve(__dirname, 'check-solver-registry-invariant.sh'), 'utf8');
 const bodies = Object.fromEntries(
   ['autopilot', 'registry'].map((name) => {
