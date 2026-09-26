@@ -7,6 +7,7 @@ import { formatUnits } from 'viem'
 
 import { useToggleWalletModal } from 'legacy/state/application/hooks'
 
+import { BtcSwapAmounts } from './BtcSwapAmounts.container'
 import { isCctpOwner } from './cctp.service'
 import * as styledEl from './Cctp.styled'
 import { CctpHashRecovery, CctpQuoteDetails } from './CctpTransfer.pure'
@@ -78,16 +79,7 @@ function BtcSwapReview({ route }: { route: Route }): ReactNode {
   const expired = !btc.quote || now - btc.quote.quotedAt >= 60_000
   return (
     <>
-      {btc.quote && (
-        <dl>
-          <dt>You pay</dt>
-          <dd>{formatUnits(BigInt(btc.quote.swap.orderToSign.sellAmount), 8)} WBTC</dd>
-          <dt>Minimum received on Arc</dt>
-          <dd>{formatUnits(BigInt(btc.quote.swap.orderToSign.buyAmount), 8)} cirBTC</dd>
-          <dt>Estimated bridge fee</dt>
-          <dd>{formatUnits(BigInt(btc.quote.bridge.expanded?.feeTotalAmount || '0'), 18)} ETH</dd>
-        </dl>
-      )}
+      {btc.quote && <BtcSwapAmounts quote={btc.quote} />}
       <p>
         Swap fees are included. Ethereum approval gas and the bridge fee are paid separately. The bridge fee is
         refreshed after the swap.

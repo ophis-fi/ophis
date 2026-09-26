@@ -14,3 +14,5 @@ export { QuoteDetails } from './pure/QuoteDetails'
 export { ProgressDetails } from './pure/ProgressDetails'
 export { BridgeAccordionSummary } from './pure/BridgeAccordionSummary'
 export { BridgeActivitySummary } from './pure/BridgeActivitySummary'
+
+export { TokenAmountDisplay } from './pure/TokenAmountDisplay'

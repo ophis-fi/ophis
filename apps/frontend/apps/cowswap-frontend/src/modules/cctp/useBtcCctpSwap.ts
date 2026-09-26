@@ -1,5 +1,5 @@
 import { useAtom } from 'jotai'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -8,7 +8,7 @@ import { formatUnits } from 'viem'
 import { useQuoteParams } from 'modules/tradeQuote'
 
 import { quoteBtcSwap, type BtcSwapQuote } from './btcSwapQuote.service'
-import { parseBtcSwap, type BtcSwapPending } from './btcSwapState'
+import { parseBtcSwap } from './btcSwapState'
 import { recoverBtcSwap, finishBtcSwap } from './btcSwapStatus.service'
 import { approveBtcSwap, readBtcSwapFunds, submitBtcSwap, updateBtcSwap } from './btcSwapSubmission.service'
 import { isCctpOwner } from './cctp.service'
@@ -16,6 +16,7 @@ import { cctpTransferAtom } from './cctpState'
 import { useBtcSwapStatus } from './useBtcSwapStatus'
 import { type useCctpTransfer } from './useCctpTransfer'
 import { useCctpWallet } from './useCctpWallet'
+import { useSaveBtcSwapHash } from './useSaveBtcSwapHash'
 
 interface BtcCctpSwapState {
   quote: BtcSwapQuote | null
@@ -102,21 +103,4 @@ export function useBtcCctpSwap(
         }),
     }
   }, [quote, pending, tracking, result, account, params, amount, contextKey, flow, wallet, persist, run])
-}
-
-function useSaveBtcSwapHash(
-  pending: BtcSwapPending | null,
-  settlementHash: BtcSwapPending['settlementHash'],
-  persist: (value: BtcSwapPending | null) => void,
-  { run, busy }: ReturnType<typeof useCctpTransfer>,
-): void {
-  const attempted = useRef('')
-  useEffect(() => {
-    const key = `${pending?.orderUid}:${settlementHash}`
-    if (busy || !pending || pending.settlementHash || !settlementHash || attempted.current === key) return
-    attempted.current = key
-    void run('Saving swap recovery', () =>
-      updateBtcSwap(pending, async () => ({ ...pending, settlementHash }), persist),
-    )
-  }, [pending, settlementHash, persist, run, busy])
 }

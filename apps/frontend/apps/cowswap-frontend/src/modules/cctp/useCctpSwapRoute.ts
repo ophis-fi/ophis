@@ -38,14 +38,18 @@ export function useCctpSwapRoute(selection: CctpSelection): {
   const smartWallet = useIsSmartContractWallet()
   const accountType = useAccountType()
   const bridgingEnabled = useIsBridgingEnabled()
-  const { conversion, asset } = cctpSelectionAsset(enabled && bridgingEnabled, input, output)
+  const { conversion, asset } = cctpSelectionAsset(
+    enabled && bridgingEnabled && orderKind === OrderKind.SELL,
+    input,
+    output,
+  )
   const key = cctpSelectionKey(selection, [account, smartWallet, accountType, asset])
   const flow = useCctpTransfer(key)
   const swapAmount = conversion ? amount : undefined
   const btc = useBtcCctpSwap(flow, key, swapAmount?.toExact(), swapAmount?.quotient.toString())
   const blocked = cctpBlockedReason(smartWallet, accountType, recipient, recipientAddress, account)
   const active = !!asset && !blocked
-  const validQuote = cctpVisibleQuote(flow.quote, btc.pending, account, active && orderKind === OrderKind.SELL)
+  const validQuote = cctpVisibleQuote(flow.quote, btc.pending, account, active)
   return {
     params: cctpWidgetParams(active, flow.busy),
     active,

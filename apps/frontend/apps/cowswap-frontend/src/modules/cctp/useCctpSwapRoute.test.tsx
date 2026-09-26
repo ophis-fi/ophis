@@ -1,11 +1,12 @@
 import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { OrderKind } from '@cowprotocol/cow-sdk'
+import { CurrencyAmount, Token } from '@cowprotocol/currency'
 import { AccountType } from '@cowprotocol/types'
 import { useAccountType, useIsSmartContractWallet } from '@cowprotocol/wallet'
 
 import { renderHook } from '@testing-library/react'
-import { cctpBuyTokens } from 'entities/cctp'
+import { cctpBuyTokens, WBTC_ETHEREUM } from 'entities/cctp'
 
 import { type BtcSwapPending } from './btcSwapState'
 import { type CctpQuote, type CctpTransfer } from './cctp.service'
@@ -110,27 +111,30 @@ it('requires the normal swap screen to opt in, keeping hooks execution on the ge
   expect(result.current.flow.transfer).toBe(mockTransfer)
 })
 
-it('keeps a bound recovered BTC bridge quote usable on an unrelated picker pair', () => {
-  mockPending = {
-    type: 'wbtcToArc',
-    owner: mockTransfer.owner,
-    orderUid: `0x${'ab'.repeat(56)}`,
-    sellAmount: '1000000',
-    minimumBuyAmount: '990000',
-    validTo: 1000,
-  }
-  mockQuote = { ...mockTransfer, asset: 'cirBTC', swapOrderUid: mockPending.orderUid }
-  const { result, rerender } = renderHook(() => useCctpSwapRoute({ ...params, output: input }))
-  expect(result.current.active).toBe(false)
-  expect(result.current.flow.quote).toBe(mockQuote)
-  expect(result.current.output).toBeNull()
-  mockQuote = { ...mockQuote, owner: '0x0000000000000000000000000000000000000002' }
-  rerender()
-  expect(result.current.flow.quote).toBeNull()
-  mockQuote = { ...mockQuote, owner: mockTransfer.owner, swapOrderUid: `0x${'cd'.repeat(56)}` }
-  rerender()
-  expect(result.current.flow.quote).toBeNull()
-})
+it.each([OrderKind.SELL, OrderKind.BUY])(
+  'keeps a bound recovered BTC bridge quote usable on an unrelated %s pair',
+  (orderKind) => {
+    mockPending = {
+      type: 'wbtcToArc',
+      owner: mockTransfer.owner,
+      orderUid: `0x${'ab'.repeat(56)}`,
+      sellAmount: '1000000',
+      minimumBuyAmount: '990000',
+      validTo: 1000,
+    }
+    mockQuote = { ...mockTransfer, asset: 'cirBTC', swapOrderUid: mockPending.orderUid }
+    const { result, rerender } = renderHook(() => useCctpSwapRoute({ ...params, output: input, orderKind }))
+    expect(result.current.active).toBe(false)
+    expect(result.current.flow.quote).toBe(mockQuote)
+    expect(result.current.output).toBeNull()
+    mockQuote = { ...mockQuote, owner: '0x0000000000000000000000000000000000000002' }
+    rerender()
+    expect(result.current.flow.quote).toBeNull()
+    mockQuote = { ...mockQuote, owner: mockTransfer.owner, swapOrderUid: `0x${'cd'.repeat(56)}` }
+    rerender()
+    expect(result.current.flow.quote).toBeNull()
+  },
+)
 
 it('does not show recovered cirBTC raw units as another active CCTP pair output', () => {
   mockPending = {
@@ -146,4 +150,26 @@ it('does not show recovered cirBTC raw units as another active CCTP pair output'
   expect(result.current.active).toBe(true)
   expect(result.current.flow.quote).toBe(mockQuote)
   expect(result.current.output).toBeNull()
+})
+
+it('leaves exact-buy quoting to the generic flow and restores the BTC route when the sell amount is edited', () => {
+  const wbtc = new Token(1, WBTC_ETHEREUM, 8, 'WBTC')
+  const cirbtc = cctpBuyTokens({ sellChainId: 1, buyChainId: ARC_CHAIN_ID }).find((token) => token.symbol === 'cirBTC')
+  const { result, rerender } = renderHook(
+    ({ orderKind }) =>
+      useCctpSwapRoute({
+        ...params,
+        input: wbtc,
+        output: cirbtc,
+        amount: CurrencyAmount.fromRawAmount(wbtc, '1000000'),
+        orderKind,
+      }),
+    { initialProps: { orderKind: OrderKind.BUY } },
+  )
+  expect(result.current.active).toBe(false)
+  expect(result.current.conversion).toBe(false)
+  expect(result.current.params).toEqual({})
+  rerender({ orderKind: OrderKind.SELL })
+  expect(result.current.active).toBe(true)
+  expect(result.current.conversion).toBe(true)
 })
