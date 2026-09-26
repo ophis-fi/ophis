@@ -116,7 +116,7 @@ describe('OPHIS_SOLVERS registry', () => {
       .map((solver) => solver.solverId)
       .sort()
 
-    expect(driverNames).toEqual(['kyberswap', 'uniswap-v3'])
+    expect(driverNames).toEqual(['aero', 'archery', 'kyberswap', 'uniswap-v3', 'uniswap-v4'])
     expect(registryIds).toEqual(driverNames)
   })
 })
@@ -140,6 +140,8 @@ describe('solver display names', () => {
     ['lifi-solve', 'LI.FI'],
     ['uniswap-v4', 'Uniswap v4'],
     ['uniswap-v3', 'Uniswap v3'],
+    ['archery', 'Archery'],
+    ['aero', 'Aero'],
     ['ekubo', 'Ekubo'],
     ['up33', 'UP33'],
     ['pools', 'Pools.trade'],

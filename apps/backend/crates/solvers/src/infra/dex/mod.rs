@@ -4,6 +4,7 @@ use {
     reqwest::RequestBuilder,
 };
 
+pub mod arc;
 pub mod bitget;
 pub mod curve;
 pub mod direct_v3;
@@ -26,6 +27,7 @@ pub use self::simulator::Simulator;
 
 /// A supported external DEX/DEX aggregator API.
 pub enum Dex {
+    Arc(Box<arc::Arc>),
     Bitget(bitget::Bitget),
     Curve(Box<curve::Curve>),
     Okx(Box<okx::Okx>),
@@ -59,6 +61,7 @@ impl Dex {
         is_quote: bool,
     ) -> Result<dex::Swap, Error> {
         let swap = match self {
+            Dex::Arc(arc) => arc.swap(order, slippage, is_quote).await?,
             Dex::Bitget(bitget) => bitget.swap(order, slippage, tokens).await?,
             Dex::Curve(curve) => curve.swap(order, slippage, is_quote).await?,
             Dex::Okx(okx) => okx.swap(order, slippage).await?,
@@ -138,6 +141,16 @@ impl Error {
             Self::RateLimited => "RateLimited",
             Self::UnavailableForLegalReasons => "UnavailableForLegalReasons",
             Self::Other(_) => "Other",
+        }
+    }
+}
+
+impl From<arc::Error> for Error {
+    fn from(error: arc::Error) -> Self {
+        match error {
+            arc::Error::OrderNotSupported => Self::OrderNotSupported,
+            arc::Error::NotFound => Self::NotFound,
+            other => Self::Other(Box::new(other)),
         }
     }
 }

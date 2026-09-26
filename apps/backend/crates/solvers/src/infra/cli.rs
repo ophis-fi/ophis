@@ -38,6 +38,11 @@ pub struct Args {
 #[derive(Subcommand, Debug)]
 #[clap(rename_all = "lowercase")]
 pub enum Command {
+    /// Direct Aero and hookless Uniswap v4 routing on Arc.
+    Arc {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
     /// Direct V3/Slipstream routing over pinned onchain factories and quoters.
     DirectV3 {
         #[clap(long, env)]

@@ -56,6 +56,7 @@
 use {
     crate::domain::competition::solution::interaction,
     alloy::primitives::{Address, U256, address},
+    shared::arc_routes,
 };
 
 const ETHEREUM_FXUSD: Address = address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
@@ -105,6 +106,8 @@ const ROBINHOOD_EKUBO_VE33: Address = address!("D18685a514E59b06d59824e16Db07e73
 const ARC_SYNTHRA_ROUTER: Address = address!("a50eDe66a573eE5bB37E28AF5789B76aE5FEb828");
 const ARC_ACHSWAP_ROUTER: Address = address!("EA0129203FBB99ebEea3f78B2d05b924f17FB556");
 const ARC_UNISWAP_V3_ROUTER: Address = address!("53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77");
+// https://archery.wtf/docs/security (Arc Mainnet deployment, 2026-09-26).
+const ARC_ARCHERY_ROUTER: Address = address!("3b37e67c973683f7fe8a0f304dedfaf475fec138");
 
 #[derive(Clone, Copy, Debug)]
 pub struct RequiredAmounts {
@@ -112,6 +115,8 @@ pub struct RequiredAmounts {
     pub buy_token: Address,
     pub max_input: U256,
     pub min_output: U256,
+    /// Set only after DTO validation proves an ordered funding + v4 swap bundle.
+    pub arc_v4_bundle: bool,
 }
 
 /// Cap on the value of any allowance a solver can request via a `Custom`
@@ -387,9 +392,12 @@ impl Error {
 /// violation — callers should log + emit `custom_interaction_rejected`
 /// metric + propagate to the solver as a parse error.
 pub(crate) const PROTECTED_TARGETS: &[Address] = &[
+    arc_routes::AERO_ROUTER,
+    arc_routes::V4_ROUTER,
     ARC_UNISWAP_V3_ROUTER,
     ARC_SYNTHRA_ROUTER,
     ARC_ACHSWAP_ROUTER,
+    ARC_ARCHERY_ROUTER,
     ETHEREUM_FXUSD,
     OPTIMISM_CURVE_3POOL,
     OPTIMISM_WOOFI_ROUTER,
@@ -425,6 +433,37 @@ pub fn validate_with_settlement(
     required_amounts: Option<RequiredAmounts>,
     settlement: Option<Address>,
 ) -> Result<(), Error> {
+    let target = Address::from(custom.target);
+    if chain_id == 5042 && target == arc_routes::AERO_ROUTER {
+        let reject = || Error::CallDataNotAllowed { target, chain_id };
+        let required = required_amounts.ok_or_else(reject)?;
+        let recipient = settlement.filter(|s| !s.is_zero()).ok_or_else(reject)?;
+        let input = custom.inputs.first().ok_or_else(reject)?.amount.0;
+        let minimum = custom.outputs.first().ok_or_else(reject)?.amount.0;
+        let expected = arc_routes::aero_calldata(
+            required.sell_token,
+            required.buy_token,
+            input,
+            minimum,
+            recipient,
+        )
+        .ok_or_else(reject)?;
+        return if validate_common_direct_swap(custom, required, target, input, minimum)
+            && custom.call_data.as_ref() == expected
+        {
+            Ok(())
+        } else {
+            Err(reject())
+        };
+    }
+    // required_custom_amounts permits this grammar only as an ordered, atomic
+    // transfer+swap pair with one fulfillment and no pre/post interactions.
+    if chain_id == 5042
+        && (target == arc_routes::V4_ROUTER
+            || required_amounts.is_some_and(|r| r.arc_v4_bundle && target == r.sell_token))
+    {
+        return validate_arc_v4(custom, required_amounts);
+    }
     // Ethereum's native f(x) lane is intentionally NOT added to the generic
     // address-only router allowlist. fxUSD is an ERC-20 proxy, so allowing the
     // address generically would also authorize `transfer(attacker, ...)` from
@@ -546,7 +585,13 @@ pub fn validate_with_settlement(
         && [ROBINHOOD_PANCAKESWAP_V3_ROUTER, ROBINHOOD_RAMSES_V3_ROUTER].contains(&target))
         || (chain_id == 10 && target == OPTIMISM_SLIPSTREAM_ROUTER)
         || (chain_id == 5042
-            && [ARC_UNISWAP_V3_ROUTER, ARC_SYNTHRA_ROUTER, ARC_ACHSWAP_ROUTER].contains(&target))
+            && [
+                ARC_UNISWAP_V3_ROUTER,
+                ARC_SYNTHRA_ROUTER,
+                ARC_ACHSWAP_ROUTER,
+                ARC_ARCHERY_ROUTER,
+            ]
+            .contains(&target))
     {
         return validate_direct_v3_swap(custom, required_amounts, chain_id, settlement);
     }
@@ -618,6 +663,62 @@ fn validate_common_direct_swap(
         && allowance.amount <= MAX_CUSTOM_ALLOWANCE
         && custom.value.0.is_zero()
         && !custom.internalize
+}
+
+fn validate_arc_v4(
+    custom: &interaction::Custom,
+    required: Option<RequiredAmounts>,
+) -> Result<(), Error> {
+    let target = Address::from(custom.target);
+    let reject = || Error::CallDataNotAllowed {
+        target,
+        chain_id: 5042,
+    };
+    let required = required.ok_or_else(reject)?;
+    if !required.arc_v4_bundle
+        || !custom.value.0.is_zero()
+        || custom.internalize
+        || !custom.allowances.is_empty()
+        || required.max_input.is_zero()
+        || !arc_routes::valid_pair(required.sell_token, required.buy_token)
+    {
+        return Err(reject());
+    }
+    if target == arc_routes::V4_ROUTER {
+        let output = custom
+            .outputs
+            .first()
+            .filter(|_| custom.outputs.len() == 1)
+            .ok_or_else(reject)?;
+        if !custom.inputs.is_empty()
+            || Address::from(output.token) != required.buy_token
+            || output.amount.0 < required.min_output
+            || !arc_routes::valid_v4_calldata(
+                custom.call_data.as_ref(),
+                required.sell_token,
+                required.buy_token,
+                required.max_input,
+                output.amount.0,
+            )
+        {
+            return Err(reject());
+        }
+    } else {
+        let input = custom
+            .inputs
+            .first()
+            .filter(|_| custom.inputs.len() == 1)
+            .ok_or_else(reject)?;
+        if target != required.sell_token
+            || Address::from(input.token) != required.sell_token
+            || input.amount.0 != required.max_input
+            || !custom.outputs.is_empty()
+            || custom.call_data.as_ref() != arc_routes::v4_funding(required.max_input)
+        {
+            return Err(reject());
+        }
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -696,7 +797,12 @@ fn validate_direct_v3_swap(
 ) -> Result<(), Error> {
     let target = Address::from(custom.target);
     let reject = || Error::CallDataNotAllowed { target, chain_id };
-    let cl = [ROBINHOOD_RAMSES_V3_ROUTER, OPTIMISM_SLIPSTREAM_ROUTER].contains(&target);
+    let cl = [
+        ROBINHOOD_RAMSES_V3_ROUTER,
+        OPTIMISM_SLIPSTREAM_ROUTER,
+        ARC_ARCHERY_ROUTER,
+    ]
+    .contains(&target);
     let legacy = target == ARC_ACHSWAP_ROUTER;
     let deadline = cl || legacy;
     let settlement = if chain_id == 5042 {
@@ -1365,6 +1471,7 @@ mod tests {
             buy_token: buy,
             max_input: U256::from(max_input),
             min_output: U256::from(min_output),
+            arc_v4_bundle: false,
         }
     }
 
@@ -1401,8 +1508,78 @@ mod tests {
     }
 
     #[test]
+    fn arc_router_guards_reject_mutations_and_raw_calls() {
+        use shared::arc_routes::*;
+        let settlement = Address::repeat_byte(0x42);
+        for (sell, buy) in [(USDC, EURC), (EURC, USDC)] {
+            let aero = direct_custom(
+                AERO_ROUTER,
+                sell,
+                buy,
+                1000,
+                990,
+                aero_calldata(sell, buy, U256::from(1000), U256::from(990), settlement).unwrap(),
+            );
+            let mut swap = direct_custom(
+                V4_ROUTER,
+                sell,
+                buy,
+                1000,
+                990,
+                v4_calldata(sell, buy, (100, 1), U256::from(1000), U256::from(990)).unwrap(),
+            );
+            swap.inputs.clear();
+            swap.allowances.clear();
+            let mut funding =
+                direct_custom(sell, sell, buy, 1000, 990, v4_funding(U256::from(1000)));
+            funding.outputs.clear();
+            funding.allowances.clear();
+            for custom in [aero, funding, swap] {
+                let mut required = required(sell, buy, 1000, 990);
+                required.arc_v4_bundle = Address::from(custom.target) != AERO_ROUTER;
+                let amounts = Some(required);
+                let validate =
+                    |c: &Custom| validate_with_settlement(c, 5042, amounts, Some(settlement));
+                assert_eq!(validate(&custom), Ok(()));
+                assert!(validate_with_settlement(&custom, 1, amounts, Some(settlement)).is_err());
+                assert!(validate_with_settlement(&custom, 5042, None, Some(settlement)).is_err());
+                assert!(validate_target(Address::from(custom.target), 5042).is_err());
+                for index in 0..custom.call_data.len() {
+                    let mut poisoned = custom.clone();
+                    let mut data = poisoned.call_data.to_vec();
+                    data[index] ^= 1;
+                    poisoned.call_data = data.into();
+                    assert!(
+                        validate(&poisoned).is_err(),
+                        "accepted byte mutation at {index}"
+                    );
+                }
+                let mut poisoned = custom.clone();
+                poisoned.value = eth::Ether(U256::from(1));
+                assert!(validate(&poisoned).is_err());
+                poisoned = custom.clone();
+                poisoned.internalize = true;
+                assert!(validate(&poisoned).is_err());
+                required.max_input = U256::from(999);
+                required.min_output = U256::from(991);
+                assert!(
+                    validate_with_settlement(&custom, 5042, Some(required), Some(settlement))
+                        .is_err()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn direct_v3_guards_bind_calldata_to_fulfillment() {
         for (chain, target, settlement, cl, legacy) in [
+            (
+                5042,
+                ARC_ARCHERY_ROUTER,
+                Address::repeat_byte(0x42),
+                true,
+                false,
+            ),
             (
                 4663,
                 ROBINHOOD_PANCAKESWAP_V3_ROUTER,

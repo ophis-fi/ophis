@@ -511,18 +511,30 @@ impl Swap {
         };
 
         let allowance = self.allowance();
+        let last_call = self.calls.len().saturating_sub(1);
         let interactions = self
             .calls
             .into_iter()
-            .map(|call| {
+            .enumerate()
+            .map(|(index, call)| {
                 solution::Interaction::Custom(solution::CustomInteraction {
                     target: call.to,
                     value: eth::Ether::default(),
                     calldata: call.calldata,
-                    inputs: vec![self.input],
-                    outputs: vec![self.output],
+                    // The swap's aggregate assets must be counted once, even
+                    // when ERC20 funding and router execution are separate calls.
+                    inputs: if index == 0 { vec![self.input] } else { vec![] },
+                    outputs: if index == last_call {
+                        vec![self.output]
+                    } else {
+                        vec![]
+                    },
                     internalize: false,
-                    allowances: vec![allowance.clone()],
+                    allowances: if index == 0 && !allowance.asset.amount.is_zero() {
+                        vec![allowance.clone()]
+                    } else {
+                        vec![]
+                    },
                 })
             })
             .collect();
@@ -1109,6 +1121,47 @@ mod output_guard_tests {
             infra::dex::simulator::DEFAULT_WRAPPED_NATIVE,
             infra::dex::simulator::DEFAULT_WRAPPED_NATIVE_BALANCE_SLOT,
         )
+    }
+
+    #[tokio::test]
+    async fn multi_call_swap_counts_assets_once_and_omits_zero_allowance() {
+        let t = tokens(&[(USDC, Some(UNIT_PRICE), 0), (WETH, Some(UNIT_PRICE), 0)]);
+        let mut swap = sell_swap(1_000, 1_000);
+        swap.allowance.amount = Amount::new(U256::ZERO);
+        swap.calls = vec![
+            Call {
+                to: USDC,
+                calldata: vec![1],
+            },
+            Call {
+                to: SPENDER,
+                calldata: vec![2],
+            },
+        ];
+        let solution = swap
+            .into_solution(
+                order_with(order::Side::Sell, order::Class::Market),
+                auction::GasPrice(eth::Ether(U256::ZERO)),
+                None,
+                &t,
+                &simulator(),
+                eth::Gas(U256::ZERO),
+                &guard(MarketOutputSimulation::BufferExposed, 0),
+                true,
+            )
+            .await
+            .unwrap();
+        let interactions = &solution.interactions;
+        assert_eq!(interactions.len(), 2);
+        let solution::Interaction::Custom(first) = &interactions[0] else {
+            panic!("expected custom funding")
+        };
+        let solution::Interaction::Custom(last) = &interactions[1] else {
+            panic!("expected custom swap")
+        };
+        assert_eq!((first.inputs.len(), first.outputs.len()), (1, 0));
+        assert_eq!((last.inputs.len(), last.outputs.len()), (0, 1));
+        assert!(first.allowances.is_empty() && last.allowances.is_empty());
     }
 
     #[tokio::test]

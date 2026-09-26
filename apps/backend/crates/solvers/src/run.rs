@@ -190,6 +190,16 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
+        cli::Command::Arc { config: path } => {
+            let (base, venue) = config::dex::arc::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Arc(Box::new(
+                    dex::arc::Arc::try_new(base.node_url.clone(), base.contracts.settlement, venue)
+                        .expect("invalid Arc direct configuration"),
+                )),
+                base,
+            )))
+        }
         cli::Command::Up33 { config: path } | cli::Command::Velodrome { config: path } => {
             let config = config::dex::up33::file::load(&path).await;
             solver::Solver::Dex(Box::new(solver::Dex::new(

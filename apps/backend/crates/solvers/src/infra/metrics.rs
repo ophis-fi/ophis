@@ -98,6 +98,8 @@ pub enum Dex {
     Fables,
     Synthra,
     AchSwap,
+    Archery,
+    Aero,
 }
 
 impl Dex {
@@ -125,6 +127,8 @@ impl Dex {
             Dex::Fables => "fables",
             Dex::Synthra => "synthra",
             Dex::AchSwap => "achswap",
+            Dex::Archery => "archery",
+            Dex::Aero => "aero",
         }
     }
 }

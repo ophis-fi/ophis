@@ -40,9 +40,10 @@ fn required_custom_amounts(
     if protected_interactions.is_empty() {
         return Ok(None);
     }
+    let arc_v4 = protected_interactions.as_slice() == [shared::arc_routes::V4_ROUTER];
     if solution.trades.len() != 1
         || !solution.pre_interactions.is_empty()
-        || solution.interactions.len() != 1
+        || solution.interactions.len() != if arc_v4 { 2 } else { 1 }
         || !solution.post_interactions.is_empty()
         || protected_interactions.len() != 1
     {
@@ -60,6 +61,23 @@ fn required_custom_amounts(
     };
     let sell = alloy::primitives::Address::from(order.sell.token);
     let buy = alloy::primitives::Address::from(order.buy.token);
+    if arc_v4 {
+        // The only multi-interaction exception: exactly the sold ERC20's
+        // transfer first, then the protected v4 router. Both calls undergo
+        // canonical calldata and fulfillment-bound amount checks below.
+        let [
+            solvers_dto::solution::Interaction::Custom(funding),
+            solvers_dto::solution::Interaction::Custom(swap),
+        ] = solution.interactions.as_slice()
+        else {
+            return Err(super::Error(
+                "invalid Arc v4 funding/swap bundle".to_owned(),
+            ));
+        };
+        if funding.target != sell || swap.target != shared::arc_routes::V4_ROUTER {
+            return Err(super::Error("invalid Arc v4 funding/swap order".to_owned()));
+        }
+    }
     if order.side != competition::order::Side::Sell
         || (protected_interactions[0] == FXUSD && sell != FXUSD)
     {
@@ -97,6 +115,7 @@ fn required_custom_amounts(
             buy_token: buy,
             max_input: amount_in,
             min_output: required,
+            arc_v4_bundle: arc_v4,
         },
     ))
 }
@@ -612,36 +631,7 @@ mod protected_interaction_tests {
             address!("0792a633F0c19c351081CF4B211F68F79bCc9676"),
             address!("e490d7aC34CDf92a3Bd16cd4cA3BB1F1a6671828"),
         ];
-        let uid = competition::order::Uid::default();
-        let order = competition::Order {
-            uid,
-            receiver: None,
-            created: 0.into(),
-            valid_to: u32::MAX.into(),
-            buy: eth::Asset {
-                token: buy.into(),
-                amount: eth::TokenAmount(U256::from(990)),
-            },
-            sell: eth::Asset {
-                token: sell.into(),
-                amount: eth::TokenAmount(U256::from(1_000)),
-            },
-            side: competition::order::Side::Sell,
-            kind: competition::order::Kind::Market,
-            app_data: Default::default(),
-            partial: competition::order::Partial::No,
-            pre_interactions: vec![],
-            post_interactions: vec![],
-            sell_token_balance: competition::order::SellTokenBalance::Erc20,
-            buy_token_balance: competition::order::BuyTokenBalance::Erc20,
-            signature: competition::order::Signature {
-                scheme: competition::order::signature::Scheme::PreSign,
-                data: Bytes::new(),
-                signer: Address::ZERO,
-            },
-            protocol_fees: vec![],
-            quote: None,
-        };
+        let order = protected_order(sell, buy);
         for target in targets {
             let solution: solvers_dto::solution::Solution =
                 serde_json::from_value(serde_json::json!({
@@ -675,7 +665,84 @@ mod protected_interaction_tests {
             assert_eq!(context.buy_token, buy);
             assert_eq!(context.max_input, U256::from(1_000));
             assert_eq!(context.min_output, U256::from(990));
+            assert!(!context.arc_v4_bundle);
         }
+    }
+
+    fn protected_order(sell: Address, buy: Address) -> competition::Order {
+        competition::Order {
+            uid: competition::order::Uid::default(),
+            receiver: None,
+            created: 0.into(),
+            valid_to: u32::MAX.into(),
+            buy: eth::Asset {
+                token: buy.into(),
+                amount: eth::TokenAmount(U256::from(990)),
+            },
+            sell: eth::Asset {
+                token: sell.into(),
+                amount: eth::TokenAmount(U256::from(1_000)),
+            },
+            side: competition::order::Side::Sell,
+            kind: competition::order::Kind::Market,
+            app_data: Default::default(),
+            partial: competition::order::Partial::No,
+            pre_interactions: vec![],
+            post_interactions: vec![],
+            sell_token_balance: competition::order::SellTokenBalance::Erc20,
+            buy_token_balance: competition::order::BuyTokenBalance::Erc20,
+            signature: competition::order::Signature {
+                scheme: competition::order::signature::Scheme::PreSign,
+                data: Bytes::new(),
+                signer: Address::ZERO,
+            },
+            protocol_fees: vec![],
+            quote: None,
+        }
+    }
+
+    #[test]
+    fn arc_v4_funding_requires_exactly_one_ordered_atomic_bundle() {
+        use shared::arc_routes::{EURC, USDC, V4_ROUTER};
+        let orders = [protected_order(USDC, EURC)];
+        let custom = |target: Address| {
+            serde_json::json!({
+                "kind":"custom", "internalize":false, "target":target,
+                "value":"0", "callData":"0x", "allowances":[], "inputs":[], "outputs":[]
+            })
+        };
+        let bundle = serde_json::json!({
+            "id":1, "prices":{format!("{USDC:#x}"):"990", format!("{EURC:#x}"):"1000"},
+            "trades":[{"kind":"fulfillment", "order":format!("0x{}", "00".repeat(56)), "executedAmount":"1000"}],
+            "interactions":[custom(USDC),custom(V4_ROUTER)]
+        });
+        let context =
+            |value| required_custom_amounts(&serde_json::from_value(value).unwrap(), &orders);
+        assert!(context(bundle.clone()).unwrap().unwrap().arc_v4_bundle);
+        for interactions in [
+            vec![custom(V4_ROUTER)],
+            vec![custom(V4_ROUTER), custom(USDC)],
+            vec![custom(EURC), custom(V4_ROUTER)],
+            vec![custom(USDC), custom(V4_ROUTER), custom(USDC)],
+        ] {
+            let mut bad = bundle.clone();
+            bad["interactions"] = serde_json::json!(interactions);
+            assert!(context(bad).is_err());
+        }
+        for field in ["preInteractions", "postInteractions"] {
+            let mut bad = bundle.clone();
+            bad[field] = serde_json::json!([{"target":USDC,"value":"0","callData":"0x"}]);
+            assert!(context(bad).is_err());
+        }
+        let mut bad = bundle.clone();
+        bad["trades"] = serde_json::json!([bundle["trades"][0], bundle["trades"][0]]);
+        assert!(context(bad).is_err());
+        let mut standalone = bundle;
+        standalone["interactions"] = serde_json::json!([custom(USDC)]);
+        assert!(
+            context(standalone).unwrap().is_none(),
+            "lone ERC20 transfer must not gain the v4 exception"
+        );
     }
 
     #[test]
