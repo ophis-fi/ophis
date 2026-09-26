@@ -17,6 +17,7 @@ jest.mock('@cowprotocol/common-utils', () => ({
 const environment: { isBarnBackendEnv: boolean } = jest.requireMock('@cowprotocol/common-utils')
 const seed = process.env.SOLVER_FUZZ_SEED || '20260925'
 const runs = Number(process.env.SOLVER_FUZZ_RUNS || 1000)
+const timeout = Math.max(60000, runs * 60)
 const chains = Array.from(
   new Set([
     ...Object.values(SupportedChainId).filter((id): id is SupportedChainId => typeof id === 'number'),
@@ -113,23 +114,27 @@ it.each([false, true])(
       }
     }
   },
-  60000,
+  timeout,
 )
 
-it('fuzzes sovereign names, suffix normalization and chain isolation', () => {
-  for (const iteration of Array.from({ length: runs }, (_, index) => index)) {
-    const bytes = createHash('sha256').update(`${seed}:lane:${iteration}`).digest()
-    const lane = OPHIS_SOLVERS[bytes[0] % OPHIS_SOLVERS.length]
-    const chainId = lane.chainIds[bytes[1] % lane.chainIds.length]
-    const solver = `${bytes[2] % 2 ? lane.solverId.toUpperCase() : lane.solverId}${bytes[3] % 2 ? '-solve' : ''}`
-    const entry = { solver, executedAmounts: { sell: bytes[4].toString(), buy: bytes[5].toString() } }
-    const result = mergeSolverData(entry, {}, chainId, translate)
-    expect({ seed, iteration, name: result.displayName }).toEqual({
-      seed,
-      iteration,
-      name: ophisSolverPublicLabel(lane.solverId),
-    })
-    expect(result.executedAmounts).toBe(entry.executedAmounts)
-    expect(mergeSolverData(entry, {}, 999999, translate).displayName).toBe('Unknown solver')
-  }
-}, 60000)
+it(
+  'fuzzes sovereign names, suffix normalization and chain isolation',
+  () => {
+    for (const iteration of Array.from({ length: runs }, (_, index) => index)) {
+      const bytes = createHash('sha256').update(`${seed}:lane:${iteration}`).digest()
+      const lane = OPHIS_SOLVERS[bytes[0] % OPHIS_SOLVERS.length]
+      const chainId = lane.chainIds[bytes[1] % lane.chainIds.length]
+      const solver = `${bytes[2] % 2 ? lane.solverId.toUpperCase() : lane.solverId}${bytes[3] % 2 ? '-solve' : ''}`
+      const entry = { solver, executedAmounts: { sell: bytes[4].toString(), buy: bytes[5].toString() } }
+      const result = mergeSolverData(entry, {}, chainId, translate)
+      expect({ seed, iteration, name: result.displayName }).toEqual({
+        seed,
+        iteration,
+        name: ophisSolverPublicLabel(lane.solverId),
+      })
+      expect(result.executedAmounts).toBe(entry.executedAmounts)
+      expect(mergeSolverData(entry, {}, 999999, translate).displayName).toBe('Unknown solver')
+    }
+  },
+  timeout,
+)
