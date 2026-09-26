@@ -89,7 +89,7 @@ describe('useTokensToSelect', () => {
     mockUseChainsToSelect.mockReturnValue(undefined)
   })
 
-  it('uses resolved default chain from chain selector state in bridge mode', () => {
+  it('shows the full destination catalog before a sell token is selected', () => {
     mockUseSelectTokenWidgetState.mockReturnValue(
       createWidgetState({
         field: Field.OUTPUT,
@@ -102,14 +102,43 @@ describe('useTokensToSelect', () => {
       isLoading: false,
     })
 
+    mockUseAtomValue.mockReturnValue([lineaToken])
+    mockUseFavoriteTokens.mockReturnValue([lineaToken])
+    mockUseBridgeSupportedTokens.mockReturnValue({
+      data: { tokens: [], isRouteAvailable: false },
+      isLoading: true,
+    } as ReturnType<typeof useBridgeSupportedTokens>)
+    const { result } = renderHook(() => useTokensToSelect())
+
+    expect(mockUseBridgeSupportedTokens).toHaveBeenCalledWith(undefined)
+    expect(result.current.areTokensFromBridge).toBe(false)
+    expect(result.current.tokens).toEqual([lineaToken])
+    expect(result.current.favoriteTokens).toEqual([lineaToken])
+    expect(result.current.isRouteAvailable).toBeUndefined()
+    expect(result.current.isLoading).toBe(false)
+  })
+
+  it('uses provider discovery for destinations without a local catalog before a sell token is selected', () => {
+    const solanaChainId = 1151111081099710
+    const solanaToken = { ...lineaToken, chainId: solanaChainId } as TokenWithLogo
+    mockUseSelectTokenWidgetState.mockReturnValue(
+      createWidgetState({ field: Field.OUTPUT, selectedTargetChainId: solanaChainId }),
+    )
+    mockUseBridgeSupportedTokens.mockReturnValue({
+      data: { tokens: [solanaToken], isRouteAvailable: true },
+      isLoading: false,
+    } as ReturnType<typeof useBridgeSupportedTokens>)
+
     const { result } = renderHook(() => useTokensToSelect())
 
     expect(mockUseBridgeSupportedTokens).toHaveBeenCalledWith({
-      buyChainId: SupportedChainId.LINEA,
+      buyChainId: solanaChainId,
       sellChainId: SupportedChainId.MAINNET,
+      sellTokenAddress: undefined,
     })
     expect(result.current.areTokensFromBridge).toBe(true)
-    expect(result.current.tokens).toEqual([lineaToken])
+    expect(result.current.tokens).toEqual([solanaToken])
+    expect(result.current.tokens).not.toContain(mainnetToken)
   })
 
   it('passes sellChainId/buyChainId when selecting output token on a different chain', () => {

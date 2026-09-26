@@ -92,14 +92,23 @@ export function InvalidBridgeOutputUpdater(): null {
 
   const unsupportedBridgePairPatch = useMemo(
     () =>
-      getUnsupportedBridgePairPatch({
-        sourceChainId,
-        targetChainId,
-        bridgeSupportedNetworks,
-        isBridgeSupportedNetworksLoading,
-        cctpEnabled,
-      }),
-    [sourceChainId, targetChainId, bridgeSupportedNetworks, isBridgeSupportedNetworksLoading, cctpEnabled],
+      inputCurrency
+        ? getUnsupportedBridgePairPatch({
+            sourceChainId,
+            targetChainId,
+            bridgeSupportedNetworks,
+            isBridgeSupportedNetworksLoading,
+            cctpEnabled,
+          })
+        : null,
+    [
+      inputCurrency,
+      sourceChainId,
+      targetChainId,
+      bridgeSupportedNetworks,
+      isBridgeSupportedNetworksLoading,
+      cctpEnabled,
+    ],
   )
 
   const bridgeRouteParams: BuyTokensParams | undefined = useMemo(() => {
