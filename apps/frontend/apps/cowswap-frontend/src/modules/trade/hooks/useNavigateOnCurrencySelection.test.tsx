@@ -1,4 +1,4 @@
-import { TokenWithLogo, USDC, WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, ARC_USDC, TokenWithLogo, USDC, WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/common-const'
 import { ALL_SUPPORTED_CHAINS, OrderKind, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useAreThereTokensWithSameSymbol } from '@cowprotocol/tokens'
 import { useWalletInfo } from '@cowprotocol/wallet'
@@ -249,6 +249,72 @@ describe('useNavigateOnCurrencySelection - cross-chain', () => {
     mockNavigate = jest.fn()
     mockAreThereTokensWithSameSymbol = jest.fn().mockReturnValue(false)
     setupDefaultMocks(mockNavigate, mockAreThereTokensWithSameSymbol)
+  })
+
+  it('retains the destination when the receive token is selected first', () => {
+    mockedUseDerivedTradeState.mockReturnValue({
+      inputCurrency: null,
+      outputCurrency: null,
+      orderKind: OrderKind.SELL,
+    } as never)
+    const { result } = renderHook(() => useNavigateOnCurrencySelection())
+    act(() => result.current(Field.OUTPUT, USDC_GNOSIS))
+    expect(mockNavigate).toHaveBeenCalledWith(
+      SupportedChainId.MAINNET,
+      {
+        inputCurrencyId: null,
+        outputCurrencyId: USDC_GNOSIS.address,
+      },
+      { targetChainId: SupportedChainId.GNOSIS_CHAIN },
+    )
+  })
+
+  it('preserves a replacement destination before a sell token or bridge networks are available', () => {
+    mockedUseDerivedTradeState.mockReturnValue({
+      inputCurrency: null,
+      outputCurrency: USDC_GNOSIS,
+      orderKind: OrderKind.SELL,
+    } as never)
+    mockedUseBridgeSupportedNetworks.mockReturnValue({ data: [] } as never)
+    const { result } = renderHook(() => useNavigateOnCurrencySelection())
+    act(() => result.current(Field.OUTPUT, ARC_USDC))
+    expect(mockNavigate).toHaveBeenCalledWith(
+      SupportedChainId.MAINNET,
+      { inputCurrencyId: null, outputCurrencyId: ARC_USDC.address },
+      { targetChainId: ARC_CHAIN_ID },
+    )
+  })
+
+  it.each([true, false])('keeps a new destination only while bridge networks are pending (%s)', (pending) => {
+    mockedUseBridgeSupportedNetworks.mockReturnValue({ data: pending ? undefined : [], isLoading: pending } as never)
+    const { result } = renderHook(() => useNavigateOnCurrencySelection())
+    act(() => result.current(Field.OUTPUT, USDC_GNOSIS))
+    expect(mockNavigate).toHaveBeenCalledWith(
+      SupportedChainId.MAINNET,
+      { inputCurrencyId: WETH_MAINNET.symbol, outputCurrencyId: pending ? USDC_GNOSIS.address : null },
+      pending ? { targetChainId: SupportedChainId.GNOSIS_CHAIN } : {},
+    )
+  })
+
+  it('waits for provider discovery when CCTP already supplies a partial network list', () => {
+    const partialNetworks = ALL_SUPPORTED_CHAINS.filter((network) => network.id === SupportedChainId.MAINNET)
+    mockedUseBridgeSupportedNetworks.mockReturnValue({ data: partialNetworks, isLoading: true } as never)
+    const { result, rerender } = renderHook(() => useNavigateOnCurrencySelection())
+    act(() => result.current(Field.OUTPUT, USDC_GNOSIS))
+    expect(mockNavigate).toHaveBeenLastCalledWith(
+      SupportedChainId.MAINNET,
+      { inputCurrencyId: WETH_MAINNET.symbol, outputCurrencyId: USDC_GNOSIS.address },
+      { targetChainId: SupportedChainId.GNOSIS_CHAIN },
+    )
+
+    mockedUseBridgeSupportedNetworks.mockReturnValue({ data: partialNetworks, isLoading: false } as never)
+    rerender()
+    act(() => result.current(Field.OUTPUT, USDC_GNOSIS))
+    expect(mockNavigate).toHaveBeenLastCalledWith(
+      SupportedChainId.MAINNET,
+      { inputCurrencyId: WETH_MAINNET.symbol, outputCurrencyId: null },
+      {},
+    )
   })
 
   describe('Chain switching scenarios', () => {

@@ -1,12 +1,12 @@
 import { Atom, useAtomValue } from 'jotai'
 import { useMemo } from 'react'
 
-import { TokenWithLogo } from '@cowprotocol/common-const'
-import { tryParseFractionalAmount } from '@cowprotocol/common-utils'
-import { getAddressKey } from '@cowprotocol/cow-sdk'
+import { NATIVE_CURRENCIES, TokenWithLogo } from '@cowprotocol/common-const'
+import { getCurrencyAddress, isSupportedChainId, tryParseFractionalAmount } from '@cowprotocol/common-utils'
+import { areAddressesEqual, getAddressKey } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { BuyTokensParams } from '@cowprotocol/sdk-bridging'
-import { useTokenBySymbolOrAddress } from '@cowprotocol/tokens'
+import { userAddedTokensAtom, useTokenBySymbolOrAddress, useTokensByAddressMapForChain } from '@cowprotocol/tokens'
 
 import { useBridgeSupportedTokens } from 'entities/bridgeProvider'
 import { Nullish } from 'types'
@@ -40,10 +40,15 @@ export function useBuildTradeDerivedState(
     return {
       buyChainId: targetChainId,
       sellChainId: sellChainId || undefined,
+      sellTokenAddress: inputCurrency ? getCurrencyAddress(inputCurrency) : undefined,
     }
-  }, [sellChainId, targetChainId])
+  }, [sellChainId, targetChainId, inputCurrency])
 
-  const outputCurrencyFromBridge = useTokenForTargetChain(buyTokensParams, outputCurrencyId)
+  const outputCurrencyFromBridge = useTokenForTargetChain(
+    buyTokensParams,
+    outputCurrencyId,
+    !inputCurrencyId || inputCurrencyId === '_',
+  )
   const outputCurrencyFromTokenLists = useTokenBySymbolOrAddress(targetChainId ? null : outputCurrencyId, sellChainId)
 
   const outputCurrency = outputCurrencyFromBridge || outputCurrencyFromTokenLists
@@ -92,14 +97,33 @@ function getCurrencyAmount(
   return tryParseFractionalAmount(currency, currencyAmount) || CurrencyAmount.fromRawAmount(currency, currencyAmount)
 }
 
-function useTokenForTargetChain(params: BuyTokensParams | undefined, currencyId: string | null): TokenWithLogo | null {
+function useTokenForTargetChain(
+  params: BuyTokensParams | undefined,
+  currencyId: string | null,
+  allowCatalogFallback: boolean,
+): TokenWithLogo | null {
   const result = useBridgeSupportedTokens(params)
+  const targetChainId = isSupportedChainId(params?.buyChainId) ? params.buyChainId : undefined
+  const catalog = useTokensByAddressMapForChain(targetChainId)
+  const customTokens = useAtomValue(userAddedTokensAtom)
+  const nativeToken = targetChainId ? NATIVE_CURRENCIES[targetChainId] : undefined
+  const matchingNativeToken = nativeToken && areAddressesEqual(nativeToken.address, currencyId) ? nativeToken : null
 
   return useMemo(() => {
-    if (!result.data?.tokens?.length || !currencyId) return null
+    if (!currencyId) return null
 
     const currencyIdKey = getAddressKey(currencyId)
-
-    return result.data.tokens.find((token) => getAddressKey(token.address) === currencyIdKey) || null
-  }, [result, currencyId])
+    const bridgeToken = result.data?.tokens.find((token) => getAddressKey(token.address) === currencyIdKey)
+    if (bridgeToken) return bridgeToken
+    // With no sell token, this is a destination selection, not yet a bridge route.
+    // Once a sell token is selected, provider discovery and route validation apply again.
+    if (!allowCatalogFallback || !targetChainId) return null
+    const listedToken = catalog[currencyIdKey]
+    if (listedToken) return listedToken
+    const customToken = Object.values(customTokens[targetChainId] || {}).find((token) =>
+      areAddressesEqual(token.address, currencyId),
+    )
+    if (customToken?.chainId === targetChainId) return TokenWithLogo.fromToken(customToken, customToken.logoURI)
+    return matchingNativeToken
+  }, [result.data, currencyId, allowCatalogFallback, targetChainId, catalog, customTokens, matchingNativeToken])
 }
