@@ -29,9 +29,13 @@ export function useBridgeSupportedTokens(
 
   const cctpTokens = useMemo(
     () =>
-      (isBridgingEnabled && cctpEnabled ? cctpBuyTokens(params) : []).map((token) =>
-        TokenWithLogo.fromToken(token, tokensByAddress[getAddressKey(token.address)]?.logoURI),
-      ),
+      (isBridgingEnabled && cctpEnabled ? cctpBuyTokens(params) : []).map((token) => {
+        const listed = tokensByAddress[getAddressKey(token.address)]
+        return TokenWithLogo.fromToken(
+          { ...token, name: listed?.name || token.name || '', symbol: token.symbol || '' },
+          listed?.logoURI,
+        )
+      }),
     [params, tokensByAddress, isBridgingEnabled, cctpEnabled],
   )
   const response = useSWR(
