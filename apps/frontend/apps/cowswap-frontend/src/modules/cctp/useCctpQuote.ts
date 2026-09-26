@@ -22,7 +22,7 @@ export function useCctpQuote(
   clearQuote(): void
   assertCurrentQuote(): void
   approve(): Promise<void>
-  loadQuote(source: number, destination: number, input: string, asset?: CctpAsset): Promise<void>
+  loadQuote(source: number, destination: number, input: string, asset?: CctpAsset, swapOrderUid?: string): Promise<void>
 } {
   const [result, setResult] = useState<{ key: string; generation: number; quote: CctpQuote } | null>(null)
   const quote = result?.key === contextKey ? result.quote : null
@@ -48,12 +48,21 @@ export function useCctpQuote(
       approved,
       clearQuote,
       assertCurrentQuote,
-      loadQuote: (source: number, destination: number, input: string, asset: CctpAsset = 'USDC') =>
+      loadQuote: (
+        source: number,
+        destination: number,
+        input: string,
+        asset: CctpAsset = 'USDC',
+        swapOrderUid?: string,
+      ) =>
         run('Getting bridge fee', async () => {
           clearQuote()
           const request = generation.current
           if (!account) throw new Error('Connect your wallet first')
-          const next = await quoteCctp(source, destination, account, input, asset)
+          const next = {
+            ...(await quoteCctp(source, destination, account, input, asset)),
+            ...(swapOrderUid ? { swapOrderUid } : {}),
+          }
           const funds = await readCctpFunds(next)
           if (funds.balance < BigInt(next.amount)) throw new Error('Insufficient token balance')
           if (request !== generation.current) return

@@ -24,6 +24,7 @@ const hash = z
   .transform((value) => value as Hex)
 export const cctpTransferSchema = z
   .object({
+    swapOrderUid: z.string().regex(/^0x[a-fA-F0-9]{112}$/).optional(),
     asset: z.custom<CctpAsset>(isCctpAsset).optional(),
     expanded: cctpxQuoteSchema.optional(),
     source: chain,

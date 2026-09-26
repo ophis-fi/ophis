@@ -27,6 +27,7 @@ import {
 } from './cctpx.service'
 
 export interface CctpQuote {
+  swapOrderUid?: string
   asset?: CctpAsset
   expanded?: CctpxQuote
   source: number
