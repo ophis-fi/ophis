@@ -1,0 +1,47 @@
+{
+  "checkedAt": "2026-09-26T23:08:15.578206+00:00",
+  "endpoint": "https://robinhood-mainnet.ophis.fi/api/v1/quote",
+  "request": {
+    "sellToken": "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+    "buyToken": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    "from": "0x0000000000000000000000000000000000000001",
+    "receiver": "0x0000000000000000000000000000000000000001",
+    "kind": "sell",
+    "sellAmountBeforeFee": "10000000000000000",
+    "partiallyFillable": false,
+    "sellTokenBalance": "erc20",
+    "buyTokenBalance": "erc20",
+    "priceQuality": "optimal",
+    "signingScheme": "eip712",
+    "onchainOrder": false,
+    "validFor": 1200,
+    "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}"
+  },
+  "http": "200",
+  "response": {
+    "quote": {
+      "sellToken": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+      "buyToken": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+      "receiver": "0x0000000000000000000000000000000000000001",
+      "sellAmount": "9993605251810000",
+      "buyAmount": "26891814",
+      "validTo": 1790465294,
+      "appData": "{\"appCode\":\"ophis\",\"metadata\":{\"orderClass\":{\"orderClass\":\"market\"},\"partnerFee\":{\"recipient\":\"0x858f0F5eE954846D47155F5203c04aF1819eCeF8\",\"volumeBps\":1},\"quote\":{\"slippageBips\":50}},\"version\":\"1.14.0\"}",
+      "appDataHash": "0x6479acca0c8a0aaffabbc68aca9783ef2f18b8e47f746a4c7f5eaabfe212502a",
+      "feeAmount": "6394748190000",
+      "gasAmount": "248147",
+      "gasPrice": "25770000",
+      "sellTokenPrice": "1",
+      "kind": "sell",
+      "partiallyFillable": false,
+      "sellTokenBalance": "erc20",
+      "buyTokenBalance": "erc20",
+      "signingScheme": "eip712"
+    },
+    "from": "0x0000000000000000000000000000000000000001",
+    "expiration": "2026-09-26T23:09:14.346985829Z",
+    "id": 10825,
+    "verified": true
+  },
+  "curlExit": 0
+}
