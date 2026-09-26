@@ -296,6 +296,27 @@ describe('useNavigateOnCurrencySelection - cross-chain', () => {
     )
   })
 
+  it('waits for provider discovery when CCTP already supplies a partial network list', () => {
+    const partialNetworks = ALL_SUPPORTED_CHAINS.filter((network) => network.id === SupportedChainId.MAINNET)
+    mockedUseBridgeSupportedNetworks.mockReturnValue({ data: partialNetworks, isLoading: true } as never)
+    const { result, rerender } = renderHook(() => useNavigateOnCurrencySelection())
+    act(() => result.current(Field.OUTPUT, USDC_GNOSIS))
+    expect(mockNavigate).toHaveBeenLastCalledWith(
+      SupportedChainId.MAINNET,
+      { inputCurrencyId: WETH_MAINNET.symbol, outputCurrencyId: USDC_GNOSIS.address },
+      { targetChainId: SupportedChainId.GNOSIS_CHAIN },
+    )
+
+    mockedUseBridgeSupportedNetworks.mockReturnValue({ data: partialNetworks, isLoading: false } as never)
+    rerender()
+    act(() => result.current(Field.OUTPUT, USDC_GNOSIS))
+    expect(mockNavigate).toHaveBeenLastCalledWith(
+      SupportedChainId.MAINNET,
+      { inputCurrencyId: WETH_MAINNET.symbol, outputCurrencyId: null },
+      {},
+    )
+  })
+
   describe('Chain switching scenarios', () => {
     it('should preserve buy token when selecting input currency from different chain and buy was on same chain as sell', () => {
       // Default state: wallet on Mainnet, sell=WETH_MAINNET, buy=USDC_MAINNET (same-chain swap)

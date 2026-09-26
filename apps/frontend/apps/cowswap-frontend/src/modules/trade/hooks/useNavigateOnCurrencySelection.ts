@@ -35,7 +35,7 @@ export function useNavigateOnCurrencySelection(): CurrencySelectionCallback {
   const { chainId } = useWalletInfo()
   const { inputCurrency, outputCurrency, orderKind } = useDerivedTradeState() || {}
   const navigate = useTradeNavigate()
-  const { data: bridgeSupportedNetworks } = useBridgeSupportedNetworks()
+  const { data: bridgeSupportedNetworks, isLoading: isBridgeNetworksLoading } = useBridgeSupportedNetworks()
   const resolveCurrencyAddressOrSymbol = useResolveCurrencyAddressOrSymbol()
 
   return useCallback(
@@ -55,6 +55,7 @@ export function useNavigateOnCurrencySelection(): CurrencySelectionCallback {
       const targetInputCurrency = isInputField ? currency : inputCurrency
       const targetOutputCurrency = isInputField ? outputCurrency : currency
       const isOutputCurrencyBridgeSupported =
+        isBridgeNetworksLoading ||
         !targetInputCurrency ||
         !targetOutputCurrency ||
         bridgeSupportedNetworks?.some((network) => network.id === targetOutputCurrency.chainId) !== false
@@ -116,11 +117,7 @@ export function useNavigateOnCurrencySelection(): CurrencySelectionCallback {
           ? { inputCurrencyId: outputCurrencyId, outputCurrencyId: inputCurrencyId }
           : {
               inputCurrencyId: targetInputCurrencyId,
-              outputCurrencyId: isBridgeTrade
-                ? isOutputCurrencyBridgeSupported
-                  ? targetOutputCurrencyId
-                  : null
-                : targetOutputCurrencyId,
+              outputCurrencyId: isBridgeTrade && !isOutputCurrencyBridgeSupported ? null : targetOutputCurrencyId,
             },
         searchParams,
       )
@@ -134,6 +131,7 @@ export function useNavigateOnCurrencySelection(): CurrencySelectionCallback {
       inputCurrency,
       outputCurrency,
       bridgeSupportedNetworks,
+      isBridgeNetworksLoading,
       resolveCurrencyAddressOrSymbol,
     ],
   )
