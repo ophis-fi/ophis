@@ -3,7 +3,7 @@ import { getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { getAddress } from '@ethersproject/address'
 
 import { i18n } from '@lingui/core'
-import { OPHIS_SOLVERS, ophisSolverPublicLabel } from 'ophis/solvers'
+import { OPHIS_SOLVERS, ophisSolverRouteLabel } from 'ophis/solvers'
 
 import { createHash } from 'crypto'
 
@@ -105,6 +105,7 @@ it.each([false, true])(
         expect({ seed, iteration, name: result.displayName }).toEqual({ seed, iteration, name: expected })
         expect(result.executedAmounts).toBe(winner.executedAmounts)
         expect(result.solver).toBe(winner.solver)
+        expect(result.route).toBeUndefined()
         expect(JSON.stringify(records)).toBe(before)
       }
 
@@ -130,8 +131,10 @@ it(
       expect({ seed, iteration, name: result.displayName }).toEqual({
         seed,
         iteration,
-        name: ophisSolverPublicLabel(lane.solverId),
+        name: 'Ophis',
       })
+      expect(result.route).toBe(ophisSolverRouteLabel(lane.solverId))
+      expect(result.image).toBe('/ophis-icon.svg')
       expect(result.executedAmounts).toBe(entry.executedAmounts)
       expect(mergeSolverData(entry, {}, 999999, translate).displayName).toBe('Unknown solver')
     }

@@ -9,6 +9,7 @@ import {
   OPHIS_SOLVERS,
   ophisSolverPublicDescription,
   ophisSolverPublicLabel,
+  ophisSolverRouteLabel,
 } from './solvers'
 
 // Repo-root driver config for the chain-10 orderbook. Six levels up from
@@ -130,11 +131,11 @@ describe('solver display names', () => {
     } finally {
       Object.defineProperty(Object, 'hasOwn', { value: hasOwn })
     }
-    expect(label).toBe('KyberSwap')
+    expect(label).toBe('Ophis')
   })
 
   it.each([
-    ['baseline', 'Ophis Baseline'],
+    ['baseline', 'Baseline'],
     ['KYBERSWAP', 'KyberSwap'],
     ['lifi-solve', 'LI.FI'],
     ['uniswap-v4', 'Uniswap v4'],
@@ -143,20 +144,23 @@ describe('solver display names', () => {
     ['up33', 'UP33'],
     ['pools', 'Pools.trade'],
   ])('names the %s routing lane', (id, label) => {
-    expect(ophisSolverPublicLabel(id)).toBe(label)
-    expect(ophisSolverPublicDescription(id)).toContain('Ophis-operated')
+    expect(ophisSolverPublicLabel(id)).toBe('Ophis')
+    expect(ophisSolverRouteLabel(id)).toBe(label)
+    expect(ophisSolverPublicDescription(id)).toBe(`Ophis-operated routing lane: ${label}.`)
   })
 
   it('gives every registered routing lane a distinct name', () => {
-    const labels = OPHIS_SOLVERS.map(({ solverId }) => ophisSolverPublicLabel(solverId))
+    const labels = OPHIS_SOLVERS.map(({ solverId }) => ophisSolverRouteLabel(solverId))
     expect(new Set(labels).size).toBe(OPHIS_SOLVERS.length)
-    expect(labels).not.toContain('Unknown solver')
+    expect(labels).not.toContain(undefined)
+    expect(OPHIS_SOLVERS.every(({ solverId }) => ophisSolverPublicLabel(solverId) === 'Ophis')).toBe(true)
   })
 
   it.each(['0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665', 'unregistered', 'constructor', '__proto__'])(
     'keeps unidentified solver %s out of the display label',
     (id) => {
       expect(ophisSolverPublicLabel(id)).toBe('Unknown solver')
+      expect(ophisSolverRouteLabel(id)).toBeUndefined()
       expect(ophisSolverPublicDescription(id)).toContain(id)
     },
   )

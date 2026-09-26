@@ -23,7 +23,7 @@
  * deployed commit 45c1c7e0b3, autopilot drivers baseline/okx/kyberswap/velora,
  * and auction 2239975 returned solutions from a subset of exactly those.
  *
- * Public names identify each routing lane; internal ids still mirror autopilot.
+ * Public names identify Ophis; route labels distinguish its internal lanes.
  * All entries are Ophis-operated, including lanes that query external aggregators.
  *
  * Counts derived from this registry are phrased "up to N": being dispatched an
@@ -125,7 +125,7 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
 ]
 
 const OPHIS_SOLVER_NAMES: Record<string, string> = {
-  baseline: 'Ophis Baseline',
+  baseline: 'Baseline',
   okx: 'OKX',
   kyberswap: 'KyberSwap',
   velora: 'Velora',
@@ -148,15 +148,17 @@ const OPHIS_SOLVER_NAMES: Record<string, string> = {
 }
 
 export function ophisSolverPublicLabel(solverId: string): string {
+  return ophisSolverRouteLabel(solverId) ? 'Ophis' : 'Unknown solver'
+}
+
+export function ophisSolverRouteLabel(solverId: string): string | undefined {
   const key = solverId.toLowerCase().replace(/-solve$/, '')
-  return Object.prototype.hasOwnProperty.call(OPHIS_SOLVER_NAMES, key) ? OPHIS_SOLVER_NAMES[key] : 'Unknown solver'
+  return Object.prototype.hasOwnProperty.call(OPHIS_SOLVER_NAMES, key) ? OPHIS_SOLVER_NAMES[key] : undefined
 }
 
 export function ophisSolverPublicDescription(solverId: string): string {
-  const label = ophisSolverPublicLabel(solverId)
-  return label === 'Unknown solver'
-    ? `Solver identity unavailable (${solverId}).`
-    : `Ophis-operated routing lane: ${label}.`
+  const label = ophisSolverRouteLabel(solverId)
+  return !label ? `Solver identity unavailable (${solverId}).` : `Ophis-operated routing lane: ${label}.`
 }
 
 /**

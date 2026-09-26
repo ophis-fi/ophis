@@ -35,19 +35,19 @@ describe('useSolversInfo', () => {
     // OPHIS_SOLVERS spans every sovereign chain, so comparing against its
     // total silently broke when the 4663-only uniswap-v4 entry was added.
     expect(Object.keys(result.current).length).toBe(getOphisSolversForChain(OPTIMISM).length)
-    expect(result.current['baseline'].displayName).toBe('Ophis Baseline')
+    expect(result.current['baseline'].displayName).toBe('Ophis')
     expect(result.current['kyberswap'].solverNetworks).toEqual(
       expect.arrayContaining([{ chainId: OPTIMISM, env: 'prod' }]),
     )
   })
 
-  it('shows provider names and the Ophis operator logo for its routing lanes', () => {
+  it('names Ophis as the operator and keeps the provider in its description', () => {
     const { result } = renderHook(() => useSolversInfo(OPTIMISM))
 
-    expect(result.current['kyberswap'].displayName).toBe('KyberSwap')
-    expect(result.current['velora'].displayName).toBe('Velora')
-    expect(result.current['lifi'].displayName).toBe('LI.FI')
-    expect(result.current['kyberswap'].description).toContain('Ophis-operated')
+    expect(result.current['kyberswap'].displayName).toBe('Ophis')
+    expect(result.current['velora'].displayName).toBe('Ophis')
+    expect(result.current['lifi'].displayName).toBe('Ophis')
+    expect(result.current['kyberswap'].description).toBe('Ophis-operated routing lane: KyberSwap.')
   })
 
   it('lets a CMS entry win over the registry on solver-id collision', () => {
@@ -79,9 +79,9 @@ describe('useSolversInfo', () => {
     const { result } = renderHook(() => useSolversInfo(5042 as SupportedChainId))
 
     expect(Object.keys(result.current)).toEqual(['kyberswap', 'uniswap-v3'])
-    expect(result.current['kyberswap'].displayName).toBe('KyberSwap')
+    expect(result.current['kyberswap'].displayName).toBe('Ophis')
     expect(result.current['uniswap-v3']).toMatchObject({
-      displayName: 'Uniswap v3',
+      displayName: 'Ophis',
       description: 'Ophis-operated routing lane: Uniswap v3.',
       solverNetworks: expect.arrayContaining([{ chainId: 5042, env: 'prod' }]),
     })
