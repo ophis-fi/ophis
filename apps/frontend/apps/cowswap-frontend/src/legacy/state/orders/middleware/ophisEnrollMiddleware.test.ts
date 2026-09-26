@@ -1,4 +1,4 @@
-import { AnyAction, MiddlewareAPI } from 'redux'
+import { AnyAction } from 'redux'
 import { instance, mock, resetCalls, when } from 'ts-mockito'
 
 import { ophisEnrollMiddleware } from './ophisEnrollMiddleware'
@@ -6,7 +6,7 @@ import { ophisEnrollMiddleware } from './ophisEnrollMiddleware'
 const nextMock = jest.fn()
 const actionMock = mock<AnyAction>()
 
-const dispatch = (): unknown => ophisEnrollMiddleware(instance(mock<MiddlewareAPI>()))(nextMock)(instance(actionMock))
+const dispatch = (): unknown => ophisEnrollMiddleware()(nextMock)(instance(actionMock))
 
 const flushMicrotasks = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 

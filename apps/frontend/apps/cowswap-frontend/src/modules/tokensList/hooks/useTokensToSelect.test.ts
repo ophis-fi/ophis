@@ -107,7 +107,10 @@ describe('useTokensToSelect', () => {
     mockUseBridgeSupportedTokens.mockReturnValue({
       data: { tokens: [], isRouteAvailable: false },
       isLoading: true,
-    } as ReturnType<typeof useBridgeSupportedTokens>)
+      error: undefined,
+      isValidating: true,
+      mutate: jest.fn(),
+    })
     const { result } = renderHook(() => useTokensToSelect())
 
     expect(mockUseBridgeSupportedTokens).toHaveBeenCalledWith(undefined)
