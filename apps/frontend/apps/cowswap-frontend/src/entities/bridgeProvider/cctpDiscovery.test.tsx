@@ -10,6 +10,14 @@ jest.mock('common/constants/featureFlags', () => ({ CCTP_ENABLED: true }))
 jest.mock('./useBridgeProvidersIds', () => ({ useBridgeProvidersIds: () => [] }))
 jest.mock('tradingSdk/bridgingSdk', () => ({ bridgingSdk: {} }))
 const mockTokens = {
+  '0x7de283100d916cfc7822a7664bcd7e9371e78d32': {
+    chainId: 5042,
+    address: '0x7de283100d916cfc7822a7664bcd7e9371e78d32',
+    decimals: 8,
+    symbol: 'STALE',
+    name: 'Tesla (Ondo Tokenized)',
+    logoURI: '/logos/token-tslaon.png',
+  },
   '0x171a4217b86a807a64eb94757db6849fb4bdbaa0': {
     chainId: 1,
     address: '0x171a4217b86a807a64eb94757db6849fb4bdbaa0',
@@ -34,6 +42,19 @@ it('publishes CCTP before generic discovery completes, preserving canonical iden
   rerender()
   expect(result.current.data).toBe(data)
   expect(result.current.data?.tokens[0]).toBe(data?.tokens[0])
+})
+
+it('uses catalog display metadata for bridge assets without replacing their registry identity', () => {
+  const params = { sellChainId: 1, buyChainId: 5042, sellTokenAddress: cctpToken(1, 'TSLAon') }
+  const { result } = renderHook(() => useBridgeSupportedTokens(params))
+  expect(result.current.data?.tokens[0]).toMatchObject({
+    chainId: 5042,
+    address: cctpToken(5042, 'TSLAon'),
+    decimals: 18,
+    symbol: 'TSLAon',
+    name: 'Tesla (Ondo Tokenized)',
+    logoURI: '/logos/token-tslaon.png',
+  })
 })
 
 it('does not advertise CCTP-only tokens on surfaces that cannot execute them', () => {

@@ -4,6 +4,7 @@ import {
   DEFAULT_TOKENS_LISTS,
   ListState,
   ONDO_TOKENS_LIST_SOURCE,
+  OPHIS_TOKENS_LIST_SOURCE,
   XSTOCKS_TOKENS_LIST_SOURCE,
 } from '@cowprotocol/tokens'
 
@@ -14,6 +15,9 @@ import {
   getConfiguredTokenListQueryOptions,
   mergeConfiguredTokenListsWithPersistedFallback,
 } from './useConfiguredTokenListDisplayMetadata'
+
+import shippedList from '../../../../public/token-lists/ophis.json'
+import { getTokenDisplayName } from '../pure/TokenInfo/getTokenDisplayName.utils'
 
 const MAINNET_SOURCE = ONDO_TOKENS_LIST_SOURCE
 const ARBITRUM_SOURCE = DEFAULT_TOKENS_LISTS[SupportedChainId.ARBITRUM_ONE]?.[0]?.source ?? 'missing-configured-source'
@@ -74,6 +78,28 @@ function createList(
 }
 
 describe('configured token-list display metadata', () => {
+  it('renders curated Arc stocks with the same issuer label and clean names as Ethereum', () => {
+    const result = getConfiguredTokenListDisplayMetadata([
+      { source: OPHIS_TOKENS_LIST_SOURCE, list: shippedList },
+      createList(USER_SOURCE, { ...MAINNET_TOKEN, chainId: 5042, symbol: 'AAPLon' }),
+    ])
+    const stocks = shippedList.tokens.filter((token) => token.chainId === 5042 && token.tags?.includes('ondo'))
+    expect(stocks).toHaveLength(12)
+    for (const token of stocks) {
+      const provider = result.tokenizedAssetProviderByTokenId.get(getTokenId(token))
+      expect(provider).toBe('ondo')
+      expect(getTokenDisplayName(token.name, provider)).not.toContain('(Ondo Tokenized)')
+      const ethereumToken = shippedList.tokens.find((item) => item.chainId === 1 && item.symbol === token.symbol)
+      expect(ethereumToken).toBeDefined()
+      if (ethereumToken) expect(result.tokenizedAssetProviderByTokenId.get(getTokenId(ethereumToken))).toBe(provider)
+    }
+    expect(result.tokenListTags.ondo?.name).toBe('Tokenized by Ondo')
+    expect(result.tokenizedAssetProviderByTokenId.has(getTokenId({ ...MAINNET_TOKEN, chainId: 5042 }))).toBe(false)
+    const ondoGovernance = shippedList.tokens.find((token) => token.chainId === 5042 && token.symbol === 'ONDO')
+    expect(ondoGovernance).toBeDefined()
+    if (ondoGovernance) expect(result.tokenizedAssetProviderByTokenId.has(getTokenId(ondoGovernance))).toBe(false)
+  })
+
   it('trusts configured list membership and ignores user-added lists', () => {
     const result = getConfiguredTokenListDisplayMetadata(
       [createList(MAINNET_SOURCE, MAINNET_TOKEN), createList(USER_SOURCE, USER_TOKEN)],

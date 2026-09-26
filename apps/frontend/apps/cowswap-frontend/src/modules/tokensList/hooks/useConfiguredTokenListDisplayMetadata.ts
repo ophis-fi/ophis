@@ -11,6 +11,7 @@ import {
   ListSourceConfig,
   ListState,
   ONDO_TOKENS_LIST_SOURCE,
+  OPHIS_TOKENS_LIST_SOURCE,
   TokenListTags,
   XSTOCKS_TOKENS_LIST_SOURCE,
 } from '@cowprotocol/tokens'
@@ -31,6 +32,8 @@ const EMPTY_CONFIGURED_LISTS: readonly ListSourceConfig[] = []
 const EMPTY_PERSISTED_LISTS: Readonly<Record<string, ListState | 'deleted' | undefined>> = {}
 const TOKENIZED_ASSET_PROVIDER_BY_SOURCE = new Map<string, TokenizedAssetProviderTag>([
   [ONDO_TOKENS_LIST_SOURCE, 'ondo'],
+  // Curated entries identify Ondo assets by contract, including registered Arc mappings.
+  [OPHIS_TOKENS_LIST_SOURCE, 'ondo'],
   [XSTOCKS_TOKENS_LIST_SOURCE, 'xStocks'],
   [COINBASE_TOKENIZED_STOCKS_LIST_SOURCE, 'coinbase'],
 ])

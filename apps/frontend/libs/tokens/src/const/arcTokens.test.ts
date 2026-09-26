@@ -54,15 +54,20 @@ it('ships locally hosted logos and the additional Arc trading assets', () => {
   expect(arc.map(({ symbol }) => symbol).sort()).toEqual(
     expect.arrayContaining(['ARGUS', 'CRCLon', 'EURC', 'ONDO', 'USDC', 'USYC', 'WETH', 'XAUM', 'cirBTC']),
   )
-  for (const token of arc.filter((token) =>
-    ['USDC', 'EURC', 'cirBTC', 'USYC', 'WETH', 'XAUM', 'CRCLon', 'ONDO', 'ARGUS'].includes(token.symbol),
-  )) {
+  for (const token of arc) {
     expect(token.logoURI).toMatch(/^https:\/\/swap\.ophis\.fi\/logos\//)
     const path = new URL(token.logoURI || '').pathname
     expect(readFileSync(resolve(__dirname, '../../../../apps/cowswap-frontend/public' + path)).length).toBeGreaterThan(
       0,
     )
   }
+  const stocks = arc.filter(({ name }) => name.endsWith('(Ondo Tokenized)'))
+  expect(stocks).toHaveLength(12)
+  for (const token of stocks) {
+    expect(token.tags).toContain('ondo')
+    expect(token.logoURI).toBe(`https://swap.ophis.fi/logos/token-${token.symbol.toLowerCase()}.png`)
+  }
+  expect(shippedList.tags?.ondo?.name).toBe('Tokenized by Ondo')
 })
 
 it('refreshes an old two-token Arc list while preserving disabled preferences', async () => {

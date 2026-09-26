@@ -13,9 +13,12 @@ export function tokenMapToListWithLogo(tokenMaps: TokensMap[], chainId: number):
       const existing = acc[key]
 
       if (existing) {
-        // Append token tags
-        if (token.tags?.length) {
-          existing.tags = [...new Set([...(existing.tags || []), ...token.tags])]
+        // Later maps have precedence: current lists must refresh saved metadata.
+        acc[key] = {
+          ...existing,
+          ...token,
+          logoURI: token.logoURI || existing.logoURI,
+          tags: [...new Set([...(existing.tags || []), ...(token.tags || [])])],
         }
       } else {
         acc[key] = token
