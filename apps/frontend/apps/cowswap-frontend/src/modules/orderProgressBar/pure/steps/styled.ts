@@ -456,6 +456,14 @@ export const SolverNameText = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+
+  > small {
+    display: block;
+    font-size: 12px;
+    font-weight: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 `
 
 /* The description tooltip sits OUTSIDE the clipped text so it's never cut off. */

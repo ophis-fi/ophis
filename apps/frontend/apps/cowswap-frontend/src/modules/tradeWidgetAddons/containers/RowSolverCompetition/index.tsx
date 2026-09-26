@@ -35,9 +35,9 @@ export function RowSolverCompetition(): ReactNode {
           wrapInContainer
           content={
             <Trans>
-              Your order goes into a batch auction where up to {totalSolvers} independent solvers compete to give you
-              the best execution. The winning solver must at least match the minimum you signed; any improvement is
-              returned to you as surplus.
+              Your order goes into a batch auction where up to {totalSolvers} solvers compete to give you the best
+              execution. The winning solver must at least match the minimum you signed; any improvement is returned to
+              you as surplus.
             </Trans>
           }
         >

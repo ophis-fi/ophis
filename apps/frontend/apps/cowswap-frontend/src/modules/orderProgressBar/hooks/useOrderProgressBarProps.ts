@@ -12,7 +12,12 @@ import { I18n } from '@lingui/core'
 import { msg } from '@lingui/core/macro'
 import { useLingui } from '@lingui/react'
 import ms from 'ms.macro'
-import { getOphisSolversForChain, ophisSolverPublicDescription, ophisSolverPublicLabel } from 'ophis/solvers'
+import {
+  getOphisSolversForChain,
+  ophisSolverPublicDescription,
+  ophisSolverPublicLabel,
+  ophisSolverRouteLabel,
+} from 'ophis/solvers'
 import useSWR from 'swr'
 
 import { useActivityDerivedState } from 'legacy/hooks/useActivityDerivedState'
@@ -586,10 +591,18 @@ export function mergeSolverData(
     ...solverInfo,
     solverId,
     solver: solverId,
-    displayName: solverInfo?.displayName || (isOphisSolver ? ophisSolverPublicLabel(solverId) : _(msg`Unknown solver`)),
-    description:
-      solverInfo?.description ||
-      (isOphisSolver ? ophisSolverPublicDescription(solverId) : _(msg`Solver identity unavailable (${solverId}).`)),
+    displayName: solverInfo?.displayName || _(msg`Unknown solver`),
+    description: solverInfo?.description || _(msg`Solver identity unavailable (${solverId}).`),
+    route: undefined,
+    // A registered sovereign lane identifies our operator, not its liquidity provider.
+    ...(isOphisSolver
+      ? {
+          displayName: ophisSolverPublicLabel(solverId),
+          description: ophisSolverPublicDescription(solverId),
+          image: '/ophis-icon.svg',
+          route: ophisSolverRouteLabel(solverId),
+        }
+      : {}),
   }
 }
 

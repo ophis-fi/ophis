@@ -299,7 +299,7 @@ function SoldAmount({ order }: { order: Order }): ReactNode {
   )
 }
 
-function SolverRow({
+export function SolverRow({
   solver,
   index,
   solvers,
@@ -309,6 +309,7 @@ function SolverRow({
   solvers: SolverCompetition[]
 }): ReactNode {
   const logo = solver.image || AMM_LOGOS[solver.solver]?.src
+  const { route } = solver
   return (
     <styledEl.SolverTableRow isWinner={index === 0}>
       {solvers.length > 1 && <styledEl.SolverRank>{index + 1}</styledEl.SolverRank>}
@@ -324,6 +325,11 @@ function SolverRow({
           <styledEl.SolverName>
             <styledEl.SolverNameText title={solver.solver}>
               {solver.displayName || solver.solver}
+              {route && (
+                <small>
+                  <Trans>via {route}</Trans>
+                </small>
+              )}
             </styledEl.SolverNameText>
             {solver.description && (
               <styledEl.SolverTooltip>

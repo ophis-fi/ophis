@@ -148,7 +148,9 @@ describe('solver attribution', () => {
     const winner = { solver: 'uniswap-v3', executedAmounts: { sell: '2000000', buy: '1740907' } }
     expect(mergeSolverData(winner, {}, 5042, i18n._.bind(i18n))).toMatchObject({
       ...winner,
-      displayName: 'Uniswap v3',
+      displayName: 'Ophis',
+      route: 'Uniswap v3',
+      image: '/ophis-icon.svg',
       description: 'Ophis-operated routing lane: Uniswap v3.',
     })
   })
@@ -156,7 +158,8 @@ describe('solver attribution', () => {
   it.each([10, 130, 4663, 5042])('resolves a registered routing lane on chain %s without CMS data', (chainId) => {
     expect(mergeSolverData({ solver: 'kyberswap-solve' }, {}, chainId, i18n._.bind(i18n))).toMatchObject({
       solver: 'kyberswap',
-      displayName: 'KyberSwap',
+      displayName: 'Ophis',
+      route: 'KyberSwap',
       description: 'Ophis-operated routing lane: KyberSwap.',
     })
   })
@@ -172,16 +175,40 @@ describe('solver attribution', () => {
     })
   })
 
-  it.each([1, 4663])('preserves CMS attribution on chain %s', (chainId) => {
+  it.each([1, 4663])('preserves independent CMS attribution on chain %s', (chainId) => {
     const metadata = {
-      solverId: 'kyberswap',
+      solverId: 'external-solver',
       displayName: 'CMS solver name',
       description: 'CMS operator description',
       solverNetworks: [],
     }
     expect(
-      mergeSolverData({ solver: 'kyberswap-solve' }, { kyberswap: metadata }, chainId, i18n._.bind(i18n)),
-    ).toMatchObject(metadata)
+      mergeSolverData({ solver: 'external-solver-solve' }, { 'external-solver': metadata }, chainId, i18n._.bind(i18n)),
+    ).toMatchObject({ ...metadata, route: undefined })
+  })
+
+  it('does not let a CMS name collision relabel an Ophis lane or overwrite an independent address identity', () => {
+    const metadata: SolverInfo = {
+      solverId: 'kyberswap',
+      displayName: 'External Kyber solver',
+      image: 'https://example.com/solver.svg',
+      solverNetworks: [{ chainId: 5042 as SupportedChainId, env: 'prod', address }],
+    }
+    const solvers = { kyberswap: metadata }
+    expect(mergeSolverData({ solver: 'kyberswap' }, solvers, 5042, i18n._.bind(i18n))).toMatchObject({
+      displayName: 'Ophis',
+      route: 'KyberSwap',
+      image: '/ophis-icon.svg',
+    })
+    expect(mergeSolverData({ solver: address }, solvers, 5042, i18n._.bind(i18n))).toMatchObject({
+      displayName: metadata.displayName,
+      image: metadata.image,
+      route: undefined,
+    })
+    expect(mergeSolverData({ solver: 'kyberswap' }, solvers, 1, i18n._.bind(i18n))).toMatchObject({
+      displayName: metadata.displayName,
+      route: undefined,
+    })
   })
 
   it('keeps a missing CMS description neutral on a CoW-hosted chain', () => {
