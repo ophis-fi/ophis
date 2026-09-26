@@ -1,5 +1,6 @@
 import { type Hex, type WalletClient } from 'viem'
 
+import { type BtcSwapPending } from './btcSwapState'
 import { cctpBurnData, cctpClient, circleGet, type CctpTransfer } from './cctp.service'
 import { CCTP_STORAGE_KEY, cctpStorage, cctpTransferSchema } from './cctpState'
 import * as cctpStatus from './cctpStatus.service'
@@ -25,7 +26,7 @@ const transfer: CctpTransfer = {
 }
 const hash: Hex = `0x${'ab'.repeat(32)}`
 const wallet = {} as WalletClient
-const persist = (value: CctpTransfer | null): void => cctpStorage.setItem(CCTP_STORAGE_KEY, value)
+const persist = (value: CctpTransfer | BtcSwapPending | null): void => cctpStorage.setItem(CCTP_STORAGE_KEY, value)
 const burn = jest.mocked(burnCctp)
 
 beforeEach(() => {

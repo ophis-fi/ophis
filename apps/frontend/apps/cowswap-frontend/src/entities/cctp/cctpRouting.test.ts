@@ -1,5 +1,6 @@
 import { ARC_CHAIN_ID, NATIVE_CURRENCY_ADDRESS, TokenWithLogo } from '@cowprotocol/common-const'
 
+import { isBtcCctpSwap, WBTC_ETHEREUM } from './btcCctp.utils'
 import { cctpAsset, cctpToken } from './cctpAssets.const'
 import { cctpBuyTokens, cctpRouteAsset, hasCctpRoute } from './cctpRouting.utils'
 
@@ -56,4 +57,27 @@ it('never advertises CCTP assets for native ETH or an unsupported source asset',
       (t) => t.symbol,
     ),
   ).toEqual(['WETH'])
+})
+
+it('discovers WBTC conversion only for Ethereum to canonical Arc cirBTC, keeping it out of direct burn routes', () => {
+  const wbtc = TokenWithLogo.fromToken({
+    chainId: 1,
+    address: WBTC_ETHEREUM,
+    decimals: 8,
+    symbol: 'WBTC',
+    name: 'Wrapped Bitcoin',
+  })
+  expect(
+    cctpBuyTokens({ sellChainId: 1, buyChainId: ARC_CHAIN_ID, sellTokenAddress: wbtc.address }).map((t) => t.symbol),
+  ).toEqual(['cirBTC'])
+  expect(isBtcCctpSwap(wbtc, token(5042))).toBe(true)
+  expect(cctpRouteAsset(wbtc, token(5042))).toBeUndefined()
+  expect(
+    isBtcCctpSwap(
+      TokenWithLogo.fromToken({ ...wbtc, decimals: 18, symbol: 'WBTC', name: 'Wrapped Bitcoin' }),
+      token(5042),
+    ),
+  ).toBe(false)
+  expect(isBtcCctpSwap(wbtc, token(1))).toBe(false)
+  expect(cctpBuyTokens({ sellChainId: 8453, buyChainId: ARC_CHAIN_ID, sellTokenAddress: wbtc.address })).toEqual([])
 })

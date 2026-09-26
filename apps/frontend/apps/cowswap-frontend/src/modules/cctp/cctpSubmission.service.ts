@@ -9,6 +9,8 @@ import {
   type WalletClient,
 } from 'viem'
 
+import { parseBtcSwap, type BtcSwapPending } from './btcSwapState'
+import { getBtcSwapStatus } from './btcSwapStatus.service'
 import { CCTP_ABI, MESSAGE_TRANSMITTER } from './cctp.const'
 import { cctpClient, type CctpQuote, type CctpTransfer } from './cctp.service'
 import { CCTP_STORAGE_KEY, cctpStorage, cctpTransferSchema } from './cctpState'
@@ -54,12 +56,13 @@ export async function updateCctpTransfer(
 export async function submitCctpBurn(
   wallet: WalletClient,
   quote: CctpQuote,
-  persist: (value: CctpTransfer | null) => void,
+  persist: (value: CctpTransfer | BtcSwapPending | null) => void,
   assertCurrent: () => void = () => undefined,
 ): Promise<void> {
   if (!navigator.locks) throw new Error('Please use a current browser to bridge')
   await navigator.locks.request('ophisCctpBurn', { ifAvailable: true }, async (lock) => {
-    if (!lock || (await cctpStorage.getItem(CCTP_STORAGE_KEY, null)))
+    const previous = await cctpStorage.getItem(CCTP_STORAGE_KEY, null)
+    if (!lock || !(await canBridgeAfterSwap(previous, quote)))
       throw new Error('A bridge is already pending. Resume it before starting another.')
     let pending: CctpTransfer = quote
     let persisted = false
@@ -85,10 +88,28 @@ export async function submitCctpBurn(
         throw new Error(`Bridge submitted. Save this source hash to resume: ${burnHash}`)
       }
     } catch (caught) {
-      if (persisted && (!signatureRequested || isExplicitRejection(caught))) persist(null)
+      if (persisted && (!signatureRequested || isExplicitRejection(caught))) {
+        persist(parseBtcSwap(previous))
+      }
       throw caught
     }
   })
+}
+
+async function canBridgeAfterSwap(previous: unknown, quote: CctpQuote): Promise<boolean> {
+  if (!previous) return !quote.swapOrderUid
+  const swap = parseBtcSwap(previous)
+  if (
+    !swap ||
+    swap.orderUid !== quote.swapOrderUid ||
+    quote.source !== 1 ||
+    quote.destination !== 5042 ||
+    quote.asset !== 'cirBTC' ||
+    !areAddressesEqual(swap.owner, quote.owner)
+  )
+    return false
+  const status = await getBtcSwapStatus(swap)
+  return status.amount === quote.amount
 }
 
 export async function resumeCctpTransfer(transfer: CctpTransfer, value: string): Promise<CctpTransfer> {

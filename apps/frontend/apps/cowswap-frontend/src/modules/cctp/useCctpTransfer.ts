@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import { isRejectRequestProviderError } from '@cowprotocol/common-utils'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
+import { parseBtcSwap } from './btcSwapState'
 import { isCctpOwner, type CctpTransfer } from './cctp.service'
 import { cctpTransferAtom, cctpTransferSchema } from './cctpState'
 import {
@@ -24,6 +25,7 @@ function cctpErrorMessage(caught: unknown): string {
 }
 
 type CctpFlow = ReturnType<typeof useCctpQuote> & {
+  run: RunCctpAction
   transfer: CctpTransfer | null
   status: ReturnType<typeof useCctpStatus>['status']
   error: string | null
@@ -41,7 +43,10 @@ export function useCctpTransfer(contextKey = ''): CctpFlow {
   const { account } = useWalletInfo()
   const wallet = useCctpWallet()
   const [stored, setStored] = useAtom(cctpTransferAtom)
-  const parsed = useMemo(() => (stored == null ? null : cctpTransferSchema.safeParse(stored)), [stored])
+  const parsed = useMemo(
+    () => (stored == null || parseBtcSwap(stored) ? null : cctpTransferSchema.safeParse(stored)),
+    [stored],
+  )
   const transfer = parsed?.success ? parsed.data : null
   const recoveryError =
     parsed && !parsed.success ? 'Saved bridge data is invalid. Keep your source transaction hash for recovery.' : null
@@ -67,6 +72,7 @@ export function useCctpTransfer(contextKey = ''): CctpFlow {
   return useMemo(
     () => ({
       ...quoting,
+      run,
       transfer,
       status: tracking.status,
       busy,

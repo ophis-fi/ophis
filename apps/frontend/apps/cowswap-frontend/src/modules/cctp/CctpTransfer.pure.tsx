@@ -13,7 +13,7 @@ import { cctpAsset, cctpToken } from './cctpAssets.const'
 import { type CctpStatus } from './cctpStatus.service'
 import { type useCctpTransfer } from './useCctpTransfer'
 
-function CctpHashRecovery({
+export function CctpHashRecovery({
   label,
   busy,
   onResume,

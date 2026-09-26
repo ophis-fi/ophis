@@ -2,6 +2,7 @@ import { createJSONStorage } from 'jotai/utils'
 
 import { type WalletClient } from 'viem'
 
+import { type BtcSwapPending } from './btcSwapState'
 import { type CctpTransfer } from './cctp.service'
 import { CCTP_STORAGE_KEY, cctpStorage, cctpTransferSchema } from './cctpState'
 import { submitCctpBurn } from './cctpSubmission.service'
@@ -18,7 +19,7 @@ const transfer: CctpTransfer = {
   maxFee: '15638',
   quotedAt: 1000,
 }
-const persist = (value: CctpTransfer | null): void => cctpStorage.setItem(CCTP_STORAGE_KEY, value)
+const persist = (value: CctpTransfer | BtcSwapPending | null): void => cctpStorage.setItem(CCTP_STORAGE_KEY, value)
 
 beforeEach(() => {
   jest.restoreAllMocks()

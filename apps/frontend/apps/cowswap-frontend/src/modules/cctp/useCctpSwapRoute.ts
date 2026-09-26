@@ -4,21 +4,16 @@ import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { AccountType } from '@cowprotocol/types'
 import { useAccountType, useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
 
-import { cctpRouteAsset } from 'entities/cctp'
+import { cctpRouteAsset, isBtcCctpSwap } from 'entities/cctp'
 
 import { type TradeWidgetParams } from 'modules/trade'
 
+import { type BtcSwapPending } from './btcSwapState'
+import { type CctpQuote } from './cctp.service'
+import { useBtcCctpSwap } from './useBtcCctpSwap'
 import { useCctpTransfer } from './useCctpTransfer'
 
-export function useCctpSwapRoute({
-  enabled,
-  input,
-  output,
-  amount,
-  recipient,
-  recipientAddress,
-  orderKind,
-}: {
+interface CctpSelection {
   enabled: boolean
   input: Currency | null | undefined
   output: Currency | null | undefined
@@ -26,62 +21,63 @@ export function useCctpSwapRoute({
   recipient: string | null | undefined
   recipientAddress: string | null | undefined
   orderKind: OrderKind
-}): {
+}
+
+export function useCctpSwapRoute(selection: CctpSelection): {
   params: Partial<TradeWidgetParams>
   active: boolean
   asset: ReturnType<typeof cctpRouteAsset>
   flow: ReturnType<typeof useCctpTransfer>
   output: CurrencyAmount<Currency> | null
   blocked: string | null
+  conversion: boolean
+  btc: ReturnType<typeof useBtcCctpSwap>
 } {
+  const { enabled, input, output, amount, recipient, recipientAddress, orderKind } = selection
   const { account } = useWalletInfo()
   const smartWallet = useIsSmartContractWallet()
   const accountType = useAccountType()
   const bridgingEnabled = useIsBridgingEnabled()
-  const asset = enabled && bridgingEnabled ? cctpRouteAsset(input, output) : undefined
-  const key = JSON.stringify([
-    enabled,
-    input?.chainId,
-    output?.chainId,
-    asset,
-    amount?.quotient.toString(),
-    account,
-    smartWallet,
-    accountType,
-    recipient,
-    recipientAddress,
-    orderKind,
-  ])
+  const { conversion, asset } = cctpSelectionAsset(
+    enabled && bridgingEnabled && orderKind === OrderKind.SELL,
+    input,
+    output,
+  )
+  const key = cctpSelectionKey(selection, [account, smartWallet, accountType, asset])
   const flow = useCctpTransfer(key)
+  const swapAmount = conversion ? amount : undefined
+  const btc = useBtcCctpSwap(flow, key, swapAmount?.toExact(), swapAmount?.quotient.toString())
   const blocked = cctpBlockedReason(smartWallet, accountType, recipient, recipientAddress, account)
   const active = !!asset && !blocked
-  const validQuote = active && orderKind === OrderKind.SELL ? flow.quote : null
+  const validQuote = cctpVisibleQuote(flow.quote, btc.pending, account, active)
   return {
-    params: active
-      ? {
-          disableQuotePolling: true,
-          disableTradeNotifications: true,
-          isPriceStatic: true,
-          disablePriceImpact: true,
-          hideTradeWarnings: true,
-          isTradePriceUpdating: !!flow.busy,
-          inputsDisabled: !!flow.busy,
-          disableTokenSwitch: true,
-        }
-      : {},
+    params: cctpWidgetParams(active, flow.busy),
     active,
+    conversion,
+    btc,
     asset,
     flow: { ...flow, quote: validQuote },
     blocked,
-    output: cctpOutputAmount(validQuote, output),
+    output: cctpOutputAmount(validQuote || btc.quote?.bridge, input, output, active),
   }
 }
 
 function cctpOutputAmount(
-  quote: ReturnType<typeof useCctpTransfer>['quote'],
+  quote: CctpQuote | null | undefined,
+  input: Currency | null | undefined,
   output: Currency | null | undefined,
+  active: boolean,
 ): CurrencyAmount<Currency> | null {
-  if (!quote || !output) return null
+  const { asset } = cctpSelectionAsset(active, input, output)
+  if (
+    !quote ||
+    !input ||
+    !output ||
+    asset !== (quote.asset ?? 'USDC') ||
+    quote.source !== input.chainId ||
+    quote.destination !== output.chainId
+  )
+    return null
   return CurrencyAmount.fromRawAmount(output, (BigInt(quote.amount) - BigInt(quote.maxFee)).toString())
 }
 
@@ -98,4 +94,69 @@ function cctpBlockedReason(
   if (recipient && !areAddressesEqual(recipientAddress || recipient, account))
     return 'CCTP delivers to your connected wallet. Clear the custom recipient to continue.'
   return null
+}
+
+function cctpSelectionKey(selection: CctpSelection, wallet: unknown[]): string {
+  const { enabled, input, output, amount, recipient, recipientAddress, orderKind } = selection
+  return JSON.stringify([
+    enabled,
+    input?.chainId,
+    output?.chainId,
+    input?.wrapped.address,
+    output?.wrapped.address,
+    amount?.quotient.toString(),
+    recipient,
+    recipientAddress,
+    orderKind,
+    ...wallet,
+  ])
+}
+
+function cctpVisibleQuote(
+  quote: CctpQuote | null,
+  pending: BtcSwapPending | null,
+  account: string | undefined,
+  active: boolean,
+): CctpQuote | null {
+  if (!quote?.swapOrderUid) return active ? quote : null
+  if (!pending) return null
+  const recoveryMatches = [
+    quote.swapOrderUid === pending.orderUid,
+    quote.source === 1,
+    quote.destination === 5042,
+    quote.asset === 'cirBTC',
+    areAddressesEqual(quote.owner, pending.owner),
+    areAddressesEqual(quote.owner, account),
+  ].every(Boolean)
+  return recoveryMatches ? quote : null
+}
+
+function cctpWidgetParams(active: boolean, busy: string): Partial<TradeWidgetParams> {
+  return active
+    ? {
+        disableQuotePolling: true,
+        disableTradeNotifications: true,
+        isPriceStatic: true,
+        disablePriceImpact: true,
+        hideTradeWarnings: true,
+        isTradePriceUpdating: !!busy,
+        inputsDisabled: !!busy,
+        disableTokenSwitch: true,
+      }
+    : {}
+}
+
+function cctpSelectionAsset(
+  enabled: boolean,
+  input: CctpSelection['input'],
+  output: CctpSelection['output'],
+): {
+  conversion: boolean
+  asset: ReturnType<typeof cctpRouteAsset>
+} {
+  const conversion = enabled && isBtcCctpSwap(input, output)
+  return {
+    conversion,
+    asset: enabled ? (cctpRouteAsset(input, output) ?? (conversion ? 'cirBTC' : undefined)) : undefined,
+  }
 }
