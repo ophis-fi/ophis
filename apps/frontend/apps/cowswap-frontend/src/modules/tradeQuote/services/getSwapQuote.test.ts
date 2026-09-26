@@ -1,3 +1,4 @@
+import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 import { getQuoteAmountsAndCosts, OrderKind, PriceQuality, QuoteAndPost, SigningScheme } from '@cowprotocol/cow-sdk'
 import { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 
@@ -19,7 +20,17 @@ const settings = { quoteRequest: { priceQuality: PriceQuality.OPTIMAL } }
 const mockQuote = jest.mocked(bridgingSdk.getQuote)
 
 function quote(sellAmount: string, buyAmount: string, feeAmount: string): QuoteAndPost {
-  const orderParams = { kind: OrderKind.SELL, sellAmount, buyAmount, feeAmount }
+  const orderParams = {
+    kind: OrderKind.SELL,
+    sellAmount,
+    buyAmount,
+    feeAmount,
+    sellToken: WETH_MAINNET.address,
+    buyToken: USDC_MAINNET.address,
+    validTo: 2_000_000_000,
+    appData: '0x' + '00'.repeat(32),
+    partiallyFillable: false,
+  }
   const amountsAndCosts = getQuoteAmountsAndCosts({
     orderParams,
     partnerFeeBps: 51,
@@ -72,7 +83,7 @@ it('requotes a smaller input when the network fee rises instead of exceeding the
     .mockResolvedValueOnce(quote('2600', '1', '800'))
     .mockResolvedValueOnce(recovered)
   expect(await getSwapQuote(request, settings)).toBe(recovered)
-  expect(mockQuote.mock.calls[2]?.[1]?.quoteRequest?.sellAmountAfterFee).toBe('2492')
+  expect(mockQuote.mock.calls[2]?.[1]?.quoteRequest).toMatchObject({ sellAmountAfterFee: '2492' })
 })
 
 it('does not replace a quote with a worse signed minimum', async () => {
@@ -136,7 +147,7 @@ it('spends less for the same whole output using a BUY hint and a genuine SELL re
   expect(await getSwapQuote(request, settings)).toBe(optimized)
   expect(mockQuote.mock.calls[2]?.[0]).toMatchObject({ kind: OrderKind.BUY, amount: 1n })
   expect(mockQuote.mock.calls[3]?.[0].kind).toBe(OrderKind.SELL)
-  expect(mockQuote.mock.calls[3]?.[1]?.quoteRequest?.sellAmountAfterFee).toBe('2260')
+  expect(mockQuote.mock.calls[3]?.[1]?.quoteRequest).toMatchObject({ sellAmountAfterFee: '2260' })
 })
 
 it('keeps the recovered quote if the cheaper price loses a whole token', async () => {

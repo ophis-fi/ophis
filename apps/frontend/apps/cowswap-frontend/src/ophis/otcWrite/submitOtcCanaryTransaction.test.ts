@@ -29,7 +29,10 @@ function wallet(): jest.Mocked<OtcWalletSubmitter> {
       onPrompt?.({ requestHash: otcRequestHash(_request), nonce: 3 })
       return TX_HASH
     }),
-    waitForTransactionReceipt: jest.fn(async () => ({
+    waitForTransactionReceipt: jest.fn<
+      ReturnType<OtcWalletSubmitter['waitForTransactionReceipt']>,
+      Parameters<OtcWalletSubmitter['waitForTransactionReceipt']>
+    >(async () => ({
       transactionHash: TX_HASH,
       status: 'success' as const,
       blockNumber: 201n,

@@ -147,6 +147,7 @@ function createReceiveAmountInfo(params: {
       sellAmount: afterPartnerFeesSell,
       buyAmount: afterPartnerFeesBuy,
     },
+    amountsToSign: { sellAmount: afterSlippageSell, buyAmount: afterSlippageBuy },
     afterSlippage: {
       sellAmount: afterSlippageSell,
       buyAmount: afterSlippageBuy,
@@ -381,7 +382,7 @@ describe('getReceiveAmountInfo', () => {
         partnerFeeBps: undefined,
         intermediateCurrency: mainnetUsdc, // intermediate currency
         bridgeFeeAmounts,
-        bridgeBuyAmount: 1n,
+        expectedToReceiveAmount: CurrencyAmount.fromRawAmount(baseUsdc, orderParams.buyAmount),
         protocolFeeBps: undefined,
       })
 
@@ -419,7 +420,7 @@ describe('getReceiveAmountInfo', () => {
         partnerFeeBps: undefined,
         intermediateCurrency: mainnetWeth, // intermediate currency with 18 decimals
         bridgeFeeAmounts,
-        bridgeBuyAmount: 1n,
+        expectedToReceiveAmount: CurrencyAmount.fromRawAmount(baseUsdc, orderParams.buyAmount),
         protocolFeeBps: undefined,
       })
 
@@ -460,7 +461,7 @@ describe('getReceiveAmountInfo', () => {
         partnerFeeBps: undefined,
         intermediateCurrency: mainnetUsdc, // intermediate currency with 6 decimals
         bridgeFeeAmounts,
-        bridgeBuyAmount: 1n,
+        expectedToReceiveAmount: CurrencyAmount.fromRawAmount(baseWeth, orderParams.buyAmount),
         protocolFeeBps: undefined,
       })
 

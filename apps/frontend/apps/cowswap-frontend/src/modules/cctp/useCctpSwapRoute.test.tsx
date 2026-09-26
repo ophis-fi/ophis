@@ -1,3 +1,4 @@
+import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { AccountType } from '@cowprotocol/types'
@@ -28,8 +29,8 @@ const mockTransfer: CctpTransfer = {
   maxFee: '0',
   quotedAt: 1000,
 }
-const input = cctpBuyTokens({ sellChainId: 5042, buyChainId: 1 }).find((token) => token.symbol === 'USDC')
-const output = cctpBuyTokens({ sellChainId: 1, buyChainId: 5042 }).find((token) => token.symbol === 'USDC')
+const input = cctpBuyTokens({ sellChainId: ARC_CHAIN_ID, buyChainId: 1 }).find((token) => token.symbol === 'USDC')
+const output = cctpBuyTokens({ sellChainId: 1, buyChainId: ARC_CHAIN_ID }).find((token) => token.symbol === 'USDC')
 const params = {
   enabled: true,
   input,

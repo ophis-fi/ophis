@@ -90,6 +90,7 @@ describe('solver attribution', () => {
           attributes: {
             solverId: 'brrr',
             displayName: 'BRRRolver',
+            active: true,
             solver_networks: {
               data: [
                 {

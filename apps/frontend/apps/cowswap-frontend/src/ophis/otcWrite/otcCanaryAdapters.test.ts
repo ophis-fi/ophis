@@ -1,3 +1,5 @@
+import { OPHIS_ETHEREUM_OTC_MANIFEST } from 'ophis/otc'
+
 import { buildOtcCancelTransaction, buildOtcCreateTransaction } from './buildOtcTransaction'
 import { OTC_CANARY_POLICY } from './otcCanary.const'
 import { readOtcRuntimeControl } from './otcRuntimeControl'
@@ -179,7 +181,12 @@ describe.each([
 
   it('reads settlement terms and simulates through the independent reader, never the wallet RPC', async () => {
     const { canonical, connected, writeClient } = fixture(legacy)
-    await writeClient.call({ to: REQUEST.to, data: REQUEST.data, blockNumber: HEAD.number })
+    await writeClient.call({
+      to: REQUEST.to,
+      data: REQUEST.data,
+      blockNumber: HEAD.number,
+      gas: OPHIS_ETHEREUM_OTC_MANIFEST.callGasLimit,
+    })
     await writeClient.simulate(REQUEST, HEAD.number)
     expect(canonical.call).toHaveBeenCalledTimes(2)
     expect(canonical.call).toHaveBeenLastCalledWith(

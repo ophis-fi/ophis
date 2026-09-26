@@ -81,9 +81,10 @@ describe('useOtcNetworkReads', () => {
         }),
     )
 
+    const initialProps: HookProps = { account: undefined }
     const { result, rerender } = renderHook(
       ({ account }: HookProps) => useOtcNetworkReads(true, account, 1, walletClient, TOKEN),
-      { initialProps: { account: undefined }, wrapper: Wrapper },
+      { initialProps, wrapper: Wrapper },
     )
 
     expect(readOtcAllowance).not.toHaveBeenCalled()

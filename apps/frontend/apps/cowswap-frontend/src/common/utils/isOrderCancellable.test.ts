@@ -1,55 +1,59 @@
-import { COW_TOKEN_TO_CHAIN, NATIVE_CURRENCIES } from '@cowprotocol/common-const'
+import { USDC, NATIVE_CURRENCIES } from '@cowprotocol/common-const'
 
-import { Order, OrderStatus } from 'legacy/state/orders/actions'
+import { OrderStatus } from 'legacy/state/orders/actions'
 
-import { isOrderCancellable } from './isOrderCancellable'
+import { CancellableOrder, isOrderCancellable } from './isOrderCancellable'
 
 // TODO: Break down this large function into smaller functions
 
 describe('isOrderCancellable', () => {
   it('When order cancellation in progress, the it cannot be cancelled', () => {
-    const order = {
-      inputToken: COW_TOKEN_TO_CHAIN[1],
+    const order: CancellableOrder = {
+      id: 'test-order',
+      inputToken: USDC[1],
       status: OrderStatus.PENDING,
       isCancelling: true, // <-----
       cancellationHash: undefined,
-    } as Order
+    }
 
     expect(isOrderCancellable(order)).toBe(false)
     expect(isOrderCancellable({ ...order, isCancelling: false })).toBe(true)
   })
 
   it('When an order has a cancellationHash, the it cannot be cancelled', () => {
-    const order = {
-      inputToken: COW_TOKEN_TO_CHAIN[1],
+    const order: CancellableOrder = {
+      id: 'test-order',
+      inputToken: USDC[1],
       status: OrderStatus.PENDING,
       isCancelling: false,
       cancellationHash: '0x0003', // <-----
-    } as Order
+    }
 
     expect(isOrderCancellable(order)).toBe(false)
     expect(isOrderCancellable({ ...order, cancellationHash: undefined })).toBe(true)
   })
 
   it("When an order's status is CREATING, then the order is cancellable", () => {
-    const order = {
+    const order: CancellableOrder = {
+      id: 'test-order',
       inputToken: NATIVE_CURRENCIES[1],
       status: OrderStatus.CREATING, // <- CREATING
       isCancelling: false,
       cancellationHash: undefined,
-    } as Order
+    }
 
     expect(isOrderCancellable(order)).toBe(true)
     expect(isOrderCancellable({ ...order, status: OrderStatus.FULFILLED })).toBe(false)
   })
 
   it("When an order's status is PENDING, then the order is cancellable", () => {
-    const order = {
+    const order: CancellableOrder = {
+      id: 'test-order',
       inputToken: NATIVE_CURRENCIES[1],
       status: OrderStatus.PENDING, // <- PENDING
       isCancelling: false,
       cancellationHash: undefined,
-    } as Order
+    }
 
     expect(isOrderCancellable(order)).toBe(true)
     expect(isOrderCancellable({ ...order, status: OrderStatus.FAILED })).toBe(false)
@@ -63,12 +67,13 @@ describe('isOrderCancellable', () => {
       OrderStatus.CANCELLED,
       OrderStatus.EXPIRED,
     ].forEach((status) => {
-      const order = {
+      const order: CancellableOrder = {
+        id: 'test-order',
         inputToken: NATIVE_CURRENCIES[1],
         status, // <----
         isCancelling: false,
         cancellationHash: undefined,
-      } as Order
+      }
 
       expect(isOrderCancellable(order)).toBe(false)
     })

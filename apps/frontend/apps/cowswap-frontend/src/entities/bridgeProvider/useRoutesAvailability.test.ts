@@ -1,3 +1,4 @@
+import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
@@ -172,6 +173,6 @@ it('uses provider availability on surfaces where CCTP cannot execute', async () 
   mockUseIsBridgingEnabled.mockReturnValue(true)
   mockUseBridgeProvidersIds.mockReturnValue(['cctp-disabled-surface'])
   mockGetBuyTokens.mockResolvedValue({ tokens: [], isRouteAvailable: false })
-  const { result } = renderHook(() => useRoutesAvailability(SupportedChainId.MAINNET, [5042]))
+  const { result } = renderHook(() => useRoutesAvailability(SupportedChainId.MAINNET, [ARC_CHAIN_ID]))
   await waitFor(() => expect(result.current.unavailableChainIds.has(5042)).toBe(true))
 })

@@ -1,4 +1,4 @@
-import { getAddress, toFunctionSelector, type AbiFunction } from 'viem'
+import { getAddress, toFunctionSelector } from 'viem'
 
 import { readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
@@ -157,7 +157,7 @@ describe('Ophis OTC boundary', () => {
   })
 
   it('exposes only view functions in the read ABI', () => {
-    const functions = OTC_READ_ABI.filter((entry): entry is AbiFunction => entry.type === 'function')
+    const functions = OTC_READ_ABI.filter((entry) => entry.type === 'function')
     expect(functions.length).toBeGreaterThan(0)
     for (const fn of functions) {
       expect(fn.stateMutability).toBe('view')
@@ -166,9 +166,7 @@ describe('Ophis OTC boundary', () => {
 
   it('cannot encode any known write selector from the read ABI', () => {
     expect(OTC_KNOWN_WRITE_SELECTORS).toHaveLength(7)
-    const readSelectors = OTC_READ_ABI.filter((entry): entry is AbiFunction => entry.type === 'function').map((fn) =>
-      toFunctionSelector(fn),
-    )
+    const readSelectors = OTC_READ_ABI.filter((entry) => entry.type === 'function').map((fn) => toFunctionSelector(fn))
     for (const selector of readSelectors) {
       expect(OTC_KNOWN_WRITE_SELECTORS).not.toContain(selector)
     }
@@ -176,10 +174,7 @@ describe('Ophis OTC boundary', () => {
 
   it('computes the exact read selectors present in the deployed dispatcher', () => {
     const selectorByName = Object.fromEntries(
-      OTC_READ_ABI.filter((entry): entry is AbiFunction => entry.type === 'function').map((fn) => [
-        fn.name,
-        toFunctionSelector(fn),
-      ]),
+      OTC_READ_ABI.filter((entry) => entry.type === 'function').map((fn) => [fn.name, toFunctionSelector(fn)]),
     )
     // Verified against the deployed bytecode dispatcher on 2026-08-19.
     expect(selectorByName).toEqual({

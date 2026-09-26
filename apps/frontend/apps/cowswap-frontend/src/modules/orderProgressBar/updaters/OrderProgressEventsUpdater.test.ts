@@ -1,3 +1,5 @@
+import { instance, mock } from 'ts-mockito'
+
 import type { OrderFillability } from 'modules/ordersTable'
 
 import { computeUnfillableOrderIds, getNewlyFillableOrderIds } from './utils'
@@ -8,18 +10,21 @@ type TestOrder = {
 }
 
 const FILLABILITY_OK: OrderFillability = {
+  order: instance(mock<OrderFillability['order']>()),
   hasEnoughBalance: true,
   hasEnoughAllowance: true,
   hasPermit: false,
 }
 
 const FILLABILITY_LACKING_BALANCE: OrderFillability = {
+  ...FILLABILITY_OK,
   hasEnoughBalance: false,
   hasEnoughAllowance: true,
   hasPermit: false,
 }
 
 const FILLABILITY_LACKING_ALLOWANCE: OrderFillability = {
+  ...FILLABILITY_OK,
   hasEnoughBalance: true,
   hasEnoughAllowance: false,
   hasPermit: false,

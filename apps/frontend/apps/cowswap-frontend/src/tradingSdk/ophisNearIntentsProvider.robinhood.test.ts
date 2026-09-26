@@ -2,6 +2,8 @@ import { BRIDGE_SOURCE_CHAIN_IDS, NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/c
 import { OrderKind, SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 import { BridgeQuoteErrors, QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 
+import { getAddress, type Hex } from 'viem'
+
 import { NearQuoteResponse, OphisNearIntentsBridgeProvider } from './ophisNearIntentsProvider.service'
 
 const ROBINHOOD = 4663 as TargetChainId
@@ -48,12 +50,10 @@ const QUOTE_RESPONSE = {
       {
         recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
         fee: 3,
-        limitOrderId: null,
       },
       {
         recipient: '5880ad2b362620fadf759cbceb1cd5737ce8c6ed7fb8e9942881e6731f9247dd',
         fee: 25,
-        limitOrderId: null,
       },
     ],
     insured: false,
@@ -66,7 +66,7 @@ const ATTESTATION = {
   signature:
     '0x1e2b7a54cf8536b607d348b14d9a7ab171a3c18aff84625cdec9e0a510b02ce27eb6ca3783ddaabb488a50a218e7ad772bac505b78720ad3c8893611767154271b',
   version: 0,
-}
+} as const
 
 class TestableNearProvider extends OphisNearIntentsBridgeProvider {
   get testApi(): OphisNearIntentsBridgeProvider['api'] {
@@ -101,7 +101,7 @@ const REQUEST: QuoteBridgeRequest = {
   buyTokenChainId: SupportedChainId.BASE,
   buyTokenAddress: BASE_USDC,
   buyTokenDecimals: 6,
-  account: QUOTE_RESPONSE.quoteRequest.refundTo,
+  account: getAddress(QUOTE_RESPONSE.quoteRequest.refundTo) as Hex,
   receiver: QUOTE_RESPONSE.quoteRequest.recipient,
   appCode: 'test',
 }
