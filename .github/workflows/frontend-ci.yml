@@ -88,6 +88,10 @@ jobs:
         working-directory: apps/frontend
         run: pnpm typecheck
 
+      - name: Solver attribution fuzz regressions
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'solverAttribution.fuzz.test' --passWithNoTests=false --runInBand
+
       - name: Arc activation, native USDC and bridge regressions
         working-directory: apps/frontend
         run: |

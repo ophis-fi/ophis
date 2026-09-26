@@ -37,8 +37,8 @@ CHAIN_PINS=(
 )
 REGISTRY=apps/frontend/apps/cowswap-frontend/src/ophis/solvers.ts
 
-# Interpreter override for dev machines whose PATH python3 is a policy shim
-# (e.g. CHECK_SOLVER_PYTHON=/usr/bin/python3). CI uses the default.
+# Requires Python 3.11+ for stdlib TOML parsing. Override older dev-machine defaults
+# with e.g. CHECK_SOLVER_PYTHON=python3.14. CI uses the default.
 PYTHON_BIN=${CHECK_SOLVER_PYTHON:-python3}
 
 for f in "$REGISTRY"; do
@@ -47,18 +47,16 @@ done
 
 extract_autopilot() {
   ${PYTHON_BIN} - "$1" <<'PY'
-import ast, re, sys, json
+import ast, re, sys, json, tomllib
 with open(sys.argv[1]) as f:
     src = f.read()
-# Strip TOML comments so prose never contributes a name.
-src = re.sub(r'#[^\n]*', '', src)
 if sys.argv[1].endswith('.py'):
     # Arc generates all autopilot drivers from this literal list. Never run the renderer.
     lanes = re.search(r'^\s*lanes\s*=\s*(\[[^\n]+\])', src, re.M)
     names = ast.literal_eval(lanes.group(1)) if lanes else []
 else:
-    names = re.findall(r'\[\[drivers\]\]\s*\n\s*name\s*=\s*"([^"]+)"', src)
-if not names:
+    names = [driver['name'] for driver in tomllib.loads(src).get('drivers', [])]
+if not names or not all(isinstance(name, str) and name for name in names):
     print('NO_AUTOPILOT_DRIVERS_FOUND', file=sys.stderr); sys.exit(3)
 if len(set(names)) != len(names):
     print('DUPLICATE_AUTOPILOT_DRIVER_NAME', file=sys.stderr); sys.exit(3)
@@ -85,7 +83,7 @@ chain_const = sys.argv[2]
 names = [
     solver_id
     for solver_id, chain_ids in entries
-    if chain_const in chain_ids
+    if chain_const in [token.strip() for token in chain_ids.split(',')]
 ]
 if not names:
     print('NO_REGISTRY_SOLVERS_FOUND', file=sys.stderr); sys.exit(3)
