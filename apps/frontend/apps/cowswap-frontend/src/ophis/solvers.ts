@@ -101,12 +101,15 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   { solverId: 'curve', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   { solverId: 'woofi', chainIds: [OPHIS_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   { solverId: 'uniswap-v3', chainIds: [OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
+  { solverId: 'archery', chainIds: [OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID] },
+  { solverId: 'aero', chainIds: [OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID] },
   {
     solverId: 'uniswap-v4',
     chainIds: [
       OPHIS_SOLVER_REGISTRY_CHAIN_ID,
       OPHIS_UNICHAIN_SOLVER_REGISTRY_CHAIN_ID,
       OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID,
+      OPHIS_ARC_SOLVER_REGISTRY_CHAIN_ID,
     ],
   }, // direct on-chain lane
   {
@@ -136,6 +139,8 @@ const OPHIS_SOLVER_NAMES: Record<string, string> = {
   curve: 'Curve',
   woofi: 'WOOFi',
   'uniswap-v3': 'Uniswap v3',
+  archery: 'Archery',
+  aero: 'Aero',
   'uniswap-v4': 'Uniswap v4',
   velodrome: 'Velodrome',
   'velodrome-slipstream': 'Velodrome Slipstream',

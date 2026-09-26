@@ -1,4 +1,60 @@
-# Arc route verification — 2026-09-24
+# Arc route verification — 2026-09-26
+
+## New direct routes — implementation verified, not deployed
+
+The release configuration now includes **Aero, Archery and Uniswap v4**, alongside
+Uniswap v3 and KyberSwap. All are Ophis-operated lanes; the frontend identifies
+the liquidity venue separately. No new contract deployment is required.
+
+At canonical block hash
+`0xe33181cd005fdcfa98cef7cd90170c8a399127696ebe0bc48fe22599789dcf6f`, the real
+local driver called each new Rust solver. Its returned interactions were then
+executed through the deployed Arc settlement using `eth_call` state overrides:
+
+| Direct venue | Input USDC | EURC received by simulated trader |
+| --- | ---: | ---: |
+| Aero | 1,000 | 878.043448 |
+| Archery | 1,000 | 877.831525 |
+| Uniswap v4 | 1,000 | 877.680910 |
+
+The helper checks the filled order, exact input debit, output credit and that
+settlement buffers did not decrease. This successful full quote-to-settlement
+run used **38 free public RPC reads, zero signed/broadcast transactions**.
+These are simulated outcomes, not live volume or a deployment claim.
+
+Scope: direct SELL routes; five verified Aero pools, Archery Slipstream tick
+spacings 1/10/50, and hookless ERC20/ERC20 v4 pools at four standard fee/tick pairs.
+USDC uses Arc's six-decimal ERC20 view; no native-currency wrapping or Permit2
+authorization is introduced. V4 funding and swapping must be an exact ordered
+two-call bundle bound to one fulfillment. Other protected routes retain their
+one-call restriction. Hooks, custom fees, multihop and BUY routing remain with
+existing aggregator coverage, where available.
+
+Reproduce after building the backend binaries (requires local solc 0.8.30 and
+the existing frontend ethers dependencies):
+
+```sh
+node apps/backend/crates/e2e/arc_direct.cjs --live
+```
+
+The test starts keyless loopback-only services behind a cached, block-pinned,
+read-only public RPC proxy with a 96-request ceiling. It does not start or modify
+production services. The smaller independent ABI probe is
+`node infra/arc-mainnet/verify_direct.cjs --live` (24-request ceiling).
+Offline coverage includes both token directions, golden ABI fixtures,
+byte-mutation rejection, bundle ordering, asset accounting, frontend labels and
+the all-chain registry invariant. Deployment still requires the reviewed backend
+image and normal release activation; deploy the backend before frontend labels.
+
+Address provenance: [Archery's mainnet deployments](https://archery.wtf/docs/security),
+[Aero's official Arc announcement](https://aero.xyz/articles/aero-lite-is-live-on-arc/)
+and Arc configuration in [its official app](https://app.aero.xyz/), and
+[Uniswap's Arc v4 deployments](https://developers.uniswap.org/docs/protocols/v4/deployments#arc-5042).
+The exact verified Aero pool list and router constants live in
+`apps/backend/crates/shared/src/arc_routes.rs`. Deployment provenance and these
+checks are not a third-party audit of the underlying venues.
+
+## Earlier snapshot — September 24
 
 The bounded check was refreshed on September 24 at block **22502232**
 (`0x2982b6b2d90eee2d400a08e77604c407db2ccf5f29f9726dcee2b9521da1596e`).
@@ -27,7 +83,7 @@ block hash. This is a snapshot, not a promise of future execution or liquidity.
 | AchSwap / 0.05% | 0.393087 | 0.452368 | Passed, uncompetitive quote |
 
 The working Uniswap pool is `0x6fd5f2fb831940dcd61a98c5b3acb7d8c6f3bfc1`.
-The direct solver now queries only its 500 fee tier: at most four requests per
+At that snapshot the direct solver queried only its 500 fee tier: at most four requests per
 uncached search (chain ID, block header, factory lookup, quote), plus independent
 simulation/backend reads. The initial production candidate is this direct route,
 with KyberSwap optional. Synthra and AchSwap remain local regression fixtures;

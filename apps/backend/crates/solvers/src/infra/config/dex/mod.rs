@@ -1,3 +1,4 @@
+pub mod arc;
 pub mod bitget;
 pub mod curve;
 pub mod dodo;

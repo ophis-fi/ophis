@@ -62,6 +62,16 @@ pub async fn load(path: &Path) -> super::Config {
                 metrics::Dex::UniswapV3,
                 "",
             ),
+            // https://archery.wtf/docs/security — Arc Mainnet, not its QA deployment.
+            (eth::ChainId::Arc, "archery") => (
+                "0xc481038c013fe96f38ce7a2dc417b2b1b78b16a4",
+                "0xc6b5c6056c4be2de1c014695a7ccb75087a1c574",
+                "0x3b37e67c973683f7fe8a0f304dedfaf475fec138",
+                true,
+                vec![1, 10, 50],
+                metrics::Dex::Archery,
+                "",
+            ),
             (eth::ChainId::Arc, "synthra") => (
                 "0x6307fc239C7964942c1BfFE51930E55606619c74",
                 "0x9c179A7335B3fc841F59Aa6a62daf6d5c61b65D7",

@@ -63,7 +63,7 @@ def render(active=False):
     token = (OUT / 'service-token').read_text().strip()
     write('services.env', f'OPHIS_INTER_SERVICE_AUTH_TOKEN={token}\n')
     rpc = 'http://rpc-proxy:4000/main/evm/5042'
-    lanes = ['uniswap-v3', 'kyberswap']
+    lanes = ['uniswap-v3', 'kyberswap', 'archery', 'aero', 'uniswap-v4']
     price_drivers = ', '.join(f'{{name = "{name}", url = "http://driver:11088/{name}"}}' for name in lanes)
     drivers = '\n'.join(f'[[drivers]]\nname = "{name}"\nurl = "http://driver:11088/{name}"\naddress = "{cfg["solver"]}"' for name in lanes)
     native_estimators = ', '.join(f'{{type = "Driver", name = "{name}", url = "http://driver:11088/{name}"}}' for name in lanes)
@@ -170,7 +170,9 @@ chain-id = "5042"
 venue = "uniswap-v3"
 '''
     kyberswap = solver.replace('venue = "uniswap-v3"', 'client-id = "ophis"')
-    for name, content in [('orderbook', orderbook), ('autopilot', autopilot), ('driver', driver), ('uniswap-v3', solver), ('kyberswap', kyberswap)]:
+    configs = [('orderbook', orderbook), ('autopilot', autopilot), ('driver', driver), ('kyberswap', kyberswap)]
+    configs.extend((name, solver.replace('venue = "uniswap-v3"', f'venue = "{name}"')) for name in lanes if name != 'kyberswap')
+    for name, content in configs:
         tomllib.loads(content)
         write(name + '.toml', content)
     erpc = yaml.safe_load((HERE.parent / 'erpc.yaml').read_text())
