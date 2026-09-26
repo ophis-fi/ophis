@@ -1,3 +1,4 @@
+import { LISTED_STOCK_PROVIDERS } from '../../const/listedStockProviders.const'
 import { TokenizedAssetProviderTag } from '../../types'
 
 const ONDO_SUFFIXES = [/\s*\(Ondo Tokenized(?: Stock)?\)\s*$/i, /\s+Ondo Tokenized(?: Stock)?\s*$/i] as const
@@ -15,6 +16,9 @@ export function getTokenDisplayName(
 
   if (tokenizedAssetProvider === 'ondo') return stripSuffixes(name, ONDO_SUFFIXES)
   if (tokenizedAssetProvider === 'xStocks') return stripSuffixes(name, XSTOCKS_SUFFIXES)
+
+  const listedProvider = LISTED_STOCK_PROVIDERS.find(({ id }) => id === tokenizedAssetProvider)
+  if (listedProvider) return stripSuffixes(name, listedProvider.suffixes)
 
   return name
 }
