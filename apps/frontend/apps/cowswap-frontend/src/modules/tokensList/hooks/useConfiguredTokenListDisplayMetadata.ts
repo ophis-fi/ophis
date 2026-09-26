@@ -19,6 +19,7 @@ import { StatusColorVariant } from '@cowprotocol/ui'
 
 import { atomWithQuery, type AtomWithQueryResult } from 'jotai-tanstack-query'
 
+import { LISTED_STOCK_PROVIDERS } from '../const/listedStockProviders.const'
 import { TokenizedAssetProviderTag } from '../types'
 
 export interface ConfiguredTokenListDisplayMetadata {
@@ -77,12 +78,28 @@ function addTokenMetadata(
   providerTag: TokenizedAssetProviderTag | undefined,
   tokenIds: Set<string>,
   providerByTokenId: Map<string, TokenizedAssetProviderTag>,
+  tokenListTags: TokenListTags,
 ): void {
   for (const token of tokenList.list.tokens) {
     const tokenId = getTokenId({ chainId: token.chainId, address: token.address })
     tokenIds.add(tokenId)
 
     if (providerTag && token.tags?.includes(providerTag)) providerByTokenId.set(tokenId, providerTag)
+
+    const listedProvider = LISTED_STOCK_PROVIDERS.find(
+      ({ source, chainId, suffixes }) =>
+        tokenList.source === source && token.chainId === chainId && suffixes.some((suffix) => suffix.test(token.name)),
+    )
+    if (listedProvider) {
+      // Consumers match by chain + address, never by a token's displayed name or symbol.
+      providerByTokenId.set(tokenId, listedProvider.id)
+      tokenListTags[listedProvider.id] = {
+        id: listedProvider.id,
+        name: listedProvider.name,
+        description: listedProvider.description,
+        color: StatusColorVariant.Info,
+      }
+    }
   }
 }
 
@@ -99,7 +116,7 @@ export function getConfiguredTokenListDisplayMetadata(
 
     const providerTag = TOKENIZED_ASSET_PROVIDER_BY_SOURCE.get(tokenList.source)
     addProviderTagInfo(tokenList, providerTag, tokenListTags)
-    addTokenMetadata(tokenList, providerTag, tokenIds, providerByTokenId)
+    addTokenMetadata(tokenList, providerTag, tokenIds, providerByTokenId, tokenListTags)
   }
 
   return { listedTokenIds: tokenIds, tokenizedAssetProviderByTokenId: providerByTokenId, tokenListTags }
