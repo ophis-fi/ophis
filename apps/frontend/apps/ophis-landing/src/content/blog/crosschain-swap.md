@@ -5,6 +5,7 @@ slug: "crosschain-swap"
 primaryKeyword: "crosschain swap"
 author: "Ophis"
 pubDate: 2026-09-06
+updatedDate: 2026-09-27
 tags: [crosschain-swap, cross-chain, swaps, bridging]
 draft: false
 cover: ./crosschain-swap.cover.webp
@@ -57,9 +58,11 @@ Using several networks can leave you with small balances in different places. Mo
 
 ## How Ophis helps with cross-chain swaps
 
-Ophis connects its swap experience to cross-chain providers including Across and NEAR Intents. The app requests supported routes so you can review the outcome without arranging every step in a separate service.
+Ophis connects its swap experience to cross-chain providers including Across, NEAR Intents and configured Circle routes. The app requests supported routes so you can review the outcome without arranging every step in a separate service.
 
-Its published network coverage includes 13 EVM blockchains, including Ethereum, Base, Arbitrum, Optimism, and Robinhood Chain. Bitcoin and Solana are also available as destinations through NEAR Intents. See the [Ophis supported-chain list](https://ophis.fi/supported-chains/).
+The app covers 14 EVM blockchains, including Arc. Published SDK/MCP mappings cover 13 and exclude Arc. NEAR routes add Bitcoin, Solana, Monad, Hyperliquid, X Layer, Sui and Tron destinations where source, asset and provider support permit. See the [Ophis supported-chain list](https://ophis.fi/supported-chains/).
+
+Arc has direct Circle routes for configured assets and a separate Ethereum WBTC → Ethereum cirBTC → Arc cirBTC conversion flow. This is not a native Bitcoin bridge or a single atomic swap. Exact-input, same-wallet EOA restrictions and recovery details are in [Networks & assets](https://docs.ophis.fi/networks-assets).
 
 If Robinhood Chain is your destination, the [Ophis Robinhood Chain swap guide](https://ophis.fi/blog/dex-aggregator-robinhood/) explains how to check assets and review a same-chain trade once your funds arrive.
 

@@ -2,6 +2,7 @@
 title: "How to let an AI agent swap tokens: safely, and MEV-protected"
 description: "Agents can already pay. Swapping is the harder, riskier half. Here is how to give an AI agent the ability to swap tokens through Ophis (via an MCP server, the Intent API, or the SDK), with the safety rails (bounded orders, a pinned receiver, MEV-protected settlement) that stop an autonomous signer from draining itself."
 pubDate: 2026-06-25
+updatedDate: 2026-09-27
 author: Ophis
 tags: [ai-agents, mcp, mev, defi, swaps]
 cover: ./let-an-ai-agent-swap-tokens.cover.png
@@ -34,13 +35,14 @@ machine:
   somewhere else, and the signature makes it irreversible;
 - an **unbounded price**: the order fills far below the quote the agent reasoned
   about;
-- a **wrong settlement contract or orderbook host**: the order routes around
-  your solver and collects nothing.
+- a **wrong settlement contract or orderbook host**: the order is rejected or
+  targets an unintended deployment; this is not a supported fee-free route.
 
 Ophis is built for exactly this. It is **intent-based**: you do not broadcast a
 swap, you sign a *bounded order* and a competitive solver network races to fill
-it. It is **MEV-protected**: orders settle in batch auctions at a uniform
-clearing price, so there is no in-batch ordering to exploit, no sandwiching. And
+it. Batch auctions use a uniform clearing price per token pair to **mitigate
+common MEV**. Settlement can still be public; this is not universal sandwich
+immunity. And
 the agent signs a **bounded capability**, not an arbitrary transaction.
 
 ## The fastest path: point your agent at the MCP server
@@ -258,7 +260,7 @@ approval per token per chain.
 
 ### Which chains can an agent trade on?
 
-All 13 EVM chains Ophis supports, with Solana and Bitcoin available as
+The 13 EVM chains in the published SDK/MCP mappings (Arc is app-only), with Solana and Bitcoin available as
 destinations via NEAR Intents. Do not hardcode endpoints: three of those chains
 (Optimism, Unichain, and Robinhood Chain) are Ophis-operated and settle through
 Ophis's own GPv2Settlement at a non-canonical address, so an order signed

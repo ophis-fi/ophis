@@ -2,6 +2,7 @@
 title: "Gasless token swaps: how intent-based trading removes gas"
 description: "Sign an off-chain EIP-712 order and a solver executes it on-chain, paying the gas. The fee comes out of the trade itself, so you can swap with zero ETH."
 pubDate: 2026-07-10
+updatedDate: 2026-09-27
 author: Ophis
 tags: [gasless, swaps, intents, defi]
 draft: false
@@ -18,7 +19,7 @@ the fee comes out of the traded amount. So you can trade with no native gas
 token in your wallet at all, and an order that never fills costs you nothing.
 
 The rest of this article is the mechanism: where the gas cost actually goes,
-the one place it can still appear, and why this matters most for new wallets,
+the places it can still appear, and why this matters most for new wallets,
 AI agents, and anyone trading across many chains.
 
 ## Signing is not sending
@@ -36,8 +37,8 @@ Execution is someone else's job. Competing solvers pick up open orders, race
 each other on price, and the winner settles a whole batch of orders in one
 on-chain transaction. Ophis is a fork of [CoW Protocol's](https://docs.cow.fi)
 frontend with a natural-language intent layer and an agent stack, and
-settlement runs through CoW Protocol's audited GPv2 contracts (on Optimism and
-Unichain, through a bytecode-identical deployment that Ophis operates). The
+settlement uses CoW Protocol's GPv2 design, with Ophis-operated deployments on
+Optimism, Unichain, Robinhood Chain and Arc. The
 solver builds the settlement transaction, broadcasts it, and pays its gas.
 
 Note that this is different from gas sponsorship. Sponsorship models (relayers,
@@ -47,24 +48,23 @@ user transaction to sponsor: the only on-chain transaction is the solver's
 batch settlement, which would exist anyway.
 
 The same structure is what makes the flow [MEV-protected](/blog/mev-protection-batch-auctions/). Orders travel
-off-chain and clear at a uniform price inside a batch auction, so there is no
-public mempool swap to front-run or sandwich. The protection is structural, not
-best-effort.
+offchain and clear at a uniform price per token pair. This mitigates common
+MEV, but the solver's settlement can still be public and use external pools.
 
 ## The fee comes out of the trade, not your gas balance
 
-Ophis uses chain-aware pricing. Every supported chain charges a 1 bp base plus
+Ophis uses chain-aware pricing. The standard schedule, excluding Arc's current release exception, charges a 1 bp base plus
 capped reference-quote-improvement capture; hosted chains additionally apply
 CoW Protocol fees upstream. Fees are taken from the
 trade rather than billed in native gas (the
 full [fee schedule](https://docs.ophis.fi/fees) is public; on the chains that
 settle through CoW Protocol, CoW Protocol's protocol fee applies on top of the
-Ophis fee). On a standard sell order that is the token you receive: sell USDC for ETH and the fee is a slice of the ETH. On a buy order, where you name the amount you want to receive, it comes off the token you spend instead. At no point does anything denominated in
-the native gas token leave your wallet, because you never send the transaction
-that would need it.
+Ophis fee). On a standard sell order that is the token you receive: sell USDC for ETH and the fee is a slice of the ETH. On a buy order, where you name the amount you want to receive, it comes off the token you spend instead. For standard ERC-20 orders, you do not broadcast or directly pay gas for the
+solver's settlement. The traded asset can itself be the network's gas asset,
+as with USDC on Arc; that does not make the trade gas-free in economic terms.
 
 The limit you signed still bounds the outcome. Solvers compete to beat the
-reference quote. On every supported chain, Ophis retains 80% of that
+reference quote. Under that standard schedule, Ophis retains 80% of that
 improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps
 cap); the trader receives the remainder and everything above the cap. Hosted
 chains additionally apply CoW Protocol's upstream fees.
@@ -77,20 +77,17 @@ your limit price before the order's expiry, the order expires, and nothing
 happened on-chain on your behalf. There is nothing to pay for. The worst case
 of a gasless order is the state you started in.
 
-## The one place gas can still appear
+## Where gas can still appear
 
-Before an ERC-20 can be pulled into a settlement, it needs a one-time allowance
-for the settlement contract. A standard approval is a normal on-chain
-transaction: it costs gas, once, per token, per chain.
+An ERC-20 sell needs sufficient allowance to the chain's **vault relayer**, not
+an approval to the settlement contract. Resolve that spender through the SDK
+or app configuration. Approval transactions cost gas; an exact allowance may
+need renewing after it is consumed. Some tokens and wallets support permits.
 
-The footprint stops there. An allowance persists, so once a token is approved
-on a chain, every trade of that token on that chain is fully gasless. The
-approval is the single place gas enters the flow, and it is paid once, not per
-trade.
-
-One boundary worth stating: all of this is about ERC-20s. Selling a chain's
-native token is the one case where you hold the gas token by definition, so the
-constraint this article is about does not bind there.
+Native-token placement through EthFlow, wrapping, hard cancellation, refunds
+and direct bridge or conversion transactions can also require gas. Native-token
+orders deposit funds before settlement and need a separate refund if unfilled.
+This article's gasless flow is the standard signed ERC-20 order.
 
 ## Who actually hits the gas wall
 
@@ -107,21 +104,20 @@ added attack surface. An agent that signs orders instead of broadcasting
 transactions needs neither; the full integration pattern is in
 [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/).
 
-**Multichain traders.** Ophis settles on 13 chains: Ethereum, Optimism, BNB,
+**Multichain traders.** The Ophis app supports 14 chains: Ethereum, Optimism, BNB,
 Gnosis, Unichain, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche,
-Ink, and Linea.
+Ink, Linea, and Arc. Published SDK/MCP mappings exclude Arc.
 They do not all share one gas token. Pre-funding a native balance on every
 chain you might trade on is dead capital and real friction; signed orders
-remove the prerequisite entirely.
+remove settlement-gas payment by the trader, not approval or other transaction gas.
 
 ## FAQ
 
 ### Do I need ETH to swap?
 
-No. You sign an off-chain order, a solver executes it and pays the settlement
-gas, and the applicable fee comes out of the traded amount. The one exception is a
-first-time token approval, a single on-chain transaction, paid once per token
-per chain. After that, trading that token needs no native balance at all.
+For a standard signed ERC-20 order, the solver pays settlement gas and the fee
+comes out of the trade. Approvals, native-token placement, wrapping, hard
+cancellation, refunds and direct bridge transactions can still require gas.
 
 ### What if the price moves while my order is open?
 
@@ -140,11 +136,11 @@ Solver compensation is never billed to you in the native token.
 
 ### Is it custodial?
 
-No. Ophis never holds funds: tokens stay in your wallet until the batch that
+For standard signed ERC-20 orders, tokens stay in your wallet until the batch that
 includes your order settles, and they can move only under the allowance you
 granted and against an order you signed (EIP-712 from a regular wallet,
-ERC-1271 from a smart-contract wallet). There is no deposit step and no balance
-to withdraw. More edge cases are covered in the
+ERC-1271 from a smart-contract wallet). Native-token orders and bridges can
+require deposits with separate recovery rules. See the
 [FAQ docs](https://docs.ophis.fi/faq).
 
 ## Try a swap with an empty gas tank

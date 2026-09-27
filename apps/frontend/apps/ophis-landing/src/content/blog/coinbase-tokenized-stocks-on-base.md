@@ -2,7 +2,7 @@
 title: "Coinbase tokenized stocks on Base: swap AAPLc, NVDAc on Ophis"
 description: "Coinbase tokenized stocks are live on Base and listed on Ophis. Swap AAPLc, NVDAc, METAc and GOOGLc gasless and MEV-protected, multiplier read on chain."
 pubDate: 2026-08-24
-updatedDate: 2026-09-15
+updatedDate: 2026-09-27
 author: Ophis
 tags: [base, tokenized-stocks, coinbase, b20, dex-aggregator, swaps]
 draft: false
@@ -12,7 +12,7 @@ coverAlt: "Ophis emblem at the centre of an orbit ring of nodes, with the Base l
 
 Coinbase launched tokenized stocks on Base on 2026-08-24, and they are listed on Ophis from day one. Open [swap.ophis.fi/#/8453/swap/USDC/AAPLc](https://swap.ophis.fi/#/8453/swap/USDC/AAPLc), connect a wallet, and sign an EIP-712 order: no settlement transaction to broadcast, no settlement gas to pay, and a signed limit price that is the worst execution you can receive. The tokens are Base-native B20 assets issued by Coinbase; per [Coinbase's own description](https://www.base.org/stocks), each token is a beneficial claim on a real share, backed 1:1 and held in regulated, bankruptcy-remote custody separate from Coinbase. Ophis ships its own token list for them, shows a stock panel next to the quote with the corporate-action multiplier and pause state read from the Base contracts, and routes the order through CoW Protocol's batch auction on Base.
 
-Two sentences of context. Base is chain id 8453, an OP-Stack L2 operated by Coinbase, and one of the 13 EVM chains [Ophis](https://ophis.fi/) supports. Ophis is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top; on Base it settles through CoW Protocol's hosted orderbook and solver network, so the stock tokens inherit the same MEV protection as every other token on the chain.
+Two sentences of context. Base is chain id 8453, an OP-Stack L2 operated by Coinbase, and one of the 14 EVM chains [Ophis](https://ophis.fi/) supports. Ophis is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top; on Base it settles through CoW Protocol's hosted orderbook and solver network, so stock-token orders use the same signed-limit and batch-auction protections. Those protections do not guarantee liquidity, a fill or immunity from every MEV strategy.
 
 ## Swap a tokenized stock on Base, step by step
 
@@ -24,7 +24,7 @@ Two sentences of context. Base is chain id 8453, an OP-Stack L2 operated by Coin
 
 4. **Read the stock panel.** As soon as a Coinbase stock is on either side of the pair, the swap form shows a panel specific to it: the corporate-action multiplier, whether transfers are paused on chain, whether Coinbase has minted supply yet, and the issuer's eligibility statement. The panel is advisory: it sits next to the quote and says so when its data is unavailable, and it never blocks or alters an order. More on what each of those means below.
 
-5. **Review the quote and sign.** The quote carries a hard limit price, and that limit is what you sign: the worst execution you can receive. Your wallet shows typed data, not a transaction. Orders are gasless, and the fee comes out of the traded amount rather than being billed separately.
+5. **Review the quote and sign.** The quote carries a hard limit price, and that limit is what you sign: the worst execution you can receive. Your wallet shows typed data, not a transaction. Signing and solver-paid settlement require no wallet gas for a standard ERC-20 order; a first approval can require gas. The fee comes out of the traded amount rather than being billed separately.
 
 6. **Wait for settlement.** Solvers race to fill the order against Base liquidity and the winner settles it on-chain in a batch. Order status updates on the page until the trade lands.
 
@@ -51,7 +51,7 @@ One detail is invisible in the app but worth knowing: these tokens have no bytec
 
 ### The thirteen tokens
 
-Thirteen stocks are deployed. Four had supply minted on launch day; the rest exist on chain with zero supply. Ophis lists all thirteen, so once Coinbase mints one and a DEX pool holds usable liquidity for it, solvers can quote it without Ophis shipping anything new.
+The launch list contained thirteen stocks, four with minted supply and nine without. This is a launch snapshot, not a current supply or liquidity report. Ophis lists these addresses; quoting still requires minted supply, usable liquidity and an available solver route. Check the live issuer list and quote.
 
 | Token | Company | Address on Base |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ The first four are the ones with supply on launch day. Every address above carri
 
 A B20 stock token carries a multiplier. When the underlying pays a dividend or splits, the redemption ratio changes and the multiplier moves with it: after a dividend the multiplier might read 1.02, meaning one token is redeemable for 1.02 shares. Balances never rebase. Cash dividends on these tokens are converted into shares and reflected the same way, so your token count stays put while what each token represents grows. The Chainlink feed for each stock is total-return for the same reason: a 10:1 split drops the underlying price ten times and lifts the multiplier ten times, and the token's price does not jump.
 
-On launch day every multiplier reads exactly 1, so the distinction never surfaces. It will. Read the value on the panel rather than assuming it is 1, especially before comparing a token's DEX price to the equity's quote.
+The launch snapshot used a multiplier of 1. Read the current value on the panel rather than assuming it remains 1, especially before comparing a token's DEX price to the equity's quote. If metadata is unavailable, do not treat that as confirmation of the multiplier.
 
 ## What Ophis shows next to the quote
 
@@ -85,7 +85,7 @@ Ophis added a Base-specific stock panel beside the quote, the same way it did fo
 
 **It reads the multiplier from the chain.** The panel calls each token's `multiplier()` view on Base and shows the factor next to the symbol. If you are selling, it also converts your balance: at a multiplier of 1.02, a balance of 10 AAPLc is shown as representing about 10.2 underlying shares.
 
-**It surfaces pauses and unissued supply.** B20 lets the issuer pause transfers per feature. The panel calls `pausedFeatures()` and switches to an attention state if transfers are paused for a token in your pair. It also reads `totalSupply()`: a token that Coinbase has listed but not yet minted shows as "not issued yet", with a note that quotes will return no liquidity until supply exists. That is the state the nine unminted tickers are in at the time of writing.
+**It surfaces pauses and unissued supply.** B20 lets the issuer pause transfers per feature. The panel calls `pausedFeatures()` and switches to an attention state if transfers are paused for a token in your pair. It also reads `totalSupply()`: a token that Coinbase has listed but not yet minted shows as "not issued yet", with a note that quotes will return no liquidity until supply exists. Nine tickers were unminted in the launch snapshot; current supply must be checked again.
 
 **It fails visibly, not silently.** The panel's data comes from a same-origin endpoint, [swap.ophis.fi/api/base/tokenized-stocks](https://swap.ophis.fi/api/base/tokenized-stocks), that batches the three views for all thirteen tokens against Base and caches the result at the edge for five minutes. Every value is re-validated before it is served, a failed read is a 502 rather than a partial payload, and there is no stale-while-revalidate window, so an old snapshot is never served as a fresh one. If the endpoint cannot be reached, or a background refresh fails, the panel says the metadata is temporarily unavailable and leaves quoting and signing available so you can decide; it does not hold your order until a read succeeds. Whatever the panel reports, the executable price is always the solver quote.
 
@@ -93,7 +93,7 @@ Ophis added a Base-specific stock panel beside the quote, the same way it did fo
 
 ## Fees and rebates on Base
 
-Base is one of the ten chains where Ophis settles through CoW Protocol's hosted stack rather than its own. Every trade pays the 1 bp Ophis base fee, and Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps; the trader receives the remainder and everything above the cap. CoW Protocol charges its own upstream volume fee on hosted chains, 0.02% on volatile pairs and 0.003% on correlated ones, which Ophis does not receive. A stock-token swap against USDC is a volatile pair, so the all-in fixed cost is 0.03%. The [fee docs](https://docs.ophis.fi/fees) carry the full breakdown per chain type.
+Base is one of the ten chains where Ophis settles through CoW Protocol's hosted stack rather than its own. Every trade pays the 1 bp Ophis base fee, and Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps; the trader receives the remainder and everything above the cap. CoW Protocol charges its own upstream volume fee on hosted chains, 0.02% on volatile pairs and 0.003% on correlated ones, which Ophis does not receive. A stock-token swap against USDC is a volatile pair, so the base and upstream volume components sum to 0.03%, before applicable improvement fees, liquidity costs and approval gas. The [fee docs](https://docs.ophis.fi/fees) carry the full breakdown per chain type.
 
 Rolling 30-day volume then places you in a rebate tier. The percentage is a weight, not a refund of your own fee: each month, a pool of 21.25% of the WETH fees Ophis collected is split across eligible wallets in proportion to their 30-day volume multiplied by their tier weight.
 
@@ -109,7 +109,7 @@ Rebates are paid monthly in WETH from the fee Safe. What a wallet receives depen
 
 ## Coinbase stocks on Base and Robinhood Stock Tokens: two different products
 
-Ophis now lists two different kinds of equity-linked token from two issuers on two chains, and they are not interchangeable.
+This comparison covers Coinbase and Robinhood equity-linked tokens. They are not interchangeable; Ophis also labels other tokenized-asset families, described in the [current coverage guide](/tokenized-stocks-rwa/).
 
 | | Coinbase Tokenized Stocks | Robinhood Stock Tokens |
 | --- | --- | --- |
@@ -136,7 +136,7 @@ Everything the app uses is public and keyless.
 
 ### Can I buy Coinbase tokenized stocks on Ophis?
 
-Yes. Ophis lists all thirteen Coinbase tokenized stocks on Base, with AAPLc, GOOGLc, METAc and NVDAc tradable from launch day and the other nine listed ahead of their first mint. Open [swap.ophis.fi/#/8453/swap/USDC/AAPLc](https://swap.ophis.fi/#/8453/swap/USDC/AAPLc), connect a wallet, and sign an EIP-712 order. Coinbase states that its tokenized stocks are only available to persons in eligible jurisdictions outside the U.S.
+Ophis lists the thirteen addresses from Coinbase's Base launch list. Listing does not guarantee a current executable quote: supply, liquidity, transfer restrictions and issuer eligibility still apply. Open [swap.ophis.fi/#/8453/swap/USDC/AAPLc](https://swap.ophis.fi/#/8453/swap/USDC/AAPLc), connect a wallet, and sign an EIP-712 order. Coinbase states that its tokenized stocks are only available to persons in eligible jurisdictions outside the U.S.
 
 ### Do I need ETH on Base to pay gas?
 
@@ -156,7 +156,7 @@ No. Coinbase tokenized stocks are B20 tokens on Base issued by Coinbase; Robinho
 
 ### How much does a tokenized stock swap cost on Ophis?
 
-On Base, Ophis charges a 1 bp base fee plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume. CoW Protocol adds its own upstream volume fee of 0.02% on volatile pairs, so the all-in fixed cost of a stock-token swap against USDC is 0.03%. Rolling 30-day volume places you in a rebate tier whose weight sets your share of a monthly pool of 21.25% of collected WETH fees.
+On Base, Ophis charges a 1 bp base fee plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume. CoW Protocol adds its own upstream volume fee of 0.02% on volatile pairs, so those base and volume components sum to 0.03%, before applicable improvement fees, liquidity costs and approval gas. Rolling 30-day volume places you in a rebate tier whose weight sets your share of a monthly pool of 21.25% of collected WETH fees.
 
 ## Start swapping
 
