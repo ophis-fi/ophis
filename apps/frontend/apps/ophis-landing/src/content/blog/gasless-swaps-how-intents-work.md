@@ -60,8 +60,8 @@ trade rather than billed in native gas (the
 full [fee schedule](https://docs.ophis.fi/fees) is public; on the chains that
 settle through CoW Protocol, CoW Protocol's protocol fee applies on top of the
 Ophis fee). On a standard sell order that is the token you receive: sell USDC for ETH and the fee is a slice of the ETH. On a buy order, where you name the amount you want to receive, it comes off the token you spend instead. For standard ERC-20 orders, you do not broadcast or directly pay gas for the
-solver's settlement. Arc's six-decimal ERC-20 USDC is distinct from its
-18-decimal native USDC gas balance; selling the ERC-20 does not fund or spend gas.
+solver's settlement. Arc exposes [one USDC balance](https://www.arc.io/blog/arc-compatibility-guide-for-existing-evm-apps) through
+18-decimal native and six-decimal ERC-20 interfaces; selling USDC reduces what remains for gas.
 
 The limit you signed still bounds the outcome. Solvers compete to beat the
 reference quote. Under that standard schedule, Ophis retains 80% of that
@@ -91,7 +91,7 @@ This article's gasless flow is the standard signed ERC-20 order.
 
 ## Who actually hits the gas wall
 
-**New wallets.** ERC-20 tokens alone do not cover approval gas. A wallet needs
+**New wallets.** On most chains, ERC-20 tokens alone do not cover approval gas. A wallet needs
 an existing allowance or a supported permit flow before gasless signing can help.
 Once that requirement is met, the solver pays settlement gas.
 
