@@ -9,11 +9,12 @@ license: MIT
 ## When to use
 
 The user wants an unsettled order gone: wrong amount, stale price, changed
-mind. Off-chain (soft) cancellation is free and instant; it needs the same
+mind. Offchain (soft) cancellation is gasless but can race a settlement; it needs the same
 key that signed the order.
 
 Only `open` orders can be cancelled. A `fulfilled`, `expired`, or already
-`cancelled` order is final; check `ophis-order-status.md` first.
+`cancelled` order cannot be soft-cancelled again. Check executed amounts and
+`ophis-order-status.md`; a cancelled status does not rule out an in-flight fill.
 
 ## Single-order cancellation
 
@@ -94,9 +95,9 @@ curl -sS -X DELETE "$ORDERBOOK/api/v1/orders" \
 Re-fetch the order (`ophis-order-status.md`) and confirm `status` is
 `cancelled` before telling the user it is done.
 
-> "Cancelled. The order can no longer settle; nothing was spent and no gas
-> was paid. The sell-token allowance you granted is still in place; say the
-> word if you want it revoked."
+> "The orderbook accepted cancellation without a gas transaction. An in-flight
+> fill can still land; I checked the recorded fills separately. The sell-token
+> allowance remains in place unless separately revoked."
 
 To revoke the leftover exact allowance:
 `cast send <sellToken> "approve(address,uint256)" "$RELAYER" 0 --rpc-url "$RPC_URL" "${SIGNER_ARGS[@]}"` (this one costs gas).
@@ -113,7 +114,8 @@ cast send "$SETTLEMENT" "invalidateOrder(bytes)" "$uid" \
   --rpc-url "$RPC_URL" "${SIGNER_ARGS[@]}"
 ```
 
-After `invalidateOrder`, any attempted settlement of that UID reverts.
+After `invalidateOrder` is confirmed and finalized, later settlement of that
+UID reverts. A fill can win the race before invalidation is included.
 Offer it only when the stakes justify gas; the soft cancel is the right
 default.
 

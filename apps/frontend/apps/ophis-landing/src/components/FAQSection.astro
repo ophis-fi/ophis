@@ -12,7 +12,7 @@
  *
  * Accurate Ophis facts only. No em-dash in rendered copy (commas / colons).
  */
-import { EVM_CHAIN_COUNT, NEAR_DESTINATION_LIST as destinationList } from '../data/chains'
+import { EVM_CHAIN_COUNT, SOVEREIGN_CHAIN_LIST as sovereignList, NEAR_DESTINATION_LIST as destinationList } from '../data/chains'
 import { jsonLdSafe } from '../lib/jsonld'
 
 const faqs: { q: string; a: string }[] = [
@@ -22,23 +22,23 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'What does Ophis charge?',
-    a: 'Every supported chain pays a 1 bp base fee. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps. CoW-hosted chains additionally apply CoW Protocol upstream fees. The public Intent API and MCP server are free.',
+    a: 'The standard batch-auction schedule, excluding the current Arc release exception, charges a 1 bp base fee. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps. CoW-hosted chains additionally apply CoW Protocol upstream fees. Arc currently has no configured backend improvement policy; check its quote and signed metadata. Bridge costs and wallet transaction gas are separate. The public Intent API and MCP server are free.',
   },
   {
     q: 'Which chains does Ophis support?',
-    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with Optimism, Unichain, and Robinhood Chain as its operated sovereign networks, and supports ${destinationList} as destinations via NEAR Intents.`,
+    a: `The app covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated networks. Published SDK/MCP chain lists exclude Arc. NEAR Intents adds ${destinationList} destinations where source, pair and provider support permit.`,
   },
   {
     q: 'How is Ophis different from CoW Swap?',
-    a: 'Ophis is a CoW Protocol fork focused on autonomous agents. It runs its own GPv2Settlement contract at a non-canonical address on its operated chains, exposes a public MCP server and Intent API, ships the @ophis/sdk agent-safety helpers, and uses solver-aligned price-improvement pricing on every supported chain. Agents must resolve the per-chain settlement domain via the SDK or MCP before signing.',
+    a: 'Ophis is a CoW Protocol fork with its own operated deployments, a public MCP server, Intent API and agent-safety SDK. Agents must resolve the supported per-chain settlement domain through the SDK or MCP before signing. Arc is app-supported but is not yet included in published SDK/MCP mappings.',
   },
   {
     q: 'Is MEV protection guaranteed?',
-    a: 'Orders settle through CoW Protocol batch auctions, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.',
+    a: 'Orders settle through CoW Protocol batch auctions, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price per token pair. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.',
   },
   {
     q: 'Who controls the keys, and is Ophis custodial?',
-    a: 'Ophis is non-custodial. Orders are gasless, off-chain, EIP-712-signed intents; the trader or agent signs with its own key and the keys never leave the signer. An agent signs a bounded capability with a hard limit price, not an arbitrary transaction.',
+    a: 'Signing keys stay with the trader or agent. Standard signed ERC-20 orders keep funds in the wallet until settlement. Native-token orders and bridge routes can require onchain transactions and deposits, with gas and separate recovery rules. Always review what your wallet authorizes.',
   },
   {
     q: 'What is the Ophis MCP server?',

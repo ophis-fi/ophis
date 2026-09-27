@@ -34,7 +34,8 @@ if (!ok) throw new Error('intent parse failed')
 
 const { intent, entities } = data
 // Build a deep link to the swap UI:
-// /1/swap/USDC/ETH?sellAmount=100  (chain inferred from entities.chain)`,
+// https://swap.ophis.fi/#/10/swap/USDC/ETH?sellAmount=100
+// Map the parsed chain slug to its numeric chain ID (optimism -> 10).`,
   Rust: `// Parse a natural-language swap intent
 let body = serde_json::json!({
   "text": "swap 100 USDC for ETH on Optimism"

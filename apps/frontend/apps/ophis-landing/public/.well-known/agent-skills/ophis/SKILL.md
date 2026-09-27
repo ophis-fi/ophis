@@ -62,9 +62,8 @@ uniform clearing price, which mitigates common MEV while enforcing the signed
 minimum. The signer pays no gas at settlement (solvers do). Price improvement
 is shared under the chain's published fee policy.
 
-This skill family drives the raw HTTP + `cast` flow against the three
-Ophis-operated chains, whose orderbooks and settlement contracts Ophis runs
-itself:
+This skill family's pinned raw HTTP + `cast` execution policy covers these
+three Ophis-operated chains, not every chain in the swap app:
 
 | Chain | chainId | Orderbook host |
 | --- | --- | --- |
@@ -72,11 +71,11 @@ itself:
 | Unichain | 130 | `https://unichain-mainnet.ophis.fi` |
 | Robinhood Chain | 4663 | `https://robinhood-mainnet.ophis.fi` |
 
-Ophis also serves other EVM chains through the swap app and the hosted MCP
-server (`https://mcp.ophis.fi/mcp`, see `/.well-known/mcp.json`); those chains
-use different (CoW canonical) contract addresses and are outside this skill's
-pinned execution policy. Resolve them via the MCP `list_chains` tool or
-`@ophis/sdk` if the user asks for one.
+Arc is also Ophis-operated in the swap app, but is excluded from this pinned
+execution policy and the published SDK/MCP mappings. Do not use a CoW canonical
+address for Arc. The ten CoW-hosted networks use separate canonical addresses;
+resolve those through MCP `list_chains` or `@ophis/sdk`, outside this skill's
+three-chain execution policy.
 
 ## Pick the right sub-skill
 

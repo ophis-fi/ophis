@@ -66,9 +66,11 @@ curl -sS "$ORDERBOOK/api/v1/trades?orderUid=$uid" | jq '[.[] | {txHash, blockNum
 - **open past its quote**: solvers are still bidding; batch auctions run
   continuously, a fill typically lands within a couple of minutes when the
   limit is marketable.
-- **expired**: `validTo` passed without a fill; nothing was spent, the
-  allowance is untouched. Offer to re-quote.
-- **cancelled**: it was cancelled (see `ophis-cancel.md`); nothing settled.
+- **expired**: `validTo` passed. Check executed amounts for partial fills before
+  saying nothing was spent. An allowance can remain; native-token deposits need
+  refund recovery. Offer to re-quote only the unsold amount.
+- **cancelled**: the orderbook accepted cancellation (see `ophis-cancel.md`).
+  Check executed amounts and trades: partial or in-flight fills may still exist.
 
 A well-formed but unknown UID returns 404 `NotFound`:
 

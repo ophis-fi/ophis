@@ -16,11 +16,11 @@ const { updated } = canonicalPage('/security/')
 const FAQS = [
   {
     q: 'Is Ophis custodial?',
-    a: `No. Ophis is non-custodial. Orders are gasless, off-chain, EIP-712-signed intents; the trader or agent signs with its own key and the keys never leave the signer. An agent signs a bounded capability with a hard limit price, not an arbitrary transaction.`,
+    a: `Signing keys stay with the trader or agent. Standard signed ERC-20 orders keep funds in the wallet until settlement. Native-token orders, bridge routes and optional external OTC escrow can require deposits and gas, with separate recovery rules. Review each wallet authorization.`,
   },
   {
     q: 'Is Ophis audited?',
-    a: `The core settlement contract is CoW Protocol's audited code, so CoW's settlement audits apply to it directly. Two pieces are Ophis-specific and were reviewed in Ophis's own security audits: a hardened GPv2AllowListAuthentication with a two-step manager transfer, and the partner-fee settlement-buffer handling. Ophis has not yet engaged an external audit firm for the fork-specific pieces.`,
+    a: `Upstream CoW audits cover relevant shared code, not every Ophis modification or deployment. Ophis-specific allowlist and settlement-buffer changes have internal/tool-assisted reviews. The linked reports define their scope. Using audit skills and tools is not an organizational audit or endorsement by their authors; no external-firm audit is claimed for the fork-specific pieces.`,
   },
   {
     q: 'Is MEV protection guaranteed?',
@@ -28,7 +28,7 @@ const FAQS = [
   },
   {
     q: 'How should an autonomous agent trade safely?',
-    a: `Build a bounded order with a hard limit price, pin the receiver to the owner, and resolve the per-chain settlement domain via the @ophis/sdk helpers or the MCP list_chains tool before signing. On ${sovereignList} the settlement contract lives at a non-canonical address, so signing against CoW's canonical address yields a domain the deployed contract rejects. Set an expiry, and keep signing keys separate from custody of meaningful balances.`,
+    a: `Build a bounded order with a hard limit price, pin the receiver to the owner, and resolve supported domains via @ophis/sdk or MCP list_chains before signing. On ${sovereignList} settlement is non-canonical. Arc is app-supported but excluded from published SDK/MCP mappings. Set an expiry and limit the funds and permissions available to a signing key.`,
   },
   {
     q: 'How do I report a vulnerability?',
@@ -42,15 +42,15 @@ const FAQS = [
   description="How Ophis handles security: non-custodial EIP-712 intents, CoW Protocol's audited settlement contracts, qualified MEV protection, agent safety rules, and vulnerability disclosure."
   path="/security/"
   heading="Security"
-  lede="Non-custodial by construction: bounded, signed intents settled on CoW Protocol's audited contracts. This page is the canonical reference for the custody model, audits, and disclosure."
+  lede="Wallet-authorized trading with signed execution limits. Understand the differences between offchain orders, deposits and bridge routes, and the scope of security reviews."
   updated={updated}
   faqs={FAQS}
 >
   <p>
-    <strong>The short version:</strong> Ophis never holds keys or funds. A trade is an off-chain
-    EIP-712 order with a hard limit price, signed by your own key and settled in a CoW Protocol
-    batch auction. The settlement contract is CoW's audited GPv2 code, and the fork-specific pieces
-    were reviewed in Ophis's own security audits. Details and links below.
+    <strong>The short version:</strong> standard signed orders enforce your sell amount,
+    receiver and minimum buy amount in the settlement contract. This does not remove bridge,
+    token-issuer, wallet-compromise or infrastructure risk. Native-token and bridge deposits
+    have different expiry and recovery rules. Review the scope of each linked security report.
   </p>
 
   <AuditMethodology />
