@@ -247,9 +247,10 @@ ceiling.
 
 ## Rollback / stop
 
-The Safe owners retain full custody at all times. To stop the curator: disable
-the module on the Safe (`disableModule`), or `cancel` any open order. Phase B
-constrains the curator, never the owners.
+- **Planned stop, trusted curator:** stop new submissions, have the curator `cancel(orderUid)` for each recorded live order while the module is enabled, then have the Safe owners disable the old module. Curator cancellation cannot execute through a disabled module.
+- **Emergency or unavailable curator:** Safe owners should atomically disable the module and call each allowlisted token's `approve(relayer, 0)` from the Safe. Disabling alone leaves existing presignatures and allowances executable.
+- **Before migration:** reconcile all module orders through the confirmed disable block, including any submitted during shutdown. From the Safe, invalidate every outstanding UID with settlement `invalidateOrder(orderUid)`, or wait until all their `validTo` deadlines have passed. Do not enable a replacement or restore allowances before this is complete.
+- **Verify:** check the old module is disabled, all old orders are invalid/expired, and affected relayer allowances are zero (clear any residual allowance from the Safe). Cancellation can race settlement; reconcile final fills and balances before proceeding.
 
 ## Residual risk (Phase-B, documented)
 

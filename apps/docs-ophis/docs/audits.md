@@ -10,12 +10,11 @@ sidebar_position: 1
 
 :::note[TL;DR]
 
-Ophis is non-custodial: no order moves without your wallet signature, and a solver
-can never exceed your signed sell amount, receiver, or limit price. Trades settle
-through immutable CoW Protocol contracts that have no admin, owner, or proxy, and
-are MEV-protected by construction via uniform-price batch auctions. The only
-mutable surface is the solver allowlist, governed by a 2-of-3 multisig behind a
-24-hour timelock.
+Standard signed orders enforce your sell amount, receiver and limit price in
+the settlement contract. Batch auctions mitigate common MEV; they do not remove
+every execution risk. Native-token, bridge, vault and OTC paths have additional
+contract and recovery assumptions. The governance addresses below describe the
+listed deployment, not every contract used by every route.
 
 :::
 
@@ -26,22 +25,30 @@ property below is independently verifiable from the addresses listed.
 
 ## Custody
 
-Ophis is **non-custodial**. The protocol cannot move user funds without an
-EIP-712 (or ERC-1271) signature from your wallet. Ophis never holds, escrows,
-or takes possession of your tokens: you sign each order, the order fixes the
+Standard ERC-20 swaps use EIP-712 wallet signatures, ERC-1271 validation, or
+explicit onchain presigning. Funds remain in the wallet until settlement.
+The order fixes the
 sell token, sell amount, minimum buy amount (your limit price), receiver and
 expiry, and an authorized solver settles it on-chain within exactly those
 limits. A solver can never pull more than your signed sell amount, send the
 proceeds anywhere but your signed receiver, or fill below your limit price.
 
+Native-token orders deposit into EthFlow before settlement. Bridge routes can
+deposit or burn assets before delivery and follow provider recovery rules.
+The optional OTC integration uses external escrow, while vault modules can
+authorize presigned orders. These are not the same custody or expiry model as
+an offchain ERC-20 order. Always check the contract, approval, receiver and
+minimum amount in your wallet; an immutable settlement does not prevent a
+compromised interface from asking you to authorize a harmful action.
+
 ## MEV protection by construction
 
-Orders settle through a batch auction in which trades clear at a uniform price.
+Orders settle through a batch auction with a uniform clearing price per token pair.
 This is designed to mitigate common MEV vectors at the mechanism layer:
 
-- **No front-running**: there is no pending-order mempool race to win.
-- **No sandwiching**: the protocol does not reorder trades for value.
-- **No priority-gas auction**: execution order within a batch is not for sale.
+- Orders are submitted offchain instead of broadcasting individual public swaps.
+- Uniform batch prices reduce ordering advantages within a token pair.
+- Signed limits constrain what a solver may execute.
 
 When the winning settlement transaction is broadcast, its calldata can be
 visible in the public mempool like any transaction. The signed sell amount,
@@ -52,7 +59,8 @@ against every adversarial or infrastructure condition.
 ## Smart contracts
 
 Ophis runs its **own deployment** of CoW Protocol's GPv2 settlement stack on
-Optimism, Unichain, and Robinhood Chain. The contracts that hold or move value are **immutable**: they have
+Optimism, Unichain, Robinhood Chain, and Arc. The listed settlement, relayer and
+EthFlow contracts are **immutable**: they have
 no admin, no owner, and no proxy, so no operator (and no compromise of Ophis's
 backend or frontend) can upgrade, pause, or re-point them:
 
@@ -74,8 +82,14 @@ backend or frontend) can upgrade, pause, or re-point them:
 | `GPv2VaultRelayer` | `0xB52C38097c19cd38238c62DD36027a7918eFa890` | Immutable, only ever honors the Settlement above |
 | `CoWSwapEthFlow` | `0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29` | Immutable, native-ETH sells (see below) |
 
-The core settlement contract is CoW Protocol's audited code, so CoW's
-settlement audits apply to it directly:
+Arc deployment configuration is recorded in the
+[Arc release sources](https://github.com/ophis-fi/ophis/tree/main/infra/arc-mainnet/release).
+Arc is not yet in the published SDK signing helpers; do not substitute another
+chain's addresses. These immutability claims do not cover token issuers, bridges
+or every external contract a route touches.
+
+The core settlement derives from CoW Protocol. Its upstream audits are relevant
+to shared code, but are not an audit of every Ophis modification or deployment:
 
 - CoW Protocol contract audits:
   [github.com/cowprotocol/contracts](https://github.com/cowprotocol/contracts)
@@ -83,7 +97,7 @@ settlement audits apply to it directly:
   [docs.cow.fi/cow-protocol](https://docs.cow.fi/cow-protocol)
 
 Two pieces are **Ophis-specific** (not stock CoW) and were reviewed in Ophis's
-own security audits: a hardened `GPv2AllowListAuthentication` (two-step manager
+internal/tool-assisted security reviews: a hardened `GPv2AllowListAuthentication` (two-step manager
 transfer) and the partner-fee settlement-buffer handling.
 
 ### Audit methodology and tools
@@ -135,7 +149,8 @@ Reproducible scope and results are recorded in the repository's
 [`docs/audits/`](https://github.com/ophis-fi/ophis/tree/main/docs/audits)
 reports. A tool or proof applies only to the scope named in its report; for
 example, an access-control proof does not prove unrelated Rust or TypeScript
-code.
+code. Use of Pashov or Trail of Bits skills and tools is not an organizational
+audit, endorsement or certification by those firms.
 
 ### Native-ETH sells (EthFlow)
 
@@ -148,8 +163,9 @@ contract without trusting any operator.
 
 ## Solver governance
 
-The only mutable on-chain surface is the **solver allowlist** (which addresses
-are permitted to settle batches). It is governed conservatively:
+In the Optimism settlement deployment listed below, the mutable governance
+surface is the **solver allowlist** (which addresses may settle batches).
+Its governance is:
 
 - Adding a solver, or changing the allowlist's manager or implementation, flows
   through an on-chain **24-hour TimelockController**: every such change is
