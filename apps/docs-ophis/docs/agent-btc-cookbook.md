@@ -1,15 +1,16 @@
 ---
 id: agent-btc-cookbook
 title: Swap into native Bitcoin from an agent
-description: How an autonomous agent or bot moves an EVM position into native Bitcoin (or Solana) in one gasless intent through Ophis, using the NEAR Intents rail, after a one-time source-token approval and with no Bitcoin-side signing.
+description: Compose an Ophis ERC-20 order with NEAR Intents delivery to Bitcoin or Solana, with separate source-order, destination and recovery checks.
 sidebar_label: Native BTC for agents
 ---
 
 # Swap into native Bitcoin from an agent
 
 Among intent-based batch-auction swap venues, Ophis packages a gasless,
-hard-limit path to **native Bitcoin** next to 13 EVM chains. The cross-chain
-rail (NEAR Intents) is shared by several venues; what Ophis packages is the
+source-order path to **native Bitcoin** alongside the app's 14 EVM networks.
+Published SDK/MCP mappings cover 13 networks and exclude Arc. Source and asset
+support for NEAR routes is narrower than the same-chain list. The cross-chain rail (NEAR Intents) is shared by several venues; what Ophis packages is the
 keyless, bounded agent path onto it. This page shows how an agent
 or bot moves an EVM position into native BTC (or SOL) after a one-time
 source-token approval, with no Bitcoin-side signing and without clicking through
@@ -30,9 +31,9 @@ shape is:
    delivery to the agent's Bitcoin address.
 
 The agent signs once, on the source chain. It supplies a destination Bitcoin
-address it controls, but signs nothing on the Bitcoin side and holds no gas
-token on any chain. The order is still a bounded intent: it cannot fill below
-the price the agent signed.
+address it controls and signs nothing on the Bitcoin side. Source approvals
+and other wallet transactions can require gas. The EIP-712 limit bounds the
+**source swap**, not final BTC delivery; the provider quote governs that leg.
 
 ## Today vs the packaged tool
 
@@ -40,7 +41,10 @@ The BTC and SOL destination flow is live in the Ophis **web app** today, where a
 person composes it. For an **agent**, there is no single wrapped tool yet: a
 keyless `swap_to_btc` / `swap_to_sol` MCP tool that combines the two legs is on
 the roadmap, not shipped;
-until it ships, an agent composes the two calls directly:
+until it ships, an agent must implement and validate the composition itself.
+The following is conceptual pseudocode, not a runnable 1-Click API example.
+Verify source/deposit asset, amount, destination, expiry and refund data before
+signing; do not override a receiver after signing or reuse mismatched quotes:
 
 ```ts
 // 1. Get a 1-Click deposit address for the target BTC address (NEAR Intents).
@@ -66,8 +70,8 @@ const order = {
 //    orderbook. Note: the keyless MCP `submit_order` tool pins the receiver to
 //    the owner as a drain guard, so it will NOT relay this order (the receiver
 //    is the 1-Click deposit address, not the owner by design). Submit it to the
-//    chain's Ophis orderbook yourself. After the one-time sell-token approval,
-//    no further gas is needed on the source chain.
+//    chain's supported orderbook only after quote/deposit validation. Keep
+//    recovery state and track destination delivery separately from the source fill.
 ```
 
 See the [partner integration guide](./partners.md) for the exact order-build
@@ -78,9 +82,9 @@ path.
 
 - **One signature, minimal gas.** The agent does not fund a wallet on the
   destination chain and does no Bitcoin-side signing; it supplies a BTC address
-  to receive at and signs one intent on the source chain. The only on-chain gas
-  is the one-time sell-token approval to the vault relayer before the first
-  sell; after that the swap itself is gasless.
+  to receive at and signs an order on the source chain. The solver pays standard
+  ERC-20 settlement gas; approvals, renewed allowances, cancellation or recovery
+  transactions may still require gas.
 - **Bounded, with one caveat.** The limit price caps the fill, and the signed
   receiver cannot be mutated after the agent signs. But note the ordering: a
   compromised or prompt-injected agent could request a 1-Click deposit address

@@ -22,8 +22,8 @@ The properties that decide safety for an agent:
 - **Bounded worst case.** When the agent signs, is the maximum loss knowable at
   signing time (a hard limit price), or is it an arbitrary transaction whose
   outcome depends on execution?
-- **MEV protection.** Is the order shielded from sandwiching by construction, or
-  exposed in a public mempool?
+- **MEV mitigation.** How are orders submitted and settled, and what visibility
+  or ordering risks remain?
 - **Gasless.** Does the agent need a native gas token on every chain, or does a
   solver pay the gas?
 
@@ -34,17 +34,18 @@ The properties that decide safety for an agent:
   and builds an order with no credential in its environment.
 - **Machine-signable.** `build_order` returns an EIP-712 order the agent signs
   directly with its own key. There is no handoff to a human browser step.
-- **Bounded worst case.** The order carries a hard limit price and a pinned
-  receiver, so the maximum loss is known at signing time and it cannot settle
-  below the price the agent signed.
-- **MEV protection.** Orders settle in a batch auction at a uniform clearing
-  price, so there is no public pending transaction to sandwich, by construction
-  rather than best-effort.
-- **Gasless (after a one-time approval).** Solvers pay the settlement gas. The
-  one on-chain step is a single ERC-20 approval to the vault relayer before the
-  first sell of a token; after that, swaps need no native gas token.
-- **Reach.** 13 EVM chains as source or destination, plus native Bitcoin and
-  Solana as destinations through NEAR Intents.
+- **Bounded order.** The signed sell amount, minimum buy amount and receiver
+  constrain one fill. They do not bound future token value or cumulative losses
+  from a compromised signer repeatedly authorizing trades.
+- **MEV mitigation.** Offchain orders and uniform clearing prices per token
+  pair reduce common ordering advantages. External-pool settlement can still
+  be public and exposed to adversarial conditions.
+- **Solver-paid ERC-20 settlement.** Approvals, renewed exact allowances,
+  wrapping, native-token placement, hard cancellation and refunds can need gas.
+- **Reach.** The app supports 14 EVM networks; published SDK/MCP mappings cover
+  13 and exclude Arc. NEAR destinations and sources are route-specific. The
+  [BTC cookbook](./agent-btc-cookbook.md) describes a custom composition, not a
+  shipped one-call BTC MCP tool.
 
 ## Where other venues sit
 
@@ -53,11 +54,9 @@ Base MCP, and CoW Swap's SDK) each cover a subset of these properties, and their
 capabilities move quickly, so check each venue's current docs rather than trust
 a snapshot here. Two things are worth knowing when you compare:
 
-- The safest primitive for an autonomous agent is an **intent order**: a
-  gasless, limit-priced, receiver-pinned EIP-712 signature whose worst case is
-  known before signing, not an arbitrary transaction or router calldata. Ophis
-  and CoW Swap both use this batch-auction model; CoW Swap does not currently
-  publish an MCP server, and Ophis adds the keyless MCP and native Bitcoin.
+- A receiver-pinned, limit-priced intent can constrain one trade. It is not
+  automatically safer than every transaction: safety also depends on signer
+  policy, approvals, chosen assets, price limits and cumulative spend.
 - Several venues offer keyless or gasless paths and slippage-bounded swaps; what
   is specific to the batch-auction model is uniform-clearing-price MEV
   protection and a hard signed limit that the settlement contract enforces.
