@@ -1,6 +1,6 @@
 ---
 title: "How to let an AI agent swap tokens: safely, and MEV-protected"
-description: "Agents can already pay. Swapping is the harder, riskier half. Here is how to give an AI agent the ability to swap tokens through Ophis (via an MCP server, the Intent API, or the SDK), with the safety rails (bounded orders, a pinned receiver, MEV-protected settlement) that stop an autonomous signer from draining itself."
+description: "Give an AI agent bounded token-swap capabilities through Ophis: MCP execution, an Intent API for parsing, SDK safety helpers, and the signing policies required for unattended operation."
 pubDate: 2026-06-25
 updatedDate: 2026-09-27
 author: Ophis
@@ -138,7 +138,9 @@ If you want to place orders programmatically, you build and sign a CoW Protocol
 order. Four things must each be exactly right, and every one of them fails
 *silently* (a rejected order, a wrong-chain trade, or zero fee collected) if you
 guess. The [`@ophis/sdk`](https://www.npmjs.com/package/@ophis/sdk) exists so you
-do not have to:
+do not have to. These are safety helpers, not a trading client: use
+`@cowprotocol/cow-sdk` for quotes and submission, or use the hosted MCP workflow.
+Install both packages with `npm i @ophis/sdk @cowprotocol/cow-sdk`.
 
 ```typescript
 import {
@@ -152,9 +154,9 @@ import {
 //    optimism-mainnet.ophis.fi, NOT api.cow.fi, and the SDK gets this right.
 const orderbookUrl = getOphisOrderbookUrl(chainId)
 
-// 2. Build the partner-fee appData (CIP-75 volume shape, the correct rate per
-//    chain/pair). This is what attributes the swap (and the rebate) to you.
-const partnerFee = buildOphisAppDataPartnerFee(chainId)
+// 2. Build the complete partner fee for this chain/pair, including hosted
+//    improvement capture. Determine isStablePair from trusted token metadata.
+const partnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair)
 
 // 3. Pin the receiver to the owner BEFORE signing. In the UI a wallet prompt
 //    gates this; an autonomous signer has no such gate, so guard it in code.
@@ -174,8 +176,8 @@ one-line summary: let the SDK resolve anything that is chain-specific.
 
 Here is the part that flips swaps from a cost center to a revenue line. Every
 swap routed through your integration carries the chain-aware Ophis base in
-`appData`: **0.01% on every supported chain and pair**. Operated-chain backends also apply capped
-price-improvement capture. The FAQ below has the per-chain arithmetic. Integrators earn a **rebate**
+`appData`: **0.01% on the 13 SDK/MCP chains**. Operated backends apply capped
+improvement capture; hosted orders encode it in appData. The FAQ gives the fee components. Integrators earn a **rebate**
 on the volume they route, and the `lookup_tier` tool surfaces a wallet's 30-day
 volume tier.
 
@@ -213,10 +215,11 @@ policy is in code, not prose.
 
 ### Can an AI agent swap tokens on its own?
 
-Yes. An agent can quote, build, sign, and submit a swap without a human in the
-loop, and Ophis exposes three surfaces for it: the hosted MCP server at
-`https://mcp.ophis.fi/mcp`, the Intent API, and `@ophis/sdk`. What the agent
-signs is a bounded order with a hard limit price rather than an arbitrary
+Yes, with a local signer and enforced policy. The hosted MCP server at
+`https://mcp.ophis.fi/mcp` handles quotes, order building and submission; signing
+stays local. The Intent API only parses text. For a programmatic client, combine
+`@ophis/sdk` safety helpers with `@cowprotocol/cow-sdk`. The agent signs a
+bounded order with a hard limit price rather than an arbitrary
 transaction, so the worst execution it can receive is the one it committed to.
 Removing the human is the point at which the policy rails in this article stop
 being optional, because a prompt-injected agent will sign whatever it is told.
@@ -245,18 +248,16 @@ EIP-1271 policy gate rather than trusting the agent to honour them.
 Two things set the number, so it is worth being exact. On Optimism, Unichain,
 and Robinhood Chain, the MCP and high-level SDK builders embed a 1 bp base; the
 backend then retains 80% of reference-quote improvement on volatile pairs (99 bps
-cap), or 50% on stable pairs (20 bps cap). On CoW-hosted chains, partner
-flow also embeds 1 bp, and CoW Protocol's upstream volume and improvement fees
-apply separately. Manual builders should use
-`ophisVolumeBpsForChainAndPair(chainId, isStablePair)` so the chain and pair are
-both reflected. Fixed is not the same as total on either path: operated chains
-have capped Ophis improvement capture, while hosted chains have CoW Protocol's
-upstream variable charge.
+cap), or 50% on stable pairs (20 bps cap). CoW-hosted orders encode the same
+Ophis base and capped improvement capture in appData; CoW Protocol's own fees
+apply upstream. Use `buildOphisAppDataPartnerFee(chainId, isStablePair)` for the
+complete partner fee, not a volume-only entry. Pool costs, price impact and gas
+are additional. Arc is outside these published SDK/MCP mappings and has a
+[separate release fee exception](https://docs.ophis.fi/fees).
 
-Either way the fee comes out of the traded amount rather than being billed
-separately, so an agent wallet funded only in the tokens it trades can still
-swap: for an ERC-20 order the only transaction it ever broadcasts is a one-time
-approval per token per chain.
+Swap fees are deducted from the trade. Standard ERC-20 order signing and
+submission are gasless, but approvals and other wallet transactions need gas.
+Allowances may need renewal; bridge, native-deposit and vault flows differ.
 
 ### Which chains can an agent trade on?
 
