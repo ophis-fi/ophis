@@ -107,6 +107,13 @@ for (const [name, chainId, configKey] of chains) {
 }
 
 assert.match(faq, /14 EVM chains/, 'FAQ must state the canonical 14-EVM-chain count');
+if (read('infra/arc-mainnet/release/render.py').includes('[fee-policies]\npolicies = []')) {
+  assert.match(
+    read('apps/docs-ophis/docs/fees.md'),
+    /### Arc release exception/,
+    'Arc without configured protocol fees must not inherit the standard improvement claim',
+  );
+}
 assert.match(read('apps/frontend/libs/common-const/src/arc.const.ts'), /ARC_CHAIN_ID = 5042 as SupportedChainId/);
 assert.match(gettingStarted, /Arc is available in the swap app \(chain ID 5042\)/);
 assert.match(

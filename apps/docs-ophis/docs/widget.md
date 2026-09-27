@@ -1,7 +1,7 @@
 ---
 id: widget
 title: Embeddable swap widget
-description: Drop the Ophis swap widget into any site or React app. Orders route through the Ophis solver and partner fee with zero extra config.
+description: Embed the Ophis swap app with chain-specific settlement and automatic Ophis fee configuration.
 sidebar_label: Swap widget
 sidebar_position: 3
 ---
@@ -9,9 +9,10 @@ sidebar_position: 3
 # Embeddable swap widget
 
 Let your users swap without leaving your site. The Ophis widget is an iframe of
-[swap.ophis.fi](https://swap.ophis.fi). Orders route through the Ophis solver
-and carry the Ophis partner fee automatically. It is a thin, Ophis-branded layer
-over the battle-tested CoW Protocol widget.
+[swap.ophis.fi](https://swap.ophis.fi). Orders use the Ophis-operated or CoW-hosted
+settlement path for the selected chain and carry the Ophis fee configuration
+automatically. See [networks and routes](./networks-assets.md) and the
+[chain-specific fee policy](./fees.md). The embed builds on the CoW Protocol widget.
 
 ## React (recommended)
 
@@ -89,10 +90,11 @@ embedded against a third-party origin.
 ## Notes
 
 - The widget is GPL-3.0, like the rest of Ophis.
-- Optimism, Unichain, and Robinhood Chain orders settle on the Ophis self-hosted orderbooks; the
+- Optimism, Unichain, Robinhood Chain, and Arc orders settle on the Ophis self-hosted orderbooks; the
   CoW-hosted chains (Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche,
   Linea, Plasma, Ink) route via `api.cow.fi`. Host selection is handled inside the
-  widget app, 13 chains in total.
+  widget app, 14 app networks in total. The injected widget does not enable the
+  direct Circle bridge flow; app and bridge support are separate capabilities.
 - **Self-hosting an Ophis fork?** The host must allow third-party framing (CSP
   `frame-ancestors *`, no `X-Frame-Options: SAMEORIGIN`), or integrators'
   iframes are blocked. (`swap.ophis.fi` already ships this.) Clickjacking is
