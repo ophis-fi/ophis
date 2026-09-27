@@ -1,21 +1,21 @@
 import { PERMIT_HOOK_DAPP_ID } from '@cowprotocol/hook-dapp-lib'
-import { ErrorCode } from '@ethersproject/logger'
 import { JsonRpcProvider } from '@ethersproject/providers'
-
-import { UserRejectedRequestError } from 'viem'
 
 import { DEFAULT_PERMIT_GAS_LIMIT, DEFAULT_PERMIT_VALUE, PERMIT_SIGNER } from '../const'
 import { PermitHookData, PermitHookParams } from '../types'
 import { buildDaiLikePermitCallData, buildEip2612PermitCallData } from '../utils/buildPermitCallData'
 import { getPermitDeadline } from '../utils/getPermitDeadline'
+import { isPermitCancellation } from '../utils/isPermitCancellation'
 import { isSupportedPermitInfo } from '../utils/isSupportedPermitInfo'
 
-const REQUESTS_CACHE: { [permitKey: string]: Promise<PermitHookData | undefined> } = {}
+const REQUESTS_CACHE = new WeakMap<JsonRpcProvider, Map<string, Promise<PermitHookData | undefined>>>()
 
 export async function generatePermitHook(params: PermitHookParams): Promise<PermitHookData | undefined> {
   const permitKey = getCacheKey(params)
+  const requests = REQUESTS_CACHE.get(params.provider) ?? new Map<string, Promise<PermitHookData | undefined>>()
+  REQUESTS_CACHE.set(params.provider, requests)
 
-  const cachedRequest = REQUESTS_CACHE[permitKey]
+  const cachedRequest = requests.get(permitKey)
 
   if (cachedRequest) {
     return await cachedRequest
@@ -23,17 +23,7 @@ export async function generatePermitHook(params: PermitHookParams): Promise<Perm
 
   const request = generatePermitHookRaw(params)
     .catch((e: unknown) => {
-      // Cancellation must not turn into a request for an on-chain approval.
-      // Some WalletConnect wallets omit the code. Do not classify generic -32000 RPC failures as cancellation.
-      const message = e && typeof e === 'object' && 'message' in e ? e.message : e
-      if (
-        (e &&
-          typeof e === 'object' &&
-          'code' in e &&
-          [UserRejectedRequestError.code, ErrorCode.ACTION_REJECTED].some((code) => code === e.code)) ||
-        (typeof message === 'string' &&
-          /user (?:rejected|denied)|rejected transaction|transaction was rejected/i.test(message))
-      ) {
+      if (isPermitCancellation(e)) {
         throw e
       }
       console.debug(`[generatePermitHook] cached request failed`, e)
@@ -41,10 +31,10 @@ export async function generatePermitHook(params: PermitHookParams): Promise<Perm
     })
     .finally(() => {
       // Remove consumed request to avoid stale data
-      delete REQUESTS_CACHE[permitKey]
+      requests.delete(permitKey)
     })
 
-  REQUESTS_CACHE[permitKey] = request
+  requests.set(permitKey, request)
 
   return request
 }

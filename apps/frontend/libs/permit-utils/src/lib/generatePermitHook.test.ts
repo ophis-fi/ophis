@@ -119,3 +119,21 @@ it.each([
 
   await expect(generatePermitHook(params)).rejects.toBe(error)
 })
+
+it('does not reuse the previous wallet request after replacing the provider', async () => {
+  const error = Object.assign(new Error('User rejected'), { code: 4001 })
+  const build = jest.mocked(buildEip2612PermitCallData).mockRejectedValueOnce(error)
+  const newProvider = { ...params.provider }
+
+  const results = await Promise.allSettled([
+    generatePermitHook(params),
+    generatePermitHook({ ...params, provider: newProvider }),
+    generatePermitHook({ ...params, provider: newProvider }),
+  ])
+
+  expect(results[0]).toEqual({ status: 'rejected', reason: error })
+  expect(results[1]).toMatchObject({ status: 'fulfilled', value: { callData: '0x00' } })
+  expect(results[2]).toEqual(results[1])
+  expect(build).toHaveBeenCalledTimes(2)
+  await expect(generatePermitHook(params)).resolves.toBeDefined()
+})
