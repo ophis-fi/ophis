@@ -3,8 +3,8 @@
  * (Accept: text/html). API clients (Accept: * / *) get JSON, same as /tier.
  *
  * A PUBLIC proof surface, ordered execution-first: (a) the per-trade
- * guarantees of the venue (batch-auction MEV protection, hard signed limit
- * price, gasless settlement, solver competition, improvement split), then
+ * execution model and limits (batch auctions, signed limits, gas costs,
+ * routing competition), then
  * (b) the per-chain settled-volume table, then (c) the cumulative lifetime
  * totals with context, then (d) footer links into the fee docs. The lifetime
  * counts stay fully public and unedited; they are simply not the headline.
@@ -86,7 +86,7 @@ export const EXECUTION_FACTS = {
     hostedChains: 'CoW Protocol solver network',
   },
   improvementSplit: {
-    sovereign: 'Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)',
+    sovereign: 'On Optimism, Unichain and Robinhood Chain, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc currently has no configured backend improvement policy; check the quote and signed fee metadata.',
     hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
   },
 } as const;
@@ -149,7 +149,7 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
     : null;
   const freshnessWarning = s.dataFresh
     ? ''
-    : `<div class="warning"><strong>Data refresh delayed.</strong> These figures show the last successful publication${updated ? ` at ${updated}` : ''}. On-chain settlements remain final while indexing catches up.</div>`;
+    : `<div class="warning"><strong>Data refresh delayed.</strong> These figures show the last successful publication${updated ? ` at ${updated}` : ''}. A delayed publication does not itself indicate a failed settlement.</div>`;
   const operatedSolverSummary = EXECUTION_FACTS.solverCompetition.sovereignChains
     .map(({ chainId, solvers }) => `${CHAIN_NAME[chainId] ?? `Chain ${chainId}`}: ${solvers}`)
     .join(', ');
@@ -158,8 +158,8 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="index, follow">
-<title>Ophis: execution guarantees and settled volume</title>
-<meta name="description" content="What every Ophis trade gets: MEV-protected batch settlement, a hard signed limit price, gasless execution, and solver competition. Plus cumulative settled volume, indexed on-chain.">
+<title>Ophis: execution model and indexed volume</title>
+<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and cumulative indexed volume. Arc activity is not yet included in these totals.">
 <meta name="theme-color" content="#ffffff">
 <style>
 :root{color-scheme:light}
@@ -219,39 +219,40 @@ caption{text-align:left;padding:12px 16px;font-size:13px;color:#5b606b;border-bo
 <body><main class="wrap">
 <nav class="brand" aria-label="Ophis"><a href="https://ophis.fi/">Ophis</a><span>Execution &amp; volume</span></nav>
 ${freshnessWarning}
-<h1>Every trade settles MEV-protected, at your signed price or better.</h1>
-<p class="lede">Ophis is an intent-based venue on CoW Protocol's batch auction with a uniform clearing price. The guarantees below hold for every single trade, regardless of size or volume.</p>
+<h1>How trades settle. What we have indexed.</h1>
+<p class="lede">Ophis batch-auction swaps use solver competition and signed limits. Bridge, conversion and OTC routes have separate execution, gas and recovery rules; the model below does not apply to every route.</p>
 <ul class="gl">
-  <li><strong>MEV-protected batch settlement</strong>Orders settle in batch auctions, not the public mempool. No sandwiching, no frontrunning of your order flow.</li>
-  <li><strong>Hard signed limit price</strong>Your signed order is a contract-enforced price floor. A fill below it cannot settle on-chain.</li>
-  <li><strong>Gasless execution</strong>Solvers pay the settlement gas and costs settle inside the trade. After a one-time token approval before the first sell, no native gas token is needed, and failed settlements cost you nothing.</li>
-  <li><strong>Solver competition on every order</strong>Configured Ophis-operated routing lanes: ${esc(operatedSolverSummary)}. Pair coverage and live participation vary by auction. Other chains draw on ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
+  <li><strong>Batch-auction MEV mitigation</strong>Offchain orders and uniform clearing prices per token pair mitigate common MEV. Settlement transactions can still be public; this is not an absolute guarantee against front-running or sandwich attacks.</li>
+  <li><strong>Signed order limits</strong>The batch settlement contract enforces your signed sell amount, receiver and limit price. A source-chain fill does not guarantee destination delivery on a bridge route.</li>
+  <li><strong>Offchain signing, route-dependent gas</strong>Standard ERC-20 order signing needs no network transaction. Solvers pay settlement gas, with costs reflected in the quote. Approvals, native-token deposits, onchain cancellation, bridges and recovery can require gas.</li>
+  <li><strong>Configured routing lanes</strong>Ophis-operated lanes on the indexed networks: ${esc(operatedSolverSummary)}. Lanes are not independent solver operators, and participation varies by pair and auction. CoW-hosted networks use the ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}. Arc is Ophis-operated but not yet indexed here.</li>
 </ul>
 <h2 id="chains">Settled volume by chain</h2>
+<p class="note">This report is configured for ${PRODUCTION_CHAIN_IDS.length} EVM networks. App availability and reporting coverage differ: Arc activity is not yet included. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
 <form method="get" action="/stats#chains" aria-label="Filter settled volume">
 <div class="filters">
-  <label><span>Chain</span><select name="chain"><option value="">All chains</option>${chainOptions}</select></label>
+  <label><span>Chain</span><select name="chain"><option value="">All reporting chains</option>${chainOptions}</select></label>
   <fieldset><legend>Volume settled (USD)</legend><div class="range">${numberInput('minVolume', 'Minimum volume', minVolume)}${numberInput('maxVolume', 'Maximum volume', maxVolume)}</div></fieldset>
   <fieldset><legend>Trades</legend><div class="range">${numberInput('minTrades', 'Minimum trades', minTrades)}${numberInput('maxTrades', 'Maximum trades', maxTrades)}</div></fieldset>
 </div>
-<div class="actions"><button name="sort" value="${activeSort}">Apply filters</button><a href="/stats#chains">Reset</a><p>Showing ${filtered.length} of ${s.byChain.length} chains. Lifetime totals below include all chains.</p></div>
+<div class="actions"><button name="sort" value="${activeSort}">Apply filters</button><a href="/stats#chains">Reset</a><p>Showing ${filtered.length} of ${s.byChain.length} chains with indexed records. Lifetime totals below include all reporting chains.</p></div>
 <div class="table-scroll" role="region" aria-label="Settled volume by chain" tabindex="0">
 <table>
-  <caption>Lifetime settled volume by chain. Select a column heading to sort.</caption>
+  <caption>Lifetime indexed volume by chain. Select a column heading to sort.</caption>
   <thead><tr>${heading('chain', 'Chain')}${heading('volume', 'Volume settled')}${heading('trades', 'Trades')}</tr></thead>
   <tbody>${rows || `<tr><td colspan="3">${s.byChain.length ? 'No chains match these filters.' : 'No settled volume indexed yet.'}</td></tr>`}</tbody>
 </table>
 </div>
 </form>
-<h2>Lifetime settled volume, cumulative</h2>
-<p class="note" style="margin-top:0;margin-bottom:14px">Ophis is an early-stage venue, so these are lifetime totals since launch, not a rolling window. Every figure is indexed from on-chain settlement and verifiable by anyone.</p>
+<h2>Lifetime indexed volume, cumulative</h2>
+<p class="note" style="margin-top:0;margin-bottom:14px">These totals cover the settlement records collected by the indexer, not a rolling window or a guarantee of complete history. A recent publication time does not establish complete coverage of every chain.</p>
 <div class="grid">
   <div class="card"><div class="n">${fmtUsd(s.totalVolumeUsd)}</div><div class="l">Volume settled</div></div>
   <div class="card"><div class="n">${fmtInt(s.totalTrades)}</div><div class="l">Trades</div></div>
   <div class="card"><div class="n">${fmtInt(s.distinctTraders)}</div><div class="l">Traders</div></div>
-  <div class="card"><div class="n">${fmtInt(s.chainsActive)}</div><div class="l">Chains active</div></div>
+  <div class="card"><div class="n">${fmtInt(s.chainsActive)}</div><div class="l">Chains with indexed trades</div></div>
 </div>
-<p class="note">MEV-protected and gasless across 13 EVM chains with Solana and Bitcoin destinations. On Ophis-operated chains, the trader keeps the remainder after Ophis's capped capture and all improvement above its cap. On hosted chains, the trader receives the net remainder after both Ophis's policy and CoW Protocol's separate upstream policy. Figures are cumulative settled volume priced in USD at index time, refreshed continuously. Reproduce them from on-chain settlement: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
+<p class="note">Standard batch-auction fees combine a 1 bp Ophis base with capped price-improvement capture. CoW-hosted chains also apply upstream fees. Arc currently has no configured backend improvement policy; check the quote and signed fee metadata. Bridge and conversion costs differ; check the final route quote. Volume is priced in USD at index time and refreshed periodically. Source: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
 <div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; <a href="https://swap.ophis.fi/">Open the app</a></span><span>${updated ? `Data as of ${updated}` : 'Data publication time unavailable'}</span></div>
 </main></body></html>`;
 }
