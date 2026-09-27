@@ -24,11 +24,11 @@ const FAQS = [
   },
   {
     q: 'How does revocation compare?',
-    a: `An API key is revoked by asking the exchange, and the window between compromise and revocation belongs to the attacker. A signed order carries its own expiry and can be cancelled on the orderbook before it fills; standing token approvals are the one long-lived onchain authority, and they can be revoked or bounded with Permit-style approvals per trade.`,
+    a: `An API key is revoked through the exchange. Signed orders have an expiry, but orderbook cancellation can race an in-flight fill; finalized onchain invalidation provides a stronger boundary. Standing token approvals and any wallet-module/session permissions must be reviewed separately.`,
   },
   {
     q: 'Which should an autonomous agent use?',
-    a: `For on-chain assets, self-custody signatures: every action is independently verifiable, the audit trail is the signatures themselves, and no third party can freeze or front-run the account relationship. Exchange API keys still make sense where an agent genuinely needs what an exchange provides, such as fiat rails. On Ophis the signature model is the native path: bounded orders, gasless settlement, MEV-protected batch auctions.`,
+    a: `Choose based on the assets and permissions needed. Wallet signatures give direct authorization over onchain actions, but token issuers can still impose freezing or transfer restrictions and contracts retain their own risks. Exchange APIs may suit fiat rails or exchange-only markets. On Ophis, standard signed ERC-20 orders provide bounded execution with solver-paid settlement gas; approvals and other wallet transactions still cost gas.`,
   },
 ]
 ---

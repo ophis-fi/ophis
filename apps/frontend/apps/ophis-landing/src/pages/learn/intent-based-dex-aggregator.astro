@@ -13,7 +13,7 @@ const { updated } = canonicalPage('/learn/intent-based-dex-aggregator/')
 const FAQS = [
   {
     q: 'What is a trading intent?',
-    a: `A trading intent is a signed message that describes an outcome: the token you sell, the token you receive, the amount, a hard limit price, and an expiry. It is an EIP-712 signature, not a transaction. Whoever executes it can never settle it below the signed limit, and if nobody can meet the limit before expiry, nothing happens and nothing is spent.`,
+    a: `A trading intent describes a desired outcome rather than a fixed route. A standard Ophis ERC-20 order is signed offchain with tokens, amounts, receiver, limit and expiry. The contract enforces those limits. Unfilled ERC-20 orders expire without moving unsold funds; native-token deposits and bridge routes have separate recovery rules.`,
   },
   {
     q: 'How is that different from a classic DEX aggregator?',
@@ -25,7 +25,7 @@ const FAQS = [
   },
   {
     q: 'What is batch-auction settlement?',
-    a: `Orders are collected into discrete batches and all trades of the same token pair in a batch settle at one uniform clearing price. There is no advantage to being ordered first or last inside the batch, which removes the reordering games that power most MEV. When two orders in a batch want opposite sides of the same pair, they can settle against each other directly, a coincidence of wants, without touching an AMM at all.`,
+    a: `Orders are collected into discrete batches and all trades of the same token pair in a batch settle at one uniform clearing price. There is no advantage to being ordered first or last inside the batch, which reduces common ordering advantages without eliminating every external-pool settlement risk. When two orders in a batch want opposite sides of the same pair, they can settle against each other directly, a coincidence of wants, without touching an AMM at all.`,
   },
   {
     q: 'Where does RFQ liquidity fit in?',
@@ -33,7 +33,7 @@ const FAQS = [
   },
   {
     q: 'Is an intent-based aggregator custodial?',
-    a: `No, not when built as Ophis is. Orders are gasless, off-chain, EIP-712-signed intents; the trader or agent signs with its own key and the keys never leave the signer. Settlement happens against audited on-chain contracts, and an order that is never filled simply expires.`,
+    a: `It depends on the flow. Standard signed ERC-20 orders keep funds in the wallet until settlement, with the signing key held locally. Native-token, bridge and OTC paths can involve deposits or escrow. Upstream audits cover shared code, not every Ophis change or external provider; see the security page for scope.`,
   },
 ]
 ---
@@ -51,8 +51,8 @@ const FAQS = [
     <strong>The short version:</strong> an intent-based DEX aggregator lets you sign what you want
     (sell this token, receive at least that amount) instead of submitting a routed swap transaction
     yourself. Competing solvers execute the signed order, pay the gas, and cannot fill it below
-    your signed limit. Settlement happens in a batch auction at a uniform clearing price, which is
-    what provides the MEV protection. Ophis is an intent-based aggregator built on CoW Protocol's
+    your signed limit. Uniform clearing prices per token pair and offchain submission mitigate
+    common MEV; settlement itself can still be public. Ophis is an intent-based aggregator built on CoW Protocol's
     batch-auction design, extended for autonomous agents.
   </p>
 

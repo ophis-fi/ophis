@@ -25,11 +25,11 @@ const FAQS = [
   },
   {
     q: 'How is a signed limit price different?',
-    a: `The slippage input still exists on Ophis, but it hardens into the order itself: the quote adjusted by your slippage becomes the signed limit, an enforced floor in the EIP-712 message that the settlement contract will not cross, no matter what pools did in the meantime. The difference is what happens to the band. In a router swap the tolerance sits as an open offer on a visible pending transaction; on Ophis the ERC-20 order is off-chain (selling native ETH places an on-chain EthFlow transaction instead), the batch clears at a uniform price, and execution above your floor is returned as surplus instead of being available to harvest.`,
+    a: `Both a router minimum-output bound and an Ophis signed limit are contract-enforced. Ophis converts your quote and slippage setting into a signed order limit, then lets solvers find a route within it. Standard ERC-20 orders are submitted offchain and clear in batches; router swaps authorize a transaction path. Execution inside either permitted price band can still be worse than the original quote.`,
   },
   {
     q: 'What happens when the price moves in my favor?',
-    a: `Execution beyond your signed limit is surplus. On every supported chain, Ophis retains 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap), and the trader receives the remainder. CoW-hosted chains additionally apply CoW Protocol's upstream fees. In tolerance systems, movement in your favor within the band may simply never reach you.`,
+    a: `Execution beyond your signed limit is surplus. Under the standard policy, excluding the current Arc release exception, Ophis retains 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap), and the trader receives the remainder. CoW-hosted chains additionally apply CoW Protocol's upstream fees. In tolerance systems, movement in your favor within the band may simply never reach you.`,
   },
   {
     q: 'Do hard-limit orders fail more often?',
@@ -40,19 +40,18 @@ const FAQS = [
 
 <ContentPage
   title="Slippage vs a signed limit price | Ophis"
-  description="A slippage tolerance is a pre-authorized worse price that attackers can harvest; a signed limit is a contract-enforced floor. What each costs, and where price improvement goes."
+  description="Router minimum-output bounds and signed-order limits are both contract-enforced. Compare their submission, execution and failure models."
   path="/learn/slippage-vs-signed-limit/"
   heading="Slippage vs a signed limit price"
-  lede="One model asks how much worse you will accept; the other enforces a floor and returns anything better. The structural difference behind most bad fills."
+  lede="Both models enforce a minimum output. The differences are how orders are submitted, who chooses the route, and how execution and failure costs are handled."
   updated={updated}
   faqs={FAQS}
 >
   <p>
-    <strong>The short version:</strong> a slippage tolerance pre-authorizes a worse price and
-    hopes nobody takes the offer; a signed limit price is an enforced floor the settlement
-    contract will not cross, with execution beyond it returned as surplus. On Ophis your
-    slippage input becomes that signed floor: solvers compete above it off-chain, so the band is
-    not sitting in a public mempool for anyone to harvest.
+    <strong>The short version:</strong> router minimum-output bounds and signed limits both
+    enforce the minimum you authorize. Ophis adds offchain order submission, solver routing
+    and uniform batch prices per token pair. The solver's settlement can still be public;
+    the slippage band is not a guarantee of execution at the reference quote.
   </p>
 
   {FAQS.map((f) => (
