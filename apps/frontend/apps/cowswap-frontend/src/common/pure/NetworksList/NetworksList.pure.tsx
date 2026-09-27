@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 
-import { getChainInfo } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, getChainInfo } from '@cowprotocol/common-const'
 import { SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
 import { Badge, BadgeTypes } from '@cowprotocol/ui'
 
@@ -13,7 +13,7 @@ import { getLogo } from './NetworksList.utils'
 import { useDeprecatedChains } from '../../hooks/useDeprecatedChains'
 
 const NEW_NETWORK_IDS: Set<TargetChainId> = new Set([
-  130 as unknown as TargetChainId, // Ophis fork: Unichain
+  ARC_CHAIN_ID,
   4663 as unknown as TargetChainId, // Ophis fork: Robinhood Chain
 ])
 
