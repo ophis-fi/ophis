@@ -150,9 +150,6 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
   const freshnessWarning = s.dataFresh
     ? ''
     : `<div class="warning"><strong>Data refresh delayed.</strong> These figures show the last successful publication${updated ? ` at ${updated}` : ''}. A delayed publication does not itself indicate a failed settlement.</div>`;
-  const operatedSolverSummary = EXECUTION_FACTS.solverCompetition.sovereignChains
-    .map(({ chainId, solvers }) => `${CHAIN_NAME[chainId] ?? `Chain ${chainId}`}: ${solvers}`)
-    .join(', ');
 
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8">
@@ -225,7 +222,7 @@ ${freshnessWarning}
   <li><strong>Batch-auction MEV mitigation</strong>Offchain orders and uniform clearing prices per token pair mitigate common MEV. Settlement transactions can still be public; this is not an absolute guarantee against front-running or sandwich attacks.</li>
   <li><strong>Signed order limits</strong>The batch settlement contract enforces your signed sell amount, receiver and limit price. A source-chain fill does not guarantee destination delivery on a bridge route.</li>
   <li><strong>Offchain signing, route-dependent gas</strong>Standard ERC-20 order signing needs no network transaction. Solvers pay settlement gas, with costs reflected in the quote. Approvals, native-token deposits, onchain cancellation, bridges and recovery can require gas.</li>
-  <li><strong>Configured routing lanes</strong>Ophis-operated lanes on the indexed networks: ${esc(operatedSolverSummary)}. Lanes are not independent solver operators, and participation varies by pair and auction. CoW-hosted networks use the ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}. Arc is Ophis-operated but not yet indexed here.</li>
+  <li><strong>Configured routing lanes</strong>Ophis operates its own orderbooks and routing lanes on Robinhood Chain, Unichain, Optimism, and Arc. These lanes share one operator, with participation varying by token pair and auction. CoW-hosted networks use the ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
 </ul>
 <h2 id="chains">Settled volume by chain</h2>
 <p class="note">This report is configured for ${PRODUCTION_CHAIN_IDS.length} EVM networks. App availability and reporting coverage differ: Arc activity is not yet included. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>

@@ -98,6 +98,7 @@ jobs:
           pnpm exec nx run common-const:test --testPathPatterns 'arc.const.test' --passWithNoTests=false --runInBand
           pnpm exec nx run common-utils:test --testPathPatterns 'arc.test' --passWithNoTests=false --runInBand
           pnpm exec nx run wallet:test --testPathPatterns 'isChainAllowed.test' --passWithNoTests=false --runInBand
+          pnpm exec nx run multicall:test --testPathPatterns 'useMultiCallRpcProvider.test' --passWithNoTests=false --runInBand
           pnpm exec nx run cowswap-frontend:test --testPathPatterns 'arcBridge.test|ophisBridgeProviders.test|ophisBridgeChains.test|getQuoteCurrency/arc.test|useMenuItems.arc.test|getTwapFormState.test|TwapConfirmModal/unsupportedChain.test' --passWithNoTests=false --runInBand
           pnpm exec nx run explorer:test --testPathPatterns 'cowSdk.arc.test' --passWithNoTests=false --runInBand
 

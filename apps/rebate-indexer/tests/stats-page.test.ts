@@ -114,8 +114,9 @@ describe('renderStatsPage', () => {
     expect(html).toContain('Settlement transactions can still be public');
     expect(html).toContain('not an absolute guarantee');
     expect(html).toContain('native-token deposits, onchain cancellation, bridges and recovery can require gas');
-    expect(html).toContain('Lanes are not independent solver operators');
-    expect(html).toContain('Optimism: 11, Unichain: 7, Robinhood Chain: 6');
+    expect(html).toContain('Ophis operates its own orderbooks and routing lanes on Robinhood Chain, Unichain, Optimism, and Arc');
+    expect(html).toContain('These lanes share one operator');
+    expect(html).not.toContain('Arc is Ophis-operated but not yet indexed here');
     expect(html).not.toContain('On Unichain, 8 aggregator solvers');
   });
 
