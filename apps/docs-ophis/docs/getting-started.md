@@ -41,7 +41,7 @@ export const howToLd = {
       '@type': 'HowToStep',
       name: 'Settle: on-chain, MEV-protected',
       url: 'https://docs.ophis.fi/getting-started#3--settle-on-chain-mev-protected',
-      text: 'The winning solver settles the signed order without exposing it as a public-mempool router swap. The signed limit price is enforced on-chain. Ophis retains its published capped share of improvement on every supported chain; CoW-hosted chains additionally apply CoW Protocol upstream fees.',
+      text: 'The winning solver settles the signed order without exposing it as a public-mempool router swap. The signed limit price is enforced on-chain. Ophis applies the standard capped improvement policy outside the current Arc release exception; CoW-hosted chains additionally apply CoW Protocol upstream fees.',
     },
   ],
 };
@@ -59,15 +59,16 @@ Choose your tokens, review the quote, and sign with your wallet.
 1. Open [the swap app](https://swap.ophis.fi/#/swap) and connect a wallet.
 2. Select the token and network you want to pay from, then enter the amount.
 3. Open **You receive** to select the destination network and token. For
-   Solana or Bitcoin, enter an address on that destination network.
+   a cross-chain route, check the destination-address and wallet requirements.
 4. Review the quote, fees, destination address, and spending limit. Approve
    the displayed amount if needed, then **sign the order with your wallet**.
 
 :::note[Non-custodial by design]
 
-Ophis never takes possession of your funds. The signed order is
-broadcast to the solver auction; your tokens move only when a solver
-settles the batch on-chain.
+Ophis does not hold your signing key. Standard ERC-20 orders stay in your
+wallet until settlement; native-token orders and bridge routes can require
+an onchain deposit or transfer first. Their recovery and trust assumptions
+are route-specific; see [Networks & assets](./networks-assets.md).
 
 :::
 
@@ -94,7 +95,7 @@ competing across several routing strategies, see [How it works](./architecture.m
 ### 3 · Settle, on-chain, MEV-protected
 
 The winning solver settles your order in a batch where every trade
-clears at the same uniform price. Your signed limit price is enforced
+uses uniform clearing prices for each token pair. Your signed limit price is enforced
 on-chain, and Ophis orders are not exposed as public-mempool router swaps.
 On Robinhood Chain, the sequencer is first-come-first-served, so paying a
 higher priority fee does not buy an earlier place in the ordering.
@@ -110,8 +111,10 @@ Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Uni
 your EVM wallet.
 
 Arc is available in the swap app (chain ID 5042). Its native gas currency is USDC;
-direct USDC transfers to and from Arc use the app’s CCTP bridge. The published
-SDK and MCP chain lists do not yet include Arc.
+Circle routes include USDC and mapped expanded assets, plus Ethereum WBTC to
+Arc cirBTC through a separate conversion leg. See the restrictions and recovery
+model in [Networks & assets](./networks-assets.md). The published SDK and MCP
+chain lists do not yet include Arc.
 
 |          |                 |                 |
 | -------- | --------------- | --------------- |
@@ -121,10 +124,10 @@ SDK and MCP chain lists do not yet include Arc.
 | Plasma   | Polygon         | Robinhood Chain |
 | Unichain | Arc             |                 |
 
-In addition, **Solana** and **Bitcoin** are available as cross-chain
+In addition, **Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui and Tron** are available as cross-chain
 _destinations only_ via [NEAR Intents](https://near.org/intents): trade
-from any EVM source chain to those networks without a second wallet. They
-are not source chains, you cannot start a swap from a Solana or Bitcoin
+from an enabled EVM source and supported asset pair without a second wallet. They
+are destination-only in this flow; you cannot start a swap from a non-EVM
 balance. You paste a destination address and sign with your EVM wallet;
 NEAR Intents brokers the bridge.
 

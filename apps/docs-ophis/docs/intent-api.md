@@ -56,7 +56,8 @@ The Intent API parses a free-form swap request into a structured
 `ParsedIntent` that the Ophis frontend, or your own app or agent, can
 use to pre-fill a swap form or construct a deep link.
 
-It is Ophis's **only bespoke integration API**. To place orders
+It is a text parser, separate from the MCP server, compatibility API and
+rebate/reward APIs. To place orders
 programmatically you use the standard CoW Protocol orderbook API per chain
 (see [AI agent integration](./ai-agents.md)). The Intent API itself does not
 place, sign, or execute trades; order signing always happens in the user's
@@ -100,8 +101,8 @@ moves no funds.
 | --- | --- | --- |
 | `text` | string | Required. 1–280 characters. The swap request in your own words. Case-insensitive. |
 
-The model is pinned to `temperature: 0`, so identical normalized inputs
-produce identical outputs.
+The model uses `temperature: 0` to reduce variation. This is not a guarantee
+of identical outputs across model runs or upgrades; validate every response.
 
 ### Example
 
@@ -147,16 +148,17 @@ On success, `200 OK` with a `ParsedIntent`:
 | `start` | integer | 0-indexed start offset of `raw` (inclusive). |
 | `end` | integer | 0-indexed end offset of `raw` (exclusive). `text.slice(start, end) === raw`. |
 
-**Token values** are validated against an internal allowlist (236
-DEX-traded symbols). Unknown symbols are filtered out, the response
-still includes the other entities, with the unknown one omitted.
+**Token values** use bounded symbol syntax: 2–12 letters/digits, at least one
+letter, excluding common non-token words. Values are checked against their
+source-text spans. This is not a token allowlist or contract verification;
+resolve the chain/address and request a quote before building an order.
 
-**Chain values** are lowercase slugs, limited to the chains the network
-selector can route to:
+**Chain values** are the parser's supported lowercase slugs. This set is
+separate from the app's network selector: Arc is not yet parsed.
 
 ```
 ethereum  arbitrum  avalanche  base  bnb  gnosis
-ink  linea  optimism  plasma  polygon  unichain
+ink  linea  optimism  plasma  polygon  robinhood  unichain
 ```
 
 ## Errors
