@@ -144,13 +144,13 @@ On success, `200 OK` with a `ParsedIntent`:
 | --- | --- | --- |
 | `type` | `"sellToken"` \| `"buyToken"` \| `"amount"` \| `"chain"` | The kind of entity. `sellToken` is what you pay with; `buyToken` is what you want. |
 | `value` | string | Canonical form (e.g. `USDC`, `0.5`, `optimism`). |
-| `raw` | string | The exact substring from the input. |
-| `start` | integer | 0-indexed start offset of `raw` (inclusive). |
-| `end` | integer | 0-indexed end offset of `raw` (exclusive). `text.slice(start, end) === raw`. |
+| `raw` | string | A case-insensitive match somewhere in the input. |
+| `start` | integer | Model-proposed, in-bounds start offset (inclusive); may be inaccurate. |
+| `end` | integer | Model-proposed, in-bounds end offset (exclusive); re-anchor `raw` before highlighting. |
 
 **Token values** use bounded symbol syntax: 2–12 letters/digits, at least one
-letter, excluding common non-token words. Values are checked against their
-source-text spans. This is not a token allowlist or contract verification;
+letter, excluding common non-token words. Values must derive from `raw`, which
+must occur in the input; exact offsets are not guaranteed. This is not contract verification;
 resolve the chain/address and request a quote before building an order.
 
 **Chain values** are the parser's supported lowercase slugs. This set is

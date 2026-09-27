@@ -13,6 +13,7 @@
   try {
     var mc = typeof navigator !== 'undefined' && navigator.modelContext
     if (!mc) return
+    var chainIds = JSON.parse(document.currentScript.dataset.chainIds)
 
     var tools = [
       {
@@ -57,11 +58,6 @@
         },
         async execute(args) {
           var chain = args && args.chain
-          var chainIds = {
-            ethereum: 1, optimism: 10, bnb: 56, gnosis: 100, unichain: 130,
-            polygon: 137, robinhood: 4663, arc: 5042, base: 8453, plasma: 9745,
-            arbitrum: 42161, avalanche: 43114, ink: 57073, linea: 59144,
-          }
           if (chain != null && typeof chain !== 'string') throw new Error('Invalid chain slug')
           var slug = chain ? chain.trim().toLowerCase() : ''
           if (slug && !Object.prototype.hasOwnProperty.call(chainIds, slug)) throw new Error('Unsupported chain slug')

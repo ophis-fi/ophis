@@ -1,25 +1,17 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
+import { EVM_CHAINS } from '../src/data/chains.ts'
 
 const script = readFileSync(new URL('../public/webmcp.js', import.meta.url), 'utf8')
-const chains = readFileSync(new URL('../src/data/chains.ts', import.meta.url), 'utf8')
-const expected = {
-  ethereum: 1, optimism: 10, bnb: 56, gnosis: 100, unichain: 130,
-  polygon: 137, robinhood: 4663, arc: 5042, base: 8453, plasma: 9745,
-  arbitrum: 42161, avalanche: 43114, ink: 57073, linea: 59144,
-}
-assert.deepEqual(
-  Object.values(expected).sort((a, b) => a - b),
-  [...chains.matchAll(/chainId: (\d+),/g)].map((m) => Number(m[1])).sort((a, b) => a - b),
-  'WebMCP must cover the canonical app chains',
-)
+const expected = Object.fromEntries(EVM_CHAINS.map(({ slug, chainId }) => [slug, chainId]))
+const document = { currentScript: { dataset: { chainIds: JSON.stringify(expected) } } }
 for (const method of ['provideContext', 'registerTool']) {
   const registered = []
   const modelContext = method === 'provideContext'
     ? { provideContext: ({ tools }) => registered.push(...tools) }
     : { registerTool: (tool) => registered.push(tool) }
-  runInNewContext(script, { navigator: { modelContext } })
+  runInNewContext(script, { navigator: { modelContext }, document })
   const open = registered.find((tool) => tool.name === 'open_ophis_swap').execute
   for (const [slug, id] of Object.entries(expected)) {
     assert.equal((await open({ chain: ` ${slug.toUpperCase()} ` })).content[0].text, `https://swap.ophis.fi/#/${id}/swap`)
