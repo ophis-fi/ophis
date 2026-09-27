@@ -49,7 +49,13 @@ test('FAQ and machine-readable summaries match the supported destinations', asyn
   const faq = page.locator('details').filter({ hasText: 'Which chains does Ophis support?' })
   const schemas = (await page.locator('script[type="application/ld+json"]').allTextContents()).map((text) => JSON.parse(text))
   const software = schemas.find((schema) => schema['@type'] === 'SoftwareApplication')
+  const howTo = schemas.find((schema) => schema['@type'] === 'HowTo')
   const llms = await (await page.request.get('/llms.txt')).text()
+  expect(software.description).toContain('published SDK and MCP chain mappings exclude Arc')
+  expect(howTo.description).toContain('excluding Arc')
+  expect(howTo.step[1].text).toContain('Arc (5042) is not')
+  expect(llms).toContain('Arc release exception')
+  expect(llms).toContain('Standard ERC-20 orders')
   for (const name of EXPECTED_CHAINS.slice(14)) {
     await expect(faq).toContainText(name)
     expect(software.description).toContain(name)
