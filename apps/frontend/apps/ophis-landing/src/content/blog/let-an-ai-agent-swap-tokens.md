@@ -40,9 +40,8 @@ machine:
 
 Ophis is built for exactly this. It is **intent-based**: you do not broadcast a
 swap, you sign a *bounded order* and a competitive solver network races to fill
-it. Batch auctions use a uniform clearing price per token pair to **mitigate
-common MEV**. Settlement can still be public; this is not universal sandwich
-immunity. And
+it. Batch auctions use a uniform clearing price per token pair to **mitigate common MEV**.
+Settlement can still be public; this is not universal sandwich immunity. And
 the agent signs a **bounded capability**, not an arbitrary transaction.
 
 ## The fastest path: point your agent at the MCP server
@@ -138,8 +137,7 @@ If you want to place orders programmatically, you build and sign a CoW Protocol
 order. Four things must each be exactly right, and every one of them fails
 *silently* (a rejected order, a wrong-chain trade, or zero fee collected) if you
 guess. The [`@ophis/sdk`](https://www.npmjs.com/package/@ophis/sdk) exists so you
-do not have to. These are safety helpers, not a trading client: use
-`@cowprotocol/cow-sdk` for quotes and submission, or use the hosted MCP workflow.
+do not have to. Use these safety helpers with `@cowprotocol/cow-sdk` for quotes and submission, or use the hosted MCP workflow.
 Install both packages with `npm i @ophis/sdk @cowprotocol/cow-sdk`.
 
 ```typescript
