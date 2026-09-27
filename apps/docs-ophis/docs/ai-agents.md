@@ -439,7 +439,7 @@ Optimism, Unichain, and Robinhood Chain break the `api.cow.fi/<slug>` pattern. O
 their orderbooks at `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`,
 and `robinhood-mainnet.ophis.fi`.
 Posting one of their orders to `api.cow.fi/<slug>` (a host that does not serve
-Ophis) **silently bypasses the Ophis solver and zeroes the partner fee**. Resolve
+Ophis) **is an unsupported host/domain combination, not a fee-free route**. Resolve
 hosts via `@ophis/sdk` `getOphisOrderbookUrl` per chain rather than hardcoding.
 
 :::

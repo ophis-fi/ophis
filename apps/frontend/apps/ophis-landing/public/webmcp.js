@@ -13,6 +13,7 @@
   try {
     var mc = typeof navigator !== 'undefined' && navigator.modelContext
     if (!mc) return
+    var chainIds = JSON.parse(document.currentScript.dataset.chainIds)
 
     var tools = [
       {
@@ -56,8 +57,11 @@
           },
         },
         async execute(args) {
-          var chain = args && typeof args.chain === 'string' ? args.chain.replace(/[^a-z0-9-]/gi, '') : ''
-          var url = 'https://swap.ophis.fi/' + (chain ? '#/' + chain + '/swap' : '')
+          var chain = args && args.chain
+          if (chain != null && typeof chain !== 'string') throw new Error('Invalid chain slug')
+          var slug = chain ? chain.trim().toLowerCase() : ''
+          if (slug && !Object.prototype.hasOwnProperty.call(chainIds, slug)) throw new Error('Unsupported chain slug')
+          var url = 'https://swap.ophis.fi/' + (slug ? '#/' + chainIds[slug] + '/swap' : '')
           return { content: [{ type: 'text', text: url }] }
         },
       },

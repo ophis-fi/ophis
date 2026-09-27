@@ -14,7 +14,7 @@ const GITHUB_URL = 'https://github.com/ophis-fi/ophis';
 
 const config: Config = {
   title: 'Ophis Docs',
-  tagline: 'Describe a swap in natural language. A solver network fills it, MEV-protected.',
+  tagline: 'Wallet-authorized swaps, solver competition and route-specific bridges.',
   favicon: 'img/ophis-icon.svg',
 
   future: {
@@ -157,7 +157,7 @@ const config: Config = {
       {
         name: 'description',
         content:
-          'Ophis is an intent-based DEX aggregator: describe a swap in natural language and a solver network fills it MEV-protected. Docs cover the intent API, AI-agent integration, architecture, fees, and security.',
+          'Ophis documentation covers wallet-authorized swaps, the optional intent parser, SDK and MCP integration, network and bridge coverage, fees, and security limits.',
       },
       {
         name: 'keywords',
@@ -182,7 +182,7 @@ const config: Config = {
         {to: '/intent-api', label: 'Intent API', position: 'left'},
         {to: '/ai-agents', label: 'AI agents', position: 'left'},
         {type: 'search', position: 'right'},
-        {href: APP_URL, label: 'Open app', position: 'right'},
+        {href: SWAP_URL, label: 'Open app', position: 'right'},
         {href: BUSINESS_URL, label: 'Business', position: 'right'},
         {href: GITHUB_URL, label: 'GitHub', position: 'right'},
       ],
@@ -211,7 +211,7 @@ const config: Config = {
         {
           title: 'Product',
           items: [
-            {label: 'Trade', href: APP_URL},
+              {label: 'Trade', href: SWAP_URL},
             // Canonical fact + learn pages on the landing (crawlable), not the
             // swap app's hash-routed #/learn which search engines cannot index.
             {label: 'Learn', href: `${APP_URL}/learn/`},

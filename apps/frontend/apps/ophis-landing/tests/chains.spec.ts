@@ -6,6 +6,20 @@ const EXPECTED_CHAINS = [
   'Solana', 'Bitcoin', 'Monad', 'Hyperliquid', 'X Layer', 'Sui', 'Tron',
 ]
 
+test('WebMCP uses the rendered canonical chain map', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'modelContext', { value: {
+      provideContext({ tools }: { tools: Array<{ name: string; execute: (args: { chain: string }) => Promise<{ content: Array<{ text: string }> }> }> }) {
+        tools.find((tool) => tool.name === 'open_ophis_swap')?.execute({ chain: 'arc' }).then((result) => {
+          document.documentElement.dataset.webmcpUrl = result.content[0].text
+        })
+      },
+    } })
+  })
+  await page.goto('/')
+  await expect(page.locator('html')).toHaveAttribute('data-webmcp-url', 'https://swap.ophis.fi/#/5042/swap')
+})
+
 test('chains strip lists supported networks in order', async ({ page }) => {
   await page.goto('/')
   // The marquee renders an aria-hidden [data-clone] duplicate for a seamless

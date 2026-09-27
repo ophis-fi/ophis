@@ -26,6 +26,7 @@ state directly.
 | Optimism orderbook  | [version check](https://optimism-mainnet.ophis.fi/api/v1/version)   | HTTP 200 plus a version string confirms the public chain-10 orderbook is reachable. A non-200 response means do not route until it recovers. |
 | Unichain orderbook  | [version check](https://unichain-mainnet.ophis.fi/api/v1/version)   | HTTP 200 plus a version string confirms the public chain-130 orderbook is reachable. A non-200 response means do not route until it recovers. |
 | Robinhood orderbook | [version check](https://robinhood-mainnet.ophis.fi/api/v1/version) | HTTP 200 plus a version string confirms the public chain-4663 orderbook is reachable. A non-200 response means do not route until it recovers. |
+| Arc orderbook | [version check](https://arc-mainnet.ophis.fi/api/v1/version) | Reachability of the chain-5042 orderbook; not proof of liquidity or settlement for a token pair. |
 
 The Robinhood deployment is also covered by a daily read-only production
 canary. It verifies chain identity, Ophis settlement/relayer/EthFlow bytecode,
@@ -44,15 +45,18 @@ does not promise current uptime. Use the linked checks above before routing.
   Avalanche, Linea, Ink, and Plasma. Orders settle through CoW Protocol's
   production orderbooks (`api.cow.fi`) using the canonical CoW contracts. Their
   status mirrors [CoW Protocol's status](https://status.cow.fi).
-- **Ophis-operated chains**: Optimism (chain 10), Unichain (chain 130), and
-  Robinhood Chain (chain 4663). Orders settle through Ophis's self-hosted
+- **Ophis-operated chains**: Optimism (chain 10), Unichain (chain 130),
+  Robinhood Chain (chain 4663), and Arc (chain 5042). Orders settle through Ophis's self-hosted
   orderbooks at `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`, and
-  `robinhood-mainnet.ophis.fi` using Ophis-deployed (non-canonical) `GPv2Settlement`
-  contracts. Always resolve per-chain settlement and orderbook hosts via the
-  `@ophis/sdk` helpers or the MCP `list_chains` tool rather than hardcoding addresses.
+  `robinhood-mainnet.ophis.fi`, and `arc-mainnet.ophis.fi` using Ophis-deployed
+  `GPv2Settlement` contracts. Resolve SDK-supported chains through `@ophis/sdk`
+  or MCP `list_chains`; Arc is app-supported but not yet in those published helpers.
 
-Solana and Bitcoin are supported as **destinations** via
+Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui and Tron are supported as **destinations** via
 [NEAR Intents](https://near.org/intents), not as source-chain orderbooks.
+Provider and asset availability still determine executable routes. See
+[Networks & assets](./networks-assets.md) for Circle bridges, stock labels and
+the current confidential-routing and institutional-feature boundaries.
 
 ## Incidents
 

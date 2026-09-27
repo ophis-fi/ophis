@@ -9,8 +9,9 @@ sidebar_position: 2
 # How it works
 
 Ophis sits on top of [CoW Protocol](https://docs.cow.fi/cow-protocol)'s
-batch-auction settlement layer and adds a natural-language front door.
-This page traces a swap from a sentence to an on-chain settlement.
+batch-auction settlement layer. The app opens a token-selection form; developers
+can optionally use the natural-language parser before building an order.
+Circle and other cross-chain routes have separate execution and recovery steps.
 
 ## The intent lifecycle
 
@@ -29,13 +30,11 @@ This page traces a swap from a sentence to an on-chain settlement.
 Free-form text is sent to a [Cloudflare Pages Function](./intent-api.md)
 that proxies [LibertAI](https://libertai.io)'s **Qwen 3.6 27B**
 (open-weights, hosted on Aleph Cloud) with a pinned system prompt and
-`temperature: 0` for deterministic extraction. The proxy:
+`temperature: 0` to reduce extraction variability. The proxy:
 
 - holds the LibertAI API key server-side (browsers never see it),
-- validates extracted tokens against an internal allowlist of 236
-  DEX-traded symbols,
-- validates the chain against the set the network selector can actually
-  route to, and
+- validates symbol syntax and source-text spans, not token contracts,
+- validates the chain against its 13 supported slugs (not yet Arc), and
 - returns a structured `ParsedIntent` the UI uses to pre-fill the form.
 
 The parser **only normalizes language**. It never places, signs, or
@@ -56,7 +55,7 @@ on-chain liquidity, matching orders against each other peer-to-peer
 (no liquidity pool needed), or bridging cross-chain. Solvers bid, and
 the one that maximises total surplus wins the right to settle.
 
-On Optimism, Unichain, and Robinhood Chain, where Ophis runs its own stack. Ophis currently operates the
+On Optimism, Unichain, Robinhood Chain, and Arc, Ophis runs its own stack and operates the
 solver itself, competing across several routing strategies (a baseline on-chain
 router plus multiple DEX aggregators) that bid against each other per batch, so
 there is genuine price competition even though the solver is Ophis-operated. The
@@ -68,31 +67,31 @@ on-chain, so any solver can only fill it at or better than the price you signed.
 
 ### 4. Uniform-price settlement
 
-The winning solver settles the batch on-chain. Every trade in a batch
-clears at the **same uniform price**, which is what eliminates these
-order-level MEV vectors by construction:
-
-- **No front-running**, there's no pending-order mempool race to win.
-- **No sandwiching**, the protocol does not reorder trades for value.
-- **No priority-gas auction**, execution order inside a batch is not
-  for sale.
+The winning solver settles the batch onchain using uniform clearing prices
+per token pair and enforcing each order's signed limits. Offchain ERC-20 orders
+avoid the user's public-mempool router transaction, and peer matching can avoid
+an AMM leg. These mechanisms mitigate MEV; they do not eliminate all risks in
+solver execution, external liquidity, sequencers or bridge delivery.
+See [Security & audits](./audits.md#mev-protection-by-construction).
 
 ## What Ophis runs
 
 | Component | Description |
 | --- | --- |
-| **Frontend** | A fork of the CoW Swap frontend with the natural-language intent layer added. |
+| **Frontend** | A fork of the CoW Swap frontend with token selection, route review and provider-specific bridge flows. |
 | **Intent-parser proxy** | A Cloudflare Pages Function in front of LibertAI Qwen 3.6 27B. See [Intent API](./intent-api.md). |
-| **Self-hosted orderbook & solver** | On Optimism, Unichain, and Robinhood Chain, Ophis runs its own CoW Protocol orderbooks (`optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`, and `robinhood-mainnet.ophis.fi`) and operates the solver. CoW-aligned chains use `api.cow.fi` and CoW's solver network. |
-| **Settlement contracts** | CoW Protocol's `GPv2Settlement` (unchanged code), deployed and operated by Ophis on Optimism, Unichain, and Robinhood Chain, alongside Ophis-specific allowlist + fee-handling contracts. See [Security & audits](./audits.md). |
+| **Self-hosted orderbook & solver** | Ophis operates Optimism, Unichain, Robinhood Chain and Arc; see the hosts in [Status](./status.md). CoW-hosted chains use `api.cow.fi` and CoW's solver network. |
+| **Settlement contracts** | Ophis deployments of `GPv2Settlement`, alongside allowlist and fee-handling contracts. Deployment configuration and review scope matter; see [Security & audits](./audits.md). |
 | **Rebate indexer** | Indexes volume-tier rebates that accrue to traders. See [Fees & rebates](./fees.md). |
 
 ## Cross-chain via NEAR Intents
 
-Solana and Bitcoin are available as **output destinations**. When a swap
-targets one of them, [NEAR Intents](https://near.org/intents) brokers the
-bridge: the user signs with their EVM wallet and provides a destination
-address on the target network. No second wallet, no manual bridging step.
+Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui and Tron are available as
+**output destinations** through NEAR Intents for supported sources and assets.
+The user supplies the destination address and authorizes the source flow.
+Destination delivery is separate from source settlement and can require recovery.
+Across and Circle routes have different coverage and wallet restrictions; see
+[Networks & assets](./networks-assets.md).
 
 ## Where to go next
 
