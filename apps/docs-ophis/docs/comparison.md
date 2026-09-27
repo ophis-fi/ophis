@@ -1,186 +1,117 @@
 ---
 id: comparison
 title: How Ophis compares
-description: A decision guide comparing the Ophis interface to other intent-based swap front-ends and aggregators (CoW Swap, Matcha, Velora), covering settlement, cross-chain scope, the fee model, and agent access.
+description: Compare Ophis settlement, network coverage, fees and agent access using current product boundaries and primary sources.
 sidebar_label: How Ophis compares
 ---
 
 # How Ophis compares
 
-This page is a decision guide, not a sales pitch. It explains what an
-intent-based swap is, what Ophis shares with CoW Swap, and where the four
-front-ends below genuinely diverge so you can pick the right one for your trade.
+Reviewed **September 27, 2026**. Compare the net output of current quotes for
+the same assets, size and destination. A headline interface fee alone does not
+measure execution cost, liquidity or safety.
 
 ## What "intent-based" means
 
-A traditional DEX swap is a transaction: you pick a route, sign it, and broadcast
-it yourself. An **intent-based** swap is different. You sign a statement of what
-you want ("sell 1,000 USDC, receive at least X ETH"), and a competitive network
-of **solvers** races to fill it. You never specify the path; you specify the
-outcome, and the order only settles if a solver meets or beats the price you
-signed.
+An intent specifies an outcome rather than a fixed route. In an Ophis
+batch-auction swap you authorize a sell amount, receiver, minimum buy amount
+and expiry. A solver may settle only within those limits. Uniform clearing
+prices apply per token pair, not across unrelated assets.
 
-Those orders are then cleared in **batch auctions**. Instead of each trade hitting
-the chain alone, many orders settle together at a uniform clearing price. This is
-what gives the model its **MEV protection**: there is no public pending transaction
-for a bot to front-run or sandwich, and orders inside a batch can be matched
-directly against each other (coincidence of wants) before any pool is touched.
+Offchain orders and batch auctions mitigate common MEV. The solver's external
+liquidity transaction can still be public; this is not universal sandwich
+immunity. See [Security & audits](./audits.md).
 
 ## Ophis is built on CoW Protocol
 
-Ophis is a fork of the **CoW Protocol** stack. The settlement contracts, the
-batch-auction mechanism, the MEV protection, and the non-custodial design are
-**shared with CoW Swap**, not reinvented. Funds move only when a solver settles
-the batch, and the on-chain `GPv2Settlement` contract code is unchanged.
+Ophis uses CoW settlement primitives. It operates its own stacks on Optimism,
+Unichain, Robinhood Chain and Arc, and uses CoW-hosted orderbooks on ten other
+chains. Shared foundations do not imply identical solver competition,
+execution quality, infrastructure or audit coverage.
 
-That matters for how you read the rest of this page: execution quality, MEV
-protection, and custody are on par with CoW Swap **because they are the same
-foundation**. The differentiation lives one layer up, in the **interface and the
-API**. The comparisons below are about that layer.
+Standard signed ERC-20 orders keep funds in the wallet until settlement.
+Native-token deposits and bridge routes have separate custody and recovery
+rules. Ophis-specific changes are described in the security documentation.
 
 ## Core differences
 
 ### Natural-language input vs token-picker
 
-CoW Swap, Matcha, and Velora all drive trades through a token-picker UI: choose a
-sell token, choose a buy token, choose a chain, set an amount. Ophis adds a
-natural-language front door. You type "swap 100 USDC for ETH on Base" and a parser
-turns the sentence into a structured order, which is then signed and settled
-through the same batch auction. The token-picker still exists underneath; the
-sentence is an additional way in, and it is the path the agent API uses too.
+The swap app provides token selection and quotes. The optional public
+[Intent API](./intent-api.md) translates natural language into structured
+fields; it does not quote, authorize or settle a trade. Agents can use the
+MCP server or SDK for the subsequent workflow, retaining wallet authorization.
 
 ### Cross-chain scope
 
-This is where the four front-ends differ most concretely:
+The app supports **14 EVM chains**, including Arc. Published SDK/MCP chain
+mappings currently cover 13 and exclude Arc. NEAR Intents adds Bitcoin,
+Solana, Monad, X Layer, Sui, Tron and Hyperliquid destinations on supported
+routes. Circle and Across routes have different source, asset and wallet
+restrictions; no provider covers every possible chain pair.
 
-- **Ophis**: 13 EVM chains as source or destination, plus **Solana** and
-  **Bitcoin** as cross-chain destinations.
-- **CoW Swap**: EVM chains plus **Solana** as a destination. No Bitcoin.
-- **Matcha**: EVM chains plus **Solana**.
-- **Velora**: **EVM only**.
-
-Ophis and CoW Swap reach non-EVM destinations through **NEAR Intents**, a
-non-custodial cross-chain settlement layer. The practical point for a trader: you
-do not open a second wallet or hand custody to a bridge. You sign once on the
-source chain, and NEAR Intents brokers delivery to the Solana or Bitcoin address
-you named. Bitcoin as a destination is, among these four, unique to Ophis.
+See [Networks & assets](./networks-assets.md) for exact boundaries. A destination
+wallet may be needed, and source settlement is not proof of final delivery.
 
 ### Fee transparency
 
-The four projects price trades on different models:
+The standard schedule, excluding Arc's current release exception, charges a **1 bp base**, plus **80% of reference-quote
+improvement on volatile pairs capped at 99 bps**, or **50% on stable pairs
+capped at 20 bps**. CoW-hosted chains additionally apply upstream protocol fees.
+Bridge fees and gas are separate; use [Fees & rebates](./fees.md), not this
+summary, for cost assumptions. Arc currently has no configured backend improvement
+policy; the verified completed order carried a 1 bp volume-only fee.
 
-- **Ophis**: on every supported chain, a **1 bp base** plus 80% of
-  reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable
-  pairs (20 bps cap). On the 10 CoW-hosted chains, CoW Protocol's own fees apply
-  on top (a 0.02% protocol volume fee, 0.003% on correlated pairs, plus 50% of
-  any quote improvement, capped at 0.98% of volume), bringing the fixed all-in
-  to **0.03% / 0.013%** there. The fixed part is knowable before you trade.
-- **CoW Swap**: a **0.02% (2 bps)** protocol volume fee (0.003% on correlated
-  pairs) plus **50% of the quote improvement** a solver finds beyond your
-  quote (capped at 0.98% of volume), so part of the cost depends on how the
-  batch fills.
-- **Matcha**: a **tiered** model, roughly **0.25%** on most pairs and **0.05%**
-  on stablecoin pairs.
-- **Velora**: a **15 bps (0.15%)** interface fee on most swaps, with a reduced
-  **1 bp (0.01%)** on stablecoin pairs.
-
-A worked comparison on a **1,000 USDC** trade (non-stablecoin output, e.g. to ETH)
-makes the structure visible:
-
-| Front-end | Fixed fee on 1,000 USDC | Improvement (surplus) split |
-| --- | --- | --- |
-| Ophis-operated chain, volatile pair | **0.10 USDC** base (0.01%) | Trader receives 20% until Ophis's 99 bps capture cap binds; all improvement above the cap goes to the trader |
-| Ophis on CoW-hosted chains | **0.30 USDC** fixed (0.03%) | Ophis's 80%/99 bps capture applies, plus CoW Protocol's upstream improvement fee |
-| CoW Swap | **0.20 USDC** (0.02%) | 50% of quote improvement retained by CoW Protocol |
-| Matcha | **2.50 USDC** (0.25%) | Positive slippage, route-dependent |
-| Velora | **1.50 USDC** (0.15%) | Positive slippage, route-dependent |
-
-On a same-chain stablecoin-to-stablecoin swap of 1,000 USDC, Ophis charges a
-**0.10 USDC** (0.01%) base on every supported chain, plus 50%
-of reference-quote improvement capped at 2.00 USDC. It charges **0.13 USDC** fixed all-in on
-CoW-hosted chains, Matcha **0.50 USDC** (0.05%), and Velora **0.10 USDC**
-(0.01%). The takeaway is not that one number is always lowest. It is that the
-Ophis fee schedule is **published per chain**: solver-aligned and capped on
-every supported chain, with separate upstream CoW fees on hosted chains.
+Competitor pricing can vary with route, pair and order type. Check current
+[CoW fees](https://docs.cow.fi/governance/fees),
+[Matcha help](https://help.matcha.xyz/) and
+[Velora documentation](https://docs.velora.xyz/docs) alongside a live quote.
+Velora documents intent, OTC, TWAP and cross-chain products; describing it as
+only a traditional same-chain aggregator is no longer accurate.
 
 ### Where the surplus goes
 
-Both Ophis and CoW Swap run batch auctions where solvers compete to **beat** the
-price you signed. The extra value a solver finds beyond your quote is the
-**surplus** (price improvement).
-
-Where the order settles determines how improvement is shared:
-
-- On **Optimism, Unichain, and Robinhood Chain**, Ophis retains **80% of
-  reference-quote improvement on volatile pairs, capped at 99 bps of volume**,
-  or **50% on stable pairs, capped at 20 bps**. The trader receives the
-  remainder and all improvement above the applicable cap.
-- On the **10 CoW-hosted chains**, the same Ophis capture applies first:
-  **80% of reference-quote improvement on volatile pairs, capped at 99 bps of
-  volume**, or **50% on stable pairs, capped at 20 bps**. CoW Protocol also
-  applies its separate upstream policy: **50% of quote improvement, capped at
-  0.98% of volume**. The trader receives what remains after both independently
-  capped policies, plus all improvement beyond their applicable caps.
+Reference-quote improvement and surplus over the signed limit are not the
+same measure. On Optimism, Unichain and Robinhood Chain the backend applies Ophis's capped
+improvement policy. On hosted chains Ophis encodes its policy in appData;
+CoW applies protocol policies **before** partner policies, calculating fees
+iteratively. Do not add capture percentages against the original improvement.
+See [CoW's calculation order](https://docs.cow.fi/governance/fees).
 
 ### Agent-first API
 
-Every front-end here exposes some programmatic surface, but they target different
-callers. CoW Swap and Velora publish **orderbook / REST** APIs and SDKs aimed at
-integrators wiring up an order flow. Matcha exposes the **0x Swap API**. Ophis is
-built for agents: a **public `POST /api/intent` endpoint** that takes a
-natural-language sentence and returns a structured order **with no API key**, plus
-a hosted **MCP server** so an LLM agent can discover and call the swap surface as a
-tool. The same sentence a person types is the same sentence an agent posts.
+Ophis offers a keyless natural-language parser, a hosted MCP endpoint, SDKs
+and wallet-policy tooling. Parsing is not execution permission. Read tools,
+order building, signing and submission remain separate stages. See
+[AI agent integration](./ai-agents.md) for supported tools and chain mappings.
 
 ## Where each excels
 
-- **CoW Swap**: the most mature production solver network and the deepest
-  liquidity reach across EVM chains. If solver-network maturity is your first
-  priority, this is the reference implementation.
-- **Matcha**: the broadest EVM chain coverage of the four.
-- **Velora**: competitive low fees, especially the **1 bp** stablecoin rate.
-- **Ophis**: natural-language input, **Bitcoin** as a destination, a flat and
-  predictable fee, and an agent-first API. It is the option built for
-  English-in / order-out and for autonomous agents.
+Choose by the actual route and workflow: supported contracts and networks,
+net output after fees, expiry/cancellation, bridge recovery and wallet control.
+Do not infer the best price or deepest liquidity from a site's chain count.
 
 ## Trade-offs, stated plainly
 
-Ophis runs its **own solver and orderbook on Optimism, Unichain, and Robinhood Chain**, where its stack is
-self-hosted; on the other chains it surfaces, it relies on CoW's hosted
-infrastructure and solver network. CoW's production solver network is **more
-mature and more battle-tested** than the Optimism-focused stack Ophis operates
-directly. If you are trading large size on a chain where you want the deepest,
-most-proven solver competition, CoW Swap is the more conservative pick. Ophis's
-advantage is the interface and API layer described above, on top of the shared
-settlement foundation.
+Ophis-operated lanes depend on their configured venue liquidity and runtime
+availability. A displayed DEX identifies a liquidity venue, not necessarily
+an independent solver operator. CoW-hosted routes depend on upstream service
+and fee policies. Both can fail to find an acceptable fill.
 
 ## Reference table
 
-| | **Ophis** | **CoW Swap** | **Matcha** (0x) | **Velora** (ex-ParaSwap) |
-| --- | --- | --- | --- | --- |
-| **How you trade** | Natural language, e.g. "swap 100 USDC for ETH on Base" | Token picker (signed intents) | Token picker | Token picker |
-| **Settlement** | CoW Protocol batch auctions (shared foundation) | CoW Protocol batch auctions | 0x aggregation / RFQ | Aggregation across DEXs |
-| **Cross-chain scope** | 13 EVM chains + Solana + Bitcoin (via NEAR Intents) | EVM + Solana (via NEAR Intents); no Bitcoin | EVM + Solana | EVM only |
-| **Fee model** | Every supported chain: 1 bp Ophis base + 80% of volatile improvement (99 bps cap), or 50% of stable improvement (20 bps cap); hosted chains additionally pay upstream CoW fees | 0.02% protocol volume fee (0.003% correlated) + 50% of quote improvement, capped at 0.98% of volume | Tiered: ~0.25% on most pairs, ~0.05% on stablecoin pairs | 0.15% (15 bps) on most swaps; 0.01% (1 bp) on stablecoin pairs |
-| **Surplus (price improvement)** | Trader receives the remainder after the capped Ophis capture on every chain; hosted chains additionally follow CoW's upstream policy | 50% of quote improvement retained (capped 0.98% of volume), remainder to the trader | Returned via positive slippage, route-dependent | Returned via positive slippage, route-dependent |
-| **Agent API** | Public `POST /api/intent` (no key) + hosted MCP server | Orderbook REST API and SDK | 0x Swap API | REST API and SDK |
-| **Rebates** | 21.25% of WETH fees paid back monthly as volume-tier rebates | Not applicable | Not applicable | Not applicable |
-| **MEV protection** | Yes (batch auctions) | Yes (batch auctions) | Partial / route-dependent | Partial / route-dependent |
+| Ophis surface | Current scope |
+| --- | --- |
+| Swap app | 14 EVM chains; route-specific cross-chain providers |
+| Published SDK/MCP | 13 EVM chains, excluding Arc |
+| Intent API | Parses fields; does not execute swaps |
+| Batch-auction fees | Standard base plus capped improvement; Arc release exception; upstream fees on hosted chains |
+| MEV protection | Mechanism-level mitigation, not a universal guarantee |
+| Rebates | Eligible collected WETH, tier-weighted; not a guaranteed return |
 
 ## Read next
 
-- [Fees & rebates](./fees.md): the full fee model, stablecoin treatment, and how rebates accrue.
-- [How it works](./architecture.md): the intent lifecycle, batch auctions, and per-chain settlement. Live service status is on the [Status](./status.md) page.
-- [FAQ: How is Ophis different](./faq.mdx#how-is-ophis-different-from-1inch-or-matcha): the short version of this page.
-
-:::note
-
-Competitor fee and chain details reflect each project's public documentation as of
-July 2026 and may change. The CoW-hosted all-in figures were additionally
-verified against live production quotes (the quote API's `protocolFeeBps`
-field) on 2026-07-03. Sources:
-[CoW Protocol fees](https://docs.cow.fi/governance/fees),
-[Matcha fees](https://help.matcha.xyz/en/articles/3953360-are-there-any-fees-to-make-a-trade),
-[Velora UI fees](https://help.velora.xyz/en/articles/6554779-paraswap-ui-fees).
-
-:::
+- [Fees & rebates](./fees.md): fee scope, stablecoin treatment and rebates.
+- [How it works](./architecture.md): order lifecycle and per-chain settlement.
+- [Status](./status.md): service checks.
+- [FAQ](./faq.mdx): custody, cancellation and supported networks.

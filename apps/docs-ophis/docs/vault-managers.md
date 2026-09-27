@@ -1,7 +1,7 @@
 ---
 id: vault-managers
 title: Vault manager rebalancing
-description: Rebalance a vault or treasury Safe through Ophis behind an on-chain policy module, so a compromised curator key cannot drain the vault.
+description: Rebalance a vault or treasury Safe through Ophis with onchain token, receiver, oracle and turnover constraints, subject to disclosed residual risks.
 sidebar_label: Vault managers
 sidebar_position: 4
 ---
@@ -9,15 +9,16 @@ sidebar_position: 4
 # Vault manager rebalancing
 
 If you run a vault or treasury from a Safe, rebalancing its underlying assets
-usually means handing an operations key the power to move funds. Ophis removes
-that trade-off: the curator key can trigger swaps, but an on-chain policy
+usually means handing an operations key the power to move funds. Ophis limits
+that authority: the curator key can trigger swaps, but an onchain policy
 module checks every order against a fixed rulebook before anything is signed.
-A compromised curator key cannot redirect funds, cannot trade unlisted tokens,
-and cannot accept a bad price.
+A compromised curator key cannot redirect proceeds or trade unlisted tokens
+through this module. Price and turnover protections have the limits described
+in [Security model](#security-model).
 
 The flow settles through CoW Protocol as one atomic, MEV-protected order. The
-vault Safe is both `order.from` and `order.receiver`, so funds never leave its
-control, and each order carries the Ophis partner fee.
+vault Safe is both `order.from` and `order.receiver`: sold tokens leave at
+settlement and bought tokens return to the Safe. Each order carries the Ophis partner fee.
 
 ## How it works
 
@@ -32,18 +33,18 @@ Three parties, three roles:
   not be a Safe owner and must not be an enabled Safe module; the module
   rejects both at deploy time.
 
-On every `rebalance(order)` call the module re-checks the full order on-chain
+On every `rebalance(order, minBuyOverride)` call the module re-checks the full order onchain
 and reverts if any rule fails:
 
 | Check | Guarantee |
 |---|---|
 | `receiver == the Safe` | Proceeds can only ever return to the vault |
 | Token allowlist | Only the underlyings the owners configured can trade |
-| Chainlink oracle floor | The order's minimum out must be within the configured band (default 50 bps) of the live oracle price. Stale or invalid oracle rounds fail closed |
+| Chainlink oracle floor | At presign time, the minimum out must satisfy the configured oracle band (default 50 bps). Stale or invalid rounds fail closed; the oracle is not checked again at fill time |
 | Pinned appData | The order carries the exact Ophis fee metadata the owners froze at deploy; nothing can be swapped in |
 | Zero signed fee | The fee rides in appData only; a nonzero signed `feeAmount` is rejected |
 | TTL ceiling | Orders cannot outlive the configured window (the deploy scripts use 33 minutes: the builder's 30-minute order plus lag margin) |
-| Daily turnover cap | A rolling USD budget (leaky bucket) bounds how much value the curator can move per day |
+| Turnover capacity | One USD leaky bucket limits bursts and refills over 24 hours; it can admit approximately twice its configured capacity in a rolling 24-hour window |
 | L2 sequencer gate | On L2s, oracle reads are refused while the sequencer is down and during a grace period after recovery |
 
 Only when every check passes does the module set an exact-amount allowance to
@@ -90,8 +91,8 @@ Two requirements for a token to be allowlistable:
 
 ## Operational chains
 
-The `@ophis/safe-swap` vault-order builder works on every chain with a live
-Ophis or CoW orderbook:
+The published `@ophis/safe-swap` vault-order builder supports these 13 chains.
+Arc is available in the swap app, but is not yet in the published SDK's chain mappings:
 
 - **Ophis self-hosted:** Optimism, Unichain, and Robinhood Chain (4663).
 - **CoW-hosted:** Ethereum, Base, Arbitrum One, Polygon, Gnosis Chain, BNB
@@ -185,22 +186,30 @@ Practical notes from the live rollout:
 
 ## Security model
 
-The module's guarantee is deliberately narrow and testable: **a compromised
-curator key cannot drain the vault.** The worst it can do is trigger
-policy-valid rebalances between allowlisted tokens, at prices within the
-oracle band, bounded by the daily turnover cap. The disclosed residual is
-price bleed inside that envelope: at most the floor band per order, capped by
-the daily budget.
+The module restricts a curator to allowlisted tokens, Safe-bound proceeds and
+policy-valid orders. It is **not a guarantee against loss**. The oracle floor
+is checked when an order is presigned, not when it fills; price movement during
+its TTL, fees and repeated policy-valid trades can erode vault value.
 
-The contracts went through a 12-agent adversarial audit, Trail of Bits semgrep
+The turnover limiter is a leaky bucket, not a strict daily spending cap. An
+initial full bucket plus its refill can admit approximately **2× the configured
+capacity over rolling 24 hours**. Set capacity no higher than half the intended
+rolling-day turnover tolerance and size TTL, slippage and asset risk accordingly.
+
+Repository reports record a 12-agent adversarial review, Trail of Bits Semgrep
 rules, Echidna and Foundry invariant fuzzing (including a regression invariant
 for the one-live-order-per-token allowance discipline), and independent review,
-with fork preflights against real chain state gating every deploy. During the
+with fork preflights against real chain state gating the documented deployments.
+Using these tools is not an audit or endorsement by their authors. During the
 live rollout the oracle floor rejected mispriced orders in production exactly
 as designed.
 
-Vault owners keep an unconditional exit: `disableModule` ends the curator's
-access instantly, and `cancel` revokes any open order.
+`disableModule` blocks new module calls; it **does not revoke existing
+presignatures or allowances**. The module's `cancel` is curator-only and accepts
+only orders it recorded. Follow the runbook to cancel or expire outstanding
+orders and clear allowances before migration. Do not share its token allowances
+with another enabled module; disabling first also prevents curator cancellation
+through that disabled module.
 
 ## Fees
 
@@ -218,17 +227,17 @@ Running an active vault strategy normally means giving an operations key the
 power to move funds, which is the same power needed to steal them. The policy
 module separates the two. The curator key can trigger swaps but can only ever
 produce policy-valid orders: proceeds back to the vault, allowlisted tokens,
-oracle-priced, capped daily volume. A leaked or rogue curator key cannot
-redirect a single token out of the vault. At worst it can make slightly-off but
-policy-valid trades, bounded by the daily budget.
+oracle-checked at presign, and leaky-bucket-limited turnover. A leaked curator
+cannot redirect proceeds through this module, but repeated trades and price
+drift can still cause losses. See the security limits above.
 
 **What does a vault manager have to do to start using it?**
 
 Four steps: deploy a module for your Safe from the per-chain factory; enable it
 on the Safe with one owner-signed `enableModule` transaction; build orders with
 the `@ophis/safe-swap` package; and have the curator key call
-`module.rebalance(order)`. Funds never leave the Safe, and the owners can
-`disableModule` at any time. The
+`module.rebalance(order, minBuyOverride)`. Proceeds return to the Safe. Owners can
+disable new calls, but must separately resolve existing orders and allowances. The
 [runbook](https://github.com/ophis-fi/ophis/blob/main/docs/operations/vault-policy-module-trial-runbook.md)
 has the full sequence.
 
