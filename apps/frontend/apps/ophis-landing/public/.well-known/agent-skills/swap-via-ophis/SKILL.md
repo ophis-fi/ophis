@@ -47,8 +47,9 @@ All endpoints are public and require no API key or authentication.
 
 ## Fees
 
-Batch-auction orders carry a 1 bp base plus 80% of reference-quote improvement
-on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). Operated
+Outside the current Arc release exception, batch-auction orders carry a 1 bp base
+plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50%
+on stable pairs (20 bps cap). Optimism, Unichain and Robinhood Chain operated
 backends add improvement capture; hosted orders encode it in appData alongside
 the base, and CoW Protocol's own fees apply upstream. Use
 `buildOphisAppDataPartnerFee(chainId, isStablePair)` rather than a volume-only

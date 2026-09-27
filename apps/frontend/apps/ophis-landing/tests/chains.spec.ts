@@ -53,6 +53,7 @@ test('FAQ and machine-readable summaries match the supported destinations', asyn
   const llms = await (await page.request.get('/llms.txt')).text()
   const plugin = await (await page.request.get('/.well-known/ai-plugin.json')).json()
   expect(plugin.description_for_model).toContain('excluding the current Arc release exception')
+  expect(await (await page.request.get('/.well-known/agent-skills/swap-via-ophis/SKILL.md')).text()).toContain('Outside the current Arc release exception')
   expect(software.description).toContain('published SDK and MCP chain mappings exclude Arc')
   expect(howTo.description).toContain('excluding Arc')
   expect(howTo.step[0].text).toContain('npm i @ophis/sdk @cowprotocol/cow-sdk')
