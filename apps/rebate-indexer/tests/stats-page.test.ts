@@ -128,7 +128,8 @@ describe('renderStatsPage', () => {
 
   it('distinguishes app support from incomplete indexing, without changing the chain filter', () => {
     const html = renderStatsPage(sample);
-    expect(html).toContain('supports 14 EVM networks; this report is configured for 13');
+    expect(html).toContain('This report is configured for 13 EVM networks');
+    expect(html).toContain('App availability and reporting coverage differ');
     expect(html).toContain('Arc activity is not yet included');
     expect(html).toContain('A missing chain row does not prove there was no activity');
     expect(html).toContain('A recent publication time does not establish complete coverage');

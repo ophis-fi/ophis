@@ -228,7 +228,7 @@ ${freshnessWarning}
   <li><strong>Configured routing lanes</strong>Ophis-operated lanes on the indexed networks: ${esc(operatedSolverSummary)}. Lanes are not independent solver operators, and participation varies by pair and auction. CoW-hosted networks use the ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}. Arc is Ophis-operated but not yet indexed here.</li>
 </ul>
 <h2 id="chains">Settled volume by chain</h2>
-<p class="note">The swap app supports 14 EVM networks; this report is configured for ${PRODUCTION_CHAIN_IDS.length}. Arc activity is not yet included. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
+<p class="note">This report is configured for ${PRODUCTION_CHAIN_IDS.length} EVM networks. App availability and reporting coverage differ: Arc activity is not yet included. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
 <form method="get" action="/stats#chains" aria-label="Filter settled volume">
 <div class="filters">
   <label><span>Chain</span><select name="chain"><option value="">All reporting chains</option>${chainOptions}</select></label>

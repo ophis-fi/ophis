@@ -20,7 +20,7 @@
  */
 import { ReactNode } from 'react'
 
-import { BRIDGE_ONLY_DESTINATION_LABELS_TEXT } from '@cowprotocol/common-const'
+import { BRIDGE_ONLY_DESTINATION_LABELS_TEXT, SORTED_CHAIN_IDS } from '@cowprotocol/common-const'
 
 import {
   Accordion,
@@ -54,10 +54,10 @@ export default function AboutPage(): ReactNode {
           signed, and sign with your own wallet.
         </p>
         <p>
-          The swap app supports 14 EVM networks. Ophis operates the orderbook and routing lanes on Optimism, Unichain,
-          Robinhood Chain, and Arc; the other ten networks use CoW-hosted orderbooks. Batch-auction swaps settle through
-          CoW Protocol&#39;s <InlineCode>GPv2Settlement</InlineCode> stack or Ophis deployments derived from it. Bridge,
-          conversion, and OTC routes have separate execution and recovery rules.
+          The swap app supports {SORTED_CHAIN_IDS.length} enabled EVM networks. Ophis-operated networks use Ophis
+          orderbooks and routing lanes; CoW-hosted networks use CoW Protocol&#39;s infrastructure. Batch-auction swaps
+          settle through CoW Protocol&#39;s <InlineCode>GPv2Settlement</InlineCode> stack or Ophis deployments derived
+          from it. Bridge, conversion, and OTC routes have separate execution and recovery rules.
         </p>
       </Section>
 
@@ -216,8 +216,7 @@ export default function AboutPage(): ReactNode {
             <p>
               Yes. The natural-language intent parser is publicly available at <InlineCode>POST /api/intent</InlineCode>{' '}
               with a 30 req/min/IP rate limit. No auth, no key. The published SDK and parser cover 13 EVM networks; Arc
-              is currently app-only. See <TextLink href="https://docs.ophis.fi/">the docs</TextLink> for the full
-              reference.
+              is not included. See <TextLink href="https://docs.ophis.fi/">the docs</TextLink> for the full reference.
             </p>
           </Accordion>
         </AccordionGroup>
