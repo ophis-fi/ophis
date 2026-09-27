@@ -2,7 +2,7 @@
 title: "Ophis on Robinhood Chain: gasless, MEV-protected Stock Token swaps"
 description: "Ophis runs a sovereign deployment on Robinhood Chain (chain 4663): its own GPv2Settlement, orderbook, and solver lanes, with chain-aware pricing."
 pubDate: 2026-07-31
-updatedDate: 2026-09-15
+updatedDate: 2026-09-27
 author: Ophis
 tags: [robinhood-chain, stock-tokens, dex-aggregator, mev, swaps]
 draft: false
@@ -10,9 +10,9 @@ cover: ./swap-on-robinhood-chain.cover.jpg
 coverAlt: "Ophis emblem ringed by supported chains with the Robinhood feather as the featured node"
 ---
 
-Ophis is live on Robinhood Chain. Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign an EIP-712 order: for an ERC-20 sell you do not broadcast the settlement transaction or pay its gas (selling native ETH is the exception covered below). Solver lanes route the pair and the winning settlement lands through Ophis's `GPv2Settlement` at `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`. Pricing is a 1 bp base plus capped reference-quote-improvement capture. Robinhood Chain is the third network where Ophis runs its own orderbook and settlement contracts rather than routing through CoW Protocol's hosted stack, and the first where the tradable universe is mostly Stock Tokens and other tokenized real-world assets.
+Ophis is live on Robinhood Chain. Open [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap), connect a wallet, and sign an EIP-712 order: for an ERC-20 sell you do not broadcast the settlement transaction or pay its gas (selling native ETH is the exception covered below). Solver lanes route the pair and the winning settlement lands through Ophis's `GPv2Settlement` at `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`. Pricing is a 1 bp base plus capped reference-quote-improvement capture. Robinhood Chain was the third network where Ophis launched its own orderbook and settlement contracts rather than routing through CoW Protocol's hosted stack, and the first where the tradable universe is mostly Stock Tokens and other tokenized real-world assets.
 
-Two sentences of context. Robinhood Chain is chain id 4663, an Arbitrum Orbit L2, and it is one of the 13 EVM chains [Ophis](https://ophis.fi/) supports. Ophis is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top, and on Robinhood Chain it runs a sovereign deployment whose specifics are the subject of the rest of this post.
+Two sentences of context. Robinhood Chain is chain id 4663, an Arbitrum Orbit L2, and it is one of the 14 EVM chains [Ophis](https://ophis.fi/) supports. Ophis is an intent-based DEX aggregator, a fork of [CoW Protocol](https://docs.cow.fi)'s frontend with a natural-language intent layer and an agent stack on top, and on Robinhood Chain it runs a sovereign deployment whose specifics are the subject of the rest of this post.
 
 Ophis is an independent protocol and is not affiliated with, endorsed by, or officially connected with Robinhood Markets, Inc. Stock Token eligibility and jurisdictional restrictions apply; review [Robinhood's current disclosures](https://robinhood.com/rhj/stocktokens/) before interacting with them.
 
@@ -58,7 +58,7 @@ The node in production did not take that route. Robinhood publishes no official 
 
 ## The sovereign deployment
 
-On most of its chains Ophis settles through CoW Protocol's canonical audited GPv2 contracts via `api.cow.fi`. On Optimism, Unichain, and Robinhood Chain it does not: it runs its own orderbook and a bytecode-identical deployment of CoW Protocol's audited GPv2 suite at non-canonical addresses. The core suite was deployed on 2026-07-25; the EthFlow contract followed on 2026-07-28.
+On most of its chains Ophis settles through CoW Protocol's canonical audited GPv2 contracts via `api.cow.fi`. On Optimism, Unichain, Robinhood Chain and Arc it runs its own orderbook and settlement deployment derived from CoW Protocol. See [security and review scope](https://docs.ophis.fi/audits); shared foundations are not a blanket bytecode or audit-coverage claim. The core suite was deployed on 2026-07-25; the EthFlow contract followed on 2026-07-28.
 
 | Contract | Address |
 | --- | --- |
@@ -132,18 +132,18 @@ Rebates are paid monthly in WETH from the fee Safe, out of a pool of 21.25% of c
 
 The chain is wired through the whole Ophis stack, not just the app: the frontend, the SDK, the MCP server, the compatibility API, and the Safe app all carry checked Robinhood contract mappings.
 
-- **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated, with fourteen tools covering every supported chain. `list_chains` resolves the Robinhood orderbook host and settlement domain, `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
-- **SDK.** `@ophis/sdk` 0.3.0 resolves the orderbook URL, the EIP-712 signing domain, the vault relayer, and the EthFlow address per chain. On a sovereign chain that is the difference between an order that verifies and one that does not.
+- **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated, with fourteen tools covering published SDK/MCP chains, including Robinhood but not Arc. `list_chains` resolves the Robinhood orderbook host and settlement domain, `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
+- **SDK.** `@ophis/sdk` resolves the orderbook URL, the EIP-712 signing domain, the vault relayer, and the EthFlow address per chain. On a sovereign chain that is the difference between an order that verifies and one that does not.
 - **Widget.** `@ophis/widget-react` embeds the swap form directly. See the [widget docs](https://docs.ophis.fi/widget).
 - **Affiliate.** Mint a referral code and earn 8% of the verified base fee Ophis keeps on trades your referred wallets route, paid monthly in WETH. Details in the [affiliate docs](https://docs.ophis.fi/affiliate).
 
-If you want the same walkthrough for the other two Ophis-operated chains, read [how to swap on Optimism](/blog/how-to-swap-on-optimism/) and [how to swap on Unichain](/blog/how-to-swap-on-unichain/).
+If you want the same walkthrough for Optimism and Unichain, read [how to swap on Optimism](/blog/how-to-swap-on-optimism/) and [how to swap on Unichain](/blog/how-to-swap-on-unichain/).
 
 ## FAQ
 
 ### Is Ophis live on Robinhood Chain?
 
-Yes. Ophis deployed its core sovereign contracts on Robinhood Chain (chain 4663) on 2026-07-25, added the EthFlow contract for native-ETH sells on 2026-07-28, and trading is live at [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap). Orders settle through an Ophis-deployed GPv2Settlement at `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, served by an Ophis-operated orderbook at `robinhood-mainnet.ophis.fi`. Three solver lanes are live: LI.FI, KyberSwap, and a direct Uniswap V4 lane that is restricted to the native ETH/USDG pool.
+Yes. Ophis deployed its core sovereign contracts on Robinhood Chain (chain 4663) on 2026-07-25, added the EthFlow contract for native-ETH sells on 2026-07-28, and trading is live at [swap.ophis.fi/#/4663/swap](https://swap.ophis.fi/#/4663/swap). Orders settle through an Ophis-deployed GPv2Settlement at `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, served by an Ophis-operated orderbook at `robinhood-mainnet.ophis.fi`. Configured lanes include LI.FI, KyberSwap and a direct Uniswap V4 lane restricted to native ETH/USDG; runtime availability and liquidity must be checked in the live quote.
 
 ### Do I need ETH on Robinhood Chain to pay gas?
 
@@ -155,7 +155,7 @@ Yes, and Ophis adds checks specific to them. Before you sign, it verifies the to
 
 ### How is Robinhood Chain different from the other chains Ophis supports?
 
-Technically it is an Arbitrum Orbit L2 running Offchain Labs Nitro, posting data availability as EIP-4844 blobs to Ethereum, whereas Ophis's other two sovereign chains, Optimism and Unichain, are OP-Stack. Its public RPC serves no trace namespaces, so Ophis runs its own Nitro node to supply `debug_traceTransaction` and pauses settlement when that node is unavailable. Its liquidity is Uniswap V4, so the CoW baseline solver ships empty and three other solver lanes do the work. Commercially it is Ophis-operated, so it uses the 1 bp base plus capped improvement-capture schedule without an upstream CoW fee.
+Technically it is an Arbitrum Orbit L2 running Offchain Labs Nitro, posting data availability as EIP-4844 blobs to Ethereum, whereas Optimism and Unichain are OP-Stack. Arc is a separate operated network. Its public RPC serves no trace namespaces, so Ophis runs its own Nitro node to supply `debug_traceTransaction` and pauses settlement when that node is unavailable. Its liquidity is Uniswap V4, so the CoW baseline solver ships empty and three other solver lanes do the work. Commercially it is Ophis-operated, so it uses the 1 bp base plus capped improvement-capture schedule without an upstream CoW fee.
 
 ### Does a higher gas price get my order filled first?
 

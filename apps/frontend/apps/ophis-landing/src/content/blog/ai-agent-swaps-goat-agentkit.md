@@ -2,6 +2,7 @@
 title: "AI agent token swaps with GOAT or Coinbase AgentKit"
 description: "Wire a swap tool into a GOAT SDK or Coinbase AgentKit agent with Ophis: bounded orders, pinned receiver, capped slippage, gasless MEV-protected settlement."
 pubDate: 2026-07-12
+updatedDate: 2026-09-27
 author: Ophis
 tags: [ai-agents, goat, agentkit, mev, swaps]
 draft: false
@@ -20,19 +21,19 @@ Both packages register one capability (GOAT names the tool `ophis_swap`; AgentKi
 1. quotes the trade against the Ophis orderbook for the wallet's chain,
 2. applies the slippage cap (default 50 bps) to derive a minimum buy amount, which the order carries as a hard limit price,
 3. signs the order as EIP-712 typed data with the agent's own wallet,
-4. approves the vault relayer of the chain's settlement deployment once (a standard ERC-20 allowance),
+4. ensures sufficient ERC-20 allowance for the chain's vault relayer (an approval transaction when needed),
 5. submits the order and returns the order UID plus an explorer URL.
 
 From there it is Ophis's normal intent flow: solvers compete to fill the order, and settlement lands in a batch auction at a uniform clearing price. The order is not exposed as a public-mempool router swap; [MEV protection](/blog/mev-protection-batch-auctions/) is built into the settlement model. On every supported chain, Ophis retains its published capped share of reference-quote improvement; hosted chains additionally apply CoW Protocol's upstream fees. ERC-20 orders are [gasless](/blog/gasless-swaps-how-intents-work/) after any required approval.
 
-The packages also resolve the per-chain orderbook and EIP-712 settlement domain for you: on some chains Ophis runs its own bytecode-identical deployment of CoW Protocol's audited GPv2Settlement, on the rest orders settle through the canonical audited contracts. Guessing either value by hand produces silently rejected or misrouted orders.
+The packages also resolve the per-chain orderbook and EIP-712 settlement domain for you: on some chains Ophis runs its own settlement deployment derived from CoW Protocol's GPv2 design, on the rest orders settle through the canonical audited contracts. Guessing either value by hand produces silently rejected or misrouted orders.
 
 ## Wiring a GOAT agent
 
 GOAT surfaces one plugin through its adapters for Vercel AI, LangChain, Mastra, Eliza, or MCP.
 
 ```sh
-npm i @ophis/plugin-goat @goat-sdk/core @goat-sdk/wallet-evm @goat-sdk/wallet-viem
+npm i @ophis/plugin-goat @goat-sdk/core @goat-sdk/wallet-evm @goat-sdk/wallet-viem @goat-sdk/adapter-vercel-ai viem
 ```
 
 Add the plugin next to your wallet (the example uses the Vercel AI adapter):
@@ -116,8 +117,8 @@ An autonomous signer has no confirmation dialog, so the properties a human would
 - **Receiver pinned to the signer.** The agent's wallet is the order owner *and* receiver. Funds only ever move through the settlement contract, back to the same wallet; a prompt-injected "send the proceeds elsewhere" has no parameter to grab.
 - **Slippage capped.** `slippageBps` bounds the gap between quote and worst acceptable fill, defaulting to 0.5%.
 - **The agent's own key.** Signing happens inside your process, via the wallet you constructed; nothing custodial.
-- **Batch settlement.** Uniform clearing price, order flow kept off the public mempool: sandwiching is removed structurally.
-- **Gasless.** No native-token float to manage (or drain) beyond the one-time relayer approval.
+- **Batch settlement.** Offchain orders and uniform prices per token pair mitigate common MEV. External-pool settlement can still be public; this is not universal sandwich immunity.
+- **Solver-paid ERC-20 settlement.** Approvals, wrapping and other wallet transactions can still require gas; exact allowances can need renewal after each fill.
 
 Two limits to plan around: the flow is ERC-20 to ERC-20 only (wrap native ETH to WETH first), and it signs as an EOA via `signTypedData`, not as a Safe. Before removing the human from the loop entirely, read the autonomous-agent section of the first post: unattended operation also needs policy gates and spend caps around the signer.
 
@@ -145,7 +146,7 @@ Whichever framework your agent already runs on; the swap behavior is identical b
 
 ### What does this cost?
 
-The packages are free and open source. Their SDK builders select the fee by chain and pair: a 1 bp base on Optimism, Unichain, and Robinhood Chain, where the backend also applies capped improvement capture; or the hosted 1 bp partner rate, reduced to 1 bp for stable pairs, on CoW-hosted chains. CoW Protocol's fees apply upstream on hosted chains. Details are maintained at [docs.ophis.fi/fees](https://docs.ophis.fi/fees); with a referral code set, the applicable referral share is calculated from the verified base fee Ophis keeps.
+The packages are free and open source. Their SDK builders select the fee by chain and pair: a 1 bp base on Optimism, Unichain, and Robinhood Chain, where the backend also applies capped improvement capture; or the same 1 bp base plus pair-aware capped improvement policy in appData on CoW-hosted chains. CoW Protocol's fees apply upstream on hosted chains. Details are maintained at [docs.ophis.fi/fees](https://docs.ophis.fi/fees); with a referral code set, the applicable referral share is calculated from the verified base fee Ophis keeps.
 
 ## Start here
 
