@@ -12,10 +12,8 @@ discovery files were also checked, including `llms.txt`, `llms-full.txt`, OpenAP
 API discovery, authentication guidance and agent-skill discovery. The unadvertised
 `/skill.md` probe returned 404; it is not a broken advertised entry point.
 
-This report records the pre-release review on `fix/public-content-audit-20260927`.
-The user subsequently authorized merging and publishing if checks pass; release
-status must be confirmed from the associated PRs and deployment runs. No runtime
-fee policy, contracts, trading backend, keys or customer configuration were changed.
+Release was authorized if green; confirm status from associated PRs and deployments.
+No runtime fee policy, contracts, trading backend, keys or customer configuration changed.
 
 This is a content/source consistency review, not a new independent security
 audit, legal opinion or certification by Trail of Bits, Pashov or Semgrep.
@@ -53,8 +51,7 @@ audit, legal opinion or certification by Trail of Bits, Pashov or Semgrep.
 - Landing: `pnpm build` and `pnpm typecheck` passed; 57 existing unit checks,
   the new WebMCP regression, 15 CSP tests, skill digests, chain-count validation
   and 173 FAQ answers matching visible text across 35 pages.
-- Landing Playwright suite: **93 passed**, using this checkout's isolated preview
-  on port 4397, not the unrelated development server on port 4321.
+- Landing Playwright suite: **93 passed**, using this checkout's isolated preview.
 - Docs browser smoke: **10 passed** across five pages at desktop and mobile sizes;
   visible headings, feature boundaries, no body overflow or uncaught page errors.
   The mobile Networks & assets screenshot was also inspected.
@@ -67,12 +64,9 @@ audit, legal opinion or certification by Trail of Bits, Pashov or Semgrep.
 - Frontend and documentation QA reviewers checked the changes; final fee-table
   and rebate wording received a separate read-only review.
 
-Temporary logs, crawl inventory and screenshots are in
-`/tmp/ophis-public-content-audit.CyTR8i`; this directory is local evidence, not a
-permanent public artifact. Ponytail kept the work to existing content surfaces
-and a small stdlib regression; no redesign, dependency or new backend was added.
-Browser checks reused the installed Node Playwright because Python Playwright
-was unavailable.
+Temporary evidence: `/tmp/ophis-public-content-audit.CyTR8i` (not a public artifact).
+Ponytail kept changes to existing content and small regressions; no new dependency,
+redesign or backend. Browser checks used installed Node Playwright.
 
 ## Open issue and limits
 
@@ -86,8 +80,7 @@ No funded swaps were executed on every chain. Every contract's deployed bytecode
 current issuer eligibility, live token liquidity, partner-key configuration and
 OTC runtime write authorization were not independently revalidated. Documentation
 now distinguishes source support, conditional configuration and live availability.
-All sites must be rebuilt/deployed and rechecked publicly before these corrections
-can be described as live.
+Confirm successful deployments and public checks before describing corrections as live.
 
 Primary references used include [CoW fee policies](https://docs.cow.fi/governance/fees),
 [NEAR confidential swaps](https://docs.near-intents.org/integration/distribution-channels/1click-api/quickstart/confidential-swaps),

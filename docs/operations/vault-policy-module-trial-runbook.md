@@ -253,8 +253,5 @@ constrains the curator, never the owners.
 
 ## Residual risk (Phase-B, documented)
 
-A compromised curator can still bleed at most `oracle-floor − slippage` per
-order, bounded by the daily USD turnover cap (~2x per rolling 24h). Fully
-closing this is Phase-B-2 (EIP-1271 order validator). Until then the curator key
-is effectively equivalent to full vault custody within that per-day bound —
-size `VAULT_CAP` accordingly for a trial.
+The oracle floor is checked only at presign: price drift before fill and repeated policy-valid trades can erode vault value. The leaky bucket admits almost twice its capacity over rolling 24 hours; it is a turnover limit, not a portfolio-loss percentage bound.
+Size capacity, TTL and slippage for the vault's risk tolerance. A fill-time validator is future work, not a current guarantee.
