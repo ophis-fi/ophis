@@ -86,7 +86,7 @@ export const EXECUTION_FACTS = {
     hostedChains: 'CoW Protocol solver network',
   },
   improvementSplit: {
-    sovereign: 'On Optimism, Unichain and Robinhood Chain, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc currently has a separate base-only configuration.',
+    sovereign: 'On Optimism, Unichain and Robinhood Chain, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc currently has no configured backend improvement policy; check the quote and signed fee metadata.',
     hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
   },
 } as const;
@@ -252,7 +252,7 @@ ${freshnessWarning}
   <div class="card"><div class="n">${fmtInt(s.distinctTraders)}</div><div class="l">Traders</div></div>
   <div class="card"><div class="n">${fmtInt(s.chainsActive)}</div><div class="l">Chains with indexed trades</div></div>
 </div>
-<p class="note">Standard batch-auction fees combine a 1 bp Ophis base with capped price-improvement capture. CoW-hosted chains also apply upstream fees. Arc's current release has a separate base-only configuration, not the standard improvement policy. Bridge and conversion costs differ; check the final route quote. Volume is priced in USD at index time and refreshed periodically. Source: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
+<p class="note">Standard batch-auction fees combine a 1 bp Ophis base with capped price-improvement capture. CoW-hosted chains also apply upstream fees. Arc currently has no configured backend improvement policy; check the quote and signed fee metadata. Bridge and conversion costs differ; check the final route quote. Volume is priced in USD at index time and refreshed periodically. Source: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
 <div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; <a href="https://swap.ophis.fi/">Open the app</a></span><span>${updated ? `Data as of ${updated}` : 'Data publication time unavailable'}</span></div>
 </main></body></html>`;
 }
