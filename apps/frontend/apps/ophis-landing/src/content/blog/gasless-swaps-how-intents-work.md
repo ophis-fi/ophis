@@ -47,8 +47,7 @@ for it, usually charging the cost back somewhere else. In an intent there is no
 user transaction to sponsor: the only on-chain transaction is the solver's
 batch settlement, which would exist anyway.
 
-The same structure is what makes the flow [MEV-protected](/blog/mev-protection-batch-auctions/). Orders travel
-offchain and clear at a uniform price per token pair. This mitigates common
+The same structure is what makes the flow [MEV-protected](/blog/mev-protection-batch-auctions/). Orders travel offchain and clear at a uniform price per token pair. This mitigates common
 MEV, but the solver's settlement can still be public and use external pools.
 
 ## The fee comes out of the trade, not your gas balance
@@ -60,8 +59,7 @@ trade rather than billed in native gas (the
 full [fee schedule](https://docs.ophis.fi/fees) is public; on the chains that
 settle through CoW Protocol, CoW Protocol's protocol fee applies on top of the
 Ophis fee). On a standard sell order that is the token you receive: sell USDC for ETH and the fee is a slice of the ETH. On a buy order, where you name the amount you want to receive, it comes off the token you spend instead. For standard ERC-20 orders, you do not broadcast or directly pay gas for the
-solver's settlement. Arc exposes [one USDC balance](https://www.arc.io/blog/arc-compatibility-guide-for-existing-evm-apps) through
-18-decimal native and six-decimal ERC-20 interfaces; selling USDC reduces what remains for gas.
+solver's settlement. Arc exposes [one USDC balance](https://www.arc.io/blog/arc-compatibility-guide-for-existing-evm-apps) through 18-decimal native and six-decimal ERC-20 interfaces; selling USDC reduces what remains for gas.
 
 The limit you signed still bounds the outcome. Solvers compete to beat the
 reference quote. Under that standard schedule, Ophis retains 80% of that
@@ -92,12 +90,10 @@ This article's gasless flow is the standard signed ERC-20 order.
 ## Who actually hits the gas wall
 
 **New wallets.** On most chains, ERC-20 tokens alone do not cover approval gas. A wallet needs
-an existing allowance or a supported permit flow before gasless signing can help.
-Once that requirement is met, the solver pays settlement gas.
+an existing allowance or a supported permit flow before gasless signing can help. Once that requirement is met, the solver pays settlement gas.
 
 **AI agents.** Signed orders remove the need to fund settlement transactions,
-not all wallet operations. Keep gas available for approvals and other required
-transactions; the integration pattern is in
+not all wallet operations. Keep gas available for approvals and other required transactions; the integration pattern is in
 [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/).
 
 **Multichain traders.** The Ophis app supports 14 chains: Ethereum, Optimism, BNB,
