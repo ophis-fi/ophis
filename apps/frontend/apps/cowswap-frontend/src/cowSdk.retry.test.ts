@@ -17,9 +17,16 @@ it('does not amplify Arc rate limits with automatic retries', () => {
   expect(retryOrderBookRequest(failure(429), 1)).toBe(false)
 })
 
+it.each([500, 502, 503, 504])('does not immediately retry Arc quote failures with HTTP %i', (status) => {
+  expect(retryOrderBookRequest(failure(status), 1)).toBe(false)
+})
+
 it('bounds Arc HTTP recovery and preserves other chain policies', () => {
-  expect(retryOrderBookRequest(failure(503), 1)).toBe(true)
-  expect(retryOrderBookRequest(failure(503), 3)).toBe(false)
+  const ordersUrl = 'https://arc-mainnet.ophis.fi/api/v1/orders'
+  expect(retryOrderBookRequest(failure(503, ordersUrl), 1)).toBe(true)
+  expect(retryOrderBookRequest(failure(503, ordersUrl), 3)).toBe(false)
   expect(retryOrderBookRequest(failure(400), 1)).toBe(false)
   expect(retryOrderBookRequest(failure(429, 'https://api.cow.fi/mainnet/api/v1/quote'), 1)).toBe(true)
+  expect(retryOrderBookRequest(failure(503, 'https://api.cow.fi/mainnet/api/v1/quote'), 1)).toBe(true)
+  expect(retryOrderBookRequest(failure(503, 'https://arc-mainnet.ophis.fi.invalid/api/v1/quote'), 1)).toBe(true)
 })
