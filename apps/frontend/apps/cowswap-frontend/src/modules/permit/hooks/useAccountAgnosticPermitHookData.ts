@@ -30,7 +30,7 @@ export function useAccountAgnosticPermitHookData(): PermitHookData | undefined {
       return
     }
 
-    generatePermitHook(params).then(setData)
+    generatePermitHook(params).then(setData, () => setData(undefined))
   }, [generatePermitHook, params])
 
   return data

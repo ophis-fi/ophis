@@ -5,30 +5,36 @@ import { DEFAULT_PERMIT_GAS_LIMIT, DEFAULT_PERMIT_VALUE, PERMIT_SIGNER } from '.
 import { PermitHookData, PermitHookParams } from '../types'
 import { buildDaiLikePermitCallData, buildEip2612PermitCallData } from '../utils/buildPermitCallData'
 import { getPermitDeadline } from '../utils/getPermitDeadline'
+import { isPermitCancellation } from '../utils/isPermitCancellation'
 import { isSupportedPermitInfo } from '../utils/isSupportedPermitInfo'
 
-const REQUESTS_CACHE: { [permitKey: string]: Promise<PermitHookData | undefined> } = {}
+const REQUESTS_CACHE = new WeakMap<JsonRpcProvider, Map<string, Promise<PermitHookData | undefined>>>()
 
 export async function generatePermitHook(params: PermitHookParams): Promise<PermitHookData | undefined> {
   const permitKey = getCacheKey(params)
+  const requests = REQUESTS_CACHE.get(params.provider) ?? new Map<string, Promise<PermitHookData | undefined>>()
+  REQUESTS_CACHE.set(params.provider, requests)
 
-  const cachedRequest = REQUESTS_CACHE[permitKey]
+  const cachedRequest = requests.get(permitKey)
 
   if (cachedRequest) {
     return await cachedRequest
   }
 
   const request = generatePermitHookRaw(params)
-    .catch((e) => {
+    .catch((e: unknown) => {
+      if (isPermitCancellation(e)) {
+        throw e
+      }
       console.debug(`[generatePermitHook] cached request failed`, e)
       return undefined
     })
     .finally(() => {
       // Remove consumed request to avoid stale data
-      delete REQUESTS_CACHE[permitKey]
+      requests.delete(permitKey)
     })
 
-  REQUESTS_CACHE[permitKey] = request
+  requests.set(permitKey, request)
 
   return request
 }

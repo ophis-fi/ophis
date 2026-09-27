@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 
 import { getWrappedToken } from '@cowprotocol/common-utils'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
+import { isPermitCancellation } from '@cowprotocol/permit-utils'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { useGeneratePermitHook, usePermitInfo } from 'modules/permit'
@@ -35,6 +36,10 @@ export function useGeneratePermitInAdvanceToTrade(amountToApprove: CurrencyAmoun
       amount: BigInt(amountToApprove.quotient.toString()),
       preSignCallback,
       postSignCallback: resetApproveProgressModalState,
+    }).catch((error: unknown) => {
+      if (isPermitCancellation(error)) throw error
+      // Includes nonce/provider failures before the low-level permit generator runs.
+      return undefined
     })
 
     return !!permitData

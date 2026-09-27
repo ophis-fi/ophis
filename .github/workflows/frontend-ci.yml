@@ -219,7 +219,9 @@ jobs:
 
       - name: Permit amount and cache binding regression tests
         working-directory: apps/frontend
-        run: pnpm exec nx run permit-utils:test --passWithNoTests=false
+        run: |
+          pnpm exec nx run permit-utils:test --passWithNoTests=false
+          pnpm exec nx run cowswap-frontend:test --testPathPatterns 'useApproveAndSwap|useGeneratePermitInAdvanceToTrade|useGeneratePermitHook' --passWithNoTests=false --runInBand
 
       - name: Mobile viewport initialization regression test
         working-directory: apps/frontend

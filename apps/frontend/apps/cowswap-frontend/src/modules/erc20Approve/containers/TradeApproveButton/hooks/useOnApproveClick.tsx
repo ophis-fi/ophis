@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 
 import { MAX_APPROVE_AMOUNT } from '../../../constants'
+import { useHandleApprovalError } from '../../TradeApproveModal/useHandleApprovalError'
 
 type UseApproveParams = {
   isPermitSupported: boolean
@@ -21,16 +22,16 @@ export function useOnApproveClick({
   handleApprove,
   generatePermitToTrade,
 }: UseApproveParams): () => Promise<void> {
+  const handleApprovalError = useHandleApprovalError(amountToApprove.currency.symbol)
   return useCallback(async (): Promise<void> => {
     if (isPermitSupported && onApproveConfirm) {
-      const isPermitSigned = await generatePermitToTrade()
-      // Only short-circuit when the permit actually signed; otherwise fall
-      // through to the on-chain approve below. Mirrors the useApproveAndSwap
-      // fix so a failed/rejected permit never leaves the CTA a silent no-op.
-      // (This hook is currently unused; aligned to prevent the dead-button bug
-      // from reappearing if it is ever wired up.)
-      if (isPermitSigned) {
-        onApproveConfirm()
+      try {
+        if (await generatePermitToTrade()) {
+          onApproveConfirm()
+          return
+        }
+      } catch (error) {
+        handleApprovalError(error)
         return
       }
     }
@@ -47,5 +48,6 @@ export function useOnApproveClick({
     amountToApprove.quotient,
     handleApprove,
     generatePermitToTrade,
+    handleApprovalError,
   ])
 }

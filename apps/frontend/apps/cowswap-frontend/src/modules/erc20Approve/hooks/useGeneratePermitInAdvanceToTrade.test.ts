@@ -311,15 +311,27 @@ describe('useGeneratePermitInAdvanceToTrade', () => {
   })
 
   describe('error handling', () => {
-    it('should handle generatePermit throwing an error', async () => {
-      const error = new Error('Permit generation failed')
-      mockGeneratePermit.mockRejectedValue(error)
+    it.each([new Error('Nonce read failed'), { code: -32000, message: 'RPC unavailable' }])(
+      'allows approval fallback for preflight failure %p',
+      async (error) => {
+        mockGeneratePermit.mockRejectedValue(error)
 
+        const { result } = renderHook(() => useGeneratePermitInAdvanceToTrade(mockAmountToApprove))
+
+        await expect(result.current()).resolves.toBe(false)
+      },
+    )
+
+    it.each([
+      { code: 4001 },
+      { code: 'ACTION_REJECTED' },
+      new Error('User rejected the request'),
+      'User denied message signature',
+    ])('does not turn cancellation %p into approval fallback', async (error) => {
+      mockGeneratePermit.mockRejectedValue(error)
       const { result } = renderHook(() => useGeneratePermitInAdvanceToTrade(mockAmountToApprove))
 
-      const generatePermit = result.current
-
-      await expect(generatePermit()).rejects.toThrow('Permit generation failed')
+      await expect(result.current()).rejects.toBe(error)
     })
 
     it('should handle generatePermit returning empty object', async () => {
@@ -327,10 +339,7 @@ describe('useGeneratePermitInAdvanceToTrade', () => {
 
       const { result } = renderHook(() => useGeneratePermitInAdvanceToTrade(mockAmountToApprove))
 
-      const generatePermit = result.current
-      const result_value = await generatePermit()
-
-      expect(result_value).toBe(true) // Empty object is truthy
+      expect(await result.current()).toBe(true) // Empty object is truthy
     })
   })
 
@@ -406,10 +415,7 @@ describe('useGeneratePermitInAdvanceToTrade', () => {
 
       const { result } = renderHook(() => useGeneratePermitInAdvanceToTrade(mockAmountToApprove))
 
-      const generatePermit = result.current
-      const result_value = await generatePermit()
-
-      expect(result_value).toBe(true)
+      expect(await result.current()).toBe(true)
       expect(mockGeneratePermit).toHaveBeenCalledTimes(1)
       expect(mockUpdateApproveProgressModalState).toHaveBeenCalledTimes(0)
     })

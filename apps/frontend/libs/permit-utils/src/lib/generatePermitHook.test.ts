@@ -86,3 +86,54 @@ it.each([undefined, DEFAULT_PERMIT_VALUE])('allows DAI-like unlimited amount %s'
     value: DEFAULT_PERMIT_VALUE.toString(),
   })
 })
+
+it.each([4001, 'ACTION_REJECTED'])('preserves cancellation %s and clears the in-flight request', async (code) => {
+  const error = Object.assign(new Error('User rejected the request'), { code })
+  const build = jest.mocked(buildEip2612PermitCallData).mockRejectedValueOnce(error)
+
+  const results = await Promise.allSettled([generatePermitHook(params), generatePermitHook(params)])
+
+  expect(results).toEqual([
+    { status: 'rejected', reason: error },
+    { status: 'rejected', reason: error },
+  ])
+  expect(build).toHaveBeenCalledTimes(1)
+  await expect(generatePermitHook(params)).resolves.toBeDefined()
+  expect(build).toHaveBeenCalledTimes(2)
+})
+
+it.each([-32000, -32603])('retains approval fallback for technical RPC failure %s', async (code) => {
+  jest.mocked(buildEip2612PermitCallData).mockRejectedValueOnce({ code, message: 'RPC unavailable' })
+
+  await expect(generatePermitHook(params)).resolves.toBeUndefined()
+  await expect(generatePermitHook(params)).resolves.toBeDefined()
+})
+
+it.each([
+  'User denied message signature',
+  new Error('User rejected the request'),
+  { code: -32000, message: 'Transaction was rejected' },
+  { message: 'User rejected' },
+])('preserves message-only wallet cancellation %p', async (error) => {
+  jest.mocked(buildEip2612PermitCallData).mockRejectedValueOnce(error)
+
+  await expect(generatePermitHook(params)).rejects.toBe(error)
+})
+
+it('does not reuse the previous wallet request after replacing the provider', async () => {
+  const error = Object.assign(new Error('User rejected'), { code: 4001 })
+  const build = jest.mocked(buildEip2612PermitCallData).mockRejectedValueOnce(error)
+  const newProvider = { ...params.provider }
+
+  const results = await Promise.allSettled([
+    generatePermitHook(params),
+    generatePermitHook({ ...params, provider: newProvider }),
+    generatePermitHook({ ...params, provider: newProvider }),
+  ])
+
+  expect(results[0]).toEqual({ status: 'rejected', reason: error })
+  expect(results[1]).toMatchObject({ status: 'fulfilled', value: { callData: '0x00' } })
+  expect(results[2]).toEqual(results[1])
+  expect(build).toHaveBeenCalledTimes(2)
+  await expect(generatePermitHook(params)).resolves.toBeDefined()
+})

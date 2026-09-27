@@ -12,6 +12,7 @@ import { TradeType } from 'modules/trade'
 import { ApproveCurrencyCallback, useApproveCurrency } from './useApproveCurrency'
 import { useGeneratePermitInAdvanceToTrade } from './useGeneratePermitInAdvanceToTrade'
 
+import { useHandleApprovalError } from '../containers/TradeApproveModal/useHandleApprovalError'
 import { UpdateApproveProgressModalState, useUpdateApproveProgressModalState } from '../state'
 import { getIsTradeApproveResult } from '../utils/getIsTradeApproveResult'
 
@@ -37,18 +38,13 @@ export function useApproveAndSwap({
 
   const isPermitSupported = useTokenSupportsPermit(amountToApprove.currency, TradeType.SWAP) && !ignorePermit
   const generatePermitToTrade = useGeneratePermitInAdvanceToTrade(amountToApprove)
+  const handleApprovalError = useHandleApprovalError(amountToApprove.currency.symbol)
 
   const handlePermit = useCallback(async () => {
     if (isPermitSupported && onApproveConfirm) {
       const isPermitSigned = await generatePermitToTrade()
 
-      // Only short-circuit as a "permit flow" when the permit actually signed.
-      // generatePermitToTrade() returns false on ANY permit failure — a swallowed
-      // error in generatePermitHook (rpc nonce read, token eip-2612 quirk), or the
-      // user rejecting the signature. Previously this returned true unconditionally,
-      // so a failed/rejected permit made the "Approve and Swap" CTA do nothing at
-      // all (no approve tx, no order, no error) — the reported Unichain symptom.
-      // On failure, fall through to the on-chain approve + swap below.
+      // Technical permit failures can fall back to approval; cancellation throws.
       if (isPermitSigned) {
         onApproveConfirm(null)
         return true
@@ -70,9 +66,10 @@ export function useApproveAndSwap({
       return
     }
 
-    const isPermitFlow = await handlePermit()
-
-    if (isPermitFlow) {
+    try {
+      if (await handlePermit()) return
+    } catch (error) {
+      handleApprovalError(error)
       return
     }
 
@@ -85,6 +82,7 @@ export function useApproveAndSwap({
     })
   }, [
     handlePermit,
+    handleApprovalError,
     amountToApprove,
     handleApprove,
     onApproveConfirm,
