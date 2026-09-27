@@ -24,6 +24,7 @@ export function PermitHookApp({ context }: HookDappProps) {
   const hookToEdit = context.hookToEdit
   const isPreHook = context.isPreHook
   const [tokenAddress, setTokenAddress] = useState<string>(hookToEdit?.hook.target || '')
+  const [permitError, setPermitError] = useState<string>()
   const isPermitEnabled = useIsPermitEnabled()
   const [spenderAddress, setSpenderAddress] = useState<string>(
     recoverSpenderFromCalldata(hookToEdit?.hook.callData) || '',
@@ -34,11 +35,14 @@ export function PermitHookApp({ context }: HookDappProps) {
 
   const onButtonClick = useCallback(async () => {
     if (!permitInfo) return
+    setPermitError(undefined)
     const hook = await generatePermitHook({
       inputToken: { address: token?.address || '', name: token?.name || '' },
       account: context.account,
       permitInfo,
       customSpender: spenderAddress,
+    }).catch(() => {
+      setPermitError(t`Permit signature was not completed. No hook was added.`)
     })
     if (!hook) return
 
@@ -85,6 +89,7 @@ export function PermitHookApp({ context }: HookDappProps) {
       <ButtonPrimary onClick={onButtonClick} disabled={buttonProps.disabled}>
         {buttonProps.message}
       </ButtonPrimary>
+      {permitError && <div role="alert">{permitError}</div>}
     </Wrapper>
   )
 }

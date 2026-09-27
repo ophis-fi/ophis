@@ -529,7 +529,7 @@ describe('useApproveAndSwap', () => {
       expect(mockOnApproveConfirm).not.toHaveBeenCalled()
     })
 
-    it('should propagate errors from generatePermitToTrade', async () => {
+    it('should display permit errors without requesting an approval', async () => {
       mockUseTokenSupportsPermit.mockReturnValue(true)
       const mockError = new Error('Permit generation failed')
       mockGeneratePermitToTrade.mockRejectedValue(mockError)
@@ -545,8 +545,9 @@ describe('useApproveAndSwap', () => {
         { wrapper: LinguiWrapper },
       )
 
-      await expect(result.current()).rejects.toThrow('Permit generation failed')
+      await expect(result.current()).resolves.toBeUndefined()
 
+      expect(mockUpdateTradeApproveState).toHaveBeenCalledWith({ error: 'Permit generation failed' })
       expect(mockGeneratePermitToTrade).toHaveBeenCalled()
       expect(mockHandleApprove).not.toHaveBeenCalled()
       expect(mockOnApproveConfirm).not.toHaveBeenCalled()

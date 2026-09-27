@@ -1,5 +1,8 @@
 import { PERMIT_HOOK_DAPP_ID } from '@cowprotocol/hook-dapp-lib'
+import { ErrorCode } from '@ethersproject/logger'
 import { JsonRpcProvider } from '@ethersproject/providers'
+
+import { UserRejectedRequestError } from 'viem'
 
 import { DEFAULT_PERMIT_GAS_LIMIT, DEFAULT_PERMIT_VALUE, PERMIT_SIGNER } from '../const'
 import { PermitHookData, PermitHookParams } from '../types'
@@ -19,7 +22,20 @@ export async function generatePermitHook(params: PermitHookParams): Promise<Perm
   }
 
   const request = generatePermitHookRaw(params)
-    .catch((e) => {
+    .catch((e: unknown) => {
+      // Cancellation must not turn into a request for an on-chain approval.
+      // Some WalletConnect wallets omit the code. Do not classify generic -32000 RPC failures as cancellation.
+      const message = e && typeof e === 'object' && 'message' in e ? e.message : e
+      if (
+        (e &&
+          typeof e === 'object' &&
+          'code' in e &&
+          [UserRejectedRequestError.code, ErrorCode.ACTION_REJECTED].some((code) => code === e.code)) ||
+        (typeof message === 'string' &&
+          /user (?:rejected|denied)|rejected transaction|transaction was rejected/i.test(message))
+      ) {
+        throw e
+      }
       console.debug(`[generatePermitHook] cached request failed`, e)
       return undefined
     })
