@@ -21,7 +21,7 @@ Both packages register one capability (GOAT names the tool `ophis_swap`; AgentKi
 1. quotes the trade against the Ophis orderbook for the wallet's chain,
 2. applies the slippage cap (default 50 bps) to derive a minimum buy amount, which the order carries as a hard limit price,
 3. signs the order as EIP-712 typed data with the agent's own wallet,
-4. approves the vault relayer of the chain's settlement deployment once (a standard ERC-20 allowance),
+4. ensures sufficient ERC-20 allowance for the chain's vault relayer (an approval transaction when needed),
 5. submits the order and returns the order UID plus an explorer URL.
 
 From there it is Ophis's normal intent flow: solvers compete to fill the order, and settlement lands in a batch auction at a uniform clearing price. The order is not exposed as a public-mempool router swap; [MEV protection](/blog/mev-protection-batch-auctions/) is built into the settlement model. On every supported chain, Ophis retains its published capped share of reference-quote improvement; hosted chains additionally apply CoW Protocol's upstream fees. ERC-20 orders are [gasless](/blog/gasless-swaps-how-intents-work/) after any required approval.
@@ -33,7 +33,7 @@ The packages also resolve the per-chain orderbook and EIP-712 settlement domain 
 GOAT surfaces one plugin through its adapters for Vercel AI, LangChain, Mastra, Eliza, or MCP.
 
 ```sh
-npm i @ophis/plugin-goat @goat-sdk/core @goat-sdk/wallet-evm @goat-sdk/wallet-viem
+npm i @ophis/plugin-goat @goat-sdk/core @goat-sdk/wallet-evm @goat-sdk/wallet-viem @goat-sdk/adapter-vercel-ai viem
 ```
 
 Add the plugin next to your wallet (the example uses the Vercel AI adapter):
