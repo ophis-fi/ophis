@@ -14,7 +14,7 @@
  *
  * Successful snapshots are stored in the Cache API under a canonical key (a
  * Cache-Control header alone does not populate the Pages edge cache for a
- * generated response), so one RPC batch serves every client for the cache
+ * generated response), so one RPC snapshot serves every client for the cache
  * window instead of every browser refresh fanning out 39 eth_calls.
  *
  * Reference: https://docs.base.org/base-chain/asset-issuance/tokenized-stocks-on-base
@@ -23,9 +23,10 @@
 const CHAIN_ID = 8453;
 const LIST_PATH = '/token-lists/coinbase-tokenized-stocks.json';
 const BASE_RPCS = [
-  'https://base-rpc.publicnode.com',
-  'https://mainnet.base.org',
-  'https://base.drpc.org',
+  { url: 'https://base-rpc.publicnode.com' },
+  // Public fallbacks reject oversized batches; prefer dRPC before Base's rate-limited RPC.
+  { url: 'https://base.drpc.org', maxBatchSize: 3 },
+  { url: 'https://mainnet.base.org', maxBatchSize: 10 },
 ];
 // No stale-while-revalidate: this payload is presented as contract-verified pause and
 // multiplier state, so a failed revalidation must surface as a 502 (which the panel shows as
@@ -237,14 +238,18 @@ async function readStockList(env: Env, request: Request): Promise<StockListEntry
 async function callBatch(
   rpc: string,
   batch: readonly JsonRpcRequest[],
+  signal: AbortSignal,
 ): Promise<Map<number, unknown>> {
   const response = await fetch(rpc, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
     body: JSON.stringify(batch),
-    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
+    signal,
   });
-  if (!response.ok) throw new Error(`Base RPC returned ${response.status}`);
+  if (!response.ok) {
+    void response.body?.cancel().catch(() => {});
+    throw new Error(`Base RPC returned HTTP ${response.status}`);
+  }
   return rpcResultsById(
     JSON.parse(await readLimitedBody(response, MAX_RPC_RESPONSE_BYTES)),
     batch.map((request) => request.id),
@@ -254,11 +259,30 @@ async function callBatch(
 async function readAssets(entries: readonly StockListEntry[]): Promise<StockAsset[]> {
   const batch = buildAssetBatch(entries);
   let lastError: unknown;
-  for (const rpc of BASE_RPCS) {
+  for (const { url, maxBatchSize } of BASE_RPCS) {
     try {
-      return decodeStockAssets(entries, await callBatch(rpc, batch));
+      // One deadline per provider, not four seconds for every chunk.
+      const signal = AbortSignal.timeout(RPC_TIMEOUT_MS);
+      const size = maxBatchSize ?? batch.length;
+      const results = new Map<number, unknown>();
+      for (let offset = 0; offset < batch.length; offset += size) {
+        const chunk = await callBatch(url, batch.slice(offset, offset + size), signal);
+        for (const [id, result] of chunk) results.set(id, result);
+      }
+      // Never mix partial snapshots from different providers or return partial assets.
+      return decodeStockAssets(entries, results);
     } catch (error) {
       lastError = error;
+      console.warn(JSON.stringify({
+        event: 'base-stock-rpc-failed',
+        provider: new URL(url).hostname,
+        // JSON parser errors can quote response bodies. Do not log those or stack traces.
+        reason: error instanceof SyntaxError
+          ? 'Invalid RPC JSON'
+          : error instanceof Error
+            ? error.message.replace(/\s+/g, ' ').slice(0, 200)
+            : 'Unknown RPC error',
+      }));
     }
   }
   throw lastError ?? new Error('No Base RPC answered');

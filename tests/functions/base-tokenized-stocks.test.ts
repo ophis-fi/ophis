@@ -6,9 +6,11 @@ import {
   buildAssetBatch,
   decodeStockAssets,
   formatWad,
+  onRequest,
   parseStockList,
   readLimitedBody,
   rpcResultsById,
+  type JsonRpcRequest,
 } from '../../functions/api/base/tokenized-stocks.ts';
 
 test('readLimitedBody caps how much of a remote RPC body is buffered before parsing', async () => {
@@ -269,4 +271,88 @@ test('rpcResultsById fails closed on errors, missing ids, and duplicates', () =>
   assert.throws(() => rpcResultsById([{ id: 1, result: '0x' }], [1, 2]));
   assert.throws(() => rpcResultsById([...ok, { id: 1, result: '0x03' }], [1, 2]));
   assert.throws(() => rpcResultsById({ id: 1, result: '0x' }, [1]));
+});
+
+const shipped = JSON.parse(readFileSync(LIST_PATH, 'utf8'));
+const rpcReply = (batch: JsonRpcRequest[], multiplier = WAD) => Response.json(
+  batch.map(({ id }) => ({
+    jsonrpc: '2.0', id,
+    result: id % 3 === 1 ? uintResult(multiplier) :
+      id % 3 === 2 ? enumArrayResult([]) : uintResult(1n),
+  })).reverse(),
+);
+
+async function stockRequest(): Promise<Response> {
+  const pending: Promise<unknown>[] = [];
+  const response = await onRequest({
+    request: new Request('https://swap.ophis.fi/api/base/tokenized-stocks'),
+    env: { ASSETS: { fetch: async () => Response.json(shipped) } },
+    waitUntil: (promise: Promise<unknown>) => { pending.push(promise); },
+  } as Parameters<typeof onRequest>[0]);
+  await Promise.all(pending);
+  return response;
+}
+
+test('the handler recovers through three-call dRPC batches with one provider deadline', async (t) => {
+  const warnings = t.mock.method(console, 'warn', () => {});
+  const ids: number[] = [];
+  const signals = new Set<AbortSignal | null | undefined>();
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    if (url.includes('publicnode')) return new Response('upstream failure', { status: 403 });
+    assert.equal(url, 'https://base.drpc.org');
+    const batch: JsonRpcRequest[] = JSON.parse(init.body as string);
+    assert.equal(batch.length, 3);
+    ids.push(...batch.map(({ id }) => id));
+    signals.add(init.signal);
+    return rpcReply(batch);
+  });
+  const response = await stockRequest();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.chainId, 8453);
+  assert.equal(payload.assets.length, 13);
+  assert.deepEqual(ids, Array.from({ length: 39 }, (_, i) => i + 1));
+  assert.equal(signals.size, 1);
+  assert.ok([...signals][0] instanceof AbortSignal);
+  assert.deepEqual(JSON.parse(warnings.mock.calls[0].arguments[0]), {
+    event: 'base-stock-rpc-failed', provider: 'base-rpc.publicnode.com', reason: 'Base RPC returned HTTP 403',
+  });
+});
+
+test('a failed middle chunk discards that provider snapshot before the ten-call fallback', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const sizes: number[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    const batch: JsonRpcRequest[] = JSON.parse(init.body as string);
+    if (url.includes('publicnode')) return new Response(null, { status: 503 });
+    if (url.includes('drpc')) {
+      return batch[0].id === 1 ? rpcReply(batch, 2n * WAD) : Response.json([]);
+    }
+    assert.equal(url, 'https://mainnet.base.org');
+    sizes.push(batch.length);
+    assert.ok(batch.length <= 10);
+    return rpcReply(batch);
+  });
+  const response = await stockRequest();
+  assert.equal(response.status, 200);
+  assert.deepEqual(sizes, [10, 10, 10, 9]);
+  const payload = await response.json();
+  assert.equal(payload.assets.length, 13);
+  assert.ok(payload.assets.every((asset: { multiplier: string }) => asset.multiplier === '1.000000000000000000'));
+});
+
+test('all-provider failure stays uncached and logs no upstream body or request details', async (t) => {
+  const warnings = t.mock.method(console, 'warn', () => {});
+  t.mock.method(globalThis, 'fetch', async () => new Response('PRIVATE_UPSTREAM_BODY'));
+  const response = await stockRequest();
+  assert.equal(response.status, 502);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await response.json(), { error: 'Base RPC unavailable for tokenized stock metadata' });
+  assert.equal(warnings.mock.calls.length, 3);
+  for (const { arguments: args } of warnings.mock.calls) {
+    const log = JSON.parse(args[0]);
+    assert.deepEqual(Object.keys(log), ['event', 'provider', 'reason']);
+    assert.equal(log.reason, 'Invalid RPC JSON');
+    assert.ok(!args[0].includes('PRIVATE_UPSTREAM_BODY'));
+  }
 });
