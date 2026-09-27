@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
-  buildAssetBatch,
+  buildAssetCall,
+  decodeAggregate,
   decodeStockAssets,
   formatWad,
   onRequest,
   parseStockList,
   readLimitedBody,
-  rpcResultsById,
   type JsonRpcRequest,
 } from '../../functions/api/base/tokenized-stocks.ts';
 
@@ -97,26 +98,17 @@ test('parseStockList keeps only well-formed Base entries and fails closed on a m
   assert.throws(() => parseStockList(null), /malformed/i);
 });
 
-test('buildAssetBatch asks each token for multiplier, pausedFeatures and totalSupply with stable ids', () => {
-  const batch = buildAssetBatch([
+test('buildAssetCall matches independently encoded cast calldata for the three stock views', () => {
+  const call = buildAssetCall([
     { address: AAPLC, symbol: 'AAPLc', name: 'Apple Inc.' },
-    { address: NVDAC, symbol: 'NVDAc', name: 'NVIDIA Corporation' },
   ]);
-
-  assert.equal(batch.length, 6);
-  assert.deepEqual(
-    batch.map((request) => request.id),
-    [1, 2, 3, 4, 5, 6],
-  );
-  assert.deepEqual(batch[0], {
-    jsonrpc: '2.0',
-    id: 1,
-    method: 'eth_call',
-    params: [{ to: AAPLC, data: '0x1b3ed722' }, 'latest'],
-  });
-  assert.equal(batch[1].params[0].data, '0xde9997e3');
-  assert.equal(batch[2].params[0].data, '0x18160ddd');
-  assert.equal(batch[3].params[0].to, NVDAC);
+  assert.equal(call.id, 1);
+  assert.equal(call.method, 'eth_call');
+  assert.equal(call.params[1], 'latest');
+  assert.equal(call.params[0].to.toLowerCase(), '0xca11bde05977b3631167028862be2a173976ca11');
+  // sha256 of `cast calldata 'aggregate((address,bytes)[])'` with AAPLC + the three selectors.
+  assert.equal(createHash('sha256').update(call.params[0].data).digest('hex'),
+    '9bf7979f930823f5c2a0a765035c9cef3cc2140c3b4fbd88d265bf73d160394c');
 });
 
 test('formatWad renders an 18-decimal fixed-point word as a decimal string', () => {
@@ -208,19 +200,6 @@ test('the fail-closed decoders bind on every shape check, not just the regex', (
       ),
     /array/i,
   );
-  // an id the batch never asked for
-  assert.throws(
-    () =>
-      rpcResultsById(
-        [
-          { id: 1, result: '0x' },
-          { id: 2, result: '0x' },
-          { id: 3, result: '0x' },
-        ],
-        [1, 2],
-      ),
-    /invalid response/i,
-  );
   // more tokens than the function is willing to fan out to
   assert.throws(
     () =>
@@ -256,31 +235,41 @@ test('decodeStockAssets rejects a zero multiplier or a malformed word instead of
   assert.throws(() => decodeStockAssets(entries, new Map([...good(), [3, undefined]])), /word/i);
 });
 
-test('rpcResultsById fails closed on errors, missing ids, and duplicates', () => {
-  const ok = [
-    { jsonrpc: '2.0', id: 2, result: '0x01' },
-    { jsonrpc: '2.0', id: 1, result: '0x02' },
-  ];
-  const byId = rpcResultsById(ok, [1, 2]);
-  assert.equal(byId.get(1), '0x02');
-  assert.equal(byId.get(2), '0x01');
-
-  assert.throws(() =>
-    rpcResultsById([{ id: 1, error: { code: 3, message: 'execution reverted' } }], [1]),
-  );
-  assert.throws(() => rpcResultsById([{ id: 1, result: '0x' }], [1, 2]));
-  assert.throws(() => rpcResultsById([...ok, { id: 1, result: '0x03' }], [1, 2]));
-  assert.throws(() => rpcResultsById({ id: 1, result: '0x' }, [1]));
-});
-
 const shipped = JSON.parse(readFileSync(LIST_PATH, 'utf8'));
-const rpcReply = (batch: JsonRpcRequest[], multiplier = WAD) => Response.json(
-  batch.map(({ id }) => ({
-    jsonrpc: '2.0', id,
-    result: id % 3 === 1 ? uintResult(multiplier) :
-      id % 3 === 2 ? enumArrayResult([]) : uintResult(1n),
-  })).reverse(),
-);
+const aggregateReply = (values: string[]) => {
+  let offset = values.length * 32;
+  const offsets = values.map((value) => {
+    const current = uintWord(BigInt(offset));
+    offset += 32 + (value.length - 2) / 2;
+    return current;
+  });
+  return { jsonrpc: '2.0', id: 1, result: '0x' +
+    [uintWord(123n), uintWord(64n), uintWord(BigInt(values.length)), ...offsets,
+      ...values.map((value) => uintWord(BigInt((value.length - 2) / 2)) + value.slice(2))].join(''),
+  };
+};
+const stockValues = (multiplier = WAD, count = 13) => Array.from({ length: count }, () =>
+  [uintResult(multiplier), enumArrayResult([]), uintResult(1n)]).flat();
+
+test('aggregate decoding rejects missing, overlapping, oversized, trailing and malformed values', () => {
+  const values = stockValues();
+  const ok = aggregateReply(values);
+  assert.deepEqual([...decodeAggregate(ok, 39).values()], values);
+  const replaceWord = (index: number, value: bigint) => ({ ...ok, result:
+    ok.result.slice(0, 2 + index * 64) + uintWord(value) + ok.result.slice(2 + (index + 1) * 64),
+  });
+  for (const bad of [null, [], { ...ok, id: 2 }, { ...ok, error: { code: 3 } },
+    { ...ok, result: '0xz' }, { ...ok, result: ok.result.slice(0, -64) },
+    { ...ok, result: ok.result + uintWord(0n) },
+    replaceWord(1, 32n), replaceWord(2, 38n), replaceWord(3, 0n),
+    replaceWord(4, 39n * 32n), replaceWord(42, 0n), replaceWord(42, 31n),
+    replaceWord(42, 2n ** 255n),
+  ]) assert.throws(() => decodeAggregate(bad, 39));
+  for (let count = 1; count <= 64; count++) {
+    const sample = stockValues(WAD, count);
+    assert.deepEqual([...decodeAggregate(aggregateReply(sample), count * 3).values()], sample);
+  }
+});
 
 async function stockRequest(): Promise<Response> {
   const pending: Promise<unknown>[] = [];
@@ -293,49 +282,40 @@ async function stockRequest(): Promise<Response> {
   return response;
 }
 
-test('the handler recovers through three-call dRPC batches with one provider deadline', async (t) => {
+test('the handler recovers via a single dRPC call for all 13 stocks', async (t) => {
   const warnings = t.mock.method(console, 'warn', () => {});
-  const ids: number[] = [];
-  const signals = new Set<AbortSignal | null | undefined>();
-  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+  const requests = t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
     if (url.includes('publicnode')) return new Response('upstream failure', { status: 403 });
     assert.equal(url, 'https://base.drpc.org');
-    const batch: JsonRpcRequest[] = JSON.parse(init.body as string);
-    assert.equal(batch.length, 3);
-    ids.push(...batch.map(({ id }) => id));
-    signals.add(init.signal);
-    return rpcReply(batch);
+    const call: JsonRpcRequest = JSON.parse(init.body as string);
+    assert.deepEqual(call, buildAssetCall(parseStockList(shipped)));
+    assert.ok(init.signal instanceof AbortSignal);
+    return Response.json(aggregateReply(stockValues()));
   });
   const response = await stockRequest();
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.equal(payload.chainId, 8453);
   assert.equal(payload.assets.length, 13);
-  assert.deepEqual(ids, Array.from({ length: 39 }, (_, i) => i + 1));
-  assert.equal(signals.size, 1);
-  assert.ok([...signals][0] instanceof AbortSignal);
+  assert.equal(requests.mock.calls.length, 2);
   assert.deepEqual(JSON.parse(warnings.mock.calls[0].arguments[0]), {
     event: 'base-stock-rpc-failed', provider: 'base-rpc.publicnode.com', reason: 'Base RPC returned HTTP 403',
   });
 });
 
-test('a failed middle chunk discards that provider snapshot before the ten-call fallback', async (t) => {
+test('a partial aggregate is discarded before the final provider fallback', async (t) => {
   t.mock.method(console, 'warn', () => {});
-  const sizes: number[] = [];
-  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
-    const batch: JsonRpcRequest[] = JSON.parse(init.body as string);
+  const requests = t.mock.method(globalThis, 'fetch', async (url: string) => {
     if (url.includes('publicnode')) return new Response(null, { status: 503 });
     if (url.includes('drpc')) {
-      return batch[0].id === 1 ? rpcReply(batch, 2n * WAD) : Response.json([]);
+      return Response.json(aggregateReply(stockValues(2n * WAD).slice(0, -1)));
     }
     assert.equal(url, 'https://mainnet.base.org');
-    sizes.push(batch.length);
-    assert.ok(batch.length <= 10);
-    return rpcReply(batch);
+    return Response.json(aggregateReply(stockValues()));
   });
   const response = await stockRequest();
   assert.equal(response.status, 200);
-  assert.deepEqual(sizes, [10, 10, 10, 9]);
+  assert.equal(requests.mock.calls.length, 3);
   const payload = await response.json();
   assert.equal(payload.assets.length, 13);
   assert.ok(payload.assets.every((asset: { multiplier: string }) => asset.multiplier === '1.000000000000000000'));

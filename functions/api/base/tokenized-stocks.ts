@@ -23,11 +23,12 @@
 const CHAIN_ID = 8453;
 const LIST_PATH = '/token-lists/coinbase-tokenized-stocks.json';
 const BASE_RPCS = [
-  { url: 'https://base-rpc.publicnode.com' },
-  // Public fallbacks reject oversized batches; prefer dRPC before Base's rate-limited RPC.
-  { url: 'https://base.drpc.org', maxBatchSize: 3 },
-  { url: 'https://mainnet.base.org', maxBatchSize: 10 },
+  'https://base-rpc.publicnode.com',
+  'https://base.drpc.org',
+  'https://mainnet.base.org',
 ];
+// Official Base deployment: https://github.com/mds1/multicall3/blob/main/deployments.json
+const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11';
 // No stale-while-revalidate: this payload is presented as contract-verified pause and
 // multiplier state, so a failed revalidation must surface as a 502 (which the panel shows as
 // "unavailable") rather than an hour of an old snapshot served as a fresh 200.
@@ -69,12 +70,6 @@ export interface JsonRpcRequest {
   id: number;
   method: 'eth_call';
   params: [{ to: string; data: string }, 'latest'];
-}
-
-interface JsonRpcResponse {
-  id?: unknown;
-  result?: unknown;
-  error?: unknown;
 }
 
 interface Env {
@@ -125,38 +120,52 @@ export function parseStockList(raw: unknown): StockListEntry[] {
   });
 }
 
-export function buildAssetBatch(entries: readonly StockListEntry[]): JsonRpcRequest[] {
-  return entries.flatMap((entry, index) =>
-    SELECTORS.map(
-      (data, offset): JsonRpcRequest => ({
-        jsonrpc: '2.0',
-        id: index * CALLS_PER_TOKEN + offset + 1,
-        method: 'eth_call',
-        params: [{ to: entry.address, data }, 'latest'],
-      }),
-    ),
-  );
+const abiWord = (value: number): string => value.toString(16).padStart(64, '0');
+
+export function buildAssetCall(entries: readonly StockListEntry[]): JsonRpcRequest {
+  // aggregate((address,bytes)[]): each no-argument view has exactly four calldata bytes.
+  const calls = entries.flatMap(({ address }) => SELECTORS.map((selector) =>
+    address.slice(2).toLowerCase().padStart(64, '0') + abiWord(64) + abiWord(4) +
+    selector.slice(2).padEnd(64, '0'),
+  ));
+  const offsets = calls.map((_, index) => abiWord(calls.length * 32 + index * 128));
+  return {
+    jsonrpc: '2.0', id: 1, method: 'eth_call',
+    params: [{
+      to: MULTICALL3,
+      data: '0x252dba42' + abiWord(32) + abiWord(calls.length) + offsets.join('') + calls.join(''),
+    }, 'latest'],
+  };
 }
 
-export function rpcResultsById(raw: unknown, expectedIds: readonly number[]): Map<number, unknown> {
-  if (!Array.isArray(raw)) throw new Error('Base RPC returned a malformed batch');
-  const byId = new Map<number, unknown>();
-  for (const item of raw as JsonRpcResponse[]) {
-    if (
-      typeof item?.id !== 'number' ||
-      !expectedIds.includes(item.id) ||
-      item.error !== undefined
-    ) {
-      throw new Error('Base RPC returned an invalid response');
-    }
-    if (item.result === undefined || byId.has(item.id))
-      throw new Error('Base RPC returned an incomplete response');
-    byId.set(item.id, item.result);
+export function decodeAggregate(raw: unknown, count: number): Map<number, unknown> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+    throw new Error('Base RPC returned an invalid response');
+  const { id, result, error } = raw as { id?: unknown; result?: unknown; error?: unknown };
+  if (id !== 1 || error !== undefined || typeof result !== 'string' ||
+      !/^0x(?:[0-9a-fA-F]{64}){3,}$/.test(result))
+    throw new Error('Base RPC returned an invalid response');
+
+  // (uint256 blockNumber, bytes[] returnData). These views return whole ABI words;
+  // require canonical, contiguous offsets and exact lengths, not a general ABI decoder.
+  const words = result.slice(2).match(/.{64}/g)!;
+  const word = (index: number): bigint => uintWord(`0x${words[index]}`);
+  if (word(1) !== 64n || word(2) !== BigInt(count))
+    throw new Error('Base RPC returned an invalid aggregate');
+  const results = new Map<number, unknown>();
+  let cursor = 3 + count;
+  for (let index = 0; index < count; index++) {
+    if (word(3 + index) !== BigInt((cursor - 3) * 32))
+      throw new Error('Base RPC returned an invalid aggregate offset');
+    const bytes = word(cursor++);
+    if (bytes === 0n || bytes % 32n !== 0n || bytes > BigInt((words.length - cursor) * 32))
+      throw new Error('Base RPC returned an invalid aggregate length');
+    const end = cursor + Number(bytes / 32n);
+    results.set(index + 1, `0x${words.slice(cursor, end).join('')}`);
+    cursor = end;
   }
-  if (byId.size !== expectedIds.length || expectedIds.some((id) => !byId.has(id))) {
-    throw new Error('Base RPC returned an incomplete response');
-  }
-  return byId;
+  if (cursor !== words.length) throw new Error('Base RPC returned trailing aggregate data');
+  return results;
 }
 
 function uintWord(value: unknown): bigint {
@@ -235,40 +244,34 @@ async function readStockList(env: Env, request: Request): Promise<StockListEntry
   return parseStockList(JSON.parse(await readLimitedBody(response, MAX_LIST_BYTES)));
 }
 
-async function callBatch(
+async function callAggregate(
   rpc: string,
-  batch: readonly JsonRpcRequest[],
-  signal: AbortSignal,
+  call: JsonRpcRequest,
+  count: number,
 ): Promise<Map<number, unknown>> {
   const response = await fetch(rpc, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify(batch),
-    signal,
+    body: JSON.stringify(call),
+    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
   });
   if (!response.ok) {
     void response.body?.cancel().catch(() => {});
     throw new Error(`Base RPC returned HTTP ${response.status}`);
   }
-  return rpcResultsById(
+  return decodeAggregate(
     JSON.parse(await readLimitedBody(response, MAX_RPC_RESPONSE_BYTES)),
-    batch.map((request) => request.id),
+    count,
   );
 }
 
 async function readAssets(entries: readonly StockListEntry[]): Promise<StockAsset[]> {
-  const batch = buildAssetBatch(entries);
+  // One eth_call gives a same-block snapshot without public RPC batch limits or 39 requests.
+  const call = buildAssetCall(entries);
   let lastError: unknown;
-  for (const { url, maxBatchSize } of BASE_RPCS) {
+  for (const url of BASE_RPCS) {
     try {
-      // One deadline per provider, not four seconds for every chunk.
-      const signal = AbortSignal.timeout(RPC_TIMEOUT_MS);
-      const size = maxBatchSize ?? batch.length;
-      const results = new Map<number, unknown>();
-      for (let offset = 0; offset < batch.length; offset += size) {
-        const chunk = await callBatch(url, batch.slice(offset, offset + size), signal);
-        for (const [id, result] of chunk) results.set(id, result);
-      }
+      const results = await callAggregate(url, call, entries.length * CALLS_PER_TOKEN);
       // Never mix partial snapshots from different providers or return partial assets.
       return decodeStockAssets(entries, results);
     } catch (error) {
