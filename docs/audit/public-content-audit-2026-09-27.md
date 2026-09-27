@@ -31,8 +31,8 @@ audit, legal opinion or certification by Trail of Bits, Pashov or Semgrep.
 | Recent networks, venues and asset features were missing | Added [Networks & assets](../../apps/docs-ophis/docs/networks-assets.md), covering Arc routing lanes, Ophis operator identity, Circle restrictions, staged WBTC/cirBTC conversion, bStocks/Reality attribution and the separate OTC flow. Linked it from both sites and discovery text. |
 | Confidential and institutional features needed a clear release boundary | Distinguished keyed NEAR basic confidentiality and echo validation from a planned public selector. AML/SHIELD remains planned institutional, customer-gated work, not a released universal screening service. |
 | Gaslessness, custody and MEV claims were overbroad | Qualified standard ERC-20 settlement versus approvals, native deposits, bridges, vaults and OTC. Removed universal attack-immunity and guaranteed-price claims. |
-| Agent examples and discovery instructions had drifted | Corrected fee caps, tool counts, skill install layout, parser-versus-executor scope, soft-cancellation races and partial-fill handling. Updated skill manifest digests. |
-| Browser-agent and example swap links could select the wrong route | Fixed WebMCP to validate supported slugs and produce numeric chain IDs; corrected the Optimism code example. Added a dependency-free regression check. |
+| Agent examples and discovery instructions had drifted | Corrected fee caps, tool counts, dependencies, skill install layout, parser-versus-executor scope, advisory entity offsets, soft-cancellation races and partial-fill handling. Updated skill manifest digests. |
+| Browser-agent and example swap links could select the wrong route | Fixed WebMCP to derive supported slugs and numeric chain IDs from the canonical chain config; corrected the Optimism code example. Added stdlib and browser regression checks. |
 | Comparison pages and old posts contained unsupported current claims | Replaced stale competitive rankings with sourced capability distinctions; qualified launch token-supply snapshots and current liquidity/eligibility requirements. Updated affected page dates, FAQ/schema copy and generated LLM documentation. |
 
 ## Arc fee evidence
@@ -53,7 +53,7 @@ audit, legal opinion or certification by Trail of Bits, Pashov or Semgrep.
 - Landing: `pnpm build` and `pnpm typecheck` passed; 57 existing unit checks,
   the new WebMCP regression, 15 CSP tests, skill digests, chain-count validation
   and 173 FAQ answers matching visible text across 35 pages.
-- Landing Playwright suite: **92 passed**, using this checkout's isolated preview
+- Landing Playwright suite: **93 passed**, using this checkout's isolated preview
   on port 4397, not the unrelated development server on port 4321.
 - Docs browser smoke: **10 passed** across five pages at desktop and mobile sizes;
   visible headings, feature boundaries, no body overflow or uncaught page errors.
