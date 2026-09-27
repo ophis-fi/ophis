@@ -23,13 +23,13 @@ Ophis went live on Arc on September 24, 2026, eight days after Arc's public main
 
 ### Circle's blockchain, with Ophis protections
 
-Ophis is an intent-based DEX aggregator. You set the trade you want, and specialized trading services called [solvers](https://ophis.fi/learn/what-is-a-solver/) compete to fill it through Uniswap pools and other on-chain liquidity on Arc. You get one quote instead of checking venues one by one.
+Ophis is an intent-based DEX aggregator. You set the trade you want, and Ophis's [solver](https://ophis.fi/learn/what-is-a-solver/) checks several routing paths through Uniswap pools and other on-chain liquidity on Arc. Ophis currently operates this solver itself. You get one quote instead of checking venues one by one.
 
 Every order includes the minimum amount you agree to receive, and it cannot settle below that. Orders are also MEV-protected: they settle in batch auctions designed to reduce exposure to front-running and sandwich attacks. Here is [how batch auctions work](https://ophis.fi/blog/mev-protection-batch-auctions/).
 
 ### What does an Arc swap cost?
 
-You sign an order instead of paying Arc gas to submit the swap yourself. A solver pays the network gas to settle it; the quoted trade accounts for settlement costs. Ophis also charges a 0.01% base fee plus a capped share of any price improvement. If a token needs approval first, that separate wallet transaction costs USDC gas on Arc. The [gasless swaps guide](https://ophis.fi/blog/gasless-swaps-how-intents-work/) explains the distinction.
+You sign an order instead of paying Arc gas to submit the swap yourself. Ophis's solver pays the network gas to settle it; the quoted trade accounts for settlement costs. As of September 27, 2026, Ophis charges a 0.01% volume fee on Arc, with no price-improvement fee in the running release. Check the current quote and signed fee details before trading; the [fee documentation](https://docs.ophis.fi/fees/) explains Arc's release exception. If a token needs approval first, that separate wallet transaction costs USDC gas on Arc. The [gasless swaps guide](https://ophis.fi/blog/gasless-swaps-how-intents-work/) explains the distinction.
 
 For one real example, the first Ophis swap on Arc, on September 24, 2026, sold 2 USDC for 1.740907 EURC. The solver's on-chain transaction used about 0.0066 USDC in network gas. That figure is the network gas for this transaction, not the total cost of every swap. [See the transaction on Arc's explorer](https://explorer.arc.io/tx/0xba2f98b61df1c265f1f3d5e795293085523d2146c664bd2a5e8670c137e0685e).
 
@@ -93,7 +93,7 @@ Ophis also lists Circle-based bridge routes for EURC between Ethereum, Base and 
 4. **Choose your tokens and amount.**
 5. **Review the quote.** You see the expected amount, the minimum you will receive and the fee.
 6. **Approve if needed, then sign.** If your token allowance is insufficient, approve it with an on-chain wallet transaction paid in USDC on Arc. Then sign the swap order; signing the order itself does not use gas.
-7. **Your order settles.** Solvers compete to fill it, and you can follow your Arc trades in the [Ophis explorer](https://explorer.ophis.fi/arc).
+7. **Your order settles.** Ophis's solver checks available routing paths to fill it, and you can follow your Arc trades in the [Ophis explorer](https://explorer.ophis.fi/arc).
 
 ## How to bridge USDC to Arc
 
@@ -125,7 +125,7 @@ In the Ophis swap box, choose USDC on Ethereum, Base, Arbitrum, Optimism or Unic
 
 ### How much does it cost to swap on Arc with Ophis?
 
-Ophis charges a 0.01% base fee plus a capped share of price improvement over its reference quote. The quote reflects settlement costs; a token approval, if needed, uses USDC gas separately. See [current Ophis pricing](https://ophis.fi/pricing/).
+As of September 27, 2026, Ophis charges a 0.01% volume fee on Arc and no price-improvement fee in the running release. The quote reflects settlement costs; a token approval, if needed, uses USDC gas separately. Check the current quote and signed fee details, and see the [Arc fee documentation](https://docs.ophis.fi/fees/).
 
 ### What is Arc's chain ID?
 
