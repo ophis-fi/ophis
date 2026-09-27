@@ -5,9 +5,9 @@ How to stand up a gated Phase-B vault-curator trial on a new chain: deploy the
 USDC to WETH rebalance through Ophis. This mirrors the Unichain trial (R2) and
 assumes the module + factory are already on `main`.
 
-The module gates CoW presign so a compromised curator key cannot drain the
-Safe: it pins receiver == Safe, a token allowlist, a Chainlink oracle floor,
-the Ophis partner-fee appData, and a rolling USD turnover cap. The curator is a
+The module limits curator authority through a pinned receiver, token allowlist,
+oracle check at presign and refilling USD turnover bucket, not a guarantee
+against loss. See residual risks below. The curator is a
 DIRECT caller (a dedicated EOA / MPC / multisig) that may call ONLY
 `rebalance` / `cancel` — never a Safe owner and never an enabled Safe module
 (the constructor + factory reject both).
