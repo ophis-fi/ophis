@@ -23,10 +23,13 @@ skills/
 Drop the folder wherever your agent looks for skills. For Claude Code:
 
 ```bash
-mkdir -p ~/.claude/skills/ophis
-curl -sS https://ophis.fi/.well-known/agent-skills/index.json |
-  jq -r '.skills[] | select(.name | startswith("ophis")) | .url' |
-  xargs -I{} sh -c 'curl -sS -o ~/.claude/skills/ophis/$(basename {}) {}'
+mkdir -p ~/.claude/skills/ophis/skills
+curl --fail -sS https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md \
+  -o ~/.claude/skills/ophis/SKILL.md
+for skill in ophis-quote ophis-swap ophis-order-status ophis-cancel ophis-surplus-report; do
+  curl --fail -sS "https://ophis.fi/.well-known/agent-skills/ophis/skills/$skill.md" \
+    -o "$HOME/.claude/skills/ophis/skills/$skill.md"
+done
 ```
 
 ## Verify what you downloaded

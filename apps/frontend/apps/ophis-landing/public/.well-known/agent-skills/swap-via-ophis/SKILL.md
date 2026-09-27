@@ -6,13 +6,12 @@ license: MIT
 
 # Swap via Ophis
 
-Ophis is a non-custodial, intent-based DEX aggregator (a CoW Protocol fork) live
-on Optimism, Unichain, Robinhood Chain, and 10 other EVM chains, with Solana and
-Bitcoin as cross-chain
-destinations via NEAR Intents. Orders settle inside batch auctions at a uniform
-clearing price, so they are MEV-protected by construction. The user (or an agent
-acting on their behalf) always signs the final order locally, in their own
-wallet. Ophis never custodies keys or funds.
+Ophis is an intent-based DEX aggregator built on CoW Protocol. The swap app
+supports 14 EVM chains including Arc; published SDK/MCP mappings cover 13 and
+exclude Arc. Supported NEAR routes add Solana, Bitcoin, Monad, Hyperliquid,
+X Layer, Sui and Tron destinations. This MCP workflow describes same-chain
+signed ERC-20 orders, not every bridge flow. Batch auctions mitigate common MEV;
+they do not eliminate every execution risk. Signing happens in the user's wallet.
 
 ## When to use this skill
 
@@ -48,12 +47,12 @@ All endpoints are public and require no API key or authentication.
 
 ## Fees
 
-On Optimism, Unichain, and Robinhood Chain, orders carry a 1 bp base and the
-backend retains 80% of reference-quote improvement on volatile pairs (50 bps
-cap), or 50% on stable pairs (20 bps cap). On CoW-hosted chains, the hosted MCP
-`build_order` path carries 5 bps because it does not classify token pairs. The
-1 bp hosted stable-pair rate is available only through a pair-aware/manual SDK
-appData build; CoW Protocol's own fees also apply upstream. Details:
+Batch-auction orders carry a 1 bp base plus 80% of reference-quote improvement
+on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). Operated
+backends add improvement capture; hosted orders encode it in appData alongside
+the base, and CoW Protocol's own fees apply upstream. Use
+`buildOphisAppDataPartnerFee(chainId, isStablePair)` rather than a volume-only
+hosted entry. Approvals and other wallet transactions require gas. Details:
 https://docs.ophis.fi/fees. A share of fees is returned
 monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,

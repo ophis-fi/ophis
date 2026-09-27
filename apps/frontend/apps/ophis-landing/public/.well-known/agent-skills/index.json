@@ -6,14 +6,14 @@
       "type": "skill-md",
       "description": "Swap or bridge tokens through Ophis, a non-custodial intent-based DEX aggregator: parse a natural-language request, get a best-execution quote, build an EIP-712 order, sign it in the user's own wallet, and submit it. Covers the public Intent API and the hosted MCP server.",
       "url": "https://ophis.fi/.well-known/agent-skills/swap-via-ophis/SKILL.md",
-      "digest": "sha256:c7f9f2709755a4c91b3cb3e586fee80bf1c63ef26e11460cc49bd3d4a243024b"
+      "digest": "sha256:0b3f9ab275a2dff25c32f2b3778b32f06c4d5b216cb5af69ea6348238151f9a3"
     },
     {
       "name": "ophis",
       "type": "skill-md",
       "description": "Umbrella skill for the Ophis family: when to use each sub-skill, the eight safety rules, and a machine-readable per-chain policy block (pinned settlement and vault-relayer contracts, EIP-712 domains, orderbook hosts, slippage latches) for shell-capable agents with curl, jq and cast.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md",
-      "digest": "sha256:065d6f74764eb0ba4db7769fcbedd3b3baa8e3496e6d5ee328b7c7211673cc0d"
+      "digest": "sha256:7ad667b287663cda31722a381d102bf6cfeeeb4592a8428e503ed77330999521"
     },
     {
       "name": "ophis-quote",
@@ -34,14 +34,14 @@
       "type": "skill-md",
       "description": "Check an Ophis order by UID: lifecycle status, executed amounts, surplus versus the signed minimum, and the settlement transaction. Read-only.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-order-status.md",
-      "digest": "sha256:2730f834cfb2b2729809c72f0dd382a9fa7779eae7c5e182ac12fe3157f05d20"
+      "digest": "sha256:d00533bf72eb79579b8a961cc408317c0143269f69945b3ef8c167e46c211820"
     },
     {
       "name": "ophis-cancel",
       "type": "skill-md",
       "description": "Cancel one or many open Ophis orders, gasless, via a signed EIP-712 cancellation, including the batch type-string trap and the on-chain hard cancel fallback.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-cancel.md",
-      "digest": "sha256:72dedfe88a528ee67cb4883b3e9c437ad0470dbf789f8553d464a6c5fab38a27"
+      "digest": "sha256:f52eb62f8fb86aa7ec29b96cc15aae62a162bb3b6bef95dfb6936a000cc73199"
     },
     {
       "name": "ophis-surplus-report",
